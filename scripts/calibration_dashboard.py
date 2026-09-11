@@ -2165,15 +2165,16 @@ def collect_model_skill(conn: sqlite3.Connection) -> dict[str, Any]:
 
 
 TRUTH_LANDING_SINCE = "2026-08-15"
-# Five-percent bands capped at 50%, with the first cell split at the leg
-# floor (user rulings, 2026-08-25): 0-3% is the penny zone the 0.03 floor
-# refuses to buy, and folding it into 0-5% hid exactly the boundary the
-# floor is ruled on -- so this table alone carries the extra cut, on both
-# margins and both cross-tab axes.  Section six's band table stays on the
-# pure 5% grid (charter 60); the two rulers agree from 5% upward.
-TRUTH_LANDING_PRICE_BANDS = ((0.00, 0.03), (0.03, 0.05)) + tuple(
+# Five-percent bands capped at 50%.  The first cell used to be cut again at
+# the 0.03 leg floor (user ruling, 2026-08-25) so the boundary the floor is
+# ruled on stayed visible; that cut is withdrawn (user ruling, 2026-09-11)
+# and the grid is a plain 5% ruler -- 0-3% and 3-5% are one 0-5% cell, every
+# other band unchanged, on both margins and both cross-tab axes.  Section
+# six's band table is on the same grid (charter 60), so the two rulers now
+# agree everywhere rather than only from 5% upward.
+TRUTH_LANDING_PRICE_BANDS = tuple(
     (round(step * 0.05, 2), round(step * 0.05 + 0.05, 2))
-    for step in range(1, 10)
+    for step in range(0, 10)
 ) + ((0.50, 1.01),)
 TRUTH_LANDING_COARSE = TRUTH_LANDING_PRICE_BANDS
 
@@ -8100,17 +8101,33 @@ SECTION_CACHE_ENABLED = True
 _SECTION_CACHE_LOG: dict[str, dict[str, Any]] = {}
 
 
-def _section_fingerprint(collector: Any) -> str:
+def _section_fingerprint(collector: Any, salt: str = "") -> str:
+    """What the cached value was computed from, as one hash.
+
+    The collector's own source, plus whatever the caller declares it also
+    reads.  Only the source is free to find; a module-level constant the
+    collector merely names -- a band grid, a threshold -- is invisible here,
+    so editing one would leave a stale file that still matches its
+    fingerprint and keeps serving the retired shape until its TTL runs out.
+    Callers pass those in as ``_salt``.
+    """
+
     try:
         source = inspect.getsource(collector)
     except (OSError, TypeError):
         source = repr(collector)
     return hashlib.sha256(
-        f"{SECTION_CACHE_EPOCH}\n{source}".encode("utf-8")
+        f"{SECTION_CACHE_EPOCH}\n{salt}\n{source}".encode("utf-8")
     ).hexdigest()
 
 
-def _cached_section(name: str, collector: Any, *args: Any, **kwargs: Any) -> Any:
+def _cached_section(
+    name: str,
+    collector: Any,
+    *args: Any,
+    _salt: str = "",
+    **kwargs: Any,
+) -> Any:
     """The collector's value, reused from disk while it is still young.
 
     A miss round-trips the fresh value through JSON before returning it, so
@@ -8135,7 +8152,7 @@ def _cached_section(name: str, collector: Any, *args: Any, **kwargs: Any) -> Any
             "cached": False,
         }
         return value
-    fingerprint = _section_fingerprint(collector)
+    fingerprint = _section_fingerprint(collector, _salt)
     path = SECTION_CACHE_DIR / f"{name}.json"
     now = _now()
     try:
@@ -8251,7 +8268,10 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "scorecard", collect_calibration_scorecard, conn
     )
     truth_landing = _cached_section(
-        "truth_landing", collect_truth_landing, conn
+        "truth_landing", collect_truth_landing, conn,
+        # The band grid lives outside the collector, so it has to be
+        # declared: changing it has to expire the file, not wait it out.
+        _salt=repr(TRUTH_LANDING_PRICE_BANDS),
     )
     worker = {}
     if STATUS_JSON.is_file():
@@ -8509,6 +8529,18 @@ a.mkt:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
    the width instead of leaving a margin nothing lives in. */
 .g2{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 .dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+/* Status lamps (user ruling, 2026-09-11).  A lamp is the whole section
+   when the section is only ever read for one binary -- is it moving.  Same
+   dot as everywhere else on the page, so a colour means the same thing
+   here as it does inside a table. */
+.lamps{display:grid;gap:6px;
+grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.lamp{display:flex;align-items:center;gap:8px;padding:7px 10px;
+background:var(--card);border:1px solid var(--line);border-radius:7px}
+.lamp b{font-weight:620;white-space:nowrap}
+.lamp .rd{margin-left:auto;color:var(--muted);font-size:12px;
+white-space:nowrap;font-variant-numeric:tabular-nums}
+.lamp.bad{border-color:var(--red)}
 .green{background:var(--green)}.amber{background:var(--amber)}
 .red{background:var(--red)}
 .pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;
@@ -8626,6 +8658,11 @@ var(--soft);align-items:flex-start}
 [data-theme="light"] .zone-trap{background:rgba(200,48,48,.10)}
 [data-theme="light"] .zone-market{background:rgba(190,130,20,.10)}
 [data-theme="light"] .zone-agree{background:rgba(50,110,190,.08)}
+/* The cross-tab's margins.  Deliberately outside the three zone colours:
+   a margin belongs to no zone, and shading it like one would invite the
+   reader to compare it against the cells it is the sum of. */
+.xmargin{background:var(--bar-bg);border-left:2px solid var(--line)}
+tr.xmargin-row td{background:var(--bar-bg);border-top:2px solid var(--line)}
 footer{margin-top:34px;color:var(--muted);font-size:12.5px;text-align:center}
 /* The group switcher.  Sticky, because it is the only way back to the
    other two thirds of the page once a long section has been scrolled
@@ -8942,7 +8979,7 @@ function overview(){
     (laggard?`最旧一家 ${h(laggard.label)} · ${
       hours(laggard.run_age_hours)}的 run`:"没有成员族")
       +(idle==null?"":` · 车道 ${hours(idle)}前最后落一家`),
-    "「模型数据到货」：四家集合预报的到货情况。"
+    "「上游数据」：四家集合预报的到货情况。"
     +"「车道…前最后落一家」是采集器上一次成功落任何一家的时间 —— "
     +"每家自己的年龄按各自节奏算，会把「整条车道停了」这件事吸收掉，这个数不会");
 
@@ -8981,14 +9018,14 @@ function overview(){
   push(blocking?"red":"green",
     "要处理的缺口", String(blocking),
     waiting?`另有 ${waiting} 条在正常等待`:"没有待处理项",
-    "「数据缺口」：数据缺口与健康检查");
+    "「上游数据」里的「缺口检查」灯：缺了什么、会不会自己好");
 
   // 3. Did the truth for settled days actually land.
   const outstanding=(D.truth||{}).outstanding;
   push(outstanding==null?"muted":outstanding===0?"green"
       :outstanding<=5?"amber":"red",
     "真值待物化", outstanding==null?"—":String(outstanding),
-    "结算真值还没落库的站日", "「真值物化健康度」：真值物化健康度");
+    "结算真值还没落库的站日", "「系统健康」里的「真值物化」灯");
 
   // 4. How much of the fleet actually opened a position on the newest day.
   const day=S.latest_day||(S.roster_event_dates||[])[0];
@@ -9074,84 +9111,130 @@ const runLabel = (s) => {
   const m = String(s == null ? "" : s).match(/^\d{4}-(\d{2})-(\d{2})T(\d{2})/);
   return m ? `${m[1]}-${m[2]} ${m[3]}Z` : "—";
 };
-const cycleLabel = (s) => {
-  const m = String(s == null ? "" : s).match(/T(\d{2})/);
-  return m ? `${m[1]}Z` : "—";
-};
+// One glyph per question (user ruling, 2026-09-11).  Seven sections --
+// four about the machine, three about what feeds it -- were tables and
+// card grids, and every one of them was opened to answer a single binary:
+// is it moving.  They are lamps now.  The reading that was the point of
+// each table rides on the lamp, whatever else it knew rides in the
+// tooltip, and the long explanations live in the commit that removed
+// them.  Where the payload states a health -- the members, the chain
+// links, the regional lanes, truth materialisation -- the lamp shows that
+// field rather than a rule re-derived here: two places deciding what red
+// means is how they end up disagreeing.  Two payloads state none (the
+// store's capacity and the sweep lanes), and for those the lamp carries
+// the same threshold the deleted section drew its warning line on.
+const attr = (s) => String(s == null ? "" : s)
+  .replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+const lamp = (health, name, reading, tip) =>
+  `<div class="lamp${health === "red" ? " bad" : ""}"${
+    tip ? ` title="${attr(tip)}"` : ""}><span class="dot ${
+    health || "amber"}"></span><b>${h(name)}</b><span class="rd">${
+    reading == null ? "—" : reading}</span></div>`;
+const lampBoard = (title, sub, lamps) => `<h2>${title}</h2>
+  <p class="sub">${sub}</p>
+  <div class="lamps">${lamps.join("")}</div>`;
 
-function members(){
-  // The question asked of this section is always the same one: is each model
-  // still running, and when did its last run land.  So the newest run is the
-  // headline and the archive depth is the footnote -- the depth moves by one
-  // a day and is read once a week, the run moves every few hours and is read
-  // every time the page is opened.
-  const rows = D.members.map(m => {
-    // Same threshold the health dot uses: late by a whole cycle is late
-    // enough to say out loud, and publication times wander by hours below
-    // that.
-    const late = m.overdue_hours != null && m.overdue_hours > m.cycle_hours;
-    const span = (v) => hours(v).replace("前", "");
-    const due = m.due_in_hours == null ? ""
-      : late ? `<span class="down">下一轮已晚 ${span(m.overdue_hours)}</span>`
-      : m.due_in_hours >= 0 ? `下一轮约 ${span(m.due_in_hours)}后到`
-      : "下一轮随时到";
-    // Four runs, two per line: enough to see a dropped cycle, short enough
-    // that every card spends the same number of lines on it and the last
-    // line of all four cards sits on one baseline.
-    const seq = (m.runs_recent || []).slice(0, 4).map(r =>
-      `<span style="white-space:nowrap">${cycleLabel(r.run_utc)}·${
-        r.stations}站</span>`).join("&nbsp; ");
-    return `<div class="card" title="${h(m.note)}${m.cycle_hours ?
-      ` · 观察到 ${m.cycle_hours.toFixed(0)} 小时一轮，发布后约 ${
-        m.publish_lag_hours.toFixed(0)} 小时落库` : ""}">
-    <div style="display:flex;align-items:center;gap:7px">
-      <span class="dot ${m.health}"></span><b>${h(m.label)}</b>
-      <span style="flex:1"></span>
-      ${m.backfillable ? "" :
-        `<span class="pill amber" title="此来源不留历史档案，当天没抓到就永久缺失">不可回填</span>`}
-      <span class="pill ${m.health}">${m.seats_won} 次入选</span>
-    </div>
-    <div style="display:flex;align-items:baseline;gap:7px;margin-top:6px">
-      <span class="big">${runLabel(m.latest_run_utc)}</span>
-      <span class="muted">${hours(m.run_age_hours)}发布</span>
-    </div>
-    <div class="muted" style="margin-top:2px">${
-      hours(m.latest_capture_age_hours)}落库${
-      m.latest_run_stations == null ? "" :
-        ` · 这轮 ${m.latest_run_stations} 站`}</div>
-    <div class="muted" style="margin-top:2px">${due || "&nbsp;"}</div>
-    <div class="mono muted" style="margin-top:5px;min-height:2.6em"
-      title="最近 ${m.runs_window_days} 天入库的 run：轮次与该轮覆盖的站数">${
-      seq || "近日无 run 入库"}</div>
-    <div class="muted" style="margin-top:4px">存档 ${m.training_days} 天 ·
-      ${m.stations} 站 · ${(m.member_rows/1000).toFixed(0)}k 条成员预报</div>
-  </div>`;
-  }).join("");
-  return `<h2>四家模型的数据在不在进来</h2>
-  <p class="sub">大字是这家机构最新一次 run 的轮次（UTC），后面是它多久前发布、
-  多久前落到我们库里、这一轮覆盖了几个站，以及按它自己观察到的节奏下一轮该什么时候到。
-  灰色那行是最近几轮的轮次与站数，中间断一档就是漏了一轮。
-  "入选次数"是这个模型被选进最终融合的次数——没入选不代表坏，
-  只代表那天它不是最优组合的一员。悬停卡片看这家的发布节奏与到货延迟。</p>
-  <div class="grid g4">${rows}</div>`;
+function upstreamLights(){
+  const L = [];
+  (D.members || []).forEach(m => {
+    // Late by a whole cycle is late enough to say out loud; publication
+    // times wander by hours below that.
+    const late = m.overdue_hours != null && m.cycle_hours != null
+      && m.overdue_hours > m.cycle_hours;
+    L.push(lamp(m.health, m.label,
+      `${runLabel(m.latest_run_utc)} · ${hours(m.latest_capture_age_hours)}落库`,
+      `${m.stations} 站 · 存档 ${m.training_days} 天 · 被选进融合 ${m.seats_won} 次`
+      + (late ? ` · 下一轮已晚 ${hours(m.overdue_hours).replace("前", "")}` : "")
+      + (m.backfillable ? "" : " · 不留历史，当天没抓到就永久缺失")));
+  });
+  ((D.regional || {}).lanes || []).forEach(l => L.push(lamp(l.health, l.label,
+    `${l.station_count || 0}/${l.roster_count || 0} 站 · ${
+      hours(l.last_capture_age_hours)}`,
+    `${l.region} · ${(l.row_count || 0).toLocaleString()} 行 · ${l.transport}`
+    + (l.backfillable ? "" : " · 不留历史，错过永失"))));
+  // The lane lamps say the corpus is arriving; this one says what the
+  // corpus has won.  They are different questions and a green lane with an
+  // empty scoreboard is a real state -- still accumulating, nothing wrong.
+  const V = (D.regional || {}).verdicts || [];
+  if(V.length){
+    const passAll = V.filter(v => v.passes_all_three).length;
+    const cut = V.filter(v => !v.in_roster).length;
+    const waiting = V.filter(v => v.in_roster && !v.has_rows).length;
+    const accruing = ((D.regional || {}).readiness || [])
+      .filter(r => r.state === "ACCUMULATING_STRICT_OOS").length;
+    L.push(lamp(passAll ? "green" : "amber", "区域赛道",
+      `${passAll}/${V.length} 过三门`,
+      `攒案例中的系统 ${accruing} 个 · 实测反向剔除 ${cut} 对`
+      + ` · 在册等首行 ${waiting} 对`
+      + " · 赢到的是扩展概率包络的证据席位，不是融合成员"));
+  }
+  const g = D.gaps || [];
+  const high = g.filter(x => x.severity === "high").length;
+  const med = g.filter(x => x.severity === "medium").length;
+  const manual = g.filter(x => !x.self_heals).length;
+  L.push(lamp(high ? "red" : (med ? "amber" : "green"), "缺口检查",
+    g.length ? `${high} 要处理 · ${med} 留意 · ${g.length - high - med} 等样本`
+      : "没有缺口",
+    g.length
+      ? g.slice(0, 8).map(x => x.what).join("；")
+        + (manual ? ` · 其中 ${manual} 条不会自己好` : " · 都会自行恢复")
+      : "每一项检查都通过了"));
+  return lampBoard("上游数据",
+    "喂进来的东西到没到：四家全球模型的到货、三条区域采集道、缺口检查。" +
+    "灯上是最新一轮和它多久前落库；悬停看站数、存档深度和是否可回填。", L);
 }
 
-function chain(){
-  // A table, not a stack of two-line blocks.  The links are read down the
-  // column -- "which one stopped" -- and stacked blocks put four times the
-  // vertical space between the answers.
-  const rows = D.chain.map(c => `<tr>
-    <td><span class="dot ${c.health}"></span> <b>${h(c.name)}</b></td>
-    <td class="muted">${h(c.plain)}</td>
-    <td class="mono">${h(c.volume)}</td>
-    <td class="muted">${h(c.note)}</td>
-  </tr>`).join("");
-  return `<h2>整条链路每一环是否在动</h2>
-  <p class="sub">数据从上到下流：模型下载 → 真值结算 → 算校正 → 算概率修正 →
-  出概率 → 盘中更新。任何一环停了，它下面的环节迟早会跟着停。</p>
-  <div class="card"><div class="scroll"><table><thead><tr>
-    <th>环节</th><th>在做什么</th><th>量</th><th>状态</th>
-  </tr></thead><tbody>${rows}</tbody></table></div></div>`;
+function healthLights(){
+  // The chain first, one lamp per link, in flow order: whichever one
+  // stopped, everything under it stops next.
+  const L = (D.chain || []).map(c => lamp(c.health, c.name, c.volume,
+    `${c.plain} · ${c.note}`));
+  const S = D.ssot_capacity || {};
+  if(S.available){
+    const GB = 1e9, days = S.days_to_ceiling;
+    const tight = S.remaining_bytes < S.warn_remaining_bytes
+      || (days != null && days <= S.warn_days_to_ceiling);
+    L.push(lamp(tight ? "red" : "green", "SSOT 容量",
+      `剩 ${(S.remaining_bytes / GB).toFixed(1)} GB · ${
+        days == null ? "速率待测" : days.toFixed(0) + " 天"}`,
+      `上限 ${(S.max_database_bytes / GB).toFixed(1)} GB · 已用 ${
+        (100 * S.database_bytes / S.max_database_bytes).toFixed(1)}%`
+      + (S.largest_table ? ` · 增得最快的表是 ${S.largest_table}` : "")
+      + " · 撞顶＝每个写者 fail-close，整条链路当场停"));
+  } else {
+    L.push(lamp("amber", "SSOT 容量", "读不出", S.reason || ""));
+  }
+  const H = D.hosted_sweeps || {};
+  if(H.available){
+    const bad = (H.lanes || []).filter(l => l.health !== "green");
+    L.push(lamp(H.red_count ? "red" : (H.amber_count ? "amber" : "green"),
+      "维护车道",
+      (H.red_count || H.amber_count)
+        ? `${H.red_count} 红 · ${H.amber_count} 黄` : "全部准点",
+      bad.length
+        // Starved and stuck are opposite fixes, so the tooltip says which:
+        // stuck holds the exclusive write domain and blocks everyone behind
+        // it, starved only needs a generation that lives long enough.
+        ? bad.map(l => `${l.name} 落后 ${(l.overdue_intervals || 0).toFixed(1)}`
+            + ` 个回合（${l.stuck ? "卡住，占着写域" : "没轮到"}）`).join("；")
+        : "每条车道都在自己的间隔内跑过"));
+  } else {
+    L.push(lamp("amber", "维护车道", "读不出", H.reason || ""));
+  }
+  const T = D.truth || {};
+  if((T.coverage || []).length){
+    // Its own health, the same field the head strip reads.  The banner
+    // already decides what an outstanding count means; a second rule here
+    // is how the strip and the lamp end up disagreeing about the same day.
+    L.push(lamp(T.health || "amber",
+      "真值物化", `落后 ${T.outstanding} · 挡住 ${T.refused}`,
+      `上次清扫 ${hours(T.sweep_age_hours)} · 当天还在结算 ${T.still_open} 个`
+      + " · 「落后」不为零才是真的落后；「挡住」是证据不全或互相矛盾，"
+      + "错过的日子没有任何东西会重试"));
+  }
+  return lampBoard("系统健康",
+    "机器在不在转。前面一排是数据从头到尾的每一环（上面停了，下面迟早跟着停），" +
+    "后面三盏是库容量、常驻的维护车道、真值物化。", L);
 }
 
 function tables(){
@@ -9710,70 +9793,50 @@ function refusalStats(){
   const S=D.selection||{};
   const stages=(S.refusal_stats||{}).stages||[];
   if(!stages.length) return "";
-  // Top three per stage, the rest folded (user ruling, 2026-08-21).  The
-  // reasons arrive sorted by count and the tail is a long list of one- and
-  // two-count rows: nine rows per stage is most of this section's height
-  // and only the first few ever change what anyone does.  Folded rather
-  // than dropped, because the funnel only balances with all of them -- and
-  // the fold's own summary carries the remainder's total so the arithmetic
-  // still closes with the fold shut.
-  const line=r=>`<tr>
-      <td>${h(r.label)}</td>
-      <td class="mono">${r.count}</td>
-      <td class="mono">${(r.share*100).toFixed(1)}%</td>
-      <td class="muted">${h(r.note)}${r.example?
-        ` <span class="mono">（例：${h(r.example)}）</span>`:""}</td>
-    </tr>`;
-  const head3=`<thead><tr>
-        <th>原因</th><th>站日数</th><th>占扫到的</th><th>这是什么意思</th>
-      </tr></thead>`;
-  const cards=stages.map(st=>{
-    const all=st.reasons||[];
-    const top=all.slice(0,3);
-    const rest=all.slice(3);
-    const restCount=rest.reduce((a,r)=>a+(r.count||0),0);
-    const restShare=rest.reduce((a,r)=>a+(r.share||0),0);
-    const restBlock=rest.length?`<details style="margin-top:8px">
-      <summary class="muted" style="cursor:pointer">其余 ${rest.length} 项
-        合计 ${restCount} 个站日（${(restShare*100).toFixed(1)}%）</summary>
-      <table style="margin-top:8px">${head3}
-        <tbody>${rest.map(line).join("")}</tbody></table></details>`:"";
-    return `<div class="card" style="margin-top:12px">
-      <div class="muted">${h(st.stage)} · 扫到 ${st.scope_count} 个站日，
-        建仓 ${st.seated_count}${st.scope_restricted_to?
-          ` <span class="mono">（只计 ${h(st.scope_restricted_to)}）</span>`:""}</div>
-      <div class="big ${st.seat_rate>=0.3?"up":"down"}">${
-        (st.seat_rate*100).toFixed(1)}%</div>
-      <div class="muted">其余 ${st.refused_count} 个没建仓，
-        占大头的三条如下${rest.length?"，长尾折在表下":""}</div>
-      <table style="margin-top:10px">${head3}
-        <tbody>${top.map(line).join("")}</tbody></table>
-      ${restBlock}
-    </div>`;
-  }).join("");
-  return `<h2>没建仓是因为什么（逐阶段）</h2>
-  <p class="sub">分母是这一阶段扫到的全部站日，建仓数 + 各项原因 = 分母，
-  所以这是一条漏斗而不是两份互不相干的清单。
-  <b>P0-M 只统计 TAF 带温度组的那 17 个站</b>——这一阶段是拿 TAF 做确认，
-  没有 TAF 的站根本走不到，把它们算进分母等于拿它没法做的活给它打分。</p>
-  <div class="why"><b>为什么要分开列：</b>以前页面只能靠"没有这一行"来推断，
-  于是所有情况都被说成"目标函数看过后没坐下"——这只对其中一条成立，
-  对其余每一条都是错的，而它们各有各的负责人和各自的修法。
-  <b>「目标函数看过，不下注」「想加的已经在仓里」是策略在工作，不是故障；
-  「整天没凑出过一篮子」「整篮报价高过满额赔付」是市场那边太窄或太贵，
-  「决策时没有盘口」「盘口深度不够」则是采集和深度的问题；
-  「P0 没建仓，本阶段无仓可加」不是本阶段的事，真正的原因在 P0 那张表。</b><br>
-  三个阶段不合并：它们面对的是三个不同的书，某个原因在一个阶段占主导，
-  在另一个阶段可能根本不出现。</div>
-  <div class="why"><b>每一行记的是那个站日走得最深的一次，不是最后一次。</b>
-  一个站日一天会被反复问价，而收盘时的书已经收敛成"一个桶 0.999、其余
-  0.001"，从那里什么篮子都凑不出来。按最后一次记，就会把上午已经凑出篮子、
-  被目标函数判过的站日，写成"整天没凑出过一篮子"。<br>
-  漏斗从浅到深是：没有盘口 → 盘口不完整 → 整天没凑出篮子 →
-  凑出来了但价不合算 → 下单了但没成交。走到越深，说明这一天离成交越近。</div>
-  ${cards}`;
+  // Merged across the three stages, four reasons deep (user ruling,
+  // 2026-09-11).  Three cards of nine rows was the tallest block on this
+  // page and it gets opened for one line: of the station-days that were
+  // actually put to a stage, how many sat down, and what ate the rest.
+  //
+  // ``chain_never_opened`` comes off BOTH sides first.  A station-day P0
+  // refused reappears in P0-M and again in P1 carrying that row, so
+  // merging with it in counts the same refusal up to three times and
+  // makes the biggest "reason" on the board a restatement of P0's own --
+  // the per-stage cards could leave it in because their denominators were
+  // separate.  It is not this stage refusing anything; it is this stage
+  // never being called, and the real reason is already counted once, in
+  // P0's row.
+  const passThrough=r=>r.reason==="chain_never_opened";
+  let scope=0, seated=0, inherited=0;
+  const merged={};
+  stages.forEach(st=>{
+    scope+=st.scope_count||0;
+    seated+=st.seated_count||0;
+    (st.reasons||[]).forEach(r=>{
+      if(passThrough(r)){ inherited+=r.count||0; return; }
+      const c=merged[r.label]||(merged[r.label]={label:r.label,count:0});
+      c.count+=r.count||0;});
+  });
+  scope-=inherited;
+  const all=Object.values(merged).sort((a,b)=>b.count-a.count);
+  const top=all.slice(0,4);
+  const restCount=all.slice(4).reduce((a,r)=>a+r.count,0);
+  const rate=scope?seated/scope:0;
+  const pctOf=n=>scope?(100*n/scope).toFixed(1)+"%":"—";
+  return `<h2>没建仓是因为什么</h2>
+  <p class="sub">三阶段合并，一个站日在一个阶段算一次：被叫到多少次、坐下多少次。
+  ${inherited?`已扣掉「P0 没建仓，本阶段无仓可加」<b>${inherited}</b> 次——
+  那不是后面两个阶段拒绝了什么，是它们根本没被叫到，
+  真正的原因已经计在 P0 那一次里，留着会把同一个拒绝数三遍。`:""}
+  （P0-M 只含带 TAF 温度组的 17 个站。）</p>
+  <div class="card">
+    <div class="muted">被叫到 ${scope} 次，建仓 ${seated}</div>
+    <div class="big ${rate>=0.3?"up":"down"}">${(100*rate).toFixed(1)}%</div>
+    <div class="muted" style="margin-top:4px">没建仓的大头：${
+      top.map(r=>`<b>${h(r.label)}</b> ${pctOf(r.count)}`).join(" · ")
+    }${restCount?` · 其余 ${all.length-4} 项合计 ${pctOf(restCount)}`:""}</div>
+  </div>`;
 }
-
 
 function truthLanding(){
   const T=D.truth_landing||{};
@@ -9796,6 +9859,18 @@ function truthLanding(){
   const labels=T.coarse_labels||[];
   const cell={};
   (T.cross||[]).forEach(c=>{cell[c.claim_band+"|"+c.price_band]=c;});
+  // Both of the table's claims are statements about a MARGIN, and until
+  // now the reader had to add the cells up by hand to check either one.
+  // A row's margin is "everything the model called this, however the
+  // market priced it"; a column's is "everything the market priced this,
+  // however the model called it" -- and a column's margin lands on that
+  // column's own price, which is the finding in one number.
+  const sum=keys=>keys.reduce((a,k)=>{
+    const c=cell[k];
+    return c?[a[0]+c.truth_count,a[1]+c.bucket_count]:a;},[0,0]);
+  const marginCell=(t,n,cls)=>n?`<td class="mono ${cls}"><b>${t}/${n}</b>
+      <span class="muted">(${(t/n*100).toFixed(1)}%)</span></td>`
+    :`<td class="muted ${cls}">—</td>`;
   const crossRows=labels.map((row,ri)=>{
     const tds=labels.map((col,ci)=>{
       // Zones by who is the optimist, not by the cell's own number: below
@@ -9810,15 +9885,34 @@ function truthLanding(){
       return `<td class="mono ${cls} ${zone}">${c.truth_count}/${c.bucket_count}
         <span class="muted">(${(rate*100).toFixed(1)}%)</span></td>`;
     }).join("");
-    return `<tr><td class="mono"><b>${row}</b></td>${tds}</tr>`;
+    const rm=sum(labels.map(col=>row+"|"+col));
+    return `<tr><td class="mono"><b>${row}</b></td>${tds}${
+      marginCell(rm[0],rm[1],"xmargin")}</tr>`;
   }).join("");
+  const colMargins=labels.map(col=>{
+    const cm=sum(labels.map(row=>row+"|"+col));
+    return marginCell(cm[0],cm[1],"");
+  }).join("");
+  const grand=sum(labels.flatMap(row=>labels.map(col=>row+"|"+col)));
+  const marginRow=`<tr class="xmargin-row"><td class="mono"><b>本列合计</b></td>
+    ${colMargins}${marginCell(grand[0],grand[1],"")}</tr>`;
   const legend=`<p class="sub" style="margin-top:8px">
     <span class="zone-trap" style="padding:2px 8px;border-radius:4px">红区</span>
     模型比市场乐观（edge 门想买的格子——历史上几乎全空）&nbsp;
     <span class="zone-market" style="padding:2px 8px;border-radius:4px">黄区</span>
     市场比模型乐观（真值跟着市场走——别因模型嫌贵而放弃）&nbsp;
     <span class="zone-agree" style="padding:2px 8px;border-radius:4px">蓝区</span>
-    两者一致（校准良好的对角线）</p>`;
+    两者一致（校准良好的对角线）</p>
+  <div class="why"><b>怎么读这张表（两种读法，只有这两种）：</b>
+  一个格子 = 一批"某站某天某个温度桶"，行是模型当时给它的概率，
+  列是市场当时的要价，格里是「最后开出来的个数／这样的桶共有多少个」。<br>
+  <b>横着读一行</b>：模型说的一样，只有市场价在变——中标率从最左的几个点
+  一路爬到最右的一半以上，说明市场价那把尺子在动真格。<br>
+  <b>竖着读一列</b>：市场要价一样，只有模型说的在变——中标率基本是平的，
+  说明在市场已经定了价之后，模型再说高说低几乎不带新信息。
+  <b>本列合计那一格会落在这一列自己的价位上</b>，市场是校准的，这就是证据。<br>
+  <b>不要跨区比总数。</b>三个区的桶价位分布完全不同（蓝区被大量"两边都说便宜"
+  的桶压低），只有同一行内或同一列内的比较才成立。</div>`;
   return `<h2>真值落位（价格 × 概率）</h2>
   <p class="sub">${T.since} 起 · 已闭合站日 ${T.closed_station_days}
     · 市场裁定出赢家 ${T.adjudicated_station_days}
@@ -9835,7 +9929,8 @@ function truthLanding(){
   <h3 style="margin-top:14px">交叉：行＝模型概率档，列＝市场价格档（中标/桶数）</h3>
   <table><thead><tr><th>模型＼市场</th>${
     labels.map(l=>`<th class="mono">${l}</th>`).join("")
-  }</tr></thead><tbody>${crossRows}</tbody></table>${legend}`;
+  }<th class="xmargin">本行合计</th></tr></thead>
+  <tbody>${crossRows}${marginRow}</tbody></table>${legend}`;
 }
 
 // The lambda tables, one per stage scope.  Placed beside the edge
@@ -10985,249 +11080,6 @@ function riskMetrics(){
 }
 
 
-// The resident's maintenance lanes (user ruling, 2026-09-10).  Until this
-// section existed the board showed them nowhere, and the day it was asked
-// for, three lanes were sitting at 2.3x to 2.5x their own interval with
-// `last_state: "ok"` beside each one -- the clock file has no state for
-// "starved", only for "failed", so a lane that never got a turn reads
-// exactly like a healthy one.  Finding that out took reading a JSON file
-// by hand and dividing two numbers.
-function hostedSweeps(){
-  const H = D.hosted_sweeps || {};
-  if(!H.available) return `<h2>托管扫描车道</h2>
-    <div class="card"><span class="dot amber"></span>
-    ${h(H.reason||"读不出扫描时钟")}。</div>`;
-  const lanes = H.lanes || [];
-  const num=(v,d=2)=>v==null?"—":v.toFixed(d);
-  const dur=(sec)=>{
-    if(sec==null) return "—";
-    if(sec < 90) return sec.toFixed(0)+" 秒";
-    if(sec < 5400) return (sec/60).toFixed(0)+" 分钟";
-    return (sec/3600).toFixed(1)+" 小时";
-  };
-  const ivl=(sec)=>sec>=3600?(sec/3600).toFixed(sec%3600?1:0)+" 小时"
-    :(sec/60).toFixed(0)+" 分钟";
-  const DOMAIN={ssot:["独占 SSOT","pill"],archive:["独占 archive","pill"],
-    none:["不写库","pill green"]};
-  const gen = H.generation_age_sec;
-  // A lane cannot have had a turn the generation has not lived long
-  // enough to give it.  Held against the slowest contract that is
-  // actually reading late, not against a constant: with a day-long lane
-  // in the table an hour would be the wrong bar, and with only
-  // ten-minute lanes late it would be far too generous.
-  const bar = H.slowest_late_interval_sec;
-  const young = gen!=null && bar!=null && gen < bar;
-  const body = lanes.map(l=>{
-    const dm = DOMAIN[l.domain] || [l.domain,"pill"];
-    const late = l.overdue_intervals;
-    const cls = l.health==="red"?"down":(l.health==="amber"?"":"");
-    const round = l.this_generation;
-    return `<tr>
-      <td><span class="dot ${l.health==="red"?"red":(l.health==="amber"?"amber":"green")}"></span>
-        <span class="mono">${h(l.name)}</span>
-        ${l.running_now?'<span class="pill amber">正在跑</span>':""}
-        ${l.note?`<div class="muted" style="font-size:11px">${h(l.note)}</div>`:""}</td>
-      <td><span class="${dm[1]}">${dm[0]}</span></td>
-      <td class="mono">${ivl(l.interval_sec)}</td>
-      <td class="mono ${cls}">${late==null?"—":num(late,2)+"×"}</td>
-      <td class="mono">${dur(l.since_completed_sec)}</td>
-      <td class="mono ${l.stuck?"down":""}">${dur(l.since_attempted_sec)}</td>
-      <td>${l.last_state
-        ? `<span class="pill ${l.last_state==="ok"?"green":"red"}">${h(l.last_state)}</span>`
-        : "—"}</td>
-      <td class="muted mono" style="font-size:11.5px">${
-        round ? `${h(round.state)} · ${num(round.duration_sec,1)}s` : "本代未轮到"}</td>
-    </tr>`;
-  }).join("");
-
-  const demand = H.ssot_demand_per_hour, supply = H.ssot_supply_per_hour;
-  const tight = supply!=null && supply < demand;
-  const tile=(label,value,note,klass)=>`<div class="card">
-    <div class="muted">${label}</div>
-    <div class="big ${klass||""}">${value}</div>
-    <div class="muted" style="font-size:11.5px">${note}</div></div>`;
-
-  return `<h2>托管扫描车道</h2>
-  <p class="sub">常驻把维护工作分给这些车道，SSOT 域<b>一次只准一个写者</b>，
-  而且生产周期每转一圈才放行一个。所以「落后」要用<b>车道自己的间隔</b>量，
-  不能用小时——这里的合同从 10 分钟到 1 天不等。</p>
-  <div class="why"><b>先看这一代活了多久。</b>
-  常驻 ${H.generation_started_at?h(H.generation_started_at):"—"} 启动，
-  到现在 <b>${dur(gen)}</b>。${young
-    ? `每次重启都把队列的代数切断，一代只排得掉几个槽，
-       <b>还不够长到欠下面最慢那条落后车道（合同 ${dur(bar)}）一个回合</b>——
-       它们没轮到还不能算故障。`
-    : (bar==null
-      ? `目前没有车道落后到需要按这个判。`
-      : `<b>已经长过下面最慢那条落后车道的合同（${dur(bar)}）</b>——
-         还没轮到的就是真饿着了。`)}
-  ${H.waiting_on && H.waiting_on.length
-    ? `本轮生产在等 <span class="mono">${H.waiting_on.map(h).join("、")}</span>
-       ${H.waited_sec!=null?`（${num(H.waited_sec,1)} 秒）`:""}——等待直接吃掉排水率。`
-    : ""}</div>
-  <div class="grid g3" style="margin-top:10px">
-    ${tile("SSOT 队列 · 需求", num(demand,2)+" 次/小时",
-      "各成员 3600÷间隔 之和")}
-    ${tile("SSOT 队列 · 供给", supply==null?"—":num(supply,2)+" 次/小时",
-      "一个周期放行一个 · 上一轮周期 "+dur(H.cycle_cadence_sec)+
-      "（"+h(H.cycle_cadence_basis||"")+"） · 合同按 "+
-      dur(H.reference_cycle_sec)+" 尺寸，即 "+num(H.reference_supply_per_hour,2)+" 次/小时",
-      tight?"down":"up")}
-    ${tile("落后 ≥2 个回合", (H.red_count+H.amber_count)+" 条",
-      H.red_count+" 条红（≥3 回合或上次没跑成）· "+H.amber_count+" 条黄",
-      H.red_count?"down":"")}
-  </div>
-  <div class="scroll" style="margin-top:12px"><table><thead><tr>
-    <th>车道</th><th>写域</th><th>间隔</th><th>落后</th>
-    <th>上次成功</th><th>上次尝试</th><th>上次状态</th><th>本代</th>
-  </tr></thead><tbody>${body}</tbody></table></div>
-  <div class="why" style="margin-top:12px"><b>两种红要分开读，处置相反。</b>
-  <b>饿着</b>＝「上次尝试」和「上次成功」一样旧：它根本没轮到，是别人在占队列，
-  多半是当天提交太密、常驻反复重启把代数切碎了。等一代常驻活久一点自己就排干。
-  <b>卡住</b>＝「上次尝试」比「上次成功」新得多：它<b>轮到了却没跑完</b>，
-  而在独占写域下它会连带堵住排在后面的所有人——2026-09-09 有一条采集车道
-  就这样占了 SSOT 域 <b>72 小时</b>。这一类要去看它自己为什么跑不完，
-  等是等不好的。</div>
-  <div class="why" style="margin-top:10px"><b>为什么「落后」不看小时。</b>
-  <span class="mono">calibration_refit</span> 的合同是 1 天，落后 9 小时是
-  0.4 个回合，正常；<span class="mono">settlement_truth</span> 的合同是 3 小时，
-  同样落后 9 小时是错过了 3 个回合。用同一把小时尺子量，
-  前者会被报成停摆，后者会被漏掉。<br>
-  另外<b>「上次成功」只在真的成功时才前进</b>（rc=0），
-  失败和超时只推进「上次尝试」——这是设计，失败不能假装成成功；
-  代价是一条一直失败的车道会显示成「很久没成功」，
-  要靠旁边那一列才分得出它是没轮到还是没跑完。</div>`;
-}
-
-
-// The one limit that stops everything (user ruling, 2026-09-11).  When the
-// target store passes its ceiling every writer fail-closes on
-// ``target_database_bytes_exceeded`` and every model run reads stale from
-// that moment; it has been raised four times and each raise bought days.
-// The board showed none of it -- the number lived in status.json, and the
-// time axis that makes it actionable was reporting null for three days
-// because it measured the file while free pages absorbed the growth.
-function ssotCapacity(){
-  const S = D.ssot_capacity || {};
-  if(!S.available) return `<h2>SSOT 容量与增速</h2>
-    <div class="card"><span class="dot amber"></span>
-    ${h(S.reason||"读不出容量读数")}。</div>`;
-  const GB = 1e9, MB = 1e6;
-  const gb=(v,d=2)=>v==null?"—":(v/GB).toFixed(d)+" GB";
-  const mb=(v,d=1)=>v==null?"—":(v/MB).toFixed(d)+" MB";
-  const pct=(v,d=1)=>v==null?"—":(100*v).toFixed(d)+"%";
-  const num=(v,d=1)=>v==null?"—":v.toFixed(d);
-  const tile=(label,value,note,klass)=>`<div class="card">
-    <div class="muted">${label}</div>
-    <div class="big ${klass||""}">${value}</div>
-    <div class="muted" style="font-size:11.5px">${note}</div></div>`;
-
-  const used = S.database_bytes, cap = S.max_database_bytes;
-  const frac = cap>0 ? used/cap : 0;
-  const days = S.days_to_ceiling, rate = S.growth_bytes_per_day;
-  const warnDays = S.warn_days_to_ceiling;
-  const daysCls = days==null ? "muted" : (days<=warnDays ? "down" : "up");
-  // A bar, because "38.18 of 51.54" is a subtraction the eye should not
-  // have to do.  The warning line is drawn on it: the point of the gauge
-  // is where the needle is against the mark, not the reading alone.
-  const warnFrac = cap>0 ? (cap - S.warn_remaining_bytes)/cap : 1;
-  const bar = `<div class="card" style="margin-top:10px">
-    <div class="muted" style="font-size:11.5px">文件 ${gb(used)} / 上限 ${gb(cap)}
-      · 空闲页 ${mb(S.free_page_bytes)}（这部分新行会先用掉，之后才顶文件）</div>
-    <div style="position:relative;height:16px;border-radius:8px;
-      background:var(--bar-bg);margin-top:8px;overflow:hidden">
-      <div style="position:absolute;left:0;top:0;bottom:0;
-        width:${(100*Math.min(1,frac)).toFixed(1)}%;
-        background:${frac>=warnFrac?"var(--red)":"var(--accent)"}"></div>
-      <div style="position:absolute;top:-2px;bottom:-2px;
-        left:${(100*warnFrac).toFixed(1)}%;width:2px;background:var(--amber)"></div>
-    </div>
-    <div class="muted" style="font-size:11px;margin-top:4px">
-      已用 ${pct(frac)} · 黄线是告警位（剩 ${gb(S.warn_remaining_bytes)}）</div></div>`;
-
-  const rows = (S.tables||[]).map(t=>`<tr class="${t.retained?"muted":""}">
-    <td class="mono">${h(t.table)}
-      ${t.retained?'<span class="pill green">有保留 · 周转</span>':""}</td>
-    <td class="mono ${t.retained?"":(t.table===S.largest_table?"down":"")}">${mb(t.bytes_per_day)}/天</td>
-    <td class="mono">${t.rows_per_day.toLocaleString()} 行/天</td>
-    <td class="mono">${(t.row_bytes/1024).toFixed(1)} KB/行</td>
-    <td class="mono">${t.rows_total.toLocaleString()}</td></tr>`).join("");
-
-  return `<h2>SSOT 容量与增速</h2>
-  <p class="sub">这是<b>唯一一条撞上就停整条链路</b>的界限：文件越过上限，
-  每个写者都 <span class="mono">target_database_bytes_exceeded</span> fail-close，
-  从那一刻起每次模型运行读到的都是陈旧值。已经抬过四次顶（29 / 33 / 35 / 40 / 48 GiB），
-  每次买到的都是天数。</p>
-  <div class="grid g3">
-    ${tile("剩余空间", gb(S.remaining_bytes),
-      "上限 "+gb(cap)+" · 已用 "+pct(frac)+" · 告警位 "+gb(S.warn_remaining_bytes),
-      S.remaining_bytes<S.warn_remaining_bytes?"down":"")}
-    ${tile("剩余天数", days==null?"还在测":num(days,1)+" 天",
-      rate==null
-        ? (S.growth_window_spans_restart
-          ? "上一段窗口里常驻重启过——起来时的追赶写入不是稳态速率，这一段作废，等下一段干净的"
-          : "速率要两个相隔一小时的读数才算得出来；重启后第一轮只写基线")
-        : "按实测 "+mb(rate)+"/天 · 低于 "+num(warnDays,0)+" 天报警",
-      daysCls)}
-    ${tile("最大单表", h(S.largest_table||"—"),
-      S.largest_share==null?"—":"占净增的 "+pct(S.largest_share,0)
-        +" · 净增 payload "+mb(S.net_payload_bytes_per_day)+"/天",
-      S.largest_share>0.5?"down":"")}
-  </div>
-  ${bar}
-  <div class="why" style="margin-top:12px"><b>「写得多」不等于「在长」。</b>
-  下表把两种表分开：<b>append-only</b> 的表写进去就永远在里面，是净增；
-  <b>有保留</b>的表被保留车道再删掉，稳态下不长——它的写入量是<b>周转</b>。
-  ${S.churn_payload_bytes_per_day>0?`本页此刻的周转是
-   ${mb(S.churn_payload_bytes_per_day)}/天，把它算进增速会得出一个
-   永远不会兑现的撞顶日期。`:""}
-  <span class="mono">basket_target_market_registry</span> 就是判例：
-  它每天写 ${mb((S.tables||[]).filter(t=>t.retained)
-    .reduce((a,t)=>a+t.bytes_per_day,0))}，而它的保留车道 2026-09-07 上线时
-  把它从 147 万行砍到 26 万行，此后一直是平的。</div>
-  <div class="scroll" style="margin-top:12px"><table><thead><tr>
-    <th>表</th><th>字节/天</th><th>行/天</th><th>行宽</th><th>总行数</th>
-  </tr></thead><tbody>${rows}</tbody></table></div>
-  <div class="why" style="margin-top:12px"><b>这个速率是怎么来的。</b>
-  2026-09-11 查明：三张「每 scope 每周期各写一行」的表
-  （ws 快照 / 持仓确认 / 订单状态）在 09-01 到 09-08 之间<b>同步涨了四倍多</b>
-  （5,200 → 28,127 / 26,212 / 26,212），而站数一直是 45、scope 只从 125 到 151。
-  变的不是这些表，是<b>生产周期从 34.4 分钟缩到 7.7 分钟</b>——
-  每提速一次就多写一倍的每周期快照。<b>周期提速的账，记在这里。</b>
-  同期 <span class="mono">basket_probability_envelope</span> 反向从 15,458 行/天
-  降到 4,096，那是「90% 是重述」那条修复落的地。</div>
-  <div class="why" style="margin-top:10px"><b>下一个杠杆是行宽，不是保留。</b>
-  ws 快照单行 94.7% 是 <span class="mono">buckets_json</span>，整行 59% 是
-  <span class="mono">ask_levels</span>——挂单簿深度，档数中位只有 5、均值却有 25.3，
-  长尾吃掉了大部分字节。按 745 条真实买腿量过（中位 11 股、九成分位 17 股、
-  最大 46 股）：3,274 个桶里<b>没有一个需要吃到 5 档以外</b>，
-  按史上最大那条腿算也只有 0.3% 会碰到。
-  只存前 5 档（只影响以后写的，老行不动）能把这张表砍一半、全库净增降约 35%。
-  它是 append-only 表、十二个以上生产模块在读，所以这是一条<b>待裁决</b>的动作。</div>`;
-}
-
-
-function gaps(){
-  if(!D.gaps.length) return `<h2>数据缺口</h2>
-    <div class="card"><span class="dot green"></span> 当前没有发现缺口。</div>`;
-  const sev = {high:["red","要处理"],medium:["amber","留意"],low:["amber","正常等待"]};
-  const rows = D.gaps.map(g => {
-    const [cls, label] = sev[g.severity] || sev.low;
-    return `<tr>
-      <td><span class="pill ${cls}">${label}</span></td>
-      <td><b>${h(g.what)}</b></td>
-      <td class="muted">${h(g.cost)}</td>
-      <td class="muted">${g.self_heals ? "会自行恢复" : "需要人工介入"}</td>
-    </tr>`;
-  }).join("");
-  return `<h2>数据缺口与健康检查</h2>
-  <p class="sub">每一条都写清楚"缺了什么、会造成什么、会不会自己好"。
-  标"正常等待"的不是故障，是样本还在积累。</p>
-  <div class="card"><div class="scroll"><table><thead><tr>
-    <th>级别</th><th>缺什么</th><th>影响</th><th>会不会自己好</th>
-  </tr></thead><tbody>${rows}</tbody></table></div></div>`;
-}
-
 // The live book, cut for the three sections that are otherwise entirely
 // paper (user ruling, 2026-09-01: the ledger sections must show the live
 // orders).  Every cut comes off one map keyed station|day, so the daily
@@ -12330,161 +12182,6 @@ function h5Readiness(){
   要有结论得攒到几十个事件日。</div>` : ""}`;
 }
 
-
-function materialization(){
-  const T = D.truth || {}; const cov = T.coverage || [];
-  if(!cov.length) return "";
-  const s = T.sweep || {};
-  // Only the days with a hole (user ruling, 2026-08-21).  Three weeks of
-  // "45/45 齐了" is twenty rows of nothing happening, and the one row that
-  // matters is found by scanning past them.  The complete days are counted
-  // in a line under the table rather than dropped silently: a table that
-  // shows only exceptions has to say how many non-exceptions it hid, or an
-  // empty table reads as a broken query instead of a clean fleet.
-  const gapDays = cov.filter(c => c.missing > 0);
-  const cleanDays = cov.length - gapDays.length;
-  const rows = gapDays.map(c => `<tr>
-    <td class="mono">${h(c.event_date)}</td>
-    <td class="mono">${c.eligible}</td>
-    <td class="mono">${c.materialized}</td>
-    <td class="mono ${c.settling ? "" : "down"}">${c.missing}</td>
-    <td class="muted">${c.settling ? "当天还在结算中" : "缺口"}</td>
-  </tr>`).join("");
-  // Three answers, not two.  "Incomplete" and "will fill in on its own" were
-  // being said as one word, and for the nine 2026-07-30 scopes the second
-  // half is false: their day predates their own AWC capture and AWC stopped
-  // answering for that date in late August, so a reader told to wait for a
-  // backfill waits forever.  The sweep now counts each reason's scopes on
-  // both sides of the retention window and this shows whichever apply.
-  const expiredTotal = (T.refusals || [])
-    .reduce((sum, r) => sum + (r.expired_count || 0), 0);
-  const why = (T.refusals || []).map(r => {
-    const consistency = r.blocker_class !== "AVAILABILITY";
-    const expired = r.expired_count || 0;
-    const live = consistency ? 0 : (r.recoverable_count || 0);
-    const pills = [];
-    if (consistency) pills.push(`<span class="pill red">证据矛盾</span>`);
-    if (live) pills.push(`<span class="pill amber">证据不全${
-      expired ? " " + live : ""}</span>`);
-    if (expired) pills.push(`<span class="pill">源头已过期${
-      live || consistency ? " " + expired : ""}</span>`);
-    return `<tr>
-    <td>${h(r.label || r.reason)}</td>
-    <td class="mono">${r.count}</td>
-    <td>${pills.join(" ")}</td>
-    <td class="mono muted">${h(r.example)}</td>
-  </tr>`;
-  }).join("");
-  return `<h2>真值物化健康度</h2>
-  <p class="sub">观测进来只是第一步：还要把一整天的报文收敛成"这个站这天的最高温"
-  一行，才有东西给预报打分。这一节看的是这一步有没有落下。</p>
-  <div class="why"><b>为什么单独看它：</b>缺一行真值几乎从来不是缺观测——
-  2026-08-17 查到 08-11 只有 13/45 站有真值行，而档案里那天 45 个站全都在，
-  每站上千条报文。<b>只是没人问过它们，而错过的日子没有任何东西会重试。</b>
-  下游每一层拟合都按已结算天数算，所以一个洞不是耽误一个格子一天，
-  是耽误所有本该共用那一天的组合。</div>
-  <div class="grid g4" style="margin-top:12px">
-    <div class="card"><div class="muted">上次清扫</div>
-      <div class="big">${hours(T.sweep_age_hours)}</div>
-      <div class="muted">每 30 分钟自动跑一次 ·
-        本次写入 ${(s.committed || 0).toLocaleString()} 个站日${
-        T.deferred ? " · " + T.deferred + " 个让给了常驻写入" : ""}</div></div>
-    <div class="card"><div class="muted">已结算但还没物化</div>
-      <div class="big ${T.outstanding ? "down" : "up"}">${T.outstanding}</div>
-      <div class="muted">这一格不为零才是真的落后</div></div>
-    <div class="card"><div class="muted">当天还在结算中</div>
-      <div class="big">${T.still_open}</div>
-      <div class="muted">各站按自己的本地日收盘，不是缺口</div></div>
-    <div class="card"><div class="muted">被证据本身挡住</div>
-      <div class="big ${T.refused ? "down" : "up"}">${T.refused}</div>
-      <div class="muted">下表列出分别卡在什么上</div></div>
-  </div>
-  ${why ? `<div class="card" style="margin-top:12px">
-    <div class="muted">这些站日清扫也写不了，原因如下</div>
-    <table style="margin-top:8px"><thead><tr>
-      <th>卡在什么上</th><th>站日数</th><th>类型</th><th>例</th>
-    </tr></thead><tbody>${why}</tbody></table>
-    <div class="muted" style="margin-top:8px">「证据不全」会随补采自愈；
-      「证据矛盾」要人看一眼，不会自己好；${expiredTotal
-        ? `「源头已过期」是 AWC 已经不再回答那一天了（保留窗 30 天，${
-          h(s.awc_retention_start || "")} 之前的日子问不到），
-          ${expiredTotal} 个站日既补不上也不用再等。`
-        : "「源头已过期」没有，被挡住的日子都还在 AWC 的 30 天保留窗内。"}</div>
-  </div>` : ""}
-  ${rows ? `<table style="margin-top:12px"><thead><tr>
-    <th>事件日</th><th>在册站数</th><th>已物化</th><th>缺口</th><th>状态</th>
-  </tr></thead><tbody>${rows}</tbody></table>` : ""}
-  <div class="muted" style="margin-top:8px">${rows
-    ? `只列有缺口的事件日；近 ${cov.length} 天里另有 ${cleanDays} 天在册站全部物化，不列。`
-    : `近 ${cov.length} 天每一天的在册站都有真值行，没有可列的缺口。`}</div>`;
-}
-
-function regional(){
-  const R = D.regional || {};
-  const lanes = R.lanes || [], ready = R.readiness || [],
-        verdicts = R.verdicts || [];
-  const pct = x => x==null ? "—" : Math.round(x*100)+"%";
-  const laneCards = lanes.map(l => `<div class="card">
-    <div class="muted">${h(l.label)} · ${h(l.region)}
-      <span class="pill ${l.health==="green"?"green":l.health==="amber"?"amber":"red"}"
-        style="float:right">${l.health==="green"?"在采":l.health==="amber"?"待观察":"断采"}</span></div>
-    <div class="big">${(l.row_count||0).toLocaleString()} 行</div>
-    <div class="muted">${l.station_count||0}/${l.roster_count||0} 站已落行 ·
-      ${l.station_days||0} 站日 · 最近采集 ${hours(l.last_capture_age_hours)}前</div>
-    <div class="muted">${h(l.transport)}${l.backfillable?"":" · <b>不留历史，错过永失</b>"}</div>
-    ${l.note?`<div class="muted" style="margin-top:4px">${h(l.note)}</div>`:""}
-  </div>`).join("");
-  const readyRows = ready.map(r => `<tr>
-    <td>${h((lanes.find(l=>l.system_id===r.ensemble_system_id)||{}).label
-      || r.ensemble_system_id)}</td>
-    <td class="mono">${r.training_case_count||0} / ${r.required_train_case_count||5}</td>
-    <td class="mono">${r.strict_holdout_case_count||0} / ${r.required_strict_holdout_case_count||3}</td>
-    <td><span class="pill ${r.state==="ACCUMULATING_STRICT_OOS"?"amber":"green"}">${
-      r.state==="ACCUMULATING_STRICT_OOS"?"攒案例中":h(r.state||"")}</span></td>
-  </tr>`).join("");
-  const verdictRows = verdicts.map(v => `<tr>
-    <td class="mono">${h(v.station_id)}</td>
-    <td>${h(v.system_label)}</td>
-    <td class="mono ${v.passes_all_three?"up":""}">${v.passes_all_three
-      ? "三门全过" : Object.entries(v.gates||{}).filter(([,ok])=>!ok)
-        .map(([g])=>({crps:"CRPS",nll:"NLL",brier:"Brier"}[g]||g)).join("/")+" 未过"}</td>
-    <td class="mono">${pct(v.candidate_exact)} vs ${pct(v.incumbent_exact)}</td>
-    <td class="mono">${pct(v.candidate_within_1)}</td>
-    <td>${!v.in_roster
-      ? `<span class="pill red">实测反向·剔除</span>`
-      : v.has_rows ? `<span class="pill green">在采</span>`
-      : `<span class="pill amber">在册·等首行</span>`}</td>
-  </tr>`).join("");
-  return `<h2>区域模型：采集道与赛道</h2>
-  <p class="sub">三条高分辨率区域模型采集道（2026-08-28 起）：每小时自动把
-  HRRR/NBM/MSM/ICON-EU 的"这个站这天的预报最高温"存进语料库。
-  语料攒够、过三道门的站对，赢到的是<b>扩展概率包络的证据席位</b>——
-  不是融合成员：单值模型没有散布，做成员会把分布拉尖。</p>
-  <div class="why"><b>为什么买它们：</b>全球模型 25km 一格，把台北盆地周围的山、
-  城市热岛全平均掉了。8/27 亚特兰大降温，3km 的 HRRR 提前一天报出日最高
-  35.3→28.7°C。46 对站×模型实测：过门对的次晨直中中位 38%，在职分布只有 30%。</div>
-  <div class="grid g4" style="margin-top:12px">${laneCards}</div>
-  ${readyRows ? `<div class="card" style="margin-top:12px">
-    <div class="muted">赛道：攒够 5 个训练日 + 3 个留出日就自动评
-      CRPS/NLL/Brier 三道门（判据来自 worker 自己的 readiness，不是页面重算）</div>
-    <table style="margin-top:8px"><thead><tr>
-      <th>系统</th><th>训练案例</th><th>留出案例</th><th>状态</th>
-    </tr></thead><tbody>${readyRows}</tbody></table></div>` : `
-  <div class="muted" style="margin-top:12px">worker readiness 里还没有这些系统——
-    语料落行后会自动出现。</div>`}
-  <div class="card" style="margin-top:12px">
-    <div class="muted">46 对扫描的判决（钉在案）：直中 = 次晨最可能桶恰好是结算桶的天数占比，
-      "vs" 后是在职晨间分布同日的成绩</div>
-    <table style="margin-top:8px"><thead><tr>
-      <th>站</th><th>模型</th><th>三道门</th><th>直中 vs 在职</th><th>±1 桶</th><th>处置</th>
-    </tr></thead><tbody>${verdictRows}</tbody></table>
-    <div class="muted" style="margin-top:8px">差 NLL 一门的站也在采（MSM 判例：
-      语料是未来闸门重新提问的对象，停采的站永远赢不回席位）；
-      "实测反向"= 在职分布反而更准，采了只会花钱买噪声；
-      "在册·等首行"= 已裁定要采、还没轮到，不是被剔除。
-      处置读的是采集名册（裁定），不是库里有没有行（进度）。</div>
-  </div>`;
-}
 
 function oosScores(){
   const S = D.scores || {}; const rows = S.rows || [];
@@ -13829,11 +13526,11 @@ const GROUPS = [
   // group titles agree without the reader matching text.
   {id:"upstream", label:"上游数据", tone:"#58a6ff",
    note:"喂进来的东西到没到：四家模型的到货、区域采集道、缺口",
-   sections:[[members,"模型数据到货"],[gaps,"数据缺口"]]},
+   sections:[[upstreamLights,"上游状态灯"]]},
   {id:"model", label:"模型", tone:"#d2a8ff",
    note:"模型本身准不准：订正与权重、离散度、命中率、OOS、中心/宽度、总检",
    sections:[[tables,"偏差订正与权重"],
-     [servingWeights,"四大模型权重"],[regional,"区域模型"],
+     [servingWeights,"四大模型权重"],
      [dispersion,"模型离散度"],[hitRate,"模型命中率"],
      [oosScores,"OOS 打分"],[centerWidth,"中心/宽度"],
      [centreLanding,"真值离均值多远"],
@@ -13848,8 +13545,7 @@ const GROUPS = [
      [truthLanding,"真值落位"]]},
   {id:"health", label:"系统健康", tone:"#f85149",
    note:"机器在不在转：整条链路每一环、库还剩多少、常驻的维护车道、真值物化",
-   sections:[[chain,"链路"],[ssotCapacity,"SSOT 容量与增速"],
-     [hostedSweeps,"托管扫描车道"],[materialization,"真值物化"]]},
+   sections:[[healthLights,"系统状态灯"]]},
 ];
 const tabs = `<nav class="tabs" id="tabs">${
   GROUPS.map(g => `<button type="button" data-tab="${g.id}"

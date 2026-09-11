@@ -153,9 +153,18 @@ def test_a_board_without_a_guard_says_so_rather_than_inventing_one(
     assert out["tables"] == []
 
 
-def test_the_section_is_registered_in_the_health_group():
+def test_the_reading_reaches_the_health_lamp():
+    """The section is a lamp now (user ruling, 2026-09-11).
+
+    It used to be a gauge, three tiles and a per-table growth table; the
+    ruling cut the health group to status lights, so what is pinned here is
+    that the collector still ships and the lamp board still reads it -- not
+    that a section by that name is registered.
+    """
+
     page = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
-    assert '[ssotCapacity,"SSOT 容量与增速"]' in page
+    assert '[healthLights,"系统状态灯"]' in page
+    assert "D.ssot_capacity" in page
     assert '"ssot_capacity": ssot_capacity,' in page
     # The composition walk counts rows over a day on ten tables; it is the
     # only part that is cached, and the gauge above it never is.

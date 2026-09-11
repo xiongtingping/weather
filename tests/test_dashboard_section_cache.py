@@ -242,3 +242,43 @@ def test_the_cache_file_says_when_and_from_what_it_was_built(
     assert blob["section"] == "probe"
     assert blob["computed_at_utc"].endswith("Z")
     assert len(blob["fingerprint"]) == 64
+
+
+def test_a_changed_salt_discards_the_cached_value(cache_dir) -> None:
+    """What a collector READS is part of what its cache was computed from.
+
+    The fingerprint can only find the collector's own source, so a band
+    grid, threshold or window that lives at module level is invisible to
+    it: edit one and the file on disk still matches its fingerprint, and
+    the page keeps serving the retired shape until the TTL runs out.  The
+    truth-landing grid went from twelve bands to eleven on 2026-09-11 with
+    a 150-minute lifetime behind it; callers declare what they read so the
+    edit expires the file instead of waiting it out.
+    """
+
+    calls: list[str] = []
+    collector = _probe(calls)
+    C._cached_section("probe", collector, None, "first", _salt="twelve-bands")
+    C._cached_section("probe", collector, None, "second", _salt="twelve-bands")
+    assert calls == ["first"], "an unchanged salt should still be a hit"
+    C._cached_section("probe", collector, None, "third", _salt="eleven-bands")
+    assert calls == ["first", "third"]
+
+
+def test_the_salt_does_not_reach_the_collector(cache_dir) -> None:
+    """It is the cache's business, not the section's.
+
+    ``_cached_section`` forwards **kwargs straight through, so a salt that
+    leaked into that forwarding would raise on every collector that does
+    not happen to take one -- silently turning the section uncacheable at
+    best and the render red at worst.
+    """
+
+    seen: list[tuple] = []
+
+    def strict(conn, tag):          # no **kwargs on purpose
+        seen.append((conn, tag))
+        return {"n": len(seen)}
+
+    C._cached_section("probe", strict, None, "only", _salt="anything")
+    assert seen == [(None, "only")]
