@@ -106,6 +106,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     CENTRE_CONTAIN_GATE as _CENTRE_CONTAIN_GATE,
     SUPPORT_WIDTH_MAX_OVERRIDE as _SUPPORT_WIDTH_MAX_OVERRIDE,
     SUPPORT_WIDTH_MIN_OVERRIDE as _SUPPORT_WIDTH_MIN_OVERRIDE,
+    support_width_bounds_v1 as _support_width_bounds_v1,
     CHARTER_127_COMPLETION_TAKE as _CHARTER_127_COMPLETION_TAKE,
     TARGET_PRICING_BASIS as _TARGET_PRICING_BASIS,
     TARGET_PRICING_LANE_STAGES as _TARGET_PRICING_LANE_STAGES,
@@ -5157,8 +5158,19 @@ def _production_judge(
             desired=desired,
             probabilities=probabilities,
             fee_rate=basket_policy.fee_rate,
-            maximum_support_buckets=basket_policy.maximum_support_buckets,
-            minimum_support_buckets=basket_policy.minimum_support_buckets,
+            # Charter 50's bounds through the kernel-side helper, not the
+            # policy fields directly.  Patching only production's call left
+            # this one reading the policy, so the width arms came back
+            # byte-identical to their baseline under two fingerprints --
+            # the void-arm signature, and the reason this reads one
+            # function on both sides now.
+            **dict(zip(
+                ("minimum_support_buckets", "maximum_support_buckets"),
+                _support_width_bounds_v1(
+                    policy_minimum=basket_policy.minimum_support_buckets,
+                    policy_maximum=basket_policy.maximum_support_buckets,
+                ),
+            )),
             center_bucket=centre_row.bucket,
             probability_stage=stage,
             taf_tx_bucket=_taf_tx_bucket(envelope, stage),
@@ -9166,8 +9178,16 @@ def backfill(
                             desired=set(core) or {center},
                             probabilities=probabilities,
                             fee_rate=FEE_RATE,
-                            maximum_support_buckets=MAXIMUM_SUPPORT_BUCKETS,
-                            minimum_support_buckets=MINIMUM_SUPPORT_BUCKETS,
+                            **dict(zip(
+                                (
+                                    "minimum_support_buckets",
+                                    "maximum_support_buckets",
+                                ),
+                                _support_width_bounds_v1(
+                                    policy_minimum=MINIMUM_SUPPORT_BUCKETS,
+                                    policy_maximum=MAXIMUM_SUPPORT_BUCKETS,
+                                ),
+                            )),
                             center_bucket=center,
                             # P1 converges rather than opens, so charter 50a
                             # gives it a floor of two while the opening stages

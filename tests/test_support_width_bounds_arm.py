@@ -82,7 +82,40 @@ def test_an_inverted_or_absurd_pair_is_refused() -> None:
     _runtime()
 
 
-def test_the_enumerator_is_handed_the_bounds_from_one_function() -> None:
+def test_every_caller_of_the_enumerator_reads_the_helper() -> None:
+    """Both sides, and both judge paths, or an arm is a void arm.
+
+    Patching production's call alone left the paper ledger's production
+    judge reading the policy fields directly, so the width arms came back
+    byte-identical to their baseline under two different fingerprints: 283
+    chains, zero changed, +0.00 paired.  That is the void-arm signature and
+    it is caught here rather than after two hours of replay.
+    """
+
+    import ast as _ast  # noqa: PLC0415
+
+    for module in (
+        ROOT / "bayes_basket_target" / "delta_v2_runtime.py",
+        ROOT / "scripts" / "paper_trading_ledger.py",
+    ):
+        source = module.read_text(encoding="utf-8")
+        for node in _ast.walk(_ast.parse(source)):
+            if not isinstance(node, _ast.Call):
+                continue
+            rendered = _ast.unparse(node)
+            if "minimum_support_buckets=" not in rendered:
+                continue
+            # Every hand-off of the bounds names the helper, except the
+            # helper's own keyword arguments.
+            if "policy_minimum=" in rendered and "support_width_bounds_v1" in rendered:
+                continue
+            assert "OPENING_FALLBACK_MIN_BUCKETS" in rendered, (
+                "%s hands the enumerator bounds without the helper: %s"
+                % (module.name, rendered[:160])
+            )
+
+
+def test_the_runtime_call_reads_the_helper() -> None:
     """Both sides must not come to be running two different pairs."""
 
     source = (
