@@ -66,10 +66,40 @@ def test_the_shipped_width_still_commits() -> None:
 
 
 def test_fit_reports_its_width_and_a_forward_number() -> None:
+    """The fit says what width it was run at and what its table is worth --
+    and the forward number stays OUT of ``evidence``, which is hashed into
+    the served table's sha, so a new diagnostic cannot churn what is served.
+
+    Asked of the returned object rather than of the source text.  It was a
+    source test until 2026-09-11, when adding a second return path moved the
+    first ``"evidence": {`` it split on and it failed on a change that left
+    the property it names perfectly intact.
+    """
+
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        "CREATE TABLE calibration_station_daily_high_truth ("
+        " station_id TEXT, local_date TEXT, official_tmax_c REAL,"
+        " revision_no INTEGER DEFAULT 0, source_lane TEXT DEFAULT 'AWC',"
+        " settlement_definition TEXT DEFAULT 'official_daily_tmax_c');"
+        "CREATE TABLE basket_probability_bridge_history ("
+        " station_id TEXT, event_date TEXT, history_id TEXT,"
+        " envelope_json TEXT, decision_at_utc TEXT, stage TEXT,"
+        " checkpoint_id TEXT DEFAULT '',"
+        " envelope_content_sha256 TEXT DEFAULT '');"
+        "CREATE TABLE basket_probability_bridge_bucket_probability ("
+        " history_id TEXT, bucket TEXT, lower_c REAL, upper_c REAL,"
+        " probability REAL);"
+    )
+    fitted = fit_band_reliability_table(conn, stage="P1")
+    assert fitted["interval_alpha"] == DEFAULT_INTERVAL_ALPHA
+    assert "forward_nll_delta_vs_identity" in fitted
+    assert "forward_nll_delta_vs_identity" not in fitted["evidence"]
+    assert "interval_alpha" not in fitted["evidence"]
+    # And the same on the path that retires an incumbent rather than
+    # activating a candidate.
     source = inspect.getsource(fit_band_reliability_table)
-    assert '"interval_alpha": float(interval_alpha)' in source
-    assert '"forward_nll_delta_vs_identity"' in source
-    # Reported, not gating, and deliberately outside ``evidence`` so a new
-    # diagnostic cannot churn a served table's sha.
-    evidence_block = source.split('"evidence": {', 1)[1]
-    assert "forward_nll_delta_vs_identity" not in evidence_block
+    for block in source.split('"evidence": {')[1:]:
+        assert "forward_nll_delta_vs_identity" not in block.split("\n    }")[0]

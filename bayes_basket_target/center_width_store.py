@@ -15,6 +15,7 @@ import json
 import os
 import math
 import sqlite3
+import statistics
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from collections.abc import Callable, Iterator
@@ -630,16 +631,44 @@ def load_center_width_cells(
     } or None
 
 
-STATION_WIDTH_METHOD_TAG = "station_width_scale_v1"
-# The shrinkage prior on the per-station z standard deviation, in
-# pseudo-samples of 1.0.  Swept leave-one-day-out over 522 station-days:
-# forward NLL has a clean single minimum at 5 (1.718, four falls to it and
-# three rises after), degrading below 3 where an eleven-sample raw z-sd
-# starts fitting its own noise.  The correction self-strengthens: at eleven
-# samples a station serves about two thirds of its measured contraction, at
-# thirty about six sevenths.
-STATION_WIDTH_SHRINK_N0 = 5.0
-STATION_WIDTH_MIN_SAMPLES = 3
+STATION_WIDTH_METHOD_TAG = "station_width_scale_v2"
+# Three rules decide what this layer is allowed to say, and all three were
+# wrong in v1 (measured 2026-09-11, walk-forward on the store's own cells
+# and the serving kernel; v1 scored -0.078 nat/cell on P0, -0.124 on P0-M,
+# -0.036 on P1 -- a layer that was losing on every stage it served).
+#
+# 1. THE SAMPLE UNIT IS THE STATION-DAY.  A station-day emits about nine
+#    cells (one per three-hour block off the same evidence), and v1 counted
+#    cells: seven station-days read as sixty-odd samples, weight 0.93, and
+#    the shrinkage it was named for never happened.  That is how the
+#    2026-09-06 table pinned thirty-two stations to the 0.5 floor on what
+#    its own evidence recorded as sample_n=62 and was really seven days.
+#    Counting station-days instead, an average fit clips one station rather
+#    than eleven.
+#
+# 2. THE TARGET IS THE FLEET, NOT ONE.  Shrinking toward 1.0 asks each
+#    station "are you wider than calibrated", and in a fleet that is wide
+#    everywhere the answer is yes everywhere -- so this layer swallowed the
+#    pooled miscalibration that the pooled lambda lane exists to correct,
+#    and the two composed: 0.75 x 0.5 = 0.375 served, sd(z) 1.40 and 1.85 on
+#    2026-09-08/09.  Shrinking toward the fleet's own median sd(z) leaves
+#    this layer carrying only "how much wider than the fleet is this
+#    station", which is the only question a per-station layer may answer.
+#    A fleet that is uniformly wide now yields all-identity here and the
+#    pooled lane corrects it once.
+#
+# 3. ONE DAY MUST NOT SET A STATION'S WIDTH.  KLAX 2026-08-23 served a
+#    point mass (sigma 0.09C, truth 3.2C away): one cell at z=-35 lifted the
+#    station's raw z-sd to 6.2 and would have pinned it to the ceiling for
+#    the life of the table.  One such cell in 945 station-days, so the fix
+#    is a clip, not a rule about degenerate distributions.
+STATION_WIDTH_SHRINK_KAPPA_STATION_DAYS = 10.0
+# Reported beside the fitted value, never gating: the lane's own answer to
+# "what would a stronger or weaker prior have served", on the same forward
+# window, so the next ruling reads evidence instead of a swept memory.
+STATION_WIDTH_KAPPA_PROBES = (5.0, 20.0)
+STATION_WIDTH_Z_CLIP = 4.0
+STATION_WIDTH_MIN_STATION_DAYS = 3
 MIN_STATION_WIDTH_SCALE = 0.5
 MAX_STATION_WIDTH_SCALE = 1.5
 # An active table is held while the lane accumulates, and held again when a
@@ -905,11 +934,14 @@ def fit_station_width(
     incumbent = load_station_width(conn, stage=stage_id)
     incumbent_scales = {} if incumbent is None else dict(incumbent[0])
     evidence: dict[str, Any] = {
-        "schema": "station_width_evidence_v1",
+        "schema": "station_width_evidence_v2",
         "stage": stage_id,
         "serving_day_count": len(days),
         "serving_cell_count": len(cells),
-        "shrink_n0": STATION_WIDTH_SHRINK_N0,
+        "shrink_kappa_station_days": (
+            STATION_WIDTH_SHRINK_KAPPA_STATION_DAYS
+        ),
+        "z_clip": STATION_WIDTH_Z_CLIP,
         "incumbent_sha256": None if incumbent is None else incumbent[1],
         "min_decision_at_utc": min_decision_at_utc,
     }
@@ -954,29 +986,81 @@ def fit_station_width(
     cut = max(1, int(len(days) * (1.0 - FORWARD_WINDOW_FRACTION)))
     train_days, forward_days = days[:cut], days[cut:] or days[-1:]
     z_by_station: dict[str, list[float]] = {}
+    station_days_by_station: dict[str, set[str]] = {}
+    clipped_cells = 0
     for day in train_days:
         for cell in by_day[day]:
             actual = truth.get((cell["station_id"], cell["event_date"]))
             if actual is None:
                 continue
             z = _station_cell_z(cell, actual)
-            if z is not None:
-                z_by_station.setdefault(cell["station_id"], []).append(z)
-    residual: dict[str, float] = {}
+            if z is None:
+                continue
+            if abs(z) > STATION_WIDTH_Z_CLIP:
+                z = math.copysign(STATION_WIDTH_Z_CLIP, z)
+                clipped_cells += 1
+            z_by_station.setdefault(cell["station_id"], []).append(z)
+            station_days_by_station.setdefault(
+                cell["station_id"], set()
+            ).add(str(cell["event_date"]))
     raw_by_station: dict[str, Any] = {}
     for station, zs in z_by_station.items():
-        if len(zs) < STATION_WIDTH_MIN_SAMPLES:
+        station_days = len(station_days_by_station.get(station, ()))
+        if station_days < STATION_WIDTH_MIN_STATION_DAYS:
             continue
         mean = sum(zs) / len(zs)
         raw = math.sqrt(sum((z - mean) ** 2 for z in zs) / len(zs))
-        shrunk = (len(zs) * raw + STATION_WIDTH_SHRINK_N0) / (
-            len(zs) + STATION_WIDTH_SHRINK_N0
+        raw_by_station[station] = {
+            "raw_z_sd": raw,
+            "station_day_n": station_days,
+            "cell_n": len(zs),
+        }
+    # The fleet's own width, as the median of the per-station raw sd(z).
+    # Median rather than the pooled sd: the pooled number is dominated by
+    # whichever stations are widest, which is precisely the quantity this
+    # layer must not inherit.  With no measurable fleet the target is 1.0,
+    # which reproduces the v1 question for a lane that has nothing to
+    # compare against.
+    fleet_sd = (
+        statistics.median(
+            entry["raw_z_sd"] for entry in raw_by_station.values()
         )
-        residual[station] = min(
-            MAX_STATION_WIDTH_SCALE,
-            max(MIN_STATION_WIDTH_SCALE, shrunk),
+        if raw_by_station
+        else 1.0
+    )
+
+    def _scales_at(kappa: float) -> dict[str, float]:
+        """Each station's width relative to the fleet, shrunk by station-days.
+
+        The deviation is carried in log space so that "twice the fleet" and
+        "half the fleet" shrink symmetrically, and a station that matches the
+        fleet returns exactly 1.0 at every kappa.
+        """
+
+        out: dict[str, float] = {}
+        if fleet_sd <= 0.0:
+            return out
+        for station, entry in raw_by_station.items():
+            station_days = float(entry["station_day_n"])
+            weight = station_days / (station_days + float(kappa))
+            deviation = math.log(
+                max(float(entry["raw_z_sd"]), 1e-6) / fleet_sd
+            )
+            out[station] = min(
+                MAX_STATION_WIDTH_SCALE,
+                max(
+                    MIN_STATION_WIDTH_SCALE,
+                    math.exp(weight * deviation),
+                ),
+            )
+        return out
+
+    residual = _scales_at(STATION_WIDTH_SHRINK_KAPPA_STATION_DAYS)
+    for station, entry in raw_by_station.items():
+        entry["fleet_relative"] = (
+            float(entry["raw_z_sd"]) / fleet_sd if fleet_sd > 0 else None
         )
-        raw_by_station[station] = {"raw_z_sd": raw, "sample_n": len(zs)}
+        entry["residual_scale"] = residual.get(station)
     forward = [cell for day in forward_days for cell in by_day[day]]
 
     def _forward_nll(scales: Mapping[str, float]) -> float:
@@ -1018,9 +1102,20 @@ def fit_station_width(
     # their correction: absence of evidence is not evidence of identity.
     for station, scale in incumbent_scales.items():
         composed.setdefault(station, scale)
+    # What a stronger or weaker prior would have served on this same forward
+    # window.  Reported, never gating: the fitted kappa is the one the ruling
+    # named, and a lane that silently picked the best probe would be choosing
+    # its own hyper-parameter on the window it is judged by.
+    kappa_probes = {
+        str(kappa): _forward_nll({}) - _forward_nll(_scales_at(kappa))
+        for kappa in STATION_WIDTH_KAPPA_PROBES
+    }
     evidence.update({
         "basis": "FORWARD_WINDOW",
         "train_day_count": len(train_days),
+        "train_station_day_count": sum(
+            len(entry) for entry in station_days_by_station.values()
+        ),
         "forward_day_count": len(forward_days),
         "forward_cell_count": len(forward),
         "forward_nll_identity": forward_base,
@@ -1028,6 +1123,9 @@ def fit_station_width(
         "forward_nll_gain": gain,
         "min_forward_nll_gain": MIN_FORWARD_NLL_GAIN,
         "residual_station_count": len(residual),
+        "fleet_median_z_sd": fleet_sd,
+        "clipped_cell_count": clipped_cells,
+        "kappa_probe_gain": kappa_probes,
         "per_station": raw_by_station,
     })
     admitted = gain > MIN_FORWARD_NLL_GAIN

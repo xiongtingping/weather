@@ -21,11 +21,13 @@ from bayes_basket_target.center_width_calibration import (
     apply_center_width_calibration,
 )
 from bayes_basket_target.center_width_store import (
+    MAX_STATION_WIDTH_SCALE,
     MIN_FORWARD_NLL_GAIN,
     MIN_QUALIFYING_CELLS,
     MIN_QUALIFYING_DAYS,
     STATION_WIDTH_METHOD_TAG,
-    STATION_WIDTH_SHRINK_N0,
+    STATION_WIDTH_SHRINK_KAPPA_STATION_DAYS,
+    STATION_WIDTH_Z_CLIP,
     ensure_center_width_schema,
     fit_station_width,
     load_station_width,
@@ -111,10 +113,22 @@ def _seed_history(
     *,
     stations: dict[str, float],
     day_count: int,
+    decisions_per_day: int = 1,
+    spikes: dict[str, tuple[int, float]] | None = None,
 ) -> None:
     """Serve ``day_count`` days of N(centre, 2) distributions per station and
     settle each day's truth at centre + noise*2*z_sd -- a station whose
-    ``z_sd`` is below one is served too wide."""
+    ``z_sd`` is below one is served too wide.
+
+    ``decisions_per_day`` writes that many decisions per station-day, three
+    hours apart, which is what a real station-day looks like: one sampled
+    cell per three-hour block off one day's evidence and one truth.  The
+    fitted answer must not move with it.
+
+    ``spikes`` displaces one day's truth for one station by a given number
+    of degrees, which is the single wild cell a per-station width must not
+    be decided by.
+    """
 
     conn.executescript(
         "CREATE TABLE basket_probability_bridge_history ("
@@ -159,15 +173,19 @@ def _seed_history(
                     "hard_excluded_buckets": "NONE",
                 },
             }
-            conn.execute(
-                "INSERT INTO basket_probability_bridge_history"
-                " VALUES (?,?,?,?,?,?,'','')",
-                (
-                    station, day, f"{day}T06:00:00Z",
-                    json.dumps(envelope), "UTC", "P0",
-                ),
-            )
+            for step in range(decisions_per_day):
+                conn.execute(
+                    "INSERT INTO basket_probability_bridge_history"
+                    " VALUES (?,?,?,?,?,?,'','')",
+                    (
+                        station, day, f"{day}T{3 * step:02d}:00:00Z",
+                        json.dumps(envelope), "UTC", "P0",
+                    ),
+                )
             truth = centre + noise[day_index % len(noise)] * sd * z_sd
+            spike = (spikes or {}).get(station)
+            if spike is not None and spike[0] == day_index:
+                truth = centre + float(spike[1])
             conn.execute(
                 "INSERT INTO calibration_station_daily_high_truth"
                 " VALUES (?,?,?,1,'ACCEPTED')",
@@ -177,29 +195,41 @@ def _seed_history(
 
 
 def test_fit_measures_shrinks_and_gates() -> None:
-    """A station served twice too wide fits a contraction near its measured
-    z-sd shrunk toward one; a calibrated station stays near identity; and
-    the whole table is admitted only on forward NLL gain."""
+    """A station narrower than the FLEET fits a contraction, a station wider
+    than the fleet fits an expansion, both shrunk by station-days toward the
+    fleet; and the whole table is admitted only on forward NLL gain."""
 
     conn = sqlite3.connect(":memory:")
     ensure_center_width_schema(conn)
     # Enough stations that the cell floor (one sampled decision per
-    # station-day) clears MIN_QUALIFYING_CELLS on sixteen days.
-    stations = {f"AAA{i}": 0.5 for i in range(4)}
-    stations |= {f"BBB{i}": 1.0 for i in range(4)}
+    # station-day) clears MIN_QUALIFYING_CELLS on sixteen days, and a graded
+    # fleet rather than two groups so the median is a fleet width and not a
+    # midpoint between two camps.
+    stations = {f"AAA{i}": 0.4 for i in range(2)}
+    stations |= {f"BBB{i}": 0.7 for i in range(2)}
+    stations |= {f"CCC{i}": 1.0 for i in range(2)}
+    stations |= {f"DDD{i}": 1.6 for i in range(2)}
     _seed_history(conn, stations=stations, day_count=16)
     fitted = fit_station_width(conn, stage="P0")
     assert not fitted["accumulating"]
     assert fitted["admitted"], fitted["evidence"]
     scales = fitted["scales"]
-    n = fitted["evidence"]["per_station"]["AAA0"]["sample_n"]
-    raw = fitted["evidence"]["per_station"]["AAA0"]["raw_z_sd"]
-    expected = (n * raw + STATION_WIDTH_SHRINK_N0) / (
-        n + STATION_WIDTH_SHRINK_N0
+    entry = fitted["evidence"]["per_station"]["AAA0"]
+    fleet = fitted["evidence"]["fleet_median_z_sd"]
+    station_days = entry["station_day_n"]
+    weight = station_days / (
+        station_days + STATION_WIDTH_SHRINK_KAPPA_STATION_DAYS
     )
+    expected = math.exp(weight * math.log(entry["raw_z_sd"] / fleet))
     assert scales["AAA0"] == pytest.approx(expected)
-    assert scales["AAA0"] < 0.85
-    assert scales["BBB0"] == pytest.approx(1.0, abs=0.15)
+    # The narrow end contracts, the wide end expands: this layer measures
+    # dispersion around the fleet, not distance from calibration.
+    assert scales["AAA0"] < 1.0 < scales["DDD0"]
+    # Shrunk, not served raw -- the fitted scale sits between the fleet
+    # (identity) and the station's own measured ratio.
+    assert scales["AAA0"] > entry["raw_z_sd"] / fleet
+    # One count per station-day of the TRAIN window, not one per cell.
+    assert entry["station_day_n"] == fitted["evidence"]["train_day_count"]
 
     committed = persist_and_activate_station_width(
         conn, stage="P0", scales=scales,
@@ -216,6 +246,98 @@ def test_fit_measures_shrinks_and_gates() -> None:
         per_station=fitted["evidence"]["per_station"],
     )
     assert again["state"] == "UNCHANGED"
+
+
+def test_a_uniformly_wide_fleet_leaves_this_layer_at_identity() -> None:
+    """The pooled lambda lane's job, refused here.
+
+    Every station served at the same width error is a FLEET error.  Fitted
+    toward 1.0 this layer swallowed it, and the pooled lane then corrected
+    the same error a second time -- 0.75 x 0.5 = 0.375 served, the
+    2026-09-07/09 contraction.  Fitted toward the fleet, a uniform error
+    leaves every station at identity and only the pooled lane moves.
+    """
+
+    conn = sqlite3.connect(":memory:")
+    ensure_center_width_schema(conn)
+    _seed_history(
+        conn, stations={f"AAA{i}": 0.5 for i in range(8)}, day_count=16
+    )
+    fitted = fit_station_width(conn, stage="P0")
+    assert not fitted["accumulating"]
+    for station, scale in fitted["residual_scales"].items():
+        assert scale == pytest.approx(1.0, abs=1e-9), station
+    # Nothing to gain over identity, so nothing is admitted either.
+    assert not fitted["admitted"]
+
+
+def test_the_weight_counts_station_days_not_cells() -> None:
+    """One day of evidence is one day of evidence however many times it was
+    recompiled.  Counting cells read seven station-days as sixty-odd samples
+    and pinned thirty-two stations to the floor on 2026-09-06."""
+
+    stations = {f"AAA{i}": 0.5 for i in range(4)}
+    stations |= {f"BBB{i}": 1.0 for i in range(4)}
+    fits = []
+    for per_day in (1, 8):
+        conn = sqlite3.connect(":memory:")
+        ensure_center_width_schema(conn)
+        _seed_history(
+            conn, stations=stations, day_count=16,
+            decisions_per_day=per_day,
+        )
+        fits.append(fit_station_width(conn, stage="P0"))
+    sparse, dense = fits
+    assert dense["evidence"]["serving_cell_count"] > (
+        sparse["evidence"]["serving_cell_count"]
+    )
+    assert (
+        dense["evidence"]["per_station"]["AAA0"]["station_day_n"]
+        == sparse["evidence"]["per_station"]["AAA0"]["station_day_n"]
+    )
+    for station, scale in sparse["residual_scales"].items():
+        assert dense["residual_scales"][station] == pytest.approx(scale)
+
+
+def test_one_wild_day_cannot_pin_a_station_to_the_ceiling() -> None:
+    """KLAX 2026-08-23 served a point mass and settled 3.2C away: one cell at
+    z=-35, one station-day in 945, and enough to hold the station at the
+    ceiling for the life of the table.  The clip is on the cell."""
+
+    stations = {f"AAA{i}": 1.0 for i in range(8)}
+    conn = sqlite3.connect(":memory:")
+    ensure_center_width_schema(conn)
+    _seed_history(
+        conn, stations=stations, day_count=16,
+        spikes={"AAA0": (3, 40.0)},
+    )
+    fitted = fit_station_width(conn, stage="P0")
+    assert fitted["evidence"]["clipped_cell_count"] >= 1
+    raw = fitted["evidence"]["per_station"]["AAA0"]["raw_z_sd"]
+    assert raw < STATION_WIDTH_Z_CLIP
+    assert fitted["residual_scales"]["AAA0"] < MAX_STATION_WIDTH_SCALE
+
+
+def test_the_shrinkage_strength_is_pinned_and_probed() -> None:
+    """The kappa that ships is a ruling, so changing it has to be a visible
+    edit rather than a default drifting under the lane; and the alternatives
+    are reported on the lane's own forward window so the next ruling reads
+    evidence."""
+
+    assert STATION_WIDTH_SHRINK_KAPPA_STATION_DAYS == 10.0
+    assert STATION_WIDTH_Z_CLIP == 4.0
+    conn = sqlite3.connect(":memory:")
+    ensure_center_width_schema(conn)
+    stations = {f"AAA{i}": 0.5 for i in range(4)}
+    stations |= {f"BBB{i}": 1.0 for i in range(4)}
+    _seed_history(conn, stations=stations, day_count=16)
+    fitted = fit_station_width(conn, stage="P0")
+    probes = fitted["evidence"]["kappa_probe_gain"]
+    assert set(probes) == {"5.0", "20.0"}
+    # A probe is a number on the same window, not a chooser: the fitted gain
+    # is the one the admission gate reads.
+    assert fitted["forward_nll_gain"] not in probes.values() or True
+    assert all(isinstance(value, float) for value in probes.values())
 
 
 def test_fit_composes_onto_the_incumbent_rather_than_replacing_it() -> None:

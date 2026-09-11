@@ -128,6 +128,15 @@ FORWARD_WINDOW_FRACTION = 0.4
 # days is where the by-day bootstrap stops being a re-description of two
 # or three weather regimes.  A stage under it is accumulating, not broken.
 MIN_QUALIFYING_DAYS = 10
+# A cell may also be a handful of stations repeating themselves.  The day
+# bootstrap prices the day-to-day variation of a pooled ratio and is blind
+# to that: a factor earned on four stations is a per-station correction
+# wearing the fleet's name, and the shadow lane's own numbers say the fleet
+# does not agree with itself across stations (distance [2,3) realises 1.272
+# warm against 0.876 cold).  Thirty is two thirds of the forty-five-station
+# fleet -- enough that the cell describes the fleet rather than a corner of
+# it, and low enough that an ordinary cell clears it.
+MIN_CELL_STATIONS = 30
 # The store has one write lock and the resident basket worker owns it for
 # about half of every production cycle, in bursts: probed against the live
 # store on 2026-08-21, ``BEGIN IMMEDIATE`` waited 3.6-9.1s (six samples)
@@ -153,7 +162,17 @@ _TABLE_DDL = (
     " fitted_at_utc TEXT NOT NULL,"
     " serving_day_count INTEGER NOT NULL,"
     " activated INTEGER NOT NULL CHECK(activated IN (0,1)),"
-    " activated_at_utc TEXT"
+    " activated_at_utc TEXT,"
+    # Set when the lane VETOES this table -- not when a better one replaces
+    # it.  The distinction is the whole point: a superseded table keeps
+    # serving the artifacts pinned to it, because the pin exists so serving
+    # reproduces what the gate scored; a vetoed one is settled truth that
+    # the table was wrong, and honouring the pin would keep it in service
+    # for as long as the oldest artifact lives (2026-09-24 at the time this
+    # was written).  The station-width lane learned this the hard way on
+    # 2026-09-10: retiring its tables changed nothing on the serving path
+    # for eighteen hours.
+    " retired_at_utc TEXT"
     ")"
 )
 # Every fit, activated or not.  The active table says what is served; this
@@ -174,7 +193,8 @@ _JOURNAL_DDL = (
     # journal's whole purpose is recording what was known on the day it was
     # chosen, and a fit that was made is known whether or not it served.
     " outcome TEXT NOT NULL CHECK(outcome IN"
-    "  ('ACTIVATED','UNCHANGED','ACCUMULATING','FIT_NOT_ACTIVATED')),"
+    "  ('ACTIVATED','UNCHANGED','ACCUMULATING','FIT_NOT_ACTIVATED',"
+    "   'INCUMBENT_VETOED')),"
     " factors_json TEXT NOT NULL,"
     " evidence_json TEXT NOT NULL"
     ")"
@@ -188,25 +208,52 @@ _JOURNAL_STAGE_INDEX = (
 
 _JOURNAL_OUTCOMES = (
     "ACTIVATED", "UNCHANGED", "ACCUMULATING", "FIT_NOT_ACTIVATED",
+    "INCUMBENT_VETOED",
 )
 
 
 def ensure_band_table_schema(conn: sqlite3.Connection) -> None:
-    conn.execute(_TABLE_DDL)
-    conn.execute(_JOURNAL_DDL)
-    conn.execute(_JOURNAL_STAGE_INDEX)
+    # Every read path calls this, and some of those connections are opened
+    # read-only (dashboards, audits, probes).  A migration such a connection
+    # cannot run is not that connection's problem to solve: the next writer
+    # runs it for everyone, and until then a reader must keep reading rather
+    # than fail on a column it was not going to use.  The journal rebuild
+    # below has returned on readonly since it was written; the ALTERs did
+    # not, and adding a column here would have crashed every read-only
+    # reader of a store the sweep had not reached yet.
+    try:
+        conn.execute(_TABLE_DDL)
+        conn.execute(_JOURNAL_DDL)
+        conn.execute(_JOURNAL_STAGE_INDEX)
+    except sqlite3.OperationalError as exc:
+        if "readonly" in str(exc).lower():
+            return
+        raise
     columns = {
         str(row[1])
         for row in conn.execute(
             "PRAGMA table_info(calibration_band_reliability_table)"
         )
     }
+    pending = []
     if "stage" not in columns:
         # Pre-stage bootstrap rows were all P0 by construction.
-        conn.execute(
+        pending.append(
             "ALTER TABLE calibration_band_reliability_table"
             " ADD COLUMN stage TEXT NOT NULL DEFAULT 'P0'"
         )
+    if "retired_at_utc" not in columns:
+        pending.append(
+            "ALTER TABLE calibration_band_reliability_table"
+            " ADD COLUMN retired_at_utc TEXT"
+        )
+    for statement in pending:
+        try:
+            conn.execute(statement)
+        except sqlite3.OperationalError as exc:
+            if "readonly" in str(exc).lower():
+                return
+            raise
     if "axis" not in columns:
         # Which quantity the cells are read from (user ruling, 2026-09-07:
         # "band 表换轴").  Rows written before the column existed were all
@@ -216,10 +263,15 @@ def ensure_band_table_schema(conn: sqlite3.Connection) -> None:
         # pinned table that could not say which axis it was scored on would
         # be served through the wrong lookup, which is the one way this
         # change could reach an artifact it was never gated against.
-        conn.execute(
-            "ALTER TABLE calibration_band_reliability_table"
-            " ADD COLUMN axis TEXT NOT NULL DEFAULT 'claim'"
-        )
+        try:
+            conn.execute(
+                "ALTER TABLE calibration_band_reliability_table"
+                " ADD COLUMN axis TEXT NOT NULL DEFAULT 'claim'"
+            )
+        except sqlite3.OperationalError as exc:
+            if "readonly" in str(exc).lower():
+                return
+            raise
     # SQLite cannot ALTER a CHECK, so a journal built before an outcome
     # existed is rebuilt in place around the widened one -- by migration,
     # every row crossing, because this table IS the record and dropping it
@@ -361,14 +413,43 @@ def load_band_table(
         if row is None:
             return None
     else:
-        row = conn.execute(
-            "SELECT band_table_sha256, factors_json, COALESCE(axis, ?)"
-            " FROM calibration_band_reliability_table"
-            " WHERE band_table_sha256=?",
-            (BAND_AXIS_CLAIM, str(table_sha256)),
-        ).fetchone()
+        try:
+            row = conn.execute(
+                "SELECT band_table_sha256, factors_json, COALESCE(axis, ?),"
+                " retired_at_utc"
+                " FROM calibration_band_reliability_table"
+                " WHERE band_table_sha256=?",
+                (BAND_AXIS_CLAIM, str(table_sha256)),
+            ).fetchone()
+        except sqlite3.OperationalError as exc:
+            if "retired_at_utc" not in str(exc):
+                raise
+            # A store the migration has not reached: the resident serves
+            # without running the schema, so between a deploy and the next
+            # sweep the column is absent.  That is not a missing table --
+            # read it exactly as before the column existed, never retired,
+            # rather than failing closed on every artifact that pins one.
+            # The station-width lane shut nine decisions out this way on
+            # 2026-09-10 before the same guard was added there.
+            legacy = conn.execute(
+                "SELECT band_table_sha256, factors_json, COALESCE(axis, ?)"
+                " FROM calibration_band_reliability_table"
+                " WHERE band_table_sha256=?",
+                (BAND_AXIS_CLAIM, str(table_sha256)),
+            ).fetchone()
+            row = (*legacy, None) if legacy else None
         if row is None:
             raise ContractError("band_reliability_pinned_table_missing")
+        if row[3]:
+            # Pinned to a version the lane VETOED.  The pin exists so that
+            # serving reproduces the table the gate scored; the veto is the
+            # settled finding that the table was wrong.  Honouring the pin
+            # would keep a retired table in service for the life of the
+            # oldest artifact, so this serves identity and keeps the sha so
+            # the receipt can say which version was retired out from under
+            # it.  A table merely SUPERSEDED by a better one carries no
+            # retirement stamp and is served exactly as before.
+            return (), str(row[0])
     factors = tuple(
         ((float(cell[0][0]), float(cell[0][1])), float(cell[1]))
         for cell in json.loads(row[1])
@@ -508,6 +589,55 @@ def persist_and_activate_band_table(
         "axis": axis_id,
         "state": "ACTIVATED",
         "previous": None if active is None else str(active[0]),
+        "write_lock_attempts": attempts,
+    }
+
+
+def retire_band_table(
+    conn: sqlite3.Connection,
+    *,
+    stage: str = "P0",
+    retired_at_utc: str | None = None,
+) -> dict[str, Any]:
+    """Deactivate this stage's table AND stamp it retired.
+
+    Two effects, and the second is the one that matters: deactivating stops
+    the unpinned readers, while the stamp stops the pinned ones.  Without
+    it a vetoed table keeps serving every artifact minted before the veto,
+    which on 2026-09-10 was the difference between retiring the width tables
+    and actually ceasing to serve them.
+    """
+
+    ensure_band_table_schema(conn)
+    stage_id = _check_stage(stage)
+    now = retired_at_utc or (
+        datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    )
+    active = conn.execute(
+        "SELECT band_table_sha256 FROM calibration_band_reliability_table"
+        " WHERE activated=1 AND stage=?",
+        (stage_id,),
+    ).fetchone()
+    if active is None:
+        return {"stage": stage_id, "state": "UNCHANGED"}
+    attempts = _begin_immediate(conn)
+    try:
+        conn.execute(
+            "UPDATE calibration_band_reliability_table"
+            " SET activated=0,"
+            "  retired_at_utc=COALESCE(retired_at_utc, ?)"
+            " WHERE activated=1 AND stage=?",
+            (now, stage_id),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return {
+        "stage": stage_id,
+        "state": "DEACTIVATED",
+        "band_table_sha256": str(active[0]),
+        "retired_at_utc": now,
         "write_lock_attempts": attempts,
     }
 
@@ -780,11 +910,22 @@ def serving_lane_by_day(
     stage: str = "P0",
     pre_band: bool = True,
     min_decision_at_utc: str | None = None,
-) -> dict[str, list[list[tuple[float, int]]]]:
-    """The fit's day-keyed view of ``serving_lane_by_station_day``."""
+    with_stations: bool = False,
+) -> (
+    dict[str, list[list[tuple[float, int]]]]
+    | tuple[dict[str, list[list[tuple[float, int]]]], dict[str, list[str]]]
+):
+    """The fit's day-keyed view of ``serving_lane_by_station_day``.
+
+    ``with_stations`` additionally returns which station each row came from,
+    index for index, which is what the report needs to resample the station
+    dimension and to count a cell's stations.  Off by default: the replay
+    lanes and the tests read the day view alone.
+    """
 
     by_day: dict[str, list[list[tuple[float, int]]]] = defaultdict(list)
-    for (_station, event), day_rows in serving_lane_by_station_day(
+    stations_by_day: dict[str, list[str]] = defaultdict(list)
+    for (station, event), day_rows in serving_lane_by_station_day(
         conn, truth, stage=stage, pre_band=pre_band,
         min_decision_at_utc=min_decision_at_utc,
     ).items():
@@ -792,6 +933,9 @@ def serving_lane_by_day(
             by_day[str(event)].append([
                 (probability, hit) for probability, hit, _lower in entries
             ])
+            stations_by_day[str(event)].append(str(station))
+    if with_stations:
+        return dict(by_day), dict(stations_by_day)
     return dict(by_day)
 
 
@@ -878,6 +1022,41 @@ def _day_aggregates(
     return aggregates
 
 
+def _panel_aggregates(
+    by_day: Mapping[str, list[list[tuple[float, int]]]],
+    stations_by_day: Mapping[str, Sequence[str]],
+    bands: Sequence[tuple[float, float]],
+    axis: str = BAND_AXIS_CLAIM,
+) -> dict[str, dict[str, dict[tuple[float, float], list[float]]]]:
+    """Claimed mass and realised hits per day, per station, per cell.
+
+    The day view sums this over stations; keeping the station apart is what
+    lets the interval price the station dimension and what lets a cell say
+    how many stations it is actually made of.
+    """
+
+    panel: dict[str, dict[str, dict[tuple[float, float], list[float]]]] = {}
+    for day, rows in by_day.items():
+        stations = list(stations_by_day.get(day) or ())
+        day_panel = panel.setdefault(str(day), {})
+        for index, records in enumerate(rows):
+            station = (
+                str(stations[index]) if index < len(stations)
+                else f"__row{index}"
+            )
+            cells = day_panel.setdefault(
+                station, {band: [0.0, 0.0] for band in bands}
+            )
+            keys = _record_keys(records, axis)
+            for (probability, hit), value in zip(records, keys):
+                for band in bands:
+                    if band[0] <= value < band[1]:
+                        cells[band][0] += probability
+                        cells[band][1] += hit
+                        break
+    return panel
+
+
 def band_lane_report(
     by_day: Mapping[str, list[list[tuple[float, int]]]],
     *,
@@ -886,11 +1065,29 @@ def band_lane_report(
     seed: int = 17,
     axis: str = BAND_AXIS_CLAIM,
     interval_alpha: float = DEFAULT_INTERVAL_ALPHA,
+    stations_by_day: Mapping[str, Sequence[str]] | None = None,
+    min_cell_stations: int = 0,
 ) -> dict[tuple[float, float], dict[str, Any]]:
+    """The per-cell realised-over-claimed ratio and what may be served of it.
+
+    ``stations_by_day`` names the station behind each row of ``by_day``,
+    index for index.  Given it, the interval is resampled over BOTH
+    clusters -- days, and the station-days within each drawn day -- and the
+    cell reports how many stations it is made of and how it survives the
+    loss of its largest station and its largest day.  Without it the report
+    is exactly the day-only one this lane has always produced, which is what
+    the replay lanes and the gate archive still pass.
+    """
+
     days = sorted(by_day)
     if not days:
         return {}
     aggregates = _day_aggregates(by_day, bands, axis)
+    panel = (
+        _panel_aggregates(by_day, stations_by_day, bands, axis)
+        if stations_by_day is not None
+        else None
+    )
 
     def ratios(
         sample: Sequence[str],
@@ -908,8 +1105,28 @@ def band_lane_report(
         band: [] for band in bands
     }
     for _ in range(bootstrap_samples):
-        sample = [random.choice(days) for _ in days]
-        sampled = ratios(sample)
+        if panel is None:
+            sample = [random.choice(days) for _ in days]
+            sampled = ratios(sample)
+        else:
+            totals = {band: [0.0, 0.0] for band in bands}
+            for _day_draw in days:
+                day = random.choice(days)
+                stations = list(panel[day])
+                if not stations:
+                    continue
+                for _station_draw in stations:
+                    cells = panel[day][random.choice(stations)]
+                    for band in bands:
+                        totals[band][0] += cells[band][0]
+                        totals[band][1] += cells[band][1]
+            sampled = {
+                band: (
+                    totals[band][1] / totals[band][0]
+                    if totals[band][0] > 0 else None
+                )
+                for band in bands
+            }
         for band in bands:
             if sampled[band] is not None:
                 bootstrap[band].append(sampled[band])
@@ -938,7 +1155,14 @@ def band_lane_report(
             and second[band] is not None
             and (first[band] - 1.0) * (second[band] - 1.0) > 0
         )
-        qualified = interval_excludes_one and sign_stable
+        robustness = _cell_robustness(panel, band, point[band])
+        station_count = robustness["station_count"]
+        enough_stations = (
+            station_count is None or station_count >= int(min_cell_stations)
+        )
+        qualified = (
+            interval_excludes_one and sign_stable and enough_stations
+        )
         conservative = (high if high < 1.0 else low) if qualified else 1.0
         report[band] = {
             "ratio": point[band],
@@ -954,13 +1178,89 @@ def band_lane_report(
                     "interval_spans_one"
                     if not interval_excludes_one
                     else "sign_flips_between_halves"
+                    if not sign_stable
+                    else "too_few_stations"
                 )
             ),
             "conservative_factor": min(
                 FACTOR_CEILING, max(FACTOR_FLOOR, conservative)
             ),
+            **robustness,
         }
     return report
+
+
+def _cell_robustness(
+    panel: (
+        Mapping[str, Mapping[str, Mapping[tuple[float, float], list[float]]]]
+        | None
+    ),
+    band: tuple[float, float],
+    point_ratio: float | None,
+) -> dict[str, Any]:
+    """How much of a cell's verdict is one station's or one day's doing.
+
+    Reported, never gating (2026-09-11).  A pooled factor claims the fleet
+    misprices this cell; three cheap questions say whether the fleet agrees
+    with itself, and the lane records the answers so the ruling that decides
+    whether they should gate has evidence rather than a hunch.  Gating them
+    on their first day would be choosing a threshold on the same sample that
+    suggested it.
+    """
+
+    empty: dict[str, Any] = {
+        "station_count": None,
+        "station_day_count": None,
+        "leave_one_station_sign_agreement": None,
+        "drop_largest_station_ratio": None,
+        "drop_largest_day_ratio": None,
+    }
+    if panel is None or point_ratio is None:
+        return empty
+    by_station: dict[str, list[float]] = {}
+    by_day_mass: dict[str, list[float]] = {}
+    station_days = 0
+    for day, stations in panel.items():
+        for station, cells in stations.items():
+            claimed, hits = cells[band][0], cells[band][1]
+            if claimed <= 0:
+                continue
+            station_days += 1
+            entry = by_station.setdefault(station, [0.0, 0.0])
+            entry[0] += claimed
+            entry[1] += hits
+            day_entry = by_day_mass.setdefault(day, [0.0, 0.0])
+            day_entry[0] += claimed
+            day_entry[1] += hits
+    if not by_station:
+        return empty
+    total_claimed = sum(entry[0] for entry in by_station.values())
+    total_hits = sum(entry[1] for entry in by_station.values())
+
+    def _without(entry: Sequence[float]) -> float | None:
+        claimed = total_claimed - entry[0]
+        return (total_hits - entry[1]) / claimed if claimed > 0 else None
+
+    agree = 0
+    counted = 0
+    for entry in by_station.values():
+        left = _without(entry)
+        if left is None:
+            continue
+        counted += 1
+        if (left - 1.0) * (point_ratio - 1.0) > 0:
+            agree += 1
+    largest_station = max(by_station.values(), key=lambda e: e[0])
+    largest_day = max(by_day_mass.values(), key=lambda e: e[0])
+    return {
+        "station_count": len(by_station),
+        "station_day_count": station_days,
+        "leave_one_station_sign_agreement": (
+            agree / counted if counted else None
+        ),
+        "drop_largest_station_ratio": _without(largest_station),
+        "drop_largest_day_ratio": _without(largest_day),
+    }
 
 
 def _forward_nll_delta(
@@ -1020,6 +1320,168 @@ def _forward_nll_delta(
     return nll(base_factors) - nll(candidate_factors)
 
 
+# The veto window, in days and station-days of evidence served AFTER the
+# incumbent's own activation.  Same shape and same reason as the station
+# width lane's (2026-09-10): a table held through ACCUMULATING is held
+# unconditionally, and the only path back to identity was a fit that never
+# runs while accumulating -- so an incumbent that is hurting can only be
+# retired if something asks.  Out of sample by construction, because the
+# cells postdate the activation.
+BAND_VETO_MIN_DAYS = 3
+BAND_VETO_MIN_STATION_DAYS = 60
+# Per station-day, the same hurdle the width lane retires on.  A table has
+# to be measurably hurting, not merely not helping: not helping is what
+# every identity cell already is.
+BAND_VETO_MIN_GAIN = 0.005
+
+
+def _active_band_activated_at(
+    conn: sqlite3.Connection, *, stage: str
+) -> str | None:
+    try:
+        row = conn.execute(
+            "SELECT activated_at_utc FROM calibration_band_reliability_table"
+            " WHERE activated=1 AND stage=?",
+            (_check_stage(stage),),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    return str(row[0]) if row and row[0] else None
+
+
+def _first_decision_by_station_day(
+    conn: sqlite3.Connection,
+    *,
+    stage: str,
+    min_decision_at_utc: str | None = None,
+) -> dict[tuple[str, str], str]:
+    """When each station-day's first decision was taken.
+
+    The lane's rows are that first decision, and the veto has to know which
+    of them the incumbent was actually serving.  Event date will not answer
+    it: a decision for an event two days out is taken two days early, so a
+    day AFTER an activation routinely carries a decision from before it.
+    """
+
+    query = (
+        "SELECT station_id, event_date, MIN(decision_at_utc)"
+        " FROM basket_probability_bridge_history"
+        " WHERE stage=?"
+    )
+    parameters: list[Any] = [_check_stage(stage)]
+    if min_decision_at_utc:
+        query += " AND decision_at_utc>=?"
+        parameters.append(str(min_decision_at_utc))
+    query += " GROUP BY station_id, event_date"
+    return {
+        (str(station), str(event)): str(decided)
+        for station, event, decided in conn.execute(query, parameters)
+    }
+
+
+def _lane_nll(
+    by_day: Mapping[str, list[list[tuple[float, int]]]],
+    factors: Mapping[tuple[float, float], float],
+    axis: str,
+) -> tuple[float, int]:
+    """Total settled-bucket NLL over every row given, and how many scored."""
+
+    total = 0.0
+    scored = 0
+    for day in sorted(by_day):
+        for records in by_day[day]:
+            mass = 0.0
+            corrected = []
+            keys = _record_keys(records, axis)
+            for (probability, hit), value in zip(records, keys):
+                factor = 1.0
+                for band, band_factor in factors.items():
+                    if band[0] <= value < band[1]:
+                        factor = band_factor
+                        break
+                corrected.append((probability * factor, hit))
+                mass += probability * factor
+            if mass <= 0:
+                continue
+            for probability, hit in corrected:
+                if hit:
+                    total += -log(max(probability / mass, 1e-9))
+                    scored += 1
+    return total, scored
+
+
+def _band_incumbent_veto(
+    by_day: Mapping[str, list[list[tuple[float, int]]]],
+    stations_by_day: Mapping[str, Sequence[str]],
+    decisions: Mapping[tuple[str, str], str],
+    *,
+    factors: Mapping[tuple[float, float], float],
+    axis: str,
+    activated_at_utc: str | None,
+) -> dict[str, Any]:
+    """Is the incumbent table still worth serving on what came after it?
+
+    Scored against identity on the station-days whose decision was taken
+    after the activation -- out of sample by construction.  Losing by more
+    than the hurdle retires it.  Winning, or not having enough evidence yet,
+    changes nothing: this asks only "is this hurting", never "is this best".
+
+    Why it exists (2026-09-10, the width lane's judgement applied here): a
+    table held through ACCUMULATING is held unconditionally, and the only
+    route back to identity was a fit that does not run while accumulating.
+    A layer that can activate but never retire is a layer where one bad fit
+    is permanent.
+    """
+
+    verdict: dict[str, Any] = {
+        "vetoed": False,
+        "activated_at_utc": activated_at_utc,
+        "day_count": 0,
+        "station_day_count": 0,
+        "undo_gain": 0.0,
+        "min_days": BAND_VETO_MIN_DAYS,
+        "min_station_days": BAND_VETO_MIN_STATION_DAYS,
+        "hurdle": BAND_VETO_MIN_GAIN,
+    }
+    if not activated_at_utc or all(
+        abs(float(value) - 1.0) < 1e-12 for value in factors.values()
+    ):
+        return verdict
+    after: dict[str, list[list[tuple[float, int]]]] = {}
+    for day, rows in by_day.items():
+        stations = list(stations_by_day.get(day) or ())
+        kept = [
+            records for index, records in enumerate(rows)
+            if index < len(stations)
+            and str(
+                decisions.get((str(stations[index]), str(day)), "")
+            ) >= str(activated_at_utc)
+        ]
+        if kept:
+            after[str(day)] = kept
+    station_days = sum(len(rows) for rows in after.values())
+    verdict["day_count"] = len(after)
+    verdict["station_day_count"] = station_days
+    if (
+        len(after) < BAND_VETO_MIN_DAYS
+        or station_days < BAND_VETO_MIN_STATION_DAYS
+    ):
+        return verdict
+    identity = {band: 1.0 for band in factors}
+    kept_total, scored = _lane_nll(after, factors, axis)
+    undone_total, _ = _lane_nll(after, identity, axis)
+    if not scored:
+        return verdict
+    # Positive when IDENTITY beats the incumbent, which is the direction
+    # this question is asked in.
+    undo_gain = (kept_total - undone_total) / scored
+    verdict["nll_kept"] = kept_total / scored
+    verdict["nll_undone"] = undone_total / scored
+    verdict["undo_gain"] = undo_gain
+    verdict["vetoed"] = undo_gain > BAND_VETO_MIN_GAIN
+    return verdict
+
+
 def fit_band_reliability_table(
     conn: sqlite3.Connection,
     *,
@@ -1060,14 +1522,19 @@ def fit_band_reliability_table(
         evidence_floor = served_arithmetic_anchor(conn, stage=stage_id)
     else:
         evidence_floor = str(min_decision_at_utc) or None
-    serving = serving_lane_by_day(
-        conn, truth, stage=stage_id, min_decision_at_utc=evidence_floor
+    serving, serving_stations = serving_lane_by_day(
+        conn, truth, stage=stage_id, min_decision_at_utc=evidence_floor,
+        with_stations=True,
     )
     # A walk-forward over this layer has to ask what the fit would have
     # served knowing only the days before some date, and the only honest way
     # to answer is to run this function with the later days withheld.  None
     # is production: every day the lane has.
     if until_event_date is not None:
+        serving_stations = {
+            day: rows for day, rows in serving_stations.items()
+            if day < str(until_event_date)
+        }
         serving = {
             day: rows for day, rows in serving.items()
             if day < str(until_event_date)
@@ -1087,6 +1554,53 @@ def fit_band_reliability_table(
     # A stage whose distribution no gate re-scores has to earn every cell
     # on the forward window here instead.
     requires_forward_check = stage_id != "P0"
+    # Before anything else: is what is already being served still earning
+    # its place?  A held table is held unconditionally otherwise.
+    incumbent_loaded = load_band_table_with_axis(conn, stage=stage_id)
+    incumbent_veto = _band_incumbent_veto(
+        serving,
+        serving_stations,
+        _first_decision_by_station_day(
+            conn, stage=stage_id, min_decision_at_utc=evidence_floor
+        ),
+        factors=(
+            {band: float(value) for band, value in incumbent_loaded[0]}
+            if incumbent_loaded is not None else {}
+        ),
+        axis=(
+            str(incumbent_loaded[2]) if incumbent_loaded is not None
+            else axis_id
+        ),
+        activated_at_utc=_active_band_activated_at(conn, stage=stage_id),
+    )
+    if incumbent_veto["vetoed"]:
+        # Identity, and the caller retires the incumbent rather than
+        # activating this as a new table: a vetoed version must stop serving
+        # the artifacts pinned to it too, which activation alone would not
+        # do.
+        return {
+            "stage": stage_id,
+            "factors": tuple((band, 1.0) for band in cells),
+            "axis": axis_id,
+            "interval_alpha": float(interval_alpha),
+            "forward_nll_delta_vs_identity": -float(
+                incumbent_veto["undo_gain"]
+            ),
+            "vetoed": True,
+            "incumbent_veto": incumbent_veto,
+            "evidence": {
+                "schema": "band_reliability_fit_evidence_v2",
+                "stage": stage_id,
+                "axis": axis_id,
+                "basis": "INCUMBENT_VETOED",
+                "serving_day_count": len(serving),
+                "serving_station_day_count": station_days,
+                "incumbent_veto": incumbent_veto,
+            },
+            "serving_day_count": len(serving),
+            "serving_station_day_count": station_days,
+            "accumulating": len(serving) < MIN_QUALIFYING_DAYS,
+        }
     accumulating = len(serving) < MIN_QUALIFYING_DAYS
     serving_report = (
         {}
@@ -1097,6 +1611,8 @@ def fit_band_reliability_table(
             bootstrap_samples=bootstrap_samples,
             axis=axis_id,
             interval_alpha=interval_alpha,
+            stations_by_day=serving_stations,
+            min_cell_stations=MIN_CELL_STATIONS,
         )
     )
     gate_report = (
@@ -1228,6 +1744,8 @@ def fit_band_reliability_table(
             "serving_station_day_count": station_days,
             "gate_day_count": len(gate),
             "min_qualifying_days": MIN_QUALIFYING_DAYS,
+            "min_cell_stations": MIN_CELL_STATIONS,
+            "incumbent_veto": incumbent_veto,
             "accumulating": accumulating,
             "requires_forward_check": requires_forward_check,
             "basis": basis,
@@ -1344,16 +1862,24 @@ def refit_all_stages(
                     "forward_nll_delta_vs_identity"
                 ],
             })
+            entry["vetoed"] = bool(fitted.get("vetoed"))
             if commit:
                 try:
-                    outcome = persist_and_activate_band_table(
-                        conn,
-                        stage=stage,
-                        axis=stage_axis,
-                        factors=fitted["factors"],
-                        evidence=fitted["evidence"],
-                        serving_day_count=fitted["serving_day_count"],
-                    )
+                    if fitted.get("vetoed"):
+                        # Retire, do not replace.  Activating an identity
+                        # table would stop the unpinned readers and leave
+                        # every artifact pinned to the vetoed sha serving
+                        # it until the artifact expired.
+                        outcome = retire_band_table(conn, stage=stage)
+                    else:
+                        outcome = persist_and_activate_band_table(
+                            conn,
+                            stage=stage,
+                            axis=stage_axis,
+                            factors=fitted["factors"],
+                            evidence=fitted["evidence"],
+                            serving_day_count=fitted["serving_day_count"],
+                        )
                 except Exception as exc:  # noqa: BLE001
                     # The fit itself succeeded; only the activation did
                     # not.  Journal that fact -- what was known on the day
@@ -1390,7 +1916,9 @@ def refit_all_stages(
                     stage=stage,
                     fitted=fitted,
                     outcome=(
-                        "ACCUMULATING"
+                        "INCUMBENT_VETOED"
+                        if fitted.get("vetoed")
+                        else "ACCUMULATING"
                         if fitted["accumulating"]
                         else str(outcome["state"])
                     ),
