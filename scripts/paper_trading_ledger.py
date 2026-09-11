@@ -285,6 +285,13 @@ from bayes_basket_target.delta_v2_artifact import (  # noqa: E402
     resolve_delta_v2_policy,
 )
 from bayes_basket_target.policy import resolve_station_policy  # noqa: E402
+from bayes_basket_target.production import (  # noqa: E402
+    # Charter 127 (二): the venue's own floor on a GTD's life.  Production
+    # names it because a belief with seconds left would otherwise mint an
+    # order the gateway refuses; this lane reads the same number so the two
+    # cannot come to disagree about what the venue accepts.
+    VENUE_GTD_MINIMUM_HORIZON_SECONDS,
+)
 from bayes_basket_target.production_io import (  # noqa: E402
     derive_policy_maturity_bin,
     load_production_artifacts,
@@ -878,6 +885,31 @@ EXECUTION_FAMILY = "taker" if EXECUTION_MODE == "taker" else "maker"
 MAKER_RESTING_HORIZON_MINUTES = float(
     os.environ.get("PAPER_LEDGER_MAKER_HORIZON_MIN", "0") or 0.0
 )
+# Whose resting lifecycle this book simulates (charter 127 (七)(甲)).
+#
+# ``ledger``: the order rests until the station's peak-heat cutoff, being
+# re-decided by the kernel's rung action every dwell.  That half already
+# matches production -- the dwell IS production's poll cadence and the
+# action IS ``resting_rung_action_v1`` -- and the half that does not is the
+# horizon: production's order is a GTD whose expiry is the SERVED BELIEF'S
+# OWN freshness, median 5.5 hours at P0 and exactly 60 minutes at P1, while
+# this book's rung rests into the afternoon.  An order that outlives the
+# belief that posted it is buying on a claim nobody is serving any more.
+#
+# ``production_v127``: the belief's ``fresh_until_utc`` becomes a fourth
+# bound beside the peak cutoff, the day end and the configured horizon, and
+# the earliest one stops the order.  Nothing else moves: this is not a new
+# execution policy, it is the same policy given production's horizon.
+#
+# Default stays ``ledger`` so the standing book does not move before the
+# arm is read; the fingerprint carries the choice when it leaves the
+# default.
+RESTING_LIFECYCLE = (
+    os.environ.get("PAPER_LEDGER_RESTING_LIFECYCLE", "").strip().lower()
+    or "ledger"
+)
+if RESTING_LIFECYCLE not in {"ledger", "production_v127"}:
+    raise SystemExit(f"unknown resting lifecycle: {RESTING_LIFECYCLE}")
 # How often an unfilled leg is re-posted at the prices then on the book.
 #
 # A resting order that never moves is not what a maker does and not what
@@ -2333,6 +2365,13 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     # not share a book with these.
     "ticket_authorization": (
         "whole_basket_edge_v1"
+    ),
+    # Charter 127 (七)(甲): whose resting lifecycle this book simulated.
+    # Hashed only away from the default, so the standing book keeps its sha
+    # while an arm cannot be mistaken for it.
+    **(
+        {"resting_lifecycle": RESTING_LIFECYCLE}
+        if RESTING_LIFECYCLE != "ledger" else {}
     ),
     # Charter 93 (2026-09-06): the in-support floor is zero of the premium
     # and re-read on the lifted legs.  Unconditional, since the standing
@@ -6285,12 +6324,48 @@ def _ladder_from_quote(
     ]
 
 
+def _belief_fresh_until(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    placed_at_utc: str,
+) -> str:
+    """When the belief this order was posted on stops being served.
+
+    Charter 127 (二): production stamps a GTD's expiry from the served
+    belief's own ``fresh_until_utc``, which is the model's run cadence --
+    measured on this column, P0 averages 4.44 hours and is capped at 6
+    (the run period), P0-M 4.31, and P1 is exactly 60 minutes (the
+    observation window).  So "the belief is stale" and "re-decide" are the
+    same event by construction, and an order cannot outlive the claim that
+    justified it.
+
+    The row is the newest committed one at or before placement -- the one
+    serving when the order was signed.  Empty when the bridge cannot
+    answer, which the caller reads as "no belief bound", not as zero.
+    """
+
+    try:
+        row = conn.execute(
+            "SELECT fresh_until_utc FROM basket_probability_bridge_history"
+            " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+            "   AND decision_at_utc<=? AND fresh_until_utc IS NOT NULL"
+            " ORDER BY decision_at_utc DESC LIMIT 1",
+            (str(station_id), str(event_date), str(placed_at_utc)),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return ""
+    return "" if row is None else str(row[0] or "")
+
+
 def _resting_deadline(
     *,
     placed_at_utc: str,
     settlement_timezone: str,
     event_date: str,
     cutoff_local_minutes: int | None = None,
+    belief_fresh_until_utc: str = "",
 ) -> str:
     """When the order gives up.
 
@@ -6330,9 +6405,27 @@ def _resting_deadline(
         if MAKER_RESTING_HORIZON_MINUTES > 0
         else ""
     )
+    # Charter 127 (二), under ``production_v127``: the served belief's own
+    # freshness.  First in the list because when it ties with another bound
+    # it is the binding rule -- the order was signed with this expiry in
+    # it, and the venue would have killed it there whatever else was true.
+    # Absent under the ledger lifecycle, so the shipped book is unchanged.
+    belief = (
+        str(belief_fresh_until_utc or "")
+        if RESTING_LIFECYCLE == "production_v127" else ""
+    )
+    if belief and belief <= str(placed_at_utc):
+        # A belief already stale at placement cannot bound an order that
+        # does not exist yet; production would not have signed this GTD.
+        # The matching engine's own grace is the floor charter 127 (二)
+        # names, so the order gets that and no more.
+        belief = (
+            placed + timedelta(seconds=VENUE_GTD_MINIMUM_HORIZON_SECONDS)
+        ).isoformat().replace("+00:00", "Z")
     named = [
         (bound, name)
         for bound, name in (
+            (belief, "信念新鲜期"),
             (cutoff, "达峰截止"),
             (day_end, "当日结束"),
             (horizon, "挂单时长"),
@@ -6354,6 +6447,7 @@ def _resting_deadline_reason(
     settlement_timezone: str,
     event_date: str,
     cutoff_local_minutes: int | None = None,
+    belief_fresh_until_utc: str = "",
 ) -> str:
     """Which bound actually stopped the order, in the page's words.
 
@@ -6369,7 +6463,16 @@ def _resting_deadline_reason(
         settlement_timezone=settlement_timezone,
         event_date=event_date,
         cutoff_local_minutes=cutoff_local_minutes,
+        belief_fresh_until_utc=belief_fresh_until_utc,
     )
+    # Asked before the cutoff, in the order the bounds bind: an order the
+    # belief killed did not rest to the peak, whatever the clock says.
+    if (
+        RESTING_LIFECYCLE == "production_v127"
+        and belief_fresh_until_utc
+        and str(deadline) == str(belief_fresh_until_utc)
+    ):
+        return "挂到信念新鲜期结束 %s" % str(belief_fresh_until_utc)[11:16]
     if cutoff_local_minutes is not None:
         try:
             local = datetime.fromisoformat(
@@ -6984,11 +7087,21 @@ def _resting_ladder_fill(
       rung mid-day and bought it has not finished the leg.
     """
 
+    # Charter 127 (二): the order carries the served belief's own expiry.
+    # Read once, here, and handed to both the bound and the name for it --
+    # the walk and the page must not disagree about when the order died.
+    belief_fresh_until = _belief_fresh_until(
+        conn,
+        station_id=station_id,
+        event_date=event_date,
+        placed_at_utc=placed_at_utc,
+    )
     deadline = _resting_deadline(
         placed_at_utc=placed_at_utc,
         settlement_timezone=settlement_timezone,
         event_date=event_date,
         cutoff_local_minutes=cutoff_local_minutes,
+        belief_fresh_until_utc=belief_fresh_until,
     )
     placed = datetime.fromisoformat(str(placed_at_utc).replace("Z", "+00:00"))
     try:
@@ -9796,6 +9909,16 @@ def backfill(
                                         event_date=event_date,
                                         cutoff_local_minutes=(
                                             peak_cutoffs.get(station_id)
+                                        ),
+                                        belief_fresh_until_utc=(
+                                            _belief_fresh_until(
+                                                conn,
+                                                station_id=station_id,
+                                                event_date=event_date,
+                                                placed_at_utc=payload[
+                                                    "decision_at_utc"
+                                                ],
+                                            )
                                         ),
                                     ),
                                 ),
