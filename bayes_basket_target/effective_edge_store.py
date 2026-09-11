@@ -72,8 +72,9 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import sqlite3
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any, Sequence
 
 from .band_reliability_store import BAND_TABLE_CELLS
@@ -1218,6 +1219,136 @@ def admitted_return(
     }
 
 
+# The veto window, in days and candidate windows of evidence served AFTER
+# the incumbent's own activation.  Same shape, same minimum days and the
+# same reason as the band, per-station width and off-centre lanes: the
+# activation guard only ever compares the incumbent against a PROPOSAL, so
+# a scope whose every challenger is refused holds its table forever however
+# it performs -- P1 sat on the fit of 2026-09-09 through three refusals.
+# The question this asks is the one the guard never does: is the incumbent
+# beating no table at all?
+LAMBDA_VETO_MIN_DAYS = 3
+LAMBDA_VETO_MIN_WINDOWS = 60
+# No hurdle constant, deliberately.  The other lanes score a calibration
+# number per cell and a per-cell hurdle means something there; this lane
+# scores money over an opportunity set, where the same difference is large
+# on a thin book and small on a fat one.  So the test is separation: the
+# by-day bootstrap interval on (bootstrap - incumbent) has to clear zero,
+# which is the reading the ROI ratio could never give -- measured
+# 2026-09-11, the guard's own +16.28% against -9.83% for P1 was a 4-day
+# window whose interval was [-9.32, +0.73].  Days, not windows, because a
+# day's stations share its weather.
+LAMBDA_VETO_BOOTSTRAP_DRAWS = 2000
+
+
+def _lambda_incumbent_veto(
+    conn: sqlite3.Connection,
+    *,
+    stage_scope: str,
+    claim_scope: str,
+    include_replayed: bool,
+) -> dict[str, Any]:
+    """Is the served table beating no table at all?
+
+    Scored on the candidate windows decided after the incumbent's own
+    serving interval opened -- out of sample by construction -- one share of
+    every window each table admits, netted over the SAME opportunity set so
+    that admitting nothing scores zero and the two are not divided by
+    different denominators.
+    """
+
+    verdict: dict[str, Any] = {
+        "vetoed": False,
+        "served_from_utc": None,
+        "day_count": 0,
+        "window_count": 0,
+        "net_incumbent": 0.0,
+        "net_bootstrap": 0.0,
+        "min_days": LAMBDA_VETO_MIN_DAYS,
+        "min_windows": LAMBDA_VETO_MIN_WINDOWS,
+    }
+    active = load_active_lambda(
+        conn, stage_scope=stage_scope, claim_scope=claim_scope
+    )
+    if active is None:
+        return verdict
+    bands = [(float(b), float(lam)) for b, lam in active]
+    boot = list(_bootstrap_bands(stage_scope, claim_scope))
+    if [round(lam, 9) for _b, lam in bands] == [
+        round(lam, 9) for _b, lam in boot
+    ]:
+        # Serving the constant already: there is nothing to retire.
+        return verdict
+    try:
+        row = conn.execute(
+            "SELECT served_from_utc FROM"
+            " calibration_effective_edge_serving_interval"
+            " WHERE stage_scope=? AND served_until_utc IS NULL"
+            " ORDER BY served_from_utc DESC LIMIT 1",
+            (str(stage_scope),),
+        ).fetchone()
+    except sqlite3.Error:
+        return verdict
+    served_from = None if row is None else str(row[0])
+    verdict["served_from_utc"] = served_from
+    if not served_from:
+        return verdict
+    stages = STAGE_SCOPES.get(stage_scope, (stage_scope,))
+    try:
+        population = _candidate_population(
+            conn, stages, served_from[:10], include_replayed=include_replayed,
+            floor_decision_at_utc=served_from,
+        )
+        rows = (
+            population["leg_rows"] if claim_scope == "bucket"
+            else population["rows"]
+        )
+    except sqlite3.Error:
+        return verdict
+    by_day: dict[str, list[float]] = {}
+    windows = 0
+    for claim, price, hit, _station, event, _stage, _decided in rows:
+        claim = float(claim or 0.0)
+        price = float(price or 0.0)
+        if claim <= 0.0 or price <= 0.0:
+            continue
+        agreement = price / claim
+        pnl = float(hit or 0) - price
+        slot = by_day.setdefault(str(event), [0.0, 0.0])
+        if admits_v1(bands, agreement):
+            slot[0] += pnl
+        if admits_v1(boot, agreement):
+            slot[1] += pnl
+        windows += 1
+    verdict["day_count"] = len(by_day)
+    verdict["window_count"] = windows
+    verdict["net_incumbent"] = round(
+        sum(slot[0] for slot in by_day.values()), 4
+    )
+    verdict["net_bootstrap"] = round(
+        sum(slot[1] for slot in by_day.values()), 4
+    )
+    if (
+        len(by_day) < LAMBDA_VETO_MIN_DAYS
+        or windows < LAMBDA_VETO_MIN_WINDOWS
+    ):
+        return verdict
+    days = sorted(by_day)
+    rng = random.Random(20260911)
+    draws = sorted(
+        sum(
+            by_day[day][1] - by_day[day][0]
+            for day in (rng.choice(days) for _ in days)
+        )
+        for _ in range(LAMBDA_VETO_BOOTSTRAP_DRAWS)
+    )
+    low = draws[int(0.025 * len(draws))]
+    high = draws[int(0.975 * len(draws)) - 1]
+    verdict["interval"] = [round(low, 4), round(high, 4)]
+    verdict["vetoed"] = low > 0.0
+    return verdict
+
+
 # The guard the 2026-09-07 fit needed and did not have.  Default on; the
 # switch exists so a deliberate promotion against the back-test stays
 # possible and has to be typed.
@@ -1346,6 +1477,20 @@ def persist_and_activate(
     guard["minimum_admitted"] = MIN_ADMITTED_FOR_RETURN_GUARD
     guard["proposed_admitted"] = proposed_admitted
     guard["incumbent_admitted"] = standing_admitted
+    # The question the comparison above never asks: is the incumbent beating
+    # no table at all?  A scope whose every challenger is refused would
+    # otherwise hold its table forever however it performs.  Retiring is a
+    # separate outcome from promoting this proposal -- the proposal still
+    # has to earn its own seat, against the constant that is now serving.
+    veto = _lambda_incumbent_veto(
+        conn, stage_scope=scope, claim_scope=claim_scope,
+        include_replayed=scored_on_replay,
+    )
+    guard["incumbent_veto"] = veto
+    if veto["vetoed"]:
+        retire_lambda_table(conn, stage_scope=scope, claim_scope=claim_scope)
+        guard["refusal"] = "incumbent_retired"
+        blocked = False
     guard["blocked"] = blocked
     if not blocked:
         # Deactivation is per scope: activating P1's table must not retire
@@ -1489,6 +1634,46 @@ def _has_claim_scope_column(conn: sqlite3.Connection) -> bool:
         )
     except sqlite3.Error:
         return False
+
+
+def retire_lambda_table(
+    conn: sqlite3.Connection,
+    *,
+    stage_scope: str = "P0",
+    claim_scope: str = "window",
+    retired_at_utc: str | None = None,
+) -> dict[str, Any]:
+    """Stop serving this scope's table and close its serving interval.
+
+    Retired, not superseded: the scope falls back to the kernel constant,
+    which is the honest state for "this table was beaten by no table at
+    all".  The interval is closed so a later reading of what served when
+    does not run this table past the moment it stopped.
+    """
+
+    ensure_schema(conn)
+    now = retired_at_utc or datetime.now(timezone.utc).isoformat(
+        timespec="seconds"
+    ).replace("+00:00", "Z")
+    conn.execute(
+        "UPDATE calibration_effective_edge_lambda SET activated=0"
+        " WHERE activated=1 AND stage_scope=?"
+        + (
+            " AND COALESCE(claim_scope,'window')=?"
+            if _has_claim_scope_column(conn) else ""
+        ),
+        (str(stage_scope), *(
+            (str(claim_scope),) if _has_claim_scope_column(conn) else ()
+        )),
+    )
+    conn.execute(
+        "UPDATE calibration_effective_edge_serving_interval"
+        " SET served_until_utc=? WHERE stage_scope=? AND"
+        " served_until_utc IS NULL",
+        (now, str(stage_scope)),
+    )
+    conn.commit()
+    return {"state": "RETIRED", "retired_at_utc": now}
 
 
 def load_active_lambda(

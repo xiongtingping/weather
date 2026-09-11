@@ -396,6 +396,7 @@ def test_the_activation_guard_is_judged_on_the_population_it_was_fitted_on(
     out loud: a table can now earn its seat on a claim nobody traded against.
     """
     import inspect
+    import re
 
     from bayes_basket_target import effective_edge_store as store
 
@@ -406,7 +407,14 @@ def test_the_activation_guard_is_judged_on_the_population_it_was_fitted_on(
     # And the flag is the fit's own, not a default the guard picks.
     activate = inspect.getsource(store.persist_and_activate)
     assert 'scored_on_replay = bool(fit.get("include_replayed"))' in activate
-    assert activate.count("include_replayed=scored_on_replay") == 2
+    # Every population read in the activation path takes it -- the proposal,
+    # the incumbent, and (since 2026-09-11) the incumbent veto.  Counted as
+    # "all of them" rather than as a number, so adding a fourth reader does
+    # not fail this test for being right.
+    assert activate.count("include_replayed=scored_on_replay") >= 2
+    assert re.findall(r"include_replayed=(\w+)", activate) == [
+        "scored_on_replay"
+    ] * activate.count("include_replayed=")
 
 
 def test_the_guard_and_the_fit_read_the_same_rows() -> None:

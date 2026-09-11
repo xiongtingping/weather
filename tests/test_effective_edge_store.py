@@ -353,3 +353,137 @@ def test_the_window_never_reaches_below_the_serving_arithmetic_anchor(
         ] == 0
     finally:
         conn.close()
+
+
+def _vetoable(path, *, lam, seats):
+    """A book with an activated table, its serving interval, and windows."""
+    import json as _json
+
+    from bayes_basket_target import effective_edge_store as store
+
+    conn = _book(path, seats)
+    store.ensure_schema(conn)
+    payload = {
+        "schema": "effective_edge_lambda_table_v1", "stage_scope": "P0",
+        "claim_scope": "window", "stages": ["P0"],
+        "bands": [{"upper_bound": None, "lambda": lam}],
+        "window_days": 28, "as_of_event_date": "2026-09-10",
+        "fit_floor_event_date": "2026-08-13",
+        "band_partition_cells": store.BAND_PARTITION_CELLS,
+        "claim_transform_sha256": None,
+    }
+    conn.execute(
+        "INSERT INTO calibration_effective_edge_lambda("
+        " lambda_table_sha256, bands_json, evidence_json, fitted_at_utc,"
+        " window_days, seat_count, activated, activated_at_utc, stage_scope,"
+        " claim_scope) VALUES(?,?,?,?,?,?,1,?,?,?)",
+        ("a" * 64, _json.dumps(payload), "{}", "2026-08-31T00:00:00Z", 28, 50,
+         "2026-08-31T00:00:00Z", "P0", "window"),
+    )
+    conn.execute(
+        "INSERT INTO calibration_effective_edge_serving_interval("
+        " stage_scope, lambda_table_sha256, served_from_utc, served_until_utc)"
+        " VALUES('P0',?,'2026-08-31T00:00:00Z',NULL)",
+        ("a" * 64,),
+    )
+    return conn
+
+
+def test_an_incumbent_beaten_by_no_table_at_all_is_retired(tmp_path) -> None:
+    """The activation guard only ever compares the incumbent against a
+    PROPOSAL, so a scope whose every challenger is refused holds its table
+    forever however it performs.  This asks the question the guard never
+    does, on the windows served after the incumbent went live."""
+
+    from bayes_basket_target import effective_edge_store as store
+
+    # Agreement 0.90: the kernel constant refuses it (its band's lambda is
+    # 0.82, and the gate admits on lambda > a), a flat 1.4 admits it, and
+    # every one of them loses.  So the incumbent buys ninety losing windows
+    # that no table at all would have left alone.
+    seats = [
+        ("P0", f"2026-09-{1 + i % 6:02d}", 0.60, 0.583, 0)
+        for i in range(90)
+    ]
+    conn = _vetoable(tmp_path / "v.db", lam=1.4, seats=seats)
+    try:
+        veto = store._lambda_incumbent_veto(
+            conn, stage_scope="P0", claim_scope="window",
+            include_replayed=False,
+        )
+        assert veto["day_count"] == 6 and veto["window_count"] == 90
+        assert veto["net_bootstrap"] > veto["net_incumbent"]
+        assert veto["interval"][0] > 0.0
+        assert veto["vetoed"]
+        # Retiring falls the scope back to the constant and closes the
+        # interval, so a later reading of what served when does not run the
+        # table past the moment it stopped.
+        store.retire_lambda_table(
+            conn, stage_scope="P0", retired_at_utc="2026-09-11T00:00:00Z"
+        )
+        assert store.load_active_lambda(conn, stage_scope="P0") is None
+        assert store._incumbent_bands(conn, "P0", "window") == list(
+            store._bootstrap_bands("P0", "window")
+        )
+        assert conn.execute(
+            "SELECT served_until_utc FROM"
+            " calibration_effective_edge_serving_interval"
+        ).fetchone()[0] == "2026-09-11T00:00:00Z"
+    finally:
+        conn.close()
+
+
+def test_the_veto_holds_below_the_day_floor_and_when_the_constant_is_served(
+    tmp_path,
+) -> None:
+    from bayes_basket_target import effective_edge_store as store
+
+    # Ninety windows but on two days: a day's stations share its weather, so
+    # days are the sample and two is under the floor.
+    seats = [
+        ("P0", "2026-09-0%d" % (1 + i % 2), 0.60, 0.583, 0) for i in range(90)
+    ]
+    conn = _vetoable(tmp_path / "w.db", lam=1.4, seats=seats)
+    try:
+        veto = store._lambda_incumbent_veto(
+            conn, stage_scope="P0", claim_scope="window",
+            include_replayed=False,
+        )
+        assert veto["day_count"] == 2 and veto["window_count"] == 90
+        assert "interval" not in veto
+        assert not veto["vetoed"]
+    finally:
+        conn.close()
+    # A scope already serving the kernel constant has nothing to retire.
+    constant = [(b, lam) for b, lam in store._bootstrap_bands("P0", "window")]
+    seats = [
+        ("P0", f"2026-09-{1 + i % 6:02d}", 0.60, 0.583, 0) for i in range(90)
+    ]
+    conn = _vetoable(tmp_path / "x.db", lam=constant[-1][1], seats=seats)
+    try:
+        # One band at the constant's top value is not the constant; make the
+        # stored table the constant outright.
+        import json as _json
+        payload = _json.loads(
+            conn.execute(
+                "SELECT bands_json FROM calibration_effective_edge_lambda"
+                " WHERE activated=1"
+            ).fetchone()[0]
+        )
+        payload["bands"] = [
+            {"upper_bound": None if b == float("inf") else b, "lambda": lam}
+            for b, lam in constant
+        ]
+        conn.execute(
+            "UPDATE calibration_effective_edge_lambda SET bands_json=?"
+            " WHERE activated=1",
+            (_json.dumps(payload),),
+        )
+        veto = store._lambda_incumbent_veto(
+            conn, stage_scope="P0", claim_scope="window",
+            include_replayed=False,
+        )
+        assert not veto["vetoed"]
+        assert veto["day_count"] == 0
+    finally:
+        conn.close()
