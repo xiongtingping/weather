@@ -127,8 +127,15 @@ def _fingerprint(env: dict[str, str]) -> str:
 
 
 def _rebuild(db: Path, env: dict[str, str], through: str | None) -> None:
+    # ``--reset-paper-tables`` first, not ``--rebuild`` alone.  A rebuild
+    # discards the positions and settlements it can re-derive and keeps the
+    # refusals and candidate windows; a refusal is an answer this walk will
+    # short-circuit on for any settled station-day, so an arm following
+    # another arm in the same database silently inherited the previous
+    # arm's noes.  Measured 2026-09-11 on a shared database: 783 scopes
+    # answered out of the other arm's table.  See ``_REFUSAL_DDL``.
     command = [sys.executable, "scripts/paper_trading_ledger.py",
-               "--db", str(db), "--rebuild"]
+               "--db", str(db), "--reset-paper-tables", "--rebuild"]
     if through:
         command += ["--through-date", through]
     result = subprocess.run(

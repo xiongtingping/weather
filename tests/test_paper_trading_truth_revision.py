@@ -296,9 +296,26 @@ def test_the_incremental_pass_is_the_one_that_corrects(tmp_path) -> None:
     source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
         encoding="utf-8"
     )
-    walk = source.index("superseded = _drop_superseded_positions")
-    rescore = source.index("rescored = _rescore_settlements(conn, truth)")
-    scopes = source.index("scopes = conn.execute(")
+    # Ordered by statement, not by substring: the assignment this used to
+    # grep for grew a second target on 2026-09-11 (the drop now reports the
+    # refusals it removed too) and the ordering rule went untested under a
+    # passing name.
+    import ast  # noqa: PLC0415
+
+    backfill = next(
+        node for node in ast.parse(source).body
+        if isinstance(node, ast.FunctionDef) and node.name == "backfill"
+    )
+
+    def _first_call(needle: str) -> int:
+        for node in ast.walk(backfill):
+            if isinstance(node, ast.Call) and needle in ast.unparse(node):
+                return node.lineno
+        raise AssertionError("not called in backfill: " + needle)
+
+    walk = _first_call("_drop_superseded_positions(")
+    rescore = _first_call("_rescore_settlements(")
+    scopes = _first_call("SELECT DISTINCT station_id, event_date")
     assert walk < rescore < scopes
 
     sweep = (ROOT / "scripts" / "paper_trading_ledger_sweep.sh").read_text(

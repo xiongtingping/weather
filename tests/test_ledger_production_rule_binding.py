@@ -241,6 +241,10 @@ SHARED_WITH_PRODUCTION = {
 
 # This lane's own, with the reason it has no production counterpart.
 LEDGER_ONLY = {
+    # Not a rule: the inventory of tables this script creates and, for an
+    # arm, discards.  Production writes none of them -- they are the book
+    # this lane keeps -- so there is nothing on the other side to bind to.
+    "PAPER_TRADE_TABLES": "this lane's own tables; production writes none",
     # Production's per-leg reservation veto (TAKER_LEG_VETO), replayed here
     # as an arm; the two are asserted equivalent below.
     "LEG_VETO": "production's TAKER_LEG_VETO, asserted equivalent",

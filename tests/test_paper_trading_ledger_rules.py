@@ -1682,8 +1682,14 @@ def test_widening_the_reason_check_keeps_the_closed_history() -> None:
         ("KLGA", "2026-08-02", "P1", "retired_reason", "vocabulary left it",
          2, "2026-08-02T12:00:00Z", "2026-08-02T23:00:00Z"),
     ]
+    # Named, not positional: this fixture builds its table from production's
+    # own DDL, so a column added there would otherwise break the arity here
+    # and read as a failure of the migration under test.
     conn.executemany(
-        "INSERT INTO paper_trade_refusal VALUES (?,?,?,?,?,?,?,?)", rows
+        "INSERT INTO paper_trade_refusal ("
+        " station_id, event_date, stage, reason, detail,"
+        " cycles_examined, last_decision_at_utc, recorded_at_utc"
+        ") VALUES (?,?,?,?,?,?,?,?)", rows
     )
     conn.commit()
 
@@ -1713,8 +1719,25 @@ def test_widening_the_reason_check_keeps_the_closed_history() -> None:
         encoding="utf-8"
     )
     assert "refusal_rebuilt = ensure_schema(conn)" in source
-    assert source.index("if refusal_rebuilt:") < source.index(
-        "superseded = _drop_superseded_positions"
+    # Read off the statements rather than the source text: the assignment
+    # this used to grep for grew a second target on 2026-09-11 and the
+    # ordering rule -- widen the vocabulary, THEN drop what the rule set
+    # superseded -- went untested under a passing name.
+    import ast  # noqa: PLC0415
+
+    body = next(
+        node for node in ast.parse(source).body
+        if isinstance(node, ast.FunctionDef) and node.name == "backfill"
+    ).body
+    def _line_of(needle: str) -> int:
+        for node in ast.walk(ast.Module(body=body, type_ignores=[])):
+            if isinstance(node, ast.Call) and ast.unparse(node).startswith(needle):
+                return node.lineno
+            if isinstance(node, ast.If) and ast.unparse(node.test) == needle:
+                return node.lineno
+        raise AssertionError("not found in backfill: " + needle)
+    assert _line_of("refusal_rebuilt") < _line_of(
+        "_drop_superseded_positions"
     )
 
 

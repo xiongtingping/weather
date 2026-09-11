@@ -3029,6 +3029,21 @@ CREATE TABLE IF NOT EXISTS paper_trade_refusal (
   cycles_examined INTEGER NOT NULL,
   last_decision_at_utc TEXT NOT NULL,
   recorded_at_utc TEXT NOT NULL,
+  -- Which rule set answered.  A position row has carried this since the
+  -- ledger learned to run arms; a refusal never did, and a refusal is an
+  -- ANSWER -- ``_scope_answer_is_final`` reads it to skip a settled
+  -- station-day rather than re-derive it.  So an arm run against a
+  -- database some other arm has already walked inherited that arm's
+  -- refusals and never solved those scopes at all: measured 2026-09-11,
+  -- the second arm of a shared-database pair answered 783 scopes out of
+  -- the first arm's table and finished a slice in 59 seconds that takes
+  -- two and a half minutes.  The reading looked like a measurement and
+  -- was the previous rule set wearing this one's name.
+  --
+  -- Empty means "written before this column existed", which is not this
+  -- rule set and is therefore not a final answer -- the same treatment a
+  -- NULL band axis gets in the candidate table.
+  selection_rule_sha256 TEXT NOT NULL DEFAULT '',
   PRIMARY KEY(station_id, event_date, stage)
 )
 """ % ",".join("'%s'" % reason for reason in REFUSAL_REASONS)
@@ -3281,6 +3296,45 @@ def _rebuild_position_without_scope_unique(conn: sqlite3.Connection) -> None:
         raise
 
 
+# The tables this script owns and is therefore allowed to discard.  Ordered
+# so a DROP sequence never leaves a foreign key pointing at nothing.
+PAPER_TRADE_TABLES = (
+    "paper_trade_settlement",
+    "paper_trade_position",
+    "paper_trade_refusal",
+    "paper_trade_candidate_window",
+)
+
+
+def reset_paper_tables(conn: sqlite3.Connection) -> int:
+    """Drop this script's tables so the next pass starts from nothing.
+
+    For arms.  Partitioning by fingerprint (the position and refusal rows)
+    keeps one rule set from reading another's answers, but an arm that
+    shares a replay database still inherits the other's candidate windows
+    and pays to re-derive everything anyway -- and the two protections have
+    to be gotten right separately every time.  Dropping is one line and
+    cannot be half-right.
+
+    Never reach for this on the production SSOT: the standing book lives in
+    these tables and every ROI figure in the research record comes out of
+    them.  ``--reset-paper-tables`` refuses the default database for that
+    reason.
+    """
+
+    dropped = 0
+    for table in PAPER_TRADE_TABLES:
+        if conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
+            " AND name=?",
+            (table,),
+        ).fetchone()[0]:
+            conn.execute(f"DROP TABLE {table}")
+            dropped += 1
+    conn.commit()
+    return dropped
+
+
 def ensure_schema(conn: sqlite3.Connection) -> bool:
     """Create or widen the ledger's tables.
 
@@ -3334,6 +3388,17 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
         "  stage, band_axis, claim_transform_sha256, event_date)"
     )
     conn.execute(_REFUSAL_DDL)
+    # Before the reason rebuild below, because that rebuild copies this
+    # column by name.
+    _refusal_cols = {
+        str(row[1])
+        for row in conn.execute("PRAGMA table_info(paper_trade_refusal)")
+    }
+    if "selection_rule_sha256" not in _refusal_cols:
+        conn.execute(
+            "ALTER TABLE paper_trade_refusal"
+            " ADD COLUMN selection_rule_sha256 TEXT NOT NULL DEFAULT ''"
+        )
     # A new reason cannot be recorded through an existing CHECK, and
     # ``CREATE TABLE IF NOT EXISTS`` will not widen one.  Rebuild in place
     # when the live constraint is missing a reason this code can emit.
@@ -3364,9 +3429,11 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
             conn.execute(
                 "INSERT INTO paper_trade_refusal ("
                 " station_id, event_date, stage, reason, detail,"
-                " cycles_examined, last_decision_at_utc, recorded_at_utc)"
+                " cycles_examined, last_decision_at_utc, recorded_at_utc,"
+                " selection_rule_sha256)"
                 " SELECT station_id, event_date, stage, reason, detail,"
-                " cycles_examined, last_decision_at_utc, recorded_at_utc"
+                " cycles_examined, last_decision_at_utc, recorded_at_utc,"
+                " selection_rule_sha256"
                 " FROM paper_trade_refusal_old WHERE reason IN (%s)"
                 % ",".join("'%s'" % reason for reason in REFUSAL_REASONS)
             )
@@ -3834,8 +3901,15 @@ def _purge_below_floor(conn: sqlite3.Connection) -> int:
 
 def _drop_superseded_positions(
     conn: sqlite3.Connection, *, recent_days: int | None
-) -> int:
-    """Discard seats recorded under a rule set that no longer runs.
+) -> tuple[int, int]:
+    """Discard the answers recorded under a rule set that no longer runs.
+
+    Both kinds of answer, because both are read as one: a seat short-circuits
+    the walk on any day and a refusal short-circuits it on a settled one
+    (``_scope_answer_is_final``), so leaving the refusals of a superseded rule
+    set behind makes the next pass skip precisely the scopes that rule set
+    said no to.  Seats alone were dropped until 2026-09-11 and the shared
+    database that exposed it is written up in the refusal DDL.
 
     Only within the window this pass can re-derive: a row deleted outside it
     would leave the page emptier than the ledger, which is the opposite of what
@@ -3855,9 +3929,15 @@ def _drop_superseded_positions(
         (SELECTION_RULE_SHA256, earliest),
     )
     dropped = int(cursor.rowcount or 0)
-    if dropped:
+    refusals = conn.execute(
+        "DELETE FROM paper_trade_refusal"
+        " WHERE selection_rule_sha256<>? AND event_date>=?",
+        (SELECTION_RULE_SHA256, earliest),
+    )
+    dropped_refusals = int(refusals.rowcount or 0)
+    if dropped or dropped_refusals:
         conn.commit()
-    return dropped
+    return dropped, dropped_refusals
 
 
 class _Truth(NamedTuple):
@@ -8305,6 +8385,28 @@ def _rescore_settlements(
     return dict(counts)
 
 
+def _recorded_refusal_stages(
+    conn: sqlite3.Connection, *, station_id: str, event_date: str
+) -> set[str]:
+    """The stages THIS rule set has already refused for one station-day.
+
+    One definition, so the walk and its test cannot hold two.  Rows stamped
+    by another rule set are not this one's answer: see ``_REFUSAL_DDL`` for
+    the shared-database arm that read 783 of them as its own.  An unstamped
+    row (written before the column existed) is not this rule set either.
+    """
+
+    return {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT stage FROM paper_trade_refusal"
+            " WHERE station_id=? AND event_date=?"
+            "   AND selection_rule_sha256=?",
+            (station_id, event_date, SELECTION_RULE_SHA256),
+        )
+    }
+
+
 def _scope_answer_is_final(
     present: set[str],
     seated: set[str],
@@ -8330,11 +8432,13 @@ def _scope_answer_is_final(
     fifteen minutes.  That is what the pass spent its ~1100 seconds on,
     beside a resident whose WAL checkpoint waits on the same lock.
 
-    What it costs: ``paper_trade_refusal`` carries no rule fingerprint,
-    unlike a position row, so a structural rule change no longer reaches an
-    old refusal on its own.  ``--rebuild`` is the documented step for exactly
-    that, and a change to the reason vocabulary already forces a full walk
-    through ``refusal_rebuilt``.
+    ``refused`` must be built from THIS rule set's refusals only.  The
+    table carried no fingerprint until 2026-09-11 and a refusal is what
+    this function trusts on a settled day, so an arm reading another arm's
+    table skipped every scope that arm had refused; the column, the
+    superseded drop that now reaches it, and the measurement are in
+    ``_REFUSAL_DDL``.  A change to the reason vocabulary still forces a
+    full walk through ``refusal_rebuilt``.
     """
 
     if not present:
@@ -8366,7 +8470,9 @@ def backfill(
         # "remember to run --recent-days 0 after touching
         # REFUSAL_REASONS", and nobody remembered.
         recent_days = None
-    superseded = _drop_superseded_positions(conn, recent_days=recent_days)
+    superseded, superseded_refusals = _drop_superseded_positions(
+        conn, recent_days=recent_days
+    )
     truth = _truth(conn)
     # Charter 68(c): bind the store for as-of lambda lookups this pass.
     global _EE_CONN
@@ -8422,6 +8528,8 @@ def backfill(
         counts["refusal_schema_rebuilt_full_walk"] = 1
     if superseded:
         counts["superseded_rule_dropped"] = superseded
+    if superseded_refusals:
+        counts["superseded_rule_refusals_dropped"] = superseded_refusals
     if below_floor:
         counts["below_event_date_floor_dropped"] = below_floor
     for key, value in rescored.items():
@@ -8495,14 +8603,9 @@ def backfill(
             # Asked only on a settled day, and only after the seat check
             # above has missed; see ``_scope_answer_is_final``.
             if present and (station_id, event_date) in truth:
-                refused = {
-                    str(row[0])
-                    for row in conn.execute(
-                        "SELECT stage FROM paper_trade_refusal"
-                        " WHERE station_id=? AND event_date=?",
-                        (station_id, event_date),
-                    )
-                }
+                refused = _recorded_refusal_stages(
+                    conn, station_id=station_id, event_date=event_date
+                )
                 if _scope_answer_is_final(
                     present, seated, refused, settled=True
                 ):
@@ -8554,6 +8657,7 @@ def backfill(
                         "P0 未建仓，本阶段无仓可加", 0, "",
                         datetime.now(timezone.utc)
                         .isoformat().replace("+00:00", "Z"),
+                        SELECTION_RULE_SHA256,
                     ))
                     continue
                 # Why this stage has no seat, kept as the walk goes.  The
@@ -10879,6 +10983,7 @@ def backfill(
                             refusal[1], cycles, refusal[3],
                             datetime.now(timezone.utc)
                             .isoformat().replace("+00:00", "Z"),
+                            SELECTION_RULE_SHA256,
                         )
                     )
                 # Charter 87, second reading (user ruling 2026-09-07,
@@ -11167,13 +11272,15 @@ def backfill(
         conn.executemany(
             "INSERT INTO paper_trade_refusal ("
             " station_id, event_date, stage, reason, detail,"
-            " cycles_examined, last_decision_at_utc, recorded_at_utc"
-            ") VALUES (?,?,?,?,?,?,?,?)"
+            " cycles_examined, last_decision_at_utc, recorded_at_utc,"
+            " selection_rule_sha256"
+            ") VALUES (?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT(station_id,event_date,stage) DO UPDATE SET"
             "  reason=excluded.reason, detail=excluded.detail,"
             "  cycles_examined=excluded.cycles_examined,"
             "  last_decision_at_utc=excluded.last_decision_at_utc,"
-            "  recorded_at_utc=excluded.recorded_at_utc",
+            "  recorded_at_utc=excluded.recorded_at_utc,"
+            "  selection_rule_sha256=excluded.selection_rule_sha256",
             pending_refusals,
         )
     # A scope that seated has no refusal to explain any more.
@@ -11371,6 +11478,18 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--reset-paper-tables",
+        action="store_true",
+        help=(
+            "drop this script's four tables before anything else, so an arm"
+            " inherits nothing from the arm that ran before it.  Refused on"
+            " the default database -- the standing book lives there.  Use it"
+            " on a replay database between arms; --rebuild is NOT a"
+            " substitute, because it keeps the candidate windows and, until"
+            " 2026-09-11, kept the previous arm's refusals as well."
+        ),
+    )
+    parser.add_argument(
         "--recent-days",
         type=int,
         default=4,
@@ -11397,8 +11516,26 @@ def main() -> int:
     if args.recent_days is not None and args.recent_days <= 0:
         args.recent_days = None
     database = args.db.expanduser().resolve(strict=True)
+    if args.reset_paper_tables:
+        # Before the refusal on the default database, so the message names
+        # the reason rather than an argument combination.
+        if database == DEFAULT_DB.resolve():
+            raise SystemExit(
+                "--reset-paper-tables refuses the production SSOT:"
+                " the standing book is in these tables"
+            )
+        if not (args.backfill or args.rebuild):
+            raise SystemExit(
+                "--reset-paper-tables is a step before a walk;"
+                " pass --backfill or --rebuild too"
+            )
     if args.backfill or args.rebuild:
         conn = _connect(database, writable=True)
+        if args.reset_paper_tables:
+            print(
+                "reset %d paper_trade_* tables in %s"
+                % (reset_paper_tables(conn), database.name)
+            )
         if args.rebuild:
             ensure_schema(conn)
             # Bounded by the same date the walk is bounded by.  ``--through
