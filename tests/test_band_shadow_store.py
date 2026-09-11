@@ -544,10 +544,10 @@ def test_stage_isolation_survives_one_stage_throwing(monkeypatch) -> None:
     _synthetic_lane(conn, days=24, stations=6)
     real = band_shadow_store.fit_band_shadow_table
 
-    def flaky(inner, *, stage):
+    def flaky(inner, *, stage, **kwargs):
         if stage == "P0":
             raise sqlite3.OperationalError("database is locked")
-        return real(inner, stage=stage)
+        return real(inner, stage=stage, **kwargs)
 
     monkeypatch.setattr(band_shadow_store, "fit_band_shadow_table", flaky)
     report = refit_shadow_all_stages(conn, commit=True)

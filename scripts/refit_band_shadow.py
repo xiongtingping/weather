@@ -46,6 +46,16 @@ def main() -> int:
         action="store_true",
         help="also print one plain-language SUMMARY line per stage",
     )
+    parser.add_argument(
+        "--min-decision-at-utc",
+        default=None,
+        help=(
+            "bound the evidence below.  Omit for the stage's own"
+            " served-arithmetic anchor (the default since 2026-09-11, the"
+            " same bound the pooled band and centre/width lanes read);"
+            " pass '' to fit unbounded the way this lane did before."
+        ),
+    )
     args = parser.parse_args()
     database = args.db.expanduser().resolve(strict=True)
     if args.commit:
@@ -55,7 +65,10 @@ def main() -> int:
             f"file:{database}?mode=ro", uri=True, timeout=60.0
         )
     conn.execute("PRAGMA busy_timeout=60000")
-    stages = refit_shadow_all_stages(conn, commit=args.commit)
+    stages = refit_shadow_all_stages(
+        conn, commit=args.commit,
+        min_decision_at_utc=args.min_decision_at_utc,
+    )
     failed = sorted(
         stage for stage, entry in stages.items() if entry.get("error")
     )

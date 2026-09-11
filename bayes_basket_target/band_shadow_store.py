@@ -100,6 +100,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import zlib
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
@@ -257,6 +258,7 @@ def collect_shadow_sample(
     *,
     stage: str = "P0",
     axis: str = BAND_AXIS_CLAIM,
+    min_decision_at_utc: str | None = None,
 ) -> dict[str, Any]:
     """Per (day, station, position, band) claimed mass and hits.
 
@@ -265,6 +267,15 @@ def collect_shadow_sample(
     shadow and the served table are fitted on byte-identical evidence and
     a difference between them is a difference of geometry, never of
     sample.
+
+    ``min_decision_at_utc`` bounds the evidence below, for the reason the
+    pooled lane has carried the same bound since 2026-09-10: these cells
+    measure how wrong the SERVED claim is, and a decision taken before the
+    serving arithmetic changed describes a distribution nobody serves any
+    more.  Unbounded, this lane pooled 41 days across the four in which
+    thirty-two stations were served at half width, and a cell that only
+    clears its interval on that pooled sample is a cell fitted to a shape
+    that has been retired.
 
     The band is read on ``axis``, which is the axis the stage's pooled
     table serves.  The position group is NOT folded into it: the distance
@@ -280,7 +291,10 @@ def collect_shadow_sample(
     if axis_id not in BAND_AXES:
         raise ValueError(f"unknown band axis: {axis_id}")
     cells_of_axis = cells_for_axis(axis_id)
-    lane = serving_lane_by_station_day(conn, truth, stage=_check_stage(stage))
+    lane = serving_lane_by_station_day(
+        conn, truth, stage=_check_stage(stage),
+        min_decision_at_utc=min_decision_at_utc,
+    )
     cells: dict[
         tuple[str, str, tuple[float, float]], dict[str, Any]
     ] = defaultdict(
@@ -328,10 +342,19 @@ def collect_shadow_sample(
             })
     return {
         "axis": axis_id,
+        "min_decision_at_utc": min_decision_at_utc,
         "cells": {
             key: {
                 "by_day": {
                     day: (value[0], value[1])
+                    for day, value in cell["by_day"].items()
+                },
+                # The finest cell is one station, so its per-station view
+                # is itself; it is carried so that a coarser cell built by
+                # merging these knows which station each day's mass came
+                # from -- the station dimension the interval resamples.
+                "by_day_station": {
+                    day: {key[0]: (value[0], value[1])}
                     for day, value in cell["by_day"].items()
                 },
                 "rows": cell["rows"],
@@ -356,7 +379,13 @@ def _marginalise(
     merged: dict[
         tuple[str, str, tuple[float, float]], dict[str, Any]
     ] = defaultdict(
-        lambda: {"by_day": defaultdict(lambda: [0.0, 0]), "rows": 0}
+        lambda: {
+            "by_day": defaultdict(lambda: [0.0, 0]),
+            "by_day_station": defaultdict(
+                lambda: defaultdict(lambda: [0.0, 0])
+            ),
+            "rows": 0,
+        }
     )
     for (station, group, band), value in cells.items():
         if level == "station":
@@ -371,11 +400,24 @@ def _marginalise(
             acc = target["by_day"][day]
             acc[0] += float(claimed)
             acc[1] += int(hits)
+            # A station's mass stays attributed to the station across the
+            # merge: a position cell is forty-five stations' worth of one
+            # side of the peak, and the interval has to know that.
+            per_station = target["by_day_station"][day][station]
+            per_station[0] += float(claimed)
+            per_station[1] += int(hits)
     return {
         key: {
             "by_day": {
                 day: (value[0], value[1])
                 for day, value in cell["by_day"].items()
+            },
+            "by_day_station": {
+                day: {
+                    station: (value[0], value[1])
+                    for station, value in stations.items()
+                }
+                for day, stations in cell["by_day_station"].items()
             },
             "rows": cell["rows"],
         }
@@ -396,6 +438,72 @@ def _bootstrap_draws(days: Sequence[str]) -> np.ndarray:
     return rng.multinomial(
         len(days), np.full(len(days), 1.0 / len(days)), size=BOOTSTRAP_SAMPLES
     ).astype(np.float64)
+
+
+def _two_way_resample(
+    cell: Mapping[str, Any],
+    *,
+    days: Sequence[str],
+    draws: np.ndarray,
+    claimed: np.ndarray,
+    hits: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Sampled (claimed, hits) per bootstrap draw, over days AND stations.
+
+    The day draw is the shared multinomial every cell uses, kept so that
+    cells fed by the same weather day stay correlated.  Within each drawn
+    day, the station-days the cell is made of are drawn again: a day drawn
+    twice contributes two independent station resamples, which is what a
+    multinomial with twice the count is.  A cell of one station has nothing
+    to resample within a day and collapses exactly to the day bootstrap, so
+    the station level is priced as before and only cells that pool stations
+    -- the position level, which is where a fleet-wide factor is earned --
+    widen.  That is the same two-cluster interval the served table has used
+    since 2026-09-11, on the same evidence, for the same reason: a factor
+    earned on four stations repeating themselves must not price as
+    confidently as one the fleet agrees on.
+
+    Cells built without a per-station view (older callers, the unit
+    fixtures) take the day-only path unchanged.
+    """
+
+    by_day_station = cell.get("by_day_station")
+    multi = [
+        day for day in days
+        if len((by_day_station or {}).get(day) or {}) > 1
+    ]
+    if not by_day_station or not multi:
+        return draws @ claimed, draws @ hits
+    sampled_claimed = np.zeros(draws.shape[0])
+    sampled_hits = np.zeros(draws.shape[0])
+    multi_set = set(multi)
+    # Seeded per cell from its own station set, so a refit on unchanged
+    # evidence reproduces the same interval and two cells with different
+    # stations do not share a station draw they have no reason to share.
+    names = sorted({
+        station
+        for stations in by_day_station.values()
+        for station in stations
+    })
+    rng = np.random.default_rng(
+        [BOOTSTRAP_SEED, zlib.crc32("|".join(names).encode("utf-8"))]
+    )
+    for position, day in enumerate(days):
+        if day not in multi_set:
+            sampled_claimed += draws[:, position] * claimed[position]
+            sampled_hits += draws[:, position] * hits[position]
+            continue
+        stations = by_day_station[day]
+        day_claimed = np.array([float(v[0]) for v in stations.values()])
+        day_hits = np.array([float(v[1]) for v in stations.values()])
+        count = len(stations)
+        counts = rng.multinomial(
+            (draws[:, position] * count).astype(np.int64),
+            np.full(count, 1.0 / count),
+        )
+        sampled_claimed += counts @ day_claimed
+        sampled_hits += counts @ day_hits
+    return sampled_claimed, sampled_hits
 
 
 def _cell_statistics(
@@ -433,8 +541,9 @@ def _cell_statistics(
             "half_masses": [0.0, 0.0],
         })
         return stats
-    sampled_claimed = draws @ claimed
-    sampled_hits = draws @ hits
+    sampled_claimed, sampled_hits = _two_way_resample(
+        cell, days=days, draws=draws, claimed=claimed, hits=hits,
+    )
     usable = sampled_claimed > 0
     ratios = sampled_hits[usable] / sampled_claimed[usable]
     if ratios.size < BOOTSTRAP_SAMPLES // 2:
@@ -608,6 +717,7 @@ def fit_band_shadow_table(
     conn: sqlite3.Connection,
     *,
     stage: str = "P0",
+    min_decision_at_utc: str | None = None,
 ) -> dict[str, Any]:
     """Fit one stage's shadow table under the re-set admission rule.
 
@@ -615,10 +725,25 @@ def fit_band_shadow_table(
     promoted at the first level where it clears all three gates against
     what it would otherwise serve; anything unpromoted at every level
     serves the pooled factor from the live served table.
+
+    ``min_decision_at_utc`` defaults to the stage's served-arithmetic
+    anchor, the bound the pooled band lane and the centre/width lane both
+    read; pass the empty string to fit unbounded the way this lane did
+    until 2026-09-11.  The pooled table this lane is scored against is
+    fitted on the anchored sample, so an unanchored shadow was measuring
+    its increment over a base fitted on different days.
     """
 
     stage_id = _check_stage(stage)
     truth = _truth(conn)
+    if min_decision_at_utc is None:
+        # Imported here for the same reason the pooled lane does it:
+        # center_width_store imports the band store, and a module-level
+        # import from here would close the cycle.
+        from .center_width_store import served_arithmetic_anchor
+        evidence_floor = served_arithmetic_anchor(conn, stage=stage_id)
+    else:
+        evidence_floor = str(min_decision_at_utc) or None
     # Charter 105: the pooled table is this lane's BASE, so this lane's
     # cells have to be keyed on the axis that table is keyed on.  Reading a
     # distance table as claims puts every bucket in the first cell -- 0.00929
@@ -640,7 +765,8 @@ def fit_band_shadow_table(
         BAND_AXIS_CLAIM if pooled_loaded is None else pooled_loaded[2]
     )
     sample = collect_shadow_sample(
-        conn, truth, stage=stage_id, axis=pooled_axis
+        conn, truth, stage=stage_id, axis=pooled_axis,
+        min_decision_at_utc=evidence_floor,
     )
     days = sample["days"]
     finest = sample["cells"]
@@ -671,6 +797,8 @@ def fit_band_shadow_table(
                 "serving_station_day_count": 0,
                 "accumulating": True,
                 "pooled_table_sha256": pooled_sha,
+                "min_decision_at_utc": evidence_floor,
+                "interval_resampling": "day_then_station",
                 "levels": {},
             },
             "serving_day_count": 0,
@@ -835,6 +963,8 @@ def fit_band_shadow_table(
             "station_count": len(sample["stations"]),
             "accumulating": False,
             "pooled_table_sha256": pooled_sha,
+            "min_decision_at_utc": evidence_floor,
+            "interval_resampling": "day_then_station",
             "gate_a": {
                 "min_claimed_mass": MIN_CELL_CLAIMED_MASS,
                 "min_days": MIN_CELL_DAYS,
@@ -1041,7 +1171,10 @@ def _prune_old_cells(conn: sqlite3.Connection, *, stage: str) -> int:
 
 
 def refit_shadow_all_stages(
-    conn: sqlite3.Connection, *, commit: bool = False
+    conn: sqlite3.Connection,
+    *,
+    commit: bool = False,
+    min_decision_at_utc: str | None = None,
 ) -> dict[str, Any]:
     """Fit every stage's shadow table, isolated the way the served one is.
 
@@ -1054,7 +1187,9 @@ def refit_shadow_all_stages(
         entry: dict[str, Any] = {"stage": stage}
         results[stage] = entry
         try:
-            fitted = fit_band_shadow_table(conn, stage=stage)
+            fitted = fit_band_shadow_table(
+                conn, stage=stage, min_decision_at_utc=min_decision_at_utc,
+            )
             promoted = [
                 cell
                 for cell in fitted["cells"]
