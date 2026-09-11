@@ -198,19 +198,20 @@ def test_this_generation_is_reported_apart_from_the_clock(board):
     assert board["running_now"] == ["hourly_none"]
 
 
-def test_the_lanes_reach_the_health_lamp_and_can_say_they_cannot_read(
+def test_the_lanes_reach_the_head_lamp_and_can_say_they_cannot_read(
     monkeypatch,
 ):
-    """The lanes are a lamp now (user ruling, 2026-09-11).
+    """The lanes are a lamp in the page head now (user ruling, 2026-09-11).
 
     The eight-column table is gone; the colour and the red/amber counts
-    ride on one light, and which lane is starved or stuck rides in its
-    tooltip.  What has to stay true is that the collector still ships and
-    the lamp board still reads it.
+    ride on one light above the tab bar, and which lane is starved or
+    stuck rides in its tooltip.  What has to stay true is that the
+    collector still ships and the head still reads it.
     """
 
     page = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
-    assert '[healthLights,"系统状态灯"]' in page
+    assert 'lampRowSafe(upstreamLights, "上游")' in page
+    assert 'lampRowSafe(healthLights, "机器")' in page
     assert "D.hosted_sweeps" in page
     assert '"hosted_sweeps": hosted_sweeps,' in page
     # A board never fails closed on one section.

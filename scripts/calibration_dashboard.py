@@ -8541,6 +8541,13 @@ background:var(--card);border:1px solid var(--line);border-radius:7px}
 .lamp .rd{margin-left:auto;color:var(--muted);font-size:12px;
 white-space:nowrap;font-variant-numeric:tabular-nums}
 .lamp.bad{border-color:var(--red)}
+/* The head deck (user ruling, 2026-09-11).  The lamps answer "is anything
+   broken" and that is read on arrival, before a tab is chosen -- so they
+   sit above the tab bar rather than inside two groups a click away.  A
+   caption per row instead of a heading: this is the head, not a section. */
+.lampdeck{margin-top:9px;padding-top:9px;border-top:1px solid var(--line)}
+.lampdeck + .lampdeck{margin-top:9px}
+.lampcap{display:block;color:var(--muted);font-size:11.5px;margin-bottom:5px}
 .green{background:var(--green)}.amber{background:var(--amber)}
 .red{background:var(--red)}
 .pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;
@@ -8782,7 +8789,7 @@ const shares = (v) => {
 };
 const OVERALL = {green:["运转正常","所有环节都在按预期更新"],
   amber:["有需要留意的地方","不影响出数，但有环节慢了或在攒数据"],
-  red:["有环节断了","下面标红的环节需要处理"]};
+  red:["有环节断了","看这张卡下面两排灯，红的那盏就是断的那一环"]};
 
 function head(){
   const [t, s] = OVERALL[D.overall_health] || OVERALL.amber;
@@ -8797,12 +8804,14 @@ function head(){
     `<span class="pill ${a.health}" style="font-size:13px">${h(a.label)}
       <span style="opacity:.78">｜${h(a.note)}</span></span>`).join("");
   const more = named.length > 6
-    ? `<span class="muted">…等 ${named.length} 处，详见下文标${
-        D.overall_health === "red" ? "红" : "黄"}的环节</span>` : "";
+    ? `<span class="muted">…等 ${named.length} 处，其余见下面两排灯里标${
+        D.overall_health === "red" ? "红" : "黄"}的那几盏</span>` : "";
   return `<h1>气温篮子全链看板</h1>
-  <p class="sub">从模型到下单的一整条链。<b>首页是看板加逐站账</b>：健康条、
+  <p class="sub">从模型到下单的一整条链。<b>页头先回答"有没有东西坏了"</b>：
+  总灯、生产周期，以及上游与机器两排状态灯——它们在选标签页之前就该看见，
+  所以放在标签栏上面而不是某个分组里面。往下是看板加逐站账：
   组合风险指标与图表、每日统计、逐站逐日明细与三张跟进表；
-  往下按五个<b>区域</b>分组，每区一个颜色，标签栏与区标题同色。
+  再往下按三个<b>区域</b>分组，每区一个颜色，标签栏与区标题同色。
   板块不再编号——它们会随分组移动，编号只会指错地方。</p>
   <div class="card"><div style="display:flex;gap:14px;align-items:center;
     flex-wrap:wrap">
@@ -8825,6 +8834,7 @@ function head(){
       ${hours(D.worker&&D.worker.production_checked_at?
         (Date.now()-Date.parse(D.worker.production_checked_at))/3600000:null)}</span>
   </div>
+  ${lampRowSafe(upstreamLights, "上游")}${lampRowSafe(healthLights, "机器")}
   ${renderStamp()}${chips ? `<div style="display:flex;gap:8px;flex-wrap:wrap;
     align-items:center;margin-top:9px">${chips}${more}</div>` : ""}</div>`;
 }
@@ -8979,7 +8989,7 @@ function overview(){
     (laggard?`最旧一家 ${h(laggard.label)} · ${
       hours(laggard.run_age_hours)}的 run`:"没有成员族")
       +(idle==null?"":` · 车道 ${hours(idle)}前最后落一家`),
-    "「上游数据」：四家集合预报的到货情况。"
+    "页头「上游」灯排里的四盏模型灯：四家集合预报的到货情况。"
     +"「车道…前最后落一家」是采集器上一次成功落任何一家的时间 —— "
     +"每家自己的年龄按各自节奏算，会把「整条车道停了」这件事吸收掉，这个数不会");
 
@@ -9018,14 +9028,14 @@ function overview(){
   push(blocking?"red":"green",
     "要处理的缺口", String(blocking),
     waiting?`另有 ${waiting} 条在正常等待`:"没有待处理项",
-    "「上游数据」里的「缺口检查」灯：缺了什么、会不会自己好");
+    "页头「上游」灯排最后一盏「缺口检查」：缺了什么、会不会自己好");
 
   // 3. Did the truth for settled days actually land.
   const outstanding=(D.truth||{}).outstanding;
   push(outstanding==null?"muted":outstanding===0?"green"
       :outstanding<=5?"amber":"red",
     "真值待物化", outstanding==null?"—":String(outstanding),
-    "结算真值还没落库的站日", "「系统健康」里的「真值物化」灯");
+    "结算真值还没落库的站日", "页头「机器」灯排里的「真值物化」灯");
 
   // 4. How much of the fleet actually opened a position on the newest day.
   const day=S.latest_day||(S.roster_event_dates||[])[0];
@@ -9130,9 +9140,20 @@ const lamp = (health, name, reading, tip) =>
     tip ? ` title="${attr(tip)}"` : ""}><span class="dot ${
     health || "amber"}"></span><b>${h(name)}</b><span class="rd">${
     reading == null ? "—" : reading}</span></div>`;
-const lampBoard = (title, sub, lamps) => `<h2>${title}</h2>
-  <p class="sub">${sub}</p>
-  <div class="lamps">${lamps.join("")}</div>`;
+const lampRow = (caption, lamps) => lamps.length
+  ? `<div class="lampdeck"><span class="lampcap">${caption}</span>
+     <div class="lamps">${lamps.join("")}</div></div>` : "";
+// The head is now the one element the page cannot afford to lose: the
+// banner light, the production cycle and the render stamp are all in the
+// same card as the lamps, and ``safe`` wraps the head as a whole.  So a
+// lamp row that throws would take the banner down with it.  Each row
+// catches its own instead, and says so as a lamp.
+const lampRowSafe = (fn, caption) => {
+  try { return fn(); }
+  catch (err) {
+    return lampRow(caption, [lamp("red", "灯板出错", String(err))]);
+  }
+};
 
 function upstreamLights(){
   const L = [];
@@ -9179,9 +9200,9 @@ function upstreamLights(){
       ? g.slice(0, 8).map(x => x.what).join("；")
         + (manual ? ` · 其中 ${manual} 条不会自己好` : " · 都会自行恢复")
       : "每一项检查都通过了"));
-  return lampBoard("上游数据",
-    "喂进来的东西到没到：四家全球模型的到货、三条区域采集道、缺口检查。" +
-    "灯上是最新一轮和它多久前落库；悬停看站数、存档深度和是否可回填。", L);
+  return lampRow("上游 · 喂进来的东西到没到（四家全球模型 · 三条区域采集道 · "
+    + "区域赛道 · 缺口检查）。灯上是最新一轮和多久前落库，悬停看站数与存档深度",
+    L);
 }
 
 function healthLights(){
@@ -9232,9 +9253,9 @@ function healthLights(){
       + " · 「落后」不为零才是真的落后；「挡住」是证据不全或互相矛盾，"
       + "错过的日子没有任何东西会重试"));
   }
-  return lampBoard("系统健康",
-    "机器在不在转。前面一排是数据从头到尾的每一环（上面停了，下面迟早跟着停），" +
-    "后面三盏是库容量、常驻的维护车道、真值物化。", L);
+  return lampRow("机器 · 在不在转。前六盏是数据从头到尾的每一环（上面停了，"
+    + "下面迟早跟着停），后三盏是库容量、常驻的维护车道、真值物化",
+    L);
 }
 
 function tables(){
@@ -13519,14 +13540,13 @@ function servingWeights(){
 // renumbered one, because it only reads as an accident.
 const GROUPS = [
   // Grouped by what the reader is asking, not by the order the sections
-  // were built in (user ruling, 2026-08-29).  Five questions: is the data
-  // arriving, is the model any good, what shape is the probability and the
-  // position it buys, does the market let that make money, and is the
-  // machine running.  Each group carries a colour so the tab bar and the
-  // group titles agree without the reader matching text.
-  {id:"upstream", label:"上游数据", tone:"#58a6ff",
-   note:"喂进来的东西到没到：四家模型的到货、区域采集道、缺口",
-   sections:[[upstreamLights,"上游状态灯"]]},
+  // were built in (user ruling, 2026-08-29).  Three questions now: is the
+  // model any good, what shape is the probability and the position it
+  // buys, and does the market let that make money.  The other two -- is
+  // the data arriving, is the machine running -- left the tab bar on
+  // 2026-09-11: they are answered by the head's lamps, and an answer read
+  // on arrival does not belong behind a tab.  Each group carries a colour
+  // so the tab bar and the group titles agree without matching text.
   {id:"model", label:"模型", tone:"#d2a8ff",
    note:"模型本身准不准：订正与权重、离散度、命中率、OOS、中心/宽度、总检",
    sections:[[tables,"偏差订正与权重"],
@@ -13543,9 +13563,6 @@ const GROUPS = [
    note:"市场肯不肯让这套东西赚钱：覆盖与 EV、篮子命中率、真值落位",
    sections:[[coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"],
      [truthLanding,"真值落位"]]},
-  {id:"health", label:"系统健康", tone:"#f85149",
-   note:"机器在不在转：整条链路每一环、库还剩多少、常驻的维护车道、真值物化",
-   sections:[[healthLights,"系统状态灯"]]},
 ];
 const tabs = `<nav class="tabs" id="tabs">${
   GROUPS.map(g => `<button type="button" data-tab="${g.id}"

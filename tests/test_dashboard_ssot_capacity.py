@@ -153,17 +153,20 @@ def test_a_board_without_a_guard_says_so_rather_than_inventing_one(
     assert out["tables"] == []
 
 
-def test_the_reading_reaches_the_health_lamp():
-    """The section is a lamp now (user ruling, 2026-09-11).
+def test_the_reading_reaches_the_head_lamp():
+    """The section is a lamp in the page head now (user ruling, 2026-09-11).
 
     It used to be a gauge, three tiles and a per-table growth table; the
-    ruling cut the health group to status lights, so what is pinned here is
-    that the collector still ships and the lamp board still reads it -- not
-    that a section by that name is registered.
+    ruling cut the health group to status lights, and a second ruling the
+    same day moved those lights above the tab bar -- "is anything broken"
+    is read on arrival, not after choosing a tab.  So what is pinned is
+    that the collector still ships and the head still reads it, not that a
+    section or a group by any particular name exists.
     """
 
     page = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
-    assert '[healthLights,"系统状态灯"]' in page
+    assert 'lampRowSafe(upstreamLights, "上游")' in page
+    assert 'lampRowSafe(healthLights, "机器")' in page
     assert "D.ssot_capacity" in page
     assert '"ssot_capacity": ssot_capacity,' in page
     # The composition walk counts rows over a day on ten tables; it is the
