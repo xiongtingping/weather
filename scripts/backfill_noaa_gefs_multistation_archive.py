@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.contracts import ContractError  # noqa: E402
 from bayes_basket_target.database import DEFAULT_TARGET_DB  # noqa: E402
 from bayes_basket_target.market_registry import (  # noqa: E402
     load_active_registry_rows,
@@ -37,8 +38,9 @@ def _station_scopes(
     conn: sqlite3.Connection,
     *,
     selected_stations: set[str],
-) -> list[dict[str, object]]:
+) -> tuple[list[dict[str, object]], list[str]]:
     grouped: dict[str, list[dict[str, object]]] = defaultdict(list)
+    without_coordinates: list[str] = []
     for row in load_active_registry_rows(conn):
         station = str(row.get("station_id") or "").strip().upper()
         if not selected_stations or station in selected_stations:
@@ -63,7 +65,18 @@ def _station_scopes(
             raise RuntimeError(
                 "gefs_multistation_registry_timezone_invalid"
             )
-        coordinates = station_coordinates(station)
+        try:
+            coordinates = station_coordinates(station)
+        except ContractError as exc:
+            # Market roster is wider than the coordinate roster (LLBG, LTFM,
+            # UUWW); an explicitly selected station must still fail loudly.
+            if (
+                str(exc) != "native_station_coordinates_missing"
+                or station in selected_stations
+            ):
+                raise
+            without_coordinates.append(station)
+            continue
         scopes.append({
             "station_id": station,
             "settlement_timezone": next(iter(timezones)),
@@ -73,7 +86,7 @@ def _station_scopes(
         })
     if not scopes:
         raise RuntimeError("gefs_multistation_registry_empty")
-    return scopes
+    return scopes, without_coordinates
 
 
 def _input_station_scopes(
@@ -118,6 +131,11 @@ def main() -> int:
     # P0 follows the freshest run, so history is backfilled per lead: the same
     # event date has a d2, a d1 and a d0 capture, each from a different run.
     parser.add_argument("--lead-days", type=int, default=2, choices=[0, 1, 2])
+    # See the ECMWF twin: the hour bucket is per station and per run, and the
+    # Americas' h12_24 scope only comes from a 12Z run.
+    parser.add_argument(
+        "--run-cycle-hour", type=int, default=None, choices=[0, 6, 12, 18]
+    )
     parser.add_argument("--station-id", action="append", default=[])
     parser.add_argument("--output", type=Path)
     parser.add_argument("--input", type=Path)
@@ -138,12 +156,13 @@ def main() -> int:
             archive,
             selected_stations=selected,
         )
+        without_coordinates: list[str] = []
         output = args.input.expanduser().resolve()
         output_wrote = False
     else:
         with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as conn:
             conn.execute("PRAGMA query_only=ON")
-            scopes = _station_scopes(
+            scopes, without_coordinates = _station_scopes(
                 conn,
                 selected_stations=selected,
             )
@@ -156,6 +175,7 @@ def main() -> int:
         )
         archive = capture_gefs_station_days(
             lead_days=args.lead_days,
+            run_cycle_hour=args.run_cycle_hour,
             event_date=args.event_date,
             station_scopes=scopes,
             archive_query_at_utc=queried_at,
@@ -164,8 +184,10 @@ def main() -> int:
         output_wrote = write_bounded_json_if_changed(output, archive)
     ingress = None
     if args.commit:
-        with sqlite3.connect(database, timeout=60.0) as conn:
-            conn.execute("PRAGMA busy_timeout=60000")
+        # The resident cycle can hold the SSOT write lock for minutes; a
+        # historical ingest has nothing to lose by waiting for it.
+        with sqlite3.connect(database, timeout=300.0) as conn:
+            conn.execute("PRAGMA busy_timeout=300000")
             assert_connection_target_capacity(
                 conn,
                 recover_oversized_wal=True,
@@ -180,6 +202,7 @@ def main() -> int:
     print(json.dumps({
         "event_date": args.event_date,
         "station_count": archive["station_count"],
+        "stations_without_coordinates": without_coordinates,
         "station_ids": archive["station_ids"],
         "union_forecast_hours": archive["union_forecast_hours"],
         "downloaded_field_receipt_count": archive[
