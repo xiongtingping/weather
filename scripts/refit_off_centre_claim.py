@@ -57,6 +57,19 @@ def _line(fit: dict) -> str:
 
 
 def main() -> int:
+    from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: PLC0415
+        OFF_CENTRE_CLAIM_MODE,
+    )
+    if OFF_CENTRE_CLAIM_MODE == "off":
+        # Lane retired 2026-09-12 with the deflation itself: the kernel
+        # serves identity on every path, so a table fitted here would be
+        # journaled and never read.  PM_OFF_CENTRE_CLAIM=on is the arm.
+        print(
+            "off-centre claim lane retired 2026-09-12 (kernel serves"
+            " identity; PM_OFF_CENTRE_CLAIM=on restores the arm) -- nothing"
+            " fitted, nothing activated, nothing journaled"
+        )
+        return 0
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--commit", action="store_true")

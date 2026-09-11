@@ -223,6 +223,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     EXCHANGE_LOT_TOP_UP_MODES,
     MAX_STAKE_FRACTION_PER_SCOPE,
     OFF_CENTER_CLAIM_RAMP_BUCKETS,
+    OFF_CENTRE_CLAIM_MODE,
     STAGE_BUDGET_SHARE,
     SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
     EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
@@ -2068,9 +2069,11 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
             else "·%s按挂单价" % "+".join(SEAT_PRICING_LANE_STAGES)
         )
     ),
-    None
-    if OFF_CENTER_CLAIM_RAMP_BUCKETS == 1.0
-    else f"离心折扣按距离{OFF_CENTER_CLAIM_RAMP_BUCKETS:g}桶爬坡",
+    "离心折扣已退役(恒等)" if OFF_CENTRE_CLAIM_MODE == "off" else (
+        None
+        if OFF_CENTER_CLAIM_RAMP_BUCKETS == 1.0
+        else f"离心折扣按距离{OFF_CENTER_CLAIM_RAMP_BUCKETS:g}桶爬坡"
+    ),
     None if not CERTAINTY_GATE else "确定性闸" + "+".join(CERTAINTY_GATE),
     None
     if EXECUTION_MODE != "maker_resting" or not MAKER_RESTING_SHOULDER_LAMBDA
@@ -2536,6 +2539,10 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
         {"off_center_claim_ramp_buckets": OFF_CENTER_CLAIM_RAMP_BUCKETS}
         if OFF_CENTER_CLAIM_RAMP_BUCKETS != 1.0 else {}
     ),
+    # Retired 2026-09-12: the off-centre deflation is identity by default.
+    # Hashed unconditionally -- rows judged under the deflation and rows
+    # judged on the raw claim are not one book.
+    "off_centre_claim_mode": OFF_CENTRE_CLAIM_MODE,
     # Research arm: which statistic reads the skew.  Hashed only when it
     # departs the charter-55 default so the standing book keeps its sha.
     **(

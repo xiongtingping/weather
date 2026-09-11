@@ -216,7 +216,26 @@ def test_moving_the_off_centre_table_leaves_centre_holding_rows_current(
     """
     import bayes_basket_target.basket_kernel.delta_v2 as kernel
 
+    # The deflation is retired (identity) by default, and on that path the
+    # table is not part of the claim, so moving it must NOT move the key.
+    off_retired = kernel.claim_transform_fingerprint(holds_centre=False)
+    monkeypatch.setattr(
+        kernel,
+        "OFF_CENTER_CLAIM_BANDS",
+        ((0.05, 1.15), (0.10, 0.85), (0.20, 0.88), (1.01, 0.5)),
+    )
+    assert kernel.claim_transform_fingerprint(holds_centre=False) == off_retired
+    # With the arm on, the table IS the claim's arithmetic and the key moves.
+    monkeypatch.setattr(kernel, "OFF_CENTRE_CLAIM_MODE", "on")
+    monkeypatch.setattr(
+        kernel, "OFF_CENTER_CLAIM_BANDS", kernel.OFF_CENTER_CLAIM_BANDS,
+    )
     before_centre = kernel.claim_transform_fingerprint(holds_centre=True)
+    monkeypatch.setattr(
+        kernel,
+        "OFF_CENTER_CLAIM_BANDS",
+        ((0.05, 1.15), (0.10, 0.85), (0.20, 0.88), (1.01, 0.6)),
+    )
     before_off = kernel.claim_transform_fingerprint(holds_centre=False)
     monkeypatch.setattr(
         kernel,

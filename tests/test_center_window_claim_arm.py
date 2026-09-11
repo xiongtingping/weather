@@ -161,3 +161,22 @@ def test_the_admission_sizing_split_is_off_by_default_and_touches_only_the_stake
     ledger = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
     assert '{"sizing_claim": [' in ledger
     assert '"定注另读校准曲线" if SIZING_CLAIM_BANDS else None' in ledger
+
+
+def test_the_off_centre_deflation_is_retired_and_identity_by_default(monkeypatch) -> None:
+    """Second cut of the claim-chain clean-up (2026-09-12): the off-centre
+    deflation serves 1.0 on every path unless the arm is switched on, the
+    ledger hashes the mode unconditionally, and the refit lane is a no-op."""
+    import bayes_basket_target.basket_kernel.delta_v2 as K
+
+    assert K.OFF_CENTRE_CLAIM_MODE == "off"
+    assert K.off_center_claim_factor(0.15, gap_buckets=1) == 1.0
+    assert K.off_center_claim_factor(0.15, gap_buckets=3, bands=((0.2, 0.5), (1.01, 1.0))) == 1.0
+    assert K.window_claim_factor(0.15, center_gap=2) == 1.0
+    monkeypatch.setattr(K, "OFF_CENTRE_CLAIM_MODE", "on")
+    assert K.off_center_claim_factor(0.15, gap_buckets=1) == pytest.approx(0.88)
+    ledger = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
+    assert '"off_centre_claim_mode": OFF_CENTRE_CLAIM_MODE' in ledger
+    assert '"离心折扣已退役(恒等)" if OFF_CENTRE_CLAIM_MODE == "off"' in ledger
+    cli = (ROOT / "scripts" / "refit_off_centre_claim.py").read_text(encoding="utf-8")
+    assert 'if OFF_CENTRE_CLAIM_MODE == "off":' in cli

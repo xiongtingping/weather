@@ -3298,6 +3298,24 @@ OFF_CENTER_CLAIM_RAMP_BUCKETS = float(
 )
 
 
+# Retired 2026-09-12 (user ruling: "离心折扣恒等 + 车道退役 + 标注", the
+# second cut of the claim-chain clean-up after charter 81).  The deflation
+# only ever applied to a window that does NOT hold the mean centre, and the
+# seat is the probability-mass head, which always does -- so on every seated
+# window in production the factor was 1.0 by construction, and the only rows
+# it still touched were the unseated candidate windows in lambda's fitting
+# population.  Its table was hand-measured once (2026-08-14, no script, no n)
+# and refitted by a lane from 2026-09-09 that never had a seated row to price
+# itself on.  ``off`` (the default) makes the factor identity on every path
+# and the nightly refit a no-op; ``on`` is the research arm that restores the
+# bootstrap constant above and the store's fitted tables.
+OFF_CENTRE_CLAIM_MODE = (
+    os.environ.get("PM_OFF_CENTRE_CLAIM", "").strip().lower() or "off"
+)
+if OFF_CENTRE_CLAIM_MODE not in {"off", "on"}:
+    raise RuntimeError(f"unknown off-centre claim mode: {OFF_CENTRE_CLAIM_MODE}")
+
+
 def off_center_claim_factor(
     claimed_mass: float,
     *,
@@ -3312,6 +3330,10 @@ def off_center_claim_factor(
     measure a distance.
     """
 
+    if OFF_CENTRE_CLAIM_MODE == "off":
+        # Retired 2026-09-12: identity on every path, whatever the store
+        # or the caller hands in.
+        return 1.0
     mass = float(claimed_mass)
     # ``bands`` is the DB-resident table for the stage's current band axis
     # (``off_centre_claim_store``); the constant is the bootstrap a stage
@@ -3566,9 +3588,19 @@ def claim_transform_fingerprint(
     # partition key -- the thing that exists to notice exactly that -- would
     # not see it.  Measured the day it landed: 84 replay rows were on this
     # path already.
+    if OFF_CENTRE_CLAIM_MODE == "off":
+        # Retired 2026-09-12: the claim on this path is the raw claim, so
+        # neither the constant nor a served table is part of what computed
+        # it, and moving them must not retire a row that never read them.
+        return content_sha256({
+            **common,
+            "path": "off_centre",
+            "off_centre_claim_mode": "off",
+        })
     return content_sha256({
         **common,
         "path": "off_centre",
+        "off_centre_claim_mode": OFF_CENTRE_CLAIM_MODE,
         "off_center_bands": [
             [float(bound), float(factor)]
             for bound, factor in OFF_CENTER_CLAIM_BANDS

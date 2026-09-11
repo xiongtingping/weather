@@ -28,6 +28,17 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
 )
 
 
+@pytest.fixture(autouse=True)
+def _off_centre_arm_on(monkeypatch):
+    """The deflation was retired 2026-09-12 (identity by default).  This
+    file tests the lane's own arithmetic -- fitting, veto, journal, the
+    fingerprint that carries the served table -- so the arm is switched on
+    for every test here; what the shipped default does is pinned in
+    ``test_center_window_claim_arm.py``."""
+    import bayes_basket_target.basket_kernel.delta_v2 as _k
+    monkeypatch.setattr(_k, "OFF_CENTRE_CLAIM_MODE", "on")
+
+
 def _db() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     store.ensure_schema(conn)

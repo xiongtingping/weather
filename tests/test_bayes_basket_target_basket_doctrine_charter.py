@@ -1844,8 +1844,14 @@ def test_clause_43_forecast_radiation_leads_the_cooling_shift() -> None:
         assert "shortwave_radiation" not in source
 
 
-def test_off_centre_windows_are_deflated_not_forbidden() -> None:
+def test_off_centre_windows_are_deflated_not_forbidden(monkeypatch) -> None:
     """A window without the model's centre is corrected, not made illegal.
+
+    Retired 2026-09-12 (second cut of the claim-chain clean-up): the shipped
+    default serves identity on every path and the refit lane is a no-op; the
+    deflation below is asserted with the research arm switched on, and the
+    SHAPE assertions (a correction, never an admission branch) stand as they
+    were.
 
     The correction's SIZE was re-measured on 2026-09-08 and three of its five
     cells did not survive.  The 2026-08-14 fit left no code behind -- the
@@ -1865,11 +1871,18 @@ def test_off_centre_windows_are_deflated_not_forbidden() -> None:
     decided and the re-measurement did not touch.
     """
 
+    import bayes_basket_target.basket_kernel.delta_v2 as _k
     from bayes_basket_target.basket_kernel.delta_v2 import (
         off_center_claim_factor,
     )
 
-    # The two cells that reproduced still deflate.
+    # Shipped default since 2026-09-12: identity, whatever the cell.
+    assert _k.OFF_CENTRE_CLAIM_MODE == "off"
+    assert off_center_claim_factor(0.07) == 1.0
+    assert off_center_claim_factor(0.15, gap_buckets=3) == 1.0
+    monkeypatch.setattr(_k, "OFF_CENTRE_CLAIM_MODE", "on")
+
+    # With the arm on, the two cells that reproduced still deflate.
     assert off_center_claim_factor(0.07) < 1.0
     assert off_center_claim_factor(0.15) < 1.0
     # The three that did not are served at one: no correction is what an
