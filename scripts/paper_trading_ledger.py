@@ -103,6 +103,7 @@ from bayes_basket_target.settlement_time import (  # noqa: E402
     settlement_day_window,
 )
 from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
+    CENTRE_CONTAIN_GATE as _CENTRE_CONTAIN_GATE,
     CHARTER_127_COMPLETION_TAKE as _CHARTER_127_COMPLETION_TAKE,
     TARGET_PRICING_BASIS as _TARGET_PRICING_BASIS,
     TARGET_PRICING_LANE_STAGES as _TARGET_PRICING_LANE_STAGES,
@@ -2426,6 +2427,12 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     # not share a book with these.
     "ticket_authorization": (
         "whole_basket_edge_v1"
+    ),
+    # Charter 49's centre gate as an arm: refusing versus pricing.  Hashed
+    # away from the default only, so the standing book keeps its sha.
+    **(
+        {"centre_contain_gate": _CENTRE_CONTAIN_GATE}
+        if _CENTRE_CONTAIN_GATE != "on" else {}
     ),
     # Charter 127 (七)(甲): whose resting lifecycle this book simulated.
     # Hashed only away from the default, so the standing book keeps its sha

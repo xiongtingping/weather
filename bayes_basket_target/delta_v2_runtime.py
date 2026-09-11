@@ -1196,6 +1196,30 @@ SKEW_SIGNAL_DEFINITION = (
 # mean" is read as the pair the fractional mean sits between; an exact tie
 # takes the heavier neighbour).  The width floor drops to two for that seat
 # only; skewed days and P1 are untouched.
+# The centre-contain gate (charter 49), as a research arm.
+#
+# ``on``: the window must contain the ladder centre or it is not admissible.
+# Measured 2026-09-11 on the settled enumerations, this is what narrows the
+# domain: 92.5% of station-days come out of the gate with one admissible
+# window, and refusals name the centre gate more often than everything else
+# together.  The seat-head rule people reach for first binds on 14 of 470.
+#
+# ``deflate_only``: the window stays admissible and keeps its off-centre
+# deflation, so the claim on a window that misses the centre is still cut by
+# ``window_claim_factor`` and charter 81's lift still applies where it
+# applies.  The gate stops REFUSING and goes on PRICING.  There is
+# deliberately no ``off``: dropping the deflation as well would test two
+# changes at once, and the deflation is separately measured.
+#
+# Off by default, so production is byte-identical until an arm says
+# otherwise.  The paper ledger hashes a non-default value.
+CENTRE_CONTAIN_GATE = (
+    os.environ.get("PM_CENTRE_CONTAIN_GATE", "").strip().lower() or "on"
+)
+if CENTRE_CONTAIN_GATE not in {"on", "deflate_only"}:
+    raise RuntimeError(
+        f"unknown centre contain gate mode: {CENTRE_CONTAIN_GATE}"
+    )
 SYMMETRIC_SEAT_MODE = (
     os.environ.get("PM_SYMMETRIC_SEAT_MODE", "").strip().lower()
     or "center_pm1_p0"
@@ -2528,7 +2552,12 @@ def _support_windows(
             holds_core = bool(core) and bool(set(window) & core)
             if ladder_center not in window:
                 center_refused += 1
-                continue
+                # Under ``deflate_only`` the window is priced rather than
+                # refused: its claim is already cut for the distance to the
+                # centre a few lines below, and the arm asks whether that
+                # cut is enough on its own.  See CENTRE_CONTAIN_GATE.
+                if CENTRE_CONTAIN_GATE == "on":
+                    continue
             if len(window) < min_size:
                 short_refused += 1
                 continue
