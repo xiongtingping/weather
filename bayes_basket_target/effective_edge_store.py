@@ -224,6 +224,20 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
                 f"ALTER TABLE {table}"
                 " ADD COLUMN claim_scope TEXT NOT NULL DEFAULT 'window'"
             )
+        # The band axis the claims were computed on (2026-09-11).  A column
+        # rather than a payload field for the rows that already exist:
+        # ``lambda_table_sha256`` IS ``content_sha256(payload)``, so writing
+        # the axis into a stored payload would break every row's identity
+        # against its own hash.  New fits record it in both -- the payload so
+        # a reader who gets one back from the journal can tell, the column so
+        # the read path can filter without parsing.  NULL means "not
+        # recorded", which is carried rather than refused.
+        if table == "calibration_effective_edge_lambda" and (
+            "band_axis" not in columns
+        ):
+            conn.execute(
+                f"ALTER TABLE {table} ADD COLUMN band_axis TEXT"
+            )
 
 
 EFFECTIVE_EDGE_SCOPES_SERVED = ("P0", "P0-M", "P1")
@@ -402,7 +416,12 @@ def _active_claim_vintage(
 
     try:
         row = conn.execute(
-            "SELECT bands_json FROM calibration_effective_edge_lambda"
+            "SELECT bands_json"
+            + (
+                ", band_axis" if _has_lambda_band_axis_column(conn)
+                else ", NULL"
+            )
+            + " FROM calibration_effective_edge_lambda"
             " WHERE activated=1 AND stage_scope=?",
             (stage_scope,),
         ).fetchone()
@@ -1055,6 +1074,17 @@ def fit_lambda_table(
         "claim_transform_sha256": (
             None if claim_vintages is None else list(claim_vintages)
         ),
+        # The band axis the claims were computed on.  ``a = price / claim``
+        # and the axis moves every claim, which is why charter 110 already
+        # partitions the POPULATION on it -- but the table that came out
+        # recorded no axis, so nothing downstream could tell a table fitted
+        # on one axis from a table fitted on the other.  Measured 2026-09-11
+        # on P0-M's 191 settled windows the day its axis moved: 9.9% of them
+        # land in a different lambda band under the new claim and 2.1% flip
+        # the gate's answer, and the activation guard had just compared a
+        # claim-axis incumbent against a distance-axis proposal on a
+        # distance-axis population.
+        "band_axis": axis,
     }
     return {
         "table": payload,
@@ -1372,8 +1402,8 @@ def persist_and_activate(
         "INSERT INTO calibration_effective_edge_lambda("
         " lambda_table_sha256, bands_json, evidence_json, fitted_at_utc,"
         " window_days, seat_count, activated, activated_at_utc, stage_scope,"
-        " claim_scope)"
-        " VALUES(?,?,?,?,?,?,?,?,?,?)"
+        " claim_scope, band_axis)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?)"
         " ON CONFLICT(lambda_table_sha256) DO UPDATE SET"
         "  activated=excluded.activated,"
         "  activated_at_utc=excluded.activated_at_utc,"
@@ -1392,6 +1422,7 @@ def persist_and_activate(
             None if blocked else now,
             scope,
             claim_scope,
+            fit.get("band_axis"),
         ),
     )
     conn.execute(
@@ -1433,6 +1464,26 @@ def persist_and_activate(
 # reviewable edit to that constant, informed by exactly the evidence this
 # module journals -- the same shape as the station exclusion list, where the
 # machine computes candidates and a person promotes them.
+def _has_lambda_band_axis_column(conn: sqlite3.Connection) -> bool:
+    """Whether the lambda TABLE carries its own band-axis column.
+
+    Deliberately not ``_has_band_axis_column``: that one asks about
+    ``paper_trade_candidate_window``, a different table on a different
+    migration, and a read path that keyed off it would be right only by
+    coincidence.
+    """
+
+    try:
+        return any(
+            str(row[1]) == "band_axis"
+            for row in conn.execute(
+                "PRAGMA table_info(calibration_effective_edge_lambda)"
+            )
+        )
+    except sqlite3.Error:
+        return False
+
+
 def _has_claim_scope_column(conn: sqlite3.Connection) -> bool:
     try:
         return any(
@@ -1487,6 +1538,24 @@ def load_active_lambda(
         bands = payload["bands"]
     except (ValueError, KeyError, TypeError):
         return None
+    # A table fitted on another band axis is not a stale table, it is a
+    # table about a different quantity -- the same rule, and the same
+    # sentence, as ``load_off_centre_bands``.  Three states, not two: a
+    # payload that records NO axis is carried as matching and gets its axis
+    # recorded on the next write, because "did not record a vintage" is not
+    # "the vintage changed" and treating it as one deadlocks the lane
+    # against its own activation gate (the 2026-09-08 judgement on the claim
+    # vintage).  No band table at all means no partition and no mismatch.
+    recorded = row[1] if len(row) > 1 and row[1] is not None else (
+        payload.get("band_axis")
+    )
+    if recorded is not None:
+        try:
+            current = _fit_axis(conn, STAGE_SCOPES.get(stage_scope, (stage_scope,)))
+        except Exception:  # noqa: BLE001 -- no band store, no partition
+            current = None
+        if current is not None and str(recorded) != str(current):
+            return None
     out: list[tuple[float, float]] = []
     for band in bands:
         bound = band.get("upper_bound")

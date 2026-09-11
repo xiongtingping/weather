@@ -670,3 +670,156 @@ def test_the_replay_read_takes_one_band_generation() -> None:
     assert fit["replayed_row_count"] == 4, "one generation, not three"
     assert fit["seat_count"] == 4
     conn.close()
+
+
+def test_a_table_fitted_on_another_band_axis_is_not_served() -> None:
+    """``a = price / claim`` and the band axis moves every claim, so a table
+    fitted on one axis describes a different quantity on the other.  The
+    population was already partitioned on the axis (charter 110); the table
+    that came out recorded none, so nothing downstream could tell.
+
+    Three states, not two: a payload recording NO axis is carried as
+    matching, because "did not record a vintage" is not "the vintage
+    changed" -- treating it as one deadlocks the lane against its own
+    activation gate, which is the 2026-09-08 judgement on the claim vintage.
+    """
+
+    import json
+    import sqlite3
+
+    from bayes_basket_target import effective_edge_store as store
+    from bayes_basket_target.band_reliability_store import (
+        ensure_band_table_schema,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    store.ensure_schema(conn)
+    ensure_band_table_schema(conn)
+
+    def _band(axis: str) -> None:
+        conn.execute(
+            "DELETE FROM calibration_band_reliability_table WHERE stage='P0'"
+        )
+        conn.execute(
+            "INSERT INTO calibration_band_reliability_table("
+            " band_table_sha256, factors_json, evidence_json, fitted_at_utc,"
+            " serving_day_count, activated, activated_at_utc, stage, axis)"
+            " VALUES(?,?,?,?,?,1,?,?,?)",
+            ("b" * 64, json.dumps([[[0.0, 1.0], 1.0]]), "{}",
+             "2026-09-09T00:00:00Z", 30, "2026-09-09T00:00:00Z", "P0", axis),
+        )
+
+    def _table(sha: str, axis, lam: float) -> None:
+        payload = {
+            "schema": "effective_edge_lambda_table_v1",
+            "stage_scope": "P0", "claim_scope": "window", "stages": ["P0"],
+            "bands": [{"upper_bound": None, "lambda": lam}],
+            "window_days": 28, "as_of_event_date": "2026-09-10",
+            "fit_floor_event_date": "2026-08-13",
+            "band_partition_cells": store.BAND_PARTITION_CELLS,
+            "claim_transform_sha256": None,
+        }
+        if axis is not None:
+            payload["band_axis"] = axis
+        conn.execute(
+            "UPDATE calibration_effective_edge_lambda SET activated=0"
+            " WHERE stage_scope='P0'"
+        )
+        conn.execute(
+            "INSERT INTO calibration_effective_edge_lambda("
+            " lambda_table_sha256, bands_json, evidence_json, fitted_at_utc,"
+            " window_days, seat_count, activated, activated_at_utc,"
+            " stage_scope, claim_scope) VALUES(?,?,?,?,?,?,1,?,?,?)",
+            (sha, json.dumps(payload), "{}", "2026-09-10T00:00:00Z", 28, 50,
+             "2026-09-10T00:00:00Z", "P0", "window"),
+        )
+        conn.commit()
+
+    _band("centre_distance")
+    # Same axis: served.
+    _table("a" * 64, "centre_distance", 0.31)
+    assert store.load_active_lambda(conn, stage_scope="P0") == ((float("inf"), 0.31),)
+    # Another axis: not served, and the incumbent falls back to the kernel
+    # constant rather than to a table about a different quantity.
+    _table("c" * 64, "claim", 0.31)
+    assert store.load_active_lambda(conn, stage_scope="P0") is None
+    assert store._incumbent_bands(conn, "P0", "window") == list(
+        store._bootstrap_bands("P0", "window")
+    )
+    # No axis recorded: carried, not refused.
+    _table("d" * 64, None, 0.29)
+    assert store.load_active_lambda(conn, stage_scope="P0") == ((float("inf"), 0.29),)
+    # No band table at all: no partition, so no mismatch is possible.
+    conn.execute("DELETE FROM calibration_band_reliability_table")
+    conn.commit()
+    _table("e" * 64, "claim", 0.27)
+    assert store.load_active_lambda(conn, stage_scope="P0") == ((float("inf"), 0.27),)
+
+
+def test_the_fit_records_the_axis_it_was_drawn_on(tmp_path) -> None:
+    """The payload must carry the axis, or the guard above has nothing to
+    read and the next fit inherits across an axis move in silence."""
+
+    import json
+    import sqlite3
+
+    from bayes_basket_target import effective_edge_store as store
+
+    conn = sqlite3.connect(tmp_path / "e.db", isolation_level=None)
+    conn.execute(
+        "CREATE TABLE paper_trade_candidate_window ("
+        " candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
+        " stage TEXT, decision_at_utc TEXT, buckets_json TEXT,"
+        " win_probability REAL, all_in_price REAL, hit INTEGER)"
+    )
+    conn.execute(
+        "CREATE TABLE paper_trade_settlement ("
+        " position_id TEXT, stage TEXT, event_date TEXT, hit INTEGER)"
+    )
+    for i in range(20):
+        conn.execute(
+            "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?)",
+            (f"c{i}", f"S{i}", "2026-09-01", "P0", "2026-09-01T00:00:00Z",
+             '["b"]', 0.60, 0.18, i % 2),
+        )
+        conn.execute(
+            "INSERT INTO paper_trade_settlement VALUES(?,?,?,?)",
+            (f"p{i}", "P0", "2026-09-01", i % 2),
+        )
+    fit = store.fit_lambda_table(conn, window_days=28)
+    assert "band_axis" in fit["table"]
+    assert fit["table"]["band_axis"] == fit["band_axis"]
+    conn.close()
+
+
+def test_the_axis_column_is_read_not_the_candidate_tables_column() -> None:
+    """The lambda table's own migration decides whether the column is there.
+    Keying off ``paper_trade_candidate_window``'s band_axis -- a different
+    table on a different migration -- would be right only by coincidence."""
+
+    import sqlite3
+
+    from bayes_basket_target import effective_edge_store as store
+
+    conn = sqlite3.connect(":memory:")
+    store.ensure_schema(conn)
+    assert store._has_lambda_band_axis_column(conn)
+    # No candidate table at all: the lambda column is still there and still
+    # read.
+    assert not store._has_band_axis_column(conn)
+    columns = {
+        str(r[1])
+        for r in conn.execute(
+            "PRAGMA table_info(calibration_effective_edge_lambda)"
+        )
+    }
+    assert "band_axis" in columns
+    # The journal deliberately does NOT gain the column: it records fits,
+    # and the fit's axis travels on the table it points at.
+    journal = {
+        str(r[1])
+        for r in conn.execute(
+            "PRAGMA table_info(calibration_effective_edge_fit_journal)"
+        )
+    }
+    assert "band_axis" not in journal
