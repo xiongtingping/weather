@@ -1100,11 +1100,21 @@ if MAKER_FILL_MODEL not in {"touch", "through", "queue", "adverse"}:
 #
 # ``PAPER_LEDGER_ADVERSE_P_WIN`` / ``_P_LOSE`` move them for a sensitivity
 # arm.  Both enter the fingerprint whenever this model is selected.
+#
+# Second iteration, 2026-09-11.  The first pair was the live rates divided by
+# the crossing rates, and the arm it produced came back at 44.3% and 69.1%
+# per leg rather than 37.5% and 57.4% -- high, because a rung refused at one
+# price gets a fresh draw when it is repriced, so a leg is asked more than
+# once.  Scaled by the ratio the arm measured (0.847 and 0.831), which is the
+# check the first pair was shipped to receive:
+#
+#     p(fill | crossed, wins)  = 0.5413 * (12/32) / (70/158)  = 0.4581
+#     p(fill | crossed, loses) = 0.8002 * (58/101) / (369/534) = 0.6650
 ADVERSE_FILL_P_WIN = float(
-    os.environ.get("PAPER_LEDGER_ADVERSE_P_WIN", "") or 0.5413
+    os.environ.get("PAPER_LEDGER_ADVERSE_P_WIN", "") or 0.4581
 )
 ADVERSE_FILL_P_LOSE = float(
-    os.environ.get("PAPER_LEDGER_ADVERSE_P_LOSE", "") or 0.8002
+    os.environ.get("PAPER_LEDGER_ADVERSE_P_LOSE", "") or 0.6650
 )
 for _name, _value in (
     ("PAPER_LEDGER_ADVERSE_P_WIN", ADVERSE_FILL_P_WIN),

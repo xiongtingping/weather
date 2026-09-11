@@ -1095,7 +1095,13 @@ SUPPORT_SCENARIO_FLOOR_FRACTION = (
     float(_SUPPORT_FLOOR_OVERRIDE) if _SUPPORT_FLOOR_OVERRIDE
     else (0.0 if CHARTER_93_SUPPORT_FLOOR == "on" else -0.10)
 )
-if not (-1.0 <= SUPPORT_SCENARIO_FLOOR_FRACTION <= 0.0):
+# The upper bound is 0.5, not 0.0, so a POSITIVE floor can be measured: the
+# standing rule is "a settlement inside the support may not lose" and the
+# stronger contract worth pricing is "it must make at least delta" (v2.1 of
+# the strategy plan, section 5).  Nothing about the default moves -- charter
+# 93 still serves 0.0 -- but an arm can now ask for 0.05, which is
+# ``min q_i >= 1.05 C``, and be refused for a typo rather than for the sign.
+if not (-1.0 <= SUPPORT_SCENARIO_FLOOR_FRACTION <= 0.5):
     raise RuntimeError(
         f"support scenario floor fraction out of range: {SUPPORT_SCENARIO_FLOOR_FRACTION}"
     )

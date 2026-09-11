@@ -221,7 +221,23 @@ def test_an_unknown_fill_model_is_refused() -> None:
 
 
 def test_the_served_calibration_is_the_measured_one() -> None:
-    """Pinned by the arithmetic, so a typo cannot pass as a refit."""
+    """Pinned by the arithmetic, so a typo cannot pass as a refit.
 
-    assert round(0.3750 / (106 / 153), 4) == ledger.ADVERSE_FILL_P_WIN
-    assert round(58 / 101 / (371 / 517), 4) == ledger.ADVERSE_FILL_P_LOSE
+    Two steps, both recorded: the live rate over this book's own crossing
+    rate, then scaled by what the first arm actually produced -- a rung
+    refused at one price is asked again when it is repriced, so a leg gets
+    more than one draw and the first pair came back high.
+    """
+
+    first_win = 0.3750 / (106 / 153)
+    first_lose = 58 / 101 / (371 / 517)
+    assert round(first_win, 4) == 0.5413
+    assert round(first_lose, 4) == 0.8002
+    assert round(first_win * 0.375 / (70 / 158), 4) == (
+        ledger.ADVERSE_FILL_P_WIN
+    )
+    assert round(first_lose * (58 / 101) / (369 / 534), 4) == (
+        ledger.ADVERSE_FILL_P_LOSE
+    )
+    # Ordered, or the model would be saying the winner is easier to buy.
+    assert ledger.ADVERSE_FILL_P_WIN < ledger.ADVERSE_FILL_P_LOSE
