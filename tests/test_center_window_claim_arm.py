@@ -3,8 +3,10 @@
 Re-measured 2026-09-05 on served claims, centre-holding windows realise
 1.10-1.30 of what they claim; the arm multiplies such a window's claim by a
 per-band factor so the positive-EV gate, the ranking, the partition and
-charter 68's agreement all read the same lifted belief.  Off by default,
-production's constant, hashed into the ledger fingerprint when on.
+charter 68's agreement all read the same lifted belief.  Retired
+2026-09-12: off by default on both sides (the raw claim is what the gate
+and the solver read), the old table reachable only as the env arm, and the
+ledger fingerprint moves with whatever is set.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
 
-def test_charter_81_is_the_default_and_off_is_the_arm(monkeypatch) -> None:
+def test_charter_81_is_retired_off_by_default_and_the_table_is_the_arm(monkeypatch) -> None:
     import bayes_basket_target.basket_kernel.delta_v2 as K
     import bayes_basket_target.delta_v2_runtime as R
 
@@ -28,8 +30,11 @@ def test_charter_81_is_the_default_and_off_is_the_arm(monkeypatch) -> None:
     # One implementation, in the kernel; the runtime re-exports it.
     assert R.CENTER_WINDOW_CLAIM_BANDS is K.CENTER_WINDOW_CLAIM_BANDS
     assert R.center_window_claim_factor is K.center_window_claim_factor
-    assert K.CENTER_WINDOW_CLAIM_BANDS == bands
-    assert R._parse_claim_bands("") == bands
+    assert K.CENTER_WINDOW_CLAIM_BANDS == ()
+    assert K.CENTER_WINDOW_CLAIM_DEFAULT == "[]"
+    assert R._parse_claim_bands("") == ()
+    assert R._parse_claim_bands(K.CENTER_WINDOW_CLAIM_RETIRED_TABLE) == bands
+    assert R.center_window_claim_factor(0.45) == 1.0  # retired: identity by default
     assert R._parse_claim_bands("off") == ()
     assert R._parse_claim_bands("[]") == ()
     assert R._parse_claim_bands("[[0.35, 1.0], [0.55, 1.21], [1.01, 1.08]]") == bands

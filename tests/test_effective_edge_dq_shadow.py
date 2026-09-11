@@ -150,24 +150,25 @@ def test_a_cell_is_fitted_only_past_the_served_tables_own_hurdle(tmp_path):
     for index in range(14):
         station = f"S{index:02d}"
         _prior(conn, station, day, prior_at, book_at, then)
-        # Claim 0.60 is lifted to 0.648 by charter 81; price 0.60 puts
-        # a = 0.926 in the top band.  The window fell 0.10: tier down.
+        # Claim 0.60 (charter 81's lift is identity since 2026-09-12); price
+        # 0.555 puts a = 0.925 in the [0.85, 0.95) band.  The window fell
+        # 0.145 from 0.70: tier down.
         _seat(conn, f"d{index}", station=station, day=day,
               decided="2026-08-31T12:00:00.000Z", claim=0.60,
-              asks={"31°C": 0.17, "32°C": 0.26, "33°C": 0.17}, hit=index % 2)
+              asks={"31°C": 0.15, "32°C": 0.255, "33°C": 0.15}, hit=index % 2)
     # Charter 96 split the top band at 0.95, so the steady group's old
     # a = 1.08 would now land in a different band from the down group and
     # this test would stop comparing two tiers of ONE band, which is what
-    # it is for.  Its prior and its book are both 0.60 -- unmoved, so the
-    # tier is still steady -- and a = 0.926 puts it beside the down group.
-    steady_then = {"31°C": 0.17, "32°C": 0.26, "33°C": 0.17}  # 0.60 then
+    # it is for.  Its prior and its book are both 0.555 -- unmoved, so the
+    # tier is still steady -- and a = 0.925 puts it beside the down group.
+    steady_then = {"31°C": 0.15, "32°C": 0.255, "33°C": 0.15}  # 0.555 then
     for index in range(3):
         station = f"T{index:02d}"
         _prior(conn, station, day, prior_at, book_at, steady_then)
-        # Same price as then: tier steady, a = 0.926, band [0.85, 0.95).
+        # Same price as then: tier steady, a = 0.925, band [0.85, 0.95).
         _seat(conn, f"s{index}", station=station, day=day,
               decided="2026-08-31T12:00:00.000Z", claim=0.60,
-              asks={"31°C": 0.17, "32°C": 0.26, "33°C": 0.17}, hit=1)
+              asks={"31°C": 0.15, "32°C": 0.255, "33°C": 0.15}, hit=1)
     fit = store.fit_lambda_table_dq_shadow(conn, stage_scope="P0")
     # By bound, not by position: the partition is a rule that has moved
     # once and may move again, and a positional read would go quiet
@@ -177,7 +178,7 @@ def test_a_cell_is_fitted_only_past_the_served_tables_own_hurdle(tmp_path):
     )
     down, steady = top["tiers"]["down"], top["tiers"]["steady"]
     assert down["seats"] == 14 and down["admissible"]
-    assert abs(down["raw_lambda"] - (7 / (14 * 0.60 * 1.08))) < 1e-3  # charter 81 lift on the claim
+    assert abs(down["raw_lambda"] - (7 / (14 * 0.60 * center_window_claim_factor(0.60)))) < 1e-3  # charter 81 lift (identity since retirement)
     assert down["fitted_lambda"] is not None
     assert steady["seats"] == 3 and not steady["admissible"]
     assert steady["fitted_lambda"] is None
@@ -194,10 +195,11 @@ def test_nothing_the_shadow_writes_can_reach_a_seat(tmp_path):
 
     conn = _book(tmp_path / "s.db")
     for index in range(13):
-        # Price 0.60 over the lifted claim 0.648: a = 0.926, top band.
+        # Price 0.555 over the claim 0.60 (no lift since charter 81 retired):
+        # a = 0.925, the [0.85, 0.95) band.
         _seat(conn, f"p{index}", station=f"S{index:02d}", day="2026-09-01",
               decided="2026-08-31T12:00:00.000Z", claim=0.60,
-              asks={"31°C": 0.17, "32°C": 0.26, "33°C": 0.17}, hit=index % 2)
+              asks={"31°C": 0.15, "32°C": 0.255, "33°C": 0.15}, hit=index % 2)
     served_before = store.fit_lambda_table(conn, stage_scope="P0")["content_sha256"]
     shadow = store.fit_lambda_table_dq_shadow(conn, stage_scope="P0")
     receipt = store.persist_dq_shadow(conn, shadow)

@@ -45,6 +45,22 @@ from tests.test_bayes_basket_target_delta_v2_runtime import (
 )
 
 
+
+@pytest.fixture(autouse=True)
+def _charter_81_arm_on(monkeypatch):
+    """Charter 81 (the centre-window claim lift) was retired 2026-09-12 and
+    the shipped default is identity.  The station-day fixtures in this file
+    were written under the lift -- their raw claims clear the whole-basket
+    positive-EV gate only when lifted -- and what they assert is charter
+    84/121/125 mechanics, not the lift.  The retired table is switched on
+    for the file so the fixtures keep exercising those mechanics; a fixture
+    rebuilt on raw claims can drop this."""
+    import bayes_basket_target.basket_kernel.delta_v2 as _k81
+    monkeypatch.setattr(
+        _k81, "CENTER_WINDOW_CLAIM_BANDS",
+        _k81._parse_claim_bands(_k81.CENTER_WINDOW_CLAIM_RETIRED_TABLE),
+    )
+
 def _held_snapshot(*, held_32: float = 0.0, ask_32: float = 0.15) -> TargetBasketSnapshot:
     """ZGSZ 2026-09-06 as the ledger saw it: 30°C and 31°C held, 32°C empty."""
 

@@ -3533,16 +3533,15 @@ def test_symmetric_single_rung_arm_seats_only_the_mean_bucket(monkeypatch) -> No
 
 
 def test_clause_81_centre_holding_windows_claim_is_lifted() -> None:
-    """Charter 81: a window holding the mean centre claims 1.21x in [0.35,0.55), 1.08x above."""
+    """Charter 81, retired 2026-09-12: the lift is identity by default; the
+    clause keeps its numbers as history and records the retirement."""
     from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
     from bayes_basket_target.delta_v2_runtime import _support_windows
 
     clause = _clause(81)
-    for needle in ("×1.21", "×1.08", "PM_CENTER_WINDOW_CLAIM_BANDS", "center_window_claim", "+3.11%"):
+    for needle in ("×1.21", "×1.08", "PM_CENTER_WINDOW_CLAIM_BANDS", "center_window_claim", "+3.11%", "2026-09-12 退役"):
         assert needle in clause, needle
-    assert delta_v2_runtime.CENTER_WINDOW_CLAIM_BANDS == (
-        (0.35, 1.0), (0.55, 1.21), (1.01, 1.08)
-    )
+    assert delta_v2_runtime.CENTER_WINDOW_CLAIM_BANDS == ()
     labels = ["29°C", "30°C", "31°C", "32°C", "33°C", "34°C"]
     probs = [0.06, 0.20, 0.30, 0.20, 0.16, 0.08]
     asks = [0.05, 0.15, 0.30, 0.15, 0.10, 0.05]
@@ -3575,14 +3574,14 @@ def test_clause_81_centre_holding_windows_claim_is_lifted() -> None:
         maximum_support_buckets=4, minimum_support_buckets=3,
         center_bucket="31°C", probability_stage="P0",
     )
-    assert audit["center_window_claim_bands"] == [[0.35, 1.0], [0.55, 1.21], [1.01, 1.08]]
+    assert audit["center_window_claim_bands"] == []
     by_window = {tuple(w["buckets"]): w for w in windows}
-    core = by_window[("30°C", "31°C", "32°C")]          # raw 0.70 -> x1.08
+    core = by_window[("30°C", "31°C", "32°C")]          # raw 0.70, no lift since retirement
     assert core["raw_win_probability"] == pytest.approx(0.70)
-    assert core["off_center_claim_factor"] == pytest.approx(1.08)
-    assert core["win_probability"] == pytest.approx(0.70 * 1.08)
-    wide = by_window[("31°C", "32°C", "33°C")]          # raw 0.66 -> x1.08, holds centre
-    assert wide["off_center_claim_factor"] == pytest.approx(1.08)
+    assert core["off_center_claim_factor"] == pytest.approx(1.0)
+    assert core["win_probability"] == pytest.approx(0.70)
+    wide = by_window[("31°C", "32°C", "33°C")]          # raw 0.66, holds centre, still no lift
+    assert wide["off_center_claim_factor"] == pytest.approx(1.0)
     # The ledger hashes the rule unconditionally.
     import sys
     from pathlib import Path as _Path
@@ -3601,7 +3600,16 @@ def test_clause_87_the_gate_reads_effective_edge_and_the_ticket_waits_for_it(mon
     """
     from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
     from bayes_basket_target.delta_v2_runtime import _support_windows
+    import bayes_basket_target.basket_kernel.delta_v2 as _k0
 
+    # Charter 81 was retired 2026-09-12 (identity lift by default).  The
+    # numbers this ruling shipped with were taken with the lift on, so the
+    # arm is switched on to reproduce them; the mechanism asserted here --
+    # the gate reads lambda(a) times the claim -- does not depend on it.
+    monkeypatch.setattr(
+        _k0, "CENTER_WINDOW_CLAIM_BANDS",
+        _k0._parse_claim_bands(_k0.CENTER_WINDOW_CLAIM_RETIRED_TABLE),
+    )
     clause = _clause(87)
     for needle in (
         "λ(a)", "PM_CHARTER_87_GATE_LAMBDA", "门票只在闸后发",

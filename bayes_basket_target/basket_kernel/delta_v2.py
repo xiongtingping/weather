@@ -3348,7 +3348,24 @@ def off_center_claim_factor(
 # three readers must agree on it: the enumeration (gate, ranking, partition,
 # charter 68's agreement), the paper ledger's fingerprint, and the charter-68
 # lambda store, which fits agreement on the claim the solver actually reads.
-CENTER_WINDOW_CLAIM_DEFAULT = "[[0.35, 1.0], [0.55, 1.21], [1.01, 1.08]]"
+# Retired 2026-09-12 (user ruling: "先撤这种硬编码(打补丁)的宪章81").  The
+# clause's own retirement condition was met: it was to stand only while
+# centre-holding windows realised MORE than they claimed (1.30/1.12 measured
+# 2026-09-05 on the pre-width-layer served vector).  Measured 2026-09-12 on
+# the same enumeration (chain.json, first seated decisions and every live
+# ordering decision, 27 event dates): the raw seated claim now OVERSTATES
+# the truth (P0 ordering moments 0.887 claimed vs 0.737 realised), the lift
+# applied to 100% of seated windows (every mass-head window holds the
+# centre), clamped 53% of them at 1.0, and lowered charter 68's agreement
+# a by 3 points so lambda deflated harder -- the two stages cancelled on
+# the median (eff/raw 1.001) while adding a +-10% per-window noise factor
+# (corr(log lift, log lambda) = +0.15; sd of the product 0.130 against
+# 0.116 for lambda alone).  The default is therefore empty: the factor is
+# identity, the gate and the solver read the raw claim, and the ledger's
+# fingerprint moves with it.  The old table stays reachable as a research
+# arm through PM_CENTER_WINDOW_CLAIM_BANDS='[[0.35, 1.0], [0.55, 1.21], [1.01, 1.08]]'.
+CENTER_WINDOW_CLAIM_DEFAULT = "[]"
+CENTER_WINDOW_CLAIM_RETIRED_TABLE = "[[0.35, 1.0], [0.55, 1.21], [1.01, 1.08]]"
 
 
 def _parse_claim_bands(
@@ -3400,7 +3417,11 @@ def sizing_claim_factor(claimed_mass: float) -> float:
 
 
 def center_window_claim_factor(claimed_mass: float) -> float:
-    """Charter 81's multiplier for a window holding the centre; 1.0 when off."""
+    """Charter 81's multiplier for a window holding the centre; 1.0 when off.
+
+    Off since 2026-09-12 (charter 81 retired); the arm only multiplies when
+    ``PM_CENTER_WINDOW_CLAIM_BANDS`` names a table.
+    """
 
     if not CENTER_WINDOW_CLAIM_BANDS:
         return 1.0

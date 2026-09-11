@@ -45,6 +45,22 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+
+@pytest.fixture(autouse=True)
+def _charter_81_arm_on(monkeypatch):
+    """Charter 81 (the centre-window claim lift) was retired 2026-09-12 and
+    the shipped default is identity.  The station-day fixtures in this file
+    were written under the lift -- their raw claims clear the whole-basket
+    positive-EV gate only when lifted -- and what they assert is charter
+    84/121/125 mechanics, not the lift.  The retired table is switched on
+    for the file so the fixtures keep exercising those mechanics; a fixture
+    rebuilt on raw claims can drop this."""
+    import bayes_basket_target.basket_kernel.delta_v2 as _k81
+    monkeypatch.setattr(
+        _k81, "CENTER_WINDOW_CLAIM_BANDS",
+        _k81._parse_claim_bands(_k81.CENTER_WINDOW_CLAIM_RETIRED_TABLE),
+    )
+
 ZUUU_INTERVALS = json.dumps(
     {
         "23°C": [22.5, 23.5],

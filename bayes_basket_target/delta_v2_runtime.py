@@ -1417,8 +1417,9 @@ P0M_TAF_ENVELOPE_RULE_VERSION = "p0m_taf_second_confirmation_v2"
 # Charter 81 (user ruling, 2026-09-05): the centre-holding claim lift.  One
 # implementation in the kernel, read here, by the paper ledger and by the
 # charter-68 lambda store (whose agreement must be computed on the same
-# lifted claim the solver reads).  ``PM_CENTER_WINDOW_CLAIM_BANDS=off`` is
-# the research arm; the shipped table is CENTER_WINDOW_CLAIM_DEFAULT.
+# lifted claim the solver reads).  Charter 81 was retired 2026-09-12: the
+# shipped default is empty (identity) and the old table is the research arm
+# behind ``PM_CENTER_WINDOW_CLAIM_BANDS`` (see CENTER_WINDOW_CLAIM_RETIRED_TABLE).
 # Research arm (2026-09-04, user): which stages may open an empty chain.
 # Charter 74 ships P0 alone; ``P0,P0-M`` is the arm that lets P0-M open (and
 # so take a ticket) for the TAF-confirmation replays.  P1 never opens.

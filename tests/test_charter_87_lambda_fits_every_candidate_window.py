@@ -140,11 +140,20 @@ def test_twelve_nested_windows_on_two_days_are_not_twelve_observations():
     assert fit["evidence"][0]["accumulating"] is False
 
 
-def test_the_recorded_claim_is_not_lifted_a_second_time():
+def test_the_recorded_claim_is_not_lifted_a_second_time(monkeypatch):
     """``_support_windows`` returns the lifted claim because that is what
     the gate divides the price by.  A fit that lifts it again bands every
-    window at an agreement no gate ever looked up."""
+    window at an agreement no gate ever looked up.
 
+    Charter 81 is retired (2026-09-12) and the shipped lift is identity, so
+    the arm is switched on here: the property under test is that the fit
+    never lifts a second time WHATEVER the arm is doing."""
+
+    import bayes_basket_target.basket_kernel.delta_v2 as K
+    monkeypatch.setattr(
+        K, "CENTER_WINDOW_CLAIM_BANDS",
+        K._parse_claim_bands(K.CENTER_WINDOW_CLAIM_RETIRED_TABLE),
+    )
     conn = _book()
     claim, price = 0.5, 0.40
     for index in range(12):
