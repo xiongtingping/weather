@@ -39,7 +39,23 @@ def test_the_ledger_carries_productions_structural_rules() -> None:
         'os.environ.get("PAPER_LEDGER_MIN_SUPPORT_BUCKETS", "3") or 3'
         in source
     )
-    assert "minimum_support_buckets=MINIMUM_SUPPORT_BUCKETS" in source
+    # And that literal reaches the enumerator.  Asked of the statement
+    # rather than the spelling: the hand-off went through a helper on
+    # 2026-09-11 so both judge paths could share one pair, and a grep for
+    # the old spelling would have called that a lost rule.
+    import ast as _ast  # noqa: PLC0415
+
+    _handoffs = [
+        _ast.unparse(node)
+        for node in _ast.walk(_ast.parse(source))
+        if isinstance(node, _ast.Call)
+        and "minimum_support_buckets" in _ast.unparse(node)
+        and "MINIMUM_SUPPORT_BUCKETS" in _ast.unparse(node)
+    ]
+    assert _handoffs, "this lane's floor never reaches the enumerator"
+    assert any(
+        "MAXIMUM_SUPPORT_BUCKETS" in handoff for handoff in _handoffs
+    ), _handoffs
     # The evidence support is the mass-selected run, not a bare centre.
     assert "desired=set(core) or {center}" in source
     assert "desired={center}," not in source
