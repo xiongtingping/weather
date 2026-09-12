@@ -71,7 +71,7 @@ def _snapshot(rows: tuple[tuple[str, float, float], ...]) -> object:
     })
 
 
-def _windows(rows, *, desired, center, minimum=3, maximum=4):
+def _windows(rows, *, desired, center, minimum=3, maximum=4, **extra):
     from bayes_basket_target.delta_v2_runtime import _support_windows
 
     snapshot = _snapshot(rows)
@@ -85,6 +85,7 @@ def _windows(rows, *, desired, center, minimum=3, maximum=4):
         maximum_support_buckets=maximum,
         minimum_support_buckets=minimum,
         center_bucket=center,
+        **extra,
     )
 
 
@@ -147,7 +148,9 @@ def test_ranking_is_monotone_in_probability_mass() -> None:
     )
     windows, _ = _windows(rows, desired={"33C"}, center="33C")
     priced = [w for w in windows if w["all_in_price"] is not None]
-    masses = [float(w["win_probability"]) for w in priced]
+    # The effective mass, lambda(a) * p -- the belief every other reader on
+    # the chain reads (user ruling 2026-09-12; charter 64 "折后").
+    masses = [float(w["effective_win_probability"]) for w in priced]
     assert masses == sorted(masses, reverse=True)
 
 

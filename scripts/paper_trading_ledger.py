@@ -2194,7 +2194,9 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     # and rows written under the old one describe a strategy that no longer
     # runs.  These two travel with the fingerprint for the same reason the
     # ladder floor does.
-    "window_ranking": "probability_mass",
+    # 2026-09-12 (charter 64 as written, code caught up): the shortlist is
+    # ordered by the effective mass lambda(a)*p, not the raw claim.
+    "window_ranking": "effective_probability_mass",
     # The label rides in the fingerprint after all.  Left out of it, a rule
     # change that only renames itself leaves old rows in place and the
     # equity curve compounds two rule sets together -- measured: 2026-08-17

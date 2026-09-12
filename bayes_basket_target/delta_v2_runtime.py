@@ -3152,11 +3152,24 @@ def _support_windows(
     # positive-EV requirement below.  An unpriced window still sorts last --
     # it has no basket to admit -- and the head of this order is the seat
     # (charter 64); the curve score sizes it.
+    #
+    # The mass is the EFFECTIVE one, lambda(a) * p (user ruling 2026-09-12,
+    # "肯定是有效边际"; charter 64 had said "折后" since 09-04 and this sort
+    # read the pre-lambda claim until then).  The gate, the stake and the
+    # net-ROI target all read lambda(a) * p; a head chosen on the raw claim
+    # is the one reader on the chain looking at a different belief, and it
+    # is the reader that decides which window the others get to see.
+    # Measured over 1,381 settled decisions: the two orders differ on 43
+    # (3.1%).  Unpriced windows carry no lambda and sort last anyway.
     windows.sort(
         key=lambda row: (
             not row.get("admissible", True),
             row["all_in_price"] is None,
-            -float(row["win_probability"]),
+            -float(
+                row.get("effective_win_probability")
+                if row.get("effective_win_probability") is not None
+                else row["win_probability"]
+            ),
             len(row["buckets"]),
             row["buckets"],
         )

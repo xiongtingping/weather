@@ -241,3 +241,42 @@ def test_the_clause_names_what_the_code_does() -> None:
     for n in (64, 84):
         old = next(l for l in charter.split("\n") if l.lstrip().startswith(f"{n}. "))
         assert "第 130 条改写" in old, n
+
+
+def test_the_head_is_chosen_on_the_effective_belief(monkeypatch) -> None:
+    """Charter 64 as written ("折后"), code caught up 2026-09-12.
+
+    A wider window can claim more and, deflated by its own agreement band,
+    believe less.  The seat goes to what the gate, the stake and the ROI
+    target believe -- the same lambda(a) * p -- not to the raw claim.
+    """
+
+    # Agreement below 0.80 is trusted in full; at or above it, 0.87 arrives.
+    tables = {"P0": ((0.80, 1.0), (float("inf"), 0.87))}
+    # 31/32/33 claims 0.74 at 0.55 (a=0.74 -> lambda 1.0 -> 0.74);
+    # 31..34 claims 0.82 at 0.66 (a=0.80 -> lambda 0.87 -> 0.713).
+    asks = [0.03, 0.20, 0.22, 0.20, 0.13, 0.11]
+    snapshot, probabilities = _snapshot(asks)
+    windows, audit = R._support_windows(
+        snapshot=snapshot, desired={"31°C", "32°C", "33°C"},
+        probabilities=probabilities, fee_rate=0.0,
+        maximum_support_buckets=4, minimum_support_buckets=3,
+        center_bucket="31°C", probability_stage="P0",
+        effective_edge_tables=tables,
+    )
+    admissible = [w for w in windows if w["admissible"] and w["all_in_price"] is not None]
+    listing = [
+        (w["buckets"], round(w["win_probability"], 3), round(w["effective_win_probability"], 3), w["all_in_price"])
+        for w in windows
+    ]
+    assert len(admissible) >= 2, listing
+    by_claim = max(admissible, key=lambda w: float(w["win_probability"]))
+    by_effective = max(admissible, key=lambda w: float(w["effective_win_probability"]))
+    assert tuple(by_claim["buckets"]) == ("31°C", "32°C", "33°C", "34°C"), listing
+    assert tuple(by_effective["buckets"]) == ("31°C", "32°C", "33°C"), listing
+    assert tuple(windows[0]["buckets"]) == ("31°C", "32°C", "33°C"), listing
+    # And the ledger hashes the ordering it replays.
+    import paper_trading_ledger as L  # noqa: PLC0415
+
+    assert L._SELECTION_RULE_IDENTITY["window_ranking"] == "effective_probability_mass"
+
