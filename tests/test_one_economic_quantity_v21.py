@@ -112,12 +112,22 @@ def test_the_solver_multiplies_the_same_lambda_into_the_partition() -> None:
 
 
 def test_the_kelly_stake_is_fed_that_partition() -> None:
+    # The solver scores on the partition, and the candidate generator it
+    # is handed proposes against the same one -- the keyword lives on the
+    # generator call nested inside the solver call, not on the solver.
     solve = list(_calls(RUNTIME, "solve_target_inventory_v2"))
     assert solve
     assert any(
+        isinstance(_keyword(call, "probabilities"), ast.Name)
+        and _keyword(call, "probabilities").id == "window_probabilities"
+        for call in solve
+    )
+    generator = list(_calls(RUNTIME, "_target_candidates"))
+    assert generator
+    assert any(
         isinstance(_keyword(call, "probabilities_by_bucket"), ast.Name)
         and _keyword(call, "probabilities_by_bucket").id == "window_probabilities"
-        for call in solve
+        for call in generator
     )
     # Inside the solver the Kelly candidate reads the sizing override only
     # when one is set, else the same partition.
