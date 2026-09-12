@@ -238,7 +238,7 @@ def test_support_floor_outlaws_lottery_shapes_and_reports_the_dials() -> None:
     assert result["winner_candidate_id"] == "flat"
     assert result["floor_rejected_candidate_count"] == 1
     assert result["target_support_floor_pnl"] == pytest.approx(0.1)
-    assert result["support_scenario_floor_fraction"] == 0.0
+    assert result["support_scenario_floor_fraction"] == 0.05  # charter 131 (12b)
     # The dials: both rungs now pay, so the win probability is the whole
     # mass and the odds ratio has no loss side to divide by.
     assert result["target_win_probability"] == pytest.approx(1.0)
