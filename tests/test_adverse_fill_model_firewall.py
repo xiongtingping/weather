@@ -243,3 +243,37 @@ def test_the_served_calibration_is_the_measured_one() -> None:
     )
     # Ordered, or the model would be saying the winner is easier to buy.
     assert ledger.ADVERSE_FILL_P_WIN < ledger.ADVERSE_FILL_P_LOSE
+
+
+def test_the_charter_clause_and_the_code_say_the_same_model() -> None:
+    """Charter 129 records which fill model the book serves.
+
+    A clause that names a default is a clause that goes stale the day the
+    default moves, and this one is load-bearing: every maker figure taken
+    before it is invalid and the clause is what says so.  So the served
+    name and the two calibration constants are asserted against the code
+    rather than left to a reader to check.
+    """
+
+    charter = (
+        ROOT / "docs" / "constitution" / "SYSTEM_CHARTER.md"
+    ).read_text(encoding="utf-8")
+    assert "\n 129. " in charter, "clause 129 is not in the charter"
+    clause = charter[charter.index("\n 129. "):]
+    # The next clause, if one is ever appended after it.
+    following = [
+        clause.index(marker)
+        for marker in ("\n 130. ", "\n 131. ")
+        if marker in clause
+    ]
+    if following:
+        clause = clause[: min(following)]
+
+    assert ledger.MAKER_FILL_MODEL == "adverse"
+    assert "`PAPER_LEDGER_FILL_MODEL=through`" in clause
+    assert "adverse_fill_predicate" in clause
+    for value in (ledger.ADVERSE_FILL_P_WIN, ledger.ADVERSE_FILL_P_LOSE):
+        assert "%.4f" % value in clause, value
+    # And the firewall's own statement, which is the half a reader is most
+    # likely to erode: production must never hold these numbers.
+    assert "delta_v2_fill_artifact" in clause
