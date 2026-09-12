@@ -991,6 +991,11 @@ def test_station_edge_evidence_reads_the_increment_not_the_sunk_basket() -> None
         "compiled_plan": {
             "probability_envelope": {"probabilities": probabilities},
             "plan": {
+                # Charter 130 (amending 84 (七)): the allocator reads the
+                # belief the seat was judged on, not the raw envelope.
+                "basket_support_selection": {
+                    "seated": {"window_probabilities": probabilities},
+                },
                 "final_support": ["30", "31", "32"],
                 "execution_gap_support": ["32"],
                 "total_delta_notional_usdc": 0.95,
@@ -1023,6 +1028,21 @@ def test_station_edge_evidence_reads_the_increment_not_the_sunk_basket() -> None
         for b in probabilities
     )
     assert whole < 0.0
+    # Charter 130: a plan that carries only the raw envelope -- the belief
+    # the gates do not read -- gives the allocator nothing to judge on.
+    envelope_only = dict(value, compiled_plan={
+        "probability_envelope": {"probabilities": probabilities},
+        "plan": {
+            k: v for k, v in value["compiled_plan"]["plan"].items()
+            if k != "basket_support_selection"
+        },
+    })
+    with sqlite3.connect(":memory:") as conn:
+        apply_production_ssot_schema(conn)
+        commit_p0_preselection(conn, envelope_only, created_at_utc="2026-09-05T12:51:33Z")
+        assert TargetProductionWorker._station_edge_evidence(
+            SimpleNamespace(conn=conn), stations=["ZGSZ"], minimum_clip_usdc=0.25
+        ) == []
 
 
 # --- the rotation serves the station-days holding live positions first ----

@@ -133,7 +133,6 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     SKEW_GAP_THRESHOLD_SIGMA,
     SKEW_PLACEMENT_MODE,
     SKEW_SIGNAL_DEFINITION,
-    SUPPORT_EDGE_MARGIN,
     KELLY_SHARE_SHAPE,
     KELLY_SHAPE_TOPUP,
     SYMMETRIC_SEAT_MODE,
@@ -227,7 +226,8 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     BETA_EDGE_MODE,
     BETA_EDGE_RULE_VERSION,
     STAGE_BUDGET_SHARE,
-    SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
+    ECONOMIC_HURDLE_V1,
+    ECONOMIC_HURDLE_RULE_VERSION,
     EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
     raise_sub_lot_targets_v2,
     scope_stake_cap_usdc,
@@ -2627,12 +2627,12 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
         {"skew_extension_direction": SKEW_EXTENSION_DIRECTION}
         if SKEW_EXTENSION_DIRECTION != "toward_tail" else {}
     ),
-    # Charter 58 (2026-08-25): the window price gate is whole-basket
-    # positive EV with no friction buffer.  These two were never hashed
-    # before -- a change to them would have re-derived nothing -- which the
-    # charter-58 flip is the wrong moment to leave standing.
-    "support_edge_friction_ticks_per_leg": SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
-    "support_edge_margin": SUPPORT_EDGE_MARGIN,
+    # Charter 130 (2026-09-12): the one economic hurdle, read at admission,
+    # after the lift, and on every increment.  It replaced charter 58's
+    # zero-friction gate (tick friction and margin, both hashed here until
+    # then); a book seated at h=0 is not this book.
+    "economic_hurdle": ECONOMIC_HURDLE_V1,
+    "economic_hurdle_rule": ECONOMIC_HURDLE_RULE_VERSION,
     # Charter 59b: the two-rung fallback pass is off by default (vetoed at
     # -71% lane ROI); the key is hashed only when the research arm enables
     # it, so the no-fallback book keeps the charter-58 fingerprint.

@@ -15780,9 +15780,13 @@ class TargetProductionWorker:
             )
             plan = compiled.get("plan") or {}
             solution = plan.get("target_solution") or {}
+            # Charter 130 (amending 84 (七)): the dollar is judged on the
+            # belief the seat was judged on -- the seated window's deflated
+            # partition -- not the raw envelope.  The gates read lambda(a)*p;
+            # an allocator reading p would fund a station the gate refuses.
             probabilities = (
-                compiled.get("probability_envelope") or {}
-            ).get("probabilities") or {}
+                (plan.get("basket_support_selection") or {}).get("seated") or {}
+            ).get("window_probabilities") or {}
             support = plan.get("final_support") or []
             # What a dollar bought is the *increment* the plan decided --
             # its gap rows and their cost -- not the whole inventory

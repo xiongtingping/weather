@@ -2358,7 +2358,69 @@ BASKET_RETURN_STRUCTURE_SCHEMA = "basket_return_structure_v1"
 # (``runtime.py``, blocker ``basket_net_roi_below_target``): read on the
 # FINAL share vector at each leg's resting limit, charter-116 repairs exempt.
 # This constant is the target; the kernel function below only reports it.
-BASKET_TARGET_NET_ROI = 0.05
+#
+# Charter 130 (user ruling 2026-09-12, "5%"): there is ONE economic hurdle
+# and four places it is evaluated -- the window at admission (one share of
+# each leg, at the offer), the lifted bundle at execution (the shares that
+# would go out, at the offer or the walked limit), a top-up's increment and
+# a completion's increment.  Before this the admission gate cleared at zero
+# (tick friction and margin, both zero), the execution target at 5%, and a
+# completion at zero: the same expectation asked three times with three
+# pass marks.  Measured 2026-09-09..12: 147 execution refusals across 48
+# station-days of seats that had cleared admission, been sized and lifted --
+# SBGR 2026-09-12 refused the same 22/23/24 window three cycles running at
+# 1.7%, 0.1%, 1.7%, and the next window down was never asked.  The pass
+# mark is an admission condition; it was being checked after admission.
+#
+# ``PM_ECONOMIC_HURDLE`` exists for one reason: a book seated under the old
+# pass mark can be rebuilt (``PM_ECONOMIC_HURDLE=0`` is charter 58's gate to
+# the epsilon) rather than argued about -- the same rule charter 129 set for
+# the fill model.  The ledger hashes the value, so an arm cannot be mistaken
+# for the served book.  It is not a tuning knob; the served value is 0.05.
+_HURDLE_OVERRIDE = os.environ.get("PM_ECONOMIC_HURDLE", "").strip()
+ECONOMIC_HURDLE_V1 = float(_HURDLE_OVERRIDE) if _HURDLE_OVERRIDE else 0.05
+if not (0.0 <= ECONOMIC_HURDLE_V1 <= 0.5):
+    raise RuntimeError(
+        f"PM_ECONOMIC_HURDLE={_HURDLE_OVERRIDE!r} is outside [0, 0.5]"
+    )
+ECONOMIC_HURDLE_RULE_VERSION = "one_hurdle_four_evaluation_points_v1"
+
+
+def clears_economic_hurdle_v1(
+    *,
+    expected_payout: float,
+    cost: float,
+    hurdle: float | None = None,
+) -> bool:
+    """``sum q_b n_b >= (1 + h) * C`` -- the one inequality, at every point.
+
+    ``expected_payout`` is the belief-weighted payout of the action
+    (one share of each leg at admission, the actual shares after the lift,
+    the increment for a top-up or completion) and ``cost`` its all-in cost
+    on the basis that point prices at.  Written in the form the net-ROI
+    target already used, ``roi >= h - EPS``, so the execution reading is
+    unchanged to the epsilon.  A costless action clears nothing: there is
+    no return structure to judge.
+    """
+
+    if hurdle is None:
+        # Read at call time, not bound at definition: the served constant
+        # and a test's or an arm's override are the same name.
+        hurdle = ECONOMIC_HURDLE_V1
+    cost = float(cost)
+    if not math.isfinite(cost) or cost <= EPS:
+        return False
+    return float(expected_payout) >= (1.0 + float(hurdle) - EPS) * cost
+
+
+def economic_hurdle_usdc(cost: float) -> float:
+    """The dollars an action's payout must clear above its cost: h * C."""
+
+    return ECONOMIC_HURDLE_V1 * float(cost)
+
+
+# The execution target's own name, kept for its readers; it IS the hurdle.
+BASKET_TARGET_NET_ROI = ECONOMIC_HURDLE_V1
 
 
 def basket_return_structure_v1(
@@ -2451,9 +2513,8 @@ def basket_return_structure_v1(
         "max_cost_for_target": (
             coverage / (1.0 + roi_target) if (1.0 + roi_target) > EPS else None
         ),
-        "meets_target": bool(
-            (1.0 + roi_target) > EPS
-            and equal_q <= coverage / (1.0 + roi_target) + EPS
+        "meets_target": clears_economic_hurdle_v1(
+            expected_payout=coverage, cost=equal_q, hurdle=roi_target,
         ),
     }
     identity = {
@@ -2466,7 +2527,9 @@ def basket_return_structure_v1(
         "net_expected_value_usdc": net_ev,
         "net_roi": roi,
         "target_net_roi": roi_target,
-        "meets_target": bool(roi is not None and roi >= roi_target - EPS),
+        "meets_target": clears_economic_hurdle_v1(
+            expected_payout=expected_payout, cost=cost, hurdle=roi_target,
+        ),
         "net_profit_probability": net_profit_probability,
         "loss_on_win_buckets": sorted(
             b for b in window if not profitable[b] and shares[b] > EPS
@@ -3842,9 +3905,14 @@ def probability_core(
 # criterion it always approximated, and an unpriceable window is simply the
 # trivial failure of the same test rather than a rule of its own.  The env
 # override remains for the research arm that wants the buffer back.
-SUPPORT_EDGE_FRICTION_TICKS_PER_LEG = float(
-    os.environ.get("PM_SUPPORT_EDGE_FRICTION_TICKS_PER_LEG", "") or 0.0
-)
+# Charter 130 retired the per-leg tick friction and the margin: the hurdle
+# is one constant, ``ECONOMIC_HURDLE_V1``.  A process still handing in the
+# old knob is running an old plist, and must not silently get the new rule.
+for _retired in ("PM_SUPPORT_EDGE_FRICTION_TICKS_PER_LEG", "PM_SUPPORT_EDGE_MARGIN"):
+    if os.environ.get(_retired, "").strip():
+        raise RuntimeError(
+            f"{_retired} was retired by charter 130; the hurdle is ECONOMIC_HURDLE_V1"
+        )
 # ``candidate_kind`` is a load-bearing activation signal, not a label: the
 # state machine reads it to decide TRADE versus HOLD, and this kernel reads it
 # to know which candidate is the "spend nothing" option the floor exempts.

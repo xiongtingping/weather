@@ -143,10 +143,23 @@ def test_shadow_journals_the_lift_and_changes_no_window(monkeypatch):
     # admitted.  (The fixture's inherited support is appended and refused
     # too, which is why the edge counter reads one more than the candidates.)
     assert receipt["candidate_count"] == 3
-    assert receipt["would_admit_count"] == 3
+    # Charter 130 (2026-09-12): the shadow asks the gate's own question, and
+    # the gate's pass mark is 5% of the cost.  The lifted edges here are
+    # positive but thinner than that, so nothing would be admitted under
+    # the served hurdle -- and everything would at the old pass mark of
+    # zero, which is asserted below by patching the constant the gate reads.
+    assert receipt["would_admit_count"] == 0
     assert receipt["admitted_by_lift_count"] == 0
     assert audit["edge_refused_window_count"] == 4
-    assert all(row["flips_gate"] for row in receipt["candidates"])
+    assert not any(row["flips_gate"] for row in receipt["candidates"])
+    # At a pass mark of zero the shadow's question is the old one, edge
+    # sign: asserted as an equivalence per candidate so it does not depend
+    # on how large the lift happens to be in this fixture.
+    monkeypatch.setattr(K, "ECONOMIC_HURDLE_V1", 0.0)
+    _, audit_zero = _windows()
+    for row in audit_zero["convergence_claim"]["candidates"]:
+        assert row["flips_gate"] == (row["unlifted_edge"] <= 0 < row["lifted_edge"])
+    monkeypatch.setattr(K, "ECONOMIC_HURDLE_V1", 0.05)
     # Every window reads exactly what it reads without the evidence: the
     # refused candidates are dropped in both runs, and what survives (the
     # inherited support) is byte-for-byte the same seatable list.

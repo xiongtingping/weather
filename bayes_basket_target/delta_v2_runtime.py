@@ -75,7 +75,10 @@ from .basket_kernel.delta_v2 import (
     window_claim_factor,
     probability_core,
     PROBABILITY_CORE_MASS,
-    SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
+    ECONOMIC_HURDLE_V1,
+    ECONOMIC_HURDLE_RULE_VERSION,
+    clears_economic_hurdle_v1,
+    economic_hurdle_usdc,
     CHARTER_93_SUPPORT_FLOOR,
     SUPPORT_SCENARIO_FLOOR_RULE_VERSION,
     support_scenario_floor_v1,
@@ -141,20 +144,6 @@ from .shadow_objective import solve_fractional_kelly
 
 SCHEMA = "delta_basket_score_runtime_plan_v2"
 
-# A margin on the whole-basket edge, above tick friction (2026-08-23).
-# The friction term only removes quantisation noise, so the floor has been
-# effectively zero -- and it could afford to be, because ``win`` under-claimed
-# and that under-claim was doing the work of a margin.  Measured on 17 forward
-# days at P0: claimed 73.2% against 83.9% realised, a hidden 10.7 points of
-# safety.  A calibration that makes ``win`` honest removes that safety without
-# replacing it, and the marginal baskets it had been excluding turn out to
-# lose: the centre/width scalars opened 37 extra chains and took the book from
-# +41.4% to +4.3%.  The margin is what makes the floor mean the same thing
-# after the claim stops under-claiming.  Zero keeps the pre-existing behaviour
-# byte-identical.
-SUPPORT_EDGE_MARGIN = float(
-    os.environ.get("PM_SUPPORT_EDGE_MARGIN", "") or 0.0
-)
 # P1 is the converging stage: the ladder is allowed to walk down 4 -> 3 -> 2
 # as the day resolves, and stops at two because the second rung is the tail
 # one still carrying the insurance (user ruling, 2026-08-16).  The opening
@@ -2098,9 +2087,12 @@ def _support_windows(
             sum(float(probabilities[bucket]) for bucket in buyable)
             * float(claim_factor),
         )
-        increment_friction = SUPPORT_EDGE_FRICTION_TICKS_PER_LEG * sum(
-            float(by_bucket[bucket].price_tick_size) for bucket in buyable
-        ) + SUPPORT_EDGE_MARGIN
+        # Charter 130: the increment clears the one hurdle, in dollars of
+        # its own cost.  Recorded under the key the audit always read.
+        increment_friction = (
+            economic_hurdle_usdc(increment_price)
+            if increment_price is not None else 0.0
+        )
         increment_edge = (
             increment_win - increment_price
             if increment_price is not None else None
@@ -2117,7 +2109,9 @@ def _support_windows(
             "admissible": bool(
                 increment_priced
                 and increment_edge is not None
-                and increment_edge > increment_friction + EPS
+                and clears_economic_hurdle_v1(
+                    expected_payout=increment_win, cost=increment_price,
+                )
             ),
         }
 
@@ -2780,13 +2774,12 @@ def _support_windows(
                 leg_floor_hit = True
                 priced = False
                 edge = None
-            # Second, friction: the all-in price already carries the fee, so an
-            # edge smaller than tick-rounding across the legs is quantisation
-            # noise, not signal.
-            friction = SUPPORT_EDGE_FRICTION_TICKS_PER_LEG * sum(
-                float(by_bucket[bucket].price_tick_size)
-                for bucket in window
-            ) + SUPPORT_EDGE_MARGIN
+            # Second, the hurdle (charter 130): the window must return
+            # ECONOMIC_HURDLE_V1 on its all-in cost, the same pass mark the
+            # execution layer applies to the lifted bundle.  Kept under the
+            # name ``friction`` -- it is the dollars the edge must clear --
+            # so the refusal audit and the ledger read the column they did.
+            friction = economic_hurdle_usdc(price) if priced else 0.0
             # Charter 78 (user ruling, 2026-09-04): the incumbent has no
             # exemption from the whole-basket positive-EV gate either.
             # It used to be waived past it on the reasoning that the
@@ -2795,7 +2788,11 @@ def _support_windows(
             # openers (95%).  "Keep what we hold" is the baseline
             # candidate (charter 37), not a seat the price refuses.
             admissible = (
-                priced and edge is not None and edge > friction + EPS
+                priced
+                and edge is not None
+                and clears_economic_hurdle_v1(
+                    expected_payout=effective_win, cost=price,
+                )
             ) or (
                 # Charter 78 off: the pre-2026-09-04 waiver, where an
                 # incumbent window was admissible whatever the price.
@@ -2817,9 +2814,16 @@ def _support_windows(
                     raw_win * claim_factor / convergence_lift
                     * convergence_shadow_lift * _gate_lam - price
                 )
+                # The shadow asks the gate's own question (charter 130):
+                # would the lifted claim clear the hurdle where the
+                # unlifted one does not.
                 flips = (
-                    unlifted_edge <= friction + EPS
-                    and lifted_edge > friction + EPS
+                    not clears_economic_hurdle_v1(
+                        expected_payout=unlifted_edge + price, cost=price,
+                    )
+                    and clears_economic_hurdle_v1(
+                        expected_payout=lifted_edge + price, cost=price,
+                    )
                 )
                 if flips:
                     convergence_would_admit += 1
@@ -2900,7 +2904,9 @@ def _support_windows(
                     # fell to lambda -- the seats the ruling removes.
                     if (
                         gate_lambda is not None
-                        and (win - price) > friction + EPS
+                        and clears_economic_hurdle_v1(
+                            expected_payout=win, cost=price,
+                        )
                     ):
                         lambda_refused += 1
                     if edge is not None and (
@@ -3043,9 +3049,7 @@ def _support_windows(
         # Charter 78: the appended incumbent passes the same gate the
         # loop applies; an incumbent the price refuses is counted as a
         # refusal, not carried through.
-        incumbent_friction = SUPPORT_EDGE_FRICTION_TICKS_PER_LEG * sum(
-            float(by_bucket[bucket].price_tick_size) for bucket in incumbent
-        ) + SUPPORT_EDGE_MARGIN
+        incumbent_friction = economic_hurdle_usdc(price) if priced else 0.0
         # Charter 87: the same belief as the loop's gate.  An inherited
         # support is not lifted (it never was), but it is deflated by the
         # lambda its own agreement earns.
@@ -3075,15 +3079,14 @@ def _support_windows(
             min(1.0 - EPS, win * incumbent_lambda)
             if incumbent_lambda is not None else win
         )
-        incumbent_admissible = (
-            priced
-            and (incumbent_effective_win - price) > incumbent_friction + EPS
+        incumbent_admissible = priced and clears_economic_hurdle_v1(
+            expected_payout=incumbent_effective_win, cost=price,
         )
         if (
             priced
             and incumbent_lambda is not None
             and not incumbent_admissible
-            and (win - price) > incumbent_friction + EPS
+            and clears_economic_hurdle_v1(expected_payout=win, cost=price)
         ):
             lambda_refused += 1
         # Charter 84 (八): the increment is recorded for the audit, but an
@@ -4220,7 +4223,8 @@ def _solve_over_support_windows(
         "best_curve_score_on_shortlist": float(
             max(item["score"] for item in scored)
         ),
-        "edge_friction_ticks_per_leg": SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
+        "economic_hurdle": ECONOMIC_HURDLE_V1,
+        "economic_hurdle_rule": ECONOMIC_HURDLE_RULE_VERSION,
         # Charter 124: which arm and which ball this round was read at, so a
         # shadow row can never be mistaken for a served one and a promotion
         # argument can name the budget its evidence was gathered under.

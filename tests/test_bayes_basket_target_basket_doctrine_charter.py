@@ -3557,7 +3557,10 @@ def test_clause_81_centre_holding_windows_claim_is_lifted() -> None:
     assert delta_v2_runtime.CENTER_WINDOW_CLAIM_BANDS == ()
     labels = ["29°C", "30°C", "31°C", "32°C", "33°C", "34°C"]
     probs = [0.06, 0.20, 0.30, 0.20, 0.16, 0.08]
-    asks = [0.05, 0.15, 0.30, 0.15, 0.10, 0.05]
+    # 31°C at 0.27, not 0.30: charter 130 lists a window only if it clears
+    # the 5% hurdle on lambda(a)*p, and 31/32/33 at 0.55 read 0.574 -- +4.4%,
+    # in the refused band.  At 0.52 it reads +10.4% and is on the list.
+    asks = [0.05, 0.15, 0.27, 0.15, 0.10, 0.05]
     rows = [
         {
             "bucket": b, "ordinal": i + 2, "probability": p,
@@ -3688,7 +3691,14 @@ def test_clause_87_the_gate_reads_effective_edge_and_the_ticket_waits_for_it(mon
     # window below; what moved is which windows the mechanism refuses.
     assert seat["effective_edge_lambda"] == pytest.approx(1.0)
     assert seat["effective_edge_lambda_source"] == "claim_edge_thin_band"
-    assert seat["admissible"] is True
+    # Charter 130 (2026-09-12): the gate's pass mark is 5% of the all-in
+    # cost, not zero.  0.972 on 0.95 is +2.3%, so the thermometer's lambda
+    # of 1.0 is read and recorded and the seat is still refused -- at the
+    # gate now, where it used to be refused at execution three cycles
+    # running.  The charter-87 mechanism is unchanged; only the pass mark
+    # moved.
+    assert seat["edge"] > 0
+    assert seat["admissible"] is False
     with_thermometer = {tuple(w["buckets"]): w for w in windows}
 
     # Charter 87 on a window the thin band does not reach: turn the second
@@ -3712,7 +3722,7 @@ def test_clause_87_the_gate_reads_effective_edge_and_the_ticket_waits_for_it(mon
     assert not any(w["admissible"] for w in windows_off)
     windows, audit = windows_off, audit_off
     seat = seat_off
-    assert with_thermometer[seat_key]["admissible"] is True
+    assert with_thermometer[seat_key]["admissible"] is False  # charter 130
 
     # The pre-ruling arm: the same window, admitted on the lifted claim.
     monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
@@ -3721,7 +3731,8 @@ def test_clause_87_the_gate_reads_effective_edge_and_the_ticket_waits_for_it(mon
     assert seat_off["effective_edge_lambda"] is None
     assert seat_off["effective_win_probability"] == pytest.approx(0.972)
     assert seat_off["edge"] == pytest.approx(0.972 - 0.95)
-    assert seat_off["admissible"] is True
+    # Refused by the hurdle, not by lambda: nothing for charter 87 to count.
+    assert seat_off["admissible"] is False
     assert audit_off["effective_edge_gate_refused_window_count"] == 0
 
     # The served tables travel with the gate: a table that trusts the top
@@ -3736,7 +3747,7 @@ def test_clause_87_the_gate_reads_effective_edge_and_the_ticket_waits_for_it(mon
     )
     seat_tbl = {tuple(w["buckets"]): w for w in windows_tbl}[seat_key]
     assert seat_tbl["effective_edge_lambda"] == pytest.approx(1.0)
-    assert seat_tbl["admissible"] is True
+    assert seat_tbl["admissible"] is False  # +2.3% never clears charter 130
 
     # The ledger reads the same switch, hands the gate the same served
     # tables, and hashes the belief the gate reads.
