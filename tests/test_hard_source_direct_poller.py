@@ -202,6 +202,19 @@ def _attach_unit_posterior_ssot_fact(
         },
         "ranked_bucket_probabilities": rows,
         "bucket_probabilities": rows,
+        # The composer's physical verdict, which the three-leg plan refuses
+        # to proceed without: it will not reverse-engineer weather from raw
+        # METAR, so a missing verdict keeps both legs HOLD and the poller
+        # returns target_realization_v3_plan_blocked instead of recording a
+        # decision.  Production mints this on every SSOT block; these
+        # fixtures were written before the plan demanded it.  Same minimal
+        # shape the v3 integration tests use.
+        "strong_physical_evidence": {
+            "joint_feature_model_applied": True,
+            "top_bucket": target_bucket,
+            "top_bucket_joint_strong_support": True,
+            "bucket_exclusions": [],
+        },
     }
     payload["posterior_target_bucket_selection"] = {
         "target_bucket": target_bucket,

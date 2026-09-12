@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from scripts import controlled_apply_maintenance_window_packet as packet
@@ -6,9 +7,21 @@ from scripts import controlled_apply_maintenance_window_packet as packet
 def test_system_monitor_pause_command_is_best_effort_and_uses_bootout() -> None:
     """A benign post-disable stop result must not trigger maintenance recovery."""
 
-    assert "launchctl disable system/com.weather.monitor.daemon || true" in packet.SYSTEM_MONITOR_PAUSE_COMMAND
-    assert "launchctl bootout system /Library/LaunchDaemons/com.weather.monitor.daemon.plist" in packet.SYSTEM_MONITOR_PAUSE_COMMAND
+    # The monitor daemon moved out of the system domain: it is a per-user
+    # LaunchAgent now, so pausing it needs no root and no
+    # /Library/LaunchDaemons path.  The assertions read the module's own
+    # constants so they bind that migration rather than this machine's uid.
+    assert packet.SYSTEM_MONITOR_LABEL == f"gui/{os.getuid()}/com.weather.monitor.daemon"
+    assert packet.SYSTEM_MONITOR_PLIST == str(
+        Path.home() / "Library/LaunchAgents/com.weather.monitor.daemon.plist"
+    )
+    assert f"launchctl disable {packet.SYSTEM_MONITOR_LABEL} || true" in packet.SYSTEM_MONITOR_PAUSE_COMMAND
+    assert (
+        f"launchctl bootout gui/{os.getuid()} {packet.SYSTEM_MONITOR_PLIST}"
+        in packet.SYSTEM_MONITOR_PAUSE_COMMAND
+    )
     assert "&& sudo launchctl stop" not in packet.SYSTEM_MONITOR_PAUSE_COMMAND
+    assert "system/com.weather.monitor.daemon" not in packet.SYSTEM_MONITOR_PAUSE_COMMAND
 
 
 def test_maintenance_packet_blocks_write_capable_ui_and_hard_source(tmp_path: Path) -> None:
@@ -47,16 +60,22 @@ Python  49887 xiong    4r   REG   1,17      0 123 {db}
     assert out["counts"]["reader_warning_count"] == 1
     labels = set(out["required_stop_labels"])
     assert "gui/$(id -u)/com.xiong.weather.ui" in labels
-    assert "system/com.weather.monitor.daemon" in labels
+    assert packet.SYSTEM_MONITOR_LABEL in labels
     blockers = {row["owner_class"]: row for row in out["blockers"]}
     assert blockers["ui_server"]["block_reason"] == "write_capable_archive_db_handle"
-    assert blockers["hard_source_direct_poller"]["service_label"] == "system/com.weather.monitor.daemon"
+    assert blockers["hard_source_direct_poller"]["service_label"] == packet.SYSTEM_MONITOR_LABEL
     assert out["boundary"]["packet_executes_stop_or_start"] is False
-    assert out["boundary"]["monitor_daemon_domain"] == "system/com.weather.monitor.daemon"
+    assert out["boundary"]["monitor_daemon_domain"] == packet.SYSTEM_MONITOR_LABEL
+    # The stop is still required, but it no longer needs a password: in the
+    # gui domain the operator can run the pause from the context they are
+    # already in, so a missing non-interactive sudo stops blocking it.
     assert out["stop_authorization"]["system_monitor_stop_required"] is True
     assert out["stop_authorization"]["noninteractive_sudo_available"] is False
-    assert out["stop_authorization"]["can_pause_required_services_now"] is False
-    assert "system_monitor_daemon_stop_requires_interactive_sudo" in out["stop_authorization"]["blockers"]
+    assert out["stop_authorization"]["can_pause_required_services_now"] is True
+    assert out["stop_authorization"]["blockers"] == []
+    assert out["stop_authorization"]["operator_route"] == (
+        "pause_commands_can_be_run_from_current_context_or_not_needed"
+    )
     assert packet.SYSTEM_MONITOR_PAUSE_COMMAND in out["operator_commands"]["suggested_pause_commands"]
     assert packet.SYSTEM_MONITOR_FORCE_PAUSE_COMMAND in out["operator_commands"]["suggested_force_pause_commands"]
     assert packet.SYSTEM_MONITOR_RESUME_COMMAND in out["operator_commands"]["suggested_resume_commands"]
@@ -68,7 +87,7 @@ Python  49887 xiong    4r   REG   1,17      0 123 {db}
         "scripts/weatherctl.sh start  # resume GUI LaunchAgents after apply"
     )
     assert by_step["resume_services"]["required"] is True
-    assert out["next_boundary"] == "obtain_interactive_sudo_for_system_monitor_pause_then_rerun_packet"
+    assert out["next_boundary"] == "pause_required_writer_services_then_rerun_this_packet"
 
 
 def test_maintenance_packet_allows_reader_only_unknown_holder(tmp_path: Path) -> None:
@@ -151,7 +170,7 @@ def test_maintenance_packet_blocks_known_writer_process_without_current_db_handl
     labels = set(out["required_stop_labels"])
     assert "gui/$(id -u)/com.weather.task_queue_worker" in labels
     assert "gui/$(id -u)/com.weather.feedback_loop_hourly" in labels
-    assert "system/com.weather.monitor.daemon" in labels
+    assert packet.SYSTEM_MONITOR_LABEL in labels
     blockers = {row["owner_class"]: row for row in out["blockers"]}
     assert blockers["hard_source_direct_poller"]["block_reason"] == "known_archive_db_writer_process_active"
     assert blockers["task_queue_worker"]["block_reason"] == "known_archive_db_writer_process_active"
