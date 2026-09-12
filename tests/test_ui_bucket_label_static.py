@@ -405,7 +405,11 @@ def test_model_member_snapshot_board_reuses_loaded_runs_before_fetching_summary(
     assert "const hasCachedSnapshot = snapshotHasUsableRunsItems(cachedSnapshot);" in refresh_block
     assert "if (hasCachedSnapshot && !modelMemberSnapshotLastFetchAt)" in refresh_block
     assert "return;" in refresh_block
-    assert "run_date=${effectiveDate}&limit=12" in refresh_block
+    # The full-snapshot limit by name, not by value: the board asks for
+    # whatever a full snapshot is (24 since 2026-07-30, 12 before it),
+    # and this test is about the board reusing loaded runs rather than
+    # about the size of the page it falls back to.
+    assert "run_date=${effectiveDate}&limit=${UI_SNAPSHOT_FULL_LIMIT}" in refresh_block
     assert "if (!hasCachedSnapshot) {" in refresh_block
     assert "console.warn('[snapshot-boards] render skipped'" in refresh_block
 

@@ -9086,6 +9086,43 @@ const shares = (v) => {
   return Math.abs(n - Math.round(n)) < 1e-6
     ? String(Math.round(n)) : String(Number(n.toFixed(4)));
 };
+// Rungs read left to right, coldest first (user ruling, 2026-09-12).
+// Nothing upstream promises ladder order.  The live legs arrive in the
+// order their intents were minted -- newest first -- which is why one
+// EPWA basket printed 19°C 20°C 18°C: three rungs of one ladder, drawn
+// out of order, read as three unrelated buys.  The other ladders on this
+// page happen to arrive sorted today; they are sorted here too, so
+// left-to-right is a property of the page rather than of whichever writer
+// last touched the table it came from.
+//
+// Every label this book mints is one of four shapes -- "18°C",
+// "78-79°F", "17°C or below", "21°C or higher" -- and a few older lanes
+// write "<=17°C" / ">=21°C".  A range sorts on its lower bound.  An open
+// end sorts half a rung outside the degree it names, so the bottom bucket
+// lands below its own number and the top one above it, which is where
+// they sit on the ladder.  A label that parses to no number sorts last
+// and keeps the order it came in: inventing a rung for it would be worse
+// than admitting the page cannot place it.
+const rungValue = (b) => {
+  const s = String(b == null ? "" : b);
+  const m = s.match(/-?\d+(?:\.\d+)?/);
+  if (!m) return NaN;
+  const v = Number(m[0]);
+  if (!isFinite(v)) return NaN;
+  if (/below|^\s*<=|^\s*\u2264/.test(s)) return v - 0.5;
+  if (/higher|above|^\s*>=|^\s*\u2265/.test(s)) return v + 0.5;
+  return v;
+};
+// Array.prototype.sort is stable, so ties and unplaceable labels keep the
+// order they arrived in.
+const byRung = (x, y) => {
+  const a = rungValue(x), b = rungValue(y);
+  if (!isFinite(a)) return isFinite(b) ? 1 : 0;
+  if (!isFinite(b)) return -1;
+  return a - b;
+};
+const rungSorted = (list, pick) => (list || []).slice()
+  .sort((x, y) => byRung(pick ? pick(x) : x, pick ? pick(y) : y));
 const OVERALL = {green:["运转正常","所有环节都在按预期更新"],
   amber:["有需要留意的地方","不影响出数，但有环节慢了或在攒数据"],
   red:["有环节断了","看下面四排灯，红的那盏就是断的那一环"]};
@@ -10709,7 +10746,7 @@ function convergenceClaim(){
       <td>${r.candidates}</td><td class="${r.would_admit?"up":""}">${r.would_admit}</td><td>${r.admitted_by_lift}</td></tr>`).join("");
   const examples=(C.examples||[]).map(e=>`<tr>
       <td class="mono">${e.station_id} ${e.event_date} ${e.stage}</td><td class="mono">${e.at}</td>
-      <td class="mono">${(e.buckets||[]).join(" · ")}</td><td class="mono">${num(e.claim)}</td>
+      <td class="mono">${rungSorted(e.buckets).join(" · ")}</td><td class="mono">${num(e.claim)}</td>
       <td class="mono">${num(e.price)}</td><td class="mono">${num(e.agreement)}</td>
       <td class="mono">${e.claim_rise==null?"—":(e.claim_rise>=0?"+":"")+num(e.claim_rise)} / ${e.price_fall==null?"—":"−"+num(e.price_fall)}</td>
       <td class="mono ${e.lifted_edge>0?"up":""}">${num(e.lifted_edge,3)}</td><td>${e.flips_gate?"会放行":"仍拒"}</td></tr>`).join("");
@@ -12021,7 +12058,10 @@ function roster(){
   const FLOOR={"P0":3,"P0-M":3,"P1":2};
   const entryCell=(e,stage)=>{
     if(!e||!e.posted_leg_count) return "";
-    const legs=e.legs.map(l=>l.empty
+    // Coldest rung first, rather than trusting the key order the writer
+    // happened to serialise ``posted_buckets_json`` in.
+    const ladder=rungSorted(e.legs, l=>l.bucket);
+    const legs=ladder.map(l=>l.empty
       ? `<span class="muted" style="text-decoration:line-through">${short(l.bucket)}</span>`
       : `<span>${short(l.bucket)}</span>`).join("+");
     // Charter 50/50a is a rule about the ladder that was CHOSEN, so it
@@ -12071,7 +12111,7 @@ function roster(){
     // "目标份" and "档" were both the resting lane's account of a leg:
     // what was posted versus what the book came down to.  Crossing has one
     // number per leg, so the columns held a duplicate and a dash.
-    const rows=e.legs.map(l=>`<tr${l.empty?' class="muted"':''}>
+    const rows=ladder.map(l=>`<tr${l.empty?' class="muted"':''}>
       <td>${h(l.bucket)}</td>
       <td>${l.empty?"<b>0</b>":shares(l.filled_shares)}</td>
       <td>${legPrice(l)}</td>
@@ -12090,7 +12130,12 @@ function roster(){
   };
   const cell=(s,extra,refusal,stage)=>{
     if(!s) return `<td class="muted">—${why(refusal)}${extra||""}</td>`;
-    const w=s.window.map(short).join("+");
+    // One ladder, read cold to warm, used both for the rungs printed
+    // here and for the lean measured below: a window drawn in one order
+    // and counted in another can print "窗+1热" over a ladder that leans
+    // the other way.
+    const win=rungSorted(s.window);
+    const w=win.map(short).join("+");
     // The chain settles once, and the stage that last topped the position
     // up is the one that carries the result.  Marking every stage of a
     // chain with the same hit reads as three bets that all won.
@@ -12112,9 +12157,9 @@ function roster(){
       :`<span title="重心与众数差不足半桶：扩边方向不设约束">对称</span>`;
     let leanLab="";
     if(s.centre_bucket&&Array.isArray(s.window)){
-      const ci=s.window.indexOf(s.centre_bucket);
+      const ci=win.indexOf(s.centre_bucket);
       if(ci>=0){
-        const net=(s.window.length-1-ci)-ci;
+        const net=(win.length-1-ci)-ci;
         leanLab=net>0?`窗+${net}热`:net<0?`窗${net}冷`:"窗居中";
       }
     }
@@ -12904,6 +12949,11 @@ function liveOrderCard(L){
   for (const g of groups){
     const w = g.legs.map(l=>l.execution_window_seconds).filter(v=>v!=null);
     g.window = w.length ? Math.min(...w) : null;
+    // And the basket's own ladder, coldest rung first.  Everything else
+    // this loop's readers ask of ``legs`` -- the deadline, the fills, the
+    // centre -- is order-free, so the one order that survives is the one
+    // the chips are drawn in.
+    g.legs = rungSorted(g.legs, l=>l.bucket);
   }
   // One line per basket, one <details> per event date, settled dates
   // closed by default (user ruling, 2026-09-05: the leg table grew with
