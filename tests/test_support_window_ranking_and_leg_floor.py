@@ -138,7 +138,7 @@ def test_the_seat_is_the_ruled_shape_not_the_cheap_flank() -> None:
     ), "the cheap flank must remain a candidate, only ranked below"
 
 
-def test_ranking_is_monotone_in_probability_mass() -> None:
+def test_ranking_is_monotone_in_effective_edge() -> None:
     rows = (
         ("30C", 0.05, 0.10),
         ("31C", 0.10, 0.10),
@@ -150,10 +150,13 @@ def test_ranking_is_monotone_in_probability_mass() -> None:
     )
     windows, _ = _windows(rows, desired={"33C"}, center="33C")
     priced = [w for w in windows if w["all_in_price"] is not None]
-    # The effective mass, lambda(a) * p -- the belief every other reader on
-    # the chain reads (user ruling 2026-09-12; charter 64 "折后").
-    masses = [float(w["effective_win_probability"]) for w in priced]
-    assert masses == sorted(masses, reverse=True)
+    # Admissible rows first, then the effective edge lambda(a) * p - C in
+    # descending order (user ruling 2026-09-12 evening, charter 131): the
+    # head is the window whose extra rung pays, not the one that claims most.
+    admissible = [w for w in priced if w["admissible"]]
+    edges = [float(w["edge"]) for w in admissible]
+    assert edges == sorted(edges, reverse=True)
+    assert priced[: len(admissible)] == admissible
 
 
 def test_a_penny_leg_is_excluded_not_the_window() -> None:

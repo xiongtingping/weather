@@ -2981,40 +2981,30 @@ def _support_windows(
                 if incumbent_completion is not None else {}
             ),
         })
-    # Rank by belief alone.  KL replaced raw edge here because raw edge
-    # over-ranks penny lotteries, and it does price the whole win/lose
-    # geometry -- but both are divergences between our belief and the
-    # market's, so both are maximised exactly where the two disagree most,
-    # and that is measured to be where this model is least reliable.  Over
-    # 158 settled seats the flank the divergence chose was cheaper than its
-    # mirror 96% of the time and the truth landed on the mirror 83%; of 123
-    # misses, 101 fell on the side the window had declined to extend toward
-    # (p = 3e-13).  Split by whether the model agreed with the direction the
-    # price implied, the same book hit 35% when it did and 13% when it did
-    # not.  Ordering by probability mass instead makes the ladder extend
-    # toward what the model believes, and leaves price to the two things
-    # that are properly price's job: the leg floor above, and the whole-basket
-    # positive-EV requirement below.  An unpriced window still sorts last --
-    # it has no basket to admit -- and the head of this order is the seat
-    # (charter 64); the curve score sizes it.
-    #
-    # The mass is the EFFECTIVE one, lambda(a) * p (user ruling 2026-09-12,
-    # "肯定是有效边际"; charter 64 had said "折后" since 09-04 and this sort
-    # read the pre-lambda claim until then).  The gate, the stake and the
-    # net-ROI target all read lambda(a) * p; a head chosen on the raw claim
-    # is the one reader on the chain looking at a different belief, and it
-    # is the reader that decides which window the others get to see.
-    # Measured over 1,381 settled decisions: the two orders differ on 43
-    # (3.1%).  Unpriced windows carry no lambda and sort last anyway.
+    # Rank by EFFECTIVE EDGE, lambda(a) * p - C (user ruling 2026-09-12
+    # evening: "不应该是有效质量，改为有效 edge").  Charter 64 retired
+    # edge-based ranking on 2026-08-17/22 because, over a wide domain, any
+    # ranking on belief-minus-price is maximised where model and market
+    # disagree most -- measured to be where this model is worst (158 seats:
+    # the divergence chose the cheaper flank 96% of the time, the truth
+    # landed on the mirror 83%).  Charter 131 removed the domain that
+    # objection lived on: the shape is fixed by the day's reading, and the
+    # only comparison left is a window against its own sub-window, so the
+    # ranking now answers one question -- does the extra rung carry edge of
+    # its own?  Under an equal lambda the difference between the two edges
+    # IS the added rung's lambda(a) * p - c.  Ranking by effective mass
+    # (this morning's reading) always took the wider window; ranking by
+    # effective edge takes it only when the rung pays.  Measured on the
+    # settled book's 3-rung/2-rung pairs that both clear the hurdle: 16 P0
+    # pairs differ on 7 (+3.6% -> +13.2%), 15 P1 pairs differ on 11
+    # (-10.1% -> -11.5%); too few to rule on, so the ledger measures it.
+    # Unpriced windows carry no edge and sort last anyway; inadmissible
+    # rows sort behind every admissible one (charter 78's baseline).
     windows.sort(
         key=lambda row: (
             not row.get("admissible", True),
             row["all_in_price"] is None,
-            -float(
-                row.get("effective_win_probability")
-                if row.get("effective_win_probability") is not None
-                else row["win_probability"]
-            ),
+            -float(row["edge"] if row.get("edge") is not None else 0.0),
             len(row["buckets"]),
             row["buckets"],
         )
@@ -3847,9 +3837,11 @@ def _solve_over_support_windows(
         # Charter 128: a dict per stage, not a band table; kept apart so a
         # reader of the lambda tables never meets a row it cannot parse.
         "beta_edge_tables": (effective_edge_tables or {}).get(BETA_TABLE_KEY),
-        "rule": "PROBABILITY_MASS_SHORTLIST_HEAD_CURVE_SOLVED_QUANTITIES_V3",
+        # Charter 131 (2026-09-12 evening): the head of the shortlist is the
+        # admissible window with the largest effective edge; Kelly sizes it.
+        "rule": "EFFECTIVE_EDGE_SHORTLIST_HEAD_KELLY_SIZED_V4",
         "seat_rule_superseded": (
-            "MAX_CURVE_SCORE_OVER_CONTIGUOUS_SUPPORT_WINDOWS_V2"
+            "PROBABILITY_MASS_SHORTLIST_HEAD_CURVE_SOLVED_QUANTITIES_V3"
         ),
         "shortlist_head_curve_score": float(scored[0]["score"]),
         "best_curve_score_on_shortlist": float(

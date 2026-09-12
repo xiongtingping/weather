@@ -279,9 +279,14 @@ def test_the_head_is_chosen_on_the_effective_belief(monkeypatch) -> None:
     by_effective = max(admissible, key=lambda w: float(w["effective_win_probability"]))
     assert tuple(by_claim["buckets"]) == ("32°C", "33°C", "34°C"), listing
     assert tuple(by_effective["buckets"]) == ("32°C", "33°C"), listing
+    # Charter 131 (evening): the head is the largest EFFECTIVE EDGE --
+    # {32,33} at 0.42 - 0.29 = 0.13 against {32,33,34} at 0.40 - 0.36 =
+    # 0.04 -- which here agrees with effective mass and not with the claim.
+    by_edge = max(admissible, key=lambda w: float(w["edge"]))
+    assert tuple(by_edge["buckets"]) == ("32°C", "33°C"), listing
     assert tuple(windows[0]["buckets"]) == ("32°C", "33°C"), listing
     # And the ledger hashes the ordering it replays.
     import paper_trading_ledger as L  # noqa: PLC0415
 
-    assert L._SELECTION_RULE_IDENTITY["window_ranking"] == "effective_probability_mass"
+    assert L._SELECTION_RULE_IDENTITY["window_ranking"] == "effective_edge"
 
