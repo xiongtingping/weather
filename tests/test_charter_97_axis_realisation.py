@@ -112,24 +112,61 @@ def test_the_unit_is_the_station_day_not_the_cycle():
               buckets=["16°C", "17°C"], claim=0.8, high=16.0, cycle=cycle)
     out = C.collect_lambda_axis_realisation(conn)
     axis = _axis(out, "claim_edge_thin_band")
-    assert axis["station_days"] == 1
-    assert axis["cycle_rows"] == 10
+    assert out["station_days"] == 1
+    assert axis["standing_days"] == 1
     # A one-day sample cannot be tightened by re-reading the same day.
     assert axis["realised_lo"] < 0.9 < axis["realised_hi"]
     assert axis["verdict"] == "样本不足"
 
 
 def test_the_three_stages_of_one_day_settle_against_one_high():
-    """Stages are counted as seats and pooled as one station-day."""
+    """Three stages of one day are one draw, not three."""
 
     conn = _conn()
     for stage in ("P0", "P0-M", "P1"):
         _seat(conn, "EDDM", _day(3), source="claim_edge_thin_band",
               buckets=["16°C"], claim=0.5, high=16.0, stage=stage, cycle=1)
-    axis = _axis(C.collect_lambda_axis_realisation(conn),
-                 "claim_edge_thin_band")
-    assert axis["station_days"] == 1
-    assert axis["seats"] == 3
+    out = C.collect_lambda_axis_realisation(conn)
+    assert out["station_days"] == 1
+    assert _axis(out, "claim_edge_thin_band")["standing_days"] == 1
+
+
+def test_a_day_that_changed_axis_belongs_to_the_one_that_closed_it():
+    """The stale mid-day snapshot is not a seat that settled."""
+
+    conn = _conn()
+    # The thin band held the morning on a window that would have won; the
+    # agreement band held the close on one that lost.  Reading each axis's
+    # own last decision would score the thin band on the morning snapshot.
+    _seat(conn, "EDDM", _day(3), source="claim_edge_thin_band",
+          buckets=["16°C"], claim=0.5, high=16.0, cycle=1)
+    _seat(conn, "EDDM", _day(3), source="agreement_band",
+          buckets=["15°C"], claim=0.5, high=16.0, cycle=9)
+    out = C.collect_lambda_axis_realisation(conn)
+    assert out["mixed_axis_days"] == 1
+    assert _axis(out, "agreement_band")["standing_days"] == 1
+    assert _axis(out, "agreement_band")["hit_rate"] == 0.0
+    assert _axis(out, "claim_edge_thin_band")["standing_days"] == 0
+    assert _axis(out, "claim_edge_thin_band")["realised_x"] is None
+
+
+def test_the_paired_column_only_counts_days_both_axes_served():
+    """A one-axis day carries no comparison and must not enter one."""
+
+    conn = _conn()
+    _seat(conn, "EDDM", _day(3), source="claim_edge_thin_band",
+          buckets=["16°C"], claim=0.5, high=16.0, cycle=1)
+    _seat(conn, "EDDM", _day(3), source="agreement_band",
+          buckets=["15°C"], claim=0.5, high=16.0, cycle=9)
+    _seat(conn, "EGLL", _day(4), source="agreement_band",
+          buckets=["16°C"], claim=0.5, high=16.0, cycle=1)
+    out = C.collect_lambda_axis_realisation(conn)
+    for source in ("agreement_band", "claim_edge_thin_band"):
+        assert _axis(out, source)["paired_days"] == 1
+    # Same day, same weather, and the two axes still differ: that is the
+    # only comparison between axes this reader claims to support.
+    assert _axis(out, "claim_edge_thin_band")["paired_hit_rate"] == 1.0
+    assert _axis(out, "agreement_band")["paired_hit_rate"] == 0.0
 
 
 def test_the_last_decision_of_the_day_is_the_seat():
@@ -142,7 +179,7 @@ def test_the_last_decision_of_the_day_is_the_seat():
           buckets=["16°C"], claim=0.5, high=16.0, cycle=9)
     axis = _axis(C.collect_lambda_axis_realisation(conn),
                  "claim_edge_thin_band")
-    assert axis["station_days"] == 1
+    assert axis["standing_days"] == 1
     assert axis["hit_rate"] == 1.0
 
 
@@ -155,7 +192,7 @@ def test_an_open_ended_bucket_is_where_the_truth_can_land():
     _seat(conn, "EGLL", _day(4), source="agreement_band",
           buckets=["14°C or below"], claim=0.5, high=-3.0, cycle=1)
     axis = _axis(C.collect_lambda_axis_realisation(conn), "agreement_band")
-    assert axis["station_days"] == 2
+    assert axis["standing_days"] == 2
     assert axis["hit_rate"] == 1.0
 
 
@@ -165,7 +202,7 @@ def test_under_the_day_floor_the_verdict_is_not_a_guess():
     conn = _conn()
     _fill(conn, station_days=29, hit_share=0.0, claim=0.9)
     axis = _axis(C.collect_lambda_axis_realisation(conn), "agreement_band")
-    assert axis["station_days"] == 29
+    assert axis["standing_days"] == 29
     assert axis["realised_x"] == 0.0
     assert axis["verdict"] == "样本不足"
 
@@ -176,7 +213,7 @@ def test_the_trigger_is_the_interval_and_not_the_point_estimate():
     conn = _conn()
     _fill(conn, station_days=40, hit_share=0.85, claim=0.9)
     axis = _axis(C.collect_lambda_axis_realisation(conn), "agreement_band")
-    assert axis["station_days"] == 40
+    assert axis["standing_days"] == 40
     assert axis["realised_x"] < 1.0
     assert axis["realised_hi"] > 1.0
     assert axis["verdict"] == "未分出"

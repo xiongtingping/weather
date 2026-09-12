@@ -8047,30 +8047,44 @@ def _wilson_interval(hits: int, n: int, z: float = 1.6449) -> tuple:
 
 
 def collect_lambda_axis_realisation(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Charter 97's retirement condition, measured where the sample is.
+    """Charter 97's retirement condition, read on the seat that settles.
 
     The clause retires its own axis once the seats it opened clear the
-    hurdle and realise under one.  It never said where to read that, and
-    the obvious place -- the thermometer's two thin bands -- cannot answer
-    it: the thin band is ``e <= 0.05``, which lands in the 0-2% and 2-5%
-    bands, and those two hold 41 posted legs in the whole re-derived book,
-    under the section's ten-settled-leg floor and not closing at 56 chains
-    a month (2026-09-12).  Waiting for the ledger is waiting forever.
+    hurdle and realise under one, and it pointed at the claimed-edge
+    thermometer for that reading.  The thermometer cannot answer: the thin
+    band is ``e <= 0.05``, which lands in its 0-2% and 2-5% rows, and after
+    the 2026-09-12 re-derive those two hold 41 posted legs between them,
+    under the section's ten-settled-leg floor and not closing.
 
-    So the seat is read where it is stamped instead.  Every priced row
-    carries ``effective_edge_lambda_source``; the candidate-window facts
-    carry the seated window, its claim, and the bucket intervals the day
-    was cut on; the truth lane carries the high.  Joining those three says,
-    for each axis, how often the truth landed inside the window that axis
-    bought -- 1,473 stamped seats against the ledger's 41 legs on the first
-    reading.
+    So the seat is read off the stamp the gate already writes.  Every
+    priced row carries ``effective_edge_lambda_source``; the candidate
+    window facts carry the seated window and the day's bucket intervals;
+    the truth lane carries the high.
 
-    Two things the clause did not carry and this adds, both from the
-    2026-09-11 finding that the lambda guard compared ratios on one to four
-    days with no interval: a floor in station-days, and a "未分出" state.
-    A ratio under one on a sample that cannot separate it from one is not
-    the clause's trigger, it is noise; the verdict here fires only when the
-    interval clears the line.
+    The hard part is not the join, it is the unit, and the first version of
+    this reader got it wrong.  It took each axis's own last decision of the
+    day, which double-counts a station-day under both axes and hands the
+    axis that did NOT serve at the close a stale mid-day snapshot.  That is
+    not a detail: the axis changes inside the day on 83% of station-days,
+    and coverage climbs through the day (0.76 in the first third to 0.91 in
+    the last) while the claim stays near 0.91, so an axis measured earlier
+    in the day is measured worse for reasons that have nothing to do with
+    the axis.  The reversed reading it produced -- thin band 0.949 against
+    the agreement band's 0.962 -- is the opposite of the paired one.
+
+    Two readings replace it, and neither is a pool over cycles:
+
+    * ``standing`` -- the seat that stood at the day's last decision,
+      attributed to the axis that served it.  This is what settles, so this
+      is what the clause's verdict is taken on.  One row per station-day.
+    * ``paired`` -- over the station-days where BOTH axes served, each
+      axis's own mean on that day.  Same days, same weather, same lead
+      distribution: this is the only comparison between axes that is not
+      confounded by when in the day each one happened to serve.
+
+    The day floor and the "未分出" state are not in the clause either;
+    they are the 2026-09-11 finding that the lambda guard compared ratios
+    on one to four days with no interval, written into a reader.
     """
 
     minimum_station_days = 30
@@ -8111,29 +8125,22 @@ def collect_lambda_axis_realisation(conn: sqlite3.Connection) -> dict[str, Any]:
                 return str(label)
         return None
 
-    # (source, station, day) -> the seat that axis had standing at the
-    # day's last decision.  The unit is the station-day and not the cycle
-    # or the stage: the same window is re-seated every cycle, and P0, P0-M
-    # and P1 on one station-day settle against ONE high, so pooling either
-    # repeat would divide the interval by a sample size the day does not
-    # have.  Counting seats is still useful and is carried beside it.
-    seats: dict[tuple, tuple] = {}
-    seat_stages: dict[tuple, set] = {}
-    rows_by_source: dict[str, list] = {}
+    # station-day -> every seated decision of that day, in time order.
+    days: dict[tuple, list] = {}
     scanned = 0
     first_day = ""
     last_day = ""
     try:
         cursor = conn.execute(
-            "SELECT station_id, event_date, stage, decision_at_utc,"
-            " feature_json FROM basket_policy_training_fact"
+            "SELECT station_id, event_date, decision_at_utc, feature_json"
+            " FROM basket_policy_training_fact"
             " WHERE event_date >= ?"
             "   AND feature_json LIKE '%effective_edge_lambda_source%'",
             (since,),
         )
     except sqlite3.Error:
         return {"available": False, "since": since}
-    for sid, day, stage, decided_at, payload in cursor:
+    for sid, day, decided_at, payload in cursor:
         high = truth.get((str(sid), str(day)))
         if high is None:
             continue
@@ -8154,57 +8161,61 @@ def collect_lambda_axis_realisation(conn: sqlite3.Connection) -> dict[str, Any]:
         scanned += 1
         first_day = str(day) if not first_day else min(first_day, str(day))
         last_day = max(last_day, str(day))
-        # One fact can carry the same selection under more than one key;
-        # the seat is identified by what it bought, not by where in the
-        # payload it was found.
-        seen: set = set()
         for selection in walk(fact):
             seat = selection.get("seated")
             if not isinstance(seat, dict):
                 continue
             source = seat.get("effective_edge_lambda_source")
-            buckets = seat.get("buckets") or []
+            buckets = [str(b) for b in (seat.get("buckets") or [])]
             claim = seat.get("win_probability")
             if not source or not buckets or claim is None:
                 continue
-            mark = (str(source), tuple(str(b) for b in buckets))
-            if mark in seen:
-                continue
-            seen.add(mark)
-            won = 1 if settled_bucket in [str(b) for b in buckets] else 0
-            rows_by_source.setdefault(str(source), []).append(
-                (float(claim), won)
-            )
-            key = (str(source), str(sid), str(day))
-            stamp = str(decided_at or "")
-            seat_stages.setdefault(key, set()).add(str(stage))
-            if key not in seats or stamp >= seats[key][0]:
-                seats[key] = (stamp, float(claim), won, str(sid), str(day))
+            days.setdefault((str(sid), str(day)), []).append((
+                str(decided_at or ""), str(source), float(claim),
+                1 if settled_bucket in buckets else 0,
+            ))
+            # One fact is one decision; the first seated selection in it is
+            # that decision's seat.
+            break
+
+    standing: dict[str, list] = {}
+    day_means: dict[str, list] = {}
+    mixed_days = 0
+    for rows in days.values():
+        rows.sort()
+        if len({row[1] for row in rows}) > 1:
+            mixed_days += 1
+        _at, source, claim, won = rows[-1]
+        standing.setdefault(source, []).append((claim, won))
+        by_source: dict[str, list] = {}
+        for _stamp, src, cl, win in rows:
+            by_source.setdefault(src, []).append((cl, win))
+        if len(by_source) > 1:
+            for src, group in by_source.items():
+                day_means.setdefault(src, []).append((
+                    sum(c for c, _w in group) / len(group),
+                    sum(w for _c, w in group) / len(group),
+                ))
+
+    def pooled(group: list) -> tuple:
+        if not group:
+            return (None, None, None)
+        claimed = sum(c for c, _w in group) / len(group)
+        rate = sum(w for _c, w in group) / len(group)
+        ratio = rate / claimed if claimed else None
+        return (claimed, rate, ratio)
 
     axes: list[dict[str, Any]] = []
-    grouped: dict[str, list] = {}
-    stage_seats: dict[str, int] = {}
-    for key, value in seats.items():
-        grouped.setdefault(key[0], []).append(value)
-        stage_seats[key[0]] = stage_seats.get(key[0], 0) + len(
-            seat_stages.get(key, ())
-        )
-    for source in sorted(set(grouped) | set(rows_by_source)):
-        group = grouped.get(source, [])
-        n = len(group)
-        station_days = n
-        claimed = sum(v[1] for v in group) / n if n else None
-        hits = sum(v[2] for v in group)
-        hit_rate = hits / n if n else None
-        low, high_bound = _wilson_interval(hits, n)
-        realised = (
-            hit_rate / claimed if claimed and hit_rate is not None else None
-        )
+    for source in sorted(set(standing) | set(day_means)):
+        seats = standing.get(source, [])
+        n = len(seats)
+        claimed, rate, ratio = pooled(seats)
+        low, high_bound = _wilson_interval(sum(w for _c, w in seats), n)
         band = (
-            None if claimed in (None, 0) or low is None
+            None if not claimed or low is None
             else (low / claimed, high_bound / claimed)
         )
-        if station_days < minimum_station_days:
+        if n < minimum_station_days:
             verdict = "样本不足"
         elif band is None:
             verdict = "未分出"
@@ -8214,32 +8225,31 @@ def collect_lambda_axis_realisation(conn: sqlite3.Connection) -> dict[str, Any]:
             verdict = "达标"
         else:
             verdict = "未分出"
-        cycles = rows_by_source.get(source, [])
+        pair = day_means.get(source, [])
+        p_claim, p_rate, p_ratio = pooled(pair)
         axes.append({
             "source": source,
-            "seats": stage_seats.get(source, n),
-            "station_days": station_days,
+            "standing_days": n,
             "claimed_mean": None if claimed is None else round(claimed, 4),
-            "hit_rate": None if hit_rate is None else round(hit_rate, 4),
-            "realised_x": None if realised is None else round(realised, 3),
+            "hit_rate": None if rate is None else round(rate, 4),
+            "realised_x": None if ratio is None else round(ratio, 3),
             "realised_lo": None if band is None else round(band[0], 3),
             "realised_hi": None if band is None else round(band[1], 3),
             "verdict": verdict,
-            "cycle_rows": len(cycles),
-            "cycle_realised_x": (
-                round(
-                    (sum(w for _c, w in cycles) / len(cycles))
-                    / (sum(c for c, _w in cycles) / len(cycles)), 3
-                ) if cycles and sum(c for c, _w in cycles) > 0 else None
-            ),
+            "paired_days": len(pair),
+            "paired_claimed": None if p_claim is None else round(p_claim, 4),
+            "paired_hit_rate": None if p_rate is None else round(p_rate, 4),
+            "paired_x": None if p_ratio is None else round(p_ratio, 3),
         })
-    axes.sort(key=lambda a: -a["station_days"])
+    axes.sort(key=lambda a: -a["standing_days"])
     return {
         "available": True,
         "since": since,
         "first_day": first_day,
         "last_day": last_day,
         "facts_scanned": scanned,
+        "station_days": len(days),
+        "mixed_axis_days": mixed_days,
         "minimum_station_days": minimum_station_days,
         "axes": axes,
     }
@@ -11183,45 +11193,60 @@ ${b.admits?"可买 ["+b.admits[0].toFixed(3)+", "+b.admits[1].toFixed(3)+")"
     const label={agreement_band:"一致度轴",
       claim_edge_thin_band:"体温计薄档轴"};
     const cls={"跌破":"down","达标":"up"};
-    const num=v=>v==null?"—":"×"+v.toFixed(3);
+    const mult=v=>v==null?"—":"×"+v.toFixed(3);
+    const p1=v=>v==null?"—":(v*100).toFixed(1)+"%";
+    const best=axes.reduce((a,b)=>
+      (b.paired_x!=null&&(a==null||a.paired_x<b.paired_x))?b:a,null);
     const rows=axes.map(a=>`<tr>
       <td>${label[a.source]||a.source}</td>
-      <td>${a.station_days}</td><td class="muted">${a.seats}</td>
-      <td class="mono">${a.claimed_mean==null?"—":(a.claimed_mean*100).toFixed(1)+"%"}</td>
-      <td class="mono">${a.hit_rate==null?"—":(a.hit_rate*100).toFixed(1)+"%"}</td>
-      <td class="mono ${cls[a.verdict]||""}"><b>${num(a.realised_x)}</b></td>
-      <td class="mono muted">${num(a.realised_lo)} … ${num(a.realised_hi)}</td>
+      <td>${a.standing_days}</td>
+      <td class="mono">${p1(a.claimed_mean)}</td>
+      <td class="mono">${p1(a.hit_rate)}</td>
+      <td class="mono ${cls[a.verdict]||""}"><b>${mult(a.realised_x)}</b></td>
+      <td class="mono muted">${mult(a.realised_lo)} … ${mult(a.realised_hi)}</td>
       <td class="${cls[a.verdict]||"muted"}">${a.verdict}</td>
-      <td class="mono muted">${num(a.cycle_realised_x)}<span
-        style="font-size:11px"> ${a.cycle_rows}</span></td></tr>`).join("");
-    const fired=axes.filter(a=>a.verdict==="跌破").map(a=>label[a.source]||a.source);
+      <td class="mono">${p1(a.paired_claimed)}</td>
+      <td class="mono">${p1(a.paired_hit_rate)}</td>
+      <td class="mono ${best&&best.source===a.source?"up":""}"><b>${
+        mult(a.paired_x)}</b></td></tr>`).join("");
+    // The trigger firing on an axis that WINS the paired comparison is the
+    // case the clause never imagined, and it is the case in front of us.
+    const fired=axes.filter(a=>a.verdict==="跌破");
+    const awkward=best&&fired.some(a=>a.source===best.source);
     return `<div style="margin-top:12px">
-      <div style="font-size:12.5px"><b>宪章 97 回收判据实测</b>（站日级，${
-      R.first_day||"—"} ～ ${R.last_day||"—"}，${R.facts_scanned} 份已结算候选窗事实）</div>
-      <table style="margin-top:6px"><thead><tr><th>λ 来源</th>
-      <th title="统计单位：一个站日一行。P0/P0-M/P1 同一站日结算同一个最高温，不是独立样本；区间按站日算，不按席位算">站日</th>
-      <th class="muted" title="席位＝站日×阶段，只作参考，不进区间">席位</th>
-      <th>声称均值</th><th>真值落窗</th><th>兑现比</th>
+      <div style="font-size:12.5px"><b>宪章 97 回收判据实测</b>（${
+      R.first_day||"—"} ～ ${R.last_day||"—"}，${R.station_days} 个站日，${
+      R.facts_scanned} 份已结算候选窗事实）</div>
+      <table style="margin-top:6px"><thead><tr><th rowspan="2">λ 来源</th>
+      <th colspan="6" style="text-align:center">收盘在位的那一席（判据取这个）</th>
+      <th colspan="3" style="text-align:center">同日配对（两轴都服务过的 ${
+      (axes[0]||{}).paired_days||0} 个站日）</th></tr><tr>
+      <th title="该轴在当天最后一次决策时在位的站日数；一个站日只算一次">站日</th>
+      <th>声称</th><th>真值落窗</th><th>兑现比</th>
       <th title="命中率的 90% Wilson 区间 ÷ 声称均值">90% 区间</th>
       <th title="跌破＝区间上界 &lt; 1.00；达标＝下界 ≥ 1.00；未分出＝区间跨 1.00；样本不足＝站日 &lt; ${
       R.minimum_station_days}">判定</th>
-      <th class="muted" title="每个决策周期一行的口径，同一站日重复计数，仅作对照">逐周期·行数</th></tr></thead>
+      <th>声称</th><th>真值落窗</th><th>兑现比</th></tr></thead>
       <tbody>${rows}</tbody></table>
       <p class="note" style="margin-top:6px">口径＝带
       <span class="mono">effective_edge_lambda_source</span> 戳的<b>入座窗口</b>，
-      真值按该事实自带的 <span class="mono">bucket_intervals_c_json</span> 映到桶，
-      看真值有没有落进入座窗；每个站日只取该轴当天最后一次决策。
-      条文原本把判据挂在体温计的薄档两格上，那两格全史只有 41 条腿、
-      在本页十条门槛之下且补不满，所以判据改挂这条口径（用户裁定 2026-09-12）。
+      真值按该事实自带的 <span class="mono">bucket_intervals_c_json</span> 映到桶。
+      <b>单位是站日不是周期</b>：同一个窗每个周期都会重新入座，
+      P0/P0-M/P1 同日又结算同一个最高温，按周期汇总会把区间除以一个当天没有的样本量。
+      <b>轴在日内会换</b>——${R.station_days} 个站日里 ${R.mixed_axis_days} 个换过（${
+      (R.mixed_axis_days/Math.max(1,R.station_days)*100).toFixed(0)}%），
+      而覆盖率随当天推进从 0.76 升到 0.91、声称却一直停在 0.91 左右，
+      所以「各轴各取自己当天最后一次决策」会把没撑到收盘的那根轴按盘中快照计分，
+      量出来的是服务时点不是轴——右边的同日配对列才是可比的那一列。
+      条文原本把判据挂在体温计薄档两格上，那两格全史只有 41 条腿、读不出来，
+      判据因此改挂这条口径（用户裁定 2026-09-12）。
       站日门槛 ${R.minimum_station_days} 与「未分出」状态是条文没有、
-      2026-09-11 λ 闸事故要求补上的两件。${fired.length>1
-      ?`<br><b>注意：判据在 ${fired.join("、")} 上同时触发</b>——
-      「兑现跌破 1.0」当前不分轴，读的是所有宽窗口的共同高估，
-      单凭它收回宪章 97 等于为一个替代轴同样具备的性质收回它。`:""}
-      <br>上面那条「λ 来源分布」数的是 <span class="mono">auto_trade_decisions</span>
-      近 3 天最多 400 份计划，这张表数的是
-      <span class="mono">basket_policy_training_fact</span> 全窗已结算事实，
-      两个数不该相等。</p></div>`;
+      2026-09-11 λ 闸事故要求补上的两件。${awkward
+      ?`<br><b>当前读数互相矛盾</b>：${label[best.source]||best.source}在位那一席
+      判定「跌破」，但在同日配对下它恰是更好的一根（${mult(best.paired_x)} 对
+      ${axes.filter(a=>a.source!==best.source).map(a=>mult(a.paired_x)).join("、")}）。
+      按字面收回它，等于把这些窗口交还给一根在同样日子里更差的轴。
+      条文的触发器需要改写成「显著差于在任替代轴」才可执行。`:""}</p></div>`;
   };
 
   const block=sc=>{
