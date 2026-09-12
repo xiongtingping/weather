@@ -39,7 +39,18 @@ def test_apply_market_quote_fallback_for_side_in_place_uses_gamma_price() -> Non
     assert row["ask_missing_reason_no"] == "gamma_price_fallback"
 
 
-def test_hydrate_distribution_market_fields_recomputes_edge_from_gamma_price() -> None:
+def test_hydrate_distribution_market_fields_from_gamma_price() -> None:
+    """The hydrator fills market fields; it stopped scoring edge at 7.16.
+
+    ``signal_edge_round``/``edge_score_yes``/``edge_signal_lcb_yes`` left
+    ui/server entirely in the 2026-07-16 refactor and live in
+    scan_weather_market now, so this asserted four keys the hydrator has not
+    written since.  What it does owe from a gamma price is the quote pair,
+    the zero spread and the fallback reason -- on every row, through the
+    distribution, which is what distinguishes it from
+    _apply_market_quote_fallback_for_side_in_place above.
+    """
+
     conn = sqlite3.connect(":memory:")
     distribution = [
         {
@@ -67,18 +78,31 @@ def test_hydrate_distribution_market_fields_recomputes_edge_from_gamma_price() -
 
     row = distribution[0]
     assert changed is True
+    assert row["best_bid"] == 0.51
     assert row["best_ask"] == 0.51
+    assert row["best_bid_no"] == 0.49
     assert row["best_ask_no"] == 0.49
-    assert math.isclose(row["signal_edge_round"], 0.04, rel_tol=0.0, abs_tol=1e-9)
-    assert math.isclose(row["signal_edge_round_no"], -0.04, rel_tol=0.0, abs_tol=1e-9)
-    assert row.get("edge_score_yes") is not None
-    assert row.get("exec_edge_score_yes") is not None
-    assert row.get("edge_signal_lcb_yes") is not None
+    assert row["spread"] == 0.0
+    assert row["spread_no"] == 0.0
+    assert row["ask_missing_reason_yes"] == "gamma_price_fallback"
+    assert row["ask_missing_reason_no"] == "gamma_price_fallback"
     assert row.get("event_date") == "2026-04-15"
     assert row.get("run_date") == "2026-04-15"
+    assert "signal_edge_round" not in row
+    assert "edge_score_yes" not in row
 
 
-def test_hydrate_distribution_uses_topn_depth_when_total_is_zero() -> None:
+def test_hydrate_distribution_leaves_quoted_rows_and_does_not_price_execution() -> None:
+    """The hydrator fills missing quotes; it does not compute execution cost.
+
+    This used to assert ``exec_entry_cost_no``/``exec_edge_entry_no`` off a
+    top-N depth fallback.  That pricing left ui/server in the 2026-07-16
+    refactor and is computed in scan_weather_market's analyze_event now, so
+    the hydrator writes neither.  A row that already carries its own NO quote
+    has nothing for the hydrator to fill, which is what ``changed is False``
+    says.
+    """
+
     conn = sqlite3.connect(":memory:")
     distribution = [
         {
@@ -108,9 +132,18 @@ def test_hydrate_distribution_uses_topn_depth_when_total_is_zero() -> None:
     )
 
     row = distribution[0]
-    assert changed is True
-    assert math.isclose(row["exec_entry_cost_no"], 0.0105, rel_tol=0.0, abs_tol=1e-9)
-    assert math.isclose(row["exec_edge_entry_no"], -0.021650208739210353, rel_tol=0.0, abs_tol=1e-9)
+    assert changed is False
+    # The quotes it came in with, untouched.
+    assert row["best_bid_no"] == 0.69
+    assert row["best_ask_no"] == 0.72
+    assert row["spread_no"] == 0.03
+    assert row["ask_depth_total_no"] == 0.0
+    assert row["ask_depth_topN_no"] == 125.87
+    assert "exec_entry_cost_no" not in row
+    assert "exec_edge_entry_no" not in row
+    # Only the identity the hydrator stamps on every row it sees.
+    assert row["event_date"] == "2026-04-20"
+    assert row["run_date"] == "2026-04-18"
 
 
 def test_display_probability_dead_yes_market_does_not_overwrite_q_calibrated() -> None:

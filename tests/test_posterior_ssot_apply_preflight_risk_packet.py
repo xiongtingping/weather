@@ -54,6 +54,12 @@ def test_preflight_risk_packet_rebuilds_final_lock_apply_route_without_writing(t
         db_path,
         slug="highest-temperature-in-chengdu-on-july-5-2026",
         event_date="2026-07-05",
+        # No age window.  The fixture's fact is dated 2026-07-05 and the
+        # default since_hours is 168 counted from now, so this scanned an
+        # empty set and reported zero candidates for every run made more than
+        # a week after that date -- a test that rots on the calendar rather
+        # than on the code.
+        since_hours=0,
         latest_only=True,
         limit=5,
         max_items_output=5,

@@ -54,6 +54,15 @@ def _payload(*, target_bucket: str = "33°C", strict_marker: bool = True) -> dic
                 "hard_mask_is_constraint_not_weight": True,
             },
             "layer_chain": {"schema": "bayes_layer_chain_summary_v1"},
+            # The production identity build_posterior_ssot_fact stamps on
+            # every block it mints, and which this audit now requires a
+            # strict-marked fact to carry: four fields naming the one
+            # approved composer and closing the door on a legacy fallback.
+            # The fixture was written before the audit checked them.
+            "production_model_family": "joint_weak_physical_strong",
+            "production_model_version": "joint_weak_physical_strong_composer_v1",
+            "production_probability_policy": "unique_joint_weak_physical_strong_only_fail_closed",
+            "legacy_model_fallback_allowed": False,
         },
         "posterior_target_bucket_selection": {
             "ssot_source": "posterior_ssot_fact",
