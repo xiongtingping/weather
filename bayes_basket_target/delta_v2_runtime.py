@@ -6560,6 +6560,42 @@ def compile_delta_v2_runtime_plan(
         "convergence_claim": dict(
             support_window_audit.get("convergence_claim") or {}
         ),
+        # Charter 118 (一): the market-lean gate's own record, projected
+        # where a reader can reach it.  The ruling published the refused
+        # windows into ``_support_windows``' audit, and that audit is not
+        # persisted -- the plan lifts three keys off it and drops the rest,
+        # so the list, the lean the decision saw, and the shadow arm's count
+        # all died with the dict.  ``window_gate_counts`` below carries the
+        # ENFORCED count only, which is zero whenever the gate is in shadow:
+        # the arm that most needs a record was the one leaving none, which
+        # is the failure 118 (一) was written to end.
+        "market_lean": {
+            "mode": str(
+                support_window_audit.get("market_lean_gate_mode") or ""
+            ),
+            "min_buckets": MARKET_LEAN_MIN_BUCKETS,
+            "lean_ordinal": support_window_audit.get("market_lean_ordinal"),
+            "refused_window_count": int(
+                support_window_audit.get(
+                    "market_lean_refused_window_count"
+                ) or 0
+            ),
+            "shadow_refused_window_count": int(
+                support_window_audit.get(
+                    "market_lean_shadow_refused_window_count"
+                ) or 0
+            ),
+            # Bounded by MARKET_LEAN_REFUSAL_RECORD_MAX at the gate; the
+            # counts above stay exact, so a truncated list never reads as
+            # the whole.
+            "refused_windows": [
+                dict(row)
+                for row in (
+                    support_window_audit.get("market_lean_refused_windows")
+                    or ()
+                )
+            ],
+        },
         # Charter 91/103: the floor this compile screened its legs with,
         # and the funnel saying how many windows each gate refused.
         #

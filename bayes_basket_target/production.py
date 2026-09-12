@@ -1361,6 +1361,15 @@ def commit_production_candidate_atomic(
                 if isinstance(delta_v2_audit, Mapping)
                 else None
             ),
+            # Charter 118 (一): the market-lean gate's record -- the lean it
+            # read, what it refused, and what it WOULD refuse while it sits
+            # in shadow.  Same reason as the line above: a gate whose
+            # refusals are not on the row cannot be priced from the row.
+            "market_lean": (
+                dict(delta_v2_audit.get("market_lean") or {})
+                if isinstance(delta_v2_audit, Mapping)
+                else None
+            ),
             "delta_v2_content_sha256": (
                 delta_v2_audit.get("content_sha256")
                 if isinstance(delta_v2_audit, Mapping)
