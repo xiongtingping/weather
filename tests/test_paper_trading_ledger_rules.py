@@ -269,6 +269,37 @@ def test_recorded_seats_obey_the_ladder_bounds() -> None:
                 continue
             posted = set(json.loads(posted_js))
             probs = json.loads(probs_js or "{}")
+            # What the day could actually seat, read off the enumeration
+            # that ran at this cycle rather than inferred from price.
+            #
+            # ``probabilities_json`` carries a served probability for every
+            # bucket on the ladder, and most of them were never candidates:
+            # admission is the continuous core's answer -- evidence, model
+            # agreement, hard bounds, charter 125's running high -- and a
+            # bucket can be priced, buyable and still never have been in the
+            # domain.  Judging "should have been in the window" from the leg
+            # floor alone therefore manufactures violations.  LEMD
+            # 2026-09-08 P0 is the standing case: the enumeration produced
+            # exactly one priced window, {35C, 36C}, which is the seat, and
+            # the test called it short because 34C sat outside at p=0.011
+            # with a mid of 0.03.  34C was never admitted.
+            enumerated = conn.execute(
+                "SELECT buckets_json FROM paper_trade_candidate_window"
+                " WHERE station_id=? AND event_date=? AND stage=?"
+                "   AND decision_at_utc=?",
+                (st, day, row_stage, at),
+            ).fetchall()
+            if not enumerated:
+                unreplayable.append(f"{st} {day} {row_stage} (no enumeration)")
+                continue
+            admitted = set()
+            for (buckets_js,) in enumerated:
+                try:
+                    admitted.update(
+                        str(b) for b in json.loads(buckets_js or "[]")
+                    )
+                except (TypeError, ValueError):
+                    continue
             book = _entry_book(conn, st, day, row_stage, at)
             if book is None:
                 unreplayable.append(f"{st} {day} {row_stage}")
@@ -277,13 +308,17 @@ def test_recorded_seats_obey_the_ladder_bounds() -> None:
             for bucket, prob in probs.items():
                 if bucket in posted or float(prob) <= 1e-6:
                     continue
+                if str(bucket) not in admitted:
+                    # Never a candidate at this cycle; its price says
+                    # nothing about whether the seat was short.
+                    continue
                 quoted = book.get(str(bucket))
                 ask, bid = (None, None) if quoted is None else quoted[1:]
                 assert leg_below_floor(
                     ask, float(prob), MINIMUM_LEG_ALL_IN_ASK, bid=bid
                 ), (
                     f"{st} {day} {row_stage}: seat narrower than the floor"
-                    f" while {bucket} was live at p={prob}"
+                    f" while {bucket} was admitted and live at p={prob}"
                     f" ask={ask} bid={bid}"
                 )
         assert checked or not unreplayable, (
