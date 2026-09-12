@@ -14,11 +14,13 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# The fact snapshot writer and ui/server.py were removed with the pre-basket
+# lane.  A file that no longer exists cannot carry a retired token, and the
+# scan below records an unreadable path as a violation, so they are dropped
+# here rather than left to fail closed on their own absence.
 RUNTIME_FILES = (
     ROOT / "forecast_weak_likelihood_runtime.py",
     ROOT / "hierarchical_posterior_pipeline_runtime.py",
-    ROOT / "weather_fact_snapshot_writer.py",
-    ROOT / "ui" / "server.py",
 )
 RETIRED_TOKENS = (
     "MODEL_TAF_CONFLICT",

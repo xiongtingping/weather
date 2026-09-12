@@ -4,15 +4,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_exit_retry_watch_defaults_to_dry_run_and_requires_bayes_apply():
-    text = (ROOT / "scripts" / "exit_retry_watch.py").read_text()
+def test_exit_retry_watch_script_is_gone_not_merely_guarded():
+    """The retirement went past the dry-run guard: the script itself is gone.
 
-    assert "Defaults to dry-run" in text
-    assert "--apply" in text
-    assert "--exit-reason-code" in text
-    assert "s._exit_order_policy_block_reason(reason_codes)" in text
-    assert "if args.dry_run or not args.apply:" in text
-    assert "real SELL requires --apply and --exit-reason-code target_realization_*" in text
+    This used to read ``scripts/exit_retry_watch.py`` and assert it defaulted
+    to dry-run and demanded ``--apply`` with a target_realization exit reason
+    code.  The script was removed with the pre-basket lane it drove, so there
+    is nothing left to read and those assertions could only raise.  A script
+    that does not exist cannot place a SELL, which is what the guards were
+    protecting against.
+    """
+
+    assert not (ROOT / "scripts" / "exit_retry_watch.py").exists()
 
 
 def test_exit_retry_watch_launchd_job_is_gone_not_merely_disabled():
@@ -32,9 +35,9 @@ def test_exit_retry_watch_launchd_job_is_gone_not_merely_disabled():
     for path in plists:
         assert "com.weather.exit_retry_watch" not in path.read_text(encoding="utf-8")
 
-    ui_server = (ROOT / "ui" / "server.py").read_text(encoding="utf-8")
-    service_block = ui_server.split("def _launchd_service_labels()", 1)[1].split("]", 1)[0]
-    assert "com.weather.exit_retry_watch" not in service_block
+    # The service list this used to read lived in ui/server.py, which is gone
+    # with the same lane; a label cannot sit in a list that does not exist.
+    assert not (ROOT / "ui" / "server.py").exists()
 
 
 def test_task_queue_worker_is_a_retired_label_with_no_launchd_job():
@@ -55,6 +58,4 @@ def test_task_queue_worker_is_a_retired_label_with_no_launchd_job():
     for path in sorted((ROOT / "launchd").glob("*.plist")):
         assert "com.weather.task_queue_worker" not in path.read_text(encoding="utf-8")
 
-    ui_server = (ROOT / "ui" / "server.py").read_text(encoding="utf-8")
-    service_block = ui_server.split("def _launchd_service_labels()", 1)[1].split("]", 1)[0]
-    assert "com.weather.task_queue_worker" not in service_block
+    assert not (ROOT / "ui" / "server.py").exists()

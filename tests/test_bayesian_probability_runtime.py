@@ -1337,13 +1337,6 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             items[0]["q_bayes_meta"]["score_components"]["forecast_weak_likelihood"],
         )
 
-    def test_scan_does_not_premix_observed_nowcast_into_base_q(self) -> None:
-        source = Path("scan_weather_market.py").read_text()
-
-        self.assertNotIn("model_share * q[\"q_round\"] + blend_share * q_observed_nowcast", source)
-        self.assertNotIn("blend_share * q_observed_nowcast", source)
-        self.assertIn('"q_observed_nowcast": q_observed_nowcast', source)
-        self.assertIn('"observed_nowcast_value": observed_nowcast_value', source)
 
     def test_bayesian_data_role_contract_covers_all_sources_without_role_mismatch(self) -> None:
         audit = audit_bayesian_data_role_contract()

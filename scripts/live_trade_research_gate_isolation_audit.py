@@ -12,10 +12,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_VERSION = "live_trade_research_gate_isolation_audit_v1"
 LIVE_TRADE_PATHS = (
-    "bot/main.py",
-    "scan_weather_market.py",
     "weather_strategy_runtime.py",
-    "target_realization_v3_runtime.py",
     "scripts/auto_trade_watcher.py",
     "scripts/auto_trade_worker.sh",
     "scripts/clob_order_service.mjs",

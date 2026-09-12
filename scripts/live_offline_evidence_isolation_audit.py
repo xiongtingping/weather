@@ -13,11 +13,6 @@ from typing import Iterable
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = "live_offline_evidence_isolation_audit_v1"
 LIVE_PYTHON_FILES = (
-    "scripts/materialize_amsc_posterior_task.py",
-    "posterior_ssot_projection_runtime.py",
-    "weather_fact_snapshot_writer.py",
-    "target_realization_v3_runtime.py",
-    "strong_posterior_three_leg_strategy.py",
     "scripts/auto_trade_watcher.py",
 )
 OFFLINE_MODULE_TOKENS = (

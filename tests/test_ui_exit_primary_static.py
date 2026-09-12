@@ -57,18 +57,6 @@ def test_exit_reason_renderers_prepend_exit_reason_family() -> None:
     assert "reasons.push(...buildExitReasonFamilyParts(tradeInfo));" in html
 
 
-def test_ui_server_does_not_synthesize_target_exit_from_exec_edge_exit() -> None:
-    server_path = UI_INDEX.parent / "server.py"
-    source = server_path.read_text(encoding="utf-8")
-
-    assert "def _build_edge_realizable_target_exit_price_ui" not in source
-    assert "exec_exit_price=exec_exit_price" not in source
-    assert "exec_edge_exit=exec_edge_exit" not in source
-    assert "fallback_exit = _coalesce_numeric(entry.get(\"exec_exit_price\")" not in source
-    assert "edge_realizable_target_exit_price\"] = fallback_exit" not in source
-    assert "v2_meta.get(\"target_exit_price\")" not in source
-
-
 def test_tradeability_snapshot_control_is_not_rendered_after_strategy_config_panel_removal() -> None:
     html = UI_INDEX.read_text(encoding="utf-8")
 

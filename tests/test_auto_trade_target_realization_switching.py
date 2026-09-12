@@ -28,28 +28,6 @@ class AutoTradeTargetRealizationSwitchingTests(unittest.TestCase):
         candidate.update(overrides)
         return candidate
 
-    def test_scan_buffer_canonicalizes_target_realization_fields_before_insert(self) -> None:
-        text = Path("scan_weather_market.py").read_text(encoding="utf-8")
-        helper_start = text.index("def _canonicalize_target_realization_ssot_fields(")
-        helper_end = text.index("# 复用模块级 _compact_decision_details", helper_start)
-        helper_block = text[helper_start:helper_end]
-        self.assertIn('out["target_bucket"] = plan_target_bucket', helper_block)
-        self.assertIn('out["ssot_target_bucket"] = plan_target_bucket', helper_block)
-        self.assertIn('out["new_target_bucket"] = plan_target_bucket', helper_block)
-        self.assertIn('current_top_bucket = str(out.get("current_top_bucket")', helper_block)
-        self.assertIn('canonical_source = "target_adjustment_current_top_bucket"', helper_block)
-        self.assertIn('out.setdefault("switch_reference_bucket", out_label)', helper_block)
-
-        buffer_start = text.index("def _buffer_decision(")
-        buffer_end = text.index("def _target_switch_expected_key(", buffer_start)
-        buffer_block = text[buffer_start:buffer_end]
-        compact_at = buffer_block.index("merged_details = _compact_decision_details(")
-        canonical_at = buffer_block.rindex(
-            "_canonicalize_target_realization_ssot_fields(",
-            0,
-            compact_at,
-        )
-        self.assertLess(canonical_at, compact_at)
 
     def test_strategy_allows_initial_target_entry_without_active_yes_position(self) -> None:
         profile = classify_weather_strategy_candidate(

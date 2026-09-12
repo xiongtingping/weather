@@ -81,7 +81,6 @@ RUNTIME_FILES = (
     "scripts/archive_db_wal_keeper.py",
     "canonical_observation_runtime.py",
     "canonical_observation_writer.py",
-    "weather_fact_snapshot_writer.py",
     "zuuu_metar_reporting_schedule.py",
     "production_probability_successor_activation_contract.py",
     "production_probability_successor_runtime_manifest.py",
@@ -107,6 +106,9 @@ RETIRED_HISTORY_ONLY_FILES = (
     "amsc_taf_revision_runtime.py",
 )
 RETIREMENT_FILES = (
+    # Moved out of RUNTIME_FILES when the pre-basket lane was removed: the
+    # receipt tolerates a missing file by design, the manifest hash does not.
+    "weather_fact_snapshot_writer.py",
     "scripts/run_amsc_zuuu_metar_taf_poll_immutable.sh",
     "scripts/amsc_zuuu_metar_taf_poll_once.sh",
     "scripts/watch_zuuu_speci_once.py",
