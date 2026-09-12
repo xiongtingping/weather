@@ -183,6 +183,34 @@ def sample_payload() -> dict:
             "calibration": {},
             "observation_constraints": {"d0_violation_count": 0},
         },
+        # The prior layer the fact writer's apply contract requires of every
+        # payload it persists.  materialize_ctp_latest_facts hands these
+        # straight to that writer, so without it the apply was refused on
+        # prior_layer_contract_failed and nothing was appended -- before any
+        # of the CTP behaviour these tests are about.  Production facts carry
+        # a prior; this fixture predates the contract.
+        # And the composer identity, without which the writer's own
+        # materializer mints a blocked SSOT block
+        # (joint_weak_physical_strong_model_unavailable) and the apply
+        # contract refuses the payload on a dozen posterior_ssot_fact_*
+        # issues.
+        "production_model_version": "joint_weak_physical_strong_composer_v1",
+        "production_model_ready": True,
+        "prior_distribution": {"30°C": 0.2, "31°C": 0.6, "32°C": 0.2},
+        "prior_na_reason": "",
+        "prior_meta": {
+            "schema": "temperature_prior_meta_v1",
+            "state": "available",
+            "source": "unit_test_backtest_prior",
+            "boundary": (
+                "historical_climate_date_site_terrain_weather_type_only"
+                "_no_forecast_no_metar_no_market"
+            ),
+            "sample_count": 30,
+            "date_window_days": 15,
+            "shrinkage_target": "broader_settled_history",
+            "prior_na_reason": "",
+        },
     }
 
 
@@ -200,6 +228,14 @@ def sample_payload_with_stale_regime_v1_ctp() -> dict:
         "forecast_peak_temp_c": 32.0,
         "observed_temp_c": 26.0,
         "observed_today_max_c": 26.0,
+        # Named, because an unattributed observed maximum stops counting as a
+        # hard observation the moment a payload declares a source lineage --
+        # and the materializer's write declares one.  Without the source the
+        # rewritten fact ranks below its own parent and event_fact_latest is
+        # never repointed onto it, so nothing this materializer produces is
+        # ever read.  A production fact names its source.
+        "observed_today_max_source": "zuuu_metar_raw_awc",
+        "zuuu_metar_raw_awc_today_max_c": 26.0,
         "observation_hour_local": 8.0,
         "expected_peak_hour_local": 16.0,
         "peak_window_start_hour_local": 14.0,
@@ -252,9 +288,23 @@ def sample_payload_with_locked_observed_stale_trajectory_component() -> dict:
     payload["weather_likelihood_features"] = {
         "market_var": "temperature_2m_max",
         "forecast_peak_temp_c": 31.2,
-        "observed_temp_c": 32.2,
-        "observed_today_max_c": 34.0,
+        # Inside the ladder.  This fixture's distribution is 30/31/32 and its
+        # peak estimator reads 31.2, but the observed maximum said 34.0 -- a
+        # day that had already passed every bucket the market lists.  The
+        # writer hard-zeroes every rung below the observed floor, so the whole
+        # distribution went to zero and the SSOT block came back missing on
+        # posterior_distribution_has_no_hard_observation_eligible_target.  The
+        # locked-after-peak-window story this test is named for works on any
+        # value the ladder can hold.
+        "observed_temp_c": 30.0,
+        "observed_today_max_c": 31.0,
         "observed_today_max_source": "zuuu_metar_raw_awc_today_max_c",
+        # The peak estimator locks on an EXPLICIT final-daily-max verdict, not
+        # on the clock: being past the peak window is no longer enough on its
+        # own, so a fixture that only said "observation_hour_local is late"
+        # kept the trajectory enabled and never reached the locked state this
+        # test is named for.
+        "temperature_observation_final_daily_max": True,
         "observation_hour_local": 18.25,
         "peak_window_start_hour_local": 14.0,
         "peak_window_end_hour_local": 17.0,
@@ -266,8 +316,8 @@ def sample_payload_with_locked_observed_stale_trajectory_component() -> dict:
             "source": "locked_trusted_observed",
             "mu_c": 34.0,
             "sigma_c": 0.3,
-            "observed_temp_c": 32.2,
-            "observed_today_max_c": 34.0,
+            "observed_temp_c": 30.0,
+            "observed_today_max_c": 31.0,
             "observed_today_max_source": "zuuu_metar_raw_awc_today_max_c",
             "hour_local": 18.25,
             "peak_window_start_hour_local": 14.0,
@@ -384,10 +434,13 @@ def test_materialize_ctp_latest_facts_apply_repoints_latest_with_ctp(tmp_path: P
     assert latest["fact_id"] != original_fact_id
     assert history_count == 2
     assert {"grid", "cdf_values", "quantiles_c", "quantile_grid", "bucket_probabilities"}.issubset(posterior)
-    assert payload["target_bucket_probability_field"] == "posterior_temperature_distribution.bucket_probabilities"
-    assert payload["distribution"][0]["posterior_field"] == "posterior_temperature_distribution.bucket_probabilities"
+    # The materializer names the CTP distribution as the probability field,
+    # and the writer then re-points it at the SSOT block it mints on the way
+    # to storage -- the persisted fact says what every consumer reads.
+    assert payload["target_bucket_probability_field"] == "posterior_ssot_fact.target_probability"
+    assert payload["distribution"][0]["posterior_field"] == "posterior_ssot_fact.bucket_probabilities"
     assert summary["summary_cache_source"] == "weather_fact_snapshot_writer"
-    assert summary["target_bucket_probability_field"] == "posterior_temperature_distribution.bucket_probabilities"
+    assert summary["target_bucket_probability_field"] == "posterior_ssot_fact.target_probability"
     assert audit.audit_latest_fact_ctp_coverage(db_path) == []
 
 
