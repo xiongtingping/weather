@@ -1,12 +1,9 @@
-"""Charter 50's width bounds, as the arm the centre-gate ablation pointed at.
+"""Charter 131: the seat is two to three rungs, by ruling, at every stage.
 
-An enumeration produces a median of one priced window and touches a median of
-three buckets; widths are almost entirely three or four against bounds of
-three and four.  So the bounds are not a filter on a wide domain, they are
-most of the domain, and the centre gate had nothing left to refuse.
-
-Unset the overrides are absent and the station policy's own pair is served,
-which is what production runs.
+Charter 50's three-to-four and the ``PM_SUPPORT_WIDTH_MIN/MAX`` research
+arms (2026-09-12 morning) were retired the same evening by charter 131.  What
+is left to pin: one helper hands the bounds to both books, nothing else
+does, and the environment no longer moves them.
 """
 from __future__ import annotations
 
@@ -22,149 +19,62 @@ for path in (ROOT, ROOT / "scripts"):
         sys.path.insert(0, str(path))
 
 
-def _runtime(**env):
-    previous = {
-        key: os.environ.get(key)
-        for key in ("PM_SUPPORT_WIDTH_MIN", "PM_SUPPORT_WIDTH_MAX")
-    }
-    for key in previous:
-        os.environ.pop(key, None)
-    os.environ.update({k: str(v) for k, v in env.items() if v is not None})
-    try:
-        import bayes_basket_target.delta_v2_runtime as runtime  # noqa: PLC0415
+def test_the_bounds_are_the_rulings_and_the_environment_cannot_move_them() -> None:
+    import bayes_basket_target.delta_v2_runtime as runtime  # noqa: PLC0415
 
-        return importlib.reload(runtime)
+    assert (runtime.SEAT_MIN_BUCKETS, runtime.SEAT_MAX_BUCKETS) == (2, 3)
+    assert runtime.support_width_bounds_v1() == (2, 3)
+    assert runtime.CHAIN_MAX_BUCKETS == 4
+    previous = {k: os.environ.get(k) for k in ("PM_SUPPORT_WIDTH_MIN", "PM_SUPPORT_WIDTH_MAX")}
+    os.environ.update({"PM_SUPPORT_WIDTH_MIN": "1", "PM_SUPPORT_WIDTH_MAX": "6"})
+    try:
+        assert importlib.reload(runtime).support_width_bounds_v1() == (2, 3)
     finally:
         for key, value in previous.items():
             if value is None:
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
+        importlib.reload(runtime)
+    assert not hasattr(runtime, "SUPPORT_WIDTH_MIN_OVERRIDE")
+    assert not hasattr(runtime, "OPENING_FALLBACK_MIN_BUCKETS")
 
 
-def test_unset_serves_the_station_policys_own_pair() -> None:
-    runtime = _runtime()
-    assert runtime.SUPPORT_WIDTH_MIN_OVERRIDE is None
-    assert runtime.SUPPORT_WIDTH_MAX_OVERRIDE is None
-    assert runtime.support_width_bounds_v1(
-        policy_minimum=3, policy_maximum=4
-    ) == (3, 4)
-    # A different policy is followed, not overridden by a remembered value.
-    assert runtime.support_width_bounds_v1(
-        policy_minimum=2, policy_maximum=5
-    ) == (2, 5)
-    _runtime()
-
-
-def test_each_bound_can_be_moved_alone() -> None:
-    assert _runtime(PM_SUPPORT_WIDTH_MIN=2).support_width_bounds_v1(
-        policy_minimum=3, policy_maximum=4
-    ) == (2, 4)
-    assert _runtime(PM_SUPPORT_WIDTH_MAX=6).support_width_bounds_v1(
-        policy_minimum=3, policy_maximum=4
-    ) == (3, 6)
-    _runtime()
-
-
-def test_an_inverted_or_absurd_pair_is_refused() -> None:
-    import pytest  # noqa: PLC0415
-
-    with pytest.raises(RuntimeError):
-        _runtime(PM_SUPPORT_WIDTH_MIN=5, PM_SUPPORT_WIDTH_MAX=3)
-    for bad in (0, 9):
-        with pytest.raises(RuntimeError):
-            _runtime(PM_SUPPORT_WIDTH_MIN=bad)
-    # And an override that inverts a policy pair is refused at the call,
-    # not silently swapped.
-    runtime = _runtime(PM_SUPPORT_WIDTH_MIN=4)
-    with pytest.raises(RuntimeError):
-        runtime.support_width_bounds_v1(policy_minimum=3, policy_maximum=3)
-    _runtime()
-
-
-def test_every_caller_of_the_enumerator_reads_the_helper() -> None:
-    """Both sides, and both judge paths, or an arm is a void arm.
-
-    Patching production's call alone left the paper ledger's production
-    judge reading the policy fields directly, so the width arms came back
-    byte-identical to their baseline under two different fingerprints: 283
-    chains, zero changed, +0.00 paired.  That is the void-arm signature and
-    it is caught here rather than after two hours of replay.
-    """
-
-    import ast as _ast  # noqa: PLC0415
+def test_every_hand_off_of_the_bounds_reads_the_helper() -> None:
+    """Both books must not come to be running two different pairs."""
 
     for module in (
         ROOT / "bayes_basket_target" / "delta_v2_runtime.py",
         ROOT / "scripts" / "paper_trading_ledger.py",
     ):
         source = module.read_text(encoding="utf-8")
-        for node in _ast.walk(_ast.parse(source)):
-            if not isinstance(node, _ast.Call):
-                continue
-            rendered = _ast.unparse(node)
-            if "minimum_support_buckets=" not in rendered:
-                continue
-            # Every hand-off of the bounds names the helper, except the
-            # helper's own keyword arguments.
-            if "policy_minimum=" in rendered and "support_width_bounds_v1" in rendered:
-                continue
-            assert "OPENING_FALLBACK_MIN_BUCKETS" in rendered, (
-                "%s hands the enumerator bounds without the helper: %s"
-                % (module.name, rendered[:160])
+        hand_offs = [
+            ast.unparse(node) for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.Call)
+            and "minimum_support_buckets=" in ast.unparse(node)
+            and not ast.unparse(node.func).endswith("_support_windows")
+            or (
+                isinstance(node, ast.Call)
+                and ast.unparse(node.func).endswith("_support_windows")
             )
+        ]
+        assert hand_offs, module.name
+        for call in hand_offs:
+            if "minimum_support_buckets=" not in call:
+                continue
+            assert "support_width_bounds_v1()" in call, (
+                "%s hands the enumerator bounds without the helper: %s"
+                % (module.name, call[:160])
+            )
+            assert "policy_minimum=" not in call and "basket_policy.minimum_support_buckets" not in call
 
 
-def test_the_runtime_call_reads_the_helper() -> None:
-    """Both sides must not come to be running two different pairs."""
+def test_the_ledger_hashes_the_shape_and_the_width_unconditionally() -> None:
+    import paper_trading_ledger as L  # noqa: PLC0415
 
-    source = (
-        ROOT / "bayes_basket_target" / "delta_v2_runtime.py"
-    ).read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    calls = [
-        ast.unparse(node) for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and ast.unparse(node.func).endswith("_support_windows")
-    ]
-    assert calls, "the enumerator is called somewhere"
-    # The production-judge call reads the helper rather than the policy
-    # fields directly.
-    judged = [c for c in calls if "basket_policy.fee_rate" in c]
-    assert judged, calls
-    for call in judged:
-        assert "support_width_bounds_v1" in call
-        assert "basket_policy.maximum_support_buckets" not in call.replace(
-            "policy_maximum=basket_policy.maximum_support_buckets", ""
-        )
-
-
-def test_the_ledger_hashes_an_arm_and_not_the_default() -> None:
-    import paper_trading_ledger  # noqa: PLC0415
-
-    def _sha(**env) -> str:
-        _runtime(**env)
-        previous = {
-            key: os.environ.get(key)
-            for key in ("PM_SUPPORT_WIDTH_MIN", "PM_SUPPORT_WIDTH_MAX")
-        }
-        for key in previous:
-            os.environ.pop(key, None)
-        os.environ.update({k: str(v) for k, v in env.items()})
-        try:
-            return importlib.reload(
-                paper_trading_ledger
-            ).SELECTION_RULE_SHA256
-        finally:
-            for key, value in previous.items():
-                if value is None:
-                    os.environ.pop(key, None)
-                else:
-                    os.environ[key] = value
-
-    default = _sha()
-    assert default != _sha(PM_SUPPORT_WIDTH_MIN=2)
-    assert default != _sha(PM_SUPPORT_WIDTH_MAX=6)
-    assert _sha() == default
-    _runtime()
-    importlib.reload(paper_trading_ledger)
+    identity = L._SELECTION_RULE_IDENTITY
+    assert identity["seat_shape"] == "seat_shape_mean_anchored_v1"
+    assert identity["seat_width"] == "2..3"
+    assert identity["market_lean_gate"] == "shadow"
+    assert "support_width_min_override" not in identity
+    assert "symmetric_seat" not in identity

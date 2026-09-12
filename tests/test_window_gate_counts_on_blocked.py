@@ -27,7 +27,7 @@ AUDIT = {
     "gapped_window_refused_count": 0,
     "center_refused_window_count": 2,
     "short_refused_window_count": 1,
-    "skew_refused_window_count": 3,
+    "shape_refused_window_count": 3,
     "market_lean_refused_window_count": 0,
     "leg_floor_refused_window_count": 0,
     "unpriced_refused_window_count": 0,
@@ -53,7 +53,7 @@ def test_the_empty_list_error_carries_the_funnel() -> None:
 
     counts = window_gate_counts_v1(AUDIT)
     assert set(counts["refused"]) == set(WINDOW_REFUSAL_FUNNEL)
-    assert counts["refused"]["skew"] == 3
+    assert counts["refused"]["shape"] == 3
     assert counts["refused"]["edge"] == 3
     assert counts["enumerated"] == 9 and counts["shortlisted"] == 0
     assert counts["last_refusing_gate"] == "edge"
@@ -104,7 +104,7 @@ def test_both_recorders_write_the_funnel() -> None:
     from paper_trading_ledger import _window_refusal_detail  # noqa: PLC0415
 
     detail = _window_refusal_detail(AUDIT)
-    assert "逆偏斜扩边 3" in detail
+    assert "席位形状不允许 3" in detail
     assert "整篮非正EV 3" in detail
     assert "最后出局：整篮非正EV" in detail
     assert "74-75°F+76-77°F+78-79°F" in detail

@@ -1185,8 +1185,7 @@ def _production_arms(monkeypatch: pytest.MonkeyPatch) -> None:
     module and the compile below must be judged under production's."""
 
     for name, value in (
-        ("SYMMETRIC_SEAT_MODE", "center_pm1_p0"), ("SKEW_SEAT_MODE", "off"),
-        ("SKEW_PLACEMENT_MODE", "free"), ("MARKET_LEAN_GATE_MODE", "on"),
+        ("MARKET_LEAN_GATE_MODE", "shadow"),
         ("CHARTER_78_INCUMBENT_NO_EXEMPTION", "on"), ("CHARTER_77_DECISION_MOMENTS", "on"),
         ("CHARTER_84_LADDER_BALANCE", "on"),
         ("TARGET_PRICING_BASIS", "ask_depth"), ("DECLINE_CLAMP_MODE", "off"),

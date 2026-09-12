@@ -79,7 +79,6 @@ def test_the_plan_receipt_carries_the_floor_it_screened_with() -> None:
     persisted = persisted[: persisted.index('delta_v2_audit["content_sha256"]')]
     assert '"price_basis": LEG_FLOOR_PRICE_BASIS,' in persisted
     assert '"rule": LEG_FLOOR_RULE_VERSION,' in persisted
-    assert '"belief_anchor": LEG_FLOOR_BELIEF_ANCHOR,' in persisted
     assert '"refused_window_count"' in persisted
     assert '"window_gate_counts": window_gate_counts_v1(' in persisted
 

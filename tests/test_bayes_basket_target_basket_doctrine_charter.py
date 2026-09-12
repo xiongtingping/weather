@@ -102,8 +102,9 @@ def test_clause_37_floor_is_a_legality_gate_not_a_preference() -> None:
     clause = _clause(37)
     assert "SUPPORT_SCENARIO_FLOOR_FRACTION" in clause
     assert "_floor_legal" in clause
-    # Charter 93: the tolerance is retired -- zero of the premium.
-    assert SUPPORT_SCENARIO_FLOOR_FRACTION == 0.0
+    # Charter 93 retired the tolerance to zero; charter 131 (12b) raised the
+    # floor to five percent of the premium: ``min q_i >= 1.05 C``.
+    assert SUPPORT_SCENARIO_FLOOR_FRACTION == 0.05
 
     lottery = {
         "candidate_id": "lottery",
@@ -3102,18 +3103,15 @@ def test_clause_78_the_incumbent_has_no_exemption_from_the_positive_ev_gate() ->
 
 @pytest.fixture(autouse=True)
 def _symmetric_seat_rule_off(monkeypatch):
-    """Charter 79 seats symmetric-day P0/P0-M windows on the mean bucket +-1.
+    """Charter 79's switch is gone: charter 131 (2026-09-12) fixes the seat's
+    shape on every day, and the fixtures below are read under it."""
 
-    The fixtures in this module exercise other mechanisms on symmetric
-    shapes; the rule is switched off here and tested on its own in the
-    doctrine suite (clause 79).
-    """
-
-    monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_MODE", "off")
+    del monkeypatch
 
 
-def test_clause_79_symmetric_day_seat_is_the_mean_bucket_plus_minus_one(monkeypatch) -> None:
-    """Charter 79: on a symmetric day P0/P0-M seat centre-1, centre, centre+1; P1 untouched."""
+def test_clause_131_symmetric_day_seat_is_the_mean_bucket_plus_minus_one(monkeypatch) -> None:
+    """Charter 131 (4): on a symmetric day P0/P0-M seat {c-1, c, c+1} and
+    nothing else; P1 may also seat the two-rung main-plus-hedge window."""
     # Charter 87 (2026-09-06): this fixture's book prices the seat where
     # charter 68's lambda(a) says most of the claim never arrives, so the
     # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
@@ -3122,11 +3120,6 @@ def test_clause_79_symmetric_day_seat_is_the_mean_bucket_plus_minus_one(monkeypa
     from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
     from bayes_basket_target.delta_v2_runtime import _support_windows
 
-    monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_MODE", "center_pm1_p0")
-    assert (
-        delta_v2_runtime.os.environ.get("PM_SYMMETRIC_SEAT_MODE", "").strip().lower()
-        or "center_pm1_p0"
-    ) == "center_pm1_p0"
     labels = ["29°C", "30°C", "31°C", "32°C", "33°C", "34°C"]
     probs = [0.06, 0.20, 0.40, 0.20, 0.10, 0.04]
     asks = [0.05, 0.15, 0.30, 0.15, 0.08, 0.03]
@@ -3168,16 +3161,24 @@ def test_clause_79_symmetric_day_seat_is_the_mean_bucket_plus_minus_one(monkeypa
             probabilities=prob, fee_rate=0.0, maximum_support_buckets=4,
             minimum_support_buckets=3, center_bucket="31°C", probability_stage=stage,
         )
-        assert audit["symmetric_seat_forced"] is True
+        assert audit["seat_shape"]["state"] == "SYMMETRIC"
+        assert audit["seat_shape"]["allowed_ordinals"] == [[3, 4, 5]]
         admissible = [tuple(w["buckets"]) for w in windows if w["admissible"]]
         assert admissible == [("30°C", "31°C", "32°C")]
+        # The four-rung seed is held, not bought: listed, inadmissible.
+        seed = [w for w in windows if w.get("is_incumbent")]
+        assert seed and seed[0]["admissible"] is False and seed[0].get("shape_retired") is True
     windows, audit = _support_windows(
         snapshot=snapshot("P1"), desired={"30°C", "31°C", "32°C", "33°C"},
         probabilities=prob, fee_rate=0.0, maximum_support_buckets=4,
         minimum_support_buckets=3, center_bucket="31°C", probability_stage="P1",
     )
-    assert audit["symmetric_seat_forced"] is False
-    assert len([w for w in windows if w["admissible"]]) > 1
+    # P1: the three-rung window and the two-rung main-plus-hedge, hedge on
+    # the heavier neighbour (a tie goes up); the wider ranks first.
+    assert audit["seat_shape"]["allowed_ordinals"] == [[3, 4, 5], [4, 5]]
+    assert [tuple(w["buckets"]) for w in windows if w["admissible"]] == [
+        ("30°C", "31°C", "32°C"), ("31°C", "32°C"),
+    ]
     # The ledger hashes the rule unconditionally.
     import sys
     from pathlib import Path as _Path
@@ -3186,222 +3187,8 @@ def test_clause_79_symmetric_day_seat_is_the_mean_bucket_plus_minus_one(monkeypa
     if str(root / "scripts") not in sys.path:
         sys.path.insert(0, str(root / "scripts"))
     ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    assert '"symmetric_seat": SYMMETRIC_SEAT_MODE,' in ledger_source
-
-
-def test_clause_122_symmetric_seat_is_confined_to_the_width_band_it_was_measured_on(monkeypatch) -> None:
-    """Charter 122: outside the served-width band, charter 79 does not seat; the width is written down."""
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
-    from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
-    from bayes_basket_target.basket_kernel.support import served_sigma_buckets_v1
-    from bayes_basket_target.delta_v2_runtime import _support_windows
-
-    monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_MODE", "center_pm1_p0")
-    labels = ["29°C", "30°C", "31°C", "32°C", "33°C", "34°C"]
-    probs = [0.06, 0.20, 0.40, 0.20, 0.10, 0.04]
-    asks = [0.05, 0.15, 0.30, 0.15, 0.08, 0.03]
-    rows = [
-        {
-            "bucket": b, "ordinal": i + 2, "probability": p,
-            "bid_price": max(0.0, a - 0.01),
-            "bid_levels": [{"price": max(0.001, a - 0.01), "shares": 50.0}],
-            "ask_levels": [{"price": a, "shares": 100.0}],
-            "price_tick_size": 0.01,
-            "maker_queue_ahead_shares": 0.0, "maker_queue_known": True,
-        }
-        for i, (b, p, a) in enumerate(zip(labels, probs, asks))
-    ]
-    snapshot = TargetBasketSnapshot.from_mapping({
-        "schema": "target_basket_snapshot_v6", "snapshot_id": "c122", "sequence": 1,
-        "observed_at": "2026-09-08T00:00:00Z", "market_id": "m", "station_id": "X",
-        "event_date": "2026-09-09", "quote_version": "q",
-        "quote_observed_at": "2026-09-08T00:00:00Z", "quote_source": "OFFICIAL_CLOB_WS",
-        "inventory_version": "i", "order_state_version": "o",
-        "evidence": {"probability_stage": "P0", "posterior_version": "p", "posterior_sha256": "a" * 64},
-        "buckets": rows, "checkpoint_changed": True, "quote_changed": True,
-        "fill_changed": True, "time_gate_changed": True, "evidence_fresh": True,
-        "contract_matches": True, "order_state_known": True, "risk_inputs_complete": True,
-        "time_left_minutes": 600.0,
-    })
-    prob = dict(zip(labels, probs))
-    sigma = served_sigma_buckets_v1(prob, {b: i + 2 for i, b in enumerate(labels)})
-    assert sigma is not None and 1.0 < sigma < 1.5, sigma
-
-    def seat(band):
-        monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_WIDTH_BAND", band)
-        return _support_windows(
-            snapshot=snapshot, desired={"30°C", "31°C", "32°C", "33°C"},
-            probabilities=prob, fee_rate=0.0, maximum_support_buckets=4,
-            minimum_support_buckets=3, center_bucket="31°C", probability_stage="P0",
-        )
-
-    # Identity band: charter 79 as it stood.
-    windows, audit = seat((0.0, float("inf")))
-    assert audit["symmetric_seat_forced"] is True
-    assert audit["symmetric_seat_width_in_band"] is True
-    assert audit["symmetric_seat_sigma_buckets"] == sigma
-    assert audit["symmetric_seat_width_band"] == [0.0, None]
-    assert [tuple(w["buckets"]) for w in windows if w["admissible"]] == [("30°C", "31°C", "32°C")]
-    # A band this day's width falls outside: seated by the ordinary
-    # enumeration, and the audit says so rather than saying "not symmetric".
-    windows, audit = seat((1.5, float("inf")))
-    assert audit["symmetric_seat_forced"] is False
-    assert audit["symmetric_seat_width_in_band"] is False
-    assert audit["symmetric_seat_sigma_buckets"] == sigma
-    assert audit["symmetric_seat_width_band"] == [1.5, None]
-    assert len([w for w in windows if w["admissible"]]) > 1
-    # A band it falls inside seats exactly as the identity band does.
-    windows, audit = seat((1.0, 1.5))
-    assert audit["symmetric_seat_forced"] is True
-    assert audit["symmetric_seat_width_band"] == [1.0, 1.5]
-    # Charter 122 (五): the ledger hashes which SOURCE decides the band, not
-    # the value a scheduled refit currently holds -- the same treatment the
-    # lambda tables get, so a lane refitting on its own clock does not
-    # re-address the whole book.  A pinned research arm is still hashed by
-    # value, because holding the band still is the arm.
-    from pathlib import Path as _Path
-    ledger_source = (_Path(__file__).resolve().parents[1] / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    assert '"symmetric_seat_width_band": (' in ledger_source
-    assert '"source": "override"' in ledger_source
-    assert '"source": "fitted_or_charter"' in ledger_source
-    assert "if SYMMETRIC_SEAT_WIDTH_BAND_PINNED" in ledger_source
-
-
-def test_clause_122_seat_counterfactual_is_recorded_on_both_sides_of_the_band(monkeypatch) -> None:
-    """The pair the band is fitted on, recorded whether or not the rule fired.
-
-    A lane that only saw in-band days could confirm the incumbent band and
-    never learn it should widen, so the record is band-independent: only the
-    seating changes with the band, never the measurement.
-    """
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
-    monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_MODE", "center_pm1_p0")
-    from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
-    from bayes_basket_target.delta_v2_runtime import _support_windows
-
-    labels = ["29°C", "30°C", "31°C", "32°C", "33°C", "34°C"]
-    probs = [0.06, 0.20, 0.40, 0.20, 0.10, 0.04]
-    asks = [0.05, 0.15, 0.30, 0.15, 0.08, 0.03]
-    rows = [
-        {
-            "bucket": b, "ordinal": i + 2, "probability": pr,
-            "bid_price": max(0.0, a - 0.01),
-            "bid_levels": [{"price": max(0.001, a - 0.01), "shares": 50.0}],
-            "ask_levels": [{"price": a, "shares": 100.0}],
-            "price_tick_size": 0.01,
-            "maker_queue_ahead_shares": 0.0, "maker_queue_known": True,
-        }
-        for i, (b, pr, a) in enumerate(zip(labels, probs, asks))
-    ]
-    snapshot = TargetBasketSnapshot.from_mapping({
-        "schema": "target_basket_snapshot_v6", "snapshot_id": "cf", "sequence": 1,
-        "observed_at": "2026-09-09T00:00:00Z", "market_id": "m", "station_id": "X",
-        "event_date": "2026-09-10", "quote_version": "q",
-        "quote_observed_at": "2026-09-09T00:00:00Z", "quote_source": "OFFICIAL_CLOB_WS",
-        "inventory_version": "i", "order_state_version": "o",
-        "evidence": {"probability_stage": "P0", "posterior_version": "p",
-                     "posterior_sha256": "a" * 64},
-        "buckets": rows, "checkpoint_changed": True, "quote_changed": True,
-        "fill_changed": True, "time_gate_changed": True, "evidence_fresh": True,
-        "contract_matches": True, "order_state_known": True,
-        "risk_inputs_complete": True, "time_left_minutes": 600.0,
-    })
-    prob = dict(zip(labels, probs))
-
-    def run(band):
-        monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_WIDTH_BAND", band)
-        return _support_windows(
-            snapshot=snapshot, desired={"30°C", "31°C", "32°C", "33°C"},
-            probabilities=prob, fee_rate=0.0, maximum_support_buckets=4,
-            minimum_support_buckets=3, center_bucket="31°C", probability_stage="P0",
-        )
-
-    inside_w, inside = run((1.0, float("inf")))
-    outside_w, outside = run((1.5, float("inf")))
-    # The seating differs across the band...
-    assert inside["symmetric_seat_forced"] is True
-    assert outside["symmetric_seat_forced"] is False
-    assert len([w for w in inside_w if w["admissible"]]) == 1
-    assert len([w for w in outside_w if w["admissible"]]) > 1
-    # ...and the measurement does not.
-    a, b = (inside["symmetric_seat_counterfactual"],
-            outside["symmetric_seat_counterfactual"])
-    for key in ("forced", "free", "sigma_buckets", "centre_bucket",
-                "admissible_window_count"):
-        assert a[key] == b[key], key
-    # Both arms present and distinct: the forced one is centre+-1, the free
-    # one is whatever carried the most edge, and each carries the price it
-    # would have been bought at on this same book.
-    assert a["forced"]["buckets"] == ["30°C", "31°C", "32°C"]
-    assert a["free"]["buckets"] != a["forced"]["buckets"]
-    for arm in ("forced", "free"):
-        assert a[arm]["all_in_price"] > 0
-        assert a[arm]["win_probability"] is not None
-    assert a["width_in_band"] is True and b["width_in_band"] is False
-    assert a["band"] == [1.0, None] and b["band"] == [1.5, None]
-
-
-def test_clause_122_counterfactual_is_absent_off_the_shape_it_measures(monkeypatch) -> None:
-    """No symmetric day, no pair: P1 is out of the rule, and so is the record."""
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
-    monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_MODE", "center_pm1_p0")
-    from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
-    from bayes_basket_target.delta_v2_runtime import _support_windows
-
-    labels = ["29°C", "30°C", "31°C", "32°C", "33°C", "34°C"]
-    probs = [0.06, 0.20, 0.40, 0.20, 0.10, 0.04]
-    asks = [0.05, 0.15, 0.30, 0.15, 0.08, 0.03]
-    rows = [
-        {
-            "bucket": b, "ordinal": i + 2, "probability": pr,
-            "bid_price": max(0.0, a - 0.01),
-            "bid_levels": [{"price": max(0.001, a - 0.01), "shares": 50.0}],
-            "ask_levels": [{"price": a, "shares": 100.0}],
-            "price_tick_size": 0.01,
-            "maker_queue_ahead_shares": 0.0, "maker_queue_known": True,
-        }
-        for i, (b, pr, a) in enumerate(zip(labels, probs, asks))
-    ]
-    snapshot = TargetBasketSnapshot.from_mapping({
-        "schema": "target_basket_snapshot_v6", "snapshot_id": "cf2", "sequence": 1,
-        "observed_at": "2026-09-09T00:00:00Z", "market_id": "m", "station_id": "X",
-        "event_date": "2026-09-10", "quote_version": "q",
-        "quote_observed_at": "2026-09-09T00:00:00Z", "quote_source": "OFFICIAL_CLOB_WS",
-        "inventory_version": "i", "order_state_version": "o",
-        "evidence": {"probability_stage": "P1", "posterior_version": "p",
-                     "posterior_sha256": "a" * 64,
-                     "reported_high_bucket": "30°C", "reported_high_ordinal": 3,
-                     "reported_high_observation_id": "obs", "hard_bound_id": "hb"},
-        "buckets": rows, "checkpoint_changed": True, "quote_changed": True,
-        "fill_changed": True, "time_gate_changed": True, "evidence_fresh": True,
-        "contract_matches": True, "order_state_known": True,
-        "risk_inputs_complete": True, "time_left_minutes": 600.0,
-    })
-    _windows, audit = _support_windows(
-        snapshot=snapshot, desired={"30°C", "31°C", "32°C", "33°C"},
-        probabilities=dict(zip(labels, probs)), fee_rate=0.0,
-        maximum_support_buckets=4, minimum_support_buckets=3,
-        center_bucket="31°C", probability_stage="P1",
-    )
-    assert audit["symmetric_seat_counterfactual"] is None
-    assert audit["symmetric_seat_forced"] is False
-
-
-def test_clause_122_width_band_switch_parses_and_refuses_nonsense() -> None:
-    parse = delta_v2_runtime._parse_width_band
-    # Unset is the ruled default; ``off`` is the identity band, which is
-    # charter 79 as it stood and the arm the sweep measured against.
-    assert parse("") == (1.0, float("inf"))
-    assert delta_v2_runtime.SYMMETRIC_SEAT_WIDTH_BAND_DEFAULT == "1.0,inf"
-    assert parse("off") == (0.0, float("inf"))
-    assert parse("1.0,inf") == (1.0, float("inf"))
-    assert parse("1.0,1.5") == (1.0, 1.5)
-    for bad in ("1.5,1.0", "-1,2", "1", "a,b"):
-        try:
-            parse(bad)
-        except (RuntimeError, ValueError):
-            continue
-        raise AssertionError(f"accepted {bad!r}")
+    assert '"seat_shape": SEAT_SHAPE_RULE_VERSION,' in ledger_source
+    assert '"seat_width": "%d..%d" % (SEAT_MIN_BUCKETS, SEAT_MAX_BUCKETS),' in ledger_source
 
 
 def test_shape_reading_carries_the_served_width_in_bucket_steps() -> None:
@@ -3421,128 +3208,6 @@ def test_shape_reading_carries_the_served_width_in_bucket_steps() -> None:
     empty = kernel_support.mean_mode_skew_reading_v1({}, ordinals)
     assert empty["readable"] is False and empty["sigma_buckets"] is None
     assert kernel_support.served_sigma_buckets_v1({}, ordinals) is None
-
-
-def test_symmetric_pair_arm_seats_the_mean_bucket_and_the_leaning_neighbour(monkeypatch) -> None:
-    """Research arm (2026-09-05): symmetric day -> two rungs, centre plus the side the mean leans to."""
-    from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
-    from bayes_basket_target.delta_v2_runtime import _support_windows
-
-    monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_MODE", "mean_mode_pair_p0")
-    labels = ["29°C", "30°C", "31°C", "32°C", "33°C", "34°C"]
-    # Mean leans warm of the 31 mode (32 heavier than 30) but under half a bucket.
-    probs = [0.04, 0.16, 0.40, 0.24, 0.12, 0.04]
-    asks = [0.05, 0.15, 0.30, 0.20, 0.08, 0.03]
-
-    def snapshot(stage: str) -> TargetBasketSnapshot:
-        rows = [
-            {
-                "bucket": b, "ordinal": i + 2, "probability": p,
-                "bid_price": max(0.0, a - 0.01),
-                "bid_levels": [{"price": max(0.001, a - 0.01), "shares": 50.0}],
-                "ask_levels": [{"price": a, "shares": 100.0}],
-                "price_tick_size": 0.01,
-                "maker_queue_ahead_shares": 0.0, "maker_queue_known": True,
-            }
-            for i, (b, p, a) in enumerate(zip(labels, probs, asks))
-        ]
-        evidence = {"probability_stage": stage, "posterior_version": "p", "posterior_sha256": "a" * 64}
-        if stage == "P1":
-            evidence.update({
-                "reported_high_bucket": "30°C", "reported_high_ordinal": 3,
-                "reported_high_observation_id": "obs", "hard_bound_id": "hb",
-            })
-        return TargetBasketSnapshot.from_mapping({
-            "schema": "target_basket_snapshot_v6", "snapshot_id": "pair", "sequence": 1,
-            "observed_at": "2026-09-04T00:00:00Z", "market_id": "m", "station_id": "X",
-            "event_date": "2026-09-05", "quote_version": "q",
-            "quote_observed_at": "2026-09-04T00:00:00Z", "quote_source": "OFFICIAL_CLOB_WS",
-            "inventory_version": "i", "order_state_version": "o", "evidence": evidence,
-            "buckets": rows, "checkpoint_changed": True, "quote_changed": True,
-            "fill_changed": True, "time_gate_changed": True, "evidence_fresh": True,
-            "contract_matches": True, "order_state_known": True, "risk_inputs_complete": True,
-            "time_left_minutes": 600.0,
-        })
-
-    prob = dict(zip(labels, probs))
-    for stage in ("P0", "P0-M"):
-        windows, audit = _support_windows(
-            snapshot=snapshot(stage), desired={"30°C", "31°C", "32°C", "33°C"},
-            probabilities=prob, fee_rate=0.0, maximum_support_buckets=4,
-            minimum_support_buckets=3, center_bucket="31°C", probability_stage=stage,
-        )
-        assert audit["symmetric_seat_forced"] is True
-        assert audit["symmetric_seat_mode"] == "mean_mode_pair_p0"
-        assert audit["symmetric_seat_pair"] == ("31°C", "32°C")
-        admissible = [tuple(w["buckets"]) for w in windows if w["admissible"]]
-        # Two rungs, enumerated despite the policy floor of three.
-        assert admissible == [("31°C", "32°C")]
-    # P1 is untouched by the arm.
-    windows, audit = _support_windows(
-        snapshot=snapshot("P1"), desired={"30°C", "31°C", "32°C", "33°C"},
-        probabilities=prob, fee_rate=0.0, maximum_support_buckets=4,
-        minimum_support_buckets=3, center_bucket="31°C", probability_stage="P1",
-    )
-    assert audit["symmetric_seat_forced"] is False
-    assert audit["symmetric_seat_pair"] is None
-    # The shipped rule is not the arm.
-    assert (
-        delta_v2_runtime.os.environ.get("PM_SYMMETRIC_SEAT_MODE", "").strip().lower()
-        or "center_pm1_p0"
-    ) == "center_pm1_p0"
-
-
-def test_symmetric_single_rung_arm_seats_only_the_mean_bucket(monkeypatch) -> None:
-    """Research arm (2026-09-05): symmetric day -> one rung, the mean (= mode) bucket."""
-    # Charter 87 (2026-09-06): this fixture's book prices the seat where
-    # charter 68's lambda(a) says most of the claim never arrives, so the
-    # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
-    # The gate itself is pinned in test_clause_87_*.
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
-    from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
-    from bayes_basket_target.delta_v2_runtime import _support_windows
-
-    monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_MODE", "mode_only_p0")
-    labels = ["29°C", "30°C", "31°C", "32°C", "33°C", "34°C"]
-    probs = [0.06, 0.20, 0.40, 0.20, 0.10, 0.04]
-    asks = [0.05, 0.15, 0.30, 0.15, 0.08, 0.03]
-
-    def snapshot(stage: str) -> TargetBasketSnapshot:
-        rows = [
-            {
-                "bucket": b, "ordinal": i + 2, "probability": p,
-                "bid_price": max(0.0, a - 0.01),
-                "bid_levels": [{"price": max(0.001, a - 0.01), "shares": 50.0}],
-                "ask_levels": [{"price": a, "shares": 100.0}],
-                "price_tick_size": 0.01,
-                "maker_queue_ahead_shares": 0.0, "maker_queue_known": True,
-            }
-            for i, (b, p, a) in enumerate(zip(labels, probs, asks))
-        ]
-        evidence = {"probability_stage": stage, "posterior_version": "p", "posterior_sha256": "a" * 64}
-        return TargetBasketSnapshot.from_mapping({
-            "schema": "target_basket_snapshot_v6", "snapshot_id": "one", "sequence": 1,
-            "observed_at": "2026-09-04T00:00:00Z", "market_id": "m", "station_id": "X",
-            "event_date": "2026-09-05", "quote_version": "q",
-            "quote_observed_at": "2026-09-04T00:00:00Z", "quote_source": "OFFICIAL_CLOB_WS",
-            "inventory_version": "i", "order_state_version": "o", "evidence": evidence,
-            "buckets": rows, "checkpoint_changed": True, "quote_changed": True,
-            "fill_changed": True, "time_gate_changed": True, "evidence_fresh": True,
-            "contract_matches": True, "order_state_known": True, "risk_inputs_complete": True,
-            "time_left_minutes": 600.0,
-        })
-
-    prob = dict(zip(labels, probs))
-    for stage in ("P0", "P0-M"):
-        windows, audit = _support_windows(
-            snapshot=snapshot(stage), desired={"30°C", "31°C", "32°C", "33°C"},
-            probabilities=prob, fee_rate=0.0, maximum_support_buckets=4,
-            minimum_support_buckets=3, center_bucket="31°C", probability_stage=stage,
-        )
-        assert audit["symmetric_seat_forced"] is True
-        assert audit["symmetric_seat_pair"] == ("31°C",)
-        admissible = [tuple(w["buckets"]) for w in windows if w["admissible"]]
-        assert admissible == [("31°C",)]
 
 
 def test_clause_81_centre_holding_windows_claim_is_lifted() -> None:
@@ -3828,7 +3493,7 @@ def test_clause_93_the_support_floor_is_zero_and_re_read_after_the_lift() -> Non
     assert "第 93 条起" in _clause(37)
     assert "第 93 条起" in _clause(41)
     assert kernel.CHARTER_93_SUPPORT_FLOOR == "on"
-    assert kernel.SUPPORT_SCENARIO_FLOOR_FRACTION == 0.0
+    assert kernel.SUPPORT_SCENARIO_FLOOR_FRACTION == 0.05  # charter 131 (12b)
     assert delta_v2_runtime.support_scenario_floor_v1 is kernel.support_scenario_floor_v1
     # KDAL 2026-09-07 as it went out: 5 @ 0.30, 5 @ 0.52, 6 @ 0.17 for 5.12.
     lifted = kernel.support_scenario_floor_v1(

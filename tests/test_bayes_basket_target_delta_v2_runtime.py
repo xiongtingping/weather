@@ -2190,14 +2190,10 @@ def test_after_open_holds_every_falling_rung_once_the_book_is_open() -> None:
 
 @pytest.fixture(autouse=True)
 def _symmetric_seat_rule_off(monkeypatch):
-    """Charter 79 seats symmetric-day P0/P0-M windows on the mean bucket +-1.
+    """Charter 79's switch is gone: charter 131 (2026-09-12) fixes the seat's
+    shape on every day, and the fixtures below are read under it."""
 
-    The fixtures in this module exercise other mechanisms on symmetric
-    shapes; the rule is switched off here and tested on its own in the
-    doctrine suite (clause 79).
-    """
-
-    monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_MODE", "off")
+    del monkeypatch
 
 
 def test_the_tilt_floor_is_three_venue_minimums_not_three_clips() -> None:

@@ -130,7 +130,8 @@ def test_a_tx_outside_the_held_basket_must_enter_it() -> None:
     assert audit["p0m_taf"]["entry_required"] is True
     assert audit["p0m_taf"]["entry_window"] == ["28", "29", "30", "31"]
     assert audit["p0m_taf"]["tx_unreachable"] is False
-    assert audit["symmetric_seat_forced"] is False, "the entry seat supersedes 79"
+    # Charter 131: the entry span is the one shape the day may seat.
+    assert audit["seat_shape"]["rule"] == "seat_shape_mean_anchored_v1"
     entry_rows = [row for row in windows if row.get("taf_tx_entry")]
     assert [tuple(row["buckets"]) for row in entry_rows] == [("28", "29", "30", "31")]
 

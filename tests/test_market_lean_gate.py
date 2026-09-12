@@ -103,17 +103,17 @@ def test_small_leans_and_centred_windows_are_left_alone():
     )
 
 
-def test_gate_is_registered_in_the_funnel_between_skew_and_leg_floor():
+def test_gate_is_registered_in_the_funnel_between_shape_and_leg_floor():
     """Placement family, not price family, and the ledger's assertion set
     (GATE_REFUSAL_REASON == funnel) forces the label to exist there too.
     """
 
     funnel = list(WINDOW_REFUSAL_FUNNEL)
-    assert funnel.index("market_lean") == funnel.index("skew") + 1
+    assert funnel.index("market_lean") == funnel.index("shape") + 1
     assert funnel.index("market_lean") < funnel.index("leg_floor")
 
 
-def test_default_mode_is_on_since_the_replay_priced_it():
+def test_default_mode_is_shadow_by_charter_131():
     """Promoted 2026-09-05 (user ruling); this test said ``shadow`` until
     2026-09-08 and had been red for three days.
 
@@ -129,7 +129,10 @@ def test_default_mode_is_on_since_the_replay_priced_it():
 
     import bayes_basket_target.delta_v2_runtime as runtime
 
-    assert runtime.MARKET_LEAN_GATE_MODE == "on"
+    # Charter 131 (2) (user ruling 2026-09-12, Q2): the market's mean bucket
+    # is data being collected, not yet a rule; the gate counts and stands
+    # aside.  The 09-05 promotion to ``on`` is the history below.
+    assert runtime.MARKET_LEAN_GATE_MODE == "shadow"
     # ``shadow`` and ``off`` both remain reachable: one measures, one
     # retires.  The gate reads ``!= "off"`` to compute and ``== "on"`` to
     # refuse, so shadow is exactly "compute, do not refuse".

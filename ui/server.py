@@ -16659,6 +16659,13 @@ def _compact_posterior_ssot_fact_for_ui_snapshot(value: Any) -> Dict[str, Any]:
         "state_advanced_with_superseded_driver_to_effective_time",
         "future_forcing_replaced",
         "hard_condition_applied",
+        # The composer's physical verdict, carried whole.  The three-leg plan
+        # refuses to build without it -- it will not reverse-engineer weather
+        # from raw METAR, so a missing verdict keeps both legs HOLD -- and the
+        # poller reads this compacted block from the summary cache in
+        # preference to the full fact.  Dropping it here blocked every
+        # decision on three_leg_composer_strong_physical_evidence_invalid.
+        "strong_physical_evidence",
     )
     out: Dict[str, Any] = {
         key: value.get(key)

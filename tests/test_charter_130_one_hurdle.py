@@ -202,7 +202,10 @@ def _seat(asks, *, tables):
         center_bucket="31°C", probability_stage="P0",
         effective_edge_tables=tables,
     )
-    seat = {tuple(w["buckets"]): w for w in windows}.get(("31°C", "32°C", "33°C"))
+    # Charter 131: this fixture reads RIGHT_SKEWED (mean 4.58 against mode
+    # 31°C, 0.58 buckets over a 0.43 gate), so the mean bucket is 32°C and
+    # the three-rung seat is {32, 33, 34}; {31, 32, 33} is not a shape.
+    seat = {tuple(w["buckets"]): w for w in windows}.get(("32°C", "33°C", "34°C"))
     return seat, audit
 
 
@@ -210,10 +213,11 @@ def test_six_percent_seats_four_percent_does_not_and_zero_rebuilds_it(monkeypatc
     """The pass mark itself, on a window whose lambda is one."""
 
     tables = {"P0": ((float("inf"), 1.0),)}
-    # 31/32/33 claims 0.74.  On a one-cent tick: at 0.69 all-in it returns
-    # +7.2%; at 0.71, +4.2%.
+    # 32/33/34 claims 0.50.  On a one-cent tick: at 0.45 all-in it returns
+    # +11%; at 0.48, +4.2%.  The two-rung {32, 33} at 0.39 clears either way
+    # (0.42 against 0.41), so exactly one window is refused at 4.2%.
     six = [0.03, 0.12, 0.30, 0.26, 0.13, 0.06]
-    four = [0.03, 0.12, 0.30, 0.26, 0.15, 0.06]
+    four = [0.03, 0.12, 0.30, 0.26, 0.13, 0.09]
     seat, audit = _seat(six, tables=tables)
     assert seat is not None and seat["admissible"] is True, audit
     assert audit["edge_refused_window_count"] == 0
@@ -221,10 +225,10 @@ def test_six_percent_seats_four_percent_does_not_and_zero_rebuilds_it(monkeypatc
     assert seat is None or seat["admissible"] is False
     assert audit["edge_refused_window_count"] == 1
     refused = audit["edge_best_refused_window"]
-    assert refused["buckets"] == ["31°C", "32°C", "33°C"]
+    assert refused["buckets"] == ["32°C", "33°C", "34°C"]
     assert refused["edge"] > 0  # positive, and still refused
     # The dollars the edge had to clear: h times the all-in cost.
-    assert refused["friction"] == pytest.approx(0.05 * 0.71)
+    assert refused["friction"] == pytest.approx(0.05 * 0.48)
     monkeypatch.setattr(K, "ECONOMIC_HURDLE_V1", 0.0)
     seat, _ = _seat(four, tables=tables)
     assert seat is not None and seat["admissible"] is True
@@ -251,11 +255,12 @@ def test_the_head_is_chosen_on_the_effective_belief(monkeypatch) -> None:
     target believe -- the same lambda(a) * p -- not to the raw claim.
     """
 
-    # Agreement below 0.80 is trusted in full; at or above it, 0.87 arrives.
-    tables = {"P0": ((0.80, 1.0), (float("inf"), 0.87))}
-    # 31/32/33 claims 0.74 at 0.55 (a=0.74 -> lambda 1.0 -> 0.74);
-    # 31..34 claims 0.82 at 0.66 (a=0.80 -> lambda 0.87 -> 0.713).
-    asks = [0.03, 0.20, 0.22, 0.20, 0.13, 0.11]
+    # Agreement below 0.70 is trusted in full; at or above it, 0.80 arrives.
+    tables = {"P0": ((0.70, 1.0), (float("inf"), 0.80))}
+    # Charter 131 shapes on this fixture: {32, 33} claims 0.42 at 0.29
+    # (a=0.69 -> lambda 1.0 -> 0.42); {32, 33, 34} claims 0.50 at 0.36
+    # (a=0.72 -> lambda 0.80 -> 0.40).  Both clear the 5% hurdle.
+    asks = [0.03, 0.12, 0.30, 0.20, 0.09, 0.07]
     snapshot, probabilities = _snapshot(asks)
     windows, audit = R._support_windows(
         snapshot=snapshot, desired={"31°C", "32°C", "33°C"},
@@ -272,9 +277,9 @@ def test_the_head_is_chosen_on_the_effective_belief(monkeypatch) -> None:
     assert len(admissible) >= 2, listing
     by_claim = max(admissible, key=lambda w: float(w["win_probability"]))
     by_effective = max(admissible, key=lambda w: float(w["effective_win_probability"]))
-    assert tuple(by_claim["buckets"]) == ("31°C", "32°C", "33°C", "34°C"), listing
-    assert tuple(by_effective["buckets"]) == ("31°C", "32°C", "33°C"), listing
-    assert tuple(windows[0]["buckets"]) == ("31°C", "32°C", "33°C"), listing
+    assert tuple(by_claim["buckets"]) == ("32°C", "33°C", "34°C"), listing
+    assert tuple(by_effective["buckets"]) == ("32°C", "33°C"), listing
+    assert tuple(windows[0]["buckets"]) == ("32°C", "33°C"), listing
     # And the ledger hashes the ordering it replays.
     import paper_trading_ledger as L  # noqa: PLC0415
 

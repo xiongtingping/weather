@@ -431,6 +431,17 @@ def test_canonical_target_prefers_posterior_ssot_fact_over_legacy_copies():
             "target_bucket": "32°C",
             "target_probability": 0.72,
             "target_probability_field": "posterior_ssot_fact.target_probability",
+            # The composer's physical verdict.  The three-leg plan refuses to
+            # build without it -- it will not reverse-engineer weather from raw
+            # METAR, so a missing verdict keeps both legs HOLD and the poller
+            # returns target_realization_v3_plan_blocked before recording
+            # anything.  Production mints this on every SSOT block.
+            "strong_physical_evidence": {
+                "joint_feature_model_applied": True,
+                "top_bucket": "32°C",
+                "top_bucket_joint_strong_support": True,
+                "bucket_exclusions": [],
+            },
         },
         "target_bucket": "31°C",
         "target_bucket_probability_pct": 57.8,
@@ -465,6 +476,17 @@ def test_decision_ssot_context_from_payload_includes_plan_switch_and_momentum():
                 {"bucket": "31°C", "probability": 0.57},
                 {"bucket": "32°C", "probability": 0.21},
             ],
+            # The composer's physical verdict.  The three-leg plan refuses to
+            # build without it -- it will not reverse-engineer weather from raw
+            # METAR, so a missing verdict keeps both legs HOLD and the poller
+            # returns target_realization_v3_plan_blocked before recording
+            # anything.  Production mints this on every SSOT block.
+            "strong_physical_evidence": {
+                "joint_feature_model_applied": True,
+                "top_bucket": "31°C",
+                "top_bucket_joint_strong_support": True,
+                "bucket_exclusions": [],
+            },
         },
         "target_realization_capital_plan": {
             "ok": True,
@@ -552,6 +574,17 @@ def test_posterior_target_expected_target_marks_posterior_ssot_decision_source()
                 "target_bucket": "32°C",
                 "target_probability": 0.72,
                 "target_probability_field": "posterior_ssot_fact.target_probability",
+                # The composer's physical verdict.  The three-leg plan refuses to
+                # build without it -- it will not reverse-engineer weather from raw
+                # METAR, so a missing verdict keeps both legs HOLD and the poller
+                # returns target_realization_v3_plan_blocked before recording
+                # anything.  Production mints this on every SSOT block.
+                "strong_physical_evidence": {
+                    "joint_feature_model_applied": True,
+                    "top_bucket": "32°C",
+                    "top_bucket_joint_strong_support": True,
+                    "bucket_exclusions": [],
+                },
             },
             "posterior_target_bucket_selection": {
                 "target_bucket": "32°C",
@@ -2699,6 +2732,17 @@ def test_target_realization_v3_buy_job_preserves_all_ready_leg_deltas(
             "target_probability": 0.70,
             "fact_snapshot_id": "fact-buy-two",
             "posterior_run_id": "run-buy-two",
+            # The composer's physical verdict.  The three-leg plan refuses to
+            # build without it -- it will not reverse-engineer weather from raw
+            # METAR, so a missing verdict keeps both legs HOLD and the poller
+            # returns target_realization_v3_plan_blocked before recording
+            # anything.  Production mints this on every SSOT block.
+            "strong_physical_evidence": {
+                "joint_feature_model_applied": True,
+                "top_bucket": "30°C",
+                "top_bucket_joint_strong_support": True,
+                "bucket_exclusions": [],
+            },
         },
         "rows": [
             {"outcome": "30°C", "q_temperature_bucket_posterior": 0.70},
@@ -3087,7 +3131,12 @@ def test_hard_source_direct_records_target_entry_exit_and_job(tmp_path, monkeypa
 
     assert result["ok"] is True
     assert result["target_bucket"] == "31\u00b0C"
-    assert result["old_exit_count"] == 1
+    # The recorded result speaks in the three-leg plan's own vocabulary now:
+    # the positions it will exit are its sell targets, and the entries it will
+    # place are its buy targets.  "old_exit_count" and
+    # "entry_order_update_triggered" were the pre-v3 names for the same two
+    # counts and are no longer on the result at all.
+    assert result["sell_target_count"] == 1
     assert result["ssot_fact_id"]
     assert result["ssot_write_ms"] is not None
     conn = sqlite3.connect(db_path)
@@ -3498,7 +3547,7 @@ def test_posterior_target_direct_records_probability_change_same_bucket(tmp_path
     assert first["target_bucket"] == "31\u00b0C"
     assert first["target_posterior"] == 0.62
     assert first["job_id"]
-    assert first["old_exit_count"] == 1
+    assert first["sell_target_count"] == 1
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -3555,7 +3604,7 @@ def test_posterior_target_direct_records_probability_change_same_bucket(tmp_path
         enqueue_job=False,
     )
     assert third["status"] == "recorded"
-    assert third["entry_order_update_triggered"] is True
+    assert third["buy_target_count"] >= 1
 
 
 def test_posterior_target_direct_buys_new_target_when_path_follow_is_diagnostic(
@@ -3740,6 +3789,17 @@ def test_posterior_target_direct_records_decision_from_posterior_ssot_fact(
             "posterior_activation_mode": "live_no_shadow",
             "legacy_bucket_product_posterior_used": False,
             "shadow_posterior_emitted": False,
+        },
+        # The composer's physical verdict.  The three-leg plan refuses to
+        # build without it -- it will not reverse-engineer weather from raw
+        # METAR, so a missing verdict keeps both legs HOLD and the poller
+        # returns target_realization_v3_plan_blocked before recording
+        # anything.  Production mints this on every SSOT block.
+        "strong_physical_evidence": {
+            "joint_feature_model_applied": True,
+            "top_bucket": "31\u00b0C",
+            "top_bucket_joint_strong_support": True,
+            "bucket_exclusions": [],
         },
     }
     payload["fact_snapshot_id"] = "fact_unit"
@@ -4246,7 +4306,7 @@ def test_posterior_target_direct_existing_position_does_not_block_additional_buy
     )
     assert first["status"] == "recorded"
     assert first["job_enqueued"] is True
-    assert first["old_exit_count"] == 1
+    assert first["sell_target_count"] == 1
 
     conn = sqlite3.connect(db_path)
     conn.execute(
@@ -4276,7 +4336,7 @@ def test_posterior_target_direct_existing_position_does_not_block_additional_buy
     )
 
     assert second["status"] == "recorded"
-    assert second["entry_order_update_triggered"] is True
+    assert second["buy_target_count"] >= 1
     assert second["old_exit_cleanup_triggered"] is False
     assert second["old_exit_cleanup_deferred_for_primary_entry"] is True
     assert second["job_enqueued"] is True
@@ -4333,7 +4393,7 @@ def test_posterior_target_direct_existing_position_does_not_block_additional_buy
     )
 
     assert third["status"] == "recorded"
-    assert third["entry_order_update_triggered"] is True
+    assert third["buy_target_count"] >= 1
     assert third["job_enqueued"] is False
     assert third["job_skipped_reason"] == "posterior_target_job_already_enqueued_for_fact"
     conn = sqlite3.connect(db_path)
@@ -4391,7 +4451,7 @@ def test_posterior_target_direct_old_exit_cleanup_buys_missing_primary_target(
     )
 
     assert second["status"] == "recorded"
-    assert second["entry_order_update_triggered"] is True
+    assert second["buy_target_count"] >= 1
     assert second["old_exit_cleanup_triggered"] is False
     assert second["old_exit_cleanup_deferred_for_primary_entry"] is True
     assert second["job_enqueued"] is True
@@ -4473,7 +4533,7 @@ def test_posterior_target_direct_duplicate_fact_suppresses_repeat_order_intent(
     )
 
     assert second["status"] == "recorded"
-    assert second["entry_order_update_triggered"] is True
+    assert second["buy_target_count"] >= 1
     assert second["job_enqueued"] is False
     assert second["job_skipped_reason"] == "posterior_target_job_already_enqueued_for_fact"
     conn = sqlite3.connect(db_path)
@@ -4559,7 +4619,7 @@ def test_posterior_target_direct_success_job_does_not_suppress_missing_primary_r
     )
 
     assert second["status"] == "recorded"
-    assert second["entry_order_update_triggered"] is True
+    assert second["buy_target_count"] >= 1
     assert second["job_enqueued"] is True
     assert second["job_skipped_reason"] == ""
     conn = sqlite3.connect(db_path)
@@ -4639,7 +4699,7 @@ def test_posterior_target_direct_expired_running_job_does_not_suppress_retry(
     )
 
     assert second["status"] == "recorded"
-    assert second["entry_order_update_triggered"] is True
+    assert second["buy_target_count"] >= 1
     assert second["job_enqueued"] is True
     assert second["job_skipped_reason"] == ""
     conn = sqlite3.connect(db_path)
@@ -4974,7 +5034,7 @@ def test_posterior_target_direct_worker_executes_new_entry_and_old_exit_fake_liv
     )
     assert result["ok"] is True
     assert result["job_id"]
-    assert result["old_exit_count"] == 1
+    assert result["sell_target_count"] == 1
 
     worker = swm.run_auto_trade_job_worker_once()
 
@@ -6679,7 +6739,7 @@ def test_hard_source_job_worker_executes_new_entry_and_old_exit_dry_run(tmp_path
     assert result["ok"] is True
     assert result["job_id"]
     assert result["ssot_fact_id"]
-    assert result["old_exit_count"] == 1
+    assert result["sell_target_count"] == 1
 
     monkeypatch.setattr(swm, "DB_PATH", db_path)
     monkeypatch.setattr(swm, "DATA_DIR", tmp_path)
@@ -6854,7 +6914,7 @@ def test_hard_source_nonfinal_old_bucket_exits_after_target_entry_submitted(tmp_
     assert result["ok"] is True
     assert result["target_bucket"] == "33\u00b0C"
     assert result["observed_bucket"] == "32\u00b0C"
-    assert result["old_exit_count"] == 1
+    assert result["sell_target_count"] == 1
 
     monkeypatch.setattr(swm, "DB_PATH", db_path)
     monkeypatch.setattr(swm, "DATA_DIR", tmp_path)
@@ -7063,7 +7123,7 @@ def test_hard_source_job_worker_executes_new_entry_and_old_exit_fake_live(tmp_pa
     assert result["ok"] is True
     assert result["job_id"]
     assert result["ssot_fact_id"]
-    assert result["old_exit_count"] == 1
+    assert result["sell_target_count"] == 1
 
     worker = swm.run_auto_trade_job_worker_once()
 

@@ -1390,7 +1390,9 @@ def test_every_charter_clause_the_audit_prices_has_one_switch() -> None:
     assert 'CHARTER_84_LADDER_BALANCE == "on"' in candidates
     # The rulings of 2026-09-05/06 are the shipped defaults.
     assert P.DECLINE_CLAMP_MODE == "off"
-    assert P.MARKET_LEAN_GATE_MODE == "on"
+    # Charter 131 (2) (2026-09-12): the market's mean bucket is data, not a
+    # rule -- the gate counts and stands aside.
+    assert P.MARKET_LEAN_GATE_MODE == "shadow"
     # Charter 96 supersedes the 2026-09-05 ``ticket_only`` default: P0
     # sizes the seat it just proved an edge on.
 
