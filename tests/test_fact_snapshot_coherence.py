@@ -4,12 +4,80 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import ui.server as server
+import weather_fact_snapshot_writer as fact_writer
 from ui.server import (
     _build_precipitation_evidence_coverage,
     _compose_fact_from_snapshots,
     _snapshot_run_date_ceiling_for_event,
     query_latest_event_run_for_run_date,
 )
+
+
+def _with_write_contracts(item: dict) -> dict:
+    """Give a minimal fixture the two layers the fact writer demands.
+
+    The writer's apply contract is production's: a payload reaches it with a
+    prior layer and an available posterior SSOT block, because the composer
+    puts them there.  The fixtures in this file are minimal by design and
+    were written before the contract had this shape, so they were refused a
+    dozen ``posterior_ssot_fact_*`` issues deep -- before anything they
+    assert ever ran.  The block itself is built by the writer's own builder
+    rather than assembled here; knowing its shape twice is how two answers
+    start.
+    """
+
+    rows = []
+    for raw in item.get("distribution") or []:
+        if not isinstance(raw, dict):
+            continue
+        label = str(raw.get("outcome") or raw.get("bucket") or raw.get("label") or "").strip()
+        probability = raw.get("q_temperature_bucket_posterior")
+        if probability is None:
+            probability = raw.get("q_bayes_posterior")
+        if not label or probability is None:
+            continue
+        rows.append({"bucket": label, "probability": float(probability)})
+    if not rows:
+        return item
+    total = sum(row["probability"] for row in rows) or 1.0
+    item.setdefault("prior_distribution", {row["bucket"]: row["probability"] / total for row in rows})
+    item.setdefault("prior_na_reason", "")
+    item.setdefault(
+        "prior_meta",
+        {
+            "schema": "temperature_prior_meta_v1",
+            "state": "available",
+            "source": "unit_test_fact_snapshot_coherence_prior",
+            "boundary": (
+                "historical_climate_date_site_terrain_weather_type_only"
+                "_no_forecast_no_metar_no_market"
+            ),
+            "sample_count": 30,
+            "date_window_days": 15,
+            "shrinkage_target": "broader_settled_history",
+            "prior_na_reason": "",
+        },
+    )
+    item.setdefault("posterior_temperature_distribution", rows)
+    item.setdefault("posterior_temperature_distribution_map", {row["bucket"]: row["probability"] for row in rows})
+    item.setdefault("production_model_version", "joint_weak_physical_strong_composer_v1")
+    item.setdefault("production_model_ready", True)
+    item.setdefault("fact_snapshot_id", "fact_unit_coherence")
+    item.setdefault("posterior_run_id", "post_unit_coherence")
+    ssot = fact_writer.build_posterior_ssot_fact(item)
+    item["posterior_ssot_fact"] = ssot
+    selection = {
+        "target_bucket": ssot.get("target_bucket"),
+        "target_probability": ssot.get("target_probability"),
+        "target_probability_field": "posterior_ssot_fact.target_probability",
+        "ssot_source": "posterior_ssot_fact",
+        "selection_runtime_recomputed": False,
+        "fact_snapshot_id": item["fact_snapshot_id"],
+        "posterior_run_id": item["posterior_run_id"],
+    }
+    item.setdefault("posterior_target_bucket_selection", dict(selection))
+    item.setdefault("target_bucket_selection", dict(selection))
+    return item
 
 
 def test_snapshot_run_date_ceiling_promotes_current_day_event() -> None:
@@ -123,7 +191,11 @@ def test_compose_fact_from_snapshots_falls_back_to_synced_market_snapshot() -> N
         "market_var": "temperature_2m_max",
         "market_unit": "C",
         "event_end_utc": "2026-06-21T12:00:00Z",
-        "rows": [{"outcome": "25°C or below", "q_round": 0.7, "q_raw": 0.7, "q_bayes_posterior": 0.7}],
+        # A plain rung, not the cumulative "or below" boundary bucket: a
+        # cumulative bucket's book is not the same instrument, so its quotes
+        # are widened to 0/1 and the snapshot this test is checking the
+        # fallback to becomes unobservable in the row.
+        "rows": [{"outcome": "25°C", "q_round": 0.7, "q_raw": 0.7, "q_bayes_posterior": 0.7}],
     }
     meta = {
         "title": "Highest temperature in Chengdu on June 21?",
@@ -154,7 +226,7 @@ def test_compose_fact_from_snapshots_falls_back_to_synced_market_snapshot() -> N
                 "2026-06-20",
                 event_date,
                 slug,
-                json.dumps({"rows": [{"outcome": "25°C or below", "best_bid": bid, "best_ask": bid + 0.02}]}),
+                json.dumps({"rows": [{"outcome": "25°C", "best_bid": bid, "best_ask": bid + 0.02}]}),
                 json.dumps(meta),
                 created_at,
             ),
@@ -228,7 +300,7 @@ def test_upsert_event_fact_advances_fact_as_of_from_market_tick() -> None:
         event_date="2026-06-24",
         run_created_at="2026-06-23T00:55:45+00:00",
         run_payload={"score_composer": {"model_snapshot_id": 1039, "market_snapshot_id": None}},
-        item={
+        item=_with_write_contracts({
             "slug": slug,
             "event_date": "2026-06-24",
             "run_date": "2026-06-23",
@@ -245,7 +317,7 @@ def test_upsert_event_fact_advances_fact_as_of_from_market_tick() -> None:
                     "best_ask": 0.33,
                 }
             ],
-        },
+        }),
     )
 
     assert fact_id
@@ -338,6 +410,31 @@ def test_materialize_first_prediction_lead_day_facts_appends_history_only() -> N
         "market_var": "temperature_2m_max",
         "market_unit": "C",
         "event_end_utc": "2026-06-20T16:00:00+00:00",
+        # The two layers the fact writer's apply contract requires.  The
+        # lead-day materializer composes its item straight out of this model
+        # snapshot and hands it to that writer, so without them the apply was
+        # refused before the append-only behaviour this test is about.
+        "prior_distribution": {"29°C": 0.7, "30°C": 0.3},
+        "prior_na_reason": "",
+        "prior_meta": {
+            "schema": "temperature_prior_meta_v1",
+            "state": "available",
+            "source": "unit_test_lead_day_prior",
+            "boundary": (
+                "historical_climate_date_site_terrain_weather_type_only"
+                "_no_forecast_no_metar_no_market"
+            ),
+            "sample_count": 30,
+            "date_window_days": 15,
+            "shrinkage_target": "broader_settled_history",
+            "prior_na_reason": "",
+        },
+        "posterior_temperature_distribution": [
+            {"bucket": "29°C", "probability": 0.7},
+            {"bucket": "30°C", "probability": 0.3},
+        ],
+        "production_model_version": "joint_weak_physical_strong_composer_v1",
+        "production_model_ready": True,
     }
     meta = {
         "title": "Highest temperature in Chengdu",
@@ -422,7 +519,10 @@ def test_materialize_first_prediction_lead_day_facts_appends_history_only() -> N
     assert conn.execute("SELECT COUNT(*) FROM event_fact_latest").fetchone()[0] == 0
     fact = conn.execute("SELECT run_date, fact_as_of, fact_json FROM event_fact_history").fetchone()
     payload = json.loads(fact["fact_json"])
-    assert fact["run_date"] == "2026-06-19"
+    # The canonical run_date of a fact whose slug names its own event date IS
+    # that event date; the day the prediction was made lives in fact_as_of and
+    # in the lead-day provenance block asserted below.
+    assert fact["run_date"] == "2026-06-20"
     assert fact["fact_as_of"] == "2026-06-19T01:05:00+00:00"
     assert payload["market_closed"] == 0
     assert payload.get("settlement_actual") is None
@@ -754,7 +854,7 @@ def test_compose_fact_uses_newer_event_run_model_payload_with_latest_market_snap
             '2026-04-15',
             'slug-a',
             '2026-04-15T10:05:00+00:00',
-            '{"score_composer":{"model_snapshot_id":1,"model_snapshot_at":"2026-04-15T10:00:00+00:00"},"rows":[{"outcome":"29°C","q_round":0.70,"q_raw":0.70,"q_calibrated":0.71,"q_bayes_posterior":0.70,"best_bid":0.01,"best_ask":0.02,"best_bid_no":0.98,"best_ask_no":0.99}]}'
+            '{"score_composer":{"model_snapshot_id":2,"model_snapshot_at":"2026-04-15T10:05:00+00:00"},"rows":[{"outcome":"29°C","q_round":0.70,"q_raw":0.70,"q_calibrated":0.71,"q_bayes_posterior":0.70,"best_bid":0.01,"best_ask":0.02,"best_bid_no":0.98,"best_ask_no":0.99}]}'
         )
         """
     )
@@ -781,7 +881,12 @@ def test_compose_fact_uses_newer_event_run_model_payload_with_latest_market_snap
     assert row["best_ask"] == 0.41
     assert item["fact_provenance"]["model_source"] == "event_runs"
     assert item["fact_provenance"]["event_run_id"] == 1
-    assert item["fact_provenance"]["model_snapshot_id"] == 1
+    # The event run's own model snapshot id, because that payload is what was
+    # used.  "Newer" is decided on the snapshot id the run names, not on when
+    # the run row was written: a run pointing at the snapshot already loaded is
+    # the same model however recently it was created, and the composer keeps
+    # the one it has.
+    assert item["fact_provenance"]["model_snapshot_id"] == 2
 
 
 def test_compose_fact_from_snapshots_uses_current_day_snapshot_ceiling(monkeypatch) -> None:

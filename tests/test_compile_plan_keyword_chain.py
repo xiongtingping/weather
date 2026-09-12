@@ -59,7 +59,6 @@ CHAIN = (
 THREADED_KEYWORDS = (
     "effective_edge_tables",
     "off_centre_claim_bands",
-    "symmetric_seat_bands",
     "convergence_evidence",
     "chain_consolidation_tilt",
     "last_acted_probability_identity",

@@ -64721,6 +64721,7 @@ def _compose_fact_from_snapshots(
         platt=platt,
     )
     _merge_fill_regime_fields_from_model_payload(item, merged_payload)
+    _merge_fill_prior_layer_from_model_payload(item, merged_payload)
     if isinstance(merged_payload.get("weather_likelihood_features"), Mapping):
         item["weather_likelihood_features"] = dict(merged_payload.get("weather_likelihood_features") or {})
     run_payload = {
@@ -64799,6 +64800,43 @@ def _regime_fact_passthrough_keys(payload: Mapping[str, Any]) -> List[str]:
             seen.add(key)
             out.append(key)
     return out
+
+
+def _merge_fill_prior_layer_from_model_payload(
+    item: Dict[str, Any], model_payload: Mapping[str, Any]
+) -> None:
+    """Carry the model run's prior layer onto the fact composed from it.
+
+    A fact composed out of stored snapshots has a posterior distribution, and
+    the writer's prior layer contract applies to any payload that has one: no
+    prior, no write.  The live path never met this because its item comes
+    from the scan, which computes the prior alongside the posterior; the
+    snapshot path builds a fresh item and dropped it, so historical lead-day
+    materialization was refused on prior_layer_contract_failed and appended
+    nothing.  The prior belongs to the model run either way.
+    """
+
+    if not isinstance(item, dict) or not isinstance(model_payload, Mapping):
+        return
+    for key in (
+        "prior_distribution",
+        "prior_meta",
+        "prior_na_reason",
+        # And what produced the posterior beside it.  The SSOT block the
+        # writer mints is blocked as joint_weak_physical_strong_model_unavailable
+        # unless the payload names the composer, so a fact composed from a
+        # snapshot that declares one must carry that declaration too.
+        "posterior_temperature_distribution",
+        "posterior_temperature_distribution_map",
+        "production_model_version",
+        "production_model_ready",
+    ):
+        if key in item and item.get(key) not in (None, ""):
+            continue
+        value = model_payload.get(key)
+        if value is None:
+            continue
+        item[key] = _clone_jsonish(value)
 
 
 def _merge_fill_regime_fields_from_model_payload(item: Dict[str, Any], model_payload: Mapping[str, Any]) -> None:
