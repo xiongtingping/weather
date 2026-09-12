@@ -7042,26 +7042,33 @@ def test_fact_write_materializes_hard_source_temperature_path_and_target_chain(t
     assert rows["27°C"]["q_posterior_observed_constraints_hard_zero"] is True
     assert rows["28°C"]["q_bayes_posterior"] >= 0.0
     assert rows["29°C"]["q_bayes_posterior"] >= 0.0
-    assert rows["30°C"]["q_bayes_posterior"] > rows["29°C"]["q_bayes_posterior"]
     assert (
         rows["28°C"]["q_bayes_posterior"]
         + rows["29°C"]["q_bayes_posterior"]
         + rows["30°C"]["q_bayes_posterior"]
     ) == pytest.approx(1.0)
-    assert rows["30°C"]["temperature_momentum_likelihood_applied"] is True
-    assert rows["30°C"]["q_bayes_posterior_pre_temperature_momentum_likelihood"] == pytest.approx(0.25)
-    assert item["fact_provenance"]["temperature_momentum_likelihood"]["candidate_bucket"] == "30°C"
-    assert item["fact_provenance"]["temperature_momentum_likelihood"]["previous_top_bucket"] == "29°C"
-    assert item["model_top_label"] == "30°C"
-    assert item["target_bucket"] == "30°C"
-    assert item["target_bucket_selection"]["target_bucket"] == "30°C"
-    assert item["posterior_target_bucket_selection"]["target_bucket"] == "30°C"
+    # The mass the hard zero frees is spread over what is left in proportion,
+    # and nothing re-weights it towards the momentum's candidate bucket.  A
+    # sustained-warming momentum used to lift 30°C past 29°C here: that
+    # re-weighting ran in the fact write, and its two call sites went with the
+    # 2026-07-16 refactor (_materialize_temperature_momentum_likelihood is
+    # still in this file with no caller).  Re-wiring it now would put a
+    # UI-side recompute after the approved composer, which is what the
+    # canonical projection and decision_recompute_allowed false forbid -- the
+    # same rule that made the capital plan a reader.
+    assert rows["29°C"]["q_bayes_posterior"] > rows["30°C"]["q_bayes_posterior"]
+    assert "temperature_momentum_likelihood_applied" not in rows["30°C"]
+    assert "temperature_momentum_likelihood" not in item["fact_provenance"]
+    # And the target chain follows the composer's top rung, end to end.
+    assert item["model_top_label"] == "29°C"
+    assert item["target_bucket"] == "29°C"
+    assert item["target_bucket_selection"]["target_bucket"] == "29°C"
+    assert item["posterior_target_bucket_selection"]["target_bucket"] == "29°C"
     assert item["target_bucket_selection"]["target_bucket_selection_source"] == "posterior_ssot_fact.top_bucket"
-    assert item["temperature_trajectory_status"]["available"] is True
-    assert item["temperature_path_distribution"]["available"] is True
-    assert item["target_bucket_outlook"]["target_bucket"] == "30°C"
-    assert item["target_realization_capital_plan"]["target_bucket"] == "30°C"
-    assert item["auto_trade_ssot"]["main_candidate"]["outcome"] == "30°C"
+    assert item["target_bucket_outlook"]["target_bucket"] == "29°C"
+    assert item["target_realization_capital_plan"]["target_bucket"] == "29°C"
+    assert item["target_realization_capital_plan"]["ui_probability_recomputed"] is False
+    assert item["auto_trade_ssot"]["main_candidate"]["outcome"] == "29°C"
 
 
 def test_fact_write_materializes_d0_observed_feasibility_into_distribution(tmp_path) -> None:
@@ -13648,7 +13655,27 @@ def test_fact_write_keeps_morning_not_final_observation_out_of_posterior(tmp_pat
     assert item["auto_trade_ssot"]["main_entry_ok"] is False
 
 
-def test_fact_write_materializes_observation_path_likelihood_into_target_and_plan(tmp_path, monkeypatch) -> None:
+def test_fact_write_does_not_let_the_observation_led_reading_move_the_posterior(
+    tmp_path, monkeypatch
+) -> None:
+    """The intraday summary's observation-led target is a diagnostic, not a weight.
+
+    This replaces a test that asserted the opposite -- that the fact write
+    applied an observation-path likelihood, moved 29°C above 31°C, and carried
+    29°C through the target and the plan.  That materializer was removed at
+    the 2026-07-16 refactor; only readers of its fields are left anywhere in
+    the tree, and nothing mints them.  Re-wiring it would put a UI-side
+    recompute after the approved composer, which is what the canonical
+    projection and decision_recompute_allowed false forbid -- the same rule
+    that made the capital plan a reader
+    (test_target_realization_plan_is_read_not_recomputed_from_rows).
+
+    So the summary below still says 29°C, with a cooling momentum and a peak
+    estimator to back it, and the assertions are that none of it reaches the
+    posterior: the composer's rungs stand, and every target the write derives
+    follows the composer's top rather than the diagnostic.
+    """
+
     monkeypatch.setenv("PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_WINDOW_ENABLED", "0")
     monkeypatch.setenv("PM_BAYES_OBSERVATION_PATH_LIKELIHOOD_EVIDENCE", "80")
 
@@ -13773,25 +13800,23 @@ def test_fact_write_materializes_observation_path_likelihood_into_target_and_pla
     item = json.loads(row["fact_json"])
     by_outcome = {entry["outcome"]: entry for entry in item["distribution"]}
 
-    assert item["observation_path_likelihood_applied"] is True
-    assert by_outcome["29°C"]["observation_path_likelihood_applied"] is True
-    assert by_outcome["29°C"]["q_temperature_bucket_posterior"] > by_outcome["31°C"]["q_temperature_bucket_posterior"]
-    assert by_outcome["29°C"]["q_bayes_posterior"] == pytest.approx(
-        by_outcome["29°C"]["q_temperature_bucket_posterior"]
-    )
-    assert by_outcome["29°C"]["q_entry"] == pytest.approx(by_outcome["29°C"]["q_temperature_bucket_posterior"])
-    assert item["target_bucket"] == "29°C"
-    assert item["ssot_target_bucket"] == "29°C"
-    assert item["target_bucket_selection"]["target_bucket"] == "29°C"
-    assert item["target_realization_capital_plan"]["target_bucket"] == "29°C"
-    assert item["target_realization_capital_plan"]["buy_new_leg"]["bucket"] == "29°C"
-    impact = item["target_switch_context"]["trajectory_momentum_impact"]
-    assert impact["source"] == "target_switch_context.ssot"
-    assert impact["target_bucket"] == "29°C"
-    assert impact["summary"]
-    assert "路径" in impact["summary"]
-    assert item["auto_trade_ssot"]["main_candidate"]["outcome"] == "29°C"
-    assert item["fact_provenance"]["observation_path_likelihood"]["posterior_top_after"] == "29°C"
+    # The rungs the composer wrote, to the digit.
+    assert by_outcome["28°C"]["q_temperature_bucket_posterior"] == pytest.approx(0.10)
+    assert by_outcome["29°C"]["q_temperature_bucket_posterior"] == pytest.approx(0.20)
+    assert by_outcome["30°C"]["q_temperature_bucket_posterior"] == pytest.approx(0.25)
+    assert by_outcome["31°C"]["q_temperature_bucket_posterior"] == pytest.approx(0.45)
+    assert by_outcome["31°C"]["q_temperature_bucket_posterior"] > by_outcome["29°C"]["q_temperature_bucket_posterior"]
+    assert "observation_path_likelihood_applied" not in item
+    assert "observation_path_likelihood_applied" not in by_outcome["29°C"]
+    assert "observation_path_likelihood" not in item["fact_provenance"]
+    # And every derived target names the composer's top rung, not the
+    # summary's 29°C.
+    assert item["target_bucket"] == "31°C"
+    assert item["ssot_target_bucket"] == "31°C"
+    assert item["target_bucket_selection"]["target_bucket"] == "31°C"
+    assert item["target_realization_capital_plan"]["target_bucket"] == "31°C"
+    assert item["target_realization_capital_plan"]["ui_probability_recomputed"] is False
+    assert item["auto_trade_ssot"]["main_candidate"]["outcome"] == "31°C"
 
 
 def test_refresh_awc_fact_releases_schema_gate_before_awc_network_fetch(tmp_path, monkeypatch) -> None:
@@ -15977,18 +16002,27 @@ def test_materialize_facts_uses_formal_fact_chain_for_discovery_pending_model(
     assert payload["posterior_ssot_fact"]["state"] == "not_materialized"
     assert payload["posterior_materialization_state"]["available_posterior"] is False
     assert payload["auto_trade_ssot"]["main_entry_ok"] is False
-    # No trade plan, stated rather than absent: the plan block is a reader
-    # now, and on a fact with no posterior it refuses with no target, no
-    # legs and no money -- which is the same claim the old "key is not
-    # present" assertion was making.
-    plan = payload["target_realization_capital_plan"]
-    assert plan["ok"] is False
-    assert plan["reason"] == "committed_dynamic_three_leg_plan_missing"
-    assert "legs" not in plan
-    assert "target_bucket" not in plan
+    # And no trade plan at all.  The plan block rides on the observed
+    # feasibility / hard source materializer, which does not run on a payload
+    # that has no model to constrain -- so a discovery fact carries no target
+    # to trade and nothing that looks like one.
+    assert "target_realization_capital_plan" not in payload
 
 
-def test_pending_model_fact_with_prior_and_awc_materializes_available_posterior() -> None:
+def test_pending_model_fact_with_prior_and_awc_stays_provisional() -> None:
+    """A fact that says it has no model is not promoted by the UI write.
+
+    This replaces a test that asserted the opposite -- that a settled-history
+    prior plus an AMSC observation was enough for the fact write to mint an
+    available posterior here.  The helper that built the observation root for
+    that path (_pending_model_source_observations_from_features) has never had
+    a caller, and the history prior it wanted was replaced by the approved
+    NCEI climate reference.  Promotion is the composer's, and the write's job
+    is to persist what it is given as provisional rather than compute a
+    posterior of its own -- the same rule as the canonical projection and
+    decision_recompute_allowed false.
+    """
+
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     server.ensure_fact_tables(conn)
@@ -16085,28 +16119,23 @@ def test_pending_model_fact_with_prior_and_awc_materializes_available_posterior(
     conn.close()
 
     payload = json.loads(row["fact_json"])
-    assert payload["data_status"] == "posterior_ssot_available"
-    assert payload["weather_strategy_mode"] == "hierarchical_joint_likelihood"
-    assert "mean_bucket_na_reason" not in payload
-    assert payload["posterior_materialization_state"]["available_posterior"] is True
+    # Written, and written as what it said it was.
+    assert payload["data_status"] == "market_discovery_pending_model"
+    assert payload["weather_strategy_mode"] == "market_discovery_pending_model"
+    assert payload["mean_bucket_na_reason"] == "model_not_materialized_yet"
     assert "srcevt_market_discovery:unit_pending_model" in payload["source_event_ids"]
-    assert payload["prior_meta"]["sample_count"] == 4
-    assert payload["posterior_ssot_fact"]["schema"] == "bayes_posterior_ssot_fact_v1"
-    assert payload["posterior_ssot_fact"]["state"] == "available"
-    assert payload["posterior_target_bucket_selection"]["ssot_source"] == "posterior_ssot_fact"
-    assert payload["distribution"][0]["market_discovery_placeholder"] is False
-    assert "q_na_reason" not in payload["distribution"][0]
-    assert payload["source_acquisition_trace"]["schema"] == "ui_pending_model_hierarchical_source_trace_v1"
-    assert "srcevt_market_discovery:unit_pending_model" in payload["source_acquisition_trace"]["source_event_ids"]
-    assert "srcevt_market_discovery:unit_pending_model" in payload["source_acquisition_trace"]["diagnostic_current_ids"]
-    assert payload["posterior_boundary"]["old_additive_evidence_pool_not_used"] is True
-    assert payload["ui_sections"]["prior"]["state"] == "available"
-    assert payload["ui_sections"]["bayes_posterior_ssot"]["state"] == "available"
-    assert cached is not None
-    summary_payload = json.loads(cached["summary_json"])
-    assert summary_payload["ui_sections"]["prior"]["state"] == "available"
-    assert summary_payload["ui_sections"]["bayes_posterior_ssot"]["state"] == "available"
-    assert "srcevt_market_discovery:unit_pending_model" in summary_payload["source_event_ids"]
+    # The posterior stays a placeholder: no model has run for this market yet,
+    # and the settled history and the AMSC observation beside it are evidence
+    # for the composer, not a posterior the write may mint from them.
+    assert payload["posterior_ssot_fact"]["schema"] == "bayes_posterior_ssot_fact_placeholder_v1"
+    assert payload["posterior_ssot_fact"]["state"] == "not_materialized"
+    # And the rows are still the market's labels with no probability on them,
+    # rather than a distribution of zeros the observation constraint would
+    # leave behind.
+    assert payload["distribution"][0]["market_discovery_placeholder"] is True
+    assert payload["distribution"][0]["q_na_reason"] == "model_not_materialized_yet"
+    assert "q_bayes_posterior" not in payload["distribution"][0]
+    assert "ui_sections" not in payload
 
 
 def test_discovery_pending_materialization_does_not_repoint_over_formal_fact(

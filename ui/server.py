@@ -47291,21 +47291,29 @@ def _insert_event_fact_history(
         }
         item["fact_provenance"] = provenance
         canonical_projection_applied = True
-    _materialize_observed_feasibility_and_hard_source_override_for_fact_write(
-        item,
-        features=features,
-        market_var=market_var,
-        rounding_rule=rounding_rule,
-        event_tz=event_tz,
-        event_date=event_date,
-        fact_as_of=fact_as_of,
-        fast_trade_write_requested=fast_trade_write_requested,
-        canonical_projection_applied=canonical_projection_applied,
-        posterior_base_probs=_posterior_base_probs,
-        top_label_from_rows=_top_label_from_rows,
-        fast_trade_hard_source_meta=_fast_trade_hard_source_meta,
-        apply_fast_trade_hard_source_lower_bound=_apply_fast_trade_hard_source_lower_bound,
-    )
+    # Same boundary as the projection above: a payload that says it has no
+    # model yet has no posterior for an observation to constrain.  Running
+    # the override on one turns its placeholder rows into a probability
+    # distribution of zeros, which then trips the apply contract against the
+    # placeholder SSOT block beside it -- the fact becomes unwritable on an
+    # inconsistency the write itself introduced.  Promoting a pending-model
+    # fact to a real posterior is the approved composer's job.
+    if not market_discovery_pending_model:
+        _materialize_observed_feasibility_and_hard_source_override_for_fact_write(
+            item,
+            features=features,
+            market_var=market_var,
+            rounding_rule=rounding_rule,
+            event_tz=event_tz,
+            event_date=event_date,
+            fact_as_of=fact_as_of,
+            fast_trade_write_requested=fast_trade_write_requested,
+            canonical_projection_applied=canonical_projection_applied,
+            posterior_base_probs=_posterior_base_probs,
+            top_label_from_rows=_top_label_from_rows,
+            fast_trade_hard_source_meta=_fast_trade_hard_source_meta,
+            apply_fast_trade_hard_source_lower_bound=_apply_fast_trade_hard_source_lower_bound,
+        )
     materialized = _finalize_event_fact_history_materialized_payload_for_storage(
         item=item,
         fact_as_of=fact_as_of,
