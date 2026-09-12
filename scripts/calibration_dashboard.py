@@ -8090,6 +8090,140 @@ def _wilson_interval(hits: int, n: int, z: float = 1.6449) -> tuple:
     return (max(0.0, centre - half), min(1.0, centre + half))
 
 
+def _claim_edge_calibration(rows: list[tuple]) -> dict[str, Any]:
+    """The claimed-edge thermometer, asked where no fill model can reach it.
+
+    The ledger version of this reading takes the POSTED leg as its unit and
+    splits it by whether the market sold it.  That split was its sharpest
+    column and stopped being an observation on 2026-09-11, when charter 129
+    made the paper book's fills conditional on the outcome: p(fill|crossed)
+    is 0.4581 on a winning leg and 0.6650 on a losing one, so the filled
+    sample is enriched in losers by construction.  On top of that the
+    2026-09-12 re-derive left the book at 259 legs, under this section's
+    ten-settled-leg floor in four of its seven bands.
+
+    Here the unit is the seated WINDOW at each decision and the outcome is
+    whether the truth landed in it.  Nothing is conditioned on a fill,
+    nothing is conditioned on a basket clearing the hurdle, and the sample
+    is the whole stamped candidate lane rather than what got bought.  It
+    answers the same question -- does a claim that calls itself a bargain
+    deliver -- on roughly twenty times the legs.
+
+    Intervals are block-bootstrapped over station-days: the same window is
+    re-seated every cycle and the stages of one day settle against one
+    high, so a row is not a draw.
+
+    The regression beside it is charter 128's own form, (truth - price) =
+    a + beta * (claim - price), so the panel's shape and the beta lane's
+    slope are one reading rather than two vocabularies for it.
+    """
+
+    bands = ("<0", "0-2%", "2-5%", "5-10%", "10-20%", "20-30%", ">=30%")
+
+    def band_of(edge: float) -> str:
+        if edge < 0:
+            return "<0"
+        for top, name in (
+            (0.02, "0-2%"), (0.05, "2-5%"), (0.10, "5-10%"),
+            (0.20, "10-20%"), (0.30, "20-30%"),
+        ):
+            if edge < top:
+                return name
+        return ">=30%"
+
+    def ratio(group: list[tuple]) -> float | None:
+        if not group:
+            return None
+        claimed = sum(row[2] for row in group) / len(group)
+        hit = sum(row[4] for row in group) / len(group)
+        return hit / claimed if claimed > 0 else None
+
+    def slope(group: list[tuple]) -> float | None:
+        if len(group) < 20:
+            return None
+        xs = [row[2] - row[3] for row in group]
+        ys = [row[4] - row[3] for row in group]
+        n = len(xs)
+        mx = sum(xs) / n
+        my = sum(ys) / n
+        sxx = sum((x - mx) ** 2 for x in xs)
+        if sxx <= 1e-12:
+            return None
+        return sum(
+            (x - mx) * (y - my) for x, y in zip(xs, ys)
+        ) / sxx
+
+    def interval(group: list[tuple], stat: Any) -> tuple:
+        by_day: dict[tuple, list] = {}
+        for row in group:
+            by_day.setdefault((row[0], row[1]), []).append(row)
+        keys = list(by_day)
+        if len(keys) < 10:
+            return (None, None)
+        # Deterministic resampling: the page is rebuilt many times a day and
+        # an interval that moves on its own would be read as the reading
+        # moving.  A linear congruential walk over the day keys is enough
+        # for a block bootstrap and costs nothing to reproduce.
+        seed = 20260913
+        draws: list[float] = []
+        for _ in range(300):
+            sample: list[tuple] = []
+            for _ in range(len(keys)):
+                seed = (seed * 1103515245 + 12345) % (2 ** 31)
+                sample.extend(by_day[keys[seed % len(keys)]])
+            value = stat(sample)
+            if value is not None:
+                draws.append(value)
+        if len(draws) < 60:
+            return (None, None)
+        draws.sort()
+        return (
+            round(draws[int(0.05 * len(draws))], 3),
+            round(draws[int(0.95 * len(draws))], 3),
+        )
+
+    if not rows:
+        return {"available": False}
+    grouped: dict[str, list] = {}
+    for row in rows:
+        grouped.setdefault(band_of(row[2] - row[3]), []).append(row)
+    out = []
+    for name in bands:
+        group = grouped.get(name) or []
+        if not group:
+            continue
+        low, high = interval(group, ratio)
+        out.append({
+            "band": name,
+            "n": len(group),
+            "station_days": len({(row[0], row[1]) for row in group}),
+            "share": round(len(group) / len(rows), 4),
+            "claimed_mean": round(
+                sum(row[2] for row in group) / len(group), 4
+            ),
+            "hit_rate": round(sum(row[4] for row in group) / len(group), 4),
+            "realised_x": (
+                None if ratio(group) is None else round(ratio(group), 3)
+            ),
+            "realised_lo": low,
+            "realised_hi": high,
+        })
+    beta = slope(rows)
+    beta_lo, beta_hi = interval(rows, slope)
+    return {
+        "available": True,
+        "rows": len(rows),
+        "station_days": len({(row[0], row[1]) for row in rows}),
+        "bands": out,
+        "beta": None if beta is None else round(beta, 3),
+        "beta_lo": beta_lo,
+        "beta_hi": beta_hi,
+        "pooled_x": (
+            None if ratio(rows) is None else round(ratio(rows), 3)
+        ),
+    }
+
+
 def collect_lambda_axis_realisation(conn: sqlite3.Connection) -> dict[str, Any]:
     """Charter 97's retirement condition, read on the seat that settles.
 
@@ -8171,6 +8305,10 @@ def collect_lambda_axis_realisation(conn: sqlite3.Connection) -> dict[str, Any]:
 
     # station-day -> every seated decision of that day, in time order.
     days: dict[tuple, list] = {}
+    # Every seated window's (claim, all-in price, settled) -- the claimed
+    # edge thermometer's own question asked where no fill model can reach
+    # it.  See ``_claim_edge_calibration``.
+    claim_edge: list[tuple] = []
     scanned = 0
     first_day = ""
     last_day = ""
@@ -8214,10 +8352,15 @@ def collect_lambda_axis_realisation(conn: sqlite3.Connection) -> dict[str, Any]:
             claim = seat.get("win_probability")
             if not source or not buckets or claim is None:
                 continue
+            won = 1 if settled_bucket in buckets else 0
             days.setdefault((str(sid), str(day)), []).append((
-                str(decided_at or ""), str(source), float(claim),
-                1 if settled_bucket in buckets else 0,
+                str(decided_at or ""), str(source), float(claim), won,
             ))
+            price = seat.get("all_in_price")
+            if price is not None:
+                claim_edge.append((
+                    str(sid), str(day), float(claim), float(price), won,
+                ))
             # One fact is one decision; the first seated selection in it is
             # that decision's seat.
             break
@@ -8296,6 +8439,7 @@ def collect_lambda_axis_realisation(conn: sqlite3.Connection) -> dict[str, Any]:
         "mixed_axis_days": mixed_days,
         "minimum_station_days": minimum_station_days,
         "axes": axes,
+        "claim_edge": _claim_edge_calibration(claim_edge),
     }
 
 
@@ -11675,7 +11819,58 @@ function edgeBandHealth(){
   <th>没买到的兑现</th>
   <th title="宪章 62 校准修复的疗效仪表：起效的样子是发烧行占比缩小、兑现回升。样本 <10 显 —">近7天占比</th>
   <th title="宪章 62 校准修复的疗效仪表。样本 <10 显 —">近7天兑现</th></tr></thead>
-  <tbody>${rows.map(tr).join("")}</tbody></table></div>`;
+  <tbody>${rows.map(tr).join("")}</tbody></table>${cleanLane()}</div>`;
+}
+
+// The same question asked where no fill model can reach it.  The table
+// above takes the posted leg as its unit and splits it by whether the
+// market sold it -- its sharpest column, and no longer an observation:
+// charter 129 made the paper book's fills conditional on the outcome
+// (p(fill|crossed) 0.4581 winning, 0.6650 losing), so the filled side is
+// enriched in losers by construction, and the 2026-09-12 re-derive left
+// four of seven bands under the ten-leg floor.  This one scores the
+// seated WINDOW against the truth: no fill, no basket, no hurdle.
+function cleanLane(){
+  const C=((D.lambda_axis_realisation||{}).claim_edge)||{};
+  if(!C.available||!(C.bands||[]).length) return "";
+  const mult=v=>v==null?"—":"×"+v.toFixed(3);
+  const p1=v=>v==null?"—":(v*100).toFixed(1)+"%";
+  const rows=C.bands.map(b=>{
+    const sick=b.realised_hi!=null&&b.realised_hi<1.0;
+    const good=b.realised_lo!=null&&b.realised_lo>=1.0;
+    return `<tr>
+      <td class="mono">${h(b.band)}</td><td>${b.n}</td><td>${b.station_days}</td>
+      <td>${p1(b.share)}</td><td class="mono">${p1(b.claimed_mean)}</td>
+      <td class="mono">${p1(b.hit_rate)}</td>
+      <td class="mono ${sick?"down":(good?"up":"")}"><b>${
+        mult(b.realised_x)}</b></td>
+      <td class="mono muted">${mult(b.realised_lo)} … ${mult(b.realised_hi)}</td>
+      <td class="${sick?"down":(good?"up":"muted")}">${
+        sick?"低于说到做到":(good?"超额兑现":"未分出")}</td></tr>`;
+  }).join("");
+  return `<div class="card" style="margin-top:12px">
+  <div style="font-size:12.5px"><b>同一问题，换成没有成交模型的口径</b>（${
+  C.rows.toLocaleString()} 个入座窗口 · ${C.station_days} 站日）</div>
+  <p class="note" style="margin-top:6px">上表的单位是<b>挂出去的腿</b>，
+  并按市场卖不卖它分成两列——那一列从 2026-09-11 起不再是观测：宪章 129 把纸面账本的
+  成交条件挂在结果上（赢腿 <span class="mono">p(成交|越过)=0.4581</span>、
+  输腿 <span class="mono">0.6650</span>），成交样本按构造就富集输腿；
+  09-12 账本重导后又只剩 259 条腿，七档里四档在十条门槛之下。
+  这张表的单位是<b>入座的那个窗口</b>，结果是真值有没有落进去：
+  不看成不成交、不看篮子过不过闸，样本大二十倍。</p>
+  <table><thead><tr><th>自认便宜多少</th><th>窗口</th><th>站日</th><th>占比</th>
+  <th>模型声称</th><th>真值落窗</th><th>兑现</th>
+  <th title="按站日块自助 90%：同一个窗每周期重新入座，同日各阶段结算同一个最高温，一行不是一次抽样">90% 区间</th>
+  <th>判定</th></tr></thead><tbody>${rows}</tbody></table>
+  <p class="note" style="margin-top:8px"><b>整体 ${mult(C.pooled_x)}</b>，
+  形状与上表一致且单调——<b>发烧不是成交模型造的</b>。写成宪章 128 的斜率：
+  <span class="mono">(真值落窗 − 价格) = a + β·(声称 − 价格)</span>，
+  实测 <b>β = ${C.beta==null?"—":C.beta.toFixed(3)}</b>${
+  C.beta_lo==null?"":` <span class="muted">[${C.beta_lo.toFixed(3)}, ${
+  C.beta_hi.toFixed(3)}]</span>`}。β=1 是"我们和市场的分歧全额兑现"，
+  β=0 是"分歧毫无信息、信价格就够"。<b>当前读数离 0 比离 1 近得多</b>，
+  这与 β 影子车道、与"模型相对市场无信息"的旧读数一致：
+  这块表不健康，量的不是执行层，是声称层本身。</p></div>`;
 }
 
 function windowDivergence(){
@@ -11759,8 +11954,13 @@ function consolidation(){
     量的是"当天的答案定型了没有"：</b>
     ${Object.values(LAMPDEF).join("；")}。
     灯亮=市场的定价功课做完了，此时还剩的价差多半是别人知道我们不知道的事。
-    <b>现行规则（2026-08-28 裁定）：任一盏亮，
-    整链注码 ×${consRule.factor??0.1}</b>——只在开仓时少买，
+    两盏都记账，但只有触发灯砍注码：09-08 按灯分组 264 笔读出
+    <span class="mono">sharp</span> 亮的日子 +8.7%（全库唯一为正的一组）、
+    <span class="mono">stable</span> 亮的日子 −8.6%，旧的"任一盏亮即减"把前者也砍了，
+    信号集遂收成 <span class="mono">stable</span>，另一盏留作研究臂。
+    <b>现行规则（深度 2026-08-28 裁定、触发灯 2026-09-08 裁定）：
+    ${(consRule.signals||["stable"]).map(k=>LAMPDEF[k]||k).join("、")}
+    亮满 ${consRule.min_signals??1} 盏，整链注码 ×${consRule.factor??0.05}</b>——只在开仓时少买，
     永不拒入场、永不卖出、永不撤单（改成门会自反，折扣门 −54% 判例）。<br>
     <b>第三盏灯「报满价」已退役（2026-08-28）：</b>它几乎天天亮，
     说的是"有没有盘口"而非"市场多确定"，不再计数也不再显示；
@@ -11812,6 +12012,10 @@ function entryEconomics(){
   // numbers a reader most needs to compare -- claimed edge and realised
   // edge -- three decimal places apart from everything else on the page.
   const cent=(v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+"¢");
+  // The same cents without a sign, for the two quantities in the verdict
+  // strip that are prices rather than edges -- "+30.3¢ 每股成本" reads as
+  // a gain of thirty cents, which is the opposite of what it is.
+  const centm=(v,d=1)=>v==null?"—":(100*v).toFixed(d)+"¢";
   const num=(v,d=2)=>v==null?"—":v.toFixed(d);
   const usd=(v,d=2)=>v==null?"—":((v>=0?"+":"")+v.toFixed(d)+" U");
   // The three weightings ride in the tile they belong to (user ruling,
@@ -11836,6 +12040,91 @@ function entryEconomics(){
   const paysOne = E.hit_pays_per_share;
   const covered = C.realised_coverage!=null && C.breakeven_hit_rate!=null
     ? (C.realised_coverage>=C.breakeven_hit_rate?"up":"down") : "";
+
+  // Which two numbers you have to put SIDE BY SIDE before any of the nine
+  // means "earned" or "lost" (user ruling, 2026-09-13).  Nine tiles in a
+  // grid read as nine verdicts and they are not: only three PAIRS decide
+  // anything, five of the tiles are inputs to one of those pairs, and ⑤
+  // is ⑧ written upside down -- (1−c)/c, so 保本线 = 1/(1+赔率) -- which
+  // makes comparing it to anything a comparison of a number with itself.
+  // Each pair is printed with the subtraction already done, because
+  // "31.6% 对 30.3%" IS the answer and the page was making the reader do
+  // that arithmetic in their head across two rows of a grid.
+  //
+  // All three pairs are exact identities on this book, not rules of
+  // thumb, and tests/test_entry_economics_section.py pins each one so the
+  // strip cannot drift from the tiles it summarises:
+  //   ⑨实际 = ②×命中实收 − ⑧           (按股口径, to the last place)
+  //   ⑨声称 = ① − ④                     (a weighted mean is linear)
+  //   盈亏   = 链数 × (③·⑥ − (1−③)·|⑦|) (逐链口径, in USDC)
+  // The third is arithmetically independent of the first two -- it never
+  // touches cost or coverage -- so when the page is wrong about which way
+  // the book went, those two rows disagree instead of agreeing quietly.
+  const tookOut = (S.realised_coverage!=null && paysOne!=null)
+    ? S.realised_coverage*paysOne : null;
+  const perChainWin = (C.profitable_rate!=null && E.mean_win_usdc!=null)
+    ? C.profitable_rate*E.mean_win_usdc : null;
+  const perChainLoss = (C.profitable_rate!=null && E.mean_loss_usdc!=null)
+    ? (1-C.profitable_rate)*(-E.mean_loss_usdc) : null;
+  const claimedUsdc = (S.ev_per_share_claimed!=null && E.shares!=null)
+    ? S.ev_per_share_claimed*E.shares : null;
+  const sgn = v => v==null ? "" : (v>=0?"up":"down");
+  const vrow = (what, got, beat, gap, ruling) =>
+    `<tr><td>${what}</td><td>${got}</td><td>${beat}</td><td>${gap}</td>
+     <td>${ruling}</td></tr>`;
+  // The gap column carries the same subtraction under all three
+  // weightings, because "which column am I reading" is exactly the
+  // question this strip exists to settle: a stage can and does come out
+  // positive by stake and negative by share on the same chains.
+  const realised = cols.map(pair=>pair[1].ev_per_share_realised)
+    .filter(v=>v!=null);
+  const split = realised.length>1 &&
+    (Math.min(...realised)<0) !== (Math.max(...realised)<0);
+  const verdict = `<table style="margin-top:8px"><thead><tr>
+    <th>比什么</th><th>拿到的</th><th>要盖过的</th><th>差</th>
+    <th>赚 / 亏</th></tr></thead><tbody>
+  ${vrow(
+    `<b>真赚了还是真亏了</b><br><span class="muted">事后 · 按股，
+     这是唯一闭合到收益率的一列</span>`,
+    `② 实际覆盖率 <b>${mag(S.realised_coverage)}</b> × 命中实收
+     ${num(paysOne,3)} ＝ <b>${centm(tookOut)}</b> / 股`,
+    `⑧ 每股成本 <b>${centm(S.cost_per_share)}</b><br>
+     <span class="muted">＝④ 保本命中率 ${mag(S.breakeven_hit_rate)}，
+     同一个数</span>`,
+    `<span class="big ${sgn(S.ev_per_share_realised)}"
+     >${cent(S.ev_per_share_realised)}</span>
+     <span class="muted">/股 ＝⑨实际 · × ${num(E.shares,0)} 股</span>
+     ${wts(b=>cent(b.ev_per_share_realised))}`,
+    `<b class="${sgn(E.pnl_usdc)}">${E.pnl_usdc>=0?"赚":"亏"}
+     ${usd(E.pnl_usdc,2)}</b><br>收益率
+     <b class="${sgn(E.roi)}">${sig(E.roi)}</b>`)}
+  ${vrow(
+    `<b>下单那一刻以为的</b><br><span class="muted">事前 · 按股，
+     同一批链、同一列权重</span>`,
+    `① 声称覆盖率 <b>${mag(S.claimed_coverage)}</b>
+     <br><span class="muted">服务分布压在买到的那几个桶上</span>`,
+    `④ 保本命中率 <b>${mag(S.breakeven_hit_rate)}</b>
+     <br><span class="muted">还是 ⑧，满赔 1.00 所以价＝保本线</span>`,
+    `<span class="big ${sgn(S.ev_per_share_claimed)}"
+     >${cent(S.ev_per_share_claimed)}</span>
+     <span class="muted">/股 ＝⑨声称 · × ${num(E.shares,0)} 股</span>
+     ${wts(b=>cent(b.ev_per_share_claimed))}`,
+    `<b class="${sgn(claimedUsdc)}">以为${claimedUsdc>=0?"赚":"亏"}
+     ${usd(claimedUsdc,2)}</b><br><span class="muted">实际只有
+     ${usd(E.pnl_usdc,2)}</span>`)}
+  ${vrow(
+    `<b>换 USDC 再算一遍</b><br><span class="muted">逐链等权 ·
+     不碰成本也不碰覆盖率的另一条路</span>`,
+    `③ 盈利率 <b>${mag(C.profitable_rate)}</b> × ⑥ 平均盈利
+     ${num(E.mean_win_usdc,2)} ＝ <b>${num(perChainWin,3)} U</b> / 链`,
+    `(1−③) <b>${mag(1-C.profitable_rate)}</b> × ⑦ 平均亏损
+     ${num(-E.mean_loss_usdc,2)} ＝ <b>${num(perChainLoss,3)} U</b> / 链`,
+    `<span class="big ${sgn(perChainWin-perChainLoss)}"
+     >${usd(perChainWin-perChainLoss,3)}</span>
+     <span class="muted">/链 · × ${E.chains} 条</span>`,
+    `<b class="${sgn(E.pnl_usdc)}">${usd(E.pnl_usdc,2)}</b>
+     <br><span class="muted">跟第一行必须是同一个数</span>`)}
+  </tbody></table>`;
   const tiles = `<div class="grid g3">
     ${tile("① 入场服务概率 · 平均声称覆盖率", mag(C.claimed_coverage),
       "下单那一刻，服务分布落在<b>买到的那几个桶</b>上的概率之和",
@@ -11910,7 +12199,50 @@ function entryEconomics(){
     <td class="mono ${s.roi>=0?"up":"down"}">${sig(s.roi)}</td></tr>`;
   }).join("")}</tbody></table></div>`;
 
+  // The payoff-ratio reading of the third row.  Same inequality, turned
+  // inside out: ③·⑥ > (1−③)·|⑦| is ⑥/|⑦| > (1−③)/③, which is the form
+  // a reader who thinks in "赢一次赔几次" can check without a calculator.
+  const payoffGot = (E.mean_win_usdc!=null && E.mean_loss_usdc)
+    ? E.mean_win_usdc/(-E.mean_loss_usdc) : null;
+  const payoffNeed = C.profitable_rate>0
+    ? (1-C.profitable_rate)/C.profitable_rate : null;
+
   return `<h2>入场的九个数：这一注长什么样</h2>
+  <div style="margin-top:6px"><b>九个数里只有三对能定盈亏。</b>
+  左边那个数盖过右边那个，这一注就是赚的；盖不过就是亏的。
+  其余四个数（⑤⑥⑦⑧里除去已经在表里的）都是这三对的输入，
+  单看任何一个都判不出赚亏。</div>
+  ${verdict}
+  <div class="why"><b>这张表怎么读，以及哪几个数不该参与比较。</b>
+  ㈠ <b>⑤ 净赔率不参与任何比较</b>：⑤＝(1−⑧)÷⑧，反过来 ④＝1÷(1+⑤)。
+  ④、⑧、⑤ 是同一个量的三种写法（今天分别是
+  ${mag(S.breakeven_hit_rate)}、${centm(S.cost_per_share)}、
+  ${num(S.net_odds,2)}x），拿 ⑤ 去跟谁比都是跟自己比。
+  ㈡ <b>① 和 ② 之间那一刀是诊断，不是判决</b>：两者相除得兑现比
+  ${num(S.realisation_ratio,2)}×（按股），差
+  ${pp(S.realised_coverage-S.claimed_coverage)}；换成钱就是
+  ⑨声称 ${cent(S.ev_per_share_claimed)} 减 ⑨实际
+  ${cent(S.ev_per_share_realised)} ＝
+  <b>${cent(S.ev_per_share_claimed-S.ev_per_share_realised)}</b>/股，
+  × ${num(E.shares,0)} 股 ＝ <b>${usd(claimedUsdc-E.pnl_usdc,2)}</b> 没兑现。
+  这一行解释的是第二行为什么不等于第一行，它自己判不出赚亏。
+  ㈢ <b>第三行还有一个等价写法</b>：③·⑥ &gt; (1−③)·|⑦| 就是
+  盈亏比 ⑥÷|⑦| ＝ <b>${num(payoffGot,2)}</b> 要大于保本要求
+  (1−③)÷③ ＝ <b>${num(payoffNeed,2)}</b>——
+  ${payoffGot>=payoffNeed?"今天够了":"今天不够"}。
+  ㈣ <b>别把「选中」${mag(E.intended_coverage)} 放进任何一对</b>：
+  它数的是目标函数选中的腿（含挂了没成交的），跟 ①②⑧ 不是同一批桶，
+  放进去会把兑现比抬到 1 附近，读成"模型完美校准"。
+  ${split
+    ?`㈤ <b>今天这三列给的是相反的答案</b>：⑨实际按${cols.map(pair=>
+        `${SHORT[pair[0].key]||pair[0].label} ${cent(pair[1].ev_per_share_realised)}`
+      ).join("、")}。<b>以「按股」为准</b>——只有它 ÷ 每股成本
+      等于账面收益率 ${sig(E.roi)}，另外两列本来就不闭合。`
+    :`㈤ 今天三列同号（⑨实际按${cols.map(pair=>
+        `${SHORT[pair[0].key]||pair[0].label} ${cent(pair[1].ev_per_share_realised)}`
+      ).join("、")}），但它们可以分家：真分家时<b>以「按股」为准</b>，
+      只有它 ÷ 每股成本等于账面收益率 ${sig(E.roi)}。
+      下面的分阶段表按同一个口径印了「每股兑现」和「收益率」。`}</div>
   <p class="sub">${E.chains} 条已结算的链（一条链＝一个站日，
   ${h(E.first_day)} → ${h(E.last_day)}），格子里是<b>逐链等权</b>口径。
   共 ${E.settled_rows} 行结算，按账本自己的 <span class="mono">chain_credible</span>
