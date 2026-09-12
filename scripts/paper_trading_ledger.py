@@ -945,9 +945,16 @@ if AUTO_REDERIVE_ON_RULE_CHANGE not in {"on", "off"}:
     raise SystemExit(
         f"unknown auto re-derive mode: {AUTO_REDERIVE_ON_RULE_CHANGE}"
     )
+# Whose resting lifecycle the book simulates.  Charter 127 (七)(丙), landed
+# 2026-09-12 (user ruling on v2.1: implement, no arms): ``production_v127``
+# expires a rung where production's GTD expires -- the served belief's own
+# ``fresh_until_utc`` -- so the book stops buying on a claim nobody serves
+# any more.  ``ledger`` reproduces the pre-09-12 book byte for byte: the
+# rung rests to the peak cutoff, the day end or the configured horizon,
+# whichever is first, and the belief is never consulted.
 RESTING_LIFECYCLE = (
     os.environ.get("PAPER_LEDGER_RESTING_LIFECYCLE", "").strip().lower()
-    or "ledger"
+    or "production_v127"
 )
 if RESTING_LIFECYCLE not in {"ledger", "production_v127"}:
     raise SystemExit(f"unknown resting lifecycle: {RESTING_LIFECYCLE}")
@@ -2493,13 +2500,13 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
         {"centre_contain_gate": _CENTRE_CONTAIN_GATE}
         if _CENTRE_CONTAIN_GATE != "on" else {}
     ),
-    # Charter 127 (七)(甲): whose resting lifecycle this book simulated.
-    # Hashed only away from the default, so the standing book keeps its sha
-    # while an arm cannot be mistaken for it.
-    **(
-        {"resting_lifecycle": RESTING_LIFECYCLE}
-        if RESTING_LIFECYCLE != "ledger" else {}
-    ),
+    # Charter 127 (七)(丙): whose resting lifecycle this book simulated.
+    # Hashed unconditionally.  It was hashed only away from the default
+    # while ``ledger`` was the default; flipping the default under that
+    # rule would have left the old book and the new one sharing a digest
+    # -- the inverse of the rehash-without-behaviour trap, and the worse
+    # half, since a shared digest is what lets two strategies be summed.
+    "resting_lifecycle": RESTING_LIFECYCLE,
     # Charter 93 (2026-09-06): the in-support floor is zero of the premium
     # and re-read on the lifted legs.  Unconditional, since the standing
     # rule changed.

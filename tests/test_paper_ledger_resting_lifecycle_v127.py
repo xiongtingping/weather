@@ -9,9 +9,11 @@ as 4.44 hours mean at P0 (capped at the 6-hour run period), 4.31 at P0-M and
 exactly 60 minutes at P1 -- and this book rested its rung into the afternoon
 instead, buying on a claim nobody was serving any more.
 
-``PAPER_LEDGER_RESTING_LIFECYCLE=production_v127`` makes that expiry a fourth
-bound beside the peak cutoff, the day end and the configured horizon.  The
-default is unchanged, and these tests hold it there.
+``production_v127`` makes that expiry a fourth bound beside the peak cutoff,
+the day end and the configured horizon.  It has been the default since
+2026-09-12 (charter 127 (七)(丙), the v2.1 landing: the ledger mirrors what
+production signs, and the mirror is not conditional on an arm).  ``ledger``
+reproduces the pre-09-12 book, and both spellings are in the fingerprint.
 """
 from __future__ import annotations
 
@@ -71,10 +73,20 @@ def test_the_belief_expiry_bounds_the_order_under_the_production_lifecycle() -> 
     )
 
 
-def test_the_default_lifecycle_ignores_the_belief_entirely() -> None:
-    """The shipped book must not move before the arm is read."""
+def test_the_default_is_productions_lifecycle() -> None:
+    """Charter 127 (七)(丙): the book expires a rung where the venue would."""
 
     module = _ledger(None)
+    assert module.RESTING_LIFECYCLE == "production_v127"
+    assert _deadline(module, belief="2026-09-10T03:00:00Z") == (
+        "2026-09-10T03:00:00Z"
+    )
+
+
+def test_the_ledger_lifecycle_reproduces_the_pre_0912_book() -> None:
+    """Still selectable, so any earlier figure can be rebuilt, not argued."""
+
+    module = _ledger("ledger")
     assert module.RESTING_LIFECYCLE == "ledger"
     with_belief = _deadline(module, belief="2026-09-10T03:00:00Z")
     without = _deadline(module, belief="")
@@ -177,11 +189,20 @@ def test_a_database_without_the_bridge_does_not_expire_every_order() -> None:
     )
 
 
-def test_the_arm_is_in_the_fingerprint_and_the_default_is_not() -> None:
-    default = _ledger(None).SELECTION_RULE_SHA256
-    arm = _ledger("production_v127").SELECTION_RULE_SHA256
-    assert default != arm
-    # Restored: the reload above must not leave the default book rehashed.
+def test_both_lifecycles_are_in_the_fingerprint_and_differ() -> None:
+    """Unconditional: a default flip must not let two books share a sha."""
+
+    default_module = _ledger(None)
+    default = default_module.SELECTION_RULE_SHA256
+    assert default_module._SELECTION_RULE_IDENTITY["resting_lifecycle"] == (
+        "production_v127"
+    )
+    old_module = _ledger("ledger")
+    assert old_module._SELECTION_RULE_IDENTITY["resting_lifecycle"] == "ledger"
+    assert old_module.SELECTION_RULE_SHA256 != default
+    # Spelling the default out loud is the same book as leaving it unset.
+    assert _ledger("production_v127").SELECTION_RULE_SHA256 == default
+    # Restored: the reloads above must not leave the default book rehashed.
     assert _ledger(None).SELECTION_RULE_SHA256 == default
 
 

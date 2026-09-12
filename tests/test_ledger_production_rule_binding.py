@@ -264,9 +264,9 @@ LEDGER_ONLY = {
     # Charter 127 (七)(甲) replay arm: which resting lifecycle this book
     # simulates.  Production has no switch -- it IS charter 127's GTD, whose
     # expiry is the served belief's freshness -- so the arm is this lane's
-    # alone, and it is off by default.  What the arm shares is asserted
+    # alone, and since 2026-09-12 it is the default.  What the arm shares is asserted
     # below: the expiry column and the venue's grace floor are production's.
-    "RESTING_LIFECYCLE": "replay arm: production's GTD horizon, off by default",
+    "RESTING_LIFECYCLE": "mirror of production's GTD horizon (default since 09-12); production has no switch",
     # Not a rule: the inventory of tables this script creates and, for an
     # arm, discards.  Production writes none of them -- they are the book
     # this lane keeps -- so there is nothing on the other side to bind to.
