@@ -13629,12 +13629,23 @@ def test_fact_write_keeps_morning_not_final_observation_out_of_posterior(tmp_pat
     assert item["fact_provenance"]["d0_observed_feasibility_guard"]["skipped_reason"] == (
         "intraday_observed_max_not_final"
     )
-    assert item["observation_path_likelihood_posterior_materialized"] is False
-    assert item["observation_led_likelihood_posterior_materialized"] is False
+    # Absent, not False.  The write path stopped materializing an
+    # observation-path likelihood at the 2026-07-16 refactor -- only readers
+    # of these fields are left -- so a payload that was never touched by one
+    # states nothing rather than stating no.  Either way the claim this test
+    # is named for is the two probabilities below: a morning observation that
+    # is not the day's final maximum leaves the posterior where it was.
+    assert "observation_path_likelihood_posterior_materialized" not in item
+    assert "observation_led_likelihood_posterior_materialized" not in item
     assert by_outcome["25°C or below"]["q_temperature_bucket_posterior"] == pytest.approx(0.05)
     assert by_outcome["31°C"]["q_temperature_bucket_posterior"] == pytest.approx(0.55)
     assert item["target_bucket"] == "31°C"
-    assert item["auto_trade_ssot"]["main_candidate"]["outcome"] == "31°C"
+    # The model's own top, not the trade candidate.  This fixture quotes no
+    # prices at all, so main_entry_ok is false on 价格无效(ask=—) and
+    # main_candidate falls back to the first row -- it is not a reading of
+    # the posterior here, and model_yes_top_label is.
+    assert item["auto_trade_ssot"]["model_yes_top_label"] == "31°C"
+    assert item["auto_trade_ssot"]["main_entry_ok"] is False
 
 
 def test_fact_write_materializes_observation_path_likelihood_into_target_and_plan(tmp_path, monkeypatch) -> None:
@@ -15966,7 +15977,15 @@ def test_materialize_facts_uses_formal_fact_chain_for_discovery_pending_model(
     assert payload["posterior_ssot_fact"]["state"] == "not_materialized"
     assert payload["posterior_materialization_state"]["available_posterior"] is False
     assert payload["auto_trade_ssot"]["main_entry_ok"] is False
-    assert "target_realization_capital_plan" not in payload
+    # No trade plan, stated rather than absent: the plan block is a reader
+    # now, and on a fact with no posterior it refuses with no target, no
+    # legs and no money -- which is the same claim the old "key is not
+    # present" assertion was making.
+    plan = payload["target_realization_capital_plan"]
+    assert plan["ok"] is False
+    assert plan["reason"] == "committed_dynamic_three_leg_plan_missing"
+    assert "legs" not in plan
+    assert "target_bucket" not in plan
 
 
 def test_pending_model_fact_with_prior_and_awc_materializes_available_posterior() -> None:

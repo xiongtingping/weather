@@ -47231,7 +47231,19 @@ def _insert_event_fact_history(
         and source_trace_for_projection.get("source_observations")
     )
     canonical_projection_applied = False
-    if _is_chengdu_zuuu_fact_payload(slug, item) and has_canonical_source_observations:
+    # Not on a payload that says it has no model yet.  The projection exists
+    # to stop a STALE posterior being persisted over the approved composer's;
+    # a discovery payload carries no posterior at all -- its SSOT block is a
+    # not_materialized placeholder by design -- and running the composer on a
+    # market that is tokenized but not yet snapshotted fails closed on
+    # bucket_context_missing, which makes the discovery fact unwritable
+    # rather than provisional.  This is what the flag two hundred lines up
+    # was computed for; it has had no reader since the 2026-07-16 refactor.
+    if (
+        _is_chengdu_zuuu_fact_payload(slug, item)
+        and has_canonical_source_observations
+        and not market_discovery_pending_model
+    ):
         from posterior_ssot_projection_runtime import build_fact_projection_no_apply
 
         current_fact_id, current_fact_as_of, _current_payload = _ui_fact_write_latest_context_for_plan(
