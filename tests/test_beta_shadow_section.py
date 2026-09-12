@@ -90,7 +90,8 @@ def test_the_replay_judges_each_window_by_the_beta_served_at_its_instant() -> No
     assert cells["beta_admits"]["mean_hit_minus_price"] == round(1 - 0.8, 4)
     day = rep["days"][0]
     assert day["date"] == d and day["windows"] == 6
-    assert day["current_admits"] == 4 and day["beta_admits"] == 2
+    # w1, w3, w4 were admitted by production (w0 is not judged); w3, w5 by beta.
+    assert day["current_admits"] == 3 and day["beta_admits"] == 2
     assert day["beta_refuses_of_admitted"] == 2 and day["beta_admits_of_refused"] == 1
     assert out["served"]["P0"]["beta_lcb"] == 1.0
     assert set(out["research"]) == {"P0", "P0-M", "P1"}
