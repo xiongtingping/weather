@@ -4,31 +4,100 @@ from pathlib import Path
 UI_INDEX = Path(__file__).resolve().parents[1] / "ui" / "index.html"
 
 
+def _function_body(html: str, name: str) -> str:
+    """One named function, from its declaration to its own closing brace.
+
+    Brace matching, skipping strings, template literals and comments, because
+    a textual boundary cannot find one here any more.  This used to cut at the
+    next ``\n    function `` -- a four-space declaration -- and the 2026-07-16
+    refactor re-indented most of the file with tabs, so the cut stopped
+    landing.  Blocks ran to the end of the script: ``renderDistributionTable``
+    came back as 99KB, ``legacyDistributionLikelihoodCompatForRow`` as 99KB
+    for a three-line body.  Every ``not in block`` assertion in this file was
+    reading half the page, and at least one ``in block`` assertion was passing
+    on a string that lives in a function five thousand lines further down.
+    """
+
+    start = html.index(f"function {name}(")
+    # Past the parameter list first: a default like ``options = {}`` puts
+    # braces in the signature, ahead of the body's own.
+    cursor = html.index("(", start)
+    depth = 0
+    while cursor < len(html):
+        if html[cursor] == "(":
+            depth += 1
+        elif html[cursor] == ")":
+            depth -= 1
+            if depth == 0:
+                break
+        cursor += 1
+    index = html.index("{", cursor)
+    depth = 0
+    size = len(html)
+    while index < size:
+        char = html[index]
+        after = html[index + 1] if index + 1 < size else ""
+        if char == "/" and after == "/":
+            index = html.find("\n", index)
+            if index == -1:
+                break
+            continue
+        if char == "/" and after == "*":
+            index = html.find("*/", index) + 2
+            continue
+        if char in "'\"":
+            quote = char
+            index += 1
+            while index < size and html[index] != quote:
+                index += 2 if html[index] == "\\" else 1
+            index += 1
+            continue
+        if char == "`":
+            index = _skip_template(html, index)
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return html[start:index + 1]
+        index += 1
+    raise AssertionError(f"{name}() has unbalanced braces")
+
+
+def _skip_template(html: str, index: int) -> int:
+    """Past one template literal, including its ``${...}`` holes."""
+
+    size = len(html)
+    index += 1
+    while index < size:
+        if html[index] == "\\":
+            index += 2
+            continue
+        if html[index] == "`":
+            return index + 1
+        if html[index] == "$" and html[index + 1:index + 2] == "{":
+            depth = 1
+            index += 2
+            while index < size and depth:
+                char = html[index]
+                if char == "{":
+                    depth += 1
+                elif char == "}":
+                    depth -= 1
+                elif char in "'\"`":
+                    quote = char
+                    index += 1
+                    while index < size and html[index] != quote:
+                        index += 2 if html[index] == "\\" else 1
+                index += 1
+            continue
+        index += 1
+    return index
+
+
 def _function_block(name: str) -> str:
-    html = UI_INDEX.read_text(encoding="utf-8")
-    marker = f"function {name}("
-    start = html.index(marker)
-    next_function = html.find("\n    function ", start + len(marker))
-    if next_function == -1:
-        return html[start:]
-    return html[start:next_function]
-
-
-def _function_blocks(name: str) -> list[str]:
-    html = UI_INDEX.read_text(encoding="utf-8")
-    marker = f"function {name}("
-    blocks = []
-    start = 0
-    while True:
-        idx = html.find(marker, start)
-        if idx == -1:
-            return blocks
-        next_function = html.find("\n    function ", idx + len(marker))
-        if next_function == -1:
-            blocks.append(html[idx:])
-            return blocks
-        blocks.append(html[idx:next_function])
-        start = next_function + 1
+    return _function_body(UI_INDEX.read_text(encoding="utf-8"), name)
 
 
 def test_single_temperature_bucket_labels_are_not_expanded_to_ranges():
@@ -212,7 +281,15 @@ def test_top_posterior_chart_renders_single_snapshot_as_short_line_not_points():
     assert "最终最高温落桶目标" not in UI_INDEX.read_text(encoding="utf-8")
     assert "预测最终最高温落桶" not in UI_INDEX.read_text(encoding="utf-8")
     assert ".bucket-fused-trends.is-single-snapshot .bucket-fused-axis-legend span::before" not in UI_INDEX.read_text(encoding="utf-8")
-    assert "bayes-posterior-live-bars" in live_block
+    # The live panel became a header strip at the 2026-07-16 refactor: the
+    # per-bucket bars moved into renderEventBayesPosteriorStep's own rows
+    # (topLabel + runnerRows), and the ``bayes-posterior-live-bars`` CSS went
+    # with them.  What the panel still owes is the realtime contract -- it is
+    # the block the refresher finds and repaints, carrying the top rung's
+    # label and probability.
+    assert "bayes-posterior-live-panel event-realtime-block" in live_block
+    assert "posterior-live:" in live_block
+    assert "data-live-label" in live_block
     assert "data-live-prob" in live_block
     assert "const snapshotBucketSeries = item && item.bucket_series" in snapshot_block
     assert "mergeCurrentDistributionIntoBucketSeries(snapshotBucketSeries" in snapshot_block
@@ -239,7 +316,13 @@ def test_trade_copy_keeps_target_selection_path_probability_and_market_price_sep
     assert "目标选择看后端最终概率/资金计划" in html
     assert "路径概率只作执行跟随门控" in html
     assert "价格/盘口仅作执行检查" in html
-    assert "交易建议按目标桶最终概率" in html
+    # The sentence whole, not a fourth paraphrase of it.  A
+    # "交易建议按目标桶最终概率" was asserted here from 2026-07-16 and has
+    # never appeared in this file in any commit.
+    assert (
+        "目标选择看后端最终概率/资金计划；路径概率只作执行跟随门控，"
+        "价格/盘口仅作执行检查。"
+    ) in html
     assert "目标桶路径概率" not in html
     assert "路径概率目标桶" not in html
     assert "目标选择只看目标桶路径概率" not in html
@@ -421,23 +504,36 @@ def test_event_bayes_prior_step_emphasizes_temperature_bucket_probability_change
     assert "目标桶起点" in block
     assert "bayes-prior-spotlight" in block
     assert "气候Top ${topPriorLabel} ${topPriorProb}" in block
-    assert "同一目标桶起点" in block
+    # Templated at the 2026-07-16 refactor: the focus mode supplies the
+    # noun, and it is '目标桶' exactly when a target bucket is in focus.
+    assert "`同一${priorFocusMode}起点`" in block
+    assert "const priorFocusMode = focus && focus.focusTargetLabel ? '目标桶'" in block
     assert "气候分位" in block
-    assert "bayes-prior-bar-row" in block
-    assert "bayes-prior-bar-fill" in block
+    # The per-bucket rows became cards at the 2026-07-16 refactor: the
+    # ``bayes-prior-bar-row``/``-fill`` bars are gone, markup and CSS both,
+    # and each rung is a Top3 card carrying its own distance from the top --
+    # which is what "emphasizes probability changes" means here.
+    assert "bayes-prior-top3-cards" in block
+    assert "bayes-prior-top-card ${index === 0 ? 'is-top' : 'is-runner'}" in block
     assert "距Top ${ppDeltaText(delta)}" in block
-    assert "bayes-prior-impact-grid" in block
-    assert "气候影响" in block
+    # The impact grid went the same way; the climate and basin readings now
+    # sit in the core stat grid beside 气候分位, asserted above.  ("气候影响"
+    # was asserted here from 2026-07-16 and has never been in this file.)
+    assert "bayes-prior-core-grid" in block
+    assert "盆地影响" in block
     assert "气候/环流" in block
     assert "q_bayes_climo_regime_pp_max_delta" in block
     assert "并入气候 ${ppImpactText(ppMaxDelta)}" in block
     assert "temperature_adjustment_c" in block
-    assert "bayes-prior-context-chip" in block
+    assert "bayes-prior-core-stat" in block
     assert "renderChengduClimoRegimeSummary" not in block
     assert "chengdu-context-summary-grid" not in block
     assert ".bayes-prior-spotlight" in html
-    assert ".bayes-prior-bar-track" in html
-    assert ".bayes-prior-impact-card" in html
+    assert ".bayes-prior-top3-cards" in html
+    # ``.bayes-prior-impact-*`` and ``.bayes-prior-context-chip`` are still in
+    # the stylesheet with nothing emitting them -- orphans of the same
+    # refactor.  Not asserted either way: pinning them would make the suite
+    # require dead CSS to stay.
 
 
 def test_chengdu_decision_bucket_strip_uses_top_three_posterior_rows():
@@ -461,9 +557,16 @@ def test_distribution_bayes_chain_renders_step_delta_and_reason_cards():
     assert "evidenceReason" in block
     assert "observedConstraintReason" in block
     assert "posteriorReason" in block
-    assert "chain.likelihood_parts" not in block
+    # The chain's own β/stage columns read ``chain.likelihood_parts`` and
+    # always have -- it is where the per-channel β and likelihood live.  What
+    # 2026-07-16 retired is the LEGACY compat path, now a stub that returns
+    # null.  Asserting "not in renderDistributionTable" contradicted the
+    # bayes-driver-weight-chip assertions two lines down; until the block
+    # extractor was fixed the two functions could not be told apart anyway,
+    # because the legacy helper's block swallowed the render function whole.
     assert "chain.likelihood_parts" not in legacy_helper
     assert "part.evidence" not in legacy_helper
+    assert "return null;" in legacy_helper
     assert "legacyDistributionLikelihoodCompatForRow(row)" in block
     assert "channelPrecisionShareText" in block
     assert "channelDisplayImpactText" in block
@@ -525,17 +628,21 @@ def test_temperature_trajectory_timeline_prioritizes_hourly_awc_reports():
     dedupe_block = _function_block("eventIntelTimelineDistinctAwcRows")
 
     assert "eventIntelTimelineDistinctAwcRows(rows)" in block
-    assert "最新整点 AWC" in block
+    # Vocabulary, 2026-07-16: the timeline stopped saying "整点 AWC 报文" and
+    # started saying "AMSC 硬源报文".  Same rows, same dedupe (asserted above
+    # through eventIntelTimelineDistinctAwcRows), different words.
+    assert "默认只读最新 AMSC 硬源更新" in block
     assert "报文最高温" in block
     assert "日高变化" in block
     assert "物理证据变化" in block
-    assert "历史整点报文" in block
-    assert "非整点重复刷新已折叠" in block
-    assert "仅保留产生新 AWC 整点报文的记录" in block
+    assert "历史硬源报文 ${Math.max(0, timelineRows.length - 1)} 条" in block
+    assert "重复刷新已折叠 ${duplicateCount} 次" in block
+    assert "保留产生新 AMSC/METAR 硬源报文或后验变化的记录；重复抓取已折叠。" in block
     assert "最新快照" not in block
     assert "等待 AWC 原始报文" not in block
     assert "awc_raw" not in block
-    assert "METAR" not in block
+    # "METAR" was a negative when the timeline was AWC-only; it is now half
+    # the name of the hard source the rows come from.
     assert "indexByKey" in dedupe_block
     assert "output[indexByKey.get(key)] = row" in dedupe_block
     assert ".event-trajectory-timeline-conclusion" in html
@@ -738,7 +845,13 @@ def test_model_hit_rate_ui_uses_exact_hits_only():
     assert "样本类型=" in cell_block
     assert "sample_mix" in _function_block("sourcePeakHitProvenanceCounts")
     assert "sourcePeakHitProvenanceDetailText" in cell_block
-    assert "外部历史重建" in _function_block("sourcePeakHitProvenanceText")
+    # This one only ever passed because the old extractor's block ran past
+    # the function into the chips below, which do say "外部历史重建".  The
+    # provenance text itself says it this way.
+    assert (
+        "'外部历史' : 'external_archive+history_only'"
+        in _function_block("sourcePeakHitProvenanceText")
+    )
     assert "external_history_reconstruction" in _function_block("sourcePeakHitCoverageProvenanceCounts")
     assert "外部历史重建 lead" in _function_block("sourcePeakHitCoverageChips")
     assert "外部历史重建/history_only 样本已单独标注" in _function_block("renderSourcePeakModelHitMatrix")
@@ -821,11 +934,13 @@ def test_awc_live_observation_marks_non_event_day_observations_as_auxiliary():
     assert "wuNonEventObservation" in block
     assert "usable_for_event" in block
     assert "非事件日辅助" in block
-    assert "AWC 最新观测（非事件日）" in block
-    assert "AWC 最新观测" in block
+    # Renamed AWC -> AMSC at the 2026-07-16 refactor; the three labels and
+    # the branch that picks between them are otherwise unchanged.
+    assert "AMSC 最新观测（非事件日）" in block
+    assert "AMSC 最新观测" in block
     assert "非事件日桶" in block
     assert "观测桶" in block
-    assert "AWC 硬实况最高" in block
+    assert "AMSC 硬实况最高" in block
 
 
 def test_awc_live_observation_uses_awc_metrics_when_compact_comparison_is_sparse():
@@ -855,7 +970,7 @@ def test_awc_live_observation_does_not_label_latest_current_as_hard_max():
     assert "metrics.zuuu_metar_raw_awc_latest_temp_c" not in today_max_block
     assert "metrics.metar_temperature_c" not in today_max_block
     assert "const awcReadingLabel = awcNonEventObservation" in block
-    assert ": (awcHasTodayMax ? 'AWC 硬实况最高' : 'AWC 最新观测');" in block
+    assert ": (awcHasTodayMax ? 'AMSC 硬实况最高' : 'AMSC 最新观测');" in block
     assert "escapeHtml(awcReadingLabel)" in block
 
 
