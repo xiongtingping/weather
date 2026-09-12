@@ -152,6 +152,16 @@ def _observation(observation_id: str, temperature_c: float, valid_at: str):
 
 
 def test_only_new_high_updates_p1_while_full_prefix_drives_likelihood() -> None:
+    """Only a new high *advances*; the tail refresh restates the belief.
+
+    The hard bound still moves only where the day's high moves -- that is
+    what ``reported_high_advanced`` names, and the runtime reads it to decide
+    whether a trading window may open.  What the walk no longer does is treat
+    that same rule as permission for the *forecast* to change: the last step
+    re-runs the whole chain on the current clock over the complete prefix,
+    flagged as not advancing.
+    """
+
     packets = compile_station_p1_packets(
         predecessor=_predecessor(),
         observations=[
@@ -164,10 +174,33 @@ def test_only_new_high_updates_p1_while_full_prefix_drives_likelihood() -> None:
         compilation_at_utc="2026-07-26T08:00:00Z",
     )
 
-    assert [packet["observation_id"] for packet in packets] == ["o1", "o2"]
+    advancing = [
+        packet for packet in packets if packet["reported_high_advanced"]
+    ]
+    assert [packet["observation_id"] for packet in advancing] == ["o1", "o2"]
+    assert [packet["observation_id"] for packet in packets] == [
+        "o1", "o2", "o2"
+    ]
     assert [
         packet["reported_high_advanced"] for packet in packets
-    ] == [True, True]
+    ] == [True, True, False]
+    # The refresh answers "what do we believe now", so its clock is the
+    # compile instant rather than the closing report's minute, and it names
+    # the head it recomputes.
+    assert packets[-1]["decision_at_utc"].startswith("2026-07-26T08:00:00")
+    assert packets[-1]["state_refresh_of_checkpoint_id"] == (
+        packets[-2]["expected_envelope"]["checkpoint_id"]
+    )
+    assert packets[-1]["expected_envelope"]["lineage"][
+        "p1_state_refresh_of_checkpoint_id"
+    ] == packets[-2]["expected_envelope"]["checkpoint_id"]
+    # The bound the day's own reports put under the ladder does not move on a
+    # refresh: same running high, same excluded buckets.
+    assert (
+        packets[-1]["hard_excluded_buckets"]
+        == packets[-2]["hard_excluded_buckets"]
+    )
+    packets = advancing
     assert packets[-1]["trajectory_proof"]["canonical_observation_ids"] == [
         "o1", "equal", "older", "o2"
     ]
@@ -246,7 +279,11 @@ def test_canonical_valid_time_cannot_follow_its_commit() -> None:
         registry_rows=_registry(),
         compilation_at_utc="2026-07-26T08:00:00Z",
     )
-    assert [packet["observation_id"] for packet in packets] == ["early-commit"]
+    # The tail state refresh closes on the same report; the property under
+    # test is which reports may be admitted at all.
+    assert {packet["observation_id"] for packet in packets} == {
+        "early-commit"
+    }
 
     reversed_time = {
         **_observation("time-reversed", 24.0, "2026-07-26T07:00:00Z"),
@@ -278,7 +315,11 @@ def test_consumed_new_high_advances_running_high_without_duplicate_packet() -> N
         compilation_at_utc="2026-07-26T08:00:00Z",
         consumed_observation_ids={"o1"},
     )
-    assert [packet["observation_id"] for packet in packets] == ["o2"]
+    assert [
+        packet["observation_id"]
+        for packet in packets
+        if packet["reported_high_advanced"]
+    ] == ["o2"]
 
 
 def test_p1_compiler_accepts_raw_p0_root_without_taf() -> None:
@@ -776,10 +817,116 @@ def test_midnight_report_committed_early_does_not_predate_its_event_day() -> Non
         compilation_at_utc="2026-07-26T08:00:00Z",
     )
 
-    assert [packet["observation_id"] for packet in packets] == ["o1"]
+    assert [
+        packet["observation_id"]
+        for packet in packets
+        if packet["reported_high_advanced"]
+    ] == ["o1"]
     # Floored at the event day's own start (00:00 America/New_York), not the
     # early commit clock.
     assert (
         packets[0]["expected_envelope"]["decision_at_utc"]
         == "2026-07-26T04:00:00.000000Z"
     )
+
+
+def test_the_cooling_afternoon_reaches_the_served_p1_without_a_new_high() -> None:
+    """The reports after the day's high are in the prefix that serves.
+
+    The 2026-09-12 diagnosis: because the walk emitted only where the high
+    advanced, the served envelope kept the clock and the physical state of
+    the last new high.  ZGSZ 2026-09-11 is the shape -- the 20:00-local P1
+    was written at 19:55 and still carried the 16:00 high with drawdown 0 and
+    momentum +1C/h, while the 19:00 report had already come in 2C lower.  320
+    of 550 served four-layer branches ran more than two hours behind their own
+    closing report.
+
+    Here the day peaks at 07:00Z and cools through 09:00Z.  The last packet
+    that *advances* stops at the peak, as it must -- the hard bound is the
+    high.  The packet that serves is the refresh behind it, and it has read
+    the cooling.
+    """
+
+    packets = compile_station_p1_packets(
+        predecessor=_predecessor(),
+        observations=[
+            _observation("o1", 24.0, "2026-07-26T04:00:00Z"),
+            _observation("peak", 26.0, "2026-07-26T07:00:00Z"),
+            _observation("cool1", 24.0, "2026-07-26T08:00:00Z"),
+            _observation("cool2", 23.0, "2026-07-26T09:00:00Z"),
+        ],
+        registry_rows=_registry(),
+        compilation_at_utc="2026-07-26T09:05:00Z",
+    )
+
+    advancing = [
+        packet for packet in packets if packet["reported_high_advanced"]
+    ]
+    assert [packet["observation_id"] for packet in advancing] == ["o1", "peak"]
+    assert advancing[-1]["trajectory_proof"]["canonical_observation_ids"] == [
+        "o1", "peak"
+    ]
+
+    served = packets[-1]
+    assert served["reported_high_advanced"] is False
+    assert served["trajectory_proof"]["canonical_observation_ids"] == [
+        "o1", "peak", "cool1", "cool2"
+    ]
+    # Its clock is the compile instant, not the peak's minute.
+    assert served["trajectory_proof"]["as_of_utc"].startswith(
+        "2026-07-26T09:05:00"
+    )
+    # The hard bound is still the day's high; only the belief moved.
+    assert served["compiled_bound"]["reported_high_c"] == 26.0
+    assert (
+        served["expected_envelope"]["lineage"]["reported_high_c"]
+        == advancing[-1]["expected_envelope"]["lineage"]["reported_high_c"]
+    )
+
+
+def test_a_second_refresh_waits_for_new_evidence_or_a_lapsed_cadence() -> None:
+    """One refresh per new formal report, or per freshness window; not per call.
+
+    The refresh becomes the head, and the head has already read the newest
+    report, so recompiling the same evidence at the same cadence emits
+    nothing more.  What re-opens it is another report, or the head lapsing
+    its own grace -- which is the case the worker's copy-the-probabilities
+    reaffirmation used to cover.
+    """
+
+    observations = [
+        _observation("o1", 24.0, "2026-07-26T04:00:00Z"),
+        _observation("peak", 26.0, "2026-07-26T07:00:00Z"),
+        _observation("cool1", 24.0, "2026-07-26T08:00:00Z"),
+    ]
+    first = compile_station_p1_packets(
+        predecessor=_predecessor(),
+        observations=observations,
+        registry_rows=_registry(),
+        compilation_at_utc="2026-07-26T08:05:00Z",
+    )
+    head = ProbabilityEnvelope.from_mapping(first[-1]["expected_envelope"])
+    assert first[-1]["reported_high_advanced"] is False
+
+    consumed = {"o1", "peak", "cool1"}
+    quiet = compile_station_p1_packets(
+        predecessor=head,
+        prediction_root=_predecessor(),
+        observations=observations,
+        registry_rows=_registry(),
+        compilation_at_utc="2026-07-26T08:20:00Z",
+        consumed_observation_ids=consumed,
+    )
+    assert quiet == []
+
+    lapsed = compile_station_p1_packets(
+        predecessor=head,
+        prediction_root=_predecessor(),
+        observations=observations,
+        registry_rows=_registry(),
+        compilation_at_utc="2026-07-26T09:30:00Z",
+        consumed_observation_ids=consumed,
+    )
+    assert [packet["observation_id"] for packet in lapsed] == ["cool1"]
+    assert lapsed[-1]["reported_high_advanced"] is False
+    assert lapsed[-1]["state_refresh_of_checkpoint_id"] == head.checkpoint_id

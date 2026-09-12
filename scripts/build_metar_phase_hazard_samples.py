@@ -142,6 +142,17 @@ CREATE TABLE IF NOT EXISTS metar_phase_hazard_sample (
   running_high_c REAL NOT NULL,
   truth_tmax_c REAL NOT NULL,
   delta_c INTEGER NOT NULL,
+  -- Did the day settle in a bucket above the one the running high is in?
+  -- ``delta_c >= 1`` was standing in for this and is not the same question:
+  -- it rounds ``truth - running_high`` to whole Celsius degrees, while the
+  -- ladder the answer is served onto is the market's own -- 2F rungs on an
+  -- F market, whose boundaries fall at 33.055...C and its like.  Checked row
+  -- by row against each sample's own root geometry on 2026-09-12: 230 of
+  -- 6,522 F-station rows disagreed (3.53%), plus 53 C-station rows at
+  -- rounding edges and open-ended tails.  KATL 2026-08-12 is the shape --
+  -- running high 33.0C, truth 33.3C, "no further rise" by the old label and
+  -- already across the 90-91F boundary in fact.
+  crossed_bucket INTEGER NOT NULL,
   station_day_weight REAL NOT NULL,
   UNIQUE(station_id,event_date,as_of_utc)
 );
@@ -265,21 +276,38 @@ def load_day_observations(
 
 
 def sample_instant(row: Mapping[str, Any]) -> datetime:
-    """When this report became usable: the later of its valid time and receipt.
+    """When this report became usable: its canonical receipt.
 
-    Bounded by the transmission lead so a backfilled receipt -- written days
-    after the report existed -- cannot push the instant into the future and
-    take the whole day's prefix with it.
+    Production's own answer, and nothing else: ``p1_compiler`` clocks a step
+    at ``max(canonical_committed_at, ...)``, so the receipt is the first
+    instant a decision could have read the report.
+
+    This used to be ``max(valid, min(committed, valid + lead))``.  The
+    allowance exists because a report may be transmitted a few seconds
+    *before* the minute it names -- the reader admits that lead and no more --
+    and using it as a ceiling on receipt did something quite different: a
+    report that genuinely arrived an hour or a day late was written into the
+    sample as available ninety seconds after its own nominal minute.  Measured
+    2026-09-12 over 4,637 uncorrected AWC reports: median 263s from valid to
+    first seen, P90 3,977s, and 500 of 1,509 on 2026-09-10 over fifteen
+    minutes.  A fit on those rows is a fit on evidence its serving twin does
+    not have yet.
+
+    A row whose nominal minute leads its receipt by more than the transmission
+    lead is time reversal, the same refusal the reader makes; the caller
+    excludes it rather than silently moving it.
     """
+
+    return _parse_utc(row["canonical_committed_at"])
+
+
+def report_arrival_is_admissible(row: Mapping[str, Any]) -> bool:
+    """The reader's own time-order gate, asked of a historical row."""
 
     valid = _parse_utc(row["valid_at"])
     committed = _parse_utc(row["canonical_committed_at"])
-    return max(
-        valid,
-        min(
-            committed,
-            valid + timedelta(seconds=MAX_REPORT_TRANSMISSION_LEAD_SECONDS),
-        ),
+    return (valid - committed) <= timedelta(
+        seconds=MAX_REPORT_TRANSMISSION_LEAD_SECONDS
     )
 
 
@@ -316,6 +344,25 @@ def load_root_index(
             (station_id, event_date),
         )
     ]
+
+
+def bucket_ordinal_for_temperature(view: "RootView", temperature_c: float) -> int:
+    """Which rung of this root's own ladder a temperature settles on.
+
+    The ladder is half-open on the top: a reading exactly on a boundary
+    belongs to the bucket that boundary closes, which is how the market's
+    ``76-77F`` reads.  Geometry comes from the root's own
+    ``bucket_intervals_c_json`` through production's ``_bucket_geometry_c``,
+    so this is the same ladder the served split is rescaled on rather than a
+    second opinion about where the rungs are.
+    """
+
+    ordinals = view.envelope.bucket_ordinals
+    ordered = sorted(view.probabilities, key=lambda name: ordinals[name])
+    for bucket in ordered:
+        if float(temperature_c) <= float(view.uppers[bucket]) + 1e-9:
+            return int(ordinals[bucket])
+    return int(ordinals[ordered[-1]])
 
 
 def root_at(
@@ -577,11 +624,34 @@ def build_station_day(
     root_views: dict[str, RootView] = {}
     samples: list[dict[str, Any]] = []
 
+    day_start = _parse_utc(window["target_day_start_utc"])
+    admissible = []
+    for row in observations:
+        if report_arrival_is_admissible(row):
+            admissible.append(row)
+        else:
+            exclusions.append((
+                "report_time_reversed",
+                f"{row['valid_at']} before {row['canonical_committed_at']}",
+            ))
+    observations = admissible
     for index in range(len(observations)):
         instant = sample_instant(observations[index])
+        # A receipt outside the settlement day is not a decision instant the
+        # day ever had.  Under the old rule this could not happen -- every
+        # instant was pinned within ninety seconds of a report inside the
+        # window -- and under the real one a backfilled row lands days later.
+        # Its evidence still rides every later prefix; what it may not do is
+        # pose as a sample taken during the day.
+        if not (day_start <= instant < day_end):
+            exclusions.append(("receipt_outside_event_day", _iso(instant)))
+            continue
+        # Everything that had arrived, not everything with an earlier nominal
+        # minute: reports overtake each other, and the prefix is a statement
+        # about arrival.
         prefix = [
             row
-            for row in observations[: index + 1]
+            for row in observations
             if sample_instant(row) <= instant
         ]
         if not prefix:
@@ -676,10 +746,18 @@ def build_station_day(
         # was built on.  Three hours because the layer that consumes it
         # models a persistent same-day bias, and a single report's difference
         # is mostly the report's own rounding.
+        #
+        # Paired on the report's own nominal minute, which is the instant the
+        # curve states a temperature for -- and what the serving side hands
+        # this same function (``observed_at_utc`` in
+        # ``_four_layer_inputs_for_step``).  Pairing on the receipt compared
+        # the curve at 14:53 against a reading taken at 14:51, and with real
+        # arrival times behind it the gap is minutes to hours rather than
+        # seconds.
         bias_recent_c, bias_report_count = recent_curve_bias(
             view.curve_points,
             [
-                (sample_instant(row), float(row["temperature_c"]))
+                (_parse_utc(row["valid_at"]), float(row["temperature_c"]))
                 for row in prefix
             ],
             as_of=instant,
@@ -731,6 +809,10 @@ def build_station_day(
             "running_high_c": running_high,
             "truth_tmax_c": truth_tmax_c,
             "delta_c": delta,
+            "crossed_bucket": int(
+                bucket_ordinal_for_temperature(view, truth_tmax_c)
+                > bucket_ordinal_for_temperature(view, running_high)
+            ),
         })
     # Station-days are equal, reports within a day are not: a station that
     # files twice as often would otherwise carry twice the vote on what a
@@ -822,7 +904,8 @@ def main() -> int:
                 "soft_lr_json,soft_lr_state,"
                 "root_bias_recent_c,"
                 "root_bias_report_count,root_center_c,root_checkpoint_id,"
-                "running_high_c,truth_tmax_c,delta_c,station_day_weight)"
+                "running_high_c,truth_tmax_c,delta_c,crossed_bucket,"
+                "station_day_weight)"
                 " VALUES(:sample_id,:station_id,:event_date,"
                 ":settlement_timezone,:as_of_utc,:prefix_report_count,"
                 ":local_hour,:remaining_hours,:hours_since_high_refresh,"
@@ -835,7 +918,7 @@ def main() -> int:
                 ":root_bias_recent_c,"
                 ":root_bias_report_count,:root_center_c,"
                 ":root_checkpoint_id,:running_high_c,:truth_tmax_c,"
-                ":delta_c,:station_day_weight)",
+                ":delta_c,:crossed_bucket,:station_day_weight)",
                 sample,
             )
         if samples:

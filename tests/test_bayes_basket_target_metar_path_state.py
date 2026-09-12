@@ -236,3 +236,114 @@ def test_a_vector_older_than_the_carry_window_is_incomplete_again() -> None:
     )
 
     assert state.complete is False
+
+
+def test_the_slope_is_measured_on_the_formal_series_not_across_carriers() -> None:
+    """A carrier row a minute before the METAR is not a 54C/h warming.
+
+    KSFO 2026-09-09: MADIS 21:55 read 33.0C, the AWC T-group at 21:56 read
+    33.9C, and the adjacent difference divided by one minute put 54C/h into
+    the served feature -- 46 of 675 sampled envelopes carried |momentum| >
+    10C/h that way.  The two rows are the same air read by two systems at two
+    precisions; the slope belongs to one of them.  The fitted artifact was
+    built on the formal lane alone, so that is the lane the slope is measured
+    on, and the carrier keeps every other job it has here.
+    """
+
+    formal_only = compile_conditional_metar_path_state(
+        [
+            {
+                **_row(
+                    "2026-09-09T19:56:00Z", 32.0,
+                    "METAR KSFO 091956Z 28012KT CAVOK 32/12 Q1013",
+                ),
+                "source_lane": "awc",
+            },
+            {
+                **_row(
+                    "2026-09-09T20:56:00Z", 33.0,
+                    "METAR KSFO 092056Z 28012KT CAVOK 33/12 Q1013",
+                ),
+                "source_lane": "awc",
+            },
+            {
+                **_row(
+                    "2026-09-09T21:56:00Z", 34.0,
+                    "METAR KSFO 092156Z 28012KT CAVOK 34/12 Q1013",
+                ),
+                "source_lane": "awc",
+            },
+        ],
+        as_of_utc="2026-09-09T22:00:00Z",
+        settlement_timezone="America/Los_Angeles",
+        root_probabilities={"33C": 0.5, "34C": 0.5},
+        bucket_centers_c={"33C": 33.0, "34C": 34.0},
+    )
+    assert formal_only.momentum_c_per_hour == pytest.approx(1.0)
+
+    with_carrier = compile_conditional_metar_path_state(
+        [
+            {
+                **_row(
+                    "2026-09-09T19:56:00Z", 32.0,
+                    "METAR KSFO 091956Z 28012KT CAVOK 32/12 Q1013",
+                ),
+                "source_lane": "awc",
+            },
+            {
+                **_row(
+                    "2026-09-09T20:56:00Z", 33.0,
+                    "METAR KSFO 092056Z 28012KT CAVOK 33/12 Q1013",
+                ),
+                "source_lane": "awc",
+            },
+            {
+                # The carrier reading of the same air, a minute early and a
+                # tenth finer.
+                **_row("2026-09-09T21:55:00Z", 33.1, ""),
+                "source_lane": "madis_hfmetar",
+            },
+            {
+                **_row(
+                    "2026-09-09T21:56:00Z", 34.0,
+                    "METAR KSFO 092156Z 28012KT CAVOK 34/12 Q1013",
+                ),
+                "source_lane": "awc",
+            },
+        ],
+        as_of_utc="2026-09-09T22:00:00Z",
+        settlement_timezone="America/Los_Angeles",
+        root_probabilities={"33C": 0.5, "34C": 0.5},
+        bucket_centers_c={"33C": 33.0, "34C": 34.0},
+    )
+    # The carrier still rides the prefix -- the running high and the latest
+    # reading see it -- but the slope is the formal one, not 0.9C over one
+    # minute.
+    assert with_carrier.momentum_c_per_hour == pytest.approx(1.0)
+    assert with_carrier.running_high_c == pytest.approx(34.0)
+
+
+def test_a_prefix_with_no_lane_named_keeps_the_whole_series() -> None:
+    """The sample builders name no lane; they read one, and nothing moves."""
+
+    unnamed = compile_conditional_metar_path_state(
+        [
+            _row(
+                "2026-09-09T19:56:00Z", 32.0,
+                "METAR KSFO 091956Z 28012KT CAVOK 32/12 Q1013",
+            ),
+            _row(
+                "2026-09-09T20:56:00Z", 33.0,
+                "METAR KSFO 092056Z 28012KT CAVOK 33/12 Q1013",
+            ),
+            _row(
+                "2026-09-09T21:56:00Z", 34.0,
+                "METAR KSFO 092156Z 28012KT CAVOK 34/12 Q1013",
+            ),
+        ],
+        as_of_utc="2026-09-09T22:00:00Z",
+        settlement_timezone="America/Los_Angeles",
+        root_probabilities={"33C": 0.5, "34C": 0.5},
+        bucket_centers_c={"33C": 33.0, "34C": 34.0},
+    )
+    assert unnamed.momentum_c_per_hour == pytest.approx(1.0)

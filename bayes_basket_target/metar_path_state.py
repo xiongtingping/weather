@@ -22,6 +22,11 @@ from .future_temperature_curve import (
 
 PATH_STATE_SCHEMA = "bayes_basket_metar_conditional_path_state_v1"
 PHYSICAL_STATE_SCHEMA = "bayes_basket_metar_physical_state_v1"
+# The intra-hour carrier lanes.  Defined here rather than in
+# ``metar_trajectory`` -- which imports this module and therefore cannot be
+# imported back -- so the slope series below and the hard-rights rule one
+# level up read the same list instead of two copies of it.
+SOFT_PATH_SOURCE_LANES = frozenset({"asos_1min", "madis_hfmetar"})
 MAX_RAW_METAR_BYTES = 16_384
 # How long one report's physical vector speaks for the rows after it.  The
 # sky does not change carrier to carrier, and a report that omits a group
@@ -423,8 +428,32 @@ def compile_conditional_metar_path_state(
     # makes a genuine rewind impossible; an equal timestamp is not one.  For
     # the slope series, the last row of a shared minute speaks (the sort is
     # deterministic), so no zero-length segment ever divides.
+    #
+    # The slope series reads one observing system, not whichever two rows
+    # happen to be adjacent.  A carrier row and the formal report of the
+    # same reading differ by their own rounding (the carrier carries a
+    # tenth, the METAR body an integer) and can sit a minute apart: KSFO
+    # 2026-09-09 had MADIS 21:55 at 33.0C and the AWC T-group at 21:56 on
+    # 33.9C, and dividing 0.9C by one minute put 54C/h into the served
+    # feature.  46 of 675 sampled envelopes carried |momentum| > 10C/h that
+    # way (2026-09-12 diagnosis).  The fitted hazard artifact never saw such
+    # a number: its sample builder reads the formal lane alone.  So the
+    # formal series is what the slope is measured on, and the carriers keep
+    # every other job they have here -- the running high, the drawdown, the
+    # latest reading.  A prefix without two formal rows falls back to the
+    # whole series, which is what a caller that names no lane at all gets
+    # (the sample builders, and every test predating this).
+    slope_rows = [
+        index
+        for index, row in enumerate(rows)
+        if str(row.get("source_lane") or "").strip().lower()
+        not in SOFT_PATH_SOURCE_LANES
+    ]
+    if len(slope_rows) < 2:
+        slope_rows = list(range(len(rows)))
     collapsed: list[tuple] = []
-    for t, temp in zip(times, temperatures):
+    for index in slope_rows:
+        t, temp = times[index], temperatures[index]
         if collapsed and collapsed[-1][0] == t:
             collapsed[-1] = (t, temp)
         else:
@@ -625,6 +654,7 @@ __all__ = [
     "PATH_MODEL_COEFFICIENT_KEYS",
     "HOURLY_CURVE_PATH_MODEL_COEFFICIENT_KEYS",
     "PHYSICAL_STATE_SCHEMA",
+    "SOFT_PATH_SOURCE_LANES",
     "compile_conditional_metar_path_state",
     "condition_remaining_warming_distribution",
     "parse_metar_physical_state",

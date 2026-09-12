@@ -494,6 +494,10 @@ def _four_layer_inputs_for_step(
                 "observed_at_utc": row.event.observed_at_utc,
                 "temperature_c": float(row.temperature_c),
                 "raw_text": str(row.raw_text or ""),
+                # Same reason as in the proof compiler: the slope series is
+                # measured on the formal lane, the rest of the state on the
+                # whole prefix.
+                "source_lane": str(row.event.source_lane or ""),
             }
             for row in trajectory_prefix
         ]
@@ -594,12 +598,18 @@ def compile_station_p1_packets(
     # and the lineage is exactly what it was before the four layers existed.
     four_layer_artifacts: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Compile every canonical P1 prefix; emit on running-high advances.
+    """Compile every canonical P1 prefix; emit on running-high advances,
+    and close with one state refresh on the current clock.
 
-    One deliberate exception: after a packet closed by a scheduled ASOS
-    substitute (asos_1min / madis_hfmetar), the first AWC report emits a
-    re-anchoring packet even without a new high, restoring an atomic-capable
-    head for the order chain.  ``reported_high_advanced`` stays honest on it.
+    Two deliberate exceptions to "emit on advances".  After a packet closed
+    by a scheduled ASOS substitute (asos_1min / madis_hfmetar), the first AWC
+    report emits a re-anchoring packet even without a new high, restoring an
+    atomic-capable head for the order chain.  And the walk ends with a state
+    refresh -- the same chain re-run over the complete visible prefix at the
+    compile instant -- whenever the head has not read the newest formal
+    report or has lapsed its own cadence; see ``_state_refresh_step``.
+    ``reported_high_advanced`` stays honest on both, so neither opens a
+    trading window by itself.
 
     The two post-hoc correction layers are passed in rather than loaded here:
     this module takes no connection by design, and the compiled packet is the
@@ -771,397 +781,504 @@ def compile_station_p1_packets(
             if day_running_high_c is None
             else max(day_running_high_c, value)
         )
-    for sequence, observation in enumerate(ordered, start=1):
-        # SOFT_PATH rows (the intra-hour ASOS carrier readings) walk the
-        # prefix like everything else, so the path state sees the dense
-        # trajectory -- but they hold no hard rights below: no running-high
-        # update, no packet, no closing identity.
-        if (
-            str(observation.get("qc_status") or "").upper() != "ACCEPTED"
-            or str(observation.get("evidence_role") or "").upper()
-            not in {"FORMAL", "SOFT_PATH"}
-        ):
-            continue
-        if (
-            str(observation.get("station_id") or "") != previous.station_id
-            or str(observation.get("event_date_local") or "")
-            != previous.event_date
-        ):
-            continue
-        observation_timezone = str(
-            observation.get("settlement_timezone") or ""
-        ).strip()
-        if not observation_timezone:
-            raise ContractError("p1_observation_settlement_timezone_missing")
-        if observation_timezone != previous.settlement_timezone:
-            raise ContractError("p1_observation_settlement_timezone_mismatch")
-        committed = _parse_utc(
-            str(observation.get("canonical_committed_at_utc") or "")
+    # The newest formal report the walk actually admitted, and the walk's own
+    # final state, are what decide whether a refresh step follows it.
+    last_admitted_formal: dict[str, Any] | None = None
+    settlement_day_end_utc = _parse_utc(
+        settlement_day_window(
+            root.event_date, root.settlement_timezone
+        )["target_day_end_utc"]
+    )
+
+    def _state_refresh_step() -> tuple[int, Mapping[str, Any], bool] | None:
+        """One more step, on the current clock, over the complete prefix.
+
+        The walk emits where the day's high advances, which is a rule about
+        who may move the hard bound -- not about when the *forecast* is
+        allowed to change.  Since the four-layer chain started serving, the
+        two have been the same rule, so a cooling report, a rained-out
+        afternoon or a stalled plateau produced no new probability at all:
+        the served envelope kept the drawdown, momentum, cloud and clock of
+        the last new high.  Measured 2026-09-12 over 45 stations and three
+        event days: 320 of 550 served four-layer branches ran on a clock more
+        than two hours behind their own closing report, 119 of 135 station-
+        days still said drawdown=0 at 16:00 local, and 116 of 135 still did
+        at 20:00.
+
+        So the walk gets one more step.  It re-runs the same compiler on the
+        same prefix at the current clock, with ``reported_high_advanced``
+        false -- which is exactly the flag the runtime already reads to keep
+        a P1 that did not move the high from opening a trading window
+        (``checkpoint_changed``).  Refreshing the belief and being allowed to
+        trade on it stay separate, which is the standing rule; what changes
+        is that the belief now moves when the evidence does.
+
+        Emitted when the head has not already closed on the newest formal
+        report, or when it has but has lapsed its own cadence -- the case
+        the worker's copy-the-probabilities reaffirmation used to cover, now
+        covered by an actual recompute.
+        """
+
+        if last_admitted_formal is None or previous.stage != "P1":
+            return None
+        # Past the settlement day there is nothing left to forecast, and a
+        # decision clock beyond the day's own end is not one this compiler
+        # may stamp.
+        if compile_at >= settlement_day_end_utc:
+            return None
+        newest_id = str(last_admitted_formal.get("observation_id") or "")
+        head_closing = str(
+            previous.lineage.get("canonical_observation_event_id") or ""
         )
-        valid_at = _parse_utc(str(observation.get("valid_at_utc") or ""))
-        if committed > compile_at:
-            raise ContractError("p1_canonical_commit_not_strict_asof")
-        # Same split as the resident reader's as-of gate: the commit may not
-        # follow the decision, but a report's own nominal minute may sit a
-        # transmission lead ahead of its commit.  Both gates have to allow it
-        # or the second one re-closes the station-day the first just opened.
-        if valid_at - committed > _MAX_TRANSMISSION_LEAD:
-            raise ContractError("p1_canonical_observation_time_order_invalid")
-        try:
-            reported_c = float(observation["reported_temperature_c"])
-        except (KeyError, TypeError, ValueError) as exc:
-            raise ContractError("p1_reported_temperature_invalid") from exc
-        observation_lane = str(
-            observation.get("source_lane") or ""
-        ).strip().lower()
-        # Lane decides hard rights, not the role label: a soft-lane row may
-        # never move the official running high, whatever a caller stamped on
-        # it.  Settlement follows the formal METAR series (measured
-        # 2026-08-29), so only formal rows may claim what it will honor.
-        soft_path_only = (
-            observation_lane in SOFT_PATH_SOURCE_LANES
-            or str(observation.get("evidence_role") or "").upper()
-            == "SOFT_PATH"
-        )
-        old_high = running_high_c
-        if not soft_path_only:
-            running_high_c = (
-                reported_c
-                if running_high_c is None
-                else max(running_high_c, reported_c)
+        if newest_id != head_closing or not previous.is_fresh(
+            compilation_at_utc
+        ):
+            return (len(ordered) + 1, last_admitted_formal, True)
+        return None
+
+    def _walk_steps():
+        for index, item in enumerate(ordered, start=1):
+            yield index, item, False
+        # Pulled only after the last walk step's body has run, so the
+        # refresh decision reads the walk's final head rather than the one
+        # it started from.
+        refresh = _state_refresh_step()
+        if refresh is not None:
+            yield refresh
+
+    # A state refresh is a second opinion on evidence the walk already
+    # placed.  It may sharpen the served belief; it may never be the
+    # reason a station-day fails to compile -- the refresh runs the full
+    # prefix through a promoted artifact the walk's own shorter prefixes
+    # never reached, so a refusal there (an incomplete physical vector,
+    # say) would take down a chain that was compiling fine.  The walk's
+    # packets stand and the next cycle tries again.
+    walking_state_refresh = False
+    try:
+        for sequence, observation, is_state_refresh in _walk_steps():
+            walking_state_refresh = is_state_refresh
+            # SOFT_PATH rows (the intra-hour ASOS carrier readings) walk the
+            # prefix like everything else, so the path state sees the dense
+            # trajectory -- but they hold no hard rights below: no running-high
+            # update, no packet, no closing identity.
+            if (
+                str(observation.get("qc_status") or "").upper() != "ACCEPTED"
+                or str(observation.get("evidence_role") or "").upper()
+                not in {"FORMAL", "SOFT_PATH"}
+            ):
+                continue
+            if (
+                str(observation.get("station_id") or "") != previous.station_id
+                or str(observation.get("event_date_local") or "")
+                != previous.event_date
+            ):
+                continue
+            observation_timezone = str(
+                observation.get("settlement_timezone") or ""
+            ).strip()
+            if not observation_timezone:
+                raise ContractError("p1_observation_settlement_timezone_missing")
+            if observation_timezone != previous.settlement_timezone:
+                raise ContractError("p1_observation_settlement_timezone_mismatch")
+            committed = _parse_utc(
+                str(observation.get("canonical_committed_at_utc") or "")
             )
-        observation_id = str(observation.get("observation_id") or "")
-        if not observation_id:
-            raise ContractError("p1_observation_id_missing")
-        # Carried alongside the trajectory rather than inside it: the METAR
-        # event describes the report, while this names the canonical revision
-        # fact the truth ledger is keyed on.  Tracked for every observation so
-        # the closing one can be looked up once the prefix is known.
-        truth_revision_sha_by_observation[observation_id] = str(
-            observation.get("truth_observation_revision_content_sha256") or ""
-        ).strip().lower()
-        trajectory_prefix.append(
-            MetarTrajectoryObservation.from_mapping({
-                "event": {
-                    "observation_id": observation_id,
-                    "station_id": previous.station_id,
-                    "event_date": previous.event_date,
-                    "settlement_timezone": observation_timezone,
-                    "source_lane": str(
-                        observation.get("source_lane") or ""
-                    ).lower(),
-                    "report_type": str(
-                        observation.get("report_type") or "METAR"
-                    ).upper(),
-                    "sequence": sequence,
-                    "observed_at_utc": _stamp(valid_at),
-                    "received_at_utc": _stamp(committed),
-                    "raw_sha256": str(
-                        observation.get("raw_sha256") or ""
-                    ).lower(),
-                    "qc_state": "ACCEPTED",
-                    "supersedes_observation_id": None,
-                },
-                "canonical_committed_at_utc": _stamp(committed),
-                "temperature_c": reported_c,
-                "raw_text": str(observation.get("raw_text") or "").strip()
-                or None,
-            })
-        )
-        if soft_path_only:
-            # Path evidence delivered; nothing below (consumption, advance,
-            # emission, closing identity) belongs to a soft row.
-            continue
-        if observation_id in consumed:
-            continue
-        high_advanced = old_high is None or reported_c > old_high
-        reanchors_atomic_head = (
-            not high_advanced
-            and observation_lane == "awc"
-            and last_closing_lane not in (None, "awc")
-        )
-        if not high_advanced and not reanchors_atomic_head:
-            continue
-        decision = max(
-            committed,
-            last_decision + timedelta(microseconds=1),
-            event_day_start_utc,
-        )
-        decision_text = _stamp(decision)
-        # This loop replays the whole station-day: every observation gets its
-        # own decision time, and those walk backwards through the local-time
-        # buckets.  A promoted artifact is fitted for exactly one bucket and
-        # the proof refuses to be applied outside it, so handing the
-        # afternoon's artifact to the morning's observation raised
-        # ``metar_trajectory_local_time_bucket_mismatch`` and fail-closed the
-        # entire station-day (six stations on 2026-08-16, all of them at
-        # UTC+8 with a morning already behind them).  Out of its own bucket a
-        # promoted artifact has nothing fitted to say, which is the exact
-        # situation the identity fallback exists for -- so each step now asks
-        # for the artifact fitted for its own hour, and only falls back when
-        # there is none.
-        step_bucket = _local_time_bucket(
-            decision_text, root.settlement_timezone
-        )
-        step_artifact = trajectory_artifact
-        if trajectory_artifact_by_local_time_bucket is not None:
-            named = trajectory_artifact_by_local_time_bucket.get(step_bucket)
-            if named is not None:
-                step_artifact = named
-        explicit_artifact = (
-            step_artifact
-            if isinstance(step_artifact, MetarTrajectoryLikelihoodArtifact)
-            else MetarTrajectoryLikelihoodArtifact.from_mapping(step_artifact)
-            if isinstance(step_artifact, Mapping)
-            else None
-        )
-        # The hourly-curve method reads a conditional future-temperature
-        # curve off the root.  A root compiled before that curve existed --
-        # and on the event day itself the root is frozen from the day before,
-        # so it cannot be recompiled to grow one -- has nothing for it to
-        # read, and the proof raised
-        # ``metar_trajectory_root_future_curve_missing`` rather than
-        # degrading.  Same rule as the bucket: the promoted artifact governs
-        # only where it can actually be evaluated.
-        # Same rule extended to the evening: the feature compiler demands at
-        # least two strictly-future curve points, and on the event day the
-        # frozen root's curve simply runs out of them as local midnight
-        # approaches -- ``future_temperature_curve_future_points_insufficient``
-        # took three UTC+8 stations' whole P1 down at 20:49 local on
-        # 2026-08-20.  An exhausted curve leaves the promoted artifact
-        # nothing to evaluate, which is exactly the identity-fallback
-        # situation; the hard bound keeps killing buckets either way.
-        artifact_governs_root = explicit_artifact is not None and (
-            explicit_artifact.method_version
-            != METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION
-            or (
-                bool(
-                    root.lineage.get(
-                        "conditional_future_temperature_curve_json"
+            valid_at = _parse_utc(str(observation.get("valid_at_utc") or ""))
+            if committed > compile_at:
+                raise ContractError("p1_canonical_commit_not_strict_asof")
+            # Same split as the resident reader's as-of gate: the commit may not
+            # follow the decision, but a report's own nominal minute may sit a
+            # transmission lead ahead of its commit.  Both gates have to allow it
+            # or the second one re-closes the station-day the first just opened.
+            if valid_at - committed > _MAX_TRANSMISSION_LEAD:
+                raise ContractError("p1_canonical_observation_time_order_invalid")
+            try:
+                reported_c = float(observation["reported_temperature_c"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ContractError("p1_reported_temperature_invalid") from exc
+            observation_lane = str(
+                observation.get("source_lane") or ""
+            ).strip().lower()
+            # Lane decides hard rights, not the role label: a soft-lane row may
+            # never move the official running high, whatever a caller stamped on
+            # it.  Settlement follows the formal METAR series (measured
+            # 2026-08-29), so only formal rows may claim what it will honor.
+            soft_path_only = (
+                observation_lane in SOFT_PATH_SOURCE_LANES
+                or str(observation.get("evidence_role") or "").upper()
+                == "SOFT_PATH"
+            )
+            old_high = running_high_c
+            if not soft_path_only:
+                running_high_c = (
+                    reported_c
+                    if running_high_c is None
+                    else max(running_high_c, reported_c)
+                )
+            observation_id = str(observation.get("observation_id") or "")
+            if not observation_id:
+                raise ContractError("p1_observation_id_missing")
+            # Carried alongside the trajectory rather than inside it: the METAR
+            # event describes the report, while this names the canonical revision
+            # fact the truth ledger is keyed on.  Tracked for every observation so
+            # the closing one can be looked up once the prefix is known.
+            truth_revision_sha_by_observation[observation_id] = str(
+                observation.get("truth_observation_revision_content_sha256") or ""
+            ).strip().lower()
+            # The refresh step re-reads a report the walk already placed, so the
+            # prefix it recomputes on is the one the walk finished with; nothing
+            # here is appended a second time.
+            if not is_state_refresh:
+                if not soft_path_only:
+                    last_admitted_formal = dict(observation)
+                trajectory_prefix.append(
+                    MetarTrajectoryObservation.from_mapping({
+                        "event": {
+                            "observation_id": observation_id,
+                            "station_id": previous.station_id,
+                            "event_date": previous.event_date,
+                            "settlement_timezone": observation_timezone,
+                            "source_lane": str(
+                                observation.get("source_lane") or ""
+                            ).lower(),
+                            "report_type": str(
+                                observation.get("report_type") or "METAR"
+                            ).upper(),
+                            "sequence": sequence,
+                            "observed_at_utc": _stamp(valid_at),
+                            "received_at_utc": _stamp(committed),
+                            "raw_sha256": str(
+                                observation.get("raw_sha256") or ""
+                            ).lower(),
+                            "qc_state": "ACCEPTED",
+                            "supersedes_observation_id": None,
+                        },
+                        "canonical_committed_at_utc": _stamp(committed),
+                        "temperature_c": reported_c,
+                        "raw_text": str(
+                            observation.get("raw_text") or ""
+                        ).strip() or None,
+                    })
+                )
+            if soft_path_only:
+                # Path evidence delivered; nothing below (consumption, advance,
+                # emission, closing identity) belongs to a soft row.
+                continue
+            if observation_id in consumed and not is_state_refresh:
+                continue
+            # The refresh step's report is already inside ``running_high_c``, so
+            # this is false by construction; naming it keeps the flag one
+            # expression rather than two.
+            high_advanced = (
+                not is_state_refresh
+                and (old_high is None or reported_c > old_high)
+            )
+            reanchors_atomic_head = (
+                not high_advanced
+                and observation_lane == "awc"
+                and last_closing_lane not in (None, "awc")
+            )
+            if (
+                not high_advanced
+                and not reanchors_atomic_head
+                and not is_state_refresh
+            ):
+                continue
+            decision = max(
+                # A refresh answers the question "what do we believe now", so its
+                # clock is now -- not the minute of the report it closes on,
+                # which may be an hour behind.
+                compile_at if is_state_refresh else committed,
+                last_decision + timedelta(microseconds=1),
+                event_day_start_utc,
+            )
+            decision_text = _stamp(decision)
+            # This loop replays the whole station-day: every observation gets its
+            # own decision time, and those walk backwards through the local-time
+            # buckets.  A promoted artifact is fitted for exactly one bucket and
+            # the proof refuses to be applied outside it, so handing the
+            # afternoon's artifact to the morning's observation raised
+            # ``metar_trajectory_local_time_bucket_mismatch`` and fail-closed the
+            # entire station-day (six stations on 2026-08-16, all of them at
+            # UTC+8 with a morning already behind them).  Out of its own bucket a
+            # promoted artifact has nothing fitted to say, which is the exact
+            # situation the identity fallback exists for -- so each step now asks
+            # for the artifact fitted for its own hour, and only falls back when
+            # there is none.
+            step_bucket = _local_time_bucket(
+                decision_text, root.settlement_timezone
+            )
+            step_artifact = trajectory_artifact
+            if trajectory_artifact_by_local_time_bucket is not None:
+                named = trajectory_artifact_by_local_time_bucket.get(step_bucket)
+                if named is not None:
+                    step_artifact = named
+            explicit_artifact = (
+                step_artifact
+                if isinstance(step_artifact, MetarTrajectoryLikelihoodArtifact)
+                else MetarTrajectoryLikelihoodArtifact.from_mapping(step_artifact)
+                if isinstance(step_artifact, Mapping)
+                else None
+            )
+            # The hourly-curve method reads a conditional future-temperature
+            # curve off the root.  A root compiled before that curve existed --
+            # and on the event day itself the root is frozen from the day before,
+            # so it cannot be recompiled to grow one -- has nothing for it to
+            # read, and the proof raised
+            # ``metar_trajectory_root_future_curve_missing`` rather than
+            # degrading.  Same rule as the bucket: the promoted artifact governs
+            # only where it can actually be evaluated.
+            # Same rule extended to the evening: the feature compiler demands at
+            # least two strictly-future curve points, and on the event day the
+            # frozen root's curve simply runs out of them as local midnight
+            # approaches -- ``future_temperature_curve_future_points_insufficient``
+            # took three UTC+8 stations' whole P1 down at 20:49 local on
+            # 2026-08-20.  An exhausted curve leaves the promoted artifact
+            # nothing to evaluate, which is exactly the identity-fallback
+            # situation; the hard bound keeps killing buckets either way.
+            artifact_governs_root = explicit_artifact is not None and (
+                explicit_artifact.method_version
+                != METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION
+                or (
+                    bool(
+                        root.lineage.get(
+                            "conditional_future_temperature_curve_json"
+                        )
+                    )
+                    and (
+                        curve_point_times_utc is None
+                        or sum(
+                            1
+                            for point_time in curve_point_times_utc
+                            if point_time > decision
+                        )
+                        >= 2
                     )
                 )
-                and (
-                    curve_point_times_utc is None
-                    or sum(
-                        1
-                        for point_time in curve_point_times_utc
-                        if point_time > decision
-                    )
-                    >= 2
+            )
+            artifact_in_bucket = (
+                artifact_governs_root
+                and explicit_artifact.local_time_bucket == step_bucket
+            )
+            # The conditional/curve methods need three observations behind them
+            # before they may speak.  That minimum belongs to the promoted
+            # artifact, so it only applies on the steps that artifact actually
+            # governs; on a fallback step it would skip an observation the
+            # identity update was ready to consume.
+            #
+            # An artifact that cannot speak yet governs nothing: the step falls
+            # to the identity fallback, exactly as an out-of-bucket or
+            # curve-exhausted step does, and the observation is consumed.  It
+            # used to skip the observation outright, which was harmless on the
+            # live walk (the third report arrives an hour later and the packet
+            # with it) and fatal on a root rebase: the replay re-clocks every
+            # step to now, so the day's midnight report -- consumed at 00:05
+            # local under the night's identity fallback -- was re-stepped at
+            # 06:07 local under the promoted MORNING artifact, skipped as the
+            # first of fewer than three, and no later report beat it.  ZGSZ
+            # 2026-09-06: P0 rerooted at 22:07Z and 01:28Z with 25-27°C
+            # overnight, both replays emitted nothing, the 21:46Z P1 on the
+            # old root aged past its grace at 01:46Z, and the stage would have
+            # opened its entry window fail-closed until the afternoon's first
+            # new high.  Operator ruling 2026-09-06: a reroot with no new high
+            # still writes a P1 -- the one this now emits.
+            if (
+                artifact_in_bucket
+                and explicit_artifact.method_version
+                in {
+                    METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
+                    METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
+                    METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION,
+                }
+                and len(trajectory_prefix) < 3
+            ):
+                artifact_in_bucket = False
+            generation += 1
+            governed_artifact = (
+                explicit_artifact
+                if artifact_in_bucket
+                else _fallback_trajectory_artifact(
+                    root,
+                    # The governing lane, not the closer's: an ASOS substitute
+                    # closes a step inside an AWC-governed scope, and the proof
+                    # canonicalizes the whole prefix against the artifact's
+                    # lane -- a substitute-laned artifact would refuse the AWC
+                    # reports around it.
+                    source_lane=(
+                        "awc"
+                        if str(observation.get("source_lane") or "")
+                        .strip()
+                        .lower()
+                        in {"asos_1min", "madis_hfmetar"}
+                        else str(observation.get("source_lane") or "")
+                    ),
+                    maturity_bin=maturity_bin,
+                    as_of_utc=decision_text,
                 )
             )
-        )
-        artifact_in_bucket = (
-            artifact_governs_root
-            and explicit_artifact.local_time_bucket == step_bucket
-        )
-        # The conditional/curve methods need three observations behind them
-        # before they may speak.  That minimum belongs to the promoted
-        # artifact, so it only applies on the steps that artifact actually
-        # governs; on a fallback step it would skip an observation the
-        # identity update was ready to consume.
-        #
-        # An artifact that cannot speak yet governs nothing: the step falls
-        # to the identity fallback, exactly as an out-of-bucket or
-        # curve-exhausted step does, and the observation is consumed.  It
-        # used to skip the observation outright, which was harmless on the
-        # live walk (the third report arrives an hour later and the packet
-        # with it) and fatal on a root rebase: the replay re-clocks every
-        # step to now, so the day's midnight report -- consumed at 00:05
-        # local under the night's identity fallback -- was re-stepped at
-        # 06:07 local under the promoted MORNING artifact, skipped as the
-        # first of fewer than three, and no later report beat it.  ZGSZ
-        # 2026-09-06: P0 rerooted at 22:07Z and 01:28Z with 25-27°C
-        # overnight, both replays emitted nothing, the 21:46Z P1 on the
-        # old root aged past its grace at 01:46Z, and the stage would have
-        # opened its entry window fail-closed until the afternoon's first
-        # new high.  Operator ruling 2026-09-06: a reroot with no new high
-        # still writes a P1 -- the one this now emits.
-        if (
-            artifact_in_bucket
-            and explicit_artifact.method_version
-            in {
-                METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
-                METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
-                METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION,
-            }
-            and len(trajectory_prefix) < 3
-        ):
-            artifact_in_bucket = False
-        generation += 1
-        governed_artifact = (
-            explicit_artifact
-            if artifact_in_bucket
-            else _fallback_trajectory_artifact(
+            proof = compile_metar_trajectory_update_proof(
                 root,
-                # The governing lane, not the closer's: an ASOS substitute
-                # closes a step inside an AWC-governed scope, and the proof
-                # canonicalizes the whole prefix against the artifact's
-                # lane -- a substitute-laned artifact would refuse the AWC
-                # reports around it.
-                source_lane=(
-                    "awc"
-                    if str(observation.get("source_lane") or "")
-                    .strip()
-                    .lower()
-                    in {"asos_1min", "madis_hfmetar"}
-                    else str(observation.get("source_lane") or "")
-                ),
+                observations=trajectory_prefix,
+                artifact=governed_artifact,
+                bucket_centers_c=bucket_centers_c,
+                bucket_upper_bounds_c=bucket_upper_bounds_c,
                 maturity_bin=maturity_bin,
                 as_of_utc=decision_text,
+                prefix_is_current=(
+                    day_running_high_c is not None
+                    and running_high_c >= day_running_high_c - 1e-9
+                ),
+                # None is production's policy (``SOFT_LIKELIHOOD_POLICY``); tests
+                # of the layer's own mechanics pass ACTIVE explicitly.
+                soft_likelihood_policy=soft_likelihood_policy,
             )
-        )
-        proof = compile_metar_trajectory_update_proof(
-            root,
-            observations=trajectory_prefix,
-            artifact=governed_artifact,
-            bucket_centers_c=bucket_centers_c,
-            bucket_upper_bounds_c=bucket_upper_bounds_c,
-            maturity_bin=maturity_bin,
-            as_of_utc=decision_text,
-            prefix_is_current=(
-                day_running_high_c is not None
-                and running_high_c >= day_running_high_c - 1e-9
-            ),
-            # None is production's policy (``SOFT_LIKELIHOOD_POLICY``); tests
-            # of the layer's own mechanics pass ACTIVE explicitly.
-            soft_likelihood_policy=soft_likelihood_policy,
-        )
-        excluded = list(proof.hard_excluded_buckets)
-        reported_value = reported_hard_lower_in_unit(running_high_c, unit)
-        reported_high_bucket = proof.center_bucket
-        reported_high_ordinal = root.bucket_ordinals[reported_high_bucket]
-        bound_identity = {
-            "schema": "bayes_basket_target_compiled_hard_bound_v2",
-            "observation_id": observation_id,
-            "station_id": previous.station_id,
-            "event_date": previous.event_date,
-            "bound_generation": generation,
-            "reported_high_c": running_high_c,
-            "hard_lower_bound": reported_value,
-            "settlement_unit": unit,
-            "hard_excluded_buckets": excluded,
-        }
-        hard_bound_id = "hardbound-" + proof.content_sha256[:32]
-        fresh_until = decision + timedelta(seconds=int(freshness_seconds))
-        # The shadow, when the caller supplied artifacts for it.  It is
-        # computed from the same prefix, root and instant as the proof above
-        # and multiplied into nothing; the ledger scores it out of lineage.
-        # Its own failures are swallowed inside the shadow compiler, so a
-        # measurement lane can never be the reason a P1 does not compile.
-        #
-        # Built once per step and handed to both consumers.  Building it in
-        # each of them re-parsed the prefix a second time, and the production
-        # cycle went from under ten minutes to fifteen and forty seconds --
-        # past its own 720s overdue alarm -- on 2026-09-07, the first cycle
-        # after the chain started serving beside the shadow.  The path state
-        # is the expensive part and neither lane needs its own copy.
-        four_layer_inputs = (
-            _four_layer_inputs_for_step(
-                root=root,
-                proof=proof,
-                trajectory_prefix=trajectory_prefix,
-                bucket_centers_c=bucket_centers_c,
-                decision_at_utc=decision_text,
-                regional_runs=regional_runs,
-            )
-            if four_layer_artifacts else None
-        )
-        four_layer_shadow: dict[str, str] = {}
-        if four_layer_artifacts:
-            four_layer_shadow = _four_layer_shadow_for_step(
-                root=root,
-                proof=proof,
-                trajectory_prefix=trajectory_prefix,
-                bucket_centers_c=bucket_centers_c,
-                decision_at_utc=decision_text,
-                reported_high_bucket=reported_high_bucket,
-                artifacts=four_layer_artifacts,
-                inputs=four_layer_inputs,
-            )
-        envelope = materialize_p1(
-            previous,
-            prediction_root=root,
-            trajectory_artifact=governed_artifact,
-            trajectory_proof=proof,
-            trajectory_observations=trajectory_prefix,
-            bucket_centers_c=bucket_centers_c,
-            bucket_upper_bounds_c=bucket_upper_bounds_c,
-            reported_high_advanced=high_advanced,
-            decision_at_utc=decision_text,
-            fresh_until_utc=_stamp(fresh_until),
-            bridge_sha256=root.bridge_sha256,
-            truth_observation_revision_content_sha256=(
-                truth_revision_sha_by_observation.get(observation_id) or None
-            ),
-            band_table=band_table,
-            center_width=center_width,
-            center_width_floor_rungs=center_width_floor_rungs,
-            center_width_tiers=center_width_tiers,
-            station_width=station_width,
-            fleet_regime=fleet_regime,
-            ceiling_artifact=ceiling_artifact,
-            regional_prior=(
-                None
-                if not regional_runs
-                else resolve_regional_serving_input(
-                    regional_runs,
-                    station_id=root.station_id,
-                    event_date=root.event_date,
-                    as_of_utc=decision_text,
-                    settlement_timezone=root.settlement_timezone,
-                    artifact=regional_artifact,
-                    debias_artifact=regional_debias_artifact,
-                )
-            ),
-            # Charter 95 step two, served: the chain stands in the ceiling's
-            # place when it can speak, and the ceiling serves untouched when
-            # it cannot.  Built here because only the compiler holds the
-            # prefix, the root and the lane's runs at once.
-            four_layer_serving=(
-                None
-                if not four_layer_artifacts
-                else _four_layer_serving_bundle(
+            excluded = list(proof.hard_excluded_buckets)
+            reported_value = reported_hard_lower_in_unit(running_high_c, unit)
+            reported_high_bucket = proof.center_bucket
+            reported_high_ordinal = root.bucket_ordinals[reported_high_bucket]
+            bound_identity = {
+                "schema": "bayes_basket_target_compiled_hard_bound_v2",
+                "observation_id": observation_id,
+                "station_id": previous.station_id,
+                "event_date": previous.event_date,
+                "bound_generation": generation,
+                "reported_high_c": running_high_c,
+                "hard_lower_bound": reported_value,
+                "settlement_unit": unit,
+                "hard_excluded_buckets": excluded,
+            }
+            hard_bound_id = "hardbound-" + proof.content_sha256[:32]
+            fresh_until = decision + timedelta(seconds=int(freshness_seconds))
+            # The shadow, when the caller supplied artifacts for it.  It is
+            # computed from the same prefix, root and instant as the proof above
+            # and multiplied into nothing; the ledger scores it out of lineage.
+            # Its own failures are swallowed inside the shadow compiler, so a
+            # measurement lane can never be the reason a P1 does not compile.
+            #
+            # Built once per step and handed to both consumers.  Building it in
+            # each of them re-parsed the prefix a second time, and the production
+            # cycle went from under ten minutes to fifteen and forty seconds --
+            # past its own 720s overdue alarm -- on 2026-09-07, the first cycle
+            # after the chain started serving beside the shadow.  The path state
+            # is the expensive part and neither lane needs its own copy.
+            four_layer_inputs = (
+                _four_layer_inputs_for_step(
+                    root=root,
+                    proof=proof,
+                    trajectory_prefix=trajectory_prefix,
                     bucket_centers_c=bucket_centers_c,
+                    decision_at_utc=decision_text,
+                    regional_runs=regional_runs,
+                )
+                if four_layer_artifacts else None
+            )
+            four_layer_shadow: dict[str, str] = {}
+            if four_layer_artifacts:
+                four_layer_shadow = _four_layer_shadow_for_step(
+                    root=root,
+                    proof=proof,
+                    trajectory_prefix=trajectory_prefix,
+                    bucket_centers_c=bucket_centers_c,
+                    decision_at_utc=decision_text,
+                    reported_high_bucket=reported_high_bucket,
                     artifacts=four_layer_artifacts,
                     inputs=four_layer_inputs,
                 )
-            ),
-            four_layer_shadow=four_layer_shadow,
-        )
-        packets.append({
-            "observation_id": observation_id,
-            # Carried on the packet, not only into the envelope built above:
-            # the strict materializer contract is rebuilt from this packet, so
-            # a field the projection cannot see is a field the rebuilt envelope
-            # will not have.
-            "truth_observation_revision_content_sha256": (
-                truth_revision_sha_by_observation.get(observation_id) or ""
-            ),
-            "predecessor": previous.to_dict(),
-            "prediction_root": root.to_dict(),
-            "trajectory_artifact": governed_artifact.to_dict(),
-            "trajectory_proof": proof.to_dict(),
-            "trajectory_observations": [
-                item.to_dict() for item in trajectory_prefix
-            ],
-            "bucket_centers_c": bucket_centers_c,
-            "bucket_upper_bounds_c": bucket_upper_bounds_c,
-            "reported_high_advanced": high_advanced,
-            "hard_excluded_buckets": excluded,
-            "hard_bound_id": hard_bound_id,
-            "decision_at_utc": decision_text,
-            "fresh_until_utc": _stamp(fresh_until),
-            "created_at_utc": _stamp(decision),
-            "compiled_bound": {
-                **bound_identity,
-                "bound_id": hard_bound_id,
-            },
-            "expected_envelope": envelope.to_dict(),
-        })
-        previous = envelope
-        last_decision = decision
-        last_closing_lane = observation_lane
+            envelope = materialize_p1(
+                previous,
+                prediction_root=root,
+                trajectory_artifact=governed_artifact,
+                trajectory_proof=proof,
+                trajectory_observations=trajectory_prefix,
+                bucket_centers_c=bucket_centers_c,
+                bucket_upper_bounds_c=bucket_upper_bounds_c,
+                reported_high_advanced=high_advanced,
+                # Named on a refresh so the append-only consume-once guard can
+                # tell a deliberate re-examination of the same closing report
+                # from the silent nondeterminism it exists to kill.
+                state_refresh_of_checkpoint_id=(
+                    previous.checkpoint_id if is_state_refresh else None
+                ),
+                decision_at_utc=decision_text,
+                fresh_until_utc=_stamp(fresh_until),
+                bridge_sha256=root.bridge_sha256,
+                truth_observation_revision_content_sha256=(
+                    truth_revision_sha_by_observation.get(observation_id) or None
+                ),
+                band_table=band_table,
+                center_width=center_width,
+                center_width_floor_rungs=center_width_floor_rungs,
+                center_width_tiers=center_width_tiers,
+                station_width=station_width,
+                fleet_regime=fleet_regime,
+                ceiling_artifact=ceiling_artifact,
+                regional_prior=(
+                    None
+                    if not regional_runs
+                    else resolve_regional_serving_input(
+                        regional_runs,
+                        station_id=root.station_id,
+                        event_date=root.event_date,
+                        as_of_utc=decision_text,
+                        settlement_timezone=root.settlement_timezone,
+                        artifact=regional_artifact,
+                        debias_artifact=regional_debias_artifact,
+                    )
+                ),
+                # Charter 95 step two, served: the chain stands in the ceiling's
+                # place when it can speak, and the ceiling serves untouched when
+                # it cannot.  Built here because only the compiler holds the
+                # prefix, the root and the lane's runs at once.
+                four_layer_serving=(
+                    None
+                    if not four_layer_artifacts
+                    else _four_layer_serving_bundle(
+                        bucket_centers_c=bucket_centers_c,
+                        artifacts=four_layer_artifacts,
+                        inputs=four_layer_inputs,
+                    )
+                ),
+                four_layer_shadow=four_layer_shadow,
+            )
+            packets.append({
+                "observation_id": observation_id,
+                # Carried on the packet, not only into the envelope built above:
+                # the strict materializer contract is rebuilt from this packet, so
+                # a field the projection cannot see is a field the rebuilt envelope
+                # will not have.
+                "truth_observation_revision_content_sha256": (
+                    truth_revision_sha_by_observation.get(observation_id) or ""
+                ),
+                "predecessor": previous.to_dict(),
+                "prediction_root": root.to_dict(),
+                "trajectory_artifact": governed_artifact.to_dict(),
+                "trajectory_proof": proof.to_dict(),
+                "trajectory_observations": [
+                    item.to_dict() for item in trajectory_prefix
+                ],
+                "bucket_centers_c": bucket_centers_c,
+                "bucket_upper_bounds_c": bucket_upper_bounds_c,
+                "reported_high_advanced": high_advanced,
+                "state_refresh_of_checkpoint_id": (
+                    previous.checkpoint_id if is_state_refresh else ""
+                ),
+                "hard_excluded_buckets": excluded,
+                "hard_bound_id": hard_bound_id,
+                "decision_at_utc": decision_text,
+                "fresh_until_utc": _stamp(fresh_until),
+                "created_at_utc": _stamp(decision),
+                "compiled_bound": {
+                    **bound_identity,
+                    "bound_id": hard_bound_id,
+                },
+                "expected_envelope": envelope.to_dict(),
+            })
+            previous = envelope
+            last_decision = decision
+            last_closing_lane = observation_lane
+    except ContractError:
+        if not walking_state_refresh:
+            raise
     return packets
 
 

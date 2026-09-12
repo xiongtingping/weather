@@ -369,8 +369,13 @@ def test_soft_rows_feed_the_path_but_never_close_or_advance() -> None:
         compilation_at_utc="2026-08-09T18:30:00Z",
     )
     # The soft 23.0 never advances: the 21.0 METAR still counts as a new
-    # high over 20.0 and closes its own packet.
-    assert [packet["observation_id"] for packet in packets] == [
+    # high over 20.0 and closes its own packet.  The tail state refresh
+    # closes on that same METAR without advancing anything.
+    assert [
+        packet["observation_id"]
+        for packet in packets
+        if packet["reported_high_advanced"]
+    ] == [
         "awc-morning",
         "awc-afternoon",
     ]
@@ -387,7 +392,7 @@ def test_soft_rows_feed_the_path_but_never_close_or_advance() -> None:
         packet["expected_envelope"]["lineage"]["source_lane"]
         for packet in packets
     ]
-    assert lanes == ["AWC", "AWC"]
+    assert set(lanes) == {"AWC"}
 
 
 def test_awc_only_days_never_emit_reanchor_packets() -> None:
@@ -415,7 +420,21 @@ def test_awc_only_days_never_emit_reanchor_packets() -> None:
         registry_rows=_PACKET_REGISTRY,
         compilation_at_utc="2026-08-09T18:30:00Z",
     )
-    assert [packet["observation_id"] for packet in packets] == ["awc-1"]
+    assert [
+        packet["observation_id"]
+        for packet in packets
+        if packet["reported_high_advanced"]
+    ] == ["awc-1"]
+    # Everything else the walk emits on an AWC-only day is the tail state
+    # refresh, which names the head it recomputes; a re-anchoring packet --
+    # the AWC report that follows an ASOS-closed head -- carries no such name
+    # and there is none here.
+    assert [
+        packet["observation_id"]
+        for packet in packets
+        if not packet["reported_high_advanced"]
+        and not packet["state_refresh_of_checkpoint_id"]
+    ] == []
 
 
 def _now(text: str) -> datetime:

@@ -35,6 +35,7 @@ from .metar_path_state import (
     HOURLY_CURVE_PATH_MODEL_COEFFICIENT_KEYS,
     PATH_MODEL_COEFFICIENT_KEYS,
     PATH_STATE_SCHEMA,
+    SOFT_PATH_SOURCE_LANES as _SOFT_PATH_SOURCE_LANES,
     compile_conditional_metar_path_state,
     condition_remaining_warming_distribution,
 )
@@ -83,7 +84,7 @@ MAX_METAR_TRAJECTORY_OBSERVATIONS = 512
 # because settlement follows the METAR series, and a hard bound built on a
 # reading settlement will never see killed the true bucket 57 times in the
 # 160-station-day replay of 2026-08-29.
-SOFT_PATH_SOURCE_LANES = frozenset({"asos_1min", "madis_hfmetar"})
+SOFT_PATH_SOURCE_LANES = _SOFT_PATH_SOURCE_LANES
 MAX_METAR_TRAJECTORY_BUCKETS = 256
 MAX_METAR_TRAJECTORY_FEATURES = 32
 MAX_METAR_TRAJECTORY_PROOF_TEXT_BYTES = 131_072
@@ -1805,6 +1806,10 @@ def compile_metar_trajectory_update_proof(
                     "observed_at_utc": item.event.observed_at_utc,
                     "temperature_c": item.temperature_c,
                     "raw_text": item.raw_text,
+                    # Named so the slope series can tell a carrier row from
+                    # the formal report of the same reading; every other
+                    # feature reads the whole prefix as it always did.
+                    "source_lane": item.event.source_lane,
                 }
                 for item in ordered
             ],

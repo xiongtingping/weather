@@ -13133,9 +13133,27 @@ class TargetProductionWorker:
                         and not predecessor.is_fresh(as_of_utc)
                     ):
                         base = predecessor.to_dict()
-                        newest_obs = max(
-                            str(row.get("observation_id") or "")
-                            for row in observations
+                        # The newest report examined, by the clock -- not the
+                        # last observation id in lexicographic order, which is
+                        # what this took until 2026-09-12.  Ids are content
+                        # addressed, so their order says nothing about time,
+                        # and the lineage key that names what a reaffirmation
+                        # re-examined was naming an arbitrary row.  Same key
+                        # the compiler's walk sorts on, so the two agree on
+                        # which report is last.
+                        newest_obs = str(
+                            max(
+                                observations,
+                                key=lambda row: (
+                                    str(row.get("valid_at_utc") or ""),
+                                    str(
+                                        row.get(
+                                            "canonical_committed_at_utc"
+                                        ) or ""
+                                    ),
+                                    str(row.get("observation_id") or ""),
+                                ),
+                            ).get("observation_id") or ""
                         )
                         lineage = reaffirmed_lineage(
                             base.get("lineage", {}),
@@ -13279,6 +13297,17 @@ class TargetProductionWorker:
                         trajectory_artifact_by_bucket
                     ),
                     "trajectory_scope_blockers": trajectory_scope_blockers,
+                    # Whether the walk closed with a state refresh -- the
+                    # step that recomputes the belief on the current clock
+                    # over the complete prefix.  The compiler swallows a
+                    # refusal there rather than failing the station-day, so
+                    # this is where a refresh that never lands becomes
+                    # visible: on an event day it should be true on most
+                    # scopes that wrote anything at all.
+                    "state_refresh_written": any(
+                        str(packet.get("state_refresh_of_checkpoint_id") or "")
+                        for packet in packets
+                    ),
                     "p0_rebase": rebasing,
                     "current_consumable": current_consumable,
                     "replay_cursor_only": not current_consumable,

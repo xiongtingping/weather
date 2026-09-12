@@ -1551,6 +1551,13 @@ def materialize_p1(
     center_width_tiers: Mapping[str, Any] | None = None,
     station_width: tuple[Mapping[str, float], str] | None = None,
     fleet_regime: Mapping[str, Any] | None = None,
+    # The head this envelope recomputes, when it is a state refresh rather
+    # than a step the day's high advanced on.  A refresh re-runs the whole
+    # chain on the current clock over the complete visible prefix, so unlike
+    # a reaffirmation its probabilities do move; what it shares with one is
+    # that the closing observation may be the same report the head already
+    # closed on, which is the declared exception to consume-once.
+    state_refresh_of_checkpoint_id: str | None = None,
     # What the four layers would have served, carried beside what was served.
     # Never multiplied into the distribution; the keys are lineage and the
     # ledger scores them.  Absent means the caller was handed no artifacts,
@@ -1832,6 +1839,10 @@ def materialize_p1(
         shadow_value = (four_layer_shadow or {}).get(shadow_key)
         if shadow_value:
             values[shadow_key] = str(shadow_value)
+    if state_refresh_of_checkpoint_id:
+        values["p1_state_refresh_of_checkpoint_id"] = str(
+            state_refresh_of_checkpoint_id
+        )
     values["prediction_root_stage"] = root.stage
     values["prediction_root_checkpoint_id"] = root.checkpoint_id
     values["prediction_root_content_sha256"] = root.content_sha256
@@ -2189,7 +2200,11 @@ def insert_probability_envelope(
             ):
                 if str(row[1]) == envelope.content_sha256:
                     return {"schema": MATERIALIZATION_SCHEMA, "state": "ALREADY_COMMITTED", "wrote": False, "envelope_id": envelope.checkpoint_id}
-                if envelope.lineage.get("reaffirmation_of_checkpoint_id"):
+                if envelope.lineage.get(
+                    "reaffirmation_of_checkpoint_id"
+                ) or envelope.lineage.get(
+                    "p1_state_refresh_of_checkpoint_id"
+                ):
                     # A reaffirmation is the declared exception to
                     # consume-once: same observation prefix, same root,
                     # deliberately re-clocked because the staleness gate
@@ -2201,6 +2216,14 @@ def insert_probability_envelope(
                     # daily high -> no packets -> reaffirm -> same event and
                     # root with a new clock -> killed as corruption -> retry
                     # forever while the served P1 aged past its grace.
+                    #
+                    # A state refresh is the same exception for the same
+                    # reason, one step further: it re-runs the chain on the
+                    # current clock instead of restating the old answer, so
+                    # its probabilities differ from the head's and its
+                    # closing report is still the one the head closed on.
+                    # Same evidence, deliberately re-examined, named in the
+                    # lineage.
                     continue
                 raise ContractError("p1_canonical_event_already_consumed")
     note_ledger_span(

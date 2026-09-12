@@ -294,11 +294,29 @@ def fleet_means(
     return means
 
 
+def phase_outcome(sample: Mapping[str, Any]) -> float:
+    """Did the day settle above the bucket the running high is in.
+
+    That is the quantity ``apply_phase_split`` assigns this rate to -- the
+    mass above ``running_high_bucket`` -- so it is the quantity the rung is
+    fitted on.  ``delta_c >= 1`` was the old stand-in: it rounds
+    ``truth - running_high`` to whole Celsius degrees and so answers a
+    question about a 1C ladder no market runs on.  Rows built before the
+    sample set carried the crossing fall back to it, so an older sample
+    database still fits rather than failing on a missing column.
+    """
+
+    crossed = sample.get("crossed_bucket")
+    if crossed is not None:
+        return 1.0 if int(crossed) else 0.0
+    return 1.0 if int(sample["delta_c"]) >= 1 else 0.0
+
+
 def fit_phase_rung(
     samples: Sequence[Mapping[str, Any]], fallbacks: Mapping[str, float],
     names: Sequence[str] = PHASE_FEATURES,
 ) -> dict[str, Any]:
-    """Rung one: will the day rise at all from here.  Model-free by contract."""
+    """Rung one: will the day rise a bucket from here.  Model-free by contract."""
 
     raw_bins = np.array(
         [hours_bin(float(sample["remaining_hours"])) for sample in samples]
@@ -316,9 +334,7 @@ def fit_phase_rung(
     dummies[np.arange(len(samples)), bins] = 1.0
     covariates = feature_matrix(samples, names, fallbacks=fallbacks)
     design = np.hstack([dummies, covariates])
-    outcome = np.array(
-        [1.0 if int(sample["delta_c"]) >= 1 else 0.0 for sample in samples]
-    )
+    outcome = np.array([phase_outcome(sample) for sample in samples])
     weight = np.array([float(sample["station_day_weight"]) for sample in samples])
     penalise = np.concatenate([
         np.zeros(bin_count), np.ones(len(names))

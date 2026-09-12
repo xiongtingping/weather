@@ -48,6 +48,10 @@ def _report(index: int, temperature: float, *, receipt_delay_s: float = 120.0):
             f"FEW020 {int(round(temperature)):02d}/18 Q1005 NOSIG"
         ),
         "report_type": "METAR",
+        # The reader selects it, so the fixture has to carry it; a column the
+        # production table has and this one did not turned every test in this
+        # file into an OperationalError rather than a finding.
+        "raw_sha256": f"{index:064d}",
     }
 
 
@@ -58,15 +62,17 @@ def _archive(rows) -> sqlite3.Connection:
         "observation_id TEXT, source_lane TEXT, station_id TEXT,"
         "report_type TEXT, valid_at TEXT, reported_temperature_c REAL,"
         "raw_text TEXT, canonical_committed_at TEXT,"
-        "correction_suspected INTEGER)"
+        "correction_suspected INTEGER, raw_sha256 TEXT)"
     )
     conn.executemany(
-        "INSERT INTO reported_trajectory_observations VALUES(?,?,?,?,?,?,?,?,0)",
+        "INSERT INTO reported_trajectory_observations "
+        "VALUES(?,?,?,?,?,?,?,?,0,?)",
         [
             (
                 row["observation_id"], "awc", STATION, row["report_type"],
                 row["valid_at"], row["reported_temperature_c"],
                 row["raw_text"], row["canonical_committed_at"],
+                row.get("raw_sha256") or "0" * 64,
             )
             for row in rows
         ],
@@ -137,29 +143,62 @@ def test_every_sample_sees_only_reports_already_received() -> None:
     samples, _ = _build(rows, truth=32.0)
 
     late_instant = sample_instant(rows[2])
+    assert late_instant == DAY_START + timedelta(hours=2)
     for sample in samples:
         instant = datetime.fromisoformat(
             sample["as_of_utc"].replace("Z", "+00:00")
         )
+        arrived = [
+            row for row in rows if sample_instant(row) <= instant
+        ]
+        assert sample["prefix_report_count"] == len(arrived)
         if instant < late_instant:
             assert sample["running_high_c"] < 40.0
-            assert sample["prefix_report_count"] <= 2
+            assert rows[2] not in arrived
 
 
-def test_sample_instant_is_bounded_by_the_transmission_lead() -> None:
-    """A backfilled receipt does not move the instant days into the future.
+def test_a_backfilled_receipt_is_not_a_decision_instant_of_that_day() -> None:
+    """A report stored days later did not become knowable ninety seconds in.
 
-    Receipts are written when the row was stored, which on a backfilled day
-    is long after the report existed.  WMKK 2026-08-04 anchored six days
-    late that way, identically for all three of its buckets.
+    The instant is the canonical receipt, which is what ``p1_compiler`` clocks
+    a step at.  This used to be bounded by the transmission lead -- an
+    allowance for a report transmitted a few seconds *before* its nominal
+    minute -- and using it as a ceiling on receipt wrote hours of real arrival
+    delay out of the training set.  A receipt outside the settlement day is
+    excluded as a sample instant rather than moved back inside it; the row
+    still rides every later prefix on the day it actually arrived.
     """
 
     row = _report(4, 30.0, receipt_delay_s=6 * 24 * 3600.0)
-    instant = sample_instant(row)
     valid = datetime.fromisoformat(row["valid_at"].replace("Z", "+00:00"))
-    assert instant - valid <= timedelta(
-        seconds=MAX_REPORT_TRANSMISSION_LEAD_SECONDS
-    )
+    assert sample_instant(row) - valid == timedelta(days=6)
+
+    rows = [_report(index, 27.0 + index) for index in range(4)]
+    rows.append(row)
+    samples, exclusions = _build(rows, truth=32.0)
+    # The path state needs three reports before it may speak, so the day's
+    # first two instants produce nothing; what matters here is that the
+    # backfilled fifth row produces no sample of its own.
+    assert [sample["prefix_report_count"] for sample in samples] == [3, 4]
+    assert ("receipt_outside_event_day", 1) in [
+        (reason, count) for reason, count in exclusions
+    ] or any(reason == "receipt_outside_event_day" for reason, _ in exclusions)
+
+
+def test_a_report_whose_minute_leads_its_receipt_too_far_is_refused() -> None:
+    """The reader's own time-order gate, asked of a historical row."""
+
+    row = _report(2, 29.0)
+    row["canonical_committed_at"] = (
+        datetime.fromisoformat(row["valid_at"].replace("Z", "+00:00"))
+        - timedelta(seconds=MAX_REPORT_TRANSMISSION_LEAD_SECONDS + 1)
+    ).isoformat().replace("+00:00", "Z")
+    rows = [_report(0, 27.0), _report(1, 28.0), row, _report(3, 30.0)]
+    samples, exclusions = _build(rows, truth=32.0)
+    assert any(reason == "report_time_reversed" for reason, _ in exclusions)
+    assert max(
+        sample["prefix_report_count"] for sample in samples
+    ) == 3
 
 
 def test_target_is_remaining_warming_and_zero_means_the_day_is_done() -> None:
@@ -234,3 +273,32 @@ def test_a_root_committed_after_the_instant_is_not_used() -> None:
     samples, exclusions = _build(rows, truth=32.0, target=late_root)
     assert not samples
     assert {reason for reason, _ in exclusions} == {"no_root_as_of"}
+
+
+def test_the_phase_label_is_a_bucket_crossing_not_a_rounded_degree() -> None:
+    """``delta_c >= 1`` and "settled a rung higher" are different questions.
+
+    The served rate is assigned to the mass above the bucket the running high
+    sits in, so the label has to be that crossing.  Here the day rises 0.8C
+    without leaving its rung: the rounded target says "it rose", the ladder
+    says it did not, and the ladder is what the split is rescaled on.
+    """
+
+    rows = [_report(index, temperature) for index, temperature in enumerate(
+        [27.0, 28.0, 29.0, 29.6, 29.6, 29.6]
+    )]
+    samples, _ = _build(rows, truth=30.4)
+    assert samples
+    by_prefix = {sample["prefix_report_count"]: sample for sample in samples}
+    assert by_prefix[6]["running_high_c"] == 29.6
+    assert by_prefix[6]["delta_c"] == 1
+    assert by_prefix[6]["crossed_bucket"] == 0
+    # And where it does cross, both agree.
+    crossing, _ = _build(
+        [_report(index, temperature) for index, temperature in enumerate(
+            [27.0, 28.0, 29.0, 29.6, 29.6, 29.6]
+        )],
+        truth=31.0,
+    )
+    assert crossing[-1]["delta_c"] == 1
+    assert crossing[-1]["crossed_bucket"] == 1
