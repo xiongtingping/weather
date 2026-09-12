@@ -804,21 +804,15 @@ def venue_minimum_shares_v1(
 # production and by the paper ledger.
 CONSOLIDATION_TILT_FLOOR_VERSION = "venue_minimum_per_leg_v1"
 
-# Charter 91 (user ruling, 2026-09-06: "腿地板 0.03 不是固定不变，随着概率调整
-# 而调整").  The 2026-08-24 floor -- a rung asking under three cents is a
-# lottery the market has ruled out, never bought -- was measured on tail
-# rungs, where our own claim was small too.  It was never about rungs we
-# believe in: ZGSZ 2026-09-06 held the day's high at 27°C, the P1 belief in
-# 27°C was 61.5% and the market asked 2.3 cents, and the fixed floor refused
-# the one rung the observations had already confirmed.  The floor now falls
-# with belief: three cents up to the anchor, then in proportion -- at 45%
-# belief 2 cents, at 60% 1.5 cents, at 90% 1 cent -- so a cheap rung is a
-# lottery only while our claim is a tail claim as well.  One implementation,
-# read by production's enumerator and the paper ledger alike.
-LEG_FLOOR_RULE_VERSION = "belief_scaled_v1"
-LEG_FLOOR_BELIEF_ANCHOR = float(
-    os.environ.get("PM_LEG_FLOOR_BELIEF_ANCHOR", "0.30") or 0.30
-)
+# Charter 131 (user ruling, 2026-09-12, Q8: "0.03 地板：读中价"): the floor
+# is a flat three cents on the rung's own reference price -- the mid where
+# the book is two-sided (charter 103), the ask where nobody bids -- and it
+# does not fall with belief.  Charter 91's ``anchor / probability`` scaling
+# (2026-09-06, the ZGSZ 27°C case) is retired with the ruling; a rung the
+# market prices under three cents is not bought however much we believe in
+# it.  One implementation, read by production's enumerator and the paper
+# ledger alike; the rule string is in both fingerprints.
+LEG_FLOOR_RULE_VERSION = "flat_mid_v2"
 
 
 LEG_FLOOR_PRICE_BASIS = (
@@ -875,25 +869,16 @@ def leg_floor_reference_price(
 def leg_floor_all_in_ask(
     minimum_all_in_ask: float,
     probability: float | None,
-    *,
-    anchor: float = LEG_FLOOR_BELIEF_ANCHOR,
 ) -> float:
-    """The all-in ask below which a rung is a dead lottery, given our belief.
+    """The all-in price below which a rung is a dead lottery: the flat floor.
 
-    ``minimum_all_in_ask`` is the ruled floor (0.03).  A claim at or under
-    ``anchor`` keeps it whole; above the anchor the floor scales as
-    ``anchor / probability``.  An unknown or non-positive belief keeps the
-    whole floor: the rule relaxes on evidence, never on its absence.
+    Charter 131 (Q8): three cents, whatever the belief.  ``probability``
+    stays on the signature so every reader keeps its call and is
+    deliberately unread -- the rule relaxes on nothing.
     """
 
-    floor = float(minimum_all_in_ask)
-    try:
-        belief = float(probability) if probability is not None else 0.0
-    except (TypeError, ValueError):
-        belief = 0.0
-    if not math.isfinite(belief) or belief <= float(anchor) or float(anchor) <= 0.0:
-        return floor
-    return floor * float(anchor) / belief
+    del probability
+    return float(minimum_all_in_ask)
 
 
 def leg_below_floor(
@@ -901,11 +886,10 @@ def leg_below_floor(
     probability: float | None,
     minimum_all_in_ask: float,
     *,
-    anchor: float = LEG_FLOOR_BELIEF_ANCHOR,
     bid: float | None = None,
     basis: str = LEG_FLOOR_PRICE_BASIS,
 ) -> bool:
-    """Whether a quoted rung sits under its belief-scaled floor.
+    """Whether a quoted rung sits under the flat floor (charter 131, Q8).
 
     Charter 103: measured on the mid when the book is two-sided.  ``bid``
     left None keeps the ask, which is what a caller with no book to hand
@@ -916,7 +900,7 @@ def leg_below_floor(
     if reference is None:
         return False
     return float(reference) < leg_floor_all_in_ask(
-        minimum_all_in_ask, probability, anchor=anchor
+        minimum_all_in_ask, probability
     )
 
 
@@ -1093,7 +1077,7 @@ _SUPPORT_FLOOR_OVERRIDE = os.environ.get(
 ).strip()
 SUPPORT_SCENARIO_FLOOR_FRACTION = (
     float(_SUPPORT_FLOOR_OVERRIDE) if _SUPPORT_FLOOR_OVERRIDE
-    else (0.0 if CHARTER_93_SUPPORT_FLOOR == "on" else -0.10)
+    else (0.05 if CHARTER_93_SUPPORT_FLOOR == "on" else -0.10)
 )
 # The upper bound is 0.5, not 0.0, so a POSITIVE floor can be measured: the
 # standing rule is "a settlement inside the support may not lose" and the
@@ -1105,7 +1089,12 @@ if not (-1.0 <= SUPPORT_SCENARIO_FLOOR_FRACTION <= 0.5):
     raise RuntimeError(
         f"support scenario floor fraction out of range: {SUPPORT_SCENARIO_FLOOR_FRACTION}"
     )
-SUPPORT_SCENARIO_FLOOR_RULE_VERSION = "support_floor_after_lift_v1"
+# Charter 131 (12b) (user ruling, 2026-09-12): the hit-protection gate is
+# ``min q_i >= 1.05 C`` -- every settlement inside the support returns at
+# least five percent on the whole premium -- at every point the floor is
+# read (opening, after the lift, top-up, completion; Q13).  Charter 93's
+# zero floor is the ``off`` history; the arm above can still price others.
+SUPPORT_SCENARIO_FLOOR_RULE_VERSION = "support_floor_after_lift_v2_hit_roi_5pct"
 
 # --------------------------------------------------------------------------
 # Charter 110: one objective, three arrivals of information, a one-way action
@@ -3772,52 +3761,6 @@ def convergence_claim_factor(state: Mapping[str, Any]) -> float:
 # Fahrenheit books quote 2F buckets and the Celsius books 1C, so a width in
 # degrees means a different number of rungs in each, while "one sigma wide"
 # means the same thing in both.
-def dispersion_support_size(
-    probabilities: "Mapping[str, float]",
-    *,
-    ordinals: "Mapping[str, int]",
-    minimum: int,
-    maximum: int,
-) -> tuple[int, dict[str, Any]]:
-    """How many rungs this day's dispersion asks for, within policy bounds."""
-
-    live = {
-        bucket: max(0.0, float(value))
-        for bucket, value in probabilities.items()
-        if bucket in ordinals
-    }
-    total = sum(live.values())
-    floor_size = max(1, int(minimum))
-    cap_size = max(floor_size, int(maximum))
-    if total <= 0.0:
-        return floor_size, {
-            "schema": "dispersion_support_size_v1",
-            "state": "NO_MASS",
-            "served_size": floor_size,
-        }
-    mean = sum(
-        float(ordinals[bucket]) * value for bucket, value in live.items()
-    ) / total
-    variance = sum(
-        value * (float(ordinals[bucket]) - mean) ** 2
-        for bucket, value in live.items()
-    ) / total
-    sigma = math.sqrt(max(0.0, variance))
-    # Centre rung plus one sigma of rungs either side, rounded up so a
-    # half-bucket of spread still earns its rung.
-    wanted = 1 + 2 * math.ceil(sigma - 1e-9)
-    served = min(cap_size, max(floor_size, int(wanted)))
-    return served, {
-        "schema": "dispersion_support_size_v1",
-        "state": "MEASURED",
-        "sigma_buckets": sigma,
-        "requested_size": int(wanted),
-        "policy_minimum": floor_size,
-        "policy_maximum": cap_size,
-        "served_size": served,
-    }
-
-
 PROBABILITY_CORE_MASS = 0.50
 
 

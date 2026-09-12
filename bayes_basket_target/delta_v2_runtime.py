@@ -32,7 +32,6 @@ from .basket_kernel.delta_v2 import (
     CONSOLIDATION_TILT_FLOOR_VERSION,
     CURVE_BANKROLL_CONVENTION,
     curve_effective_bankroll_v1,
-    LEG_FLOOR_BELIEF_ANCHOR,
     LEG_FLOOR_PRICE_BASIS,
     LEG_FLOOR_RULE_VERSION,
     consolidation_tilt_floor_usdc,
@@ -59,7 +58,6 @@ from .basket_kernel.delta_v2 import (
     CONVERGENCE_CLAIM_MIN_AGREEMENT,
     CONVERGENCE_CLAIM_MIN_CLAIM_RISE,
     CONVERGENCE_CLAIM_MIN_PRICE_FALL,
-    dispersion_support_size,
     EFFECTIVE_EDGE_P0M_STAGES,
     EFFECTIVE_EDGE_P1_STAGES,
     EFFECTIVE_EDGE_STAGES,
@@ -132,7 +130,7 @@ from .basket_kernel.support import (
     mean_center_bucket_v1,
     mean_mode_skew_reading_v1,
     mean_mode_skew_sign_v1,
-    served_sigma_buckets_v1,
+    SKEW_STATE_BY_SIGN,
     _choose_support,
     _derive_dual_risk_scope,
     probability_center_diagnostics,
@@ -144,21 +142,31 @@ from .shadow_objective import solve_fractional_kelly
 
 SCHEMA = "delta_basket_score_runtime_plan_v2"
 
-# P1 is the converging stage: the ladder is allowed to walk down 4 -> 3 -> 2
-# as the day resolves, and stops at two because the second rung is the tail
-# one still carrying the insurance (user ruling, 2026-08-16).  The opening
-# stages keep the policy's three -- see clause 50.
-P1_MINIMUM_SUPPORT_BUCKETS = 2
-# Charter 59 as refined and then vetoed the same evening (2026-08-25,
-# 59a/59b): three rungs are the TARGET opening width; the two-rung fallback
-# pass -- re-enumerating at two when the target floor seats nothing --
-# measured -71% on its own lane (18 chains, 181 staked, -128 returned) and
-# dragged the book from -2.1% to -12.3% with every drop-1/2/3 excision
-# negative.  Third repeat of the same lesson in one day: a day that cannot
-# seat the target shape is a day the market has finished pricing, and
-# buying a degraded shape there buys the wrong side of that knowledge.
-# OFF by default; the env flag keeps the arm re-measurable.
-OPENING_FALLBACK_MIN_BUCKETS = 2
+# Charter 131 (user ruling, 2026-09-12): the seat's shape is fixed by the
+# served distribution's three-state reading -- mean bucket against mode
+# bucket, gated at 0.35 sigma (charters 54/75/122) -- and by nothing else.
+# A symmetric day seats {c-1, c, c+1}; a skewed day seats {c, c+d} or
+# {c, c+d, c+2d}, c the mean bucket and d the tail side, the mode bucket
+# deliberately outside; a symmetric P1 day may also seat {c, c+h}, main
+# rung plus hedge, h the heavier live neighbour.  Two to three rungs at
+# every stage: the three-rung window ranks first on effective mass and the
+# two-rung one seats only where the three-rung fails a gate (Q6).  This
+# retires charter 50's three-to-four width, charter 55's extension gate and
+# its placement arms, charter 59's fallback pass, charter 79's symmetric
+# seat and charter 122's width band.  The shapes are refused at
+# enumeration (funnel gate ``shape``), so the audit closes on them like
+# any other gate.  Read at 09-09..09-12 before landing: 61-75% of
+# admissible seats already had the mean bucket in the middle; the skewed
+# shapes cost 0.16-0.22 less and hit 0.15-0.22 less on 20-odd settled
+# days -- the ledger is the instrument, not that reading.
+SEAT_MIN_BUCKETS = 2
+SEAT_MAX_BUCKETS = 3
+SEAT_SHAPE_RULE_VERSION = "seat_shape_mean_anchored_v1"
+# Charter 131 (11): P0 may not open four rungs, but a P0-M or P1 re-seat may
+# leave the chain holding four -- held legs outside the new window stay
+# held and are never bought (Q7) -- and charter 90's TX-entry span still
+# reads the chain's four (Q9).
+CHAIN_MAX_BUCKETS = 4
 # Research arm (2026-09-06, user: "edge 折扣后 edge 越大份额越多，先量"): how
 # the charter-72 Kelly stake is split across the seat's legs.  ``equal`` is
 # the shipped rule -- one share count for every rung, so the seat pays the
@@ -202,10 +210,6 @@ KELLY_SHAPE_TOPUP = (
 )
 if KELLY_SHAPE_TOPUP not in KELLY_SHAPE_TOPUP_MODES:
     raise RuntimeError(f"unknown Kelly shape top-up mode: {KELLY_SHAPE_TOPUP}")
-OPENING_WIDTH_FALLBACK_ENABLED = (
-    os.environ.get("DELTA_V2_OPENING_WIDTH_FALLBACK", "").strip().lower()
-    in {"1", "true", "yes", "on"}
-)
 MAKER_EXECUTION_CONTRACT = "maker_post_only"
 FOK_EXECUTION_CONTRACT = "single_bucket_fok"
 FillResolver = Callable[..., Mapping[str, Any]]
@@ -960,7 +964,7 @@ WINDOW_REFUSAL_FUNNEL = (
     "gapped",
     "center",
     "short",
-    "skew",
+    "shape",
     # Direction against the book's read of the day (user ruling
     # 2026-08-28); sits with the structural gates because it rules on
     # placement, not price.  Counts stay zero while the gate runs in
@@ -1134,122 +1138,16 @@ if DECLINE_CLAMP_MODE not in {
     "off", "leg", "guarded", "held_only", "after_open",
 }:
     raise ValueError(f"unknown decline clamp mode: {DECLINE_CLAMP_MODE}")
-SKEW_EXTENSION_RULE = (
-    os.environ.get("DELTA_V2_SKEW_EXTENSION_RULE", "").strip().lower()
-    or "on"
-) != "off"
-# Which way the gate points (research knob, 2026-08-26 ledger A/B).
-# ``toward_tail`` is charter 55 as ruled: the window may not lean against
-# the skew, i.e. it extends with the tail, buying the cheap tail rungs.
-# ``toward_mode`` is the coverage-side challenger: flip the sign the gate
-# consumes, so the window may not lean toward the tail and extends toward
-# the heaviest bucket instead -- motivated by the 2026-08-26 projection
-# probe (46 skewed settled days: the truth's median landing sits ON the
-# mode, t=+1.00, and the mode is nearer the truth than the mean, 1.15 vs
-# 1.31 rungs).  Coverage favours it by ~12 points on the left-skew slice;
-# charter 55 won its seat on P&L, so only a default-book replay can rule.
-# The diagnostic reading of the distribution's shape (dashboards, the
-# ``_skew_extension_sign`` helper itself) is direction-agnostic and does
-# not flip with this knob; only the gate's consumed sign does.
-SKEW_EXTENSION_DIRECTION = (
-    os.environ.get("DELTA_V2_SKEW_EXTENSION_DIRECTION", "").strip().lower()
-    or "toward_tail"
-)
-# Which statistic reads the skew (research knob, 2026-08-25 ledger A/B).
-# ``mean_mode`` is the charter-55 ruling: the gap between the mass-weighted
-# mean and the heaviest bucket.  ``mean_median`` replaces the mode with the
-# half-mass bucket -- robust to a single-bucket spike (the ZBAA bimodal
-# case, where a p=0.36 mode two buckets from the mean dominates the
-# reading), at the price of a smaller gap that flags fewer days at the
-# same half-bucket threshold.  The ledger hashes a non-default choice.
-SKEW_SIGNAL_DEFINITION = (
-    os.environ.get("DELTA_V2_SKEW_SIGNAL", "").strip().lower()
-    or "mean_mode"
-)
-# How the window may sit around the centre on a skewed day (research knob,
-# 2026-08-25 ledger A/B).  ``free`` is charter 55 as ruled: any window not
-# leaning AGAINST the skew competes on curve score.  ``anchored`` is the
-# one-sided tail window the user described on the ZUCK example -- the mean
-# bucket pinned at the window's anti-skew edge, every other rung extended
-# into the tail (left-skew: centre is the hottest rung, [34,35,36] around
-# a 36 centre) -- which forbids balanced windows too, not just opposed
-# ones.  Symmetric days are untouched under both.
-# Charter 79 (user ruling, 2026-09-04): on a symmetric day -- mean within
-# half a bucket of the mode, no direction -- the P0/P0-M seat is the mean
-# bucket and one rung each side, nothing else; skewed days keep the standing
-# rule, and P1 (whose late-day ladder rarely has three rungs) is untouched.
-# ``center_pm1_p0`` is the shipped rule; ``off`` and ``center_pm1`` (every
-# stage) are research arms.  Measured on the same book 08-15..09-03: -2.8%
-# -> +0.5%, symmetric station-days -124 -> -45, skewed days unchanged;
-# every-stage starves P1 (-9.7%).
-# Research arm ``mean_mode_pair_p0`` (user, 2026-09-05): on a symmetric day
-# the P0/P0-M seat is two rungs -- the mean bucket and the neighbour the
-# mean leans toward (the mode and mean buckets coincide on every symmetric
-# day measured: 503 of 503 latest P0 envelopes 08-15..09-04, so "mode plus
-# mean" is read as the pair the fractional mean sits between; an exact tie
-# takes the heavier neighbour).  The width floor drops to two for that seat
-# only; skewed days and P1 are untouched.
-# Charter 50's width bounds, as research arms.
-#
-# Measured 2026-09-11: an enumeration produces a median of ONE priced window
-# and touches a median of three buckets, with widths almost entirely three or
-# four against bounds of three and four.  So the bounds are not a filter on a
-# wide domain, they ARE most of the domain: from an admitted run of three
-# buckets, "at least three and at most four" cuts exactly one window.  The
-# centre gate, ablated the same day, moved five seats of 256 -- it had
-# nothing left to refuse.
-#
-# Unset means the station policy's own value, which is what production
-# serves.  Set, they replace it at the one call that hands the enumerator its
-# bounds, so an arm can ask what a narrower floor or a wider ceiling is
-# worth without a policy rebuild.  The paper ledger hashes either when set.
-def _optional_width(name: str) -> int | None:
-    raw = os.environ.get(name, "").strip()
-    if not raw:
-        return None
-    value = int(raw)
-    if not 1 <= value <= 8:
-        raise RuntimeError(f"{name} out of range: {value}")
-    return value
-
-
-SUPPORT_WIDTH_MIN_OVERRIDE = _optional_width("PM_SUPPORT_WIDTH_MIN")
-SUPPORT_WIDTH_MAX_OVERRIDE = _optional_width("PM_SUPPORT_WIDTH_MAX")
-if (
-    SUPPORT_WIDTH_MIN_OVERRIDE is not None
-    and SUPPORT_WIDTH_MAX_OVERRIDE is not None
-    and SUPPORT_WIDTH_MIN_OVERRIDE > SUPPORT_WIDTH_MAX_OVERRIDE
-):
-    raise RuntimeError(
-        "support width override inverted: %d > %d"
-        % (SUPPORT_WIDTH_MIN_OVERRIDE, SUPPORT_WIDTH_MAX_OVERRIDE)
-    )
-
-
-def support_width_bounds_v1(
-    *, policy_minimum: int, policy_maximum: int
-) -> tuple[int, int]:
-    """The bounds the enumerator is handed, policy unless an arm says else.
+def support_width_bounds_v1() -> tuple[int, int]:
+    """The bounds the enumerator is handed: charter 131's two to three.
 
     One function, so the production judge and the paper ledger cannot be
     running two different pairs -- which is the failure the binding test
-    exists to catch.
+    exists to catch.  The station policy's width fields are no longer read
+    here: the seat's width is the ruling's, not the station's.
     """
 
-    minimum = (
-        policy_minimum if SUPPORT_WIDTH_MIN_OVERRIDE is None
-        else SUPPORT_WIDTH_MIN_OVERRIDE
-    )
-    maximum = (
-        policy_maximum if SUPPORT_WIDTH_MAX_OVERRIDE is None
-        else SUPPORT_WIDTH_MAX_OVERRIDE
-    )
-    if minimum > maximum:
-        raise RuntimeError(
-            "support width bounds inverted after override: %d > %d"
-            % (minimum, maximum)
-        )
-    return minimum, maximum
+    return SEAT_MIN_BUCKETS, SEAT_MAX_BUCKETS
 
 
 # The centre-contain gate (charter 49), as a research arm.
@@ -1276,115 +1174,6 @@ if CENTRE_CONTAIN_GATE not in {"on", "deflate_only"}:
     raise RuntimeError(
         f"unknown centre contain gate mode: {CENTRE_CONTAIN_GATE}"
     )
-SYMMETRIC_SEAT_MODE = (
-    os.environ.get("PM_SYMMETRIC_SEAT_MODE", "").strip().lower()
-    or "center_pm1_p0"
-)
-# Research arm ``mode_only_p0`` (user, 2026-09-05): on a symmetric day the
-# P0/P0-M seat is the single mean bucket -- the mode, since the two coincide
-# on every symmetric day measured.  The width floor drops to one for that
-# seat only; skewed days and P1 are untouched.
-if SYMMETRIC_SEAT_MODE not in {
-    "off", "center_pm1", "center_pm1_p0", "mean_mode_pair_p0", "mode_only_p0",
-}:
-    raise RuntimeError(f"unknown symmetric seat mode: {SYMMETRIC_SEAT_MODE}")
-# Charter 122 (user ruling, 2026-09-08): the symmetric seat applies only
-# inside the served-width band it was adjudicated on.  Charter 79's reading
-# (-2.8% -> +0.5%, 08-15..09-03) was taken on a P0 vector whose sigma ran
-# 1.5-2.1 bucket steps and read SYMMETRIC on about half of station-days.
-# Between 09-03 and 09-07 three width changes -- the P0 centre/width layer
-# wired at lambda 0.75, charter 86 retiring the climate blend, the station
-# width table at 0.5 on 32 of 45 stations -- took the served sigma to 0.70,
-# and the "symmetric" reading is a monotone function of that number alone
-# (19% of days at sigma >= 2.25, 84% under 1.0; holds within a single
-# decision day).  So the rule went from binding half the days to 95.8% of P0
-# seats with no re-measurement, and nothing in the shape layer read the
-# width that moved it.  ``lo,hi`` in bucket steps, half-open; a day outside
-# the band is seated by the ordinary enumeration, with the width and the
-# band written to the audit so the board can say which rule seated it.
-# ``off`` is the identity band, i.e. charter 79 as it stood; unset is the
-# ruled default below.
-#
-# Default [1.0, inf) (user ruling 2026-09-09, from the sweep charter 122
-# part (four) names: five arms over one two-week replay, 08-25..09-08,
-# seats binned by the served sigma at seat time).  Charter 79 earns in the
-# band it was measured on and nowhere else.  P0 [1.0,1.5): +59.5 on 54
-# seats against +7.6 on 62 with the rule off -- +51.9, the largest single
-# reading in the sweep.  P0 [0,1.0): +23.2 on 17 against +25.4 on 15, so
-# -2.2 and two seats; under one bucket step the enumeration's own positive
-# EV window already IS centre+-1, and forcing it changes nothing.  P0
-# [1.5,inf): -55.7 on 52 against -58.7 on 75 -- +3.0 for twenty-three fewer
-# seats, no edge either way.  The composite arm (this band exactly) reads
-# P0 +33.4 against base +27.0 and the whole book +66.1 against +71.4, both
-# inside noise -- the book gap is two P0-M seats.  So the band costs
-# nothing measurable and stops the rule binding 95.8% of P0 seats on days
-# it was never judged on.  No upper bound: wide days show no difference
-# with the rule on or off, and a bound there would be a second claim the
-# sweep cannot support.
-SYMMETRIC_SEAT_WIDTH_BAND_DEFAULT = "1.0,inf"
-
-
-def _resolve_seat_band(
-    stage: str, bands: "Mapping[str, Any] | None"
-) -> tuple[float, float]:
-    """The band this stage serves: research arm, then fit, then the ruling.
-
-    ``bands`` is the fitted table as the loader returns it, stage-keyed, and
-    is None on every path that has no database to read one from -- the paper
-    ledger before its first as-of read, a test, a replay of a day older than
-    the lane.  Those keep charter 122's ruled default, which is what was
-    serving before the lane existed.
-    """
-
-    if SYMMETRIC_SEAT_WIDTH_BAND_PINNED or not bands:
-        return SYMMETRIC_SEAT_WIDTH_BAND
-    found = bands.get(str(stage))
-    if not found:
-        return SYMMETRIC_SEAT_WIDTH_BAND
-    lower = float(found[0])
-    upper = float(found[1]) if len(found) > 1 and found[1] is not None else float("inf")
-    if not (0.0 <= lower < upper):
-        return SYMMETRIC_SEAT_WIDTH_BAND
-    return (lower, upper)
-
-
-def _parse_width_band(raw: str) -> tuple[float, float]:
-    text = str(raw or "").strip().lower()
-    if not text:
-        text = SYMMETRIC_SEAT_WIDTH_BAND_DEFAULT
-    if text == "off":
-        return (0.0, float("inf"))
-    parts = [part.strip() for part in text.split(",")]
-    if len(parts) != 2:
-        raise RuntimeError(f"symmetric seat width band wants lo,hi: {raw!r}")
-    low = float(parts[0])
-    high = float("inf") if parts[1] in {"", "inf"} else float(parts[1])
-    if not (0.0 <= low < high):
-        raise RuntimeError(f"symmetric seat width band out of order: {raw!r}")
-    return (low, high)
-
-
-# An explicitly set environment value is a research arm and outranks the
-# fitted table: the whole point of the arm is to hold the band still while
-# something else is measured.  Unset means "serve whatever the lane fitted",
-# and the constant below is then only the floor under an empty lane.
-SYMMETRIC_SEAT_WIDTH_BAND_PINNED = bool(
-    os.environ.get("PM_SYMMETRIC_SEAT_WIDTH_BAND", "").strip()
-)
-SYMMETRIC_SEAT_WIDTH_BAND = _parse_width_band(
-    os.environ.get("PM_SYMMETRIC_SEAT_WIDTH_BAND", "")
-)
-# Research arms (2026-09-04, user): (1) P0 seat by skew -- symmetric day
-# centre+-1; right-skewed day the 3-4 rungs from the mean bucket toward the
-# hot tail; left-skewed the mirror.  (2) P0-M and the TAF TX: ``tx_anchor``
-# (the seat must hold the TX bucket), ``confirm_hold`` (TAF direction against
-# the skew -> hold), ``confirm_override`` (against -> the 3-4 rungs from the
-# mean bucket toward the TAF side).  Both default off.
-SKEW_SEAT_MODE = (
-    os.environ.get("PM_SKEW_SEAT_MODE", "").strip().lower() or "off"
-)
-if SKEW_SEAT_MODE not in {"off", "p0_tail"}:
-    raise RuntimeError(f"unknown skew seat mode: {SKEW_SEAT_MODE}")
 # Charter 90 (user rulings, 2026-09-06): the TAF TX is a point forecast, not
 # a bucket distribution, but it carries information the models do not have,
 # so it enters exactly once -- on the P0-M stage, as the P0 basket's second
@@ -1423,10 +1212,6 @@ CHAIN_OPENING_STAGES = frozenset(
 )
 if not CHAIN_OPENING_STAGES <= {"P0", "P0-M", "P1"}:
     raise RuntimeError(f"unknown chain opening stages: {sorted(CHAIN_OPENING_STAGES)}")
-SKEW_PLACEMENT_MODE = (
-    os.environ.get("DELTA_V2_SKEW_PLACEMENT", "").strip().lower()
-    or "free"
-)
 # The gap below which a day reads as symmetric, in units of the served
 # sigma (user ruling, 2026-09-11; the charter-55 half bucket was an absolute
 # gate that turned into a width reading as serving narrowed -- see the
@@ -1471,8 +1256,11 @@ SKEW_GAP_THRESHOLD_SIGMA = float(
 # v11 honest pairing it is +0.9 points alone, +12.4 from 08-23, and +4.3
 # inside the best combination with the clamp retirement and the ticket-only
 # opener (X8/X10, 2026-09-05).  ``shadow`` counts without refusing.
+# Charter 131 (2) (user ruling, 2026-09-12, Q2): the market's mean bucket
+# is data being collected, not yet a rule -- the gate counts and stands
+# aside.  ``on`` stays a research arm.
 MARKET_LEAN_GATE_MODE = (
-    os.environ.get("PM_MARKET_LEAN_GATE", "").strip().lower() or "on"
+    os.environ.get("PM_MARKET_LEAN_GATE", "").strip().lower() or "shadow"
 )
 # Same half-bucket convention as the skew threshold: below this the book
 # and the model agree and the gate stays out of the way.
@@ -1574,7 +1362,6 @@ def _skew_extension_sign(
     return mean_mode_skew_sign_v1(
         probabilities,
         ordinals,
-        signal=SKEW_SIGNAL_DEFINITION,
         threshold_sigma=SKEW_GAP_THRESHOLD_SIGMA,
     )
 
@@ -1862,6 +1649,113 @@ def taf_tx_bucket_for(envelope: Any, stage: str) -> str | None:
     return None
 
 
+def seat_shape_windows_v1(
+    *,
+    centre_ordinal: int | None,
+    sign: int,
+    stage: str,
+    probability_by_ordinal: Mapping[int, float],
+    live_ordinals: set[int],
+) -> tuple[frozenset[frozenset[int]], dict[str, Any]]:
+    """Charter 131: the only window shapes the seat may take today.
+
+    Symmetric day: ``{c-1, c, c+1}``; a P1 day may also seat the two-rung
+    ``{c, c+h}`` -- the main rung and its hedge, ``h`` toward the heavier
+    live neighbour (the served mass, not the book: the market is data, not
+    a rule).  Skewed day: ``{c, c+d, c+2d}`` and ``{c, c+d}``, ``d`` the
+    tail side, the mode bucket outside by ruling.  Ordered widest first so a
+    reader sees the preference; the seat itself is the head of the mass
+    ranking, where the three-rung window always outranks its own two-rung
+    subset and the two-rung one seats only when the wider fails a gate.
+    """
+
+    audit: dict[str, Any] = {
+        "rule": SEAT_SHAPE_RULE_VERSION,
+        "sign": int(sign),
+        "state": SKEW_STATE_BY_SIGN[int(sign)],
+        "centre_ordinal": centre_ordinal,
+        "allowed_ordinals": [],
+    }
+    if centre_ordinal is None:
+        return frozenset(), audit
+    c = int(centre_ordinal)
+    shapes: list[frozenset[int]] = []
+    if str(stage) == "P1" and live_ordinals == {c}:
+        # Late in P1 the observed high can leave one live outcome; demanding
+        # a second rung then is a ban on the one basket that is still
+        # correct (charter 50a), so the lone rung is the shape.
+        shapes.append(frozenset({c}))
+        audit["allowed_ordinals"] = [[c]]
+        return frozenset(shapes), audit
+    if int(sign) == 0:
+        shapes.append(frozenset({c - 1, c, c + 1}))
+        if str(stage) == "P1":
+            live_up = (c + 1) in live_ordinals
+            live_down = (c - 1) in live_ordinals
+            if live_up or live_down:
+                up = float(probability_by_ordinal.get(c + 1, 0.0) or 0.0)
+                down = float(probability_by_ordinal.get(c - 1, 0.0) or 0.0)
+                h = 1 if (live_up and (not live_down or up >= down)) else -1
+                shapes.append(frozenset({c, c + h}))
+    else:
+        d = 1 if int(sign) > 0 else -1
+        shapes.append(frozenset({c, c + d, c + 2 * d}))
+        shapes.append(frozenset({c, c + d}))
+    audit["allowed_ordinals"] = [sorted(shape) for shape in shapes]
+    return frozenset(shapes), audit
+
+
+def chain_protection_v1(
+    snapshot: TargetBasketSnapshot, buckets: Sequence[str]
+) -> dict[str, Any]:
+    """Charter 131 (14): whether the seated basket is actually protected.
+
+    Protected means every seated rung is FILLED -- a pending order is a
+    liability the book may still have to pay, not cover -- and the
+    in-support floor (charter 93, now five percent of the premium) holds on
+    the filled shares and their sunk cost.  A basket with any rung still
+    unfilled is BUILDING and may not be reported as protected; an empty
+    seat is EMPTY.  Audit only: it names the state, it does not gate.
+    """
+
+    rows = {row.bucket: row for row in snapshot.buckets}
+    filled = {
+        str(b): float(getattr(rows.get(b), "filled_shares", 0.0) or 0.0)
+        for b in buckets
+    }
+    cost = {
+        str(b): float(getattr(rows.get(b), "filled_cost_usdc", 0.0) or 0.0)
+        for b in buckets
+    }
+    pending = [
+        str(b) for b in buckets
+        if float(getattr(rows.get(b), "pending_shares", 0.0) or 0.0) > EPS
+    ]
+    unfilled = [b for b, shares in filled.items() if shares <= EPS]
+    floor = (
+        _kernel_delta_v2.support_scenario_floor_v1(
+            shares_by_bucket=filled, cost_by_bucket=cost,
+            support=[str(b) for b in buckets],
+        )
+        if buckets and not unfilled else None
+    )
+    protected = bool(floor is not None and floor["legal"])
+    if protected:
+        state = "PROTECTED"
+    elif any(v > EPS for v in filled.values()) or pending:
+        state = "BUILDING"
+    else:
+        state = "EMPTY"
+    return {
+        "schema": "chain_protection_v1",
+        "state": state,
+        "protected": protected,
+        "unfilled_buckets": unfilled,
+        "pending_buckets": pending,
+        "floor": floor,
+    }
+
+
 def _support_windows(
     *,
     snapshot: TargetBasketSnapshot,
@@ -1876,7 +1770,6 @@ def _support_windows(
     convergence_evidence: Mapping[str, Any] | None = None,
     effective_edge_tables: Mapping[str, Any] | None = None,
     off_centre_claim_bands: Mapping[str, Any] | None = None,
-    symmetric_seat_bands: Mapping[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Contiguous windows admissible as a support, ranked by belief divergence.
 
@@ -2152,19 +2045,12 @@ def _support_windows(
                 for bucket, row in by_bucket.items()
             },
         ) or ladder_center
-    # The day's skew reading, once, for the extension gate below.  Zero --
-    # no constraint -- when the rule is off or the split is under half a
-    # bucket.
+    # Charter 131: the day's three-state reading, once.  It fixes the
+    # seat's shape below and nothing else; the market is data, not a rule.
     skew_sign = _skew_extension_sign(
         probabilities,
         {bucket: int(row.ordinal) for bucket, row in by_bucket.items()},
-    ) if SKEW_EXTENSION_RULE else 0
-    # toward_mode flips the sign the gate consumes: "may not lean against
-    # the skew" becomes "may not lean with the tail", so the admissible
-    # lean points at the heaviest bucket.  The shape reading itself is
-    # untouched -- diagnostics stay direction-agnostic.
-    if SKEW_EXTENSION_DIRECTION == "toward_mode":
-        skew_sign = -skew_sign
+    )
     core = probability_core(
         probabilities,
         ordinals={
@@ -2189,7 +2075,7 @@ def _support_windows(
     # ``shortlisted``, and ``_window_audit_closes`` asserts it.
     center_refused = 0
     short_refused = 0
-    skew_refused = 0
+    shape_refused = 0
     market_lean_refused = 0
     # What the gate refused, not just how many (user ruling 2026-09-08,
     # "market_lean 加上：在拒绝时把窗口的桶记下来").  It was promoted on
@@ -2274,52 +2160,17 @@ def _support_windows(
     # requirements of clause 50 have to be reachable.  P1 may also add a
     # bucket the ladder did not open with -- the floor bounds the seat, it
     # does not forbid a new rung.
-    stage_min = (
-        P1_MINIMUM_SUPPORT_BUCKETS
-        if str(probability_stage) == "P1"
-        else int(minimum_support_buckets)
-    )
-    # Research arm (2026-09-05): the two-rung symmetric seat needs the
-    # two-rung windows enumerated at all; the floor drops to two for a
-    # symmetric P0/P0-M day under that arm only.
-    narrow_arm_symmetric = (
-        SYMMETRIC_SEAT_MODE in {"mean_mode_pair_p0", "mode_only_p0"}
-        and str(probability_stage or "") != "P1"
-        and ladder_center in by_bucket
-        and _skew_extension_sign(
-            probabilities,
-            {bucket: int(row.ordinal) for bucket, row in by_bucket.items()},
-        ) == 0
-    )
-    if narrow_arm_symmetric:
-        stage_min = min(
-            stage_min, 1 if SYMMETRIC_SEAT_MODE == "mode_only_p0" else 2
-        )
-    # The floor cannot ask for more rungs than the day still has.  Late in P1
-    # the hard bound prunes every bucket the reported high has passed, and a
-    # station can arrive here with one live outcome left; demanding two then
-    # is not a floor but a ban on the one basket that is still correct.  The
-    # floor binds where there is a choice to constrain, which is the whole of
-    # its purpose in clauses 50/50a.
+    # Charter 131: two to three rungs at every stage.  The floor cannot ask
+    # for more rungs than the day still has (late in P1 the observed high
+    # can leave one live outcome), and the cap here is the seat's, not the
+    # chain's -- charter 90's TX-entry span reads the chain's below.
+    stage_min = int(minimum_support_buckets)
     policy_min = max(1, min(stage_min, max_size, len(admitted)))
-    wanted_size, dispersion_receipt = dispersion_support_size(
-        probabilities,
-        ordinals={
-            bucket: int(row.ordinal) for bucket, row in by_bucket.items()
-        },
-        minimum=policy_min,
-        maximum=max_size,
-    )
-    # Dispersion tightens the cap, never the floor.  Raising the floor on a
-    # diffuse day would forbid the narrow seats the objective is entitled to
-    # prefer; lowering the cap on a sharp day stops it buying rungs the
-    # model does not believe in.  The floor stays the policy's, which is
-    # what clause 50 made a hard requirement.
     min_size = policy_min
-    max_size = max(policy_min, min(max_size, wanted_size))
+    max_size = max(policy_min, min(max_size, SEAT_MAX_BUCKETS))
     # Charter 90 reads the policy's cap, not the dispersion-tightened one:
     # the TX entering the basket is the ruling, a sharp day does not veto it.
-    policy_cap = max(1, int(maximum_support_buckets))
+    policy_cap = CHAIN_MAX_BUCKETS
     # Charter 90: the TAF TX as the P0 basket's second confirmation.  Held
     # rungs are what P0 (or an earlier P0-M) actually bought; the TX bucket
     # inside them confirms the basket and the TAF constrains nothing.  Outside
@@ -2393,6 +2244,19 @@ def _support_windows(
     if taf_entry_window is not None and len(taf_entry_window) > max_size:
         # The entry seat has to be enumerated to be sanctioned.
         max_size = len(taf_entry_window)
+    allowed_shapes, seat_shape_audit = seat_shape_windows_v1(
+        centre_ordinal=(
+            int(by_bucket[ladder_center].ordinal)
+            if ladder_center in by_bucket else None
+        ),
+        sign=skew_sign,
+        stage=str(probability_stage or ""),
+        probability_by_ordinal={
+            int(row.ordinal): float(probabilities.get(bucket, 0.0) or 0.0)
+            for bucket, row in by_bucket.items()
+        },
+        live_ordinals={int(by_bucket[bucket].ordinal) for bucket in admitted},
+    )
     for size in range(1, min(max_size, len(admitted)) + 1):
         for start in range(0, len(admitted) - size + 1):
             window = tuple(admitted[start:start + size])
@@ -2661,59 +2525,19 @@ def _support_windows(
             if len(window) < min_size:
                 short_refused += 1
                 continue
-            # Charter 55: on a skewed day the window may not lean against
-            # the skew.  Balanced windows and the skew side stay admissible;
-            # "Direction is deliberately not checked" above is superseded
-            # for this one shape-derived signal, and only when the day's
-            # own distribution splits its mean from its mode.
-            if SKEW_PLACEMENT_MODE in ("hot_pair", "hot_anchor"):
-                # Research arms (2026-08-25, coverage objective): the truth
-                # lands systematically one bucket HOT of the mean whatever
-                # the day's skew reads, so these place toward heat on every
-                # day and replace the direction gate for the arm's run.
-                # ``hot_pair``: the window must hold the centre's hot
-                # neighbour too (contiguity makes any hotter rung adjacent)
-                # -- the seatable version of "widen one hot".  ``hot_anchor``
-                # pins the centre at the cold edge, the full tilt.
-                centre_ordinal = int(by_bucket[ladder_center].ordinal)
-                above = sum(
-                    1 for bucket in window
-                    if int(by_bucket[bucket].ordinal) > centre_ordinal
-                )
-                below = sum(
-                    1 for bucket in window
-                    if int(by_bucket[bucket].ordinal) < centre_ordinal
-                )
-                bad = (
-                    above < 1 if SKEW_PLACEMENT_MODE == "hot_pair"
-                    else below > 0
-                )
-                if bad:
-                    skew_refused += 1
-                    continue
-            elif skew_sign:
-                centre_ordinal = int(by_bucket[ladder_center].ordinal)
-                above = sum(
-                    1 for bucket in window
-                    if int(by_bucket[bucket].ordinal) > centre_ordinal
-                )
-                below = sum(
-                    1 for bucket in window
-                    if int(by_bucket[bucket].ordinal) < centre_ordinal
-                )
-                opposed = (skew_sign > 0 and above < below) or (
-                    skew_sign < 0 and above > below
-                )
-                # ``anchored``: the centre must BE the anti-skew edge, so a
-                # single rung on the wrong side of it refuses the window.
-                if SKEW_PLACEMENT_MODE == "anchored":
-                    opposed = opposed or (
-                        (skew_sign > 0 and below > 0)
-                        or (skew_sign < 0 and above > 0)
-                    )
-                if opposed:
-                    skew_refused += 1
-                    continue
+            # Charter 131: the seat's shape is the ruling's, whatever the
+            # price.  Symmetric: {c-1, c, c+1} (P1 may also seat {c, c+h});
+            # skewed: {c, c+d} or {c, c+d, c+2d}.  Charter 90's TX-entry
+            # span is sanctioned on its own below and passes here.
+            window_ordinals = frozenset(
+                int(by_bucket[bucket].ordinal) for bucket in window
+            )
+            if (
+                window_ordinals not in allowed_shapes
+                and window_ordinals != taf_entry_window
+            ):
+                shape_refused += 1
+                continue
             # The market-lean gate: the constants block up top carries the
             # measurement that earned it (94%/82% directional realisation
             # in the bridge's dead zone).  Incumbent exempt -- keeping what
@@ -3019,7 +2843,15 @@ def _support_windows(
                 "admissible": bool(admissible),
                 **({"completion": completion} if completion is not None else {}),
             })
-    if incumbent not in seen:
+    # Charter 131 / charter 78: the held window reaches the list whatever
+    # refused it.  Enumeration can miss it outright (bounded to contiguous
+    # runs of at most SEAT_MAX_BUCKETS; an inherited support may be neither)
+    # or a structural gate -- centre, length, shape -- can turn it away in
+    # the loop, and either way the solver still needs a window to hold on.
+    # A structurally refused incumbent is appended INADMISSIBLE and is not
+    # counted again: the gate that refused it already did.
+    structurally_refused = incumbent in seen
+    if not any(row.get("is_incumbent") for row in windows):
         # Enumeration can miss the incumbent outright: it is bounded to
         # contiguous runs of at most ``maximum_support_buckets``, and an
         # inherited support may be neither -- a live ZHHH core sat on
@@ -3079,11 +2911,16 @@ def _support_windows(
             min(1.0 - EPS, win * incumbent_lambda)
             if incumbent_lambda is not None else win
         )
-        incumbent_admissible = priced and clears_economic_hurdle_v1(
-            expected_payout=incumbent_effective_win, cost=price,
+        incumbent_admissible = (
+            priced
+            and not structurally_refused
+            and clears_economic_hurdle_v1(
+                expected_payout=incumbent_effective_win, cost=price,
+            )
         )
         if (
             priced
+            and not structurally_refused
             and incumbent_lambda is not None
             and not incumbent_admissible
             and clears_economic_hurdle_v1(expected_payout=win, cost=price)
@@ -3100,7 +2937,7 @@ def _support_windows(
                 incumbent_lambda if incumbent_lambda is not None else 1.0
             ),
         )
-        if not incumbent_admissible:
+        if not incumbent_admissible and not structurally_refused:
             if not priced:
                 unpriced_refused += 1
             else:
@@ -3131,6 +2968,7 @@ def _support_windows(
             "log_growth_rank": incumbent_kl,
             "is_incumbent": True,
             "admissible": bool(incumbent_admissible),
+            "structurally_refused": structurally_refused,
             **(
                 {"completion": incumbent_completion}
                 if incumbent_completion is not None else {}
@@ -3174,166 +3012,6 @@ def _support_windows(
             row["buckets"],
         )
     )
-    # Research arm: symmetric day -> the seat is centre-1, centre, centre+1
-    # and nothing else.  The shape is read raw (not through the extension
-    # rule's switches); every other window is left listed but inadmissible
-    # so the solver holds when the sanctioned window is not on offer.
-    symmetric_seat_forced = False
-    symmetric_seat_pair: tuple[str, ...] | None = None
-    # Charter 122: the width the seat rule is judged against, read off the
-    # same served vector the shape is read off, in the same bucket steps.
-    seat_sigma_buckets = served_sigma_buckets_v1(
-        probabilities,
-        {bucket: int(row.ordinal) for bucket, row in by_bucket.items()},
-    )
-    seat_band = _resolve_seat_band(
-        str(probability_stage or ""), symmetric_seat_bands
-    )
-    seat_width_in_band = seat_sigma_buckets is None or (
-        seat_band[0] <= seat_sigma_buckets < seat_band[1]
-    )
-    # Split deliberately: the SHAPE question (is this a symmetric day at a
-    # stage the rule covers) is answered for every such day, and the BAND
-    # question only decides whether the filter fires.  The counterfactual
-    # below is recorded on both sides of the band -- a lane that only saw
-    # in-band days could confirm the incumbent band and never learn that it
-    # should widen, which is the failure mode of every gate that measures
-    # only what it already admits.
-    symmetric_shape_applies = (
-        SYMMETRIC_SEAT_MODE == "center_pm1"
-        or (
-            SYMMETRIC_SEAT_MODE in {
-                "center_pm1_p0", "mean_mode_pair_p0", "mode_only_p0",
-            }
-            and str(probability_stage or "") != "P1"
-        )
-    ) and not taf_entry_required
-    symmetric_arm_applies = symmetric_shape_applies and seat_width_in_band
-    # Charter 122 (五): the paired counterfactual this rule is fitted on.
-    # Both arms are priced off the same book at the same instant, so the
-    # comparison carries none of the chain-and-capital interference that put
-    # a +-15 floor under the replay sweep: a settled day says directly
-    # whether forcing centre+-1 beat letting the enumeration choose.  It
-    # measures the SEAT only -- an effect that exists solely through sizing
-    # or chain composition is invisible here, and the replay is still the
-    # instrument for those.
-    symmetric_seat_counterfactual: dict[str, Any] | None = None
-    if symmetric_shape_applies and ladder_center in by_bucket:
-        if _skew_extension_sign(
-            probabilities,
-            {bucket: int(row.ordinal) for bucket, row in by_bucket.items()},
-        ) == 0:
-            centre = int(by_bucket[ladder_center].ordinal)
-            forced_set = {centre - 1, centre, centre + 1}
-
-            def _row_note(row: Mapping[str, Any]) -> dict[str, Any]:
-                return {
-                    "buckets": list(row["buckets"]),
-                    "all_in_price": row.get("all_in_price"),
-                    "win_probability": row.get("win_probability"),
-                    "edge": row.get("edge"),
-                }
-
-            live = [
-                row for row in windows if row.get("admissible", True)
-            ]
-            forced_rows = [
-                row for row in live
-                if {int(by_bucket[b].ordinal) for b in row["buckets"]}
-                == forced_set
-            ]
-            # The free arm is the admissible window with the largest edge,
-            # which is a quantity already on the row rather than a ranking
-            # invented here; ties go to the narrower window and then to the
-            # lower rung, so the record is reproducible.
-            def _edge_key(row: Mapping[str, Any]) -> tuple[float, int, int]:
-                return (
-                    -float(row.get("edge") or 0.0),
-                    len(row["buckets"]),
-                    min(int(by_bucket[b].ordinal) for b in row["buckets"]),
-                )
-
-            free_rows = sorted(live, key=_edge_key)
-            symmetric_seat_counterfactual = {
-                "schema": "symmetric_seat_counterfactual_v1",
-                "sigma_buckets": seat_sigma_buckets,
-                "width_in_band": seat_width_in_band,
-                "band": [
-                    seat_band[0],
-                    None if seat_band[1] == float("inf") else seat_band[1],
-                ],
-                "stage": str(probability_stage or ""),
-                "centre_bucket": ladder_center,
-                "forced": (
-                    _row_note(forced_rows[0]) if forced_rows else None
-                ),
-                "free": _row_note(free_rows[0]) if free_rows else None,
-                "admissible_window_count": len(live),
-            }
-    if symmetric_arm_applies and ladder_center in by_bucket:
-        raw_skew = _skew_extension_sign(
-            probabilities,
-            {bucket: int(row.ordinal) for bucket, row in by_bucket.items()},
-        )
-        if raw_skew == 0:
-            centre_ordinal = int(by_bucket[ladder_center].ordinal)
-            if SYMMETRIC_SEAT_MODE == "mode_only_p0":
-                # One rung: the mean bucket, which is the mode on a
-                # symmetric day.
-                wanted = {centre_ordinal}
-                symmetric_seat_pair = (ladder_center,)
-            elif SYMMETRIC_SEAT_MODE == "mean_mode_pair_p0":
-                # The pair: the centre and the neighbour the fractional
-                # mean leans toward; a dead tie takes the heavier one; a
-                # neighbour the day cannot reach yields to the other side.
-                by_ordinal = {
-                    int(row.ordinal): bucket for bucket, row in by_bucket.items()
-                }
-                weighted = [
-                    (float(probabilities[bucket]), int(by_bucket[bucket].ordinal))
-                    for bucket in probabilities
-                    if bucket in by_bucket and float(probabilities[bucket]) > 0.0
-                ]
-                total = sum(mass for mass, _ in weighted)
-                mean_ordinal = (
-                    sum(mass * ordinal for mass, ordinal in weighted) / total
-                    if total > 0.0 else float(centre_ordinal)
-                )
-                gap = mean_ordinal - centre_ordinal
-                up = by_ordinal.get(centre_ordinal + 1)
-                down = by_ordinal.get(centre_ordinal - 1)
-                if abs(gap) > 1e-9:
-                    lean_first, lean_second = (up, down) if gap > 0 else (down, up)
-                else:
-                    heavier_up = float(probabilities.get(up, 0.0) or 0.0) >= float(
-                        probabilities.get(down, 0.0) or 0.0
-                    )
-                    lean_first, lean_second = (up, down) if heavier_up else (down, up)
-                partner = lean_first if lean_first is not None else lean_second
-                if partner is None:
-                    wanted = set()
-                else:
-                    wanted = {centre_ordinal, int(by_bucket[partner].ordinal)}
-                    symmetric_seat_pair = tuple(sorted(
-                        (ladder_center, partner),
-                        key=lambda bucket: int(by_bucket[bucket].ordinal),
-                    ))
-            else:
-                wanted = {centre_ordinal - 1, centre_ordinal, centre_ordinal + 1}
-            def _is_symmetric_seat(row: Mapping[str, Any]) -> bool:
-                return bool(wanted) and {
-                    int(by_bucket[bucket].ordinal) for bucket in row["buckets"]
-                } == wanted
-            sanctioned = [
-                row for row in windows
-                if _is_symmetric_seat(row) and row.get("admissible", True)
-            ]
-            windows = sanctioned + [
-                dict(row, admissible=False)
-                for row in windows
-                if not (_is_symmetric_seat(row) and row.get("admissible", True))
-            ]
-            symmetric_seat_forced = True
     def _ordinal_set(row: Mapping[str, Any]) -> frozenset[int]:
         return frozenset(int(by_bucket[b].ordinal) for b in row["buckets"])
     def _sanction(rows: list, wanted: list) -> list:
@@ -3353,20 +3031,21 @@ def _support_windows(
         if direction < 0:
             return [{centre - 2, centre - 1, centre}, {centre - 3, centre - 2, centre - 1, centre}]
         return [{centre - 1, centre, centre + 1}]
-    skew_seat_forced = False
-    if (
-        SKEW_SEAT_MODE == "p0_tail"
-        and str(probability_stage or "") == "P0"
-        and ladder_center in by_bucket
-    ):
-        raw_skew = _skew_extension_sign(
-            probabilities,
-            {bucket: int(row.ordinal) for bucket, row in by_bucket.items()},
+    # Charter 131 / Q7: a held window whose shape the ruling no longer allows
+    # (it reached the list past the loop's gates, as every incumbent does)
+    # is held, not bought -- it stays listed for the solver's baseline and
+    # is never a seat.
+    windows = [
+        dict(row, admissible=False, shape_retired=True)
+        if (
+            row.get("is_incumbent")
+            and row.get("admissible", True)
+            and _ordinal_set(row) not in allowed_shapes
+            and _ordinal_set(row) != taf_entry_window
         )
-        windows = _sanction(
-            windows, _tail_windows(int(by_bucket[ladder_center].ordinal), raw_skew)
-        )
-        skew_seat_forced = True
+        else row
+        for row in windows
+    ]
     if taf_entry_required:
         if taf_entry_window is None:
             windows = [dict(row, admissible=False) for row in windows]
@@ -3429,30 +3108,11 @@ def _support_windows(
             ),
         }
     audit = {
-        "symmetric_seat_forced": symmetric_seat_forced,
-        "symmetric_seat_mode": SYMMETRIC_SEAT_MODE,
-        "symmetric_seat_pair": symmetric_seat_pair,
-        # Charter 122: the width the day was seated at, and the band the
-        # symmetric seat is confined to.  ``in_band`` false means the day
-        # was seated by the ordinary enumeration whatever its shape read.
-        "symmetric_seat_sigma_buckets": seat_sigma_buckets,
-        "symmetric_seat_width_band": [
-            seat_band[0],
-            None if seat_band[1] == float("inf") else seat_band[1],
-        ],
-        # Which of the three sources decided it, so a board showing a band
-        # can say whether a person pinned it, the lane fitted it, or it is
-        # still the ruled default under an empty lane.
-        "symmetric_seat_width_band_source": (
-            "override" if SYMMETRIC_SEAT_WIDTH_BAND_PINNED
-            else ("fitted" if (
-                symmetric_seat_bands
-                and symmetric_seat_bands.get(str(probability_stage or ""))
-            ) else "charter")
-        ),
-        "symmetric_seat_width_in_band": seat_width_in_band,
-        "symmetric_seat_counterfactual": symmetric_seat_counterfactual,
-        "skew_seat_forced": skew_seat_forced,
+        # Charter 131: the shape the seat was confined to, and why.
+        "seat_shape": seat_shape_audit,
+        "seat_shape_rule": SEAT_SHAPE_RULE_VERSION,
+        "seat_min_buckets": min_size,
+        "seat_max_buckets": max_size,
         "p0m_taf": p0m_taf_audit,
         "probability_core": sorted(
             core, key=lambda bucket: (by_bucket[bucket].ordinal, bucket)
@@ -3462,9 +3122,8 @@ def _support_windows(
         "center_refused_window_count": center_refused,
         "minimum_support_buckets": min_size,
         "policy_minimum_support_buckets": policy_min,
-        "dispersion_support_size": dispersion_receipt,
         "short_refused_window_count": short_refused,
-        "skew_refused_window_count": skew_refused,
+        "shape_refused_window_count": shape_refused,
         "market_lean_refused_window_count": market_lean_refused,
         # Shadow bookkeeping: what the gate WOULD have refused, plus the
         # signal itself so a receipt shows the lean the decision saw.
@@ -3544,18 +3203,17 @@ def _support_windows(
             gapped=gapped_refused,
             center=center_refused,
             short=short_refused,
-            skew=skew_refused,
+            shape=shape_refused,
             market_lean=market_lean_refused,
             leg_floor=leg_floor_refused,
             unpriced=unpriced_refused,
             edge=edge_refused,
         ),
         "minimum_leg_all_in_ask": MINIMUM_LEG_ALL_IN_ASK,
-        # Charter 91: the floor a rung actually faces is this constant scaled
-        # by min(1, anchor / belief); the anchor and rule ride here.
+        # Charter 131 (Q8): the flat floor read at the mid; rule and basis
+        # ride here so a receipt proves which floor refused what.
         "leg_floor_rule": LEG_FLOOR_RULE_VERSION,
         "leg_floor_price_basis": LEG_FLOOR_PRICE_BASIS,
-        "leg_floor_belief_anchor": LEG_FLOOR_BELIEF_ANCHOR,
         "center_window_claim_bands": [
             [bound, factor] for bound, factor in CENTER_WINDOW_CLAIM_BANDS
         ],
@@ -3589,54 +3247,6 @@ def _support_windows(
         # working; it now counts refusals under the stronger rung.
         "core_refused_window_count": center_refused,
     }
-    # ``hot_prefer`` (research arm, 2026-08-25 coverage objective): a
-    # preference, not a gate.  When at least one shortlisted window holds a
-    # rung hotter than the centre, the ones that hold none are dropped --
-    # the truth lands one bucket hot of the mean often enough that a
-    # hot-free window is strictly dominated whenever a hot-holding one is
-    # seatable -- and when none does, the shortlist stands untouched, so
-    # no station-day is refused that would otherwise seat.  The audit
-    # counters move with the drop to keep the funnel closed.
-    if SKEW_PLACEMENT_MODE == "hot_prefer" and windows:
-        centre_ordinal = int(by_bucket[ladder_center].ordinal)
-        def _holds_hot(row):
-            return any(
-                int(by_bucket[bucket].ordinal) > centre_ordinal
-                for bucket in row["buckets"]
-            )
-        hot_windows = [row for row in windows if _holds_hot(row)]
-        if hot_windows and len(hot_windows) < len(windows):
-            dropped = len(windows) - len(hot_windows)
-            windows = hot_windows
-            skew_refused += dropped
-            shortlisted -= dropped
-    # Charter 59 fallback: a day the target width cannot seat at all gets
-    # one more pass at two rungs, and only then.  The recursion re-runs the
-    # same gates rather than a copy of them, so the fallback pass's audit
-    # closes on its own counters; the flags say which pass is being read.
-    if (
-        OPENING_WIDTH_FALLBACK_ENABLED
-        and not windows
-        and int(min_size) > OPENING_FALLBACK_MIN_BUCKETS
-    ):
-        fallback_windows, fallback_audit = _support_windows(
-            snapshot=snapshot,
-            desired=desired,
-            probabilities=probabilities,
-            fee_rate=fee_rate,
-            maximum_support_buckets=maximum_support_buckets,
-            center_bucket=center_bucket,
-            minimum_support_buckets=OPENING_FALLBACK_MIN_BUCKETS,
-            probability_stage=probability_stage,
-            convergence_evidence=convergence_evidence,
-            effective_edge_tables=effective_edge_tables,
-            off_centre_claim_bands=off_centre_claim_bands,
-            symmetric_seat_bands=symmetric_seat_bands,
-        )
-        if fallback_windows:
-            fallback_audit["opening_width_fallback"] = True
-            fallback_audit["opening_width_target"] = int(min_size)
-            return fallback_windows, fallback_audit
     return windows, audit
 
 
@@ -3697,7 +3307,7 @@ def window_gate_counts_v1(window_audit: Mapping[str, Any]) -> dict[str, Any]:
             "gapped": _count("gapped_window_refused_count"),
             "center": _count("center_refused_window_count"),
             "short": _count("short_refused_window_count"),
-            "skew": _count("skew_refused_window_count"),
+            "shape": _count("shape_refused_window_count"),
             "market_lean": _count("market_lean_refused_window_count"),
             "leg_floor": _count("leg_floor_refused_window_count"),
             "unpriced": _count("unpriced_refused_window_count"),
@@ -4283,6 +3893,10 @@ def _solve_over_support_windows(
             "window_probabilities": dict(best["window_probabilities"]),
             "completion": best["window"].get("completion"),
         },
+        # Charter 131 (14): BUILDING never reads as protected.
+        "chain_protection": chain_protection_v1(
+            snapshot, list(best["window"]["buckets"])
+        ),
         "considered": [
             {
                 "buckets": list(item["window"]["buckets"]),
@@ -5634,7 +5248,6 @@ def compile_delta_v2_runtime_plan(
     taf_tx_bucket: str | None = None,
     effective_edge_tables: Mapping[str, Any] | None = None,
     off_centre_claim_bands: Mapping[str, Any] | None = None,
-    symmetric_seat_bands: Mapping[str, Any] | None = None,
     convergence_evidence: Mapping[str, Any] | None = None,
     hours_to_cutoff: float | None = None,
 ) -> dict[str, Any]:
@@ -5864,10 +5477,7 @@ def compile_delta_v2_runtime_plan(
         fee_rate=basket_policy.fee_rate,
         **dict(zip(
             ("minimum_support_buckets", "maximum_support_buckets"),
-            support_width_bounds_v1(
-                policy_minimum=basket_policy.minimum_support_buckets,
-                policy_maximum=basket_policy.maximum_support_buckets,
-            ),
+            support_width_bounds_v1(),
         )),
         center_bucket=center.bucket,
         probability_stage=str(snapshot.evidence.probability_stage or ""),
@@ -5885,7 +5495,6 @@ def compile_delta_v2_runtime_plan(
         off_centre_claim_bands=off_centre_claim_bands,
         # Charter 122 (五): and the seat band off the table the lane fitted,
         # read the same way.
-        symmetric_seat_bands=symmetric_seat_bands,
     )
     # The floor's live set is the evidence's, not the candidate support's.
     # ``ordered_support`` here is the continuous-core candidate boundary --
@@ -6970,7 +6579,6 @@ def compile_delta_v2_runtime_plan(
         # asymmetry the two books are supposed to not have.
         "leg_floor": {
             "rule": LEG_FLOOR_RULE_VERSION,
-            "belief_anchor": LEG_FLOOR_BELIEF_ANCHOR,
             "price_basis": LEG_FLOOR_PRICE_BASIS,
             "minimum_all_in_ask": MINIMUM_LEG_ALL_IN_ASK,
             "refused_window_count": int(
@@ -7054,8 +6662,7 @@ def compile_delta_v2_runtime_plan(
         "skew_reading": mean_mode_skew_reading_v1(
             probabilities,
             {row.bucket: int(row.ordinal) for row in snapshot.buckets},
-            signal=SKEW_SIGNAL_DEFINITION,
-            threshold_sigma=SKEW_GAP_THRESHOLD_SIGMA,
+                threshold_sigma=SKEW_GAP_THRESHOLD_SIGMA,
         ),
         "diagnostic_lower_ordinal": snapshot.evidence.model_envelope_lower_ordinal,
         "diagnostic_upper_ordinal": snapshot.evidence.model_envelope_upper_ordinal,

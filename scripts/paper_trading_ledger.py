@@ -69,9 +69,6 @@ from bayes_basket_target.convergence_evidence import (  # noqa: E402
 from bayes_basket_target.off_centre_claim_store import (  # noqa: E402
     load_off_centre_tables,
 )
-from bayes_basket_target.symmetric_seat_band_store import (  # noqa: E402
-    load_symmetric_seat_bands,
-)
 from bayes_basket_target.effective_edge_store import (  # noqa: E402
     load_effective_edge_tables,
 )
@@ -104,8 +101,6 @@ from bayes_basket_target.settlement_time import (  # noqa: E402
 )
 from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     CENTRE_CONTAIN_GATE as _CENTRE_CONTAIN_GATE,
-    SUPPORT_WIDTH_MAX_OVERRIDE as _SUPPORT_WIDTH_MAX_OVERRIDE,
-    SUPPORT_WIDTH_MIN_OVERRIDE as _SUPPORT_WIDTH_MIN_OVERRIDE,
     support_width_bounds_v1 as _support_width_bounds_v1,
     CHARTER_127_COMPLETION_TAKE as _CHARTER_127_COMPLETION_TAKE,
     TARGET_PRICING_BASIS as _TARGET_PRICING_BASIS,
@@ -125,20 +120,13 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     bid_anchored_rungs_for_gap,
     CERTAINTY_GATE_SIGNALS,
     MINIMUM_LEG_ALL_IN_ASK,
-    OPENING_FALLBACK_MIN_BUCKETS,
-    OPENING_WIDTH_FALLBACK_ENABLED,
-    P1_MINIMUM_SUPPORT_BUCKETS,
-    SKEW_EXTENSION_DIRECTION,
-    SKEW_EXTENSION_RULE,
+    SEAT_MAX_BUCKETS,
+    SEAT_MIN_BUCKETS,
+    SEAT_SHAPE_RULE_VERSION,
+    MARKET_LEAN_GATE_MODE,
     SKEW_GAP_THRESHOLD_SIGMA,
-    SKEW_PLACEMENT_MODE,
-    SKEW_SIGNAL_DEFINITION,
     KELLY_SHARE_SHAPE,
     KELLY_SHAPE_TOPUP,
-    SYMMETRIC_SEAT_MODE,
-    SYMMETRIC_SEAT_WIDTH_BAND,
-    SYMMETRIC_SEAT_WIDTH_BAND_PINNED,
-    SKEW_SEAT_MODE,
     P0M_TAF_ENVELOPE_RULE_VERSION,
     P0M_TAF_MODE,
     CENTER_WINDOW_CLAIM_BANDS,
@@ -210,7 +198,6 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     LEG_ACTION_REPRICE_UP,
     resting_rung_action_v1,
     CONSOLIDATION_TILT_FLOOR_VERSION,
-    LEG_FLOOR_BELIEF_ANCHOR,
     LEG_FLOOR_PRICE_BASIS,
     LEG_FLOOR_RULE_VERSION,
     consolidation_tilt_floor_usdc,
@@ -1224,7 +1211,6 @@ _FR_REPLAY: dict[str, Any] | None = None
 # the same fallback production has.
 _EE_CONN: sqlite3.Connection | None = None
 _EE_AS_OF_CACHE: dict[str, dict[str, Any]] = {}
-_SEAT_BAND_CACHE: dict[str, dict[str, Any]] = {}
 _OFF_CENTRE_CACHE: dict[str, dict[str, Any]] = {}
 
 
@@ -1264,27 +1250,6 @@ def _off_centre_claim_bands() -> dict[str, Any]:
         except Exception:  # noqa: BLE001
             _OFF_CENTRE_CACHE["bands"] = {}
     return _OFF_CENTRE_CACHE["bands"]
-
-
-def _symmetric_seat_bands() -> dict[str, Any]:
-    """Charter 122 (五): the seat band the book is scored under.
-
-    Read once, not as-of.  The lambda tables above are read as-of because
-    they are a per-decision quantity the solver consults; a seat band is the
-    RULE the whole book was assembled by, and a replay that switched bands
-    part-way would be two books summed -- the thing the ledger's fingerprint
-    exists to prevent.  So the band serving now is the band the whole replay
-    is judged under, and the fingerprint records which source it came from.
-    """
-
-    if _EE_CONN is None:
-        return {}
-    if "bands" not in _SEAT_BAND_CACHE:
-        try:
-            _SEAT_BAND_CACHE["bands"] = load_symmetric_seat_bands(_EE_CONN)
-        except Exception:  # noqa: BLE001
-            _SEAT_BAND_CACHE["bands"] = {}
-    return _SEAT_BAND_CACHE["bands"]
 
 
 def _effective_edge_tables_as_of(as_of_utc: str | None) -> dict[str, Any]:
@@ -2019,8 +1984,7 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     if CHAIN_TOPUP_BANKROLL_USDC <= 0
     else "加仓本金%g" % CHAIN_TOPUP_BANKROLL_USDC,
     "中心底仓",
-    f"腿({LEG_FLOOR_PRICE_BASIS})≥{MINIMUM_LEG_ALL_IN_ASK:g}"
-    f"×min(1,{LEG_FLOOR_BELIEF_ANCHOR:g}/p)",
+    f"腿({LEG_FLOOR_PRICE_BASIS})≥{MINIMUM_LEG_ALL_IN_ASK:g}",
     None if EXCHANGE_LOT_TOP_UP == "off" else "补足一手",
     None if WINDOW_STRATEGY == "live" else WINDOW_STRATEGY,
     None if EXECUTION_MODE == "taker" else EXECUTION_MODE,
@@ -2155,7 +2119,7 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     "均值中心",
     "按checkpoint决策",
     "在任窗不免检",
-    "对称日中心±1" if SYMMETRIC_SEAT_MODE == "center_pm1_p0" else None,
+    "席位形状2–3桶(对称±1/偏斜顺尾)",
     "整股下单" if ORDER_SHARE_GRID == "whole" else None,
     "含中心窗抬价" if CENTER_WINDOW_CLAIM_BANDS else None,
     "双向收敛抬价" if CONVERGENCE_CLAIM_MODE == "on" else None,
@@ -2251,38 +2215,14 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     # shares are not the same book, and a digest that could not tell them
     # apart is a digest that lets them be summed.
     "order_share_grid": ORDER_SHARE_GRID,
-    # Charter 79: the symmetric-day seat rule, hashed unconditionally.
-    "symmetric_seat": SYMMETRIC_SEAT_MODE,
-    # Charter 122: the served-width band the symmetric seat is confined to,
-    # production's constant, read from production.  Hashed whenever it is
-    # not the identity band, because a band that excludes a day changes who
-    # seats it; the identity band is charter 79 as it stood and must not
-    # re-address the book.
-    # Charter 122: which SOURCE decides the seat band, not the value it
-    # currently holds.  A pinned research arm is hashed by value, because
-    # holding the band still is the whole arm.  A fitted band is hashed as
-    # ``fitted`` -- the same treatment charter 68's lambda tables get, where
-    # a served table refitted on its own schedule does not re-address the
-    # book -- and the ruled default is hashed by value so a book run before
-    # this lane existed and one run after it stay distinguishable.
-    "symmetric_seat_width_band": (
-        {"source": "override", "band": [
-            SYMMETRIC_SEAT_WIDTH_BAND[0],
-            (
-                None if SYMMETRIC_SEAT_WIDTH_BAND[1] == float("inf")
-                else SYMMETRIC_SEAT_WIDTH_BAND[1]
-            ),
-        ]}
-        if SYMMETRIC_SEAT_WIDTH_BAND_PINNED
-        else {"source": "fitted_or_charter", "charter_default": [
-            SYMMETRIC_SEAT_WIDTH_BAND[0],
-            (
-                None if SYMMETRIC_SEAT_WIDTH_BAND[1] == float("inf")
-                else SYMMETRIC_SEAT_WIDTH_BAND[1]
-            ),
-        ]}
-    ),
-    **({"skew_seat": SKEW_SEAT_MODE} if SKEW_SEAT_MODE != "off" else {}),
+    # Charter 131 (2026-09-12): the seat's shape and width are the ruling's,
+    # hashed unconditionally -- rows seated under charters 50/55/79/122 are
+    # not this book.
+    "seat_shape": SEAT_SHAPE_RULE_VERSION,
+    "seat_width": "%d..%d" % (SEAT_MIN_BUCKETS, SEAT_MAX_BUCKETS),
+    # Charter 131 (2): the market-lean gate's mode is a rule of the book
+    # (shadow by ruling; ``on`` is the arm).  Hashed unconditionally.
+    "market_lean_gate": MARKET_LEAN_GATE_MODE,
     # Charter 81: the centre-holding claim lift, hashed unconditionally --
     # production's constant, read from production; [] is the off arm.
     "center_window_claim": [
@@ -2494,17 +2434,6 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     "ticket_authorization": (
         "whole_basket_edge_v1"
     ),
-    # Charter 50's width bounds as an arm.  Recorded only when an arm has
-    # replaced the station policy's own pair, so the standing book keeps its
-    # sha; the bounds themselves are the policy's and travel with it.
-    **(
-        {"support_width_min_override": _SUPPORT_WIDTH_MIN_OVERRIDE}
-        if _SUPPORT_WIDTH_MIN_OVERRIDE is not None else {}
-    ),
-    **(
-        {"support_width_max_override": _SUPPORT_WIDTH_MAX_OVERRIDE}
-        if _SUPPORT_WIDTH_MAX_OVERRIDE is not None else {}
-    ),
     # Charter 49's centre gate as an arm: refusing versus pricing.  Hashed
     # away from the default only, so the standing book keeps its sha.
     **(
@@ -2589,9 +2518,6 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     # definition itself lives in ``delta_v2_runtime`` so production and
     # this ledger move together.
     "ladder_center_definition": LADDER_CENTER_DEFINITION,
-    # Charter 55 (2026-08-25): the mean-mode gap gates which side a window
-    # may extend toward.  A live rule, hashed unconditionally.
-    "skew_extension_rule": SKEW_EXTENSION_RULE,
     # How far off centre buys the whole claim deflation.  1 is the fitted
     # two-value rule and the standing book's; hashed only when it departs,
     # so the default fingerprint is untouched by the knob existing.
@@ -2603,16 +2529,6 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     # Hashed unconditionally -- rows judged under the deflation and rows
     # judged on the raw claim are not one book.
     "off_centre_claim_mode": OFF_CENTRE_CLAIM_MODE,
-    # Research arm: which statistic reads the skew.  Hashed only when it
-    # departs the charter-55 default so the standing book keeps its sha.
-    **(
-        {"skew_signal_definition": SKEW_SIGNAL_DEFINITION}
-        if SKEW_SIGNAL_DEFINITION != "mean_mode" else {}
-    ),
-    **(
-        {"skew_placement_mode": SKEW_PLACEMENT_MODE}
-        if SKEW_PLACEMENT_MODE != "free" else {}
-    ),
     # The skew gate's unit changed on 2026-09-11 from half a bucket to 0.35
     # of the served sigma; rows written under the bucket gate describe a
     # different rule at the default, so the basis is hashed always and the
@@ -2622,26 +2538,12 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
         {"skew_gap_threshold_sigma": SKEW_GAP_THRESHOLD_SIGMA}
         if SKEW_GAP_THRESHOLD_SIGMA != 0.35 else {}
     ),
-    # Research arm (2026-08-26): which way the skew gate points.  The
-    # charter-55 default extends with the tail; ``toward_mode`` extends
-    # toward the heaviest bucket.  Hashed only off-default.
-    **(
-        {"skew_extension_direction": SKEW_EXTENSION_DIRECTION}
-        if SKEW_EXTENSION_DIRECTION != "toward_tail" else {}
-    ),
     # Charter 130 (2026-09-12): the one economic hurdle, read at admission,
     # after the lift, and on every increment.  It replaced charter 58's
     # zero-friction gate (tick friction and margin, both hashed here until
     # then); a book seated at h=0 is not this book.
     "economic_hurdle": ECONOMIC_HURDLE_V1,
     "economic_hurdle_rule": ECONOMIC_HURDLE_RULE_VERSION,
-    # Charter 59b: the two-rung fallback pass is off by default (vetoed at
-    # -71% lane ROI); the key is hashed only when the research arm enables
-    # it, so the no-fallback book keeps the charter-58 fingerprint.
-    **(
-        {"opening_fallback_min_buckets": OPENING_FALLBACK_MIN_BUCKETS}
-        if OPENING_WIDTH_FALLBACK_ENABLED else {}
-    ),
     # The toxic-band gate changes which windows can be priced at all, so a
     # book with it on cannot share a fingerprint with the default book; the
     # key rides only when the research arm enables it.
@@ -2803,10 +2705,9 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     "resting_entry": "progressive_per_leg",
     "minimum_leg_all_in_ask": MINIMUM_LEG_ALL_IN_ASK,
     "leg_floor_price_basis": LEG_FLOOR_PRICE_BASIS,
-    # Charter 91 (2026-09-06): the floor falls with belief; a book priced
-    # under the fixed floor may not share a fingerprint with one under this.
+    # Charter 131 (2026-09-12, Q8): the flat floor read at the mid; the rule
+    # string keeps charter 91's belief-scaled book apart from this one.
     "leg_floor_rule": LEG_FLOOR_RULE_VERSION,
-    "leg_floor_belief_anchor": LEG_FLOOR_BELIEF_ANCHOR,
     "initial_capital_usdc": INITIAL_CAPITAL_USDC,
     "kelly_fraction": KELLY_FRACTION,
     "max_stake_fraction_per_scope": MAX_STAKE_FRACTION_PER_SCOPE,
@@ -2831,7 +2732,6 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     # their fingerprint only while the arm is off -- which is the point of
     # putting it here rather than leaving it silent.
     "market_distance_max": MARKET_DISTANCE_MAX,
-    "p1_minimum_support_buckets": P1_MINIMUM_SUPPORT_BUCKETS,
     "stage_floor": "per_stage",
     # One book, one position per station-day, settled once.  This changes
     # what every recorded row *is* -- a stage row is now a top-up of a
@@ -3024,10 +2924,10 @@ GATE_REFUSAL_REASON = {
     "gapped": "no_legal_window",
     "center": "no_legal_window",
     "short": "no_legal_window",
-    # Charter 55: a window leaning against the day's own skew is a shape
-    # the rules refuse, the same structural family as the centre rung and
+    # Charter 131: a window that is not one of the day's ruled shapes is
+    # refused as a shape, the same structural family as the centre rung and
     # the length floor.
-    "skew": "no_legal_window",
+    "shape": "no_legal_window",
     # Direction against the book's read (2026-08-28): structural family,
     # same reason bucket as the other placement rules.
     "market_lean": "no_legal_window",
@@ -3043,7 +2943,7 @@ GATE_LABEL = {
     # (user, 2026-09-05) -- "中心桶 6" read as six windows that did.
     "center": "不含中心桶",
     "short": "桶数不足",
-    "skew": "逆偏斜扩边",
+    "shape": "席位形状不允许",
     "market_lean": "逆市场方向",
     "leg_floor": "单腿低于下限",
     "unpriced": "无法定价（视同非正EV）",
@@ -5253,10 +5153,7 @@ def _production_judge(
             # function on both sides now.
             **dict(zip(
                 ("minimum_support_buckets", "maximum_support_buckets"),
-                _support_width_bounds_v1(
-                    policy_minimum=basket_policy.minimum_support_buckets,
-                    policy_maximum=basket_policy.maximum_support_buckets,
-                ),
+                _support_width_bounds_v1(),
             )),
             center_bucket=centre_row.bucket,
             probability_stage=stage,
@@ -5271,7 +5168,6 @@ def _production_judge(
             # this decision, the same ones the solver below is handed.
             effective_edge_tables=_effective_edge_tables_as_of(decision_at_utc),
             off_centre_claim_bands=_off_centre_claim_bands(),
-            symmetric_seat_bands=_symmetric_seat_bands(),
         )
     except Exception as exc:  # noqa: BLE001
         return {
@@ -9282,10 +9178,7 @@ def backfill(
                                     "minimum_support_buckets",
                                     "maximum_support_buckets",
                                 ),
-                                _support_width_bounds_v1(
-                                    policy_minimum=MINIMUM_SUPPORT_BUCKETS,
-                                    policy_maximum=MAXIMUM_SUPPORT_BUCKETS,
-                                ),
+                                _support_width_bounds_v1(),
                             )),
                             center_bucket=center,
                             # P1 converges rather than opens, so charter 50a
@@ -9301,7 +9194,6 @@ def backfill(
                                 payload["decision_at_utc"]
                             ),
                             off_centre_claim_bands=_off_centre_claim_bands(),
-                            symmetric_seat_bands=_symmetric_seat_bands(),
                         )
                     except Exception as exc:  # noqa: BLE001 -- scope skipped
                         refusal = _deeper_refusal(refusal, (

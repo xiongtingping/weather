@@ -1257,10 +1257,19 @@ def test_ltac_the_held_rung_priced_above_its_claim_no_longer_refuses_the_window(
         assert "delta_v2_support_empty" in str(exc)
     else:
         assert at_par["state"] == "HOLD"
-        assert any(
-            row["buckets"] == ["31", "32", "33"]
-            and str(row["reason"]).startswith("chain_cost_at_par")
-            for row in at_par["basket_support_selection"]["unsolvable_windows"]
+        # Charter 131 (12b): the increment is admitted at the gate (0.476 on
+        # 0.43, +10.7%) and the five-percent in-support floor refuses the
+        # at-par chain after the lift, before charter 66 A ever sees it;
+        # either refusal is the same answer -- past the gate, nothing bought.
+        assert at_par["basket_support_selection"]["seated"]["admissible"] is True
+        assert at_par["basket_target_activated"] is False
+        assert (
+            "support_floor_after_lift" in at_par["reason_codes"]
+            or any(
+                row["buckets"] == ["31", "32", "33"]
+                and str(row["reason"]).startswith("chain_cost_at_par")
+                for row in at_par["basket_support_selection"]["unsolvable_windows"]
+            )
         )
     monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "on")
 
@@ -1307,14 +1316,23 @@ def test_ltac_the_held_rung_priced_above_its_claim_no_longer_refuses_the_window(
 def test_lfpb_a_missing_rung_under_the_leg_floor_is_dead_not_a_refusal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """LFPB 2026-09-06: 29°C held; the basket's 27°C is offered at 0.02, under
-    the leg floor the market ruling set at 0.03.  It is not bought, and it
-    does not stop 28°C from being bought at 0.18 against a claim of 0.22."""
+    """LFPB 2026-09-06: 29°C held; 27°C is offered at 0.02, under the leg
+    floor the market ruling set at 0.03.  It is not bought, and it does not
+    stop 28°C from being bought at 0.16 against a claim of 0.22.
+
+    Re-shaped for charter 131 (2026-09-12): the day must read symmetric
+    around 29°C for {28,29,30} to be the seat (the original mass read
+    LEFT_SKEWED with the mean bucket at 28, whose tail shapes hold the
+    sub-floor rungs and cannot be enumerated).  The whole window {28,29,30}
+    prices at 0.94 against its 0.755 claim (a = 1.245, lambda 0.82) and is
+    refused as a whole, so no Kelly candidate exists; the increment -- 28°C
+    at 0.16 and 30°C at 0.18 -- claims 0.444 x 0.82 = 0.364 on 0.34 and
+    clears the five-percent hurdle, and the completion is what trades."""
 
     _production_arms(monkeypatch)
     lfpb = _partly_held(
-        rungs=[("26", 26, 0.057, 0.02), ("27", 27, 0.206, 0.02), ("28", 28, 0.222, 0.18),
-               ("29", 29, 0.311, 0.50), ("30", 30, 0.156, 0.28), ("31", 31, 0.048, 0.07)],
+        rungs=[("26", 26, 0.03, 0.02), ("27", 27, 0.10, 0.02), ("28", 28, 0.222, 0.16),
+               ("29", 29, 0.311, 0.60), ("30", 30, 0.222, 0.18), ("31", 31, 0.115, 0.07)],
         held={"29": 5.0}, cost={"29": 2.20},
     )
     result = _compile(lfpb)

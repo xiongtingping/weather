@@ -198,7 +198,7 @@ def _seat(asks, *, tables):
     windows, audit = R._support_windows(
         snapshot=snapshot, desired={"31°C", "32°C", "33°C"},
         probabilities=probabilities, fee_rate=0.0,
-        maximum_support_buckets=4, minimum_support_buckets=3,
+        maximum_support_buckets=3, minimum_support_buckets=2,
         center_bucket="31°C", probability_stage="P0",
         effective_edge_tables=tables,
     )
@@ -265,7 +265,7 @@ def test_the_head_is_chosen_on_the_effective_belief(monkeypatch) -> None:
     windows, audit = R._support_windows(
         snapshot=snapshot, desired={"31°C", "32°C", "33°C"},
         probabilities=probabilities, fee_rate=0.0,
-        maximum_support_buckets=4, minimum_support_buckets=3,
+        maximum_support_buckets=3, minimum_support_buckets=2,
         center_bucket="31°C", probability_stage="P0",
         effective_edge_tables=tables,
     )

@@ -89,8 +89,14 @@ def _windows(rows, *, desired, center, minimum=3, maximum=4, **extra):
     )
 
 
-def test_the_ladder_extends_toward_belief_not_toward_the_cheap_side() -> None:
-    """The flank with more model mass outranks the flank with more edge.
+def test_the_seat_is_the_ruled_shape_not_the_cheap_flank() -> None:
+    """Charter 131 (2026-09-12): the shape is the ruling's, not the flank the
+    price -- or the mass -- would pick.  This day reads symmetric (mean 32.59
+    against mode 33C, 0.41 buckets under a 0.48 gate), so the seat is
+    {32,33,34} whatever the cheap upper flank offers.
+
+    The history this test used to pin: the flank with more model mass
+    outranks the flank with more edge.
 
     The old key (KL, and raw edge before it) is a divergence between our
     belief and the market's, so it peaks exactly where the two disagree --
@@ -121,13 +127,9 @@ def test_the_ladder_extends_toward_belief_not_toward_the_cheap_side() -> None:
     )
     assert audit["ladder_center_bucket"] == "33C"
     top = tuple(windows[0]["buckets"])
-    assert "33C" in top
-    lower = {"32C", "31C"} & set(top)
-    upper = {"34C", "35C"} & set(top)
-    assert lower and not upper, (
-        f"ranked window {top} extended toward the cheap flank; "
-        "the ranking must follow probability mass"
-    )
+    assert audit["seat_shape"]["state"] == "SYMMETRIC"
+    assert top == ("32C", "33C", "34C"), top
+    assert all(w["buckets"] == top or not w["admissible"] for w in windows)
     # And the cheap-flank window is still *present* -- this is a ranking
     # change, not an exclusion.  The objective still gets to see it, and
     # scores it, even though the seat goes to the head of the order.
@@ -178,14 +180,16 @@ def test_a_penny_leg_is_excluded_not_the_window() -> None:
         ("31C", 0.10, 0.080),
         ("32C", 0.25, 0.200),
         ("33C", 0.30, 0.250),
-        ("34C", 0.20, 0.001),   # penny leg
-        ("35C", 0.10, 0.150),
+        # Charter 131 pins the symmetric seat to {32,33,34}, so the penny
+        # leg sits one rung past it: excluded, and the seat unharmed.
+        ("34C", 0.20, 0.150),
+        ("35C", 0.10, 0.001),   # penny leg
     )
     windows, audit = _windows(rows, desired={"33C"}, center="33C")
     assert MINIMUM_LEG_ALL_IN_ASK == 0.03
-    assert "34C" in audit["leg_floor_excluded_buckets"]
+    assert "35C" in audit["leg_floor_excluded_buckets"]
     for window in windows:
-        assert "34C" not in window["buckets"], (
+        assert "35C" not in window["buckets"], (
             f"{window['buckets']} still contains an excluded rung"
         )
     # The rungs beside it are still seatable -- that is the whole change.
@@ -329,7 +333,9 @@ def test_the_edge_friction_gate_is_counted() -> None:
         rows, desired={"31C"}, center="31C", minimum=3, maximum=3
     )
     assert not [
-        row for row in windows if row.get("all_in_price") is not None
+        row for row in windows
+        if row.get("all_in_price") is not None
+        and not row.get("structurally_refused")
     ], "the fixture must leave nothing priced on the shortlist"
     assert audit["edge_refused_window_count"] > 0, (
         "the price gate refused the only legal window and did not count it"

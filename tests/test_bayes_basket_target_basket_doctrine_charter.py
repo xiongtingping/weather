@@ -298,7 +298,7 @@ def test_clause_40_dials_are_reported_on_every_solution() -> None:
     # Mean win (0.1 x 0.2 + 0.5 x 0.7) / 0.9 over mean loss 0.9 on c.
     assert result["target_odds_ratio"] == pytest.approx((0.37 / 0.9) / 0.9)
     assert result["target_support_floor_pnl"] == pytest.approx(0.1)
-    assert result["support_scenario_floor_fraction"] == 0.0
+    assert result["support_scenario_floor_fraction"] == 0.05  # charter 131 (12b)
     # Clause 40's break-even arithmetic, stated so a future edit to the win
     # target cannot silently leave the odds floor behind: at w the blend is
     # break-even when mean-win/mean-loss equals (1-w)/w.
@@ -2107,11 +2107,15 @@ def test_clause_49_ladder_seat_must_contain_the_centre_bucket() -> None:
     # {34} and {33,34} held, under the ladder they do not.
     assert ("34",) not in seats
     assert ("33", "34") not in seats
-    # Every surviving window holds the rung; the singleton and both flanks
-    # are on the menu, and the curve score alone picks among them.
-    assert (centre,) in seats
-    assert ("34", "35", "36") in seats, "the lower flank is enumerated"
-    assert ("35", "36") in seats, "the upper flank is enumerated"
+    # Every surviving window holds the rung.  Charter 131 (2026-09-12) then
+    # fixes the shape: this day reads RIGHT_SKEWED (mean 34.83 over mode 34,
+    # 0.83 buckets against a 0.43 gate), so the tail-side {35,36,37} and
+    # {35,36} are the menu; the singleton and the mode-side lean are not.
+    assert audit["seat_shape"]["state"] == "RIGHT_SKEWED"
+    assert (centre,) not in seats
+    assert ("34", "35", "36") not in seats, "the mode-side lean is not a shape"
+    assert ("35", "36", "37") in seats, "the tail window is enumerated"
+    assert ("35", "36") in seats, "the two-rung tail window is enumerated"
     assert all(centre in seat for seat in seats)
 
 
@@ -2249,10 +2253,14 @@ def test_clause_49_ladder_rule_evicts_an_off_rung_incumbent() -> None:
         maximum_support_buckets=policy.maximum_support_buckets,
         center_bucket="34",
     )
-    seats = [tuple(row["buckets"]) for row in windows]
-    assert ("37",) not in seats, "an off-rung incumbent is refused like any other"
+    # Charter 131 / charter 78: the off-rung incumbent stays LISTED so the
+    # solver has a window to hold on, but it is structurally refused and can
+    # never be a seat; every seatable window holds the rung.
+    held = [row for row in windows if row["is_incumbent"]]
+    assert [tuple(row["buckets"]) for row in held] == [("37",)]
+    assert held[0]["admissible"] is False and held[0]["structurally_refused"] is True
+    seats = [tuple(row["buckets"]) for row in windows if not row["is_incumbent"]]
     assert seats, "refusing it must not empty the menu"
-    # No exemption survives: every seat holds the rung, incumbent or not.
     assert all(audit["ladder_center_bucket"] in seat for seat in seats)
     assert audit["center_refused_window_count"] > 0, "the rule must bite"
 
@@ -2402,12 +2410,11 @@ def test_clause_50_a_seat_needs_at_least_three_rungs() -> None:
     assert audit["short_refused_window_count"] > 0, "the rule must bite"
     # The rung rule from clause 49 still holds on top of the length rule.
     assert all(audit["ladder_center_bucket"] in seat for seat in seats)
-    # The floor binds the incumbent too.  A two-bucket core is a two-rung
-    # ladder however it arrived, and clause 50's five hard requirements are
-    # equally unreachable from it -- so the evidence support stays on the
-    # menu only when it is long enough to hold a seat.
-    assert all(len(row["buckets"]) >= 3 for row in windows)
-    assert ("34", "35") not in [tuple(row["buckets"]) for row in windows]
+    # The floor binds the incumbent too: the two-rung evidence support is
+    # listed for the solver's baseline (charter 131 / 78) but never seated.
+    held = [row for row in windows if row["is_incumbent"]]
+    assert [tuple(row["buckets"]) for row in held] == [("34", "35")]
+    assert held[0]["admissible"] is False and held[0]["structurally_refused"] is True
 
 
 def test_clause_50_floor_is_not_waived_for_an_inherited_two_rung_ladder() -> (
@@ -2453,9 +2460,13 @@ def test_clause_50_floor_is_not_waived_for_an_inherited_two_rung_ladder() -> (
         center_bucket="34",
     )
     incumbents = [row for row in windows if row["is_incumbent"]]
-    assert not incumbents, "a two-rung incumbent may not hold a seat"
-    assert windows, "refusing it must not empty the menu when longer windows exist"
-    assert min(len(row["buckets"]) for row in windows) >= 3
+    assert incumbents and not any(row["admissible"] for row in incumbents), (
+        "a two-rung incumbent may not hold a seat"
+    )
+    assert all(row["structurally_refused"] for row in incumbents)
+    seatable = [row for row in windows if not row["is_incumbent"]]
+    assert seatable, "refusing it must not empty the menu when longer windows exist"
+    assert min(len(row["buckets"]) for row in seatable) >= 3
     assert audit["short_refused_window_count"] > 0
 
 
@@ -3158,8 +3169,10 @@ def test_clause_131_symmetric_day_seat_is_the_mean_bucket_plus_minus_one(monkeyp
     for stage in ("P0", "P0-M"):
         windows, audit = _support_windows(
             snapshot=snapshot(stage), desired={"30°C", "31°C", "32°C", "33°C"},
-            probabilities=prob, fee_rate=0.0, maximum_support_buckets=4,
-            minimum_support_buckets=3, center_bucket="31°C", probability_stage=stage,
+            probabilities=prob, fee_rate=0.0,
+            **dict(zip(("minimum_support_buckets", "maximum_support_buckets"),
+                       delta_v2_runtime.support_width_bounds_v1())),
+            center_bucket="31°C", probability_stage=stage,
         )
         assert audit["seat_shape"]["state"] == "SYMMETRIC"
         assert audit["seat_shape"]["allowed_ordinals"] == [[3, 4, 5]]
@@ -3170,8 +3183,10 @@ def test_clause_131_symmetric_day_seat_is_the_mean_bucket_plus_minus_one(monkeyp
         assert seed and seed[0]["admissible"] is False and seed[0].get("shape_retired") is True
     windows, audit = _support_windows(
         snapshot=snapshot("P1"), desired={"30°C", "31°C", "32°C", "33°C"},
-        probabilities=prob, fee_rate=0.0, maximum_support_buckets=4,
-        minimum_support_buckets=3, center_bucket="31°C", probability_stage="P1",
+        probabilities=prob, fee_rate=0.0,
+        **dict(zip(("minimum_support_buckets", "maximum_support_buckets"),
+                   delta_v2_runtime.support_width_bounds_v1())),
+        center_bucket="31°C", probability_stage="P1",
     )
     # P1: the three-rung window and the two-rung main-plus-hedge, hedge on
     # the heavier neighbour (a tie goes up); the wider ranks first.
@@ -3261,8 +3276,10 @@ def test_clause_81_centre_holding_windows_claim_is_lifted() -> None:
     assert core["raw_win_probability"] == pytest.approx(0.70)
     assert core["off_center_claim_factor"] == pytest.approx(1.0)
     assert core["win_probability"] == pytest.approx(0.70)
-    wide = by_window[("31°C", "32°C", "33°C")]          # raw 0.66, holds centre, still no lift
-    assert wide["off_center_claim_factor"] == pytest.approx(1.0)
+    # Charter 131: a symmetric day has one shape, so {31,32,33} is not on
+    # the list at all -- the lift's identity is asserted on the seat.
+    assert audit["seat_shape"]["allowed_ordinals"] == [[3, 4, 5]]
+    assert ("31°C", "32°C", "33°C") not in by_window
     # The ledger hashes the rule unconditionally.
     import sys
     from pathlib import Path as _Path
@@ -3308,7 +3325,14 @@ def test_clause_87_the_gate_reads_effective_edge_and_the_ticket_waits_for_it(mon
 
     labels = ["29°C", "30°C", "31°C", "32°C", "33°C", "34°C"]
     probs = [0.02, 0.10, 0.50, 0.30, 0.06, 0.02]
-    asks = [0.02, 0.12, 0.52, 0.31, 0.05, 0.02]
+    # Charter 131: this shape reads RIGHT_SKEWED (mean 4.34 over mode 31°C,
+    # 0.34 buckets against a 0.31 gate), so the seat is {31,32,33} -- raw
+    # 0.86, lifted 0.9288 under the retired table -- and 33°C is asked at
+    # 0.27 and 0.08 so the seat prices at 0.90 (claim edge 0.0288, inside
+    # the thin band, refused by the 5% hurdle) while the two-rung {31,32}
+    # at 0.82 clears the pre-lambda test and falls to lambda -- the role
+    # the old fixture's {31,32,33} played.
+    asks = [0.02, 0.12, 0.55, 0.27, 0.08, 0.02]
     rows = [
         {
             "bucket": b, "ordinal": i + 2, "probability": p,
@@ -3332,21 +3356,23 @@ def test_clause_87_the_gate_reads_effective_edge_and_the_ticket_waits_for_it(mon
         "contract_matches": True, "order_state_known": True, "risk_inputs_complete": True,
         "time_left_minutes": 600.0,
     })
-    seat_key = ("30°C", "31°C", "32°C")
+    seat_key = ("31°C", "32°C", "33°C")
     kwargs = dict(
         snapshot=snapshot, desired=set(seat_key),
         probabilities=dict(zip(labels, probs)), fee_rate=0.0,
-        maximum_support_buckets=4, minimum_support_buckets=3,
+        **dict(zip(("minimum_support_buckets", "maximum_support_buckets"),
+                   delta_v2_runtime.support_width_bounds_v1())),
         center_bucket="31°C", probability_stage="P0",
     )
     windows, audit = _support_windows(**kwargs)
     seat = {tuple(w["buckets"]): w for w in windows}[seat_key]
-    # The lifted claim, 0.90 x 1.08 = 0.972, clears the 0.95 offer: the old
-    # gate admitted this window.  Charter 68's top band (a = 0.977) says
-    # 0.82 of the claim arrives, so the agreement axis reads 0.797.
-    assert seat["win_probability"] == pytest.approx(0.972)
+    # The lifted claim, 0.86 x 1.08 = 0.9288, clears the 0.90 offer: the
+    # old gate admitted this window.  Charter 68's top band (a = 0.969)
+    # says 0.82 of the claim arrives, so the agreement axis reads 0.762.
+    assert seat["win_probability"] == pytest.approx(0.9288)
+    assert seat["all_in_price"] == pytest.approx(0.90)
     assert seat["win_probability"] - seat["all_in_price"] > 0
-    assert seat["effective_edge_agreement"] == pytest.approx(0.95 / 0.972)
+    assert seat["effective_edge_agreement"] == pytest.approx(0.90 / 0.9288)
     assert audit["gate_reads_effective_edge"] == "on"
     # Charter 97 (2026-09-06) changes what happens next, and this window is
     # exactly the case it changes: its claim edge is 0.972 - 0.95 = 0.022,
@@ -3378,8 +3404,8 @@ def test_clause_87_the_gate_reads_effective_edge_and_the_ticket_waits_for_it(mon
         _k.CLAIM_EDGE_THERMOMETER_MODE = _saved
     seat_off = {tuple(w["buckets"]): w for w in windows_off}[seat_key]
     assert seat_off["effective_edge_lambda"] == pytest.approx(0.82)
-    assert seat_off["effective_win_probability"] == pytest.approx(0.972 * 0.82)
-    assert seat_off["edge"] == pytest.approx(0.972 * 0.82 - 0.95)
+    assert seat_off["effective_win_probability"] == pytest.approx(0.9288 * 0.82)
+    assert seat_off["edge"] == pytest.approx(0.9288 * 0.82 - 0.90)
     assert seat_off["admissible"] is False
     assert audit_off["effective_edge_gate_refused_window_count"] >= 1
     # Nothing seats under the charter-87 arm: the solver is offered the
@@ -3394,8 +3420,8 @@ def test_clause_87_the_gate_reads_effective_edge_and_the_ticket_waits_for_it(mon
     windows_off, audit_off = _support_windows(**kwargs)
     seat_off = {tuple(w["buckets"]): w for w in windows_off}[seat_key]
     assert seat_off["effective_edge_lambda"] is None
-    assert seat_off["effective_win_probability"] == pytest.approx(0.972)
-    assert seat_off["edge"] == pytest.approx(0.972 - 0.95)
+    assert seat_off["effective_win_probability"] == pytest.approx(0.9288)
+    assert seat_off["edge"] == pytest.approx(0.9288 - 0.90)
     # Refused by the hurdle, not by lambda: nothing for charter 87 to count.
     assert seat_off["admissible"] is False
     assert audit_off["effective_edge_gate_refused_window_count"] == 0
@@ -3509,13 +3535,20 @@ def test_clause_93_the_support_floor_is_zero_and_re_read_after_the_lift() -> Non
         cost_by_bucket={"a": 1.50, "b": 2.60, "c": 1.02},
         support=("a", "b", "c"), fraction=-0.10,
     )["legal"] is True
-    # Equal shares never bind: each rung pays s against s x c < s.
+    # Charter 131 (12b): equal shares CAN bind now -- every rung must pay
+    # five percent over the whole premium.  0.76 against 0.752 is +1.1%.
     equal = kernel.support_scenario_floor_v1(
         shares_by_bucket={"a": 0.76, "b": 0.76, "c": 0.76},
         cost_by_bucket={"a": 0.228, "b": 0.395, "c": 0.129},
         support=("a", "b", "c"),
     )
-    assert equal["legal"] is True
+    assert equal["legal"] is False
+    assert equal["floor"] == pytest.approx(0.05 * 0.752)
+    assert kernel.support_scenario_floor_v1(
+        shares_by_bucket={"a": 0.76, "b": 0.76, "c": 0.76},
+        cost_by_bucket={"a": 0.228, "b": 0.345, "c": 0.129},
+        support=("a", "b", "c"),
+    )["legal"] is True
     root = Path(__file__).resolve().parents[1]
     compile_source = (
         root / "bayes_basket_target" / "delta_v2_runtime.py"

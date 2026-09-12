@@ -969,7 +969,6 @@ def _compile_target_plan(
     last_decision_signature: Mapping[str, Any] | None = None,
     effective_edge_tables: Mapping[str, Any] | None = None,
     off_centre_claim_bands: Mapping[str, Any] | None = None,
-    symmetric_seat_bands: Mapping[str, Any] | None = None,
     convergence_evidence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compile one full stage → policy → v2 delta plan, no-live boundary."""
@@ -1369,7 +1368,6 @@ def _compile_target_plan(
             last_decision_signature=last_decision_signature,
             effective_edge_tables=effective_edge_tables,
             off_centre_claim_bands=off_centre_claim_bands,
-            symmetric_seat_bands=symmetric_seat_bands,
             convergence_evidence=convergence_evidence,
             # The P0-M TAF TX bucket the enumerator's TAF arms read.  Off
             # by default (PM_P0M_TAF_MODE); until 2026-09-04 only the paper
@@ -2051,7 +2049,6 @@ class DeltaBasketScoreV2Optimizer:
     last_decision_signature: Mapping[str, Any] | None = None,
     effective_edge_tables: Mapping[str, Any] | None = None,
     off_centre_claim_bands: Mapping[str, Any] | None = None,
-    symmetric_seat_bands: Mapping[str, Any] | None = None,
     convergence_evidence: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         result = _compile_target_plan(
@@ -2084,7 +2081,6 @@ class DeltaBasketScoreV2Optimizer:
             last_decision_signature=last_decision_signature,
             effective_edge_tables=effective_edge_tables,
             off_centre_claim_bands=off_centre_claim_bands,
-            symmetric_seat_bands=symmetric_seat_bands,
             convergence_evidence=convergence_evidence,
         )
         boundary = dict(result.get("boundary") or {})
@@ -2140,7 +2136,6 @@ def compile_target_plan(
     last_decision_signature: Mapping[str, Any] | None = None,
     effective_edge_tables: Mapping[str, Any] | None = None,
     off_centre_claim_bands: Mapping[str, Any] | None = None,
-    symmetric_seat_bands: Mapping[str, Any] | None = None,
     convergence_evidence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compatibility-free public facade for the one optimizer boundary."""
@@ -2152,7 +2147,6 @@ def compile_target_plan(
             last_decision_signature=last_decision_signature,
             effective_edge_tables=effective_edge_tables,
             off_centre_claim_bands=off_centre_claim_bands,
-            symmetric_seat_bands=symmetric_seat_bands,
             convergence_evidence=convergence_evidence,
         probability_envelopes=probability_envelopes,
         market_snapshot=market_snapshot,

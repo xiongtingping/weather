@@ -403,8 +403,11 @@ def test_sparse_candidate_support_persists_contiguous_probability_core() -> None
 
     # The probability core admits 35 and 37 and skips 36, but a basket with a
     # hole is priced for an outcome it does not cover, so 36 is bridged in
-    # rather than 37 being dropped for sitting past the hole.
-    assert result["candidate_support"] == ["35", "36", "37"]
+    # rather than 37 being dropped for sitting past the hole.  The seat
+    # itself (charter 131): the bimodal shape reads RIGHT_SKEWED (mean 36
+    # over the first mode 35), the mean bucket is 36 and {36,37,38} has no
+    # 38, so the two-rung tail window {36,37} is seated.
+    assert result["candidate_support"] == ["36", "37"]
     assert result["core_buckets"] == ["35", "36", "37"]
     assert result["core_transition"]["next_core_buckets"] == [
         "35",

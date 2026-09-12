@@ -35,10 +35,12 @@ def test_the_egll_rung_that_prompted_the_ruling_is_now_refused() -> None:
     assert K.leg_below_floor(0.03, 0.0157, 0.03, bid=0.01)
 
 
-def test_a_belief_above_the_anchor_still_lowers_the_floor_it_faces() -> None:
-    # Charter 91 is unchanged and composes with 103: a 61.5% claim faces
-    # 0.03 * 0.30 / 0.615 = 0.0146, which a 0.01/0.03 book's mid clears.
-    assert not K.leg_below_floor(0.03, 0.615, 0.03, bid=0.01)
+def test_belief_no_longer_lowers_the_floor_charter_131() -> None:
+    # Charter 131 (Q8, 2026-09-12) retired charter 91's belief scaling: a
+    # 61.5% claim faces the same three cents as a tail claim, and a
+    # 0.01/0.03 book's mid (0.02) is under it.
+    assert K.leg_below_floor(0.03, 0.615, 0.03, bid=0.01)
+    assert not K.leg_below_floor(0.05, 0.615, 0.03, bid=0.03)
 
 
 def test_both_books_read_the_same_side() -> None:

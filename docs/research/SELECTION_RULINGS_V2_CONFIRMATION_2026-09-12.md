@@ -1,6 +1,6 @@
 # 选桶层裁决 v2（2026-09-12 晚）：逐条对照、冲突与待确认
 
-承接同日 [SELECTION_RULES_INVENTORY_2026-09-12.md](SELECTION_RULES_INVENTORY_2026-09-12.md) 的规则编号（A1…D7）。用户裁决原文 15 条，下面每条给：落到现行哪条规则、动作（保留 / 改 / 退役）、冲突或不清楚之处、问题编号。第 2 条「先拉数据」的结果在 §2。问题清单在 §4，每题带我的建议答案；退役清单在 §5。**本轮仍未改生产。**
+承接同日 [SELECTION_RULES_INVENTORY_2026-09-12.md](SELECTION_RULES_INVENTORY_2026-09-12.md) 的规则编号（A1…D7）。用户裁决原文 15 条，下面每条给：落到现行哪条规则、动作（保留 / 改 / 退役）、冲突或不清楚之处、问题编号。第 2 条「先拉数据」的结果在 §2。问题清单在 §4，每题带我的建议答案；退役清单在 §5。**用户 09-12 晚答复 Q1/Q3/Q6 按建议、Q8 固定 0.03 读中价、Q2 退 shadow，其余按建议值；已按 §5 落地为宪章第 131 条（见文末 §7）。**
 
 ---
 
@@ -116,3 +116,21 @@
 - 夹具：doctrine charter 套件、skew σ 套件、basket-target 79/122/50/59 钉子改写。
 - 宪章：新第 131 条（本裁决全文）；50/55/59/64/76/79/122 加「退役 2026-09-12 第 131 条」标注；93 改写。
 - `symmetric_seat_band_store` + refit sweep 退役；`restart_resident.sh`。
+
+---
+
+## 7. 落地记录（2026-09-12 晚，宪章第 131 条）
+
+答复：Q1 按建议（均值/众数/三态按服务向量，排序/门/Kelly 读 λ(a)·p）；Q2 市场方向闸退 shadow；Q3 按 0.35σ 符号；Q6 3 桶先、2 桶回退；Q8 固定 0.03、读中价；其余十题按建议值。
+
+**代码**（一次提交）：
+- `delta_v2_runtime`：`SEAT_MIN_BUCKETS=2 / SEAT_MAX_BUCKETS=3 / CHAIN_MAX_BUCKETS=4 / SEAT_SHAPE_RULE_VERSION`；`seat_shape_windows_v1` 给出当日窗形（对称 {c−1,c,c+1}，P1 另许 {c, 更重邻格}，P1 只剩一个活桶时许 {c}；偏斜 {c,c+d,c+2d}/{c,c+d}），漏斗新门 `shape` 取代 `skew`；`support_width_bounds_v1()` 固定 (2,3)；结构闸拒掉的在任窗仍入名单标 `structurally_refused`（第 78 条基线持有，不再崩成 support_empty）；`chain_protection_v1` 记 PROTECTED/BUILDING/EMPTY（只审计）；`MARKET_LEAN_GATE_MODE` 默认 shadow；删除 55 条闸与五个臂、59 回退、79/122 对称席位与档、离散度收上限、宽度覆写、`symmetric_seat_bands` 参数链。
+- 内核：`LEG_FLOOR_RULE_VERSION=flat_mid_v2`、`leg_floor_all_in_ask` 恒 0.03、`LEG_FLOOR_BELIEF_ANCHOR` 删除；`SUPPORT_SCENARIO_FLOOR_FRACTION` 默认 0.05（`support_floor_after_lift_v2_hit_roi_5pct`）；`dispersion_support_size` 删除。
+- 账本：指纹恒哈希 `seat_shape / seat_width / market_lean_gate / leg_floor_rule / support_scenario_floor`，删除 `symmetric_seat* / skew_* / support_width_*_override / opening_fallback / leg_floor_belief_anchor / p1_minimum_support_buckets`；漏斗标签 `shape`=「席位形状不允许」。
+- 退役文件：`symmetric_seat_band_store.py`、`scripts/refit_symmetric_seat_band.py`、sweep 段、`tests/test_symmetric_seat_band_store.py`；`test_charter_91_*` 改为 `test_charter_131_flat_leg_floor.py`。
+- 看板：形态芯片改读 `seat_shape`。
+- 宪章：第 131 条全文；50/55/59/64/76/79/91/93/122 加退役或改写标注。
+
+**夹具**：47 个相关测试文件 641 通过（唯一红 `test_preliminary_decision_replay_is_zero_write` 为落地前已有）。改写的夹具与理由：c49/c50（在任窗留名单但不可入座）、c81/c87/c130（夹具在 0.35σ 下读偏斜，座位换成尾侧窗并重调卖价）、c84 LTAC（5% 地板在 66A 之前拒）/LFPB（改成对称日、整窗被拒而补齐增量放行）、c125（P0 中心邻格判死则无座）、排序套件三条（形状由裁决定、不由质量或价格定）、c103/c131 地板固定。
+
+**待观察**：账本自动全史重导（≈55 分钟）后的第一份账；对称 P0/P0-M 日中心邻格被腿地板或观测判死时会 HOLD（Q4 的代价）；偏斜日尾侧第二格常被腿地板剔出，2 桶窗会比预期多。

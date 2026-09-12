@@ -541,7 +541,6 @@ def compile_production_plan(
     last_decision_signature: Mapping[str, Any] | None = None,
     effective_edge_tables: Mapping[str, Any] | None = None,
     off_centre_claim_bands: Mapping[str, Any] | None = None,
-    symmetric_seat_bands: Mapping[str, Any] | None = None,
     convergence_evidence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compile one v2-only production decision, and deliver it when authorised.
@@ -561,7 +560,6 @@ def compile_production_plan(
         last_decision_signature=last_decision_signature,
         effective_edge_tables=effective_edge_tables,
         off_centre_claim_bands=off_centre_claim_bands,
-        symmetric_seat_bands=symmetric_seat_bands,
         convergence_evidence=convergence_evidence,
         probability_envelopes=probability_envelopes,
         market_snapshot=market_snapshot,

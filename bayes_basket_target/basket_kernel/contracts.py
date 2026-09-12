@@ -643,10 +643,10 @@ class TargetBasketPolicy:
     # Three, reaffirmed as the TARGET by the 2026-08-25 evening refinement
     # (charter 59): the floor briefly sat at a flat two, but a flat two lets
     # the curve score prefer the narrow ladder outright -- the ZUUU lesson
-    # behind charter 50.  Two-rung windows exist only as the fallback pass
-    # the runtime runs when the target floor seats nothing
-    # (``OPENING_FALLBACK_MIN_BUCKETS``); this policy value stays the
-    # target.
+    # behind charter 50.  Since charter 131 (2026-09-12) the enumerator
+    # reads the ruling's own two-to-three (``SEAT_MIN_BUCKETS`` /
+    # ``SEAT_MAX_BUCKETS`` in the runtime) and this policy value is kept
+    # only for readers of older plans.
     minimum_support_buckets: int = 3
     # How much model disagreement buys one expansion layer, counted in rungs
     # of the station's own ladder rather than in degrees.  The evidence side

@@ -3699,11 +3699,11 @@ def _live_basket_plan_state(
                 " json_extract(plan_json,"
                 "'$.compiled_plan.plan.skew_reading.sigma_buckets'),"
                 " json_extract(plan_json,'$.compiled_plan.plan"
-                ".basket_support_selection.symmetric_seat_width_in_band'),"
+                ".basket_support_selection.seat_shape.state'),"
                 " json_extract(plan_json,'$.compiled_plan.plan"
-                ".basket_support_selection.symmetric_seat_forced'),"
+                ".basket_support_selection.seat_shape_rule'),"
                 " json_extract(plan_json,'$.compiled_plan.plan"
-                ".basket_support_selection.symmetric_seat_width_band')"
+                ".basket_support_selection.seat_shape.allowed_ordinals')"
                 " FROM basket_p0_preselection_plan"
                 " WHERE station_id=? AND event_date=?",
                 (station, day),
@@ -3711,7 +3711,7 @@ def _live_basket_plan_state(
         except sqlite3.Error:
             continue
         for (plan_sha, center, direction, skew, gap, threshold,
-             threshold_sigma, sigma, in_band, forced, band_json) in plans:
+             threshold_sigma, sigma, shape_state, shape_rule, shape_allowed) in plans:
             targets = by_plan.get(str(plan_sha or ""), ())
             if not targets:
                 continue
@@ -3737,14 +3737,12 @@ def _live_basket_plan_state(
                 # the same bucket steps.  Written from 2026-09-08; older
                 # plans carry no width and the chip says nothing about it.
                 "sigma_buckets": sigma,
-                # Charter 122: whether the day's width let the symmetric
-                # seat rule fire, and whether it actually did.  A reader
-                # seeing only "SYMMETRIC" cannot tell a seat the rule fixed
-                # from one the enumeration chose, and since 2026-09-09 most
-                # symmetric days are the second kind.
-                "seat_width_in_band": in_band,
-                "seat_forced": forced,
-                "seat_width_band": band_json,
+                # Charter 131 (2026-09-12): the shape the seat was confined
+                # to and the windows it allowed, as the plan recorded them.
+                # None on plans written under charters 79/122.
+                "seat_shape_state": shape_state,
+                "seat_shape_rule": shape_rule,
+                "seat_shape_allowed": shape_allowed,
             }
             for decision_id in targets:
                 state[decision_id] = reading
@@ -12984,17 +12982,17 @@ function liveOrderCard(L){
   // is the cold tail, right the warm one -- named by where the tail runs,
   // not by which way the page happens to draw the ladder.
   const SKEW_LABEL = {
-    SYMMETRIC: ["对称日", "均值与众数相差不到半格 —— 宪章 79 把 P0 席位定为均值桶±1"],
-    RIGHT_SKEWED: ["右偏 · 暖尾", "均值在众数之上超过半格：尾巴拖向偏热的一侧"],
-    LEFT_SKEWED: ["左偏 · 冷尾", "均值在众数之下超过半格：尾巴拖向偏冷的一侧"],
+    SYMMETRIC: ["对称日", "均值与众数相差不到 0.35 σ —— 宪章 131 把席位定为均值桶±1"],
+    RIGHT_SKEWED: ["右偏 · 暖尾", "均值在众数之上超过 0.35 σ：席位为 {均值桶, 尾侧一格(, 尾侧两格)}，众数桶在窗外"],
+    LEFT_SKEWED: ["左偏 · 冷尾", "均值在众数之下超过 0.35 σ：席位为 {均值桶, 尾侧一格(, 尾侧两格)}，众数桶在窗外"],
   };
-  // Charter 122's band, as the plan recorded it: [lo, hi) in bucket steps,
-  // hi null meaning no upper bound.
-  const bandText = (plan)=>{
-    let b = plan.seat_width_band;
-    if(typeof b === "string"){ try { b = JSON.parse(b); } catch(e) { b = null; } }
-    if(!Array.isArray(b) || b.length !== 2) return "";
-    return ` [${Number(b[0]).toFixed(2)}, ${b[1]==null?"∞":Number(b[1]).toFixed(2)}) 格`;
+  // Charter 131: the windows the day was allowed, as the plan recorded them
+  // (ordinal sets, widest first).
+  const allowedText = (plan)=>{
+    let a = plan.seat_shape_allowed;
+    if(typeof a === "string"){ try { a = JSON.parse(a); } catch(e) { a = null; } }
+    if(!Array.isArray(a) || !a.length) return "";
+    return a.map(w => Array.isArray(w) ? `${w[0]}–${w[w.length-1]}` : String(w)).join(" / ") + " 格序数";
   };
   const skewChip = (g)=>{
     const plan = planOf(g);
@@ -13007,12 +13005,8 @@ function liveOrderCard(L){
       ? `均值−众数 = ${gap==null?"—":(gap>0?"+":"")+Number(gap).toFixed(2)} 格`
         + `（判定阈 ±${plan.threshold_buckets==null?"0.50":Number(plan.threshold_buckets).toFixed(2)} 格${plan.threshold_sigma==null?"":" = "+Number(plan.threshold_sigma).toFixed(2)+" σ"}）`
         + (plan.sigma_buckets==null ? "" : ` · 服务宽度 σ ${Number(plan.sigma_buckets).toFixed(2)} 格`)
-        + (plan.seat_width_in_band==null ? "" :
-            (plan.seat_forced
-              ? ` · 宽度在档内${bandText(plan)}，席位由第 79 条固定为中心±1`
-              : (plan.seat_width_in_band
-                  ? ` · 宽度在档内${bandText(plan)}，但当天不是对称日，席位由枚举自选`
-                  : ` · 宽度在档外${bandText(plan)}，席位由枚举自选（第 79 条只在它被实测过的宽度上生效）`)))
+        + (plan.seat_shape_rule==null ? "" :
+            ` · 第 131 条席位形状：${allowedText(plan) || "无可坐窗"}`)
         + " · 取自该决策自己的计划所记形态读数"
       : "取自该计划记下的方向（宪章 75 下方向就是偏态符号）。"
         + "证据不新鲜的那天一律记 NEUTRAL，所以这一路读数可能把当天读成对称——"

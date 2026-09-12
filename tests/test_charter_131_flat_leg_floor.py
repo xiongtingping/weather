@@ -1,14 +1,12 @@
-"""Charter 91: the leg floor falls with our belief in the rung.
+"""Charter 131 (Q8): the leg floor is a flat three cents, read at the mid.
 
-User ruling 2026-09-06: "腿地板 0.03 不是固定不变，随着概率调整而调整".  The
-2026-08-24 floor was measured on tail rungs -- cheap asks where our own claim
-was small too.  ZGSZ 2026-09-06 held the day's high at 27°C with a 61.5% P1
-belief and a 2.3-cent ask, and the fixed floor refused the one rung the
-observations had confirmed.
+Charter 91 (2026-09-06) let the floor fall with belief -- 0.03 x min(1,
+0.30/p) -- so ZGSZ 2026-09-06's confirmed 27°C at 2.3 cents could be bought.
+User ruling 2026-09-12 ("0.03 地板：读中价") retired that: a rung the market
+prices under three cents is not bought however much we believe in it, and
+the reference price stays charter 103's mid.
 """
 from __future__ import annotations
-
-import pytest
 
 from bayes_basket_target import delta_v2_runtime as P
 from bayes_basket_target.basket_kernel import delta_v2 as K
@@ -16,19 +14,15 @@ from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
 from bayes_basket_target.delta_v2_runtime import _support_windows
 
 
-def test_the_floor_is_whole_for_tail_claims_and_falls_above_the_anchor() -> None:
-    assert K.LEG_FLOOR_RULE_VERSION == "belief_scaled_v1"
-    assert K.LEG_FLOOR_BELIEF_ANCHOR == 0.30
-    assert K.leg_floor_all_in_ask(0.03, None) == 0.03, "no belief, no relaxation"
-    assert K.leg_floor_all_in_ask(0.03, 0.0) == 0.03
-    assert K.leg_floor_all_in_ask(0.03, 0.05) == 0.03
-    assert K.leg_floor_all_in_ask(0.03, 0.30) == 0.03
-    assert K.leg_floor_all_in_ask(0.03, 0.45) == pytest.approx(0.02)
-    assert K.leg_floor_all_in_ask(0.03, 0.615) == pytest.approx(0.014634, rel=1e-4)
-    assert K.leg_floor_all_in_ask(0.03, 0.90) == pytest.approx(0.01)
-    # The ZGSZ rung: 2.3 cents against 61.5% clears; the same ask at 5% does not.
-    assert K.leg_below_floor(0.023, 0.615, 0.03) is False
+def test_the_floor_is_flat_whatever_the_belief() -> None:
+    assert K.LEG_FLOOR_RULE_VERSION == "flat_mid_v2"
+    assert not hasattr(K, "LEG_FLOOR_BELIEF_ANCHOR")
+    for belief in (None, 0.0, 0.05, 0.30, 0.45, 0.615, 0.90):
+        assert K.leg_floor_all_in_ask(0.03, belief) == 0.03
+    # The ZGSZ rung: 2.3 cents is under the floor at 61.5% as at 5%.
+    assert K.leg_below_floor(0.023, 0.615, 0.03) is True
     assert K.leg_below_floor(0.023, 0.05, 0.03) is True
+    assert K.leg_below_floor(0.031, 0.05, 0.03) is False
     assert K.leg_below_floor(None, 0.05, 0.03) is False
 
 
@@ -60,9 +54,9 @@ def _snapshot(asks: dict[str, float], probabilities: dict[str, float]):
     })
 
 
-def test_the_confirmed_high_at_two_cents_is_admitted_while_a_tail_at_two_cents_is_not(monkeypatch) -> None:
-    """ZGSZ 2026-09-06 at 14:50 local, hard bound at 27: the market asks 2.3
-    cents for 27°C against a 61.5% belief; 33°C asks 0.2 cents against 0.7%."""
+def test_the_confirmed_high_at_two_cents_is_refused_like_any_tail(monkeypatch) -> None:
+    """ZGSZ 2026-09-06 at 14:50 local: the market asks 2.3 cents for 27°C
+    against a 61.5% belief.  Charter 91 admitted it; charter 131 does not."""
 
     monkeypatch.setattr(P, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     asks = {"27": 0.023, "28": 0.283, "29": 0.61, "30": 0.18, "31": 0.04, "32": 0.023, "33": 0.002}
@@ -73,18 +67,12 @@ def test_the_confirmed_high_at_two_cents_is_admitted_while_a_tail_at_two_cents_i
         maximum_support_buckets=4, minimum_support_buckets=3, center_bucket="28",
         probability_stage="P1",
     )
-    assert "27" not in audit["leg_floor_excluded_buckets"], "61.5% at 2.3 cents is not a lottery"
-    assert "33" in audit["leg_floor_excluded_buckets"], "0.7% at 0.2 cents still is"
-    assert "32" in audit["leg_floor_excluded_buckets"], "7.3% at 2.3 cents still is: below the anchor"
-    assert audit["leg_floor_rule"] == "belief_scaled_v1"
-    assert audit["leg_floor_belief_anchor"] == 0.30
-    # What still refuses {27, 28} on this day is not the floor: the bimodal
-    # shape (mode 27, mean 28.5) reads as right-skewed, and charter 55 forbids
-    # extending from the centre toward the cold side.  Named here so the next
-    # blocker is on record rather than mistaken for the floor.
+    assert "27" in audit["leg_floor_excluded_buckets"], "61.5% at 2.3 cents is under the flat floor"
+    assert "33" in audit["leg_floor_excluded_buckets"]
+    assert "32" in audit["leg_floor_excluded_buckets"]
+    assert audit["leg_floor_rule"] == "flat_mid_v2"
+    assert "leg_floor_belief_anchor" not in audit
     assert audit["leg_floor_refused_window_count"] == 0
-    assert audit["skew_refused_window_count"] == 1
-    assert audit["skew_extension_sign"] == 1
 
 
 def test_the_ledger_reads_the_kernels_floor_and_hashes_the_rule() -> None:
@@ -97,23 +85,19 @@ def test_the_ledger_reads_the_kernels_floor_and_hashes_the_rule() -> None:
     import paper_trading_ledger as L  # noqa: PLC0415
 
     # Charter 103 moved the read point: both books ask the kernel the whole
-    # question -- floor and the side of the book it is measured on -- rather
-    # than each computing the comparison against the scaled floor itself.
+    # question -- floor and the side of the book it is measured on.
     assert L.leg_below_floor is K.leg_below_floor
-    assert L.LEG_FLOOR_BELIEF_ANCHOR == K.LEG_FLOOR_BELIEF_ANCHOR
     assert L.LEG_FLOOR_RULE_VERSION == K.LEG_FLOOR_RULE_VERSION
     assert L.LEG_FLOOR_PRICE_BASIS == K.LEG_FLOOR_PRICE_BASIS
     source = (root / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
     assert '"leg_floor_rule": LEG_FLOOR_RULE_VERSION,' in source
-    assert '"leg_floor_belief_anchor": LEG_FLOOR_BELIEF_ANCHOR,' in source
     assert '"leg_floor_price_basis": LEG_FLOOR_PRICE_BASIS,' in source
+    assert "LEG_FLOOR_BELIEF_ANCHOR" not in source
     runtime = (root / "bayes_basket_target" / "delta_v2_runtime.py").read_text(encoding="utf-8")
     # No production site compares a quote to the bare constant any more.
     assert "< MINIMUM_LEG_ALL_IN_ASK" not in runtime
     assert ">= MINIMUM_LEG_ALL_IN_ASK" not in runtime
-    # And no site in either book reaches past the shared read point to the
-    # scaled floor on its own -- that is how the two drifted onto different
-    # sides of the book in the first place.
+    # And no site in either book reaches past the shared read point.
     assert "leg_floor_all_in_ask(" not in source
     assert "leg_floor_all_in_ask(" not in runtime
 

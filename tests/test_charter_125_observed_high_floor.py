@@ -296,20 +296,25 @@ def test_the_control_arm_is_the_same_book_with_the_thermometer_removed() -> None
 
 def test_the_seat_moves_off_a_window_the_observations_have_killed() -> None:
     # The consequence that costs money, not just an audit key.  On the open
-    # book the objective seats {31,32,33}; once the day has reported 31 that
-    # window contains a settled loss, and the seat becomes {32,33}.
+    # book charter 131 seats the symmetric {30,31,32}; once the day has
+    # reported 31 every P0 shape holds a settled loss -- {31,32,33} is the
+    # only three-rung shape around the surviving centre and 31 is dead --
+    # so P0 seats nothing.  A P1 day seats the two-rung {32,33} instead
+    # (charter 131 (10), pinned in the doctrine suite).
     open_windows, _ = _windows(_held_snapshot())
     floored_windows, _ = _windows(_floored_snapshot(("29", "30", "31"), 31.0))
 
     def seats(windows):
+        # The ruled shape is also the held basket here, so the incumbent
+        # row IS the seat; what matters is that it is admissible.
         return [
             tuple(window["buckets"])
             for window in windows
-            if window.get("admissible") and not window.get("is_incumbent")
+            if window.get("admissible")
         ]
 
-    assert seats(open_windows) == [("31", "32", "33")]
-    assert seats(floored_windows) == [("32", "33")]
+    assert seats(open_windows) == [("30", "31", "32")]
+    assert seats(floored_windows) == []
 
 
 def test_a_standing_basket_holding_a_dead_rung_is_not_seatable() -> None:
