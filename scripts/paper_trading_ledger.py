@@ -224,6 +224,8 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     MAX_STAKE_FRACTION_PER_SCOPE,
     OFF_CENTER_CLAIM_RAMP_BUCKETS,
     OFF_CENTRE_CLAIM_MODE,
+    BETA_EDGE_MODE,
+    BETA_EDGE_RULE_VERSION,
     STAGE_BUDGET_SHARE,
     SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
     EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
@@ -2069,6 +2071,7 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
             else "·%s按挂单价" % "+".join(SEAT_PRICING_LANE_STAGES)
         )
     ),
+    {"off": None, "shadow": "β闸影子", "on": "β闸正式(q+β_lcb·(p−q))"}[BETA_EDGE_MODE],
     "离心折扣已退役(恒等)" if OFF_CENTRE_CLAIM_MODE == "off" else (
         None
         if OFF_CENTER_CLAIM_RAMP_BUCKETS == 1.0
@@ -2363,6 +2366,12 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
         "lifted_claim_times_lambda_v1"
         if CHARTER_87_GATE_EFFECTIVE_EDGE == "on" else "lifted_claim_v0"
     ),
+    # Charter 128 (2026-09-12): the beta lane.  ``shadow`` records and gates
+    # nothing; ``on`` replaces the gate's and the solver's belief.  Hashed
+    # unconditionally -- rows judged on beta and rows judged on lambda are
+    # not one book, and the shadow rows carry readings the others lack.
+    "beta_edge_mode": BETA_EDGE_MODE,
+    "beta_edge_rule": BETA_EDGE_RULE_VERSION,
     "stage_authority": "highest_committed_stage_v1",
     "checkpoint_books": "every_committed_book_while_current_v1",
     "taker_fill": "top_of_offer_cut_to_depth_v1",

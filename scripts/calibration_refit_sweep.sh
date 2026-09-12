@@ -194,6 +194,15 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] effective edge lambda refit"
   fi
 }
 
+# Charter 128 (2026-09-12): the beta lane -- one slope per stage on the
+# same candidate-window population lambda reads, walk-forward as-of today,
+# by-day bootstrap lower bound.  Shadow: it is recorded on every decision
+# and gates nothing until ruled on.  Never fatal.
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] beta edge refit"
+"$PY" scripts/refit_beta_edge.py --commit \
+  --as-of "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  || echo "beta edge refit failed; the served beta stands" >&2
+
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] delta_v2 policy re-pin"
 "$PY" scripts/repin_delta_v2_policy_to_current_fill.py --commit || RC=$?
 

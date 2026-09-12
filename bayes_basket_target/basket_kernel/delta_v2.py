@@ -1800,6 +1800,36 @@ EFFECTIVE_EDGE_SCOPES = ("window", "bucket")
 # and the runtime that reads it must name the same string, and the
 # runtime must not import the store.
 BUCKET_TABLE_KEY = "bucket"
+# Charter 128 (2026-09-12): the beta lane rides in the same served-tables
+# mapping under a key no stage can collide with.  Its value per stage is a
+# dict (``beta``, ``beta_lcb``, ``sha256``, ``accumulating``), not a band
+# table; readers that iterate the mapping as band tables must skip it.
+BETA_TABLE_KEY = "beta"
+# ``off``: the lane is not read.  ``shadow`` (default): every priced window
+# records the beta belief, edge and verdict and nothing gates on them.
+# ``on``: the gate and the solver read ``q + beta_lcb * (p - q)`` instead of
+# the lifted-claim-times-lambda belief; a stage with no fit reads
+# ``beta_lcb = 0``, which is the belief collapsing onto the price and the
+# gate refusing -- the honest reading of "no evidence yet".
+BETA_EDGE_MODE = (
+    os.environ.get("PM_BETA_EDGE", "").strip().lower() or "shadow"
+)
+if BETA_EDGE_MODE not in {"off", "shadow", "on"}:
+    raise RuntimeError(f"unknown beta edge mode: {BETA_EDGE_MODE}")
+BETA_EDGE_RULE_VERSION = "beta_lcb_times_disagreement_v1"
+
+
+def beta_belief_v1(raw_win: float, price: float, beta_lcb: float) -> float:
+    """Charter 128: ``q + beta_lcb * (p - q)``, clipped to a probability.
+
+    ``p`` is the raw served claim, ``q`` the all-in price the gate priced the
+    window at, ``beta_lcb`` the lower bound of the share of the disagreement
+    that arrives.  At ``beta_lcb = 0`` this is the price itself and the edge
+    is zero; at 1 it is the raw claim.
+    """
+
+    belief = float(price) + float(beta_lcb) * (float(raw_win) - float(price))
+    return min(1.0 - EPS, max(EPS, belief))
 
 
 def effective_edge_lambda(

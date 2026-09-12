@@ -79,6 +79,7 @@ from typing import Any, Sequence
 
 from .band_reliability_store import BAND_TABLE_CELLS
 from .basket_kernel.delta_v2 import (
+    BETA_TABLE_KEY,
     center_window_claim_factor,
     claim_transform_fingerprint,
     BUCKET_TABLE_KEY,
@@ -2149,4 +2150,10 @@ def load_effective_edge_tables(
     tables[BUCKET_TABLE_KEY] = load_lambda_as_of(
         conn, stage_scope="P0", as_of_utc=as_of_utc, claim_scope="bucket"
     )
+    # Charter 128: the beta lane, under its own key.  A dict per stage, or
+    # None before the first fit; readers that iterate this mapping as band
+    # tables skip the key.
+    from .beta_edge_store import load_beta_tables  # noqa: PLC0415
+
+    tables[BETA_TABLE_KEY] = load_beta_tables(conn, as_of_utc=as_of_utc)
     return tables

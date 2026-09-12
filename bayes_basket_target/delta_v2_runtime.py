@@ -39,6 +39,10 @@ from .basket_kernel.delta_v2 import (
     leg_below_floor,
     venue_minimum_shares_v1,
     CENTER_WINDOW_CLAIM_BANDS,
+    BETA_EDGE_MODE,
+    BETA_EDGE_RULE_VERSION,
+    BETA_TABLE_KEY,
+    beta_belief_v1,
     SIZING_CLAIM_BANDS,
     sizing_claim_factor,
     EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
@@ -2232,6 +2236,11 @@ def _support_windows(
     unpriced_refused = 0
     edge_refused = 0
     lambda_refused = 0
+    # Charter 128 (shadow): what the beta gate would have done to the
+    # windows the standing gate admitted and refused.
+    beta_would_refuse = 0
+    beta_would_admit = 0
+    beta_served = (effective_edge_tables or {}).get(BETA_TABLE_KEY) or {}
     enumerated = 0
     shortlisted = 0
     # The window the price gate came closest to admitting.  The counters
@@ -2582,6 +2591,39 @@ def _support_windows(
                         min(1.0 - EPS, raw_win * claim_factor * gate_lambda)
                         if gate_lambda is not None else win
                     )
+            # Charter 128: the beta belief, ``q + beta_lcb * (p - q)`` on
+            # the raw claim and the priced window.  Under ``shadow`` the
+            # three values are recorded on the row and gate nothing; under
+            # ``on`` they ARE the belief -- the gate reads the beta edge and
+            # the solver's lambda becomes the ratio that reproduces it, so
+            # admission and sizing still read one number.  A stage with no
+            # fit serves ``beta_lcb = 0``: belief == price, edge == 0.
+            beta_lcb = None
+            beta_point = None
+            beta_sha = None
+            beta_belief = None
+            beta_edge = None
+            beta_admissible = None
+            if BETA_EDGE_MODE != "off" and priced:
+                beta_row = beta_served.get(str(probability_stage or ""))
+                if isinstance(beta_row, dict):
+                    beta_lcb = float(beta_row.get("beta_lcb") or 0.0)
+                    beta_point = beta_row.get("beta")
+                    beta_sha = beta_row.get("sha256")
+                elif BETA_EDGE_MODE == "on":
+                    beta_lcb = 0.0
+                if beta_lcb is not None:
+                    beta_belief = beta_belief_v1(raw_win, price, beta_lcb)
+                    beta_edge = beta_belief - price
+                    beta_admissible = beta_edge > EPS
+                    if BETA_EDGE_MODE == "on":
+                        effective_win = beta_belief
+                        gate_lambda = (
+                            effective_win / win if win > EPS else None
+                        )
+                        gate_lambda_source = "beta_edge_lcb"
+                        if win > EPS:
+                            gate_agreement = price / win
             edge = effective_win - price if priced else None
             is_incumbent = window == incumbent
             # The incumbent has no exemption left.  It used to be waived past
@@ -2896,6 +2938,11 @@ def _support_windows(
                     + (1.0 - clipped_win)
                     * math.log((1.0 - clipped_win) / (1.0 - cost))
                 )
+            if beta_admissible is not None and BETA_EDGE_MODE == "shadow":
+                if admissible and not beta_admissible:
+                    beta_would_refuse += 1
+                elif (not admissible) and beta_admissible:
+                    beta_would_admit += 1
             windows.append({
                 "buckets": window,
                 "win_probability": win,
@@ -2916,6 +2963,17 @@ def _support_windows(
                 "robust_claim": robust_claim,
                 "robust_claim_factor": robust_factor,
                 "robust_edge": robust_edge,
+                # Charter 128: the beta belief and its verdict.  ``None``
+                # when the lane is off, the window unpriced, or (shadow) the
+                # stage has no fit yet; under ``on`` the belief above IS
+                # ``beta_belief`` and ``effective_edge_lambda`` is the ratio
+                # that reproduces it in the solver's partition.
+                "beta_lcb": beta_lcb,
+                "beta_point": beta_point,
+                "beta_belief": beta_belief,
+                "beta_edge": beta_edge,
+                "beta_admissible": beta_admissible,
+                "beta_table_sha256": beta_sha,
                 # Audit only: h/K, and the marginal Δh/ΔK of what this
                 # window adds over what the seat already holds.  ``kind``
                 # separates an opening from a widening from a top-up that
@@ -3424,6 +3482,23 @@ def _support_windows(
         # counts the windows that cleared the pre-lambda price test and
         # fell to lambda -- the seats the ruling removes.
         "gate_reads_effective_edge": CHARTER_87_GATE_EFFECTIVE_EDGE,
+        # Charter 128: the beta lane's mode, what it served per stage, and
+        # -- in shadow -- how many windows it would have moved across the
+        # gate.  The per-window readings are on each row.
+        "beta_edge_mode": BETA_EDGE_MODE,
+        "beta_edge_rule": BETA_EDGE_RULE_VERSION,
+        "beta_served": {
+            str(scope): (
+                None if not isinstance(row, dict) else {
+                    "beta": row.get("beta"), "beta_lcb": row.get("beta_lcb"),
+                    "sha256": row.get("sha256"),
+                    "accumulating": row.get("accumulating"),
+                }
+            )
+            for scope, row in dict(beta_served).items()
+        },
+        "beta_would_refuse_count": beta_would_refuse,
+        "beta_would_admit_count": beta_would_admit,
         # Charter 97: which axis served lambda, and how wide the thin band
         # is.  The per-window source is on each row; this is the audit's
         # header so a plan says whether the second axis was live at all.
@@ -4129,10 +4204,14 @@ def _solve_over_support_windows(
             ]
         )
         for scope, bands in (effective_edge_tables or {}).items()
+        if scope != BETA_TABLE_KEY
     }
     selection = {
         "decision_moment": decision_moment_audit,
         "effective_edge_tables": served_lambda_tables,
+        # Charter 128: a dict per stage, not a band table; kept apart so a
+        # reader of the lambda tables never meets a row it cannot parse.
+        "beta_edge_tables": (effective_edge_tables or {}).get(BETA_TABLE_KEY),
         "rule": "PROBABILITY_MASS_SHORTLIST_HEAD_CURVE_SOLVED_QUANTITIES_V3",
         "seat_rule_superseded": (
             "MAX_CURVE_SCORE_OVER_CONTIGUOUS_SUPPORT_WINDOWS_V2"
