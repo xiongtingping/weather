@@ -12,7 +12,6 @@ from amsc_p10_shadow_bundle_loader import (
 from amsc_p10_shadow_source_adapter import build_amsc_p10_shadow_arrival_candidates
 from amsc_raw_history_archive import archive_amsc_poll
 from scripts.fetch_zuuu_metar_taf import (
-    build_amsc_fact_snapshot_write_plan,
     build_amsc_observation_bundle,
     source_payloads_from_amsc_payload,
 )
@@ -72,30 +71,6 @@ def test_forward_loader_uses_only_reports_first_seen_in_exact_manifest(tmp_path)
         for row in selection["arrival_candidates"]
     )
     assert loaded["boundary"]["t1_synthesized_from_file_read"] is False
-
-
-def test_loader_reconstructs_manifest_index_from_fact_plan_not_untrusted_plan_summary(tmp_path) -> None:
-    bundle = _bundle(tmp_path, response_completed_at="2026-07-05T14:31:00Z")
-    plan = build_amsc_fact_snapshot_write_plan(bundle)
-    tampered = copy.deepcopy(plan)
-    tampered["effective_payload"]["amsc_raw_history_archive"]["raw_objects_by_sha256"] = {
-        "forged": {
-            "raw_sha256": "forged",
-            "raw_object_ref": "objects/forged.json.gz",
-            "first_seen_at": "2099-01-01T00:00:00Z",
-        }
-    }
-
-    loaded = load_amsc_p10_shadow_bundle(
-        tampered,
-        raw_archive_dir=tmp_path,
-        mode=FORWARD_NEW_ONLY,
-    )
-
-    assert loaded["ok"] is True
-    assert loaded["input_kind"] == "amsc_fact_snapshot_write_plan"
-    assert "forged" not in loaded["bundle"]["raw_history_archive"]["raw_objects_by_sha256"]
-    assert loaded["selected_primary_count"] == 2
 
 
 def test_forward_loader_excludes_preexisting_reports_but_replay_keeps_original_t1(tmp_path) -> None:

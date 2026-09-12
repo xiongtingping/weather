@@ -29,7 +29,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from weather_source_acquisition_manager import build_source_acquisition_trace, utc_now_iso
-from weather_fact_snapshot_writer import build_fact_snapshot_write_plan
 from amsc_raw_history_archive import archive_amsc_poll, attach_archive_metadata
 from amsc_taf_revision_runtime import parse_zuuu_taf_revision
 
@@ -1072,96 +1071,6 @@ def _weather_likelihood_features_from_bundle(bundle: Mapping[str, Any]) -> dict[
     return features
 
 
-def build_amsc_fact_snapshot_write_plan(
-    bundle: Mapping[str, Any],
-    *,
-    slug: str = "",
-    event_date: str = "",
-    run_date: str = "",
-    fact_as_of: str = "",
-    include_payload: bool = True,
-    enable_apply_contract: bool = False,
-    write_latest: bool = False,
-) -> dict[str, Any]:
-    event_date_key = str(event_date or _default_event_date(bundle)).strip()
-    run_date_key = str(run_date or event_date_key).strip()
-    slug_key = str(slug or _default_slug_for_event_date(event_date_key)).strip()
-    fact_as_of_text = str(fact_as_of or bundle.get("fetched_at") or utc_now_iso()).strip()
-    requested_write_latest = bool(write_latest)
-    effective_write_latest = False
-    trace = bundle.get("source_acquisition_trace") if isinstance(bundle.get("source_acquisition_trace"), Mapping) else {}
-    raw_archive = bundle.get("raw_history_archive") if isinstance(bundle.get("raw_history_archive"), Mapping) else {}
-    raw_archive_summary = {
-        key: raw_archive.get(key)
-        for key in (
-            "schema",
-            "manifest_ref",
-            "manifest_sha256",
-            "objects_written",
-            "objects_reused",
-            "raw_object_count",
-            "coverage_manifest_refs",
-            "daily_coverage_state",
-            "guards",
-        )
-        if raw_archive.get(key) not in (None, "")
-    }
-    incoming_payload = {
-        "schema": "amsc_zuuu_metar_taf_fact_payload_v1",
-        "slug": slug_key,
-        "event_date": event_date_key,
-        "run_date": run_date_key,
-        "fact_as_of": fact_as_of_text,
-        "station_id": AIRPORT,
-        "source": "amsc_packet_retrieval",
-        "source_update_cadence_sec": 1800,
-        "weather_likelihood_features": _weather_likelihood_features_from_bundle(bundle),
-        "source_observations": bundle.get("source_observations") or [],
-        "source_observation_ids": bundle.get("source_observation_ids") or [],
-        "source_acquisition_trace": dict(trace),
-        "amsc_raw_history_archive": raw_archive_summary,
-        "amsc_observation_bundle_schema": bundle.get("schema") or "",
-        "source_acquisition_latest_repoint_allowed": False,
-        "source_acquisition_latest_repoint_block_reason": AMSC_LATEST_REPOINT_BLOCK_REASON,
-    }
-    plan = build_fact_snapshot_write_plan(
-        slug=slug_key,
-        event_date=event_date_key,
-        run_date=run_date_key,
-        fact_as_of=fact_as_of_text,
-        incoming_payload=incoming_payload,
-        source_acquisition_trace=trace,
-        composer_version=PARSER_VERSION,
-        write_reason="amsc_zuuu_metar_taf_observation_bundle_dry_run",
-        include_payload=include_payload,
-        enable_apply_contract=enable_apply_contract,
-        write_latest=effective_write_latest,
-    )
-    plan["caller"] = {
-        "module": "scripts/fetch_zuuu_metar_taf.py",
-        "function": "build_amsc_fact_snapshot_write_plan",
-        "lane": "amsc_zuuu_metar_taf_read_only",
-        "source_update_cadence_sec": 1800,
-        "apply_contract_enabled": bool(enable_apply_contract),
-        "write_latest_requested": requested_write_latest,
-        "write_latest_effective": effective_write_latest,
-        "write_latest_block_reason": AMSC_LATEST_REPOINT_BLOCK_REASON if requested_write_latest else "",
-    }
-    plan["source_acquisition_latest_repoint_policy"] = {
-        "requested": requested_write_latest,
-        "effective": effective_write_latest,
-        "block_reason": AMSC_LATEST_REPOINT_BLOCK_REASON if requested_write_latest else "",
-        "boundary": "source_acquisition_may_append_history_but_must_not_repoint_posterior_ssot_latest",
-    }
-    plan["guards"] = {
-        "writes_archive_db": False,
-        "writes_facts_sqlite": False,
-        "places_orders": False,
-        "historical_backfill": False,
-        "restarts_launchd": False,
-        "executes_sql": False,
-    }
-    return plan
 
 
 def _write_json_atomic(path: str, payload: Mapping[str, Any]) -> None:
@@ -1194,24 +1103,9 @@ def parse_args() -> argparse.Namespace:
         help="print read-only SourceObservation bundle JSON instead of report text",
     )
     parser.add_argument(
-        "--write-plan-json",
-        action="store_true",
-        help="print weather_fact_snapshot_writer dry-run write plan JSON; never applies it",
-    )
-    parser.add_argument(
-        "--enable-apply-contract",
-        action="store_true",
-        help="mark the write plan apply-supported; still does not execute SQL or apply the plan",
-    )
-    parser.add_argument(
-        "--write-latest",
-        action="store_true",
-        help="allow the plan to include latest repoint as apply-ready when policy permits; never applies it",
-    )
-    parser.add_argument(
         "--output-json",
         default="",
-        help="write --observations-json or --write-plan-json output atomically to this path instead of stdout",
+        help="write --observations-json output atomically to this path instead of stdout",
     )
     parser.add_argument(
         "--archive-dir",
@@ -1223,9 +1117,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="persist raw objects/manifest now and defer full-archive daily coverage until after probability T3",
     )
-    parser.add_argument("--slug", default="", help="override event slug for --write-plan-json")
     parser.add_argument("--event-date", default="", help="override event date YYYY-MM-DD for --write-plan-json")
-    parser.add_argument("--run-date", default="", help="override run date YYYY-MM-DD for --write-plan-json")
     parser.add_argument("--fact-as-of", default="", help="override fact_as_of timestamp for --write-plan-json")
     return parser.parse_args()
 
@@ -1279,26 +1171,6 @@ def main() -> int:
                 materialize_daily_coverage=not args.defer_daily_coverage,
             )
 
-        if args.write_plan_json:
-            bundle = build_amsc_observation_bundle(
-                payload,
-                fetched_at=fetched_at,
-                duration_ms=duration_ms,
-                source_payloads=sources,
-                raw_history_archive=raw_history_archive,
-            )
-            plan = build_amsc_fact_snapshot_write_plan(
-                bundle,
-                slug=args.slug,
-                event_date=args.event_date,
-                run_date=args.run_date,
-                fact_as_of=args.fact_as_of,
-                include_payload=True,
-                enable_apply_contract=args.enable_apply_contract,
-                write_latest=args.write_latest,
-            )
-            _emit_json(plan, args.output_json)
-            return 0
 
         if args.observations_json:
             bundle = build_amsc_observation_bundle(
