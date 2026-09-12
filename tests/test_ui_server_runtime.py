@@ -7926,11 +7926,13 @@ def test_bayes_prior_layout_prioritizes_ctp_prior_core_over_supporting_context()
     assert block.index("const sectionPriorRows = eventBayesPriorSectionRows(item, 3);") < block.index("const ctpPriorRows = eventBayesCtpPriorRows(item, 3);")
     assert "title: '目标桶起点'" in block
     assert "bayes-evidence-prior-grid is-core-first" in block
-    assert ".bayes-prior-support-row {" in text
-    assert "grid-template-columns:minmax(220px, .68fr) minmax(320px, 1.32fr);" in text
+    # ``.bayes-prior-support-row`` and ``.bayes-prior-explain-card`` were the
+    # two-column layout this test is named after, and the 2026-07-16 rebuild
+    # emitted neither again -- the comment below already said so, while these
+    # three lines went on requiring their CSS to stay.  The rules are gone;
+    # the one-column grid the core sits in is what is left to pin.
     assert ".bayes-evidence-prior-grid.is-core-first {\n\t      grid-template-columns:1fr;" in text
     assert ".bayes-prior-core {" in text
-    assert ".bayes-prior-explain-card {" in text
     assert "const priorComponentLabel = topPrior && topPrior.componentLabel" in block
     assert "bayes-prior-core event-realtime-block" in block
     assert "data-realtime-key=\"${escapeHtml(`bayes-stage:${String(cardId || eventIntelEventDate(item) || 'latest')}:prior`)}\"" in block

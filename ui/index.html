@@ -5061,14 +5061,6 @@
 	    .bayes-evidence-prior-grid > .bayes-evidence-mini-grid {
 	      grid-template-columns:1fr;
 	    }
-	    .bayes-prior-support-row {
-	      display:grid;
-	      grid-template-columns:minmax(220px, .68fr) minmax(320px, 1.32fr);
-	      gap:var(--space-2);
-	      align-items:start;
-	      min-width:0;
-	    }
-		    .bayes-prior-uplift,
 		    .bayes-prior-spotlight,
 		    .bayes-prior-top3-cardset {
 	      display:grid;
@@ -5079,13 +5071,7 @@
 	      border:1px solid var(--border-soft);
 	      background:color-mix(in srgb, var(--panel-3) 88%, transparent);
 	    }
-	    .bayes-prior-uplift {
-	      border-color:color-mix(in srgb, var(--accent) 34%, var(--border-soft));
-	      background:linear-gradient(135deg, color-mix(in srgb, var(--accent) 9%, var(--panel-3)), color-mix(in srgb, var(--panel-3) 92%, transparent));
-	      box-shadow:0 16px 34px color-mix(in srgb, var(--accent) 8%, transparent);
-	    }
-	    .bayes-prior-core,
-	    .bayes-prior-explain-card {
+	    .bayes-prior-core {
 	      display:grid;
 	      gap:var(--space-2);
 	      min-width:0;
@@ -5106,42 +5092,12 @@
 		      gap:var(--space-3);
 		      min-width:0;
 		    }
-	    .bayes-prior-core-copy {
-	      display:grid;
-	      gap:6px;
-	      min-width:0;
-	    }
-	    .bayes-prior-core-copy span,
-	    .bayes-prior-explain-head span {
-	      color:var(--muted);
-	      font-size:var(--font-2xs);
-	      line-height:1.15;
-	      font-weight:950;
-	    }
-	    .bayes-prior-core-copy strong {
-	      color:var(--accent);
-	      font-size:36px;
-	      line-height:1;
-	      font-weight:1000;
-	      overflow-wrap:anywhere;
-	    }
-	    .bayes-prior-core-copy small,
-	    .bayes-prior-core-stat small,
-	    .bayes-prior-explain-row small {
+	    .bayes-prior-core-stat small {
 	      color:var(--muted);
 	      font-size:var(--font-2xs);
 	      line-height:1.35;
 	      font-weight:800;
 	      overflow-wrap:anywhere;
-	    }
-	    .bayes-prior-core-prob {
-	      flex:0 0 auto;
-	      color:var(--text);
-	      font-size:34px;
-	      line-height:1;
-	      font-weight:1000;
-	      font-variant-numeric:tabular-nums;
-	      white-space:nowrap;
 	    }
 	    .bayes-prior-core-grid {
 	      display:grid;
@@ -5149,8 +5105,7 @@
 	      gap:var(--space-2);
 	      min-width:0;
 	    }
-	    .bayes-prior-core-stat,
-	    .bayes-prior-explain-row {
+	    .bayes-prior-core-stat {
 	      display:grid;
 	      gap:5px;
 	      min-width:0;
@@ -5159,143 +5114,17 @@
 	      border:1px solid color-mix(in srgb, var(--accent) 25%, var(--border-soft));
 	      background:color-mix(in srgb, var(--accent) 5%, var(--panel));
 	    }
-	    .bayes-prior-core-stat span,
-	    .bayes-prior-explain-row span {
+	    .bayes-prior-core-stat span {
 	      color:var(--muted);
 	      font-size:var(--font-2xs);
 	      line-height:1.15;
 	      font-weight:900;
 	    }
-	    .bayes-prior-core-stat strong,
-	    .bayes-prior-explain-row strong {
+	    .bayes-prior-core-stat strong {
 	      color:var(--text);
 	      font-size:var(--font-sm);
 	      line-height:1.15;
 	      font-weight:1000;
-	      overflow-wrap:anywhere;
-	    }
-	    .bayes-prior-explain-card {
-	      align-content:start;
-	      border-color:color-mix(in srgb, var(--accent) 28%, var(--border-soft));
-	      background:color-mix(in srgb, var(--accent) 5%, var(--panel-3));
-	    }
-	    .bayes-prior-explain-head {
-	      display:flex;
-	      align-items:flex-start;
-	      justify-content:space-between;
-	      gap:var(--space-2);
-	      min-width:0;
-	    }
-	    .bayes-prior-explain-head strong {
-	      color:var(--text);
-	      font-size:var(--font-sm);
-	      line-height:1.2;
-	      font-weight:950;
-	      text-align:right;
-	      overflow-wrap:anywhere;
-	    }
-	    .bayes-prior-explain-list {
-	      display:grid;
-	      grid-template-columns:1fr;
-	      gap:var(--space-2);
-	      min-width:0;
-	    }
-	    .bayes-prior-explain-row.is-basin {
-	      border-color:color-mix(in srgb, var(--warning) 28%, var(--border-soft));
-	      background:color-mix(in srgb, var(--warning) 5%, var(--panel));
-	    }
-	    .bayes-prior-uplift-head {
-	      display:flex;
-	      align-items:flex-start;
-	      justify-content:space-between;
-	      gap:var(--space-2);
-	      min-width:0;
-	    }
-	    .bayes-prior-uplift-copy {
-	      display:grid;
-	      gap:5px;
-	      min-width:0;
-	    }
-	    .bayes-prior-uplift-copy span {
-	      color:var(--muted);
-	      font-size:var(--font-2xs);
-	      line-height:1.15;
-	      font-weight:950;
-	    }
-	    .bayes-prior-uplift-copy strong {
-	      color:var(--text);
-	      font-size:22px;
-	      line-height:1.12;
-	      font-weight:1000;
-	      overflow-wrap:anywhere;
-	    }
-	    .bayes-prior-uplift-copy small {
-	      color:var(--muted);
-	      font-size:var(--font-2xs);
-	      line-height:1.35;
-	      font-weight:800;
-	      overflow-wrap:anywhere;
-	    }
-	    .bayes-prior-uplift-grid {
-	      display:grid;
-	      grid-template-columns:repeat(2, minmax(0, 1fr));
-	      gap:var(--space-2);
-	      min-width:0;
-	    }
-	    .bayes-prior-uplift-card {
-	      display:grid;
-	      gap:7px;
-	      min-width:0;
-	      padding:11px 12px;
-	      border-radius:var(--radius-2);
-	      border:1px solid color-mix(in srgb, var(--accent) 28%, var(--border-soft));
-	      background:color-mix(in srgb, var(--accent) 6%, var(--panel));
-	    }
-	    .bayes-prior-uplift-card.is-basin {
-	      border-color:color-mix(in srgb, var(--warning) 32%, var(--border-soft));
-	      background:color-mix(in srgb, var(--warning) 6%, var(--panel));
-	    }
-	    .bayes-prior-uplift-card-head {
-	      display:grid;
-	      gap:3px;
-	      min-width:0;
-	    }
-	    .bayes-prior-uplift-card-head span {
-	      color:var(--muted);
-	      font-size:var(--font-2xs);
-	      line-height:1.15;
-	      font-weight:900;
-	    }
-	    .bayes-prior-uplift-card-head strong {
-	      color:var(--text);
-	      font-size:var(--font-sm);
-	      line-height:1.18;
-	      font-weight:1000;
-	      overflow-wrap:anywhere;
-	    }
-	    .bayes-prior-uplift-value {
-	      color:var(--accent);
-	      font-size:26px;
-	      line-height:1;
-	      font-weight:1000;
-	      white-space:nowrap;
-	    }
-	    .bayes-prior-uplift-value.is-neutral {
-	      color:var(--muted);
-	      font-size:var(--font-sm);
-	    }
-	    .bayes-prior-uplift-value.is-negative {
-	      color:var(--danger);
-	    }
-	    .bayes-prior-uplift-value.is-warning {
-	      color:var(--warning);
-	      font-size:var(--font-sm);
-	    }
-	    .bayes-prior-uplift-why {
-	      color:var(--muted);
-	      font-size:var(--font-2xs);
-	      line-height:1.35;
-	      font-weight:800;
 	      overflow-wrap:anywhere;
 	    }
 	    .bayes-prior-spotlight {
@@ -5329,8 +5158,7 @@
 		      text-align:right;
 		      overflow-wrap:anywhere;
 		    }
-		    .bayes-prior-spotlight-label,
-		    .bayes-prior-context-label {
+		    .bayes-prior-spotlight-label {
 	      color:var(--muted);
 	      font-size:var(--font-2xs);
 	      font-weight:900;
@@ -5402,92 +5230,6 @@
 		      font-weight:850;
 		      overflow-wrap:anywhere;
 		    }
-	    .bayes-prior-context-strip {
-	      grid-column:1 / -1;
-	      display:flex;
-	      flex-wrap:wrap;
-	      align-items:center;
-	      gap:7px;
-	      min-width:0;
-	    }
-	    .bayes-prior-context-chip {
-	      display:inline-flex;
-	      align-items:center;
-	      gap:5px;
-	      max-width:100%;
-	      padding:5px 8px;
-	      border-radius:999px;
-	      border:1px solid var(--border-soft);
-	      background:color-mix(in srgb, var(--panel-3) 84%, transparent);
-	      color:var(--muted);
-	      font-size:var(--font-2xs);
-	      line-height:1.15;
-	      font-weight:850;
-	    }
-	    .bayes-prior-context-chip strong {
-	      color:var(--text);
-	      font-size:inherit;
-	      font-weight:950;
-	      overflow-wrap:anywhere;
-	    }
-	    .bayes-prior-impact-grid {
-	      grid-column:1 / -1;
-	      display:grid;
-	      grid-template-columns:repeat(2, minmax(0, 1fr));
-	      gap:var(--space-2);
-	      min-width:0;
-	    }
-	    .bayes-prior-impact-card {
-	      display:grid;
-	      grid-template-columns:minmax(0, 1fr) auto;
-	      align-items:center;
-	      gap:var(--space-2);
-	      min-width:0;
-	      padding:9px 10px;
-	      border-radius:var(--radius-2);
-	      border:1px solid color-mix(in srgb, var(--accent) 26%, var(--border-soft));
-	      background:color-mix(in srgb, var(--accent) 5%, var(--panel-3));
-	    }
-	    .bayes-prior-impact-card.is-basin {
-	      border-color:color-mix(in srgb, var(--warning) 30%, var(--border-soft));
-	      background:color-mix(in srgb, var(--warning) 6%, var(--panel-3));
-	    }
-	    .bayes-prior-impact-title {
-	      display:grid;
-	      gap:2px;
-	      min-width:0;
-	    }
-	    .bayes-prior-impact-title span {
-	      color:var(--muted);
-	      font-size:var(--font-2xs);
-	      line-height:1.15;
-	      font-weight:900;
-	    }
-	    .bayes-prior-impact-title strong {
-	      color:var(--text);
-	      font-size:var(--font-xs);
-	      line-height:1.2;
-	      font-weight:950;
-	      overflow-wrap:anywhere;
-	    }
-	    .bayes-prior-impact-value {
-	      color:var(--accent);
-	      font-size:22px;
-	      line-height:1;
-	      font-weight:1000;
-	      white-space:nowrap;
-	    }
-	    .bayes-prior-impact-value.is-neutral {
-	      color:var(--muted);
-	      font-size:var(--font-sm);
-	    }
-	    .bayes-prior-impact-value.is-negative {
-	      color:var(--danger);
-	    }
-	    .bayes-prior-impact-value.is-warning {
-	      color:var(--warning);
-	      font-size:var(--font-sm);
-	    }
 	    @media (max-width: 720px) {
 	      .bayes-evidence-prior-grid.is-uplift-first {
 	        grid-template-columns:1fr;
@@ -5507,29 +5249,16 @@
 	      .bayes-stage-core-value {
 	        justify-items:start;
 	      }
-	      .bayes-prior-support-row {
-	        grid-template-columns:1fr;
-	      }
 		      .bayes-prior-core-head,
 		      .bayes-prior-top3-cards {
 		        grid-template-columns:1fr;
 		      }
-	      .bayes-prior-core-grid,
-	      .bayes-prior-explain-list {
-	        grid-template-columns:1fr;
-	      }
-	      .bayes-prior-uplift-head {
-	        flex-direction:column;
-	      }
-	      .bayes-prior-uplift-grid {
+	      .bayes-prior-core-grid {
 	        grid-template-columns:1fr;
 	      }
 	      .bayes-prior-spotlight-main {
 	        align-items:flex-start;
 	        flex-direction:column;
-	      }
-	      .bayes-prior-impact-grid {
-	        grid-template-columns:1fr;
 	      }
 		    }
 	    .bayes-evidence-context-list {
