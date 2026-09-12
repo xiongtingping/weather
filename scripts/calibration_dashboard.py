@@ -4803,8 +4803,17 @@ def collect_center_width(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             "meaning": STAGE_MEANING.get(stage, ""),
             "state": state,
             "health": health,
-            "delta_c": active[0] if active else None,
-            "width_lambda": active[1] if active else None,
+            # No activated row is not "no data": the runtime serves the
+            # identity pair in that case, which is a served decision and
+            # the one P1 is living under.  Printing "—" for it read as a
+            # hole in the page (user report, 2026-09-12: "p1无数据") and
+            # hid the fact that P1's untouched width is currently the
+            # right one -- its only fitted row, 0.825 from 2026-08-16,
+            # would narrow a distribution that measures 9% too narrow
+            # already.
+            "delta_c": active[0] if active else 0.0,
+            "width_lambda": active[1] if active else 1.0,
+            "served_identity": active is None,
             # Served scalars come from the active row; the evidence behind
             # them comes from the newest journal entry, because the active
             # row is only rewritten when the scalars change and would
@@ -4828,9 +4837,44 @@ def collect_center_width(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             ),
             "min_forward_nll_gain": evidence.get("min_forward_nll_gain"),
             "last_outcome": outcome,
+            **_refit_countdown(
+                int(last[4]) if last else (int(active[3]) if active else 0)
+            ),
             **_evidence_clock(conn, stage),
         })
     return rows
+
+
+def _refit_countdown(serving_days: int) -> dict[str, Any]:
+    """How many more days before this stage may refit, said out loud.
+
+    The card carried the two numbers -- "证据 2 天 / 需 8 天" -- in the same
+    muted line as the cell count, and a reader who wants to know when a
+    stale scalar can be corrected had to subtract them (user ruling,
+    2026-09-12).  P0 is the case that made it matter: it serves a width
+    fitted 2026-09-03, three days before the climate blend came out from
+    under it, and the only thing standing between that and a clean refit
+    is the day count.
+
+    The date is an estimate and says so: a day counts only if it carried
+    enough serving cells, so one calendar day is an upper bound on
+    progress, and the date can only slip -- it slips all the way back to
+    the start whenever the served version moves, which is what the
+    evidence clock below the countdown is for.
+    """
+
+    try:
+        from bayes_basket_target.center_width_store import MIN_QUALIFYING_DAYS
+    except ImportError:
+        return {"days_remaining": None, "earliest_refit_date": None}
+    remaining = max(0, int(MIN_QUALIFYING_DAYS) - int(serving_days))
+    return {
+        "days_remaining": remaining,
+        "earliest_refit_date": (
+            (date.today() + timedelta(days=remaining)).isoformat()
+            if remaining else None
+        ),
+    }
 
 
 def _evidence_clock(conn: sqlite3.Connection, stage: str) -> dict[str, Any]:
@@ -13347,6 +13391,36 @@ function oosScores(){
 function centerWidth(){
   const rows = D.center_width || [];
   if(!rows.length) return "";
+  // The wait was two numbers in a muted line the reader had to subtract
+  // (user ruling, 2026-09-12: 加显著的显式倒计时).  It is the card's most
+  // actionable fact whenever a served scalar is stale -- P0 serves a width
+  // fitted three days before the climate blend came out from under it, and
+  // the day count is the only thing between that and a clean refit.
+  const countdown = r => {
+    if(r.days_remaining == null || !r.min_qualifying_days) return "";
+    const done = r.serving_days || 0, need = r.min_qualifying_days;
+    const ready = r.days_remaining === 0;
+    const pct = Math.max(2, Math.min(100, done / need * 100));
+    return `<div style="margin-top:12px;padding:9px 11px;border-radius:8px;
+      background:var(${ready ? "--pill-green-bg" : "--pill-amber-bg"})">
+      <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+        <span style="font-size:21px;font-weight:800;color:var(${
+          ready ? "--green" : "--amber"})">${ready
+          ? "可以重拟了" : "还需 " + r.days_remaining + " 天"}</span>
+        <span class="muted" style="font-size:12px">${ready
+          ? "证据已够，下一轮拟合就会试"
+          : "才够重拟一次" + (r.earliest_refit_date
+            ? " · 最早 " + h(r.earliest_refit_date) : "")}</span>
+      </div>
+      <div style="height:7px;border-radius:4px;background:var(--bar-bg);
+        margin-top:7px;overflow:hidden"><div style="height:100%;width:${
+        pct.toFixed(1)}%;background:var(${
+        ready ? "--green" : "--amber"})"></div></div>
+      <div class="muted" style="font-size:11.5px;margin-top:5px">
+        ${done}/${need} 天${ready ? "" :
+        "。日期按每天攒一天算，是<b>最早</b>——格子不够的日子不算，" +
+        "而服务版本一动，进度整条清零重来（见下方证据时钟）。"}</div></div>`;
+  };
   const cards = rows.map(r => `<div class="card">
     <div style="display:flex;align-items:center;gap:8px">
       <span class="dot ${r.health}"></span><b>${h(r.stage)}</b>
@@ -13369,6 +13443,11 @@ function centerWidth(){
           r.width_lambda == null ? "—" : r.width_lambda.toFixed(3)}</div>
         <div class="muted">×，小于 1 是收窄</div></div>
     </div>
+    ${r.served_identity ? `<div class="muted" style="margin-top:8px;
+      font-size:11.5px"><span class="pill amber">恒等 · 无拟合行</span>
+      这两个数不是缺数据，是这一层<b>此刻真正在服务的值</b>：没有生效行时
+      运行时原样放行分布（δ=0、λ=1），分布一点没被动过。</div>` : ""}
+    ${countdown(r)}
     <div class="muted" style="margin-top:10px">
       证据 ${r.serving_days} 天${r.min_qualifying_days
         ? " / 需 " + r.min_qualifying_days + " 天" : ""}${r.serving_cells ?

@@ -512,10 +512,6 @@ def watchdog(conn: sqlite3.Connection, *, stage: str) -> dict[str, Any]:
         return out
     ack = acknowledged(conn, stage=stage, fingerprint_sha256=current)
     out["acknowledged"] = ack
-    if ack is not None:
-        # Judged inert by whoever could judge it.  The lamp goes out for
-        # this fingerprint only; the next arithmetic change lights it again.
-        return out
     try:
         latest = conn.execute(
             "SELECT e.posterior_version"
@@ -529,6 +525,15 @@ def watchdog(conn: sqlite3.Connection, *, stage: str) -> dict[str, Any]:
         if not latest or not latest[0]:
             return out
         out["served_version"] = str(latest[0])
+        if ack is not None:
+            # Judged inert by whoever could judge it.  The lamp goes out
+            # for this fingerprint only; the next arithmetic change lights
+            # it again.  The served version is still reported: it is the
+            # evidence boundary every reader of this stage is waiting on,
+            # and returning before naming it printed "边界取服务版本 —" on
+            # a page whose next line is a countdown to that boundary
+            # (user report, 2026-09-12).
+            return out
         declared = version_effective_from(str(stage), out["served_version"])
         if declared:
             # A version that says when it began is compared against that,
