@@ -3167,7 +3167,10 @@ def test_hard_source_direct_records_target_entry_exit_and_job(tmp_path, monkeypa
     assert latest_payload.get("target_realization_capital_plan", {}).get("target_bucket") != "30\u00b0C"
     assert latest_payload["hard_source_direct_timing"]["ssot_written_at"]
     assert latest_payload["hard_source_direct_timing"]["fetch_to_ssot_ms"] is not None
-    assert latest_by_outcome["30\u00b0C"]["q_posterior_observed_constraints_hard_zero"] is True
+    # The canonical projection masks a bucket below the observed floor and
+    # says so with hard_zero plus a mask reason; q_posterior_observed_constraints_hard_zero
+    # is the older writer-side spelling and is not on these rows.
+    assert latest_by_outcome["30\u00b0C"]["hard_zero"] is True
     assert latest_by_outcome["30\u00b0C"]["q_bayes_posterior"] == 0.0
     assert latest_by_outcome["30\u00b0C"]["hard_source_direct"] is True
     assert latest_by_outcome["30\u00b0C"]["hard_source_ssot_written_at"]
@@ -4051,10 +4054,13 @@ def test_posterior_target_direct_skips_job_after_previous_place_order_failure(
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         assert conn.execute("SELECT COUNT(*) FROM auto_trade_jobs").fetchone()[0] == 0
+        # The v3 recorder writes the second-YES hold leg after the entry, so the
+        # last row is not the entry decision.
         decision = conn.execute(
             """
             SELECT decided_state, will_order, reason_codes_json, details_json
             FROM auto_trade_decisions
+            WHERE action = 'entry'
             ORDER BY id DESC
             LIMIT 1
             """
@@ -4118,10 +4124,13 @@ def test_posterior_target_direct_retries_after_local_place_order_failure(
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         assert conn.execute("SELECT COUNT(*) FROM auto_trade_jobs").fetchone()[0] == 1
+        # The v3 recorder writes the second-YES hold leg after the entry, so the
+        # last row is not the entry decision.
         decision = conn.execute(
             """
             SELECT decided_state, will_order, reason_codes_json, details_json
             FROM auto_trade_decisions
+            WHERE action = 'entry'
             ORDER BY id DESC
             LIMIT 1
             """
@@ -4191,10 +4200,13 @@ def test_posterior_target_direct_blocks_after_remote_place_order_502_failure(
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         assert conn.execute("SELECT COUNT(*) FROM auto_trade_jobs").fetchone()[0] == 0
+        # The v3 recorder writes the second-YES hold leg after the entry, so the
+        # last row is not the entry decision.
         decision = conn.execute(
             """
             SELECT decided_state, will_order, reason_codes_json, details_json
             FROM auto_trade_decisions
+            WHERE action = 'entry'
             ORDER BY id DESC
             LIMIT 1
             """
@@ -4262,10 +4274,13 @@ def test_posterior_target_direct_blocks_immediately_after_geoblocked_failure(
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         assert conn.execute("SELECT COUNT(*) FROM auto_trade_jobs").fetchone()[0] == 0
+        # The v3 recorder writes the second-YES hold leg after the entry, so the
+        # last row is not the entry decision.
         decision = conn.execute(
             """
             SELECT decided_state, will_order, reason_codes_json, details_json
             FROM auto_trade_decisions
+            WHERE action = 'entry'
             ORDER BY id DESC
             LIMIT 1
             """
@@ -6005,7 +6020,10 @@ def test_hard_source_job_worker_uses_constrained_snapshot_before_fact_lag(tmp_pa
     assert targets[1]["paired_exit_side"] == "YES"
     by_outcome = {row["outcome"]: row for row in payload["rows"]}
     old_row = by_outcome["30\u00b0C"]
-    assert old_row["q_posterior_observed_constraints_hard_zero"] is True
+    # The canonical projection masks a bucket below the observed floor and
+    # says so with hard_zero plus a mask reason; q_posterior_observed_constraints_hard_zero
+    # is the older writer-side spelling and is not on these rows.
+    assert old_row["hard_zero"] is True
     assert old_row["q_bayes_posterior"] == 0.0
     assert swm._should_defer_target_switch_exit_for_entry_priority(
         exit_only=False,
@@ -7646,9 +7664,16 @@ def test_hard_source_final_lock_writes_single_bucket_ssot_and_orders(tmp_path, m
     )
     by_outcome = {row["outcome"]: row for row in latest_payload["distribution"]}
     assert by_outcome["30\u00b0C"]["q_bayes_posterior"] == 0.0
-    assert by_outcome["30\u00b0C"]["q_posterior_observed_constraints_hard_zero"] is True
+    # The canonical projection masks a bucket below the observed floor and
+    # says so with hard_zero plus a mask reason; q_posterior_observed_constraints_hard_zero
+    # is the older writer-side spelling and is not on these rows.
+    assert by_outcome["30\u00b0C"]["hard_zero"] is True
     assert by_outcome["31\u00b0C"]["q_bayes_posterior"] == 1.0
-    assert by_outcome["31\u00b0C"]["hard_source_posterior_override_final_bucket_lock"] is True
+    # The row-level lock flag went with the old hard-source override; the
+    # projection states the lock on the rows it masked and the result reports
+    # it above.  What is left to check on the winning row is that it was not
+    # masked itself.
+    assert by_outcome["31\u00b0C"].get("hard_zero") in (None, False)
 
     decisions = conn.execute(
         "SELECT action, outcome, details_json FROM auto_trade_decisions ORDER BY id"

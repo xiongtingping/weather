@@ -7674,7 +7674,33 @@ def _record_target_realization_v3_plan_decisions(
         plan_id=plan_id,
         execution_phase=execution_phase,
     )
-    will_enqueue = bool(enqueue_job and actionable_targets and not duplicate_job)
+    # An entry that already failed at the venue does not get re-queued just
+    # because the plan was recomputed.  The guard lives on the pre-v3 return
+    # path and has had no reader since the three-leg plan became the sole
+    # entry: without it a geoblocked or retry-exhausted target was re-queued
+    # on every cycle.  Read for the buy leg the job would actually place.
+    previous_place_order_retry_block: Dict[str, Any] = {}
+    if enqueue_job and buy_targets and not sell_targets:
+        primary_buy = buy_targets[0] if isinstance(buy_targets[0], Mapping) else {}
+        previous_place_order_retry_block = _posterior_target_previous_place_order_retry_block(
+            conn,
+            slug=slug,
+            event_date=event_date,
+            outcome=str(primary_buy.get("outcome") or ""),
+            side=str(primary_buy.get("side") or "YES").upper() or "YES",
+        )
+    retry_blocked = bool(previous_place_order_retry_block.get("blocked"))
+    retry_block_reason = (
+        str(
+            previous_place_order_retry_block.get("reason")
+            or "posterior_target_previous_place_order_failure_retry_blocked"
+        )
+        if retry_blocked
+        else ""
+    )
+    will_enqueue = bool(
+        enqueue_job and actionable_targets and not duplicate_job and not retry_blocked
+    )
     common = {
         "source": POSTERIOR_TARGET_SOURCE,
         "strategy": TARGET_REALIZATION_STRATEGY,
@@ -7692,6 +7718,7 @@ def _record_target_realization_v3_plan_decisions(
         "target_bucket": plan.get("target_bucket"),
         "target_posterior": plan.get("target_posterior"),
         "duplicate_job_for_plan_phase": duplicate_job,
+        "previous_place_order_retry_block": dict(previous_place_order_retry_block),
         "entry_expected_targets": [dict(target) for target in actionable_targets],
         "deferred_buy_targets": [dict(target) for target in buy_targets] if sell_targets else [],
     }
@@ -7725,6 +7752,33 @@ def _record_target_realization_v3_plan_decisions(
                 )
         except Exception:
             pass
+        # A buy leg the venue already refused does not get written as an entry
+        # that merely happens not to order.  The pre-v3 return path recorded the
+        # block on the decision itself; keep that so the ledger row says why
+        # nothing was placed instead of claiming an entry.
+        decision_reason_codes = [reason_code]
+        decision_reasons = [
+            "v3 卖旧优先：旧仓成交后刷新最新 SSOT，再生成买新任务。"
+            if is_sell
+            else "按当前 posterior SSOT 的动态三腿选择买入；下一次后验更新将重新排序主 YES、次 YES 与强排除 NO。"
+        ]
+        if retry_blocked and not is_sell:
+            details["target_execution_blocked"] = True
+            details["target_execution_block_reason"] = retry_block_reason
+            if retry_block_reason not in decision_reason_codes:
+                decision_reason_codes = [*decision_reason_codes, retry_block_reason]
+            decision_reasons = [
+                "SSOT posterior target still requires entry, but the latest real place-order attempt is retry-blocked."
+            ]
+        decided_state = (
+            "exit"
+            if is_sell
+            else "blocked"
+            if retry_blocked
+            else "entry_dry_run"
+            if _truthy(os.environ.get("PM_AUTO_TRADE_DRY_RUN"), True)
+            else "entry"
+        )
         decision_ids.append(
             _insert_decision(
                 conn,
@@ -7735,16 +7789,10 @@ def _record_target_realization_v3_plan_decisions(
                 outcome=str(target.get("outcome") or ""),
                 side=str(target.get("side") or "YES"),
                 action="exit" if is_sell else "entry",
-                decided_state="exit" if is_sell else "entry_dry_run"
-                if _truthy(os.environ.get("PM_AUTO_TRADE_DRY_RUN"), True)
-                else "entry",
+                decided_state=decided_state,
                 will_order=will_enqueue,
-                reason_codes=[reason_code],
-                reasons=[
-                    "v3 卖旧优先：旧仓成交后刷新最新 SSOT，再生成买新任务。"
-                    if is_sell
-                    else "按当前 posterior SSOT 的动态三腿选择买入；下一次后验更新将重新排序主 YES、次 YES 与强排除 NO。"
-                ],
+                reason_codes=decision_reason_codes,
+                reasons=decision_reasons,
                 details=details,
                 created_at=now_iso,
             )
@@ -7868,6 +7916,11 @@ def _record_target_realization_v3_plan_decisions(
         "job_skipped_reason": (
             "target_realization_v3_duplicate_plan_phase"
             if duplicate_job
+            else str(
+                previous_place_order_retry_block.get("reason")
+                or "posterior_target_previous_place_order_failure_retry_blocked"
+            )
+            if retry_blocked
             else "target_realization_v3_no_actionable_delta"
             if not actionable_targets
             else "target_realization_v3_enqueue_error"
