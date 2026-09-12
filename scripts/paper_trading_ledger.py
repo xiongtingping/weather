@@ -926,18 +926,27 @@ MAKER_RESTING_HORIZON_MINUTES = float(
 # ``on``: a pass that finds positions under any other digest walks the whole
 # history instead of the recent window, which is exactly what the reason-
 # vocabulary rebuild beside it already does.  It converges in one pass --
-# the foreign rows are dropped and re-derived, so none can remain -- and it
-# costs about fourteen minutes of the write lock, over one scheduled cycle.
-# A rule change therefore buys one slow pass; the single-instance guard
-# skips the fire it overruns.
+# the foreign rows are dropped and re-derived, so none can remain.
+#
+# Measured 2026-09-12 (the lifecycle flip, 30 days of history, a live
+# resident beside it): 55 minutes, 02:29:30Z to 03:24:30Z, not the fourteen
+# first written here.  It does not block production -- the pass buffers
+# its inserts into one closing transaction and ``basket_policy_training_fact``
+# kept writing throughout -- and launchd does not start a StartInterval job
+# over its running predecessor, so the single-instance guard never has to
+# fire.  What it costs is that the book's position and settlement tables
+# are EMPTY for the whole pass and every reader of them sees nothing for an
+# hour after a rule change; the incremental sweeps queue behind it.
 #
 # It does NOT enter the selection fingerprint.  Two books produced by the
 # same rules are the same book whether or not a pass had to repair one of
 # them; hashing this would give them different digests.
 #
-# The cost scales with the book's span, which grows.  When a full re-derive
-# stops fitting inside a sweep interval this wants a bound, not a bigger
-# timeout.
+# The cost scales with the book's span, which grows, and it already does
+# not fit inside a sweep interval (55 minutes against 900 seconds).  If
+# that hour of blankness becomes a problem, this wants a bound -- oldest
+# days first, so the served window is back before the history is -- not a
+# bigger timeout.
 AUTO_REDERIVE_ON_RULE_CHANGE = (
     os.environ.get("PAPER_LEDGER_AUTO_REDERIVE", "").strip().lower() or "on"
 )
