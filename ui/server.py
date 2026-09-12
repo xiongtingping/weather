@@ -45371,6 +45371,12 @@ _FAST_TRADE_ROW_DROP_KEYS = {
     "metar_cross_check_sources",
     "per_model_q",
     "q_bayes_physical_likelihood_scale_details",
+    # The legacy spelling of the same blob, still written by two scripts and
+    # classified for migration in legacy_evidence_migration_registry.  This
+    # list is a denylist, so a key nobody names rides through verbatim: the
+    # fast-trade row compactor was carrying the whole debug object into the
+    # latency path while its modern sibling one line up was dropped.
+    "q_bayes_physical_likelihood_evidence_scale_details",
     "q_model_member_bucket_rule_meta",
     "hard_source_posterior_override_window",
     "zuuu_metar_raw_awc_today_temperature_points",

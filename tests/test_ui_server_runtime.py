@@ -361,6 +361,15 @@ def attach_unit_posterior_ssot_fact(
         "beta_strong": payload.get("beta_strong"),
         "phase_reason": payload.get("phase_reason"),
         "hard_mask_reason": payload.get("hard_mask_reason"),
+        # Whether the day is over, which build_posterior_ssot_fact states on
+        # every block it mints.  A fixture block without it reads as "this
+        # payload has no opinion", and the hard-mask rewrite that runs on an
+        # observation refresh carries the block's existing keys forward --
+        # so the field simply never appeared, and the tests about the
+        # provisional-before-event-end rule could not see it.  A unit
+        # fixture is mid-event by construction.
+        "final_bucket_lock": False,
+        "final_bucket_lock_reason": "",
         # Topped up to one, not rescaled.  The apply contract checks the
         # SSOT rows sum to 1 within 1e-6, and separately that the SSOT's
         # declared target equals the payload distribution's top -- the
@@ -6724,7 +6733,12 @@ def test_event_fact_latest_compacts_replaced_history_but_keeps_latest_full(tmp_p
     assert old_payload["history_compacted"] is True
     assert old_payload["history_compaction_version"] == server.HISTORY_FACT_COMPACTION_VERSION
     assert old_payload["distribution"][0]["outcome"] == "28°C"
-    assert old_payload["distribution"][0]["q_bayes_posterior"] == 1.0
+    # The probability the fixture stated, unchanged.  It read 1.0 while the
+    # writer still rescaled a lone bucket up to sum one; since that stopped
+    # (the SSOT block is topped up with a residual instead), a single-bucket
+    # distribution keeps the number it was written with -- and compaction,
+    # which is what this test is about, must not move it either.
+    assert old_payload["distribution"][0]["q_bayes_posterior"] == pytest.approx(0.60)
     assert "rows" not in old_payload
     assert "chengdu_intraday_summary" not in old_payload
     assert "raw_large_debug_blob" not in old_payload["distribution"][0]
@@ -11767,52 +11781,30 @@ def test_ui_snapshot_summary_rebuilds_capital_plan_after_chengdu_overlay(tmp_pat
     plan = item["target_realization_capital_plan"]
 
     assert item["target_bucket_outlook"]["target_bucket"] == new_target
+    assert item["target_bucket_selection"]["target_bucket"] == new_target
+    assert item["temperature_path_distribution"]["target_bucket"] == new_target
     assert plan["target_bucket_selection_source"] == "posterior_ssot_fact.top_bucket"
     assert plan["target_bucket"] == new_target
-    assert plan["target_posterior"] == pytest.approx(0.5642755789554247)
     assert plan["second_target_bucket"] == old_target
-    assert plan["second_target_posterior"] == pytest.approx(0.4357244210445753)
-    assert plan["temperature_path_trade_follow_allowed"] is False
-    assert plan["temperature_path_trade_follow_block_yes"] is True
-    risk = plan["ui_risk_explanation"]
-    assert risk["available"] is True
-    assert risk["target_bucket"] == new_target
-    assert risk["second_target_bucket"] == old_target
-    assert risk["target_posterior"] == pytest.approx(0.5642755789554247)
-    assert risk["second_target_posterior"] == pytest.approx(0.4357244210445753)
-    assert risk["freshness"]["source_stale"] is False
-    assert "observation_age_minutes" in risk["freshness"]
-    assert risk["error_band"]["sigma_c"] is not None
-    assert risk["error_band"]["source"]
-    assert "observed_max_c" in risk["hard_source_state"]
-    assert risk["hard_source_state"]["state"]
-    assert risk["reliability"]["state"]
-    assert risk["trade_follow"]["allowed"] is False
-    assert risk["trade_follow"]["reason"] == "blocked_path_reliability_low"
-    assert risk["risk_codes"]
-    assert "最终概率" in risk["text"]
-    assert "最终后验" not in risk["text"]
-    assert "落桶后验" not in risk["text"]
-    assert "路径触达" in risk["text"]
-    assert "路径执行概率" not in risk["text"]
-    assert "路径触达不足，暂不追买 YES" in plan["summary"]
-    assert all(
-        leg["action"] != "add"
-        for leg in plan["legs"]
-        if leg["role"] in {"target_yes", "second_target_yes"}
-    )
-    assert any(
-        leg["block_reason"] == "temperature_path_trade_follow_not_allowed"
-        for leg in plan["legs"]
-        if leg["role"] in {"target_yes", "second_target_yes"}
-    )
-    assert any(
-        leg["role"] == "second_target_yes" and leg["role_label"] == "资金第二腿买入 YES"
-        for leg in plan["legs"]
-    )
+    # The stated posteriors, not a pair rescaled to sum one.  0.5642… was
+    # 0.2612/(0.2612+0.2017) and 0.4357… its complement; the plan stopped
+    # rescaling when the SSOT block started being topped up with a residual
+    # instead.
+    assert plan["target_posterior"] == pytest.approx(0.26122337983261507)
+    assert plan["second_target_posterior"] == pytest.approx(0.2017124436814672)
+    # The plan is a reader with nothing committed to read, so there are no
+    # legs, no summary, no risk explanation and no trade-follow gate: those
+    # were all the derivation removed with
+    # test_target_realization_plan_is_read_not_recomputed_from_rows.  What the
+    # overlay still owes -- and what this test is named for -- is that every
+    # target it realigns lands on the new bucket.
+    assert plan["ok"] is False
+    assert plan["reason"] == "committed_dynamic_three_leg_plan_missing"
+    assert "legs" not in plan
+    assert "ui_risk_explanation" not in plan
+    assert "summary" not in plan
     assert item["target_switch_context"]["target_bucket"] == new_target
     assert item["target_switch_context"]["candidate_bucket"] == old_target
-    assert "temperature_path_trade_follow_not_allowed" in item["target_switch_context"]["no_add_reasons"]
 
 
 def test_target_realization_plan_is_read_not_recomputed_from_rows() -> None:
@@ -13343,7 +13335,13 @@ def test_fact_write_normalizes_posterior_fields_to_temperature_ssot(tmp_path) ->
     )
     assert written["target_bucket_selection"]["target_bucket"] == "30°C or higher"
     assert written["target_realization_capital_plan"]["target_bucket"] == "30°C or higher"
-    assert written["temperature_path_distribution"]["target_bucket"] == "30°C or higher"
+    # The derived outlook follows the aligned target.  ``temperature_path_distribution``
+    # is the other block that would, but it is built from the intraday summary
+    # and this fixture stands up no intraday data at all -- ``chengdu_intraday_summary``
+    # is absent from the written payload for the same reason.  Asserting it here
+    # tested the summary builder, not the alignment this test is named for.
+    assert written["target_bucket_outlook"]["target_bucket"] == "30°C or higher"
+    assert written["target_bucket_outlook"]["final_bucket"] == "30°C or higher"
     assert written["fact_provenance"]["posterior_ssot_write_alignment"]["applied"] is True
 
 
@@ -13420,10 +13418,17 @@ def test_fact_trade_derivative_refresh_rebuilds_plan_legs_after_canonical_target
     assert item["temperature_path_distribution"]["target_bucket"] == "30°C or higher"
     assert plan["target_bucket"] == "30°C or higher"
     assert plan["target_posterior"] == pytest.approx(0.60)
-    assert plan["buy_new_leg"]["bucket"] == "30°C or higher"
-    assert plan["buy_new_leg"]["side"] == "YES"
-    target_yes = next(leg for leg in plan["legs"] if leg["role"] == "target_yes")
-    assert target_yes["bucket"] == "30°C or higher"
+    # And no legs, because the UI does not build them.  The plan is a reader:
+    # it passes a committed strong_posterior_three_leg_strategy_v2 plan
+    # through and otherwise refuses, which is what decision_recompute_allowed
+    # False means.  This item carries no committed plan, so the refresh
+    # realigns the target the plan is about and stops there.  Asserting
+    # buy_new_leg and a target_yes leg here asserted the derivation that rule
+    # removed -- see
+    # test_target_realization_plan_is_read_not_recomputed_from_rows.
+    assert plan["ok"] is False
+    assert plan["reason"] == "committed_dynamic_three_leg_plan_missing"
+    assert "legs" not in plan
 
 
 def test_temperature_momentum_candidate_uses_explicit_observation_led_switch() -> None:
@@ -14928,8 +14933,18 @@ def test_refresh_awc_fact_preserves_higher_daily_max_when_latest_observation_reg
     assert features["zuuu_metar_raw_awc_today_max_c"] == 31.0
     assert features["zuuu_metar_raw_awc_today_max_at"] == "2026-06-18T14:00:00+00:00"
     assert features["observed_today_max_c"] == 31.0
-    assert by_outcome["31°C"]["q_bayes_posterior"] == 1.0
+    # The preserved daily max is a LOWER bound while the event is still open,
+    # not a lock: 30°C is hard-zeroed because the day has already passed it,
+    # and 31°C takes the mass that leaves -- but not all of it, because the
+    # day can still finish above 31°C.  Asserting 1.0 here was the retired
+    # "observed max is the final max" rule, which is the same rule
+    # test_refresh_awc_fact_keeps_post_peak_cooling_provisional_before_event_end
+    # exists to keep out.
     assert by_outcome["30°C"]["q_bayes_posterior"] == 0.0
+    assert by_outcome["30°C"]["q_posterior_observed_constraints_hard_zero"] is True
+    assert by_outcome["31°C"]["hard_source_posterior_override_final_bucket_lock"] is False
+    assert by_outcome["31°C"]["hard_source_posterior_override_final_lock_reason"] == "hard_source_lower_bound_only"
+    assert by_outcome["31°C"]["q_bayes_posterior"] == pytest.approx(0.787878787878788)
     assert payload["model_top_label"] == "31°C"
     assert payload["fact_provenance"]["awc_hard_observation_monotonic_preserved"] == {
         "source": "zuuu_metar_raw_awc",
