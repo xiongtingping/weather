@@ -9410,10 +9410,23 @@ function overviewLamps(){
           (2*row.delta_stderr*100).toFixed(0)}）`
       :`${row.settled_count} 链 · 后半 ${
         (row.delta*100>=0?"+":"")+(row.delta*100).toFixed(0)} 点`;
-    push("selection", hitv==null?"muted":band(hitv,0.5,0.33),
-      `${row.chosen_size} 桶选中命中 ${arrow}`,
-      pct0(hitv), move,
+    // A width the book has only tried once or twice gets its row and no
+    // verdict.  On 2026-09-12 the four-bucket row was one legacy chain
+    // that missed, and a red 0% sat beside a three-bucket row built on
+    // 36 -- the same shade the page uses for a width that is genuinely
+    // failing.  The widths themselves are the runtime's (charter 131
+    // seats 2-3; a chain's union reaches 4 when P0-M or P1 adds a rung),
+    // so a seat rule that moves moves these rows with it.
+    const thin = row.rate_is_readable===false;
+    push("selection", hitv==null||thin?"muted":band(hitv,0.5,0.33),
+      `${row.chosen_size} 桶选中命中${row.seat_legal===false?"（链并集）":""} ${arrow}`,
+      pct0(hitv), thin
+        ? `${row.settled_count} 链 · 不足 ${row.min_chains||8} 条，不判色`
+        : move,
       `目标函数选中的腿集合（含护栏腿，跨阶段并集）盖住结算真值的比率。` +
+      (row.seat_legal===false
+        ? `宪章 131 的席位是 2–3 桶，这一行是 P0-M/P1 加腿后链并集到 ${
+            row.chosen_size} 桶的那些链，不是开仓坐出来的宽度。` : "") +
       `买到的篮子只中 ${pct0(row.filled_hit_rate)}` +
       `，差额是市场没把会赢的那条腿卖给我们。声称 ${
       pct0(row.claimed_mean)}，实现/声称 ${
@@ -9997,9 +10010,15 @@ function basketHit(){
   const chosen=((S.chosen_basket_hit||{}).sizes||[]);
   const chosenRows=chosen.map(row=>{
     const ratio=row.realised_over_claimed;
-    return `<tr><td><b>${row.chosen_size} 桶</b></td>
-      <td>${row.settled_count}</td>
-      <td class="${row.hit_rate>=0.5?"up":""}">${p(row.hit_rate)}</td>
+    return `<tr><td><b>${row.chosen_size} 桶</b>${row.seat_legal===false
+      ?`<span class="muted" style="font-size:11px" title="宪章 131 的席位是 ${
+        row.chosen_size-1} 桶封顶；这一行是 P0-M/P1 加腿后链并集到的宽度"
+        > 链并集</span>`:""}</td>
+      <td>${row.settled_count}${row.rate_is_readable===false
+        ?`<span class="muted" style="font-size:11px" title="不足 ${
+          row.min_chains||8} 条已结算链，这一行的比率不判色"> 样本薄</span>`:""}</td>
+      <td class="${row.rate_is_readable===false?"muted"
+        :(row.hit_rate>=0.5?"up":"")}">${p(row.hit_rate)}</td>
       <td>${p(row.filled_hit_rate)}</td>
       <td>${p(row.claimed_mean)}</td>
       <td class="${ratio==null?"":(ratio>=0.9&&ratio<=1.15?"up":"down")}">${

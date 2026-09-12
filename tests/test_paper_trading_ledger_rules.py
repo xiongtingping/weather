@@ -1089,6 +1089,11 @@ def test_posted_basket_hit_is_grouped_on_what_was_chosen() -> None:
     from scripts.selection_market_dashboard import (  # noqa: PLC0415
         _posted_basket_hit_trend,
     )
+    from bayes_basket_target.delta_v2_runtime import (  # noqa: PLC0415
+        CHAIN_MAX_BUCKETS,
+        SEAT_MAX_BUCKETS,
+        SEAT_MIN_BUCKETS,
+    )
 
     db = root / "data" / "bayes_basket_target_ssot.db"
     if not db.is_file():
@@ -1103,8 +1108,18 @@ def test_posted_basket_hit_is_grouped_on_what_was_chosen() -> None:
 
     for row in payload["sizes"]:
         # ``chosen_size`` since 2026-08-24: the base moved from the posted
-        # ladder to the objective's own pick (intended legs).
-        assert row["chosen_size"] in (3, 4)
+        # ladder to the objective's own pick (intended legs).  The widths
+        # are the runtime's, not a tuple restated here -- the literal
+        # ``(3, 4)`` this replaced outlived clause 50's retired 3-4 seat by
+        # a charter and went on asserting the old rule (2026-09-12).
+        assert SEAT_MIN_BUCKETS <= row["chosen_size"] <= CHAIN_MAX_BUCKETS
+        assert row["seat_legal"] == (
+            SEAT_MIN_BUCKETS <= row["chosen_size"] <= SEAT_MAX_BUCKETS
+        ), row
+        # A width the book has barely tried is reported, never judged.
+        assert row["rate_is_readable"] == (
+            row["settled_count"] >= row["min_chains"]
+        ), row
         # Every posted basket is at least as likely to cover as the part of
         # it we managed to buy -- the filled set is a subset of the posted.
         assert row["filled_hit_rate"] <= row["hit_rate"] + 1e-9, row

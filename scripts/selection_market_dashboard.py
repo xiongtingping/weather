@@ -50,6 +50,9 @@ if str(Path(__file__).resolve().parent) not in sys.path:
 # is the whole point of naming a rule at all.
 from paper_trading_ledger import SELECTION_RULE_LABEL  # noqa: E402
 from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
+    CHAIN_MAX_BUCKETS,
+    SEAT_MAX_BUCKETS,
+    SEAT_MIN_BUCKETS,
     _skew_extension_sign,
 )
 
@@ -67,6 +70,12 @@ LEAN_TOLERANCE_BUCKETS = 0.35
 # longer run and averaging them in would describe a system that no longer
 # exists.
 STATS_START_EVENT_DATE = "2026-08-15"
+# How many settled chains a width needs before its hit rate gets a colour.
+# Under that the rate is one or two days wearing a percentage: on
+# 2026-09-12 the four-bucket row was a single chain that missed, and the
+# funnel painted it a red 0% beside a three-bucket row built on 36.  Same
+# number governs the trend halves below -- one threshold, not two.
+BASKET_HIT_MIN_CHAINS = 8
 # How many P1 recomputes a roster row carries.  The page draws the rung path
 # and the last recompute's point estimate from these, and the collector reads
 # exactly this many bodies per station-day rather than all of them.
@@ -734,7 +743,7 @@ def _settled_chain_baskets(
 
 
 def _posted_basket_hit_trend(
-    conn: sqlite3.Connection, sizes: Sequence[int] = (3, 4)
+    conn: sqlite3.Connection, sizes: Sequence[int] | None = None
 ) -> dict[str, Any]:
     """Hit rate of the basket the objective *chose*, per chosen width.
 
@@ -761,9 +770,23 @@ def _posted_basket_hit_trend(
     anything: with samples this size a slope is noise wearing a number,
     and "the last half against the first" is the comparison a reader makes
     anyway.  ``None`` when either half is too thin to say.
+
+    The widths reported are the runtime's own, never a list restated here:
+    ``SEAT_MIN_BUCKETS`` up to ``CHAIN_MAX_BUCKETS``, so a charter that
+    moves the seat moves this table with it.  Charter 131 seats 2-3 and
+    lets a chain's union reach 4 when P0-M or P1 adds a rung, which is why
+    the range runs past the seat maximum rather than stopping at it.  The
+    hardcoded ``(3, 4)`` this replaced was clause 50's retired 3-4 seat: it
+    had no row for the two-bucket skew-day seat that became legal on
+    2026-09-12, and its four-bucket row was one legacy chain painted red.
     """
 
-    wanted = {int(size) for size in sizes}
+    wanted = {
+        int(size) for size in (
+            range(SEAT_MIN_BUCKETS, CHAIN_MAX_BUCKETS + 1)
+            if sizes is None else sizes
+        )
+    }
     by_size: dict[int, list[dict[str, Any]]] = {size: [] for size in wanted}
     for chain in _settled_chain_baskets(conn):
         size = len(chain["chosen"])
@@ -822,12 +845,11 @@ def _posted_basket_hit_trend(
         later = account(
             [item for item in items if item["event_date"] not in early_days]
         )
-        MIN_HALF = 8
         movable = (
             earlier is not None
             and later is not None
-            and earlier["settled_count"] >= MIN_HALF
-            and later["settled_count"] >= MIN_HALF
+            and earlier["settled_count"] >= BASKET_HIT_MIN_CHAINS
+            and later["settled_count"] >= BASKET_HIT_MIN_CHAINS
         )
         # Whether the move is even distinguishable from noise.  A hit rate
         # is a proportion, so the two halves' standard errors combine; under
@@ -846,6 +868,15 @@ def _posted_basket_hit_trend(
         out["sizes"].append({
             "chosen_size": size,
             **overall,
+            # Whether the rate itself carries a reading, before any
+            # question of trend.  A width the book has only tried once
+            # still gets its row -- a missing row answers a different
+            # question than a thin one -- but it does not get a verdict.
+            "rate_is_readable": (
+                overall["settled_count"] >= BASKET_HIT_MIN_CHAINS
+            ),
+            "min_chains": BASKET_HIT_MIN_CHAINS,
+            "seat_legal": SEAT_MIN_BUCKETS <= size <= SEAT_MAX_BUCKETS,
             "earlier": earlier if movable else None,
             "later": later if movable else None,
             "delta": delta,
