@@ -98,3 +98,48 @@ def test_a_lane_whose_disagreement_is_noise_reads_zero():
         spec.append((f"S{i:02d}", "2026-09-08", claim, 0.50, 50, 100))
     out = C._claim_edge_calibration(_rows(spec))
     assert abs(out["beta"]) < 0.05
+
+
+def test_the_subset_cuts_report_their_own_multiplicity():
+    """Both axes come back, and a thin slice is not cut at all."""
+
+    spec = []
+    for i in range(20):
+        # Twenty stations, each claiming a spread of things around one
+        # price and each landing exactly at the price: pure noise, but a
+        # slope is defined because the claim varies.
+        for k in range(4):
+            spec.append((f"S{i:02d}", "2026-09-08", 0.60 + 0.1 * k, 0.7,
+                         35, 50))
+    rows = [
+        (sid, day, claim, price, win, 30.0)
+        for sid, day, claim, price, win in _rows(spec)
+    ]
+    out = C._claim_edge_calibration(rows)
+    assert out["stations_cut"] == 20
+    assert [c["key"] for c in out["by_lead"]] == ["24-36h"]
+    # A station under the row floor is not reported at all rather than
+    # reported with an interval nobody could read.
+    thin = [
+        (sid, day, claim, price, win, 30.0)
+        for sid, day, claim, price, win in _rows(
+            [("T00", "2026-09-08", 0.8, 0.7, 50, 100)]
+        )
+    ]
+    assert C._claim_edge_calibration(thin)["by_station"] == []
+
+
+def test_a_row_without_a_lead_is_kept_for_the_bands_and_dropped_by_lead():
+    """The lead axis is physical, so a row that cannot carry it sits out."""
+
+    rows = [
+        (sid, day, claim, price, win, None)
+        for sid, day, claim, price, win in _rows(
+            [(f"S{i:02d}", "2026-09-08", 0.8, 0.7, 6, 10) for i in range(15)]
+        )
+    ]
+    out = C._claim_edge_calibration(rows)
+    assert out["rows"] == 150
+    assert out["by_lead"] == []
+    assert out["by_station"] == []          # 10 rows each, under the floor
+    assert out["bands"][0]["n"] == 150

@@ -49,7 +49,10 @@ def _conn() -> sqlite3.Connection:
         "CREATE TABLE basket_policy_training_fact ("
         "  fact_id TEXT PRIMARY KEY, station_id TEXT NOT NULL,"
         "  event_date TEXT NOT NULL, stage TEXT NOT NULL,"
-        "  decision_at_utc TEXT NOT NULL, feature_json TEXT NOT NULL);"
+        "  decision_at_utc TEXT NOT NULL,"
+        # The reader takes the lead off the station's own settlement day,
+        # so the timezone is part of what it reads.
+        "  settlement_timezone TEXT NOT NULL, feature_json TEXT NOT NULL);"
         "CREATE TABLE calibration_station_daily_high_truth ("
         "  station_id TEXT NOT NULL, local_date TEXT NOT NULL,"
         "  official_tmax_c REAL, qc_status TEXT NOT NULL);"
@@ -68,10 +71,10 @@ def _seat(conn, station, day, *, source, buckets, claim, high,
         " VALUES(?,?,?,?)", (station, day, high, qc)
     )
     conn.execute(
-        "INSERT INTO basket_policy_training_fact VALUES(?,?,?,?,?,?)",
+        "INSERT INTO basket_policy_training_fact VALUES(?,?,?,?,?,?,?)",
         (
             f"{station}:{day}:{stage}:{cycle}", station, day, stage,
-            f"{day}T{cycle:02d}:00:00Z",
+            f"{day}T{cycle:02d}:00:00Z", "UTC",
             json.dumps({
                 "bucket_intervals_c_json": INTERVALS,
                 "plan": {"basket_support_selection": {"seated": {

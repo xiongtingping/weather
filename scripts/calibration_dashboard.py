@@ -7538,6 +7538,87 @@ def collect_convergence_claim(conn: sqlite3.Connection) -> dict[str, Any]:
     return out
 
 
+def collect_market_lean(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Charter 118 (一): the market-lean gate's own record.
+
+    The gate reads one number off the book -- the mid-weighted mean bucket
+    the quotes imply -- and compares it with the model's mean bucket; a
+    window sitting on the far side of the model from the book's lean is
+    refused.  It is a DIRECTION rule on window placement, not a price rule,
+    and it never creates a buy.
+
+    Everything here is production's own receipt (``details.market_lean`` on
+    ``auto_trade_decisions``), not a re-derivation: the mode the decision
+    ran under, the lean it saw, how many windows it refused, and -- while
+    the gate sits in shadow -- how many it WOULD have refused.  Rows written
+    before the receipt landed carry nothing, so the tally starts at the
+    build that shipped it rather than pretending to reach back.
+    """
+
+    from bayes_basket_target import delta_v2_runtime as R
+
+    out: dict[str, Any] = {
+        "mode": R.MARKET_LEAN_GATE_MODE,
+        "min_buckets": R.MARKET_LEAN_MIN_BUCKETS,
+        "min_quoted_mass": R.MARKET_LEAN_MIN_QUOTED_MASS,
+        "record_max": R.MARKET_LEAN_REFUSAL_RECORD_MAX,
+        "receipts": [],
+        "examples": [],
+        "days": 7,
+    }
+    since = (
+        datetime.now(timezone.utc) - timedelta(days=out["days"])
+    ).isoformat(timespec="seconds")
+    tally: dict[str, dict[str, int]] = {}
+    examples: list[dict[str, Any]] = []
+    try:
+        rows = conn.execute(
+            "SELECT station_id, event_date, created_at, details_json"
+            " FROM auto_trade_decisions"
+            " WHERE strategy_lane='basket' AND created_at>=?"
+            " ORDER BY created_at DESC LIMIT 6000",
+            (since,),
+        ).fetchall()
+    except sqlite3.Error:
+        rows = []
+    for station_id, event_date, created_at, details_json in rows:
+        try:
+            details = json.loads(details_json or "{}")
+        except (TypeError, ValueError):
+            continue
+        receipt = details.get("market_lean")
+        if not isinstance(receipt, Mapping) or not receipt:
+            continue
+        signature = details.get("decision_signature") or {}
+        stage = str(signature.get("stage") or "?")
+        slot = tally.setdefault(stage, {
+            "decisions": 0, "with_lean": 0, "refused": 0, "would_refuse": 0,
+        })
+        slot["decisions"] += 1
+        slot["with_lean"] += int(receipt.get("lean_ordinal") is not None)
+        slot["refused"] += int(receipt.get("refused_window_count") or 0)
+        slot["would_refuse"] += int(
+            receipt.get("shadow_refused_window_count") or 0
+        )
+        for window in receipt.get("refused_windows") or []:
+            if len(examples) >= 12:
+                break
+            examples.append({
+                "station_id": str(station_id), "event_date": str(event_date),
+                "stage": stage, "at": str(created_at)[:16],
+                "buckets": list(window.get("buckets") or []),
+                "window_mid_ordinal": window.get("window_mid_ordinal"),
+                "model_mean_ordinal": window.get("model_mean_ordinal"),
+                "lean": window.get("lean"),
+                "enforced": bool(window.get("enforced")),
+            })
+    out["receipts"] = [
+        {"stage": stage, **slot} for stage, slot in sorted(tally.items())
+    ]
+    out["examples"] = examples
+    return out
+
+
 def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
     """What fraction of a claim arrives, per stage and per agreement band.
 
@@ -8090,6 +8171,39 @@ def _wilson_interval(hits: int, n: int, z: float = 1.6449) -> tuple:
     return (max(0.0, centre - half), min(1.0, centre + half))
 
 
+_LEAD_DAY_END: dict[tuple, Any] = {}
+
+
+def _lead_hours(day: str, zone: str, decided_at: str) -> float | None:
+    """Hours from a decision to the moment the local day's high is final.
+
+    The lead axis has to be physical, not "which cycle of the day this
+    was": stations settle on their own midnight, so the same UTC hour is a
+    different lead at every station.
+    """
+
+    key = (day, zone)
+    if key not in _LEAD_DAY_END:
+        try:
+            year, month, dom = (int(part) for part in day.split("-"))
+            _LEAD_DAY_END[key] = (
+                datetime(year, month, dom, tzinfo=ZoneInfo(zone))
+                + timedelta(days=1)
+            ).astimezone(timezone.utc)
+        except Exception:
+            _LEAD_DAY_END[key] = None
+    end = _LEAD_DAY_END[key]
+    if end is None:
+        return None
+    try:
+        at = datetime.fromisoformat(str(decided_at).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    return (end - at).total_seconds() / 3600.0
+
+
 def _claim_edge_calibration(rows: list[tuple]) -> dict[str, Any]:
     """The claimed-edge thermometer, asked where no fill model can reach it.
 
@@ -8210,6 +8324,53 @@ def _claim_edge_calibration(rows: list[tuple]) -> dict[str, Any]:
         })
     beta = slope(rows)
     beta_lo, beta_hi = interval(rows, slope)
+
+    # The cut the user asked for, 2026-09-13: is there a subset whose beta
+    # is clearly above zero?  Both axes are reported live so the question
+    # keeps being answered as the sample grows; the verdict beside them is
+    # the walk-forward, which is the only form of this question that has
+    # ever survived in this repo.
+    def sliced(key: Any, floor: int) -> list[dict[str, Any]]:
+        groups: dict[Any, list] = {}
+        for row in rows:
+            mark = key(row)
+            if mark is not None:
+                groups.setdefault(mark, []).append(row)
+        cut = []
+        for mark, group in groups.items():
+            if len(group) < floor:
+                continue
+            value = slope(group)
+            if value is None:
+                continue
+            low, high = interval(group, slope)
+            cut.append({
+                "key": str(mark),
+                "n": len(group),
+                "station_days": len({(r[0], r[1]) for r in group}),
+                "beta": round(value, 3),
+                "beta_lo": low,
+                "beta_hi": high,
+                "above_zero": bool(low is not None and low > 0),
+            })
+        return cut
+
+    lead_bins = ((0, 6), (6, 12), (12, 24), (24, 36), (36, 48), (48, 72))
+
+    def lead_of(row: tuple) -> str | None:
+        hours = row[5] if len(row) > 5 else None
+        if hours is None:
+            return None
+        for low, high in lead_bins:
+            if low <= hours < high:
+                return f"{low}-{high}h"
+        return None
+
+    by_lead = sliced(lead_of, 100)
+    by_lead.sort(key=lambda c: int(c["key"].split("-")[0]))
+    by_station = sliced(lambda row: row[0], 150)
+    by_station.sort(key=lambda c: -(c["beta_lo"] if c["beta_lo"] is not None
+                                    else -9.0))
     return {
         "available": True,
         "rows": len(rows),
@@ -8221,6 +8382,13 @@ def _claim_edge_calibration(rows: list[tuple]) -> dict[str, Any]:
         "pooled_x": (
             None if ratio(rows) is None else round(ratio(rows), 3)
         ),
+        "by_lead": by_lead,
+        "by_station": by_station,
+        "stations_cut": len(by_station),
+        "stations_above_zero": sum(
+            1 for c in by_station if c["above_zero"]
+        ),
+        "leads_above_zero": sum(1 for c in by_lead if c["above_zero"]),
     }
 
 
@@ -8314,15 +8482,16 @@ def collect_lambda_axis_realisation(conn: sqlite3.Connection) -> dict[str, Any]:
     last_day = ""
     try:
         cursor = conn.execute(
-            "SELECT station_id, event_date, decision_at_utc, feature_json"
+            "SELECT station_id, event_date, decision_at_utc,"
+            " settlement_timezone, feature_json"
             " FROM basket_policy_training_fact"
             " WHERE event_date >= ?"
-            "   AND feature_json LIKE '%effective_edge_lambda_source%'",
+            "   AND feature_json LIKE '%win_probability%'",
             (since,),
         )
     except sqlite3.Error:
         return {"available": False, "since": since}
-    for sid, day, decided_at, payload in cursor:
+    for sid, day, decided_at, zone, payload in cursor:
         high = truth.get((str(sid), str(day)))
         if high is None:
             continue
@@ -8350,16 +8519,22 @@ def collect_lambda_axis_realisation(conn: sqlite3.Connection) -> dict[str, Any]:
             source = seat.get("effective_edge_lambda_source")
             buckets = [str(b) for b in (seat.get("buckets") or [])]
             claim = seat.get("win_probability")
-            if not source or not buckets or claim is None:
+            if not buckets or claim is None:
                 continue
             won = 1 if settled_bucket in buckets else 0
-            days.setdefault((str(sid), str(day)), []).append((
-                str(decided_at or ""), str(source), float(claim), won,
-            ))
+            # The axis tables answer for the stamp only -- it was added
+            # 2026-09-06 and a row without it cannot say which axis bought
+            # it.  The claimed-edge lane below has no such need and takes
+            # the whole window.
+            if source:
+                days.setdefault((str(sid), str(day)), []).append((
+                    str(decided_at or ""), str(source), float(claim), won,
+                ))
             price = seat.get("all_in_price")
             if price is not None:
                 claim_edge.append((
                     str(sid), str(day), float(claim), float(price), won,
+                    _lead_hours(str(day), str(zone or ""), str(decided_at or "")),
                 ))
             # One fact is one decision; the first seated selection in it is
             # that decision's seat.
@@ -9070,6 +9245,9 @@ SECTION_CACHE_TTL_SEC = {
     "band_residual_audit": 240 * 60,
     "center_landing": 255 * 60,
     "convergence_claim": 270 * 60,
+    # One pass over a week of decision rows, no joins: cheap, and the thing
+    # it reports (a shadow gate's refusals) moves every cycle.
+    "market_lean": 20 * 60,
     # 5,130 settled candidate-window facts, each one a JSON payload that
     # has to be parsed to reach the seated window: ~19s, and the reading
     # it produces moves on the scale of days, not cycles.
@@ -9449,6 +9627,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "convergence_claim": _cached_section(
             "convergence_claim", collect_convergence_claim, conn
         ),
+        "market_lean": _cached_section(
+            "market_lean", collect_market_lean, conn
+        ),
         "risk_metrics": _cached_section(
             "risk_metrics", collect_risk_metrics, conn
         ),
@@ -9551,6 +9732,33 @@ border-color:transparent}
 border-color:transparent}
 .pill.red{background:var(--pill-red-bg);color:var(--pill-red-fg);
 border-color:transparent}
+/* The layer strip that opens every section (user ruling, 2026-09-13).
+   Twenty sections is twenty different questions, and the two things a
+   reader needs BEFORE the first number are which layer the section belongs
+   to and whether what it describes is actually running.  A shadow lane
+   that reads like a live one is the expensive failure here -- the page has
+   carried both for weeks with nothing but the heading to tell them apart
+   -- so the status is a word as well as a colour, and the words are the
+   same four everywhere: 已上线 / 影子 / 已关闭 / 读数. */
+.lane{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
+margin:0 0 11px;padding:7px 11px;border-radius:8px;font-size:12.5px;
+background:var(--card);border:1px solid var(--line);
+border-left:3px solid var(--line)}
+.lane[data-lane="live"]{border-left-color:var(--green)}
+.lane[data-lane="shadow"]{border-left-color:var(--amber)}
+.lane[data-lane="off"]{border-left-color:var(--red)}
+.lane-l{font-weight:640;color:var(--text);white-space:nowrap}
+.lane-r{color:var(--muted);flex:1 1 220px;min-width:200px}
+.lane-s{white-space:nowrap;display:inline-flex;align-items:baseline;gap:6px}
+.lane-s .muted{font-size:11.5px}
+/* The same state on the jump chip, so the bar says it too. */
+.jump button[data-lane="live"]::after,
+.jump button[data-lane="shadow"]::after,
+.jump button[data-lane="off"]::after{content:"";display:inline-block;
+width:6px;height:6px;border-radius:50%;margin-left:5px;vertical-align:1px}
+.jump button[data-lane="live"]::after{background:var(--green)}
+.jump button[data-lane="shadow"]::after{background:var(--amber)}
+.jump button[data-lane="off"]::after{background:var(--red)}
 /* The live flag reads as a switch because it is one: a control with two
    states and no third.  The old button said "切换" next to a word saying
    OFF, which asks the reader to work out which of the two the button is
@@ -10523,7 +10731,13 @@ function bandTable(){
   // table had to know it was inside "band 表" and scroll.  The reading is
   // preserved by adjacency instead: all three sit together, in order, in
   // this group, and all three are starred in the bar.
-  return stages() + bandShadow() + convergenceClaim();
+  //
+  // The convergence lift left for the same reason on 2026-09-13: it is a
+  // claim-layer lane in SHADOW, and folded in behind a live section's
+  // heading it inherited that section's lane strip and had no chip of its
+  // own -- which is exactly the live/shadow confusion the strip exists to
+  // end.
+  return stages() + bandShadow();
 }
 
 
@@ -11590,6 +11804,79 @@ function convergenceClaim(){
     <tbody>${evidence||'<tr><td colspan="7" class="muted">无样本。</td></tr>'}</tbody></table>`;
 }
 
+// Charter 118 (一): the market-lean gate, on the page (user ruling,
+// 2026-09-13, "把市场方向闸显式出来").  It is the only gate on this system
+// whose signal is read PURELY off the book, and until this build it had no
+// section, no chip and no receipt anyone could reach -- the refused
+// windows the ruling ordered written down went into an audit dict the plan
+// does not persist.  Both halves are production's own: the mode each
+// decision ran under and the windows it refused (or would have).
+function marketLeanGate(){
+  const M=D.market_lean||{};
+  const num=(v,d)=>v==null?"—":Number(v).toFixed(d==null?2:d);
+  const mode=String(M.mode||"?");
+  const MODEWORD={on:"已上线（真拒窗）",shadow:"影子（只计数不拒窗）",off:"已关闭"};
+  const receipts=(M.receipts||[]).map(r=>`<tr>
+      <td>${h(r.stage)}</td>
+      <td class="mono">${r.decisions}</td>
+      <td class="mono">${r.with_lean}</td>
+      <td class="mono ${r.refused?"down":""}">${r.refused}</td>
+      <td class="mono ${r.would_refuse?"down":""}">${r.would_refuse}</td>
+    </tr>`).join("");
+  const examples=(M.examples||[]).map(e=>`<tr>
+      <td>${h(e.station_id)} ${h(e.event_date)} <span class="muted">${
+        h(e.stage)}</span></td>
+      <td class="mono">${h(e.at)}</td>
+      <td class="mono">${(e.buckets||[]).join(" / ")}</td>
+      <td class="mono">${num(e.window_mid_ordinal,1)}</td>
+      <td class="mono">${num(e.model_mean_ordinal,1)}</td>
+      <td class="mono">${num(e.lean,1)}</td>
+      <td>${e.enforced?'<span class="pill red">真拒了</span>'
+        :'<span class="pill amber">影子会拒</span>'}</td>
+    </tr>`).join("");
+  return `<h2>市场方向闸：盘口往哪边歪</h2>
+    <div class="card">
+      <b>判据（<span class="mono">market_lean_ordinal</span>）：</b>
+      把盘口每个桶的中价当权重，算出<b>市场隐含的均值桶</b>，与<b>模型均值桶</b>比。
+      两者相差 ≥${num(M.min_buckets,1)} 档、且候选窗的中点坐在模型均值的<b>另一侧</b>
+      ≥${num(M.min_buckets,1)} 档 —— 也就是这个窗<b>逆着盘口在下注</b> —— 就拒掉它。
+      在任窗豁免（守住已持有的不算下注），报价桶太少或中价质量 &lt;
+      ${num(M.min_quoted_mass,1)} 时不读（盘口空到说不出均值就什么都不说）。
+      它只做减法：过了这道闸的窗，后面的腿地板、定价、边际闸照判。<br>
+      <b>当前模式 <span class="pill ${mode==="on"?"green":(mode==="off"?"red":"amber")}">${
+        h(MODEWORD[mode]||mode)}</span></b>
+      <span class="muted">（<span class="mono">PM_MARKET_LEAN_GATE</span>）</span>
+    </div>
+    <div class="why"><b>它凭什么存在：</b>上线前在 481 个早晨站日上量过——
+    盘口隐含均值比模型均值<b>暖</b>半档以上时，结算真的落在模型均值暖侧的比例
+    <b>94%</b>（基准 56%）；冷侧镜像 <b>82%</b>（基准 44%），两边的逐日自助区间
+    都离零 30 个百分点以上。这个信号正好活在共识桥的盲区里：桥要中心差 1.5°C
+    才掺，而那些 94% 的早晨差的是 0.5–1.2°C，<b>没有任何一层在读它</b>。<br>
+    <b>它为什么不在上线状态：</b>08-28 立时是影子；09-05 按账本重放转正 <span
+    class="mono">on</span>（单独 +0.9 点、08-23 起 +12.4、组合里 +4.3）；
+    但转正后<b>头四天拒掉的 60 个窗口，一个都没记下来</b>——每次拒绝只是计数器 +1
+    然后 continue，事后只有 3 个能从账本重建，<b>n=3 定不了案</b>。
+    宪章 118(一) 因此命令它在拒绝处写下四个字段；宪章 131(2)（09-12）则判
+    <b>「市场的均值桶是正在收集的数据，还不是规则」</b>，把它退回影子：
+    现在它每轮照算、照记、<b>不拒任何窗</b>。<br>
+    <b>要它转正需要什么：</b>用下面这张自己的记录（不是账本重放）把「被它拒掉的窗
+    后来落没落进真值」攒够样本——这正是 118(一) 写记录的目的。</div>
+    <h3 style="margin-top:12px">生产回执（近 ${M.days} 天决策行）</h3>
+    <table><thead><tr><th>阶段</th><th>决策</th><th>读到盘口倾向</th>
+      <th>真拒窗</th><th>影子会拒</th></tr></thead>
+    <tbody>${receipts||'<tr><td colspan="5" class="muted">尚无带回执的决策行——回执 2026-09-13 才随生产落盘，此前的行不带它（常驻重启后开始记录）。</td></tr>'}</tbody></table>
+    ${examples?`<h3 style="margin-top:12px">最近被拒（或影子会拒）的窗</h3>
+    <table><thead><tr><th>站日/阶段</th><th>时刻</th><th>窗口</th>
+      <th>窗中点</th><th>模型均值</th><th>盘口均值</th><th>状态</th></tr></thead>
+    <tbody>${examples}</tbody></table>
+    <div class="muted" style="margin-top:6px">单次决策最多记
+      ${M.record_max} 条（<span class="mono">MARKET_LEAN_REFUSAL_RECORD_MAX</span>），
+      计数器在上限外仍精确，所以这张清单永远不该被读成全部。
+      三个数都是<b>桶序号</b>：盘口均值在模型均值的哪一侧、窗中点又在哪一侧，
+      一眼可对。</div>`:""}`;
+}
+
+
 // Rendered inside the band-table module, not as its own section (user
 // ruling, 2026-09-01): both tables answer "when the model claims X, what
 // actually happens", one keyed by claimed probability, one by claimed
@@ -11863,14 +12150,101 @@ function cleanLane(){
   <th title="按站日块自助 90%：同一个窗每周期重新入座，同日各阶段结算同一个最高温，一行不是一次抽样">90% 区间</th>
   <th>判定</th></tr></thead><tbody>${rows}</tbody></table>
   <p class="note" style="margin-top:8px"><b>整体 ${mult(C.pooled_x)}</b>，
-  形状与上表一致且单调——<b>发烧不是成交模型造的</b>。写成宪章 128 的斜率：
-  <span class="mono">(真值落窗 − 价格) = a + β·(声称 − 价格)</span>，
-  实测 <b>β = ${C.beta==null?"—":C.beta.toFixed(3)}</b>${
-  C.beta_lo==null?"":` <span class="muted">[${C.beta_lo.toFixed(3)}, ${
-  C.beta_hi.toFixed(3)}]</span>`}。β=1 是"我们和市场的分歧全额兑现"，
-  β=0 是"分歧毫无信息、信价格就够"。<b>当前读数离 0 比离 1 近得多</b>，
-  这与 β 影子车道、与"模型相对市场无信息"的旧读数一致：
-  这块表不健康，量的不是执行层，是声称层本身。</p></div>`;
+  形状与上表一致且单调——<b>发烧不是成交模型造的</b>。</p></div>
+  ${betaDial(C)}${betaSubsets(C)}`;
+}
+
+// beta said as a position between the two anchors rather than as a number
+// in a sentence (user ruling, 2026-09-13: 把 β 显式凸显出来).  The dial is
+// the reading: 0 is "the disagreement carries no information, the price is
+// the answer", 1 is "our disagreement realises in full", and where the
+// marker sits is the whole claim of this section.
+function betaDial(C){
+  if(C.beta==null) return "";
+  const pos=v=>Math.max(0,Math.min(1,(v+0.5)/1.75))*100;
+  const lo=C.beta_lo,hi=C.beta_hi;
+  return `<div class="card" style="margin-top:12px">
+  <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+    <span class="muted" style="font-size:12.5px">宪章 128 斜率</span>
+    <span style="font-size:34px;font-weight:800;line-height:1;color:var(--down)">
+      β = ${C.beta.toFixed(3)}</span>
+    ${lo==null?"":`<span class="muted" style="font-size:12.5px">90% 区间 [${
+      lo.toFixed(3)}, ${hi.toFixed(3)}]</span>`}
+    <span class="muted" style="font-size:12.5px">· ${
+      C.rows.toLocaleString()} 个入座窗口 / ${C.station_days} 站日</span>
+  </div>
+  <div class="mono muted" style="font-size:12px;margin-top:7px">
+    （真值落窗 − 价格） = a + β · （声称 − 价格）</div>
+  <div style="position:relative;height:46px;margin-top:10px">
+    <div style="position:absolute;top:17px;left:0;right:0;height:8px;
+      border-radius:4px;background:linear-gradient(90deg,
+      var(--pill-red-bg),var(--bar-bg),var(--pill-green-bg))"></div>
+    ${lo==null?"":`<div style="position:absolute;top:17px;height:8px;
+      background:var(--muted);opacity:.45;border-radius:4px;
+      left:${pos(lo).toFixed(1)}%;width:${(pos(hi)-pos(lo)).toFixed(1)}%"></div>`}
+    <div style="position:absolute;top:11px;left:${pos(0).toFixed(1)}%;
+      width:2px;height:20px;background:var(--red)"></div>
+    <div style="position:absolute;top:11px;left:${pos(1).toFixed(1)}%;
+      width:2px;height:20px;background:var(--green)"></div>
+    <div style="position:absolute;top:7px;left:${pos(C.beta).toFixed(1)}%;
+      width:4px;height:28px;background:var(--text);border-radius:2px"></div>
+    <div style="position:absolute;top:0;left:${pos(0).toFixed(1)}%;
+      transform:translateX(-50%);font-size:11px;color:var(--red)">0</div>
+    <div style="position:absolute;top:0;left:${pos(1).toFixed(1)}%;
+      transform:translateX(-50%);font-size:11px;color:var(--green)">1</div>
+  </div>
+  <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px">
+    <div style="flex:1;min-width:230px"><b style="color:var(--green)">β = 1</b>
+      ——「我们和市场的分歧<b>全额兑现</b>」。我们说比市场价高 10 个点，
+      真值就真的多落进去 10 个点。</div>
+    <div style="flex:1;min-width:230px"><b style="color:var(--red)">β = 0</b>
+      ——「分歧<b>毫无信息</b>，信价格就够」。我们偏离市场多少都不影响结果，
+      那点偏离全是噪声。</div>
+  </div>
+  <p class="note" style="margin-top:8px"><b>读数离 0 比离 1 近得多。</b>
+  最干净的佐证是上表 <span class="mono">&lt;0</span> 那一档：那些是我们认为
+  <b>市场卖贵了</b>的窗口，结果真值落进去的比例反而<b>比我们声称的还高</b>
+  （×1.038）。往上错、往下也错——不是偏见，是噪声，这正是 β≈0 的样子。</p></div>`;
+}
+
+// "Is there a subset whose beta is clearly above zero?"  Both axes live, so
+// the question keeps being answered; the verdict is the walk-forward,
+// because a subset picked on the same rows it is judged on always wins.
+function betaSubsets(C){
+  const lead=C.by_lead||[], stn=C.by_station||[];
+  if(!lead.length&&!stn.length) return "";
+  const row=c=>`<tr><td class="mono">${h(c.key)}</td><td>${c.n}</td>
+    <td>${c.station_days}</td>
+    <td class="mono ${c.above_zero?"up":""}"><b>${c.beta.toFixed(3)}</b></td>
+    <td class="mono muted">${c.beta_lo==null?"—":
+      c.beta_lo.toFixed(3)+" … "+c.beta_hi.toFixed(3)}</td>
+    <td class="${c.above_zero?"up":"muted"}">${c.above_zero?"下界 > 0":"跨 0"}</td></tr>`;
+  const expect=(C.stations_cut||0)*0.05;
+  return `<div class="card" style="margin-top:12px">
+  <div style="font-size:12.5px"><b>有没有 β 明显 &gt; 0 的子集</b>
+  （用户裁定 2026-09-13：按站和提前量再切一次，切完为止）</div>
+  <div class="scroll" style="margin-top:6px;display:flex;gap:16px;flex-wrap:wrap">
+  <table style="flex:1;min-width:320px"><thead><tr><th>提前量</th><th>窗口</th>
+  <th>站日</th><th>β</th><th>90% 区间</th><th></th></tr></thead>
+  <tbody>${lead.map(row).join("")}</tbody></table>
+  <table style="flex:1;min-width:320px"><thead><tr><th>站（下界最高的 6 个）</th>
+  <th>窗口</th><th>站日</th><th>β</th><th>90% 区间</th><th></th></tr></thead>
+  <tbody>${stn.slice(0,6).map(row).join("")}</tbody></table></div>
+  <p class="note" style="margin-top:8px"><b>看着像有，其实没有。</b>
+  ${C.stations_cut} 个站里 ${C.stations_above_zero} 个下界 &gt; 0——
+  而 90% 单侧下界在纯噪声下本就期望有 <b>${expect.toFixed(1)}</b> 个假阳。
+  唯一能定论的是<b>前瞻检验</b>：只用前半段天数挑子集，再在其后的天数上量。
+  2026-09-13 实测两个切点：<br>
+  · 切点 <span class="mono">08-29</span>：不挑的基准在检验窗 β=0.168
+  [0.051, 0.295]；按站挑出的 4 个（SAEZ、OEJN、MMMX、ZSQD）在检验窗
+  <b>β=−0.028</b> [−0.359, 0.278]——<b>比不挑更差</b>。按提前量一个都挑不出。<br>
+  · 切点 <span class="mono">09-05</span>：基准 β=0.124；按站挑的 3 个
+  <b>β=−0.01</b>；按提前量挑出的 6-12h 档 β=0.105，也不比基准好。<br>
+  逐站塌得很整齐：SAEZ 1.19→0.39、ZSQD 1.00→−0.44、KLAX 0.86→−0.43、
+  OEJN 0.27→−0.44。45 个站两个切点里只有 MPMG 两次都为正，这正是
+  45 选 1 的幸存者该有的样子。<br>
+  <b>结论：没有事前可识别的 β &gt; 0 子集，不挑就是最好的做法。</b>
+  这条与"没有事前可识别的正收益子集"是同一个答案换了一根轴问。</p></div>`;
 }
 
 function windowDivergence(){
@@ -15126,16 +15500,18 @@ const GROUPS = [
      [scorecard,"模型校准总检"],[h5Readiness,"H5 换代进度"],
      [correctionAccuracy,"订正准度与政权偏移"]]},
   {id:"shape", label:"概率与持仓形状", tone:"#7ee787",
-   note:"概率怎么被分档修正、声称的便宜兑不兑现、注码怎么被固化减仓、分布和实际持仓差在哪",
+   note:"概率怎么被分档修正、声称被哪几层乘过、注码怎么被固化减仓、分布和实际持仓差在哪",
    sections:[[bandTable,"band 表"],
      [edgeBandHealth,"声称边际体温计"],
      [effectiveEdgeLambda,"有效边际 λ 表"],
      [betaShadow,"β 车道（影子）"],
+     [convergenceClaim,"双向收敛系数"],
      [consolidation,"固化减仓"],
      [windowDivergence,"分布与持仓分家"]]},
   {id:"market", label:"市场与执行门槛", tone:"#e3b341",
-   note:"市场肯不肯让这套东西赚钱：覆盖与 EV、篮子命中率、真值落位",
-   sections:[[coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"],
+   note:"市场肯不肯让这套东西赚钱：盘口方向闸、覆盖与 EV、篮子命中率、真值落位",
+   sections:[[marketLeanGate,"市场方向闸"],
+     [coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"],
      [truthLanding,"真值落位"]]},
 ];
 const tabs = `<nav class="tabs" id="tabs">${
@@ -15167,10 +15543,114 @@ const tabs = `<nav class="tabs" id="tabs">${
 // were found by reading every label.  Keyed on the registry's name rather
 // than the heading, so a heading may be reworded without silently losing
 // its star.
+// Which layer each section belongs to, what it does there, and -- the
+// part that was nowhere on this page until 2026-09-13 -- whether the thing
+// it describes is running or only being watched (user ruling: "把前端各个
+// 板块前面增加分别是哪一层，分别有什么作用…并凸显是否上线还是影子").
+//
+// Four states, and the distinction between the last two is not cosmetic:
+//   live   the rule is in production and refuses / cuts / lifts for real
+//   shadow the lane computes its state and journals it, and changes nothing
+//   off    wired, switchable, currently not in the path
+//   audit  not a rule at all -- a measurement of what already happened
+//
+// Keyed on the registry name rather than the heading, like STARRED above,
+// so a heading may be reworded without silently losing its lane.  A name
+// with no entry renders no strip, which is the honest default: a lane
+// nobody has classified must not be given a green light by omission.
+const LANES = {
+  // --- model: where the probability itself comes from ---
+  "偏差订正与权重": {layer:"概率层", status:"live",
+    role:"每站每提前量订正多少、四个模型各占多少 → 中心从这里来"},
+  "四大模型权重": {layer:"概率层", status:"live",
+    role:"服务路径此刻在用的那份配比，不是权重表的行数统计"},
+  "模型离散度": {layer:"概率层 · 读数", status:"audit",
+    role:"成员之间分歧多大 → 服务宽度的原料"},
+  "模型命中率": {layer:"概率层 · 读数", status:"audit",
+    role:"订正到底有没有让点预报更准"},
+  "OOS 打分": {layer:"概率层 · 读数", status:"audit",
+    role:"样本外 CRPS / Brier / NLL 够不够格"},
+  "中心/宽度": {layer:"概率层", status:"live",
+    role:"中心平移多少、宽度收窄多少 → 服务分布的两个旋钮"},
+  "真值离均值多远": {layer:"概率层 · 读数", status:"audit",
+    role:"真值实际落在离服务均值几档 → 中心诚不诚实"},
+  "模型校准总检": {layer:"概率层 · 读数", status:"audit",
+    role:"六层各自及格没有，一屏看完"},
+  "H5 换代进度": {layer:"概率层 · 运维", status:"audit",
+    role:"偏差半衰期新代铺到哪了、还剩多少格在服旧代"},
+  "订正准度与政权偏移": {layer:"概率层 · 读数", status:"audit",
+    role:"全队日偏差能不能提前知道（实测：不能，所以 regime 层关着）"},
+  // --- shape: from probability to a claim, and from a claim to a stake ---
+  "band 表": {layer:"声称层", status:"live",
+    role:"声称 X 时真值其实落窗多少 → 按档把声称修正回去"},
+  "声称边际体温计": {layer:"声称层 · 读数", status:"audit",
+    role:"自认便宜多少时真兑现多少 → λ 的证据，不是 λ 本身"},
+  "有效边际 λ 表": {layer:"声称层", status:"live",
+    role:"市场比我们贵多少就信多少 → 闸和定注读的都是 λ(a)·声称"},
+  "β 车道（影子）": {layer:"声称层", status:"shadow",
+    role:"我们和市场的分歧兑现几成（斜率 β）→ 目前只量不用"},
+  "双向收敛系数": {layer:"声称层", status:"shadow",
+    role:"我们往上、市场往下、还没走到一起 → 把声称抬三成（只记账）"},
+  "固化减仓": {layer:"定注 · 资金层", status:"live",
+    role:"我们自己不动了 → 少花钱（整链注码 ×0.05，永不拒入场）"},
+  "分布与持仓分家": {layer:"定注层 · 读数", status:"audit",
+    role:"分布说的桶和真正持有的桶差多少"},
+  // --- market: whether the book lets any of it make money ---
+  "市场方向闸": {layer:"选窗层", status:"shadow",
+    role:"只看市场往哪边歪 → 不许逆着它开窗（09-05 上线、09-12 退回影子）"},
+  "覆盖 · 价格 · EV": {layer:"选窗层 · 读数", status:"audit",
+    role:"买到的价、窗口覆盖率与事前 EV"},
+  "篮子命中率": {layer:"选窗层 · 读数", status:"audit",
+    role:"几桶的篮子实际命中多少"},
+  "真值落位": {layer:"选窗层 · 读数", status:"audit",
+    role:"真值落在价格 × 概率的哪一格"},
+  // --- the book's own account ---
+  "入场的九个数": {layer:"账本 · 读数", status:"audit",
+    role:"这一注长什么样：声称、命中、赔率、保本线、每股成本"},
+  "组合风险指标": {layer:"账本 · 读数", status:"audit",
+    role:"整簿的风险刻度"},
+  "Live 上线准备": {layer:"执行层 · 运维", status:"audit",
+    role:"开关能不能翻、翻了之后哪几道门还拦着"},
+  "每日统计": {layer:"账本 · 读数", status:"audit",
+    role:"每天开了几条链、投入多少、结算多少"},
+  "逐站逐日明细": {layer:"账本 · 读数", status:"audit",
+    role:"每个站日到底发生了什么"},
+  "逐站汇总（跨日）": {layer:"账本 · 读数", status:"audit",
+    role:"跨日看每个站的账"},
+  "没建仓是因为什么": {layer:"全链闸 · 读数", status:"audit",
+    role:"哪一道闸拒掉了最后一个还站着的窗"},
+};
+const LANE_WORD = {live:"已上线", shadow:"影子", off:"已关闭", audit:"读数"};
+const LANE_TONE = {live:"green", shadow:"amber", off:"red", audit:""};
+const LANE_NOTE = {
+  live:"生产正在按它执行",
+  shadow:"只记账，不改任何决策",
+  off:"已接线但当前不在路径上",
+  audit:"不是规则，是对已发生的事的测量",
+};
+const laneStrip = (name) => {
+  const L = LANES[name];
+  if(!L) return "";
+  return `<div class="lane" data-lane="${L.status}">
+    <span class="lane-l">${h(L.layer)}</span>
+    <span class="lane-r">${h(L.role)}</span>
+    <span class="lane-s"><span class="pill ${LANE_TONE[L.status] || ""}">${
+      h(LANE_WORD[L.status] || L.status)}</span><span class="muted">${
+      h(L.note || LANE_NOTE[L.status] || "")}</span></span></div>`;
+};
 const STARRED = new Set(["band 表", "声称边际体温计", "有效边际 λ 表"]);
-const sec = (fn, name, id) =>
-  `<section class="sec" id="${id}" data-name="${name}"${
-    STARRED.has(name) ? ` data-star="1"` : ""}>${safe(fn, name)}</section>`;
+// The strip rides INSIDE the section, above its <h2>, and only when the
+// section rendered something: an empty section is guarded out of the page
+// on purpose, and a lane strip would put it back as a chip pointing at
+// nothing.  The jump bar still reads the heading, which sits below.
+const sec = (fn, name, id) => {
+  const body = safe(fn, name);
+  const lane = body && body.trim() ? LANES[name] : null;
+  return `<section class="sec" id="${id}" data-name="${name}"${
+    lane ? ` data-lane="${lane.status}"` : ""}${
+    STARRED.has(name) ? ` data-star="1"` : ""}>${
+    lane ? laneStrip(name) : ""}${body}</section>`;
+};
 
 const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}"
   style="--tone:${g.tone}">
@@ -15268,7 +15748,14 @@ document.getElementById("app").innerHTML =
       : (node.dataset.name || "");
     if(!full) return "";
     const short2 = full.split(/[：（(·]/)[0].trim() || full;
-    return `<button type="button" data-goto="${node.id}" title="${esc(full)}"${
+    // The lane dot rides the chip too (user ruling, 2026-09-13): the bar is
+    // where a reader picks a section, so "is this one live or shadow" has
+    // to be answerable before the click, not after it.
+    const lane = node.dataset.lane;
+    const laneWord = {live:"已上线", shadow:"影子", off:"已关闭"}[lane];
+    return `<button type="button" data-goto="${node.id}" title="${
+      esc(full + (laneWord ? " · " + laneWord : ""))}"${
+      lane ? ` data-lane="${esc(lane)}"` : ""}${
       node.dataset.star ? ` class="star"` : ""}>${esc(short2)}</button>`;
   };
   const paintJump = () => {
