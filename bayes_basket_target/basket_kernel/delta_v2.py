@@ -1089,6 +1089,12 @@ if not (-1.0 <= SUPPORT_SCENARIO_FLOOR_FRACTION <= 0.5):
     raise RuntimeError(
         f"support scenario floor fraction out of range: {SUPPORT_SCENARIO_FLOOR_FRACTION}"
     )
+# Charter 131 (user ruling, 2026-09-12): the seat's shape rule, named so a
+# candidate window and a lambda table can both say which shape they were
+# enumerated under.  The runtime reads it for the seat; the ledger writes
+# it on every candidate row; the effective-edge store partitions on it.
+SEAT_SHAPE_RULE_VERSION = "seat_shape_mean_anchored_v1"
+
 # Charter 131 (12b) (user ruling, 2026-09-12): the hit-protection gate is
 # ``min q_i >= 1.05 C`` -- every settlement inside the support returns at
 # least five percent on the whole premium -- at every point the floor is

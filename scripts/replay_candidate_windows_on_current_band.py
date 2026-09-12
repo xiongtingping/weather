@@ -92,6 +92,10 @@ CREATE TABLE IF NOT EXISTS paper_trade_candidate_window_replay (
   band_table_sha256 TEXT NOT NULL,
   claim_transform_sha256 TEXT NOT NULL,
   source_band_axis TEXT,
+  -- Charter 131: the shape rule the SOURCE window was enumerated under.
+  -- A replay re-derives the claim, never the window, so the shape is the
+  -- source's; the lambda fit partitions on it.
+  seat_shape_rule TEXT,
   replayed_at_utc TEXT NOT NULL,
   UNIQUE(source_candidate_id, band_table_sha256)
 )
@@ -197,10 +201,15 @@ def replay_stage(conn, *, stage: str, args, reports: list | None) -> int:
         })
         return 0
 
+    source_has_shape = any(
+        str(row[1]) == "seat_shape_rule"
+        for row in conn.execute("PRAGMA table_info(paper_trade_candidate_window)")
+    )
     rows = conn.execute(
         "SELECT candidate_id, station_id, event_date, decision_at_utc,"
         " buckets_json, all_in_price, hit, band_axis"
-        " FROM paper_trade_candidate_window"
+        + (", seat_shape_rule" if source_has_shape else ", NULL")
+        + " FROM paper_trade_candidate_window"
         " WHERE stage=? AND hit IS NOT NULL",
         (stage,),
     ).fetchall()
@@ -209,7 +218,7 @@ def replay_stage(conn, *, stage: str, args, reports: list | None) -> int:
     pending: list[tuple] = []
     counted = {"rows": len(rows), "replayed": 0, "no_envelope": 0,
                "no_band_receipt": 0, "bucket_missing": 0, "degenerate": 0}
-    for cid, st, ed, at, bj, price, hit, src_axis in rows:
+    for cid, st, ed, at, bj, price, hit, src_axis, src_shape in rows:
         key = (str(st), str(ed), str(at))
         if key not in envelopes:
             envelopes[key] = conn.execute(
@@ -267,24 +276,36 @@ def replay_stage(conn, *, stage: str, args, reports: list | None) -> int:
                 holds_centre=(gap <= 0.0),
                 off_centre_table_sha=off_centre_sha,
             ),
-            src_axis, str(args.as_of or ""),
+            src_axis, src_shape, str(args.as_of or ""),
         ))
         counted["replayed"] += 1
 
     if args.commit:
         conn.execute(SCHEMA)
         conn.execute(INDEX)
+        if not any(
+            str(row[1]) == "seat_shape_rule"
+            for row in conn.execute(
+                "PRAGMA table_info(paper_trade_candidate_window_replay)"
+            )
+        ):
+            conn.execute(
+                "ALTER TABLE paper_trade_candidate_window_replay"
+                " ADD COLUMN seat_shape_rule TEXT"
+            )
         conn.executemany(
             "INSERT INTO paper_trade_candidate_window_replay("
             " replay_id, source_candidate_id, station_id, event_date, stage,"
             " decision_at_utc, buckets_json, window_size, win_probability,"
             " raw_win_probability, all_in_price, hit, band_axis,"
             " band_table_sha256, claim_transform_sha256, source_band_axis,"
-            " replayed_at_utc) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " seat_shape_rule, replayed_at_utc)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT(source_candidate_id, band_table_sha256) DO UPDATE SET"
             "  win_probability=excluded.win_probability,"
             "  raw_win_probability=excluded.raw_win_probability,"
             "  claim_transform_sha256=excluded.claim_transform_sha256,"
+            "  seat_shape_rule=excluded.seat_shape_rule,"
             "  replayed_at_utc=excluded.replayed_at_utc",
             pending,
         )

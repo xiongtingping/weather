@@ -87,6 +87,7 @@ from .basket_kernel.delta_v2 import (
     EFFECTIVE_EDGE_LAMBDA,
     EFFECTIVE_EDGE_P0M_LAMBDA,
     EFFECTIVE_EDGE_P1_LAMBDA,
+    SEAT_SHAPE_RULE_VERSION,
 )
 from .contracts import content_sha256
 
@@ -240,6 +241,32 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             conn.execute(
                 f"ALTER TABLE {table} ADD COLUMN band_axis TEXT"
             )
+        # Charter 131 (2026-09-12): the seat-shape vintage the fit's rows were
+        # enumerated under -- the third partition key, treated exactly as the
+        # axis: a column beside the payload, NULL carried as "not recorded".
+        if table == "calibration_effective_edge_lambda" and (
+            "seat_shape_rule" not in columns
+        ):
+            conn.execute(
+                f"ALTER TABLE {table} ADD COLUMN seat_shape_rule TEXT"
+            )
+    # Charter 131: the replay lane's table is created by its own script.
+    # When it already exists without the shape column, widen it here so a
+    # replayed row can carry its source window's shape; absent the table,
+    # nothing to widen.
+    try:
+        replay_columns = {
+            str(row[1]) for row in conn.execute(
+                "PRAGMA table_info(paper_trade_candidate_window_replay)"
+            )
+        }
+    except sqlite3.Error:
+        replay_columns = set()
+    if replay_columns and "seat_shape_rule" not in replay_columns:
+        conn.execute(
+            "ALTER TABLE paper_trade_candidate_window_replay"
+            " ADD COLUMN seat_shape_rule TEXT"
+        )
 
 
 EFFECTIVE_EDGE_SCOPES_SERVED = ("P0", "P0-M", "P1")
@@ -404,6 +431,27 @@ def _has_band_axis_column(conn: sqlite3.Connection) -> bool:
     """Whether the candidate table carries charter 110's partition key."""
 
     return _has_candidate_column(conn, "band_axis")
+
+
+def _has_seat_shape_column(conn: sqlite3.Connection) -> bool:
+    """Whether the candidate table carries charter 131's partition key."""
+
+    return _has_candidate_column(conn, "seat_shape_rule")
+
+
+def _has_replay_column(conn: sqlite3.Connection, name: str) -> bool:
+    """Whether the replay table carries a column -- its own migration, its
+    own answer, never inferred from the candidate table's."""
+
+    try:
+        return any(
+            str(row[1]) == name
+            for row in conn.execute(
+                "PRAGMA table_info(paper_trade_candidate_window_replay)"
+            )
+        )
+    except sqlite3.Error:
+        return False
 
 
 def _active_claim_vintage(
@@ -675,13 +723,37 @@ def _candidate_population(
     claim_args: tuple[Any, ...] = (
         () if claim_vintages is None else claim_vintages
     )
+    # Charter 131 (2026-09-12): the THIRD partition key.  The seat's shape
+    # decides which rungs a window holds -- the mode bucket in or out, the
+    # second tail rung in or out -- and rungs realise by their claim size
+    # (2,398 bucket-days, 2026-08-15: 0.77-0.83 on claims under 0.12, 1.02-
+    # 1.09 on 0.12-0.30), so two windows at one agreement realise
+    # differently by shape.  Rows enumerated under another shape rule are
+    # not evidence about today's lambda; NULL means "before the rule" and is
+    # excluded exactly as a NULL axis is.  A candidate table without the
+    # column -- a fixture, an extract -- partitions on nothing, as with the
+    # axis.
+    shape = SEAT_SHAPE_RULE_VERSION if _has_seat_shape_column(conn) else None
+    shape_clause = "" if shape is None else " AND seat_shape_rule IS ?"
+    shape_args: tuple[Any, ...] = () if shape is None else (shape,)
+    # The replay table is older windows re-derived onto the current band --
+    # older SHAPES, by construction -- so under a shape partition its rows
+    # count only when the table records the shape and it matches.
+    replay_shape_clause = ""
+    replay_shape_args: tuple[Any, ...] = ()
+    if shape is not None:
+        if _has_replay_column(conn, "seat_shape_rule"):
+            replay_shape_clause = " AND seat_shape_rule IS ?"
+            replay_shape_args = (shape,)
+        else:
+            replay_shape_clause = " AND 0"
     rows = conn.execute(
         "SELECT win_probability, all_in_price, hit, station_id, event_date,"
         " stage, decision_at_utc"
         " FROM paper_trade_candidate_window"
         f" WHERE stage IN ({placeholders}) AND event_date >= ?" f"{decision_clause}"
-        "   AND hit IS NOT NULL" + axis_clause + claim_clause,
-        (*stages, floor_day, *decision_args, *axis_args, *claim_args),
+        "   AND hit IS NOT NULL" + axis_clause + claim_clause + shape_clause,
+        (*stages, floor_day, *decision_args, *axis_args, *claim_args, *shape_args),
     ).fetchall()
     served_row_count = len(rows)
     excluded_axis = 0 if axis is None else conn.execute(
@@ -697,6 +769,12 @@ def _candidate_population(
         "   AND (claim_transform_sha256 IS NULL"
         "        OR claim_transform_sha256 NOT IN (?,?))",
         (*stages, floor_day, *decision_args, *claim_vintages),
+    ).fetchone()[0]
+    excluded_shape = 0 if shape is None else conn.execute(
+        "SELECT COUNT(*) FROM paper_trade_candidate_window"
+        f" WHERE stage IN ({placeholders}) AND event_date >= ?" f"{decision_clause}"
+        "   AND hit IS NOT NULL AND seat_shape_rule IS NOT ?",
+        (*stages, floor_day, *decision_args, shape),
     ).fetchone()[0]
     replayed_row_count = 0
     replay_sha = None
@@ -714,8 +792,9 @@ def _candidate_population(
                 " FROM paper_trade_candidate_window_replay"
                 f" WHERE stage IN ({placeholders}) AND event_date >= ?" f"{decision_clause}"
                 "   AND hit IS NOT NULL" + axis_clause + claim_clause
-                + sha_clause,
-                (*stages, floor_day, *decision_args, *axis_args, *claim_args, *sha_args),
+                + replay_shape_clause + sha_clause,
+                (*stages, floor_day, *decision_args, *axis_args, *claim_args,
+                 *replay_shape_args, *sha_args),
             ).fetchall()
         except sqlite3.Error:
             # No replay lane in this database: a fixture, an extract.
@@ -772,10 +851,15 @@ def _candidate_population(
     leg_rows: list[tuple[Any, ...]] = []
     legs_seen: set[tuple[str, str, str, str, str]] = set()
     if _has_candidate_column(conn, "leg_claim_cost_json"):
-        leg_sources = [("paper_trade_candidate_window", "")]
+        leg_sources = [
+            ("paper_trade_candidate_window", shape_clause, shape_args),
+        ]
         if include_replayed:
-            leg_sources.append(("paper_trade_candidate_window_replay", ""))
-        for table, _extra in leg_sources:
+            leg_sources.append((
+                "paper_trade_candidate_window_replay",
+                replay_shape_clause, replay_shape_args,
+            ))
+        for table, table_shape_clause, table_shape_args in leg_sources:
             try:
                 raw = conn.execute(
                     "SELECT leg_claim_cost_json, settled_bucket, station_id,"
@@ -784,8 +868,9 @@ def _candidate_population(
                     f" WHERE stage IN ({placeholders}) AND event_date >= ?" f"{decision_clause}"
                     "   AND hit IS NOT NULL AND settled_bucket IS NOT NULL"
                     "   AND leg_claim_cost_json IS NOT NULL"
-                    + axis_clause + claim_clause,
-                    (*stages, floor_day, *decision_args, *axis_args, *claim_args),
+                    + axis_clause + claim_clause + table_shape_clause,
+                    (*stages, floor_day, *decision_args, *axis_args, *claim_args,
+                     *table_shape_args),
                 ).fetchall()
             except sqlite3.Error:
                 continue
@@ -820,6 +905,8 @@ def _candidate_population(
         "band_axis": axis,
         "claim_vintages": claim_vintages,
         "excluded_other_band_axis": int(excluded_axis),
+        "seat_shape_rule": shape,
+        "excluded_other_seat_shape": int(excluded_shape),
         "excluded_other_claim_transform": int(excluded_claim),
         "served_row_count": int(served_row_count),
         "replayed_row_count": int(replayed_row_count),
@@ -947,6 +1034,8 @@ def fit_lambda_table(
     claim_vintages = population["claim_vintages"]
     excluded_axis = population["excluded_other_band_axis"]
     excluded_claim = population["excluded_other_claim_transform"]
+    shape = population["seat_shape_rule"]
+    excluded_shape = population["excluded_other_seat_shape"]
     served_row_count = population["served_row_count"]
     replayed_row_count = population["replayed_row_count"]
     off_centre_row_count = population["off_centre_row_count"]
@@ -1082,6 +1171,8 @@ def fit_lambda_table(
         # claim-axis incumbent against a distance-axis proposal on a
         # distance-axis population.
         "band_axis": axis,
+        # Charter 131: and the seat-shape vintage, for the same reason.
+        "seat_shape_rule": shape,
     }
     return {
         "table": payload,
@@ -1094,6 +1185,8 @@ def fit_lambda_table(
         # exactly like a fit that had half as much.
         "band_axis": axis,
         "excluded_other_band_axis": int(excluded_axis),
+        "seat_shape_rule": shape,
+        "excluded_other_seat_shape": int(excluded_shape),
         "claim_transform_sha256": (
             None if claim_vintages is None else list(claim_vintages)
         ),
@@ -1543,8 +1636,8 @@ def persist_and_activate(
         "INSERT INTO calibration_effective_edge_lambda("
         " lambda_table_sha256, bands_json, evidence_json, fitted_at_utc,"
         " window_days, seat_count, activated, activated_at_utc, stage_scope,"
-        " claim_scope, band_axis)"
-        " VALUES(?,?,?,?,?,?,?,?,?,?,?)"
+        " claim_scope, band_axis, seat_shape_rule)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)"
         " ON CONFLICT(lambda_table_sha256) DO UPDATE SET"
         "  activated=excluded.activated,"
         "  activated_at_utc=excluded.activated_at_utc,"
@@ -1564,6 +1657,7 @@ def persist_and_activate(
             scope,
             claim_scope,
             fit.get("band_axis"),
+            fit.get("seat_shape_rule"),
         ),
     )
     conn.execute(
@@ -1605,6 +1699,20 @@ def persist_and_activate(
 # reviewable edit to that constant, informed by exactly the evidence this
 # module journals -- the same shape as the station exclusion list, where the
 # machine computes candidates and a person promotes them.
+def _has_lambda_seat_shape_column(conn: sqlite3.Connection) -> bool:
+    """Whether the lambda TABLE carries its own seat-shape column."""
+
+    try:
+        return any(
+            str(row[1]) == "seat_shape_rule"
+            for row in conn.execute(
+                "PRAGMA table_info(calibration_effective_edge_lambda)"
+            )
+        )
+    except sqlite3.Error:
+        return False
+
+
 def _has_lambda_band_axis_column(conn: sqlite3.Connection) -> bool:
     """Whether the lambda TABLE carries its own band-axis column.
 
@@ -1698,6 +1806,11 @@ def load_active_lambda(
                 ", band_axis" if _has_lambda_band_axis_column(conn)
                 else ", NULL"
             )
+            # Charter 131: the seat-shape vintage, when the row carries it.
+            + (
+                ", seat_shape_rule" if _has_lambda_seat_shape_column(conn)
+                else ", NULL"
+            )
             + " FROM calibration_effective_edge_lambda"
             " WHERE activated=1 AND stage_scope=?"
             # A database whose migration has not run has no column and one
@@ -1743,6 +1856,18 @@ def load_active_lambda(
             current = None
         if current is not None and str(recorded) != str(current):
             return None
+    # Charter 131: a table fitted on another seat shape is a table about a
+    # different population, not a stale one -- same three states as the
+    # axis: recorded and different is None (the kernel constant serves),
+    # recorded and equal serves, not recorded is carried as matching.
+    recorded_shape = row[2] if len(row) > 2 and row[2] is not None else (
+        payload.get("seat_shape_rule")
+    )
+    if (
+        recorded_shape is not None
+        and str(recorded_shape) != str(SEAT_SHAPE_RULE_VERSION)
+    ):
+        return None
     out: list[tuple[float, float]] = []
     for band in bands:
         bound = band.get("upper_bound")

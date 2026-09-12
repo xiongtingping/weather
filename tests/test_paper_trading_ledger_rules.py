@@ -32,17 +32,11 @@ def test_the_ledger_carries_productions_structural_rules() -> None:
     source = (root / "scripts" / "paper_trading_ledger.py").read_text(
         encoding="utf-8"
     )
-    # The floor's spelling became an env knob (replay arms); the default
-    # literal must stay production's three.  The binding suite pins the
-    # resolved value against production's policy.
-    assert (
-        'os.environ.get("PAPER_LEDGER_MIN_SUPPORT_BUCKETS", "3") or 3'
-        in source
-    )
-    # And that literal reaches the enumerator.  Asked of the statement
-    # rather than the spelling: the hand-off went through a helper on
-    # 2026-09-11 so both judge paths could share one pair, and a grep for
-    # the old spelling would have called that a lost rule.
+    # Charter 131 (2026-09-12): the seat's width is the ruling's two to
+    # three, handed to the enumerator by ``support_width_bounds_v1()`` on
+    # both judge paths.  The ledger's own width constants no longer reach
+    # the enumerator; ``MAXIMUM_SUPPORT_BUCKETS`` still caps the entry core
+    # (the chain's four).  Asked of the statement, not the spelling.
     import ast as _ast  # noqa: PLC0415
 
     _handoffs = [
@@ -50,12 +44,12 @@ def test_the_ledger_carries_productions_structural_rules() -> None:
         for node in _ast.walk(_ast.parse(source))
         if isinstance(node, _ast.Call)
         and "minimum_support_buckets" in _ast.unparse(node)
-        and "MINIMUM_SUPPORT_BUCKETS" in _ast.unparse(node)
+        and _ast.unparse(node.func).endswith("_support_windows")
     ]
-    assert _handoffs, "this lane's floor never reaches the enumerator"
-    assert any(
-        "MAXIMUM_SUPPORT_BUCKETS" in handoff for handoff in _handoffs
-    ), _handoffs
+    assert _handoffs, "the enumerator is never called"
+    for handoff in _handoffs:
+        assert "support_width_bounds_v1()" in handoff, handoff
+        assert "MINIMUM_SUPPORT_BUCKETS" not in handoff, handoff
     # The evidence support is the mass-selected run, not a bare centre.
     assert "desired=set(core) or {center}" in source
     assert "desired={center}," not in source
@@ -239,9 +233,17 @@ def test_recorded_seats_obey_the_ladder_bounds() -> None:
     # derived rows: they now carry the rule set that produced them and the
     # sweep re-derives any stamped with another, so every row under the
     # current stamp is answerable to the current rule.
+    # Charter 131 (2026-09-12): the seat is two to three rungs at every
+    # stage (P1 may also seat its lone live rung), and a P0-M/P1 re-seat may
+    # leave the chain holding four -- so the recorded position is bounded by
+    # the chain's cap, not the seat's.
+    from bayes_basket_target.delta_v2_runtime import (  # noqa: PLC0415
+        CHAIN_MAX_BUCKETS, SEAT_MIN_BUCKETS,
+    )
+
     for stage, size, count in rows:
-        low = 1 if str(stage) == "P1" else 3
-        assert int(size) <= 4, (
+        low = 1 if str(stage) == "P1" else SEAT_MIN_BUCKETS
+        assert int(size) <= CHAIN_MAX_BUCKETS, (
             f"{count} {stage} seats recorded at {size} buckets, over the cap"
         )
         if int(size) >= low:

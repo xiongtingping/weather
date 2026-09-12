@@ -3196,6 +3196,13 @@ CREATE TABLE IF NOT EXISTS paper_trade_candidate_window (
   -- "written before the column existed", which is not the current vintage
   -- and is excluded exactly as a NULL band_axis is.
   claim_transform_sha256 TEXT,
+  -- Charter 131 (2026-09-12): the THIRD partition key.  The seat's shape --
+  -- symmetric centre+-1, or the mean-anchored tail window on a skewed day --
+  -- decides which rungs a window holds, and rungs realise by their claim
+  -- size, so two windows at one agreement realise differently by shape.
+  -- NULL means "enumerated under an older shape rule" and the fit excludes
+  -- it exactly as it excludes a NULL band_axis.
+  seat_shape_rule TEXT,
   -- Per-rung claim and all-in cost at this decision, as
   -- {bucket: [claim, cost]}.  The bucket-scope lambda fit explodes
   -- this into legs and dedupes on (scope, decision, bucket); the
@@ -3461,7 +3468,7 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
     }
     for _name in (
         "band_axis", "band_table_sha256", "claim_transform_sha256",
-        "leg_claim_cost_json",
+        "leg_claim_cost_json", "seat_shape_rule",
     ):
         if _name not in _candidate_cols:
             conn.execute(
@@ -11368,6 +11375,10 @@ def backfill(
                                 )
                                 if row.get("leg_claim_cost") else None
                             ),
+                            # Charter 131: the shape rule this window was
+                            # enumerated under -- the lambda fit's third
+                            # partition key.
+                            SEAT_SHAPE_RULE_VERSION,
                         ))
             # The chain is done adding.  One position, one settlement: the
             # truth lands once, and scoring each stage against it separately
@@ -11545,8 +11556,8 @@ def backfill(
             " raw_win_probability, all_in_price, gate_agreement,"
             " admissible, seated, selection_rule_sha256,"
             " band_axis, band_table_sha256, claim_transform_sha256,"
-            " leg_claim_cost_json"
-            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " leg_claim_cost_json, seat_shape_rule"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT(station_id, event_date, stage, decision_at_utc,"
             "             buckets_json) DO UPDATE SET"
             "  win_probability=excluded.win_probability,"
@@ -11559,7 +11570,8 @@ def backfill(
             "  band_axis=excluded.band_axis,"
             "  band_table_sha256=excluded.band_table_sha256,"
             "  claim_transform_sha256=excluded.claim_transform_sha256,"
-            "  leg_claim_cost_json=excluded.leg_claim_cost_json",
+            "  leg_claim_cost_json=excluded.leg_claim_cost_json,"
+            "  seat_shape_rule=excluded.seat_shape_rule",
             pending_candidates,
         )
     if pending_settlements:

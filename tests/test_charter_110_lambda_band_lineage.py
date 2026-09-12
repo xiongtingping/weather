@@ -31,6 +31,7 @@ for path in (str(ROOT), str(ROOT / "scripts")):
         sys.path.insert(0, path)
 
 import paper_trading_ledger as ledger  # noqa: E402
+from bayes_basket_target.basket_kernel.delta_v2 import SEAT_SHAPE_RULE_VERSION  # noqa: E402
 from bayes_basket_target.effective_edge_store import _fit_axis  # noqa: E402
 
 
@@ -40,15 +41,19 @@ def _db() -> sqlite3.Connection:
     return conn
 
 
-def _candidate(conn, cid, *, axis=None, sha=None, stage="P0", bucket="30°C"):
+def _candidate(conn, cid, *, axis=None, sha=None, stage="P0", bucket="30°C",
+               shape=SEAT_SHAPE_RULE_VERSION):
+    # ``shape`` defaults to the current rule (charter 131): a fixture row is
+    # a row the ledger would write today.  ``None`` is a row from before.
     conn.execute(
         "INSERT INTO paper_trade_candidate_window("
         " candidate_id, station_id, event_date, stage, decision_at_utc,"
         " buckets_json, window_size, win_probability, all_in_price,"
-        " admissible, seated, band_axis, band_table_sha256, hit)"
-        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        " admissible, seated, band_axis, band_table_sha256, hit,"
+        " seat_shape_rule)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (cid, "ZSQD", "2026-09-05", stage, "2026-09-05T00:00:00Z",
-         json.dumps([bucket]), 1, 0.4, 0.3, 1, 0, axis, sha, 1),
+         json.dumps([bucket]), 1, 0.4, 0.3, 1, 0, axis, sha, 1, shape),
     )
 
 
@@ -305,7 +310,8 @@ def test_the_fit_excludes_rows_from_another_claim_vintage() -> None:
 
 
 def _replay_row(conn, cid, *, source, axis="centre_distance", stage="P0",
-                bucket="30°C", claim_sha="x" * 64, band_sha="b" * 64):
+                bucket="30°C", claim_sha="x" * 64, band_sha="b" * 64,
+                shape=SEAT_SHAPE_RULE_VERSION):
     conn.execute(
         "CREATE TABLE IF NOT EXISTS paper_trade_candidate_window_replay ("
         " replay_id TEXT PRIMARY KEY, source_candidate_id TEXT NOT NULL,"
@@ -316,14 +322,14 @@ def _replay_row(conn, cid, *, source, axis="centre_distance", stage="P0",
         " all_in_price REAL NOT NULL, hit INTEGER, band_axis TEXT NOT NULL,"
         " band_table_sha256 TEXT NOT NULL,"
         " claim_transform_sha256 TEXT NOT NULL, source_band_axis TEXT,"
-        " replayed_at_utc TEXT NOT NULL)"
+        " seat_shape_rule TEXT, replayed_at_utc TEXT NOT NULL)"
     )
     conn.execute(
         "INSERT INTO paper_trade_candidate_window_replay VALUES"
-        "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (cid, source, "ZSQD", "2026-09-05", stage, "2026-09-05T00:00:00Z",
          json.dumps([bucket]), 1, 0.4, 0.42, 0.3, 1, axis, band_sha,
-         claim_sha, "claim", "2026-09-08T00:00:00Z"),
+         claim_sha, "claim", shape, "2026-09-08T00:00:00Z"),
     )
 
 
@@ -915,3 +921,80 @@ def test_the_axis_is_read_from_the_column_when_the_payload_has_none() -> None:
     assert store.load_active_lambda(conn, stage_scope="P0-M") == (
         (float("inf"), 0.31),
     )
+
+
+def test_the_fit_partitions_on_the_seat_shape_too():
+    """Charter 131 (2026-09-12): the third partition key.  A window's shape
+    decides whether the mode bucket is inside it, and rungs realise by their
+    claim size, so rows enumerated under another shape rule are not
+    evidence about today's lambda.  NULL -- written before the rule -- is
+    excluded like a NULL axis, and the fit says how many it left out."""
+
+    import inspect
+
+    from bayes_basket_target import effective_edge_store as store
+
+    conn = _db()
+    store.ensure_schema(conn)
+    columns = {
+        str(row[1])
+        for row in conn.execute("PRAGMA table_info(paper_trade_candidate_window)")
+    }
+    assert "seat_shape_rule" in columns
+    lambda_columns = {
+        str(row[1])
+        for row in conn.execute("PRAGMA table_info(calibration_effective_edge_lambda)")
+    }
+    assert "seat_shape_rule" in lambda_columns
+    source = inspect.getsource(store._candidate_population)
+    assert "seat_shape_rule IS ?" in source
+    assert "seat_shape_rule IS NOT ?" in source
+    assert '"excluded_other_seat_shape"' in source
+    # The ledger writes the rule on every candidate row it records.
+    ledger_source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
+    assert "seat_shape_rule=excluded.seat_shape_rule" in ledger_source
+
+    _candidate(conn, "current", bucket="30°C")
+    _candidate(conn, "older", bucket="31°C", shape=None)
+    conn.execute(
+        "UPDATE paper_trade_candidate_window SET claim_transform_sha256=?",
+        (ledger.CLAIM_TRANSFORM_SHA256_CENTRE,),
+    )
+    conn.commit()
+    population = store._candidate_population(
+        conn, ("P0",), "2026-09-01", include_replayed=False
+    )
+    assert len(population["rows"]) == 1
+    assert population["seat_shape_rule"] == SEAT_SHAPE_RULE_VERSION
+    assert population["excluded_other_seat_shape"] == 1
+
+
+def test_a_served_table_from_another_seat_shape_yields_to_the_constant():
+    """Same three states as the axis: another shape is None (the kernel
+    constant serves), the same shape serves, no record is carried."""
+
+    import json as _json
+
+    from bayes_basket_target import effective_edge_store as store
+
+    conn = _db()
+    store.ensure_schema(conn)
+    payload = {"bands": [{"upper_bound": None, "lambda": 0.9}], "window_days": 14}
+
+    def _activate(sha: str, shape: str | None, fitted_at: str) -> None:
+        conn.execute(
+            "INSERT INTO calibration_effective_edge_lambda("
+            " lambda_table_sha256, bands_json, evidence_json, fitted_at_utc,"
+            " window_days, seat_count, activated, activated_at_utc,"
+            " stage_scope, claim_scope, band_axis, seat_shape_rule)"
+            " VALUES(?,?,?,?,?,?,1,?,'P0','window',NULL,?)",
+            (sha, _json.dumps(payload), "{}", fitted_at, 14, 30, fitted_at, shape),
+        )
+        conn.commit()
+
+    _activate("a" * 64, "some_older_shape_rule", "2026-09-10T00:00:00Z")
+    assert store.load_active_lambda(conn, stage_scope="P0") is None
+    _activate("b" * 64, SEAT_SHAPE_RULE_VERSION, "2026-09-12T00:00:00Z")
+    assert store.load_active_lambda(conn, stage_scope="P0") == ((float("inf"), 0.9),)
+    _activate("c" * 64, None, "2026-09-13T00:00:00Z")
+    assert store.load_active_lambda(conn, stage_scope="P0") == ((float("inf"), 0.9),)

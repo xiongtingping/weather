@@ -29,6 +29,7 @@ from .observed_high_floor import (
     observed_high_floor_enabled,
 )
 from .basket_kernel.delta_v2 import (
+    SEAT_SHAPE_RULE_VERSION,
     CONSOLIDATION_TILT_FLOOR_VERSION,
     CURVE_BANKROLL_CONVENTION,
     curve_effective_bankroll_v1,
@@ -161,7 +162,6 @@ SCHEMA = "delta_basket_score_runtime_plan_v2"
 # days -- the ledger is the instrument, not that reading.
 SEAT_MIN_BUCKETS = 2
 SEAT_MAX_BUCKETS = 3
-SEAT_SHAPE_RULE_VERSION = "seat_shape_mean_anchored_v1"
 # Charter 131 (11): P0 may not open four rungs, but a P0-M or P1 re-seat may
 # leave the chain holding four -- held legs outside the new window stay
 # held and are never bought (Q7) -- and charter 90's TX-entry span still
