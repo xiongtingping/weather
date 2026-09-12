@@ -603,6 +603,31 @@ def _prepare_posterior_target_scenario(
             "selection_runtime_recomputed": False,
         }
         payload["target_bucket_selection"] = dict(payload["posterior_target_bucket_selection"])
+        # And the SSOT block, which is the decision authority the two
+        # selections above both say they read.  The drill moved the rows and
+        # the selections but left whatever block the source fact carried, so
+        # the writer refused the staged scenario on a target mismatch -- or,
+        # when the source fact had no block at all, on a dozen
+        # posterior_ssot_fact_* issues.  Built by the writer's own builder
+        # rather than assembled here, so the staged payload and a production
+        # one cannot drift apart.
+        payload["posterior_temperature_distribution"] = [
+            {
+                "bucket": str(row.get("outcome") or row.get("label") or "").strip(),
+                "probability": float(row.get("q_temperature_bucket_posterior") or 0.0),
+            }
+            for row in rows
+            if str(row.get("outcome") or row.get("label") or "").strip()
+        ]
+        payload["posterior_temperature_distribution_map"] = {
+            str(item["bucket"]): float(item["probability"])
+            for item in payload["posterior_temperature_distribution"]
+        }
+        payload.setdefault("production_model_version", "joint_weak_physical_strong_composer_v1")
+        payload.setdefault("production_model_ready", True)
+        payload["posterior_ssot_fact"] = weather_fact_snapshot_writer.build_posterior_ssot_fact(
+            payload
+        )
         payload["target_realization_capital_plan"] = {
             "ok": True,
             "version": "posterior_target_direct_latency_drill",

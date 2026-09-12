@@ -27,11 +27,66 @@ def _sample_payload() -> dict:
             "zuuu_metar_raw_awc_age_minutes": 120.0,
             "wu_twc_observed_intraday_age_minutes": 120.0,
         },
+        # A rung at 33 as well: _force_final_lock_scenario forces the observed
+        # daily max to 33.0, and a ladder that stops at 32 leaves the writer
+        # with no bucket at or above the hard floor it just created.
         "distribution": [
-            {"outcome": "31", "q_bayes_posterior": 0.6},
-            {"outcome": "32", "q_bayes_posterior": 0.4},
+            {"outcome": "31", "q_bayes_posterior": 0.5},
+            {"outcome": "32", "q_bayes_posterior": 0.3},
+            {"outcome": "33", "q_bayes_posterior": 0.2},
         ],
+        "fact_snapshot_id": "fact_copy_acceptance_unit",
+        "posterior_run_id": "post_copy_acceptance_unit",
+        # The two layers the writer's apply contract demands of every fact it
+        # persists.  The acceptance script under test hands this payload
+        # straight to that writer, and without them it was refused on
+        # prior_layer_contract_failed before the freshen/final-lock behaviour
+        # these tests are about ever ran.  Production facts carry both; this
+        # fixture was written before the contract did.
+        "prior_distribution": {"31": 0.5, "32": 0.3, "33": 0.2},
+        "prior_na_reason": "",
+        "prior_meta": {
+            "schema": "temperature_prior_meta_v1",
+            "state": "available",
+            "source": "unit_test_copy_acceptance_prior",
+            "boundary": (
+                "historical_climate_date_site_terrain_weather_type_only"
+                "_no_forecast_no_metar_no_market"
+            ),
+            "sample_count": 30,
+            "date_window_days": 15,
+            "shrinkage_target": "broader_settled_history",
+            "prior_na_reason": "",
+        },
+        "posterior_temperature_distribution": [
+            {"bucket": "31", "probability": 0.5},
+            {"bucket": "32", "probability": 0.3},
+            {"bucket": "33", "probability": 0.2},
+        ],
+        "production_model_version": "joint_weak_physical_strong_composer_v1",
+        "production_model_ready": True,
     }
+
+
+def _with_posterior_ssot_fact(payload: dict) -> dict:
+    """The SSOT block the writer would have minted, by its own builder."""
+
+    import weather_fact_snapshot_writer as writer
+
+    ssot = writer.build_posterior_ssot_fact(payload)
+    payload["posterior_ssot_fact"] = ssot
+    selection = {
+        "target_bucket": ssot.get("target_bucket"),
+        "target_probability": ssot.get("target_probability"),
+        "target_probability_field": "posterior_ssot_fact.target_probability",
+        "ssot_source": "posterior_ssot_fact",
+        "selection_runtime_recomputed": False,
+        "fact_snapshot_id": payload["fact_snapshot_id"],
+        "posterior_run_id": payload["posterior_run_id"],
+    }
+    payload["posterior_target_bucket_selection"] = dict(selection)
+    payload["target_bucket_selection"] = dict(selection)
+    return payload
 
 
 def _write_db(path: Path, payload: dict) -> int:
@@ -121,7 +176,7 @@ def _latest_payload(path: Path) -> tuple[int, dict]:
 
 def test_freshen_hard_source_timestamps_uses_fact_snapshot_writer(tmp_path: Path) -> None:
     db_path = tmp_path / "archive.db"
-    payload = _sample_payload()
+    payload = _with_posterior_ssot_fact(_sample_payload())
     original_fact_id = _write_db(db_path, payload)
 
     result = copy_acceptance._freshen_hard_source_timestamps(
@@ -148,12 +203,19 @@ def test_freshen_hard_source_timestamps_uses_fact_snapshot_writer(tmp_path: Path
     conn.close()
     assert history_count == 2
     assert summary_count == 1
-    assert json.loads(original)["weather_likelihood_features"]["zuuu_metar_raw_awc_age_minutes"] == 120.0
+    # The superseded row is compacted when the new fact replaces it, and
+    # compaction is what strips its weather_likelihood_features -- see
+    # test_event_fact_latest_compacts_replaced_history_but_keeps_latest_full.
+    # What matters here is that the freshen appended rather than updating in
+    # place: the old row is still its own row, and it is not the latest.
+    original_payload = json.loads(original)
+    assert original_payload["history_compacted"] is True
+    assert "weather_likelihood_features" not in original_payload
 
 
 def test_force_final_lock_scenario_uses_fact_snapshot_writer(tmp_path: Path) -> None:
     db_path = tmp_path / "archive.db"
-    payload = _sample_payload()
+    payload = _with_posterior_ssot_fact(_sample_payload())
     original_fact_id = _write_db(db_path, payload)
 
     result = copy_acceptance._force_final_lock_scenario(
