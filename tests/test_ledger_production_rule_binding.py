@@ -241,6 +241,12 @@ SHARED_WITH_PRODUCTION = {
 
 # This lane's own, with the reason it has no production counterpart.
 LEDGER_ONLY = {
+    # Operational, not a rule: whether a pass repairs a book that holds more
+    # than one rule set (charter 129's outstanding item, ruled 2026-09-12).
+    # Production has no book to repair.  It deliberately stays out of the
+    # selection fingerprint -- two books made by the same rules are the same
+    # book whether or not one of them needed repairing.
+    "AUTO_REDERIVE_ON_RULE_CHANGE": "operational: repair a mixed book, no production counterpart",
     # The simulator's adverse-selection calibration, and it must NEVER have
     # a counterpart in production.  Production's fill artifact
     # (``delta_v2_fill_artifact``, fitted by

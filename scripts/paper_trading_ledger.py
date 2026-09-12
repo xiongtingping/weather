@@ -912,6 +912,39 @@ MAKER_RESTING_HORIZON_MINUTES = float(
 # Default stays ``ledger`` so the standing book does not move before the
 # arm is read; the fingerprint carries the choice when it leaves the
 # default.
+# Whether a pass repairs a book that holds more than one rule set (user
+# ruling, 2026-09-12: "账本做自动重推").
+#
+# Charter 129's outstanding item.  ``_drop_superseded_positions`` is bounded
+# by the window a pass can re-derive -- never delete what you will not
+# rebuild -- so after a rule change the scheduled pass re-derives four days
+# and every older row keeps the digest it was seated under.  Three identity
+# changes landed on 2026-09-12 and the book came to be 224 settled chains of
+# one strategy and 83 of another, published as a single -28.3% while the
+# served rule set alone read -34.5%.
+#
+# ``on``: a pass that finds positions under any other digest walks the whole
+# history instead of the recent window, which is exactly what the reason-
+# vocabulary rebuild beside it already does.  It converges in one pass --
+# the foreign rows are dropped and re-derived, so none can remain -- and it
+# costs about fourteen minutes of the write lock, over one scheduled cycle.
+# A rule change therefore buys one slow pass; the single-instance guard
+# skips the fire it overruns.
+#
+# It does NOT enter the selection fingerprint.  Two books produced by the
+# same rules are the same book whether or not a pass had to repair one of
+# them; hashing this would give them different digests.
+#
+# The cost scales with the book's span, which grows.  When a full re-derive
+# stops fitting inside a sweep interval this wants a bound, not a bigger
+# timeout.
+AUTO_REDERIVE_ON_RULE_CHANGE = (
+    os.environ.get("PAPER_LEDGER_AUTO_REDERIVE", "").strip().lower() or "on"
+)
+if AUTO_REDERIVE_ON_RULE_CHANGE not in {"on", "off"}:
+    raise SystemExit(
+        f"unknown auto re-derive mode: {AUTO_REDERIVE_ON_RULE_CHANGE}"
+    )
 RESTING_LIFECYCLE = (
     os.environ.get("PAPER_LEDGER_RESTING_LIFECYCLE", "").strip().lower()
     or "ledger"
@@ -4043,6 +4076,26 @@ def _purge_below_floor(conn: sqlite3.Connection) -> int:
     if dropped:
         conn.commit()
     return dropped
+
+
+def _positions_under_other_rule_sets(conn: sqlite3.Connection) -> int:
+    """How many recorded positions belong to a rule set that is not served.
+
+    The question ``AUTO_REDERIVE_ON_RULE_CHANGE`` answers, asked of the
+    positions rather than the settlements: an unsettled seat under a stale
+    digest is just as much another strategy's, and it will be scored under
+    this one the day its truth lands.
+    """
+
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM paper_trade_position"
+            " WHERE selection_rule_sha256<>?",
+            (SELECTION_RULE_SHA256,),
+        ).fetchone()
+    except sqlite3.DatabaseError:
+        return 0
+    return int((row or [0])[0] or 0)
 
 
 def _drop_superseded_positions(
@@ -8765,6 +8818,13 @@ def backfill(
         # "remember to run --recent-days 0 after touching
         # REFUSAL_REASONS", and nobody remembered.
         recent_days = None
+    # Charter 129's outstanding item, ruled on 2026-09-12: the same
+    # self-healing for the rule set itself.  A book holding two of them
+    # publishes one return for two strategies, and the incremental window
+    # can never reach the older one.
+    foreign_rule_set_rows = _positions_under_other_rule_sets(conn)
+    if foreign_rule_set_rows and AUTO_REDERIVE_ON_RULE_CHANGE == "on":
+        recent_days = None
     superseded, superseded_refusals = _drop_superseded_positions(
         conn, recent_days=recent_days
     )
@@ -8821,6 +8881,11 @@ def backfill(
     counts: dict[str, int] = defaultdict(int)
     if refusal_rebuilt:
         counts["refusal_schema_rebuilt_full_walk"] = 1
+    if foreign_rule_set_rows:
+        counts["positions_under_other_rule_sets"] = foreign_rule_set_rows
+        counts["rule_change_full_rederive"] = (
+            1 if AUTO_REDERIVE_ON_RULE_CHANGE == "on" else 0
+        )
     if superseded:
         counts["superseded_rule_dropped"] = superseded
     if superseded_refusals:
