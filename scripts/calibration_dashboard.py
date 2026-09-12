@@ -7476,6 +7476,183 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def collect_beta_shadow(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Charter 128: what the beta lane serves, and what its gate would have
+    done -- read off the ledger's own settled windows, not off a replay.
+
+    Three readings, three sources, deliberately kept apart.  ``served`` is
+    the store's active row per stage (the number the enumeration reads).
+    ``replay`` re-judges every settled candidate window of the last 14 days
+    with the beta the lane was serving at that window's decision instant
+    (journal as-of, like lambda) against the verdict production recorded on
+    the row, and prints what each of the four cells then realised -- that
+    table is the promotion evidence charter 128 asks for.  ``research`` is
+    the unanchored 28-day fit, which is what the slope looks like before the
+    anchor is respected and is never served.  ``live`` is the shadow's own
+    counters off the last two days of decisions, so a reader can see the
+    lane is being written at all.
+    """
+
+    from bayes_basket_target import beta_edge_store as _b
+    from bayes_basket_target.basket_kernel.delta_v2 import BETA_EDGE_MODE
+
+    out: dict[str, Any] = {
+        "available": True, "mode": BETA_EDGE_MODE, "served": {},
+        "research": {}, "replay": {"days": [], "cells": {}}, "live": {},
+    }
+    # -- served rows, with the evidence that produced them
+    try:
+        for row in conn.execute(
+            "SELECT stage_scope, beta, beta_lcb, beta_ucb, intercept,"
+            " row_count, day_count, accumulating, as_of_event_date,"
+            " activated_at_utc, evidence_json"
+            " FROM calibration_beta_edge_table WHERE activated=1"
+        ):
+            try:
+                ev = json.loads(row[10] or "{}")
+            except ValueError:
+                ev = {}
+            out["served"][str(row[0])] = {
+                "beta": row[1], "beta_lcb": row[2], "beta_ucb": row[3],
+                "intercept": row[4], "rows": row[5], "days": row[6],
+                "accumulating": bool(row[7]), "as_of": row[8],
+                "activated_at": row[9], "anchor": ev.get("anchor_utc"),
+                "excluded_before_anchor": ev.get("excluded_before_anchor"),
+                "days_beta_positive": ev.get("days_beta_positive"),
+                "layers": ev.get("layers") or {},
+            }
+    except sqlite3.Error:
+        out["served_error"] = "no_beta_table"
+    # -- research: the unanchored slope, for the eye only
+    for scope in _b.STAGE_SCOPES:
+        try:
+            fit = _b.fit_beta(conn, stage_scope=scope, anchored=False, draws=200)
+        except Exception as exc:  # noqa: BLE001 -- a research line, never fatal
+            out["research"][scope] = {"error": str(exc)[:120]}
+            continue
+        ev = fit["evidence"]
+        out["research"][scope] = {
+            "beta": ev.get("beta"), "beta_lcb": ev.get("beta_lcb"),
+            "beta_ucb": ev.get("beta_ucb"), "intercept": ev.get("intercept"),
+            "rows": fit["row_count"], "days": fit["day_count"],
+            "days_beta_positive": ev.get("days_beta_positive"),
+            "by_lead": (ev.get("layers") or {}).get("by_lead") or {},
+        }
+    # -- replay: every settled candidate window of the last 14 days,
+    # re-judged with the beta served at its decision instant.
+    since = (date.today() - timedelta(days=14)).isoformat()
+    journal: dict[str, list[tuple[str, float]]] = {}
+    try:
+        for scope, at, lcb in conn.execute(
+            "SELECT j.stage_scope, j.fitted_at_utc, t.beta_lcb"
+            " FROM calibration_beta_edge_fit_journal j"
+            " JOIN calibration_beta_edge_table t ON t.beta_sha256=j.beta_sha256"
+            " ORDER BY j.fitted_at_utc, j.fit_id"
+        ):
+            journal.setdefault(str(scope), []).append((str(at), float(lcb)))
+    except sqlite3.Error:
+        journal = {}
+
+    def served_at(scope: str, at: str) -> float | None:
+        best = None
+        for fitted, lcb in journal.get(scope, ()):
+            if fitted <= at:
+                best = lcb
+            else:
+                break
+        return best
+
+    days: dict[str, dict[str, Any]] = {}
+    cells = {k: {"n": 0, "hit_minus_price": 0.0, "price": 0.0}
+             for k in ("both_admit", "beta_refuses", "beta_admits", "both_refuse")}
+    try:
+        rows = conn.execute(
+            "SELECT stage, event_date, decision_at_utc, raw_win_probability,"
+            " all_in_price, hit, admissible"
+            " FROM paper_trade_candidate_window"
+            " WHERE settled_bucket IS NOT NULL AND event_date >= ?"
+            "   AND raw_win_probability IS NOT NULL AND all_in_price > 0",
+            (since,),
+        ).fetchall()
+    except sqlite3.Error:
+        rows = []
+    for stage, day, at, raw, price, hit, adm in rows:
+        lcb = served_at(str(stage), str(at or ""))
+        if lcb is None:
+            continue
+        beta_adm = lcb * (float(raw) - float(price)) > 1e-9
+        cur_adm = bool(adm)
+        key = ("both_admit" if beta_adm else "beta_refuses") if cur_adm else (
+            "beta_admits" if beta_adm else "both_refuse")
+        margin = float(hit or 0) - float(price)
+        d = days.setdefault(str(day), {"date": str(day), "windows": 0, "current_admits": 0,
+                                       "beta_admits": 0, "beta_refuses_of_admitted": 0,
+                                       "beta_admits_of_refused": 0, "sum_margin_admitted": 0.0,
+                                       "sum_margin_beta_admitted": 0.0})
+        d["windows"] += 1
+        if cur_adm:
+            d["current_admits"] += 1
+            d["sum_margin_admitted"] += margin
+        if beta_adm:
+            d["beta_admits"] += 1
+            d["sum_margin_beta_admitted"] += margin
+        if key == "beta_refuses":
+            d["beta_refuses_of_admitted"] += 1
+        if key == "beta_admits":
+            d["beta_admits_of_refused"] += 1
+        c = cells[key]
+        c["n"] += 1
+        c["hit_minus_price"] += margin
+        c["price"] += float(price)
+    for c in cells.values():
+        c["mean_hit_minus_price"] = round(c["hit_minus_price"] / c["n"], 4) if c["n"] else None
+        c["mean_price"] = round(c["price"] / c["n"], 4) if c["n"] else None
+        del c["hit_minus_price"]
+        del c["price"]
+    out["replay"] = {
+        "since": since, "windows": len(rows), "judged": sum(d["windows"] for d in days.values()),
+        "cells": cells,
+        "days": [
+            {**d,
+             "mean_margin_admitted": round(d["sum_margin_admitted"] / d["current_admits"], 4) if d["current_admits"] else None,
+             "mean_margin_beta_admitted": round(d["sum_margin_beta_admitted"] / d["beta_admits"], 4) if d["beta_admits"] else None}
+            for d in sorted(days.values(), key=lambda x: x["date"])
+        ],
+    }
+    for d in out["replay"]["days"]:
+        d.pop("sum_margin_admitted", None)
+        d.pop("sum_margin_beta_admitted", None)
+    # -- live: the shadow's own counters off recent decisions
+    live_since = (date.today() - timedelta(days=2)).isoformat()
+    live = {"since": live_since, "decisions": 0, "with_shadow": 0,
+            "would_refuse": 0, "would_admit": 0, "served_seen": {}}
+    try:
+        facts = conn.execute(
+            "SELECT feature_json FROM basket_policy_training_fact"
+            " WHERE event_date >= ? ORDER BY decision_at_utc DESC LIMIT 400",
+            (live_since,),
+        ).fetchall()
+    except sqlite3.Error:
+        facts = []
+    for (payload,) in facts:
+        try:
+            detail = json.loads(payload or "{}")
+        except ValueError:
+            continue
+        live["decisions"] += 1
+        sel = ((detail.get("plan") or {}).get("basket_support_selection")) or {}
+        if "beta_edge_mode" not in sel:
+            continue
+        live["with_shadow"] += 1
+        live["would_refuse"] += int(sel.get("beta_would_refuse_count") or 0)
+        live["would_admit"] += int(sel.get("beta_would_admit_count") or 0)
+        for scope, srv in (sel.get("beta_served") or {}).items():
+            if isinstance(srv, dict):
+                live["served_seen"][str(scope)] = srv.get("beta_lcb")
+    out["live"] = live
+    return out
+
+
 def collect_lambda_axis_usage(conn: sqlite3.Connection) -> dict[str, Any]:
     """Which axis bought each seat, so charter 97 can be retired on evidence.
 
@@ -8162,6 +8339,7 @@ SECTION_CACHE_EPOCH = 1
 # equal lifetimes would expire the whole set on one render and put the
 # fourteen minutes back in a single go.
 SECTION_CACHE_TTL_SEC = {
+    "beta_shadow": 1800,
     "truth_landing": 150 * 60,
     "window_divergence": 165 * 60,
     "scorecard": 180 * 60,
@@ -8535,6 +8713,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         ),
         "lambda_axis_usage": _cached_section(
             "lambda_axis_usage", collect_lambda_axis_usage, conn
+        ),
+        "beta_shadow": _cached_section(
+            "beta_shadow", collect_beta_shadow, conn
         ),
         "convergence_claim": _cached_section(
             "convergence_claim", collect_convergence_claim, conn
@@ -10107,6 +10288,49 @@ function truthLanding(){
 // the thermometer measures how much of a claimed EDGE arrives, this
 // measures how much of a claimed PROBABILITY arrives, and the objective
 // sizes on the second.
+
+// Charter 128: the beta lane in shadow.  One slope per stage, and the
+// table that decides its promotion: every settled window of the last
+// fortnight re-judged by the beta the lane served at that instant, against
+// the verdict production recorded, and what each of the four cells then
+// realised.
+function betaShadow(){
+  const B=D.beta_shadow||{};
+  if(!B.available) return `<h2>β 车道（影子）</h2><div class="card">未采集。</div>`;
+  const num=(v,d)=>v==null?"—":Number(v).toFixed(d==null?3:d);
+  const h=s=>String(s==null?"":s).replace(/</g,"&lt;");
+  const served=B.served||{}, res=B.research||{}, rep=B.replay||{}, live=B.live||{};
+  const stages=["P0","P0-M","P1"];
+  const servedRows=stages.map(s=>{const r=served[s];if(!r)return `<tr><td>${s}</td><td colspan="8">无激活行</td></tr>`;
+    return `<tr><td>${s}</td><td class="mono">${num(r.beta_lcb)}</td><td class="mono">${num(r.beta)}</td>
+      <td class="mono">${num(r.beta_lcb)} … ${num(r.beta_ucb)}</td><td class="mono">${num(r.intercept)}</td>
+      <td>${r.rows} / ${r.days}</td><td>${r.accumulating?"<b>累积中</b>":"够门槛"}</td>
+      <td class="mono">${h((r.anchor||"").slice(0,16))}</td><td>${r.days_beta_positive==null?"—":r.days_beta_positive+"/"+r.days}</td></tr>`;}).join("");
+  const resRows=stages.map(s=>{const r=res[s]||{};if(r.error)return `<tr><td>${s}</td><td colspan="6">${h(r.error)}</td></tr>`;
+    const lead=Object.entries(r.by_lead||{}).map(([k,v])=>`${k}: ${num(v.beta,2)} (n${v.rows})`).join("，");
+    return `<tr><td>${s}</td><td class="mono">${num(r.beta)}</td><td class="mono">${num(r.beta_lcb)} … ${num(r.beta_ucb)}</td>
+      <td class="mono">${num(r.intercept)}</td><td>${r.rows} / ${r.days}</td><td>${r.days_beta_positive==null?"—":r.days_beta_positive+"/"+r.days}</td><td>${h(lead)||"—"}</td></tr>`;}).join("");
+  const cells=rep.cells||{};
+  const cell=k=>{const c=cells[k]||{};return `<td class="mono">${c.n||0}</td><td class="mono">${c.mean_hit_minus_price==null?"—":(c.mean_hit_minus_price*100).toFixed(1)+"点"}</td>`;};
+  const dayRows=(rep.days||[]).map(d=>`<tr><td>${h(d.date)}</td><td class="mono">${d.windows}</td><td class="mono">${d.current_admits}</td>
+      <td class="mono">${d.beta_admits}</td><td class="mono">${d.beta_refuses_of_admitted}</td><td class="mono">${d.beta_admits_of_refused}</td>
+      <td class="mono">${d.mean_margin_admitted==null?"—":(d.mean_margin_admitted*100).toFixed(1)}</td><td class="mono">${d.mean_margin_beta_admitted==null?"—":(d.mean_margin_beta_admitted*100).toFixed(1)}</td></tr>`).join("");
+  return `<h2>β 车道（影子）</h2>
+  <div class="card"><b>模式 ${h(B.mode)}</b>。宪章 128：每个枚举窗 hit − q = a + β·(p − q)，p 原始声称、q 闸定价的全含价；
+    服务信念 q + β_lcb·(p − q)，闸判 β_lcb·(p − q) &gt; 0。影子只记不闸；晋升要影子 ≥10 个事件日且下表"β 会拒"减"β 会放"的实现差大于按日噪声，且须裁决。
+    最近两天决策 ${live.decisions||0} 条，其中带影子读数 ${live.with_shadow||0} 条；影子累计：现闸放行而 β 会拒 ${live.would_refuse||0} 窗、现闸拒而 β 会放 ${live.would_admit||0} 窗。</div>
+  <div class="card"><h3>服务中（锚定、滚动 28 天）</h3>
+  <table><tr><th>阶段</th><th>服务 β_lcb</th><th>β 点估</th><th>90% 区间</th><th>截距(≈−成本)</th><th>行 / 日</th><th>状态</th><th>服务锚</th><th>逐日 β&gt;0</th></tr>${servedRows}</table>
+  <div class="muted">锚以前的行不进样本；累积中＝行数或天数不够门槛（60 行 / 8 日），服务 β_lcb 0，信念＝价格。</div></div>
+  <div class="card"><h3>研究读数（不锚定，28 天，不服务）</h3>
+  <table><tr><th>阶段</th><th>β</th><th>90% 区间</th><th>截距</th><th>行 / 日</th><th>逐日 β&gt;0</th><th>按提前量</th></tr>${resRows}</table></div>
+  <div class="card"><h3>重放：最近 14 天已结算枚举窗，按当时服务的 β 重判</h3>
+  <table><tr><th></th><th>现闸放·β 放</th><th></th><th>现闸放·β 拒</th><th></th><th>现闸拒·β 放</th><th></th><th>现闸拒·β 拒</th><th></th></tr>
+  <tr><td>窗数 / 均 hit−价</td>${cell("both_admit")}${cell("beta_refuses")}${cell("beta_admits")}${cell("both_refuse")}</tr></table>
+  <table><tr><th>事件日</th><th>窗</th><th>现闸放</th><th>β 放</th><th>β 会拒(现放)</th><th>β 会放(现拒)</th><th>现放 均 hit−价(点)</th><th>β 放 均 hit−价(点)</th></tr>${dayRows||'<tr><td colspan="8">尚无可重判的窗（服务 β 的日志晚于这些窗的决策时刻）</td></tr>'}</table>
+  <div class="muted">"β 会拒(现放)"那一格的均 hit−价 若持续低于"现闸放·β 放"，闸换 β 就是净少亏；两格打平则 β 只是少买。</div></div>`;
+}
+
 function effectiveEdgeLambda(){
   const E=D.effective_edge_lambda||{};
   const scopes=E.scopes||[];
@@ -13730,6 +13954,7 @@ const GROUPS = [
    sections:[[bandTable,"band 表"],
      [edgeBandHealth,"声称边际体温计"],
      [effectiveEdgeLambda,"有效边际 λ 表"],
+     [betaShadow,"β 车道（影子）"],
      [consolidation,"固化减仓"],
      [windowDivergence,"分布与持仓分家"]]},
   {id:"market", label:"市场与执行门槛", tone:"#e3b341",

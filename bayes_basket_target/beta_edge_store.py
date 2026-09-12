@@ -194,6 +194,7 @@ def population(
             continue
         out.append({
             "station": str(station), "date": str(day), "stage": str(stage),
+            "at": str(at or ""),
             "x": float(raw) - float(price),
             "y": float(hit or 0) - float(price),
             "raw": float(raw), "price": float(price), "hit": float(hit or 0),
@@ -202,6 +203,62 @@ def population(
         "as_of_event_date": latest, "floor_day": floor_day,
         "anchor_utc": anchor_utc, "excluded_before_anchor": excluded_anchor,
         "anchored": bool(anchored),
+    }
+
+
+LAYER_MIN_ROWS = 12
+LEAD_BUCKETS = ((0.0, 12.0, "<12h"), (12.0, 24.0, "12-24h"), (24.0, 36.0, "24-36h"), (36.0, 1e9, ">=36h"))
+
+
+def _lead_hours(row: Mapping[str, Any]) -> float | None:
+    """Hours from the decision to the event day's noon, UTC.  A coarse lead
+    -- the ledger's rows carry no local clock -- but the same coarseness for
+    every row, which is all a bucket needs."""
+
+    try:
+        from datetime import datetime, timezone  # noqa: PLC0415
+
+        at = datetime.fromisoformat(str(row["at"]).replace("Z", "+00:00"))
+        noon = datetime.fromisoformat(str(row["date"]) + "T12:00:00+00:00")
+        if at.tzinfo is None:
+            at = at.replace(tzinfo=timezone.utc)
+        return (noon - at).total_seconds() / 3600.0
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
+def layered_readings(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Point-estimate betas by station and by lead bucket -- research
+    readings for the shadow, never served: a layer is a candidate for its
+    own beta only once it clears the hurdles on its own days."""
+
+    by_station: dict[str, list[Mapping[str, Any]]] = {}
+    by_lead: dict[str, list[Mapping[str, Any]]] = {}
+    for r in rows:
+        by_station.setdefault(str(r["station"]), []).append(r)
+        lead = _lead_hours(r)
+        if lead is None:
+            continue
+        for lo, hi, label in LEAD_BUCKETS:
+            if lo <= lead < hi:
+                by_lead.setdefault(label, []).append(r)
+                break
+
+    def cell(group: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+        if len(group) < LAYER_MIN_ROWS:
+            return None
+        got = _ols([r["x"] for r in group], [r["y"] for r in group])
+        if got is None:
+            return None
+        return {
+            "rows": len(group), "days": len({r["date"] for r in group}),
+            "beta": round(got[1], 4), "intercept": round(got[0], 4),
+            "mean_x": round(mean(r["x"] for r in group), 4),
+        }
+
+    return {
+        "by_lead": {k: v for k, v in ((k, cell(g)) for k, g in by_lead.items()) if v},
+        "by_station": {k: v for k, v in ((k, cell(g)) for k, g in by_station.items()) if v},
     }
 
 
@@ -272,6 +329,9 @@ def fit_beta(
         "days_beta_positive": sum(1 for v in per_day.values() if v > 0),
         "mean_x": round(mean(r["x"] for r in rows), 6) if rows else None,
         "mean_y": round(mean(r["y"] for r in rows), 6) if rows else None,
+        # Research readings by layer, recorded so a layer that earns its own
+        # beta can be seen coming; nothing serves them.
+        "layers": layered_readings(rows),
     })
     table = {
         "schema": SCHEMA, "stage_scope": stage_scope, "price_basis": PRICE_BASIS,
@@ -405,6 +465,7 @@ def load_beta_tables(
 
 __all__ = [
     "BETA_TABLE_KEY", "SCHEMA", "STAGE_SCOPES", "WINDOW_DAYS", "MIN_ROWS",
-    "MIN_DAYS", "ensure_schema", "population", "fit_beta",
+    "MIN_DAYS", "LEAD_BUCKETS", "ensure_schema", "population", "fit_beta",
+    "layered_readings",
     "persist_and_activate", "journal_fit", "load_beta_as_of", "load_beta_tables",
 ]
