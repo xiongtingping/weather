@@ -830,7 +830,21 @@ def compile_station_p1_packets(
         head_closing = str(
             previous.lineage.get("canonical_observation_event_id") or ""
         )
-        if newest_id != head_closing or not previous.is_fresh(
+        if newest_id != head_closing:
+            return (len(ordered) + 1, last_admitted_formal, True)
+        # The head already closed on the newest formal report, so a refresh
+        # behind it can only be worth writing if the clock has moved -- the
+        # cadence case, which the worker's reaffirmation used to cover.
+        #
+        # ``is_fresh`` is false in two quite different situations and only
+        # one of them is that: a head whose grace has elapsed, and a head
+        # whose decision clock sits *ahead* of this compile instant, which is
+        # every head a replay pass just wrote (a rebase re-clocks all of the
+        # day's steps to now, chaining a microsecond per step past it).  On
+        # the first pass after this landed, 2026-09-12, that second reading
+        # produced 10 of 41 refreshes restating their predecessor
+        # microsecond for microsecond.  So the clock has to actually move.
+        if compile_at > last_decision and not previous.is_fresh(
             compilation_at_utc
         ):
             return (len(ordered) + 1, last_admitted_formal, True)

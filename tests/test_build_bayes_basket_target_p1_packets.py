@@ -930,3 +930,35 @@ def test_a_second_refresh_waits_for_new_evidence_or_a_lapsed_cadence() -> None:
     assert [packet["observation_id"] for packet in lapsed] == ["cool1"]
     assert lapsed[-1]["reported_high_advanced"] is False
     assert lapsed[-1]["state_refresh_of_checkpoint_id"] == head.checkpoint_id
+
+
+def test_a_replay_head_already_standing_at_now_gets_no_refresh_behind_it() -> None:
+    """A rebase re-clocks every step to now; there is nothing left to refresh.
+
+    ``is_fresh`` is false both for a head whose grace elapsed and for one
+    whose decision clock sits ahead of the compile instant -- which is every
+    head a replay pass just wrote, because the walk chains a microsecond per
+    step past its own floor.  Reading the second as the first wrote a refresh
+    that restated its predecessor microsecond for microsecond: 10 of 41 on
+    the first production pass after the refresh landed (2026-09-12).
+    """
+
+    observations = [
+        _observation("o1", 24.0, "2026-07-26T04:00:00Z"),
+        _observation("peak", 26.0, "2026-07-26T07:00:00Z"),
+    ]
+    # A floor at the compile instant is what a rebase hands the walk: every
+    # step lands at floor + n microseconds, so the last one is already ahead
+    # of now and closes on the newest formal report.
+    packets = compile_station_p1_packets(
+        predecessor=_predecessor(),
+        observations=observations,
+        registry_rows=_registry(),
+        compilation_at_utc="2026-07-26T08:00:00Z",
+        decision_floor_at_utc="2026-07-26T08:00:00Z",
+    )
+    assert [packet["observation_id"] for packet in packets] == ["o1", "peak"]
+    assert all(packet["reported_high_advanced"] for packet in packets)
+    assert not any(
+        packet["state_refresh_of_checkpoint_id"] for packet in packets
+    )
