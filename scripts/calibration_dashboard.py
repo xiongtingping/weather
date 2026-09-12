@@ -35,7 +35,7 @@ from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from statistics import median
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -5041,6 +5041,160 @@ def _center_landing_bootstrap(
     )
 
 
+def _center_landing_seat(
+    *,
+    stage: str,
+    keys: Sequence[str],
+    probabilities: Mapping[str, float],
+    excluded: Sequence[str] = (),
+) -> dict[str, Any] | None:
+    """The seat window charter 131 rules for one served cell.
+
+    Read off the runtime's own functions rather than re-derived here (a
+    panel that copied the seat rule would drift the day the rule moved):
+    the centre is the mass-weighted mean bucket snapped to the nearest live
+    rung (charter 54/75), the shape is fixed by the three-state reading at
+    0.35 sigma -- symmetric ``c+-1``; skewed ``{c, tail, tail+1}`` with the
+    mode bucket outside by ruling -- and a P1 day left with one live rung
+    seats that rung alone.  The widest ruled shape whose rungs are all live
+    is the window reported; production seats the two-rung subset only when
+    the wider one fails a gate, which a page without prices cannot see.
+
+    ``None`` when the runtime would seat nothing: no live rung, or every
+    ruled shape reaches off the ladder or onto a dead rung.  Until
+    2026-09-12 this panel hard-coded the mean bucket +-1 (charter 49/79,
+    both retired), which on a skewed day is not the seat at all.
+    """
+
+    try:                                             # noqa: PLC0415
+        from bayes_basket_target.delta_v2_runtime import (
+            LADDER_CENTER_DEFINITION,
+            _alternate_ladder_center,
+            _skew_extension_sign,
+            seat_shape_windows_v1,
+        )
+    except ImportError:
+        return None
+    ordinals = {str(key): index for index, key in enumerate(keys)}
+    dead = {str(name) for name in excluded}
+    admitted = [
+        str(key) for key in keys
+        if float(probabilities.get(key, 0.0) or 0.0) > 0.0
+        and str(key) not in dead
+    ]
+    if not admitted:
+        return None
+    # The runtime's own order: heaviest live rung as the seed, the ruled
+    # definition (mean, since charter 54) applied over it.
+    centre = max(
+        admitted,
+        key=lambda bucket: (
+            float(probabilities.get(bucket, 0.0) or 0.0), -ordinals[bucket]
+        ),
+    )
+    if LADDER_CENTER_DEFINITION != "heaviest":
+        centre = _alternate_ladder_center(
+            LADDER_CENTER_DEFINITION,
+            admitted=admitted,
+            probabilities=probabilities,
+            ordinals=ordinals,
+        ) or centre
+    sign = _skew_extension_sign(probabilities, ordinals)
+    live = {ordinals[bucket] for bucket in admitted}
+    _shapes, audit = seat_shape_windows_v1(
+        centre_ordinal=ordinals[centre],
+        sign=sign,
+        stage=str(stage),
+        probability_by_ordinal={
+            ordinals[key]: float(probabilities.get(key, 0.0) or 0.0)
+            for key in keys
+        },
+        live_ordinals=live,
+    )
+    by_ordinal = {index: key for key, index in ordinals.items()}
+    for shape in audit.get("allowed_ordinals") or []:
+        if all(int(ordinal) in live for ordinal in shape):
+            return {
+                "state": str(audit.get("state") or ""),
+                "sign": int(sign),
+                "centre": centre,
+                "seat_keys": [by_ordinal[int(o)] for o in shape],
+            }
+    return None
+
+
+def _center_landing_group(
+    members: Sequence[Mapping[str, Any]], **head: Any
+) -> dict[str, Any]:
+    """One row of the landing table: bias, interval, and the window accounts.
+
+    The seat, mode and retired-window columns average over the cells that
+    have that window (a cell the runtime would not seat has no seat window
+    but still lands somewhere), so ``seat_cells`` travels with them.
+    """
+
+    errors = [float(row["error"]) for row in members]
+    count = len(errors)
+    mean_error = sum(errors) / count
+    spread = (
+        math.sqrt(
+            sum((value - mean_error) ** 2 for value in errors) / (count - 1)
+        )
+        if count > 1 else None
+    )
+    by_event: dict[str, list[float]] = {}
+    for row in members:
+        by_event.setdefault(str(row["event_date"]), []).append(
+            float(row["error"])
+        )
+    low, high = _center_landing_bootstrap(by_event)
+
+    def _account(prefix: str) -> dict[str, Any]:
+        have = [row for row in members if row.get(f"{prefix}_claim") is not None]
+        if not have:
+            return {
+                f"{prefix}_cells": 0,
+                f"{prefix}_claim": None,
+                f"{prefix}_cover": None,
+                f"{prefix}_ratio": None,
+            }
+        claim = sum(float(row[f"{prefix}_claim"]) for row in have) / len(have)
+        cover = sum(int(row[f"{prefix}_hit"]) for row in have) / len(have)
+        return {
+            f"{prefix}_cells": len(have),
+            f"{prefix}_claim": claim,
+            f"{prefix}_cover": cover,
+            f"{prefix}_ratio": cover / claim if claim > 0.0 else None,
+        }
+
+    seated = [row for row in members if row.get("seat_claim") is not None]
+    out: dict[str, Any] = dict(head)
+    out.update({
+        "cells": count,
+        "bias_rungs": mean_error,
+        "ci_low": low,
+        "ci_high": high,
+        "median_rungs": sorted(errors)[count // 2],
+        "sd_rungs": spread,
+        "warm_share": sum(1 for value in errors if value > 0.0) / count,
+        "skewed_share": sum(
+            1 for row in members if int(row.get("sign") or 0) != 0
+        ) / count,
+        "same_window_share": (
+            sum(1 for row in seated if row.get("same_window")) / len(seated)
+            if seated else None
+        ),
+        "significant": bool(
+            low is not None and high is not None
+            and (low > 0.0 or high < 0.0)
+        ),
+    })
+    out.update(_account("seat"))
+    out.update(_account("mode"))
+    out.update(_account("legacy"))
+    return out
+
+
 def collect_center_landing(conn: sqlite3.Connection) -> dict[str, Any]:
     """Truth minus the served mean, in rungs, by how wide the day claimed to be.
 
@@ -5050,9 +5204,19 @@ def collect_center_landing(conn: sqlite3.Connection) -> dict[str, Any]:
     layer fits on and nothing here re-derives a rule.  Distances are in
     rungs of each station's own ladder (charter 53(b)), which is what makes
     a Celsius and a Fahrenheit market comparable in one column.
+
+    The seat-window columns read the window charter 131 would seat on that
+    cell (``_center_landing_seat``), and every row is also split by the
+    day's three-state reading, because on a skewed day the seat and the
+    mean +-1 window are different sets of rungs.
     """
 
     try:
+        from bayes_basket_target.basket_kernel.support import (
+            SKEW_STATE_LEFT,
+            SKEW_STATE_RIGHT,
+            SKEW_STATE_SYMMETRIC,
+        )
         from bayes_basket_target.center_width_calibration import (
             sigma_floor_lift_v1,
         )
@@ -5066,6 +5230,11 @@ def collect_center_landing(conn: sqlite3.Connection) -> dict[str, Any]:
     if not _table_exists(conn, "basket_probability_bridge_history"):
         return {}
     truth = _truth(conn)
+    state_labels = (
+        (SKEW_STATE_SYMMETRIC, "symmetric", "对称"),
+        (SKEW_STATE_LEFT, "left", "左偏（冷尾）"),
+        (SKEW_STATE_RIGHT, "right", "右偏（暖尾）"),
+    )
     stages_out: list[dict[str, Any]] = []
     for stage in ("P0", "P0-M", "P1"):
         try:
@@ -5075,7 +5244,7 @@ def collect_center_landing(conn: sqlite3.Connection) -> dict[str, Any]:
             )
         except Exception:  # noqa: BLE001 -- a panel must not blank the page
             continue
-        landings: list[tuple[float, float, float, str, str]] = []
+        landings: list[dict[str, Any]] = []
         for day in sorted(by_day):
             for cell in by_day[day]:
                 probabilities = cell["probabilities"]
@@ -5106,98 +5275,79 @@ def collect_center_landing(conn: sqlite3.Connection) -> dict[str, Any]:
                     range(len(keys)),
                     key=lambda index: (probabilities[keys[index]], -index),
                 )
-                # The seat window itself (charter 49/79): the centre bucket
-                # and one rung either side.  Not "within one rung of the
-                # mean point" -- that is a different, narrower set, and
-                # reporting it under the seat's name is how a reader
-                # concludes the seat covers 40% of flat days when it
-                # covers 55%.
-                centre = min(
+                # The retired window (charter 49/79): the bucket nearest the
+                # mean point and one rung either side.  Kept as a comparison
+                # column so a reader can see what the ruled shape changed.
+                legacy_centre = min(
                     range(len(keys)),
                     key=lambda index: (abs(centers[index] - mean_c), index),
                 )
 
-                def _window(anchor: int) -> tuple[float, int]:
-                    names = keys[max(0, anchor - 1):anchor + 2]
+                def _cover(names: Sequence[str]) -> tuple[float, int]:
                     return (
                         sum(probabilities[name] for name in names) / total,
                         1 if cell["settled_bucket"] in names else 0,
                     )
 
-                mean_claim, mean_hit = _window(centre)
-                mode_claim, mode_hit = _window(peak)
-                landings.append((
-                    sigma_c / rung_c,
-                    (float(actual) - mean_c) / rung_c,
-                    mean_claim,
-                    mean_hit,
-                    mode_claim,
-                    mode_hit,
-                    peak - centre,
-                    cell["station_id"],
-                    cell["event_date"],
-                ))
+                mode_names = keys[max(0, peak - 1):peak + 2]
+                legacy_names = keys[
+                    max(0, legacy_centre - 1):legacy_centre + 2
+                ]
+                seat = _center_landing_seat(
+                    stage=stage,
+                    keys=keys,
+                    probabilities=probabilities,
+                    excluded=cell.get("excluded_buckets") or (),
+                )
+                entry: dict[str, Any] = {
+                    "sigma": sigma_c / rung_c,
+                    "error": (float(actual) - mean_c) / rung_c,
+                    "state": seat["state"] if seat else None,
+                    "sign": seat["sign"] if seat else 0,
+                    "seat_claim": None,
+                    "seat_hit": None,
+                    "same_window": None,
+                    "station": cell["station_id"],
+                    "event_date": cell["event_date"],
+                }
+                if seat is not None:
+                    claim, hit = _cover(seat["seat_keys"])
+                    entry["seat_claim"] = claim
+                    entry["seat_hit"] = hit
+                    entry["same_window"] = (
+                        set(seat["seat_keys"]) == set(mode_names)
+                    )
+                entry["mode_claim"], entry["mode_hit"] = _cover(mode_names)
+                entry["legacy_claim"], entry["legacy_hit"] = _cover(
+                    legacy_names
+                )
+                landings.append(entry)
         if not landings:
             continue
         rows = []
         for lower, upper, key, label in CENTER_LANDING_TIERS:
-            members = [row for row in landings if lower <= row[0] < upper]
+            members = [
+                row for row in landings if lower <= row["sigma"] < upper
+            ]
             if not members:
                 continue
-            errors = [row[1] for row in members]
-            count = len(errors)
-            mean_error = sum(errors) / count
-            spread = (
-                math.sqrt(
-                    sum((value - mean_error) ** 2 for value in errors)
-                    / (count - 1)
-                )
-                if count > 1 else None
-            )
-            by_event: dict[str, list[float]] = {}
-            for row in members:
-                by_event.setdefault(row[8], []).append(row[1])
-            low, high = _center_landing_bootstrap(by_event)
-            seat_claim = sum(row[2] for row in members) / count
-            seat_cover = sum(row[3] for row in members) / count
-            mode_claim = sum(row[4] for row in members) / count
-            mode_cover = sum(row[5] for row in members) / count
-            rows.append({
-                "tier": key,
-                "label": label,
-                "cells": count,
-                "bias_rungs": mean_error,
-                "ci_low": low,
-                "ci_high": high,
-                "median_rungs": sorted(errors)[count // 2],
-                "sd_rungs": spread,
-                "warm_share": sum(
-                    1 for value in errors if value > 0.0
-                ) / count,
-                "seat_claim": seat_claim,
-                "seat_cover": seat_cover,
-                "seat_ratio": (
-                    seat_cover / seat_claim if seat_claim > 0.0 else None
-                ),
-                "mode_cover": mode_cover,
-                "mode_ratio": (
-                    mode_cover / mode_claim if mode_claim > 0.0 else None
-                ),
-                "same_window_share": sum(
-                    1 for row in members if row[6] == 0
-                ) / count,
-                "significant": bool(
-                    low is not None and high is not None
-                    and (low > 0.0 or high < 0.0)
-                ),
-            })
+            rows.append(_center_landing_group(members, tier=key, label=label))
+        states = []
+        for state, key, label in state_labels:
+            members = [row for row in landings if row["state"] == state]
+            if not members:
+                continue
+            states.append(_center_landing_group(
+                members, state=key, label=label,
+                share=len(members) / len(landings),
+            ))
         flat = [
             row for row in landings
-            if row[0] >= CENTER_LANDING_FLAT_RUNGS
+            if row["sigma"] >= CENTER_LANDING_FLAT_RUNGS
         ]
         by_station: dict[str, list[float]] = {}
         for row in flat:
-            by_station.setdefault(row[7], []).append(row[1])
+            by_station.setdefault(row["station"], []).append(row["error"])
         flat_stations = sorted(
             (
                 {
@@ -5208,7 +5358,8 @@ def collect_center_landing(conn: sqlite3.Connection) -> dict[str, Any]:
                         1 for value in values if value > 0.0
                     ) / len(values),
                     "days": len({
-                        row[8] for row in flat if row[7] == station
+                        row["event_date"] for row in flat
+                        if row["station"] == station
                     }),
                 }
                 for station, values in by_station.items()
@@ -5222,17 +5373,58 @@ def collect_center_landing(conn: sqlite3.Connection) -> dict[str, Any]:
             "cells": len(landings),
             "days": len(by_day),
             "since": (floor or "")[:10],
+            "unseated_cells": sum(
+                1 for row in landings if row["seat_claim"] is None
+            ),
             "rows": rows,
+            "states": states,
             "flat_stations": flat_stations,
             "flat_cells": len(flat),
         })
     if not stages_out:
         return {}
     return {
-        "schema": "center_landing_v1",
+        "schema": "center_landing_v2",
         "flat_threshold_rungs": CENTER_LANDING_FLAT_RUNGS,
+        "seat_rule": _center_landing_rule(),
         "stages": stages_out,
     }
+
+
+def _center_landing_rule() -> dict[str, Any]:
+    """The rule constants the landing table reads but does not spell out.
+
+    Named in the page so a reader sees which seat rule and which skew gate
+    the columns were built under, and folded into the section cache's salt
+    so a change to any of them cannot keep serving a cached table built
+    under the previous one (the fingerprint only hashes collector source).
+    """
+
+    try:                                             # noqa: PLC0415
+        from bayes_basket_target.basket_kernel.delta_v2 import (
+            SEAT_SHAPE_RULE_VERSION,
+        )
+        from bayes_basket_target.delta_v2_runtime import (
+            LADDER_CENTER_DEFINITION,
+            SKEW_GAP_THRESHOLD_SIGMA,
+        )
+    except ImportError:
+        return {}
+    return {
+        "seat_shape_rule": SEAT_SHAPE_RULE_VERSION,
+        "skew_threshold_sigma": float(SKEW_GAP_THRESHOLD_SIGMA),
+        "centre_definition": str(LADDER_CENTER_DEFINITION),
+    }
+
+
+def _center_landing_salt() -> str:
+    try:
+        helpers = inspect.getsource(_center_landing_seat) + inspect.getsource(
+            _center_landing_group
+        )
+    except (OSError, TypeError):
+        helpers = ""
+    return json.dumps(_center_landing_rule(), sort_keys=True) + helpers
 
 
 def _grade(value: float | None, key: str, *, higher_better: bool = False) -> str:
@@ -8643,7 +8835,8 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "center_width", collect_center_width, conn
     )
     center_landing = _cached_section(
-        "center_landing", collect_center_landing, conn
+        "center_landing", collect_center_landing, conn,
+        _salt=_center_landing_salt(),
     )
     scorecard = _cached_section(
         "scorecard", collect_calibration_scorecard, conn
@@ -10995,15 +11188,25 @@ function edgeBandHealth(){
   const ring=(r,t0,t1)=>`M ${pt(r,t0)} A ${r} ${r} 0 0 1 ${pt(r,t1)}`;
   // Weighted by claimed mass, which is the only weight under which the
   // ratio stays the same quantity the per-band column shows.
-  const overall=key=>{
+  const overall=(key,set)=>{
     let mass=0,hits=0;
-    rows.forEach(r=>{const s=r[key]||{};
+    (set||rows).forEach(r=>{const s=r[key]||{};
       const n=s.n_settled||s.n||0,c=s.claimed_mean,x=s.realize_filled_x;
       if(!n||c==null||x==null) return;
       mass+=n*c;hits+=n*c*x;});
     return mass>0?hits/mass:null;
   };
+  // The two windows have to be pooled over the SAME bands, or the arrow
+  // reads which cells cleared the ten-leg floor rather than whether the
+  // fever moved.  Harmless while every band carried both windows; the
+  // 2026-09-12 re-derive left three bands measured over the whole period
+  // and one over the recent week, and the panel printed "整体 ×1.10 ·
+  // 近7天 ×2.22 ↑ 在退烧" -- a three-band pool against a one-band pool,
+  // with the direction manufactured by the difference in membership.
+  const comparable=rows.filter(r=>(r.all||{}).realize_filled_x!=null
+    &&(r.recent||{}).realize_filled_x!=null);
   const ovAll=overall("all"),ovRec=overall("recent");
+  const cmpAll=overall("all",comparable),cmpRec=overall("recent",comparable);
   const feverShare=rows.reduce((a,r)=>a+((r.all.realize_filled_x!=null
     &&r.all.realize_filled_x<0.5)?(r.share_all||0):0),0);
   const step=180/rows.length;
@@ -11011,9 +11214,13 @@ function edgeBandHealth(){
   const parts=rows.map((r,i)=>{
     const t0=i*step+1.4,t1=(i+1)*step-1.4,tm=(t0+t1)/2;
     const xa=r.all.realize_filled_x,xr=r.recent.realize_filled_x;
-    // A band that realises nothing still gets a sliver, so its slot reads
-    // as "measured and zero" rather than as an empty slot with no data.
-    const ro=xa==null?R0+3:Math.max(rad(xa),R0+2);
+    // "No reading" and "measured and zero" were both drawn as a two-to-
+    // three pixel sliver, so on 2026-09-12 four bands under the ten-leg
+    // floor read off the silhouette as four bands that deliver nothing.
+    // A band with no reading now draws no body at all -- its slot stays
+    // the empty track under a dashed springing line -- and a measured zero
+    // draws a stub big enough to be seen as a measurement.
+    const ro=xa==null?null:Math.max(rad(xa),R0+6);
     const foot=R0-7-(r.share_all||0)/maxShare*46;
     const [lx,ly]=PT(320,tm);
     const anchor=tm<70?"end":(tm>110?"start":"middle");
@@ -11022,13 +11229,26 @@ function edgeBandHealth(){
     const pier=`<path d="${wedge(t0,t1,foot,R0-7)}" fill="${tone(xa)}"
       opacity=".34"><title>${h(r.band)}：占全部腿 ${pct(r.share_all)}（${
       r.all.n} 腿）</title></path>`;
-    const body=`<path d="${wedge(t0,t1,R0,ro)}" fill="${tone(xa)}"
+    // Past the scale's ceiling the wedge is clamped to the rim, so ×1.86
+    // and ×2.22 draw as the same length; the dashed arc outside the rim is
+    // what says "this one ran off the scale" rather than "this one is the
+    // longest".
+    const body=ro==null
+      ?`<path d="${ring(R0+1,t0,t1)}" fill="none" stroke="var(--muted)"
+      stroke-width="1.5" stroke-dasharray="3 4" opacity=".75"
+      ><title>${h(r.band)}：无读数（该档已结算的成交腿不足 10 条）· ${
+      r.all.n} 腿 · 占 ${pct(r.share_all)}</title></path>`
+      :`<path d="${wedge(t0,t1,R0,ro)}" fill="${tone(xa)}"
       ><title>${h(r.band)}：全期兑现 ${mult(xa)} · ${r.all.n} 腿 · 占 ${
-      pct(r.share_all)}</title></path>`;
+      pct(r.share_all)}</title></path>${xa>XMAX?`<path d="${
+      ring(RMAX+9,t0,t1)}" fill="none" stroke="${tone(xa)}" stroke-width="2"
+      stroke-dasharray="2 4"><title>${h(r.band)}：${mult(xa)} 超出刻度上限 ×${
+      XMAX.toFixed(2)}，扇形已截在外圈</title></path>`:""}`;
     const inset=Math.min(1,(t1-t0)*0.08);
     const recent=xr==null?"":`<path d="${ring(rad(xr),t0+inset,t1-inset)}" fill="none"
       stroke="var(--text)" stroke-width="2.6" stroke-linecap="round"
-      opacity=".9"><title>${h(r.band)}：近7天兑现 ${mult(xr)}（${
+      ${xr>XMAX?`stroke-dasharray="5 4" `:``}opacity=".9"><title>${
+      h(r.band)}：近7天兑现 ${mult(xr)}${xr>XMAX?"（超出刻度，已截断）":""}（${
       r.recent.n} 腿）</title></path>
       <circle cx="${PT(rad(xr),tm)[0]}" cy="${PT(rad(xr),tm)[1]}" r="3"
       fill="var(--text)"/>`;
@@ -11050,9 +11270,9 @@ function edgeBandHealth(){
   const guide=x=>`<path d="${ring(rad(x),0,180)}" fill="none"
     stroke="var(--muted)" stroke-width="1" stroke-dasharray="2 6"
     opacity=".55"/>`;
-  const dir=(ovAll!=null&&ovRec!=null)
-    ?(ovRec>ovAll+0.01?["↑ 在退烧","var(--up)"]
-      :(ovRec<ovAll-0.01?["↓ 还在烧","var(--down)"]:["＝ 持平","var(--muted)"]))
+  const dir=(cmpAll!=null&&cmpRec!=null)
+    ?(cmpRec>cmpAll+0.01?["↑ 在退烧","var(--up)"]
+      :(cmpRec<cmpAll-0.01?["↓ 还在烧","var(--down)"]:["＝ 持平","var(--muted)"]))
     :["","var(--muted)"];
   const arc=`<div class="scroll"><svg viewBox="0 0 900 442" width="100%"
     style="min-width:560px;max-width:900px;height:auto;display:block;
@@ -11072,7 +11292,10 @@ function edgeBandHealth(){
       font-weight="700" fill="var(--text)">兑现越崩</text>
     <text x="${CX}" y="${CY-15}" text-anchor="middle" font-size="11.5"
       fill="var(--muted)">整体 ${mult(ovAll)}${ovRec==null?""
-      :` · 近7天 <tspan fill="${dir[1]}">${mult(ovRec)} ${dir[0]}</tspan>`}</text>
+      :(cmpAll!=null&&cmpRec!=null
+        ?` · 同 ${comparable.length} 档：${mult(cmpAll)} → 近7天 <tspan
+          fill="${dir[1]}">${mult(cmpRec)} ${dir[0]}</tspan>`
+        :` · 近7天 ${mult(ovRec)}（无两窗都有读数的档，不可比）`)}</text>
     <text x="${CX}" y="${CY+38}" text-anchor="middle" font-size="11.5"
       fill="var(--muted)">→ 自认占的便宜（声称 − 卖价）从小到大 →</text>
     <text x="${(CX-RMAX).toFixed(1)}" y="${CY+60}" font-size="12"
@@ -11082,7 +11305,9 @@ function edgeBandHealth(){
   </svg></div>
   <div class="muted" style="margin-top:2px;text-align:center;font-size:11.5px">
     扇形<b>越长＝兑现越好</b>（长度就是「×」），越过虚线圈＝说到做到；
-    白线是近 7 天；拱脚<b>越厚＝腿越多</b>；颜色只是同一个数的冷暖复述。${
+    白线是近 7 天；拱脚<b>越厚＝腿越多</b>；颜色只是同一个数的冷暖复述。
+    <b>空槽（虚线底弧）＝该档已结算成交腿不足 10 条、无读数</b>，不是兑现为零；
+    外圈虚线＝该档已超出刻度上限 ×1.60、扇形被截断。${
     feverShare>0?` 当前 <b>${pct(feverShare)}</b> 的腿压在 ×&lt;0.5 的档里。`:""}</div>`;
   return `<h2>声称边际体温计（edge 带 × 兑现）</h2>
   <div class="card">
@@ -12902,28 +13127,46 @@ function centreLanding(){
   const L = D.center_landing || {};
   const stages = L.stages || [];
   if(!stages.length) return "";
+  const rule = L.seat_rule || {};
   const sign2 = (v) => v == null ? "—" :
     (v > 0 ? "+" : "") + v.toFixed(2);
+  const pctOr = (v) => v == null ? "—" : pct1(v);
+  const ratio = (v) => v == null ? "—" : v.toFixed(2);
+  const ratioCls = (v) => v == null ? "" :
+    (v >= 1.15 ? "up" : (v < 0.95 ? "down" : ""));
+  const interval = (r) => r.ci_low == null ? "—" :
+    "[" + sign2(r.ci_low) + ", " + sign2(r.ci_high) + "]";
+  const biasCls = (r) => r.significant ?
+    (r.bias_rungs > 0 ? "up" : "down") : "muted";
+  // The window accounts, shared by the width tiers and the three-state
+  // split: the ruled seat, the retired mean+-1 window, the mode window.
+  const account = (r) => `
+      <td class="mono muted">${pctOr(r.seat_claim)}</td>
+      <td class="mono">${pctOr(r.seat_cover)}</td>
+      <td class="mono ${ratioCls(r.seat_ratio)}">${ratio(r.seat_ratio)}</td>
+      <td class="mono muted">${pctOr(r.legacy_cover)}</td>
+      <td class="mono muted">${pctOr(r.mode_cover)}<span
+        style="font-size:10px"> ·${pctOr(r.same_window_share)}同窗</span></td>`;
   const blocks = stages.map(st => {
     const body = (st.rows || []).map(r => `<tr>
       <td>${h(r.label)}</td>
       <td class="mono">${r.cells.toLocaleString()}</td>
-      <td class="mono ${r.significant ? (r.bias_rungs > 0 ? "up" : "down")
-        : "muted"}">${sign2(r.bias_rungs)}</td>
-      <td class="mono muted">${r.ci_low == null ? "—" :
-        "[" + sign2(r.ci_low) + ", " + sign2(r.ci_high) + "]"}</td>
+      <td class="mono ${biasCls(r)}">${sign2(r.bias_rungs)}</td>
+      <td class="mono muted">${interval(r)}</td>
       <td class="mono muted">${sign2(r.median_rungs)}</td>
       <td class="mono">${r.sd_rungs == null ? "—" :
         r.sd_rungs.toFixed(2)}</td>
       <td class="mono muted">${pct1(r.warm_share)}</td>
-      <td class="mono muted">${pct1(r.seat_claim)}</td>
-      <td class="mono">${pct1(r.seat_cover)}</td>
-      <td class="mono ${r.seat_ratio == null ? "" :
-        (r.seat_ratio >= 1.15 ? "up" :
-         (r.seat_ratio < 0.95 ? "down" : ""))}">${
-        r.seat_ratio == null ? "—" : r.seat_ratio.toFixed(2)}</td>
-      <td class="mono muted">${pct1(r.mode_cover)}<span
-        style="font-size:10px"> ·${pct1(r.same_window_share)}同窗</span></td>
+      <td class="mono muted">${pctOr(r.skewed_share)}</td>
+      ${account(r)}
+    </tr>`).join("");
+    const states = (st.states || []).map(r => `<tr>
+      <td>${h(r.label)}</td>
+      <td class="mono">${r.cells.toLocaleString()}<span class="muted"
+        style="font-size:10px"> ·${pct1(r.share)}</span></td>
+      <td class="mono ${biasCls(r)}">${sign2(r.bias_rungs)}</td>
+      <td class="mono muted">${interval(r)}</td>
+      ${account(r)}
     </tr>`).join("");
     const flat = (st.flat_stations || []).map(f => `<span class="pill ${
       Math.abs(f.bias_rungs) >= 1 ? (f.bias_rungs > 0 ? "red" : "blue")
@@ -12935,16 +13178,24 @@ function centreLanding(){
         <b>${h(st.stage)}</b>
         <span class="muted">${h(st.meaning)}</span>
         <span style="flex:1"></span>
-        <span class="muted">${st.cells.toLocaleString()} 个格子
+        <span class="muted">${st.cells.toLocaleString()} 个格子${
+          st.unseated_cells ? `（${st.unseated_cells} 格无席位）` : ""}
           · ${st.days} 天· ${h(st.since)} 起</span>
       </div>
       <table style="margin-top:8px"><thead><tr>
         <th>服务分布自称的宽度（桶）</th>
         <th>格子</th><th>偏差</th><th>95% 区间</th>
-        <th>中位</th><th>散度</th><th>偏暖</th>
+        <th>中位</th><th>散度</th><th>偏暖</th><th>偏斜</th>
         <th>席位窗声称</th><th>席位窗实际</th><th>实际/声称</th>
-        <th>众数窗实际</th>
+        <th>均值±1实际（退役窗）</th><th>众数窗实际</th>
       </tr></thead><tbody>${body}</tbody></table>
+      ${states ? `<table style="margin-top:8px"><thead><tr>
+        <th>三态（${rule.skew_threshold_sigma == null ? "0.35" :
+          rule.skew_threshold_sigma}σ）</th>
+        <th>格子 · 占比</th><th>偏差</th><th>95% 区间</th>
+        <th>席位窗声称</th><th>席位窗实际</th><th>实际/声称</th>
+        <th>均值±1实际（退役窗）</th><th>众数窗实际</th>
+      </tr></thead><tbody>${states}</tbody></table>` : ""}
       ${flat ? `<div class="muted" style="margin-top:6px">
         平日子（自称宽度 ≥${
         L.flat_threshold_rungs} 桶，共 ${st.flat_cells}
@@ -12958,29 +13209,31 @@ function centreLanding(){
   这一节说它服务出去的分布<b>对不对</b>：
   当天的真实最高温，落在分布均值的哪一侧、差几个桶。
   单位是<b>桶</b>不是度：摄氏市场一桶 1°C、华氏市场 2°F，
-  换成桶两边才能放在一列里比。</p>
-  <div class="why"><b>为什么量这个：</b>席位就建在均值±1
-  这三个桶上（宪章 49/79），整篮正 EV 闸拿来和价格比的也是这个窗口的概率和。
-  所以“真值能不能被均值±1 兼住”直接决定了这一天的席位值不值。<br>
+  换成桶两边才能放在一列里比。
+  行按服务分布自称的宽度切；席位窗按宪章 131 的三态形状读
+  （<span class="mono">${h(rule.seat_shape_rule || "")}</span>）。</p>
+  <div class="why"><b>为什么量这个：</b>席位以均值桶为心（宪章 54/75），
+  形状由三态读数钉死（宪章 131，门槛 ${rule.skew_threshold_sigma == null ?
+    "0.35" : rule.skew_threshold_sigma}σ）：
+  对称日坐均值桶±1；偏斜日坐 {均值桶, 尾侧一格, 尾侧两格}，众数桶不在座位里。
+  整篮经济门拿去和价格比的是这个窗口的有效质量 λ(a)·p，
+  所以“真值能不能被这个窗兼住”直接决定了这一天的席位值不值。<br>
   <b>怎么读：</b>偏差是平均落点减均值，正数表示实际比模型说的热；
   95% 区间按<b>天</b>重采样（同一天的天气全队共享，按格子重采样会把区间缩成假的），
-  <b>区间含 0 就是没有系统性偏向哪一边</b>；
-  右边四列是席位那三个桶的账。<br>
-  <b>席位窗三列是这一节的正题：</b>「声称」＝均值桶±1 这三个桶的概率和，
-  也就是整篮正 EV 闸拿去和价格比的那个数；「实际」＝真值真的落在这三个桶里的比例；
-  再右边是两者之比。<b>分布越宽，声称和实际都在降，但实际降得慢</b>——
-  比值从 1.0 一路涨到 1.7，越平的日子核心被低报得越狠。这就是宪章 81 抬价的证据：
-  闸拿一个偏低的声称去比价格，把本来有边际的窗口拒掉了。<br>
+  <b>区间含 0 就是没有系统性偏向哪一边</b>；「偏斜」是该档被读成偏斜的格子占比。<br>
+  <b>席位窗三列是这一节的正题：</b>「声称」＝裁定席位窗内各桶的概率和
+  （页面没有价格，取裁定形状里最宽的三桶窗；生产只在三桶过不了闸时才退到两桶，
+  P1 只剩一个活桶时坐单桶）；「实际」＝真值真的落在这几个桶里的比例；
+  再右边是两者之比。<b>「均值±1实际」是 2026-09-12 前这一列所用的退役窗</b>
+  （宪章 49/79）：对称日它与席位窗重合，偏斜日两者差一格——留着它就是为了看
+  形状裁决换掉了什么。无席位的格子（活桶凑不出裁定形状）只进偏差列，不进窗口列。<br>
   <b>别把「实际」下降读成模型在平日子更差：</b>宽分布把质量摊到更多桶上，
-  固定三桶窗必然覆盖更少，这大半是算术。真正的判据是那个比值，
-  而它反过来说：平日子模型比它自己声称的更准。<br>
-  <b>偏差几乎为零、区间含 0</b>——错是“散”不是“偏”。散不能靠把分布收窄来治
-  （宽度分档 λ 实测已证），只能先在窗口层把被低报的声称抬回来。
-  平日子按站确实有号，但每站只有几个站日，现在拟不了。<br>
-  <b>末列的众数窗</b>是同样三个桶、但以最高的那个桶为心，后面小字是两个窗完全重合的比例。
-  中间几档它覆盖得多一点（均值被尾巴拉偏），最平那档反过来——
-  峰值在一堆几乎等高的桶里是噪声，均值更稳。覆盖多不等于赚钱：
-  市场把峰值桶定价最贵，账本已裁定席位以均值为心（宪章 54/75）。</div>
+  三桶窗必然覆盖更少，这大半是算术。真正的判据是那个比值。<br>
+  <b>三态表</b>是同一批格子按当天读数拆开。偏斜日的席位窗实际若高于退役窗，
+  形状裁决在这批日子上是赚覆盖的；反之就是亏的。这只量覆盖，不量价格——
+  众数桶被市场定价最贵，不坐它省的是成本，这张表看不见。<br>
+  <b>末列的众数窗</b>是以最高桶为心的三桶，后面小字是它与席位窗完全重合的比例。
+  覆盖多不等于赚钱：市场把峰值桶定价最贵，席位以均值为心是账本裁定（宪章 54/75）。</div>
   ${blocks}`;
 }
 
