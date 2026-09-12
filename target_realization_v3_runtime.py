@@ -233,8 +233,15 @@ def _second_yes_entry_window_state(
         "uses_ev_edge_lcb": False,
         "places_orders": False,
     }
+    # The identity of a refusal is what was refused, not the moment it was
+    # refused.  decision_as_of stays on the block for the reader, but hashing
+    # it made this id change on every call -- and the id is part of the plan
+    # id, which is what the job dedupe matches on.  With it in the hash the
+    # dedupe could never fire, so an unchanged posterior enqueued a fresh buy
+    # job every cycle.
+    identity_material = {key: value for key, value in core.items() if key != "decision_as_of"}
     core["second_yes_entry_window_state_id"] = "secondyeswindow_" + hashlib.sha256(
-        repr(sorted(core.items())).encode("utf-8")
+        repr(sorted(identity_material.items())).encode("utf-8")
     ).hexdigest()[:24]
     return core
 

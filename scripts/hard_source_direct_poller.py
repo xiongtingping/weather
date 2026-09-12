@@ -7320,10 +7320,19 @@ def _target_realization_v3_job_exists(
                     '$.target_realization_v3.execution_phase'
                   ), '')) = ?
               AND state IN ('queued', 'retrying', 'running', 'success')
+              -- A running job whose lease has expired is not running: the
+              -- worker that claimed it is gone.  Counting it here let one
+              -- stuck claim suppress every retry of the same plan phase for
+              -- the rest of the event.
+              AND (
+                state <> 'running'
+                OR COALESCE(NULLIF(lease_until, ''), '') = ''
+                OR lease_until >= ?
+              )
             ORDER BY id DESC
             LIMIT 1
             """,
-            (plan_id, str(execution_phase or "").upper()),
+            (plan_id, str(execution_phase or "").upper(), _utc_now_iso()),
         ).fetchone()
     except sqlite3.Error:
         return False

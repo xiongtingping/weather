@@ -3920,8 +3920,15 @@ def test_posterior_target_direct_dedupes_same_fact_job(tmp_path, monkeypatch):
         emit_unchanged_sec=0,
         enqueue_job=True,
     )
-    assert second["status"] == "unchanged"
-    assert second["job_skipped_reason"] == "posterior_target_unchanged_no_job"
+    # The three-leg recorder always says "recorded" -- it records the plan it
+    # computed either way -- and refuses the duplicate at the job, naming the
+    # plan phase it already has a live job for.  "unchanged" and
+    # "posterior_target_unchanged_no_job" belong to the pre-v3 path, which
+    # returns before this one is reached.  What both say is the assertion
+    # below: one job, not two.
+    assert second["status"] == "recorded"
+    assert second["job_enqueued"] is False
+    assert second["job_skipped_reason"] == "target_realization_v3_duplicate_plan_phase"
 
     conn = sqlite3.connect(db_path)
     try:
