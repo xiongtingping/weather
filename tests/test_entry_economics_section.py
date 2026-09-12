@@ -336,3 +336,74 @@ def test_section_is_rendered_and_reachable():
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
     assert 'sec(entryEconomics, "入场的九个数", "sec-entry")' in source
     assert '"entry_economics": _cached_section(' in source
+
+
+def test_the_three_verdict_pairs_are_exact_identities():
+    """What the strip at the top of the section rests on (2026-09-13).
+
+    Nine tiles in a grid read as nine verdicts and they are not: only
+    three PAIRS decide whether a bet earned or lost, and each pair is an
+    exact identity on the ledger rather than a rule of thumb.  Pinned
+    here because the strip prints the subtraction already done -- if any
+    of the three stopped closing, the page would be asserting a verdict
+    its own tiles no longer support, and nothing else would notice.
+
+      ⑨实际 = ②×命中实收 − ⑧            share weighting, to the last place
+      ⑨声称 = ① − ④                      every weighting (a mean is linear)
+      盈亏   = 链数 × (③·⑥ + (1−③)·⑦)   chain weighting, in USDC
+
+    The third one never touches cost or coverage, so it is arithmetically
+    independent of the first two: a book the page has the sign wrong on
+    shows up as two rows disagreeing rather than three agreeing quietly.
+    """
+
+    conn = _book([
+        ("P0", 0.30, 1, 1, 0.20, 100.0),
+        ("P0", 0.80, 0, 0, 0.75, 4.0),
+        ("P1", 0.55, 0, 1, 0.50, 20.0),
+        ("P1", 0.60, 1, 1, 0.55, 8.0),
+        ("P0", 0.44, 1, 1, 0.41, 15.0),
+    ])
+    got = C.collect_entry_economics(conn)
+    share, chain = got["weightings"]["share"], got["weightings"]["chain"]
+
+    # Row one: what a share took out, against what it cost.
+    assert share["ev_per_share_realised"] == pytest.approx(
+        share["realised_coverage"] * got["hit_pays_per_share"]
+        - share["cost_per_share"]
+    )
+    # Row two: the same subtraction with the claim in place of the truth,
+    # under every weighting the page offers -- the tile prints all three.
+    for block in got["weightings"].values():
+        assert block["ev_per_share_claimed"] == pytest.approx(
+            block["claimed_coverage"] - block["cost_per_share"]
+        )
+    # Row three: the USDC cross-check, which touches neither cost nor
+    # coverage and still has to land on the same P&L.
+    assert got["chains"] * (
+        chain["profitable_rate"] * got["mean_win_usdc"]
+        + (1 - chain["profitable_rate"]) * got["mean_loss_usdc"]
+    ) == pytest.approx(got["pnl_usdc"])
+    # And its inside-out form, the one the section prints as "盈亏比":
+    # ③·⑥ > (1-③)·|⑦|  is  ⑥/|⑦| > (1-③)/③.
+    payoff = got["mean_win_usdc"] / -got["mean_loss_usdc"]
+    needed = (1 - chain["profitable_rate"]) / chain["profitable_rate"]
+    assert (payoff > needed) is (got["pnl_usdc"] > 0)
+
+
+def test_the_plain_language_paragraph_stays_in_one_weighting():
+    """One column per sentence, and only the realised figure scales.
+
+    The 白话版 led with the per-chain cost and break-even rate and then
+    subtracted the PER-CHAIN claimed EV from the PER-SHARE realised one,
+    printing the difference of two different books as "差".  It then said
+    that difference times the share count was the P&L, which it never
+    was: the quantity that multiplies out to the book's money is the
+    realised per-share figure itself (0.9c x 789 shares = +6.96 U on
+    2026-09-13), and the claimed-minus-realised gap multiplies out to
+    nothing at all.
+    """
+
+    page = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
+    assert "(C.ev_per_share_claimed||0)-(S.ev_per_share_realised||0)" not in page
+    assert "这一笔差价乘上" not in page

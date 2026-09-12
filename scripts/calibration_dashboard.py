@@ -12064,10 +12064,19 @@ function entryEconomics(){
     ? S.realised_coverage*paysOne : null;
   const perChainWin = (C.profitable_rate!=null && E.mean_win_usdc!=null)
     ? C.profitable_rate*E.mean_win_usdc : null;
-  const perChainLoss = (C.profitable_rate!=null && E.mean_loss_usdc!=null)
-    ? (1-C.profitable_rate)*(-E.mean_loss_usdc) : null;
+  const lossAbs = E.mean_loss_usdc==null ? null : -E.mean_loss_usdc;
+  const perChainLoss = (C.profitable_rate!=null && lossAbs!=null)
+    ? (1-C.profitable_rate)*lossAbs : null;
+  // A book with no losing chain (or no winning one) has no third row to
+  // print, and -null is -0: without this the USDC cross-check would
+  // publish "0.00 U" as a measured average loss.
+  const perChainNet = (perChainWin!=null && perChainLoss!=null)
+    ? perChainWin-perChainLoss : null;
   const claimedUsdc = (S.ev_per_share_claimed!=null && E.shares!=null)
     ? S.ev_per_share_claimed*E.shares : null;
+  // "赚 +6.96 U" says it twice and the second one is a sign, not a word.
+  const money = (v, yes, no) => v==null ? "—"
+    : (v>=0?yes:no)+" "+Math.abs(v).toFixed(2)+" U";
   const sgn = v => v==null ? "" : (v>=0?"up":"down");
   const vrow = (what, got, beat, gap, ruling) =>
     `<tr><td>${what}</td><td>${got}</td><td>${beat}</td><td>${gap}</td>
@@ -12081,8 +12090,8 @@ function entryEconomics(){
   const split = realised.length>1 &&
     (Math.min(...realised)<0) !== (Math.max(...realised)<0);
   const verdict = `<table style="margin-top:8px"><thead><tr>
-    <th>比什么</th><th>拿到的</th><th>要盖过的</th><th>差</th>
-    <th>赚 / 亏</th></tr></thead><tbody>
+    <th>比什么</th><th>拿到的</th><th>要盖过的</th>
+    <th>差（拿到 − 要盖过）</th><th>赚 / 亏</th></tr></thead><tbody>
   ${vrow(
     `<b>真赚了还是真亏了</b><br><span class="muted">事后 · 按股，
      这是唯一闭合到收益率的一列</span>`,
@@ -12095,9 +12104,8 @@ function entryEconomics(){
      >${cent(S.ev_per_share_realised)}</span>
      <span class="muted">/股 ＝⑨实际 · × ${num(E.shares,0)} 股</span>
      ${wts(b=>cent(b.ev_per_share_realised))}`,
-    `<b class="${sgn(E.pnl_usdc)}">${E.pnl_usdc>=0?"赚":"亏"}
-     ${usd(E.pnl_usdc,2)}</b><br>收益率
-     <b class="${sgn(E.roi)}">${sig(E.roi)}</b>`)}
+    `<b class="${sgn(E.pnl_usdc)}">${money(E.pnl_usdc,"赚","亏")}</b>
+     <br>收益率 <b class="${sgn(E.roi)}">${sig(E.roi)}</b>`)}
   ${vrow(
     `<b>下单那一刻以为的</b><br><span class="muted">事前 · 按股，
      同一批链、同一列权重</span>`,
@@ -12109,20 +12117,18 @@ function entryEconomics(){
      >${cent(S.ev_per_share_claimed)}</span>
      <span class="muted">/股 ＝⑨声称 · × ${num(E.shares,0)} 股</span>
      ${wts(b=>cent(b.ev_per_share_claimed))}`,
-    `<b class="${sgn(claimedUsdc)}">以为${claimedUsdc>=0?"赚":"亏"}
-     ${usd(claimedUsdc,2)}</b><br><span class="muted">实际只有
-     ${usd(E.pnl_usdc,2)}</span>`)}
+    `<b class="${sgn(claimedUsdc)}">${money(claimedUsdc,"以为赚","以为亏")}</b>
+     <br><span class="muted">实际只有 ${usd(E.pnl_usdc,2)}</span>`)}
   ${vrow(
     `<b>换 USDC 再算一遍</b><br><span class="muted">逐链等权 ·
      不碰成本也不碰覆盖率的另一条路</span>`,
     `③ 盈利率 <b>${mag(C.profitable_rate)}</b> × ⑥ 平均盈利
      ${num(E.mean_win_usdc,2)} ＝ <b>${num(perChainWin,3)} U</b> / 链`,
     `(1−③) <b>${mag(1-C.profitable_rate)}</b> × ⑦ 平均亏损
-     ${num(-E.mean_loss_usdc,2)} ＝ <b>${num(perChainLoss,3)} U</b> / 链`,
-    `<span class="big ${sgn(perChainWin-perChainLoss)}"
-     >${usd(perChainWin-perChainLoss,3)}</span>
+     ${num(lossAbs,2)} ＝ <b>${num(perChainLoss,3)} U</b> / 链`,
+    `<span class="big ${sgn(perChainNet)}">${usd(perChainNet,3)}</span>
      <span class="muted">/链 · × ${E.chains} 条</span>`,
-    `<b class="${sgn(E.pnl_usdc)}">${usd(E.pnl_usdc,2)}</b>
+    `<b class="${sgn(E.pnl_usdc)}">${money(E.pnl_usdc,"赚","亏")}</b>
      <br><span class="muted">跟第一行必须是同一个数</span>`)}
   </tbody></table>`;
   const tiles = `<div class="grid g3">
@@ -12208,24 +12214,29 @@ function entryEconomics(){
     ? (1-C.profitable_rate)/C.profitable_rate : null;
 
   return `<h2>入场的九个数：这一注长什么样</h2>
-  <div style="margin-top:6px"><b>九个数里只有三对能定盈亏。</b>
-  左边那个数盖过右边那个，这一注就是赚的；盖不过就是亏的。
-  其余四个数（⑤⑥⑦⑧里除去已经在表里的）都是这三对的输入，
-  单看任何一个都判不出赚亏。</div>
+  <div style="margin-top:6px"><b>九个数里没有一个单独能判赚亏，能判的是三对。</b>
+  每一行都是「左边这个数盖过右边那个就是赚，盖不过就是亏」。
+  第一行是账本身，第二行是下单时以为的账，第三行换一套完全不同的数
+  把第一行验一遍——三行用掉了 ①②③④⑥⑦⑧⑨，
+  剩下的 ⑤ 净赔率不参与，因为它就是 ⑧ 倒过来写。</div>
   ${verdict}
   <div class="why"><b>这张表怎么读，以及哪几个数不该参与比较。</b>
   ㈠ <b>⑤ 净赔率不参与任何比较</b>：⑤＝(1−⑧)÷⑧，反过来 ④＝1÷(1+⑤)。
   ④、⑧、⑤ 是同一个量的三种写法（今天分别是
   ${mag(S.breakeven_hit_rate)}、${centm(S.cost_per_share)}、
   ${num(S.net_odds,2)}x），拿 ⑤ 去跟谁比都是跟自己比。
-  ㈡ <b>① 和 ② 之间那一刀是诊断，不是判决</b>：两者相除得兑现比
-  ${num(S.realisation_ratio,2)}×（按股），差
-  ${pp(S.realised_coverage-S.claimed_coverage)}；换成钱就是
-  ⑨声称 ${cent(S.ev_per_share_claimed)} 减 ⑨实际
-  ${cent(S.ev_per_share_realised)} ＝
-  <b>${cent(S.ev_per_share_claimed-S.ev_per_share_realised)}</b>/股，
-  × ${num(E.shares,0)} 股 ＝ <b>${usd(claimedUsdc-E.pnl_usdc,2)}</b> 没兑现。
-  这一行解释的是第二行为什么不等于第一行，它自己判不出赚亏。
+  ㈡ <b>① 和 ② 之间那一刀是诊断，不是判决</b>：实际覆盖率比声称
+  ${S.realised_coverage>=S.claimed_coverage?"高":"低"}
+  ${ppm(S.realised_coverage-S.claimed_coverage)}，兑现比
+  ${num(S.realisation_ratio,2)}×（按股；下面 ② 格子里那个
+  ${num(C.realisation_ratio,2)}× 是逐链口径，不是同一列）。
+  换成钱就是 ⑨声称 ${cent(S.ev_per_share_claimed)} 减 ⑨实际
+  ${cent(S.ev_per_share_realised)}，相差
+  <b>${centm(S.ev_per_share_claimed-S.ev_per_share_realised)}</b>/股，
+  × ${num(E.shares,0)} 股 ＝
+  <b>${num(Math.abs(claimedUsdc-E.pnl_usdc),2)} U</b>
+  ${claimedUsdc>=E.pnl_usdc?"没兑现":"多兑现"}。
+  这一条解释的是第二行为什么不等于第一行，它自己判不出赚亏。
   ㈢ <b>第三行还有一个等价写法</b>：③·⑥ &gt; (1−③)·|⑦| 就是
   盈亏比 ⑥÷|⑦| ＝ <b>${num(payoffGot,2)}</b> 要大于保本要求
   (1−③)÷③ ＝ <b>${num(payoffNeed,2)}</b>——
@@ -12271,12 +12282,16 @@ function entryEconomics(){
   ${C.margin_over_breakeven>=0
     ?`比保本线高 ${ppm(C.margin_over_breakeven)}`
     :`<b>比保本线还低 ${ppm(C.margin_over_breakeven)}</b>`}。
-  换成一股的账：声称每股赚 <b>${cent(C.ev_per_share_claimed)}</b>，
-  整本账实际每股 <b>${cent(S.ev_per_share_realised)}</b>，
-  差 <b>${cent((C.ev_per_share_claimed||0)-(S.ev_per_share_realised||0))}</b>。
-  这一笔差价乘上 ${num(E.shares,0)} 股，就是账面上的
+  换成一股的账——<b>这里起换成「按股 · 整本账」那一列</b>，
+  上面几句是逐链的，两列不能混着减：声称每股赚
+  <b>${cent(S.ev_per_share_claimed)}</b>，实际每股
+  <b>${cent(S.ev_per_share_realised)}</b>，少兑现
+  <b>${centm(S.ev_per_share_claimed-S.ev_per_share_realised)}</b>。
+  拿<b>实际</b>那个 ${cent(S.ev_per_share_realised)} 乘上
+  ${num(E.shares,0)} 股，就是账面上的
   ${usd(E.pnl_usdc,1)}（投入 ${num(E.stake_usdc,1)} U，收益率
-  <b class="${E.roi>=0?"up":"down"}">${sig(E.roi)}</b>）。
+  <b class="${E.roi>=0?"up":"down"}">${sig(E.roi)}</b>）——
+  能乘的是实际那一个，差价乘股数不是任何东西。
   ${E.dust_excluded?`<br><span class="muted">「组合风险指标」的权益曲线印的是
   ${usd(E.pnl_usdc+E.dust_excluded_pnl_usdc,2)}，不是这个数：那条曲线是
   <b>整个账户</b>，含上面排除的 ${E.dust_excluded} 条虚价链
