@@ -19602,7 +19602,16 @@ def execute_auto_trades(
             for extra_key, extra_val in item.items():
                 if extra_key in expected_item:
                     continue
-                if extra_key in {"hard_source_acceptance_state", "signal_to_order_timing"} and isinstance(extra_val, Mapping):
+                # Nested values survive only if named here.  The entry order
+                # policy refuses any posterior-SSOT candidate whose execution
+                # contract is absent, so dropping it here blocked every v3
+                # BUY_NEW; _extract_fallback_targets_from_payload has carried it
+                # since the contract was introduced and this copy had not.
+                if extra_key in {
+                    "hard_source_acceptance_state",
+                    "signal_to_order_timing",
+                    "sequential_bayes_execution_contract",
+                } and isinstance(extra_val, Mapping):
                     expected_item[extra_key] = dict(extra_val)
                     continue
                 if isinstance(extra_val, (str, int, float, bool)) or extra_val is None:
@@ -22119,6 +22128,12 @@ def execute_auto_trades(
                     "target_realization_capital_plan",
                     "target_switch_context",
                     "trajectory_momentum_impact",
+                    # Every scalar of the execution contract already came across
+                    # on the line below, including the plan id the entry gate
+                    # keys on.  Dropping the contract itself left the candidate
+                    # claiming the posterior SSOT with nothing to validate, and
+                    # the gate refused every v3 BUY_NEW.
+                    "sequential_bayes_execution_contract",
                 }:
                     merged[key] = dict(value)
                 continue

@@ -23,6 +23,14 @@ TARGET_REALIZATION_EXIT_REASON_CODES: FrozenSet[str] = frozenset(
         "target_realization_second_yes_invalidated",
         "target_realization_hard_zero_no_invalidated",
         "target_realization_settled",
+        # The v3 plan's own exit vocabulary.  A position that is no longer a
+        # member of the current three legs, or that sits above its role's cap
+        # after a reselection, is sold under this one code because the plan
+        # does not know which role it used to hold and must not claim one.
+        # Without it here the executor refused every dynamic-reselection sell
+        # as a legacy exit, and sell-old-before-buy-new then blocked the buy
+        # as well: one stale position deadlocked the whole lane.
+        "target_realization_dynamic_posterior_reselection_sell",
     }
 )
 
