@@ -316,3 +316,82 @@ def test_the_report_reads_the_book_without_the_write_lock() -> None:
         "schema": "paper_trading_report_v1",
         "settled_count": 0, "open_positions": 0, "stages": {},
     }
+
+
+def test_the_report_says_which_rule_sets_the_book_is_made_of() -> None:
+    """A reader who sees one return reads one strategy.
+
+    The superseded sweep is bounded by the window a pass can re-derive, so
+    after a rule change the standing book holds two rule sets at once: the
+    scheduled pass re-derives four days and everything older keeps the
+    digest it was seated under.  Three knobs moved on 2026-09-12 and the
+    book became 224 settled chains of one strategy and 83 of another,
+    published as a single -28.3% while the served rule set alone read
+    -34.5%.
+    """
+
+    import tempfile  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "book.db"
+        conn = sqlite3.connect(str(path))
+        ledger.ensure_schema(conn)
+        columns = [
+            row[1] for row in conn.execute(
+                "PRAGMA table_info(paper_trade_position)"
+            )
+        ]
+
+        def _seat(
+            pid: str, sha: str, stake: float, pnl: float, day: str
+        ) -> None:
+            # One settlement per station-day-stage is the table's own key,
+            # so the two rule sets sit on different days.
+            values = {
+                "position_id": pid, "station_id": "KMIA",
+                "event_date": day, "stage": "P0",
+                "decision_at_utc": day + "T00:00:00Z",
+                "quote_observed_at_utc": day + "T00:00:00Z",
+                "ladder_center_bucket": "30C",
+                "window_buckets_json": '["30C"]', "window_size": 1,
+                "win_probability": 0.5, "all_in_cost": 0.5, "edge": 0.0,
+                "kelly_fraction": 0.25, "stake_usdc": stake, "shares": 1.0,
+                "probabilities_json": "{}", "prices_json": "{}",
+                "refused_window_count": 0, "content_sha256": pid,
+                "selection_rule_sha256": sha,
+            }
+            present = {k: v for k, v in values.items() if k in columns}
+            conn.execute(
+                "INSERT INTO paper_trade_position (%s) VALUES (%s)"
+                % (",".join(present), ",".join("?" * len(present))),
+                tuple(present.values()),
+            )
+            conn.execute(
+                "INSERT INTO paper_trade_settlement ("
+                " settlement_id, position_id, station_id, event_date, stage,"
+                " settled_tmax_c, settled_bucket, hit, stake_usdc,"
+                " payout_usdc, pnl_usdc, claimed_win_probability,"
+                " settled_at_utc, truth_content_sha256"
+                ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("s_" + pid, pid, "KMIA", day, "P0", 30.0, "30C",
+                 1 if pnl > 0 else 0, stake, stake + pnl, pnl, 0.5,
+                 day + "T23:00:00Z", ""),
+            )
+
+        _seat("old", "0" * 64, 100.0, -40.0, "2026-09-01")
+        _seat("new", ledger.SELECTION_RULE_SHA256, 100.0, -10.0, "2026-09-02")
+        conn.commit()
+
+        rule_sets = ledger.report(conn)["rule_sets"]
+        assert rule_sets["single_rule_set"] is False
+        assert rule_sets["served"] == ledger.SELECTION_RULE_SHA256[:12]
+        served = rule_sets["served_only"]
+        # The served rule set's own return, which is not the headline.
+        assert served["settled_chains"] == 1
+        assert served["return_on_stake"] == -0.1
+
+        # And a book of one rule set says so.
+        conn.execute("DELETE FROM paper_trade_settlement WHERE position_id='old'")
+        conn.execute("DELETE FROM paper_trade_position WHERE position_id='old'")
+        conn.commit()
+        assert ledger.report(conn)["rule_sets"]["single_rule_set"] is True

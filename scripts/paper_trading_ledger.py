@@ -11652,6 +11652,57 @@ def _fill_slice(rows: list) -> dict[str, Any]:
     }
 
 
+def _rule_set_composition(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The digests the settled book is made of, and whether it is one book.
+
+    Read off the settlements rather than the positions: the headline return
+    is computed from settlements, so the question "is this number one
+    strategy" has to be asked of the same rows.
+    """
+
+    try:
+        rows = conn.execute(
+            "SELECT p.selection_rule_sha256, COUNT(*),"
+            "       SUM(s.stake_usdc), SUM(s.pnl_usdc)"
+            "  FROM paper_trade_settlement s"
+            "  JOIN paper_trade_position p ON p.position_id=s.position_id"
+            " GROUP BY 1 ORDER BY 2 DESC"
+        ).fetchall()
+    except sqlite3.DatabaseError:
+        return {"single_rule_set": None, "served": SELECTION_RULE_SHA256[:12]}
+    members = [
+        {
+            "sha256": str(sha or "")[:12],
+            "served": str(sha or "") == SELECTION_RULE_SHA256,
+            "settled_chains": int(count or 0),
+            "staked_usdc": round(float(stake or 0.0), 2),
+            "pnl_usdc": round(float(pnl or 0.0), 2),
+        }
+        for sha, count, stake, pnl in rows
+    ]
+    return {
+        "served": SELECTION_RULE_SHA256[:12],
+        "single_rule_set": len(members) <= 1,
+        "members": members,
+        # What the headline would read if only the served rule set counted.
+        "served_only": next(
+            (
+                {
+                    "settled_chains": m["settled_chains"],
+                    "staked_usdc": m["staked_usdc"],
+                    "pnl_usdc": m["pnl_usdc"],
+                    "return_on_stake": (
+                        round(m["pnl_usdc"] / m["staked_usdc"], 4)
+                        if m["staked_usdc"] > 0 else None
+                    ),
+                }
+                for m in members if m["served"]
+            ),
+            None,
+        ),
+    }
+
+
 def report(conn: sqlite3.Connection) -> dict[str, Any]:
     # A report is a read.  This called ``ensure_schema`` so a database
     # without the tables would not raise, and ``ensure_schema`` writes --
@@ -11782,6 +11833,21 @@ def report(conn: sqlite3.Connection) -> dict[str, Any]:
         "book_model": BOOK_MODEL,
         "generated_at_utc": datetime.now(timezone.utc)
         .isoformat().replace("+00:00", "Z"),
+        # Which rule sets the book below is made of.
+        #
+        # The superseded sweep is bounded by the window a pass can re-derive,
+        # which is right -- never delete what you will not rebuild -- and the
+        # consequence is that after a rule change the standing book holds two
+        # rule sets at once: the scheduled pass re-derives four days and the
+        # rest keep the digest they were seated under.  Three knobs moved on
+        # 2026-09-12 and the book came to be 276 chains of one strategy and
+        # 184 of another, reported as a single return.  A reader who sees one
+        # number reads one number, so the composition is on the payload and
+        # ``single_rule_set`` says outright whether the headline means
+        # anything.  A mixed book is repaired by ``--backfill --recent-days
+        # 0``, oldest-first; nothing here does that on its own, because a
+        # full re-derive on every knob is an operator's call.
+        "rule_sets": _rule_set_composition(conn),
         "book": {
             "settled_chains": len(credible_rows),
             "open_chains": open_chains,
