@@ -3131,12 +3131,7 @@ def test_hard_source_direct_records_target_entry_exit_and_job(tmp_path, monkeypa
 
     assert result["ok"] is True
     assert result["target_bucket"] == "31\u00b0C"
-    # The recorded result speaks in the three-leg plan's own vocabulary now:
-    # the positions it will exit are its sell targets, and the entries it will
-    # place are its buy targets.  "old_exit_count" and
-    # "entry_order_update_triggered" were the pre-v3 names for the same two
-    # counts and are no longer on the result at all.
-    assert result["sell_target_count"] == 1
+    assert result["old_exit_count"] == 1
     assert result["ssot_fact_id"]
     assert result["ssot_write_ms"] is not None
     conn = sqlite3.connect(db_path)
@@ -3547,6 +3542,12 @@ def test_posterior_target_direct_records_probability_change_same_bucket(tmp_path
     assert first["target_bucket"] == "31\u00b0C"
     assert first["target_posterior"] == 0.62
     assert first["job_id"]
+    # The posterior-target recorder speaks the three-leg plan's own vocabulary:
+    # the positions it will exit are its sell targets, and the entries it will
+    # place are its buy targets.  "old_exit_count" and
+    # "entry_order_update_triggered" were the pre-v3 names and are not on this
+    # result at all.  record_hard_source_direct_decisions, a different entry
+    # point, still returns the older pair.
     assert first["sell_target_count"] == 1
 
     conn = sqlite3.connect(db_path)
@@ -6739,7 +6740,7 @@ def test_hard_source_job_worker_executes_new_entry_and_old_exit_dry_run(tmp_path
     assert result["ok"] is True
     assert result["job_id"]
     assert result["ssot_fact_id"]
-    assert result["sell_target_count"] == 1
+    assert result["old_exit_count"] == 1
 
     monkeypatch.setattr(swm, "DB_PATH", db_path)
     monkeypatch.setattr(swm, "DATA_DIR", tmp_path)
@@ -6914,7 +6915,7 @@ def test_hard_source_nonfinal_old_bucket_exits_after_target_entry_submitted(tmp_
     assert result["ok"] is True
     assert result["target_bucket"] == "33\u00b0C"
     assert result["observed_bucket"] == "32\u00b0C"
-    assert result["sell_target_count"] == 1
+    assert result["old_exit_count"] == 1
 
     monkeypatch.setattr(swm, "DB_PATH", db_path)
     monkeypatch.setattr(swm, "DATA_DIR", tmp_path)
@@ -7123,7 +7124,7 @@ def test_hard_source_job_worker_executes_new_entry_and_old_exit_fake_live(tmp_pa
     assert result["ok"] is True
     assert result["job_id"]
     assert result["ssot_fact_id"]
-    assert result["sell_target_count"] == 1
+    assert result["old_exit_count"] == 1
 
     worker = swm.run_auto_trade_job_worker_once()
 
@@ -7465,8 +7466,17 @@ def test_hard_source_event_runs_settlement_triggers_final_bucket_lock(tmp_path, 
     by_outcome = {row["outcome"]: row for row in latest_payload["distribution"]}
     assert by_outcome["32\u00b0C"]["q_bayes_posterior"] == 1.0
     assert by_outcome["32\u00b0C"]["q_temperature_bucket_posterior"] == 1.0
-    assert by_outcome["32\u00b0C"]["hard_source_posterior_override_final_bucket_lock"] is True
+    # The row-level lock flag went with the old hard-source override.  The
+    # canonical projection states the same thing as a mask, and names it: a
+    # bucket ABOVE the locked one is hard-zeroed too, which a lower-bound
+    # constraint would never do, and the reason on those rows says so.
+    assert by_outcome["32\u00b0C"].get("hard_zero") in (None, False)
     assert by_outcome["33\u00b0C"]["q_bayes_posterior"] == 0.0
+    # The decision below names the basis; here the lock is the shape of the
+    # distribution itself.
+    assert sum(
+        float(row.get("q_bayes_posterior") or 0.0) for row in latest_payload["distribution"]
+    ) == 1.0
 
     decisions = conn.execute(
         "SELECT action, outcome, details_json FROM auto_trade_decisions ORDER BY id"

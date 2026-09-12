@@ -9244,6 +9244,43 @@ def record_hard_source_direct_decisions(
             "window_source": "hard_source_direct_poller_decision_window",
             "direct_decision_window": dict(window),
         }
+        if not constraint_meta.get("constraint_mode"):
+            # The canonical projection that replaced the hard-source override
+            # states the constraint on the rows it masked rather than in this
+            # meta.  A final lock is distinguishable there and nowhere else: it
+            # zeroes buckets ABOVE the observed one, which a lower bound never
+            # does, and names itself on them.  Without reading it back, every
+            # decision was labelled hard_source_lower_bound_constraint and
+            # hard_source_final_bucket_lock was false over a locked book.
+            mask_reasons = {
+                str((row or {}).get("hard_mask_reason") or "")
+                for row in (projected_payload.get("distribution") or [])
+                if isinstance(row, Mapping)
+            }
+            projected_features = projected_payload.get("weather_likelihood_features")
+            projected_features = (
+                projected_features if isinstance(projected_features, Mapping) else {}
+            )
+            # A settled or explicitly final daily maximum is a lock by
+            # definition, and it is the only signal left when the locked
+            # bucket is the top rung of the ladder: there is no bucket above
+            # it for the mask to name.
+            final_declared = (
+                projected_payload.get("settlement_actual") is not None
+                or any(
+                    _truthy(projected_features.get(key), False)
+                    for key in (
+                        "hard_source_settlement_final",
+                        "hard_source_final_daily_max",
+                        "observed_today_max_final",
+                        "temperature_observation_final_daily_max",
+                    )
+                )
+            )
+            if "final_bucket_lock" in mask_reasons or final_declared:
+                constraint_meta["constraint_mode"] = "final_bucket_lock"
+                constraint_meta["final_bucket_lock"] = True
+                constraint_meta["decision_basis"] = "final_bucket_lock"
         if not bool(constraint_meta["applied"]):
             terminal = _record_awc_signal_terminal_ledgers(
                 conn,
