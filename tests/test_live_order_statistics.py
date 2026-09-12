@@ -29,8 +29,17 @@ _spec.loader.exec_module(board)
 
 
 def _book(rows: list[tuple], fills: list[tuple],
-          settled: list[tuple]) -> sqlite3.Connection:
-    """A book with just the columns the panel reads."""
+          settled: list[tuple],
+          truth: list[tuple] | None = None,
+          ladder: list[tuple] | None = None) -> sqlite3.Connection:
+    """A book with just the columns the panel reads.
+
+    ``truth`` and ``ladder`` populate the second source the panel resolves a
+    settled bucket from: the truth lane and the station-day's own committed
+    rungs.  Leaving them empty is the pre-2026-09-12 world, where a live
+    basket had a verdict only if the paper book happened to seat the same
+    station-day.
+    """
 
     conn = sqlite3.connect(":memory:")
     conn.executescript(
@@ -48,6 +57,15 @@ def _book(rows: list[tuple], fills: list[tuple],
         "CREATE TABLE paper_trade_settlement("
         " settlement_id INTEGER PRIMARY KEY, station_id TEXT,"
         " event_date TEXT, settled_bucket TEXT);"
+        "CREATE TABLE calibration_station_daily_high_truth("
+        " truth_id TEXT PRIMARY KEY, station_id TEXT, local_date TEXT,"
+        " official_tmax_c REAL, revision_no INTEGER, content_sha256 TEXT);"
+        "CREATE TABLE basket_probability_bridge_history("
+        " history_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
+        " state TEXT, stage TEXT, decision_at_utc TEXT);"
+        "CREATE TABLE basket_probability_bridge_bucket_probability("
+        " history_id TEXT, bucket TEXT, ordinal INTEGER, lower_c REAL,"
+        " upper_c REAL, probability REAL);"
     )
     for intent, decision, station, day, bucket, live in rows:
         conn.execute(
@@ -71,8 +89,32 @@ def _book(rows: list[tuple], fills: list[tuple],
             "INSERT INTO paper_trade_settlement VALUES (?,?,?,?)",
             (index + 1, station, day, bucket),
         )
+    for index, (station, day, tmax_c, revision) in enumerate(truth or []):
+        conn.execute(
+            "INSERT INTO calibration_station_daily_high_truth VALUES"
+            " (?,?,?,?,?,?)",
+            (f"t{index}", station, day, tmax_c, revision, f"{index:064d}"),
+        )
+    for index, (station, day, rungs) in enumerate(ladder or []):
+        history = f"h{index}"
+        conn.execute(
+            "INSERT INTO basket_probability_bridge_history VALUES"
+            " (?,?,?, 'COMMITTED', 'P0', ?)",
+            (history, station, day, f"2026-08-30T0{index}:00:00Z"),
+        )
+        for ordinal, (bucket, low, high) in enumerate(rungs):
+            conn.execute(
+                "INSERT INTO basket_probability_bridge_bucket_probability"
+                " VALUES (?,?,?,?,?, 0.1)",
+                (history, bucket, ordinal, low, high),
+            )
     conn.commit()
     return conn
+
+
+# A three-rung Celsius day: below 30.5, 31, above 31.5.
+_RUNGS = [("30°C or below", None, 30.5), ("31°C", 30.5, 31.5),
+          ("32°C or above", 31.5, None)]
 
 
 def test_no_fills_reports_no_sample_rather_than_zero_percent() -> None:
@@ -350,3 +392,188 @@ def test_an_intent_without_its_decision_row_still_renders() -> None:
     assert row["event_date"] == ""
     # No deadline is unknown, not unlimited.
     assert row["execution_window_seconds"] is None
+
+
+def test_a_day_the_paper_book_never_seated_still_settles() -> None:
+    """The live verdict stops depending on a different book's seating rule.
+
+    The paper ledger seats the station-days its own rule admits; the live
+    lane mints intents for days it never seated.  On 2026-09-08 that was
+    eleven live station-days against three paper settlements, while the
+    truth lane held an ACCEPTED value for forty-eight stations -- so eight
+    live baskets read 未结算 four days after the fact, and every one of
+    their filled legs sat in ``pending`` keeping itself out of the ROI.
+    """
+
+    conn = _book(
+        rows=[("hit", "d1", "KMIA", "2026-08-30", "31°C", 1)],
+        fills=[("hit", 10.0, 3.0)],
+        settled=[],
+        truth=[("KMIA", "2026-08-30", 31.2, 0)],
+        ladder=[("KMIA", "2026-08-30", _RUNGS)],
+    )
+    resolved = board._live_settled_buckets(conn, {("KMIA", "2026-08-30")})
+    assert resolved == {("KMIA", "2026-08-30"): ("31°C", "truth_lane")}
+
+    pnl = board._collect_live_pnl(conn)
+    assert pnl["pending_legs"] == 0
+    assert pnl["filled_legs"] == 1
+    assert pnl["won_legs"] == 1
+    assert pnl["roi"] == round(7.0 / 3.0, 6)
+
+
+def test_the_settler_own_row_wins_and_says_so() -> None:
+    """A day the paper book did seat is not re-derived, only reported.
+
+    The label the production settler wrote is the one that stands, and the
+    source travels with it: "the paper book settled this seat" and "the
+    truth lane settled this day" are different claims and the panel has to
+    be able to tell a reader which one it is showing.  The truth here would
+    land on a different rung on purpose -- if precedence ever inverted,
+    this row changes rather than staying quietly equal.
+    """
+
+    conn = _book(
+        rows=[("hit", "d1", "KMIA", "2026-08-30", "31°C", 1)],
+        fills=[("hit", 10.0, 3.0)],
+        settled=[("KMIA", "2026-08-30", "31°C")],
+        truth=[("KMIA", "2026-08-30", 35.0, 0)],
+        ladder=[("KMIA", "2026-08-30", _RUNGS)],
+    )
+    resolved = board._live_settled_buckets(conn, {("KMIA", "2026-08-30")})
+    assert resolved == {("KMIA", "2026-08-30"): ("31°C", "paper_ledger")}
+
+
+def test_the_latest_truth_revision_is_the_one_that_settles() -> None:
+    """Truth is revisable by design (charter 44) and the newest one stands."""
+
+    conn = _book(
+        rows=[("hit", "d1", "KMIA", "2026-08-30", "31°C", 1)],
+        fills=[("hit", 10.0, 3.0)],
+        settled=[],
+        truth=[("KMIA", "2026-08-30", 29.0, 0),
+               ("KMIA", "2026-08-30", 31.2, 1)],
+        ladder=[("KMIA", "2026-08-30", _RUNGS)],
+    )
+    resolved = board._live_settled_buckets(conn, {("KMIA", "2026-08-30")})
+    assert resolved[("KMIA", "2026-08-30")][0] == "31°C"
+
+
+def test_a_truth_outside_the_ladder_leaves_the_day_open() -> None:
+    """No rung contains it, so there is no bucket to name.
+
+    The ladder here is bounded at both ends on purpose.  Naming a bucket
+    the day was never priced against would be the audit inventing its own
+    finding, which is the whole reason the grid rule is not restated here.
+    """
+
+    bounded = [("30°C", 29.5, 30.5), ("31°C", 30.5, 31.5)]
+    conn = _book(
+        rows=[("hit", "d1", "KMIA", "2026-08-30", "31°C", 1)],
+        fills=[("hit", 10.0, 3.0)],
+        settled=[],
+        truth=[("KMIA", "2026-08-30", 40.0, 0)],
+        ladder=[("KMIA", "2026-08-30", bounded)],
+    )
+    assert board._live_settled_buckets(conn, {("KMIA", "2026-08-30")}) == {}
+    assert board._collect_live_pnl(conn)["pending_legs"] == 1
+
+
+def test_a_day_with_no_truth_yet_is_still_pending() -> None:
+    """Today's baskets have no value to score and must not acquire one."""
+
+    conn = _book(
+        rows=[("open", "d1", "KMIA", "2026-08-31", "31°C", 1)],
+        fills=[("open", 10.0, 3.0)],
+        settled=[],
+        truth=[("KMIA", "2026-08-30", 31.2, 0)],
+        ladder=[("KMIA", "2026-08-30", _RUNGS)],
+    )
+    assert board._live_settled_buckets(conn, {("KMIA", "2026-08-31")}) == {}
+    assert board._collect_live_pnl(conn)["pending_legs"] == 1
+
+
+def test_a_ledger_rebuild_no_longer_blanks_the_live_book() -> None:
+    """Both paper tables sit empty for the better part of an hour.
+
+    Every rule change re-derives the ledger's whole history, and while it
+    runs ``paper_trade_position`` and ``paper_trade_settlement`` are empty.
+    Reading the settlement table alone, the panel answered 未结算 for every
+    date on the book and the ROI tile was computed over nothing -- a state
+    it entered on 2026-09-12 within minutes of charter 131 landing.
+    """
+
+    conn = _book(
+        rows=[("hit", "d1", "KMIA", "2026-08-30", "31°C", 1),
+              ("miss", "d2", "KLGA", "2026-08-30", "31°C", 1)],
+        fills=[("hit", 10.0, 3.0), ("miss", 10.0, 4.0)],
+        settled=[],
+        truth=[("KMIA", "2026-08-30", 31.2, 0),
+               ("KLGA", "2026-08-30", 33.0, 0)],
+        ladder=[("KMIA", "2026-08-30", _RUNGS),
+                ("KLGA", "2026-08-30", _RUNGS)],
+    )
+    conn.execute("DELETE FROM paper_trade_settlement")
+    pnl = board._collect_live_pnl(conn)
+    assert pnl["pending_legs"] == 0
+    assert pnl["filled_legs"] == 2
+    assert pnl["won_legs"] == 1
+    assert pnl["station_days"] == 2
+
+
+def test_the_basket_listing_carries_the_source_of_its_verdict() -> None:
+    """Each leg says which book settled its day, so the page can say so."""
+
+    conn = _book(
+        rows=[("borrowed", "d1", "KMIA", "2026-08-30", "31°C", 1),
+              ("derived", "d2", "KLGA", "2026-08-30", "31°C", 1)],
+        fills=[("borrowed", 10.0, 3.0), ("derived", 10.0, 3.0)],
+        settled=[("KMIA", "2026-08-30", "31°C")],
+        truth=[("KMIA", "2026-08-30", 31.2, 0),
+               ("KLGA", "2026-08-30", 31.2, 0)],
+        ladder=[("KMIA", "2026-08-30", _RUNGS),
+                ("KLGA", "2026-08-30", _RUNGS)],
+    )
+    rows = {r["station_id"]: r for r in board._collect_live_orders(conn)["rows"]}
+    assert rows["KMIA"]["settled_bucket"] == "31°C"
+    assert rows["KMIA"]["settled_bucket_source"] == "paper_ledger"
+    assert rows["KLGA"]["settled_bucket"] == "31°C"
+    assert rows["KLGA"]["settled_bucket_source"] == "truth_lane"
+
+
+def test_neither_live_reader_is_left_on_the_old_table() -> None:
+    """One resolver, two callers, and no private copy of the query.
+
+    The listing and the PnL used to hold a ``paper_trade_settlement`` query
+    each.  Moving one and not the other is the failure this asserts against
+    -- a panel whose basket shows 命中 while the tile beside it counts the
+    same leg as pending has two answers for one fact.  Asserted on the
+    parse tree rather than on the source text: what matters is that these
+    functions call the resolver and query nothing themselves, not how the
+    lines happen to be written.
+    """
+
+    import ast
+
+    tree = ast.parse(
+        (ROOT / "scripts" / "calibration_dashboard.py").read_text("utf-8")
+    )
+    wanted = {"_collect_live_orders", "_collect_live_pnl"}
+    seen = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef) or node.name not in wanted:
+            continue
+        seen.add(node.name)
+        calls = {
+            child.func.id for child in ast.walk(node)
+            if isinstance(child, ast.Call) and isinstance(child.func, ast.Name)
+        }
+        assert "_live_settled_buckets" in calls, node.name
+        literals = [
+            child.value for child in ast.walk(node)
+            if isinstance(child, ast.Constant) and isinstance(child.value, str)
+        ]
+        assert not [s for s in literals if "paper_trade_settlement" in s], (
+            node.name
+        )
+    assert seen == wanted

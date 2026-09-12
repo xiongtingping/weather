@@ -48,6 +48,13 @@ if str(Path(__file__).resolve().parent) not in sys.path:
 from paper_trading_ledger import (  # noqa: E402
     DUST_COST_FLOOR,
     INITIAL_CAPITAL_USDC,
+    # The settler's own three, never a copy of them.  Deriving which rung a
+    # value landed on means knowing the per-station grid (a degree Celsius
+    # at ZBAA, two Fahrenheit at KMIA), and an audit that restates a rule
+    # invents its own findings rather than reporting production's.
+    _settled_bucket as _ledger_settled_bucket,
+    _settlement_ladder as _ledger_settlement_ladder,
+    _truth as _ledger_truth,
 )
 from selection_market_dashboard import (  # noqa: E402
     STATION_LABELS,
@@ -3749,6 +3756,109 @@ def _live_basket_plan_state(
     return state
 
 
+def _live_settled_buckets(
+    conn: sqlite3.Connection, keys: set[tuple[str, str]]
+) -> dict[tuple[str, str], tuple[str, str]]:
+    """Which of these station-days have settled, on which bucket, said by whom.
+
+    Two sources, in this order.  The paper ledger's settlement rows come
+    first: that label was written by the production settler, the live PnL
+    has always read it, and a day it carries needs nothing derived.  Every
+    key it does not carry is resolved here from the truth lane and the
+    station-day's own committed ladder, through the settler's own two
+    functions -- ``_truth`` for the revision that stands (charter 44) and
+    ``_settled_bucket`` for the rung a value falls in.  The per-station
+    grid is never restated: the rungs come back out of
+    ``basket_probability_bridge_*`` by the ledger's own reader.
+
+    The paper book is a different book.  It seats the station-days its own
+    rule admits, and the live lane mints intents for days it never seated:
+    2026-09-08 carried eleven live station-days against three paper
+    settlements, while the truth lane held an ACCEPTED value for
+    forty-eight stations that day.  Reading the paper table alone, the
+    panel called the other eight 未结算 four days after the fact.  The same
+    gap opens on every rule change -- the ledger re-derives its whole
+    history, both paper tables sit empty for the better part of an hour,
+    and a live basket that had a verdict yesterday loses it.  Truth does
+    not move when a seating rule does, so the fallback does not either.
+
+    Verified 2026-09-12 against the settler's own output: over the 3,368
+    candidate windows it has scored, this reproduces ``settled_bucket``
+    exactly, with zero disagreements.  And the ladder is a property of the
+    station-day rather than of the seat -- across every COMMITTED bridge
+    row in the archive, no station-day carries two distinct ladders -- so
+    the newest committed decision's rungs are the day's own grid.
+
+    The source travels with the label because the two are different
+    claims: one says the paper book settled this seat, the other says the
+    truth lane settled this day and no paper seat exists.  A panel that
+    printed them as one word would make the missing seat invisible again,
+    which is the state this function was written to end.
+    """
+
+    out: dict[tuple[str, str], tuple[str, str]] = {}
+    if not keys:
+        return out
+    if _table_exists(conn, "paper_trade_settlement"):
+        try:
+            for station, day, bucket in conn.execute(
+                "SELECT station_id, event_date, MAX(settled_bucket)"
+                " FROM paper_trade_settlement WHERE settled_bucket IS NOT NULL"
+                " GROUP BY station_id, event_date"
+            ):
+                key = (str(station), str(day))
+                if key in keys:
+                    out[key] = (str(bucket), "paper_ledger")
+        except sqlite3.Error:
+            out = {}
+    missing = sorted(keys - set(out))
+    if not missing:
+        return out
+    for name in ("calibration_station_daily_high_truth",
+                 "basket_probability_bridge_history",
+                 "basket_probability_bridge_bucket_probability"):
+        if not _table_exists(conn, name):
+            return out
+    try:
+        truth = _ledger_truth(conn)
+    except sqlite3.Error:
+        return out
+    for key in missing:
+        standing = truth.get(key)
+        if standing is None:
+            continue
+        # One index seek per station-day, not a scan: the leading columns
+        # of ``basket_probability_bridge_history_asof_idx`` are exactly
+        # (station_id, event_date, state, decision_at_utc), so the newest
+        # committed decision is the last entry of a seeked range.  The
+        # listing this serves is at most a few dozen station-days wide.
+        try:
+            head = conn.execute(
+                "SELECT stage, decision_at_utc"
+                " FROM basket_probability_bridge_history"
+                " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+                " ORDER BY decision_at_utc DESC LIMIT 1",
+                (key[0], key[1]),
+            ).fetchone()
+            if not head:
+                continue
+            ladder = _ledger_settlement_ladder(
+                conn, key[0], key[1], str(head[0]), str(head[1])
+            )
+        except sqlite3.Error:
+            continue
+        if not ladder:
+            continue
+        landed = _ledger_settled_bucket(list(ladder), standing.tmax_c)
+        # A truth outside every rung the day was priced against is not a
+        # settlement this book can score, and saying so by leaving the day
+        # open beats naming a bucket that was never on the ladder.
+        if landed is None:
+            continue
+        out[key] = (str(landed[0]), "truth_lane")
+    return out
+
+
 def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
     """The order book: how many, worth how much, and what came back.
 
@@ -3763,12 +3873,16 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
 
     ROI and PnL come off the reconciliation table -- what the exchange
     said it filled -- and never off the paper ledger.  The settled bucket
-    label is read from the settlement rows because that label is derived
-    from truth by the production settler; re-deriving it here would mean
-    re-implementing the per-station grid rule (°C and 2°F stations do not
-    share one), which is how audits invent their own findings.  Money is
-    entirely the live fill columns: cost is what was paid, payout is one
-    unit per share on the bucket truth landed in.
+    label comes from ``_live_settled_buckets``: the settler's own row where
+    the paper book seated the day, and otherwise the truth lane scored
+    through the settler's own two functions.  Nothing about the per-station
+    grid is re-implemented here (°C and 2°F stations do not share one),
+    because an audit that restates a rule invents its own findings -- but
+    reading the paper table *alone* was its own error, and a quieter one:
+    it made a live basket's verdict depend on whether a different book
+    happened to seat the same station-day.  Money is entirely the live fill
+    columns: cost is what was paid, payout is one unit per share on the
+    bucket truth landed in.
     """
 
     out: dict[str, Any] = {
@@ -3848,20 +3962,16 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
                 latest_event[str(intent_id)] = (str(event_type), reason)
         except sqlite3.Error:
             latest_event = {}
-    # Which station-days have settled, and on which bucket -- the same
-    # settlement rows the PnL reads, so a date the board collapses is a
-    # date whose money is already counted.
-    settled_bucket: dict[tuple[str, str], str] = {}
-    if _table_exists(conn, "paper_trade_settlement"):
-        try:
-            for station, day, bucket in conn.execute(
-                "SELECT station_id, event_date, MAX(settled_bucket)"
-                " FROM paper_trade_settlement WHERE settled_bucket IS NOT NULL"
-                " GROUP BY station_id, event_date"
-            ):
-                settled_bucket[(str(station), str(day))] = str(bucket)
-        except sqlite3.Error:
-            settled_bucket = {}
+    # Which station-days have settled, and on which bucket -- resolved the
+    # same way the PnL below resolves it, so a date the board collapses is
+    # a date whose money is already counted.  Both halves of this panel
+    # call one resolver for exactly that reason: they used to share a query
+    # instead, and a source that moved under one of them would have left
+    # the other reading the old table and disagreeing about which baskets
+    # had a verdict.
+    settled_bucket = _live_settled_buckets(conn, {
+        (str(r[9] or ""), str(r[10] or "")) for r in rows
+    })
     for row in rows:
         station = str(row[9] or "")
         day = str(row[10] or "")
@@ -3883,7 +3993,13 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
             "execution_window_seconds": _window_seconds(row[8], row[11]),
             "event_type": event_type,
             "reason": reason,
-            "settled_bucket": settled_bucket.get((station, day), ""),
+            "settled_bucket": settled_bucket.get((station, day), ("", ""))[0],
+            # Which book said so.  ``paper_ledger`` is the settler's own
+            # row; ``truth_lane`` is a day the paper book never seated,
+            # scored off the truth that stands and the day's own ladder.
+            "settled_bucket_source": (
+                settled_bucket.get((station, day), ("", ""))[1]
+            ),
         })
     # What each basket's own plan recorded -- the centre rung and the day's
     # shape.  Keyed by decision, because the decision is the basket: a
@@ -4140,6 +4256,13 @@ def _collect_live_pnl(conn: sqlite3.Connection) -> dict[str, Any]:
     station-day has no settled bucket yet is counted as pending, never
     scored as a loss -- an unsettled day that reads as a zero payout is
     how a live book would look worse than it is every afternoon.
+
+    "Has no settled bucket yet" is ``_live_settled_buckets``, the same
+    resolver the basket listing reads.  Sharing it is the point: while this
+    function read the paper settlement table by itself, every live fill on
+    a station-day the paper book never seated stayed pending forever, so
+    the ROI tile was computed over a subset chosen by a different book's
+    seating rule and called itself the live book's ROI.
     """
 
     pnl: dict[str, Any] = {
@@ -4169,19 +4292,18 @@ def _collect_live_pnl(conn: sqlite3.Connection) -> dict[str, Any]:
     if not fills:
         pnl["reason"] = "还没有一笔实盘成交"
         return pnl
-    settled: dict[tuple[str, str], str] = {}
-    if _table_exists(conn, "paper_trade_settlement"):
-        for station, day, bucket in conn.execute(
-            "SELECT station_id, event_date, MAX(settled_bucket)"
-            " FROM paper_trade_settlement WHERE settled_bucket IS NOT NULL"
-            " GROUP BY station_id, event_date"
-        ):
-            settled[(str(station), str(day))] = str(bucket)
+    # Same resolver as the basket listing above.  A filled leg counted
+    # pending here while its basket upstairs shows a verdict is two numbers
+    # for one fact, and the reader has no way to tell which one to believe.
+    settled = _live_settled_buckets(conn, {
+        (str(station), str(day)) for station, day, *_ in fills
+    })
     per_station: dict[str, dict[str, float]] = {}
     days: set[tuple[str, str]] = set()
     for station, day, bucket, size, notional in fills:
         key = (str(station), str(day))
-        truth = settled.get(key)
+        landed = settled.get(key)
+        truth = landed[0] if landed else None
         cost = float(notional or 0.0)
         acc = per_station.setdefault(str(station), {
             "legs": 0.0, "won": 0.0, "pending": 0.0,
@@ -13059,6 +13181,13 @@ function liveOrderCard(L){
     byDate.get(key).push(g);
   }
   const truthOf = (g)=> (g.legs.find(l=>l.settled_bucket)||{}).settled_bucket || "";
+  // Where that label came from.  ``paper_ledger`` is the settler's own row;
+  // ``truth_lane`` is a day the paper book never seated, scored off the
+  // truth that stands and the day's own ladder.  The two are different
+  // claims and the page says which, because until 2026-09-12 the second
+  // kind did not exist here at all -- those days read 未结算 for as long as
+  // the paper book declined to seat them.
+  const truthSrc = (g)=> (g.legs.find(l=>l.settled_bucket)||{}).settled_bucket_source || "";
   const dates = [...byDate.keys()].sort().reverse();
   // A date folds once its money is counted, or once it is behind us: a
   // past day the paper settler never seated (a held station's refused
@@ -13111,15 +13240,18 @@ function liveOrderCard(L){
       // that filled nothing is red -- it did not hold the bucket -- with
       // that distinction in the tooltip, which is the only part a reader
       // can afford to go looking for.
+      const src = truthSrc(g)==="truth_lane"
+        ? "　真值取自真值车道（这个站日纸面账本没坐过，没有它的结算行），按当日自己的桶阶梯落桶"
+        : "";
       const verdict = !truth
         ? ["amber", "未结算", "这个站日的真值还没到"]
         : (gPay > 0
-          ? ["green", "命中", "成交腿里有落在结算桶 " + truth + " 的"]
+          ? ["green", "命中", "成交腿里有落在结算桶 " + truth + " 的" + src]
           : [
             "red", "未命中",
-            gFilled.length
+            (gFilled.length
               ? "成交的腿都不在结算桶 " + truth
-              : "整篮一条腿都没成交，结算落在 " + truth,
+              : "整篮一条腿都没成交，结算落在 " + truth) + src,
           ]);
       return `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:5px 0;border-top:1px dashed var(--line,#eee)">
         <span class="pill red" style="font-size:10px">LIVE</span>
