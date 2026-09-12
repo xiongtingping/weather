@@ -46550,7 +46550,7 @@ def build_event_fact_history_insert_function_parity_audit(
 
 
 def _event_fact_history_insert_function_parity_sample_inputs() -> List[Dict[str, Any]]:
-    def _attach_sample_prior_contract(item: MutableMapping[str, Any]) -> None:
+    def _attach_sample_write_contracts(item: MutableMapping[str, Any]) -> None:
         labels: List[str] = []
         for container_key in ("distribution", "rows"):
             rows = item.get(container_key)
@@ -46580,6 +46580,16 @@ def _event_fact_history_insert_function_parity_sample_inputs() -> List[Dict[str,
                 "prior_na_reason": "",
             },
         )
+        # And the model identity the composer stamps on every run item it
+        # hands the writer.  Without it build_posterior_ssot_fact returns a
+        # blocked block -- joint_weak_physical_strong_model_unavailable --
+        # and the apply contract refuses the sample on a dozen
+        # posterior_ssot_fact_* issues before any parity is measured.  These
+        # samples stand in for production payloads, and a payload without
+        # this identity is one production does not write and the writer is
+        # right to refuse: auditing the switch on it audits nothing.
+        item.setdefault("production_model_version", "joint_weak_physical_strong_composer_v1")
+        item.setdefault("production_model_ready", True)
 
     base_slug = "highest-temperature-in-chengdu-on-july-3-2026"
     base_kwargs: Dict[str, Any] = {
@@ -46687,7 +46697,7 @@ def _event_fact_history_insert_function_parity_sample_inputs() -> List[Dict[str,
     ]
     out: List[Dict[str, Any]] = []
     for idx, (case_id, reason, item, overrides) in enumerate(samples, start=1):
-        _attach_sample_prior_contract(item)
+        _attach_sample_write_contracts(item)
         kwargs = dict(base_kwargs)
         kwargs["model_snapshot_id"] = int(base_kwargs["model_snapshot_id"]) + idx
         kwargs["market_snapshot_id"] = int(base_kwargs["market_snapshot_id"]) + idx

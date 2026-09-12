@@ -186,17 +186,46 @@ def attach_posterior_ssot_contract(payload: dict) -> dict:
     )
 
 
+def _attach_write_contracts(item) -> None:
+    """Bring a minimal fixture payload up to the writer's apply contract.
+
+    One copy, because all three fixture entry points below need the same
+    two blocks and a second copy is how two answers start.  A payload
+    that already carries them is left alone, so the tests that exercise
+    the contract itself build their own.  A pending-model payload is left
+    alone too: having no model yet is the state it is testing.
+    """
+
+    if not isinstance(item, dict):
+        return
+    pending_model = str(item.get("data_status") or item.get("weather_strategy_mode") or "") == (
+        "market_discovery_pending_model"
+    )
+    if pending_model:
+        return
+    if not _unit_prior_contract_covers_payload(item):
+        attach_unit_prior_contract(item)
+    if not _posterior_ssot_contract_covers_payload(item):
+        attach_posterior_ssot_contract(item)
+
+
 def insert_event_fact_history_with_unit_prior(*args, **kwargs) -> int:
-    item = kwargs.get("item")
-    if isinstance(item, dict):
-        pending_model = str(item.get("data_status") or item.get("weather_strategy_mode") or "") == (
-            "market_discovery_pending_model"
-        )
-        if not pending_model and not _unit_prior_contract_covers_payload(item):
-            attach_unit_prior_contract(item)
-        if not pending_model and not _posterior_ssot_contract_covers_payload(item):
-            attach_posterior_ssot_contract(item)
+    _attach_write_contracts(kwargs.get("item"))
     return getattr(server, "_insert_event_fact_history")(*args, **kwargs)
+
+
+def upsert_event_fact_from_run_item_with_unit_prior(*args, **kwargs):
+    """``upsert_event_fact_from_run_item`` on a contract-complete payload.
+
+    The run items production feeds it carry the posterior SSOT block that
+    the writer's apply contract demands -- the composer puts it there.
+    The fixtures here are minimal, so without this they are refused
+    inside the writer, a dozen ``posterior_ssot_fact_*`` issues deep,
+    before the merge behaviour they are written to check ever runs.
+    """
+
+    _attach_write_contracts(kwargs.get("item"))
+    return getattr(server, "upsert_event_fact_from_run_item")(*args, **kwargs)
 
 
 def insert_ui_date_fact(
@@ -236,12 +265,7 @@ def insert_ui_date_fact(
 
 
 def build_ui_event_fact_write_compat_plan_with_unit_prior(*args, **kwargs) -> dict:
-    item = kwargs.get("item")
-    if isinstance(item, dict):
-        if not _unit_prior_contract_covers_payload(item):
-            attach_unit_prior_contract(item)
-        if not _posterior_ssot_contract_covers_payload(item):
-            attach_posterior_ssot_contract(item)
+    _attach_write_contracts(kwargs.get("item"))
     return getattr(server, "build_ui_event_fact_write_compat_plan")(*args, **kwargs)
 
 
@@ -1822,12 +1846,18 @@ def test_ui_snapshot_summary_amsc_compact_overrides_stale_intraday_observation_f
 
 
 def test_ui_snapshot_latest_projection_fills_prior_and_strong_sections(tmp_path: Path) -> None:
+    # Dated after 2026-07-10.  The projection builds its prior from the NCEI
+    # climate reference, and that reference is gated strictly as-of its own
+    # download_completed_at (2026-07-10T11:26:42Z): an earlier event date is
+    # refused with ncei_climate_reference_not_available_asof, which blocks the
+    # whole projection on prior_distribution_missing.  The fixture was written
+    # for 2026-07-05, before that artifact existed.
     db_path = tmp_path / "archive.db"
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     server.ensure_fact_tables(conn)
-    slug = "highest-temperature-in-chengdu-on-july-5-2026"
-    event_date = "2026-07-05"
+    slug = "highest-temperature-in-chengdu-on-july-15-2026"
+    event_date = "2026-07-15"
     rows = [
         {"bucket": "36°C", "probability": 0.25},
         {"bucket": "37°C", "probability": 0.50},
@@ -1879,7 +1909,7 @@ def test_ui_snapshot_latest_projection_fills_prior_and_strong_sections(tmp_path:
         "slug": slug,
         "event_date": event_date,
         "run_date": event_date,
-        "fact_as_of": "2026-07-05T16:00:14Z",
+        "fact_as_of": "2026-07-15T16:00:14Z",
         "station_id": "ZUUU",
         "source_observations": [
             {
@@ -1890,7 +1920,7 @@ def test_ui_snapshot_latest_projection_fills_prior_and_strong_sections(tmp_path:
                 "role": "metar_hard_observation",
                 "hard_eligible": True,
                 "event_date": event_date,
-                "valid_time": "2026-07-05T15:30:00Z",
+                "valid_time": "2026-07-15T15:30:00Z",
                 "temperature_c": 33.0,
                 "observed_today_max_c": 37.0,
                 "final_daily_max_c": 37.0,
@@ -1934,10 +1964,10 @@ def test_ui_snapshot_latest_projection_fills_prior_and_strong_sections(tmp_path:
             event_date,
             slug,
             event_date,
-            "2026-07-05T15:05:55Z",
+            "2026-07-15T15:05:55Z",
             "unit_context",
             json.dumps(context_payload, ensure_ascii=False),
-            "2026-07-05T15:05:56Z",
+            "2026-07-15T15:05:56Z",
         ),
     )
     context_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -1951,10 +1981,10 @@ def test_ui_snapshot_latest_projection_fills_prior_and_strong_sections(tmp_path:
             event_date,
             slug,
             event_date,
-            "2026-07-05T16:00:14Z",
+            "2026-07-15T16:00:14Z",
             "amsc_zuuu_metar_taf_fetcher_v1",
             json.dumps(source_only_payload, ensure_ascii=False),
-            "2026-07-05T16:00:15Z",
+            "2026-07-15T16:00:15Z",
         ),
     )
     latest_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -1964,7 +1994,7 @@ def test_ui_snapshot_latest_projection_fills_prior_and_strong_sections(tmp_path:
         INSERT OR REPLACE INTO event_fact_latest(slug, event_date, fact_id, updated_at)
         VALUES (?, ?, ?, ?)
         """,
-        (slug, event_date, latest_id, "2026-07-05T16:00:14Z"),
+        (slug, event_date, latest_id, "2026-07-15T16:00:14Z"),
     )
     conn.commit()
 
@@ -1972,7 +2002,14 @@ def test_ui_snapshot_latest_projection_fills_prior_and_strong_sections(tmp_path:
     server._merge_fill_fast_observation_fields_from_latest_fact(conn, item, slug, event_date)
     server._attach_ui_snapshot_sections_to_item(item)
 
-    assert item["prior_distribution"]["37°C"] == pytest.approx(0.6)
+    # The prior is NOT the context fact's own prior_distribution carried
+    # forward.  The projection builds it from the approved NCEI climate
+    # reference over the context's bucket labels -- climate only, no
+    # forecast, no METAR, no market -- so the context supplies the ladder
+    # and the reference supplies the mass.
+    assert sorted(item["prior_distribution"]) == ["36°C", "37°C", "38°C"]
+    assert sum(item["prior_distribution"].values()) == pytest.approx(1.0)
+    assert item["prior_meta"]["source"] == "approved_ncei_ghcnh_hourly_climate_reference_prior"
     assert item["posterior_ssot_fact"]["target_bucket"] == "37°C"
     assert item["posterior_ssot_fact"]["target_probability"] == pytest.approx(1.0)
     assert item["metar_strong_likelihood"]["37°C"] == pytest.approx(1.0)
@@ -1981,6 +2018,7 @@ def test_ui_snapshot_latest_projection_fills_prior_and_strong_sections(tmp_path:
     assert item["ui_sections"]["observation_strong"]["hard_source_observations"][0]["source_id"] == "zuuu_metar_raw_amsc"
     projection = item["fact_provenance"]["ui_snapshot_latest_fact_projection"]
     assert projection["projection_mode"] == "contextual_hierarchical_posterior_projection"
+    assert projection["context"]["prior_source"] == "ncei_physical_x_climate_reference_prior"
     assert projection["writes_archive_db"] is False
     conn.close()
 
@@ -6836,7 +6874,7 @@ def test_event_fact_write_recovers_latest_awc_from_hard_source_history(tmp_path,
         (slug, event_date, stale_fact_id, "2026-06-27 13:30:00"),
     )
 
-    fact_id = server.upsert_event_fact_from_run_item(
+    fact_id = upsert_event_fact_from_run_item_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -8394,7 +8432,9 @@ def test_hard_source_raw_report_places_taf_before_collapsed_metar() -> None:
     assert "item.source_observations" in obs_block
     assert "observationSection.hard_source_observations" in obs_block
     assert "awcRawReportSourceLabel(sourceId)" in obs_block
-    assert report_block.index("<span>Raw TAF</span>") < report_block.index("<span>Raw METAR</span>")
+    # The TAF head carries its own "（诊断）" qualifier now; the order this
+    # test is named for is unchanged.
+    assert report_block.index("<span>Raw TAF（诊断）</span>") < report_block.index("<span>Raw METAR</span>")
     assert ".awc-raw-report-grid {\n      display:grid;\n      grid-template-columns:1fr;" in text
     assert ".awc-raw-report-more summary::after" in text
     assert "const merged = { ...full, ...compact };" in bag_block
@@ -8718,7 +8758,12 @@ def test_posterior_spotlight_requires_posterior_ssot_not_capital_or_distribution
     block = text[start:end]
 
     assert "function renderDistributionTable" in text
-    assert "const rawRows = Array.isArray(ssot.bucket_probabilities)" in rows_block
+    # The spotlight reads the MARKET settlement buckets, not the physical-X
+    # ones: ``market_bucket_probabilities`` is the B projection, and the
+    # page has read it here since the field was split out.  The old name
+    # still exists on the block, which is why this assertion went on
+    # naming it.
+    assert "const rawRows = Array.isArray(ssot.market_bucket_probabilities)" in rows_block
     assert ": [];" in rows_block
     assert "ssot.ranked_bucket_probabilities" not in rows_block
     assert "const resolvePosteriorSpotlightPrimary = () => {" in block
@@ -8761,7 +8806,10 @@ def test_posterior_spotlight_requires_posterior_ssot_not_capital_or_distribution
     assert "后端未提供 posterior_ssot_fact；看板不展示默认目标桶，也不从分布或资金计划推断目标。" in text
     assert "当前最高合约（未结算）" not in block
     assert "posteriorSpotlightReasonFromSsot" in block
-    assert "posteriorSpotlightDeltaPp" in text
+    # The delta-pp readout was rebuilt at 2026-07-16 onto the shared
+    # realtime-delta helpers: same two probabilities, same dataset fields
+    # pinned above, printed as 已更新 <delta> / 已同步 with the time.
+    assert "const deltaText = realtimeDeltaText(prob, prevProb);" in text
     assert "概率变化" in text
     assert "上一快照" in text
     assert "当前快照" in text
@@ -8769,10 +8817,8 @@ def test_posterior_spotlight_requires_posterior_ssot_not_capital_or_distribution
     assert "spotlight.dataset.liveReason" in text
     assert "spotlight.dataset.liveSnapshotAt" in text
     assert "spotlight.dataset.liveFactAt" in text
-    assert "const posteriorSpotlightCurrentAt = Date.now();" in text
-    assert "posteriorSpotlightCurrentTimelineText" in text
-    assert "`同步 ${posteriorSpotlightCurrentTimeText}`" in text
-    assert "`fact ${posteriorSpotlightFactTimeText}`" in text
+    assert "const changeLabel = changed && deltaText ? `已更新 ${deltaText}` : (changed ? '已更新' : '已同步');" in text
+    assert "status.textContent = `${changeLabel} ${formatTimeSeconds(Date.now())}`;" in text
     assert "factAt" in text
     assert "snapshotAt" in text
     assert "模型校准摘要" in text
@@ -9823,8 +9869,11 @@ def test_intraday_final_conclusion_uses_clean_decision_summary() -> None:
     assert "cleanDecisionSummary" in block
     assert "finalConclusion.caveat" in text
     assert "高温放大禁用" not in block
-    assert "<small>${escapeHtml(finalConclusion.detail)}</small>" in text
-    assert "finalConclusion.detail} · ${finalConclusion.caveat}" not in text
+    # ``detail`` is not a field this conclusion has ever returned -- it is
+    # {title, tone, evidenceText, evidenceTrend, caveat, guardActive} -- and
+    # ``evidenceText`` is the one the card prints in that <small>.
+    assert "<small>${escapeHtml(finalConclusion.evidenceText)}</small>" in text
+    assert "finalConclusion.detail" not in text
 
 
 def test_trade_plan_display_respects_temperature_path_follow_gate() -> None:
@@ -15460,7 +15509,7 @@ def test_composer_fact_write_preserves_latest_awc_hard_observation(tmp_path) -> 
         "chengdu_intraday_summary": {"stale": True},
     }
 
-    new_fact_id = server.upsert_event_fact_from_run_item(
+    new_fact_id = upsert_event_fact_from_run_item_with_unit_prior(
         conn,
         run_date="2026-06-18",
         slug=slug,
