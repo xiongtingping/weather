@@ -239,9 +239,12 @@ def test_no_claims_layer_query_reads_the_post_execution_columns():
     # Two replay reads since 2026-09-09: the fit's own population, and the
     # off-centre row count that rides beside it.
     assert edge.count("FROM paper_trade_candidate_window_replay") == 2
-    assert edge.count("FROM paper_trade_candidate_window") - 2 == 6, (
+    # Seven since charter 131 (2026-09-12): the excluded-seat-shape tally
+    # rides beside the excluded-axis and excluded-claim-vintage tallies.
+    assert edge.count("FROM paper_trade_candidate_window") - 2 == 7, (
         "band-partition lookup, the shared population read, its"
         " excluded-axis tally, its excluded-claim-vintage tally, its"
+        " excluded-seat-shape tally,"
         " off-centre row count, shadow fit -- the activation guard stopped"
         " issuing its own query on 2026-09-09 and reads the fit's"
         " population instead"

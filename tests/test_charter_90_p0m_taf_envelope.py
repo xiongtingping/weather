@@ -144,16 +144,20 @@ def test_the_entry_seat_keeps_the_held_rungs_the_cap_allows() -> None:
     assert audit["p0m_taf"]["entry_window"] == ["28", "29", "30", "31"]
 
 
-def test_on_an_empty_chain_the_entry_seat_is_the_span_padded_to_the_floor() -> None:
-    """Nothing held, TAF 28, centre 30: 28..30 is already three rungs."""
+def test_on_an_empty_chain_the_taf_constrains_nothing_and_p0m_does_not_open() -> None:
+    """Charter 131 (user, 2026-09-12 evening): P0-M does not open a chain,
+    there must be a P0.  Nothing held means no basket for the TX to confirm
+    or enter: the day seats its ordinary shape and charter 74 holds it."""
 
-    seats, audit, _ = _seats("P0-M", "28")
-    assert seats == [("28", "29", "30")]
-    assert audit["p0m_taf"]["held_buckets"] == []
-    assert audit["p0m_taf"]["entry_required"] is True
-    # TAF 31 next to the centre: the two-rung span pads toward the heavier side.
-    seats, audit, _ = _seats("P0-M", "31")
-    assert seats == [("29", "30", "31")]
+    for tx in ("28", "31"):
+        seats, audit, windows = _seats("P0-M", tx)
+        assert seats == [("29", "30", "31")]
+        assert audit["p0m_taf"]["held_buckets"] == []
+        assert audit["p0m_taf"]["no_p0_basket"] is True
+        assert audit["p0m_taf"]["entry_required"] is False
+        assert audit["p0m_taf"]["confirmed"] is False
+        assert audit["p0m_taf"]["entry_window"] is None
+        assert not any(row.get("taf_tx_entry") for row in windows)
 
 
 def test_a_tx_the_cap_cannot_reach_from_the_centre_leaves_no_seat() -> None:
@@ -186,24 +190,22 @@ def test_off_is_the_pre_ruling_arm(monkeypatch) -> None:
 
 
 def test_the_solver_treats_the_entry_as_a_decision_moment_and_lets_the_leg_through() -> None:
-    """The wiring the ruling needs: a decision moment of its own, gate 71(a)
-    yielding to the entry leg, and P0-M allowed to open the day on it."""
+    """The wiring the ruling needs: a decision moment of its own and gate
+    71(a) yielding to the entry leg.  Charter 131 (2026-09-12 evening)
+    retired the third wire -- P0-M opening the day on the TX -- so the
+    empty-chain refusal has no TAF exemption left anywhere."""
 
     source = inspect.getsource(P._solve_over_support_windows)
     assert 'get("p0m_taf") or {}).get("entry_required")' in source
     assert "or taf_tx_entry or (" in source
     assert 'and not bool(row.get("taf_tx_entry"))' in source
     candidates = inspect.getsource(P._target_candidates)
-    assert 'taf_opening = bool(taf_tx_entry) and stage_name == "P0-M"' in candidates
-    # The entry opens the day by exempting P0-M from the empty-chain refusal,
-    # so the Kelly candidate is offered to it.  Until 2026-09-08 the same flag
-    # also let the ticket open the day; the ticket is retired and this is the
-    # one surviving path, which is what makes asserting it worth doing.
-    assert "and not taf_opening" in candidates
+    assert "taf_opening" not in candidates
     assert "later_stage_on_empty_chain = (" in candidates
     assert "and not later_stage_on_empty_chain" in candidates
     plan = inspect.getsource(P.compile_delta_v2_runtime_plan)
-    assert 'get("p0m_taf") or {}).get("entry_required")' in plan
+    assert "chain_not_opened_by_p0" in plan
+    assert 'get("p0m_taf") or {}).get("entry_required")' not in plan
 
 
 def test_the_ledger_hashes_mode_and_rule_unconditionally() -> None:

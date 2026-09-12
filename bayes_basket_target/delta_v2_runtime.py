@@ -2177,8 +2177,13 @@ def _support_windows(
     # them the TX must enter: the seat becomes the span from the centre to the
     # TX, keeps as many held rungs as the cap allows, and is padded to the
     # floor with the ladder's own rungs -- toward the heavier side.
+    # Charter 131 (user, 2026-09-12 evening: "P0-M 不单独开链建仓，必须要有
+    # P0"): with nothing held there is no basket for the TX to confirm or
+    # enter, so on an empty chain the TAF constrains nothing and charter 74
+    # holds the stage.  Charter 90's one later-stage opening is retired.
     taf_confirmed = False
     taf_entry_required = False
+    taf_no_p0_basket = False
     taf_entry_window: frozenset[int] | None = None
     taf_unreachable = False
     taf_held_buckets: list[str] = []
@@ -2203,7 +2208,9 @@ def _support_windows(
         )
         tx_ordinal = ordinal_of[taf_tx_bucket]
         centre_ordinal = ordinal_of[ladder_center]
-        if tx_ordinal in held_ordinals:
+        if not held_ordinals:
+            taf_no_p0_basket = True
+        elif tx_ordinal in held_ordinals:
             taf_confirmed = True
         else:
             taf_entry_required = True
@@ -3095,6 +3102,8 @@ def _support_windows(
             "held_buckets": taf_held_buckets,
             "confirmed": taf_confirmed,
             "entry_required": taf_entry_required,
+            # Charter 131: nothing held, nothing to confirm or enter.
+            "no_p0_basket": taf_no_p0_basket,
             "entry_window": (
                 None if taf_entry_window is None else sorted(
                     (b for b in by_bucket if int(by_bucket[b].ordinal) in taf_entry_window),
@@ -4083,13 +4092,13 @@ def _target_candidates(
         for bucket in current_shares
     )
     stage_name = str(snapshot.evidence.probability_stage or "")
-    # Charter 90: P0-M may open the day on a TAF TX the empty chain does not
-    # hold -- the one later-stage opening the ruling allows.
-    taf_opening = bool(taf_tx_entry) and stage_name == "P0-M"
+    # Charter 131 (2026-09-12 evening): P0-M does not open a chain, TAF or
+    # no TAF -- there must be a P0.  Charter 90's one later-stage opening is
+    # retired; ``taf_tx_entry`` only lets an entry leg join a HELD basket,
+    # which is not an opening and needs no exemption here.
+    del taf_tx_entry
     later_stage_on_empty_chain = (
-        chain_empty
-        and stage_name not in CHAIN_OPENING_STAGES
-        and not taf_opening
+        chain_empty and stage_name not in CHAIN_OPENING_STAGES
     )
     if (
         book_equity_usdc is not None
@@ -6499,10 +6508,6 @@ def compile_delta_v2_runtime_plan(
         objective_form == KELLY_OBJECTIVE_FORM
         and chain_empty
         and str(snapshot.evidence.probability_stage or "") not in CHAIN_OPENING_STAGES
-        # Charter 90: P0-M opening on a TAF TX the chain does not hold.
-        and not bool(
-            ((support_window_audit or {}).get("p0m_taf") or {}).get("entry_required")
-        )
     ):
         # Charter 74: the day was never opened by P0; this stage adds
         # to a position and there is none.
