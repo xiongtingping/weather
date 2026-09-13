@@ -261,22 +261,38 @@ class P0PinContractTest(unittest.TestCase):
             load_center_width(conn, stage="P0", table_sha256="c" * 64)
 
     def test_the_serving_path_reads_the_tag_and_the_pin(self) -> None:
-        """Both halves must be present in the compiler, not just the tag."""
+        """Both halves must be present in the compiler, not just the tag.
+
+        The transform itself is reached through ``served_shape`` since
+        2026-09-13, which is the one place the centre/width and band tables
+        are composed; the compiler holding that function object is what
+        makes it apply the same arithmetic the gate scores.
+        """
+
+        from bayes_basket_target import native_ensemble_p0, served_shape
 
         source = (
             ROOT / "bayes_basket_target" / "native_ensemble_p0.py"
         ).read_text()
         self.assertIn("CENTER_WIDTH_METHOD_TAG", source)
         self.assertIn("pinned_center_width_sha", source)
-        self.assertIn("apply_center_width_calibration", source)
+        self.assertIs(
+            native_ensemble_p0.apply_served_table_layers,
+            served_shape.apply_served_table_layers,
+        )
 
     def test_the_gate_pins_what_it_scored(self) -> None:
+        from bayes_basket_target import native_ensemble_oos, served_shape
+
         source = (
             ROOT / "bayes_basket_target" / "native_ensemble_oos.py"
         ).read_text()
         self.assertIn("center_width_sha256", source)
         self.assertIn("CENTER_WIDTH_METHOD_TAG", source)
-        self.assertIn("apply_center_width_calibration", source)
+        self.assertIs(
+            native_ensemble_oos.apply_served_table_layers,
+            served_shape.apply_served_table_layers,
+        )
 
 
 

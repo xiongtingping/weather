@@ -204,30 +204,55 @@ def test_the_axis_travels_with_the_table_to_the_serving_lanes():
 
 
 def test_every_serving_lane_reads_the_tables_axis_not_its_own_preference():
-    """Four apply sites, one rule.  Each passes ordinals if and only if the
-    table it loaded says its cells are keyed on distance."""
+    """One rule at every apply site: ordinals if and only if the table it
+    loaded says its cells are keyed on distance.
 
-    sources = {
-        name: (ROOT / "bayes_basket_target" / name).read_text(encoding="utf-8")
-        for name in (
-            "materialization.py",
-            "native_ensemble_p0.py",
-            "native_ensemble_oos.py",
+    P0's three faces -- the subset contest, the OOS gate and the compiler --
+    reach the band table through ``served_shape.apply_served_table_layers``
+    since 2026-09-13, so for them the rule is checked on that function's
+    behaviour, and each face is checked to hold that function.  P1/P0-M's
+    materialization keeps its own apply site and its own source check.
+    """
+
+    from bayes_basket_target import native_ensemble_oos, native_ensemble_p0
+    from bayes_basket_target import served_shape
+    from bayes_basket_target.cross_consensus import apply_band_reliability
+
+    for module in (native_ensemble_oos, native_ensemble_p0):
+        assert module.apply_served_table_layers is (
+            served_shape.apply_served_table_layers
+        ), module.__name__
+        # No face keeps a private copy of the primitive it could drift on.
+        assert not hasattr(module, "apply_band_reliability"), module.__name__
+
+    keys = ["20", "21", "22", "23", "24"]
+    vector = {"20": 0.05, "21": 0.2, "22": 0.4, "23": 0.3, "24": 0.05}
+    table = (((0.0, 1.0), 1.0), ((1.0, 2.0), 0.8), ((2.0, 99.0), 0.5))
+    ordinals = {key: index for index, key in enumerate(keys)}
+    for axis, expected_ordinals in (
+        (BAND_AXIS_CENTRE_DISTANCE, ordinals),
+        (BAND_AXIS_CLAIM, None),
+    ):
+        served, _cw, receipt = served_shape.apply_served_table_layers(
+            vector,
+            ordered_keys=keys,
+            key_centers_c=[20.0, 21.0, 22.0, 23.0, 24.0],
+            center_width=None,
+            band=served_shape.BandLayer(factors=table, axis=axis),
         )
-    }
-    for name, source in sources.items():
-        assert "BAND_AXIS_CENTRE_DISTANCE" in source, name
-        # The gate is on the TABLE's axis, and it is spelled the same way at
-        # every site so a reader can grep for all four at once.
-        assert "== BAND_AXIS_CENTRE_DISTANCE" in source, name
+        direct, _ = apply_band_reliability(
+            vector, factors=table, ordinals=expected_ordinals
+        )
+        assert served == direct, axis
+        assert receipt is not None
+
+    materialization = (
+        ROOT / "bayes_basket_target" / "materialization.py"
+    ).read_text(encoding="utf-8")
+    assert "== BAND_AXIS_CENTRE_DISTANCE" in materialization
     # The production serving path skips rather than guessing when it has a
     # distance table and no ordering to key it by.
-    assert "SKIPPED_NO_BUCKET_ORDINALS" in sources["materialization.py"]
-    # And the holdout scores through the same lookup production will serve
-    # through, or the table is gated on math nobody runs.
-    assert sources["native_ensemble_oos.py"].count(
-        "== BAND_AXIS_CENTRE_DISTANCE"
-    ) == 2
+    assert "SKIPPED_NO_BUCKET_ORDINALS" in materialization
 
 
 def test_the_nightly_refit_keeps_each_stage_on_its_own_axis():

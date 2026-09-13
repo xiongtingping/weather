@@ -2764,5 +2764,5 @@ def test_native_authority_p1_reaches_delta_decision_and_training_fact(
         ),
     )
     e2e.test_p1_to_plan_to_multileg_atomic_ledger_is_deterministic_and_no_live(
-        tmp_path
+        tmp_path, monkeypatch
     )
