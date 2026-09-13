@@ -893,3 +893,91 @@ class _subtest:
         if exc is not None:
             exc.args = (f"{self.label}: {exc.args[0] if exc.args else ''}",)
         return False
+
+
+# ------------------------------------------------ no_registry_scope says which
+#
+# The fleet-wide fail-closed of 2026-09-13T12:09Z named 44 stations with the
+# bare reason ``no_registry_scope``, while the persisted registry held tradable
+# rows for every one of them in every snapshot either side.  That reason names
+# three different faults; the message now says which one it was.  None of
+# these tests change what is materialized or refused -- only what the refusal
+# says.
+
+
+def _miss_reason(conn, manifest, **kwargs) -> str:
+    with pytest.raises(ContractError) as caught:
+        materialize_official_ws_evidence_cache(conn, manifest_path=manifest, **kwargs)
+    return str(caught.value)
+
+
+def test_a_scope_with_no_registry_row_says_active_zero(tmp_path: Path) -> None:
+    manifest = _manifest(tmp_path)
+    with sqlite3.connect(":memory:") as conn:
+        conn.row_factory = sqlite3.Row
+        apply_production_ssot_schema(conn)
+        _registry(conn)
+
+        reason = _miss_reason(conn, manifest, station_id="NOPE", event_date="2026-07-23")
+
+    assert reason.endswith(":no_registry_scope[2026-07-23 active=0]")
+
+
+def test_a_day_that_has_not_started_says_not_started(tmp_path: Path) -> None:
+    manifest = _manifest(tmp_path)
+    with sqlite3.connect(":memory:") as conn:
+        conn.row_factory = sqlite3.Row
+        apply_production_ssot_schema(conn)
+        _registry(conn)
+
+        reason = _miss_reason(
+            conn, manifest, station_id="TEST", event_date="2026-07-23",
+            as_of_utc="2026-07-22T12:00:00Z",
+        )
+
+    assert reason.endswith(":no_registry_scope[2026-07-23 active=1 not_started=1]")
+
+
+def test_a_day_state_that_raised_is_named_not_hidden(tmp_path: Path, monkeypatch) -> None:
+    """``load_started_registry_rows`` swallows any exception from the day-state
+    computation and drops the row as though its day had not begun.  The
+    diagnosis judges each row with the same function, so the swallowed error
+    shows up by type rather than disappearing into ``no_registry_scope``."""
+
+    import bayes_basket_target.market_registry as registry
+
+    def broken(*_args, **_kwargs):
+        raise OSError("[Errno 24] Too many open files")
+
+    monkeypatch.setattr(registry, "settlement_day_state", broken)
+    manifest = _manifest(tmp_path)
+    with sqlite3.connect(":memory:") as conn:
+        conn.row_factory = sqlite3.Row
+        apply_production_ssot_schema(conn)
+        _registry(conn)
+
+        reason = _miss_reason(
+            conn, manifest, station_id="TEST", event_date="2026-07-23",
+            as_of_utc="2026-07-23T12:00:00Z",
+        )
+
+    assert reason.endswith(":no_registry_scope[2026-07-23 active=1 error_OSError=1]")
+
+
+def test_the_diagnosis_survives_the_boards_colon_condenser(tmp_path: Path) -> None:
+    """The board splits a production reason on colons and drops repeats; a
+    colon inside the diagnosis would cut it apart before anyone read it."""
+
+    manifest = _manifest(tmp_path)
+    with sqlite3.connect(":memory:") as conn:
+        conn.row_factory = sqlite3.Row
+        apply_production_ssot_schema(conn)
+        _registry(conn)
+        reason = _miss_reason(
+            conn, manifest, station_id="TEST", event_date="2026-07-23",
+            as_of_utc="2026-07-22T12:00:00Z",
+        )
+
+    token = reason[reason.index("["):]
+    assert ":" not in token
+    assert "scope_missing" in reason  # the production classifier matches on this

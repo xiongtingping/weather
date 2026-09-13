@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .contracts import ContractError, content_sha256
+from . import market_registry as _market_registry
 from .market_registry import (
     load_active_registry_rows,
     load_started_registry_rows,
@@ -968,6 +969,53 @@ def _upsert_evidence_cache_row(conn: sqlite3.Connection, row: Mapping[str, Any])
     return {"scope_key": row["scope_key"], "state": "COMMITTED", "wrote": True, "evidence_id": row["evidence_id"]}
 
 
+def _registry_scope_miss_diagnosis(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    as_of_utc: str | None,
+) -> str:
+    """Why a registry read for one scope came back empty, as one token.
+
+    ``no_registry_scope`` used to be the whole message, and it names three
+    different faults: the registry held no row for the scope; it held rows the
+    started-day filter judged not yet begun; or computing the day state raised
+    and ``load_started_registry_rows`` dropped the row as if it had not begun.
+    The fleet-wide fail-closed of 2026-09-13T12:09Z named 44 stations and none
+    of those, and the persisted registry held tradable rows for every one of
+    them in every snapshot either side of the failure -- so the message was
+    the only evidence, and it could not tell the three apart.
+
+    Nothing here changes what is materialized, skipped or refused.  The token
+    carries no colon, because the board splits production reasons on colons.
+    Computing it must never become a second fault, so any error in it is
+    itself reported inside the token.
+    """
+
+    label = str(event_date or "*")
+    try:
+        rows = load_active_registry_rows(conn, station_id=station_id, event_date=event_date)
+    except Exception as exc:  # noqa: BLE001 -- diagnosis only
+        return f"[{label} active_error={type(exc).__name__}]"
+    clock = as_of_utc or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    states: dict[str, int] = {}
+    for row in rows:
+        try:
+            # The same function object load_started_registry_rows calls, so
+            # the diagnosis judges each row exactly as the filter did.
+            state = str(_market_registry.settlement_day_state(
+                str(row.get("event_date") or ""),
+                as_of_utc=clock,
+                settlement_timezone=str(row.get("settlement_timezone") or ""),
+            )["state"])
+        except Exception as exc:  # noqa: BLE001 -- this is what the filter swallows
+            state = f"error_{type(exc).__name__}"
+        states[state] = states.get(state, 0) + 1
+    parts = [label, f"active={len(rows)}"] + [f"{k}={v}" for k, v in sorted(states.items())]
+    return "[" + " ".join(parts) + "]"
+
+
 def materialize_official_ws_evidence_cache(
     conn: sqlite3.Connection,
     *,
@@ -1035,7 +1083,12 @@ def materialize_official_ws_evidence_cache(
         )
         raise ContractError(
             "official_ws_evidence_complete_scope_missing"
-            + (f":{len(skipped)} skipped:{detail}" if skipped else ":no_registry_scope")
+            + (
+                f":{len(skipped)} skipped:{detail}" if skipped
+                else ":no_registry_scope" + _registry_scope_miss_diagnosis(
+                    conn, station_id=station_id, event_date=event_date, as_of_utc=as_of_utc,
+                )
+            )
         )
     for row in rows:
         encoded = json.dumps(row["buckets_json"], ensure_ascii=False, sort_keys=True).encode("utf-8")
