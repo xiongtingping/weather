@@ -59,6 +59,7 @@ gate rows are excluded; that lane only confirms transfer direction.
 from __future__ import annotations
 
 import json
+import math
 import random
 import sqlite3
 import time
@@ -385,16 +386,68 @@ def band_table_sha256(
     return content_sha256(identity)
 
 
+def _pinned_identity_holds(
+    sha: str,
+    factors: Sequence[tuple[tuple[float, float], float]],
+    *,
+    stage: str,
+    axis: str,
+) -> bool:
+    """Whether the stored bytes are the table the sha names.
+
+    Every table since the stage column hashes through ``band_table_sha256``.
+    The P0 bootstrap rows written before it hashed the same factors without
+    a stage; they were P0 by construction and are claim-axis, so that one
+    older identity is accepted for exactly that stage and axis and no other.
+    Measured 2026-09-13: 119 of 120 stored tables recompute under the current
+    identity, the 120th (9963e3fe, fitted 2026-08-15) under the pre-stage one.
+    """
+
+    if band_table_sha256(factors, stage=stage, axis=axis) == sha:
+        return True
+    return (
+        stage == "P0"
+        and axis == BAND_AXIS_CLAIM
+        and content_sha256({
+            "schema": "band_reliability_table_v1",
+            "factors": _canonical_factors(factors),
+        }) == sha
+    )
+
+
+def _factors_are_legal(
+    factors: Sequence[tuple[tuple[float, float], float]],
+) -> bool:
+    return all(
+        math.isfinite(lower) and math.isfinite(upper) and lower < upper
+        and math.isfinite(factor) and factor > 0.0
+        for (lower, upper), factor in factors
+    )
+
+
 def load_band_table(
     conn: sqlite3.Connection,
     *,
     stage: str = "P0",
     table_sha256: str | None = None,
+    as_of_utc: str | None = None,
 ) -> tuple[tuple[tuple[tuple[float, float], float], ...], str] | None:
     """The stage's active table, or the pinned version an artifact names.
 
     A pinned sha that is missing fails closed: the artifact's scored math
     cannot be reproduced, so it must not be served an approximation.
+
+    A pinned sha is also held to what it claims to be (model-layer review
+    2026-09-13, R6): the row must belong to the caller's stage, its factors
+    must be legal, and its bytes must hash to the sha.  The lookup used to
+    trust the string, so a P1 table loaded cleanly as P0.
+
+    ``as_of_utc`` answers the retirement question at a moment instead of now.
+    Serving passes nothing and stops using a vetoed table the moment the veto
+    lands, which is the design.  A replay of a past decision passes that
+    decision's time, so the same pin reads the same factors whatever day the
+    replay runs on.  It governs only a pinned read; which table was ACTIVE at
+    a moment is ``band_table_as_of``'s question.
 
     Two elements, as it has always returned: this function has nine callers
     and widening it broke four of them the first time it was tried.  A
@@ -416,7 +469,7 @@ def load_band_table(
         try:
             row = conn.execute(
                 "SELECT band_table_sha256, factors_json, COALESCE(axis, ?),"
-                " retired_at_utc"
+                " retired_at_utc, stage"
                 " FROM calibration_band_reliability_table"
                 " WHERE band_table_sha256=?",
                 (BAND_AXIS_CLAIM, str(table_sha256)),
@@ -432,15 +485,30 @@ def load_band_table(
             # The station-width lane shut nine decisions out this way on
             # 2026-09-10 before the same guard was added there.
             legacy = conn.execute(
-                "SELECT band_table_sha256, factors_json, COALESCE(axis, ?)"
+                "SELECT band_table_sha256, factors_json, COALESCE(axis, ?),"
+                " stage"
                 " FROM calibration_band_reliability_table"
                 " WHERE band_table_sha256=?",
                 (BAND_AXIS_CLAIM, str(table_sha256)),
             ).fetchone()
-            row = (*legacy, None) if legacy else None
+            row = (*legacy[:3], None, legacy[3]) if legacy else None
         if row is None:
             raise ContractError("band_reliability_pinned_table_missing")
-        if row[3]:
+        requested_stage = _check_stage(stage)
+        if str(row[4]) != requested_stage:
+            raise ContractError("band_reliability_pinned_table_stage_mismatch")
+        pinned_factors = tuple(
+            ((float(cell[0][0]), float(cell[0][1])), float(cell[1]))
+            for cell in json.loads(row[1])
+        )
+        if not _factors_are_legal(pinned_factors):
+            raise ContractError("band_reliability_pinned_table_factors_invalid")
+        if not _pinned_identity_holds(
+            str(table_sha256), pinned_factors,
+            stage=requested_stage, axis=str(row[2]),
+        ):
+            raise ContractError("band_reliability_pinned_table_content_mismatch")
+        if row[3] and (as_of_utc is None or str(row[3]) <= str(as_of_utc)):
             # Pinned to a version the lane VETOED.  The pin exists so that
             # serving reproduces the table the gate scored; the veto is the
             # settled finding that the table was wrong.  Honouring the pin
@@ -462,6 +530,7 @@ def load_band_table_with_axis(
     *,
     stage: str = "P0",
     table_sha256: str | None = None,
+    as_of_utc: str | None = None,
 ) -> tuple[
     tuple[tuple[tuple[float, float], float], ...], str, str
 ] | None:
@@ -476,7 +545,9 @@ def load_band_table_with_axis(
     no stored table changes meaning.
     """
 
-    loaded = load_band_table(conn, stage=stage, table_sha256=table_sha256)
+    loaded = load_band_table(
+        conn, stage=stage, table_sha256=table_sha256, as_of_utc=as_of_utc
+    )
     if loaded is None:
         return None
     factors, sha = loaded
