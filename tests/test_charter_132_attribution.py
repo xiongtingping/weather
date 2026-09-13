@@ -104,3 +104,30 @@ def test_an_unknown_exchange_outcome_is_never_booked():
     assert [leg["intent"] for leg in legs] == ["f"]
     assert counts["unknown_outcome"] == 1
     assert legs[0]["y"] == 1.0 and legs[0]["ask"] == pytest.approx(0.42)
+
+
+def test_the_page_reads_the_attribution_through_the_reports_own_functions(monkeypatch):
+    """The dashboard's banner and the research report must not hold two
+    copies of what a loss is made of: the collector calls these functions."""
+
+    import calibration_dashboard as C
+
+    calls = []
+
+    def fake_load(conn):
+        calls.append("load")
+        return [_leg(intent="f", filled=5.0, y=1.0)], {"intents": 1}
+
+    real_attribute = A.attribute
+
+    def spy_attribute(legs):
+        calls.append("attribute")
+        return real_attribute(legs)
+
+    monkeypatch.setattr(A, "load_legs", fake_load)
+    monkeypatch.setattr(A, "attribute", spy_attribute)
+    got = C.collect_valuation_lane(sqlite3.connect(":memory:"))
+    assert calls == ["load", "attribute"]
+    assert got["attribution"]["by_stage"]["all"]["legs"] == 1
+    assert got["attribution"]["counts"] == {"intents": 1}
+    assert got["mode"] in {"off", "shadow", "on"}

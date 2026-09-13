@@ -8729,9 +8729,27 @@ def collect_valuation_lane(conn: sqlite3.Connection) -> dict[str, Any]:
         vintage = lambda_vintage_status(conn)
     except sqlite3.Error:
         vintage = {}
+    # The live book's dollars, split along the chain by the same functions
+    # the research report uses (scripts/edge_attribution.py), so the page and
+    # the report cannot disagree about what a loss is made of.
+    attribution: dict[str, Any] | None = None
+    try:
+        import edge_attribution  # noqa: PLC0415
+
+        legs, counts = edge_attribution.load_legs(conn)
+        attribution = {**edge_attribution.attribute(legs), "counts": counts}
+    except (ImportError, sqlite3.Error, ValueError, KeyError, TypeError):
+        attribution = None
+    try:
+        from bayes_basket_target.basket_kernel.valuation_v1 import (  # noqa: PLC0415
+            VALUATION_MODE,
+        )
+    except ImportError:
+        VALUATION_MODE = None  # noqa: N806
     out.update({
         "available": True, "stages": stages, "shadow": shadow,
-        "lambda_vintage": vintage,
+        "lambda_vintage": vintage, "attribution": attribution,
+        "mode": VALUATION_MODE,
     })
     return out
 
@@ -12374,6 +12392,102 @@ function betaSubsets(C){
 // Charter 132: the valuation lane.  The promotion condition is printed on
 // the page with the numbers a ruling would read, so "hold" is never a word
 // without its reasons.
+// The conclusion, said on the page in the words a ruling would use (user
+// ruling, 2026-09-13: 前端增加显式).  Every sentence is conditioned on the
+// numbers under it -- a stage whose lambda arm stops losing drops out of the
+// headline, a verdict that turns admitted changes the "do not switch on"
+// line -- so the banner cannot go on saying what the record no longer does.
+function valuationConclusion(V){
+  const stages=V.stages||[];
+  if(!stages.length) return "";
+  const pc=v=>v==null?"—":((v>=0?"+":"")+(v*100).toFixed(1)+"%");
+  const n3=v=>v==null?"—":(+v).toFixed(3);
+  const money=v=>v==null?"—":((v>=0?"+$":"−$")+Math.abs(v).toFixed(2));
+  const verdictOf=st=>((st.verdict||{}).verdict)||"无裁决";
+  const allHold=stages.every(st=>verdictOf(st)!=="admitted");
+  // A stage whose walk-forward stood on fewer than ten test days is shown,
+  // tagged, and kept out of the headline: one day's interval is an interval,
+  // not a finding about the stage.
+  const thin=st=>((st.verdict||{}).test_days||0)<10;
+  const losing=stages.filter(st=>{
+    if(thin(st)) return false;
+    const a=(((st.verdict||{}).arms)||{}).lambda||{};
+    return a.roi_ci&&a.roi_ci[1]!=null&&a.roi_ci[1]<0;
+  });
+  const behind=stages.filter(st=>{
+    if(thin(st)) return false;
+    const c=(st.verdict||{}).weather_minus_market_ci;
+    return c&&c[1]!=null&&c[1]<0;
+  });
+  const betaZero=stages.filter(st=>(st.served||{}).beta_ucb!=null&&(st.served||{}).beta_ucb<=0.1);
+  const heads=[];
+  if(losing.length) heads.push(`现役 λ 策略在 <b>${losing.map(st=>st.stage).join("、")}</b> 显著亏钱`);
+  if(behind.length) heads.push(`天气模型的预报在 <b>${behind.map(st=>st.stage).join("、")}</b> 比市场报价差`);
+  if(allHold) heads.push("统一估值三阶段均未通过晋升");
+  const tone=losing.length||behind.length?"red":(allHold?"amber":"green");
+  const tiles=stages.map(st=>{
+    const v=st.verdict||{}, a=((v.arms||{}).lambda)||{}, s=st.served||{};
+    const wm=v.weather_minus_market, wc=v.weather_minus_market_ci||[];
+    return `<div style="flex:1;min-width:200px;padding:10px 12px;border-radius:10px;
+      border:1px solid var(--line);background:var(--bar-bg)">
+      <div style="display:flex;align-items:center;gap:8px"><b>${h(st.stage)}</b>
+        ${thin(st)?`<span class="pill amber" title="前瞻测试日不足 10 天，读数只作参考，不进结论句">样本薄 · ${v.test_days||0} 天</span>`:""}
+        <span style="flex:1"></span><span class="pill ${verdictOf(st)==="admitted"?"green":"amber"}">${h(verdictOf(st))}</span></div>
+      <div class="muted" style="font-size:11.5px;margin-top:8px">现役 λ 按股收益（前瞻）</div>
+      <div style="font-size:24px;font-weight:800;color:var(${a.roi!=null&&a.roi<0?"--red":"--green"})">${pc(a.roi)}</div>
+      <div class="muted" style="font-size:11.5px">90% [${pc((a.roi_ci||[])[0])}, ${pc((a.roi_ci||[])[1])}] · ${a.station_days==null?"—":a.station_days} 站日</div>
+      <div class="muted" style="font-size:11.5px;margin-top:8px">天气 − 市场 对数得分</div>
+      <div style="font-size:18px;font-weight:700;color:var(${wm!=null&&wm<0?"--red":"--text"})">${n3(wm)} nat</div>
+      <div class="muted" style="font-size:11.5px">90% [${n3(wc[0])}, ${n3(wc[1])}] · 混合权重 β ${s.beta==null?"—":(+s.beta).toFixed(2)}</div>
+    </div>`;
+  }).join("");
+  const A=V.attribution||null;
+  const all=A&&A.by_stage&&A.by_stage.all;
+  let waterfall="";
+  if(all&&all.legs){
+    const parts=[
+      ["以为占到的便宜（声称 − 决策卖价）",all.claimed_edge],
+      ["执行（成交价比决策卖价便宜）",all.execution],
+      ["市场当时已说我们判断偏高",all.market_correction],
+      ["结果相对市场参考的偏差",all.residual],
+    ];
+    const scale=Math.max(...parts.map(p=>Math.abs(p[1]||0)),Math.abs(all.total||0))||1;
+    const bar=(label,v,strong)=>`<div style="display:grid;grid-template-columns:minmax(150px,230px) 1fr 80px;gap:8px;align-items:center;margin-top:4px">
+      <div style="font-size:12px${strong?";font-weight:700":""}">${label}</div>
+      <div style="position:relative;height:14px;background:var(--bar-bg);border-radius:4px">
+        <div style="position:absolute;top:0;bottom:0;${v>=0?"left:50%":"right:50%"};width:${(Math.abs(v)/scale*50).toFixed(1)}%;
+          background:var(${v>=0?"--green":"--red"});border-radius:3px;opacity:${strong?1:.8}"></div>
+        <div style="position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--muted)"></div></div>
+      <div class="mono" style="text-align:right;font-size:12px${strong?";font-weight:700":""}">${money(v)}</div></div>`;
+    const sel=A.selection||{};
+    const f=sel.filled, u=sel.unfilled;
+    waterfall=`<div style="margin-top:12px">
+      <div style="font-size:12.5px"><b>实盘每一美元去了哪</b>
+        <span class="muted">（${all.legs} 条成交腿 · ${all.station_days} 站日 · 成本 $${(+all.cost).toFixed(2)} · 回报 ${pc(all.roi)}
+        [${pc((all.roi_ci||[])[0])}, ${pc((all.roi_ci||[])[1])}]）</span></div>
+      ${parts.map(p=>bar(p[0],p[1],false)).join("")}
+      ${bar("合计",all.total,true)}
+      ${f&&u?`<div style="font-size:12.5px;margin-top:8px"><b>成交本身在挑差的：</b>
+        成交的 ${f.legs} 条腿比市场参考少落桶 <b style="color:var(--red)">${(Math.abs(f.outcome_minus_market)*100).toFixed(1)} 点</b>，
+        没成交的 ${u.legs} 条多落 ${(u.outcome_minus_market*100).toFixed(1)} 点——
+        逆选择 <b>${(sel.adverse_selection_points*100).toFixed(1)} 点</b>。挂单省下的钱被挑走的腿吃回去了。</div>`:""}
+    </div>`;
+  }
+  const asks=[];
+  if(losing.length) asks.push(`<li><b>是否停止新开仓</b>——现役策略在 ${losing.map(st=>st.stage).join("、")} 的前瞻收益上界都小于 0。这是你的裁决，页面只给证据。</li>`);
+  if(allHold) asks.push(`<li><b>不要切 on</b>（当前 <span class="mono">PM_VALUATION_MODE=${h(V.mode||"shadow")}</span>）——裁决为 hold 的阶段在 on 下会整阶段停手。</li>`);
+  if(behind.length) asks.push(`<li><b>不要再加新的乘子或子集筛选</b>——能改变结论的只有概率模型本身变好（β 升上去）；复查：<span class="mono">scripts/valuation_four_arm.py --stage all</span>。</li>`);
+  return `<div class="card" style="border:2px solid var(--${tone});margin:6px 0 12px">
+    <div style="font-size:12px;letter-spacing:.04em" class="muted">结论</div>
+    <div style="font-size:18px;font-weight:800;margin-top:2px;line-height:1.45">${heads.join("；")||"暂无结论"}。</div>
+    <div style="font-size:12.5px;margin-top:4px">大白话：市场报价本身就是一份天气预报，而且比我们准；花过路费跟它对赌没有依据。</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">${tiles}</div>
+    ${waterfall}
+    ${asks.length?`<div style="margin-top:12px;padding:10px 12px;border-radius:8px;background:var(--pill-amber-bg)">
+      <div style="font-size:12.5px"><b>需要你裁决</b></div><ol style="margin:6px 0 0 18px;padding:0;font-size:12.5px;line-height:1.6">${asks.join("")}</ol></div>`:""}
+  </div>`;
+}
+
 function valuationLane(){
   const V=D.valuation_lane||{};
   if(!V.available) return "";
@@ -12416,9 +12530,11 @@ function valuationLane(){
   }).join("");
   const sh=V.shadow||{};
   const states=Object.entries(sh.states||{}).map(([k,c])=>`${h(k)} ${c}`).join(" · ")||"重启后开始记录";
+  const banner=valuationConclusion(V);
   const vint=Object.values(V.lambda_vintage||{});
   const stale=vint.filter(x=>x.verdict!=="current").length;
   return `<h2>统一估值车道（宪章 132）</h2>
+  ${banner}
   <p class="sub">市场盘口是第二份预报：<span class="mono">p_value = (1−β)·市场 + β·天气</span>，
   β 在真值桶的对数得分上拟合；保守性放在动作上（抽样向量集上取收益 5% 分位）。
   <b>β = 0 表示天气模型在市场之外没有增量信息。</b>默认影子，只记录不改裁决；切 on 需该阶段裁决为 admitted。</p>
