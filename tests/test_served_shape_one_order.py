@@ -47,15 +47,6 @@ LIVE_P0_BAND = (
 KEYS = [str(index) for index in range(7)]
 
 
-@pytest.fixture(autouse=True)
-def _map_the_fixture_station_season(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The pipeline fixtures build station ``TEST``, which no season map holds."""
-
-    from bayes_basket_target import station_season
-
-    monkeypatch.setitem(station_season._SEASON_ANCHOR_MONTH, "TEST", 7)
-
-
 VECTOR = {"0": 0.03, "1": 0.09, "2": 0.18, "3": 0.28, "4": 0.22,
           "5": 0.13, "6": 0.07}
 

@@ -32,13 +32,6 @@ OLD = (((0.0, 1.0), 1.1), ((1.0, 99.0), 0.9))
 NEW = (((0.0, 1.0), 1.2), ((1.0, 99.0), 0.8))
 
 
-@pytest.fixture(autouse=True)
-def _map_the_fixture_station_season(monkeypatch: pytest.MonkeyPatch) -> None:
-    from bayes_basket_target import station_season
-
-    monkeypatch.setitem(station_season._SEASON_ANCHOR_MONTH, "TEST", 7)
-
-
 def _band(conn, factors, at):
     return persist_and_activate_band_table(
         conn, stage="P0", factors=factors, evidence={"schema": "test"},

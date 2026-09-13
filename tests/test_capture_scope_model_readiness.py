@@ -97,7 +97,13 @@ def test_runs_come_from_the_archive_contracts_not_a_fixed_cycle() -> None:
     assert set(runs) == set(OFFICIAL_ARCHIVE_SCOPE_CONTRACTS)
     for system_id, run in runs.items():
         contract = OFFICIAL_ARCHIVE_SCOPE_CONTRACTS[system_id]["leads"]["d2"]
-        assert run.strftime("%HZ") == contract["run_cycle"]
+        # A lead contracts a list of cycles (ECCC reads 00Z and 12Z at d2);
+        # the schedule names the latest, its conservative readiness bound.
+        cycles = [contract] if isinstance(contract, dict) else list(contract)
+        assert run.strftime("%HZ") == max(
+            (entry["run_cycle"] for entry in cycles),
+            key=lambda cycle: int(cycle[:-1]),
+        )
         # The lead is the number of days between the run and the event date.
         assert run.date().isoformat() == "2026-08-07"
     assert len({run.hour for run in runs.values()}) > 1
@@ -113,7 +119,10 @@ def test_scope_is_ready_once_two_families_have_landed() -> None:
 
     assert MIN_CROSS_ENSEMBLE_FAMILIES == 2
     assert scope_ready_at_utc("2026-08-09", lead_days=2) == ready[1]
-    assert ready[0] < scope_ready_at_utc("2026-08-09", lead_days=2) < ready[-1]
+    # ECCC and ICON both publish their latest d2 run at 12Z, so the first two
+    # families can land together; what must hold is that the scope does not
+    # wait for the last one.
+    assert ready[0] <= scope_ready_at_utc("2026-08-09", lead_days=2) < ready[-1]
 
 
 def test_a_station_day_is_captured_once_per_lead() -> None:

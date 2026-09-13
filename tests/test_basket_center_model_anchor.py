@@ -66,8 +66,12 @@ def _weighted_center(centers: dict[str, float], weights: dict[str, float]) -> st
 
 
 def test_live_zuuu_edge_bucket_wins_the_probability_argmax() -> None:
-    # Establishes the defect this anchor exists to prevent.
-    assert _center(_buckets(ZUUU)).bucket == "35°C or higher"
+    # Establishes the defect this anchor exists to prevent: the edge bucket
+    # IS the argmax.  Since charter 75 ``_center`` reads the mean bucket
+    # first, so the defect no longer reaches the basket even unanchored.
+    argmax = max(ZUUU, key=lambda bucket: (ZUUU[bucket], -ORDINALS[bucket]))
+    assert argmax == "35°C or higher"
+    assert _center(_buckets(ZUUU)).bucket == "33°C"
 
 
 def test_live_zuuu_anchors_on_the_model_center_instead() -> None:
@@ -115,12 +119,24 @@ def test_anchor_uses_system_weights_not_a_plain_mean() -> None:
 
 
 def test_missing_anchor_falls_back_to_probability_argmax() -> None:
-    # Stages that publish no anchor keep the previous behaviour.
-    assert _center(_buckets(ZUUU), model_center_ordinal=None).bucket == (
-        "35°C or higher"
+    """Charter 75's order: mean bucket, then the model centre, then argmax.
+
+    A vector with mass anchors on its mean whether or not a stage publishes
+    a model centre; the centre and the argmax only answer for a vector with
+    no mass, where there is no mean to read.
+    """
+
+    assert _center(_buckets(ZUUU), model_center_ordinal=None).bucket == "33°C"
+    massless = _buckets({})
+    assert _center(massless, model_center_ordinal=ORDINALS["31°C"]).bucket == (
+        "31°C"
+    )
+    assert _center(massless, model_center_ordinal=None).bucket == (
+        "25°C or below"
     )
 
 
 def test_anchor_outside_the_quoted_bucket_set_fails_closed() -> None:
+    # Only reachable when the anchor is consulted, i.e. on a massless vector.
     with pytest.raises(ContractError, match="support_model_center_bucket_absent"):
-        _center(_buckets(ZUUU), model_center_ordinal=99)
+        _center(_buckets({}), model_center_ordinal=99)

@@ -49,6 +49,17 @@ _AIFS = {
 }
 
 
+# What one ``capture_scope`` request carries.  The request asks for the global
+# products only (``GLOBAL_ENSEMBLE_SYSTEMS``, since 81d119f0); the regional
+# AIFS Europe product is catalogued and pooled above but captured on its own
+# lane, so a packet built here holds the global AIFS alone.
+_CAPTURED_AIFS = {
+    system_id: expected
+    for system_id, expected in _AIFS.items()
+    if expected["model_scope"] == "global"
+}
+
+
 def _model_pool() -> dict[str, object]:
     return json.loads(_MODEL_POOL_PATH.read_text(encoding="utf-8"))
 
@@ -163,8 +174,8 @@ def test_aifs_candidate_ingress_is_idempotent_and_never_native(
         str(row["ensemble_system_id"]): row
         for row in packet["systems"]  # type: ignore[index]
     }
-    assert set(systems) == set(_AIFS)
-    for system_id in _AIFS:
+    assert set(systems) == set(_CAPTURED_AIFS)
+    for system_id in _CAPTURED_AIFS:
         authority = systems[system_id]["candidate_authority"]
         assert authority == {
             "source_role": "aggregator_republisher",
@@ -178,9 +189,9 @@ def test_aifs_candidate_ingress_is_idempotent_and_never_native(
     first = ingest_forward_packet(conn, packet)
     second = ingest_forward_packet(conn, packet)
     assert first["counts"] == {
-        "systems": 2,
-        "member_runs": 102,
-        "member_buckets": 2,
+        "systems": len(_CAPTURED_AIFS),
+        "member_runs": 51 * len(_CAPTURED_AIFS),
+        "member_buckets": 1 * len(_CAPTURED_AIFS),
     }
     assert second["counts"] == {
         "systems": 0,
@@ -192,7 +203,11 @@ def test_aifs_candidate_ingress_is_idempotent_and_never_native(
         "FROM calibration_republisher_ensemble_member_bucket "
         "GROUP BY source_role,authority_scope"
     ).fetchall()
-    assert rows == [("aggregator_republisher", "PRODUCTION_NO_LIVE_CANDIDATE", 2)]
+    assert rows == [(
+        "aggregator_republisher",
+        "PRODUCTION_NO_LIVE_CANDIDATE",
+        len(_CAPTURED_AIFS),
+    )]
     assert conn.execute(
         "SELECT count(*) FROM calibration_native_ensemble_system"
     ).fetchone()[0] == 0
@@ -279,7 +294,9 @@ def test_republisher_ingress_reuses_immutable_legacy_product_contract(
 
     result = ingest_forward_packet(conn, packet)
     assert result["state"] == "COMMITTED"
-    assert result["counts"]["systems"] == 1
+    # The packet's only product is the one already on the book, so nothing is
+    # inserted: the legacy row is validated and reused, never rewritten.
+    assert result["counts"]["systems"] == 0
     assert conn.execute(
         "SELECT publication_contract_version,content_sha256 "
         "FROM calibration_republisher_ensemble_product "
