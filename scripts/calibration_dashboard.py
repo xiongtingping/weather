@@ -4872,8 +4872,97 @@ def collect_center_width(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 int(last[4]) if last else (int(active[3]) if active else 0)
             ),
             **_evidence_clock(conn, stage),
+            **_taf_cell_reading(conn, stage),
         })
     return rows
+
+
+TAF_CELL_LABELS = {
+    "same": "TAF 与中心同档",
+    "adjacent": "差 1 档",
+    "far": "差 2 档及以上",
+    "none": "TAF 不带 TX",
+}
+
+
+def _taf_cell_reading(conn: sqlite3.Connection, stage: str) -> dict[str, Any]:
+    """Where each TAF width cell stands, for the stage that serves them.
+
+    The census comes from the newest fit journal row -- the activated table
+    row is only rewritten when the served numbers change, and every cell
+    still accumulating changes nothing -- and what serves comes from the
+    activated row.  A census written under a retired cell rule is not
+    shown as this rule's progress: the direction cells counted different
+    days.
+    """
+
+    try:
+        from bayes_basket_target.center_width_store import (
+            MIN_QUALIFYING_CELLS,
+            MIN_QUALIFYING_DAYS,
+            TAF_CELL_NAMES,
+            TAF_CELL_RULE,
+            TAF_CELL_STAGES,
+        )
+    except ImportError:
+        return {}
+    if stage not in TAF_CELL_STAGES:
+        return {}
+    census: dict[str, Any] = {}
+    fitted_at = None
+    try:
+        row = conn.execute(
+            "SELECT evidence_json, fitted_at_utc"
+            " FROM calibration_center_width_fit_journal"
+            " WHERE stage=? ORDER BY fitted_at_utc DESC LIMIT 1",
+            (stage,),
+        ).fetchone()
+        if row and row[0]:
+            census = json.loads(row[0]).get("taf_cells") or {}
+            fitted_at = row[1]
+    except (sqlite3.OperationalError, ValueError, TypeError, AttributeError):
+        census = {}
+    served: dict[str, Any] = {}
+    try:
+        row = conn.execute(
+            "SELECT taf_cells_json FROM calibration_center_width_table"
+            " WHERE activated=1 AND stage=?",
+            (stage,),
+        ).fetchone()
+        if row and row[0]:
+            served = json.loads(row[0])
+    except (sqlite3.OperationalError, ValueError, TypeError):
+        served = {}
+    cells = []
+    for name in TAF_CELL_NAMES:
+        entry = census.get(name) if isinstance(census, dict) else None
+        entry = entry if isinstance(entry, dict) and entry.get("rule") == TAF_CELL_RULE else {}
+        cell = served.get(name) if isinstance(served, dict) else None
+        cells.append({
+            "name": name,
+            "label": TAF_CELL_LABELS.get(name, name),
+            "day_count": entry.get("day_count"),
+            "cell_count": entry.get("cell_count"),
+            "state": entry.get("state"),
+            "forward_nll_gain": entry.get("forward_nll_gain_vs_pooled"),
+            "candidate_taf_delta_c": entry.get("candidate_taf_delta_c"),
+            "candidate_width_lambda": entry.get("candidate_width_lambda"),
+            # (anchor shift, shift along the TAF, width) when served
+            "served": (
+                [float(value) for value in cell]
+                if isinstance(cell, list) and len(cell) == 3 else None
+            ),
+        })
+    return {
+        "taf_cells": {
+            "rule": TAF_CELL_RULE,
+            "measured": any(cell["state"] for cell in cells),
+            "fitted_at_utc": fitted_at,
+            "min_days": MIN_QUALIFYING_DAYS,
+            "min_cells": MIN_QUALIFYING_CELLS,
+            "cells": cells,
+        }
+    }
 
 
 def _refit_countdown(serving_days: int) -> dict[str, Any]:
@@ -14511,6 +14600,51 @@ function centerWidth(){
         "。日期按每天攒一天算，是<b>最早</b>——格子不够的日子不算，" +
         "而服务版本一动，进度整条清零重来（见下方证据时钟）。"}</div></div>`;
   };
+  // Charter 57's cells (user ruling, 2026-09-13: 看板加 TAF 格).  The two
+  // numbers above serve every P0-M day; a cell replaces them on the days
+  // the TAF sits that far from the model centre, once it clears the same
+  // hurdles, with its shift turned toward the forecaster.
+  const tafCells = r => {
+    const t = r.taf_cells;
+    if(!t) return "";
+    const stateText = {ACCUMULATING: "攒证据中", ADMITTED: "前瞻胜出",
+      REFUSED_FORWARD: "前瞻没赢"};
+    const lines = (t.cells || []).map(c => {
+      const served = c.served;
+      const pill = served ? `<span class="pill green">服务中</span>`
+        : c.state ? `<span class="pill ${c.state === "REFUSED_FORWARD"
+            ? "green" : "amber"}">${h(stateText[c.state] || c.state)}</span>`
+        : `<span class="pill amber">未读</span>`;
+      const count = (v, need, unit) => v == null ? "—" :
+        `<b>${v.toLocaleString()}</b>/${need}${unit}`;
+      const detail = served
+        ? `δ ${served[0] >= 0 ? "+" : ""}${served[0].toFixed(2)} ` +
+          `± ${served[1].toFixed(2)}（朝 TAF） · λ ${served[2].toFixed(3)}`
+        : c.forward_nll_gain == null ? ""
+        : `候选 δ ±${Math.abs(c.candidate_taf_delta_c).toFixed(2)} · ` +
+          `λ ${c.candidate_width_lambda.toFixed(3)} · 收益 ` +
+          c.forward_nll_gain.toFixed(4);
+      return `<tr style="white-space:nowrap"><td>${h(c.label)}</td>
+        <td style="text-align:right">${count(c.day_count, t.min_days, " 天")}</td>
+        <td style="text-align:right">${count(c.cell_count, t.min_cells, " 格")}</td>
+        <td>${pill}</td></tr>${detail ? `<tr><td colspan="4" class="muted"
+        style="font-size:11px;padding-top:0">${detail}</td></tr>` : ""}`;
+    }).join("");
+    return `<div style="margin-top:12px;border-top:1px solid
+      rgba(128,128,128,.25);padding-top:8px">
+      <b>TAF 格</b> <span class="muted" style="font-size:11.5px">按 TAF 最高温离
+      模型中心几档分；某格准入后，那类日子改用该格自己的一对数，位移朝 TAF 那一侧。
+      没准入就照用上面两个数。</span>
+      ${t.measured ? `<div style="overflow-x:auto"><table
+        style="margin-top:6px;font-size:12px"><thead><tr><th>格</th><th>天</th>
+        <th>格子</th><th>状态</th></tr></thead><tbody>${lines}</tbody></table></div>
+      <div class="muted" style="font-size:11.5px">每格要 ${t.min_days} 天且
+        ${t.min_cells} 个格子、并在前瞻上赢过上面那对数才准入；上面两个数攒够之前，
+        格只计数不评分。</div>`
+      : `<div class="muted" style="font-size:11.5px;margin-top:4px">
+        距离档规则还没跑过一次拟合，下一轮拟合后出第一份计数。</div>`}
+    </div>`;
+  };
   const cards = rows.map(r => `<div class="card">
     <div style="display:flex;align-items:center;gap:8px">
       <span class="dot ${r.health}"></span><b>${h(r.stage)}</b>
@@ -14538,6 +14672,7 @@ function centerWidth(){
       这两个数不是缺数据，是这一层<b>此刻真正在服务的值</b>：没有生效行时
       运行时原样放行分布（δ=0、λ=1），分布一点没被动过。</div>` : ""}
     ${countdown(r)}
+    ${tafCells(r)}
     <div class="muted" style="margin-top:10px">
       证据 ${r.serving_days} 天${r.min_qualifying_days
         ? " / 需 " + r.min_qualifying_days + " 天" : ""}${r.serving_cells ?

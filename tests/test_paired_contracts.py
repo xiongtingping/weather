@@ -24,6 +24,7 @@ belong here -- it belongs in a test of its own, next to the code.
 
 from __future__ import annotations
 
+import ast
 import inspect
 import re
 import unittest
@@ -217,6 +218,18 @@ def _reads_key(relative: str, anchor: str, needle: str) -> bool:
     source = _source(relative)
     if anchor not in source:
         raise AssertionError(f"anchor missing in {relative}: {anchor}")
+    if anchor.startswith("def "):
+        # A function anchor reads the whole function.  A fixed window went
+        # stale on its own: ``served_arithmetic_anchor`` grew a declared-
+        # start early return and its MIN(decision_at_utc) scan slid past
+        # 4,000 characters while the contract it guards still held.
+        name = anchor[len("def "):].split("(")[0].strip()
+        for node in ast.walk(ast.parse(source)):
+            if (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == name
+            ):
+                return needle in (ast.get_source_segment(source, node) or "")
     start = source.index(anchor)
     return needle in source[start:start + 4000]
 

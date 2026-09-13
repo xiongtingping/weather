@@ -26,7 +26,7 @@ from .center_width_calibration import (
     apply_center_width_calibration,
     bucket_centers_from_intervals,
 )
-from .center_width_store import EDGE_WIDTH_C, taf_direction_for_gap
+from .center_width_store import EDGE_WIDTH_C, serve_taf_cell
 from .band_reliability_store import (
     BAND_AXIS_CENTRE_DISTANCE,
     BAND_AXIS_CLAIM,
@@ -1125,6 +1125,34 @@ def _posterior(
     })
 
 
+def _serve_taf_cell_for_root(
+    center_width: tuple[float, float, str] | None,
+    taf_cells: Mapping[str, Sequence[float]] | None,
+    *,
+    root: ProbabilityEnvelope,
+    tx_c: float | None,
+) -> tuple[tuple[float, float, str] | None, str | None]:
+    """The charter-57 cell for a P0-M decision, read off its root."""
+
+    if center_width is None or not taf_cells:
+        return center_width, None
+    raw_center = root.lineage.get("model_center_c")
+    try:
+        root_center = (
+            None if raw_center in (None, "", "NONE") else float(raw_center)
+        )
+    except (TypeError, ValueError):
+        root_center = None
+    axis = _bucket_centers_c(root.lineage, bucket_ordinals=root.bucket_ordinals)
+    return serve_taf_cell(
+        center_width,
+        taf_cells,
+        tx_c=None if tx_c is None else float(tx_c),
+        root_center_c=root_center,
+        key_centers_c=None if axis is None else axis[1],
+    )
+
+
 def materialize_p0m_observed(
     predecessor: ProbabilityEnvelope | Mapping[str, Any],
     *,
@@ -1231,34 +1259,19 @@ def materialize_p0m_observed(
     values["p0_root_content_sha256"] = root.content_sha256
     values["p0_root_posterior_sha256"] = root.posterior_sha256
     values["revision_mode"] = "observed_without_artifact"
-    # Charter 57: the day's TAF direction picks which fitted cell of the
-    # active table serves this decision.  The gap rule is the store's own
-    # (``taf_direction_for_gap``), read against the root's centre, so the
+    # Charter 57: how far the day's TAF sits from the root's centre, in rungs
+    # of the root's own ladder, picks which fitted cell of the active table
+    # serves this decision, and the cell's shift is served along the TAF's
+    # direction.  The rule is the store's own (``serve_taf_cell``), so the
     # fit and the serve classify a day identically; the table sha is
     # unchanged because the cells are part of the pinned version, and the
-    # lineage records which cell was chosen.  A direction with no admitted
-    # cell serves the pooled scalars, which is also every day until the
+    # lineage records which cell the day belonged to.  A cell not yet
+    # admitted serves the pooled scalars, which is also every day until the
     # first cell earns its way in.
-    if center_width is not None and center_width_taf_cells:
-        raw_center = root.lineage.get("model_center_c")
-        try:
-            root_center = (
-                None if raw_center in (None, "", "NONE")
-                else float(raw_center)
-            )
-        except (TypeError, ValueError):
-            root_center = None
-        gap = (
-            None
-            if taf_tx_c is None or root_center is None
-            else float(taf_tx_c) - root_center
-        )
-        cell_name = taf_direction_for_gap(gap)
-        pair = center_width_taf_cells.get(cell_name)
-        if pair is not None:
-            center_width = (
-                float(pair[0]), float(pair[1]), center_width[2],
-            )
+    center_width, cell_name = _serve_taf_cell_for_root(
+        center_width, center_width_taf_cells, root=root, tx_c=taf_tx_c,
+    )
+    if cell_name is not None:
         values["center_width_taf_cell"] = cell_name
     return _posterior(
         root,
@@ -1400,27 +1413,12 @@ def materialize_p0m(
         )
     _sha("forecast_source_object_sha256", values["forecast_source_object_sha256"])
     # Charter 57, same selection as the observed path: the proof's own TX
-    # against the root centre picks the fitted cell; a direction with no
-    # admitted cell serves the pooled scalars.
-    if center_width is not None and center_width_taf_cells:
-        raw_center = root.lineage.get("model_center_c")
-        try:
-            root_center = (
-                None if raw_center in (None, "", "NONE")
-                else float(raw_center)
-            )
-        except (TypeError, ValueError):
-            root_center = None
-        gap = (
-            None if root_center is None
-            else float(proof.taf_tx_c) - root_center
-        )
-        cell_name = taf_direction_for_gap(gap)
-        pair = center_width_taf_cells.get(cell_name)
-        if pair is not None:
-            center_width = (
-                float(pair[0]), float(pair[1]), center_width[2],
-            )
+    # against the root centre picks the fitted cell.
+    center_width, cell_name = _serve_taf_cell_for_root(
+        center_width, center_width_taf_cells, root=root,
+        tx_c=float(proof.taf_tx_c),
+    )
+    if cell_name is not None:
         values["center_width_taf_cell"] = cell_name
     # Charter 61: the observed-high fact, recorded and applied exactly as
     # on the observed path.

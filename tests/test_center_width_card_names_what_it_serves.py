@@ -137,3 +137,55 @@ def test_an_acknowledged_fingerprint_still_names_its_boundary(monkeypatch):
     assert reading["discrepancy"] is False
     # The lamp is out and the boundary is still named.
     assert reading["served_version"] == "served_v4"
+
+
+def test_the_p0m_card_carries_its_taf_cells_and_ignores_a_retired_census():
+    import json
+
+    from bayes_basket_target.center_width_store import TAF_CELL_RULE
+
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        "CREATE TABLE calibration_center_width_table ("
+        "  stage TEXT, delta_c REAL, width_lambda REAL, evidence_json TEXT,"
+        "  fitted_at_utc TEXT, serving_day_count INTEGER, activated INTEGER,"
+        "  center_width_sha256 TEXT, taf_cells_json TEXT);"
+        "CREATE TABLE calibration_center_width_fit_journal ("
+        "  stage TEXT, fitted_at_utc TEXT, outcome TEXT, delta_c REAL,"
+        "  width_lambda REAL, serving_day_count INTEGER,"
+        "  serving_cell_count INTEGER, forward_nll_gain REAL,"
+        "  evidence_json TEXT);"
+    )
+    conn.execute(
+        "INSERT INTO calibration_center_width_table VALUES"
+        "('P0-M',0.05,0.9,'{}','2026-09-08T00:00:00Z',8,1,'sha',?)",
+        (json.dumps({"far": [0.05, 0.4, 1.1]}),),
+    )
+    census = {
+        "same": {"rule": TAF_CELL_RULE, "day_count": 3, "cell_count": 66,
+                 "state": "ACCUMULATING"},
+        "far": {"rule": TAF_CELL_RULE, "day_count": 9, "cell_count": 130,
+                "state": "ADMITTED", "forward_nll_gain_vs_pooled": 0.012,
+                "candidate_taf_delta_c": 0.4, "candidate_width_lambda": 1.2},
+        # A census from the direction rule counted other days.
+        "none": {"day_count": 11, "cell_count": 900, "state": "REFUSED_FORWARD"},
+    }
+    for stage, evidence in (("P0-M", {"taf_cells": census}), ("P0", {})):
+        conn.execute(
+            "INSERT INTO calibration_center_width_fit_journal"
+            " VALUES(?,?,?,?,?,?,?,?,?)",
+            (stage, "2026-09-13T00:00:00Z", "ACCUMULATING", 0.0, 1.0, 3, 700,
+             0.0, json.dumps(evidence)),
+        )
+    rows = C.collect_center_width(conn)
+    taf = _row(rows, "P0-M")["taf_cells"]
+    by_name = {cell["name"]: cell for cell in taf["cells"]}
+    assert taf["measured"] is True
+    assert by_name["far"]["served"] == [0.05, 0.4, 1.1]
+    assert by_name["far"]["forward_nll_gain"] == 0.012
+    assert by_name["same"]["cell_count"] == 66
+    assert by_name["none"]["state"] is None
+    assert by_name["adjacent"]["day_count"] is None
+    # Only the stage that serves the cells shows them.
+    assert "taf_cells" not in _row(rows, "P0")
+    assert "taf_cells" not in _row(rows, "P1")
