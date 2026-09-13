@@ -680,8 +680,15 @@ def test_the_bar_is_a_switch_and_writes_a_ruling_with_its_evidence(
     """
 
     intent, exclusions, audit = _config_copies(tmp_path, monkeypatch)
-    station = "KLGA"
-    assert station not in control.excluded_stations()
+    # Any station the live file has not barred.  This named KLGA until the
+    # operator barred KLGA (2026-09-13), which turned the test red on a
+    # switch that still worked -- the live file is the operator's, not the
+    # test's, so the station is chosen from what it says today.
+    from selection_market_dashboard import STATION_LABELS  # noqa: PLC0415
+
+    station = next(
+        s for s in sorted(STATION_LABELS) if s not in control.excluded_stations()
+    )
 
     control.set_station_bar(station, True, by="test")
     doc = json.loads(exclusions.read_text(encoding="utf-8"))
@@ -1202,9 +1209,30 @@ def test_a_held_station_is_told_apart_from_one_nobody_waived(
 
     import bayes_basket_target.live_station_scope as rules  # noqa: PLC0415
 
-    _config_copies(tmp_path, monkeypatch)
-    overrides = rules.operator_overrides()
+    intent, _, _ = _config_copies(tmp_path, monkeypatch)
+    # The copy is given one waiver and one hold when the live file carries
+    # none: those two lists are the operator's switches and move with every
+    # click (on 2026-09-13 the file held nobody), and a test that needs one
+    # of each cannot borrow whatever was last left there.
+    from selection_market_dashboard import STATION_LABELS  # noqa: PLC0415
+
+    doc = json.loads(intent.read_text(encoding="utf-8"))
     barred = rules.barred_stations()
+    waivers = list(doc.get("station_probation_waivers") or [])
+    holds = list(doc.get("station_probation_holds") or [])
+    # A fleet station nobody has ruled on, or -- when every one carries a
+    # ruling, as all 45 did that day -- an id outside the fleet, which the
+    # rules treat like any other station (LLBG below is one).
+    free = [
+        s for s in sorted(STATION_LABELS)
+        if s not in barred and s not in waivers and s not in holds and s != "LLBG"
+    ]
+    if not set(waivers) - barred:
+        doc["station_probation_waivers"] = waivers + [free.pop(0) if free else "ZZWV"]
+    if not set(holds) - barred:
+        doc["station_probation_holds"] = holds + [free.pop(0) if free else "ZZHD"]
+    intent.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    overrides = rules.operator_overrides()
     waived = sorted(overrides["waived"] - barred)
     held = sorted(overrides["held"] - barred)
     assert waived and held and barred
