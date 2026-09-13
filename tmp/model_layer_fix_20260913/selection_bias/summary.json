@@ -1,0 +1,128 @@
+{
+ "by_origin": {
+  "2026-09-03": {
+   "contests": 1809,
+   "crps_B_vs_A_mean_rel": 0.2667,
+   "crps_B_vs_A_median_rel": 0.1373,
+   "crps_full_vs_A_mean_rel": 0.2057,
+   "crps_full_vs_B_mean_rel": -0.0152,
+   "enumerating": 1087,
+   "enumerating_with_selection_window": 415,
+   "gate_pass_A": 315,
+   "gate_pass_B": 296,
+   "nll_B_vs_A_mean_rel": 0.1237,
+   "passes_only_by_selection": 20,
+   "scored_unique": 342,
+   "winner_changes": 0.795
+  },
+  "2026-09-05": {
+   "contests": 1782,
+   "crps_B_vs_A_mean_rel": 0.3082,
+   "crps_B_vs_A_median_rel": 0.1674,
+   "crps_full_vs_A_mean_rel": 0.2683,
+   "crps_full_vs_B_mean_rel": 0.023,
+   "enumerating": 1229,
+   "enumerating_with_selection_window": 563,
+   "gate_pass_A": 403,
+   "gate_pass_B": 366,
+   "nll_B_vs_A_mean_rel": 0.1718,
+   "passes_only_by_selection": 37,
+   "scored_unique": 462,
+   "winner_changes": 0.755
+  },
+  "2026-09-07": {
+   "contests": 2166,
+   "crps_B_vs_A_mean_rel": 0.467,
+   "crps_B_vs_A_median_rel": 0.2661,
+   "crps_full_vs_A_mean_rel": 0.3647,
+   "crps_full_vs_B_mean_rel": -0.0044,
+   "enumerating": 1392,
+   "enumerating_with_selection_window": 429,
+   "gate_pass_A": 279,
+   "gate_pass_B": 250,
+   "nll_B_vs_A_mean_rel": 0.3882,
+   "passes_only_by_selection": 29,
+   "scored_unique": 321,
+   "winner_changes": 0.813
+  },
+  "2026-09-09": {
+   "contests": 3085,
+   "crps_B_vs_A_mean_rel": 0.7075,
+   "crps_B_vs_A_median_rel": 0.2919,
+   "crps_full_vs_A_mean_rel": 0.496,
+   "crps_full_vs_B_mean_rel": -0.013,
+   "enumerating": 1770,
+   "enumerating_with_selection_window": 589,
+   "gate_pass_A": 406,
+   "gate_pass_B": 341,
+   "nll_B_vs_A_mean_rel": 0.4616,
+   "passes_only_by_selection": 66,
+   "scored_unique": 459,
+   "winner_changes": 0.767
+  },
+  "2026-09-11": {
+   "contests": 2739,
+   "crps_B_vs_A_mean_rel": 0.338,
+   "crps_B_vs_A_median_rel": 0.2173,
+   "crps_full_vs_A_mean_rel": 0.2675,
+   "crps_full_vs_B_mean_rel": -0.0102,
+   "enumerating": 1575,
+   "enumerating_with_selection_window": 590,
+   "gate_pass_A": 455,
+   "gate_pass_B": 418,
+   "nll_B_vs_A_mean_rel": 0.2004,
+   "passes_only_by_selection": 39,
+   "scored_unique": 485,
+   "winner_changes": 0.79
+  },
+  "2026-09-13": {
+   "contests": 2762,
+   "crps_B_vs_A_mean_rel": 0.3052,
+   "crps_B_vs_A_median_rel": 0.1812,
+   "crps_full_vs_A_mean_rel": 0.2454,
+   "crps_full_vs_B_mean_rel": -0.0043,
+   "enumerating": 1622,
+   "enumerating_with_selection_window": 320,
+   "gate_pass_A": 265,
+   "gate_pass_B": 234,
+   "nll_B_vs_A_mean_rel": 0.1742,
+   "passes_only_by_selection": 31,
+   "scored_unique": 291,
+   "winner_changes": 0.763
+  }
+ },
+ "pooled_non_overlapping": {
+  "crps_B_vs_A_90ci_station_cluster": [
+   0.305,
+   0.4085
+  ],
+  "crps_B_vs_A_mean_rel": 0.3528,
+  "crps_full_vs_B_90ci": [
+   -0.0321,
+   0.0142
+  ],
+  "crps_full_vs_B_mean_rel": -0.0101,
+  "gate_pass_A": 1049,
+  "gate_pass_B": 964,
+  "gate_records": 1146,
+  "nll_B_vs_A_90ci": [
+   0.183,
+   0.2897
+  ],
+  "nll_B_vs_A_mean_rel": 0.2301,
+  "nll_full_vs_B_90ci": [
+   -0.0294,
+   0.002
+  ],
+  "nll_full_vs_B_mean_rel": -0.0144,
+  "origins": [
+   "2026-09-03",
+   "2026-09-07",
+   "2026-09-11"
+  ],
+  "passes_only_by_selection": 88,
+  "scored_unique": 1148,
+  "stations": 45,
+  "winner_changes": 0.798
+ }
+}

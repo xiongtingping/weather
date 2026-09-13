@@ -1732,9 +1732,19 @@ def _select_minimum_crps_subset(
     because when the evidence cannot separate two blends the one carrying
     fewer moving parts is the one to trust.
 
-    The enumeration is availability-and-skill on the fixed holdout only; no
-    subset ever sees its own selection reflected back into training, so this
-    cannot tune on the holdout any more than the single full-set blend could.
+    The contest READS the holdout it is certified on.  Parameters are never
+    fitted on these days, but the choice of subset is, and the winner's
+    scores are the gate's scores (``oos_metrics`` equals ``winner`` since
+    the shape stacks were unified).  Measured 2026-09-13 over 1,148
+    enumerating contests at three non-overlapping replay origins, 45
+    stations (tmp/model_layer_fix_20260913/selection_bias): picked on the
+    three shared days before the holdout instead, the winner changes 80% of
+    the time and the certified CRPS is 35% optimistic [30.5%, 40.9%]
+    station-clustered; 88 of 1,146 cohorts pass the gate only because the
+    pick saw its labels; and seating the whole cohort scores within -1.0%
+    [-3.2%, +1.4%] of the honest pick.  Whether the seat keeps being won
+    this way is the 2026-08-15 membership ruling's to change, not this
+    function's -- see the model-layer review, R2.
     """
 
     ordered = sorted(ready_system_ids)
@@ -4303,9 +4313,9 @@ def build_native_ensemble_oos(
         # otherwise valid cross-native calibration.  Every system evaluation
         # exposes exactly ``min_holdout_days`` latest chronological cases, so
         # grouping by the complete holdout set is a bounded, deterministic
-        # way to enumerate every exact common-OOS cohort.  This selection
-        # uses availability/timing only--never OOS scores--and consequently
-        # cannot tune the model on its holdout result.
+        # way to enumerate every exact common-OOS cohort.  Forming the
+        # cohorts uses availability and timing only; the subset contest run
+        # inside each cohort does read the holdout (see its docstring).
         exact_cohorts, window_cohorts = _shared_holdout_cohorts(
             ready_rows=ready_rows,
             systems=systems,
