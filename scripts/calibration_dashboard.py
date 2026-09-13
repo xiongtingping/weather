@@ -10043,16 +10043,20 @@ padding-top:10px;border-top:1px solid var(--line)}
 .mb-cat .grouptitle{margin:0 0 9px}
 .mb-pane > h2:first-child,.mb-pane > h3:first-child{margin-top:2px!important}
 .mb-pane > .lampdeck:first-child{margin-top:0;padding-top:0;border-top:0}
-/* 入场的九个数 as a data board (user ruling, 2026-09-13): a verdict line,
-   comparison cards whose bars share one zero-based scale, and the nine
-   values as plain cells. */
-.ee-top{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+/* 纸面账本 as one data board (user ruling, 2026-09-13): a headline card,
+   comparison cards whose bars share one zero-based scale, risk cells and
+   the curves, each under a small caption. */
+.pb-cap{color:var(--muted);font-size:11.5px;margin:12px 0 5px}
+.ee-top{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
 .ee-verdict{font-size:14px;font-weight:650;padding:3px 12px}
+.pb-kv{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.pb-kv b{font-variant-numeric:tabular-nums}
 .ee-cmps{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(min(100%,430px),1fr))}
 .ee-cmp{margin-bottom:0}
+.ee-cmp:last-child:nth-child(odd){grid-column:1/-1}
 .ee-h{display:flex;align-items:center;gap:8px;margin-bottom:7px}
 .ee-h .pill{margin-left:auto}
-.ee-row{display:grid;grid-template-columns:6.5em 1fr auto;gap:8px;
+.ee-row{display:grid;grid-template-columns:7.5em 1fr auto;gap:8px;
 align-items:center;font-size:12.5px;margin:4px 0}
 .ee-track{height:12px;background:var(--bar-bg);border-radius:6px;overflow:hidden}
 .ee-fill{display:block;height:100%;border-radius:6px}
@@ -10060,11 +10064,13 @@ align-items:center;font-size:12.5px;margin:4px 0}
 .ee-fill.muted{background:var(--muted)}
 .ee-v{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 .ee-d{margin-top:6px;font-size:12.5px}
-.ee-nine{display:grid;gap:6px;margin-top:8px;
-grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))}
-.ee-n{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
-padding:7px 10px;background:var(--card);border:1px solid var(--line);border-radius:7px}
-.ee-n b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.pb-kpis{display:grid;gap:6px;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr))}
+.pb-k{display:flex;flex-direction:column;gap:1px;padding:7px 10px;
+background:var(--card);border:1px solid var(--line);border-radius:7px}
+.pb-k b{font-size:17px;font-variant-numeric:tabular-nums}
+.pb-s{font-size:11.5px}
+.pb-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin:2px 0 4px}
+.pb-legend i{display:inline-block;width:18px;margin-right:5px;vertical-align:middle}
 .ee-foot{font-size:11.5px;margin-top:6px}
 .grouptitle{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;
 margin:18px 0 0;font-weight:650}
@@ -10253,7 +10259,7 @@ function head(){
     try { O = overviewLamps(); }
     catch (err) {
       O = {banner:"", machine:[lamp("red","总览出错",String(err))],
-           upstream:[], selection:[], money:[]};
+           upstream:[], selection:[]};
     }
     const rows=[
       ["机器 · 在不在转：常驻、周期、授权，然后是数据从头到尾的每一环"
@@ -10353,18 +10359,19 @@ function overviewLamps(){
         最常见的原因是 <span class="mono">paper_trading_ledger.py --rebuild</span>
         正在跑：它先清空三张表并提交，再花约 40 分钟重走，这段时间任何读者
         看到的都是零。等重建结束后本页会自行恢复，无需处理。</div></div>`,
-      machine:[], upstream:[], selection:[], money:[]};
+      machine:[], upstream:[], selection:[]};
   }
   const pct0=(v)=>v==null?"—":(v*100).toFixed(0)+"%";
   const band=(v,good,ok)=>v==null?"muted"
     :(v>=good?"green":v>=ok?"amber":"red");
-  // Four buckets, because the strip used to be one queue of fourteen tiles
-  // in the order they were added and a reader triaged it by reading all
+  // Buckets, because the strip used to be one queue of fourteen tiles in
+  // the order they were added and a reader triaged it by reading all
   // fourteen (user ruling, 2026-09-11: classify them, and put them in the
-  // head with the lamps).  Four readings, asked in the order anyone asks
-  // them: is the machine turning, did the data arrive, did we pick well,
-  // what is it worth.
-  const G={machine:[],upstream:[],selection:[],money:[]};
+  // head with the lamps).  Three readings, asked in the order anyone asks
+  // them: is the machine turning, did the data arrive, did we pick well.
+  // The fourth, what it is worth, is the money board's 纸面账本 since
+  // 2026-09-13.
+  const G={machine:[],upstream:[],selection:[]};
   const push=(group,cls,lab,val,sub2,title)=>G[group].push(
     lamp(cls, lab, val, [sub2, title].filter(Boolean).join(" · ")));
 
@@ -10463,7 +10470,6 @@ function overviewLamps(){
     "「逐站逐日明细」（每日统计下方）：没建仓的站，格子里写着原因");
 
   // 6. Does the model's stated probability survive contact with the truth.
-  const cs=S.coverage_stats||{};
   const stagesAll=S.stages||{};
   const cal=((stagesAll.P0||{}).credible||{}).calibration_ratio;
   push("selection", cal==null?"muted":(cal>=0.85&&cal<=1.15)?"green"
@@ -10520,48 +10526,6 @@ function overviewLamps(){
         :row.realised_over_claimed.toFixed(2)}×。见「篮子命中率」的脱靶分布`);
   });
 
-  // 7. What the one book is worth now.
-  const capital=S.initial_capital_usdc||1000;
-  const equity=capital+(cs.realized_usdc||0);
-  push("money", equity>=capital?"green":equity>=capital*0.85?"amber":"red",
-    "纸面权益", equity.toFixed(0),
-    `本金 ${capital} · ${h(S.stats_start_event_date||"")} 起 ${
-      cs.settled_count||0} 条链`,
-    "一本账：P0 建仓，P0-M 与 P1 加仓，一个站日结算一次");
-
-  // 8. Per USDC put at risk, what came back.
-  const roi=cs.staked_usdc>0?(cs.realized_usdc||0)/cs.staked_usdc:null;
-  push("money", roi==null?"muted":roi>=0?"green":roi>=-0.15?"amber":"red",
-    "回报率", roi==null?"—":(roi*100).toFixed(1)+"%",
-    `${h(S.stats_start_event_date||"")} 起 · 投入 ${
-      (cs.staked_usdc||0).toFixed(0)} · 实得 ${
-      (cs.realized_usdc||0).toFixed(0)}`,
-    "「覆盖 · 价格 · EV」：覆盖 · 价格 · EV");
-
-  // The three-state comparison joins the money row (user ruling,
-  // 2026-09-11).  It is four readings of the same book under three gates
-  // plus the ungated control, and a section of four cards two scrolls down
-  // made it a separate topic; beside the equity and the return it is what
-  // it always was -- what the bars cost.
-  const SP=(D.live_readiness||{}).bar_split||{};
-  if(SP.barred){
-    const pctS=(v)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(1)+"%");
-    const money=(v)=>v==null?"—":((v>=0?"+":"")+v.toFixed(2));
-    [["live","上线","已判且过关 —— 真上线只有这一组会下单"],
-     ["probation","待观察","证据不足 —— 够 "
-       +((D.live_readiness||{}).minimum_settlements_to_qualify||5)
-       +" 笔结算才判，判过了自动上线；它不是禁入"],
-     ["barred","禁入","已判且不合格 —— 这些钱本来会亏/赚在这里"],
-     ["fleet","全舰队","不设任何闸的对照"]].forEach(([key,label,note])=>{
-      const r=SP[key]||{};
-      push("money", r.roi==null?"muted":(r.roi>=0?"green":"red"),
-        label, pctS(r.roi),
-        `${money(r.pnl_usdc)} U · 投入 ${money(r.staked_usdc)} U · ${
-          r.stations||0} 站 · ${r.settled_days||0} 个结算站日`,
-        note+"。同一窗口、同一规则指纹，纸面账本对三边一视同仁地建仓结算——"
-        +"禁的是下单，不是记账；它衡量这些闸拦掉了什么，不是对未来的预测");
-    });
-  }
   return {banner:"", ...G};
 }
 
@@ -10605,25 +10569,6 @@ const lampRowSafe = (fn, caption) => {
   catch (err) {
     return lampRow(caption, [lamp("red", "灯板出错", String(err))]);
   }
-};
-
-// The two groups the money row can only summarise, spelled out in words
-// (user ruling, 2026-09-13: 前端显式待观察和禁入): how many stations, on how
-// many settled days, for how much.  Group totals only -- the same evening the
-// user ruled 这里不要显式站点明细, so the per-station chips came back out.
-const barSummary = () => {
-  const SP = (D.live_readiness || {}).bar_split || {};
-  const signed = (v) => v == null ? "—" : (v >= 0 ? "+" : "") + v.toFixed(2);
-  const group = (key, glyph, label, why) => {
-    const g = SP[key];
-    if (!g) return "";
-    return `<div style="margin-top:6px"><b>${glyph} ${h(label)}</b>
-      <span class="muted">${g.stations || 0} 站 · ${g.settled_days || 0} 个结算站日 · 投入 ${
-        (g.staked_usdc || 0).toFixed(2)} U · 盈亏 ${signed(g.pnl_usdc)} U — ${h(why)}</span></div>`;
-  };
-  const body = group("probation", "⏳", "待观察", "证据不足，尚未上线，账本照常记账")
-    + group("barred", "⛔", "禁入", "已判且不合格，不下单，账本照常记账");
-  return body ? `<div class="lampdeck"><span class="lampcap">待观察与禁入</span>${body}</div>` : "";
 };
 
 function upstreamLamps(){
@@ -12677,29 +12622,36 @@ function consolidation(){
 }
 
 
-// The whole bet, in one place (user ruling, 2026-09-10).  Every one of
-// these nine numbers was already on the page and none of them was next to
-// the number that gives it a meaning: the claim sat in the coverage
-// section, the hit rate in the basket section, the odds and the break-even
-// rate five thousand pixels down in the portfolio tiles, and cost per
-// share was nowhere at all.
+// 纸面账本, one board (user ruling, 2026-09-13: 有些指标重复了，把纸面账本的
+// 所有数据看板重新整理合并).  It was three tabs -- the 钱 lamps with the
+// 待观察/禁入 totals, 组合风险指标, 入场的九个数 -- and one reading was printed
+// in several of them: equity twice (1033 and 1032.71), the return on stake
+// three times (回报率, 全舰队, 收益率), the claimed EV and how much of it came
+// true twice (14.8%/U and 0.679x beside +5.0c and 68%), and CVaR at 95% and
+// at 90% were both the worst day again.  Every quantity now has one place:
 //
-// No prose (user ruling, 2026-09-13: 不要给我解释，在数据看板上用直观的数据
-// 对比得出结论即可).  The section is a verdict, four side-by-side bars that
-// each end in a one-word result, and the nine numbers as plain values.  One
-// column throughout -- 按股 · 整本账, the one whose per-share return is the
-// book's return -- except ⑥⑦, which only exist per chain in USDC.  Each
-// verdict rests on an identity pinned in tests/test_entry_economics_section.py:
-//   赚的钱 − 亏的钱 = 盈亏          (win_count·⑥ + loss_count·⑦)
-//   每股期望 声称 = ① − ④,  实际 = ②·命中实收 − ⑧
-// The first card only says whether ② clears ④; whether that became money
-// is the second card's verdict, because a hit pays slightly under 1.00.
-function entryEconomics(){
+//   总账  equity, P&L, return on stake, return on capital, stake, chains,
+//         settled days -- the whole account, read off the equity curve's
+//         own series (risk_metrics)
+//   对比  four comparisons that each end in their result, carrying the nine
+//         numbers where they are compared.  ④ and ⑧ are one number by
+//         definition, and ② and ③ are one while no hit loses money, so each
+//         pair is printed once with both labels on it
+//   风险  Sharpe, Sortino, drawdown, volatility, annualised return, the worst
+//         day, and CVaR only at a level whose tail is more than that day
+//   曲线  equity against its trend, and against what the claims added up to
+//
+// No prose (the same day's ruling on 入场的九个数: 不要给我解释).  The
+// comparisons read entry_economics, which leaves out sub-cent baskets on the
+// ledger's chain_credible rule; the foot says how many whenever there are any.
+// Each verdict rests on an identity pinned in tests/test_entry_economics_section.py.
+function paperBoard(){
+  if((D.selection||{}).ledger_absent) return `<div class="muted">纸面账本此刻是空的——见页头，
+    重建结束后这里自行恢复。</div>`;
   const E = D.entry_economics || {};
-  if(!E.available) return `<h2>入场的九个数</h2>
-    <div class="card"><span class="dot amber"></span>
-    ${h(E.reason||"账本还读不出来")}。</div>`;
-  const S = (E.weightings||{}).share || {};
+  const R = D.risk_metrics || {};
+  const SP = (D.live_readiness || {}).bar_split || {};
+  const S = (E.weightings || {}).share || {};
   const pct = (v,d=1)=>v==null?"—":(100*v).toFixed(d)+"%";
   const spct = (v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+"%");
   const pts = (v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+" 点");
@@ -12708,7 +12660,33 @@ function entryEconomics(){
   const num = (v,d=2)=>v==null?"—":v.toFixed(d);
   const tone = (v)=>v==null?"muted":(v>=0?"green":"red");
   const text = (v)=>v==null?"":(v>=0?"up":"down");
-  // Bars on one shared scale from zero, so their lengths compare honestly.
+  const cap = (t)=>`<div class="pb-cap">${t}</div>`;
+
+  // ---- 总账
+  const whole = R.available;
+  const pnl = whole ? R.realised_pnl_usdc : E.pnl_usdc;
+  const stake = whole ? R.total_staked_usdc : E.stake_usdc;
+  if(pnl==null) return `<div class="card"><span class="dot amber"></span>
+    ${h(E.reason||"账本还读不出来")}。</div>`;
+  const roi = stake>0 ? pnl/stake : null;
+  const head = `<div class="card ee-top">
+    <span class="pill ${tone(pnl)} ee-verdict">${pnl>=0 ? "赚" : "亏"}</span>
+    ${whole ? `<span class="pb-kv"><span class="muted">权益</span>
+      <b class="big">${num(R.final_equity_usdc)}</b></span>` : ""}
+    <span class="pb-kv"><span class="muted">盈亏</span>
+      <b class="big ${text(pnl)}">${usd(pnl)}</b></span>
+    <span class="pb-kv"><span class="muted">投入回报</span>
+      <b class="${text(roi)}">${spct(roi)}</b></span>
+    ${whole ? `<span class="pb-kv"><span class="muted">本金回报</span>
+      <b class="${text(R.total_return)}">${spct(R.total_return,2)}</b></span>` : ""}
+    <span class="pb-kv"><span class="muted">投入</span><b>${num(stake)} U</b></span>
+    <span class="pb-kv"><span class="muted">链</span><b>${whole ? R.chain_count : E.chains}</b></span>
+    ${whole ? `<span class="pb-kv"><span class="muted">结算日</span><b>${R.days}</b></span>` : ""}
+    <span class="muted">${h(whole ? R.first_day : E.first_day)} → ${
+      h(whole ? R.last_day : E.last_day)}</span>
+  </div>`;
+
+  // ---- 对比
   const bars = (rows) => {
     const top = Math.max(...rows.map(r => Math.abs(r[1] || 0))) || 1;
     return rows.map(([label, v, shown, fill]) => `<div class="ee-row">
@@ -12719,323 +12697,161 @@ function entryEconomics(){
   };
   const card = (title, verdict, verdictTone, rows, foot) => `<div class="card ee-cmp">
     <div class="ee-h"><b>${title}</b><span class="pill ${verdictTone}">${verdict}</span></div>
-    ${bars(rows)}<div class="ee-d">${foot}</div></div>`;
+    ${bars(rows)}${foot ? `<div class="ee-d">${foot}</div>` : ""}</div>`;
+  const cards = [];
 
-  // ① 命中率 vs 保本线
-  const margin = S.margin_over_breakeven;
-  const hitCard = card("实际命中 vs 保本线",
-    margin==null ? "—" : (margin>=0 ? "盖过保本线" : "低于保本线"), tone(margin),
-    [["实际命中", S.realised_coverage, pct(S.realised_coverage), tone(margin)],
-     ["保本线", S.breakeven_hit_rate, pct(S.breakeven_hit_rate), "ee-base"]],
-    `差 <b class="${text(margin)}">${pts(margin)}</b>`);
+  if(E.available){
+    const gains = (E.win_count||0) * (E.mean_win_usdc||0);
+    const losses = (E.loss_count||0) * Math.abs(E.mean_loss_usdc||0);
+    cards.push(card("赚的钱 vs 亏的钱",
+      gains>=losses ? "赢 ＞ 亏" : "亏 ＞ 赢", gains>=losses ? "green" : "red",
+      [[`赢 ${E.win_count||0} 条`, gains, num(gains)+" U", "green"],
+       [`亏 ${E.loss_count||0} 条`, losses, num(losses)+" U", "red"]],
+      `⑥ 平均盈利 <b class="up">${usd(E.mean_win_usdc)}</b> · ⑦ 平均亏损 <b class="down">${
+        usd(E.mean_loss_usdc)}</b>${E.flat_count ? ` · 平 ${E.flat_count} 条` : ""}`));
 
-  // ② 赚的钱 vs 亏的钱
-  const gains = (E.win_count||0) * (E.mean_win_usdc||0);
-  const losses = (E.loss_count||0) * Math.abs(E.mean_loss_usdc||0);
-  const net = gains - losses;
-  const moneyCard = card("赚的钱 vs 亏的钱", net>=0 ? "赚" : "亏", tone(net),
-    [[`赢 ${E.win_count||0} 条`, gains, num(gains)+" U", "green"],
-     [`亏 ${E.loss_count||0} 条`, losses, num(losses)+" U", "red"]],
-    `净 <b class="${text(net)}">${usd(net)}</b>${
-      E.flat_count ? ` <span class="muted">· 平 ${E.flat_count} 条</span>` : ""}`);
+    const margin = S.margin_over_breakeven;
+    const sameHit = S.profitable_rate!=null && S.realised_coverage!=null
+      && Math.abs(S.profitable_rate - S.realised_coverage) < 5e-4;
+    cards.push(card("实际命中 vs 保本线",
+      margin==null ? "—" : `${margin>=0 ? "盖过" : "低于"} ${pts(margin)}`, tone(margin),
+      [["② 实际覆盖率", S.realised_coverage, pct(S.realised_coverage), tone(margin)],
+       ["④ 保本命中率", S.breakeven_hit_rate, pct(S.breakeven_hit_rate), "ee-base"]],
+      `⑧ 每股成本 ＝ ④ · ③ 盈利率 ${sameHit ? "＝ ②" : `<b>${pct(S.profitable_rate)}</b>`} · ⑤ 净赔率 <b>${
+        num(S.net_odds)}x</b>`));
 
-  // ③ 每股期望：声称 vs 实际
-  const said = S.ev_per_share_claimed, got = S.ev_per_share_realised;
-  const kept = said>0 && got!=null ? got/said : null;
-  const edgeVerdict = said==null||got==null ? "—"
-    : said<=0 ? "声称不为正"
-    : got>=said ? "实际 ≥ 声称" : `兑现 ${pct(kept,0)}`;
-  const edgeTone = got==null ? "muted" : got<0 ? "red" : (kept!=null && kept<1 ? "amber" : "green");
-  const edgeCard = card("每股期望：声称 vs 实际", edgeVerdict, edgeTone,
-    [["下单时声称", said, cent(said), "ee-base"],
-     ["结算后实际", got, cent(got), tone(got)]],
-    `覆盖率 声称 <b>${pct(S.claimed_coverage)}</b> → 实际 <b>${pct(S.realised_coverage)}</b>`);
+    const said = S.ev_per_share_claimed, got = S.ev_per_share_realised;
+    const kept = said>0 && got!=null ? got/said : null;
+    const daily = whole ? ` · 兑现比 中位日 <b>${num(R.ev_realisation_daily_median)}×</b> · 近 7 日 <b>${
+      num(R.ev_realisation_trailing_7d)}×</b> · 跑赢声称 <b>${R.days_beating_claim}/${R.days}</b> 天` : "";
+    cards.push(card("⑨ 每股期望：声称 vs 实际",
+      said==null||got==null ? "—" : said<=0 ? "声称不为正" : got>=said ? "实际 ≥ 声称" : `兑现 ${pct(kept,0)}`,
+      got==null ? "muted" : got<0 ? "red" : (kept!=null && kept<1 ? "amber" : "green"),
+      [["声称", said, cent(said), "ee-base"],
+       ["实际", got, cent(got), tone(got)]],
+      `① 声称覆盖率 <b>${pct(S.claimed_coverage)}</b> · 声称累计 <b>${
+        usd(said!=null && E.shares!=null ? said*E.shares : null)}</b>${daily}`));
+  }
 
-  // ④ 分阶段
+  // The three sides of the bar.  全舰队 is not a row: it is the whole book,
+  // which the headline already is.
+  if(SP.barred){
+    const sides = [["live","上线"],["probation","待观察"],["barred","禁入"]]
+      .map(([key,label]) => [label, SP[key] || {}]);
+    const live = (SP.live||{}).roi, barred = (SP.barred||{}).roi;
+    cards.push(card("上线 / 待观察 / 禁入",
+      live==null||barred==null ? "—" : live>=barred ? "上线 ＞ 禁入" : "禁入 ≥ 上线",
+      live==null||barred==null ? "muted" : live>=barred ? "green" : "red",
+      sides.map(([label, g]) => [`${label} ${g.stations||0} 站`, g.roi,
+        `${spct(g.roi)} <span class="muted">${usd(g.pnl_usdc)}</span>`, tone(g.roi)]),
+      sides.map(([label, g]) => `${label} <b>${g.settled_days||0}</b> 站日 / <b>${
+        num(g.staked_usdc||0)}</b> U`).join(" · ")));
+  }
+
   const stages = (E.by_stage||[]).filter(s => s.chains);
-  const up = stages.filter(s => (s.pnl_usdc||0) >= 0).map(s => s.stage);
-  const down = stages.filter(s => (s.pnl_usdc||0) < 0);
-  const stageVerdict = !stages.length ? "—"
-    : !down.length ? "各阶段都赚"
-    : !up.length ? "各阶段都亏"
-    : `赚在 ${up.join("、")}`;
-  const stageCard = !stages.length ? "" : card("分阶段收益率", stageVerdict,
-    !down.length ? "green" : !up.length ? "red" : "amber",
-    stages.map(s => [`${h(s.stage)} · ${s.chains} 链`, s.roi,
-      `${spct(s.roi)} <span class="muted">${usd(s.pnl_usdc,1)}</span>`, tone(s.roi)]),
-    down.length
-      ? `亏在 ${down.map(s => `${h(s.stage)} <b class="down">${usd(s.pnl_usdc,1)}</b>`).join(" · ")}`
-      : `合计 <b class="${text(E.pnl_usdc)}">${usd(E.pnl_usdc,1)}</b>`);
+  if(stages.length){
+    const up = stages.filter(s => (s.pnl_usdc||0) >= 0).map(s => s.stage);
+    const down = stages.filter(s => (s.pnl_usdc||0) < 0);
+    cards.push(card("分阶段",
+      !down.length ? "各阶段都赚" : !up.length ? "各阶段都亏" : `赚在 ${up.map(h).join("、")}`,
+      !down.length ? "green" : !up.length ? "red" : "amber",
+      stages.map(s => [`${h(s.stage)} · ${s.chains} 链`, s.roi,
+        `${spct(s.roi)} <span class="muted">${usd(s.pnl_usdc,1)}</span>`, tone(s.roi)]), ""));
+  }
 
-  const nine = [
-    ["① 声称覆盖率", pct(S.claimed_coverage), ""],
-    ["② 实际覆盖率", pct(S.realised_coverage), text(margin)],
-    ["③ 盈利率", pct(S.profitable_rate),
-      S.profitable_rate==null||S.breakeven_hit_rate==null ? ""
-        : text(S.profitable_rate - S.breakeven_hit_rate)],
-    ["④ 保本命中率", pct(S.breakeven_hit_rate), ""],
-    ["⑤ 净赔率", num(S.net_odds)+"x", ""],
-    ["⑥ 平均盈利 / 链", usd(E.mean_win_usdc), "up"],
-    ["⑦ 平均亏损 / 链", usd(E.mean_loss_usdc), "down"],
-    ["⑧ 每股成本", S.cost_per_share==null ? "—" : (100*S.cost_per_share).toFixed(1)+"¢", ""],
-    ["⑨ 每股期望 · 实际", cent(got), text(got)],
-  ].map(([label, value, cls]) => `<div class="ee-n"><span class="muted">${label}</span>
-    <b class="${cls}">${value}</b></div>`).join("");
+  // ---- 风险
+  let risk = "";
+  if(whole){
+    const CI = R.sharpe_ci || [];
+    const decided = CI.length===2 && (CI[0]>0 || CI[1]<0);
+    const kpi = (label, value, sub, cls) => `<div class="pb-k"><span class="muted">${label}</span>
+      <b class="${cls||""}">${value}</b><span class="muted pb-s">${sub}</span></div>`;
+    // A tail that is only the worst day is the worst day; print it once.
+    const tail = (R.tails||[]).filter(t => t.tail_days > 1)
+      .sort((a, b) => b.tail_days - a.tail_days)[0];
+    risk = cap("风险") + `<div class="pb-kpis">
+      ${kpi("夏普", num(R.sharpe), `[${num(CI[0])}, ${num(CI[1])}] · ${
+        decided ? "与 0 可分" : `与 0 不可分 · 需 ${R.days_to_separate_from_zero ?? "—"} 天`}`,
+        decided ? text(R.sharpe) : "muted")}
+      ${kpi("Sortino", num(R.sortino), `下行波动 ${pct(R.downside_deviation,2)}/天`,
+        decided ? text(R.sortino) : "muted")}
+      ${kpi("最大回撤", spct(R.max_drawdown), `${h(R.max_drawdown_peak_day||"—")} → ${
+        h(R.max_drawdown_trough_day||"—")}`, R.max_drawdown<=-0.15 ? "down" : "")}
+      ${kpi("年化收益", spct(R.annualised_return_geometric), `几何 · 算术 ${
+        spct(R.annualised_return_arithmetic)}`, text(R.annualised_return_geometric))}
+      ${kpi("年化波动", pct(R.annualised_volatility), `日波动 ${pct(R.daily_volatility,2)}`, "")}
+      ${kpi("最差一天", spct(R.worst_day,2), `${h(R.worst_day_date||"—")} · ${
+        usd(R.worst_day*R.final_equity_usdc,1)} · 亏损日 ${R.losing_days}/${R.days} 平均 ${
+        spct(R.mean_losing_day,2)}`, "down")}
+      ${tail ? kpi(`CVaR ${(100*tail.level).toFixed(0)}%`, spct(tail.cvar,2),
+        `尾部 ${tail.tail_days} 天${tail.tail_days<5 ? ` · <span class="pill amber">样本不足</span>` : ""}`,
+        "down") : ""}
+    </div>`;
+  }
+
+  // ---- 曲线: two panels, because the claim can run far enough past the
+  // equity to flatten it on a shared axis.
+  let curves = "";
+  const series = whole ? (R.series || []) : [];
+  if(series.length >= 2){
+    const W = 900, PADX = 46, PADY = 16;
+    const X = i => PADX + (W-PADX-10) * (i/(series.length-1));
+    const eq = series.map(r => r.equity_usdc);
+    const panel = (H, lines, extra, label) => {
+      const all = [R.initial_equity_usdc].concat(...lines.map(l => l.vals));
+      const lo = Math.min(...all), hi = Math.max(...all), span = (hi-lo)||1;
+      const Y = v => PADY + (H-2*PADY) * (1 - (v-lo)/span);
+      const path = vals => vals.map((v,i)=>`${i?"L":"M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+      const ticks = [hi, lo].map(v => `<text x="6" y="${(Y(v)+4).toFixed(1)}"
+        fill="var(--muted)" font-size="11">${v.toFixed(0)}</text>`).join("");
+      return `<div class="scroll"><svg viewBox="0 0 ${W} ${H}" width="100%"
+        style="min-width:520px;height:${H}px;display:block" role="img" aria-label="${label}">
+        ${extra(Y, H)}${ticks}
+        <line x1="${PADX}" y1="${Y(R.initial_equity_usdc).toFixed(1)}" x2="${W-10}"
+          y2="${Y(R.initial_equity_usdc).toFixed(1)}" stroke="var(--muted)"
+          stroke-width="1" stroke-dasharray="3 3"></line>
+        ${lines.map(l => `<path d="${path(l.vals)}" fill="none" stroke="${l.stroke}"
+          stroke-width="${l.width}"${l.dash ? ` stroke-dasharray="${l.dash}"` : ""}></path>`).join("")}
+      </svg></div>`;
+    };
+    const trough = series.findIndex(r => r.event_date === R.max_drawdown_trough_day);
+    const peak = series.findIndex(r => r.event_date === R.max_drawdown_peak_day);
+    const band = (Y, H) => {
+      const x0 = peak >= 0 ? X(peak) : X(0);
+      return trough >= 0 && X(trough) > x0
+        ? `<rect x="${x0.toFixed(1)}" y="${PADY}" width="${(X(trough)-x0).toFixed(1)}"
+            height="${H-2*PADY}" fill="var(--pill-red-bg)"></rect>` : "";
+    };
+    const trend = series.map((_, i) => R.trend_intercept_usdc
+      + R.trend_slope_usdc_per_day*(i+1) + R.initial_equity_usdc);
+    const legend = (items) => `<div class="pb-legend">${items.map(([color, dash, word]) =>
+      `<span><i style="border-top:2px ${dash ? "dashed" : "solid"} ${color}"></i>${word}</span>`).join("")}</div>`;
+    curves = cap("曲线") + `<div class="card">
+      ${legend([["var(--up)", false, "实际权益"],
+        ["var(--accent)", true, `趋势 ${usd(R.trend_slope_usdc_per_day)}/天 · R² ${num(R.trend_r_squared)}`],
+        ["var(--muted)", true, `本金 ${num(R.initial_equity_usdc,0)}`],
+        ["var(--pill-red-fg)", false, "回撤区间"]])}
+      ${panel(190, [
+        {vals: trend, stroke: "var(--accent)", width: 1.5, dash: "6 4"},
+        {vals: eq, stroke: "var(--up)", width: 2}], band, "权益曲线与趋势线")}
+      ${legend([["var(--up)", false, "实际权益"],
+        ["var(--violet)", true, "声称 EV 累计到的权益"]])}
+      ${panel(140, [
+        {vals: series.map(r => r.claimed_equity_usdc), stroke: "var(--violet)", width: 1.5, dash: "2 3"},
+        {vals: eq, stroke: "var(--up)", width: 2}], () => "", "声称权益与实际权益")}
+    </div>`;
+  }
 
   const excluded = [
-    E.dust_excluded ? `不含 ${E.dust_excluded} 条整篮成本 &lt; ${
+    E.dust_excluded ? `对比不含 ${E.dust_excluded} 条整篮成本 &lt; ${
       (100*(E.dust_cost_floor||0.01)).toFixed(0)}¢ 的链（${usd(E.dust_excluded_pnl_usdc)}）` : "",
-    E.cost_missing ? `不含 ${E.cost_missing} 行缺成本` : "",
+    E.cost_missing ? `对比不含 ${E.cost_missing} 行缺成本` : "",
   ].filter(Boolean).join(" · ");
 
-  return `<h2>入场的九个数</h2>
-  <div class="card ee-top">
-    <span class="pill ${tone(E.pnl_usdc)} ee-verdict">${E.pnl_usdc>=0 ? "赚" : "亏"}</span>
-    <span class="big ${text(E.pnl_usdc)}">${usd(E.pnl_usdc)}</span>
-    <span>收益率 <b class="${text(E.roi)}">${spct(E.roi)}</b></span>
-    <span class="muted">${E.chains} 条链 · 投入 ${num(E.stake_usdc)} U · ${
-      h(E.first_day)} → ${h(E.last_day)}</span>
-  </div>
-  <div class="ee-cmps">${hitCard}${moneyCard}${edgeCard}${stageCard}</div>
-  <div class="ee-nine">${nine}</div>
-  <div class="muted ee-foot">按股 · 整本账${excluded ? " · " + excluded : ""}</div>`;
-}
-
-
-function riskMetrics(){
-  const R = D.risk_metrics || {};
-  if(!R.available) return `<h3 style="margin-top:22px;font-size:15px">组合风险指标</h3>
-    <div class="card"><span class="dot muted"></span>
-      结算日不足 3 天，比率算不出来。</div>`;
-  // Signed for anything that can go either way; unsigned for dispersion,
-  // which cannot be negative and reads wrong with a plus in front of it.
-  const pct = (v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+"%");
-  const mag = (v,d=1)=>v==null?"—":(100*v).toFixed(d)+"%";
-  const num = (v,d=2)=>v==null?"—":v.toFixed(d);
-  const S = R.sharpe, TGT = R.sharpe_target, CI = R.sharpe_ci||[];
-  // The target is a goal, not a verdict: with an error bar this wide the
-  // only honest colour is "cannot tell", so the tile is muted until the
-  // interval clears zero.
-  const decided = CI.length===2 && (CI[0]>0 || CI[1]<0);
-  const cls = !decided ? "muted" : (S>=TGT ? "up" : "down");
-  const tile = (label, value, note, klass) => `<div class="card">
-    <div class="muted">${label}</div>
-    <div class="big ${klass||""}">${value}</div>
-    <div class="muted" style="font-size:11.5px">${note}</div></div>`;
-
-  // Expected shortfall, with the sample standing behind each level shown
-  // beside it.  At fifteen days the 95% tail is one observation, so the
-  // number is the worst day wearing a percentile's clothes; the table
-  // says so per row rather than in a footnote nobody reads.
-  const tails = R.tails || [];
-  const eqNow = R.final_equity_usdc;
-  const thin = t => t.tail_days < 3;
-  const cvarRows = tails.map(t => `<tr class="${thin(t)?"muted":""}">
-    <td class="mono">${(t.level*100).toFixed(0)}%</td>
-    <td class="mono ${thin(t)?"":"down"}">${mag(-t.var)}</td>
-    <td class="mono ${thin(t)?"":"down"}"><b>${mag(-t.cvar)}</b></td>
-    <td class="mono">${(t.cvar*eqNow).toFixed(1)}</td>
-    <td>${t.tail_days} 天${thin(t)
-      ? ` <span class="pill amber">样本不足</span>` : ""}</td>
-    <td class="muted">${t.days_for_five_in_tail} 天</td></tr>`).join("");
-  const cvar = !tails.length ? "" : `<div class="card" style="margin-top:12px">
-    <div class="muted">CVaR / 期望损失（Expected Shortfall）· 经验尾部，不假设分布</div>
-    <div class="why" style="margin-top:8px"><b>先看最右两列。</b>
-    CVaR 是"最差那 (1−置信) 比例的日子，平均亏多少"。${R.days} 天的样本里，
-    95% 的尾部只剩 <b>${tails[0].tail_days} 个观测</b>——那不是尾部估计，
-    那就是<b>最差的一天</b>穿了个百分位的外衣，95% 和 90% 两行报同一个数正是这个原因。
-    要让尾部自己有五个观测，95% 需要约 ${tails[0].days_for_five_in_tail} 天、
-    80% 需要约 ${tails[2].days_for_five_in_tail} 天。标灰的行是样本不足的行。</div>
-    <div class="scroll"><table style="margin-top:6px"><thead><tr>
-      <th>置信</th><th>VaR</th><th>CVaR</th><th>按现权益</th>
-      <th>尾部样本</th><th>够五个需要</th>
-    </tr></thead><tbody>${cvarRows}</tbody></table></div>
-    <div class="muted" style="margin-top:8px;font-size:11.5px">
-      对照：${R.days} 天里亏了 <b>${R.losing_days}</b> 天，
-      平均每个亏损日 <b>${mag(-R.mean_losing_day)}</b>，
-      最差一天 <b>${mag(-R.worst_day)}</b>（${h(R.worst_day_date||"—")}，
-      ${(R.worst_day*eqNow).toFixed(1)} USDC）。这三个数各有
-      ${R.losing_days} / ${R.losing_days} / 1 个观测撑着，
-      比上表 95% 那一行诚实得多。</div></div>`;
-
-  // Equity curve plus its least-squares line.  Drawn from the same series
-  // the ratios are computed on, so the picture and the numbers are one
-  // reading.  Plain SVG in the page's own tokens -- no library, and it
-  // survives the light/dark switch because it names variables, not hexes.
-  const pts = R.series||[];
-  const W = 900, H = 210, PADX = 46, PADY = 16;
-  const eq = pts.map(r=>r.equity_usdc);
-  const line = pts.map((_,i)=>R.trend_intercept_usdc
-    + R.trend_slope_usdc_per_day*(i+1) + R.initial_equity_usdc);
-  // What the book said it would be worth by now, accumulated from the same
-  // per-day claims that sized every bet.  The gap between this and the
-  // green line is the claim layer's whole error, in money.
-  const claimed = pts.map(r=>r.claimed_equity_usdc);
-  // Two panels, not one.  Drawing the claim line into the equity chart put
-  // 1513 and 1028 on one axis and flattened the curve the trend line is
-  // supposed to describe -- the divergence was legible and everything else
-  // was not.  Each panel gets the scale its own question needs.
-  const lo = Math.min(R.initial_equity_usdc, ...eq, ...line);
-  const hi = Math.max(R.initial_equity_usdc, ...eq, ...line);
-  const span = (hi-lo)||1;
-  const X = i => PADX + (W-PADX-10) * (pts.length<2?0:i/(pts.length-1));
-  const Y = v => PADY + (H-2*PADY) * (1 - (v-lo)/span);
-  const path = (vals)=>vals.map((v,i)=>`${i?"L":"M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
-  // Peak-to-trough band, so the drawdown number has somewhere to point.
-  // The peak can be the opening capital, which has no point on the curve
-  // -- that is exactly the case a book that lost on day one produces, and
-  // it is the case this book is in.  Anchor the band at the left edge
-  // rather than dropping it.
-  const troughIdx = pts.findIndex(r=>r.event_date===R.max_drawdown_trough_day);
-  const rawPeakIdx = pts.findIndex(r=>r.event_date===R.max_drawdown_peak_day);
-  const peakX = rawPeakIdx>=0 ? X(rawPeakIdx) : X(0);
-  const ddBand = (troughIdx>=0 && X(troughIdx)>peakX)
-    ? `<rect x="${peakX.toFixed(1)}" y="${PADY}"
-        width="${(X(troughIdx)-peakX).toFixed(1)}" height="${H-2*PADY}"
-        fill="var(--pill-red-bg)"></rect>` : "";
-  const ticks = [hi, (hi+lo)/2, lo].map(v=>`
-    <text x="6" y="${(Y(v)+4).toFixed(1)}" fill="var(--muted)"
-      font-size="11">${v.toFixed(0)}</text>
-    <line x1="${PADX-6}" y1="${Y(v).toFixed(1)}" x2="${W-10}"
-      y2="${Y(v).toFixed(1)}" stroke="var(--line)" stroke-width="1"></line>`).join("");
-  const chart = pts.length<2 ? "" : `<div class="card" style="margin-top:12px">
-    <div class="muted">权益曲线与趋势线 · 红带是最大回撤区间（${
-      h(R.max_drawdown_peak_day||"—")} → ${h(R.max_drawdown_trough_day||"—")}）</div>
-    <div class="scroll"><svg viewBox="0 0 ${W} ${H}" width="100%"
-      style="min-width:520px;height:${H}px;display:block;margin-top:6px"
-      role="img" aria-label="权益曲线与趋势线">
-      ${ddBand}${ticks}
-      <line x1="${PADX}" y1="${Y(R.initial_equity_usdc).toFixed(1)}"
-        x2="${W-10}" y2="${Y(R.initial_equity_usdc).toFixed(1)}"
-        stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3"></line>
-      <path d="${path(line)}" fill="none" stroke="var(--accent)"
-        stroke-width="1.5" stroke-dasharray="6 4"></path>
-      <path d="${path(eq)}" fill="none" stroke="var(--up)"
-        stroke-width="2"></path>
-    </svg></div>
-    <div class="muted" style="font-size:11.5px">
-      灰虚线是起始本金 ${R.initial_equity_usdc.toFixed(0)}；蓝虚线是最小二乘趋势线
-      <span class="mono">${(R.trend_slope_usdc_per_day>=0?"+":"")}${
-        num(R.trend_slope_usdc_per_day)} USDC/天</span>，
-      R²=${num(R.trend_r_squared)}——R² 低说明这条线只是把噪声拟合成了方向，
-      不是"每天稳定赚这么多"。</div></div>`;
-
-  // Panel two: the same equity line against what the book said it would
-  // be worth.  Its own scale, because the claim runs 18x further and one
-  // axis for both is what flattened the first panel.
-  const lo2 = Math.min(R.initial_equity_usdc, ...eq, ...claimed);
-  const hi2 = Math.max(R.initial_equity_usdc, ...eq, ...claimed);
-  const span2 = (hi2-lo2)||1;
-  const H2 = 150;
-  const Y2 = v => PADY + (H2-2*PADY) * (1 - (v-lo2)/span2);
-  const path2 = (vals)=>vals.map((v,i)=>`${i?"L":"M"}${X(i).toFixed(1)},${Y2(v).toFixed(1)}`).join("");
-  const ticks2 = [hi2, lo2].map(v=>`
-    <text x="6" y="${(Y2(v)+4).toFixed(1)}" fill="var(--muted)"
-      font-size="11">${v.toFixed(0)}</text>`).join("");
-  const claimChart = pts.length<2 ? "" : `<div class="card" style="margin-top:12px">
-    <div class="muted">声称 EV 该到的权益 vs 实际权益 · 两条线的落差就是声称层的全部误差</div>
-    <div class="scroll"><svg viewBox="0 0 ${W} ${H2}" width="100%"
-      style="min-width:520px;height:${H2}px;display:block;margin-top:6px"
-      role="img" aria-label="声称权益与实际权益">
-      ${ticks2}
-      <line x1="${PADX}" y1="${Y2(R.initial_equity_usdc).toFixed(1)}"
-        x2="${W-10}" y2="${Y2(R.initial_equity_usdc).toFixed(1)}"
-        stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3"></line>
-      <path d="${path2(claimed)}" fill="none" stroke="var(--violet)"
-        stroke-width="1.5" stroke-dasharray="2 3"></path>
-      <path d="${path2(eq)}" fill="none" stroke="var(--up)"
-        stroke-width="2"></path>
-    </svg></div>
-    <div class="muted" style="font-size:11.5px">
-      <span style="color:var(--violet)">紫点线</span>：把每天的声称 EV 累加到起始本金上，
-      到今天该是 <b>${num(R.initial_equity_usdc + R.claimed_ev_usdc,0)}</b>；
-      <span style="color:var(--up)">绿线</span>：实际权益
-      <b>${R.final_equity_usdc.toFixed(0)}</b>。
-      同一个 EV 数在给每笔定规模——两条线分得越开，说明定规模的输入错得越多。</div></div>`;
-
-  return `<h3 style="margin-top:22px;font-size:15px">组合风险指标</h3>
-  <p class="sub">把整本账当一个组合来量：每个事件日一笔收益（当日已结算盈亏 ÷
-  当日开盘权益），按 <b>365 天</b>年化（这本账有市场就交易，不跳周末）。</p>
-  <div class="why"><b>先看误差棒再看数字。</b>
-  ${R.days} 天的样本估夏普，经典标准误是
-  <span class="mono">√((1+S²/2)/n)</span>，年化后是 <b>±${num(R.sharpe_standard_error)}</b>——
-  比估计值本身大好几倍。所以下面的 ${num(S)} <b>与目标 2 的差距不是发现</b>，
-  它和 0 都还分不开。要让这个数字在 95% 置信下离开 0，
-  按当前的信噪比需要约 <b>${R.days_to_separate_from_zero==null?"—":R.days_to_separate_from_zero} 个交易日</b>
-  （现有 ${R.days} 天）。最大回撤和波动率受样本影响小得多，可以先当真。</div>
-  <div class="grid g3">
-    ${tile("夏普比率 <span class='muted'>目标 "+TGT.toFixed(1)+"</span>",
-      num(S), "95% 区间 ["+num(CI[0])+", "+num(CI[1])+"] · "+
-      (decided?"已与 0 可分":"<b>与 0 不可分</b>"), cls)}
-    ${tile("Sortino", num(R.sortino),
-      "只罚下行波动 "+mag(R.downside_deviation,2)+"/天 · 同样受样本量所限",
-      decided?(R.sortino>=TGT?"up":"down"):"muted")}
-    ${tile("最大回撤", pct(R.max_drawdown),
-      "峰 "+h(R.max_drawdown_peak_day||"—")+" → 谷 "+h(R.max_drawdown_trough_day||"—"),
-      R.max_drawdown<=-0.15?"down":"")}
-  </div>
-  <div class="grid g3" style="margin-top:10px">
-    ${tile("年化收益 <span class='muted'>几何</span>",
-      pct(R.annualised_return_geometric),
-      "算术口径 "+pct(R.annualised_return_arithmetic)+" · 累计 "+pct(R.total_return,2),
-      R.annualised_return_geometric>=0?"up":"down")}
-    ${tile("年化波动率", mag(R.annualised_volatility),
-      "日波动 "+mag(R.daily_volatility,2)+" × √365")}
-    ${tile("权益", R.final_equity_usdc.toFixed(2),
-      "起始 "+R.initial_equity_usdc.toFixed(0)+" · "+R.days+" 个结算日（"+
-      h(R.first_day)+" → "+h(R.last_day)+"）",
-      R.final_equity_usdc>=R.initial_equity_usdc?"up":"down")}
-  </div>
-  <div class="grid g3" style="margin-top:10px">
-    ${tile("平均 EV <span class='muted'>声称 · 每 USDC</span>",
-      mag(R.claimed_ev_per_usdc),
-      "下单当刻自己说的：胜率÷成本−1，按投入加权", "up")}
-    ${tile("EV 兑现比 <span class='muted'>按钱加权</span>",
-      R.ev_realisation_ratio==null?"—":num(R.ev_realisation_ratio,3)+"×",
-      "声称共 "+num(R.claimed_ev_usdc,1)+" USDC · 实得 "+
-      num(R.realised_pnl_usdc,1)+" USDC",
-      R.ev_realisation_ratio>=0.8?"up":"down")}
-    ${tile("EV 兑现比 <span class='muted'>中位日 · 近7日</span>",
-      num(R.ev_realisation_daily_median,2)+"× · "+
-      num(R.ev_realisation_trailing_7d,2)+"×",
-      "跑赢自己声称的日子 "+R.days_beating_claim+" / "+R.days,
-      R.ev_realisation_daily_median>=0.8?"up":"")}
-  </div>
-  <div class="why" style="margin-top:10px"><b>这三块是全页最重的一组，
-  但两个兑现比必须一起读。</b>
-  EV 不是事后打分，它是<b>给每一笔定规模的输入</b>——Kelly 用它决定下多少。
-  这本账按 ${mag(R.claimed_ev_per_usdc)}/U 的预期下注，实际拿回
-  ${R.total_staked_usdc>0?mag(R.realised_pnl_usdc/R.total_staked_usdc):"—"}/U。<br>
-  <b>按钱加权是 ${num(R.ev_realisation_ratio,3)}×，中位日却是
-  ${num(R.ev_realisation_daily_median,2)}×——差六倍，两个都没算错。</b>
-  前者被少数几个大亏日按仓位大小拖住（08-15、08-20、08-22 三天各亏掉
-  当日声称的一倍以上），后者说的是"平常的一天"。近 7 日是
-  ${num(R.ev_realisation_trailing_7d,2)}×。三个数分别回答"钱发生了什么"、
-  "典型一天什么样"、"最近怎么样"，${R.days} 天里
-  ${R.days_beating_claim} 天跑赢了自己当天的声称。<br>
-  <b>不要把近 7 日的回升当成好转</b>——它和夏普来自同一个 ${R.days} 天样本，
-  同样分不开噪声。能确定的只有方向：三个口径全部远低于 1.0，
-  说明<b>定规模用的那个数偏高</b>，而这个偏差每天都在重复，
-  不像夏普要等 ${R.days_to_separate_from_zero} 天才能判。</div>
-  <div class="why" style="margin-top:10px"><b>赔率、保本胜率、平均票价
-  搬去「入场的九个数」了（2026-09-10）。</b>
-  这里曾经有三块印同名的数，和那一节对不上，而且<b>对不上的一半是这里错的</b>：
-  这张卡片写过"平均花 ${num(R.cost_mean,3)} 买一份满赔 1.00 的赔付，所以赔率
-  ${num(R.odds_mean,2)}x"——(1−${num(R.cost_mean,3)})/${num(R.cost_mean,3)} =
-  <b>${num((1-R.cost_mean)/R.cost_mean,2)}</b>，不是 ${num(R.odds_mean,2)}。
-  两个数各自没算错，是<b>两种加权</b>：${num(R.cost_mean,3)} 是按投入加权的票价，
-  而 ${num(R.odds_mean,2)}x 恒等于 Σ投入÷Σ股 那个票价反推出来的赔率。
-  同名数只留一处，就在同一类的<a href="#sec-entry">「入场的九个数」页签</a>。
-  <br><b>还有一件这里读不出来的事</b>：保本 ${mag(R.breakeven_win_rate)}
-  对实际 ${mag(R.realised_win_rate_weighted)}，按这一对推出来的收益率是
-  ${pct(R.realised_win_rate_weighted/R.breakeven_win_rate-1,1)}，
-  可这本账实际是
-  ${R.total_staked_usdc>0?pct(R.realised_pnl_usdc/R.total_staked_usdc,1):"—"}。
-  <b>按投入加权的这一对本来就不闭合</b>——闭合的是按股那一对
-  （每股回收 ÷ 每股票价 ＝ 收益率），在那一节里。</div>
-  ${cvar}
-  ${chart}
-  ${claimChart}`;
+  return head
+    + (cards.length ? cap("对比 · 按股 · 整本账") + `<div class="ee-cmps">${cards.join("")}</div>` : "")
+    + risk + curves
+    + (excluded ? `<div class="muted ee-foot">${excluded}</div>` : "");
 }
 
 
@@ -14890,7 +14706,7 @@ function orderBookCard(B){
       账本里另有 <b>${paper}</b> 笔 <span class="mono">live_submit_authorized=0</span> 的纸面意向，
       <b>不计入上面任何一个数</b>：它们跑的是同一套选桶与定规模，但走到交易所边界就停，
       和实盘是两本账，并排放进同一张表只会被眼睛加到一起。
-      纸面那本的成绩在同一块资金看板的「纸面账本」一类里：权益与三边对照、组合风险指标、入场的九个数。</div>
+      纸面那本的成绩在同一块资金看板的「纸面账本」里。</div>
     </details>`;
   if(!B.total) return `<div class="card" style="margin-top:12px">
     <div class="muted">实盘意向簿</div>
@@ -14957,14 +14773,14 @@ function orderBookCard(B){
 // book every rule is measured on, and the live account that actually
 // spends.  Each category shows one block at a time and remembers which
 // across reloads; each block keeps its own guard, so one that throws does
-// not blank the other four.  The pane ids keep the old anchors working.
+// not blank the other four.  The paper category's three blocks became one
+// board the same evening (paperBoard), because they printed the same
+// readings; a category with one block draws no tab strip.
 const MONEY_BOARD = [
   {id:"paper", label:"纸面账本", tone:"#79c0ff",
    note:"每条规则都在这本账上量：P0 建仓、P0-M 与 P1 加仓，禁入站照样建仓结算",
    panes:[
-     ["equity", "权益与三边对照", () => moneyEquity(), "sec-money-equity"],
-     ["risk", "组合风险指标", () => riskMetrics(), "sec-risk"],
-     ["entry", "入场的九个数", () => entryEconomics(), "sec-entry"]]},
+     ["paper", "纸面账本", () => paperBoard(), "sec-paper"]]},
   {id:"live", label:"实盘", tone:"#ff7b72",
    note:"只数 live_submit_authorized=1 的行：真的交到交易所的单",
    panes:[
@@ -14974,17 +14790,6 @@ const MONEY_BOARD = [
       () => liveMoney((L) => orderBookCard((L.live_orders||{}).book||{})),
       "sec-live-book"]]},
 ];
-
-// The 钱 lamps, as they were in the head, and the 待观察/禁入 totals under
-// them.  A ledger that is not there is said once in the head's banner; here
-// it is one line rather than a second copy of that banner or a row of zeros.
-function moneyEquity(){
-  const O = overviewLamps();
-  if(O.banner) return `<div class="muted">纸面账本此刻是空的——见页头的说明，
-    重建结束后这里自行恢复。</div>`;
-  return lampRow("权益与回报率，以及上线／待观察／禁入三边对照", O.money)
-    + barSummary();
-}
 
 // Both live blocks read the live-readiness payload, which is absent when the
 // collector could not build it.  Absent is said, not drawn as empty tiles.
@@ -15006,13 +14811,14 @@ function moneyBoard(){
     return `<div class="card mb-cat" data-daytabs="money-${c.id}" data-remember="1"
       style="--tone:${c.tone}">
       <div class="grouptitle">${h(c.label)}<span class="muted">${h(c.note)}</span></div>
-      <div class="daytabs">${nav}<button type="button" data-day="all">全部</button></div>
+      ${c.panes.length > 1
+        ? `<div class="daytabs">${nav}<button type="button" data-day="all">全部</button></div>`
+        : ""}
       ${panes}</div>`;
   }).join("");
   return `<h2>资金看板：这本账值多少</h2>
-  <p class="sub">两类五块。<b>纸面账本</b>：权益与三边对照、组合风险指标、入场的九个数；
-  <b>实盘</b>：实盘订单（数量 / ROI / PnL）、实盘意向簿。每类一次看一块，点「全部」叠起来看；
-  选中的页签刷新后保留。</p>
+  <p class="sub"><b>纸面账本</b>一整块：总账、对比、风险、曲线，每个数只出现一次；
+  <b>实盘</b>两块：实盘订单（数量 / ROI / PnL）、实盘意向簿，点「全部」叠起来看，选中的页签刷新后保留。</p>
   ${cats}`;
 }
 
@@ -15834,7 +15640,7 @@ const LANES = {
     role:"真值落在价格 × 概率的哪一格"},
   // --- the book's own account ---
   "资金看板": {layer:"账本 · 读数", status:"audit",
-    role:"这本账值多少：纸面账本（权益与三边对照、风险刻度、入场九个数）与实盘（订单、意向簿）"},
+    role:"这本账值多少：纸面账本（总账、对比、风险、曲线）与实盘（订单、意向簿）"},
   "Live 上线准备": {layer:"执行层 · 运维", status:"audit",
     role:"开关能不能翻、翻了之后哪几道门还拦着"},
   "每日统计": {layer:"账本 · 读数", status:"audit",

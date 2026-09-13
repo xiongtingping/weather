@@ -283,8 +283,6 @@ def test_the_portfolio_card_no_longer_prints_the_same_numbers():
     assert '${tile("保本胜率"' not in page
     assert '${tile("平均赔率' not in page
     assert '<b>赔率这一组读法：</b>' not in page
-    # The correction stays on the page where the wrong number was.
-    assert 'href="#sec-entry"' in page
 
 
 def test_empty_book_says_so_instead_of_publishing_zeroes():
@@ -334,9 +332,9 @@ def test_stake_weighted_column_agrees_with_the_portfolio_tiles():
 
 def test_section_is_rendered_and_reachable():
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
-    # Since 2026-09-13 the section is a pane of the money board, under the
-    # same anchor; tests/test_dashboard_money_board.py renders the board.
-    assert '["entry", "入场的九个数", () => entryEconomics(), "sec-entry"]' in source
+    # Since 2026-09-13 the nine numbers are part of the money board's one
+    # 纸面账本 pane; tests/test_dashboard_money_board.py renders the board.
+    assert '["paper", "纸面账本", () => paperBoard(), "sec-paper"]' in source
     assert 'sec(moneyBoard, "资金看板", "sec-money")' in source
     assert '"entry_economics": _cached_section(' in source
 
@@ -414,11 +412,12 @@ def test_the_plain_language_paragraph_stays_in_one_weighting():
 
 # ---------------------------------------------------------------- as drawn
 #
-# User ruling, 2026-09-13: 不要给我解释，在数据看板上用直观的数据对比得出结论即可.
-# The section is a verdict, comparison bars that each end in a result, and
-# the nine values -- no paragraphs.  Rendered from the collector's own
-# output, so the verdicts are checked against a real book, not a fixture
-# shaped to agree with them.
+# User rulings, 2026-09-13: 不要给我解释，在数据看板上用直观的数据对比得出结论
+# 即可 -- and then, the same evening, 有些指标重复了，把纸面账本的所有数据看板
+# 重新整理合并.  The nine numbers, the portfolio ratios and the 钱 lamps are one
+# board: a headline, comparisons that each end in a result, risk cells and
+# the curves, with every quantity drawn once.  Rendered from the collectors'
+# own output on a real book, not from a fixture shaped to agree.
 
 import json  # noqa: E402
 import re  # noqa: E402
@@ -441,15 +440,33 @@ def _function(name: str) -> str:
     raise AssertionError(f"{name}() has unbalanced braces")
 
 
-def _draw(entry: dict) -> str:
+BAR_SPLIT = {
+    "live": {"stations": 16, "settled_days": 29, "staked_usdc": 165.06, "pnl_usdc": 117.94, "roi": 0.7145},
+    "probation": {"stations": 1, "settled_days": 3, "staked_usdc": 6.89, "pnl_usdc": -1.89, "roi": -0.2743},
+    "barred": {"stations": 28, "settled_days": 37, "staked_usdc": 152.34, "pnl_usdc": -83.34, "roi": -0.5471},
+    "fleet": {"stations": 45, "settled_days": 69, "staked_usdc": 324.29, "pnl_usdc": 32.71, "roi": 0.1009},
+}
+
+
+def _payload(rows: list[tuple], **extra) -> dict:
+    conn = _book(rows)
+    return {
+        "entry_economics": C.collect_entry_economics(conn),
+        "risk_metrics": C.collect_risk_metrics(conn),
+        "live_readiness": {"bar_split": BAR_SPLIT},
+        "selection": {},
+    } | extra
+
+
+def _draw(payload: dict) -> str:
     node = shutil.which("node")
     if node is None:  # pragma: no cover - CI images all carry node
         pytest.skip("node is required to run the board's renderer")
     script = (
-        "const D = " + json.dumps({"entry_economics": entry}, ensure_ascii=False) + ";\n"
+        "const D = " + json.dumps(payload, ensure_ascii=False) + ";\n"
         "const h = (s) => String(s == null ? '' : s)"
         ".replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');\n"
-        + _function("entryEconomics") + "\nconsole.log(entryEconomics());\n"
+        + _function("paperBoard") + "\nconsole.log(paperBoard());\n"
     )
     result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr
@@ -459,12 +476,16 @@ def _draw(entry: dict) -> str:
 def _card(html: str, title: str) -> str:
     start = html.index(f"<b>{title}</b>")
     end = html.find('<div class="card ee-cmp">', start)
-    return html[start:end if end > 0 else html.index('<div class="ee-nine">', start)]
+    return html[start:end if end > 0 else len(html)]
 
 
 def _pill(fragment: str) -> tuple[str, str]:
     tone, word = re.search(r'<span class="pill (\w+)[^"]*">([^<]*)</span>', fragment).groups()
     return tone, word
+
+
+def _signed(v: float, d: int = 2, unit: str = " U") -> str:
+    return ("+" if v >= 0 else "") + f"{v:.{d}f}{unit}"
 
 
 WINNING = [
@@ -478,42 +499,72 @@ LOSING = [
     ("P0", 0.50, 0, 1, 0.45, 20.0),
     ("P0", 0.50, 0, 0, 0.45, 20.0),
     ("P0", 0.50, 1, 1, 0.45, 5.0),
+    ("P0", 0.50, 0, 0, 0.45, 10.0),
 ]
 
 
 def test_no_paragraph_of_explanation_is_drawn():
-    html = _draw(C.collect_entry_economics(_book(WINNING)))
+    html = _draw(_payload(WINNING))
 
     assert 'class="why"' not in html
     assert '<p class="sub">' not in html
     assert "<details" not in html
-    for prose in ("白话版", "怎么读", "为什么", "容易读错", "三个口径"):
+    for prose in ("白话版", "怎么读", "为什么", "容易读错", "三个口径", "先看"):
         assert prose not in html
+
+
+def test_each_headline_quantity_is_drawn_once():
+    """The duplicates the merge removed: equity, P&L, the return on stake,
+    the stake, the claimed and realised EV per share, and the fleet's row
+    of the bar split, which is the whole book again."""
+
+    payload = _payload(WINNING)
+    risk, entry = payload["risk_metrics"], payload["entry_economics"]
+    share = entry["weightings"]["share"]
+    html = _draw(payload)
+
+    for drawn in (
+        f'{risk["final_equity_usdc"]:.2f}',
+        _signed(risk["realised_pnl_usdc"]),
+        _signed(100 * risk["realised_pnl_usdc"] / risk["total_staked_usdc"], 1, "%"),
+        f'{risk["total_staked_usdc"]:.2f} U',
+        _signed(100 * share["ev_per_share_claimed"], 1, "¢"),
+        _signed(100 * share["ev_per_share_realised"], 1, "¢"),
+        f'{100 * share["breakeven_hit_rate"]:.1f}%',
+    ):
+        assert html.count(drawn) == 1, drawn
+    assert "全舰队" not in html
+
+
+def test_all_nine_numbers_are_named_exactly_once():
+    html = _draw(_payload(WINNING))
+
+    for mark in "①②③④⑤⑥⑦⑧⑨":
+        assert html.count(mark) == 1 + ("＝ " + mark in html), mark
 
 
 def test_the_verdict_follows_the_money_both_ways():
     for rows, word, tone in ((WINNING, "赚", "green"), (LOSING, "亏", "red")):
-        entry = C.collect_entry_economics(_book(rows))
-        html = _draw(entry)
-        top = html[html.index('class="card ee-top"'):html.index('<div class="ee-cmps">')]
+        payload = _payload(rows)
+        html = _draw(payload)
+        top = html[html.index('class="card ee-top"'):html.index('class="pb-cap"')]
 
         assert _pill(top) == (tone, word)
-        assert _pill(_card(html, "赚的钱 vs 亏的钱")) == (tone, word)
-        assert (entry["pnl_usdc"] >= 0) is (word == "赚")
+        assert (payload["risk_metrics"]["realised_pnl_usdc"] >= 0) is (word == "赚")
 
 
 def test_gains_minus_losses_is_the_books_pnl():
-    entry = C.collect_entry_economics(_book(WINNING))
-    card = _card(_draw(entry), "赚的钱 vs 亏的钱")
+    payload = _payload(WINNING)
+    entry = payload["entry_economics"]
+    card = _card(_draw(payload), "赚的钱 vs 亏的钱")
 
     gains, losses = (float(v) for v in re.findall(r'class="ee-v">([\d.]+) U<', card))
     assert gains - losses == pytest.approx(entry["pnl_usdc"], abs=0.011)
-    assert f'赢 {entry["win_count"]} 条' in card and f'亏 {entry["loss_count"]} 条' in card
+    assert _pill(card)[1] == ("赢 ＞ 亏" if gains >= losses else "亏 ＞ 赢")
 
 
 def test_bars_share_one_scale_so_the_longer_bar_is_the_larger_number():
-    html = _draw(C.collect_entry_economics(_book(LOSING)))
-    card = _card(html, "赚的钱 vs 亏的钱")
+    card = _card(_draw(_payload(LOSING)), "赚的钱 vs 亏的钱")
 
     widths = [float(w) for w in re.findall(r'style="width:([\d.]+)%"', card)]
     values = [float(v) for v in re.findall(r'class="ee-v">([\d.]+) U<', card)]
@@ -522,31 +573,53 @@ def test_bars_share_one_scale_so_the_longer_bar_is_the_larger_number():
 
 
 def test_hit_card_compares_realised_coverage_with_the_break_even_line():
-    entry = C.collect_entry_economics(_book(LOSING))
-    share = entry["weightings"]["share"]
-    card = _card(_draw(entry), "实际命中 vs 保本线")
+    payload = _payload(LOSING)
+    share = payload["entry_economics"]["weightings"]["share"]
+    card = _card(_draw(payload), "实际命中 vs 保本线")
 
     below = share["realised_coverage"] < share["breakeven_hit_rate"]
-    assert _pill(card) == (("red", "低于保本线") if below else ("green", "盖过保本线"))
+    tone, word = _pill(card)
+    assert tone == ("red" if below else "green")
+    assert word.startswith("低于" if below else "盖过")
 
 
-def test_a_losing_stage_is_named_with_its_loss():
-    entry = C.collect_entry_economics(_book(WINNING))
-    stages = {s["stage"]: s for s in entry["by_stage"]}
-    card = _card(_draw(entry), "分阶段收益率")
+def test_the_bar_split_names_each_side_with_its_sample():
+    card = _card(_draw(_payload(WINNING)), "上线 / 待观察 / 禁入")
 
-    losers = [name for name, s in stages.items() if s["pnl_usdc"] < 0]
-    winners = [name for name, s in stages.items() if s["pnl_usdc"] >= 0]
-    if losers and winners:
+    for label, key in (("上线", "live"), ("待观察", "probation"), ("禁入", "barred")):
+        g = BAR_SPLIT[key]
+        assert f'{label} {g["stations"]} 站' in card
+        assert f'{label} <b>{g["settled_days"]}</b> 站日 / <b>{g["staked_usdc"]:.2f}</b> U' in card
+    assert _pill(card) == ("green", "上线 ＞ 禁入")
+
+
+def test_a_tail_that_is_only_the_worst_day_is_not_printed_again():
+    payload = _payload(WINNING)
+    risk = payload["risk_metrics"]
+    html = _draw(payload)
+
+    wider = [t for t in risk["tails"] if t["tail_days"] > 1]
+    assert ("CVaR" in html) is bool(wider)
+    for t in risk["tails"]:
+        if t["tail_days"] <= 1:
+            assert f'CVaR {100 * t["level"]:.0f}%' not in html
+
+
+def test_a_losing_stage_is_named_by_the_verdict():
+    payload = _payload(WINNING)
+    stages = payload["entry_economics"]["by_stage"]
+    card = _card(_draw(payload), "分阶段")
+
+    winners = [s["stage"] for s in stages if s["pnl_usdc"] >= 0]
+    losers = [s["stage"] for s in stages if s["pnl_usdc"] < 0]
+    if winners and losers:
         assert _pill(card) == ("amber", "赚在 " + "、".join(winners))
-        for name in losers:
-            assert f"亏在 {name}" in card or f"· {name}" in card
-    for name, s in stages.items():
-        assert f"{name} · {s['chains']} 链" in card
+    for s in stages:
+        assert f'{s["stage"]} · {s["chains"]} 链' in card
 
 
-def test_all_nine_numbers_are_on_the_board():
-    html = _draw(C.collect_entry_economics(_book(WINNING)))
-    cells = re.findall(r'<div class="ee-n"><span class="muted">([^<]+)</span>', html)
+def test_an_absent_ledger_is_one_line_not_a_board_of_zeros():
+    html = _draw(_payload(WINNING, selection={"ledger_absent": True}))
 
-    assert [c[0] for c in cells] == list("①②③④⑤⑥⑦⑧⑨")
+    assert "纸面账本此刻是空的" in html
+    assert "ee-cmp" not in html and "pb-kpis" not in html

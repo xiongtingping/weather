@@ -186,6 +186,8 @@ def test_an_absent_ledger_is_not_reported_as_an_empty_one() -> None:
     overview = page[page.index("function overviewLamps(){"):]
     overview = overview[: overview.index("\n}\n")]
     assert "S.ledger_absent" in overview
-    assert overview.index("S.ledger_absent") < overview.index("initial_capital_usdc")
+    # The money lamps that used to follow it left for the money board on
+    # 2026-09-13; the banner still has to come before the first lamp.
+    assert overview.index("S.ledger_absent") < overview.index('push("machine"')
     assert "纸面账本此刻是空的" in overview
     assert str(S.STATS_START_EVENT_DATE)

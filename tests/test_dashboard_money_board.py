@@ -5,9 +5,14 @@ User ruling, 2026-09-13: 把「组合风险指标」、入场的九个数、钱 
 数据看板，分类展示.  They sat in three places: the 钱 lamp row in the head,
 two sections under it, and two cards inside Live 上线准备.
 
+The same evening the paper category's three blocks became one board
+(有些指标重复了，把纸面账本的所有数据看板重新整理合并): the category now has one
+pane and draws no tab strip, while 实盘 keeps its two.
+
 Asserted on rendered output, with every block stubbed: the board's own job is
-the grouping, the tabs and the guards, and the five blocks each have their own
-tests.  The placement checks read the page's call graph, not its wording.
+the grouping, the tabs and the guards, and the blocks each have their own
+tests (the paper board's are in tests/test_entry_economics_section.py).  The
+placement checks read the page's call graph, not its wording.
 """
 
 from __future__ import annotations
@@ -49,7 +54,6 @@ def _function(name: str) -> str:
 
 BOARD = "\n".join([
     _balanced("const MONEY_BOARD = ", "[", "]") + ";",
-    _function("moneyEquity"),
     _function("liveMoney"),
     _function("moneyBoard"),
     _function("safe"),
@@ -58,13 +62,7 @@ BOARD = "\n".join([
 STUBS = """
 const h = (s) => String(s == null ? '' : s)
   .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-const lampRow = (cap, lamps) => `<div class="lampdeck">${cap}|${lamps.join('')}</div>`;
-const barSummary = () => '<div class="lampdeck">BAR_SUMMARY</div>';
-const overviewLamps = () => D.__ledger_absent
-  ? {banner: 'BANNER', money: []}
-  : {banner: '', money: ['LAMP_EQUITY', 'LAMP_ROI']};
-const riskMetrics = () => { if (D.__risk_throws) throw new Error('boom'); return '<h3>RISK</h3>'; };
-const entryEconomics = () => '<h2>ENTRY</h2>';
+const paperBoard = () => { if (D.__paper_throws) throw new Error('boom'); return '<div>PAPER</div>'; };
 const liveOrderCard = (L) => `<h3>ORDERS ${L.live_orders.intent_count}</h3>`;
 const orderBookCard = (B) => `<div>BOOK ${B.total}</div>`;
 """
@@ -101,39 +99,31 @@ def test_five_blocks_in_two_categories_one_showing_per_category():
     html = _render(LIVE)
 
     assert _panes(html) == [
-        ("paper", "equity", False), ("paper", "risk", True), ("paper", "entry", True),
+        ("paper", "paper", False),
         ("live", "orders", False), ("live", "book", True),
     ]
-    for label in ("纸面账本", "实盘", "权益与三边对照", "组合风险指标", "入场的九个数",
-                  "实盘订单 · 数量 / ROI / PnL", "实盘意向簿"):
+    for label in ("纸面账本", "实盘", "实盘订单 · 数量 / ROI / PnL", "实盘意向簿"):
         assert label in html
-    for body in ("LAMP_EQUITY", "BAR_SUMMARY", "RISK", "ENTRY", "ORDERS 7", "BOOK 7"):
+    for body in ("PAPER", "ORDERS 7", "BOOK 7"):
         assert body in html
-    assert html.index("LAMP_ROI") < html.index("BAR_SUMMARY") < html.index("RISK")
+    assert html.index("PAPER") < html.index("ORDERS 7")
 
 
-def test_every_tab_has_a_pane_and_every_category_can_show_all():
+def test_every_tab_has_a_pane_and_a_single_block_draws_no_strip():
     html = _render(LIVE)
 
     for cat in re.finditer(r'data-daytabs="money-\w+"(.*?)(?=data-daytabs="money-|\Z)', html, re.S):
         tabs = re.findall(r'<button type="button" data-day="(\w+)"', cat.group(1))
         panes = re.findall(r'data-daypane="(\w+)"', cat.group(1))
-        assert tabs == panes + ["all"]
+        assert tabs == (panes + ["all"] if len(panes) > 1 else [])
+        assert ('class="daytabs"' in cat.group(1)) is (len(panes) > 1)
 
 
-def test_the_old_anchors_still_land_on_their_blocks():
-    html = _render(LIVE)
-
-    for anchor, body in (("sec-entry", "ENTRY"), ("sec-risk", "RISK")):
-        start = html.index(f'id="{anchor}"')
-        assert body in html[start:html.index("</div>", start)]
-
-
-def test_a_block_that_throws_does_not_blank_the_other_four():
-    html = _render(LIVE | {"__risk_throws": True})
+def test_a_block_that_throws_does_not_blank_the_others():
+    html = _render(LIVE | {"__paper_throws": True})
 
     assert "渲染失败" in html and "boom" in html
-    for body in ("LAMP_EQUITY", "ENTRY", "ORDERS 7", "BOOK 7"):
+    for body in ("ORDERS 7", "BOOK 7"):
         assert body in html
 
 
@@ -142,14 +132,6 @@ def test_live_blocks_say_absent_instead_of_drawing_empty_tiles():
 
     assert "ORDERS" not in html and "BOOK" not in html
     assert html.count("live_readiness 不可用") == 2
-
-
-def test_an_absent_ledger_is_one_line_not_a_row_of_zeros():
-    html = _render(LIVE | {"__ledger_absent": True})
-
-    assert "纸面账本此刻是空的" in html
-    assert "LAMP_" not in html and "BAR_SUMMARY" not in html
-    assert "BANNER" not in html  # the head already carries it
 
 
 # ---------------------------------------------------------------- placement
@@ -170,13 +152,11 @@ def test_the_board_sits_between_the_head_and_live_readiness():
     assert "sec(entryEconomics" not in page and "sec(riskMetrics" not in page
 
 
-@pytest.mark.parametrize("name", [
-    "entryEconomics", "riskMetrics", "liveOrderCard", "orderBookCard", "barSummary",
-])
+@pytest.mark.parametrize("name", ["paperBoard", "liveOrderCard", "orderBookCard"])
 def test_each_block_is_drawn_by_the_board_and_nowhere_else(name):
     """A second call site would print the same numbers twice on one page."""
 
-    board = [_balanced("const MONEY_BOARD = ", "[", "]"), _function("moneyEquity")]
+    board = [_balanced("const MONEY_BOARD = ", "[", "]")]
     rest = SOURCE
     for part in board:
         rest = rest.replace(part, "")
@@ -187,6 +167,7 @@ def test_each_block_is_drawn_by_the_board_and_nowhere_else(name):
 
 def test_the_head_no_longer_carries_the_money_row():
     head = _function("head")
+    lamps = _function("overviewLamps")
 
-    assert "O.money" not in head
-    assert "barSummary" not in head
+    assert "O.money" not in head and "money:[]" not in head
+    assert 'push("money"' not in lamps and "money:[]" not in lamps
