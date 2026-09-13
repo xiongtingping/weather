@@ -8618,6 +8618,124 @@ def collect_lambda_axis_realisation(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def collect_valuation_lane(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Charter 132's page: the pooled valuation as served, the walk-forward
+    verdict each stage stands under, the lambda tables' shape vintage, and
+    what the shadow recorded on recent decisions.
+
+    Read-only and cheap: three small tables plus a bounded scan of the most
+    recent decisions' plan headers.  The verdict's own evidence carries the
+    four-arm readings, so the page repeats the numbers a promotion would be
+    argued on rather than re-deriving them.
+    """
+
+    out: dict[str, Any] = {"available": False}
+    try:
+        from bayes_basket_target.effective_edge_store import (  # noqa: PLC0415
+            lambda_vintage_status,
+        )
+        from bayes_basket_target.valuation_store import (  # noqa: PLC0415
+            load_valuation_tables,
+        )
+    except ImportError:
+        return out
+    try:
+        served = load_valuation_tables(conn)
+    except sqlite3.Error:
+        return out
+    stages: list[dict[str, Any]] = []
+    for scope in ("P0", "P0-M", "P1"):
+        row = served.get(scope)
+        verdict: dict[str, Any] | None = None
+        try:
+            got = conn.execute(
+                "SELECT verdict, reason, first_test_day, last_test_day,"
+                " computed_at_utc, evidence_json FROM calibration_valuation_verdict"
+                " WHERE stage_scope=? AND activated=1"
+                " ORDER BY computed_at_utc DESC LIMIT 1",
+                (scope,),
+            ).fetchone()
+        except sqlite3.Error:
+            got = None
+        if got is not None:
+            try:
+                body = json.loads(got[5] or "{}")
+            except ValueError:
+                body = {}
+            evidence = body.get("evidence") or {}
+            information = evidence.get("information") or {}
+            arms = (evidence.get("strategy") or {}).get("arms") or {}
+            verdict = {
+                "verdict": got[0], "reasons": [r for r in str(got[1]).split(";") if r],
+                "first_test_day": got[2], "last_test_day": got[3],
+                "computed_at_utc": got[4],
+                "test_days": information.get("test_days"),
+                "test_station_days": information.get("station_days"),
+                "log_score": information.get("log_score"),
+                "weather_minus_market": information.get("weather_minus_market_log"),
+                "weather_minus_market_ci": information.get("weather_minus_market_log_ci"),
+                "pool_minus_market": information.get("pool_minus_market_log"),
+                "pool_minus_market_ci": information.get("pool_minus_market_log_ci"),
+                "arms": {
+                    arm: {
+                        "roi": (arms.get(arm) or {}).get("roi_per_share"),
+                        "roi_ci": (arms.get(arm) or {}).get("roi_ci"),
+                        "station_days": (arms.get(arm) or {}).get("admitted_station_days"),
+                        "windows": (arms.get(arm) or {}).get("admitted_windows"),
+                        "brier": (arms.get(arm) or {}).get("window_brier"),
+                    }
+                    for arm in ("lambda", "weather", "market", "pool")
+                },
+            }
+        stages.append({
+            "stage": scope,
+            "served": None if row is None else {
+                key: row.get(key) for key in (
+                    "beta", "beta_lcb", "beta_ucb", "accumulating",
+                    "station_day_count", "day_count", "fit_cutoff_utc", "scores",
+                )
+            },
+            "verdict": verdict,
+        })
+    shadow = {"decisions": 0, "states": {}, "would_admit": 0, "would_refuse": 0}
+    try:
+        rows = conn.execute(
+            "SELECT details_json FROM auto_trade_decisions"
+            " WHERE details_json LIKE '%valuation_state%'"
+            " ORDER BY created_at DESC LIMIT 300"
+        ).fetchall()
+    except sqlite3.Error:
+        rows = []
+    for (payload,) in rows:
+        try:
+            detail = json.loads(payload or "{}")
+        except ValueError:
+            continue
+        stack = [detail]
+        while stack:
+            node = stack.pop()
+            if isinstance(node, dict):
+                if "valuation_state" in node:
+                    shadow["decisions"] += 1
+                    state = str(node.get("valuation_state"))
+                    shadow["states"][state] = shadow["states"].get(state, 0) + 1
+                    shadow["would_admit"] += int(node.get("valuation_would_admit_count") or 0)
+                    shadow["would_refuse"] += int(node.get("valuation_would_refuse_count") or 0)
+                    continue
+                stack.extend(node.values())
+            elif isinstance(node, list):
+                stack.extend(node)
+    try:
+        vintage = lambda_vintage_status(conn)
+    except sqlite3.Error:
+        vintage = {}
+    out.update({
+        "available": True, "stages": stages, "shadow": shadow,
+        "lambda_vintage": vintage,
+    })
+    return out
+
+
 def collect_edge_band_health(conn: sqlite3.Connection) -> dict[str, Any]:
     """The claims layer's thermometer: edge bands versus what they realise.
 
@@ -9252,6 +9370,9 @@ SECTION_CACHE_TTL_SEC = {
     # has to be parsed to reach the seated window: ~19s, and the reading
     # it produces moves on the scale of days, not cycles.
     "lambda_axis_realisation": 285 * 60,
+    # Three small tables and the last 300 plan headers; the verdict moves
+    # daily at most.
+    "valuation_lane": 50 * 60,
     # The per-table growth walk counts rows over a day on ten tables, two
     # of which have no index on their time column.  The gauge above it is
     # read from status.json every build and is never cached; only the
@@ -9620,6 +9741,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         ),
         "lambda_axis_realisation": _cached_section(
             "lambda_axis_realisation", collect_lambda_axis_realisation, conn
+        ),
+        "valuation_lane": _cached_section(
+            "valuation_lane", collect_valuation_lane, conn
         ),
         "beta_shadow": _cached_section(
             "beta_shadow", collect_beta_shadow, conn
@@ -12245,6 +12369,64 @@ function betaSubsets(C){
   45 选 1 的幸存者该有的样子。<br>
   <b>结论：没有事前可识别的 β &gt; 0 子集，不挑就是最好的做法。</b>
   这条与"没有事前可识别的正收益子集"是同一个答案换了一根轴问。</p></div>`;
+}
+
+// Charter 132: the valuation lane.  The promotion condition is printed on
+// the page with the numbers a ruling would read, so "hold" is never a word
+// without its reasons.
+function valuationLane(){
+  const V=D.valuation_lane||{};
+  if(!V.available) return "";
+  const n3=v=>v==null?"—":(+v).toFixed(3);
+  const n2=v=>v==null?"—":(+v).toFixed(2);
+  const pc=v=>v==null?"—":((v>=0?"+":"")+(v*100).toFixed(1)+"%");
+  const ci=(c,f)=>!c||c[0]==null?"":` <span class="muted">[${f(c[0])}, ${f(c[1])}]</span>`;
+  const reasonText={
+    "pool_log_gain_over_market_lcb<=0":"池化对市场的对数得分增益下界 ≤ 0",
+    "pool_roi_lcb<=0":"池化按股收益下界 ≤ 0",
+    "admitted_station_days<30":"池化入座站日 < 30",
+    "test_days<10":"测试日 < 10",
+    "test_station_days<100":"测试站日 < 100",
+  };
+  const cards=(V.stages||[]).map(st=>{
+    const s=st.served||{}, v=st.verdict||{};
+    const ok=v.verdict==="admitted";
+    const arms=v.arms||{};
+    const armRow=(k,label)=>{const a=arms[k]||{};return `<tr><td>${label}</td>
+      <td>${a.windows==null?"—":a.windows}</td><td>${a.station_days==null?"—":a.station_days}</td>
+      <td class="mono ${a.roi==null?"":(a.roi<0?"down":"up")}"><b>${pc(a.roi)}</b>${ci(a.roi_ci,pc)}</td>
+      <td class="mono">${n3(a.brier)}</td></tr>`;};
+    return `<div class="card">
+      <div style="display:flex;align-items:center;gap:8px">
+        <b>${h(st.stage)}</b><span style="flex:1"></span>
+        <span class="pill ${ok?"green":"amber"}">${v.verdict?h(v.verdict):"无裁决"}</span></div>
+      <div style="display:flex;gap:18px;margin-top:10px;flex-wrap:wrap">
+        <div><div class="muted">池化权重 β（天气）</div>
+          <div class="big">${n2(s.beta)}</div>
+          <div class="muted">[${n2(s.beta_lcb)}, ${n2(s.beta_ucb)}] · ${s.station_day_count==null?"—":s.station_day_count} 站日 / ${s.day_count==null?"—":s.day_count} 天</div></div>
+        <div><div class="muted">样本外对数得分：天气 − 市场</div>
+          <div class="big ${v.weather_minus_market==null?"":(v.weather_minus_market<0?"down":"up")}">${n3(v.weather_minus_market)}</div>
+          <div class="muted">${ci(v.weather_minus_market_ci,n3)||"—"} nat · 池化 − 市场 ${n3(v.pool_minus_market)}</div></div>
+      </div>
+      <table style="margin-top:10px"><thead><tr><th>臂（前瞻）</th><th>入座窗</th><th>站日</th><th>按股收益 · 90%</th><th>窗口 Brier</th></tr></thead>
+      <tbody>${armRow("lambda","现役 λ")}${armRow("weather","天气单独")}${armRow("market","市场单独")}${armRow("pool","池化")}</tbody></table>
+      ${(v.reasons||[]).length?`<div class="muted" style="margin-top:6px;font-size:11.5px">未晋升：${
+        v.reasons.map(r=>reasonText[r]||h(r)).join("；")}。测试日 ${h(v.first_test_day||"—")} … ${h(v.last_test_day||"—")}</div>`:""}
+    </div>`;
+  }).join("");
+  const sh=V.shadow||{};
+  const states=Object.entries(sh.states||{}).map(([k,c])=>`${h(k)} ${c}`).join(" · ")||"重启后开始记录";
+  const vint=Object.values(V.lambda_vintage||{});
+  const stale=vint.filter(x=>x.verdict!=="current").length;
+  return `<h2>统一估值车道（宪章 132）</h2>
+  <p class="sub">市场盘口是第二份预报：<span class="mono">p_value = (1−β)·市场 + β·天气</span>，
+  β 在真值桶的对数得分上拟合；保守性放在动作上（抽样向量集上取收益 5% 分位）。
+  <b>β = 0 表示天气模型在市场之外没有增量信息。</b>默认影子，只记录不改裁决；切 on 需该阶段裁决为 admitted。</p>
+  <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:12px">${cards}</div>
+  <p class="note" style="margin-top:10px">影子（最近 ${sh.decisions||0} 份计划头）：${states}；
+  会多放行 ${sh.would_admit||0} 窗 · 会拒 ${sh.would_refuse||0} 窗。
+  λ 表形状血统：${vint.length} 张现役表里 <b>${stale}</b> 张不是按当前席位形状拟的
+  （服务侧暂不改，证据读者严格拒绝，见宪章 132）。</p>`;
 }
 
 function windowDivergence(){
@@ -15515,6 +15697,7 @@ const GROUPS = [
    sections:[[bandTable,"band 表"],
      [edgeBandHealth,"声称边际体温计"],
      [effectiveEdgeLambda,"有效边际 λ 表"],
+     [valuationLane,"统一估值车道"],
      [betaShadow,"β 车道（影子）"],
      [convergenceClaim,"双向收敛系数"],
      [consolidation,"固化减仓"],
@@ -15649,7 +15832,7 @@ const laneStrip = (name) => {
       h(LANE_WORD[L.status] || L.status)}</span><span class="muted">${
       h(L.note || LANE_NOTE[L.status] || "")}</span></span></div>`;
 };
-const STARRED = new Set(["band 表", "声称边际体温计", "有效边际 λ 表"]);
+const STARRED = new Set(["band 表", "声称边际体温计", "有效边际 λ 表", "统一估值车道"]);
 // The strip rides INSIDE the section, above its <h2>, and only when the
 // section rendered something: an empty section is guarded out of the page
 // on purpose, and a lane strip would put it back as a chip pointing at
