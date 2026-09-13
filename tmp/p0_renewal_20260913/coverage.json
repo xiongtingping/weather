@@ -1,0 +1,34 @@
+{
+  "coverage": {
+    "pre": {
+      "n": 137334,
+      "served": 116931,
+      "seat_max": 109458,
+      "seat_min": 71036
+    },
+    "day": {
+      "n": 94494,
+      "served": 81284,
+      "seat_max": 67566,
+      "seat_min": 29286
+    }
+  },
+  "gap_kinds": {
+    "pre|refreshed_later": 7000,
+    "day|refreshed_later": 6937,
+    "day|never_refreshed_that_day": 6781,
+    "pre|never_refreshed_that_day": 473
+  },
+  "seat_sets": {
+    "ECCC_GEM_GLOBAL_ENS+NOAA_GEFS_05": 570,
+    "DWD_ICON_GLOBAL_EPS+ECCC_GEM_GLOBAL_ENS": 15815,
+    "DWD_ICON_GLOBAL_EPS+ECMWF_IFS_ENS_OPEN_PF50": 754,
+    "ECMWF_IFS_ENS_OPEN_PF50+NOAA_GEFS_05": 618,
+    "DWD_ICON_GLOBAL_EPS+ECCC_GEM_GLOBAL_ENS+ECMWF_IFS_ENS_OPEN_PF50": 722,
+    "DWD_ICON_GLOBAL_EPS+NOAA_GEFS_05": 693,
+    "DWD_ICON_GLOBAL_EPS+ECCC_GEM_GLOBAL_ENS+NOAA_GEFS_05": 1172,
+    "ECCC_GEM_GLOBAL_ENS+ECMWF_IFS_ENS_OPEN_PF50": 798,
+    "ECCC_GEM_GLOBAL_ENS+ECMWF_IFS_ENS_OPEN_PF50+NOAA_GEFS_05": 32,
+    "DWD_ICON_GLOBAL_EPS+ECMWF_IFS_ENS_OPEN_PF50+NOAA_GEFS_05": 17
+  }
+}

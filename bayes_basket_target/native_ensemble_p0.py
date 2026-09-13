@@ -1295,6 +1295,55 @@ def _official_forward_lineage(
     }
 
 
+def seated_evidence_received_at(
+    archive_query_at_utc_by_system: Mapping[str, Any] | None,
+    *,
+    seated_system_ids: Sequence[str],
+) -> datetime | None:
+    """The newest archive receipt among the systems a P0 actually seats.
+
+    A packet's ``received_at_utc`` is the newest receipt of *any* archive in
+    it, and the TTL used to run from there -- so an archive that entered the
+    snapshot and was then left out of the blend renewed the probability of
+    the systems that were in it.  Measured 2026-09-11..12: every one of the
+    349 same-run P0 re-mints that extended freshness did so on an unseated
+    archive, and KSFO 2026-09-11 at 01:39Z served a P0 built only on ICON and
+    GEM from 00Z (received 07:53Z) as fresh until 07:31Z because ECMWF and
+    GEFS 18Z -- both excluded from the blend -- had just been captured.
+
+    The newest of the seated receipts rather than the oldest: it is the same
+    reading ``available_at`` has always had ("the snapshot knows what its
+    newest member knows"), restricted to the members that are in it.  None
+    when a seated system has no readable receipt; callers fall back to the
+    packet's own clock rather than invent one.
+
+    One function for the compiler that mints the window and the capture probe
+    that decides whether to re-read, so the two cannot come to disagree on
+    what is usable.  When they did (the probe's own note in the worker), a
+    packet the compiler refused kept satisfying the probe, no fresh capture
+    was ever asked for, and the inbox aged out with nothing to replace it.
+    """
+
+    if not isinstance(archive_query_at_utc_by_system, Mapping):
+        return None
+    seated = [str(system_id) for system_id in seated_system_ids]
+    if not seated:
+        return None
+    receipts: list[datetime] = []
+    for system_id in seated:
+        raw = str(archive_query_at_utc_by_system.get(system_id) or "").strip()
+        if not raw:
+            return None
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return None
+        receipts.append(parsed.astimezone(timezone.utc))
+    return max(receipts)
+
+
 def compile_native_ensemble_p0(
     conn: sqlite3.Connection,
     *,
@@ -3629,8 +3678,35 @@ def compile_native_ensemble_p0(
     # TTL belongs to the evidence receipt, not to the moment a caller happens
     # to compile it.  Otherwise a nearly expired packet could be recompiled
     # repeatedly and made arbitrarily fresh without a new model arrival.
+    #
+    # And to the evidence the distribution is built on, not to every archive
+    # the snapshot carried: a system excluded from the blend, or seated as a
+    # zero-weight provisional rider, contributes no probability and so cannot
+    # renew any.  The packet-level guard near the top still runs first -- the
+    # packet clock is never earlier than this one -- and this is the one that
+    # decides.
+    seated_received = seated_evidence_received_at(
+        official_lineage["archive_query_at_utc_by_system"],
+        seated_system_ids=[
+            system_id
+            for system_id in system_ids
+            if float(system_weights.get(system_id) or 0.0) > EPS
+        ],
+    ) if official_snapshot else None
+    evidence_received = (
+        min(seated_received, captured)
+        if seated_received is not None
+        else captured
+    )
+    if (
+        fresh_seconds - (decision - evidence_received).total_seconds()
+        < MIN_USABLE_FRESHNESS_SECONDS
+    ):
+        raise ContractError(
+            "FAIL_CLOSED_NO_P0:native_ensemble_seated_evidence_stale"
+        )
     fresh_until = (
-        captured + timedelta(seconds=fresh_seconds)
+        evidence_received + timedelta(seconds=fresh_seconds)
     ).isoformat().replace("+00:00", "Z")
     # The remaining-life guard above already makes this unreachable; it is
     # here because the two stamps are produced by different code with

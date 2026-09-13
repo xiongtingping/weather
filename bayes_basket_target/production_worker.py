@@ -202,6 +202,7 @@ from .native_ensemble_p0 import (
     DEFAULT_FRESH_SECONDS as NATIVE_P0_COMPILE_FRESH_SECONDS,
     compile_native_ensemble_p0,
     persist_native_ensemble_forward_prediction,
+    seated_evidence_received_at,
 )
 from .native_ensemble_authority import (
     DEFAULT_NATIVE_OOS_SNAPSHOT_MANIFEST,
@@ -3196,30 +3197,58 @@ def _native_forward_packet_is_stale(
     packet: Mapping[str, Any],
     *,
     as_of_utc: str,
+    seated_system_ids: Sequence[str] | None = None,
 ) -> bool:
     """Whether the compiler would reject this packet for age.
 
-    Mirrors the compiler's own window against the same capture timestamp, so
-    the probe and the compile agree on what is usable.  An unreadable or
-    missing timestamp is not called stale here: the compiler owns that
-    judgement and rejects it with a precise reason, which is more useful than
-    this quietly deciding to re-download.
+    Mirrors the compiler's own window against the same evidence clock, so the
+    probe and the compile agree on what is usable.  An unreadable or missing
+    timestamp is not called stale here: the compiler owns that judgement and
+    rejects it with a precise reason, which is more useful than this quietly
+    deciding to re-download.
+
+    ``seated_system_ids`` are the systems the station-day's latest P0 actually
+    weighted.  The compiler's window runs from the newest receipt among those
+    (``seated_evidence_received_at``), not from the packet's own clock, which
+    is the newest receipt of any archive in it; a probe still reading the
+    packet clock would call a packet fresh that the compiler refuses, and the
+    scope would take the reuse path and never ask for the re-read that could
+    renew it.  Measured 2026-09-06..12: 94% of the forward-day time the
+    seated clock would have lost was time in which those systems' archives
+    were re-read later the same day.  Without the seat set -- no committed P0
+    yet, or a seated system missing from this packet -- the packet clock is
+    all there is, and it is what the compiler's first guard reads too.
+
+    The threshold is the compiler's: stale once less than a usable window is
+    left, not only once the whole window has elapsed.
     """
 
-    captured_at = str(packet.get("received_at_utc") or "").strip()
-    if not captured_at:
-        return False
+    evidence = None
+    if seated_system_ids:
+        evidence = seated_evidence_received_at(
+            packet.get("archive_query_at_utc_by_system"),
+            seated_system_ids=list(seated_system_ids),
+        )
     try:
-        captured = datetime.fromisoformat(captured_at.replace("Z", "+00:00"))
         decision = datetime.fromisoformat(as_of_utc.replace("Z", "+00:00"))
+        if evidence is None:
+            captured_at = str(packet.get("received_at_utc") or "").strip()
+            if not captured_at:
+                return False
+            evidence = datetime.fromisoformat(
+                captured_at.replace("Z", "+00:00")
+            )
     except (TypeError, ValueError):
         return False
-    if captured.tzinfo is None or decision.tzinfo is None:
+    if evidence.tzinfo is None or decision.tzinfo is None:
         return False
     age_seconds = (
-        decision.astimezone(timezone.utc) - captured.astimezone(timezone.utc)
+        decision.astimezone(timezone.utc) - evidence.astimezone(timezone.utc)
     ).total_seconds()
-    return age_seconds >= NATIVE_P0_COMPILE_FRESH_SECONDS
+    return (
+        NATIVE_P0_COMPILE_FRESH_SECONDS - age_seconds
+        < MIN_USABLE_FRESHNESS_SECONDS
+    )
 
 
 def _official_inbox_packets_all_stale(
@@ -3227,13 +3256,26 @@ def _official_inbox_packets_all_stale(
     *,
     event_date: str,
     as_of_utc: str,
+    station_id: str | None = None,
+    seated_system_ids: Sequence[str] | None = None,
 ) -> bool:
-    """Whether every official packet this inbox holds for the day is stale.
+    """Whether the day's official packets need re-reading before they serve.
 
     True only on a positive reading: the inbox has packets for the day and
     the compiler would refuse each of them for age.  No inbox, or no packet
     for the day, is not "stale" -- it is the held-run guard's ordinary case,
     and re-downloading on it would undo what that guard exists for.
+
+    Also true when the station asking has a packet the compiler would refuse
+    on its own seated clock.  Packets of one day share their archives, so
+    under the packet clock they aged out together and "every one" and "the
+    one asking" were the same question.  Under the seated clock they are not:
+    ICON and GEM are re-read on their own lead contracts, and a station whose
+    blend is those two can be unusable while its neighbours on ECMWF and GEFS
+    are not.  Waiting for every packet left it dark until the others aged out
+    too -- ICON+GEM was the blend in 15,815 of the 21,191 five-minute samples
+    the seated clock would have lost, 2026-09-06..12.  The capture reuses archives still inside their own window,
+    so asking for it re-reads only what has actually aged.
     """
 
     if not inbox_path.is_file():
@@ -3252,8 +3294,21 @@ def _official_inbox_packets_all_stale(
     ]
     if not same_day:
         return False
-    return all(
+    if all(
         _native_forward_packet_is_stale(packet, as_of_utc=as_of_utc)
+        for packet in same_day
+    ):
+        return True
+    station = str(station_id or "").strip().upper()
+    if not station or not seated_system_ids:
+        return False
+    return any(
+        str(packet.get("station_id") or "").strip().upper() == station
+        and _native_forward_packet_is_stale(
+            packet,
+            as_of_utc=as_of_utc,
+            seated_system_ids=seated_system_ids,
+        )
         for packet in same_day
     )
 
@@ -4088,6 +4143,73 @@ class TargetProductionWorker:
             self.commit_conn = None
             raise
 
+    def _latest_p0_weighted_systems(
+        self,
+        read_conn: sqlite3.Connection | None,
+        *,
+        event_date: str,
+        as_of_utc: str,
+    ) -> dict[str, tuple[str, ...]]:
+        """The systems each station's newest P0 for the day weighted.
+
+        What the capture probe needs to read a packet on the compiler's clock
+        (``seated_evidence_received_at``) without compiling it.  The newest
+        committed P0 is the prediction: when its seated evidence has aged the
+        compile fails, no newer P0 is written, and this keeps answering with
+        the seat set that needs re-reading until a packet renews it.
+
+        Two narrow reads a day and a cycle: the latest envelope per station
+        off the covering scope index, then one lineage field for each.  An
+        unreadable store answers nothing, and the probe falls back to the
+        packet clock it always had.
+        """
+
+        cache = getattr(self, "_p0_weighted_systems_cache", None)
+        key = (str(event_date), str(as_of_utc))
+        # One cycle's answers, every day it asks about; a new clock clears it.
+        if not isinstance(cache, dict) or any(
+            cached_as_of != key[1] for _day, cached_as_of in cache
+        ):
+            cache = {}
+            self._p0_weighted_systems_cache = cache
+        if key in cache:
+            return cache[key]
+        answer: dict[str, tuple[str, ...]] = {}
+        if read_conn is not None:
+            try:
+                latest = read_conn.execute(
+                    "SELECT station_id, MAX(decision_at_utc), envelope_id "
+                    "FROM basket_probability_envelope "
+                    "WHERE state='COMMITTED' AND event_date=? AND stage='P0' "
+                    "AND decision_at_utc<=? GROUP BY station_id",
+                    (str(event_date), str(as_of_utc)),
+                ).fetchall()
+                for station, _decision, envelope_id in latest:
+                    row = read_conn.execute(
+                        "SELECT json_extract(lineage_json,"
+                        "'$.system_weights_json') "
+                        "FROM basket_probability_envelope WHERE envelope_id=?",
+                        (envelope_id,),
+                    ).fetchone()
+                    try:
+                        weights = json.loads(str((row or [None])[0] or "{}"))
+                    except (TypeError, ValueError):
+                        continue
+                    if not isinstance(weights, Mapping):
+                        continue
+                    seated = tuple(sorted(
+                        str(system_id)
+                        for system_id, weight in weights.items()
+                        if isinstance(weight, (int, float))
+                        and float(weight) > 1e-9
+                    ))
+                    if seated:
+                        answer[str(station).strip().upper()] = seated
+            except sqlite3.Error:
+                answer = {}
+        cache[key] = answer
+        return answer
+
     def _capture_official_native_packet(
         self,
         *,
@@ -4096,6 +4218,7 @@ class TargetProductionWorker:
         as_of_utc: str,
         inbox_path: Path,
         lead_days: int = 2,
+        seated_system_ids: Sequence[str] | None = None,
     ) -> dict[str, Any]:
         """Start a background capture for one scope; never block the caller.
 
@@ -4261,7 +4384,11 @@ class TargetProductionWorker:
         # a new capture is a new arrival receipt, which is exactly what the
         # compiler's window was written to require.
         stale_for_day = _official_inbox_packets_all_stale(
-            inbox_path, event_date=event_date, as_of_utc=as_of_utc
+            inbox_path,
+            event_date=event_date,
+            as_of_utc=as_of_utc,
+            station_id=station_id,
+            seated_system_ids=seated_system_ids,
         )
         if (
             captured_runs.get(event_date) == newest_run_init
@@ -6634,7 +6761,11 @@ class TargetProductionWorker:
             if consumed.get((station, event_date)) == snapshot_sha:
                 continue
             if _native_forward_packet_is_stale(
-                candidate, as_of_utc=as_of_utc
+                candidate,
+                as_of_utc=as_of_utc,
+                seated_system_ids=self._latest_p0_weighted_systems(
+                    read_conn, event_date=event_date, as_of_utc=as_of_utc
+                ).get(station),
             ):
                 continue
             # Compiling from a packet whose TAF issuance has been superseded
@@ -7054,6 +7185,11 @@ class TargetProductionWorker:
             / "official_native_ensemble_forward_inbox.json"
         )
         official_packet: Mapping[str, Any] | None = None
+        # What this station's newest P0 weighted, so the probe below and the
+        # capture it may ask for read the packet on the compiler's clock.
+        native_seated_system_ids = self._latest_p0_weighted_systems(
+            read_conn, event_date=native_event_date, as_of_utc=as_of_utc
+        ).get(native_station)
         # A usable packet whose run a newer cycle has superseded.  Kept so the
         # scope can keep compiling from it while the fresher capture is still
         # in flight; see where it is consumed below.
@@ -7084,7 +7220,9 @@ class TargetProductionWorker:
                     # nothing able to replace it.  Treating a too-old packet as
                     # absent is what lets the capture below run.
                     if _native_forward_packet_is_stale(
-                        candidate, as_of_utc=as_of_utc
+                        candidate,
+                        as_of_utc=as_of_utc,
+                        seated_system_ids=native_seated_system_ids,
                     ):
                         official_probe_reason = (
                             "official_native_packet_stale"
@@ -7162,6 +7300,7 @@ class TargetProductionWorker:
                 event_date=native_event_date,
                 as_of_utc=as_of_utc,
                 inbox_path=official_inbox_path,
+                seated_system_ids=native_seated_system_ids,
                 # The lead is advisory now: the capture's run ladder picks the
                 # newest published run that covers the local day, so scopes
                 # that only differ in lead label share one capture.
@@ -15188,7 +15327,23 @@ class TargetProductionWorker:
                         "resident_p0_future_decision_forbidden"
                     )
                 if not envelope.is_fresh(as_of_utc):
-                    raise ContractError("resident_p0_stale_forbidden")
+                    # Expired in the handoff inbox, not malformed: it cannot
+                    # become a servable P0 and must not stop the ones that
+                    # can.  Raising here failed the whole bounded inbox --
+                    # every station's P0 -- on one packet whose window closed
+                    # between its compile and this write, and the seated
+                    # evidence clock (``seated_evidence_received_at``) makes
+                    # windows that close earlier than the packet clock did.
+                    # The upsert prunes such rows when it next runs; this is
+                    # for the cycles where nothing else compiled.
+                    receipts.append({
+                        "station_id": envelope.station_id,
+                        "event_date": envelope.event_date,
+                        "state": "IGNORED_EXPIRED_IN_INBOX",
+                        "wrote": False,
+                        "fresh_until_utc": envelope.fresh_until_utc,
+                    })
+                    continue
                 scope_clock = (
                     envelope.station_id,
                     envelope.event_date,

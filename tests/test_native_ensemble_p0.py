@@ -123,7 +123,9 @@ def _archive(
     }
 
 
-def _mixed_packet() -> dict[str, object]:
+def _mixed_packet(
+    *, aifs_query_at_utc: str = "2026-07-01T12:01:00Z"
+) -> dict[str, object]:
     return build_official_native_forward_packet(
         archives=[
             _archive(
@@ -140,7 +142,7 @@ def _mixed_packet() -> dict[str, object]:
                 schema=ECMWF_MULTISTATION_SCHEMA,
                 run_cycle="00Z",
                 run_init_utc="2026-07-01T00:00:00Z",
-                query_at_utc="2026-07-01T12:01:00Z",
+                query_at_utc=aifs_query_at_utc,
             ),
             _archive(
                 system_id="NOAA_GEFS_TEST",
@@ -644,7 +646,9 @@ def test_latest_exact_oos_rejection_blocks_older_activation() -> None:
         )
 
 
-def test_mixed_packet_falls_back_to_passing_pair_after_tri_rejection() -> None:
+def _install_pair_after_tri_rejection() -> sqlite3.Connection:
+    """ECMWF_IFS+GEFS pass OOS; the three-system blend is rejected."""
+
     conn = sqlite3.connect(":memory:")
     cycle_by_system = {
         "ECMWF_IFS_TEST": "18Z",
@@ -719,6 +723,11 @@ def test_mixed_packet_falls_back_to_passing_pair_after_tri_rejection() -> None:
         activated_at_utc="2026-07-01T12:00:00Z",
     )
 
+    return conn
+
+
+def test_mixed_packet_falls_back_to_passing_pair_after_tri_rejection() -> None:
+    conn = _install_pair_after_tri_rejection()
     compiled = compile_native_ensemble_p0(
         conn,
         forward_packet=_mixed_packet(),
@@ -731,6 +740,67 @@ def test_mixed_packet_falls_back_to_passing_pair_after_tri_rejection() -> None:
     ]
     assert lineage["run_cycle"] == "18Z"
     assert lineage["run_cycle_scope"] == "SAME_NATIVE_CYCLE"
+
+
+def test_an_archive_left_out_of_the_blend_does_not_renew_the_blend() -> None:
+    """The window runs from the newest receipt among the systems seated.
+
+    AIFS is in the snapshot and out of the blend (the three-system candidate
+    is rejected, the ECMWF_IFS+GEFS pair serves).  Its archive is also the
+    newest in the packet, so under the packet clock it renewed a probability
+    it contributes nothing to -- the shape of every one of the 349 same-run
+    P0 re-mints that extended freshness on 2026-09-11..12.
+    """
+
+    from bayes_basket_target.contracts import MIN_USABLE_FRESHNESS_SECONDS
+    from bayes_basket_target.native_ensemble_p0 import (
+        seated_evidence_received_at,
+    )
+
+    conn = _install_pair_after_tri_rejection()
+    packet = _mixed_packet(aifs_query_at_utc="2026-07-01T12:30:00Z")
+    assert packet["received_at_utc"] == "2026-07-01T12:30:00Z"
+    ttl = 3600
+    compiled = compile_native_ensemble_p0(
+        conn,
+        forward_packet=packet,
+        decision_at_utc="2026-07-01T12:40:00Z",
+        fresh_seconds=ttl,
+    )
+    envelope = compiled["packet"]["native_probability_envelope"]
+    assert json.loads(envelope["lineage"]["ensemble_system_ids_json"]) == [
+        "ECMWF_IFS_TEST", "NOAA_GEFS_TEST",
+    ]
+    # GEFS at 12:02 is the newest seated receipt; AIFS at 12:30 lends nothing.
+    assert envelope["fresh_until_utc"] == "2026-07-01T13:02:00Z"
+    assert compiled["packet"]["fresh_until_utc"] == "2026-07-01T13:02:00Z"
+    # The probe reads the same clock through the same function.
+    assert seated_evidence_received_at(
+        packet["archive_query_at_utc_by_system"],
+        seated_system_ids=["ECMWF_IFS_TEST", "NOAA_GEFS_TEST"],
+    ) == datetime(2026, 7, 1, 12, 2, tzinfo=timezone.utc)
+    last_usable = datetime(2026, 7, 1, 13, 2, tzinfo=timezone.utc) - timedelta(
+        seconds=MIN_USABLE_FRESHNESS_SECONDS
+    )
+    compile_native_ensemble_p0(
+        conn,
+        forward_packet=packet,
+        decision_at_utc=last_usable.isoformat().replace("+00:00", "Z"),
+        fresh_seconds=ttl,
+    )
+    # Past it, the packet clock would still say 28 minutes remain; the
+    # compile refuses on the evidence it would actually serve.
+    with pytest.raises(
+        ContractError, match="native_ensemble_seated_evidence_stale"
+    ):
+        compile_native_ensemble_p0(
+            conn,
+            forward_packet=packet,
+            decision_at_utc=(
+                last_usable + timedelta(seconds=1)
+            ).isoformat().replace("+00:00", "Z"),
+            fresh_seconds=ttl,
+        )
 
 
 def test_mixed_native_cycles_missing_system_lineage_fail_closed() -> None:
