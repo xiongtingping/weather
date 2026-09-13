@@ -164,3 +164,29 @@ def test_the_roster_sits_directly_under_the_money_row():
     close = body.index('.join("")')
 
     assert "lampRowSafe(barRoster" in body[close:close + 120]
+
+
+def test_editing_the_roster_helper_alone_invalidates_the_cached_section():
+    """The section cache fingerprints the collector's own source.  The roster
+    builder is a separate function, so it has to reach the fingerprint through
+    the salt, or an edit to it keeps serving the old roster until the TTL.
+
+    Read from the syntax tree, not the text, so a reformat or a comment cannot
+    make this pass or fail on its own."""
+
+    import ast
+
+    tree = ast.parse((ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8"))
+    calls = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name) and node.func.id == "_cached_section"
+        and node.args and isinstance(node.args[0], ast.Constant)
+        and node.args[0].value == "live_readiness"
+    ]
+    assert len(calls) == 1, "expected exactly one cached live_readiness section"
+    salt = next((kw.value for kw in calls[0].keywords if kw.arg == "_salt"), None)
+
+    assert isinstance(salt, ast.Call)
+    assert ast.unparse(salt.func) == "inspect.getsource"
+    assert [ast.unparse(a) for a in salt.args] == ["bar_split_roster"]

@@ -9755,6 +9755,11 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "live_readiness": _cached_section(
             "live_readiness", collect_live_readiness,
             conn, band_audit.get("stations") or [],
+            # The roster builder is a module-level helper the collector only
+            # calls, so its source is not in the collector's fingerprint;
+            # without this an edit to it alone would keep serving the old
+            # roster until the TTL ran out.
+            _salt=inspect.getsource(bar_split_roster),
         ),
         "stages": stages,
         "band_shadow": band_shadow,
