@@ -544,6 +544,31 @@ def hosted_sweep_write_domain(name: str) -> str:
     return HOSTED_SWEEP_WRITE_DOMAIN.get(name, "ssot")
 
 
+# Capture lanes that write the SSOT but never across a download.  Each one
+# fetches a run, writes it, and commits before it fetches the next, so the
+# SQLite lock is held for the ingest seconds and the network time holds
+# nothing.  The writer turn nonetheless counted the whole subprocess as
+# holding the writer.  Measured 2026-09-13: capture_noaa_conus_forward ran
+# 1140s and production waited 1132s behind it, almost all of it HRRR/NBM
+# downloads.  The regional_point_lane docstring had already said as much on
+# 2026-09-09 -- "those thirty minutes are thirty minutes in which the
+# production cycle cannot start" -- and bounded the seconds instead.
+#
+# Exempt from the writer gates only.  They stay in the ssot domain, so they
+# still never start beside another SSOT sweep; and production meets their
+# ingest the ordinary way, at SQLite, for seconds.  The exemption rests on the
+# commit-before-fetch shape, which
+# tests/test_capture_lanes_release_the_writer_turn.py holds: a lane that
+# wraps a fetch in an open transaction turns that test red, and does not
+# belong in this set.
+WRITER_TURN_EXEMPT_SWEEPS: frozenset[str] = frozenset({
+    "capture_noaa_conus_forward",
+    "capture_jma_msm_forward",
+    "capture_dwd_icon_eu_forward",
+    "capture_cma_grapes_forward",
+})
+
+
 def writer_excluding_sweeps(running_names: "Iterable[str]") -> list[str]:
     """Running sweeps that write a database the writer lanes also write.
 
@@ -560,6 +585,7 @@ def writer_excluding_sweeps(running_names: "Iterable[str]") -> list[str]:
     return sorted(
         name for name in running_names
         if hosted_sweep_write_domain(name) in _EXCLUSIVE_WRITE_DOMAINS
+        and name not in WRITER_TURN_EXEMPT_SWEEPS
     )
 
 

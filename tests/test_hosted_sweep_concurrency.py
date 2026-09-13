@@ -568,6 +568,10 @@ def test_a_sweep_that_writes_no_database_excludes_no_writer(daemon) -> None:
 def test_ssot_and_archive_sweeps_still_exclude_the_writer_lanes(daemon) -> None:
     by_domain: dict[str, str] = {}
     for name, _s, _i, _t in daemon.HOSTED_SWEEPS:
+        # Capture lanes are exempt from the writer gate by design, so the
+        # ssot representative has to be a lane that is not.
+        if name in daemon.WRITER_TURN_EXEMPT_SWEEPS:
+            continue
         by_domain.setdefault(daemon.hosted_sweep_write_domain(name), name)
     running = [by_domain["ssot"], by_domain["archive"], by_domain["none"]]
 
