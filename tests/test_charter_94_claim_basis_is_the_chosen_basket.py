@@ -241,11 +241,15 @@ def test_no_claims_layer_query_reads_the_post_execution_columns():
     assert edge.count("FROM paper_trade_candidate_window_replay") == 2
     # Seven since charter 131 (2026-09-12): the excluded-seat-shape tally
     # rides beside the excluded-axis and excluded-claim-vintage tallies.
-    assert edge.count("FROM paper_trade_candidate_window") - 2 == 7, (
+    # Eight since charter 132 (2026-09-13): a walk-forward fit reads which
+    # station-days' labels were not yet knowable at its cutoff -- station,
+    # event date, settlement time and hit, none of them a filled column.
+    assert edge.count("FROM paper_trade_candidate_window") - 2 == 8, (
         "band-partition lookup, the shared population read, its"
         " excluded-axis tally, its excluded-claim-vintage tally, its"
         " excluded-seat-shape tally,"
-        " off-centre row count, shadow fit -- the activation guard stopped"
+        " off-centre row count, shadow fit, the label-knowability set --"
+        " the activation guard stopped"
         " issuing its own query on 2026-09-09 and reads the fit's"
         " population instead"
     )

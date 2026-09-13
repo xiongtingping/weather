@@ -43,6 +43,7 @@ from .basket_kernel.delta_v2 import (
     BETA_EDGE_RULE_VERSION,
     BETA_TABLE_KEY,
     beta_belief_v1,
+    beta_conditional_edge_v2,
     SIZING_CLAIM_BANDS,
     sizing_claim_factor,
     EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
@@ -137,6 +138,18 @@ from .basket_kernel.support import (
     probability_center_diagnostics,
 )
 from .basket_kernel.state_machine import resolve_basket_state
+from .basket_kernel.valuation_v1 import (
+    MARKET_REFERENCE_RULE as VALUATION_MARKET_REFERENCE_RULE,
+    VALUATION_MODE,
+    VALUATION_RULE,
+    VALUATION_TABLE_KEY,
+    action_value_v1 as valuation_action_value_v1,
+    beta_draw_vectors as valuation_draw_vectors_v1,
+    capacity_v1 as valuation_capacity_v1,
+    market_reference_v1,
+    valuation_vector_v1,
+    window_mass as valuation_window_mass,
+)
 from .delta_v2_artifact import DeltaV2PolicyArtifact
 from .shadow_objective import solve_fractional_kelly
 
@@ -2121,6 +2134,59 @@ def _support_windows(
     beta_would_refuse = 0
     beta_would_admit = 0
     beta_served = (effective_edge_tables or {}).get(BETA_TABLE_KEY) or {}
+    # Charter 132: the conditional net edge on the fit's joint draws, beside
+    # charter 128's reading, so the two can be argued on one record.
+    beta_v2_would_refuse = 0
+    beta_v2_would_admit = 0
+    # Charter 132: one valuation vector for the whole snapshot.  Built once,
+    # here, so every window below sums the same vector -- no window can be
+    # worth more than one that contains it, and a fee or a depth change moves
+    # the action's cost, never the belief.
+    valuation_served = (effective_edge_tables or {}).get(VALUATION_TABLE_KEY) or {}
+    valuation_row = (
+        valuation_served.get(str(probability_stage or ""))
+        if isinstance(valuation_served, Mapping) else None
+    )
+    valuation_market: dict[str, Any] | None = None
+    valuation_point_vector: dict[str, float] | None = None
+    valuation_draws: list[dict[str, float]] = []
+    valuation_state = "off"
+    valuation_authorized = False
+    if VALUATION_MODE != "off":
+        valuation_market = market_reference_v1(snapshot.buckets)
+        if not isinstance(valuation_row, Mapping):
+            valuation_state = "no_fit"
+        elif valuation_row.get("accumulating") or valuation_row.get("beta") is None:
+            valuation_state = "accumulating"
+        elif valuation_market["state"] != "complete":
+            valuation_state = "market_" + str(
+                valuation_market.get("reason") or "incomplete"
+            ).split(":")[0]
+        else:
+            valuation_point_vector = valuation_vector_v1(
+                probabilities, valuation_market["vector"],
+                float(valuation_row["beta"]), excluded=observed_dead,
+            )
+            valuation_draws = valuation_draw_vectors_v1(
+                probabilities, valuation_market["vector"],
+                valuation_row.get("beta_draws") or (), excluded=observed_dead,
+            )
+            if valuation_point_vector is None or not valuation_draws:
+                valuation_state = "no_vector"
+                valuation_point_vector = None
+            elif valuation_row.get("verdict") != "admitted":
+                # Values are computed and recorded; only the ``on`` gate
+                # needs the walk-forward verdict.
+                valuation_state = "unverified_" + str(
+                    valuation_row.get("verdict") or "missing"
+                )
+            else:
+                valuation_state = "admitted"
+                valuation_authorized = True
+    valuation_would_refuse = 0
+    valuation_would_admit = 0
+    valuation_refused = 0
+    valuation_hold_refused = 0
     enumerated = 0
     shortlisted = 0
     # The window the price gate came closest to admitting.  The counters
@@ -2489,6 +2555,71 @@ def _support_windows(
                         gate_lambda_source = "beta_edge_lcb"
                         if win > EPS:
                             gate_agreement = price / win
+            # Charter 132: charter 128's slope read as a prediction on the
+            # joint draws -- intercept kept, sign-safe -- recorded beside it.
+            beta_v2 = None
+            beta_v2_admissible = None
+            if BETA_EDGE_MODE != "off" and priced:
+                _beta_v2_row = beta_served.get(str(probability_stage or ""))
+                if isinstance(_beta_v2_row, Mapping):
+                    beta_v2 = beta_conditional_edge_v2(
+                        raw_win, price, _beta_v2_row.get("joint_draws") or (),
+                    )
+                    if beta_v2 is not None:
+                        beta_v2_admissible = (
+                            beta_v2["edge_lcb"]
+                            >= economic_hurdle_usdc(price) - EPS
+                        )
+            # Charter 132: the pooled valuation of this window as an action
+            # -- one share per leg at the all-in ask -- and how much of it the
+            # book can take before the lower bound stops clearing the hurdle.
+            valuation_mass = None
+            valuation_market_mass = None
+            valuation_edge_point = None
+            valuation_edge_lcb = None
+            valuation_admissible = None
+            valuation_capacity = None
+            if valuation_point_vector is not None and priced:
+                valuation_mass = valuation_window_mass(valuation_point_vector, window)
+                valuation_market_mass = valuation_window_mass(
+                    valuation_market["vector"], window
+                )
+                _value = valuation_action_value_v1(
+                    valuation_draws, {bucket: 1.0 for bucket in window}, price,
+                )
+                valuation_edge_point = valuation_mass - price
+                valuation_edge_lcb = (
+                    None if _value is None else float(_value["value_lcb"])
+                )
+                if valuation_edge_lcb is not None:
+                    valuation_admissible = (
+                        valuation_edge_lcb >= economic_hurdle_usdc(price) - EPS
+                    )
+                    valuation_capacity = valuation_capacity_v1(
+                        window=window,
+                        ask_levels_by_bucket={
+                            bucket: [
+                                (float(level.price) * (1.0 + float(fee_rate)),
+                                 float(level.shares))
+                                for level in by_bucket[bucket].ask_levels
+                            ]
+                            for bucket in window
+                        },
+                        mass_lcb=valuation_edge_lcb + price,
+                        hurdle=ECONOMIC_HURDLE_V1,
+                        min_order_size=max(
+                            float(by_bucket[bucket].min_order_size or 0.0)
+                            for bucket in window
+                        ),
+                    )
+                if VALUATION_MODE == "on" and valuation_authorized:
+                    # One belief: the gate and the solver read the pooled
+                    # mass; lambda becomes the ratio that reproduces it in the
+                    # partition, exactly as charter 128's ``on`` did.
+                    effective_win = min(1.0 - EPS, max(EPS, valuation_mass))
+                    gate_lambda = effective_win / win if win > EPS else None
+                    gate_lambda_source = "valuation_pool"
+                    gate_agreement = price / win if win > EPS else None
             edge = effective_win - price if priced else None
             is_incumbent = window == incumbent
             # The incumbent has no exemption left.  It used to be waived past
@@ -2712,6 +2843,34 @@ def _support_windows(
                     )
                     if pre_lambda is not None and bool(pre_lambda["admissible"]):
                         lambda_refused += 1
+            if VALUATION_MODE == "on":
+                if not valuation_authorized:
+                    # A stage the valuation lane cannot vouch for holds: no
+                    # fit, an accumulating fit, an incomplete book, or no
+                    # admitted walk-forward verdict.  No fallback.
+                    if admissible:
+                        valuation_hold_refused += 1
+                    admissible = False
+                elif admissible:
+                    if completion is not None:
+                        _inc_price = completion.get("increment_all_in_price")
+                        _inc = (
+                            valuation_action_value_v1(
+                                valuation_draws,
+                                {b: 1.0 for b in completion["buyable_buckets"]},
+                                float(_inc_price),
+                            )
+                            if _inc_price is not None else None
+                        )
+                        _clears = _inc is not None and (
+                            float(_inc["value_lcb"])
+                            >= economic_hurdle_usdc(float(_inc_price)) - EPS
+                        )
+                    else:
+                        _clears = bool(valuation_admissible)
+                    if not _clears:
+                        valuation_refused += 1
+                        admissible = False
             if not admissible:
                 # Name which of the three ways this branch can refuse actually
                 # refused.  Until 2026-08-20 it had no counter at all, so the
@@ -2780,6 +2939,16 @@ def _support_windows(
                     beta_would_refuse += 1
                 elif (not admissible) and beta_admissible:
                     beta_would_admit += 1
+            if beta_v2_admissible is not None:
+                if admissible and not beta_v2_admissible:
+                    beta_v2_would_refuse += 1
+                elif (not admissible) and beta_v2_admissible:
+                    beta_v2_would_admit += 1
+            if valuation_admissible is not None and VALUATION_MODE == "shadow":
+                if admissible and not valuation_admissible:
+                    valuation_would_refuse += 1
+                elif (not admissible) and valuation_admissible:
+                    valuation_would_admit += 1
             windows.append({
                 "buckets": window,
                 "win_probability": win,
@@ -2811,6 +2980,33 @@ def _support_windows(
                 "beta_edge": beta_edge,
                 "beta_admissible": beta_admissible,
                 "beta_table_sha256": beta_sha,
+                # Charter 132: the same slope as a prediction on the joint
+                # draws.  A net edge per unit of cost, not a probability.
+                "beta_v2_edge_point": (
+                    None if beta_v2 is None else beta_v2["edge_point"]
+                ),
+                "beta_v2_edge_lcb": (
+                    None if beta_v2 is None else beta_v2["edge_lcb"]
+                ),
+                "beta_v2_admissible": beta_v2_admissible,
+                # Charter 132: the pooled valuation of this window as an
+                # action.  ``valuation_mass`` is a probability (a sum over the
+                # snapshot's one vector); the edges are net values per unit;
+                # the capacity is the equal shares per leg the ask ladder can
+                # take while the lower bound still clears the hurdle.
+                "valuation_mass": valuation_mass,
+                "valuation_market_mass": valuation_market_mass,
+                "valuation_edge_point": valuation_edge_point,
+                "valuation_edge_lcb": valuation_edge_lcb,
+                "valuation_admissible": valuation_admissible,
+                "valuation_capacity_shares": (
+                    None if valuation_capacity is None
+                    else valuation_capacity["capacity_shares"]
+                ),
+                "valuation_capacity_cost": (
+                    None if valuation_capacity is None
+                    else valuation_capacity["capacity_cost"]
+                ),
                 # Audit only: h/K, and the marginal Δh/ΔK of what this
                 # window adds over what the seat already holds.  ``kind``
                 # separates an opening from a widening from a top-up that
@@ -3173,6 +3369,40 @@ def _support_windows(
         },
         "beta_would_refuse_count": beta_would_refuse,
         "beta_would_admit_count": beta_would_admit,
+        "beta_v2_would_refuse_count": beta_v2_would_refuse,
+        "beta_v2_would_admit_count": beta_v2_would_admit,
+        # Charter 132: the valuation lane's header.  ``valuation_state`` says
+        # why the values below are or are not there: ``admitted`` (served and
+        # verified), ``unverified_*`` (computed, no admitted verdict yet),
+        # ``accumulating``, ``no_fit``, ``market_*`` (the book did not describe
+        # the whole market), ``off``.
+        "valuation_mode": VALUATION_MODE,
+        "valuation_rule": VALUATION_RULE,
+        "valuation_market_reference_rule": VALUATION_MARKET_REFERENCE_RULE,
+        "valuation_state": valuation_state,
+        "valuation_served": (
+            None if not isinstance(valuation_row, Mapping) else {
+                "beta": valuation_row.get("beta"),
+                "beta_lcb": valuation_row.get("beta_lcb"),
+                "beta_ucb": valuation_row.get("beta_ucb"),
+                "accumulating": valuation_row.get("accumulating"),
+                "verdict": valuation_row.get("verdict"),
+                "sha256": valuation_row.get("sha256"),
+            }
+        ),
+        "valuation_market": (
+            None if valuation_market is None else {
+                "state": valuation_market.get("state"),
+                "reason": valuation_market.get("reason"),
+                "mid_sum": valuation_market.get("mid_sum"),
+                "max_spread": valuation_market.get("max_spread"),
+                "one_sided_buckets": valuation_market.get("one_sided_buckets"),
+            }
+        ),
+        "valuation_would_refuse_count": valuation_would_refuse,
+        "valuation_would_admit_count": valuation_would_admit,
+        "valuation_refused_window_count": valuation_refused,
+        "valuation_hold_refused_window_count": valuation_hold_refused,
         # Charter 97: which axis served lambda, and how wide the thin band
         # is.  The per-window source is on each row; this is the audit's
         # header so a plan says whether the second axis was live at all.
@@ -3829,7 +4059,7 @@ def _solve_over_support_windows(
             ]
         )
         for scope, bands in (effective_edge_tables or {}).items()
-        if scope != BETA_TABLE_KEY
+        if scope not in (BETA_TABLE_KEY, VALUATION_TABLE_KEY)
     }
     selection = {
         "decision_moment": decision_moment_audit,
@@ -3837,6 +4067,20 @@ def _solve_over_support_windows(
         # Charter 128: a dict per stage, not a band table; kept apart so a
         # reader of the lambda tables never meets a row it cannot parse.
         "beta_edge_tables": (effective_edge_tables or {}).get(BETA_TABLE_KEY),
+        # Charter 132: the valuation rows as served, draws elided -- the
+        # per-window readings carry what the draws produced.
+        "valuation_tables": {
+            str(scope): (
+                None if not isinstance(row, Mapping) else {
+                    key: row.get(key)
+                    for key in ("beta", "beta_lcb", "beta_ucb", "accumulating",
+                                "verdict", "sha256")
+                }
+            )
+            for scope, row in dict(
+                (effective_edge_tables or {}).get(VALUATION_TABLE_KEY) or {}
+            ).items()
+        },
         # Charter 131 (2026-09-12 evening): the head of the shortlist is the
         # admissible window with the largest effective edge; Kelly sizes it.
         "rule": "EFFECTIVE_EDGE_SHORTLIST_HEAD_KELLY_SIZED_V4",

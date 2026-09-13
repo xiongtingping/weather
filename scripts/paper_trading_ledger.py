@@ -225,6 +225,12 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     deflate_window_partition_v1,
     probability_vector_identity_v1,
 )
+from bayes_basket_target.basket_kernel.valuation_v1 import (  # noqa: E402
+    LCB_QUANTILE as VALUATION_LCB_QUANTILE,
+    MARKET_REFERENCE_RULE as VALUATION_MARKET_REFERENCE_RULE,
+    VALUATION_MODE,
+    VALUATION_RULE,
+)
 # What the production judge arm resolves the way production's compile does:
 # the station's basket policy, the delta-v2 policy artifact, and the scope
 # bins both are keyed by.  Every name here is production's own resolver.
@@ -2779,6 +2785,21 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     # killed -- so every row written before it describes a strategy that no
     # longer runs and must be repushed rather than compared against.
     "observed_high_floor": CHARTER_125_OBSERVED_HIGH_FLOOR,
+    # Charter 132 (2026-09-13): the valuation lane.  Same form as charter
+    # 124: ``shadow`` is the default and decides nothing, so the standing
+    # digest does not move and no book is re-derived for a reading; ``on``
+    # gates and sizes on the pooled vector's action bound and holds any stage
+    # without an admitted verdict -- a different strategy, hashed with every
+    # number that defines it; ``off`` stops recording and hashes too.
+    **(
+        {
+            "valuation_mode": VALUATION_MODE,
+            "valuation_rule": VALUATION_RULE,
+            "valuation_market_reference_rule": VALUATION_MARKET_REFERENCE_RULE,
+            "valuation_lcb_quantile": VALUATION_LCB_QUANTILE,
+        }
+        if VALUATION_MODE != "shadow" else {}
+    ),
 }
 SELECTION_RULE_SHA256 = content_sha256(_SELECTION_RULE_IDENTITY)
 # Why a station-day has no seat, in the ledger's own words.  The page used to

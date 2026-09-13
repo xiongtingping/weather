@@ -636,8 +636,19 @@ def _candidate_population(
     *,
     include_replayed: bool,
     floor_decision_at_utc: str | None = None,
+    ceiling_day: str | None = None,
+    cutoff_utc: str | None = None,
 ) -> dict[str, Any]:
     """The rows a fit reads, and -- since 2026-09-09 -- the rows that judge it.
+
+    Charter 132 (audit item 46): ``ceiling_day`` and ``cutoff_utc`` close the
+    window from above.  ``fit_lambda_table(as_of=...)`` used to pass only the
+    rolling floor, so a fit "as of 09-05" read settlements from 09-12 -- the
+    walk-forward it was asked for looked at the week it was predicting.  With
+    a ceiling, an event after it is not read; with a cutoff, a decision after
+    it is not read and a label that was not yet knowable at it is not read
+    either.  Neither is set by the nightly production fit, whose window
+    already ends now, so its SQL is unchanged.
 
     One implementation because the two must not drift.  ``admitted_return``
     used to read the served table unconditionally, on the reasoning that
@@ -673,6 +684,34 @@ def _candidate_population(
     decision_args: tuple[Any, ...] = (
         () if floor_decision_at_utc is None else (str(floor_decision_at_utc),)
     )
+    # Charter 132: the upper bounds ride on the same clause, so every query
+    # below -- served rows, replay rows, legs and the audit counts -- is cut
+    # at one place and cannot drift.
+    if ceiling_day is not None:
+        decision_clause += " AND event_date <= ?"
+        decision_args = (*decision_args, str(ceiling_day))
+    if cutoff_utc is not None:
+        decision_clause += " AND decision_at_utc <= ?"
+        decision_args = (*decision_args, str(cutoff_utc))
+    # Labels knowable at the cutoff.  The replay table carries no settlement
+    # time of its own; its rows are re-derivations of served windows, so a
+    # station-day whose settlement was not yet knowable is excluded from both
+    # by key.
+    unknowable: set[tuple[str, str]] = set()
+    if cutoff_utc is not None:
+        if _has_candidate_column(conn, "settled_at_utc"):
+            unknowable = {
+                (str(station), str(day))
+                for station, day in conn.execute(
+                    "SELECT DISTINCT station_id, event_date"
+                    " FROM paper_trade_candidate_window"
+                    " WHERE hit IS NOT NULL AND ("
+                    "   settled_at_utc IS NULL OR settled_at_utc > ?)",
+                    (str(cutoff_utc),),
+                )
+            }
+        else:
+            raise ValueError("effective_edge_fit_cutoff_without_label_time")
     axis = _fit_axis(conn, stages)
     # A candidate table without the column cannot be partitioned on it, and
     # that is an ordinary state rather than an error: a replay extract, a
@@ -755,6 +794,11 @@ def _candidate_population(
         "   AND hit IS NOT NULL" + axis_clause + claim_clause + shape_clause,
         (*stages, floor_day, *decision_args, *axis_args, *claim_args, *shape_args),
     ).fetchall()
+    excluded_unknowable = 0
+    if unknowable:
+        kept = [r for r in rows if (str(r[3]), str(r[4])) not in unknowable]
+        excluded_unknowable = len(rows) - len(kept)
+        rows = kept
     served_row_count = len(rows)
     excluded_axis = 0 if axis is None else conn.execute(
         "SELECT COUNT(*) FROM paper_trade_candidate_window"
@@ -807,6 +851,7 @@ def _candidate_population(
         replayed = [
             r for r in replayed
             if (str(r[3]), str(r[4]), str(r[5]), str(r[6])) not in seen
+            and (str(r[3]), str(r[4])) not in unknowable
         ]
         replayed_row_count = len(replayed)
         rows = list(rows) + replayed
@@ -875,6 +920,8 @@ def _candidate_population(
             except sqlite3.Error:
                 continue
             for payload, settled, station_id, event_date, stage, decided in raw:
+                if (str(station_id), str(event_date)) in unknowable:
+                    continue
                 try:
                     legs = json.loads(str(payload)) or {}
                 except (TypeError, ValueError):
@@ -911,6 +958,9 @@ def _candidate_population(
         "served_row_count": int(served_row_count),
         "replayed_row_count": int(replayed_row_count),
         "replay_band_table_sha256": replay_sha,
+        "ceiling_day": ceiling_day,
+        "cutoff_utc": cutoff_utc,
+        "excluded_label_not_yet_knowable": int(excluded_unknowable),
     }
 
 
@@ -922,6 +972,7 @@ def fit_lambda_table(
     stage_scope: str = "P0",
     claim_scope: str = "window",
     include_replayed: bool = False,
+    cutoff_utc: str | None = None,
 ) -> dict[str, Any]:
     """Fit one lambda per agreement band from the rolling settled window.
 
@@ -971,10 +1022,18 @@ def fit_lambda_table(
     # decision instant.  Same bound the band and centre/width lanes carry.
     from .center_width_store import served_arithmetic_anchor  # noqa: PLC0415
 
+    # Charter 132: an anchor set after the moment a walk-forward fit stands at
+    # did not exist then.  Dropped, and the rolling window is the bound.
+    _anchor_cutoff = cutoff_utc
+    if as_of is not None and _anchor_cutoff is None:
+        _anchor_cutoff = (
+            datetime.fromisoformat(str(as_of)).date()
+            + __import__("datetime").timedelta(days=1)
+        ).isoformat() + "T00:00:00Z"
     anchors = [
         a for a in (
             served_arithmetic_anchor(conn, stage=stage) for stage in stages
-        ) if a
+        ) if a and (_anchor_cutoff is None or str(a) <= str(_anchor_cutoff))
     ]
     min_decision_at_utc = max(anchors) if anchors else None
     if min_decision_at_utc is not None:
@@ -1022,9 +1081,21 @@ def fit_lambda_table(
     # envelopes no longer say; treating them as "probably the current axis"
     # is the silent borrowing charter 104 forbids for a claim, and a
     # partition key deserves the same rule.  They are counted, not hidden.
+    # Charter 132: an explicit ``as_of`` is a walk-forward question and is
+    # answered only from what was knowable then -- events through ``as_of``,
+    # decisions and labels through the start of the following UTC day unless
+    # the caller names the instant.  The nightly fit passes neither.
+    as_of_cutoff = cutoff_utc
+    if as_of is not None and as_of_cutoff is None:
+        as_of_cutoff = (
+            datetime.fromisoformat(str(as_of)).date()
+            + __import__("datetime").timedelta(days=1)
+        ).isoformat() + "T00:00:00Z"
     population = _candidate_population(
         conn, stages, floor_day, include_replayed=include_replayed,
         floor_decision_at_utc=min_decision_at_utc,
+        ceiling_day=(str(as_of) if as_of is not None else None),
+        cutoff_utc=as_of_cutoff,
     )
     rows = (
         population["leg_rows"] if claim_scope == "bucket"
@@ -2249,6 +2320,124 @@ def load_lambda_as_of(
     return tuple(out) or None
 
 
+def lambda_vintage_status(
+    conn: sqlite3.Connection,
+) -> dict[str, dict[str, Any]]:
+    """Per active lambda table: what population it was fitted on, stated.
+
+    Charter 132 (audit item 49).  The serving loader carries a table that did
+    not record its seat shape as matching -- a deliberate 2026-09-08 choice so
+    a lane does not deadlock against its own activation gate.  On 2026-09-13
+    every active table was in that state: all four fitted before charter 131
+    landed, so all four describe windows shaped by the rule it retired.
+
+    Serving is not changed here, and the reason is measured rather than
+    assumed: the kernel constant that would serve instead is looser where the
+    audit found claims worst -- 0.60 against the active 0.387 at agreement
+    0.50-0.70, 0.87 against 0.634 at 0.70-0.80 -- so refusing the table would
+    open exactly the windows this record says to avoid.  The claim chain's
+    lambda is retired as a serving quantity under ``VALUATION_MODE=on``; until
+    then this function says, on every page that asks, which tables are about
+    the population they serve, and evidence readers use the strict loader.
+    """
+
+    from .basket_kernel.delta_v2 import SEAT_SHAPE_RULE_VERSION  # noqa: PLC0415
+
+    out: dict[str, dict[str, Any]] = {}
+    try:
+        rows = conn.execute(
+            "SELECT stage_scope, COALESCE(claim_scope,'window'), fitted_at_utc,"
+            + (" band_axis," if _has_lambda_band_axis_column(conn) else " NULL,")
+            + (" seat_shape_rule," if _has_lambda_seat_shape_column(conn) else " NULL,")
+            + " bands_json FROM calibration_effective_edge_lambda WHERE activated=1"
+        ).fetchall()
+    except sqlite3.Error:
+        return out
+    for scope, claim_scope, fitted_at, axis, shape_col, payload_json in rows:
+        try:
+            payload = json.loads(str(payload_json))
+        except (TypeError, ValueError):
+            payload = {}
+        shape = shape_col if shape_col is not None else payload.get("seat_shape_rule")
+        if shape is None:
+            verdict = "unrecorded"
+        elif str(shape) == str(SEAT_SHAPE_RULE_VERSION):
+            verdict = "current"
+        else:
+            verdict = "other_shape"
+        out[f"{scope}/{claim_scope}"] = {
+            "stage_scope": str(scope), "claim_scope": str(claim_scope),
+            "fitted_at_utc": str(fitted_at or ""),
+            "band_axis": axis if axis is not None else payload.get("band_axis"),
+            "seat_shape_rule": shape,
+            "current_seat_shape_rule": str(SEAT_SHAPE_RULE_VERSION),
+            "verdict": verdict,
+        }
+    return out
+
+
+def load_lambda_as_of_strict(
+    conn: sqlite3.Connection,
+    *,
+    stage_scope: str = "P0",
+    as_of_utc: str | None = None,
+    claim_scope: str = "window",
+) -> tuple[tuple[tuple[float, float], ...] | None, str]:
+    """The table a scope served at ``as_of_utc`` IF it is about today's shape.
+
+    Charter 132 (audit item 49): for evidence readers -- the walk-forward's
+    lambda arm, the dashboard's attribution -- "did not record a shape" is not
+    "recorded the current shape".  Returns ``(bands, verdict)`` with verdict
+    ``current``, ``unrecorded`` or ``other_shape``; bands only for ``current``.
+    """
+
+    from .basket_kernel.delta_v2 import SEAT_SHAPE_RULE_VERSION  # noqa: PLC0415
+
+    try:
+        if as_of_utc is None:
+            row = conn.execute(
+                "SELECT t.bands_json"
+                + (", t.seat_shape_rule" if _has_lambda_seat_shape_column(conn) else ", NULL")
+                + " FROM calibration_effective_edge_lambda t"
+                " WHERE t.activated=1 AND t.stage_scope=?"
+                + (" AND COALESCE(t.claim_scope,'window')=?" if _has_claim_scope_column(conn) else "")
+                + " ORDER BY t.fitted_at_utc DESC LIMIT 1",
+                (str(stage_scope), *((str(claim_scope),) if _has_claim_scope_column(conn) else ())),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT t.bands_json"
+                + (", t.seat_shape_rule" if _has_lambda_seat_shape_column(conn) else ", NULL")
+                + " FROM calibration_effective_edge_fit_journal j"
+                " JOIN calibration_effective_edge_lambda t"
+                "   ON t.lambda_table_sha256 = j.lambda_table_sha256"
+                " WHERE j.stage_scope=? AND j.fitted_at_utc<=?"
+                + (" AND COALESCE(t.claim_scope,'window')=?" if _has_claim_scope_column(conn) else "")
+                + " ORDER BY j.fitted_at_utc DESC, j.fit_id DESC LIMIT 1",
+                (str(stage_scope), str(as_of_utc),
+                 *((str(claim_scope),) if _has_claim_scope_column(conn) else ())),
+            ).fetchone()
+    except sqlite3.Error:
+        return None, "unreadable"
+    if row is None:
+        return None, "none"
+    try:
+        payload = json.loads(str(row[0]))
+        bands = payload["bands"]
+    except (TypeError, ValueError, KeyError):
+        return None, "unreadable"
+    shape = row[1] if row[1] is not None else payload.get("seat_shape_rule")
+    if shape is None:
+        return None, "unrecorded"
+    if str(shape) != str(SEAT_SHAPE_RULE_VERSION):
+        return None, "other_shape"
+    return tuple(
+        (float("inf") if band.get("upper_bound") is None else float(band["upper_bound"]),
+         float(band["lambda"]))
+        for band in bands
+    ) or None, "current"
+
+
 def load_effective_edge_tables(
     conn: sqlite3.Connection,
     *,
@@ -2281,4 +2470,11 @@ def load_effective_edge_tables(
     from .beta_edge_store import load_beta_tables  # noqa: PLC0415
 
     tables[BETA_TABLE_KEY] = load_beta_tables(conn, as_of_utc=as_of_utc)
+    # Charter 132: the valuation lane, under its own key, read as of the same
+    # moment so the paper ledger prices a historical decision on the row and
+    # the verdict that stood then.
+    from .basket_kernel.valuation_v1 import VALUATION_TABLE_KEY  # noqa: PLC0415
+    from .valuation_store import load_valuation_tables  # noqa: PLC0415
+
+    tables[VALUATION_TABLE_KEY] = load_valuation_tables(conn, as_of_utc=as_of_utc)
     return tables

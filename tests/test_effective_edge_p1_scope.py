@@ -410,7 +410,13 @@ def test_as_of_reads_the_journal_so_a_reactivated_sha_keeps_its_history() -> Non
     tables = store.load_effective_edge_tables(conn, as_of_utc="2026-09-04T00:00:00")
     # Charter 128 (2026-09-12) added a fifth key, the beta lane: a dict per
     # stage rather than a band table, None everywhere before its first fit.
-    assert set(tables) == {"P0", "P0-M", "P1", store.BUCKET_TABLE_KEY, store.BETA_TABLE_KEY}
+    # Charter 132: the valuation lane rides beside beta under its own key.
+    from bayes_basket_target.basket_kernel.valuation_v1 import VALUATION_TABLE_KEY
+    assert set(tables) == {
+        "P0", "P0-M", "P1", store.BUCKET_TABLE_KEY, store.BETA_TABLE_KEY,
+        VALUATION_TABLE_KEY,
+    }
+    assert all(v is None for v in tables[VALUATION_TABLE_KEY].values())
     assert set(tables[store.BETA_TABLE_KEY]) == {"P0", "P0-M", "P1"}
     assert all(v is None for v in tables[store.BETA_TABLE_KEY].values())
     # No bucket fit in this fixture, so the dispatch falls to the kernel

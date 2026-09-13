@@ -1827,6 +1827,59 @@ def beta_belief_v1(raw_win: float, price: float, beta_lcb: float) -> float:
     return min(1.0 - EPS, max(EPS, belief))
 
 
+def beta_conditional_edge_v2(
+    raw_win: float,
+    price: float,
+    joint_draws: Sequence[Sequence[float]],
+    *,
+    quantile: float = 0.05,
+) -> dict[str, float] | None:
+    """Charter 132: the conditional net edge ``alpha + beta * (p - q)``,
+    point and lower bound, read on the fit's joint draws.
+
+    Three things charter 128's ``q + beta_lcb * (p - q)`` gets wrong, each a
+    counterexample in the 2026-09-13 audit and each a test in
+    ``test_charter_132_evidence_contract``:
+
+    * **The intercept is dropped.**  On this lane alpha is about -0.04 -- the
+      spread above the price the book would clear at.  p=.8, q=.6, beta=.3,
+      alpha=-.08: the served edge is +.06 and clears 5%; the fitted edge is
+      -.02.
+    * **The bound is taken on beta's marginal.**  alpha and beta come from one
+      sample and are correlated; the bound belongs to the prediction.
+    * **A negative disagreement flips it.**  d=-.2 with beta in [-.8, .4]:
+      ``beta_lcb * d`` is +.16, while the worst prediction on the interval is
+      -.08.  A quantile over ``alpha_k + beta_k * d`` has no sign to get wrong.
+
+    The number is a net edge per unit of cost basis, not a probability, and is
+    named so on every row that records it.  None when there are no draws --
+    an accumulating fit has none, and nothing may be served from it.
+    """
+
+    pairs = [
+        (float(pair[0]), float(pair[1]))
+        for pair in joint_draws
+        if len(pair) == 2
+        and math.isfinite(float(pair[0]))
+        and math.isfinite(float(pair[1]))
+    ]
+    if not pairs:
+        return None
+    d = float(raw_win) - float(price)
+    values = sorted(alpha + beta * d for alpha, beta in pairs)
+    q = min(max(float(quantile), 0.0), 1.0)
+    lower = values[min(len(values) - 1, int(q * len(values)))]
+    upper = values[max(0, int((1.0 - q) * len(values)) - 1)]
+    point = sum(values) / len(values)
+    return {
+        "disagreement": d,
+        "edge_point": point,
+        "edge_lcb": lower,
+        "edge_ucb": upper,
+        "draws": float(len(values)),
+    }
+
+
 def effective_edge_lambda(
     agreement: float,
     table: Sequence[tuple[float, float]] | None = None,

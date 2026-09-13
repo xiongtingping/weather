@@ -57,7 +57,7 @@ from typing import Any, Mapping, Sequence
 from .basket_kernel.delta_v2 import BETA_TABLE_KEY
 from .contracts import content_sha256
 
-SCHEMA = "beta_edge_table_v1"
+SCHEMA = "beta_edge_table_v2"
 STAGE_SCOPES: dict[str, tuple[str, ...]] = {
     "P0": ("P0",), "P0-M": ("P0-M",), "P1": ("P1",),
 }
@@ -68,6 +68,11 @@ BOOTSTRAP_DRAWS = 400
 BOOTSTRAP_SEED = 20260912
 LCB_QUANTILE = 0.05
 PRICE_BASIS = "ledger_all_in_price"
+# Charter 132 (2026-09-13): the joint (alpha, beta) draws a fit keeps so the
+# served lower bound is taken on the whole prediction ``alpha + beta * d``,
+# not on beta's marginal.  Rounded because they ride in evidence_json and are
+# read back every cycle; six places is far below the bootstrap's own noise.
+JOINT_DRAW_DECIMALS = 6
 
 _TABLE_DDL = """
 CREATE TABLE IF NOT EXISTS calibration_beta_edge_table (
@@ -122,16 +127,47 @@ def _has_table(conn: sqlite3.Connection, name: str) -> bool:
     ).fetchone() is not None
 
 
-def _anchor(conn: sqlite3.Connection, stage: str) -> str | None:
-    """The stage's serving-arithmetic anchor, or None when the store that
-    keeps it is absent (a research database)."""
+def _anchor(conn: sqlite3.Connection, stage: str) -> tuple[str | None, str]:
+    """The stage's serving-arithmetic anchor and how it was read.
 
+    ``absent`` -- the store that keeps the anchor is not in this database (a
+    research extract, a fixture): no bound, recorded as such.  ``ok`` -- read,
+    possibly None when nothing has been committed yet.  ``error`` -- the store
+    is there and the read failed.
+
+    The third state used to be folded into the first (charter 132, audit item
+    48): any exception became "no bound", so a transient failure silently
+    widened a served fit onto rows from a distribution nobody serves.  A fit
+    that cannot read its own floor now refuses to fit.
+    """
+
+    if not (
+        _has_table(conn, "basket_probability_bridge_history")
+        and _has_table(conn, "basket_probability_envelope")
+    ):
+        return None, "absent"
     try:
         from .center_width_store import served_arithmetic_anchor  # noqa: PLC0415
 
-        return served_arithmetic_anchor(conn, stage=stage)
-    except Exception:  # noqa: BLE001 -- absent store is "no bound"
-        return None
+        return served_arithmetic_anchor(conn, stage=stage), "ok"
+    except Exception:  # noqa: BLE001 -- a present store that fails is a refusal
+        return None, "error"
+
+
+def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    try:
+        return any(
+            str(row[1]) == column
+            for row in conn.execute(f"PRAGMA table_info({table})")
+        )
+    except sqlite3.Error:
+        return False
+
+
+def _utc_now_iso() -> str:
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _ols(xs: Sequence[float], ys: Sequence[float]) -> tuple[float, float] | None:
@@ -152,57 +188,134 @@ def population(
     as_of: str | None = None,
     window_days: int = WINDOW_DAYS,
     anchored: bool = True,
+    cutoff_utc: str | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Every enumerated window the ledger priced and settled for the scope's
-    stages, at or before ``as_of``, inside the rolling window and at or after
-    the serving anchor.  Raw claim, all-in price, hit, event date."""
+    stages that a fit at ``cutoff_utc`` could have known about.
+
+    Charter 132 (audit items 47 and 48) makes three conditions explicit that
+    the event-date bound used to stand in for:
+
+    * **The label was knowable.**  ``event_date <= as_of`` says the day is
+      over; it does not say the truth had been published.  A row is read only
+      when ``settled_at_utc`` is at or before the cutoff, and a decision taken
+      after the cutoff is not a row the fit could have seen either.  A table
+      without the column cannot state when its labels became knowable and is
+      refused rather than trusted.
+    * **The label is a label.**  ``hit`` must be 0 or 1.  ``hit or 0`` used to
+      turn a missing label into a loss; such rows are now counted and dropped.
+    * **The window is today's population.**  The same seat-shape partition
+      lambda's fit applies: rows enumerated under another shape rule, or before
+      the rule recorded one, are not evidence about windows shaped today.  A
+      table without the column partitions on nothing, exactly as lambda's does.
+
+    ``cutoff_utc`` defaults to now, which is what the nightly fit means.  A
+    walk-forward caller passes the moment it is standing at.
+    """
 
     if stage_scope not in STAGE_SCOPES:
         raise ValueError(f"beta_edge_scope_invalid:{stage_scope}")
     if not _has_table(conn, "paper_trade_candidate_window"):
         return [], {"error": "no_candidate_windows"}
+    if not _has_column(conn, "paper_trade_candidate_window", "settled_at_utc"):
+        return [], {"error": "no_label_knowable_column"}
     stages = STAGE_SCOPES[stage_scope]
+    cutoff = str(cutoff_utc or _utc_now_iso())
     newest = conn.execute(
         "SELECT MAX(event_date) FROM paper_trade_candidate_window"
-        " WHERE settled_bucket IS NOT NULL"
+        " WHERE settled_bucket IS NOT NULL AND settled_at_utc IS NOT NULL"
+        "   AND settled_at_utc <= ?",
+        (cutoff,),
     ).fetchone()
     latest = str(as_of or (newest[0] if newest else "") or "")
     if not latest:
-        return [], {"error": "no_settled_windows"}
+        return [], {"error": "no_settled_windows", "cutoff_utc": cutoff}
     floor_day = (
         date.fromisoformat(latest) - timedelta(days=int(window_days))
     ).isoformat()
-    anchors = [a for a in (_anchor(conn, s) for s in stages) if a] if anchored else []
+    anchor_states: dict[str, str] = {}
+    anchors: list[str] = []
+    anchors_after_cutoff = 0
+    if anchored:
+        for stage in stages:
+            value, state = _anchor(conn, stage)
+            anchor_states[stage] = state
+            if state == "error":
+                return [], {
+                    "error": "anchor_unreadable", "stage": stage,
+                    "cutoff_utc": cutoff,
+                }
+            if value:
+                if str(value) > cutoff:
+                    # The version serving today started after the moment this
+                    # fit stands at; its floor did not exist yet.  Dropped and
+                    # counted -- the version that served at the cutoff is not
+                    # recoverable here, so the rolling window is the bound.
+                    anchors_after_cutoff += 1
+                else:
+                    anchors.append(str(value))
     anchor_utc = max(anchors) if anchors else None
+    shape = None
+    if _has_column(conn, "paper_trade_candidate_window", "seat_shape_rule"):
+        from .basket_kernel.delta_v2 import (  # noqa: PLC0415
+            SEAT_SHAPE_RULE_VERSION,
+        )
+
+        shape = str(SEAT_SHAPE_RULE_VERSION)
     placeholders = ",".join("?" for _ in stages)
-    rows = conn.execute(
-        "SELECT station_id, event_date, stage, decision_at_utc,"
-        "       raw_win_probability, all_in_price, hit"
-        "  FROM paper_trade_candidate_window"
+    base_where = (
         f" WHERE stage IN ({placeholders})"
         "   AND settled_bucket IS NOT NULL"
         "   AND raw_win_probability IS NOT NULL"
         "   AND all_in_price IS NOT NULL AND all_in_price > 0"
-        "   AND event_date > ? AND event_date <= ?",
-        (*stages, floor_day, latest),
+        "   AND event_date > ? AND event_date <= ?"
+    )
+    base_args: tuple[Any, ...] = (*stages, floor_day, latest)
+    rows = conn.execute(
+        "SELECT station_id, event_date, stage, decision_at_utc,"
+        "       raw_win_probability, all_in_price, hit, settled_at_utc"
+        + (", seat_shape_rule" if shape is not None else ", NULL")
+        + " FROM paper_trade_candidate_window" + base_where,
+        base_args,
     ).fetchall()
     out = []
-    excluded_anchor = 0
-    for station, day, stage, at, raw, price, hit in rows:
+    counts = {
+        "excluded_before_anchor": 0,
+        "excluded_label_not_yet_knowable": 0,
+        "excluded_decided_after_cutoff": 0,
+        "rejected_invalid_label": 0,
+        "excluded_other_shape": 0,
+    }
+    for station, day, stage, at, raw, price, hit, settled_at, row_shape in rows:
+        if shape is not None and (row_shape is None or str(row_shape) != shape):
+            counts["excluded_other_shape"] += 1
+            continue
+        if settled_at is None or str(settled_at) > cutoff:
+            counts["excluded_label_not_yet_knowable"] += 1
+            continue
+        if str(at or "") > cutoff:
+            counts["excluded_decided_after_cutoff"] += 1
+            continue
         if anchor_utc and str(at or "") < anchor_utc:
-            excluded_anchor += 1
+            counts["excluded_before_anchor"] += 1
+            continue
+        if hit not in (0, 1) or isinstance(hit, bool):
+            counts["rejected_invalid_label"] += 1
             continue
         out.append({
             "station": str(station), "date": str(day), "stage": str(stage),
             "at": str(at or ""),
             "x": float(raw) - float(price),
-            "y": float(hit or 0) - float(price),
-            "raw": float(raw), "price": float(price), "hit": float(hit or 0),
+            "y": float(hit) - float(price),
+            "raw": float(raw), "price": float(price), "hit": float(hit),
         })
     return out, {
         "as_of_event_date": latest, "floor_day": floor_day,
-        "anchor_utc": anchor_utc, "excluded_before_anchor": excluded_anchor,
-        "anchored": bool(anchored),
+        "cutoff_utc": cutoff, "anchor_utc": anchor_utc,
+        "anchor_states": anchor_states,
+        "anchors_after_cutoff": anchors_after_cutoff,
+        "anchored": bool(anchored), "seat_shape_rule": shape,
+        **counts,
     }
 
 
@@ -270,15 +383,25 @@ def fit_beta(
     window_days: int = WINDOW_DAYS,
     draws: int = BOOTSTRAP_DRAWS,
     anchored: bool = True,
+    cutoff_utc: str | None = None,
 ) -> dict[str, Any]:
     """One beta with a by-day bootstrap lower bound; below the hurdles the
     served bound is 0 and the fit says ``accumulating``.  ``anchored=False``
     is a research reading (the anchor is what keeps a served fit off rows
-    from a shape nobody serves) and is never persisted."""
+    from a shape nobody serves) and is never persisted.
+
+    Charter 132 (audit items 42 and 44): the bootstrap keeps the JOINT draws
+    of ``(intercept, beta)``, because the served quantity is the prediction
+    ``intercept + beta * d`` and not beta alone.  The two are estimated from
+    one sample and are correlated; a lower bound on beta times ``d`` drops the
+    intercept (which on this lane is the spread, about -0.04) and flips its
+    conservatism whenever ``d`` is negative.  ``beta_lcb`` stays on the table
+    for charter 128's shadow and its record; the new shadow reads the draws.
+    """
 
     rows, meta = population(
         conn, stage_scope=stage_scope, as_of=as_of, window_days=window_days,
-        anchored=anchored,
+        anchored=anchored, cutoff_utc=cutoff_utc,
     )
     days = sorted({r["date"] for r in rows})
     evidence: dict[str, Any] = {
@@ -289,6 +412,8 @@ def fit_beta(
     }
     accumulating = len(rows) < MIN_ROWS or len(days) < MIN_DAYS
     beta = intercept = lcb = ucb = None
+    intercept_lcb = intercept_ucb = None
+    joint: list[tuple[float, float]] = []
     per_day: dict[str, float] = {}
     if not accumulating:
         fitted = _ols([r["x"] for r in rows], [r["y"] for r in rows])
@@ -309,10 +434,22 @@ def fit_beta(
                 got = _ols(xs, ys)
                 if got is not None:
                     samples.append(got[1])
+                    joint.append((
+                        round(float(got[0]), JOINT_DRAW_DECIMALS),
+                        round(float(got[1]), JOINT_DRAW_DECIMALS),
+                    ))
             samples.sort()
             if samples:
                 lcb = samples[min(len(samples) - 1, int(LCB_QUANTILE * len(samples)))]
                 ucb = samples[max(0, int((1.0 - LCB_QUANTILE) * len(samples)) - 1)]
+            if joint:
+                intercepts = sorted(a for a, _b in joint)
+                intercept_lcb = intercepts[
+                    min(len(intercepts) - 1, int(LCB_QUANTILE * len(intercepts)))
+                ]
+                intercept_ucb = intercepts[
+                    max(0, int((1.0 - LCB_QUANTILE) * len(intercepts)) - 1)
+                ]
             for k, grp in by_day.items():
                 got = _ols([r["x"] for r in grp], [r["y"] for r in grp])
                 if got is not None:
@@ -325,6 +462,16 @@ def fit_beta(
         "beta_lcb": None if lcb is None else round(float(lcb), 6),
         "beta_ucb": None if ucb is None else round(float(ucb), 6),
         "served_beta_lcb": round(served_lcb, 6),
+        "intercept_lcb": (
+            None if intercept_lcb is None else round(float(intercept_lcb), 6)
+        ),
+        "intercept_ucb": (
+            None if intercept_ucb is None else round(float(intercept_ucb), 6)
+        ),
+        # Empty while accumulating: an accumulating fit serves nothing, and
+        # a served lower bound read off draws from too few days would be the
+        # hurdle waived by the back door.
+        "joint_draws": [] if accumulating else [list(d) for d in joint],
         "per_day_beta": per_day,
         "days_beta_positive": sum(1 for v in per_day.values() if v > 0),
         "mean_x": round(mean(r["x"] for r in rows), 6) if rows else None,
@@ -409,12 +556,24 @@ def journal_fit(
 
 
 def _row_to_served(row: Sequence[Any]) -> dict[str, Any]:
-    sha, beta, lcb, ucb, intercept, accumulating, rows_, days_ = row
+    sha, beta, lcb, ucb, intercept, accumulating, rows_, days_ = row[:8]
+    draws: list[tuple[float, float]] = []
+    if len(row) > 8 and row[8]:
+        try:
+            raw = json.loads(str(row[8])).get("joint_draws") or []
+            draws = [
+                (float(pair[0]), float(pair[1]))
+                for pair in raw
+                if isinstance(pair, (list, tuple)) and len(pair) == 2
+            ]
+        except (ValueError, TypeError, AttributeError):
+            draws = []
     return {
         "sha256": str(sha), "beta": beta, "beta_lcb": float(lcb),
         "beta_ucb": ucb, "intercept": intercept,
         "accumulating": bool(accumulating), "row_count": int(rows_ or 0),
         "day_count": int(days_ or 0),
+        "joint_draws": tuple(draws),
     }
 
 
@@ -429,7 +588,7 @@ def load_beta_as_of(
         return None
     cols = (
         "t.beta_sha256, t.beta, t.beta_lcb, t.beta_ucb, t.intercept,"
-        " t.accumulating, t.row_count, t.day_count"
+        " t.accumulating, t.row_count, t.day_count, t.evidence_json"
     )
     try:
         if as_of_utc is None:

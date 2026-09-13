@@ -28,13 +28,25 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
 )
 
 
+@pytest.fixture(autouse=True)
+def _fixed_clock(monkeypatch):
+    """The fixture's settlements are dated September 2026; a population cut
+    at the wall clock would read a different number of them on every day the
+    suite runs.  The clock is the test's, not the calendar's."""
+
+    monkeypatch.setattr(store, "_utc_now_iso", lambda: "2026-12-31T00:00:00Z")
+
+
 def _db() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.execute(
         "CREATE TABLE paper_trade_candidate_window("
         " candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
         " stage TEXT, decision_at_utc TEXT, raw_win_probability REAL,"
-        " all_in_price REAL, hit INTEGER, settled_bucket TEXT)"
+        # Charter 132: the population reads when a label became knowable,
+        # so the fixture carries the production column that says so.
+        " all_in_price REAL, hit INTEGER, settled_bucket TEXT,"
+        " settled_at_utc TEXT)"
     )
     store.ensure_schema(conn)
     return conn
@@ -54,9 +66,9 @@ def _plant(conn, *, days: int, stations: int = 20, beta: float = 0.5,
             y = intercept + beta * (raw - price) + rng.gauss(0.0, noise)
             hit = 1 if rng.random() < max(0.0, min(1.0, price + y)) else 0
             conn.execute(
-                "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?,?)",
                 (f"c{n}", f"S{s:02d}", day, stage, f"{day}T00:00:00Z",
-                 raw, price, hit, "29°C"),
+                 raw, price, hit, "29°C", f"{day}T23:30:00Z"),
             )
             n += 1
     conn.commit()

@@ -84,6 +84,9 @@ def main() -> int:
             fit = fit_beta(
                 conn, stage_scope=scope, as_of=args.as_of_event_date,
                 anchored=not args.unanchored,
+                # Charter 132: labels knowable at the stamp this fit is
+                # activated under -- the script does not read the clock.
+                cutoff_utc=args.as_of,
             )
             outcome = None
             if args.commit:
