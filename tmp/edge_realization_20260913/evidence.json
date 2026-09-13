@@ -1,0 +1,269 @@
+{
+  "scope": "source audit, synthetic counterexamples, and read-only SSOT snapshot; NOT OOS or a live profitability claim",
+  "source_default_beta_mode": "shadow",
+  "source_seat_shape_rule": "seat_shape_mean_anchored_v1",
+  "probes": {
+    "intercept_omission": {
+      "served_edge": 0.06000000000000005,
+      "fitted_conditional_edge": -0.019999999999999983
+    },
+    "cost_changes_belief": {
+      "belief_before": 0.66,
+      "belief_after": 0.73
+    },
+    "negative_disagreement_bound": {
+      "current_edge": 0.16000000000000003,
+      "interval_worst_edge": -0.08000000000000002
+    },
+    "shared_price_regressor": {
+      "beta": 1.0,
+      "intercept": -0.19999999999999996,
+      "true_probability": 0.5,
+      "model_probability": 0.7
+    },
+    "window_dependent_probability": {
+      "subset_probability": 0.34800000000000003,
+      "superset_probability": 0.098,
+      "same_bucket_a_in_two_partitions": [
+        0.17400000000000002,
+        0.028000000000000008
+      ]
+    },
+    "interval_sign_boundary_sweep": {
+      "cases": 84,
+      "passed": true
+    },
+    "beta_asof_and_null_label": {
+      "included_future_known_labels": 2,
+      "null_hit_coerced_to": 0.0
+    },
+    "lambda_asof_ceiling": {
+      "as_of": "2026-09-05",
+      "included_rows": 3,
+      "expected_rows_with_date_ceiling": 2
+    },
+    "execution_example": {
+      "p_model": 0.8,
+      "market": 0.5,
+      "beta": 0.3,
+      "belief": 0.59,
+      "small_taker_cost": 0.54,
+      "small_edge": 0.04999999999999993,
+      "large_taker_cost": 0.58,
+      "large_edge": 0.010000000000000009,
+      "maker_fill_probability": 0.4,
+      "maker_price": 0.51,
+      "p_given_fill": 0.48,
+      "maker_attempt_ev": -0.01200000000000001
+    }
+  },
+  "snapshot": {
+    "read_at_utc": "2026-09-13T02:09:25.825620+00:00",
+    "db": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+    "domains": {
+      "calibration_beta_edge_table": {
+        "stage_scope": [
+          "P0",
+          "P0-M",
+          "P1"
+        ],
+        "price_basis": [
+          "ledger_all_in_price"
+        ],
+        "activated": [
+          1
+        ],
+        "accumulating": [
+          1
+        ]
+      },
+      "calibration_effective_edge_lambda": {
+        "stage_scope": [
+          "P0",
+          "P1",
+          "P0-M"
+        ],
+        "claim_scope": [
+          "window",
+          "bucket"
+        ],
+        "activated": [
+          0,
+          1
+        ],
+        "band_axis": [
+          "claim",
+          "centre_distance"
+        ]
+      },
+      "paper_trade_candidate_window": {
+        "stage": [
+          "P0",
+          "P0-M",
+          "P1"
+        ],
+        "seat_shape_rule": [
+          null,
+          "seat_shape_mean_anchored_v1"
+        ],
+        "band_axis": [
+          null,
+          "centre_distance",
+          "claim"
+        ]
+      }
+    },
+    "beta_activated": [
+      {
+        "stage_scope": "P0",
+        "beta": null,
+        "beta_lcb": 0.0,
+        "beta_ucb": null,
+        "intercept": null,
+        "row_count": 0,
+        "day_count": 0,
+        "accumulating": 1,
+        "fitted_at_utc": "2026-09-12T00:52:55Z",
+        "as_of_event_date": "2026-09-11",
+        "anchor_utc": "2026-09-10T15:27:09Z",
+        "excluded_before_anchor": 1597
+      },
+      {
+        "stage_scope": "P0-M",
+        "beta": null,
+        "beta_lcb": 0.0,
+        "beta_ucb": null,
+        "intercept": null,
+        "row_count": 16,
+        "day_count": 1,
+        "accumulating": 1,
+        "fitted_at_utc": "2026-09-12T00:52:55Z",
+        "as_of_event_date": "2026-09-11",
+        "anchor_utc": "2026-09-10T15:27:11Z",
+        "excluded_before_anchor": 385
+      },
+      {
+        "stage_scope": "P1",
+        "beta": null,
+        "beta_lcb": 0.0,
+        "beta_ucb": null,
+        "intercept": null,
+        "row_count": 210,
+        "day_count": 5,
+        "accumulating": 1,
+        "fitted_at_utc": "2026-09-12T00:52:55Z",
+        "as_of_event_date": "2026-09-11",
+        "anchor_utc": "2026-09-07T07:24:34.976000Z",
+        "excluded_before_anchor": 156
+      }
+    ],
+    "lambda_columns": [
+      "lambda_table_sha256",
+      "bands_json",
+      "evidence_json",
+      "fitted_at_utc",
+      "window_days",
+      "seat_count",
+      "activated",
+      "activated_at_utc",
+      "stage_scope",
+      "claim_scope",
+      "band_axis"
+    ],
+    "lambda_activated": [
+      {
+        "stage_scope": "P0",
+        "claim_scope": "window",
+        "fitted_at_utc": "2026-09-11T00:16:56+00:00",
+        "seat_count": 0,
+        "band_axis": "centre_distance",
+        "payload_seat_shape_rule": null
+      },
+      {
+        "stage_scope": "P0",
+        "claim_scope": "bucket",
+        "fitted_at_utc": "2026-09-11T00:17:45+00:00",
+        "seat_count": 0,
+        "band_axis": "centre_distance",
+        "payload_seat_shape_rule": null
+      },
+      {
+        "stage_scope": "P0-M",
+        "claim_scope": "window",
+        "fitted_at_utc": "2026-09-11T22:38:20+00:00",
+        "seat_count": 7,
+        "band_axis": "centre_distance",
+        "payload_seat_shape_rule": null
+      },
+      {
+        "stage_scope": "P1",
+        "claim_scope": "window",
+        "fitted_at_utc": "2026-09-11T22:39:06+00:00",
+        "seat_count": 82,
+        "band_axis": "centre_distance",
+        "payload_seat_shape_rule": null
+      }
+    ],
+    "candidate_groups": [
+      {
+        "stage": "P0",
+        "seat_shape_rule": null,
+        "rows": 2082,
+        "event_days": 30,
+        "labeled": 1637,
+        "first_day": "2026-08-15",
+        "last_day": "2026-09-13"
+      },
+      {
+        "stage": "P0",
+        "seat_shape_rule": "seat_shape_mean_anchored_v1",
+        "rows": 1482,
+        "event_days": 31,
+        "labeled": 940,
+        "first_day": "2026-08-15",
+        "last_day": "2026-09-14"
+      },
+      {
+        "stage": "P0-M",
+        "seat_shape_rule": null,
+        "rows": 787,
+        "event_days": 26,
+        "labeled": 624,
+        "first_day": "2026-08-17",
+        "last_day": "2026-09-13"
+      },
+      {
+        "stage": "P0-M",
+        "seat_shape_rule": "seat_shape_mean_anchored_v1",
+        "rows": 150,
+        "event_days": 10,
+        "labeled": 42,
+        "first_day": "2026-09-05",
+        "last_day": "2026-09-14"
+      },
+      {
+        "stage": "P1",
+        "seat_shape_rule": null,
+        "rows": 475,
+        "event_days": 25,
+        "labeled": 475,
+        "first_day": "2026-08-16",
+        "last_day": "2026-09-12"
+      },
+      {
+        "stage": "P1",
+        "seat_shape_rule": "seat_shape_mean_anchored_v1",
+        "rows": 109,
+        "event_days": 6,
+        "labeled": 45,
+        "first_day": "2026-09-06",
+        "last_day": "2026-09-12"
+      }
+    ],
+    "label_check": {
+      "rows": 3763,
+      "mismatch": 0,
+      "missing": 0
+    }
+  }
+}

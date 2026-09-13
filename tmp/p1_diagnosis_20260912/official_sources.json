@@ -1,0 +1,44 @@
+[
+  {
+    "url": "https://aviationweather.gov/data/api/",
+    "file": "awc_api.html",
+    "retrieved_at": "2026-09-12T13:54:33.063189+00:00",
+    "bytes": 42564,
+    "sha256": "f13e038f7a6f920f13d6781df7326d6c818044136f89646a2ccecf8dda36771a",
+    "transport": "curl_system_trust",
+    "initial_error": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1028)>"
+  },
+  {
+    "url": "https://aviationweather.gov/help/data/",
+    "file": "awc_metar_help.html",
+    "retrieved_at": "2026-09-12T13:54:35.006064+00:00",
+    "bytes": 93511,
+    "sha256": "af944b37d6f355c42c6f24cac7734390acdd81ed49a0ad1b2a7ef869d1320ae7",
+    "transport": "curl_system_trust",
+    "initial_error": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1028)>"
+  },
+  {
+    "url": "https://www.weather.gov/asos/",
+    "file": "asos.html",
+    "retrieved_at": "2026-09-12T13:54:37.761278+00:00",
+    "bytes": 32170,
+    "sha256": "7aa415d685b13a3fbb08106d45d748413bc2e29be1f86062af412b34f97855ee",
+    "transport": "curl_system_trust",
+    "initial_error": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)>"
+  },
+  {
+    "url": "https://www.weather.gov/media/asos/aum-toc.pdf",
+    "file": "asos_user_guide.pdf",
+    "retrieved_at": "2026-09-12T13:54:40.066392+00:00",
+    "bytes": 918728,
+    "sha256": "1b7c0edea39bd6c282ebe905da7b74cbc3dce97f28239bfccfce6bce09b8d8d8",
+    "transport": "curl_system_trust",
+    "initial_error": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)>"
+  },
+  {
+    "url": "https://www.icams-portal.gov/resources/ofcm/fmh/FMH1/fmh1_2019.pdf",
+    "error": "curl: (56) The requested URL returned error: 403\n",
+    "initial_error": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)>",
+    "retrieved_at": "2026-09-12T13:54:42.147296+00:00"
+  }
+]

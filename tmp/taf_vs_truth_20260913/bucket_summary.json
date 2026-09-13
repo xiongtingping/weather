@@ -1,0 +1,226 @@
+{
+ "偏差正常|TX=众数桶": {
+  "n": 106,
+  "days": 26,
+  "tx_bucket_p0": 0.342,
+  "tx_bucket_hit": 0.387,
+  "tx_ratio_90": [
+   0.83,
+   1.52
+  ],
+  "core3_p0": 0.739,
+  "core3_hit": 0.877,
+  "span_p0": 0.342,
+  "span_hit": 0.387,
+  "mode_p0": 0.342,
+  "mode_hit": 0.387
+ },
+ "偏差正常|TX 在众数±1": {
+  "n": 160,
+  "days": 29,
+  "tx_bucket_p0": 0.216,
+  "tx_bucket_hit": 0.319,
+  "tx_ratio_90": [
+   1.16,
+   1.79
+  ],
+  "core3_p0": 0.732,
+  "core3_hit": 0.787,
+  "span_p0": 0.549,
+  "span_hit": 0.662,
+  "mode_p0": 0.333,
+  "mode_hit": 0.344
+ },
+ "偏差正常|TX 在±1 外": {
+  "n": 131,
+  "days": 28,
+  "tx_bucket_p0": 0.097,
+  "tx_bucket_hit": 0.221,
+  "tx_ratio_90": [
+   1.64,
+   2.91
+  ],
+  "core3_p0": 0.577,
+  "core3_hit": 0.427,
+  "span_p0": 0.629,
+  "span_hit": 0.718,
+  "mode_p0": 0.277,
+  "mode_hit": 0.168
+ },
+ "偏差正常|TX 暖 +1": {
+  "n": 81,
+  "days": 22,
+  "tx_bucket_p0": 0.221,
+  "tx_bucket_hit": 0.333,
+  "tx_ratio_90": [
+   1.11,
+   1.9
+  ],
+  "core3_p0": 0.758,
+  "core3_hit": 0.778,
+  "span_p0": 0.574,
+  "span_hit": 0.667,
+  "mode_p0": 0.352,
+  "mode_hit": 0.333
+ },
+ "偏差正常|TX 冷 −1": {
+  "n": 79,
+  "days": 25,
+  "tx_bucket_p0": 0.211,
+  "tx_bucket_hit": 0.304,
+  "tx_ratio_90": [
+   1.02,
+   1.86
+  ],
+  "core3_p0": 0.706,
+  "core3_hit": 0.797,
+  "span_p0": 0.524,
+  "span_hit": 0.658,
+  "mode_p0": 0.313,
+  "mode_hit": 0.354
+ },
+ "偏差正常|TX 暖 ≥+2": {
+  "n": 31,
+  "days": 20,
+  "tx_bucket_p0": 0.097,
+  "tx_bucket_hit": 0.258,
+  "tx_ratio_90": [
+   1.22,
+   4.28
+  ],
+  "core3_p0": 0.568,
+  "core3_hit": 0.516,
+  "span_p0": 0.627,
+  "span_hit": 0.806,
+  "mode_p0": 0.268,
+  "mode_hit": 0.161
+ },
+ "偏差正常|TX 冷 ≤−2": {
+  "n": 100,
+  "days": 26,
+  "tx_bucket_p0": 0.097,
+  "tx_bucket_hit": 0.21,
+  "tx_ratio_90": [
+   1.48,
+   2.87
+  ],
+  "core3_p0": 0.58,
+  "core3_hit": 0.4,
+  "span_p0": 0.629,
+  "span_hit": 0.69,
+  "mode_p0": 0.28,
+  "mode_hit": 0.17
+ },
+ "全部|TX=众数桶": {
+  "n": 137,
+  "days": 26,
+  "tx_bucket_p0": 0.315,
+  "tx_bucket_hit": 0.336,
+  "tx_ratio_90": [
+   0.81,
+   1.36
+  ],
+  "core3_p0": 0.702,
+  "core3_hit": 0.818,
+  "span_p0": 0.315,
+  "span_hit": 0.336,
+  "mode_p0": 0.315,
+  "mode_hit": 0.336
+ },
+ "全部|TX 在众数±1": {
+  "n": 210,
+  "days": 31,
+  "tx_bucket_p0": 0.209,
+  "tx_bucket_hit": 0.314,
+  "tx_ratio_90": [
+   1.17,
+   1.84
+  ],
+  "core3_p0": 0.702,
+  "core3_hit": 0.786,
+  "span_p0": 0.521,
+  "span_hit": 0.652,
+  "mode_p0": 0.312,
+  "mode_hit": 0.338
+ },
+ "全部|TX 在±1 外": {
+  "n": 160,
+  "days": 29,
+  "tx_bucket_p0": 0.093,
+  "tx_bucket_hit": 0.219,
+  "tx_ratio_90": [
+   1.73,
+   3.0
+  ],
+  "core3_p0": 0.581,
+  "core3_hit": 0.431,
+  "span_p0": 0.623,
+  "span_hit": 0.719,
+  "mode_p0": 0.274,
+  "mode_hit": 0.163
+ },
+ "全部|TX 暖 +1": {
+  "n": 108,
+  "days": 28,
+  "tx_bucket_p0": 0.215,
+  "tx_bucket_hit": 0.343,
+  "tx_ratio_90": [
+   1.2,
+   2.01
+  ],
+  "core3_p0": 0.728,
+  "core3_hit": 0.787,
+  "span_p0": 0.544,
+  "span_hit": 0.694,
+  "mode_p0": 0.329,
+  "mode_hit": 0.352
+ },
+ "全部|TX 冷 −1": {
+  "n": 102,
+  "days": 25,
+  "tx_bucket_p0": 0.203,
+  "tx_bucket_hit": 0.284,
+  "tx_ratio_90": [
+   1.02,
+   1.79
+  ],
+  "core3_p0": 0.674,
+  "core3_hit": 0.784,
+  "span_p0": 0.497,
+  "span_hit": 0.608,
+  "mode_p0": 0.294,
+  "mode_hit": 0.324
+ },
+ "全部|TX 暖 ≥+2": {
+  "n": 47,
+  "days": 23,
+  "tx_bucket_p0": 0.085,
+  "tx_bucket_hit": 0.255,
+  "tx_ratio_90": [
+   1.66,
+   4.5
+  ],
+  "core3_p0": 0.573,
+  "core3_hit": 0.447,
+  "span_p0": 0.616,
+  "span_hit": 0.787,
+  "mode_p0": 0.266,
+  "mode_hit": 0.128
+ },
+ "全部|TX 冷 ≤−2": {
+  "n": 113,
+  "days": 27,
+  "tx_bucket_p0": 0.097,
+  "tx_bucket_hit": 0.204,
+  "tx_ratio_90": [
+   1.45,
+   2.78
+  ],
+  "core3_p0": 0.585,
+  "core3_hit": 0.425,
+  "span_p0": 0.625,
+  "span_hit": 0.69,
+  "mode_p0": 0.277,
+  "mode_hit": 0.177
+ }
+}

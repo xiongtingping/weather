@@ -1,0 +1,19 @@
+{
+  "start": "2026-09-13T07:01:21.391628Z",
+  "cutoff": "2026-09-13T08:55:31.458106Z",
+  "counts": {
+    "P0": 125,
+    "P1": 389,
+    "P0-M": 113
+  },
+  "stations_with_new_p0": 45,
+  "stations_with_new_p0m": 45,
+  "stations_with_new_p1": 45,
+  "p0_later_than_seated_clock": 0,
+  "p0m_missing_parent": 0,
+  "p0m_extends_parent": 0,
+  "p0m_extends_taf": 0,
+  "p1_reaffirmations": 0,
+  "p1_refreshes": 166,
+  "errors": []
+}

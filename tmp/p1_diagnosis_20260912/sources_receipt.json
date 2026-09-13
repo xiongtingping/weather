@@ -1,0 +1,299 @@
+{
+  "schemaVersion": 1,
+  "items": [
+    {
+      "id": "p1-stale-state",
+      "title": "新鲜 P1 仍使用旧温度状态",
+      "queries": [
+        {
+          "id": "p1-samples",
+          "source": {
+            "label": "P1 SSOT 与原始观测",
+            "files": [
+              {
+                "label": "p1_compiler.py"
+              },
+              {
+                "label": "production_worker.py"
+              },
+              {
+                "label": "features_audit.json"
+              }
+            ],
+            "sql": "select * from basket_probability_envelope where station_id=? and event_date=? and state='COMMITTED' and stage='P1' and decision_at_utc<=? order by decision_at_utc desc limit 1",
+            "executedAt": "2026-09-12T13:55:45.770770+00:00",
+            "tables": [
+              {
+                "name": "basket_probability_envelope"
+              },
+              {
+                "name": "reported_trajectory_observations"
+              }
+            ],
+            "metricDefinitions": [
+              {
+                "label": "回落幅度",
+                "definition": "同一站日截至当时已收到的 AWC 最高温减最新温度；与服务四层特征比较。"
+              }
+            ],
+            "filters": [
+              "范围：45 站、135 个站日",
+              "P1：取样前已提交的 COMMITTED 分布"
+            ],
+            "caveats": [
+              "固定时点用于审查覆盖，不能当独立气象样本。",
+              "代码同时存在无新高续期及重新定根下的旧前缀计算。"
+            ]
+          },
+          "rows": [
+            {
+              "metric": "固定时点",
+              "count": 675,
+              "base": 675
+            },
+            {
+              "metric": "reaffirmation",
+              "count": 284,
+              "base": 675
+            },
+            {
+              "metric": "16 时 drawdown=0",
+              "count": 119,
+              "base": 135
+            },
+            {
+              "metric": "16 时回落幅度错位 >0.5°C",
+              "count": 52,
+              "base": 135
+            },
+            {
+              "metric": "20 时回落幅度错位 >0.5°C",
+              "count": 116,
+              "base": 135
+            }
+          ],
+          "columns": [
+            "metric",
+            "count",
+            "base"
+          ],
+          "reportingPeriod": "2026-09-09 至 2026-09-11；每站当地 08/12/16/20/23 时"
+        }
+      ]
+    },
+    {
+      "id": "phase-refresh-experiment",
+      "title": "刷新阶段输入的离线候选效果",
+      "queries": [
+        {
+          "id": "phase-experiment",
+          "source": {
+            "label": "闭日预测与阶段刷新实验",
+            "files": [
+              {
+                "label": "analyze.py"
+              },
+              {
+                "label": "verification.json"
+              }
+            ],
+            "metricDefinitions": [
+              {
+                "label": "候选",
+                "definition": "在固定 hazard artifact 上只刷新 phase 的时钟、回落、动量、云量和降水，保留区域协变量、上方形状与末端概率地板。"
+              }
+            ],
+            "filters": [
+              "取样：当地 16 时",
+              "样本：通过原新鲜度门的 89 个站日",
+              "排除：更正日、未应用 phase、已出现新高但基线未反映的时点"
+            ],
+            "caveats": [
+              "候选筛查不是全域 strict-as-of OOS，不支持直接晋级或交易收益结论。",
+              "08 时组未改善；不能把下午收益推广到全天。",
+              "从已过地板的 served 分布重组与完整生产重放略有差异；16 时恒等组 NLL 0.952，对比原服务 0.953。"
+            ]
+          },
+          "rows": [
+            {
+              "metric": "落桶命中率",
+              "served": 0.6404494382022472,
+              "candidate": 0.8314606741573034
+            },
+            {
+              "metric": "中心绝对误差°C",
+              "served": 0.6201256590544737,
+              "candidate": 0.42203455634480397
+            },
+            {
+              "metric": "负对数损失",
+              "served": 0.9544943116044486,
+              "candidate": 0.5623663370436491
+            },
+            {
+              "metric": "多类别 Brier",
+              "served": 0.5427312897166704,
+              "candidate": 0.2778405216289174
+            }
+          ],
+          "columns": [
+            "metric",
+            "served",
+            "candidate"
+          ],
+          "reportingPeriod": "2026-09-09 至 2026-09-11；当地 16 时"
+        }
+      ]
+    },
+    {
+      "id": "bucket-label-mismatch",
+      "title": "升温标签与结算桶 crossing 不一致",
+      "queries": [
+        {
+          "id": "label-audit",
+          "source": {
+            "label": "phase 训练样本与根桶几何",
+            "files": [
+              {
+                "label": "build_metar_phase_hazard_samples.py"
+              },
+              {
+                "label": "label_audit.py"
+              },
+              {
+                "label": "label_audit.json"
+              }
+            ],
+            "sql": "select station_id,event_date,as_of_utc,root_checkpoint_id,running_high_c,truth_tmax_c,delta_c from metar_phase_hazard_sample",
+            "tables": [
+              {
+                "name": "metar_phase_hazard_sample"
+              },
+              {
+                "name": "basket_probability_envelope"
+              }
+            ],
+            "metricDefinitions": [
+              {
+                "label": "错位",
+                "definition": "round(truth−running_high)≥1 与 truth 是否进入 running_high 桶之上不一致；桶区间来自对应根的真实 registry 几何。"
+              }
+            ],
+            "caveats": [
+              "C 站也包括开口尾桶等边界情形。"
+            ]
+          },
+          "rows": [
+            {
+              "unit": "F",
+              "samples": 6522,
+              "mismatch": 230
+            },
+            {
+              "unit": "C",
+              "samples": 33359,
+              "mismatch": 53
+            }
+          ],
+          "columns": [
+            "unit",
+            "samples",
+            "mismatch"
+          ],
+          "reportingPeriod": "2026-08-10 至 2026-09-06；39,881 条训练样本"
+        }
+      ]
+    },
+    {
+      "id": "observation-latency",
+      "title": "接收长尾与内部处理耗时",
+      "queries": [
+        {
+          "id": "latency-audit",
+          "source": {
+            "label": "AWC 观测与来源轮询",
+            "files": [
+              {
+                "label": "latency_detail.json"
+              },
+              {
+                "label": "analysis.json"
+              }
+            ],
+            "sql": "select * from reported_trajectory_observations where station_id=? and valid_at>=? and valid_at<? order by valid_at,canonical_committed_at",
+            "tables": [
+              {
+                "name": "reported_trajectory_observations"
+              },
+              {
+                "name": "reported_trajectory_source_polls"
+              }
+            ],
+            "filters": [
+              "样本：4,637 条无更正标记 AWC METAR/SPECI"
+            ],
+            "caveats": [
+              "valid→first_seen 包含发布、转发、轮询及补采，不是纯网络时延。",
+              "没有逐事件配对市场价格迁移；无法据此量化市场领先分钟数。"
+            ]
+          },
+          "rows": [
+            {
+              "interval": "valid→first_seen",
+              "p50_seconds": 263.11,
+              "p90_seconds": 3976.988
+            },
+            {
+              "interval": "fetch_started→fetch_completed",
+              "p50_seconds": 4.458,
+              "p90_seconds": 25.58160000000001
+            },
+            {
+              "interval": "first_seen→commit",
+              "p50_seconds": 0.165,
+              "p90_seconds": 8.609400000000008
+            }
+          ],
+          "columns": [
+            "interval",
+            "p50_seconds",
+            "p90_seconds"
+          ],
+          "reportingPeriod": "2026-09-09 至 2026-09-11"
+        }
+      ]
+    },
+    {
+      "id": "metar-best-practice",
+      "title": "METAR 时间、精度与 SPECI 语义",
+      "queries": [
+        {
+          "id": "official-documents",
+          "source": {
+            "label": "AWC / NWS 官方文档",
+            "links": [
+              {
+                "label": "AWC API",
+                "url": "https://aviationweather.gov/data/api/"
+              },
+              {
+                "label": "AWC METAR 文档",
+                "url": "https://aviationweather.gov/help/data/"
+              },
+              {
+                "label": "NWS ASOS 用户指南",
+                "url": "https://www.weather.gov/media/asos/aum-toc.pdf"
+              }
+            ],
+            "caveats": [
+              "ASOS 用户指南为历史技术文档，当前逐源产品语义仍需核实。",
+              "未读取成功的 FMH1 不作为证据。"
+            ]
+          },
+          "summary": "SPECI 的触发不保证覆盖普通升温；温度报文存在舍入与平均窗口；6 小时及日最高温组需要匹配观测窗口与站点结算日。",
+          "reportingPeriod": "官方网页于 2026-09-12 读取"
+        }
+      ]
+    }
+  ]
+}

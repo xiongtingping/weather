@@ -1,0 +1,184 @@
+{
+  "rechecked_at": "2026-09-13T09:07:27.182364+00:00",
+  "initial_saved_counts": {
+    "P0": 125,
+    "P1": 389,
+    "P0-M": 113
+  },
+  "independent_sql_counts": {
+    "P0": 125,
+    "P1": 403,
+    "P0-M": 113
+  },
+  "additional_backdated_p1_rows": [
+    {
+      "checkpoint_id": "p1_0decf041fd03d5397fb75a90202c8173",
+      "station_id": "EDDM",
+      "event_date": "2026-09-13",
+      "stage": "P1",
+      "decision_at_utc": "2026-09-13T08:52:42.508000Z",
+      "created_at": "2026-09-13T08:52:42.508000Z",
+      "fresh_until_utc": "2026-09-13T09:52:42.508000Z",
+      "reaffirmation": null,
+      "refresh": null
+    },
+    {
+      "checkpoint_id": "p1_982fad438a2a1bdb6ad2d2afd642f7f6",
+      "station_id": "EFHK",
+      "event_date": "2026-09-13",
+      "stage": "P1",
+      "decision_at_utc": "2026-09-13T08:55:21.338000Z",
+      "created_at": "2026-09-13T08:55:21.338000Z",
+      "fresh_until_utc": "2026-09-13T09:55:21.338000Z",
+      "reaffirmation": null,
+      "refresh": "p1_11146c46351fc75b10debe053fe4859d"
+    },
+    {
+      "checkpoint_id": "p1_c47c8aa91b0b165e9ff3c13ab9a15a16",
+      "station_id": "EGLC",
+      "event_date": "2026-09-13",
+      "stage": "P1",
+      "decision_at_utc": "2026-09-13T08:53:14.608000Z",
+      "created_at": "2026-09-13T08:53:14.608000Z",
+      "fresh_until_utc": "2026-09-13T09:53:14.608000Z",
+      "reaffirmation": null,
+      "refresh": null
+    },
+    {
+      "checkpoint_id": "p1_460a04ef958d6e9094994216b4e9db29",
+      "station_id": "KAUS",
+      "event_date": "2026-09-13",
+      "stage": "P1",
+      "decision_at_utc": "2026-09-13T08:54:12.285000Z",
+      "created_at": "2026-09-13T08:54:12.285000Z",
+      "fresh_until_utc": "2026-09-13T09:54:12.285000Z",
+      "reaffirmation": null,
+      "refresh": null
+    },
+    {
+      "checkpoint_id": "p1_9a3ccc06f426a351be4c95fad28722ad",
+      "station_id": "KDAL",
+      "event_date": "2026-09-13",
+      "stage": "P1",
+      "decision_at_utc": "2026-09-13T08:54:31.200000Z",
+      "created_at": "2026-09-13T08:54:31.200000Z",
+      "fresh_until_utc": "2026-09-13T09:54:31.200000Z",
+      "reaffirmation": null,
+      "refresh": null
+    },
+    {
+      "checkpoint_id": "p1_eae57098125b60d6992b534c9f9dfdbe",
+      "station_id": "KHOU",
+      "event_date": "2026-09-13",
+      "stage": "P1",
+      "decision_at_utc": "2026-09-13T08:54:31.215000Z",
+      "created_at": "2026-09-13T08:54:31.215000Z",
+      "fresh_until_utc": "2026-09-13T09:54:31.215000Z",
+      "reaffirmation": null,
+      "refresh": null
+    },
+    {
+      "checkpoint_id": "p1_00bddb67eb04877c3cf17ae496998390",
+      "station_id": "KLAX",
+      "event_date": "2026-09-13",
+      "stage": "P1",
+      "decision_at_utc": "2026-09-13T08:55:21.338000Z",
+      "created_at": "2026-09-13T08:55:21.338000Z",
+      "fresh_until_utc": "2026-09-13T09:55:21.338000Z",
+      "reaffirmation": null,
+      "refresh": "p1_9177f90c3ab3b2c12b0063a774d269d3"
+    },
+    {
+      "checkpoint_id": "p1_7e9b373110714022b69dab23f86659a5",
+      "station_id": "KORD",
+      "event_date": "2026-09-13",
+      "stage": "P1",
+      "decision_at_utc": "2026-09-13T08:55:21.338000Z",
+      "created_at": "2026-09-13T08:55:21.338000Z",
+      "fresh_until_utc": "2026-09-13T09:55:21.338000Z",
+      "reaffirmation": null,
+      "refresh": "p1_d3af012c281402058f8a7397aeee6374"
+    },
+    {
+      "checkpoint_id": "p1_21eccc68f14d4e670c09160b945e6e5b",
+      "station_id": "KSEA",
+      "event_date": "2026-09-13",
+      "stage": "P1",
+      "decision_at_utc": "2026-09-13T08:55:21.338000Z",
+      "created_at": "2026-09-13T08:55:21.338000Z",
+      "fresh_until_utc": "2026-09-13T09:55:21.338000Z",
+      "reaffirmation": null,
+      "refresh": "p1_172ec3aadf13447ce1d25a9b1d718ca3"
+    },
+    {
+      "checkpoint_id": "p1_75901207451f7df249d53644903cb04a",
+      "station_id": "LIMC",
+      "event_date": "2026-09-13",
+      "stage": "P1",
+      "decision_at_utc": "2026-09-13T08:55:21.338000Z",
+      "created_at": "2026-09-13T08:55:21.338000Z",
+      "fresh_until_utc": "2026-09-13T09:55:21.338000Z",
+      "reaffirmation": null,
+      "refresh": "p1_07939b9795acb6fdec8085f1c71ee82b"
+    },
+    {
+      "checkpoint_id": "p1_f216435daa50683722b22acb785b2e3e",
+      "station_id": "LTAC",
+      "event_date": "2026-09-13",
+      "stage": "P1",
+      "decision_at_utc": "2026-09-13T08:54:00.787000Z",
+      "created_at": "2026-09-13T08:54:00.787000Z",
+      "fresh_until_utc": "2026-09-13T09:54:00.787000Z",
+      "reaffirmation": null,
+      "refresh": null
+    },
+    {
+      "checkpoint_id": "p1_7a720dc341ab38363201c6d4c2df430f",
+      "station_id": "KATL",
+      "event_date": "2026-09-13",
+      "stage": "P1",
+      "decision_at_utc": "2026-09-13T08:55:21.338000Z",
+      "created_at": "2026-09-13T08:55:21.338000Z",
+      "fresh_until_utc": "2026-09-13T09:55:21.338000Z",
+      "reaffirmation": null,
+      "refresh": "p1_329b2dce513e003ee713d945903d8207"
+    },
+    {
+      "checkpoint_id": "p1_5d6e162cb97b0134001b86b35e76cf69",
+      "station_id": "KLGA",
+      "event_date": "2026-09-13",
+      "stage": "P1",
+      "decision_at_utc": "2026-09-13T08:55:21.338000Z",
+      "created_at": "2026-09-13T08:55:21.338000Z",
+      "fresh_until_utc": "2026-09-13T09:55:21.338000Z",
+      "reaffirmation": null,
+      "refresh": "p1_ad7710b16aa89faec1a3dce7faf524ee"
+    },
+    {
+      "checkpoint_id": "p1_670093706e20db313668b814e793ddc6",
+      "station_id": "KMIA",
+      "event_date": "2026-09-13",
+      "stage": "P1",
+      "decision_at_utc": "2026-09-13T08:54:31.216000Z",
+      "created_at": "2026-09-13T08:54:31.216000Z",
+      "fresh_until_utc": "2026-09-13T09:54:31.216000Z",
+      "reaffirmation": null,
+      "refresh": null
+    }
+  ],
+  "original_unique_checkpoints": 627,
+  "source_hashes": {
+    "bayes_basket_target/production_worker.py": "be2571ac5af5ad2e4e0b7e8f1d83941c2c6054e958f73c432af756eedb63b1b5",
+    "bayes_basket_target/native_ensemble_p0.py": "bb21da7405ad37b6b0700d6aac23c001e44f3be13b5f96af8a64cc6960ef777f",
+    "bayes_basket_target/p1_compiler.py": "f7280c2c8a695a878e46328d44bf1e948888d8027a293c42b322a6480cd3c3f7",
+    "bayes_basket_target/probability_bridge.py": "843f16bfa6d3c952f6f9093ba20874ce582aebd1dade7c65cd6b76cd6dca4967",
+    "tests/test_bayes_basket_target_production_worker.py": "604fa70886515eef751cf504b27ee3f51b3a3109fe458049a208c1aedc9c0942"
+  },
+  "meaning": "Decision-window query changed as the live DB appended late replay rows. Original saved rows remain the stated sample; this is not a strict transaction-time snapshot or OOS.",
+  "limits": {
+    "rss_mb": 768,
+    "wall_seconds": 900,
+    "min_free_gb": 5,
+    "max_file_mb": 48
+  }
+}

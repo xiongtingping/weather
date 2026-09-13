@@ -1,0 +1,214 @@
+{
+  "matched_serving_pairs": [
+    {
+      "cohort": "all",
+      "pairs": 155,
+      "stations": 45,
+      "long_mean_entropy_nat": 1.6700378401420524,
+      "short_mean_entropy_nat": 1.5266764008162184,
+      "entropy_relative_change": -0.08584322814723755,
+      "exp_delta_entropy_change": -0.13355915350198055,
+      "long_mean_bucket_sigma_c": 1.5819342954324451,
+      "short_mean_bucket_sigma_c": 1.4088396004415262,
+      "bucket_sigma_relative_change": -0.10941964877473054,
+      "truth_pairs": 155,
+      "median_center_error_long_c": 0.7277007230000017,
+      "median_center_error_short_c": 0.6401522719999946
+    },
+    {
+      "cohort": "2026-08-28",
+      "pairs": 43,
+      "stations": 43,
+      "long_mean_entropy_nat": 1.9096708582008755,
+      "short_mean_entropy_nat": 1.8272093722384128,
+      "entropy_relative_change": -0.043180994048445887,
+      "exp_delta_entropy_change": -0.07915309729397013,
+      "long_mean_bucket_sigma_c": 1.9844291441811555,
+      "short_mean_bucket_sigma_c": 1.9043489204210113,
+      "bucket_sigma_relative_change": -0.04035428727448365,
+      "truth_pairs": 43,
+      "median_center_error_long_c": 0.7870495843999983,
+      "median_center_error_short_c": 0.7958199537999988
+    },
+    {
+      "cohort": "2026-09-01",
+      "pairs": 28,
+      "stations": 28,
+      "long_mean_entropy_nat": 1.8682450808873905,
+      "short_mean_entropy_nat": 1.7717327933619298,
+      "entropy_relative_change": -0.0516593291280707,
+      "exp_delta_entropy_change": -0.09200125952643856,
+      "long_mean_bucket_sigma_c": 1.897687424510466,
+      "short_mean_bucket_sigma_c": 1.7624416570674903,
+      "bucket_sigma_relative_change": -0.07126872723934718,
+      "truth_pairs": 28,
+      "median_center_error_long_c": 1.0166870524000018,
+      "median_center_error_short_c": 0.6514478762000024
+    },
+    {
+      "cohort": "2026-09-05",
+      "pairs": 39,
+      "stations": 39,
+      "long_mean_entropy_nat": 1.660884458591223,
+      "short_mean_entropy_nat": 1.5492030098959775,
+      "entropy_relative_change": -0.06724215409299139,
+      "exp_delta_entropy_change": -0.1056708981685498,
+      "long_mean_bucket_sigma_c": 1.4885421532100647,
+      "short_mean_bucket_sigma_c": 1.307276360337246,
+      "bucket_sigma_relative_change": -0.12177404078340426,
+      "truth_pairs": 39,
+      "median_center_error_long_c": 0.545759116100001,
+      "median_center_error_short_c": 0.8199303996000005
+    },
+    {
+      "cohort": "2026-09-08",
+      "pairs": 45,
+      "stations": 45,
+      "long_mean_entropy_nat": 1.3256591593216853,
+      "short_mean_entropy_nat": 1.0674978560041102,
+      "entropy_relative_change": -0.19474183956128766,
+      "exp_delta_entropy_change": -0.22752938001670886,
+      "long_mean_bucket_sigma_c": 1.0817993495723053,
+      "short_mean_bucket_sigma_c": 0.8033553342064613,
+      "bucket_sigma_relative_change": -0.25738970491702384,
+      "truth_pairs": 45,
+      "median_center_error_long_c": 0.5905992321999989,
+      "median_center_error_short_c": 0.5534991928999986
+    },
+    {
+      "cohort": "same_systems_same_cw",
+      "pairs": 14,
+      "stations": 12,
+      "long_mean_entropy_nat": 1.6373327110932383,
+      "short_mean_entropy_nat": 1.5636572681856946,
+      "entropy_relative_change": -0.0449972338599105,
+      "exp_delta_entropy_change": -0.07102685025673394,
+      "long_mean_bucket_sigma_c": 1.4994682207887067,
+      "short_mean_bucket_sigma_c": 1.4125840351750505,
+      "bucket_sigma_relative_change": -0.05794333244885708,
+      "truth_pairs": 14,
+      "median_center_error_long_c": 0.7065104769999984,
+      "median_center_error_short_c": 0.6913231315999973
+    },
+    {
+      "cohort": "edge_mass_below_01",
+      "pairs": 124,
+      "stations": 44,
+      "long_mean_entropy_nat": 1.6123327041623976,
+      "short_mean_entropy_nat": 1.4729358007872058,
+      "entropy_relative_change": -0.08645666183866696,
+      "exp_delta_entropy_change": -0.1301172994479909,
+      "long_mean_bucket_sigma_c": 1.4426513653228914,
+      "short_mean_bucket_sigma_c": 1.2784281886383493,
+      "bucket_sigma_relative_change": -0.11383427807437452,
+      "truth_pairs": 124,
+      "median_center_error_long_c": 0.6790923460999991,
+      "median_center_error_short_c": 0.6344262669499994
+    }
+  ],
+  "current_sample_rows": 127,
+  "current_artifact_count": 304,
+  "current_artifacts": {
+    "DWD_ICON_GLOBAL_EPS": {
+      "n": 46,
+      "neff_min_med_max": [
+        11.758987393831733,
+        13.517180682063795,
+        14.00543105873761
+      ],
+      "spread_factor_min_med_max": [
+        0.8516712818148636,
+        1.375116542571484,
+        2.895432846511149
+      ],
+      "fit_cases_min_med_max": [
+        26.0,
+        29.0,
+        30.0
+      ]
+    },
+    "ECCC_GEM_GLOBAL_ENS": {
+      "n": 80,
+      "neff_min_med_max": [
+        12.598426482169833,
+        14.340989327138676,
+        14.404742263237095
+      ],
+      "spread_factor_min_med_max": [
+        0.5201730370400192,
+        1.2177165867130864,
+        4.086162974361404
+      ],
+      "fit_cases_min_med_max": [
+        46.0,
+        54.5,
+        57.0
+      ]
+    },
+    "ECMWF_IFS_ENS_OPEN_PF50": {
+      "n": 91,
+      "neff_min_med_max": [
+        4.220219230069336,
+        11.895765686980308,
+        13.945459855512444
+      ],
+      "spread_factor_min_med_max": [
+        0.5,
+        1.5589915754256716,
+        4.171584873548887
+      ],
+      "fit_cases_min_med_max": [
+        8.0,
+        58.0,
+        61.0
+      ]
+    },
+    "NOAA_GEFS_05": {
+      "n": 87,
+      "neff_min_med_max": [
+        5.020026654443122,
+        12.268950661147718,
+        13.945459855512444
+      ],
+      "spread_factor_min_med_max": [
+        0.5,
+        1.2787185710938924,
+        5.0
+      ],
+      "fit_cases_min_med_max": [
+        8.0,
+        58.0,
+        61.0
+      ]
+    }
+  },
+  "current_cw_composed_lambda_quantiles": [
+    0.375,
+    0.375,
+    0.42520451686527205,
+    1.0,
+    1.125
+  ],
+  "current_station_scale_floor_count": 52,
+  "same_input_order_checks": {
+    "n": 127,
+    "band_sha": "1d2c4fb4c8fdca6aaab148209f8b378e0a5cfc686942aa04191b4b1e091a32bc",
+    "tv_p50_p90_max": [
+      0.0014345436784965544,
+      0.022525968000652603,
+      0.09386887157899816
+    ],
+    "max_bucket_prob_difference": 0.06322390484424861
+  },
+  "incumbent_double_application": {
+    "n": 98,
+    "identity_mean_nll": 2.0299442874932767,
+    "reapplied_incumbent_mean_nll": 2.154657676207305
+  },
+  "notes": [
+    "Four preselected dates, latest P0 per station/event_date/lead; not original attachment sample",
+    "Entropy exact on bucket distribution; sigma is finite-center proxy, open tails not identifiable",
+    "Order checks reuse served seeds and prove noncommutativity, not production improvement",
+    "Double-application check reproduces scorer input semantics, not a proposed strategy backtest"
+  ]
+}

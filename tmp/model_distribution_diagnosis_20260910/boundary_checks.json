@@ -1,0 +1,65 @@
+[
+  {
+    "input_sigma_c": 0.1,
+    "continuous_output_sigma_c": 0.5099019513592785,
+    "bucket_sigma_c": 0.5802209393937243,
+    "central_probability": 0.6730749311948951,
+    "fit_central_probability": 0.6730749311986186
+  },
+  {
+    "input_sigma_c": 0.3,
+    "continuous_output_sigma_c": 0.58309518948453,
+    "bucket_sigma_c": 0.6515171528708261,
+    "central_probability": 0.6006224499107662,
+    "fit_central_probability": 0.6006224499574365
+  },
+  {
+    "input_sigma_c": 0.49,
+    "continuous_output_sigma_c": 0.7000714249274855,
+    "bucket_sigma_c": 0.762363044662121,
+    "central_probability": 0.48412654937539346,
+    "fit_central_probability": 0.48412654979759334
+  },
+  {
+    "input_sigma_c": 0.499999,
+    "continuous_output_sigma_c": 0.7071060740801199,
+    "bucket_sigma_c": 0.7689297075699083,
+    "central_probability": 0.47725055795423255,
+    "fit_central_probability": 0.4772505584250766
+  },
+  {
+    "input_sigma_c": 0.5,
+    "continuous_output_sigma_c": 0.7071067811865476,
+    "bucket_sigma_c": 0.7689303671766673,
+    "central_probability": 0.47724986805182074,
+    "fit_central_probability": 0.47724986852267
+  },
+  {
+    "input_sigma_c": 0.500001,
+    "continuous_output_sigma_c": 0.500001,
+    "bucket_sigma_c": 0.5704506027389643,
+    "central_probability": 0.6826885242538652,
+    "fit_central_probability": 0.6826885242556128
+  },
+  {
+    "input_sigma_c": 0.51,
+    "continuous_output_sigma_c": 0.51,
+    "bucket_sigma_c": 0.5803175441642868,
+    "central_probability": 0.6729794320723514,
+    "fit_central_probability": 0.6729794320760973
+  },
+  {
+    "input_sigma_c": 0.7,
+    "continuous_output_sigma_c": 0.7,
+    "bucket_sigma_c": 0.7622963238285957,
+    "central_probability": 0.4841964887375601,
+    "fit_central_probability": 0.48419648915928903
+  },
+  {
+    "input_sigma_c": 1.0,
+    "continuous_output_sigma_c": 1.0,
+    "bucket_sigma_c": 1.0397184704994915,
+    "central_probability": 0.22892170698124037,
+    "fit_central_probability": 0.22892172277183442
+  }
+]

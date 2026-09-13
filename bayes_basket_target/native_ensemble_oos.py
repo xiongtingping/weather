@@ -26,7 +26,6 @@ from .band_reliability_store import (
     load_band_table,
     load_band_table_with_axis,
 )
-from .center_width_calibration import apply_center_width_calibration
 from .center_width_store import (
     CENTER_WIDTH_METHOD_TAG,
     STATION_WIDTH_METHOD_TAG,
@@ -45,7 +44,6 @@ from .cross_consensus import (
     NEIGHBOUR_DIRECTION_METHOD_TAG,
     SYNOPTIC_COOLING_METHOD_TAG,
     SYNOPTIC_COOLING_SHIFT_SIGMA,
-    apply_band_reliability,
     apply_conditional_tail_skew,
     apply_neighbour_direction_tilt,
     RADIATION_SHIFT_SIGMA,
@@ -53,6 +51,13 @@ from .cross_consensus import (
     radiation_shift_sigma_for_lead,
     synoptic_cooling_index,
     bridged_cross_probability,
+)
+from .served_shape import (
+    SERVED_TABLE_LAYER_ORDER,
+    BandLayer,
+    CenterWidthLayer,
+    apply_served_table_layers,
+    model_center_c as served_model_center_c,
 )
 from .dwd_icon_eps_archive import (
     RUN_CYCLE_HOUR_BY_LEAD as _ICON_CYCLE_BY_LEAD,
@@ -1629,6 +1634,58 @@ def _holdout_conditioning_signals(
     return signals
 
 
+def _holdout_shape_stack(
+    base: Mapping[str, float],
+    *,
+    grid: Sequence[str],
+    cooling_shift_c: float | None,
+    station_latitude: float | None,
+    neighbour_center_c: float,
+    center_width_layer: CenterWidthLayer | None,
+    band_layer: BandLayer | None,
+    skip: str | None = None,
+) -> dict[str, float]:
+    """The P0 shape stack on the holdout's integer-degree grid.
+
+    One function for the subset contest, the gate and its ablation, so the
+    blend that wins a seat, the blend that is certified and the blend that is
+    served are shaped by the same layers in the same order.  Position first
+    (radiation shift), then the neighbour lean around the models' own centre,
+    then the two fitted tables in ``served_shape``'s order: centre/width,
+    band.
+
+    Until 2026-09-13 the contest shaped without centre/width, the gate
+    applied band before centre/width, and both anchored the lean on the
+    shifted histogram's mean while serving anchored it on the weighted
+    calibrated centres.  Each was a different arithmetic from the one an
+    artifact is served under.
+    """
+
+    shaped = {str(key): float(value) for key, value in base.items()}
+    if cooling_shift_c and skip != "synoptic_cooling":
+        shaped = _shift_bucketed_probability(
+            shaped,
+            ordered_keys=grid,
+            shift_c=float(cooling_shift_c),
+        )
+    if skip != "neighbour_direction":
+        shaped, _direction_receipt = apply_neighbour_direction_tilt(
+            shaped,
+            ordinals={str(key): index for index, key in enumerate(grid)},
+            center_bucket=_nearest_key(grid, float(neighbour_center_c)),
+            latitude=station_latitude,
+        )
+    shaped, _cw_receipt, _band_receipt = apply_served_table_layers(
+        shaped,
+        ordered_keys=grid,
+        key_centers_c=[float(int(key)) for key in grid],
+        center_width=center_width_layer,
+        band=band_layer,
+        skip=skip if skip in SERVED_TABLE_LAYER_ORDER else None,
+    )
+    return shaped
+
+
 def _select_minimum_crps_subset(
     *,
     ready_system_ids: Sequence[str],
@@ -1646,6 +1703,10 @@ def _select_minimum_crps_subset(
     # a distance-fitted table through the claim lookup gates it on math
     # production will not serve.
     band_axis: str = BAND_AXIS_CLAIM,
+    # The centre/width layer the gate scores and serving applies.  The
+    # contest ranked blends without it until 2026-09-13, so the seat went to
+    # the blend that scored best under an arithmetic nobody serves.
+    center_width_layer: CenterWidthLayer | None = None,
     # Score exactly this subset and no other.  The contest still runs the
     # same holdout through the same served blend; only the enumeration is
     # narrowed, so a pinned subset is gated on precisely the math a contested
@@ -1750,46 +1811,28 @@ def _select_minimum_crps_subset(
             # each layer had been fitted with the other held still as
             # background.  Artifacts already gated with the tag keep applying
             # it -- their holdout scored it -- so the serving branch stays.
-            cooling_shift = (
-                conditioning_by_day.get(str(day)) or {}
-            ).get("synoptic_cooling_shift_c")
-            if cooling_shift:
-                probability = _shift_bucketed_probability(
-                    probability,
-                    ordered_keys=ordered_keys,
-                    shift_c=float(cooling_shift),
-                )
-            ordinal_map = {
-                str(key): index
-                for index, key in enumerate(ordered_keys)
-            }
-            probability, _direction_receipt = (
-                apply_neighbour_direction_tilt(
-                    probability,
-                    ordinals=ordinal_map,
-                    center_bucket=_nearest_key(
-                        ordered_keys,
-                        sum(
-                            probability[str(key)] * float(int(key))
-                            for key in ordered_keys
-                        ),
-                    ),
-                    latitude=station_latitude,
-                )
-            )
-            # Charter 105: the lookup follows the table's own axis, and the
-            # holdout must score it through the same lookup production will
-            # serve it through -- otherwise the table is gated on one axis
-            # and applied on another.  ``ordinal_map`` is the grid this lane
-            # already hands the neighbour-direction layer.
-            probability, _band_receipt = apply_band_reliability(
+            # Charter 105: the band lookup follows the table's own axis, and
+            # the holdout scores it through the lookup production serves.
+            probability = _holdout_shape_stack(
                 probability,
-                factors=band_factors,
-                ordinals=(
-                    ordinal_map
-                    if band_axis == BAND_AXIS_CENTRE_DISTANCE
-                    else None
+                grid=ordered_keys,
+                cooling_shift_c=(
+                    conditioning_by_day.get(str(day)) or {}
+                ).get("synoptic_cooling_shift_c"),
+                station_latitude=station_latitude,
+                neighbour_center_c=served_model_center_c(
+                    weights,
+                    {
+                        s: float(
+                            predictions_by_system[s][day][
+                                "calibrated_center_c"
+                            ]
+                        )
+                        for s in subset
+                    },
                 ),
+                center_width_layer=center_width_layer,
+                band_layer=BandLayer(factors=band_factors, axis=band_axis),
             )
             actual = float(
                 predictions_by_system[subset[0]][day]["actual_tmax_c"]
@@ -3908,6 +3951,32 @@ def build_native_ensemble_oos(
         if active_station_width is not None and station_width_scale != 1.0
         else None
     )
+    # The two fitted tables as the layers ``served_shape`` applies, resolved
+    # once so the contest, the gate and the ablation read one object.  The
+    # fleet regime shift stays at zero: it has no version a gate could score
+    # (see ``served_shape``).
+    gate_center_width_layer = (
+        CenterWidthLayer(
+            delta_c=center_width[0] if center_width else 0.0,
+            width_lambda=center_width[1] if center_width else 1.0,
+            station_width_scale=station_width_scale,
+            sigma_floor_rungs=center_width_floor,
+            width_tier_lambdas=(
+                (center_width_tiers or {}).get("lambdas") or None
+            ),
+            width_tier_boundaries=(
+                (center_width_tiers or {}).get("boundaries_rungs") or None
+            ),
+        )
+        if (
+            center_width is not None
+            or station_width_scale != 1.0
+            or center_width_floor
+            or center_width_tiers
+        )
+        else None
+    )
+    gate_band_layer = BandLayer(factors=band_factors, axis=band_table_axis_id)
     if min_train_days < 2 or min_holdout_days < 1:
         raise ContractError("native_ensemble_oos_window_invalid")
     as_of = datetime.fromisoformat(as_of_utc.replace("Z", "+00:00"))
@@ -4403,6 +4472,7 @@ def build_native_ensemble_oos(
             configured_caps=configured_caps,
             band_factors=band_factors,
             band_axis=band_table_axis_id,
+            center_width_layer=gate_center_width_layer,
             train_error_scale=train_error_scale,
             train_n_by_system={
                 system_id: int(evaluation.get("train_n") or 0)
@@ -4555,101 +4625,35 @@ def build_native_ensemble_oos(
             cooling_shift = (
                 conditioning_by_day.get(str(day)) or {}
             ).get("synoptic_cooling_shift_c")
-            ordinal_map = {
-                str(key): index
-                for index, key in enumerate(ordered_keys)
-            }
+            seated_center_c = served_model_center_c(weights, day_centers)
 
             def _shaped(
                 base: Mapping[str, float],
                 *,
                 skip: str | None = None,
                 grid: Sequence[str] = ordered_keys,
-                grid_ordinals: Mapping[str, int] = ordinal_map,
+                center_c: float = seated_center_c,
             ) -> dict[str, float]:
                 """The shape stack, optionally with one layer left out.
 
-                Written as one function so the ablation below scores the same
-                arithmetic serving runs rather than a re-derivation of it: a
-                copy would drift from the served order the first time a layer
-                moved, and the ablation would then be measuring the copy.
-
-                The grid is a parameter for the same reason: the equal-weight
-                diagnostic blends a wider cohort than the seated one and so
-                spans its own bucket union, and it has to be shaped by this
-                function rather than a lookalike or the comparison stops being
-                about weights.
+                ``_holdout_shape_stack`` is the arithmetic; this closure only
+                binds the day.  The ablation scores that same function minus
+                one layer rather than a re-derivation of it, and the grid and
+                the lean's centre are parameters because the equal-weight
+                diagnostic blends a wider cohort than the seated one, over
+                its own bucket union and at its own weights.
                 """
 
-                shaped = {str(k): float(v) for k, v in base.items()}
-                if cooling_shift and skip != "synoptic_cooling":
-                    shaped = _shift_bucketed_probability(
-                        shaped,
-                        ordered_keys=grid,
-                        shift_c=float(cooling_shift),
-                    )
-                if skip != "neighbour_direction":
-                    shaped, _direction_receipt = (
-                        apply_neighbour_direction_tilt(
-                            shaped,
-                            ordinals=grid_ordinals,
-                            center_bucket=_nearest_key(
-                                grid,
-                                sum(
-                                    shaped[str(key)] * float(int(key))
-                                    for key in grid
-                                ),
-                            ),
-                            latitude=station_latitude,
-                        )
-                    )
-                # Outermost, after every shape layer: the band factors were
-                # measured on final served claims, so they must see the claim
-                # every inner layer has already finished with.
-                if skip != "band_reliability":
-                    shaped, _band_receipt = apply_band_reliability(
-                        shaped,
-                        factors=band_factors,
-                        ordinals=(
-                            grid_ordinals
-                            if band_table_axis_id == BAND_AXIS_CENTRE_DISTANCE
-                            else None
-                        ),
-                    )
-                # Last of all, and only because the pin now exists: the
-                # stage scalars are part of the gated math, so the holdout
-                # scores them and the artifact records which version it
-                # scored.  ``None`` is the ordinary case until the layer has
-                # fitted something its own forward window admits.
-                if skip != "center_width" and (
-                    center_width is not None
-                    or station_width_scale != 1.0
-                    or center_width_floor
-                    or center_width_tiers
-                ):
-                    shaped, _cw_receipt = apply_center_width_calibration(
-                        shaped,
-                        delta_c=(
-                            center_width[0] if center_width else 0.0
-                        ),
-                        width_lambda=(
-                            center_width[1] if center_width else 1.0
-                        ),
-                        station_width_scale=station_width_scale,
-                        sigma_floor_rungs=center_width_floor,
-                        width_tier_lambdas=(
-                            (center_width_tiers or {}).get("lambdas") or None
-                        ),
-                        width_tier_boundaries=(
-                            (center_width_tiers or {}).get("boundaries_rungs")
-                            or None
-                        ),
-                        ordered_keys=grid,
-                        key_centers_c=[
-                            float(int(key)) for key in grid
-                        ],
-                    )
-                return shaped
+                return _holdout_shape_stack(
+                    base,
+                    grid=grid,
+                    cooling_shift_c=cooling_shift,
+                    station_latitude=station_latitude,
+                    neighbour_center_c=center_c,
+                    center_width_layer=gate_center_width_layer,
+                    band_layer=gate_band_layer,
+                    skip=skip,
+                )
 
             def _weighted_blend(
                 system_weights: Mapping[str, float],
@@ -4662,6 +4666,14 @@ def build_native_ensemble_oos(
                 """
 
                 cohort = sorted(system_weights)
+                cohort_centers = {
+                    system: float(
+                        predictions_by_system[system][day][
+                            "calibrated_center_c"
+                        ]
+                    )
+                    for system in cohort
+                }
                 grid = sorted(
                     set().union(*(
                         set(
@@ -4681,23 +4693,16 @@ def build_native_ensemble_oos(
                         for system in cohort
                     },
                     system_weights=dict(system_weights),
-                    system_centers_c={
-                        system: float(
-                            predictions_by_system[system][day][
-                                "calibrated_center_c"
-                            ]
-                        )
-                        for system in cohort
-                    },
+                    system_centers_c=cohort_centers,
                     ordered_keys=grid,
                     key_centers_c=[float(int(key)) for key in grid],
                 )
                 return _shaped(
                     blended,
                     grid=grid,
-                    grid_ordinals={
-                        str(key): index for index, key in enumerate(grid)
-                    },
+                    center_c=served_model_center_c(
+                        system_weights, cohort_centers
+                    ),
                 )
 
             def _equal_blend(cohort: Sequence[str]) -> dict[str, float]:
@@ -4723,6 +4728,15 @@ def build_native_ensemble_oos(
                     key=lambda key: int(key),
                 )
                 share = 1.0 / float(len(cohort))
+                equal_weights = {system: share for system in cohort}
+                cohort_centers = {
+                    system: float(
+                        predictions_by_system[system][day][
+                            "calibrated_center_c"
+                        ]
+                    )
+                    for system in cohort
+                }
                 blended, _receipt = bridged_cross_probability(
                     system_probabilities={
                         system: predictions_by_system[system][day][
@@ -4730,24 +4744,17 @@ def build_native_ensemble_oos(
                         ]
                         for system in cohort
                     },
-                    system_weights={system: share for system in cohort},
-                    system_centers_c={
-                        system: float(
-                            predictions_by_system[system][day][
-                                "calibrated_center_c"
-                            ]
-                        )
-                        for system in cohort
-                    },
+                    system_weights=equal_weights,
+                    system_centers_c=cohort_centers,
                     ordered_keys=grid,
                     key_centers_c=[float(int(key)) for key in grid],
                 )
                 return _shaped(
                     blended,
                     grid=grid,
-                    grid_ordinals={
-                        str(key): index for index, key in enumerate(grid)
-                    },
+                    center_c=served_model_center_c(
+                        equal_weights, cohort_centers
+                    ),
                 )
 
             available_systems = sorted(predictions_by_system)

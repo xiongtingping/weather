@@ -1,0 +1,287 @@
+{
+ "全部|D-1及更早": {
+  "n": 266,
+  "days": 33,
+  "mae_taf": 1.195,
+  "mae_p0": 1.167,
+  "beta": 0.369,
+  "beta_90": [
+   0.236,
+   0.537
+  ],
+  "walk_forward": {
+   "n": 197,
+   "mean_w": 0.321,
+   "mae_p0": 1.081,
+   "mae_blend": 1.014,
+   "diff_90": [
+    -0.115,
+    -0.021
+   ]
+  },
+  "disagree_ge_1_5c": {
+   "n": 65,
+   "taf_closer": 0.477,
+   "truth_on_taf_side_of_p0": 0.708
+  }
+ },
+ "全部|当日上午": {
+  "n": 241,
+  "days": 24,
+  "mae_taf": 1.177,
+  "mae_p0": 0.988,
+  "beta": 0.135,
+  "beta_90": [
+   0.039,
+   0.278
+  ],
+  "walk_forward": {
+   "n": 179,
+   "mean_w": 0.11,
+   "mae_p0": 0.95,
+   "mae_blend": 0.933,
+   "diff_90": [
+    -0.038,
+    0.004
+   ]
+  },
+  "disagree_ge_1_5c": {
+   "n": 53,
+   "taf_closer": 0.34,
+   "truth_on_taf_side_of_p0": 0.528
+  }
+ },
+ "全部|当日午后": {
+  "n": 118,
+  "days": 23,
+  "mae_taf": 0.905,
+  "mae_p0": 0.897,
+  "beta": 0.43,
+  "beta_90": [
+   0.234,
+   0.591
+  ],
+  "walk_forward": {
+   "n": 56,
+   "mean_w": 0.418,
+   "mae_p0": 0.875,
+   "mae_blend": 0.829,
+   "diff_90": [
+    -0.164,
+    0.059
+   ]
+  },
+  "disagree_ge_1_5c": {
+   "n": 27,
+   "taf_closer": 0.519,
+   "truth_on_taf_side_of_p0": 0.778
+  }
+ },
+ "全部|合并": {
+  "n": 625,
+  "days": 35,
+  "mae_taf": 1.133,
+  "mae_p0": 1.047,
+  "beta": 0.288,
+  "beta_90": [
+   0.204,
+   0.404
+  ],
+  "walk_forward": {
+   "n": 539,
+   "mean_w": 0.248,
+   "mae_p0": 0.996,
+   "mae_blend": 0.948,
+   "diff_90": [
+    -0.077,
+    -0.02
+   ]
+  },
+  "disagree_ge_1_5c": {
+   "n": 145,
+   "taf_closer": 0.434,
+   "truth_on_taf_side_of_p0": 0.655
+  }
+ },
+ "偏差正常|D-1及更早": {
+  "n": 214,
+  "days": 32,
+  "mae_taf": 1.206,
+  "mae_p0": 1.1,
+  "beta": 0.274,
+  "beta_90": [
+   0.158,
+   0.46
+  ],
+  "walk_forward": {
+   "n": 150,
+   "mean_w": 0.264,
+   "mae_p0": 0.981,
+   "mae_blend": 0.957,
+   "diff_90": [
+    -0.06,
+    0.013
+   ]
+  },
+  "disagree_ge_1_5c": {
+   "n": 46,
+   "taf_closer": 0.37,
+   "truth_on_taf_side_of_p0": 0.63
+  }
+ },
+ "偏差正常|当日上午": {
+  "n": 183,
+  "days": 24,
+  "mae_taf": 1.148,
+  "mae_p0": 0.932,
+  "beta": 0.089,
+  "beta_90": [
+   -0.018,
+   0.25
+  ],
+  "walk_forward": {
+   "n": 118,
+   "mean_w": 0.081,
+   "mae_p0": 0.958,
+   "mae_blend": 0.954,
+   "diff_90": [
+    -0.026,
+    0.017
+   ]
+  },
+  "disagree_ge_1_5c": {
+   "n": 38,
+   "taf_closer": 0.342,
+   "truth_on_taf_side_of_p0": 0.5
+  }
+ },
+ "偏差正常|当日午后": {
+  "n": 87,
+  "days": 22,
+  "mae_taf": 0.883,
+  "mae_p0": 0.9,
+  "beta": 0.454,
+  "beta_90": [
+   0.179,
+   0.648
+  ],
+  "walk_forward": {
+   "n": 27,
+   "mean_w": 0.444,
+   "mae_p0": 1.14,
+   "mae_blend": 1.078,
+   "diff_90": [
+    -0.266,
+    0.1
+   ]
+  },
+  "disagree_ge_1_5c": {
+   "n": 17,
+   "taf_closer": 0.588,
+   "truth_on_taf_side_of_p0": 0.765
+  }
+ },
+ "偏差正常|合并": {
+  "n": 484,
+  "days": 34,
+  "mae_taf": 1.126,
+  "mae_p0": 1.0,
+  "beta": 0.224,
+  "beta_90": [
+   0.132,
+   0.361
+  ],
+  "walk_forward": {
+   "n": 419,
+   "mean_w": 0.208,
+   "mae_p0": 0.93,
+   "mae_blend": 0.905,
+   "diff_90": [
+    -0.051,
+    0.001
+   ]
+  },
+  "disagree_ge_1_5c": {
+   "n": 101,
+   "taf_closer": 0.396,
+   "truth_on_taf_side_of_p0": 0.604
+  }
+ },
+ "偏差被拒|D-1及更早": {
+  "n": 52,
+  "days": 15,
+  "mae_taf": 1.154,
+  "mae_p0": 1.443,
+  "beta": 0.588,
+  "beta_90": [
+   0.393,
+   0.703
+  ],
+  "walk_forward": null,
+  "disagree_ge_1_5c": {
+   "n": 19,
+   "taf_closer": 0.737,
+   "truth_on_taf_side_of_p0": 0.895
+  }
+ },
+ "偏差被拒|当日上午": {
+  "n": 58,
+  "days": 11,
+  "mae_taf": 1.267,
+  "mae_p0": 1.167,
+  "beta": 0.305,
+  "beta_90": [
+   0.146,
+   0.494
+  ],
+  "walk_forward": null,
+  "disagree_ge_1_5c": {
+   "n": 15,
+   "taf_closer": 0.333,
+   "truth_on_taf_side_of_p0": 0.6
+  }
+ },
+ "偏差被拒|当日午后": {
+  "n": 31,
+  "days": 8,
+  "mae_taf": 0.968,
+  "mae_p0": 0.888,
+  "beta": 0.368,
+  "beta_90": [
+   0.105,
+   0.69
+  ],
+  "walk_forward": null,
+  "disagree_ge_1_5c": {
+   "n": 10,
+   "taf_closer": 0.4,
+   "truth_on_taf_side_of_p0": 0.8
+  }
+ },
+ "偏差被拒|合并": {
+  "n": 141,
+  "days": 17,
+  "mae_taf": 1.16,
+  "mae_p0": 1.207,
+  "beta": 0.454,
+  "beta_90": [
+   0.322,
+   0.584
+  ],
+  "walk_forward": {
+   "n": 78,
+   "mean_w": 0.316,
+   "mae_p0": 1.255,
+   "mae_blend": 1.04,
+   "diff_90": [
+    -0.343,
+    -0.119
+   ]
+  },
+  "disagree_ge_1_5c": {
+   "n": 44,
+   "taf_closer": 0.523,
+   "truth_on_taf_side_of_p0": 0.773
+  }
+ }
+}

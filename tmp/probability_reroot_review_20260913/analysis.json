@@ -1,0 +1,84 @@
+{
+  "counts": {
+    "('2026-09-11', 'P0')": 1271,
+    "('2026-09-11', 'P0-M')": 731,
+    "('2026-09-11', 'P1')": 3463,
+    "('2026-09-12', 'P0')": 1653,
+    "('2026-09-12', 'P0-M')": 776,
+    "('2026-09-12', 'P1')": 3851
+  },
+  "scope_count": 90,
+  "closed_scopes": 76,
+  "p0": {
+    "transitions": 2834,
+    "same_run": 1491,
+    "same_run_extends_expiry": 349,
+    "same_prob": 444,
+    "same_prob_different_curve": 444,
+    "same_run_expiry_extensions_hours": {
+      "n": 349,
+      "min": 0.17491861111111112,
+      "median": 0.7764316666666666,
+      "p90": 3.632901388888889,
+      "max": 6.093680833333333
+    }
+  },
+  "p0m": {
+    "rows": 1507,
+    "missing_parent": 0,
+    "extends_parent": 1320,
+    "extensions_hours": {
+      "n": 1320,
+      "min": 0.00028222222222222223,
+      "median": 0.5238752777777778,
+      "p90": 2.3242294444444447,
+      "max": 13.524047777777778
+    },
+    "decision_after_parent_expiry": 50,
+    "decision_after_taf_expiry": 2,
+    "expiry_after_taf": 3,
+    "missing_taf": 0
+  },
+  "p1": {
+    "kinds": {
+      "walk": 6258,
+      "reaffirmation": 595,
+      "state_refresh": 461
+    },
+    "post_refresh_commit_kinds": {
+      "walk": 1052,
+      "state_refresh": 433
+    },
+    "post_refresh_stations": 29,
+    "post_refresh_reaffirm_close_age_hours": {},
+    "reaffirmation_probs_equal": 595,
+    "parent_expired_at_p1_decision": 181,
+    "creation_delays_hours": {
+      "n": 7314,
+      "min": 0.0,
+      "median": 0.0,
+      "p90": 0.0,
+      "max": 0.0
+    }
+  },
+  "samples": {
+    "rows": 710,
+    "higher_stage": 651,
+    "mismatched_p0_exact": 86,
+    "mismatched_p0_probabilities": 74,
+    "p1_misses_latest_p0m": 21,
+    "unservable": 15
+  },
+  "rebase_lag": {
+    "roots_after_p1": 1123,
+    "with_p1": 1123,
+    "superseded_before_p1": 0,
+    "minutes": {
+      "n": 1123,
+      "min": 1.6666666666666667e-08,
+      "median": 1.6666666666666667e-08,
+      "p90": 1.6666666666666667e-08,
+      "max": 1.6666666666666667e-08
+    }
+  }
+}

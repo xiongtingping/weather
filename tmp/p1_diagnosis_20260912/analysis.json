@@ -1,0 +1,940 @@
+{
+  "quality": {
+    "n": 675,
+    "unique_envelopes": 674,
+    "not_available_asof": 0,
+    "fresh_at_sample": 610,
+    "reaffirm": 284,
+    "versions": {
+      "p1_metar_trajectory_target_v9": 675
+    },
+    "four_layer": {
+      "None": 125,
+      "true": 550
+    },
+    "region": {
+      "None": 125,
+      "NCEP_HRRR_POINT": 138,
+      "POOLED_FALLBACK": 298,
+      "NCEP_NBM_POINT": 19,
+      "DWD_ICON_EU_POINT": 52,
+      "JMA_MSM_POINT": 26,
+      "CMA_GRAPES_GLOBAL_POINT": 17
+    },
+    "shape_missing": 169,
+    "zero_drawdown": 484,
+    "gap_mismatch_over_half_c": 332,
+    "closing_age_minutes": {
+      "n": 675,
+      "mean": 353.87555555555554,
+      "p50": 362.0,
+      "p90": 660.0,
+      "p95": 720.0,
+      "max": 1380.0
+    },
+    "clock_vs_closing_minutes": {
+      "n": 559,
+      "mean": 218.96257018917711,
+      "p50": 196.38851678333333,
+      "p90": 483.86845007333335,
+      "p95": 576.6932201066669,
+      "max": 798.2669833666666
+    },
+    "latest_observation_age_minutes": {
+      "n": 675,
+      "mean": 62.995555555555555,
+      "p50": 30.0,
+      "p90": 125.80000000000007,
+      "p95": 324.9999999999977,
+      "max": 550.0
+    }
+  },
+  "latency": {
+    "valid_to_seen_seconds": {
+      "n": 4637,
+      "mean": 1231.6780640500324,
+      "p50": 263.11,
+      "p90": 3976.988,
+      "p95": 7996.988,
+      "max": 18676.988
+    },
+    "request_seconds": {
+      "n": 4637,
+      "mean": 13.205198404140607,
+      "p50": 4.458,
+      "p90": 25.58160000000001,
+      "p95": 60.243999999999936,
+      "max": 272.954
+    },
+    "seen_to_commit_seconds": {
+      "n": 4637,
+      "mean": 2.9390429156782405,
+      "p50": 0.165,
+      "p90": 8.609400000000008,
+      "p95": 23.7596,
+      "max": 82.465
+    },
+    "by_station_valid_to_seen": {
+      "CYYZ": {
+        "n": 75,
+        "mean": 1339.7830266666667,
+        "p50": 405.361,
+        "p90": 2843.089200000024,
+        "p95": 7590.3995,
+        "max": 18376.988
+      },
+      "EDDM": {
+        "n": 138,
+        "mean": 1151.7883840579711,
+        "p50": 165.94799999999998,
+        "p90": 3037.857399999998,
+        "p95": 8183.69375,
+        "max": 17176.988
+      },
+      "EFHK": {
+        "n": 137,
+        "mean": 1018.9469416058395,
+        "p50": 42.591,
+        "p90": 2794.8700000000003,
+        "p95": 8185.928999999999,
+        "max": 17176.988
+      },
+      "EGLC": {
+        "n": 135,
+        "mean": 1212.5814222222223,
+        "p50": 217.286,
+        "p90": 3254.0218000000064,
+        "p95": 8190.3994999999995,
+        "max": 17176.988
+      },
+      "EHAM": {
+        "n": 136,
+        "mean": 1227.3659558823529,
+        "p50": 103.123,
+        "p90": 3759.6145,
+        "p95": 8360.51675,
+        "max": 18676.988
+      },
+      "EPWA": {
+        "n": 138,
+        "mean": 1132.6931739130434,
+        "p50": 106.01050000000001,
+        "p90": 3252.665099999997,
+        "p95": 7884.98725000001,
+        "max": 18376.988
+      },
+      "FACT": {
+        "n": 80,
+        "mean": 1206.9628875000003,
+        "p50": 283.794,
+        "p90": 1659.0479000000219,
+        "p95": 7579.22325,
+        "max": 18376.988
+      },
+      "KATL": {
+        "n": 82,
+        "mean": 874.7204634146341,
+        "p50": 109.6565,
+        "p90": 1550.1862000000042,
+        "p95": 5186.213600000002,
+        "max": 15256.988
+      },
+      "KAUS": {
+        "n": 80,
+        "mean": 1318.4657375,
+        "p50": 117.87299999999999,
+        "p90": 4401.458500000001,
+        "p95": 8219.45774999999,
+        "max": 17596.988
+      },
+      "KBKF": {
+        "n": 68,
+        "mean": 1987.2591764705885,
+        "p50": 751.6410000000001,
+        "p90": 4357.8574000000035,
+        "p95": 7726.04625,
+        "max": 18496.988
+      },
+      "KDAL": {
+        "n": 70,
+        "mean": 991.7179571428571,
+        "p50": 113.84649999999999,
+        "p90": 2451.403100000003,
+        "p95": 6721.351849999992,
+        "max": 15196.988
+      },
+      "KHOU": {
+        "n": 79,
+        "mean": 904.2317088607595,
+        "p50": 113.111,
+        "p90": 1696.838200000002,
+        "p95": 5445.715699999984,
+        "max": 15196.988
+      },
+      "KLAX": {
+        "n": 68,
+        "mean": 1026.9482500000001,
+        "p50": 117.8845,
+        "p90": 2883.7553000000094,
+        "p95": 7004.826549999996,
+        "max": 15196.988
+      },
+      "KLGA": {
+        "n": 68,
+        "mean": 1097.1400147058825,
+        "p50": 129.5095,
+        "p90": 3003.7553000000094,
+        "p95": 7124.826549999996,
+        "max": 15316.988
+      },
+      "KMIA": {
+        "n": 97,
+        "mean": 860.5873917525773,
+        "p50": 114.946,
+        "p90": 2283.9314000000004,
+        "p95": 5126.0386,
+        "max": 15196.988
+      },
+      "KORD": {
+        "n": 73,
+        "mean": 986.3026301369864,
+        "p50": 110.998,
+        "p90": 2220.629799999998,
+        "p95": 6416.139799999975,
+        "max": 15316.988
+      },
+      "KSEA": {
+        "n": 72,
+        "mean": 977.8198333333335,
+        "p50": 118.31299999999999,
+        "p90": 2167.928399999999,
+        "p95": 6437.877150000008,
+        "max": 15196.988
+      },
+      "KSFO": {
+        "n": 71,
+        "mean": 1268.9466338028171,
+        "p50": 144.294,
+        "p90": 4216.988,
+        "p95": 7839.3405,
+        "max": 18616.988
+      },
+      "LEMD": {
+        "n": 137,
+        "mean": 1241.59300729927,
+        "p50": 226.859,
+        "p90": 3356.139800000006,
+        "p95": 7972.75199999998,
+        "max": 18376.988
+      },
+      "LFPB": {
+        "n": 138,
+        "mean": 1131.923804347826,
+        "p50": 103.039,
+        "p90": 3252.665099999997,
+        "p95": 7884.98725000001,
+        "max": 18376.988
+      },
+      "LIMC": {
+        "n": 131,
+        "mean": 1349.470435114504,
+        "p50": 300.349,
+        "p90": 3710.632,
+        "p95": 8199.3405,
+        "max": 17176.988
+      },
+      "LTAC": {
+        "n": 137,
+        "mean": 1246.9763649635036,
+        "p50": 276.195,
+        "p90": 3109.9122000000043,
+        "p95": 8185.928999999999,
+        "max": 17176.988
+      },
+      "MMMX": {
+        "n": 117,
+        "mean": 1540.025829059829,
+        "p50": 677.078,
+        "p90": 3363.9314000000145,
+        "p95": 8305.928999999998,
+        "max": 17416.988
+      },
+      "MPMG": {
+        "n": 69,
+        "mean": 1094.4074347826086,
+        "p50": 170.277,
+        "p90": 2247.579200000006,
+        "p95": 6443.089199999984,
+        "max": 18376.988
+      },
+      "NZWN": {
+        "n": 137,
+        "mean": 1243.1913503649637,
+        "p50": 231.432,
+        "p90": 3356.139800000006,
+        "p95": 7972.75199999998,
+        "max": 18376.988
+      },
+      "OEJN": {
+        "n": 69,
+        "mean": 1088.4855217391305,
+        "p50": -3.473,
+        "p90": 3985.929,
+        "p95": 7603.811,
+        "max": 18376.988
+      },
+      "OPKC": {
+        "n": 138,
+        "mean": 1101.7908550724637,
+        "p50": 62.659499999999994,
+        "p90": 3252.665099999997,
+        "p95": 7884.98725000001,
+        "max": 18376.988
+      },
+      "RCSS": {
+        "n": 138,
+        "mean": 1540.7229855072464,
+        "p50": 502.6115,
+        "p90": 4489.857399999999,
+        "p95": 9383.69375,
+        "max": 18376.988
+      },
+      "RJTT": {
+        "n": 137,
+        "mean": 1381.0360145985403,
+        "p50": 437.785,
+        "p90": 3356.139800000006,
+        "p95": 7972.75199999998,
+        "max": 18376.988
+      },
+      "RKPK": {
+        "n": 68,
+        "mean": 1246.5528970588234,
+        "p50": 238.433,
+        "p90": 1992.665100000012,
+        "p95": 7606.04625,
+        "max": 18376.988
+      },
+      "RKSI": {
+        "n": 137,
+        "mean": 1250.1219927007298,
+        "p50": 235.124,
+        "p90": 3356.139800000006,
+        "p95": 7972.75199999998,
+        "max": 18376.988
+      },
+      "RPLL": {
+        "n": 71,
+        "mean": 1174.9428591549295,
+        "p50": 179.206,
+        "p90": 3976.988,
+        "p95": 7599.3405,
+        "max": 18376.988
+      },
+      "SAEZ": {
+        "n": 77,
+        "mean": 1208.8451298701298,
+        "p50": 217.588,
+        "p90": 2516.9612000000134,
+        "p95": 7585.929,
+        "max": 18376.988
+      },
+      "SBGR": {
+        "n": 88,
+        "mean": 1177.3176363636362,
+        "p50": -3.211,
+        "p90": 4237.857399999998,
+        "p95": 7606.046249999999,
+        "max": 18376.988
+      },
+      "VILK": {
+        "n": 139,
+        "mean": 1297.324834532374,
+        "p50": 250.465,
+        "p90": 3861.7280000000005,
+        "p95": 7797.22249999999,
+        "max": 18376.988
+      },
+      "WMKK": {
+        "n": 141,
+        "mean": 1326.7901276595744,
+        "p50": 469.02,
+        "p90": 2221.693,
+        "p95": 7576.988,
+        "max": 18376.988
+      },
+      "WSSS": {
+        "n": 140,
+        "mean": 1057.3441071428572,
+        "p50": 20.808999999999997,
+        "p90": 3045.715700000009,
+        "p95": 7709.4577499999705,
+        "max": 18376.988
+      },
+      "ZBAA": {
+        "n": 137,
+        "mean": 1314.7860291970803,
+        "p50": 325.149,
+        "p90": 3356.139800000006,
+        "p95": 7972.75199999998,
+        "max": 18376.988
+      },
+      "ZGGG": {
+        "n": 140,
+        "mean": 1413.042642857143,
+        "p50": 322.32849999999996,
+        "p90": 3981.4585,
+        "p95": 9379.22325,
+        "max": 18376.988
+      },
+      "ZGSZ": {
+        "n": 69,
+        "mean": 1380.308811594203,
+        "p50": 353.8,
+        "p90": 3985.929,
+        "p95": 7603.811,
+        "max": 18376.988
+      },
+      "ZHHH": {
+        "n": 69,
+        "mean": 1380.7743623188405,
+        "p50": 354.597,
+        "p90": 3985.929,
+        "p95": 7603.811,
+        "max": 18376.988
+      },
+      "ZSPD": {
+        "n": 139,
+        "mean": 1298.2439136690648,
+        "p50": 319.508,
+        "p90": 3149.1904000000027,
+        "p95": 7797.22249999999,
+        "max": 18376.988
+      },
+      "ZSQD": {
+        "n": 69,
+        "mean": 1380.308811594203,
+        "p50": 353.8,
+        "p90": 3985.929,
+        "p95": 7603.811,
+        "max": 18376.988
+      },
+      "ZUCK": {
+        "n": 69,
+        "mean": 1380.9333768115941,
+        "p50": 354.597,
+        "p90": 3985.929,
+        "p95": 7603.811,
+        "max": 18376.988
+      },
+      "ZUUU": {
+        "n": 69,
+        "mean": 1380.308811594203,
+        "p50": 353.8,
+        "p90": 3985.929,
+        "p95": 7603.811,
+        "max": 18376.988
+      }
+    }
+  },
+  "experiment": {
+    "all": {
+      "n": 382,
+      "station_days": 97,
+      "stations": 39,
+      "old": {
+        "nll": 0.7221888193244784,
+        "hit": 0.7329842931937173,
+        "mae": 0.4205784904409767,
+        "brier": 0.3717194042095667
+      },
+      "updated": {
+        "nll": 0.5779335899489316,
+        "hit": 0.7931937172774869,
+        "mae": 0.3444301190729998,
+        "brier": 0.2823815283312935
+      }
+    },
+    "fresh_only": {
+      "n": 351,
+      "station_days": 96,
+      "stations": 39,
+      "old": {
+        "nll": 0.7321508512740811,
+        "hit": 0.7350427350427351,
+        "mae": 0.42272511720687933,
+        "brier": 0.37174183493396745
+      },
+      "updated": {
+        "nll": 0.587788452799176,
+        "hit": 0.792022792022792,
+        "mae": 0.3453873522151876,
+        "brier": 0.2861616890230424
+      }
+    },
+    "by_hour": {
+      "8": {
+        "n": 28,
+        "station_days": 28,
+        "stations": 19,
+        "old": {
+          "nll": 1.6516763083994093,
+          "hit": 0.42857142857142855,
+          "mae": 0.9652943340267551,
+          "brier": 0.7824514991417926
+        },
+        "updated": {
+          "nll": 1.673778923005681,
+          "hit": 0.42857142857142855,
+          "mae": 0.9606957279239685,
+          "brier": 0.7833378679480718
+        }
+      },
+      "12": {
+        "n": 70,
+        "station_days": 70,
+        "stations": 34,
+        "old": {
+          "nll": 1.668221515589154,
+          "hit": 0.34285714285714286,
+          "mae": 0.7515855615127182,
+          "brier": 0.8517451335257996
+        },
+        "updated": {
+          "nll": 1.5554726156774148,
+          "hit": 0.35714285714285715,
+          "mae": 0.664679715443029,
+          "brier": 0.7963360405336338
+        }
+      },
+      "16": {
+        "n": 96,
+        "station_days": 96,
+        "stations": 39,
+        "old": {
+          "nll": 0.9534852470529481,
+          "hit": 0.6354166666666666,
+          "mae": 0.6143299654896853,
+          "brier": 0.5495573080682885
+        },
+        "updated": {
+          "nll": 0.5463789116026935,
+          "hit": 0.84375,
+          "mae": 0.4106985450649905,
+          "brier": 0.27030591477982185
+        }
+      },
+      "20": {
+        "n": 94,
+        "station_days": 94,
+        "stations": 39,
+        "old": {
+          "nll": 0.2028523089996096,
+          "hit": 0.9574468085106383,
+          "mae": 0.13684063793369383,
+          "brier": 0.07441949452010053
+        },
+        "updated": {
+          "nll": 0.1286342271799948,
+          "hit": 0.9680851063829787,
+          "mae": 0.12000880580213995,
+          "brier": 0.04510337070574572
+        }
+      },
+      "23": {
+        "n": 94,
+        "station_days": 94,
+        "stations": 39,
+        "old": {
+          "nll": 0.02394665417532128,
+          "hit": 0.9893617021276596,
+          "mae": 0.09769208550039028,
+          "brier": 0.007585925806735755
+        },
+        "updated": {
+          "nll": 0.005082399469528792,
+          "hit": 1,
+          "mae": 0.07912081863151627,
+          "brier": 3.9106568624773245e-05
+        }
+      }
+    },
+    "by_day": {
+      "2026-09-09": {
+        "n": 113,
+        "station_days": 29,
+        "stations": 29,
+        "old": {
+          "nll": 1.0335144944132473,
+          "hit": 0.6460176991150443,
+          "mae": 0.456953082709573,
+          "brier": 0.5065735818278759
+        },
+        "updated": {
+          "nll": 0.7482372447080027,
+          "hit": 0.7345132743362832,
+          "mae": 0.37848803785762797,
+          "brier": 0.3631627585404019
+        }
+      },
+      "2026-09-10": {
+        "n": 126,
+        "station_days": 34,
+        "stations": 34,
+        "old": {
+          "nll": 0.5453237683126774,
+          "hit": 0.7857142857142857,
+          "mae": 0.3582795060463515,
+          "brier": 0.30080366326452945
+        },
+        "updated": {
+          "nll": 0.45771664123010647,
+          "hit": 0.8571428571428571,
+          "mae": 0.2793389483348591,
+          "brier": 0.22206905640808539
+        }
+      },
+      "2026-09-11": {
+        "n": 143,
+        "station_days": 34,
+        "stations": 34,
+        "old": {
+          "nll": 0.6320153587822132,
+          "hit": 0.7552447552447552,
+          "mae": 0.44672774294007744,
+          "brier": 0.3276415111200963
+        },
+        "updated": {
+          "nll": 0.5492833979964629,
+          "hit": 0.7832167832167832,
+          "mae": 0.37487027774672527,
+          "brier": 0.2716898671333562
+        }
+      }
+    },
+    "failures": [],
+    "caveat": "DIAGNOSTIC_PHASE_ONLY_COUNTERFACTUAL_FIXED_REGIONAL_INPUTS_NOT_STRICT_OOS_NO_HIGH_ADVANCE_NO_CORRECTIONS"
+  },
+  "examples": [
+    {
+      "station": "ZBAA",
+      "date": "2026-09-10",
+      "hour": 23,
+      "envelope_id": "p1_cdeeb962612d4f946717b9d345a6af06",
+      "checkpoint": "p1_cdeeb962612d4f946717b9d345a6af06",
+      "sample_at": "2026-09-10T15:00:00.000Z",
+      "decision_at": "2026-09-10T14:03:52.107014Z",
+      "created_at": "2026-09-10T14:03:52.107014Z",
+      "physically_available": true,
+      "fresh_at_sample": true,
+      "version": "p1_metar_trajectory_target_v9",
+      "served_applied": "true",
+      "reaffirm": false,
+      "regional": "POOLED_FALLBACK",
+      "shape_missing": false,
+      "features": {
+        "cloud_cover_fraction": 0.0,
+        "curve_shape_realized": 0.120423959222703,
+        "dewpoint_depression_c": 28.0,
+        "drawdown_from_high_c": 0.0,
+        "momentum_c_per_hour": 2.0,
+        "precipitation_present": 0.0,
+        "regional_headroom_c": null,
+        "regional_live_gap_c": null,
+        "remaining_hours": 1.9355258294444444,
+        "warming_so_far_c": 17.0,
+        "wind_speed_mps": 3.0
+      },
+      "high": 31.0,
+      "closing_valid": "2026-09-10T08:00:00.000Z",
+      "closing_age_minutes": 420.0,
+      "clock_vs_closing_minutes": 363.86845023333336,
+      "latest_available_valid": "2026-09-10T14:30:00.000Z",
+      "latest_temperature": 16,
+      "actual_high": 31,
+      "actual_gap": 15,
+      "latest_observation_age_minutes": 30.0,
+      "gap_mismatch": 15.0
+    },
+    {
+      "station": "ZBAA",
+      "date": "2026-09-11",
+      "hour": 23,
+      "envelope_id": "p1_c28356104b3406f68a10d345d7a72824",
+      "checkpoint": "p1_c28356104b3406f68a10d345d7a72824",
+      "sample_at": "2026-09-11T15:00:00.000Z",
+      "decision_at": "2026-09-11T14:21:17.662Z",
+      "created_at": "2026-09-11T14:21:17.662Z",
+      "physically_available": true,
+      "fresh_at_sample": true,
+      "version": "p1_metar_trajectory_target_v9",
+      "served_applied": "true",
+      "reaffirm": true,
+      "regional": "CMA_GRAPES_GLOBAL_POINT",
+      "shape_missing": false,
+      "features": {
+        "cloud_cover_fraction": 0.0,
+        "curve_shape_realized": 0.3866051288331328,
+        "dewpoint_depression_c": 25.0,
+        "drawdown_from_high_c": 0.0,
+        "momentum_c_per_hour": 2.0,
+        "precipitation_present": 0.0,
+        "regional_headroom_c": -10.600000000000001,
+        "regional_live_gap_c": 9.2,
+        "remaining_hours": 4.082420829444445,
+        "warming_so_far_c": 18.0,
+        "wind_speed_mps": 1.0
+      },
+      "high": 32.0,
+      "closing_valid": "2026-09-11T05:30:00.000Z",
+      "closing_age_minutes": 570.0,
+      "clock_vs_closing_minutes": 385.0547502333333,
+      "latest_available_valid": "2026-09-11T14:30:00.000Z",
+      "latest_temperature": 17,
+      "actual_high": 32,
+      "actual_gap": 15,
+      "latest_observation_age_minutes": 30.0,
+      "gap_mismatch": 15.0
+    },
+    {
+      "station": "KSFO",
+      "date": "2026-09-10",
+      "hour": 23,
+      "envelope_id": "p1_adf6818c08f04d57f3ef92bb8a176fa1",
+      "checkpoint": "p1_adf6818c08f04d57f3ef92bb8a176fa1",
+      "sample_at": "2026-09-11T06:00:00.000Z",
+      "decision_at": "2026-09-11T04:53:17.965005Z",
+      "created_at": "2026-09-11T04:53:17.965005Z",
+      "physically_available": true,
+      "fresh_at_sample": false,
+      "version": "p1_metar_trajectory_target_v9",
+      "served_applied": "true",
+      "reaffirm": false,
+      "regional": "NCEP_HRRR_POINT",
+      "shape_missing": false,
+      "features": {
+        "cloud_cover_fraction": 0.25,
+        "curve_shape_realized": 0.0842256768094182,
+        "dewpoint_depression_c": 16.9,
+        "drawdown_from_high_c": 0.0,
+        "momentum_c_per_hour": 53.999999999999915,
+        "precipitation_present": 0.0,
+        "regional_headroom_c": -11.898449707031226,
+        "regional_live_gap_c": 11.693920898437476,
+        "remaining_hours": 2.1116763875,
+        "warming_so_far_c": 2.8999999999999986,
+        "wind_speed_mps": 6.173328
+      },
+      "high": 28.9,
+      "closing_valid": "2026-09-10T20:56:00.000Z",
+      "closing_age_minutes": 544.0,
+      "clock_vs_closing_minutes": 477.29941675,
+      "latest_available_valid": "2026-09-11T05:56:00.000Z",
+      "latest_temperature": 16.1,
+      "actual_high": 28.9,
+      "actual_gap": 12.799999999999997,
+      "latest_observation_age_minutes": 4.0,
+      "gap_mismatch": 12.799999999999997
+    },
+    {
+      "station": "KSFO",
+      "date": "2026-09-10",
+      "hour": 20,
+      "envelope_id": "p1_2a828acdf08e3942fc912495ad5c8fba",
+      "checkpoint": "p1_2a828acdf08e3942fc912495ad5c8fba",
+      "sample_at": "2026-09-11T03:00:00.000Z",
+      "decision_at": "2026-09-11T01:59:48.298005Z",
+      "created_at": "2026-09-11T01:59:48.298005Z",
+      "physically_available": true,
+      "fresh_at_sample": false,
+      "version": "p1_metar_trajectory_target_v9",
+      "served_applied": "true",
+      "reaffirm": false,
+      "regional": "NCEP_HRRR_POINT",
+      "shape_missing": false,
+      "features": {
+        "cloud_cover_fraction": 0.25,
+        "curve_shape_realized": 0.39791620762201274,
+        "dewpoint_depression_c": 16.9,
+        "drawdown_from_high_c": 0.0,
+        "momentum_c_per_hour": 53.999999999999915,
+        "precipitation_present": 0.0,
+        "regional_headroom_c": -11.236645507812476,
+        "regional_live_gap_c": 10.711193847656226,
+        "remaining_hours": 5.003250554166667,
+        "warming_so_far_c": 2.8999999999999986,
+        "wind_speed_mps": 6.173328
+      },
+      "high": 28.9,
+      "closing_valid": "2026-09-10T20:56:00.000Z",
+      "closing_age_minutes": 364.0,
+      "clock_vs_closing_minutes": 303.80496675,
+      "latest_available_valid": "2026-09-11T02:56:00.000Z",
+      "latest_temperature": 16.7,
+      "actual_high": 28.9,
+      "actual_gap": 12.2,
+      "latest_observation_age_minutes": 4.0,
+      "gap_mismatch": 12.2
+    },
+    {
+      "station": "KAUS",
+      "date": "2026-09-11",
+      "hour": 23,
+      "envelope_id": "p1_a4794dcc8b2868a36a8163df71fbcc96",
+      "checkpoint": "p1_a4794dcc8b2868a36a8163df71fbcc96",
+      "sample_at": "2026-09-12T04:00:00.000Z",
+      "decision_at": "2026-09-12T03:49:11.231Z",
+      "created_at": "2026-09-12T03:49:11.231Z",
+      "physically_available": true,
+      "fresh_at_sample": true,
+      "version": "p1_metar_trajectory_target_v9",
+      "served_applied": "true",
+      "reaffirm": true,
+      "regional": "NCEP_HRRR_POINT",
+      "shape_missing": true,
+      "features": {
+        "cloud_cover_fraction": 0.875,
+        "curve_shape_realized": null,
+        "dewpoint_depression_c": 19.9,
+        "drawdown_from_high_c": 0.10000000000000142,
+        "momentum_c_per_hour": 17.99999999999997,
+        "precipitation_present": 0.0,
+        "regional_headroom_c": -9.7977111816406,
+        "regional_live_gap_c": 8.602551269531226,
+        "remaining_hours": 3.343765830277778,
+        "warming_so_far_c": 10.899999999999999,
+        "wind_speed_mps": 3.601108
+      },
+      "high": 38.9,
+      "closing_valid": "2026-09-11T20:53:00.000Z",
+      "closing_age_minutes": 427.0,
+      "clock_vs_closing_minutes": 286.37405018333334,
+      "latest_available_valid": "2026-09-12T02:53:00.000Z",
+      "latest_temperature": 26.7,
+      "actual_high": 38.9,
+      "actual_gap": 12.2,
+      "latest_observation_age_minutes": 67.0,
+      "gap_mismatch": 12.099999999999998
+    },
+    {
+      "station": "KAUS",
+      "date": "2026-09-11",
+      "hour": 20,
+      "envelope_id": "p1_2fe2a462c0521b35a93af8b2c64f46e4",
+      "checkpoint": "p1_2fe2a462c0521b35a93af8b2c64f46e4",
+      "sample_at": "2026-09-12T01:00:00.000Z",
+      "decision_at": "2026-09-12T00:12:13.455011Z",
+      "created_at": "2026-09-12T00:12:13.455011Z",
+      "physically_available": true,
+      "fresh_at_sample": true,
+      "version": "p1_metar_trajectory_target_v9",
+      "served_applied": "true",
+      "reaffirm": false,
+      "regional": "NCEP_HRRR_POINT",
+      "shape_missing": false,
+      "features": {
+        "cloud_cover_fraction": 0.875,
+        "curve_shape_realized": 0.5469685508829177,
+        "dewpoint_depression_c": 19.9,
+        "drawdown_from_high_c": 0.10000000000000142,
+        "momentum_c_per_hour": 17.99999999999997,
+        "precipitation_present": 0.0,
+        "regional_headroom_c": -8.602551269531226,
+        "regional_live_gap_c": 7.538891601562476,
+        "remaining_hours": 4.796262496944445,
+        "warming_so_far_c": 10.899999999999999,
+        "wind_speed_mps": 3.601108
+      },
+      "high": 38.9,
+      "closing_valid": "2026-09-11T20:53:00.000Z",
+      "closing_age_minutes": 247.0,
+      "clock_vs_closing_minutes": 199.22425018333334,
+      "latest_available_valid": "2026-09-12T00:53:00.000Z",
+      "latest_temperature": 27.8,
+      "actual_high": 38.9,
+      "actual_gap": 11.099999999999998,
+      "latest_observation_age_minutes": 7.0,
+      "gap_mismatch": 10.999999999999996
+    },
+    {
+      "station": "KBKF",
+      "date": "2026-09-11",
+      "hour": 23,
+      "envelope_id": "p1_b4bb8a9f31579eda69626465bc3b43e6",
+      "checkpoint": "p1_b4bb8a9f31579eda69626465bc3b43e6",
+      "sample_at": "2026-09-12T05:00:00.000Z",
+      "decision_at": "2026-09-12T04:45:31.900007Z",
+      "created_at": "2026-09-12T04:45:31.900007Z",
+      "physically_available": true,
+      "fresh_at_sample": true,
+      "version": "p1_metar_trajectory_target_v9",
+      "served_applied": "true",
+      "reaffirm": false,
+      "regional": "NCEP_HRRR_POINT",
+      "shape_missing": true,
+      "features": {
+        "cloud_cover_fraction": 0.875,
+        "curve_shape_realized": null,
+        "dewpoint_depression_c": 37.9,
+        "drawdown_from_high_c": 0.0,
+        "momentum_c_per_hour": 1.8999999999999986,
+        "precipitation_present": 0.0,
+        "regional_headroom_c": -9.9180725097656,
+        "regional_live_gap_c": 9.39603881835935,
+        "remaining_hours": 1.2411388869444444,
+        "warming_so_far_c": 11.099999999999998,
+        "wind_speed_mps": 2.57222
+      },
+      "high": 31.9,
+      "closing_valid": "2026-09-11T21:58:00.000Z",
+      "closing_age_minutes": 422.0,
+      "clock_vs_closing_minutes": 407.5316667833333,
+      "latest_available_valid": "2026-09-12T03:58:00.000Z",
+      "latest_temperature": 21.7,
+      "actual_high": 31.9,
+      "actual_gap": 10.2,
+      "latest_observation_age_minutes": 62.0,
+      "gap_mismatch": 10.2
+    },
+    {
+      "station": "EDDM",
+      "date": "2026-09-11",
+      "hour": 23,
+      "envelope_id": "p1_fb6fcb8a185165ef90344e604b9316a4",
+      "checkpoint": "p1_fb6fcb8a185165ef90344e604b9316a4",
+      "sample_at": "2026-09-11T21:00:00.000Z",
+      "decision_at": "2026-09-11T20:51:41.792008Z",
+      "created_at": "2026-09-11T20:51:41.792008Z",
+      "physically_available": true,
+      "fresh_at_sample": true,
+      "version": "p1_metar_trajectory_target_v9",
+      "served_applied": "true",
+      "reaffirm": false,
+      "regional": "DWD_ICON_EU_POINT",
+      "shape_missing": true,
+      "features": {
+        "cloud_cover_fraction": 0.0,
+        "curve_shape_realized": null,
+        "dewpoint_depression_c": 10.0,
+        "drawdown_from_high_c": 0.0,
+        "momentum_c_per_hour": 2.0,
+        "precipitation_present": 0.0,
+        "regional_headroom_c": -9.834265136718727,
+        "regional_live_gap_c": 8.386907958984352,
+        "remaining_hours": 1.1383911088888887,
+        "warming_so_far_c": 8.0,
+        "wind_speed_mps": 3.086664
+      },
+      "high": 20.0,
+      "closing_valid": "2026-09-11T14:20:00.000Z",
+      "closing_age_minutes": 400.0,
+      "clock_vs_closing_minutes": 391.69653346666666,
+      "latest_available_valid": "2026-09-11T20:50:00.000Z",
+      "latest_temperature": 10,
+      "actual_high": 20,
+      "actual_gap": 10,
+      "latest_observation_age_minutes": 10.0,
+      "gap_mismatch": 10.0
+    }
+  ]
+}

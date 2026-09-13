@@ -30,7 +30,6 @@ from .band_reliability_store import (
     load_band_table_with_axis,
     pinned_band_table_sha,
 )
-from .center_width_calibration import apply_center_width_calibration
 from .center_width_store import (
     CENTER_WIDTH_METHOD_TAG,
     STATION_WIDTH_METHOD_TAG,
@@ -51,12 +50,17 @@ from .cross_consensus import (
     pinned_radiation_shift_sigma,
     SYNOPTIC_COOLING_METHOD_TAG,
     SYNOPTIC_COOLING_SHIFT_SIGMA,
-    apply_band_reliability,
     apply_conditional_tail_skew,
     apply_neighbour_direction_tilt,
     forecast_radiation_shift_sigma,
     synoptic_cooling_index,
     bridged_cross_probability,
+)
+from .served_shape import (
+    BandLayer,
+    CenterWidthLayer,
+    apply_served_table_layers,
+    model_center_c as served_model_center_c,
 )
 from .future_temperature_curve import (
     MIN_SAME_DAY_CURVE_POINTS,
@@ -2768,9 +2772,8 @@ def compile_native_ensemble_p0(
     # probability mixture gives one temperature, and the bucket containing it
     # is the anchor.  An edge bucket is still eligible; it simply has to be
     # where the models point (centers of 36/37 land there legitimately).
-    model_center_c = sum(
-        system_weights[system] * calibrated_system_centers_c[system]
-        for system in system_ids
+    model_center_c = served_model_center_c(
+        system_weights, calibrated_system_centers_c, system_ids
     )
     model_center_bucket = _bucket_for_value(model_center_c, intervals_raw)
     lower_center_c = min(calibrated_system_centers_c.values())
@@ -2938,7 +2941,6 @@ def compile_native_ensemble_p0(
     # built before this existed carries no tag and is served the math it was
     # gated on, and a pinned-but-missing version fails closed inside the
     # loader rather than serving an approximation of it.
-    center_width_receipt = None
     scalars = None
     sigma_floor_rungs = 0.0
     width_tiers = None
@@ -2997,58 +2999,41 @@ def compile_native_ensemble_p0(
         as_of_utc=decision_at_utc,
     )
     regime_delta = float(regime.get("regime_delta_c") or 0.0)
-    if (
-        scalars is not None
-        or station_scale != 1.0
-        or regime_delta != 0.0
-        or sigma_floor_rungs
-        or width_tiers
-    ):
-        probability, center_width_receipt = (
-            apply_center_width_calibration(
-                probability,
-                delta_c=scalars[0] if scalars else 0.0,
-                width_lambda=scalars[1] if scalars else 1.0,
-                station_width_scale=station_scale,
-                regime_delta_c=regime_delta,
-                sigma_floor_rungs=sigma_floor_rungs,
-                width_tier_lambdas=(width_tiers or {}).get("lambdas") or None,
-                width_tier_boundaries=(
-                    (width_tiers or {}).get("boundaries_rungs") or None
-                ),
-                ordered_keys=ordered,
-                key_centers_c=_bucket_centers(
-                    intervals_raw, ordered
-                ),
-            )
+    center_width_layer = (
+        CenterWidthLayer(
+            delta_c=scalars[0] if scalars else 0.0,
+            width_lambda=scalars[1] if scalars else 1.0,
+            station_width_scale=station_scale,
+            regime_delta_c=regime_delta,
+            sigma_floor_rungs=sigma_floor_rungs,
+            width_tier_lambdas=(width_tiers or {}).get("lambdas") or None,
+            width_tier_boundaries=(
+                (width_tiers or {}).get("boundaries_rungs") or None
+            ),
         )
-        center_width_receipt["fleet_regime"] = regime
-        if pinned_center_width is not None:
-            center_width_receipt["center_width_sha256"] = (
-                pinned_center_width
-            )
-        if pinned_station_width is not None:
-            center_width_receipt["station_width_sha256"] = (
-                pinned_station_width
-            )
-            if pinned_station_width_retired:
-                center_width_receipt["station_width_state"] = (
-                    "PINNED_VERSION_RETIRED"
-                )
+        if (
+            scalars is not None
+            or station_scale != 1.0
+            or regime_delta != 0.0
+            or sigma_floor_rungs
+            or width_tiers
+        )
+        else None
+    )
     # Outermost, after every shape layer, which as of 2026-08-23 finally
     # includes the centre/width scalars above.  This layer rescales a claim,
     # and a claim rescaled here stops being the claim the moment anything
     # moves the distribution afterwards -- which is exactly what the shape
     # layer had been doing to it.  P1 has always composed them this way and
     # says why in ``materialization._posterior``: geometry before claim.
-    # The two orders are byte-identical while the centre/width scalars are
-    # inert, which they are at P0 today, so this is the moment to fix it.
+    # The order itself lives in ``served_shape``; this block only resolves
+    # which table version the artifact pinned.
     # The artifact pins the table version its holdout was scored against
     # (``band_table_sha256=`` in the combination method); a bare tag means
     # the static bootstrap constants.  A pinned-but-missing table fails
     # closed inside the loader: serving an approximation of gated math is
     # exactly what the pin exists to forbid.
-    band_reliability_receipt = None
+    band_layer = None
     if BAND_RELIABILITY_METHOD_TAG in artifact_combination_method:
         pinned_sha = pinned_band_table_sha(artifact_combination_method)
         pinned_factors = None
@@ -3080,15 +3065,31 @@ def compile_native_ensemble_p0(
         # caller's preference.  ``ordered`` is this stage's bucket axis and
         # is the same map the packet publishes as ``bucket_ordinals`` below,
         # so the fit and the serve read one ordering.
-        probability, band_reliability_receipt = apply_band_reliability(
+        band_layer = BandLayer(factors=pinned_factors, axis=pinned_axis)
+    probability, center_width_receipt, band_reliability_receipt = (
+        apply_served_table_layers(
             probability,
-            factors=pinned_factors,
-            ordinals=(
-                {bucket: index for index, bucket in enumerate(ordered)}
-                if pinned_axis == BAND_AXIS_CENTRE_DISTANCE
-                else None
-            ),
+            ordered_keys=ordered,
+            key_centers_c=_bucket_centers(intervals_raw, ordered),
+            center_width=center_width_layer,
+            band=band_layer,
         )
+    )
+    if center_width_receipt is not None:
+        center_width_receipt["fleet_regime"] = regime
+        if pinned_center_width is not None:
+            center_width_receipt["center_width_sha256"] = (
+                pinned_center_width
+            )
+        if pinned_station_width is not None:
+            center_width_receipt["station_width_sha256"] = (
+                pinned_station_width
+            )
+            if pinned_station_width_retired:
+                center_width_receipt["station_width_state"] = (
+                    "PINNED_VERSION_RETIRED"
+                )
+    if band_reliability_receipt is not None:
         if pinned_sha is not None:
             band_reliability_receipt["band_table_sha256"] = pinned_sha
         if band_table_override is not None:

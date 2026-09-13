@@ -1,0 +1,178 @@
+{
+  "at_utc": "2026-09-13T14:09:31.112790+00:00",
+  "selector_cutoff_utc": "2026-09-13T14:02:22.359983Z",
+  "latest_45_p0": {
+    "latest_p0_station_count": 45,
+    "dates": {
+      "2026-09-14": 43,
+      "2026-09-13": 2
+    },
+    "band_axes": {
+      "centre_distance": 44,
+      "claim": 1
+    },
+    "center_width_receipt_count": 44,
+    "provisional_station_count": 11,
+    "cross_gate_profiles": {
+      "FORWARD_ACCUMULATION_5_TRAIN_3_HOLDOUT": 45
+    },
+    "systems": {
+      "NOAA_GEFS_05": 35,
+      "DWD_ICON_GLOBAL_EPS": 27,
+      "ECCC_GEM_GLOBAL_ENS": 26,
+      "ECMWF_IFS_ENS_OPEN_PF50": 12
+    },
+    "cw_and_band_nonidentity": 44
+  },
+  "unique_single_system_artifact_count": 100,
+  "spread_factor": {
+    "min": 0.5646552039681207,
+    "median": 1.3693224005383922,
+    "max": 5.0
+  },
+  "spread_at_upper_cap_count": 1,
+  "bias_c": {
+    "min": -1.5769293069579429,
+    "median": 1.1838680499227996,
+    "max": 6.269956100704879
+  },
+  "effective_n": {
+    "min": 11.018827694060505,
+    "median": 13.55510404640296,
+    "max": 14.426228843824351
+  },
+  "fit_through_dates": {
+    "2026-09-12": 97,
+    "2026-09-13": 3
+  },
+  "reliability_weight_values": [
+    1.0
+  ],
+  "bias_forms": {
+    "level_terciles_v1": 100
+  },
+  "provisional_sources": {
+    "OWN_FIT_OTHER_RUN_CYCLE": 11
+  },
+  "observed_p0_peak_moves": [
+    {
+      "station_id": "KBKF",
+      "event_date": "2026-09-14",
+      "before": "86-87°F",
+      "after": "84-85°F",
+      "before_probabilities": {
+        "75°F or below": 0.0,
+        "76-77°F": 1.4316563348452073e-07,
+        "78-79°F": 0.0015424522817174787,
+        "80-81°F": 0.03213592077521369,
+        "82-83°F": 0.13256900373810815,
+        "84-85°F": 0.3167734330344225,
+        "86-87°F": 0.32261965491213557,
+        "88-89°F": 0.1451822475549543,
+        "90-91°F": 0.04297515994282059,
+        "92-93°F": 0.006201984594994284,
+        "94°F or higher": 0.0
+      },
+      "after_probabilities": {
+        "75°F or below": 0.0,
+        "76-77°F": 9.737349604783798e-08,
+        "78-79°F": 0.0010490923519996492,
+        "80-81°F": 0.030976411893983168,
+        "82-83°F": 0.12985931853820162,
+        "84-85°F": 0.3250426056331476,
+        "86-87°F": 0.31602537058122704,
+        "88-89°F": 0.14897213944015,
+        "90-91°F": 0.042096755854556314,
+        "92-93°F": 0.005978208333238705,
+        "94°F or higher": 0.0
+      }
+    },
+    {
+      "station_id": "KORD",
+      "event_date": "2026-09-14",
+      "before": "72-73°F",
+      "after": "74-75°F",
+      "before_probabilities": {
+        "63°F or below": 0.0,
+        "64-65°F": 5.883011574939891e-11,
+        "66-67°F": 0.0003092090684847181,
+        "68-69°F": 0.02108650156786361,
+        "70-71°F": 0.1313196702410022,
+        "72-73°F": 0.34541743974390665,
+        "74-75°F": 0.33167806318635945,
+        "76-77°F": 0.1232831436396657,
+        "78-79°F": 0.039144699542334856,
+        "80-81°F": 0.007761272951552671,
+        "82°F or higher": 0.0
+      },
+      "after_probabilities": {
+        "63°F or below": 0.0,
+        "64-65°F": 4.008644767906462e-11,
+        "66-67°F": 0.0002985990836386311,
+        "68-69°F": 0.02069338535003956,
+        "70-71°F": 0.13499485250362583,
+        "72-73°F": 0.3389778130924408,
+        "74-75°F": 0.34096058219121816,
+        "76-77°F": 0.12098477266555656,
+        "78-79°F": 0.03780151555687123,
+        "80-81°F": 0.0052884795165227,
+        "82°F or higher": 0.0
+      }
+    },
+    {
+      "station_id": "ZUUU",
+      "event_date": "2026-09-14",
+      "before": "27°C",
+      "after": "26°C",
+      "before_probabilities": {
+        "22°C or below": 0.007747618840385931,
+        "23°C": 0.18780759557292792,
+        "24°C": 0.07589967608095867,
+        "25°C": 0.11497129429116,
+        "26°C": 0.2029992396477314,
+        "27°C": 0.21008136648080103,
+        "28°C": 0.14161056459612958,
+        "29°C": 0.044220803746753974,
+        "30°C": 0.012346081413364084,
+        "31°C": 0.0023157593297874913,
+        "32°C or higher": 0.0
+      },
+      "after_probabilities": {
+        "22°C or below": 0.005635996013480614,
+        "23°C": 0.13662040967127326,
+        "24°C": 0.0782493487774713,
+        "25°C": 0.12045393562503581,
+        "26°C": 0.2227852313598343,
+        "27°C": 0.2200995261479251,
+        "28°C": 0.1554131062327753,
+        "29°C": 0.04632956322392553,
+        "30°C": 0.012728286607164395,
+        "31°C": 0.0016845963411143622,
+        "32°C or higher": 0.0
+      }
+    }
+  ],
+  "truth_source_lane_domain": [
+    "AWC"
+  ],
+  "truth_settlement_definition_domain": [
+    "official_daily_tmax_c"
+  ],
+  "truth_qc_status_domain": [
+    "ACCEPTED"
+  ],
+  "truth_source_role_domain": [
+    "CANONICAL_AMSC_AWC_INGRESS",
+    "TEMPORARY_AWC_CALIBRATION_LABEL",
+    "AWC_HISTORICAL_REPLAY_INGRESS",
+    "CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1"
+  ],
+  "truth_authority_scope_domain": [
+    "FORMAL_NATIVE_ELIGIBLE",
+    "NO_LIVE_REPLAY_CANDIDATE"
+  ],
+  "truth_timestamps_complete_domain": [
+    1
+  ],
+  "truth_latest_source_collisions": []
+}

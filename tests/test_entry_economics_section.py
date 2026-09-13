@@ -410,3 +410,143 @@ def test_the_plain_language_paragraph_stays_in_one_weighting():
     page = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
     assert "(C.ev_per_share_claimed||0)-(S.ev_per_share_realised||0)" not in page
     assert "这一笔差价乘上" not in page
+
+
+# ---------------------------------------------------------------- as drawn
+#
+# User ruling, 2026-09-13: 不要给我解释，在数据看板上用直观的数据对比得出结论即可.
+# The section is a verdict, comparison bars that each end in a result, and
+# the nine values -- no paragraphs.  Rendered from the collector's own
+# output, so the verdicts are checked against a real book, not a fixture
+# shaped to agree with them.
+
+import json  # noqa: E402
+import re  # noqa: E402
+import shutil  # noqa: E402
+import subprocess  # noqa: E402
+
+SOURCE = C.HTML_TEMPLATE
+
+
+def _function(name: str) -> str:
+    start = SOURCE.index(f"function {name}(")
+    depth = 0
+    for index in range(SOURCE.index("{", start), len(SOURCE)):
+        if SOURCE[index] == "{":
+            depth += 1
+        elif SOURCE[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return SOURCE[start:index + 1]
+    raise AssertionError(f"{name}() has unbalanced braces")
+
+
+def _draw(entry: dict) -> str:
+    node = shutil.which("node")
+    if node is None:  # pragma: no cover - CI images all carry node
+        pytest.skip("node is required to run the board's renderer")
+    script = (
+        "const D = " + json.dumps({"entry_economics": entry}, ensure_ascii=False) + ";\n"
+        "const h = (s) => String(s == null ? '' : s)"
+        ".replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');\n"
+        + _function("entryEconomics") + "\nconsole.log(entryEconomics());\n"
+    )
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def _card(html: str, title: str) -> str:
+    start = html.index(f"<b>{title}</b>")
+    end = html.find('<div class="card ee-cmp">', start)
+    return html[start:end if end > 0 else html.index('<div class="ee-nine">', start)]
+
+
+def _pill(fragment: str) -> tuple[str, str]:
+    tone, word = re.search(r'<span class="pill (\w+)[^"]*">([^<]*)</span>', fragment).groups()
+    return tone, word
+
+
+WINNING = [
+    ("P0", 0.30, 1, 1, 0.20, 100.0),
+    ("P0", 0.80, 0, 0, 0.75, 4.0),
+    ("P1", 0.55, 0, 1, 0.50, 20.0),
+    ("P1", 0.60, 1, 1, 0.55, 8.0),
+    ("P0", 0.44, 1, 1, 0.41, 15.0),
+]
+LOSING = [
+    ("P0", 0.50, 0, 1, 0.45, 20.0),
+    ("P0", 0.50, 0, 0, 0.45, 20.0),
+    ("P0", 0.50, 1, 1, 0.45, 5.0),
+]
+
+
+def test_no_paragraph_of_explanation_is_drawn():
+    html = _draw(C.collect_entry_economics(_book(WINNING)))
+
+    assert 'class="why"' not in html
+    assert '<p class="sub">' not in html
+    assert "<details" not in html
+    for prose in ("白话版", "怎么读", "为什么", "容易读错", "三个口径"):
+        assert prose not in html
+
+
+def test_the_verdict_follows_the_money_both_ways():
+    for rows, word, tone in ((WINNING, "赚", "green"), (LOSING, "亏", "red")):
+        entry = C.collect_entry_economics(_book(rows))
+        html = _draw(entry)
+        top = html[html.index('class="card ee-top"'):html.index('<div class="ee-cmps">')]
+
+        assert _pill(top) == (tone, word)
+        assert _pill(_card(html, "赚的钱 vs 亏的钱")) == (tone, word)
+        assert (entry["pnl_usdc"] >= 0) is (word == "赚")
+
+
+def test_gains_minus_losses_is_the_books_pnl():
+    entry = C.collect_entry_economics(_book(WINNING))
+    card = _card(_draw(entry), "赚的钱 vs 亏的钱")
+
+    gains, losses = (float(v) for v in re.findall(r'class="ee-v">([\d.]+) U<', card))
+    assert gains - losses == pytest.approx(entry["pnl_usdc"], abs=0.011)
+    assert f'赢 {entry["win_count"]} 条' in card and f'亏 {entry["loss_count"]} 条' in card
+
+
+def test_bars_share_one_scale_so_the_longer_bar_is_the_larger_number():
+    html = _draw(C.collect_entry_economics(_book(LOSING)))
+    card = _card(html, "赚的钱 vs 亏的钱")
+
+    widths = [float(w) for w in re.findall(r'style="width:([\d.]+)%"', card)]
+    values = [float(v) for v in re.findall(r'class="ee-v">([\d.]+) U<', card)]
+    assert max(widths) == pytest.approx(100.0)
+    assert widths[0] / widths[1] == pytest.approx(values[0] / values[1], rel=0.01)
+
+
+def test_hit_card_compares_realised_coverage_with_the_break_even_line():
+    entry = C.collect_entry_economics(_book(LOSING))
+    share = entry["weightings"]["share"]
+    card = _card(_draw(entry), "实际命中 vs 保本线")
+
+    below = share["realised_coverage"] < share["breakeven_hit_rate"]
+    assert _pill(card) == (("red", "低于保本线") if below else ("green", "盖过保本线"))
+
+
+def test_a_losing_stage_is_named_with_its_loss():
+    entry = C.collect_entry_economics(_book(WINNING))
+    stages = {s["stage"]: s for s in entry["by_stage"]}
+    card = _card(_draw(entry), "分阶段收益率")
+
+    losers = [name for name, s in stages.items() if s["pnl_usdc"] < 0]
+    winners = [name for name, s in stages.items() if s["pnl_usdc"] >= 0]
+    if losers and winners:
+        assert _pill(card) == ("amber", "赚在 " + "、".join(winners))
+        for name in losers:
+            assert f"亏在 {name}" in card or f"· {name}" in card
+    for name, s in stages.items():
+        assert f"{name} · {s['chains']} 链" in card
+
+
+def test_all_nine_numbers_are_on_the_board():
+    html = _draw(C.collect_entry_economics(_book(WINNING)))
+    cells = re.findall(r'<div class="ee-n"><span class="muted">([^<]+)</span>', html)
+
+    assert [c[0] for c in cells] == list("①②③④⑤⑥⑦⑧⑨")

@@ -1,0 +1,41 @@
+{
+  "baseline_failures": [
+    "tests/test_bayes_basket_target_production_worker.py::test_an_explicitly_requested_snapshot_still_fails_closed",
+    "tests/test_bayes_basket_target_production_worker.py::test_default_target_budget_is_target_owned_and_ignores_resident_bankroll",
+    "tests/test_bayes_basket_target_production_worker.py::test_materialize_resident_p0_rejects_unproved_open_meteo_handoff",
+    "tests/test_bayes_basket_target_production_worker.py::test_native_p0_inbox_mixed_official_beats_aggregator_and_keeps_p0_fingerprint_gate",
+    "tests/test_bayes_basket_target_production_worker.py::test_open_scope_round_robin_accepts_every_station_on_several_days",
+    "tests/test_bayes_basket_target_production_worker.py::test_open_scope_selection_is_deterministic_and_starves_nobody",
+    "tests/test_bayes_basket_target_production_worker.py::test_resident_p1_ingress_commits_stale_replay_cursor_once",
+    "tests/test_bayes_basket_target_production_worker.py::test_resident_p1_ingress_is_append_only_and_idempotent",
+    "tests/test_bayes_basket_target_production_worker.py::test_resident_taf_inbox_materializes_p0m_before_p1",
+    "tests/test_bayes_basket_target_production_worker.py::test_resident_taf_legacy_crossfit_hash_without_live_bridge_blocks",
+    "tests/test_bayes_basket_target_production_worker.py::test_rkpk_taf_artifact_never_blocks_another_station_p0_lane",
+    "tests/test_bayes_basket_target_production_worker.py::test_run_keeps_truth_and_labels_outside_official_ws_quote_lease",
+    "tests/test_bayes_basket_target_production_worker.py::test_run_scoped_p1_blocker_allows_truth_label_and_does_not_global_block_market",
+    "tests/test_bayes_basket_target_production_worker.py::test_run_truth_blocker_still_prevents_labels_and_market",
+    "tests/test_bayes_basket_target_production_worker.py::test_trajectory_training_is_due_when_a_new_day_settles",
+    "tests/test_bayes_basket_target_production_worker.py::test_writer_flag_cannot_open_in_live_mode"
+  ],
+  "current_failures": [
+    "tests/test_bayes_basket_target_production_worker.py::test_an_explicitly_requested_snapshot_still_fails_closed",
+    "tests/test_bayes_basket_target_production_worker.py::test_default_target_budget_is_target_owned_and_ignores_resident_bankroll",
+    "tests/test_bayes_basket_target_production_worker.py::test_materialize_resident_p0_rejects_unproved_open_meteo_handoff",
+    "tests/test_bayes_basket_target_production_worker.py::test_native_p0_inbox_mixed_official_beats_aggregator_and_keeps_p0_fingerprint_gate",
+    "tests/test_bayes_basket_target_production_worker.py::test_open_scope_round_robin_accepts_every_station_on_several_days",
+    "tests/test_bayes_basket_target_production_worker.py::test_open_scope_selection_is_deterministic_and_starves_nobody",
+    "tests/test_bayes_basket_target_production_worker.py::test_run_keeps_truth_and_labels_outside_official_ws_quote_lease",
+    "tests/test_bayes_basket_target_production_worker.py::test_run_scoped_p1_blocker_allows_truth_label_and_does_not_global_block_market",
+    "tests/test_bayes_basket_target_production_worker.py::test_run_truth_blocker_still_prevents_labels_and_market",
+    "tests/test_bayes_basket_target_production_worker.py::test_trajectory_training_is_due_when_a_new_day_settles",
+    "tests/test_bayes_basket_target_production_worker.py::test_writer_flag_cannot_open_in_live_mode"
+  ],
+  "new_failures": [],
+  "no_longer_failing": [
+    "tests/test_bayes_basket_target_production_worker.py::test_resident_p1_ingress_commits_stale_replay_cursor_once",
+    "tests/test_bayes_basket_target_production_worker.py::test_resident_p1_ingress_is_append_only_and_idempotent",
+    "tests/test_bayes_basket_target_production_worker.py::test_resident_taf_inbox_materializes_p0m_before_p1",
+    "tests/test_bayes_basket_target_production_worker.py::test_resident_taf_legacy_crossfit_hash_without_live_bridge_blocks",
+    "tests/test_bayes_basket_target_production_worker.py::test_rkpk_taf_artifact_never_blocks_another_station_p0_lane"
+  ]
+}

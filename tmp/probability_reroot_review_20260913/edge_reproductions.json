@@ -1,0 +1,59 @@
+{
+  "observed": {
+    "initial_mode": "OBSERVED_NO_CALIBRATED_ARTIFACT",
+    "same_cycle_head_root": "root-new",
+    "next_cycle_head_root": "root-new",
+    "same_cycle_state": "COMMITTED",
+    "run_after_taf_state": "COMMITTED",
+    "run_after_taf_blockers": [],
+    "run_after_taf_head": "root-third"
+  },
+  "calibrated": {
+    "initial_mode": "CALIBRATED",
+    "same_cycle_head_root": "root-old",
+    "next_cycle_head_root": "root-new",
+    "same_cycle_state": "COMMITTED",
+    "run_after_taf_state": "BLOCKED_FAIL_CLOSED",
+    "run_after_taf_blockers": [
+      {
+        "station_id": "RKPK",
+        "event_date": "2026-07-27",
+        "reason": "ContractError:forecast_revision_chain_empty"
+      }
+    ],
+    "run_after_taf_head": "root-new"
+  },
+  "consumer_ignores_new_taf_root": {
+    "reason": null,
+    "p1_root": "p0-p0m",
+    "new_p0m": "p0m-new-taf"
+  },
+  "consumer_equal_probability_changed_curve": {
+    "reason": null,
+    "same_probability": true,
+    "replay_selected_root": "p0-new-curve"
+  },
+  "native_taf_future_arrival_and_expired": {
+    "witness_selected": true,
+    "revision": "future-arrival"
+  },
+  "native_stage_not_stable": {
+    "taf_advance": "P0-M",
+    "same_evidence_next_compile": "P0"
+  },
+  "fresh_seated_member_covers_old_member": {
+    "selected_receipt": "2026-07-26 08:00:00+00:00",
+    "probe_says_stale": false,
+    "old_member_age_hours": 32.5
+  },
+  "soft_only_arrival_before_cadence": {
+    "new_packets": 0,
+    "head_fresh_until": "2026-07-26T09:05:00.000000Z"
+  },
+  "refused_refresh_now_reported": {
+    "packets": 0,
+    "reasons": [
+      "review_injected_refresh_refusal"
+    ]
+  }
+}

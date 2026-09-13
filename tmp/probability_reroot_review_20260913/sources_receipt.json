@@ -1,0 +1,233 @@
+{
+  "schemaVersion": 1,
+  "items": [
+    {
+      "id": "production-renewal-after-change",
+      "title": "优化后的 45 站新记录",
+      "queries": [
+        {
+          "id": "after-change-envelopes",
+          "reportingPeriod": "2026-09-13 07:01:21–08:55:31 UTC",
+          "source": {
+            "label": "概率 SSOT",
+            "tables": [
+              {
+                "name": "basket_probability_envelope"
+              },
+              {
+                "name": "calibration_forward_taf_capture"
+              }
+            ],
+            "files": [
+              {
+                "label": "postchange.py"
+              },
+              {
+                "label": "postchange_rows.json"
+              }
+            ],
+            "sql": "select checkpoint_id,station_id,event_date,stage,decision_at_utc,fresh_until_utc,posterior_version,json_extract(lineage_json,'$.p0_root_checkpoint_id') as p0_root_checkpoint_id,json_extract(lineage_json,'$.prediction_root_checkpoint_id') as prediction_root_checkpoint_id,json_extract(lineage_json,'$.forecast_revision_id') as forecast_revision_id,json_extract(lineage_json,'$.reaffirmation_of_checkpoint_id') as reaffirmation_of_checkpoint_id,json_extract(lineage_json,'$.p1_state_refresh_of_checkpoint_id') as p1_state_refresh_of_checkpoint_id,json_extract(lineage_json,'$.system_weights_json') as system_weights_json,json_extract(lineage_json,'$.run_init_utc_by_system_json') as run_init_utc_by_system_json,json_extract(lineage_json,'$.archive_query_at_utc_by_system_json') as archive_query_at_utc_by_system_json from basket_probability_envelope where station_id=? and event_date=? and state='COMMITTED' and decision_at_utc>=? and decision_at_utc<=? order by decision_at_utc",
+            "executedAt": "2026-09-13T08:55:31.458106Z",
+            "filters": [
+              "45 个 canonical 站点",
+              "事件日 2026-09-13 与 2026-09-14",
+              "state = COMMITTED"
+            ],
+            "caveats": [
+              "113 份 P0-M 全部为无校准 artifact 路径，不能证明校准分支已修复。",
+              "这是运行短窗口验收，不是预测效果实验或晋级 OOS。",
+              "独立复核同一 decision 窗口后新增 14 份补写 P1，均无复制续期；389 为首次保存的样本数，decision/created_at 不能代替真实物化时间。"
+            ]
+          },
+          "rows": [
+            {
+              "stage": "P0",
+              "new_rows": 125,
+              "relevant_violations": 0
+            },
+            {
+              "stage": "P0-M",
+              "new_rows": 113,
+              "relevant_violations": 0
+            },
+            {
+              "stage": "P1",
+              "new_rows": 389,
+              "relevant_violations": 0
+            }
+          ],
+          "columns": [
+            "stage",
+            "new_rows",
+            "relevant_violations"
+          ],
+          "evidenceFlow": [
+            {
+              "kind": "definition",
+              "title": "违规定义",
+              "body": "P0 超出所选 receipt 期限；P0-M 超出根/TAF期限或缺父根；P1 复制续期。三阶段分别计数。"
+            },
+            {
+              "kind": "validation",
+              "title": "覆盖",
+              "body": "45 站均有新写入；P1 中有 166 次状态刷新。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "remaining-calibrated-branch",
+      "title": "校准 TAF 分支仍漏掉同轮与旧 TAF 重根",
+      "queries": [
+        {
+          "id": "calibrated-reproduction",
+          "source": {
+            "label": "当前 worker 与独立边界复现",
+            "files": [
+              {
+                "label": "production_worker.py:14784–14987"
+              },
+              {
+                "label": "edge_reproductions.py"
+              },
+              {
+                "label": "edge_reproductions.json"
+              }
+            ],
+            "caveats": [
+              "使用内存数据库与合成 fixture；较新 run 的信息时序边界单独注入时钟，不能解释为已发生的生产事故。"
+            ]
+          },
+          "rows": [
+            {
+              "path": "无校准 artifact",
+              "same_cycle_root": "root-new",
+              "later_run_result": "COMMITTED"
+            },
+            {
+              "path": "匹配校准 artifact",
+              "same_cycle_root": "root-old",
+              "later_run_result": "forecast_revision_chain_empty"
+            }
+          ],
+          "columns": [
+            "path",
+            "same_cycle_root",
+            "later_run_result"
+          ],
+          "evidenceFlow": [
+            {
+              "kind": "validation",
+              "title": "确认实际分支",
+              "body": "先断言存在 taf_revision_artifact_id，再检查同轮与下一轮。当前仓库 fixture 原来未固定 station_id，可能进入无 artifact 分支。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "consumer-and-taf-asof",
+      "title": "消费根一致性与 TAF 可知时间边界",
+      "queries": [
+        {
+          "id": "root-and-asof-reproduction",
+          "source": {
+            "label": "根选择、消费闸门与 native TAF resolver",
+            "files": [
+              {
+                "label": "production_worker.py:15831–15941"
+              },
+              {
+                "label": "native_ensemble_p0.py:933"
+              },
+              {
+                "label": "edge_reproductions.json"
+              }
+            ],
+            "caveats": [
+              "隔离函数复现确认缺门，未据此推断旧概率订单已成交。",
+              "改前 536 份带 TAF witness 的 P0 未发现超前 receipt 或过期 witness；TAF 缺门是可复现风险。"
+            ]
+          },
+          "rows": [
+            {
+              "case": "P0 祖先相同，最新 P0-M 已改变",
+              "observed": "消费根闸门返回无阻断"
+            },
+            {
+              "case": "P0 桶概率相同、未来曲线变化",
+              "observed": "编译选择新根，消费根闸门返回无阻断"
+            },
+            {
+              "case": "08:00 查询 10:00 才收到且07:00到期的 TAF",
+              "observed": "native witness 仍被选中"
+            }
+          ],
+          "columns": [
+            "case",
+            "observed"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "regression-test-baseline",
+      "title": "回归测试与改前版本对照",
+      "queries": [
+        {
+          "id": "pytest-comparison",
+          "source": {
+            "label": "当前与基线测试日志",
+            "files": [
+              {
+                "label": "updated_unit.log"
+              },
+              {
+                "label": "updated_integration.log"
+              },
+              {
+                "label": "baseline_integration.log"
+              },
+              {
+                "label": "test_comparison.json"
+              }
+            ],
+            "caveats": [
+              "通过测试不代表未覆盖分支无缺陷；另有独立边界复现。"
+            ]
+          },
+          "rows": [
+            {
+              "run": "当前专项",
+              "passed": 61,
+              "failed": 0
+            },
+            {
+              "run": "当前扩大回归",
+              "passed": 185,
+              "failed": 11
+            },
+            {
+              "run": "改前相同扩大范围",
+              "passed": 177,
+              "failed": 16
+            }
+          ],
+          "columns": [
+            "run",
+            "passed",
+            "failed"
+          ],
+          "evidenceFlow": [
+            {
+              "kind": "validation",
+              "title": "失败集合对照",
+              "body": "当前 11 个失败均在改前失败集合中；新增失败 0，原失败减少 5。基线为 b86dc71c，当前概率审查版本 d6fa71a3。"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

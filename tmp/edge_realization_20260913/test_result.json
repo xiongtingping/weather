@@ -1,0 +1,13 @@
+{
+  "exit_code": 0,
+  "files": [
+    "tests/test_beta_edge_lane.py",
+    "tests/test_effective_edge_store.py",
+    "tests/test_effective_edge_p1_scope.py",
+    "tests/test_charter_130_one_hurdle.py",
+    "tests/test_charter_87_lambda_fits_every_candidate_window.py",
+    "tests/test_charter_110_lambda_band_lineage.py"
+  ],
+  "elapsed_sec": 7.389,
+  "output": "........................................................................ [ 85%]\n............                                                             [100%]\n84 passed in 6.26s"
+}

@@ -7082,16 +7082,9 @@ def collect_risk_metrics(conn: sqlite3.Connection) -> dict[str, Any]:
 # basket shares it bought makes cost-per-share equal total-money over
 # total-shares and realised-EV-per-share equal total-PnL over total-shares,
 # so their ratio IS the book's realised return -- the column cannot drift
-# from the equity curve without one of them being wrong.
-_ENTRY_WEIGHTINGS = (
-    ("chain", "逐链等权",
-     "每条已结算的链一票 · 「平均一条链长什么样」"),
-    ("stake", "按投入加权",
-     "每条链按当天投进去的钱加权 · 「钱身上发生了什么」"),
-    ("share", "按股 · 整本账",
-     "每条链按买到的篮子股数加权 · 这一列自洽："
-     "每股期望 ÷ 每股成本 就是整本账的收益率"),
-)
+# from the equity curve without one of them being wrong.  It is the only
+# column the page draws (user ruling, 2026-09-13: 不要解释，用数据对比得出结论);
+# the other two stay in the payload for the tests that pin them.
 
 
 def _entry_economics_block(
@@ -7320,10 +7313,6 @@ def collect_entry_economics(conn: sqlite3.Connection) -> dict[str, Any]:
             float(r[6]) for r in rows
             if r[4] is not None and float(r[4]) < DUST_COST_FLOOR
         ),
-        "weighting_labels": [
-            {"key": key, "label": label, "note": note}
-            for key, label, note in _ENTRY_WEIGHTINGS
-        ],
         **overall,
         "by_stage": stages,
     }
@@ -10054,6 +10043,29 @@ padding-top:10px;border-top:1px solid var(--line)}
 .mb-cat .grouptitle{margin:0 0 9px}
 .mb-pane > h2:first-child,.mb-pane > h3:first-child{margin-top:2px!important}
 .mb-pane > .lampdeck:first-child{margin-top:0;padding-top:0;border-top:0}
+/* 入场的九个数 as a data board (user ruling, 2026-09-13): a verdict line,
+   comparison cards whose bars share one zero-based scale, and the nine
+   values as plain cells. */
+.ee-top{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.ee-verdict{font-size:14px;font-weight:650;padding:3px 12px}
+.ee-cmps{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(min(100%,430px),1fr))}
+.ee-cmp{margin-bottom:0}
+.ee-h{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.ee-h .pill{margin-left:auto}
+.ee-row{display:grid;grid-template-columns:6.5em 1fr auto;gap:8px;
+align-items:center;font-size:12.5px;margin:4px 0}
+.ee-track{height:12px;background:var(--bar-bg);border-radius:6px;overflow:hidden}
+.ee-fill{display:block;height:100%;border-radius:6px}
+.ee-fill.ee-base{background:var(--muted);opacity:.45}
+.ee-fill.muted{background:var(--muted)}
+.ee-v{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.ee-d{margin-top:6px;font-size:12.5px}
+.ee-nine{display:grid;gap:6px;margin-top:8px;
+grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))}
+.ee-n{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+padding:7px 10px;background:var(--card);border:1px solid var(--line);border-radius:7px}
+.ee-n b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.ee-foot{font-size:11.5px;margin-top:6px}
 .grouptitle{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;
 margin:18px 0 0;font-weight:650}
 .grouptitle .muted{font-weight:400}
@@ -12670,343 +12682,123 @@ function consolidation(){
 // the number that gives it a meaning: the claim sat in the coverage
 // section, the hit rate in the basket section, the odds and the break-even
 // rate five thousand pixels down in the portfolio tiles, and cost per
-// share was nowhere at all.  "41% 命中" is a disaster against a 30-cent
-// basket and a gift against a 50-cent one, and the page could not say
-// which without three scrolls.
+// share was nowhere at all.
+//
+// No prose (user ruling, 2026-09-13: 不要给我解释，在数据看板上用直观的数据
+// 对比得出结论即可).  The section is a verdict, four side-by-side bars that
+// each end in a one-word result, and the nine numbers as plain values.  One
+// column throughout -- 按股 · 整本账, the one whose per-share return is the
+// book's return -- except ⑥⑦, which only exist per chain in USDC.  Each
+// verdict rests on an identity pinned in tests/test_entry_economics_section.py:
+//   赚的钱 − 亏的钱 = 盈亏          (win_count·⑥ + loss_count·⑦)
+//   每股期望 声称 = ① − ④,  实际 = ②·命中实收 − ⑧
+// The first card only says whether ② clears ④; whether that became money
+// is the second card's verdict, because a hit pays slightly under 1.00.
 function entryEconomics(){
   const E = D.entry_economics || {};
-  if(!E.available) return `<h2>入场的九个数：这一注长什么样</h2>
+  if(!E.available) return `<h2>入场的九个数</h2>
     <div class="card"><span class="dot amber"></span>
     ${h(E.reason||"账本还读不出来")}。</div>`;
-  const W = E.weightings || {};
-  const C = W.chain||{}, K = W.stake||{}, S = W.share||{};
-  const mag=(v,d=1)=>v==null?"—":(100*v).toFixed(d)+"%";
-  const sig=(v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+"%");
-  // The gap between two rates is measured in POINTS, not per cent.  Both
-  // are printed on this page and they differ by two orders of magnitude:
-  // 41.4% realised against a 41.6% break-even is a gap of 0.3 points, and
-  // "-0.3%" reads as a gap of one part in three hundred.
-  const pp=(v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+" 个百分点");
-  // The same unit without a sign, for the sentences that already carry
-  // the direction in words -- "比保本线还低 +0.3 个百分点" says it twice
-  // and disagrees with itself the second time.
-  const ppm=(v,d=1)=>v==null?"—":Math.abs(100*v).toFixed(d)+" 个百分点";
-  // Cents of a one-dollar payout.  Per-share money on this book runs from
-  // three cents to ninety-nine, and printing it as "0.089" put the two
-  // numbers a reader most needs to compare -- claimed edge and realised
-  // edge -- three decimal places apart from everything else on the page.
-  const cent=(v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+"¢");
-  // The same cents without a sign, for the two quantities in the verdict
-  // strip that are prices rather than edges -- "+30.3¢ 每股成本" reads as
-  // a gain of thirty cents, which is the opposite of what it is.
-  const centm=(v,d=1)=>v==null?"—":(100*v).toFixed(d)+"¢";
-  const num=(v,d=2)=>v==null?"—":v.toFixed(d);
-  const usd=(v,d=2)=>v==null?"—":((v>=0?"+":"")+v.toFixed(d)+" U");
-  // The three weightings ride in the tile they belong to (user ruling,
-  // 2026-09-11).  They used to be a nine-row table under the tiles, which
-  // meant every number on this section was printed twice and a reader
-  // comparing "how does ① move with the weighting" scrolled between two
-  // layouts of the same nine numbers.  One layout: the tile carries the
-  // per-chain figure large, and the same figure under all three weightings
-  // small beneath it.
-  const LAB = E.weighting_labels||[];
-  const cols = LAB.map(l => [l, W[l.key]]).filter(pair => pair[1]);
-  const SHORT = {chain:"链", stake:"投入", share:"按股"};
-  const wts = (fn, prefix) => !cols.length ? "" :
-    `<div class="wts">${prefix?`<span class="muted">${prefix}</span>`:""}${
-      cols.map(pair => `<span title="${attr(pair[0].label+"："+(pair[0].note||""))
-        }"><span class="muted">${SHORT[pair[0].key]||h(pair[0].label)}</span> ${
-        fn(pair[1])}</span>`).join("")}</div>`;
-  const tile=(label,value,note,klass,wt)=>`<div class="card">
-    <div class="muted">${label}</div>
-    <div class="big ${klass||""}">${value}</div>
-    <div class="muted" style="font-size:11.5px">${note}</div>${wt||""}</div>`;
-  const paysOne = E.hit_pays_per_share;
-  const covered = C.realised_coverage!=null && C.breakeven_hit_rate!=null
-    ? (C.realised_coverage>=C.breakeven_hit_rate?"up":"down") : "";
+  const S = (E.weightings||{}).share || {};
+  const pct = (v,d=1)=>v==null?"—":(100*v).toFixed(d)+"%";
+  const spct = (v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+"%");
+  const pts = (v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+" 点");
+  const cent = (v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+"¢");
+  const usd = (v,d=2)=>v==null?"—":((v>=0?"+":"")+v.toFixed(d)+" U");
+  const num = (v,d=2)=>v==null?"—":v.toFixed(d);
+  const tone = (v)=>v==null?"muted":(v>=0?"green":"red");
+  const text = (v)=>v==null?"":(v>=0?"up":"down");
+  // Bars on one shared scale from zero, so their lengths compare honestly.
+  const bars = (rows) => {
+    const top = Math.max(...rows.map(r => Math.abs(r[1] || 0))) || 1;
+    return rows.map(([label, v, shown, fill]) => `<div class="ee-row">
+      <span class="muted">${label}</span>
+      <span class="ee-track"><span class="ee-fill ${fill}" style="width:${
+        (100 * Math.abs(v || 0) / top).toFixed(1)}%"></span></span>
+      <span class="ee-v">${shown}</span></div>`).join("");
+  };
+  const card = (title, verdict, verdictTone, rows, foot) => `<div class="card ee-cmp">
+    <div class="ee-h"><b>${title}</b><span class="pill ${verdictTone}">${verdict}</span></div>
+    ${bars(rows)}<div class="ee-d">${foot}</div></div>`;
 
-  // Which two numbers you have to put SIDE BY SIDE before any of the nine
-  // means "earned" or "lost" (user ruling, 2026-09-13).  Nine tiles in a
-  // grid read as nine verdicts and they are not: only three PAIRS decide
-  // anything, five of the tiles are inputs to one of those pairs, and ⑤
-  // is ⑧ written upside down -- (1−c)/c, so 保本线 = 1/(1+赔率) -- which
-  // makes comparing it to anything a comparison of a number with itself.
-  // Each pair is printed with the subtraction already done, because
-  // "31.6% 对 30.3%" IS the answer and the page was making the reader do
-  // that arithmetic in their head across two rows of a grid.
-  //
-  // All three pairs are exact identities on this book, not rules of
-  // thumb, and tests/test_entry_economics_section.py pins each one so the
-  // strip cannot drift from the tiles it summarises:
-  //   ⑨实际 = ②×命中实收 − ⑧           (按股口径, to the last place)
-  //   ⑨声称 = ① − ④                     (a weighted mean is linear)
-  //   盈亏   = 链数 × (③·⑥ − (1−③)·|⑦|) (逐链口径, in USDC)
-  // The third is arithmetically independent of the first two -- it never
-  // touches cost or coverage -- so when the page is wrong about which way
-  // the book went, those two rows disagree instead of agreeing quietly.
-  const tookOut = (S.realised_coverage!=null && paysOne!=null)
-    ? S.realised_coverage*paysOne : null;
-  const perChainWin = (C.profitable_rate!=null && E.mean_win_usdc!=null)
-    ? C.profitable_rate*E.mean_win_usdc : null;
-  const lossAbs = E.mean_loss_usdc==null ? null : -E.mean_loss_usdc;
-  const perChainLoss = (C.profitable_rate!=null && lossAbs!=null)
-    ? (1-C.profitable_rate)*lossAbs : null;
-  // A book with no losing chain (or no winning one) has no third row to
-  // print, and -null is -0: without this the USDC cross-check would
-  // publish "0.00 U" as a measured average loss.
-  const perChainNet = (perChainWin!=null && perChainLoss!=null)
-    ? perChainWin-perChainLoss : null;
-  const claimedUsdc = (S.ev_per_share_claimed!=null && E.shares!=null)
-    ? S.ev_per_share_claimed*E.shares : null;
-  // "赚 +6.96 U" says it twice and the second one is a sign, not a word.
-  const money = (v, yes, no) => v==null ? "—"
-    : (v>=0?yes:no)+" "+Math.abs(v).toFixed(2)+" U";
-  const sgn = v => v==null ? "" : (v>=0?"up":"down");
-  const vrow = (what, got, beat, gap, ruling) =>
-    `<tr><td>${what}</td><td>${got}</td><td>${beat}</td><td>${gap}</td>
-     <td>${ruling}</td></tr>`;
-  // The gap column carries the same subtraction under all three
-  // weightings, because "which column am I reading" is exactly the
-  // question this strip exists to settle: a stage can and does come out
-  // positive by stake and negative by share on the same chains.
-  const realised = cols.map(pair=>pair[1].ev_per_share_realised)
-    .filter(v=>v!=null);
-  const split = realised.length>1 &&
-    (Math.min(...realised)<0) !== (Math.max(...realised)<0);
-  const verdict = `<table style="margin-top:8px"><thead><tr>
-    <th>比什么</th><th>拿到的</th><th>要盖过的</th>
-    <th>差（拿到 − 要盖过）</th><th>赚 / 亏</th></tr></thead><tbody>
-  ${vrow(
-    `<b>真赚了还是真亏了</b><br><span class="muted">事后 · 按股，
-     这是唯一闭合到收益率的一列</span>`,
-    `② 实际覆盖率 <b>${mag(S.realised_coverage)}</b> × 命中实收
-     ${num(paysOne,3)} ＝ <b>${centm(tookOut)}</b> / 股`,
-    `⑧ 每股成本 <b>${centm(S.cost_per_share)}</b><br>
-     <span class="muted">＝④ 保本命中率 ${mag(S.breakeven_hit_rate)}，
-     同一个数</span>`,
-    `<span class="big ${sgn(S.ev_per_share_realised)}"
-     >${cent(S.ev_per_share_realised)}</span>
-     <span class="muted">/股 ＝⑨实际 · × ${num(E.shares,0)} 股</span>
-     ${wts(b=>cent(b.ev_per_share_realised))}`,
-    `<b class="${sgn(E.pnl_usdc)}">${money(E.pnl_usdc,"赚","亏")}</b>
-     <br>收益率 <b class="${sgn(E.roi)}">${sig(E.roi)}</b>`)}
-  ${vrow(
-    `<b>下单那一刻以为的</b><br><span class="muted">事前 · 按股，
-     同一批链、同一列权重</span>`,
-    `① 声称覆盖率 <b>${mag(S.claimed_coverage)}</b>
-     <br><span class="muted">服务分布压在买到的那几个桶上</span>`,
-    `④ 保本命中率 <b>${mag(S.breakeven_hit_rate)}</b>
-     <br><span class="muted">还是 ⑧，满赔 1.00 所以价＝保本线</span>`,
-    `<span class="big ${sgn(S.ev_per_share_claimed)}"
-     >${cent(S.ev_per_share_claimed)}</span>
-     <span class="muted">/股 ＝⑨声称 · × ${num(E.shares,0)} 股</span>
-     ${wts(b=>cent(b.ev_per_share_claimed))}`,
-    `<b class="${sgn(claimedUsdc)}">${money(claimedUsdc,"以为赚","以为亏")}</b>
-     <br><span class="muted">实际只有 ${usd(E.pnl_usdc,2)}</span>`)}
-  ${vrow(
-    `<b>换 USDC 再算一遍</b><br><span class="muted">逐链等权 ·
-     不碰成本也不碰覆盖率的另一条路</span>`,
-    `③ 盈利率 <b>${mag(C.profitable_rate)}</b> × ⑥ 平均盈利
-     ${num(E.mean_win_usdc,2)} ＝ <b>${num(perChainWin,3)} U</b> / 链`,
-    `(1−③) <b>${mag(1-C.profitable_rate)}</b> × ⑦ 平均亏损
-     ${num(lossAbs,2)} ＝ <b>${num(perChainLoss,3)} U</b> / 链`,
-    `<span class="big ${sgn(perChainNet)}">${usd(perChainNet,3)}</span>
-     <span class="muted">/链 · × ${E.chains} 条</span>`,
-    `<b class="${sgn(E.pnl_usdc)}">${money(E.pnl_usdc,"赚","亏")}</b>
-     <br><span class="muted">跟第一行必须是同一个数</span>`)}
-  </tbody></table>`;
-  const tiles = `<div class="grid g3">
-    ${tile("① 入场服务概率 · 平均声称覆盖率", mag(C.claimed_coverage),
-      "下单那一刻，服务分布落在<b>买到的那几个桶</b>上的概率之和",
-      "", wts(b=>mag(b.claimed_coverage)))}
-    ${tile("② 实际覆盖率", mag(C.realised_coverage),
-      "真值落进<b>同一批桶</b>的比例 · 实际÷声称 "+
-      num(C.realisation_ratio,2)+"× · 若按<b>选中</b>（含挂了没买到的腿）"+
-      "则是 "+mag(E.intended_coverage), covered,
-      wts(b=>mag(b.realised_coverage)))}
-    ${tile("③ 整篮真正盈利率", mag(C.profitable_rate),
-      E.win_count+" 条赚 / "+E.loss_count+" 条亏"+
-      (E.flat_count?" / "+E.flat_count+" 条打平":"")+
-      " · 命中却没赚 "+E.hit_not_profitable+" 条、没命中却赚了 "+
-      E.profitable_not_hit+" 条",
-      C.profitable_rate>=C.breakeven_hit_rate?"up":"down",
-      wts(b=>mag(b.profitable_rate)))}
+  // ① 命中率 vs 保本线
+  const margin = S.margin_over_breakeven;
+  const hitCard = card("实际命中 vs 保本线",
+    margin==null ? "—" : (margin>=0 ? "盖过保本线" : "低于保本线"), tone(margin),
+    [["实际命中", S.realised_coverage, pct(S.realised_coverage), tone(margin)],
+     ["保本线", S.breakeven_hit_rate, pct(S.breakeven_hit_rate), "ee-base"]],
+    `差 <b class="${text(margin)}">${pts(margin)}</b>`);
+
+  // ② 赚的钱 vs 亏的钱
+  const gains = (E.win_count||0) * (E.mean_win_usdc||0);
+  const losses = (E.loss_count||0) * Math.abs(E.mean_loss_usdc||0);
+  const net = gains - losses;
+  const moneyCard = card("赚的钱 vs 亏的钱", net>=0 ? "赚" : "亏", tone(net),
+    [[`赢 ${E.win_count||0} 条`, gains, num(gains)+" U", "green"],
+     [`亏 ${E.loss_count||0} 条`, losses, num(losses)+" U", "red"]],
+    `净 <b class="${text(net)}">${usd(net)}</b>${
+      E.flat_count ? ` <span class="muted">· 平 ${E.flat_count} 条</span>` : ""}`);
+
+  // ③ 每股期望：声称 vs 实际
+  const said = S.ev_per_share_claimed, got = S.ev_per_share_realised;
+  const kept = said>0 && got!=null ? got/said : null;
+  const edgeVerdict = said==null||got==null ? "—"
+    : said<=0 ? "声称不为正"
+    : got>=said ? "实际 ≥ 声称" : `兑现 ${pct(kept,0)}`;
+  const edgeTone = got==null ? "muted" : got<0 ? "red" : (kept!=null && kept<1 ? "amber" : "green");
+  const edgeCard = card("每股期望：声称 vs 实际", edgeVerdict, edgeTone,
+    [["下单时声称", said, cent(said), "ee-base"],
+     ["结算后实际", got, cent(got), tone(got)]],
+    `覆盖率 声称 <b>${pct(S.claimed_coverage)}</b> → 实际 <b>${pct(S.realised_coverage)}</b>`);
+
+  // ④ 分阶段
+  const stages = (E.by_stage||[]).filter(s => s.chains);
+  const up = stages.filter(s => (s.pnl_usdc||0) >= 0).map(s => s.stage);
+  const down = stages.filter(s => (s.pnl_usdc||0) < 0);
+  const stageVerdict = !stages.length ? "—"
+    : !down.length ? "各阶段都赚"
+    : !up.length ? "各阶段都亏"
+    : `赚在 ${up.join("、")}`;
+  const stageCard = !stages.length ? "" : card("分阶段收益率", stageVerdict,
+    !down.length ? "green" : !up.length ? "red" : "amber",
+    stages.map(s => [`${h(s.stage)} · ${s.chains} 链`, s.roi,
+      `${spct(s.roi)} <span class="muted">${usd(s.pnl_usdc,1)}</span>`, tone(s.roi)]),
+    down.length
+      ? `亏在 ${down.map(s => `${h(s.stage)} <b class="down">${usd(s.pnl_usdc,1)}</b>`).join(" · ")}`
+      : `合计 <b class="${text(E.pnl_usdc)}">${usd(E.pnl_usdc,1)}</b>`);
+
+  const nine = [
+    ["① 声称覆盖率", pct(S.claimed_coverage), ""],
+    ["② 实际覆盖率", pct(S.realised_coverage), text(margin)],
+    ["③ 盈利率", pct(S.profitable_rate),
+      S.profitable_rate==null||S.breakeven_hit_rate==null ? ""
+        : text(S.profitable_rate - S.breakeven_hit_rate)],
+    ["④ 保本命中率", pct(S.breakeven_hit_rate), ""],
+    ["⑤ 净赔率", num(S.net_odds)+"x", ""],
+    ["⑥ 平均盈利 / 链", usd(E.mean_win_usdc), "up"],
+    ["⑦ 平均亏损 / 链", usd(E.mean_loss_usdc), "down"],
+    ["⑧ 每股成本", S.cost_per_share==null ? "—" : (100*S.cost_per_share).toFixed(1)+"¢", ""],
+    ["⑨ 每股期望 · 实际", cent(got), text(got)],
+  ].map(([label, value, cls]) => `<div class="ee-n"><span class="muted">${label}</span>
+    <b class="${cls}">${value}</b></div>`).join("");
+
+  const excluded = [
+    E.dust_excluded ? `不含 ${E.dust_excluded} 条整篮成本 &lt; ${
+      (100*(E.dust_cost_floor||0.01)).toFixed(0)}¢ 的链（${usd(E.dust_excluded_pnl_usdc)}）` : "",
+    E.cost_missing ? `不含 ${E.cost_missing} 行缺成本` : "",
+  ].filter(Boolean).join(" · ");
+
+  return `<h2>入场的九个数</h2>
+  <div class="card ee-top">
+    <span class="pill ${tone(E.pnl_usdc)} ee-verdict">${E.pnl_usdc>=0 ? "赚" : "亏"}</span>
+    <span class="big ${text(E.pnl_usdc)}">${usd(E.pnl_usdc)}</span>
+    <span>收益率 <b class="${text(E.roi)}">${spct(E.roi)}</b></span>
+    <span class="muted">${E.chains} 条链 · 投入 ${num(E.stake_usdc)} U · ${
+      h(E.first_day)} → ${h(E.last_day)}</span>
   </div>
-  <div class="grid g3" style="margin-top:10px">
-    ${tile("④ 盈亏平衡命中率", mag(C.breakeven_hit_rate),
-      "满赔是 1.00，所以保本线<b>就等于每股成本</b>（第 ⑧ 格同一个数） · "+
-      "实际覆盖率减保本线 "+pp(C.margin_over_breakeven),
-      C.margin_over_breakeven>=0?"up":"down",
-      wts(b=>mag(b.breakeven_hit_rate))+wts(b=>pp(b.margin_over_breakeven),"实际减保本"))}
-    ${tile("⑤ 净赔率", num(C.net_odds,2)+"x",
-      "(1−成本)÷成本：赢一次，每股净赚这么多",
-      "", wts(b=>num(b.net_odds,2)+"x"))}
-    ${tile("⑥ 平均盈利", usd(E.mean_win_usdc),
-      "每条<b>赚钱</b>的链。USDC 口径没有加权版本，加权只在每股口径上成立",
-      "up", wts(b=>cent(b.mean_win_per_share),"每股"))}
-  </div>
-  <div class="grid g3" style="margin-top:10px">
-    ${tile("⑦ 平均亏损", usd(E.mean_loss_usdc),
-      "每条<b>亏钱</b>的链。USDC 口径没有加权版本，加权只在每股口径上成立",
-      "down", wts(b=>cent(b.mean_loss_per_share),"每股"))}
-    ${tile("⑧ 每股平均成本", num(C.cost_per_share,3),
-      "命中时一股实收 "+num(paysOne,3)+"（保本线就是这个数）",
-      "", wts(b=>num(b.cost_per_share,3)))}
-    ${tile("⑨ 每股平均期望", cent(C.ev_per_share_claimed),
-      "声称口径＝覆盖率−成本 · <b>整本账实际每股 "+
-      cent(S.ev_per_share_realised)+"</b>",
-      C.ev_per_share_claimed>=0?"up":"down",
-      wts(b=>cent(b.ev_per_share_claimed),"声称")
-      +wts(b=>cent(b.ev_per_share_realised),"实际兑现"))}
-  </div>`;
-
-  // What the three short words under each tile mean, said once.
-  const table = !cols.length ? "" :
-    `<div class="muted" style="font-size:11.5px;margin-top:8px">
-    每个格子下面那行是同一个数的三种口径：${cols.map(pair =>
-      `<b>${h(SHORT[pair[0].key]||pair[0].label)}</b>＝${h(pair[0].label)}（${
-        h(pair[0].note)}）`).join("；")}。</div>`;
-
-  const st = (E.by_stage||[]);
-  const stageTable = !st.length ? "" : `<div class="scroll" style="margin-top:12px">
-  <table><thead><tr><th>阶段</th><th>链数</th><th>声称</th><th>实际</th>
-    <th>盈利率</th><th>保本线</th><th>赔率</th><th>每股成本</th>
-    <th>每股期望</th><th>每股兑现</th><th>投入</th><th>盈亏</th><th>收益率</th>
-  </tr></thead><tbody>${st.map(s=>{
-    const b=(s.weightings||{}).chain||{}, sh=(s.weightings||{}).share||{};
-    return `<tr><td>${h(s.stage)}</td><td class="mono">${s.chains}</td>
-    <td class="mono">${mag(b.claimed_coverage)}</td>
-    <td class="mono">${mag(b.realised_coverage)}</td>
-    <td class="mono">${mag(b.profitable_rate)}</td>
-    <td class="mono">${mag(b.breakeven_hit_rate)}</td>
-    <td class="mono">${num(b.net_odds,2)}x</td>
-    <td class="mono">${num(b.cost_per_share,3)}</td>
-    <td class="mono">${cent(b.ev_per_share_claimed)}</td>
-    <td class="mono ${sh.ev_per_share_realised>=0?"up":"down"}">
-      ${cent(sh.ev_per_share_realised)}</td>
-    <td class="mono">${num(s.stake_usdc,1)}</td>
-    <td class="mono ${s.pnl_usdc>=0?"up":"down"}">${usd(s.pnl_usdc,1)}</td>
-    <td class="mono ${s.roi>=0?"up":"down"}">${sig(s.roi)}</td></tr>`;
-  }).join("")}</tbody></table></div>`;
-
-  // The payoff-ratio reading of the third row.  Same inequality, turned
-  // inside out: ③·⑥ > (1−③)·|⑦| is ⑥/|⑦| > (1−③)/③, which is the form
-  // a reader who thinks in "赢一次赔几次" can check without a calculator.
-  const payoffGot = (E.mean_win_usdc!=null && E.mean_loss_usdc)
-    ? E.mean_win_usdc/(-E.mean_loss_usdc) : null;
-  const payoffNeed = C.profitable_rate>0
-    ? (1-C.profitable_rate)/C.profitable_rate : null;
-
-  return `<h2>入场的九个数：这一注长什么样</h2>
-  <div style="margin-top:6px"><b>九个数里没有一个单独能判赚亏，能判的是三对。</b>
-  每一行都是「左边这个数盖过右边那个就是赚，盖不过就是亏」。
-  第一行是账本身，第二行是下单时以为的账，第三行换一套完全不同的数
-  把第一行验一遍——三行用掉了 ①②③④⑥⑦⑧⑨，
-  剩下的 ⑤ 净赔率不参与，因为它就是 ⑧ 倒过来写。</div>
-  ${verdict}
-  <div class="why"><b>这张表怎么读，以及哪几个数不该参与比较。</b>
-  ㈠ <b>⑤ 净赔率不参与任何比较</b>：⑤＝(1−⑧)÷⑧，反过来 ④＝1÷(1+⑤)。
-  ④、⑧、⑤ 是同一个量的三种写法（今天分别是
-  ${mag(S.breakeven_hit_rate)}、${centm(S.cost_per_share)}、
-  ${num(S.net_odds,2)}x），拿 ⑤ 去跟谁比都是跟自己比。
-  ㈡ <b>① 和 ② 之间那一刀是诊断，不是判决</b>：实际覆盖率比声称
-  ${S.realised_coverage>=S.claimed_coverage?"高":"低"}
-  ${ppm(S.realised_coverage-S.claimed_coverage)}，兑现比
-  ${num(S.realisation_ratio,2)}×（按股；下面 ② 格子里那个
-  ${num(C.realisation_ratio,2)}× 是逐链口径，不是同一列）。
-  换成钱就是 ⑨声称 ${cent(S.ev_per_share_claimed)} 减 ⑨实际
-  ${cent(S.ev_per_share_realised)}，相差
-  <b>${centm(S.ev_per_share_claimed-S.ev_per_share_realised)}</b>/股，
-  × ${num(E.shares,0)} 股 ＝
-  <b>${num(Math.abs(claimedUsdc-E.pnl_usdc),2)} U</b>
-  ${claimedUsdc>=E.pnl_usdc?"没兑现":"多兑现"}。
-  这一条解释的是第二行为什么不等于第一行，它自己判不出赚亏。
-  ㈢ <b>第三行还有一个等价写法</b>：③·⑥ &gt; (1−③)·|⑦| 就是
-  盈亏比 ⑥÷|⑦| ＝ <b>${num(payoffGot,2)}</b> 要大于保本要求
-  (1−③)÷③ ＝ <b>${num(payoffNeed,2)}</b>——
-  ${payoffGot>=payoffNeed?"今天够了":"今天不够"}。
-  ㈣ <b>别把「选中」${mag(E.intended_coverage)} 放进任何一对</b>：
-  它数的是目标函数选中的腿（含挂了没成交的），跟 ①②⑧ 不是同一批桶，
-  放进去会把兑现比抬到 1 附近，读成"模型完美校准"。
-  ${split
-    ?`㈤ <b>今天这三列给的是相反的答案</b>：⑨实际按${cols.map(pair=>
-        `${SHORT[pair[0].key]||pair[0].label} ${cent(pair[1].ev_per_share_realised)}`
-      ).join("、")}。<b>以「按股」为准</b>——只有它 ÷ 每股成本
-      等于账面收益率 ${sig(E.roi)}，另外两列本来就不闭合。`
-    :`㈤ 今天三列同号（⑨实际按${cols.map(pair=>
-        `${SHORT[pair[0].key]||pair[0].label} ${cent(pair[1].ev_per_share_realised)}`
-      ).join("、")}），但它们可以分家：真分家时<b>以「按股」为准</b>，
-      只有它 ÷ 每股成本等于账面收益率 ${sig(E.roi)}。
-      下面的分阶段表按同一个口径印了「每股兑现」和「收益率」。`}</div>
-  <p class="sub">${E.chains} 条已结算的链（一条链＝一个站日，
-  ${h(E.first_day)} → ${h(E.last_day)}），格子里是<b>逐链等权</b>口径。
-  共 ${E.settled_rows} 行结算，按账本自己的 <span class="mono">chain_credible</span>
-  规则排除整篮成本不足 ${(100*(E.dust_cost_floor||0.01)).toFixed(0)} 分的
-  ${E.dust_excluded} 条（合计只投入 ${num(E.dust_excluded_stake_usdc,2)} U，
-  留着会把逐链平均票价从 0.428 拉到 0.416）——<b>与「每日统计」「篮子命中率」同一条底线</b>。
-  ${E.cost_missing?`另有 ${E.cost_missing} 行没记篮子成本，也已排除。`:""}</p>
-  <div class="why"><b>①②必须成对读，而且量的是同一批桶。</b>
-  「声称覆盖率」是服务分布在<b>最终持有的那几个桶</b>上的概率之和，
-  「实际覆盖率」就是真值有没有落进这同一批桶——所以两者可以直接相除，
-  ${mag(C.realised_coverage)} ÷ ${mag(C.claimed_coverage)} =
-  <b>${num(C.realisation_ratio,2)}×</b>。
-  旁边那个 ${mag(E.intended_coverage)} 是<b>另一个集合</b>：目标函数选中的腿，
-  包括挂了单市场没卖给我们的。两者差 ${
-  E.intended_coverage!=null&&C.realised_coverage!=null
-  ?pp(E.intended_coverage-C.realised_coverage):"—"}，
-  差的全是成交，不是模型——别拿它跟声称覆盖率相除。</div>
-  ${tiles}
-  ${table}
-  <div class="why" style="margin-top:12px"><b>白话版。</b>
-  平均一条链花 <b>${num(C.cost_per_share,3)}</b> 买一份「猜中就赔 1.00」的票，
-  所以不赚不亏得猜中 <b>${mag(C.breakeven_hit_rate)}</b>，
-  猜中一次净赚 ${num(C.net_odds,2)} 倍。
-  模型下单时说自己能猜中 <b>${mag(C.claimed_coverage)}</b>，
-  真猜中了 <b>${mag(C.realised_coverage)}</b>——
-  ${C.margin_over_breakeven>=0
-    ?`比保本线高 ${ppm(C.margin_over_breakeven)}`
-    :`<b>比保本线还低 ${ppm(C.margin_over_breakeven)}</b>`}。
-  换成一股的账——<b>这里起换成「按股 · 整本账」那一列</b>，
-  上面几句是逐链的，两列不能混着减：声称每股赚
-  <b>${cent(S.ev_per_share_claimed)}</b>，实际每股
-  <b>${cent(S.ev_per_share_realised)}</b>，少兑现
-  <b>${centm(S.ev_per_share_claimed-S.ev_per_share_realised)}</b>。
-  拿<b>实际</b>那个 ${cent(S.ev_per_share_realised)} 乘上
-  ${num(E.shares,0)} 股，就是账面上的
-  ${usd(E.pnl_usdc,1)}（投入 ${num(E.stake_usdc,1)} U，收益率
-  <b class="${E.roi>=0?"up":"down"}">${sig(E.roi)}</b>）——
-  能乘的是实际那一个，差价乘股数不是任何东西。
-  ${E.dust_excluded?`<br><span class="muted">「组合风险指标」的权益曲线印的是
-  ${usd(E.pnl_usdc+E.dust_excluded_pnl_usdc,2)}，不是这个数：那条曲线是
-  <b>整个账户</b>，含上面排除的 ${E.dust_excluded} 条虚价链
-  （它们合计 ${usd(E.dust_excluded_pnl_usdc,2)}）——
-  ${num(E.pnl_usdc,2)} 加 ${num(E.dust_excluded_pnl_usdc,2)} 就是
-  ${num(E.pnl_usdc+E.dust_excluded_pnl_usdc,2)}。本节与「每日统计」
-  「覆盖 · 价格 · EV」「篮子命中率」同口径。</span>`:""}</div>
-  ${stageTable}
-  <div class="why" style="margin-top:12px"><b>三个口径为什么都要印。</b>
-  同一批链，声称覆盖率按链数是 ${mag(C.claimed_coverage)}、
-  按投入是 ${mag(K.claimed_coverage)}、按股是 ${mag(S.claimed_coverage)}——
-  最宽的两个差 ${ppm(Math.max(C.claimed_coverage,K.claimed_coverage,S.claimed_coverage)
-      -Math.min(C.claimed_coverage,K.claimed_coverage,S.claimed_coverage))}，
-  任何一个单独拿出来都会被当成结论。<b>「按股·整本账」那一列是闭合的</b>：
-  每股实际兑现 ${cent(S.ev_per_share_realised)} ÷ 每股成本
-  ${num(S.cost_per_share,3)} = ${sig(E.roi)}，正好是整本账的收益率，
-  所以这一列跟权益曲线不可能对不上。</div>
-  <div class="why" style="margin-top:10px"><b>两个容易读错的地方。</b>
-  ㈠ <b>逐链平均赔率是个假数</b>：(1−c)/c 是凸的，这本账里有
-  ${E.cheap_chains} 条链的篮子便宜过 5 分（最贵的一条赔率
-  ${num(E.net_odds_max,0)}x），直接对每条链的赔率取平均会得到
-  <b>${num(E.net_odds_chain_naive,1)}x</b>——而这本账的钱实际只买到
-  ${num(S.net_odds,2)}x。上面第 ⑤ 格印的是<b>由平均成本反推</b>的赔率，
-  不是逐链赔率的平均。
-  ㈡ <b>「每股」是按声称赔付归一的篮子股</b>（＝投入 ÷ 全篮成本），
-  腿的份额一样时它就是合约张数、命中赔满 1.00；腿不一样时命中只赔
-  ${num(paysOne,3)}，所以第 ⑨ 格的实际值天生比"覆盖率−成本"略低一点。
-  ${E.hit_not_profitable===0&&E.profitable_not_hit===0
-    ?`㈢ 目前 <b>②实际覆盖率和③盈利率是同一个数</b>——因为每一篮都比 1.00 便宜，
-       命中必赚、没中必亏。这两格分开印是为了那一天它们分家时看得见：
-       篮子成本一旦 ≥1.00，命中也是亏。`:""}</div>`;
+  <div class="ee-cmps">${hitCard}${moneyCard}${edgeCard}${stageCard}</div>
+  <div class="ee-nine">${nine}</div>
+  <div class="muted ee-foot">按股 · 整本账${excluded ? " · " + excluded : ""}</div>`;
 }
 
 
@@ -13233,7 +13025,7 @@ function riskMetrics(){
   <b>${num((1-R.cost_mean)/R.cost_mean,2)}</b>，不是 ${num(R.odds_mean,2)}。
   两个数各自没算错，是<b>两种加权</b>：${num(R.cost_mean,3)} 是按投入加权的票价，
   而 ${num(R.odds_mean,2)}x 恒等于 Σ投入÷Σ股 那个票价反推出来的赔率。
-  同名数只留一处，就在同一类的<a href="#sec-entry">「入场的九个数」页签</a>，三个口径并排印。
+  同名数只留一处，就在同一类的<a href="#sec-entry">「入场的九个数」页签</a>。
   <br><b>还有一件这里读不出来的事</b>：保本 ${mag(R.breakeven_win_rate)}
   对实际 ${mag(R.realised_win_rate_weighted)}，按这一对推出来的收益率是
   ${pct(R.realised_win_rate_weighted/R.breakeven_win_rate-1,1)}，

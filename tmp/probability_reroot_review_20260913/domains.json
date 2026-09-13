@@ -1,0 +1,2407 @@
+[
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v2"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v2"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v2"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v2"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v2"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v2"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v4"
+  },
+  {
+    "stage": "P0",
+    "state": "COMMITTED",
+    "posterior_version": "calibrated_native_cross_ensemble_p0_v3"
+  },
+  {
+    "stage": "P0-M",
+    "state": "COMMITTED",
+    "posterior_version": "p0m_taf_observed_v4"
+  },
+  {
+    "stage": "P1",
+    "state": "COMMITTED",
+    "posterior_version": "p1_metar_trajectory_target_v9"
+  }
+]

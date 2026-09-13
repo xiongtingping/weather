@@ -1,0 +1,636 @@
+
+ 
+     
+         
+ ASOS 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+
+         
+         
+         
+         
+         
+         
+
+                                                                
+
+
+         
+         
+
+         
+         
+         
+         
+         	
+         
+         
+         
+         
+         
+         
+
+        
+     
+
+     
+         
+     
+         
+         
+         
+     
+     
+ 
+ 
+     
+ 
+ 
+    var domains = {
+        weather: "https://www.weather.gov",
+        forecast: "https://forecast.weather.gov",
+        airquality: "https://airquality.weather.gov",
+        aviation: "https://aviationweather.gov",
+        water: "https://water.weather.gov",
+        graphical: "https://graphical.weather.gov",
+        api: "https://api.weather.gov",
+        radar: "https://radar.weather.gov",
+        esriGeocode: "https://geocode.arcgis.com"
+    }
+ 
+
+
+         
+
+             
+     
+         
+             
+                 
+                    function goBack() {
+                        if (document.referrer.toLowerCase().indexOf("weather.gov") != -1) {
+                            history.back();
+                        } else {
+                            document.location.href = "https://www.weather.gov";
+                        }
+                    }
+                 
+                 
+                     HOME 
+                 
+             
+                             
+                     
+                         FORECAST 
+                     
+                                                                         
+                                 
+                                                                             
+                                             Local 
+                                         
+                                                                             
+                                             Graphical 
+                                         
+                                                                             
+                                             Aviation 
+                                         
+                                                                             
+                                             Marine 
+                                         
+                                                                             
+                                             Rivers and Lakes 
+                                         
+                                                                             
+                                             Hurricanes 
+                                         
+                                                                             
+                                             Severe Weather 
+                                         
+                                                                             
+                                             Fire Weather 
+                                         
+                                                                             
+                                             Sunrise/Sunset 
+                                         
+                                                                             
+                                             Long Range Forecasts 
+                                         
+                                                                             
+                                             Climate Prediction 
+                                         
+                                                                             
+                                             Space Weather 
+                                         
+                                                                     
+                             
+                                                             
+                             
+                     
+                         PAST WEATHER 
+                     
+                                                                         
+                                 
+                                                                             
+                                             Past Weather 
+                                         
+                                                                             
+                                             Astronomical Data 
+                                         
+                                                                             
+                                             Certified Weather Data 
+                                         
+                                                                     
+                             
+                                                             
+                             
+                     
+                         SAFETY 
+                     
+                                                                                 
+                             
+                     
+                         INFORMATION 
+                     
+                                                                         
+                                 
+                                                                             
+                                             Wireless Emergency Alerts 
+                                         
+                                                                             
+                                             Weather-Ready Nation 
+                                         
+                                                                             
+                                             Brochures 
+                                         
+                                                                             
+                                             Cooperative Observers 
+                                         
+                                                                             
+                                             Daily Briefing 
+                                         
+                                                                             
+                                             Damage/Fatality/Injury Statistics 
+                                         
+                                                                             
+                                             Forecast Models 
+                                         
+                                                                             
+                                             GIS Data Portal 
+                                         
+                                                                             
+                                             NOAA Weather Radio 
+                                         
+                                                                             
+                                             Publications 
+                                         
+                                                                             
+                                             SKYWARN Storm Spotters 
+                                         
+                                                                             
+                                             StormReady 
+                                         
+                                                                             
+                                             TsunamiReady 
+                                         
+                                                                             
+                                             Service Change Notices 
+                                         
+                                                                     
+                             
+                                                             
+                             
+                     
+                         EDUCATION 
+                     
+                                                                                 
+                             
+                     
+                         NEWS 
+                     
+                                                                                 
+                             
+                     
+                         SEARCH 
+                     
+                                             
+                             
+                             
+                                 
+                                     
+                                         
+                                         Search For 
+                                         
+                                         
+                                         
+                                             
+                                             NWS 
+                                             
+                                             All NOAA 
+                                         
+                                     
+                                 
+                             
+                             
+                         
+                                     
+                             
+                     
+                         ABOUT 
+                     
+                                                                         
+                                 
+                                                                             
+                                             About NWS 
+                                         
+                                                                             
+                                             Organization 
+                                         
+                                                                             
+                                             For NWS Employees 
+                                         
+                                                                             
+                                             National Centers 
+                                         
+                                                                             
+                                             Careers 
+                                         
+                                                                             
+                                             Contact Us 
+                                         
+                                                                             
+                                             Glossary 
+                                         
+                                                                             
+                                             Social Media 
+                                         
+                                                                             
+                                             NWS Transformation 
+                                         
+                                                                     
+                             
+                                                             
+                     
+     
+ 
+
+
+             
+
+                
+                
+
+                 
+                     
+
+                         
+
+                             
+                         
+     
+         ASOS 
+         National Program 
+     
+     
+         Automated Surface Observing System: 
+         
+             Weather.gov 
+                             > ASOS
+                     
+     
+ 
+
+                         
+     
+         
+                             
+                     
+                         ASOS 
+                     
+                                     
+                             
+                     
+                         Information Reporting  
+                     
+                                             
+                             
+                                                                     
+                                          Sensor Suite Design 
+                                     
+                                                                     
+                                          What' a METAR? 
+                                     
+                                                                     
+                                          Problem with ASOS form 
+                                     
+                                                             
+                         
+                                     
+                             
+                     
+                         Useful Links 
+                     
+                                             
+                             
+                                                                     
+                                          Photo Gallery  
+                                     
+                                                                     
+                                          Current Events  
+                                     
+                                                                     
+                                          News Archive 
+                                     
+                                                             
+                         
+                                     
+                     
+     
+ 
+
+                         
+     /*CSS STYLE SHEET COMMENT*/
+table {
+border-spacing: 30px;
+}
+h1   {
+  color: white;
+  text-align: center;
+  font-size: 34px;
+}
+
+h2  {
+  color: white;
+  text-align: center;
+  font-size: 30px;
+}
+h3  {
+  color: black;
+  text-align: center;
+  font-size: 22px;
+  font-weight: bold;
+}
+p, ul, li    {
+  font-family: Arial, Verdana, and Helvetica;
+  color: black;
+  text-align: justify;
+  font-size: 14px;
+  font-weight: bold;
+}
+td {
+  font-family: Arial, Verdana, and Helvetica;
+  color: white;
+  
+  font-size: 14px;
+  font-weight: bold;
+  padding: 5px;
+}
+.city {
+  background-color: #003087;
+  color: white;
+  border: 2px solid black;
+  margin: 20px;
+  padding: 20px;
+}
+.city h1 {
+  color: white;
+  text-align: center;
+  font-size: 40px;
+}
+.city h2 {
+  color: white;
+  text-align: center;
+  font-size: 30px;
+}
+.rail img {
+  display: block;
+  margin: auto;
+  width: 70%;
+}
+
+.btn {
+  text-decoration: none;
+  padding: 0.5rem;
+  border: 1px solid #333333;
+  border-radius: 25px;
+  background: #709493;
+  color: white;
+
+}
+.subbhead {
+  background-color: #dee2fd;
+  color: white;
+  border: 2px solid black;
+  margin: 20px;
+  padding: 20px;
+  border-radius: 5px;
+}
+
+.subbhead h2 {
+  color: black;
+  text-align: center;
+  font-size: 20px;
+    
+}
+
+
+.default {background-color: #e7e7e7; color: black;} /* Gray */ 
+.default:hover {background: #ddd;}
+
+.text {
+  background-color: pink;
+  color: black;
+  border: 2px solid black;
+  margin: 20px;
+  padding: 20px;
+}
+
+.text p {
+  color: black;
+  text-align: justify;
+  font-size: 14px;
+}
+
+
+a:visited {
+  color: orange;
+  padding: 5px 5px; 
+  border: 1px solid #1F83FF; /* Example border color */
+  background-color: #0085CA; /* Example background color */
+  font-size: 14px;
+  text-decoration: none;
+  font-weight: bold;
+  border-radius: 10px; /* Example rounded corners */
+  cursor: pointer;
+  cell-spacing: 30px;
+}
+
+td a:link {
+  color: white;
+  padding: 5px 5px; 
+  border: 1px solid #1F83FF; /* Example border color */
+  background-color: #0085CA; /* Example background color */
+  font-size: 14px;
+  text-decoration: none;
+  font-weight: bold;
+  border-radius: 10px; /* Example rounded corners */
+  cursor: pointer;
+
+}
+td a:hover {
+  color: hotpink;
+  padding: 5px 5px; 
+  border: 1px solid #1F83FF; /* Example border color */
+  background-color: #0085CA; /* Example background color */
+  font-size: 14px;
+  text-decoration: none;
+  font-weight: bold;
+  border-radius: 10px; /* Example rounded corners */
+  cursor: pointer;
+}
+td a {
+text-decoration: none;
+}
+ 
+ 
+ Welcome to ASOS 
+ 
+
+ 
+ 
+ An Automated Surface Observing System (ASOS) station at Sterling, VA 
+(May 2025) 
+ 
+
+ 
+The Automated Surface Observing System (ASOS) is one of the major programs of the United States' surface weather observation network. A collaborative effort of the National Weather Service (NWS), the Federal Aviation Administration (FAA), and the Department of Defense (DOD), these automated stations consist of a suite of sensors and instruments that work 24/7 to provide continuous, real-time weather data. Primarily located at airports, ASOS units measure and report critical information such as wind speed and direction, temperature, precipitation type, and visibility, which are essential for safe and efficient aviation, as well as for public weather forecasting and climate research. 
+ 
+ Without ASOS observations, flight operations could be delayed, air traffic might be unable to land or take off, and subsequent effects could prevent passengers and cargo from reaching their destinations on schedule, leading to economic repercussions. Surface weather observation is indispensable for day-to-day operations at these locations. By providing critical aviation weather parameters directly at airport runway touchdown zones, ASOS ensures that the information is available where it matters most. 
+
+   
+
+   
+
+ 
+ ASOS Locations 
+ 
+
+ 
+
+ There are around 950 Automated Surface Observing System (ASOS) sites across the United States. Each site is specifically configured to meet the needs of its location, providing crucial, real-time weather information. 
+
+ On the right is a map showing the locations of these ASOS sites. By clicking on any site, you can view more detailed information, including its precise location and a list of the weather-monitoring equipment installed there. 
+
+   
+
+   
+
+   
+
+ 
+ What ASOS Reports 
+ 
+
+ 
+	 Sky condition: cloud height and amount (clear, scattered, broken, overcast) up to 12,000 feet. 
+	 Prevailing Visibility and obstructions to vision from zero to 10 miles. 
+	 Present weather information: type and intensity for rain, snow, and freezing rain. 
+	 Pressure: sea-level pressure, altimeter setting. 
+	 Ambient air temperature, dew point temperature. 
+	 Wind: direction, speed and character (gusts, squalls). 
+	 Precipitation accumulation, both liquid and frozen water equivalent. 
+	 Select significant remarks appended to the end of the observation that include variable cloud height, variable visibility, precipitation beginning/ending times, rapid pressure changes, pressure change tendency, wind shift, and peak wind. 
+	 Detects significant meteorological changes and issues hourly and special observations whenever weather criteria thresholds are met. 
+	 Automatically provides computer-generated voice observations to aircraft in the vicinity via FAA ground-to-air radio frequencies. These messages are also accessible through a telephone dial-in line. 
+	 Observes, formats, archives, and transmits observations automatically, issuing special reports when conditions exceed the weather element criteria outlined in FAA JO 7900.5E. 
+ 
+
+   
+
+ 
+                        
+                         
+ 
+ 
+ 
+ 
+                         
+  
+                     
+                 
+
+                 
+                     
+                    
+                    
+                 
+
+                 
+                    
+                 
+
+
+                 
+
+             
+
+         
+
+         
+         
+            
+         
+
+         
+         
+             
+     
+
+         
+             
+         
+
+         
+             
+                 US Dept of Commerce 
+                 National Oceanic and Atmospheric Administration 
+                 National Weather Service 
+                ASOS                 1325 East West Highway 
+                                Silver Spring, MD 20910
+                 
+                 Comments? Questions? Please Contact Us. 
+             
+         
+
+         
+             
+                 Disclaimer 
+                 Information Quality 
+                 Help 
+                 Glossary 
+             
+
+             
+                 Privacy Policy 
+                 Freedom of Information Act (FOIA) 
+                 About Us 
+                 Career Opportunities 
+             
+         
+     
+ 
+
+         
+
+         
+     
