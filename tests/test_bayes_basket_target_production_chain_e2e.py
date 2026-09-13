@@ -7,6 +7,10 @@ from pathlib import Path
 import pytest
 from tests.pr12_atomic_test_support import awc_contract, install_canonical_v12
 
+from bayes_basket_target.metar_trajectory import (
+    P1_SOFT_LR_SUSPENDED_LIKELIHOOD_MODE,
+    SOFT_LIKELIHOOD_POLICY_SUSPENDED,
+)
 from bayes_basket_target.atomic_ledger import (
     AtomicLedgerError,
     apply_target_ledger_schema,
@@ -94,6 +98,29 @@ def _inputs() -> tuple[list[ProbabilityEnvelope], dict, dict, list, dict, object
             "model_envelope_upper_bucket": "39",
             "model_envelope_span_c": "2",
         }
+        if stage == "P1":
+            # Charter 119 hangs the P1 execution-evidence rule on the order
+            # path.  Since the 2026-09-02 ruling the soft likelihood is silent
+            # by policy, so the evidence a seatable P1 carries is the declared
+            # suspension, a content-addressed proof, and the layer that
+            # answered at P1's outermost composition point (here the
+            # four-layer chain).  The fixture predates the rule and carried
+            # none of it, so every P1 it built was refused as
+            # ``p1_strong_likelihood_missing``.
+            raw["lineage"].update({
+                "observation_likelihood_mode": (
+                    P1_SOFT_LR_SUSPENDED_LIKELIHOOD_MODE
+                ),
+                "metar_trajectory_soft_likelihood_policy": (
+                    SOFT_LIKELIHOOD_POLICY_SUSPENDED
+                ),
+                "metar_trajectory_applied_strength": "0.0",
+                "metar_trajectory_proof_sha256": "d" * 64,
+                "p1_four_layer_serving_json": json.dumps({
+                    "schema": "p1_four_layer_serving_receipt_v1",
+                    "applied": "true",
+                }),
+            })
         envelopes.append(ProbabilityEnvelope.from_mapping(raw))
     market = _market_snapshot()
     for row in market["buckets"]:
