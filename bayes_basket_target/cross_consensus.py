@@ -732,7 +732,8 @@ def apply_band_reliability(
     total = sum(adjusted.values())
     if total <= 0:
         raise ValueError("band_reliability_probability_empty")
-    return {key: value / total for key, value in adjusted.items()}, {
+    served = {key: value / total for key, value in adjusted.items()}
+    receipt: dict[str, Any] = {
         # The inverse reads ``applied_factors`` and
         # ``pre_normalisation_mass`` only, so it is axis-blind by
         # construction and one function keeps serving both vintages.
@@ -743,6 +744,23 @@ def apply_band_reliability(
         "applied_factors": applied,
         "pre_normalisation_mass": total,
     }
+    if ordinals is not None:
+        # The distance cells are read from the INPUT peak, and the output
+        # peak is not guaranteed to be the same bucket: nothing makes the
+        # centre cell's factor the largest (live P0 table 4f522947: centre
+        # 1.0, one step out 1.0475), and 168 of 2,507 distance-axis P0 rows
+        # served 2026-09-12..13 moved their peak.  Both are recorded so a
+        # reader keys cells on the anchor the table was applied through,
+        # not on a peak it recomputes from the served vector.
+        receipt["anchor_bucket"] = next(
+            key for key, distance in keyed.items() if distance == 0.0
+        )
+        receipt["served_peak_bucket"] = max(
+            (float(value), -int(ordinals[key]), str(key))
+            for key, value in served.items()
+            if key in ordinals
+        )[2]
+    return served, receipt
 
 
 # Zero through the strata the mixture already predicts correctly (<1C and

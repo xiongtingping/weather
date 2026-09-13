@@ -562,3 +562,38 @@ def test_the_replay_lane_is_not_coupled_to_whichever_stage_moved_first():
     # A claim-axis stage returns 0 rather than replaying: the served rows
     # already carry the axis, so replaying them would file a second copy.
     assert 'axis != "centre_distance"' in replay
+
+
+def test_the_distance_receipt_names_the_anchor_it_was_applied_through():
+    """Clause 105's 2026-09-13 note: the peak can move under the map.
+
+    The live P0 table's one-step cell (1.0475) outweighs its centre (1.0), so
+    two near-equal buckets swap.  The receipt carries the input anchor the
+    cells were read from and the served peak, so no reader has to recompute a
+    peak from the served vector and key cells on the wrong one.
+    """
+
+    from bayes_basket_target.cross_consensus import apply_band_reliability
+
+    keys = [str(index) for index in range(5)]
+    ordinals = {key: index for index, key in enumerate(keys)}
+    table = (
+        ((0.0, 1.0), 1.0), ((1.0, 2.0), 1.047515), ((2.0, 3.0), 1.0),
+        ((3.0, 4.0), 0.984), ((4.0, 99.0), 0.6943),
+    )
+    served, receipt = apply_band_reliability(
+        {"0": 0.02, "1": 0.04, "2": 0.48, "3": 0.46, "4": 0.0},
+        factors=table, ordinals=ordinals,
+    )
+    assert receipt["anchor_bucket"] == "2"
+    assert receipt["served_peak_bucket"] == "3"
+    assert served["3"] > served["2"]
+    _claim_served, claim_receipt = apply_band_reliability(
+        {"0": 0.02, "1": 0.04, "2": 0.48, "3": 0.46, "4": 0.0}, factors=table,
+    )
+    assert "anchor_bucket" not in claim_receipt
+    charter = (ROOT / "docs" / "constitution" / "SYSTEM_CHARTER.md").read_text(
+        encoding="utf-8"
+    )
+    clause = charter.split("\n105. ", 1)[1].split("\n106. ", 1)[0]
+    assert "anchor_bucket" in clause and "served_peak_bucket" in clause
