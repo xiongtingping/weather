@@ -474,10 +474,12 @@ def test_clause_43_no_weather_branch_in_the_strategy_layer() -> None:
 
     clause = _clause(43)
     assert "双重计数" in clause
-    # The approved successor is no longer a plan: the conditional tail layer
-    # is live inside p(t), with its measurements and its four rejected
-    # candidates recorded in the clause itself.
+    # The conditional tail layer served inside p(t) from 2026-08-14 and new
+    # artifacts stopped carrying its tag on 2026-08-18 (d63426a7); the clause
+    # keeps its measurements and four rejected candidates as history, and
+    # carries charter 133's note that the TAF skew term is retired.
     assert "conditional_tail_skew_v1" in clause
+    assert "第 133 条补记" in clause
     assert "同日气候余量" in clause
 
     from bayes_basket_target.cross_consensus import (
