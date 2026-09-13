@@ -198,10 +198,10 @@ def population(
 
     * **The label was knowable.**  ``event_date <= as_of`` says the day is
       over; it does not say the truth had been published.  A row is read only
-      when ``settled_at_utc`` is at or before the cutoff, and a decision taken
-      after the cutoff is not a row the fit could have seen either.  A table
-      without the column cannot state when its labels became knowable and is
-      refused rather than trusted.
+      when the truth revision its label came from had been committed by the
+      cutoff (``label_knowability``), and a decision taken after the cutoff is
+      not a row the fit could have seen either.  A table without a settlement
+      time cannot state when its labels became knowable and is refused.
     * **The label is a label.**  ``hit`` must be 0 or 1.  ``hit or 0`` used to
       turn a missing label into a loss; such rows are now counted and dropped.
     * **The window is today's population.**  The same seat-shape partition
@@ -221,13 +221,13 @@ def population(
         return [], {"error": "no_label_knowable_column"}
     stages = STAGE_SCOPES[stage_scope]
     cutoff = str(cutoff_utc or _utc_now_iso())
-    newest = conn.execute(
-        "SELECT MAX(event_date) FROM paper_trade_candidate_window"
-        " WHERE settled_bucket IS NOT NULL AND settled_at_utc IS NOT NULL"
-        "   AND settled_at_utc <= ?",
-        (cutoff,),
-    ).fetchone()
-    latest = str(as_of or (newest[0] if newest else "") or "")
+    from .label_knowability import knowable_labels  # noqa: PLC0415
+
+    knowable = knowable_labels(conn)
+    knowable_days = [
+        day for (_s, day), label in knowable.items() if label["known_at"] <= cutoff
+    ]
+    latest = str(as_of or (max(knowable_days) if knowable_days else "") or "")
     if not latest:
         return [], {"error": "no_settled_windows", "cutoff_utc": cutoff}
     floor_day = (
@@ -286,11 +286,12 @@ def population(
         "rejected_invalid_label": 0,
         "excluded_other_shape": 0,
     }
-    for station, day, stage, at, raw, price, hit, settled_at, row_shape in rows:
+    for station, day, stage, at, raw, price, hit, _written, row_shape in rows:
         if shape is not None and (row_shape is None or str(row_shape) != shape):
             counts["excluded_other_shape"] += 1
             continue
-        if settled_at is None or str(settled_at) > cutoff:
+        label = knowable.get((str(station), str(day)))
+        if label is None or str(label["known_at"]) > cutoff:
             counts["excluded_label_not_yet_knowable"] += 1
             continue
         if str(at or "") > cutoff:

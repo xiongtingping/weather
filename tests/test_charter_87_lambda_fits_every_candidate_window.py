@@ -46,7 +46,8 @@ def _book() -> sqlite3.Connection:
         " win_probability REAL, all_in_price REAL, hit INTEGER,"
         # Charter 132: a walk-forward fit reads when a label became
         # knowable, so the fixture carries the production column.
-        " admissible INTEGER, seated INTEGER, settled_at_utc TEXT)"
+        " admissible INTEGER, seated INTEGER, settled_at_utc TEXT,"
+        " settled_bucket TEXT)"
     )
     conn.execute(
         "CREATE TABLE paper_trade_settlement("
@@ -68,11 +69,11 @@ def _window(
 
     conn.execute(
         "INSERT INTO paper_trade_candidate_window"
-        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
             f"c{index}", station, day, stage, f"{day}T00:00:00Z", '["b"]',
             claim * center_window_claim_factor(claim), price, hit,
-            admissible, seated, f"{day}T23:00:00Z",
+            admissible, seated, f"{day}T23:00:00Z", "b" if hit else "other",
         ),
     )
 
@@ -186,11 +187,11 @@ def _raw(conn, index, *, claim, price, hit, station=None, stage="P0",
 
     conn.execute(
         "INSERT INTO paper_trade_candidate_window"
-        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
             f"r{index}", station or f"S{index}", day, stage,
             f"{day}T00:00:00Z", '["b"]', claim, price, hit, 1, 0,
-            f"{day}T23:00:00Z",
+            f"{day}T23:00:00Z", "b" if hit else "other",
         ),
     )
 

@@ -277,7 +277,8 @@ def _lambda_db() -> sqlite3.Connection:
         " candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
         " stage TEXT, decision_at_utc TEXT, buckets_json TEXT,"
         " win_probability REAL, all_in_price REAL, hit INTEGER,"
-        " admissible INTEGER, seated INTEGER, settled_at_utc TEXT)"
+        " admissible INTEGER, seated INTEGER, settled_at_utc TEXT,"
+        " settled_bucket TEXT)"
     )
     conn.execute(
         "CREATE TABLE paper_trade_settlement("
@@ -289,9 +290,9 @@ def _lambda_db() -> sqlite3.Connection:
 
 def _lambda_row(conn, cid, *, day, settled_at, station="S1"):
     conn.execute(
-        "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (cid, station, day, "P0", f"{day}T06:00:00Z", '["b"]', 0.7, 0.6, 1, 1, 0,
-         settled_at),
+         settled_at, "b"),
     )
 
 
@@ -365,3 +366,40 @@ def test_the_strict_loader_serves_evidence_only_on_the_current_shape(shape, verd
     assert (bands is not None) == (verdict == "current")
     status = lambda_store.lambda_vintage_status(conn)
     assert status["P0/window"]["verdict"] == verdict
+
+
+def test_the_truth_revision_commit_is_when_a_label_became_knowable():
+    """The ledger rewrote every settlement on 2026-09-07; the truth did not."""
+
+    from bayes_basket_target.label_knowability import (
+        SOURCE_LEDGER_WRITE,
+        SOURCE_TRUTH_COMMIT,
+        knowable_labels,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        "CREATE TABLE paper_trade_candidate_window("
+        " station_id TEXT, event_date TEXT, settled_bucket TEXT,"
+        " settled_at_utc TEXT, truth_revision_no INTEGER, hit INTEGER);"
+        "CREATE TABLE calibration_station_daily_high_truth("
+        " station_id TEXT, local_date TEXT, revision_no INTEGER,"
+        " canonical_committed_at_utc TEXT, qc_status TEXT);"
+    )
+    conn.execute(
+        "INSERT INTO paper_trade_candidate_window VALUES"
+        " ('S1','2026-08-20','20°C','2026-09-07T05:43:12Z',1,1),"
+        " ('S2','2026-08-20','21°C','2026-09-07T05:43:12Z',0,0)"
+    )
+    conn.execute(
+        "INSERT INTO calibration_station_daily_high_truth VALUES"
+        " ('S1','2026-08-20',0,'2026-08-21T01:00:00Z','ACCEPTED'),"
+        " ('S1','2026-08-20',1,'2026-08-21T04:15:13Z','ACCEPTED')"
+    )
+    got = knowable_labels(conn)
+    # S1's label came from revision 1: knowable at that revision's commit.
+    assert got[("S1", "2026-08-20")]["known_at"] == "2026-08-21T04:15:13Z"
+    assert got[("S1", "2026-08-20")]["source"] == SOURCE_TRUTH_COMMIT
+    # S2's revision is not in the truth lane: the ledger's write is the bound.
+    assert got[("S2", "2026-08-20")]["known_at"] == "2026-09-07T05:43:12Z"
+    assert got[("S2", "2026-08-20")]["source"] == SOURCE_LEDGER_WRITE

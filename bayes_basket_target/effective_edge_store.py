@@ -699,19 +699,23 @@ def _candidate_population(
     # by key.
     unknowable: set[tuple[str, str]] = set()
     if cutoff_utc is not None:
-        if _has_candidate_column(conn, "settled_at_utc"):
-            unknowable = {
-                (str(station), str(day))
-                for station, day in conn.execute(
-                    "SELECT DISTINCT station_id, event_date"
-                    " FROM paper_trade_candidate_window"
-                    " WHERE hit IS NOT NULL AND ("
-                    "   settled_at_utc IS NULL OR settled_at_utc > ?)",
-                    (str(cutoff_utc),),
-                )
-            }
-        else:
+        if not _has_candidate_column(conn, "settled_at_utc"):
             raise ValueError("effective_edge_fit_cutoff_without_label_time")
+        from .label_knowability import knowable_labels  # noqa: PLC0415
+
+        known = knowable_labels(conn)
+        # Every station-day with an outcome whose label was not knowable at
+        # the cutoff -- including one with no knowable label at all (no
+        # settlement time, no settled bucket), which cannot be evidence then.
+        unknowable = {
+            (str(station), str(day))
+            for station, day in conn.execute(
+                "SELECT DISTINCT station_id, event_date"
+                " FROM paper_trade_candidate_window WHERE hit IS NOT NULL"
+            )
+            if (str(station), str(day)) not in known
+            or str(known[(str(station), str(day))]["known_at"]) > str(cutoff_utc)
+        }
     axis = _fit_axis(conn, stages)
     # A candidate table without the column cannot be partitioned on it, and
     # that is an ordinary state rather than an error: a replay extract, a

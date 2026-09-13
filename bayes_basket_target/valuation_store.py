@@ -184,19 +184,13 @@ def population(
         if not _has_table(conn, table):
             return [], {"error": f"missing_table:{table}"}
     cutoff = str(cutoff_utc or _utc_now_iso())
-    labels: dict[tuple[str, str], str] = {}
-    for station, day, bucket, settled_at, revision in conn.execute(
-        "SELECT station_id, event_date, settled_bucket, settled_at_utc,"
-        " COALESCE(truth_revision_no, 0)"
-        " FROM paper_trade_candidate_window"
-        " WHERE settled_bucket IS NOT NULL AND settled_at_utc IS NOT NULL"
-        "   AND settled_at_utc <= ?"
-        " ORDER BY COALESCE(truth_revision_no, 0)",
-        (cutoff,),
-    ):
-        # Highest revision knowable at the cutoff wins; ordering ascending
-        # lets the later assignment stand.
-        labels[(str(station), str(day))] = str(bucket)
+    from .label_knowability import knowable_labels  # noqa: PLC0415
+
+    labels: dict[tuple[str, str], tuple[str, str]] = {
+        key: (label["bucket"], label["known_at"])
+        for key, label in knowable_labels(conn).items()
+        if str(label["known_at"]) <= cutoff
+    }
     if not labels:
         return [], {"error": "no_knowable_labels", "cutoff_utc": cutoff}
     latest = str(as_of or max(day for _s, day in labels))
@@ -225,10 +219,11 @@ def population(
     )
     for station, day, stage, decided_at, probs_json, book_json in cursor:
         counts["decisions_read"] += 1
-        label = labels.get((str(station), str(day)))
-        if label is None:
+        labelled = labels.get((str(station), str(day)))
+        if labelled is None:
             counts["no_label"] += 1
             continue
+        label, label_known_at = labelled
         if str(decided_at) > cutoff:
             counts["decided_after_cutoff"] += 1
             continue
@@ -258,6 +253,9 @@ def population(
         rows.append({
             "station": str(station), "date": str(day), "stage": str(stage),
             "at": str(decided_at), "label": label,
+            # When the label became knowable, so a walk-forward caller that
+            # cut the population once can cut each fold again in memory.
+            "label_known_at": label_known_at,
             "m_label": float(m[label]),
             "p_label": float(p_weather.get(label, 0.0)),
             "brier_m": _brier(m, label),
