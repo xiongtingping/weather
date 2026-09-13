@@ -52,6 +52,11 @@ from .cross_consensus import (
     synoptic_cooling_index,
     bridged_cross_probability,
 )
+from .table_as_of import (
+    band_table_as_of,
+    center_width_as_of,
+    station_width_as_of,
+)
 from .served_shape import (
     SERVED_TABLE_LAYER_ORDER,
     BandLayer,
@@ -2436,16 +2441,24 @@ def _served_cross_identities(
     """
 
     try:
+        as_of_instant = datetime.fromisoformat(
+            as_of_utc.replace("Z", "+00:00")
+        )
         since = (
-            datetime.fromisoformat(as_of_utc.replace("Z", "+00:00"))
-            - timedelta(days=SERVED_SET_LOOKBACK_DAYS)
+            as_of_instant - timedelta(days=SERVED_SET_LOOKBACK_DAYS)
+        ).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        # Bounded above too: a forward build has nothing after now, but a
+        # replay at a past moment would otherwise read which set was served
+        # after that moment (review 2026-09-13, R4).
+        until = (
+            as_of_instant + timedelta(milliseconds=1)
         ).isoformat(timespec="milliseconds").replace("+00:00", "Z")
         rows = conn.execute(
             "SELECT lineage_json FROM basket_probability_envelope"
             " WHERE station_id=? AND stage='P0' AND state='COMMITTED'"
-            " AND decision_at_utc>=?"
+            " AND decision_at_utc>=? AND decision_at_utc<?"
             " ORDER BY decision_at_utc DESC",
-            (str(station_id).strip().upper(), since),
+            (str(station_id).strip().upper(), since, until),
         ).fetchall()
     except sqlite3.Error:
         return {}
@@ -3883,8 +3896,15 @@ def build_native_ensemble_oos(
     family_weight_caps: Mapping[str, float] | None = None,
     system_mask: Sequence[str] | None = None,
     max_event_date: str | None = None,
+    tables_as_of_utc: str | None = None,
 ) -> dict[str, Any]:
     """Build candidate artifacts; perform no writes.
+
+    ``tables_as_of_utc`` scores the holdout under the band, centre/width and
+    station-width tables that were active at that moment instead of now.  A
+    forward build leaves it unset: what it mints is served from now on.  A
+    replay of a past build sets it to the replayed moment, or the gate scores
+    past days under tables fitted on those days (review 2026-09-13, R4).
 
     Bias and weights are both fitted from this station's own record; weights
     must never borrow other stations' errors (user ruling, 2026-08-14).
@@ -3901,7 +3921,30 @@ def build_native_ensemble_oos(
     # The active DB-resident band table, or the static bootstrap constants
     # when none is activated yet.  The sha rides into every candidate so
     # each artifact pins the exact table its holdout was scored against.
-    active_band_table = load_band_table_with_axis(conn, stage="P0")
+    if tables_as_of_utc is None:
+        active_band_table = load_band_table_with_axis(conn, stage="P0")
+        active_center_width = load_center_width(conn, stage="P0")
+        active_station_width = load_station_width(conn, stage="P0")
+        replay_width = None
+    else:
+        active_band_table = band_table_as_of(
+            conn, stage="P0", as_of_utc=tables_as_of_utc
+        )
+        replay_width = center_width_as_of(
+            conn, stage="P0", as_of_utc=tables_as_of_utc
+        )
+        active_center_width = (
+            (
+                replay_width["delta_c"],
+                replay_width["width_lambda"],
+                replay_width["center_width_sha256"],
+            )
+            if replay_width is not None
+            else None
+        )
+        active_station_width = station_width_as_of(
+            conn, stage="P0", as_of_utc=tables_as_of_utc
+        )
     band_factors, band_table_sha, band_table_axis_id = (
         active_band_table
         if active_band_table is not None
@@ -3912,7 +3955,6 @@ def build_native_ensemble_oos(
     # serving reproduces that exact pair or fails closed.  None until the
     # layer's own forward window admits a fit, which is the identity case
     # and changes nothing.
-    active_center_width = load_center_width(conn, stage="P0")
     center_width = (
         (active_center_width[0], active_center_width[1])
         if active_center_width is not None
@@ -3925,14 +3967,22 @@ def build_native_ensemble_oos(
     # and therefore on the same sha, so the holdout scores the pair under the
     # floor serving will apply and the artifact needs no second pin.
     center_width_floor = (
-        load_center_width_floor(conn, stage="P0")
+        (
+            load_center_width_floor(conn, stage="P0")
+            if replay_width is None
+            else replay_width["sigma_floor_rungs"]
+        )
         if active_center_width is not None
         else 0.0
     )
     # The width tiers, under the same contract: on the active sha, so the
     # holdout scores what serving applies.
     center_width_tiers = (
-        load_center_width_tiers(conn, stage="P0")
+        (
+            load_center_width_tiers(conn, stage="P0")
+            if replay_width is None
+            else replay_width["width_tiers"]
+        )
         if active_center_width is not None
         else None
     )
@@ -3940,7 +3990,6 @@ def build_native_ensemble_oos(
     # scalars: whatever is active now is what this build's holdout scores,
     # and its sha rides into every candidate.  This build is one station's,
     # so only that station's scale matters here.
-    active_station_width = load_station_width(conn, stage="P0")
     station_width_scale = (
         float(active_station_width[0].get(station_id, 1.0))
         if active_station_width is not None

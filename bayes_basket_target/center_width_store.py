@@ -27,7 +27,11 @@ from zoneinfo import ZoneInfo
 # and therefore its single write lock -- with the band reliability store,
 # whose module holds the measured numbers (resident holds bursts of 3.6-9.1s,
 # up to 45s) and the bounded retry that answers them.
-from .band_reliability_store import _invert_band_receipt, _begin_immediate
+from .band_reliability_store import (
+    _begin_immediate,
+    _invert_band_receipt,
+    utc_instant,
+)
 from .center_width_calibration import (
     WIDTH_TIER_BOUNDARIES_RUNGS,
     WIDTH_TIER_NAMES,
@@ -827,12 +831,17 @@ def load_station_width(
     *,
     stage: str,
     table_sha256: str | None = None,
+    as_of_utc: str | None = None,
 ) -> tuple[dict[str, float], str] | None:
     """The stage's active per-station width scales, or a pinned version.
 
     Same contract as ``load_center_width``: a pinned sha that is missing
     fails closed, an unpinned read of a layer that has fitted nothing is the
     ordinary None case, and nothing is created on the read path.
+
+    ``as_of_utc`` reads a pinned version's retirement at a moment, the same
+    parameter the band loader takes (review 2026-09-13, R6): serving passes
+    nothing and stops at the veto, a replay passes the decision's time.
     """
 
     stage_id = _check_stage(stage)
@@ -880,7 +889,13 @@ def load_station_width(
         if table_sha256 is not None:
             raise ContractError("station_width_pinned_table_missing")
         return None
-    if table_sha256 is not None and all(row[3] for row in rows):
+    if table_sha256 is not None and all(
+        row[3] and (
+            as_of_utc is None
+            or utc_instant(row[3]) <= utc_instant(as_of_utc)
+        )
+        for row in rows
+    ):
         # Pinned to a version the lane retired by veto.  The pin exists so
         # that serving reproduces the width the gate scored; the veto is
         # the settled truth saying that width was wrong, and every artifact

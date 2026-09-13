@@ -386,6 +386,21 @@ def band_table_sha256(
     return content_sha256(identity)
 
 
+def utc_instant(value: str) -> "datetime":
+    """An ISO-8601 UTC string as an aware instant.
+
+    The stores write timestamps with and without fractional seconds, so the
+    strings do not order as instants: ``...T15:27:09.831Z`` sorts before
+    ``...T15:27:09Z`` because ``.`` precedes ``Z``.  Every as-of comparison
+    goes through here.
+    """
+
+    parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def _pinned_identity_holds(
     sha: str,
     factors: Sequence[tuple[tuple[float, float], float]],
@@ -508,7 +523,10 @@ def load_band_table(
             stage=requested_stage, axis=str(row[2]),
         ):
             raise ContractError("band_reliability_pinned_table_content_mismatch")
-        if row[3] and (as_of_utc is None or str(row[3]) <= str(as_of_utc)):
+        if row[3] and (
+            as_of_utc is None
+            or utc_instant(row[3]) <= utc_instant(as_of_utc)
+        ):
             # Pinned to a version the lane VETOED.  The pin exists so that
             # serving reproduces the table the gate scored; the veto is the
             # settled finding that the table was wrong.  Honouring the pin
