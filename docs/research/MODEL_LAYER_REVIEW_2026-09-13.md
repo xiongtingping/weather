@@ -143,4 +143,4 @@
 
 **仍红、未处理**：`test_point_forecast_scope_contracts` 两条（CMA_GRAPES_GLOBAL_POINT 无 scope 合同）与 `test_forward_taf_is_observational_and_never_enters_p0m_oos`，均属宪章 133 并行会话；生产链端到端 4 条与其包装测试，属执行层篮子目标夹具债。
 
-**服务算术护狗**：P0/P0-M/P1 指纹已动，`--audit` 判定需等 09-14 04:20Z 各车道重拟后才能下结论，届时再决定 acknowledge 还是 bump；R1 的 13.3% 席位变化意味着不能凭"编译逐字节不变"直接 acknowledge。R4a、R4b、R5 已登记排队，随下一次常驻重启生效。
+**服务算术护狗**：P0/P0-M/P1 指纹已动，`--audit` 判定需等 09-14 04:20Z 各车道重拟后才能下结论，届时再决定 acknowledge 还是 bump；R1 的 13.3% 席位变化意味着不能凭"编译逐字节不变"直接 acknowledge。R4b 已随 16:17Z 那次常驻重启生效；R4a 与 R5 已登记排队，随下一次重启生效。
