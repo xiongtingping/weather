@@ -101,7 +101,9 @@ def test_nothing_to_show_renders_nothing():
 
 
 def test_the_summary_sits_directly_under_the_money_row():
-    body = SOURCE[SOURCE.index('"钱 · 这本账值多少'):]
-    close = body.index('.join("")')
+    # The money row moved from the head into the money board on 2026-09-13;
+    # the rendered order is asserted in tests/test_dashboard_money_board.py.
+    start = SOURCE.index("function moneyEquity(")
+    body = SOURCE[start:SOURCE.index("\n}\n", start)]
 
-    assert "lampRowSafe(barSummary" in body[close:close + 120]
+    assert body.index("O.money") < body.index("+ barSummary()")

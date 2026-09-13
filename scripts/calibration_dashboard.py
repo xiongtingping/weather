@@ -10152,6 +10152,14 @@ background:var(--why-bg)}
    draws a line under nothing. */
 .card[data-dayall="1"] [data-daypane]+[data-daypane]{margin-top:14px;
 padding-top:10px;border-top:1px solid var(--line)}
+/* The money board (user ruling, 2026-09-13): one card per category, its
+   hue on the title edge like the group titles, and the blocks inside it
+   drop the top margin they carried as free-standing sections -- the tab
+   strip already names them. */
+.mb-cat{padding:12px 14px;margin-bottom:12px}
+.mb-cat .grouptitle{margin:0 0 9px}
+.mb-pane > h2:first-child,.mb-pane > h3:first-child{margin-top:2px!important}
+.mb-pane > .lampdeck:first-child{margin-top:0;padding-top:0;border-top:0}
 .grouptitle{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;
 margin:18px 0 0;font-weight:650}
 .grouptitle .muted{font-weight:400}
@@ -10293,7 +10301,7 @@ const rungSorted = (list, pick) => (list || []).slice()
   .sort((x, y) => byRung(pick ? pick(x) : x, pick ? pick(y) : y));
 const OVERALL = {green:["运转正常","所有环节都在按预期更新"],
   amber:["有需要留意的地方","不影响出数，但有环节慢了或在攒数据"],
-  red:["有环节断了","看下面四排灯，红的那盏就是断的那一环"]};
+  red:["有环节断了","看下面三排灯，红的那盏就是断的那一环"]};
 
 function head(){
   const [t, s] = OVERALL[D.overall_health] || OVERALL.amber;
@@ -10308,14 +10316,15 @@ function head(){
     `<span class="pill ${a.health}" style="font-size:13px">${h(a.label)}
       <span style="opacity:.78">｜${h(a.note)}</span></span>`).join("");
   const more = named.length > 6
-    ? `<span class="muted">…等 ${named.length} 处，其余见下面四排灯里标${
+    ? `<span class="muted">…等 ${named.length} 处，其余见下面三排灯里标${
         D.overall_health === "red" ? "红" : "黄"}的那几盏</span>` : "";
   return `<h1>气温篮子全链看板</h1>
   <p class="sub">从模型到下单的一整条链。<b>页头就是整块看板</b>：总灯，
-  然后四排状态灯——<b>机器</b>在不在转、<b>上游</b>的数据到没到、
-  <b>选桶</b>挑得准不准、这本<b>账</b>值多少。四个问题按人实际发问的顺序排，
+  然后三排状态灯——<b>机器</b>在不在转、<b>上游</b>的数据到没到、
+  <b>选桶</b>挑得准不准。三个问题按人实际发问的顺序排，
   都在选标签页之前就该看见，所以放在标签栏上面而不是某个分组里面。
-  往下是逐站账：每日统计、逐站逐日明细与三张跟进表；
+  紧接着是<b>资金看板</b>：这本账值多少，按纸面账本与实盘两类分页签；
+  然后是 Live 上线准备，再往下是逐站账：每日统计、逐站逐日明细与三张跟进表；
   再往下按三个<b>区域</b>分组，每区一个颜色，标签栏与区标题同色。</p>
   <div class="card"><div style="display:flex;gap:14px;align-items:center;
     flex-wrap:wrap">
@@ -10331,6 +10340,9 @@ function head(){
     // cards used to live below the tab bar as their own sections; they are
     // readings about the same four things the lamps answer, so they are
     // lamps in the same rows rather than a second layout for the same job.
+    // The fourth row, 钱, left for the money board on 2026-09-13 (user
+    // ruling): what the book is worth is read beside the risk, the entry
+    // economics and the live account, not beside the machine's lamps.
     let O;
     try { O = overviewLamps(); }
     catch (err) {
@@ -10346,12 +10358,9 @@ function head(){
         () => upstreamLamps().concat(O.upstream)],
       ["选桶 · 挑得准不准：建仓率、声称兑现、各宽度篮子的选中命中",
         () => O.selection],
-      ["钱 · 这本账值多少：权益与回报率，以及上线／待观察／禁入三边对照",
-        () => O.money],
     ];
     return O.banner + rows.map(([cap,build])=>
-      lampRowSafe(()=>lampRow(cap,build()), cap.split(" ")[0])).join("")
-      + lampRowSafe(barSummary, "待观察与禁入");
+      lampRowSafe(()=>lampRow(cap,build()), cap.split(" ")[0])).join("");
   })()}
   ${renderStamp()}${chips ? `<div style="display:flex;gap:8px;flex-wrap:wrap;
     align-items:center;margin-top:9px">${chips}${more}</div>` : ""}</div>`;
@@ -13330,7 +13339,7 @@ function riskMetrics(){
   <b>${num((1-R.cost_mean)/R.cost_mean,2)}</b>，不是 ${num(R.odds_mean,2)}。
   两个数各自没算错，是<b>两种加权</b>：${num(R.cost_mean,3)} 是按投入加权的票价，
   而 ${num(R.odds_mean,2)}x 恒等于 Σ投入÷Σ股 那个票价反推出来的赔率。
-  同名数只留一处，就在<a href="#sec-entry">上面那一节</a>，三个口径并排印。
+  同名数只留一处，就在同一类的<a href="#sec-entry">「入场的九个数」页签</a>，三个口径并排印。
   <br><b>还有一件这里读不出来的事</b>：保本 ${mag(R.breakeven_win_rate)}
   对实际 ${mag(R.realised_win_rate_weighted)}，按这一对推出来的收益率是
   ${pct(R.realised_win_rate_weighted/R.breakeven_win_rate-1,1)}，
@@ -15177,8 +15186,7 @@ function liveOrderCard(L){
       :`<div class="muted" style="margin-top:9px">尚无实盘意向。第一条出现时此表自动列出。</div>`}
     ${(X.blocking||[]).length?`<div class="muted" style="margin-top:8px;font-size:11.5px">
       对账阻断：${(X.blocking||[]).map(b=>h(b.reason)+" ×"+b.count).join(" · ")}</div>`:""}
-  </div>
-  ${orderBookCard(O.book||{})}`;
+  </div>`;
 }
 
 
@@ -15196,7 +15204,7 @@ function orderBookCard(B){
       账本里另有 <b>${paper}</b> 笔 <span class="mono">live_submit_authorized=0</span> 的纸面意向，
       <b>不计入上面任何一个数</b>：它们跑的是同一套选桶与定规模，但走到交易所边界就停，
       和实盘是两本账，并排放进同一张表只会被眼睛加到一起。
-      纸面那本的成绩在主看板的「三态对比」和「组合风险指标」里。</div>
+      纸面那本的成绩在同一块资金看板的「纸面账本」一类里：权益与三边对照、组合风险指标、入场的九个数。</div>
     </details>`;
   if(!B.total) return `<div class="card" style="margin-top:12px">
     <div class="muted">实盘意向簿</div>
@@ -15251,6 +15259,75 @@ function orderBookCard(B){
     </div>
     ${foot}
   </div>`;
+}
+
+
+// The money board (user ruling, 2026-09-13: 把「组合风险指标」、入场的九个数、
+// 钱 · 这本账值多少、实盘订单、实盘意向簿融合在一个大容器内，做成一个数据看板，
+// 分类展示).  Five readings of what the book is worth sat in three places:
+// the 钱 lamp row in the head, two sections under it, and two cards inside
+// Live 上线准备 -- where the live P&L was read under a paragraph about the
+// arming flag.  They are one container now, in two categories: the paper
+// book every rule is measured on, and the live account that actually
+// spends.  Each category shows one block at a time and remembers which
+// across reloads; each block keeps its own guard, so one that throws does
+// not blank the other four.  The pane ids keep the old anchors working.
+const MONEY_BOARD = [
+  {id:"paper", label:"纸面账本", tone:"#79c0ff",
+   note:"每条规则都在这本账上量：P0 建仓、P0-M 与 P1 加仓，禁入站照样建仓结算",
+   panes:[
+     ["equity", "权益与三边对照", () => moneyEquity(), "sec-money-equity"],
+     ["risk", "组合风险指标", () => riskMetrics(), "sec-risk"],
+     ["entry", "入场的九个数", () => entryEconomics(), "sec-entry"]]},
+  {id:"live", label:"实盘", tone:"#ff7b72",
+   note:"只数 live_submit_authorized=1 的行：真的交到交易所的单",
+   panes:[
+     ["orders", "实盘订单 · 数量 / ROI / PnL", () => liveMoney((L) => liveOrderCard(L)),
+      "sec-live-orders"],
+     ["book", "实盘意向簿",
+      () => liveMoney((L) => orderBookCard((L.live_orders||{}).book||{})),
+      "sec-live-book"]]},
+];
+
+// The 钱 lamps, as they were in the head, and the 待观察/禁入 totals under
+// them.  A ledger that is not there is said once in the head's banner; here
+// it is one line rather than a second copy of that banner or a row of zeros.
+function moneyEquity(){
+  const O = overviewLamps();
+  if(O.banner) return `<div class="muted">纸面账本此刻是空的——见页头的说明，
+    重建结束后这里自行恢复。</div>`;
+  return lampRow("权益与回报率，以及上线／待观察／禁入三边对照", O.money)
+    + barSummary();
+}
+
+// Both live blocks read the live-readiness payload, which is absent when the
+// collector could not build it.  Absent is said, not drawn as empty tiles.
+function liveMoney(render){
+  const L = D.live_readiness || {};
+  if(!L.available) return `<div class="muted">实盘读数这一轮没有生成
+    （live_readiness 不可用），实盘订单与意向簿无从读起。</div>`;
+  return render(L);
+}
+
+function moneyBoard(){
+  const cats = MONEY_BOARD.map(c => {
+    const nav = c.panes.map(([key, label], i) =>
+      `<button type="button" data-day="${key}"${i ? "" : ` data-active="1"`}>${
+        h(label)}</button>`).join("");
+    const panes = c.panes.map(([key, label, fn, id], i) =>
+      `<div class="mb-pane" data-daypane="${key}" id="${id}"${i ? " hidden" : ""}>${
+        safe(fn, label)}</div>`).join("");
+    return `<div class="card mb-cat" data-daytabs="money-${c.id}" data-remember="1"
+      style="--tone:${c.tone}">
+      <div class="grouptitle">${h(c.label)}<span class="muted">${h(c.note)}</span></div>
+      <div class="daytabs">${nav}<button type="button" data-day="all">全部</button></div>
+      ${panes}</div>`;
+  }).join("");
+  return `<h2>资金看板：这本账值多少</h2>
+  <p class="sub">两类五块。<b>纸面账本</b>：权益与三边对照、组合风险指标、入场的九个数；
+  <b>实盘</b>：实盘订单（数量 / ROI / PnL）、实盘意向簿。每类一次看一块，点「全部」叠起来看；
+  选中的页签刷新后保留。</p>
+  ${cats}`;
 }
 
 
@@ -15393,8 +15470,8 @@ function liveReadiness(){
   所有车道立刻停。当前
   ${L.submission_paused
     ? `<b style="color:var(--red)">暂停旗在位</b>——它是被手动放上去的（或某次举旗撤旗失败），网关不发单`
-    : "暂停旗不在位"}。</p>
-  ${liveOrderCard(L)}
+    : "暂停旗不在位"}。
+  实盘订单与意向簿在上面的<a href="#sec-money">资金看板</a>「实盘」一类里。</p>
   <div class="card" style="margin-top:12px">
     <div class="muted">首批站点闸门 · <b>三个开关全是人工的，点击即开启关闭</b>——
       写盘、记审计、下一轮生产立刻照它执行；表里的五闸（实现/声称∈[0.88,1.18]、
@@ -16070,10 +16147,8 @@ const LANES = {
   "真值落位": {layer:"选窗层 · 读数", status:"audit",
     role:"真值落在价格 × 概率的哪一格"},
   // --- the book's own account ---
-  "入场的九个数": {layer:"账本 · 读数", status:"audit",
-    role:"这一注长什么样：声称、命中、赔率、保本线、每股成本"},
-  "组合风险指标": {layer:"账本 · 读数", status:"audit",
-    role:"整簿的风险刻度"},
+  "资金看板": {layer:"账本 · 读数", status:"audit",
+    role:"这本账值多少：纸面账本（权益与三边对照、风险刻度、入场九个数）与实盘（订单、意向簿）"},
   "Live 上线准备": {layer:"执行层 · 运维", status:"audit",
     role:"开关能不能翻、翻了之后哪几道门还拦着"},
   "每日统计": {layer:"账本 · 读数", status:"audit",
@@ -16178,8 +16253,7 @@ document.getElementById("app").innerHTML =
     <div class="navtop">${tabs}${safe(liveControlStrip, "实盘控制")}</div>
     <nav class="jump" id="jump"></nav></div>` +
   safe(head, "页头") +
-  sec(entryEconomics, "入场的九个数", "sec-entry") +
-  sec(riskMetrics, "组合风险指标", "sec-risk") +
+  sec(moneyBoard, "资金看板", "sec-money") +
   sec(liveReadiness, "Live 上线准备", "sec-live") +
   TOP.map(([fn, name], i) => sec(fn, name, `sec-top-${i}`)).join("") +
   groupHtml +
@@ -16269,13 +16343,13 @@ document.getElementById("app").innerHTML =
 
 // Per-day tab strips inside a card.  Scoped to the card that carries the
 // strip, so a second one on the page does not paint the first one's panes.
+// A card marked data-remember keeps its choice across reloads, the way the
+// group bar does -- the money board's categories are one of those.
 document.querySelectorAll("[data-daytabs]").forEach(card => {
   const nav = card.querySelector(".daytabs");
   if(!nav) return;
-  nav.addEventListener("click", (ev) => {
-    const button = ev.target.closest("button[data-day]");
-    if(!button) return;
-    const day = button.dataset.day;
+  const key = "pane-" + card.dataset.daytabs;
+  const show = (day) => {
     nav.querySelectorAll("button[data-day]").forEach(b => {
       b.dataset.active = b.dataset.day === day ? "1" : "";
     });
@@ -16283,7 +16357,34 @@ document.querySelectorAll("[data-daytabs]").forEach(card => {
       pane.hidden = day !== "all" && pane.dataset.daypane !== day;
     });
     card.dataset.dayall = day === "all" ? "1" : "";
+  };
+  nav.addEventListener("click", (ev) => {
+    const button = ev.target.closest("button[data-day]");
+    if(!button) return;
+    show(button.dataset.day);
+    if(card.dataset.remember){
+      try{ localStorage.setItem(key, button.dataset.day); }catch(e){}
+    }
   });
+  if(card.dataset.remember){
+    try{
+      const saved = localStorage.getItem(key);
+      if(saved && nav.querySelector(`button[data-day="${CSS.escape(saved)}"]`)) show(saved);
+    }catch(e){}
+  }
+});
+// A link to something behind an unchosen tab opens that tab first, so the
+// browser's own jump lands on it instead of on a hidden element.
+document.addEventListener("click", (ev) => {
+  const link = ev.target.closest('a[href^="#"]');
+  if(!link) return;
+  const target = document.getElementById(link.getAttribute("href").slice(1));
+  const pane = target && target.closest("[data-daypane]");
+  if(!pane || !pane.hidden) return;
+  const card = pane.closest("[data-daytabs]");
+  const button = card && card.querySelector(
+    `.daytabs button[data-day="${CSS.escape(pane.dataset.daypane)}"]`);
+  if(button) button.click();
 });
 
 // Back to the top, from wherever the reader got to.  The floating button

@@ -189,7 +189,7 @@ def test_live_basket_legs_are_drawn_cold_to_warm() -> None:
     scrambled = ["19°C", "20°C", "18°C"]
     html = _run(
         _live_payload(scrambled),
-        _extract("liveOrderCard") + "\n" + _extract("orderBookCard"),
+        _extract("liveOrderCard"),
         "liveOrderCard(D.live_readiness)",
     )
     assert _order(html, scrambled) == ["18°C", "19°C", "20°C"]
@@ -201,7 +201,7 @@ def test_live_basket_legs_sort_on_the_rung_not_the_string() -> None:
     scrambled = ["100-101°F", "96-97°F", "98-99°F"]
     html = _run(
         _live_payload(scrambled),
-        _extract("liveOrderCard") + "\n" + _extract("orderBookCard"),
+        _extract("liveOrderCard"),
         "liveOrderCard(D.live_readiness)",
     )
     assert _order(html, scrambled) == ["96-97°F", "98-99°F", "100-101°F"]

@@ -334,7 +334,10 @@ def test_stake_weighted_column_agrees_with_the_portfolio_tiles():
 
 def test_section_is_rendered_and_reachable():
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
-    assert 'sec(entryEconomics, "入场的九个数", "sec-entry")' in source
+    # Since 2026-09-13 the section is a pane of the money board, under the
+    # same anchor; tests/test_dashboard_money_board.py renders the board.
+    assert '["entry", "入场的九个数", () => entryEconomics(), "sec-entry"]' in source
+    assert 'sec(moneyBoard, "资金看板", "sec-money")' in source
     assert '"entry_economics": _cached_section(' in source
 
 
