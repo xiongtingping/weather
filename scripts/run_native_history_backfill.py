@@ -83,6 +83,146 @@ PROVIDERS = {
 LOCKED = "database is locked"
 
 
+# ---------------------------------------------------------------- live yield
+#
+# Being willing to wait is not the same as being willing to let go.  Ingest
+# takes ``BEGIN IMMEDIATE`` for a packet of roughly twelve thousand rows, the
+# drain loop starts the next packet the instant the last one commits, and a
+# busy lock is retried rather than backed off.  Measured 2026-09-13 against a
+# 43.8 GB target at 85% of its cap: the write lock was free on 0 of 32 probes
+# over thirty seconds while this lane ran, and 74 of 74 once it stopped.  The
+# live capture lanes wait 120 seconds and then raise, so every collision went
+# the same way -- jma_msm and dwd_icon_eu had each been attempted once in five
+# hours and failed both times with "database is locked", and the resident's
+# own decision rate fell from 114 an hour to 33.
+#
+# So the lane yields on two counts.  It stands aside while a live SSOT sweep
+# is overdue by more than one of its own intervals, and it paces itself
+# between packets so the lock has an idle window even when nothing is late.
+# Neither is a lock wait: waiting longer would not have helped, because there
+# was no window to wait for.
+LIVE_YIELD_POLL_SECONDS = 15.0
+
+
+def _hosted_sweep_contract() -> tuple[dict[str, float], Path]:
+    """Read the resident's own sweep table rather than restating it here."""
+
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "_native_history_hosted_sweep_contract",
+        ROOT / "scripts" / "weather_basket_yes_daemon.py",
+    )
+    if spec is None or spec.loader is None:
+        raise ContractError("hosted_sweep_contract_unreadable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    intervals = {
+        str(name): float(interval)
+        for name, _script, interval, _timeout in module.HOSTED_SWEEPS
+        if module.HOSTED_SWEEP_WRITE_DOMAIN.get(str(name)) == "ssot"
+    }
+    if not intervals:
+        raise ContractError("hosted_sweep_contract_has_no_ssot_member")
+    return intervals, Path(module.HOSTED_SWEEP_CLOCKS_PATH)
+
+
+def overdue_ssot_lanes(
+    intervals: dict[str, float],
+    clocks: dict,
+    now_epoch: float,
+    *,
+    rounds: float = 1.0,
+) -> list[tuple[str, float]]:
+    """SSOT sweeps overdue by more than ``rounds`` of their own interval.
+
+    A lane with no clock entry has never run under this contract and is not
+    evidence of contention, so it is not counted; an unparsable stamp is,
+    because a lane whose clock cannot be read is a lane nobody can show is
+    being served.
+    """
+
+    late: list[tuple[str, float]] = []
+    for name, interval in sorted(intervals.items()):
+        entry = clocks.get(name)
+        if not isinstance(entry, dict):
+            continue
+        stamp = str(entry.get("attempted_at_utc") or "").strip()
+        if not stamp:
+            continue
+        try:
+            attempted = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+        except ValueError:
+            late.append((name, float("inf")))
+            continue
+        if attempted.tzinfo is None:
+            attempted = attempted.replace(tzinfo=timezone.utc)
+        if interval <= 0:
+            continue
+        behind = (now_epoch - attempted.timestamp()) / interval
+        if behind > rounds:
+            late.append((name, behind))
+    return late
+
+
+def stand_aside_for_live_lanes(
+    intervals: dict[str, float],
+    read_clocks,
+    *,
+    rounds: float,
+    max_seconds: float,
+    sleep=time.sleep,
+    now=time.time,
+    poll_seconds: float = LIVE_YIELD_POLL_SECONDS,
+) -> dict:
+    """Wait while a live SSOT sweep is overdue; never past ``max_seconds``.
+
+    ``read_clocks`` is re-read every poll, so the wait ends as soon as the
+    resident serves the late lane and stamps its clock -- which is the point
+    of standing aside.  The result says how long this cost and why it ended.
+    """
+
+    waited = 0.0
+    first_late: list[tuple[str, float]] = []
+    if rounds <= 0:
+        return {"waited_seconds": 0.0, "ended": "disabled", "late": []}
+    while True:
+        try:
+            clocks = read_clocks()
+        except (OSError, ValueError):
+            clocks = {}
+        late = overdue_ssot_lanes(
+            intervals, clocks if isinstance(clocks, dict) else {}, now(), rounds=rounds,
+        )
+        if not late:
+            return {"waited_seconds": waited,
+                    "ended": "clear" if waited else "not_needed",
+                    "late": first_late}
+        if not first_late:
+            first_late = late
+        if waited >= max_seconds:
+            return {"waited_seconds": waited, "ended": "cap_reached", "late": late}
+        sleep(poll_seconds)
+        waited += poll_seconds
+
+
+def pace_after_commit(
+    held_seconds: float,
+    *,
+    ratio: float,
+    max_seconds: float,
+    sleep=time.sleep,
+) -> float:
+    """Leave the lock idle for ``ratio`` times as long as it was just held."""
+
+    if ratio <= 0 or held_seconds <= 0:
+        return 0.0
+    pause = min(held_seconds * ratio, max_seconds)
+    if pause > 0:
+        sleep(pause)
+    return pause
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
         "+00:00", "Z"
@@ -255,6 +395,26 @@ def main() -> int:
         "--final-lock-wait-seconds", type=float, default=300.0,
         help="lock wait for the last drain before this invocation exits",
     )
+    parser.add_argument(
+        "--live-yield-rounds", type=float, default=1.0,
+        help="stand aside before each ingest while any SSOT hosted sweep is "
+             "overdue by more than this many of its own intervals; 0 disables",
+    )
+    parser.add_argument(
+        "--live-yield-max-seconds", type=float, default=900.0,
+        help="longest one stand-aside may last, so a lane that stays late for "
+             "reasons of its own cannot stall this walk indefinitely",
+    )
+    parser.add_argument(
+        "--pace-ratio", type=float, default=1.0,
+        help="after a committed ingest, stay idle for this multiple of the time "
+             "the ingest held the lock (1.0 keeps the lane's duty cycle at or "
+             "under half); 0 disables",
+    )
+    parser.add_argument(
+        "--pace-max-seconds", type=float, default=120.0,
+        help="cap on one pacing pause",
+    )
     parser.add_argument("--scratch", type=Path, default=DEFAULT_SCRATCH)
     # Reuse only ever reaches back one event date (about 40 minutes at the
     # measured pace); three hours kept ~5 GB of fields on a disk with 23 GiB
@@ -344,10 +504,46 @@ def main() -> int:
         "captures_skipped_queued": 0, "captures_failed": 0,
         "ingests_committed": 0, "ingests_lock_busy": 0, "ingests_failed": 0,
         "rows_written": 0, "bytes_downloaded": 0,
+        "live_yield_seconds": 0.0, "live_yields": 0, "live_yield_expired": 0,
+        "pace_seconds": 0.0,
     }
 
     def out_of_time() -> bool:
         return args.max_seconds is not None and time.monotonic() - t0 > args.max_seconds
+
+    live_intervals: dict[str, float] = {}
+    clocks_path: Path | None = None
+    if args.live_yield_rounds > 0:
+        live_intervals, clocks_path = _hosted_sweep_contract()
+
+    def stand_aside() -> None:
+        if clocks_path is None:
+            return
+        result = stand_aside_for_live_lanes(
+            live_intervals,
+            lambda: json.loads(clocks_path.read_text(encoding="utf-8")),
+            rounds=args.live_yield_rounds,
+            max_seconds=args.live_yield_max_seconds,
+        )
+        if result["ended"] in {"disabled", "not_needed"}:
+            return
+        stats["live_yields"] += 1
+        stats["live_yield_seconds"] += result["waited_seconds"]
+        late = [[n, round(r, 2)] for n, r in result["late"]]
+        if result["ended"] == "cap_reached":
+            stats["live_yield_expired"] += 1
+        log({"kind": "live_yield", "ended": result["ended"],
+             "waited_seconds": round(result["waited_seconds"], 1), "late": late})
+        print(
+            f"   stood aside {result['waited_seconds']:.0f}s for {len(late)} late "
+            f"live SSOT lane(s) ({result['ended']})",
+            flush=True,
+        )
+
+    def pace(held_seconds: float) -> None:
+        stats["pace_seconds"] += pace_after_commit(
+            held_seconds, ratio=args.pace_ratio, max_seconds=args.pace_max_seconds,
+        )
 
     def drain(lock_wait: float) -> None:
         """Ingest queued packets until the lock is busy or the queue is empty."""
@@ -362,6 +558,7 @@ def main() -> int:
                 "--event-date", packet.event_date, "--lead-days", str(packet.lead),
                 "--run-cycle-hour", str(packet.cycle), "--input", str(path), "--commit",
             ]
+            stand_aside()
             started = time.monotonic()
             rc, stdout, stderr = _run(cmd, env_for(packet.provider, lock_wait), lock_wait + 600.0)
             elapsed = time.monotonic() - started
@@ -386,6 +583,7 @@ def main() -> int:
                     f"{packet.cycle:02d}Z committed rows+{wrote} {elapsed:5.0f}s",
                     flush=True,
                 )
+                pace(elapsed)
                 continue
             if LOCKED in (stderr or ""):
                 stats["ingests_lock_busy"] += 1
