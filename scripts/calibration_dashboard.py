@@ -35,7 +35,7 @@ from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from statistics import median
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -4363,36 +4363,6 @@ def _live_scope() -> dict[str, Any]:
     return live_stations()
 
 
-def bar_split_roster(
-    station_ids: Iterable[str],
-    book: Mapping[str, Mapping[str, Any]],
-) -> list[dict[str, Any]]:
-    """Who a bar-split group's number is made of, worst money first.
-
-    User ruling, 2026-09-13: 前端显式待观察和禁入.  A group reading -27.4%
-    said nothing about being one station on three settled days; the roster
-    says it.  Every member is listed, settled or not -- a barred station with
-    no settlements is still barred -- and ``book`` is the same per-station
-    ledger the group's own totals are summed from, so the roster and the
-    totals cannot disagree.
-    """
-
-    roster: list[dict[str, Any]] = []
-    for station in station_ids:
-        entry = book.get(station)
-        staked = float(entry["stake"]) if entry else 0.0
-        earned = float(entry["pnl"]) if entry else 0.0
-        roster.append({
-            "station": station,
-            "settled_days": len(entry["days"]) if entry else 0,
-            "staked_usdc": staked,
-            "pnl_usdc": earned,
-            "roi": (earned / staked) if staked else None,
-        })
-    roster.sort(key=lambda m: (m["pnl_usdc"], m["station"]))
-    return roster
-
-
 def collect_live_readiness(
     conn: sqlite3.Connection,
     band_stations: list[dict[str, Any]],
@@ -4656,7 +4626,6 @@ def collect_live_readiness(
             "staked_usdc": stake,
             "pnl_usdc": pnl,
             "roi": (pnl / stake) if stake else None,
-            "members": bar_split_roster((r["station"] for r in rows), book),
         }
 
     # The batch that would actually trade, derived the way the control server
@@ -9844,11 +9813,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "live_readiness": _cached_section(
             "live_readiness", collect_live_readiness,
             conn, band_audit.get("stations") or [],
-            # The roster builder is a module-level helper the collector only
-            # calls, so its source is not in the collector's fingerprint;
-            # without this an edit to it alone would keep serving the old
-            # roster until the TTL ran out.
-            _salt=inspect.getsource(bar_split_roster),
         ),
         "stages": stages,
         "band_shadow": band_shadow,
@@ -10387,7 +10351,7 @@ function head(){
     ];
     return O.banner + rows.map(([cap,build])=>
       lampRowSafe(()=>lampRow(cap,build()), cap.split(" ")[0])).join("")
-      + lampRowSafe(barRoster, "名单");
+      + lampRowSafe(barSummary, "待观察与禁入");
   })()}
   ${renderStamp()}${chips ? `<div style="display:flex;gap:8px;flex-wrap:wrap;
     align-items:center;margin-top:9px">${chips}${more}</div>` : ""}</div>`;
@@ -10728,38 +10692,23 @@ const lampRowSafe = (fn, caption) => {
   }
 };
 
-// The two groups the money row can only summarise, named station by station
-// (user ruling, 2026-09-13: 前端显式待观察和禁入).  The lamps stay one reading
-// per question; this line is what a reader opens a tooltip hoping to find --
-// which stations, on how many settled days, for how much.  Worst money first.
-const barRoster = () => {
+// The two groups the money row can only summarise, spelled out in words
+// (user ruling, 2026-09-13: 前端显式待观察和禁入): how many stations, on how
+// many settled days, for how much.  Group totals only -- the same evening the
+// user ruled 这里不要显式站点明细, so the per-station chips came back out.
+const barSummary = () => {
   const SP = (D.live_readiness || {}).bar_split || {};
   const signed = (v) => v == null ? "—" : (v >= 0 ? "+" : "") + v.toFixed(2);
-  const pct = (v) => v == null ? "" : ` ${(v >= 0 ? "+" : "") + (100 * v).toFixed(0)}%`;
   const group = (key, glyph, label, why) => {
     const g = SP[key];
     if (!g) return "";
-    // No roster in the payload is not an empty group: say nothing about
-    // membership rather than print "（空）" beside a count that is not zero.
-    const members = Array.isArray(g.members) ? g.members : null;
-    const chips = members == null ? "" : members.length ? members.map((m) => {
-      const cls = !m.settled_days ? "" : (m.pnl_usdc >= 0 ? " green" : " red");
-      const read = m.settled_days
-        ? `${m.settled_days}日 ${signed(m.pnl_usdc)}U${pct(m.roi)}`
-        : "无结算";
-      return `<span class="pill${cls}" title="${attr(
-        `${m.station}：${m.settled_days} 个结算站日，投入 ${
-          (m.staked_usdc || 0).toFixed(2)} U，盈亏 ${signed(m.pnl_usdc)} U`)}"><span class="mono">${
-        h(m.station)}</span> ${read}</span>`;
-    }).join(" ") : `<span class="muted">（空）</span>`;
     return `<div style="margin-top:6px"><b>${glyph} ${h(label)}</b>
       <span class="muted">${g.stations || 0} 站 · ${g.settled_days || 0} 个结算站日 · 投入 ${
-        (g.staked_usdc || 0).toFixed(2)} U · 盈亏 ${signed(g.pnl_usdc)} U — ${h(why)}</span>
-      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">${chips}</div></div>`;
+        (g.staked_usdc || 0).toFixed(2)} U · 盈亏 ${signed(g.pnl_usdc)} U — ${h(why)}</span></div>`;
   };
   const body = group("probation", "⏳", "待观察", "证据不足，尚未上线，账本照常记账")
     + group("barred", "⛔", "禁入", "已判且不合格，不下单，账本照常记账");
-  return body ? `<div class="lampdeck"><span class="lampcap">名单 · 待观察与禁入逐站</span>${body}</div>` : "";
+  return body ? `<div class="lampdeck"><span class="lampcap">待观察与禁入</span>${body}</div>` : "";
 };
 
 function upstreamLamps(){
