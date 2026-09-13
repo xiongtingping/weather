@@ -962,3 +962,40 @@ def test_a_replay_head_already_standing_at_now_gets_no_refresh_behind_it() -> No
     assert not any(
         packet["state_refresh_of_checkpoint_id"] for packet in packets
     )
+
+
+def test_a_refused_refresh_is_named_rather_than_restated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The walk's packets stand; the refusal reaches the caller by name.
+
+    A refused refresh used to fall through to the worker's reaffirmation,
+    which re-stamped the predecessor's probabilities on a new clock -- the
+    belief renewed without being updated.  That copy is retired, so the only
+    trace a refusal leaves is the one this channel carries.
+    """
+
+    import bayes_basket_target.p1_compiler as compiler
+
+    real = compiler.materialize_p1
+
+    def refusing(*args, **kwargs):
+        if kwargs.get("state_refresh_of_checkpoint_id"):
+            raise ContractError("probe_state_refresh_refused")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(compiler, "materialize_p1", refusing)
+    refusals: list[str] = []
+    packets = compile_station_p1_packets(
+        predecessor=_predecessor(),
+        observations=[
+            _observation("o1", 24.0, "2026-07-26T04:00:00Z"),
+            _observation("peak", 26.0, "2026-07-26T07:00:00Z"),
+            _observation("cool1", 24.0, "2026-07-26T08:00:00Z"),
+        ],
+        registry_rows=_registry(),
+        compilation_at_utc="2026-07-26T08:05:00Z",
+        state_refresh_refusals_out=refusals,
+    )
+    assert [packet["observation_id"] for packet in packets] == ["o1", "peak"]
+    assert refusals == ["probe_state_refresh_refused"]

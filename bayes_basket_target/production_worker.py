@@ -627,22 +627,18 @@ OFFICIAL_NATIVE_CAPTURE_PENDING_STATES = frozenset({
 MAX_FORWARD_P0_STATION_DAYS = MAX_FORWARD_P0_STATIONS * 4
 # How many station-days may rebuild their TAF confirmation in one cycle.
 #
-# A cap, not a policy: the replay itself is bounded by how often a forecast
-# actually moves, 8 to 10 times a day per station.  This is what stands
-# between that and the pathological case -- a generation change, a repaired
-# inbox, anything that makes every scope eligible at once.  The first attempt
-# at this replay had no cap and re-applied 383 scopes in a single cycle,
-# taking it from eight minutes to nineteen and past its overdue bound.
-#
-# Scopes over the cap are not dropped, only deferred: they are the ones whose
-# confirmation is most recent, and they rebuild on the next cycle.
-# Four, not twelve.  The first live cycle spent its whole budget and left
-# 324 scopes deferred, and the cycle ran 1,523 seconds: the backlog is a
-# one-off -- every scope is eligible the first time this rule applies -- so
-# it should drain over hours rather than be paid for in one cycle that
-# cannot land.  Steady state is far under this: a forecast moves 8 to 10
-# times a day per station and only a scope whose base moved replays at all.
-MAX_P0M_REPLAYS_PER_CYCLE = 4
+# A bound on the pathological case, not a rate: every open station-day whose
+# root moved rebuilds in the cycle it moved.  It was four, set on 2026-08-31
+# when the rebuild cost a full-lineage read per scope and a first live cycle
+# with 383 eligible scopes ran 1,523 seconds.  The read has since moved in
+# front of this decision (the scope is loaded whether or not it rebuilds), so
+# the cap stopped saving the expensive part and kept only the delay: measured
+# 2026-09-13 04:02Z, four rebuilt and 56 waited, and 74 of 651 sampled
+# higher-stage heads on 2026-09-11..12 served a P0-M on a root whose
+# probabilities the newest P0 had already replaced.  The whole scope loop was
+# 4.5 of that cycle's 244 seconds.  One per open station-day is the most a
+# single root generation can ask for.
+MAX_P0M_REPLAYS_PER_CYCLE = MAX_FORWARD_P0_STATION_DAYS
 # How little lease may remain on a day's books before its next scope is
 # compiled against a re-read instead.
 #
@@ -3453,115 +3449,77 @@ def _resident_open_event_dates(
     return tuple(sorted(dates))
 
 
-def reaffirmed_lineage(
-    base_lineage: Mapping[str, Any],
-    observations: Sequence[Mapping[str, Any]],
+def _p0m_window_until(
+    decision_at_utc: str,
     *,
-    predecessor_checkpoint_id: str,
-    newest_observation_id: str,
-) -> dict[str, Any]:
-    """The lineage a P1 reaffirmation carries, with the revision re-resolved.
+    root: ProbabilityEnvelope,
+    revision: ForecastRevision | None,
+) -> str | None:
+    """Where a TAF confirmation stops being servable, or None if it cannot start.
 
-    A reaffirmation restates a predecessor's probabilities against newer
-    observations that did not beat the high, so it inherits the
-    predecessor's lineage.  Inheriting it *wholesale* is what turned a
-    transient race into a standing outage.
+    No later than either thing it stands on: the P0 root's own freshness and
+    the forecaster's validity period.  The window used to be the root's span
+    re-measured from P0-M's decision (``_shift_window``), which was right
+    while P0-M rooted on "the P0 current when the forecast arrived" -- a root
+    that had, by construction, often expired.  Since the 2026-08-31 ruling
+    the root is the newest P0, and the shifted window became a way for a
+    confirmation to outlive its root.  Measured 2026-09-11..12 over 45
+    stations: 1,320 of 1,507 P0-M checkpoints outlived their root (median
+    0.52h, max 13.5h), 50 were decided after the root had already expired
+    -- KAUS 09-12 minted a P0-M at 22:25Z on a P0 from 08:54Z and served it
+    until 03:59Z -- and 3 outlived the TAF itself.  An identity-likelihood
+    confirmation carries no model information of its own; it cannot be
+    fresher than the model it confirms.
 
-    P1 and the canonical ingress that writes an observation's truth
-    revision fact run within a fifth of a second of each other: measured
-    across 271 observations on 2026-08-28, the fact landed after the P1
-    decision half the time.  A P1 that lost that race is committed without
-    the sha, the envelope table is append-only, and every reaffirmation
-    built on it copied the gap forward -- EFHK was still missing at 03:38 a
-    sha whose fact had existed since 21:21, and
-    ``target_atomic_lineage_incomplete`` refused the station-day on every
-    cycle in between.
-
-    The observations passed here are already revision-enriched, so the
-    re-resolve costs nothing and the loss heals on the next cycle.  It is a
-    re-resolve, not an invention: an observation the ingress has genuinely
-    produced no fact for stays empty, and the atomic-fact gate refusing it
-    is the correct outcome rather than a forged key into the truth ledger.
-
-    The sha follows the *closing* observation -- the one the packet was
-    computed against -- not ``newest_observation_id``, which names the
-    newest report examined and is a different thing.
+    None when the window would not clear the mint floor: the scope waits for
+    the next root (or the next TAF) rather than seating a checkpoint that is
+    dead on arrival.
     """
 
-    lineage = {
-        **base_lineage,
-        "reaffirmation_of_checkpoint_id": str(predecessor_checkpoint_id),
-        "reaffirmed_observation_count": str(len(observations)),
-        "reaffirmed_through_observation_id": str(newest_observation_id),
-    }
-    if str(
-        lineage.get("truth_observation_revision_content_sha256") or ""
-    ).strip():
-        return lineage
-    closing = str(
-        lineage.get("canonical_observation_event_id") or ""
-    ).strip()
-    if not closing:
-        return lineage
-    healed = next(
-        (
-            str(
-                row.get("truth_observation_revision_content_sha256") or ""
-            ).strip()
-            for row in observations
-            if str(row.get("observation_id") or "").strip() == closing
-        ),
-        "",
-    )
-    if healed:
-        lineage["truth_observation_revision_content_sha256"] = healed
-    return lineage
+    until = str(root.fresh_until_utc)
+    if revision is not None and timestamp_lt(
+        str(revision.valid_until_utc), until
+    ):
+        until = str(revision.valid_until_utc)
+    try:
+        assert_mintable_freshness_window(
+            decision_at_utc, until, name="resident_taf_confirmation"
+        )
+    except ContractError:
+        return None
+    return until
 
 
-def _shift_window(
-    decision_at_utc: str, root_decision_utc: str, root_fresh_until_utc: str
+def _p0m_replay_decision_at(
+    as_of_utc: str, *, after_decision_utc: str
 ) -> str:
-    """Re-base a freshness window on a later decision, keeping its length.
+    """The instant a confirmation rebuilt on a moved root is seated.
 
-    P0-M roots at the P0 that was current when the forecast arrived, which
-    by construction may already have expired.  Its window is therefore the
-    root's duration measured from P0-M's own decision -- not the root's
-    absolute expiry, which would make the checkpoint stale at birth, and not
-    a constant, which would silently re-cadence a scope.
+    Now: the forecaster spoke hours ago, and what happened now is that the
+    base moved.  Except that every P0 this cycle compiled carries the cycle
+    clock itself as its decision, and a stage may not share its
+    predecessor's instant (``probability_decision_time_rewind``) -- so a
+    confirmation of a root minted this very cycle is seated one millisecond
+    after it.  Declining instead (the old ``decision_at <= predecessor``
+    skip) left the rebuild to the next cycle, and in between P1 rooted on
+    the bare P0 and then had to replay the whole day a second time.
 
-    The span carried over is the root's *remaining* life at its own decision,
-    so a root compiled at the edge of its TTL carries almost none.  Refused
-    rather than floored: the span is what the root had, and lengthening it
-    would mint freshness the evidence never had -- the same move the native
-    TTL exists to forbid, where "a nearly expired packet could be recompiled
-    repeatedly and made arbitrarily fresh without a new model arrival".  A
-    root with nothing left to lend is a root P0-M should not be built on, and
-    the scope waits for the next one.  Before 2026-08-28 the only test was
-    for a non-positive span, which let a 44-millisecond root through and put
-    sixteen dead-on-arrival checkpoints in the SSOT.
+    Millisecond precision, the cycle clock's own, so the stamp's byte order
+    and instant order agree with the root's.
     """
 
-    start = datetime.fromisoformat(
-        str(root_decision_utc).replace("Z", "+00:00")
+    here = datetime.fromisoformat(str(as_of_utc).replace("Z", "+00:00"))
+    after = datetime.fromisoformat(
+        str(after_decision_utc).replace("Z", "+00:00")
     )
-    end = datetime.fromisoformat(
-        str(root_fresh_until_utc).replace("Z", "+00:00")
-    )
-    here = datetime.fromisoformat(
-        str(decision_at_utc).replace("Z", "+00:00")
-    )
-    span = end - start
-    if span.total_seconds() < MIN_USABLE_FRESHNESS_SECONDS:
-        raise ContractError("resident_taf_root_window_invalid")
-    shifted = (here + span).isoformat().replace("+00:00", "Z")
-    # This function mints half of the pair the SSOT will compare as bytes,
-    # and the other half is whatever the caller's decision stamp looks like.
-    # The span floor makes a disagreement unreachable; asserting it here is
-    # what keeps that true if either stamp's precision ever changes.
-    assert_mintable_freshness_window(
-        decision_at_utc, shifted, name="resident_taf_root"
-    )
-    return shifted
+    if here > after:
+        return str(as_of_utc)
+    lifted = after.replace(
+        microsecond=(after.microsecond // 1000) * 1000
+    ) + timedelta(milliseconds=1)
+    return lifted.astimezone(timezone.utc).isoformat(
+        timespec="milliseconds"
+    ).replace("+00:00", "Z")
 
 
 def _p0m_scope_day_order(event_date: Any) -> str:
@@ -12747,8 +12705,22 @@ class TargetProductionWorker:
         *,
         as_of_utc: str,
         freshness_seconds: int = 3600,
+        stage_clock_utc: str | None = None,
     ) -> dict[str, Any]:
-        """Append resident official new-high P1 through the unique compiler."""
+        """Append resident official new-high P1 through the unique compiler.
+
+        ``stage_clock_utc`` is the latest decision the stages below this one
+        stamped in the same cycle.  Observations stay strictly as of
+        ``as_of_utc`` -- their truth revisions were identified against that
+        clock -- but the root this compile builds on is read as of the stage
+        clock, so a P0-M rebuilt one millisecond after a root minted at the
+        cycle clock (``_p0m_replay_decision_at``) is the root P1 takes, not a
+        cycle later after a detour through the bare P0.
+        """
+
+        envelope_as_of_utc = as_of_utc
+        if stage_clock_utc and timestamp_lt(as_of_utc, stage_clock_utc):
+            envelope_as_of_utc = str(stage_clock_utc)
 
         if self.canonical_source_conn is None:
             return {
@@ -12862,13 +12834,13 @@ class TargetProductionWorker:
                         self.commit_conn,
                         station_id=station,
                         event_date=day,
-                        evaluation_at_utc=as_of_utc,
+                        evaluation_at_utc=envelope_as_of_utc,
                         expected_source_lane=expected_source_lane,
                     )
                 prediction_root, predecessor, consumed, rebasing = (
                     select_p1_replay_base(
                     envelopes,
-                    as_of_utc=as_of_utc,
+                    as_of_utc=envelope_as_of_utc,
                     )
                 )
                 source_lanes = {
@@ -13030,7 +13002,9 @@ class TargetProductionWorker:
                     ),
                 )
                 p1_compile_started = time.perf_counter()
+                refresh_refusals: list[str] = []
                 packets = compile_station_p1_packets(
+                    state_refresh_refusals_out=refresh_refusals,
                     predecessor=predecessor,
                     prediction_root=prediction_root,
                     # The compiled packet is committed verbatim, so the
@@ -13110,96 +13084,33 @@ class TargetProductionWorker:
                     label=scope_label,
                 )
                 if not packets:
-                    # No new reported high, so the distribution has nothing
-                    # to change -- but the *staleness gate* measures time
-                    # since evidence was last examined, not time since the
-                    # answer last moved.  On a hot night the midnight report
-                    # can stand as the day's high for ten hours (ZUUU
+                    # Nothing to write: no new reported high, and the state
+                    # refresh either had nothing newer to read or its clock
+                    # had not lapsed.  Nothing is renewed by copying.
+                    #
+                    # This branch used to append a reaffirmation -- the
+                    # predecessor's probabilities verbatim on a new decision
+                    # clock -- so a hot night's standing high (ZUUU
                     # 2026-08-13: 31C at 00:06 local, ten morning reports
-                    # under it), and in hard-bound-only mode nothing else
-                    # re-rolls P1, so a perfectly current envelope aged past
-                    # its grace and the event morning went unservable.  When
-                    # the newest P1 has lapsed its own cadence and newer
-                    # observations were examined without beating the high,
-                    # append a reaffirmation: identical probabilities, new
-                    # decision clock, lineage naming what was examined.  At
-                    # most one per freshness window, and only ever off real
-                    # observations -- an empty morning reaffirms nothing.
-                    reaffirmed = False
-                    if (
-                        predecessor is not None
-                        and getattr(predecessor, "stage", None) == "P1"
-                        and observations
-                        and not predecessor.is_fresh(as_of_utc)
-                    ):
-                        base = predecessor.to_dict()
-                        # The newest report examined, by the clock -- not the
-                        # last observation id in lexicographic order, which is
-                        # what this took until 2026-09-12.  Ids are content
-                        # addressed, so their order says nothing about time,
-                        # and the lineage key that names what a reaffirmation
-                        # re-examined was naming an arbitrary row.  Same key
-                        # the compiler's walk sorts on, so the two agree on
-                        # which report is last.
-                        newest_obs = str(
-                            max(
-                                observations,
-                                key=lambda row: (
-                                    str(row.get("valid_at_utc") or ""),
-                                    str(
-                                        row.get(
-                                            "canonical_committed_at_utc"
-                                        ) or ""
-                                    ),
-                                    str(row.get("observation_id") or ""),
-                                ),
-                            ).get("observation_id") or ""
-                        )
-                        lineage = reaffirmed_lineage(
-                            base.get("lineage", {}),
-                            observations,
-                            predecessor_checkpoint_id=(
-                                predecessor.checkpoint_id
-                            ),
-                            newest_observation_id=newest_obs,
-                        )
-                        fresh_until = (
-                            datetime.fromisoformat(
-                                as_of_utc.replace("Z", "+00:00")
-                            )
-                            + timedelta(seconds=freshness_seconds)
-                        ).isoformat(timespec="milliseconds").replace(
-                            "+00:00", "Z"
-                        )
-                        checkpoint = "p1_" + content_sha256({
-                            "reaffirmation_of": predecessor.checkpoint_id,
-                            "through_observation": newest_obs,
-                            "decision_at_utc": as_of_utc,
-                        })[:32]
-                        envelope = ProbabilityEnvelope.from_mapping({
-                            **base,
-                            "checkpoint_id": checkpoint,
-                            "decision_at_utc": as_of_utc,
-                            "fresh_until_utc": fresh_until,
-                            "lineage": lineage,
-                        })
-                        with _writer_transaction(
-                            self.commit_conn,
-                            savepoint="resident_p1_reaffirm",
-                        ):
-                            write = insert_probability_envelope(
-                                self.commit_conn,
-                                envelope,
-                                created_at_utc=as_of_utc,
-                            )
-                        reaffirmed = bool(write.get("wrote"))
+                    # under it) would not age the envelope out of service.
+                    # That renewed a belief without updating it: 595 P1
+                    # envelopes written 2026-09-11..12 restated their
+                    # predecessor's numbers byte for byte, on reports the
+                    # walk had examined and not stepped on.  The compiler's
+                    # state refresh (60b24dfb) now recomputes on the current
+                    # clock over the complete prefix in exactly that case, and
+                    # of 2,810 P1 envelopes written after it landed none was a
+                    # reaffirmation.  What remains reachable here is a refresh
+                    # the compiler refused, and a refusal restated as a fresh
+                    # belief is the defect, not the fallback -- it is named in
+                    # the receipt and the envelope ages out on its own grace.
                     receipts.append({
                         "station_id": station,
                         "event_date": day,
-                        "state": (
-                            "REAFFIRMED_NO_NEW_HIGH"
-                            if reaffirmed
-                            else "NO_NEW_REPORTED_HIGH"
+                        "state": "NO_NEW_REPORTED_HIGH",
+                        **(
+                            {"state_refresh_refused": refresh_refusals[-1]}
+                            if refresh_refusals else {}
                         ),
                         "observation_count": len(observations),
                         "p1_update_count": 0,
@@ -13307,6 +13218,10 @@ class TargetProductionWorker:
                     "state_refresh_written": any(
                         str(packet.get("state_refresh_of_checkpoint_id") or "")
                         for packet in packets
+                    ),
+                    **(
+                        {"state_refresh_refused": refresh_refusals[-1]}
+                        if refresh_refusals else {}
                     ),
                     "p0_rebase": rebasing,
                     "current_consumable": current_consumable,
@@ -13544,6 +13459,8 @@ class TargetProductionWorker:
     def _p0m_scope_shape(
         envelopes: Sequence[ProbabilityEnvelope],
         captures: Sequence[Mapping[str, Any]],
+        *,
+        as_of_utc: str | None = None,
     ) -> dict[str, Any]:
         """The P0/P0-M-only shape both the real and the cheap path read.
 
@@ -13625,41 +13542,138 @@ class TargetProductionWorker:
         latest_root = (
             max(roots, key=lambda item: item.decision_at_utc) if roots else None
         )
-        # Seen under a base that still states today's forecast.
+        # Confirmed on the root being served -- that exact checkpoint.
         #
-        # On substance, not on identity.  A P0 checkpoint id is re-minted
-        # every compile -- decision_at_utc is inside the hash -- so keying
-        # this on the id makes every scope re-apply every cycle forever.
-        # Keyed on whether the probabilities moved, a TAF speaks again only
-        # when the forecast underneath it actually changed: measured on
-        # 09-01, 47 committed P0 envelopes per station over 8 to 10 distinct
-        # probability vectors.
+        # This used to be "seen under a base with the same probabilities",
+        # on the argument that a P0 is re-minted every compile and keying on
+        # the id would re-apply every scope every cycle.  Two things changed
+        # the arithmetic.  A confirmation's window now ends with its root's
+        # (``_p0m_window_until``), so a re-minted root with the same numbers
+        # but a later freshness leaves the old confirmation expiring on a
+        # root nobody serves.  And P1 roots on the P0-M whose root *is* the
+        # newest P0 checkpoint (``select_p1_replay_base``), so a confirmation
+        # left on an equal-probability predecessor sent P1 onto the bare P0
+        # -- dropping the stage -- until the probabilities next moved.  The
+        # re-mint rate the old note feared is the rate P1 already replays
+        # at: 2,834 P0 transitions over 90 station-days, 2026-09-11..12.
         seen_revisions = {
             str(item.lineage.get("forecast_source_object_sha256") or "")
             for item in envelopes
             if item.stage == "P0-M"
-            and (
-                latest_root is None
-                # By class, not by self: _p0m_scope_shape is a staticmethod
-                # and has no instance.  Written as self._same_p0_forecast it
-                # raised NameError on every scope -- 344 blockers in one
-                # cycle, the whole P0-M lane fail-closed -- and no test
-                # caught it because the exception is swallowed into a
-                # per-scope blocker rather than escaping the lane.
-                or TargetProductionWorker._same_p0_forecast(
-                    str(item.lineage.get("p0_root_checkpoint_id") or ""),
-                    latest_root,
-                    envelopes,
-                )
-            )
+            and latest_root is not None
+            and str(item.lineage.get("p0_root_checkpoint_id") or "")
+            == latest_root.checkpoint_id
         }
+        # Every TAF text that has ever confirmed this station-day, under any
+        # root.  A text in here has already been judged seatable once; the
+        # forecaster has not spoken again just because the model moved.
+        seated_revisions = {
+            str(item.lineage.get("forecast_source_object_sha256") or "")
+            for item in envelopes
+            if item.stage == "P0-M"
+        } - {""}
+        # What a rebuilt confirmation should carry: the forecaster's newest
+        # word that is still valid.  Operator ruling 2026-08-31 -- "a TAF
+        # replayed onto a newer model base is still the forecaster's
+        # confirmation" -- so a text that already confirmed an older root is
+        # carried onto the newer one even when it was issued before the newer
+        # run.  The 2026-09-03 information-order rule still governs *new*
+        # texts (``seatable``); applied to the replay as well, it stranded
+        # the confirmation on its old root whenever a model run landed after
+        # the last TAF: 17 of the 86 sampled P0-M heads serving a superseded
+        # root on 2026-09-11..12 had no way off it until the next issuance.
+        #
+        # And the newest, not the first.  The replay walked revisions in
+        # receipt order and seated each at "now"; the second one then failed
+        # the strictly-after test, so what survived was the *oldest* text,
+        # whose TX then chose the charter-57 centre/width cell.
+        replay_candidates: dict[str, Mapping[str, Any]] = {}
+        for capture in (
+            *seatable,
+            *(
+                capture for capture in captures
+                if str(
+                    (capture.get("forecast_revision") or {}).get(
+                        "source_object_sha256"
+                    ) or ""
+                ) in seated_revisions
+            ),
+        ):
+            revision_raw = capture.get("forecast_revision") or {}
+            if as_of_utc is not None:
+                valid_until = str(revision_raw.get("valid_until_utc") or "")
+                if not valid_until or not timestamp_lt(as_of_utc, valid_until):
+                    continue
+            replay_candidates[
+                str(revision_raw.get("source_object_sha256") or "")
+            ] = capture
+        replay_target = max(
+            replay_candidates.values(),
+            key=lambda capture: (
+                str((capture.get("forecast_revision") or {}).get(
+                    "issued_at_utc"
+                ) or ""),
+                str((capture.get("forecast_revision") or {}).get(
+                    "received_at_utc"
+                ) or ""),
+                str((capture.get("forecast_revision") or {}).get(
+                    "revision_id"
+                ) or ""),
+            ),
+            default=None,
+        )
+        replay_target_sha = (
+            str(
+                (replay_target.get("forecast_revision") or {}).get(
+                    "source_object_sha256"
+                ) or ""
+            )
+            if replay_target is not None
+            else ""
+        )
+        # Texts never seated that may still seat: an expired one never will,
+        # and counting it would keep the cheap path from ever skipping the
+        # scope again.
+        new_revision_count = sum(
+            1 for capture in seatable
+            if str(
+                (capture.get("forecast_revision") or {}).get(
+                    "source_object_sha256"
+                ) or ""
+            ) not in seated_revisions
+            and str(
+                (capture.get("forecast_revision") or {}).get(
+                    "source_object_sha256"
+                ) or ""
+            ) in replay_candidates
+        )
         return {
             "first_root_at": first_root_at,
             "seatable": seatable,
             "dropped_pre_root": len(captures) - len(seatable),
             "earliest_taf": earliest_taf,
             "roots": roots,
+            "latest_root": latest_root,
             "seen_revisions": seen_revisions,
+            "seated_revisions": seated_revisions,
+            "replay_target": replay_target,
+            "new_revision_count": new_revision_count,
+            # A root with no usable life left can lend a confirmation none
+            # (``_p0m_window_until``), so the scope has nothing to do until
+            # the next P0 -- and must not need a registry shard to say so.
+            "root_exhausted": bool(
+                as_of_utc is not None
+                and latest_root is not None
+                and _p0m_window_until(
+                    as_of_utc, root=latest_root, revision=None
+                ) is None
+            ),
+            # Whether the root being served still lacks a confirmation of the
+            # text it should carry -- the rebuild this lane owes the scope.
+            "reroot_due": bool(
+                replay_target_sha
+                and replay_target_sha not in seen_revisions
+            ),
         }
 
     def _materialize_resident_p0m(
@@ -13893,6 +13907,11 @@ class TargetProductionWorker:
         shadow_errors: list[dict[str, str]] = []
         replays_this_cycle = 0
         replays_deferred: list[str] = []
+        p0m_serving_tables: dict[str, Any] | None = None
+        # The latest decision this pass stamped, which a rebuild on a root
+        # minted at the cycle clock places one millisecond past it.  P1 reads
+        # its roots as of this, so it builds on the confirmation just made.
+        p0m_stage_clock_utc: str | None = None
         # Furthest event day first, then station.
         #
         # The replay budget is four scopes a cycle and this loop used to walk
@@ -14031,7 +14050,9 @@ class TargetProductionWorker:
                                 evaluation_at_utc=as_of_utc,
                                 stages=("P0", "P0-M"),
                             )
-                        narrow_shape = self._p0m_scope_shape(narrow, captures)
+                        narrow_shape = self._p0m_scope_shape(
+                            narrow, captures, as_of_utc=as_of_utc
+                        )
                         if not narrow_shape["roots"]:
                             fast_receipt = self._p0m_no_op_receipt(
                                 station_id=station,
@@ -14041,13 +14062,16 @@ class TargetProductionWorker:
                                     "dropped_pre_root"
                                 ],
                             )
-                        elif not station_artifacts and all(
-                            str(
-                                (
-                                    capture.get("forecast_revision") or {}
-                                ).get("source_object_sha256") or ""
-                            ) in narrow_shape["seen_revisions"]
-                            for capture in narrow_shape["seatable"]
+                        elif narrow_shape["root_exhausted"]:
+                            fast_receipt = self._p0m_no_op_receipt(
+                                station_id=station,
+                                event_date=day,
+                                state="IGNORED_STALE_P0_SCOPE",
+                            )
+                        elif (
+                            not station_artifacts
+                            and not narrow_shape["new_revision_count"]
+                            and not narrow_shape["reroot_due"]
                         ):
                             fast_receipt = self._p0m_no_op_receipt(
                                 station_id=station,
@@ -14116,9 +14140,15 @@ class TargetProductionWorker:
                 # no root before it cannot seat *itself* under the contract
                 # -- "no P0 before forecast" is true of it alone -- so it is
                 # dropped alone, counted, and its siblings proceed.
-                shape = self._p0m_scope_shape(envelopes, captures)
+                shape = self._p0m_scope_shape(
+                    envelopes, captures, as_of_utc=as_of_utc
+                )
                 first_root_at = shape["first_root_at"]
                 dropped_pre_root = shape["dropped_pre_root"]
+                # Kept whole beside the seatable subset: a text issued before
+                # the newest run may not seat afresh, but one that already
+                # confirmed an older root is carried onto the new one.
+                scope_captures = captures
                 captures = shape["seatable"]
                 earliest_taf = shape["earliest_taf"]
                 roots = shape["roots"]
@@ -14129,6 +14159,14 @@ class TargetProductionWorker:
                         event_date=day,
                         state="IGNORED_NO_P0_BEFORE_FORECAST",
                         dropped_pre_root=dropped_pre_root,
+                    ))
+                    continue
+                if shape["root_exhausted"]:
+                    ignored_inactive_scope_count += 1
+                    receipts.append(self._p0m_no_op_receipt(
+                        station_id=station,
+                        event_date=day,
+                        state="IGNORED_STALE_P0_SCOPE",
                     ))
                     continue
                 # A stale historical P0 scope is a no-op and must not need a
@@ -14204,7 +14242,7 @@ class TargetProductionWorker:
                     # distribution either way; what was missing was the seat.
                     ignored_no_artifact_scope_count += 1
                     capture_by_id_tx: dict[str, float | None] = {}
-                    for item in captures:
+                    for item in scope_captures:
                         rid = str(
                             (item.get("forecast_revision") or {}).get(
                                 "revision_id"
@@ -14239,124 +14277,75 @@ class TargetProductionWorker:
                             item.received_at_utc, item.revision_id
                         ),
                     )
-                    # Seen means "this TAF text already has a seat", keyed by
-                    # the source object hash: revision ids are re-keyed when
-                    # the inbox chain repair renumbers a scope, and matching
-                    # on them re-seated every committed revision at its exact
-                    # original received instant -- a guaranteed
+                    # Keyed by the source object hash: revision ids are
+                    # re-keyed when the inbox chain repair renumbers a scope,
+                    # and matching on them re-seated every committed revision
+                    # at its exact original received instant -- a guaranteed
                     # decision-time conflict (43 stations, 2026-08-20).
-                    seen_revisions = self._p0m_scope_shape(
-                        envelopes, captures
-                    )["seen_revisions"]
-                    # A rebuild this scope owes only because its base moved --
-                    # every revision here already has a seat under some older
-                    # forecast -- waits its turn when the cycle has spent its
-                    # replay budget.  A scope with a genuinely new TAF is not
-                    # a replay and is never deferred: its revisions are absent
-                    # from seen_revisions whatever the base did.
-                    replay_only = bool(revisions) and all(
-                        any(
-                            str(item.lineage.get(
-                                "forecast_source_object_sha256"
-                            ) or "") == revision.source_object_sha256
-                            for item in envelopes
-                            if item.stage == "P0-M"
-                        )
-                        for revision in revisions
+                    gated_shape = self._p0m_scope_shape(
+                        envelopes, scope_captures, as_of_utc=as_of_utc
                     )
-                    if replay_only and not any(
-                        revision.source_object_sha256 in seen_revisions
-                        for revision in revisions
-                    ):
-                        # Only where trading can still happen.  A settled
-                        # day's base never moves again and nobody prices it,
-                        # so re-confirming it buys nothing -- and the backlog
-                        # drains oldest first, so without this the whole
-                        # budget goes to history: the first cycle spent all
-                        # four on 08-24 through 08-27, days closed for a
-                        # week.
-                        try:
-                            replay_day_state = event_day_window(
-                                day,
-                                as_of_utc=as_of_utc,
-                                target_timezone=root.settlement_timezone,
-                            )["state"]
-                        except Exception:  # noqa: BLE001 -- unreadable is not replayable
-                            replay_day_state = "closed"
-                        if replay_day_state not in {"open", "not_started"}:
-                            receipts.append(self._p0m_no_op_receipt(
-                                station_id=station,
-                                event_date=day,
-                                state="REPLAY_SKIPPED_SETTLED_DAY",
-                            ))
-                            continue
-                        if replays_this_cycle >= MAX_P0M_REPLAYS_PER_CYCLE:
-                            replays_deferred.append(f"{station}|{day}")
-                            receipts.append(self._p0m_no_op_receipt(
-                                station_id=station,
-                                event_date=day,
-                                state="REPLAY_DEFERRED_CYCLE_BUDGET",
-                            ))
-                            continue
-                        replays_this_cycle += 1
+                    seen_revisions = gated_shape["seen_revisions"]
+                    seated_revisions = gated_shape["seated_revisions"]
+                    # Two jobs, in this order.  A text the scope has never
+                    # seated is a new entry moment, dated at its arrival as it
+                    # always was.  Then the root being served must carry the
+                    # forecaster's newest valid word: when the model moved
+                    # under it, that confirmation is rebuilt now, on the new
+                    # root, whatever the text's issue time.
+                    new_revisions = [
+                        revision for revision in revisions
+                        if revision.source_object_sha256
+                        not in seated_revisions
+                        and timestamp_lt(as_of_utc, revision.valid_until_utc)
+                    ]
+                    if p0m_serving_tables is None:
+                        # Read once a pass, not once a revision: the rebuild
+                        # below now runs for every scope whose root moved, and
+                        # nothing in this lane writes the tables it reads.
+                        p0m_serving_tables = {
+                            "band_table": load_band_table_with_axis(
+                                self.commit_conn, stage="P0-M"
+                            ),
+                            "center_width": load_center_width(
+                                self.commit_conn, stage="P0-M"
+                            ),
+                            "center_width_floor_rungs": (
+                                load_center_width_floor(
+                                    self.commit_conn, stage="P0-M"
+                                )
+                            ),
+                            "center_width_tiers": load_center_width_tiers(
+                                self.commit_conn, stage="P0-M"
+                            ),
+                            "center_width_taf_cells": (
+                                load_center_width_cells(
+                                    self.commit_conn, stage="P0-M"
+                                )
+                            ),
+                            "station_width": load_station_width(
+                                self.commit_conn, stage="P0-M"
+                            ),
+                        }
                     observed_pending: list[
                         tuple[ProbabilityEnvelope, str]
                     ] = []
                     observed_error: str | None = None
+                    window_refusals: list[str] = []
+                    replay_skip_state: str | None = None
                     observed_predecessor = root
-                    for revision in revisions:
-                        if revision.source_object_sha256 in seen_revisions:
-                            continue
-                        # The forecast's own arrival is the moment, and it
-                        # has to be strictly later than what it follows --
-                        # inventing a tick past the predecessor would date a
-                        # seat at a time nothing happened.  A revision that
-                        # does not clear it is simply not this stage's.
-                        #
-                        # Except on a replay, where the moment is now.  The
-                        # forecaster spoke once; what happened just now is
-                        # that the model moved and this confirmation was
-                        # re-made against the forecast being served, which is
-                        # a real event at a real time and not the TAF's
-                        # arrival hours ago.  Dating it at the arrival puts
-                        # two different authorities on one stage and instant
-                        # -- probability_stage_decision_time_conflict, three
-                        # of them on the replay's first live cycle -- and
-                        # would also backdate a decision made on evidence
-                        # that did not exist then.
-                        if replay_only:
-                            decision_at = as_of_utc
-                        else:
-                            # A revision that was in hand before its
-                            # predecessor was minted is seated at the
-                            # predecessor's clock plus a second, as the
-                            # artifact path already does; the chain only
-                            # needs its order, and the information order
-                            # was settled by the seatability gate above.
-                            previous_time = datetime.fromisoformat(
-                                observed_predecessor.decision_at_utc.replace(
-                                    "Z", "+00:00"
-                                )
-                            ).astimezone(timezone.utc)
-                            received_time = datetime.fromisoformat(
-                                revision.received_at_utc.replace("Z", "+00:00")
-                            ).astimezone(timezone.utc)
-                            decision_time = max(previous_time, received_time)
-                            decision_time = decision_time.replace(microsecond=0)
-                            if decision_time <= previous_time:
-                                decision_time = previous_time.replace(
-                                    microsecond=0
-                                ) + timedelta(seconds=1)
-                            decision_at = decision_time.isoformat().replace(
-                                "+00:00", "Z"
-                            )
-                        if (
-                            decision_at
-                            <= observed_predecessor.decision_at_utc
-                            or decision_at > as_of_utc
-                        ):
-                            continue
-                        fields = capture_by_id_tx.get(revision.revision_id)
+
+                    def _observe(
+                        revision: ForecastRevision,
+                        decision_at: str,
+                        predecessor: ProbabilityEnvelope,
+                    ) -> ProbabilityEnvelope | None:
+                        window_until = _p0m_window_until(
+                            decision_at, root=root, revision=revision
+                        )
+                        if window_until is None:
+                            window_refusals.append(revision.revision_id)
+                            return None
                         observed_excluded, observed_high = (
                             self._p0m_observed_hard_bound(
                                 station_id=station,
@@ -14365,66 +14354,69 @@ class TargetProductionWorker:
                                 root=root,
                             )
                         )
+                        return materialize_p0m_observed(
+                            predecessor,
+                            p0_root=root,
+                            observed_hard_excluded_buckets=observed_excluded,
+                            observed_running_high_c=observed_high,
+                            forecast_revision_id=revision.revision_id,
+                            forecast_source_object_sha256=(
+                                revision.source_object_sha256
+                            ),
+                            taf_tx_c=capture_by_id_tx.get(
+                                revision.revision_id
+                            ),
+                            decision_at_utc=decision_at,
+                            fresh_until_utc=window_until,
+                            bridge_sha256=root.bridge_sha256,
+                            **p0m_serving_tables,
+                            fleet_regime=load_regime_shift(
+                                self.commit_conn,
+                                stage="P0-M",
+                                event_date=day,
+                                as_of_utc=decision_at,
+                            ),
+                        )
+
+                    for revision in new_revisions:
+                        # The forecast's own arrival is the moment, and it
+                        # has to be strictly later than what it follows --
+                        # inventing a tick past the predecessor would date a
+                        # seat at a time nothing happened.  A revision that
+                        # was in hand before its predecessor was minted is
+                        # seated at the predecessor's clock plus a second, as
+                        # the artifact path already does; the chain only needs
+                        # its order, and the information order was settled by
+                        # the seatability gate above.
+                        previous_time = datetime.fromisoformat(
+                            observed_predecessor.decision_at_utc.replace(
+                                "Z", "+00:00"
+                            )
+                        ).astimezone(timezone.utc)
+                        received_time = datetime.fromisoformat(
+                            revision.received_at_utc.replace("Z", "+00:00")
+                        ).astimezone(timezone.utc)
+                        decision_time = max(previous_time, received_time)
+                        decision_time = decision_time.replace(microsecond=0)
+                        if decision_time <= previous_time:
+                            decision_time = previous_time.replace(
+                                microsecond=0
+                            ) + timedelta(seconds=1)
+                        decision_at = decision_time.isoformat().replace(
+                            "+00:00", "Z"
+                        )
+                        if (
+                            decision_at
+                            <= observed_predecessor.decision_at_utc
+                            or decision_at > as_of_utc
+                        ):
+                            # Not this cycle's to date at its arrival -- the
+                            # root was minted after it.  The rebuild below
+                            # seats it now if it is the newest word.
+                            continue
                         try:
-                            observed = materialize_p0m_observed(
-                                observed_predecessor,
-                                p0_root=root,
-                                observed_hard_excluded_buckets=(
-                                    observed_excluded
-                                ),
-                                observed_running_high_c=observed_high,
-                                forecast_revision_id=revision.revision_id,
-                                forecast_source_object_sha256=(
-                                    revision.source_object_sha256
-                                ),
-                                    taf_tx_c=fields,
-                                decision_at_utc=decision_at,
-                                # The root is deliberately older than this
-                                # decision -- that is the whole point of
-                                # rooting as-of the forecast -- so its
-                                # freshness window has usually closed by now
-                                # and inheriting it makes the posterior
-                                # invalid before it is written.  Re-establish
-                                # the window from this stage's own decision,
-                                # carrying the root's window *length* so the
-                                # cadence is the one the scope was compiled
-                                # with rather than a number invented here.
-                                fresh_until_utc=_shift_window(
-                                    decision_at,
-                                    root.decision_at_utc,
-                                    root.fresh_until_utc,
-                                ),
-                                bridge_sha256=root.bridge_sha256,
-                                band_table=load_band_table_with_axis(
-                                    self.commit_conn, stage="P0-M"
-                                ),
-                                center_width=load_center_width(
-                                    self.commit_conn, stage="P0-M"
-                                ),
-                                center_width_floor_rungs=(
-                                    load_center_width_floor(
-                                        self.commit_conn, stage="P0-M"
-                                    )
-                                ),
-                                center_width_tiers=(
-                                    load_center_width_tiers(
-                                        self.commit_conn, stage="P0-M"
-                                    )
-                                ),
-                                center_width_taf_cells=(
-                                    load_center_width_cells(
-                                        self.commit_conn, stage="P0-M"
-                                    )
-                                ),
-                                station_width=load_station_width(
-                                    self.commit_conn, stage="P0-M"
-                                ),
-                                fleet_regime=load_regime_shift(
-                                    self.commit_conn,
-                                    stage="P0-M",
-                                    event_date=day,
-                                    as_of_utc=decision_at,
-                                ),
+                            observed = _observe(
+                                revision, decision_at, observed_predecessor
                             )
                         except Exception as exc:  # noqa: BLE001
                             # This path is additive: it seats a stage that had
@@ -14436,8 +14428,76 @@ class TargetProductionWorker:
                             # that a ContractError-only catch let escape.
                             observed_error = f"ContractError:{exc}"[:200]
                             break
+                        if observed is None:
+                            continue
                         observed_pending.append((observed, decision_at))
                         observed_predecessor = observed
+                    replay_target = gated_shape["replay_target"]
+                    replay_revision = (
+                        ForecastRevision.from_mapping(
+                            replay_target["forecast_revision"]
+                        )
+                        if replay_target is not None
+                        else None
+                    )
+                    if (
+                        observed_error is None
+                        and replay_revision is not None
+                        and replay_revision.source_object_sha256
+                        not in seen_revisions
+                        and replay_revision.source_object_sha256
+                        not in {
+                            str(
+                                envelope.lineage.get(
+                                    "forecast_source_object_sha256"
+                                ) or ""
+                            )
+                            for envelope, _decision in observed_pending
+                        }
+                    ):
+                        # Only where trading can still happen.  A settled
+                        # day's base never moves again and nobody prices it,
+                        # so re-confirming it buys nothing.
+                        try:
+                            replay_day_state = event_day_window(
+                                day,
+                                as_of_utc=as_of_utc,
+                                target_timezone=root.settlement_timezone,
+                            )["state"]
+                        except Exception:  # noqa: BLE001 -- unreadable is not replayable
+                            replay_day_state = "closed"
+                        if replay_day_state not in {"open", "not_started"}:
+                            replay_skip_state = "REPLAY_SKIPPED_SETTLED_DAY"
+                        elif replays_this_cycle >= MAX_P0M_REPLAYS_PER_CYCLE:
+                            replays_deferred.append(f"{station}|{day}")
+                            replay_skip_state = "REPLAY_DEFERRED_CYCLE_BUDGET"
+                        else:
+                            replays_this_cycle += 1
+                            # The moment is now: the forecaster spoke once;
+                            # what happened just now is that the model moved
+                            # and this confirmation was re-made against the
+                            # forecast being served.  Dating it at the
+                            # arrival would put two authorities on one stage
+                            # and instant and backdate a decision made on
+                            # evidence that did not exist then.
+                            decision_at = _p0m_replay_decision_at(
+                                as_of_utc,
+                                after_decision_utc=(
+                                    observed_predecessor.decision_at_utc
+                                ),
+                            )
+                            try:
+                                observed = _observe(
+                                    replay_revision,
+                                    decision_at,
+                                    observed_predecessor,
+                                )
+                            except Exception as exc:  # noqa: BLE001
+                                observed_error = f"ContractError:{exc}"[:200]
+                                observed = None
+                            if observed is not None:
+                                observed_pending.append((observed, decision_at))
+                                observed_predecessor = observed
                     observed_writes = []
                     if observed_pending and observed_error is None:
                         with _writer_transaction(
@@ -14456,6 +14516,24 @@ class TargetProductionWorker:
                         1 for write in observed_writes
                         if write.get("wrote") is True
                     )
+                    for _envelope, written_at in (
+                        observed_pending if observed_writes else ()
+                    ):
+                        if p0m_stage_clock_utc is None or timestamp_lt(
+                            p0m_stage_clock_utc, written_at
+                        ):
+                            p0m_stage_clock_utc = written_at
+                    if (
+                        not observed_count
+                        and observed_error is None
+                        and replay_skip_state is not None
+                    ):
+                        receipts.append(self._p0m_no_op_receipt(
+                            station_id=station,
+                            event_date=day,
+                            state=replay_skip_state,
+                        ))
+                        continue
                     receipts.append({
                         "station_id": station,
                         "event_date": day,
@@ -14464,6 +14542,11 @@ class TargetProductionWorker:
                             if observed_count
                             else "OBSERVED_PATH_REFUSED"
                             if observed_error
+                            # The root or the TAF has too little life left to
+                            # lend a confirmation: the scope waits for the
+                            # next P0 or the next issuance.
+                            else "CONFIRMATION_WINDOW_EXHAUSTED"
+                            if window_refusals
                             else "NO_NEW_TAF_REVISION"
                         ),
                         **(
@@ -14473,6 +14556,10 @@ class TargetProductionWorker:
                         **(
                             {"artifact_bridge_stale": artifact_bridge_stale}
                             if artifact_bridge_stale else {}
+                        ),
+                        **(
+                            {"window_refused_revision_ids": window_refusals[:8]}
+                            if window_refusals else {}
                         ),
                         "write_count": observed_count,
                         "writes": observed_writes,
@@ -14728,6 +14815,13 @@ class TargetProductionWorker:
                     decision_at = decision_time.isoformat().replace("+00:00", "Z")
                     if decision_at > as_of_utc:
                         continue
+                    # Same ceiling as the observed path: neither past the root
+                    # nor past the forecaster's own validity.
+                    calibrated_window_until = _p0m_window_until(
+                        decision_at, root=root, revision=revision
+                    )
+                    if calibrated_window_until is None:
+                        continue
                     proof = compile_taf_revision_proof(
                         predecessor,
                         p0_root=root,
@@ -14751,7 +14845,7 @@ class TargetProductionWorker:
                         taf_revision_artifact=artifact,
                         taf_revision_proof=proof,
                         decision_at_utc=decision_at,
-                        fresh_until_utc=root.fresh_until_utc,
+                        fresh_until_utc=calibrated_window_until,
                         bridge_sha256=root.bridge_sha256,
                         revision=predecessor.stage == "P0-M",
                         observed_hard_excluded_buckets=calibrated_excluded,
@@ -14925,6 +15019,7 @@ class TargetProductionWorker:
             "replay_budget": MAX_P0M_REPLAYS_PER_CYCLE,
             "replays_deferred": replays_deferred[:20],
             "replays_deferred_count": len(replays_deferred),
+            "stage_clock_utc": p0m_stage_clock_utc,
             "writes_target_ssot": any(
                 item["write_count"] > 0 for item in receipts
             ),
@@ -15295,7 +15390,12 @@ class TargetProductionWorker:
         self._mark("probability_p0")
         p0m = self._materialize_resident_p0m(as_of_utc=as_of_utc)
         self._mark("probability_p0m")
-        p1 = self._materialize_resident_p1(as_of_utc=as_of_utc)
+        p1 = self._materialize_resident_p1(
+            as_of_utc=as_of_utc,
+            stage_clock_utc=(
+                p0m.get("stage_clock_utc") if isinstance(p0m, Mapping) else None
+            ),
+        )
         self._mark("probability_p1")
         blocked_stages = [
             stage

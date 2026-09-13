@@ -1648,8 +1648,11 @@ def test_resident_taf_legacy_crossfit_hash_without_live_bridge_blocks(
     assert result["state"] == "BLOCKED_FAIL_CLOSED"
     assert result["writes_target_ssot"] is False
     assert result["orders_submitted"] == 0
+    # The template is whichever member the shipped registry lists first --
+    # RKPK when this was written, FACT once the registry grew -- so the
+    # blocker names that artifact's station, not a hardcoded one.
     assert result["blockers"] == [{
-        "station_id": "RKPK",
+        "station_id": str(legacy_raw["station_id"]),
         "event_date": "",
         "reason": (
             "ContractError:"
@@ -1723,11 +1726,15 @@ def test_rkpk_taf_artifact_never_blocks_another_station_p0_lane(
     )
     assert result["state"] == "COMMITTED"
     assert result["blockers"] == []
-    assert result["ignored_no_artifact_scope_count"] == 1
+    # A station with no artifact is no longer dropped for that reason
+    # (2026-08-17: the observed path seats the forecast alone); what stops
+    # this KATL capture is that the day has no P0 to confirm, and another
+    # station's artifact has no say in that either way.
+    assert result["ignored_inactive_scope_count"] == 1
     assert result["receipts"] == [{
         "station_id": "KATL",
         "event_date": "2026-07-30",
-        "state": "IGNORED_NO_EXACT_TAF_ARTIFACT",
+        "state": "IGNORED_NO_P0_SCOPE",
         "write_count": 0,
         "writes": [],
     }]
@@ -2243,18 +2250,30 @@ def test_resident_probability_chain_has_one_explicit_stage_order(
     monkeypatch.setattr(
         worker,
         "_materialize_resident_p0m",
-        lambda *, as_of_utc: calls.append("P0-M") or {"state": "NO_NEW_TAF_REVISION"},
+        lambda *, as_of_utc: calls.append("P0-M") or {
+            "state": "COMMITTED",
+            "stage_clock_utc": "2026-07-26T12:00:00.001Z",
+        },
     )
+    p1_clocks: list[str | None] = []
     monkeypatch.setattr(
         worker,
         "_materialize_resident_p1",
-        lambda *, as_of_utc: calls.append("P1") or {"state": "NO_NEW_REPORTED_HIGH"},
+        lambda *, as_of_utc, stage_clock_utc=None: (
+            calls.append("P1")
+            or p1_clocks.append(stage_clock_utc)
+            or {"state": "NO_NEW_REPORTED_HIGH"}
+        ),
     )
 
     result = worker._materialize_resident_probability_chain(
         as_of_utc="2026-07-26T12:00:00Z"
     )
     assert calls == ["P0", "P0-M", "P1"]
+    # P1 reads its roots as of the clock P0-M stamped this cycle, so a
+    # confirmation rebuilt a millisecond past a root minted at the cycle
+    # clock is the one P1 builds on.
+    assert p1_clocks == ["2026-07-26T12:00:00.001Z"]
     assert result["stage_order"] == ["P0", "P0-M", "P1"]
     assert result["calls_order_gateway"] is False
     assert result["orders_submitted"] == 0
@@ -5085,6 +5104,7 @@ def test_resident_p1_ingress_is_append_only_and_idempotent(
         "observation_id": f"resident-observation-{index}",
         "station_id": "RKPK",
         "event_date_local": "2026-07-27",
+        "settlement_timezone": "Asia/Seoul",
         "reported_temperature_c": temperature,
         "valid_at_utc": f"2026-07-26T15:{minute}:00Z",
         "canonical_committed_at_utc": f"2026-07-26T15:{int(minute) + 1:02d}:00Z",
@@ -5122,26 +5142,36 @@ def test_resident_p1_ingress_is_append_only_and_idempotent(
         replay = worker._materialize_resident_p1(
             as_of_utc="2026-07-26T16:00:00Z",
         )
-        assert first["p1_update_count"] == 1
+        # One envelope per step the walk emits -- each of 27, 28 and 29C is
+        # a new high, and the walk closes with a state refresh -- and none
+        # at all on the replay.  The count is the walk's; the property under
+        # test is that the second pass adds nothing.
+        written = first["p1_update_count"]
+        assert written >= 1
         assert first["writes_target_ssot"] is True
         assert replay["p1_update_count"] == 0
         assert replay["writes_target_ssot"] is False
         assert commit_conn.execute(
             "SELECT COUNT(*) FROM basket_probability_envelope "
             "WHERE stage='P1'"
-        ).fetchone()[0] == 1
+        ).fetchone()[0] == written
         assert commit_conn.execute(
             "SELECT COUNT(*) FROM basket_probability_bridge_history "
             "WHERE stage='P1'"
-        ).fetchone()[0] == 1
+        ).fetchone()[0] == written
         assert commit_conn.execute(
             "SELECT stage FROM basket_probability_bridge_latest "
             "WHERE station_id='RKPK' AND event_date='2026-07-27'"
         ).fetchone()[0] == "P1"
+        # The first two steps have fewer than three reports behind them and
+        # fall to the identity fallback; the formal artifact governs from the
+        # third on.  Ask for its proof rather than whichever row comes first.
         proof_row = commit_conn.execute(
             "SELECT artifact_id_or_none,activation_id_or_none,proof_json "
             "FROM basket_probability_update_proof "
-            "WHERE proof_kind='METAR_TRAJECTORY_UPDATE'"
+            "WHERE proof_kind='METAR_TRAJECTORY_UPDATE' "
+            "AND artifact_id_or_none=?",
+            (formal_artifact.artifact_id,),
         ).fetchone()
         assert proof_row is not None
         assert proof_row[0] == formal_artifact.artifact_id
@@ -5159,7 +5189,7 @@ def test_resident_p1_ingress_is_append_only_and_idempotent(
         assert commit_conn.execute(
             "SELECT COUNT(*) FROM basket_probability_update_proof "
             "WHERE proof_kind='METAR_TRAJECTORY_UPDATE'"
-        ).fetchone()[0] == 1
+        ).fetchone()[0] == written
     finally:
         worker.close()
 
@@ -5253,6 +5283,7 @@ def test_resident_p1_ingress_commits_stale_replay_cursor_once(
         "observation_id": f"delayed-new-high-{index}",
         "station_id": "RKPK",
         "event_date_local": "2026-07-27",
+        "settlement_timezone": "Asia/Seoul",
         "reported_temperature_c": temperature,
         "valid_at_utc": f"2026-07-26T15:{minute}:00Z",
         "canonical_committed_at_utc": f"2026-07-26T15:{int(minute) + 1:02d}:00Z",
@@ -5292,27 +5323,33 @@ def test_resident_p1_ingress_commits_stale_replay_cursor_once(
             as_of_utc="2026-07-26T18:00:00Z",
         )
         assert first["state"] == "COMMITTED"
-        assert first["p1_update_count"] == 1
-        assert first["receipts"][0]["current_consumable"] is False
-        assert first["receipts"][0]["replay_cursor_only"] is True
+        written = first["p1_update_count"]
+        assert written >= 2
+        # The delayed highs are persisted once, each at its own late clock,
+        # and the replay adds nothing.
         assert replay["p1_update_count"] == 0
         assert commit_conn.execute(
             "SELECT COUNT(*) FROM basket_probability_envelope "
             "WHERE stage='P1'"
-        ).fetchone()[0] == 1
-        with pytest.raises(
-            ContractError,
-            match="latest_stage_stale_fail_closed",
-        ):
-            select_current_stage(
-                load_materialized_probability_envelopes(
-                    commit_conn,
-                    station_id="RKPK",
-                    event_date="2026-07-27",
-                    evaluation_at_utc="2026-07-26T18:00:00Z",
-                ),
-                at_utc="2026-07-26T18:00:00Z",
-            )
+        ).fetchone()[0] == written
+        # What changed on 2026-09-12 (60b24dfb): the walk no longer leaves
+        # the day on a belief whose own clock has lapsed.  It closes with a
+        # state refresh on the compile clock over the complete prefix, and
+        # that -- not a copy of the stale step -- is what the selector serves.
+        assert first["receipts"][0]["state_refresh_written"] is True
+        assert first["receipts"][0]["current_consumable"] is True
+        served = select_current_stage(
+            load_materialized_probability_envelopes(
+                commit_conn,
+                station_id="RKPK",
+                event_date="2026-07-27",
+                evaluation_at_utc="2026-07-26T18:00:00Z",
+            ),
+            at_utc="2026-07-26T18:00:00Z",
+        )
+        assert served.stage == "P1"
+        assert served.lineage.get("p1_state_refresh_of_checkpoint_id")
+        assert served.lineage.get("reported_high_advanced") == "false"
     finally:
         worker.close()
 
@@ -6525,12 +6562,14 @@ def test_the_p0m_replay_budget_goes_to_the_day_p0m_governs() -> None:
     before it opens.  The day already open belongs to P1, driven by arriving
     observations.
 
-    The P0-M replay budget is four scopes a cycle, and the loop used to walk
+    The P0-M replay budget was four scopes a cycle, and the loop used to walk
     (station, day) alphabetically -- so for any station the *current* day came
     first and spent the budget before the forward day was reached.  Measured
     2026-09-01 16:05: twelve scopes deferred on budget, nine of them the
     current day, and the single write the budget bought went to the current
-    day, refining a book P1 was about to restate anyway.
+    day, refining a book P1 was about to restate anyway.  The budget is now
+    one per open station-day (2026-09-13); the order still decides who goes
+    first if a pathological cycle ever reaches it.
     """
 
     order = production_worker_module._p0m_scope_day_order
@@ -6550,3 +6589,471 @@ def test_the_p0m_replay_budget_goes_to_the_day_p0m_governs() -> None:
     ]
     # An empty or malformed date sorts last rather than raising.
     assert order("") == ""
+
+
+def _reroot_scope_root(
+    *,
+    station_id: str,
+    checkpoint_id: str,
+    decision_at_utc: str,
+    fresh_until_utc: str,
+    probabilities: dict[str, float],
+) -> ProbabilityEnvelope:
+    return ProbabilityEnvelope.from_mapping({
+        "stage": "P0",
+        "checkpoint_id": checkpoint_id,
+        "station_id": station_id,
+        "event_date": "2026-07-27",
+        "settlement_timezone": "Asia/Shanghai",
+        "decision_at_utc": decision_at_utc,
+        "fresh_until_utc": fresh_until_utc,
+        "bucket_ordinals": {"34": 0, "35": 1, "36": 2},
+        "probabilities": probabilities,
+        "posterior_version": "p0-reroot-test",
+        "posterior_sha256": content_sha256([checkpoint_id, probabilities]),
+        "bridge_sha256": "b" * 64,
+        "lineage": {
+            "settlement_timezone": "Asia/Shanghai",
+            "season_bin": "summer",
+            "lead_bucket": "d2_fallback",
+            "run_cycle": "18Z",
+            "settlement_definition": "official_daily_tmax_c",
+            "bucket_intervals_c_json": json.dumps(
+                {"34": [None, 34.5], "35": [34.5, 35.5], "36": [35.5, None]},
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            # The run identity is left out on purpose: naming it asks the
+            # materializer for the whole native-forward evidence set, which
+            # this fixture does not build.  Seatability then falls back to
+            # the receipt rule, and the carry-over under the run rule is
+            # pinned on the shape itself below.
+            **_taf_live_compatibility_lineage(),
+        },
+    })
+
+
+def _reroot_taf_capture(
+    *,
+    station_id: str,
+    revision_id: str,
+    sequence: int,
+    issued_at_utc: str,
+    received_at_utc: str,
+    valid_until_utc: str,
+    source_sha_char: str,
+    tx_c: float,
+    supersedes: str | None,
+) -> dict:
+    identity = {
+        "schema": "bayes_basket_target_forward_taf_capture_v1",
+        "source_class": "official_forward_native_receipt",
+        "station_id": station_id,
+        "event_date": "2026-07-27",
+        "settlement_timezone": "Asia/Shanghai",
+        "forecast_revision": {
+            "schema": "bayes_basket_forecast_revision_v1",
+            "revision_id": revision_id,
+            "station_id": station_id,
+            "event_date": "2026-07-27",
+            "revision_kind": "TAF" if sequence == 1 else "AMD",
+            "sequence": sequence,
+            "issued_at_utc": issued_at_utc,
+            "received_at_utc": received_at_utc,
+            "valid_from_utc": "2026-07-26T12:00:00Z",
+            "valid_until_utc": valid_until_utc,
+            "source_object_sha256": source_sha_char * 64,
+            "supersedes_revision_id": supersedes,
+        },
+        "taf_fields": {
+            "tx_c": tx_c,
+            "cloud_cover_fraction": 0.25,
+            "precipitation_probability": 0.1,
+            "wind_speed_mps": 4.0,
+        },
+        "boundary": {
+            "native_local_receipt": True,
+            "retrospective_replay_only": False,
+            "calls_order_gateway": False,
+            "places_orders": False,
+        },
+    }
+    return {**identity, "content_sha256": content_sha256(identity)}
+
+
+def _p0m_rows(conn: sqlite3.Connection, station_id: str) -> list[dict]:
+    return [
+        {
+            "decision_at_utc": str(row[0]),
+            "fresh_until_utc": str(row[1]),
+            "lineage": json.loads(str(row[2])),
+        }
+        for row in conn.execute(
+            "SELECT decision_at_utc,fresh_until_utc,lineage_json "
+            "FROM basket_probability_envelope WHERE stage='P0-M' "
+            "AND station_id=? ORDER BY decision_at_utc",
+            (station_id,),
+        ).fetchall()
+    ]
+
+
+def test_p0m_rebuilds_on_the_newest_root_in_the_cycle_it_moves(
+    tmp_path: Path,
+) -> None:
+    """Re-rooting: the confirmation follows the model, carries the newest
+    TAF, lives no longer than its root, and P1 builds on it the same cycle.
+
+    Measured 2026-09-11..12 over 45 stations: 86 of 651 sampled P0-M/P1
+    heads stood on a root the newest P0 had replaced (74 with different
+    probabilities); 1,320 of 1,507 P0-M checkpoints outlived their root;
+    on 2026-09-13 four scopes rebuilt in a cycle while 56 waited.
+    """
+
+    from bayes_basket_target.p1_compiler import select_p1_replay_base
+
+    station = "ZBAA"
+    conn = sqlite3.connect(":memory:")
+    apply_production_ssot_schema(conn)
+    _seed_target_registry_source_lane(
+        conn,
+        station_id=station,
+        event_date="2026-07-27",
+        settlement_timezone="Asia/Shanghai",
+        source_lane="awc",
+    )
+    first_root = _reroot_scope_root(
+        station_id=station,
+        checkpoint_id="p0-zbaa-06z",
+        decision_at_utc="2026-07-26T10:00:00.000Z",
+        fresh_until_utc="2026-07-26T16:00:00.000Z",
+        probabilities={"34": 0.2, "35": 0.6, "36": 0.2},
+    )
+    materialize_probability_bridge(
+        conn, first_root, created_at_utc=first_root.decision_at_utc
+    )
+    taf = _reroot_taf_capture(
+        station_id=station,
+        revision_id="taf-zbaa-1",
+        sequence=1,
+        issued_at_utc="2026-07-26T11:00:00Z",
+        received_at_utc="2026-07-26T11:05:00Z",
+        valid_until_utc="2026-07-27T18:00:00Z",
+        source_sha_char="c",
+        tx_c=34.0,
+        supersedes=None,
+    )
+    amendment = _reroot_taf_capture(
+        station_id=station,
+        revision_id="taf-zbaa-2",
+        sequence=2,
+        issued_at_utc="2026-07-26T11:40:00Z",
+        received_at_utc="2026-07-26T11:45:00Z",
+        valid_until_utc="2026-07-27T18:00:00Z",
+        source_sha_char="d",
+        tx_c=36.0,
+        supersedes="taf-zbaa-1",
+    )
+    inbox = tmp_path / "taf-inbox.json"
+    inbox.write_text(json.dumps({
+        "schema": "bayes_basket_target_taf_revision_inbox_v1",
+        "captures": [taf, amendment],
+    }), encoding="utf-8")
+    db = tmp_path / "target-read.db"
+    with sqlite3.connect(db) as source:
+        source.execute("CREATE TABLE marker(value TEXT)")
+    worker = TargetProductionWorker(
+        db,
+        commit_conn=conn,
+        taf_artifact_path=_bridged_taf_artifact(tmp_path),
+        taf_inbox_path=inbox,
+    )
+    try:
+        # Both texts arrive under the 06Z root and seat at their arrivals,
+        # each window ending with the root's, not re-lent from its decision.
+        arrival = worker._materialize_resident_p0m(
+            as_of_utc="2026-07-26T12:00:00.000Z"
+        )
+        assert arrival["state"] == "COMMITTED", arrival["blockers"]
+        rows = _p0m_rows(conn, station)
+        assert [row["decision_at_utc"] for row in rows] == [
+            "2026-07-26T11:05:00Z", "2026-07-26T11:45:00Z",
+        ]
+        assert {row["fresh_until_utc"] for row in rows} == {
+            first_root.fresh_until_utc
+        }
+
+        # The 12Z run lands after both texts were issued, minted at the
+        # cycle clock.  Neither text may seat afresh on it; the newest one
+        # is carried onto it in this same pass.
+        second_root = _reroot_scope_root(
+            station_id=station,
+            checkpoint_id="p0-zbaa-12z",
+            decision_at_utc="2026-07-26T12:30:00.000Z",
+            fresh_until_utc="2026-07-26T18:30:00.000Z",
+            probabilities={"34": 0.1, "35": 0.5, "36": 0.4},
+        )
+        insert_probability_envelope(
+            conn, second_root, created_at_utc=second_root.decision_at_utc
+        )
+        rebuilt = worker._materialize_resident_p0m(
+            as_of_utc="2026-07-26T12:30:00.000Z"
+        )
+        assert rebuilt["state"] == "COMMITTED", rebuilt["blockers"]
+        assert rebuilt["replays_this_cycle"] == 1
+        assert rebuilt["replays_deferred_count"] == 0
+        assert rebuilt["stage_clock_utc"] == "2026-07-26T12:30:00.001Z"
+        rows = _p0m_rows(conn, station)
+        head = rows[-1]
+        assert head["decision_at_utc"] == "2026-07-26T12:30:00.001Z"
+        assert head["lineage"]["p0_root_checkpoint_id"] == "p0-zbaa-12z"
+        # The amendment, not the first text the replay happened to walk.
+        assert head["lineage"]["forecast_revision_id"] == "taf-zbaa-2"
+        assert head["lineage"]["taf_observed_tx_c"] == "36"
+        assert head["fresh_until_utc"] == second_root.fresh_until_utc
+
+        # P1 reads its roots as of the stage clock and takes the rebuilt
+        # confirmation; as of the cycle clock alone it would have taken the
+        # bare P0 and replayed the day twice.
+        envelopes = load_materialized_probability_envelopes(
+            conn,
+            station_id=station,
+            event_date="2026-07-27",
+            evaluation_at_utc=rebuilt["stage_clock_utc"],
+        )
+        base, _predecessor, _consumed, _rebasing = select_p1_replay_base(
+            envelopes, as_of_utc=rebuilt["stage_clock_utc"]
+        )
+        assert base.stage == "P0-M"
+        assert base.lineage["p0_root_checkpoint_id"] == "p0-zbaa-12z"
+        bare, *_rest = select_p1_replay_base(
+            [
+                item for item in envelopes
+                if item.decision_at_utc <= "2026-07-26T12:30:00.000Z"
+            ],
+            as_of_utc="2026-07-26T12:30:00.000Z",
+        )
+        assert bare.stage == "P0"
+
+        # A re-mint with the same numbers is still a different root with its
+        # own freshness; the confirmation follows it too.
+        third_root = _reroot_scope_root(
+            station_id=station,
+            checkpoint_id="p0-zbaa-12z-remint",
+            decision_at_utc="2026-07-26T13:00:00.000Z",
+            fresh_until_utc="2026-07-26T19:00:00.000Z",
+            probabilities={"34": 0.1, "35": 0.5, "36": 0.4},
+        )
+        insert_probability_envelope(
+            conn, third_root, created_at_utc=third_root.decision_at_utc
+        )
+        followed = worker._materialize_resident_p0m(
+            as_of_utc="2026-07-26T13:05:00.000Z"
+        )
+        assert followed["state"] == "COMMITTED", followed["blockers"]
+        head = _p0m_rows(conn, station)[-1]
+        assert head["decision_at_utc"] == "2026-07-26T13:05:00.000Z"
+        assert head["lineage"]["p0_root_checkpoint_id"] == "p0-zbaa-12z-remint"
+        assert head["fresh_until_utc"] == third_root.fresh_until_utc
+
+        # Nothing moved: nothing is written, and the cheap path agrees.
+        settled = worker._materialize_resident_p0m(
+            as_of_utc="2026-07-26T13:10:00.000Z"
+        )
+        assert settled["writes_target_ssot"] is False
+        assert [item["state"] for item in settled["receipts"]] == [
+            "NO_NEW_TAF_REVISION"
+        ]
+        assert settled["fast_path_shadow"]["disagreed_count"] == 0
+
+        # Past the root's freshness the scope waits for the next P0; the
+        # confirmation is not re-lent life the root no longer has.
+        expired = worker._materialize_resident_p0m(
+            as_of_utc="2026-07-26T19:00:00.000Z"
+        )
+        assert expired["writes_target_ssot"] is False
+        assert [item["state"] for item in expired["receipts"]] == [
+            "IGNORED_STALE_P0_SCOPE"
+        ]
+    finally:
+        worker.close()
+
+
+def test_p0m_rebuilds_every_moved_scope_rather_than_four(
+    tmp_path: Path,
+) -> None:
+    """The old cap of four left 56 scopes waiting on 2026-09-13 04:02Z."""
+
+    stations = ["ZBAA", "ZGGG", "ZGSZ", "ZHHH", "ZSPD", "ZSQD"]
+    conn = sqlite3.connect(":memory:")
+    apply_production_ssot_schema(conn)
+    captures = []
+    for index, station in enumerate(stations):
+        _seed_target_registry_source_lane(
+            conn,
+            station_id=station,
+            event_date="2026-07-27",
+            settlement_timezone="Asia/Shanghai",
+            source_lane="awc",
+        )
+        root = _reroot_scope_root(
+            station_id=station,
+            checkpoint_id=f"p0-{station}-06z",
+            decision_at_utc="2026-07-26T10:00:00.000Z",
+            fresh_until_utc="2026-07-26T16:00:00.000Z",
+            probabilities={"34": 0.2, "35": 0.6, "36": 0.2},
+        )
+        materialize_probability_bridge(
+            conn, root, created_at_utc=root.decision_at_utc
+        )
+        captures.append(_reroot_taf_capture(
+            station_id=station,
+            revision_id=f"taf-{station}-1",
+            sequence=1,
+            issued_at_utc="2026-07-26T11:00:00Z",
+            received_at_utc="2026-07-26T11:05:00Z",
+            valid_until_utc="2026-07-27T18:00:00Z",
+            source_sha_char="0123456789"[index],
+            tx_c=35.0,
+            supersedes=None,
+        ))
+    inbox = tmp_path / "taf-inbox.json"
+    inbox.write_text(json.dumps({
+        "schema": "bayes_basket_target_taf_revision_inbox_v1",
+        "captures": captures,
+    }), encoding="utf-8")
+    db = tmp_path / "target-read.db"
+    with sqlite3.connect(db) as source:
+        source.execute("CREATE TABLE marker(value TEXT)")
+    worker = TargetProductionWorker(
+        db,
+        commit_conn=conn,
+        taf_artifact_path=_bridged_taf_artifact(tmp_path),
+        taf_inbox_path=inbox,
+    )
+    try:
+        seated = worker._materialize_resident_p0m(
+            as_of_utc="2026-07-26T12:00:00.000Z"
+        )
+        assert seated["state"] == "COMMITTED", seated["blockers"]
+        for station in stations:
+            insert_probability_envelope(
+                conn,
+                _reroot_scope_root(
+                    station_id=station,
+                    checkpoint_id=f"p0-{station}-12z",
+                    decision_at_utc="2026-07-26T12:30:00.000Z",
+                    fresh_until_utc="2026-07-26T18:30:00.000Z",
+                    probabilities={"34": 0.1, "35": 0.5, "36": 0.4},
+                ),
+                created_at_utc="2026-07-26T12:30:00.000Z",
+            )
+        rebuilt = worker._materialize_resident_p0m(
+            as_of_utc="2026-07-26T12:31:00.000Z"
+        )
+        assert rebuilt["state"] == "COMMITTED", rebuilt["blockers"]
+        assert rebuilt["replays_this_cycle"] == len(stations)
+        assert rebuilt["replays_deferred_count"] == 0
+        for station in stations:
+            head = _p0m_rows(conn, station)[-1]
+            assert head["lineage"]["p0_root_checkpoint_id"] == (
+                f"p0-{station}-12z"
+            )
+    finally:
+        worker.close()
+
+
+def test_a_confirmed_taf_is_carried_onto_a_run_it_predates() -> None:
+    """New texts seat by information order; confirmed texts follow the root.
+
+    The 2026-09-03 rule -- a TAF adjusts a root only if issued after the run
+    the root reads -- is about a text speaking for the first time.  Applied
+    to the rebuild as well, it stranded the confirmation on its old root the
+    moment a model run landed after the last issuance: 17 of the 86 sampled
+    heads on a superseded root, 2026-09-11..12, had no way off it.  The
+    2026-08-31 ruling says a TAF replayed onto a newer base is still the
+    forecaster's confirmation.
+    """
+
+    shape_fn = production_worker_module.TargetProductionWorker._p0m_scope_shape
+
+    def _envelope(stage: str, checkpoint: str, decision: str, lineage: dict):
+        return ProbabilityEnvelope.from_mapping({
+            "stage": stage,
+            "checkpoint_id": checkpoint,
+            "station_id": "ZBAA",
+            "event_date": "2099-08-05",
+            "settlement_timezone": "Asia/Shanghai",
+            "decision_at_utc": decision,
+            "fresh_until_utc": "2099-08-05T23:00:00Z",
+            "bucket_ordinals": {"31°C": 31, "32°C": 32},
+            "probabilities": {"31°C": 0.4, "32°C": 0.6},
+            "posterior_version": "v",
+            "posterior_sha256": "a" * 64,
+            "bridge_sha256": "b" * 64,
+            "lineage": lineage,
+        })
+
+    def _capture(sha: str, issued: str, received: str, valid_until: str) -> dict:
+        return {"forecast_revision": {
+            "revision_id": f"rev-{sha}",
+            "issued_at_utc": issued,
+            "received_at_utc": received,
+            "valid_until_utc": valid_until,
+            "source_object_sha256": sha * 64,
+        }}
+
+    old_root = _envelope(
+        "P0", "p0-18z", "2099-08-04T22:00:00Z",
+        {"run_init_utc_by_system_json": json.dumps(
+            {"ECMWF_IFS_ENS_OPEN_PF50": "2099-08-04T18:00:00Z"}
+        )},
+    )
+    new_root = _envelope(
+        "P0", "p0-00z", "2099-08-05T06:00:00Z",
+        {"run_init_utc_by_system_json": json.dumps(
+            {"ECMWF_IFS_ENS_OPEN_PF50": "2099-08-05T00:00:00Z"}
+        )},
+    )
+    first = _capture("c", "2099-08-04T21:00:00Z", "2099-08-04T21:05:00Z",
+                     "2099-08-06T00:00:00Z")
+    amended = _capture("d", "2099-08-04T23:00:00Z", "2099-08-04T23:05:00Z",
+                       "2099-08-06T00:00:00Z")
+    never_seated = _capture("e", "2099-08-04T23:30:00Z", "2099-08-04T23:35:00Z",
+                            "2099-08-06T00:00:00Z")
+    expired = _capture("f", "2099-08-04T23:50:00Z", "2099-08-04T23:55:00Z",
+                       "2099-08-05T05:00:00Z")
+    confirmations = [
+        _envelope("P0-M", "p0m-c", "2099-08-04T22:00:01Z", {
+            "p0_root_checkpoint_id": "p0-18z",
+            "forecast_source_object_sha256": "c" * 64,
+        }),
+        _envelope("P0-M", "p0m-d", "2099-08-04T23:05:00Z", {
+            "p0_root_checkpoint_id": "p0-18z",
+            "forecast_source_object_sha256": "d" * 64,
+        }),
+    ]
+    shape = shape_fn(
+        [old_root, new_root, *confirmations],
+        [first, amended, never_seated, expired],
+        as_of_utc="2099-08-05T06:10:00Z",
+    )
+    # None of the four was issued after 00Z: none may seat afresh ...
+    assert shape["seatable"] == []
+    assert shape["new_revision_count"] == 0
+    # ... but the newest text that already confirmed this day is carried
+    # onto the 00Z root -- not the first one, and not a text that never
+    # confirmed anything, and not one whose validity has ended.
+    assert shape["replay_target"] is amended
+    assert shape["seen_revisions"] == set()
+    assert shape["reroot_due"] is True
+    # Once it is on the new root, nothing is owed.
+    carried = _envelope("P0-M", "p0m-d-00z", "2099-08-05T06:10:00Z", {
+        "p0_root_checkpoint_id": "p0-00z",
+        "forecast_source_object_sha256": "d" * 64,
+    })
+    settled = shape_fn(
+        [old_root, new_root, *confirmations, carried],
+        [first, amended, never_seated, expired],
+        as_of_utc="2099-08-05T06:15:00Z",
+    )
+    assert settled["reroot_due"] is False

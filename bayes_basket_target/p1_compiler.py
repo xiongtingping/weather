@@ -597,6 +597,11 @@ def compile_station_p1_packets(
     # {"hazard": ..., "reanchor": ...}.  Absent means no shadow is recorded
     # and the lineage is exactly what it was before the four layers existed.
     four_layer_artifacts: Mapping[str, Any] | None = None,
+    # Where a refused state refresh is named.  The refusal is swallowed so
+    # the walk's own packets stand; without a channel out, a scope whose
+    # refresh fails every cycle looks exactly like one with nothing to
+    # refresh.
+    state_refresh_refusals_out: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Compile every canonical P1 prefix; emit on running-high advances,
     and close with one state refresh on the current clock.
@@ -1290,9 +1295,11 @@ def compile_station_p1_packets(
             previous = envelope
             last_decision = decision
             last_closing_lane = observation_lane
-    except ContractError:
+    except ContractError as exc:
         if not walking_state_refresh:
             raise
+        if state_refresh_refusals_out is not None:
+            state_refresh_refusals_out.append(str(exc)[:200])
     return packets
 
 
