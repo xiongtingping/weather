@@ -236,8 +236,10 @@ if not math.isfinite(CLIMATE_BLEND_PSEUDO_DAYS) or (
 # died, like ECCC's 00Z long-lead lanes after the 2026-08-12 vocabulary
 # switch.
 SCOPE_SUPPLY_MAX_AGE_DAYS = 10
-# Point forecast systems -- today only the aerodrome TAF's TX group -- clear a
-# lower bar than an ensemble family.
+# Point forecast systems clear a lower bar than an ensemble family.  Written
+# for the aerodrome TAF's TX group, whose member lane charter 133 retired on
+# 2026-09-13; the METAR path and the regional point models use it now, and the
+# reasoning below is the TAF measurement it was first argued from.
 #
 # The 20+8 profile is sized for a fifty-member ensemble whose spread must be
 # characterised before its centre can be trusted.  A TAF TX is one number a
@@ -445,25 +447,19 @@ OFFICIAL_ARCHIVE_SCOPE_CONTRACTS = {
         ),
     },
 }
-# The forecaster's TAF TX as a single-member candidate system.  It lives in
-# its own dict rather than in ``OFFICIAL_ARCHIVE_SCOPE_CONTRACTS`` because the
-# NWP capture scheduler iterates that dict to advertise archive runs, and TAF
-# is captured by its own rotation lane -- merging them would emit capture
-# scopes no NWP collector can fetch.  For OOS admission the two dicts are one
-# set: same scope check, same transport allowlist, same gates.  All four issue
-# cycles are admitted at both near leads; each (lead, cycle) stays its own
-# training scope exactly as ECCC's two cycles do.
+# Single-member point systems.  They live in their own dict rather than in
+# ``OFFICIAL_ARCHIVE_SCOPE_CONTRACTS`` because the NWP capture scheduler
+# iterates that dict to advertise archive runs, and these are captured by
+# their own lanes -- merging them would emit capture scopes no NWP collector
+# can fetch.  For OOS admission the two dicts are one set: same scope check,
+# same transport allowlist, same gates.
+#
+# The forecaster's TAF TX had the first entry here and was retired
+# 2026-09-13 (charter 133, "TAF 作 P0 点成员那条车道下线"): it minted ~40
+# per-system artifacts a day for a system charters 42/95 never let seat.
+# Without a contract its transport leaves the SQL allowlist, so the 5,582
+# member rows already written are no longer read.
 POINT_FORECAST_SCOPE_CONTRACTS = {
-    "OFFICIAL_AIRPORT_TAF_TX": {
-        "transport_provider_id": "AWC_TAF_DATA_API",
-        "leads": _lead_contracts(
-            supported_lead_days=(0, 1),
-            cycle_hour_by_lead={0: (0, 6, 12, 18), 1: (0, 6, 12, 18)},
-            extraction_version_for_lead=(
-                lambda _lead, _cycle_hour: "taf_tx_point_v4"
-            ),
-        ),
-    },
     # Lead 0 only, and that is the whole character of this system: it forecasts
     # from what the airport has already reported today, so there is nothing for
     # it to say about tomorrow.  The four cycle labels are carried to match the
@@ -4176,11 +4172,10 @@ def build_native_ensemble_oos(
             for run_cycle, evaluation in scopes
             if evaluation["state"] == "OOS_READY"
             # The 2026-08-15 stage ruling: the P0 combination is numerical
-            # models only.  The forecaster's TX keeps its per-system
-            # evaluation lane -- P0-M and the envelope witness read it --
-            # but never contests a P0 seat.  Charter 95 (2026-09-06)
-            # narrows that to the TAF and the METAR path: a regional
-            # deterministic model is a numerical model and may compete.
+            # models only.  Charter 95 (2026-09-06) narrows the exclusion to
+            # the METAR path (and the TAF TX, whose lane charter 133 retired):
+            # a regional deterministic model is a numerical model and may
+            # compete.
             and not is_fusion_excluded_point_system(system_id)
         ]
         if len(ready_rows) < 2:

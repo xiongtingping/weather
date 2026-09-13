@@ -68,13 +68,6 @@ from bayes_basket_target.market_registry import (
 )
 from bayes_basket_target.ssot import apply_production_ssot_schema
 from bayes_basket_target.stages import select_current_stage
-from bayes_basket_target.taf_revision import (
-    TAF_NWP_CROSSFIT_ARTIFACT_KIND,
-    TAF_NWP_LIVE_COMPATIBILITY_CONTRACT_VERSION,
-)
-from bayes_basket_target.taf_artifact_registry import (
-    build_taf_artifact_registry,
-)
 from scripts.initialize_bayes_basket_target_ssot import initialize
 from bayes_basket_target.fleet import expected_station_count
 
@@ -758,64 +751,6 @@ def test_commit_candidate_preserves_delta_v2_authority_blocker() -> None:
         )
 
 
-def _bridged_taf_artifact(
-    tmp_path: Path, *, station_id: str | None = None
-) -> Path:
-    """The shipped registry's first member, re-scoped for a test root.
-
-    ``station_id`` matters: without it the artifact keeps whatever station
-    the registry lists first (RKPK when this was written, FACT since), and a
-    test that means to exercise the calibrated operator silently runs the
-    identity path instead -- the gap the 2026-09-13 review found.
-    """
-
-    source = (
-        Path(__file__).resolve().parents[1]
-        / "config/artifacts/bayes_basket_target_taf_revision_active.json"
-    )
-    raw = json.loads(source.read_text(encoding="utf-8"))
-    # The shipped file is a registry envelope; this wants one member of it
-    # as a template.  See the same unwrap in the resident TAF producer's
-    # suite -- handing the envelope to the single-artifact parser fails on
-    # taf_revision_artifact_unknown_fields:artifacts before any assertion.
-    _members = raw.get("artifacts")
-    if isinstance(_members, list) and _members and isinstance(_members[0], dict):
-        raw = dict(_members[0])
-    fingerprint = _taf_live_compatibility_lineage()[
-        "taf_nwp_live_compatibility_fingerprint_sha256"
-    ]
-    raw.update({
-        **({"station_id": station_id} if station_id else {}),
-        "settlement_timezone": "Asia/Seoul",
-        "season_bin": "summer",
-        "lead_bucket": "d2_fallback",
-        "run_cycle": "18Z",
-        "trained_through_utc": "2026-06-30T00:00:00Z",
-        "valid_from_utc": "2026-07-01T00:00:00Z",
-        "valid_until_utc": "2026-08-31T00:00:00Z",
-        "nwp_combination_artifact_kind": (
-            TAF_NWP_CROSSFIT_ARTIFACT_KIND
-        ),
-        "nwp_live_compatibility_contract_version": (
-            TAF_NWP_LIVE_COMPATIBILITY_CONTRACT_VERSION
-        ),
-        "nwp_live_compatibility_fingerprint_sha256": fingerprint,
-        "nwp_live_compatibility_evidence_sha256": "5" * 64,
-        "nwp_live_compatibility_validated": True,
-    })
-    identity = {
-        key: value for key, value in raw.items() if key != "content_sha256"
-    }
-    path = tmp_path / "bridged-taf-artifact.json"
-    path.write_text(
-        json.dumps(
-            {**identity, "content_sha256": content_sha256(identity)}
-        ),
-        encoding="utf-8",
-    )
-    return path
-
-
 def _retired_deterministic_nwp_refresh_wires_registry_capture_and_p0_once(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1426,18 +1361,9 @@ def test_resident_taf_inbox_materializes_p0m_before_p1(tmp_path: Path) -> None:
     db = tmp_path / "target-read.db"
     with sqlite3.connect(db) as source:
         source.execute("CREATE TABLE marker(value TEXT)")
-    source_artifact = _bridged_taf_artifact(tmp_path)
-    artifact = tmp_path / "taf-artifact-registry.json"
-    artifact.write_text(
-        json.dumps(build_taf_artifact_registry([
-            json.loads(source_artifact.read_text(encoding="utf-8")),
-        ])),
-        encoding="utf-8",
-    )
     worker = TargetProductionWorker(
         db,
         commit_conn=conn,
-        taf_artifact_path=artifact,
         taf_inbox_path=inbox,
     )
     result = worker._materialize_resident_p0m(
@@ -1592,168 +1518,6 @@ def test_resident_taf_inbox_materializes_p0m_before_p1(tmp_path: Path) -> None:
     worker.close()
 
 
-def test_resident_taf_legacy_crossfit_hash_without_live_bridge_blocks(
-    tmp_path: Path,
-) -> None:
-    conn = sqlite3.connect(":memory:")
-    apply_production_ssot_schema(conn)
-    inbox = tmp_path / "taf-inbox.json"
-    inbox.write_text(
-        json.dumps({
-            "schema": "bayes_basket_target_taf_revision_inbox_v1",
-            "captures": [],
-        }),
-        encoding="utf-8",
-    )
-    db = tmp_path / "target-read.db"
-    with sqlite3.connect(db) as source:
-        source.execute("CREATE TABLE marker(value TEXT)")
-    active_path = (
-        Path(__file__).resolve().parents[1]
-        / "config/artifacts/"
-        "bayes_basket_target_taf_revision_active.json"
-    )
-    legacy_raw = json.loads(active_path.read_text(encoding="utf-8"))
-    # The shipped file is a registry envelope; this wants one member of it
-    # as a template.  See the same unwrap in the resident TAF producer's
-    # suite -- handing the envelope to the single-artifact parser fails on
-    # taf_revision_artifact_unknown_fields:artifacts before any assertion.
-    _legacy_members = legacy_raw.get("artifacts")
-    if (
-        isinstance(_legacy_members, list) and _legacy_members
-        and isinstance(_legacy_members[0], dict)
-    ):
-        legacy_raw = dict(_legacy_members[0])
-    for key in (
-        "nwp_combination_artifact_kind",
-        "nwp_live_compatibility_contract_version",
-        "nwp_live_compatibility_fingerprint_sha256",
-        "nwp_live_compatibility_evidence_sha256",
-        "nwp_live_compatibility_validated",
-    ):
-        legacy_raw.pop(key, None)
-    legacy_identity = {
-        key: value
-        for key, value in legacy_raw.items()
-        if key != "content_sha256"
-    }
-    legacy_path = tmp_path / "legacy-taf-artifact.json"
-    legacy_path.write_text(
-        json.dumps({
-            **legacy_identity,
-            "content_sha256": content_sha256(legacy_identity),
-        }),
-        encoding="utf-8",
-    )
-    worker = TargetProductionWorker(
-        db,
-        commit_conn=conn,
-        taf_artifact_path=legacy_path,
-        taf_inbox_path=inbox,
-    )
-
-    result = worker._materialize_resident_p0m(
-        as_of_utc="2026-07-27T17:05:00Z"
-    )
-
-    assert result["state"] == "BLOCKED_FAIL_CLOSED"
-    assert result["writes_target_ssot"] is False
-    assert result["orders_submitted"] == 0
-    # The template is whichever member the shipped registry lists first --
-    # RKPK when this was written, FACT once the registry grew -- so the
-    # blocker names that artifact's station, not a hardcoded one.
-    assert result["blockers"] == [{
-        "station_id": str(legacy_raw["station_id"]),
-        "event_date": "",
-        "reason": (
-            "ContractError:"
-            "resident_taf_nwp_live_compatibility_bridge_missing"
-        ),
-    }]
-    worker.close()
-
-
-def test_rkpk_taf_artifact_never_blocks_another_station_p0_lane(
-    tmp_path: Path,
-) -> None:
-    conn = sqlite3.connect(":memory:")
-    apply_production_ssot_schema(conn)
-    revision = {
-        "schema": "bayes_basket_forecast_revision_v1",
-        "revision_id": "taf-katl-forward-1",
-        "station_id": "KATL",
-        "event_date": "2026-07-30",
-        "revision_kind": "TAF",
-        "sequence": 1,
-        "issued_at_utc": "2026-07-29T12:00:00Z",
-        "received_at_utc": "2026-07-29T12:05:00Z",
-        "valid_from_utc": "2026-07-29T12:00:00Z",
-        "valid_until_utc": "2026-07-30T18:00:00Z",
-        "source_object_sha256": "c" * 64,
-        "supersedes_revision_id": None,
-    }
-    capture_identity = {
-        "schema": "bayes_basket_target_forward_taf_capture_v1",
-        "source_class": "official_forward_native_receipt",
-        "station_id": "KATL",
-        "event_date": "2026-07-30",
-        "settlement_timezone": "America/New_York",
-        "forecast_revision": revision,
-        "taf_fields": {
-            "tx_c": 35.0,
-            "cloud_cover_fraction": 0.25,
-            "precipitation_probability": 0.1,
-            "wind_speed_mps": 4.0,
-        },
-        "boundary": {
-            "native_local_receipt": True,
-            "retrospective_replay_only": False,
-            "calls_order_gateway": False,
-            "places_orders": False,
-        },
-    }
-    inbox = tmp_path / "taf-katl-inbox.json"
-    inbox.write_text(
-        json.dumps({
-            "schema": "bayes_basket_target_taf_revision_inbox_v1",
-            "captures": [{
-                **capture_identity,
-                "content_sha256": content_sha256(capture_identity),
-            }],
-        }),
-        encoding="utf-8",
-    )
-    db = tmp_path / "target-read.db"
-    with sqlite3.connect(db) as source:
-        source.execute("CREATE TABLE marker(value TEXT)")
-    worker = TargetProductionWorker(
-        db,
-        commit_conn=conn,
-        taf_artifact_path=_bridged_taf_artifact(tmp_path),
-        taf_inbox_path=inbox,
-    )
-    result = worker._materialize_resident_p0m(
-        as_of_utc="2026-07-29T13:00:00Z",
-    )
-    assert result["state"] == "COMMITTED"
-    assert result["blockers"] == []
-    # A station with no artifact is no longer dropped for that reason
-    # (2026-08-17: the observed path seats the forecast alone); what stops
-    # this KATL capture is that the day has no P0 to confirm, and another
-    # station's artifact has no say in that either way.
-    assert result["ignored_inactive_scope_count"] == 1
-    assert result["receipts"] == [{
-        "station_id": "KATL",
-        "event_date": "2026-07-30",
-        "state": "IGNORED_NO_P0_SCOPE",
-        "write_count": 0,
-        "writes": [],
-    }]
-    assert result["writes_target_ssot"] is False
-    assert result["calls_order_gateway"] is False
-    worker.close()
-
-
 def test_resident_taf_revision_chain_rolls_back_on_second_write_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1868,9 +1632,7 @@ def test_resident_taf_revision_chain_rolls_back_on_second_write_failure(
         "schema": "bayes_basket_target_taf_revision_inbox_v1",
         "captures": captures,
     }), encoding="utf-8")
-    artifact = _bridged_taf_artifact(tmp_path)
     worker = _worker(tmp_path, conn)
-    worker.taf_artifact_path = artifact
     worker.taf_inbox_path = inbox
     calls = 0
 
@@ -4277,45 +4039,6 @@ def _taf_revision_schema(conn) -> None:
     )
 
 
-def _taf_revision_worker(conn, registry_path: Path) -> TargetProductionWorker:
-    worker = object.__new__(TargetProductionWorker)
-    worker.conn = conn
-    worker.commit_conn = conn
-    worker.taf_artifact_path = registry_path
-    return worker
-
-
-def _p0_root(
-    conn,
-    *,
-    station: str = "ZUUU",
-    season: str = "JJA",
-    lead: str = "d2",
-    training_lead: str | None = None,
-    cycle: str = "18Z",
-    decision: str = "2026-08-10T00:00:00Z",
-) -> None:
-    lineage = {
-        "season_bin": season,
-        "lead_bucket": lead,
-        "run_cycle": cycle,
-        "settlement_definition": "official_daily_tmax_c",
-    }
-    if training_lead is not None:
-        lineage["training_lead_bucket"] = training_lead
-    conn.execute(
-        "INSERT INTO basket_probability_envelope VALUES(?,?,?,?,?,?)",
-        (
-            station,
-            "P0",
-            "COMMITTED",
-            "Asia/Shanghai",
-            decision,
-            json.dumps(lineage),
-        ),
-    )
-
-
 def _historical_taf_worker(conn, tmp_path: Path) -> TargetProductionWorker:
     worker = object.__new__(TargetProductionWorker)
     worker.conn = conn
@@ -4423,203 +4146,6 @@ def test_taf_scope_lead_reads_the_grouping_the_weights_were_fitted_in() -> None:
         "training_lead_bucket": "",
     }) == "d2"
     assert taf_scope_lead_bucket({}) == ""
-
-
-def test_taf_training_scope_follows_the_hour_bucket_when_the_root_has_one(
-    tmp_path: Path,
-) -> None:
-    import sqlite3
-
-    conn = sqlite3.connect(":memory:")
-    _taf_revision_schema(conn)
-    worker = _taf_revision_worker(conn, tmp_path / "active.json")
-    _p0_root(conn, training_lead="h24_48")
-
-    _due, scope, _reason = worker._taf_revision_training_due(
-        station_id="ZUUU",
-        as_of_utc="2026-08-10T12:00:00Z",
-    )
-
-    # The lane looks for a rolling series under the training grouping, while
-    # the calendar label stays on the receipt for whoever reads it.
-    assert scope["lead_bucket"] == "h24_48"
-    assert scope["calendar_lead_bucket"] == "d2"
-
-
-def test_taf_training_is_due_for_the_scope_the_live_root_actually_stamps(
-    tmp_path: Path,
-) -> None:
-    """P0-M selects on exact lineage equality, so near-misses are not coverage.
-
-    The one artifact ever activated was fit under the "summer" vocabulary and a
-    00Z cycle; the live roots now stamp JJA and 18Z.  A lane that treated any
-    artifact for the station as coverage would keep the stage silent forever,
-    which is the state this pass exists to end.
-    """
-
-    import sqlite3
-
-    conn = sqlite3.connect(":memory:")
-    _taf_revision_schema(conn)
-    registry = tmp_path / "active.json"
-    worker = _taf_revision_worker(conn, registry)
-    _p0_root(conn)
-
-    due, scope, reason = worker._taf_revision_training_due(
-        station_id="ZUUU",
-        as_of_utc="2026-08-10T12:00:00Z",
-    )
-    assert due is True
-    assert reason == "no_artifact_for_live_p0_scope"
-    assert (scope["season_bin"], scope["lead_bucket"], scope["run_cycle"]) == (
-        "JJA", "d2", "18Z",
-    )
-
-    # An artifact for the superseded scope is not coverage for the live one.
-    registry.write_text(
-        json.dumps(_taf_artifact_registry(season="summer", cycle="00Z")),
-        encoding="utf-8",
-    )
-    assert worker._taf_revision_training_due(
-        station_id="ZUUU",
-        as_of_utc="2026-08-10T12:00:00Z",
-    )[0] is True
-
-    registry.write_text(
-        json.dumps(_taf_artifact_registry()),
-        encoding="utf-8",
-    )
-    due, _scope, reason = worker._taf_revision_training_due(
-        station_id="ZUUU",
-        as_of_utc="2026-08-10T12:00:00Z",
-    )
-    assert (due, reason) == (False, "active_artifact_covers_live_scope")
-
-    # And it reopens once that artifact's own validity window closes.
-    due, _scope, reason = worker._taf_revision_training_due(
-        station_id="ZUUU",
-        as_of_utc="2026-09-30T12:00:00Z",
-    )
-    assert (due, reason) == (True, "artifact_validity_window_lapsed")
-
-
-def test_taf_training_not_due_without_a_committed_p0_root(
-    tmp_path: Path,
-) -> None:
-    # There is no scope to fit against, and guessing one would produce an
-    # artifact no root can ever join to -- the exact stranding of 2026-07-29.
-    import sqlite3
-
-    conn = sqlite3.connect(":memory:")
-    _taf_revision_schema(conn)
-    worker = _taf_revision_worker(conn, tmp_path / "active.json")
-
-    due, scope, reason = worker._taf_revision_training_due(
-        station_id="ZUUU",
-        as_of_utc="2026-08-10T12:00:00Z",
-    )
-    assert (due, scope, reason) == (False, {}, "no_committed_p0_root")
-
-
-def test_taf_training_rotates_past_stations_it_cannot_serve(
-    tmp_path: Path,
-) -> None:
-    """One due station per cycle, and a throttled one does not stall the rest."""
-
-    import sqlite3
-
-    conn = sqlite3.connect(":memory:")
-    _taf_revision_schema(conn)
-    worker = _taf_revision_worker(conn, tmp_path / "active.json")
-    worker.station_allowlist = ("KMIA", "RKPK", "ZUUU")
-    worker.db_path = tmp_path / "target.db"
-    worker.p0_inbox_path = tmp_path / "p0_inbox.json"
-    worker.p0_inbox_path.write_text("{}", encoding="utf-8")
-    worker.nwp_runtime_root = tmp_path / "runtime"
-    worker.taf_bound_artifact_root = tmp_path / "bound"
-    _p0_root(conn, station="RKPK")
-    _p0_root(conn, station="ZUUU")
-    submitted: list[object] = []
-
-    class _StubPool:
-        def submit(self, function):
-            submitted.append(function)
-            return SimpleNamespace(done=lambda: True)
-
-    worker._taf_revision_pool = _StubPool()
-
-    first = worker._run_taf_revision_training(as_of_utc="2026-08-10T12:00:00Z")
-    second = worker._run_taf_revision_training(as_of_utc="2026-08-10T12:00:00Z")
-    third = worker._run_taf_revision_training(as_of_utc="2026-08-10T12:00:00Z")
-
-    assert len(submitted) == 2
-    # KMIA has no P0 root and is skipped without consuming the cycle.
-    assert first["state"] == "SUBMITTED" and first["station_id"] == "RKPK"
-    assert second["state"] == "SUBMITTED" and second["station_id"] == "ZUUU"
-    # Both due stations are now inside their retry throttle.
-    assert third["state"] == "NOT_DUE"
-    assert all(value["calls_order_gateway"] is False for value in (first, second, third))
-    assert all(value["orders_submitted"] == 0 for value in (first, second, third))
-
-
-def _taf_artifact_registry(
-    *,
-    season: str = "JJA",
-    cycle: str = "18Z",
-) -> dict[str, object]:
-    identity = {
-        "schema": "bayes_basket_taf_revision_artifact_v2",
-        "artifact_id": f"taf-zuuu-{season}-d2-{cycle}-test",
-        "activation_id": f"taf-zuuu-{season}-d2-{cycle}-test-activation",
-        "station_id": "ZUUU",
-        "season_bin": season,
-        "lead_bucket": "d2",
-        "run_cycle": cycle,
-        "settlement_definition": "official_daily_tmax_c",
-        "settlement_timezone": "Asia/Shanghai",
-        "method_version": "oos_taf_confirmation_bounded_correction_v2",
-        "trained_through_utc": "2026-07-20T16:00:00Z",
-        "sample_n": 26,
-        "effective_sample_n": 20.0,
-        "oos_metrics": {"brier_score": 0.2, "nll": 0.5, "crps": 0.4},
-        "tx_bias_c": 0.1,
-        "taf_nwp_delta_coefficient": 0.5,
-        "tx_residual_scale_c": 1.0,
-        "physical_feature_effect_c": {
-            "cloud_cover_fraction": 0.2,
-            "precipitation_probability": -0.1,
-            "wind_speed_normalized": -0.05,
-        },
-        "wind_speed_cap_mps": 10.0,
-        "confirmation_tolerance_c": 0.75,
-        "max_confirmation_strength": 0.16,
-        "max_correction_strength": 0.11,
-        "max_probability_mass_transfer": 0.05,
-        "max_center_displacement_buckets": 1,
-        "likelihood_ratio_floor": 0.25,
-        "likelihood_ratio_ceiling": 4.0,
-        "nwp_combination_artifact_sha256": "9" * 64,
-        "nwp_combination_artifact_kind": TAF_NWP_CROSSFIT_ARTIFACT_KIND,
-        "nwp_live_compatibility_contract_version": (
-            TAF_NWP_LIVE_COMPATIBILITY_CONTRACT_VERSION
-        ),
-        "nwp_live_compatibility_fingerprint_sha256": "a" * 64,
-        "nwp_live_compatibility_evidence_sha256": "b" * 64,
-        "nwp_live_compatibility_validated": True,
-        "oos_taf_nwp_residual_correlation": 0.3,
-        "correlation_discount_method": (
-            "holdout_taf_vs_nwp_combination_residual_pearson_v1"
-        ),
-        "correlation_discount": 0.7,
-        "joint_physical_oos_validated": True,
-        "valid_from_utc": "2026-08-01T00:00:00Z",
-        "valid_until_utc": "2026-08-31T00:00:00Z",
-        "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
-        "activated": True,
-    }
-    return build_taf_artifact_registry([
-        {**identity, "content_sha256": content_sha256(identity)}
-    ])
 
 
 def _rotation_worker(tmp_path: Path) -> TargetProductionWorker:
@@ -5571,76 +5097,6 @@ def _rolling(tmp_path: Path, entries: list[tuple[str, list[str], int]]) -> Path:
 
 
 LIVE_PAIR = "ECMWF_IFS_ENS_OPEN_PF50,NOAA_GEFS_05"
-
-
-def test_taf_accumulation_reports_the_serving_pair_over_the_faster_one(
-    tmp_path: Path,
-) -> None:
-    path = _rolling(tmp_path, [
-        ("d2", ["GOOGLE_WEATHERNEXT2_ENS", "NOAA_AIGEFS_025"], 30),
-        ("d2", ["ECMWF_IFS_ENS_OPEN_PF50", "NOAA_GEFS_05"], 4),
-    ])
-
-    result = TargetProductionWorker._taf_rolling_accumulation(
-        path,
-        season_bin="JJA",
-        lead_bucket="d2",
-        live_system_ids=LIVE_PAIR,
-    )
-
-    # The AI pair is 26 days ahead, and its artifact could never serve: the
-    # TAF live-compatibility fingerprint binds to the root's model set.
-    assert result["is_live_serving_pair"] is True
-    assert result["selected_system_ids"] == [
-        "ECMWF_IFS_ENS_OPEN_PF50",
-        "NOAA_GEFS_05",
-    ]
-    assert result["common_case_count"] == 4
-
-
-def test_taf_accumulation_names_a_serving_pair_stranded_by_lead_vocabulary(
-    tmp_path: Path,
-) -> None:
-    # The live RKPK shape: the serving pair has a series, but only under the
-    # hour-bucket vocabulary, while the P0 root still stamps a calendar lead.
-    # Another pair holding d2 would otherwise present this as a day countdown
-    # that no number of settled days can finish.
-    path = _rolling(tmp_path, [
-        ("d2", ["GOOGLE_WEATHERNEXT2_ENS", "NOAA_AIGEFS_025"], 1),
-        ("h00_12", ["ECMWF_IFS_ENS_OPEN_PF50", "NOAA_GEFS_05"], 20),
-    ])
-
-    result = TargetProductionWorker._taf_rolling_accumulation(
-        path,
-        season_bin="JJA",
-        lead_bucket="d2",
-        live_system_ids=LIVE_PAIR,
-    )
-
-    assert result["is_live_serving_pair"] is False
-    assert result["serving_pair_reason"] == (
-        "serving_pair_only_under_other_lead_buckets"
-    )
-    assert result["serving_pair_lead_buckets"] == ["h00_12"]
-
-
-def test_taf_accumulation_without_a_live_pair_keeps_the_best_covered(
-    tmp_path: Path,
-) -> None:
-    path = _rolling(tmp_path, [
-        ("d2", ["GOOGLE_WEATHERNEXT2_ENS", "NOAA_AIGEFS_025"], 30),
-        ("d2", ["ECMWF_IFS_ENS_OPEN_PF50", "NOAA_GEFS_05"], 4),
-    ])
-
-    result = TargetProductionWorker._taf_rolling_accumulation(
-        path,
-        season_bin="JJA",
-        lead_bucket="d2",
-    )
-
-    assert result["is_live_serving_pair"] is False
-    assert "serving_pair_reason" not in result
-    assert result["common_case_count"] == 30
 
 
 def _scope(station: str, day_state: str, stage: str, fresh: bool, blocker: str = "") -> dict:
@@ -6867,7 +6323,6 @@ def test_p0m_rebuilds_on_the_newest_root_in_the_cycle_it_moves(
     worker = TargetProductionWorker(
         db,
         commit_conn=conn,
-        taf_artifact_path=_bridged_taf_artifact(tmp_path),
         taf_inbox_path=inbox,
     )
     try:
@@ -7030,7 +6485,6 @@ def test_p0m_rebuilds_every_moved_scope_rather_than_four(
     worker = TargetProductionWorker(
         db,
         commit_conn=conn,
-        taf_artifact_path=_bridged_taf_artifact(tmp_path),
         taf_inbox_path=inbox,
     )
     try:
@@ -7162,128 +6616,3 @@ def test_a_confirmed_taf_is_carried_onto_a_run_it_predates() -> None:
     assert settled["reroot_due"] is False
 
 
-def test_the_calibrated_operator_re_roots_on_the_same_plan(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Same cycle, and across a run that postdates the confirmed TAF.
-
-    The 2026-09-13 review reproduced both on this operator: a root minted at
-    the cycle clock was not confirmed until the next cycle, and a run newer
-    than the confirmed TAF raised ``forecast_revision_chain_empty`` and left
-    the confirmation on the old root.
-    """
-
-    station = "RKPK"
-    conn = sqlite3.connect(":memory:")
-    apply_production_ssot_schema(conn)
-    _seed_target_registry_source_lane(
-        conn,
-        station_id=station,
-        event_date="2026-07-27",
-        settlement_timezone="Asia/Seoul",
-        source_lane="awc",
-    )
-
-    def _root(checkpoint: str, decision: str, fresh: str, probabilities):
-        root = _reroot_scope_root(
-            station_id=station,
-            checkpoint_id=checkpoint,
-            decision_at_utc=decision,
-            fresh_until_utc=fresh,
-            probabilities=probabilities,
-        )
-        return ProbabilityEnvelope.from_mapping({
-            **root.to_dict(),
-            "settlement_timezone": "Asia/Seoul",
-            "lineage": {**root.lineage, "settlement_timezone": "Asia/Seoul"},
-        })
-
-    first_root = _root(
-        "root-old", "2026-07-26T10:00:00.000Z", "2026-07-26T16:00:00.000Z",
-        {"34": 0.2, "35": 0.6, "36": 0.2},
-    )
-    materialize_probability_bridge(
-        conn, first_root, created_at_utc=first_root.decision_at_utc
-    )
-    capture = _reroot_taf_capture(
-        station_id=station,
-        revision_id="taf-rkpk-1",
-        sequence=1,
-        issued_at_utc="2026-07-26T11:00:00Z",
-        received_at_utc="2026-07-26T11:05:00Z",
-        valid_until_utc="2026-07-27T18:00:00Z",
-        source_sha_char="c",
-        tx_c=35.0,
-        supersedes=None,
-    )
-    capture = {**capture, "settlement_timezone": "Asia/Seoul"}
-    capture["content_sha256"] = content_sha256(
-        {key: value for key, value in capture.items() if key != "content_sha256"}
-    )
-    inbox = tmp_path / "taf-inbox.json"
-    inbox.write_text(json.dumps({
-        "schema": "bayes_basket_target_taf_revision_inbox_v1",
-        "captures": [capture],
-    }), encoding="utf-8")
-    read_db = tmp_path / "target-read.db"
-    with sqlite3.connect(read_db) as source:
-        source.execute("CREATE TABLE marker(value TEXT)")
-    worker = TargetProductionWorker(
-        read_db,
-        commit_conn=conn,
-        taf_artifact_path=_bridged_taf_artifact(tmp_path, station_id=station),
-        taf_inbox_path=inbox,
-    )
-    try:
-        seated = worker._materialize_resident_p0m(
-            as_of_utc="2026-07-26T12:00:00.000Z"
-        )
-        assert seated["state"] == "COMMITTED", seated["blockers"]
-        head = _p0m_rows(conn, station)[-1]
-        # The calibrated operator, not the identity fallback.
-        assert head["lineage"].get("taf_revision_artifact_id")
-        assert head["fresh_until_utc"] == first_root.fresh_until_utc
-
-        second_root = _root(
-            "root-new", "2026-07-26T12:30:00.000Z",
-            "2026-07-26T18:30:00.000Z", {"34": 0.1, "35": 0.5, "36": 0.4},
-        )
-        insert_probability_envelope(
-            conn, second_root, created_at_utc=second_root.decision_at_utc
-        )
-        same_cycle = worker._materialize_resident_p0m(
-            as_of_utc=second_root.decision_at_utc
-        )
-        assert same_cycle["state"] == "COMMITTED", same_cycle["blockers"]
-        head = _p0m_rows(conn, station)[-1]
-        assert head["lineage"]["p0_root_checkpoint_id"] == "root-new"
-        assert head["lineage"].get("taf_revision_artifact_id")
-        assert head["decision_at_utc"] == "2026-07-26T12:30:00.001Z"
-        assert same_cycle["stage_clock_utc"] == "2026-07-26T12:30:00.001Z"
-
-        # A run that postdates the confirmed TAF: the text may not seat
-        # afresh, and the confirmation is still carried onto the new root.
-        third_root = _root(
-            "root-third", "2026-07-26T13:00:00.000Z",
-            "2026-07-26T19:00:00.000Z", {"34": 0.1, "35": 0.5, "36": 0.4},
-        )
-        insert_probability_envelope(
-            conn, third_root, created_at_utc=third_root.decision_at_utc
-        )
-        monkeypatch.setattr(
-            TargetProductionWorker,
-            "_p0_root_latest_run_init_utc",
-            staticmethod(lambda _root: datetime(2026, 7, 26, 12, tzinfo=timezone.utc)),
-        )
-        carried = worker._materialize_resident_p0m(
-            as_of_utc="2026-07-26T13:01:00.000Z"
-        )
-        assert carried["state"] == "COMMITTED", carried["blockers"]
-        assert carried["blockers"] == []
-        head = _p0m_rows(conn, station)[-1]
-        assert head["lineage"]["p0_root_checkpoint_id"] == "root-third"
-        assert head["lineage"]["forecast_revision_id"] == "taf-rkpk-1"
-        assert head["lineage"].get("taf_revision_artifact_id")
-        assert head["fresh_until_utc"] == third_root.fresh_until_utc
-    finally:
-        worker.close()

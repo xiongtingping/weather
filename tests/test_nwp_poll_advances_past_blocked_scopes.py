@@ -35,7 +35,6 @@ class _RotatingWorker:
 
     skip_nwp_refresh = False
     commit_conn = None
-    taf_artifact_path = None
     taf_inbox_path = None
 
     def __init__(self, states: list[str]) -> None:

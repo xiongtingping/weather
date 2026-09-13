@@ -83,10 +83,6 @@ def test_forecast_cycle_keeps_optional_taf_capture_inside_existing_service(
 
     class Worker:
         commit_conn = conn
-        taf_artifact_path = (
-            Path(__file__).resolve().parents[1]
-            / "config/artifacts/bayes_basket_target_taf_revision_active.json"
-        )
         taf_inbox_path = tmp_path / "taf-inbox.json"
 
         def run(self):
@@ -133,10 +129,6 @@ def test_forecast_cycle_uses_read_only_target_connection_for_taf_scope(
 
     class Worker:
         commit_conn = None
-        taf_artifact_path = (
-            Path(__file__).resolve().parents[1]
-            / "config/artifacts/bayes_basket_target_taf_revision_active.json"
-        )
         taf_inbox_path = tmp_path / "taf-inbox.json"
 
         def __init__(self) -> None:
@@ -213,10 +205,6 @@ def test_forecast_taf_scope_failure_does_not_block_later_date(
     class Worker:
         commit_conn = None
         skip_nwp_refresh = True
-        taf_artifact_path = (
-            Path(__file__).resolve().parents[1]
-            / "config/artifacts/bayes_basket_target_taf_revision_active.json"
-        )
         taf_inbox_path = tmp_path / "taf-inbox.json"
 
         def __init__(self, read_conn) -> None:
@@ -345,7 +333,6 @@ def test_forecast_cycle_advances_rotation_without_running_consumer() -> None:
             self.run_calls = 0
             self.call_order = []
             self.commit_conn = None
-            self.taf_artifact_path = Path("/nonexistent")
             self.taf_inbox_path = Path("/nonexistent")
 
         def refresh_resident_nwp(self, *, as_of_utc: str):
@@ -390,7 +377,6 @@ def test_forecast_cycle_can_reuse_just_materialized_exact_scope_probability() ->
     class Worker:
         skip_nwp_refresh = True
         commit_conn = None
-        taf_artifact_path = Path("/nonexistent")
         taf_inbox_path = Path("/nonexistent")
 
         def refresh_resident_nwp(self, *, as_of_utc: str):

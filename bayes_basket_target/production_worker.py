@@ -85,7 +85,7 @@ from .contracts import (
 from .cash_phase_forward_observation import (
     build_forward_observation_packet,
 )
-from .event_contracts import ForecastRevision, validate_forecast_revision_chain
+from .event_contracts import ForecastRevision
 from .database import (
     DEFAULT_TARGET_DB,
     DEFAULT_TARGET_WS_MANIFEST,
@@ -124,7 +124,7 @@ from .production_io import (
 from .quote_freshness import QuoteFreshnessPolicy
 from .market_materialization import insert_market_evidence_bundle, build_confirmed_inventory_snapshot, build_order_state_snapshot
 from .market_ingress import materialize_official_ws_evidence_cache
-from .materialization import materialize_p0m, materialize_p0m_observed
+from .materialization import materialize_p0m_observed
 from .probability_bridge import materialize_probability_bridge
 from .four_layer_shadow import (
     load_shadow_artifacts as load_four_layer_shadow_artifacts,
@@ -258,16 +258,6 @@ from .settlement_truth import (
 )
 from .settlement_time import settlement_day_window
 from .station_registry import coordinate_registry_manifest, station_coordinates
-from .taf_artifact_registry import (
-    SCHEMA as TAF_ARTIFACT_REGISTRY_SCHEMA,
-    validate_taf_artifact_registry,
-)
-from .taf_revision import (
-    TafRevisionArtifact,
-    compile_taf_revision_proof,
-    taf_artifact_bridge_stale_reason,
-    taf_scope_lead_bucket,
-)
 from .delta_v2_training import FACT_SCHEMA, delta_v2_decision_scope_key
 from .delta_v2_settlement_label import (
     FACT_AUTHORITY_SCOPE,
@@ -1434,20 +1424,9 @@ OPEN_METEO_D2_EXTRACTION_VERSION = (
 CANONICAL_TARGET_STATIONS = tuple(
     coordinate_registry_manifest()["station_ids"]
 )
-DEFAULT_TARGET_TAF_ARTIFACT = (
-    Path(__file__).resolve().parents[1]
-    / "config" / "artifacts" / "bayes_basket_target_taf_revision_active.json"
-)
 DEFAULT_TARGET_TAF_INBOX = (
     Path(__file__).resolve().parents[1]
     / "data" / "bayes_basket_target_taf_revision_inbox.json"
-)
-# Bound artifacts are kept beside the registry they are assembled into, not in
-# the worker's runtime scratch: the registry is a lossless envelope around
-# them, so losing the members would leave a file no builder could rebuild.
-DEFAULT_TARGET_TAF_BOUND_ARTIFACT_ROOT = (
-    Path(__file__).resolve().parents[1]
-    / "config" / "artifacts" / "bayes_basket_target_taf_revision_bound"
 )
 DEFAULT_TARGET_P0_INBOX = (
     Path(__file__).resolve().parents[1]
@@ -3337,48 +3316,6 @@ def _official_inbox_packets_all_stale(
     )
 
 
-def _packet_taf_superseded(
-    conn: sqlite3.Connection,
-    packet: Mapping[str, Any],
-    *,
-    station_id: str,
-    event_date: str,
-) -> bool:
-    """Whether a newer TAF issuance exists than the one this packet carries.
-
-    The arrival wake (``_taf_arrival_pending``) is process memory: a restart
-    between the ingest and the rebuild drops it, and re-ingesting the same
-    rows writes nothing, so the wake never fires again for that issuance.
-    Measured 2026-08-14 on ZUUU: the 15:02Z TAF (TX 35) was received
-    16:48:45Z under the previous daemon; two restarts later every compile
-    through 17:09Z still served the 09:01Z issuance (TX 37) -- a 21.6%-weight
-    member sitting two degrees warm -- and would have until the packet aged
-    out six hours after build.  This derives the same judgement from durable
-    state instead: the packet names the issuance it holds in
-    ``run_init_utc_by_system``, and the capture table knows the newest one.
-
-    Fail-open on any read problem: a broken probe must degrade to the old
-    behaviour (reuse until TTL), never block the lane.
-    """
-
-    run_init = packet.get("run_init_utc_by_system")
-    if not isinstance(run_init, Mapping):
-        return False
-    packet_taf = str(run_init.get("OFFICIAL_AIRPORT_TAF_TX") or "").strip()
-    if not packet_taf:
-        return False
-    try:
-        row = conn.execute(
-            "SELECT MAX(issued_at_utc) FROM calibration_forward_taf_capture "
-            "WHERE station_id=? AND event_date=? AND tx_available=1",
-            (str(station_id), str(event_date)),
-        ).fetchone()
-    except sqlite3.Error:
-        return False
-    latest = str(row[0] or "").strip() if row else ""
-    return bool(latest) and latest > packet_taf
-
-
 def _is_republisher_daily_quota_exhausted(exc: BaseException) -> bool:
     """Whether this failure means the republisher is spent for the UTC day.
 
@@ -3790,9 +3727,7 @@ class TargetProductionWorker:
         market_manifest_path: Path | None = None,
         native_oos_snapshot_path: Path | None = None,
         canonical_source_db_path: Path | None = None,
-        taf_artifact_path: Path | None = None,
         taf_inbox_path: Path | None = None,
-        taf_bound_artifact_root: Path | None = None,
         p0_inbox_path: Path | None = None,
         nwp_runtime_root: Path | None = None,
         cash_phase_forward_store_path: Path | None = None,
@@ -3881,25 +3816,11 @@ class TargetProductionWorker:
         except Exception as exc:
             self.open_failed_stage = "read_only"
             self.open_error = f"{type(exc).__name__}:{exc}"
-        self.taf_artifact_path = Path(
-            taf_artifact_path
-            or os.environ.get(
-                "PM_TARGET_TAF_ARTIFACT",
-                str(DEFAULT_TARGET_TAF_ARTIFACT),
-            )
-        ).expanduser().resolve()
         self.taf_inbox_path = Path(
             taf_inbox_path
             or os.environ.get(
                 "PM_TARGET_TAF_INBOX",
                 str(DEFAULT_TARGET_TAF_INBOX),
-            )
-        ).expanduser().resolve()
-        self.taf_bound_artifact_root = Path(
-            taf_bound_artifact_root
-            or os.environ.get(
-                "PM_TARGET_TAF_BOUND_ARTIFACT_ROOT",
-                str(DEFAULT_TARGET_TAF_BOUND_ARTIFACT_ROOT),
             )
         ).expanduser().resolve()
         self.p0_inbox_path = Path(
@@ -5758,816 +5679,6 @@ class TargetProductionWorker:
             **boundary,
         }
 
-    def _taf_registry_artifacts(self) -> list[TafRevisionArtifact]:
-        """Read the registry the resident P0-M stage selects from.
-
-        Unreadable is treated as uncovered rather than raised: this is the
-        training lane's coverage question, and a registry that cannot be parsed
-        is exactly the case where a station needs an artifact built.  The
-        stage's own read still fails closed on the same file.
-        """
-
-        try:
-            raw = load_bounded_json(self.taf_artifact_path)
-        except Exception:
-            return []
-        if not isinstance(raw, Mapping):
-            return []
-        try:
-            if raw.get("schema") == TAF_ARTIFACT_REGISTRY_SCHEMA:
-                return validate_taf_artifact_registry(raw)
-            return [TafRevisionArtifact.from_mapping(raw)]
-        except Exception:
-            return []
-
-    def _taf_revision_training_due(
-        self, *, station_id: str, as_of_utc: str
-    ) -> tuple[bool, dict[str, str], str]:
-        """Whether this station's live P0 scope has no active TAF artifact.
-
-        Coverage is judged against the scope the live P0 root actually stamps,
-        because that is the equality the resident stage selects on: an artifact
-        for any other season, lead or cycle is not a weaker match, it is no
-        match at all.  Unlike the trajectory lane this cannot ask for coverage
-        through the newest settled day -- the artifact is trained through the
-        end of its fit window and the transport window that qualifies it sits
-        after that, so demanding it would make every station due forever.  An
-        artifact is current while its own validity window covers now.
-        """
-
-        read_conn = getattr(self, "conn", None) or self.commit_conn
-        if read_conn is None:
-            return False, {}, "target_read_connection_missing"
-        row = read_conn.execute(
-            "SELECT settlement_timezone, lineage_json "
-            "FROM basket_probability_envelope "
-            "WHERE station_id=? AND stage='P0' AND state='COMMITTED' "
-            "ORDER BY decision_at_utc DESC LIMIT 1",
-            (station_id,),
-        ).fetchone()
-        if row is None:
-            return False, {}, "no_committed_p0_root"
-        try:
-            lineage = json.loads(str(row[1] or ""))
-        except (TypeError, ValueError):
-            return False, {}, "p0_root_lineage_unreadable"
-        if not isinstance(lineage, Mapping):
-            return False, {}, "p0_root_lineage_unreadable"
-        scope = {
-            "station_id": station_id,
-            "settlement_timezone": str(row[0] or ""),
-            "season_bin": str(lineage.get("season_bin") or ""),
-            # The training grouping when the root carries one: that is what
-            # the rolling series is keyed by, and what the resident stage
-            # selects an artifact on.
-            "lead_bucket": taf_scope_lead_bucket(lineage),
-            "calendar_lead_bucket": str(lineage.get("lead_bucket") or ""),
-            "run_cycle": str(lineage.get("run_cycle") or ""),
-            "settlement_definition": str(
-                lineage.get("settlement_definition") or ""
-            ),
-        }
-        if not all(scope.values()):
-            return False, {}, "p0_root_scope_incomplete"
-        # The systems this root is actually mixing.  A TAF artifact carries a
-        # live-compatibility fingerprint bound to the serving model set, so an
-        # artifact fitted on any other pair is refused at serve time no matter
-        # how well it scored -- which makes the serving pair the only one whose
-        # accumulation shortfall describes when P0-M returns.
-        scope["live_ensemble_system_ids"] = ",".join(sorted(
-            str(value)
-            for value in (
-                json.loads(str(lineage.get("ensemble_system_ids_json") or "[]"))
-                if str(lineage.get("ensemble_system_ids_json") or "").strip()
-                else []
-            )
-        ))
-        truth = read_conn.execute(
-            "SELECT MAX(local_date) FROM calibration_station_daily_high_truth "
-            "WHERE station_id=? AND qc_status='ACCEPTED'",
-            (station_id,),
-        ).fetchone()
-        scope["latest_truth_day"] = str((truth or [""])[0] or "")
-        # Every scope this station is serving right now, not just the newest
-        # one.  The DB's latest root and the live inbox are two views of a
-        # scope that moves: a station runs today's day and tomorrow's at
-        # different lead buckets, and the ladder rotates the cycle under both,
-        # so a station takes three or four distinct scopes in a day.  Chasing
-        # only the instantaneous newest meant the lane fitted for whichever
-        # scope happened to be live when it woke, and the transport gate --
-        # which reads the inbox, not the table -- then asked for a live root
-        # at that scope and found none.  ZGSZ fitted twice on 2026-08-16 and
-        # both were rejected with ``taf_native_live_exact_scope_not_unique``
-        # while a perfectly good root for its ready scope sat in the inbox.
-        # Offer the gate's own view, so a ready series is pursued at a scope
-        # the gate can still see.
-        candidates: list[tuple[str, str, str]] = []
-        for candidate in self._taf_live_inbox_scopes(station_id):
-            if candidate not in candidates:
-                candidates.append(candidate)
-        live = (
-            scope["season_bin"],
-            scope["lead_bucket"],
-            scope["run_cycle"],
-        )
-        if live not in candidates:
-            candidates.append(live)
-        covered: set[tuple[str, str, str]] = set()
-        known: set[tuple[str, str, str]] = set()
-        for artifact in self._taf_registry_artifacts():
-            if (artifact.station_id, artifact.settlement_timezone) != (
-                station_id,
-                scope["settlement_timezone"],
-            ):
-                continue
-            key = (
-                artifact.season_bin,
-                artifact.lead_bucket,
-                artifact.run_cycle,
-            )
-            known.add(key)
-            if artifact.valid_from_utc <= as_of_utc < artifact.valid_until_utc:
-                covered.add(key)
-        uncovered = [item for item in candidates if item not in covered]
-        scope["candidate_scopes"] = [list(item) for item in candidates]
-        scope["uncovered_scopes"] = [list(item) for item in uncovered]
-        if not uncovered:
-            return False, scope, "active_artifact_covers_live_scope"
-        # Present the first uncovered scope as the headline so a receipt read
-        # at a glance still names one thing; ``_train`` picks from the whole
-        # uncovered set by which of them has evidence.
-        head = uncovered[0]
-        scope["season_bin"], scope["lead_bucket"], scope["run_cycle"] = head
-        # A scope that once had an artifact and outlived it is a refit; one
-        # that never had one is a first fit.  Both are due, and the wait they
-        # describe is different enough to keep saying which.
-        return (
-            True,
-            scope,
-            "artifact_validity_window_lapsed"
-            if head in known
-            else "no_artifact_for_live_p0_scope",
-        )
-
-    def _taf_live_inbox_scopes(
-        self, station_id: str
-    ) -> list[tuple[str, str, str]]:
-        """(season, lead, cycle) for every P0 root the live inbox serves.
-
-        This is the same file the transport gate resolves against, so a scope
-        named here is one the gate can bind a fingerprint to.  Unreadable or
-        absent yields nothing rather than raising: the caller falls back to
-        the table's newest root, which is the pre-existing behaviour.
-        """
-
-        try:
-            inbox = load_bounded_json(self.p0_inbox_path)
-            rows = inbox.get("packets") if isinstance(inbox, Mapping) else None
-        except Exception:
-            return []
-        if not isinstance(rows, list):
-            return []
-        scopes: list[tuple[str, str, str]] = []
-        for raw in rows:
-            packet = raw.get("packet") if isinstance(raw, Mapping) else None
-            if not isinstance(packet, Mapping):
-                continue
-            if str(packet.get("station_id") or "") != station_id:
-                continue
-            if str(packet.get("stage") or "") != "P0":
-                continue
-            envelope = packet.get("native_probability_envelope")
-            lineage = (
-                envelope.get("lineage")
-                if isinstance(envelope, Mapping)
-                else None
-            )
-            if not isinstance(lineage, Mapping):
-                continue
-            item = (
-                str(lineage.get("season_bin") or ""),
-                taf_scope_lead_bucket(lineage),
-                str(lineage.get("run_cycle") or ""),
-            )
-            if all(item) and item not in scopes:
-                scopes.append(item)
-        return scopes
-
-    def _taf_revision_cursor_path(self) -> Path:
-        return (
-            self.nwp_runtime_root
-            / "taf_revision_training"
-            / "rotation_cursor.json"
-        )
-
-    def _taf_revision_cursor(self, *, as_of_utc: str) -> int:
-        """Where the station rotation left off, across restarts.
-
-        The rotation used to live only on the instance, so every restart sent
-        it back to the first station -- and a pass takes about 45 minutes,
-        longer than this service usually goes between deploys.  The resident
-        is restarted whenever its code changes, which on a working day is
-        often enough that the tail of the alphabet was never reached: on
-        2026-08-16 both stations with evidence ready to fit sat in that tail
-        and neither had been visited all day.
-
-        The restarts are not a fault to be fixed elsewhere -- there is no
-        timer and no crash, only SIGTERM from a deploy -- so the rotation has
-        to survive them rather than wait for them to stop.
-        """
-
-        cached = getattr(self, "_taf_revision_station_cursor", None)
-        if cached is not None:
-            return int(cached)
-        resume = ""
-        try:
-            state = load_bounded_json(self._taf_revision_cursor_path())
-            if isinstance(state, Mapping):
-                resume = str(state.get("next_station_id") or "")
-        except Exception:
-            resume = ""
-        # By name, not by index: the allowlist is not a fixed-length thing,
-        # and resuming a stale index would silently skip or repeat a station
-        # whenever the roster changed.
-        cursor = (
-            self.station_allowlist.index(resume)
-            if resume in self.station_allowlist
-            else 0
-        )
-        self._taf_revision_station_cursor = cursor
-        return cursor
-
-    def _advance_taf_revision_cursor(self, cursor: int) -> None:
-        self._taf_revision_station_cursor = cursor
-        if not self.station_allowlist:
-            return
-        try:
-            path = self._taf_revision_cursor_path()
-            path.parent.mkdir(parents=True, exist_ok=True)
-            write_bounded_json_if_changed(
-                path,
-                {
-                    "schema": (
-                        "bayes_basket_target_taf_revision_rotation_v1"
-                    ),
-                    "next_station_id": self.station_allowlist[
-                        cursor % len(self.station_allowlist)
-                    ],
-                },
-            )
-        except Exception:
-            # A rotation that cannot be written is a slower rotation, never a
-            # stopped one.  The in-memory cursor still advances this run.
-            pass
-
-    @staticmethod
-    def _taf_rolling_accumulation(
-        rolling_path: Path,
-        *,
-        season_bin: str,
-        lead_bucket: str,
-        live_system_ids: str = "",
-    ) -> dict[str, Any]:
-        """The serving system pair's shortfall at the live scope.
-
-        Qualifying first is not the same as being able to serve: the artifact
-        carries a live-compatibility fingerprint bound to the P0 root's model
-        set, so a pair the root does not mix is refused at serve time however
-        far ahead its evidence runs.  Report the serving pair when the builder
-        offers it, and say so when falling back to the best-covered one, so a
-        shortfall in the receipt is a wait for P0-M rather than for an artifact
-        that could never be used.
-        """
-
-        try:
-            rolling = load_bounded_json(rolling_path)
-        except Exception:
-            return {}
-        best: Mapping[str, Any] | None = None
-        serving: Mapping[str, Any] | None = None
-        offered: set[str] = set()
-        serving_pair_leads: set[str] = set()
-        for item in (rolling or {}).get("accumulating") or []:
-            if not isinstance(item, Mapping):
-                continue
-            if str(item.get("season_bin") or "") != season_bin:
-                continue
-            offered.add(str(item.get("lead_bucket") or ""))
-            item_pair = ",".join(sorted(
-                str(value)
-                for value in (item.get("selected_system_ids") or [])
-            ))
-            if live_system_ids and item_pair == live_system_ids:
-                serving_pair_leads.add(str(item.get("lead_bucket") or ""))
-            if str(item.get("lead_bucket") or "") != lead_bucket:
-                continue
-            plan = item.get("plan")
-            if not isinstance(plan, Mapping):
-                continue
-            if live_system_ids and item_pair == live_system_ids:
-                serving = item
-            if best is None or int(plan.get("common_case_count") or 0) > int(
-                (best.get("plan") or {}).get("common_case_count") or 0
-            ):
-                best = item
-        best = serving or best
-        if best is None:
-            # Training groups runs by lead in hours while P0 lineage still
-            # names calendar-day leads, so a station can have plenty of
-            # evidence under a bucket no live root will ever ask for.  Say
-            # which buckets exist rather than reporting an absence.
-            return {
-                "reason": (
-                    "live_lead_bucket_absent_from_training_vocabulary"
-                    if offered
-                    else "no_system_pair_at_live_scope"
-                ),
-                "live_lead_bucket": lead_bucket,
-                "training_lead_buckets": sorted(offered),
-            }
-        plan = best["plan"]
-        return {
-            "is_live_serving_pair": bool(serving is not None),
-            "live_ensemble_system_ids": live_system_ids,
-            # A shortfall counted against a pair the root does not mix is not
-            # the wait for P0-M.  When the serving pair has series under other
-            # lead buckets only, the block is the lead vocabulary rather than
-            # missing days, and no number of settled days will clear it --
-            # another pair holding an entry at the live bucket would otherwise
-            # hide that behind a plausible-looking countdown.
-            **(
-                {
-                    "serving_pair_reason": (
-                        "serving_pair_only_under_other_lead_buckets"
-                    ),
-                    "serving_pair_lead_buckets": sorted(serving_pair_leads),
-                }
-                if serving is None and serving_pair_leads
-                else {}
-            ),
-            "selected_system_ids": list(best.get("selected_system_ids") or []),
-            "common_case_count": int(plan.get("common_case_count") or 0),
-            "required_common_case_count": int(
-                plan.get("required_common_case_count") or 0
-            ),
-            "missing_common_case_count": int(
-                plan.get("missing_common_case_count") or 0
-            ),
-        }
-
-    def _run_taf_revision_training(
-        self, *, as_of_utc: str
-    ) -> dict[str, Any]:
-        """Run the rolling-OOS -> fit -> gate -> bind -> registry chain once.
-
-        One due station per cycle, rotated, on its own single-worker pool --
-        the same shape as the trajectory pass.  Every step is an existing
-        offline script run as a subprocess; the only durable products are the
-        bound artifact files and the registry the builder assembles from them.
-        This lane writes no SSOT row and reaches no order gateway.
-        """
-
-        boundary = {
-            "calls_order_gateway": False,
-            "places_orders": False,
-            "live_submit_authorized": False,
-            "orders_submitted": 0,
-        }
-        if (
-            (getattr(self, "conn", None) is None and self.commit_conn is None)
-            or not self.station_allowlist
-            or not self.p0_inbox_path.is_file()
-        ):
-            return {"state": "NOT_CONFIGURED", **boundary}
-        inflight = getattr(self, "_taf_revision_inflight", None)
-        if inflight is not None and not inflight.done():
-            return {"state": "IN_FLIGHT", **boundary}
-        cursor = self._taf_revision_cursor(as_of_utc=as_of_utc)
-        throttle: dict[str, float] = getattr(
-            self, "_taf_revision_attempts", None
-        ) or {}
-        self._taf_revision_attempts = throttle
-        now_mono = time.monotonic()
-        chosen: tuple[str, dict[str, str]] | None = None
-        for offset in range(len(self.station_allowlist)):
-            station = self.station_allowlist[
-                (cursor + offset) % len(self.station_allowlist)
-            ]
-            last = throttle.get(station)
-            if (
-                last is not None
-                and now_mono - last < TAF_REVISION_TRAINING_RETRY_SEC
-            ):
-                continue
-            try:
-                due, scope, _reason = self._taf_revision_training_due(
-                    station_id=station,
-                    as_of_utc=as_of_utc,
-                )
-            except Exception:
-                continue
-            if due:
-                chosen = (station, scope)
-                self._advance_taf_revision_cursor(
-                    (cursor + offset + 1) % len(self.station_allowlist)
-                )
-                break
-        if chosen is None:
-            self._advance_taf_revision_cursor(
-                (cursor + 1) % len(self.station_allowlist)
-            )
-            return {"state": "NOT_DUE", **boundary}
-        station, scope = chosen
-        throttle[station] = now_mono
-        target_db = str(self.db_path)
-        live_inbox = str(self.p0_inbox_path)
-        work_root = self.nwp_runtime_root / "taf_revision_training"
-        work = work_root / station
-        work.mkdir(parents=True, exist_ok=True)
-        bound_root = Path(self.taf_bound_artifact_root)
-        bound_root.mkdir(parents=True, exist_ok=True)
-        registry_path = self.taf_artifact_path
-
-        def _run(script: str, arguments: list[str]) -> subprocess.CompletedProcess[str]:
-            return subprocess.run(
-                [sys.executable, str(ROOT / "scripts" / script), *arguments],
-                cwd=str(ROOT),
-                capture_output=True,
-                text=True,
-                timeout=TAF_REVISION_TRAINING_DEADLINE_SEC,
-            )
-
-        def _summary(completed: subprocess.CompletedProcess[str]) -> dict[str, Any]:
-            try:
-                return json.loads((completed.stdout or "").strip().splitlines()[-1])
-            except Exception:
-                return {}
-
-        def _train() -> dict[str, Any]:
-            steps: list[dict[str, Any]] = []
-            result: dict[str, Any] = {
-                "schema": "bayes_basket_target_taf_revision_training_receipt_v1",
-                "station_id": station,
-                "as_of_utc": as_of_utc,
-                "live_p0_scope": dict(scope),
-                "state": "BLOCKED_EVIDENCE",
-                "steps": steps,
-                "registry_path": str(registry_path),
-                "writes_target_ssot": False,
-                **boundary,
-            }
-
-            def _finish(state: str) -> dict[str, Any]:
-                result["state"] = state
-                self._taf_revision_last_result = result
-                try:
-                    write_bounded_json_if_changed(work / "receipt.json", result)
-                except Exception as exc:
-                    result["receipt_write_error"] = f"{type(exc).__name__}:{exc}"
-                return result
-
-            rolling = _run(
-                "build_native_ensemble_rolling_taf_oos.py",
-                [
-                    "--db", target_db,
-                    "--station-id", station,
-                    "--output-dir", str(work),
-                ],
-            )
-            # Exit 2 is this builder's "not enough disjoint blocks yet", which
-            # is the expected state for every station whose settled days have
-            # not caught up.  Only a missing manifest is a real failure.
-            steps.append({
-                "step": "rolling_native_taf_oos",
-                "returncode": rolling.returncode,
-                "summary": _summary(rolling),
-                "stderr": (rolling.stderr or "").strip()[-200:],
-            })
-            try:
-                manifest = load_bounded_json(work / "manifest.json")
-            except Exception as exc:
-                steps[-1]["state"] = "ROLLING_FAILED"
-                steps[-1]["reason"] = f"{type(exc).__name__}:{exc}"
-                return _finish("BLOCKED_EVIDENCE")
-            reports = [
-                item
-                for item in (manifest.get("reports") or [])
-                if isinstance(item, Mapping)
-                and str(item.get("station_id") or "") == station
-            ]
-            splits = [
-                item
-                for report in reports
-                for item in (report.get("strict_splits") or [])
-                if isinstance(item, Mapping)
-            ]
-            # Any scope this station is serving and has no artifact for, in
-            # the order the due check offered them.  Restricting this to the
-            # single newest scope threw away ready evidence: a series reaches
-            # READY at the scope it accumulated under, and by the time the
-            # lane wakes the ladder has usually moved the newest root
-            # somewhere else.
-            wanted = [
-                tuple(str(part) for part in item)
-                for item in (scope.get("uncovered_scopes") or [])
-            ] or [(
-                scope["season_bin"],
-                scope["lead_bucket"],
-                scope["run_cycle"],
-            )]
-            exact = [
-                item
-                for item in splits
-                if (
-                    str(item.get("season_bin") or ""),
-                    str(item.get("lead_bucket") or ""),
-                    str(item.get("run_cycle") or ""),
-                ) in wanted
-            ]
-            ready = [item for item in exact if item.get("state") == "READY"]
-            if ready:
-                # The rest of the pipeline -- fit arguments, gate arguments,
-                # bound filename -- is scoped to one artifact, so commit to
-                # the ready one before any of it runs.
-                selected_scope = ready[0]
-                scope["season_bin"] = str(selected_scope.get("season_bin") or "")
-                scope["lead_bucket"] = str(selected_scope.get("lead_bucket") or "")
-                scope["run_cycle"] = str(selected_scope.get("run_cycle") or "")
-            steps[-1]["state"] = "READY" if ready else "ACCUMULATING"
-            steps[-1]["series_scopes"] = [
-                {
-                    "season_bin": str(item.get("season_bin") or ""),
-                    "lead_bucket": str(item.get("lead_bucket") or ""),
-                    "run_cycle": str(item.get("run_cycle") or ""),
-                    "state": str(item.get("state") or ""),
-                    "series_sample_count": int(item.get("series_sample_count") or 0),
-                }
-                for item in splits
-            ]
-            if not ready:
-                # Name the two ways this ends short: no series at the live
-                # scope at all, or a series that has not reached one fit plus
-                # one strictly later transport window.
-                steps[-1]["reason"] = (
-                    "rolling_series_missing_for_live_p0_scope"
-                    if not exact
-                    else "rolling_series_below_fit_plus_transport_minimum"
-                )
-                if exact:
-                    steps[-1]["missing_sample_count"] = int(
-                        exact[0].get("missing_sample_count") or 0
-                    )
-                else:
-                    # Without a single READY block there is no series to
-                    # describe, and the receipt would say only that nothing
-                    # matched.  Carry the builder's own arithmetic instead, so
-                    # the wait is a number of settled days rather than a
-                    # mystery.
-                    steps[-1]["accumulation"] = self._taf_rolling_accumulation(
-                        work / f"{station}_rolling_native_oos.json",
-                        season_bin=scope["season_bin"],
-                        lead_bucket=scope["lead_bucket"],
-                        live_system_ids=scope.get(
-                            "live_ensemble_system_ids", ""
-                        ),
-                    )
-                return _finish("BLOCKED_EVIDENCE")
-            # Two ready series at *different* scopes is now the ordinary case
-            # and simply means the next run has something to do.  Two at the
-            # same scope is still a duplicate the builder should never emit.
-            at_selected = [
-                item
-                for item in ready
-                if (
-                    str(item.get("season_bin") or ""),
-                    str(item.get("lead_bucket") or ""),
-                    str(item.get("run_cycle") or ""),
-                ) == (
-                    scope["season_bin"],
-                    scope["lead_bucket"],
-                    scope["run_cycle"],
-                )
-            ]
-            if len(at_selected) != 1:
-                steps[-1]["state"] = "AMBIGUOUS"
-                steps[-1]["reason"] = "rolling_series_exact_scope_ambiguous"
-                return _finish("BLOCKED_EVIDENCE")
-            steps[-1]["selected_scope"] = {
-                "season_bin": scope["season_bin"],
-                "lead_bucket": scope["lead_bucket"],
-                "run_cycle": scope["run_cycle"],
-            }
-            steps[-1]["ready_scope_count"] = len(ready)
-            selected = at_selected[0]
-            fit_path = Path(str(selected["fit_output"]))
-            transport_path = Path(str(selected["transport_output"]))
-            try:
-                transport_join = load_bounded_json(transport_path)
-                fit_join = load_bounded_json(fit_path)
-                valid_from = max(
-                    str(row["settlement_window"]["end_utc"])
-                    for row in transport_join["samples"]
-                )
-                fit_sha = str(fit_join["content_sha256"])
-            except Exception as exc:
-                steps.append({
-                    "step": "strict_split_read",
-                    "state": "FAILED",
-                    "reason": f"{type(exc).__name__}:{exc}",
-                })
-                return _finish("BLOCKED_EVIDENCE")
-            # Anchored to the evidence rather than to the clock, so rerunning
-            # an unchanged station rebuilds an identical artifact and the
-            # registry write is a no-op instead of six-hourly churn.
-            valid_until = (
-                datetime.fromisoformat(valid_from.replace("Z", "+00:00"))
-                + timedelta(days=TAF_REVISION_ARTIFACT_VALID_DAYS)
-            ).astimezone(timezone.utc).isoformat(
-                timespec="milliseconds"
-            ).replace("+00:00", "Z")
-            artifact_id = "-".join([
-                "taf",
-                station.lower(),
-                scope["season_bin"].lower(),
-                scope["lead_bucket"].lower(),
-                scope["run_cycle"].lower(),
-                fit_sha[:12],
-            ])
-            fitted_path = work / f"{artifact_id}_artifact.json"
-            fit = _run(
-                "fit_bayes_basket_target_taf_revision.py",
-                [
-                    "--dataset", str(fit_path),
-                    "--artifact-output", str(fitted_path),
-                    "--scorecard-output", str(work / f"{artifact_id}_scorecard.json"),
-                    "--artifact-id", artifact_id,
-                    "--activation-id", f"{artifact_id}-activation",
-                    "--station-id", station,
-                    "--season-bin", scope["season_bin"],
-                    "--lead-bucket", scope["lead_bucket"],
-                    "--run-cycle", scope["run_cycle"],
-                    "--settlement-definition", scope["settlement_definition"],
-                    "--valid-from-utc", valid_from,
-                    "--valid-until-utc", valid_until,
-                ],
-            )
-            steps.append({
-                "step": "fit_taf_revision",
-                "state": "FITTED" if fit.returncode == 0 else "GATE_REJECTED",
-                "returncode": fit.returncode,
-                "artifact_id": artifact_id,
-                "summary": _summary(fit),
-                "stderr": (fit.stderr or "").strip()[-200:],
-            })
-            if fit.returncode != 0:
-                return _finish("BLOCKED_EVIDENCE")
-            report_path = work / f"{artifact_id}_transport_oos.json"
-            gate = _run(
-                "build_taf_native_ensemble_oos.py",
-                [
-                    "--exact-join", str(transport_path),
-                    "--live-p0-inbox", live_inbox,
-                    "--taf-artifact", str(fitted_path),
-                    "--station-id", station,
-                    "--season-bin", scope["season_bin"],
-                    "--lead-bucket", scope["lead_bucket"],
-                    "--run-cycle", scope["run_cycle"],
-                    "--output", str(report_path),
-                ],
-            )
-            gate_summary = _summary(gate)
-            steps.append({
-                "step": "native_ensemble_transport_oos",
-                "state": str(gate_summary.get("state") or "FAILED"),
-                "returncode": gate.returncode,
-                "validated": bool(gate_summary.get("validated")),
-                "sample_n": gate_summary.get("sample_n"),
-                "stderr": (gate.stderr or "").strip()[-200:],
-            })
-            if gate.returncode != 0 or not gate_summary.get("validated"):
-                return _finish("BLOCKED_EVIDENCE")
-            # One file per exact scope: a refit replaces its own scope in
-            # place, which is what keeps the registry free of the duplicate
-            # scopes its builder rejects.
-            bound_path = bound_root / (
-                "_".join([
-                    station,
-                    scope["season_bin"],
-                    scope["lead_bucket"],
-                    scope["run_cycle"],
-                ]).replace("/", "-")
-                + ".json"
-            )
-            bind = _run(
-                "bind_bayes_basket_target_taf_live_compatibility.py",
-                [
-                    "--taf-artifact", str(fitted_path),
-                    "--transport-oos-report", str(report_path),
-                    "--output", str(bound_path),
-                ],
-            )
-            steps.append({
-                "step": "bind_live_compatibility",
-                "state": "BOUND" if bind.returncode == 0 else "FAILED",
-                "returncode": bind.returncode,
-                "summary": _summary(bind),
-                "stderr": (bind.stderr or "").strip()[-200:],
-            })
-            if bind.returncode != 0:
-                return _finish("BLOCKED_EVIDENCE")
-            # Only artifacts whose own validity still covers now.  The registry
-            # is capped at 45 members, so carrying every scope a station has
-            # ever run under would eventually make each build fail and freeze
-            # the file -- and an expired member is one the P0-M stage would
-            # reject anyway.  Lapsed files stay on disk as the audit trail.
-            members: list[Path] = []
-            lapsed = 0
-            for path in sorted(bound_root.glob("*.json")):
-                if not path.is_file():
-                    continue
-                try:
-                    member = TafRevisionArtifact.from_mapping(
-                        load_bounded_json(path)
-                    )
-                except Exception:
-                    lapsed += 1
-                    continue
-                if member.valid_from_utc <= as_of_utc < member.valid_until_utc:
-                    members.append(path)
-                else:
-                    lapsed += 1
-            arguments: list[str] = []
-            for path in members:
-                arguments.extend(["--artifact", str(path)])
-            arguments.extend([
-                "--output", str(registry_path),
-                "--receipt-output", str(work / "registry_receipt.json"),
-            ])
-            registry = _run(
-                "build_bayes_basket_target_taf_artifact_registry.py",
-                arguments,
-            )
-            registry_summary = _summary(registry)
-            steps.append({
-                "step": "build_artifact_registry",
-                "state": str(registry_summary.get("state") or "FAILED"),
-                "returncode": registry.returncode,
-                "artifact_count": registry_summary.get("artifact_count"),
-                "member_count": len(members),
-                "lapsed_member_count": lapsed,
-                "stderr": (registry.stderr or "").strip()[-200:],
-            })
-            if registry.returncode != 0:
-                return _finish("BLOCKED_EVIDENCE")
-            result["artifact_id"] = artifact_id
-            result["bound_artifact_path"] = str(bound_path)
-            return _finish("PROMOTED")
-
-        def _train_guarded() -> dict[str, Any]:
-            # Nothing retrieves this future's result, so an exception raised
-            # inside the chain would be discarded silently and the lane would
-            # look merely quiet.  The receipt on disk is the only place anyone
-            # sees this pass at all -- launchd captures nothing -- so a crash
-            # has to land there too.
-            try:
-                return _train()
-            except Exception as exc:
-                failure = {
-                    "schema": "bayes_basket_target_taf_revision_training_receipt_v1",
-                    "station_id": station,
-                    "as_of_utc": as_of_utc,
-                    "live_p0_scope": dict(scope),
-                    "state": "FAILED",
-                    "reason": f"{type(exc).__name__}:{exc}",
-                    "steps": [],
-                    "writes_target_ssot": False,
-                    **boundary,
-                }
-                self._taf_revision_last_result = failure
-                try:
-                    write_bounded_json_if_changed(work / "receipt.json", failure)
-                except Exception:
-                    pass
-                return failure
-
-        pool = getattr(self, "_taf_revision_pool", None)
-        if pool is None:
-            self._taf_revision_pool = ThreadPoolExecutor(
-                max_workers=1,
-                thread_name_prefix="taf-revision-training",
-            )
-            pool = self._taf_revision_pool
-        self._taf_revision_inflight = pool.submit(_train_guarded)
-        return {
-            "state": "SUBMITTED",
-            "station_id": station,
-            "live_p0_scope": dict(scope),
-            "last_completed": dict(
-                getattr(self, "_taf_revision_last_result", {}) or {}
-            ),
-            **boundary,
-        }
-
     def _registry_export_is_stale(
         self, path: Path, *, as_of_utc: str
     ) -> bool:
@@ -6792,17 +5903,6 @@ class TargetProductionWorker:
                 ).get(station),
             ):
                 continue
-            # Compiling from a packet whose TAF issuance has been superseded
-            # would republish the stale forecaster reading; skipping sends
-            # the scope through the capture lane, which reuses the retained
-            # model archives and refreshes only the TAF entry.
-            if _packet_taf_superseded(
-                read_conn,
-                candidate,
-                station_id=station,
-                event_date=event_date,
-            ):
-                continue
             try:
                 compiled = _compile_native_ensemble_p0_runtime(
                     read_conn,
@@ -6949,21 +6049,13 @@ class TargetProductionWorker:
             as_of_utc=as_of_utc
         )
         del metar_trajectory_training
-        # And the same for the TAF revision chain, which is what the resident
-        # P0-M stage has been waiting on: it consumes only the registry file
-        # this lane's builder writes.
-        # Kept rather than discarded.  P0-M has published nothing since
-        # 2026-07-30 and this lane is the only thing that can end that, but
-        # its verdict was dropped on the floor every cycle -- so "why is
-        # there no P0-M" could only be answered by reading receipts off
-        # disk.  It answers that question every cycle; let it be read.
-        self._taf_revision_training_state = self._run_taf_revision_training(
-            as_of_utc=as_of_utc
-        )
-        # And the evidence that lane trains on.  AWC serves 30 days, so a
-        # closed day not captured while it is still inside that window can
-        # never be captured at all -- this belongs with ICON among the passes
-        # whose skipped day is lost rather than merely late.
+        # The TAF revision training lane that used to run here was taken
+        # offline 2026-09-13 with the calibrated P0-M branch it fed (charter
+        # 133, "仅作研究"); its fit/gate/bind scripts stay for research runs.
+        # The historical TAF capture stays in production: AWC serves 30 days,
+        # so a closed day not captured while it is still inside that window
+        # can never be captured at all, and that research -- and the TAF
+        # measurements charter 133 rests on -- read this table.
         historical_taf_capture = self._capture_historical_taf_daily(
             as_of_utc=as_of_utc
         )
@@ -7252,26 +6344,6 @@ class TargetProductionWorker:
                             "official_native_packet_stale"
                         )
                         continue
-                    # A fresh TAF issuance arrived for this scope after the
-                    # retained packet was built.  Reusing the packet would
-                    # serve the superseded issuance for hours; treating it
-                    # as absent sends the scope through the capture below,
-                    # which reuses the retained model archives and only
-                    # refreshes the TAF entry.  The in-memory wake is the
-                    # fast path; the durable comparison is what survives a
-                    # restart between the ingest and the rebuild.
-                    if (native_station, native_event_date) in getattr(
-                        self, "_taf_arrival_pending", ()
-                    ) or _packet_taf_superseded(
-                        read_conn,
-                        candidate,
-                        station_id=native_station,
-                        event_date=native_event_date,
-                    ):
-                        official_probe_reason = (
-                            "taf_arrival_recompile_pending"
-                        )
-                        continue
                     # A newer cycle has published since this packet was built.
                     # Staleness alone did not catch that: these families issue
                     # on a fixed schedule, and a packet from the 00Z run stays
@@ -7334,15 +6406,6 @@ class TargetProductionWorker:
                     else int(native_scope["lead_days"])
                 ),
             )
-            if official_capture.get("state") in {
-                "CAPTURED", "SUBMITTED", "IN_FLIGHT",
-            }:
-                # The refresh is on its way (or done): the pending flag has
-                # served its purpose.  Deferred/throttled admissions keep the
-                # flag so the next pass retries the arrival-triggered refresh.
-                getattr(self, "_taf_arrival_pending", set()).discard(
-                    (native_station, native_event_date)
-                )
             if official_capture.get("state") == "CAPTURED":
                 try:
                     for candidate in _load_native_forward_inbox(
@@ -13821,9 +12884,6 @@ class TargetProductionWorker:
             "seen_revisions": seen_revisions,
             "seated_revisions": seated_revisions,
             "replay_target": replay_target,
-            # Newest first, for an operator that cannot use every text (the
-            # calibrated proof needs a TX group) and takes the newest it can.
-            "replay_candidates": ordered_candidates,
             "new_revision_count": new_revision_count,
             # A root with no usable life left can lend a confirmation none
             # (``_p0m_window_until``), so the scope has nothing to do until
@@ -13856,16 +12916,15 @@ class TargetProductionWorker:
                 "reason": "target_atomic_writer_not_injected",
                 "writes_target_ssot": False,
             }
-        if not self.taf_artifact_path.is_file() or not self.taf_inbox_path.is_file():
+        if not self.taf_inbox_path.is_file():
             return {
                 "state": "not_configured",
-                "reason": "resident_taf_artifact_or_inbox_missing",
+                "reason": "resident_taf_inbox_missing",
                 "writes_target_ssot": False,
             }
         with self._span("p0m_inputs_load"):
-            artifact_raw = load_bounded_json(self.taf_artifact_path)
             inbox = load_bounded_json(self.taf_inbox_path)
-        if not isinstance(artifact_raw, Mapping) or not isinstance(inbox, Mapping):
+        if not isinstance(inbox, Mapping):
             raise ContractError("resident_taf_input_invalid")
         if inbox.get("schema") != "bayes_basket_target_taf_revision_inbox_v1":
             raise ContractError("resident_taf_inbox_schema_invalid")
@@ -13875,36 +12934,6 @@ class TargetProductionWorker:
                     self.commit_conn,
                     inbox,
                 )
-            # A genuinely new issuance should reach the basket now, not at
-            # the next scheduled capture.  Clearing the capture throttle for
-            # the named scopes lets the next production pass rebuild their
-            # packets immediately -- the model archives are reused from the
-            # retained files within TTL, so the rebuild only refreshes the
-            # TAF entry and recompiles P0 on it.
-            taf_arrival_wakes = []
-            capture_attempts = getattr(
-                self, "_official_native_capture_attempts", None
-            )
-            pending = getattr(self, "_taf_arrival_pending", None)
-            if pending is None:
-                pending = set()
-                self._taf_arrival_pending = pending
-            for scope in taf_fact_ingress.get("fresh_scopes") or ():
-                scope_key = (
-                    str(scope.get("station_id") or ""),
-                    str(scope.get("event_date") or ""),
-                )
-                pending.add(scope_key)
-                taf_arrival_wakes.append(scope_key)
-                if capture_attempts is not None:
-                    capture_attempts.pop(scope_key, None)
-            taf_fact_ingress = {
-                **taf_fact_ingress,
-                "arrival_recompile_wakes": [
-                    {"station_id": station, "event_date": day}
-                    for station, day in taf_arrival_wakes
-                ],
-            }
             # The sibling point system rides the same stage.  Its lane is
             # forward-only accumulation -- each pass projects whichever noon
             # anchors have newly passed, and settled days become OOS folds on
@@ -13974,48 +13003,6 @@ class TargetProductionWorker:
                 "live_submit_authorized": False,
                 "orders_submitted": 0,
             }
-        if artifact_raw.get("schema") == TAF_ARTIFACT_REGISTRY_SCHEMA:
-            # Registry-v1 is a canonical, nonempty envelope around exact-scope
-            # activated artifacts.  An empty or ambiguous registry must never
-            # turn real TAF receipts into a silent no-op.
-            artifacts = validate_taf_artifact_registry(artifact_raw)
-        else:
-            # Legacy one-artifact files remain valid for their exact station
-            # only; they must never become an implicit fallback for peers.
-            artifacts = [TafRevisionArtifact.from_mapping(artifact_raw)]
-        invalid_compatibility = [
-            artifact
-            for artifact in artifacts
-            if (
-                artifact.nwp_live_compatibility_contract_version is None
-                or artifact.nwp_live_compatibility_fingerprint_sha256 is None
-                or artifact.nwp_live_compatibility_evidence_sha256 is None
-                or not artifact.nwp_live_compatibility_validated
-            )
-        ]
-        if invalid_compatibility:
-            return {
-                "schema": "bayes_basket_target_resident_taf_ingress_v1",
-                "state": "BLOCKED_FAIL_CLOSED",
-                "receipts": [],
-                "blockers": [
-                    {
-                        "station_id": artifact.station_id,
-                        "event_date": "",
-                        "reason": (
-                            "ContractError:"
-                            "resident_taf_nwp_live_compatibility_bridge_missing"
-                        ),
-                    }
-                    for artifact in invalid_compatibility
-                ],
-                "taf_fact_ingress": taf_fact_ingress,
-                "writes_target_ssot": False,
-                "places_orders": False,
-                "calls_order_gateway": False,
-                "live_submit_authorized": False,
-                "orders_submitted": 0,
-            }
         raw_captures = inbox.get("captures")
         if not isinstance(raw_captures, list) or len(raw_captures) > 2048:
             raise ContractError("resident_taf_inbox_capture_count_invalid")
@@ -14053,7 +13040,6 @@ class TargetProductionWorker:
         blockers: list[dict[str, str]] = []
         ignored_inactive_scope_count = 0
         ignored_no_artifact_scope_count = 0
-        skipped_no_tx_revision_count = 0
         # What a cheaper path would have concluded, kept beside what the real
         # path concludes so the two can be compared before either is trusted.
         #
@@ -14118,19 +13104,6 @@ class TargetProductionWorker:
             ),
         ):
             try:
-                station_artifacts = [
-                    item
-                    for item in artifacts
-                    if item.station_id == station
-                ]
-                # No artifact for this station is not a reason to drop the
-                # forecast.  The stage does two separable things -- correct
-                # the distribution, and mark a second moment to enter -- and
-                # only the first needs a fitted artifact.  Dropping here cost
-                # the second as well: measured 2026-08-17, the artifact
-                # covers two stations while the inbox carried 256 captures
-                # across 44, and 82 scopes a cycle were discarded whole.
-                # Fall through to the observation-only path below.
                 with self._span("p0m_scope_exists", label=station):
                     # The settlement timezone comes off the same row, from the
                     # same index seek: the day-state test below needs it and
@@ -14236,8 +13209,7 @@ class TargetProductionWorker:
                                 state="IGNORED_STALE_P0_SCOPE",
                             )
                         elif (
-                            not station_artifacts
-                            and not narrow_shape["new_revision_count"]
+                            not narrow_shape["new_revision_count"]
                             and not narrow_shape["reroot_due"]
                         ):
                             fast_receipt = self._p0m_no_op_receipt(
@@ -14362,149 +13334,15 @@ class TargetProductionWorker:
                 if not roots:
                     raise ContractError("resident_p0_scope_changed_during_lane_gate")
                 root = max(roots, key=lambda item: item.decision_at_utc)
-                exact_artifacts = [
-                    item
-                    for item in station_artifacts
-                    if (
-                        root.settlement_timezone
-                        == item.settlement_timezone
-                        and str(root.lineage.get("season_bin") or "")
-                        == item.season_bin
-                        and taf_scope_lead_bucket(root.lineage)
-                        == item.lead_bucket
-                        and str(root.lineage.get("run_cycle") or "")
-                        == item.run_cycle
-                    )
-                ]
-                # An artifact whose pinned live-P0 fingerprint no longer
-                # matches this root cannot lawfully correct it; that is the
-                # same situation as having no artifact and takes the same
-                # observation-only road.  Failing the scope instead held the
-                # entire probability chain at blocked on one stale pin (FACT
-                # 2026-08-20, sole P0-M blocker), and stale is the steady
-                # state: roots re-fingerprint on every OOS rotation while
-                # the TAF lane refits only when its evidence gate opens.
-                artifact_bridge_stale: str | None = None
-                if exact_artifacts:
-                    governing_artifacts = []
-                    for item in exact_artifacts:
-                        stale_reason = taf_artifact_bridge_stale_reason(
-                            root=root,
-                            artifact=item,
-                        )
-                        if stale_reason is None:
-                            governing_artifacts.append(item)
-                        else:
-                            artifact_bridge_stale = stale_reason
-                    exact_artifacts = governing_artifacts
-                # One seating plan for both operators.  What is seated, on
-                # which root, at which clock and for how long is decided here
-                # once; only the last step -- identity likelihood, or the
-                # calibrated TAF proof -- differs.  Until 2026-09-13 the
-                # calibrated branch kept its own older plan: it validated the
-                # information-order *subset* of the revision chain (which
-                # loses revision 1 the moment a run postdates it, and failed
-                # ``forecast_revision_chain_empty`` / root-missing), re-applied
-                # every text at arrival-plus-a-second (so a root minted at the
-                # cycle clock was not confirmed until the next cycle), and
-                # never carried a confirmed text onto a newer run.  No live
-                # scope used it that day -- every P0-M was the observed path --
-                # which is how the two plans drifted apart unnoticed.
-                calibrated = bool(exact_artifacts)
-                artifact = None
-                centers_raw: Mapping[str, Any] = {}
-                if calibrated:
-                    if len(exact_artifacts) != 1:
-                        raise ContractError(
-                            "resident_taf_artifact_exact_scope_ambiguous"
-                        )
-                    artifact = exact_artifacts[0]
-                    # The next line already says what a missing axis is, but it
-                    # could never be reached: ``json.loads("")`` raises before
-                    # the isinstance test, so a root without the key failed as a
-                    # JSONDecodeError with no station, no field and no remedy in
-                    # it.  ZGSZ is one of the two stations that has a TAF
-                    # artifact at all, so this took the whole stage
-                    # BLOCKED_FAIL_CLOSED on every cycle.
-                    # Derive the axis from the intervals when the root does not
-                    # publish it.  ``bucket_centers_c_json`` stopped appearing in
-                    # P0 lineage when compilation moved to the native ensemble on
-                    # 2026-08-01 -- that path writes the intervals and computes
-                    # centers only inside its own forward-prediction record -- and
-                    # P0-M has read the key ever since.  ``json.loads("")`` raised
-                    # before the missing-key test below could speak, so the stage
-                    # fail-closed every cycle with a JSONDecodeError naming no
-                    # station and no field.  P0-M's last checkpoint before today
-                    # was 2026-07-30, the day before the key went away.
-                    #
-                    # Deriving rather than repairing P0: the centre of an interval
-                    # is a function of the interval, so nothing is invented here,
-                    # and adding a key to P0's lineage would move its content hash
-                    # for every consumer of a root that is otherwise unchanged.
-                    centers_text = root.lineage.get("bucket_centers_c_json")
-                    if centers_text:
-                        try:
-                            centers_raw = json.loads(str(centers_text))
-                        except (TypeError, ValueError, json.JSONDecodeError) as exc:
-                            raise ContractError(
-                                "resident_taf_bucket_centers_invalid"
-                            ) from exc
-                    else:
-                        intervals_text = root.lineage.get(
-                            "bucket_intervals_c_json"
-                        )
-                        if not intervals_text:
-                            raise ContractError(
-                                "resident_taf_bucket_centers_missing"
-                            )
-                        try:
-                            intervals_map = json.loads(str(intervals_text))
-                        except (TypeError, ValueError, json.JSONDecodeError) as exc:
-                            raise ContractError(
-                                "resident_taf_bucket_intervals_invalid"
-                            ) from exc
-                        if not isinstance(intervals_map, Mapping):
-                            raise ContractError(
-                                "resident_taf_bucket_intervals_invalid"
-                            )
-                        centers_raw = {}
-                        for bucket, bounds in intervals_map.items():
-                            try:
-                                lower, upper = bounds[0], bounds[1]
-                            except (TypeError, IndexError, KeyError) as exc:
-                                raise ContractError(
-                                    "resident_taf_bucket_intervals_invalid"
-                                ) from exc
-                            # The same half-degree convention the native
-                            # compiler uses for its own open-ended edges.
-                            if lower is None and upper is None:
-                                raise ContractError(
-                                    "resident_taf_bucket_intervals_invalid"
-                                )
-                            if lower is None:
-                                centers_raw[str(bucket)] = float(upper) - 0.5
-                            elif upper is None:
-                                centers_raw[str(bucket)] = float(lower) + 0.5
-                            else:
-                                centers_raw[str(bucket)] = (
-                                    float(lower) + float(upper)
-                                ) / 2.0
-                    if not isinstance(centers_raw, Mapping) or not centers_raw:
-                        raise ContractError("resident_taf_bucket_centers_missing")
-                    # Identity and supersession are properties of the whole
-                    # known chain, not of whichever texts may seat afresh.
-                    validate_forecast_revision_chain(
-                        capture["forecast_revision"]
-                        for capture in scope_captures
-                    )
-                else:
-                    # Seat the stage on the forecast alone.  The likelihood is
-                    # identity -- nothing calibrated exists to revise with, and
-                    # inventing one here is precisely what the proof pipeline
-                    # forbids -- so the distribution stays P0's and the row
-                    # contributes the decision moment, which the entry walk
-                    # then prices against whatever book exists at that hour.
-                    ignored_no_artifact_scope_count += 1
+                # P0-M has one operator: the identity likelihood.  The
+                # calibrated TAF branch (``compile_taf_revision_proof`` +
+                # ``materialize_p0m``) went offline 2026-09-13 by user ruling
+                # (charter 133, "TAF 校准分支下线，仅作研究"): it moved the centre
+                # toward the TAF, which settled truth scored worse (NLL
+                # 1.80->1.91 over its own 171 transport rows), and served no
+                # row in the five days before.  What the TAF says about the
+                # day is served by the width cells inside this operator.
+                ignored_no_artifact_scope_count += 1
                 capture_by_id = {
                     str(
                         (item.get("forecast_revision") or {}).get(
@@ -14546,121 +13384,15 @@ class TargetProductionWorker:
                 )
                 seen_revisions = gated_shape["seen_revisions"]
                 seated_revisions = gated_shape["seated_revisions"]
-                root_confirmations = sorted(
-                    (
-                        item for item in envelopes
-                        if item.stage == "P0-M"
-                        and str(item.lineage.get("p0_root_checkpoint_id") or "")
-                        == root.checkpoint_id
-                    ),
-                    key=lambda item: item.decision_at_utc,
-                )
-                if calibrated:
-                    # A text that already spoke under this root must say the
-                    # same thing again: the inbox re-presents it every cycle,
-                    # and a changed field under an unchanged source hash is a
-                    # corrupted capture, not a revision.
-                    applied_by_source: dict[str, ProbabilityEnvelope] = {}
-                    for item in root_confirmations:
-                        source_sha = str(
-                            item.lineage.get("forecast_source_object_sha256")
-                            or ""
-                        )
-                        if not source_sha:
-                            raise ContractError(
-                                "resident_taf_revision_lineage_missing"
-                            )
-                        previous_item = applied_by_source.get(source_sha)
-                        if previous_item is not None and (
-                            previous_item.content_sha256 != item.content_sha256
-                        ):
-                            raise ContractError(
-                                "resident_taf_revision_content_conflict"
-                            )
-                        applied_by_source[source_sha] = item
-                    for capture in scope_captures:
-                        revision_raw = capture.get("forecast_revision") or {}
-                        existing_item = applied_by_source.get(
-                            str(revision_raw.get("source_object_sha256") or "")
-                        )
-                        if existing_item is None:
-                            continue
-                        if "taf_tx_c" not in existing_item.lineage:
-                            # Seated by the identity path before the station's
-                            # artifact bound; nothing calibrated to compare.
-                            continue
-                        fields = capture.get("taf_fields")
-                        if not isinstance(fields, Mapping):
-                            raise ContractError("resident_taf_fields_invalid")
-                        try:
-                            fingerprint = {
-                                "tx_c": float(fields["tx_c"]),
-                                "cloud_cover_fraction": float(
-                                    fields["cloud_cover_fraction"]
-                                ),
-                                "precipitation_probability": float(
-                                    fields["precipitation_probability"]
-                                ),
-                                "wind_speed_normalized": min(
-                                    1.0,
-                                    float(fields["wind_speed_mps"])
-                                    / artifact.wind_speed_cap_mps,
-                                ),
-                            }
-                            existing_fingerprint = {
-                                "tx_c": float(
-                                    existing_item.lineage.get("taf_tx_c")
-                                    or "nan"
-                                ),
-                                "cloud_cover_fraction": float(
-                                    existing_item.lineage.get(
-                                        "taf_cloud_cover_fraction"
-                                    ) or "nan"
-                                ),
-                                "precipitation_probability": float(
-                                    existing_item.lineage.get(
-                                        "taf_precipitation_probability"
-                                    ) or "nan"
-                                ),
-                                "wind_speed_normalized": float(
-                                    existing_item.lineage.get(
-                                        "taf_wind_speed_normalized"
-                                    ) or "nan"
-                                ),
-                            }
-                        except (KeyError, TypeError, ValueError) as exc:
-                            raise ContractError(
-                                "resident_taf_fields_invalid"
-                            ) from exc
-                        if any(
-                            not math.isfinite(existing_fingerprint[key])
-                            or abs(fingerprint[key] - existing_fingerprint[key])
-                            > 1e-12
-                            for key in fingerprint
-                        ):
-                            raise ContractError(
-                                "resident_taf_revision_content_conflict"
-                            )
-                # Texts never seated for this day that may seat now.  The
-                # calibrated operator is a function of the forecaster's TX,
-                # so a bulletin without one cannot go through it (28 of 45
-                # stations issue those routinely; LEMD 2026-08-27 took the
-                # stage down for eleven hours when one reached the proof).
-                new_revisions = []
-                for revision in revisions:
-                    if (
-                        revision.source_object_sha256 in seated_revisions
-                        or not timestamp_lt(
-                            as_of_utc, revision.valid_until_utc
-                        )
-                    ):
-                        continue
-                    if calibrated and _tx_of(
-                        capture_by_id.get(revision.revision_id) or {}
-                    ) is None:
-                        skipped_no_tx_revision_count += 1
-                        continue
-                    new_revisions.append(revision)
+                # Texts never seated for this day that may seat now; a
+                # bulletin without a TX seats too (the identity operator does
+                # not read one).
+                new_revisions = [
+                    revision
+                    for revision in revisions
+                    if revision.source_object_sha256 not in seated_revisions
+                    and timestamp_lt(as_of_utc, revision.valid_until_utc)
+                ]
                 if p0m_serving_tables is None:
                     # Read once a pass, not once a revision: the rebuild runs
                     # for every scope whose root moved, and nothing in this
@@ -14689,15 +13421,8 @@ class TargetProductionWorker:
                 observed_error: str | None = None
                 window_refusals: list[str] = []
                 replay_skip_state: str | None = None
-                # The identity path chains every seat from the root; the
-                # calibrated path revises the confirmation already standing on
-                # this root when there is one ("root_replacement"), and
-                # confirms the root afresh when there is not.
-                observed_predecessor = (
-                    root_confirmations[-1]
-                    if calibrated and root_confirmations
-                    else root
-                )
+                # Every seat chains from the root.
+                observed_predecessor: ProbabilityEnvelope = root
 
                 def _observe(
                     revision: ForecastRevision,
@@ -14725,46 +13450,19 @@ class TargetProductionWorker:
                         event_date=day,
                         as_of_utc=decision_at,
                     )
-                    if not calibrated:
-                        return materialize_p0m_observed(
-                            predecessor,
-                            p0_root=root,
-                            observed_hard_excluded_buckets=observed_excluded,
-                            observed_running_high_c=observed_high,
-                            forecast_revision_id=revision.revision_id,
-                            forecast_source_object_sha256=(
-                                revision.source_object_sha256
-                            ),
-                            taf_tx_c=_tx_of(capture),
-                            decision_at_utc=decision_at,
-                            fresh_until_utc=window_until,
-                            bridge_sha256=root.bridge_sha256,
-                            **p0m_serving_tables,
-                            fleet_regime=fleet_regime,
-                        )
-                    proof = compile_taf_revision_proof(
+                    return materialize_p0m_observed(
                         predecessor,
                         p0_root=root,
-                        forecast_revision=revision,
-                        artifact=artifact,
-                        bucket_centers_c=centers_raw,
-                        taf_fields=capture["taf_fields"],
-                        decision_at_utc=decision_at,
-                    )
-                    return materialize_p0m(
-                        predecessor,
-                        p0_root=root,
-                        taf_revision_artifact=artifact,
-                        taf_revision_proof=proof,
+                        observed_hard_excluded_buckets=observed_excluded,
+                        observed_running_high_c=observed_high,
+                        forecast_revision_id=revision.revision_id,
+                        forecast_source_object_sha256=(
+                            revision.source_object_sha256
+                        ),
+                        taf_tx_c=_tx_of(capture),
                         decision_at_utc=decision_at,
                         fresh_until_utc=window_until,
                         bridge_sha256=root.bridge_sha256,
-                        revision=predecessor.stage == "P0-M",
-                        observed_hard_excluded_buckets=observed_excluded,
-                        observed_running_high_c=observed_high,
-                        # v4: charter 61 -- the observed-high hard bound
-                        # joined this path's arithmetic.
-                        posterior_version="p0m_taf_physical_confirmation_v4",
                         **p0m_serving_tables,
                         fleet_regime=fleet_regime,
                     )
@@ -14801,22 +13499,17 @@ class TargetProductionWorker:
                         # was minted after it.  The rebuild below seats it now
                         # if it is the newest word.
                         continue
-                    if calibrated:
+                    try:
                         observed = _observe(
                             revision, decision_at, observed_predecessor
                         )
-                    else:
-                        try:
-                            observed = _observe(
-                                revision, decision_at, observed_predecessor
-                            )
-                        except Exception as exc:  # noqa: BLE001
-                            # The identity path is additive: a scope it cannot
-                            # serve falls back to silence rather than failing
-                            # the stage for every other scope (it did, twice,
-                            # on first run).
-                            observed_error = f"ContractError:{exc}"[:200]
-                            break
+                    except Exception as exc:  # noqa: BLE001
+                        # The identity path is additive: a scope it cannot
+                        # serve falls back to silence rather than failing the
+                        # stage for every other scope (it did, twice, on first
+                        # run).
+                        observed_error = f"ContractError:{exc}"[:200]
+                        break
                     if observed is None:
                         continue
                     observed_pending.append((observed, decision_at))
@@ -14824,15 +13517,6 @@ class TargetProductionWorker:
                 # The root being served carries the forecaster's newest valid
                 # word, rebuilt now when the model moved under it.
                 replay_target = gated_shape["replay_target"]
-                if calibrated:
-                    replay_target = next(
-                        (
-                            capture
-                            for capture in gated_shape["replay_candidates"]
-                            if _tx_of(capture) is not None
-                        ),
-                        None,
-                    )
                 replay_revision = (
                     ForecastRevision.from_mapping(
                         replay_target["forecast_revision"]
@@ -14882,22 +13566,15 @@ class TargetProductionWorker:
                                 observed_predecessor.decision_at_utc
                             ),
                         )
-                        if calibrated:
+                        try:
                             observed = _observe(
                                 replay_revision,
                                 decision_at,
                                 observed_predecessor,
                             )
-                        else:
-                            try:
-                                observed = _observe(
-                                    replay_revision,
-                                    decision_at,
-                                    observed_predecessor,
-                                )
-                            except Exception as exc:  # noqa: BLE001
-                                observed_error = f"ContractError:{exc}"[:200]
-                                observed = None
+                        except Exception as exc:  # noqa: BLE001
+                            observed_error = f"ContractError:{exc}"[:200]
+                            observed = None
                         if observed is not None:
                             observed_pending.append((observed, decision_at))
                             observed_predecessor = observed
@@ -14905,11 +13582,7 @@ class TargetProductionWorker:
                 if observed_pending and observed_error is None:
                     with _writer_transaction(
                         self.commit_conn,
-                        savepoint=(
-                            "resident_taf_scope"
-                            if calibrated
-                            else "resident_taf_observed_scope"
-                        ),
+                        savepoint="resident_taf_observed_scope",
                     ):
                         for envelope, decision_at in observed_pending:
                             observed_writes.append(
@@ -14945,11 +13618,7 @@ class TargetProductionWorker:
                     "station_id": station,
                     "event_date": day,
                     "state": (
-                        (
-                            "COMMITTED"
-                            if calibrated
-                            else "COMMITTED_OBSERVED_NO_ARTIFACT"
-                        )
+                        "COMMITTED_OBSERVED_NO_ARTIFACT"
                         if observed_count
                         else "OBSERVED_PATH_REFUSED"
                         if observed_error
@@ -14963,10 +13632,6 @@ class TargetProductionWorker:
                     **(
                         {"observed_reason": observed_error}
                         if observed_error else {}
-                    ),
-                    **(
-                        {"artifact_bridge_stale": artifact_bridge_stale}
-                        if artifact_bridge_stale else {}
                     ),
                     **(
                         {"window_refused_revision_ids": window_refusals[:8]}
@@ -15055,7 +13720,6 @@ class TargetProductionWorker:
             "ignored_inactive_scope_count": ignored_inactive_scope_count,
             "ignored_no_artifact_scope_count":
                 ignored_no_artifact_scope_count,
-            "skipped_no_tx_revision_count": skipped_no_tx_revision_count,
             # The size and reach of the set this stage walks, because the
             # stage's cost is a function of them and nothing reported either.
             # This lane's cost went 168 scopes (2026-08-22) to 389

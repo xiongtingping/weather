@@ -136,15 +136,14 @@ def test_every_capture_is_still_written(tmp_path) -> None:
     assert receipt["state"] == "COMMITTED"
     assert receipt["capture_count"] == 30
     assert receipt["wrote_count"] == 30
-    assert sorted(
-        (row["station_id"], row["event_date"])
-        for row in receipt["fresh_scopes"]
-    ) == sorted((station, day) for station in STATIONS for day in DAYS)
+    assert conn.execute(
+        "SELECT COUNT(DISTINCT station_id || '|' || event_date)"
+        " FROM calibration_forward_taf_capture"
+    ).fetchone()[0] == len(STATIONS) * len(DAYS)
 
     # ...and a replay of the same inbox still writes nothing.
     replay = ingest_forward_taf_inbox(conn, _wide_inbox())
     assert replay["wrote_count"] == 0
-    assert replay["fresh_scopes"] == []
 
 
 def test_the_invariant_lookups_are_asked_once_for_the_whole_inbox() -> None:
@@ -276,6 +275,7 @@ def test_the_ingest_reports_where_its_own_time_went() -> None:
     conn = _conn()
     receipt = ingest_forward_taf_inbox(conn, _wide_inbox())
     phases = receipt["phase_ms"]
-    assert set(phases) == {"validate", "capture_insert", "point_projection"}
+    # No projection phase: the TAF member lane was retired (charter 133).
+    assert set(phases) == {"validate", "capture_insert"}
     assert all(isinstance(value, float) for value in phases.values()), phases
     assert all(value >= 0.0 for value in phases.values()), phases

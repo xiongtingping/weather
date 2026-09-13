@@ -231,65 +231,6 @@ def _canonical_station_ids() -> tuple[str, ...]:
     return station_ids
 
 
-def _capture_taf_point_archives(
-    *,
-    event_date: str,
-    scopes: Sequence[dict[str, Any]],
-    capture_at: str,
-    lead_days: int,
-) -> dict[str, Any]:
-    """Per-station TAF TX point archives for this scope, possibly empty.
-
-    Read-only against the SSOT: the TAF capture lane already persisted the
-    issuances; this only projects the admissible one per station into the
-    forward-packet archive shape.  Stations without an admissible TAF are
-    simply absent -- the packet builder then serves the model-only set.
-    """
-
-    from bayes_basket_target.native_ensemble_training_facts import (
-        build_taf_point_forward_archive_for_station,
-    )
-    from bayes_basket_target.p0_producer import (
-        bucket_intervals_from_registry_rows,
-    )
-
-    archives_by_station: dict[str, Any] = {}
-    conn = sqlite3.connect(
-        f"file:{DEFAULT_TARGET_DB}?mode=ro", uri=True, timeout=30.0
-    )
-    try:
-        for scope in scopes:
-            station_id = str(scope["station_id"])
-            intervals = bucket_intervals_from_registry_rows(
-                scope["registry_rows"]
-            )
-            frozen = {
-                bucket: [
-                    None if lower is None else float(lower),
-                    None if upper is None else float(upper),
-                ]
-                for bucket, (lower, upper) in intervals.items()
-            }
-            archive = build_taf_point_forward_archive_for_station(
-                conn,
-                station_id=station_id,
-                event_date=event_date,
-                lead_bucket=f"d{int(lead_days)}",
-                as_of_utc=capture_at,
-                bucket_intervals=frozen,
-            )
-            if archive is not None:
-                archives_by_station[station_id] = archive
-    finally:
-        conn.close()
-    return {
-        "schema": "official_taf_tx_point_forward_archives_v1",
-        "event_date": event_date,
-        "archive_lead_bucket": f"d{int(lead_days)}",
-        "captured_at_utc": capture_at,
-        "archives_by_station": archives_by_station,
-    }
-
 
 def _capture_regional_point_archives(
     *,
@@ -865,20 +806,6 @@ def capture_official_native_forward(
         if icon_output is not None and icon is not None
         else False
     )
-    taf_point = _capture_taf_point_archives(
-        event_date=event_date,
-        scopes=scopes,
-        capture_at=capture_at,
-        lead_days=int(lead_days),
-    )
-    taf_point_path = inbox_path.parent / (
-        f"official_taf_tx_point_{event_date}_d{int(lead_days)}.json"
-    )
-    wrote_taf_point = (
-        write_bounded_json_if_changed(taf_point_path, taf_point)
-        if taf_point["archives_by_station"]
-        else False
-    )
     # Charter 95 (re-ruled 2026-09-06): the regional models are P1 evidence,
     # not P0 members; their runs are projected into the packet only if the
     # stage is ever moved back to P0.
@@ -911,8 +838,6 @@ def capture_official_native_forward(
         "--market-registry", str(registry_path.expanduser().resolve()),
         "--output", str(inbox_path),
     ]
-    if taf_point["archives_by_station"]:
-        command.extend(["--taf-point-archive", str(taf_point_path)])
     if regional_point["archives_by_station"]:
         command.extend(["--regional-point-archive", str(regional_point_path)])
     # An actively captured ECCC archive is preferred over a supplied one; both

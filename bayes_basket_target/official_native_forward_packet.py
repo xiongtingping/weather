@@ -35,11 +35,8 @@ ECCC_GEPS_MULTISTATION_SCHEMA = (
 DWD_ICON_EPS_MULTISTATION_SCHEMA = (
     "dwd_icon_eps_official_historical_multistation_members_v1"
 )
-OFFICIAL_TAF_TX_MULTISTATION_SCHEMA = (
-    "official_airport_taf_tx_point_members_v1"
-)
 # Charter 95 (2026-09-06): the regional deterministic models' forward runs
-# reach the packet through the same point-archive shape the TAF uses, one
+# reach the packet through a single-member point-archive shape, one
 # schema per system so the transport is read off the archive as for every
 # other family.
 JMA_MSM_POINT_SCHEMA = "official_jma_msm_point_members_v1"
@@ -52,25 +49,27 @@ SUPPORTED_ARCHIVE_SCHEMAS = {
     ECMWF_MULTISTATION_SCHEMA: "ECMWF_OPEN_DATA_S3",
     ECCC_GEPS_MULTISTATION_SCHEMA: "ECCC_DD_WEATHER",
     DWD_ICON_EPS_MULTISTATION_SCHEMA: "DWD_OPENDATA_ICON_EPS",
-    OFFICIAL_TAF_TX_MULTISTATION_SCHEMA: "AWC_TAF_DATA_API",
     JMA_MSM_POINT_SCHEMA: "RISH_KYOTO_JMA_ARCHIVE",
     NCEP_HRRR_POINT_SCHEMA: "NOAA_HRRR_PDS_S3",
     NCEP_NBM_POINT_SCHEMA: "NOAA_NBM_PDS_S3",
     DWD_ICON_EU_POINT_SCHEMA: "DWD_OPENDATA_ICON_EU",
 }
-# The forecaster's TAF TX as a single-member point system.  Registered here --
-# the shared upstream of both the OOS admission and the live compile -- so one
-# registration serves both, and neither table CHECK (plural members) nor the
-# NWP registry rows are stretched to cover a different kind of candidate.
-# TAF issue instants jitter across the 6h UTC grid, so a point archive's
-# ``run_cycle`` is its training-scope label (the sticky station-lead label the
-# archive carries) while ``run_init_utc`` keeps the true issuance instant; the
-# hour-equality check between the two is therefore waived for these systems
-# and replaced by plain ordering against the query time.
+# Point systems whose ``run_cycle`` is a scope label over an issuance instant
+# rather than a run's init hour, so the builder waives the hour-equality check
+# for them and keeps only the ordering against the query time.
 POINT_FORECAST_SYSTEM_IDS = frozenset({
-    "OFFICIAL_AIRPORT_TAF_TX",
     METAR_PHYSICAL_SYSTEM_ID,
 })
+# The forecaster's TAF TX as a P0 point member, retired 2026-09-13 (user
+# ruling, charter 133: "TAF 作 P0 点成员那条车道下线").  Charters 42/95 had
+# kept it out of every P0 seat since 2026-08-15 while the lane went on
+# projecting member rows, minting per-system OOS artifacts and carrying TAF
+# archives into forward packets; nothing produces it any more.  The id stays
+# on the identity roster below only so what was written before -- packets
+# still inside their TTL, activations and selection rows that name it, the
+# 5,582 member rows -- keeps reading as an excluded point system instead of
+# as an unknown one.
+RETIRED_POINT_FORECAST_SYSTEM_IDS = frozenset({"OFFICIAL_AIRPORT_TAF_TX"})
 # The one regional model this fleet has evidence for.  RCSS sits on the floor
 # of the Taipei basin at five metres inside a ring of 500-1000m hills, and a
 # 25 km global cell averages those hills into the airfield: the bias layer has
@@ -88,8 +87,8 @@ POINT_FORECAST_SYSTEM_IDS = frozenset({
 # already handles.
 #
 # Deliberately NOT in POINT_FORECAST_SYSTEM_IDS.  That set waives the check
-# that a run's init hour equals its cycle, and it exists because a TAF's issue
-# instant jitters across the 6h grid so its cycle is only a scope label.  MSM
+# that a run's init hour equals its cycle, and it exists for point systems
+# whose cycle is only a scope label over a jittering issuance instant.  MSM
 # runs on a strict three-hourly grid and its init hour *is* its cycle, so it
 # keeps the check: a waiver granted to something that does not need one is a
 # check silently lost.
@@ -207,6 +206,8 @@ POINT_FORECAST_SYSTEMS = {
             ),
         }),
     },
+    # Retired (see ``RETIRED_POINT_FORECAST_SYSTEM_IDS``): kept for reading
+    # what was written before, never produced.
     "OFFICIAL_AIRPORT_TAF_TX": {
         "ensemble_system_id": "OFFICIAL_AIRPORT_TAF_TX",
         "canonical_name": "Official Airport TAF TX Point",
@@ -315,7 +316,7 @@ REGIONAL_MODELS_STAGE = "P1"
 def is_fusion_excluded_point_system(system_id: str) -> bool:
     """A point system that may never be a P0 fusion member.
 
-    True for every point system: the forecaster's TAF TX, the METAR physical
+    True for every point system: the retired TAF TX, the METAR physical
     path, and -- by the 2026-09-06 re-ruling -- the regional deterministic
     models, which belong to the P1 stage.  False for every ensemble.
     """
@@ -981,5 +982,6 @@ __all__ = [
     "VALID_RUN_CYCLES",
     "MIXED_NATIVE_CYCLES",
     "SUPPORTED_ARCHIVE_SCHEMAS",
+    "RETIRED_POINT_FORECAST_SYSTEM_IDS",
     "build_official_native_forward_packet",
 ]

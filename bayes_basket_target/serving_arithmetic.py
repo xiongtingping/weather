@@ -70,7 +70,9 @@ STAGE_SOURCES: Mapping[str, Sequence[tuple[str, str]]] = {
          "fit_band_reliability_table"),
     ),
     "P0-M": (
-        ("bayes_basket_target.materialization", "materialize_p0m"),
+        # ``materialize_p0m`` (the calibrated TAF operator) left this list
+        # 2026-09-13 when that branch went offline (charter 133): P0-M
+        # serves only the observed operator.
         ("bayes_basket_target.materialization", "materialize_p0m_observed"),
         ("bayes_basket_target.native_ensemble_oos", "build_native_ensemble_oos"),
         ("bayes_basket_target.native_ensemble_oos", "_fit_parameters"),

@@ -215,15 +215,6 @@ def main() -> int:
         ),
     )
     parser.add_argument(
-        "--taf-point-archive",
-        type=Path,
-        help=(
-            "Per-station TAF TX point archives; stations present get the "
-            "forecaster's point as one more packet system, absent stations "
-            "keep the model-only set."
-        ),
-    )
-    parser.add_argument(
         "--regional-point-archive",
         type=Path,
         help=(
@@ -461,24 +452,6 @@ def main() -> int:
                     "SOURCE_ARCHIVE_OFFLINE_CONTRACT_BRIDGE"
                 ),
             }
-    taf_archives_by_station: dict[str, object] = {}
-    if args.taf_point_archive is not None:
-        taf_payload = load_bounded_json(
-            args.taf_point_archive.expanduser().resolve(strict=True)
-        )
-        if (
-            not isinstance(taf_payload, dict)
-            or taf_payload.get("schema")
-            != "official_taf_tx_point_forward_archives_v1"
-            or not isinstance(
-                taf_payload.get("archives_by_station"), dict
-            )
-        ):
-            raise RuntimeError("taf_point_archive_payload_invalid")
-        taf_archives_by_station = dict(
-            taf_payload["archives_by_station"]
-        )
-
     regional_archives_by_station: dict[str, list] = {}
     if args.regional_point_archive is not None:
         regional_payload = load_bounded_json(
@@ -512,9 +485,6 @@ def main() -> int:
             icon_archive
         ):
             archives.append(icon_archive)
-        taf_archive = taf_archives_by_station.get(station)
-        if taf_archive is not None:
-            archives.append(taf_archive)
         archives.extend(regional_archives_by_station.get(station, []))
         return archives
 

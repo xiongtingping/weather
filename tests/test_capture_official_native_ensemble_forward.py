@@ -238,11 +238,6 @@ def test_eccc_publication_lag_holds_the_family_and_the_pair_packet_still_builds(
     monkeypatch.setattr(
         capture, "capture_geps_station_days", eccc_not_uploaded_yet
     )
-    monkeypatch.setattr(
-        capture,
-        "_capture_taf_point_archives",
-        lambda **_kw: {"archives_by_station": {}},
-    )
     builder_commands: list[list[str]] = []
 
     def fake_builder(command, **_kw):

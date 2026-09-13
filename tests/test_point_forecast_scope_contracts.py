@@ -22,12 +22,20 @@ import pytest
 from bayes_basket_target import native_ensemble_oos as oos
 from bayes_basket_target.official_native_forward_packet import (
     POINT_FORECAST_SYSTEMS,
+    RETIRED_POINT_FORECAST_SYSTEM_IDS,
+)
+
+# The roster keeps a retired system so what was written before still reads;
+# a retired system is exactly one whose rows the reader must NOT see.
+LIVE_POINT_SYSTEMS = tuple(
+    system_id for system_id in POINT_FORECAST_SYSTEMS
+    if system_id not in RETIRED_POINT_FORECAST_SYSTEM_IDS
 )
 
 
 def test_every_registered_point_system_has_a_scope_contract() -> None:
     unadmitted = sorted(
-        system_id for system_id in POINT_FORECAST_SYSTEMS
+        system_id for system_id in LIVE_POINT_SYSTEMS
         if oos._admitted_scope_contract(system_id) is None
     )
     assert not unadmitted, (
@@ -40,7 +48,7 @@ def test_every_registered_point_system_has_a_scope_contract() -> None:
 def test_every_contract_transport_reaches_the_sql_allowlist() -> None:
     # The allowlist is derived, so this cannot drift -- but the derivation
     # is the thing being relied on, so it is asserted rather than assumed.
-    for system_id in POINT_FORECAST_SYSTEMS:
+    for system_id in LIVE_POINT_SYSTEMS:
         contract = oos._admitted_scope_contract(system_id)
         assert contract is not None
         transport = str(contract["transport_provider_id"])
@@ -123,3 +131,21 @@ def test_a_foreign_transport_cannot_borrow_a_contract() -> None:
         run_cycle="00Z",
         extraction_version="jma_msm_surface_nearest_cell_v1",
     )
+
+
+def test_a_retired_point_system_is_read_as_excluded_and_never_admitted() -> None:
+    """Charter 133 retired the TAF TX member lane: no contract, so its
+    transport leaves the SQL allowlist, yet an activation or packet written
+    before still names an excluded point system rather than an unknown one."""
+
+    from bayes_basket_target.official_native_forward_packet import (
+        SUPPORTED_ARCHIVE_SCHEMAS,
+        is_fusion_excluded_point_system,
+    )
+
+    for system_id in RETIRED_POINT_FORECAST_SYSTEM_IDS:
+        assert system_id in POINT_FORECAST_SYSTEMS
+        assert oos._admitted_scope_contract(system_id) is None
+        assert is_fusion_excluded_point_system(system_id) is True
+    assert "AWC_TAF_DATA_API" not in oos.OFFICIAL_ARCHIVE_TRANSPORT_PROVIDER_IDS
+    assert "AWC_TAF_DATA_API" not in SUPPORTED_ARCHIVE_SCHEMAS.values()

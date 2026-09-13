@@ -1347,12 +1347,6 @@ def collect_chain(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return links
 
 
-TAF_TRAINING_ROOT = (
-    ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
-    / "taf_revision_training"
-)
-
-
 #: Where the resident records what each hosted sweep last did.  This file is
 #: the ONLY record that survives a restart: ``status.json``'s own
 #: ``hosted_sweeps.results`` is cleared every generation and the launchd logs
@@ -1713,105 +1707,6 @@ def collect_ssot_capacity(conn: sqlite3.Connection) -> dict[str, Any]:
         "largest_share": (
             largest["bytes_per_day"] / net if largest and net > 0 else None
         ),
-    }
-
-
-def collect_p0m_progress(conn: sqlite3.Connection) -> dict[str, Any]:
-    """How far each station is from a P0-M artifact, and what is missing.
-
-    P0-M has published nothing since 2026-07-30, and the reason is neither
-    a broken stage nor a stale artifact: the training lane runs every cycle
-    for all forty-five stations and correctly refuses to fit on evidence it
-    does not have.  What it is short of lives in the receipts this reads.
-    """
-
-    rows: list[dict[str, Any]] = []
-    if not TAF_TRAINING_ROOT.is_dir():
-        return {"stations": [], "summary": {}}
-    truth_days = {
-        str(station): int(count)
-        for station, count in conn.execute(
-            "SELECT station_id, COUNT(DISTINCT local_date)"
-            " FROM calibration_station_daily_high_truth"
-            " WHERE qc_status='ACCEPTED' AND source_lane='AWC'"
-            " GROUP BY station_id"
-        )
-    }
-    span_days = conn.execute(
-        "SELECT COUNT(DISTINCT local_date)"
-        " FROM calibration_station_daily_high_truth WHERE qc_status='ACCEPTED'"
-    ).fetchone()
-    calendar_days = int((span_days or [0])[0] or 0)
-    for folder in sorted(TAF_TRAINING_ROOT.iterdir()):
-        station = folder.name
-        receipt = folder / "receipt.json"
-        rolling = folder / f"{station}_rolling_native_oos.json"
-        if not receipt.is_file() or not rolling.is_file():
-            continue
-        try:
-            rec = json.loads(receipt.read_text())
-            roll = json.loads(rolling.read_text())
-        except (ValueError, OSError):
-            continue
-        scope = rec.get("live_p0_scope") or {}
-        want = (
-            str(scope.get("season_bin") or ""),
-            str(scope.get("lead_bucket") or ""),
-        )
-        best: dict[str, Any] | None = None
-        refused = False
-        for entry in roll.get("accumulating") or []:
-            if (
-                str(entry.get("season_bin") or ""),
-                str(entry.get("lead_bucket") or ""),
-            ) != want:
-                continue
-            if entry.get("state") == "OOS_REJECTED":
-                refused = True
-            plan = entry.get("plan") or {}
-            missing = int(plan.get("missing_common_case_count") or 0)
-            if best is None or missing < int(best["missing"]):
-                best = {
-                    "missing": missing,
-                    "have": int(plan.get("common_case_count") or 0),
-                    "need": int(plan.get("required_common_case_count") or 0),
-                    "pair": [
-                        str(value)
-                        for value in (entry.get("selected_system_ids") or [])
-                    ],
-                    "refused": entry.get("state") == "OOS_REJECTED",
-                }
-        have_truth = truth_days.get(station, 0)
-        rows.append({
-            "station_id": station,
-            "station_label": STATION_LABELS.get(station, ""),
-            "lead_bucket": want[1],
-            "state": str(rec.get("state") or ""),
-            "missing": best["missing"] if best else None,
-            "have": best["have"] if best else 0,
-            "need": best["need"] if best else 0,
-            "pair": best["pair"] if best else [],
-            "oos_refused": bool(best and best["refused"]) or refused,
-            "truth_days": have_truth,
-            "truth_short": max(0, calendar_days - have_truth),
-        })
-    rows.sort(key=lambda item: (
-        item["missing"] if item["missing"] is not None else 10_000
-    ))
-    ready = [r for r in rows if r["missing"] == 0]
-    return {
-        "stations": rows,
-        "summary": {
-            "station_count": len(rows),
-            "calendar_days": calendar_days,
-            "evidence_ready": len(ready),
-            "oos_refused": len([r for r in rows if r["oos_refused"]]),
-            "within_three_days": len([
-                r for r in rows
-                if r["missing"] is not None and 0 < r["missing"] <= 3
-            ]),
-            "truth_days_missing_total": sum(r["truth_short"] for r in rows),
-        },
     }
 
 
@@ -6402,10 +6297,11 @@ def collect_gaps(
     stations = conn.execute(
         "SELECT COUNT(*) FROM calibration_station_registry"
     ).fetchone()[0]
+    # From the capture table: the TAF member rows this used to count stopped
+    # being written when that lane was retired (charter 133).
     taf = conn.execute(
         "SELECT COUNT(DISTINCT station_id)"
-        " FROM calibration_native_ensemble_historical_member_run"
-        " WHERE ensemble_system_id='OFFICIAL_AIRPORT_TAF_TX'"
+        " FROM calibration_forward_taf_capture WHERE tx_available=1"
     ).fetchone()[0]
     if taf < stations:
         gaps.append({
@@ -9641,7 +9537,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     gaps = _cached_section(
         "gaps", collect_gaps, conn, members, stages, tables
     )
-    p0m = _cached_section("p0m", collect_p0m_progress, conn)
     skill = _cached_section("skill", collect_model_skill, conn)
     truth = _cached_section(
         "truth_materialization", collect_truth_materialization, conn
@@ -9820,7 +9715,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "hosted_sweeps": hosted_sweeps,
         "ssot_capacity": ssot_capacity,
         "gaps": gaps,
-        "p0m": p0m,
         "skill": skill,
         "truth": truth,
         "scores": scores,
