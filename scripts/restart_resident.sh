@@ -59,10 +59,16 @@ cd "$ROOT"
 # installer of the day set data/live_paused.flag, and every submission after
 # that was refused by a switch nobody knew was thrown.  One entry point, all
 # three services, and the pause flag reported on the way out.
+#
+# The live control server is the fourth (2026-09-13).  It imports the station
+# scope rules and caches the compiled execution mode for its whole life, so a
+# change to either would otherwise be served stale by the board's switches.
+# It carries no cursor and restarts in under a second.
 LABELS=(
   "com.weather.weather_basket_yes"
   "com.weather.market_ws"
   "com.weather.clob_order_service"
+  "com.weather.live_control"
 )
 LABEL="com.weather.weather_basket_yes"
 DOMAIN="gui/$(id -u)"

@@ -69,7 +69,18 @@ def test_monitor_runtime_entrypoints_require_immutable_wrapper_and_installed_pli
     repository_plist = tmp_path / "launchd/com.weather.monitor.daemon.plist"
     installed_plist = tmp_path / "installed.plist"
     repository_plist.write_text("same-plist", encoding="utf-8")
-    installed_plist.write_text("same-plist", encoding="utf-8")
+    # The audit grew two requirements the fixture never learned: the installed
+    # plist has to name the LaunchAgent entrypoint and its launch domain, and
+    # the entrypoint itself has to exist.
+    installed_plist.write_text(
+        "com.weather.monitor.daemon\n"
+        "scripts/weather_monitor_launchagent_entrypoint.sh\n"
+        "PM_MONITOR_LAUNCH_DOMAIN\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "scripts/weather_monitor_launchagent_entrypoint.sh").write_text(
+        "#!/bin/bash\n", encoding="utf-8"
+    )
     (tmp_path / "scripts/polymarket_monitor_daemon.sh").write_text(
         '"$ROOT/scripts/run_amsc_zuuu_metar_taf_poll_immutable.sh" \\\n',
         encoding="utf-8",

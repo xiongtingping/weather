@@ -136,10 +136,19 @@ def test_only_three_user_domain_services_and_targetctl_remain() -> None:
         # which is not on the decision cycle's critical path.
         "com.weather.regional_admission_due_check.plist",
     ]
+    # The board's write path.  Not a production owner -- it places nothing
+    # and holds no state -- but the LIVE switch is drawn disabled while it is
+    # down, so it cannot live and die with a session's preview (2026-09-13).
+    operator_control = [
+        "com.weather.live_control.plist",
+    ]
     launchd = sorted(path.name for path in (ROOT / "launchd").glob("*.plist"))
     assert launchd == sorted(
         installer_managed + superseded_by_hosted_sweeps + own_clock
+        + operator_control
     )
+    for name in operator_control:
+        assert name in installer
     for name in installer_managed:
         assert name in installer
     for label in (

@@ -155,7 +155,13 @@ def test_generic_installer_defaults_to_only_three_production_jobs() -> None:
         "archive_db_auto_guard",
     ):
         assert forbidden not in default_block
-    assert 'SUPPORTED_PLISTS=("${DEFAULT_PLISTS[@]}")' in installer
+    # Anything beyond the three is opt-in: it is named in OPTIONAL_PLISTS,
+    # reachable only through PM_LAUNCHD_ONLY, and never in the default block.
+    assert 'SUPPORTED_PLISTS=("${DEFAULT_PLISTS[@]}" "${OPTIONAL_PLISTS[@]}")' in installer
+    assert 'PLISTS=("${DEFAULT_PLISTS[@]}")' in installer
+    optional_block = installer.split("OPTIONAL_PLISTS=(", 1)[1].split(")", 1)[0]
+    for label in LABELS:
+        assert f"{label}.plist" not in optional_block
 
 
 def test_pure_yes_runtime_cannot_reimport_retired_hard_no_modules() -> None:

@@ -181,7 +181,9 @@ def test_an_absent_ledger_is_not_reported_as_an_empty_one() -> None:
     )
     # The banner replaces the strip rather than sitting above a row of
     # zeros: a reader who sees numbers reads them.
-    overview = page[page.index("function overview(){"):]
+    # overview() became overviewLamps() on 2026-09-11 (dc75f196), when the
+    # strip moved into the head's four lamp rows; the banner moved with it.
+    overview = page[page.index("function overviewLamps(){"):]
     overview = overview[: overview.index("\n}\n")]
     assert "S.ledger_absent" in overview
     assert overview.index("S.ledger_absent") < overview.index("initial_capital_usdc")

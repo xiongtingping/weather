@@ -14833,7 +14833,7 @@ function liveControlStrip(){
       <b id="lc-cap">—</b>
       ${b("cap",-1,"−")}${b("cap",1,"＋")}${b("cap",-5,"−5")}${b("cap",5,"＋5")}</span>
     <span class="muted navctl-s" id="lc-status"
-      title="控制服务未连接——启动 .venv/bin/python scripts/live_control_server.py"
+      title="控制服务未连接——launchd 常驻 com.weather.live_control；拉起：launchctl kickstart -k gui/$(id -u)/com.weather.live_control"
       >控制服务未连接</span>
   </div>`;
 }
@@ -15005,7 +15005,12 @@ function liveReadiness(){
 function lcApi(path, body){
   return fetch("http://127.0.0.1:8788"+path, body?{
     method:"POST", headers:{"Content-Type":"application/json"},
-    body:JSON.stringify(body)}:{}).then(r=>r.json()).then(j=>{
+    body:JSON.stringify(body)}:{}).catch(()=>{
+      // A refused connection surfaced as "TypeError: Failed to fetch", which
+      // names neither the server nor how to bring it back.
+      throw new Error("控制服务未连接（127.0.0.1:8788）——"
+        + "launchctl kickstart -k gui/$(id -u)/com.weather.live_control");
+    }).then(r=>r.json()).then(j=>{
       // A refused or half-applied request answers with {error}.  Returning
       // it as if it were state let lcRender die on a TypeError whose alert
       // named a missing property instead of the server's reason -- which
@@ -15212,7 +15217,13 @@ function lcPaintGates(s){
 }
 function lcInit(){
   if(!document.getElementById("lc-status")) return;
-  lcApi("/api/state").then(lcRender).catch(()=>{});
+  // Keep asking until the server answers.  One attempt at load meant a page
+  // opened while the server was down stayed disabled until a manual reload,
+  // even after launchd had it back -- and the switch that cannot be clicked
+  // is also the one that stops orders.  Only a failed connection retries: a
+  // render error is thrown past this handler rather than hidden behind a
+  // silent retry loop.
+  lcApi("/api/state").then(lcRender, ()=>setTimeout(lcInit, 10000));
 }
 
 // Click a header to sort by that column.  Numbers, percentages, prices and

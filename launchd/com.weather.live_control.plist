@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.weather.live_control</string>
+  <!-- The board's write path: the LIVE switch, the three knobs and the
+       station gate all post to 127.0.0.1:8788, and every one of them is
+       drawn disabled until this server answers.
+
+       It was never a resident.  It ran as the "live-control" preview entry
+       in .claude/launch.json, which lives exactly as long as the session
+       that started it, and d1b155b4 (2026-09-05) dropped that entry.  The
+       last instance wrote its last audit row at 2026-09-09T15:56:44Z and
+       nothing started another, so from then on the switch on the board
+       could not be clicked, including in the direction that stops
+       orders.  A control whose off position depends on somebody's chat
+       window being open is not a control.
+
+       KeepAlive, not an interval: it holds no state between requests (every
+       read and write goes to the config files), so a restart costs nothing
+       and a crash should cost nothing either. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/xiong/weather/.venv/bin/python</string>
+    <string>/Users/xiong/weather/scripts/live_control_server.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/xiong/weather</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+    <key>HOME</key>
+    <string>/Users/xiong</string>
+    <key>USER</key>
+    <string>xiong</string>
+    <key>LOGNAME</key>
+    <string>xiong</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/xiong/weather/data/logs/live_control.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/xiong/weather/data/logs/live_control.err.log</string>
+</dict>
+</plist>

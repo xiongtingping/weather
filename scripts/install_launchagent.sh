@@ -30,8 +30,15 @@ DEFAULT_PLISTS=(
 #
 #   PM_LAUNCHD_ONLY=com.weather.paper_trading_ledger_sweep \
 #     scripts/install_launchagent.sh
+#
+# The live control server is here for the opposite reason: it was run by
+# hand (as a session preview) and died with the session, which left the
+# board's LIVE switch unclickable from 2026-09-09.  Install it once:
+#
+#   PM_LAUNCHD_ONLY=com.weather.live_control scripts/install_launchagent.sh
 OPTIONAL_PLISTS=(
   com.weather.paper_trading_ledger_sweep.plist
+  com.weather.live_control.plist
 )
 SUPPORTED_PLISTS=("${DEFAULT_PLISTS[@]}" "${OPTIONAL_PLISTS[@]}")
 PLISTS=("${DEFAULT_PLISTS[@]}")
