@@ -545,3 +545,63 @@ def test_a_capture_interval_is_never_shorter_than_its_upstream_cadence(
             f"{(1 - intervals[lane] / cadence_sec) * 100:.0f}% of its passes"
             " can find nothing and each one takes the SSOT write domain"
         )
+
+
+# ---------------------------------------------------------------- writer gates
+#
+# The sweep-to-sweep rule above always read the write domain.  The four writer
+# gates -- production start, the prefetch, WAL maintenance and the turn
+# rotation -- tested for *any* running sweep instead, so a sweep that writes no
+# database held production out for as long as it ran.
+
+
+def test_a_sweep_that_writes_no_database_excludes_no_writer(daemon) -> None:
+    none_domain = [
+        name for name, _s, _i, _t in daemon.HOSTED_SWEEPS
+        if daemon.hosted_sweep_write_domain(name) == "none"
+    ]
+    assert none_domain, "the table should still hold at least one none-domain sweep"
+
+    assert daemon.writer_excluding_sweeps(none_domain) == []
+
+
+def test_ssot_and_archive_sweeps_still_exclude_the_writer_lanes(daemon) -> None:
+    by_domain: dict[str, str] = {}
+    for name, _s, _i, _t in daemon.HOSTED_SWEEPS:
+        by_domain.setdefault(daemon.hosted_sweep_write_domain(name), name)
+    running = [by_domain["ssot"], by_domain["archive"], by_domain["none"]]
+
+    assert daemon.writer_excluding_sweeps(running) == sorted(
+        [by_domain["ssot"], by_domain["archive"]]
+    )
+
+
+def test_an_undeclared_sweep_still_excludes_the_writer(daemon) -> None:
+    # Unknown names are assumed to write the SSOT, so the fail-safe direction
+    # is kept: an undeclared lane blocks production rather than racing it.
+    assert daemon.writer_excluding_sweeps(["a_lane_nobody_declared"]) == [
+        "a_lane_nobody_declared"
+    ]
+
+
+def test_every_writer_gate_reads_the_domain_not_bare_membership() -> None:
+    """Read as code: no writer gate may test ``not hosted_sweep_futures``.
+
+    A gate that tests bare membership is exactly the defect -- it counts a
+    none-domain sweep as a writer.  Checked on the parsed source so a new gate
+    written the old way fails here rather than on the board.
+    """
+
+    import ast
+
+    source = (ROOT / "scripts" / "weather_basket_yes_daemon.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    offenders = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.UnaryOp)
+        and isinstance(node.op, ast.Not)
+        and isinstance(node.operand, ast.Name)
+        and node.operand.id == "hosted_sweep_futures"
+    ]
+    assert offenders == [], f"writer gates testing bare sweep membership at lines {offenders}"

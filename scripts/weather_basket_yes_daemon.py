@@ -544,6 +544,25 @@ def hosted_sweep_write_domain(name: str) -> str:
     return HOSTED_SWEEP_WRITE_DOMAIN.get(name, "ssot")
 
 
+def writer_excluding_sweeps(running_names: "Iterable[str]") -> list[str]:
+    """Running sweeps that write a database the writer lanes also write.
+
+    Production, the forecast prefetch and WAL maintenance write the SSOT and
+    the archive, so a sweep excludes them only if it writes one of those.  A
+    sweep in the ``none`` domain writes no database at all -- that is what the
+    domain map says -- yet every writer gate used to test for *any* running
+    sweep, so forward_packet_retention on its ten-minute clock and
+    auto_station_exclusions on its hourly one each held production out for as
+    long as they ran.  The sweep-to-sweep admission rule already read the
+    domain; the writer gates now read it too.
+    """
+
+    return sorted(
+        name for name in running_names
+        if hosted_sweep_write_domain(name) in _EXCLUSIVE_WRITE_DOMAINS
+    )
+
+
 # Where each sweep's last completion is remembered across restarts.  The
 # schedule used to live only in ``next_hosted_sweep`` -- monotonic-seeded,
 # in-memory -- so every restart forgot who was overdue and re-ran the boot
@@ -4369,7 +4388,7 @@ def main() -> int:
                     ) >= 256 * 1024 * 1024
                     and now_mono >= next_target_wal_maintenance
                     and production_future is None
-                    and not hosted_sweep_futures
+                    and not writer_excluding_sweeps(hosted_sweep_futures)
                     and forecast_future is None
                 ):
                     try:
@@ -4823,7 +4842,7 @@ def main() -> int:
                 storage_ok
                 and forecast_future is None
                 and production_future is None
-                and not hosted_sweep_futures
+                and not writer_excluding_sweeps(hosted_sweep_futures)
             )
             writer_candidates = []
             if writer_idle:
@@ -5053,7 +5072,8 @@ def main() -> int:
             production_blockers: list[str] = []
             if production_ready:
                 production_blockers.extend(
-                    f"sweep:{name}" for name in sorted(hosted_sweep_futures)
+                    f"sweep:{name}"
+                    for name in writer_excluding_sweeps(hosted_sweep_futures)
                 )
                 if forecast_future is not None:
                     production_blockers.append("forecast_prefetch")
@@ -5072,7 +5092,7 @@ def main() -> int:
                 storage_ok
                 and now_mono >= next_production
                 and production_future is None
-                and not hosted_sweep_futures
+                and not writer_excluding_sweeps(hosted_sweep_futures)
                 # Symmetric with the prefetch gate below: whichever of the
                 # two starts first owns the writer until it finishes.  The
                 # prefetch is bounded by its own 300s subprocess timeout,
@@ -5121,7 +5141,7 @@ def main() -> int:
                 # beside it.  One writer at a time means all three lanes,
                 # not two of them.
                 and production_future is None
-                and not hosted_sweep_futures
+                and not writer_excluding_sweeps(hosted_sweep_futures)
                 and writer_turn == "forecast"
             ):
                 # Keep the last completed bounded TAF receipt visible while a
