@@ -21,23 +21,22 @@ DEFAULT_PLISTS=(
   com.weather.market_ws.plist
   com.weather.clob_order_service.plist
 )
-# Installable but not installed by default.  The paper ledger sweep is the
-# one plist in launchd/ that was never loaded on this machine -- nine of ten
-# were, it has no installer of its own, and the two log files its plist names
-# do not exist -- so the standing book moved only when somebody ran it by
-# hand.  Not in DEFAULT_PLISTS because it re-derives a book rather than
-# serving anything, and an operator should choose to put that on a clock:
-#
-#   PM_LAUNCHD_ONLY=com.weather.paper_trading_ledger_sweep \
-#     scripts/install_launchagent.sh
-#
-# The live control server is here for the opposite reason: it was run by
-# hand (as a session preview) and died with the session, which left the
+# Installable but not installed by default.  The live control server was run
+# by hand (as a session preview) and died with the session, which left the
 # board's LIVE switch unclickable from 2026-09-09.  Install it once:
 #
 #   PM_LAUNCHD_ONLY=com.weather.live_control scripts/install_launchagent.sh
+#
+# The paper ledger sweep is deliberately NOT offered here.  The resident has
+# hosted it since 2026-08-24, inside the SSOT writer turn.  This list used to
+# offer its launchd plist on the belief that the book otherwise moved only by
+# hand; installed on 2026-09-11 it ran every fifteen minutes OUTSIDE that
+# turn, and was the only process writing the SSOT that the turn did not
+# serialize.  Measured 2026-09-13: capture_noaa_conus_forward held the turn
+# for 1140s while production waited 1132s behind it, then failed with
+# "database is locked" -- the ledger had taken the real lock at 02:52Z,
+# squarely inside that window.  A lane has one scheduler.
 OPTIONAL_PLISTS=(
-  com.weather.paper_trading_ledger_sweep.plist
   com.weather.live_control.plist
 )
 SUPPORTED_PLISTS=("${DEFAULT_PLISTS[@]}" "${OPTIONAL_PLISTS[@]}")

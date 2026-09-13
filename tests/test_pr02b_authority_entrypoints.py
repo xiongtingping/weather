@@ -149,6 +149,15 @@ def test_only_three_user_domain_services_and_targetctl_remain() -> None:
     )
     for name in operator_control:
         assert name in installer
+    # Superseded is not merely "on disk but not default".  The installer must
+    # not offer these at all: a lane the resident hosts inside the SSOT writer
+    # turn, installed again on its own launchd clock, writes outside that turn.
+    # That is what happened to the ledger sweep on 2026-09-11 -- it sat in
+    # OPTIONAL_PLISTS, got installed, and starved the hosted capture lanes of
+    # the real lock for as long as it ran.
+    offered = installer.split("SUPPORTED_PLISTS=", 1)[0]
+    for name in superseded_by_hosted_sweeps:
+        assert name not in offered, f"{name} is hosted by the resident; the installer must not offer it"
     for name in installer_managed:
         assert name in installer
     for label in (

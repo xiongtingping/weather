@@ -283,9 +283,9 @@ def test_a_correction_off_the_ladder_retires_the_settlement(tmp_path) -> None:
 
 
 def test_the_incremental_pass_is_the_one_that_corrects(tmp_path) -> None:
-    """``--backfill`` is what runs every quarter hour; ``--rebuild`` is not.
+    """``--backfill`` is what the scheduled sweep runs; ``--rebuild`` is not.
 
-    The launchd job ``com.weather.paper_trading_ledger_sweep`` runs
+    The resident's hosted ``paper_trading_ledger`` sweep runs
     ``--backfill`` and the sweep script says in as many words that
     ``--rebuild`` is never used there.  So the correction has to live on the
     incremental path, ahead of the entry walk -- the equity curve reads each
