@@ -1152,7 +1152,32 @@ def test_clause_48_listing_window_opens_positions() -> None:
     # not started, never "a date other than the fleet's current one".
     assert "第三道缝" in clause
     assert "if day != current_day" not in worker_source
-    assert "listing_stations.update(" in worker_source
+    # Asked of the admission rule, not of the source.  This used to pin the
+    # line ``listing_stations.update(``, which read a ``station_id`` field the
+    # publisher's scope manifests do not carry and so added nothing on any
+    # live cycle -- the assertion held while the behaviour it named was
+    # absent.  The cycle, listing and refresh passes are pinned in
+    # test_evidence_group_admission.
+    from bayes_basket_target.production_worker import _admitted_evidence_groups
+
+    def _manifest(station: str, state: str) -> dict:
+        return {
+            "scope_key": f"{station}|2026-09-03",
+            "event_date": "2026-09-03",
+            "event_day_state": state,
+            "station_scope": {"mode": "allowlist", "station_ids": [station]},
+        }
+
+    passes, refused = _admitted_evidence_groups(
+        [_manifest("RJTT", "open"), _manifest("KSFO", "not_started")],
+        listing_scope_keys={"KSFO|2026-09-03"},
+    )
+    # The fleet's current date, still not started at KSFO: a listed day.
+    assert [(state, listing) for state, listing, _group in passes] == [
+        ("open", False),
+        ("not_started", True),
+    ]
+    assert refused == []
     registry_source = (
         Path(__file__).resolve().parents[1]
         / "bayes_basket_target"

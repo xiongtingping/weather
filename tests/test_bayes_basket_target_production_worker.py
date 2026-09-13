@@ -3851,6 +3851,20 @@ def test_corrupt_nwp_rotation_state_fails_only_nwp_lane_closed(
             worker.conn.close()
 
 
+def _bare_rotation_worker() -> TargetProductionWorker:
+    """A bare worker the rotation can run on.
+
+    Since charter 85 the selection reads the reconciliation ledger for held
+    scopes, so a worker built without ``__init__`` needs a connection to read
+    it from; an empty one holds nothing, which is what these tests mean.
+    """
+
+    worker = object.__new__(TargetProductionWorker)
+    worker.commit_conn = sqlite3.connect(":memory:")
+    worker.conn = None
+    return worker
+
+
 def test_open_scope_selection_is_deterministic_and_starves_nobody() -> None:
     """Same catalog, same instant, same choice -- and everyone gets served.
 
@@ -3883,7 +3897,7 @@ def test_open_scope_selection_is_deterministic_and_starves_nobody() -> None:
             )
         return picked
 
-    selected = _run(object.__new__(TargetProductionWorker))
+    selected = _run(_bare_rotation_worker())
 
     # The warm station leads, whatever the alphabet says.
     assert selected[0] == "RKPK"
@@ -3895,7 +3909,7 @@ def test_open_scope_selection_is_deterministic_and_starves_nobody() -> None:
     assert selected[-1] == "EGLC"
 
     # Same inputs, same run: a fresh worker repeats the sequence exactly.
-    assert selected == _run(object.__new__(TargetProductionWorker))
+    assert selected == _run(_bare_rotation_worker())
 
 
 def test_republisher_inbox_packet_cap_fits_inside_the_json_write_limit() -> None:
@@ -4240,7 +4254,7 @@ def test_open_scope_round_robin_accepts_every_station_on_several_days() -> None:
     # Open scopes are station-days.  Bounding them at the station count made
     # "more than one event day is open" an error, which is what forced
     # something upstream to pin the lane to a single date.
-    worker = object.__new__(TargetProductionWorker)
+    worker = _bare_rotation_worker()
     worker._resident_open_scope_cursor = 0
     scopes = [
         {"scope_key": f"S{station:02d}|2026-07-{30 + day:02d}"}

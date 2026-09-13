@@ -2788,6 +2788,149 @@ def _merge_scope_manifests(
     return base
 
 
+def _scope_manifest_station_day(item: Mapping[str, Any]) -> tuple[str, str]:
+    """The ``(STATION, event_date)`` one scope manifest describes.
+
+    Read off the manifest's own scope key and station allowlist.  The
+    publisher's scope manifests carry no ``station_id`` field, so a reader
+    that asked for one got "" on every live manifest: the listing pass's
+    station set was empty on every cycle it ran.
+    """
+
+    day = str(item.get("event_date") or "").strip()
+    key = str(item.get("scope_key") or "")
+    station = key.split("|", 1)[0].strip().upper() if "|" in key else ""
+    if not station or station == "SWEEP":
+        try:
+            stations = _manifest_station_allowlist(item)
+        except RuntimeError:
+            stations = ()
+        station = stations[0] if len(stations) == 1 else ""
+    return station, day
+
+
+def _admitted_evidence_groups(
+    manifests: Sequence[Mapping[str, Any]],
+    *,
+    listing_scope_keys: Collection[str],
+) -> "tuple[list[tuple[str, bool, list[dict[str, Any]]]], list[str]]":
+    """One event day's manifests as ingress passes, each under its own view.
+
+    The one date-admission rule for the main pass, the listing pass and the
+    mid-loop refresh.  Each ``(day_state, group)`` of
+    ``_group_scope_manifests_by_day_state`` becomes one pass, and the
+    registry view it reads is decided by the state the group is actually in:
+
+    - a group whose day has begun (``open``, ``closed``) reads the
+      started-day registry, as every started-day read always has;
+    - a ``not_started`` group reads the listed-day registry
+      (``listing_day_pass``) -- but only for the station-days charter 48
+      admits as listing scopes; a not-started scope without that
+      authorization has no registry view to read and is not passed at all.
+
+    The view used to be chosen by call site, not by group.  The main pass
+    never passed ``listing_day_pass``, so when the rotation selected a listed
+    scope as the cycle's lead -- which charter 85 does for any scope holding
+    a position -- its group read the started-day registry, found nothing for
+    a day that had not begun, and fail-closed the cycle with
+    ``no_registry_scope``: measured 2026-09-13, 44 listed scopes of
+    2026-09-14 whose registry held 11 tradable buckets each.  The refresh
+    chose it by date, which lent the listed view to every station of a date
+    including ones already open, and the listed view is not harmless there:
+    it admits an empty book as a bucket nobody has quoted yet, which on a
+    started day is the ``official_ws_book_empty`` defect.
+
+    Returns the admitted passes in the grouping's order and the
+    ``STATION|DATE`` keys refused for want of listing authorization.
+    """
+
+    admitted_keys = {
+        str(key or "").strip().upper()
+        for key in listing_scope_keys
+        if str(key or "").strip()
+    }
+    passes: list[tuple[str, bool, list[dict[str, Any]]]] = []
+    refused: list[str] = []
+    for day_state, group in _group_scope_manifests_by_day_state(manifests):
+        if day_state != "not_started":
+            passes.append((day_state, False, group))
+            continue
+        listed: list[dict[str, Any]] = []
+        for item in group:
+            station, day = _scope_manifest_station_day(item)
+            key = f"{station}|{day}".upper()
+            if station and day and key in admitted_keys:
+                listed.append(item)
+            else:
+                refused.append(f"{station}|{day}")
+        if listed:
+            passes.append((day_state, True, listed))
+    return passes, refused
+
+
+def _confine_blocked_scopes(
+    scopes: Sequence[tuple[str, str]],
+    exc: BaseException,
+) -> list[tuple[str, str]]:
+    """The open scopes a cycle-level exception may be recorded against.
+
+    An exception raised by the evidence passes carries the station-days of
+    the groups that failed (``EVIDENCE_GROUP_SCOPES_ATTR``); the blocker is
+    theirs and nobody else's.  Recording it against every open scope is how
+    one listed day's refusal was written into the ledger of forty-four
+    stations that were never in the pass.  Any other exception keeps the
+    fleet-wide record it has always had.
+    """
+
+    confined = getattr(exc, EVIDENCE_GROUP_SCOPES_ATTR, None)
+    if confined is None:
+        return list(scopes)
+    allowed = {
+        (str(station).upper(), str(day))
+        for station, day in confined
+    }
+    return [
+        scope
+        for scope in scopes
+        if (str(scope[0]).upper(), str(scope[1])) in allowed
+    ]
+
+
+def _compiled_listing_rows(
+    listing_rows: Sequence[tuple[str, str]],
+    *,
+    serve_listing: bool,
+    lead_listing_scopes: Collection[tuple[str, str]],
+) -> list[tuple[str, str]]:
+    """The listed scopes this cycle compiles.
+
+    All of them on the listed days' turn; otherwise only the listed scopes
+    this cycle's own lead pass materialized.  A listed scope's evidence is
+    written on its day's turn, and compiling one against last cycle's books
+    manufactures ``production_quote_expired`` rather than observing it --
+    but when the rotation leads with a listed scope (charter 85 does, for
+    one holding a position) the lead pass IS this cycle's evidence, and
+    leaving its scopes to the other turn compiled nothing at all: the open
+    rows are the listed date's open stations, which the lead group does not
+    contain.
+    """
+
+    if serve_listing:
+        return list(listing_rows)
+    lead = {
+        (str(station).upper(), str(day)) for station, day in lead_listing_scopes
+    }
+    return [
+        scope for scope in listing_rows
+        if (str(scope[0]).upper(), str(scope[1])) in lead
+    ]
+
+
+#: Set on an evidence-pass exception to the ``(STATION, DATE)`` pairs of the
+#: groups that raised it; read by ``_confine_blocked_scopes``.
+EVIDENCE_GROUP_SCOPES_ATTR = "evidence_group_scopes"
+
+
 def _manifest_station_allowlist(root: Mapping[str, Any]) -> tuple[str, ...]:
     """Preserve an explicit one-shot WS station scope during materialization."""
 
@@ -10486,38 +10629,363 @@ class TargetProductionWorker:
         ]
         if not day_scopes:
             return {"event_date": str(event_date), "state": "no_scope_manifest"}
-        listing_days = {
-            day for _station, day in self._listing_entry_scopes(as_of_utc=as_of_utc)
-        }
-        # One pass per day state; see _group_scope_manifests_by_day_state.
-        # The refreshed snapshot the caller is waiting for belongs to the
-        # scopes that can still trade, so the open group's result is the one
-        # returned -- but a not-started group present in the same day still
-        # gets its evidence written rather than skipped.
-        results: list[dict[str, Any]] = []
-        for day_state, group in _group_scope_manifests_by_day_state(
-            day_scopes
-        ):
-            with self._temporary_scope_manifest(
-                _merge_scope_manifests(group)
-            ) as refreshed_path:
-                results.append(
-                    self._materialize_market_evidence_from_manifest(
-                        activation,
-                        manifest_path=refreshed_path,
-                        # A day that has not started at these stations has
-                        # no registry scope yet; that is the ordinary state
-                        # of the hours before its first midnight.
-                        optional_pass=day_state != "open",
-                        # The point of the refresh is the snapshot the compile
-                        # reads; an evidence-cache-only pass returns before
-                        # writing it and would leave the loop compiling
-                        # against the stamp it was already failing on.
-                        full_materialization=True,
-                        listing_day_pass=str(event_date) in listing_days,
+        # One pass per day state, each under the registry view its own state
+        # and listing authorization admit -- the rule the cycle's first pass
+        # uses; see _admitted_evidence_groups.  The refreshed snapshot the
+        # caller is waiting for belongs to the scopes that can still trade,
+        # so the open group's result is the one returned -- but a
+        # not-started group present in the same day still gets its evidence
+        # written rather than skipped, and one group's contract failure does
+        # not take the other group's refresh with it.
+        #
+        # Full, never evidence-cache-only: the point of the refresh is the
+        # snapshot the compile reads, and a cache-only pass returns before
+        # writing it and would leave the loop compiling against the stamp it
+        # was already failing on.
+        outcomes, refused = self._materialize_evidence_groups(
+            activation,
+            manifests=day_scopes,
+            listing_scope_keys=self._listing_entry_scope_keys(
+                as_of_utc=as_of_utc
+            ),
+            full_materialization=True,
+        )
+        succeeded = [item for item in outcomes if "error" not in item]
+        if not succeeded:
+            if outcomes:
+                raise outcomes[0]["error"]
+            return {
+                "event_date": str(event_date),
+                "state": "no_admitted_scope",
+                "refused_scope_count": len(refused),
+                "refused_scopes": refused[:10],
+            }
+        result = dict(succeeded[0]["ingress"])
+        failed = [item for item in outcomes if "error" in item]
+        if failed:
+            result["evidence_group_failures"] = [
+                self._evidence_group_summary(item) for item in failed
+            ]
+        return result
+
+    def _listing_entry_scope_keys(self, *, as_of_utc: str) -> frozenset[str]:
+        """Charter 48 listing scopes as ``STATION|DATE`` keys."""
+
+        return frozenset(
+            f"{str(station).upper()}|{day}"
+            for station, day in self._listing_entry_scopes(as_of_utc=as_of_utc)
+        )
+
+    def _materialize_evidence_groups(
+        self,
+        activation: Mapping[str, Any],
+        *,
+        manifests: Sequence[Mapping[str, Any]],
+        listing_scope_keys: Collection[str],
+        full_materialization: bool,
+        skip: Collection[tuple[str, str]] = (),
+    ) -> "tuple[list[dict[str, Any]], list[str]]":
+        """Materialize one event day group by group, each under its own view.
+
+        A group that fails its evidence contract -- no registry scope, no
+        book, nothing materialized -- fails as that group: the error is kept
+        on its outcome, unraised, and the next group is still passed.  Which
+        groups a cycle depends on, and what to do when those fail, is the
+        caller's decision; this function only refuses to let one group's
+        refusal stand in for another's.  Anything that is not a contract
+        failure (a locked database, a memory ceiling) is not a property of
+        the group and still propagates.
+
+        ``skip`` names ``(event_date, day_state)`` groups already passed this
+        cycle.
+        """
+
+        passes, refused = _admitted_evidence_groups(
+            manifests, listing_scope_keys=listing_scope_keys
+        )
+        skipped = {(str(day), str(state)) for day, state in skip}
+        outcomes: list[dict[str, Any]] = []
+        for day_state, listing_pass, group in passes:
+            scopes = sorted({
+                scope
+                for scope in (_scope_manifest_station_day(item) for item in group)
+                if scope[0] and scope[1]
+            })
+            event_date = scopes[0][1] if scopes else str(
+                group[0].get("event_date") or ""
+            )
+            if (event_date, day_state) in skipped:
+                continue
+            outcome: dict[str, Any] = {
+                "event_date": event_date,
+                "day_state": day_state,
+                "listing_day_pass": listing_pass,
+                "scopes": scopes,
+            }
+            try:
+                with self._temporary_scope_manifest(
+                    _merge_scope_manifests(group)
+                ) as group_manifest_path:
+                    outcome["ingress"] = (
+                        self._materialize_market_evidence_from_manifest(
+                            activation,
+                            manifest_path=group_manifest_path,
+                            full_materialization=full_materialization,
+                            listing_day_pass=listing_pass,
+                        )
                     )
+            except ContractError as exc:
+                setattr(exc, EVIDENCE_GROUP_SCOPES_ATTR, frozenset(scopes))
+                outcome["error"] = exc
+            outcomes.append(outcome)
+        return outcomes, refused
+
+    def _materialize_cycle_market_evidence(
+        self,
+        activation: Mapping[str, Any],
+        *,
+        sweep_scopes: Sequence[Mapping[str, Any]],
+        selected_scope: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """The cycle's evidence: the selected scope's date, then listed days.
+
+        The main pass serves every scope of the selected scope's event date,
+        not that scope alone -- see the sweep -- and around midnight that
+        date is open at some stations and not started at others, so it is
+        one pass per day-state group, each under the view
+        ``_admitted_evidence_groups`` gives it.  The selected scope may be a
+        listed one: charter 85 leads the rotation with any scope holding a
+        position, whatever its day.
+
+        The cycle depends on the group holding the selected scope.  If that
+        group refuses, the cycle falls back to another group that did not,
+        then to a listed day's pass, and writes the lead's blocker against
+        the lead's own open scopes.  Only when every group refused is the
+        cycle failed, and only after the listed days have been passed --
+        with the exception confined to the groups that raised it.
+
+        Returns ``market_ingress`` (the receipt the compile reads),
+        ``materialized_at`` per day, ``serve_listing``, ``listing_stations``,
+        ``lead_listing_scopes`` and ``error`` (to raise, or None).
+        """
+
+        current_day = str(selected_scope.get("event_date") or "")
+        selected_key = (
+            str(selected_scope.get("station_id") or "").upper(),
+            current_day,
+        )
+        materialized_at: dict[str, float] = {}
+        # One admission set for both passes.  Read here rather than before
+        # selection: a scope that crossed its midnight since then is open now
+        # and must not borrow the listed view.
+        listing_scope_keys = self._listing_entry_scope_keys(
+            as_of_utc=utc_now()
+        )
+        current_outcomes, current_refused = self._materialize_evidence_groups(
+            activation,
+            manifests=[
+                item for item in sweep_scopes
+                if str(item.get("event_date") or "") == current_day
+            ],
+            listing_scope_keys=listing_scope_keys,
+            full_materialization=bool(
+                selected_scope["probability_evidence_fresh"]
+            ),
+        )
+        lead = next(
+            (item for item in current_outcomes if selected_key in item["scopes"]),
+            None,
+        ) or next(
+            (
+                item for item in current_outcomes
+                if item["day_state"]
+                == str(selected_scope.get("event_day_state") or "")
+            ),
+            None,
+        )
+        current_ok = [item for item in current_outcomes if "error" not in item]
+        if current_ok:
+            materialized_at[current_day] = time.monotonic()
+
+        # Charter 48, one day at a time.  _merge_scope_manifests refuses to
+        # fuse across event days because everything downstream reads a single
+        # event_date off the merged document, so a listed day gets its own
+        # merged manifests and its own passes, and its evidence lands in the
+        # same cache the current day's does.  Never fatal.
+        #
+        # One cycle serves the current day, the next serves the listed days.
+        # Restoring charter 48 roughly doubled the scopes a cycle carries --
+        # 45 to between 82 and 90 -- and the cycle went from 462 seconds to
+        # over 2,800 without completing, which stopped P0 for three hours.
+        # Halving is enough because the two days are not equally urgent: a
+        # listed day is entered on a window measured in days.
+        #
+        # A listed day is a (station, day) whose local day has not started --
+        # not a date other than the fleet's current one -- so the current
+        # date's own not-started group is a listed day too; the groups the
+        # main pass already passed are skipped rather than restated.
+        serve_listing = self._take_listing_scope_turn()
+        listing_days = sorted({
+            key.split("|", 1)[1] for key in listing_scope_keys if "|" in key
+        })
+        passed = {
+            (item["event_date"], item["day_state"]) for item in current_outcomes
+        }
+        listing_evidence: list[dict[str, Any]] = []
+        listing_outcomes: list[dict[str, Any]] = []
+        for listing_day in (listing_days if serve_listing else ()):
+            day_scopes = [
+                item for item in sweep_scopes
+                if str(item.get("event_date") or "") == listing_day
+            ]
+            if not day_scopes:
+                listing_evidence.append({
+                    "event_date": listing_day,
+                    "state": "no_scope_manifest",
+                })
+                continue
+            try:
+                outcomes, _refused = self._materialize_evidence_groups(
+                    activation,
+                    manifests=day_scopes,
+                    listing_scope_keys=listing_scope_keys,
+                    # Full, not evidence-cache-only.  The compile reads
+                    # basket_official_ws_snapshot and a cache-only pass
+                    # returns before writing it, so a listed day got fresh
+                    # evidence and a snapshot left over from its last full
+                    # pass -- measured 47 seconds behind the current day's,
+                    # against a 60-second lease.
+                    full_materialization=True,
+                    skip=passed,
                 )
-        return results[0]
+            except Exception as exc:  # noqa: BLE001 -- observational
+                listing_evidence.append({
+                    "event_date": listing_day,
+                    "state": "blocked_fail_closed",
+                    "reason": f"{type(exc).__name__}:{exc}"[:200],
+                })
+                continue
+            for item in outcomes:
+                if "error" in item:
+                    listing_evidence.append({
+                        "event_date": listing_day,
+                        "day_state": item["day_state"],
+                        "state": "blocked_fail_closed",
+                        "reason": (
+                            f"{type(item['error']).__name__}:{item['error']}"
+                        )[:200],
+                    })
+                else:
+                    listing_evidence.append(item["ingress"])
+            if any("error" not in item for item in outcomes):
+                materialized_at[listing_day] = time.monotonic()
+            listing_outcomes.extend(outcomes)
+
+        listing_ok = [item for item in listing_outcomes if "error" not in item]
+        source = (
+            lead if lead is not None and "error" not in lead
+            else (current_ok[0] if current_ok else None)
+        ) or (listing_ok[0] if listing_ok else None)
+        groups_receipt = [
+            self._evidence_group_summary(item) for item in current_outcomes
+        ]
+        error: BaseException | None = None
+        if source is None:
+            failed = [item for item in current_outcomes if "error" in item]
+            error = (
+                lead["error"] if lead is not None and "error" in lead
+                else (
+                    failed[0]["error"] if failed
+                    else ContractError("resident_target_ws_sweep_manifest_empty")
+                )
+            )
+            setattr(error, EVIDENCE_GROUP_SCOPES_ATTR, frozenset(
+                scope for item in failed for scope in item["scopes"]
+            ))
+            market_ingress: dict[str, Any] = {
+                "state": "blocked_fail_closed",
+                "reason": f"{type(error).__name__}:{error}",
+                "event_date": current_day,
+                "writes_target_ssot": False,
+            }
+        else:
+            market_ingress = source["ingress"]
+            if lead is not None and "error" in lead and lead["day_state"] == "open":
+                # The lead's scopes would have been this cycle's compile.
+                # They are not compiled now, so the ledger records why --
+                # their own blocker, not the fallback's absence of one.
+                lead_reason = f"{type(lead['error']).__name__}:{lead['error']}"
+                receipts = self._commit_blocked_scopes(
+                    scopes=list(lead["scopes"]),
+                    reason_codes=self._blocker_reason_codes(lead_reason),
+                    details={
+                        "blocked_scope_decision_version": 1,
+                        "exception_type": type(lead["error"]).__name__,
+                        "exception_reason": str(lead["error"]),
+                        "evidence_group_day_state": lead["day_state"],
+                        "no_market_snapshot_written": True,
+                        "no_intents_written": True,
+                        "no_capital_reserved": True,
+                        "no_orders_submitted": True,
+                        "execution_mode": PRODUCTION_EXECUTION_MODE,
+                    },
+                    created_at_utc=utc_now(),
+                )
+                if isinstance(market_ingress, dict):
+                    market_ingress["evidence_group_blocked_decisions"] = (
+                        self._blocked_receipt_summary(receipts)
+                    )
+        if isinstance(market_ingress, dict):
+            market_ingress["evidence_groups"] = groups_receipt
+            if current_refused:
+                market_ingress["evidence_group_refused_scopes"] = (
+                    current_refused[:10]
+                )
+            if listing_evidence:
+                market_ingress["listing_day_evidence"] = listing_evidence
+        materialized_listing = [
+            item for item in (*current_ok, *listing_ok)
+            if item["listing_day_pass"]
+        ]
+        return {
+            "market_ingress": market_ingress,
+            "materialized_at": materialized_at,
+            "serve_listing": serve_listing,
+            "listing_stations": {
+                station
+                for item in materialized_listing
+                for station, _day in item["scopes"]
+            },
+            "lead_listing_scopes": (
+                set(source["scopes"])
+                if source is not None and source["listing_day_pass"]
+                else set()
+            ),
+            "error": error,
+        }
+
+    @staticmethod
+    def _evidence_group_summary(outcome: Mapping[str, Any]) -> dict[str, Any]:
+        """One evidence group's receipt line, without its ingress payload."""
+
+        error = outcome.get("error")
+        ingress = outcome.get("ingress")
+        return {
+            "event_date": str(outcome.get("event_date") or ""),
+            "day_state": str(outcome.get("day_state") or ""),
+            "listing_day_pass": bool(outcome.get("listing_day_pass")),
+            "station_count": len(outcome.get("scopes") or ()),
+            "state": (
+                "blocked_fail_closed"
+                if error is not None
+                else str((ingress or {}).get("state") or "")
+            ),
+            "reason": (
+                f"{type(error).__name__}:{error}"[:200]
+                if error is not None
+                else str((ingress or {}).get("reason") or "")[:200]
+            ),
+        }
 
     def _materialize_market_evidence(self, activation: Mapping[str, Any]) -> dict[str, Any]:
         return self._materialize_market_evidence_from_manifest(
@@ -10532,7 +11000,6 @@ class TargetProductionWorker:
         manifest_path: Path,
         full_materialization: bool = True,
         listing_day_pass: bool = False,
-        optional_pass: bool = False,
     ) -> dict[str, Any]:
         if self.commit_conn is None:
             return {
@@ -10618,16 +11085,20 @@ class TargetProductionWorker:
             # receipt does not have to carry an event_date, and reading one
             # off it turned every cycle fatal the moment listing scopes were
             # added -- 51 scopes materialized and the filter still saw none.
-            if not current_day_materialized and not optional_pass:
+            if not current_day_materialized:
                 # Nothing was materialized for any station, so there is no
                 # partial pass to keep -- fail the way the single-scope
                 # contract does, naming what was skipped.
                 #
-                # Unless the caller said this pass was optional.  A day that
-                # has not started at any of its stations has no registry
-                # scope to materialize yet, and that is the ordinary state of
-                # the hours before its first midnight -- not a gap.  Only the
-                # group that can still trade owes the cycle evidence.
+                # For every group, including one whose day has not begun.
+                # This used to take ``optional_pass`` and return quietly for
+                # such a group, on the belief that a day before its first
+                # midnight has no registry scope to materialize (2026-09-01).
+                # It has one: the group was reading the started-day registry
+                # because its caller never passed ``listing_day_pass``.  A
+                # listed group admitted under its own view that still
+                # materializes nothing is a real gap, and the caller confines
+                # it to that group (``_materialize_evidence_groups``).
                 raise ContractError(
                     "official_ws_evidence_complete_scope_missing:"
                     + str(len(evidence_cache_failures))
@@ -10637,23 +11108,6 @@ class TargetProductionWorker:
                         for row in evidence_cache_failures[:5]
                     )
                 )
-            if not current_day_materialized:
-                # Optional pass with nothing to materialize: say so and
-                # stop, rather than carrying an empty receipt set into a
-                # compile that has no evidence to read.
-                return {
-                    "state": "no_scope_materialized",
-                    "event_date": manifest_event_date,
-                    "optional_pass": True,
-                    "skipped_scope_count": len(evidence_cache_failures),
-                    "skipped_scopes": evidence_cache_failures[:10],
-                    "station_allowlist": list(station_allowlist),
-                    "writes_target_ssot": False,
-                    "calls_order_gateway": False,
-                    "places_orders": False,
-                    "live_submit_authorized": False,
-                    "orders_submitted": 0,
-                }
         else:
             evidence_cache_receipts = [
                 materialize_official_ws_evidence_cache(
@@ -11858,9 +12312,20 @@ class TargetProductionWorker:
         overdue = self._starved_event_dates(
             candidates, served=served, as_of_utc=as_of
         )
+        # The starved scopes themselves, not every scope sharing their date.
+        # A date is starved at the stations where it is open, and it is
+        # relieved only by serving one of those: a listed scope of the same
+        # date is not itself open, is never stamped against the date, and
+        # outranks the open ones whenever it holds a position (charter 85).
+        # Admitting it here let it take the guarantee every cycle.  Measured
+        # 2026-09-13: NZWN opened 2026-09-14 at 12:00Z, which made the 14th a
+        # starved open date; LFPB|2026-09-14, listed and held, then won every
+        # selection, and 2026-09-13 -- the day under way at 44 stations --
+        # wrote no book from 12:02Z on.
         eligible = [
             item for item in candidates
             if str(item.get("event_date") or "") in overdue
+            and str(item.get("event_day_state") or "") == "open"
         ] or candidates
         held_scopes = self._ledger_held_scope_keys()
         selected = min(
@@ -17196,6 +17661,10 @@ class TargetProductionWorker:
             # Bound before the branch: the scope assembly below reads it on
             # every path, and the other arm never sets it.
             serve_listing = False
+            # Likewise: read by the listing-row assembly on every path, and
+            # bound only in the else arm until now.
+            listing_stations: set[str] = set()
+            lead_listing_scopes: set[tuple[str, str]] = set()
             if not ws_scope_catalog or not selected_open_scope or not str(
                 selected_open_scope["probability_stage"]
             ):
@@ -17233,154 +17702,23 @@ class TargetProductionWorker:
                     swept=sweep_scopes,
                     as_of_utc=now,
                 )
-                current_day = str(selected_open_scope.get("event_date") or "")
-                current_day_state = str(
-                    selected_open_scope.get("event_day_state") or ""
+                cycle_evidence = self._materialize_cycle_market_evidence(
+                    activation,
+                    sweep_scopes=sweep_scopes,
+                    selected_scope=selected_open_scope,
                 )
-                # Grouped by day state as well as by day: around midnight the
-                # same event date is open at some stations and not started at
-                # others, and one merged document can only describe one of
-                # those.  ``market_ingress`` is the selected scope's own
-                # group, so what the compile below reads is unchanged; the
-                # other group's evidence is still written.
-                current_ingress: dict[str, Any] | None = None
-                for day_state, group in _group_scope_manifests_by_day_state([
-                    item for item in sweep_scopes
-                    if str(item.get("event_date") or "") == current_day
-                ]):
-                    with self._temporary_scope_manifest(
-                        _merge_scope_manifests(group)
-                    ) as current_scope_manifest_path:
-                        ingress = (
-                            self._materialize_market_evidence_from_manifest(
-                                activation,
-                                manifest_path=current_scope_manifest_path,
-                                optional_pass=(
-                                    day_state != current_day_state
-                                ),
-                                full_materialization=bool(
-                                    selected_open_scope[
-                                        "probability_evidence_fresh"
-                                    ]
-                                ),
-                            )
-                        )
-                    if current_ingress is None or day_state == current_day_state:
-                        current_ingress = ingress
-                market_ingress = current_ingress
-                evidence_materialized_at[current_day] = time.monotonic()
-                # Charter 48, one day at a time.  _merge_scope_manifests
-                # refuses to fuse across event days because everything
-                # downstream reads a single event_date off the merged
-                # document, so a listed day gets its own merged manifest and
-                # its own materialization pass.  Its evidence lands in the
-                # same cache the current day's does; the cycle's scope list
-                # already carries its scopes.  Never fatal: the current-day
-                # pass above owns that, and a listed day whose books have not
-                # arrived is simply not yet tradable.
-                listing_evidence: list[dict[str, Any]] = []
-                # One cycle serves the current day, the next serves the
-                # listed days.  Restoring charter 48 roughly doubled the
-                # scopes a cycle carries -- 45 to between 82 and 90 -- and
-                # the cycle went from 462 seconds to over 2,800 without
-                # completing, which stopped P0 for three hours: P0 is minted
-                # inside the cycle, so a cycle that never lands mints
-                # nothing.
-                #
-                # Halving is enough because the two days are not equally
-                # urgent.  The current day carries P1 and the live book and
-                # wants every cycle it can get; a listed day is entered on a
-                # window measured in days, so serving it every second cycle
-                # costs it about seven minutes of freshness and nothing else.
-                serve_listing = self._take_listing_scope_turn()
-                # A listed day is a (station, day) whose local day has not
-                # started -- not a date other than the fleet's current one.
-                # ``current_day`` is the earliest-opening timezone's date,
-                # so from about 16Z every western station's *same* date is
-                # still a listing day: excluding the date here left KSFO
-                # and KHOU 2026-09-03 with no evidence pass and no compile
-                # from 16Z until their own midnight, every night.  The
-                # current date's not-started group therefore takes the
-                # listing pass too; its open group is the main pass's.
-                listing_days = sorted({
-                    day
-                    for _station, day in self._listing_entry_scopes(
-                        as_of_utc=utc_now()
-                    )
-                })
-                listing_stations: set[str] = set()
-                for listing_day in (listing_days if serve_listing else ()):
-                    day_scopes = [
-                        item for item in sweep_scopes
-                        if str(item.get("event_date") or "") == listing_day
-                        and (
-                            listing_day != current_day
-                            or str(item.get("event_day_state") or "")
-                            == "not_started"
-                        )
-                    ]
-                    if not day_scopes:
-                        listing_evidence.append({
-                            "event_date": listing_day,
-                            "state": "no_scope_manifest",
-                        })
-                        continue
-                    try:
-                        # A listed day straddles midnight like any other, so
-                        # it too is grouped by day state before merging.
-                        groups = _group_scope_manifests_by_day_state(
-                            day_scopes
-                        )
-                        for _state, group in groups:
-                            if listing_day == current_day and _state == "open":
-                                # Already the main pass's; a second
-                                # materialization would only restate it.
-                                continue
-                            listing_stations.update(
-                                str(item.get("station_id") or "").upper()
-                                for item in group
-                                if str(item.get("station_id") or "")
-                            )
-                            with self._temporary_scope_manifest(
-                                _merge_scope_manifests(group)
-                            ) as listing_manifest_path:
-                                listing_evidence.append(
-                                    self.
-                                    _materialize_market_evidence_from_manifest(
-                                        activation,
-                                        manifest_path=listing_manifest_path,
-                                        # Full, not evidence-cache-only.  The
-                                        # compile reads
-                                        # basket_official_ws_snapshot and
-                                        # full_materialization=False returns
-                                        # before writing it, so a listing day
-                                        # got fresh evidence and a snapshot
-                                        # left over from whenever it last had
-                                        # a full pass -- measured 47 seconds
-                                        # behind the current day's, against a
-                                        # 60-second lease, which is most of
-                                        # production_quote_expired on those
-                                        # scopes.
-                                        full_materialization=True,
-                                        listing_day_pass=True,
-                                        # A listed day is by definition one
-                                        # that has not opened yet, so a group
-                                        # of it with nothing to materialize
-                                        # is expected, not a gap.
-                                        optional_pass=_state != "open",
-                                    )
-                                )
-                        evidence_materialized_at[listing_day] = (
-                            time.monotonic()
-                        )
-                    except Exception as exc:  # noqa: BLE001 -- observational
-                        listing_evidence.append({
-                            "event_date": listing_day,
-                            "state": "blocked_fail_closed",
-                            "reason": f"{type(exc).__name__}:{exc}"[:200],
-                        })
-                if listing_evidence and isinstance(market_ingress, dict):
-                    market_ingress["listing_day_evidence"] = listing_evidence
+                market_ingress = cycle_evidence["market_ingress"]
+                evidence_materialized_at.update(
+                    cycle_evidence["materialized_at"]
+                )
+                serve_listing = cycle_evidence["serve_listing"]
+                listing_stations = cycle_evidence["listing_stations"]
+                lead_listing_scopes = cycle_evidence["lead_listing_scopes"]
+                if cycle_evidence["error"] is not None:
+                    # Raised only now, after the listed days have had their
+                    # pass: every group this cycle depended on refused, and
+                    # the exception names the groups whose blocker it is.
+                    raise cycle_evidence["error"]
             station_allowlist = {
                 str(value or "").strip().upper()
                 for value in market_ingress.get("station_allowlist", [])
@@ -17465,8 +17803,11 @@ class TargetProductionWorker:
             # materialized this cycle otherwise, and compiling a scope
             # against last cycle's books is how production_quote_expired is
             # manufactured rather than observed.
-            if serve_listing:
-                rows = list(rows) + listing_rows
+            rows = list(rows) + _compiled_listing_rows(
+                listing_rows,
+                serve_listing=serve_listing,
+                lead_listing_scopes=lead_listing_scopes,
+            )
             self._mark("committed_scope_sweep")
             if not rows:
                 # Preliminary future scopes have their own zero-execution
@@ -18141,9 +18482,12 @@ class TargetProductionWorker:
             # no-live lane.  The ordinary atomic ledger is open-day only, so
             # do not turn a current-scope exception into a false
             # future_event_day_not_allowed blocker.
-            scopes = self._decision_scopes(
-                as_of_utc=now,
-                include_not_started=False,
+            scopes = _confine_blocked_scopes(
+                self._decision_scopes(
+                    as_of_utc=now,
+                    include_not_started=False,
+                ),
+                exc,
             )
             receipts = self._commit_blocked_scopes(
                 scopes=scopes,
