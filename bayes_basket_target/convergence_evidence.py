@@ -22,6 +22,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from .basket_kernel.delta_v2 import CONVERGENCE_CLAIM_HORIZON_HOURS
+from .contracts import probability_knowable_at, timestamp_lte
 
 SCHEMA = "convergence_evidence_v1"
 
@@ -65,14 +66,25 @@ def load_convergence_evidence(
     except (ValueError, TypeError):
         return None
     try:
-        prior = conn.execute(
-            "SELECT history_id, stage, decision_at_utc"
+        # The newest checkpoint the system could have *read* by then: its
+        # decision clock and its commit both at or before ``earlier``
+        # (``probability_knowable_at``).  A few newest rows are enough --
+        # commit lags a decision by minutes, the horizon is hours.
+        prior = None
+        prior_knowable = ""
+        for history_id, stage, decided, created in conn.execute(
+            "SELECT history_id, stage, decision_at_utc, created_at_utc"
             " FROM basket_probability_bridge_history"
             " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
             "   AND decision_at_utc<=?"
-            " ORDER BY decision_at_utc DESC LIMIT 1",
+            " ORDER BY decision_at_utc DESC LIMIT 64",
             (str(station_id), str(event_date), earlier),
-        ).fetchone()
+        ):
+            knowable = probability_knowable_at(str(decided), created)
+            if timestamp_lte(knowable, earlier):
+                prior = (history_id, stage, decided)
+                prior_knowable = knowable
+                break
         if prior is None:
             return None
         probabilities = {
@@ -89,7 +101,7 @@ def load_convergence_evidence(
             " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
             "   AND observed_at>=? AND observed_at<?"
             " ORDER BY observed_at ASC LIMIT 1",
-            (str(station_id), str(event_date), str(prior[2]), str(as_of_utc)),
+            (str(station_id), str(event_date), prior_knowable, str(as_of_utc)),
         ).fetchone()
     except sqlite3.Error:
         return None

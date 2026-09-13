@@ -80,6 +80,28 @@ def shift_timestamp_utc(value: str, seconds: float) -> str:
     return shifted.isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
+def probability_knowable_at(decision_at_utc: str, created_at_utc: str | None) -> str:
+    """The first instant a committed probability could have been read.
+
+    The later of its decision clock and the moment its row was committed.
+    Decision clocks are logical -- a P1 step is dated at its report's commit,
+    a rebuilt confirmation a millisecond past its root -- and a row can be
+    written minutes after the instant it names.  Production never sees such
+    a row early: it did not exist.  A replay that pairs a checkpoint with
+    what came after its decision does, unless it starts here.  Rows written
+    before 2026-09-13 stored the decision clock as their commit time, so for
+    them this is the decision clock and nothing they pair with moves.
+    """
+
+    if not created_at_utc:
+        return str(decision_at_utc)
+    return (
+        str(created_at_utc)
+        if timestamp_lt(str(decision_at_utc), str(created_at_utc))
+        else str(decision_at_utc)
+    )
+
+
 def servable_horizon_utc(stage: str, fresh_until_utc: str) -> str:
     """The last instant an envelope of ``stage`` is servable (grace included)."""
 

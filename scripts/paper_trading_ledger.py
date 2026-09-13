@@ -278,6 +278,7 @@ from bayes_basket_target.basket_kernel.support import (  # noqa: E402
     mean_center_bucket_v1,
 )
 from bayes_basket_target.contracts import ProbabilityEnvelope  # noqa: E402
+from bayes_basket_target.contracts import probability_knowable_at  # noqa: E402
 from bayes_basket_target.contracts import ContractError  # noqa: E402
 from bayes_basket_target.metar_trajectory import (  # noqa: E402
     assert_p1_execution_evidence,
@@ -4184,6 +4185,21 @@ def _deeper_refusal(current: tuple, candidate: tuple) -> tuple:
     return current
 
 
+def _instant(value: str) -> datetime:
+    """A stored UTC stamp as an instant, whatever its fractional precision.
+
+    Decision clocks carry microseconds and commit clocks milliseconds, and
+    their byte order disagrees inside one second ('...:05.123Z' sorts after
+    '...:05.123456Z').  Knowable times mix the two, so they are compared as
+    instants.
+    """
+
+    moment = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(timezone.utc)
+
+
 def _stage_authority_horizon(
     conn: sqlite3.Connection, station_id: str, event_date: str, stage: str
 ) -> str | None:
@@ -4216,14 +4232,23 @@ def _stage_authority_horizon(
     higher = LEDGER_STAGES[LEDGER_STAGES.index(str(stage)) + 1:]
     if not higher:
         return None
-    row = conn.execute(
-        "SELECT MIN(decision_at_utc)"
-        " FROM basket_probability_bridge_history"
-        " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-        "   AND stage IN (%s)" % ",".join("?" for _ in higher),
-        (station_id, event_date, *higher),
-    ).fetchone()
-    return str(row[0]) if row and row[0] else None
+    # When the higher stage could first be *read*, not the instant it names.
+    # A P1 new-high step is dated at its report's commit and can be written
+    # minutes later; production kept compiling the lower stage until the row
+    # existed (``probability_knowable_at``).  Rows written before 2026-09-13
+    # stored their decision clock as their commit time, so for them this is
+    # the old MIN(decision_at_utc) exactly.
+    knowable = [
+        probability_knowable_at(str(decided), created)
+        for decided, created in conn.execute(
+            "SELECT decision_at_utc, created_at_utc"
+            " FROM basket_probability_bridge_history"
+            " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+            "   AND stage IN (%s)" % ",".join("?" for _ in higher),
+            (station_id, event_date, *higher),
+        )
+    ]
+    return min(knowable, key=_instant) if knowable else None
 
 
 def _books_for_checkpoint(
@@ -4234,6 +4259,7 @@ def _books_for_checkpoint(
     stage: str,
     decision_at_utc: str,
     envelope: Any,
+    created_at_utc: str | None = None,
 ) -> list[tuple[dict[str, dict[str, Any]], str]]:
     """Every book production compiled this checkpoint on, oldest first.
 
@@ -4261,13 +4287,25 @@ def _books_for_checkpoint(
     """
 
     higher_or_same = LEDGER_STAGES[LEDGER_STAGES.index(str(stage)):]
-    next_at = conn.execute(
-        "SELECT MIN(decision_at_utc) FROM basket_probability_bridge_history"
-        " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-        "   AND stage IN (%s) AND decision_at_utc>?"
-        % ",".join("?" for _ in higher_or_same),
-        (station_id, event_date, *higher_or_same, decision_at_utc),
-    ).fetchone()[0]
+    # Both ends on the knowable clock (``probability_knowable_at``): a
+    # checkpoint is compiled from the first book after it could be read, and
+    # gives the book up once a newer same-or-higher checkpoint can be.  From
+    # the decision clock alone, a P1 step written at 09:05 for a report that
+    # committed at 08:52 was paired with thirteen minutes of books production
+    # never compiled it on (2026-09-13 review).
+    knowable_at = probability_knowable_at(decision_at_utc, created_at_utc)
+    later = [
+        probability_knowable_at(str(decided), created)
+        for decided, created in conn.execute(
+            "SELECT decision_at_utc, created_at_utc"
+            " FROM basket_probability_bridge_history"
+            " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+            "   AND stage IN (%s) AND decision_at_utc>?"
+            % ",".join("?" for _ in higher_or_same),
+            (station_id, event_date, *higher_or_same, decision_at_utc),
+        )
+    ]
+    next_at = min(later, key=_instant) if later else None
     books: list[tuple[dict[str, dict[str, Any]], str]] = []
     for observed_at, buckets_json in conn.execute(
         "SELECT observed_at, buckets_json FROM basket_official_ws_snapshot"
@@ -4275,7 +4313,7 @@ def _books_for_checkpoint(
         "   AND observed_at >= ?"
         "   AND (?4 IS NULL OR observed_at < ?4)"
         " ORDER BY observed_at ASC",
-        (station_id, event_date, decision_at_utc, next_at),
+        (station_id, event_date, knowable_at, next_at),
     ):
         observed_at = str(observed_at)
         try:
@@ -4325,9 +4363,10 @@ def _stage_entry_candidates(
     )
 
     seen: set[tuple] = set()
-    for history_id, decided, stored, checkpoint, sha in conn.execute(
+    horizon = _stage_authority_horizon(conn, station_id, event_date, stage)
+    for history_id, decided, stored, checkpoint, sha, created in conn.execute(
         "SELECT history_id, decision_at_utc, envelope_json,"
-        " checkpoint_id, envelope_content_sha256"
+        " checkpoint_id, envelope_content_sha256, created_at_utc"
         " FROM basket_probability_bridge_history"
         # ``state`` is pinned to COMMITTED by the table's own CHECK, so this
         # predicate selects nothing extra -- it is here for the planner.
@@ -4343,11 +4382,16 @@ def _stage_entry_candidates(
         # ``_stage_authority_horizon``.
         "   AND (?4 IS NULL OR decision_at_utc < ?4)"
         " ORDER BY decision_at_utc ASC",
-        (
-            station_id, event_date, stage,
-            _stage_authority_horizon(conn, station_id, event_date, stage),
-        ),
+        (station_id, event_date, stage, horizon),
     ).fetchall():
+        # The SQL bound is on the decision clock, a superset; authority ends
+        # when the higher stage could be read, so the checkpoint has to have
+        # been readable before that too.
+        if horizon is not None and not (
+            _instant(probability_knowable_at(str(decided), created))
+            < _instant(horizon)
+        ):
+            continue
         envelope_json = history_envelope_payload(
             conn,
             checkpoint_id=str(checkpoint),
@@ -4369,6 +4413,7 @@ def _stage_entry_candidates(
             stage=stage,
             decision_at_utc=str(decided),
             envelope=ProbabilityEnvelope.from_mapping(dict(envelope_json)),
+            created_at_utc=str(created) if created else None,
         )
         if not books:
             continue

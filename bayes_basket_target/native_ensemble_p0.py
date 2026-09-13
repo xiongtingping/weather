@@ -888,48 +888,6 @@ def _bucket_for_value(
 _VALID_NATIVE_RUN_CYCLES = frozenset({"00Z", "06Z", "12Z", "18Z"})
 
 
-def _stage_for_native_compile(
-    *,
-    predecessor_lineage: Mapping[str, Any] | None,
-    run_init_utc_by_system: Mapping[str, str],
-    taf_witness: Mapping[str, str] | None,
-) -> str:
-    """P0 when a model run moved; P0-M when only the forecaster did.
-
-    The stage is the driver of the update, not the machinery that computed
-    it.  A recompile whose model run set is byte-identical to the predecessor
-    checkpoint's and whose TAF issuance advanced is the forecaster's revision
-    -- the confirmation stage -- and orders pre-day as P0-M while yielding to
-    P1 on the event day through the existing stage precedence.  Any model
-    movement, a first compile, or an unreadable predecessor stays P0.
-    """
-
-    if predecessor_lineage is None or taf_witness is None:
-        return "P0"
-    try:
-        previous_runs = json.loads(str(
-            predecessor_lineage.get("run_init_utc_by_system_json") or "{}"
-        ))
-        if {str(k): str(v) for k, v in previous_runs.items()} != {
-            str(k): str(v) for k, v in run_init_utc_by_system.items()
-        }:
-            return "P0"
-        previous_witness = predecessor_lineage.get(
-            "taf_envelope_witness_json"
-        )
-        previous_issued = ""
-        if previous_witness:
-            previous_issued = str(
-                json.loads(str(previous_witness)).get("issued_at_utc") or ""
-            )
-        current_issued = str(taf_witness.get("issued_at_utc") or "")
-        if current_issued and current_issued > previous_issued:
-            return "P0-M"
-    except (ValueError, TypeError):
-        return "P0"
-    return "P0"
-
-
 def _taf_envelope_witness(
     conn: sqlite3.Connection,
     *,
@@ -961,9 +919,16 @@ def _taf_envelope_witness(
             "cloud_cover_fraction, precipitation_probability, wind_speed_mps "
             "FROM calibration_forward_taf_capture "
             "WHERE station_id=? AND event_date=? AND tx_c IS NOT NULL "
-            "AND issued_at_utc<=? "
+            # Knowable, not merely issued: a bulletin issued before the
+            # decision but received after it did not exist for this compile.
+            # Live, every row in the table was received before any compile
+            # can read it, so this changes nothing there; a strict as-of
+            # replay is where issue-time alone let a compile read a TAF that
+            # had not arrived (review of 2026-09-13: issued 06:00, received
+            # 10:00, selected at 08:00).
+            "AND issued_at_utc<=? AND received_at_utc<=? "
             "ORDER BY issued_at_utc DESC, revision_sequence DESC LIMIT 1",
-            (station_id, event_date, decision_at_utc),
+            (station_id, event_date, decision_at_utc, decision_at_utc),
         ).fetchone()
     except sqlite3.Error as exc:
         # The TAF is mandatory envelope evidence, not an optional garnish: a
@@ -2820,33 +2785,21 @@ def compile_native_ensemble_p0(
         event_date=event_date,
         decision_at_utc=decision_at_utc,
     )
-    # The stage has to be known here, not at the end, because the ruling of
-    # 2026-08-16 (charter 52f) makes the forecaster P0-M's evidence alone:
-    # P0 does not read the TAF at all, for the envelope or for direction.
-    # The stage test itself only compares issuance times and run sets, so it
-    # can run before the witness is consumed without circularity.
-    predecessor_lineage = None
-    try:
-        predecessor_row = conn.execute(
-            "SELECT lineage_json FROM basket_probability_envelope "
-            "WHERE station_id=? AND event_date=? "
-            "AND stage IN ('P0','P0-M') AND decision_at_utc<? "
-            "ORDER BY decision_at_utc DESC LIMIT 1",
-            (station_id, event_date, decision_at_utc),
-        ).fetchone()
-        if predecessor_row is not None:
-            predecessor_lineage = json.loads(str(predecessor_row[0]))
-    except (sqlite3.Error, ValueError, TypeError):
-        predecessor_lineage = None
-    compiled_stage = _stage_for_native_compile(
-        predecessor_lineage=predecessor_lineage,
-        run_init_utc_by_system={
-            system_id: official_lineage["run_init_utc_by_system"][system_id]
-            for system_id in system_ids
-            if system_id in official_lineage["run_init_utc_by_system"]
-        },
-        taf_witness=taf_witness,
-    )
+    # Always P0.  P0-M is the resident confirmation lane's stage: the one
+    # that roots on the newest P0 checkpoint, binds the revision and proof,
+    # and is what P1 and the decision loop resolve against (charter 52f's
+    # "the forecaster-driven update carries the P0-M label" is that lane's
+    # job since 2026-08-31).  This compiler used to label a recompile P0-M
+    # when the seated run set was unchanged and a TAF issuance had advanced
+    # past the predecessor's witness -- a second P0-M semantics with no root
+    # binding, which the P0 ingress then skipped as a non-P0 packet.  Because
+    # the resident P0-M rows carry no ``taf_envelope_witness_json``, every
+    # TAF-bearing station-day whose newest SSOT row was a confirmation read
+    # as "TAF advanced" on every same-run recompile: 24 of 90 compiled
+    # packets in the live P0 inbox on 2026-09-13 09:17Z were dropped that
+    # way, including the re-reads that renew a P0 on its seated clock.  The
+    # label was a trigger, not a stage; the trigger is not needed downstream.
+    compiled_stage = "P0"
     # Once the forecaster has spoken, every later compile hears it -- the P0-M
     # that the revision drove and every P0 the next model run drives after it
     # (ruling clarified 2026-08-16).  What P0-M owns is the *stage label* on a
@@ -3385,15 +3338,7 @@ def compile_native_ensemble_p0(
         "decision_at_utc": decision_at_utc,
         "posterior_sha256": posterior_sha,
     }
-    # ``compiled_stage`` was resolved before the envelope, because the TAF is
-    # spent only on P0-M and the envelope had to know that first.  The run
-    # set it compared is the same one ``native_forward_lineage`` carries --
-    # both filter ``official_lineage`` by ``system_ids`` -- so moving the test
-    # earlier did not move what it decides.
-    checkpoint_id = (
-        ("p0m-native-" if compiled_stage == "P0-M" else "p0-native-")
-        + content_sha256(checkpoint_identity)[:32]
-    )
+    checkpoint_id = "p0-native-" + content_sha256(checkpoint_identity)[:32]
     root_future_curve = None
     if official_snapshot and all(
         isinstance(systems[system_id].get("family_temperature_curve"), Mapping)

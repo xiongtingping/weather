@@ -1187,7 +1187,8 @@ def test_a_stage_is_judged_only_while_it_holds_the_days_authority() -> None:
     # comparison is strict because production takes the higher stage on a
     # tie.
     assert "LEDGER_STAGES.index(str(stage)) + 1" in horizon
-    assert "MIN(decision_at_utc)" in horizon
+    # On the knowable clock since 2026-09-13 (``probability_knowable_at``).
+    assert "probability_knowable_at(" in horizon
     candidates = inspect.getsource(L._stage_entry_candidates)
     assert "AND (?4 IS NULL OR decision_at_utc < ?4)" in candidates
     assert "_stage_authority_horizon(conn, station_id, event_date, stage)" in (
@@ -1464,3 +1465,82 @@ def test_charter_110_both_lanes_read_one_ladder_and_one_rung_rule() -> None:
         P_LIFECYCLE.RESTING_REPRICE_DWELL_SECONDS
     )
 
+
+
+def test_a_checkpoint_is_paired_from_when_it_could_be_read() -> None:
+    """Decision clocks are logical; a row can be written minutes after them.
+
+    2026-09-13 review: fourteen P1 steps appeared between two reads of one
+    window, each dated at its report's commit (EDDM 08:52:42Z) and written
+    after 08:56Z.  Paired from the decision clock, a replay handed such a
+    checkpoint the books of the minutes before it existed, and let it keep
+    the book from a lower stage that production was still compiling.  Rows
+    written before the commit clock was recorded carry created == decision,
+    and pair exactly as before.
+    """
+
+    import json
+    import sqlite3
+    from types import SimpleNamespace
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_probability_bridge_history(station_id TEXT,"
+        " event_date TEXT, state TEXT, stage TEXT, decision_at_utc TEXT,"
+        " created_at_utc TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_official_ws_snapshot(station_id TEXT,"
+        " event_date TEXT, state TEXT, observed_at TEXT, buckets_json TEXT)"
+    )
+    book = json.dumps([{"bucket": "a", "ask": 0.4}])
+    for observed_at in (
+        "2026-09-13T08:53:00.000Z",
+        "2026-09-13T08:58:00.000Z",
+        "2026-09-13T09:06:00.000Z",
+        "2026-09-13T09:12:00.000Z",
+    ):
+        conn.execute(
+            "INSERT INTO basket_official_ws_snapshot VALUES(?,?,?,?,?)",
+            ("EDDM", "2026-09-13", "COMMITTED", observed_at, book),
+        )
+    rows = [
+        # A P0-M that has held the day since 08:00.
+        ("P0-M", "2026-09-13T08:00:00.000Z", "2026-09-13T08:00:00.000Z"),
+        # A P1 dated 08:52:42 and committed 09:05.
+        ("P1", "2026-09-13T08:52:42.508000Z", "2026-09-13T09:05:00.000Z"),
+    ]
+    for stage, decided, created in rows:
+        conn.execute(
+            "INSERT INTO basket_probability_bridge_history"
+            " VALUES('EDDM','2026-09-13','COMMITTED',?,?,?)",
+            (stage, decided, created),
+        )
+    always = SimpleNamespace(is_servable=lambda _at: True)
+
+    p1_books = L._books_for_checkpoint(
+        conn, station_id="EDDM", event_date="2026-09-13", stage="P1",
+        decision_at_utc=rows[1][1], envelope=always,
+        created_at_utc=rows[1][2],
+    )
+    assert [at for _quotes, at in p1_books] == [
+        "2026-09-13T09:06:00.000Z", "2026-09-13T09:12:00.000Z",
+    ]
+    p0m_books = L._books_for_checkpoint(
+        conn, station_id="EDDM", event_date="2026-09-13", stage="P0-M",
+        decision_at_utc=rows[0][1], envelope=always,
+        created_at_utc=rows[0][2],
+    )
+    assert [at for _quotes, at in p0m_books] == [
+        "2026-09-13T08:53:00.000Z", "2026-09-13T08:58:00.000Z",
+    ]
+    assert L._stage_authority_horizon(
+        conn, "EDDM", "2026-09-13", "P0-M"
+    ) == "2026-09-13T09:05:00.000Z"
+    # A row whose commit clock is its decision clock pairs as it always did.
+    legacy = L._books_for_checkpoint(
+        conn, station_id="EDDM", event_date="2026-09-13", stage="P1",
+        decision_at_utc=rows[1][1], envelope=always,
+        created_at_utc=rows[1][1],
+    )
+    assert [at for _quotes, at in legacy][0] == "2026-09-13T08:53:00.000Z"

@@ -930,21 +930,21 @@ def test_taf_envelope_witness_time_precedence_and_absence() -> None:
         "station_id TEXT, event_date TEXT, tx_c REAL, issued_at_utc TEXT,"
         "revision_sequence INTEGER, content_sha256 TEXT, revision_id TEXT,"
         "cloud_cover_fraction REAL, precipitation_probability REAL,"
-        "wind_speed_mps REAL)"
+        "wind_speed_mps REAL, received_at_utc TEXT)"
     )
     rows = [
         ("ZUUU", "2026-08-12", 34.0, "2026-08-11T09:00:00Z", 3, "a" * 64, "r3",
-         0.2, 0.0, 3.0),
+         0.2, 0.0, 3.0, "2026-08-11T09:05:00Z"),
         ("ZUUU", "2026-08-12", 35.0, "2026-08-11T21:02:00Z", 5, "b" * 64, "r5",
-         0.4, 0.1, 4.0),
+         0.4, 0.1, 4.0, "2026-08-11T21:07:00Z"),
         ("ZUUU", "2026-08-12", None, "2026-08-11T23:00:00Z", 6, "c" * 64, "r6",
-         0.5, 0.2, 5.0),
+         0.5, 0.2, 5.0, "2026-08-11T23:05:00Z"),
         ("KLGA", "2026-08-12", None, "2026-08-11T21:00:00Z", 1, "d" * 64, "r1",
-         None, None, None),
+         None, None, None, "2026-08-11T21:05:00Z"),
     ]
     conn.executemany(
         "INSERT INTO calibration_forward_taf_capture "
-        "VALUES(?,?,?,?,?,?,?,?,?,?)",
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
         rows,
     )
     late = _taf_envelope_witness(
@@ -962,6 +962,13 @@ def test_taf_envelope_witness_time_precedence_and_absence() -> None:
         conn, station_id="ZUUU", event_date="2026-08-12",
         decision_at_utc="2026-08-11T08:00:00Z",
     ) is None
+    # Issued before the decision but not yet received: not knowable, so the
+    # older bulletin is still the witness (2026-09-13 review).
+    between = _taf_envelope_witness(
+        conn, station_id="ZUUU", event_date="2026-08-12",
+        decision_at_utc="2026-08-11T21:04:00Z",
+    )
+    assert between is not None and between["tx_c"] == "34"
     assert _taf_envelope_witness(
         conn, station_id="KLGA", event_date="2026-08-12",
         decision_at_utc="2026-08-12T01:00:00Z",
@@ -1240,72 +1247,76 @@ def test_forward_taf_ingest_reports_fresh_scopes_only_for_new_rows() -> None:
     assert replay["fresh_scopes"] == []
 
 
-def test_stage_attribution_taf_only_advance_is_p0m() -> None:
-    """Same model runs + newer TAF issuance => P0-M; anything else => P0."""
+def test_a_native_compile_is_always_p0_and_reads_only_a_knowable_taf() -> None:
+    """P0-M belongs to the resident confirmation lane alone.
 
-    from bayes_basket_target.native_ensemble_p0 import (
-        _stage_for_native_compile,
+    This compiler used to label a same-run recompile P0-M whenever a TAF had
+    been issued past the predecessor's witness; the P0 ingress then dropped
+    the packet as a non-P0 stage, and the resident P0-M rows (which carry no
+    witness) made that every same-run recompile of a TAF-bearing day -- 24 of
+    90 live compiled packets on 2026-09-13.  The witness still widens the
+    envelope (charter 52f: once the forecaster has spoken every compile reads
+    it), but only a bulletin that had been *received* by the decision.
+    """
+
+    conn = sqlite3.connect(":memory:")
+    _install_mixed_cycle_calibrations(conn)
+    def _taf_row(revision_id, sequence, tx, issued, received, sha):
+        return {
+            "taf_capture_id": f"cap-{revision_id}",
+            "station_id": "TEST",
+            "event_date": "2026-07-02",
+            "settlement_timezone": "Etc/UTC",
+            "revision_id": revision_id,
+            "revision_kind": "TAF" if sequence == 1 else "AMD",
+            "revision_sequence": sequence,
+            "issued_at_utc": issued,
+            "received_at_utc": received,
+            "provider_available_at_utc": received,
+            "valid_from_utc": "2026-07-01T12:00:00Z",
+            "valid_until_utc": "2026-07-02T18:00:00Z",
+            "source_object_sha256": sha * 64,
+            "source_capture_sha256": sha * 64,
+            "tx_c": tx,
+            "tx_available": 1,
+            "cloud_cover_fraction": 0.2,
+            "precipitation_probability": 0.1,
+            "wind_speed_mps": 3.0,
+            "source_class": "official_forward_native_receipt",
+            "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+            "content_sha256": content_sha256([revision_id, sha]),
+        }
+
+    for row in (
+        _taf_row("taf-known", 1, 21.0, "2026-07-01T11:00:00Z",
+                 "2026-07-01T11:05:00Z", "c"),
+        # Issued before the decision, received after it.
+        _taf_row("taf-not-yet-received", 2, 23.0, "2026-07-01T12:30:00Z",
+                 "2026-07-01T14:00:00Z", "d"),
+    ):
+        conn.execute(
+            "INSERT INTO calibration_forward_taf_capture("
+            + ",".join(row) + ") VALUES(" + ",".join("?" for _ in row) + ")",
+            tuple(row.values()),
+        )
+    compiled = compile_native_ensemble_p0(
+        conn,
+        forward_packet=_mixed_packet(),
+        decision_at_utc="2026-07-01T13:00:00Z",
     )
-
-    runs = {
-        "ECMWF_IFS_ENS_OPEN_PF50": "2026-08-11T18:00:00Z",
-        "NOAA_GEFS_05": "2026-08-11T18:00:00Z",
-    }
-    predecessor = {
-        "run_init_utc_by_system_json": json.dumps(runs),
-        "taf_envelope_witness_json": json.dumps(
-            {"issued_at_utc": "2026-08-11T15:06:00Z"}
-        ),
-    }
-    fresh_taf = {"issued_at_utc": "2026-08-11T21:02:00Z"}
-
-    # The confirmation case: models identical, forecaster moved.
-    assert _stage_for_native_compile(
-        predecessor_lineage=predecessor,
-        run_init_utc_by_system=runs,
-        taf_witness=fresh_taf,
-    ) == "P0-M"
-
-    # A model run moved: the model stage owns the update even with new TAF.
-    assert _stage_for_native_compile(
-        predecessor_lineage=predecessor,
-        run_init_utc_by_system={
-            **runs, "NOAA_GEFS_05": "2026-08-12T00:00:00Z",
-        },
-        taf_witness=fresh_taf,
-    ) == "P0"
-
-    # Same TAF as the predecessor saw: replaying is not a revision.
-    assert _stage_for_native_compile(
-        predecessor_lineage=predecessor,
-        run_init_utc_by_system=runs,
-        taf_witness={"issued_at_utc": "2026-08-11T15:06:00Z"},
-    ) == "P0"
-
-    # First compile, no TAF, or unreadable predecessor: opening stage.
-    assert _stage_for_native_compile(
-        predecessor_lineage=None,
-        run_init_utc_by_system=runs,
-        taf_witness=fresh_taf,
-    ) == "P0"
-    assert _stage_for_native_compile(
-        predecessor_lineage=predecessor,
-        run_init_utc_by_system=runs,
-        taf_witness=None,
-    ) == "P0"
-    assert _stage_for_native_compile(
-        predecessor_lineage={
-            "run_init_utc_by_system_json": "not json",
-        },
-        run_init_utc_by_system=runs,
-        taf_witness=fresh_taf,
-    ) == "P0"
-
-    # Predecessor without a witness, fresh TAF now: the forecaster arrived.
-    assert _stage_for_native_compile(
-        predecessor_lineage={
-            "run_init_utc_by_system_json": json.dumps(runs),
-        },
-        run_init_utc_by_system=runs,
-        taf_witness=fresh_taf,
-    ) == "P0-M"
+    envelope = compiled["packet"]["native_probability_envelope"]
+    assert compiled["packet"]["stage"] == envelope["stage"] == "P0"
+    assert envelope["checkpoint_id"].startswith("p0-native-")
+    witness = json.loads(envelope["lineage"]["taf_envelope_witness_json"])
+    assert witness["forecast_revision_id"] == "taf-known"
+    # Once it has arrived it is read, and the compile is still P0.
+    later = compile_native_ensemble_p0(
+        conn,
+        forward_packet=_mixed_packet(),
+        decision_at_utc="2026-07-01T14:30:00Z",
+    )
+    later_envelope = later["packet"]["native_probability_envelope"]
+    assert later_envelope["stage"] == "P0"
+    assert json.loads(
+        later_envelope["lineage"]["taf_envelope_witness_json"]
+    )["forecast_revision_id"] == "taf-not-yet-received"

@@ -1303,6 +1303,48 @@ def compile_station_p1_packets(
     return packets
 
 
+def p1_stands_on_replay_base(
+    row: ProbabilityEnvelope,
+    *,
+    base: ProbabilityEnvelope,
+    p0_root_checkpoint_id: str,
+    p0_root_content_sha256: str,
+) -> bool:
+    """Whether this P1 was compiled on exactly the base P1 should stand on.
+
+    Both parents, both by checkpoint and by content: the direct prediction
+    root (P0-M when the root carries a confirmation, else the P0 itself) and
+    the P0 ancestor.  The compiler uses this to decide what is its own branch
+    and the decision loop uses it to decide whether the P1 it is about to
+    trade has caught up -- one predicate, so the two cannot disagree the way
+    they did until 2026-09-13, when the decision loop checked only the P0
+    ancestor and let a P1 on a superseded P0-M through, and waved through any
+    P1 whose P0 had merely the same bucket probabilities (444 of 2,834 P0
+    transitions on 2026-09-11..12 kept the numbers and changed the future
+    temperature curve P1 reads).
+    """
+
+    lineage = row.lineage
+    if lineage.get("prediction_root_stage") != base.stage:
+        return False
+    if str(lineage.get("prediction_root_checkpoint_id") or "") != base.checkpoint_id:
+        return False
+    if str(lineage.get("prediction_root_content_sha256") or "").lower() != base.content_sha256:
+        return False
+    if str(lineage.get("p0_root_checkpoint_id") or "") != p0_root_checkpoint_id:
+        return False
+    p0_content = str(lineage.get("p0_root_content_sha256") or "").lower()
+    # Early P0-root P1 rows predate the explicit ancestor-content field; for
+    # that branch the prediction-root content is the exact P0 ancestor and is
+    # safe to derive.  P0-M-root rows must carry the explicit P0 ancestor and
+    # never receive this compatibility shortcut.
+    if not p0_content and lineage.get("prediction_root_stage") == "P0":
+        p0_content = str(
+            lineage.get("prediction_root_content_sha256") or ""
+        ).lower()
+    return p0_content == p0_root_content_sha256
+
+
 def select_p1_replay_base(
     envelopes: Sequence[ProbabilityEnvelope | Mapping[str, Any]],
     *,
@@ -1369,28 +1411,18 @@ def select_p1_replay_base(
             raise ContractError("p1_replay_p0m_root_lineage_missing")
         if p0_root_content != latest_p0.content_sha256:
             raise ContractError("p1_replay_p0m_root_lineage_mismatch")
-    branch_p1: list[ProbabilityEnvelope] = []
-    for row in rows:
-        if row.stage != "P1" or row.decision_at_utc > as_of_utc:
-            continue
-        lineage = row.lineage
-        if lineage.get("prediction_root_stage") != base.stage:
-            continue
-        if str(lineage.get("prediction_root_checkpoint_id") or "") != base.checkpoint_id:
-            continue
-        if str(lineage.get("prediction_root_content_sha256") or "").lower() != base.content_sha256:
-            continue
-        if str(lineage.get("p0_root_checkpoint_id") or "") != root_id:
-            continue
-        p0_content = str(lineage.get("p0_root_content_sha256") or "").lower()
-        # Early P0-root P1 rows predate the explicit ancestor-content field;
-        # for that branch the prediction-root content is the exact P0
-        # ancestor and is safe to derive.  P0-M-root rows must carry the
-        # explicit P0 ancestor and never receive this compatibility shortcut.
-        if not p0_content and lineage.get("prediction_root_stage") == "P0":
-            p0_content = str(lineage.get("prediction_root_content_sha256") or "").lower()
-        if p0_content == p0_root_content:
-            branch_p1.append(row)
+    branch_p1: list[ProbabilityEnvelope] = [
+        row
+        for row in rows
+        if row.stage == "P1"
+        and row.decision_at_utc <= as_of_utc
+        and p1_stands_on_replay_base(
+            row,
+            base=base,
+            p0_root_checkpoint_id=root_id,
+            p0_root_content_sha256=p0_root_content,
+        )
+    ]
     if branch_p1:
         predecessor = _select_replay_checkpoint(
             branch_p1,
@@ -1548,6 +1580,7 @@ __all__ = [
     "canonical_materialization_packet",
     "compile_station_p1_packets",
     "materialization_packet",
+    "p1_stands_on_replay_base",
     "reported_hard_lower_in_unit",
     "select_p1_replay_base",
 ]

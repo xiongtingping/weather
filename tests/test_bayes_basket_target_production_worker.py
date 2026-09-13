@@ -758,7 +758,17 @@ def test_commit_candidate_preserves_delta_v2_authority_blocker() -> None:
         )
 
 
-def _bridged_taf_artifact(tmp_path: Path) -> Path:
+def _bridged_taf_artifact(
+    tmp_path: Path, *, station_id: str | None = None
+) -> Path:
+    """The shipped registry's first member, re-scoped for a test root.
+
+    ``station_id`` matters: without it the artifact keeps whatever station
+    the registry lists first (RKPK when this was written, FACT since), and a
+    test that means to exercise the calibrated operator silently runs the
+    identity path instead -- the gap the 2026-09-13 review found.
+    """
+
     source = (
         Path(__file__).resolve().parents[1]
         / "config/artifacts/bayes_basket_target_taf_revision_active.json"
@@ -775,6 +785,7 @@ def _bridged_taf_artifact(tmp_path: Path) -> Path:
         "taf_nwp_live_compatibility_fingerprint_sha256"
     ]
     raw.update({
+        **({"station_id": station_id} if station_id else {}),
         "settlement_timezone": "Asia/Seoul",
         "season_bin": "summer",
         "lead_bucket": "d2_fallback",
@@ -3818,35 +3829,59 @@ def test_resident_decision_scopes_obey_vertical_slice_allowlists(
     assert scopes == [("RKPK", "2026-07-28")]
 
 
-def test_current_p1_supersedes_stale_optional_p0m_replay_blocker(
-    monkeypatch,
-) -> None:
+def _guard_envelope(
+    stage: str,
+    checkpoint: str,
+    decision: str,
+    *,
+    probabilities: dict[str, float] | None = None,
+    lineage: dict[str, str] | None = None,
+) -> ProbabilityEnvelope:
+    return ProbabilityEnvelope.from_mapping({
+        "stage": stage,
+        "checkpoint_id": checkpoint,
+        "station_id": "RKPK",
+        "event_date": "2026-07-28",
+        "settlement_timezone": "Asia/Seoul",
+        "decision_at_utc": decision,
+        "fresh_until_utc": "2026-07-28T12:00:00Z",
+        "bucket_ordinals": {"a": 0, "b": 1},
+        "probabilities": probabilities or {"a": 0.4, "b": 0.6},
+        "posterior_version": "guard-test",
+        "posterior_sha256": "a" * 64,
+        "bridge_sha256": "b" * 64,
+        "lineage": {"settlement_timezone": "Asia/Seoul", **(lineage or {})},
+    })
+
+
+def _guard_p1_on(
+    base: ProbabilityEnvelope, p0: ProbabilityEnvelope, decision: str
+) -> ProbabilityEnvelope:
+    return _guard_envelope("P1", f"p1-on-{base.checkpoint_id}", decision, lineage={
+        "prediction_root_stage": base.stage,
+        "prediction_root_checkpoint_id": base.checkpoint_id,
+        "prediction_root_content_sha256": base.content_sha256,
+        "p0_root_checkpoint_id": p0.checkpoint_id,
+        "p0_root_content_sha256": p0.content_sha256,
+    })
+
+
+def _guard_p0m_on(
+    p0: ProbabilityEnvelope, checkpoint: str, decision: str
+) -> ProbabilityEnvelope:
+    return _guard_envelope("P0-M", checkpoint, decision, lineage={
+        "p0_root_checkpoint_id": p0.checkpoint_id,
+        "p0_root_content_sha256": p0.content_sha256,
+    })
+
+
+def _guard_reason(monkeypatch, envelopes) -> str | None:
     worker = object.__new__(TargetProductionWorker)
     worker.conn = sqlite3.connect(":memory:")
-    envelopes = [
-        SimpleNamespace(
-            stage="P0",
-            checkpoint_id="p0-current",
-            decision_at_utc="2026-07-28T02:00:00Z",
-            lineage={},
-        ),
-        SimpleNamespace(
-            stage="P0-M",
-            checkpoint_id="p0m-stale",
-            decision_at_utc="2026-07-28T01:00:00Z",
-            lineage={"p0_root_checkpoint_id": "p0-old"},
-        ),
-        SimpleNamespace(
-            stage="P1",
-            checkpoint_id="p1-current",
-            decision_at_utc="2026-07-28T02:05:00Z",
-            lineage={"p0_root_checkpoint_id": "p0-current"},
-        ),
-    ]
     monkeypatch.setattr(
         production_worker_module,
         "load_materialized_probability_envelopes",
-        lambda *args, **kwargs: envelopes,
+        lambda *args, **kwargs: list(envelopes),
     )
     monkeypatch.setattr(
         production_worker_module,
@@ -3854,21 +3889,89 @@ def test_current_p1_supersedes_stale_optional_p0m_replay_blocker(
         lambda *_args, **_kwargs: "awc",
     )
     try:
-        assert worker._replay_root_mismatch_reason(
+        return worker._replay_root_mismatch_reason(
             station_id="RKPK",
             event_date="2026-07-28",
             as_of_utc="2026-07-28T02:10:00Z",
-        ) is None
-        envelopes[-1].lineage = {
-            "p0_root_checkpoint_id": "p0-old"
-        }
-        assert worker._replay_root_mismatch_reason(
-            station_id="RKPK",
-            event_date="2026-07-28",
-            as_of_utc="2026-07-28T02:10:00Z",
-        ) == "resident_p1_replay_required"
+        )
     finally:
         worker.conn.close()
+
+
+def test_current_p1_supersedes_stale_optional_p0m_replay_blocker(
+    monkeypatch,
+) -> None:
+    old_p0 = _guard_envelope("P0", "p0-old", "2026-07-28T00:30:00Z")
+    p0 = _guard_envelope(
+        "P0", "p0-current", "2026-07-28T02:00:00Z",
+        probabilities={"a": 0.3, "b": 0.7},
+    )
+    stale_p0m = _guard_p0m_on(old_p0, "p0m-stale", "2026-07-28T01:00:00Z")
+    current_p1 = _guard_p1_on(p0, p0, "2026-07-28T02:05:00Z")
+    # P1 on the current P0; an older P0-M on an older root is irrelevant.
+    assert _guard_reason(
+        monkeypatch, [old_p0, p0, stale_p0m, current_p1]
+    ) is None
+    # A P1 still on the old root is not current.
+    old_p1 = _guard_p1_on(old_p0, old_p0, "2026-07-28T02:05:00Z")
+    assert _guard_reason(
+        monkeypatch, [old_p0, p0, stale_p0m, old_p1]
+    ) == "resident_p1_replay_required"
+
+
+def test_a_p1_on_a_replaced_p0m_is_not_current(monkeypatch) -> None:
+    """Same P0 ancestor, different direct parent: the review case of 09-13.
+
+    The guard read only the P0 ancestor, so a P1 left on a P0-M the lane had
+    just replaced passed as current.  It now reads both parents through the
+    compiler's own resolver.
+    """
+
+    p0 = _guard_envelope("P0", "p0", "2026-07-28T01:00:00Z")
+    first_p0m = _guard_p0m_on(p0, "p0m-first", "2026-07-28T01:10:00Z")
+    new_p0m = _guard_p0m_on(p0, "p0m-new-taf", "2026-07-28T02:00:00Z")
+    p1_on_first = _guard_p1_on(first_p0m, p0, "2026-07-28T01:30:00Z")
+    assert _guard_reason(
+        monkeypatch, [p0, first_p0m, p1_on_first]
+    ) is None
+    assert _guard_reason(
+        monkeypatch, [p0, first_p0m, p1_on_first, new_p0m]
+    ) == "resident_p1_replay_required"
+    assert _guard_reason(
+        monkeypatch,
+        [p0, first_p0m, p1_on_first, new_p0m,
+         _guard_p1_on(new_p0m, p0, "2026-07-28T02:00:01Z")],
+    ) is None
+
+
+def test_equal_bucket_probabilities_do_not_excuse_a_moved_root(
+    monkeypatch,
+) -> None:
+    """The P0 kept its numbers and changed the curve P1 reads; still a new root.
+
+    444 of 2,834 P0 transitions on 2026-09-11..12 were exactly this.
+    """
+
+    p0 = _guard_envelope("P0", "p0", "2026-07-28T01:00:00Z")
+    same_numbers = _guard_envelope(
+        "P0", "p0-new-curve", "2026-07-28T02:00:00Z",
+        lineage={"conditional_future_temperature_curve_sha256": "f" * 64},
+    )
+    assert same_numbers.probabilities == p0.probabilities
+    p1 = _guard_p1_on(p0, p0, "2026-07-28T01:30:00Z")
+    assert _guard_reason(
+        monkeypatch, [p0, p1, same_numbers]
+    ) == "resident_p1_replay_required"
+    # Without P1, a P0-M on the equal-probability predecessor blocks too.
+    p0m = _guard_p0m_on(p0, "p0m", "2026-07-28T01:10:00Z")
+    assert _guard_reason(
+        monkeypatch, [p0, p0m, same_numbers]
+    ) == "resident_p0m_replay_required"
+    assert _guard_reason(
+        monkeypatch,
+        [p0, p0m, same_numbers,
+         _guard_p0m_on(same_numbers, "p0m-2", "2026-07-28T02:00:01Z")],
+    ) is None
 
 
 def test_writer_flag_cannot_open_in_live_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -7057,3 +7160,130 @@ def test_a_confirmed_taf_is_carried_onto_a_run_it_predates() -> None:
         as_of_utc="2099-08-05T06:15:00Z",
     )
     assert settled["reroot_due"] is False
+
+
+def test_the_calibrated_operator_re_roots_on_the_same_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same cycle, and across a run that postdates the confirmed TAF.
+
+    The 2026-09-13 review reproduced both on this operator: a root minted at
+    the cycle clock was not confirmed until the next cycle, and a run newer
+    than the confirmed TAF raised ``forecast_revision_chain_empty`` and left
+    the confirmation on the old root.
+    """
+
+    station = "RKPK"
+    conn = sqlite3.connect(":memory:")
+    apply_production_ssot_schema(conn)
+    _seed_target_registry_source_lane(
+        conn,
+        station_id=station,
+        event_date="2026-07-27",
+        settlement_timezone="Asia/Seoul",
+        source_lane="awc",
+    )
+
+    def _root(checkpoint: str, decision: str, fresh: str, probabilities):
+        root = _reroot_scope_root(
+            station_id=station,
+            checkpoint_id=checkpoint,
+            decision_at_utc=decision,
+            fresh_until_utc=fresh,
+            probabilities=probabilities,
+        )
+        return ProbabilityEnvelope.from_mapping({
+            **root.to_dict(),
+            "settlement_timezone": "Asia/Seoul",
+            "lineage": {**root.lineage, "settlement_timezone": "Asia/Seoul"},
+        })
+
+    first_root = _root(
+        "root-old", "2026-07-26T10:00:00.000Z", "2026-07-26T16:00:00.000Z",
+        {"34": 0.2, "35": 0.6, "36": 0.2},
+    )
+    materialize_probability_bridge(
+        conn, first_root, created_at_utc=first_root.decision_at_utc
+    )
+    capture = _reroot_taf_capture(
+        station_id=station,
+        revision_id="taf-rkpk-1",
+        sequence=1,
+        issued_at_utc="2026-07-26T11:00:00Z",
+        received_at_utc="2026-07-26T11:05:00Z",
+        valid_until_utc="2026-07-27T18:00:00Z",
+        source_sha_char="c",
+        tx_c=35.0,
+        supersedes=None,
+    )
+    capture = {**capture, "settlement_timezone": "Asia/Seoul"}
+    capture["content_sha256"] = content_sha256(
+        {key: value for key, value in capture.items() if key != "content_sha256"}
+    )
+    inbox = tmp_path / "taf-inbox.json"
+    inbox.write_text(json.dumps({
+        "schema": "bayes_basket_target_taf_revision_inbox_v1",
+        "captures": [capture],
+    }), encoding="utf-8")
+    read_db = tmp_path / "target-read.db"
+    with sqlite3.connect(read_db) as source:
+        source.execute("CREATE TABLE marker(value TEXT)")
+    worker = TargetProductionWorker(
+        read_db,
+        commit_conn=conn,
+        taf_artifact_path=_bridged_taf_artifact(tmp_path, station_id=station),
+        taf_inbox_path=inbox,
+    )
+    try:
+        seated = worker._materialize_resident_p0m(
+            as_of_utc="2026-07-26T12:00:00.000Z"
+        )
+        assert seated["state"] == "COMMITTED", seated["blockers"]
+        head = _p0m_rows(conn, station)[-1]
+        # The calibrated operator, not the identity fallback.
+        assert head["lineage"].get("taf_revision_artifact_id")
+        assert head["fresh_until_utc"] == first_root.fresh_until_utc
+
+        second_root = _root(
+            "root-new", "2026-07-26T12:30:00.000Z",
+            "2026-07-26T18:30:00.000Z", {"34": 0.1, "35": 0.5, "36": 0.4},
+        )
+        insert_probability_envelope(
+            conn, second_root, created_at_utc=second_root.decision_at_utc
+        )
+        same_cycle = worker._materialize_resident_p0m(
+            as_of_utc=second_root.decision_at_utc
+        )
+        assert same_cycle["state"] == "COMMITTED", same_cycle["blockers"]
+        head = _p0m_rows(conn, station)[-1]
+        assert head["lineage"]["p0_root_checkpoint_id"] == "root-new"
+        assert head["lineage"].get("taf_revision_artifact_id")
+        assert head["decision_at_utc"] == "2026-07-26T12:30:00.001Z"
+        assert same_cycle["stage_clock_utc"] == "2026-07-26T12:30:00.001Z"
+
+        # A run that postdates the confirmed TAF: the text may not seat
+        # afresh, and the confirmation is still carried onto the new root.
+        third_root = _root(
+            "root-third", "2026-07-26T13:00:00.000Z",
+            "2026-07-26T19:00:00.000Z", {"34": 0.1, "35": 0.5, "36": 0.4},
+        )
+        insert_probability_envelope(
+            conn, third_root, created_at_utc=third_root.decision_at_utc
+        )
+        monkeypatch.setattr(
+            TargetProductionWorker,
+            "_p0_root_latest_run_init_utc",
+            staticmethod(lambda _root: datetime(2026, 7, 26, 12, tzinfo=timezone.utc)),
+        )
+        carried = worker._materialize_resident_p0m(
+            as_of_utc="2026-07-26T13:01:00.000Z"
+        )
+        assert carried["state"] == "COMMITTED", carried["blockers"]
+        assert carried["blockers"] == []
+        head = _p0m_rows(conn, station)[-1]
+        assert head["lineage"]["p0_root_checkpoint_id"] == "root-third"
+        assert head["lineage"]["forecast_revision_id"] == "taf-rkpk-1"
+        assert head["lineage"].get("taf_revision_artifact_id")
+        assert head["fresh_until_utc"] == third_root.fresh_until_utc
+    finally:
+        worker.close()

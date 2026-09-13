@@ -145,6 +145,7 @@ from .metar_trajectory import (
 from .observed_high_floor import dead_buckets_for_running_high
 from .p1_compiler import (
     compile_station_p1_packets,
+    p1_stands_on_replay_base,
     p1_trajectory_mode as p1_trajectory_mode_for_artifact,
     select_p1_replay_base,
 )
@@ -922,12 +923,35 @@ def insert_probability_envelope(
     *,
     created_at_utc: str,
 ) -> dict[str, Any]:
-    """Single resident write seam: envelope and X-S-B projection atomically."""
+    """Single resident write seam: envelope and X-S-B projection atomically.
 
+    ``created_at`` is when the row was actually committed -- the wall clock
+    at this write -- never earlier than the logical instant the caller hands
+    in.  The callers hand in their decision clocks, which are logical: a P1
+    new-high step is dated at its report's commit, a confirmation at its
+    TAF's arrival, and a replay a millisecond past a root minted at the cycle
+    clock.  Stored as ``created_at`` those claimed the row existed from then
+    on, and a strict as-of reader could not tell: the 2026-09-13 review found
+    fourteen P1 rows that appeared between two reads of the same window with
+    ``created_at`` equal to a decision already inside it (EDDM decided
+    08:52:42Z, written after 08:56Z), and the paper ledger pairs a checkpoint
+    with every book from its decision on.  The logical clock stays on the
+    envelope as ``decision_at_utc``; this one says when anyone could read it
+    (``probability_knowable_at``).  Equal replays return before either clock
+    is written, so a row keeps the commit time of its first write.
+    """
+
+    wall_clock = datetime.now(timezone.utc).isoformat(
+        timespec="milliseconds"
+    ).replace("+00:00", "Z")
     return materialize_probability_bridge(
         conn,
         envelope,
-        created_at_utc=created_at_utc,
+        created_at_utc=(
+            wall_clock
+            if timestamp_lt(str(created_at_utc), wall_clock)
+            else str(created_at_utc)
+        ),
     )
 
 
@@ -13746,7 +13770,7 @@ class TargetProductionWorker:
             replay_candidates[
                 str(revision_raw.get("source_object_sha256") or "")
             ] = capture
-        replay_target = max(
+        ordered_candidates = sorted(
             replay_candidates.values(),
             key=lambda capture: (
                 str((capture.get("forecast_revision") or {}).get(
@@ -13759,8 +13783,9 @@ class TargetProductionWorker:
                     "revision_id"
                 ) or ""),
             ),
-            default=None,
+            reverse=True,
         )
+        replay_target = ordered_candidates[0] if ordered_candidates else None
         replay_target_sha = (
             str(
                 (replay_target.get("forecast_revision") or {}).get(
@@ -13796,6 +13821,9 @@ class TargetProductionWorker:
             "seen_revisions": seen_revisions,
             "seated_revisions": seated_revisions,
             "replay_target": replay_target,
+            # Newest first, for an operator that cannot use every text (the
+            # calibrated proof needs a TX group) and takes the newest it can.
+            "replay_candidates": ordered_candidates,
             "new_revision_count": new_revision_count,
             # A root with no usable life left can lend a confirmation none
             # (``_p0m_window_until``), so the scope has nothing to do until
@@ -14369,130 +14397,335 @@ class TargetProductionWorker:
                         else:
                             artifact_bridge_stale = stale_reason
                     exact_artifacts = governing_artifacts
-                if not exact_artifacts:
+                # One seating plan for both operators.  What is seated, on
+                # which root, at which clock and for how long is decided here
+                # once; only the last step -- identity likelihood, or the
+                # calibrated TAF proof -- differs.  Until 2026-09-13 the
+                # calibrated branch kept its own older plan: it validated the
+                # information-order *subset* of the revision chain (which
+                # loses revision 1 the moment a run postdates it, and failed
+                # ``forecast_revision_chain_empty`` / root-missing), re-applied
+                # every text at arrival-plus-a-second (so a root minted at the
+                # cycle clock was not confirmed until the next cycle), and
+                # never carried a confirmed text onto a newer run.  No live
+                # scope used it that day -- every P0-M was the observed path --
+                # which is how the two plans drifted apart unnoticed.
+                calibrated = bool(exact_artifacts)
+                artifact = None
+                centers_raw: Mapping[str, Any] = {}
+                if calibrated:
+                    if len(exact_artifacts) != 1:
+                        raise ContractError(
+                            "resident_taf_artifact_exact_scope_ambiguous"
+                        )
+                    artifact = exact_artifacts[0]
+                    # The next line already says what a missing axis is, but it
+                    # could never be reached: ``json.loads("")`` raises before
+                    # the isinstance test, so a root without the key failed as a
+                    # JSONDecodeError with no station, no field and no remedy in
+                    # it.  ZGSZ is one of the two stations that has a TAF
+                    # artifact at all, so this took the whole stage
+                    # BLOCKED_FAIL_CLOSED on every cycle.
+                    # Derive the axis from the intervals when the root does not
+                    # publish it.  ``bucket_centers_c_json`` stopped appearing in
+                    # P0 lineage when compilation moved to the native ensemble on
+                    # 2026-08-01 -- that path writes the intervals and computes
+                    # centers only inside its own forward-prediction record -- and
+                    # P0-M has read the key ever since.  ``json.loads("")`` raised
+                    # before the missing-key test below could speak, so the stage
+                    # fail-closed every cycle with a JSONDecodeError naming no
+                    # station and no field.  P0-M's last checkpoint before today
+                    # was 2026-07-30, the day before the key went away.
+                    #
+                    # Deriving rather than repairing P0: the centre of an interval
+                    # is a function of the interval, so nothing is invented here,
+                    # and adding a key to P0's lineage would move its content hash
+                    # for every consumer of a root that is otherwise unchanged.
+                    centers_text = root.lineage.get("bucket_centers_c_json")
+                    if centers_text:
+                        try:
+                            centers_raw = json.loads(str(centers_text))
+                        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                            raise ContractError(
+                                "resident_taf_bucket_centers_invalid"
+                            ) from exc
+                    else:
+                        intervals_text = root.lineage.get(
+                            "bucket_intervals_c_json"
+                        )
+                        if not intervals_text:
+                            raise ContractError(
+                                "resident_taf_bucket_centers_missing"
+                            )
+                        try:
+                            intervals_map = json.loads(str(intervals_text))
+                        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                            raise ContractError(
+                                "resident_taf_bucket_intervals_invalid"
+                            ) from exc
+                        if not isinstance(intervals_map, Mapping):
+                            raise ContractError(
+                                "resident_taf_bucket_intervals_invalid"
+                            )
+                        centers_raw = {}
+                        for bucket, bounds in intervals_map.items():
+                            try:
+                                lower, upper = bounds[0], bounds[1]
+                            except (TypeError, IndexError, KeyError) as exc:
+                                raise ContractError(
+                                    "resident_taf_bucket_intervals_invalid"
+                                ) from exc
+                            # The same half-degree convention the native
+                            # compiler uses for its own open-ended edges.
+                            if lower is None and upper is None:
+                                raise ContractError(
+                                    "resident_taf_bucket_intervals_invalid"
+                                )
+                            if lower is None:
+                                centers_raw[str(bucket)] = float(upper) - 0.5
+                            elif upper is None:
+                                centers_raw[str(bucket)] = float(lower) + 0.5
+                            else:
+                                centers_raw[str(bucket)] = (
+                                    float(lower) + float(upper)
+                                ) / 2.0
+                    if not isinstance(centers_raw, Mapping) or not centers_raw:
+                        raise ContractError("resident_taf_bucket_centers_missing")
+                    # Identity and supersession are properties of the whole
+                    # known chain, not of whichever texts may seat afresh.
+                    validate_forecast_revision_chain(
+                        capture["forecast_revision"]
+                        for capture in scope_captures
+                    )
+                else:
                     # Seat the stage on the forecast alone.  The likelihood is
                     # identity -- nothing calibrated exists to revise with, and
                     # inventing one here is precisely what the proof pipeline
                     # forbids -- so the distribution stays P0's and the row
                     # contributes the decision moment, which the entry walk
                     # then prices against whatever book exists at that hour.
-                    # The TAF has already widened P0's own envelope upstream
-                    # (charter 42's union), so the forecaster is in the
-                    # distribution either way; what was missing was the seat.
                     ignored_no_artifact_scope_count += 1
-                    capture_by_id_tx: dict[str, float | None] = {}
-                    for item in scope_captures:
-                        rid = str(
-                            (item.get("forecast_revision") or {}).get(
-                                "revision_id"
-                            ) or ""
-                        )
-                        fields = item.get("taf_fields")
-                        value = None
-                        if isinstance(fields, Mapping):
-                            try:
-                                value = float(fields["tx_c"])
-                            except (KeyError, TypeError, ValueError):
-                                value = None
-                        if rid:
-                            capture_by_id_tx[rid] = value
-                    # Deliberately not the chain validator.  That exists for
-                    # the correcting path, where each revision's likelihood is
-                    # applied on top of the last and a gap would silently drop
-                    # a correction.  Here every revision is its own entry
-                    # moment carrying an identity likelihood, so a sequence
-                    # gap costs nothing -- and failing the scope on one would
-                    # take the whole stage down, which is what it did on
-                    # first run: 14 stations blocked and P0-M
-                    # BLOCKED_FAIL_CLOSED.
-                    revisions = sorted(
-                        (
-                            ForecastRevision.from_mapping(
-                                item["forecast_revision"]
-                            )
-                            for item in captures
-                        ),
-                        key=lambda item: (
-                            item.received_at_utc, item.revision_id
-                        ),
-                    )
-                    # Keyed by the source object hash: revision ids are
-                    # re-keyed when the inbox chain repair renumbers a scope,
-                    # and matching on them re-seated every committed revision
-                    # at its exact original received instant -- a guaranteed
-                    # decision-time conflict (43 stations, 2026-08-20).
-                    gated_shape = self._p0m_scope_shape(
-                        envelopes, scope_captures, as_of_utc=as_of_utc
-                    )
-                    seen_revisions = gated_shape["seen_revisions"]
-                    seated_revisions = gated_shape["seated_revisions"]
-                    # Two jobs, in this order.  A text the scope has never
-                    # seated is a new entry moment, dated at its arrival as it
-                    # always was.  Then the root being served must carry the
-                    # forecaster's newest valid word: when the model moved
-                    # under it, that confirmation is rebuilt now, on the new
-                    # root, whatever the text's issue time.
-                    new_revisions = [
-                        revision for revision in revisions
-                        if revision.source_object_sha256
-                        not in seated_revisions
-                        and timestamp_lt(as_of_utc, revision.valid_until_utc)
-                    ]
-                    if p0m_serving_tables is None:
-                        # Read once a pass, not once a revision: the rebuild
-                        # below now runs for every scope whose root moved, and
-                        # nothing in this lane writes the tables it reads.
-                        p0m_serving_tables = {
-                            "band_table": load_band_table_with_axis(
-                                self.commit_conn, stage="P0-M"
-                            ),
-                            "center_width": load_center_width(
-                                self.commit_conn, stage="P0-M"
-                            ),
-                            "center_width_floor_rungs": (
-                                load_center_width_floor(
-                                    self.commit_conn, stage="P0-M"
-                                )
-                            ),
-                            "center_width_tiers": load_center_width_tiers(
-                                self.commit_conn, stage="P0-M"
-                            ),
-                            "center_width_taf_cells": (
-                                load_center_width_cells(
-                                    self.commit_conn, stage="P0-M"
-                                )
-                            ),
-                            "station_width": load_station_width(
-                                self.commit_conn, stage="P0-M"
-                            ),
-                        }
-                    observed_pending: list[
-                        tuple[ProbabilityEnvelope, str]
-                    ] = []
-                    observed_error: str | None = None
-                    window_refusals: list[str] = []
-                    replay_skip_state: str | None = None
-                    observed_predecessor = root
+                capture_by_id = {
+                    str(
+                        (item.get("forecast_revision") or {}).get(
+                            "revision_id"
+                        ) or ""
+                    ): item
+                    for item in scope_captures
+                }
 
-                    def _observe(
-                        revision: ForecastRevision,
-                        decision_at: str,
-                        predecessor: ProbabilityEnvelope,
-                    ) -> ProbabilityEnvelope | None:
-                        window_until = _p0m_window_until(
-                            decision_at, root=root, revision=revision
+                def _tx_of(capture: Mapping[str, Any]) -> float | None:
+                    fields = capture.get("taf_fields")
+                    if not isinstance(fields, Mapping):
+                        return None
+                    try:
+                        value = float(fields["tx_c"])
+                    except (KeyError, TypeError, ValueError):
+                        return None
+                    return value if math.isfinite(value) else None
+
+                # Deliberately not the chain validator for the observed path.
+                # That exists for the correcting path, where each revision's
+                # likelihood is applied on top of the last and a gap would
+                # silently drop a correction.  Identity-likelihood seats are
+                # each their own entry moment, and failing the scope on a gap
+                # took the whole stage down on first run (14 stations).
+                revisions = sorted(
+                    (
+                        ForecastRevision.from_mapping(item["forecast_revision"])
+                        for item in captures
+                    ),
+                    key=lambda item: (item.received_at_utc, item.revision_id),
+                )
+                # Keyed by the source object hash: revision ids are re-keyed
+                # when the inbox chain repair renumbers a scope, and matching
+                # on them re-seated every committed revision at its exact
+                # original received instant (43 stations, 2026-08-20).
+                gated_shape = self._p0m_scope_shape(
+                    envelopes, scope_captures, as_of_utc=as_of_utc
+                )
+                seen_revisions = gated_shape["seen_revisions"]
+                seated_revisions = gated_shape["seated_revisions"]
+                root_confirmations = sorted(
+                    (
+                        item for item in envelopes
+                        if item.stage == "P0-M"
+                        and str(item.lineage.get("p0_root_checkpoint_id") or "")
+                        == root.checkpoint_id
+                    ),
+                    key=lambda item: item.decision_at_utc,
+                )
+                if calibrated:
+                    # A text that already spoke under this root must say the
+                    # same thing again: the inbox re-presents it every cycle,
+                    # and a changed field under an unchanged source hash is a
+                    # corrupted capture, not a revision.
+                    applied_by_source: dict[str, ProbabilityEnvelope] = {}
+                    for item in root_confirmations:
+                        source_sha = str(
+                            item.lineage.get("forecast_source_object_sha256")
+                            or ""
                         )
-                        if window_until is None:
-                            window_refusals.append(revision.revision_id)
-                            return None
-                        observed_excluded, observed_high = (
-                            self._p0m_observed_hard_bound(
-                                station_id=station,
-                                event_date=day,
-                                as_of_utc=decision_at,
-                                root=root,
+                        if not source_sha:
+                            raise ContractError(
+                                "resident_taf_revision_lineage_missing"
                             )
+                        previous_item = applied_by_source.get(source_sha)
+                        if previous_item is not None and (
+                            previous_item.content_sha256 != item.content_sha256
+                        ):
+                            raise ContractError(
+                                "resident_taf_revision_content_conflict"
+                            )
+                        applied_by_source[source_sha] = item
+                    for capture in scope_captures:
+                        revision_raw = capture.get("forecast_revision") or {}
+                        existing_item = applied_by_source.get(
+                            str(revision_raw.get("source_object_sha256") or "")
                         )
+                        if existing_item is None:
+                            continue
+                        if "taf_tx_c" not in existing_item.lineage:
+                            # Seated by the identity path before the station's
+                            # artifact bound; nothing calibrated to compare.
+                            continue
+                        fields = capture.get("taf_fields")
+                        if not isinstance(fields, Mapping):
+                            raise ContractError("resident_taf_fields_invalid")
+                        try:
+                            fingerprint = {
+                                "tx_c": float(fields["tx_c"]),
+                                "cloud_cover_fraction": float(
+                                    fields["cloud_cover_fraction"]
+                                ),
+                                "precipitation_probability": float(
+                                    fields["precipitation_probability"]
+                                ),
+                                "wind_speed_normalized": min(
+                                    1.0,
+                                    float(fields["wind_speed_mps"])
+                                    / artifact.wind_speed_cap_mps,
+                                ),
+                            }
+                            existing_fingerprint = {
+                                "tx_c": float(
+                                    existing_item.lineage.get("taf_tx_c")
+                                    or "nan"
+                                ),
+                                "cloud_cover_fraction": float(
+                                    existing_item.lineage.get(
+                                        "taf_cloud_cover_fraction"
+                                    ) or "nan"
+                                ),
+                                "precipitation_probability": float(
+                                    existing_item.lineage.get(
+                                        "taf_precipitation_probability"
+                                    ) or "nan"
+                                ),
+                                "wind_speed_normalized": float(
+                                    existing_item.lineage.get(
+                                        "taf_wind_speed_normalized"
+                                    ) or "nan"
+                                ),
+                            }
+                        except (KeyError, TypeError, ValueError) as exc:
+                            raise ContractError(
+                                "resident_taf_fields_invalid"
+                            ) from exc
+                        if any(
+                            not math.isfinite(existing_fingerprint[key])
+                            or abs(fingerprint[key] - existing_fingerprint[key])
+                            > 1e-12
+                            for key in fingerprint
+                        ):
+                            raise ContractError(
+                                "resident_taf_revision_content_conflict"
+                            )
+                # Texts never seated for this day that may seat now.  The
+                # calibrated operator is a function of the forecaster's TX,
+                # so a bulletin without one cannot go through it (28 of 45
+                # stations issue those routinely; LEMD 2026-08-27 took the
+                # stage down for eleven hours when one reached the proof).
+                new_revisions = []
+                for revision in revisions:
+                    if (
+                        revision.source_object_sha256 in seated_revisions
+                        or not timestamp_lt(
+                            as_of_utc, revision.valid_until_utc
+                        )
+                    ):
+                        continue
+                    if calibrated and _tx_of(
+                        capture_by_id.get(revision.revision_id) or {}
+                    ) is None:
+                        skipped_no_tx_revision_count += 1
+                        continue
+                    new_revisions.append(revision)
+                if p0m_serving_tables is None:
+                    # Read once a pass, not once a revision: the rebuild runs
+                    # for every scope whose root moved, and nothing in this
+                    # lane writes the tables it reads.
+                    p0m_serving_tables = {
+                        "band_table": load_band_table_with_axis(
+                            self.commit_conn, stage="P0-M"
+                        ),
+                        "center_width": load_center_width(
+                            self.commit_conn, stage="P0-M"
+                        ),
+                        "center_width_floor_rungs": load_center_width_floor(
+                            self.commit_conn, stage="P0-M"
+                        ),
+                        "center_width_tiers": load_center_width_tiers(
+                            self.commit_conn, stage="P0-M"
+                        ),
+                        "center_width_taf_cells": load_center_width_cells(
+                            self.commit_conn, stage="P0-M"
+                        ),
+                        "station_width": load_station_width(
+                            self.commit_conn, stage="P0-M"
+                        ),
+                    }
+                observed_pending: list[tuple[ProbabilityEnvelope, str]] = []
+                observed_error: str | None = None
+                window_refusals: list[str] = []
+                replay_skip_state: str | None = None
+                # The identity path chains every seat from the root; the
+                # calibrated path revises the confirmation already standing on
+                # this root when there is one ("root_replacement"), and
+                # confirms the root afresh when there is not.
+                observed_predecessor = (
+                    root_confirmations[-1]
+                    if calibrated and root_confirmations
+                    else root
+                )
+
+                def _observe(
+                    revision: ForecastRevision,
+                    decision_at: str,
+                    predecessor: ProbabilityEnvelope,
+                ) -> ProbabilityEnvelope | None:
+                    window_until = _p0m_window_until(
+                        decision_at, root=root, revision=revision
+                    )
+                    if window_until is None:
+                        window_refusals.append(revision.revision_id)
+                        return None
+                    capture = capture_by_id.get(revision.revision_id) or {}
+                    observed_excluded, observed_high = (
+                        self._p0m_observed_hard_bound(
+                            station_id=station,
+                            event_date=day,
+                            as_of_utc=decision_at,
+                            root=root,
+                        )
+                    )
+                    fleet_regime = load_regime_shift(
+                        self.commit_conn,
+                        stage="P0-M",
+                        event_date=day,
+                        as_of_utc=decision_at,
+                    )
+                    if not calibrated:
                         return materialize_p0m_observed(
                             predecessor,
                             p0_root=root,
@@ -14502,465 +14735,13 @@ class TargetProductionWorker:
                             forecast_source_object_sha256=(
                                 revision.source_object_sha256
                             ),
-                            taf_tx_c=capture_by_id_tx.get(
-                                revision.revision_id
-                            ),
+                            taf_tx_c=_tx_of(capture),
                             decision_at_utc=decision_at,
                             fresh_until_utc=window_until,
                             bridge_sha256=root.bridge_sha256,
                             **p0m_serving_tables,
-                            fleet_regime=load_regime_shift(
-                                self.commit_conn,
-                                stage="P0-M",
-                                event_date=day,
-                                as_of_utc=decision_at,
-                            ),
+                            fleet_regime=fleet_regime,
                         )
-
-                    for revision in new_revisions:
-                        # The forecast's own arrival is the moment, and it
-                        # has to be strictly later than what it follows --
-                        # inventing a tick past the predecessor would date a
-                        # seat at a time nothing happened.  A revision that
-                        # was in hand before its predecessor was minted is
-                        # seated at the predecessor's clock plus a second, as
-                        # the artifact path already does; the chain only needs
-                        # its order, and the information order was settled by
-                        # the seatability gate above.
-                        previous_time = datetime.fromisoformat(
-                            observed_predecessor.decision_at_utc.replace(
-                                "Z", "+00:00"
-                            )
-                        ).astimezone(timezone.utc)
-                        received_time = datetime.fromisoformat(
-                            revision.received_at_utc.replace("Z", "+00:00")
-                        ).astimezone(timezone.utc)
-                        decision_time = max(previous_time, received_time)
-                        decision_time = decision_time.replace(microsecond=0)
-                        if decision_time <= previous_time:
-                            decision_time = previous_time.replace(
-                                microsecond=0
-                            ) + timedelta(seconds=1)
-                        decision_at = decision_time.isoformat().replace(
-                            "+00:00", "Z"
-                        )
-                        if (
-                            decision_at
-                            <= observed_predecessor.decision_at_utc
-                            or decision_at > as_of_utc
-                        ):
-                            # Not this cycle's to date at its arrival -- the
-                            # root was minted after it.  The rebuild below
-                            # seats it now if it is the newest word.
-                            continue
-                        try:
-                            observed = _observe(
-                                revision, decision_at, observed_predecessor
-                            )
-                        except Exception as exc:  # noqa: BLE001
-                            # This path is additive: it seats a stage that had
-                            # none.  A scope it cannot serve must fall back to
-                            # the old silence, not fail-close the stage for
-                            # every other scope -- which is what it did on
-                            # first run, taking P0-M down on one station's
-                            # run-cycle conflict, and again on a TypeError
-                            # that a ContractError-only catch let escape.
-                            observed_error = f"ContractError:{exc}"[:200]
-                            break
-                        if observed is None:
-                            continue
-                        observed_pending.append((observed, decision_at))
-                        observed_predecessor = observed
-                    replay_target = gated_shape["replay_target"]
-                    replay_revision = (
-                        ForecastRevision.from_mapping(
-                            replay_target["forecast_revision"]
-                        )
-                        if replay_target is not None
-                        else None
-                    )
-                    if (
-                        observed_error is None
-                        and replay_revision is not None
-                        and replay_revision.source_object_sha256
-                        not in seen_revisions
-                        and replay_revision.source_object_sha256
-                        not in {
-                            str(
-                                envelope.lineage.get(
-                                    "forecast_source_object_sha256"
-                                ) or ""
-                            )
-                            for envelope, _decision in observed_pending
-                        }
-                    ):
-                        # Only where trading can still happen.  A settled
-                        # day's base never moves again and nobody prices it,
-                        # so re-confirming it buys nothing.
-                        try:
-                            replay_day_state = event_day_window(
-                                day,
-                                as_of_utc=as_of_utc,
-                                target_timezone=root.settlement_timezone,
-                            )["state"]
-                        except Exception:  # noqa: BLE001 -- unreadable is not replayable
-                            replay_day_state = "closed"
-                        if replay_day_state not in {"open", "not_started"}:
-                            replay_skip_state = "REPLAY_SKIPPED_SETTLED_DAY"
-                        elif replays_this_cycle >= MAX_P0M_REPLAYS_PER_CYCLE:
-                            replays_deferred.append(f"{station}|{day}")
-                            replay_skip_state = "REPLAY_DEFERRED_CYCLE_BUDGET"
-                        else:
-                            replays_this_cycle += 1
-                            # The moment is now: the forecaster spoke once;
-                            # what happened just now is that the model moved
-                            # and this confirmation was re-made against the
-                            # forecast being served.  Dating it at the
-                            # arrival would put two authorities on one stage
-                            # and instant and backdate a decision made on
-                            # evidence that did not exist then.
-                            decision_at = _p0m_replay_decision_at(
-                                as_of_utc,
-                                after_decision_utc=(
-                                    observed_predecessor.decision_at_utc
-                                ),
-                            )
-                            try:
-                                observed = _observe(
-                                    replay_revision,
-                                    decision_at,
-                                    observed_predecessor,
-                                )
-                            except Exception as exc:  # noqa: BLE001
-                                observed_error = f"ContractError:{exc}"[:200]
-                                observed = None
-                            if observed is not None:
-                                observed_pending.append((observed, decision_at))
-                                observed_predecessor = observed
-                    observed_writes = []
-                    if observed_pending and observed_error is None:
-                        with _writer_transaction(
-                            self.commit_conn,
-                            savepoint="resident_taf_observed_scope",
-                        ):
-                            for envelope, decision_at in observed_pending:
-                                observed_writes.append(
-                                    insert_probability_envelope(
-                                        self.commit_conn,
-                                        envelope,
-                                        created_at_utc=decision_at,
-                                    )
-                                )
-                    observed_count = sum(
-                        1 for write in observed_writes
-                        if write.get("wrote") is True
-                    )
-                    for _envelope, written_at in (
-                        observed_pending if observed_writes else ()
-                    ):
-                        if p0m_stage_clock_utc is None or timestamp_lt(
-                            p0m_stage_clock_utc, written_at
-                        ):
-                            p0m_stage_clock_utc = written_at
-                    if (
-                        not observed_count
-                        and observed_error is None
-                        and replay_skip_state is not None
-                    ):
-                        receipts.append(self._p0m_no_op_receipt(
-                            station_id=station,
-                            event_date=day,
-                            state=replay_skip_state,
-                        ))
-                        continue
-                    receipts.append({
-                        "station_id": station,
-                        "event_date": day,
-                        "state": (
-                            "COMMITTED_OBSERVED_NO_ARTIFACT"
-                            if observed_count
-                            else "OBSERVED_PATH_REFUSED"
-                            if observed_error
-                            # The root or the TAF has too little life left to
-                            # lend a confirmation: the scope waits for the
-                            # next P0 or the next issuance.
-                            else "CONFIRMATION_WINDOW_EXHAUSTED"
-                            if window_refusals
-                            else "NO_NEW_TAF_REVISION"
-                        ),
-                        **(
-                            {"observed_reason": observed_error}
-                            if observed_error else {}
-                        ),
-                        **(
-                            {"artifact_bridge_stale": artifact_bridge_stale}
-                            if artifact_bridge_stale else {}
-                        ),
-                        **(
-                            {"window_refused_revision_ids": window_refusals[:8]}
-                            if window_refusals else {}
-                        ),
-                        "write_count": observed_count,
-                        "writes": observed_writes,
-                    })
-                    continue
-                if len(exact_artifacts) != 1:
-                    raise ContractError(
-                        "resident_taf_artifact_exact_scope_ambiguous"
-                    )
-                artifact = exact_artifacts[0]
-                # The next line already says what a missing axis is, but it
-                # could never be reached: ``json.loads("")`` raises before
-                # the isinstance test, so a root without the key failed as a
-                # JSONDecodeError with no station, no field and no remedy in
-                # it.  ZGSZ is one of the two stations that has a TAF
-                # artifact at all, so this took the whole stage
-                # BLOCKED_FAIL_CLOSED on every cycle.
-                # Derive the axis from the intervals when the root does not
-                # publish it.  ``bucket_centers_c_json`` stopped appearing in
-                # P0 lineage when compilation moved to the native ensemble on
-                # 2026-08-01 -- that path writes the intervals and computes
-                # centers only inside its own forward-prediction record -- and
-                # P0-M has read the key ever since.  ``json.loads("")`` raised
-                # before the missing-key test below could speak, so the stage
-                # fail-closed every cycle with a JSONDecodeError naming no
-                # station and no field.  P0-M's last checkpoint before today
-                # was 2026-07-30, the day before the key went away.
-                #
-                # Deriving rather than repairing P0: the centre of an interval
-                # is a function of the interval, so nothing is invented here,
-                # and adding a key to P0's lineage would move its content hash
-                # for every consumer of a root that is otherwise unchanged.
-                centers_text = root.lineage.get("bucket_centers_c_json")
-                if centers_text:
-                    try:
-                        centers_raw = json.loads(str(centers_text))
-                    except (TypeError, ValueError, json.JSONDecodeError) as exc:
-                        raise ContractError(
-                            "resident_taf_bucket_centers_invalid"
-                        ) from exc
-                else:
-                    intervals_text = root.lineage.get(
-                        "bucket_intervals_c_json"
-                    )
-                    if not intervals_text:
-                        raise ContractError(
-                            "resident_taf_bucket_centers_missing"
-                        )
-                    try:
-                        intervals_map = json.loads(str(intervals_text))
-                    except (TypeError, ValueError, json.JSONDecodeError) as exc:
-                        raise ContractError(
-                            "resident_taf_bucket_intervals_invalid"
-                        ) from exc
-                    if not isinstance(intervals_map, Mapping):
-                        raise ContractError(
-                            "resident_taf_bucket_intervals_invalid"
-                        )
-                    centers_raw = {}
-                    for bucket, bounds in intervals_map.items():
-                        try:
-                            lower, upper = bounds[0], bounds[1]
-                        except (TypeError, IndexError, KeyError) as exc:
-                            raise ContractError(
-                                "resident_taf_bucket_intervals_invalid"
-                            ) from exc
-                        # The same half-degree convention the native
-                        # compiler uses for its own open-ended edges.
-                        if lower is None and upper is None:
-                            raise ContractError(
-                                "resident_taf_bucket_intervals_invalid"
-                            )
-                        if lower is None:
-                            centers_raw[str(bucket)] = float(upper) - 0.5
-                        elif upper is None:
-                            centers_raw[str(bucket)] = float(lower) + 0.5
-                        else:
-                            centers_raw[str(bucket)] = (
-                                float(lower) + float(upper)
-                            ) / 2.0
-                if not isinstance(centers_raw, Mapping) or not centers_raw:
-                    raise ContractError("resident_taf_bucket_centers_missing")
-                revisions = validate_forecast_revision_chain(
-                    capture["forecast_revision"] for capture in captures
-                )
-                capture_by_id = {
-                    str(capture["forecast_revision"]["revision_id"]): capture
-                    for capture in captures
-                }
-                taf_confirmed = [
-                    item for item in envelopes
-                    if item.stage == "P0-M"
-                    and str(
-                        item.lineage.get("p0_root_checkpoint_id") or ""
-                    ) == root.checkpoint_id
-                ]
-                # Applied means "this TAF text already spoke under this
-                # root".  The identity is the source object hash, not the
-                # revision id: revision ids are re-keyed whenever the inbox
-                # chain repair renumbers a scope, and matching on them made
-                # every committed envelope look unapplied after one repair --
-                # the re-application then collided with its own committed
-                # decision instant across all 43 stations on 2026-08-20.
-                applied = {
-                    str(
-                        item.lineage.get("forecast_source_object_sha256")
-                        or ""
-                    )
-                    for item in taf_confirmed
-                }
-                applied_by_source: dict[str, ProbabilityEnvelope] = {}
-                for item in taf_confirmed:
-                    source_sha = str(
-                        item.lineage.get("forecast_source_object_sha256")
-                        or ""
-                    )
-                    if not source_sha:
-                        raise ContractError(
-                            "resident_taf_revision_lineage_missing"
-                        )
-                    previous_item = applied_by_source.get(source_sha)
-                    if previous_item is not None and (
-                        previous_item.content_sha256 != item.content_sha256
-                    ):
-                        raise ContractError(
-                            "resident_taf_revision_content_conflict"
-                        )
-                    applied_by_source[source_sha] = item
-                predecessor = taf_confirmed[-1] if taf_confirmed else root
-                pending_envelopes: list[
-                    tuple[ProbabilityEnvelope, str]
-                ] = []
-                for revision in revisions:
-                    capture = capture_by_id[revision.revision_id]
-                    # A bulletin with no TX group cannot be applied through
-                    # a TX-conditioned likelihood: the artifact's whole
-                    # correction is a function of the forecaster's number,
-                    # and there is no number.  Twenty-eight of the fleet's
-                    # forty-five stations issue TAFs like that routinely
-                    # (LEMD 2026-08-27 is the specimen), so this is the
-                    # ordinary case, not a contract breach -- but it
-                    # reached ``compile_taf_revision_proof``, whose
-                    # ``taf_tx_c`` guard raised, and one station took the
-                    # whole P0-M stage to BLOCKED_FAIL_CLOSED for eleven
-                    # hours.  That is the same lesson the no-artifact path
-                    # above already carries in its own comment; this is its
-                    # second site.  Skip the revision and let the scope keep
-                    # whatever seats its other bulletins earned.
-                    tx_fields = capture.get("taf_fields")
-                    tx_value = (
-                        tx_fields.get("tx_c")
-                        if isinstance(tx_fields, Mapping) else None
-                    )
-                    try:
-                        tx_usable = math.isfinite(float(tx_value))
-                    except (TypeError, ValueError):
-                        tx_usable = False
-                    if not tx_usable:
-                        skipped_no_tx_revision_count += 1
-                        continue
-                    if revision.source_object_sha256 in applied:
-                        existing_item = applied_by_source[
-                            revision.source_object_sha256
-                        ]
-                        fields = capture.get("taf_fields")
-                        if not isinstance(fields, Mapping):
-                            raise ContractError("resident_taf_fields_invalid")
-                        try:
-                            wind_normalized = min(
-                                1.0,
-                                float(fields["wind_speed_mps"])
-                                / artifact.wind_speed_cap_mps,
-                            )
-                            fingerprint = {
-                                "source_object_sha256": revision.source_object_sha256,
-                                "tx_c": float(fields["tx_c"]),
-                                "cloud_cover_fraction": float(
-                                    fields["cloud_cover_fraction"]
-                                ),
-                                "precipitation_probability": float(
-                                    fields["precipitation_probability"]
-                                ),
-                                "wind_speed_normalized": wind_normalized,
-                            }
-                        except (KeyError, TypeError, ValueError) as exc:
-                            raise ContractError(
-                                "resident_taf_fields_invalid"
-                            ) from exc
-                        existing_fingerprint = {
-                            "source_object_sha256": str(
-                                existing_item.lineage.get(
-                                    "forecast_source_object_sha256"
-                                )
-                                or ""
-                            ),
-                            "tx_c": float(
-                                existing_item.lineage.get("taf_tx_c") or "nan"
-                            ),
-                            "cloud_cover_fraction": float(
-                                existing_item.lineage.get(
-                                    "taf_cloud_cover_fraction"
-                                )
-                                or "nan"
-                            ),
-                            "precipitation_probability": float(
-                                existing_item.lineage.get(
-                                    "taf_precipitation_probability"
-                                )
-                                or "nan"
-                            ),
-                            "wind_speed_normalized": float(
-                                existing_item.lineage.get(
-                                    "taf_wind_speed_normalized"
-                                )
-                                or "nan"
-                            ),
-                        }
-                        if any(
-                            not math.isfinite(float(value))
-                            for value in existing_fingerprint.values()
-                            if isinstance(value, (int, float))
-                        ) or (
-                            fingerprint["source_object_sha256"]
-                            != existing_fingerprint["source_object_sha256"]
-                        ) or any(
-                            abs(
-                                float(fingerprint[key])
-                                - float(existing_fingerprint[key])
-                            )
-                            > 1e-12
-                            for key in (
-                                "tx_c",
-                                "cloud_cover_fraction",
-                                "precipitation_probability",
-                                "wind_speed_normalized",
-                            )
-                        ):
-                            raise ContractError(
-                                "resident_taf_revision_content_conflict"
-                            )
-                        continue
-                    previous_time = datetime.fromisoformat(
-                        predecessor.decision_at_utc.replace("Z", "+00:00")
-                    ).astimezone(timezone.utc)
-                    received_time = datetime.fromisoformat(
-                        revision.received_at_utc.replace("Z", "+00:00")
-                    ).astimezone(timezone.utc)
-                    decision_time = max(previous_time, received_time)
-                    decision_time = decision_time.replace(microsecond=0)
-                    if decision_time <= previous_time:
-                        decision_time = previous_time.replace(microsecond=0)
-                        decision_time = decision_time + timedelta(seconds=1)
-                    decision_at = decision_time.isoformat().replace("+00:00", "Z")
-                    if decision_at > as_of_utc:
-                        continue
-                    # Same ceiling as the observed path: neither past the root
-                    # nor past the forecaster's own validity.
-                    calibrated_window_until = _p0m_window_until(
-                        decision_at, root=root, revision=revision
-                    )
-                    if calibrated_window_until is None:
-                        continue
                     proof = compile_taf_revision_proof(
                         predecessor,
                         p0_root=root,
@@ -14970,89 +14751,229 @@ class TargetProductionWorker:
                         taf_fields=capture["taf_fields"],
                         decision_at_utc=decision_at,
                     )
-                    calibrated_excluded, calibrated_high = (
-                        self._p0m_observed_hard_bound(
-                            station_id=station,
-                            event_date=day,
-                            as_of_utc=decision_at,
-                            root=root,
-                        )
-                    )
-                    envelope = materialize_p0m(
+                    return materialize_p0m(
                         predecessor,
                         p0_root=root,
                         taf_revision_artifact=artifact,
                         taf_revision_proof=proof,
                         decision_at_utc=decision_at,
-                        fresh_until_utc=calibrated_window_until,
+                        fresh_until_utc=window_until,
                         bridge_sha256=root.bridge_sha256,
                         revision=predecessor.stage == "P0-M",
-                        observed_hard_excluded_buckets=calibrated_excluded,
-                        observed_running_high_c=calibrated_high,
+                        observed_hard_excluded_buckets=observed_excluded,
+                        observed_running_high_c=observed_high,
                         # v4: charter 61 -- the observed-high hard bound
                         # joined this path's arithmetic.
                         posterior_version="p0m_taf_physical_confirmation_v4",
-                        # This stage's own residual table; identity until its
-                        # settled history clears the hurdles, and identity
-                        # leaves the posterior byte-identical.
-                        #
-                        # ``conn`` was a NameError here: this scope has no
-                        # such binding and neither does the module.  P0-M
-                        # returns early on an empty TAF inbox almost every
-                        # cycle, so the line had never been reached to raise
-                        # it -- which is also why no P0-M envelope has ever
-                        # carried a band receipt.
-                        band_table=load_band_table_with_axis(
-                            self.commit_conn, stage="P0-M"
-                        ),
-                        center_width=load_center_width(
-                            self.commit_conn, stage="P0-M"
-                        ),
-                        center_width_floor_rungs=load_center_width_floor(
-                            self.commit_conn, stage="P0-M"
-                        ),
-                        center_width_tiers=load_center_width_tiers(
-                            self.commit_conn, stage="P0-M"
-                        ),
-                        center_width_taf_cells=load_center_width_cells(
-                            self.commit_conn, stage="P0-M"
-                        ),
-                        station_width=load_station_width(
-                            self.commit_conn, stage="P0-M"
-                        ),
-                        fleet_regime=load_regime_shift(
-                            self.commit_conn,
-                            stage="P0-M",
-                            event_date=day,
-                            as_of_utc=decision_at,
-                        ),
+                        **p0m_serving_tables,
+                        fleet_regime=fleet_regime,
                     )
-                    pending_envelopes.append((envelope, decision_at))
-                    predecessor = envelope
-                writes = []
-                with _writer_transaction(
-                    self.commit_conn,
-                    savepoint="resident_taf_scope",
-                ):
-                    for envelope, decision_at in pending_envelopes:
-                        writes.append(insert_probability_envelope(
-                            self.commit_conn,
-                            envelope,
-                            created_at_utc=decision_at,
-                        ))
-                write_count = sum(
-                    1 for write in writes if write.get("wrote") is True
+
+                for revision in new_revisions:
+                    # The forecast's own arrival is the moment, and it has to
+                    # be strictly later than what it follows.  A revision that
+                    # was in hand before its predecessor was minted is seated
+                    # at the predecessor's clock plus a second; the chain only
+                    # needs its order, and the information order was settled
+                    # by the seatability gate.
+                    previous_time = datetime.fromisoformat(
+                        observed_predecessor.decision_at_utc.replace(
+                            "Z", "+00:00"
+                        )
+                    ).astimezone(timezone.utc)
+                    received_time = datetime.fromisoformat(
+                        revision.received_at_utc.replace("Z", "+00:00")
+                    ).astimezone(timezone.utc)
+                    decision_time = max(previous_time, received_time)
+                    decision_time = decision_time.replace(microsecond=0)
+                    if decision_time <= previous_time:
+                        decision_time = previous_time.replace(
+                            microsecond=0
+                        ) + timedelta(seconds=1)
+                    decision_at = decision_time.isoformat().replace(
+                        "+00:00", "Z"
+                    )
+                    if (
+                        decision_at <= observed_predecessor.decision_at_utc
+                        or decision_at > as_of_utc
+                    ):
+                        # Not this cycle's to date at its arrival -- the root
+                        # was minted after it.  The rebuild below seats it now
+                        # if it is the newest word.
+                        continue
+                    if calibrated:
+                        observed = _observe(
+                            revision, decision_at, observed_predecessor
+                        )
+                    else:
+                        try:
+                            observed = _observe(
+                                revision, decision_at, observed_predecessor
+                            )
+                        except Exception as exc:  # noqa: BLE001
+                            # The identity path is additive: a scope it cannot
+                            # serve falls back to silence rather than failing
+                            # the stage for every other scope (it did, twice,
+                            # on first run).
+                            observed_error = f"ContractError:{exc}"[:200]
+                            break
+                    if observed is None:
+                        continue
+                    observed_pending.append((observed, decision_at))
+                    observed_predecessor = observed
+                # The root being served carries the forecaster's newest valid
+                # word, rebuilt now when the model moved under it.
+                replay_target = gated_shape["replay_target"]
+                if calibrated:
+                    replay_target = next(
+                        (
+                            capture
+                            for capture in gated_shape["replay_candidates"]
+                            if _tx_of(capture) is not None
+                        ),
+                        None,
+                    )
+                replay_revision = (
+                    ForecastRevision.from_mapping(
+                        replay_target["forecast_revision"]
+                    )
+                    if replay_target is not None
+                    else None
                 )
+                if (
+                    observed_error is None
+                    and replay_revision is not None
+                    and replay_revision.source_object_sha256
+                    not in seen_revisions
+                    and replay_revision.source_object_sha256
+                    not in {
+                        str(
+                            envelope.lineage.get(
+                                "forecast_source_object_sha256"
+                            ) or ""
+                        )
+                        for envelope, _decision in observed_pending
+                    }
+                ):
+                    # Only where trading can still happen.
+                    try:
+                        replay_day_state = event_day_window(
+                            day,
+                            as_of_utc=as_of_utc,
+                            target_timezone=root.settlement_timezone,
+                        )["state"]
+                    except Exception:  # noqa: BLE001 -- unreadable is not replayable
+                        replay_day_state = "closed"
+                    if replay_day_state not in {"open", "not_started"}:
+                        replay_skip_state = "REPLAY_SKIPPED_SETTLED_DAY"
+                    elif replays_this_cycle >= MAX_P0M_REPLAYS_PER_CYCLE:
+                        replays_deferred.append(f"{station}|{day}")
+                        replay_skip_state = "REPLAY_DEFERRED_CYCLE_BUDGET"
+                    else:
+                        replays_this_cycle += 1
+                        # Now: the forecaster spoke once; what happened just
+                        # now is that the model moved and this confirmation was
+                        # re-made against the forecast being served.  The
+                        # text's own issued/received clocks stay on the
+                        # revision; only the computation is dated now.
+                        decision_at = _p0m_replay_decision_at(
+                            as_of_utc,
+                            after_decision_utc=(
+                                observed_predecessor.decision_at_utc
+                            ),
+                        )
+                        if calibrated:
+                            observed = _observe(
+                                replay_revision,
+                                decision_at,
+                                observed_predecessor,
+                            )
+                        else:
+                            try:
+                                observed = _observe(
+                                    replay_revision,
+                                    decision_at,
+                                    observed_predecessor,
+                                )
+                            except Exception as exc:  # noqa: BLE001
+                                observed_error = f"ContractError:{exc}"[:200]
+                                observed = None
+                        if observed is not None:
+                            observed_pending.append((observed, decision_at))
+                            observed_predecessor = observed
+                observed_writes = []
+                if observed_pending and observed_error is None:
+                    with _writer_transaction(
+                        self.commit_conn,
+                        savepoint=(
+                            "resident_taf_scope"
+                            if calibrated
+                            else "resident_taf_observed_scope"
+                        ),
+                    ):
+                        for envelope, decision_at in observed_pending:
+                            observed_writes.append(
+                                insert_probability_envelope(
+                                    self.commit_conn,
+                                    envelope,
+                                    created_at_utc=decision_at,
+                                )
+                            )
+                observed_count = sum(
+                    1 for write in observed_writes
+                    if write.get("wrote") is True
+                )
+                for _envelope, written_at in (
+                    observed_pending if observed_writes else ()
+                ):
+                    if p0m_stage_clock_utc is None or timestamp_lt(
+                        p0m_stage_clock_utc, written_at
+                    ):
+                        p0m_stage_clock_utc = written_at
+                if (
+                    not observed_count
+                    and observed_error is None
+                    and replay_skip_state is not None
+                ):
+                    receipts.append(self._p0m_no_op_receipt(
+                        station_id=station,
+                        event_date=day,
+                        state=replay_skip_state,
+                    ))
+                    continue
                 receipts.append({
                     "station_id": station,
                     "event_date": day,
                     "state": (
-                        "COMMITTED"
-                        if write_count
+                        (
+                            "COMMITTED"
+                            if calibrated
+                            else "COMMITTED_OBSERVED_NO_ARTIFACT"
+                        )
+                        if observed_count
+                        else "OBSERVED_PATH_REFUSED"
+                        if observed_error
+                        # The root or the TAF has too little life left to lend
+                        # a confirmation: the scope waits for the next P0 or
+                        # the next issuance.
+                        else "CONFIRMATION_WINDOW_EXHAUSTED"
+                        if window_refusals
                         else "NO_NEW_TAF_REVISION"
                     ),
-                    "write_count": write_count,
-                    "writes": writes,
+                    **(
+                        {"observed_reason": observed_error}
+                        if observed_error else {}
+                    ),
+                    **(
+                        {"artifact_bridge_stale": artifact_bridge_stale}
+                        if artifact_bridge_stale else {}
+                    ),
+                    **(
+                        {"window_refused_revision_ids": window_refusals[:8]}
+                        if window_refusals else {}
+                    ),
+                    "write_count": observed_count,
+                    "writes": observed_writes,
                 })
             except Exception as exc:
                 blockers.append({
@@ -15827,50 +15748,6 @@ class TargetProductionWorker:
             "orders_submitted": 0,
         }
 
-    @staticmethod
-    def _same_p0_forecast(
-        root_checkpoint_id: str,
-        latest_p0: Any,
-        envelopes: Sequence[Any],
-    ) -> bool:
-        """Whether a higher stage's P0 root still states today's forecast.
-
-        Identity is not the question.  A P0 envelope is re-minted on every
-        cycle -- its lineage carries a conditional future temperature curve
-        that legitimately moves as the event approaches, so the checkpoint id
-        changes with it -- while the forecast itself changes only when new
-        model data arrives.  Measured on 2026-09-01: 47 committed P0
-        envelopes per station, 8 to 10 distinct probability vectors.
-
-        Comparing ids therefore asks "was this rebuilt in the last ten
-        minutes", and P0-M cannot answer yes: it is rebuilt when a TAF
-        revision arrives, twice in a day.  Every listing-day scope failed
-        resident_p0m_replay_required on every cycle for that reason, and the
-        current day only escapes because a matching P1 short-circuits the
-        check before P0-M is examined.
-
-        What the guard is for is a higher stage built on a forecast that has
-        since been superseded.  That is the comparison made here: the root's
-        own probabilities against the ones being served.  An unknown root is
-        not vouched for -- it returns False and the caller refuses, which is
-        the direction that fails closed.
-        """
-
-        if not root_checkpoint_id:
-            return False
-        root = next(
-            (
-                item
-                for item in envelopes
-                if item.stage == "P0"
-                and item.checkpoint_id == root_checkpoint_id
-            ),
-            None,
-        )
-        if root is None:
-            return False
-        return dict(root.probabilities) == dict(latest_p0.probabilities)
-
     def _replay_root_mismatch_reason(
         self,
         *,
@@ -15878,7 +15755,31 @@ class TargetProductionWorker:
         event_date: str,
         as_of_utc: str,
     ) -> str | None:
-        """Reject consumption of a stale higher-stage branch after P0 refresh."""
+        """Refuse to trade a higher stage that has not caught up with its root.
+
+        The target is resolved by the compiler's own resolver
+        (``select_p1_replay_base``): the newest P0, and on it the newest P0-M
+        if one exists.  A P1 is current only when both of its parents -- the
+        direct prediction root and the P0 ancestor, each by checkpoint and by
+        content -- are that target (``p1_stands_on_replay_base``); a P0-M is
+        current only when its root is exactly the newest P0.
+
+        Until 2026-09-13 this read the P0 ancestor alone, so a P1 still on a
+        P0-M the lane had just replaced passed as current, and it excused any
+        higher stage whose P0 had the same bucket probabilities as the newest
+        one.  That excuse predates re-rooting in the same cycle: it existed
+        because a confirmation could lag its root for hours.  Now the chain
+        re-roots before this runs, and the decision loop's clock is taken
+        after the chain has written, so a mismatch here means the rebuild did
+        not happen -- and equal probabilities are not equal inputs: 444 of
+        2,834 P0 transitions on 2026-09-11..12 kept the numbers and moved the
+        future temperature curve that P1's remaining-warming layer reads.
+
+        When no P1 exists, an older P0-M branch still blocks: stage precedence
+        would serve it, and it is built on a superseded root.  When a P1 on
+        the current target exists, an older P0-M is irrelevant -- P1 is what
+        is served.
+        """
 
         if self.conn is None:
             return "resident_probability_read_only_connection_missing"
@@ -15904,27 +15805,51 @@ class TargetProductionWorker:
         if len(latest_p0_rows) != 1:
             return "resident_p0_scope_ambiguous"
         latest_p0 = latest_p0_rows[0]
-        # P1 is the final SSOT. Once a current P1 is bound to the latest P0
-        # root, an older optional P0-M branch is irrelevant and must not
-        # block the decision. Only inspect P0-M when P1 has not taken over.
-        for stage, root_key, reason in (
-            ("P1", "p0_root_checkpoint_id", "resident_p1_replay_required"),
-            ("P0-M", "p0_root_checkpoint_id", "resident_p0m_replay_required"),
-        ):
-            rows = [row for row in envelopes if row.stage == stage]
-            if not rows:
-                continue
-            latest_at = max(row.decision_at_utc for row in rows)
-            latest_rows = [row for row in rows if row.decision_at_utc == latest_at]
-            if len(latest_rows) != 1:
-                return f"resident_{stage.lower().replace('-', '')}_scope_ambiguous"
-            root_id = str(latest_rows[0].lineage.get(root_key) or "")
-            if root_id != latest_p0.checkpoint_id and not (
-                self._same_p0_forecast(root_id, latest_p0, envelopes)
+        p1_rows = [row for row in envelopes if row.stage == "P1"]
+        if p1_rows:
+            latest_p1_at = max(row.decision_at_utc for row in p1_rows)
+            latest_p1 = [
+                row for row in p1_rows if row.decision_at_utc == latest_p1_at
+            ]
+            if len(latest_p1) != 1:
+                return "resident_p1_scope_ambiguous"
+            try:
+                base, _predecessor, _consumed, _rebasing = (
+                    select_p1_replay_base(envelopes, as_of_utc=as_of_utc)
+                )
+            except ContractError:
+                return "resident_p1_replay_required"
+            if base.stage == "P0":
+                p0_root_content = base.content_sha256
+            else:
+                p0_root_content = str(
+                    base.lineage.get("p0_root_content_sha256") or ""
+                ).lower()
+            if p1_stands_on_replay_base(
+                latest_p1[0],
+                base=base,
+                p0_root_checkpoint_id=latest_p0.checkpoint_id,
+                p0_root_content_sha256=p0_root_content,
             ):
-                return reason
-            if stage == "P1":
                 return None
+            return "resident_p1_replay_required"
+        p0m_rows = [row for row in envelopes if row.stage == "P0-M"]
+        if not p0m_rows:
+            return None
+        latest_p0m_at = max(row.decision_at_utc for row in p0m_rows)
+        latest_p0m = [
+            row for row in p0m_rows if row.decision_at_utc == latest_p0m_at
+        ]
+        if len(latest_p0m) != 1:
+            return "resident_p0m_scope_ambiguous"
+        lineage = latest_p0m[0].lineage
+        if (
+            str(lineage.get("p0_root_checkpoint_id") or "")
+            != latest_p0.checkpoint_id
+            or str(lineage.get("p0_root_content_sha256") or "").lower()
+            != latest_p0.content_sha256
+        ):
+            return "resident_p0m_replay_required"
         return None
 
     def _portfolio_quota(

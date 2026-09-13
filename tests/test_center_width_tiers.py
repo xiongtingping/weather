@@ -177,7 +177,12 @@ def test_every_serving_face_carries_the_tiers() -> None:
     assert "center_width_tiers: Mapping[str, Any] | None = None," in p1
     assert "center_width_tiers=center_width_tiers," in p1
     worker = read("bayes_basket_target/production_worker.py")
-    assert worker.count("load_center_width_tiers(") == 3
+    # P1's compile, and P0-M's one table read a pass that both operators
+    # (identity and calibrated) share since the two seating plans became one
+    # on 2026-09-13 -- each face still passes the tiers through.
+    assert worker.count("load_center_width_tiers(") == 2
+    assert '"center_width_tiers": load_center_width_tiers(' in worker
+    assert worker.count("**p0m_serving_tables,") == 2
     ingress = read("bayes_basket_target/canonical_ingress.py")
     assert 'center_width_tiers=load_center_width_tiers(conn, stage="P1"),' in ingress
     p0 = read("bayes_basket_target/native_ensemble_p0.py")

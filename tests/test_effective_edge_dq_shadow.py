@@ -45,7 +45,10 @@ def _book(path: Path) -> sqlite3.Connection:
     conn.execute(
         "CREATE TABLE basket_probability_bridge_history ("
         " history_id TEXT, station_id TEXT, event_date TEXT, stage TEXT,"
-        " decision_at_utc TEXT, state TEXT, checkpoint_id TEXT)"
+        " decision_at_utc TEXT, state TEXT, checkpoint_id TEXT,"
+        # Production's table carries the commit clock (NOT NULL); the
+        # convergence loader reads it as the knowable time.
+        " created_at_utc TEXT)"
     )
     conn.execute(
         "CREATE TABLE basket_official_ws_snapshot ("
@@ -85,8 +88,9 @@ def _seat(conn, pid, *, station, day, decided, claim, asks, hit, stage="P0"):
 def _prior(conn, station, day, decided_prior, book_at, asks):
     history_id = f"h-{station}-{decided_prior}"
     conn.execute(
-        "INSERT INTO basket_probability_bridge_history VALUES(?,?,?,?,?,?,?)",
-        (history_id, station, day, "P0", decided_prior, "COMMITTED", "cp"),
+        "INSERT INTO basket_probability_bridge_history VALUES(?,?,?,?,?,?,?,?)",
+        (history_id, station, day, "P0", decided_prior, "COMMITTED", "cp",
+         decided_prior),
     )
     for bucket in WINDOW:
         conn.execute(

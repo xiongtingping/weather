@@ -220,11 +220,11 @@ def test_p0_and_off_and_no_evidence_leave_every_window_alone(monkeypatch):
 
 def test_the_loader_pairs_the_earlier_checkpoint_with_the_book_it_compiled_on(tmp_path):
     conn = sqlite3.connect(tmp_path / "e.db", isolation_level=None)
-    conn.execute("CREATE TABLE basket_probability_bridge_history (history_id, station_id, event_date, stage, decision_at_utc, state)")
+    conn.execute("CREATE TABLE basket_probability_bridge_history (history_id, station_id, event_date, stage, decision_at_utc, state, created_at_utc)")
     conn.execute("CREATE TABLE basket_probability_bridge_bucket_probability (history_id, bucket, probability)")
     conn.execute("CREATE TABLE basket_official_ws_snapshot (station_id, event_date, observed_at, state, buckets_json)")
-    conn.execute("INSERT INTO basket_probability_bridge_history VALUES('h1','SBGR','2026-09-05','P0-M','2026-09-04T22:00:00.000Z','COMMITTED')")
-    conn.execute("INSERT INTO basket_probability_bridge_history VALUES('h2','SBGR','2026-09-05','P1','2026-09-05T06:00:00.000Z','COMMITTED')")
+    conn.execute("INSERT INTO basket_probability_bridge_history VALUES('h1','SBGR','2026-09-05','P0-M','2026-09-04T22:00:00.000Z','COMMITTED','2026-09-04T22:00:00.000Z')")
+    conn.execute("INSERT INTO basket_probability_bridge_history VALUES('h2','SBGR','2026-09-05','P1','2026-09-05T06:00:00.000Z','COMMITTED','2026-09-05T06:00:00.000Z')")
     for bucket, p in (("27°C", 0.15), ("28°C", 0.20), ("29°C", 0.15)):
         conn.execute("INSERT INTO basket_probability_bridge_bucket_probability VALUES('h1',?,?)", (bucket, p))
         conn.execute("INSERT INTO basket_probability_bridge_bucket_probability VALUES('h2',?,?)", (bucket, p + 0.05))
