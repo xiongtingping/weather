@@ -1352,12 +1352,33 @@ def _cell_robustness(
     }
 
 
+def forward_window_split(
+    days: Sequence[str],
+) -> tuple[list[str], list[str]]:
+    """The fit days and the scoring days of the forward check, disjoint.
+
+    The trailing ``FORWARD_WINDOW_FRACTION`` of the days is scored; only the
+    days before it may fit the factors being scored.  Until 2026-09-13 the
+    factors were fitted on every day and the trailing 40% of those same days
+    scored them (model-layer review R4: 8 of 8 "forward" days were fit days),
+    which is the in-sample number charter 60's forward NLL was meant not to
+    be.
+    """
+
+    ordered = sorted(str(day) for day in days)
+    if not ordered:
+        return [], []
+    cut = max(1, int(len(ordered) * (1.0 - FORWARD_WINDOW_FRACTION)))
+    return ordered[:cut], ordered[cut:]
+
+
 def _forward_nll_delta(
     by_day: Mapping[str, list[list[tuple[float, int]]]],
     *,
     base_factors: Mapping[tuple[float, float], float],
     candidate_factors: Mapping[tuple[float, float], float],
     axis: str = BAND_AXIS_CLAIM,
+    score_days: Sequence[str] | None = None,
 ) -> float:
     """NLL improvement of candidate over base on the trailing window.
 
@@ -1381,8 +1402,11 @@ def _forward_nll_delta(
     days = sorted(by_day)
     if not days:
         return 0.0
-    cut = max(1, int(len(days) * (1.0 - FORWARD_WINDOW_FRACTION)))
-    window = days[cut:] or days[-1:]
+    if score_days is None:
+        cut = max(1, int(len(days) * (1.0 - FORWARD_WINDOW_FRACTION)))
+        window = days[cut:] or days[-1:]
+    else:
+        window = [day for day in sorted(score_days) if day in by_day]
 
     def nll(factors: Mapping[tuple[float, float], float]) -> float:
         total = 0.0
@@ -1718,6 +1742,59 @@ def fit_band_reliability_table(
     factors: dict[tuple[float, float], float] = {
         band: 1.0 for band in cells
     }
+    # The forward check's own fit.  Same rule, same bootstrap, but only the
+    # days before the scoring window: a cell is admitted when the factor it
+    # would have been given from those days alone improves NLL on days it
+    # never saw.  The factor then SERVED is still the full-sample one --
+    # admission is judged out of sample, the answer uses all the evidence.
+    forward_fit_days, forward_score_days = forward_window_split(serving)
+    forward_honest = bool(forward_fit_days) and bool(forward_score_days)
+    forward_serving_report = (
+        band_lane_report(
+            {day: serving[day] for day in forward_fit_days},
+            bands=cells,
+            bootstrap_samples=bootstrap_samples,
+            axis=axis_id,
+            interval_alpha=interval_alpha,
+            stations_by_day=(
+                {day: serving_stations[day] for day in forward_fit_days}
+                if serving_stations is not None else None
+            ),
+            min_cell_stations=MIN_CELL_STATIONS,
+        )
+        if not accumulating and forward_honest
+        else {}
+    )
+    # The gate lane's own archive may start before the serving evidence
+    # floor; every gate day before the scoring window is prior evidence.
+    forward_gate_days = [
+        day for day in sorted(gate)
+        if forward_score_days and day < forward_score_days[0]
+    ]
+    forward_gate_report = (
+        band_lane_report(
+            {day: gate[day] for day in forward_gate_days},
+            bands=cells,
+            bootstrap_samples=bootstrap_samples,
+            axis=axis_id,
+            interval_alpha=interval_alpha,
+        )
+        if not accumulating and forward_gate_days
+        else {}
+    )
+    forward_factors: dict[tuple[float, float], float] = {
+        band: 1.0 for band in cells
+    }
+
+    def _front_factor(
+        report: Mapping[tuple[float, float], Mapping[str, Any]],
+        band: tuple[float, float],
+    ) -> float | None:
+        cell = report.get(band)
+        if cell is None or not cell["qualified"]:
+            return None
+        return float(cell["conservative_factor"])
+
     if accumulating:
         # Hold, do not blank.  refit_all_stages activates whatever this
         # returns, so answering identity here retires a fitted table for the
@@ -1750,16 +1827,26 @@ def fit_band_reliability_table(
             basis[key] = "identity:" + str(cell["blocked_by"])
             continue
         if requires_forward_check:
-            candidate = dict(factors)
-            candidate[band] = cell["conservative_factor"]
+            front = _front_factor(forward_serving_report, band)
+            if front is None:
+                basis[key] = "identity:forward_fit_not_qualified"
+                continue
+            candidate = dict(forward_factors)
+            candidate[band] = front
             if _forward_nll_delta(
                 serving,
-                base_factors=factors,
+                base_factors=forward_factors,
                 candidate_factors=candidate,
                 axis=axis_id,
+                score_days=forward_score_days,
             ) <= 0:
                 basis[key] = "identity:forward_window_not_improved"
                 continue
+            forward_factors[band] = front
+        else:
+            front = _front_factor(forward_serving_report, band)
+            if front is not None:
+                forward_factors[band] = front
         factors[band] = cell["conservative_factor"]
         basis[key] = "serving_lane"
     for band in cells:
@@ -1780,14 +1867,28 @@ def fit_band_reliability_table(
             <= 0
         ):
             continue
-        candidate = dict(factors)
-        candidate[band] = gate_cell["conservative_factor"]
+        # Out of sample the same way: the transfer is judged on the factor
+        # the gate lane gives from the fit days alone, with its direction
+        # checked against the serving lane on those same days.
+        front_gate = _front_factor(forward_gate_report, band)
+        front_serving_cell = forward_serving_report.get(band)
+        if (
+            front_gate is None
+            or front_serving_cell is None
+            or (forward_gate_report[band]["ratio"] - 1.0)
+            * (front_serving_cell["ratio"] - 1.0) <= 0
+        ):
+            continue
+        candidate = dict(forward_factors)
+        candidate[band] = front_gate
         if _forward_nll_delta(
             serving,
-            base_factors=factors,
+            base_factors=forward_factors,
             candidate_factors=candidate,
             axis=axis_id,
+            score_days=forward_score_days,
         ) > 0:
+            forward_factors[band] = front_gate
             factors[band] = gate_cell["conservative_factor"]
             basis[str(list(band))] = "gate_transfer"
 
@@ -1810,10 +1911,11 @@ def fit_band_reliability_table(
         _forward_nll_delta(
             serving,
             base_factors=identity_factors,
-            candidate_factors=factors,
+            candidate_factors=forward_factors,
             axis=axis_id,
+            score_days=forward_score_days,
         )
-        if serving
+        if serving and forward_honest and not accumulating
         else 0.0
     )
     return {
@@ -1837,6 +1939,11 @@ def fit_band_reliability_table(
             "incumbent_veto": incumbent_veto,
             "accumulating": accumulating,
             "requires_forward_check": requires_forward_check,
+            "forward_fit_days": list(forward_fit_days),
+            "forward_score_days": list(forward_score_days),
+            "forward_factors": [
+                [list(band), forward_factors[band]] for band in cells
+            ],
             "basis": basis,
             "serving_report": _cell_json(serving_report),
             "gate_report": _cell_json(gate_report),
