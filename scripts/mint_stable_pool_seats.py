@@ -59,9 +59,11 @@ def main() -> int:
     parser.add_argument("--pause-seconds", type=float, default=1.0)
     parser.add_argument("--station", action="append", default=[])
     parser.add_argument(
-        "--all", action="store_true",
-        help="rebuild every station, not only those without a pool seat "
-             "(after the minted views change, 2026-09-14 pairs for four-system pools)",
+        "--minted-before",
+        help="also rebuild stations whose newest pool seat predates this UTC "
+             "instant -- for when the minted views change (2026-09-14: pairs "
+             "for four-system pools); resumable, since a rebuilt station's "
+             "newest seat then postdates it",
     )
     args = parser.parse_args()
     if P0_MEMBERSHIP_MODE != P0_MEMBERSHIP_MODE_STABLE_POOL:
@@ -77,14 +79,19 @@ def main() -> int:
             " AND decision_at_utc>=datetime('now','-2 days')"
         )
     })
-    minted = {
-        str(row[0]) for row in reader.execute(
-            "SELECT DISTINCT station_id FROM calibration_cross_native_ensemble_artifact"
-            " WHERE combination_method LIKE ?",
+    newest = {
+        str(row[0]): str(row[1]) for row in reader.execute(
+            "SELECT station_id, MAX(valid_from_utc) FROM calibration_cross_native_ensemble_artifact"
+            " WHERE combination_method LIKE ? GROUP BY station_id",
             (STABLE_POOL_WEIGHT_RULE + "%",),
         )
     }
-    todo = stations if args.all else [station for station in stations if station not in minted]
+    minted = set(newest)
+    todo = [
+        station for station in stations
+        if station not in minted
+        or (args.minted_before and newest[station] < args.minted_before)
+    ]
     print(json.dumps({"stations": len(stations), "already_minted": len(minted & set(stations)), "todo": len(todo)}), flush=True)
     started = time.monotonic()
     for station in todo:
@@ -115,7 +122,7 @@ def main() -> int:
             "lock_attempts": attempts, "lock_held_seconds": round(held, 2),
         }), flush=True)
         time.sleep(args.pause_seconds)
-    remaining = [] if args.all else [
+    remaining = [] if args.minted_before else [
         station for station in todo
         if not reader.execute(
             "SELECT 1 FROM calibration_cross_native_ensemble_artifact"
