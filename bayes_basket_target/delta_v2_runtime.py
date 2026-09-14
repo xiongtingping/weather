@@ -745,6 +745,9 @@ TARGET_PRICING_BASIS = (
 )
 if TARGET_PRICING_BASIS not in {"lane", "ask_depth"}:
     raise ValueError(f"unknown target pricing basis: {TARGET_PRICING_BASIS}")
+# Charter 127 (五): a completion that crosses is priced at its own crossing,
+# whatever stage prices the other candidates on the maker band.
+COMPLETION_CROSSING_PRICING_RULE_VERSION = "completion_priced_at_its_crossing_v1"
 TARGET_PRICING_LANE_STAGES = tuple(
     stage.strip()
     for stage in os.environ.get(
@@ -4496,11 +4499,38 @@ def _target_candidates(
         # the size the other two were bought at.  Any stage: completing the
         # seat is not opening one (charter 74) and not adding to a whole one
         # (charter 71).
+        # Charter 127 (五): a designated completion crosses, capped at the
+        # cash this candidate is authorized for -- so the candidate is priced
+        # where it crosses.  ``lane_levels`` is the maker band at P0-M
+        # (``TARGET_PRICING_LANE_STAGES``), always a tick or more under the
+        # offer an FOK must take, and every P0-M completion was refused
+        # ``completion_take_above_authorized_cost`` with nothing resting in
+        # its place: LFPB 2026-09-14 29C, seventeen compiles on 2026-09-13,
+        # 0.08/0.09 book, authorized at the band 0.40 against a 0.45 walk.
+        completion_crosses = CHARTER_127_COMPLETION_TAKE == "on"
         balance_candidate = _ladder_balance_candidate(
             ordered=ordered,
-            lane_levels=lane_levels,
-            lane_prices=lane_prices,
-            pricing_basis=pricing_basis,
+            lane_levels=(
+                {
+                    bucket: by_bucket[bucket].ask_levels
+                    for bucket in ordered
+                }
+                if completion_crosses else lane_levels
+            ),
+            lane_prices=(
+                {
+                    bucket: (
+                        float(by_bucket[bucket].ask_price)
+                        if by_bucket[bucket].ask_available else 0.0
+                    )
+                    for bucket in ordered
+                }
+                if completion_crosses else lane_prices
+            ),
+            pricing_basis=(
+                COMPLETION_CROSSING_PRICING_RULE_VERSION
+                if completion_crosses else pricing_basis
+            ),
             current_shares=current_shares,
             current_cost=current_cost,
             pending_shares=pending_shares,

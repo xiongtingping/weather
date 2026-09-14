@@ -106,6 +106,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     CHARTER_127_COMPLETION_TAKE as _CHARTER_127_COMPLETION_TAKE,
     TARGET_PRICING_BASIS as _TARGET_PRICING_BASIS,
     TARGET_PRICING_LANE_STAGES as _TARGET_PRICING_LANE_STAGES,
+    COMPLETION_CROSSING_PRICING_RULE_VERSION as _COMPLETION_CROSSING_PRICING,
     CENTRE_ANCHOR_DISTANCE_DECAY,
     CENTRE_ANCHOR_EDGE_TILT,
     CENTRE_ANCHOR_MIN_RUNG_SHARE,
@@ -2464,6 +2465,14 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     "completion_topup_rule": "short_legs_only",
     "completion_execution": (
         "limit_fok" if _CHARTER_127_COMPLETION_TAKE == "on" else "resting"
+    ),
+    # Charter 127 (五), 2026-09-14: the crossing completion is priced at its
+    # crossing at every stage.  At P0-M it was priced on the maker band and
+    # refused at every compile; the judge this book seats under is
+    # production's own solver, so the seats it produces change with it.
+    "completion_pricing": (
+        _COMPLETION_CROSSING_PRICING
+        if _CHARTER_127_COMPLETION_TAKE == "on" else "lane"
     ),
     **(
         {"target_pricing_lane_stages": "|".join(_TARGET_PRICING_LANE_STAGES)}
