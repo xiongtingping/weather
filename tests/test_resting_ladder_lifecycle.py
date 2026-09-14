@@ -328,6 +328,48 @@ def test_a_rung_the_venue_expired_ends_as_an_expiry_and_not_a_cancel(
     assert events[0]["event_payload"]["exchange_status"] == "expired"
 
 
+def test_a_venue_cancel_past_the_orders_own_expiry_is_the_expiry(
+    monkeypatch,
+) -> None:
+    """The venue says ``canceled`` for a GTD order that ran out.
+
+    LFPB 2026-09-14 29C: 13 shares at 0.08, GTD 2026-09-13T08:02:39Z
+    (epoch 1789286559), read ``canceled`` at 08:03:49Z with no cancel sent
+    and a book the rung rule would have kept it on.  Booked CANCEL_ACK, so
+    the lane's expiry count read zero for the whole GTD era.
+    """
+
+    events: list[dict] = []
+    monkeypatch.setattr(
+        lane, "record_order_event",
+        lambda conn, *, order_intent_id, event: events.append(event),
+    )
+    intent = {
+        "order_intent_id": "intent_gtd",
+        "requested_size": 13.0,
+        "filled_size": 0.0,
+        "filled_notional_usdc": 0.0,
+        "limit_price": 0.08,
+        "exchange_order_id": "0xe3a0",
+        "expiration": 1789286559,
+    }
+    view = lane._exchange_view({"ok": True, "status": "canceled"})
+    after = lane.sync_resting_intent(
+        None, intent=intent, view=view,
+        as_of_utc="2026-09-13T08:03:49.029Z", write=lambda: _NullContext(),
+    )
+    assert after["state"] == "expired"
+    assert [event["event_type"] for event in events] == ["EXPIRED"]
+    events.clear()
+    # Before its horizon the same answer is a cancel.
+    before = lane.sync_resting_intent(
+        None, intent=intent, view=view,
+        as_of_utc="2026-09-13T08:00:00Z", write=lambda: _NullContext(),
+    )
+    assert before["state"] == "cancelled"
+    assert [event["event_type"] for event in events] == ["CANCEL_ACK"]
+
+
 class _NullContext:
     def __enter__(self):
         return self

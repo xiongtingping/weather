@@ -231,8 +231,22 @@ def load_resting_maker_intents(
             "filled_size": float(row[13] or 0.0),
             "filled_notional_usdc": float(row[14] or 0.0),
             "reconciliation_state": str(row[15]),
+            # The GTD horizon the order was sent with (epoch seconds), so a
+            # venue "canceled" past it can be told from a cancel.
+            "expiration": intent.get("expiration"),
         })
     return out
+
+
+def _past_own_expiry(intent: Mapping[str, Any], as_of_utc: str) -> bool:
+    """Whether the order's own GTD horizon has passed at ``as_of_utc``."""
+
+    raw = intent.get("expiration")
+    try:
+        horizon = datetime.fromtimestamp(int(raw), timezone.utc)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return False
+    return _iso(as_of_utc) >= horizon
 
 
 def _exchange_view(lookup: Mapping[str, Any]) -> dict[str, Any]:
@@ -326,7 +340,15 @@ def sync_resting_intent(
             "state": "unknown",
             "reason": "cancel_inferred_from_not_found_declined",
         }
-    if status in _EXPIRED:
+    # The venue reports a GTD order that reached its horizon as ``canceled``,
+    # not ``expired``: LFPB 2026-09-14 29C, 13 @ 0.08, GTD 2026-09-13T08:02:39Z,
+    # read ``canceled`` at 08:03:49Z on a book (0.07/0.10) the rung rule kept
+    # it on, with no cancel sent.  So ``_EXPIRED`` never matched and every
+    # expiry was booked a cancel.  An exchange-said cancel on an order past its
+    # own expiry is the expiry; one before it stays a cancel.
+    if status in _EXPIRED or (
+        status in _CANCELLED and _past_own_expiry(intent, as_of_utc)
+    ):
         # The order reached its own horizon and the venue removed it.  Same
         # accounting as a cancel -- nothing rests, a partial is closed out --
         # and a different name, because the ledger has to be able to say
