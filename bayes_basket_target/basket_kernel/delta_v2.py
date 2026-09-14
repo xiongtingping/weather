@@ -1110,7 +1110,7 @@ SUPPORT_SCENARIO_FLOOR_RULE_VERSION = "support_floor_after_lift_v2_hit_roi_5pct"
 
 COMPLETION_VERDICT_SCHEMA = "delta_basket_completion_verdict_v1"
 COMPLETION_CLAIM_SHAPE_RULE_VERSION = "completion_claim_shape_v1"
-RESTING_RUNG_ACTION_RULE_VERSION = "bid_anchored_up_only_v1"
+RESTING_RUNG_ACTION_RULE_VERSION = "bid_anchored_up_only_v2"
 
 # The fill-shape correction.  Cells are keyed on ``ask / claim`` for the leg
 # that did NOT fill, and hold the measured realized-over-claimed ratio.
@@ -1179,6 +1179,45 @@ BASKET_STATE_PARTIAL = "partial"
 BASKET_STATE_EMPTY = "empty"
 
 
+def _floor_to_tick_v1(price: float, tick: float) -> float:
+    return round(math.floor((float(price) + EPS) / float(tick)) * float(tick), 12)
+
+
+def post_only_anchor_v1(*, bid: float, ask: float, tick: float) -> float | None:
+    """Where a post-only rung stands on this book: bid+1t, clamped under the ask.
+
+    Charter 110(一) puts the whole gap one tick over the bid and CLAMPS that
+    rung to the highest post-only price (ask-1t) when the spread is one tick
+    -- a rung on the ask is a take.  ``bid_anchored_ladder`` has clamped
+    since 2026-09-07; this is the same clamp for the rules that judge a
+    standing rung, so a rung is never "off its anchor" for sitting exactly
+    where the ladder put it.
+
+    Measured 2026-09-14 12:02:33Z: ZBAA 2026-09-16 31C rested at 0.26 on a
+    0.26/0.27 book and 32C at 0.31 on 0.31/0.32 -- the clamped rung both
+    times, the book unchanged since the post -- and ``resting_rung_action_v1``
+    read the unclamped bid+1t as an anchor the bid had "risen" to, so past
+    the dwell both were cancelled to be re-posted one tick higher: at the
+    ask, where post-only cannot post.  Six of the twenty-one lifecycle
+    cancels since 2026-09-13 were this shape, and the compile that was to
+    re-mint them would have minted the same clamped rung for the same
+    cancel five minutes later.
+
+    ``None`` with no bid or no tick (no anchor).  With no ask the anchor is
+    bid+1t unclamped, as before.
+    """
+
+    bid_value = float(bid)
+    tick_value = float(tick)
+    if bid_value <= EPS or tick_value <= EPS:
+        return None
+    anchor = _floor_to_tick_v1(bid_value + tick_value, tick_value)
+    ask_value = float(ask or 0.0)
+    if ask_value > EPS:
+        anchor = min(anchor, _floor_to_tick_v1(ask_value - tick_value, tick_value))
+    return anchor if anchor > EPS else None
+
+
 def resting_rung_action_v1(
     *,
     limit_price: float,
@@ -1190,6 +1229,11 @@ def resting_rung_action_v1(
     far_ticks: float = 3.0,
 ) -> dict[str, Any]:
     """Keep, follow up, or cancel one resting rung.  Charter 110(四).
+
+    v2 (2026-09-14): the anchor is ``post_only_anchor_v1`` -- bid+1t clamped
+    to the post-only ceiling, the same clamp the ladder posts with -- so a
+    rung the ladder clamped to the bid on a one-tick book rests on its
+    anchor instead of being read as one the bid rose past.
 
     The asymmetry is the whole rule.  A bid that RISES is the market coming
     to a leg, and the rung follows it up; a bid that FALLS is the market
@@ -1230,9 +1274,9 @@ def resting_rung_action_v1(
         "dwell_seconds": float(dwell_seconds),
         "far_ticks": float(far_ticks),
     }
-    if bid_value <= EPS or tick_value <= EPS:
+    anchor = post_only_anchor_v1(bid=bid_value, ask=ask, tick=tick_value)
+    if anchor is None:
         return {**out, "action": LEG_ACTION_CANCEL, "reason": "no_anchor"}
-    anchor = bid_value + tick_value
     out["anchor"] = anchor
     distance = abs(price - bid_value) / tick_value
     out["distance_ticks"] = distance
@@ -1468,14 +1512,16 @@ def execution_completion_verdict_v1(
         # No anchor: the bid has gone.  A rung left standing here is the one
         # a collapsing ask sweeps -- the loss concentrator, measured at
         # -0.0234 a share against -0.0067 for a rung the ask merely reaches.
-        if book["bid"] <= EPS or book["tick"] <= EPS:
+        anchor = post_only_anchor_v1(
+            bid=book["bid"], ask=book["ask"], tick=book["tick"],
+        )
+        if anchor is None:
             legs[bucket] = {
                 **entry,
                 "action": LEG_ACTION_CANCEL if standing else LEG_ACTION_NONE,
                 "reason": "no_anchor",
             }
             continue
-        anchor = book["bid"] + book["tick"]
         # Completion: cross to buy the leg the market would not sell us, but
         # only where the conditioned claim clears the ask, the completed
         # basket still costs under a share, and there is time for it to be

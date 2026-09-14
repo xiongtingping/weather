@@ -197,6 +197,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     # by production's lifecycle and by this lane's re-post alike.
     LEG_ACTION_CANCEL,
     LEG_ACTION_REPRICE_UP,
+    RESTING_RUNG_ACTION_RULE_VERSION,
     resting_rung_action_v1,
     CONSOLIDATION_TILT_FLOOR_VERSION,
     LEG_FLOOR_PRICE_BASIS,
@@ -2483,6 +2484,11 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     # -- the inverse of the rehash-without-behaviour trap, and the worse
     # half, since a shared digest is what lets two strategies be summed.
     "resting_lifecycle": RESTING_LIFECYCLE,
+    # Charter 110 (三), 2026-09-14: which per-rung rule that lifecycle ran.
+    # v2 clamps the anchor to the post-only ceiling, so a rung on a one-tick
+    # book rests instead of re-posting at the same price every dwell -- a
+    # different fill population, hence a different book.
+    "resting_rung_action_rule": RESTING_RUNG_ACTION_RULE_VERSION,
     # Charter 93 (2026-09-06): the in-support floor is zero of the premium
     # and re-read on the lifted legs.  Unconditional, since the standing
     # rule changed.

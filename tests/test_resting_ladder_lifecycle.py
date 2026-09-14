@@ -120,6 +120,40 @@ def test_the_verdict_keeps_rungs_on_the_ladder_and_cancels_the_ones_off_it() -> 
     assert (gone["action"], gone["reason"]) == ("cancel", "no_anchor")
 
 
+def test_a_rung_the_ladder_clamped_to_the_bid_is_on_its_anchor() -> None:
+    # ZBAA 2026-09-16 at 2026-09-14 12:02:33Z: 31C rested at 0.26 on a
+    # 0.26/0.27 book, unchanged since the post.  bid+1t is the ask there, so
+    # the ladder had clamped the rung to the bid (charter 110(一)); the rule
+    # read the unclamped bid+1t as an anchor the bid had risen to and
+    # cancelled the rung past the dwell, to re-post it on the ask.
+    from bayes_basket_target.delta_v2_runtime import bid_anchored_ladder
+
+    for bid, ask in ((0.26, 0.27), (0.31, 0.32), (0.07, 0.11), (0.50, 0.53)):
+        ladder = bid_anchored_ladder(bid=bid, ask=ask, tick=0.01)
+        assert len(ladder) == 1, (bid, ask, ladder)
+        verdict = lane.resting_rung_verdict(
+            limit_price=ladder[0], bid=bid, ask=ask, tick=0.01,
+            posted_at_utc=POSTED, as_of_utc="2026-09-06T12:00:00Z",
+            dwell_seconds=300.0, far_ticks=3.0,
+        )
+        assert (verdict["action"], verdict["reason"]) == ("keep", "on_anchor"), (
+            bid, ask, verdict,
+        )
+    # The follow-up still fires when the bid really moved up under a rung:
+    # posted on 0.25/0.26, the book now 0.26/0.27 -- and it follows to the
+    # clamped anchor, not onto the ask.
+    up = lane.resting_rung_verdict(
+        limit_price=0.25, bid=0.26, ask=0.27, tick=0.01,
+        posted_at_utc=POSTED, as_of_utc="2026-09-06T12:00:00Z",
+        dwell_seconds=300.0, far_ticks=3.0,
+    )
+    assert (up["action"], up["reason"], up["kernel_action"]) == (
+        "cancel", "bid_rose_past_dwell", "reprice_up",
+    )
+    assert up["ladder"] == [0.26]
+    assert lane.RESTING_REPRICE_RULE_VERSION == "bid_anchored_up_only_v2"
+
+
 def test_a_rung_on_the_ladder_is_synced_and_kept() -> None:
     conn = _ledger()
     client = _Client([_live()])
