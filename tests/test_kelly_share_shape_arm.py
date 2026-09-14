@@ -83,7 +83,8 @@ def test_a_shaped_split_spends_the_same_stake_on_a_different_ladder(shape) -> No
 def test_edge_weighted_keeps_the_basket_cost_and_never_breaks_the_floor() -> None:
     """The two invariants charter 72 and charter 93 each need one of."""
 
-    prices = {"a": 0.12, "b": 0.47, "c": 0.38}
+    # 0.82 a share: room above charter 93's 5% floor for a tilt to spend.
+    prices = {"a": 0.10, "b": 0.40, "c": 0.32}
     unit = sum(prices.values())
     weights = R._kelly_share_weights(
         ordered=("a", "b", "c"),
@@ -97,10 +98,12 @@ def test_edge_weighted_keeps_the_basket_cost_and_never_breaks_the_floor() -> Non
     # Charter 72: the stake reads the same cost per share, so the sizing law
     # needs no amendment to admit this shape.
     assert sum(weights[b] * prices[b] for b in prices) == pytest.approx(unit)
-    # Charter 93: the in-support floor is the cushion the tilt did not spend.
-    cushion = 1.0 - unit
+    # Charter 93: the in-support floor is its own fraction of the premium
+    # plus the cushion the tilt did not spend.
+    floor = K.SUPPORT_SCENARIO_FLOOR_FRACTION * unit
+    cushion = 1.0 - unit - floor
     assert min(weights.values()) - unit == pytest.approx(
-        (1.0 - K.KELLY_EDGE_TILT_FRACTION) * cushion
+        floor + (1.0 - K.KELLY_EDGE_TILT_FRACTION) * cushion
     )
     assert min(weights.values()) > 0.0
 
@@ -162,7 +165,9 @@ def test_the_cushion_is_cash_proportional_to_edge() -> None:
     # The bed is the formula's, not ``min(w)``: both rungs earned a tilt here,
     # so the cheaper one's weight is no guide to where the bed sits.
     unit = sum(prices.values())
-    bed = 1.0 - K.KELLY_EDGE_TILT_FRACTION * (1.0 - unit)
+    bed = 1.0 - K.KELLY_EDGE_TILT_FRACTION * (
+        1.0 - (1.0 + K.SUPPORT_SCENARIO_FLOOR_FRACTION) * unit
+    )
     cash = {b: (w[b] - bed) * prices[b] for b in prices}
     assert cash["cheap"] == pytest.approx(cash["dear"])
     assert w["cheap"] > w["dear"]
@@ -179,19 +184,31 @@ def test_the_cushion_is_cash_proportional_to_edge() -> None:
     ],
 )
 def test_the_shape_is_always_charter_93_legal(prices, claims) -> None:
-    """Run the production floor function over the shape, not a copy of it."""
+    """Run the production floor function over the shape, not a copy of it.
+
+    Legal whenever the equal basket is: the tilt cannot rescue a basket that
+    already costs more than the floor allows, and must not break one that
+    does not.  The third case costs 0.99 a share, under the 5% floor at one
+    share a leg, so the arm hands back equal and the solver refuses it there.
+    """
 
     ordered = tuple(prices)
     weights = R._kelly_share_weights(
         ordered=ordered, lane_prices=prices, probabilities_by_bucket=claims,
         centre_bucket="", ordinals={}, shape="edge_weighted", stage="P0-M",
     )
-    verdict = K.support_scenario_floor_v1(
-        shares_by_bucket=weights,
-        cost_by_bucket={b: weights[b] * prices[b] for b in ordered},
-        support=ordered,
-    )
-    assert verdict["legal"], verdict
+
+    def _verdict(shares):
+        return K.support_scenario_floor_v1(
+            shares_by_bucket=shares,
+            cost_by_bucket={b: shares[b] * prices[b] for b in ordered},
+            support=ordered,
+        )
+
+    if _verdict({b: 1.0 for b in ordered})["legal"]:
+        assert _verdict(weights)["legal"], _verdict(weights)
+    else:
+        assert weights == {b: 1.0 for b in ordered}
 
 
 def test_zero_tilt_and_a_dead_ladder_both_reproduce_equal() -> None:
@@ -268,7 +285,7 @@ def test_the_tilt_never_expects_less_than_the_bed_it_came_from() -> None:
     was admitted on the equal one.  The shape hands back the bed instead.
     """
 
-    prices = {"a": 0.12, "b": 0.47, "c": 0.38}
+    prices = {"a": 0.10, "b": 0.40, "c": 0.32}
     claims = {"a": 0.044, "b": 0.727, "c": 0.609}
     tilted = K.floor_first_edge_weights_v1(
         ordered=("a", "b", "c"), prices=prices, effective_claims=claims,
@@ -295,16 +312,23 @@ def test_the_tilt_never_expects_less_than_the_bed_it_came_from() -> None:
 
 
 def test_the_tilt_fraction_defaults_to_the_measured_corner() -> None:
-    """t=1 by the 2026-09-08 scan; the floor is still non-negative there."""
+    """t=1 by the 2026-09-08 scan; the floor is still charter 93's there."""
 
     assert K.KELLY_EDGE_TILT_FRACTION == 1.0
-    prices = {"a": 0.12, "b": 0.47, "c": 0.38}
+    prices = {"a": 0.10, "b": 0.40, "c": 0.32}
     unit = sum(prices.values())
     w = K.floor_first_edge_weights_v1(
         ordered=("a", "b", "c"), prices=prices,
         effective_claims={"a": 0.044, "b": 0.727, "c": 0.609},
     )
     assert sum(w[b] * prices[b] for b in prices) == pytest.approx(unit)
-    # The whole cushion spent lands the floor exactly on zero -- legal, and
-    # charter 93(二) rechecks it after the lift.
-    assert min(w.values()) - unit == pytest.approx(0.0)
+    # The whole cushion spent lands the floor exactly on charter 93's own
+    # fraction of the premium -- legal, and 93(二) rechecks it after the lift.
+    assert min(w.values()) - unit == pytest.approx(
+        K.SUPPORT_SCENARIO_FLOOR_FRACTION * unit
+    )
+    assert K.support_scenario_floor_v1(
+        shares_by_bucket=w,
+        cost_by_bucket={b: w[b] * prices[b] for b in prices},
+        support=tuple(prices),
+    )["legal"]

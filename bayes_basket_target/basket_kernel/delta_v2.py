@@ -2929,7 +2929,6 @@ def ladder_balance_targets_v1(
     return {}
 
 
-FLOOR_FIRST_EDGE_SHAPE_VERSION = "floor_first_edge_weights_v1"
 # How much of a basket's floor cushion the tilt may spend (user ruling,
 # 2026-09-08: "按照你的方案来调整，即用 lambda").  An equal-share basket at
 # one share a leg costs ``K = sum(c)`` and its worst in-support settlement
@@ -2980,13 +2979,14 @@ def floor_first_edge_weights_v1(
     return, not at what they assert.
 
     The shape is the two-段 form and its arithmetic is forced, not chosen.
-    Write ``K = sum(prices)``, the per-share cost of the equal basket.  A
-    basket held level at one share a leg settles at ``1 - K`` inside its
-    support, and charter 93 admits a shape exactly while that number stays
-    at or above zero.  So ``1 - K`` is the entire budget any tilt has:
+    Write ``K = sum(prices)``, the per-share cost of the equal basket, and
+    ``f`` for charter 93's floor fraction.  A basket held level at one share
+    a leg settles at ``1 - K`` inside its support, and charter 93 admits a
+    shape exactly while that number stays at or above ``f*K``.  So
+    ``1 - (1 + f)*K`` is the entire budget any tilt has:
 
-    * every rung is floored at ``w_min = 1 - t*(1 - K)``, which leaves
-      ``(1 - t)*(1 - K)`` of guaranteed in-support profit standing;
+    * every rung is floored at ``w_min = 1 - t*(1 - (1 + f)*K)``, which leaves
+      ``f*K + (1 - t)*(1 - (1 + f)*K)`` of in-support profit standing;
     * the cash that floor frees, ``(1 - w_min) * K``, is handed to the rungs
       whose realisable edge ``lambda*p - c`` is positive, in proportion to
       that edge -- so the *share* counts move as ``edge / price``, which is
@@ -2998,8 +2998,8 @@ def floor_first_edge_weights_v1(
     Two invariants make this composable with the clauses around it.
     ``sum(w_b * c_b) == K`` exactly, so charter 72's stake reads the same
     ``cost_per_share`` it always did and needs no amendment.  And the
-    resulting floor is ``(1 - t)*(1 - K) >= 0`` by construction, so charter
-    93 cannot refuse the shape -- which is the whole difference from the
+    resulting floor is at least ``f*K`` by construction, so charter 93
+    cannot refuse the shape -- which is the whole difference from the
     ``edge_weighted`` arm this replaces, whose floor was a fraction of the
     *best rung's weight* and therefore said nothing about the basket's cost.
     Measured on the 2026-09-08 book, every ``edge_weighted`` candidate was
@@ -3029,10 +3029,16 @@ def floor_first_edge_weights_v1(
         for bucket in window
     }
     unit = sum(cost.values())
-    cushion = 1.0 - unit
+    # The cushion is what charter 93 leaves above its own floor, not above
+    # zero.  It was ``1 - K`` while the floor sat at zero; since v2.1
+    # (2026-09-12) the floor is ``SUPPORT_SCENARIO_FLOOR_FRACTION`` of the
+    # premium, and a tilt that still spent ``1 - K`` landed every tilted
+    # rung on zero -- under the 5% floor that judges it, so the arm was
+    # refused again exactly as the shape it replaced had been.
+    cushion = 1.0 - (1.0 + SUPPORT_SCENARIO_FLOOR_FRACTION) * unit
     if unit <= EPS or cushion <= EPS:
-        # A basket that already costs a share has no cushion, and charter 72
-        # does not size one anyway.
+        # A basket with no room above the floor has no cushion to spend, and
+        # charter 72 does not size one anyway.
         return equal
     edges = {
         bucket: (
