@@ -6315,8 +6315,23 @@ def compile_delta_v2_runtime_plan(
                     "completion_take_limit_invalid"
                 )
                 continue
+            # The candidate is the GAP, in shares, at the limit -- so its cash
+            # is ``gap * limit``, what an FOK for that quantity may pay, not
+            # the walk's cash.  Every reader downstream turns a candidate back
+            # into shares as ``cash / limit`` (the kernel's maximum shares,
+            # the sizing step's order quantity), and on a walk that crosses
+            # levels the walk's cash divided by its deepest price is fewer
+            # shares than the gap: 5 @ 0.20 + 5 @ 0.30 walks 2.50 for ten
+            # shares, and 2.50 / 0.30 went out as an eight-share FOK -- the
+            # certified completion that buys short, which charter 120 removed
+            # from the search and this descriptor put back (audit 2026-09-14).
+            # On a single level the two numbers are the same, so nothing that
+            # takes one price moves.  The authorization above still reads the
+            # walk: that is what the book charges now; the limit is the most a
+            # book that moves in the submit window can charge, and the gates
+            # after the lift already judge a take there (charter 127 (六之二)).
             candidate_descriptors.append(
-                (bucket, float(walk["cash"]), limit, "FOK:0")
+                (bucket, gap * limit, limit, "FOK:0")
             )
             continue
         reservation_grid = _reservation_grid(row=row, artifact=delta_policy)

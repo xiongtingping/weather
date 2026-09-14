@@ -715,8 +715,14 @@ def _executable_depth_cash(
     """
 
     if str(execution_candidate) == "TAKER_FOK":
-        return sum(
-            float(level.price) * float(level.shares)
+        # Valued at the order's own limit, because the sizing step turns this
+        # back into shares as ``depth / limit``.  Valued at each level's price
+        # it understated the shares on any book that steps up to the limit:
+        # 5 @ 0.20 + 5 @ 0.30 is ten shares a 0.30 FOK can lift, and 2.50 /
+        # 0.30 capped the order at eight (audit 2026-09-14).  On a single
+        # level the two valuations are the same number.
+        return float(limit_price) * sum(
+            float(level.shares)
             for level in ask_levels
             if float(level.price) <= float(limit_price) + 1e-9
         )
