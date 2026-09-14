@@ -1353,6 +1353,43 @@ def _activation_rank(
     )
 
 
+def _activations_ambiguous(
+    activations: Sequence[tuple[Any, Sequence[str], Sequence[str], int]],
+    *,
+    pool_first: bool,
+) -> bool:
+    """Whether the two best compatible activations are indistinguishable.
+
+    Equal on membership, riders, same-run fresh count, activation instant
+    and generation means the rank could only separate them by id, and under
+    the contest rule that is refused: two contest picks of one set are two
+    different claims about the same holdout.  A pool seat on top is served
+    instead (charter 134): both are certified seats of the same systems
+    under one rule, and the content-addressed id picks the same one every
+    cycle.  Measured on the deploy's first rotated station, WMKK
+    2026-09-14T04:01Z, whose exact and shared-window cohorts minted the
+    whole four-system pool at h00_12 under the labels 00Z and
+    MIXED_NATIVE_CYCLES in one generation.
+    """
+
+    if len(activations) < 2:
+        return False
+    first, second = activations[0], activations[1]
+    first_pool = STABLE_POOL_WEIGHT_RULE in str(first[0][15] or "")
+    second_pool = STABLE_POOL_WEIGHT_RULE in str(second[0][15] or "")
+    if pool_first and first_pool:
+        return False
+    return (
+        first_pool == second_pool
+        and len(first[1]) == len(second[1])
+        and set(first[1]) == set(second[1])
+        and len(first[2]) == len(second[2])
+        and int(first[3]) == int(second[3])
+        and str(first[0][4] or "") == str(second[0][4] or "")
+        and int(first[0][3]) == int(second[0][3])
+    )
+
+
 def compile_native_ensemble_p0(
     conn: sqlite3.Connection,
     *,
@@ -1989,21 +2026,17 @@ def compile_native_ensemble_p0(
     # no forward P0 at all for as long as both rows stayed in window, which
     # is permanent: activations are append-only and the pair was minted in
     # the same generation.
-    if (
-        len(activations) > 1
-        and (
-            STABLE_POOL_WEIGHT_RULE in str(activations[0][0][15] or "")
-        ) == (
-            STABLE_POOL_WEIGHT_RULE in str(activations[1][0][15] or "")
-        )
-        and len(activations[0][1]) == len(activations[1][1])
-        and set(activations[0][1]) == set(activations[1][1])
-        and len(activations[0][2]) == len(activations[1][2])
-        and str(activations[0][0][4] or "")
-        == str(activations[1][0][4] or "")
-        and int(activations[0][0][3])
-        == int(activations[1][0][3])
-    ):
+    # Charter 134 (2026-09-14, the first station rotated after the deploy):
+    # one build mints the same pool set in its exact and its shared-window
+    # cohort, with the same activation instant and generation, so for a
+    # packet both fitted maps serve with the same riders the two tie on every
+    # key and this guard failed WMKK closed.  Both are certified seats of the
+    # same systems under the pool rule, so the rank's last key (the content
+    # addressed activation id) picks one deterministically -- the same one
+    # every cycle -- instead of refusing P0.  The guard also reads the
+    # same-run fresh count now: charter 88 added that key to the rank and not
+    # here, so a pair the rank had separated on it could still be refused.
+    if _activations_ambiguous(activations, pool_first=pool_first):
         raise ContractError(
             "FAIL_CLOSED_NO_P0:"
             "native_cross_ensemble_activation_not_exact"

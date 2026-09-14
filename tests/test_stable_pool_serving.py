@@ -229,3 +229,32 @@ def test_charter_134_names_the_rule_the_code_serves() -> None:
         assert stable_pool.P0_MEMBERSHIP_MODE == "stable_pool"
     clause_42 = charter.split("\n42. ", 1)[1].split("\n43. ", 1)[0]
     assert "第 134 条退役本款「由子集赛唯一授予」一句" in clause_42
+
+
+def test_two_pool_seats_of_one_set_that_tie_are_served_not_refused() -> None:
+    """WMKK 2026-09-14T04:01Z, the deploy's first rotated station.
+
+    Its exact and shared-window cohorts minted the whole four-system pool at
+    h00_12 as 00Z and MIXED_NATIVE_CYCLES in one generation, and for the
+    packet the two tied on every rank key but the id.  The guard refused P0.
+    """
+
+    whole = ["DWD_ICON_GLOBAL_EPS", "ECCC_GEM_GLOBAL_ENS",
+             "ECMWF_IFS_ENS_OPEN_PF50", "NOAA_GEFS_05"]
+    pool_method = STABLE_POOL_WEIGHT_RULE + "::stable_pool_kappa=0.5::x"
+    exact = (_activation("pool-00z", valid_from="2026-09-14T04:01:16.586Z", method=pool_method, generation=1),
+             whole, ["ECMWF_IFS_ENS_OPEN_PF50"], 2)
+    mixed = (_activation("pool-mixed", valid_from="2026-09-14T04:01:16.586Z", method=pool_method, generation=1),
+             whole, ["DWD_ICON_GLOBAL_EPS"], 2)
+    ambiguous = native_ensemble_p0._activations_ambiguous
+    assert ambiguous([exact, mixed], pool_first=True) is False
+    # The contest rule still refuses the same tie between two contest picks.
+    contest_method = "inverse_train_rmse_maturity_ramp_v1::x"
+    c1 = (_activation("c1", valid_from="2026-09-14T04:01:16.586Z", method=contest_method, generation=1), whole, [], 2)
+    c2 = (_activation("c2", valid_from="2026-09-14T04:01:16.586Z", method=contest_method, generation=1), whole, [], 2)
+    assert ambiguous([c1, c2], pool_first=False) is True
+    assert ambiguous([c1, c2], pool_first=True) is True
+    # A pair the rank separated on the same-run fresh count is not a tie.
+    fresher = (c1[0], whole, [], 3)
+    assert ambiguous([fresher, c2], pool_first=False) is False
+    assert ambiguous([c1], pool_first=False) is False
