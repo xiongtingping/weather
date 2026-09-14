@@ -600,3 +600,23 @@ def test_current_worktree_has_no_retired_declaration_but_empty_probe_fails_close
     assert result["retired_runtime_candidates"]["count"] >= 0
     assert result["safe_deletion_candidates"]["deletion_authorized"] is False
     assert "content_sha256" in result["reference_graph"]
+
+
+def test_a_malformed_plist_is_a_reported_parse_failure_not_a_crash(tmp_path: Path) -> None:
+    """2026-09-09..14: a double hyphen inside an XML comment raised expat's
+    error, which the audit did not catch, and the whole audit failed."""
+
+    launchd = tmp_path / "launchd"
+    launchd.mkdir()
+    (launchd / "com.weather.bad.plist").write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict>\n'
+        "<!-- measured 2026-09-09 -- and killed -->\n"
+        "<key>Label</key><string>com.weather.bad</string></dict></plist>\n",
+        encoding="utf-8",
+    )
+    manifests, hits, _total = closure_audit._parse_launchd(
+        root=tmp_path, launchd_dir=Path("launchd"),
+        max_file_bytes=1_000_000, max_total_bytes=10_000_000,
+    )
+    assert manifests == []
+    assert [hit["code"] for hit in hits] == ["launchd_plist_parse_failed"]

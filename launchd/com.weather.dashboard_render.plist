@@ -18,7 +18,7 @@
        The render used to be scheduled inside the resident, on its own
        executor, with a 2400s timeout attached.  That timeout was the reason
        the page went stale: a render that needs longer is SIGTERMed before it
-       writes, and it writes nothing at all -- measured 2026-09-09, a run
+       writes, and it writes nothing at all; measured 2026-09-09, a run
        that started 09:24:29Z was killed at 2408s having produced no file,
        and the page still carried a build from 07:52Z.  It is also self-
        reinforcing: a killed render refreshes no cached section, so the next

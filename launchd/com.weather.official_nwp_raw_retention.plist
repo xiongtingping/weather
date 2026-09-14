@@ -38,7 +38,7 @@
          field_receipts pin keep the store climbing about a gigabyte a day
          after a clean pass.  This caps data/runtime/official_nwp_sources at
          12 GiB, oldest first, and only touches stores whose receipts carry an
-         S3 object_key plus byte range -- ecmwf_pf50 and gefs are re-obtainable
+         S3 object_key plus byte range; ecmwf_pf50 and gefs are re-obtainable
          that way, ICON/DWD is not and is deliberately absent.  The job exits
          non-zero when the cap can no longer be held, so a silently useless
          pass shows up in launchctl instead of only in the log. -->

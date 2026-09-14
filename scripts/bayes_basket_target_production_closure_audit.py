@@ -22,6 +22,7 @@ import io
 import json
 import os
 import plistlib
+from xml.parsers.expat import ExpatError
 import re
 import subprocess
 import sys
@@ -547,7 +548,10 @@ def _parse_launchd(
         total += len(data)
         try:
             value = plistlib.loads(data)
-        except (plistlib.InvalidFileException, ValueError, TypeError) as exc:
+        # Malformed XML raises expat's error, which is none of the three below:
+        # a double hyphen inside a comment took the whole audit down from
+        # 2026-09-09 instead of being reported as the parse failure it is.
+        except (plistlib.InvalidFileException, ValueError, TypeError, ExpatError) as exc:
             hits.append({"code": "launchd_plist_parse_failed", "file": relative, "error": str(exc)})
             continue
         if not isinstance(value, Mapping):
