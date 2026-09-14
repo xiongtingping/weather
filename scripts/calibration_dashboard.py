@@ -14515,80 +14515,128 @@ function liveOrderCard(L){
   // silently shorter list reads as "this is everything".
   const barred = (g)=> g.legs.length > 0
     && g.legs.every(l=>String(l.reason||"")==="live_station_barred");
+  // One line per station-day (user ruling, 2026-09-14: 把同一站点的合并在一起).
+  // A basket that never reached the exchange is decided again next cycle
+  // and mints a fresh one, so the disarmed morning of 2026-09-12 printed
+  // ZBAA four times and ZGSZ three, each with a verdict of its own.  The
+  // station now wears one verdict over all its baskets, and its baskets sit
+  // under it.  Baskets that bought nothing and repeat one another's legs
+  // fold into one line with a count; a basket that filled anything is never
+  // folded, because its fills are money.
+  const foldKey = (g)=> g.legs.map(l=>[l.bucket, l.state, l.reason||""].join("|")).join(",")
+    + "#" + String((planOf(g)||{}).skew||"");
+  const clock = (t)=> { const m = String(t||"").match(/T(\d{2}:\d{2})/); return m ? m[1]+"Z" : ""; };
   const rows = dates.map(day=>{
-    const all = byDate.get(day).slice().sort((a,b)=>String(a.station_id).localeCompare(String(b.station_id)));
+    const all = byDate.get(day).slice().sort((a,b)=>
+      String(a.station_id).localeCompare(String(b.station_id))
+      || String(a.latest).localeCompare(String(b.latest)));
     const hidden = all.filter(barred);
     const gs = all.filter(g=>!barred(g));
     const daySettled = gs.length>0 && gs.every(g=>truthOf(g));
     const folded = daySettled || (day < today);
+    const stations = [];
+    const byStation = new Map();
+    for (const g of gs){
+      const key = g.station_id || "?";
+      if(!byStation.has(key)){ byStation.set(key, []); stations.push(key); }
+      byStation.get(key).push(g);
+    }
     let legsN=0, filledN=0, cost=0, payout=0;
-    const basketLines = gs.map(g=>{
-      const truth = truthOf(g);
-      const gFilled = g.legs.filter(l=>l.state==="filled");
-      const gCost = gFilled.reduce((a,l)=>a+(l.requested_notional_usdc||0),0);
-      const gPay = truth ? gFilled.reduce((a,l)=>a+(String(l.bucket)===truth?(l.requested_size||0):0),0) : null;
-      legsN += g.legs.length; filledN += gFilled.length; cost += gCost; payout += (gPay||0);
-      // A basket whose centre it does not itself hold has no green rung,
-      // and an unmarked line is indistinguishable from a line whose plan
-      // is missing.  Two of the fifty-three baskets on the book are this:
-      // gap fills and top-ups that bought a shoulder without the centre.
-      // Say which rung is missing rather than leaving the reader to guess
-      // whether the mark is broken.
-      const mid = centerOf(g);
-      const offCenter = mid && !g.legs.some(l=>String(l.bucket)===mid)
-        ? `<span class="muted mono" style="font-size:11px"
-            title="中心桶取自该决策自己的计划">中心 ${h(mid)} 不在本篮</span>`
-        : "";
-      const money = gPay==null
-        ? `<span class="muted mono" style="font-size:11px">投入 ${gCost.toFixed(2)} U</span>`
-        : `<span class="mono ${gPay-gCost>=0?"up":"down"}" style="font-size:11px">${(gPay-gCost>=0?"+":"")+(gPay-gCost).toFixed(2)} U</span>
-           <span class="muted mono" style="font-size:11px">投入 ${gCost.toFixed(2)} · 赔付 ${gPay.toFixed(2)} · 落在 ${h(truth)}</span>`;
-      // The station wears the day's verdict (user ruling, 2026-09-11), in
-      // the same three colours the per-station roster uses: green held the
-      // settled bucket, red did not, amber has no truth yet.  The word is
-      // printed beside the colour rather than left in a tooltip (same
-      // ruling, revised the same day): a colour alone tells a reader that
-      // these three lines differ, not what any of them is, and on a book
-      // where every basket is currently unsettled the whole column is one
-      // shade and says nothing at all without a hover.  A settled basket
-      // that filled nothing is red -- it did not hold the bucket -- with
-      // that distinction in the tooltip, which is the only part a reader
-      // can afford to go looking for.
-      const src = truthSrc(g)==="truth_lane"
+    const stationLines = stations.map(station=>{
+      const baskets = byStation.get(station);
+      const truth = baskets.map(truthOf).find(Boolean) || "";
+      let sLegs=0, sFilled=0, sCost=0, sPay=0;
+      for (const g of baskets){
+        const gFilled = g.legs.filter(l=>l.state==="filled");
+        sLegs += g.legs.length; sFilled += gFilled.length;
+        sCost += gFilled.reduce((a,l)=>a+(l.requested_notional_usdc||0),0);
+        if(truth) sPay += gFilled.reduce((a,l)=>a+(String(l.bucket)===truth?(l.requested_size||0):0),0);
+      }
+      legsN += sLegs; filledN += sFilled; cost += sCost; payout += sPay;
+      const covered = !!truth && baskets.some(g=>g.legs.some(l=>String(l.bucket)===truth));
+      const src = baskets.map(truthSrc).find(Boolean)==="truth_lane"
         ? "　真值取自真值车道（这个站日纸面账本没坐过，没有它的结算行），按当日自己的桶阶梯落桶"
         : "";
+      // Three words, not two (same ruling: 为什么显示为未命中，是真的未命中还是
+      // 显示错误).  未命中 meant "no leg held is the settled bucket", which is
+      // vacuously true of a station-day that held nothing: every red line on
+      // 2026-09-13 was a disarmed basket with no fill, and five of those six
+      // stations' windows held the day's truth.  Nothing filled is 未成交,
+      // with whether the window held the truth printed beside it.  The word
+      // sits beside the colour (user ruling, 2026-09-11): colour alone says
+      // these lines differ, not what any of them is.
       const verdict = !truth
         ? ["amber", "未结算", "这个站日的真值还没到"]
-        : (gPay > 0
-          ? ["green", "命中", "成交腿里有落在结算桶 " + truth + " 的" + src]
-          : [
-            "red", "未命中",
-            (gFilled.length
-              ? "成交的腿都不在结算桶 " + truth
-              : "整篮一条腿都没成交，结算落在 " + truth) + src,
-          ]);
-      return `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:5px 0;border-top:1px dashed var(--line,#eee)">
-        <span class="pill red" style="font-size:10px">LIVE</span>
+        : !sFilled
+          ? ["", "未成交", "一条腿都没成交，没有持仓可判命中；窗口"
+              + (covered ? "含" : "不含") + "结算桶 " + truth + src]
+          : sPay > 0
+            ? ["green", "命中", "成交腿里有落在结算桶 " + truth + " 的" + src]
+            : ["red", "未命中", "成交的腿都不在结算桶 " + truth + src];
+      const cover = truth && !sFilled
+        ? `<span class="mono ${covered?"up":"down"}" style="font-size:11px"
+            title="窗口＝这个站日各篮挂出的桶">窗口${covered?"含":"不含"} ${h(truth)}</span>`
+        : "";
+      const money = !truth
+        ? `<span class="muted mono" style="font-size:11px">投入 ${sCost.toFixed(2)} U</span>`
+        : !sFilled ? ""
+        : `<span class="mono ${sPay-sCost>=0?"up":"down"}" style="font-size:11px">${(sPay-sCost>=0?"+":"")+(sPay-sCost).toFixed(2)} U</span>
+           <span class="muted mono" style="font-size:11px">投入 ${sCost.toFixed(2)} · 赔付 ${sPay.toFixed(2)} · 落在 ${h(truth)}</span>`;
+
+      const lines = [];
+      const foldAt = new Map();
+      for (const g of baskets){
+        const key = g.legs.some(l=>l.state==="filled") ? null : foldKey(g);
+        if(key!=null && foldAt.has(key)){ lines[foldAt.get(key)].push(g); continue; }
+        if(key!=null) foldAt.set(key, lines.length);
+        lines.push([g]);
+      }
+      const legsOf = (items)=>{
+        const g = items[items.length-1];
+        // A basket whose centre it does not itself hold has no green rung,
+        // and an unmarked line is indistinguishable from a line whose plan
+        // is missing.  Two of the fifty-three baskets on the book are this:
+        // gap fills and top-ups that bought a shoulder without the centre.
+        // Say which rung is missing rather than leaving the reader to guess
+        // whether the mark is broken.
+        const mid = centerOf(g);
+        const offCenter = mid && !g.legs.some(l=>String(l.bucket)===mid)
+          ? `<span class="muted mono" style="font-size:11px"
+              title="中心桶取自该决策自己的计划">中心 ${h(mid)} 不在本篮</span>`
+          : "";
+        const count = items.length > 1
+          ? `<span class="pill" style="font-size:10px" title="${h(items.length + " 篮同一窗口、都没成交，显示最新一篮的价："
+              + items.map(x=>clock(x.latest)+" "+x.decision_id).join("；"))}">×${items.length} 篮</span>`
+          : "";
+        return `${skewChip(g)}<span>${g.legs.map(l=>legChip(l, truth, mid)).join("")}</span>${offCenter}${count}`;
+      };
+      const head = `<span class="pill red" style="font-size:10px">LIVE</span>
         <b class="mono pill ${verdict[0]}" title="${h(verdict[2])} · ${
-          h(g.decision_id)}">${h(g.station_id||"?")} ${verdict[1]}</b>
-        <span class="muted" style="font-size:11px">${g.legs.length} 腿 · ${gFilled.length} 成交</span>
-        ${skewChip(g)}
-        <span>${g.legs.map(l=>legChip(l, truth, mid)).join("")}</span>
-        ${offCenter}${money}</div>`;
+          h(baskets.map(g=>g.decision_id).join("、"))}">${h(station)} ${verdict[1]}</b>
+        <span class="muted" style="font-size:11px">${baskets.length>1 ? baskets.length+" 篮 · " : ""}${
+          sLegs} 腿 · ${sFilled} 成交</span>`;
+      const row = `display:flex;flex-wrap:wrap;align-items:center;gap:6px`;
+      if(lines.length === 1) return `<div style="${row};padding:5px 0;border-top:1px dashed var(--line,#eee)">
+        ${head}${legsOf(lines[0])}${cover}${money}</div>`;
+      return `<div style="padding:5px 0;border-top:1px dashed var(--line,#eee)">
+        <div style="${row}">${head}${cover}${money}</div>
+        ${lines.map(items=>`<div style="${row};margin:3px 0 0 18px">
+          <span class="muted mono" style="font-size:11px">${h(clock(items[items.length-1].latest))}</span>
+          ${legsOf(items)}</div>`).join("")}</div>`;
     }).join("");
     const pnl = daySettled ? payout - cost : null;
     const barredNote = hidden.length
       ? ` · <span class="muted" title="${h(hidden.map(g=>g.station_id).join("、"))}"
           >禁入 ${hidden.length} 篮未列</span>`
       : "";
-    const head = `${h(day)} · ${gs.length} 篮 · ${legsN} 腿 · ${filledN} 成交 · 投入 ${cost.toFixed(2)} U` + (pnl==null
+    const head = `${h(day)} · ${stations.length} 站 · ${gs.length} 篮 · ${legsN} 腿 · ${filledN} 成交 · 投入 ${cost.toFixed(2)} U` + (pnl==null
         ? ` · <span class="muted">未结算</span>`
         : ` · <span class="${pnl>=0?"up":"down"}">${(pnl>=0?"+":"")+pnl.toFixed(2)} U</span> · 已结算`)
       + barredNote;
     // A date whose every basket was barred still gets a line: the day had
     // intents, and a missing date answers a different question than an
     // empty one.
-    const body = gs.length ? basketLines
+    const body = gs.length ? stationLines
       : `<div class="muted" style="font-size:12px;padding:5px 0">
          这一天铸出的 ${hidden.length} 篮全部被站级禁入挡在交易所之外，未列出。</div>`;
     return `<details ${folded?"":"open"} style="margin-top:6px">
