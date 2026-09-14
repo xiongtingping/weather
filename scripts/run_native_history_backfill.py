@@ -313,6 +313,23 @@ def _prune(root: Path, *, keep_hours: float, keep: set[Path] | None = None) -> t
     return removed, freed
 
 
+def prune_scratch_store(
+    raw_dirs, packet_dirs, queue, *, raw_keep_hours: float,
+) -> tuple[int, int]:
+    """Raw objects by age; packets only once their rows are in (not queued)."""
+    keep = set(queue)
+    removed, freed = 0, 0
+    for path in raw_dirs:
+        r, f = _prune(path, keep_hours=raw_keep_hours)
+        removed += r
+        freed += f
+    for path in packet_dirs:
+        r, f = _prune(path, keep_hours=24.0, keep=keep)
+        removed += r
+        freed += f
+    return removed, freed
+
+
 def _tree_bytes(root: Path) -> int:
     if not root.exists():
         return 0
@@ -700,17 +717,10 @@ def main() -> int:
             break
         if stopped_reason == "max_seconds":
             break
-        # Prune: raw objects by age; packets only once their rows are in.
-        keep = set(queue)
-        removed, freed = 0, 0
-        for path in raw_dirs.values():
-            r, f = _prune(path, keep_hours=args.raw_keep_hours)
-            removed += r
-            freed += f
-        for path in packet_dirs.values():
-            r, f = _prune(path, keep_hours=24.0, keep=keep)
-            removed += r
-            freed += f
+        removed, freed = prune_scratch_store(
+            raw_dirs.values(), packet_dirs.values(), queue,
+            raw_keep_hours=args.raw_keep_hours,
+        )
         event_days_done += 1
         current -= timedelta(days=1)
         print(
@@ -721,6 +731,14 @@ def main() -> int:
 
     if queue:
         drain(args.final_lock_wait_seconds)
+    # Every exit prunes too.  The per-day prune above is skipped when the
+    # clock runs out mid-day, and a `--max-seconds` loop always stops that
+    # way: measured 2026-09-14, 10.8 GB of raw objects from committed
+    # captures had piled up because no invocation ever reached it.
+    prune_scratch_store(
+        raw_dirs.values(), packet_dirs.values(), queue,
+        raw_keep_hours=args.raw_keep_hours,
+    )
     total = time.monotonic() - t0
     summary = {
         "kind": "stopped", "reason": stopped_reason, **stats,

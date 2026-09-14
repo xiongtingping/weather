@@ -190,3 +190,60 @@ def test_the_drain_loop_yields_before_ingest_and_paces_after_commit():
     order = [name for _, name in sorted(calls)]
 
     assert order == ["stand_aside", "_run", "pace"]
+
+
+def test_the_scratch_prune_keeps_queued_and_young_packets_and_drops_old_raw(tmp_path):
+    import os
+    import time
+
+    raw = tmp_path / "raw_ecmwf"
+    packets = tmp_path / "packets" / "ecmwf"
+    raw.mkdir()
+    packets.mkdir(parents=True)
+    old = time.time() - 30 * 3600
+
+    def make(path: Path, *, aged: bool) -> Path:
+        path.write_bytes(b"x" * 10)
+        if aged:
+            os.utime(path, (old, old))
+        return path
+
+    old_raw = make(raw / "field_old.grib2", aged=True)
+    young_raw = make(raw / "field_young.grib2", aged=False)
+    committed = make(packets / "ecmwf_2026-01-01_l1_c12.json", aged=True)
+    queued = make(packets / "ecmwf_2026-01-02_l1_c12.json", aged=True)
+    young_packet = make(packets / "ecmwf_2026-01-03_l1_c12.json", aged=False)
+
+    removed, freed = driver.prune_scratch_store(
+        [raw], [packets], {queued.resolve()}, raw_keep_hours=1.5,
+    )
+
+    assert (removed, freed) == (2, 20)
+    assert not old_raw.exists() and not committed.exists()
+    assert young_raw.exists() and queued.exists() and young_packet.exists()
+
+
+def test_every_exit_of_the_walk_prunes_the_scratch_store():
+    """The per-day prune sits after the max_seconds break, so a `--max-seconds`
+    loop never reached it and 10.8 GB of raw piled up (2026-09-14).  A prune
+    must also run after the walk, outside the loop, on every way out."""
+
+    import ast
+
+    tree = ast.parse((ROOT / "scripts" / "run_native_history_backfill.py").read_text())
+    main = next(
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "main"
+    )
+    walk = next(node for node in main.body if isinstance(node, ast.While))
+
+    def prunes(node) -> bool:
+        return any(
+            isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+            and call.func.id == "prune_scratch_store"
+            for call in ast.walk(node)
+        )
+
+    after_walk = main.body[main.body.index(walk) + 1:]
+    assert prunes(walk)
+    assert any(prunes(stmt) for stmt in after_walk)
