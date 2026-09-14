@@ -1532,7 +1532,16 @@ def materialize_p1(
     # high and the shape of the buckets above it now come from a regression
     # over the clock, the reports and the regional curve rather than a rate
     # per hours-left bin.  The served shape moves with it, so the version does.
-    posterior_version: str = "p1_metar_trajectory_target_v9",
+    # v10 (2026-09-14, charter 134): no P1 arithmetic moved, the root did.
+    # P0 switched from the subset contest to the stable pool, and the chain,
+    # the ceiling and the hard bound all compose on the root's shape: on
+    # 2026-09-13/14 a P1 step whose only change was its root moved the served
+    # vector by TV 0.115-0.129 against 0.046 when the root held.  The pool's
+    # roots are systematically wider and steadier, so P1 cells served on
+    # contest roots must not train the P1 width and band lanes; the start is
+    # declared at the moment the last P0 station was minted, the same instant
+    # P0 and P0-M v5 declare.
+    posterior_version: str = "p1_metar_trajectory_target_v10",
     ceiling_artifact: Mapping[str, Any] | None = None,
     # Charter 99: {"remaining_peak_c", "cell", "lineage"} for the freshest
     # admissible regional run, or None.  Handed in by the caller for the

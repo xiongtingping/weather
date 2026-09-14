@@ -246,6 +246,12 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p0m_taf_observed_v4": "2026-09-10T15:27:11Z",
         "p0m_taf_observed_v5": "2026-09-14T05:10:36Z",
     },
+    # P1 bumps on time for its own changes.  v10 is the first bump caused
+    # upstream (charter 134 changed the P0 root it composes on), so it
+    # declares the root's moment rather than its own first envelope.
+    "P1": {
+        "p1_metar_trajectory_target_v10": "2026-09-14T05:10:36Z",
+    },
 }
 
 

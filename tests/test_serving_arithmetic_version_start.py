@@ -180,16 +180,25 @@ def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
     ) == "2026-09-06T04:18:00Z"
 
 
-def test_p1_declares_nothing_because_p1_bumps_on_time() -> None:
-    """P1 went v2 to v9 while P0 sat on v2; its anchor is already honest."""
+def test_p1_declares_only_the_bump_its_root_caused() -> None:
+    """P1 bumps on time for its own changes (v2 to v9, none declared).
+
+    v10 was caused upstream: charter 134 changed the P0 root P1 composes on,
+    so it declares the root's moment, the instant P0 and P0-M v5 declare.
+    """
 
     from bayes_basket_target.materialization import materialize_p1
+    from bayes_basket_target.native_ensemble_p0 import POSTERIOR_VERSION
     import inspect
 
     p1 = inspect.signature(
         materialize_p1
     ).parameters["posterior_version"].default
-    assert sa.version_effective_from("P1", p1) is None
+    assert p1 == "p1_metar_trajectory_target_v10"
+    assert sa.version_effective_from("P1", p1) == sa.version_effective_from(
+        "P0", POSTERIOR_VERSION
+    )
+    assert sa.version_effective_from("P1", "p1_metar_trajectory_target_v9") is None
 
 
 def _watchdog_conn(version: str, *, first_decision: str) -> sqlite3.Connection:
