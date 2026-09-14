@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from .market_registry import registry_scope_timezone_triples
 from .contracts import ContractError, content_sha256
 from .event_contracts import ForecastRevision
 from .ssot import (
@@ -177,6 +178,27 @@ def ingest_forward_taf_inbox(
     ).fetchone()
     registered_stations: dict[str, bool] = {}
     scope_timezones: dict[tuple[str, str], list[Any]] = {}
+    # The per-scope DISTINCT below read every retained snapshot's copy of the
+    # scope back from the table -- ~1,500 rows a scope, 457 scopes, 23.7s a
+    # cycle on 2026-09-14.  The same answer, read snapshot by snapshot and
+    # remembered: see ``registry_scope_timezone_triples``.
+    snapshot_table = (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='basket_target_market_registry_snapshot'"
+        ).fetchone()
+        if market_table is not None
+        else None
+    )
+    registry_timezones_by_scope: dict[tuple[Any, Any], list[tuple[Any]]] | None = None
+    if market_table is not None and snapshot_table is not None:
+        registry_timezones_by_scope = {}
+        for triple_station, triple_day, triple_zone in (
+            registry_scope_timezone_triples(conn)
+        ):
+            registry_timezones_by_scope.setdefault(
+                (triple_station, triple_day), []
+            ).append((triple_zone,))
     for capture in captures:
         if not isinstance(capture, Mapping):
             raise ContractError("forward_taf_capture_invalid")
@@ -232,16 +254,21 @@ def ingest_forward_taf_inbox(
         station_registered = registered_stations[station]
         scope_key = (station, event_date)
         if scope_key not in scope_timezones:
-            scope_timezones[scope_key] = (
-                conn.execute(
-                    "SELECT DISTINCT settlement_timezone "
-                    "FROM basket_target_market_registry "
-                    "WHERE station_id=? AND event_date=?",
-                    (station, event_date),
-                ).fetchall()
-                if market_table is not None
-                else []
-            )
+            if registry_timezones_by_scope is not None:
+                scope_timezones[scope_key] = list(
+                    registry_timezones_by_scope.get(scope_key, [])
+                )
+            else:
+                scope_timezones[scope_key] = (
+                    conn.execute(
+                        "SELECT DISTINCT settlement_timezone "
+                        "FROM basket_target_market_registry "
+                        "WHERE station_id=? AND event_date=?",
+                        (station, event_date),
+                    ).fetchall()
+                    if market_table is not None
+                    else []
+                )
         timezone_rows = scope_timezones[scope_key]
         station_count = registry_station_count
         if station_count and not station_registered:

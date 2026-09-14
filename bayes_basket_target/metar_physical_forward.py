@@ -54,6 +54,7 @@ from .metar_physical_tmax import (
     build_physical_tmax_members,
 )
 from .official_native_forward_packet import POINT_FORECAST_SYSTEMS
+from .market_registry import registry_scope_timezone_triples
 
 
 SCHEMA = "metar_physical_member_run_projection_v1"
@@ -182,11 +183,13 @@ def plan_metar_physical_member_runs(
     # closed rather than guessed.
     market_timezone: dict[str, str] = {}
     ambiguous: set[str] = set()
-    for row in conn.execute(
-        "SELECT DISTINCT station_id,settlement_timezone "
-        "FROM basket_target_market_registry "
-        "WHERE settlement_timezone<>''"
-    ):
+    # The whole-table DISTINCT this was, read snapshot by snapshot: 19.3s cold
+    # for 49 pairs, every cycle; see ``registry_scope_timezone_triples``.
+    for row in sorted({
+        (str(station), str(zone))
+        for station, _day, zone in registry_scope_timezone_triples(conn)
+        if station is not None and zone not in (None, "")
+    }):
         station, zone = str(row[0]), str(row[1])
         if station in market_timezone and market_timezone[station] != zone:
             ambiguous.add(station)

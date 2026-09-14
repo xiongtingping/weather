@@ -761,6 +761,70 @@ def load_active_registry_rows(
     return result
 
 
+# Per snapshot: the distinct (station, event_date, settlement_timezone) triples
+# its rows carry, for ``registry_scope_timezone_triples``.  Keyed by database
+# file, so two databases never share an answer; in-memory databases are never
+# stored.
+_SNAPSHOT_SCOPE_TIMEZONES: dict[
+    tuple[str, str], frozenset[tuple[Any, Any, Any]]
+] = {}
+
+
+def registry_scope_timezone_triples(
+    conn: sqlite3.Connection,
+) -> set[tuple[Any, Any, Any]]:
+    """``SELECT DISTINCT station_id,event_date,settlement_timezone`` over the table.
+
+    Exactly that, NULLs and empty strings included, and read so that it does
+    not cost what that statement costs.  No index carries the timezone, so any
+    timezone question put to this table reads every matching row back from
+    the table -- and the table holds every retained snapshot's full copy of
+    the registry.  Measured 2026-09-14 on the live SSOT: the METAR planner's
+    whole-table DISTINCT took 19.3s cold for 49 station pairs, and the TAF
+    inbox ingest's per-scope DISTINCT took 23.7s for 457 scopes at ~1,500
+    rows each; both ran every production cycle.
+
+    The table is a union of content-addressed snapshots.  A snapshot's rows are
+    written in the same transaction as its snapshot row, re-ingesting an
+    existing snapshot returns before inserting anything, and retention removes
+    a snapshot's rows whole and never brings them back.  So a snapshot's
+    triples never change while it has rows: each is read once through the
+    snapshot index and remembered, a remembered snapshot costs one existence
+    seek afterwards, and one whose rows are gone stops contributing.
+    """
+
+    try:
+        database = str(conn.execute("PRAGMA database_list").fetchone()[2] or "")
+    except (sqlite3.Error, TypeError, IndexError):
+        database = ""
+    remember = bool(database)
+    triples: set[tuple[Any, Any, Any]] = set()
+    for (sha,) in conn.execute(
+        f"SELECT snapshot_sha256 FROM {SNAPSHOT_TABLE}"
+    ).fetchall():
+        key = (database, str(sha))
+        known = _SNAPSHOT_SCOPE_TIMEZONES.get(key) if remember else None
+        if known is None:
+            known = frozenset(
+                (row[0], row[1], row[2])
+                for row in conn.execute(
+                    "SELECT DISTINCT station_id,event_date,settlement_timezone "
+                    f"FROM {TABLE} WHERE snapshot_sha256=?",
+                    (str(sha),),
+                )
+            )
+            if remember:
+                _SNAPSHOT_SCOPE_TIMEZONES[key] = known
+        elif known and conn.execute(
+            f"SELECT 1 FROM {TABLE} WHERE snapshot_sha256=? LIMIT 1",
+            (str(sha),),
+        ).fetchone() is None:
+            known = frozenset()
+            _SNAPSHOT_SCOPE_TIMEZONES[key] = known
+        triples |= known
+    return triples
+
+
 def load_started_registry_rows(
     conn: sqlite3.Connection,
     *,
@@ -798,4 +862,5 @@ __all__ = [
     "apply_target_market_registry_schema",
     "export_shared_live_registry", "ingest_target_market_registry",
     "load_active_registry_rows", "load_started_registry_rows",
+    "registry_scope_timezone_triples",
 ]

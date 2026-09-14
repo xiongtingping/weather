@@ -279,3 +279,54 @@ def test_the_ingest_reports_where_its_own_time_went() -> None:
     assert set(phases) == {"validate", "capture_insert"}
     assert all(isinstance(value, float) for value in phases.values()), phases
     assert all(value >= 0.0 for value in phases.values()), phases
+
+
+def _install_snapshotted_market_registry(conn: sqlite3.Connection, zone_for) -> None:
+    """The registry as production holds it: rows under content-addressed snapshots."""
+
+    conn.execute(
+        "CREATE TABLE basket_target_market_registry_snapshot (snapshot_sha256 TEXT PRIMARY KEY)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_target_market_registry ("
+        " snapshot_sha256 TEXT, station_id TEXT, event_date TEXT, settlement_timezone TEXT)"
+    )
+    for sha in ("s1", "s2"):
+        conn.execute("INSERT INTO basket_target_market_registry_snapshot VALUES(?)", (sha,))
+        for station in STATIONS:
+            for day in DAYS:
+                conn.execute(
+                    "INSERT INTO basket_target_market_registry VALUES(?,?,?,?)",
+                    (sha, station, day, zone_for(sha, station, day)),
+                )
+
+
+def test_a_snapshotted_registry_answers_without_a_per_scope_distinct() -> None:
+    """2026-09-14: ~1,500 rows a scope across retained snapshots, 457 scopes,
+    23.7s a cycle.  The same answer is read snapshot by snapshot."""
+
+    conn = _conn()
+    _install_snapshotted_market_registry(conn, lambda *_: "Asia/Shanghai")
+    conn.statement_counts = {}
+    receipt = ingest_forward_taf_inbox(conn, _wide_inbox())
+    assert receipt["wrote_count"] == 30
+    assert not any(
+        key.startswith("SELECT DISTINCT settlement_timezone")
+        for key in conn.statement_counts
+    ), conn.statement_counts
+
+
+def test_a_snapshotted_registry_still_refuses_a_scope_it_names_two_ways() -> None:
+    conn = _conn()
+    _install_snapshotted_market_registry(
+        conn,
+        lambda sha, station, day: (
+            "America/New_York" if (sha, station, day) == ("s2", "ZSPD", DAYS[1]) else "Asia/Shanghai"
+        ),
+    )
+    try:
+        ingest_forward_taf_inbox(conn, _wide_inbox())
+    except ContractError as exc:
+        assert str(exc) == "forward_taf_market_scope_invalid"
+    else:  # pragma: no cover - the guard must fire
+        raise AssertionError("a scope with two market timezones was accepted")
