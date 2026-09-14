@@ -252,6 +252,87 @@ def _bucket_intervals_for_envelope(
     return intervals
 
 
+def _label_candidate_page(
+    conn: sqlite3.Connection,
+    *,
+    rowid_where: str,
+    rowid_params: tuple[Any, ...],
+    as_of: str,
+    limit: int,
+) -> list[tuple[Any, ...]]:
+    """One page of settled ``d2fact_`` rows still owed a label, by fact rowid.
+
+    ``rowid_where`` is a fixed fact-rowid predicate chosen by the caller
+    (``f.rowid>?`` or ``f.rowid>? AND f.rowid<=?``), never external input.
+    """
+
+    # ``authority_scope`` is the fact row's thirty-fifth column, stored
+    # after the two JSON documents, so testing it reads each row's
+    # overflow pages.  Tested at the fact's own loop level -- which is
+    # where a single-table term is evaluated -- that was every fact the
+    # cursor range held: 37.6s for a page that found nothing on
+    # 2026-09-14 (30,611 facts, every one already labelled), and the
+    # retry lane wraps to the start of the table.  So the candidates are
+    # found first on the row's leading columns, the truth join and the
+    # label anti-join, and only those are read for their scope and sizes:
+    # 4.9s for the same page, rows and order identical on the live table.
+    return conn.execute(
+        """
+        WITH candidate AS MATERIALIZED (
+          SELECT f.rowid AS fact_rowid, t.truth_id AS truth_id
+          FROM basket_policy_training_fact f
+          JOIN calibration_station_daily_high_truth t
+            ON t.station_id=f.station_id AND t.local_date=f.event_date
+          WHERE """
+        + rowid_where
+        + """
+            AND f.fact_id LIKE 'd2fact_%'
+            AND t.source_lane='AWC'
+            AND t.source_role=?
+            AND t.qc_status='ACCEPTED' AND t.timestamps_complete=1
+            AND t.canonical_committed_at_utc<=?
+            AND t.revision_no=(
+              SELECT MAX(t2.revision_no)
+              FROM calibration_station_daily_high_truth t2
+              WHERE t2.station_id=t.station_id
+                AND t2.local_date=t.local_date
+                AND t2.source_lane='AWC'
+                AND t2.source_role=?
+                AND t2.canonical_committed_at_utc<=?
+            )
+            AND NOT EXISTS(
+              SELECT 1 FROM basket_policy_training_label l
+              WHERE l.fact_id=f.fact_id AND l.truth_id=t.truth_id
+            )
+        )
+        SELECT f.rowid,f.fact_id,f.station_id,f.event_date,
+               f.settlement_timezone,
+               f.probability_envelope_id,
+               length(CAST(f.policy_version_vector_json AS BLOB)),
+               length(CAST(f.feature_json AS BLOB)),
+               t.truth_id,t.revision_no,t.official_tmax_c,
+               t.canonical_committed_at_utc,t.settlement_definition,
+               t.authority_scope,t.content_sha256
+        FROM candidate c
+        JOIN basket_policy_training_fact f ON f.rowid=c.fact_rowid
+        JOIN calibration_station_daily_high_truth t
+          ON t.truth_id=c.truth_id
+        WHERE f.authority_scope=?
+        ORDER BY f.rowid
+        LIMIT ?
+        """,
+        (
+            *rowid_params,
+            CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
+            as_of,
+            CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
+            as_of,
+            FACT_AUTHORITY_SCOPE,
+            int(limit),
+        ),
+    ).fetchall()
+
+
 def materialize_delta_v2_settled_training_labels(
     conn: sqlite3.Connection,
     *,
@@ -312,54 +393,13 @@ def materialize_delta_v2_settled_training_labels(
             if extra_rowid_cursor is not None
             else (rowid_cursor,)
         )
-        return conn.execute(
-            """
-            SELECT f.rowid,f.fact_id,f.station_id,f.event_date,
-                   f.settlement_timezone,
-                   f.probability_envelope_id,
-                   length(CAST(f.policy_version_vector_json AS BLOB)),
-                   length(CAST(f.feature_json AS BLOB)),
-                   t.truth_id,t.revision_no,t.official_tmax_c,
-                   t.canonical_committed_at_utc,t.settlement_definition,
-                   t.authority_scope,t.content_sha256
-            FROM basket_policy_training_fact f
-            JOIN calibration_station_daily_high_truth t
-              ON t.station_id=f.station_id AND t.local_date=f.event_date
-            WHERE """
-            + rowid_where
-            + """
-              AND f.fact_id LIKE 'd2fact_%'
-              AND f.authority_scope=?
-              AND t.source_lane='AWC'
-              AND t.source_role=?
-              AND t.qc_status='ACCEPTED' AND t.timestamps_complete=1
-              AND t.canonical_committed_at_utc<=?
-              AND t.revision_no=(
-                SELECT MAX(t2.revision_no)
-                FROM calibration_station_daily_high_truth t2
-                WHERE t2.station_id=t.station_id
-                  AND t2.local_date=t.local_date
-                  AND t2.source_lane='AWC'
-                  AND t2.source_role=?
-                  AND t2.canonical_committed_at_utc<=?
-              )
-              AND NOT EXISTS(
-                SELECT 1 FROM basket_policy_training_label l
-                WHERE l.fact_id=f.fact_id AND l.truth_id=t.truth_id
-              )
-            ORDER BY f.rowid
-            LIMIT ?
-            """,
-            (
-                *rowid_params,
-                FACT_AUTHORITY_SCOPE,
-                CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
-                as_of,
-                CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
-                as_of,
-                int(limit),
-            ),
-        ).fetchall()
+        return _label_candidate_page(
+            conn,
+            rowid_where=rowid_where,
+            rowid_params=rowid_params,
+            as_of=as_of,
+            limit=limit,
+        )
 
     # A high-water cursor alone permanently loses an older open or malformed
     # fact.  The retry cursor rotates through unresolved low rows instead of
