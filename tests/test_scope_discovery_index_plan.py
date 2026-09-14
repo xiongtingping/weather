@@ -115,11 +115,12 @@ def test_the_worker_still_asks_the_question_the_index_is_shaped_for():
     silently, because the query keeps returning exactly the right answer.
     """
 
-    source = (
-        ROOT / "bayes_basket_target" / "production_worker.py"
-    ).read_text(encoding="utf-8")
+    from bayes_basket_target.production_worker import (
+        DECISION_SCOPE_PROBABILITY_SQL,
+    )
 
-    assert (
-        '"SELECT DISTINCT station_id,event_date,settlement_timezone,"'
-        in source
+    assert DECISION_SCOPE_PROBABILITY_SQL.format(
+        stage_projection="stage"
+    ).startswith(
+        "SELECT DISTINCT station_id,event_date,settlement_timezone,stage"
     ), "scope discovery no longer selects the columns the index leads with"

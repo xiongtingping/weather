@@ -441,22 +441,15 @@ def test_the_regime_prior_read_asks_for_the_scopes_it_will_look_up(
 # predicate this time but an unfolded one -- every row read so a dict could
 # throw the duplicates away.
 def _decision_scope_probability_sql() -> str:
-    import re
+    # The statement itself, not a regex over the file it lives in: it moved
+    # into a module constant on 2026-09-14 when it gained its event-date
+    # floor, and a reader of the source would have followed the text rather
+    # than the query.
+    from bayes_basket_target.production_worker import (
+        DECISION_SCOPE_PROBABILITY_SQL,
+    )
 
-    body = (ROOT / "bayes_basket_target" / "production_worker.py").read_text()
-    start = body.index('"SELECT DISTINCT station_id,event_date,settlement_timezone,"')
-    match = re.search(
-        r"probability_rows = self\.conn\.execute\(\s*(.*?)\n\s*\)\.fetchall\(\)",
-        body[start - 400:start + 1200],
-        re.S,
-    )
-    assert match, "the decision-scope probability read moved; follow it"
-    return "".join(
-        re.findall(r'"([^"]*)"', match.group(1))
-    ).replace("+ stage_projection +", "").replace(
-        "SELECT DISTINCT station_id,event_date,settlement_timezone,",
-        "SELECT DISTINCT station_id,event_date,settlement_timezone,stage",
-    )
+    return DECISION_SCOPE_PROBABILITY_SQL.format(stage_projection="stage")
 
 
 def test_the_decision_scope_read_folds_before_it_fetches(
@@ -478,7 +471,7 @@ def test_the_decision_scope_read_folds_before_it_fetches(
 
     sql = _decision_scope_probability_sql()
     assert sql.startswith("SELECT DISTINCT"), sql
-    steps = _plan(conn, sql, ())
+    steps = _plan(conn, sql, ("2026-09-12",))
     assert steps, "the planner returned no steps"
     assert not any(
         step.startswith("SCAN") and "USING" not in step for step in steps

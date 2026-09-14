@@ -2788,6 +2788,34 @@ def _merge_scope_manifests(
     return base
 
 
+#: Scope discovery's probability read.  Bounded below by event date; see
+#: ``_decision_scopes`` and ``_decision_scope_event_date_floor``.
+DECISION_SCOPE_PROBABILITY_SQL = (
+    "SELECT DISTINCT station_id,event_date,settlement_timezone,{stage_projection}"
+    " FROM basket_probability_envelope"
+    " WHERE station_id<>'' AND event_date<>''"
+    " AND state='COMMITTED' AND event_date>=?"
+)
+#: Days before the decision clock's UTC date that scope discovery still reads.
+DECISION_SCOPE_EVENT_DATE_MARGIN_DAYS = 2
+
+
+def _decision_scope_event_date_floor(as_of_utc: str) -> str:
+    """The earliest event date that can still be open or not started."""
+
+    try:
+        clock = datetime.fromisoformat(str(as_of_utc).replace("Z", "+00:00"))
+    except ValueError:
+        # An unreadable clock must not narrow what is read.
+        return "0000-00-00"
+    if clock.tzinfo is None:
+        return "0000-00-00"
+    return (
+        clock.astimezone(timezone.utc).date()
+        - timedelta(days=DECISION_SCOPE_EVENT_DATE_MARGIN_DAYS)
+    ).isoformat()
+
+
 def _scope_manifest_station_day(item: Mapping[str, Any]) -> tuple[str, str]:
     """The ``(STATION, event_date)`` one scope manifest describes.
 
@@ -8617,12 +8645,21 @@ class TargetProductionWorker:
             # ``tupledealloc``, freeing fetched rows.  Measured warm
             # against the live SSOT: 5.15s to 3.9s for the read, and 413k
             # tuples a call that are never allocated.
+            # And only the days that can still be open or not started.  A
+            # local day ends by 12:00Z on the UTC day after it (UTC-12 is the
+            # westernmost settlement zone), so no event date before the
+            # decision clock's UTC date minus one can be either -- everything
+            # older is fetched, folded and then discarded by the day-state
+            # test below.  Measured 2026-09-14 against the live SSOT: 4,619
+            # distinct rows in 4.5-5.0s for 466 that could matter, 0.01s with
+            # the bound, which the publisher scope index serves as a range; and
+            # identical open/not-started sets at every half hour across 48
+            # hours of clocks.  Two days of margin, not one.
             probability_rows = self.conn.execute(
-                "SELECT DISTINCT station_id,event_date,settlement_timezone,"
-                + stage_projection
-                + " FROM basket_probability_envelope "
-                "WHERE station_id<>'' AND event_date<>'' "
-                "AND state='COMMITTED'"
+                DECISION_SCOPE_PROBABILITY_SQL.format(
+                    stage_projection=stage_projection
+                ),
+                (_decision_scope_event_date_floor(decision_clock),),
             ).fetchall()
         except sqlite3.Error:
             probability_rows = []
