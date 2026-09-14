@@ -58,6 +58,11 @@ def main() -> int:
     parser.add_argument("--budget-seconds", type=float, default=520.0)
     parser.add_argument("--pause-seconds", type=float, default=1.0)
     parser.add_argument("--station", action="append", default=[])
+    parser.add_argument(
+        "--all", action="store_true",
+        help="rebuild every station, not only those without a pool seat "
+             "(after the minted views change, 2026-09-14 pairs for four-system pools)",
+    )
     args = parser.parse_args()
     if P0_MEMBERSHIP_MODE != P0_MEMBERSHIP_MODE_STABLE_POOL:
         raise SystemExit("P0_MEMBERSHIP_MODE is not stable_pool; nothing to mint")
@@ -79,7 +84,7 @@ def main() -> int:
             (STABLE_POOL_WEIGHT_RULE + "%",),
         )
     }
-    todo = [station for station in stations if station not in minted]
+    todo = stations if args.all else [station for station in stations if station not in minted]
     print(json.dumps({"stations": len(stations), "already_minted": len(minted & set(stations)), "todo": len(todo)}), flush=True)
     started = time.monotonic()
     for station in todo:
@@ -110,7 +115,7 @@ def main() -> int:
             "lock_attempts": attempts, "lock_held_seconds": round(held, 2),
         }), flush=True)
         time.sleep(args.pause_seconds)
-    remaining = [
+    remaining = [] if args.all else [
         station for station in todo
         if not reader.execute(
             "SELECT 1 FROM calibration_cross_native_ensemble_artifact"

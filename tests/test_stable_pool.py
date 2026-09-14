@@ -87,3 +87,17 @@ def test_a_member_without_a_run_sits_out_and_the_rest_renormalise() -> None:
             {"NOAA_GEFS_05": 0.5, "ECCC_GEM_GLOBAL_ENS": 0.5},
             kappa=0.5,
         )
+
+
+def test_a_pool_mints_every_view_that_spans_two_families() -> None:
+    from bayes_basket_target.stable_pool import pool_subsets
+
+    views = pool_subsets(FOUR, FAMILIES)
+    assert len(views) == 11
+    assert views[0] == tuple(sorted(FOUR))
+    assert len(set(views)) == len(views)
+    assert ("ECMWF_IFS_ENS_OPEN_PF50", "NOAA_GEFS_05") in views
+    # Two products of one family are not a P0 on their own.
+    with_aifs = pool_subsets(["ECMWF_IFS_ENS_OPEN_PF50", "ECMWF_AIFS_ENS_GLOBAL", "NOAA_GEFS_05"], FAMILIES)
+    assert ("ECMWF_AIFS_ENS_GLOBAL", "ECMWF_IFS_ENS_OPEN_PF50") not in with_aifs
+    assert len(with_aifs) == 3

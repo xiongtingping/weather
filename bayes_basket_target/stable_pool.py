@@ -30,6 +30,7 @@ from __future__ import annotations
 import math
 import os
 from collections import defaultdict
+from itertools import combinations
 from collections.abc import Mapping, Sequence
 
 from .contracts import ContractError
@@ -161,35 +162,27 @@ def pool_subsets(
     system_ids: Sequence[str],
     family_by_system: Mapping[str, str],
 ) -> list[tuple[str, ...]]:
-    """The seat sets a cohort mints: the whole pool and its missing-member views.
+    """The seat sets a cohort mints: the whole pool and every missing-member view.
 
-    The compile can only serve an artifact whose systems all have a run in
-    the packet, so a pool with one member late needs the view without it
-    already certified.  Minted: the whole pool, every view missing exactly one
-    member, and every pair when the pool has three.  Each must span two
-    families.  A four-system pool mints five sets, not eleven: the views a
-    packet two members short would need are rare and fall back to the next
-    broadest set the compile finds.
+    The compile can only serve an artifact whose systems all have a usable
+    run in the packet, so every view a packet can leave it with has to be
+    certified in advance.  Every subset of two or more systems spanning at
+    least two families is minted, whole pool first, then by size.
+
+    Until 2026-09-14T06Z a four-system pool minted only itself and its
+    one-missing views.  A packet with two members short -- KLGA h24_48 at
+    05:31Z, where only IFS and GEFS had usable receipts -- then found no pool
+    seat and was served a contest pair (IFS 0.28 / GEFS 0.72) where the pool
+    rule gives 0.39 / 0.61; about 9% of the 05:22Z inbox went that way, and
+    those contest rows expire in October with nothing to replace them.  User
+    ruling the same morning: "铸对子".
     """
 
     ordered = tuple(sorted(set(str(value) for value in system_ids)))
-    candidates: list[tuple[str, ...]] = [ordered]
-    if len(ordered) >= 3:
-        candidates.extend(
-            tuple(member for member in ordered if member != dropped)
-            for dropped in ordered
-        )
-    if len(ordered) == 3:
-        candidates.extend(
-            (a, b) for index, a in enumerate(ordered) for b in ordered[index + 1:]
-        )
-    seen: set[tuple[str, ...]] = set()
     out: list[tuple[str, ...]] = []
-    for subset in candidates:
-        if subset in seen or len(subset) < 2:
-            continue
-        if len({family_by_system[member] for member in subset}) < MIN_POOL_FAMILIES:
-            continue
-        seen.add(subset)
-        out.append(subset)
+    for size in range(len(ordered), 1, -1):
+        for subset in combinations(ordered, size):
+            if len({family_by_system[member] for member in subset}) < MIN_POOL_FAMILIES:
+                continue
+            out.append(subset)
     return out
