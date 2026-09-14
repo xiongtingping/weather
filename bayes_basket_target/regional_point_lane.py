@@ -562,11 +562,9 @@ def capture_p1(
             # deadline check above means: stop.  Reported beside network
             # faults it would make a healthy lane read as a failing one --
             # and continuing would hand the next run a clock already spent.
-            from .jma_msm_archive import (  # noqa: PLC0415
-                JmaMsmPassDeadlineExceeded,
-            )
+            from .pass_deadline import PassDeadlineExceeded  # noqa: PLC0415
 
-            if isinstance(exc, JmaMsmPassDeadlineExceeded):
+            if isinstance(exc, PassDeadlineExceeded):
                 budget_exhausted = True
                 break
             failed.append(f"{product} {run_init:%Y-%m-%dT%HZ} {type(exc).__name__}: {str(exc)[:80]}")

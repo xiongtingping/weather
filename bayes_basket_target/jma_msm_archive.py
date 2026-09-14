@@ -35,7 +35,6 @@ import ctypes
 import struct
 import threading
 import time
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -43,6 +42,13 @@ from typing import Any
 import httpx
 
 from .contracts import ContractError
+from .pass_deadline import (
+    PassDeadlineExceeded,
+    deadline_spent as _deadline_spent,
+    pass_deadline,
+    seconds_left as pass_deadline_seconds_left,
+    set_pass_deadline,
+)
 from .dwd_icon_eps_archive import _eccodes
 
 SYSTEM_ID = "JMA_MSM_POINT"
@@ -153,70 +159,12 @@ RANGE_ATTEMPTS = 4
 RANGE_BACKOFF_SECONDS = 2.0
 
 
-class JmaMsmPassDeadlineExceeded(ContractError):
-    """The pass ran out of wall clock inside a fetch, not between them."""
+class JmaMsmPassDeadlineExceeded(PassDeadlineExceeded):
+    """The pass ran out of wall clock inside a fetch, not between them.
 
-
-_DEADLINE_LOCAL = threading.local()
-
-
-@contextmanager
-def pass_deadline(seconds: float | None):
-    """Bound every range this thread issues by one wall clock.
-
-    ``httpx.Timeout(60.0)`` is a between-bytes timeout, not a total: a
-    mirror that trickles never trips it.  Measured 2026-09-10, a SUCCESSFUL
-    pass took 16m59s at 0% CPU -- 8,568 KB per station-day, about 36 KB/s --
-    and the same lane's clock read ``timeout_killed`` at its 1,800-second
-    subprocess budget with nothing written and the exclusive SSOT writer
-    slot held for the whole half hour.
-
-    The caller's own per-pass budget could not stop that.  It is checked
-    between station-days, and ONE station-day is many ranged requests, each
-    retrying four times against a sixty-second between-bytes timeout: about
-    252 seconds of worst case for a single range, and enough on its own to
-    outlast the subprocess.  A bound between fetches does not bound a fetch.
-
-    So the deadline lives here, where the requests are, and is checked
-    before each request and before each retry backoff -- never mid-response,
-    so a range that has started is allowed to finish and nothing is left
-    half read.  What is unreached is simply still missing, which the next
-    pass plans again.
+    The clock itself is ``pass_deadline``'s, shared with the other archive
+    clients; this lane's name for it stays so its callers read the same.
     """
-
-    previous = getattr(_DEADLINE_LOCAL, "deadline", None)
-    _DEADLINE_LOCAL.deadline = (
-        None if seconds is None else time.monotonic() + float(seconds)
-    )
-    try:
-        yield
-    finally:
-        _DEADLINE_LOCAL.deadline = previous
-
-
-def _deadline_spent() -> bool:
-    deadline = getattr(_DEADLINE_LOCAL, "deadline", None)
-    return deadline is not None and time.monotonic() >= deadline
-
-
-def set_pass_deadline(seconds: float | None) -> None:
-    """Arm the deadline for this thread without wrapping the caller in a block.
-
-    A ``with`` around a whole ``main`` would re-indent working code to bound
-    it, and re-indenting working code is how a bounding change becomes a
-    behaviour change.  A one-shot capture process arms this once and exits.
-    """
-
-    _DEADLINE_LOCAL.deadline = (
-        None if seconds is None else time.monotonic() + float(seconds)
-    )
-
-
-def pass_deadline_seconds_left() -> float | None:
-    """What the caller has left, so a receipt can say it stopped for time."""
-
-    deadline = getattr(_DEADLINE_LOCAL, "deadline", None)
-    return None if deadline is None else deadline - time.monotonic()
 
 
 def _range(url: str, start: int, length: int) -> bytes:

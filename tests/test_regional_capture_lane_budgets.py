@@ -90,11 +90,12 @@ def test_a_run_cap_is_accompanied_by_a_seconds_cap(lane):
 # in flight at that moment.
 #
 # How much depends on how deep the deadline reaches.  ``capture_jma_msm_forward``
-# carries it into the fetch itself (``jma_msm_archive.pass_deadline``), so the
-# remainder is ONE ranged request -- measured overshoot 2026-09-11: 0.66s on a
-# 900-second budget.  The other lanes check only between runs, so their
-# remainder is a whole run, and their margin is a bet on a run finishing
-# rather than a proof that it will.  Ten minutes is stated here as the floor
+# carries it into the fetch itself (``pass_deadline``), so the remainder is ONE
+# ranged request -- measured overshoot 2026-09-11: 0.66s on a 900-second
+# budget.  ``capture_noaa_conus_forward`` joined it on 2026-09-14, after the bet
+# below lost (timeout_killed at 03:15Z).  The other lanes check only between
+# runs, so their remainder is a whole run, and their margin is a bet on a run
+# finishing rather than a proof that it will.  Ten minutes is stated here as the floor
 # under both, and named as the bet it is for the lanes without the deeper
 # check.
 MIN_TIMEOUT_MARGIN_SEC = 600.0

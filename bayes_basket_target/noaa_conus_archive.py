@@ -29,6 +29,7 @@ from typing import Any
 import httpx
 
 from .contracts import ContractError
+from .pass_deadline import PassDeadlineExceeded, deadline_spent
 from .dwd_icon_eps_archive import _eccodes
 from .jma_msm_archive import local_day_hours
 
@@ -162,8 +163,28 @@ def product_hours(product: str, run_init: datetime) -> list[int]:
     raise ContractError("noaa_conus_product_unknown")
 
 
+class NoaaConusPassDeadlineExceeded(PassDeadlineExceeded):
+    """The pass ran out of wall clock inside a run's fetch."""
+
+
+def _refuse_if_spent() -> None:
+    # Before each attempt, never mid-response.  One HRRR run is 49 forecast
+    # hours of an idx read and a ranged read each, every one allowed three
+    # attempts against a 45-second between-bytes timeout, and the lane's
+    # seconds budget was checked only between runs -- so one slow run could
+    # carry the pass past its 1,800-second subprocess budget.  Measured
+    # 2026-09-14: ``timeout_killed`` at 03:15Z, nothing written, the exclusive
+    # SSOT domain held for the half hour.  The MSM lane closed the same gap
+    # on 2026-09-11; this lane had been left on the bet.
+    if deadline_spent():
+        raise NoaaConusPassDeadlineExceeded(
+            "noaa_conus_archive_pass_deadline_exceeded"
+        )
+
+
 def _get(url: str) -> bytes | None:
     for attempt in range(_ATTEMPTS):
+        _refuse_if_spent()
         try:
             response = _client().get(url)
         except httpx.HTTPError:
@@ -178,6 +199,7 @@ def _get(url: str) -> bytes | None:
 def _range_get(url: str, start: int, end: int | None) -> bytes | None:
     header = f"bytes={start}-" if end is None else f"bytes={start}-{end - 1}"
     for attempt in range(_ATTEMPTS):
+        _refuse_if_spent()
         try:
             response = _client().get(url, headers={"Range": header})
         except httpx.HTTPError:

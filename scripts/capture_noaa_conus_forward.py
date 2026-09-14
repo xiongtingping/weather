@@ -37,8 +37,10 @@ if str(ROOT) not in sys.path:
 from bayes_basket_target.contracts import content_sha256
 from bayes_basket_target.noaa_conus_archive import (
     CAPTURE_STATIONS, PROVIDER_IDS, SYSTEM_IDS, TRANSPORTS,
+    NoaaConusPassDeadlineExceeded,
     close_client, fetch_day_maximum, run_covers_peak, run_directory_url,
 )
+from bayes_basket_target.pass_deadline import set_pass_deadline
 from bayes_basket_target.native_archive_lead import capture_lead_bucket
 
 DB = ROOT / "data" / "bayes_basket_target_ssot.db"
@@ -252,6 +254,11 @@ def main() -> int:
     )
     ensure_schema(conn)
     for _product in ("HRRR", "NBM"):
+        # Each phase arms its own clock, the same seconds its own budget
+        # already names, so the requests inside a run stop where the run
+        # loop would have: the budget above is checked between runs, and one
+        # run is ninety-odd requests.  See ``pass_deadline``.
+        set_pass_deadline(P1_BUDGET_SEC_PER_PRODUCT)
         _receipt = capture_p1(
             conn, product=_product, now=now,
             stations=STATIONS[_product], max_runs=P1_MAX_RUNS_PER_PASS,
@@ -283,6 +290,7 @@ def main() -> int:
     try:
         plan, skipped = _plan(conn, now)
         deadline = time.monotonic() + BUDGET_SEC_PER_PASS
+        set_pass_deadline(BUDGET_SEC_PER_PASS)
         budget_exhausted = False
         for item in plan:
             product = item["product"]
@@ -303,6 +311,11 @@ def main() -> int:
                     utc_offset_hours=item["offset_hours"],
                     latitude=item["latitude"], longitude=item["longitude"],
                 )
+            except NoaaConusPassDeadlineExceeded:
+                # The clock ran out inside the fetch: the bound doing its
+                # job, not a fault, and the same stop the check above makes.
+                budget_exhausted = True
+                break
             except Exception as exc:  # noqa: BLE001
                 failed.append(
                     f"{product} {station} {target} {cycle}"
