@@ -14723,6 +14723,67 @@ class TargetProductionWorker:
             "orders_submitted": 0,
         }
 
+    def _fresh_committed_envelope_scopes(
+        self, *, fresh_after_utc: str
+    ) -> list[tuple[Any, Any]]:
+        """``SELECT DISTINCT station_id,event_date ... fresh_until_utc>?`` over COMMITTED envelopes.
+
+        Exactly that answer, sorted as that statement sorted it.  The statement
+        itself could not seek: ``fresh_until_utc`` is the ninth column of the
+        publisher index, so every cycle walked all ~448,000 committed envelopes
+        to keep ~100 scopes -- 5.7s on 2026-09-09, 7-8s on 2026-09-14.  And no
+        event-date bound can stand in for it: a P0-M envelope was minted for
+        CYYZ 2026-08-24 on 2026-09-01, and the freshness window has no
+        contracted ceiling (P0 measured 12.7h).
+
+        The envelope table is append-only by trigger -- no UPDATE, no DELETE --
+        so a scope's newest freshness only ever grows, and only by rows past
+        the last rowid read.  The first call aggregates the newest
+        ``fresh_until_utc`` per scope over the covering publisher index (a few
+        seconds, once per connection); every later call reads the rows appended
+        since, by rowid.  The ceiling is taken before the aggregate, so a row
+        landing between the two is counted twice and never missed.
+        """
+
+        conn = self.conn
+        index = getattr(self, "_committed_envelope_freshness", None)
+        if index is None or index.get("conn") is not conn:
+            ceiling = int(conn.execute(
+                "SELECT COALESCE(MAX(rowid),0) FROM basket_probability_envelope"
+            ).fetchone()[0])
+            newest: dict[tuple[Any, Any], Any] = {}
+            for station_id, event_date, fresh_until in conn.execute(
+                "SELECT station_id,event_date,MAX(fresh_until_utc)"
+                " FROM basket_probability_envelope"
+                " WHERE state='COMMITTED' GROUP BY station_id,event_date"
+            ):
+                newest[(station_id, event_date)] = fresh_until
+            index = {"conn": conn, "after_rowid": ceiling, "newest": newest}
+            self._committed_envelope_freshness = index
+        else:
+            newest = index["newest"]
+            # ``state`` stays out of the WHERE clause on purpose: given a
+            # term on it the planner walks the state index instead of seeking
+            # the rowid range (4.3s for 3,000 rows against 0.4s).
+            for rowid, station_id, event_date, fresh_until, state in conn.execute(
+                "SELECT rowid,station_id,event_date,fresh_until_utc,state"
+                " FROM basket_probability_envelope WHERE rowid>?",
+                (int(index["after_rowid"]),),
+            ):
+                if int(rowid) > int(index["after_rowid"]):
+                    index["after_rowid"] = int(rowid)
+                if state != "COMMITTED" or fresh_until is None:
+                    continue
+                key = (station_id, event_date)
+                held = newest.get(key)
+                if held is None or fresh_until > held:
+                    newest[key] = fresh_until
+        return sorted(
+            key
+            for key, fresh_until in index["newest"].items()
+            if fresh_until is not None and fresh_until > fresh_after_utc
+        )
+
     def _materialize_regime_ssot(
         self,
         *,
@@ -14754,21 +14815,14 @@ class TargetProductionWorker:
         # clock -- died on ``regime_ssot_not_unique`` for whichever station
         # had just minted one (20 stations in one 2026-08-20 snapshot).
         _regime_probe_started = time.perf_counter()
-        scopes = self.conn.execute(
-            "SELECT DISTINCT station_id,event_date "
-            "FROM basket_probability_envelope "
-            "WHERE state='COMMITTED' "
-            "AND fresh_until_utc>? ORDER BY station_id,event_date",
+        scopes = self._fresh_committed_envelope_scopes(
             # Widened by the serving grace: a P1 an hour past its roll is
             # still the day's current reading (contracts.STAGES_SERVABLE_
             # PAST_CADENCE) and its companion must exist for that long.
-            (shift_timestamp_utc(as_of_utc, -PROBABILITY_MAX_STALE_SECONDS),),
-        ).fetchall()
-        # ``state`` seeks and ``fresh_until_utc`` does not: it is the ninth
-        # column of the publisher index, so this walks every COMMITTED
-        # envelope to keep the fresh ones.  Measured warm 2026-09-09: 5.7s
-        # for 119 scopes out of 416,610 rows.  Named here rather than
-        # guessed at from the stage total.
+            fresh_after_utc=shift_timestamp_utc(
+                as_of_utc, -PROBABILITY_MAX_STALE_SECONDS
+            ),
+        )
         self._add_span(
             "regime_scope_probe",
             (time.perf_counter() - _regime_probe_started) * 1000.0,
