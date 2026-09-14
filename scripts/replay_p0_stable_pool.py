@@ -60,7 +60,7 @@ from bayes_basket_target.stable_pool import (  # noqa: E402
 )
 from bayes_basket_target.station_registry import station_coordinates  # noqa: E402
 
-SCHEMA = "p0_stable_pool_replay_update_v2"
+SCHEMA = "p0_stable_pool_replay_update_v3"
 CUTOFF_UTC = "2026-09-14T00:00:00Z"
 FIRST_EVENT_DATE = "2026-08-20"
 LAST_EVENT_DATE = "2026-09-12"
@@ -194,6 +194,12 @@ def _blend_and_score(*, weights, day_rows, cooling_shift_c, latitude, tables, ac
         pre_tables, ordered_keys=grid, key_centers_c=[float(int(k)) for k in grid],
         center_width=tables["center_width_layer"], band=tables["band_layer"],
     )
+    # The same vector with the band left out, kept whole so the aggregator
+    # can refit the band on this scheme's own claims and apply it here.
+    pre_band, _cw, _band = apply_served_table_layers(
+        pre_tables, ordered_keys=grid, key_centers_c=[float(int(k)) for k in grid],
+        center_width=tables["center_width_layer"], band=None,
+    )
     base_layer = tables["center_width_layer"] or CenterWidthLayer()
     by_lambda = []
     for lam in LAMBDA_GRID:
@@ -211,6 +217,8 @@ def _blend_and_score(*, weights, day_rows, cooling_shift_c, latitude, tables, ac
         "mean": round(mean, 4),
         "sigma": round(sigma, 4),
         "raw": _score(pre_tables, actual),
+        "noband": _score(pre_band, actual),
+        "pre_band": {k: round(v, 6) for k, v in pre_band.items() if v >= 5e-7},
         "served": _score(served, actual),
         "lam": by_lambda,
         "vec": {k: round(v, 5) for k, v in served.items() if v >= 5e-6},
