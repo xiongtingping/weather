@@ -8270,7 +8270,12 @@ def _claim_edge_calibration(rows: list[tuple]) -> dict[str, Any]:
             return None
         return (s[7] - s[4] * s[5] / n) / sxx
 
-    stats = {"ratio": ratio_of, "gap": gap_of, "slope": slope_of}
+    def hit_of(s: Sequence[float]) -> float | None:
+        return s[2] / s[0] if s[0] else None
+
+    stats = {
+        "ratio": ratio_of, "gap": gap_of, "slope": slope_of, "hit": hit_of,
+    }
 
     def interval(
         group: list[tuple], wanted: Sequence[str]
@@ -8339,8 +8344,9 @@ def _claim_edge_calibration(rows: list[tuple]) -> dict[str, Any]:
             if not group:
                 continue
             s = sums(group)
-            got = interval(group, ("ratio", "gap"))
+            got = interval(group, ("ratio", "gap", "hit"))
             (r_lo, r_hi), (g_lo, g_hi) = got["ratio"], got["gap"]
+            h_lo, h_hi = got["hit"]
             band_rows.append({
                 "band": name,
                 "n": len(group),
@@ -8349,6 +8355,10 @@ def _claim_edge_calibration(rows: list[tuple]) -> dict[str, Any]:
                 "claimed_mean": round(s[1] / s[0], 4),
                 "price_mean": round(s[3] / s[0], 4),
                 "hit_rate": round(s[2] / s[0], 4),
+                # Drawn as the whisker on the page's truth dot, so the
+                # interval is the hit rate's own and not the price's shifted.
+                "hit_lo": r3(h_lo),
+                "hit_hi": r3(h_hi),
                 "realised_x": r3(ratio_of(s)),
                 "realised_lo": r3(r_lo),
                 "realised_hi": r3(r_hi),
@@ -9685,6 +9695,7 @@ HTML_TEMPLATE = r"""<!doctype html><!--render-start:__RENDER_STARTED__-->
 :root{--bg:#0f1115;--card:#171a21;--line:#262b36;--soft:rgba(38,43,54,.6);
 --text:#e6e9ef;--muted:#9aa4b8;--green:#3fb950;--amber:#d29922;--red:#f85149;
 --accent:#58a6ff;--up:#7ee787;--down:#e3b341;--violet:#d2a8ff;
+--th-claim:#3987e5;--th-price:#d95926;
 --pill-green-bg:rgba(63,185,80,.14);--pill-green-fg:#7ee787;
 --pill-amber-bg:rgba(210,153,34,.16);--pill-amber-fg:#e3b341;
 --pill-red-bg:rgba(248,81,73,.15);--pill-red-fg:#ff7b72;
@@ -9703,6 +9714,7 @@ color-scheme:dark}
 --soft:rgba(140,149,165,.28);--text:#1c2029;--muted:#5b6472;--green:#1a7f37;
 --amber:#9a6700;--red:#cf222e;--accent:#0969da;--up:#1a7f37;--down:#9a6700;
 --violet:#8250df;
+--th-claim:#2a78d6;--th-price:#eb6834;
 --pill-green-bg:rgba(26,127,55,.11);--pill-green-fg:#116329;
 --pill-amber-bg:rgba(154,103,0,.13);--pill-amber-fg:#7d4e00;
 --pill-red-bg:rgba(207,34,46,.10);--pill-red-fg:#a40e26;
@@ -9896,6 +9908,15 @@ var(--soft);align-items:flex-start}
 .zone-trap{background:rgba(224,82,82,.16)}
 .zone-market{background:rgba(224,164,64,.14)}
 .zone-agree{background:rgba(96,150,224,.10)}
+.th-legend{display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:12.5px;
+  margin:2px 0 6px}
+.th-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:6px 18px}
+.th-panel{min-width:0}
+.th-head{display:flex;gap:8px;align-items:baseline;font-size:13px;margin:6px 0 0}
+.th-chip{font-size:11.5px;padding:1px 8px;border-radius:10px;background:var(--bar-bg);
+  color:var(--text)}
+.th-row:hover .th-hit{fill:var(--line)!important;opacity:.5}
+.th-row:hover .th-dot{r:6}
 [data-theme="light"] .zone-trap{background:rgba(200,48,48,.10)}
 [data-theme="light"] .zone-market{background:rgba(190,130,20,.10)}
 [data-theme="light"] .zone-agree{background:rgba(50,110,190,.08)}
@@ -11912,131 +11933,187 @@ function marketLeanGate(){
 // actually happens", one keyed by claimed probability, one by claimed
 // edge, and reading them two tabs apart hid that they are the same audit.
 //
-// One table since 2026-09-14 (user ruling "修"): the seated window scored
-// against the truth, split by stage, with hit − price as the reading.  The
-// ledger table that used to lead here -- posted legs split by whether the
-// paper book filled them -- read charter 129's outcome-conditioned fill
-// probabilities back as a fever, stood on 99 settled filled legs, and
-// pooled only the bands that cleared its floor, which that day were the
-// three that left out both fevered bands.  Every sentence below is
-// computed from the payload; nothing in it is a number typed in by hand.
+// Drawn, not tabled (user ruling 2026-09-14: "改为直观可视化，而不是一堆数字").
+// Every band is one row on a 0-100% ruler carrying three marks: what the
+// model claimed (blue ring), what the market charged (orange tick) and how
+// often the truth actually landed (ink dot with its interval).  The whole
+// finding of this section is where the dot sits -- on the tick, or on the
+// ring -- and a ruler shows that without asking anyone to subtract.  The
+// numbers stay one click away in the table view and on every row's hover.
+// The ledger table that used to lead here was retired the same day (see
+// ``_claim_edge_calibration``); every sentence below is computed.
+const TH_BANDS=["<0","0-2%","2-5%","5-10%","10-20%","20-30%",">=30%"];
+const TH_WORDS={"<0":"我们嫌贵","0-2%":"便宜 0–2 点","2-5%":"便宜 2–5 点",
+  "5-10%":"便宜 5–10 点","10-20%":"便宜 10–20 点","20-30%":"便宜 20–30 点",
+  ">=30%":"便宜 ≥30 点"};
+const TH_THIN_DAYS=30;
+const thPct=v=>v==null?"—":(v*100).toFixed(1)+"%";
+const thPt=v=>v==null?"—":((v<0?"−":"+")+Math.abs(v*100).toFixed(1));
+
+// One stage's ruler.  Seven fixed slots so the four panels line up row for
+// row; a band a stage never saw keeps its slot, empty.
+function thRuler(name,g){
+  const W=430,L=96,R=16,T=6,RH=27,AX=24;
+  const H=T+TH_BANDS.length*RH+AX;
+  const x=v=>(L+Math.max(0,Math.min(1,v))*(W-L-R)).toFixed(1);
+  const by={};(g.bands||[]).forEach(b=>by[b.band]=b);
+  const grid=[0,.25,.5,.75,1].map(v=>`<line x1="${x(v)}" x2="${x(v)}" y1="${T}"
+    y2="${H-AX+2}" style="stroke:var(--line);stroke-width:1"/><text x="${x(v)}"
+    y="${H-8}" text-anchor="middle" style="fill:var(--muted);font-size:10.5px">${
+    (v*100).toFixed(0)}%</text>`).join("");
+  const rows=TH_BANDS.map((band,i)=>{
+    const y=T+i*RH+RH/2, b=by[band];
+    const label=`<text x="${L-10}" y="${(y+4).toFixed(1)}" text-anchor="end"
+      style="fill:var(--${b?"text":"muted"});font-size:11.5px">${TH_WORDS[band]}</text>`;
+    if(!b) return label;
+    const thin=b.station_days<TH_THIN_DAYS;
+    const whisker=b.hit_lo==null?"":`<line x1="${x(b.hit_lo)}" x2="${x(b.hit_hi)}"
+      y1="${y}" y2="${y}" style="stroke:var(--text);stroke-width:2;opacity:.42;
+      stroke-linecap:round"/>`;
+    const tip=`${name} · ${TH_WORDS[band]}：模型说 ${thPct(b.claimed_mean)}，`
+      +`市场全含价 ${thPct(b.price_mean)}，实际命中 ${thPct(b.hit_rate)}`
+      +(b.hit_lo==null?"":`（90% 区间 ${thPct(b.hit_lo)}–${thPct(b.hit_hi)}）`)
+      +`；按这个价买一股平均 ${thPt(b.hit_minus_price)} 点`
+      +` · ${b.n} 窗 / ${b.station_days} 站日${thin?"（样本薄）":""}`;
+    return `<g class="th-row"><title>${h(tip)}</title>
+      <rect x="0" y="${(y-RH/2).toFixed(1)}" width="${W}" height="${RH}"
+        class="th-hit" style="fill:transparent"/>
+      ${label}<g style="opacity:${thin?.4:1}">${whisker}
+      <line x1="${x(b.price_mean)}" x2="${x(b.price_mean)}" y1="${y-8}" y2="${y+8}"
+        style="stroke:var(--th-price);stroke-width:3;stroke-linecap:round"/>
+      <circle cx="${x(b.claimed_mean)}" cy="${y}" r="5.5"
+        style="fill:var(--card);stroke:var(--th-claim);stroke-width:2.5"/>
+      <circle class="th-dot" cx="${x(b.hit_rate)}" cy="${y}" r="4.5"
+        style="fill:var(--text);stroke:var(--card);stroke-width:2"/></g></g>`;
+  }).join("");
+  const verdict=g.beta_vs_half==="below"?"实际贴着市场价"
+    :(g.beta_vs_half==="above"?"实际贴着模型声称":"还分不出");
+  return `<div class="th-panel"><div class="th-head"><b>${h(name)}</b>
+    <span class="muted">${g.station_days} 站日</span>
+    <span class="th-chip">${verdict}</span></div>
+    <svg viewBox="0 0 ${W} ${H}" width="100%" role="img"
+      aria-label="${h(name)}：各档模型声称、市场价与实际命中">${grid}${rows}</svg></div>`;
+}
+
+// Mark keys for the legend, drawn with the same marks the rulers use.
+function thKey(kind){
+  const svg=body=>`<svg width="22" height="16" viewBox="0 0 22 16"
+    style="vertical-align:-3px">${body}</svg>`;
+  if(kind==="claim") return svg(`<circle cx="11" cy="8" r="5"
+    style="fill:var(--card);stroke:var(--th-claim);stroke-width:2.5"/>`);
+  if(kind==="price") return svg(`<line x1="11" x2="11" y1="1" y2="15"
+    style="stroke:var(--th-price);stroke-width:3;stroke-linecap:round"/>`);
+  return svg(`<line x1="2" x2="20" y1="8" y2="8" style="stroke:var(--text);
+    stroke-width:2;opacity:.42;stroke-linecap:round"/><circle cx="11" cy="8"
+    r="4.5" style="fill:var(--text);stroke:var(--card);stroke-width:2"/>`);
+}
+
 function edgeBandHealth(){
   const C=((D.lambda_axis_realisation||{}).claim_edge)||{};
   const head=`<h2>声称边际体温计（edge 带 × 兑现）</h2>`;
   if(!C.available||!(C.bands||[]).length)
     return head+`<div class="card"><span class="dot"></span> 还没有已结算的入座窗口。</div>`;
-  const p1=v=>v==null?"—":(v*100).toFixed(1)+"%";
-  const pt=v=>v==null?"—":((v<0?"−":"+")+Math.abs(v*100).toFixed(1));
-  const mult=v=>v==null?"—":"×"+v.toFixed(3);
-  const tone=vd=>vd==="below"?"down":(vd==="above"?"up":"");
-  const groups=[...(C.stages||[]).map(st=>[st,(C.by_stage||{})[st]]),
-    ["全部阶段",C]].filter(([,g])=>g&&(g.bands||[]).length);
-  const betaText=g=>g.beta==null?"β —":`β ${g.beta.toFixed(3)}${g.beta_lo==null?""
-    :` [${g.beta_lo.toFixed(3)}, ${g.beta_hi.toFixed(3)}]`}`;
-  const gapText=g=>`命中 − 价 ${pt(g.hit_minus_price)} 点${g.hit_minus_price_lo==null?""
-    :` [${pt(g.hit_minus_price_lo)}, ${pt(g.hit_minus_price_hi)}]`}`;
-  // The shape said in one line per stage, from the bands that carry an
-  // interval: how far claim − price travels against how far hit − price
-  // moves.  The last clause is conditioned on beta's interval against 0.5,
-  // taken server-side on the unrounded quantiles.
-  const summary=([name,g])=>{
-    const read=(g.bands||[]).filter(b=>b.hit_minus_price_lo!=null);
-    if(read.length<2) return `<li><b>${h(name)}</b>：有区间的档不足两档，读不出形状。</li>`;
-    const edges=read.map(b=>b.claimed_mean-b.price_mean);
-    const gaps=read.map(b=>b.hit_minus_price);
-    const verdict=g.beta_vs_half==="below"
-      ?"<b>真值跟价格走，不跟声称走</b>（β 区间整体低于 0.5）"
-      :(g.beta_vs_half==="above"?"<b>分歧大半兑现</b>（β 区间整体高于 0.5）"
-      :"β 相对 0.5 未分出");
-    return `<li><b>${h(name)}</b>：声称 − 价从 ${pt(Math.min(...edges))} 到 ${
-      pt(Math.max(...edges))} 点，命中 − 价在 ${pt(Math.min(...gaps))} ～ ${
-      pt(Math.max(...gaps))} 点之间 · ${betaText(g)} · ${verdict}</li>`;
-  };
-  const bandRow=b=>`<tr>
-    <td class="mono">${h(b.band)}</td><td>${b.n}</td><td>${b.station_days}</td>
-    <td>${p1(b.share)}</td><td class="mono">${p1(b.claimed_mean)}</td>
-    <td class="mono">${p1(b.price_mean)}</td><td class="mono">${p1(b.hit_rate)}</td>
-    <td class="mono ${tone(b.hit_minus_price_verdict)}"><b>${pt(b.hit_minus_price)}</b></td>
-    <td class="mono muted">${pt(b.hit_minus_price_lo)} … ${pt(b.hit_minus_price_hi)}</td>
-    <td class="mono ${tone(b.realised_verdict)}">${mult(b.realised_x)}</td>
-    <td class="mono muted">${mult(b.realised_lo)} … ${mult(b.realised_hi)}</td></tr>`;
-  const groupRows=([name,g])=>`<tr><td colspan="11" style="padding-top:12px">
-    <b>${h(name)}</b><span class="muted"> · ${g.rows.toLocaleString()} 窗 / ${
-    g.station_days} 站日 · ${betaText(g)} · ${gapText(g)}</span></td></tr>${
-    g.bands.map(bandRow).join("")}`;
-  const unstaged=C.rows-(C.stages||[]).reduce((a,st)=>a+(((C.by_stage||{})[st]||{}).rows||0),0);
+  const stages=(C.stages||[]).map(st=>[st,(C.by_stage||{})[st]])
+    .filter(([,g])=>g&&(g.bands||[]).length);
+  const panels=[...stages,["全部阶段",C]];
+  const below=stages.filter(([,g])=>g.beta_vs_half==="below").map(([st])=>st);
+  const above=stages.filter(([,g])=>g.beta_vs_half==="above").map(([st])=>st);
+  const headline=stages.length&&below.length===stages.length
+    ?`<b>${stages.length} 个阶段一个样：黑点（实际）贴着橙线（市场价），不跟着蓝圈（模型声称）走。</b>
+      往下看，模型自认越便宜，蓝圈离橙线越远，黑点却留在橙线旁边——多出来的那段"便宜"没有兑现。`
+    :`<b>${below.length?`${below.join("、")}：实际贴着市场价。`:""}${
+      above.length?`${above.join("、")}：实际贴着模型声称。`:""}${
+      stages.length-below.length-above.length>0?"其余阶段还分不出。":""}</b>`;
+  const unstaged=C.rows-stages.reduce((a,[,g])=>a+(g.rows||0),0);
   return head+`<div class="card">
-  <p class="note">单位是<b>入座的那个窗口 × 决策周期</b>，结果是真值有没有落进去——
-  不看成不成交、不看篮子过不过闸。<b>主读数是「命中 − 全含价」</b>：按那个价买一股、
-  结算后平均赚（+）亏（−）几个点；买入要付的点差和手续费就在这里面。
-  <b>兑现×</b>（命中 ÷ 声称）只作旁证：分档本身按「声称 − 价」切，只要我们和市场的分歧是噪声，
-  高档的比值就会被价格除小——它塌了不说明哪一层把概率抬高了。
-  区间＝按站日块自助 90%；颜色按未取整的分位数判定（整段低于 0 标红、高于 0 标绿）。</p>
-  <ul class="note" style="margin:8px 0 0 18px">${groups.map(summary).join("")}</ul>
-  <div class="scroll" style="margin-top:8px"><table><thead><tr>
-  <th>自认便宜多少<br><span class="muted">声称 − 价</span></th><th>窗口</th><th>站日</th><th>占比</th>
-  <th>模型声称</th><th>全含价</th><th>真值落窗</th>
-  <th title="按全含价买一股、结算后平均赚亏几个点">命中 − 价<br><span class="muted">点</span></th>
-  <th title="按站日块自助 90%：同一个窗每周期重新入座，同日各阶段结算同一个最高温，一行不是一次抽样">90% 区间</th>
-  <th>兑现×</th><th>90% 区间</th></tr></thead>
-  <tbody>${groups.map(groupRows).join("")}</tbody></table></div>
-  <p class="note" style="margin-top:8px">分阶段读（用户裁定 2026-09-02：同一个声称边际在 P0 和 P1 不是一回事），
-  「全部阶段」留在旁边对照。${unstaged>0?`另有 ${unstaged} 窗没记阶段，只进「全部阶段」。`:""}
-  纸面账本那张「挂出去的腿 × 成没成交」的旧表 2026-09-14 下线：宪章 129 的成交概率按结局设定
-  （赢腿 <span class="mono">0.4581</span>／输腿 <span class="mono">0.6650</span>），
-  成交那一列读回的是模拟器自己的假设。实盘成交后的兑现看「统一估值车道」里的实盘归因。
-  「按 edge≥0.30 拒窗」的硬闸版已被账本否决，不要再提。</p></div>
+  <p style="margin:0 0 8px;font-size:14px;line-height:1.6">${headline}</p>
+  <div class="th-legend">
+    <span>${thKey("claim")} 模型声称</span>
+    <span>${thKey("price")} 市场全含价（买入价）</span>
+    <span>${thKey("hit")} 实际命中（横线＝90% 区间）</span>
+    <span class="muted">淡色行＝不足 ${TH_THIN_DAYS} 个站日 · 悬停看数字</span></div>
+  <div class="th-grid">${panels.map(([n,g])=>thRuler(n,g)).join("")}</div>
+  <p class="note" style="margin-top:6px">每行是一类窗口：按「模型声称 − 市场价」分档，从「我们嫌贵」到「便宜 ≥30 点」。
+  只看入座窗口和实际最高温，不经过成交模型、不看篮子过不过闸；分阶段画（用户裁定 2026-09-02），「全部阶段」放在旁边对照。${
+  unstaged>0?` 另有 ${unstaged} 窗没记阶段，只进「全部阶段」。`:""}
+  纸面账本那张「挂出去的腿 × 成没成交」的旧表 2026-09-14 下线：宪章 129 的成交概率按结局设定，读回的是模拟器自己的假设。
+  「按 edge≥0.30 拒窗」的硬闸版已被账本否决，不要再提。</p>
+  ${thTable(stages,C,unstaged)}</div>
   ${betaDial(C)}${betaSubsets(C)}`;
 }
 
-// beta said as a position between the two anchors rather than as a number
-// in a sentence (user ruling, 2026-09-13: 把 β 显式凸显出来).  The dial is
-// the reading: 0 is "the disagreement carries no information, the price is
-// the answer", 1 is "our disagreement realises in full", and where the
-// marker sits is the whole claim of this section.
+// The table view: every value the rulers draw, one click away.
+function thTable(stages,C){
+  const mult=v=>v==null?"—":"×"+v.toFixed(3);
+  const row=b=>`<tr><td>${TH_WORDS[b.band]||h(b.band)}</td><td>${b.n}</td>
+    <td>${b.station_days}</td><td class="mono">${thPct(b.claimed_mean)}</td>
+    <td class="mono">${thPct(b.price_mean)}</td><td class="mono">${thPct(b.hit_rate)}</td>
+    <td class="mono muted">${thPct(b.hit_lo)} … ${thPct(b.hit_hi)}</td>
+    <td class="mono">${thPt(b.hit_minus_price)}</td>
+    <td class="mono muted">${thPt(b.hit_minus_price_lo)} … ${thPt(b.hit_minus_price_hi)}</td>
+    <td class="mono">${mult(b.realised_x)}</td></tr>`;
+  const group=([name,g])=>`<tr><td colspan="10" style="padding-top:10px"><b>${h(name)}</b>
+    <span class="muted"> · ${g.rows.toLocaleString()} 窗 / ${g.station_days} 站日</span></td></tr>${
+    g.bands.map(row).join("")}`;
+  return `<details style="margin-top:8px"><summary class="muted">看数字表</summary>
+  <div class="scroll"><table><thead><tr><th>档</th><th>窗口</th><th>站日</th><th>模型声称</th>
+  <th>全含价</th><th>实际命中</th><th>90% 区间</th><th>买一股（点）</th><th>90% 区间</th>
+  <th>命中÷声称</th></tr></thead><tbody>${
+  [...stages,["全部阶段",C]].map(group).join("")}</tbody></table></div></details>`;
+}
+
+// A forest: one row per group, a dot at the estimate and a bar across its
+// interval, on a beta axis with its two meanings marked.  Shared by the
+// per-stage reading, the lead cut, the station cut and the walk-forward.
+const TH_BETA=[-0.5,1.5];
+function thForest(rows,{labelW=70,width=430,rowH=22,marks=true}={}){
+  const L=labelW,R=14,T=marks?26:6,AX=22;
+  const H=T+rows.length*rowH+AX;
+  const x=v=>(L+(Math.max(TH_BETA[0],Math.min(TH_BETA[1],v))-TH_BETA[0])
+    /(TH_BETA[1]-TH_BETA[0])*(width-L-R)).toFixed(1);
+  const ticks=[-0.5,0,0.5,1,1.5].map(v=>`<text x="${x(v)}" y="${H-6}"
+    text-anchor="middle" style="fill:var(--muted);font-size:10.5px">${v}</text>`).join("");
+  const ref=(v,label)=>`<line x1="${x(v)}" x2="${x(v)}" y1="${T-4}" y2="${H-AX+2}"
+    style="stroke:var(--muted);stroke-width:1;opacity:.7"/>${marks?`<text x="${x(v)}"
+    y="${T-10}" text-anchor="middle" style="fill:var(--muted);font-size:10.5px">${label}</text>`:""}`;
+  const body=rows.map((r,i)=>{
+    const y=T+i*rowH+rowH/2;
+    const bar=r.lo==null?"":`<line x1="${x(r.lo)}" x2="${x(r.hi)}" y1="${y}" y2="${y}"
+      style="stroke:var(--${r.emph?"th-claim":"text"});stroke-width:2.5;
+      opacity:${r.emph?.8:.42};stroke-linecap:round"/>`;
+    const dot=r.from==null?"":`<circle cx="${x(r.from)}" cy="${y}" r="4.5"
+      style="fill:var(--card);stroke:var(--muted);stroke-width:2"/><line x1="${x(r.from)}"
+      x2="${x(r.v)}" y1="${y}" y2="${y}" style="stroke:var(--muted);stroke-width:1.5"/>`;
+    return `<g class="th-row"><title>${h(r.title||r.label)}</title>
+      <rect x="0" y="${(y-rowH/2).toFixed(1)}" width="${width}" height="${rowH}"
+        class="th-hit" style="fill:transparent"/>
+      <text x="${L-8}" y="${(y+4).toFixed(1)}" text-anchor="end"
+        style="fill:var(--text);font-size:11px">${h(r.label)}</text>
+      ${bar}${dot}<circle class="th-dot" cx="${x(r.v)}" cy="${y}" r="4.5"
+        style="fill:var(--${r.emph?"th-claim":"text"});stroke:var(--card);stroke-width:2"/></g>`;
+  }).join("");
+  return `<svg viewBox="0 0 ${width} ${H}" width="100%" role="img">${
+    ref(0,"0 · 信价格")}${ref(1,"1 · 全额兑现")}${ticks}${body}</svg>`;
+}
+
+// beta per stage, drawn on the axis its two meanings sit on.
 function betaDial(C){
   if(C.beta==null) return "";
-  const pos=v=>Math.max(0,Math.min(1,(v+0.5)/1.75))*100;
-  const lo=C.beta_lo,hi=C.beta_hi;
+  const b3=v=>v==null?"—":v.toFixed(3);
+  const mk=(label,g)=>({label,v:g.beta,lo:g.beta_lo,hi:g.beta_hi,
+    title:`${label}：β ${b3(g.beta)}（90% 区间 ${b3(g.beta_lo)} … ${b3(g.beta_hi)}）· ${
+      g.station_days} 站日`});
+  const rows=[...(C.stages||[]).map(st=>(C.by_stage||{})[st]?mk(st,C.by_stage[st]):null)
+    .filter(r=>r&&r.v!=null),mk("全部阶段",C)];
   return `<div class="card" style="margin-top:12px">
-  <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
-    <span class="muted" style="font-size:12.5px">宪章 128 斜率</span>
-    <span style="font-size:34px;font-weight:800;line-height:1;color:var(--down)">
-      β = ${C.beta.toFixed(3)}</span>
-    ${lo==null?"":`<span class="muted" style="font-size:12.5px">90% 区间 [${
-      lo.toFixed(3)}, ${hi.toFixed(3)}]</span>`}
-    <span class="muted" style="font-size:12.5px">· ${
-      C.rows.toLocaleString()} 个入座窗口 / ${C.station_days} 站日</span>
-  </div>
-  <div class="mono muted" style="font-size:12px;margin-top:7px">
-    （真值落窗 − 价格） = a + β · （声称 − 价格）</div>
-  <div style="position:relative;height:46px;margin-top:10px">
-    <div style="position:absolute;top:17px;left:0;right:0;height:8px;
-      border-radius:4px;background:linear-gradient(90deg,
-      var(--pill-red-bg),var(--bar-bg),var(--pill-green-bg))"></div>
-    ${lo==null?"":`<div style="position:absolute;top:17px;height:8px;
-      background:var(--muted);opacity:.45;border-radius:4px;
-      left:${pos(lo).toFixed(1)}%;width:${(pos(hi)-pos(lo)).toFixed(1)}%"></div>`}
-    <div style="position:absolute;top:11px;left:${pos(0).toFixed(1)}%;
-      width:2px;height:20px;background:var(--red)"></div>
-    <div style="position:absolute;top:11px;left:${pos(1).toFixed(1)}%;
-      width:2px;height:20px;background:var(--green)"></div>
-    <div style="position:absolute;top:7px;left:${pos(C.beta).toFixed(1)}%;
-      width:4px;height:28px;background:var(--text);border-radius:2px"></div>
-    <div style="position:absolute;top:0;left:${pos(0).toFixed(1)}%;
-      transform:translateX(-50%);font-size:11px;color:var(--red)">0</div>
-    <div style="position:absolute;top:0;left:${pos(1).toFixed(1)}%;
-      transform:translateX(-50%);font-size:11px;color:var(--green)">1</div>
-  </div>
-  <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px">
-    <div style="flex:1;min-width:230px"><b style="color:var(--green)">β = 1</b>
-      ——「我们和市场的分歧<b>全额兑现</b>」。我们说比市场价高 10 个点，
-      真值就真的多落进去 10 个点。</div>
-    <div style="flex:1;min-width:230px"><b style="color:var(--red)">β = 0</b>
-      ——「分歧<b>毫无信息</b>，信价格就够」。我们偏离市场多少都不影响结果，
-      那点偏离全是噪声。</div>
-  </div>
-  ${betaReading(C)}</div>`;
+  <div style="font-size:13px"><b>分歧兑现了几成：β</b>
+  <span class="muted">（宪章 128：真值落窗 − 价格 = a + β ·（声称 − 价格））</span></div>
+  <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-top:6px">
+  <div style="flex:1;min-width:300px;max-width:520px">${thForest(rows)}</div>
+  <div style="flex:1;min-width:230px;font-size:12.5px;line-height:1.7">
+    <div><b>β = 1</b>：我们比市场价高 10 个点，真值就真的多落进去 10 个点。</div>
+    <div><b>β = 0</b>：我们偏离市场多少都不影响结果，信价格就够。</div>
+    ${betaReading(C)}</div></div></div>`;
 }
 
 // What the dial says, conditioned on the payload rather than typed in: the
@@ -12044,55 +12121,58 @@ function betaDial(C){
 // day later that band read x1.209 with the sentence unchanged.
 function betaReading(C){
   const neg=(C.bands||[]).find(b=>b.band==="<0");
-  const lead=C.beta_vs_half==="below"?"<b>读数离 0 比离 1 近</b>（90% 区间整体低于 0.5）。"
-    :(C.beta_vs_half==="above"?"<b>读数离 1 比离 0 近</b>（90% 区间整体高于 0.5）。"
-    :"<b>读数相对 0.5 未分出。</b>");
+  const lead=C.beta_vs_half==="below"?"<b>点都落在 0 这一侧：分歧基本是噪声。</b>"
+    :(C.beta_vs_half==="above"?"<b>点落在 1 这一侧：分歧大半兑现。</b>"
+    :"<b>点在 0 和 1 之间，还分不出。</b>");
   const mirror=(C.beta_vs_half==="below"&&neg&&neg.realised_verdict==="above")
-    ?` 最直接的佐证是表里 <span class="mono">&lt;0</span> 那一档：那些是我们认为
-  <b>市场卖贵了</b>的窗口，真值落进去的比例反而<b>比我们声称的还高</b>
-  （×${neg.realised_x.toFixed(3)}，区间 ×${neg.realised_lo.toFixed(3)} … ×${
-    neg.realised_hi.toFixed(3)}）。往上错、往下也错——不是偏见，是噪声，这正是 β≈0 的样子。`:"";
-  return `<p class="note" style="margin-top:8px">${lead}${mirror}</p>`;
+    ?` 上面「我们嫌贵」那一行也是证据：黑点跑到了蓝圈右边——我们说贵的窗口，真值反而落得比我们说的还多。往上错、往下也错，这就是噪声的样子。`:"";
+  return `<div style="margin-top:6px">${lead}${mirror}</div>`;
 }
 
 // "Is there a subset whose beta is clearly above zero?"  Both axes live, so
 // the question keeps being answered; the verdict is the walk-forward,
 // because a subset picked on the same rows it is judged on always wins.
+// Drawn as forests: every station on one caterpillar, so "five of 45 clear
+// zero" is seen next to the forty that do not.
 function betaSubsets(C){
-  const lead=C.by_lead||[], stn=C.by_station||[];
+  const lead=C.by_lead||[], stn=(C.by_station||[]).slice();
   if(!lead.length&&!stn.length) return "";
-  const row=c=>`<tr><td class="mono">${h(c.key)}</td><td>${c.n}</td>
-    <td>${c.station_days}</td>
-    <td class="mono ${c.above_zero?"up":""}"><b>${c.beta.toFixed(3)}</b></td>
-    <td class="mono muted">${c.beta_lo==null?"—":
-      c.beta_lo.toFixed(3)+" … "+c.beta_hi.toFixed(3)}</td>
-    <td class="${c.above_zero?"up":"muted"}">${c.above_zero?"下界 > 0":"跨 0"}</td></tr>`;
+  const b3=v=>v==null?"—":v.toFixed(3);
+  const mk=c=>({label:c.key,v:c.beta,lo:c.beta_lo,hi:c.beta_hi,emph:c.above_zero,
+    title:`${c.key}：β ${b3(c.beta)}（90% 区间 ${b3(c.beta_lo)} … ${b3(c.beta_hi)}）· ${
+      c.n} 窗 / ${c.station_days} 站日${c.above_zero?" · 整段在 0 右边":""}`});
+  stn.sort((a,b)=>b.beta-a.beta);
   const expect=(C.stations_cut||0)*0.05;
+  // 2026-09-13's walk-forward, a fixed record rather than a live reading:
+  // the hollow ring is beta on the days the subset was picked on, the dot
+  // is beta on the days after.
+  const walk=[
+    {label:"不挑·全部",v:0.168,lo:0.051,hi:0.295,title:"不挑：检验窗 β 0.168 [0.051, 0.295]"},
+    {label:"挑出的 4 站",v:-0.028,lo:-0.359,hi:0.278,
+      title:"按站挑出 SAEZ/OEJN/MMMX/ZSQD，合起来在检验窗 β −0.028 [−0.359, 0.278]"},
+    {label:"SAEZ",from:1.19,v:0.39,title:"SAEZ：挑的时候 1.19 → 往后 0.39"},
+    {label:"ZSQD",from:1.00,v:-0.44,title:"ZSQD：挑的时候 1.00 → 往后 −0.44"},
+    {label:"KLAX",from:0.86,v:-0.43,title:"KLAX：挑的时候 0.86 → 往后 −0.43"},
+    {label:"OEJN",from:0.27,v:-0.44,title:"OEJN：挑的时候 0.27 → 往后 −0.44"},
+  ];
   return `<div class="card" style="margin-top:12px">
-  <div style="font-size:12.5px"><b>有没有 β 明显 &gt; 0 的子集</b>
-  （用户裁定 2026-09-13：按站和提前量再切一次，切完为止）</div>
-  <div class="scroll" style="margin-top:6px;display:flex;gap:16px;flex-wrap:wrap">
-  <table style="flex:1;min-width:320px"><thead><tr><th>提前量</th><th>窗口</th>
-  <th>站日</th><th>β</th><th>90% 区间</th><th></th></tr></thead>
-  <tbody>${lead.map(row).join("")}</tbody></table>
-  <table style="flex:1;min-width:320px"><thead><tr><th>站（下界最高的 6 个）</th>
-  <th>窗口</th><th>站日</th><th>β</th><th>90% 区间</th><th></th></tr></thead>
-  <tbody>${stn.slice(0,6).map(row).join("")}</tbody></table></div>
-  <p class="note" style="margin-top:8px"><b>看着像有，其实没有。</b>
-  ${C.stations_cut} 个站里 ${C.stations_above_zero} 个下界 &gt; 0——
-  而 90% 单侧下界在纯噪声下本就期望有 <b>${expect.toFixed(1)}</b> 个假阳。
-  唯一能定论的是<b>前瞻检验</b>：只用前半段天数挑子集，再在其后的天数上量。
-  2026-09-13 实测两个切点：<br>
-  · 切点 <span class="mono">08-29</span>：不挑的基准在检验窗 β=0.168
-  [0.051, 0.295]；按站挑出的 4 个（SAEZ、OEJN、MMMX、ZSQD）在检验窗
-  <b>β=−0.028</b> [−0.359, 0.278]——<b>比不挑更差</b>。按提前量一个都挑不出。<br>
-  · 切点 <span class="mono">09-05</span>：基准 β=0.124；按站挑的 3 个
-  <b>β=−0.01</b>；按提前量挑出的 6-12h 档 β=0.105，也不比基准好。<br>
-  逐站塌得很整齐：SAEZ 1.19→0.39、ZSQD 1.00→−0.44、KLAX 0.86→−0.43、
-  OEJN 0.27→−0.44。45 个站两个切点里只有 MPMG 两次都为正，这正是
-  45 选 1 的幸存者该有的样子。<br>
-  <b>结论：没有事前可识别的 β &gt; 0 子集，不挑就是最好的做法。</b>
-  这条与"没有事前可识别的正收益子集"是同一个答案换了一根轴问。</p></div>`;
+  <div style="font-size:13px"><b>有没有 β 明显 &gt; 0 的子集</b>
+  <span class="muted">（用户裁定 2026-09-13：按站和提前量再切一次，切完为止）</span></div>
+  <div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:6px">
+  <div style="flex:1;min-width:300px;max-width:480px">
+    <div class="muted" style="font-size:12px">按提前量（蓝＝整段在 0 右边）</div>
+    ${thForest(lead.map(mk))}
+    <div class="muted" style="font-size:12px;margin-top:10px">挑出来的，往后一检验就塌
+      （2026-09-13 实测，切点 08-29；空心＝挑的时候，实心＝往后）</div>
+    ${thForest(walk,{marks:false,labelW:78})}</div>
+  <div style="flex:1;min-width:300px;max-width:480px">
+    <div class="muted" style="font-size:12px">按站，全部 ${C.stations_cut} 个（从高到低）</div>
+    ${thForest(stn.map(mk),{rowH:13,labelW:48})}</div></div>
+  <p class="note" style="margin-top:6px"><b>看着像有，其实没有。</b>
+  ${C.stations_cut} 个站里 ${C.stations_above_zero} 个整段在 0 右边，纯噪声下本来就会冒出约
+  <b>${expect.toFixed(1)}</b> 个。能定论的只有前瞻检验：用前半段天数挑、在之后的天数上量——
+  左下那张图里，挑的时候最亮眼的站往后全塌到 0 附近或以下，合起来还不如不挑。
+  <b>结论：没有事前可识别的 β &gt; 0 子集，不挑就是最好的做法。</b></p></div>`;
 }
 
 // Charter 132: the valuation lane.  The promotion condition is printed on
