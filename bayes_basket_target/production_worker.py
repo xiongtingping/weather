@@ -213,6 +213,9 @@ from .native_ensemble_authority import (
     load_native_oos_snapshot_manifest,
 )
 from .native_ensemble_store import ingest_forward_packet
+from .dwd_icon_eps_archive import (
+    RUN_CYCLE_HOUR_BY_LEAD as ICON_RUN_CYCLE_HOUR_BY_LEAD,
+)
 from .metar_physical_forward import (
     apply_metar_physical_member_runs,
     plan_metar_physical_member_runs,
@@ -1212,6 +1215,15 @@ OFFICIAL_NATIVE_CAPTURE_TIMEOUT_SEC = 45.0
 # start.  Official coverage is what gates P0, so this is sized to grow it
 # quickly while staying bounded against the external archives.
 OFFICIAL_NATIVE_CAPTURE_MAX_CONCURRENCY = 4
+# ICON is the one family a capture pass can lose for good: DWD keeps only the
+# newest run of each cycle, so a fetch that fails on a day's pass is lost once
+# the next day's run overwrites it.  The capture receipt names it under this
+# transport id when it held.
+ICON_TRANSPORT_PROVIDER_ID = "DWD_OPENDATA_ICON_EPS"
+# DWD's 00Z t_2m objects landed from 02:37Z on 2026-09-14; four hours after init
+# clears the last lead a local day needs.  Before that an ICON hold is the run
+# not being out yet, which the rotation's next lap picks up.
+ICON_RUN_PUBLICATION_LAG_SEC = 4 * 3600.0
 ECMWF_GCS_REPLICA_BASE_URL = "https://storage.googleapis.com/ecmwf-open-data"
 
 # Hard wall-clock ceiling on one capture, enforced by killing the child.  The
@@ -3397,6 +3409,33 @@ def _official_native_run_ladder(
     return ladder[:4]
 
 
+def _icon_run_published_for(event_date: str, *, as_of_utc: str) -> bool:
+    """Whether ICON's own run for this event date should be on DWD by now.
+
+    The lead is the calendar distance from today, which is the lead ICON's
+    contract resolves a run for; a date already behind today, or beyond the
+    contract, has no run to ask for.
+    """
+
+    try:
+        now_dt = datetime.fromisoformat(
+            as_of_utc.replace("Z", "+00:00")
+        ).astimezone(timezone.utc)
+        event_day = date.fromisoformat(event_date)
+    except (TypeError, ValueError):
+        return False
+    lead = (event_day - now_dt.date()).days
+    cycle_hour = ICON_RUN_CYCLE_HOUR_BY_LEAD.get(lead)
+    if cycle_hour is None:
+        return False
+    run_init = datetime.combine(
+        event_day - timedelta(days=lead),
+        dt_time(hour=int(cycle_hour)),
+        tzinfo=timezone.utc,
+    )
+    return now_dt >= run_init + timedelta(seconds=ICON_RUN_PUBLICATION_LAG_SEC)
+
+
 def _native_forward_packet_is_stale(
     packet: Mapping[str, Any],
     *,
@@ -4356,6 +4395,58 @@ class TargetProductionWorker:
         cache[key] = answer
         return answer
 
+    def _retry_icon_held_captures(
+        self,
+        *,
+        as_of_utc: str,
+        inbox_path: Path,
+    ) -> dict[str, str]:
+        """Ask again for dates whose last pass lost ICON, off the cursor.
+
+        A capture starts only when the rotation cursor lands on one of the
+        date's scopes, and the cursor laps the catalogue in about two hours
+        (2.09h achieved on 2026-09-14).  For the families with an archive that
+        is only latency.  For ICON it is loss: DWD keeps one run per cycle, the
+        fetch fails transiently often enough to matter, and a miss waited a
+        whole lap for its retry -- the 2026-09-14 packets went out ECMWF, GEFS
+        and ECCC only from 08:43Z while the run sat on DWD all day.  A date
+        whose last pass held ICON after ICON's run was out is asked for again
+        on the ordinary per-date throttle; the capture itself decides what
+        else that pass refreshes.
+        """
+
+        pending = getattr(self, "_official_native_icon_retry_dates", None)
+        if not pending:
+            return {}
+        try:
+            today = _utc_date(as_of_utc).isoformat()
+        except (TypeError, ValueError):
+            return {}
+        inflight = getattr(self, "_official_native_capture_inflight", None) or {}
+        throttle = getattr(self, "_official_native_capture_attempts", None) or {}
+        now_mono = time.monotonic()
+        outcomes: dict[str, str] = {}
+        for event_date in sorted(pending):
+            if event_date < today:
+                pending.discard(event_date)
+                continue
+            if not _icon_run_published_for(event_date, as_of_utc=as_of_utc):
+                continue
+            last_attempt = throttle.get((event_date,))
+            if (event_date,) in inflight or (
+                last_attempt is not None
+                and now_mono - last_attempt < OFFICIAL_NATIVE_CAPTURE_RETRY_SEC
+            ):
+                continue
+            outcome = self._capture_official_native_packet(
+                station_id="",
+                event_date=event_date,
+                as_of_utc=as_of_utc,
+                inbox_path=inbox_path,
+            )
+            outcomes[event_date] = str(outcome.get("state") or "")
+        return outcomes
+
     def _capture_official_native_packet(
         self,
         *,
@@ -4425,6 +4516,12 @@ class TargetProductionWorker:
             self._official_native_capture_last_result_by_date = (
                 results_by_date
             )
+        icon_retry_dates: set[str] = getattr(
+            self, "_official_native_icon_retry_dates", None
+        )
+        if icon_retry_dates is None:
+            icon_retry_dates = set()
+            self._official_native_icon_retry_dates = icon_retry_dates
         if getattr(self, "_official_native_capture_pool", None) is None:
             # Small, bounded, and lazily created so a worker that never
             # captures (tests, --once paths) starts no threads at all.  The
@@ -4468,6 +4565,14 @@ class TargetProductionWorker:
                 captured_runs[key[0]] = str(
                     outcome.get("captured_run_init_utc") or ""
                 )
+                held = outcome.get("families_held_on_earlier_run")
+                if (
+                    isinstance(held, Mapping)
+                    and ICON_TRANSPORT_PROVIDER_ID in held
+                ):
+                    icon_retry_dates.add(key[0])
+                else:
+                    icon_retry_dates.discard(key[0])
         # Bounded by the open window: a date more than three days behind the
         # clock is closed everywhere and its outcome answers nothing.
         try:
@@ -6664,6 +6769,10 @@ class TargetProductionWorker:
                         "official_native_packet_unavailable:"
                         f"{type(exc).__name__}:{exc}"
                     )
+        self._retry_icon_held_captures(
+            as_of_utc=as_of_utc,
+            inbox_path=official_inbox_path,
+        )
         if official_packet is None and superseded_packet is not None:
             # The fresher run was asked for above and is still on its way.  Its
             # arrival is what this scope wants, but not at the cost of having

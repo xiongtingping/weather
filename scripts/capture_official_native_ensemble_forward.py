@@ -788,6 +788,13 @@ def capture_official_native_forward(
             # recoverable gap for an unrecoverable one.  Record and continue.
             icon = None
             icon_capture_error = f"{type(exc).__name__}:{exc}"[:200]
+            # Named with the families that held, under its transport id.  The
+            # worker copies only ``family_held_on_earlier_run`` off this
+            # receipt, so an error left in ``icon_capture`` alone never left
+            # the subprocess: the 2026-09-14 d0 pass lost ICON at 08:43Z and
+            # nothing anywhere said why.  It is also the worker's cue to ask
+            # again before DWD overwrites the run.
+            family_capture_errors["DWD_OPENDATA_ICON_EPS"] = icon_capture_error
     assert_process_memory_budget()
     inbox_path = inbox_output.expanduser().resolve()
     wrote_gefs = write_bounded_json_if_changed(gefs_path, gefs)
