@@ -8102,25 +8102,37 @@ def collect_beta_shadow(conn: sqlite3.Connection) -> dict[str, Any]:
     """
 
     from bayes_basket_target import beta_edge_store as _b
-    from bayes_basket_target.basket_kernel.delta_v2 import BETA_EDGE_MODE
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        BETA_EDGE_MODE,
+        clears_economic_hurdle_v1 as _clears_economic_hurdle_v1,
+    )
 
     out: dict[str, Any] = {
         "available": True, "mode": BETA_EDGE_MODE, "served": {},
         "research": {}, "replay": {"days": [], "cells": {}}, "live": {},
+        # Charter 128 v2: the basis every number here is read on, and the
+        # band rows beside each stage's whole row.
+        "price_basis": _b.PRICE_BASIS, "lead_bands": {},
+        "served_other_basis": 0,
     }
     # -- served rows, with the evidence that produced them
     try:
         for row in conn.execute(
             "SELECT stage_scope, beta, beta_lcb, beta_ucb, intercept,"
             " row_count, day_count, accumulating, as_of_event_date,"
-            " activated_at_utc, evidence_json"
+            " activated_at_utc, evidence_json, lead_band, price_basis"
             " FROM calibration_beta_edge_table WHERE activated=1"
         ):
+            if str(row[12] or "") != _b.PRICE_BASIS:
+                # A row from the ask basis: still active in the table until
+                # the next refit deactivates it, served by nobody.
+                out["served_other_basis"] += 1
+                continue
             try:
                 ev = json.loads(row[10] or "{}")
             except ValueError:
                 ev = {}
-            out["served"][str(row[0])] = {
+            reading = {
                 "beta": row[1], "beta_lcb": row[2], "beta_ucb": row[3],
                 "intercept": row[4], "rows": row[5], "days": row[6],
                 "accumulating": bool(row[7]), "as_of": row[8],
@@ -8128,7 +8140,12 @@ def collect_beta_shadow(conn: sqlite3.Connection) -> dict[str, Any]:
                 "excluded_before_anchor": ev.get("excluded_before_anchor"),
                 "days_beta_positive": ev.get("days_beta_positive"),
                 "layers": ev.get("layers") or {},
+                "lead_band": str(row[11] or ""),
             }
+            if reading["lead_band"] == _b.WHOLE_STAGE:
+                out["served"][str(row[0])] = reading
+            else:
+                out["lead_bands"].setdefault(str(row[0]), {})[reading["lead_band"]] = reading
     except sqlite3.Error:
         out["served_error"] = "no_beta_table"
     # -- research: the unanchored slope, for the eye only
@@ -8155,7 +8172,11 @@ def collect_beta_shadow(conn: sqlite3.Connection) -> dict[str, Any]:
             "SELECT j.stage_scope, j.fitted_at_utc, t.beta_lcb"
             " FROM calibration_beta_edge_fit_journal j"
             " JOIN calibration_beta_edge_table t ON t.beta_sha256=j.beta_sha256"
-            " ORDER BY j.fitted_at_utc, j.fit_id"
+            # The stage's whole row on this basis: a band row or an
+            # ask-basis row is not what a window's decision read.
+            " WHERE t.lead_band=? AND t.price_basis=?"
+            " ORDER BY j.fitted_at_utc, j.fit_id",
+            (_b.WHOLE_STAGE, _b.PRICE_BASIS),
         ):
             journal.setdefault(str(scope), []).append((str(at), float(lcb)))
     except sqlite3.Error:
@@ -8176,19 +8197,35 @@ def collect_beta_shadow(conn: sqlite3.Connection) -> dict[str, Any]:
     try:
         rows = conn.execute(
             "SELECT stage, event_date, decision_at_utc, raw_win_probability,"
-            " all_in_price, hit, admissible"
+            " all_in_price, hit, admissible, market_mid"
             " FROM paper_trade_candidate_window"
             " WHERE settled_bucket IS NOT NULL AND event_date >= ?"
             "   AND raw_win_probability IS NOT NULL AND all_in_price > 0",
             (since,),
         ).fetchall()
     except sqlite3.Error:
+        # A book without the v2 column (or without the table): nothing can
+        # be re-judged on this basis, and nothing is judged on another.
         rows = []
-    for stage, day, at, raw, price, hit, adm in rows:
+    no_market_mid = 0
+    for stage, day, at, raw, price, hit, adm, mid in rows:
         lcb = served_at(str(stage), str(at or ""))
         if lcb is None:
             continue
-        beta_adm = lcb * (float(raw) - float(price)) > 1e-9
+        try:
+            mid_value = float(mid)
+        except (TypeError, ValueError):
+            mid_value = float("nan")
+        if not (0.0 < mid_value < 1.0):
+            no_market_mid += 1
+            continue
+        # v2 basis: the belief the served beta implies, judged against the
+        # all-in ask under charter 130's hurdle -- the gate's own question.
+        # At beta_lcb 0 the lane buys nothing, whatever the book's arithmetic.
+        beta_adm = lcb > 1e-9 and _clears_economic_hurdle_v1(
+            expected_payout=mid_value + lcb * (float(raw) - mid_value),
+            cost=float(price),
+        )
         cur_adm = bool(adm)
         key = ("both_admit" if beta_adm else "beta_refuses") if cur_adm else (
             "beta_admits" if beta_adm else "both_refuse")
@@ -8219,6 +8256,7 @@ def collect_beta_shadow(conn: sqlite3.Connection) -> dict[str, Any]:
         del c["price"]
     out["replay"] = {
         "since": since, "windows": len(rows), "judged": sum(d["windows"] for d in days.values()),
+        "no_market_mid": no_market_mid,
         "cells": cells,
         "days": [
             {**d,
@@ -11997,11 +12035,18 @@ function betaShadow(){
   const h=s=>String(s==null?"":s).replace(/</g,"&lt;");
   const served=B.served||{}, res=B.research||{}, rep=B.replay||{}, live=B.live||{};
   const stages=["P0","P0-M","P1"];
-  const servedRows=stages.map(s=>{const r=served[s];if(!r)return `<tr><td>${s}</td><td colspan="8">无激活行</td></tr>`;
-    return `<tr><td>${s}</td><td class="mono">${num(r.beta_lcb)}</td><td class="mono">${num(r.beta)}</td>
+  const bands=B.lead_bands||{};
+  const servedRow=(label,r,muted)=>`<tr class="${muted?"muted":""}"><td>${label}</td><td class="mono">${num(r.beta_lcb)}</td><td class="mono">${num(r.beta)}</td>
       <td class="mono">${num(r.beta_lcb)} … ${num(r.beta_ucb)}</td><td class="mono">${num(r.intercept)}</td>
       <td>${r.rows} / ${r.days}</td><td>${r.accumulating?"<b>累积中</b>":"够门槛"}</td>
-      <td class="mono">${h((r.anchor||"").slice(0,16))}</td><td>${r.days_beta_positive==null?"—":r.days_beta_positive+"/"+r.days}</td></tr>`;}).join("");
+      <td class="mono">${h((r.anchor||"").slice(0,16))}</td><td>${r.days_beta_positive==null?"—":r.days_beta_positive+"/"+r.days}</td></tr>`;
+  const servedRows=stages.map(s=>{const r=served[s];
+    const head=r?servedRow(s,r,false):`<tr><td>${s}</td><td colspan="8">无激活行（中价基底）</td></tr>`;
+    // Charter 128 v2: the band rows under the stage; a band past the
+    // hurdles serves in place of the whole row for decisions in its band.
+    const bs=bands[s]||{};
+    const bandRows=Object.keys(bs).map(k=>servedRow(`${s} · ${h(k)}${bs[k].accumulating?"":" ★"}`,bs[k],true)).join("");
+    return head+bandRows;}).join("");
   const resRows=stages.map(s=>{const r=res[s]||{};if(r.error)return `<tr><td>${s}</td><td colspan="6">${h(r.error)}</td></tr>`;
     const lead=Object.entries(r.by_lead||{}).map(([k,v])=>`${k}: ${num(v.beta,2)} (n${v.rows})`).join("，");
     return `<tr><td>${s}</td><td class="mono">${num(r.beta)}</td><td class="mono">${num(r.beta_lcb)} … ${num(r.beta_ucb)}</td>
@@ -12012,12 +12057,14 @@ function betaShadow(){
       <td class="mono">${d.beta_admits}</td><td class="mono">${d.beta_refuses_of_admitted}</td><td class="mono">${d.beta_admits_of_refused}</td>
       <td class="mono">${d.mean_margin_admitted==null?"—":(d.mean_margin_admitted*100).toFixed(1)}</td><td class="mono">${d.mean_margin_beta_admitted==null?"—":(d.mean_margin_beta_admitted*100).toFixed(1)}</td></tr>`).join("");
   return `<h2>β 车道（影子）：测我们和市场的分歧能兑现几成</h2>
-  <div class="card"><b>模式 ${h(B.mode)}</b>。宪章 128：每个枚举窗 hit − q = a + β·(p − q)，p 原始声称、q 闸定价的全含价；
-    服务信念 q + β_lcb·(p − q)，闸判 β_lcb·(p − q) &gt; 0。影子只记不闸；晋升要影子 ≥10 个事件日且下表"β 会拒"减"β 会放"的实现差大于按日噪声，且须裁决。
-    最近两天决策 ${live.decisions||0} 条，其中带影子读数 ${live.with_shadow||0} 条；影子累计：现闸放行而 β 会拒 ${live.would_refuse||0} 窗、现闸拒而 β 会放 ${live.would_admit||0} 窗。</div>
-  <div class="card"><h3>服务中（锚定、滚动 28 天）</h3>
-  <table><tr><th>阶段</th><th>服务 β_lcb</th><th>β 点估</th><th>90% 区间</th><th>截距(≈−成本)</th><th>行 / 日</th><th>状态</th><th>服务锚</th><th>逐日 β&gt;0</th></tr>${servedRows}</table>
-  <div class="muted">锚以前的行不进样本；累积中＝行数或天数不够门槛（60 行 / 8 日），服务 β_lcb 0，信念＝价格。</div></div>
+  <div class="card"><b>模式 ${h(B.mode)}</b>。宪章 128 v2（09-14）：每个枚举窗 <span class="mono">hit − m = a + β·(p − m)</span>，p 原始声称、<b>m 盘口中价信念</b>（整梯归一化中价在窗内之和，与估值车道同一向量）；
+    服务信念 m + β_lcb·(p − m)，闸拿它和全含卖一比、按 5% 门槛判——点差不进回归，在闸上收。第二轴按距结算截止小时分档（<6h / 6–12h / 12–24h / 24–36h / ≥36h），档过门槛才服务（下表 ★），否则整阶段行服务。
+    影子只记不闸；晋升要影子 ≥10 个事件日且下表"β 会拒"减"β 会放"的实现差大于按日噪声，且须裁决。
+    最近两天决策 ${live.decisions||0} 条，其中带影子读数 ${live.with_shadow||0} 条；影子累计：现闸放行而 β 会拒 ${live.would_refuse||0} 窗、现闸拒而 β 会放 ${live.would_admit||0} 窗。
+    ${B.served_other_basis?`<span class="muted">表里还有 ${B.served_other_basis} 行卖一基底的旧行，无人服务，下次拟合即退役。</span>`:""}</div>
+  <div class="card"><h3>服务中（锚定、滚动 28 天、中价基底）</h3>
+  <table><tr><th>阶段 · 档</th><th>服务 β_lcb</th><th>β 点估</th><th>90% 区间</th><th>截距(≈0 即市场校准)</th><th>行 / 日</th><th>状态</th><th>服务锚</th><th>逐日 β&gt;0</th></tr>${servedRows}</table>
+  <div class="muted">锚以前的行不进样本；账本重导前写下的候选窗没有中价，计出不顶替；累积中＝行数或天数不够门槛（60 行 / 8 日），服务 β_lcb 0，信念＝市场信念。</div></div>
   <div class="card"><h3>研究读数（不锚定，28 天，不服务）</h3>
   <table><tr><th>阶段</th><th>β</th><th>90% 区间</th><th>截距</th><th>行 / 日</th><th>逐日 β&gt;0</th><th>按提前量</th></tr>${resRows}</table></div>
   <div class="card"><h3>重放：最近 14 天已结算枚举窗，按当时服务的 β 重判</h3>

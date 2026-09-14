@@ -41,9 +41,11 @@ from .basket_kernel.delta_v2 import (
     CENTER_WINDOW_CLAIM_BANDS,
     BETA_EDGE_MODE,
     BETA_EDGE_RULE_VERSION,
+    BETA_PRICE_BASIS,
     BETA_TABLE_KEY,
     beta_belief_v1,
     beta_conditional_edge_v2,
+    beta_lead_band,
     SIZING_CLAIM_BANDS,
     sizing_claim_factor,
     EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
@@ -1783,8 +1785,14 @@ def _support_windows(
     convergence_evidence: Mapping[str, Any] | None = None,
     effective_edge_tables: Mapping[str, Any] | None = None,
     off_centre_claim_bands: Mapping[str, Any] | None = None,
+    hours_to_cutoff: float | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Contiguous windows admissible as a support, ranked by belief divergence.
+
+    ``hours_to_cutoff`` is the beta lane's second axis (charter 128 v2): it
+    picks the lead band whose fitted row, when one clears the lane's
+    hurdles, serves in place of the stage's whole row.  None is "no clock",
+    which reads the whole row, exactly as a stage without band fits does.
 
     The incumbent support stays in the list unconditionally.  It is what the
     continuous-core resolver admitted -- evidence, model agreement, hard
@@ -2134,6 +2142,39 @@ def _support_windows(
     beta_would_refuse = 0
     beta_would_admit = 0
     beta_served = (effective_edge_tables or {}).get(BETA_TABLE_KEY) or {}
+    # Charter 128 v2: the market's belief, once per snapshot, from the same
+    # reference charter 132 reads.  The beta lane regresses on ``p - m`` and
+    # serves ``m + beta_lcb * (p - m)``; the all-in ask is only ever the
+    # cost that belief is compared with.  Built once so every window sums
+    # one vector.
+    market_reference: dict[str, Any] | None = (
+        market_reference_v1(snapshot.buckets)
+        if (VALUATION_MODE != "off" or BETA_EDGE_MODE != "off")
+        else None
+    )
+    beta_market_vector: dict[str, float] | None = (
+        market_reference["vector"]
+        if market_reference is not None and market_reference["state"] == "complete"
+        else None
+    )
+    beta_market_state = (
+        "off" if market_reference is None
+        else str(market_reference.get("state") or "")
+    )
+    # The band row that serves this snapshot, per stage: the lead band the
+    # decision falls in when that band's row clears the lane's hurdles,
+    # else the stage's whole row.  Resolved once, not per window.
+    beta_lead_band_label = beta_lead_band(hours_to_cutoff)
+
+    def _beta_row_for(stage_name: str) -> tuple[dict[str, Any] | None, str | None]:
+        stage_row = beta_served.get(stage_name)
+        if not isinstance(stage_row, dict):
+            return None, None
+        if beta_lead_band_label is not None:
+            band_row = (stage_row.get("lead_bands") or {}).get(beta_lead_band_label)
+            if isinstance(band_row, dict) and not band_row.get("accumulating"):
+                return band_row, beta_lead_band_label
+        return stage_row, None
     # Charter 132: the conditional net edge on the fit's joint draws, beside
     # charter 128's reading, so the two can be argued on one record.
     beta_v2_would_refuse = 0
@@ -2153,7 +2194,7 @@ def _support_windows(
     valuation_state = "off"
     valuation_authorized = False
     if VALUATION_MODE != "off":
-        valuation_market = market_reference_v1(snapshot.buckets)
+        valuation_market = market_reference
         if not isinstance(valuation_row, Mapping):
             valuation_state = "no_fit"
         elif valuation_row.get("accumulating") or valuation_row.get("beta") is None:
@@ -2522,54 +2563,87 @@ def _support_windows(
                         min(1.0 - EPS, raw_win * claim_factor * gate_lambda)
                         if gate_lambda is not None else win
                     )
-            # Charter 128: the beta belief, ``q + beta_lcb * (p - q)`` on
-            # the raw claim and the priced window.  Under ``shadow`` the
-            # three values are recorded on the row and gate nothing; under
-            # ``on`` they ARE the belief -- the gate reads the beta edge and
-            # the solver's lambda becomes the ratio that reproduces it, so
-            # admission and sizing still read one number.  A stage with no
-            # fit serves ``beta_lcb = 0``: belief == price, edge == 0.
+            # Charter 128 (v2 basis): the beta belief, ``m + beta_lcb * (p -
+            # m)`` on the raw claim and the market's belief for the window,
+            # judged against the all-in ask under charter 130's hurdle.
+            # Under ``shadow`` the values are recorded on the row and gate
+            # nothing; under ``on`` they ARE the belief -- the gate reads it
+            # and the solver's lambda becomes the ratio that reproduces it,
+            # so admission and sizing still read one number.  A stage with
+            # no fit serves ``beta_lcb = 0``: belief == the market's, which
+            # never clears the ask.  A snapshot whose book gives no market
+            # belief records nothing in shadow and refuses under ``on``: a
+            # belief the lane cannot state is not a belief to buy on.
             beta_lcb = None
             beta_point = None
             beta_sha = None
             beta_belief = None
             beta_edge = None
             beta_admissible = None
+            beta_market_mid = None
+            beta_band = None
+            beta_row = None
             if BETA_EDGE_MODE != "off" and priced:
-                beta_row = beta_served.get(str(probability_stage or ""))
+                beta_row, beta_band = _beta_row_for(str(probability_stage or ""))
+                if beta_market_vector is not None:
+                    beta_market_mid = valuation_window_mass(beta_market_vector, window)
                 if isinstance(beta_row, dict):
                     beta_lcb = float(beta_row.get("beta_lcb") or 0.0)
                     beta_point = beta_row.get("beta")
                     beta_sha = beta_row.get("sha256")
                 elif BETA_EDGE_MODE == "on":
                     beta_lcb = 0.0
-                if beta_lcb is not None:
-                    beta_belief = beta_belief_v1(raw_win, price, beta_lcb)
+                if beta_lcb is not None and beta_market_mid is not None:
+                    beta_belief = beta_belief_v1(raw_win, beta_market_mid, beta_lcb)
                     beta_edge = beta_belief - price
-                    beta_admissible = beta_edge > EPS
+                    # The lane buys the DISAGREEMENT, never the book's own
+                    # arithmetic: at ``beta_lcb <= 0`` the belief is the
+                    # market's, and a normalised mid that happens to clear
+                    # the ask (a ladder whose asks sum under one) is not
+                    # evidence the model earned.  No evidence, no seat.
+                    beta_admissible = beta_lcb > EPS and clears_economic_hurdle_v1(
+                        expected_payout=beta_belief, cost=price,
+                    )
                     if BETA_EDGE_MODE == "on":
-                        effective_win = beta_belief
+                        if beta_lcb > EPS:
+                            effective_win = beta_belief
+                            gate_lambda_source = "beta_edge_lcb"
+                        else:
+                            effective_win = EPS
+                            gate_lambda_source = "beta_edge_lcb_zero"
                         gate_lambda = (
                             effective_win / win if win > EPS else None
                         )
-                        gate_lambda_source = "beta_edge_lcb"
                         if win > EPS:
                             gate_agreement = price / win
+                elif beta_lcb is not None and BETA_EDGE_MODE == "on":
+                    # No market belief for this snapshot: the lane cannot
+                    # say what the window is worth, so nothing is.
+                    beta_admissible = False
+                    effective_win = EPS
+                    gate_lambda = effective_win / win if win > EPS else None
+                    gate_lambda_source = "beta_edge_no_market"
+                    if win > EPS:
+                        gate_agreement = price / win
             # Charter 132: charter 128's slope read as a prediction on the
             # joint draws -- intercept kept, sign-safe -- recorded beside it.
+            # On the v2 basis the prediction is of ``hit - m``, so the cost
+            # test adds the market's belief back before charging the ask.
             beta_v2 = None
             beta_v2_admissible = None
-            if BETA_EDGE_MODE != "off" and priced:
-                _beta_v2_row = beta_served.get(str(probability_stage or ""))
-                if isinstance(_beta_v2_row, Mapping):
-                    beta_v2 = beta_conditional_edge_v2(
-                        raw_win, price, _beta_v2_row.get("joint_draws") or (),
+            if (
+                BETA_EDGE_MODE != "off" and priced
+                and isinstance(beta_row, Mapping)
+                and beta_market_mid is not None
+            ):
+                beta_v2 = beta_conditional_edge_v2(
+                    raw_win, beta_market_mid, beta_row.get("joint_draws") or (),
+                )
+                if beta_v2 is not None:
+                    beta_v2_admissible = clears_economic_hurdle_v1(
+                        expected_payout=beta_market_mid + beta_v2["edge_lcb"],
+                        cost=price,
                     )
-                    if beta_v2 is not None:
-                        beta_v2_admissible = (
-                            beta_v2["edge_lcb"]
-                            >= economic_hurdle_usdc(price) - EPS
-                        )
             # Charter 132: the pooled valuation of this window as an action
             # -- one share per leg at the all-in ask -- and how much of it the
             # book can take before the lower bound stops clearing the hurdle.
@@ -2980,6 +3054,13 @@ def _support_windows(
                 "beta_edge": beta_edge,
                 "beta_admissible": beta_admissible,
                 "beta_table_sha256": beta_sha,
+                # v2 basis: the market's belief the disagreement was read
+                # against (the ledger copies it onto the candidate row, and
+                # the fit regresses on it), and the band row that served
+                # (None when the stage's whole row did).
+                "beta_market_mid": beta_market_mid,
+                "beta_lead_band": beta_band,
+                "beta_hours_to_cutoff": hours_to_cutoff,
                 # Charter 132: the same slope as a prediction on the joint
                 # draws.  A net edge per unit of cost, not a probability.
                 "beta_v2_edge_point": (
@@ -3165,6 +3246,12 @@ def _support_windows(
             # row reads alike.
             "convergence_claim_factor": 1.0,
             "convergence": None,
+            # Charter 128 v2: the appended incumbent is not judged by the
+            # beta lane (it never was); the clock rides so the ledger's copy
+            # of the row reads like every other.
+            "beta_market_mid": None,
+            "beta_lead_band": None,
+            "beta_hours_to_cutoff": hours_to_cutoff,
             "holds_probability_core": bool(core) and bool(set(incumbent) & core),
             "all_in_price": price if priced else None,
             "edge": (incumbent_effective_win - price) if priced else None,
@@ -3357,12 +3444,26 @@ def _support_windows(
         # gate.  The per-window readings are on each row.
         "beta_edge_mode": BETA_EDGE_MODE,
         "beta_edge_rule": BETA_EDGE_RULE_VERSION,
+        # v2 basis: what the disagreement was measured against, the clock
+        # the band was read off, and whether the book gave a belief at all.
+        "beta_price_basis": BETA_PRICE_BASIS,
+        "beta_hours_to_cutoff": hours_to_cutoff,
+        "beta_lead_band": beta_lead_band_label,
+        "beta_market_state": beta_market_state,
         "beta_served": {
             str(scope): (
                 None if not isinstance(row, dict) else {
                     "beta": row.get("beta"), "beta_lcb": row.get("beta_lcb"),
                     "sha256": row.get("sha256"),
                     "accumulating": row.get("accumulating"),
+                    "lead_bands": {
+                        str(label): {
+                            "beta_lcb": band.get("beta_lcb"),
+                            "accumulating": band.get("accumulating"),
+                        }
+                        for label, band in dict(row.get("lead_bands") or {}).items()
+                        if isinstance(band, dict)
+                    },
                 }
             )
             for scope, row in dict(beta_served).items()
@@ -5737,6 +5838,9 @@ def compile_delta_v2_runtime_plan(
         # Charter 87: the gate reads lambda off the same served tables the
         # solver used to read it off, as of the same moment.
         effective_edge_tables=effective_edge_tables,
+        # Charter 128 v2: the beta lane's lead band, off the same clock the
+        # solver's completion cutoff reads.
+        hours_to_cutoff=hours_to_cutoff,
         off_centre_claim_bands=off_centre_claim_bands,
         # Charter 122 (五): and the seat band off the table the lane fitted,
         # read the same way.

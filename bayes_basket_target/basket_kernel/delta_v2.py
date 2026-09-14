@@ -1811,31 +1811,77 @@ BETA_EDGE_MODE = (
 )
 if BETA_EDGE_MODE not in {"off", "shadow", "on"}:
     raise RuntimeError(f"unknown beta edge mode: {BETA_EDGE_MODE}")
-BETA_EDGE_RULE_VERSION = "beta_lcb_times_disagreement_v1"
+# v2 (user ruling, 2026-09-14: "改"): the disagreement is measured against
+# the market's BELIEF -- the normalised mid of the whole ladder, the same
+# vector charter 132 reads -- and the cost is charged at the all-in ask by
+# the gate, separately.  On the v1 basis ``q`` was the all-in ask, so the
+# regressor ``p - q`` carried half a spread plus the fee and a spread that
+# varied across windows read as realised disagreement: with zero information
+# the slope is ``Var(d) / (Var(x) + Var(d))``, not 0.  Measured 2026-09-14
+# on identical rows (leg level, 28 days): the ask basis read beta 0.016
+# (P0) and 0.033 (P1) higher than the mid basis, with the intercept
+# absorbing the mean spread.  The ledger hashes this string, so the book
+# re-imports under the new basis and every candidate window carries the mid.
+BETA_EDGE_RULE_VERSION = "beta_lcb_times_disagreement_mid_v2"
+BETA_PRICE_BASIS = "market_mid_reference_v1"
+# The second axis of the fit (same ruling): hours from the decision to the
+# settlement cutoff.  The disagreement realises differently through the day
+# -- measured 2026-09-14, P1's k = Cov/Var runs 0.99 -> 0.95 -> 0.97 from the
+# first third of a station-day's decisions to the last, and P0 sits at 1.01
+# throughout -- so a stage pools bands it should not.  A band serves only
+# when it clears the lane's own hurdles; otherwise the stage's whole row does.
+BETA_LEAD_BANDS: tuple[tuple[float, float, str], ...] = (
+    (0.0, 6.0, "<6h"),
+    (6.0, 12.0, "6-12h"),
+    (12.0, 24.0, "12-24h"),
+    (24.0, 36.0, "24-36h"),
+    (36.0, float("inf"), ">=36h"),
+)
 
 
-def beta_belief_v1(raw_win: float, price: float, beta_lcb: float) -> float:
-    """Charter 128: ``q + beta_lcb * (p - q)``, clipped to a probability.
+def beta_lead_band(hours_to_cutoff: Any) -> str | None:
+    """The lead band a decision falls in, or None without a clock."""
 
-    ``p`` is the raw served claim, ``q`` the all-in price the gate priced the
-    window at, ``beta_lcb`` the lower bound of the share of the disagreement
-    that arrives.  At ``beta_lcb = 0`` this is the price itself and the edge
-    is zero; at 1 it is the raw claim.
+    try:
+        hours = float(hours_to_cutoff)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(hours):
+        return None
+    hours = max(0.0, hours)
+    for low, high, label in BETA_LEAD_BANDS:
+        if low <= hours < high:
+            return label
+    return BETA_LEAD_BANDS[-1][2]
+
+
+def beta_belief_v1(raw_win: float, market_mid: float, beta_lcb: float) -> float:
+    """Charter 128 (v2 basis): ``m + beta_lcb * (p - m)``, clipped to a
+    probability.
+
+    ``p`` is the raw served claim, ``m`` the market's belief for the window
+    (the normalised mid mass, ``BETA_PRICE_BASIS``), ``beta_lcb`` the lower
+    bound of the share of the disagreement that arrives.  At ``beta_lcb = 0``
+    this is the market's belief and the disagreement is worth nothing; at 1
+    it is the raw claim.  The cost -- the all-in ask -- is not in here: the
+    gate charges it when it compares this belief with what the window costs.
     """
 
-    belief = float(price) + float(beta_lcb) * (float(raw_win) - float(price))
+    belief = float(market_mid) + float(beta_lcb) * (float(raw_win) - float(market_mid))
     return min(1.0 - EPS, max(EPS, belief))
 
 
 def beta_conditional_edge_v2(
     raw_win: float,
-    price: float,
+    market_mid: float,
     joint_draws: Sequence[Sequence[float]],
     *,
     quantile: float = 0.05,
 ) -> dict[str, float] | None:
-    """Charter 132: the conditional net edge ``alpha + beta * (p - q)``,
-    point and lower bound, read on the fit's joint draws.
+    """Charter 132: the conditional net edge ``alpha + beta * (p - m)``,
+    point and lower bound, read on the fit's joint draws.  ``m`` is the
+    market's belief (v2 basis), so the prediction is of ``hit - m``; a caller
+    comparing it with a cost adds ``m`` back first.
 
     Three things charter 128's ``q + beta_lcb * (p - q)`` gets wrong, each a
     counterexample in the 2026-09-13 audit and each a test in
@@ -1865,7 +1911,7 @@ def beta_conditional_edge_v2(
     ]
     if not pairs:
         return None
-    d = float(raw_win) - float(price)
+    d = float(raw_win) - float(market_mid)
     values = sorted(alpha + beta * d for alpha, beta in pairs)
     q = min(max(float(quantile), 0.0), 1.0)
     lower = values[min(len(values) - 1, int(q * len(values)))]

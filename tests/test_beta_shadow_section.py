@@ -27,15 +27,18 @@ def _book() -> sqlite3.Connection:
         "CREATE TABLE paper_trade_candidate_window("
         " candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
         " stage TEXT, decision_at_utc TEXT, raw_win_probability REAL,"
-        " all_in_price REAL, hit INTEGER, settled_bucket TEXT, admissible INTEGER)"
+        " all_in_price REAL, hit INTEGER, settled_bucket TEXT, admissible INTEGER,"
+        # Charter 128 v2: the replay judges on the market's belief, half a
+        # spread under the all-in ask here.
+        " market_mid REAL)"
     )
     return conn
 
 
 def _window(conn, cid, *, day, at, raw, price, hit, adm, stage="P0"):
     conn.execute(
-        "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?,?)",
-        (cid, "S01", day, stage, at, raw, price, hit, "30°C", adm),
+        "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        (cid, "S01", day, stage, at, raw, price, hit, "30°C", adm, price - 0.05),
     )
 
 
@@ -46,6 +49,7 @@ def _activate(conn, *, lcb, at):
     fit = {
         "stage_scope": "P0", "content_sha256": f"{abs(hash((lcb, at))) % 10**16:0>64d}",
         "table": {"schema": store.SCHEMA, "stage_scope": "P0", "price_basis": store.PRICE_BASIS,
+                  "lead_band": store.WHOLE_STAGE,
                   "window_days": 28, "as_of_event_date": today, "beta": lcb + 0.1,
                   "beta_lcb": lcb, "beta_ucb": lcb + 0.2, "intercept": -0.05,
                   "row_count": 100, "day_count": 10, "accumulating": False},
@@ -71,7 +75,8 @@ def test_the_replay_judges_each_window_by_the_beta_served_at_its_instant() -> No
     _window(conn, "w1", day=d, at=f"{d}T02:00:00Z", raw=0.9, price=0.7, hit=1, adm=1)
     _window(conn, "w2", day=d, at=f"{d}T02:00:00Z", raw=0.5, price=0.7, hit=0, adm=0)
     _activate(conn, lcb=1.0, at=f"{d}T03:00:00Z")
-    # Served beta_lcb 1: beta admits iff raw > price.
+    # Served beta_lcb 1: the belief is the raw claim, so beta admits iff
+    # raw clears the all-in price under charter 130's hurdle.
     _window(conn, "w3", day=d, at=f"{d}T04:00:00Z", raw=0.9, price=0.7, hit=0, adm=1)  # both admit
     _window(conn, "w4", day=d, at=f"{d}T04:00:00Z", raw=0.6, price=0.7, hit=1, adm=1)  # beta refuses
     _window(conn, "w5", day=d, at=f"{d}T04:00:00Z", raw=0.9, price=0.8, hit=1, adm=0)  # beta admits

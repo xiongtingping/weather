@@ -1,5 +1,6 @@
 """DB-resident beta: how much of the model's disagreement with the market
-arrives, one number per served stage.
+arrives, one number per served stage -- and, when a band earns it, one per
+lead band inside the stage.
 
 Charter 128 (user ruling, 2026-09-12): the third cut of the claim-chain
 clean-up.  Charter 68's lambda(a) table answered "what fraction of the claim
@@ -10,33 +11,53 @@ after it was fitted, admitted windows that then realised the same
 window-days).  The fraction of the claim that arrives is not a function of
 the agreement band; it is one slope.
 
-The identity this lane estimates, per enumerated window::
+The identity this lane estimates, per enumerated window (v2 basis, user
+ruling 2026-09-14 "改")::
 
-    hit - q  =  a  +  beta * (p - q)
+    hit - m  =  a  +  beta * (p - m)
 
 with ``p`` the raw served claim (the probability layer's own number, no
-position multiplier), ``q`` the all-in price the gate priced the window at
-and ``hit`` whether the truth landed in it.  ``beta`` is the share of the
-claimed disagreement that shows up in settled outcomes -- 0 means the
-market's price is the better estimate wherever the two differ, 1 means the
-claim is right about all of it, negative means the disagreement leans the
-wrong way -- and ``a`` is what a window realises when the two agree, which
-is the cost.  Trading on the disagreement at all is worth
-``beta * (p - q)`` per unit; the served belief is therefore
-``q + beta_lcb * (p - q)`` and the whole-basket positive-EV gate reads
-``beta_lcb * (p - q) > 0``.  One parameter, one lower bound, no bands.
+position multiplier), ``m`` the MARKET'S BELIEF for the window -- the
+normalised mid of the whole ladder summed over the window's buckets, the
+same vector charter 132 reads -- and ``hit`` whether the truth landed in it.
+``beta`` is the share of the claimed disagreement that shows up in settled
+outcomes -- 0 means the market's belief is the better estimate wherever the
+two differ, 1 means the claim is right about all of it, negative means the
+disagreement leans the wrong way.  On the mid basis ``a`` is zero when the
+market is calibrated; the spread and the fee are NOT in this regression.
+They are charged where they belong: the gate compares the served belief
+``m + beta_lcb * (p - m)`` with the window's all-in ask under charter 130's
+hurdle.
+
+Why not the ask (the v1 basis).  With ``q = m + d`` (``d`` half a spread
+plus the fee) the regressor ``p - q = x - d`` and the outcome ``hit - q =
+(t - m) - d`` share ``-d``; a spread that varies across windows then reads as
+realised disagreement, and a model with no information at all fits a slope
+of ``Var(d) / (Var(x) + Var(d))``.  Measured 2026-09-14 on identical rows:
+the ask basis read beta 0.016 (P0) and 0.033 (P1) above the mid basis, its
+intercept absorbing the mean spread.
+
+The second axis (same ruling): hours from the decision to the settlement
+cutoff, in the kernel's ``BETA_LEAD_BANDS``.  The disagreement realises
+differently through the day -- the market's error shrinks as observations
+arrive and the model reads them earlier or later than the book does -- and a
+stage-wide slope pools bands that do not share one.  Every band is fitted
+beside the stage's whole row under the same hurdles; a band's row serves
+only when it clears them, and the whole row serves otherwise.
 
 The fit is walk-forward by construction -- as-of a day it reads only rows
-whose event date is at or before that day -- and pooled over stations, with
-the event date as the independent unit: a fleet shares its weather, so the
+whose label was knowable by the cutoff -- and pooled over stations, with the
+event date as the independent unit: a fleet shares its weather, so the
 interval is a by-day bootstrap and the served number is its lower bound.
 Below the hurdles a stage serves ``beta_lcb = 0`` and says so: the belief
-collapses onto the price and the gate refuses, which is the honest reading
-of "no evidence yet".
+collapses onto the market's and the gate refuses, which is the honest
+reading of "no evidence yet".
 
 The sample is bounded below at the stage's serving-arithmetic anchor, like
 every claim lane: rows from before the served distribution changed shape
-describe a claim nobody serves.
+describe a claim nobody serves.  Rows written before the ledger carried the
+market mid (``paper_trade_candidate_window.market_mid``) are not evidence on
+this basis and are counted out, never priced at the ask instead.
 
 Shadow first.  ``BETA_EDGE_MODE`` in the kernel defaults to ``shadow``: the
 enumeration records the beta edge and the beta verdict on every priced
@@ -54,10 +75,15 @@ from datetime import date, timedelta
 from statistics import mean
 from typing import Any, Mapping, Sequence
 
-from .basket_kernel.delta_v2 import BETA_TABLE_KEY
+from .basket_kernel.delta_v2 import (
+    BETA_LEAD_BANDS,
+    BETA_PRICE_BASIS,
+    BETA_TABLE_KEY,
+    beta_lead_band,
+)
 from .contracts import content_sha256
 
-SCHEMA = "beta_edge_table_v2"
+SCHEMA = "beta_edge_table_v3"
 STAGE_SCOPES: dict[str, tuple[str, ...]] = {
     "P0": ("P0",), "P0-M": ("P0-M",), "P1": ("P1",),
 }
@@ -67,7 +93,12 @@ MIN_DAYS = 8
 BOOTSTRAP_DRAWS = 400
 BOOTSTRAP_SEED = 20260912
 LCB_QUANTILE = 0.05
-PRICE_BASIS = "ledger_all_in_price"
+PRICE_BASIS = BETA_PRICE_BASIS
+#: The ``lead_band`` of a stage's whole row.  A band row carries its label.
+WHOLE_STAGE = ""
+LEAD_BAND_LABELS: tuple[str, ...] = tuple(label for _lo, _hi, label in BETA_LEAD_BANDS)
+#: Kept under its old name for the readers that iterate it (``layered_readings``).
+LEAD_BUCKETS = BETA_LEAD_BANDS
 # Charter 132 (2026-09-13): the joint (alpha, beta) draws a fit keeps so the
 # served lower bound is taken on the whole prediction ``alpha + beta * d``,
 # not on beta's marginal.  Rounded because they ride in evidence_json and are
@@ -91,12 +122,13 @@ CREATE TABLE IF NOT EXISTS calibration_beta_edge_table (
   evidence_json TEXT NOT NULL,
   fitted_at_utc TEXT NOT NULL,
   activated INTEGER NOT NULL CHECK(activated IN (0,1)),
-  activated_at_utc TEXT
+  activated_at_utc TEXT,
+  lead_band TEXT NOT NULL DEFAULT ''
 )
 """
 _ACTIVE_INDEX = (
-    "CREATE INDEX IF NOT EXISTS calibration_beta_edge_active_idx"
-    " ON calibration_beta_edge_table(stage_scope, activated)"
+    "CREATE INDEX IF NOT EXISTS calibration_beta_edge_active_band_idx"
+    " ON calibration_beta_edge_table(stage_scope, lead_band, activated)"
 )
 _JOURNAL_DDL = """
 CREATE TABLE IF NOT EXISTS calibration_beta_edge_fit_journal (
@@ -116,6 +148,14 @@ _JOURNAL_INDEX = (
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.execute(_TABLE_DDL)
+    # A table from before the band axis existed: widened in place, every
+    # row it holds being a whole-stage row (v1 basis, which the loaders
+    # below no longer serve -- the basis column keeps them apart).
+    if not _has_column(conn, "calibration_beta_edge_table", "lead_band"):
+        conn.execute(
+            "ALTER TABLE calibration_beta_edge_table"
+            " ADD COLUMN lead_band TEXT NOT NULL DEFAULT ''"
+        )
     conn.execute(_ACTIVE_INDEX)
     conn.execute(_JOURNAL_DDL)
     conn.execute(_JOURNAL_INDEX)
@@ -191,7 +231,8 @@ def population(
     cutoff_utc: str | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Every enumerated window the ledger priced and settled for the scope's
-    stages that a fit at ``cutoff_utc`` could have known about.
+    stages that a fit at ``cutoff_utc`` could have known about, on the mid
+    basis.
 
     Charter 132 (audit items 47 and 48) makes three conditions explicit that
     the event-date bound used to stand in for:
@@ -209,6 +250,14 @@ def population(
       the rule recorded one, are not evidence about windows shaped today.  A
       table without the column partitions on nothing, exactly as lambda's does.
 
+    And one the v2 basis adds: **the row carries the market's belief.**  A
+    table without ``market_mid`` cannot state the disagreement this lane
+    regresses on and is refused outright; a row without one (the book was
+    incomplete at that decision, or the row predates the column) is counted
+    out, never priced at the ask in its place.  ``hours_to_cutoff`` is read
+    when the table has it and gives each row its lead band; without the
+    column no row has a band and only the whole-stage fit is possible.
+
     ``cutoff_utc`` defaults to now, which is what the nightly fit means.  A
     walk-forward caller passes the moment it is standing at.
     """
@@ -219,6 +268,9 @@ def population(
         return [], {"error": "no_candidate_windows"}
     if not _has_column(conn, "paper_trade_candidate_window", "settled_at_utc"):
         return [], {"error": "no_label_knowable_column"}
+    if not _has_column(conn, "paper_trade_candidate_window", "market_mid"):
+        return [], {"error": "no_market_mid_column", "price_basis": PRICE_BASIS}
+    has_clock = _has_column(conn, "paper_trade_candidate_window", "hours_to_cutoff")
     stages = STAGE_SCOPES[stage_scope]
     cutoff = str(cutoff_utc or _utc_now_iso())
     from .label_knowability import knowable_labels  # noqa: PLC0415
@@ -273,8 +325,10 @@ def population(
     base_args: tuple[Any, ...] = (*stages, floor_day, latest)
     rows = conn.execute(
         "SELECT station_id, event_date, stage, decision_at_utc,"
-        "       raw_win_probability, all_in_price, hit, settled_at_utc"
-        + (", seat_shape_rule" if shape is not None else ", NULL")
+        "       raw_win_probability, all_in_price, hit, settled_at_utc,"
+        + (" seat_shape_rule," if shape is not None else " NULL,")
+        + " market_mid,"
+        + (" hours_to_cutoff" if has_clock else " NULL")
         + " FROM paper_trade_candidate_window" + base_where,
         base_args,
     ).fetchall()
@@ -285,8 +339,10 @@ def population(
         "excluded_decided_after_cutoff": 0,
         "rejected_invalid_label": 0,
         "excluded_other_shape": 0,
+        "excluded_no_market_mid": 0,
     }
-    for station, day, stage, at, raw, price, hit, _written, row_shape in rows:
+    for (station, day, stage, at, raw, price, hit, _written, row_shape,
+         mid, hours) in rows:
         if shape is not None and (row_shape is None or str(row_shape) != shape):
             counts["excluded_other_shape"] += 1
             continue
@@ -303,12 +359,22 @@ def population(
         if hit not in (0, 1) or isinstance(hit, bool):
             counts["rejected_invalid_label"] += 1
             continue
+        try:
+            mid_value = float(mid)
+        except (TypeError, ValueError):
+            mid_value = float("nan")
+        if not (0.0 < mid_value < 1.0):
+            counts["excluded_no_market_mid"] += 1
+            continue
         out.append({
             "station": str(station), "date": str(day), "stage": str(stage),
             "at": str(at or ""),
-            "x": float(raw) - float(price),
-            "y": float(hit) - float(price),
-            "raw": float(raw), "price": float(price), "hit": float(hit),
+            "x": float(raw) - mid_value,
+            "y": float(hit) - mid_value,
+            "raw": float(raw), "mid": mid_value, "price": float(price),
+            "hit": float(hit),
+            "hours_to_cutoff": None if hours is None else float(hours),
+            "lead_band": beta_lead_band(hours),
         })
     return out, {
         "as_of_event_date": latest, "floor_day": floor_day,
@@ -316,47 +382,27 @@ def population(
         "anchor_states": anchor_states,
         "anchors_after_cutoff": anchors_after_cutoff,
         "anchored": bool(anchored), "seat_shape_rule": shape,
+        "price_basis": PRICE_BASIS,
+        "lead_clock": "hours_to_cutoff" if has_clock else "none",
         **counts,
     }
 
 
 LAYER_MIN_ROWS = 12
-LEAD_BUCKETS = ((0.0, 12.0, "<12h"), (12.0, 24.0, "12-24h"), (24.0, 36.0, "24-36h"), (36.0, 1e9, ">=36h"))
-
-
-def _lead_hours(row: Mapping[str, Any]) -> float | None:
-    """Hours from the decision to the event day's noon, UTC.  A coarse lead
-    -- the ledger's rows carry no local clock -- but the same coarseness for
-    every row, which is all a bucket needs."""
-
-    try:
-        from datetime import datetime, timezone  # noqa: PLC0415
-
-        at = datetime.fromisoformat(str(row["at"]).replace("Z", "+00:00"))
-        noon = datetime.fromisoformat(str(row["date"]) + "T12:00:00+00:00")
-        if at.tzinfo is None:
-            at = at.replace(tzinfo=timezone.utc)
-        return (noon - at).total_seconds() / 3600.0
-    except (ValueError, KeyError, TypeError):
-        return None
 
 
 def layered_readings(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    """Point-estimate betas by station and by lead bucket -- research
-    readings for the shadow, never served: a layer is a candidate for its
-    own beta only once it clears the hurdles on its own days."""
+    """Point-estimate betas by station and by lead band -- research readings
+    for the shadow.  A band is served only through its own fitted row
+    (``fit_stage_and_bands``), never off this table."""
 
     by_station: dict[str, list[Mapping[str, Any]]] = {}
     by_lead: dict[str, list[Mapping[str, Any]]] = {}
     for r in rows:
         by_station.setdefault(str(r["station"]), []).append(r)
-        lead = _lead_hours(r)
-        if lead is None:
-            continue
-        for lo, hi, label in LEAD_BUCKETS:
-            if lo <= lead < hi:
-                by_lead.setdefault(label, []).append(r)
-                break
+        band = r.get("lead_band")
+        if band:
+            by_lead.setdefault(str(band), []).append(r)
 
     def cell(group: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
         if len(group) < LAYER_MIN_ROWS:
@@ -385,28 +431,44 @@ def fit_beta(
     draws: int = BOOTSTRAP_DRAWS,
     anchored: bool = True,
     cutoff_utc: str | None = None,
+    lead_band: str | None = None,
+    rows: Sequence[Mapping[str, Any]] | None = None,
+    meta: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """One beta with a by-day bootstrap lower bound; below the hurdles the
     served bound is 0 and the fit says ``accumulating``.  ``anchored=False``
     is a research reading (the anchor is what keeps a served fit off rows
     from a shape nobody serves) and is never persisted.
 
+    ``lead_band`` restricts the fit to the rows decided in that band (the
+    kernel's ``BETA_LEAD_BANDS`` labels); None is the stage's whole row.
+    ``rows``/``meta`` let ``fit_stage_and_bands`` cut the population once
+    and fit six times.
+
     Charter 132 (audit items 42 and 44): the bootstrap keeps the JOINT draws
     of ``(intercept, beta)``, because the served quantity is the prediction
     ``intercept + beta * d`` and not beta alone.  The two are estimated from
     one sample and are correlated; a lower bound on beta times ``d`` drops the
-    intercept (which on this lane is the spread, about -0.04) and flips its
-    conservatism whenever ``d`` is negative.  ``beta_lcb`` stays on the table
-    for charter 128's shadow and its record; the new shadow reads the draws.
+    intercept and flips its conservatism whenever ``d`` is negative.
+    ``beta_lcb`` stays on the table for charter 128's shadow and its record;
+    the new shadow reads the draws.
     """
 
-    rows, meta = population(
-        conn, stage_scope=stage_scope, as_of=as_of, window_days=window_days,
-        anchored=anchored, cutoff_utc=cutoff_utc,
-    )
+    if lead_band is not None and lead_band not in LEAD_BAND_LABELS:
+        raise ValueError(f"beta_edge_lead_band_invalid:{lead_band}")
+    if rows is None:
+        rows, meta = population(
+            conn, stage_scope=stage_scope, as_of=as_of, window_days=window_days,
+            anchored=anchored, cutoff_utc=cutoff_utc,
+        )
+    meta = dict(meta or {})
+    band = WHOLE_STAGE if lead_band is None else str(lead_band)
+    if lead_band is not None:
+        rows = [r for r in rows if r.get("lead_band") == lead_band]
     days = sorted({r["date"] for r in rows})
     evidence: dict[str, Any] = {
         "schema": SCHEMA, "stage_scope": stage_scope, "price_basis": PRICE_BASIS,
+        "lead_band": band,
         "window_days": int(window_days), "row_count": len(rows),
         "day_count": len(days), "min_rows": MIN_ROWS, "min_days": MIN_DAYS,
         **meta,
@@ -422,7 +484,7 @@ def fit_beta(
             accumulating = True
         else:
             intercept, beta = fitted
-            by_day: dict[str, list[dict[str, Any]]] = {}
+            by_day: dict[str, list[Mapping[str, Any]]] = {}
             for r in rows:
                 by_day.setdefault(r["date"], []).append(r)
             rng = random.Random(BOOTSTRAP_SEED)
@@ -478,11 +540,13 @@ def fit_beta(
         "mean_x": round(mean(r["x"] for r in rows), 6) if rows else None,
         "mean_y": round(mean(r["y"] for r in rows), 6) if rows else None,
         # Research readings by layer, recorded so a layer that earns its own
-        # beta can be seen coming; nothing serves them.
-        "layers": layered_readings(rows),
+        # beta can be seen coming; the whole row carries them, a band row
+        # carries only its own.
+        "layers": layered_readings(rows) if lead_band is None else {},
     })
     table = {
         "schema": SCHEMA, "stage_scope": stage_scope, "price_basis": PRICE_BASIS,
+        "lead_band": band,
         "window_days": int(window_days), "as_of_event_date": meta.get("as_of_event_date"),
         "beta": evidence["beta"], "beta_lcb": evidence["served_beta_lcb"],
         "beta_ucb": evidence["beta_ucb"], "intercept": evidence["intercept"],
@@ -490,35 +554,72 @@ def fit_beta(
         "accumulating": bool(accumulating),
     }
     return {
-        "stage_scope": stage_scope, "table": table, "evidence": evidence,
+        "stage_scope": stage_scope, "lead_band": band,
+        "table": table, "evidence": evidence,
         "content_sha256": content_sha256(table),
         "accumulating": bool(accumulating),
         "row_count": len(rows), "day_count": len(days),
     }
 
 
+def fit_stage_and_bands(
+    conn: sqlite3.Connection,
+    *,
+    stage_scope: str,
+    as_of: str | None = None,
+    window_days: int = WINDOW_DAYS,
+    draws: int = BOOTSTRAP_DRAWS,
+    anchored: bool = True,
+    cutoff_utc: str | None = None,
+) -> list[dict[str, Any]]:
+    """The stage's whole fit first, then one fit per lead band, all cut from
+    one population.  Bands with no clocked rows are still fitted (as
+    accumulating) so the record shows the band exists and is empty."""
+
+    rows, meta = population(
+        conn, stage_scope=stage_scope, as_of=as_of, window_days=window_days,
+        anchored=anchored, cutoff_utc=cutoff_utc,
+    )
+    fits = [fit_beta(
+        conn, stage_scope=stage_scope, as_of=as_of, window_days=window_days,
+        draws=draws, anchored=anchored, cutoff_utc=cutoff_utc,
+        rows=rows, meta=meta,
+    )]
+    if meta.get("error"):
+        return fits
+    for label in LEAD_BAND_LABELS:
+        fits.append(fit_beta(
+            conn, stage_scope=stage_scope, as_of=as_of, window_days=window_days,
+            draws=draws, anchored=anchored, cutoff_utc=cutoff_utc,
+            lead_band=label, rows=rows, meta=meta,
+        ))
+    return fits
+
+
 def persist_and_activate(
     conn: sqlite3.Connection, fit: Mapping[str, Any], *, now: str
 ) -> dict[str, Any]:
     """Persist content-addressed and activate; the previous active row for
-    the scope is deactivated.  Shadow lane: no promotion guard -- the guard
-    is the ruling that turns the mode on."""
+    the scope AND band is deactivated.  Shadow lane: no promotion guard --
+    the guard is the ruling that turns the mode on."""
 
     ensure_schema(conn)
     table = fit["table"]
     sha = str(fit["content_sha256"])
     scope = str(fit["stage_scope"])
+    band = str(table.get("lead_band") or WHOLE_STAGE)
     conn.execute(
         "UPDATE calibration_beta_edge_table SET activated=0"
-        " WHERE stage_scope=? AND activated=1 AND beta_sha256<>?",
-        (scope, sha),
+        " WHERE stage_scope=? AND lead_band=? AND activated=1 AND beta_sha256<>?",
+        (scope, band, sha),
     )
     conn.execute(
         "INSERT OR IGNORE INTO calibration_beta_edge_table("
         " beta_sha256, stage_scope, price_basis, window_days, as_of_event_date,"
         " beta, beta_lcb, beta_ucb, intercept, row_count, day_count,"
-        " accumulating, evidence_json, fitted_at_utc, activated, activated_at_utc"
-        ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)",
+        " accumulating, evidence_json, fitted_at_utc, activated, activated_at_utc,"
+        " lead_band"
+        ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)",
         (
             sha, scope, str(table["price_basis"]), int(table["window_days"]),
             str(table.get("as_of_event_date") or ""), table.get("beta"),
@@ -526,7 +627,7 @@ def persist_and_activate(
             int(table["row_count"]), int(table["day_count"]),
             1 if table["accumulating"] else 0,
             json.dumps(fit["evidence"], ensure_ascii=False, sort_keys=True),
-            str(now), str(now),
+            str(now), str(now), band,
         ),
     )
     conn.execute(
@@ -575,37 +676,46 @@ def _row_to_served(row: Sequence[Any]) -> dict[str, Any]:
         "accumulating": bool(accumulating), "row_count": int(rows_ or 0),
         "day_count": int(days_ or 0),
         "joint_draws": tuple(draws),
+        "lead_band": str(row[9]) if len(row) > 9 and row[9] is not None else WHOLE_STAGE,
+        "price_basis": PRICE_BASIS,
     }
 
 
 def load_beta_as_of(
     conn: sqlite3.Connection, *, stage_scope: str, as_of_utc: str | None = None,
+    lead_band: str = WHOLE_STAGE,
 ) -> dict[str, Any] | None:
-    """What the scope served at ``as_of_utc`` (the active row when None),
-    read off the journal like lambda so a promotion never rewrites the book
-    behind it.  None before the first fit."""
+    """What the scope (and band) served at ``as_of_utc`` (the active row
+    when None), read off the journal like lambda so a promotion never
+    rewrites the book behind it.  None before the first fit -- and None for
+    a row fitted on another price basis: a v1 (ask-basis) row is not a
+    belief on this basis and is never served in its place."""
 
     if not _has_table(conn, "calibration_beta_edge_table"):
         return None
+    if not _has_column(conn, "calibration_beta_edge_table", "lead_band"):
+        return None
     cols = (
         "t.beta_sha256, t.beta, t.beta_lcb, t.beta_ucb, t.intercept,"
-        " t.accumulating, t.row_count, t.day_count, t.evidence_json"
+        " t.accumulating, t.row_count, t.day_count, t.evidence_json, t.lead_band"
     )
     try:
         if as_of_utc is None:
             row = conn.execute(
                 f"SELECT {cols} FROM calibration_beta_edge_table t"
-                " WHERE t.stage_scope=? AND t.activated=1"
+                " WHERE t.stage_scope=? AND t.lead_band=? AND t.price_basis=?"
+                "   AND t.activated=1"
                 " ORDER BY t.activated_at_utc DESC LIMIT 1",
-                (str(stage_scope),),
+                (str(stage_scope), str(lead_band), PRICE_BASIS),
             ).fetchone()
         else:
             row = conn.execute(
                 f"SELECT {cols} FROM calibration_beta_edge_fit_journal j"
                 " JOIN calibration_beta_edge_table t ON t.beta_sha256=j.beta_sha256"
-                " WHERE j.stage_scope=? AND j.fitted_at_utc<=?"
+                " WHERE j.stage_scope=? AND t.lead_band=? AND t.price_basis=?"
+                "   AND j.fitted_at_utc<=?"
                 " ORDER BY j.fitted_at_utc DESC, j.fit_id DESC LIMIT 1",
-                (str(stage_scope), str(as_of_utc)),
+                (str(stage_scope), str(lead_band), PRICE_BASIS, str(as_of_utc)),
             ).fetchone()
     except sqlite3.Error:
         return None
@@ -615,17 +725,42 @@ def load_beta_as_of(
 def load_beta_tables(
     conn: sqlite3.Connection, *, as_of_utc: str | None = None,
 ) -> dict[str, dict[str, Any] | None]:
-    """Per served stage, what the enumeration reads under ``BETA_TABLE_KEY``."""
+    """Per served stage, what the enumeration reads under ``BETA_TABLE_KEY``:
+    the stage's whole row with its band rows under ``lead_bands``.
 
-    return {
-        scope: load_beta_as_of(conn, stage_scope=scope, as_of_utc=as_of_utc)
-        for scope in STAGE_SCOPES
-    }
+    A stage with band rows but no whole row serves an accumulating whole
+    (``beta_lcb`` 0) so the enumeration can still reach the bands; a stage
+    with neither is None, which is what every day before the first fit reads.
+    """
+
+    out: dict[str, dict[str, Any] | None] = {}
+    for scope in STAGE_SCOPES:
+        whole = load_beta_as_of(conn, stage_scope=scope, as_of_utc=as_of_utc)
+        bands: dict[str, dict[str, Any]] = {}
+        for label in LEAD_BAND_LABELS:
+            row = load_beta_as_of(
+                conn, stage_scope=scope, as_of_utc=as_of_utc, lead_band=label,
+            )
+            if row is not None:
+                bands[label] = row
+        if whole is None and not bands:
+            out[scope] = None
+            continue
+        served = dict(whole) if whole is not None else {
+            "sha256": None, "beta": None, "beta_lcb": 0.0, "beta_ucb": None,
+            "intercept": None, "accumulating": True, "row_count": 0,
+            "day_count": 0, "joint_draws": (), "lead_band": WHOLE_STAGE,
+            "price_basis": PRICE_BASIS,
+        }
+        served["lead_bands"] = bands
+        out[scope] = served
+    return out
 
 
 __all__ = [
     "BETA_TABLE_KEY", "SCHEMA", "STAGE_SCOPES", "WINDOW_DAYS", "MIN_ROWS",
-    "MIN_DAYS", "LEAD_BUCKETS", "ensure_schema", "population", "fit_beta",
+    "MIN_DAYS", "LEAD_BUCKETS", "LEAD_BAND_LABELS", "WHOLE_STAGE", "PRICE_BASIS",
+    "ensure_schema", "population", "fit_beta", "fit_stage_and_bands",
     "layered_readings",
     "persist_and_activate", "journal_fit", "load_beta_as_of", "load_beta_tables",
 ]

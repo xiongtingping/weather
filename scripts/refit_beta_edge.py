@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Refit charter 128's beta per served stage and activate it (shadow lane).
+"""Refit charter 128's beta per served stage -- the stage's whole row and one
+row per lead band -- and activate them (shadow lane).
 
 Thin CLI over ``bayes_basket_target.beta_edge_store``: the fit, the
 persistence, the journal.  Without ``--commit`` it reports only.  There is
@@ -24,7 +25,8 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target.beta_edge_store import (  # noqa: E402
     STAGE_SCOPES,
-    fit_beta,
+    WHOLE_STAGE,
+    fit_stage_and_bands,
     journal_fit,
     load_beta_as_of,
     persist_and_activate,
@@ -35,14 +37,18 @@ DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 
 def _line(fit: dict) -> str:
     ev = fit["evidence"]
+    band = fit.get("lead_band") or WHOLE_STAGE
+    name = f"{fit['stage_scope']}{'' if band == WHOLE_STAGE else ' ' + band}"
+    if ev.get("error"):
+        return f"  {name:12s} beta: REFUSED ({ev['error']})"
     if fit["accumulating"]:
         return (
-            f"  {fit['stage_scope']:5s} beta: ACCUMULATING"
+            f"  {name:12s} beta: ACCUMULATING"
             f" ({fit['row_count']} rows / {fit['day_count']} days;"
             f" needs {ev['min_rows']} / {ev['min_days']}) -- serves beta_lcb 0"
         )
     return (
-        f"  {fit['stage_scope']:5s} beta {ev['beta']:+.3f}"
+        f"  {name:12s} beta {ev['beta']:+.3f}"
         f" [lcb {ev['beta_lcb']:+.3f}, ucb {ev['beta_ucb']:+.3f}]"
         f" intercept {ev['intercept']:+.3f} on {fit['row_count']} rows /"
         f" {fit['day_count']} days; days beta>0 {ev['days_beta_positive']}"
@@ -81,28 +87,33 @@ def main() -> int:
     receipts = []
     try:
         for scope in STAGE_SCOPES:
-            fit = fit_beta(
+            fits = fit_stage_and_bands(
                 conn, stage_scope=scope, as_of=args.as_of_event_date,
                 anchored=not args.unanchored,
                 # Charter 132: labels knowable at the stamp this fit is
                 # activated under -- the script does not read the clock.
                 cutoff_utc=args.as_of,
             )
-            outcome = None
-            if args.commit:
-                before = load_beta_as_of(conn, stage_scope=scope)
-                fit.update(persist_and_activate(conn, fit, now=str(args.as_of)))
-                outcome = (
-                    "UNCHANGED"
-                    if before is not None and before["sha256"] == fit["content_sha256"]
-                    else "ACTIVATED"
-                )
-                fit["fit_id"] = journal_fit(
-                    conn, fit=fit, outcome=outcome, fitted_at_utc=str(args.as_of)
-                )
-                fit["outcome"] = outcome
-            print(_line(fit))
-            receipts.append({k: v for k, v in fit.items() if k != "table"})
+            for fit in fits:
+                outcome = None
+                # A refused population (no market mid on the table yet, no
+                # anchor readable) activates nothing: the served row stands.
+                if args.commit and not fit["evidence"].get("error"):
+                    before = load_beta_as_of(
+                        conn, stage_scope=scope, lead_band=fit["lead_band"],
+                    )
+                    fit.update(persist_and_activate(conn, fit, now=str(args.as_of)))
+                    outcome = (
+                        "UNCHANGED"
+                        if before is not None and before["sha256"] == fit["content_sha256"]
+                        else "ACTIVATED"
+                    )
+                    fit["fit_id"] = journal_fit(
+                        conn, fit=fit, outcome=outcome, fitted_at_utc=str(args.as_of)
+                    )
+                    fit["outcome"] = outcome
+                print(_line(fit))
+                receipts.append({k: v for k, v in fit.items() if k != "table"})
         print(json.dumps(receipts, ensure_ascii=False, indent=1, default=str))
     finally:
         conn.close()

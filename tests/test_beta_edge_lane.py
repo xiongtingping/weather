@@ -25,6 +25,8 @@ from bayes_basket_target import beta_edge_store as store  # noqa: E402
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     BETA_TABLE_KEY,
     beta_belief_v1,
+    beta_lead_band,
+    clears_economic_hurdle_v1,
 )
 
 
@@ -46,7 +48,9 @@ def _db() -> sqlite3.Connection:
         # Charter 132: the population reads when a label became knowable,
         # so the fixture carries the production column that says so.
         " all_in_price REAL, hit INTEGER, settled_bucket TEXT,"
-        " settled_at_utc TEXT)"
+        # Charter 128 v2: the market's belief and the clock, the lane's two
+        # regressors, as the ledger writes them.
+        " settled_at_utc TEXT, market_mid REAL, hours_to_cutoff REAL)"
     )
     store.ensure_schema(conn)
     return conn
@@ -54,21 +58,28 @@ def _db() -> sqlite3.Connection:
 
 def _plant(conn, *, days: int, stations: int = 20, beta: float = 0.5,
            intercept: float = -0.05, noise: float = 0.1, seed: int = 1,
-           stage: str = "P0", first_day: int = 1) -> None:
+           stage: str = "P0", first_day: int = 1,
+           hours: float | None = None, spread: float = 0.04,
+           prefix: str = "c") -> None:
+    """Rows whose outcome follows ``hit - m = intercept + beta * (p - m)``
+    on the market's belief ``m``; the all-in price sits ``spread`` above it,
+    the way an ask sits above a mid, and plays no part in the outcome."""
+
     rng = random.Random(seed)
     n = 0
     for d in range(first_day, first_day + days):
         day = f"2026-09-{d:02d}"
         for s in range(stations):
-            price = rng.uniform(0.4, 0.9)
+            mid = rng.uniform(0.4, 0.9)
+            price = min(0.99, mid + spread)
             x = rng.uniform(-0.3, 0.3)
-            raw = min(0.99, max(0.01, price + x))
-            y = intercept + beta * (raw - price) + rng.gauss(0.0, noise)
-            hit = 1 if rng.random() < max(0.0, min(1.0, price + y)) else 0
+            raw = min(0.99, max(0.01, mid + x))
+            y = intercept + beta * (raw - mid) + rng.gauss(0.0, noise)
+            hit = 1 if rng.random() < max(0.0, min(1.0, mid + y)) else 0
             conn.execute(
-                "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?,?)",
-                (f"c{n}", f"S{s:02d}", day, stage, f"{day}T00:00:00Z",
-                 raw, price, hit, "29°C", f"{day}T23:30:00Z"),
+                "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                (f"{prefix}{n}", f"S{s:02d}", day, stage, f"{day}T00:00:00Z",
+                 raw, price, hit, "29°C", f"{day}T23:30:00Z", mid, hours),
             )
             n += 1
     conn.commit()
@@ -225,15 +236,23 @@ def test_shadow_records_the_beta_reading_and_changes_no_verdict() -> None:
             continue
         priced += 1
         raw = w["raw_win_probability"]
-        expected = beta_belief_v1(raw, w["all_in_price"], 0.2)
+        # v2 basis: the disagreement is read against the market's belief
+        # for the window, and the belief is judged against the all-in ask.
+        assert 0.0 < w["beta_market_mid"] < 1.0
+        expected = beta_belief_v1(raw, w["beta_market_mid"], 0.2)
         assert w["beta_lcb"] == pytest.approx(0.2)
         assert w["beta_point"] == pytest.approx(0.5)
         assert w["beta_belief"] == pytest.approx(expected)
         assert w["beta_edge"] == pytest.approx(expected - w["all_in_price"])
-        assert w["beta_admissible"] == (w["beta_edge"] > 1e-9)
+        assert w["beta_admissible"] == (0.2 > 1e-9 and clears_economic_hurdle_v1(
+            expected_payout=expected, cost=w["all_in_price"],
+        ))
         assert w["beta_table_sha256"] == "x" * 64
+        assert w["beta_lead_band"] is None
     assert priced > 0
     assert audit["beta_edge_mode"] == "shadow"
+    assert audit["beta_price_basis"] == store.PRICE_BASIS
+    assert audit["beta_market_state"] == "complete"
     assert audit["beta_served"]["P0"]["beta_lcb"] == pytest.approx(0.2)
     assert audit["beta_would_refuse_count"] + audit["beta_would_admit_count"] >= 0
     # No fit for the stage: shadow records nothing and changes nothing.
@@ -246,15 +265,20 @@ def test_on_reads_the_beta_belief_and_a_missing_fit_refuses(monkeypatch) -> None
     import bayes_basket_target.delta_v2_runtime as R
 
     monkeypatch.setattr(R, "BETA_EDGE_MODE", "on")
-    # No fit at all: beta_lcb 0, belief == price, nothing admissible.
+    # No fit at all: beta_lcb 0, the belief is the market's own, and the
+    # lane buys nothing on it -- whatever the book's arithmetic says (this
+    # fixture's asks sum under one, so the normalised mid clears the ask on
+    # every window; that is the book's quirk, not the model's evidence).
     windows, audit = _windows({BETA_TABLE_KEY: {"P0": None}})
     assert audit["beta_edge_mode"] == "on"
     assert not any(w["admissible"] for w in windows if w["all_in_price"] is not None)
     for w in windows:
         if w["all_in_price"] is not None:
             assert w["beta_lcb"] == 0.0
-            assert w["effective_win_probability"] == pytest.approx(w["all_in_price"], abs=1e-6)
-            assert w["effective_edge_lambda_source"] == "beta_edge_lcb"
+            assert w["beta_belief"] == pytest.approx(w["beta_market_mid"], abs=1e-6)
+            assert w["beta_admissible"] is False
+            assert w["effective_win_probability"] <= 1e-6
+            assert w["effective_edge_lambda_source"] == "beta_edge_lcb_zero"
     # beta_lcb 1: the belief is the raw claim, so a window is admissible
     # exactly when its raw claim clears its price (and the structural gates).
     served = {BETA_TABLE_KEY: {"P0": {"beta": 1.0, "beta_lcb": 1.0, "sha256": "y" * 64, "accumulating": False}}}
@@ -268,6 +292,102 @@ def test_on_reads_the_beta_belief_and_a_missing_fit_refuses(monkeypatch) -> None
     seated = [w for w in windows if w["admissible"]]
     assert seated, "a raw claim above its price must seat under beta_lcb = 1"
     assert all(w["raw_win_probability"] > w["all_in_price"] for w in seated)
+
+
+def test_a_band_row_serves_only_when_it_clears_the_hurdles() -> None:
+    """The second axis: the decision's lead band picks a band row when that
+    row is past the hurdles; an accumulating band, or no clock, reads the
+    stage's whole row."""
+
+    served = {BETA_TABLE_KEY: {"P0": {
+        "beta": 0.3, "beta_lcb": 0.2, "sha256": "w" * 64, "accumulating": False,
+        "lead_bands": {
+            "<6h": {"beta": 0.9, "beta_lcb": 0.8, "sha256": "b" * 64, "accumulating": False},
+            "12-24h": {"beta": 0.9, "beta_lcb": 0.9, "sha256": "c" * 64, "accumulating": True},
+        },
+    }}}
+    assert beta_lead_band(3.0) == "<6h" and beta_lead_band(15.0) == "12-24h"
+    assert beta_lead_band(None) is None
+    near, audit = _windows(served, hours_to_cutoff=3.0)
+    priced = [w for w in near if w["all_in_price"] is not None]
+    assert priced and all(w["beta_lead_band"] == "<6h" for w in priced)
+    assert all(w["beta_lcb"] == pytest.approx(0.8) for w in priced)
+    assert all(w["beta_table_sha256"] == "b" * 64 for w in priced)
+    assert audit["beta_lead_band"] == "<6h" and audit["beta_hours_to_cutoff"] == 3.0
+    assert audit["beta_served"]["P0"]["lead_bands"]["<6h"]["beta_lcb"] == pytest.approx(0.8)
+    mid, _ = _windows(served, hours_to_cutoff=15.0)
+    priced = [w for w in mid if w["all_in_price"] is not None]
+    assert all(w["beta_lead_band"] is None and w["beta_lcb"] == pytest.approx(0.2) for w in priced)
+    unclocked, _ = _windows(served)
+    priced = [w for w in unclocked if w["all_in_price"] is not None]
+    assert all(w["beta_lead_band"] is None and w["beta_lcb"] == pytest.approx(0.2) for w in priced)
+
+
+def test_without_a_market_belief_shadow_records_nothing_and_on_refuses(monkeypatch) -> None:
+    import bayes_basket_target.delta_v2_runtime as R
+
+    monkeypatch.setattr(
+        R, "market_reference_v1",
+        lambda buckets: {"state": "incomplete", "reason": "one_sided_ask:31°C"},
+    )
+    served = {BETA_TABLE_KEY: {"P0": {"beta": 0.5, "beta_lcb": 0.4, "sha256": "x" * 64, "accumulating": False}}}
+    shadow, audit = _windows(served)
+    assert audit["beta_market_state"] == "incomplete"
+    assert all(w["beta_belief"] is None and w["beta_market_mid"] is None for w in shadow)
+    monkeypatch.setattr(R, "BETA_EDGE_MODE", "on")
+    on, _ = _windows(served)
+    priced = [w for w in on if w["all_in_price"] is not None]
+    assert priced and not any(w["admissible"] for w in priced)
+    assert all(w["effective_edge_lambda_source"] == "beta_edge_no_market" for w in priced)
+
+
+def test_a_row_fitted_on_another_basis_is_never_served() -> None:
+    conn = _db()
+    _plant(conn, days=14, stations=30, beta=0.6, seed=5)
+    fit = store.fit_beta(conn, stage_scope="P0")
+    store.persist_and_activate(conn, fit, now="2026-09-15T06:00:00Z")
+    store.journal_fit(conn, fit=fit, outcome="ACTIVATED", fitted_at_utc="2026-09-15T06:00:00Z")
+    assert store.load_beta_as_of(conn, stage_scope="P0") is not None
+    conn.execute(
+        "UPDATE calibration_beta_edge_table SET price_basis='ledger_all_in_price'"
+    )
+    conn.commit()
+    assert store.load_beta_as_of(conn, stage_scope="P0") is None
+    assert store.load_beta_as_of(
+        conn, stage_scope="P0", as_of_utc="2026-09-16T00:00:00Z"
+    ) is None
+    assert store.load_beta_tables(conn)["P0"] is None
+
+
+def test_the_band_fits_are_cut_from_one_population_and_serve_per_band() -> None:
+    conn = _db()
+    # Two bands with different slopes: the near band realises most of the
+    # disagreement, the far band almost none.
+    _plant(conn, days=14, stations=60, beta=0.8, noise=0.05, seed=11, hours=3.0)
+    _plant(conn, days=14, stations=60, beta=0.1, noise=0.05, seed=12, hours=15.0,
+           prefix="d")
+    fits = store.fit_stage_and_bands(conn, stage_scope="P0")
+    by_band = {f["lead_band"]: f for f in fits}
+    assert set(by_band) == {store.WHOLE_STAGE, *store.LEAD_BAND_LABELS}
+    near, far = by_band["<6h"], by_band["12-24h"]
+    assert not near["accumulating"] and not far["accumulating"]
+    assert abs(near["evidence"]["beta"] - 0.8) < 0.25
+    assert abs(far["evidence"]["beta"] - 0.1) < 0.25
+    assert near["evidence"]["beta_lcb"] > far["evidence"]["beta"]
+    assert by_band["<6h"]["evidence"]["layers"] == {}
+    assert by_band[store.WHOLE_STAGE]["evidence"]["layers"]["by_lead"].keys() >= {"<6h", "12-24h"}
+    assert by_band["6-12h"]["accumulating"] and by_band["6-12h"]["row_count"] == 0
+    for fit in fits:
+        store.persist_and_activate(conn, fit, now="2026-09-15T06:00:00Z")
+    tables = store.load_beta_tables(conn)
+    served = tables["P0"]
+    assert served["lead_band"] == store.WHOLE_STAGE
+    assert set(served["lead_bands"]) == set(store.LEAD_BAND_LABELS)
+    assert served["lead_bands"]["<6h"]["beta_lcb"] == near["table"]["beta_lcb"]
+    assert served["lead_bands"]["6-12h"]["accumulating"] is True
+    assert conn.execute(
+        "SELECT COUNT(*) FROM calibration_beta_edge_table WHERE activated=1"
+    ).fetchone()[0] == 1 + len(store.LEAD_BAND_LABELS)
 
 
 def test_the_ledger_hashes_the_mode_and_the_sweep_runs_the_refit() -> None:

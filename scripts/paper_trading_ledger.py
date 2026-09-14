@@ -3233,6 +3233,15 @@ CREATE TABLE IF NOT EXISTS paper_trade_candidate_window (
   -- settled bucket is already on the row, so a per-leg fit needs
   -- no second table and no second scoring sweep.
   leg_claim_cost_json TEXT,
+  -- Charter 128 v2 (2026-09-14): the market's belief for the window -- the
+  -- normalised mid of the whole ladder summed over its buckets, straight off
+  -- the enumeration's ``beta_market_mid`` -- and the hours from the
+  -- decision to the settlement cutoff, the beta lane's two regressors.
+  -- NULL means the book gave no belief at that decision (one-sided, empty,
+  -- crossed, skewed) or the row predates the columns; the fit counts such
+  -- rows out and never prices them at the ask instead.
+  market_mid REAL,
+  hours_to_cutoff REAL,
   -- The agreement the gate itself computed, when it computed one.  Not the
   -- fit's input -- price over claim above is -- but the cheapest possible
   -- check that the two agree.
@@ -3498,6 +3507,15 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
             conn.execute(
                 "ALTER TABLE paper_trade_candidate_window"
                 f" ADD COLUMN {_name} TEXT"
+            )
+    # Charter 128 v2: the beta lane's regressors.  Rows already in the table
+    # stay NULL until the book is re-imported under the new fingerprint --
+    # a NULL is "no belief recorded", which the fit excludes, not zero.
+    for _name in ("market_mid", "hours_to_cutoff"):
+        if _name not in _candidate_cols:
+            conn.execute(
+                "ALTER TABLE paper_trade_candidate_window"
+                f" ADD COLUMN {_name} REAL"
             )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_candidate_window_scope"
@@ -5214,6 +5232,16 @@ def _production_judge(
         }
     shortfall &= desired
     breakthrough &= desired
+    # One clock for the enumeration's beta lead band (charter 128 v2) and
+    # the solver's completion cutoff (charter 110(六)): the same settlement
+    # clock production reads.  NOT ``_resting_deadline`` below: that one
+    # folds in the peak cutoff and the resting horizon, which are reasons an
+    # order stops rather than the moment the market settles.
+    judge_hours_to_cutoff = hours_to_settlement_if_known(
+        event_date,
+        as_of_utc=decision_at_utc,
+        settlement_timezone=_settlement_timezone(conn, station_id, event_date),
+    )
     try:
         windows, audit = _support_windows(
             snapshot=snapshot,
@@ -5243,6 +5271,7 @@ def _production_judge(
             # this decision, the same ones the solver below is handed.
             effective_edge_tables=_effective_edge_tables_as_of(decision_at_utc),
             off_centre_claim_bands=_off_centre_claim_bands(),
+            hours_to_cutoff=judge_hours_to_cutoff,
         )
     except Exception as exc:  # noqa: BLE001
         return {
@@ -5369,13 +5398,7 @@ def _production_judge(
             # NOT ``_resting_deadline`` below: that one folds in the peak
             # cutoff and the resting horizon, which are reasons an order
             # stops rather than the moment the market settles.
-            hours_to_cutoff=hours_to_settlement_if_known(
-                event_date,
-                as_of_utc=decision_at_utc,
-                settlement_timezone=_settlement_timezone(
-                    conn, station_id, event_date
-                ),
-            ),
+            hours_to_cutoff=judge_hours_to_cutoff,
             windows=windows,
             window_audit=audit,
             live_buckets=live_buckets,
@@ -9269,6 +9292,15 @@ def backfill(
                                 payload["decision_at_utc"]
                             ),
                             off_centre_claim_bands=_off_centre_claim_bands(),
+                            # Charter 128 v2: the beta lane's lead band, off
+                            # the same settlement clock production reads.
+                            hours_to_cutoff=hours_to_settlement_if_known(
+                                event_date,
+                                as_of_utc=payload["decision_at_utc"],
+                                settlement_timezone=_settlement_timezone(
+                                    conn, station_id, event_date
+                                ),
+                            ),
                         )
                     except Exception as exc:  # noqa: BLE001 -- scope skipped
                         refusal = _deeper_refusal(refusal, (
@@ -11447,6 +11479,20 @@ def backfill(
                             # enumerated under -- the lambda fit's third
                             # partition key.
                             SEAT_SHAPE_RULE_VERSION,
+                            # Charter 128 v2: the market's belief and the
+                            # clock, both off the enumeration's own row.
+                            # Absent (None) when the book gave no belief
+                            # or the runtime predates the field.
+                            (
+                                None
+                                if row.get("beta_market_mid") is None
+                                else float(row["beta_market_mid"])
+                            ),
+                            (
+                                None
+                                if row.get("beta_hours_to_cutoff") is None
+                                else float(row["beta_hours_to_cutoff"])
+                            ),
                         ))
             # The chain is done adding.  One position, one settlement: the
             # truth lands once, and scoring each stage against it separately
@@ -11624,8 +11670,8 @@ def backfill(
             " raw_win_probability, all_in_price, gate_agreement,"
             " admissible, seated, selection_rule_sha256,"
             " band_axis, band_table_sha256, claim_transform_sha256,"
-            " leg_claim_cost_json, seat_shape_rule"
-            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " leg_claim_cost_json, seat_shape_rule, market_mid, hours_to_cutoff"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT(station_id, event_date, stage, decision_at_utc,"
             "             buckets_json) DO UPDATE SET"
             "  win_probability=excluded.win_probability,"
@@ -11639,7 +11685,9 @@ def backfill(
             "  band_table_sha256=excluded.band_table_sha256,"
             "  claim_transform_sha256=excluded.claim_transform_sha256,"
             "  leg_claim_cost_json=excluded.leg_claim_cost_json,"
-            "  seat_shape_rule=excluded.seat_shape_rule",
+            "  seat_shape_rule=excluded.seat_shape_rule,"
+            "  market_mid=excluded.market_mid,"
+            "  hours_to_cutoff=excluded.hours_to_cutoff",
             pending_candidates,
         )
     if pending_settlements:

@@ -111,7 +111,9 @@ def _beta_db(*, with_shape: bool = False) -> sqlite3.Connection:
         " candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
         " stage TEXT, decision_at_utc TEXT, raw_win_probability REAL,"
         " all_in_price REAL, hit INTEGER, settled_bucket TEXT,"
-        " settled_at_utc TEXT"
+        # Charter 128 v2: the population regresses on the market's belief,
+        # so the fixture carries the column the ledger writes it to.
+        " settled_at_utc TEXT, market_mid REAL"
         + (", seat_shape_rule TEXT" if with_shape else "")
         + ")"
     )
@@ -122,7 +124,7 @@ def _beta_db(*, with_shape: bool = False) -> sqlite3.Connection:
 def _row(conn, cid, *, day, settled_at, hit=1, decided=None, shape=None):
     values = [
         cid, "S1", day, "P0", decided or f"{day}T06:00:00Z", 0.7, 0.6, hit,
-        "20°C", settled_at,
+        "20°C", settled_at, 0.55,
     ]
     if shape is not None or _has(conn, "seat_shape_rule"):
         values.append(shape)
@@ -244,12 +246,13 @@ def test_the_fit_keeps_joint_draws_only_when_it_serves(monkeypatch):
         day = f"2026-09-{d:02d}"
         for _ in range(12):
             price = rng.uniform(0.4, 0.8)
-            raw = min(0.99, max(0.01, price + rng.uniform(-0.2, 0.2)))
-            hit = 1 if rng.random() < price - 0.03 + 0.4 * (raw - price) else 0
+            mid = price - 0.04
+            raw = min(0.99, max(0.01, mid + rng.uniform(-0.2, 0.2)))
+            hit = 1 if rng.random() < mid + 0.4 * (raw - mid) else 0
             conn.execute(
-                "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (f"c{n}", f"S{n % 7}", day, "P0", f"{day}T06:00:00Z", raw, price,
-                 hit, "20°C", f"{day}T23:00:00Z"),
+                 hit, "20°C", f"{day}T23:00:00Z", mid),
             )
             n += 1
     fit = beta_store.fit_beta(conn, stage_scope="P0", anchored=False)
