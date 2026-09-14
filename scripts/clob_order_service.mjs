@@ -3184,6 +3184,36 @@ export class ClobOrderService {
       && String(rawPayload.order_execution_domain || "") === "settlement_floor_basket"
       && String(rawPayload.order_intent_action || "") === "controlled_rebalance"
     );
+    // Charter 127(五): a basket completion is a limit FOK that states the
+    // worst price it may pay (`fok_price_cap`, written by the compile from
+    // the post-lift authorized cost).  Signed with an explicit price and
+    // size it can never walk past that limit, so it is not the naked market
+    // order the limit-only boundary exists to stop.  Until 2026-09-14 this
+    // boundary refused it anyway -- no caller sends allow_market -- and the
+    // first live completion (2026-09-13 08:46Z, 29°C, 7 @ 0.16) died here as
+    // limit_only_order_type:FOK without reaching the exchange.  A FOK that
+    // states no cap stays behind allow_market, and one whose limit is above
+    // its own cap is two contradictory instructions and is refused.
+    const fokPriceCapRaw = rawPayload.fok_price_cap;
+    const fokPriceCapStated = !(
+      fokPriceCapRaw === undefined || fokPriceCapRaw === null || fokPriceCapRaw === ""
+    );
+    const fokPriceCap = fokPriceCapStated ? Number(fokPriceCapRaw) : NaN;
+    if (fokPriceCapStated && !(Number.isFinite(fokPriceCap) && fokPriceCap > 0 && fokPriceCap < 1)) {
+      throw errorWithMeta(`fok_price_cap_invalid:${String(fokPriceCapRaw)}`);
+    }
+    if (fokPriceCapStated && orderTypeRaw !== "FOK") {
+      throw errorWithMeta(`fok_price_cap_requires_fok:${orderTypeRaw}`);
+    }
+    if (fokPriceCapStated && Number.isFinite(price) && price > fokPriceCap + 1e-12) {
+      throw errorWithMeta(`fok_limit_price_exceeds_price_cap:${price}>${fokPriceCap}`);
+    }
+    const cappedCompletionBuyFok = (
+      side === Side.BUY
+      && orderTypeRaw === "FOK"
+      && explicitMarketableLimit
+      && fokPriceCapStated
+    );
     const postOnly = truthy(
       rawPayload.post_only ?? rawPayload.postOnly ?? env("PM_CLOB_POST_ONLY", "0")
     );
@@ -3211,7 +3241,7 @@ export class ClobOrderService {
     if (truthy(env("PM_CLOB_FORCE_PROXY", "0")) && this.proxy?.mode !== "proxy") {
       throw errorWithMeta(`proxy_required_unavailable:${this.proxy?.mode || "unknown"}`);
     }
-    if (isMarket && !allowMarket && !controlledRebalanceSellFak) {
+    if (isMarket && !allowMarket && !controlledRebalanceSellFak && !cappedCompletionBuyFok) {
       throw errorWithMeta(`limit_only_order_type:${orderTypeRaw}`);
     }
     // GTD without an expiry is a GTC wearing the wrong name, and the venue
