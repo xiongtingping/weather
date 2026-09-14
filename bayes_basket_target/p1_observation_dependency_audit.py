@@ -20,7 +20,7 @@ DEFAULT_FILES = (
 _LANES = frozenset({"AMSC", "AWC"})
 _SQL_SINGLE_LANE = re.compile(
     r"\b(?:source_lane|lane)\b\s*(?:=|==|!=|<>|IS|IS NOT)\s*"
-    r"[\"'](?:AMSC|AWC)[\"']",
+    r"[\"'](AMSC|AWC)[\"']",
     re.IGNORECASE,
 )
 
@@ -84,6 +84,10 @@ def audit_p1_observation_dependencies(
     )
     station_hits: list[dict[str, object]] = []
     single_lane_hits: list[dict[str, object]] = []
+    # One-lane comparisons naming AWC.  Behind the global gate below they
+    # restate the policy rather than narrow it; without the gate they are the
+    # forbidden hard-coded filter.  Held apart until the scan says which.
+    awc_only_hits: list[dict[str, object]] = []
     awc_global_gate_hits: list[dict[str, object]] = []
     syntax_hits: list[dict[str, object]] = []
     missing_files: list[str] = []
@@ -118,8 +122,13 @@ def audit_p1_observation_dependencies(
                         "line": int(getattr(node, "lineno", 0)),
                         "station_id": "ZUUU",
                     })
-                if _SQL_SINGLE_LANE.search(value):
-                    single_lane_hits.append({
+                sql_lane = _SQL_SINGLE_LANE.search(value)
+                if sql_lane:
+                    (
+                        awc_only_hits
+                        if sql_lane.group(1).upper() == "AWC"
+                        else single_lane_hits
+                    ).append({
                         "file": relative,
                         "line": int(getattr(node, "lineno", 0)),
                         "expression": value,
@@ -148,7 +157,9 @@ def audit_p1_observation_dependencies(
                         "expression": ast.unparse(node),
                     })
                     continue
-                single_lane_hits.append({
+                (
+                    awc_only_hits if literals == {"AWC"} else single_lane_hits
+                ).append({
                     "file": relative,
                     "line": int(getattr(node, "lineno", 0)),
                     "expression": ast.unparse(node),
@@ -163,9 +174,19 @@ def audit_p1_observation_dependencies(
             )
         ]
 
+    awc_global_gate_hits = _dedupe(awc_global_gate_hits)
+    # 2026-09-14: once the chain rejects every non-AWC registry row before P1
+    # reads it, a later test that a lane *is* AWC cannot drop a scope the
+    # policy admits.  Three authorised changes wrote exactly that kind of test
+    # and left this audit red from 2026-08-04 on: settlement-truth lineage
+    # (truth facts are AWC by contract), the ASOS substitutes an AWC scope may
+    # be closed by, and P1's re-anchor on an AWC report after a substitute.
+    # AMSC comparisons and station literals stay violations either way.
+    awc_policy_consistent_hits = _dedupe(awc_only_hits) if awc_global_gate_hits else []
+    if not awc_global_gate_hits:
+        single_lane_hits.extend(awc_only_hits)
     station_hits = _dedupe(station_hits)
     single_lane_hits = _dedupe(single_lane_hits)
-    awc_global_gate_hits = _dedupe(awc_global_gate_hits)
     syntax_hits = _dedupe(syntax_hits)
     closed = not (
         station_hits
@@ -180,6 +201,7 @@ def audit_p1_observation_dependencies(
         "hardcoded_station_hits": station_hits,
         "single_lane_filter_hits": single_lane_hits,
         "awc_global_gate_hits": awc_global_gate_hits,
+        "awc_policy_consistent_hits": awc_policy_consistent_hits,
         "awc_global_gate_enforced": bool(awc_global_gate_hits),
         "syntax_hits": syntax_hits,
         "registry_scoped_p1": closed,

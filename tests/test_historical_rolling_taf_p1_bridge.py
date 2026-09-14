@@ -9,6 +9,12 @@ from bayes_basket_target.contracts import content_sha256
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACT = ROOT / "output/audits/historical_rolling_taf_p1_bridge_20260803_0728.json"
 
+from tests.ephemeral_audit_support import requires_audit_artifacts  # noqa: E402
+
+# A one-off 2026-08-03 packet; output/audits is untracked and pruned by age
+# (10f91279), so the check runs only where the packet still exists.
+pytestmark = requires_audit_artifacts(ARTIFACT)
+
 
 def test_historical_rolling_bridge_is_candidate_only_and_historical() -> None:
     payload = json.loads(ARTIFACT.read_text(encoding="utf-8"))

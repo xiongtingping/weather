@@ -138,20 +138,23 @@ def _p0_snapshot(
     decision_at_utc: str = "2026-08-01T03:00:00.000Z",
     source_class: str = "native_official",
 ) -> dict[str, object]:
-    components = (
-        ("AIFS", "ecmwf_aifs025_single", "ECMWF", "30.000000000000"),
-        ("ICON", "dwd_icon_global", "DWD", "31.000000000000"),
-    )
-    receipts = []
-    for index, (model_id, product_id, family_id, value) in enumerate(components):
-        provider_id = (
-            "OPEN_METEO"
-            if source_class == "aggregator_republisher"
-            else {
-                "AIFS": "ecmwf_aifs025_official",
-                "ICON": "icon_global_official",
-            }[model_id]
+    # Rows of the canonical model-family registry: native ensembles carry a
+    # system id and a member vector; the republisher rows are the legacy
+    # single-value products, kept so the ineligibility test has a subject.
+    if source_class == "aggregator_republisher":
+        components = (
+            ("AIFS", None, "OPEN_METEO", "ecmwf_aifs025_single", "ECMWF", "30.000000000000"),
+            ("ICON", None, "OPEN_METEO", "dwd_icon_global", "DWD", "31.000000000000"),
         )
+        model_family = "global_deterministic_ai"
+    else:
+        components = (
+            ("ECMWF", "ECMWF_IFS_ENS_OPEN_PF50", "ECMWF", "ecmwf_ifs_ens_open_pf50", "ECMWF", "30.000000000000"),
+            ("ICON", "DWD_ICON_GLOBAL_EPS", "DWD", "dwd_icon_global_eps", "DWD", "31.000000000000"),
+        )
+        model_family = "global_ensemble"
+    receipts = []
+    for index, (model_id, system_id, provider_id, product_id, family_id, value) in enumerate(components):
         receipts.append(
             {
                 **_seal(
@@ -159,8 +162,8 @@ def _p0_snapshot(
                         "schema": P0_FORWARD_RECEIPT_SCHEMA,
                         "station_id": station_id,
                         "model_id": model_id,
-                        "ensemble_system_id": None,
-                        "model_family": "global_deterministic_ai",
+                        "ensemble_system_id": system_id,
+                        "model_family": model_family,
                         "provider_id": provider_id,
                         "provider_product_id": product_id,
                         "independence_family_id": family_id,
@@ -174,7 +177,13 @@ def _p0_snapshot(
                         "retrieved_at_utc": "2026-08-01T02:59:00.000Z",
                         "forecast_decision_at_utc": decision_at_utc,
                         "forecast_value_c": value,
-                        "raw_object_sha256": f"{index + 1:064x}",
+                        "member_count": 50 - 10 * index,
+                        "member_evidence_vector_sha256": f"{index + 1:064x}",
+                        "raw_message_vector_sha256": f"{index + 21:064x}",
+                        "raw_object_id_vector_sha256": f"{index + 31:064x}",
+                        "source_packet_content_sha256": f"{41:064x}",
+                        "source_capture_content_sha256": f"{index + 51:064x}",
+                        "retained_arrival_evidence_content_sha256": f"{61:064x}",
                         "model_input_content_sha256": f"{index + 11:064x}",
                     }
                 )

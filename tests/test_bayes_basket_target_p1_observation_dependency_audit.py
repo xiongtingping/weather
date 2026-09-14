@@ -60,3 +60,36 @@ def test_audit_detects_single_lane_sql_filter(tmp_path: Path) -> None:
 
     assert receipt["registry_scoped_p1"] is False
     assert receipt["single_lane_filter_hits"]
+
+
+def test_awc_comparisons_pass_only_behind_the_global_gate(tmp_path: Path) -> None:
+    gated = tmp_path / "gated_p1.py"
+    gated.write_text(
+        "def admit(lanes, truth):\n"
+        "    if lanes != {'awc'}:\n"
+        "        raise ValueError('non_awc_registry_row')\n"
+        "    return truth.source_lane == 'AWC'\n",
+        encoding="utf-8",
+    )
+    receipt = audit_p1_observation_dependencies(
+        project_root=tmp_path, files=(gated,),
+    )
+    assert receipt["registry_scoped_p1"] is True
+    assert receipt["single_lane_filter_hits"] == []
+    assert [hit["expression"] for hit in receipt["awc_policy_consistent_hits"]] == [
+        "truth.source_lane == 'AWC'"
+    ]
+
+    amsc = tmp_path / "amsc_p1.py"
+    amsc.write_text(
+        "def admit(lanes, row):\n"
+        "    if lanes != {'awc'}:\n"
+        "        raise ValueError('non_awc_registry_row')\n"
+        "    return row.source_lane == 'AMSC'\n",
+        encoding="utf-8",
+    )
+    receipt = audit_p1_observation_dependencies(
+        project_root=tmp_path, files=(amsc,),
+    )
+    assert receipt["registry_scoped_p1"] is False
+    assert "AMSC" in receipt["single_lane_filter_hits"][0]["expression"]
