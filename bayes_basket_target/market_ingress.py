@@ -13,7 +13,10 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import pickle
 import sqlite3
+import threading
+from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -259,14 +262,64 @@ def load_official_ws_quotes_payload(
     return root, quotes
 
 
+# Verified inline manifests, by the identity of the file they were read from.
+#
+# One evidence pass materializes a day's merged manifest station by station,
+# and every station's cache row and snapshot each re-read and re-verified the
+# WHOLE document: measured 2026-09-14 on a 45-station, 1.39 MB manifest, 65-100
+# ms a read -- almost all of it the bounded-shape walk and the content hash --
+# 45 reads a cache pass and 90 a snapshot pass, which was 92% and 87% of those
+# passes, run six times a cycle.  The file is a temporary written once per
+# pass and never touched again, so the answer cannot change under the key.
+#
+# Keyed on path, inode, size and mtime, and stored only when the file's
+# identity is the same after the read as before it.  Stored pickled and
+# handed back unpickled: every caller gets objects of its own (13 ms against
+# 101 ms), so nothing a caller does to its copy can reach the next one.
+# Sharded manifests are never stored -- their quotes live in shard files the
+# root's identity does not cover.
+_VERIFIED_MANIFEST_CACHE: "OrderedDict[tuple[str, int, int, int], bytes]" = OrderedDict()
+_VERIFIED_MANIFEST_CACHE_LOCK = threading.Lock()
+_VERIFIED_MANIFEST_CACHE_ENTRIES = 4
+
+
+def _manifest_file_identity(path: Path) -> tuple[str, int, int, int] | None:
+    try:
+        stat = path.stat()
+        return (str(path.resolve()), stat.st_ino, stat.st_size, stat.st_mtime_ns)
+    except OSError:
+        return None
+
+
 def load_official_ws_quotes(
     path: Path,
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
     """Load and verify one official WS scope manifest from a bounded file."""
 
-    return load_official_ws_quotes_payload(
-        _read_json(Path(path), "official_ws_manifest")
+    manifest_path = Path(path)
+    identity = _manifest_file_identity(manifest_path)
+    if identity is not None:
+        with _VERIFIED_MANIFEST_CACHE_LOCK:
+            blob = _VERIFIED_MANIFEST_CACHE.get(identity)
+            if blob is not None:
+                _VERIFIED_MANIFEST_CACHE.move_to_end(identity)
+        if blob is not None:
+            return pickle.loads(blob)
+    result = load_official_ws_quotes_payload(
+        _read_json(manifest_path, "official_ws_manifest")
     )
+    if (
+        identity is not None
+        and result[0].get("quote_storage") == "inline_v1"
+        and _manifest_file_identity(manifest_path) == identity
+    ):
+        blob = pickle.dumps(result, protocol=pickle.HIGHEST_PROTOCOL)
+        with _VERIFIED_MANIFEST_CACHE_LOCK:
+            _VERIFIED_MANIFEST_CACHE[identity] = blob
+            _VERIFIED_MANIFEST_CACHE.move_to_end(identity)
+            while len(_VERIFIED_MANIFEST_CACHE) > _VERIFIED_MANIFEST_CACHE_ENTRIES:
+                _VERIFIED_MANIFEST_CACHE.popitem(last=False)
+    return result
 
 
 def _scope_key(station_id: str, event_date: str) -> str:
