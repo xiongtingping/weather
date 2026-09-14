@@ -555,9 +555,17 @@ def hosted_sweep_write_domain(name: str) -> str:
 # 2026-09-09 -- "those thirty minutes are thirty minutes in which the
 # production cycle cannot start" -- and bounded the seconds instead.
 #
-# Exempt from the writer gates only.  They stay in the ssot domain, so they
-# still never start beside another SSOT sweep; and production meets their
-# ingest the ordinary way, at SQLite, for seconds.  The exemption rests on the
+# Exempt from the writer gates, and (2026-09-14) from holding the SSOT queue
+# while they download.  A running capture used to claim the ssot domain for
+# its whole subprocess, so no other SSOT sweep could start: on 2026-09-14
+# capture_noaa_conus_forward held it 07:41-08:05Z, the paper ledger went nine
+# hours without completing, and settlement_truth eleven.  They still never
+# START beside another SSOT sweep in one slot, and none starts while a
+# long-transaction SSOT sweep runs (that sweep holds the writer, so no slot
+# opens); what a running capture holds now is the other captures.  Its
+# ingest meets a later SSOT sweep the ordinary way, at SQLite -- a commit may
+# wait out busy_timeout behind that sweep's write, fail that pass, and be
+# retried on the lane's next one.  The exemption rests on the
 # commit-before-fetch shape, which
 # tests/test_capture_lanes_release_the_writer_turn.py holds: a lane that
 # wraps a fetch in an open transaction turns that test red, and does not
@@ -568,6 +576,26 @@ WRITER_TURN_EXEMPT_SWEEPS: frozenset[str] = frozenset({
     "capture_dwd_icon_eu_forward",
     "capture_cma_grapes_forward",
 })
+
+
+# The admission token a running capture holds: the other captures, not the
+# SSOT queue.  See WRITER_TURN_EXEMPT_SWEEPS.
+CAPTURE_ADMISSION_CLAIM = "ssot_capture"
+
+
+def sweep_finish_serves_writer_turn(name: str) -> bool:
+    """Does a sweep finishing count as the sweeps lane having been served?
+
+    A lane that held the writer was served when it let go of it, and the
+    stamp keeps the sweeps lane from claiming a fresh turn while its slower
+    members still run.  A download capture never held the writer, so its
+    finish is not a serve: stamped anyway, capture_noaa_conus_forward ending
+    at 08:05:49Z on 2026-09-14 made the sweeps lane read as just served,
+    and no sweep slot opened for the next forty-five minutes while the
+    ledger, settlement_truth and a ten-minute retention lane all waited.
+    """
+
+    return str(name) not in WRITER_TURN_EXEMPT_SWEEPS
 
 
 def writer_excluding_sweeps(running_names: "Iterable[str]") -> list[str]:
@@ -717,15 +745,31 @@ def admissible_hosted_sweeps(
     # Materialized once: the caller may pass a view or a generator, and
     # consuming it twice would silently read the second use as empty.
     running = list(running_names)
-    claimed = {
-        hosted_sweep_write_domain(name) for name in running
-    } & _EXCLUSIVE_WRITE_DOMAINS
+    claimed: set[str] = set()
+    for name in running:
+        if name in WRITER_TURN_EXEMPT_SWEEPS:
+            # Downloading, not holding the database: blocks the other
+            # captures only (2026-09-14).
+            claimed.add(CAPTURE_ADMISSION_CLAIM)
+            continue
+        domain = hosted_sweep_write_domain(name)
+        if domain in _EXCLUSIVE_WRITE_DOMAINS:
+            claimed.add(domain)
     inflight = len(running)
     chosen: list[tuple[float, int, str, str, float]] = []
     for item in sorted(due, key=lambda entry: (-entry[0], entry[1])):
         if inflight + len(chosen) >= max_concurrency:
             break
-        domain = hosted_sweep_write_domain(item[2])
+        name = item[2]
+        domain = hosted_sweep_write_domain(name)
+        if name in WRITER_TURN_EXEMPT_SWEEPS:
+            if CAPTURE_ADMISSION_CLAIM in claimed or "ssot" in claimed:
+                continue
+            # Started in this slot, it still keeps every other SSOT sweep
+            # from starting beside it.
+            claimed.update({CAPTURE_ADMISSION_CLAIM, "ssot"})
+            chosen.append(item)
+            continue
         if domain in claimed:
             continue
         if domain in _EXCLUSIVE_WRITE_DOMAINS:
@@ -4387,6 +4431,10 @@ def main() -> int:
             "schema": "resident_hosted_sweeps_v2",
             "running": [],
             "results": {},
+            # When each running sweep was handed its slot (2026-09-14), so
+            # the board can say how far a running lane is into its timeout
+            # instead of only that it is running.
+            "started_at": {},
         }
         storage_guard: dict[str, Any] = {
             "ok": False,
@@ -5052,12 +5100,15 @@ def main() -> int:
                 except OSError:
                     pass
                 del hosted_sweep_futures[done_name]
+                state["hosted_sweeps"]["started_at"].pop(done_name, None)
                 # Served when a sweep FINISHES, as before: the rotation ranks
                 # lanes by how long ago each last completed, so stamping this
                 # per finisher keeps the sweeps lane from claiming a fresh
-                # turn while its own slower members are still running.
-                writer_last_served["sweeps"] = time.monotonic()
-                _persist_writer_turn()
+                # turn while its own slower members are still running.  Not
+                # for a download capture, which never held the writer.
+                if sweep_finish_serves_writer_turn(done_name):
+                    writer_last_served["sweeps"] = time.monotonic()
+                    _persist_writer_turn()
             state["hosted_sweeps"]["running"] = sorted(hosted_sweep_futures)
             if (
                 storage_ok
@@ -5131,6 +5182,7 @@ def main() -> int:
                         str(ROOT / sweep_script),
                         sweep_timeout,
                     )
+                    state["hosted_sweeps"]["started_at"][name] = utc_now()
                 if admitted:
                     state["hosted_sweeps"]["running"] = sorted(
                         hosted_sweep_futures

@@ -221,3 +221,91 @@ def test_the_lanes_reach_the_head_lamp_and_can_say_they_cannot_read(
     out = C.collect_hosted_sweeps(sqlite3.connect(":memory:"))
     assert out["available"] is False
     assert out["lanes"] == []
+
+
+def test_sweep_health_names_the_queue_the_running_lane_and_the_restarts(
+    tmp_path, monkeypatch,
+):
+    """User ruling 2026-09-14 ("sweep前端显式健康度").  The morning that
+    needed it: the ledger nine hours without completing, sixth in the SSOT
+    queue, while a download capture ran and seven restarts killed whatever
+    else did.  The board has to be able to say each of those."""
+
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime(2026, 9, 14, 8, 30, tzinfo=timezone.utc)
+    monkeypatch.setattr(C, "_now", lambda: now)
+
+    def ago(hours: float) -> str:
+        return (now - timedelta(hours=hours)).isoformat().replace("+00:00", "Z")
+
+    contracts = [
+        ("settlement_truth", 3 * HOUR, "ssot", False, 900.0),
+        ("paper_trading_ledger", 3 * HOUR, "ssot", False, 1800.0),
+        ("capture_noaa_conus_forward", HOUR, "ssot", True, 1800.0),
+        ("forward_packet_retention", 600.0, "none", False, 300.0),
+        ("calibration_refit", 24 * HOUR, "ssot", False, 900.0),
+    ]
+    monkeypatch.setattr(C, "_hosted_sweep_contracts", lambda: ([
+        {"name": n, "script": f"{n}.sh", "interval_sec": i, "timeout_sec": t,
+         "domain": d, "download_capture": cap}
+        for n, i, d, cap, t in contracts
+    ], ""))
+    clocks = {
+        "settlement_truth": {"completed_at_utc": ago(11.3), "attempted_at_utc": ago(11.3), "last_state": "ok"},
+        "paper_trading_ledger": {"completed_at_utc": ago(9.7), "attempted_at_utc": ago(9.7), "last_state": "ok"},
+        "capture_noaa_conus_forward": {"completed_at_utc": ago(1.5), "attempted_at_utc": ago(1.5), "last_state": "ok"},
+        "forward_packet_retention": {"completed_at_utc": ago(0.1), "attempted_at_utc": ago(0.1), "last_state": "ok"},
+        "calibration_refit": {"completed_at_utc": ago(23.0), "attempted_at_utc": ago(23.0), "last_state": "ok"},
+    }
+    clock_path = tmp_path / "clocks.json"
+    clock_path.write_text(json.dumps(clocks), encoding="utf-8")
+    monkeypatch.setattr(C, "HOSTED_SWEEP_CLOCKS", clock_path)
+    status_path = tmp_path / "status.json"
+    status_path.write_text(json.dumps({
+        "started_at": ago(1.3),
+        "hosted_sweeps": {
+            "running": ["capture_noaa_conus_forward"],
+            "results": {},
+            "started_at": {"capture_noaa_conus_forward": ago(0.4)},
+        },
+        "production_inflight": {"elapsed_sec": 1014.0, "overdue": True,
+                                "overdue_after_sec": 720.0},
+    }), encoding="utf-8")
+    monkeypatch.setattr(C, "STATUS_JSON", status_path)
+    journal = tmp_path / "requests.jsonl"
+    journal.write_text("\n".join(json.dumps(row) for row in (
+        {"requested_at_utc": ago(4.6), "who": "a", "served_at_utc": ago(4.5)},
+        {"requested_at_utc": ago(4.55), "who": "b", "served_at_utc": ago(4.5)},
+        {"requested_at_utc": ago(1.4), "who": "c", "served_at_utc": ago(1.3)},
+        {"requested_at_utc": ago(30.0), "who": "old", "served_at_utc": ago(30.0)},
+    )), encoding="utf-8")
+    monkeypatch.setattr(C, "RESIDENT_RESTART_JOURNAL", journal)
+
+    out = C.collect_hosted_sweeps(sqlite3.connect(":memory:"))
+
+    # The SSOT start queue in the resident's order: most turns late first.
+    assert out["ssot_queue"] == ["settlement_truth", "paper_trading_ledger"]
+    ledger = _lane(out, "paper_trading_ledger")
+    assert (ledger["queue_rank"], ledger["queue_size"]) == (2, 2)
+    assert ledger["waiting"] is True
+    # A running capture is not in the queue, says how far into its timeout
+    # it is, and is marked as the kind that holds neither writer nor queue.
+    capture = _lane(out, "capture_noaa_conus_forward")
+    assert capture["waiting"] is False and "queue_rank" not in capture
+    assert capture["download_capture"] is True
+    assert capture["running_elapsed_sec"] == pytest.approx(0.4 * HOUR)
+    assert capture["running_timeout_share"] == pytest.approx(0.8)
+    assert capture["health"] == "amber" and "快到超时" in capture["note"]
+    # A day-long lane an hour short of its turn is not queued.
+    assert _lane(out, "calibration_refit")["waiting"] is False
+    # One restart serving two queued requests is one restart.
+    assert [r["who"] for r in out["restarts_24h"]] == [["c"], ["a", "b"]]
+    assert out["production_inflight_sec"] == pytest.approx(1014.0)
+    assert out["production_overdue"] is True
+
+
+def test_the_sweep_health_panel_sits_under_the_machine_lamps():
+    page = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
+    assert "function sweepHealth()" in page
+    assert "rendered[0] + sweeps + rendered.slice(1)" in page

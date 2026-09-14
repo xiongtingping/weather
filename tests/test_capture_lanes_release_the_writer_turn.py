@@ -155,9 +155,9 @@ def test_the_exemption_covers_exactly_the_capture_lanes_that_meet_the_preconditi
     assert captures <= hosted
 
 
-def test_an_exempt_capture_still_writes_the_ssot_and_still_excludes_other_sweeps(daemon):
-    """Exempt from the writer gate, not from the database: two SSOT sweeps
-    still never start together, so a capture cannot run beside the ledger."""
+def test_an_exempt_capture_still_writes_the_ssot_and_never_starts_beside_an_ssot_sweep(daemon):
+    """Exempt from the writer gate, not from the database: in one slot a
+    capture and another SSOT sweep still never start together."""
 
     for name in daemon.WRITER_TURN_EXEMPT_SWEEPS:
         assert daemon.hosted_sweep_write_domain(name) == "ssot"
@@ -167,6 +167,34 @@ def test_an_exempt_capture_still_writes_the_ssot_and_still_excludes_other_sweeps
     ]
     admitted = daemon.admissible_hosted_sweeps(due, running_names=[])
     assert [item[2] for item in admitted] == ["capture_noaa_conus_forward"]
+    # And the other way round: a more overdue ledger keeps the capture out.
+    due = [
+        (5.0, 0, "paper_trading_ledger", "b.sh", 1800.0),
+        (4.0, 1, "capture_noaa_conus_forward", "a.sh", 1800.0),
+    ]
+    admitted = daemon.admissible_hosted_sweeps(due, running_names=[])
+    assert [item[2] for item in admitted] == ["paper_trading_ledger"]
+
+
+def test_a_running_capture_holds_the_other_captures_not_the_ssot_queue(daemon):
+    """2026-09-14: capture_noaa_conus_forward held the ssot domain 07:41-08:05Z
+    while it downloaded, and the ledger went nine hours without a turn."""
+
+    due = [
+        (5.0, 0, "capture_jma_msm_forward", "c.sh", 1800.0),
+        (4.0, 1, "paper_trading_ledger", "b.sh", 1800.0),
+    ]
+    admitted = daemon.admissible_hosted_sweeps(
+        due, running_names=["capture_noaa_conus_forward"],
+    )
+    assert [item[2] for item in admitted] == ["paper_trading_ledger"]
+
+
+def test_no_capture_starts_while_a_long_transaction_ssot_sweep_runs(daemon):
+    due = [(9.0, 0, "capture_dwd_icon_eu_forward", "d.sh", 1800.0)]
+    assert daemon.admissible_hosted_sweeps(
+        due, running_names=["paper_trading_ledger"],
+    ) == []
 
 
 def test_a_running_capture_no_longer_holds_production_out(daemon):
@@ -175,3 +203,13 @@ def test_a_running_capture_no_longer_holds_production_out(daemon):
 
 def test_a_long_transaction_ssot_sweep_still_holds_production_out(daemon):
     assert daemon.writer_excluding_sweeps(["paper_trading_ledger"]) == ["paper_trading_ledger"]
+
+
+def test_a_capture_finishing_is_not_the_sweeps_lane_being_served(daemon):
+    """2026-09-14: the capture's finish stamped the sweeps lane as served and
+    no sweep slot opened for forty-five minutes after it."""
+
+    for name in daemon.WRITER_TURN_EXEMPT_SWEEPS:
+        assert daemon.sweep_finish_serves_writer_turn(name) is False
+    assert daemon.sweep_finish_serves_writer_turn("paper_trading_ledger") is True
+    assert daemon.sweep_finish_serves_writer_turn("forward_packet_retention") is True

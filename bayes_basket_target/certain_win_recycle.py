@@ -105,13 +105,32 @@ def plan_certain_win_recycles(
     # by an index, and basket_confirmed_inventory_snapshot_recycle_idx exists
     # for it: with that index the plan is a SEARCH on complete=? instead of a
     # scan of every row.
+    #
+    # 2026-09-14: it was not fast.  The bare column beside MAX() is loaded
+    # from the table every time the running maximum moves, and inside a
+    # station-day walked in index order it moves on every row, so the read
+    # still fetched all 366,818 rows (207 versions a station-day by then,
+    # ~760 bytes of inventory_json each).  After the 07:11Z restart that was
+    # more than four minutes of a twenty-minute production cycle on a cold
+    # cache, and the hosted sweeps got that many fewer turns.  So the newest
+    # instant is found on the covering index alone, and only the 1,771 rows
+    # it names are read from the table: 1.54s on the live store, the same
+    # 1,771 station-days.  The outer GROUP BY keeps one row per station-day
+    # should two snapshots ever tie on observed_at (none did): the newest
+    # inserted of them.
     inventories = target_conn.execute(
-        "SELECT station_id, event_date, inventory_json, MAX(observed_at)"
-        " FROM basket_confirmed_inventory_snapshot"
-        " WHERE complete=1"
-        " GROUP BY station_id, event_date"
+        "SELECT s.station_id, s.event_date, s.inventory_json, s.observed_at,"
+        "       MAX(s.rowid)"
+        " FROM (SELECT station_id, event_date, MAX(observed_at) AS newest"
+        "       FROM basket_confirmed_inventory_snapshot"
+        "       WHERE complete=1"
+        "       GROUP BY station_id, event_date) g"
+        " JOIN basket_confirmed_inventory_snapshot s"
+        "   ON s.complete=1 AND s.station_id=g.station_id"
+        "  AND s.event_date=g.event_date AND s.observed_at=g.newest"
+        " GROUP BY s.station_id, s.event_date"
     ).fetchall()
-    for station_id, event_date, inventory_json, _observed_at in inventories:
+    for station_id, event_date, inventory_json, _observed_at, _row in inventories:
         try:
             inventory = json.loads(inventory_json or "{}")
         except ValueError:

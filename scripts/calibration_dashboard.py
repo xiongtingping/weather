@@ -1446,6 +1446,13 @@ def collect_chain(conn: sqlite3.Connection) -> list[dict[str, Any]]:
 #: for the resident are always empty, so a lane that has not run since the
 #: last deploy leaves no trace anywhere else.
 HOSTED_SWEEP_CLOCKS = ROOT / "data" / "hosted_sweep_clocks.json"
+#: Every restart the resident was asked for, one JSON line each.  A restart
+#: kills whatever sweep is running, so a morning of them reads on the lanes
+#: as starvation with no cause named (2026-09-14: seven between 03:49Z and
+#: 07:11Z, and the paper ledger went nine hours without completing).
+RESIDENT_RESTART_JOURNAL = (
+    ROOT / "data" / "runtime" / "resident_restart" / "requests.jsonl"
+)
 #: The cycle time the sweep contracts are sized against, from the test that
 #: guards them (``test_the_ssot_sweep_queue_fits_its_drain_rate``).  Shown
 #: beside the measured cadence so a reader can see which side of it the
@@ -1470,6 +1477,7 @@ def _hosted_sweep_contracts() -> tuple[list[dict[str, Any]], str]:
         import weather_basket_yes_daemon as daemon  # noqa: PLC0415
     except Exception as exc:  # noqa: BLE001 - a board never fails closed
         return [], f"读不出常驻的扫描表：{exc}"
+    exempt = set(getattr(daemon, "WRITER_TURN_EXEMPT_SWEEPS", ()) or ())
     rows = []
     for name, script, interval, timeout in daemon.HOSTED_SWEEPS:
         rows.append({
@@ -1478,8 +1486,41 @@ def _hosted_sweep_contracts() -> tuple[list[dict[str, Any]], str]:
             "interval_sec": float(interval),
             "timeout_sec": float(timeout),
             "domain": daemon.hosted_sweep_write_domain(str(name)),
+            # Downloads outside any write transaction: holds neither the
+            # writer nor, since 2026-09-14, the SSOT queue while it runs.
+            "download_capture": str(name) in exempt,
         })
     return rows, ""
+
+
+def _resident_restarts(window_hours: float = 24.0) -> list[dict[str, Any]]:
+    """Restarts served in the last ``window_hours``, newest first."""
+
+    # One restart serves every request queued behind it, so requests are
+    # grouped on the moment they were served: three lines stamped 04:01 are
+    # one restart, and counting them as three overstates the churn.
+    served: dict[str, dict[str, Any]] = {}
+    try:
+        lines = RESIDENT_RESTART_JOURNAL.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    for line in lines[-200:]:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        at = row.get("served_at_utc") or row.get("requested_at_utc")
+        hours = _age_hours(at)
+        if hours is None or hours > window_hours:
+            continue
+        entry = served.setdefault(str(at), {
+            "at_utc": str(at), "age_sec": hours * 3600.0, "who": [], "reasons": [],
+        })
+        who = str(row.get("who") or "")
+        if who and who not in entry["who"]:
+            entry["who"].append(who)
+        entry["reasons"].append(str(row.get("reason") or "")[:160])
+    return sorted(served.values(), key=lambda row: row["age_sec"])
 
 
 def collect_hosted_sweeps(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -1529,6 +1570,7 @@ def collect_hosted_sweeps(conn: sqlite3.Connection) -> dict[str, Any]:
     hosted = status.get("hosted_sweeps") or {}
     running = {str(name) for name in (hosted.get("running") or [])}
     results = hosted.get("results") or {}
+    running_since = hosted.get("started_at") or {}
 
     def _age(stamp: Any) -> float | None:
         hours = _age_hours(stamp)
@@ -1572,8 +1614,40 @@ def collect_hosted_sweeps(conn: sqlite3.Connection) -> dict[str, Any]:
         elif shown is not None and shown >= 2.0:
             health, note = "amber", "已错过两个回合"
         this_round = results.get(contract["name"]) or {}
+        is_running = contract["name"] in running
+        started = running_since.get(contract["name"]) if is_running else None
+        running_elapsed = _age(started) if started else None
+        timeout = float(contract.get("timeout_sec") or 0.0)
+        timeout_share = (
+            None if running_elapsed is None or timeout <= 0
+            else running_elapsed / timeout
+        )
+        if is_running and timeout_share is not None and timeout_share >= 0.8:
+            if health == "green":
+                health = "amber"
+            note = (note + "；" if note else "") + "在跑，快到超时"
+        # Past its due time and not running: waiting in its domain's queue.
+        # Due is measured from the LATER of the two stamps, which is how the
+        # resident seeds it; the rank below mirrors the resident's order.
+        since_last = min(
+            (value for value in (since_completed, since_attempted)
+             if value is not None),
+            default=None,
+        )
+        lateness = (
+            None if since_last is None or interval <= 0
+            else (since_last - interval) / interval
+        )
         lanes.append({
             **contract,
+            "download_capture": bool(contract.get("download_capture")),
+            "running_since_utc": started,
+            "running_elapsed_sec": running_elapsed,
+            "running_timeout_share": timeout_share,
+            "queue_lateness": lateness,
+            "waiting": bool(
+                not is_running and lateness is not None and lateness >= 0.0
+            ),
             "completed_at_utc": completed,
             "attempted_at_utc": attempted,
             "since_completed_sec": since_completed,
@@ -1593,6 +1667,21 @@ def collect_hosted_sweeps(conn: sqlite3.Connection) -> dict[str, Any]:
             "health": health,
             "note": note,
         })
+    # Each domain's start queue, in the resident's order: most intervals late
+    # first, table order breaking ties.  A capture competes in the SSOT
+    # queue for its start even though, running, it no longer holds it.
+    order = {contract["name"]: index for index, contract in enumerate(contracts)}
+    queues: dict[str, list[dict[str, Any]]] = {}
+    for row in lanes:
+        if row["waiting"]:
+            queues.setdefault(str(row["domain"]), []).append(row)
+    for domain, members in queues.items():
+        members.sort(
+            key=lambda row: (-(row["queue_lateness"] or 0.0), order[row["name"]])
+        )
+        for rank, row in enumerate(members, start=1):
+            row["queue_rank"] = rank
+            row["queue_size"] = len(members)
     lanes.sort(key=lambda row: -(row["overdue_intervals"] or 0.0))
 
     # The queue's arithmetic, in the same place as its symptoms.  Supply is
@@ -1664,6 +1753,15 @@ def collect_hosted_sweeps(conn: sqlite3.Connection) -> dict[str, Any]:
         "generation_started_at": started,
         "generation_age_sec": _age(started),
         "running_now": sorted(running),
+        # The SSOT start queue by name, head first -- who the next slot goes to.
+        "ssot_queue": [row["name"] for row in queues.get("ssot", [])],
+        "production_inflight_sec": (
+            float(inflight["elapsed_sec"])
+            if inflight.get("elapsed_sec") is not None else None
+        ),
+        "production_overdue": bool(inflight.get("overdue")),
+        "production_overdue_after_sec": inflight.get("overdue_after_sec"),
+        "restarts_24h": _resident_restarts(),
         "red_count": sum(1 for row in lanes if row["health"] == "red"),
         "amber_count": sum(1 for row in lanes if row["health"] == "amber"),
         # The longest contract among the lanes currently reading late.  A
@@ -5231,7 +5329,6 @@ def _center_landing_seat(
             for key in keys
         },
         live_ordinals=live,
-        mode_ordinal=mode_ordinal,
     )
     by_ordinal = {index: key for key, index in ordinals.items()}
     for shape in audit.get("allowed_ordinals") or []:
@@ -10164,6 +10261,41 @@ white-space:nowrap;font-variant-numeric:tabular-nums}
 .lampdeck{margin-top:9px;padding-top:9px;border-top:1px solid var(--line)}
 .lampdeck + .lampdeck{margin-top:9px}
 .lampcap{display:block;color:var(--muted);font-size:11.5px;margin-bottom:5px}
+/* Maintenance-lane health (user ruling, 2026-09-14: "sweep前端显式健康度").
+   One row per hosted sweep.  The bar is the lane's OWN clock: each quarter is
+   one of its intervals since it last completed, so a daily refit and a
+   three-hourly ledger read on the same ruler.  Green quarter = inside its
+   contract, amber = two turns missed, red = three or more. */
+.swhead{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;
+margin:2px 0 8px;font-size:12.5px}
+.swrows{display:grid;gap:4px}
+.swrow{display:grid;align-items:center;gap:4px 10px;font-size:12.5px;
+grid-template-columns:minmax(150px,1.3fr) 76px minmax(150px,2fr) minmax(130px,1.1fr)}
+.swname{display:flex;gap:7px;align-items:center;min-width:0}
+.swname b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.swdom{color:var(--muted);font-size:11.5px;white-space:nowrap}
+.swbar{position:relative;height:10px;border-radius:5px;background:linear-gradient(
+90deg,var(--pill-green-bg) 0 25%,var(--bar-bg) 25% 50%,
+var(--pill-amber-bg) 50% 75%,var(--pill-red-bg) 75% 100%)}
+.swbar::before{content:"";position:absolute;inset:0;border-radius:5px;
+background:repeating-linear-gradient(90deg,transparent 0 calc(25% - 1px),
+var(--line) calc(25% - 1px) 25%)}
+.swm{position:absolute;top:50%;width:12px;height:12px;border-radius:50%;
+transform:translate(-50%,-50%);border:2px solid var(--card)}
+.swrun{position:absolute;left:0;bottom:-5px;height:3px;border-radius:2px;
+background:var(--accent)}
+.swstate{color:var(--muted);white-space:nowrap;overflow:hidden;
+text-overflow:ellipsis}
+.swstate.hot{color:var(--text);font-weight:560}
+.swaxis{position:relative;height:13px;font-size:10.5px;color:var(--muted)}
+.swaxis em{position:absolute;top:0;transform:translateX(-50%);font-style:normal;
+white-space:nowrap}
+@media (max-width:760px){
+.swrow{grid-template-columns:1fr auto}
+.swrow .swdom{display:none}
+.swrow .swbar{grid-column:1/-1;order:3}
+.swrow .swaxisrow{display:none}
+}
 .green{background:var(--green)}.amber{background:var(--amber)}
 .red{background:var(--red)}
 .pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;
@@ -10552,6 +10684,114 @@ const OVERALL = {green:["运转正常","所有环节都在按预期更新"],
   amber:["有需要留意的地方","不影响出数，但有环节慢了或在攒数据"],
   red:["有环节断了","看下面三排灯，红的那盏就是断的那一环"]};
 
+// The maintenance lanes, one row each (user ruling, 2026-09-14: "sweep前端
+// 显式健康度").  The lamp in the machine row said "9 红 · 1 黄" and put the
+// rest in a tooltip; on the morning that needed it, the ledger had gone nine
+// hours without completing while a download capture held the SSOT queue and
+// seven restarts killed whatever ran -- none of which a count can say.  So
+// each lane shows where it is on its own clock, what it is doing now, and
+// its place in its domain's queue; the header names who holds the writer and
+// how many times the resident was restarted in a day.
+const SWEEP_LABEL = {
+  paper_trading_ledger:"纸面账本", settlement_truth:"结算真值",
+  calibration_refit:"校准重拟", pr12_awc_observation:"观测身份（P1 的根）",
+  settled_day_cycle_close:"已结算日收盘", maker_shadow_probe:"挂单影子探针",
+  fleet_regime_refresh:"全队政权刷新",
+  correction_review_auto_clear:"订正复核自动清除",
+  forward_packet_retention:"前瞻包保留", auto_station_exclusions:"自动禁入站",
+  capture_jma_msm_forward:"JMA MSM 捕获",
+  capture_noaa_conus_forward:"NOAA HRRR/NBM 捕获",
+  capture_dwd_icon_eu_forward:"DWD ICON-EU 捕获",
+  capture_cma_grapes_forward:"CMA GRAPES 捕获",
+  station_onboarding:"新站接入", market_registry_retention:"挂牌目录保留",
+};
+const SWEEP_DOMAIN = {ssot:"写 SSOT", archive:"写归档库", none:"不写库"};
+function sweepDur(sec){
+  if(sec == null || !isFinite(sec)) return "—";
+  if(sec < 90) return Math.round(sec) + " 秒";
+  if(sec < 5400) return Math.round(sec / 60) + " 分钟";
+  return (sec / 3600).toFixed(1) + " 小时";
+}
+function sweepClock(iso){
+  const d = new Date(iso);
+  return isNaN(d) ? "—" : d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+}
+function sweepHealth(){
+  const H = D.hosted_sweeps || {};
+  const cap = `<span class="lampcap">维护车道健康度 · 每条车道离上次完成过了几个<b>自己的</b>回合`
+    + `（刻度 1/2/3 个回合），右边是它此刻在干什么、在自己写域的队里排第几</span>`;
+  if(!H.available){
+    return `<div class="lampdeck">${cap}<div class="muted">读不出：${h(H.reason || "")}</div></div>`;
+  }
+  const lanes = H.lanes || [];
+  const label = n => SWEEP_LABEL[n] || n;
+  const R = H.restarts_24h || [];
+  const restartTone = R.length >= 4 ? "red" : (R.length >= 2 ? "amber" : "green");
+  const restartTip = R.map(r => `${sweepClock(r.at_utc)} ${(r.who || []).join("、")}`).join("；");
+  const holders = lanes.filter(l => l.running_now && !l.download_capture
+    && (l.domain === "ssot" || l.domain === "archive"));
+  let writer;
+  if(H.production_inflight_sec != null){
+    writer = `<span class="pill ${H.production_overdue ? "red" : ""}">写锁：生产周期已跑 ${
+      sweepDur(H.production_inflight_sec)}${H.production_overdue ? "，超时" : ""}</span>`;
+  } else if(holders.length){
+    writer = `<span class="pill amber">写锁：${h(holders.map(l => label(l.name)).join("、"))}</span>`;
+  } else {
+    const wait = (H.waiting_on || []).join("、");
+    writer = `<span class="pill">写锁：空闲${wait ? "（下一轮在等 " + h(wait) + "）" : ""}</span>`;
+  }
+  const queue = (H.ssot_queue || []);
+  const queueText = queue.length
+    ? queue.slice(0, 4).map(label).join(" → ") + (queue.length > 4 ? ` …共 ${queue.length} 条` : "")
+    : "空";
+  const header = `<div class="swhead">
+    <span class="pill ${H.red_count ? "red" : (H.amber_count ? "amber" : "green")}">${
+      H.red_count || H.amber_count ? `${H.red_count} 红 · ${H.amber_count} 黄` : "全部准点"}</span>
+    <span class="muted">本代已运行 ${sweepDur(H.generation_age_sec)}</span>
+    <span class="pill ${restartTone}" title="${h(restartTip)}">24 小时重启 ${R.length} 次</span>
+    ${writer}
+    <span class="muted">SSOT 队列：${h(queueText)}</span></div>`;
+  const axis = `<div class="swrow swaxisrow"><span></span><span></span>
+    <div class="swaxis"><em style="left:25%">1 回合</em><em style="left:50%">2</em>
+    <em style="left:75%">3</em><em style="left:100%">≥4</em></div><span></span></div>`;
+  const rows = lanes.map(l => {
+    const over = l.overdue_intervals;
+    const x = over == null ? 0 : Math.min(4, Math.max(0, over)) / 4 * 100;
+    let state, hot = false;
+    if(l.running_now){
+      state = `在跑 ${sweepDur(l.running_elapsed_sec)} / 超时 ${sweepDur(l.timeout_sec)}`;
+      hot = true;
+    } else if(l.stuck){
+      state = "卡住：轮到就失败"; hot = true;
+    } else if(l.last_state && l.last_state !== "ok"){
+      state = `上次 ${l.last_state}`; hot = true;
+    } else if(l.waiting){
+      state = `排队 第 ${l.queue_rank}/${l.queue_size} 位`;
+      hot = l.health !== "green";
+    } else {
+      state = "准点";
+    }
+    const tip = [
+      `${l.name}`,
+      `每 ${sweepDur(l.interval_sec)} 一轮，超时 ${sweepDur(l.timeout_sec)}`,
+      `上次完成 ${sweepDur(l.since_completed_sec)}前`,
+      `上次尝试 ${sweepDur(l.since_attempted_sec)}前`,
+      over == null ? "" : `离上次完成 ${over.toFixed(2)} 个回合`,
+      SWEEP_DOMAIN[l.domain] || l.domain,
+      l.download_capture ? "下载型：跑的时候不占写锁，也不占 SSOT 队列" : "",
+      l.note || "",
+    ].filter(Boolean).join(" · ");
+    const run = l.running_now && l.running_timeout_share != null
+      ? `<u class="swrun" style="width:${Math.min(100, 100 * l.running_timeout_share).toFixed(1)}%"></u>` : "";
+    return `<div class="swrow" title="${h(tip)}">
+      <span class="swname"><span class="dot ${l.health}"></span><b>${h(label(l.name))}</b></span>
+      <span class="swdom">${h((SWEEP_DOMAIN[l.domain] || l.domain) + (l.download_capture ? "·下载" : ""))}</span>
+      <div class="swbar"><b class="swm ${l.health}" style="left:${x.toFixed(1)}%"></b>${run}</div>
+      <span class="swstate${hot ? " hot" : ""}">${h(state)}</span></div>`;
+  }).join("");
+  return `<div class="lampdeck">${cap}${header}<div class="swrows">${axis}${rows}</div></div>`;
+}
+
 function head(){
   const [t, s] = OVERALL[D.overall_health] || OVERALL.amber;
   const w = D.worker || {};
@@ -10608,8 +10848,17 @@ function head(){
       ["选桶 · 挑得准不准：建仓率、声称兑现、各宽度篮子的选中命中",
         () => O.selection],
     ];
-    return O.banner + rows.map(([cap,build])=>
-      lampRowSafe(()=>lampRow(cap,build()), cap.split(" ")[0])).join("");
+    const rendered = rows.map(([cap,build])=>
+      lampRowSafe(()=>lampRow(cap,build()), cap.split(" ")[0]));
+    // Directly under the machine row whose "维护车道" lamp it expands.
+    const sweeps = (() => {
+      try { return sweepHealth(); }
+      catch (err) {
+        return `<div class="lampdeck"><span class="lampcap">维护车道健康度</span>`
+          + `<div class="muted">渲染出错：${h(String(err))}</div></div>`;
+      }
+    })();
+    return O.banner + rendered[0] + sweeps + rendered.slice(1).join("");
   })()}
   ${renderStamp()}${chips ? `<div style="display:flex;gap:8px;flex-wrap:wrap;
     align-items:center;margin-top:9px">${chips}${more}</div>` : ""}</div>`;

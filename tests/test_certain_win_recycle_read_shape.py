@@ -15,6 +15,12 @@ None of those three names the read that caused it.
 
 Pinned as a plan and as a source shape, never as elapsed time: a timing test
 on a 38GB store measures the page cache.
+
+2026-09-14: the one-pass form below the index was still a read of every row.
+The bare column beside MAX() is fetched from the table whenever the running
+maximum moves, which in index order is every row: 366,818 fetches for 1,771
+station-days, minutes on a cold cache.  The read now finds the newest instant
+on the covering index and fetches only the rows it names.
 """
 
 from __future__ import annotations
@@ -28,10 +34,16 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "bayes_basket_target" / "certain_win_recycle.py").read_text()
 
 READ = (
-    "SELECT station_id, event_date, inventory_json, MAX(observed_at)"
-    " FROM basket_confirmed_inventory_snapshot"
-    " WHERE complete=1"
-    " GROUP BY station_id, event_date"
+    "SELECT s.station_id, s.event_date, s.inventory_json, s.observed_at,"
+    "       MAX(s.rowid)"
+    " FROM (SELECT station_id, event_date, MAX(observed_at) AS newest"
+    "       FROM basket_confirmed_inventory_snapshot"
+    "       WHERE complete=1"
+    "       GROUP BY station_id, event_date) g"
+    " JOIN basket_confirmed_inventory_snapshot s"
+    "   ON s.complete=1 AND s.station_id=g.station_id"
+    "  AND s.event_date=g.event_date AND s.observed_at=g.newest"
+    " GROUP BY s.station_id, s.event_date"
 )
 
 
@@ -47,23 +59,46 @@ def _plan(conn: sqlite3.Connection, sql: str) -> str:
     ))
 
 
-def test_the_inventory_read_is_a_seek_not_a_scan():
+def test_the_read_is_what_the_lane_runs():
+    """The plan and result tests below read ``READ``; this binds it to the
+    inventory read inside ``plan_certain_win_recycles``, by the AST."""
+
+    import ast
+
+    tree = ast.parse(SOURCE)
+    function = next(
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "plan_certain_win_recycles"
+    )
+    reads = [
+        node.args[0].value for node in ast.walk(function)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "execute"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+        and "basket_confirmed_inventory_snapshot" in node.args[0].value
+    ]
+    assert reads == [READ]
+
+
+def test_the_newest_instant_is_found_on_the_covering_index():
     plan = _plan(_conn(), READ)
-    assert "basket_confirmed_inventory_snapshot_recycle_idx" in plan, plan
-    assert "SCAN" not in plan, plan
+    assert (
+        "USING COVERING INDEX basket_confirmed_inventory_snapshot_recycle_idx"
+        in plan
+    ), plan
 
 
-def test_the_self_join_shape_does_not_come_back():
-    """The co-routine plus per-group seek this replaced.
+def test_the_one_pass_bare_column_read_does_not_come_back():
+    """The form that fetched every row's payload to keep the newest one."""
 
-    Its result was identical -- verified on the live store, 1,579 scopes both
-    ways, the same scope set, no scope tied on observed_at -- so the rewrite
-    is safe; what it is not is fast on its own.  Measured back to back the
-    two forms were 93.0s and 82.4s; the index is what makes it a seek.
-    """
-
-    assert "MAX(observed_at) AS latest" not in SOURCE
-    assert "GROUP BY station_id, event_date" in SOURCE
+    assert (
+        '"SELECT station_id, event_date, inventory_json, MAX(observed_at)"'
+        not in SOURCE
+    )
 
 
 def test_the_index_is_declared_in_the_schema():
@@ -119,6 +154,19 @@ def test_the_index_finds_the_newest_row_of_each_station_day():
             _row("inv_1", "2026-09-09T06:00:00Z", '{"pick": "oldest"}'),
         ],
     )
-    row = conn.execute(READ).fetchone()
+    rows = conn.execute(READ).fetchall()
+    assert len(rows) == 1, rows
+    row = rows[0]
     assert row[3] == "2026-09-09T18:00:00Z", row
     assert row[2] == '{"pick": "newest"}', "the payload must be the newest row's"
+
+    # Two snapshots tied on the newest instant still give one row.
+    conn.execute(
+        "INSERT INTO basket_confirmed_inventory_snapshot("
+        + ",".join(columns) + ") VALUES("
+        + ",".join("?" for _ in columns) + ")",
+        _row("inv_4", "2026-09-09T18:00:00Z", '{"pick": "tied-later"}'),
+    )
+    rows = conn.execute(READ).fetchall()
+    assert len(rows) == 1, rows
+    assert rows[0][2] == '{"pick": "tied-later"}', rows
