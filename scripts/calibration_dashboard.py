@@ -14541,7 +14541,7 @@ function liveOrderCard(L){
       if(!byStation.has(key)){ byStation.set(key, []); stations.push(key); }
       byStation.get(key).push(g);
     }
-    let legsN=0, filledN=0, cost=0, payout=0;
+    let legsN=0, filledN=0, cost=0, payout=0, hitN=0, settledN=0;
     const stationLines = stations.map(station=>{
       const baskets = byStation.get(station);
       const truth = baskets.map(truthOf).find(Boolean) || "";
@@ -14557,31 +14557,33 @@ function liveOrderCard(L){
       const src = baskets.map(truthSrc).find(Boolean)==="truth_lane"
         ? "　真值取自真值车道（这个站日纸面账本没坐过，没有它的结算行），按当日自己的桶阶梯落桶"
         : "";
-      // Three words, not two (same ruling: 为什么显示为未命中，是真的未命中还是
-      // 显示错误).  未命中 meant "no leg held is the settled bucket", which is
-      // vacuously true of a station-day that held nothing: every red line on
-      // 2026-09-13 was a disarmed basket with no fill, and five of those six
-      // stations' windows held the day's truth.  Nothing filled is 未成交,
-      // with whether the window held the truth printed beside it.  The word
-      // sits beside the colour (user ruling, 2026-09-11): colour alone says
-      // these lines differ, not what any of them is.
+      // The verdict is the basket's (user ruling, 2026-09-14: 命中不管成不成交，
+      // 都要显示是否篮子命中真值): 命中 when the settled bucket is one of the
+      // buckets this station-day's baskets asked for, 未命中 when it is not,
+      // filled or not.  What the fills did is a second word beside it --
+      // 持仓命中, 持仓未中, 未成交 -- because the two part company exactly where
+      // money is lost: a window that held the truth and a rung that did not
+      // fill.  Until that morning one word did both jobs and called every
+      // disarmed basket 未命中 (2026-09-13: six stations, nothing filled, five
+      // windows holding the truth).  Words beside colours (user ruling,
+      // 2026-09-11): a colour says these lines differ, not what any of them is.
       const verdict = !truth
         ? ["amber", "未结算", "这个站日的真值还没到"]
-        : !sFilled
-          ? ["", "未成交", "一条腿都没成交，没有持仓可判命中；窗口"
-              + (covered ? "含" : "不含") + "结算桶 " + truth + src]
-          : sPay > 0
-            ? ["green", "命中", "成交腿里有落在结算桶 " + truth + " 的" + src]
-            : ["red", "未命中", "成交的腿都不在结算桶 " + truth + src];
-      const cover = truth && !sFilled
-        ? `<span class="mono ${covered?"up":"down"}" style="font-size:11px"
-            title="窗口＝这个站日各篮挂出的桶">窗口${covered?"含":"不含"} ${h(truth)}</span>`
-        : "";
+        : covered
+          ? ["green", "命中", "篮子挂出的桶里有结算桶 " + truth + src]
+          : ["red", "未命中", "篮子挂出的桶里没有结算桶 " + truth + src];
+      if(truth){ settledN += 1; if(covered) hitN += 1; }
+      const fill = !truth ? ""
+        : `<span class="pill ${!sFilled ? "" : sPay>0 ? "green" : "red"}" style="font-size:10px"
+            title="${!sFilled ? "一条腿都没成交" : sPay>0 ? "成交的腿里有结算桶" : "成交的腿都不在结算桶"}">${
+            !sFilled ? "未成交" : sPay>0 ? "持仓命中" : "持仓未中"}</span>`;
       const money = !truth
         ? `<span class="muted mono" style="font-size:11px">投入 ${sCost.toFixed(2)} U</span>`
-        : !sFilled ? ""
-        : `<span class="mono ${sPay-sCost>=0?"up":"down"}" style="font-size:11px">${(sPay-sCost>=0?"+":"")+(sPay-sCost).toFixed(2)} U</span>
-           <span class="muted mono" style="font-size:11px">投入 ${sCost.toFixed(2)} · 赔付 ${sPay.toFixed(2)} · 落在 ${h(truth)}</span>`;
+        : (sFilled
+            ? `<span class="mono ${sPay-sCost>=0?"up":"down"}" style="font-size:11px">${(sPay-sCost>=0?"+":"")+(sPay-sCost).toFixed(2)} U</span>
+               <span class="muted mono" style="font-size:11px">投入 ${sCost.toFixed(2)} · 赔付 ${sPay.toFixed(2)}</span>`
+            : "")
+          + `<span class="muted mono" style="font-size:11px">落在 ${h(truth)}</span>`;
 
       const lines = [];
       const foldAt = new Map();
@@ -14608,18 +14610,24 @@ function liveOrderCard(L){
           ? `<span class="pill" style="font-size:10px" title="${h(items.length + " 篮同一窗口、都没成交，显示最新一篮的价："
               + items.map(x=>clock(x.latest)+" "+x.decision_id).join("；"))}">×${items.length} 篮</span>`
           : "";
-        return `${skewChip(g)}<span>${g.legs.map(l=>legChip(l, truth, mid)).join("")}</span>${offCenter}${count}`;
+        // Several different baskets under one station each say whether
+        // they held the truth, since the station's word is their union.
+        const own = truth && lines.length > 1
+          ? `<span class="mono ${g.legs.some(l=>String(l.bucket)===truth)?"up":"down"}" style="font-size:11px">${
+              g.legs.some(l=>String(l.bucket)===truth) ? "含" : "不含"}真值</span>`
+          : "";
+        return `${skewChip(g)}<span>${g.legs.map(l=>legChip(l, truth, mid)).join("")}</span>${offCenter}${count}${own}`;
       };
       const head = `<span class="pill red" style="font-size:10px">LIVE</span>
         <b class="mono pill ${verdict[0]}" title="${h(verdict[2])} · ${
-          h(baskets.map(g=>g.decision_id).join("、"))}">${h(station)} ${verdict[1]}</b>
+          h(baskets.map(g=>g.decision_id).join("、"))}">${h(station)} ${verdict[1]}</b>${fill}
         <span class="muted" style="font-size:11px">${baskets.length>1 ? baskets.length+" 篮 · " : ""}${
           sLegs} 腿 · ${sFilled} 成交</span>`;
       const row = `display:flex;flex-wrap:wrap;align-items:center;gap:6px`;
       if(lines.length === 1) return `<div style="${row};padding:5px 0;border-top:1px dashed var(--line,#eee)">
-        ${head}${legsOf(lines[0])}${cover}${money}</div>`;
+        ${head}${legsOf(lines[0])}${money}</div>`;
       return `<div style="padding:5px 0;border-top:1px dashed var(--line,#eee)">
-        <div style="${row}">${head}${cover}${money}</div>
+        <div style="${row}">${head}${money}</div>
         ${lines.map(items=>`<div style="${row};margin:3px 0 0 18px">
           <span class="muted mono" style="font-size:11px">${h(clock(items[items.length-1].latest))}</span>
           ${legsOf(items)}</div>`).join("")}</div>`;
@@ -14629,7 +14637,8 @@ function liveOrderCard(L){
       ? ` · <span class="muted" title="${h(hidden.map(g=>g.station_id).join("、"))}"
           >禁入 ${hidden.length} 篮未列</span>`
       : "";
-    const head = `${h(day)} · ${stations.length} 站 · ${gs.length} 篮 · ${legsN} 腿 · ${filledN} 成交 · 投入 ${cost.toFixed(2)} U` + (pnl==null
+    const head = `${h(day)} · ${stations.length} 站 · ${gs.length} 篮${
+        settledN ? ` · 篮子命中 ${hitN}/${settledN} 站` : ""} · ${legsN} 腿 · ${filledN} 成交 · 投入 ${cost.toFixed(2)} U` + (pnl==null
         ? ` · <span class="muted">未结算</span>`
         : ` · <span class="${pnl>=0?"up":"down"}">${(pnl>=0?"+":"")+pnl.toFixed(2)} U</span> · 已结算`)
       + barredNote;

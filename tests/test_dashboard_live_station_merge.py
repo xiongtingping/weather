@@ -1,4 +1,4 @@
-"""The live order panel: one line per station-day, and 未成交 is not 未命中.
+"""The live order panel: one line per station-day, judged by its basket.
 
 User ruling, 2026-09-14: 把同一站点的合并在一起。为什么显示为未命中，是真的未命中
 还是显示错误？
@@ -11,6 +11,11 @@ leg held is the settled bucket" -- vacuously true of baskets that held
 nothing.  Five of the six stations' windows held the day's truth (ZGSZ 30-32
 against 32, ZGGG 33-34 against 34, ZSPD, ZSQD, ZUCK); only ZBAA's 29-30
 against 31 missed.
+
+Then, the same morning: 命中不管成不成交，都要显示是否篮子命中真值.  The station's
+word is the basket's -- 命中 when the settled bucket is one the station-day's
+baskets asked for, 未命中 when not -- and what the fills did is a second chip:
+持仓命中, 持仓未中 or 未成交.
 
 Asserted on rendered output from the panel's own renderer, fed rows shaped
 like that morning's.
@@ -96,6 +101,18 @@ def _station_pills(html: str) -> list[tuple[str, str, str]]:
     return re.findall(r'<b class="mono pill (\w*)" title="[^"]*">(\w{4}) ([^<]+)</b>', html)
 
 
+def _fills(html: str) -> dict[str, tuple[str, str]]:
+    """station -> (tone, word) of the fill chip that follows its verdict."""
+
+    return {
+        station: (tone, word)
+        for station, tone, word in re.findall(
+            r'>(\w{4}) [^<]+</b><span class="pill (\w*)" style="font-size:10px"\s+title="[^"]*">([^<]+)</span>',
+            html,
+        )
+    }
+
+
 MORNING = (
     _basket("zb1", "ZBAA", ["29°C", "30°C"], truth="31°C", at="2026-09-12T07:22:26Z")
     + _basket("zb2", "ZBAA", ["29°C", "30°C"], truth="31°C", at="2026-09-12T07:37:32Z")
@@ -114,18 +131,15 @@ def test_each_station_day_is_one_line_with_one_verdict():
     assert "3 篮 · 6 腿 · 0 成交" in html and "2 篮 · 6 腿 · 0 成交" in html
 
 
-def test_a_station_day_that_filled_nothing_is_not_a_miss():
-    pills = {station: (tone, word) for tone, station, word in _station_pills(_render(MORNING))}
-
-    assert pills == {"ZBAA": ("", "未成交"), "ZGSZ": ("", "未成交"), "ZGGG": ("", "未成交")}
-
-
-def test_an_unfilled_day_says_whether_its_window_held_the_truth():
+def test_the_verdict_is_the_basket_whether_or_not_anything_filled():
     html = _render(MORNING)
+    pills = {station: (tone, word) for tone, station, word in _station_pills(html)}
 
-    assert '窗口不含 31°C' in html  # ZBAA 29-30
-    assert '窗口含 32°C' in html and '窗口含 34°C' in html
-    assert "未命中" not in html
+    # ZBAA asked for 29-30 and the day landed on 31; the other two held it.
+    assert pills == {"ZBAA": ("red", "未命中"), "ZGSZ": ("green", "命中"), "ZGGG": ("green", "命中")}
+    assert _fills(html) == {s: ("", "未成交") for s in ("ZBAA", "ZGSZ", "ZGGG")}
+    assert "落在 31°C" in html and "落在 32°C" in html and "落在 34°C" in html
+    assert "篮子命中 2/3 站" in html
 
 
 def test_identical_unfilled_baskets_fold_into_one_line_with_a_count():
@@ -147,8 +161,30 @@ def test_a_basket_that_filled_is_never_folded_and_decides_the_verdict():
     pills = {station: (tone, word) for tone, station, word in _station_pills(html)}
 
     assert pills == {"EPWA": ("green", "命中"), "EHAM": ("red", "未命中")}
+    assert _fills(html) == {"EPWA": ("green", "持仓命中"), "EHAM": ("red", "持仓未中")}
     epwa = html[html.index(">EPWA "):]
     assert "×2 篮" not in epwa and epwa.count("21°C 0.25×8") == 2
+
+
+def test_a_window_that_held_the_truth_is_a_hit_even_when_that_rung_did_not_fill():
+    """The case the two words exist to keep apart: the basket was right and
+    the money was not, because the rung that won was the one that did not fill."""
+
+    html = _render(_basket("m", "KLAX", ["20°C", "21°C"], truth="21°C", filled=("20°C",)))
+
+    assert _station_pills(html) == [("green", "KLAX", "命中")]
+    assert _fills(html) == {"KLAX": ("red", "持仓未中")}
+
+
+def test_different_baskets_under_one_station_each_say_whether_they_held_it():
+    rows = (
+        _basket("p", "ZGGG", ["34°C", "35°C"], truth="36°C", at="2026-09-12T01:00:00Z")
+        + _basket("q", "ZGGG", ["35°C", "36°C"], truth="36°C", at="2026-09-12T02:00:00Z")
+    )
+    html = _render(rows)
+
+    assert _station_pills(html) == [("green", "ZGGG", "命中")]
+    assert html.index("不含真值") < html.index(">含真值")
 
 
 def test_an_unsettled_station_day_is_still_amber():
