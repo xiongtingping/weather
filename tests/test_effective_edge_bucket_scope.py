@@ -97,11 +97,13 @@ def test_a_row_is_a_rung_and_a_rung_is_counted_once() -> None:
 
 def test_the_estimator_is_the_window_lanes_unchanged() -> None:
     conn = _book()
-    # Twelve station-days so the hurdles clear, every rung at agreement 0.9 --
-    # inside the band the split created at (0.85, 0.95].
+    # Fourteen station-days over eight event days so the hurdles clear, every
+    # rung at agreement 0.9 -- inside the band the split created at
+    # (0.85, 0.95].
     for index in range(14):
         _window(
-            conn, index=index, station=f"S{index}", day="2026-09-01",
+            conn, index=index, station=f"S{index}",
+            day=f"2026-09-{index % 8 + 1:02d}",
             legs={"a": (0.40, 0.36), "b": (0.40, 0.36)},
             settled="a" if index < 7 else "z",
         )

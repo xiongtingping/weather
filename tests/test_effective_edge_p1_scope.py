@@ -109,11 +109,15 @@ def _book(rows) -> sqlite3.Connection:
         "settlement_id TEXT PRIMARY KEY, position_id TEXT, stage TEXT,"
         " event_date TEXT, hit INTEGER)"
     )
+    # One seat per station-day, over eight event days (the band's weather
+    # floor since 2026-09-14), so a fixture about scopes is not refused for
+    # a reason it is not about.
     for index, (stage, claim, cost, hit) in enumerate(rows):
-        _candidate(conn, index, stage, "2026-09-01", claim, cost, hit)
+        day = f"2026-09-{index % 8 + 1:02d}"
+        _candidate(conn, index, stage, day, claim, cost, hit)
         conn.execute(
             "INSERT INTO paper_trade_settlement VALUES(?,?,?,?,?)",
-            (f"set-{index}", f"pos-{index}", stage, "2026-09-01", hit),
+            (f"set-{index}", f"pos-{index}", stage, day, hit),
         )
     return conn
 
@@ -307,6 +311,7 @@ def test_only_seats_banded_under_the_current_partition_are_fitted() -> None:
         )
     fit = store.fit_lambda_table(conn, stage_scope="P0")
     assert fit["band_filter"] == {
+        "axis": "claim",
         "cells": store.BAND_PARTITION_CELLS,
         "applied": True,
         "excluded_old_partition": 12,
@@ -458,3 +463,81 @@ def test_a_thin_band_keeps_the_last_activated_value_not_the_constant() -> None:
     assert store._incumbent_bands(fresh, "P0") == [
         (float(b), float(l)) for b, l in EFFECTIVE_EDGE_LAMBDA
     ]
+
+
+def test_the_partition_is_the_served_axis_and_its_cell_count(monkeypatch) -> None:
+    """2026-09-14: the filter compared cell counts against the claim axis's
+    eleven after every stage had moved to the five-cell distance axis, so
+    every served window read as an old partition and no fit could leave its
+    incumbent.  The key is axis and count together: the claim axis also had
+    five cells until 2026-08-25, and those rows must stay out."""
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE paper_trade_candidate_window("
+        "candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
+        " stage TEXT, decision_at_utc TEXT, buckets_json TEXT,"
+        " win_probability REAL, all_in_price REAL, hit INTEGER, band_axis TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE paper_trade_settlement("
+        "settlement_id TEXT PRIMARY KEY, position_id TEXT, stage TEXT,"
+        " event_date TEXT, hit INTEGER)"
+    )
+    conn.execute(
+        "CREATE TABLE calibration_band_reliability_table("
+        "band_table_sha256 TEXT PRIMARY KEY, factors_json TEXT, axis TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_probability_bridge_history("
+        "history_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
+        " stage TEXT, decision_at_utc TEXT, checkpoint_id TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_probability_envelope("
+        "envelope_id TEXT PRIMARY KEY, lineage_json TEXT)"
+    )
+    tables = {
+        "distance": ("centre_distance", 5),
+        "claim_five": ("claim", 5),
+        "claim_eleven": ("claim", 11),
+    }
+    for sha, (axis, cells) in tables.items():
+        conn.execute(
+            "INSERT INTO calibration_band_reliability_table VALUES(?,?,?)",
+            (sha, json.dumps([[[0, 1], 1.0]] * cells), axis),
+        )
+    kinds = list(tables)
+    for index in range(30):
+        kind = kinds[index % 3]
+        day = f"2026-09-{index % 8 + 1:02d}"
+        conn.execute(
+            "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (f"cand-{index}", f"S{index}", day, "P0", f"t{index}", '["b"]',
+             0.5, 0.15, 1, "centre_distance"),
+        )
+        conn.execute(
+            "INSERT INTO paper_trade_settlement VALUES(?,?,?,?,?)",
+            (f"set-{index}", f"pos-{index}", "P0", day, 1),
+        )
+        conn.execute(
+            "INSERT INTO basket_probability_bridge_history VALUES(?,?,?,?,?,?)",
+            (f"hist-{index}", f"S{index}", day, "P0", f"t{index}", f"env-{index}"),
+        )
+        conn.execute(
+            "INSERT INTO basket_probability_envelope VALUES(?,?)",
+            (f"env-{index}", json.dumps({"band_reliability_json": json.dumps(
+                {"band_table_sha256": kind, "state": "APPLIED"}
+            )})),
+        )
+    monkeypatch.setattr(store, "_fit_axis", lambda conn, stages: "centre_distance")
+    fit = store.fit_lambda_table(conn, stage_scope="P0")
+    assert fit["band_filter"] == {
+        "axis": "centre_distance",
+        "cells": 5,
+        "applied": True,
+        "excluded_old_partition": 20,
+        "excluded_no_receipt": 0,
+    }
+    assert sum(band["seats"] for band in fit["evidence"]) == 10
+    assert fit["table"]["band_partition_cells"] == 5

@@ -89,10 +89,12 @@ def test_a_window_the_gate_refused_is_still_evidence():
     conn = _book()
     _window(conn, 0, station="A0", claim=0.5, price=0.15, hit=0,
             admissible=1, seated=1)
+    # Spread over eight event days, the band's weather floor (2026-09-14).
     for index in range(1, 21):
         _window(conn, index, station=f"A{index}", claim=0.5, price=0.15,
-                hit=1, admissible=0, seated=0)
-    fit = store.fit_lambda_table(conn, as_of="2026-09-01")
+                hit=1, admissible=0, seated=0,
+                day=f"2026-09-{index % 8 + 1:02d}")
+    fit = store.fit_lambda_table(conn, as_of="2026-09-08")
     band = fit["evidence"][0]
     assert band["seats"] == 21, "the refused twenty are in the sample"
     assert band["hits"] == 20
@@ -133,13 +135,24 @@ def test_twelve_nested_windows_on_two_days_are_not_twelve_observations():
     assert band["station_days"] == 2
     assert band["accumulating"] is True, "two days is not twelve observations"
     assert fit["bands"][0][1] == band["incumbent_lambda"]
-    # The same twelve rows spread over twelve station-days do clear it.
+    # Twelve station-days on ONE event day still do not (2026-09-14): a
+    # fleet shares its weather, so the stations are not independent either.
+    one_day = _book()
+    for index in range(12):
+        _window(one_day, index, station=f"S{index}", claim=0.5, price=0.15,
+                hit=1)
+    fit = store.fit_lambda_table(one_day, as_of="2026-09-01")
+    assert fit["evidence"][0]["station_days"] == 12
+    assert fit["evidence"][0]["event_days"] == 1
+    assert fit["evidence"][0]["accumulating"] is True
+    # The same twelve rows over twelve station-days and eight event days do.
     spread = _book()
     for index in range(12):
         _window(spread, index, station=f"S{index}", claim=0.5, price=0.15,
-                hit=1)
-    fit = store.fit_lambda_table(spread, as_of="2026-09-01")
+                hit=1, day=f"2026-09-{index % 8 + 1:02d}")
+    fit = store.fit_lambda_table(spread, as_of="2026-09-08")
     assert fit["evidence"][0]["station_days"] == 12
+    assert fit["evidence"][0]["event_days"] == store.MIN_EVENT_DAYS_PER_BAND
     assert fit["evidence"][0]["accumulating"] is False
 
 

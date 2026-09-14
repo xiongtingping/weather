@@ -100,8 +100,9 @@ def test_a_measured_band_moves_off_the_bootstrap(tmp_path, monkeypatch) -> None:
     # of that claim is pinned off here and covered by its own test.
     import bayes_basket_target.basket_kernel.delta_v2 as K
     monkeypatch.setattr(K, "CENTER_WINDOW_CLAIM_BANDS", ())
+    # Over eight event days, the band's weather floor (2026-09-14).
     seats = [
-        ("P0", "2026-09-01", 0.60, 0.18, 1 if i < 12 else 0)
+        ("P0", f"2026-09-{i % 8 + 1:02d}", 0.60, 0.18, 1 if i < 12 else 0)
         for i in range(24)
     ]
     conn = _book(tmp_path / "b.db", seats)
@@ -120,7 +121,7 @@ def test_a_measured_band_moves_off_the_bootstrap(tmp_path, monkeypatch) -> None:
 def test_the_fit_is_clamped_to_a_blast_radius(tmp_path) -> None:
     """A band that reads near zero would zero every basket inside it."""
 
-    seats = [("P0", "2026-09-01", 0.60, 0.18, 0) for _ in range(30)]
+    seats = [("P0", f"2026-09-{i % 8 + 1:02d}", 0.60, 0.18, 0) for i in range(30)]
     conn = _book(tmp_path / "c.db", seats)
     try:
         fit = store.fit_lambda_table(conn)

@@ -77,7 +77,11 @@ import sqlite3
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Any, Sequence
 
-from .band_reliability_store import BAND_TABLE_CELLS
+from .band_reliability_store import (
+    BAND_AXIS_CLAIM,
+    BAND_TABLE_CELLS,
+    cells_for_axis,
+)
 from .basket_kernel.delta_v2 import (
     BETA_TABLE_KEY,
     center_window_claim_factor,
@@ -103,6 +107,15 @@ MIN_CLAIM_MASS = 4.0
 # The independent unit is the station-day; this is the threshold that keeps
 # "a fortnight rewrites the rule" from coming back through the new door.
 MIN_STATION_DAYS_PER_BAND = 8
+# And the weather's own unit (user ruling 2026-09-14, "修").  Forty-five
+# stations make eight station-days in one or two event days, and a fleet
+# shares its weather: on 2026-09-13 alone P0's densest bands read 0.95, 1.04
+# and 1.31 on seven or eight windows each, enough to clear every hurdle above
+# the day after the anchor moved and to open a band the constant keeps shut.
+# The beta lane has asked for eight event days since it shipped; this is the
+# same floor, so a band leaves its incumbent only on more than a week of
+# separate weather.
+MIN_EVENT_DAYS_PER_BAND = 8
 LAMBDA_FLOOR = 0.05
 LAMBDA_CEILING = 1.50
 # One scope per stage (user ruling, 2026-09-05).  P0-M used to be pooled
@@ -133,6 +146,25 @@ STAGE_SCOPES = {
 # 60 keeps old tables serving the artifacts pinned to them, so a calendar
 # cutover would admit exactly the rows it means to exclude.
 BAND_PARTITION_CELLS = len(BAND_TABLE_CELLS)
+
+
+def _serving_partition(axis: str | None) -> tuple[str, int]:
+    """The partition a row must have been banded under: axis AND cell count.
+
+    ``BAND_PARTITION_CELLS`` is the claim axis's count and stayed the only
+    test after charter 105 moved every stage to the centre-distance axis
+    (P0 2026-09-07, P1 09-09, P0-M 09-11), whose tables have five cells: every
+    candidate window banded on the axis actually served read as an old
+    partition and was dropped, so the fit could not see one served row and
+    the scopes sat at their incumbents -- the hand-set constants -- with no
+    way out (found 2026-09-14).  The count alone cannot be the key either:
+    the claim axis also had five cells until 2026-08-25, so a five-cell test
+    would readmit those.  ``None`` -- no band table, or stages on different
+    axes -- keeps the historical claim-axis test.
+    """
+
+    name = str(axis) if axis else BAND_AXIS_CLAIM
+    return name, len(cells_for_axis(name))
 
 # Shadow lane, user ruling 2026-09-06 ("开影子"): the same table with one more
 # axis -- which way the market moved the seat's window over the hours before
@@ -360,59 +392,6 @@ def _project_onto_partition(
     return out
 
 
-def _band_partition_by_position(
-    conn: sqlite3.Connection, position_ids: Sequence[str]
-) -> dict[str, int | None] | None:
-    """Which band partition each seat's claim was served under.
-
-    Read off the envelope receipt the seat's decision moment carries, then
-    the partition size of the table that receipt names.  None for the whole
-    lookup when the database has no envelopes or band tables -- a replay
-    fixture, or a book built before receipts existed -- in which case the
-    caller counts every seat and says so, rather than silently fitting on
-    nothing.  Per seat, None means no receipt: an unbanded claim, which is
-    not a claim under the current partition either.
-    """
-
-    if not position_ids:
-        return {}
-    try:
-        sizes = {
-            str(row[0]): int(row[1])
-            for row in conn.execute(
-                "SELECT band_table_sha256, json_array_length(factors_json)"
-                " FROM calibration_band_reliability_table"
-            )
-        }
-        rows = conn.execute(
-            "SELECT p.position_id,"
-            " (SELECT json_extract(e.lineage_json,'$.band_reliability_json')"
-            "    FROM basket_probability_bridge_history h"
-            "    JOIN basket_probability_envelope e"
-            "      ON e.envelope_id = h.checkpoint_id"
-            "   WHERE h.station_id = p.station_id"
-            "     AND h.event_date = p.event_date"
-            "     AND h.stage = p.stage"
-            "     AND h.decision_at_utc = p.decision_at_utc"
-            "   LIMIT 1)"
-            " FROM paper_trade_position p"
-            f" WHERE p.position_id IN ({','.join('?' for _ in position_ids)})",
-            tuple(position_ids),
-        ).fetchall()
-    except sqlite3.Error:
-        return None
-    out: dict[str, int | None] = {}
-    for position_id, raw in rows:
-        sha = None
-        if raw:
-            try:
-                sha = json.loads(str(raw)).get("band_table_sha256")
-            except (ValueError, AttributeError):
-                sha = None
-        out[str(position_id)] = sizes.get(str(sha)) if sha else None
-    return out
-
-
 def _has_candidate_column(conn: sqlite3.Connection, name: str) -> bool:
     """Whether the candidate table carries one of charter 110's keys."""
 
@@ -572,8 +551,8 @@ def _band_partition_by_decision(
     conn: sqlite3.Connection,
     stages: Sequence[str],
     floor_day: str,
-) -> dict[tuple[str, str, str, str], int | None] | None:
-    """The same lookup as above, keyed by the decision rather than the seat.
+) -> dict[tuple[str, str, str, str], tuple[str, int] | None] | None:
+    """Which band partition each candidate window's claim was served under.
 
     A candidate window is not a seat and has no ``position_id``, but it does
     carry the four columns the envelope receipt is found by -- which is what
@@ -582,6 +561,10 @@ def _band_partition_by_decision(
     no receipts, ``None`` per key for a decision whose envelope names no
     band table.
 
+    Each decision maps to ``(axis, cells)`` of the table its envelope names
+    (a table recorded without an axis is a claim-axis one), compared by the
+    caller against ``_serving_partition``.
+
     Driven from the candidate table rather than from the history: the
     history is four hundred thousand rows and the candidates are a few
     thousand, and scanning the big side of that join took the fit from a
@@ -589,11 +572,17 @@ def _band_partition_by_decision(
     """
 
     try:
+        band_columns = {
+            str(row[1]) for row in conn.execute(
+                "PRAGMA table_info(calibration_band_reliability_table)"
+            )
+        }
         sizes = {
-            str(row[0]): int(row[1])
+            str(row[0]): (str(row[2] or BAND_AXIS_CLAIM), int(row[1]))
             for row in conn.execute(
-                "SELECT band_table_sha256, json_array_length(factors_json)"
-                " FROM calibration_band_reliability_table"
+                "SELECT band_table_sha256, json_array_length(factors_json),"
+                + (" axis" if "axis" in band_columns else " NULL")
+                + " FROM calibration_band_reliability_table"
             )
         }
         placeholders = ",".join("?" for _ in stages)
@@ -617,7 +606,7 @@ def _band_partition_by_decision(
         return None
     if not sizes:
         return None
-    out: dict[tuple[str, str, str, str], int | None] = {}
+    out: dict[tuple[str, str, str, str], tuple[str, int] | None] = {}
     for station_id, event_date, stage, decided, raw in rows:
         sha = None
         if raw:
@@ -1155,15 +1144,17 @@ def fit_lambda_table(
     else:
         tally_incumbent_note = "activated_table"
     partition = _band_partition_by_decision(conn, stages, floor_day)
+    serving_partition = _serving_partition(axis)
     band_filter: dict[str, Any] = {
-        "cells": BAND_PARTITION_CELLS,
+        "axis": serving_partition[0],
+        "cells": serving_partition[1],
         "applied": partition is not None,
         "excluded_old_partition": 0,
         "excluded_no_receipt": 0,
     }
 
     tally = [
-        {"seats": 0, "claim": 0.0, "hits": 0, "days": set()}
+        {"seats": 0, "claim": 0.0, "hits": 0, "days": set(), "event_days": set()}
         for _ in incumbent
     ]
     for win, price, hit, station_id, event_date, stage, decided in rows:
@@ -1178,7 +1169,7 @@ def fit_lambda_table(
             if cells is None:
                 band_filter["excluded_no_receipt"] += 1
                 continue
-            if cells != BAND_PARTITION_CELLS:
+            if cells != serving_partition:
                 band_filter["excluded_old_partition"] += 1
                 continue
         slot = tally[_band_index(price / claim, incumbent)]
@@ -1186,6 +1177,7 @@ def fit_lambda_table(
         slot["claim"] += claim
         slot["hits"] += int(hit or 0)
         slot["days"].add((str(station_id), str(event_date)))
+        slot["event_days"].add(str(event_date))
 
     bands: list[tuple[float, float]] = []
     evidence: list[dict[str, Any]] = []
@@ -1196,6 +1188,7 @@ def fit_lambda_table(
             slot["seats"] >= MIN_SEATS_PER_BAND
             and slot["claim"] >= MIN_CLAIM_MASS
             and len(slot["days"]) >= MIN_STATION_DAYS_PER_BAND
+            and len(slot["event_days"]) >= MIN_EVENT_DAYS_PER_BAND
         )
         raw = (slot["hits"] / slot["claim"]) if slot["claim"] > 0 else None
         if enough and raw is not None:
@@ -1210,6 +1203,7 @@ def fit_lambda_table(
             # The independent unit behind the row count, printed beside it
             # so a band that looks well-evidenced and is not can be seen.
             "station_days": len(slot["days"]),
+            "event_days": len(slot["event_days"]),
             "claim_mass": round(slot["claim"], 3),
             "hits": slot["hits"],
             "raw_lambda": None if raw is None else round(raw, 4),
@@ -1237,7 +1231,7 @@ def fit_lambda_table(
         "window_days": int(window_days),
         "as_of_event_date": latest,
         "fit_floor_event_date": floor_day,
-        "band_partition_cells": BAND_PARTITION_CELLS,
+        "band_partition_cells": serving_partition[1],
         # Charter 110 extended: the vintage this table's numbers describe.
         # Stored on the payload because that is what ``_active_claim_vintage``
         # reads back when the next fit asks whether it may inherit.
@@ -2123,6 +2117,8 @@ def fit_lambda_table_dq_shadow(
         (*stages, floor_day),
     ).fetchall()
     partition = _band_partition_by_decision(conn, stages, floor_day)
+    # The partition the served fit reads, so the shadow stays on its sample.
+    serving_partition = _serving_partition(_fit_axis(conn, stages))
     tally = [
         {tier: {"seats": 0, "claim": 0.0, "hits": 0} for tier in DQ_TIERS}
         for _ in incumbent
@@ -2136,7 +2132,7 @@ def fit_lambda_table_dq_shadow(
             continue
         if partition is not None and partition.get(
             (str(station_id), str(event_date), str(stage), str(decision_at))
-        ) != BAND_PARTITION_CELLS:
+        ) != serving_partition:
             excluded += 1
             continue
         try:
@@ -2199,7 +2195,7 @@ def fit_lambda_table_dq_shadow(
         "window_days": int(window_days),
         "as_of_event_date": latest,
         "fit_floor_event_date": floor_day,
-        "band_partition_cells": BAND_PARTITION_CELLS,
+        "band_partition_cells": serving_partition[1],
         "bands": bands,
     }
     return {
