@@ -3896,38 +3896,20 @@ def _shared_holdout_cohorts(
     return exact_cohorts, window_cohorts
 
 
-def build_native_ensemble_oos(
+def p0_gate_tables(
     conn: sqlite3.Connection,
     *,
     station_id: str,
-    as_of_utc: str,
-    min_train_days: int = DEFAULT_MIN_TRAIN_DAYS,
-    min_holdout_days: int = DEFAULT_MIN_HOLDOUT_DAYS,
-    family_weight_caps: Mapping[str, float] | None = None,
-    system_mask: Sequence[str] | None = None,
-    max_event_date: str | None = None,
     tables_as_of_utc: str | None = None,
 ) -> dict[str, Any]:
-    """Build candidate artifacts; perform no writes.
+    """The band and centre/width tables P0's gate scores one station under.
 
-    ``tables_as_of_utc`` scores the holdout under the band, centre/width and
-    station-width tables that were active at that moment instead of now.  A
-    forward build leaves it unset: what it mints is served from now on.  A
-    replay of a past build sets it to the replayed moment, or the gate scores
-    past days under tables fitted on those days (review 2026-09-13, R4).
-
-    Bias and weights are both fitted from this station's own record; weights
-    must never borrow other stations' errors (user ruling, 2026-08-14).
+    One resolver for the OOS build and for anything that replays it (charter
+    134's nested replay), so a replay scores a blend under exactly the layers
+    the build would have: the active tables now, or with ``tables_as_of_utc``
+    the ones that were active at that moment.
     """
 
-    try:
-        station_latitude = float(
-            station_coordinates(station_id)["latitude"]
-        )
-    except Exception:  # noqa: BLE001 -- unknown latitude serves neutral
-        station_latitude = None
-    if native_ensemble_foundation_schema_status(conn)["ok"] is not True:
-        raise ContractError("native_ensemble_foundation_schema_required")
     # The active DB-resident band table, or the static bootstrap constants
     # when none is activated yet.  The sha rides into every candidate so
     # each artifact pins the exact table its holdout was scored against.
@@ -4036,6 +4018,59 @@ def build_native_ensemble_oos(
         else None
     )
     gate_band_layer = BandLayer(factors=band_factors, axis=band_table_axis_id)
+    return {
+        "band_factors": band_factors,
+        "band_table_sha256": band_table_sha,
+        "band_table_axis": band_table_axis_id,
+        "center_width_sha256": center_width_sha,
+        "station_width_sha256": station_width_sha,
+        "center_width_layer": gate_center_width_layer,
+        "band_layer": gate_band_layer,
+    }
+
+
+def build_native_ensemble_oos(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    as_of_utc: str,
+    min_train_days: int = DEFAULT_MIN_TRAIN_DAYS,
+    min_holdout_days: int = DEFAULT_MIN_HOLDOUT_DAYS,
+    family_weight_caps: Mapping[str, float] | None = None,
+    system_mask: Sequence[str] | None = None,
+    max_event_date: str | None = None,
+    tables_as_of_utc: str | None = None,
+) -> dict[str, Any]:
+    """Build candidate artifacts; perform no writes.
+
+    ``tables_as_of_utc`` scores the holdout under the band, centre/width and
+    station-width tables that were active at that moment instead of now.  A
+    forward build leaves it unset: what it mints is served from now on.  A
+    replay of a past build sets it to the replayed moment, or the gate scores
+    past days under tables fitted on those days (review 2026-09-13, R4).
+
+    Bias and weights are both fitted from this station's own record; weights
+    must never borrow other stations' errors (user ruling, 2026-08-14).
+    """
+
+    try:
+        station_latitude = float(
+            station_coordinates(station_id)["latitude"]
+        )
+    except Exception:  # noqa: BLE001 -- unknown latitude serves neutral
+        station_latitude = None
+    if native_ensemble_foundation_schema_status(conn)["ok"] is not True:
+        raise ContractError("native_ensemble_foundation_schema_required")
+    gate_tables = p0_gate_tables(
+        conn, station_id=station_id, tables_as_of_utc=tables_as_of_utc
+    )
+    band_factors = gate_tables["band_factors"]
+    band_table_sha = gate_tables["band_table_sha256"]
+    band_table_axis_id = gate_tables["band_table_axis"]
+    center_width_sha = gate_tables["center_width_sha256"]
+    station_width_sha = gate_tables["station_width_sha256"]
+    gate_center_width_layer = gate_tables["center_width_layer"]
+    gate_band_layer = gate_tables["band_layer"]
     if min_train_days < 2 or min_holdout_days < 1:
         raise ContractError("native_ensemble_oos_window_invalid")
     as_of = datetime.fromisoformat(as_of_utc.replace("Z", "+00:00"))
