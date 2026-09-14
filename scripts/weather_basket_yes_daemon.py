@@ -1972,6 +1972,20 @@ def _atomic_json(path: Path, value: Any) -> None:
 
 
 FORECAST_PHYSICS_REFRESH_SECONDS = 6 * 60 * 60
+
+
+def forecast_physics_refresh_mode() -> str:
+    """``on`` in the resident; a test session sets ``off`` (tests/conftest.py).
+
+    Read at call time rather than at import, because the suite loads this
+    module under several names and at different moments, and the switch has
+    to hold for all of them.
+    """
+
+    return (
+        os.environ.get("PM_FORECAST_PHYSICS_REFRESH", "on").strip().lower()
+        or "on"
+    )
 CALIBRATION_HEALTH_INTERVAL_SECONDS = 6 * 60 * 60
 
 
@@ -2068,6 +2082,27 @@ def _refresh_forecast_physics(
     recorded rather than raised so the rest of this cycle proceeds.
     """
 
+    # 2026-09-14: this launched the capture script with no ``--db``, so it
+    # wrote whatever the script defaults to -- the production SSOT -- from
+    # whoever called it.  Three test files drive the forecast refresh cycle
+    # with a stand-in worker; each run started a real forward capture against
+    # the live store, outside the resident's writer schedule (caught holding
+    # the 45GB database open under a pytest process).  The database is now
+    # the worker's own, and a worker that has none gets no capture.
+    if forecast_physics_refresh_mode() == "off":
+        return {
+            "state": "disabled",
+            "reason": "PM_FORECAST_PHYSICS_REFRESH=off",
+            "calls_order_gateway": False,
+            "places_orders": False,
+        }
+    database = getattr(worker, "db_path", None)
+    if not database:
+        return {
+            "state": "skipped_worker_has_no_database",
+            "calls_order_gateway": False,
+            "places_orders": False,
+        }
     now_mono = time.monotonic()
     due = float(getattr(worker, "_next_forecast_physics_mono", 0.0) or 0.0)
     if now_mono < due:
@@ -2089,6 +2124,7 @@ def _refresh_forecast_physics(
             [
                 sys.executable,
                 str(ROOT / "scripts" / "capture_station_forecast_physics.py"),
+                "--db", str(database),
                 "--mode", "forward",
             ],
             check=False,

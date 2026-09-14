@@ -19,3 +19,18 @@ def _map_the_fixture_station_season(monkeypatch: pytest.MonkeyPatch) -> None:
     from bayes_basket_target import station_season
 
     monkeypatch.setitem(station_season._SEASON_ANCHOR_MONTH, "TEST", 7)
+
+
+@pytest.fixture(autouse=True)
+def _no_forward_physics_capture_from_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The resident's forecast refresh cycle starts a real forward capture.
+
+    Three files drive that cycle with a stand-in worker, and until
+    2026-09-14 each run launched ``capture_station_forecast_physics.py``
+    against the production SSOT from inside pytest.  The resident now passes
+    the worker's own database and skips a worker with none; this switch keeps
+    a stand-in that does carry a path from reaching the network as well.  A
+    test about the capture itself sets it back to ``on``.
+    """
+
+    monkeypatch.setenv("PM_FORECAST_PHYSICS_REFRESH", "off")
