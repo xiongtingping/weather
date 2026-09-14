@@ -454,6 +454,10 @@ def _taf_rotation_staleness() -> dict[str, Any]:
     }
 
 
+#: The capture-lag p90 at which the TAF card turns amber on its own.
+TAF_CAPTURE_LAG_AMBER_MINUTES = 180.0
+
+
 def _taf_capture_health(status: Mapping[str, Any]) -> dict[str, Any]:
     """Whether forecaster bulletins are still arriving, per station-day.
 
@@ -528,7 +532,28 @@ def _taf_capture_health(status: Mapping[str, Any]) -> dict[str, Any]:
     # problem, not a slow lap.  Two thirds is the lane having stopped.
     share = max(stale_share, blind_share)
     health = "red" if share >= 0.66 else "amber" if share >= 0.34 else "green"
-    note = f"{measured} 个 scope 有过报文，其中 {stale} 个超过 {after:.0f} 小时没有新的"
+    # Slow is not silent, and the share above cannot see it: a lane that
+    # captures every bulletin hours late never has a scope past the overdue
+    # line.  Measured 09-04..09-13 the lag's p90 ran two to four and a half
+    # hours; three hours at p90 is a lane routinely a synoptic half-cycle
+    # behind the forecaster, which is worth a light of its own.
+    lag = freshness.get("capture_lag")
+    lag = lag if isinstance(lag, Mapping) else {}
+    lag_p90 = lag.get("p90_minutes")
+    if (
+        health == "green"
+        and int(lag.get("sample_count") or 0) > 0
+        and lag_p90 is not None
+        and float(lag_p90) >= TAF_CAPTURE_LAG_AMBER_MINUTES
+    ):
+        health = "amber"
+    missing_word = (
+        "新签发的报文" if freshness.get("age_basis") == "issued" else "新的"
+    )
+    note = (
+        f"{measured} 个 scope 有过报文，其中 {stale} 个超过 {after:.0f} 小时"
+        f"没有{missing_word}"
+    )
     if freshness.get("median_age_hours") is not None:
         note += f"（中位 {float(freshness['median_age_hours']):.1f}h"
         if freshness.get("max_age_hours") is not None:
@@ -547,6 +572,14 @@ def _taf_capture_health(status: Mapping[str, Any]) -> dict[str, Any]:
     later_blind = never - blind_near
     if later_blind > 0:
         note += f"；另有 {later_blind} 个未来日期的 scope 从未收到过（新入目录）"
+    if int(lag.get("sample_count") or 0) > 0 and lag.get("p50_minutes") is not None:
+        note += (
+            f"；过去 {float(lag.get('lookback_hours') or 24):.0f}h 报文发布到入库"
+            f"中位 {float(lag['p50_minutes']):.0f} 分钟"
+            + (
+                f"、p90 {float(lag_p90):.0f} 分钟" if lag_p90 is not None else ""
+            )
+        )
     return {
         "taf_capture_health": health,
         "taf_capture_note": note,

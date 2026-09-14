@@ -130,7 +130,8 @@ from bayes_basket_target.taf_rotation_state import (
     held_scope_prefixes as taf_rotation_held_scope_prefixes,
     load_rotation_state as load_taf_rotation_state,
     PRIORITY_GENERAL as TAF_PRIORITY_GENERAL,
-    STALE_CONFIRMATION_AGE_SEC as TAF_STALE_CONFIRMATION_AGE_SEC,
+    BULLETIN_OVERDUE_SEC as TAF_BULLETIN_OVERDUE_SEC,
+    capture_lag_summary as taf_rotation_capture_lag,
     capture_age_seconds as taf_rotation_capture_age_seconds,
     latest_issued_at_by_scope as taf_rotation_latest_issued_at,
     newest_capture_at_by_scope as taf_rotation_newest_capture_at,
@@ -2383,6 +2384,10 @@ def run_target_forecast_refresh_cycle(
                 round_deadline = (
                     time.monotonic() + TARGET_TAF_ROUND_BUDGET_SEC
                 )
+                # One request per station per round; a station's other days
+                # are parsed from the same response.  See
+                # ``capture_forward_awc_taf``.
+                station_responses: dict[str, object] = {}
                 for scope in selected:
                     # Always attempt the first, whatever the clock says: a
                     # budget that can refuse every scope makes no progress at
@@ -2404,6 +2409,7 @@ def run_target_forecast_refresh_cycle(
                                 settlement_timezone=str(
                                     settlement_timezone
                                 ),
+                                response_cache=station_responses,
                             )
                         )
                         outcomes.append({
@@ -2482,9 +2488,25 @@ def run_target_forecast_refresh_cycle(
                     # silent, KMIA nine and a half against its own roughly
                     # three-hourly issuance -- showed up nowhere except as a
                     # probability-stage refusal two layers downstream.
+                    #
+                    # Measured after the round, with its own captures folded
+                    # in: the maps above were read before it, and the capture
+                    # table only learns of this round's bulletins at the next
+                    # production ingest, so a receipt read off them alone
+                    # reported the round's own catches as still missing.
                     "capture_freshness": _taf_capture_freshness(
                         catalog,
-                        newest_capture_at=rotation_arrivals,
+                        newest_capture_at=_fold_round_captures(
+                            rotation_arrivals, captures,
+                            field="local_received_at_utc",
+                        ),
+                        latest_issued_at=_fold_round_captures(
+                            rotation_issued, captures,
+                            field="issued_at_utc",
+                        ),
+                        capture_lag=taf_rotation_capture_lag(
+                            taf_scope_conn, as_of_utc=now
+                        ),
                         as_of_utc=now,
                     ),
                     "held_scope_count": len(rotation_held),
@@ -3836,21 +3858,65 @@ def _execution_mode_status() -> dict[str, Any]:
     }
 
 
+def _fold_round_captures(
+    newest: Mapping[str, str],
+    captures: Sequence[Mapping[str, Any]],
+    *,
+    field: str,
+) -> dict[str, str]:
+    """``STATION|DATE`` -> newest stamp, with this round's captures included."""
+
+    folded = dict(newest)
+    for capture in captures:
+        if not isinstance(capture, Mapping):
+            continue
+        key = (
+            f"{str(capture.get('station_id') or '').strip().upper()}"
+            f"|{str(capture.get('event_date') or '').strip()}"
+        )
+        revision = capture.get("forecast_revision")
+        stamp = str(
+            capture.get(field)
+            or (revision.get(field) if isinstance(revision, Mapping) else "")
+            or ""
+        ).strip()
+        if key.startswith("|") or key.endswith("|") or not stamp:
+            continue
+        if stamp > str(folded.get(key) or ""):
+            folded[key] = stamp
+    return folded
+
+
 def _taf_capture_freshness(
     catalog: Sequence[Mapping[str, Any]],
     *,
     newest_capture_at: Mapping[str, str],
     as_of_utc: str,
+    latest_issued_at: Mapping[str, str] | None = None,
+    capture_lag: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Per-scope bulletin age, and the worst of it named.
 
     The rotation already reports which scopes it selected and how it classed
     them, which describes the poll rather than the supply.  A lane can select
     perfectly and still be delivering nothing -- that is exactly what happened
-    on 2026-09-09 -- so this reports arrivals: how many tradeable scopes have
-    heard nothing for longer than an issuing cycle, and which ones are worst.
+    on 2026-09-09 -- so this reports arrivals: how many tradeable scopes are
+    missing a bulletin that should exist, and which ones are worst.
+
+    Age is measured from the newest held bulletin's ISSUE time when that is
+    known, and a scope is stale once it passes one scheduled six-hour cycle
+    plus an hour (``BULLETIN_OVERDUE_SEC``).  It used to be receipt age against
+    three hours, which reads a perfectly served six-hourly station as stale
+    for half of every cycle -- the card said "57 of 64 over three hours" on
+    2026-09-14 for a lane that was slow, not silent.  Slow is a different
+    number, and it is reported beside this one: ``capture_lag``.
     """
 
+    age_map = newest_capture_at
+    age_basis = "received"
+    if latest_issued_at is not None:
+        age_map = {**dict(newest_capture_at), **dict(latest_issued_at)}
+        age_basis = "issued"
     ages: list[tuple[str, float]] = []
     for scope in catalog:
         key = (
@@ -3860,7 +3926,7 @@ def _taf_capture_freshness(
         ages.append((
             key,
             taf_rotation_capture_age_seconds(
-                newest_capture_at,
+                age_map,
                 station_id=str(scope.get("station_id") or ""),
                 event_date=str(scope.get("event_date") or ""),
                 as_of_utc=as_of_utc,
@@ -3883,7 +3949,7 @@ def _taf_capture_freshness(
     stale = [
         item for item in ages
         if item[1] != float("inf")
-        and item[1] >= TAF_STALE_CONFIRMATION_AGE_SEC
+        and item[1] >= TAF_BULLETIN_OVERDUE_SEC
     ]
     never_by_date: dict[str, int] = {}
     scopes_by_date: dict[str, int] = {}
@@ -3910,7 +3976,11 @@ def _taf_capture_freshness(
         # the share track how many future days the catalogue held.
         "measured_scope_count": len(finite),
         "stale_scope_count": len(stale),
-        "stale_after_hours": round(TAF_STALE_CONFIRMATION_AGE_SEC / 3600.0, 2),
+        "stale_after_hours": round(TAF_BULLETIN_OVERDUE_SEC / 3600.0, 2),
+        # What the ages below are measured from: the newest held bulletin's
+        # issue time, or -- where that is not known -- our receipt of it.
+        "age_basis": age_basis,
+        "capture_lag": dict(capture_lag or {}),
         "median_age_hours": (
             round(finite[len(finite) // 2] / 3600.0, 2) if finite else None
         ),

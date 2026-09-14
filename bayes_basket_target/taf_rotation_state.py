@@ -31,7 +31,19 @@ MAX_CATALOG_SCOPES = expected_station_count() * 3
 # four hours, so that window holds two or three polls instead of most of one.
 # The cost is bounded: capture_forward_awc_taf times out at 12s, and the caller
 # stops the round on its own budget before the writer turn stretches.
-MAX_SELECTED_SCOPES = 12
+#
+# Thirty-six since 2026-09-14.  Twelve still left the lap at three and a half
+# hours against a 117-scope catalogue, and the measured cost of that was a
+# bulletin reaching the inbox a median 34-109 minutes after AWC published it
+# (p90 2-4.7 hours, every day 09-04..09-13) while AWC itself had it inside six
+# minutes -- the card read "57 of 64 scopes over three hours" on the morning of
+# the 14th.  What made the wider round affordable is that a round now fetches
+# each STATION once and parses its two or three days from the same response
+# (capture_forward_awc_taf's response_cache): the budget pays per request, and
+# a station's issuance makes all its days due together, so they are selected
+# together.  The ninety-second round budget is unchanged and still stops a
+# slow round; the unattempted remainder still leads the next one.
+MAX_SELECTED_SCOPES = 36
 # Charter 85 (b) (user ruling, 2026-09-06: "TAF 轮询改成已持仓站日优先、d1 带
 # TX 的 17 站优先"): each lap fills its priority slots first -- station-days
 # the book holds, then tomorrow's scope at the stations whose TAFs carry a TX
@@ -39,7 +51,9 @@ MAX_SELECTED_SCOPES = 12
 # keeps the rest of the catalogue moving: with ~14 held station-days and ~18
 # TX stations the priority pool alone is larger than a lap, and a queue that
 # never reaches the general block is the ZUUU starvation with a new head.
-PRIORITY_SLOTS_PER_LAP = 8
+# Two thirds of the round, the proportion the twelve-scope round was tuned
+# at (eight of twelve), kept when the round widened to thirty-six.
+PRIORITY_SLOTS_PER_LAP = 24
 # Of those, how many are reserved for the stale class.
 #
 # The cap above bounds the priority pool against the general queue and says
@@ -54,7 +68,9 @@ PRIORITY_SLOTS_PER_LAP = 8
 # Three of eight, so the held majority survives and the starved scopes get a
 # guaranteed share rather than a rank.  Unused reserved slots fall back to
 # the rest of the pool, so a fleet with nothing stale loses nothing.
-STALE_CONFIRMATION_SLOTS_PER_LAP = 3
+# Nine since the round widened to thirty-six: the same three in eight of the
+# priority pool.
+STALE_CONFIRMATION_SLOTS_PER_LAP = 9
 # A station is in the TX cohort while one of its captured TAFs in this many
 # trailing days carried a TX group; US TAFs never do, and the cohort is read
 # off the capture table rather than hard-coded so it follows the bulletins.
@@ -295,6 +311,17 @@ MIN_ISSUANCES_FOR_CADENCE = 8
 # scheduled TAF cycle and the fleet median; assuming it means an unknown
 # station is asked on the ordinary schedule rather than constantly or never.
 DEFAULT_ISSUANCE_CADENCE_SEC = 6.0 * 3600.0
+# When holding nothing newer means a bulletin is missing.  Every station issues
+# on the six-hour synoptic schedule whatever it amends in between, so a scope
+# whose newest held bulletin was ISSUED more than one scheduled cycle and an
+# hour ago has missed one.  Issue time, not receipt: an age measured from our
+# own receipt is 0-6 hours for a perfectly served six-hourly station purely by
+# where in the cycle it is read, and a three-hour threshold on it reads half of
+# every cycle as stale -- 2026-09-14 05:49Z, one hour after the 05Z issuance,
+# "50 of 65 scopes over three hours" for a lane whose only fault was a slow lap.
+BULLETIN_OVERDUE_SEC = DEFAULT_ISSUANCE_CADENCE_SEC + 3600.0
+#: How far back the capture-lag summary reads.
+CAPTURE_LAG_LOOKBACK_HOURS = 24.0
 # How early a scope may claim the slot before its next issuance is due.  The
 # bulletin is written and filed a few minutes before it is fetchable, and a
 # poll that arrives exactly on the boundary usually gets the previous one.
@@ -522,6 +549,60 @@ def newest_capture_at_by_scope(conn: Any) -> dict[str, str]:
         f"{str(station).strip().upper()}|{str(day).strip()}": str(received)
         for station, day, received in rows
         if str(station or "").strip() and str(received or "").strip()
+    }
+
+
+def capture_lag_summary(
+    conn: Any, *, as_of_utc: str, lookback_hours: float = CAPTURE_LAG_LOOKBACK_HOURS
+) -> dict[str, Any]:
+    """How long a published bulletin took to reach us, over the lookback.
+
+    Receipt minus AWC's own availability stamp, one sample per scope and
+    bulletin (the capture table holds each once).  This is the number a
+    freshness count cannot show: a lane that captures every bulletin an hour
+    late never has a scope past the overdue line, and it is still an hour
+    behind the forecaster -- measured 09-04..09-13 at a median of 34-109
+    minutes against AWC's six.
+
+    Empty (sample_count 0) on any failure; a report, never a blocker.
+    """
+
+    try:
+        since = (
+            datetime.fromisoformat(str(as_of_utc).replace("Z", "+00:00"))
+            - timedelta(hours=float(lookback_hours))
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        rows = conn.execute(
+            "SELECT received_at_utc, provider_available_at_utc"
+            " FROM calibration_forward_taf_capture"
+            " WHERE received_at_utc>=?",
+            (since,),
+        ).fetchall()
+    except Exception:  # noqa: BLE001 - a report, never a blocker
+        rows = []
+    lags: list[float] = []
+    for received, available in rows:
+        try:
+            lag = (
+                datetime.fromisoformat(str(received).replace("Z", "+00:00"))
+                - datetime.fromisoformat(str(available).replace("Z", "+00:00"))
+            ).total_seconds()
+        except (TypeError, ValueError):
+            continue
+        if lag >= 0.0:
+            lags.append(lag)
+    lags.sort()
+
+    def _quantile(q: float) -> float | None:
+        if not lags:
+            return None
+        return round(lags[int(q * (len(lags) - 1))] / 60.0, 1)
+
+    return {
+        "lookback_hours": float(lookback_hours),
+        "sample_count": len(lags),
+        "p50_minutes": _quantile(0.5),
+        "p90_minutes": _quantile(0.9),
     }
 
 
@@ -971,6 +1052,8 @@ def persist_rotation_state(path: Path, value: Mapping[str, Any]) -> bool:
 
 
 __all__ = [
+    "BULLETIN_OVERDUE_SEC",
+    "capture_lag_summary",
     "MAX_SELECTED_SCOPES",
     "PRIORITY_SLOTS_PER_LAP",
     "PRIORITY_HELD",

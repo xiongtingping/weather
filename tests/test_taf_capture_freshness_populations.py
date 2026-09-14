@@ -118,8 +118,10 @@ def test_the_day_that_has_just_entered_the_catalogue_does_not_redden_the_lane():
     assert fresh["stale_scope_count"] == 0
     assert fresh["never_captured_count"] == 70
     assert card["taf_capture_health"] == "green"
-    # And the sentence no longer contradicts itself.
-    assert "0 个超过 3 小时没有新的" in card["taf_capture_note"]
+    # And the sentence no longer contradicts itself.  (Seven hours since
+    # 2026-09-14: one scheduled six-hour issuance and an hour -- see
+    # test_taf_freshness_reads_the_issuance_cycle.)
+    assert "0 个超过 7 小时没有新的" in card["taf_capture_note"]
     assert "70 个未来日期的 scope 从未收到过" in card["taf_capture_note"]
 
 

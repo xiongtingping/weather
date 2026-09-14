@@ -42,8 +42,22 @@ def capture_forward_awc_taf(
     event_date: str,
     settlement_timezone: str,
     timeout_sec: int = 12,
+    response_cache: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    """Capture the currently visible official TAF with a local receipt clock."""
+    """Capture the currently visible official TAF with a local receipt clock.
+
+    ``response_cache`` is one poll round's memory of what each station's
+    request returned.  The request names the station, not the event day --
+    every scope of one station is parsed out of the same response -- so a
+    round that holds two or three of a station's days used to fetch the same
+    bulletin two or three times, each a curl subprocess with retries.  With
+    the cache the station is fetched once per round and its other scopes are
+    parsed from those bytes, received at the moment they arrived: the
+    capture's identity (URL, response sha, receipt clock) is the one a
+    separate fetch a second later would have produced.  A station whose
+    fetch failed fails its other scopes with the same error rather than
+    asking again inside the round.
+    """
 
     station = station_id.strip().upper()
     start, end = _event_window(event_date, settlement_timezone)
@@ -51,10 +65,25 @@ def capture_forward_awc_taf(
         "ids": station,
         "format": "json",
     })
-    rows, response_sha, response_bytes = _fetch_json(
-        url, timeout_sec=timeout_sec
-    )
-    received_at = datetime.now(timezone.utc)
+    cached = None if response_cache is None else response_cache.get(url)
+    if isinstance(cached, BaseException):
+        raise cached
+    if cached is None:
+        try:
+            rows, response_sha, response_bytes = _fetch_json(
+                url, timeout_sec=timeout_sec
+            )
+        except Exception as exc:
+            if response_cache is not None:
+                response_cache[url] = exc
+            raise
+        received_at = datetime.now(timezone.utc)
+        if response_cache is not None:
+            response_cache[url] = (
+                rows, response_sha, response_bytes, received_at
+            )
+    else:
+        rows, response_sha, response_bytes, received_at = cached  # type: ignore[misc]
     try:
         taf, raw = _taf_row(
             rows,
