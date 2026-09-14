@@ -151,7 +151,29 @@ def test_a_rung_the_ladder_clamped_to_the_bid_is_on_its_anchor() -> None:
         "cancel", "bid_rose_past_dwell", "reprice_up",
     )
     assert up["ladder"] == [0.26]
-    assert lane.RESTING_REPRICE_RULE_VERSION == "bid_anchored_up_only_v2"
+    assert lane.RESTING_REPRICE_RULE_VERSION == "bid_anchored_up_only_v3"
+
+
+def test_a_rung_that_is_the_best_bid_is_not_chased_by_itself() -> None:
+    # The official book carries our own resting order.  VILK 2026-09-16 29C
+    # rested 20 shares at 0.05 (posted on 0.04/0.06); at 14:19:52Z the book
+    # read best bid 0.05 with exactly 20 shares -- our order, alone -- and
+    # the v2 rule cancelled it as a bid that had risen past it.  EDDM 24C, 7
+    # shares at 0.15, the same against a best bid of exactly 7 shares.
+    kw = dict(tick=0.01, posted_at_utc=POSTED, as_of_utc="2026-09-06T12:00:00Z",
+              dwell_seconds=300.0, far_ticks=3.0)
+    own = lane.resting_rung_verdict(limit_price=0.05, bid=0.05, ask=0.08, **kw)
+    assert (own["action"], own["reason"]) == ("keep", "on_anchor"), own
+    own_wide = lane.resting_rung_verdict(limit_price=0.15, bid=0.15, ask=0.17, **kw)
+    assert (own_wide["action"], own_wide["reason"]) == ("keep", "on_anchor"), own_wide
+    # Others joining us at our price leave us first in the queue there.
+    joined = lane.resting_rung_verdict(limit_price=0.37, bid=0.37, ask=0.39, **kw)
+    assert joined["action"] == "keep", joined
+    # One tick over us is a bid we are behind, and the rung follows it.
+    over = lane.resting_rung_verdict(limit_price=0.24, bid=0.25, ask=0.28, **kw)
+    assert (over["action"], over["reason"], over["kernel_action"]) == (
+        "cancel", "bid_rose_past_dwell", "reprice_up",
+    )
 
 
 def test_a_rung_on_the_ladder_is_synced_and_kept() -> None:

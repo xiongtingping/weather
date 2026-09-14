@@ -1110,7 +1110,7 @@ SUPPORT_SCENARIO_FLOOR_RULE_VERSION = "support_floor_after_lift_v2_hit_roi_5pct"
 
 COMPLETION_VERDICT_SCHEMA = "delta_basket_completion_verdict_v1"
 COMPLETION_CLAIM_SHAPE_RULE_VERSION = "completion_claim_shape_v1"
-RESTING_RUNG_ACTION_RULE_VERSION = "bid_anchored_up_only_v2"
+RESTING_RUNG_ACTION_RULE_VERSION = "bid_anchored_up_only_v3"
 
 # The fill-shape correction.  Cells are keyed on ``ask / claim`` for the leg
 # that did NOT fill, and hold the measured realized-over-claimed ratio.
@@ -1235,6 +1235,18 @@ def resting_rung_action_v1(
     rung the ladder clamped to the bid on a one-tick book rests on its
     anchor instead of being read as one the bid rose past.
 
+    v3 (2026-09-14): "the bid rose past the rung" means the BID is above the
+    limit, not that bid+1t is.  The official book carries our own resting
+    order, and a rung posted at bid+1t inside the spread IS the new best bid
+    the moment it rests; v2 read that book as bid+1t > limit and, past the
+    dwell, cancelled the rung to re-post one tick over itself.  Measured on
+    every lifecycle cancel since 2026-09-12 (24): six were our own order
+    alone at the top (VILK 2026-09-16 29C, 20 shares at 0.05, cancelled
+    against a best bid of exactly 20 shares at 0.05 -- after v2 shipped), six
+    the one-tick clamp v2 fixed, two others joining us at our price, one a
+    GTD expiry, and eight a bid genuinely above the limit.  A rung AT the bid
+    is first in the queue at the best price post-only can hold; it rests.
+
     The asymmetry is the whole rule.  A bid that RISES is the market coming
     to a leg, and the rung follows it up; a bid that FALLS is the market
     leaving, and the rung does not follow it down -- walking a limit down
@@ -1280,7 +1292,10 @@ def resting_rung_action_v1(
     out["anchor"] = anchor
     distance = abs(price - bid_value) / tick_value
     out["distance_ticks"] = distance
-    rose = anchor > price + tick_value / 2.0
+    # The bid above the limit, not the anchor above it: a rung at the bid --
+    # our own order being the bid, others joining us there, or the one-tick
+    # clamp -- is at the top of the book and has nothing to follow.
+    rose = bid_value > price + tick_value / 2.0
     far = distance + EPS >= float(far_ticks)
     # Distance says the rung has been left behind by the book, and it is
     # measured unsigned because both directions are stale -- a rung far
