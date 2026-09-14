@@ -64,8 +64,12 @@ def _window(conn, *, index, station, day, legs, settled, stage="P0"):
 
 
 def _fit(conn, **kwargs):
+    # The nightly form: no ``as_of``, so the window ends at the newest
+    # settlement (2026-09-08 here).  An explicit ``as_of`` has meant a
+    # walk-forward question since charter 132 and needs label times this
+    # book does not carry -- which is not what these tests pin.
     return store.fit_lambda_table(
-        conn, window_days=30, as_of="2026-09-08", stage_scope="P0", **kwargs
+        conn, window_days=30, stage_scope="P0", **kwargs
     )
 
 

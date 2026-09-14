@@ -138,11 +138,13 @@ def test_shadow_journals_the_lift_and_changes_no_window(monkeypatch):
     receipt = audit["convergence_claim"]
     assert receipt["mode"] == "shadow" and receipt["evidence_present"] is True
     assert receipt["prior_stage"] == "P0-M"
-    # The three centre-holding three-rung windows are all converging and all
-    # refused by the price gate today; the shadow says each would have been
-    # admitted.  (The fixture's inherited support is appended and refused
-    # too, which is why the edge counter reads one more than the candidates.)
-    assert receipt["candidate_count"] == 3
+    # Charter 131 (2026-09-12): a symmetric day seats only the mean-centred
+    # three-rung window, so of the three this fixture used to price, two are
+    # refused by shape before the price gate and one is a candidate.  (The
+    # fixture's inherited support is appended and refused too, which is why
+    # the edge counter reads one more than the candidates.)
+    assert audit["shape_refused_window_count"] == 2
+    assert receipt["candidate_count"] == 1
     # Charter 130 (2026-09-12): the shadow asks the gate's own question, and
     # the gate's pass mark is 5% of the cost.  The lifted edges here are
     # positive but thinner than that, so nothing would be admitted under
@@ -150,7 +152,7 @@ def test_shadow_journals_the_lift_and_changes_no_window(monkeypatch):
     # zero, which is asserted below by patching the constant the gate reads.
     assert receipt["would_admit_count"] == 0
     assert receipt["admitted_by_lift_count"] == 0
-    assert audit["edge_refused_window_count"] == 4
+    assert audit["edge_refused_window_count"] == 2
     assert not any(row["flips_gate"] for row in receipt["candidates"])
     # At a pass mark of zero the shadow's question is the old one, edge
     # sign: asserted as an equivalence per candidate so it does not depend
@@ -169,8 +171,12 @@ def test_shadow_journals_the_lift_and_changes_no_window(monkeypatch):
         assert twin["edge"] == pytest.approx(row["edge"])
         assert twin["admissible"] == row["admissible"]
         assert twin["convergence_claim_factor"] == 1.0
+    # The shadow reads the gate as served, charter 87's lambda included, and
+    # at the kernel's constant table (0.82 at this window's agreement) the
+    # lift raises the edge without taking it over zero.  The flip itself is
+    # pinned with the lambda gate off in the next test.
     for candidate in receipt["candidates"]:
-        assert candidate["unlifted_edge"] < 0 < candidate["lifted_edge"]
+        assert candidate["unlifted_edge"] < candidate["lifted_edge"] < 0
     assert bare_audit["convergence_claim"]["evidence_present"] is False
     assert audit["edge_refused_window_count"] == bare_audit["edge_refused_window_count"]
 
@@ -186,11 +192,11 @@ def test_the_arm_lifts_the_claim_ahead_of_the_gate(monkeypatch):
     windows, audit = _windows()
     receipt = audit["convergence_claim"]
     assert receipt["mode"] == "on"
-    assert receipt["admitted_by_lift_count"] == receipt["candidate_count"] == 3
+    assert receipt["admitted_by_lift_count"] == receipt["candidate_count"] == 1
     # An inherited support appended outside the enumeration is never lifted
     # (it is not a window the loop priced); every enumerated window is.
     lifted = [w for w in windows if w.get("convergence") is not None]
-    assert len(lifted) == 3
+    assert len(lifted) == 1
     for row in lifted:
         assert row["convergence_claim_factor"] == pytest.approx(1.30)
         assert row["convergence"]["converging"] is True
