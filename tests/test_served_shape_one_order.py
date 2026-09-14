@@ -251,6 +251,9 @@ def test_the_compiler_applies_both_pinned_tables_through_the_one_function(
         _mixed_packet,
     )
 
+    # The installer expects one contest winner per cohort; the table layers
+    # are the same under either membership rule.
+    monkeypatch.setattr(native_ensemble_oos, "P0_MEMBERSHIP_MODE", "subset_contest")
     conn = sqlite3.connect(":memory:")
     _activate_non_identity_tables(conn)
     _install_mixed_cycle_calibrations(conn)

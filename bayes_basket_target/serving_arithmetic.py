@@ -239,10 +239,12 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
     "P0": {
         "calibrated_native_cross_ensemble_p0_v3": "2026-09-06T04:18:00Z",
         "calibrated_native_cross_ensemble_p0_v4": "2026-09-10T15:27:09Z",
+        "calibrated_native_cross_ensemble_p0_v5": "2026-09-14T04:09:49Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
         "p0m_taf_observed_v4": "2026-09-10T15:27:11Z",
+        "p0m_taf_observed_v5": "2026-09-14T04:09:49Z",
     },
 }
 

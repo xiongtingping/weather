@@ -57,6 +57,14 @@ from .table_as_of import (
     center_width_as_of,
     station_width_as_of,
 )
+from .stable_pool import (
+    P0_MEMBERSHIP_MODE,
+    P0_MEMBERSHIP_MODE_STABLE_POOL,
+    STABLE_POOL_KAPPA,
+    STABLE_POOL_WEIGHT_RULE,
+    pool_subsets,
+    stable_pool_weights,
+)
 from .served_shape import (
     SERVED_TABLE_LAYER_ORDER,
     BandLayer,
@@ -1712,6 +1720,10 @@ def _select_minimum_crps_subset(
     # contest ranked blends without it until 2026-09-13, so the seat went to
     # the blend that scored best under an arithmetic nobody serves.
     center_width_layer: CenterWidthLayer | None = None,
+    # Charter 134: ``stable_pool`` divides a pinned set's weight by the skill
+    # rule shrunk toward the family baseline, and the receipt says so.  Only
+    # meaningful with ``pinned_subset``: a pool is seated, never contested.
+    weight_mode: str = "skill",
     # Score exactly this subset and no other.  The contest still runs the
     # same holdout through the same served blend; only the enumeration is
     # narrowed, so a pinned subset is gated on precisely the math a contested
@@ -1750,6 +1762,10 @@ def _select_minimum_crps_subset(
     ordered = sorted(ready_system_ids)
     if len(ordered) > 8:
         raise ContractError("cross_native_ensemble_subset_space_too_large")
+    if weight_mode not in {"skill", P0_MEMBERSHIP_MODE_STABLE_POOL}:
+        raise ContractError("cross_native_ensemble_weight_mode_unknown")
+    if weight_mode == P0_MEMBERSHIP_MODE_STABLE_POOL and pinned_subset is None:
+        raise ContractError("cross_native_ensemble_stable_pool_requires_pinned_set")
     if pinned_subset is not None:
         pinned = sorted(str(value) for value in pinned_subset)
         if not pinned or not set(pinned).issubset(ordered):
@@ -1764,6 +1780,7 @@ def _select_minimum_crps_subset(
     best: tuple[Any, ...] | None = None
     best_weights: dict[str, float] | None = None
     best_weight_rule = SEAT_WEIGHT_RULE_INVERSE_RMSE
+    best_skill_rule = SEAT_WEIGHT_RULE_INVERSE_RMSE
     best_entry: dict[str, Any] | None = None
     for mask in masks:
         subset = [
@@ -1793,6 +1810,14 @@ def _select_minimum_crps_subset(
             )
         except ContractError:
             continue
+        skill_rule = weight_rule
+        if weight_mode == P0_MEMBERSHIP_MODE_STABLE_POOL:
+            weights = stable_pool_weights(
+                {s: float(weights.get(s, 0.0)) for s in subset},
+                {s: family_by_system[s] for s in subset},
+                kappa=STABLE_POOL_KAPPA,
+            )
+            weight_rule = STABLE_POOL_WEIGHT_RULE.upper()
         day_metrics = []
         for day in common_holdout:
             keys = set().union(*(
@@ -1872,6 +1897,7 @@ def _select_minimum_crps_subset(
             best = rank
             best_weights = weights
             best_weight_rule = weight_rule
+            best_skill_rule = skill_rule
             best_entry = entry
     if best_weights is None or best_entry is None:
         raise ContractError("cross_native_ensemble_no_scorable_subset")
@@ -1882,7 +1908,9 @@ def _select_minimum_crps_subset(
     ))
     receipt = {
         "rule": (
-            "SERVED_SET_REFIT_V1" if pinned_subset is not None
+            "STABLE_POOL_SEAT_V1"
+            if weight_mode == P0_MEMBERSHIP_MODE_STABLE_POOL
+            else "SERVED_SET_REFIT_V1" if pinned_subset is not None
             else "MIN_CRPS_EXACT_SHARED_HOLDOUT_SUBSET_V1"
         ),
         # Which rule divided the winner's weight.  A scope that fell back to
@@ -1890,6 +1918,13 @@ def _select_minimum_crps_subset(
         # fell back -- too few shared days for a covariance -- is exactly what
         # a reader chasing a stale-looking blend needs to see.
         "weight_rule": best_weight_rule,
+        **(
+            {
+                "skill_weight_rule": best_skill_rule,
+                "stable_pool_kappa": STABLE_POOL_KAPPA,
+            }
+            if weight_mode == P0_MEMBERSHIP_MODE_STABLE_POOL else {}
+        ),
         "evaluated_subset_count": len(scored),
         "winner": best_entry,
         "leaderboard": scored[:8],
@@ -4040,8 +4075,15 @@ def build_native_ensemble_oos(
     system_mask: Sequence[str] | None = None,
     max_event_date: str | None = None,
     tables_as_of_utc: str | None = None,
+    membership_mode: str | None = None,
 ) -> dict[str, Any]:
     """Build candidate artifacts; perform no writes.
+
+    ``membership_mode`` defaults to ``stable_pool.P0_MEMBERSHIP_MODE``.  Under
+    charter 134's ``stable_pool`` every cohort mints its whole pool and the
+    missing-member views ``pool_subsets`` names, each weighted by the shrunk
+    skill rule and certified on the cohort holdout with nothing chosen on it;
+    ``subset_contest`` is the rule it replaced.
 
     ``tables_as_of_utc`` scores the holdout under the band, centre/width and
     station-width tables that were active at that moment instead of now.  A
@@ -4322,6 +4364,10 @@ def build_native_ensemble_oos(
         if historical_event_date_cutoff is None
         else {}
     )
+    membership = str(membership_mode or P0_MEMBERSHIP_MODE)
+    if membership not in {P0_MEMBERSHIP_MODE_STABLE_POOL, "subset_contest"}:
+        raise ContractError("native_ensemble_oos_membership_mode_unknown")
+    pool_mode = membership == P0_MEMBERSHIP_MODE_STABLE_POOL
     cohort_tasks: list[tuple[str, str, Any, Any, Any, Any]] = []
     window_tasks: list[tuple[str, str, Any, Any, Any, Any]] = []
     served_set_tasks: list[tuple[str, str, Any, Any, Any, Any]] = []
@@ -4357,6 +4403,26 @@ def build_native_ensemble_oos(
             min_holdout_days=min_holdout_days,
             allowed_system_ids=system_mask,
         )
+        if pool_mode:
+            # Charter 134: no contest.  Each cohort seats its whole pool and
+            # the views a late member needs, every one certified on the same
+            # holdout with nothing picked on it.
+            for tasks, cohorts in (
+                (cohort_tasks, exact_cohorts), (window_tasks, window_cohorts)
+            ):
+                for cohort in cohorts:
+                    for subset in pool_subsets(
+                        [row[0] for row in cohort[1]],
+                        {
+                            row[0]: systems[row[0]]["independence_family_id"]
+                            for row in cohort[1]
+                        },
+                    ):
+                        tasks.append(
+                            (season_bin, lead_bucket, system_rows, ready_rows,
+                             cohort, subset)
+                        )
+            continue
         for cohort in exact_cohorts:
             cohort_tasks.append(
                 (season_bin, lead_bucket, system_rows, ready_rows, cohort,
@@ -4573,6 +4639,9 @@ def build_native_ensemble_oos(
                 for system_id, evaluation in rows
             },
             pinned_subset=pinned_subset,
+            weight_mode=(
+                P0_MEMBERSHIP_MODE_STABLE_POOL if pool_mode else "skill"
+            ),
         )
         if pinned_subset is None:
             contest_pick_by_cohort[cohort_key] = tuple(sorted(weights))
@@ -5095,7 +5164,8 @@ def build_native_ensemble_oos(
                    _json(sorted(str(value) for value in system_mask)))
                 + "::MAX_EXACT_SHARED_STRICT_HOLDOUT"
                 + (
-                    "::SERVED_SET_REFIT" if pinned_subset is not None
+                    "::STABLE_POOL_SEAT" if pool_mode
+                    else "::SERVED_SET_REFIT" if pinned_subset is not None
                     else "::MIN_CRPS_SUBSET"
                 )
             ),
@@ -6425,6 +6495,17 @@ def persist_native_ensemble_oos(
                         )
                         or "seat_weight_rule_unrecorded"
                     ).lower()
+                    # Charter 134: a pool seat names its shrinkage, so the
+                    # compile can tell a pool artifact from a contest one and
+                    # a later kappa never reads as this one.
+                    + (
+                        "::stable_pool_kappa="
+                        + f"{float((candidate.get('subset_selection') or {}).get('stable_pool_kappa')):g}"
+                        if (candidate.get("subset_selection") or {}).get(
+                            "stable_pool_kappa"
+                        ) is not None
+                        else ""
+                    )
                     + "::"
                     + candidate["threshold_profile"]
                     + "::cycle_scope="

@@ -84,6 +84,24 @@ from bayes_basket_target.taf_revision import (
 
 
 @pytest.fixture(autouse=True)
+def _contest_era_membership(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests pin the compile's mechanics on contest-era fixtures.
+
+    Riders, cycle lineage, freshness and the tri-to-pair fallback are the
+    compile's business under either membership rule, and the fixtures here
+    were written expecting one contest winner per cohort.  Charter 134 made
+    the stable pool the default; its own seats are covered in
+    tests/test_stable_pool_serving.py.
+    """
+
+    from bayes_basket_target import native_ensemble_oos as _oos
+    from bayes_basket_target import native_ensemble_p0 as _p0
+
+    monkeypatch.setattr(_oos, "P0_MEMBERSHIP_MODE", "subset_contest")
+    monkeypatch.setattr(_p0, "P0_MEMBERSHIP_MODE", "subset_contest")
+
+
+@pytest.fixture(autouse=True)
 def _map_the_fixture_station_season(monkeypatch: pytest.MonkeyPatch) -> None:
     """The fixtures compile station ``TEST``; station-local seasons (charter
     62, 2026-08-25) fail closed on an unmapped station, which turned every

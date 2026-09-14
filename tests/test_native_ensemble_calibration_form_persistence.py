@@ -112,7 +112,13 @@ def test_fit_declares_the_binned_form_well_formed() -> None:
 def test_evaluator_and_server_center_identically() -> None:
     """One resolver object, so the two centres cannot drift apart."""
 
-    assert p0._resolved_bias_c is oos._resolved_bias_c
+    # The compiler holds the evaluator's function, not a copy.  Compared by
+    # where it is defined rather than by identity: another test reloads the
+    # OOS module (charter 86's), which mints a new function object that the
+    # compiler's earlier import does not see, and identity then fails for a
+    # reason that has nothing to do with this contract.
+    assert p0._resolved_bias_c.__module__ == oos.__name__
+    assert p0._resolved_bias_c.__qualname__ == "_resolved_bias_c"
 
     parameters = oos._fit_parameters(_cases())
     values = [21.5, 22.0, 22.5]

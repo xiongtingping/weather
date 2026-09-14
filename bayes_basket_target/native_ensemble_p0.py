@@ -56,6 +56,11 @@ from .cross_consensus import (
     synoptic_cooling_index,
     bridged_cross_probability,
 )
+from .stable_pool import (
+    P0_MEMBERSHIP_MODE,
+    P0_MEMBERSHIP_MODE_STABLE_POOL,
+    STABLE_POOL_WEIGHT_RULE,
+)
 from .served_shape import (
     BandLayer,
     CenterWidthLayer,
@@ -116,7 +121,14 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # new incumbent veto took it out; served sigma goes back from 0.70 to about
 # 1.2 bucket steps.  Cells served under the 0.5 scale must not train the next
 # width fit, hence the bump, with its start declared at the deactivation.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v4"
+# v5: charter 134, the stable qualified pool.  Every OOS_READY native system
+# with a run sits, weights are the skill rule shrunk toward the family
+# baseline (kappa 0.5), and the subset contest no longer seats anything.  The
+# served distribution changes on every scope the contest seated a strict
+# subset for (88% of replayed updates), so the width, band and lambda lanes
+# must not keep training on contest-era cells; the start is declared at the
+# deploy in ``serving_arithmetic.STAGE_VERSION_EFFECTIVE_FROM``.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v5"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -1313,6 +1325,34 @@ def seated_evidence_received_at(
     return max(receipts)
 
 
+def _activation_rank(
+    item: tuple[Any, Sequence[str], Sequence[str], int],
+    *,
+    observed_set: set[str],
+    pool_first: bool,
+) -> tuple[Any, ...]:
+    """Sort key over compatible activations, highest first.
+
+    ``item`` is (activation row, seated system ids, cycle riders, same-run
+    fresh count).  Pool seat first under charter 134, then exact packet
+    match, fewest riders, freshest runs, latest activation, breadth,
+    generation, id.  See the comments at the call site for why each key sits
+    where it does.
+    """
+
+    row, member_ids, riders, fresh_count = item
+    return (
+        bool(pool_first) and STABLE_POOL_WEIGHT_RULE in str(row[15] or ""),
+        set(member_ids) == observed_set,
+        -len(riders),
+        int(fresh_count),
+        str(row[4] or ""),
+        len(member_ids),
+        int(row[3]),
+        str(row[0]),
+    )
+
+
 def compile_native_ensemble_p0(
     conn: sqlite3.Connection,
     *,
@@ -1699,7 +1739,8 @@ def compile_native_ensemble_p0(
         "r.run_cycle_by_system_json,"
         "r.run_cycle_by_system_sha256,"
         "r.selection_evidence_sha256,"
-        "r.content_sha256 "
+        "r.content_sha256,"
+        "r.combination_method "
         "FROM calibration_native_ensemble_activation a "
         "JOIN calibration_cross_native_ensemble_artifact r "
         "ON r.cross_ensemble_artifact_id=a.artifact_id "
@@ -1905,15 +1946,16 @@ def compile_native_ensemble_p0(
     # freshness, prefer the fit that seats the packet's freshest-run systems
     # at their own cycle -- the day's last ECMWF/GEFS run over yesterday's
     # split riders when both are zero-rider fits.
+    # Charter 134: under the stable pool, a pool seat outranks every contest
+    # artifact.  Contest rows stay valid for up to thirty days after the
+    # switch, and without this key an older pair that happens to match the
+    # packet would keep winning the scopes the OOS rotation has not reached
+    # yet -- or has reached, and minted the pool for.  Where no pool seat is
+    # compatible yet, the contest rows still serve rather than failing closed.
+    pool_first = P0_MEMBERSHIP_MODE == P0_MEMBERSHIP_MODE_STABLE_POOL
     compatible_activations.sort(
-        key=lambda item: (
-            set(item[1]) == observed_set,
-            -len(item[2]),
-            int(item[3]),
-            str(item[0][4] or ""),
-            len(item[1]),
-            int(item[0][3]),
-            str(item[0][0]),
+        key=lambda item: _activation_rank(
+            item, observed_set=observed_set, pool_first=pool_first
         ),
         reverse=True,
     )
@@ -1949,6 +1991,11 @@ def compile_native_ensemble_p0(
     # the same generation.
     if (
         len(activations) > 1
+        and (
+            STABLE_POOL_WEIGHT_RULE in str(activations[0][0][15] or "")
+        ) == (
+            STABLE_POOL_WEIGHT_RULE in str(activations[1][0][15] or "")
+        )
         and len(activations[0][1]) == len(activations[1][1])
         and set(activations[0][1]) == set(activations[1][1])
         and len(activations[0][2]) == len(activations[1][2])

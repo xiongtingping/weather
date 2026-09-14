@@ -20,18 +20,38 @@ So membership is a slow variable and weather is a fast one:
   so a few days of evidence cannot swing a system between full weight and
   none.
 
-These are pure functions.  Which skill weights feed them, and how strongly to
-shrink, is decided by the nested replay before any serving path reads them.
+Which skill weights feed these rules, and how strongly to shrink, was chosen
+by the nested replay (scripts/replay_p0_stable_pool.py, gate in
+scripts/aggregate_p0_stable_pool_replay.py) before any serving path read
+them.
 """
 from __future__ import annotations
 
 import math
+import os
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 
 from .contracts import ContractError
 
 STABLE_POOL_WEIGHT_RULE = "stable_pool_shrunk_skill_v1"
+# Which rule seats P0.  ``stable_pool`` is charter 134's; ``subset_contest``
+# is the rule it replaced, kept one switch away for a rollback.
+P0_MEMBERSHIP_MODE_STABLE_POOL = "stable_pool"
+P0_MEMBERSHIP_MODE_SUBSET_CONTEST = "subset_contest"
+P0_MEMBERSHIP_MODES = (
+    P0_MEMBERSHIP_MODE_STABLE_POOL,
+    P0_MEMBERSHIP_MODE_SUBSET_CONTEST,
+)
+P0_MEMBERSHIP_MODE = os.environ.get(
+    "P0_MEMBERSHIP_MODE", P0_MEMBERSHIP_MODE_STABLE_POOL
+).strip() or P0_MEMBERSHIP_MODE_STABLE_POOL
+if P0_MEMBERSHIP_MODE not in P0_MEMBERSHIP_MODES:
+    raise RuntimeError(f"unknown P0_MEMBERSHIP_MODE: {P0_MEMBERSHIP_MODE}")
+# The served shrinkage.  The nested replay chose kappa on earlier days for
+# each update; across 7,714 updates it landed on 0.25 (40%), 0.5 (45%), 0.75
+# (12%) and 1.0 (3%), and 0.5 alone scores -4.86% CRPS against the contest.
+STABLE_POOL_KAPPA = 0.5
 # Candidate shrinkage strengths the replay chooses among.  0 serves the skill
 # weights untouched; 1 serves the family-balanced baseline.
 STABLE_POOL_KAPPA_GRID = (0.0, 0.25, 0.5, 0.75, 1.0)
@@ -135,3 +155,41 @@ def stable_pool_weights(
 
     baseline = family_balanced_weights(list(skill_weights), family_by_system)
     return shrink_toward_baseline(skill_weights, baseline, kappa=kappa)
+
+
+def pool_subsets(
+    system_ids: Sequence[str],
+    family_by_system: Mapping[str, str],
+) -> list[tuple[str, ...]]:
+    """The seat sets a cohort mints: the whole pool and its missing-member views.
+
+    The compile can only serve an artifact whose systems all have a run in
+    the packet, so a pool with one member late needs the view without it
+    already certified.  Minted: the whole pool, every view missing exactly one
+    member, and every pair when the pool has three.  Each must span two
+    families.  A four-system pool mints five sets, not eleven: the views a
+    packet two members short would need are rare and fall back to the next
+    broadest set the compile finds.
+    """
+
+    ordered = tuple(sorted(set(str(value) for value in system_ids)))
+    candidates: list[tuple[str, ...]] = [ordered]
+    if len(ordered) >= 3:
+        candidates.extend(
+            tuple(member for member in ordered if member != dropped)
+            for dropped in ordered
+        )
+    if len(ordered) == 3:
+        candidates.extend(
+            (a, b) for index, a in enumerate(ordered) for b in ordered[index + 1:]
+        )
+    seen: set[tuple[str, ...]] = set()
+    out: list[tuple[str, ...]] = []
+    for subset in candidates:
+        if subset in seen or len(subset) < 2:
+            continue
+        if len({family_by_system[member] for member in subset}) < MIN_POOL_FAMILIES:
+            continue
+        seen.add(subset)
+        out.append(subset)
+    return out

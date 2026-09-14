@@ -1172,7 +1172,9 @@ def materialize_p0m_observed(
     # same declared start in ``serving_arithmetic.STAGE_VERSION_EFFECTIVE_FROM``.
     # v4: the station width table retired 2026-09-10T15:27Z (see the P0 v4
     # note); same moment, same declared start.
-    posterior_version: str = "p0m_taf_observed_v4",
+    # v5: charter 134 changed the P0 root this stage is built on (see the
+    # P0 v5 note); same deploy, same declared start.
+    posterior_version: str = "p0m_taf_observed_v5",
     observed_hard_excluded_buckets: Sequence[str] = (),
     observed_running_high_c: float | None = None,
     band_table: tuple[
