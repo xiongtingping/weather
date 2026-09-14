@@ -97,6 +97,16 @@ while [ $# -gt 0 ]; do
     *)            REASON="$1"; shift ;;
   esac
 done
+# The cooldown and the queue exist for the resident's rotation cursor, and
+# only a restart of the resident spends it.  Until 2026-09-14 ``--only
+# clob_order_service`` still stamped the cooldown clock and marked every
+# queued request served -- requests that were waiting for the resident to
+# pick up Python changes the order service never loads -- so the next session
+# would have found its change "served" by a restart that did not include it.
+# A restart that leaves the resident alone serves only its own request and
+# leaves the clock where it was.
+RESIDENT_IN_SCOPE=0
+case " ${LABELS[*]} " in *" com.weather.weather_basket_yes "*) RESIDENT_IN_SCOPE=1 ;; esac
 if [ "$FORCE" = "1" ] && [ "$QUEUE_ONLY" = "1" ]; then
   echo "restart_resident: --force and --queue-only contradict each other" >&2
   exit 2
@@ -187,7 +197,7 @@ if [ "$QUEUE_ONLY" = "1" ]; then
 fi
 
 LE="$(last_epoch)"; NOW="$(epoch)"; ELAPSED=$(( NOW - LE ))
-if [ "$FORCE" != "1" ] && [ "$ELAPSED" -lt "$COOLDOWN_SEC" ]; then
+if [ "$FORCE" != "1" ] && [ "$RESIDENT_IN_SCOPE" = "1" ] && [ "$ELAPSED" -lt "$COOLDOWN_SEC" ]; then
   echo "queued: $(( COOLDOWN_SEC - ELAPSED ))s of cooldown remain."
   echo "Your change lands on the next restart; whoever takes it serves this request too."
   echo "  scripts/restart_resident.sh --pending      # see the queue"
@@ -201,7 +211,11 @@ try: print(json.load(open(sys.argv[1])).get("pid") or 0)
 except Exception: print(0)
 PY
 )"
-echo "restarting ${LABELS[*]} -- serving every queued request"
+if [ "$RESIDENT_IN_SCOPE" = "1" ]; then
+  echo "restarting ${LABELS[*]} -- serving every queued request"
+else
+  echo "restarting ${LABELS[*]} -- resident untouched, queue and cooldown left as they are"
+fi
 # kickstart -k is the primitive that works; targetctl.sh restart is not used
 # here because its stop step times out non-zero under set -e and leaves the
 # other two services down (measured twice, 2026-09-06).  It also reinstalls,
@@ -255,6 +269,7 @@ raise SystemExit(1)
 PY
 ;; esac
 
+if [ "$RESIDENT_IN_SCOPE" = "1" ]; then
 epoch > "$LAST"; now_utc > "$LAST.iso"
 python3 - "$JOURNAL" "$(now_utc)" <<'PY'
 import json,sys
@@ -266,6 +281,19 @@ for r in rows:
 open(path,"w").write("".join(json.dumps(r,ensure_ascii=False)+"\n" for r in rows))
 print("served %d queued request(s)" % n)
 PY
+else
+python3 - "$JOURNAL" "$(now_utc)" "$REQ_AT" "$REASON" <<'PY'
+import json,sys
+path,served,req_at,reason=sys.argv[1:5]
+rows=[json.loads(l) for l in open(path) if l.strip()]
+for r in rows:
+    if r.get("served_at_utc") is None and r.get("requested_at_utc")==req_at and r.get("reason")==reason:
+        r["served_at_utc"]=served
+open(path,"w").write("".join(json.dumps(r,ensure_ascii=False)+"\n" for r in rows))
+left=sum(1 for r in rows if r.get("served_at_utc") is None)
+print("resident not restarted: served this request only; %d queued request(s) still wait for the resident" % left)
+PY
+fi
 
 report_pause_flag
 # A restart launchd did not take is a failure.  A restart it took whose
