@@ -1235,6 +1235,61 @@ def collect_band_stages(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return stages
 
 
+def _band_chain_link(conn: sqlite3.Connection) -> tuple[str | None, str]:
+    """When the band lane last ran, and what it concluded, for the chain card.
+
+    The card used to read the newest row of the band TABLE, which is written
+    only when a stage's factors change.  A stage that is accumulating
+    evidence writes no table on purpose -- the served one stands until ten
+    qualifying days are in -- so the card went red over a lane doing exactly
+    what it should: measured 2026-09-14, "3.2 天没有新记录" while the refit had
+    run the previous morning and journalled every stage ACCUMULATING (P0 3,
+    P0-M 3, P1 6 of 10 days).  The journal is written on every run whatever
+    the outcome, so its newest row is the lane's heartbeat and the stages'
+    latest rows are its verdict.
+    """
+
+    if not _table_exists(conn, "calibration_band_reliability_table"):
+        return None, "未建表"
+    versions = int(conn.execute(
+        "SELECT COUNT(*) FROM calibration_band_reliability_table"
+    ).fetchone()[0])
+    if not _table_exists(conn, "calibration_band_reliability_fit_journal"):
+        table_latest = conn.execute(
+            "SELECT MAX(fitted_at_utc) FROM calibration_band_reliability_table"
+        ).fetchone()[0]
+        return table_latest, f"{versions} 个版本"
+    from bayes_basket_target.band_reliability_store import (  # noqa: PLC0415
+        MIN_QUALIFYING_DAYS,
+    )
+
+    rows = conn.execute(
+        "SELECT j.stage, j.fitted_at_utc, j.outcome, j.serving_day_count"
+        " FROM calibration_band_reliability_fit_journal j"
+        " WHERE j.fitted_at_utc = ("
+        "   SELECT MAX(k.fitted_at_utc)"
+        "   FROM calibration_band_reliability_fit_journal k"
+        "   WHERE k.stage = j.stage"
+        " )"
+        " ORDER BY j.stage"
+    ).fetchall()
+    if not rows:
+        table_latest = conn.execute(
+            "SELECT MAX(fitted_at_utc) FROM calibration_band_reliability_table"
+        ).fetchone()[0]
+        return table_latest, f"{versions} 个版本"
+    latest = max(str(row[1]) for row in rows)
+    accumulating = [
+        f"{row[0]} {int(row[3] or 0)}/{MIN_QUALIFYING_DAYS}"
+        for row in rows
+        if str(row[2] or "").upper() == "ACCUMULATING"
+    ]
+    volume = f"{versions} 个版本"
+    if accumulating:
+        volume += "；攒证据中（现役表照常服务）：" + "、".join(accumulating) + " 天"
+    return latest, volume
+
+
 def collect_chain(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     """Each link of the live chain, newest evidence and whether it moved."""
 
@@ -1306,17 +1361,12 @@ def collect_chain(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         30,
         72,
     )
-    band = None
-    if _table_exists(conn, "calibration_band_reliability_table"):
-        band = conn.execute(
-            "SELECT MAX(fitted_at_utc), COUNT(*)"
-            " FROM calibration_band_reliability_table"
-        ).fetchone()
+    latest, volume = _band_chain_link(conn)
     add(
         "④ 概率分档校准",
         "对最终概率数字本身的可信度做修正",
-        None if band is None else band[0],
-        "未建表" if band is None else f"{band[1]} 个版本",
+        latest,
+        volume,
         30,
         72,
     )
