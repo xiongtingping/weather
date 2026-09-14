@@ -5191,7 +5191,7 @@ def _center_landing_seat(
         from bayes_basket_target.delta_v2_runtime import (
             LADDER_CENTER_DEFINITION,
             _alternate_ladder_center,
-            seat_shape_skew_reading,
+            _skew_extension_sign,
             seat_shape_windows_v1,
         )
     except ImportError:
@@ -5220,7 +5220,7 @@ def _center_landing_seat(
             probabilities=probabilities,
             ordinals=ordinals,
         ) or centre
-    sign, mode_ordinal = seat_shape_skew_reading(probabilities, ordinals)
+    sign = _skew_extension_sign(probabilities, ordinals)
     live = {ordinals[bucket] for bucket in admitted}
     _shapes, audit = seat_shape_windows_v1(
         centre_ordinal=ordinals[centre],
@@ -14573,8 +14573,7 @@ function centreLanding(){
   <div class="why"><b>为什么量这个：</b>席位以均值桶为心（宪章 54/75），
   形状由三态读数钉死（宪章 131，门槛 ${rule.skew_threshold_sigma == null ?
     "0.35" : rule.skew_threshold_sigma}σ）：
-  对称日坐均值桶±1；偏斜日坐 {均值桶, 尾侧一格, 尾侧两格}，众数桶不在座位里——
-  除非众数就是均值桶的邻桶，那时座位朝众数那一侧、把它包进来（宪章 135）。
+  对称日坐均值桶±1；偏斜日坐 {均值桶, 尾侧一格, 尾侧两格}，众数桶不在座位里。
   整篮经济门拿去和价格比的是这个窗口的有效质量 λ(a)·p，
   所以“真值能不能被这个窗兼住”直接决定了这一天的席位值不值。<br>
   <b>怎么读：</b>偏差是平均落点减均值，正数表示实际比模型说的热；
@@ -14736,8 +14735,8 @@ function liveOrderCard(L){
   // not by which way the page happens to draw the ladder.
   const SKEW_LABEL = {
     SYMMETRIC: ["对称日", "均值与众数相差不到 0.35 σ —— 宪章 131 把席位定为均值桶±1"],
-    RIGHT_SKEWED: ["右偏 · 暖尾", "均值在众数之上超过 0.35 σ：席位为 {均值桶, 尾侧一格(, 尾侧两格)}；众数隔均值桶两格及以上时在窗外，众数紧挨均值桶时座位改朝众数一侧（宪章 135）"],
-    LEFT_SKEWED: ["左偏 · 冷尾", "均值在众数之下超过 0.35 σ：席位为 {均值桶, 尾侧一格(, 尾侧两格)}；众数隔均值桶两格及以上时在窗外，众数紧挨均值桶时座位改朝众数一侧（宪章 135）"],
+    RIGHT_SKEWED: ["右偏 · 暖尾", "均值在众数之上超过 0.35 σ：席位为 {均值桶, 尾侧一格(, 尾侧两格)}，众数桶在窗外"],
+    LEFT_SKEWED: ["左偏 · 冷尾", "均值在众数之下超过 0.35 σ：席位为 {均值桶, 尾侧一格(, 尾侧两格)}，众数桶在窗外"],
   };
   // Charter 131: the windows the day was allowed, as the plan recorded them
   // (ordinal sets, widest first).
