@@ -293,7 +293,11 @@ from bayes_basket_target.production import (  # noqa: E402
     # Charter 127 (二): the venue's own floor on a GTD's life.  Production
     # names it because a belief with seconds left would otherwise mint an
     # order the gateway refuses; this lane reads the same number so the two
-    # cannot come to disagree about what the venue accepts.
+    # cannot come to disagree about what the venue accepts.  The signing
+    # margin rides with it: production signs the floor plus the margin, so
+    # the order this lane books lives exactly as long as the one production
+    # would have sent.
+    GTD_SIGNING_MARGIN_SECONDS,
     VENUE_GTD_MINIMUM_HORIZON_SECONDS,
 )
 from bayes_basket_target.production_io import (  # noqa: E402
@@ -6707,7 +6711,10 @@ def _resting_deadline(
         # The matching engine's own grace is the floor charter 127 (二)
         # names, so the order gets that and no more.
         belief = (
-            placed + timedelta(seconds=VENUE_GTD_MINIMUM_HORIZON_SECONDS)
+            placed + timedelta(
+                seconds=VENUE_GTD_MINIMUM_HORIZON_SECONDS
+                + GTD_SIGNING_MARGIN_SECONDS
+            )
         ).isoformat().replace("+00:00", "Z")
     named = [
         (bound, name)

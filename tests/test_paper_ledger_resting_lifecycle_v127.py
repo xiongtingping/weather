@@ -133,8 +133,16 @@ def test_a_belief_already_stale_at_placement_gets_the_venues_grace() -> None:
     assert module.VENUE_GTD_MINIMUM_HORIZON_SECONDS is (
         VENUE_GTD_MINIMUM_HORIZON_SECONDS
     )
-    assert VENUE_GTD_MINIMUM_HORIZON_SECONDS == 60.0
-    assert deadline == "2026-09-10T02:01:00Z"
+    # The venue's documented three minutes (60 until 2026-09-14), plus what
+    # production signs above it so transit cannot cross the floor.
+    from bayes_basket_target.production import (  # noqa: PLC0415
+        GTD_SIGNING_MARGIN_SECONDS,
+    )
+
+    assert VENUE_GTD_MINIMUM_HORIZON_SECONDS == 180.0
+    assert module.GTD_SIGNING_MARGIN_SECONDS is GTD_SIGNING_MARGIN_SECONDS
+    assert GTD_SIGNING_MARGIN_SECONDS == 30.0
+    assert deadline == "2026-09-10T02:03:30Z"
 
 
 def test_the_served_belief_is_the_newest_one_at_or_before_placement() -> None:

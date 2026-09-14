@@ -66,11 +66,20 @@ def _aware(value: Any) -> datetime:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-# The matching engine removes an expiring order a minute after its stamp, so
-# an expiry inside that window is one it may never act on.  The gateway
-# enforces the same floor; naming it here keeps a belief with seconds left
-# from minting an order the venue would refuse.
-VENUE_GTD_MINIMUM_HORIZON_SECONDS = 60.0
+# The venue's own floor on a GTD expiry.  Its order docs (read 2026-09-14,
+# docs.polymarket.com/developers/CLOB/orders/create-order): the expiration
+# "must be at least 3 minutes in the future", and the order stops one minute
+# before its stamp.  This read 60 until then -- the one-minute threshold taken
+# for the minimum -- so a belief with under three minutes left would have
+# minted an order the venue refuses (0 of 512 GTD intents had come near it:
+# the shortest belief-bounded horizon was 36 minutes).  The gateway enforces
+# the same number.
+VENUE_GTD_MINIMUM_HORIZON_SECONDS = 180.0
+# What production signs above that floor.  The gateway checks the expiry
+# against its own clock when the order arrives, up to the intent's three-second
+# execution deadline after the compile stamped it, so an expiry signed at
+# exactly the floor is refused in transit.
+GTD_SIGNING_MARGIN_SECONDS = 30.0
 
 
 from .delta_v2_runtime import (
@@ -132,7 +141,11 @@ def _venue_order_fields(
         # decision moment, the plan recomputes and re-posts what it still
         # wants at the anchor that stands then.
         fresh = _aware(belief_fresh_until_utc) if belief_fresh_until_utc else None
-        floor = stamped.timestamp() + VENUE_GTD_MINIMUM_HORIZON_SECONDS
+        floor = (
+            stamped.timestamp()
+            + VENUE_GTD_MINIMUM_HORIZON_SECONDS
+            + GTD_SIGNING_MARGIN_SECONDS
+        )
         if fresh is not None:
             expiry = max(fresh.timestamp(), floor)
             fields["expiration_basis"] = (

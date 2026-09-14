@@ -414,11 +414,13 @@ function env(name, fallback = "") {
   return value === undefined || value === null || value === "" ? fallback : String(value);
 }
 
-// The matching engine removes an expiring order a minute after its stamp, so
-// an expiry inside that window is one it may never act on.  The floor is that
-// grace, not a policy: policy is the caller's horizon, which arrives on the
-// payload.
-const GTD_MINIMUM_HORIZON_SECONDS = 60;
+// The venue's floor on a GTD expiry, not a policy: policy is the caller's
+// horizon, which arrives on the payload.  Its order docs (read 2026-09-14):
+// the expiration "must be at least 3 minutes in the future", and the order
+// stops one minute before its stamp.  This read 60 -- the one-minute threshold
+// taken for the minimum -- until then.  Production signs 30 seconds above it
+// (bayes_basket_target/production.py) so transit cannot cross it.
+const GTD_MINIMUM_HORIZON_SECONDS = 180;
 
 function truthy(value, fallback = false) {
   if (value === undefined || value === null || value === "") return Boolean(fallback);
