@@ -40,6 +40,16 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# This file as it stood when the process loaded it, for the section cache's
+# fingerprints -- see ``_loaded_source``.  Read once, here, before any render
+# work starts.
+try:
+    _LOADED_SOURCE_LINES: list[str] = Path(__file__).read_text(
+        encoding="utf-8"
+    ).splitlines(keepends=True)
+except OSError:  # pragma: no cover - a module that cannot read itself
+    _LOADED_SOURCE_LINES = []
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 if str(Path(__file__).resolve().parent) not in sys.path:
@@ -5529,12 +5539,9 @@ def _center_landing_rule() -> dict[str, Any]:
 
 
 def _center_landing_salt() -> str:
-    try:
-        helpers = inspect.getsource(_center_landing_seat) + inspect.getsource(
-            _center_landing_group
-        )
-    except (OSError, TypeError):
-        helpers = ""
+    helpers = _loaded_source(_center_landing_seat) + _loaded_source(
+        _center_landing_group
+    )
     return json.dumps(_center_landing_rule(), sort_keys=True) + helpers
 
 
@@ -9389,6 +9396,45 @@ SECTION_CACHE_ENABLED = True
 _SECTION_CACHE_LOG: dict[str, dict[str, Any]] = {}
 
 
+def _loaded_source(obj: Any) -> str:
+    """The source of ``obj`` as this process loaded it, never as the disk has it now.
+
+    ``inspect.getsource`` re-reads the file whenever its mtime has moved and
+    slices it at the line numbers the running code was compiled with.  A render
+    takes forty minutes, and this file is edited by several sessions a day, so
+    an edit landing mid-render handed the fingerprint a slice of the NEW file at
+    the OLD offsets: a fragment that fails to tokenize and kills the render
+    (2026-09-14: the 05:56Z run died on ``TokenError`` at 06:11Z, minutes after
+    an edit to this file, and the page fell 91 minutes behind), or one that
+    happens to parse and fingerprints the wrong function, which misses every
+    cache and makes the render slower.
+
+    A function defined in this module is sliced from the snapshot taken at
+    import, whose line numbers are the running code's own.  Anything else goes
+    through ``inspect`` and, if that fails for any reason, through its repr --
+    a fingerprint is a cache key, and a render must never die computing one.
+    """
+
+    code = getattr(obj, "__code__", None)
+    if (
+        code is not None
+        and _LOADED_SOURCE_LINES
+        and getattr(obj, "__globals__", None) is globals()
+    ):
+        start = int(code.co_firstlineno) - 1
+        if 0 <= start < len(_LOADED_SOURCE_LINES):
+            try:
+                return "".join(
+                    inspect.getblock(_LOADED_SOURCE_LINES[start:])
+                )
+            except Exception:  # noqa: BLE001 - a cache key, never a failure
+                pass
+    try:
+        return inspect.getsource(obj)
+    except Exception:  # noqa: BLE001 - a cache key, never a failure
+        return repr(obj)
+
+
 def _section_fingerprint(collector: Any, salt: str = "") -> str:
     """What the cached value was computed from, as one hash.
 
@@ -9400,10 +9446,7 @@ def _section_fingerprint(collector: Any, salt: str = "") -> str:
     Callers pass those in as ``_salt``.
     """
 
-    try:
-        source = inspect.getsource(collector)
-    except (OSError, TypeError):
-        source = repr(collector)
+    source = _loaded_source(collector)
     return hashlib.sha256(
         f"{SECTION_CACHE_EPOCH}\n{salt}\n{source}".encode("utf-8")
     ).hexdigest()
@@ -9742,7 +9785,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
             # The thermometer's arithmetic lives in a helper the fingerprint
             # cannot see; without this a change to it keeps serving the
             # retired shape for the section's whole lifetime.
-            _salt=inspect.getsource(_claim_edge_calibration),
+            _salt=_loaded_source(_claim_edge_calibration),
         ),
         "valuation_lane": _cached_section(
             "valuation_lane", collect_valuation_lane, conn
