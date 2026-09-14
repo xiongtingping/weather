@@ -177,6 +177,8 @@ from .market_registry import (
     export_shared_live_registry,
     ingest_target_market_registry,
     load_started_registry_rows,
+    registry_eligible_scopes,
+    registry_scope_timezone_triples,
 )
 from .official_nwp_capture_scheduler import (
     MAX_DISCOVERED_SCOPES,
@@ -2816,6 +2818,34 @@ def _decision_scope_event_date_floor(as_of_utc: str) -> str:
     ).isoformat()
 
 
+def _settlement_day_open_in_every_zone(
+    event_date: str, zones: Collection[str], as_of: datetime
+) -> bool:
+    """Whether every named timezone still has ``event_date`` open at ``as_of``.
+
+    The truth materializer skips a scope while ``as_of`` is before the end of
+    its settlement day in the registry's timezone.  This answers the same
+    comparison for every timezone the registry has ever named for the scope,
+    and only says "open" when all of them agree -- a scope with no usable zone,
+    or one zone saying closed, is left for the materializer to decide.
+    """
+
+    usable = [zone for zone in zones if zone]
+    if not usable:
+        return False
+    for zone in usable:
+        try:
+            end = datetime.fromisoformat(
+                str(settlement_day_window(event_date, zone)["target_day_end_utc"])
+                .replace("Z", "+00:00")
+            )
+        except Exception:  # noqa: BLE001 - undecidable here; the materializer decides
+            return False
+        if as_of >= end:
+            return False
+    return True
+
+
 def _scope_manifest_station_day(item: Mapping[str, Any]) -> tuple[str, str]:
     """The ``(STATION, event_date)`` one scope manifest describes.
 
@@ -5297,41 +5327,70 @@ class TargetProductionWorker:
                 - timedelta(days=TRUTH_INCREMENT_WINDOW_DAYS)
             ).date()
         )
+        # Who is owed a truth row: a registry scope that some snapshot called
+        # eligible, inside the window, with no accepted truth yet -- the same
+        # question as always, asked without reading the registry table.
+        #
+        # It was one statement over the whole registry, and no index let it
+        # avoid reading every row's table page: 23-25s on 2026-09-14, every
+        # cycle this stage ran.  It also handed back the scopes it could never
+        # write -- today's and the listed days, whose settlement days have not
+        # closed -- and they sort first once the older days all hold truth, so
+        # the stage spent 43-204 seconds a turn asking twelve of them and
+        # recording ``skipped_open_settlement_day`` twelve times.  Both halves
+        # now come from the per-snapshot registry answers, and a scope whose
+        # day is still open in every timezone the registry has named for it is
+        # set aside before the cap rather than after it: the materializer would
+        # skip it on that same comparison, so nothing it could write is lost,
+        # and a closed day behind it is no longer kept waiting.
         try:
-            pending = self.commit_conn.execute(
-                "SELECT r.station_id, r.event_date"
-                " FROM (SELECT DISTINCT station_id, event_date"
-                "       FROM basket_target_market_registry"
-                "       WHERE source_eligible=1 AND event_date>=?) r"
-                " LEFT JOIN (SELECT DISTINCT station_id, local_date"
-                "       FROM calibration_station_daily_high_truth"
-                "       WHERE qc_status='ACCEPTED') t"
-                "  ON t.station_id=r.station_id"
-                " AND t.local_date=r.event_date"
-                " WHERE t.station_id IS NULL"
-                " ORDER BY r.event_date, r.station_id LIMIT ?",
-                (window_start, TRUTH_INCREMENT_MAX_SCOPES),
-            ).fetchall()
-        except sqlite3.OperationalError as exc:
-            return {
-                "state": "PROBE_FAILED",
-                "reason": f"{type(exc).__name__}:{str(exc)[:160]}",
-                **boundary,
-            }
-        # The probe above finds any registry row that ever said eligible.  The
-        # sweep asks the same question and has to get the same answer, or the
-        # two engines disagree about who is owed a truth row: a scope the
-        # registry has since stopped admitting would leave the sweep and come
-        # straight back here.  See ``registry_scope_still_eligible``.
-        try:
-            pending = [
-                scope for scope in pending
-                if registry_scope_still_eligible(
-                    self.commit_conn,
-                    station_id=str(scope[0]),
-                    event_date=str(scope[1]),
+            truth_scopes = {
+                (str(row[0]), str(row[1]))
+                for row in self.commit_conn.execute(
+                    "SELECT DISTINCT station_id, local_date"
+                    " FROM calibration_station_daily_high_truth"
+                    " WHERE qc_status='ACCEPTED' AND local_date>=?",
+                    (window_start,),
                 )
-            ]
+            }
+            eligible = registry_eligible_scopes(self.commit_conn)
+            zones_by_scope: dict[tuple[str, str], set[str]] = {}
+            for zone_station, zone_day, zone in (
+                registry_scope_timezone_triples(self.commit_conn)
+            ):
+                zones_by_scope.setdefault(
+                    (str(zone_station), str(zone_day)), set()
+                ).add(str(zone or ""))
+            as_of_clock = datetime.fromisoformat(
+                as_of_utc.replace("Z", "+00:00")
+            ).astimezone(timezone.utc)
+            pending: list[tuple[str, str]] = []
+            not_closed = 0
+            for day, station in sorted(
+                (str(day), str(station))
+                for station, day in eligible
+                if station is not None and day is not None
+            ):
+                if day < window_start or (station, day) in truth_scopes:
+                    continue
+                if _settlement_day_open_in_every_zone(
+                    day, zones_by_scope.get((station, day), set()), as_of_clock
+                ):
+                    not_closed += 1
+                    continue
+                # The probe above finds any registry row that ever said
+                # eligible.  The sweep asks the same question and has to get
+                # the same answer, or the two engines disagree about who is
+                # owed a truth row: a scope the registry has since stopped
+                # admitting would leave the sweep and come straight back here.
+                # See ``registry_scope_still_eligible``.
+                if not registry_scope_still_eligible(
+                    self.commit_conn, station_id=station, event_date=day
+                ):
+                    continue
+                pending.append((station, day))
+                if len(pending) >= TRUTH_INCREMENT_MAX_SCOPES:
+                    break
         except sqlite3.OperationalError as exc:
             return {
                 "state": "PROBE_FAILED",
@@ -5382,6 +5441,8 @@ class TargetProductionWorker:
             "checked_at_utc": as_of_utc,
             "window_start": window_start,
             "backlog": len(pending),
+            # Owed a row but not yet writable: the settlement day is still open.
+            "not_closed_scope_count": not_closed,
             "outcomes": outcomes,
             "refusals": refusals,
             "committed_scopes": committed[:12],

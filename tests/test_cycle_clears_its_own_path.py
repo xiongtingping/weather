@@ -128,13 +128,22 @@ def test_preclear_runs_the_policy_and_stamps_the_throttle(monkeypatch) -> None:
 
 def _target_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
+    # The registry as production holds it: rows under a snapshot, with the
+    # settlement timezone the increment reads to set aside days still open.
+    conn.execute(
+        "CREATE TABLE basket_target_market_registry_snapshot ("
+        " snapshot_sha256 TEXT PRIMARY KEY)"
+    )
     conn.execute(
         # ``refreshed_at`` is not decoration here: the increment asks the
         # registry's latest word on a scope, not whether any row ever said
         # eligible, so a fixture without it is a fixture the probe cannot read.
         "CREATE TABLE basket_target_market_registry ("
-        " station_id TEXT, event_date TEXT, source_eligible INTEGER,"
-        " refreshed_at TEXT)"
+        " snapshot_sha256 TEXT, station_id TEXT, event_date TEXT,"
+        " settlement_timezone TEXT, source_eligible INTEGER, refreshed_at TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO basket_target_market_registry_snapshot VALUES ('s1')"
     )
     conn.execute(
         "CREATE TABLE calibration_station_daily_high_truth ("
@@ -148,7 +157,7 @@ def test_truth_increment_materializes_only_the_missing(monkeypatch) -> None:
     target = _target_conn()
     target.executemany(
         "INSERT INTO basket_target_market_registry"
-        " VALUES (?,?,1,'2026-08-30T00:00:00Z')",
+        " VALUES ('s1',?,?,'America/New_York',1,'2026-08-30T00:00:00Z')",
         [("KMIA", "2026-08-29"), ("ZBAA", "2026-08-29")],
     )
     target.execute(
@@ -179,7 +188,7 @@ def test_truth_increment_refusal_does_not_end_the_pass(monkeypatch) -> None:
     target = _target_conn()
     target.executemany(
         "INSERT INTO basket_target_market_registry"
-        " VALUES (?,?,1,'2026-08-30T00:00:00Z')",
+        " VALUES ('s1',?,?,'America/New_York',1,'2026-08-30T00:00:00Z')",
         [("AAAA", "2026-08-29"), ("BBBB", "2026-08-29")],
     )
     worker.commit_conn = target
@@ -210,7 +219,7 @@ def test_truth_increment_is_bounded_per_cycle(monkeypatch) -> None:
     target = _target_conn()
     target.executemany(
         "INSERT INTO basket_target_market_registry"
-        " VALUES (?,?,1,'2026-08-30T00:00:00Z')",
+        " VALUES ('s1',?,?,'America/New_York',1,'2026-08-30T00:00:00Z')",
         [(f"S{i:03d}", "2026-08-29") for i in range(40)],
     )
     worker.commit_conn = target

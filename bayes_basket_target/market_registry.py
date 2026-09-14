@@ -761,13 +761,63 @@ def load_active_registry_rows(
     return result
 
 
-# Per snapshot: the distinct (station, event_date, settlement_timezone) triples
-# its rows carry, for ``registry_scope_timezone_triples``.  Keyed by database
-# file, so two databases never share an answer; in-memory databases are never
-# stored.
-_SNAPSHOT_SCOPE_TIMEZONES: dict[
-    tuple[str, str], frozenset[tuple[Any, Any, Any]]
-] = {}
+# Per snapshot and per question: the distinct rows one snapshot's registry
+# copy gives for that question, for ``_union_over_snapshots``.  Keyed by
+# (database file, question, snapshot), so two databases never share an answer;
+# in-memory databases are never stored.
+_SNAPSHOT_ANSWERS: dict[tuple[str, str, str], frozenset[tuple[Any, ...]]] = {}
+
+_SCOPE_TIMEZONE_QUESTION = (
+    "SELECT DISTINCT station_id,event_date,settlement_timezone "
+    f"FROM {TABLE} WHERE snapshot_sha256=?"
+)
+_ELIGIBLE_SCOPE_QUESTION = (
+    "SELECT DISTINCT station_id,event_date "
+    f"FROM {TABLE} WHERE snapshot_sha256=? AND source_eligible=1"
+)
+
+
+def _union_over_snapshots(
+    conn: sqlite3.Connection, question: str
+) -> set[tuple[Any, ...]]:
+    """The union of ``question`` over every snapshot the registry still holds.
+
+    ``question`` is a DISTINCT read of one snapshot (``snapshot_sha256=?``).
+    The registry is a union of content-addressed snapshots: a snapshot's rows
+    are written in the same transaction as its snapshot row, re-ingesting an
+    existing snapshot returns before inserting anything, and retention removes
+    a snapshot's rows whole and never brings them back.  So one snapshot's
+    answer never changes while it has rows, and the union over the snapshot
+    table equals the same DISTINCT over the whole table.  Each snapshot is read
+    once and remembered; a remembered snapshot costs one existence seek, and
+    one whose rows are gone stops contributing.
+    """
+
+    try:
+        database = str(conn.execute("PRAGMA database_list").fetchone()[2] or "")
+    except (sqlite3.Error, TypeError, IndexError):
+        database = ""
+    remember = bool(database)
+    answer: set[tuple[Any, ...]] = set()
+    for (sha,) in conn.execute(
+        f"SELECT snapshot_sha256 FROM {SNAPSHOT_TABLE}"
+    ).fetchall():
+        key = (database, question, str(sha))
+        known = _SNAPSHOT_ANSWERS.get(key) if remember else None
+        if known is None:
+            known = frozenset(
+                tuple(row) for row in conn.execute(question, (str(sha),))
+            )
+            if remember:
+                _SNAPSHOT_ANSWERS[key] = known
+        elif known and conn.execute(
+            f"SELECT 1 FROM {TABLE} WHERE snapshot_sha256=? LIMIT 1",
+            (str(sha),),
+        ).fetchone() is None:
+            known = frozenset()
+            _SNAPSHOT_ANSWERS[key] = known
+        answer |= known
+    return answer
 
 
 def registry_scope_timezone_triples(
@@ -793,36 +843,20 @@ def registry_scope_timezone_triples(
     seek afterwards, and one whose rows are gone stops contributing.
     """
 
-    try:
-        database = str(conn.execute("PRAGMA database_list").fetchone()[2] or "")
-    except (sqlite3.Error, TypeError, IndexError):
-        database = ""
-    remember = bool(database)
-    triples: set[tuple[Any, Any, Any]] = set()
-    for (sha,) in conn.execute(
-        f"SELECT snapshot_sha256 FROM {SNAPSHOT_TABLE}"
-    ).fetchall():
-        key = (database, str(sha))
-        known = _SNAPSHOT_SCOPE_TIMEZONES.get(key) if remember else None
-        if known is None:
-            known = frozenset(
-                (row[0], row[1], row[2])
-                for row in conn.execute(
-                    "SELECT DISTINCT station_id,event_date,settlement_timezone "
-                    f"FROM {TABLE} WHERE snapshot_sha256=?",
-                    (str(sha),),
-                )
-            )
-            if remember:
-                _SNAPSHOT_SCOPE_TIMEZONES[key] = known
-        elif known and conn.execute(
-            f"SELECT 1 FROM {TABLE} WHERE snapshot_sha256=? LIMIT 1",
-            (str(sha),),
-        ).fetchone() is None:
-            known = frozenset()
-            _SNAPSHOT_SCOPE_TIMEZONES[key] = known
-        triples |= known
-    return triples
+    return _union_over_snapshots(conn, _SCOPE_TIMEZONE_QUESTION)  # type: ignore[return-value]
+
+
+def registry_eligible_scopes(conn: sqlite3.Connection) -> set[tuple[Any, Any]]:
+    """``SELECT DISTINCT station_id,event_date WHERE source_eligible=1`` over the table.
+
+    The truth increment's backlog probe asked this of the whole table every
+    production cycle it ran: 23-25s on 2026-09-14, the covering index for the
+    question leading with the snapshot, so a whole-table read became a walk
+    over every row's table page.  Per snapshot the same index answers it
+    without touching the table -- 3.1s cold for all of them, then remembered.
+    """
+
+    return _union_over_snapshots(conn, _ELIGIBLE_SCOPE_QUESTION)  # type: ignore[return-value]
 
 
 def load_started_registry_rows(
@@ -862,5 +896,5 @@ __all__ = [
     "apply_target_market_registry_schema",
     "export_shared_live_registry", "ingest_target_market_registry",
     "load_active_registry_rows", "load_started_registry_rows",
-    "registry_scope_timezone_triples",
+    "registry_eligible_scopes", "registry_scope_timezone_triples",
 ]

@@ -52,9 +52,9 @@ def _full(conn) -> set[tuple[str, str]]:
 
 @pytest.fixture(autouse=True)
 def _fresh_memo():
-    mr._SNAPSHOT_SCOPE_TIMEZONES.clear()
+    mr._SNAPSHOT_ANSWERS.clear()
     yield
-    mr._SNAPSHOT_SCOPE_TIMEZONES.clear()
+    mr._SNAPSHOT_ANSWERS.clear()
 
 
 def test_the_answer_is_the_full_distinct_through_ingest_and_retention(tmp_path) -> None:
@@ -95,7 +95,7 @@ def test_an_in_memory_database_is_never_remembered() -> None:
     _ingest(second, "same", [("EHAM", "Europe/London")])
     assert mr.registry_scope_timezone_triples(first) == {("EHAM", "2026-09-14", "Europe/Amsterdam")}
     assert mr.registry_scope_timezone_triples(second) == {("EHAM", "2026-09-14", "Europe/London")}
-    assert not mr._SNAPSHOT_SCOPE_TIMEZONES
+    assert not mr._SNAPSHOT_ANSWERS
 
 
 def test_empty_and_null_timezones_are_part_of_the_answer_as_they_were(tmp_path) -> None:
