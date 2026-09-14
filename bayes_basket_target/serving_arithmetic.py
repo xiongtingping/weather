@@ -235,22 +235,30 @@ def _closure(entries: Sequence[tuple[str, str]]) -> list[tuple[str, str]]:
 # incumbent veto -- P0 at 2026-09-10T15:27:09Z, P0-M at 15:27:11Z.  Cells
 # served under the 0.5 scale would read to the next width fit as "widen",
 # which the retirement already did; the clock starts at the retirement.
+#
+# v5 (P0, P0-M) and P1 v10: charter 134's stable pool.  First declared at
+# 05:10:36Z, when the fleet's last pool seat was minted, and moved the same
+# morning to 05:52:13Z: two serving changes finished the rollout after that
+# moment -- seats that keep the P0 fresh rank first (restart 05:31:22Z) and
+# pools mint their pair views (restart 05:52:12Z) -- and the watchdog rightly
+# lit for both.  Nothing had been fitted on the 42 minutes in between, so the
+# move cost no lane anything.  P1 declares its root's moment.
 STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
     "P0": {
         "calibrated_native_cross_ensemble_p0_v3": "2026-09-06T04:18:00Z",
         "calibrated_native_cross_ensemble_p0_v4": "2026-09-10T15:27:09Z",
-        "calibrated_native_cross_ensemble_p0_v5": "2026-09-14T05:10:36Z",
+        "calibrated_native_cross_ensemble_p0_v5": "2026-09-14T05:52:13Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
         "p0m_taf_observed_v4": "2026-09-10T15:27:11Z",
-        "p0m_taf_observed_v5": "2026-09-14T05:10:36Z",
+        "p0m_taf_observed_v5": "2026-09-14T05:52:13Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
     # declares the root's moment rather than its own first envelope.
     "P1": {
-        "p1_metar_trajectory_target_v10": "2026-09-14T05:10:36Z",
+        "p1_metar_trajectory_target_v10": "2026-09-14T05:52:13Z",
     },
 }
 

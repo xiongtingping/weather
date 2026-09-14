@@ -164,12 +164,12 @@ def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
     import inspect
 
     assert sa.version_effective_from("P0", POSTERIOR_VERSION) == (
-        "2026-09-14T05:10:36Z"
+        "2026-09-14T05:52:13Z"
     )
     p0m = inspect.signature(
         materialize_p0m_observed
     ).parameters["posterior_version"].default
-    assert sa.version_effective_from("P0-M", p0m) == "2026-09-14T05:10:36Z"
+    assert sa.version_effective_from("P0-M", p0m) == "2026-09-14T05:52:13Z"
     assert sa.version_effective_from(
         "P0", "calibrated_native_cross_ensemble_p0_v4"
     ) == "2026-09-10T15:27:09Z"

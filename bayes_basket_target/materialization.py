@@ -1539,8 +1539,7 @@ def materialize_p1(
     # vector by TV 0.115-0.129 against 0.046 when the root held.  The pool's
     # roots are systematically wider and steadier, so P1 cells served on
     # contest roots must not train the P1 width and band lanes; the start is
-    # declared at the moment the last P0 station was minted, the same instant
-    # P0 and P0-M v5 declare.
+    # declared at the same instant P0 and P0-M v5 declare.
     posterior_version: str = "p1_metar_trajectory_target_v10",
     ceiling_artifact: Mapping[str, Any] | None = None,
     # Charter 99: {"remaining_peak_c", "cell", "lineage"} for the freshest
