@@ -411,9 +411,14 @@ def verdict(information: Mapping[str, Any], strategy: Mapping[str, Any]) -> tupl
     return ("admitted" if not reasons else "hold"), reasons
 
 
-def run_stage(conn: sqlite3.Connection, stage: str, *, cutoff_utc: str) -> dict[str, Any]:
+def run_stage(
+    conn: sqlite3.Connection, stage: str, *, cutoff_utc: str, anchored: bool = True,
+) -> dict[str, Any]:
+    # Anchored by default (2026-09-14): a verdict judged on a weather vector
+    # nobody serves any more would admit, or hold, the one that replaced it.
     rows, meta = V.population(
         conn, stage_scope=stage, cutoff_utc=cutoff_utc, window_days=400,
+        anchored=anchored,
     )
     days = sorted({r["date"] for r in rows})
     test_days = days[min(len(days), V.MIN_DAYS):]
@@ -496,7 +501,15 @@ def main() -> int:
     parser.add_argument("--commit", action="store_true")
     parser.add_argument("--report", type=Path, default=None)
     parser.add_argument("--json", type=Path, default=None)
+    parser.add_argument(
+        "--unanchored", action="store_true",
+        help="research reading only: include decisions from before the stage's"
+             " serving-arithmetic anchor; refused together with --commit",
+    )
     args = parser.parse_args()
+    if args.commit and args.unanchored:
+        print("--unanchored is a research reading and may not be committed")
+        return 2
     if args.commit and not args.as_of:
         print("--commit needs --as-of (scripts may not read the clock)")
         return 2
@@ -508,7 +521,9 @@ def main() -> int:
     results = []
     try:
         for stage in stages:
-            result = run_stage(read, stage, cutoff_utc=cutoff)
+            result = run_stage(
+                read, stage, cutoff_utc=cutoff, anchored=not args.unanchored,
+            )
             results.append(result)
             info, pool = result["information"], result["strategy"]["arms"]["pool"]
             print(

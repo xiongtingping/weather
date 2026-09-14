@@ -77,7 +77,15 @@ def main() -> int:
     parser.add_argument(
         "--stage", choices=sorted(STAGE_SCOPES) + ["all"], default="all",
     )
+    parser.add_argument(
+        "--unanchored", action="store_true",
+        help="research reading only: include decisions from before the stage's"
+             " serving-arithmetic anchor; refused together with --commit",
+    )
     args = parser.parse_args()
+    if args.commit and args.unanchored:
+        print("--unanchored is a research reading and may not be committed")
+        return 2
     database = args.db.expanduser().resolve(strict=True)
     if args.commit and not args.as_of:
         print("--commit needs --as-of (scripts may not read the clock)")
@@ -92,7 +100,10 @@ def main() -> int:
     receipts = []
     try:
         for scope in scopes:
-            fit = fit_valuation(conn, stage_scope=scope, cutoff_utc=args.as_of)
+            fit = fit_valuation(
+                conn, stage_scope=scope, cutoff_utc=args.as_of,
+                anchored=not args.unanchored,
+            )
             if args.commit:
                 before = load_valuation_as_of(conn, stage_scope=scope)
                 fit.update(persist_and_activate(conn, fit, now=str(args.as_of)))

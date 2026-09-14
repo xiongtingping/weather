@@ -156,6 +156,33 @@ def _utc_now_iso() -> str:
 # Fit
 # --------------------------------------------------------------------------
 
+def _instant(value: str) -> datetime:
+    return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+
+
+def _anchor(conn: sqlite3.Connection, stage: str) -> tuple[str | None, str]:
+    """The stage's serving-arithmetic anchor and how it was read.
+
+    The same three states the beta lane reads (charter 132, audit item 48):
+    ``absent`` when the store that keeps the anchor is not in this database
+    (an extract, a fixture) and there is no bound; ``ok``, possibly None; and
+    ``error``, a present store that failed, which refuses the fit rather than
+    widening it onto a distribution nobody serves.
+    """
+
+    if not (
+        _has_table(conn, "basket_probability_bridge_history")
+        and _has_table(conn, "basket_probability_envelope")
+    ):
+        return None, "absent"
+    try:
+        from .center_width_store import served_arithmetic_anchor  # noqa: PLC0415
+
+        return served_arithmetic_anchor(conn, stage=stage), "ok"
+    except Exception:  # noqa: BLE001 -- a present store that fails is a refusal
+        return None, "error"
+
+
 def population(
     conn: sqlite3.Connection,
     *,
@@ -163,6 +190,7 @@ def population(
     as_of: str | None = None,
     window_days: int = WINDOW_DAYS,
     cutoff_utc: str | None = None,
+    anchored: bool = True,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Every decision of the scope's stages a fit at ``cutoff_utc`` could use.
 
@@ -172,6 +200,16 @@ def population(
     moment it became knowable.  The same strict-as-of contract the beta and
     lambda lanes carry (charter 132): the label must have been knowable at the
     cutoff, and a decision taken after the cutoff is not evidence either.
+
+    And the floor they carry (2026-09-14): a decision taken before the stage's
+    serving-arithmetic anchor priced a weather vector nobody serves any more,
+    so it is not evidence about how much weight today's vector earns beside
+    the market.  This lane shipped without it and pooled 28 days across P0's
+    v4 (2026-09-10) and charter 134's stable pool (v5, P1 v10) -- the one
+    change this lane exists to judge, since only a better probability layer
+    can move its beta off zero.  ``anchored=False`` is a research reading and
+    is never persisted.  An anchor set after the cutoff did not exist then
+    and is dropped, as on the beta and lambda lanes.
     """
 
     if stage_scope not in STAGE_SCOPES:
@@ -198,14 +236,43 @@ def population(
         date.fromisoformat(latest) - timedelta(days=int(window_days))
     ).isoformat()
     stages = STAGE_SCOPES[stage_scope]
+    anchor_states: dict[str, str] = {}
+    anchors: list[str] = []
+    anchors_after_cutoff = 0
+    if anchored:
+        for stage in stages:
+            value, state = _anchor(conn, stage)
+            anchor_states[stage] = state
+            if state == "error":
+                return [], {
+                    "error": "anchor_unreadable", "stage": stage,
+                    "cutoff_utc": cutoff,
+                }
+            if value:
+                if _instant(value) > _instant(cutoff):
+                    anchors_after_cutoff += 1
+                else:
+                    anchors.append(str(value))
+    anchor_utc = max(anchors, key=_instant) if anchors else None
     placeholders = ",".join("?" for _ in stages)
     rows: list[dict[str, Any]] = []
     counts = {
         "decisions_read": 0, "no_label": 0, "decided_after_cutoff": 0,
+        "excluded_before_anchor": 0,
         "market_incomplete": 0, "label_outside_contract": 0,
         "weather_vector_invalid": 0,
     }
     reasons: dict[str, int] = {}
+    if anchor_utc is not None:
+        # Counted, not hidden: the seek below never returns these rows, so
+        # the count is taken here, over the same stages and event window.
+        counts["excluded_before_anchor"] = int(conn.execute(
+            "SELECT COUNT(*) FROM basket_policy_training_fact f"
+            f" WHERE f.stage IN ({placeholders})"
+            "   AND f.event_date > ? AND f.event_date <= ?"
+            "   AND f.decision_at_utc < ?",
+            (*stages, floor_day, latest, str(anchor_utc)[:19]),
+        ).fetchone()[0] or 0)
     cursor = conn.execute(
         "SELECT f.station_id, f.event_date, f.stage, f.decision_at_utc,"
         "       e.probabilities_json, s.buckets_json"
@@ -214,8 +281,12 @@ def population(
         "   ON e.envelope_id = f.probability_envelope_id"
         " JOIN basket_official_ws_snapshot s ON s.snapshot_id = f.ws_snapshot_id"
         f" WHERE f.stage IN ({placeholders})"
-        "   AND f.event_date > ? AND f.event_date <= ?",
-        (*stages, floor_day, latest),
+        "   AND f.event_date > ? AND f.event_date <= ?"
+        # A seekable superset of the anchor (whole seconds, no zone), so the
+        # exact instant test below never parses rows it would drop.
+        + ("" if anchor_utc is None else "   AND f.decision_at_utc >= ?"),
+        (*stages, floor_day, latest,
+         *(() if anchor_utc is None else (str(anchor_utc)[:19],))),
     )
     for station, day, stage, decided_at, probs_json, book_json in cursor:
         counts["decisions_read"] += 1
@@ -226,6 +297,9 @@ def population(
         label, label_known_at = labelled
         if str(decided_at) > cutoff:
             counts["decided_after_cutoff"] += 1
+            continue
+        if anchor_utc is not None and _instant(decided_at) < _instant(anchor_utc):
+            counts["excluded_before_anchor"] += 1
             continue
         try:
             p_weather = {
@@ -271,7 +345,10 @@ def population(
         row["weight"] = 1.0 / per_station_day[(row["station"], row["date"])]
     return rows, {
         "as_of_event_date": latest, "floor_day": floor_day,
-        "cutoff_utc": cutoff, "market_incomplete_reasons": reasons, **counts,
+        "cutoff_utc": cutoff, "market_incomplete_reasons": reasons,
+        "anchored": bool(anchored), "anchor_utc": anchor_utc,
+        "anchor_states": anchor_states,
+        "anchors_after_cutoff": anchors_after_cutoff, **counts,
     }
 
 
@@ -349,6 +426,7 @@ def fit_valuation(
     draws: int = BOOTSTRAP_DRAWS,
     rows: Sequence[Mapping[str, Any]] | None = None,
     meta: Mapping[str, Any] | None = None,
+    anchored: bool = True,
 ) -> dict[str, Any]:
     """beta in [0, 1] maximising the log score of the truth bucket.
 
@@ -364,6 +442,7 @@ def fit_valuation(
         rows, meta = population(
             conn, stage_scope=stage_scope, as_of=as_of,
             window_days=window_days, cutoff_utc=cutoff_utc,
+            anchored=anchored,
         )
     meta = dict(meta or {})
     station_days = len({(r["station"], r["date"]) for r in rows})

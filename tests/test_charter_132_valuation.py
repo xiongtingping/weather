@@ -303,3 +303,65 @@ def test_persist_load_and_verdict_round_trip():
         conn, stage_scope="P0", as_of_utc="2026-09-13T00:30:00Z",
     )
     assert before["verdict"] is None
+
+
+def _with_anchor(conn, monkeypatch, anchor):
+    """A store that keeps an anchor, answering ``anchor`` for every stage."""
+
+    import bayes_basket_target.center_width_store as cw
+
+    conn.execute("CREATE TABLE IF NOT EXISTS basket_probability_bridge_history(x)")
+    if isinstance(anchor, Exception):
+        def _raise(conn, *, stage, known_floor=None):
+            raise anchor
+        monkeypatch.setattr(cw, "served_arithmetic_anchor", _raise)
+    else:
+        monkeypatch.setattr(
+            cw, "served_arithmetic_anchor",
+            lambda conn, *, stage, known_floor=None: anchor,
+        )
+
+
+def test_decisions_before_the_serving_anchor_are_not_evidence(monkeypatch):
+    conn = sqlite3.connect(":memory:")
+    _plant(conn, days=20, stations=4, weight=0.5)
+    _with_anchor(conn, monkeypatch, "2026-08-11T06:00:00Z")
+    rows, meta = store.population(
+        conn, stage_scope="P0", cutoff_utc="2026-12-31T00:00:00Z", window_days=40,
+    )
+    # A decision at the anchor's own instant is on the served vector.
+    assert min(r["date"] for r in rows) == "2026-08-11"
+    assert meta["anchor_utc"] == "2026-08-11T06:00:00Z"
+    assert meta["excluded_before_anchor"] == 10 * 4
+    # The research reading sees everything and says so.
+    wide, wide_meta = store.population(
+        conn, stage_scope="P0", cutoff_utc="2026-12-31T00:00:00Z", window_days=40,
+        anchored=False,
+    )
+    assert len(wide) == 20 * 4 and wide_meta["anchor_utc"] is None
+    assert wide_meta["anchored"] is False
+
+
+def test_an_anchor_set_after_the_cutoff_did_not_exist_then(monkeypatch):
+    conn = sqlite3.connect(":memory:")
+    _plant(conn, days=5, stations=3, weight=0.5)
+    _with_anchor(conn, monkeypatch, "2026-09-14T05:52:13Z")
+    rows, meta = store.population(
+        conn, stage_scope="P0", cutoff_utc="2026-08-31T00:00:00Z", window_days=40,
+    )
+    assert len(rows) == 5 * 3
+    assert meta["anchor_utc"] is None and meta["anchors_after_cutoff"] == 1
+
+
+def test_an_anchor_that_cannot_be_read_refuses_the_fit(monkeypatch):
+    conn = sqlite3.connect(":memory:")
+    _plant(conn, days=5, stations=3, weight=0.5)
+    _with_anchor(conn, monkeypatch, sqlite3.OperationalError("locked"))
+    rows, meta = store.population(
+        conn, stage_scope="P0", cutoff_utc="2026-12-31T00:00:00Z", window_days=40,
+    )
+    assert rows == [] and meta["error"] == "anchor_unreadable"
+    fit = store.fit_valuation(
+        conn, stage_scope="P0", cutoff_utc="2026-12-31T00:00:00Z", window_days=40,
+    )
+    assert fit["accumulating"] and fit["evidence"]["beta"] is None
