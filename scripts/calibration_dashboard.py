@@ -10728,8 +10728,9 @@ const OVERALL = {green:["运转正常","所有环节都在按预期更新"],
 // hours without completing while a download capture held the SSOT queue and
 // seven restarts killed whatever ran -- none of which a count can say.  So
 // each lane shows where it is on its own clock, what it is doing now, and
-// its place in its domain's queue; the header names who holds the writer and
-// how many times the resident was restarted in a day.
+// its place in its domain's queue.  Since the same day's second ruling it
+// draws only the three least healthy lanes; the writer, the queue and the
+// restart count stay in the payload and in the machine row's lamp.
 const SWEEP_LABEL = {
   paper_trading_ledger:"纸面账本", settlement_truth:"结算真值",
   calibration_refit:"校准重拟", pr12_awc_observation:"观测身份（P1 的根）",
@@ -10750,45 +10751,32 @@ function sweepDur(sec){
   if(sec < 5400) return Math.round(sec / 60) + " 分钟";
   return (sec / 3600).toFixed(1) + " 小时";
 }
-function sweepClock(iso){
-  const d = new Date(iso);
-  return isNaN(d) ? "—" : d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
-}
 function sweepHealth(){
   const H = D.hosted_sweeps || {};
-  const cap = `<span class="lampcap">维护车道健康度 · 每条车道离上次完成过了几个<b>自己的</b>回合`
+  const cap = `<span class="lampcap">维护车道健康度 · 最不健康的三条：离上次完成过了几个<b>自己的</b>回合`
     + `（刻度 1/2/3 个回合），右边是它此刻在干什么、在自己写域的队里排第几</span>`;
   if(!H.available){
     return `<div class="lampdeck">${cap}<div class="muted">读不出：${h(H.reason || "")}</div></div>`;
   }
-  const lanes = H.lanes || [];
+  // Only the three least healthy (user ruling, 2026-09-14: 维护车道健康度：只显示
+  // 不健康的前三项即可).  Sixteen rows put the four that were red among twelve
+  // that were fine; red before amber, then whichever is more of its own turns
+  // late, and the count of the rest on one line so a shorter list does not
+  // read as "this is everything".
   const label = n => SWEEP_LABEL[n] || n;
-  const R = H.restarts_24h || [];
-  const restartTone = R.length >= 4 ? "red" : (R.length >= 2 ? "amber" : "green");
-  const restartTip = R.map(r => `${sweepClock(r.at_utc)} ${(r.who || []).join("、")}`).join("；");
-  const holders = lanes.filter(l => l.running_now && !l.download_capture
-    && (l.domain === "ssot" || l.domain === "archive"));
-  let writer;
-  if(H.production_inflight_sec != null){
-    writer = `<span class="pill ${H.production_overdue ? "red" : ""}">写锁：生产周期已跑 ${
-      sweepDur(H.production_inflight_sec)}${H.production_overdue ? "，超时" : ""}</span>`;
-  } else if(holders.length){
-    writer = `<span class="pill amber">写锁：${h(holders.map(l => label(l.name)).join("、"))}</span>`;
-  } else {
-    const wait = (H.waiting_on || []).join("、");
-    writer = `<span class="pill">写锁：空闲${wait ? "（下一轮在等 " + h(wait) + "）" : ""}</span>`;
+  const TONE = {red: 0, amber: 1};
+  const sick = (H.lanes || [])
+    .filter(l => l.health in TONE)
+    .sort((a, b) => TONE[a.health] - TONE[b.health]
+      || (b.overdue_intervals || 0) - (a.overdue_intervals || 0));
+  const lanes = sick.slice(0, 3);
+  if(!lanes.length){
+    return `<div class="lampdeck">${cap}<div class="swhead"><span class="pill green">全部准点</span></div></div>`;
   }
-  const queue = (H.ssot_queue || []);
-  const queueText = queue.length
-    ? queue.slice(0, 4).map(label).join(" → ") + (queue.length > 4 ? ` …共 ${queue.length} 条` : "")
-    : "空";
-  const header = `<div class="swhead">
-    <span class="pill ${H.red_count ? "red" : (H.amber_count ? "amber" : "green")}">${
-      H.red_count || H.amber_count ? `${H.red_count} 红 · ${H.amber_count} 黄` : "全部准点"}</span>
-    <span class="muted">本代已运行 ${sweepDur(H.generation_age_sec)}</span>
-    <span class="pill ${restartTone}" title="${h(restartTip)}">24 小时重启 ${R.length} 次</span>
-    ${writer}
-    <span class="muted">SSOT 队列：${h(queueText)}</span></div>`;
+  const header = sick.length > lanes.length
+    ? `<div class="swhead"><span class="muted">共 ${H.red_count || 0} 红 · ${H.amber_count || 0} 黄，其余 ${
+        sick.length - lanes.length} 条未列</span></div>`
+    : "";
   const axis = `<div class="swrow swaxisrow"><span></span><span></span>
     <div class="swaxis"><em style="left:25%">1 回合</em><em style="left:50%">2</em>
     <em style="left:75%">3</em><em style="left:100%">≥4</em></div><span></span></div>`;
@@ -10827,7 +10815,7 @@ function sweepHealth(){
       <div class="swbar"><b class="swm ${l.health}" style="left:${x.toFixed(1)}%"></b>${run}</div>
       <span class="swstate${hot ? " hot" : ""}">${h(state)}</span></div>`;
   }).join("");
-  return `<div class="lampdeck">${cap}${header}<div class="swrows">${axis}${rows}</div></div>`;
+  return `<div class="lampdeck">${cap}<div class="swrows">${axis}${rows}</div>${header}</div>`;
 }
 
 function head(){
