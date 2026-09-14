@@ -335,6 +335,10 @@ def population(
             "brier_m": _brier(m, label),
             "brier_p": _brier_on(p_weather, m, label),
             "m": m, "p": p_weather,
+            # Per bucket, on the vector's scale: what crossing the book costs
+            # from the mid.  The charter EV page prices the disagreement
+            # strategy's spread cost from it; the fit does not read it.
+            "half_spread": dict(market.get("half_spread") or {}),
         })
     # Each station-day counts once, however many decisions it carried.
     per_station_day: dict[tuple[str, str], int] = {}

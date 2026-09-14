@@ -94,6 +94,12 @@ def market_reference_v1(buckets: Iterable[Any]) -> dict[str, Any]:
 
     mids: dict[str, float] = {}
     spreads: list[float] = []
+    # What crossing the book costs on each bucket, from the mid to the side a
+    # trade would hit: half the spread when both sides quote, and the whole
+    # distance from the synthesised mid to the one side that does.  Read by
+    # the charter EV page to price the disagreement strategy's spread cost
+    # beside its expected profit; nothing gates on it.
+    half_spread: dict[str, float] = {}
     one_sided: list[str] = []
     stamps: list[datetime] = []
     missing_stamp = False
@@ -120,15 +126,18 @@ def market_reference_v1(buckets: Iterable[Any]) -> dict[str, Any]:
                 return {"state": "incomplete", "reason": f"crossed_book:{bucket}"}
             mids[bucket] = 0.5 * (best_ask + best_bid)
             spreads.append(best_ask - best_bid)
+            half_spread[bucket] = 0.5 * (best_ask - best_bid)
         elif best_ask is not None:
             if best_ask > ONE_SIDED_TAIL_MAX_ASK:
                 return {"state": "incomplete", "reason": f"one_sided_ask:{bucket}"}
             mids[bucket] = 0.5 * best_ask
+            half_spread[bucket] = 0.5 * best_ask
             one_sided.append(bucket)
         elif best_bid is not None:
             if best_bid < NEAR_CERTAIN_MIN_BID:
                 return {"state": "incomplete", "reason": f"one_sided_bid:{bucket}"}
             mids[bucket] = 0.5 * (best_bid + 1.0)
+            half_spread[bucket] = 0.5 * (1.0 - best_bid)
             one_sided.append(bucket)
         else:
             return {"state": "incomplete", "reason": f"empty_book:{bucket}"}
@@ -157,6 +166,11 @@ def market_reference_v1(buckets: Iterable[Any]) -> dict[str, Any]:
         "vector": {bucket: mid / total for bucket, mid in mids.items()},
         "mid_sum": total,
         "max_spread": max(spreads) if spreads else None,
+        # On the vector's scale (divided by the same total), so a cost read
+        # against ``vector`` is in the same units as the vector.
+        "half_spread": {
+            bucket: value / total for bucket, value in half_spread.items()
+        },
         "one_sided_buckets": one_sided,
         "book_skew_seconds": skew,
     }

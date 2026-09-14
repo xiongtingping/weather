@@ -5191,7 +5191,7 @@ def _center_landing_seat(
         from bayes_basket_target.delta_v2_runtime import (
             LADDER_CENTER_DEFINITION,
             _alternate_ladder_center,
-            _skew_extension_sign,
+            seat_shape_skew_reading,
             seat_shape_windows_v1,
         )
     except ImportError:
@@ -5220,7 +5220,7 @@ def _center_landing_seat(
             probabilities=probabilities,
             ordinals=ordinals,
         ) or centre
-    sign = _skew_extension_sign(probabilities, ordinals)
+    sign, mode_ordinal = seat_shape_skew_reading(probabilities, ordinals)
     live = {ordinals[bucket] for bucket in admitted}
     _shapes, audit = seat_shape_windows_v1(
         centre_ordinal=ordinals[centre],
@@ -5231,6 +5231,7 @@ def _center_landing_seat(
             for key in keys
         },
         live_ordinals=live,
+        mode_ordinal=mode_ordinal,
     )
     by_ordinal = {index: key for key, index in ordinals.items()}
     for shape in audit.get("allowed_ordinals") or []:
@@ -8939,6 +8940,255 @@ def collect_valuation_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     return out
 
 
+def charter_ev_identity(
+    rows: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """The user's charter (2026-09-12), as arithmetic: edge = the market's
+    error minus the model's error.
+
+    Per bucket ``b`` of a ladder, with truth ``t_b`` (1 in the settled bucket,
+    0 elsewhere), market mid ``m_b`` and served claim ``p_b``:
+
+        e_q = m_b - t_b        the market's error
+        e_p = p_b - t_b        the model's error
+
+    Buying ``(p_b - m_b)`` shares of every bucket at the mid returns
+    ``(p_b - m_b)(t_b - m_b) = e_q^2 - e_p e_q`` per bucket, so the strategy's
+    expected profit per station-day is ``Var(e_q) - Cov(e_p, e_q)``: how much
+    the market is wrong, less how much of that the model is wrong in the same
+    direction.  ``k = Cov / Var(e_q)`` is the regression slope of the model's
+    error on the market's: 1 means the model's error contains the whole of the
+    market's error plus noise of its own; only below 1 is there anything to
+    collect.  The model's own variance never enters -- the charter does not
+    ask the model to be more accurate than the market, only to be wrong
+    differently.
+
+    ``rows`` carry ``p`` and ``m`` (vectors over the same ladder), ``label``,
+    ``date`` and ``weight`` (each station-day's decisions sum to one, so the
+    averages are per station-day).  The realised profit of the strategy is
+    summed beside the identity rather than derived from it, so a reader --
+    and the test -- sees the algebra hold on the data.
+
+    ``EV`` is at the mid.  A row that carries ``half_spread`` (per bucket,
+    on the vector's scale) also prices what the strategy pays to cross the
+    book, ``sum |p_b - m_b| * half_spread_b``, which is the hurdle the
+    charter sets for a live gate: the lower bound of EV above this cost.
+    """
+
+    var_market = var_model = cov = profit = spread = weight_total = 0.0
+    spread_weight = 0.0
+    by_day: dict[str, dict[str, float]] = {}
+    station_days: set[tuple[str, str]] = set()
+    for row in rows:
+        p = row["p"]
+        m = row["m"]
+        label = str(row["label"])
+        w = float(row.get("weight", 1.0) or 1.0)
+        half = row.get("half_spread")
+        vq = vp = c = pr = sc = 0.0
+        for bucket in set(p) | set(m):
+            t = 1.0 if str(bucket) == label else 0.0
+            e_q = float(m.get(bucket, 0.0)) - t
+            e_p = float(p.get(bucket, 0.0)) - t
+            vq += e_q * e_q
+            vp += e_p * e_p
+            c += e_p * e_q
+            pr += (e_p - e_q) * (-e_q)
+            if half:
+                sc += abs(e_p - e_q) * float(half.get(bucket, 0.0) or 0.0)
+        var_market += w * vq
+        var_model += w * vp
+        cov += w * c
+        profit += w * pr
+        weight_total += w
+        if half:
+            spread += w * sc
+            spread_weight += w
+        day = by_day.setdefault(
+            str(row["date"]),
+            {"w": 0.0, "var_market": 0.0, "var_model": 0.0, "cov": 0.0},
+        )
+        day["w"] += w
+        day["var_market"] += w * vq
+        day["var_model"] += w * vp
+        day["cov"] += w * c
+        station_days.add((str(row["station"]), str(row["date"])))
+    if weight_total <= 0.0:
+        return {
+            "decisions": 0, "station_days": 0, "days": 0,
+            "var_market": None, "var_model": None, "cov": None,
+            "ev": None, "k": None, "strategy_profit": None,
+            "spread_cost": None, "days_ev_positive": None, "by_day": {},
+        }
+    var_q = var_market / weight_total
+    return {
+        "decisions": len(rows),
+        "station_days": len(station_days),
+        "days": len(by_day),
+        "var_market": var_q,
+        "var_model": var_model / weight_total,
+        "cov": cov / weight_total,
+        "ev": (var_market - cov) / weight_total,
+        "k": (cov / var_market) if var_market > 0.0 else None,
+        "strategy_profit": profit / weight_total,
+        "spread_cost": (
+            spread / spread_weight if spread_weight > 0.0 else None
+        ),
+        "days_ev_positive": sum(
+            1 for day in by_day.values() if day["var_market"] > day["cov"]
+        ),
+        "by_day": by_day,
+    }
+
+
+def _charter_ev_reading(
+    rows: Sequence[Mapping[str, Any]], *, draws: int, seed: int,
+) -> dict[str, Any]:
+    """The identity plus a by-day bootstrap on EV and k.
+
+    Whole event days are resampled, as the valuation and beta lanes do: a
+    fleet shares its weather, so station-days inside a day are not
+    independent draws.  The interval is the 5th to 95th percentile.
+    """
+
+    reading = charter_ev_identity(rows)
+    by_day = reading.pop("by_day")
+    reading["ev_ci"] = None
+    reading["k_ci"] = None
+    keys = list(by_day)
+    if len(keys) >= 2 and draws > 0:
+        rng = random.Random(int(seed))
+        evs: list[float] = []
+        ks: list[float] = []
+        for _ in range(int(draws)):
+            picked = [by_day[key] for key in rng.choices(keys, k=len(keys))]
+            w = sum(day["w"] for day in picked)
+            vq = sum(day["var_market"] for day in picked)
+            c = sum(day["cov"] for day in picked)
+            if w > 0.0:
+                evs.append((vq - c) / w)
+            if vq > 0.0:
+                ks.append(c / vq)
+
+        def _band(values: list[float]) -> list[float] | None:
+            if not values:
+                return None
+            ordered = sorted(values)
+            lo = ordered[min(len(ordered) - 1, int(0.05 * len(ordered)))]
+            hi = ordered[max(0, int(0.95 * len(ordered)) - 1)]
+            return [lo, hi]
+
+        reading["ev_ci"] = _band(evs)
+        reading["k_ci"] = _band(ks)
+    return reading
+
+
+def collect_charter_ev(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Charter EV identity per stage: Var(e_q), Cov(e_p,e_q), Var - Cov, k.
+
+    Reads the valuation lane's population -- one row per decision with the
+    committed envelope's vector, the market mid vector rebuilt from the WS
+    snapshot the decision priced against, and the settled bucket -- so this
+    page and charter 132's fit describe the same sample.  Two readings per
+    stage: the rolling 28-day research population, and the rows since the
+    stage's serving-arithmetic anchor, which is the only sample that says
+    anything about the vector served today.  Every row of the sample is a
+    settled decision; nothing here is a fit and nothing here serves.
+    """
+
+    out: dict[str, Any] = {"available": False}
+    try:
+        from bayes_basket_target.center_width_store import (  # noqa: PLC0415
+            served_arithmetic_anchor,
+        )
+        from bayes_basket_target.valuation_store import (  # noqa: PLC0415
+            BOOTSTRAP_DRAWS,
+            BOOTSTRAP_SEED,
+            STAGE_SCOPES,
+            WINDOW_DAYS,
+            population,
+        )
+    except ImportError:
+        return out
+    scopes: list[dict[str, Any]] = []
+    window: dict[str, Any] = {}
+    for scope in ("P0", "P0-M", "P1"):
+        try:
+            rows, meta = population(conn, stage_scope=scope, anchored=False)
+        except (sqlite3.Error, ValueError) as exc:
+            scopes.append({"scope": scope, "error": f"{type(exc).__name__}:{exc}"})
+            continue
+        if meta.get("error"):
+            scopes.append({"scope": scope, "error": str(meta["error"])})
+            continue
+        window = {
+            "days": int(WINDOW_DAYS),
+            "floor_day": meta.get("floor_day"),
+            "as_of_event_date": meta.get("as_of_event_date"),
+        }
+        anchor: str | None = None
+        anchor_state = "ok"
+        try:
+            anchor = served_arithmetic_anchor(
+                conn, stage=STAGE_SCOPES[scope][0],
+            )
+        except Exception:  # noqa: BLE001 -- a broken anchor store is a reading, not a crash
+            anchor_state = "error"
+        since_anchor: list[Mapping[str, Any]] = []
+        if anchor:
+            anchor_at = datetime.fromisoformat(str(anchor).replace("Z", "+00:00"))
+            since_anchor = [
+                row for row in rows
+                if datetime.fromisoformat(str(row["at"]).replace("Z", "+00:00"))
+                >= anchor_at
+            ]
+        # The first decision of each station-day, which is the reading the
+        # 2026-09-12 measurement was taken on.  For P1 the two differ by
+        # construction: later decisions carry the day's observations, so the
+        # all-decisions row reads a better vector than the first one did.
+        first_at: dict[tuple[str, str], str] = {}
+        for row in rows:
+            key = (str(row["station"]), str(row["date"]))
+            if key not in first_at or str(row["at"]) < first_at[key]:
+                first_at[key] = str(row["at"])
+        first_rows = [
+            dict(row, weight=1.0) for row in rows
+            if first_at.get((str(row["station"]), str(row["date"])))
+            == str(row["at"])
+        ]
+        scopes.append({
+            "scope": scope,
+            "research": _charter_ev_reading(
+                rows, draws=BOOTSTRAP_DRAWS, seed=BOOTSTRAP_SEED,
+            ),
+            "first": _charter_ev_reading(
+                first_rows, draws=BOOTSTRAP_DRAWS, seed=BOOTSTRAP_SEED,
+            ),
+            "anchor_utc": anchor,
+            "anchor_state": anchor_state,
+            "served": (
+                _charter_ev_reading(
+                    since_anchor, draws=BOOTSTRAP_DRAWS, seed=BOOTSTRAP_SEED,
+                )
+                if anchor else None
+            ),
+            "population": {
+                key: meta.get(key) for key in (
+                    "decisions_read", "no_label", "market_incomplete",
+                    "label_outside_contract", "weather_vector_invalid",
+                )
+            },
+        })
+    out.update({
+        "available": any("research" in scope for scope in scopes),
+        "scopes": scopes,
+        "window": window,
+        "bootstrap_draws": int(BOOTSTRAP_DRAWS),
+        "computed_at_utc": _now().isoformat().replace("+00:00", "Z"),
+    })
+    return out
+
+
 def collect_window_divergence(conn: sqlite3.Connection) -> dict[str, Any]:
     """Station-days where the posterior and the held window part ways.
 
@@ -9392,6 +9642,10 @@ SECTION_CACHE_TTL_SEC = {
     # Three small tables and the last 300 plan headers; the verdict moves
     # daily at most.
     "valuation_lane": 50 * 60,
+    # Three populations of settled decisions with their books (~60s on the
+    # 45GB store); every row is a settled station-day, so the reading moves
+    # once a day when the truth lands.
+    "charter_ev": 300 * 60,
     # The per-table growth walk counts rows over a day on ten tables, two
     # of which have no index on their time column.  The gauge above it is
     # read from status.json every build and is never cached; only the
@@ -9798,6 +10052,14 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         ),
         "valuation_lane": _cached_section(
             "valuation_lane", collect_valuation_lane, conn
+        ),
+        "charter_ev": _cached_section(
+            "charter_ev", collect_charter_ev, conn,
+            # The arithmetic lives in two helpers the fingerprint cannot
+            # see; without this a change to either keeps serving the old
+            # reading for the section's whole lifetime.
+            _salt=_loaded_source(charter_ev_identity)
+            + _loaded_source(_charter_ev_reading),
         ),
         "beta_shadow": _cached_section(
             "beta_shadow", collect_beta_shadow, conn
@@ -12466,6 +12728,89 @@ function valuationLane(){
   （服务侧暂不改，证据读者严格拒绝，见宪章 132）。</p>`;
 }
 
+function charterEv(){
+  const E=D.charter_ev||{};
+  const title=`<h2>宪章 EV 恒等式：edge = 市场的错 − 模型的错，量出来是多少</h2>`;
+  if(!E.available) return `${title}<div class="card">未采集${
+    (E.scopes||[]).filter(s=>s.error).map(s=>`：${h(s.scope)} ${h(s.error)}`).join("")}。</div>`;
+  const n3=v=>v==null?"—":(+v).toFixed(3);
+  const n2=v=>v==null?"—":(+v).toFixed(2);
+  const ci=(c,f)=>!c||c[0]==null?"":` <span class="muted">[${f(c[0])}, ${f(c[1])}]</span>`;
+  // The verdict is read on the research population (the only one with
+  // enough days); the since-anchor reading is what will replace it.  The
+  // charter's live condition: EV's lower bound above the spread cost.
+  const verdict=r=>{
+    if(!r||r.ev==null) return {tone:"amber",word:"无样本"};
+    const lcb=r.ev_ci?r.ev_ci[0]:null, kucb=r.k_ci?r.k_ci[1]:null;
+    const hurdle=r.spread_cost==null?0:r.spread_cost;
+    if(lcb!=null&&lcb>hurdle&&kucb!=null&&kucb<1) return {tone:"green",word:"有 edge（下界 > 点差）"};
+    if(r.ev>hurdle) return {tone:"amber",word:"点估过点差，下界没过"};
+    if(r.ev>0) return {tone:"amber",word:"中价为正，不够付点差"};
+    return {tone:"red",word:"没有 edge"};
+  };
+  const row=(label,r,muted)=>{
+    if(!r||!r.decisions) return `<tr class="${muted?"muted":""}"><td>${label}</td><td colspan="9">锚后尚无已结算的决策</td></tr>`;
+    const evCls=r.ev==null?"":(r.ev<0?"down":"up");
+    const kCls=r.k==null?"":(r.k<1?"up":"down");
+    const net=(r.ev==null||r.spread_cost==null)?null:r.ev-r.spread_cost;
+    return `<tr class="${muted?"muted":""}"><td>${label}</td>
+      <td class="mono">${r.station_days} / ${r.days}</td>
+      <td class="mono">${n3(r.var_market)}</td>
+      <td class="mono">${n3(r.var_model)}</td>
+      <td class="mono">${n3(r.cov)}</td>
+      <td class="mono ${evCls}"><b>${r.ev==null?"—":((r.ev>=0?"+":"")+n3(r.ev))}</b>${ci(r.ev_ci,v=>(v>=0?"+":"")+n3(v))}</td>
+      <td class="mono ${kCls}"><b>${n3(r.k)}</b>${ci(r.k_ci,n3)}</td>
+      <td class="mono">${n3(r.spread_cost)}<br><span class="${net==null?"muted":(net<0?"down":"up")}">净 ${net==null?"—":((net>=0?"+":"")+n3(net))}</span></td>
+      <td class="mono">${r.days_ev_positive==null?"—":r.days_ev_positive+" / "+r.days}</td></tr>`;
+  };
+  const cards=(E.scopes||[]).map(s=>{
+    if(s.error) return `<div class="card"><b>${h(s.scope)}</b> <span class="muted">${h(s.error)}</span></div>`;
+    const v=verdict(s.research);
+    const anchor=s.anchor_utc?String(s.anchor_utc).slice(0,16).replace("T"," ")+"Z":"（未记录）";
+    return `<div class="card">
+      <div style="display:flex;align-items:center;gap:8px"><b>${h(s.scope)}</b><span style="flex:1"></span>
+        <span class="pill ${v.tone}">${v.word}</span></div>
+      <table style="margin-top:8px"><thead><tr><th>样本</th><th>站日 / 天</th>
+        <th>Var(e_q)<br><span class="muted">市场的错</span></th>
+        <th>Var(e_p)<br><span class="muted">模型的错</span></th>
+        <th>Cov(e_p,e_q)<br><span class="muted">同向的错</span></th>
+        <th>EV = Var − Cov<br><span class="muted">每站日 · 中价 · 90%</span></th>
+        <th>k = Cov / Var<br><span class="muted">90%</span></th>
+        <th>点差成本<br><span class="muted">每站日 · EV − 点差</span></th>
+        <th>EV &gt; 0 天数</th></tr></thead>
+      <tbody>${row("滚动 28 天 · 逐决策站日等权",s.research,false)}${row("滚动 28 天 · 每站日首次决策",s.first,false)}${row("服务锚 "+anchor+" 起",s.served,true)}</tbody></table>
+      <div class="muted" style="margin-top:6px;font-size:11.5px">裁决读第一行（与估值车道同一样本）；第二行是 09-12 首次测量的口径，P1 两行不同是因为后来的决策带了当天观测；
+        锚后那行才说的是今天服务的向量，${s.served&&s.served.decisions?"两边都在时以锚后为准":"会随结算自动填满，够 8 个事件日前先读上两行"}。
+        读到 ${s.population&&s.population.decisions_read!=null?s.population.decisions_read:"—"} 个决策，
+        盘口不完整弃 ${s.population&&s.population.market_incomplete!=null?s.population.market_incomplete:"—"}。</div>
+    </div>`;
+  }).join("");
+  const W=E.window||{};
+  return `${title}
+  <p class="sub">用户宪章（2026-09-12）：市场会错，模型也会错，<b>edge = 市场的错 − 模型的错</b>。
+  这一节把它量出来。每个已结算的决策，取当时服务的概率向量 p、同一时刻盘口中价 m 和真值桶 t，
+  整梯所有桶一起算，站日等权，${W.days||28} 天滚动（${h(W.floor_day||"—")} … ${h(W.as_of_event_date||"—")}）。
+  <b>这是读数，不是拟合，也不服务任何东西。</b></p>
+  <div class="why"><b>三个量是从同一个动作推出来的。</b>动作：每桶买 (p − m) 股、按中价成交，模型比市场高就买、低就卖。
+  记市场的错 <span class="mono">e_q = m − t</span>、模型的错 <span class="mono">e_p = p − t</span>，
+  一桶的利润 = (p − m)(t − m) = <span class="mono">e_q² − e_p·e_q</span>，全部桶、全部站日平均，就是
+  <span class="mono">EV = Var(e_q) − Cov(e_p, e_q)</span>。<br>
+  <b>Var(e_q)</b>：市场错的平方取平均——市场错了多少，<b>桌上有多少钱</b>；市场一点不错就是 0。<br>
+  <b>Cov(e_p, e_q)</b>：模型的错 × 市场的错取平均——两个错<b>同向的程度</b>；一起错为正，模型对而市场错时小或为负。<br>
+  <b>Var − Cov</b>：市场错的那部分里<b>模型看出来了多少</b>，也就是按分歧下注每站日的期望利润（中价、未扣点差）。<br>
+  <b>k = Cov / Var</b>：拿模型的错对市场的错做回归的斜率。k = 1：模型的错 = 市场的错 + 自己的噪声，EV = 0；
+  <b>k &lt; 1 才有 edge</b>；k &gt; 1：模型把市场的错同向放大。式子里没有 Var(e_p)：
+  <b>不要求模型比市场准，只要求模型的错不完全包含市场的错。</b><br>
+  <b>例子（真值落 32°C，看 31°C 这桶，t = 0）：</b>
+  A·市场错模型对：市场 0.40、模型 0.20 → 卖 0.20 股、结算归零、赚 +0.08；公式 0.40² − 0.20×0.40 = +0.08。
+  B·市场错、模型同向错得更多：市场 0.40、模型 0.55 → 买 0.15 股、亏 −0.06；公式 0.16 − 0.22 = −0.06。
+  两种情况市场都错了 0.40，差别全在 Cov 那一项。</div>
+  <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(520px,1fr));gap:12px">${cards}</div>
+  <p class="note" style="margin-top:10px">怎么读：EV 的 90% 下界要高于真实点差才够实盘开闸（宪章：该数下界 &gt; 点差）；
+  k 的区间不含 1 才能说模型有市场没有的信息。区间按事件日自助 ${E.bootstrap_draws||200} 次——全队同一天共享天气，站日不是独立样本。
+  λ、5% 门槛、席位形状都不动 Cov，只能少买；能把这个数翻正的只有概率层接到市场没用足的信息。</p>`;
+}
+
 function windowDivergence(){
   const W=D.window_divergence||{};
   const rows=W.flagged||[];
@@ -14228,7 +14573,8 @@ function centreLanding(){
   <div class="why"><b>为什么量这个：</b>席位以均值桶为心（宪章 54/75），
   形状由三态读数钉死（宪章 131，门槛 ${rule.skew_threshold_sigma == null ?
     "0.35" : rule.skew_threshold_sigma}σ）：
-  对称日坐均值桶±1；偏斜日坐 {均值桶, 尾侧一格, 尾侧两格}，众数桶不在座位里。
+  对称日坐均值桶±1；偏斜日坐 {均值桶, 尾侧一格, 尾侧两格}，众数桶不在座位里——
+  除非众数就是均值桶的邻桶，那时座位朝众数那一侧、把它包进来（宪章 135）。
   整篮经济门拿去和价格比的是这个窗口的有效质量 λ(a)·p，
   所以“真值能不能被这个窗兼住”直接决定了这一天的席位值不值。<br>
   <b>怎么读：</b>偏差是平均落点减均值，正数表示实际比模型说的热；
@@ -14390,8 +14736,8 @@ function liveOrderCard(L){
   // not by which way the page happens to draw the ladder.
   const SKEW_LABEL = {
     SYMMETRIC: ["对称日", "均值与众数相差不到 0.35 σ —— 宪章 131 把席位定为均值桶±1"],
-    RIGHT_SKEWED: ["右偏 · 暖尾", "均值在众数之上超过 0.35 σ：席位为 {均值桶, 尾侧一格(, 尾侧两格)}，众数桶在窗外"],
-    LEFT_SKEWED: ["左偏 · 冷尾", "均值在众数之下超过 0.35 σ：席位为 {均值桶, 尾侧一格(, 尾侧两格)}，众数桶在窗外"],
+    RIGHT_SKEWED: ["右偏 · 暖尾", "均值在众数之上超过 0.35 σ：席位为 {均值桶, 尾侧一格(, 尾侧两格)}；众数隔均值桶两格及以上时在窗外，众数紧挨均值桶时座位改朝众数一侧（宪章 135）"],
+    LEFT_SKEWED: ["左偏 · 冷尾", "均值在众数之下超过 0.35 σ：席位为 {均值桶, 尾侧一格(, 尾侧两格)}；众数隔均值桶两格及以上时在窗外，众数紧挨均值桶时座位改朝众数一侧（宪章 135）"],
   };
   // Charter 131: the windows the day was allowed, as the plan recorded them
   // (ordinal sets, widest first).
@@ -15553,7 +15899,8 @@ const GROUPS = [
      [windowDivergence,"分布与持仓分家"]]},
   {id:"market", label:"市场与执行门槛", tone:"#e3b341",
    note:"市场肯不肯让这套东西赚钱：盘口方向闸、覆盖与 EV、篮子命中率、真值落位",
-   sections:[[marketLeanGate,"市场方向闸"],
+   sections:[[charterEv,"宪章 EV 恒等式"],
+     [marketLeanGate,"市场方向闸"],
      [coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"],
      [truthLanding,"真值落位"]]},
 ];
@@ -15639,6 +15986,8 @@ const LANES = {
   "分布与持仓分家": {layer:"定注层 · 读数", status:"audit",
     role:"分布说的桶和真正持有的桶差多少"},
   // --- market: whether the book lets any of it make money ---
+  "宪章 EV 恒等式": {layer:"模型 vs 市场 · 读数", status:"audit",
+    role:"edge = 市场的错 − 模型的错 = Var(e_q) − Cov(e_p,e_q)；k = Cov/Var 低于 1 才有 edge"},
   "市场方向闸": {layer:"选窗层", status:"shadow",
     role:"只看市场往哪边歪 → 不许逆着它开窗（09-05 上线、09-12 退回影子）"},
   "覆盖 · 价格 · EV": {layer:"选窗层 · 读数", status:"audit",
@@ -15679,7 +16028,7 @@ const laneStrip = (name) => {
       h(LANE_WORD[L.status] || L.status)}</span><span class="muted">${
       h(L.note || LANE_NOTE[L.status] || "")}</span></span></div>`;
 };
-const STARRED = new Set(["band 表", "声称边际体温计", "有效边际 λ 表", "统一估值车道"]);
+const STARRED = new Set(["band 表", "声称边际体温计", "有效边际 λ 表", "统一估值车道", "宪章 EV 恒等式"]);
 // The strip rides INSIDE the section, above its <h2>, and only when the
 // section rendered something: an empty section is guarded out of the page
 // on purpose, and a lane strip would put it back as a chip pointing at
