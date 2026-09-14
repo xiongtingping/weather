@@ -13002,7 +13002,7 @@ function charterEv(){
     const evCls=r.ev==null?"":(r.ev<0?"down":"up");
     const kCls=r.k==null?"":(r.k<1?"up":"down");
     const net=(r.ev==null||r.spread_cost==null)?null:r.ev-r.spread_cost;
-    return `<tr class="${muted?"muted":""}"><td>${label}</td>
+    return `<tr class="${muted?"muted":""}"><td style="white-space:nowrap">${label}</td>
       <td class="mono">${r.station_days} / ${r.days}</td>
       <td class="mono">${n3(r.var_market)}</td>
       <td class="mono">${n3(r.var_model)}</td>
@@ -13019,7 +13019,7 @@ function charterEv(){
     return `<div class="card">
       <div style="display:flex;align-items:center;gap:8px"><b>${h(s.scope)}</b><span style="flex:1"></span>
         <span class="pill ${v.tone}">${v.word}</span></div>
-      <table style="margin-top:8px"><thead><tr><th>样本</th><th>站日 / 天</th>
+      <div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>样本</th><th>站日 / 天</th>
         <th>Var(e_q)<br><span class="muted">市场的错</span></th>
         <th>Var(e_p)<br><span class="muted">模型的错</span></th>
         <th>Cov(e_p,e_q)<br><span class="muted">同向的错</span></th>
@@ -13027,7 +13027,7 @@ function charterEv(){
         <th>k = Cov / Var<br><span class="muted">90%</span></th>
         <th>点差成本<br><span class="muted">每站日 · EV − 点差</span></th>
         <th>EV &gt; 0 天数</th></tr></thead>
-      <tbody>${row("滚动 28 天 · 逐决策站日等权",s.research,false)}${row("滚动 28 天 · 每站日首次决策",s.first,false)}${row("服务锚 "+anchor+" 起",s.served,true)}</tbody></table>
+      <tbody>${row("滚动 28 天 · 逐决策站日等权",s.research,false)}${row("滚动 28 天 · 每站日首次决策",s.first,false)}${row("服务锚 "+anchor+" 起",s.served,true)}</tbody></table></div>
       <div class="muted" style="margin-top:6px;font-size:11.5px">裁决读第一行（与估值车道同一样本）；第二行是 09-12 首次测量的口径，P1 两行不同是因为后来的决策带了当天观测；
         锚后那行才说的是今天服务的向量，${s.served&&s.served.decisions?"两边都在时以锚后为准":"会随结算自动填满，够 8 个事件日前先读上两行"}。
         读到 ${s.population&&s.population.decisions_read!=null?s.population.decisions_read:"—"} 个决策，
@@ -13054,7 +13054,7 @@ function charterEv(){
   A·市场错模型对：市场 0.40、模型 0.20 → 卖 0.20 股、结算归零、赚 +0.08；公式 0.40² − 0.20×0.40 = +0.08。
   B·市场错、模型同向错得更多：市场 0.40、模型 0.55 → 买 0.15 股、亏 −0.06；公式 0.16 − 0.22 = −0.06。
   两种情况市场都错了 0.40，差别全在 Cov 那一项。</div>
-  <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(520px,1fr));gap:12px">${cards}</div>
+  ${cards}
   <p class="note" style="margin-top:10px">怎么读：EV 的 90% 下界要高于真实点差才够实盘开闸（宪章：该数下界 &gt; 点差）；
   k 的区间不含 1 才能说模型有市场没有的信息。区间按事件日自助 ${E.bootstrap_draws||200} 次——全队同一天共享天气，站日不是独立样本。
   λ、5% 门槛、席位形状都不动 Cov，只能少买；能把这个数翻正的只有概率层接到市场没用足的信息。</p>`;
