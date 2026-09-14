@@ -55,10 +55,10 @@
 - `com.weather.weather_basket_yes` 是canonical ASOS优先/AWC后备正式观测层的纯YES篮子唯一驻留服务名；旧`com.weather.reported_trajectory_no` label与`reported_trajectory_no_v1` hard-NO策略均已退役，不得加载、决策或下单，不得作为服务别名，不得启动第四个生产服务。
 - 篮子按已物化后验、方向侧覆盖价值、全情景利润曲线、集中度、预算和真实 WS 深度求唯一目标库存，不设固定桶数、4→3→2或阶段内等份。未成交 Maker 不计入已实现地板但必须计入 confirmed pending；每次成交后重算目标库存、净成本和利润曲线。默认只增不减；显式角色调仓时，仅允许卖出 S/B/L/C 桶中恢复 `M>S>A>B>F` 所需的超额份额，M/A/F 桶不得卖出、不得用卖出控制预算。卖出必须使用官方 YES bid 逐档深度并在成交后重算净成本和地板，未知成交立即 reconcile_required。边缘桶允许作为中心。
 - 篮子中心只能来自已物化 P1；P1 缺失时使用最新P0-M，TAF未到时才使用P0；regime只作方向一致性闸门，不得平移概率中心。
-- 篮子风险层固定区分 `underreach_risk` 与 `upside_breakthrough_risk`：P1 主桶 `M` 未达成时，按 bucket contract 的 `predecessor(M)`、`predecessor²(M)` 生成下方尾部；官方实况形成新高 `R` 后，才按 `successor(R)`、`successor²(R)` 生成上行突破桶。`P1=30℃、当前已报最高温=25℃` 到 `29℃/28℃` 仅是说明性示例，绝对温度、桶宽和边界不得硬编码；风险层不得修改 P1。
+- 双风险层（`underreach_risk`/`upside_breakthrough_risk`）已于 2026-09-04 按裁决退役（宪章第 29、32 条）：`_derive_dual_risk_scope` 只在 P1 标出 `predecessor(M)`/`successor(R)` 两层，结果先与概率核心取交集，只作 `value_v2` 审计读数的覆盖项输入，不进种子、席位、定注，不生成也不扩出新桶；桶关系只由 bucket contract 解析，风险层不得修改 P1。
 - 赔率优化必须按官方 CLOB WS 逐档 `all_in_yes_ask` 做篮子级增量覆盖价值；`ShortfallCoverage` 和 `BreakthroughCoverage` 只影响排序、预算和选桶，不是新概率。硬事实排除、lineage、证据新鲜度、盘口深度、预算及立即执行/已成交部分的 `sum(all_in_yes_ask)<1` 任一不满足即 fail closed；未成交 staged GTC 继续遵守既定独立挂单规则。
 - 极端赔率只允许用于重塑自有结算利润曲线：新增 `x` 份桶 `b`、全包价为 `a_b` 时，命中 `b` 的情景增益为 `x×(1-a_b)`，未命中情景成本为 `x×a_b`；必须以 `ΔBasketScore>0`、尾部覆盖价值、P1/lineage、集中度、预算和真实 WS 深度共同决定，禁止按 `1/a_b` 高赔率或低价单独重仓。`reservation_value` 不是概率，不能改写 P0/P1 或生产状态。
-- 未达成或突破风险最多向任一方向扩展两层；两类风险同时升高时降低集中度并收紧证据/盘口门，不得用无限扩桶替代证据。动态选桶必须服从正库存缺口、Maker保留价/等待门、紧迫FOK上限、成交后重算和`reconcile_required`。
+- 候选集不再按风险锚扩层（第 32 条退役，两层扩展上限一并下线）：种子只剩概率核心（第 76 条），枚举域是整条已报价梯子（第 49 条）。动态选桶必须服从正库存缺口、Maker保留价/等待门、紧迫FOK上限、成交后重算和`reconcile_required`。
 - 旧生产线标记 `019f7a84-53ec-7183-9c5f-7f9cfa62e1f0` 已按熊先生指令退役，不再作为保护或运行依赖；用户域三个共用服务只承载 target `production_no_live` 主线，system 域同名服务必须为零。
 - 篮子 Maker 允许确定性部分成交并按实际成交重算；撤单未确认、成交结果不明或迟到回报立即进入 `reconcile_required`。紧迫FOK单桶全成或零成，失败后禁止猜测重发，必须先重算当前SSOT。
 - 新报文仅在推进站点当日已报最高温时触发；同温和旧温不交易。
