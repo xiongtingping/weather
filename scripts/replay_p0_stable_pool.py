@@ -60,7 +60,7 @@ from bayes_basket_target.stable_pool import (  # noqa: E402
 )
 from bayes_basket_target.station_registry import station_coordinates  # noqa: E402
 
-SCHEMA = "p0_stable_pool_replay_update_v1"
+SCHEMA = "p0_stable_pool_replay_update_v2"
 CUTOFF_UTC = "2026-09-14T00:00:00Z"
 FIRST_EVENT_DATE = "2026-08-20"
 LAST_EVENT_DATE = "2026-09-12"
@@ -89,6 +89,29 @@ def _first_truth_commit(conn: sqlite3.Connection, station: str) -> dict[str, dat
     return {str(day): _utc(stamp) for day, stamp in rows if stamp}
 
 
+def _arrivals(conn: sqlite3.Connection, station: str) -> dict[tuple, datetime]:
+    """When each native run was actually fetched.
+
+    ``_load_cases`` stamps an offline native case with its run's
+    initialisation time, which is right for strict OOS ordering but is not
+    when a compile could have read it: the archive query lands 5-20 hours
+    later.  Updates are ordered, and knowability is judged, on arrival.
+    """
+
+    rows = conn.execute(
+        "SELECT ensemble_system_id, target_local_date, archive_lead_bucket, run_cycle,"
+        " native_run_init_utc, MIN(archive_query_at_utc)"
+        " FROM calibration_native_ensemble_historical_member_run"
+        " WHERE station_id=? AND target_local_date>=? AND qc_status='ACCEPTED'"
+        " GROUP BY 1, 2, 3, 4, 5",
+        (station, (date.fromisoformat(FIRST_EVENT_DATE) - timedelta(days=oos.ROLLING_TRAIN_WINDOW_DAYS + 5)).isoformat()),
+    ).fetchall()
+    return {
+        (str(system), str(day), str(lead), str(cycle), str(init or "")): _utc(stamp)
+        for system, day, lead, cycle, init, stamp in rows if stamp
+    }
+
+
 def _run_init(case: dict[str, Any]) -> str:
     inits = sorted({str(value or "") for value in case.get("member_native_run_init_utcs") or []})
     return inits[-1] if inits else ""
@@ -97,9 +120,10 @@ def _run_init(case: dict[str, Any]) -> str:
 class Forecasts:
     """Walk-forward per-system forecasts, memoised on their training set."""
 
-    def __init__(self, cases_by_scope, first_commit):
+    def __init__(self, cases_by_scope, first_commit, arrival_of):
         self.cases_by_scope = cases_by_scope
         self.first_commit = first_commit
+        self.arrival_of = arrival_of
         self.memo: dict[tuple, dict[str, Any] | None] = {}
 
     def train(self, scope, event_date: str, knowable: datetime):
@@ -107,7 +131,7 @@ class Forecasts:
         return [
             case for case in self.cases_by_scope[scope]
             if start <= case["event_date"] < event_date
-            and _utc(case["aggregator_snapshot_at_utc"]) < knowable
+            and self.arrival_of(scope, case) < knowable
             and case["event_date"] in self.first_commit
             and self.first_commit[case["event_date"]] < knowable
         ]
@@ -204,7 +228,13 @@ def replay_station(conn: sqlite3.Connection, station: str) -> list[dict[str, Any
         if scope[0] in family and all(c.get("transport_provider_id") != "OPEN_METEO" for c in rows)
     }
     first_commit = _first_truth_commit(conn, station)
-    forecasts = Forecasts(cases_by_scope, first_commit)
+    fetched = _arrivals(conn, station)
+
+    def arrival_of(scope, case) -> datetime:
+        key = (scope[0], case["event_date"], str(case.get("archive_lead_bucket") or ""), scope[3], _run_init(case))
+        return fetched.get(key) or _utc(case["aggregator_snapshot_at_utc"])
+
+    forecasts = Forecasts(cases_by_scope, first_commit, arrival_of)
     try:
         latitude = float(station_coordinates(station)["latitude"])
     except Exception:  # noqa: BLE001
@@ -214,7 +244,7 @@ def replay_station(conn: sqlite3.Connection, station: str) -> list[dict[str, Any
         for case in rows:
             if FIRST_EVENT_DATE <= case["event_date"] <= LAST_EVENT_DATE:
                 arrivals[case["event_date"]].append(
-                    (_utc(case["aggregator_snapshot_at_utc"]), _run_init(case), scope[0], scope, case)
+                    (arrival_of(scope, case), _run_init(case), scope[0], scope, case)
                 )
     tables_memo: dict[str, dict[str, Any]] = {}
     out: list[dict[str, Any]] = []
@@ -259,6 +289,7 @@ def replay_station(conn: sqlite3.Connection, station: str) -> list[dict[str, Any
                 "at": at.isoformat().replace("+00:00", "Z"),
                 "lead": newest_scope[2], "actual": actual,
                 "pool": pool, "scopes": {s: [packet[s][2][2], packet[s][2][3]] for s in pool},
+                "runs": {s: packet[s][1] for s in pool},
                 "band_sha": tables["band_table_sha256"], "cw_sha": tables["center_width_sha256"],
                 "schemes": {},
             }
@@ -287,9 +318,10 @@ def replay_station(conn: sqlite3.Connection, station: str) -> list[dict[str, Any
                     x = prior["event_date"]
                     if x >= event_date or x not in first_commit or first_commit[x] >= at:
                         continue
-                    if _utc(prior["aggregator_snapshot_at_utc"]) >= at:
+                    prior_arrival = arrival_of(s_scope, prior)
+                    if prior_arrival >= at:
                         continue
-                    row = forecasts.forecast(s_scope, prior, _utc(prior["aggregator_snapshot_at_utc"]))
+                    row = forecasts.forecast(s_scope, prior, prior_arrival)
                     if row is not None:
                         rows[x] = row
                 prior_rows[s] = rows
