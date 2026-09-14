@@ -8178,28 +8178,45 @@ def _lead_hours(day: str, zone: str, decided_at: str) -> float | None:
     return (end - at).total_seconds() / 3600.0
 
 
+CLAIM_EDGE_STAGES = ("P0", "P0-M", "P1")
+
+
 def _claim_edge_calibration(rows: list[tuple]) -> dict[str, Any]:
-    """The claimed-edge thermometer, asked where no fill model can reach it.
+    """The claimed-edge thermometer: does a claim that calls itself a bargain
+    deliver?  Asked where no fill model can reach it.
 
-    The ledger version of this reading takes the POSTED leg as its unit and
-    splits it by whether the market sold it.  That split was its sharpest
-    column and stopped being an observation on 2026-09-11, when charter 129
-    made the paper book's fills conditional on the outcome: p(fill|crossed)
-    is 0.4581 on a winning leg and 0.6650 on a losing one, so the filled
-    sample is enriched in losers by construction.  On top of that the
-    2026-09-12 re-derive left the book at 259 legs, under this section's
-    ten-settled-leg floor in four of its seven bands.
-
-    Here the unit is the seated WINDOW at each decision and the outcome is
+    Rows are ``(station, day, claim, price, won[, lead_hours[, stage]])``.
+    The unit is the seated WINDOW at each decision and the outcome is
     whether the truth landed in it.  Nothing is conditioned on a fill,
-    nothing is conditioned on a basket clearing the hurdle, and the sample
-    is the whole stamped candidate lane rather than what got bought.  It
-    answers the same question -- does a claim that calls itself a bargain
-    deliver -- on roughly twenty times the legs.
+    nothing is conditioned on a basket clearing the hurdle.
+
+    This is the section's only reading since 2026-09-14.  The ledger version
+    (``collect_edge_band_health``, posted legs split by whether the market
+    sold them) was retired that day: charter 129 made the paper book's fills
+    conditional on the outcome (p(fill|crossed) 0.4581 winning, 0.6650
+    losing), so its filled side read the simulator's own assumption back;
+    it held 99 settled filled legs with four of seven bands under its floor;
+    and its headline pooled only the bands that cleared that floor, which on
+    the day of retirement were exactly the three that excluded both fevered
+    bands (x0.99 printed against x0.885 over every settled filled leg).
+
+    The main reading per band is ``hit - price``, not ``hit / claim``.  The
+    ratio collapses with edge under ANY model whose disagreement with the
+    price is noise -- the band is cut on that disagreement, so a high band
+    is where claim is far above price and a hit rate that follows the price
+    divides out small.  Measured 2026-09-14 on P0: every band's hit - price
+    sat between -2 and -7 points while claim - price ran from below zero to
+    past thirty.  ``hit - price`` says that directly, and it is also what a
+    share bought at that price earns.  The ratio stays beside it.
+
+    Split by stage (user ruling 2026-09-02: the same claimed edge is not the
+    same claim at P0 and at P1), with the pooled reading kept beside the
+    split rather than instead of it.
 
     Intervals are block-bootstrapped over station-days: the same window is
     re-seated every cycle and the stages of one day settle against one
-    high, so a row is not a draw.
+    high, so a row is not a draw.  Verdicts are taken on the unrounded
+    quantiles and only then rounded for display.
 
     The regression beside it is charter 128's own form, (truth - price) =
     a + beta * (claim - price), so the panel's shape and the beta lane's
@@ -8219,85 +8236,165 @@ def _claim_edge_calibration(rows: list[tuple]) -> dict[str, Any]:
                 return name
         return ">=30%"
 
-    def ratio(group: list[tuple]) -> float | None:
-        if not group:
-            return None
-        claimed = sum(row[2] for row in group) / len(group)
-        hit = sum(row[4] for row in group) / len(group)
-        return hit / claimed if claimed > 0 else None
+    # Every statistic here is a function of eight per-row sums, so the
+    # bootstrap resamples per-day sums instead of re-walking rows: the same
+    # day draws as a row-level walk, at a cost that no longer grows with
+    # cycles per day.
+    def sums(group: list[tuple]) -> list[float]:
+        acc = [0.0] * 8
+        for row in group:
+            claim, price, won = float(row[2]), float(row[3]), float(row[4])
+            x, y = claim - price, won - price
+            acc[0] += 1.0
+            acc[1] += claim
+            acc[2] += won
+            acc[3] += price
+            acc[4] += x
+            acc[5] += y
+            acc[6] += x * x
+            acc[7] += x * y
+        return acc
 
-    def slope(group: list[tuple]) -> float | None:
-        if len(group) < 20:
+    def ratio_of(s: Sequence[float]) -> float | None:
+        return s[2] / s[1] if s[0] and s[1] > 0 else None
+
+    def gap_of(s: Sequence[float]) -> float | None:
+        return (s[2] - s[3]) / s[0] if s[0] else None
+
+    def slope_of(s: Sequence[float]) -> float | None:
+        n = s[0]
+        if n < 20:
             return None
-        xs = [row[2] - row[3] for row in group]
-        ys = [row[4] - row[3] for row in group]
-        n = len(xs)
-        mx = sum(xs) / n
-        my = sum(ys) / n
-        sxx = sum((x - mx) ** 2 for x in xs)
+        sxx = s[6] - s[4] * s[4] / n
         if sxx <= 1e-12:
             return None
-        return sum(
-            (x - mx) * (y - my) for x, y in zip(xs, ys)
-        ) / sxx
+        return (s[7] - s[4] * s[5] / n) / sxx
 
-    def interval(group: list[tuple], stat: Any) -> tuple:
+    stats = {"ratio": ratio_of, "gap": gap_of, "slope": slope_of}
+
+    def interval(
+        group: list[tuple], wanted: Sequence[str]
+    ) -> dict[str, tuple]:
+        empty = {name: (None, None) for name in wanted}
         by_day: dict[tuple, list] = {}
         for row in group:
             by_day.setdefault((row[0], row[1]), []).append(row)
         keys = list(by_day)
         if len(keys) < 10:
-            return (None, None)
+            return empty
+        day_sums = [sums(by_day[key]) for key in keys]
         # Deterministic resampling: the page is rebuilt many times a day and
         # an interval that moves on its own would be read as the reading
-        # moving.  A linear congruential walk over the day keys is enough
-        # for a block bootstrap and costs nothing to reproduce.
-        seed = 20260913
-        draws: list[float] = []
+        # moving, so the generator is seeded the same way every build.
+        #
+        # It used to be a hand-rolled LCG taken modulo the day count.  The
+        # low bits of a power-of-two-modulus LCG cycle with period 2^k, so
+        # with 128 station-days every "resample" drew each day exactly once
+        # and the interval collapsed to the point estimate (P0-M 2-5%,
+        # 2026-09-14: hit - price [-0.045, -0.045]); any day count with a
+        # power-of-two factor was drawn narrower than it is.
+        rng = random.Random(20260913)
+        draws: dict[str, list[float]] = {name: [] for name in wanted}
         for _ in range(300):
-            sample: list[tuple] = []
+            total = [0.0] * 8
             for _ in range(len(keys)):
-                seed = (seed * 1103515245 + 12345) % (2 ** 31)
-                sample.extend(by_day[keys[seed % len(keys)]])
-            value = stat(sample)
-            if value is not None:
-                draws.append(value)
-        if len(draws) < 60:
-            return (None, None)
-        draws.sort()
-        return (
-            round(draws[int(0.05 * len(draws))], 3),
-            round(draws[int(0.95 * len(draws))], 3),
-        )
+                picked = day_sums[rng.randrange(len(keys))]
+                for i in range(8):
+                    total[i] += picked[i]
+            for name in wanted:
+                value = stats[name](total)
+                if value is not None:
+                    draws[name].append(value)
+        out: dict[str, tuple] = {}
+        for name in wanted:
+            got = sorted(draws[name])
+            out[name] = (
+                (None, None) if len(got) < 60
+                else (got[int(0.05 * len(got))], got[int(0.95 * len(got))])
+            )
+        return out
+
+    def r3(value: float | None) -> float | None:
+        return None if value is None else round(value, 3)
+
+    def verdict(low: float | None, high: float | None, line: float) -> str | None:
+        # Taken on the raw quantiles: 0.498987 is below 0.5 even though it
+        # prints as 0.499, and a verdict read off the printed digit is a
+        # verdict about the rounding.
+        if low is None or high is None:
+            return None
+        if high < line:
+            return "below"
+        if low > line:
+            return "above"
+        return "unresolved"
+
+    def summarise(group_rows: list[tuple]) -> dict[str, Any]:
+        grouped: dict[str, list] = {}
+        for row in group_rows:
+            grouped.setdefault(band_of(row[2] - row[3]), []).append(row)
+        band_rows = []
+        for name in bands:
+            group = grouped.get(name) or []
+            if not group:
+                continue
+            s = sums(group)
+            got = interval(group, ("ratio", "gap"))
+            (r_lo, r_hi), (g_lo, g_hi) = got["ratio"], got["gap"]
+            band_rows.append({
+                "band": name,
+                "n": len(group),
+                "station_days": len({(row[0], row[1]) for row in group}),
+                "share": round(len(group) / len(group_rows), 4),
+                "claimed_mean": round(s[1] / s[0], 4),
+                "price_mean": round(s[3] / s[0], 4),
+                "hit_rate": round(s[2] / s[0], 4),
+                "realised_x": r3(ratio_of(s)),
+                "realised_lo": r3(r_lo),
+                "realised_hi": r3(r_hi),
+                "realised_verdict": verdict(r_lo, r_hi, 1.0),
+                "hit_minus_price": r3(gap_of(s)),
+                "hit_minus_price_lo": r3(g_lo),
+                "hit_minus_price_hi": r3(g_hi),
+                "hit_minus_price_verdict": verdict(g_lo, g_hi, 0.0),
+            })
+        s = sums(group_rows)
+        got = interval(group_rows, ("slope", "gap"))
+        (b_lo, b_hi), (g_lo, g_hi) = got["slope"], got["gap"]
+        return {
+            "rows": len(group_rows),
+            "station_days": len({(row[0], row[1]) for row in group_rows}),
+            "bands": band_rows,
+            "beta": r3(slope_of(s)),
+            "beta_lo": r3(b_lo),
+            "beta_hi": r3(b_hi),
+            # Nearer "the price is the answer" (0) or "the disagreement
+            # realises in full" (1), only when the whole interval says so.
+            "beta_vs_half": verdict(b_lo, b_hi, 0.5),
+            "pooled_x": r3(ratio_of(s)),
+            "hit_minus_price": r3(gap_of(s)),
+            "hit_minus_price_lo": r3(g_lo),
+            "hit_minus_price_hi": r3(g_hi),
+        }
+
+    def slope(group: list[tuple]) -> float | None:
+        return slope_of(sums(group))
 
     if not rows:
         return {"available": False}
-    grouped: dict[str, list] = {}
-    for row in rows:
-        grouped.setdefault(band_of(row[2] - row[3]), []).append(row)
-    out = []
-    for name in bands:
-        group = grouped.get(name) or []
-        if not group:
-            continue
-        low, high = interval(group, ratio)
-        out.append({
-            "band": name,
-            "n": len(group),
-            "station_days": len({(row[0], row[1]) for row in group}),
-            "share": round(len(group) / len(rows), 4),
-            "claimed_mean": round(
-                sum(row[2] for row in group) / len(group), 4
-            ),
-            "hit_rate": round(sum(row[4] for row in group) / len(group), 4),
-            "realised_x": (
-                None if ratio(group) is None else round(ratio(group), 3)
-            ),
-            "realised_lo": low,
-            "realised_hi": high,
-        })
+    pooled = summarise(rows)
+    out = pooled["bands"]
     beta = slope(rows)
-    beta_lo, beta_hi = interval(rows, slope)
+    beta_lo, beta_hi = pooled["beta_lo"], pooled["beta_hi"]
+    # A row that cannot say its stage stays in the pooled reading and sits
+    # out the split, so the split is an exact partition of what it can see.
+    by_stage = {
+        stage: summarise(staged)
+        for stage in CLAIM_EDGE_STAGES
+        if (staged := [
+            row for row in rows if len(row) > 6 and row[6] == stage
+        ])
+    }
 
     # The cut the user asked for, 2026-09-13: is there a subset whose beta
     # is clearly above zero?  Both axes are reported live so the question
@@ -8317,15 +8414,15 @@ def _claim_edge_calibration(rows: list[tuple]) -> dict[str, Any]:
             value = slope(group)
             if value is None:
                 continue
-            low, high = interval(group, slope)
+            low, high = interval(group, ("slope",))["slope"]
             cut.append({
                 "key": str(mark),
                 "n": len(group),
                 "station_days": len({(r[0], r[1]) for r in group}),
                 "beta": round(value, 3),
-                "beta_lo": low,
-                "beta_hi": high,
-                "above_zero": bool(low is not None and low > 0),
+                "beta_lo": r3(low),
+                "beta_hi": r3(high),
+                "above_zero": verdict(low, high, 0.0) == "above",
             })
         return cut
 
@@ -8353,9 +8450,13 @@ def _claim_edge_calibration(rows: list[tuple]) -> dict[str, Any]:
         "beta": None if beta is None else round(beta, 3),
         "beta_lo": beta_lo,
         "beta_hi": beta_hi,
-        "pooled_x": (
-            None if ratio(rows) is None else round(ratio(rows), 3)
-        ),
+        "beta_vs_half": pooled["beta_vs_half"],
+        "pooled_x": pooled["pooled_x"],
+        "hit_minus_price": pooled["hit_minus_price"],
+        "hit_minus_price_lo": pooled["hit_minus_price_lo"],
+        "hit_minus_price_hi": pooled["hit_minus_price_hi"],
+        "stages": list(by_stage),
+        "by_stage": by_stage,
         "by_lead": by_lead,
         "by_station": by_station,
         "stations_cut": len(by_station),
@@ -8457,7 +8558,7 @@ def collect_lambda_axis_realisation(conn: sqlite3.Connection) -> dict[str, Any]:
     try:
         cursor = conn.execute(
             "SELECT station_id, event_date, decision_at_utc,"
-            " settlement_timezone, feature_json"
+            " settlement_timezone, feature_json, stage"
             " FROM basket_policy_training_fact"
             " WHERE event_date >= ?"
             "   AND feature_json LIKE '%win_probability%'",
@@ -8465,7 +8566,7 @@ def collect_lambda_axis_realisation(conn: sqlite3.Connection) -> dict[str, Any]:
         )
     except sqlite3.Error:
         return {"available": False, "since": since}
-    for sid, day, decided_at, zone, payload in cursor:
+    for sid, day, decided_at, zone, payload, stage in cursor:
         high = truth.get((str(sid), str(day)))
         if high is None:
             continue
@@ -8509,6 +8610,7 @@ def collect_lambda_axis_realisation(conn: sqlite3.Connection) -> dict[str, Any]:
                 claim_edge.append((
                     str(sid), str(day), float(claim), float(price), won,
                     _lead_hours(str(day), str(zone or ""), str(decided_at or "")),
+                    str(stage or ""),
                 ))
             # One fact is one decision; the first seated selection in it is
             # that decision's seat.
@@ -8726,190 +8828,6 @@ def collect_valuation_lane(conn: sqlite3.Connection) -> dict[str, Any]:
         "mode": VALUATION_MODE,
     })
     return out
-
-
-def collect_edge_band_health(conn: sqlite3.Connection) -> dict[str, Any]:
-    """The claims layer's thermometer: edge bands versus what they realise.
-
-    Edge = claimed probability minus the all-in ask at posting, leg by leg.
-    The 2026-08-26 execution battle measured the shape once: realisation
-    over claim collapses monotonically with edge (0.94x at <0 down to
-    0.06x at >=30%), fills rise with edge (the market sells exactly the
-    overclaims), and the unfilled side realises 1.36x its claims.  This is
-    deliberately a monitor, not a gate -- the gate version died its
-    excision test (A1) -- so what this section is FOR is watching the
-    charter 62 calibration repair land: the >=10% bands should shrink and
-    realisation ratios should climb toward 1.0 as the centre bias closes.
-    Split at each leg's own posting day, most recent seven days against
-    everything before.
-    """
-
-    number = re.compile(r"-?\d+(?:\.\d+)?")
-
-    def bucket_value(label: str) -> float | None:
-        found = number.findall(label or "")
-        return float(found[0]) if found else None
-
-    bands = ("<0", "0-2%", "2-5%", "5-10%", "10-20%", "20-30%", ">=30%")
-
-    def band_of(edge: float) -> str:
-        if edge < 0:
-            return "<0"
-        for top, name in (
-            (0.02, "0-2%"), (0.05, "2-5%"), (0.10, "5-10%"),
-            (0.20, "10-20%"), (0.30, "20-30%"),
-        ):
-            if edge < top:
-                return name
-        return ">=30%"
-
-    settled = {
-        (str(row[0]), str(row[1])): str(row[2] or "")
-        for row in conn.execute(
-            "SELECT station_id, event_date, settled_bucket"
-            " FROM paper_trade_settlement"
-        )
-    }
-    latest_day = ""
-    legs: list[dict[str, Any]] = []
-    # Every leg that was POSTED (``intended_legs_json``), with ``filled``
-    # read off ``leg_shares_json`` -- what came back.  Two earlier versions
-    # of this loop were each right for the execution family in force and
-    # wrong for the next one.  It first read ``resting_fill_json``, which
-    # charter 65's taker law left empty on every row, so the section printed
-    # "无腿级数据" while the book traded daily (2026-08-29).  It was then
-    # moved to ``leg_shares_json`` with ``filled`` hard-coded true, which is
-    # exactly right for crossing -- a FOK leg fills or is refused -- and
-    # became a lie the day charter 94 made the order a resting ladder: an
-    # unfilled leg simply vanished from the sample, so every band reported a
-    # 100% fill rate and a realisation computed only over the legs the
-    # market agreed to sell.  The filled/unfilled split is the sharpest
-    # reading this panel has and it is the one the resting lane produces, so
-    # the loop now takes the posted leg as the unit and lets the fill be an
-    # observation about it rather than a precondition for seeing it.
-    for row in conn.execute(
-        "SELECT station_id, event_date, probabilities_json, prices_json,"
-        " leg_shares_json, stage, intended_legs_json"
-        " FROM paper_trade_position"
-    ):
-        try:
-            probs = json.loads(row[2] or "{}")
-            prices = json.loads(row[3] or "{}")
-            held = json.loads(row[4] or "{}")
-            posted = json.loads(row[6] or "{}")
-        except ValueError:
-            continue
-        key = (str(row[0]), str(row[1]))
-        truth = settled.get(key)
-        latest_day = max(latest_day, str(row[1]))
-        # A row written before the ledger recorded its posted legs can still
-        # be read for the legs it holds; it just cannot say what it asked
-        # for, so it contributes no unfilled side.
-        for bucket in (posted or held):
-            claim = probs.get(bucket)
-            ask = prices.get(bucket)
-            if claim is None or ask is None:
-                continue
-            try:
-                bought = float(held.get(bucket, 0.0) or 0.0) > 0.0
-            except (TypeError, ValueError):
-                continue
-            legs.append({
-                "day": str(row[1]),
-                "stage": str(row[5]),
-                "band": band_of(float(claim) - float(ask)),
-                "claim": float(claim),
-                "filled": bought,
-                "win": (
-                    None if truth is None
-                    else (1 if str(bucket) == truth else 0)
-                ),
-            })
-    if not legs:
-        return {"bands": [], "recent_floor": "", "totals": {}, "stages": []}
-    recent_floor = (
-        date.fromisoformat(latest_day) - timedelta(days=6)
-    ).isoformat()
-
-    def cell(rows: list[dict[str, Any]]) -> dict[str, Any]:
-        settled_rows = [leg for leg in rows if leg["win"] is not None]
-        filled_rows = [leg for leg in settled_rows if leg["filled"]]
-        unfilled_rows = [leg for leg in settled_rows if not leg["filled"]]
-
-        def ratio(group: list[dict[str, Any]]) -> float | None:
-            if len(group) < 10:
-                return None
-            claimed = sum(leg["claim"] for leg in group) / len(group)
-            won = sum(leg["win"] for leg in group) / len(group)
-            return round(won / claimed, 2) if claimed > 0 else None
-
-        return {
-            "n": len(rows),
-            "fill_rate": (
-                round(
-                    sum(1 for leg in rows if leg["filled"]) / len(rows), 3
-                ) if rows else None
-            ),
-            "claimed_mean": (
-                round(sum(leg["claim"] for leg in rows) / len(rows), 3)
-                if rows else None
-            ),
-            "realize_filled_x": ratio(filled_rows),
-            "realize_unfilled_x": ratio(unfilled_rows),
-            "n_settled": len(settled_rows),
-        }
-
-    # Split by stage, because a claim is not the same claim at every stage.
-    #
-    # P1 re-solves as the day's observations arrive, so a P1 leg claiming a
-    # 30% edge is claiming it with hours of METAR behind it while a P0 leg
-    # claiming the same has only the model.  Pooling them reported >=30% as
-    # realising 0.25x, which was 0.07x for P0 and 0.35x for P1 blended --
-    # a number true of neither lane (measured 2026-09-02, user ruling).
-    # It matters most here of all: this section exists to watch the charter
-    # 62 calibration repair land, and if the stages repair at different
-    # rates the pooled column is exactly what hides it.
-    #
-    # P0-M is kept as a column rather than dropped: it carries three to
-    # twelve legs a band, so ``cell``'s own ten-leg floor blanks nearly
-    # every ratio, which is the honest rendering of a lane too thin to read.
-    stage_names = [
-        name for name in ("P0", "P0-M", "P1")
-        if any(leg["stage"] == name for leg in legs)
-    ]
-    band_rows = []
-    for name in bands:
-        in_band = [leg for leg in legs if leg["band"] == name]
-        band_rows.append({
-            "band": name,
-            "all": cell(in_band),
-            "recent": cell(
-                [leg for leg in in_band if leg["day"] >= recent_floor]
-            ),
-            "by_stage": {
-                stage: cell(
-                    [leg for leg in in_band if leg["stage"] == stage]
-                )
-                for stage in stage_names
-            },
-        })
-    total_recent = sum(1 for leg in legs if leg["day"] >= recent_floor)
-    for entry in band_rows:
-        entry["share_all"] = round(entry["all"]["n"] / len(legs), 3)
-        entry["share_recent"] = (
-            round(entry["recent"]["n"] / total_recent, 3)
-            if total_recent else None
-        )
-    return {
-        "bands": band_rows,
-        "recent_floor": recent_floor,
-        "stages": stage_names,
-        "stage_totals": {
-            stage: sum(1 for leg in legs if leg["stage"] == stage)
-            for stage in stage_names
-        },
-        "totals": {"legs": len(legs), "recent_legs": total_recent},
-    }
 
 
 def collect_window_divergence(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -9720,9 +9638,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "window_divergence": _cached_section(
             "window_divergence", collect_window_divergence, conn
         ),
-        "edge_band_health": _cached_section(
-            "edge_band_health", collect_edge_band_health, conn
-        ),
         "effective_edge_lambda": _cached_section(
             "effective_edge_lambda", collect_effective_edge_lambda, conn
         ),
@@ -9730,7 +9645,11 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
             "lambda_axis_usage", collect_lambda_axis_usage, conn
         ),
         "lambda_axis_realisation": _cached_section(
-            "lambda_axis_realisation", collect_lambda_axis_realisation, conn
+            "lambda_axis_realisation", collect_lambda_axis_realisation, conn,
+            # The thermometer's arithmetic lives in a helper the fingerprint
+            # cannot see; without this a change to it keeps serving the
+            # retired shape for the section's whole lifetime.
+            _salt=inspect.getsource(_claim_edge_calibration),
         ),
         "valuation_lane": _cached_section(
             "valuation_lane", collect_valuation_lane, conn
@@ -11992,276 +11911,81 @@ function marketLeanGate(){
 // ruling, 2026-09-01): both tables answer "when the model claims X, what
 // actually happens", one keyed by claimed probability, one by claimed
 // edge, and reading them two tabs apart hid that they are the same audit.
+//
+// One table since 2026-09-14 (user ruling "修"): the seated window scored
+// against the truth, split by stage, with hit − price as the reading.  The
+// ledger table that used to lead here -- posted legs split by whether the
+// paper book filled them -- read charter 129's outcome-conditioned fill
+// probabilities back as a fever, stood on 99 settled filled legs, and
+// pooled only the bands that cleared its floor, which that day were the
+// three that left out both fevered bands.  Every sentence below is
+// computed from the payload; nothing in it is a number typed in by hand.
 function edgeBandHealth(){
-  const E=D.edge_band_health||{};
-  const rows=E.bands||[];
-  if(!rows.length)
-    return `<h2>声称边际体温计（edge 带 × 兑现）</h2>
-    <div class="card"><span class="dot green"></span> 无腿级数据。</div>`;
-  const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
-  const mult=v=>v==null?"—":"×"+v.toFixed(2);
-  const STAGES=E.stages||[];
-  const tr=r=>{
-    const a=r.all,rc=r.recent;
-    // The sick bands are the big-edge ones; paint the band label by the
-    // filled-side realisation so the eye finds the fever line.
-    const x=a.realize_filled_x;
-    const state=x==null?["—",""]
-      :x>=0.9?["✅ 健康",""]
-      :x>=0.5?["😐 偏虚",""]
-      :x>=0.2?["🤒 发烧","down"]
-      :["🔥 重烧","down"];
-    // Per stage, beside the pooled reading rather than instead of it: the
-    // pooled number is what the reader has been looking at, and the split
-    // only means something next to what it corrects.
-    const byStage=STAGES.map(st=>{
-      const c=(r.by_stage||{})[st];
-      if(!c||!c.n) return `<td class="muted">—</td>`;
-      const v=c.realize_filled_x;
-      const cls=v==null?"muted":(v>=0.9?"":(v>=0.2?"":"down"));
-      return `<td class="${cls}" title="${st}：${c.n} 腿，声称均值 ${
-        pct(c.claimed_mean)}${c.realize_filled_x==null
-          ?"，样本不足 10 条，不出兑现比":""}"><b>${mult(v)}</b><span
-        class="muted" style="font-size:11px"> ${c.n}</span></td>`;
-    }).join("");
-    return `<tr>
-      <td class="mono ${state[1]}">${r.band}</td>
-      <td class="${state[1]}">${state[0]}</td>
-      <td>${a.n}</td><td>${pct(r.share_all)}</td><td>${pct(a.fill_rate)}</td>
-      <td>${pct(a.claimed_mean)}</td>
-      <td class="${state[1]}">${mult(x)}</td>
-      ${byStage}
-      <td>${mult(a.realize_unfilled_x)}</td>
-      <td>${pct(r.share_recent)}</td>
-      <td>${mult(rc.realize_filled_x)}</td></tr>`;
-  };
-  // The fever curve drawn as an arch, with the geometry carrying the
-  // numbers rather than decorating them (user ruling, 2026-09-01 -- the
-  // first version drew seven equal wedges, so the silhouette was ornament
-  // and only the colour and the printed digits said anything).
-  //
-  // Radius is the reading: each band's wedge grows outward from the
-  // springing line by its realisation multiple, so the arch's own outline
-  // IS the fever curve, and the dashed ×1.00 ring is the honesty line --
-  // a wedge that reaches past it delivered what it claimed.  Angular slots
-  // stay equal so the left-to-right trend reads on an even axis; leg share
-  // gets its own channel as the thickness of the footing under each wedge
-  // (how much of the book rests on that band).  The white contour is the
-  // recent window on the same radial scale, so charter 62's treatment is
-  // visible as the line standing outside the fill it sits on.
-  const RAMP=[[0,176,42,55],[0.2,224,49,49],[0.35,232,89,12],
-    [0.55,240,160,32],[0.8,148,181,39],[1.0,47,158,68],[1.5,26,127,55]];
-  const tone=x=>{
-    if(x==null) return "var(--soft)";
-    const v=Math.max(0,Math.min(1.5,x));
-    let a=RAMP[0],b=RAMP[RAMP.length-1];
-    for(let i=0;i<RAMP.length-1;i++)
-      if(v>=RAMP[i][0]&&v<=RAMP[i+1][0]){a=RAMP[i];b=RAMP[i+1];break;}
-    const f=b[0]===a[0]?0:(v-a[0])/(b[0]-a[0]);
-    const c=k=>Math.round(a[k]+(b[k]-a[k])*f);
-    return `rgb(${c(1)},${c(2)},${c(3)})`;
-  };
-  const CX=450,CY=366,R0=124,RMAX=302,XMAX=1.6;
-  const rad=x=>R0+Math.max(0,Math.min(XMAX,x))/XMAX*(RMAX-R0);
-  const PT=(r,t)=>{const a=(180-t)*Math.PI/180;
-    return [(CX+r*Math.cos(a)).toFixed(1),(CY-r*Math.sin(a)).toFixed(1)];};
-  const pt=(r,t)=>PT(r,t).join(" ");
-  const wedge=(t0,t1,ri,ro)=>`M ${pt(ro,t0)} A ${ro} ${ro} 0 0 1 ${pt(ro,t1)}
-    L ${pt(ri,t1)} A ${ri} ${ri} 0 0 0 ${pt(ri,t0)} Z`;
-  const ring=(r,t0,t1)=>`M ${pt(r,t0)} A ${r} ${r} 0 0 1 ${pt(r,t1)}`;
-  // Weighted by claimed mass, which is the only weight under which the
-  // ratio stays the same quantity the per-band column shows.
-  const overall=(key,set)=>{
-    let mass=0,hits=0;
-    (set||rows).forEach(r=>{const s=r[key]||{};
-      const n=s.n_settled||s.n||0,c=s.claimed_mean,x=s.realize_filled_x;
-      if(!n||c==null||x==null) return;
-      mass+=n*c;hits+=n*c*x;});
-    return mass>0?hits/mass:null;
-  };
-  // The two windows have to be pooled over the SAME bands, or the arrow
-  // reads which cells cleared the ten-leg floor rather than whether the
-  // fever moved.  Harmless while every band carried both windows; the
-  // 2026-09-12 re-derive left three bands measured over the whole period
-  // and one over the recent week, and the panel printed "整体 ×1.10 ·
-  // 近7天 ×2.22 ↑ 在退烧" -- a three-band pool against a one-band pool,
-  // with the direction manufactured by the difference in membership.
-  const comparable=rows.filter(r=>(r.all||{}).realize_filled_x!=null
-    &&(r.recent||{}).realize_filled_x!=null);
-  const ovAll=overall("all"),ovRec=overall("recent");
-  const cmpAll=overall("all",comparable),cmpRec=overall("recent",comparable);
-  const feverShare=rows.reduce((a,r)=>a+((r.all.realize_filled_x!=null
-    &&r.all.realize_filled_x<0.5)?(r.share_all||0):0),0);
-  const step=180/rows.length;
-  const maxShare=Math.max(...rows.map(r=>r.share_all||0))||1;
-  const parts=rows.map((r,i)=>{
-    const t0=i*step+1.4,t1=(i+1)*step-1.4,tm=(t0+t1)/2;
-    const xa=r.all.realize_filled_x,xr=r.recent.realize_filled_x;
-    // "No reading" and "measured and zero" were both drawn as a two-to-
-    // three pixel sliver, so on 2026-09-12 four bands under the ten-leg
-    // floor read off the silhouette as four bands that deliver nothing.
-    // A band with no reading now draws no body at all -- its slot stays
-    // the empty track under a dashed springing line -- and a measured zero
-    // draws a stub big enough to be seen as a measurement.
-    const ro=xa==null?null:Math.max(rad(xa),R0+6);
-    const foot=R0-7-(r.share_all||0)/maxShare*46;
-    const [lx,ly]=PT(320,tm);
-    const anchor=tm<70?"end":(tm>110?"start":"middle");
-    // The footing carries leg share; it is the same colour as the wedge at
-    // low opacity so the eye reads it as one pier rather than two shapes.
-    const pier=`<path d="${wedge(t0,t1,foot,R0-7)}" fill="${tone(xa)}"
-      opacity=".34"><title>${h(r.band)}：占全部腿 ${pct(r.share_all)}（${
-      r.all.n} 腿）</title></path>`;
-    // Past the scale's ceiling the wedge is clamped to the rim, so ×1.86
-    // and ×2.22 draw as the same length; the dashed arc outside the rim is
-    // what says "this one ran off the scale" rather than "this one is the
-    // longest".
-    const body=ro==null
-      ?`<path d="${ring(R0+1,t0,t1)}" fill="none" stroke="var(--muted)"
-      stroke-width="1.5" stroke-dasharray="3 4" opacity=".75"
-      ><title>${h(r.band)}：无读数（该档已结算的成交腿不足 10 条）· ${
-      r.all.n} 腿 · 占 ${pct(r.share_all)}</title></path>`
-      :`<path d="${wedge(t0,t1,R0,ro)}" fill="${tone(xa)}"
-      ><title>${h(r.band)}：全期兑现 ${mult(xa)} · ${r.all.n} 腿 · 占 ${
-      pct(r.share_all)}</title></path>${xa>XMAX?`<path d="${
-      ring(RMAX+9,t0,t1)}" fill="none" stroke="${tone(xa)}" stroke-width="2"
-      stroke-dasharray="2 4"><title>${h(r.band)}：${mult(xa)} 超出刻度上限 ×${
-      XMAX.toFixed(2)}，扇形已截在外圈</title></path>`:""}`;
-    const inset=Math.min(1,(t1-t0)*0.08);
-    const recent=xr==null?"":`<path d="${ring(rad(xr),t0+inset,t1-inset)}" fill="none"
-      stroke="var(--text)" stroke-width="2.6" stroke-linecap="round"
-      ${xr>XMAX?`stroke-dasharray="5 4" `:``}opacity=".9"><title>${
-      h(r.band)}：近7天兑现 ${mult(xr)}${xr>XMAX?"（超出刻度，已截断）":""}（${
-      r.recent.n} 腿）</title></path>
-      <circle cx="${PT(rad(xr),tm)[0]}" cy="${PT(rad(xr),tm)[1]}" r="3"
-      fill="var(--text)"/>`;
-    return pier+body+recent+`<text x="${lx}" y="${ly}"
-      text-anchor="${anchor}" font-size="12.5" fill="var(--text)">${h(r.band)}
-      <tspan font-weight="700">${mult(xa)}</tspan>
-      <tspan x="${lx}" dy="15" font-size="11.5" fill="var(--muted)">${
-      pct(r.share_all)} 的腿</tspan></text>`;
-  }).join("");
-  // The empty track keeps the whole inverted U on the page even where the
-  // reading is short: without it the silhouette is only as tall as the
-  // data, and a band that realises almost nothing loses the column that
-  // ties it to its own label.
-  const tracks=rows.map((r,i)=>{
-    const t0=i*step+1.4,t1=(i+1)*step-1.4;
-    return `<path d="${wedge(t0,t1,R0,RMAX)}" fill="var(--line)"
-      opacity=".38"/>`;
-  }).join("");
-  const guide=x=>`<path d="${ring(rad(x),0,180)}" fill="none"
-    stroke="var(--muted)" stroke-width="1" stroke-dasharray="2 6"
-    opacity=".55"/>`;
-  const dir=(cmpAll!=null&&cmpRec!=null)
-    ?(cmpRec>cmpAll+0.01?["↑ 在退烧","var(--up)"]
-      :(cmpRec<cmpAll-0.01?["↓ 还在烧","var(--down)"]:["＝ 持平","var(--muted)"]))
-    :["","var(--muted)"];
-  const arc=`<div class="scroll"><svg viewBox="0 0 900 442" width="100%"
-    style="min-width:560px;max-width:900px;height:auto;display:block;
-    margin:4px auto 0"
-    role="img" aria-label="声称边际与兑现的拱形图：自认便宜越大，兑现越崩">
-    ${tracks}${guide(0.5)}${guide(1.5)}
-    ${parts}
-    <path d="${ring(rad(1),0,180)}" fill="none" stroke="var(--text)"
-      stroke-width="1.4" stroke-dasharray="6 4" opacity=".75"/>
-    <text x="${(CX-rad(1)).toFixed(1)}" y="${CY+15}" text-anchor="middle"
-      font-size="11.5" fill="var(--text)">×1.00 说到做到</text>
-    <line x1="${(CX-RMAX).toFixed(1)}" y1="${CY}" x2="${(CX+RMAX).toFixed(1)}"
-      y2="${CY}" stroke="var(--line)"/>
-    <text x="${CX}" y="${CY-58}" text-anchor="middle" font-size="15"
-      font-weight="700" fill="var(--text)">自认便宜越大</text>
-    <text x="${CX}" y="${CY-38}" text-anchor="middle" font-size="15"
-      font-weight="700" fill="var(--text)">兑现越崩</text>
-    <text x="${CX}" y="${CY-15}" text-anchor="middle" font-size="11.5"
-      fill="var(--muted)">整体 ${mult(ovAll)}${ovRec==null?""
-      :(cmpAll!=null&&cmpRec!=null
-        ?` · 同 ${comparable.length} 档：${mult(cmpAll)} → 近7天 <tspan
-          fill="${dir[1]}">${mult(cmpRec)} ${dir[0]}</tspan>`
-        :` · 近7天 ${mult(ovRec)}（无两窗都有读数的档，不可比）`)}</text>
-    <text x="${CX}" y="${CY+38}" text-anchor="middle" font-size="11.5"
-      fill="var(--muted)">→ 自认占的便宜（声称 − 卖价）从小到大 →</text>
-    <text x="${(CX-RMAX).toFixed(1)}" y="${CY+60}" font-size="12"
-      fill="var(--green)">← 没占多少便宜 · 反而最诚实</text>
-    <text x="${(CX+RMAX).toFixed(1)}" y="${CY+60}" text-anchor="end"
-      font-size="12" fill="var(--red)">自认占了大便宜 · 兑现最崩 →</text>
-  </svg></div>
-  <div class="muted" style="margin-top:2px;text-align:center;font-size:11.5px">
-    扇形<b>越长＝兑现越好</b>（长度就是「×」），越过虚线圈＝说到做到；
-    白线是近 7 天；拱脚<b>越厚＝腿越多</b>；颜色只是同一个数的冷暖复述。
-    <b>空槽（虚线底弧）＝该档已结算成交腿不足 10 条、无读数</b>，不是兑现为零；
-    外圈虚线＝该档已超出刻度上限 ×1.60、扇形被截断。${
-    feverShare>0?` 当前 <b>${pct(feverShare)}</b> 的腿压在 ×&lt;0.5 的档里。`:""}</div>`;
-  return `<h2>声称边际体温计（edge 带 × 兑现）</h2>
-  <div class="card">
-  ${arc}
-  <p class="note" style="margin-top:12px">自认占的便宜（<b>声称 − 卖价</b>）分七档，
-  <b>兑现</b>＝买到后真值落桶的比例是声称的几成。<b>越自认便宜，兑现越崩。</b>
-  按阶段读：同一个"占 30% 便宜"，P0 ×0.07、P1 ×0.35，合并的 ×0.25 哪个阶段都不成立。
-  近 7 天起点 ${E.recent_floor||"—"} · 腿数 ${E.totals&&E.totals.recent_legs||0}/${
-    E.totals&&E.totals.legs||0}（${(E.stages||[]).map(st=>
-    `${st} ${(E.stage_totals||{})[st]||0}`).join(" · ")}）。</p>
-  <div class="card" style="margin-top:10px">
-  <div class="muted">最薄一档已转正（宪章 97）</div>
-  <p class="note" style="margin-top:6px"><span class="mono">e ≤ 0.05</span>
-  作有效边际 λ 的<b>第二根轴</b>：该档窗口 λ 服务 <b>1.00</b>（封顶），<b>只抬不压</b>；
-  闸的判据没变，其余各档仍只是仪表。<br>
-  <b>代价</b>：λ 不再是一致度的一元函数 · 回测只 +2 席、优势靠 08-27 SBGR 一张票 ·
-  回测人口删失，上线会放行历史上没开过的窗口，影响面未知。<br>
-  该轴攒够 12 席后若兑现跌破 1.0 即收回（人工）。
-  「按 edge≥0.30 拒窗」的硬闸版已被账本否决，不要再提。</p></div>
-  <table><thead><tr><th>自认便宜多少</th><th>状态</th><th>腿数</th><th>占比</th>
-  <th>市场肯卖率</th><th>模型声称</th><th>买到后兑现<br><span class="muted">全部阶段</span></th>
-  ${(E.stages||[]).map(st=>`<th title="${st} 阶段单独看（用户裁定 2026-09-02：同一个声称在 P0 和 P1 不是一回事）；括号里是该档该阶段的腿数。P0-M 每档只有几条腿，多数格子按十条门槛留空——这条车道太薄，读不出来">${
-    st}<br><span class="muted">兑现·腿数</span></th>`).join("")}
-  <th>没买到的兑现</th>
-  <th title="宪章 62 校准修复的疗效仪表：起效的样子是发烧行占比缩小、兑现回升。样本 <10 显 —">近7天占比</th>
-  <th title="宪章 62 校准修复的疗效仪表。样本 <10 显 —">近7天兑现</th></tr></thead>
-  <tbody>${rows.map(tr).join("")}</tbody></table>${cleanLane()}</div>`;
-}
-
-// The same question asked where no fill model can reach it.  The table
-// above takes the posted leg as its unit and splits it by whether the
-// market sold it -- its sharpest column, and no longer an observation:
-// charter 129 made the paper book's fills conditional on the outcome
-// (p(fill|crossed) 0.4581 winning, 0.6650 losing), so the filled side is
-// enriched in losers by construction, and the 2026-09-12 re-derive left
-// four of seven bands under the ten-leg floor.  This one scores the
-// seated WINDOW against the truth: no fill, no basket, no hurdle.
-function cleanLane(){
   const C=((D.lambda_axis_realisation||{}).claim_edge)||{};
-  if(!C.available||!(C.bands||[]).length) return "";
-  const mult=v=>v==null?"—":"×"+v.toFixed(3);
+  const head=`<h2>声称边际体温计（edge 带 × 兑现）</h2>`;
+  if(!C.available||!(C.bands||[]).length)
+    return head+`<div class="card"><span class="dot"></span> 还没有已结算的入座窗口。</div>`;
   const p1=v=>v==null?"—":(v*100).toFixed(1)+"%";
-  const rows=C.bands.map(b=>{
-    const sick=b.realised_hi!=null&&b.realised_hi<1.0;
-    const good=b.realised_lo!=null&&b.realised_lo>=1.0;
-    return `<tr>
-      <td class="mono">${h(b.band)}</td><td>${b.n}</td><td>${b.station_days}</td>
-      <td>${p1(b.share)}</td><td class="mono">${p1(b.claimed_mean)}</td>
-      <td class="mono">${p1(b.hit_rate)}</td>
-      <td class="mono ${sick?"down":(good?"up":"")}"><b>${
-        mult(b.realised_x)}</b></td>
-      <td class="mono muted">${mult(b.realised_lo)} … ${mult(b.realised_hi)}</td>
-      <td class="${sick?"down":(good?"up":"muted")}">${
-        sick?"低于说到做到":(good?"超额兑现":"未分出")}</td></tr>`;
-  }).join("");
-  return `<div class="card" style="margin-top:12px">
-  <div style="font-size:12.5px"><b>同一问题，换成没有成交模型的口径</b>（${
-  C.rows.toLocaleString()} 个入座窗口 · ${C.station_days} 站日）</div>
-  <p class="note" style="margin-top:6px">上表的单位是<b>挂出去的腿</b>，
-  并按市场卖不卖它分成两列——那一列从 2026-09-11 起不再是观测：宪章 129 把纸面账本的
-  成交条件挂在结果上（赢腿 <span class="mono">p(成交|越过)=0.4581</span>、
-  输腿 <span class="mono">0.6650</span>），成交样本按构造就富集输腿；
-  09-12 账本重导后又只剩 259 条腿，七档里四档在十条门槛之下。
-  这张表的单位是<b>入座的那个窗口</b>，结果是真值有没有落进去：
-  不看成不成交、不看篮子过不过闸，样本大二十倍。</p>
-  <table><thead><tr><th>自认便宜多少</th><th>窗口</th><th>站日</th><th>占比</th>
-  <th>模型声称</th><th>真值落窗</th><th>兑现</th>
+  const pt=v=>v==null?"—":((v<0?"−":"+")+Math.abs(v*100).toFixed(1));
+  const mult=v=>v==null?"—":"×"+v.toFixed(3);
+  const tone=vd=>vd==="below"?"down":(vd==="above"?"up":"");
+  const groups=[...(C.stages||[]).map(st=>[st,(C.by_stage||{})[st]]),
+    ["全部阶段",C]].filter(([,g])=>g&&(g.bands||[]).length);
+  const betaText=g=>g.beta==null?"β —":`β ${g.beta.toFixed(3)}${g.beta_lo==null?""
+    :` [${g.beta_lo.toFixed(3)}, ${g.beta_hi.toFixed(3)}]`}`;
+  const gapText=g=>`命中 − 价 ${pt(g.hit_minus_price)} 点${g.hit_minus_price_lo==null?""
+    :` [${pt(g.hit_minus_price_lo)}, ${pt(g.hit_minus_price_hi)}]`}`;
+  // The shape said in one line per stage, from the bands that carry an
+  // interval: how far claim − price travels against how far hit − price
+  // moves.  The last clause is conditioned on beta's interval against 0.5,
+  // taken server-side on the unrounded quantiles.
+  const summary=([name,g])=>{
+    const read=(g.bands||[]).filter(b=>b.hit_minus_price_lo!=null);
+    if(read.length<2) return `<li><b>${h(name)}</b>：有区间的档不足两档，读不出形状。</li>`;
+    const edges=read.map(b=>b.claimed_mean-b.price_mean);
+    const gaps=read.map(b=>b.hit_minus_price);
+    const verdict=g.beta_vs_half==="below"
+      ?"<b>真值跟价格走，不跟声称走</b>（β 区间整体低于 0.5）"
+      :(g.beta_vs_half==="above"?"<b>分歧大半兑现</b>（β 区间整体高于 0.5）"
+      :"β 相对 0.5 未分出");
+    return `<li><b>${h(name)}</b>：声称 − 价从 ${pt(Math.min(...edges))} 到 ${
+      pt(Math.max(...edges))} 点，命中 − 价在 ${pt(Math.min(...gaps))} ～ ${
+      pt(Math.max(...gaps))} 点之间 · ${betaText(g)} · ${verdict}</li>`;
+  };
+  const bandRow=b=>`<tr>
+    <td class="mono">${h(b.band)}</td><td>${b.n}</td><td>${b.station_days}</td>
+    <td>${p1(b.share)}</td><td class="mono">${p1(b.claimed_mean)}</td>
+    <td class="mono">${p1(b.price_mean)}</td><td class="mono">${p1(b.hit_rate)}</td>
+    <td class="mono ${tone(b.hit_minus_price_verdict)}"><b>${pt(b.hit_minus_price)}</b></td>
+    <td class="mono muted">${pt(b.hit_minus_price_lo)} … ${pt(b.hit_minus_price_hi)}</td>
+    <td class="mono ${tone(b.realised_verdict)}">${mult(b.realised_x)}</td>
+    <td class="mono muted">${mult(b.realised_lo)} … ${mult(b.realised_hi)}</td></tr>`;
+  const groupRows=([name,g])=>`<tr><td colspan="11" style="padding-top:12px">
+    <b>${h(name)}</b><span class="muted"> · ${g.rows.toLocaleString()} 窗 / ${
+    g.station_days} 站日 · ${betaText(g)} · ${gapText(g)}</span></td></tr>${
+    g.bands.map(bandRow).join("")}`;
+  const unstaged=C.rows-(C.stages||[]).reduce((a,st)=>a+(((C.by_stage||{})[st]||{}).rows||0),0);
+  return head+`<div class="card">
+  <p class="note">单位是<b>入座的那个窗口 × 决策周期</b>，结果是真值有没有落进去——
+  不看成不成交、不看篮子过不过闸。<b>主读数是「命中 − 全含价」</b>：按那个价买一股、
+  结算后平均赚（+）亏（−）几个点；买入要付的点差和手续费就在这里面。
+  <b>兑现×</b>（命中 ÷ 声称）只作旁证：分档本身按「声称 − 价」切，只要我们和市场的分歧是噪声，
+  高档的比值就会被价格除小——它塌了不说明哪一层把概率抬高了。
+  区间＝按站日块自助 90%；颜色按未取整的分位数判定（整段低于 0 标红、高于 0 标绿）。</p>
+  <ul class="note" style="margin:8px 0 0 18px">${groups.map(summary).join("")}</ul>
+  <div class="scroll" style="margin-top:8px"><table><thead><tr>
+  <th>自认便宜多少<br><span class="muted">声称 − 价</span></th><th>窗口</th><th>站日</th><th>占比</th>
+  <th>模型声称</th><th>全含价</th><th>真值落窗</th>
+  <th title="按全含价买一股、结算后平均赚亏几个点">命中 − 价<br><span class="muted">点</span></th>
   <th title="按站日块自助 90%：同一个窗每周期重新入座，同日各阶段结算同一个最高温，一行不是一次抽样">90% 区间</th>
-  <th>判定</th></tr></thead><tbody>${rows}</tbody></table>
-  <p class="note" style="margin-top:8px"><b>整体 ${mult(C.pooled_x)}</b>，
-  形状与上表一致且单调——<b>发烧不是成交模型造的</b>。</p></div>
+  <th>兑现×</th><th>90% 区间</th></tr></thead>
+  <tbody>${groups.map(groupRows).join("")}</tbody></table></div>
+  <p class="note" style="margin-top:8px">分阶段读（用户裁定 2026-09-02：同一个声称边际在 P0 和 P1 不是一回事），
+  「全部阶段」留在旁边对照。${unstaged>0?`另有 ${unstaged} 窗没记阶段，只进「全部阶段」。`:""}
+  纸面账本那张「挂出去的腿 × 成没成交」的旧表 2026-09-14 下线：宪章 129 的成交概率按结局设定
+  （赢腿 <span class="mono">0.4581</span>／输腿 <span class="mono">0.6650</span>），
+  成交那一列读回的是模拟器自己的假设。实盘成交后的兑现看「统一估值车道」里的实盘归因。
+  「按 edge≥0.30 拒窗」的硬闸版已被账本否决，不要再提。</p></div>
   ${betaDial(C)}${betaSubsets(C)}`;
 }
 
@@ -12312,10 +12036,23 @@ function betaDial(C){
       ——「分歧<b>毫无信息</b>，信价格就够」。我们偏离市场多少都不影响结果，
       那点偏离全是噪声。</div>
   </div>
-  <p class="note" style="margin-top:8px"><b>读数离 0 比离 1 近得多。</b>
-  最干净的佐证是上表 <span class="mono">&lt;0</span> 那一档：那些是我们认为
-  <b>市场卖贵了</b>的窗口，结果真值落进去的比例反而<b>比我们声称的还高</b>
-  （×1.038）。往上错、往下也错——不是偏见，是噪声，这正是 β≈0 的样子。</p></div>`;
+  ${betaReading(C)}</div>`;
+}
+
+// What the dial says, conditioned on the payload rather than typed in: the
+// first version of this paragraph carried "x1.038" for the <0 band, and a
+// day later that band read x1.209 with the sentence unchanged.
+function betaReading(C){
+  const neg=(C.bands||[]).find(b=>b.band==="<0");
+  const lead=C.beta_vs_half==="below"?"<b>读数离 0 比离 1 近</b>（90% 区间整体低于 0.5）。"
+    :(C.beta_vs_half==="above"?"<b>读数离 1 比离 0 近</b>（90% 区间整体高于 0.5）。"
+    :"<b>读数相对 0.5 未分出。</b>");
+  const mirror=(C.beta_vs_half==="below"&&neg&&neg.realised_verdict==="above")
+    ?` 最直接的佐证是表里 <span class="mono">&lt;0</span> 那一档：那些是我们认为
+  <b>市场卖贵了</b>的窗口，真值落进去的比例反而<b>比我们声称的还高</b>
+  （×${neg.realised_x.toFixed(3)}，区间 ×${neg.realised_lo.toFixed(3)} … ×${
+    neg.realised_hi.toFixed(3)}）。往上错、往下也错——不是偏见，是噪声，这正是 β≈0 的样子。`:"";
+  return `<p class="note" style="margin-top:8px">${lead}${mirror}</p>`;
 }
 
 // "Is there a subset whose beta is clearly above zero?"  Both axes live, so
