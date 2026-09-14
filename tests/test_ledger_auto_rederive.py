@@ -194,3 +194,152 @@ def test_the_repair_is_counted_so_a_thrash_is_visible() -> None:
     )
     assert 'counts["positions_under_other_rule_sets"]' in source
     assert 'counts["rule_change_full_rederive"]' in source
+
+
+# ---------------------------------------------------------------- bounded
+#
+# 2026-09-14: the whole-history re-derive needs about 55 minutes and the
+# hosted sweep that runs it is killed at 1800 seconds.  The 11:32Z pass
+# dropped every foreign row, was killed before its closing write, and left
+# a book with no positions and nothing foreign to trigger a repair -- the
+# next four-day incremental pass would have called four days the book.  A
+# repair now takes the oldest ``REDERIVE_SLICE_DAYS`` days that need it and
+# the book's own newest answer is the cursor it resumes from.
+
+
+def _history(conn: sqlite3.Connection, *days: str) -> None:
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS basket_probability_bridge_history ("
+        " station_id TEXT, event_date TEXT, stage TEXT, state TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO basket_probability_bridge_history VALUES ('KMIA',?,'P0','COMMITTED')",
+        [(day,) for day in days],
+    )
+    conn.commit()
+
+
+def _refusal(conn: sqlite3.Connection, day: str, sha: str) -> None:
+    conn.execute(
+        "INSERT INTO paper_trade_refusal (station_id, event_date, stage, reason,"
+        " detail, cycles_examined, last_decision_at_utc, recorded_at_utc,"
+        " selection_rule_sha256) VALUES ('KMIA', ?, 'P0', 'no_book_at_decision', '', 0, '', '', ?)",
+        (day, sha),
+    )
+    conn.commit()
+
+
+def _after(day: str, days: int) -> str:
+    from datetime import date, timedelta  # noqa: PLC0415
+
+    return (date.fromisoformat(day) + timedelta(days=days)).isoformat()
+
+
+def test_a_drop_bounded_above_keeps_the_foreign_rows_it_will_not_rederive() -> None:
+    conn = _book(OTHER, OTHER, OTHER)  # 09-01, 09-02, 09-03
+    _history(conn, "2026-09-03")
+
+    ledger._drop_superseded_positions(conn, recent_days=None, through_date="2026-09-02")
+
+    assert [r[0] for r in conn.execute(
+        "SELECT event_date FROM paper_trade_position ORDER BY event_date"
+    )] == ["2026-09-03"]
+
+
+def test_an_empty_book_resumes_from_the_floor_one_slice_at_a_time() -> None:
+    """The state the killed pass left: history, and no answer at all."""
+
+    floor = ledger.LEDGER_EVENT_DATE_FLOOR
+    conn = _book()
+    _history(conn, floor, _after(floor, 40))
+
+    assert ledger._repair_slice_through(conn, recent_days=4) == _after(
+        floor, ledger.REDERIVE_SLICE_DAYS - 1
+    )
+
+
+def test_a_partial_book_resumes_after_its_newest_answer() -> None:
+    floor = ledger.LEDGER_EVENT_DATE_FLOOR
+    conn = _book()
+    _history(conn, floor, _after(floor, 40))
+    _refusal(conn, _after(floor, 9), ledger.SELECTION_RULE_SHA256)
+    # A refusal under another rule set is not an answer this rule set gave.
+    _refusal(conn, _after(floor, 20), OTHER)
+
+    assert ledger._repair_slice_through(conn, recent_days=4) == _after(
+        floor, 10 + ledger.REDERIVE_SLICE_DAYS - 1
+    )
+
+
+def test_a_book_that_reaches_the_incremental_window_needs_no_repair() -> None:
+    floor = ledger.LEDGER_EVENT_DATE_FLOOR
+    conn = _book()
+    newest = _after(floor, 40)
+    _history(conn, floor, newest)
+    _refusal(conn, _after(floor, 37), ledger.SELECTION_RULE_SHA256)
+
+    assert ledger._repair_slice_through(conn, recent_days=4) is None
+    # A rebuild and an explicitly bounded walk plan their own coverage.
+    assert ledger._repair_slice_through(conn, recent_days=None) is None
+
+
+def test_foreign_rows_start_the_slice_at_the_oldest_of_them() -> None:
+    conn = _book(ledger.SELECTION_RULE_SHA256, OTHER, OTHER)  # 09-01 served
+    _history(conn, "2026-09-01", "2026-09-30")
+
+    assert ledger._repair_slice_through(conn, recent_days=4) == _after(
+        "2026-09-02", ledger.REDERIVE_SLICE_DAYS - 1
+    )
+
+
+def test_the_slice_never_runs_past_the_history() -> None:
+    conn = _book(OTHER)  # 09-01
+    _history(conn, "2026-09-01", "2026-09-02")
+
+    assert ledger._repair_slice_through(conn, recent_days=4) == "2026-09-02"
+
+
+def _run_main(tmp_path, monkeypatch, results, *, tick: float, budget: float) -> list:
+    database = tmp_path / "book.db"
+    sqlite3.connect(database).close()
+    calls: list = []
+    clock = {"now": 0.0}
+
+    def fake_backfill(conn, **kwargs):
+        calls.append(kwargs)
+        clock["now"] += tick
+        return dict(results[min(len(calls), len(results)) - 1])
+
+    monkeypatch.setattr(ledger, "backfill", fake_backfill)
+    monkeypatch.setattr(ledger.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(ledger, "REDERIVE_PASS_BUDGET_SEC", budget)
+    monkeypatch.setattr(sys, "argv", ["paper_trading_ledger.py", "--db", str(database), "--backfill"])
+    assert ledger.main() == 0
+    return calls
+
+
+def test_a_pass_takes_the_next_slice_while_it_has_budget(tmp_path, monkeypatch) -> None:
+    slices = [{"repair_slice_through": "2026-08-19"}, {"repair_slice_through": "2026-08-24"}, {}]
+
+    calls = _run_main(tmp_path, monkeypatch, slices, tick=100.0, budget=1500.0)
+
+    assert len(calls) == 3
+    # The first call is the scheduled incremental pass; the ones after it
+    # hand the planner the same window and no bound of their own.
+    assert all(c.get("through_date") is None for c in calls)
+
+
+def test_a_pass_stops_before_a_slice_it_could_not_finish(tmp_path, monkeypatch) -> None:
+    slices = [{"repair_slice_through": "2026-08-19"}, {"repair_slice_through": "2026-08-24"}]
+
+    calls = _run_main(tmp_path, monkeypatch, slices, tick=700.0, budget=1500.0)
+
+    assert len(calls) == 1  # 700 spent + 1.5 x 700 expected > 1500
+
+
+def test_a_slice_that_does_not_move_the_cursor_stops_the_loop(tmp_path, monkeypatch) -> None:
+    slices = [{"repair_slice_through": "2026-08-19"}]
+
+    calls = _run_main(tmp_path, monkeypatch, slices, tick=10.0, budget=1500.0)
+
+    assert len(calls) == 2

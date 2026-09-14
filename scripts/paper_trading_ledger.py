@@ -39,6 +39,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import time
 import math
 import os
 import sqlite3
@@ -948,6 +949,32 @@ if AUTO_REDERIVE_ON_RULE_CHANGE not in {"on", "off"}:
     raise SystemExit(
         f"unknown auto re-derive mode: {AUTO_REDERIVE_ON_RULE_CHANGE}"
     )
+# The bound that note asked for, landed 2026-09-14 because the hour of
+# blankness became a hole.  Since 2026-09-13 the ledger runs only as the
+# resident's hosted sweep, whose timeout is 1800 seconds; the whole-history
+# re-derive needs about 55 minutes, so on 2026-09-14 the 11:32Z pass dropped
+# every foreign row, walked for thirty minutes and was killed before its
+# closing write.  The book was left with no positions and no settlements --
+# and nothing foreign left to trigger a repair, so the next scheduled pass,
+# a four-day incremental window, would have re-seated four days and called
+# that the book.
+#
+# So a repair takes the oldest ``REDERIVE_SLICE_DAYS`` event days that need
+# it, drops foreign rows only inside that slice, walks it and commits; the
+# next slice follows while the pass has budget, and the next pass carries
+# on from wherever the book stops.  "Needs it" is either kind of hole: rows
+# under another rule set, or a book whose newest answer under this one is
+# older than the incremental window (the state that killed pass left).  A
+# slice is killed at worst, never the book: the rows it dropped are older
+# than the foreign rows it did not, so the next pass starts no later.
+REDERIVE_SLICE_DAYS = int(
+    os.environ.get("PAPER_LEDGER_REDERIVE_SLICE_DAYS", "").strip() or 5
+)
+REDERIVE_PASS_BUDGET_SEC = float(
+    os.environ.get("PAPER_LEDGER_REDERIVE_BUDGET_SEC", "").strip() or 1500
+)
+if REDERIVE_SLICE_DAYS <= 0 or REDERIVE_PASS_BUDGET_SEC <= 0:
+    raise SystemExit("re-derive slice days and pass budget must be positive")
 # Whose resting lifecycle the book simulates.  Charter 127 (七)(丙), landed
 # 2026-09-12 (user ruling on v2.1: implement, no arms): ``production_v127``
 # expires a rung where production's GTD expires -- the served belief's own
@@ -4065,8 +4092,71 @@ def _positions_under_other_rule_sets(conn: sqlite3.Connection) -> int:
     return int((row or [0])[0] or 0)
 
 
-def _drop_superseded_positions(
+
+def _repair_slice_through(
     conn: sqlite3.Connection, *, recent_days: int | None
+) -> str | None:
+    """The last event day a bounded repair pass walks, or None if none is due.
+
+    Only for an incremental pass under ``AUTO_REDERIVE_ON_RULE_CHANGE``: a
+    rebuild or an explicitly bounded walk already says what it covers.  The
+    slice starts at the oldest day under another rule set when there is one,
+    otherwise the day after the newest answer (seat or refusal) this rule set
+    has recorded -- the book's own cursor -- when that answer is older than
+    the incremental window; a book that reaches the window needs nothing.
+    """
+
+    if AUTO_REDERIVE_ON_RULE_CHANGE != "on" or recent_days is None:
+        return None
+    try:
+        foreign = conn.execute(
+            "SELECT MIN(event_date) FROM paper_trade_position"
+            " WHERE selection_rule_sha256<>?",
+            (SELECTION_RULE_SHA256,),
+        ).fetchone()[0]
+        newest = max(
+            (
+                str(row[0]) for row in (
+                    conn.execute(
+                        f"SELECT MAX(event_date) FROM {table}"
+                        " WHERE selection_rule_sha256=?",
+                        (SELECTION_RULE_SHA256,),
+                    ).fetchone()
+                    for table in ("paper_trade_position", "paper_trade_refusal")
+                )
+                if row and row[0]
+            ),
+            default="",
+        )
+        history = conn.execute(
+            "SELECT MAX(event_date) FROM basket_probability_bridge_history"
+        ).fetchone()[0]
+    except sqlite3.OperationalError:
+        return None
+    if not history:
+        return None
+    if foreign:
+        start = str(foreign)
+    else:
+        window = _window_floor(conn, recent_days=recent_days)
+        if newest and newest >= window:
+            return None
+        start = (
+            (datetime.fromisoformat(newest) + timedelta(days=1)).date().isoformat()
+            if newest else LEDGER_EVENT_DATE_FLOOR
+        )
+    start = max(start, LEDGER_EVENT_DATE_FLOOR)
+    through = (
+        datetime.fromisoformat(start) + timedelta(days=REDERIVE_SLICE_DAYS - 1)
+    ).date().isoformat()
+    return min(through, str(history))
+
+
+def _drop_superseded_positions(
+    conn: sqlite3.Connection,
+    *,
+    recent_days: int | None,
+    through_date: str | None = None,
 ) -> tuple[int, int]:
     """Discard the answers recorded under a rule set that no longer runs.
 
@@ -4079,26 +4169,30 @@ def _drop_superseded_positions(
 
     Only within the window this pass can re-derive: a row deleted outside it
     would leave the page emptier than the ledger, which is the opposite of what
-    the stamp is for.
+    the stamp is for.  That window has an upper edge too when the walk has
+    one (``through_date``): a slice re-derives only the days up to it.
     """
 
     earliest = _window_floor(conn, recent_days=recent_days)
     conn.execute(
         "DELETE FROM paper_trade_settlement WHERE position_id IN ("
         "  SELECT position_id FROM paper_trade_position"
-        "  WHERE selection_rule_sha256<>? AND event_date>=?)",
-        (SELECTION_RULE_SHA256, earliest),
+        "  WHERE selection_rule_sha256<>?1 AND event_date>=?2"
+        "  AND (?3 IS NULL OR event_date<=?3))",
+        (SELECTION_RULE_SHA256, earliest, through_date),
     )
     cursor = conn.execute(
         "DELETE FROM paper_trade_position"
-        " WHERE selection_rule_sha256<>? AND event_date>=?",
-        (SELECTION_RULE_SHA256, earliest),
+        " WHERE selection_rule_sha256<>?1 AND event_date>=?2"
+        " AND (?3 IS NULL OR event_date<=?3)",
+        (SELECTION_RULE_SHA256, earliest, through_date),
     )
     dropped = int(cursor.rowcount or 0)
     refusals = conn.execute(
         "DELETE FROM paper_trade_refusal"
-        " WHERE selection_rule_sha256<>? AND event_date>=?",
-        (SELECTION_RULE_SHA256, earliest),
+        " WHERE selection_rule_sha256<>?1 AND event_date>=?2"
+        " AND (?3 IS NULL OR event_date<=?3)",
+        (SELECTION_RULE_SHA256, earliest, through_date),
     )
     dropped_refusals = int(refusals.rowcount or 0)
     if dropped or dropped_refusals:
@@ -8835,10 +8929,19 @@ def backfill(
     # publishes one return for two strategies, and the incremental window
     # can never reach the older one.
     foreign_rule_set_rows = _positions_under_other_rule_sets(conn)
-    if foreign_rule_set_rows and AUTO_REDERIVE_ON_RULE_CHANGE == "on":
+    # Bounded, oldest days first (see ``REDERIVE_SLICE_DAYS``).
+    repair_through = (
+        _repair_slice_through(conn, recent_days=recent_days)
+        if through_date is None else None
+    )
+    if (
+        foreign_rule_set_rows or repair_through
+    ) and AUTO_REDERIVE_ON_RULE_CHANGE == "on":
         recent_days = None
+        if repair_through:
+            through_date = repair_through
     superseded, superseded_refusals = _drop_superseded_positions(
-        conn, recent_days=recent_days
+        conn, recent_days=recent_days, through_date=through_date
     )
     truth = _truth(conn)
     # Charter 68(c): bind the store for as-of lambda lookups this pass.
@@ -8898,6 +9001,8 @@ def backfill(
         counts["rule_change_full_rederive"] = (
             1 if AUTO_REDERIVE_ON_RULE_CHANGE == "on" else 0
         )
+    if repair_through:
+        counts["repair_slice_through"] = repair_through
     if superseded:
         counts["superseded_rule_dropped"] = superseded
     if superseded_refusals:
@@ -12081,6 +12186,7 @@ def main() -> int:
                     (bound,),
                 )
             conn.commit()
+        started = time.monotonic()
         counts = backfill(
             conn,
             recent_days=None if args.rebuild else args.recent_days,
@@ -12090,6 +12196,27 @@ def main() -> int:
             {"schema": "paper_trading_backfill_v1", "counts": counts},
             ensure_ascii=False, sort_keys=True,
         ))
+        # A repair slice is followed by the next one while this pass can
+        # still finish it inside its budget (the hosted timeout is 1800s),
+        # judging the next slice by the last one with half again for slack.
+        # A slice that did not move the book's cursor stops the loop rather
+        # than repeating itself.
+        slice_sec = time.monotonic() - started
+        while (
+            counts.get("repair_slice_through")
+            and time.monotonic() - started + 1.5 * slice_sec
+            < REDERIVE_PASS_BUDGET_SEC
+        ):
+            previous = counts["repair_slice_through"]
+            slice_started = time.monotonic()
+            counts = backfill(conn, recent_days=args.recent_days)
+            print(json.dumps(
+                {"schema": "paper_trading_backfill_v1", "counts": counts},
+                ensure_ascii=False, sort_keys=True,
+            ))
+            slice_sec = time.monotonic() - slice_started
+            if counts.get("repair_slice_through") == previous:
+                break
         if args.report:
             print(json.dumps(report(conn), ensure_ascii=False, sort_keys=True))
         return 0
