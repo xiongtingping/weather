@@ -10747,7 +10747,7 @@ function healthLamps(){
 
 function tables(){
   const t = D.tables;
-  return `<h2>每站的偏差订正与融合权重</h2>
+  return `<h2>每站的偏差订正与融合权重：修正各模型的系统偏差，定下融合时各占多少</h2>
   <p class="sub">这两张表是"每个模型在每个站偏多少度"和"融合时各模型占多大比重"，
   每天自动重算、自动换代。</p>
   <div class="grid g3">
@@ -10870,7 +10870,7 @@ function stages(){
   const axisNote = D.stages.map(s => `${s.stage}＝${
     (s.axis || "claim") === "centre_distance" ? "离峰距离" : "声称概率"}`)
     .join("、");
-  return `<h2>band 表：分档校准（三阶段各自的账）</h2>
+  return `<h2>band 表：用真值校准模型概率</h2>
   <p class="sub">系统会记录"凡是说过 X% 的地方，后来实际发生了多少次"。
   如果长期说 6% 只发生 4%，就把这一档的数字乘一个小于 1 的系数压回去。</p>
   <div class="why"><b>三张卡不一定按同一个东西分档</b>（第 105 条）：
@@ -11211,7 +11211,7 @@ function basketHit(){
   // running; it was removed on 2026-08-29 rather than left printing a dash.
   // The number is NOT reused: every other section keeps the number a reader
   // already knows it by, and a gap is cheaper than renumbering nine of them.
-  return `<h2>篮子命中率（按桶数）</h2>
+  return `<h2>篮子命中率：检验各宽度的篮子实际盖住真值的比例</h2>
   <p class="sub">结算真值落在篮子里就算命中。只算可成交的（整篮 ≥1 分）。</p>
   <div class="why"><b>这张表回答一件事：</b>多买一个桶买到的命中率，
   值不值它多花的钱。命中率一定随桶数上升——问题是成本也上升，
@@ -11358,7 +11358,7 @@ function refusalStats(){
   const restCount=all.slice(4).reduce((a,r)=>a+r.count,0);
   const rate=scope?seated/scope:0;
   const pctOf=n=>scope?(100*n/scope).toFixed(1)+"%":"—";
-  return `<h2>没建仓是因为什么</h2>
+  return `<h2>没建仓是因为什么：找出拦下最后一个候选窗的那道闸</h2>
   <p class="sub">三阶段合并，一个站日在一个阶段算一次：被叫到多少次、坐下多少次。
   ${inherited?`已扣掉「P0 没建仓，本阶段无仓可加」<b>${inherited}</b> 次——
   那不是后面两个阶段拒绝了什么，是它们根本没被叫到，
@@ -11448,7 +11448,7 @@ function truthLanding(){
   <b>本列合计那一格会落在这一列自己的价位上</b>，市场是校准的，这就是证据。<br>
   <b>不要跨区比总数。</b>三个区的桶价位分布完全不同（蓝区被大量"两边都说便宜"
   的桶压低），只有同一行内或同一列内的比较才成立。</div>`;
-  return `<h2>真值落位（价格 × 概率）</h2>
+  return `<h2>真值落位：按市场价格 × 模型概率分格，比谁更能预判真值</h2>
   <p class="sub">${T.since} 起 · 已闭合站日 ${T.closed_station_days}
     · 市场裁定出赢家 ${T.adjudicated_station_days}
     · 采集截断剔除 ${T.capture_truncated_days}。
@@ -11481,7 +11481,7 @@ function truthLanding(){
 // realised.
 function betaShadow(){
   const B=D.beta_shadow||{};
-  if(!B.available) return `<h2>β 车道（影子）</h2><div class="card">未采集。</div>`;
+  if(!B.available) return `<h2>β 车道（影子）：测我们和市场的分歧能兑现几成</h2><div class="card">未采集。</div>`;
   const num=(v,d)=>v==null?"—":Number(v).toFixed(d==null?3:d);
   const h=s=>String(s==null?"":s).replace(/</g,"&lt;");
   const served=B.served||{}, res=B.research||{}, rep=B.replay||{}, live=B.live||{};
@@ -11500,7 +11500,7 @@ function betaShadow(){
   const dayRows=(rep.days||[]).map(d=>`<tr><td>${h(d.date)}</td><td class="mono">${d.windows}</td><td class="mono">${d.current_admits}</td>
       <td class="mono">${d.beta_admits}</td><td class="mono">${d.beta_refuses_of_admitted}</td><td class="mono">${d.beta_admits_of_refused}</td>
       <td class="mono">${d.mean_margin_admitted==null?"—":(d.mean_margin_admitted*100).toFixed(1)}</td><td class="mono">${d.mean_margin_beta_admitted==null?"—":(d.mean_margin_beta_admitted*100).toFixed(1)}</td></tr>`).join("");
-  return `<h2>β 车道（影子）</h2>
+  return `<h2>β 车道（影子）：测我们和市场的分歧能兑现几成</h2>
   <div class="card"><b>模式 ${h(B.mode)}</b>。宪章 128：每个枚举窗 hit − q = a + β·(p − q)，p 原始声称、q 闸定价的全含价；
     服务信念 q + β_lcb·(p − q)，闸判 β_lcb·(p − q) &gt; 0。影子只记不闸；晋升要影子 ≥10 个事件日且下表"β 会拒"减"β 会放"的实现差大于按日噪声，且须裁决。
     最近两天决策 ${live.decisions||0} 条，其中带影子读数 ${live.with_shadow||0} 条；影子累计：现闸放行而 β 会拒 ${live.would_refuse||0} 窗、现闸拒而 β 会放 ${live.would_admit||0} 窗。</div>
@@ -11520,7 +11520,7 @@ function effectiveEdgeLambda(){
   const E=D.effective_edge_lambda||{};
   const scopes=E.scopes||[];
   if(!scopes.length)
-    return `<h2>有效边际 λ 表（按阶段）</h2>
+    return `<h2>有效边际 λ 表：按历史兑现折算声称边际，供准入和定注使用</h2>
     <div class="card"><span class="dot green"></span> 无结算数据。</div>`;
   const num=(v,d)=>v==null?"—":v.toFixed(d==null?2:d);
   const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
@@ -11918,7 +11918,7 @@ ${b.admits?"可买 ["+b.admits[0].toFixed(3)+", "+b.admits[1].toFixed(3)+")"
       <table><thead><tr><th>一致度带</th><th>服务 λ</th>${tiers.map(([,l])=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`;
   };
 
-  return `<h2>有效边际 λ 表（按阶段）</h2>
+  return `<h2>有效边际 λ 表：按历史兑现折算声称边际，供准入和定注使用</h2>
     <div class="card">
       <div class="muted" style="font-size:12.5px;margin-bottom:9px">
         定注读的是 <span class="mono">λ(a)·p</span> 而不是 p（宪章 68），闸只放行
@@ -11972,7 +11972,7 @@ function convergenceClaim(){
       <td class="mono">${pct(e.claimed_pct)}</td>
       <td class="mono ${e.realised_over_claimed>1.15?"up":(e.realised_over_claimed<0.9?"down":"")}">${num(e.realised_over_claimed)}</td>
       <td class="mono ${e.unit_return_pct>0?"up":"down"}">${e.unit_return_pct==null?"—":(e.unit_return_pct>=0?"+":"")+num(e.unit_return_pct,0)+"%"}</td></tr>`).join("");
-  return `<h2 style="margin-top:30px">双向收敛系数（B 臂，影子）</h2>
+  return `<h2 style="margin-top:30px">双向收敛系数（B 臂，影子）：模型上调、市场下压时放大声称</h2>
     <div class="card">
       模型把窗口调高 ≥${num(C.min_claim_rise)}、市场把同一窗口的卖一合计压低 ≥${num(C.min_price_fall)}（视野 ${C.horizon_hours}h），
       而市场仍比模型贵（a=价/声称 ≥${num(C.min_agreement)}）——这样的窗口实测兑现 1.3–1.4 倍声称，却被正 EV 闸挡住。
@@ -12020,7 +12020,7 @@ function marketLeanGate(){
       <td>${e.enforced?'<span class="pill red">真拒了</span>'
         :'<span class="pill amber">影子会拒</span>'}</td>
     </tr>`).join("");
-  return `<h2>市场方向闸：盘口往哪边歪</h2>
+  return `<h2>市场方向闸：不许逆着盘口的倾向开窗</h2>
     <div class="card">
       <b>判据（<span class="mono">market_lean_ordinal</span>）：</b>
       把盘口每个桶的中价当权重，算出<b>市场隐含的均值桶</b>，与<b>模型均值桶</b>比。
@@ -12145,7 +12145,7 @@ function thKey(kind){
 
 function edgeBandHealth(){
   const C=((D.lambda_axis_realisation||{}).claim_edge)||{};
-  const head=`<h2>声称边际体温计（edge 带 × 兑现）</h2>`;
+  const head=`<h2>声称边际体温计：检验自认的便宜幅度实际兑现多少，为 λ 表提供证据</h2>`;
   if(!C.available||!(C.bands||[]).length)
     return head+`<div class="card"><span class="dot"></span> 还没有已结算的入座窗口。</div>`;
   const stages=(C.stages||[]).map(st=>[st,(C.by_stage||{})[st]])
@@ -12454,7 +12454,7 @@ function valuationLane(){
   const banner=valuationConclusion(V);
   const vint=Object.values(V.lambda_vintage||{});
   const stale=vint.filter(x=>x.verdict!=="current").length;
-  return `<h2>统一估值车道（宪章 132）</h2>
+  return `<h2>统一估值车道：把市场盘口当第二份预报，与天气模型合成估值</h2>
   ${banner}
   <p class="sub">市场盘口是第二份预报：<span class="mono">p_value = (1−β)·市场 + β·天气</span>，
   β 在真值桶的对数得分上拟合；保守性放在动作上（抽样向量集上取收益 5% 分位）。
@@ -12471,7 +12471,7 @@ function windowDivergence(){
   const rows=W.flagged||[];
   const ths=W.thresholds||[];
   if(!ths.length)
-    return `<h2>分布与持仓分家</h2>
+    return `<h2>分布与持仓分家：对比概率分布指向的桶与实际持有的桶</h2>
     <div class="card"><span class="dot green"></span> 没有可评估的站日。</div>`;
   const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
   const thRows=ths.map(t=>`<tr>
@@ -12480,7 +12480,7 @@ function windowDivergence(){
     <td class="${t.hot_pnl>=0?"up":"down"}">${t.hot_pnl>=0?"+":""}${t.hot_pnl.toFixed(1)}</td>
     <td>${t.cold_n}</td><td>${pct(t.cold_hit_rate)}</td>
     <td class="${t.cold_pnl>=0?"up":"down"}">${t.cold_pnl>=0?"+":""}${t.cold_pnl.toFixed(1)}</td></tr>`).join("");
-  return `<h2>分布与持仓分家</h2>
+  return `<h2>分布与持仓分家：对比概率分布指向的桶与实际持有的桶</h2>
   <p class="sub">每个已结算的持仓站日，取<b>持仓桶还活着的最后一次概率重算</b>
   （持仓桶质量仍高于 5%，即加仓还来得及的最后时刻），量它有多少后验质量落在持仓窗之外。
   共评估 ${W.evaluated_station_days||0} 个站日，其中末态窗外质量超过 40% 的
@@ -12539,7 +12539,7 @@ function consolidation(){
     </tr>`).join("");
   const consHead=`<tr><th></th><th>注码</th><th>链</th><th>命中链</th>
       <th>投入</th><th>pnl</th><th>ROI</th><th>去最大赢</th><th>去前两赢</th></tr>`;
-  return `<h2>固化减仓：两盏灯的账</h2>
+  return `<h2>固化减仓：模型答案定型后缩小注码</h2>
   <p class="sub">驱动固化减仓的两盏模型灯，P0 开链定档、全链继承。
   原与挂单执行同节；挂单显示退役后（2026-08-29）自立门户，规则本身没动。</p>
   <div class="card">
@@ -13000,7 +13000,7 @@ function daily(){
   };
   const recent=D.daily.slice(0,OPEN_DAYS).map(rowHtml).join("");
   const older=D.daily.slice(OPEN_DAYS);
-  return `<h2>每日统计</h2>
+  return `<h2>每日统计：按天汇总建仓、投入与结算</h2>
   <p class="sub">按事件日汇总，只算可成交的（整篮成本 ≥1 分）——不足一分的多是无人出价那侧的
   单边报价，名义上有价、实际买不到，混进来会让当天的盈亏读不出意思。</p>
   <div class="why"><b>列的意思：</b>「站数」是当天<b>建仓的站 / 舰队全部站</b>，
@@ -13054,7 +13054,7 @@ function coverage(){
   const rr=c.realization_ratio;
   const sd=S.sides||{};const tot=S.position_count||1;
   const seg=(k,col)=>`<i style="display:block;height:9px;width:${100*(sd[k]||0)/tot}%;background:${col}"></i>`;
-  return `<h2>覆盖 · 价格 · EV</h2>
+  return `<h2>覆盖 · 价格 · EV：检验买入价与窗口覆盖率撑不撑得起事前期望</h2>
   <p class="sub">只算可成交的（整篮 ≥1 分，排除虚价）。三组数回答同一个问题的三面：
   座位罩住了多少概率、为此付了多少、这笔交换值不值。</p>
   <div class="card"><div class="muted">相对市场的位置（<b>均值落点桶</b>减市场质量中心，单位是桶）
@@ -13255,7 +13255,7 @@ function stationSummary(){
     silentOff.length} 个站有结算时区和已挂牌市场，但模型从未为其算过概率——
     舰队 45 站、时区册 48 站，这是备好未接入的差额，不是这段窗口的失败：${
     idList(silentOff)}`:""}</div>`:"";
-  return `<h2>逐站汇总（跨日）</h2>
+  return `<h2>逐站汇总（跨日）：按站看长期盈亏与命中</h2>
   <p class="sub">一站一行，把该站 ${h(S.stats_start_event_date)} 起的全部可成交仓位
   （整篮 ≥1 分，排除虚价）平均到一起。<b>这些数不属于任何一天</b>——它们回答的是
   「这个站长期表现如何」，逐日的账在页顶「逐站逐日明细」。</p>
@@ -13679,7 +13679,7 @@ function roster(){
   const legend=Object.entries(REASON).map(([k,v])=>
     `<div class="muted">· <b>${v[0]}</b>：${v[1]}</div>`).join("");
   // Newest day open, everything older folded away beneath it.
-  return `<h2>逐站逐日明细：选了什么、买到了什么</h2>
+  return `<h2>逐站逐日明细：逐个站日核对选了哪些桶、买到了哪些</h2>
   <p class="sub">每个事件日一组，注册表里的每个站都在，包括没有座位、甚至当天没算出概率的
   ——没坐比坐了更值得看清原因。
   每格上行是买到的桶，下方是横梁与胜率 @ 成本 · 赔率；再下一行是这一笔的腿数与实投，
@@ -13739,7 +13739,7 @@ function dispersion(){
       r.width_ratio == null ? "—" : r.width_ratio.toFixed(2) + "×"}</td>
   </tr>`).join("");
   const bare = [...new Set(rows.filter(r => !r.paired).map(r => r.label))];
-  return `<h2>四大模型的离散度</h2>
+  return `<h2>四大模型的离散度：衡量模型间分歧，作为服务分布宽度的依据</h2>
   <p class="sub">离散度是一个集合预报里几十个成员之间的分歧，也是模型对自己唯一的
   不确定性表态：成员挤在一起就是"我很有把握"，散开就是"这天不好说"。
   统计窗口 ${h(S.summary.window_start)} 至 ${h(S.summary.window_end)}
@@ -13824,7 +13824,7 @@ function hitRate(){
     <td colspan="4" class="muted">这一格的 ${r.uncorrected.toLocaleString()}
       个 run 都没有事件日之前就已拟合好的校正表，不参与对比</td>
   </tr>`).join("");
-  return `<h2>四大模型的命中率：原始 vs 校正后</h2>
+  return `<h2>四大模型的命中率：检验偏差订正有没有让预报更准</h2>
   <p class="sub">把一个模型的成员均值当成它的答案，看它落在市场的哪个桶里，
   再和当天结算真值所在的桶比。桶按各站自己的市场刻度数——美国站 2°F 一档，
   其余 1°C 一档——所以"差一个桶"在各站是同一件事。</p>
@@ -13868,7 +13868,7 @@ function h5BiasAccuracy(){
     <td>${s.system}</td><td class="num">${s.cells}</td>
     <td class="num">${s.mean_delta_c>0?"+":""}${s.mean_delta_c.toFixed(4)}</td>
     <td class="num">${s.h5_better}:${s.h5_worse}</td></tr>`).join("");
-  return `<h2>H5 vs H15 订正准度（校准口径） ${verdict}</h2>
+  return `<h2>H5 vs H15 订正准度：比较偏差半衰期取 5 天还是 15 天订正更准 ${verdict}</h2>
   <div class="card">
   <p class="sub">同一批已结算站日、同一批原始预报，分别用两代偏差值订正，比订正后
   离真值有多远。Δ = H5 误差 − H15 误差，<b>负数代表 H5 更准</b>。这是纯算术反事实，
@@ -13917,7 +13917,7 @@ function h5Readiness(){
     <td class="num">${d.settled_chains || "—"}</td>
     <td>${d.share>=0.9 && d.settled_chains>0 ? "可打分" : ""}</td>
   </tr>`).join("");
-  return `<h2 id="h5">偏差半衰期 H5 换代进度 ${pill}</h2>
+  return `<h2 id="h5">偏差半衰期 H5 换代进度：跟踪 5 天半衰期的订正表实际服务了多少决策 ${pill}</h2>
   <p class="sub">偏差层的半衰期 2026-08-27 从 15 天改为 5 天。要在账本上给这个改动
   打分，那一天的决策必须确实由 H5 拟合的订正表服务过——这里逐条决策数，不是数表。</p>
   <div class="why"><b>为什么按决策数而不按表数：</b>每张订正表有 30 天有效期而舰队
@@ -13959,7 +13959,7 @@ function oosScores(){
     <td class="mono">${n3(r.nll)}</td>
     <td class="mono muted">${n3(r.nll_base)}</td>
   </tr>`).join("");
-  return `<h2>OOS 打分：CRPS / Brier / NLL</h2>
+  return `<h2>OOS 打分：用样本外真值给概率预报打分</h2>
   <p class="sub">这是门自己用的分数，全部在样本外的 holdout 上算。
   近 7 天共 ${S.scope_count.toLocaleString()} 个站×提前量×cycle 被评过，
   最近一次 ${hours(S.latest_age_hours)}。</p>
@@ -14112,7 +14112,7 @@ function centerWidth(){
       <br>2026-08-27 起指纹只报警不清零：它认代码不认分布，
       只补记账的提交曾与真改算术一样清空八天证据。</div>`}
   </div>`).join("");
-  return `<h2>中心/宽度两标量</h2>
+  return `<h2>中心/宽度两标量：平移分布中心、缩放分布宽度</h2>
   <p class="sub">最后一层修正只有两个数：把整条分布左右平移多少（中心 δ），
   再横向拉宽或收窄多少倍（宽度 λ）。δ=0、λ=1 就是原样不动。</p>
   <div class="why"><b>为什么必须按阶段分开拟合：</b>P0 面对的是一堆模型融出来的
@@ -14217,7 +14217,7 @@ function centreLanding(){
         ${flat}</div>` : ""}
     </div>`;
   }).join("");
-  return `<h2>真值落在离服务均值多远</h2>
+  return `<h2>真值落在离服务均值多远：检验服务分布盖不盖得住真值</h2>
   <p class="sub">上一节说中心/宽度层<b>做了什么</b>，
   这一节说它服务出去的分布<b>对不对</b>：
   当天的真实最高温，落在分布均值的哪一侧、差几个桶。
@@ -14825,7 +14825,7 @@ function moneyBoard(){
         : ""}
       ${panes}</div>`;
   }).join("");
-  return `<h2>资金看板：这本账值多少</h2>
+  return `<h2>资金看板：汇总纸面账本与实盘的盈亏和风险</h2>
   <p class="sub"><b>纸面账本</b>一整块：总账、对比、风险、曲线，每个数只出现一次；
   <b>实盘</b>两块：实盘订单（数量 / ROI / PnL）、实盘意向簿，点「全部」叠起来看，选中的页签刷新后保留。</p>
   ${cats}`;
@@ -14952,7 +14952,7 @@ function liveReadiness(){
   </tr>`).join("");
   const CT = L.contracts || {};
   const authorised = CT.live_submit_authorized === true;
-  return `<h2>Live 上线准备</h2>
+  return `<h2>Live 上线准备：决定哪些站可以用真钱下单</h2>
   <p class="sub">下面的开关是<b>上线意向旗</b>。能不能真发单由<b>两个闸一起决定</b>：
   代码编译的执行模式 <span class="mono">${h(L.execution_mode||"—")}</span>，
   和 runtime 合同 <span class="mono">${h(CT.execution_mode||"—")}</span>
@@ -15338,7 +15338,7 @@ const VERDICT_WORD = {green:"良好", amber:"注意", red:"有问题", muted:"�
 
 function scorecard(){
   const S = D.scorecard || {};
-  if(!S.available) return `<h2>模型校准总检</h2>
+  if(!S.available) return `<h2>模型校准总检：检查概率模型六层是否各自达标</h2>
     <p class="sub">还没有已结算的预测可以评分。</p>`;
   const cards = (S.layers||[]).map(L => `<div class="card">
     <div style="display:flex;align-items:center;gap:8px">
@@ -15395,7 +15395,7 @@ function scorecard(){
       </tr>`;
     }).join("");
 
-  return `<h2>模型校准总检：六层各自及格没有</h2>
+  return `<h2>模型校准总检：检查概率模型六层是否各自达标</h2>
   <p class="sub">近 45 天 ${S.sample_days.toLocaleString()} 个已结算站日、
   ${S.station_count} 个站，全部在样本外。总体
   <span class="pill ${S.overall}">${VERDICT_WORD[S.overall]||""}</span>，
@@ -15484,7 +15484,7 @@ function servingWeights(){
       <td class="mono">${r.candidate_count}→${r.selected_count}</td>
       <td class="mono ${stale ? "down" : ""}">${h(r.holdout_end)}</td></tr>`;
   }).join("");
-  return `<h2>四大模型的权重：谁在场、占多少</h2>
+  return `<h2>四大模型的权重：决定各模型在服务概率里占多少</h2>
   <p class="sub">这里读的是服务路径本身——每个「站×提前量×cycle」格子当前激活的
   组合指针，连到它绑定的选拔证据，把里面的权重原样摊开。不是权重表的行数统计，
   就是 P0 此刻在用的那份配比。</p>
