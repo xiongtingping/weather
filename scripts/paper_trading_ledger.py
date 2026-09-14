@@ -971,6 +971,10 @@ if AUTO_REDERIVE_ON_RULE_CHANGE not in {"on", "off"}:
 REDERIVE_SLICE_DAYS = int(
     os.environ.get("PAPER_LEDGER_REDERIVE_SLICE_DAYS", "").strip() or 5
 )
+# The line a hosted sweep prints when it stopped with work left; the resident
+# (``weather_basket_yes_daemon.HOSTED_SWEEP_CONTINUE_MARKER``) brings the
+# member due again after a short delay instead of its whole interval.
+HOSTED_SWEEP_CONTINUE_MARKER = "hosted_sweep:continue"
 REDERIVE_PASS_BUDGET_SEC = float(
     os.environ.get("PAPER_LEDGER_REDERIVE_BUDGET_SEC", "").strip() or 1500
 )
@@ -12208,6 +12212,8 @@ def main() -> int:
         # A slice that did not move the book's cursor stops the loop rather
         # than repeating itself.
         slice_sec = time.monotonic() - started
+        repaired = bool(counts.get("repair_slice_through"))
+        repair_stalled = False
         while (
             counts.get("repair_slice_through")
             and time.monotonic() - started + 1.5 * slice_sec
@@ -12222,7 +12228,22 @@ def main() -> int:
             ))
             slice_sec = time.monotonic() - slice_started
             if counts.get("repair_slice_through") == previous:
+                repair_stalled = True
                 break
+        # A pass that moved the repair and stopped on its budget asks the
+        # resident for the next pass now rather than after the sweep's
+        # three-hour interval.  Without it a rule change left the book
+        # partial for two intervals -- the whole-history walk needs about
+        # two budgets -- and a second rule change inside that window started
+        # it over: 2026-09-14 had three by 12:51Z.  A repair that did not
+        # move stays on the interval, so a stuck one cannot hold the SSOT
+        # queue every five minutes.
+        if (
+            repaired
+            and not repair_stalled
+            and _repair_slice_through(conn, recent_days=args.recent_days)
+        ):
+            print(HOSTED_SWEEP_CONTINUE_MARKER)
         if args.report:
             print(json.dumps(report(conn), ensure_ascii=False, sort_keys=True))
         return 0

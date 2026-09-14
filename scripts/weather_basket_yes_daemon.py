@@ -884,6 +884,28 @@ def _stamp_serving_arithmetic(
     return {"state": "ok", "at_utc": started_at_utc, "stages": stamped}
 
 
+# A member that stopped on its own budget with work left says so on its
+# stdout with this line, and comes due again after the delay below instead of
+# its whole interval.  The paper ledger is the first to need it: a rule change
+# re-derives the whole book in slices sized to one pass, and on its 10800s
+# interval the book sat partial for two intervals -- long enough for the next
+# rule change to start it over.  Only a clean exit counts: a killed or
+# failed run keeps its interval, which is what stops a failing member from
+# holding its write domain every few minutes.
+HOSTED_SWEEP_CONTINUE_MARKER = "hosted_sweep:continue"
+HOSTED_SWEEP_CONTINUATION_DELAY_SEC = 300.0
+
+
+def hosted_sweep_interval_after(
+    result: "Mapping[str, Any]", interval_sec: float
+) -> float:
+    """How long until this member is due again, given how its run ended."""
+
+    if result.get("state") == "ok" and result.get("continue"):
+        return min(float(interval_sec), HOSTED_SWEEP_CONTINUATION_DELAY_SEC)
+    return float(interval_sec)
+
+
 def run_hosted_sweep(script_path: str, timeout_sec: float) -> dict[str, Any]:
     """Run one sweep script to completion and report what it did.
 
@@ -910,6 +932,7 @@ def run_hosted_sweep(script_path: str, timeout_sec: float) -> dict[str, Any]:
     started_at = utc_now()
     started = time.monotonic()
     process: subprocess.Popen[str] | None = None
+    continues = False
     try:
         process = subprocess.Popen(
             ["/bin/bash", script_path],
@@ -926,6 +949,9 @@ def run_hosted_sweep(script_path: str, timeout_sec: float) -> dict[str, Any]:
             returncode: int | None = process.returncode
             tail = (_text(out) + _text(err))[-600:]
             state_text = "ok" if returncode == 0 else "failed"
+            continues = returncode == 0 and HOSTED_SWEEP_CONTINUE_MARKER in {
+                line.strip() for line in _text(out).splitlines()
+            }
         except subprocess.TimeoutExpired:
             # Signal the group, not the shell.  Every wrapper execs python,
             # and reaping only the direct child leaves that python running
@@ -951,6 +977,7 @@ def run_hosted_sweep(script_path: str, timeout_sec: float) -> dict[str, Any]:
         "started_at_utc": started_at,
         "duration_sec": round(time.monotonic() - started, 3),
         "output_tail": tail.strip(),
+        "continue": continues,
         "calls_order_gateway": False,
         "places_orders": False,
     }
@@ -4455,7 +4482,16 @@ def main() -> int:
                     (_sweep_clocks.get(name) or {}).get("attempted_at_utc")
                     if isinstance(_sweep_clocks.get(name), dict) else None
                 ),
-                interval_sec=interval_sec,
+                interval_sec=hosted_sweep_interval_after(
+                    {
+                        "state": "ok",
+                        "continue": (_sweep_clocks.get(name) or {}).get(
+                            "continue_requested"
+                        ),
+                    }
+                    if isinstance(_sweep_clocks.get(name), dict) else {},
+                    interval_sec,
+                ),
                 stagger_sec=60.0 + 90.0 * index,
             )
             for index, (name, _, interval_sec, _) in enumerate(HOSTED_SWEEPS)
@@ -5103,7 +5139,10 @@ def main() -> int:
                 for name, _, interval_sec, _ in HOSTED_SWEEPS:
                     if name == done_name:
                         next_hosted_sweep[name] = (
-                            time.monotonic() + interval_sec
+                            time.monotonic()
+                            + hosted_sweep_interval_after(
+                                sweep_result, interval_sec
+                            )
                         )
                 # Only a completed attempt advances the COMPLETION stamp: a
                 # member whose run was killed or failed has not succeeded,
@@ -5130,6 +5169,10 @@ def main() -> int:
                 _entry["last_state"] = _sweep_state
                 if _sweep_state == "ok":
                     _entry["completed_at_utc"] = utc_now()
+                # A restart mid-repair keeps the short delay too.
+                _entry["continue_requested"] = bool(
+                    _sweep_state == "ok" and sweep_result.get("continue")
+                )
                 _clocks[done_name] = _entry
                 try:
                     _atomic_json(HOSTED_SWEEP_CLOCKS_PATH, _clocks)

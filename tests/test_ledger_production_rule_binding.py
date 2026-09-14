@@ -249,6 +249,7 @@ LEDGER_ONLY = {
     "AUTO_REDERIVE_ON_RULE_CHANGE": "operational: repair a mixed book, no production counterpart",
     "REDERIVE_SLICE_DAYS": "operational: how many event days one bounded repair slice walks",
     "REDERIVE_PASS_BUDGET_SEC": "operational: how long one pass keeps taking repair slices",
+    "HOSTED_SWEEP_CONTINUE_MARKER": "operational: the line that asks the resident for the next repair pass now",
     # The simulator's adverse-selection calibration, and it must NEVER have
     # a counterpart in production.  Production's fill artifact
     # (``delta_v2_fill_artifact``, fitted by
