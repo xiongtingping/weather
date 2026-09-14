@@ -455,20 +455,29 @@ def _has_replay_column(conn: sqlite3.Connection, name: str) -> bool:
 
 
 def _active_claim_vintage(
-    conn: sqlite3.Connection, stage_scope: str
+    conn: sqlite3.Connection, stage_scope: str, claim_scope: str = "window"
 ) -> list[str] | None:
     """The claim-transform fingerprint the served table was fitted under.
 
     ``None`` for a table activated before the key existed, which is not the
     current vintage: those rows were fitted on claims this code no longer
     computes, and saying so is the whole point of the key.
+
+    The served table OF THIS CLAIM SCOPE, read the way ``load_active_lambda``
+    reads it (2026-09-14).  A stage carries an activated window table and an
+    activated bucket table side by side, and this used to take whichever row
+    SQLite returned first: P0's window fit read the 2026-09-11 bucket table's
+    vintage, found it older than today's claims, and replaced its own
+    incumbent with the kernel constant every night.
     """
 
     try:
         row = conn.execute(
             "SELECT bands_json FROM calibration_effective_edge_lambda"
-            " WHERE activated=1 AND stage_scope=?",
-            (stage_scope,),
+            " WHERE activated=1 AND stage_scope=?"
+            + _claim_scope_clause(conn, claim_scope)
+            + " ORDER BY fitted_at_utc DESC LIMIT 1",
+            (stage_scope, *_claim_scope_args(conn, claim_scope)),
         ).fetchone()
     except sqlite3.Error:
         return None
@@ -1130,7 +1139,7 @@ def fit_lambda_table(
     # question.  Measured 2026-09-08: P0 and P0-M both sat in exactly that
     # loop, while P1 escaped only because its bootstrap happened to score
     # identically.
-    active_vintage = _active_claim_vintage(conn, stage_scope)
+    active_vintage = _active_claim_vintage(conn, stage_scope, claim_scope)
     claim_vintage_changed = bool(
         claim_vintages is not None
         and active_vintage is not None
@@ -1453,8 +1462,9 @@ def _lambda_incumbent_veto(
             "SELECT served_from_utc FROM"
             " calibration_effective_edge_serving_interval"
             " WHERE stage_scope=? AND served_until_utc IS NULL"
-            " ORDER BY served_from_utc DESC LIMIT 1",
-            (str(stage_scope),),
+            + _interval_scope_clause(conn, claim_scope)
+            + " ORDER BY served_from_utc DESC LIMIT 1",
+            (str(stage_scope), *_claim_scope_args(conn, claim_scope)),
         ).fetchone()
     except sqlite3.Error:
         return verdict
@@ -1697,8 +1707,9 @@ def persist_and_activate(
         conn.execute(
             "UPDATE calibration_effective_edge_serving_interval"
             " SET served_until_utc=? WHERE stage_scope=? AND"
-            " served_until_utc IS NULL",
-            (now, scope),
+            " served_until_utc IS NULL"
+            + _interval_scope_clause(conn, claim_scope),
+            (now, scope, *_claim_scope_args(conn, claim_scope)),
         )
         conn.execute(
             "INSERT INTO calibration_effective_edge_serving_interval("
@@ -1820,6 +1831,41 @@ def _has_claim_scope_column(conn: sqlite3.Connection) -> bool:
         return False
 
 
+def _claim_scope_clause(conn: sqlite3.Connection, claim_scope: str) -> str:
+    """`` AND <this row is of claim_scope>`` for a lambda-table query.
+
+    Without the column every row is a window fit, so a window read needs no
+    clause and a bucket read correctly finds nothing.
+    """
+
+    if _has_claim_scope_column(conn):
+        return " AND COALESCE(claim_scope,'window')=?"
+    return "" if claim_scope == "window" else " AND 0"
+
+
+def _claim_scope_args(conn: sqlite3.Connection, claim_scope: str) -> tuple[str, ...]:
+    return (str(claim_scope),) if _has_claim_scope_column(conn) else ()
+
+
+# The serving-interval table predates the bucket lane and is keyed by stage
+# alone, so an interval knows its scope only through the table it names.
+# Every read and every close goes through this, or a bucket activation closes
+# the window table's interval and the veto and the forward score read the
+# wrong table as serving (2026-09-14: four P0 intervals, 2026-09-10..13).
+_INTERVAL_TABLE = "calibration_effective_edge_serving_interval"
+
+
+def _interval_scope_clause(conn: sqlite3.Connection, claim_scope: str) -> str:
+    if _has_claim_scope_column(conn):
+        return (
+            " AND COALESCE((SELECT t.claim_scope"
+            " FROM calibration_effective_edge_lambda t"
+            f" WHERE t.lambda_table_sha256 = {_INTERVAL_TABLE}.lambda_table_sha256"
+            "), 'window')=?"
+        )
+    return "" if claim_scope == "window" else " AND 0"
+
+
 def retire_lambda_table(
     conn: sqlite3.Connection,
     *,
@@ -1853,8 +1899,9 @@ def retire_lambda_table(
     conn.execute(
         "UPDATE calibration_effective_edge_serving_interval"
         " SET served_until_utc=? WHERE stage_scope=? AND"
-        " served_until_utc IS NULL",
-        (now, str(stage_scope)),
+        " served_until_utc IS NULL"
+        + _interval_scope_clause(conn, claim_scope),
+        (now, str(stage_scope), *_claim_scope_args(conn, claim_scope)),
     )
     conn.commit()
     return {"state": "RETIRED", "retired_at_utc": now}

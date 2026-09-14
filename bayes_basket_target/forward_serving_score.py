@@ -34,6 +34,7 @@ def forward_serving_score(
     conn: sqlite3.Connection,
     *,
     stage_scope: str,
+    claim_scope: str = "window",
 ) -> dict[str, Any]:
     """What each table did on the seats it was serving for.
 
@@ -73,11 +74,23 @@ def forward_serving_score(
     # A missing table is answered below, as a database that has not run the
     # migration rather than an error.
     try:
+        # One claim scope's tables only (2026-09-14).  The interval table is
+        # keyed by stage, and P0 carries a window table and a bucket table;
+        # read together, a bucket interval was scored as the window table's
+        # book and the window table's own intervals looked seconds long.
+        # Production serves the window table, hence the default.
+        from .effective_edge_store import (  # noqa: PLC0415
+            _claim_scope_args,
+            _interval_scope_clause,
+        )
+
         intervals = conn.execute(
             "SELECT lambda_table_sha256, served_from_utc, served_until_utc"
             " FROM calibration_effective_edge_serving_interval"
-            " WHERE stage_scope=? ORDER BY served_from_utc",
-            (scope,),
+            " WHERE stage_scope=?"
+            + _interval_scope_clause(conn, claim_scope)
+            + " ORDER BY served_from_utc",
+            (scope, *_claim_scope_args(conn, claim_scope)),
         ).fetchall()
     except sqlite3.Error as exc:
         return {
@@ -132,6 +145,7 @@ def forward_serving_score(
     return {
         "schema": FORWARD_SERVING_SCORE_SCHEMA,
         "stage_scope": scope,
+        "claim_scope": str(claim_scope),
         "available": True,
         "interval_count": len(out),
         "scored_interval_count": sum(

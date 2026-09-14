@@ -219,3 +219,85 @@ def test_the_two_lanes_do_not_retire_each_other() -> None:
         )
     else:
         assert len(served_bucket) == len(EFFECTIVE_EDGE_BUCKET_LAMBDA)
+
+
+def _served_row(conn, *, sha, claim_scope, fitted_at, vintage):
+    conn.execute(
+        "INSERT INTO calibration_effective_edge_lambda("
+        " lambda_table_sha256, bands_json, evidence_json, fitted_at_utc,"
+        " window_days, seat_count, activated, activated_at_utc, stage_scope,"
+        " claim_scope) VALUES(?,?,?,?,?,?,1,?,?,?)",
+        (
+            sha,
+            json.dumps({
+                "bands": [{"upper_bound": None, "lambda": 0.5}],
+                "claim_transform_sha256": vintage,
+            }),
+            "{}", fitted_at, 30, 1, fitted_at, "P0", claim_scope,
+        ),
+    )
+    conn.execute(
+        "INSERT INTO calibration_effective_edge_serving_interval("
+        " stage_scope, lambda_table_sha256, served_from_utc, served_until_utc)"
+        " VALUES('P0',?,?,NULL)",
+        (sha, fitted_at),
+    )
+
+
+def test_the_served_vintage_is_read_from_its_own_claim_scope() -> None:
+    """2026-09-14: P0's window fit read the bucket table's vintage.
+
+    The bucket row goes in first, so a lookup that neither filters on the
+    scope nor orders would return it -- which is what production did, and
+    why the window table fell back to the kernel constant every night.
+    """
+
+    conn = _book()
+    _served_row(conn, sha="b" * 64, claim_scope="bucket",
+                fitted_at="2026-09-11T00:17:45+00:00", vintage=["old", "old"])
+    _served_row(conn, sha="w" * 64, claim_scope="window",
+                fitted_at="2026-09-13T08:37:04+00:00", vintage=["new", "new"])
+    assert store._active_claim_vintage(conn, "P0") == ["new", "new"]
+    assert store._active_claim_vintage(conn, "P0", "bucket") == ["old", "old"]
+
+
+def test_one_scope_never_closes_the_other_scopes_serving_interval(monkeypatch) -> None:
+    conn = _book()
+    _served_row(conn, sha="w" * 64, claim_scope="window",
+                fitted_at="2026-09-08T00:00:00+00:00", vintage=None)
+    legs = {"a": (0.30, 0.24), "b": (0.25, 0.22)}
+    for day in range(1, 8):
+        _window(conn, index=day, station=f"S{day}", day=f"2026-09-0{day}",
+                legs=legs, settled="a")
+    # Activate the bucket table whatever the fixture's returns say: the
+    # property is about the interval book, not about earning the seat.
+    monkeypatch.setattr(store, "ACTIVATION_RETURN_GUARD", "off")
+    store.persist_and_activate(conn, _fit(conn, claim_scope="bucket"))
+
+    def open_intervals(scope):
+        return [
+            row[0] for row in conn.execute(
+                "SELECT COALESCE(t.claim_scope,'window')"
+                " FROM calibration_effective_edge_serving_interval i"
+                " JOIN calibration_effective_edge_lambda t"
+                "   ON t.lambda_table_sha256=i.lambda_table_sha256"
+                " WHERE i.stage_scope='P0' AND i.served_until_utc IS NULL"
+            ) if row[0] == scope
+        ]
+
+    assert open_intervals("window") == ["window"]
+    assert open_intervals("bucket") == ["bucket"]
+
+    from bayes_basket_target.forward_serving_score import forward_serving_score
+
+    window_score = forward_serving_score(conn, stage_scope="P0")
+    bucket_score = forward_serving_score(conn, stage_scope="P0", claim_scope="bucket")
+    assert [i["lambda_table_sha256"] for i in window_score["intervals"]] == ["w" * 64]
+    assert window_score["intervals"][0]["still_serving"] is True
+    assert len(bucket_score["intervals"]) == 1
+    assert bucket_score["intervals"][0]["lambda_table_sha256"] != "w" * 64
+
+    # Retiring the bucket table leaves the window table serving, too.
+    store.retire_lambda_table(conn, stage_scope="P0", claim_scope="bucket")
+    assert open_intervals("window") == ["window"]
+    assert open_intervals("bucket") == []

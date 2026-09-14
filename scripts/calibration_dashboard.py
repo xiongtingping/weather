@@ -7838,13 +7838,22 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
         return out
 
     def activated(scope: str) -> dict[str, Any] | None:
+        # The window table: the one production serves.  A stage also carries
+        # an activated bucket (research) table, and "newest fitted" picked
+        # whichever of the two refit last (2026-09-14).
+        from bayes_basket_target.effective_edge_store import (  # noqa: PLC0415
+            _claim_scope_args,
+            _claim_scope_clause,
+        )
+
         try:
             row = conn.execute(
                 "SELECT lambda_table_sha256, fitted_at_utc, seat_count,"
                 " evidence_json FROM calibration_effective_edge_lambda"
                 " WHERE activated=1 AND stage_scope=?"
-                " ORDER BY fitted_at_utc DESC LIMIT 1",
-                (scope,),
+                + _claim_scope_clause(conn, "window")
+                + " ORDER BY fitted_at_utc DESC LIMIT 1",
+                (scope, *_claim_scope_args(conn, "window")),
             ).fetchone()
         except sqlite3.Error:
             return None
