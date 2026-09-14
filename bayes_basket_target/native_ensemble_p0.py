@@ -8,7 +8,7 @@ import os
 import sqlite3
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime, timedelta, timezone
-from typing import Any
+from typing import Callable, Any
 from zoneinfo import ZoneInfo
 
 from .contracts import (
@@ -1330,18 +1330,32 @@ def _activation_rank(
     *,
     observed_set: set[str],
     pool_first: bool,
+    seats_usable: Callable[[Sequence[str]], bool] | None = None,
 ) -> tuple[Any, ...]:
     """Sort key over compatible activations, highest first.
 
     ``item`` is (activation row, seated system ids, cycle riders, same-run
-    fresh count).  Pool seat first under charter 134, then exact packet
-    match, fewest riders, freshest runs, latest activation, breadth,
-    generation, id.  See the comments at the call site for why each key sits
-    where it does.
+    fresh count).  Under charter 134: a seat whose evidence keeps the P0
+    usable first, then a pool seat, then exact packet match, fewest riders,
+    freshest runs, latest activation, breadth, generation, id.  See the
+    comments at the call site for why each key sits where it does.
+
+    ``seats_usable`` answers the freshness question the compile asks after
+    choosing, for each candidate before it: the pool key alone put a view
+    without the packet's freshest system ahead of a contest set that had it,
+    and that P0 then failed ``seated_evidence_stale`` (ZGSZ and KHOU in the
+    2026-09-14 05:22Z inbox, both served by the contest rule).  Read only
+    with ``pool_first``, so the contest rule's order is unchanged.
     """
 
     row, member_ids, riders, fresh_count = item
+    usable = (
+        True
+        if not pool_first or seats_usable is None
+        else bool(seats_usable(member_ids))
+    )
     return (
+        usable,
         bool(pool_first) and STABLE_POOL_WEIGHT_RULE in str(row[15] or ""),
         set(member_ids) == observed_set,
         -len(riders),
@@ -1990,9 +2004,25 @@ def compile_native_ensemble_p0(
     # yet -- or has reached, and minted the pool for.  Where no pool seat is
     # compatible yet, the contest rows still serve rather than failing closed.
     pool_first = P0_MEMBERSHIP_MODE == P0_MEMBERSHIP_MODE_STABLE_POOL
+    def _seats_usable(member_ids: Sequence[str]) -> bool:
+        # The same reading the freshness check below makes of the seat the
+        # compile finally serves, asked of every candidate before choosing.
+        seated_at = seated_evidence_received_at(
+            official_lineage["archive_query_at_utc_by_system"],
+            seated_system_ids=list(member_ids),
+        ) if official_snapshot else None
+        received = min(seated_at, captured) if seated_at is not None else captured
+        return (
+            fresh_seconds - (decision - received).total_seconds()
+            >= MIN_USABLE_FRESHNESS_SECONDS
+        )
+
     compatible_activations.sort(
         key=lambda item: _activation_rank(
-            item, observed_set=observed_set, pool_first=pool_first
+            item,
+            observed_set=observed_set,
+            pool_first=pool_first,
+            seats_usable=_seats_usable,
         ),
         reverse=True,
     )

@@ -258,3 +258,42 @@ def test_two_pool_seats_of_one_set_that_tie_are_served_not_refused() -> None:
     fresher = (c1[0], whole, [], 3)
     assert ambiguous([fresher, c2], pool_first=False) is False
     assert ambiguous([c1], pool_first=False) is False
+
+
+def test_a_fresh_seat_outranks_a_pool_seat_that_would_leave_p0_stale() -> None:
+    """ZGSZ and KHOU in the 2026-09-14 05:22Z inbox.
+
+    The pool key alone chose a view without IFS, the packet's freshest system,
+    over a contest set that had it, and the P0 failed seated_evidence_stale.
+    """
+
+    observed = {"ECMWF_IFS_ENS_OPEN_PF50", "NOAA_GEFS_05", "DWD_ICON_GLOBAL_EPS"}
+    contest = (
+        _activation("contest", valid_from="2026-09-14T01:00:00Z",
+                    method="inverse_train_rmse_maturity_ramp_v1::x"),
+        ["ECMWF_IFS_ENS_OPEN_PF50", "NOAA_GEFS_05"], [], 1,
+    )
+    stale_pool = (
+        _activation("pool", valid_from="2026-09-14T02:00:00Z",
+                    method=STABLE_POOL_WEIGHT_RULE + "::stable_pool_kappa=0.5::x"),
+        ["DWD_ICON_GLOBAL_EPS", "NOAA_GEFS_05"], [], 1,
+    )
+    fresh_pool = (
+        _activation("pool-fresh", valid_from="2026-09-14T02:00:00Z",
+                    method=STABLE_POOL_WEIGHT_RULE + "::stable_pool_kappa=0.5::x"),
+        sorted(observed), [], 1,
+    )
+    usable = lambda ids: "ECMWF_IFS_ENS_OPEN_PF50" in ids  # noqa: E731
+    rank = native_ensemble_p0._activation_rank
+
+    def best(items, pool_first=True):
+        return sorted(
+            items,
+            key=lambda i: rank(i, observed_set=observed, pool_first=pool_first, seats_usable=usable),
+            reverse=True,
+        )[0][0][0]
+
+    assert best([stale_pool, contest]) == "contest"
+    assert best([stale_pool, contest, fresh_pool]) == "pool-fresh"
+    # The contest rule's order does not read freshness.
+    assert best([contest, stale_pool], pool_first=False) == "pool"

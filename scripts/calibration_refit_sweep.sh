@@ -96,8 +96,8 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] center_width refit"
 # memory; the pairing is pinned by tests/test_serving_arithmetic_version_start.
 "$PY" scripts/refit_center_width.py --commit --summary \
   --since "2026-08-27T09:20:00Z" \
-  --since-stage "P0=2026-09-14T04:09:49Z" \
-  --since-stage "P0-M=2026-09-14T04:09:49Z" || RC=$?
+  --since-stage "P0=2026-09-14T05:10:36Z" \
+  --since-stage "P0-M=2026-09-14T05:10:36Z" || RC=$?
 
 
 # Whether any stage owes the version bump the width lanes above key their
