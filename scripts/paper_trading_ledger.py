@@ -107,6 +107,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     TARGET_PRICING_BASIS as _TARGET_PRICING_BASIS,
     TARGET_PRICING_LANE_STAGES as _TARGET_PRICING_LANE_STAGES,
     COMPLETION_CROSSING_PRICING_RULE_VERSION as _COMPLETION_CROSSING_PRICING,
+    EXPOSURE_REPAIR_COMPLETION as _EXPOSURE_REPAIR_COMPLETION,
     CENTRE_ANCHOR_DISTANCE_DECAY,
     CENTRE_ANCHOR_EDGE_TILT,
     CENTRE_ANCHOR_MIN_RUNG_SHARE,
@@ -259,6 +260,10 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     # Charter 73: the increment's edge on the belief the seat was judged
     # on, the number production's bundle re-score authorizes on.
     whole_basket_edge_delta_v1,
+    # Charter 116/136: the repair reading, and the rule a window records when
+    # it admitted a completion on the exposure rather than on its edge.
+    completion_repair_exemption_v1 as _completion_repair_exemption_v1,
+    EXPOSURE_REPAIR_COMPLETION_RULE_VERSION as _EXPOSURE_REPAIR_RULE,
     # Charter 92: the ticket is authorized on that same edge; ``off`` is
     # charter 74's structural authorization, the replay arm.
     # Charter 93: the in-support floor, re-read on the lifted legs with the
@@ -2470,6 +2475,12 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     # crossing at every stage.  At P0-M it was priced on the maker band and
     # refused at every compile; the judge this book seats under is
     # production's own solver, so the seats it produces change with it.
+    # Charter 136 (user ruling 2026-09-15): a leg the market took is completed
+    # on the exposure; the judge's windows admit it and this book's edge
+    # mirror exempts it, so the seats and the buys both change.
+    "exposure_repair_completion": (
+        _EXPOSURE_REPAIR_RULE if _EXPOSURE_REPAIR_COMPLETION == "on" else "off"
+    ),
     "completion_pricing": (
         _COMPLETION_CROSSING_PRICING
         if _CHARTER_127_COMPLETION_TAKE == "on" else "lane"
@@ -11145,7 +11156,38 @@ def backfill(
                             _epsilon = float(
                                 production_verdict["edge_epsilon"]
                             )
-                            if not _edge > _epsilon + 1e-9:
+                            # Charter 136: production admits this completion
+                            # on the exposure and exempts it after the lift;
+                            # its kernel authorizes it as a charter-116 repair.
+                            # Both conditions, read here from the same seat
+                            # and the kernel's own repair function.
+                            _exposure_repair = (
+                                str(((seat.get("completion") or {})
+                                     .get("admitted_by")) or "")
+                                == _EXPOSURE_REPAIR_RULE
+                                and bool(_completion_repair_exemption_v1(
+                                    support=tuple(
+                                        str(_b) for _b in seat["buckets"]
+                                    ),
+                                    held_shares=held,
+                                    held_cost_usdc=held_cost,
+                                    target_shares=_held_after,
+                                    ask_by_bucket={
+                                        str(_b): (
+                                            float(_c) / float(_q)
+                                            if float(_q) > 1e-9 else 0.0
+                                        )
+                                        for _b, _q, _c in zip(
+                                            seat["buckets"], leg_shares,
+                                            leg_cash,
+                                        )
+                                    },
+                                    claim_by_bucket=production_verdict[
+                                        "edge_probabilities"
+                                    ],
+                                ).get("exempt"))
+                            )
+                            if not _exposure_repair and not _edge > _epsilon + 1e-9:
                                 refusal = _deeper_refusal(refusal, (
                                     "execution_edge_not_authorized",
                                     "宪章 73：增量在入座信念上的边际 %.4f"

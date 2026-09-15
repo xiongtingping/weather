@@ -2379,6 +2379,83 @@ if CHARTER_116_COMPLETION_REPAIR not in {"on", "off"}:
         f"unknown charter 116 completion repair mode: {CHARTER_116_COMPLETION_REPAIR}"
     )
 COMPLETION_REPAIR_RULE_VERSION = "completion_repairs_an_illegal_floor_v1"
+EXPOSURE_REPAIR_COMPLETION_RULE_VERSION = "market_took_every_leg_exposure_repair_v1"
+
+
+def exposure_repair_completion_v1(
+    *,
+    held_shares_by_bucket: Mapping[str, Any],
+    held_cost_by_bucket: Mapping[str, Any],
+    buyable_ask_by_bucket: Mapping[str, Any],
+    buyable_claim_by_bucket: Mapping[str, Any],
+    hours_to_cutoff: float | None,
+    cutoff_hours: float = COMPLETION_CUTOFF_HOURS,
+) -> dict[str, Any]:
+    """Charter 136: a short leg the market took is completed on the exposure.
+
+    User ruling 2026-09-15: "补单的负边际权重判断要小于篮子不完整的暴露风险".
+    A partly held basket loses its whole cost on the outcome it was built to
+    cover, and the leg that is missing is, in this class, missing because the
+    market bid it above our own claim.  On exactly those legs our claim is
+    the number that is wrong: settled 2026-09-06..14, eleven single short legs
+    the window gate refused (all-in ask above claim) landed 63.6% against a
+    0.446 ask and a 0.268 claim, +0.19 a share (90% [+0.002, +0.402]); the
+    2026-09-07 shadow read of 604 such legs realized 1.60x their claim.  So
+    their own negative edge is not a reason to leave the basket broken, and
+    charter 93's floor -- which is the exposure -- decides instead.
+
+    Deliberately narrow:
+
+    * **every** buyable short leg is priced above its own claim -- a leg the
+      market prices at or under our claim is one it is handing us, measured
+      to lose (0.28x of claim), and stays on the hurdle;
+    * more than ``cutoff_hours`` to settlement, or no clock -- charter 110(六);
+    * the completed basket costs under one share per share -- the one hard
+      cap no model can argue with (held legs at what they cost, short legs at
+      their all-in ask).
+
+    Pure; ``admits`` is the verdict and the rest is the audit.
+    """
+
+    held = {
+        str(bucket): float(shares or 0.0)
+        for bucket, shares in held_shares_by_bucket.items()
+        if float(shares or 0.0) > EPS
+    }
+    asks = {
+        str(bucket): (None if ask is None else float(ask))
+        for bucket, ask in buyable_ask_by_bucket.items()
+    }
+    claims = {
+        str(bucket): float(buyable_claim_by_bucket.get(bucket, 0.0) or 0.0)
+        for bucket in buyable_ask_by_bucket
+    }
+    reading: dict[str, Any] = {
+        "rule": EXPOSURE_REPAIR_COMPLETION_RULE_VERSION,
+        "hours_to_cutoff": hours_to_cutoff,
+        "cutoff_hours": float(cutoff_hours),
+        "claim_by_bucket": claims,
+        "ask_by_bucket": asks,
+    }
+    if not held or not asks:
+        return {**reading, "admits": False, "reason": "not_a_partial_basket"}
+    if any(ask is None or ask <= EPS for ask in asks.values()):
+        return {**reading, "admits": False, "reason": "short_leg_unpriced"}
+    took = all(asks[bucket] > claims[bucket] + EPS for bucket in asks)
+    reading["market_took_every_leg"] = took
+    held_cost_per_share = sum(
+        float(held_cost_by_bucket.get(bucket, 0.0) or 0.0) / shares
+        for bucket, shares in held.items()
+    )
+    completed = held_cost_per_share + sum(asks.values())
+    reading["completed_cost_per_share"] = completed
+    if not took:
+        return {**reading, "admits": False, "reason": "market_did_not_take_every_leg"}
+    if hours_to_cutoff is not None and float(hours_to_cutoff) <= float(cutoff_hours):
+        return {**reading, "admits": False, "reason": "inside_completion_cutoff"}
+    if not completed < 1.0 - EPS:
+        return {**reading, "admits": False, "reason": "completed_basket_costs_a_share"}
+    return {**reading, "admits": True, "reason": "market_took_the_leg"}
 
 
 def completion_repair_exemption_v1(

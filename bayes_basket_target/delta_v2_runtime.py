@@ -123,6 +123,8 @@ from .basket_kernel.delta_v2 import (
     completion_conditioned_claim_v1,
     completion_floor_delta_v1,
     completion_repair_exemption_v1,
+    EXPOSURE_REPAIR_COMPLETION_RULE_VERSION,
+    exposure_repair_completion_v1,
     evaluate_action_v2,
     evaluate_basket_value_v2,
     raise_sub_lot_targets_v2,
@@ -557,6 +559,16 @@ if MAKER_GTD_HORIZON_SECONDS < 60.0:
 CHARTER_110_COMPLETION = (
     os.environ.get("PM_CHARTER_110_COMPLETION", "").strip().lower() or "off"
 )
+# Charter 136 (user ruling 2026-09-15): a short leg the market took is
+# completed on the exposure, not refused on its own edge.  ``off`` is the
+# charter-130 book, where the increment clears the one hurdle or holds.
+EXPOSURE_REPAIR_COMPLETION = (
+    os.environ.get("PM_EXPOSURE_REPAIR_COMPLETION", "").strip().lower() or "on"
+)
+if EXPOSURE_REPAIR_COMPLETION not in {"on", "off"}:
+    raise RuntimeError(
+        f"PM_EXPOSURE_REPAIR_COMPLETION must be on or off: {EXPOSURE_REPAIR_COMPLETION}"
+    )
 
 
 def bid_anchored_ladder(*, bid: float, ask: float, tick: float) -> list[float]:
@@ -2015,6 +2027,42 @@ def _support_windows(
             increment_win - increment_price
             if increment_price is not None else None
         )
+        clears_hurdle = bool(
+            increment_priced
+            and increment_edge is not None
+            and clears_economic_hurdle_v1(
+                expected_payout=increment_win, cost=increment_price,
+            )
+        )
+        # Charter 136: the leg the market took is completed on the exposure.
+        # The claim compared is the model's own, before any lambda or lift --
+        # the question is whether the market priced the leg above what we
+        # believe, not above what a deflation left of it.
+        exposure_repair = (
+            exposure_repair_completion_v1(
+                held_shares_by_bucket={
+                    bucket: float(by_bucket[bucket].filled_shares)
+                    + float(by_bucket[bucket].pending_shares)
+                    for bucket in held
+                },
+                held_cost_by_bucket={
+                    bucket: float(by_bucket[bucket].filled_cost_usdc)
+                    + float(by_bucket[bucket].pending_notional_usdc)
+                    for bucket in held
+                },
+                buyable_ask_by_bucket={
+                    bucket: quote_by_bucket.get(bucket) for bucket in buyable
+                },
+                buyable_claim_by_bucket={
+                    bucket: float(probabilities.get(bucket, 0.0) or 0.0)
+                    for bucket in buyable
+                },
+                hours_to_cutoff=hours_to_cutoff,
+            )
+            if EXPOSURE_REPAIR_COMPLETION == "on" and increment_priced
+            else None
+        )
+        exposure_admits = bool(exposure_repair and exposure_repair["admits"])
         return {
             "held_buckets": held,
             "missing_buckets": missing,
@@ -2024,13 +2072,13 @@ def _support_windows(
             "increment_win_probability": increment_win,
             "increment_edge": increment_edge,
             "increment_friction": increment_friction,
-            "admissible": bool(
-                increment_priced
-                and increment_edge is not None
-                and clears_economic_hurdle_v1(
-                    expected_payout=increment_win, cost=increment_price,
-                )
+            "admissible": bool(clears_hurdle or exposure_admits),
+            "admitted_by": (
+                "hurdle" if clears_hurdle
+                else EXPOSURE_REPAIR_COMPLETION_RULE_VERSION if exposure_admits
+                else None
             ),
+            "exposure_repair": exposure_repair,
         }
 
     # The domain stays the whole day (above); what the seat must do is hold
@@ -2930,7 +2978,12 @@ def _support_windows(
                         valuation_hold_refused += 1
                     admissible = False
                 elif admissible:
-                    if completion is not None:
+                    if completion is not None and completion.get("admitted_by") == (
+                        EXPOSURE_REPAIR_COMPLETION_RULE_VERSION
+                    ):
+                        # Charter 136: admitted on the exposure, not on value.
+                        _clears = True
+                    elif completion is not None:
                         _inc_price = completion.get("increment_all_in_price")
                         _inc = (
                             valuation_action_value_v1(
@@ -6184,6 +6237,18 @@ def compile_delta_v2_runtime_plan(
                     for bucket in seated_support
                 },
             )
+        # Charter 136: the completion the window admitted on the exposure is
+        # not re-refused on the increment's edge after the lift -- the same
+        # negative edge it was admitted despite.  Charter 93's floor above
+        # still binds: the exposure is what it measures.
+        post_lift_edge_exempt = bool(
+            str(target_solution.get("winner_candidate_origin") or "")
+            == LADDER_BALANCE_CANDIDATE_ORIGIN
+            and (
+                ((support_selection.get("seated") or {}).get("completion") or {})
+                .get("admitted_by")
+            ) == EXPOSURE_REPAIR_COMPLETION_RULE_VERSION
+        )
         basket_target_activated = (
             target_solution.get("winner_candidate_kind")
             == "COMPLETE_BASKET_TARGET"
@@ -6193,6 +6258,7 @@ def compile_delta_v2_runtime_plan(
             )
             and (
                 post_lift_edge is None
+                or post_lift_edge_exempt
                 or post_lift_edge > post_lift_edge_epsilon + EPS
             )
         )
@@ -6219,6 +6285,7 @@ def compile_delta_v2_runtime_plan(
                 )
                 or (
                     post_lift_edge is not None
+                    and not post_lift_edge_exempt
                     and not post_lift_edge > post_lift_edge_epsilon + EPS
                 )
             )
@@ -6940,6 +7007,7 @@ def compile_delta_v2_runtime_plan(
         reason_codes.append("support_floor_after_lift")
     if (
         post_lift_edge is not None
+        and not post_lift_edge_exempt
         and not post_lift_edge > post_lift_edge_epsilon + EPS
     ):
         # Charter 123: the lot and dollar lifts moved the basket off the
@@ -7270,6 +7338,9 @@ def compile_delta_v2_runtime_plan(
         # off), which a reader must be able to tell from a pass.
         "post_lift_edge_rule": POST_LIFT_EDGE_RULE_VERSION,
         "post_lift_edge_mode": CHARTER_123_POST_LIFT_EDGE,
+        "post_lift_edge_exempt_rule": (
+            EXPOSURE_REPAIR_COMPLETION_RULE_VERSION if post_lift_edge_exempt else None
+        ),
         "whole_basket_edge_after_lift": post_lift_edge,
         "post_lift_edge_epsilon": post_lift_edge_epsilon,
         # Charter 83: the dollar floor the lift read, and which rungs it

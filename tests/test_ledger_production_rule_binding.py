@@ -1317,7 +1317,10 @@ def test_charter_73_authorizes_the_increment_on_the_seated_belief() -> None:
     assert "CHARTER_92_TICKET_EDGE" not in source
     assert '"ticket_authorization": (' in source
     assert "_edge = whole_basket_edge_delta_v1(" in source
-    assert "if not _edge > _epsilon + 1e-9:" in source
+    # Charter 136: the one exemption is a completion the judge's window
+    # admitted on the exposure and the kernel reads as a charter-116 repair.
+    assert "if not _exposure_repair and not _edge > _epsilon + 1e-9:" in source
+    assert "== _EXPOSURE_REPAIR_RULE" in source
     assert "execution_edge_not_authorized" in L.REFUSAL_REASONS
     assert '"execution_authorization": "whole_basket_edge_v1",' in source
     assert '"taker_fill": "top_of_offer_cut_to_depth_v1",' in source
