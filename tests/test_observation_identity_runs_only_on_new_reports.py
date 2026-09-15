@@ -3,8 +3,10 @@
 It re-derives a three-day window every production cycle -- 33s at the median,
 16% of a cycle on 2026-09-15 -- while most cycles fall between one hour's
 METARs and the next.  The archive's observation table is append-only (a
-correction is a new row), so its newest rowid says whether anything the last
-pass did not see has arrived; the window's own start moves once a day.
+correction is a new row), so the newest rowid of what the pass reads -- the
+AWC lane and the ASOS substitute fills -- says whether anything the last pass
+did not see has arrived; the window's own start moves once a day.  The madis
+high-frequency lane is read by neither and must not move it.
 """
 
 from __future__ import annotations
@@ -21,9 +23,10 @@ def _worker(monkeypatch) -> tuple[pw.TargetProductionWorker, sqlite3.Connection,
     archive = sqlite3.connect(":memory:")
     archive.execute(
         "CREATE TABLE reported_trajectory_observations("
-        " observation_id TEXT PRIMARY KEY, station_id TEXT, valid_at TEXT)"
+        " observation_id TEXT PRIMARY KEY, source_lane TEXT, station_id TEXT,"
+        " valid_at TEXT)"
     )
-    archive.execute("INSERT INTO reported_trajectory_observations VALUES ('o1','KMIA','2026-09-15T06:53:00Z')")
+    archive.execute("INSERT INTO reported_trajectory_observations VALUES ('awc_o1','awc','KMIA','2026-09-15T06:53:00Z')")
     archive.commit()
     worker.canonical_source_conn = archive
     runs: list = []
@@ -50,7 +53,7 @@ def test_a_second_cycle_without_a_new_report_reuses_the_staged_contract(monkeypa
 def test_a_new_report_runs_the_pass_again(monkeypatch) -> None:
     worker, archive, runs = _worker(monkeypatch)
     worker._identify_live_observations()
-    archive.execute("INSERT INTO reported_trajectory_observations VALUES ('o2','EGLC','2026-09-15T07:50:00Z')")
+    archive.execute("INSERT INTO reported_trajectory_observations VALUES ('awc_o2','awc','EGLC','2026-09-15T07:50:00Z')")
     archive.commit()
     assert worker._identify_live_observations()["state"] == "STAGED"
     assert len(runs) == 2
@@ -59,8 +62,8 @@ def test_a_new_report_runs_the_pass_again(monkeypatch) -> None:
 def test_a_new_utc_day_runs_the_pass_again(monkeypatch) -> None:
     worker, _archive, runs = _worker(monkeypatch)
     worker._identify_live_observations()
-    newest, _day = worker._live_observation_identity_watermark
-    worker._live_observation_identity_watermark = (newest, "2026-09-14")
+    awc, substitute, _day = worker._live_observation_identity_watermark
+    worker._live_observation_identity_watermark = (awc, substitute, "2026-09-14")
     assert worker._identify_live_observations()["state"] == "STAGED"
     assert len(runs) == 2
 
@@ -88,6 +91,24 @@ def test_an_archive_that_cannot_be_asked_runs_the_pass_as_before(monkeypatch) ->
 
 def test_the_watermark_is_the_newest_row_and_todays_date(monkeypatch) -> None:
     worker, _archive, _runs = _worker(monkeypatch)
-    newest, day = pw._live_observation_watermark(worker.canonical_source_conn)
-    assert newest == 1
+    awc, substitute, day = pw._live_observation_watermark(worker.canonical_source_conn)
+    assert (awc, substitute) == (1, 0)
     assert day == datetime.now(timezone.utc).date().isoformat()
+
+
+def test_a_high_frequency_row_the_pass_does_not_read_does_not_rerun_it(monkeypatch) -> None:
+    worker, archive, runs = _worker(monkeypatch)
+    worker._identify_live_observations()
+    archive.execute("INSERT INTO reported_trajectory_observations VALUES ('asos_soft_1','madis_hfmetar','KLAX','2026-09-15T08:05:00Z')")
+    archive.commit()
+    assert worker._identify_live_observations()["state"] == "SKIPPED_NO_NEW_REPORTS"
+    assert len(runs) == 1
+
+
+def test_a_substitute_fill_reruns_the_pass(monkeypatch) -> None:
+    worker, archive, runs = _worker(monkeypatch)
+    worker._identify_live_observations()
+    archive.execute("INSERT INTO reported_trajectory_observations VALUES ('asos_p1_KLAX_1','madis_hfmetar','KLAX','2026-09-15T08:05:00Z')")
+    archive.commit()
+    assert worker._identify_live_observations()["state"] == "STAGED"
+    assert len(runs) == 2

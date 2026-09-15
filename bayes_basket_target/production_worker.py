@@ -627,6 +627,17 @@ OFFICIAL_NATIVE_CAPTURE_PENDING_STATES = frozenset({
 # station count made "more than one day is open" an error, which is how the
 # lane came to depend on something upstream pinning it to a single date.
 MAX_FORWARD_P0_STATION_DAYS = MAX_FORWARD_P0_STATIONS * 4
+# How long a compiled P0 packet stands in the inbox before the cycle's replay
+# recompiles it from the same forward snapshot.  The replay used to recompile
+# every active official packet every cycle -- 34s at the median, 22% of a
+# cycle on 2026-09-15, 320s once -- and almost every one came out as the
+# packet already in the inbox: the forward snapshot had not changed and
+# neither had the station's activations, which is what the compile answers
+# to.  A packet whose snapshot and activation row are unchanged is reused
+# for this long; a new arrival is compiled the moment it lands (the forecast
+# lane's drain) and any change in what the compile reads is a fresh
+# fingerprint.
+NATIVE_P0_REPLAY_RECOMPILE_SEC = 1800.0
 # How many station-days may rebuild their TAF confirmation in one cycle.
 #
 # A bound on the pathological case, not a rate: every open station-day whose
@@ -2245,6 +2256,94 @@ def _native_ensemble_truth_signatures(
 _P0_INBOX_MERGE_LOCK = threading.Lock()
 
 
+def _replay_compile_fingerprint(
+    conn: sqlite3.Connection | None,
+    *,
+    station_id: str,
+    forward_packet: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """What a replay compile of this scope answers to, cheaply.
+
+    The forward snapshot it reads and the newest activation row of the
+    station (the pointer chain the compile resolves is appended, never
+    edited, so a new row is the only way it moves).  None when either
+    cannot be stated, and the scope is then compiled as before.
+    """
+
+    snapshot_sha = str(forward_packet.get("snapshot_content_sha256") or "")
+    if not snapshot_sha or conn is None:
+        return None
+    try:
+        newest = conn.execute(
+            "SELECT MAX(rowid) FROM calibration_native_ensemble_activation"
+            " WHERE station_id=?",
+            (str(station_id),),
+        ).fetchone()[0]
+    except (sqlite3.Error, AttributeError, TypeError):
+        return None
+    return {
+        "forward_snapshot_content_sha256": snapshot_sha,
+        "station_activation_rowid": (
+            None if newest is None else int(newest)
+        ),
+    }
+
+
+def _replay_compile_reusable(
+    row: Mapping[str, Any] | None,
+    fingerprint: Mapping[str, Any] | None,
+    *,
+    now_utc: str,
+    max_age_sec: float = NATIVE_P0_REPLAY_RECOMPILE_SEC,
+) -> bool:
+    """Whether the inbox row already answers this replay compile."""
+
+    if not isinstance(row, Mapping) or fingerprint is None:
+        return False
+    if row.get("replay_fingerprint") != fingerprint:
+        return False
+    envelope = (row.get("packet") or {}).get("native_probability_envelope")
+    if not isinstance(envelope, Mapping):
+        return False
+    try:
+        decided = datetime.fromisoformat(
+            str(envelope.get("decision_at_utc") or "").replace("Z", "+00:00")
+        ).astimezone(timezone.utc)
+        now = datetime.fromisoformat(
+            now_utc.replace("Z", "+00:00")
+        ).astimezone(timezone.utc)
+    except ValueError:
+        return False
+    age = (now - decided).total_seconds()
+    return 0.0 <= age < float(max_age_sec)
+
+
+def _p0_inbox_rows_by_scope(path: Path) -> dict[tuple[str, str], Mapping[str, Any]]:
+    """The inbox's rows keyed by station-day; empty when it cannot be read."""
+
+    if not path.is_file():
+        return {}
+    try:
+        inbox = load_verified_file_cached(
+            path, load_bounded_json, namespace="bounded_json"
+        )
+    except Exception:  # noqa: BLE001 -- the merge names an unreadable inbox
+        return {}
+    rows = inbox.get("packets") if isinstance(inbox, Mapping) else None
+    out: dict[tuple[str, str], Mapping[str, Any]] = {}
+    for row in rows or []:
+        if not isinstance(row, Mapping):
+            continue
+        packet = row.get("packet")
+        if not isinstance(packet, Mapping):
+            continue
+        out[(
+            str(packet.get("station_id") or "").strip().upper(),
+            str(packet.get("event_date") or ""),
+        )] = row
+    return out
+
+
 def _upsert_native_p0_inbox(
     path: Path,
     *,
@@ -2420,6 +2519,10 @@ def _upsert_native_p0_inbox_unlocked(
             ],
             "packet": dict(packet),
         }
+        if isinstance(compiled.get("replay_fingerprint"), Mapping):
+            candidate_row["replay_fingerprint"] = dict(
+                compiled["replay_fingerprint"]
+            )
         if source_priority(candidate_row) == 0:
             # Aggregator/re-publisher data remains excluded unless the
             # compiler attached an activated strict-OOS fallback proof.  Such
@@ -3474,21 +3577,39 @@ def _icon_run_published_for(event_date: str, *, as_of_utc: str) -> bool:
 
 def _live_observation_watermark(
     conn: sqlite3.Connection | None,
-) -> tuple[int, str] | None:
-    """``(newest archive observation rowid, UTC date)``, or None when the
-    archive cannot be asked -- and then the identity pass runs, as before."""
+) -> tuple[int, int, str] | None:
+    """What the observation-identity pass reads, reduced to what can move.
+
+    ``(newest AWC report rowid, newest ASOS substitute fill rowid, UTC date)``:
+    the pass exports the AWC lane and stages substitute fills (observation
+    ids ``asos_p1_*``), and nothing else in the archive table.  The madis
+    high-frequency lane lands a row every few minutes and is read by neither
+    -- counted in, it moved the watermark on every cycle and the skip never
+    fired (2026-09-15, first hour after deploy).  None when the archive
+    cannot be asked, and then the pass runs, as before.
+    """
 
     if conn is None:
         return None
     try:
-        newest = conn.execute(
+        awc = conn.execute(
             "SELECT MAX(rowid) FROM reported_trajectory_observations"
+            " WHERE source_lane='awc'"
+        ).fetchone()[0]
+        substitute = conn.execute(
+            "SELECT MAX(rowid) FROM reported_trajectory_observations"
+            " WHERE observation_id >= 'asos_p1_'"
+            " AND observation_id < 'asos_p1`'"
         ).fetchone()[0]
     except (sqlite3.Error, AttributeError, TypeError):
         return None
-    if newest is None:
+    if awc is None and substitute is None:
         return None
-    return (int(newest), datetime.now(timezone.utc).date().isoformat())
+    return (
+        int(awc or 0),
+        int(substitute or 0),
+        datetime.now(timezone.utc).date().isoformat(),
+    )
 
 
 def _native_forward_packet_is_stale(
@@ -17394,6 +17515,10 @@ class TargetProductionWorker:
                 active_replay_failures = []
                 active_replay_fallback_attempts = []
                 active_republisher_fallback_used = 0
+                active_replay_reused = 0
+                inbox_rows_by_scope = _p0_inbox_rows_by_scope(
+                    self.p0_inbox_path
+                )
                 for replay_packet in active_replay_packets:
                     replay_scope = (
                         str(replay_packet.get("station_id") or "")
@@ -17401,6 +17526,21 @@ class TargetProductionWorker:
                         .upper(),
                         str(replay_packet.get("event_date") or ""),
                     )
+                    replay_fingerprint = _replay_compile_fingerprint(
+                        self.commit_conn,
+                        station_id=replay_scope[0],
+                        forward_packet=(
+                            official_by_scope.get(replay_scope)
+                            or replay_packet
+                        ),
+                    )
+                    if _replay_compile_reusable(
+                        inbox_rows_by_scope.get(replay_scope),
+                        replay_fingerprint,
+                        now_utc=now,
+                    ):
+                        active_replay_reused += 1
+                        continue
                     compiled, failures, source_class = (
                         _compile_native_p0_with_republisher_fallback(
                             self.commit_conn,
@@ -17435,6 +17575,8 @@ class TargetProductionWorker:
                     if source_class == "aggregator_republisher":
                         active_replay_fallback_attempts.extend(failures)
                         active_republisher_fallback_used += 1
+                    if replay_fingerprint is not None:
+                        compiled["replay_fingerprint"] = replay_fingerprint
                     active_replay_compiled.append(compiled)
                 active_activation_p0_replay = (
                     _upsert_native_p0_inbox(
@@ -17470,6 +17612,9 @@ class TargetProductionWorker:
                 ] = active_replay_fallback_attempts
                 active_activation_p0_replay["failures"] = (
                     active_replay_failures
+                )
+                active_activation_p0_replay["reused_compiled_count"] = (
+                    active_replay_reused
                 )
                 native_ensemble_ingress[
                     "active_activation_p0_replay"
