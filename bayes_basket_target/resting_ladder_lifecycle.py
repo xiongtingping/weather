@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import math
 import os
 import sqlite3
 from datetime import datetime, timezone
@@ -51,6 +52,29 @@ DEPARTED_RECONCILE_RULE_VERSION = "departed_order_two_fact_v1"
 # would sell into it.  The predicate is charter 125's own
 # (``dead_buckets_for_upper_bounds``), never restated here.
 DEAD_BUCKET_CANCEL_RULE_VERSION = "resting_buy_on_observed_dead_bucket_v1"
+# Charter 135 (三) (user ruling, 2026-09-14: "盘口过期撤单"): a rung is priced
+# against a book, and a rung whose book this lane cannot see -- none for the
+# bucket, or the scope's newest committed book older than this -- is not
+# being priced at all.  New orders already refuse a stale quote; the rungs
+# already standing did not, because the book reader dropped the snapshot's
+# clock and a missing book meant "keep".  Cancelled, and charter 135 (一)
+# makes the cancel a decision moment, so the strategy re-seats once a fresh
+# book is back.
+#
+# One hour, read off the store (2026-09-15, 59,775 consecutive committed
+# snapshots per scope over 09-12..09-15): 60.6% arrive within five minutes,
+# 93.4% within twenty, 99.3% within the hour; the 392 gaps longer than an
+# hour are the outages this exists for (ZUUU 09-08..09 went 21.6 hours
+# without a book).  A tighter bound would cancel on the rotation's ordinary
+# 20-60 minute gaps (5.9%) and spend queue position for nothing.
+RESTING_BOOK_STALE_SECONDS = float(
+    os.environ.get("PM_RESTING_BOOK_STALE_SECONDS", "") or 3600.0
+)
+if RESTING_BOOK_STALE_SECONDS <= 0.0:
+    raise ValueError(
+        f"resting book stale bound must be positive: {RESTING_BOOK_STALE_SECONDS}"
+    )
+STALE_BOOK_CANCEL_RULE_VERSION = "resting_buy_on_unseen_book_v1"
 DeadBucketLoader = Callable[..., tuple[tuple[str, ...], float | None]]
 # How long a rung that has fallen out of the ladder is left standing before
 # it is cancelled.  The ledger measured that re-posting every 15 minutes
@@ -152,14 +176,14 @@ def latest_book_by_bucket(
     """The newest committed official book of the scope, one row per bucket."""
 
     row = conn.execute(
-        "SELECT buckets_json FROM basket_official_ws_snapshot"
+        "SELECT buckets_json, observed_at FROM basket_official_ws_snapshot"
         " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
         " ORDER BY observed_at DESC, sequence DESC LIMIT 1",
         (station_id, event_date),
     ).fetchone()
     if row is None:
         return {}
-    out: dict[str, dict[str, float]] = {}
+    out: dict[str, dict[str, Any]] = {}
     for entry in json.loads(row[0] or "[]"):
         if not isinstance(entry, Mapping):
             continue
@@ -171,8 +195,28 @@ def latest_book_by_bucket(
             "bid": float(entry.get("bid_price") or 0.0),
             "ask": float(ask or 0.0),
             "tick": float(entry.get("price_tick_size") or 0.001),
+            # Charter 135 (三): the book's own clock, which this reader used
+            # to drop -- without it a book from yesterday priced a rung the
+            # same as one from a minute ago.
+            "observed_at": str(row[1] or ""),
         }
     return out
+
+
+def book_age_seconds(book: Mapping[str, Any] | None, *, as_of_utc: str) -> float | None:
+    """How old the book a rung is priced against is; None when it cannot say.
+
+    ``math.inf`` for no book at all.  None only for a book that carries no
+    clock -- an injected reader that predates the field -- which is not
+    evidence of staleness and is not treated as such.
+    """
+
+    if not book:
+        return math.inf
+    observed = str(book.get("observed_at") or "")
+    if not observed:
+        return None
+    return max(0.0, (_iso(as_of_utc) - _iso(observed)).total_seconds())
 
 
 def load_resting_maker_intents(
@@ -601,6 +645,7 @@ def reprice_resting_rungs(
     far_ticks: float | None = None,
     limit: int = 200,
     dead_bucket_loader: DeadBucketLoader | None = None,
+    stale_book_seconds: float | None = None,
 ) -> dict[str, Any]:
     """One pass over every resting rung: sync it, then keep or cancel it.
 
@@ -637,6 +682,14 @@ def reprice_resting_rungs(
         # already killed the rung's bucket.  Also counted in cancel_requested.
         "cancel_requested_dead_bucket": 0,
         "dead_bucket_rule": DEAD_BUCKET_CANCEL_RULE_VERSION,
+        # Charter 135 (三): cancels asked for because the rung's book was
+        # missing or older than the bound.  Also counted in cancel_requested.
+        "cancel_requested_stale_book": 0,
+        "stale_book_rule": STALE_BOOK_CANCEL_RULE_VERSION,
+        "stale_book_seconds": (
+            RESTING_BOOK_STALE_SECONDS if stale_book_seconds is None
+            else float(stale_book_seconds)
+        ),
         "failures": [],
         "rungs": [],
         "places_orders": False,
@@ -766,18 +819,39 @@ def reprice_resting_rungs(
             if scope not in book_cache:
                 book_cache[scope] = books(conn, station_id=scope[0], event_date=scope[1])
             book = book_cache[scope].get(intent["bucket"])
-            if not book:
+            age = book_age_seconds(book, as_of_utc=as_of_utc)
+            stale_bound = float(receipt["stale_book_seconds"])
+            if age is not None and age > stale_bound:
+                # Charter 135 (三): nothing to price this rung against.  Ahead
+                # of the book rule, which cannot answer without a book, and
+                # without a dwell -- the bound already is the patience.
+                verdict = {
+                    "rule": STALE_BOOK_CANCEL_RULE_VERSION,
+                    "action": "cancel",
+                    "reason": "book_missing" if math.isinf(age) else "book_stale",
+                    "book_age_seconds": None if math.isinf(age) else round(age, 3),
+                    "stale_book_seconds": stale_bound,
+                    "limit_price": intent["limit_price"],
+                }
+                cancel_rule = STALE_BOOK_CANCEL_RULE_VERSION
+                receipt["cancel_requested_stale_book"] += 1
+            elif not book:
+                # Only reachable for a book that carries no clock (an injected
+                # reader); a missing book from the store is cancelled above.
                 entry["verdict"] = {"action": "keep", "reason": "no_book"}
                 receipt["kept"] += 1
                 receipt["rungs"].append(entry)
                 continue
-            verdict = resting_rung_verdict(
-                limit_price=intent["limit_price"],
-                bid=book["bid"], ask=book["ask"], tick=book["tick"],
-                posted_at_utc=intent["posted_at_utc"], as_of_utc=as_of_utc,
-                dwell_seconds=dwell_seconds, far_ticks=far_ticks,
-            )
-            cancel_rule = RESTING_REPRICE_RULE_VERSION
+            else:
+                verdict = resting_rung_verdict(
+                    limit_price=intent["limit_price"],
+                    bid=book["bid"], ask=book["ask"], tick=book["tick"],
+                    posted_at_utc=intent["posted_at_utc"], as_of_utc=as_of_utc,
+                    dwell_seconds=dwell_seconds, far_ticks=far_ticks,
+                )
+                if age is not None:
+                    verdict["book_age_seconds"] = round(age, 3)
+                cancel_rule = RESTING_REPRICE_RULE_VERSION
         entry["verdict"] = verdict
         if verdict["action"] != "cancel":
             receipt["kept"] += 1
@@ -836,7 +910,10 @@ def reprice_resting_rungs(
 
 __all__ = [
     "DEAD_BUCKET_CANCEL_RULE_VERSION",
+    "RESTING_BOOK_STALE_SECONDS",
     "RESTING_REPRICE_DWELL_SECONDS",
+    "STALE_BOOK_CANCEL_RULE_VERSION",
+    "book_age_seconds",
     "RESTING_REPRICE_FAR_TICKS",
     "RESTING_REPRICE_RULE_VERSION",
     "SCHEMA",

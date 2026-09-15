@@ -371,3 +371,106 @@ def test_the_worker_hands_the_lane_its_thermometer() -> None:
 
     source = inspect.getsource(TargetProductionWorker._reprice_resting_rungs)
     assert "dead_bucket_loader=self._resting_dead_buckets" in source
+
+
+# ---------------------------------------------------------------------------
+# (三) the book a rung cannot see
+
+
+def _snapshot_table(conn) -> None:
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS basket_official_ws_snapshot("
+        " station_id TEXT, event_date TEXT, state TEXT, observed_at TEXT,"
+        " sequence INTEGER, buckets_json TEXT)"
+    )
+
+
+def _snapshot(conn, *, observed_at: str, buckets=("98-99°F",), bid=0.29) -> None:
+    _snapshot_table(conn)
+    conn.execute(
+        "INSERT INTO basket_official_ws_snapshot VALUES(?,?,?,?,?,?)",
+        ("KDAL", "2026-09-07", "COMMITTED", observed_at, 1, json.dumps([
+            {"bucket": bucket, "bid_price": bid, "best_ask": 0.40,
+             "price_tick_size": 0.01}
+            for bucket in buckets
+        ])),
+    )
+    conn.commit()
+
+
+def _cancelled_client():
+    return lifecycle_fixture._Client([
+        lifecycle_fixture._live(),
+        {"ok": True, "status": "cancelled", "response": {"size_matched": 0}},
+    ])
+
+
+def test_the_book_reader_keeps_the_snapshots_clock() -> None:
+    conn = lifecycle_fixture._ledger()
+    _snapshot(conn, observed_at="2026-09-06T11:50:00Z")
+    book = lane.latest_book_by_bucket(conn, station_id="KDAL", event_date="2026-09-07")
+    assert book["98-99°F"]["observed_at"] == "2026-09-06T11:50:00Z"
+    assert lane.book_age_seconds(
+        book["98-99°F"], as_of_utc="2026-09-06T12:00:00Z"
+    ) == pytest.approx(600.0)
+    assert lane.book_age_seconds(None, as_of_utc="2026-09-06T12:00:00Z") == float("inf")
+    # A reader with no clock is not evidence of staleness.
+    assert lane.book_age_seconds({"bid": 0.29}, as_of_utc="2026-09-06T12:00:00Z") is None
+
+
+def test_a_rung_on_a_book_older_than_the_bound_is_cancelled() -> None:
+    conn = lifecycle_fixture._ledger()
+    # The rung is on its anchor; only the book's age is wrong.
+    _snapshot(conn, observed_at="2026-09-06T10:30:00Z", bid=0.29)
+    client = _cancelled_client()
+    receipt = lane.reprice_resting_rungs(
+        conn, as_of_utc="2026-09-06T11:30:01Z", client=client,
+    )
+    assert lane.RESTING_BOOK_STALE_SECONDS == 3600.0
+    assert receipt["cancel_requested_stale_book"] == 1
+    assert receipt["cancel_confirmed"] == 1
+    verdict = receipt["rungs"][0]["verdict"]
+    assert verdict["reason"] == "book_stale"
+    assert verdict["book_age_seconds"] == pytest.approx(3601.0)
+    assert client.cancels[0]["idempotency_key"].endswith(
+        ":cancel:" + lane.STALE_BOOK_CANCEL_RULE_VERSION
+    )
+
+
+def test_a_book_inside_the_bound_leaves_the_rung_to_the_book_rule() -> None:
+    conn = lifecycle_fixture._ledger()
+    _snapshot(conn, observed_at="2026-09-06T10:30:00Z", bid=0.29)
+    client = lifecycle_fixture._Client([lifecycle_fixture._live()])
+    receipt = lane.reprice_resting_rungs(
+        conn, as_of_utc="2026-09-06T11:30:00Z", client=client,
+    )
+    assert receipt["cancel_requested"] == 0 and receipt["kept"] == 1
+    verdict = receipt["rungs"][0]["verdict"]
+    assert verdict["reason"] == "on_anchor"
+    assert verdict["book_age_seconds"] == pytest.approx(3600.0)
+
+
+def test_no_book_at_all_or_none_for_the_bucket_is_cancelled() -> None:
+    for seed in (None, ("96-97°F",)):
+        conn = lifecycle_fixture._ledger()
+        _snapshot_table(conn)
+        if seed is not None:
+            _snapshot(conn, observed_at="2026-09-06T11:59:00Z", buckets=seed)
+        client = _cancelled_client()
+        receipt = lane.reprice_resting_rungs(
+            conn, as_of_utc="2026-09-06T12:00:00Z", client=client,
+        )
+        assert receipt["cancel_requested_stale_book"] == 1, seed
+        assert receipt["rungs"][0]["verdict"]["reason"] == "book_missing", seed
+
+
+def test_a_dead_bucket_is_cancelled_as_dead_even_on_a_stale_book() -> None:
+    conn = lifecycle_fixture._ledger()
+    _snapshot(conn, observed_at="2026-09-05T10:00:00Z")
+    receipt = lane.reprice_resting_rungs(
+        conn, as_of_utc="2026-09-06T12:00:00Z", client=_cancelled_client(),
+        dead_bucket_loader=_dead(["98-99°F"]),
+    )
+    assert receipt["cancel_requested_dead_bucket"] == 1
+    assert receipt["cancel_requested_stale_book"] == 0
+    assert receipt["rungs"][0]["verdict"]["reason"] == "bucket_dead_by_observed_high"
