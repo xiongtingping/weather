@@ -81,10 +81,18 @@ def _short(result: dict) -> list[tuple[str, str]]:
     ]
 
 
+@pytest.fixture
+def armed(monkeypatch):
+    monkeypatch.setattr(runtime, "EXPOSURE_REPAIR_COMPLETION", "on")
+
+
+def test_the_arm_ships_off_until_the_whole_trade_off_is_ruled() -> None:
+    assert runtime.EXPOSURE_REPAIR_COMPLETION == "off"
+
+
 @pytest.mark.parametrize("hours", [None, 10.0])
-def test_a_completion_the_market_took_is_bought_despite_its_edge(hours) -> None:
+def test_a_completion_the_market_took_is_bought_despite_its_edge(armed, hours) -> None:
     # 30C and 31C held at five shares; 32C claims 0.20 and the market asks 0.24.
-    assert runtime.EXPOSURE_REPAIR_COMPLETION == "on"
     result = _compile(0.24, hours)
     completion = result["basket_support_selection"]["seated"]["completion"]
     assert completion["admitted_by"] == kernel.EXPOSURE_REPAIR_COMPLETION_RULE_VERSION
@@ -101,14 +109,14 @@ def test_a_completion_the_market_took_is_bought_despite_its_edge(hours) -> None:
     [(0.18, None), (0.24, 2.0)],
     ids=["market_did_not_take_it", "inside_the_cutoff"],
 )
-def test_a_completion_outside_the_rule_still_answers_to_the_hurdle(ask_32, hours) -> None:
+def test_a_completion_outside_the_rule_still_answers_to_the_hurdle(armed, ask_32, hours) -> None:
     result = _compile(ask_32, hours)
     assert result["basket_target_activated"] is False
     assert _short(result) == []
     assert result["post_lift_edge_exempt_rule"] is None
 
 
-def test_a_completion_that_clears_the_hurdle_is_admitted_by_the_hurdle() -> None:
+def test_a_completion_that_clears_the_hurdle_is_admitted_by_the_hurdle(armed) -> None:
     completion = _compile(0.15, None)["basket_support_selection"]["seated"]["completion"]
     assert completion["admitted_by"] == "hurdle"
 
@@ -128,6 +136,4 @@ def test_the_ledger_hashes_the_rule_and_reads_productions_switch() -> None:
     sys.modules["ledger_136"] = ledger
     spec.loader.exec_module(ledger)
     assert ledger._EXPOSURE_REPAIR_COMPLETION is runtime.EXPOSURE_REPAIR_COMPLETION
-    assert ledger._SELECTION_RULE_IDENTITY["exposure_repair_completion"] == (
-        kernel.EXPOSURE_REPAIR_COMPLETION_RULE_VERSION
-    )
+    assert ledger._SELECTION_RULE_IDENTITY["exposure_repair_completion"] == "off"

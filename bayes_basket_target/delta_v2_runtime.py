@@ -562,8 +562,12 @@ CHARTER_110_COMPLETION = (
 # Charter 136 (user ruling 2026-09-15): a short leg the market took is
 # completed on the exposure, not refused on its own edge.  ``off`` is the
 # charter-130 book, where the increment clears the one hurdle or holds.
+# Default ``off`` (same day): the user then asked for the whole trade-off --
+# the incomplete basket's exposure, the sunk basket, and the whole-basket
+# miss that a dearer completion enlarges -- before any of it goes live.  The
+# arm stays so the ledger can price it.
 EXPOSURE_REPAIR_COMPLETION = (
-    os.environ.get("PM_EXPOSURE_REPAIR_COMPLETION", "").strip().lower() or "on"
+    os.environ.get("PM_EXPOSURE_REPAIR_COMPLETION", "").strip().lower() or "off"
 )
 if EXPOSURE_REPAIR_COMPLETION not in {"on", "off"}:
     raise RuntimeError(
