@@ -3717,6 +3717,70 @@ def _window_seconds(created_at: Any, deadline_at: Any) -> float | None:
     return round((end - start).total_seconds(), 3)
 
 
+#: Where registry copies older than the SSOT's retention window still live.
+#: The target registry keeps only snapshots a reader still queries, so a
+#: live station-day from a week ago has no row there any more; the archive's
+#: registry lane keeps every listing it saw, keyed the same way.
+ARCHIVE_DB = ROOT / "data" / "archive.db"
+
+
+def _live_market_slugs(
+    conn: sqlite3.Connection,
+    rows: list[dict[str, Any]],
+    archive: Path | None = None,
+) -> dict[str, str]:
+    """The market each live station-day traded, as ``"STATION|DATE" -> slug``.
+
+    For the link on each station line (user ruling, 2026-09-15: 增加站点的超级
+    连接，点击即可跳转市场盘口).  Read from a registry, never rebuilt from city
+    and date -- the slug is Polymarket's identifier, and a station-day listed
+    under another name would get a link that quietly 404s.  The SSOT registry
+    first, newest refresh winning a re-listing; the archive's registry lane
+    for the days the SSOT has retired (measured 2026-09-15: 47 of 88 live
+    station-days, no disagreement on the 41 both carry).  A station-day in
+    neither gets no link rather than a guessed one.
+    """
+
+    scopes = sorted({
+        (str(r.get("station_id") or ""), str(r.get("event_date") or ""))
+        for r in rows
+        if r.get("station_id") and r.get("event_date")
+    })
+    out: dict[str, str] = {}
+
+    def lookup(db: sqlite3.Connection, table: str) -> None:
+        for station, day in scopes:
+            key = f"{station}|{day}"
+            if key in out:
+                continue
+            found = db.execute(
+                f"SELECT slug FROM {table}"
+                " WHERE station_id=? AND event_date=? AND slug IS NOT NULL"
+                " AND slug<>'' ORDER BY refreshed_at DESC LIMIT 1",
+                (station, day),
+            ).fetchone()
+            if found:
+                out[key] = str(found[0])
+
+    try:
+        lookup(conn, "basket_target_market_registry")
+    except sqlite3.Error:
+        pass
+    path = ARCHIVE_DB if archive is None else archive
+    if len(out) < len(scopes) and path.is_file():
+        try:
+            archived = sqlite3.connect(
+                f"file:{path}?mode=ro", uri=True, timeout=30.0
+            )
+            try:
+                lookup(archived, "reported_trajectory_market_registry")
+            finally:
+                archived.close()
+        except sqlite3.Error:
+            pass
+    return out
+
+
 def _live_basket_plan_state(
     conn: sqlite3.Connection, rows: list[dict[str, Any]]
 ) -> dict[str, dict[str, Any]]:
@@ -3975,6 +4039,7 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
         "intent_count": 0, "submitted_count": 0, "accepted_count": 0,
         "notional_usdc": 0.0, "matched_notional_usdc": 0.0, "rows": [],
         "book": {}, "exchange": {}, "pnl": {}, "plan_state": {},
+        "market_slugs": {},
     }
     if not _table_exists(conn, "basket_target_order_intents"):
         return out
@@ -4091,6 +4156,7 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
     # shape.  Keyed by decision, because the decision is the basket: a
     # station-day carries several and they share neither.
     out["plan_state"] = _live_basket_plan_state(conn, out["rows"])
+    out["market_slugs"] = _live_market_slugs(conn, out["rows"])
     if _table_exists(conn, "basket_target_order_events"):
         try:
             for kind, count, matched in conn.execute(
@@ -15012,6 +15078,18 @@ function liveOrderCard(L){
   // the store gets no ring and no state, because an unmarked basket beats a
   // guessed one.
   const SEATS = O.plan_state || {};
+  // The market this station-day traded, straight from the registry the
+  // collector read (user ruling, 2026-09-15: 点击即可跳转市场盘口).  No slug,
+  // no link: a guessed URL is worse than plain text.
+  const SLUGS = O.market_slugs || {};
+  const stationLink = (station, day)=>{
+    const slug = SLUGS[station + "|" + day];
+    return slug
+      ? `<a class="mkt" style="color:inherit" target="_blank" rel="noopener noreferrer"
+          href="https://polymarket.com/event/${encodeURIComponent(slug)}"
+          title="打开 ${h(station)} ${h(day)} 的盘口">${h(station)} ↗</a>`
+      : h(station);
+  };
   const planOf = (g)=>SEATS[g.decision_id] || null;
   const centerOf = (g)=>String((planOf(g)||{}).center||"");
   // The day's shape, in the words charter 75 places the window with.  Left
@@ -15201,7 +15279,7 @@ function liveOrderCard(L){
       };
       const head = `<span class="pill red" style="font-size:10px">LIVE</span>
         <b class="mono pill ${verdict[0]}" title="${h(verdict[2])} · ${
-          h(baskets.map(g=>g.decision_id).join("、"))}">${h(station)} ${verdict[1]}</b>${fill}
+          h(baskets.map(g=>g.decision_id).join("、"))}">${stationLink(station, day)} ${verdict[1]}</b>${fill}
         <span class="muted" style="font-size:11px">${baskets.length>1 ? baskets.length+" 篮 · " : ""}${
           sLegs} 腿 · ${sFilled} 成交</span>`;
       const row = `display:flex;flex-wrap:wrap;align-items:center;gap:6px`;

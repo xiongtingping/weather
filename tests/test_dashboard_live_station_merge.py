@@ -191,3 +191,91 @@ def test_an_unsettled_station_day_is_still_amber():
     html = _render(_basket("u", "ZUCK", ["25°C", "26°C"], day="2026-09-14"))
 
     assert _station_pills(html) == [("amber", "ZUCK", "未结算")]
+
+
+# ---------------------------------------------------------------- links
+#
+# User ruling, 2026-09-15: 实盘订单 · 数量 / ROI / PnL：增加站点的超级连接，点击即可
+# 跳转市场盘口.  The slug is read from a registry, never rebuilt from the
+# city and date, and a station-day in no registry gets plain text.
+
+import sqlite3  # noqa: E402
+
+
+def _render_with_slugs(rows: list[dict], slugs: dict[str, str]) -> str:
+    node = shutil.which("node")
+    if node is None:  # pragma: no cover
+        pytest.skip("node is required to run the board's renderer")
+    payload = {"live_readiness": {
+        "available": True, "execution_mode": "production_live",
+        "contracts": {"live_submit_authorized": True},
+        "live_orders": {"intent_count": len(rows), "rows": rows, "plan_state": {},
+                        "market_slugs": slugs, "book": {}, "exchange": {}, "pnl": {}},
+        "open_orders": {"available": True, "count": 0},
+    }}
+    head = SOURCE.index(HELPERS_HEAD)
+    helpers = SOURCE[head:SOURCE.index(HELPERS_TAIL, head) + len(HELPERS_TAIL)]
+    script = (
+        "const D = " + json.dumps(payload, ensure_ascii=False) + ";\n"
+        "const h = (s) => String(s == null ? '' : s);\nconst shares = (v) => String(v);\n"
+        + helpers + "\n" + _extract("liveOrderCard") + "\n"
+        "console.log(liveOrderCard(D.live_readiness));\n"
+    )
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def test_a_station_with_a_registered_market_links_to_its_book():
+    html = _render_with_slugs(
+        MORNING, {"ZBAA|2026-09-13": "highest-temperature-in-beijing-on-september-13-2026"},
+    )
+
+    zbaa = html[html.index("ZBAA ↗") - 400:html.index("ZBAA ↗")]
+    assert 'href="https://polymarket.com/event/highest-temperature-in-beijing-on-september-13-2026"' in zbaa
+    assert 'target="_blank"' in zbaa and "noopener" in zbaa
+    # No slug, no link: ZGSZ and ZGGG stay plain text.
+    assert "ZGSZ ↗" not in html and "ZGGG ↗" not in html
+    assert html.count("polymarket.com/event/") == 1
+
+
+def _registry(path, table: str, rows: list[tuple]) -> sqlite3.Connection:
+    conn = sqlite3.connect(path)
+    conn.execute(
+        f"CREATE TABLE {table} (station_id TEXT, event_date TEXT, slug TEXT, refreshed_at TEXT)"
+    )
+    conn.executemany(f"INSERT INTO {table} VALUES (?,?,?,?)", rows)
+    conn.commit()
+    return conn
+
+
+def test_slugs_come_from_the_ssot_registry_then_the_archive(tmp_path):
+    ssot = _registry(tmp_path / "ssot.db", "basket_target_market_registry", [
+        ("ZBAA", "2026-09-13", "old-listing", "2026-09-12T01:00:00Z"),
+        ("ZBAA", "2026-09-13", "beijing-13", "2026-09-12T08:00:00Z"),
+    ])
+    archive_path = tmp_path / "archive.db"
+    _registry(archive_path, "reported_trajectory_market_registry", [
+        ("ZBAA", "2026-09-13", "archive-disagrees", "2026-09-13T00:00:00Z"),
+        ("ZGSZ", "2026-09-06", "shenzhen-6", "2026-09-05T00:00:00Z"),
+    ]).close()
+    rows = [
+        {"station_id": "ZBAA", "event_date": "2026-09-13"},
+        {"station_id": "ZGSZ", "event_date": "2026-09-06"},
+        {"station_id": "EPWA", "event_date": "2026-09-06"},
+    ]
+
+    got = C._live_market_slugs(ssot, rows, archive=archive_path)
+
+    # The newest SSOT refresh wins a re-listing; the archive only fills a
+    # gap; a station-day in neither is absent rather than guessed.
+    assert got == {"ZBAA|2026-09-13": "beijing-13", "ZGSZ|2026-09-06": "shenzhen-6"}
+
+
+def test_a_missing_archive_is_not_an_error(tmp_path):
+    ssot = _registry(tmp_path / "ssot.db", "basket_target_market_registry", [])
+
+    assert C._live_market_slugs(
+        ssot, [{"station_id": "ZBAA", "event_date": "2026-09-13"}],
+        archive=tmp_path / "absent.db",
+    ) == {}
