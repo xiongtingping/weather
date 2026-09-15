@@ -1999,6 +1999,72 @@ def _atomic_json(path: Path, value: Any) -> None:
 
 
 FORECAST_PHYSICS_REFRESH_SECONDS = 6 * 60 * 60
+# The six-hourly steps of the forecast turn remember their last attempt across
+# restarts.  Their due times lived only on the worker, so every restart made
+# them due at once and the first forecast turn of every generation ran the
+# physics capture (108-178s) and the calibration audit (32-46s) while holding
+# the resident's single writer -- six generations by 06:18Z on 2026-09-15, each
+# adding about three minutes to a production wait.  Kept beside the rotation
+# state under the worker's runtime root; a worker without one keeps the old
+# in-memory behaviour and writes nothing.
+FORECAST_LANE_CLOCKS_FILENAME = "forecast_lane_clocks.json"
+
+
+def _forecast_lane_clocks_path(worker: Any) -> Path | None:
+    root = getattr(worker, "nwp_runtime_root", None)
+    return Path(root) / FORECAST_LANE_CLOCKS_FILENAME if root else None
+
+
+def forecast_lane_due_mono(
+    worker: Any,
+    *,
+    attr: str,
+    clock_name: str,
+    interval_sec: float,
+) -> float:
+    """This step's monotonic due time, seeded from its last persisted attempt."""
+
+    due = getattr(worker, attr, None)
+    if due is not None:
+        return float(due or 0.0)
+    seeded = 0.0
+    path = _forecast_lane_clocks_path(worker)
+    if path is not None:
+        try:
+            clocks = json.loads(path.read_text(encoding="utf-8"))
+            attempted = str(
+                (clocks.get(clock_name) or {}).get("attempted_at_utc") or ""
+            )
+            if attempted:
+                since = (
+                    datetime.now(timezone.utc)
+                    - datetime.fromisoformat(attempted.replace("Z", "+00:00"))
+                ).total_seconds()
+                if 0.0 <= since < float(interval_sec):
+                    seeded = time.monotonic() + (float(interval_sec) - since)
+        except (OSError, ValueError, TypeError, AttributeError):
+            seeded = 0.0
+    setattr(worker, attr, seeded)
+    return seeded
+
+
+def record_forecast_lane_attempt(worker: Any, *, clock_name: str) -> None:
+    """Persist that this step was started now; best effort."""
+
+    path = _forecast_lane_clocks_path(worker)
+    if path is None:
+        return
+    try:
+        clocks = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(clocks, dict):
+            clocks = {}
+    except (OSError, ValueError):
+        clocks = {}
+    clocks[clock_name] = {"attempted_at_utc": utc_now()}
+    try:
+        _atomic_json(path, clocks)
+    except OSError:
+        pass
 
 
 def forecast_physics_refresh_mode() -> str:
@@ -2033,7 +2099,12 @@ def _audit_calibration_health(
     """
 
     now_mono = time.monotonic()
-    due = float(getattr(worker, "_next_calibration_health_mono", 0.0) or 0.0)
+    due = forecast_lane_due_mono(
+        worker,
+        attr="_next_calibration_health_mono",
+        clock_name="calibration_health",
+        interval_sec=CALIBRATION_HEALTH_INTERVAL_SECONDS,
+    )
     if now_mono < due:
         previous = getattr(worker, "_last_calibration_health_state", None)
         return dict(previous) if isinstance(previous, Mapping) else {
@@ -2047,6 +2118,7 @@ def _audit_calibration_health(
         "_next_calibration_health_mono",
         now_mono + CALIBRATION_HEALTH_INTERVAL_SECONDS,
     )
+    record_forecast_lane_attempt(worker, clock_name="calibration_health")
     started = utc_now()
     try:
         from scripts.audit_native_calibration_health import (
@@ -2131,7 +2203,12 @@ def _refresh_forecast_physics(
             "places_orders": False,
         }
     now_mono = time.monotonic()
-    due = float(getattr(worker, "_next_forecast_physics_mono", 0.0) or 0.0)
+    due = forecast_lane_due_mono(
+        worker,
+        attr="_next_forecast_physics_mono",
+        clock_name="forecast_physics",
+        interval_sec=FORECAST_PHYSICS_REFRESH_SECONDS,
+    )
     if now_mono < due:
         previous = getattr(worker, "_last_forecast_physics_state", None)
         return dict(previous) if isinstance(previous, Mapping) else {
@@ -2145,6 +2222,7 @@ def _refresh_forecast_physics(
         "_next_forecast_physics_mono",
         now_mono + FORECAST_PHYSICS_REFRESH_SECONDS,
     )
+    record_forecast_lane_attempt(worker, clock_name="forecast_physics")
     started = utc_now()
     try:
         completed = subprocess.run(
