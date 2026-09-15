@@ -10625,6 +10625,13 @@ font-size:12px;margin:2px 0}
 .tl-bar .mono{text-align:right}
 .tl-verdict{text-align:right;white-space:nowrap}
 .tl-verdict-card{margin:6px 0 8px;font-size:13.4px;line-height:1.7}
+/* 真值离均值多远 (2026-09-15): stage label, centre bar, coverage bars, verdict. */
+.cl-row{grid-template-columns:minmax(150px,1fr) minmax(170px,1.2fr) minmax(220px,1.6fr) auto}
+.cl-q{font-size:11.5px;color:var(--muted);margin-bottom:3px}
+.cl-div{display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:center;font-size:11.5px}
+.cl-axis{position:relative;height:12px;background:var(--bar-bg);border-radius:6px}
+.cl-axis i{position:absolute;top:0;bottom:0;border-radius:6px}
+.cl-axis b{position:absolute;left:50%;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:var(--text)}
 @media (max-width:640px){.tl-row{grid-template-columns:1fr}.tl-verdict{text-align:left}}
 footer{margin-top:34px;color:var(--muted);font-size:12.5px;text-align:center}
 /* The group switcher.  Sticky, because it is the only way back to the
@@ -14897,126 +14904,125 @@ function centerWidth(){
   <div class="grid g3" style="margin-top:12px">${cards}</div>`;
 }
 
-// Does the distribution the seat is built on actually cover the day?  The
-// section above says what the centre/width layer serves; this one scores it
-// against the truth, split by how wide the served distribution called
-// itself.  Added 2026-09-05 because the answer decided a charter: the core
-// of a flat day under-claims, the seat gate refuses windows that really do
-// have edge, and the fix went in at the window layer (clause 81) only after
-// this table showed the misses are scatter rather than a direction the
-// width layer could correct.
+// Does the served distribution cover the day?  Scored against the truth,
+// per stage.  Rewritten 2026-09-15 (user ruling: 真值落在离服务均值多远：这个也是
+// -- the same ask as the truth-landing cross-tab: simple, readable, with its
+// conclusion and a summary).  Two questions per stage, each a pair of bars
+// on one scale and a one-word verdict: which side of the served mean the
+// truth lands on, and whether the seat window covers as often as the
+// distribution claims it will.  The per-width and three-state splits are
+// the same accounts cut finer, folded underneath.
 function centreLanding(){
   const L = D.center_landing || {};
-  const stages = L.stages || [];
+  const stages = (L.stages || []).filter(st => st.cells);
   if(!stages.length) return "";
-  const rule = L.seat_rule || {};
-  const sign2 = (v) => v == null ? "—" :
-    (v > 0 ? "+" : "") + v.toFixed(2);
-  const pctOr = (v) => v == null ? "—" : pct1(v);
-  const ratio = (v) => v == null ? "—" : v.toFixed(2);
-  const ratioCls = (v) => v == null ? "" :
-    (v >= 1.15 ? "up" : (v < 0.95 ? "down" : ""));
-  const interval = (r) => r.ci_low == null ? "—" :
-    "[" + sign2(r.ci_low) + ", " + sign2(r.ci_high) + "]";
-  const biasCls = (r) => r.significant ?
-    (r.bias_rungs > 0 ? "up" : "down") : "muted";
-  // The window accounts, shared by the width tiers and the three-state
-  // split: the ruled seat, the retired mean+-1 window, the mode window.
-  const account = (r) => `
-      <td class="mono muted">${pctOr(r.seat_claim)}</td>
-      <td class="mono">${pctOr(r.seat_cover)}</td>
-      <td class="mono ${ratioCls(r.seat_ratio)}">${ratio(r.seat_ratio)}</td>
-      <td class="mono muted">${pctOr(r.legacy_cover)}</td>
-      <td class="mono muted">${pctOr(r.mode_cover)}<span
-        style="font-size:10px"> ·${pctOr(r.same_window_share)}同窗</span></td>`;
-  const blocks = stages.map(st => {
-    const body = (st.rows || []).map(r => `<tr>
-      <td>${h(r.label)}</td>
-      <td class="mono">${r.cells.toLocaleString()}</td>
-      <td class="mono ${biasCls(r)}">${sign2(r.bias_rungs)}</td>
-      <td class="mono muted">${interval(r)}</td>
-      <td class="mono muted">${sign2(r.median_rungs)}</td>
-      <td class="mono">${r.sd_rungs == null ? "—" :
-        r.sd_rungs.toFixed(2)}</td>
-      <td class="mono muted">${pct1(r.warm_share)}</td>
-      <td class="mono muted">${pctOr(r.skewed_share)}</td>
-      ${account(r)}
-    </tr>`).join("");
-    const states = (st.states || []).map(r => `<tr>
-      <td>${h(r.label)}</td>
-      <td class="mono">${r.cells.toLocaleString()}<span class="muted"
-        style="font-size:10px"> ·${pct1(r.share)}</span></td>
-      <td class="mono ${biasCls(r)}">${sign2(r.bias_rungs)}</td>
-      <td class="mono muted">${interval(r)}</td>
-      ${account(r)}
-    </tr>`).join("");
-    const flat = (st.flat_stations || []).map(f => `<span class="pill ${
-      Math.abs(f.bias_rungs) >= 1 ? (f.bias_rungs > 0 ? "red" : "blue")
-      : "muted"}" style="font-size:10.5px" title="${h(f.station)}：${
-      f.cells} 个格子、${f.days} 个站日">${
-      h(f.station)} ${sign2(f.bias_rungs)}</span>`).join(" ");
-    return `<div style="margin-top:16px">
-      <div style="display:flex;align-items:baseline;gap:10px">
-        <b>${h(st.stage)}</b>
-        <span class="muted">${h(st.meaning)}</span>
-        <span style="flex:1"></span>
-        <span class="muted">${st.cells.toLocaleString()} 个格子${
-          st.unseated_cells ? `（${st.unseated_cells} 格无席位）` : ""}
-          · ${st.days} 天· ${h(st.since)} 起</span>
-      </div>
-      <table style="margin-top:8px"><thead><tr>
-        <th>服务分布自称的宽度（桶）</th>
-        <th>格子</th><th>偏差</th><th>95% 区间</th>
-        <th>中位</th><th>散度</th><th>偏暖</th><th>偏斜</th>
-        <th>席位窗声称</th><th>席位窗实际</th><th>实际/声称</th>
-        <th>均值±1实际（退役窗）</th><th>众数窗实际</th>
-      </tr></thead><tbody>${body}</tbody></table>
-      ${states ? `<table style="margin-top:8px"><thead><tr>
-        <th>三态（${rule.skew_threshold_sigma == null ? "0.35" :
-          rule.skew_threshold_sigma}σ）</th>
-        <th>格子 · 占比</th><th>偏差</th><th>95% 区间</th>
-        <th>席位窗声称</th><th>席位窗实际</th><th>实际/声称</th>
-        <th>均值±1实际（退役窗）</th><th>众数窗实际</th>
-      </tr></thead><tbody>${states}</tbody></table>` : ""}
-      ${flat ? `<div class="muted" style="margin-top:6px">
-        平日子（自称宽度 ≥${
-        L.flat_threshold_rungs} 桶，共 ${st.flat_cells}
-        个格子）按站的偏差，
-        取样本至少 8 格的前十：
-        ${flat}</div>` : ""}
+  const MIN_DAYS = 8;
+  const CENTRE = 0.2, HONEST = 0.05;
+  // One stage's accounts, pooled over its width tiers -- they partition its
+  // cells, and each carries its own seat/mode denominators.
+  const pooled = (rows) => {
+    const w = (key, n) => {
+      let num = 0, den = 0;
+      rows.forEach(r => { const k = r[n] || 0; if(r[key] != null && k){ num += r[key] * k; den += k; } });
+      return den ? num / den : null;
+    };
+    return {
+      cells: rows.reduce((a, r) => a + (r.cells || 0), 0),
+      bias: w("bias_rungs", "cells"),
+      claim: w("seat_claim", "seat_cells"),
+      cover: w("seat_cover", "seat_cells"),
+      mode: w("mode_cover", "mode_cells"),
+    };
+  };
+  const P = stages.map(st => ({st, ...pooled(st.rows || [])}));
+  const pc = (v) => v == null ? "—" : (100 * v).toFixed(0) + "%";
+  const rungs = (v) => v == null ? "—" : Math.abs(v).toFixed(2) + " 桶";
+  const side = (v) => v == null ? "—" : Math.abs(v) < CENTRE ? "基本居中"
+    : (v < 0 ? "真值偏冷" : "真值偏暖");
+  const honesty = (x) => (x.claim == null || x.cover == null) ? ["", "—"]
+    : x.cover < x.claim * (1 - HONEST) ? ["amber", "声称偏高"]
+    : x.cover > x.claim * (1 + HONEST) ? ["green", "声称偏保守"] : ["green", "声称诚实"];
+  const cbar = (label, v, color) => `<div class="tl-bar"><span class="muted">${label}</span>
+    <span class="tl-track"><span style="width:${(100 * (v || 0)).toFixed(1)}%;background:${color}"></span></span>
+    <span class="mono">${pc(v)}</span></div>`;
+  // A diverging bar: the middle is the served mean, one side colder, one
+  // side warmer, clamped at a bucket and a half.
+  const dbar = (v) => {
+    const x = Math.max(-1.5, Math.min(1.5, v || 0)) / 1.5 * 50;
+    return `<div class="cl-div"><span class="muted">冷</span><span class="cl-axis">
+      <i style="left:${x < 0 ? 50 + x : 50}%;width:${Math.abs(x)}%;background:${
+        Math.abs(v || 0) < CENTRE ? "var(--muted)" : (v < 0 ? "var(--accent)" : "var(--red)")}"></i>
+      <b></b></span><span class="muted">暖</span></div>`;
+  };
+  const rows = P.map(x => {
+    const [tone, word] = honesty(x);
+    const thin = x.st.days < MIN_DAYS;
+    return `<div class="tl-row cl-row">
+      <div><b>${h(x.st.stage)}</b><div class="muted" style="font-size:11.5px">${h(x.st.meaning)}</div>
+        <div class="muted" style="font-size:11.5px">${x.cells.toLocaleString()} 个格子 · ${x.st.days} 天${
+          thin ? ` <span class="pill amber" style="font-size:10px">样本少</span>` : ""}</div></div>
+      <div><div class="cl-q">中心：真值落在均值哪边</div>${dbar(x.bias)}
+        <div class="mono" style="font-size:12px;text-align:center">${side(x.bias)} ${
+          x.bias == null || Math.abs(x.bias) < CENTRE ? "" : rungs(x.bias)}</div></div>
+      <div><div class="cl-q">覆盖：席位窗盖住真值</div>
+        ${cbar("模型说", x.claim, "var(--violet)")}${cbar("实际", x.cover, "var(--accent)")}</div>
+      <div class="tl-verdict"><span class="pill ${tone}">${word}</span>
+        <div class="mono" style="font-size:12px">${x.claim == null || x.cover == null ? ""
+          : `差 ${((x.cover - x.claim) * 100).toFixed(0)} 点`}</div></div>
     </div>`;
   }).join("");
+
+  const list = (f) => P.map(x => `${h(x.st.stage)} ${f(x)}`).join("、");
+  const colder = P.filter(x => x.bias != null && x.bias <= -CENTRE);
+  const warmer = P.filter(x => x.bias != null && x.bias >= CENTRE);
+  const centreLine = colder.length === P.length
+    ? `三个阶段的真值<b>都比服务均值偏冷</b>（${list(x => "−" + rungs(x.bias))}）——模型整体偏暖。`
+    : warmer.length === P.length
+      ? `三个阶段的真值<b>都比服务均值偏暖</b>（${list(x => "+" + rungs(x.bias))}）——模型整体偏冷。`
+      : `中心：${list(x => side(x.bias) + (Math.abs(x.bias || 0) < CENTRE ? "" : " " + rungs(x.bias)))}。`;
+  const high = P.filter(x => honesty(x)[1] === "声称偏高");
+  const coverLine = high.length === P.length
+    ? `席位窗<b>实际盖住的都比模型说的少</b>（${list(x => pc(x.cover) + " 对 " + pc(x.claim))}）。`
+    : `覆盖：${list(x => honesty(x)[1] + " " + pc(x.cover) + " 对 " + pc(x.claim))}。`;
+  const modeGain = P.filter(x => x.mode != null && x.cover != null);
+  const modeLine = modeGain.length && modeGain.every(x => x.mode > x.cover)
+    ? `换成以<b>概率最高的桶</b>为心的三桶，每个阶段都能多盖住 ${
+        modeGain.map(x => h(x.st.stage) + " +" + ((x.mode - x.cover) * 100).toFixed(0) + " 点").join("、")
+      }（但最高桶市场定价也最贵，覆盖多不等于赚钱）。` : "";
+  const days = Math.min(...P.map(x => x.st.days));
+  const gap = P.filter(x => x.claim != null && x.cover != null);
+  const avgGap = gap.length
+    ? 100 * gap.reduce((a, x) => a + (x.cover - x.claim) * x.cells, 0) / gap.reduce((a, x) => a + x.cells, 0) : null;
+  const summary = avgGap == null ? ""
+    : `<b>总结：</b>${avgGap < -100 * HONEST * 0.8
+        ? `服务分布把真值放得偏${colder.length >= warmer.length ? "暖" : "冷"}，所以席位窗的覆盖声称平均虚高 <b class="down">${Math.abs(avgGap).toFixed(0)} 点</b>——按声称定价的篮子会系统性买贵。`
+        : `席位窗的覆盖声称和实际平均只差 ${avgGap.toFixed(0)} 点，服务分布基本盖得住真值。`}${
+        days < MIN_DAYS ? `<span class="muted">（目前只有 ${days} 个事件日，${h(P[0].st.since)} 起，数字还会动。）</span>` : ""}`;
+
+  // The finer cuts, folded: same accounts per width tier and per day shape.
+  const detailRows = (list2) => list2.map(r => `<tr><td>${h(r.label)}</td>
+    <td class="mono">${(r.cells || 0).toLocaleString()}</td>
+    <td class="mono">${r.bias_rungs == null ? "—" : (r.bias_rungs > 0 ? "+" : "") + r.bias_rungs.toFixed(2)}</td>
+    <td class="mono">${pc(r.seat_claim)}</td><td class="mono">${pc(r.seat_cover)}</td>
+    <td class="mono muted">${pc(r.mode_cover)}</td></tr>`).join("");
+  const details = `<details class="note" style="margin-top:8px"><summary>按宽度和当天形状拆开看</summary>
+    ${stages.map(st => `<div style="margin-top:8px"><b>${h(st.stage)}</b>
+      <div class="scroll"><table style="margin-top:4px"><thead><tr><th>分组</th><th>格子</th>
+        <th>偏差（桶，负＝偏冷）</th><th>模型说盖住</th><th>实际盖住</th><th>最高桶为心</th></tr></thead>
+      <tbody>${detailRows((st.rows || []).concat(st.states || []))}</tbody></table></div></div>`).join("")}
+    <div class="muted" style="font-size:11.5px;margin-top:6px">单位是桶：摄氏市场一桶 1°C、华氏 2°F。
+      宽度按服务分布自称的宽度切；形状是宪章 131 的三态读数（${
+      h(String((L.seat_rule || {}).skew_threshold_sigma ?? 0.35))}σ）。席位窗＝裁定形状里最宽的窗；
+      无席位的格子只进偏差列。</div></details>`;
+
   return `<h2>真值落在离服务均值多远：检验服务分布盖不盖得住真值</h2>
-  <p class="sub">上一节说中心/宽度层<b>做了什么</b>，
-  这一节说它服务出去的分布<b>对不对</b>：
-  当天的真实最高温，落在分布均值的哪一侧、差几个桶。
-  单位是<b>桶</b>不是度：摄氏市场一桶 1°C、华氏市场 2°F，
-  换成桶两边才能放在一列里比。
-  行按服务分布自称的宽度切；席位窗按宪章 131 的三态形状读
-  （<span class="mono">${h(rule.seat_shape_rule || "")}</span>）。</p>
-  <div class="why"><b>为什么量这个：</b>席位以均值桶为心（宪章 54/75），
-  形状由三态读数钉死（宪章 131，门槛 ${rule.skew_threshold_sigma == null ?
-    "0.35" : rule.skew_threshold_sigma}σ）：
-  对称日坐均值桶±1；偏斜日坐 {均值桶, 尾侧一格, 尾侧两格}，众数桶不在座位里。
-  整篮经济门拿去和价格比的是这个窗口的有效质量 λ(a)·p，
-  所以“真值能不能被这个窗兼住”直接决定了这一天的席位值不值。<br>
-  <b>怎么读：</b>偏差是平均落点减均值，正数表示实际比模型说的热；
-  95% 区间按<b>天</b>重采样（同一天的天气全队共享，按格子重采样会把区间缩成假的），
-  <b>区间含 0 就是没有系统性偏向哪一边</b>；「偏斜」是该档被读成偏斜的格子占比。<br>
-  <b>席位窗三列是这一节的正题：</b>「声称」＝裁定席位窗内各桶的概率和
-  （页面没有价格，取裁定形状里最宽的三桶窗；生产只在三桶过不了闸时才退到两桶，
-  P1 只剩一个活桶时坐单桶）；「实际」＝真值真的落在这几个桶里的比例；
-  再右边是两者之比。<b>「均值±1实际」是 2026-09-12 前这一列所用的退役窗</b>
-  （宪章 49/79）：对称日它与席位窗重合，偏斜日两者差一格——留着它就是为了看
-  形状裁决换掉了什么。无席位的格子（活桶凑不出裁定形状）只进偏差列，不进窗口列。<br>
-  <b>别把「实际」下降读成模型在平日子更差：</b>宽分布把质量摊到更多桶上，
-  三桶窗必然覆盖更少，这大半是算术。真正的判据是那个比值。<br>
-  <b>三态表</b>是同一批格子按当天读数拆开。偏斜日的席位窗实际若高于退役窗，
-  形状裁决在这批日子上是赚覆盖的；反之就是亏的。这只量覆盖，不量价格——
-  众数桶被市场定价最贵，不坐它省的是成本，这张表看不见。<br>
-  <b>末列的众数窗</b>是以最高桶为心的三桶，后面小字是它与席位窗完全重合的比例。
-  覆盖多不等于赚钱：市场把峰值桶定价最贵，席位以均值为心是账本裁定（宪章 54/75）。</div>
-  ${blocks}`;
+  <div class="card tl-verdict-card"><b>结论：</b>${centreLine}<br>${coverLine}${
+    modeLine ? "<br>" + modeLine : ""}
+    ${summary ? `<div style="margin-top:6px">${summary}</div>` : ""}</div>
+  <div class="tl-rows">${rows}</div>
+  <p class="sub" style="margin-top:6px">中心条：中间是服务分布的均值，蓝往冷、红往暖，差不到 ${CENTRE} 桶算居中。
+    覆盖：「模型说」＝席位窗里各桶概率之和，「实际」＝真值落进席位窗的比例，差 ${Math.round(100 * HONEST)}% 以内算诚实。</p>
+  ${details}`;
 }
 
 
