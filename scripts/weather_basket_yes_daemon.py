@@ -2825,6 +2825,88 @@ def _canonical_live_taf_registry_rows(source_db: Path) -> list[dict[str, Any]]:
 # the 443->620s spread is itself worth watching, and it is watched by the
 # stage timings the receipt publishes, not by this bound.
 PRODUCTION_CYCLE_OVERDUE_SEC = 720.0
+# Where the stage timings of recent cycles outlive the next cycle.  The status
+# file keeps one production receipt, so a slow cycle's breakdown is gone the
+# moment the next one finishes: on 2026-09-15 the board showed a 1330s cycle
+# (probability_p0m 469s against a usual 18-23s) that had already been
+# overwritten by a 459s one, and whether it was the first cycle after the
+# 01:06Z restart or a regression could not be read back from anywhere.
+PRODUCTION_CYCLE_HISTORY_PATH = (
+    ROOT / "data" / "runtime" / "production_cycle_history.jsonl"
+)
+PRODUCTION_CYCLE_HISTORY_LINES = 200
+
+
+def production_cycle_history_row(
+    result: "Mapping[str, Any]",
+    *,
+    cycle_index: int,
+    process_started_at_utc: str,
+    completed_at_utc: str,
+    wait: "Mapping[str, Any] | None" = None,
+) -> "dict[str, Any] | None":
+    """One finished cycle, as the history keeps it; None without timings."""
+
+    timings = result.get("stage_timings_ms")
+    if not isinstance(timings, Mapping):
+        return None
+    total = timings.get("cycle_total")
+    if not isinstance(total, (int, float)):
+        return None
+    spans = timings.get("stage_span_ms")
+    top_spans = (
+        sorted(
+            (
+                (str(name), round(float(row.get("total_ms") or 0.0), 1))
+                for name, row in spans.items()
+                if isinstance(row, Mapping)
+            ),
+            key=lambda item: -item[1],
+        )[:10]
+        if isinstance(spans, Mapping) else []
+    )
+    return {
+        "completed_at_utc": completed_at_utc,
+        "process_started_at_utc": process_started_at_utc,
+        # 1 is the first cycle this process ran: its in-memory caches were
+        # empty, which is a different fault from a cycle that grew.
+        "cycle_index_since_start": int(cycle_index),
+        "state": str(result.get("state") or ""),
+        "cycle_total_ms": round(float(total), 1),
+        "stages_ms": {
+            str(name): round(float(value), 1)
+            for name, value in timings.items()
+            if name != "cycle_total" and isinstance(value, (int, float))
+        },
+        "top_spans_ms": dict(top_spans),
+        "waited_sec": (
+            wait.get("waited_sec") if isinstance(wait, Mapping) else None
+        ),
+        "wait_blocked_by": (
+            list(wait.get("blocked_by") or [])
+            if isinstance(wait, Mapping) else []
+        ),
+    }
+
+
+def append_production_cycle_history(
+    path: Path,
+    row: "Mapping[str, Any]",
+    *,
+    keep: int = PRODUCTION_CYCLE_HISTORY_LINES,
+) -> None:
+    """Append one row and keep only the newest ``keep``, replaced atomically."""
+
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        lines = []
+    lines.append(json.dumps(row, ensure_ascii=False, sort_keys=True))
+    lines = [line for line in lines if line.strip()][-int(keep):]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.tmp.{os.getpid()}")
+    tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
 # What the cycle is *for*, as opposed to when to alarm about it.
 #
 # Until now the only number in the file was the overdue bound above, which is
@@ -4363,6 +4445,7 @@ def main() -> int:
         argmax_entry_future: Any = None
         production_recovery_attempts = 0
         production_lock_contention_attempts = 0
+        production_cycles_completed = 0
         forecast_recovery_attempts = 0
         registry_recovery_attempts = 0
         argmax_recovery_attempts = 0
@@ -4951,6 +5034,21 @@ def main() -> int:
                         else:
                             production_lock_contention_attempts = 0
                     state["production"] = production_result
+                    production_cycles_completed += 1
+                    history_row = production_cycle_history_row(
+                        production_result,
+                        cycle_index=production_cycles_completed,
+                        process_started_at_utc=str(state.get("started_at") or ""),
+                        completed_at_utc=utc_now(),
+                        wait=state.get("production_wait"),
+                    )
+                    if history_row is not None:
+                        try:
+                            append_production_cycle_history(
+                                PRODUCTION_CYCLE_HISTORY_PATH, history_row
+                            )
+                        except OSError:
+                            pass
                 except Exception as exc:
                     state["production"] = {"ok": False, "state": "blocked_fail_closed", "reason": f"{type(exc).__name__}:{exc}", "places_orders": False, "calls_order_gateway": False, "checked_at": utc_now()}
                 production_future = None
