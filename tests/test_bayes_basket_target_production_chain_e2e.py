@@ -127,8 +127,33 @@ def _inputs() -> tuple[list[ProbabilityEnvelope], dict, dict, list, dict, object
         row["yes_token"] = "yes-" + str(row["bucket"])
         row["filled_shares"] = 0.0
         row["pending_shares"] = 0.0
+    # The book the stake is a fraction of.  Production puts the pool's
+    # balance on the snapshot (charter 72: Kelly on the whole book, capped at
+    # 2% a station-day); without it the runtime frames the stake on the 12
+    # USDC remaining budget, a 0.24 USDC allowance that cannot buy one lot,
+    # and every compile in this file held on the baseline.
+    market["book_equity_usdc"] = 500.0
     cash_policy = _cash_policy("e2e-cash-heavy-v1", 6.0)
     return envelopes, {prior.global_prior_id: prior}, {item.artifact_id: item for item in artifacts}, activations, market, cash_policy
+
+
+def _pin_p1_may_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests drive the P1 plan-to-ledger path from an empty chain.
+
+    Charter 74 lets only P0 open a chain, so under the shipped rule a P1
+    compile on an empty book seats the baseline and none of the ledger
+    mechanics below run.  What they test -- the atomic commit rooted on the
+    observation, sizing refusals, the optimizer's hold -- is the same path a
+    P1 top-up takes, so the opening stages are pinned to the research arm
+    that admits P1 (``PM_CHAIN_OPENING_STAGES``) rather than the fixture
+    being rebuilt around a held position.
+    """
+
+    from bayes_basket_target import delta_v2_runtime
+
+    monkeypatch.setattr(
+        delta_v2_runtime, "CHAIN_OPENING_STAGES", frozenset({"P0", "P1"})
+    )
 
 
 def _delta_v2_policy() -> DeltaV2PolicyArtifact:
@@ -234,6 +259,7 @@ def test_p1_to_plan_to_multileg_atomic_ledger_is_deterministic_and_no_live(
     monkeypatch.setattr(
         _production, "PRODUCTION_EXECUTION_MODE", "production_no_live"
     )
+    _pin_p1_may_open(monkeypatch)
     envelopes, priors, artifacts, activations, market, cash_policy = _inputs()
     delta_policy = _delta_v2_policy()
     compiled = compile_production_plan(
@@ -269,14 +295,10 @@ def test_p1_to_plan_to_multileg_atomic_ledger_is_deterministic_and_no_live(
         ),
         "delta_v2_resolution_blocker": None,
     }
-    # The lane pin above restores these two.  What it does not restore is the
-    # seating: under the current rule set this fixture's plan holds with
-    # ``complete_basket_target_not_activated`` -- the winner is the baseline.
-    # That is a strategy change, not a lane change, and it means the multileg
-    # path below is no longer exercised by this fixture.  Asserting ``hold``
-    # here would make the test pass while covering nothing, so it is left
-    # failing on purpose with the cause named: the fixture needs re-tuning
-    # to a shape the current floor, level and edge rules will seat.
+    # The lane pin above restores these two.  The seating is restored by the
+    # book equity on the snapshot and the P1 opening pin (see
+    # ``_pin_p1_may_open``); without either the plan holds on the baseline
+    # and the multileg path below covers nothing.
     assert compiled["execution_mode"] == "production_no_live"
     assert compiled["live_submit_authorized"] is False
     assert compiled["status"] == "ready_no_live", (
@@ -722,7 +744,10 @@ def test_missing_delta_v2_policy_blocks_before_m5_intents() -> None:
     assert not (compiled.get("order_intents") or [])
 
 
-def test_sizing_failure_is_not_misreported_as_a_cadence_block() -> None:
+def test_sizing_failure_is_not_misreported_as_a_cadence_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _pin_p1_may_open(monkeypatch)
     envelopes, priors, artifacts, activations, market, cash_policy = _inputs()
     compiled = compile_production_plan(
         probability_envelopes=envelopes,
@@ -735,9 +760,13 @@ def test_sizing_failure_is_not_misreported_as_a_cadence_block() -> None:
         maturity_bin="d1",
         liquidity_bin="liquid",
         strategy_version="target-v1",
+        # Above every leg the Kelly stake sizes on this book (2.31 / 4.41 /
+        # 2.31 USDC at 500 of equity), so the refusal is the clip minimum
+        # and nothing else.  It read 1.0 when the stake was framed on the 12
+        # USDC remaining budget.
         base_policy={
-            "clip_min_notional_usdc": 1.0,
-            "clip_max_notional_usdc": 3.0,
+            "clip_min_notional_usdc": 5.0,
+            "clip_max_notional_usdc": 10.0,
         },
         delta_v2_policy=_delta_v2_policy(),
         delta_v2_fill_resolver=_fill_resolver,
@@ -758,7 +787,18 @@ def test_sizing_failure_is_not_misreported_as_a_cadence_block() -> None:
     )
 
 
-def test_optimizer_hold_remains_a_compiled_no_live_decision() -> None:
+def test_optimizer_hold_remains_a_compiled_no_live_decision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The same lane pin as the multileg test: the claim under test is that an
+    # optimizer hold is still a compiled no-live decision, which a worker
+    # built for ``production_live`` cannot answer without it.
+    import bayes_basket_target.production as _production
+
+    monkeypatch.setattr(
+        _production, "PRODUCTION_EXECUTION_MODE", "production_no_live"
+    )
+    _pin_p1_may_open(monkeypatch)
     envelopes, priors, artifacts, activations, market, cash_policy = _inputs()
     raw_policy = _delta_v2_policy().to_dict()
     raw_policy["execution_weights"]["epsilon_score"] = 1_000_000.0
@@ -798,6 +838,15 @@ def _p0_opening_compile():
     """The P0 opening fixture: the ensemble-only compile and its market."""
 
     envelopes, priors, artifacts, activations, market, cash_policy = _inputs()
+    # P0's claim is deflated by its lambda table (charter 68), which pays
+    # 0.14 of the claim where the book agrees with it at under 0.5 and 0.87
+    # from 0.7.  The shared book asks 0.46 for a claim of 1.0, so a P0 seat
+    # there prices at 0.14 against 0.46 and is refused on edge; the opening
+    # book is priced at 0.75 (agreement 0.75, 0.87 against 0.75, clearing
+    # charter 130's 5%).  P1 reads lambda 1.0 and keeps the shared book.
+    for row, ask in zip(market["buckets"], (0.20, 0.35, 0.20)):
+        row["ask_levels"] = [{"price": ask, "shares": 100.0}]
+        row["bid_price"] = round(ask - 0.02, 2)
     p0_raw = envelopes[0].to_dict()
     # A pre-observation stage may not carry observed-high lineage: the shared
     # fixture writes the P1 shape, so the observation-borne keys are stripped
@@ -1007,7 +1056,9 @@ def _seed_p0_opening_db(conn, *, p0, market, cash_policy) -> None:
     )
 
 
-def test_p0_opening_commits_stage_rooted_intents_and_evidence() -> None:
+def test_p0_opening_commits_stage_rooted_intents_and_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """P0 opens a position on the ensemble alone: no METAR, no hard bound.
 
     The commit must root on the stage evidence, persist that evidence in the
@@ -1015,6 +1066,14 @@ def test_p0_opening_commits_stage_rooted_intents_and_evidence() -> None:
     no-live end to end.
     """
 
+    # "No-live end to end" is a claim about the no-live lane; the worker is
+    # built for ``production_live`` since go-live, so the lane is pinned the
+    # way the multileg test pins it.
+    import bayes_basket_target.production as _production
+
+    monkeypatch.setattr(
+        _production, "PRODUCTION_EXECUTION_MODE", "production_no_live"
+    )
     compiled, market, cash_policy, p0 = _p0_opening_compile()
     assert compiled["status"] == "ready_no_live"
     assert compiled["plan"]["lineage"]["probability_stage"] == "P0"

@@ -44,7 +44,13 @@ def awc_contract(
     # contract carries that projection so the link can be checked without a
     # second lookup.  Both sides have to come from the same object or the
     # parent-mismatch guard rejects the contract.
-    projection = authority_projection(primary_station=station_id)
+    # The projection binds the station to the zone its facts declare: the
+    # contract now refuses a fact whose zone is not the one its station is
+    # listed on, and a projection built on the helper's Eastern default
+    # made every non-Eastern caller (ZUUU, Asia/Shanghai) a mismatch.
+    projection = authority_projection(
+        primary_station=station_id, settlement_timezone=settlement_timezone,
+    )
     revision = _seal(
         {
             "station_id": station_id,
