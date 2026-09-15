@@ -1833,6 +1833,16 @@ def load_production_market_snapshot(
             "active_before": bool(raw.get("active_before", False) or filled_shares > 0.0 or pending_shares > 0.0),
             "ask_levels": [dict(level) for level in asks],
         })
+    # Charter 136 (五): every bucket this station-day's chain has sent a buy
+    # to the venue for.  "Sent" is an exchange answer on the intent -- an
+    # intent the live flag disarmed never reached anyone and seats nothing.
+    sent = load_chain_seat_buckets(
+        conn, station_id=station_id, event_date=event_date,
+    )
+    chain_seat_buckets = [
+        str(item["bucket"]) for item in normalized_buckets
+        if str(item["bucket"]) in sent
+    ]
     if current_core_buckets:
         canonical_buckets = tuple(
             str(item["bucket"]) for item in normalized_buckets
@@ -1909,6 +1919,10 @@ def load_production_market_snapshot(
         ),
         "current_core_buckets": list(current_core_buckets),
         "current_direction": current_direction,
+        **(
+            {"chain_seat_buckets": chain_seat_buckets}
+            if chain_seat_buckets else {}
+        ),
         "buckets": normalized_buckets,
         "cash_phase_input": cash_input,
         "checkpoint_changed": True,
@@ -1920,6 +1934,43 @@ def load_production_market_snapshot(
         "order_state_known": True,
         "risk_inputs_complete": True,
     }
+
+
+CHAIN_SEAT_EVENT_TYPES = (
+    "POST_ACK", "FILL", "PARTIAL_FILL", "LATE_FILL", "CANCEL_ACK", "EXPIRED",
+)
+
+
+def load_chain_seat_buckets(
+    conn: sqlite3.Connection, *, station_id: str, event_date: str,
+) -> frozenset[str]:
+    """Charter 136 (五): every bucket this station-day sent a buy to the venue.
+
+    "Sent" is an exchange answer on the intent.  An intent the live flag
+    disarmed (``NEVER_REACHED_EXCHANGE``) or the gateway refused
+    (``SUBMIT_REFUSED``) reached nobody and seats nothing.  Empty on a store
+    without the order ledger.
+    """
+
+    if conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table'"
+        " AND name='basket_target_order_events'"
+    ).fetchone() is None:
+        return frozenset()
+    placeholders = ",".join("?" for _ in CHAIN_SEAT_EVENT_TYPES)
+    return frozenset(
+        str(row[0])
+        for row in conn.execute(
+            "SELECT DISTINCT i.bucket FROM basket_target_order_intents i"
+            " JOIN basket_target_execution_cycles cy ON cy.cycle_id=i.cycle_id"
+            " WHERE cy.station_id=? AND cy.event_date=?"
+            "   AND i.order_action='BUY'"
+            "   AND EXISTS (SELECT 1 FROM basket_target_order_events e"
+            "     WHERE e.order_intent_id=i.order_intent_id"
+            f"      AND e.event_type IN ({placeholders}))",
+            (station_id, event_date, *CHAIN_SEAT_EVENT_TYPES),
+        )
+    )
 
 
 def derive_policy_maturity_bin(

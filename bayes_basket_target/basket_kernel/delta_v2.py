@@ -2379,83 +2379,221 @@ if CHARTER_116_COMPLETION_REPAIR not in {"on", "off"}:
         f"unknown charter 116 completion repair mode: {CHARTER_116_COMPLETION_REPAIR}"
     )
 COMPLETION_REPAIR_RULE_VERSION = "completion_repairs_an_illegal_floor_v1"
-EXPOSURE_REPAIR_COMPLETION_RULE_VERSION = "market_took_every_leg_exposure_repair_v1"
+COMPLETION_RISK_BUDGET_RULE_VERSION = "completion_exposure_against_edge_v2"
+# Charter 136 (三): a completion may spend up to this multiple of the
+# station-day's stage allowance, less what the chain has already spent.
+COMPLETION_BUDGET_MULTIPLE = 1.5
 
 
-def exposure_repair_completion_v1(
+def completion_budget_usdc_v1(
     *,
-    held_shares_by_bucket: Mapping[str, Any],
-    held_cost_by_bucket: Mapping[str, Any],
-    buyable_ask_by_bucket: Mapping[str, Any],
-    buyable_claim_by_bucket: Mapping[str, Any],
-    hours_to_cutoff: float | None,
-    cutoff_hours: float = COMPLETION_CUTOFF_HOURS,
-) -> dict[str, Any]:
-    """Charter 136: a short leg the market took is completed on the exposure.
+    book_equity_usdc: float,
+    stage: str,
+    committed_usdc: float,
+    multiple: float = COMPLETION_BUDGET_MULTIPLE,
+) -> float:
+    """Charter 136 (三): what a completion may spend, off the seat's own sizing.
 
-    User ruling 2026-09-15: "补单的负边际权重判断要小于篮子不完整的暴露风险".
-    A partly held basket loses its whole cost on the outcome it was built to
-    cover, and the leg that is missing is, in this class, missing because the
-    market bid it above our own claim.  On exactly those legs our claim is
-    the number that is wrong: settled 2026-09-06..14, eleven single short legs
-    the window gate refused (all-in ask above claim) landed 63.6% against a
-    0.446 ask and a 0.268 claim, +0.19 a share (90% [+0.002, +0.402]); the
-    2026-09-07 shadow read of 604 such legs realized 1.60x their claim.  So
-    their own negative edge is not a reason to leave the basket broken, and
-    charter 93's floor -- which is the exposure -- decides instead.
-
-    Deliberately narrow:
-
-    * **every** buyable short leg is priced above its own claim -- a leg the
-      market prices at or under our claim is one it is handing us, measured
-      to lose (0.28x of claim), and stays on the hurdle;
-    * more than ``cutoff_hours`` to settlement, or no clock -- charter 110(六);
-    * the completed basket costs under one share per share -- the one hard
-      cap no model can argue with (held legs at what they cost, short legs at
-      their all-in ask).
-
-    Pure; ``admits`` is the verdict and the rest is the audit.
+    The seat was sized against the station-day's stage allowance
+    (``scope_stake_cap_usdc`` with nothing committed).  A completion restores
+    that seat at today's price, which may be dearer than the price the seat
+    was sized at, so it may take the chain to ``multiple`` of that allowance
+    and no further.  The bound is on the whole chain -- held legs included --
+    because the whole chain is what a miss loses.
     """
 
-    held = {
-        str(bucket): float(shares or 0.0)
-        for bucket, shares in held_shares_by_bucket.items()
-        if float(shares or 0.0) > EPS
-    }
-    asks = {
-        str(bucket): (None if ask is None else float(ask))
-        for bucket, ask in buyable_ask_by_bucket.items()
-    }
-    claims = {
-        str(bucket): float(buyable_claim_by_bucket.get(bucket, 0.0) or 0.0)
-        for bucket in buyable_ask_by_bucket
-    }
-    reading: dict[str, Any] = {
-        "rule": EXPOSURE_REPAIR_COMPLETION_RULE_VERSION,
-        "hours_to_cutoff": hours_to_cutoff,
-        "cutoff_hours": float(cutoff_hours),
-        "claim_by_bucket": claims,
-        "ask_by_bucket": asks,
-    }
-    if not held or not asks:
-        return {**reading, "admits": False, "reason": "not_a_partial_basket"}
-    if any(ask is None or ask <= EPS for ask in asks.values()):
-        return {**reading, "admits": False, "reason": "short_leg_unpriced"}
-    took = all(asks[bucket] > claims[bucket] + EPS for bucket in asks)
-    reading["market_took_every_leg"] = took
-    held_cost_per_share = sum(
-        float(held_cost_by_bucket.get(bucket, 0.0) or 0.0) / shares
-        for bucket, shares in held.items()
+    allowance = scope_stake_cap_usdc(
+        book_equity_usdc=float(book_equity_usdc), stage=str(stage),
+        committed_usdc=0.0,
     )
-    completed = held_cost_per_share + sum(asks.values())
-    reading["completed_cost_per_share"] = completed
-    if not took:
-        return {**reading, "admits": False, "reason": "market_did_not_take_every_leg"}
-    if hours_to_cutoff is not None and float(hours_to_cutoff) <= float(cutoff_hours):
-        return {**reading, "admits": False, "reason": "inside_completion_cutoff"}
-    if not completed < 1.0 - EPS:
-        return {**reading, "admits": False, "reason": "completed_basket_costs_a_share"}
-    return {**reading, "admits": True, "reason": "market_took_the_leg"}
+    return max(0.0, float(multiple) * allowance - float(committed_usdc))
+
+
+def completion_risk_budget_v1(
+    *,
+    window: Sequence[str],
+    held_shares_by_bucket: Mapping[str, Any],
+    held_cost_by_bucket: Mapping[str, Any],
+    chain_cost_usdc: float,
+    ask_by_bucket: Mapping[str, Any],
+    depth_by_bucket: Mapping[str, Sequence[Any]],
+    claim_by_bucket: Mapping[str, Any],
+    budget_usdc: float,
+    hours_to_cutoff: float | None,
+    chain_seat_buckets: Sequence[str] = (),
+    chain_held_buckets: Sequence[str] = (),
+    dead_buckets: Sequence[str] = (),
+    cutoff_hours: float | None = None,
+    hurdle: float | None = None,
+) -> dict[str, Any]:
+    """Charter 136: complete a broken seat when its exposure outweighs the edge.
+
+    User rulings 2026-09-15: "补单的负边际权重判断要小于篮子不完整的暴露风险",
+    then "篮子不完整的风险暴露的成本、已建仓篮子的成本、整篮不命中的成本，要综合
+    考虑，既要降低风险暴露，又不能放大风险暴露", then "落地".
+
+    The three costs, on one book.  What the chain has paid is sunk: it is not
+    in the completion's expectation, but it sets both risks.  A missing leg
+    loses the whole chain when the truth lands on it -- the exposure; buying
+    it adds its cash to what a truth outside the basket loses -- the miss.
+    The miss is already inside the expectation (``delta_ev`` charges the cash
+    on every outcome); the exposure is the change in the worst settlement
+    inside the window (``delta_exposure``).  So:
+
+    (一) belief: each missing leg at ``completion_conditioned_claim_v1`` --
+         claim x 1.60 when the market prices it above the claim, x 0.28 when
+         at or under it (2026-09-07, 2,575 missing legs);
+    (二) ``delta_ev >= -hurdle * delta_exposure``: every unit of worst-case
+         loss removed may cost at most ``hurdle`` of expectation, and a
+         completion that removes none gets nothing from this rule;
+    (三) after completion the worst settlement inside the window returns at
+         least ``hurdle`` on the whole chain (charter 93's floor);
+    (四) the spend stays inside ``budget_usdc`` (``completion_budget_usdc_v1``);
+    (五) every leg bought is one the seat already wanted
+         (``chain_seat_buckets``), so no relabel widens a broken seat, and the
+         window holds every leg the chain holds (``chain_held_buckets``), so
+         no narrower window reads the exposure off a subset of the chain;
+    (六) more than ``cutoff_hours`` to settlement (charter 110 六).
+
+    The level is charter 84's own (``ladder_balance_targets_v1``) at the
+    budget, and each leg is walked down its book, so the numbers judged are
+    the ones the completion would send.  Pure; ``admits`` is the verdict.
+    """
+
+    h = ECONOMIC_HURDLE_V1 if hurdle is None else float(hurdle)
+    cutoff = COMPLETION_CUTOFF_HOURS if cutoff_hours is None else float(cutoff_hours)
+    ordered = tuple(str(bucket) for bucket in window)
+    dead = {str(bucket) for bucket in dead_buckets}
+    held = {
+        bucket: float(held_shares_by_bucket.get(bucket, 0.0) or 0.0)
+        for bucket in ordered
+    }
+    held_cost = {
+        bucket: float(held_cost_by_bucket.get(bucket, 0.0) or 0.0)
+        for bucket in ordered
+    }
+    missing = [bucket for bucket in ordered if held[bucket] <= EPS]
+    buyable = [bucket for bucket in missing if bucket not in dead]
+    seat = {str(bucket) for bucket in chain_seat_buckets}
+    reading: dict[str, Any] = {
+        "rule": COMPLETION_RISK_BUDGET_RULE_VERSION,
+        "hurdle": h,
+        "cutoff_hours": cutoff,
+        "hours_to_cutoff": hours_to_cutoff,
+        "budget_usdc": float(budget_usdc),
+        "chain_cost_usdc": float(chain_cost_usdc),
+        "buyable_buckets": list(buyable),
+        "chain_seat_buckets": sorted(seat),
+    }
+
+    def refuse(reason: str, **extra: Any) -> dict[str, Any]:
+        return {**reading, **extra, "admits": False, "reason": reason}
+
+    if not any(held[bucket] > EPS for bucket in ordered) or not buyable:
+        return refuse("not_a_broken_seat")
+    dropped = sorted(
+        str(bucket) for bucket in chain_held_buckets if str(bucket) not in ordered
+    )
+    if dropped:
+        return refuse("window_drops_a_held_leg", dropped_buckets=dropped)
+    if seat and any(bucket not in seat for bucket in buyable):
+        return refuse(
+            "leg_outside_the_seat",
+            outside_buckets=[b for b in buyable if b not in seat],
+        )
+    if hours_to_cutoff is not None and float(hours_to_cutoff) <= cutoff:
+        return refuse("inside_completion_cutoff")
+    asks = {}
+    for bucket in ordered:
+        value = ask_by_bucket.get(bucket)
+        asks[bucket] = 0.0 if value is None else float(value)
+    if any(asks[bucket] <= EPS for bucket in buyable):
+        return refuse("short_leg_unpriced")
+    level_inputs = dict(
+        held_by_bucket=held,
+        support=ordered,
+        held_cost_by_bucket=held_cost,
+        ask_by_bucket=asks,
+        depth_by_bucket={
+            bucket: tuple(depth_by_bucket.get(bucket) or ()) for bucket in ordered
+        },
+        below_leg_floor_buckets=tuple(sorted(dead)),
+        fee_rate=0.0,
+    )
+    targets = ladder_balance_targets_v1(
+        **level_inputs, capital_available_usdc=max(0.0, float(budget_usdc)),
+    )
+    if not targets:
+        # Charter 84's level search already refuses a level whose completed
+        # basket fails charter 93's floor, so an empty answer is one of two
+        # things, and they have different repairs: the budget, or the book.
+        unbounded = ladder_balance_targets_v1(
+            **level_inputs, capital_available_usdc=None,
+        )
+        return refuse(
+            "no_level_inside_the_budget" if unbounded
+            else "no_floor_legal_level"
+        )
+    spend = 0.0
+    payout = 0.0
+    legs: dict[str, Any] = {}
+    for bucket in buyable:
+        increment = max(0.0, float(targets.get(bucket, 0.0)) - held[bucket])
+        if increment <= EPS:
+            continue
+        walk = ask_depth_walk_v1(
+            levels=tuple(depth_by_bucket.get(bucket) or ()), shares=increment,
+        )
+        if walk is None:
+            return refuse("depth_short_of_the_level", short_bucket=bucket)
+        belief = completion_conditioned_claim_v1(
+            claim=float(claim_by_bucket.get(bucket, 0.0) or 0.0),
+            ask=asks[bucket],
+        )
+        conditioned = min(1.0, float(belief["conditioned_claim"]))
+        spend += float(walk["cash"])
+        payout += increment * conditioned
+        legs[bucket] = {
+            "shares": increment,
+            "cash": float(walk["cash"]),
+            "claim": float(belief["claim"]),
+            "ask": asks[bucket],
+            "factor": float(belief["factor"]),
+            "conditioned_claim": conditioned,
+        }
+    if not legs:
+        return refuse("nothing_to_buy_at_the_level")
+    after_shares = {
+        bucket: max(held[bucket], float(targets.get(bucket, held[bucket])))
+        for bucket in ordered
+    }
+    chain_cost = float(chain_cost_usdc)
+    worst_before = min(held.values()) - chain_cost
+    worst_after = min(after_shares.values()) - (chain_cost + spend)
+    delta_ev = payout - spend
+    delta_exposure = worst_after - worst_before
+    allowed_give_up = h * max(0.0, delta_exposure)
+    reading.update({
+        "target_shares_by_bucket": after_shares,
+        "legs": legs,
+        "spend_usdc": spend,
+        "expected_payout_usdc": payout,
+        "delta_ev_usdc": delta_ev,
+        "worst_in_window_before_usdc": worst_before,
+        "worst_in_window_after_usdc": worst_after,
+        "delta_exposure_usdc": delta_exposure,
+        "allowed_give_up_usdc": allowed_give_up,
+        "miss_loss_after_usdc": chain_cost + spend,
+    })
+    if spend > float(budget_usdc) + EPS:
+        return refuse("spend_over_budget")
+    if delta_exposure <= EPS:
+        return refuse("removes_no_exposure")
+    if worst_after + EPS < h * (chain_cost + spend):
+        return refuse("floor_not_restored")
+    if delta_ev + EPS < -allowed_give_up:
+        return refuse("edge_given_up_exceeds_exposure_removed")
+    return {**reading, "admits": True, "reason": "exposure_outweighs_edge"}
 
 
 def completion_repair_exemption_v1(

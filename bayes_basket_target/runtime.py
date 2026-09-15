@@ -36,6 +36,9 @@ from .basket_kernel.delta_v2 import (
     PRODUCTION_EXECUTION_AUTHORIZATION,
     rescore_maker_bundle_v2,
     scope_stake_cap_usdc,
+    completion_budget_usdc_v1,
+    COMPLETION_RISK_BUDGET_RULE_VERSION,
+    LADDER_BALANCE_CANDIDATE_ORIGIN as _LADDER_BALANCE_ORIGIN_136,
     venue_minimum_shares_v1,
 )
 from .cash_phase import (
@@ -651,6 +654,14 @@ def snapshot_from_probability_envelope(
         "terminal": bool(market_snapshot.get("terminal", False)),
         "time_left_minutes": float(market_snapshot.get("time_left_minutes", 1440.0) or 0.0),
         "recent_fill_rate": float(market_snapshot.get("recent_fill_rate", 0.0) or 0.0),
+        # Charter 136 (五): the seat a broken chain completes back to.  Omitted
+        # when the chain has sent nothing, so the snapshot hashes as before.
+        **(
+            {"chain_seat_buckets": [
+                str(bucket) for bucket in market_snapshot["chain_seat_buckets"]
+            ]}
+            if market_snapshot.get("chain_seat_buckets") else {}
+        ),
     }
     return TargetBasketSnapshot.from_mapping(raw)
 
@@ -1401,6 +1412,13 @@ def _compile_target_plan(
                 for item in reversed(_earlier)
                 if item.probabilities
             ],
+            # Charter 136 (四): what a broken seat may spend to complete itself
+            # -- 1.5x this station-day's stage allowance, less the chain.
+            completion_budget_usdc=completion_budget_usdc_v1(
+                book_equity_usdc=book_equity_usdc,
+                stage=str(snapshot.evidence.probability_stage or ""),
+                committed_usdc=station_committed_usdc,
+            ),
         )
     # The kernel raises its own ContractError class, not this module's: the
     # two are distinct types (``basket_kernel.contracts`` is self-contained
@@ -1565,6 +1583,31 @@ def _compile_target_plan(
         )
 
     row_by_bucket = {row.bucket: row for row in snapshot.buckets}
+    # Charter 136 (四): a completion the risk budget admitted is sized and
+    # re-scored against that budget, never past the pool's own cash.  The
+    # compile already judged it there; sizing it against the tighter
+    # station remainder would cut the one order the budget exists for.
+    if isinstance(delta_plan, Mapping):
+        _seated_completion = dict(
+            ((delta_plan.get("basket_support_selection") or {}).get("seated")
+             or {}).get("completion") or {}
+        )
+        if (
+            str(delta_plan.get("basket_winner_candidate_origin")
+                or (delta_plan.get("target_solution") or {}).get(
+                    "winner_candidate_origin") or "")
+            == _LADDER_BALANCE_ORIGIN_136
+            and _seated_completion.get("admitted_by")
+            == COMPLETION_RISK_BUDGET_RULE_VERSION
+            and delta_plan.get("completion_budget_usdc") is not None
+        ):
+            remaining_budget = min(
+                float(pool_remaining_usdc),
+                max(
+                    float(remaining_budget),
+                    float(delta_plan["completion_budget_usdc"]),
+                ),
+            )
     # Which family each leg goes out as, read off the plan the optimizer
     # wrote.  Charter 127 lets one basket carry both -- a held ladder whose
     # short rung is completed crosses while an ordinary entry rests -- so

@@ -979,6 +979,9 @@ class TargetBasketSnapshot:
     terminal: bool = False
     time_left_minutes: float = 1440.0
     recent_fill_rate: float = 0.0
+    # Charter 136 (五): every bucket the station-day's chain has sent a buy
+    # to the venue for -- the seat a broken basket is completed back to.
+    chain_seat_buckets: tuple[str, ...] = ()
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "TargetBasketSnapshot":
@@ -1026,6 +1029,10 @@ class TargetBasketSnapshot:
             terminal=_boolean("terminal", raw.get("terminal", False)),
             time_left_minutes=_nonnegative("time_left_minutes", raw.get("time_left_minutes", 1440.0)),
             recent_fill_rate=_unit_interval("recent_fill_rate", raw.get("recent_fill_rate", 0.0)),
+            chain_seat_buckets=tuple(
+                _required_text("chain_seat_bucket", item)
+                for item in (raw.get("chain_seat_buckets") or ())
+            ),
         )
         value.validate()
         return value
@@ -1045,6 +1052,10 @@ class TargetBasketSnapshot:
             raise ContractError("snapshot_current_core_bucket_duplicate")
         if set(self.current_core_buckets) - set(buckets):
             raise ContractError("snapshot_current_core_bucket_unknown")
+        if len(set(self.chain_seat_buckets)) != len(self.chain_seat_buckets):
+            raise ContractError("snapshot_chain_seat_bucket_duplicate")
+        if set(self.chain_seat_buckets) - set(buckets):
+            raise ContractError("snapshot_chain_seat_bucket_unknown")
         if self.current_core_buckets:
             ordinal_by_bucket = {
                 item.bucket: item.ordinal for item in self.buckets
@@ -1099,6 +1110,10 @@ class TargetBasketSnapshot:
         ) is None:
             evidence.pop("observed_running_high_c", None)
             evidence.pop("observed_dead_buckets", None)
+        # Charter 136: same rule -- a chain that has sent nothing hashes as
+        # every snapshot written before the field existed.
+        if not value.get("chain_seat_buckets"):
+            value.pop("chain_seat_buckets", None)
         return value
 
     @property

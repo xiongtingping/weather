@@ -123,8 +123,9 @@ from .basket_kernel.delta_v2 import (
     completion_conditioned_claim_v1,
     completion_floor_delta_v1,
     completion_repair_exemption_v1,
-    EXPOSURE_REPAIR_COMPLETION_RULE_VERSION,
-    exposure_repair_completion_v1,
+    COMPLETION_RISK_BUDGET_RULE_VERSION,
+    completion_budget_usdc_v1,
+    completion_risk_budget_v1,
     evaluate_action_v2,
     evaluate_basket_value_v2,
     raise_sub_lot_targets_v2,
@@ -559,19 +560,18 @@ if MAKER_GTD_HORIZON_SECONDS < 60.0:
 CHARTER_110_COMPLETION = (
     os.environ.get("PM_CHARTER_110_COMPLETION", "").strip().lower() or "off"
 )
-# Charter 136 (user ruling 2026-09-15): a short leg the market took is
-# completed on the exposure, not refused on its own edge.  ``off`` is the
-# charter-130 book, where the increment clears the one hurdle or holds.
-# Default ``off`` (same day): the user then asked for the whole trade-off --
-# the incomplete basket's exposure, the sunk basket, and the whole-basket
-# miss that a dearer completion enlarges -- before any of it goes live.  The
-# arm stays so the ledger can price it.
-EXPOSURE_REPAIR_COMPLETION = (
-    os.environ.get("PM_EXPOSURE_REPAIR_COMPLETION", "").strip().lower() or "off"
+# Charter 136 (user rulings 2026-09-15): a broken seat is completed when the
+# exposure it removes outweighs the edge it gives up, inside a budget off the
+# seat's own sizing and only on legs the seat already wanted
+# (``completion_risk_budget_v1``).  ``off`` is the charter-130 book, where a
+# completion clears the one hurdle or holds.  Default ``off`` until the
+# ledger has priced it ("落地": implement, price on the book, then switch on).
+CHARTER_136_COMPLETION = (
+    os.environ.get("PM_CHARTER_136_COMPLETION", "").strip().lower() or "off"
 )
-if EXPOSURE_REPAIR_COMPLETION not in {"on", "off"}:
+if CHARTER_136_COMPLETION not in {"on", "off"}:
     raise RuntimeError(
-        f"PM_EXPOSURE_REPAIR_COMPLETION must be on or off: {EXPOSURE_REPAIR_COMPLETION}"
+        f"PM_CHARTER_136_COMPLETION must be on or off: {CHARTER_136_COMPLETION}"
     )
 
 
@@ -1806,6 +1806,7 @@ def _support_windows(
     effective_edge_tables: Mapping[str, Any] | None = None,
     off_centre_claim_bands: Mapping[str, Any] | None = None,
     hours_to_cutoff: float | None = None,
+    completion_budget_usdc: float | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Contiguous windows admissible as a support, ranked by belief divergence.
 
@@ -1849,6 +1850,20 @@ def _support_windows(
         if observed_high_floor_enabled()
         else frozenset()
     )
+    # Charter 136: the legs the chain has already sent to the venue, and what
+    # the chain has spent -- the seat a broken basket is completed back to,
+    # and the sunk cost both of its risks are measured on.
+    chain_seat_buckets = tuple(getattr(snapshot, "chain_seat_buckets", ()) or ())
+    chain_cost_usdc = sum(
+        float(row.filled_cost_usdc) + float(row.pending_notional_usdc)
+        for row in snapshot.buckets
+    )
+    chain_held_buckets = tuple(
+        row.bucket for row in snapshot.buckets
+        if float(row.filled_shares) + float(row.pending_shares) > EPS
+    )
+    charter_136_on = CHARTER_136_COMPLETION == "on"
+    shape_exempt_seat_completion = 0
     observed_dead_admitted = sorted(
         (bucket for bucket in observed_dead if bucket in by_bucket),
         key=lambda bucket: (by_bucket[bucket].ordinal, bucket),
@@ -2038,35 +2053,57 @@ def _support_windows(
                 expected_payout=increment_win, cost=increment_price,
             )
         )
-        # Charter 136: the leg the market took is completed on the exposure.
-        # The claim compared is the model's own, before any lambda or lift --
-        # the question is whether the market priced the leg above what we
-        # believe, not above what a deflation left of it.
-        exposure_repair = (
-            exposure_repair_completion_v1(
+        # Charter 136 (五): a broken seat is completed back to itself.  A leg
+        # the chain never sent is not a completion, whichever rule admits it.
+        outside_seat = bool(
+            charter_136_on
+            and chain_seat_buckets
+            and any(bucket not in chain_seat_buckets for bucket in buyable)
+        )
+        if outside_seat:
+            clears_hurdle = False
+        # Charter 136: the exposure the completion removes against the edge
+        # it gives up, inside the seat's own budget.  The claim is the
+        # model's own; the kernel conditions it on the market's price.
+        risk_budget = (
+            completion_risk_budget_v1(
+                window=tuple(window),
                 held_shares_by_bucket={
                     bucket: float(by_bucket[bucket].filled_shares)
                     + float(by_bucket[bucket].pending_shares)
-                    for bucket in held
+                    for bucket in window
                 },
                 held_cost_by_bucket={
                     bucket: float(by_bucket[bucket].filled_cost_usdc)
                     + float(by_bucket[bucket].pending_notional_usdc)
-                    for bucket in held
+                    for bucket in window
                 },
-                buyable_ask_by_bucket={
-                    bucket: quote_by_bucket.get(bucket) for bucket in buyable
+                chain_cost_usdc=chain_cost_usdc,
+                ask_by_bucket={
+                    bucket: quote_by_bucket.get(bucket) for bucket in window
                 },
-                buyable_claim_by_bucket={
+                depth_by_bucket={
+                    bucket: tuple(
+                        {"price": float(level.price) * (1.0 + float(fee_rate)),
+                         "shares": float(level.shares)}
+                        for level in by_bucket[bucket].ask_levels
+                    )
+                    for bucket in window
+                },
+                claim_by_bucket={
                     bucket: float(probabilities.get(bucket, 0.0) or 0.0)
-                    for bucket in buyable
+                    for bucket in window
                 },
+                budget_usdc=float(completion_budget_usdc or 0.0),
                 hours_to_cutoff=hours_to_cutoff,
+                chain_seat_buckets=chain_seat_buckets,
+                chain_held_buckets=chain_held_buckets,
+                dead_buckets=tuple(dead),
             )
-            if EXPOSURE_REPAIR_COMPLETION == "on" and increment_priced
+            if charter_136_on and increment_priced
             else None
         )
-        exposure_admits = bool(exposure_repair and exposure_repair["admits"])
+        risk_admits = bool(risk_budget and risk_budget["admits"])
         return {
             "held_buckets": held,
             "missing_buckets": missing,
@@ -2076,13 +2113,14 @@ def _support_windows(
             "increment_win_probability": increment_win,
             "increment_edge": increment_edge,
             "increment_friction": increment_friction,
-            "admissible": bool(clears_hurdle or exposure_admits),
+            "admissible": bool(clears_hurdle or risk_admits),
             "admitted_by": (
                 "hurdle" if clears_hurdle
-                else EXPOSURE_REPAIR_COMPLETION_RULE_VERSION if exposure_admits
+                else COMPLETION_RISK_BUDGET_RULE_VERSION if risk_admits
                 else None
             ),
-            "exposure_repair": exposure_repair,
+            "outside_seat": outside_seat,
+            "completion_risk_budget": risk_budget,
         }
 
     # The domain stays the whole day (above); what the seat must do is hold
@@ -2800,12 +2838,29 @@ def _support_windows(
             window_ordinals = frozenset(
                 int(by_bucket[bucket].ordinal) for bucket in window
             )
+            # Charter 136 (五): a broken seat is completed back to the seat it
+            # was, whatever today's shape label says.  Only a window holding
+            # part of the chain whose every missing leg the chain already sent.
+            seat_completion_window = bool(
+                charter_136_on
+                and chain_seat_buckets
+                and chain_held_buckets
+                and all(bucket in window for bucket in chain_held_buckets)
+                and all(bucket in chain_seat_buckets for bucket in window)
+                and any(
+                    float(by_bucket[bucket].filled_shares)
+                    + float(by_bucket[bucket].pending_shares) <= EPS
+                    for bucket in window
+                )
+            )
             if (
                 window_ordinals not in allowed_shapes
                 and window_ordinals != taf_entry_window
             ):
-                shape_refused += 1
-                continue
+                if not seat_completion_window:
+                    shape_refused += 1
+                    continue
+                shape_exempt_seat_completion += 1
             # The market-lean gate: the constants block up top carries the
             # measurement that earned it (94%/82% directional realisation
             # in the bridge's dead zone).  Incumbent exempt -- keeping what
@@ -2983,7 +3038,7 @@ def _support_windows(
                     admissible = False
                 elif admissible:
                     if completion is not None and completion.get("admitted_by") == (
-                        EXPOSURE_REPAIR_COMPLETION_RULE_VERSION
+                        COMPLETION_RISK_BUDGET_RULE_VERSION
                     ):
                         # Charter 136: admitted on the exposure, not on value.
                         _clears = True
@@ -3467,6 +3522,9 @@ def _support_windows(
         "policy_minimum_support_buckets": policy_min,
         "short_refused_window_count": short_refused,
         "shape_refused_window_count": shape_refused,
+        # Charter 136 (五): broken seats completed back to themselves past a
+        # shape label that no longer names them.
+        "shape_exempt_seat_completion_count": shape_exempt_seat_completion,
         "market_lean_refused_window_count": market_lean_refused,
         # Shadow bookkeeping: what the gate WOULD have refused, plus the
         # signal itself so a receipt shows the lean the decision saw.
@@ -3763,6 +3821,7 @@ def _solve_over_support_windows(
     effective_edge_tables: Mapping[str, Any] | None = None,
     off_centre_claim_bands: Mapping[str, Any] | None = None,
     excluded_candidate_ids: Sequence[str] = (),
+    completion_budget_usdc: float | None = None,
 ) -> tuple[tuple[str, ...], dict[str, Any], dict[str, Any]]:
     """Run the objective on each shortlisted window; the head one is seated.
 
@@ -3986,7 +4045,22 @@ def _solve_over_support_windows(
                     desired=window,
                     artifact=delta_policy,
                     capital_available_usdc=capital_available_usdc,
-                    completion_capital_usdc=completion_capital_usdc,
+                    # Charter 136 (四): a completion the risk budget admitted
+                    # is sized against that budget, the seat's own allowance.
+                    completion_capital_usdc=(
+                        max(
+                            float(
+                                completion_capital_usdc
+                                if completion_capital_usdc is not None
+                                else capital_available_usdc
+                            ),
+                            float(completion_budget_usdc),
+                        )
+                        if completion_budget_usdc is not None
+                        and ((row.get("completion") or {}).get("admitted_by")
+                             == COMPLETION_RISK_BUDGET_RULE_VERSION)
+                        else completion_capital_usdc
+                    ),
                     minimum_clip_notional_usdc=(
                         basket_policy.clip_min_notional_usdc
                     ),
@@ -5702,6 +5776,7 @@ def compile_delta_v2_runtime_plan(
     off_centre_claim_bands: Mapping[str, Any] | None = None,
     convergence_evidence: Mapping[str, Any] | None = None,
     hours_to_cutoff: float | None = None,
+    completion_budget_usdc: float | None = None,
 ) -> dict[str, Any]:
     """Compile the single-event q* and best no-live action under v2.
 
@@ -5950,6 +6025,8 @@ def compile_delta_v2_runtime_plan(
         off_centre_claim_bands=off_centre_claim_bands,
         # Charter 122 (五): and the seat band off the table the lane fitted,
         # read the same way.
+        # Charter 136 (四): what a broken seat may spend to complete itself.
+        completion_budget_usdc=completion_budget_usdc,
     )
     # The floor's live set is the evidence's, not the candidate support's.
     # ``ordered_support`` here is the continuous-core candidate boundary --
@@ -6015,6 +6092,7 @@ def compile_delta_v2_runtime_plan(
                 # post-lift floor, so the winner chain picks among the rest.
                 excluded_candidate_ids=excluded_candidate_ids,
                 hours_to_cutoff=hours_to_cutoff,
+                completion_budget_usdc=completion_budget_usdc,
             )
         )
         # Charter 84 (八): the consolidation tilt cut this seat once, when it
@@ -6031,6 +6109,21 @@ def compile_delta_v2_runtime_plan(
         )
         if completion_tilt_exempt:
             capital_available_usdc = capital_before_tilt_usdc
+        # Charter 136 (四): a completion the risk budget admitted is judged
+        # against that budget at the kernel's budget gate too, or the seat
+        # the window admitted is refused one step later for the same cash.
+        if (
+            completion_budget_usdc is not None
+            and str(target_solution.get("winner_candidate_origin") or "")
+            == LADDER_BALANCE_CANDIDATE_ORIGIN
+            and (
+                ((support_selection.get("seated") or {}).get("completion") or {})
+                .get("admitted_by")
+            ) == COMPLETION_RISK_BUDGET_RULE_VERSION
+        ):
+            capital_available_usdc = max(
+                float(capital_available_usdc), float(completion_budget_usdc)
+            )
         ordered_support = seated_support
         desired = set(seated_support)
         # The risk scopes as intersected with the *seated* support -- the exact
@@ -6251,7 +6344,7 @@ def compile_delta_v2_runtime_plan(
             and (
                 ((support_selection.get("seated") or {}).get("completion") or {})
                 .get("admitted_by")
-            ) == EXPOSURE_REPAIR_COMPLETION_RULE_VERSION
+            ) == COMPLETION_RISK_BUDGET_RULE_VERSION
         )
         basket_target_activated = (
             target_solution.get("winner_candidate_kind")
@@ -7343,7 +7436,12 @@ def compile_delta_v2_runtime_plan(
         "post_lift_edge_rule": POST_LIFT_EDGE_RULE_VERSION,
         "post_lift_edge_mode": CHARTER_123_POST_LIFT_EDGE,
         "post_lift_edge_exempt_rule": (
-            EXPOSURE_REPAIR_COMPLETION_RULE_VERSION if post_lift_edge_exempt else None
+            COMPLETION_RISK_BUDGET_RULE_VERSION if post_lift_edge_exempt else None
+        ),
+        "completion_budget_usdc": completion_budget_usdc,
+        "completion_risk_budget": (
+            ((support_selection.get("seated") or {}).get("completion") or {})
+            .get("completion_risk_budget")
         ),
         "whole_basket_edge_after_lift": post_lift_edge,
         "post_lift_edge_epsilon": post_lift_edge_epsilon,

@@ -107,7 +107,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     TARGET_PRICING_BASIS as _TARGET_PRICING_BASIS,
     TARGET_PRICING_LANE_STAGES as _TARGET_PRICING_LANE_STAGES,
     COMPLETION_CROSSING_PRICING_RULE_VERSION as _COMPLETION_CROSSING_PRICING,
-    EXPOSURE_REPAIR_COMPLETION as _EXPOSURE_REPAIR_COMPLETION,
+    CHARTER_136_COMPLETION as _CHARTER_136_COMPLETION,
     CENTRE_ANCHOR_DISTANCE_DECAY,
     CENTRE_ANCHOR_EDGE_TILT,
     CENTRE_ANCHOR_MIN_RUNG_SHARE,
@@ -263,7 +263,8 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     # Charter 116/136: the repair reading, and the rule a window records when
     # it admitted a completion on the exposure rather than on its edge.
     completion_repair_exemption_v1 as _completion_repair_exemption_v1,
-    EXPOSURE_REPAIR_COMPLETION_RULE_VERSION as _EXPOSURE_REPAIR_RULE,
+    COMPLETION_RISK_BUDGET_RULE_VERSION as _COMPLETION_RISK_BUDGET_RULE,
+    completion_budget_usdc_v1 as _completion_budget_usdc_v1,
     # Charter 92: the ticket is authorized on that same edge; ``off`` is
     # charter 74's structural authorization, the replay arm.
     # Charter 93: the in-support floor, re-read on the lifted legs with the
@@ -2475,11 +2476,12 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     # crossing at every stage.  At P0-M it was priced on the maker band and
     # refused at every compile; the judge this book seats under is
     # production's own solver, so the seats it produces change with it.
-    # Charter 136 (user ruling 2026-09-15): a leg the market took is completed
-    # on the exposure; the judge's windows admit it and this book's edge
-    # mirror exempts it, so the seats and the buys both change.
-    "exposure_repair_completion": (
-        _EXPOSURE_REPAIR_RULE if _EXPOSURE_REPAIR_COMPLETION == "on" else "off"
+    # Charter 136 (user rulings 2026-09-15): a broken seat is completed when
+    # the exposure it removes outweighs the edge it gives up, inside a budget
+    # off the seat's own sizing; the judge's windows admit it, its solver
+    # sizes it on that budget and this book's edge mirror exempts it.
+    "charter_136_completion": (
+        _COMPLETION_RISK_BUDGET_RULE if _CHARTER_136_COMPLETION == "on" else "off"
     ),
     "completion_pricing": (
         _COMPLETION_CROSSING_PRICING
@@ -4771,6 +4773,7 @@ def _paper_snapshot_mapping(
     held_cost: Mapping[str, float] | None = None,
     reported_high: tuple[str, int] | None = None,
     observed_running_high_c: float | None = None,
+    chain_seat_buckets: Sequence[str] = (),
 ) -> tuple[
     Any, dict[str, float], dict[str, float],
     dict[str, list[dict[str, float]]]
@@ -4929,6 +4932,17 @@ def _paper_snapshot_mapping(
         "order_state_known": True,
         "risk_inputs_complete": True,
         "time_left_minutes": 1440.0,
+        # Charter 136 (五): the legs this chain has posted -- production's
+        # "sent to the venue" -- when it has posted any.
+        **(
+            {"chain_seat_buckets": [
+                str(bucket) for bucket, _o, _l, _u, _p in sorted(
+                    buckets, key=lambda row: int(row[1])
+                )
+                if str(bucket) in {str(b) for b in chain_seat_buckets}
+            ]}
+            if chain_seat_buckets else {}
+        ),
     }
     return mapping, probabilities, prices, depth
 
@@ -5153,6 +5167,7 @@ def _production_judge(
     last_decision_signature: Mapping[str, Any] | None = None,
     last_acted_probability_identity: str | None = None,
     excluded_candidate_ids: Sequence[str] = (),
+    chain_seat_buckets: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Production's whole-basket judge, run on this lane's book.
 
@@ -5315,6 +5330,7 @@ def _production_judge(
             event_date=event_date,
             at_utc=str(payload["observed_at"]),
         ),
+        chain_seat_buckets=chain_seat_buckets,
     )
     if built is None:
         return {
@@ -5370,6 +5386,12 @@ def _production_judge(
         as_of_utc=decision_at_utc,
         settlement_timezone=_settlement_timezone(conn, station_id, event_date),
     )
+    # Charter 136 (四): production's completion budget, off the same kernel
+    # function, the same equity and what this chain has spent.
+    judge_completion_budget = _completion_budget_usdc_v1(
+        book_equity_usdc=float(equity), stage=stage,
+        committed_usdc=float(chain_stake),
+    )
     try:
         windows, audit = _support_windows(
             snapshot=snapshot,
@@ -5400,6 +5422,7 @@ def _production_judge(
             effective_edge_tables=_effective_edge_tables_as_of(decision_at_utc),
             off_centre_claim_bands=_off_centre_claim_bands(),
             hours_to_cutoff=judge_hours_to_cutoff,
+            completion_budget_usdc=judge_completion_budget,
         )
     except Exception as exc:  # noqa: BLE001
         return {
@@ -5565,11 +5588,14 @@ def _production_judge(
             # exist, and ``_support_windows`` above -- the one call that
             # enumerates them -- already read it; the solver is handed the
             # windows themselves and re-declaring the band to it would be a
-            # parameter nothing downstream reads.  It was declared here when
+            # parameter nothing downstream reads.  (Charter 136's completion
+            # budget IS read by the solver -- it sizes the completion -- so it
+            # is passed, below.)  It was declared here when
             # charter 122 (five) landed (c032ea92), and since the runtime's
             # solver never grew the keyword, every production-judge replay
             # from that commit onward died on ``TypeError`` before its first
             # station -- the whole ledger arm, not one lane of it.
+            completion_budget_usdc=judge_completion_budget,
         )
     except (ContractError, _KernelContractError) as exc:
         if holds_anything and str(exc) == (
@@ -9758,6 +9784,8 @@ def backfill(
                             last_acted_probability_identity=(
                                 chain_probability_identity or None
                             ),
+                            # Charter 136 (五): the legs this chain posted.
+                            chain_seat_buckets=tuple(sorted(chain_intended)),
                         )
                         counts["production_judge_cycles"] += 1
                         # Charter 104: the enumeration that DECIDED.  The
@@ -11164,7 +11192,7 @@ def backfill(
                             _exposure_repair = (
                                 str(((seat.get("completion") or {})
                                      .get("admitted_by")) or "")
-                                == _EXPOSURE_REPAIR_RULE
+                                == _COMPLETION_RISK_BUDGET_RULE
                                 and bool(_completion_repair_exemption_v1(
                                     support=tuple(
                                         str(_b) for _b in seat["buckets"]
