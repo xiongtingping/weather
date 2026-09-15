@@ -6047,7 +6047,18 @@ class TargetProductionWorker:
             snapshot = load_market_registry_snapshot(path)
         except Exception:
             return True
-        taken = str(snapshot.get("as_of_utc") or "").strip()
+        # The export stamps its clock under ``filters`` (and ``exported_at_utc``
+        # beside it); there is no top-level ``as_of_utc``.  Reading that key
+        # answered "stale" on every call, so every rotation call -- sixty-odd
+        # a poll -- re-exported the whole registry from the live database:
+        # 152s of a 239s poll on 2026-09-15, 2.45s a call, while production
+        # waited behind the turn.
+        filters = snapshot.get("filters")
+        taken = str(
+            (filters.get("as_of_utc") if isinstance(filters, Mapping) else "")
+            or snapshot.get("exported_at_utc")
+            or ""
+        ).strip()
         if not taken:
             return True
         try:
@@ -6056,7 +6067,15 @@ class TargetProductionWorker:
                     str(value).replace("Z", "+00:00")
                 ).astimezone(timezone.utc)
 
-            age = (_at(as_of_utc) - _at(taken)).total_seconds()
+            now = _at(as_of_utc)
+            age = (now - _at(taken)).total_seconds()
+            # An export whose scope had not moved writes nothing, so the file
+            # keeps its old clock; the attempt is what says the question was
+            # asked.  Without this an unchanged catalog would turn "stale" for
+            # good thirty minutes in and re-export on every call again.
+            attempted = getattr(self, "_registry_export_attempted_at_utc", None)
+            if attempted:
+                age = min(age, (now - _at(str(attempted))).total_seconds())
         except Exception:
             return True
         return age >= REGISTRY_EXPORT_MAX_AGE_SEC or age < 0
@@ -6544,6 +6563,7 @@ class TargetProductionWorker:
                 include_not_started_for_p0=True,
                 current_catalog_only=True,
             )
+            self._registry_export_attempted_at_utc = as_of_utc
         else:
             export = {
                 "schema": str(existing_registry.get("schema") or ""),
