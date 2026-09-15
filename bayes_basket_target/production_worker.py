@@ -163,6 +163,7 @@ from .resource_bounds import (
     assert_connection_target_capacity,
     assert_process_memory_budget,
     load_bounded_json,
+    load_verified_file_cached,
     write_bounded_json,
     write_bounded_json_if_changed,
 )
@@ -2462,25 +2463,34 @@ def _load_native_forward_inbox(
     *,
     error_code: str,
 ) -> list[Mapping[str, Any]]:
-    inbox = load_bounded_json(path)
-    identity = {
-        key: value
-        for key, value in inbox.items()
-        if key != "content_sha256"
-    }
-    if (
-        inbox.get("schema") != "native_ensemble_forward_inbox_v1"
-        or not isinstance(inbox.get("packets"), list)
-        or len(inbox["packets"]) > 256
-        or str(inbox.get("content_sha256") or "")
-        != content_sha256(identity)
-    ):
-        raise ContractError(error_code)
-    return [
-        packet
-        for packet in inbox["packets"]
-        if isinstance(packet, Mapping)
-    ]
+    # One verification per file, not per read: the NWP rotation reads this
+    # inbox two or three times a call, sixty-odd calls a poll (see
+    # ``load_verified_file_cached``).  The error code is the caller's name for
+    # a failure, and failures are never stored, so it stays out of the key.
+    def _verified(resolved: Path) -> list[Mapping[str, Any]]:
+        inbox = load_bounded_json(resolved)
+        identity = {
+            key: value
+            for key, value in inbox.items()
+            if key != "content_sha256"
+        }
+        if (
+            inbox.get("schema") != "native_ensemble_forward_inbox_v1"
+            or not isinstance(inbox.get("packets"), list)
+            or len(inbox["packets"]) > 256
+            or str(inbox.get("content_sha256") or "")
+            != content_sha256(identity)
+        ):
+            raise ContractError(error_code)
+        return [
+            packet
+            for packet in inbox["packets"]
+            if isinstance(packet, Mapping)
+        ]
+
+    return load_verified_file_cached(
+        path, _verified, namespace="native_forward_inbox_v1"
+    )
 
 
 def _p0_preselection_scope_version(market_snapshot: Mapping[str, Any]) -> str:
@@ -3528,7 +3538,9 @@ def _official_inbox_packets_all_stale(
     if not inbox_path.is_file():
         return False
     try:
-        root = load_bounded_json(inbox_path)
+        root = load_verified_file_cached(
+            inbox_path, load_bounded_json, namespace="bounded_json"
+        )
     except Exception:  # noqa: BLE001 -- the compiler names an unreadable inbox
         return False
     packets = root.get("packets") if isinstance(root, Mapping) else root

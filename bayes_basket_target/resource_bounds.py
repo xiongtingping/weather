@@ -10,12 +10,17 @@ from __future__ import annotations
 
 import json
 import os
+import pickle
 import resource as _resource
 import shutil
 import sqlite3
 import sys
+import threading
+from collections import OrderedDict
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, TypeVar
+
+_T = TypeVar("_T")
 
 
 class ResourceBoundError(ValueError):
@@ -423,6 +428,75 @@ def load_bounded_json(
     return value
 
 
+# Verified file contents, by the identity of the file they were read from.
+#
+# The resident NWP rotation advances sixty-odd scopes a poll, one call each,
+# and every call re-read and re-verified the same two documents several times
+# over: the official native inbox (4.7 MB, bounded-shape walk plus content
+# hash, about 70 ms) on the arrival drain, the packet probe and the capture's
+# staleness check, and the registry snapshot (2.9 MB, about 45 ms) on the
+# export staleness check, the reuse read and the scope read.  Measured
+# 2026-09-15: those reads were about 60% of a call, and the poll held the
+# resident's single writer turn for three and a half minutes while a
+# production cycle waited behind it.
+#
+# Keyed on the loader's namespace and the file's path, inode, size and mtime,
+# and stored only when that identity is the same after the read as before it,
+# so a file replaced mid-read is simply read again next time.  Every publisher
+# of these files writes a new file and renames it into place, which changes
+# the inode.  Stored pickled and handed back unpickled, so a caller mutating
+# its copy cannot reach the next caller.  A loader that raises stores nothing.
+_VERIFIED_FILE_CACHE: "OrderedDict[tuple[str, str, int, int, int], bytes]" = (
+    OrderedDict()
+)
+_VERIFIED_FILE_CACHE_LOCK = threading.Lock()
+VERIFIED_FILE_CACHE_ENTRIES = 8
+
+
+def file_identity(path: Path | str) -> tuple[str, int, int, int] | None:
+    """``(resolved path, inode, size, mtime_ns)``, or None if it cannot be read."""
+
+    try:
+        resolved = Path(path).expanduser().resolve()
+        stat = resolved.stat()
+    except OSError:
+        return None
+    return (str(resolved), stat.st_ino, stat.st_size, stat.st_mtime_ns)
+
+
+def load_verified_file_cached(
+    path: Path | str,
+    loader: Callable[[Path], _T],
+    *,
+    namespace: str,
+) -> _T:
+    """``loader(path)``, answered from memory while the file is unchanged.
+
+    ``namespace`` names what the loader verifies: two loaders of one file
+    with different checks must not answer for each other.
+    """
+
+    resolved = Path(path).expanduser().resolve()
+    before = file_identity(resolved)
+    key = None if before is None else (str(namespace), *before)
+    if key is not None:
+        with _VERIFIED_FILE_CACHE_LOCK:
+            blob = _VERIFIED_FILE_CACHE.get(key)
+            if blob is not None:
+                _VERIFIED_FILE_CACHE.move_to_end(key)
+        if blob is not None:
+            return pickle.loads(blob)
+    value = loader(resolved)
+    if key is not None and file_identity(resolved) == before:
+        blob = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
+        with _VERIFIED_FILE_CACHE_LOCK:
+            _VERIFIED_FILE_CACHE[key] = blob
+            _VERIFIED_FILE_CACHE.move_to_end(key)
+            while len(_VERIFIED_FILE_CACHE) > VERIFIED_FILE_CACHE_ENTRIES:
+                _VERIFIED_FILE_CACHE.popitem(last=False)
+    return value
+
+
 def bounded_json_bytes(
     value: Any,
     *,
@@ -792,6 +866,9 @@ def assert_connection_target_capacity(
 
 
 __all__ = [
+    "VERIFIED_FILE_CACHE_ENTRIES",
+    "file_identity",
+    "load_verified_file_cached",
     "MAX_INPUT_FILES_PER_BATCH",
     "MAX_JSON_DEPTH",
     "MAX_JSON_INPUT_BYTES",

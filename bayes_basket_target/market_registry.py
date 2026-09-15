@@ -21,7 +21,11 @@ from typing import Any, Mapping
 from .contracts import ContractError, content_sha256
 from .database import SHARED_LIVE_DB
 from .settlement_time import settlement_day_state
-from .resource_bounds import load_bounded_json, write_bounded_json_if_changed
+from .resource_bounds import (
+    load_bounded_json,
+    load_verified_file_cached,
+    write_bounded_json_if_changed,
+)
 from .resource_bounds import assert_connection_target_capacity
 
 
@@ -254,9 +258,16 @@ def _read_payload(path: Path) -> dict[str, Any]:
 
 
 def load_market_registry_snapshot(path: Path) -> dict[str, Any]:
-    """Load and content-verify one exported registry snapshot without ingesting it."""
+    """Load and content-verify one exported registry snapshot without ingesting it.
 
-    return _read_payload(Path(path).expanduser().resolve())
+    Answered from memory while the file is the same file: the resident NWP
+    rotation reads one snapshot several times a call, sixty-odd calls a poll
+    (see ``resource_bounds.load_verified_file_cached``).
+    """
+
+    return load_verified_file_cached(
+        path, _read_payload, namespace="market_registry_snapshot"
+    )
 
 
 def export_shared_live_registry(
