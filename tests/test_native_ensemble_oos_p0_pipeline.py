@@ -1979,7 +1979,7 @@ def test_forward_taf_is_observational_and_never_enters_p0m_oos() -> None:
             "event_date": event_date,
             "settlement_timezone": "Etc/UTC",
             "calibration_scope": {
-                "season_bin": "JJA",
+                "season_bin": envelope.lineage["season_bin"],
                 "lead_bucket": "d0",
                 "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
                 "settlement_definition": "official_daily_tmax_c",
@@ -2049,7 +2049,9 @@ def test_forward_taf_is_observational_and_never_enters_p0m_oos() -> None:
         live_p0_inbox=live_inbox,
         taf_artifact_raw=taf_artifact.to_dict(),
         station_id="TEST",
-        season_bin="JJA",
+        # The station-local season the compile stamped (charter 62), not the
+        # calendar trigram this test was written against.
+        season_bin=envelope.lineage["season_bin"],
         lead_bucket="d0",
         run_cycle="AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
     )

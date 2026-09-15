@@ -34,3 +34,38 @@ def _no_forward_physics_capture_from_tests(monkeypatch: pytest.MonkeyPatch) -> N
     """
 
     monkeypatch.setenv("PM_FORECAST_PHYSICS_REFRESH", "off")
+
+
+@pytest.fixture(autouse=True)
+def _no_test_reaches_the_real_order_gateway(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test may talk to the order gateway running on this machine.
+
+    The worker is built for ``production_live``, and a compiled plan carries
+    that authority into ``commit_production_candidate_atomic``, which then
+    delivers through ``_default_order_transport`` -- the real loopback
+    gateway.  Found 2026-09-15: the post-fill e2e committed a live plan and
+    was stopped from posting only because its fixture station (ZUUU) happens
+    to be operator-barred in the live config.  Every request primitive of the
+    client is its ``_post``; a test that exercises the client subclasses or
+    replaces it and is unaffected, and anything else gets a 4xx-shaped
+    refusal instead of the network.
+    """
+
+    import sys
+    from pathlib import Path
+
+    root = str(Path(__file__).resolve().parents[1])
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    import clob_order_service_client
+
+    def refuse(self, path, payload):  # noqa: ARG001
+        return {
+            "ok": False,
+            "error": "test_suite_may_not_reach_the_order_gateway",
+            "transport_ambiguous": False,
+        }
+
+    monkeypatch.setattr(
+        clob_order_service_client.ClobOrderServiceClient, "_post", refuse
+    )

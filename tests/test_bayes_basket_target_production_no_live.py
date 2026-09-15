@@ -19,12 +19,15 @@ def _cycle(stage: str = "P1") -> dict:
             "station_id": "ZUUU",
             "event_date": "2026-07-23",
             "content_sha256": "b" * 64,
+            "settlement_timezone": "Asia/Shanghai",
             "lineage": {
                 "canonical_observation_event_id": "obs-1",
                 "canonical_observation_sha256": RAW_SHA,
                 "canonical_observation_committed_at": NOW,
+                "truth_observation_revision_content_sha256": "C" * 64,
+                "settlement_timezone": "Asia/Shanghai",
                 "hard_bound_id": "bound-1",
-                "source_lane": "amsc",
+                "source_lane": "awc",
                 "report_type": "METAR",
                 "hard_excluded_buckets": "37",
             },
@@ -33,18 +36,31 @@ def _cycle(stage: str = "P1") -> dict:
 
 
 def test_p1_lineage_is_the_only_atomic_fact_source() -> None:
+    # The P1 lineage names the truth revision it roots on (PR12) rather than
+    # carrying a METAR-shaped observation fact, and AMSC is a retired lane:
+    # the facts are the revision identity, the bound, and whatever contract
+    # the caller carried (none here), all read off the lineage.
     facts = target_atomic_facts_from_cycle(_cycle())
-    assert facts["observation"] == {
-        "observation_id": "obs-1",
-        "station_id": "ZUUU",
-        "event_date": "2026-07-23",
-        "source_lane": "AMSC",
-        "report_type": "METAR",
-        "raw_sha256": RAW_SHA,
-        "canonical_committed_at": NOW,
+    assert set(facts) == {
+        "awc_observation_contract",
+        "truth_observation_revision_content_sha256",
+        "bound",
     }
+    assert facts["awc_observation_contract"] is None
+    assert facts["truth_observation_revision_content_sha256"] == "c" * 64
     assert facts["bound"]["bound_id"] == "bound-1"
     assert facts["bound"]["bound_json"]["probability_envelope_sha256"] == "b" * 64
+
+
+def test_a_retired_or_mismatched_lane_is_not_an_atomic_fact_source() -> None:
+    retired = _cycle()
+    retired["probability_envelope"]["lineage"]["source_lane"] = "amsc"
+    with pytest.raises(Exception, match="lineage_source_invalid"):
+        target_atomic_facts_from_cycle(retired)
+    borrowed = _cycle()
+    borrowed["probability_envelope"]["lineage"]["report_type"] = "ASOS_1MIN"
+    with pytest.raises(Exception, match="lineage_source_invalid"):
+        target_atomic_facts_from_cycle(borrowed)
 
 
 @pytest.mark.parametrize(

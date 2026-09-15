@@ -287,6 +287,10 @@ def test_preliminary_decision_replay_is_zero_write() -> None:
             ),
             "preselection_plan_sha256": str(value["plan_sha256"]),
             "created_at_utc": "2026-07-23T12:00:02Z",
+            # The writer records why this stage-open did not open and refuses
+            # a preliminary decision that does not say
+            # (``preliminary_decision_stage_open_blocker_missing``).
+            "stage_open_blocker": "p0_stage_open_refused:fixture",
         }
 
         first = commit_preliminary_scope_decision(conn, **kwargs)

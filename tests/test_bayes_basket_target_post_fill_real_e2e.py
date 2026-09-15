@@ -51,6 +51,11 @@ from tests.bayes_basket_target_e2e_fixtures import (
     _policy_inputs,
 )
 from tests.test_bayes_basket_target_production_io import _seed_delta_v2
+from tests.pr12_atomic_test_support import awc_contract, install_canonical_v12
+from bayes_basket_target.metar_trajectory import (
+    P1_SOFT_LR_SUSPENDED_LIKELIHOOD_MODE,
+    SOFT_LIKELIHOOD_POLICY_SUSPENDED,
+)
 from tests.test_bayes_basket_target_resident_market_ingress import (
     _activation,
 )
@@ -190,7 +195,9 @@ def _seed_policy_authority(conn: sqlite3.Connection) -> None:
         conn.execute(
             "INSERT INTO basket_policy_promotion VALUES(?,?,?,?,?,?,?,?)",
             (
-                f"post-fill-promote-{policy.family}",
+                # One promotion per artifact: the shared fixture carries a d0
+                # twin of every family, so a family-keyed id collides.
+                f"post-fill-promote-{policy.artifact_id}",
                 "STATION_POLICY",
                 policy.artifact_id,
                 1,
@@ -200,43 +207,46 @@ def _seed_policy_authority(conn: sqlite3.Connection) -> None:
                 "b" * 64,
             ),
         )
-    activation = activations[0]
-    conn.execute(
-        "INSERT INTO basket_policy_activation "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (
-            activation.activation_id,
-            activation.station_id,
-            activation.stage,
-            activation.season_bin,
-            activation.maturity_bin,
-            activation.liquidity_bin,
-            activation.strategy_version,
-            activation.global_prior_id,
-            activation.target_artifact_id,
-            activation.reserve_artifact_id,
-            activation.cadence_artifact_id,
-            json.dumps(list(activation.fallback_families)),
-            activation.generation,
-            activation.valid_from_utc,
-            activation.valid_until_utc,
-            activation.activated_at_utc,
-            activation.content_sha256,
-        ),
-    )
-    conn.execute(
-        "INSERT INTO basket_policy_promotion VALUES(?,?,?,?,?,?,?,?)",
-        (
-            "post-fill-promote-activation",
-            "STATION_ACTIVATION",
-            activation.activation_id,
-            1,
-            "PROMOTED",
-            "post-fill-gate-v1",
-            "2026-07-22T00:00:00Z",
-            "c" * 64,
-        ),
-    )
+    # Every activation the shared fixture carries, not only the first: the
+    # policy maturity is computed from the decision's own clock (an event-day
+    # decision is d0), so the d0 twin is the one this decision resolves.
+    for activation in activations:
+        conn.execute(
+            "INSERT INTO basket_policy_activation "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                activation.activation_id,
+                activation.station_id,
+                activation.stage,
+                activation.season_bin,
+                activation.maturity_bin,
+                activation.liquidity_bin,
+                activation.strategy_version,
+                activation.global_prior_id,
+                activation.target_artifact_id,
+                activation.reserve_artifact_id,
+                activation.cadence_artifact_id,
+                json.dumps(list(activation.fallback_families)),
+                activation.generation,
+                activation.valid_from_utc,
+                activation.valid_until_utc,
+                activation.activated_at_utc,
+                activation.content_sha256,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO basket_policy_promotion VALUES(?,?,?,?,?,?,?,?)",
+            (
+                f"post-fill-promote-{activation.activation_id}",
+                "STATION_ACTIVATION",
+                activation.activation_id,
+                1,
+                "PROMOTED",
+                "post-fill-gate-v1",
+                "2026-07-22T00:00:00Z",
+                "c" * 64,
+            ),
+        )
 
 
 def _seed_cash_authority(
@@ -398,19 +408,53 @@ def _formal_p0_envelope() -> ProbabilityEnvelope:
     return ProbabilityEnvelope.from_mapping(source)
 
 
+def _awc_observation() -> tuple[dict, str]:
+    return awc_contract(
+        station_id="ZUUU", observation_id="e2e-observation-1",
+        event_date="2026-07-23", settlement_timezone="Asia/Shanghai",
+        observed_at_utc="2026-07-23T04:00:00Z", raw_object_sha256="a" * 64,
+    )
+
+
 def _p1_envelope(
     *,
     root: ProbabilityEnvelope | None = None,
 ) -> ProbabilityEnvelope:
     source = _envelope("P1", "post-fill-p1").to_dict()
+    contract, revision_sha = _awc_observation()
     source["lineage"] = {
         **source["lineage"],
+        # AWC and the PR12 truth revision it roots on.  The shared fixture's
+        # AMSC lane is retired and names no revision, so the atomic commit
+        # refused it as target_atomic_lineage_incomplete.
+        "source_lane": "AWC",
+        "report_type": "METAR",
+        "canonical_observation_event_id": "e2e-observation-1",
+        "truth_observation_revision_content_sha256": revision_sha,
+        "canonical_observation_committed_at": (
+            contract["revision_facts"][0]["canonical_committed_at_utc"]
+        ),
         "settlement_timezone": "Asia/Shanghai",
         "season_bin": "summer",
         "lead_bucket": "d1",
         "run_cycle": "00Z",
         "settlement_definition": "official_daily_tmax_c",
+        # Charter 119: a seatable P1 carries its execution evidence -- the
+        # declared soft-likelihood suspension (2026-09-02), a proof, and the
+        # layer that answered at its outermost composition point.  Without it
+        # every P1 this fixture built was refused p1_strong_likelihood_missing.
+        "observation_likelihood_mode": P1_SOFT_LR_SUSPENDED_LIKELIHOOD_MODE,
+        "metar_trajectory_soft_likelihood_policy": SOFT_LIKELIHOOD_POLICY_SUSPENDED,
+        "metar_trajectory_applied_strength": "0.0",
+        "metar_trajectory_proof_sha256": "d" * 64,
+        "p1_four_layer_serving_json": json.dumps({
+            "schema": "p1_four_layer_serving_receipt_v1",
+            "applied": "true",
+        }),
         **({
+            # A P1 names the stage it roots on; the compile refuses one that
+            # does not (``probability_p1_root_stage_mismatch``).
+            "prediction_root_stage": "P0",
             "p0_root_checkpoint_id": root.checkpoint_id,
             "p0_root_content_sha256": root.content_sha256,
             "peripheral_model_reliability_by_bucket_json": str(
@@ -471,7 +515,9 @@ def _seed_registry_and_activation(
                 "ZUUU",
                 "Asia/Shanghai",
                 "C",
-                "amsc",
+                # AWC: the registry lane the P1 must match, and the lane its
+                # truth revision roots on (AMSC is retired).
+                "awc",
                 1,
                 "",
                 "",
@@ -480,7 +526,10 @@ def _seed_registry_and_activation(
                 f"no-{bucket}",
                 1,
                 1,
-                "{}",
+                # The exchange's lot and tick travel on the registry since
+                # 2026-08-30; a row without them is refused
+                # (``market_registry_order_min_size_missing``).
+                json.dumps({"order_min_size": 5, "order_price_min_tick_size": 0.01}),
                 DECISION,
             )
             for bucket in ("37", "38", "39")
@@ -504,7 +553,10 @@ def _seed_registry_and_activation(
                 "Asia/Shanghai",
                 bucket,
                 f"yes-{bucket}",
-                json.dumps({"lower": int(bucket), "upper": int(bucket)}),
+                json.dumps({
+                    "lower": int(bucket), "upper": int(bucket),
+                    "order_min_size": 5, "order_price_min_tick_size": 0.01,
+                }),
                 1,
                 1,
                 1,
@@ -558,7 +610,38 @@ def test_real_candidate_receipt_projection_recompute_commit_and_replay(
     receipt_type: str,
     fill_fraction: float,
     expected_transition_state: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # The candidate is a P1 opening an empty chain, which charter 74 reserves
+    # for P0.  What this test drives -- receipt, projection, recompute, commit
+    # and replay after a maker fill -- is the path a P1 top-up takes, so the
+    # opening stages are pinned to the research arm that admits P1.
+    from bayes_basket_target import delta_v2_runtime
+
+    monkeypatch.setattr(
+        delta_v2_runtime, "CHAIN_OPENING_STAGES", frozenset({"P0", "P1"})
+    )
+    # The lane is live (the activation in force), so the commit delivers the
+    # intents it prepares.  Until 2026-09-15 that delivery went to the real
+    # gateway transport and stopped only because ZUUU is operator-barred in
+    # the live config, leaving every intent NEVER_REACHED_EXCHANGE and the
+    # receipt below with no intent a fill can land on.  What this test drives
+    # is the bundle before delivery -- a fill on one prepared leg supersedes
+    # its prepared siblings and asks for a recompute -- so delivery is
+    # withheld: the submitter runs without authority and without a transport,
+    # which leaves the intents prepared and reaches no network.
+    import bayes_basket_target.production as _production
+
+    real_submit = _production.submit_prepared_intents
+
+    def _withheld(conn, *, cycle_id, transport, live_submit_authorized, observed_at_utc):
+        del transport, live_submit_authorized
+        return real_submit(
+            conn, cycle_id=cycle_id, transport=_production._no_transport,
+            live_submit_authorized=False, observed_at_utc=observed_at_utc,
+        )
+
+    monkeypatch.setattr(_production, "submit_prepared_intents", _withheld)
     activation_path = _activation(
         tmp_path,
         authority_scope=AUTHORITY_SCOPE,
@@ -613,6 +696,10 @@ def test_real_candidate_receipt_projection_recompute_commit_and_replay(
             },
         )
         market = dict(ssot_candidate["production_market_snapshot"])
+        # Charter 72 frames the stake on the whole book; production puts the
+        # pool's balance on the snapshot.  Framed on the 30 USDC remaining
+        # budget the allowance is 0.60, which buys no lot.
+        market["book_equity_usdc"] = 500.0
         market["cadence_snapshot"] = {
             "observed_at_utc": DECISION,
             "order_state": "FLAT",
@@ -636,12 +723,15 @@ def test_real_candidate_receipt_projection_recompute_commit_and_replay(
             "time_gate_version": "post-fill-time-1",
         }
         prior, policies, activations = _policy_inputs()
+        # d0: the decision is on the event day, which is the maturity the
+        # compile derives from its own clock and the one the delta-v2 policy
+        # and its fill distribution are seeded under.
         delta_v2_artifact = resolve_delta_v2_policy(
             conn,
             station_id="ZUUU",
             stage="P1",
             season_bin="summer",
-            maturity_bin="d1",
+            maturity_bin="d0",
             liquidity_bin="liquid",
             strategy_version="target-v1",
             evaluation_at_utc="2026-07-23T04:30:01Z",
@@ -659,7 +749,7 @@ def test_real_candidate_receipt_projection_recompute_commit_and_replay(
                 station_id="ZUUU",
                 stage="P1",
                 season_bin="summer",
-                maturity_bin="d1",
+                maturity_bin="d0",
                 liquidity_bin="liquid",
                 bucket=str(kwargs["bucket"]),
                 price=float(kwargs["limit_price"]),
@@ -729,9 +819,17 @@ def test_real_candidate_receipt_projection_recompute_commit_and_replay(
             if key != "production_cycle_sha256"
         })
         assert initial_candidate["cadence_allows_candidate"] is True
+        # The revision the P1 roots on travels with the candidate, as the
+        # multileg e2e carries it; the store holds the PR12 schema it lands in.
+        install_canonical_v12(conn)
+        initial_candidate["awc_observation_contract"] = _awc_observation()[0]
         worker = object.__new__(TargetProductionWorker)
         worker.conn = conn
         worker.commit_conn = conn
+        # The recompute reads charter 125's running high through the
+        # canonical observation connection; this fixture has none, which the
+        # reader answers as "no observed high" rather than an attribute error.
+        worker.canonical_source_conn = None
         committed = worker._commit_candidate(
             initial_candidate,
             station_id="ZUUU",
