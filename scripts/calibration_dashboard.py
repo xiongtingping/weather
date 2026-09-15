@@ -1171,6 +1171,12 @@ def collect_band_stages(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     # Read through the one helper, so the knob panel and the audit panel
     # below it cannot end up on different axes for the same stage.
     axis_by_stage = _band_axis_by_stage(conn)
+    band_columns = {
+        str(col[1])
+        for col in conn.execute(
+            "PRAGMA table_info(calibration_band_reliability_table)"
+        )
+    }
     stages = []
     for stage in BAND_STAGES:
         row = conn.execute(
@@ -1191,14 +1197,38 @@ def collect_band_stages(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 (stage,),
             ).fetchall()
         if row is None:
+            # No active row is also what a veto leaves behind until the next
+            # refit activates identity (``retire_band_table``), and in that
+            # window production serves identity -- unpinned readers find no
+            # table, pinned ones read the retired stamp.  "未建表" said the
+            # lane had never run.
+            retired = conn.execute(
+                "SELECT retired_at_utc, axis"
+                " FROM calibration_band_reliability_table"
+                " WHERE stage=? AND retired_at_utc IS NOT NULL"
+                " ORDER BY retired_at_utc DESC LIMIT 1",
+                (stage,),
+            ).fetchone() if {"retired_at_utc", "axis"} <= band_columns else None
             stages.append({
                 "stage": stage,
                 "meaning": STAGE_MEANING.get(stage, ""),
-                "state": "未建表",
+                "state": (
+                    f"现役 {str(retired[0])[:10]} 被否决退役 · 按恒等服务"
+                    if retired else "未建表"
+                ),
                 "health": "amber",
-                "axis": "claim",
+                "axis": str(retired[1]) if retired else "claim",
                 "bands": [],
-                "journal": [],
+                "journal": [
+                    {
+                        "at": j[0],
+                        "outcome": j[1],
+                        "days": j[2],
+                        "cells": j[3],
+                        "sha": str(j[4])[:12],
+                    }
+                    for j in journal_rows
+                ],
             })
             continue
         factors = json.loads(row[1])
@@ -1222,12 +1252,67 @@ def collect_band_stages(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 evidence = json.loads(latest[6])
             except (ValueError, TypeError):
                 pass
+        accumulating = bool(evidence.get("accumulating"))
         reports = evidence.get("serving_report") or {}
         basis = evidence.get("basis") or {}
+        # While accumulating the fit HOLDS the incumbent's factors
+        # (``fit_band_reliability_table``) and journals an empty report, so
+        # the newest journal row says nothing about why those factors are
+        # being served.  The fit that set them does: the newest measured
+        # journal row for this exact table, else the table row's own
+        # evidence.  Measured 2026-09-15: P0's three and P1's five live
+        # factors printed "证据充分，已生效" with a blank ratio column, under
+        # a pill reading "攒证据 2/10 天" and a bar promising correction would
+        # start at ten days -- while 703 of 720 P0 and all 2,132 P1 decision
+        # rows that day were applying them.
+        held_from = None
+        held_reports: dict[str, Any] = {}
+        held_basis: dict[str, Any] = {}
+        if accumulating:
+            held_row = None
+            if _table_exists(conn, "calibration_band_reliability_fit_journal"):
+                held_row = conn.execute(
+                    "SELECT fitted_at_utc, serving_day_count,"
+                    " serving_station_day_count, evidence_json"
+                    " FROM calibration_band_reliability_fit_journal"
+                    " WHERE stage=? AND band_table_sha256=?"
+                    " AND outcome IN ('ACTIVATED','UNCHANGED')"
+                    " ORDER BY fitted_at_utc DESC LIMIT 1",
+                    (stage, str(row[0])),
+                ).fetchone()
+            candidates = []
+            if held_row is not None:
+                candidates.append((
+                    held_row[0], held_row[1], held_row[2], held_row[3]
+                ))
+            candidates.append((row[3], row[4], None, row[2]))
+            for held_at, held_days, held_station_days, raw in candidates:
+                try:
+                    held_evidence = json.loads(raw)
+                except (ValueError, TypeError):
+                    continue
+                if held_evidence.get("accumulating") or not (
+                    held_evidence.get("serving_report")
+                ):
+                    continue
+                held_reports = held_evidence.get("serving_report") or {}
+                held_basis = held_evidence.get("basis") or {}
+                held_from = {
+                    "fitted_at_utc": held_at,
+                    "days": int(held_days or 0),
+                    "station_days": int(
+                        held_station_days
+                        if held_station_days is not None
+                        else held_evidence.get("serving_station_day_count")
+                        or 0
+                    ),
+                }
+                break
         bands = []
         for cell, factor in factors:
             key = str([float(cell[0]), float(cell[1])])
-            detail = reports.get(key) or {}
+            held = bool(held_from) and key not in reports
+            detail = (held_reports if held else reports).get(key) or {}
             reason = str(basis.get(key) or "")
             bands.append({
                 "lower": cell[0],
@@ -1238,11 +1323,15 @@ def collect_band_stages(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 "qualified": bool(detail.get("qualified")),
                 "basis": reason,
                 "blocked_by": detail.get("blocked_by"),
+                # Why the held fit gave this cell its factor, when the ratio
+                # and reason above come from it rather than from today's fit.
+                "held_basis": str(held_basis.get(key) or "") if held else "",
             })
-        accumulating = bool(evidence.get("accumulating"))
         active_cells = sum(1 for _c, f in factors if float(f) != 1.0)
         if accumulating:
-            state = f"攒证据 {days}/{MIN_QUALIFYING_DAYS} 天"
+            state = f"攒证据 {days}/{MIN_QUALIFYING_DAYS} 天" + (
+                f" · 沿用 {active_cells} 档" if active_cells else ""
+            )
             health = "amber"
         elif active_cells:
             state = f"{active_cells} 档生效"
@@ -1262,6 +1351,11 @@ def collect_band_stages(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             "min_days": MIN_QUALIFYING_DAYS,
             "station_days": station_days,
             "accumulating": accumulating,
+            "active_cells": active_cells,
+            "held_from": held_from,
+            "served_versions": _band_served_versions(
+                conn, stage=stage, active_sha=str(row[0])
+            ),
             "axis": axis,
             "bands": bands,
             "journal": [
@@ -1276,6 +1370,78 @@ def collect_band_stages(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             ],
         })
     return stages
+
+
+def _band_served_versions(
+    conn: sqlite3.Connection,
+    *,
+    stage: str,
+    active_sha: str,
+    hours: int = 24,
+) -> dict[str, Any] | None:
+    """Which band table the stage's recent decision rows actually applied.
+
+    The card names the ACTIVE table, and for P0-M and P1 that is the table
+    every pass loads.  P0 is different: each artifact pins the table its
+    holdout was scored under (charter 60), so decisions served from an older
+    artifact keep applying an older table.  Measured 2026-09-15 over one UTC
+    morning: 703 of 720 P0 rows on the active table, 17 on three older pins,
+    14 of them claim-axis tables -- a lag the card could not show.  Read off
+    the receipts the serving path writes, never re-derived.
+    """
+
+    since = (
+        _now() - timedelta(hours=hours)
+    ).isoformat().replace("+00:00", "Z")
+    try:
+        rows = conn.execute(
+            "SELECT json_extract(e.lineage_json,'$.band_reliability_json')"
+            " FROM basket_probability_bridge_history h"
+            " JOIN basket_probability_envelope e"
+            "   ON e.envelope_id = h.checkpoint_id"
+            " WHERE h.stage=? AND h.decision_at_utc>=?",
+            (stage, since),
+        ).fetchall()
+        axis_by_sha = {
+            str(sha): str(axis or "claim")
+            for sha, axis in conn.execute(
+                "SELECT band_table_sha256, axis"
+                " FROM calibration_band_reliability_table"
+            )
+        }
+    except sqlite3.Error:
+        return None
+    if not rows:
+        return None
+    active = 0
+    unreceipted = 0
+    others: Counter = Counter()
+    for (raw,) in rows:
+        try:
+            receipt = json.loads(raw) if raw else {}
+        except (TypeError, ValueError):
+            receipt = {}
+        sha = str(receipt.get("band_table_sha256") or "")
+        if not sha:
+            # An artifact minted before its method carried the band tag
+            # serves no table at all, which is not the active one either.
+            unreceipted += 1
+        elif sha == active_sha:
+            # In any receipt state: "no band-eligible bucket" under the
+            # active table is still the active table.
+            active += 1
+        else:
+            others[sha] += 1
+    return {
+        "hours": hours,
+        "rows": len(rows),
+        "active_rows": active,
+        "unreceipted_rows": unreceipted,
+        "others": [
+            {"sha": sha[:12], "axis": axis_by_sha.get(sha, "?"), "rows": n}
+            for sha, n in others.most_common()
+        ],
+    }
 
 
 def _band_chain_link(conn: sqlite3.Connection) -> tuple[str | None, str]:
@@ -3253,10 +3419,11 @@ def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
 
     Same lane, same clock, same window as the knob table above it: the
     band store's own ``serving_lane_by_day`` -- each station-day's FIRST
-    decision (the 2026-08-24 fit-clock ruling), full history, per stage --
-    with exactly one difference, stated by the flag: the claims are kept
-    as served, factors included, where the fit inverts them back to
-    pre-band.  So the two tables are the same population read on either
+    decision (the 2026-08-24 fit-clock ruling) since the stage's served-
+    arithmetic anchor, the fit's own evidence floor, per stage -- with
+    exactly one difference, stated by the flag: the claims are kept as
+    served, factors included, where the fit inverts them back to pre-band.
+    The per-station court is the exception and reads the whole history.  So the two tables are the same population read on either
     side of the correction: the knob row says what the raw claim realised
     and what factor that earned; this row says what remains after the
     factor.  An earlier version of this audit read the training lane's
@@ -3272,7 +3439,10 @@ def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
         cells_for_axis,
         serving_lane_by_station_day,
     )
-    from bayes_basket_target.center_width_store import _truth
+    from bayes_basket_target.center_width_store import (
+        _truth,
+        served_arithmetic_anchor,
+    )
 
     truth = _truth(conn)
     axis_by_stage = _band_axis_by_stage(conn)
@@ -3294,6 +3464,34 @@ def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
             "\u226550%" if low >= 0.5 else f"{low * 100:g}-{high * 100:g}%"
             for low, high in cells
         ]
+
+    def moved_station_days(scored_lane, served_lane):
+        """Each station-day a band factor actually moved, both readings."""
+
+        for (station, event), day_rows in served_lane.items():
+            scored_rows = scored_lane.get((station, event)) or []
+            # A residual "after the correction" may only count rows the
+            # correction reached.  Two thirds of P0's window predate the band
+            # receipt entirely (the earliest 14 days are 100% uncorrected,
+            # the most recent 14 are 100% corrected), and P0-M still skips a
+            # sixth of its station-days because the support set holds no
+            # band-eligible bucket.  Pooling those in damps every reading
+            # toward zero: P1's peak showed +3.6 points mixed and +4.4 on the
+            # days the layer actually ran (measured 2026-09-09).
+            #
+            # The test is the two lanes themselves, not a re-read of the
+            # receipt: ``serving_lane_by_station_day`` inverts if and only if
+            # a receipt said APPLIED, so a station-day whose served vector
+            # equals its pre-band vector is one no factor moved.  Checked
+            # against the receipts on 3,729 station-days: 3,728 agree, and
+            # the one that does not is an APPLIED table that was identity on
+            # that support set -- a row with nothing to audit either way.
+            moved = any(
+                abs(before[0] - after[0]) > 1e-12
+                for scored_row, served_row in zip(scored_rows, day_rows)
+                for before, after in zip(scored_row, served_row)
+            )
+            yield station, event, day_rows, scored_rows, moved
 
     stages_out = []
     # Per station, pooled across the three stages: claimed centre+-1 mass
@@ -3321,36 +3519,59 @@ def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
             served_lane = serving_lane_by_station_day(
                 conn, truth, stage=stage, pre_band=False,
             )
+            # The stage rows are read against the knob card above, so they
+            # read the fit's own window: the served-arithmetic anchor the
+            # fit and its incumbent veto have both been bounded by since
+            # 2026-09-10.  Unbounded they pooled every table the stage had
+            # ever served into today's rungs -- measured 2026-09-15, 1,025 of
+            # P0's 1,225 audited station-days were corrected by claim-axis
+            # tables and only 108 by the table on the card; all 651 of
+            # P0-M's were claim-axis, under a card whose table is identity.
+            # The station court below keeps the whole history: it is a
+            # per-station claim-honesty reading the go-live gate consumes,
+            # and a window that restarts at every arithmetic change would
+            # leave it a handful of station-days per station.
+            anchor = served_arithmetic_anchor(conn, stage=stage)
+            if anchor:
+                scored_since = serving_lane_by_station_day(
+                    conn, truth, stage=stage, pre_band=True,
+                    min_decision_at_utc=anchor,
+                )
+                served_since = serving_lane_by_station_day(
+                    conn, truth, stage=stage, pre_band=False,
+                    min_decision_at_utc=anchor,
+                )
+            else:
+                scored_since, served_since = scored_lane, served_lane
         except Exception:  # noqa: BLE001 -- an audit must not blank the page
             continue
+        for station, _event, day_rows, _scored, moved in moved_station_days(
+            scored_lane, served_lane
+        ):
+            if not moved:
+                continue
+            for entries in day_rows:
+                if entries:
+                    distances = _record_keys(
+                        [(claim, hit) for claim, hit, _low in entries],
+                        BAND_AXIS_CENTRE_DISTANCE,
+                    )
+                    centre = distances.index(0.0)
+                    window = entries[max(0, centre - 1):centre + 2]
+                    slot = station_cells.setdefault(station, [0, 0.0, 0])
+                    slot[0] += 1
+                    slot[1] += sum(claim for claim, _hit, _low in window)
+                    slot[2] += 1 if any(
+                        hit for _claim, hit, _low in window
+                    ) else 0
         cells = {index: [0, 0.0, 0] for index in range(len(partition))}
         days = set()
         seen_station_days = 0
         corrected_station_days = 0
-        for (station, event), day_rows in served_lane.items():
-            scored_rows = scored_lane.get((station, event)) or []
-            # A residual "after the correction" may only count rows the
-            # correction reached.  Two thirds of P0's window predate the band
-            # receipt entirely (the earliest 14 days are 100% uncorrected,
-            # the most recent 14 are 100% corrected), and P0-M still skips a
-            # sixth of its station-days because the support set holds no
-            # band-eligible bucket.  Pooling those in damps every reading
-            # toward zero: P1's peak showed +3.6 points mixed and +4.4 on the
-            # days the layer actually ran (measured 2026-09-09).
-            #
-            # The test is the two lanes themselves, not a re-read of the
-            # receipt: ``serving_lane_by_station_day`` inverts if and only if
-            # a receipt said APPLIED, so a station-day whose served vector
-            # equals its pre-band vector is one no factor moved.  Checked
-            # against the receipts on 3,729 station-days: 3,728 agree, and
-            # the one that does not is an APPLIED table that was identity on
-            # that support set -- a row with nothing to audit either way.
+        for _station, event, day_rows, scored_rows, moved in (
+            moved_station_days(scored_since, served_since)
+        ):
             seen_station_days += 1
-            moved = any(
-                abs(before[0] - after[0]) > 1e-12
-                for scored_row, served_row in zip(scored_rows, day_rows)
-                for before, after in zip(scored_row, served_row)
-            )
             if not moved:
                 continue
             corrected_station_days += 1
@@ -3379,19 +3600,6 @@ def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
                             slot[1] += float(claim)
                             slot[2] += int(hit)
                             break
-                if entries:
-                    distances = _record_keys(
-                        [(claim, hit) for claim, hit, _low in entries],
-                        BAND_AXIS_CENTRE_DISTANCE,
-                    )
-                    centre = distances.index(0.0)
-                    window = entries[max(0, centre - 1):centre + 2]
-                    slot = station_cells.setdefault(station, [0, 0.0, 0])
-                    slot[0] += 1
-                    slot[1] += sum(claim for claim, _hit, _low in window)
-                    slot[2] += 1 if any(
-                        hit for _claim, hit, _low in window
-                    ) else 0
         rows = []
         for index, label in enumerate(labels):
             n, promised, hits = cells[index]
@@ -3405,7 +3613,7 @@ def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
             })
         stages_out.append({
             "stage": stage,
-            "since": None,
+            "since": anchor,
             "axis": axis,
             "day_count": len(days),
             "station_days": corrected_station_days,
@@ -3535,6 +3743,10 @@ def collect_band_shadow(conn: sqlite3.Connection) -> dict[str, Any]:
         stages.append({
             "stage": stage,
             "meaning": STAGE_MEANING.get(stage, ""),
+            # The shadow follows the pooled table's axis (2026-09-09), so a
+            # promoted key's band is a distance rung on P0 and P1: printed
+            # as a probability it read "100–100%" and "400–100%".
+            "axis": str(evidence.get("axis") or "claim"),
             "fitted_at": latest[0],
             "fit_age_hours": _age_hours(latest[0]),
             "sha": str(latest[1])[:12],
@@ -6592,13 +6804,21 @@ def collect_gaps(
     for stage in stages:
         if not stage.get("accumulating"):
             continue
+        held = int(stage.get("active_cells") or 0)
         gaps.append({
             "severity": "low",
             "what": (
                 f"{stage['stage']} 阶段校准仍在攒证据"
                 f"（{stage['serving_days']}/{stage['min_days']} 天）"
             ),
-            "cost": "该阶段暂时不做分档修正，按原样服务，不影响正确性",
+            # Accumulating holds the incumbent rather than blanking it, so a
+            # stage with live factors keeps applying them the whole time.
+            "cost": (
+                f"攒满前沿用上一版的 {held} 档修正系数，照常生效；"
+                "攒满后自动重拟（保留、改值或撤回）"
+                if held else
+                "该阶段暂时不做分档修正，按原样服务，不影响正确性"
+            ),
             "self_heals": True,
         })
     if tables.get("weight_lag_scopes"):
@@ -11461,6 +11681,18 @@ function stages(){
     // about a table production was applying correctly.
     const axis = s.axis || "claim";
     const distance = axis === "centre_distance";
+    // Accumulating HOLDS the incumbent, it does not blank it: the factors
+    // on a held card are live on every decision, and the ratio beside each
+    // one is the fit that set it, not today's (which has no report yet).
+    const held = s.held_from || null;
+    const heldAt = held ? h(held.fitted_at_utc).slice(5, 16).replace("T", " ") : "";
+    const reasonFor = (basis, blocked) =>
+      blocked === "interval_spans_one" || basis.includes("interval_spans_one")
+        ? "统计上分不清是真偏还是巧合" :
+      blocked === "sign_flips_between_halves" || basis.includes("sign_flips")
+        ? "前后半段偏的方向相反，不稳定" :
+      basis.includes("forward") ? "试算后反而变差，不采用" :
+      basis.includes("no_sample") ? "这一档没有样本" : "证据未够格";
     const cell = (b, rowLabel, cellNote) => {
       const f = b.factor;
       const cls = f > 1.001 ? "up" : (f < 0.999 ? "down" : "flat");
@@ -11468,9 +11700,16 @@ function stages(){
       const measured = b.measured_ratio == null ? "—" :
         b.measured_ratio.toFixed(2) + "×";
       const basis = b.basis || "";
-      const why = Math.abs(f - 1) > 1e-9
+      const heldBasis = b.held_basis || "";
+      const why = held && basis.includes("accumulating")
+        ? (Math.abs(f - 1) > 1e-9
+            ? `沿用 ${heldAt} 那版，照常生效；新证据攒满再重拟`
+            : `沿用 ${heldAt} 那版：此档不修（${reasonFor(heldBasis, b.blocked_by)}）`)
+        : Math.abs(f - 1) > 1e-9
         ? (basis === "gate_transfer"
             ? "本阶段样本还不够，但另一套证据独立测出同方向，已生效"
+            : basis.includes("accumulating")
+            ? "沿用上一版，照常生效；新证据攒满再重拟"
             : "证据充分，已生效")
         : (b.blocked_by === "interval_spans_one" ? "统计上还分不清是真偏还是巧合" :
            b.blocked_by === "sign_flips_between_halves" ? "前后半段偏的方向相反，不稳定" :
@@ -11515,12 +11754,29 @@ function stages(){
       }).join("");
     };
     const bands = distance ? distanceRows() : claimRows();
+    // Every outcome the journal's CHECK admits, by name: the two added with
+    // the veto and the write-lock race used to fall through to "攒证据中".
+    const OUTCOME = {ACTIVATED:"换新版本", UNCHANGED:"与上次相同",
+      ACCUMULATING:"攒证据中", INCUMBENT_VETOED:"现役被否决·退役",
+      FIT_NOT_ACTIVATED:"拟合成、未激活"};
     const journal = (s.journal || []).slice(0, 5).map(j =>
       `<tr><td class="mono">${h(j.at).slice(0,16).replace("T"," ")}</td>
-       <td>${j.outcome === "ACTIVATED" ? "换新版本" :
-            j.outcome === "UNCHANGED" ? "与上次相同" : "攒证据中"}</td>
+       <td>${h(OUTCOME[j.outcome] || j.outcome)}</td>
        <td>${j.days} 天</td><td>${j.cells} 档生效</td>
        <td class="mono muted">${h(j.sha)}</td></tr>`).join("");
+    // What the stage's recent decision rows applied.  Printed only when it
+    // is not simply the table named above: P0 pins a table per artifact, so
+    // an older artifact keeps serving an older table.
+    const sv = s.served_versions || null;
+    const svOthers = sv ? (sv.others || []) : [];
+    const served = sv && (svOthers.length || sv.unreceipted_rows)
+      ? `<div class="muted" style="margin-top:4px">近 ${sv.hours}h 决策行
+        ${sv.active_rows}/${sv.rows} 用这一版${svOthers.length
+          ? `；${svOthers.reduce((n, o) => n + o.rows, 0)} 行仍用旧 artifact 钉住的版本（${
+            svOthers.slice(0, 3).map(o => `<span class="mono">${h(o.sha)}</span> ${
+              o.axis === "centre_distance" ? "离峰距离" : "声称概率"}轴 ${o.rows} 行`)
+            .join("、")}${svOthers.length > 3 ? ` 等 ${svOthers.length} 版` : ""}）` : ""}${sv.unreceipted_rows
+          ? `；${sv.unreceipted_rows} 行无 band 回执` : ""}</div>` : "";
     return `<div class="card">
       <div style="display:flex;align-items:center;gap:8px">
         <span class="dot ${s.health}"></span><b>${h(s.stage)}</b>
@@ -11533,9 +11789,15 @@ function stages(){
         证据：${s.serving_days} 天 / ${s.station_days || 0} 个站日 ·
         当前版本 <span class="mono">${h(s.table_sha)}</span> ·
         上次拟合 ${hours(s.fit_age_hours)}</div>
+      ${held ? `<div class="muted" style="margin-top:4px">系数与「实际兑现」沿用
+        ${heldAt} 那次拟合（${held.days} 天 / ${held.station_days} 个站日）；
+        上面的天数是服务算术换代后重新攒的</div>` : ""}
+      ${served}
       ${s.accumulating ? `<div class="bar"><i style="width:${pct}%"></i></div>
-        <div class="muted" style="margin-top:5px">攒够 ${s.min_days} 天就会
-        自动开始尝试修正，不需要改代码</div>` : ""}
+        <div class="muted" style="margin-top:5px">${s.active_cells
+          ? `攒够 ${s.min_days} 天自动重拟：这 ${s.active_cells} 档保留、改值或撤回；
+            在那之前照常生效。不需要改代码`
+          : `攒够 ${s.min_days} 天就会自动开始尝试修正，不需要改代码`}</div>` : ""}
       <table style="margin-top:12px"><thead><tr>
         <th>${distance ? "桶离峰距离" : "概率档"}</th>
         <th>实际兑现</th><th>修正系数</th><th>为什么</th>
@@ -11562,7 +11824,9 @@ function stages(){
   <div class="why" style="margin-top:8px"><b>怎么看这张表：</b>「实际兑现」是实测兑现率除以声称概率——
   1.00× 表示说得准，0.69× 表示说大话（只兑现了 69%），1.23× 表示说小话。
   「修正系数」是实际乘上去的那个数，只有证据足够扎实的档才会不等于 1.000，
-  而且取的是保守值——宁可少改，不可改过头。</div>
+  而且取的是保守值——宁可少改，不可改过头。
+  服务算术一换代，证据要从锚点重新攒；<b>攒满 10 天之前沿用上一版的系数、照常生效</b>，
+  卡片会写明沿用自哪次拟合，「实际兑现」也是那次拟合的读数。</div>
   <div class="why" style="margin-top:8px"><b>这一节是一条闭环，分三步：</b><br>
   ① <b>记账</b>——三张卡各自记录本阶段"凡是说过 X% 的地方，后来兑现了多少"；<br>
   ② <b>拧旋钮</b>——证据过门的档拟出修正系数，乘进下一次服务的概率。
@@ -11626,13 +11890,21 @@ function bandShadow(){
           ${L.eligible} → <span class="factor ${cls}">${L.promoted}</span></td>
         <td class="muted">${blocked || "—"}</td></tr>`;
     }).join("");
+    // The shadow is keyed on the pooled table's axis: a distance rung
+    // printed as a probability read "100–100%" (charter 105's bug, second
+    // renderer).
+    const shadowDistance = s.axis === "centre_distance";
+    const rung = band => {
+      const lo = Math.round(band[0]);
+      return lo === 0 ? "峰值桶" : (band[1] >= 90 ? `离峰 ≥${lo} 格` : `离峰 ${lo} 格`);
+    };
     const promoted = (s.promoted||[]).map(p => {
       const cls = p.factor > 1.001 ? "up" : (p.factor < 0.999 ? "down" : "flat");
       const arrow = p.factor > 1.001 ? "调高" : (p.factor < 0.999 ? "调低" : "不动");
       return `<tr>
         <td>${h(p.group_label)}${p.station ? " · " + h(p.station) : ""}</td>
-        <td class="mono">${(p.band[0]*100).toFixed(0)}–${
-          Math.min(100, p.band[1]*100).toFixed(0)}%</td>
+        <td class="mono">${shadowDistance ? rung(p.band) : `${(p.band[0]*100).toFixed(0)}–${
+          Math.min(100, p.band[1]*100).toFixed(0)}%`}</td>
         <td class="factor ${cls}">${p.factor.toFixed(3)}
           <span class="muted">${arrow}</span></td></tr>`;
     }).join("");
@@ -11676,7 +11948,7 @@ function bandShadow(){
       ${promoted ? `<div class="muted" style="margin-top:10px">够格的格子
         （前向窗 ${s.forward_nll_gain >= 0 ? "+" : ""}${
         s.forward_nll_gain.toFixed(2)} NLL）：</div>
-      <table><thead><tr><th>位置</th><th>概率档</th><th>系数</th>
+      <table><thead><tr><th>位置</th><th>${shadowDistance ? "离峰距离" : "概率档"}</th><th>系数</th>
       </tr></thead><tbody>${promoted}</tbody></table>` :
       `<div class="muted" style="margin-top:10px">本次没有任何格子够格，
         全部回退池权重。</div>`}
@@ -11693,7 +11965,8 @@ function bandShadow(){
   }).join("");
   return `<h3 style="margin-top:30px">影子 band 表：拆细了值不值得</h3>
   <p class="sub">上面那张表是<b>全舰队共用</b>的——四十五个站、一天里所有温度桶，
-  只要报的数字落在同一档，就吃同一个折扣。这一节在问：拆开来会不会更准？</p>
+  只要落在同一档（按该 stage 那根轴：离峰距离或声称概率），就吃同一个系数。
+  这一节在问：拆开来会不会更准？</p>
   <div class="why"><b>拆成两维试：</b>一维是<b>站</b>（成都和纽约分开记账），
   一维是<b>桶位置</b>（离当天最高点最近的那个桶，和远在偏冷／偏暖一侧的桶，分开记账）。
   拆完之后每一格都要自己重新过三道门；<b>过不了的格子，退回去用全舰队那个折扣</b>
@@ -11720,11 +11993,14 @@ function bandShadow(){
 // Lives beside the knob it audits; reads the scorecard payload so the two
 // sections cannot drift apart on data.
 function reliabilityAudit(){
-  // Same lane, same stages, same evidence anchors, same 5% cells as the
+  // Same lane, same stages, same evidence anchors, same cells as the
   // knob table above -- the audit that lived here before read the training
   // lane's OOS holdout and disagreed with the knobs on the page for
   // population reasons, not calibration ones.
   const A = D.band_residual_audit || {};
+  const sinceLabel = s => s.since
+    ? `自 ${h(s.since).slice(5,16).replace("T"," ")}Z 起（服务算术锚，与上表拟合同一证据起点）`
+    : "全历史";
   const stageBlocks = (A.stages||[]).map(s => {
     const rows = (s.rows||[])
       .filter(b => b.n >= 30)
@@ -11742,12 +12018,18 @@ function reliabilityAudit(){
             ${gap>0?"+":""}${(gap*100).toFixed(1)} 点</td>
         </tr>`;
       }).join("");
-    if(!rows) return "";
     const distance = s.axis === "centre_distance";
     const skipped = s.skipped_station_days || 0;
+    // An empty stage says why rather than vanishing: right after the
+    // arithmetic anchor moves every stage is thin, and an identity table
+    // moves nothing at all.
+    if(!rows) return `<div class="muted" style="margin-top:10px"><b>${h(s.stage)}</b> ·
+      ${sinceLabel(s)} · ${(s.station_days || 0)
+        ? `${s.station_days} 个站日被 band 改动过，但每档样本都不足 30，暂无可读残差`
+        : `band 没有改动过任何站日（表为恒等或支持集里无可修的桶），没有残差可查`}</div>`;
     return `<div style="margin-top:10px">
-      <div class="muted"><b>${h(s.stage)}</b> · ${s.day_count} 天 ·
-        ${s.station_days || 0} 个站日 · 每站日首个决策 · 与上表同窗同轴（${
+      <div class="muted"><b>${h(s.stage)}</b> · ${sinceLabel(s)} · ${s.day_count} 天 ·
+        ${s.station_days || 0} 个站日 · 每站日首个决策 · 与上表同轴（${
           distance ? "按离峰距离分档" : "按声称概率分档"}）${
         skipped ? ` · <span title="band 层没碰过的站日：早于该层上线，或支持集里没有可修的桶。它们不是「修完还剩多少」的证据。">另有 ${
           skipped} 个站日 band 未生效，不计入</span>` : ""}</div>
@@ -11756,7 +12038,6 @@ function reliabilityAudit(){
         <th>样本</th><th>平均声称</th><th>实际发生</th><th>差</th>
       </tr></thead><tbody>${rows}</tbody></table></div>`;
   }).join("");
-  if(!stageBlocks) return "";
   const stationRows=(A.stations||[]).map(r=>`<tr>
       <td class="mono">${h(r.station)}${r.station_label
         ?` <span class="muted">${h(r.station_label)}</span>`:""}</td>
@@ -11767,7 +12048,9 @@ function reliabilityAudit(){
         r.significant?' <b title="按 2σ 显著偏离 1">✱</b>':""}</td>
     </tr>`).join("");
   const stationBlock=!stationRows?"":`<div style="margin-top:14px">
-    <div class="muted"><b>每站 实现/声称（中心±1，三 stage 合并）</b> ·
+    <div class="muted"><b>每站 实现/声称（中心±1，三 stage 合并，全历史）</b> ·
+    与上面各档不同，这张表<b>不随服务算术锚重置</b>（按锚点切，每站只剩几个站日），
+    上线就绪页的「声称诚实」门读的就是这一列 ·
     band 是全舰队池化的，这张表是「band 要不要分站」的法庭：
     带 ✱ 的站在池化修正之后仍按 2σ 显著偏离 1——
     比值持续 &lt;1 是该站上游（偏差/权重层）没修干净的证据，
@@ -11776,13 +12059,18 @@ function reliabilityAudit(){
     <table><thead><tr>
       <th>站</th><th>站日</th><th>声称(中心±1)</th><th>实现</th><th>实现/声称</th>
     </tr></thead><tbody>${stationRows}</tbody></table></div></div>`;
+  if(!stageBlocks && !stationBlock) return "";
   return `<div class="card" style="margin-top:12px">
   <div class="muted"><b>③ 体检：说了多少 vs 真发生了多少</b>（band 店同一车道 ·
-  每站日首个决策 · 同窗同 stage · <b>每张表按该 stage 自己那根轴分档</b>，
-  和上表逐行对齐 · 唯一差别：上表读系数前的原始声称，本表读系数后的实际服务值 ·
+  每站日首个决策 · 同 stage · <b>与上表拟合同一证据起点（服务算术锚）</b> ·
+  <b>每张表按该 stage 自己那根轴分档</b>，和上表逐行对齐 ·
+  唯一差别：上表读系数前的原始声称，本表读系数后的实际服务值 ·
   <b>只计 band 真的动过的站日</b>——没动过的行不是"修完还剩多少"的证据，
   混进来只会把每一格都往零拉（P1 峰值桶混着读 +3.6 点，只算生效日是 +4.4）·
-  只诊断，无下游消费）</div>
+  各档只诊断、不回写）。
+  <b>为什么按锚点切</b>：不切时 P0 体检的 1,225 个站日里 1,025 个是按「声称概率」轴的
+  旧表修的、只有 108 个是上表这一版修的，P0-M 的 651 个全是旧轴旧表——
+  把旧表修剩的残差填进新轴的格子，读不出上表任何一档压没压够（2026-09-15 实测）。</div>
   ${stageBlocks}
   <div class="muted" style="margin-top:6px">
     「差」为正＝实际比声称更常发生（修完还保守）；为负＝修完仍吹头。
