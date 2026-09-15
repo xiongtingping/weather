@@ -8,10 +8,10 @@ instead of one 0-5%; the user withdrew that cut on 2026-09-11 and the grid
 is now a plain five-percent ruler, the same shape charter 60 fits the band
 table on.
 
-Pinned here because the grid is a module-level constant three different
-renderings read -- both margins and both axes of the cross-tab -- so a cut
-put back in one place and not the others would leave the page comparing a
-row against a column that were measured differently.
+Pinned here because the grid is a module-level constant both band tables
+read -- by price and by claim -- so a cut put back in one place and not the
+other would leave the page comparing two rulers that were measured
+differently.
 """
 
 from __future__ import annotations
@@ -55,16 +55,26 @@ def test_the_top_cell_is_open_above_a_half() -> None:
     assert (low, high) == (0.50, 1.01)
 
 
-def test_the_cross_tab_reads_the_same_ruler_as_the_margins() -> None:
-    """Rows, columns and both margins have to be the same cells.
+def test_the_disagreement_groups_cover_every_gap_exactly_once() -> None:
+    """The cross-tab was replaced on 2026-09-15 by one "who was right" table.
 
-    The cross-tab's whole claim is a comparison between the two axes --
-    below the diagonal the model is the optimist, above it the market is --
-    and that reading is only true while a row and a column with the same
-    label mean the same interval.
+    Its groups are cut on claim minus price.  A gap that fell between two
+    groups would vanish from the table, and one that fell in two would be
+    counted twice -- either way the verdict would stop describing the
+    buckets it says it describes.
     """
 
-    assert C.TRUTH_LANDING_COARSE == C.TRUTH_LANDING_PRICE_BANDS
+    groups = C.TRUTH_LANDING_GAP_GROUPS
+    assert groups[0][2] is not None and groups[0][3] is None
+    assert groups[-1][2] is None and groups[-1][3] is not None
+    for (_, _, low, _), (_, _, _, high) in zip(groups, groups[1:]):
+        assert low == high, "adjacent groups must share their edge"
+    for gap in (-0.5, -0.1, -0.0301, -0.03, 0.0, 0.0299, 0.03, 0.0999, 0.1, 0.5):
+        hits = [
+            name for name, _, low, high in groups
+            if (low is None or gap >= low) and (high is None or gap < high)
+        ]
+        assert len(hits) == 1, (gap, hits)
 
 
 def test_the_first_cell_no_longer_carries_the_leg_floor_cut() -> None:

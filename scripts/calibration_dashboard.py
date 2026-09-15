@@ -2291,7 +2291,22 @@ TRUTH_LANDING_PRICE_BANDS = tuple(
     (round(step * 0.05, 2), round(step * 0.05 + 0.05, 2))
     for step in range(0, 10)
 ) + ((0.50, 1.01),)
-TRUTH_LANDING_COARSE = TRUTH_LANDING_PRICE_BANDS
+# Who was right when the model and the market disagreed (user ruling,
+# 2026-09-15: the price x claim cross-tab was unreadable -- replace it with
+# something simple that carries its own conclusion).  Each priced bucket is
+# placed by how many points the model's claim sat above (+) or below (-) the
+# market's entry ask; the table then asks, per group, whether the truth rate
+# landed nearer the model or the market.  Buckets both sides called nearly
+# impossible are set aside and counted, because thousands of 1-cent,
+# 1-percent buckets would otherwise make "agree" mean "both said no".
+TRUTH_LANDING_GAP_GROUPS = (
+    ("model_much", "模型比市场高 10 点以上", 0.10, None),
+    ("model_bit", "模型比市场高 3–10 点", 0.03, 0.10),
+    ("agree", "两边相差不到 3 点", -0.03, 0.03),
+    ("market_bit", "市场比模型高 3–10 点", -0.10, -0.03),
+    ("market_much", "市场比模型高 10 点以上", None, -0.10),
+)
+TRUTH_LANDING_UNLIKELY = 0.05
 
 
 # The bias layer's half-life change, and the instant it began being fitted.
@@ -2787,13 +2802,11 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
         for bucket, value in claimed.items():
             claim_rows.append((1 if winners[key] == bucket else 0, value))
 
-    def coarse(value: float) -> str:
-        for low, high in TRUTH_LANDING_COARSE:
-            if low <= value < high:
-                return f"{low:g}-{high:g}"
-        return ""
-
-    cross: dict[tuple[str, str], list[int]] = defaultdict(lambda: [0, 0])
+    # [buckets, hits, sum of claims, sum of prices] per group.
+    gaps: dict[str, list[float]] = {
+        key: [0, 0, 0.0, 0.0] for key, *_ in TRUTH_LANDING_GAP_GROUPS
+    }
+    unlikely = [0, 0]
     for (station, event, bucket), asks in entry_asks.items():
         key = (station, event)
         if key not in winners or len(asks) < 2:
@@ -2801,9 +2814,21 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
         claim = claims.get(key, {}).get(bucket)
         if claim is None:
             continue
-        cell = cross[(coarse(claim), coarse(median(asks)))]
-        cell[0] += 1 if winners[key] == bucket else 0
-        cell[1] += 1
+        price = median(asks)
+        hit = 1 if winners[key] == bucket else 0
+        if claim < TRUTH_LANDING_UNLIKELY and price < TRUTH_LANDING_UNLIKELY:
+            unlikely[0] += 1
+            unlikely[1] += hit
+            continue
+        gap = claim - price
+        for name, _, low, high in TRUTH_LANDING_GAP_GROUPS:
+            if (low is None or gap >= low) and (high is None or gap < high):
+                cell = gaps[name]
+                cell[0] += 1
+                cell[1] += hit
+                cell[2] += claim
+                cell[3] += price
+                break
 
     return {
         "since": TRUTH_LANDING_SINCE,
@@ -2812,12 +2837,28 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
         "capture_truncated_days": len(first_decision) - len(winners),
         "by_price": banded(TRUTH_LANDING_PRICE_BANDS, price_rows),
         "by_claim": banded(TRUTH_LANDING_PRICE_BANDS, claim_rows),
-        "coarse_labels": [f"{low:g}-{high:g}" for low, high in TRUTH_LANDING_COARSE],
-        "cross": [
-            {"claim_band": claim_band, "price_band": price_band,
-             "truth_count": cell[0], "bucket_count": cell[1]}
-            for (claim_band, price_band), cell in cross.items()
-        ],
+        "disagreement": {
+            "unlikely_below": TRUTH_LANDING_UNLIKELY,
+            "unlikely_buckets": unlikely[0],
+            "unlikely_hits": unlikely[1],
+            "groups": [
+                {
+                    "key": name, "label": label,
+                    "buckets": int(gaps[name][0]),
+                    "hits": int(gaps[name][1]),
+                    "claim_mean": (
+                        gaps[name][2] / gaps[name][0] if gaps[name][0] else None
+                    ),
+                    "price_mean": (
+                        gaps[name][3] / gaps[name][0] if gaps[name][0] else None
+                    ),
+                    "hit_rate": (
+                        gaps[name][1] / gaps[name][0] if gaps[name][0] else None
+                    ),
+                }
+                for name, label, _, _ in TRUTH_LANDING_GAP_GROUPS
+            ],
+        },
     }
 
 
@@ -10088,7 +10129,8 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "truth_landing", collect_truth_landing, conn,
         # The band grid lives outside the collector, so it has to be
         # declared: changing it has to expire the file, not wait it out.
-        _salt=repr(TRUTH_LANDING_PRICE_BANDS),
+        _salt=repr(TRUTH_LANDING_PRICE_BANDS)
+        + repr(TRUTH_LANDING_GAP_GROUPS) + repr(TRUTH_LANDING_UNLIKELY),
     )
     worker = {}
     if STATUS_JSON.is_file():
@@ -10560,9 +10602,6 @@ var(--soft);align-items:flex-start}
 .gap:last-child{border-bottom:none}
 .factor{font-weight:650}
 .up{color:var(--up)}.down{color:var(--down)}.flat{color:var(--muted)}
-.zone-trap{background:rgba(224,82,82,.16)}
-.zone-market{background:rgba(224,164,64,.14)}
-.zone-agree{background:rgba(96,150,224,.10)}
 .th-legend{display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:12.5px;
   margin:2px 0 6px}
 .th-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:6px 18px}
@@ -10572,14 +10611,21 @@ var(--soft);align-items:flex-start}
   color:var(--text)}
 .th-row:hover .th-hit{fill:var(--line)!important;opacity:.5}
 .th-row:hover .th-dot{r:6}
-[data-theme="light"] .zone-trap{background:rgba(200,48,48,.10)}
-[data-theme="light"] .zone-market{background:rgba(190,130,20,.10)}
-[data-theme="light"] .zone-agree{background:rgba(50,110,190,.08)}
-/* The cross-tab's margins.  Deliberately outside the three zone colours:
-   a margin belongs to no zone, and shading it like one would invite the
-   reader to compare it against the cells it is the sum of. */
-.xmargin{background:var(--bar-bg);border-left:2px solid var(--line)}
-tr.xmargin-row td{background:var(--bar-bg);border-top:2px solid var(--line)}
+/* 真值落位's "who was right" table (user ruling, 2026-09-15): one row per
+   disagreement group, three bars on one shared scale, the verdict on the
+   right. */
+.tl-rows{display:grid;gap:6px}
+.tl-row{display:grid;grid-template-columns:minmax(150px,1.1fr) minmax(220px,2fr) auto;
+gap:12px;align-items:center;padding:8px 12px;background:var(--card);
+border:1px solid var(--line);border-radius:8px}
+.tl-bar{display:grid;grid-template-columns:4.5em 1fr 3.6em;gap:8px;align-items:center;
+font-size:12px;margin:2px 0}
+.tl-track{height:9px;background:var(--bar-bg);border-radius:5px;overflow:hidden}
+.tl-track span{display:block;height:100%;border-radius:5px}
+.tl-bar .mono{text-align:right}
+.tl-verdict{text-align:right;white-space:nowrap}
+.tl-verdict-card{margin:6px 0 8px;font-size:13.4px;line-height:1.7}
+@media (max-width:640px){.tl-row{grid-template-columns:1fr}.tl-verdict{text-align:left}}
 footer{margin-top:34px;color:var(--muted);font-size:12.5px;text-align:center}
 /* The group switcher.  Sticky, because it is the only way back to the
    other two thirds of the page once a long section has been scrolled
@@ -12018,63 +12064,72 @@ function truthLanding(){
   }).join("");
   const head=label=>`<thead><tr><th>档</th><th>真值</th><th>桶数</th>
     <th>占真值</th><th>中标率</th><th>${label}</th><th>实现/声称</th></tr></thead>`;
-  const labels=T.coarse_labels||[];
-  const cell={};
-  (T.cross||[]).forEach(c=>{cell[c.claim_band+"|"+c.price_band]=c;});
-  // Both of the table's claims are statements about a MARGIN, and until
-  // now the reader had to add the cells up by hand to check either one.
-  // A row's margin is "everything the model called this, however the
-  // market priced it"; a column's is "everything the market priced this,
-  // however the model called it" -- and a column's margin lands on that
-  // column's own price, which is the finding in one number.
-  const sum=keys=>keys.reduce((a,k)=>{
-    const c=cell[k];
-    return c?[a[0]+c.truth_count,a[1]+c.bucket_count]:a;},[0,0]);
-  const marginCell=(t,n,cls)=>n?`<td class="mono ${cls}"><b>${t}/${n}</b>
-      <span class="muted">(${(t/n*100).toFixed(1)}%)</span></td>`
-    :`<td class="muted ${cls}">—</td>`;
-  const crossRows=labels.map((row,ri)=>{
-    const tds=labels.map((col,ci)=>{
-      // Zones by who is the optimist, not by the cell's own number: below
-      // the diagonal the model claims more than the market charges -- the
-      // exact cells an edge ranking wants to buy -- above it the market
-      // keeps alive what the model has dismissed, and on it the two agree.
-      const zone=ri>ci?"zone-trap":(ri<ci?"zone-market":"zone-agree");
-      const c=cell[row+"|"+col];
-      if(!c||!c.bucket_count) return `<td class="muted ${zone}">—</td>`;
-      const rate=c.truth_count/c.bucket_count;
-      const cls=rate>=0.25?"up":(rate<=0.02&&c.bucket_count>=20?"down":"");
-      return `<td class="mono ${cls} ${zone}">${c.truth_count}/${c.bucket_count}
-        <span class="muted">(${(rate*100).toFixed(1)}%)</span></td>`;
-    }).join("");
-    const rm=sum(labels.map(col=>row+"|"+col));
-    return `<tr><td class="mono"><b>${row}</b></td>${tds}${
-      marginCell(rm[0],rm[1],"xmargin")}</tr>`;
+  // Who was right when the two disagreed (user ruling, 2026-09-15: the
+  // price x claim cross-tab was unreadable -- one simple table, with its
+  // conclusion and a summary).  Each group is buckets where the model's
+  // claim sat so many points above or below the market's entry ask; three
+  // bars on one scale say what the model said, what the market charged and
+  // how often it actually came in, and the pill names the nearer of the two.
+  const G=T.disagreement||{};
+  const groups=(G.groups||[]).filter(g=>g.buckets>0);
+  const MIN_N=30;
+  const judge=g=>{
+    if(g.hit_rate==null||g.buckets<MIN_N) return "thin";
+    const offModel=Math.abs(g.hit_rate-g.claim_mean);
+    const offMarket=Math.abs(g.hit_rate-g.price_mean);
+    return Math.abs(offModel-offMarket)<0.01?"tie"
+      :(offMarket<offModel?"market":"model");
+  };
+  const WHO={market:["amber","市场更准"],model:["green","模型更准"],
+    tie:["","一样准"],thin:["","样本少"]};
+  const top=Math.max(0.01,...groups.flatMap(g=>[g.claim_mean,g.price_mean,g.hit_rate]
+    .filter(v=>v!=null)));
+  const bar=(label,v,color)=>`<div class="tl-bar"><span class="muted">${label}</span>
+    <span class="tl-track"><span style="width:${(100*(v||0)/top).toFixed(1)}%;background:${color}"></span></span>
+    <span class="mono">${p(v)}</span></div>`;
+  const gapRows=groups.map(g=>{
+    const [tone,word]=WHO[judge(g)];
+    const cents=(g.hit_rate==null||g.price_mean==null)?null:100*(g.hit_rate-g.price_mean);
+    return `<div class="tl-row${g.buckets<MIN_N?" muted":""}">
+      <div><b>${h(g.label)}</b><div class="muted" style="font-size:11.5px">${
+        g.buckets} 个桶 · 开出 ${g.hits} 个</div></div>
+      <div>${bar("模型说",g.claim_mean,"var(--violet)")}${
+        bar("市场价",g.price_mean,"var(--muted)")}${
+        bar("实际开出",g.hit_rate,"var(--accent)")}</div>
+      <div class="tl-verdict"><span class="pill ${tone}">${word}</span>
+        <div class="mono ${cents==null?"":(cents>=0?"up":"down")}" style="font-size:12px"
+          title="实际开出率 − 市场价：照市场价买一股，平均每股赚/亏多少（未计手续费）">${
+          cents==null?"":`按市场价买 ${cents>=0?"+":""}${cents.toFixed(1)}¢/股`}</div></div>
+    </div>`;
   }).join("");
-  const colMargins=labels.map(col=>{
-    const cm=sum(labels.map(row=>row+"|"+col));
-    return marginCell(cm[0],cm[1],"");
-  }).join("");
-  const grand=sum(labels.flatMap(row=>labels.map(col=>row+"|"+col)));
-  const marginRow=`<tr class="xmargin-row"><td class="mono"><b>本列合计</b></td>
-    ${colMargins}${marginCell(grand[0],grand[1],"")}</tr>`;
-  const legend=`<p class="sub" style="margin-top:8px">
-    <span class="zone-trap" style="padding:2px 8px;border-radius:4px">红区</span>
-    模型比市场乐观（edge 门想买的格子——历史上几乎全空）&nbsp;
-    <span class="zone-market" style="padding:2px 8px;border-radius:4px">黄区</span>
-    市场比模型乐观（真值跟着市场走——别因模型嫌贵而放弃）&nbsp;
-    <span class="zone-agree" style="padding:2px 8px;border-radius:4px">蓝区</span>
-    两者一致（校准良好的对角线）</p>
-  <div class="why"><b>怎么读这张表（两种读法，只有这两种）：</b>
-  一个格子 = 一批"某站某天某个温度桶"，行是模型当时给它的概率，
-  列是市场当时的要价，格里是「最后开出来的个数／这样的桶共有多少个」。<br>
-  <b>横着读一行</b>：模型说的一样，只有市场价在变——中标率从最左的几个点
-  一路爬到最右的一半以上，说明市场价那把尺子在动真格。<br>
-  <b>竖着读一列</b>：市场要价一样，只有模型说的在变——中标率基本是平的，
-  说明在市场已经定了价之后，模型再说高说低几乎不带新信息。
-  <b>本列合计那一格会落在这一列自己的价位上</b>，市场是校准的，这就是证据。<br>
-  <b>不要跨区比总数。</b>三个区的桶价位分布完全不同（蓝区被大量"两边都说便宜"
-  的桶压低），只有同一行内或同一列内的比较才成立。</div>`;
+  const byKey=Object.fromEntries(groups.map(g=>[g.key,g]));
+  const disagree=groups.filter(g=>g.key!=="agree"&&judge(g)!=="thin");
+  const tally=w=>disagree.filter(g=>judge(g)===w).length;
+  const line=g=>g?`<b>${h(g.label)}</b>的 ${g.buckets} 个桶：模型说 ${p(g.claim_mean)}、
+    市场价 ${p(g.price_mean)}，实际开出 <b>${p(g.hit_rate)}</b>`:"";
+  const verdict=!disagree.length?"两边有分歧的桶还太少，判不出谁更准。"
+    :`两边意见不一致的 ${disagree.length} 组里，<b>${tally("market")} 组市场更准</b>、${
+      tally("tie")} 组一样准、${tally("model")} 组模型更准——${
+      tally("model")===0?"分歧时该信市场"
+        :tally("market")===0?"分歧时该信模型":"分歧时谁对要看分歧方向"}。`;
+  const buyOver=["model_much","model_bit"].map(k=>byKey[k]).filter(g=>g&&g.hit_rate!=null&&g.buckets>=MIN_N);
+  const overCents=buyOver.length
+    ? 100*buyOver.reduce((a,g)=>a+(g.hit_rate-g.price_mean)*g.buckets,0)
+      /buyOver.reduce((a,g)=>a+g.buckets,0) : null;
+  const summary=overCents==null?""
+    :overCents<0
+      ?`<b>总结：</b>专挑「模型觉得比市场便宜」的桶去买，实际开出率低于买入价，平均每股
+        <b class="down">${overCents.toFixed(1)}¢</b>——模型的分歧不是赚钱机会，市场价才是更好的概率。`
+      :`<b>总结：</b>专挑「模型觉得比市场便宜」的桶去买，实际开出率高于买入价，平均每股
+        <b class="up">+${overCents.toFixed(1)}¢</b>（未计手续费）——这部分分歧是模型的真信息。`;
+  const gapTable=!groups.length?"":`<h3 style="margin-top:14px">模型和市场意见不一致时，谁更准</h3>
+  <div class="card tl-verdict-card"><b>结论：</b>${verdict}<br>
+    ${[line(byKey.model_much),line(byKey.market_much)].filter(Boolean).join("；<br>")}。
+    ${summary?`<div style="margin-top:6px">${summary}</div>`:""}</div>
+  <div class="tl-rows">${gapRows}</div>
+  <p class="sub" style="margin-top:6px">市场价＝入场后 4 小时的中位卖一；「更准」＝实际开出率离谁更近（差不到 1 点算一样准）；
+    不足 ${MIN_N} 个桶的组标灰不判。另有 ${G.unlikely_buckets||0} 个桶两边都低于 ${
+    Math.round(100*(G.unlikely_below||0.05))}%（都说几乎不可能），实际开出 ${G.unlikely_hits||0} 个，未计入。</p>`;
   return `<h2>真值落位：按市场价格 × 模型概率分格，比谁更能预判真值</h2>
   <p class="sub">${T.since} 起 · 已闭合站日 ${T.closed_station_days}
     · 市场裁定出赢家 ${T.adjudicated_station_days}
@@ -12082,17 +12137,12 @@ function truthLanding(){
     真值＝市场收敛裁定（末端买价 ≥0.80 的桶）；
     价格＝首个 P0 决策后 4 小时的中位卖一；概率＝同一时刻的服务后验。</p>
   <div class="why"><b>这三张表回答一件事：</b>真值到底住在哪个价位、哪个声称档，
-  以及两把尺子对不齐时该信谁。交叉表按行读：同一模型档内，中标率跟着市场价爬；
-  按列读：同一价格档内，模型的梯度几乎消失——分歧格里对的是市场。</div>
+  以及两把尺子对不齐时该信谁——最后一张直接给答案。</div>
   <h3 style="margin-top:14px">按市场价格（入场后 4h 中位卖一）</h3>
   <table>${head("均价")}<tbody>${bandRows(T.by_price,true)}</tbody></table>
   <h3 style="margin-top:14px">按模型概率（P0 建仓时刻声称）</h3>
   <table>${head("声称均值")}<tbody>${bandRows(T.by_claim,true)}</tbody></table>
-  <h3 style="margin-top:14px">交叉：行＝模型概率档，列＝市场价格档（中标/桶数）</h3>
-  <table><thead><tr><th>模型＼市场</th>${
-    labels.map(l=>`<th class="mono">${l}</th>`).join("")
-  }<th class="xmargin">本行合计</th></tr></thead>
-  <tbody>${crossRows}${marginRow}</tbody></table>${legend}`;
+  ${gapTable}`;
 }
 
 // The lambda tables, one per stage scope.  Placed beside the edge
