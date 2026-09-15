@@ -30,16 +30,17 @@ def daemon():
 
 
 def _result(total: float) -> dict:
+    # The receipt's shape: spans sit beside the stage timings, not inside.
     return {
         "state": "committed",
         "stage_timings_ms": {
             "cycle_total": total,
             "probability_p0m": 469000.0,
             "live_observation_identity": 240000.0,
-            "stage_span_ms": {
-                "p0m_scope_loop": {"count": 1, "total_ms": 400000.0},
-                "decision_loop_compile": {"count": 90, "total_ms": 21904.7},
-            },
+        },
+        "stage_span_ms": {
+            "p0m_scope_loop": {"count": 1, "total_ms": 400000.0},
+            "decision_loop_compile": {"count": 90, "total_ms": 21904.7},
         },
     }
 

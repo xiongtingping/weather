@@ -2853,7 +2853,7 @@ def production_cycle_history_row(
     total = timings.get("cycle_total")
     if not isinstance(total, (int, float)):
         return None
-    spans = timings.get("stage_span_ms")
+    spans = result.get("stage_span_ms")
     top_spans = (
         sorted(
             (
