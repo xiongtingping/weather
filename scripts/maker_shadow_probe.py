@@ -28,15 +28,20 @@ import json
 import math
 import sqlite3
 import sys
+import time
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.pass_deadline import (  # noqa: E402
+    HOSTED_SWEEP_CONTINUE_MARKER,
+    writer_lease_seconds,
+)
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     effective_edge_lambda_from_tables,
 )
@@ -359,7 +364,25 @@ def _limit_price(
     return round(price, 6)
 
 
-def place(conn: sqlite3.Connection) -> dict[str, int]:
+# One pass of this probe is three loops over every open scope, and on the
+# 2026-09-14 book it ran seven minutes (once, past its 900s timeout) while
+# holding the resident's SSOT writer -- production waited 422s behind it at
+# 06:57Z on 2026-09-15.  The pass is bounded by the writer lease the resident
+# grants (``pass_deadline.writer_lease_seconds``): each loop stops between
+# scopes once the clock is spent, commits what it has, and the pass asks for
+# the next one with the continuation marker.  Every row it leaves behind is
+# picked up where it stopped -- an intent not placed this pass is placed on
+# the next book, an OPEN row is resolved later, a fill is settled later.
+PASS_BUDGET_SEC = writer_lease_seconds(600.0)
+
+
+def _spent(deadline: float | None) -> bool:
+    return deadline is not None and time.monotonic() >= deadline
+
+
+def place(
+    conn: sqlite3.Connection, *, deadline: float | None = None
+) -> dict[str, int]:
     """Write one round of intents against the freshest book."""
 
     ensure_schema(conn)
@@ -384,6 +407,9 @@ def place(conn: sqlite3.Connection) -> dict[str, int]:
         last_placed[(str(station), str(day))] = str(when)
     pending: list[tuple] = []
     for (station, day), (moment, book) in books.items():
+        if _spent(deadline):
+            counts["stopped_for_time"] += 1
+            break
         counts["scopes_with_fresh_book"] += 1
         try:
             lead_hours = (
@@ -468,7 +494,9 @@ def place(conn: sqlite3.Connection) -> dict[str, int]:
     return dict(counts)
 
 
-def resolve(conn: sqlite3.Connection) -> dict[str, int]:
+def resolve(
+    conn: sqlite3.Connection, *, deadline: float | None = None
+) -> dict[str, int]:
     """Decide open intents against books that arrived after they were written.
 
     Fill rule: the live book traded at or through the limit at some moment
@@ -495,6 +523,9 @@ def resolve(conn: sqlite3.Connection) -> dict[str, int]:
     filled: list[tuple] = []
     expired: list[tuple] = []
     for (station, day), rows in by_scope.items():
+        if _spent(deadline):
+            counts["stopped_for_time"] += 1
+            break
         earliest = min(str(row[5]) for row in rows)
         book_path: list[tuple[str, dict[str, float]]] = []
         for observed, payload in conn.execute(
@@ -620,7 +651,9 @@ def resolve(conn: sqlite3.Connection) -> dict[str, int]:
     return dict(counts)
 
 
-def settle(conn: sqlite3.Connection) -> dict[str, int]:
+def settle(
+    conn: sqlite3.Connection, *, deadline: float | None = None
+) -> dict[str, int]:
     """Score filled intents whose station-day has a settled truth."""
 
     ensure_schema(conn)
@@ -647,6 +680,9 @@ def settle(conn: sqlite3.Connection) -> dict[str, int]:
     pending: list[tuple] = []
     now = _stamp(_now())
     for order_id, station, day, bucket, limit in rows:
+        if _spent(deadline):
+            counts["stopped_for_time"] += 1
+            break
         actual = truth.get((str(station), str(day)))
         if actual is None:
             counts["awaiting_truth"] += 1
@@ -850,15 +886,22 @@ def main() -> int:
     # autocheckpoint threshold, and folding it while the resident writes is
     # how a maintenance pass takes production down.
     conn.execute("PRAGMA wal_autocheckpoint=0")
+    deadline = time.monotonic() + PASS_BUDGET_SEC
     passes = {
         "schema": "maker_shadow_pass_v1",
-        "place": place(conn),
-        "resolve": resolve(conn),
-        "settle": settle(conn),
+        "pass_budget_sec": PASS_BUDGET_SEC,
+        "place": place(conn, deadline=deadline),
+        "resolve": resolve(conn, deadline=deadline),
+        "settle": settle(conn, deadline=deadline),
     }
     # The daily line a person reads, ahead of the JSON.
     print(claim_cap_reading(conn))
     print(json.dumps(passes, ensure_ascii=False, sort_keys=True))
+    if any(
+        isinstance(phase, Mapping) and phase.get("stopped_for_time")
+        for phase in (passes["place"], passes["resolve"], passes["settle"])
+    ):
+        print(HOSTED_SWEEP_CONTINUE_MARKER)
     return 0
 
 

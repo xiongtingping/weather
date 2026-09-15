@@ -479,17 +479,22 @@ def test_a_failing_member_retries_on_its_interval_not_on_every_restart(
 def test_every_attempt_advances_the_attempt_stamp_and_only_success_the_other(
     daemon,
 ) -> None:
-    """Asserted on the source, because the write sits inside the daemon's
-    main loop and has no seam."""
-    import inspect
+    """Asked of the entry the loop writes (``hosted_sweep_clock_entry``)."""
 
-    source = inspect.getsource(daemon)
-    assert '_entry["attempted_at_utc"] = utc_now()' in source
-    assert '_entry["last_state"] = _sweep_state' in source
-    at = source.index('_entry["attempted_at_utc"] = utc_now()')
-    after = source[at:at + 400]
-    assert 'if _sweep_state == "ok":' in after
-    assert '_entry["completed_at_utc"] = utc_now()' in after
+    before = {"completed_at_utc": "2026-09-09T00:00:00Z",
+              "attempted_at_utc": "2026-09-09T00:00:00Z"}
+    killed = daemon.hosted_sweep_clock_entry(
+        before, {"state": "timeout_killed", "duration_sec": 1800.0},
+        name="capture_noaa_conus_forward", now_utc="2026-09-09T03:00:00Z",
+    )
+    assert killed["attempted_at_utc"] == "2026-09-09T03:00:00Z"
+    assert killed["completed_at_utc"] == "2026-09-09T00:00:00Z"
+    assert killed["last_state"] == "timeout_killed"
+    ok = daemon.hosted_sweep_clock_entry(
+        killed, {"state": "ok", "duration_sec": 900.0},
+        name="capture_noaa_conus_forward", now_utc="2026-09-09T04:00:00Z",
+    )
+    assert ok["attempted_at_utc"] == ok["completed_at_utc"] == "2026-09-09T04:00:00Z"
 
 
 # Which upstream products each capture lane is responsible for.  Named here

@@ -2237,6 +2237,14 @@ def _native_ensemble_truth_signatures(
     }
 
 
+# The P0 inbox is read, merged and rewritten by two threads of this process:
+# the production cycle's replay compile and the forecast lane's arrival
+# drain.  The writer turn used to keep those from overlapping; now that the
+# forecast lane runs beside production, the merge is serialised here instead,
+# so neither thread rewrites the file over packets the other just added.
+_P0_INBOX_MERGE_LOCK = threading.Lock()
+
+
 def _upsert_native_p0_inbox(
     path: Path,
     *,
@@ -2245,6 +2253,20 @@ def _upsert_native_p0_inbox(
 ) -> dict[str, Any]:
     """Merge bounded compiled native P0 packets by station-day identity."""
 
+    with _P0_INBOX_MERGE_LOCK:
+        return _upsert_native_p0_inbox_unlocked(
+            path,
+            compiled_packets=compiled_packets,
+            generated_at_utc=generated_at_utc,
+        )
+
+
+def _upsert_native_p0_inbox_unlocked(
+    path: Path,
+    *,
+    compiled_packets: Sequence[Mapping[str, Any]],
+    generated_at_utc: str,
+) -> dict[str, Any]:
     # This is a transient handoff inbox, not a historical evidence store.
     # Retaining an expired packet makes a later, otherwise admissible
     # station-day P0 fail as a whole.  Official native packets and the

@@ -225,7 +225,12 @@ def main(argv: list[str] | None = None) -> int:
 
     from bayes_basket_target.production_worker import CANONICAL_TARGET_STATIONS
 
-    conn = sqlite3.connect(args.db, timeout=30.0)
+    # Runs beside the production cycle now that the forecast lane no longer
+    # takes the writer turn: each station is its own short transaction, so a
+    # commit only ever waits out one of production's -- bounded here rather
+    # than failing the capture at SQLite's default.
+    conn = sqlite3.connect(args.db, timeout=60.0)
+    conn.execute("PRAGMA busy_timeout=60000")
     conn.execute(SCHEMA)
     conn.execute(INDEX)
     conn.commit()

@@ -1,8 +1,9 @@
 """A lane that has been waiting hours must not restart level with one that
 just ran.
 
-The three writer lanes -- production, the forecast prefetch, the hosted
-sweeps -- share one writer and take turns by "longest ago".  That ordering
+The writer lanes -- production and the hosted sweeps; the forecast prefetch
+was one until 2026-09-15, see WRITER_LANES -- share one writer and take
+turns by "longest ago".  That ordering
 lived only in memory and was seeded all-equal at boot, so every restart
 handed the lanes back their tie.
 
@@ -57,7 +58,7 @@ def _restored(daemon, path: Path) -> dict:
     import time as _time
 
     now_mono = _time.monotonic()
-    served = {"forecast": now_mono, "production": now_mono, "sweeps": now_mono}
+    served = {lane: now_mono for lane in daemon.WRITER_LANES}
     turn = json.loads(path.read_text())
     served_at = datetime.fromisoformat(
         str(turn["observed_at_utc"]).replace("Z", "+00:00")
@@ -78,8 +79,11 @@ def test_the_starved_lane_keeps_its_place(daemon, tmp_path: Path) -> None:
         "production": 60.0, "forecast": 900.0, "sweeps": 7200.0,
     })
     ages = _restored(daemon, path)
-    assert ages["sweeps"] > ages["forecast"] > ages["production"]
+    assert ages["sweeps"] > ages["production"]
     assert ages["sweeps"] == pytest.approx(7260.0, abs=5.0)
+    # A file from before the forecast lane left the rotation still restores
+    # the lanes that remain; the stale key is simply not a lane.
+    assert "forecast" not in ages
 
 
 def test_a_long_outage_cannot_privilege_one_lane_forever(
@@ -116,10 +120,12 @@ def test_every_hand_off_records_the_turn() -> None:
     """Recording it on only some hand-offs is worse than not recording it:
     the file would then describe a rotation nobody is running."""
 
-    assert SOURCE.count("_persist_writer_turn()") == 4, (
-        "one definition plus one call per writer lane"
-    )
-    for lane in ("production", "forecast", "sweeps"):
+    from scripts import weather_basket_yes_daemon as daemon_module
+
+    assert SOURCE.count("_persist_writer_turn()") == 1 + len(
+        daemon_module.WRITER_LANES
+    ), "one definition plus one call per writer lane"
+    for lane in daemon_module.WRITER_LANES:
         marker = f'writer_last_served["{lane}"] = time.monotonic()\n'
         index = SOURCE.index(marker)
         assert "_persist_writer_turn()" in SOURCE[index:index + 200], lane

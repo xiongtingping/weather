@@ -61,6 +61,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.contracts import ContractError  # noqa: E402
+from bayes_basket_target.pass_deadline import (  # noqa: E402
+    HOSTED_SWEEP_CONTINUE_MARKER,
+    writer_lease_seconds,
+)
 from bayes_basket_target.settlement_truth import (  # noqa: E402
     blocker_class,
     materialize_settled_station_truth,
@@ -199,8 +203,16 @@ def sweep(
     max_scopes: int,
     dry_run: bool,
     verbose: bool,
+    budget_sec: float | None = None,
 ) -> dict[str, Any]:
     started = time.time()
+    # The writer lease the resident granted: stop between scopes once it is
+    # spent, and say so, so the next pass is asked for at once rather than
+    # in three hours.  A pass by hand has no lease and walks its whole cap.
+    deadline = (
+        None if budget_sec is None else time.monotonic() + float(budget_sec)
+    )
+    stopped_for_time = False
     window_start = str(
         (datetime.now(timezone.utc) - timedelta(days=window_days)).date()
     )
@@ -239,6 +251,9 @@ def sweep(
         open_days: dict[str, int] = defaultdict(int)
         as_of = _now()
         for station, day in pending[:max_scopes]:
+            if deadline is not None and time.monotonic() >= deadline:
+                stopped_for_time = True
+                break
             try:
                 result = materialize_settled_station_truth(
                     target,
@@ -337,6 +352,8 @@ def sweep(
             ],
             "awc_retention_start": retention_start,
             "elapsed_seconds": round(time.time() - started, 2),
+            "budget_sec": budget_sec,
+            "stopped_for_time": stopped_for_time,
         }
         # Coverage is read after the writes so the receipt describes the
         # database the sweep is leaving behind, not the one it found.
@@ -359,6 +376,11 @@ def _write_status(report: dict[str, Any], path: Path) -> None:
     os.replace(temporary, path)
 
 
+# Under the hosted timeout (900s) with room for the last scope in flight; the
+# resident's writer lease clamps it further.
+DEFAULT_PASS_BUDGET_SEC = 600.0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
@@ -376,9 +398,12 @@ def main() -> int:
         max_scopes=max(1, int(args.max_scopes)),
         dry_run=bool(args.dry_run),
         verbose=bool(args.verbose),
+        budget_sec=writer_lease_seconds(DEFAULT_PASS_BUDGET_SEC),
     )
     if not args.dry_run:
         _write_status(report, args.status_out)
+    if report.get("stopped_for_time"):
+        print(HOSTED_SWEEP_CONTINUE_MARKER)
     print(json.dumps(
         {
             key: value

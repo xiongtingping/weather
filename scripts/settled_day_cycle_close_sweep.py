@@ -36,6 +36,7 @@ import argparse
 import json
 import sqlite3
 import sys
+import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -50,6 +51,10 @@ from bayes_basket_target.atomic_ledger import (  # noqa: E402
     close_settled_day_cycle,
 )
 from bayes_basket_target.contracts import ContractError  # noqa: E402
+from bayes_basket_target.pass_deadline import (  # noqa: E402
+    HOSTED_SWEEP_CONTINUE_MARKER,
+    writer_lease_seconds,
+)
 from bayes_basket_target.settlement_time import (  # noqa: E402
     settlement_day_state,
 )
@@ -62,6 +67,10 @@ SCHEMA = "settled_day_cycle_close_sweep_v1"
 # richest first, so the capital that the Tier-1 gate actually counts comes
 # back on the first pass and nothing that matters starves behind the tail.
 DEFAULT_MAX_CYCLES = 1500
+# Under the hosted timeout (900s) with room for the cycle in flight; the
+# resident's writer lease clamps it further, and a pass that stops on it
+# asks for the next one with the continuation marker.
+DEFAULT_PASS_BUDGET_SEC = 600.0
 CLOSE_REASON = "settlement_day_closed_without_successor"
 # Wait past the day's end before retiring anything.  Whether the day is over
 # still rests on one timezone string per station, so closing on the second
@@ -229,8 +238,13 @@ def main() -> int:
         released = 0.0
         cancelled_intents = 0
         refused: Counter = Counter()
+        deadline = time.monotonic() + writer_lease_seconds(DEFAULT_PASS_BUDGET_SEC)
+        stopped_for_time = False
         if not args.dry_run:
             for item in ready:
+                if time.monotonic() >= deadline:
+                    stopped_for_time = True
+                    break
                 try:
                     result = close_settled_day_cycle(
                         conn,
@@ -277,12 +291,15 @@ def main() -> int:
         "pool_reserved_before_usdc": pool_before[1] if pool_before else None,
         "pool_reserved_after_usdc": pool_after[1] if pool_after else None,
         "pool_balance_usdc": pool_after[0] if pool_after else None,
+        "stopped_for_time": stopped_for_time,
     }
     STATUS_JSON.write_text(
         json.dumps(receipt, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     print(json.dumps(receipt, ensure_ascii=False))
+    if stopped_for_time:
+        print(HOSTED_SWEEP_CONTINUE_MARKER)
     return 0
 
 

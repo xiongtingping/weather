@@ -104,6 +104,7 @@ from asos_argmax_taf_reference import materialize_argmax_taf_references
 from asos_p1_slot_materializer import materialize_scheduled_asos_p1_observations
 from bayes_basket_target import serving_arithmetic
 from bayes_basket_target.database import DEFAULT_TARGET_DB
+from bayes_basket_target.pass_deadline import WRITER_LEASE_ENV
 from bayes_basket_target.market_registry import (
     export_shared_live_registry,
     load_active_registry_rows,
@@ -895,6 +896,116 @@ def _stamp_serving_arithmetic(
 HOSTED_SWEEP_CONTINUE_MARKER = "hosted_sweep:continue"
 HOSTED_SWEEP_CONTINUATION_DELAY_SEC = 300.0
 
+# The lanes that take the writer in turn.  Production is what the process
+# exists to run; the hosted sweeps are everything that must also write the
+# SSOT.  The forecast prefetch used to be the third lane, on a measurement
+# from 2026-08-26 when it still ingested TAF rows itself.  It has not
+# written the SSOT from its own thread since: the NWP rotation, the TAF
+# round and the calibration audit read the store and write JSON files, and
+# the captures it starts already commit beside production from their own
+# subprocesses.  Yet it still took every other writer slot -- 1,875 of the
+# 2,389 seconds production waited between 04:58Z and 06:57Z on 2026-09-15
+# were behind it.  It now runs on its own clock, beside production.
+WRITER_LANES: tuple[str, ...] = ("production", "sweeps")
+
+# What one sweep slot may cost production.  Between production cycles the
+# writer goes to a sweep, and the sweep holds it for as long as its pass
+# runs; every pass budget so far was the lane's own constant (900s, 1200s,
+# 1500s), sized after the incident that lane caused, and the paper ledger
+# alone kept a due cycle waiting 1,025s on 2026-09-15.  The resident now
+# grants each sweep this lease in its environment
+# (``pass_deadline.WRITER_LEASE_ENV``); a sliced lane clamps its pass to it
+# and asks for the next pass with the continuation marker, so a production
+# cycle -- 300s target, 720s overdue -- waits at most a lease plus the
+# slice a sweep had already started.  A sweep the lease cannot bound is
+# declared as such below, with the interval that keeps it rare.
+WRITER_LEASE_SEC = 240.0
+
+# How each SSOT-holding sweep honours the lease.  ``sliced``: the lane reads
+# the lease, stops between units of work and prints the continuation marker
+# when work is left.  ``one_shot``: the pass cannot stop part-way, and its
+# declared bound says how far past the lease it may run; one past the lease
+# must be on an interval of six hours or more, so production pays for it a
+# few times a day at most.  A download capture is not here: it never holds
+# the writer (WRITER_TURN_EXEMPT_SWEEPS), and neither is a sweep whose
+# domain excludes no writer lane.
+HOSTED_SWEEP_LEASE_CONTRACT: dict[str, tuple[str, float]] = {
+    "paper_trading_ledger": ("sliced", WRITER_LEASE_SEC),
+    "maker_shadow_probe": ("sliced", WRITER_LEASE_SEC),
+    "settlement_truth": ("sliced", WRITER_LEASE_SEC),
+    "settled_day_cycle_close": ("sliced", WRITER_LEASE_SEC),
+    "pr12_awc_observation": ("one_shot", 120.0),
+    "market_registry_retention": ("one_shot", 120.0),
+    "fleet_regime_refresh": ("one_shot", 120.0),
+    "correction_review_auto_clear": ("one_shot", 60.0),
+    # Three fits in one wrapper; measured 7m37s on 2026-09-06, once a day.
+    "calibration_refit": ("one_shot", 600.0),
+    "station_onboarding": ("one_shot", 300.0),
+}
+
+
+def writer_turn_for(
+    candidates: "Sequence[str]",
+    last_served: "Mapping[str, float]",
+    last_slot: str,
+) -> str:
+    """Which writer lane takes the slot: the one served longest ago, except
+    that a maintenance lane never takes two slots in a row while production
+    is due (the production floor, 2026-08-29)."""
+
+    turn = min(
+        candidates,
+        key=lambda lane: last_served[lane],
+        default="",
+    )
+    if (
+        "production" in candidates
+        and turn != "production"
+        and last_slot != "production"
+    ):
+        return "production"
+    return turn
+
+
+def hosted_sweep_clock_entry(
+    previous: "Mapping[str, Any] | None",
+    result: "Mapping[str, Any]",
+    *,
+    name: str,
+    now_utc: str,
+    lease_sec: float = WRITER_LEASE_SEC,
+) -> dict[str, Any]:
+    """The clocks-file entry for a sweep that just finished.
+
+    Every attempt advances the attempt stamp; only success advances the
+    completion stamp (see ``seed_hosted_sweep_clock``).  The duration and how
+    far it ran past the lease are kept too, because the lease is a contract
+    the scheduler cannot enforce by force -- killing a sweep loses its work
+    -- so the record is how a lane that outgrows its slice gets noticed.
+    """
+
+    entry = dict(previous) if isinstance(previous, Mapping) else {}
+    state = str(result.get("state") or "")
+    entry["attempted_at_utc"] = now_utc
+    entry["last_state"] = state
+    if state == "ok":
+        entry["completed_at_utc"] = now_utc
+    entry["continue_requested"] = bool(
+        state == "ok" and result.get("continue")
+    )
+    duration = result.get("duration_sec")
+    if isinstance(duration, (int, float)):
+        entry["last_duration_sec"] = round(float(duration), 1)
+        holds_writer = (
+            hosted_sweep_write_domain(name) in _EXCLUSIVE_WRITE_DOMAINS
+            and name not in WRITER_TURN_EXEMPT_SWEEPS
+        )
+        entry["lease_overrun_sec"] = (
+            round(max(0.0, float(duration) - float(lease_sec)), 1)
+            if holds_writer else 0.0
+        )
+    return entry
+
 
 def hosted_sweep_interval_after(
     result: "Mapping[str, Any]", interval_sec: float
@@ -941,6 +1052,7 @@ def run_hosted_sweep(script_path: str, timeout_sec: float) -> dict[str, Any]:
             stderr=subprocess.PIPE,
             text=True,
             start_new_session=True,
+            env={**os.environ, WRITER_LEASE_ENV: f"{WRITER_LEASE_SEC:.0f}"},
         )
         with _HOSTED_SWEEP_PROCESS_LOCK:
             _HOSTED_SWEEP_PROCESSES.add(process)
@@ -4611,11 +4723,7 @@ def main() -> int:
         #
         # Kept as an age in seconds rather than a monotonic stamp, because
         # monotonic clocks do not survive a process.
-        writer_last_served = {
-            "forecast": now_mono,
-            "production": now_mono,
-            "sweeps": now_mono,
-        }
+        writer_last_served = {lane: now_mono for lane in WRITER_LANES}
         try:
             _turn_ages = json.loads(WRITER_TURN_PATH.read_text())
             _served_at = datetime.fromisoformat(
@@ -5227,8 +5335,6 @@ def main() -> int:
                 next_forecast = max(
                     next_forecast, time.monotonic() + WRITER_YIELD_SEC
                 )
-                writer_last_served["forecast"] = time.monotonic()
-                _persist_writer_turn()
             storage_ok = storage_guard.get("ok") is True
             # Whose turn it is at the single writer.
             #
@@ -5257,39 +5363,26 @@ def main() -> int:
             )
             writer_idle = (
                 storage_ok
-                and forecast_future is None
                 and production_future is None
                 and not writer_excluding_sweeps(hosted_sweep_futures)
             )
             writer_candidates = []
             if writer_idle:
-                if now_mono >= next_forecast:
-                    writer_candidates.append("forecast")
                 if now_mono >= next_production:
                     writer_candidates.append("production")
                 if sweeps_due:
                     writer_candidates.append("sweeps")
-            # Ties keep this order, so the choice stays deterministic.
-            writer_turn = min(
-                writer_candidates,
-                key=lambda lane: writer_last_served[lane],
-                default="",
+            # Ties keep this order, so the choice stays deterministic.  The
+            # production floor (2026-08-29) is inside ``writer_turn_for``:
+            # "longest ago" is fair between lanes, but sweeps are ONE lane
+            # with ten-plus members, and once their combined due-rate
+            # outruns the drain rate the lane is due at every instant --
+            # generation 72534 served sweeps for two straight hours while
+            # production got zero slots.  So a maintenance lane never takes
+            # two consecutive slots while production is due.
+            writer_turn = writer_turn_for(
+                writer_candidates, writer_last_served, last_writer_slot
             )
-            # The production floor (2026-08-29).  "Longest ago" is fair
-            # between lanes, but sweeps are ONE lane with ten-plus members:
-            # once their combined due-rate outruns the drain rate the lane
-            # is due at every instant, and generation 72534 served sweeps
-            # for two straight hours while production -- the thing this
-            # process exists to run -- got zero slots.  So a maintenance
-            # lane may never take two consecutive slots while production is
-            # due: the alternation production/sweep/production/... is the
-            # worst case, whatever the queue holds.
-            if (
-                "production" in writer_candidates
-                and writer_turn != "production"
-                and last_writer_slot != "production"
-            ):
-                writer_turn = "production"
             if (
                 storage_ok
                 and now_mono >= next_registry_refresh
@@ -5379,19 +5472,15 @@ def main() -> int:
                         _clocks = {}
                 except (OSError, ValueError):
                     _clocks = {}
-                _entry = _clocks.get(done_name)
-                if not isinstance(_entry, dict):
-                    _entry = {}
-                _sweep_state = str(sweep_result.get("state") or "")
-                _entry["attempted_at_utc"] = utc_now()
-                _entry["last_state"] = _sweep_state
-                if _sweep_state == "ok":
-                    _entry["completed_at_utc"] = utc_now()
-                # A restart mid-repair keeps the short delay too.
-                _entry["continue_requested"] = bool(
-                    _sweep_state == "ok" and sweep_result.get("continue")
+                # A restart mid-repair keeps the short delay too
+                # (``continue_requested``), and the lease overrun is what
+                # names a lane that outgrew its slice.
+                _clocks[done_name] = hosted_sweep_clock_entry(
+                    _clocks.get(done_name),
+                    sweep_result,
+                    name=done_name,
+                    now_utc=utc_now(),
                 )
-                _clocks[done_name] = _entry
                 try:
                     _atomic_json(HOSTED_SWEEP_CLOCKS_PATH, _clocks)
                 except OSError:
@@ -5415,11 +5504,6 @@ def main() -> int:
                 # whichever starts first owns the writer until it finishes.
                 and len(hosted_sweep_futures) < HOSTED_SWEEP_MAX_CONCURRENCY
                 and production_future is None
-                # The prefetch is the third writer of the same databases, so
-                # the exclusion has to name it here too.  Gating only against
-                # production let a sweep start beside a running prefetch --
-                # the exact overlap the mutual gate exists to remove.
-                and forecast_future is None
                 and writer_turn == "sweeps"
             ):
                 # Serve whichever sweep has been due longest, not whichever
@@ -5503,8 +5587,6 @@ def main() -> int:
                     f"sweep:{name}"
                     for name in writer_excluding_sweeps(hosted_sweep_futures)
                 )
-                if forecast_future is not None:
-                    production_blockers.append("forecast_prefetch")
                 if not production_blockers and writer_turn != "production":
                     production_blockers.append(
                         f"writer_turn:{writer_turn or 'none'}"
@@ -5512,7 +5594,12 @@ def main() -> int:
             if production_ready and production_blockers:
                 if production_due_since_mono is None:
                     production_due_since_mono = now_mono
-                production_wait_blockers = production_blockers
+                # Every blocker seen during this wait, first seen first --
+                # the last iteration's alone named the hand-off, not the
+                # sweep that held the writer for the previous seven minutes.
+                for blocker in production_blockers:
+                    if blocker not in production_wait_blockers:
+                        production_wait_blockers.append(blocker)
             elif not production_ready:
                 production_due_since_mono = None
                 production_wait_blockers = []
@@ -5521,13 +5608,6 @@ def main() -> int:
                 and now_mono >= next_production
                 and production_future is None
                 and not writer_excluding_sweeps(hosted_sweep_futures)
-                # Symmetric with the prefetch gate below: whichever of the
-                # two starts first owns the writer until it finishes.  The
-                # prefetch is bounded by its own 300s subprocess timeout,
-                # so the worst this costs production is one deferred slot,
-                # against a cycle that currently fails closed outright when
-                # the two overlap.
-                and forecast_future is None
                 and writer_turn == "production"
             ):
                 last_writer_slot = "production"
@@ -5553,24 +5633,14 @@ def main() -> int:
                 # round that is running.
                 state.pop("production_waiting", None)
                 next_production = time.monotonic() + 15.0
+            # Its own clock, not a writer slot.  The prefetch writes no SSOT
+            # from this thread (see WRITER_LANES); what it starts writes from
+            # its own subprocesses and meets production at SQLite, as the
+            # capture lanes do.
             if (
                 storage_ok
                 and now_mono >= next_forecast
                 and forecast_future is None
-                # The third writer.  Production and the hosted sweeps were
-                # serialised against each other on 2026-08-24, but the
-                # forecast prefetch was left ungated -- and it writes the
-                # same ``calibration_forward_taf_capture`` rows the
-                # production cycle writes.  Measured 2026-08-26: every
-                # ingress in the cycle reported
-                # ``OperationalError:database is locked``, the failing
-                # statement was that table's INSERT, and the resident sat
-                # BLOCKED_FAIL_CLOSED across cycles while the prefetch ran
-                # beside it.  One writer at a time means all three lanes,
-                # not two of them.
-                and production_future is None
-                and not writer_excluding_sweeps(hosted_sweep_futures)
-                and writer_turn == "forecast"
             ):
                 # Keep the last completed bounded TAF receipt visible while a
                 # new worker is in flight.  Replacing the whole prefetch
@@ -5604,7 +5674,6 @@ def main() -> int:
                     "live_submit_authorized": False,
                     "orders_submitted": 0,
                 }
-                last_writer_slot = "forecast"
                 forecast_future = forecast_executor.submit(
                     run_target_forecast_refresh_cycle,
                     forecast_worker,

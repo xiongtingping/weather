@@ -309,3 +309,34 @@ def test_the_sweep_health_panel_sits_under_the_machine_lamps():
     page = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
     assert "function sweepHealth()" in page
     assert "rendered[0] + sweeps + rendered.slice(1)" in page
+
+
+def test_a_lane_that_ran_past_the_writer_lease_says_so(board, tmp_path, monkeypatch):
+    """The resident records a lease overrun instead of killing the sweep
+    (2026-09-15); the card is where it is read."""
+
+    from datetime import datetime, timezone
+
+    now = datetime(2026, 9, 10, 12, 0, tzinfo=timezone.utc)
+    clocks = json.loads(C.HOSTED_SWEEP_CLOCKS.read_text(encoding="utf-8"))
+    clocks["three_hourly"] = {
+        **_clock(now, completed_h=0.5),
+        "last_duration_sec": 400.0,
+        "lease_overrun_sec": 160.0,
+    }
+    clocks["slow_daily"] = {
+        **_clock(now, completed_h=0.5),
+        "last_duration_sec": 30.0,
+        "lease_overrun_sec": 0.0,
+    }
+    C.HOSTED_SWEEP_CLOCKS.write_text(json.dumps(clocks), encoding="utf-8")
+    fresh = C.collect_hosted_sweeps(sqlite3.connect(":memory:"))
+
+    over = next(row for row in fresh["lanes"] if row["name"] == "three_hourly")
+    assert over["lease_overrun_sec"] == 160.0
+    assert over["last_duration_sec"] == 400.0
+    assert over["health"] == "amber"
+    assert "超写入租约 160s" in over["note"]
+    fine = next(row for row in fresh["lanes"] if row["name"] == "slow_daily")
+    assert fine["lease_overrun_sec"] == 0.0
+    assert "租约" not in fine["note"]

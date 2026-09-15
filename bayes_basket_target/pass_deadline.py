@@ -21,6 +21,7 @@ caller in another thread is never bounded by somebody else's clock.
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from contextlib import contextmanager
@@ -88,3 +89,37 @@ __all__ = [
     "seconds_left",
     "set_pass_deadline",
 ]
+
+
+# The writer lease.  The resident admits one SSOT writer at a time and hands
+# the slot to the hosted sweeps between production cycles, so however long a
+# sweep runs is how long production waits.  Each sweep used to size its own
+# pass from its own constants (900s, 1200s, 1500s), each one patched after
+# the incident it caused, and nothing at the scheduler said what a slot may
+# cost.  The resident now says it, once, in this environment variable when it
+# starts a sweep; a lane with a pass budget clamps to it here and asks for
+# the next pass with ``hosted_sweep:continue`` when work is left.
+WRITER_LEASE_ENV = "PM_WRITER_LEASE_SEC"
+# The line a sliced sweep prints when it stopped inside its lease with work
+# left; the resident brings it due again after a short delay instead of its
+# whole interval.  The daemon and the paper ledger spell the same line.
+HOSTED_SWEEP_CONTINUE_MARKER = "hosted_sweep:continue"
+
+
+def writer_lease_seconds(default: float) -> float:
+    """``default`` clamped to the writer lease the resident granted, if any.
+
+    Unset, empty or unparsable means "no lease" -- a pass run by hand keeps
+    its own budget -- and a lease below zero is refused the same way.
+    """
+
+    raw = os.environ.get(WRITER_LEASE_ENV, "").strip()
+    if not raw:
+        return float(default)
+    try:
+        lease = float(raw)
+    except ValueError:
+        return float(default)
+    if lease <= 0.0:
+        return float(default)
+    return min(float(default), lease)

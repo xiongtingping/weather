@@ -1626,6 +1626,23 @@ def collect_hosted_sweeps(conn: sqlite3.Connection) -> dict[str, Any]:
             if health == "green":
                 health = "amber"
             note = (note + "；" if note else "") + "在跑，快到超时"
+        # The writer lease (resident ``WRITER_LEASE_SEC``): what one slot
+        # may cost production.  A lane that ran past it held production out
+        # for that long; the resident records it rather than killing the
+        # sweep, so this is where it is seen.
+        last_duration = clock.get("last_duration_sec")
+        overrun = clock.get("lease_overrun_sec")
+        overrun = (
+            float(overrun) if isinstance(overrun, (int, float)) else 0.0
+        )
+        if overrun > 0.0:
+            if health == "green":
+                health = "amber"
+            note = (note + "；" if note else "") + (
+                f"上次跑了 {float(last_duration):.0f}s，超写入租约 {overrun:.0f}s"
+                if isinstance(last_duration, (int, float))
+                else f"上次超写入租约 {overrun:.0f}s"
+            )
         # Past its due time and not running: waiting in its domain's queue.
         # Due is measured from the LATER of the two stamps, which is how the
         # resident seeds it; the rank below mirrors the resident's order.
@@ -1654,6 +1671,11 @@ def collect_hosted_sweeps(conn: sqlite3.Connection) -> dict[str, Any]:
             "since_attempted_sec": since_attempted,
             "overdue_intervals": overdue,
             "last_state": state,
+            "last_duration_sec": (
+                float(last_duration)
+                if isinstance(last_duration, (int, float)) else None
+            ),
+            "lease_overrun_sec": overrun,
             "stuck": bool(stuck),
             "running_now": contract["name"] in running,
             "this_generation": (
@@ -10869,6 +10891,8 @@ function sweepHealth(){
       `上次完成 ${sweepDur(l.since_completed_sec)}前`,
       `上次尝试 ${sweepDur(l.since_attempted_sec)}前`,
       over == null ? "" : `离上次完成 ${over.toFixed(2)} 个回合`,
+      l.last_duration_sec == null ? "" : `上次跑了 ${sweepDur(l.last_duration_sec)}`
+        + (l.lease_overrun_sec > 0 ? `（超写入租约 ${sweepDur(l.lease_overrun_sec)}）` : ""),
       SWEEP_DOMAIN[l.domain] || l.domain,
       l.download_capture ? "下载型：跑的时候不占写锁，也不占 SSOT 队列" : "",
       l.note || "",

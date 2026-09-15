@@ -96,6 +96,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     probability_core,
 )
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
+from bayes_basket_target.pass_deadline import writer_lease_seconds
 from bayes_basket_target.settlement_time import (  # noqa: E402
     hours_to_settlement_if_known,
     settlement_day_window,
@@ -995,9 +996,13 @@ HOSTED_SWEEP_CONTINUE_MARKER = "hosted_sweep:continue"
 # resident's production overdue line (``PRODUCTION_CYCLE_OVERDUE_SEC``, 720s)
 # with a slice's worth of slack.  The repair takes the same number of slices;
 # production gets its turns between them.
-REDERIVE_PASS_BUDGET_SEC = float(
+# ...and never past the writer lease the resident granted this pass
+# (``pass_deadline.writer_lease_seconds``): the lease is the one number that
+# says what any sweep slot may cost production, and this budget is this
+# lane's share of it.
+REDERIVE_PASS_BUDGET_SEC = writer_lease_seconds(float(
     os.environ.get("PAPER_LEDGER_REDERIVE_BUDGET_SEC", "").strip() or 420
-)
+))
 if REDERIVE_SLICE_DAYS <= 0 or REDERIVE_PASS_BUDGET_SEC <= 0:
     raise SystemExit("re-derive slice days and pass budget must be positive")
 # Whose resting lifecycle the book simulates.  Charter 127 (七)(丙), landed
@@ -8980,7 +8985,18 @@ def backfill(
     verbose: bool = False,
     recent_days: int | None = None,
     through_date: str | None = None,
+    budget_sec: float | None = None,
 ) -> dict:
+    # The walk stops between scopes once its budget is spent and says so in
+    # ``counts["stopped_for_time"]``: what it has answered is committed, the
+    # scopes it did not reach are unanswered and are re-walked next pass.
+    # Bounding only the repair *slices* left the scheduled pass itself
+    # unbounded -- a rule change drops the window's rows and the first pass
+    # re-walks them all: 1,216s on 2026-09-15T07:18Z, production waiting
+    # behind it for every second of it.
+    walk_deadline = (
+        None if budget_sec is None else time.monotonic() + float(budget_sec)
+    )
     refusal_rebuilt = ensure_schema(conn)
     # Rows below the floor are not re-derived, so nothing else would ever remove
     # them; without this an incremental pass would leave a retired strategy on
@@ -9119,7 +9135,15 @@ def backfill(
         by_day[str(event_date)].append(str(station_id))
     for event_date in sorted(by_day):
         day_pnl = 0.0
+        if counts.get("stopped_for_time"):
+            break
         for station_id in sorted(by_day[event_date]):
+            if (
+                walk_deadline is not None
+                and time.monotonic() >= walk_deadline
+            ):
+                counts["stopped_for_time"] = 1
+                break
             # Ask the cheap question first.  Resolving a stage's opening
             # distribution walks its whole history looking for the earliest
             # decision that has a book, and doing that for scopes already
@@ -12296,6 +12320,9 @@ def main() -> int:
             conn,
             recent_days=None if args.rebuild else args.recent_days,
             through_date=(args.through_date or "").strip() or None,
+            # A rebuild by hand walks to the end; the scheduled pass holds
+            # the resident's writer and stops on its budget.
+            budget_sec=None if args.rebuild else REDERIVE_PASS_BUDGET_SEC,
         )
         print(json.dumps(
             {"schema": "paper_trading_backfill_v1", "counts": counts},
@@ -12307,16 +12334,25 @@ def main() -> int:
         # A slice that did not move the book's cursor stops the loop rather
         # than repeating itself.
         slice_sec = time.monotonic() - started
+        walk_cut = bool(counts.get("stopped_for_time"))
         repaired = bool(counts.get("repair_slice_through"))
         repair_stalled = False
         while (
-            counts.get("repair_slice_through")
+            not walk_cut
+            and counts.get("repair_slice_through")
             and time.monotonic() - started + 1.5 * slice_sec
             < REDERIVE_PASS_BUDGET_SEC
         ):
             previous = counts["repair_slice_through"]
             slice_started = time.monotonic()
-            counts = backfill(conn, recent_days=args.recent_days)
+            counts = backfill(
+                conn,
+                recent_days=args.recent_days,
+                budget_sec=max(
+                    0.0, REDERIVE_PASS_BUDGET_SEC - (time.monotonic() - started)
+                ),
+            )
+            walk_cut = bool(counts.get("stopped_for_time"))
             print(json.dumps(
                 {"schema": "paper_trading_backfill_v1", "counts": counts},
                 ensure_ascii=False, sort_keys=True,
@@ -12333,7 +12369,7 @@ def main() -> int:
         # it over: 2026-09-14 had three by 12:51Z.  A repair that did not
         # move stays on the interval, so a stuck one cannot hold the SSOT
         # queue every five minutes.
-        if (
+        if walk_cut or (
             repaired
             and not repair_stalled
             and _repair_slice_through(conn, recent_days=args.recent_days)
