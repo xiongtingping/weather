@@ -26,5 +26,9 @@ PY="$(resolve_project_python "$PROJECT_DIR")" || {
 
 cd "$PROJECT_DIR"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] dashboard render (standalone reader)"
-"$PY" scripts/calibration_dashboard.py --html-out tmp/cal_dashboard.html
+# Behind the resident, never beside it: the render runs on the machine the
+# resident runs on, for a quarter of every hour, and the resident's decision
+# cycles are what the page exists to show.  A niced render yields the cores
+# to them and takes what is left.
+nice -n 10 "$PY" scripts/calibration_dashboard.py --html-out tmp/cal_dashboard.html
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] done"

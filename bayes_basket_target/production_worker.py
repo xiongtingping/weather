@@ -3472,6 +3472,25 @@ def _icon_run_published_for(event_date: str, *, as_of_utc: str) -> bool:
     return now_dt >= run_init + timedelta(seconds=ICON_RUN_PUBLICATION_LAG_SEC)
 
 
+def _live_observation_watermark(
+    conn: sqlite3.Connection | None,
+) -> tuple[int, str] | None:
+    """``(newest archive observation rowid, UTC date)``, or None when the
+    archive cannot be asked -- and then the identity pass runs, as before."""
+
+    if conn is None:
+        return None
+    try:
+        newest = conn.execute(
+            "SELECT MAX(rowid) FROM reported_trajectory_observations"
+        ).fetchone()[0]
+    except (sqlite3.Error, AttributeError, TypeError):
+        return None
+    if newest is None:
+        return None
+    return (int(newest), datetime.now(timezone.utc).date().isoformat())
+
+
 def _native_forward_packet_is_stale(
     packet: Mapping[str, Any],
     *,
@@ -5775,6 +5794,31 @@ class TargetProductionWorker:
         script = ROOT / "scripts" / "pr12_awc_observation_sweep.sh"
         if not script.is_file():
             return {"state": "NOT_CONFIGURED", **boundary}
+        # Only when the archive has a report the last pass did not see.  The
+        # pass re-derives the whole three-day window whatever arrived, 33s
+        # at the median and 16% of a cycle (2026-09-15), and most cycles
+        # arrive between one hour's METARs and the next: the archive's
+        # observation table is append-only (a correction is a new row), so
+        # its newest rowid is the watermark, and the window's own start
+        # moves once a day, so the UTC date is the rest of it.  Nothing new
+        # means the contract the last pass staged is the contract.
+        watermark = _live_observation_watermark(
+            getattr(self, "canonical_source_conn", None)
+        )
+        previous = getattr(self, "_live_observation_identity_last", None)
+        if (
+            watermark is not None
+            and isinstance(previous, Mapping)
+            and previous.get("state") == "STAGED"
+            and getattr(self, "_live_observation_identity_watermark", None)
+            == watermark
+        ):
+            return {
+                **previous,
+                "state": "SKIPPED_NO_NEW_REPORTS",
+                "duration_sec": 0.0,
+                "watermark": list(watermark),
+            }
         started = time.monotonic()
         try:
             completed = subprocess.run(
@@ -5830,7 +5874,13 @@ class TargetProductionWorker:
             if isinstance(ingress, Mapping):
                 receipt["inserted_count"] = ingress.get("inserted_count")
                 receipt["replayed_count"] = ingress.get("replayed_count")
+        if receipt["state"] == "STAGED":
+            # The pass saw everything up to this row; a later row, or a
+            # later day, is what makes the next one due.
+            self._live_observation_identity_watermark = watermark
+            self._live_observation_identity_last = dict(receipt)
         return receipt
+
 
     def _capture_historical_taf_daily(
         self, *, as_of_utc: str
