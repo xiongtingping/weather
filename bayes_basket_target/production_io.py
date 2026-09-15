@@ -51,6 +51,10 @@ from .contracts import (
     timestamp_lte,
 )
 from .execution_deadline import derive_target_execution_hard_deadline
+from .basket_kernel.delta_v2 import (
+    ORDER_END_EVENT_TYPES,
+    order_end_marker_v1,
+)
 from .observed_high_floor import (
     MARKET_SNAPSHOT_KEY as OBSERVED_HIGH_MARKET_SNAPSHOT_KEY,
 )
@@ -2061,6 +2065,50 @@ def resolve_delta_v2_runtime_authority(
     return artifact, (resolve_fill if artifact is not None else None), blocker
 
 
+def load_order_end_count(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    observed_at_or_before: str | None = None,
+) -> int | None:
+    """Charter 135 (一): how many of the scope's orders ended unfilled.
+
+    Counts the cancel and expiry events (``ORDER_END_EVENT_TYPES``) on every
+    order intent of the station-day, whatever stage minted it.  None when the
+    order tables are not in this store -- a store with no orders cannot say
+    that none ended.  ``observed_at_or_before`` exists for one reader only:
+    a decision recorded before the arm, whose count has to be reconstructed
+    from its own row's clock (see ``load_last_decision_signature``).
+    """
+
+    present = {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name IN "
+            "('basket_target_order_events','basket_target_order_intents',"
+            "'basket_target_execution_cycles')"
+        )
+    }
+    if len(present) != 3:
+        return None
+    placeholders = ",".join("?" for _ in ORDER_END_EVENT_TYPES)
+    sql = (
+        "SELECT COUNT(*) FROM basket_target_execution_cycles c"
+        " JOIN basket_target_order_intents i ON i.cycle_id=c.cycle_id"
+        " JOIN basket_target_order_events e"
+        "   ON e.order_intent_id=i.order_intent_id"
+        " WHERE c.station_id=? AND c.event_date=?"
+        f"   AND e.event_type IN ({placeholders})"
+    )
+    params: list[Any] = [station_id, event_date, *ORDER_END_EVENT_TYPES]
+    if observed_at_or_before is not None:
+        sql += " AND e.observed_at<=?"
+        params.append(str(observed_at_or_before))
+    row = conn.execute(sql, params).fetchone()
+    return int(row[0] or 0) if row is not None else 0
+
+
 def load_last_decision_signature(
     conn: sqlite3.Connection,
     *,
@@ -2071,7 +2119,22 @@ def load_last_decision_signature(
     """Charter 77: the signature the scope's last recorded decision
     of this stage carried -- served probability identity and the day's
     admissibility -- or None when no decision of this stage was
-    recorded under the rule yet (then everything is a moment)."""
+    recorded under the rule yet (then everything is a moment).
+
+    Charter 135 (一) attaches ``current_order_ends``: the store's count of the
+    scope's orders that ended unfilled, now.  It rides on this mapping because
+    the compile that compares it holds no connection, and it is the one key
+    that describes the present rather than the recorded decision.  With no
+    decision of this stage the mapping carries that key alone, so the first
+    decision records the count it saw instead of leaving the next cycle to
+    discover it.  A decision recorded before the arm existed has no count,
+    and its row cannot supply one: compiles that were not moments are
+    recorded too, and before this arm those rows were written straight past
+    every cancel.  So the count is reconstructed at the clock of the stage's
+    last row that WAS a moment -- the last time the strategy actually decided
+    -- once, on the first compile after the deploy.  A scope whose order ended
+    after that re-decides; one whose orders ended before it does not.
+    """
 
     present = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' "
@@ -2079,6 +2142,9 @@ def load_last_decision_signature(
     ).fetchone() is not None
     if not present:
         return None
+    ends_now = load_order_end_count(
+        conn, station_id=station_id, event_date=event_date,
+    )
     for (details_json,) in conn.execute(
         "SELECT details_json FROM auto_trade_decisions "
         "WHERE station_id=? AND event_date=? AND strategy_lane='basket' "
@@ -2096,8 +2162,33 @@ def load_last_decision_signature(
             continue
         if not signature.get("probability_identity"):
             continue
-        return dict(signature)
-    return None
+        out = dict(signature)
+        if ends_now is not None:
+            out["current_order_ends"] = order_end_marker_v1(ends_now)
+            if out.get("order_ends") is None:
+                decided = conn.execute(
+                    "SELECT MAX(created_at) FROM auto_trade_decisions"
+                    " WHERE station_id=? AND event_date=?"
+                    " AND strategy_lane='basket'"
+                    " AND json_extract(details_json,"
+                    "'$.decision_signature.stage')=?"
+                    " AND json_extract(details_json,"
+                    "'$.decision_signature.is_decision_moment')=1",
+                    (station_id, event_date, str(stage)),
+                ).fetchone()
+                recorded = (
+                    load_order_end_count(
+                        conn, station_id=station_id, event_date=event_date,
+                        observed_at_or_before=str(decided[0]),
+                    )
+                    if decided is not None and decided[0]
+                    else 0
+                )
+                out["order_ends"] = order_end_marker_v1(recorded or 0)
+        return out
+    if ends_now is None:
+        return None
+    return {"current_order_ends": order_end_marker_v1(ends_now)}
 
 
 def compile_production_cycle_from_ssot(

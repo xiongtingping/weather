@@ -142,7 +142,11 @@ from .metar_trajectory import (
     METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
     MetarTrajectoryLikelihoodArtifact,
 )
-from .observed_high_floor import dead_buckets_for_running_high
+from .observed_high_floor import (
+    dead_buckets_for_running_high,
+    dead_buckets_for_upper_bounds,
+    observed_high_floor_enabled,
+)
 from .p1_compiler import (
     compile_station_p1_packets,
     p1_stands_on_replay_base,
@@ -8170,6 +8174,9 @@ class TargetProductionWorker:
                 conn, savepoint="basket_target_resting_reprice"
             ),
             limit=limit,
+            # Charter 135 (二): the running high lives behind the canonical
+            # connection this worker owns, so the loader is supplied here.
+            dead_bucket_loader=self._resting_dead_buckets,
         )
         _publish_resting_reprice_receipt(receipt, as_of_utc=as_of_utc)
         return receipt
@@ -13264,6 +13271,83 @@ class TargetProductionWorker:
         if not highs:
             return None
         return max(highs)
+
+    def _resting_dead_buckets(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        station_id: str,
+        event_date: str,
+        as_of_utc: str,
+    ) -> tuple[tuple[str, ...], float | None]:
+        """Charter 135 (二): the buckets a resting buy may no longer stand on.
+
+        Charter 125's predicate on the same running high the selection floor
+        reads, over the bucket edges the scope's latest registry snapshot
+        states -- the one source of bucket widths (charter 53).  ``((), None)``
+        when the floor is switched off, the day has no formal observation yet,
+        or the ladder cannot be read: no cancel on a fact nobody could state.
+        """
+
+        if not observed_high_floor_enabled():
+            return (), None
+        running_high = self._observed_running_high_c(
+            station_id=station_id,
+            event_date=event_date,
+            as_of_utc=as_of_utc,
+        )
+        if running_high is None:
+            return (), None
+        latest = conn.execute(
+            "SELECT snapshot_sha256 FROM basket_target_market_registry"
+            " WHERE station_id=? AND event_date=?"
+            " ORDER BY refreshed_at DESC LIMIT 1",
+            (station_id, event_date),
+        ).fetchone()
+        if latest is None:
+            return (), running_high
+        rows = [
+            {
+                "station_id": str(row[0]),
+                "event_date": str(row[1]),
+                "settlement_unit": str(row[2] or ""),
+                "outcome": str(row[3]),
+                "registry_json": row[4],
+            }
+            for row in conn.execute(
+                "SELECT station_id,event_date,settlement_unit,outcome,"
+                " registry_json FROM basket_target_market_registry"
+                " WHERE snapshot_sha256=? AND station_id=? AND event_date=?",
+                (latest[0], station_id, event_date),
+            ).fetchall()
+        ]
+        from .p0_producer import (  # noqa: PLC0415
+            bucket_intervals_from_registry_rows,
+        )
+
+        try:
+            intervals = bucket_intervals_from_registry_rows(rows)
+        except ContractError:
+            return (), running_high
+        ordered = sorted(
+            intervals,
+            key=lambda bucket: (
+                float("-inf") if intervals[bucket][0] is None
+                else float(intervals[bucket][0])
+            ),
+        )
+        dead = dead_buckets_for_upper_bounds(
+            ordered_buckets=ordered,
+            upper_bounds={
+                bucket: (
+                    float("inf") if intervals[bucket][1] is None
+                    else float(intervals[bucket][1])
+                )
+                for bucket in ordered
+            },
+            running_high_c=running_high,
+        )
+        return tuple(dead), running_high
 
     def _p0m_observed_hard_bound(
         self,

@@ -99,6 +99,7 @@ from .basket_kernel.delta_v2 import (
     CHAIN_OPENING_STAGE,
     execution_authorization_rule_v1,
     DECISION_MOMENT_RULE_VERSION,
+    ORDER_END_MOMENT_RULE_VERSION,
     edge_state_v1,
     basket_holding_signature_v1,
     is_decision_moment_v1,
@@ -3748,6 +3749,11 @@ def _solve_over_support_windows(
     basket_holding = basket_holding_signature_v1({
         row.bucket: row.filled_shares for row in snapshot.buckets
     })
+    order_ends = (
+        str(last_signature["current_order_ends"])
+        if last_signature.get("current_order_ends") is not None
+        else None
+    )
     decision_moment = CHARTER_77_DECISION_MOMENTS == "off" or taf_tx_entry or (
         is_decision_moment_v1(
             probability_identity=probability_identity,
@@ -3768,6 +3774,16 @@ def _solve_over_support_windows(
             last_basket_holding=str(
                 last_signature.get("basket_holding") or ""
             ),
+            # Charter 135 (一): an order that ended unfilled since the last
+            # recorded decision.  ``current_order_ends`` is what the store
+            # holds now, attached by ``load_last_decision_signature``;
+            # ``order_ends`` is what that decision recorded.  A caller with no
+            # order store (the paper ledger's judge) attaches nothing and the
+            # arm stays off.
+            order_ends=order_ends,
+            last_order_ends=(
+                str(last_signature.get("order_ends") or "") or None
+            ),
         )
     )
     decision_moment_audit = {
@@ -3781,6 +3797,9 @@ def _solve_over_support_windows(
         "taf_tx_entry": taf_tx_entry,
         "basket_holding": basket_holding,
         "last_basket_holding": last_signature.get("basket_holding") or None,
+        "order_end_rule": ORDER_END_MOMENT_RULE_VERSION,
+        "order_ends": order_ends,
+        "last_order_ends": last_signature.get("order_ends") or None,
         "is_decision_moment": bool(decision_moment),
     }
     scored: list[dict[str, Any]] = []

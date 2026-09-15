@@ -2208,6 +2208,22 @@ CHARTER_71_TOPUP_GATE_VERSION = (
 # moving is not a reason to decide, the same way charter 71(a) made it
 # not a reason to top up.  The ledger walks the same moments.
 DECISION_MOMENT_RULE_VERSION = "checkpoint_or_admissibility_or_holding_v1"
+# Charter 135 (一) (user ruling, 2026-09-14: "撤单后不会重挂：策略重新决策"): an
+# order that ended without filling -- a cancel acknowledged, a GTD expiry, a
+# killed FOK -- is a moment of its own, and what runs at it is the whole
+# strategy decision, not a re-price of the old seat.  Until then nothing
+# re-posted a cancelled rung: the resting lane cancels and places nothing, and
+# the next compile asked only about the model, the day's admissibility and
+# fills.  Measured 2026-09-14 over 195 cancels ahead of their event day since
+# go-live: the same bucket was re-quoted within an hour 37 times, and on 100 of
+# those scopes no order of any kind was ever minted again.
+#
+# Named apart from DECISION_MOMENT_RULE_VERSION, which the paper ledger hashes:
+# the ledger has no counterpart event to feed this arm -- its resting walk
+# re-posts inside the seat every re-pricing round and withdraws on its own
+# belief read -- so its behaviour does not change, and a hash that moved
+# anyway would rebuild a book to the same numbers.
+ORDER_END_MOMENT_RULE_VERSION = "unfilled_order_end_is_a_moment_v1"
 EDGE_STATE_ADMISSIBLE = "admissible"
 EDGE_STATE_NONE = "none"
 
@@ -2264,6 +2280,8 @@ def is_decision_moment_v1(
     last_edge_state: str | None,
     basket_holding: str | None = None,
     last_basket_holding: str | None = None,
+    order_ends: str | None = None,
+    last_order_ends: str | None = None,
 ) -> bool:
     """True when the model, the day's admissibility, or what the chain holds
     changed since the last recorded decision; always true with no recorded
@@ -2280,6 +2298,13 @@ def is_decision_moment_v1(
 
     ``basket_holding`` left None keeps the two-arm rule exactly, which is
     what a caller with no holdings view can honestly say.
+
+    The fourth arm is charter 135 (一): ``order_ends`` is the store's count of
+    the scope's orders that ended without filling (``order_end_marker_v1``),
+    and a count that moved since the last recorded decision is a moment.
+    Only ends count -- placing an order moves nothing here, so the arm cannot
+    loop the way letting pending into the holding would.  Left None it is off,
+    which is what a caller with no order store honestly says.
     """
 
     if not last_probability_identity:
@@ -2288,9 +2313,32 @@ def is_decision_moment_v1(
         return True
     if str(edge_state) != str(last_edge_state or ""):
         return True
+    if order_ends is not None and str(order_ends) != str(last_order_ends or ""):
+        return True
     if basket_holding is None:
         return False
     return str(basket_holding) != str(last_basket_holding or "")
+
+
+# The order events that end an order without it filling.  A refusal before
+# the exchange (``NEVER_REACHED_EXCHANGE``, ``SUBMIT_REFUSED``) is deliberately
+# not one: a barred station or a lowered live flag refuses every cycle, and
+# counting those would make every cycle a moment that mints the same refused
+# order again.
+ORDER_END_EVENT_TYPES = ("CANCEL_ACK", "EXPIRED")
+
+
+def order_end_marker_v1(count: int) -> str:
+    """The fourth arm's signature value: how many orders ended unfilled.
+
+    A count rather than a timestamp, because an order can be learned to have
+    ended after a decision that was recorded later than the end itself (an
+    expiry the venue stamps before the sync that reads it), and a clock
+    comparison would lose exactly that one.  The event table is append-only,
+    so the count only moves when a new end is written.
+    """
+
+    return f"ended:{int(count)}"
 
 
 def whole_basket_kelly_stake_v1(

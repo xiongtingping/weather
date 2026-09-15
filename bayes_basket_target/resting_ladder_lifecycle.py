@@ -41,6 +41,17 @@ from .execution_reconciliation import (
 SCHEMA = "bayes_basket_target_resting_reprice_v1"
 RESTING_REPRICE_RULE_VERSION = RESTING_RUNG_ACTION_RULE_VERSION
 DEPARTED_RECONCILE_RULE_VERSION = "departed_order_two_fact_v1"
+# Charter 135 (二) (user ruling, 2026-09-14: "死桶挂单立即撤单"): a resting buy
+# on a bucket the day's observed high has already ruled out is cancelled on
+# the first pass that sees it, ahead of any book and without a dwell.
+# Charter 125 made that bucket arithmetically dead for every new decision;
+# nothing read it for the orders already standing, because this lane read
+# the book and nothing else -- a 27°C bid posted at 11:30 kept resting after
+# the 12:10 report read 28°C, until its GTD ran out, and anyone holding 27°C
+# would sell into it.  The predicate is charter 125's own
+# (``dead_buckets_for_upper_bounds``), never restated here.
+DEAD_BUCKET_CANCEL_RULE_VERSION = "resting_buy_on_observed_dead_bucket_v1"
+DeadBucketLoader = Callable[..., tuple[tuple[str, ...], float | None]]
 # How long a rung that has fallen out of the ladder is left standing before
 # it is cancelled.  The ledger measured that re-posting every 15 minutes
 # lost queue position for nothing; a one-tick flicker of the bid should not
@@ -589,8 +600,15 @@ def reprice_resting_rungs(
     dwell_seconds: float | None = None,
     far_ticks: float | None = None,
     limit: int = 200,
+    dead_bucket_loader: DeadBucketLoader | None = None,
 ) -> dict[str, Any]:
-    """One pass over every resting rung: sync it, then keep or cancel it."""
+    """One pass over every resting rung: sync it, then keep or cancel it.
+
+    ``dead_bucket_loader(conn, station_id=, event_date=, as_of_utc=)`` returns
+    the scope's observed-dead buckets and the running high that killed them
+    (charter 135 (二)).  Absent, no rung is cancelled for that reason -- the
+    caller that owns the observation connection supplies it.
+    """
 
     write = write or (lambda: contextlib.nullcontext())
     books = book_loader or latest_book_by_bucket
@@ -615,6 +633,10 @@ def reprice_resting_rungs(
         "departed_shares": 0.0,
         "cancel_requested": 0,
         "cancel_confirmed": 0,
+        # Charter 135 (二): cancels asked for because the observed high had
+        # already killed the rung's bucket.  Also counted in cancel_requested.
+        "cancel_requested_dead_bucket": 0,
+        "dead_bucket_rule": DEAD_BUCKET_CANCEL_RULE_VERSION,
         "failures": [],
         "rungs": [],
         "places_orders": False,
@@ -626,6 +648,7 @@ def reprice_resting_rungs(
     if not intents:
         return receipt
     book_cache: dict[tuple[str, str], Mapping[str, Mapping[str, float]]] = {}
+    dead_cache: dict[tuple[str, str], tuple[tuple[str, ...], float | None]] = {}
     # Shares this pass has already handed to a departed order, per token, so
     # two orders on one token cannot both claim the same position.
     attributed: dict[str, float] = {}
@@ -706,20 +729,55 @@ def reprice_resting_rungs(
             receipt["rungs"].append(entry)
             continue
         scope = (intent["station_id"], intent["event_date"])
-        if scope not in book_cache:
-            book_cache[scope] = books(conn, station_id=scope[0], event_date=scope[1])
-        book = book_cache[scope].get(intent["bucket"])
-        if not book:
-            entry["verdict"] = {"action": "keep", "reason": "no_book"}
-            receipt["kept"] += 1
-            receipt["rungs"].append(entry)
-            continue
-        verdict = resting_rung_verdict(
-            limit_price=intent["limit_price"],
-            bid=book["bid"], ask=book["ask"], tick=book["tick"],
-            posted_at_utc=intent["posted_at_utc"], as_of_utc=as_of_utc,
-            dwell_seconds=dwell_seconds, far_ticks=far_ticks,
-        )
+        # Charter 135 (二): the day's thermometer first, the book second.  A
+        # dead bucket needs no book to be cancelled -- a missing or stale
+        # book is exactly when a rung on it should not be left standing.
+        if dead_bucket_loader is not None and scope not in dead_cache:
+            try:
+                dead, running_high = dead_bucket_loader(
+                    conn, station_id=scope[0], event_date=scope[1],
+                    as_of_utc=as_of_utc,
+                )
+                dead_cache[scope] = (
+                    tuple(str(bucket) for bucket in dead),
+                    None if running_high is None else float(running_high),
+                )
+            except Exception as exc:  # noqa: BLE001 -- the book rule still runs
+                receipt["failures"].append({
+                    "order_intent_id": intent_id,
+                    "reason": f"dead_bucket_read:{type(exc).__name__}:{exc}"[:160],
+                })
+                dead_cache[scope] = ((), None)
+        dead_buckets, running_high = dead_cache.get(scope, ((), None))
+        if (
+            str(intent.get("order_action") or "BUY").upper() == "BUY"
+            and intent["bucket"] in dead_buckets
+        ):
+            verdict = {
+                "rule": DEAD_BUCKET_CANCEL_RULE_VERSION,
+                "action": "cancel",
+                "reason": "bucket_dead_by_observed_high",
+                "observed_running_high_c": running_high,
+                "limit_price": intent["limit_price"],
+            }
+            cancel_rule = DEAD_BUCKET_CANCEL_RULE_VERSION
+            receipt["cancel_requested_dead_bucket"] += 1
+        else:
+            if scope not in book_cache:
+                book_cache[scope] = books(conn, station_id=scope[0], event_date=scope[1])
+            book = book_cache[scope].get(intent["bucket"])
+            if not book:
+                entry["verdict"] = {"action": "keep", "reason": "no_book"}
+                receipt["kept"] += 1
+                receipt["rungs"].append(entry)
+                continue
+            verdict = resting_rung_verdict(
+                limit_price=intent["limit_price"],
+                bid=book["bid"], ask=book["ask"], tick=book["tick"],
+                posted_at_utc=intent["posted_at_utc"], as_of_utc=as_of_utc,
+                dwell_seconds=dwell_seconds, far_ticks=far_ticks,
+            )
+            cancel_rule = RESTING_REPRICE_RULE_VERSION
         entry["verdict"] = verdict
         if verdict["action"] != "cancel":
             receipt["kept"] += 1
@@ -729,7 +787,7 @@ def reprice_resting_rungs(
         try:
             cancel = client.cancel_order({
                 "order_id": intent["exchange_order_id"],
-                "idempotency_key": f"{intent['idempotency_key']}:cancel:{RESTING_REPRICE_RULE_VERSION}",
+                "idempotency_key": f"{intent['idempotency_key']}:cancel:{cancel_rule}",
             })
             entry["cancel"] = {
                 "ok": cancel.get("ok") is True,
@@ -777,6 +835,7 @@ def reprice_resting_rungs(
 
 
 __all__ = [
+    "DEAD_BUCKET_CANCEL_RULE_VERSION",
     "RESTING_REPRICE_DWELL_SECONDS",
     "RESTING_REPRICE_FAR_TICKS",
     "RESTING_REPRICE_RULE_VERSION",
