@@ -6378,6 +6378,23 @@ class TargetProductionWorker:
             "next_scope_cursor": self._native_ensemble_scope_cursor,
         }
 
+    def _nwp_lap(self, segment: str | None) -> None:
+        """Close the running segment of one rotation call as a span.
+
+        The forecast turn holds the resident's single writer and most of it
+        is this call, sixty-odd times a poll; on 2026-09-15 a call cost 2.7s
+        inside the resident against 0.14s on a read-only replica, and the
+        only instrument was the rotation file's write cadence.  Marks, not a
+        ``with`` block, so measuring the call does not re-indent it.  ``None``
+        starts a call without recording.
+        """
+
+        now = time.perf_counter()
+        started = getattr(self, "_nwp_lap_at", None)
+        self._nwp_lap_at = now
+        if segment is not None and started is not None:
+            self._add_span(segment, (now - started) * 1000.0)
+
     def refresh_resident_nwp(self, *, as_of_utc: str) -> dict[str, Any]:
         """Capture official models and refresh the bounded P0 inbox.
 
@@ -6395,6 +6412,7 @@ class TargetProductionWorker:
         # one already had.  Its irreplaceability -- DWD keeps one run, and a
         # skipped day is gone -- now rests on the same capture the other three
         # families depend on.
+        self._nwp_lap(None)
         open_meteo_d2 = self._capture_open_meteo_d2_daily(as_of_utc=as_of_utc)
         # Same fire-and-forget shape: the trajectory chain runs for at most one
         # due station per cycle and persists through its own gated commit.
@@ -6422,6 +6440,7 @@ class TargetProductionWorker:
         )
         del correction_auto_clear
 
+        self._nwp_lap("nwp_daily_tasks")
         read_conn = getattr(self, "commit_conn", None) or getattr(
             self, "conn", None
         )
@@ -6567,6 +6586,7 @@ class TargetProductionWorker:
                 as_of_utc=as_of_utc,
             )
         registry = load_market_registry_snapshot(registry_path)
+        self._nwp_lap("nwp_registry")
         scopes = registry_capture_scopes(
             registry,
             as_of_utc=as_of_utc,
@@ -6632,6 +6652,7 @@ class TargetProductionWorker:
         # expired unconsumed at 06:54Z while every P1 of the day stayed
         # chained to a two-system root a day and a half old.  A model update
         # drives P0; it must not also have to win a queue position.
+        self._nwp_lap("nwp_scope_catalog")
         arrival_drain = self._drain_fresh_official_native_arrivals(
             read_conn,
             as_of_utc=as_of_utc,
@@ -6656,6 +6677,7 @@ class TargetProductionWorker:
         official_packet: Mapping[str, Any] | None = None
         # What this station's newest P0 weighted, so the probe below and the
         # capture it may ask for read the packet on the compiler's clock.
+        self._nwp_lap("nwp_arrival_drain")
         native_seated_system_ids = self._latest_p0_weighted_systems(
             read_conn, event_date=native_event_date, as_of_utc=as_of_utc
         ).get(native_station)
@@ -6736,6 +6758,7 @@ class TargetProductionWorker:
                     "official_native_packet_unavailable:"
                     f"{type(exc).__name__}:{exc}"
                 )
+        self._nwp_lap("nwp_official_probe")
         official_capture: dict[str, Any] | None = None
         if official_packet is None:
             # The official-native inbox used to be filled only by an operator
@@ -6785,10 +6808,12 @@ class TargetProductionWorker:
                         "official_native_packet_unavailable:"
                         f"{type(exc).__name__}:{exc}"
                     )
+        self._nwp_lap("nwp_capture_admission")
         self._retry_icon_held_captures(
             as_of_utc=as_of_utc,
             inbox_path=official_inbox_path,
         )
+        self._nwp_lap("nwp_icon_retry")
         if official_packet is None and superseded_packet is not None:
             # The fresher run was asked for above and is still on its way.  Its
             # arrival is what this scope wants, but not at the cost of having
@@ -6843,6 +6868,7 @@ class TargetProductionWorker:
                             "accepted_count": 0,
                             "packet_count": 0,
                         }
+                    self._nwp_lap("nwp_official_compile")
                     rotation_receipt = self._persist_nwp_rotation(
                         station_ids=station_allowlist,
                         scopes=scopes,
@@ -6883,6 +6909,7 @@ class TargetProductionWorker:
                     "official_native_compile_rejected:"
                     f"{type(exc).__name__}:{exc}"
                 )
+        self._nwp_lap("nwp_official_compile")
         official_capture_state = str(
             (official_capture or {}).get("state") or ""
         )
@@ -6930,6 +6957,7 @@ class TargetProductionWorker:
                 "live_submit_authorized": False,
                 "orders_submitted": 0,
             }
+        self._nwp_lap("nwp_after_official_paths")
         native_rows = [
             row
             for row in registry.get("rows") or []

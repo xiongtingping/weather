@@ -2204,6 +2204,12 @@ def run_target_forecast_refresh_cycle(
     """
 
     now_mono = time.monotonic()
+    # Where the turn's seconds went.  The turn holds the resident's single
+    # writer while production waits, and until 2026-09-15 the board could say
+    # only "占住" -- not whether the rotation, the TAF round, the physics
+    # capture or the calibration audit was holding it.
+    step_timings_ms: dict[str, float] = {}
+    step_started = time.perf_counter()
     nwp_state: dict[str, Any] = {
         "state": "not_due",
         "calls_order_gateway": False,
@@ -2293,8 +2299,17 @@ def run_target_forecast_refresh_cycle(
                     time.monotonic() + TARGET_NWP_ADVANCE_BUDGET_SEC
                 )
                 blocked_scope_count = 0
+                # One poll's worth of the call's segment spans (``_nwp_lap``).
+                setattr(worker, "_stage_spans", {})
                 for _ in range(scopes_this_poll):
+                    call_started = time.perf_counter()
                     advanced.append(refresh(as_of_utc=utc_now()))
+                    add_span = getattr(worker, "_add_span", None)
+                    if callable(add_span):
+                        add_span(
+                            "nwp_call_total",
+                            (time.perf_counter() - call_started) * 1000.0,
+                        )
                     if str(advanced[-1].get("state") or "").startswith(
                         "blocked"
                     ):
@@ -2319,6 +2334,17 @@ def run_target_forecast_refresh_cycle(
                 )
                 nwp_state["scopes_advanced_this_poll"] = len(advanced)
                 nwp_state["scopes_per_poll_target"] = scopes_this_poll
+                nwp_state["call_spans_ms"] = {
+                    str(name): {
+                        "count": int(row.get("count") or 0),
+                        "total_ms": round(float(row.get("total_ms") or 0.0), 1),
+                        "max_ms": round(float(row.get("max_ms") or 0.0), 1),
+                    }
+                    for name, row in sorted(
+                        (getattr(worker, "_stage_spans", None) or {}).items()
+                    )
+                    if isinstance(row, Mapping)
+                }
                 nwp_state["blocked_scope_count_this_poll"] = (
                     blocked_scope_count
                 )
@@ -2339,6 +2365,10 @@ def run_target_forecast_refresh_cycle(
                 "orders_submitted": 0,
             }
         setattr(worker, "_last_official_nwp_state", dict(nwp_state))
+    step_timings_ms["resident_nwp"] = round(
+        (time.perf_counter() - step_started) * 1000.0, 1
+    )
+    step_started = time.perf_counter()
     next_poll = float(
         getattr(worker, "_next_forward_taf_poll_mono", 0.0)
     )
@@ -2660,12 +2690,24 @@ def run_target_forecast_refresh_cycle(
     # decision -- exactly the contract this cycle already carries.  Once a
     # day is enough; the forecast for a day two days out does not move
     # faster than the capture window.
+    step_timings_ms["forward_taf"] = round(
+        (time.perf_counter() - step_started) * 1000.0, 1
+    )
+    step_started = time.perf_counter()
     forecast_physics_state = _refresh_forecast_physics(worker)
+    step_timings_ms["forecast_physics"] = round(
+        (time.perf_counter() - step_started) * 1000.0, 1
+    )
+    step_started = time.perf_counter()
     # Same isolated off-path lane, same contract: read-only, bounded, and
     # unable to block anything it looks at.
     calibration_health_state = _audit_calibration_health(worker)
+    step_timings_ms["calibration_health"] = round(
+        (time.perf_counter() - step_started) * 1000.0, 1
+    )
     return {
         "schema": "reported_trajectory_forecast_prefetch_v1",
+        "step_timings_ms": step_timings_ms,
         "resident_nwp_capture": nwp_state,
         "forecast_physics_capture": forecast_physics_state,
         "calibration_health": calibration_health_state,
