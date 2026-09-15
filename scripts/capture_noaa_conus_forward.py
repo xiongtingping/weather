@@ -73,8 +73,16 @@ MAX_RUNS_PER_PASS = 6
 #
 # A sharded lane's contract is "do a bounded amount and RETURN"; a lane that
 # does an unbounded amount and gets killed is not sharded, it is a hostage.
-# 900s leaves the P1 lane's 480s and a margin under the 1,800s budget.
-BUDGET_SEC_PER_PASS = 900.0
+#
+# One clock for the whole pass, not one per phase.  The P1 phases (240s a
+# product) and this loop (900s) each started their own count, so a pass could
+# spend 1,380s by its budgets alone, and each phase ends on the run it has
+# already started -- a CONUS run is ninety-odd range reads and a decode.
+# 2026-09-15: the 03:04Z pass was ``timeout_killed`` at 1,800s and the 06:32Z
+# one returned at 1,152s with six runs.  The P1 phases now draw their seconds
+# from this budget and the loop takes what they leave, so the pass stops
+# inside it however the time falls between them.
+BUDGET_SEC_PER_PASS = 1140.0
 # Seconds of writer occupancy this lane may spend on the P1 pass, per
 # product.  The sweep's subprocess timeout is 1800s and the resident admits
 # one writer at a time, so every second here is a second the production
@@ -239,6 +247,7 @@ def main() -> int:
     args = parser.parse_args()
 
     now = datetime.now(timezone.utc)
+    pass_ends = time.monotonic() + BUDGET_SEC_PER_PASS
     conn = sqlite3.connect(str(DB), timeout=120.0)
     # Charter 95: the registry row the compiler resolves this system from.
     from bayes_basket_target.native_ensemble_training_facts import (  # noqa: PLC0415
@@ -255,14 +264,21 @@ def main() -> int:
     ensure_schema(conn)
     for _product in ("HRRR", "NBM"):
         # Each phase arms its own clock, the same seconds its own budget
-        # already names, so the requests inside a run stop where the run
-        # loop would have: the budget above is checked between runs, and one
-        # run is ninety-odd requests.  See ``pass_deadline``.
-        set_pass_deadline(P1_BUDGET_SEC_PER_PRODUCT)
+        # names, so the requests inside a run stop where the run loop would
+        # have: the budget is checked between runs, and one run is ninety-odd
+        # requests.  See ``pass_deadline``.  The phase's seconds come out of
+        # the pass's, never on top of them.
+        _phase_sec = min(
+            P1_BUDGET_SEC_PER_PRODUCT, pass_ends - time.monotonic()
+        )
+        if _phase_sec <= 0.0:
+            print(f"P1 {_product}: 本轮时间预算已用尽，下一轮继续")
+            continue
+        set_pass_deadline(_phase_sec)
         _receipt = capture_p1(
             conn, product=_product, now=now,
             stations=STATIONS[_product], max_runs=P1_MAX_RUNS_PER_PASS,
-            budget_sec=P1_BUDGET_SEC_PER_PRODUCT,
+            budget_sec=_phase_sec,
             dry_run=args.dry_run,
         )
         print(
@@ -289,8 +305,8 @@ def main() -> int:
 
     try:
         plan, skipped = _plan(conn, now)
-        deadline = time.monotonic() + BUDGET_SEC_PER_PASS
-        set_pass_deadline(BUDGET_SEC_PER_PASS)
+        deadline = pass_ends
+        set_pass_deadline(max(0.0, pass_ends - time.monotonic()))
         budget_exhausted = False
         for item in plan:
             product = item["product"]

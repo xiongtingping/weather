@@ -56,8 +56,10 @@ MAX_RUNS_PER_PASS = 2
 # success four hours earlier -- thirty minutes of the exclusive SSOT write
 # domain spent and nothing written.  A pass by hand the same afternoon took
 # 2m53s, so the budget is not the usual case; it is the bound on the bad
-# one.  900s leaves the P1 pass's 240s and a wide margin under the 1,800s
-# subprocess timeout.
+# one.  It bounds the whole pass: the P1 pass draws its 240s from it and
+# the run loop takes what is left, rather than each starting its own count
+# (the NOAA sibling's three counts reached 1,380s by budget alone and were
+# killed at 1,800s on 2026-09-15).
 BUDGET_SEC_PER_PASS = 900.0
 # Seconds of writer occupancy this lane's P1 pass may spend.  The resident
 # admits one writer at a time, so a capture that runs to its subprocess
@@ -122,6 +124,7 @@ def main() -> int:
     args = parser.parse_args()
 
     now = datetime.now(timezone.utc)
+    pass_ends = time.monotonic() + BUDGET_SEC_PER_PASS
     conn = sqlite3.connect(str(DB), timeout=120.0)
     # Charter 95: the registry row the compiler resolves this system from.
     from bayes_basket_target.native_ensemble_training_facts import (  # noqa: PLC0415
@@ -136,7 +139,10 @@ def main() -> int:
     ensure_schema(conn)
     _receipt = capture_p1(
         conn, product="ICON_EU", now=now, stations=STATIONS,
-        max_runs=P1_MAX_RUNS_PER_PASS, budget_sec=P1_BUDGET_SEC,
+        max_runs=P1_MAX_RUNS_PER_PASS,
+        budget_sec=max(
+            0.0, min(P1_BUDGET_SEC, pass_ends - time.monotonic())
+        ),
         dry_run=args.dry_run,
     )
     print(
@@ -159,7 +165,7 @@ def main() -> int:
     skipped = 0
     runs_fetched = 0
     failed: list[str] = []
-    deadline = time.monotonic() + BUDGET_SEC_PER_PASS
+    deadline = pass_ends
     budget_exhausted = False
 
     try:

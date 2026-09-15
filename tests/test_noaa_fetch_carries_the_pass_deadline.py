@@ -177,3 +177,135 @@ def test_each_phase_of_the_pass_fetches_under_its_own_armed_budget(tmp_path, mon
     out = capsys.readouterr().out
     assert "时间预算用尽" in out
     assert "失败/不全 0" in out
+
+
+class _Clock:
+    """A monotonic clock the fake phases can spend, shared by both modules."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+
+def _run_pass_spending(tmp_path, monkeypatch, *, p1_seconds: float):
+    """One pass whose P1 phases each spend ``p1_seconds`` of the pass clock."""
+
+    import types
+
+    import bayes_basket_target.native_ensemble_training_facts as facts
+    import bayes_basket_target.pass_deadline as pd
+
+    script = _script()
+    clock = _Clock()
+    fake_time = types.SimpleNamespace(monotonic=clock.monotonic)
+    monkeypatch.setattr(script, "time", fake_time)
+    monkeypatch.setattr(pd, "time", fake_time)
+    monkeypatch.setattr(script, "DB", tmp_path / "ssot.db")
+    monkeypatch.setattr(facts, "register_regional_point_systems", lambda conn: None)
+    monkeypatch.setattr(lane, "ensure_schema", lambda conn: True)
+    p1_budgets: list[float] = []
+
+    def spending_p1(conn, *, product, budget_sec, **_kwargs):  # noqa: ARG001
+        p1_budgets.append(budget_sec)
+        clock.now += p1_seconds
+        return {"runs_planned": 1, "runs_attempted": 1, "written": 0, "existed": 0,
+                "empty": 0, "failed": [], "budget_exhausted": True}
+
+    monkeypatch.setattr(lane, "capture_p1", spending_p1)
+    monkeypatch.setattr(script, "_transport_is_writable", lambda conn, transport: (True, ""))
+    item = {
+        "product": "HRRR", "station": "KORD", "target": date(2026, 9, 14), "cycle": "00Z",
+        "bucket": "d0", "run": datetime(2026, 9, 14, tzinfo=timezone.utc), "offset_hours": -5,
+        "latitude": 41.98, "longitude": -87.9, "system_id": "x", "init": "2026-09-14T00:00:00Z",
+    }
+    monkeypatch.setattr(script, "_plan", lambda conn, now: ([item], 0))
+    loop_clocks: list[float | None] = []
+
+    def spent_inside(**_kwargs):
+        loop_clocks.append(seconds_left())
+        raise NoaaConusPassDeadlineExceeded("noaa_conus_archive_pass_deadline_exceeded")
+
+    monkeypatch.setattr(script, "fetch_day_maximum", spent_inside)
+    monkeypatch.setattr(sys, "argv", ["capture_noaa_conus_forward.py"])
+    assert script.main() == 0
+    return script, p1_budgets, loop_clocks
+
+
+def test_the_loop_gets_what_the_p1_phases_left_not_a_fresh_budget(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """2026-09-15: three phases each counting from zero could spend 1,380s by
+    budget alone under an 1,800s kill, and the 03:04Z pass was killed."""
+
+    script, p1_budgets, loop_clocks = _run_pass_spending(
+        tmp_path, monkeypatch, p1_seconds=300.0
+    )
+    assert p1_budgets == [script.P1_BUDGET_SEC_PER_PRODUCT] * 2
+    assert len(loop_clocks) == 1
+    assert loop_clocks[0] == pytest.approx(script.BUDGET_SEC_PER_PASS - 600.0)
+
+
+def test_a_pass_the_p1_phases_used_up_starts_no_run(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    script, p1_budgets, loop_clocks = _run_pass_spending(
+        tmp_path, monkeypatch, p1_seconds=700.0
+    )
+    assert len(p1_budgets) == 2          # 440s were left for the second
+    assert loop_clocks == []             # 1,400s spent: no run is started
+    assert "时间预算用尽" in capsys.readouterr().out
+
+
+def test_a_phase_with_nothing_left_is_skipped_not_given_a_budget(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    script, p1_budgets, loop_clocks = _run_pass_spending(
+        tmp_path, monkeypatch, p1_seconds=1200.0
+    )
+    assert p1_budgets == [script.P1_BUDGET_SEC_PER_PRODUCT]
+    assert "P1 NBM: 本轮时间预算已用尽" in capsys.readouterr().out
+
+
+def test_the_icon_eu_run_loop_counts_from_the_pass_not_from_its_own_start(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """Same shape as the NOAA lane: the P1 pass's seconds are the loop's."""
+
+    import types
+
+    import bayes_basket_target.native_ensemble_training_facts as facts
+
+    spec = importlib.util.spec_from_file_location(
+        "_icon_eu_capture_under_test",
+        ROOT / "scripts" / "capture_dwd_icon_eu_forward.py",
+    )
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    clock = _Clock()
+    monkeypatch.setattr(script, "time", types.SimpleNamespace(monotonic=clock.monotonic))
+    monkeypatch.setattr(script, "DB", tmp_path / "ssot.db")
+    monkeypatch.setattr(facts, "register_regional_point_systems", lambda conn: None)
+    monkeypatch.setattr(lane, "ensure_schema", lambda conn: True)
+    p1_budgets: list[float] = []
+
+    def spending_p1(conn, *, budget_sec, **_kwargs):  # noqa: ARG001
+        p1_budgets.append(budget_sec)
+        clock.now += script.BUDGET_SEC_PER_PASS + 1.0
+        return {"runs_planned": 1, "runs_attempted": 1, "written": 0, "existed": 0,
+                "empty": 0, "failed": [], "budget_exhausted": True}
+
+    monkeypatch.setattr(lane, "capture_p1", spending_p1)
+    monkeypatch.setattr(script, "_transport_is_writable", lambda conn: (True, ""))
+    monkeypatch.setattr(script, "_held_buckets", lambda conn, station, event: set())
+    fetched: list = []
+    monkeypatch.setattr(
+        script, "fetch_run_day_maxima",
+        lambda **kw: fetched.append(kw) or {},
+    )
+    monkeypatch.setattr(sys, "argv", ["capture_dwd_icon_eu_forward.py"])
+
+    assert script.main() == 0
+    assert p1_budgets == [script.P1_BUDGET_SEC]
+    assert fetched == []
