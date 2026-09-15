@@ -6051,6 +6051,22 @@ def compile_delta_v2_runtime_plan(
         # live inside the charter-93 branch, which meant the edge reading
         # below could not exist without either duplicating the arithmetic or
         # depending on the floor being switched on.
+        # Charter 127 (五): a completion that crosses is bought by walking the
+        # offer, so its raise is priced on the same walk.  Priced at the top of
+        # book, the lifted cost authorized less than the FOK then had to pay on
+        # any ladder that steps up, and the completion was refused
+        # ``completion_take_above_authorized_cost`` with nothing resting in its
+        # place: a 32C rung short five shares, raised to seven for the dollar
+        # floor, on 3 @ 0.15 + 100 @ 0.16 authorized 1.07 against a 1.09 walk
+        # (audit 2026-09-14; the same shape 71f74f83 fixed for the candidate
+        # itself at P0-M).  The post-lift floor and edge below then judge the
+        # cost the take will actually be charged; a book too dear there is
+        # refused by those gates, by name, not by a price nobody pays.
+        lift_walks_the_offer = (
+            CHARTER_127_COMPLETION_TAKE == "on"
+            and str(target_solution.get("winner_candidate_origin") or "")
+            == LADDER_BALANCE_CANDIDATE_ORIGIN
+        )
         for bucket in seated_support:
             extra = max(
                 0.0,
@@ -6063,6 +6079,20 @@ def compile_delta_v2_runtime_plan(
                 by_bucket[bucket].ask_price
                 if by_bucket[bucket].ask_available else 0.0
             )
+            if lift_walks_the_offer and by_bucket[bucket].ask_available:
+                row = by_bucket[bucket]
+                held_shares = float(row.filled_shares) + float(row.pending_shares)
+                walked = ask_depth_cost_v1(
+                    levels=row.ask_levels,
+                    shares=max(0.0, float(target_shares[bucket]) - held_shares),
+                )
+                if walked is not None:
+                    lifted_cost[bucket] = (
+                        float(row.filled_cost_usdc)
+                        + float(row.pending_notional_usdc)
+                        + float(walked)
+                    )
+                    continue
             lifted_cost[bucket] = (
                 float(lifted_cost.get(bucket, 0.0))
                 + extra * float(ask) * (1.0 + float(basket_policy.fee_rate))
@@ -6587,15 +6617,26 @@ def compile_delta_v2_runtime_plan(
             ),
             "fee_rate": basket_policy.fee_rate,
         }
+        # A crossing leg is judged at the price it will pay.  For the taker
+        # family that is the best ask, already on the grid; a charter-127
+        # completion's limit is the deepest level its walk consumes, which the
+        # grid never held, so on any ladder that steps up the solver answered
+        # at the top of book, found a reservation a tick under the limit and
+        # dropped the leg (``leg_candidate_rejected_by_reservation_or_size``)
+        # -- the second half of the same wrong refusal the lifted cost made
+        # (audit 2026-09-14).  Adding the order's own limit changes nothing
+        # where the limit is the ask.
         price_grid = (
             _reservation_grid(row=row, artifact=delta_policy)
             if mode == "MAKER"
             else tuple(
                 sorted(
                     set(
-                        price
-                        for price in (*delta_policy.price_grid, row.ask_price)
-                        if price + EPS >= row.ask_price
+                        grid_price
+                        for grid_price in (
+                            *delta_policy.price_grid, row.ask_price, price,
+                        )
+                        if grid_price + EPS >= row.ask_price
                     )
                 )
             )

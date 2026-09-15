@@ -143,3 +143,80 @@ def test_the_compiled_completion_candidate_is_the_gap_at_the_limit(
     # Was 4.8125 shares on 0.77 of cash: the walk's cash over its deepest price.
     assert leg["clip_shares"] == pytest.approx(leg["delta_shares"]) == pytest.approx(5.0)
     assert leg["clip_notional_usdc"] == pytest.approx(5.0 * 0.16)
+
+
+def _stepped_compile(monkeypatch: pytest.MonkeyPatch, levels):
+    monkeypatch.setattr(
+        delta_v2_runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
+    )
+    snapshot = fixture._held_snapshot()
+    rows = tuple(
+        replace(
+            row,
+            ask_levels=tuple(
+                AskLevel(price=price, shares=shares) for price, shares in levels
+            ),
+        )
+        if row.bucket == "32" else row
+        for row in snapshot.buckets
+    )
+    return fixture.compile_delta_v2_runtime_plan(
+        snapshot=replace(snapshot, buckets=rows),
+        basket_policy=fixture._basket_policy(),
+        delta_policy=fixture._delta_policy(),
+        fill_resolver=fixture._fill_resolver,
+        capital_available_usdc=10.0,
+        minimum_profit_floor=-5.0,
+        resource_probe_ok=True,
+        book_equity_usdc=514.29,
+    )
+
+
+def test_a_lot_lifted_completion_on_a_stepped_book_is_sent_not_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Audit 2026-09-14, the wrong refusal, both halves.
+
+    32C is short five shares and the dollar floor lifts it to seven.  On
+    3 @ 0.15 + 100 @ 0.16 the take walks 1.09.  The lift was priced at the
+    top of book (authorizing 1.07), so the leg was refused
+    ``completion_take_above_authorized_cost``; with that fixed, the taker
+    reservation grid held only the top of book, found a reservation a tick
+    under the 0.16 limit and dropped the leg as
+    ``leg_candidate_rejected_by_reservation_or_size``.  Nothing rested in its
+    place either way, and the basket stayed one rung short.
+    """
+
+    result = _stepped_compile(monkeypatch, ((0.15, 3.0), (0.16, 100.0)))
+
+    assert result["target_solution"]["winner_candidate_origin"] == (
+        fixture.LADDER_BALANCE_CANDIDATE_ORIGIN
+    )
+    assert result["maker_candidate_diagnostics"] == {}
+    short = [
+        row for row in result["targets"]
+        if float(row.get("delta_shares") or 0.0) > 0.0
+    ]
+    assert [row["bucket"] for row in short] == ["32"]
+    leg = short[0]
+    assert leg["execution_candidate"] == "TAKER_FOK"
+    assert leg["delta_shares"] == pytest.approx(7.0)
+    assert leg["clip_shares"] == pytest.approx(7.0)
+    assert leg["candidate_price"] == pytest.approx(0.16)
+
+
+def test_a_stepped_book_too_dear_is_refused_by_the_gates_that_price_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pricing the lift on the walk does not buy whatever the book charges:
+    the post-lift floor and edge read the walked cost and refuse by name."""
+
+    result = _stepped_compile(monkeypatch, ((0.15, 1.0), (0.90, 100.0)))
+
+    assert not [
+        row for row in result["targets"]
+        if float(row.get("delta_shares") or 0.0) > 0.0
+        and str(row.get("execution_candidate") or "") != "NONE"
+    ]
+    codes = set(result.get("reason_codes") or ())
+    assert codes & {"support_floor_after_lift", "support_edge_after_lift"}, codes
