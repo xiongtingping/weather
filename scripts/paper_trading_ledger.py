@@ -986,8 +986,17 @@ REDERIVE_SLICE_DAYS = int(
 # (``weather_basket_yes_daemon.HOSTED_SWEEP_CONTINUE_MARKER``) brings the
 # member due again after a short delay instead of its whole interval.
 HOSTED_SWEEP_CONTINUE_MARKER = "hosted_sweep:continue"
+# One pass holds the resident's SSOT write domain for as long as it runs, and
+# production waits behind it: 2026-09-15 04:13Z, a 1500s repair pass kept a
+# due production cycle waiting 1025s and counting.  Once a repair pass asks
+# for the next one five minutes later (``HOSTED_SWEEP_CONTINUE_MARKER``), the
+# budget is no longer how much repair a three-hourly slot can buy -- it is how
+# long production is made to wait each time -- so it is held under the
+# resident's production overdue line (``PRODUCTION_CYCLE_OVERDUE_SEC``, 720s)
+# with a slice's worth of slack.  The repair takes the same number of slices;
+# production gets its turns between them.
 REDERIVE_PASS_BUDGET_SEC = float(
-    os.environ.get("PAPER_LEDGER_REDERIVE_BUDGET_SEC", "").strip() or 1500
+    os.environ.get("PAPER_LEDGER_REDERIVE_BUDGET_SEC", "").strip() or 420
 )
 if REDERIVE_SLICE_DAYS <= 0 or REDERIVE_PASS_BUDGET_SEC <= 0:
     raise SystemExit("re-derive slice days and pass budget must be positive")

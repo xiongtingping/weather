@@ -221,3 +221,16 @@ def test_a_stalled_repair_stays_on_the_interval(monkeypatch, tmp_path) -> None:
         remaining="2026-08-19",
     )
     assert not _marker_printed(out)
+
+
+def test_a_repair_pass_never_holds_production_past_its_overdue_line(
+    daemon,
+) -> None:
+    """Continuation makes repair passes back-to-back, so each one's budget is
+    what production waits behind the SSOT write domain every time.  The loop
+    only starts a slice it expects to finish (1.5x the last), so a pass ends
+    inside its budget plus at most one slice; the budget itself must leave
+    production's overdue line standing."""
+
+    assert daemon.hosted_sweep_write_domain("paper_trading_ledger") == "ssot"
+    assert ledger.REDERIVE_PASS_BUDGET_SEC < daemon.PRODUCTION_CYCLE_OVERDUE_SEC
