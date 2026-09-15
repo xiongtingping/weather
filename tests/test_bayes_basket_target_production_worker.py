@@ -62,7 +62,6 @@ from bayes_basket_target.probability_evidence_store import (
 from bayes_basket_target.production_io import (
     load_materialized_probability_envelopes,
 )
-from bayes_basket_target.runtime_config import load_target_no_live_runtime_config
 from bayes_basket_target.market_registry import (
     apply_target_market_registry_schema,
 )
@@ -78,6 +77,8 @@ from bayes_basket_target.fleet import expected_station_count
 # database row and the lane to carry the same one.
 from bayes_basket_target.production_worker import (
     DEFAULT_TARGET_ACTIVATION as _DEFAULT_TARGET_ACTIVATION,
+    NO_LIVE_EXECUTION_MODE,
+    PRODUCTION_EXECUTION_MODE,
 )
 
 
@@ -169,6 +170,10 @@ def _compiled_native_p0_source_packet(
     packet = {
         "station_id": "RKPK",
         "event_date": "2026-08-01",
+        # The resident P0 lane skips any packet whose stage is not P0
+        # (657ffd20: a P0-M packet in the shared inbox used to fail the whole
+        # ingress closed), so a P0 fixture has to say it is one.
+        "stage": "P0",
         "probability_pathway": P0_PROBABILITY_PATHWAY,
         "native_probability_envelope": {
             "lineage": lineage,
@@ -3736,12 +3741,23 @@ def test_equal_bucket_probabilities_do_not_excuse_a_moved_root(
     ) is None
 
 
-def test_writer_flag_cannot_open_in_live_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_writer_flag_cannot_open_in_a_mode_the_worker_was_not_built_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Before the go-live migration (2026-08-30) this pinned "never in live
+    # mode"; the worker is built for ``production_live`` now, and the rule
+    # that survives is that the wiring flag cannot open a writer in any mode
+    # other than the one compiled in.
     monkeypatch.setenv("PM_TARGET_PRODUCTION_WRITER", "1")
-    monkeypatch.setenv("PM_TARGET_EXECUTION_MODE", "production_live")
+    other = (
+        NO_LIVE_EXECUTION_MODE
+        if PRODUCTION_EXECUTION_MODE == "production_live"
+        else "production_live"
+    )
+    monkeypatch.setenv("PM_TARGET_EXECUTION_MODE", other)
     activation = Path(_DEFAULT_TARGET_ACTIVATION)
 
-    with pytest.raises(RuntimeError, match="execution_mode_not_production_no_live"):
+    with pytest.raises(RuntimeError, match="target_writer_execution_mode_mismatch"):
         open_target_writer_if_enabled(tmp_path / "target.db", activation_path=activation)
 
 
@@ -3749,9 +3765,22 @@ def test_default_target_budget_is_target_owned_and_ignores_resident_bankroll(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("PM_TARGET_REMAINING_BUDGET_USDC", raising=False)
+    # The number is the operator's (the board's budget dial writes it), so the
+    # test pins where it is read from, not what it happens to be today: the
+    # runtime config the compiled mode selects, and nothing else.
+    from bayes_basket_target import runtime_config
+
+    loader = (
+        "load_target_live_runtime_config"
+        if PRODUCTION_EXECUTION_MODE == "production_live"
+        else "load_target_no_live_runtime_config"
+    )
+    monkeypatch.setattr(
+        runtime_config, loader,
+        lambda *_args, **_kwargs: {"target_remaining_budget_usdc": 20.0},
+    )
 
     assert _resolve_target_remaining_budget() == 20.0
-    assert load_target_no_live_runtime_config()["target_remaining_budget_usdc"] == 20.0
 
 
 def test_explicit_target_budget_override_is_target_scoped(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3977,9 +4006,13 @@ def _trajectory_schema(conn) -> None:
         "station_id TEXT, local_date TEXT, settlement_timezone TEXT,"
         "qc_status TEXT)"
     )
+    # ``scope_key`` is read by the due check since charter 62 (an artifact
+    # emitted under a season the serving side no longer asks for is stale);
+    # a fixture without the column fails on the read, not on the rule.
     conn.execute(
         "CREATE TABLE basket_probability_evidence_artifact("
-        "station_id TEXT, artifact_kind TEXT, trained_through_utc TEXT)"
+        "station_id TEXT, artifact_kind TEXT, trained_through_utc TEXT,"
+        " scope_key TEXT)"
     )
 
 
@@ -4011,7 +4044,8 @@ def test_trajectory_training_is_due_when_a_new_day_settles() -> None:
 
     # Covered through the latest day's close (16:00Z for UTC+8): not due.
     conn.execute(
-        "INSERT INTO basket_probability_evidence_artifact VALUES"
+        "INSERT INTO basket_probability_evidence_artifact"
+        "(station_id,artifact_kind,trained_through_utc) VALUES"
         "('ZUUU','METAR_TRAJECTORY_LIKELIHOOD','2026-08-08T16:00:00.000Z')"
     )
     assert worker._metar_trajectory_training_due(station_id="ZUUU")[0] is False
@@ -4437,7 +4471,13 @@ def test_run_scoped_p1_blocker_allows_truth_label_and_does_not_global_block_mark
     assert result["state"] == "blocked_fail_closed"
     # The worker now reaches the market boundary; this fixture has no
     # registry snapshot, so that independent evidence blocker is expected.
-    assert result["reason"] == "ContractError:target_market_registry_snapshot_empty"
+    # Since the per-station evidence groups (2026-09-01) the boundary names
+    # every station it skipped and why, so the reason is the aggregate with
+    # the registry blocker inside it rather than the bare blocker.
+    assert result["reason"].startswith(
+        "ContractError:official_ws_evidence_complete_scope_missing:"
+    )
+    assert "target_market_registry_snapshot_empty" in result["reason"]
     assert result["delta_v2_truth_ingress"]["written_count"] == 1
     assert result["delta_v2_label_ingress"]["appended_count"] == 1
     assert result["calls_order_gateway"] is False
@@ -5175,7 +5215,10 @@ def test_no_snapshot_is_loaded_unless_one_is_asked_for(monkeypatch, tmp_path) ->
     # The default snapshot froze 5 of 45 stations on 2026-08-03.  Loading it
     # by default rejected the 40 it never covered and mis-bound the 5 it did,
     # which stopped P0 for the whole fleet.
-    monkeypatch.setenv("PM_TARGET_EXECUTION_MODE", "production_no_live")
+    # The worker's own mode: the snapshot is only considered for the runtime
+    # the worker was built for, which is ``production_live`` since go-live --
+    # under ``production_no_live`` this test passed without reaching the load.
+    monkeypatch.setenv("PM_TARGET_EXECUTION_MODE", PRODUCTION_EXECUTION_MODE)
     monkeypatch.delenv("PM_TARGET_NATIVE_OOS_SNAPSHOT_MANIFEST", raising=False)
 
     worker = TargetProductionWorker(db_path=tmp_path / "target.db")
@@ -5189,8 +5232,9 @@ def test_an_explicitly_requested_snapshot_still_fails_closed(
 ) -> None:
     # Pinning a snapshot on purpose keeps the old contract: an unreadable one
     # must leave a non-None sentinel so every compile fails closed rather than
-    # falling back to the newest append-only activation.
-    monkeypatch.setenv("PM_TARGET_EXECUTION_MODE", "production_no_live")
+    # falling back to the newest append-only activation.  The worker's own
+    # mode, as above: a foreign mode never reaches the load at all.
+    monkeypatch.setenv("PM_TARGET_EXECUTION_MODE", PRODUCTION_EXECUTION_MODE)
     missing = tmp_path / "absent_snapshot.json"
     monkeypatch.setenv(
         "PM_TARGET_NATIVE_OOS_SNAPSHOT_MANIFEST", str(missing)

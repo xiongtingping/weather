@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from bayes_basket_target.activation import load_target_activation  # noqa: E402
+from bayes_basket_target.activation import load_activation  # noqa: E402
 from bayes_basket_target.atomic_ledger import initialize_capital_pool, record_writer_lock_wait, target_ledger_schema_status  # noqa: E402
 from bayes_basket_target.database import DEFAULT_TARGET_DB, TARGET_ACTIVATION_DDL, resolve_target_database  # noqa: E402
 from bayes_basket_target.market_registry import apply_target_market_registry_schema  # noqa: E402
@@ -47,7 +47,12 @@ def initialize(
     capital_epoch_id: str = DEFAULT_CAPITAL_EPOCH,
 ) -> dict[str, Any]:
     db_path = resolve_target_database(db)
-    activation = load_target_activation(activation_path)
+    # The schema-dispatching loader, as the writer gate has used since the
+    # go-live flip pointed the default activation at the live contract:
+    # the no-live-only loader refuses that file on sight
+    # (target_activation_schema_invalid), so initializing a target store
+    # against the production activation failed before it began.
+    activation = load_activation(activation_path)
     if db_path.exists() and db_path.is_dir():
         raise RuntimeError("target_database_path_is_directory")
     db_path.parent.mkdir(parents=True, exist_ok=True)
