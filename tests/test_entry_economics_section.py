@@ -78,6 +78,41 @@ def _book(rows: list[tuple]) -> sqlite3.Connection:
     return conn
 
 
+def _settled_rows(conn: sqlite3.Connection) -> list[tuple]:
+    """The settlement rows the arithmetic reads, in its column order.
+
+    The board reads the live book since 2026-09-16; these fixtures are a
+    settlement table of the same shape, so the identities pinned here are
+    the arithmetic's own whichever book feeds it.
+    """
+
+    return conn.execute(
+        "SELECT stage, claimed_win_probability, hit, intended_hit,"
+        " basket_all_in_cost, stake_usdc, pnl_usdc, event_date"
+        " FROM paper_trade_settlement"
+    ).fetchall()
+
+
+def _economics(conn: sqlite3.Connection) -> dict:
+    return C._entry_economics_from_rows(_settled_rows(conn))
+
+
+def _risk(conn: sqlite3.Connection) -> dict:
+    days = conn.execute(
+        "SELECT event_date, SUM(stake_usdc), SUM(pnl_usdc),"
+        " SUM(CASE WHEN basket_all_in_cost > 0"
+        "   THEN stake_usdc * (claimed_win_probability"
+        "        / basket_all_in_cost - 1.0) ELSE 0 END),"
+        " SUM(CASE WHEN basket_all_in_cost > 0"
+        "   THEN stake_usdc * (1.0 - basket_all_in_cost)"
+        "        / basket_all_in_cost ELSE 0 END),"
+        " SUM(stake_usdc * basket_all_in_cost),"
+        " SUM(stake_usdc * hit), COUNT(*), SUM(hit)"
+        " FROM paper_trade_settlement GROUP BY 1 ORDER BY 1"
+    ).fetchall()
+    return C._risk_metrics_from_days(days, 1000.0)
+
+
 def test_claim_pairs_with_the_held_basket_not_the_chosen_one():
     # Every chain claims 50% and holds a basket that hits half the time,
     # while the objective's chosen basket would have hit every time.  The
@@ -88,7 +123,7 @@ def test_claim_pairs_with_the_held_basket_not_the_chosen_one():
         ("P0", 0.5, 1, 1, 0.4, 10.0),
         ("P0", 0.5, 0, 1, 0.4, 10.0),
     ])
-    got = C.collect_entry_economics(conn)
+    got = _economics(conn)
     chain = got["weightings"]["chain"]
     assert chain["claimed_coverage"] == pytest.approx(0.5)
     assert chain["realised_coverage"] == pytest.approx(0.5)
@@ -108,7 +143,7 @@ def test_share_column_reconciles_with_the_book_return():
         ("P1", 0.55, 0, 1, 0.50, 20.0),
         ("P1", 0.60, 1, 1, 0.55, 8.0),
     ])
-    got = C.collect_entry_economics(conn)
+    got = _economics(conn)
     share = got["weightings"]["share"]
     assert share["cost_per_share"] == pytest.approx(
         got["stake_usdc"] / got["shares"]
@@ -137,7 +172,7 @@ def test_break_even_rate_is_the_cost_under_every_weighting():
         ("P0", 0.45, 0, 0, 0.62, 3.0),
         ("P1", 0.70, 0, 1, 0.51, 40.0),
     ])
-    got = C.collect_entry_economics(conn)
+    got = _economics(conn)
     for key in ("chain", "stake", "share"):
         block = got["weightings"][key]
         assert block["breakeven_hit_rate"] == pytest.approx(
@@ -161,7 +196,7 @@ def test_published_odds_are_not_the_mean_of_per_chain_odds():
         ("P0", 0.60, 0, 0, 0.55, 10.0),
         ("P0", 0.60, 1, 1, 0.55, 10.0),
     ])
-    got = C.collect_entry_economics(conn)
+    got = _economics(conn)
     chain = got["weightings"]["chain"]
     assert got["net_odds_chain_naive"] > 8.0
     assert chain["net_odds"] < 2.0
@@ -178,7 +213,7 @@ def test_hit_and_profit_are_counted_apart():
         ("P0", 0.40, 1, 1, 0.30, 5.0),
         ("P0", 0.40, 0, 0, 0.30, 5.0),
     ])
-    got = C.collect_entry_economics(conn)
+    got = _economics(conn)
     chain = got["weightings"]["chain"]
     assert chain["realised_coverage"] == pytest.approx(2 / 3)
     assert chain["profitable_rate"] == pytest.approx(1 / 3)
@@ -196,7 +231,7 @@ def test_rows_without_a_basket_cost_are_counted_not_dropped_silently():
          None, 1),
     )
     conn.commit()
-    got = C.collect_entry_economics(conn)
+    got = _economics(conn)
     assert got["settled_rows"] == 2
     assert got["chains"] == 1
     assert got["cost_missing"] == 1
@@ -221,7 +256,7 @@ def test_sub_cent_baskets_are_excluded_on_the_ledgers_own_rule():
         ("P0", 0.21, 0, 0, 0.003, 5.0),   # dust: 332x odds, 1.5 cents at risk
         ("P0", 0.19, 0, 0, 0.004, 5.0),
     ])
-    got = C.collect_entry_economics(conn)
+    got = _economics(conn)
     assert got["settled_rows"] == 4
     assert got["chains"] == 2
     assert got["dust_excluded"] == 2
@@ -237,7 +272,7 @@ def test_dust_floor_is_the_ledgers_and_not_a_local_copy():
 
     assert C.DUST_COST_FLOOR is LEDGER_FLOOR
     conn = _book([("P0", 0.5, 1, 1, 0.4, 10.0)])
-    assert C.collect_entry_economics(conn)["dust_cost_floor"] == LEDGER_FLOOR
+    assert _economics(conn)["dust_cost_floor"] == LEDGER_FLOOR
 
 
 def test_odds_never_come_from_averaging_per_row_odds():
@@ -286,21 +321,21 @@ def test_the_portfolio_card_no_longer_prints_the_same_numbers():
 
 
 def test_empty_book_says_so_instead_of_publishing_zeroes():
-    # The ledger is rebuilt in place -- cleared, then re-walked for about
-    # forty minutes -- and a render landing inside that window used to
-    # publish a page of zeroes as if measured (2026-09-08).
+    # An empty book once published a page of zeroes as if measured
+    # (2026-09-08, during a ledger rebuild); a book with nothing settled
+    # yet -- the live book's first day -- says so instead.
     conn = sqlite3.connect(":memory:")
     conn.execute(DDL)
-    got = C.collect_entry_economics(conn)
+    got = _economics(conn)
     assert got["available"] is False
     assert got["chains"] == 0
-    assert "重建" in got["reason"]
+    assert "还没有已结算" in got["reason"]
 
 
 def test_stake_weighted_column_agrees_with_the_portfolio_tiles():
     """One quantity, one value, however many sections print it.
 
-    ``collect_risk_metrics`` already publishes the stake-weighted cost,
+    ``_risk_metrics_from_days`` already publishes the stake-weighted cost,
     odds, break-even rate and realised win rate.  This section computes
     them again from the same table, so the two are pinned together: a
     change to either definition has to move both or fail here.
@@ -313,8 +348,8 @@ def test_stake_weighted_column_agrees_with_the_portfolio_tiles():
         ("P1", 0.60, 1, 1, 0.55, 8.0),
         ("P0", 0.44, 1, 1, 0.41, 15.0),
     ])
-    entry = C.collect_entry_economics(conn)["weightings"]["stake"]
-    risk = C.collect_risk_metrics(conn)
+    entry = _economics(conn)["weightings"]["stake"]
+    risk = _risk(conn)
     assert risk["available"] is True
     assert entry["cost_per_share"] == pytest.approx(risk["cost_mean"])
     assert entry["breakeven_hit_rate"] == pytest.approx(
@@ -332,11 +367,13 @@ def test_stake_weighted_column_agrees_with_the_portfolio_tiles():
 
 def test_section_is_rendered_and_reachable():
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
-    # Since 2026-09-13 the nine numbers are part of the money board's one
-    # 纸面账本 pane; tests/test_dashboard_money_board.py renders the board.
-    assert '["paper", "纸面账本", () => paperBoard(), "sec-paper"]' in source
+    # Since 2026-09-16 the nine numbers sit on the money board's live data
+    # board, off the live book; tests/test_dashboard_money_board.py renders
+    # the board.
+    assert 'safe(() => moneyDataBoard(), "实盘数据看板")' in source
     assert 'sec(moneyBoard, "资金看板", "sec-money")' in source
-    assert '"entry_economics": _cached_section(' in source
+    assert '"live_money": _cached_section(' in source
+    assert "_entry_economics_from_rows([" in source
 
 
 def test_the_three_verdict_pairs_are_exact_identities():
@@ -365,7 +402,7 @@ def test_the_three_verdict_pairs_are_exact_identities():
         ("P1", 0.60, 1, 1, 0.55, 8.0),
         ("P0", 0.44, 1, 1, 0.41, 15.0),
     ])
-    got = C.collect_entry_economics(conn)
+    got = _economics(conn)
     share, chain = got["weightings"]["share"], got["weightings"]["chain"]
 
     # Row one: what a share took out, against what it cost.
@@ -451,10 +488,13 @@ BAR_SPLIT = {
 def _payload(rows: list[tuple], **extra) -> dict:
     conn = _book(rows)
     return {
-        "entry_economics": C.collect_entry_economics(conn),
-        "risk_metrics": C.collect_risk_metrics(conn),
-        "live_readiness": {"bar_split": BAR_SPLIT},
-        "selection": {},
+        "live_money": {
+            "available": True, "capital_usdc": 1000.0,
+            "capital_source": "live_runtime_v1.json", "pending_legs": 0,
+            "economics": _economics(conn),
+            "risk": _risk(conn),
+            "bar_split": BAR_SPLIT,
+        },
     } | extra
 
 
@@ -466,7 +506,7 @@ def _draw(payload: dict) -> str:
         "const D = " + json.dumps(payload, ensure_ascii=False) + ";\n"
         "const h = (s) => String(s == null ? '' : s)"
         ".replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');\n"
-        + _function("paperBoard") + "\nconsole.log(paperBoard());\n"
+        + _function("moneyDataBoard") + "\nconsole.log(moneyDataBoard());\n"
     )
     result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr
@@ -519,7 +559,7 @@ def test_each_headline_quantity_is_drawn_once():
     of the bar split, which is the whole book again."""
 
     payload = _payload(WINNING)
-    risk, entry = payload["risk_metrics"], payload["entry_economics"]
+    risk, entry = payload["live_money"]["risk"], payload["live_money"]["economics"]
     share = entry["weightings"]["share"]
     html = _draw(payload)
 
@@ -550,12 +590,12 @@ def test_the_verdict_follows_the_money_both_ways():
         top = html[html.index('class="card ee-top"'):html.index('class="pb-cap"')]
 
         assert _pill(top) == (tone, word)
-        assert (payload["risk_metrics"]["realised_pnl_usdc"] >= 0) is (word == "赚")
+        assert (payload["live_money"]["risk"]["realised_pnl_usdc"] >= 0) is (word == "赚")
 
 
 def test_gains_minus_losses_is_the_books_pnl():
     payload = _payload(WINNING)
-    entry = payload["entry_economics"]
+    entry = payload["live_money"]["economics"]
     card = _card(_draw(payload), "赚的钱 vs 亏的钱")
 
     gains, losses = (float(v) for v in re.findall(r'class="ee-v">([\d.]+) U<', card))
@@ -574,7 +614,7 @@ def test_bars_share_one_scale_so_the_longer_bar_is_the_larger_number():
 
 def test_hit_card_compares_realised_coverage_with_the_break_even_line():
     payload = _payload(LOSING)
-    share = payload["entry_economics"]["weightings"]["share"]
+    share = payload["live_money"]["economics"]["weightings"]["share"]
     card = _card(_draw(payload), "实际命中 vs 保本线")
 
     below = share["realised_coverage"] < share["breakeven_hit_rate"]
@@ -595,7 +635,7 @@ def test_the_bar_split_names_each_side_with_its_sample():
 
 def test_a_tail_that_is_only_the_worst_day_is_not_printed_again():
     payload = _payload(WINNING)
-    risk = payload["risk_metrics"]
+    risk = payload["live_money"]["risk"]
     html = _draw(payload)
 
     wider = [t for t in risk["tails"] if t["tail_days"] > 1]
@@ -607,7 +647,7 @@ def test_a_tail_that_is_only_the_worst_day_is_not_printed_again():
 
 def test_a_losing_stage_is_named_by_the_verdict():
     payload = _payload(WINNING)
-    stages = payload["entry_economics"]["by_stage"]
+    stages = payload["live_money"]["economics"]["by_stage"]
     card = _card(_draw(payload), "分阶段")
 
     winners = [s["stage"] for s in stages if s["pnl_usdc"] >= 0]
@@ -615,11 +655,16 @@ def test_a_losing_stage_is_named_by_the_verdict():
     if winners and losers:
         assert _pill(card) == ("amber", "赚在 " + "、".join(winners))
     for s in stages:
-        assert f'{s["stage"]} · {s["chains"]} 链' in card
+        assert f'{s["stage"]} · {s["chains"]} 笔' in card
 
 
-def test_an_absent_ledger_is_one_line_not_a_board_of_zeros():
-    html = _draw(_payload(WINNING, selection={"ledger_absent": True}))
+def test_an_unsettled_live_book_is_one_line_not_a_board_of_zeros():
+    html = _draw({"live_money": {
+        "available": False, "reason": "还没有已结算的实盘成交",
+        "economics": {"available": False, "chains": 0},
+        "risk": {"available": False, "days": 0},
+        "bar_split": {},
+    }})
 
-    assert "纸面账本此刻是空的" in html
+    assert "还没有已结算的实盘成交" in html
     assert "ee-cmp" not in html and "pb-kpis" not in html

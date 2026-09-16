@@ -6,12 +6,16 @@ User ruling, 2026-09-13: 把「组合风险指标」、入场的九个数、钱 
 two sections under it, and two cards inside Live 上线准备.
 
 The same evening the paper category's three blocks became one board
-(有些指标重复了，把纸面账本的所有数据看板重新整理合并): the category now has one
-pane and draws no tab strip, while 实盘 keeps its two.
+(有些指标重复了，把纸面账本的所有数据看板重新整理合并).
+
+User ruling, 2026-09-16: 纸面账本的数据同样改为实盘数据，把「实盘订单 · 数量 /
+ROI / PnL」融合在一起，上面是数据看板，下方是站明细; the ledger is a rule
+comparator from that day.  One category, 实盘, whose first pane draws the data
+board over the order card and whose second is the intent book.
 
 Asserted on rendered output, with every block stubbed: the board's own job is
 the grouping, the tabs and the guards, and the blocks each have their own
-tests (the paper board's are in tests/test_entry_economics_section.py).  The
+tests (the data board's are in tests/test_entry_economics_section.py).  The
 placement checks read the page's call graph, not its wording.
 """
 
@@ -62,7 +66,7 @@ BOARD = "\n".join([
 STUBS = """
 const h = (s) => String(s == null ? '' : s)
   .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-const paperBoard = () => { if (D.__paper_throws) throw new Error('boom'); return '<div>PAPER</div>'; };
+const moneyDataBoard = () => { if (D.__board_throws) throw new Error('boom'); return '<div>DATA</div>'; };
 const liveOrderCard = (L) => `<h3>ORDERS ${L.live_orders.intent_count}</h3>`;
 const orderBookCard = (B) => `<div>BOOK ${B.total}</div>`;
 """
@@ -95,18 +99,17 @@ def _panes(html: str) -> list[tuple[str, str, bool]]:
     return out
 
 
-def test_five_blocks_in_two_categories_one_showing_per_category():
+def test_one_live_category_with_the_data_board_over_the_orders():
     html = _render(LIVE)
 
-    assert _panes(html) == [
-        ("paper", "paper", False),
-        ("live", "orders", False), ("live", "book", True),
-    ]
-    for label in ("纸面账本", "实盘", "实盘订单 · 数量 / ROI / PnL", "实盘意向簿"):
+    assert _panes(html) == [("live", "orders", False), ("live", "book", True)]
+    assert 'data-daytabs="money-paper"' not in html
+    for label in ("实盘", "实盘 · 数据看板与站明细", "实盘意向簿"):
         assert label in html
-    for body in ("PAPER", "ORDERS 7", "BOOK 7"):
+    for body in ("DATA", "ORDERS 7", "BOOK 7"):
         assert body in html
-    assert html.index("PAPER") < html.index("ORDERS 7")
+    # 上面是数据看板，下方是站明细.
+    assert html.index("DATA") < html.index("ORDERS 7")
 
 
 def test_every_tab_has_a_pane_and_a_single_block_draws_no_strip():
@@ -120,7 +123,7 @@ def test_every_tab_has_a_pane_and_a_single_block_draws_no_strip():
 
 
 def test_a_block_that_throws_does_not_blank_the_others():
-    html = _render(LIVE | {"__paper_throws": True})
+    html = _render(LIVE | {"__board_throws": True})
 
     assert "渲染失败" in html and "boom" in html
     for body in ("ORDERS 7", "BOOK 7"):
@@ -132,6 +135,8 @@ def test_live_blocks_say_absent_instead_of_drawing_empty_tiles():
 
     assert "ORDERS" not in html and "BOOK" not in html
     assert html.count("live_readiness 不可用") == 2
+    # The data board reads the live book, not the readiness payload.
+    assert "DATA" in html
 
 
 # ---------------------------------------------------------------- placement
@@ -152,7 +157,7 @@ def test_the_board_sits_between_the_head_and_live_readiness():
     assert "sec(entryEconomics" not in page and "sec(riskMetrics" not in page
 
 
-@pytest.mark.parametrize("name", ["paperBoard", "liveOrderCard", "orderBookCard"])
+@pytest.mark.parametrize("name", ["moneyDataBoard", "liveOrderCard", "orderBookCard"])
 def test_each_block_is_drawn_by_the_board_and_nowhere_else(name):
     """A second call site would print the same numbers twice on one page."""
 

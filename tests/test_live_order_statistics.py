@@ -50,7 +50,8 @@ def _book(rows: list[tuple], fills: list[tuple],
         " live_submit_authorized INTEGER, created_at TEXT,"
         " target_execution_hard_deadline_at TEXT);"
         "CREATE TABLE auto_trade_decisions("
-        " decision_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT);"
+        " decision_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
+        " details_json TEXT NOT NULL DEFAULT '{}');"
         "CREATE TABLE basket_target_order_reconciliations("
         " order_intent_id TEXT PRIMARY KEY, state TEXT, filled_size REAL,"
         " filled_notional_usdc REAL, blocking_reason TEXT);"
@@ -75,7 +76,8 @@ def _book(rows: list[tuple], fills: list[tuple],
             (intent, decision, "cycle", bucket, live),
         )
         conn.execute(
-            "INSERT OR IGNORE INTO auto_trade_decisions VALUES (?,?,?)",
+            "INSERT OR IGNORE INTO auto_trade_decisions"
+            "(decision_id, station_id, event_date) VALUES (?,?,?)",
             (decision, station, day),
         )
     for intent, size, notional in fills:
@@ -558,25 +560,61 @@ def test_neither_live_reader_is_left_on_the_old_table() -> None:
     tree = ast.parse(
         (ROOT / "scripts" / "calibration_dashboard.py").read_text("utf-8")
     )
-    wanted = {"_collect_live_orders", "_collect_live_pnl"}
-    seen = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.FunctionDef) or node.name not in wanted:
-            continue
-        seen.add(node.name)
-        calls = {
-            child.func.id for child in ast.walk(node)
-            if isinstance(child, ast.Call) and isinstance(child.func, ast.Name)
+    # The listing calls the resolver itself; the money reads the live book,
+    # whose builder is the one place that calls it for them (2026-09-16).
+    resolver_of = {
+        "_collect_live_orders": ("_live_settled_buckets",),
+        "_collect_live_pnl": ("live_book.build",),
+    }
+
+    def calls_of(node):
+        out = set()
+        for child in ast.walk(node):
+            if not isinstance(child, ast.Call):
+                continue
+            if isinstance(child.func, ast.Name):
+                out.add(child.func.id)
+            elif (isinstance(child.func, ast.Attribute)
+                  and isinstance(child.func.value, ast.Name)):
+                out.add(f"{child.func.value.id}.{child.func.attr}")
+        return out
+
+    def paper_literals(node):
+        # Query text, not prose: a docstring naming the table reads nothing.
+        docs = {
+            id(child.body[0].value) for child in ast.walk(node)
+            if isinstance(child, (ast.FunctionDef, ast.Module)) and child.body
+            and isinstance(child.body[0], ast.Expr)
+            and isinstance(child.body[0].value, ast.Constant)
         }
-        assert "_live_settled_buckets" in calls, node.name
-        literals = [
+        return [
             child.value for child in ast.walk(node)
             if isinstance(child, ast.Constant) and isinstance(child.value, str)
+            and id(child) not in docs
+            and "paper_trade_settlement" in child.value
         ]
-        assert not [s for s in literals if "paper_trade_settlement" in s], (
-            node.name
-        )
-    assert seen == wanted
+
+    seen = set()
+    for node in ast.walk(tree):
+        if (not isinstance(node, ast.FunctionDef)
+                or node.name not in resolver_of):
+            continue
+        seen.add(node.name)
+        for name in resolver_of[node.name]:
+            assert name in calls_of(node), (node.name, name)
+        assert not paper_literals(node), node.name
+    assert seen == set(resolver_of)
+
+    book = ast.parse((ROOT / "scripts" / "live_book.py").read_text("utf-8"))
+    functions = {
+        node.name: node for node in ast.walk(book)
+        if isinstance(node, ast.FunctionDef)
+    }
+    assert "settled_buckets" in calls_of(functions["build"])
+    # The settler's label is the only thing the live book reads off paper.
+    assert [
+        name for name, node in functions.items() if paper_literals(node)
+    ] == ["settled_buckets"]
 
 
 def test_each_station_carries_its_own_settled_days_and_five_day_window() -> None:

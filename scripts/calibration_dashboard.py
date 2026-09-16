@@ -58,14 +58,14 @@ if str(Path(__file__).resolve().parent) not in sys.path:
 from paper_trading_ledger import (  # noqa: E402
     DUST_COST_FLOOR,
     INITIAL_CAPITAL_USDC,
-    # The settler's own three, never a copy of them.  Deriving which rung a
-    # value landed on means knowing the per-station grid (a degree Celsius
-    # at ZBAA, two Fahrenheit at KMIA), and an audit that restates a rule
-    # invents its own findings rather than reporting production's.
-    _settled_bucket as _ledger_settled_bucket,
-    _settlement_ladder as _ledger_settlement_ladder,
-    _truth as _ledger_truth,
 )
+# The live book (user ruling 2026-09-16: the paper ledger is a rule
+# comparator; every reading of whether money was made reads live fills).
+# Its settled-bucket resolver used to live here as ``_live_settled_buckets``
+# and keeps that name, so the listing and the money sections still call one
+# resolver.
+import live_book  # noqa: E402
+from live_book import settled_buckets as _live_settled_buckets  # noqa: E402
 from selection_market_dashboard import (  # noqa: E402
     STATION_LABELS,
     STATS_START_EVENT_DATE,
@@ -4196,109 +4196,6 @@ def _live_basket_plan_state(
     return state
 
 
-def _live_settled_buckets(
-    conn: sqlite3.Connection, keys: set[tuple[str, str]]
-) -> dict[tuple[str, str], tuple[str, str]]:
-    """Which of these station-days have settled, on which bucket, said by whom.
-
-    Two sources, in this order.  The paper ledger's settlement rows come
-    first: that label was written by the production settler, the live PnL
-    has always read it, and a day it carries needs nothing derived.  Every
-    key it does not carry is resolved here from the truth lane and the
-    station-day's own committed ladder, through the settler's own two
-    functions -- ``_truth`` for the revision that stands (charter 44) and
-    ``_settled_bucket`` for the rung a value falls in.  The per-station
-    grid is never restated: the rungs come back out of
-    ``basket_probability_bridge_*`` by the ledger's own reader.
-
-    The paper book is a different book.  It seats the station-days its own
-    rule admits, and the live lane mints intents for days it never seated:
-    2026-09-08 carried eleven live station-days against three paper
-    settlements, while the truth lane held an ACCEPTED value for
-    forty-eight stations that day.  Reading the paper table alone, the
-    panel called the other eight 未结算 four days after the fact.  The same
-    gap opens on every rule change -- the ledger re-derives its whole
-    history, both paper tables sit empty for the better part of an hour,
-    and a live basket that had a verdict yesterday loses it.  Truth does
-    not move when a seating rule does, so the fallback does not either.
-
-    Verified 2026-09-12 against the settler's own output: over the 3,368
-    candidate windows it has scored, this reproduces ``settled_bucket``
-    exactly, with zero disagreements.  And the ladder is a property of the
-    station-day rather than of the seat -- across every COMMITTED bridge
-    row in the archive, no station-day carries two distinct ladders -- so
-    the newest committed decision's rungs are the day's own grid.
-
-    The source travels with the label because the two are different
-    claims: one says the paper book settled this seat, the other says the
-    truth lane settled this day and no paper seat exists.  A panel that
-    printed them as one word would make the missing seat invisible again,
-    which is the state this function was written to end.
-    """
-
-    out: dict[tuple[str, str], tuple[str, str]] = {}
-    if not keys:
-        return out
-    if _table_exists(conn, "paper_trade_settlement"):
-        try:
-            for station, day, bucket in conn.execute(
-                "SELECT station_id, event_date, MAX(settled_bucket)"
-                " FROM paper_trade_settlement WHERE settled_bucket IS NOT NULL"
-                " GROUP BY station_id, event_date"
-            ):
-                key = (str(station), str(day))
-                if key in keys:
-                    out[key] = (str(bucket), "paper_ledger")
-        except sqlite3.Error:
-            out = {}
-    missing = sorted(keys - set(out))
-    if not missing:
-        return out
-    for name in ("calibration_station_daily_high_truth",
-                 "basket_probability_bridge_history",
-                 "basket_probability_bridge_bucket_probability"):
-        if not _table_exists(conn, name):
-            return out
-    try:
-        truth = _ledger_truth(conn)
-    except sqlite3.Error:
-        return out
-    for key in missing:
-        standing = truth.get(key)
-        if standing is None:
-            continue
-        # One index seek per station-day, not a scan: the leading columns
-        # of ``basket_probability_bridge_history_asof_idx`` are exactly
-        # (station_id, event_date, state, decision_at_utc), so the newest
-        # committed decision is the last entry of a seeked range.  The
-        # listing this serves is at most a few dozen station-days wide.
-        try:
-            head = conn.execute(
-                "SELECT stage, decision_at_utc"
-                " FROM basket_probability_bridge_history"
-                " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-                " ORDER BY decision_at_utc DESC LIMIT 1",
-                (key[0], key[1]),
-            ).fetchone()
-            if not head:
-                continue
-            ladder = _ledger_settlement_ladder(
-                conn, key[0], key[1], str(head[0]), str(head[1])
-            )
-        except sqlite3.Error:
-            continue
-        if not ladder:
-            continue
-        landed = _ledger_settled_bucket(list(ladder), standing.tmax_c)
-        # A truth outside every rung the day was priced against is not a
-        # settlement this book can score, and saying so by leaving the day
-        # open beats naming a bucket that was never on the ladder.
-        if landed is None:
-            continue
-        out[key] = (str(landed[0]), "truth_lane")
-    return out
-
-
 def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
     """The order book: how many, worth how much, and what came back.
 
@@ -4718,28 +4615,22 @@ def _collect_live_pnl(conn: sqlite3.Connection) -> dict[str, Any]:
     if not all(_table_exists(conn, name) for name in needed):
         pnl["reason"] = "执行账本表还没建"
         return pnl
-    try:
-        fills = conn.execute(
-            "SELECT d.station_id, d.event_date, i.bucket,"
-            " r.filled_size, r.filled_notional_usdc"
-            " FROM basket_target_order_reconciliations r"
-            " JOIN basket_target_order_intents i"
-            "   ON i.order_intent_id=r.order_intent_id"
-            " JOIN auto_trade_decisions d ON d.decision_id=i.decision_id"
-            " WHERE i.live_submit_authorized=1 AND r.filled_size>0"
-        ).fetchall()
-    except sqlite3.Error:
-        pnl["reason"] = "执行账本读不出来"
-        return pnl
+    # The live book's own loader, shared with the money board, the daily
+    # table, the roster, the go-live gates and the automatic bar, so every
+    # one of them counts the same legs.  Its settled buckets come from the
+    # same resolver as the basket listing above: a filled leg counted
+    # pending here while its basket upstairs shows a verdict is two numbers
+    # for one fact, and the reader has no way to tell which one to believe.
+    book = live_book.build(conn)
+    fills = [
+        (leg["station_id"], leg["event_date"], leg["bucket"],
+         leg["filled_size"], leg["filled_notional_usdc"])
+        for leg in book["legs"] if leg["filled_size"] > 0
+    ]
     if not fills:
         pnl["reason"] = "还没有一笔实盘成交"
         return pnl
-    # Same resolver as the basket listing above.  A filled leg counted
-    # pending here while its basket upstairs shows a verdict is two numbers
-    # for one fact, and the reader has no way to tell which one to believe.
-    settled = _live_settled_buckets(conn, {
-        (str(station), str(day)) for station, day, *_ in fills
-    })
+    settled = book["settled"]
     per_station: dict[str, dict[str, float]] = {}
     days: set[tuple[str, str]] = set()
     for station, day, bucket, size, notional in fills:
@@ -7399,8 +7290,16 @@ def _intended_cover_by_day(
     return out
 
 
-def collect_risk_metrics(conn: sqlite3.Connection) -> dict[str, Any]:
+def _risk_metrics_from_days(
+    rows: Sequence[Sequence[Any]], initial_capital_usdc: float
+) -> dict[str, Any]:
     """The book as a portfolio: Sharpe against its target, and its cousins.
+
+    ``rows`` are one per event day, oldest first: day, stake, pnl, claimed
+    EV, stake-weighted odds, stake-weighted cost, stake-weighted hits, the
+    settlement count and the hit count.  Either book can supply them -- the
+    live book does, since the 2026-09-16 ruling made the paper ledger a rule
+    comparator -- so the arithmetic below exists once.
 
     One return per event day -- the day's settled P&L over the equity the
     book opened that day with -- which is the series the equity curve is
@@ -7423,28 +7322,13 @@ def collect_risk_metrics(conn: sqlite3.Connection) -> dict[str, Any]:
     # section reports, summed in money instead of averaged per seat, so
     # the board has exactly one definition of EV and not a second one
     # wearing the same name.
-    rows = conn.execute(
-        "SELECT event_date, SUM(stake_usdc), SUM(pnl_usdc),"
-        " SUM(CASE WHEN basket_all_in_cost > 0"
-        "   THEN stake_usdc * (claimed_win_probability"
-        "        / basket_all_in_cost - 1.0) ELSE 0 END),"
-        # Odds and cost, weighted by the money that bought them: a 30-USDC
-        # seat at 1.4x and a 1-USDC seat at 9x do not average to 5.2x for
-        # any purpose this book has.
-        " SUM(CASE WHEN basket_all_in_cost > 0"
-        "   THEN stake_usdc * (1.0 - basket_all_in_cost)"
-        "        / basket_all_in_cost ELSE 0 END),"
-        " SUM(stake_usdc * basket_all_in_cost),"
-        " SUM(stake_usdc * hit), COUNT(*), SUM(hit)"
-        " FROM paper_trade_settlement GROUP BY 1 ORDER BY 1"
-    ).fetchall()
     if len(rows) < 3:
         return {"available": False, "days": len(rows)}
-    equity = INITIAL_CAPITAL_USDC
+    equity = initial_capital_usdc
     series: list[dict[str, Any]] = []
     returns: list[float] = []
     claimed_ev_total = 0.0
-    claimed_equity = INITIAL_CAPITAL_USDC
+    claimed_equity = initial_capital_usdc
     odds_weighted = 0.0
     cost_weighted = 0.0
     hit_weighted = 0.0
@@ -7541,7 +7425,7 @@ def collect_risk_metrics(conn: sqlite3.Connection) -> dict[str, Any]:
         if window_claim > 0 else None
     )
     losing = [r for r in returns if r < 0]
-    peak = float(INITIAL_CAPITAL_USDC)
+    peak = float(initial_capital_usdc)
     max_drawdown = 0.0
     trough_day = ""
     peak_day = ""
@@ -7558,7 +7442,7 @@ def collect_risk_metrics(conn: sqlite3.Connection) -> dict[str, Any]:
     # Least squares on cumulative P&L: the straight line a reader draws by
     # eye, made explicit so the eye is not doing the fitting.
     xs = list(range(1, count + 1))
-    ys = [row["equity_usdc"] - INITIAL_CAPITAL_USDC for row in series]
+    ys = [row["equity_usdc"] - initial_capital_usdc for row in series]
     mean_x = sum(xs) / count
     mean_y = sum(ys) / count
     denominator = sum((x - mean_x) ** 2 for x in xs)
@@ -7571,17 +7455,17 @@ def collect_risk_metrics(conn: sqlite3.Connection) -> dict[str, Any]:
         (y - (slope * x + intercept)) ** 2 for x, y in zip(xs, ys)
     )
     total_ss = sum((y - mean_y) ** 2 for y in ys)
-    total_return = (equity / INITIAL_CAPITAL_USDC) - 1.0
+    total_return = (equity / initial_capital_usdc) - 1.0
     return {
         "available": True,
         "days": count,
         "first_day": series[0]["event_date"],
         "last_day": series[-1]["event_date"],
-        "initial_equity_usdc": INITIAL_CAPITAL_USDC,
+        "initial_equity_usdc": initial_capital_usdc,
         "final_equity_usdc": round(equity, 2),
         "total_return": total_return,
         "annualised_return_geometric": (
-            (equity / INITIAL_CAPITAL_USDC) ** (annual / count) - 1.0
+            (equity / initial_capital_usdc) ** (annual / count) - 1.0
             if equity > 0 else None
         ),
         "annualised_return_arithmetic": mean * annual,
@@ -7629,9 +7513,9 @@ def collect_risk_metrics(conn: sqlite3.Connection) -> dict[str, Any]:
             claimed_ev_total / sum(row["staked_usdc"] for row in series)
             if sum(row["staked_usdc"] for row in series) > 0 else None
         ),
-        "realised_pnl_usdc": equity - INITIAL_CAPITAL_USDC,
+        "realised_pnl_usdc": equity - initial_capital_usdc,
         "ev_realisation_ratio": (
-            (equity - INITIAL_CAPITAL_USDC) / claimed_ev_total
+            (equity - initial_capital_usdc) / claimed_ev_total
             if claimed_ev_total > 0 else None
         ),
         "days_beating_claim": sum(
@@ -7846,8 +7730,15 @@ def _entry_economics_block(
     }
 
 
-def collect_entry_economics(conn: sqlite3.Connection) -> dict[str, Any]:
+def _entry_economics_from_rows(
+    rows: Sequence[Sequence[Any]],
+) -> dict[str, Any]:
     """The nine numbers one entry is made of, off the settled book.
+
+    ``rows`` are settlement rows -- stage, claim, hit, intended_hit, cost,
+    stake, pnl, event_date -- from whichever book is being read.  Since the
+    2026-09-16 ruling that is the live book (``live_book.settlement_rows``);
+    the arithmetic is written once so the two books cannot drift apart.
 
     The board already carries most of these one at a time, scattered: the
     claim lives in the coverage section, the hit rate in the basket
@@ -7868,18 +7759,9 @@ def collect_entry_economics(conn: sqlite3.Connection) -> dict[str, Any]:
     ladder posted and the market never sold.
     """
 
-    if not _table_exists(conn, "paper_trade_settlement"):
-        return {"available": False, "reason": "账本表还没建", "chains": 0}
-    rows = conn.execute(
-        "SELECT stage, claimed_win_probability, hit, intended_hit,"
-        " basket_all_in_cost, stake_usdc, pnl_usdc, event_date"
-        " FROM paper_trade_settlement"
-    ).fetchall()
     if not rows:
-        # Distinguishable from a book that lost everything: the ledger is
-        # rebuilt in place (clear, then forty minutes of re-walk), and a
-        # render landing in that window used to publish a page of zeroes.
-        return {"available": False, "reason": "账本是空的（可能正在重建）",
+        # Distinguishable from a book that lost everything.
+        return {"available": False, "reason": "还没有已结算的仓位",
                 "chains": 0}
     overall = _entry_economics_block(rows)
     if overall is None:
@@ -7919,6 +7801,131 @@ def collect_entry_economics(conn: sqlite3.Connection) -> dict[str, Any]:
         ),
         **overall,
         "by_stage": stages,
+    }
+
+
+def _live_runtime_config() -> tuple[Path, dict[str, Any]]:
+    """The runtime contract the execution mode selects, and its path.
+
+    The rule production itself follows (weather_basket_yes_daemon.py, and
+    the budget read in production_worker.py): the live file in live mode,
+    the no-live twin otherwise.  The go-live panel once read the no-live
+    file unconditionally and reported live_submit_authorized=false about a
+    system whose contract said true; naming the file read is what stops
+    that repeating.
+    """
+
+    live_mode = _live_execution_mode() == "production_live"
+    path = ROOT / "config/bayes_basket_target" / (
+        "live_runtime_v1.json" if live_mode else "no_live_runtime_v1.json"
+    )
+    try:
+        return path, json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return path, {}
+
+
+def _live_bar_sides(
+    rows: Sequence[Mapping[str, Any]],
+    sides: Mapping[str, set[str]],
+) -> dict[str, dict[str, Any]]:
+    """The live money on each side of the station bar."""
+
+    out: dict[str, dict[str, Any]] = {}
+    for name, members in sides.items():
+        picked = [r for r in rows if r["station_id"] in members]
+        stake = sum(float(r["stake_usdc"]) for r in picked)
+        pnl = sum(float(r["pnl_usdc"]) for r in picked)
+        out[name] = {
+            "stations": len({r["station_id"] for r in picked}),
+            "settled_days": len({
+                (r["station_id"], r["event_date"]) for r in picked
+            }),
+            "staked_usdc": stake,
+            "pnl_usdc": pnl,
+            "roi": (pnl / stake) if stake else None,
+        }
+    return out
+
+
+def collect_live_money(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The money board, off the live book (user ruling, 2026-09-16).
+
+    The paper ledger is a rule comparator from that day: it answers whether
+    another rule would do better or worse, and it stopped being the account.
+    So the board's 总账 / 对比 / 风险 / 曲线 read the live fills, through the
+    same two pieces of arithmetic the paper book was read with.
+
+    The capital base is the live budget knob, ``target_remaining_budget_usdc``
+    in the runtime contract the execution mode selects (operator ruling, same
+    day).  The account has no recorded balance history, so equity, return on
+    capital, the annualised return and the percentage drawdown are all
+    measured against the budget as it stands now -- a day traded under a
+    larger budget reads as a larger return than it was, and the board says
+    which number it used.
+    """
+
+    book = live_book.build(conn)
+    rows = book["settlements"]
+    runtime_path, runtime = _live_runtime_config()
+    try:
+        capital = float(runtime.get("target_remaining_budget_usdc"))
+    except (TypeError, ValueError):
+        capital = None
+    pending_legs = sum(
+        1 for leg in book["legs"]
+        if leg["filled_size"] > 0
+        and (leg["station_id"], leg["event_date"]) not in book["settled"]
+    )
+    economics = _entry_economics_from_rows([
+        (r["stage"], r["claimed_win_probability"], r["hit"],
+         r["intended_hit"], r["basket_all_in_cost"], r["stake_usdc"],
+         r["pnl_usdc"], r["event_date"])
+        for r in rows
+    ])
+    by_day: dict[str, list[float]] = {}
+    for r in rows:
+        acc = by_day.setdefault(r["event_date"], [0.0] * 8)
+        stake = float(r["stake_usdc"])
+        cost = r["basket_all_in_cost"]
+        claim = r["claimed_win_probability"]
+        acc[0] += stake
+        acc[1] += float(r["pnl_usdc"])
+        # The paper query's CASE WHEN cost > 0, row for row.
+        if cost is not None and cost > 0 and claim is not None:
+            acc[2] += stake * (claim / cost - 1.0)
+        if cost is not None and cost > 0:
+            acc[3] += stake * (1.0 - cost) / cost
+        if cost is not None:
+            acc[4] += stake * cost
+        acc[5] += stake * int(r["hit"])
+        acc[6] += 1
+        acc[7] += int(r["hit"])
+    days = [
+        (day, acc[0], acc[1], acc[2], acc[3], acc[4], acc[5],
+         int(acc[6]), int(acc[7]))
+        for day, acc in sorted(by_day.items())
+    ]
+    if capital is None or capital <= 0:
+        risk = {"available": False, "days": len(days),
+                "reason": "预算旋钮读不出来，没有本金基数"}
+    else:
+        risk = _risk_metrics_from_days(days, capital)
+    scope = _live_scope()
+    return {
+        "available": bool(rows),
+        "reason": "" if rows else "还没有已结算的实盘成交",
+        "capital_usdc": capital,
+        "capital_source": runtime_path.name,
+        "settled_rows": len(rows),
+        "pending_legs": pending_legs,
+        "economics": economics,
+        "risk": risk,
+        "bar_split": _live_bar_sides(rows, {
+            "live": set(scope["stations"]),
+            "probation": set(scope["probation"]),
+            "barred": set(scope.get("barred") or barred_station_set()),
+        }),
     }
 
 
@@ -10710,11 +10717,11 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "market_lean": _cached_section(
             "market_lean", collect_market_lean, conn
         ),
-        "risk_metrics": _cached_section(
-            "risk_metrics", collect_risk_metrics, conn
-        ),
-        "entry_economics": _cached_section(
-            "entry_economics", collect_entry_economics, conn
+        # The account, off the live book (user ruling, 2026-09-16).  The
+        # paper book's own risk metrics and nine numbers left the page with
+        # it: the ledger is a rule comparator, not the account.
+        "live_money": _cached_section(
+            "live_money", collect_live_money, conn
         ),
         "ledger_alignment": _cached_section(
             "ledger_alignment", collect_ledger_alignment, conn
@@ -13880,12 +13887,14 @@ function consolidation(){
 // comparisons read entry_economics, which leaves out sub-cent baskets on the
 // ledger's chain_credible rule; the foot says how many whenever there are any.
 // Each verdict rests on an identity pinned in tests/test_entry_economics_section.py.
-function paperBoard(){
-  if((D.selection||{}).ledger_absent) return `<div class="muted">纸面账本此刻是空的——见页头，
-    重建结束后这里自行恢复。</div>`;
-  const E = D.entry_economics || {};
-  const R = D.risk_metrics || {};
-  const SP = (D.live_readiness || {}).bar_split || {};
+function moneyDataBoard(){
+  // The live book since 2026-09-16 (user ruling: the paper ledger is a rule
+  // comparator, not the account).  Same four blocks, same arithmetic, read
+  // off live fills; the capital is the budget knob as it stands now.
+  const M = D.live_money || {};
+  const E = M.economics || {};
+  const R = M.risk || {};
+  const SP = M.bar_split || {};
   const S = (E.weightings || {}).share || {};
   const pct = (v,d=1)=>v==null?"—":(100*v).toFixed(d)+"%";
   const spct = (v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+"%");
@@ -13902,7 +13911,7 @@ function paperBoard(){
   const pnl = whole ? R.realised_pnl_usdc : E.pnl_usdc;
   const stake = whole ? R.total_staked_usdc : E.stake_usdc;
   if(pnl==null) return `<div class="card"><span class="dot amber"></span>
-    ${h(E.reason||"账本还读不出来")}。</div>`;
+    ${h(M.reason||E.reason||R.reason||"实盘还读不出来")}。</div>`;
   const roi = stake>0 ? pnl/stake : null;
   const head = `<div class="card ee-top">
     <span class="pill ${tone(pnl)} ee-verdict">${pnl>=0 ? "赚" : "亏"}</span>
@@ -13915,10 +13924,13 @@ function paperBoard(){
     ${whole ? `<span class="pb-kv"><span class="muted">本金回报</span>
       <b class="${text(R.total_return)}">${spct(R.total_return,2)}</b></span>` : ""}
     <span class="pb-kv"><span class="muted">投入</span><b>${num(stake)} U</b></span>
-    <span class="pb-kv"><span class="muted">链</span><b>${whole ? R.chain_count : E.chains}</b></span>
+    <span class="pb-kv"><span class="muted">已结算</span><b>${whole ? R.chain_count : E.chains} 笔</b></span>
     ${whole ? `<span class="pb-kv"><span class="muted">结算日</span><b>${R.days}</b></span>` : ""}
     <span class="muted">${h(whole ? R.first_day : E.first_day)} → ${
       h(whole ? R.last_day : E.last_day)}</span>
+    <span class="muted" title="一笔＝一个站日的一个阶段里成交过的腿；本金＝预算旋钮当前值，账户没有历史余额记录，预算更大的日子会被读成更高的回报率">本金 ${
+      M.capital_usdc==null ? "—" : num(M.capital_usdc,0)+" U"}（预算旋钮）${
+      M.pending_legs ? ` · 待结算 ${M.pending_legs} 腿不计` : ""}</span>
   </div>`;
 
   // ---- 对比
@@ -13990,7 +14002,7 @@ function paperBoard(){
     cards.push(card("分阶段",
       !down.length ? "各阶段都赚" : !up.length ? "各阶段都亏" : `赚在 ${up.map(h).join("、")}`,
       !down.length ? "green" : !up.length ? "red" : "amber",
-      stages.map(s => [`${h(s.stage)} · ${s.chains} 链`, s.roi,
+      stages.map(s => [`${h(s.stage)} · ${s.chains} 笔`, s.roi,
         `${spct(s.roi)} <span class="muted">${usd(s.pnl_usdc,1)}</span>`, tone(s.roi)]), ""));
   }
 
@@ -14064,7 +14076,7 @@ function paperBoard(){
     curves = cap("曲线") + `<div class="card">
       ${legend([["var(--up)", false, "实际权益"],
         ["var(--accent)", true, `趋势 ${usd(R.trend_slope_usdc_per_day)}/天 · R² ${num(R.trend_r_squared)}`],
-        ["var(--muted)", true, `本金 ${num(R.initial_equity_usdc,0)}`],
+        ["var(--muted)", true, `本金 ${num(R.initial_equity_usdc,0)}（预算旋钮）`],
         ["var(--pill-red-fg)", false, "回撤区间"]])}
       ${panel(190, [
         {vals: trend, stroke: "var(--accent)", width: 1.5, dash: "6 4"},
@@ -14078,7 +14090,7 @@ function paperBoard(){
   }
 
   const excluded = [
-    E.dust_excluded ? `对比不含 ${E.dust_excluded} 条整篮成本 &lt; ${
+    E.dust_excluded ? `对比不含 ${E.dust_excluded} 笔整篮成本 &lt; ${
       (100*(E.dust_cost_floor||0.01)).toFixed(0)}¢ 的链（${usd(E.dust_excluded_pnl_usdc)}）` : "",
     E.cost_missing ? `对比不含 ${E.cost_missing} 行缺成本` : "",
   ].filter(Boolean).join(" · ");
@@ -15939,11 +15951,13 @@ function liveOrderCard(L){
          <div style="overflow-x:auto"><table><thead><tr><th></th><th>桶</th><th>侧</th>
          <th>价</th><th>成交/总</th><th>order id</th><th>挂单时刻</th></tr></thead>
          <tbody>${openRows}</tbody></table></div></div>`;
-  return `<h3 style="margin-top:22px;font-size:15px">实盘订单 · 数量 / ROI / PnL
+  // Counts here, money in the board above (2026-09-16): the PnL and ROI
+  // tiles were the second print of what the data board's 总账 already says.
+  return `<h3 style="margin-top:22px;font-size:15px">订单数量
     <span class="pill ${liveMode&&!L.submission_paused?"red":""}"
       style="font-size:11px">${state}</span></h3>
   <div class="card">
-    <div class="grid g4">
+    <div class="grid g3">
       ${tile("实盘意向", (O.intent_count||0)+" 笔",
         "计划名义 "+u(O.notional_usdc)+(O.listed_count&&O.listed_count<O.intent_count
           ? " · 下面按篮列出最近 "+O.listed_count+" 笔（新的 200 笔，外加每个成交过的篮子）"
@@ -15952,45 +15966,39 @@ function liveOrderCard(L){
         "已提交 "+(O.submitted_count||0)+" · 受理 "+(O.accepted_count||0)+
         " · 对账 "+(X.reconciliations||0)+" 行", (X.events||0)?"":"muted")}
       ${tile("已成交", (P.filled_legs||0)+"／"+((P.filled_legs||0)+(P.pending_legs||0))+" 腿",
-        "成交名义 "+u(X.filled_notional_usdc||0)+" · "+(P.station_days||0)+" 个结算站日",
+        "成交名义 "+u(X.filled_notional_usdc||0)+" · "+(P.station_days||0)+" 个结算站日"
+          +((P.pending_legs||0)?" · "+P.pending_legs+" 腿待结算":""),
         (P.filled_legs||0)?"":"muted")}
-      ${tile("实盘 PnL", P.available?signed(P.pnl_usdc):"—",
-        P.available?("投入 "+u(P.cost_usdc)+" · 赔付 "+u(P.payout_usdc))
-          :h(P.reason||"还没有实盘成交"),
-        !P.available?"muted":(P.pnl_usdc>=0?"up":"down"))}
-      ${tile("实盘 ROI", P.available?pct(P.roi):"—",
-        P.available?("命中 "+(P.won_legs||0)+"/"+(P.filled_legs||0)+" 腿"
-          +((P.pending_legs||0)?" · "+P.pending_legs+" 腿待结算":""))
-          :(authorized?"合同已授权，等第一笔成交"
-            :"合同未授权发单 · 分子分母都不存在，不是 0%"),
-        !P.available?"muted":((P.roi||0)>=0?"up":"down"))}
     </div>
     ${openCard}
-    <details class="note"><summary>实盘 ROI / PnL 是怎么算的 · 为什么现在是「—」而不是 0%</summary>
+    <details class="note"><summary>实盘盈亏是怎么算的 · 声称从哪来 · 本金是什么</summary>
       <div class="muted">钱<b>全部来自实盘成交列</b>：成本＝对账表报回来的成交名义
       <span class="mono">filled_notional_usdc</span>，赔付＝真值落在该腿桶里时每股 1 USDC、
       否则 0。结算桶标签有<b>两个来源，按先后</b>：纸面账本坐过的站日，直接用生产结算器写下的那一行；
-      <b>它没坐过的站日</b>，用真值车道当日成立的那版真值（可修订，取最新那版）配上该站日自己的桶阶梯，
-      调<b>生产结算器本人的函数</b>落桶——各站档位规则（°C 站和 2°F 站不共用一套）一个字都不在这里重写。
-      只读纸面那一张表也是错的，而且更隐蔽：它让一篮实盘的判定取决于<b>另一本账</b>有没有恰好坐过同一个站日
-      （2026-09-08：实盘 11 个站日、纸面结算 3 个、真值车道 48 个站有真值），
-      而账本每次规则变更都要全史重导、期间两张纸面表整整空一小时。
-      借来的判定和自己推的判定在篮子行上分开标注，不混成一个词。<br>
-      成交了但所在站日还没结算的腿计入<b>待结算</b>，<b>不当亏损算</b>：
-      把未结算日读成零赔付，会让实盘账本每天下午都显得比实际差。<br>
-      现在显示「—」而不是「0%」，是因为<b>一笔实盘成交都没有</b>——
-      分子分母都不存在，写 0% 是在报一个没测过的数。<br>
+      <b>它没坐过的站日</b>，用真值车道当日成立的那版真值配上该站日自己的桶阶梯，
+      调<b>生产结算器本人的函数</b>落桶——各站档位规则一个字都不在这里重写。
+      借来的判定和自己推的判定在篮子行上分开标注。<br>
+      成交了但所在站日还没结算的腿计入<b>待结算</b>，<b>不当亏损算</b>。<br>
+      <b>声称</b>＝下单那个决策绑定的概率包（按内容哈希精确取回）里该桶的概率；
+      一笔＝一个站日一个阶段里成交过的腿，腿份数不等时份数单位取概率加权份数，
+      保证「投入×(声称÷成本−1)」正好等于这些腿声称能赚的钱。<br>
+      <b>本金</b>＝预算旋钮当前值（${h(String((D.live_money||{}).capital_usdc ?? "—"))} U，读自
+      <span class="mono">${h((D.live_money||{}).capital_source||"—")}</span>）：账户没有历史余额记录，
+      预算更大时下的单会被读成更高的回报率。<br>
       当前两个闸的读数：代码执行模式 <span class="mono">${h(L.execution_mode||"—")}</span>、
       合同 <span class="mono">${h(C.execution_mode||"—")}</span>
       （<span class="mono">live_submit_authorized=${C.live_submit_authorized===true?"true":"false"}</span>、
       <span class="mono">calls_order_gateway=${C.calls_order_gateway===true?"true":"false"}</span>），
       读自 <span class="mono">${h(C.runtime_config||"—")}</span>。
-      <b>两个都为真才可能铸出实盘行</b>，都是每次渲染现读，不是写死的句子。</div>
+      <b>两个都为真才可能铸出实盘行</b>，都是每次渲染现读。</div>
     </details>
-    ${rows?`<div style="margin-top:11px">${rows}</div>${moreGroups}`
-      :`<div class="muted" style="margin-top:9px">尚无实盘意向。第一条出现时此表自动列出。</div>`}
     ${(X.blocking||[]).length?`<div class="muted" style="margin-top:8px;font-size:11.5px">
       对账阻断：${(X.blocking||[]).map(b=>h(b.reason)+" ×"+b.count).join(" · ")}</div>`:""}
+  </div>
+  <h3 style="margin-top:22px;font-size:15px">站明细 · 逐日逐站的实盘篮子</h3>
+  <div class="card">
+    ${rows?`<div>${rows}</div>${moreGroups}`
+      :`<div class="muted">尚无实盘意向。第一条出现时此表自动列出。</div>`}
   </div>`;
 }
 
@@ -16079,15 +16087,19 @@ function orderBookCard(B){
 // not blank the other four.  The paper category's three blocks became one
 // board the same evening (paperBoard), because they printed the same
 // readings; a category with one block draws no tab strip.
+//
+// One category since 2026-09-16 (user ruling: 纸面账本的数据同样改为实盘数据，
+// 把「实盘订单 · 数量 / ROI / PnL」融合在一起，上面是数据看板，下方是站明细;
+// 账本从今天起只当规则对比器).  The paper category left with the ruling; its
+// four blocks now read the live book and sit on top of the live order card,
+// whose own PnL and ROI tiles went because the board above already prints
+// them once.
 const MONEY_BOARD = [
-  {id:"paper", label:"纸面账本", tone:"#79c0ff",
-   note:"每条规则都在这本账上量：P0 建仓、P0-M 与 P1 加仓，禁入站照样建仓结算",
-   panes:[
-     ["paper", "纸面账本", () => paperBoard(), "sec-paper"]]},
   {id:"live", label:"实盘", tone:"#ff7b72",
-   note:"只数 live_submit_authorized=1 的行：真的交到交易所的单",
+   note:"只数 live_submit_authorized=1 的行：真的交到交易所的单。纸面账本只当规则对比器，不在这里",
    panes:[
-     ["orders", "实盘订单 · 数量 / ROI / PnL", () => liveMoney((L) => liveOrderCard(L)),
+     ["orders", "实盘 · 数据看板与站明细",
+      () => safe(() => moneyDataBoard(), "实盘数据看板") + liveMoney((L) => liveOrderCard(L)),
       "sec-live-orders"],
      ["book", "实盘意向簿",
       () => liveMoney((L) => orderBookCard((L.live_orders||{}).book||{})),
@@ -16119,9 +16131,9 @@ function moneyBoard(){
         : ""}
       ${panes}</div>`;
   }).join("");
-  return `<h2>资金看板：汇总纸面账本与实盘的盈亏和风险</h2>
-  <p class="sub"><b>纸面账本</b>一整块：总账、对比、风险、曲线，每个数只出现一次；
-  <b>实盘</b>两块：实盘订单（数量 / ROI / PnL）、实盘意向簿，点「全部」叠起来看，选中的页签刷新后保留。</p>
+  return `<h2>资金看板：实盘的盈亏和风险</h2>
+  <p class="sub">全部读<b>实盘成交</b>。第一页上面是数据看板（总账、对比、风险、曲线，每个数只出现一次），
+  下面是订单数量与站明细；第二页是实盘意向簿。纸面账本从 2026-09-16 起只当规则对比器，不在这里。</p>
   ${cats}`;
 }
 
