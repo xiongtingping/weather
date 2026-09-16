@@ -223,6 +223,12 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
     raise_sub_lot_targets_v2,
     scope_stake_cap_usdc,
+    # Charter 137: the basis the Kelly target level is sized against.  One
+    # definition, read by production's candidate generator and by this
+    # lane's own sizer, so the two cannot drift onto different arms.
+    KELLY_TOPUP_BASIS,
+    KELLY_TOPUP_BASIS_RULE_VERSION,
+    kelly_target_budget_usdc_v1,
     # Charter 71: the top-up gates' partition and growth number are the
     # kernel's, and the version is hashed into the rule fingerprint.
     CHARTER_71_TOPUP_GATE_VERSION,
@@ -2369,6 +2375,21 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
         if STAGE_SELF_OPEN != "off" else {}
     ),
     "topup_atomic": TOPUP_ATOMIC,
+    # Charter 137, arm.  Hashed only while the basis is away from ``net``,
+    # so today's digest -- and the whole book behind it -- is untouched.
+    # The literal is deliberate: it names the PRE-CLAUSE book, not "the
+    # current default".  Written as ``!= KELLY_TOPUP_BASIS_DEFAULT`` it
+    # would move with the flip and the two books would share a digest, so
+    # the charter-129 auto re-import would never fire -- the trap charter
+    # 127(七丙) walked into with ``resting_lifecycle``.  Pinned by
+    # tests/test_charter_137_kelly_topup_basis.py.
+    **(
+        {
+            "kelly_topup_basis": KELLY_TOPUP_BASIS,
+            "kelly_topup_basis_rule": KELLY_TOPUP_BASIS_RULE_VERSION,
+        }
+        if KELLY_TOPUP_BASIS != "net" else {}
+    ),
     # 2026-09-04 (user ruling): the solver carries the chain law and the
     # ticket, the exchange lot refuses a fraction, and the station dial is
     # a per-leg execution gate.  Hashed unconditionally: every row before
@@ -10060,7 +10081,19 @@ def backfill(
                             * STAGE_BUDGET_SHARE.get(stage, 1.0)
                         )
                         stage_room = stage_budget * tilt - chain_stake
-                        stake = min(wanted_stake, max(0.0, stage_room))
+                        # Charter 137: the level reads off the kernel's
+                        # basis.  ``net`` returns the room and reproduces
+                        # the pre-clause number exactly; ``gross`` returns
+                        # the stage's whole allowance, and the room comes
+                        # back as a bound on the increment below.
+                        stake = min(
+                            wanted_stake,
+                            kelly_target_budget_usdc_v1(
+                                book_equity_usdc=equity_at_open,
+                                stage=stage,
+                                capital_available_usdc=max(0.0, stage_room),
+                            ),
+                        )
                         # A tilted stake floors at one minimum clip per leg:
                         # below that the venue refuses the order and the tilt
                         # becomes a gate.  The floor never lifts the stake
@@ -10685,15 +10718,35 @@ def backfill(
                                 cycles, payload["decision_at_utc"],
                             ))
                             continue
+                        deltas = [
+                            max(0.0, float(want) - held.get(bucket, 0.0))
+                            for bucket, want in zip(
+                                seat["buckets"], leg_shares
+                            )
+                        ]
+                        # Charter 137: the cash bound, once the gaps are
+                        # known.  Unreachable under ``net`` -- the legs sum
+                        # to ``stake`` and ``stake`` is at most the room --
+                        # so this lane walks the same ladder with the same
+                        # numbers.  Under ``gross`` the whole basket scales
+                        # together; dropping a leg is the incomplete basket
+                        # the atomic arm exists to refuse.
+                        if KELLY_TOPUP_BASIS == "gross":
+                            _planned = 0.0
+                            for leg, delta in zip(legs, deltas):
+                                if delta <= 0.0:
+                                    continue
+                                _planned += _walk_ask_shares(leg, delta)[1]
+                            _planned *= 1.0 + FEE_RATE
+                            _room = max(0.0, stage_room)
+                            if _planned > _room + 1e-9 and _planned > 0.0:
+                                deltas = [
+                                    d * (_room / _planned) for d in deltas
+                                ]
                         topped: list[float] = []
                         topped_cash: list[float] = []
                         spend = 0.0
-                        for leg, bucket, want in zip(
-                            legs, seat["buckets"], leg_shares
-                        ):
-                            delta = max(
-                                0.0, float(want) - held.get(bucket, 0.0)
-                            )
+                        for leg, delta in zip(legs, deltas):
                             if delta <= 0.0:
                                 topped.append(0.0)
                                 topped_cash.append(0.0)

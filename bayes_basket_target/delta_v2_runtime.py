@@ -115,6 +115,9 @@ from .basket_kernel.delta_v2 import (
     deflate_window_partition_v1,
     probability_vector_identity_v1,
     whole_basket_kelly_stake_v1,
+    KELLY_TOPUP_BASIS,
+    KELLY_TOPUP_BASIS_RULE_VERSION,
+    kelly_target_budget_usdc_v1,
     LADDER_BALANCE_LEVEL_RULE_VERSION,
     ask_depth_cost_v1,
     ask_depth_walk_v1,
@@ -4347,6 +4350,12 @@ def _solve_over_support_windows(
         ),
         "economic_hurdle": ECONOMIC_HURDLE_V1,
         "economic_hurdle_rule": ECONOMIC_HURDLE_RULE_VERSION,
+        # Charter 137: which budget the Kelly target level was read off.  A
+        # decision row that shows no Kelly candidate on a held chain is read
+        # differently depending on this, so it rides on every plan rather
+        # than only on the fingerprint.
+        "kelly_topup_basis": KELLY_TOPUP_BASIS,
+        "kelly_topup_basis_rule": KELLY_TOPUP_BASIS_RULE_VERSION,
         # Charter 124: which arm and which ball this round was read at, so a
         # shadow row can never be mistaken for a served one and a promotion
         # argument can name the budget its evidence was gathered under.
@@ -4792,7 +4801,16 @@ def _whole_basket_kelly_candidate(
         cost=cost_per_share,
         book_equity_usdc=float(book_equity_usdc),
     )
-    stake = min(float(stake), float(capital_available_usdc))
+    # Charter 137: the level is sized against ``kelly_target_budget_usdc_v1``
+    # -- under the shipped ``net`` basis that is exactly this compile's room,
+    # so the arithmetic below is unchanged; under ``gross`` it is the stage's
+    # whole allowance, and the room comes back as a bound on the increment
+    # after the per-leg gaps are known.
+    stake = min(float(stake), kelly_target_budget_usdc_v1(
+        book_equity_usdc=float(book_equity_usdc),
+        stage=str(stage),
+        capital_available_usdc=float(capital_available_usdc),
+    ))
     if stake <= EPS:
         return None
     # The split (research arm; ``equal`` is charter 72 as shipped and
@@ -4825,6 +4843,7 @@ def _whole_basket_kelly_candidate(
     }
     shaped = share_shape != "equal"
     added_legs = 0
+    increments: dict[str, float] = {}
     for bucket in ordered:
         increment = want_by_bucket[bucket] - shares[bucket]
         if increment <= EPS:
@@ -4835,8 +4854,33 @@ def _whole_basket_kelly_candidate(
                 # the rungs below theirs are bought up to theirs.  Under
                 # ``atomic`` (charter 72 as shipped) any such rung stands
                 # the whole basket down.  Applies to every share shape.
+                increments[bucket] = 0.0
                 continue
             return None
+        increments[bucket] = increment
+    # Charter 137: the cash bound, applied once the gaps are known.  Under
+    # ``net`` this is unreachable -- the per-leg targets sum to ``stake`` at
+    # the lane prices and ``stake`` is already at most the room -- so the
+    # shipped basis walks the same ladder with the same numbers.  Under
+    # ``gross`` the level may want more than the scope may still spend, and
+    # the whole basket scales down together rather than dropping a leg:
+    # dropping one is the incomplete basket charter 72's atomicity exists to
+    # refuse.
+    planned_cash = sum(
+        increments[bucket] * float(lane_prices[bucket]) for bucket in ordered
+    )
+    room = max(0.0, float(capital_available_usdc))
+    if planned_cash > room + EPS:
+        if room <= EPS:
+            return None
+        cash_scale = room / planned_cash
+        increments = {
+            bucket: value * cash_scale for bucket, value in increments.items()
+        }
+    for bucket in ordered:
+        increment = increments[bucket]
+        if increment <= EPS:
+            continue
         leg_cash = increment * float(lane_prices[bucket])
         got, spent = _ask_depth_purchase(
             levels=lane_levels[bucket], cash_limit=leg_cash,

@@ -655,6 +655,77 @@ def scope_stake_cap_usdc(
     share = float(STAGE_BUDGET_SHARE.get(str(stage), 1.0))
     room = equity * float(scope_fraction) * share - float(committed_usdc)
     return max(0.0, room)
+
+
+# Charter 137 (user ruling, 2026-09-16).  Which budget the per-leg TARGET
+# LEVEL is read off, as against which budget bounds the cash that goes out.
+#
+# ``net`` is charter 72 as written -- ``b = min(W_book*f, 站日及阶段剩余额度)``
+# -- and is what production and the ledger have both shipped.  It reads a
+# STOCK (the level a leg should hold) off a FLOW (the cash still unspent),
+# then compares that level with the shares the chain already holds.  Once P0
+# has spent its 0.6 share, the later stages' remaining room converts to fewer
+# shares than are already held on every leg, ``increment <= EPS`` fires, and
+# ``_whole_basket_kelly_candidate`` returns None -- so the 0.2 and 0.2 that
+# ``STAGE_BUDGET_SHARE`` reserves for P0-M and P1 can never be reached by a
+# top-up.  Measured on the 45-station book, event_date >= 2026-09-09, by how
+# much of its gross stage allowance the chain had already spent: <25% spent
+# -> a Kelly candidate was offered on 15% of P0-M held decisions; 25-60% ->
+# 2%; 60-90% -> 0 of 107; >=90% -> 0 of 43.  Across all three stages, 259
+# held decisions past 60% produced zero Kelly candidates.  Every top-up that
+# did land in that window came from ``LADDER_BALANCE`` (charter 84), which
+# already sizes off the gross allowance (``completion_capital_usdc``,
+# charter 84(八); ``completion_budget_usdc_v1``, charter 136(四)) -- the lane
+# that reads the gross number is the lane that still moves.
+#
+# ``gross`` reads the level off the stage's whole allowance with nothing
+# committed, exactly as the completion lanes do.  The cash bound does not
+# move: the caller still clamps the increment to what the scope may spend,
+# so the chain's total outlay stays inside 2% x stage share.  The tilt
+# (consolidation cut) is deliberately not applied to the level, on the same
+# argument charter 84(八) made for completions -- it has already cut once at
+# open, and cutting the level again leaves a slice too small to protect the
+# sunk legs -- while it keeps binding on the increment through the room.
+#
+# Shipped default is ``net``: identical to the pre-clause arithmetic, byte
+# for byte.  ``gross`` is the arm charter 137 exists to measure.
+KELLY_TOPUP_BASIS_MODES = ("net", "gross")
+KELLY_TOPUP_BASIS = (
+    os.environ.get("PM_KELLY_TOPUP_BASIS", "").strip().lower() or "net"
+)
+if KELLY_TOPUP_BASIS not in KELLY_TOPUP_BASIS_MODES:
+    raise RuntimeError(f"unknown Kelly top-up basis: {KELLY_TOPUP_BASIS}")
+KELLY_TOPUP_BASIS_RULE_VERSION = "kelly_target_level_off_gross_allowance_v1"
+
+
+def kelly_target_budget_usdc_v1(
+    *,
+    book_equity_usdc: float,
+    stage: str,
+    capital_available_usdc: float,
+    basis: str = KELLY_TOPUP_BASIS,
+) -> float:
+    """Charter 137: the budget the per-leg target LEVEL is sized against.
+
+    Never below the room the caller was handed, so the arm can only widen a
+    target, never narrow one; the cash that actually goes out is bounded by
+    ``capital_available_usdc`` at the call site, not here.
+    """
+
+    room = max(0.0, float(capital_available_usdc))
+    if str(basis) != "gross":
+        return room
+    # An unnamed stage has no allowance of its own -- ``scope_stake_cap_usdc``
+    # would hand back the whole 2% -- so it keeps the room it was given.  The
+    # arm widens a target only where the stage share says by how much.
+    if str(stage) not in STAGE_BUDGET_SHARE:
+        return room
+    gross = scope_stake_cap_usdc(
+        book_equity_usdc=book_equity_usdc,
+        stage=str(stage),
+        committed_usdc=0.0,
+    )
+    return max(room, float(gross))
 # The basket promise, made enforceable (user ruling, 2026-08-13): a settlement
 # inside the support may cost at most this fraction of the basket's premium.
 # Measured over the 21 most recent plans, the unconstrained optimizer was a

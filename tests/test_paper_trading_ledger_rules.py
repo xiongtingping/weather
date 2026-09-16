@@ -1042,8 +1042,10 @@ def test_the_budget_line_only_appears_when_the_budget_bound() -> None:
     if str(root / "scripts") not in sys.path:
         sys.path.insert(0, str(root / "scripts"))
     from paper_trading_ledger import (  # noqa: PLC0415
+        KELLY_TOPUP_BASIS,
         MAX_STAKE_FRACTION_PER_SCOPE,
         STAGE_BUDGET_SHARE,
+        kelly_target_budget_usdc_v1,
     )
 
     source = (root / "scripts" / "paper_trading_ledger.py").read_text(
@@ -1052,7 +1054,19 @@ def test_the_budget_line_only_appears_when_the_budget_bound() -> None:
     # The Kelly stake is kept under its own name so the two causes stay
     # distinguishable after the clamp.
     assert "fraction, wanted_stake = _kelly_stake(" in source
-    assert "stake = min(wanted_stake, max(0.0, stage_room))" in source
+    # The clamp is still "the Kelly ask against the room this stage has
+    # left".  Charter 137 moved the second term behind a kernel helper, so
+    # the property is asserted rather than the spelling: on the shipped
+    # basis the helper IS the room, which is what keeps "the budget stopped
+    # it" an honest line.  (The ``gross`` arm deliberately widens the level
+    # and bounds the increment instead -- there the budget line is charter
+    # 137's business, not this test's.)
+    if KELLY_TOPUP_BASIS == "net":
+        for room in (0.0, 1.2, 7.5):
+            assert kelly_target_budget_usdc_v1(
+                book_equity_usdc=300.0, stage="P0-M",
+                capital_available_usdc=room,
+            ) == room
     # And the line is gated on the budget actually binding.
     assert "if wanted_stake > 0.0 and stage_room <= 0.0" in source
     assert "if not held\n" not in source
