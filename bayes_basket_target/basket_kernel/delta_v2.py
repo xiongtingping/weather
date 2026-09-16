@@ -557,10 +557,12 @@ DEFAULT_KELLY_FRACTION = 0.25
 # * the ruin guard below now bites at ``W * f`` rather than ``W / f``.  A
 #   station-day that has committed more than its own risk capital scores
 #   minus infinity on every candidate INCLUDING the baseline, which is the
-#   wall ``runtime._station_capital_usdc`` was built to keep unreachable --
-#   and it sized that cap against ``W / f``.  Making the wall unreachable
-#   again is a decision about the station cap, not about this function, and
-#   is deliberately NOT taken here.
+#   wall the flat per-station cap (``runtime._station_capital_usdc``, off
+#   the live path since the 2026-08-26 per-scope stake cap and deleted
+#   2026-09-17) was built to keep unreachable -- and it sized that cap
+#   against ``W / f``.  Making the wall unreachable again is a decision
+#   about the station cap, not about this function, and is deliberately NOT
+#   taken here.
 # * ``curve_score`` is audit-only on every served path (charter 72 makes the
 #   Kelly law the winner chain, and the seat is the probability-mass
 #   shortlist head, not the curve's argmax), so nothing production decides

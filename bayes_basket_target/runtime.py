@@ -795,23 +795,6 @@ def roi_gate_admission_price_v1(
     return float(ask_price)
 
 
-def _station_capital_usdc(
-    *,
-    station_bankroll_usdc: float,
-    committed_usdc: float,
-) -> float:
-    """What is left of this station's own bankroll, never the pool's.
-
-    A station may risk at most its own allotment, ever, and what it has
-    already committed -- filled and confirmed pending alike -- has spent part
-    of that allotment whether or not it has settled.
-    """
-
-    return max(
-        0.0, float(station_bankroll_usdc) - float(committed_usdc)
-    )
-
-
 def _rescore_clamped_bundle(
     *,
     sizing_decisions: Sequence[Any],
