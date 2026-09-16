@@ -105,11 +105,13 @@ def _held_snapshot(*, held_32: float = 0.0, ask_32: float = 0.15) -> TargetBaske
             # two neighbours (charter 79), and the window's claim (0.90)
             # clears its all-in offer (0.80).  30°C and 31°C were bought
             # earlier at 0.25 and 0.43; the book has since moved.
-            bucket("29", 29, 0.05, 0.06, 0.0, 0.0),
+            # Tails priced over the leg floor (0.05 on the mid since 2026-09-17),
+            # so the open book enumerates them and charter 125 has a domain to cut.
+            bucket("29", 29, 0.05, 0.08, 0.0, 0.0),
             bucket("30", 30, 0.20, 0.20, 5.0, 1.25),
             bucket("31", 31, 0.50, 0.45, 5.0, 2.15),
             bucket("32", 32, 0.20, ask_32, held_32, held_32 * ask_32),
-            bucket("33", 33, 0.05, 0.06, 0.0, 0.0),
+            bucket("33", 33, 0.05, 0.08, 0.0, 0.0),
         ],
         "checkpoint_changed": True,
         "quote_changed": True,

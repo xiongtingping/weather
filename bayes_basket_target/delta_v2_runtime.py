@@ -964,8 +964,12 @@ if EXECUTION_MODE not in EXECUTION_MODES:
 EXECUTION_FAMILY = EXECUTION_MODE
 
 
+# Charter 131 (Q8) set the flat leg floor at three cents on the rung's mid;
+# user rulings 2026-09-17 ("0.03的地板价改为0.04", then "改为0.05") raised it
+# to five.  The read point (mid, charter 103) is unchanged; the value is in
+# both books' fingerprints, so the paper ledger rebuilds rather than mixing.
 MINIMUM_LEG_ALL_IN_ASK = float(
-    os.environ.get("PM_MINIMUM_LEG_ALL_IN_ASK", "0.03") or 0.03
+    os.environ.get("PM_MINIMUM_LEG_ALL_IN_ASK", "0.05") or 0.05
 )
 
 

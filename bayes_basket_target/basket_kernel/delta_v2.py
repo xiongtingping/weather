@@ -877,8 +877,9 @@ def venue_minimum_shares_v1(
 # production and by the paper ledger.
 CONSOLIDATION_TILT_FLOOR_VERSION = "venue_minimum_per_leg_v1"
 
-# Charter 131 (user ruling, 2026-09-12, Q8: "0.03 地板：读中价"): the floor
-# is a flat three cents on the rung's own reference price -- the mid where
+# Charter 131 (user ruling, 2026-09-12, Q8: "0.03 地板：读中价"; value raised
+# to 0.05 by rulings 2026-09-17, ``MINIMUM_LEG_ALL_IN_ASK``): the floor
+# is a flat price on the rung's own reference price -- the mid where
 # the book is two-sided (charter 103), the ask where nobody bids -- and it
 # does not fall with belief.  Charter 91's ``anchor / probability`` scaling
 # (2026-09-06, the ZGSZ 27°C case) is retired with the ruling; a rung the

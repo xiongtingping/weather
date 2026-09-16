@@ -118,7 +118,7 @@ def test_the_seat_is_the_ruled_shape_not_the_cheap_flank() -> None:
         # Priced just above MINIMUM_LEG_ALL_IN_ASK on purpose: this test is
         # about ranking, and a flank under the leg floor would be excluded
         # before the ranking ever saw it, testing the floor instead.
-        ("34C", 0.11, 0.040),
+        ("34C", 0.11, 0.060),
         ("35C", 0.06, 0.011),
         ("36C", 0.03, 0.011),
     )
@@ -189,7 +189,7 @@ def test_a_penny_leg_is_excluded_not_the_window() -> None:
         ("35C", 0.10, 0.001),   # penny leg
     )
     windows, audit = _windows(rows, desired={"33C"}, center="33C")
-    assert MINIMUM_LEG_ALL_IN_ASK == 0.03
+    assert MINIMUM_LEG_ALL_IN_ASK == 0.05
     assert "35C" in audit["leg_floor_excluded_buckets"]
     for window in windows:
         assert "35C" not in window["buckets"], (
