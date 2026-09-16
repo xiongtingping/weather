@@ -179,15 +179,14 @@ def test_an_absent_ledger_is_not_reported_as_an_empty_one() -> None:
     page = (ROOT / "scripts" / "calibration_dashboard.py").read_text(
         encoding="utf-8"
     )
-    # The banner replaces the strip rather than sitting above a row of
-    # zeros: a reader who sees numbers reads them.
-    # overview() became overviewLamps() on 2026-09-11 (dc75f196), when the
-    # strip moved into the head's four lamp rows; the banner moved with it.
+    # The board's half left with the paper readings (user ruling,
+    # 2026-09-16: the paper ledger is a rule comparator).  The strip's
+    # 选桶 row reads the live book, which no rebuild empties, so the banner
+    # that suppressed it while the paper tables were empty has nothing left
+    # to guard -- and a banner telling a reader not to read live numbers
+    # would be wrong.
     overview = page[page.index("function overviewLamps(){"):]
     overview = overview[: overview.index("\n}\n")]
-    assert "S.ledger_absent" in overview
-    # The money lamps that used to follow it left for the money board on
-    # 2026-09-13; the banner still has to come before the first lamp.
-    assert overview.index("S.ledger_absent") < overview.index('push("machine"')
-    assert "纸面账本此刻是空的" in overview
+    assert "S.ledger_absent" not in overview
+    assert "D.live_selection" in overview
     assert str(S.STATS_START_EVENT_DATE)

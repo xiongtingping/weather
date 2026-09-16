@@ -171,7 +171,7 @@ HEALTH_BANNER_SOURCES = {
 }
 # The live book, which is what the page is opened for during a session.
 LIVE_SECTIONS = {
-    "live_readiness", "selection", "live_days", "live_money",
+    "live_readiness", "live_selection", "live_days", "live_money",
 }
 
 

@@ -85,11 +85,6 @@ PRELUDE = (
     "const h = (s) => String(s == null ? '' : s);\n"
     "const shares = (v) => String(v);\n"
     "const hours = (v) => v == null ? '-' : String(v);\n"
-    # The live-book column the roster draws beside the ladder.  Stubbed
-    # rather than extracted: it reads a different book, and nothing it
-    # prints is a rung.
-    "const LIVE_BY_SD = {};\n"
-    "function liveCell(){ return '<td></td>'; }\n"
 )
 
 

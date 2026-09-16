@@ -605,7 +605,21 @@ def _settled_chain_baskets(
 def _posted_basket_hit_trend(
     conn: sqlite3.Connection, sizes: Sequence[int] | None = None
 ) -> dict[str, Any]:
+    """The paper book's chains through ``chosen_basket_hit_trend``."""
+
+    return chosen_basket_hit_trend(_settled_chain_baskets(conn), sizes)
+
+
+def chosen_basket_hit_trend(
+    chains: Sequence[Mapping[str, Any]], sizes: Sequence[int] | None = None
+) -> dict[str, Any]:
     """Hit rate of the basket the objective *chose*, per chosen width.
+
+    ``chains`` is one record per settled station-day -- ``chosen`` and
+    ``bought`` bucket sets, the ``landed`` bucket, the ``claimed`` mass and
+    the ``event_date`` -- from either book: ``_settled_chain_baskets`` for
+    the paper ledger, ``live_selection.settled_chains`` for the live fills
+    the board reads since 2026-09-16.  One implementation, two sources.
 
     ``_basket_hit_by_size`` groups on ``window_size``, the width that came
     back after the market sold us part of the ladder -- so a three-rung
@@ -648,7 +662,7 @@ def _posted_basket_hit_trend(
         )
     }
     by_size: dict[int, list[dict[str, Any]]] = {size: [] for size in wanted}
-    for chain in _settled_chain_baskets(conn):
+    for chain in chains:
         size = len(chain["chosen"])
         if size not in wanted:
             continue
@@ -778,7 +792,15 @@ def _bucket_step(label: str) -> int:
 
 
 def _chosen_miss_offsets(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The paper book's chains through ``chosen_miss_offsets``."""
+
+    return chosen_miss_offsets(_settled_chain_baskets(conn))
+
+
+def chosen_miss_offsets(chains: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Where the truth lands when it misses the chosen basket, in buckets.
+
+    ``chains`` as for ``chosen_basket_hit_trend``.
 
     Distance is measured from the chosen set's own EDGE -- the nearest
     chosen bucket -- never from the centre bucket: a truth one step below
@@ -801,7 +823,7 @@ def _chosen_miss_offsets(conn: sqlite3.Connection) -> dict[str, Any]:
     hist: dict[int, int] = defaultdict(int)
     left = right = adjacent = far = 0
     hits = misses = unparsed = inside_gap = 0
-    for chain in _settled_chain_baskets(conn):
+    for chain in chains:
         if chain["landed"] in chain["chosen"]:
             hits += 1
             continue

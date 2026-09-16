@@ -70,10 +70,15 @@ from paper_trading_ledger import (  # noqa: E402
 # resolver.
 import live_book  # noqa: E402
 from live_book import settled_buckets as _live_settled_buckets  # noqa: E402
+# The selection readings -- the top strip's 选桶 row, 逐站汇总（跨日）,
+# 没建仓是因为什么, 覆盖 · 价格 · EV, 篮子命中率 -- off production's decisions
+# and the live fills (same ruling).  The paper selection payload they read
+# until then is no longer built here; the drift light is its one reading
+# that was never about the paper book.
+import live_selection  # noqa: E402
 from selection_market_dashboard import (  # noqa: E402
     STATION_LABELS,
-    STATS_START_EVENT_DATE,
-    build_payload as build_selection_payload,
+    _fleet_regime,
 )
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 STATUS_JSON = ROOT / "data" / "weather_basket_yes_status.json"
@@ -4486,41 +4491,6 @@ def _collect_order_book(conn: sqlite3.Connection) -> dict[str, Any]:
         ]
     except sqlite3.Error:
         book["by_station"] = []
-    # Keyed by station and day so the three ledger sections -- daily stats,
-    # the cross-day per-station roll-up and the per-station-day detail --
-    # can each show what the live lane did on their own row.  Those three
-    # are built entirely off ``paper_trade_*``, and a reader who only looks
-    # at them has no way to tell a station that traded live from one that
-    # only traded on paper.  Carried as a separate map, never folded into
-    # the paper aggregates: the two books do not add up, and a live column
-    # sitting beside paper columns is the only way to show both without
-    # inviting the eye to sum them.
-    try:
-        book["by_station_day"] = {
-            f"{station}|{day}": {
-                "count": int(count),
-                "legs_reached_exchange": int(reached or 0),
-                "notional_usdc": round(float(notional or 0.0), 4),
-                "baskets": int(baskets or 0),
-                "states": str(states or ""),
-            }
-            for station, day, count, baskets, notional, reached, states in
-            conn.execute(
-                "SELECT d.station_id, d.event_date, COUNT(*),"
-                " COUNT(DISTINCT i.decision_id),"
-                " COALESCE(SUM(i.requested_notional_usdc),0),"
-                " COALESCE(SUM(CASE WHEN EXISTS("
-                "   SELECT 1 FROM basket_target_order_events e"
-                "   WHERE e.order_intent_id=i.order_intent_id"
-                " ) THEN 1 ELSE 0 END),0),"
-                " GROUP_CONCAT(DISTINCT i.state)"
-                + joined +
-                " AND d.station_id IS NOT NULL AND d.event_date IS NOT NULL"
-                " GROUP BY d.station_id, d.event_date"
-            )
-        }
-    except sqlite3.Error:
-        book["by_station_day"] = {}
     return book
 
 
@@ -10380,17 +10350,19 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "red" if any(a["health"] == "red" for a in alerts)
         else ("amber" if alerts else "green")
     )
-    selection = _cached_section("selection", build_selection_payload, db)
+    selection = {"fleet_regime": _fleet_regime(conn)}
     # 每日统计 and 逐站逐日明细 read the live book (user ruling, 2026-09-16).
     live_days = _cached_section("live_days", collect_live_days, conn)
-    # The rows ship as a hand-audit sample -- no section reads them.
-    selection["rows"] = (selection.get("rows") or [])[:400]
+    live_selection_payload = _cached_section(
+        "live_selection", live_selection.build, conn
+    )
     return {
         "schema": "calibration_dashboard_v2",
         "generated_at_utc": _now().isoformat().replace("+00:00", "Z"),
         "overall_health": overall,
         "alerts": alerts,
         "selection": selection,
+        "live_selection": live_selection_payload,
         "daily": live_days["daily"],
         "live_roster": live_days["roster"],
         "members": members,
@@ -11300,23 +11272,11 @@ function renderStamp(){
 // Restating a figure would let the strip and the section it summarises
 // disagree, which is worse than not having the strip.
 function overviewLamps(){
-  const S=D.selection||{};
-  // A ledger that is not there must not be read as a ledger that found
-  // nothing.  A rebuild wipes the three tables and commits before its
-  // forty-minute re-walk, and the render runs on its own timer, so a render
-  // inside that window used to publish every count and every hit rate at
-  // zero with nothing saying why (2026-09-08 10:20).  One banner, ahead of
-  // the strip, and the strip is suppressed rather than shown as zeros.
-  if(S.ledger_absent){
-    return {banner:`<div class="card red" style="margin:10px 0 4px">
-      <b>纸面账本此刻是空的——下面的仓位/命中率/回报率一律不要读。</b>
-      <div class="muted" style="margin-top:6px">
-        账本有历史可走却一条仓位都没有，这是「账本不在」而不是「一天都没入座」。
-        最常见的原因是 <span class="mono">paper_trading_ledger.py --rebuild</span>
-        正在跑：它先清空三张表并提交，再花约 40 分钟重走，这段时间任何读者
-        看到的都是零。等重建结束后本页会自行恢复，无需处理。</div></div>`,
-      machine:[], upstream:[], selection:[]};
-  }
+  // The 选桶 row reads the live book (user ruling, 2026-09-16: the paper
+  // ledger is a rule comparator).  The banner that suppressed the strip
+  // while a paper rebuild had emptied the tables went with it: no lamp
+  // here reads a table a rebuild can empty.
+  const S=D.live_selection||{};
   const pct0=(v)=>v==null?"—":(v*100).toFixed(0)+"%";
   const band=(v,good,ok)=>v==null?"muted"
     :(v>=good?"green":v>=ok?"amber":"red");
@@ -11325,8 +11285,7 @@ function overviewLamps(){
   // fourteen (user ruling, 2026-09-11: classify them, and put them in the
   // head with the lamps).  Three readings, asked in the order anyone asks
   // them: is the machine turning, did the data arrive, did we pick well.
-  // The fourth, what it is worth, is the money board's 纸面账本 since
-  // 2026-09-13.
+  // The fourth, what it is worth, is the money board.
   const G={machine:[],upstream:[],selection:[]};
   const push=(group,cls,lab,val,sub2,title)=>G[group].push(
     lamp(cls, lab, val, [sub2, title].filter(Boolean).join(" · ")));
@@ -11415,23 +11374,24 @@ function overviewLamps(){
           `${h(x.label)}（${h(x.reason)}）`).join("；")
       : ""));
 
-  // 4. How much of the fleet actually opened a position on the newest day.
-  const day=S.latest_day||(S.roster_event_dates||[])[0];
-  const roster=(S.station_roster||[]).filter(e=>e.event_date===day);
-  const opened=roster.filter(e=>e.stages&&e.stages.P0).length;
-  const rate=roster.length?opened/roster.length:null;
-  push("selection", band(rate,0.5,0.25), "建仓率",
-    `${opened}/${roster.length||"—"}`,
-    `${h(day||"")} · ${pct0(rate)} 的站建了仓`,
-    "纸面账本的建仓率（规则对比用）；逐站逐日明细自 2026-09-16 起读实盘，不再列纸面的未入座原因");
+  // 4. How much of the live fleet actually filled on the newest event day
+  // that has live orders, against the stations allowed to trade.
+  const day0=(D.daily||[])[0]||null;
+  const liveStations=((D.live_readiness||{}).station_allowlist||[]).length;
+  const opened=day0?day0.stations_filled:null;
+  const rate=(day0&&liveStations)?opened/liveStations:null;
+  push("selection", band(rate,0.5,0.25), "实盘建仓率",
+    `${opened==null?"—":opened}/${liveStations||"—"}`,
+    `${h((day0||{}).event_date||"")} · ${pct0(rate)} 的实盘站成交了`,
+    "当天有实盘成交的站 ÷ 允许交易的站；逐站逐日明细是同一本实盘账");
 
   // 6. Does the model's stated probability survive contact with the truth.
-  const stagesAll=S.stages||{};
-  const cal=((stagesAll.P0||{}).credible||{}).calibration_ratio;
+  const P0=(S.stages||{}).P0||{};
+  const cal=P0.calibration_ratio;
   push("selection", cal==null?"muted":(cal>=0.85&&cal<=1.15)?"green"
       :(cal>=0.6&&cal<=1.4)?"amber":"red",
     "说得准不准", cal==null?"—":cal.toFixed(2)+"×",
-    "命中率 ÷ 声称胜率，1.00× 是说得准",
+    `实盘 P0 已结算 ${P0.settled_count||0} 笔：买到的篮子命中率 ÷ 声称胜率，1.00× 是说得准`,
     "「band 表」与「覆盖 · 价格 · EV」：概率分档校准");
 
   // 6b. Does the basket the objective CHOSE cover the truth, at the widths
@@ -11451,12 +11411,12 @@ function overviewLamps(){
     const arrow=row.delta==null?""
       :!row.delta_is_readable?"→"
       :row.delta>0?"↑":"↓";
-    const move=row.delta==null?`${row.settled_count} 链 · 趋势样本不足`
+    const move=row.delta==null?`${row.settled_count} 站日 · 趋势样本不足`
       :!row.delta_is_readable
-        ?`${row.settled_count} 链 · 与噪音不可分（Δ${
+        ?`${row.settled_count} 站日 · 与噪音不可分（Δ${
           (row.delta*100>=0?"+":"")+(row.delta*100).toFixed(0)}，需 ±${
           (2*row.delta_stderr*100).toFixed(0)}）`
-      :`${row.settled_count} 链 · 后半 ${
+      :`${row.settled_count} 站日 · 后半 ${
         (row.delta*100>=0?"+":"")+(row.delta*100).toFixed(0)} 点`;
     // A width the book has only tried once or twice gets its row and no
     // verdict.  On 2026-09-12 the four-bucket row was one legacy chain
@@ -11467,14 +11427,14 @@ function overviewLamps(){
     // so a seat rule that moves moves these rows with it.
     const thin = row.rate_is_readable===false;
     push("selection", hitv==null||thin?"muted":band(hitv,0.5,0.33),
-      `${row.chosen_size} 桶选中命中${row.seat_legal===false?"（链并集）":""} ${arrow}`,
+      `${row.chosen_size} 桶挂出命中${row.seat_legal===false?"（加腿并集）":""} ${arrow}`,
       pct0(hitv), thin
-        ? `${row.settled_count} 链 · 不足 ${row.min_chains||8} 条，不判色`
+        ? `${row.settled_count} 站日 · 不足 ${row.min_chains||8} 个，不判色`
         : move,
-      `目标函数选中的腿集合（含护栏腿，跨阶段并集）盖住结算真值的比率。` +
+      `实盘挂到交易所的腿集合（跨阶段并集）盖住结算真值的比率。` +
       (row.seat_legal===false
-        ? `宪章 131 的席位是 2–3 桶，这一行是 P0-M/P1 加腿后链并集到 ${
-            row.chosen_size} 桶的那些链，不是开仓坐出来的宽度。` : "") +
+        ? `宪章 131 的席位是 2–3 桶，这一行是 P0-M/P1 加腿后并集到 ${
+            row.chosen_size} 桶的站日，不是开仓坐出来的宽度。` : "") +
       `买到的篮子只中 ${pct0(row.filled_hit_rate)}` +
       `，差额是市场没把会赢的那条腿卖给我们。声称 ${
       pct0(row.claimed_mean)}，实现/声称 ${
@@ -12063,7 +12023,9 @@ function reliabilityAudit(){
 }
 
 function basketHit(){
-  const S=D.selection||{};const bs=S.basket_hit_by_size||[];
+  // The live book (user ruling, 2026-09-16: the paper ledger is a rule
+  // comparator): settled live baskets, and the legs production posted.
+  const S=D.live_selection||{};const bs=S.basket_hit_by_size||[];
   if(!bs.length) return "";
   const p=v=>v==null?"—":(v*100).toFixed(1)+"%";
   const rows=bs.map(b=>{
@@ -12077,26 +12039,25 @@ function basketHit(){
       <td>${p(b.claimed_win_probability_mean)}</td>
       <td class="${ratio==null?"":(ratio>=0.9&&ratio<=1.15?"up":"down")}">${
         ratio==null?"—":ratio.toFixed(2)+"×"}</td>
-      <td class="mono">${b.all_in_cost_mean.toFixed(3)}</td>
+      <td class="mono">${b.all_in_cost_mean==null?"—":b.all_in_cost_mean.toFixed(3)}</td>
       <td class="mono ${roi==null?"":(roi>=0?"up":"down")}">${
         roi==null?"—":((roi>=0?"+":"")+(roi*100).toFixed(1)+"%")}</td></tr>`;
   }).join("");
-  // The objective's own choice, before the market and the clamps thin it:
-  // the chain-level union of intended legs.  The table above groups on the
-  // width that was actually bought, which files a thinned three-rung
-  // choice under one rung -- these rows keep the hardest cases where the
-  // choice put them.  The same numbers head the top strip; restating them
-  // here puts the bought-width table they correct right beside them.
+  // What production posted, before the market thinned it: the station-day's
+  // union of legs that reached the exchange.  The table above groups on the
+  // width that actually filled, which files a thinned three-rung basket
+  // under one rung -- these rows keep the hardest cases where the choice
+  // put them.  The same numbers head the top strip.
   const chosen=((S.chosen_basket_hit||{}).sizes||[]);
   const chosenRows=chosen.map(row=>{
     const ratio=row.realised_over_claimed;
     return `<tr><td><b>${row.chosen_size} 桶</b>${row.seat_legal===false
       ?`<span class="muted" style="font-size:11px" title="宪章 131 的席位是 ${
-        row.chosen_size-1} 桶封顶；这一行是 P0-M/P1 加腿后链并集到的宽度"
-        > 链并集</span>`:""}</td>
+        row.chosen_size-1} 桶封顶；这一行是 P0-M/P1 加腿后并集到的宽度"
+        > 加腿并集</span>`:""}</td>
       <td>${row.settled_count}${row.rate_is_readable===false
         ?`<span class="muted" style="font-size:11px" title="不足 ${
-          row.min_chains||8} 条已结算链，这一行的比率不判色"> 样本薄</span>`:""}</td>
+          row.min_chains||8} 个已结算站日，这一行的比率不判色"> 样本薄</span>`:""}</td>
       <td class="${row.rate_is_readable===false?"muted"
         :(row.hit_rate>=0.5?"up":"")}">${p(row.hit_rate)}</td>
       <td>${p(row.filled_hit_rate)}</td>
@@ -12105,11 +12066,11 @@ function basketHit(){
         ratio==null?"—":ratio.toFixed(2)+"×"}</td></tr>`;
   }).join("");
   const chosenBlock=chosen.length?`
-  <h3 style="margin-top:18px">目标函数选桶的真值命中率（intended，跨阶段并集）</h3>
-  <div class="why"><b>选中≠买到：</b>「选中命中」是真值落进目标函数要的腿集合，
+  <h3 style="margin-top:18px">实盘挂出的篮子的真值命中率（跨阶段并集）</h3>
+  <div class="why"><b>挂出≠买到：</b>「挂出命中」是真值落进生产挂到交易所的腿集合，
   「买到命中」是落进真正成交的腿。两列的差不是模型错，
-  是市场没把会赢的那条腿按我们的价卖给我们。</div>
-  <table><thead><tr><th>选桶宽度</th><th>已结算链</th><th>选中命中</th>
+  是市场没把会赢的那条腿按我们的价卖给我们。被实盘门拒掉、从没到过交易所的站日不计。</div>
+  <table><thead><tr><th>挂出宽度</th><th>已结算站日</th><th>挂出命中</th>
     <th>买到命中</th><th>声称</th><th>实现/声称</th></tr></thead>
     <tbody>${chosenRows}</tbody></table>`:"";
 
@@ -12133,7 +12094,7 @@ function basketHit(){
     const hotOne=bin("+1"), coldOne=bin("-1");
     offBlock=`
   <h3 style="margin-top:18px">选桶脱靶分布（真值出选桶边界几格）</h3>
-  <p class="sub">${off.settled} 条已结算链：选中 ${off.hits}，脱靶 ${off.misses}${
+  <p class="sub">${off.settled} 个已结算站日：挂出盖住 ${off.hits}，脱靶 ${off.misses}${
     off.unparsed?`（另 ${off.unparsed} 条标签无法解析）`:""}${
     off.inside_gap?`（含 ${off.inside_gap} 条落在并集空隙里，无方向）`:""}。
     距离从选桶自己的边界起算，与中心桶无关：
@@ -12161,7 +12122,7 @@ function basketHit(){
   // The number is NOT reused: every other section keeps the number a reader
   // already knows it by, and a gap is cheaper than renumbering nine of them.
   return `<h2>篮子命中率：检验各宽度的篮子实际盖住真值的比例</h2>
-  <p class="sub">结算真值落在篮子里就算命中。只算可成交的（整篮 ≥1 分）。</p>
+  <p class="sub">实盘账：结算真值落在成交的桶里就算命中；按实际成交的桶数分组，一个站日的一个阶段算一笔。</p>
   <div class="why"><b>这张表回答一件事：</b>多买一个桶买到的命中率，
   值不值它多花的钱。命中率一定随桶数上升——问题是成本也上升，
   最右边的每元回报才是净结果。</div>
@@ -12276,47 +12237,26 @@ function stationFailureIndex(){
 }
 
 function refusalStats(){
-  const S=D.selection||{};
-  const stages=(S.refusal_stats||{}).stages||[];
-  if(!stages.length) return "";
-  // Merged across the three stages, four reasons deep (user ruling,
-  // 2026-09-11).  Three cards of nine rows was the tallest block on this
-  // page and it gets opened for one line: of the station-days that were
-  // actually put to a stage, how many sat down, and what ate the rest.
-  //
-  // ``chain_never_opened`` comes off BOTH sides first.  A station-day P0
-  // refused reappears in P0-M and again in P1 carrying that row, so
-  // merging with it in counts the same refusal up to three times and
-  // makes the biggest "reason" on the board a restatement of P0's own --
-  // the per-stage cards could leave it in because their denominators were
-  // separate.  It is not this stage refusing anything; it is this stage
-  // never being called, and the real reason is already counted once, in
-  // P0's row.
-  const passThrough=r=>r.reason==="chain_never_opened";
-  let scope=0, seated=0, inherited=0;
-  const merged={};
-  stages.forEach(st=>{
-    scope+=st.scope_count||0;
-    seated+=st.seated_count||0;
-    (st.reasons||[]).forEach(r=>{
-      if(passThrough(r)){ inherited+=r.count||0; return; }
-      const c=merged[r.label]||(merged[r.label]={label:r.label,count:0});
-      c.count+=r.count||0;});
-  });
-  scope-=inherited;
-  const all=Object.values(merged).sort((a,b)=>b.count-a.count);
+  // Production's decisions and the live book (user ruling, 2026-09-16: the
+  // paper ledger is a rule comparator).  One count per station-day at the
+  // opening stage: only P0 opens a chain (charter 74), so a P0-M or P1
+  // decision on a day P0 never opened is not a second refusal.
+  const F=(D.live_selection||{}).refusal_stats||{};
+  const st=(F.stages||[])[0];
+  if(!st) return "";
+  const all=(st.reasons||[]).slice().sort((a,b)=>b.count-a.count);
   const top=all.slice(0,4);
   const restCount=all.slice(4).reduce((a,r)=>a+r.count,0);
+  const scope=st.scope_count||0, seated=st.seated_count||0;
   const rate=scope?seated/scope:0;
   const pctOf=n=>scope?(100*n/scope).toFixed(1)+"%":"—";
-  return `<h2>没建仓是因为什么：找出拦下最后一个候选窗的那道闸</h2>
-  <p class="sub">三阶段合并，一个站日在一个阶段算一次：被叫到多少次、坐下多少次。
-  ${inherited?`已扣掉「P0 没建仓，本阶段无仓可加」<b>${inherited}</b> 次——
-  那不是后面两个阶段拒绝了什么，是它们根本没被叫到，
-  真正的原因已经计在 P0 那一次里，留着会把同一个拒绝数三遍。`:""}
-  （P0-M 只含带 TAF 温度组的 17 个站。）</p>
+  return `<h2>没建仓是因为什么：实盘为什么没建上仓</h2>
+  <p class="sub">${h(F.since_event_date||"")} 起，生产在开仓阶段 P0 做过决策的站日，一个站日算一次；
+  <b>建仓＝当天有实盘成交</b>。没建仓的按先到先判归因：挂到交易所没成交 → 实盘门拒单（禁入/总闸/待观察/网关）
+  → 出了交易计划没铸实盘意向 → P0 一直持有不动时，读最后一次 P0 计划自己记下的拒因。
+  P0-M/P1 不开链（宪章 74），不另计。</p>
   <div class="card">
-    <div class="muted">被叫到 ${scope} 次，建仓 ${seated}</div>
+    <div class="muted">站日 ${scope} 个，实盘建仓 ${seated}</div>
     <div class="big ${rate>=0.3?"up":"down"}">${(100*rate).toFixed(1)}%</div>
     <div class="muted" style="margin-top:4px">没建仓的大头：${
       top.map(r=>`<b>${h(r.label)}</b> ${pctOf(r.count)}`).join(" · ")
@@ -13787,52 +13727,6 @@ function moneyDataBoard(){
 }
 
 
-// The live book, cut for the three sections that are otherwise entirely
-// paper (user ruling, 2026-09-01: the ledger sections must show the live
-// orders).  Every cut comes off one map keyed station|day, so the daily
-// row, the cross-day station row and the station-day row cannot disagree
-// about the same legs -- three separate SQL cuts is how they would.
-//
-// Live and paper never merge into a single number.  These sections
-// average paper_trade_* fills; a live leg folded into one of those means
-// would make two books that do not add up look like one that does.  So
-// live gets its own column and its own em dash: a station that minted
-// nothing live shows "—", not 0, because "no live intent" and "a live
-// intent worth zero" are different claims and only one of them is true
-// here.
-const LIVEBOOK = ((D.live_readiness||{}).live_orders||{}).book||{};
-const LIVE_BY_SD = LIVEBOOK.by_station_day||{};
-function liveAgg(pred){
-  let count=0,notional=0,reached=0,baskets=0,any=false;
-  const states=new Set();
-  for(const key in LIVE_BY_SD){
-    const cut=key.indexOf("|");
-    if(cut<0) continue;
-    if(!pred(key.slice(0,cut), key.slice(cut+1))) continue;
-    const e=LIVE_BY_SD[key];
-    any=true;
-    count+=e.count||0; notional+=e.notional_usdc||0;
-    reached+=e.legs_reached_exchange||0; baskets+=e.baskets||0;
-    String(e.states||"").split(",").filter(Boolean).forEach(s=>states.add(s));
-  }
-  return any?{count,notional_usdc:notional,legs_reached_exchange:reached,
-              baskets,states:[...states].sort()}:null;
-}
-// "Reached the exchange" is counted off order events, not off the intent
-// state: an intent can be cancelled after its order went out, and a panel
-// that reports state alone would call that leg untraded.
-function liveCell(e){
-  if(!e) return `<span class="muted" title="该范围没有铸出过实盘意向">—</span>`;
-  const reached=e.legs_reached_exchange||0;
-  const cls=reached?"":"down";
-  return `<span class="pill red" style="font-size:9.5px">LIVE</span>
-    <b class="mono">${e.count}</b><span class="muted"> 腿 · </span>
-    <span class="mono">${(e.notional_usdc||0).toFixed(2)}U</span>
-    <div class="muted ${cls}" style="font-size:10.5px"
-      title="到所＝有订单事件的腿数，按回执数不按意向状态数：撤单后的腿也算走到过交易所">
-      ${e.baskets} 篮 · 到所 ${reached}/${e.count}</div>`;
-}
-
 // The one table that lives above the tabs, with the health light and the
 // strip (user ruling, 2026-08-21): one row per event day, and it answers
 // "what happened yesterday" without choosing a group first.
@@ -13921,20 +13815,21 @@ function daily(){
 }
 
 function coverage(){
-  const S=D.selection||{};const c=S.coverage_stats||{};
-  if(!c.position_count) return "";
+  // Production's seats for the live orders, and what those orders settled
+  // at (user ruling, 2026-09-16: the paper ledger is a rule comparator).
+  const c=(D.live_selection||{}).coverage||{};
+  if(!c.decision_count) return "";
   const p=v=>v==null?"—":(v*100).toFixed(1)+"%";
   const n=(v,d=3)=>v==null?"—":Number(v).toFixed(d);
-  const vig=c.book_ask_total_mean==null?null:(c.book_ask_total_mean-1);
-  const rr=c.realization_ratio;
-  const sd=S.sides||{};const tot=S.position_count||1;
+  const sd=c.sides||{};const tot=c.decision_count||1;
   const seg=(k,col)=>`<i style="display:block;height:9px;width:${100*(sd[k]||0)/tot}%;background:${col}"></i>`;
   return `<h2>覆盖 · 价格 · EV：检验买入价与窗口覆盖率撑不撑得起事前期望</h2>
-  <p class="sub">只算可成交的（整篮 ≥1 分，排除虚价）。三组数回答同一个问题的三面：
+  <p class="sub">只算挂到交易所的实盘决策：前三格读生产那一笔决策入座时记下的席位，
+  第四格是这些单实际的结算。三组数回答同一个问题的三面：
   座位罩住了多少概率、为此付了多少、这笔交换值不值。</p>
-  <div class="card"><div class="muted">相对市场的位置（<b>均值落点桶</b>减市场质量中心，单位是桶）
-    <span title="宪章 54 生产就座的那个中心桶，直接读账本记录——与「每日统计」同一把尺。
-不是模型未取整的质量中心：那是另一个数，两者在部分仓位上不一致。">ⓘ</span></div>
+  <div class="card"><div class="muted">相对市场的位置（<b>席位中心桶</b>对市场中心桶）
+    <span title="生产那一笔决策记下的席位中心桶（宪章 54）与市场中心桶，按包络桶序号比较，偏一格就算偏。
+不是模型未取整的质量中心：那是另一个数，两者在部分决策上不一致。">ⓘ</span></div>
     <div style="display:flex;height:9px;border-radius:99px;overflow:hidden;margin-top:7px">
       ${seg("above","#bc8cff")}${seg("aligned","#3fb950")}${seg("below","#d29922")}</div>
     <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
@@ -13942,7 +13837,7 @@ function coverage(){
       <span class="pill green">一致 ${sd.aligned||0}</span>
       <span class="pill amber">偏下 ${sd.below||0}</span>
       <span style="flex:1"></span>
-      <span class="muted">${S.position_count} 仓位 · ${S.day_count} 天</span></div></div>
+      <span class="muted">${c.decision_count} 笔实盘决策 · ${c.day_count} 天</span></div></div>
   <div class="grid g4">
     <div class="card"><div class="muted">选桶概率和</div>
       <div class="big">${p(c.model_coverage_mean)}</div>
@@ -13955,7 +13850,7 @@ function coverage(){
       <div class="muted">概率和÷卖价和 − 1，把不同价位的座位放到同一把尺子上</div></div>
     <div class="card"><div class="muted">已结算：期望 vs 实得</div>
       <div class="big">${n(c.expected_usdc,2)} → <span class="${(c.realized_usdc||0)>=0?"up":"down"}">${n(c.realized_usdc,2)}</span></div>
-      <div class="muted">${c.settled_count} 笔 · 投入 ${n(c.staked_usdc,2)}U · 兑现比 ${c.realization_ratio==null?"—":n(c.realization_ratio,2)+"×"}</div></div>
+      <div class="muted">实盘已结算 ${c.settled_count} 笔 · 投入 ${n(c.staked_usdc,2)}U · 兑现比 ${c.realization_ratio==null?"—":n(c.realization_ratio,2)+"×"}</div></div>
   </div>
   <div class="why"><b>三个数都只关于这个篮子：</b>概率和是我们认为它值多少，
   卖价和是买下它要付多少，EV/U 是两者的比值减一——把 0.07 的座位和 0.7 的座位
@@ -13970,20 +13865,20 @@ function coverage(){
 // day's price.  Here the window is stated once in the header and a row is a
 // station, so the number cannot be mistaken for a date's.
 function stationSummary(){
-  const S=D.selection||{};const ss=S.station_stats||[];
+  // The live book (user ruling, 2026-09-16): what each station's orders
+  // filled and settled, with the seat production compiled for them.
+  const S=D.live_selection||{};const ss=S.station_stats||[];
   if(!ss.length) return "";
   const p2=v=>v==null?"—":(v*100).toFixed(1)+"%";
   const n2=(v,d=3)=>v==null?"—":Number(v).toFixed(d);
-  // Stations that never took a credible seat have nothing to average, so
-  // they are absent from this table by construction.  Say so, or their
-  // absence reads as an omission rather than as the fact it is.
+  // Stations allowed to trade that placed nothing in the window have no row
+  // to average.  Say so, or their absence reads as an omission.
   const seated=new Set(ss.map(s=>s.station_id));
-  const silent=[...new Set((S.station_roster||[]).map(e=>e.station_id))]
+  const silent=((D.live_readiness||{}).station_allowlist||[])
     .filter(id=>!seated.has(id)).sort();
-  // Barred stations stay in this table on purpose.  Dropping them would
-  // hide the very rows a review of the bar has to read, and the numbers
-  // here are what the next release decision is argued from -- so they are
-  // marked, greyed, and counted separately rather than removed.
+  // Barred stations stay in this table on purpose: their rows are the live
+  // money they made before the bar, which is what a review of the bar has
+  // to read -- so they are marked, greyed, and counted separately.
   const barred=new Set((D.live_readiness||{}).station_exclusions||[]);
   const probation=new Set((D.live_readiness||{}).station_probation||[]);
   // Difficulty instruments, joined from the readiness payload so this table
@@ -14024,7 +13919,7 @@ function stationSummary(){
   const fmtLat=lat=>Math.abs(lat).toFixed(1)+"°"+(lat>=0?"N":"S");
   const rowEntries=ss.map((s,i)=>{
     const sd=s.sides||{};const cal=s.calibration_ratio;
-    const rr=s.realization_ratio;const ev=s.ev_per_usdc_mean;
+    const rr=s.realization_ratio;const ev=s.ev_per_usdc;
     // A number per station (user ruling, 2026-08-21).  Assigned in the
     // table's natural order -- station id, ascending -- and printed in the
     // row rather than derived from the row's position, so it stays with the
@@ -14035,7 +13930,7 @@ function stationSummary(){
     const g=GEO[s.station_id];const bd=g?bandOf(g[0]):null;
     const html=`<tr${off?' style="opacity:.55"':""}>
       <td class="mono muted">${i+1}</td>
-      <td>${off?'<span class="pill" style="background:#f8514922;color:#f85149;border-color:#f8514955" title="实盘禁入：已判且不合格">⛔ 禁入</span> ':(probation.has(s.station_id)?'<span class="pill amber" title="证据不足，尚未上线；账本继续记账攒证据">⏳ 待观察</span> ':"")}<span class="mono">${h(s.station_id)}</span>
+      <td>${off?'<span class="pill" style="background:#f8514922;color:#f85149;border-color:#f8514955" title="实盘禁入：已判且不合格">⛔ 禁入</span> ':(probation.has(s.station_id)?'<span class="pill amber" title="尚未上线">⏳ 待观察</span> ':"")}<span class="mono">${h(s.station_id)}</span>
         <span class="muted">${h(s.station_label)}</span></td>
       <td>${bd?h(bd.replace("半球·","")):"—"}
         <span class="muted">${g?fmtLat(g[0]):""}</span></td>
@@ -14055,7 +13950,7 @@ function stationSummary(){
       <td class="${rr==null?"":(rr>=1?"up":"down")}">${rr==null?"—":n2(rr,2)+"×"}</td>
       <td class="mono ${(difficulty[s.station_id]||{}).j>1.76?"down":""}">${(difficulty[s.station_id]||{}).j==null?"—":difficulty[s.station_id].j.toFixed(2)}</td>
       <td class="mono ${(difficulty[s.station_id]||{}).g>0.93?"down":""}">${(difficulty[s.station_id]||{}).g==null?"—":difficulty[s.station_id].g.toFixed(2)}</td>
-      <td>${liveCell(liveAgg(st=>st===s.station_id))}</td></tr>`;
+      <td class="mono">${s.filled_leg_total}/${s.posted_leg_total}</td></tr>`;
     return {html,band:bd?BAND_ORDER.indexOf(bd):BAND_ORDER.length,
       coastal:g&&g[1]?0:1,id:s.station_id};
   });
@@ -14099,41 +13994,28 @@ function stationSummary(){
   // separate section (user, 2026-08-31).
   const groupBlock=groupRows?`<div style="margin-bottom:14px"><b>分组小计</b>
   <div class="scroll"><table><thead><tr>
-    <th>气候带</th><th>海陆</th><th>站数</th><th>仓位</th><th>已结算</th>
+    <th>气候带</th><th>海陆</th><th>站数</th><th>成交笔</th><th>已结算</th>
     <th>命中率</th><th>声称</th><th>实现/声称</th>
     <th>投入</th><th>实得</th><th>每U净益</th>
   </tr></thead><tbody>${groupRows}</tbody></table></div>
   <div class="muted" style="margin-top:8px">禁入站也计入小计，口径与下表一致。
   读的时候记住季节相位：现在（8 月底）北半球是夏末、南半球是冬末，
   南北两边的命中率不在同一个季节里，别直接横比。</div></div>`:"";
-  // Two different absences under one sentence read as one fault.  A fleet
-  // station that never took a credible seat is a result; a station the
-  // model has never computed at all is not in the fleet yet.
-  const offFleet=new Set((S.station_roster||[])
-    .filter(e=>e.absent_reason==="station_not_onboarded")
-    .map(e=>e.station_id));
-  const silentFleet=silent.filter(id=>!offFleet.has(id));
-  const silentOff=silent.filter(id=>offFleet.has(id));
   const idList=(ids)=>`<span class="mono">${
     ids.map((id,i)=>`${i+1}.${h(id)}`).join("　")}</span>`;
   const barredHere=ss.map(s=>s.station_id).filter(id=>barred.has(id));
   const barNote=barredHere.length?`<div class="muted" style="margin-top:8px">
     <span class="pill" style="background:#f8514922;color:#f85149;border-color:#f8514955">⛔ 禁入</span>
-    ${barredHere.length} 个站已被实盘禁入，仍留在本表里——<b>禁的是下单，不是记账</b>：
-    纸面账本继续为它们建仓结算，这些数就是下次复核放不放它们出来的依据。
+    ${barredHere.length} 个站已被实盘禁入，仍留在本表里——表里是它们被禁之前的实盘账，
+    这些数就是下次复核放不放它们出来的依据。
     控制服务拒绝把它们加进 allowlist：${idList(barredHere)}</div>`:"";
-  const note=(silentFleet.length||silentOff.length)
-    ?`<div class="muted" style="margin-top:8px">${
-    silentFleet.length?`另有 ${silentFleet.length} 个站在这段窗口里一笔可成交仓位都没有，
-    因此没有可平均的数，只出现在页顶「逐站逐日明细」里：${idList(silentFleet)}<br>`:""}${
-    silentOff.length?`<span class="pill amber">未接入</span> ${
-    silentOff.length} 个站有结算时区和已挂牌市场，但模型从未为其算过概率——
-    舰队 45 站、时区册 48 站，这是备好未接入的差额，不是这段窗口的失败：${
-    idList(silentOff)}`:""}</div>`:"";
+  const note=silent.length
+    ?`<div class="muted" style="margin-top:8px">另有 ${silent.length} 个允许实盘交易的站
+    在这段窗口里一笔单都没挂到交易所，因此没有可平均的数：${idList(silent)}</div>`:"";
   return `<h2>逐站汇总（跨日）：按站看长期盈亏与命中</h2>
-  <p class="sub">一站一行，把该站 ${h(S.stats_start_event_date)} 起的全部可成交仓位
-  （整篮 ≥1 分，排除虚价）平均到一起。<b>这些数不属于任何一天</b>——它们回答的是
-  「这个站长期表现如何」，逐日的账在页顶「逐站逐日明细」。</p>
+  <p class="sub">一站一行，<b>实盘账</b>：该站 ${h(S.since_event_date||"")} 起挂到交易所的单，
+  成交、结算、盈亏合在一起。<b>这些数不属于任何一天</b>——它们回答的是
+  「这个站长期表现如何」，逐日的账在页顶「逐站逐日明细」。纸面账本只做规则对照，不在本表。</p>
   <div class="why"><b>列的意思：</b>「#」是站的编号，按站号字母序编，
   排序时跟着这一站走，所以可以直接拿它点名某一行；
   「气候带」按站点纬度分：回归线（±23.4°）以内是热带，23.4°–35° 副热带，
@@ -14141,20 +14023,21 @@ function stationSummary(){
   「海陆」按站点离开阔海面约 30 公里内算沿海——湖和内河不算，
   所以芝加哥（密歇根湖）、广州（离珠江口约 60 公里）算内陆，
   深圳（就在珠江口上）算沿海。默认行序按气候带从北到南、组内沿海在前；
-  「仓位」是参与平均的笔数，样本少于三笔时右侧的
+  「成交笔」是成交过的（站日×阶段）数，「已结算」是其中真值已到的，样本少于三笔时右侧的
   命中率与实现/声称基本读不出信号；
-  「位置」是相对市场偏上/一致/偏下的笔数；
-  「概率和/卖价和/赔率/EV」同「覆盖 · 价格 · EV」，只是范围缩到这一个站；
-  「实现/声称」是命中率÷声称胜率；「兑现比」是实得÷期望。</div>
+  「位置」是生产那一笔决策的席位中心桶相对市场中心桶偏上/一致/偏下的决策数；
+  「概率和/卖价和」是生产入座时记下的整篮声称与全含费卖价，「赔率/EV」按实际成交成本算；
+  「实现/声称」是命中率÷声称胜率；「兑现比」是实得÷期望；
+  「挂出/成交腿」是挂到交易所的腿数与其中成交的腿数。</div>
   <div class="card">${groupBlock}<div class="scroll"><table><thead><tr>
     <th>#</th><th>站点</th>
     <th>气候带<br><span class="muted">纬度</span></th><th>海陆</th>
-    <th>仓位</th><th>已结算</th>
+    <th>成交笔</th><th>已结算</th>
     <th>位置<br><span class="muted">上/平/下</span></th>
     <th>概率和</th><th>卖价和</th><th>赔率</th><th>EV/U</th>
     <th>命中率</th><th>声称</th><th>实现/声称</th>
     <th>投入</th><th>实得</th><th>兑现比</th><th title="该站真值的日际跳变均值(°C)：>1.76 的站在真边际枯竭期实测 −43% vs 留存 +23% (p=0.023)">跳变/日</th><th title="近14天模型分布的均值−众数距离(桶)，跳变的模型层影子(r=+0.32)">形状gap</th>
-    <th title="该站全部实盘意向（live_submit_authorized=1）跨日合计，与左侧纸面各列是两套账，不可相加">实盘<br><span class="muted">腿 · 名义</span></th>
+    <th title="挂到交易所的腿（不含被实盘门拒掉、从未到过交易所的）与其中成交的">成交/挂出<br><span class="muted">腿</span></th>
   </tr></thead><tbody>${rows}</tbody></table></div>${barNote}${note}</div>`;
 }
 
@@ -15282,7 +15165,7 @@ function orderBookCard(B){
       账本里另有 <b>${paper}</b> 笔 <span class="mono">live_submit_authorized=0</span> 的纸面意向，
       <b>不计入上面任何一个数</b>：它们跑的是同一套选桶与定规模，但走到交易所边界就停，
       和实盘是两本账，并排放进同一张表只会被眼睛加到一起。
-      纸面那本的成绩在同一块资金看板的「纸面账本」里。</div>
+      纸面账本自 2026-09-16 起只做规则对照，不在本页出成绩。</div>
     </details>`;
   if(!B.total) return `<div class="card" style="margin-top:12px">
     <div class="muted">实盘意向簿</div>
@@ -16476,9 +16359,9 @@ const LANES = {
   "市场方向闸": {layer:"选窗层", status:"shadow",
     role:"只看市场往哪边歪 → 不许逆着它开窗（09-05 上线、09-12 退回影子）"},
   "覆盖 · 价格 · EV": {layer:"选窗层 · 读数", status:"audit",
-    role:"买到的价、窗口覆盖率与事前 EV"},
+    role:"实盘决策入座时的覆盖、卖价与事前 EV，对这些单的实际结算"},
   "篮子命中率": {layer:"选窗层 · 读数", status:"audit",
-    role:"几桶的篮子实际命中多少"},
+    role:"实盘几桶的篮子实际命中多少，挂出的和买到的各算一遍"},
   // --- sizing: from a seat to a stake, and what is actually held ---
   "分布与持仓分家": {layer:"定注层 · 读数", status:"audit",
     role:"分布说的桶和真正持有的桶差多少"},
@@ -16491,10 +16374,10 @@ const LANES = {
     role:"实盘每天下了几站、成交多少、结算赚没赚"},
   "逐站逐日明细": {layer:"实盘 · 读数", status:"audit",
     role:"每个站日实盘挂了哪些桶、买到了哪些"},
-  "逐站汇总（跨日）": {layer:"账本 · 读数", status:"audit",
-    role:"跨日看每个站的账"},
+  "逐站汇总（跨日）": {layer:"实盘 · 读数", status:"audit",
+    role:"跨日看每个站的实盘账"},
   "没建仓是因为什么": {layer:"全链闸 · 读数", status:"audit",
-    role:"哪一道闸拒掉了最后一个还站着的窗"},
+    role:"生产在 P0 决策过的站日，实盘为什么没建上仓"},
   "账本 ↔ 生产 对齐守卫": {layer:"账本 · 守卫", status:"audit",
     role:"账本重放的结果和真下的单差在哪 —— 规则绑定测试比代码，它比结果"},
 };
