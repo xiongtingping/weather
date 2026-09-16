@@ -16945,8 +16945,10 @@ document.querySelectorAll(".why,.sub").forEach(node=>{
   if(!local || !/\.html?$/.test(location.pathname)) return;
   const file = location.pathname.split("/").pop().replace(/\.html?$/, "_version.js");
   let asking = false;
-  setInterval(() => {
-    if(asking || document.hidden) return;
+  // Hidden tabs ask too: a tab reloaded in the background is already new
+  // when the reader comes back to it, and coming back asks at once.
+  const ask = () => {
+    if(asking) return;
     asking = true;
     const probe = document.createElement("script");
     const done = () => { asking = false; probe.remove(); };
@@ -16964,7 +16966,11 @@ document.querySelectorAll(".why,.sub").forEach(node=>{
     };
     probe.src = file + "?t=" + Date.now();
     document.head.appendChild(probe);
-  }, 10000);
+  };
+  setInterval(ask, 10000);
+  document.addEventListener("visibilitychange", () => {
+    if(!document.hidden) ask();
+  });
 })();
 </script></body></html>"""
 
