@@ -386,6 +386,60 @@ def _left(deadline: float | None) -> float:
     return float("inf") if deadline is None else deadline - time.monotonic()
 
 
+# Rows written per commit, inside every loop rather than once after it.
+#
+# The loops were bounded and their writes were not.  Each phase gathered its
+# rows while the clock ran and wrote them all in one executemany after the
+# loop had stopped -- and on this cadence a phase gathers a lot: the sweep
+# runs every three hours against a fifteen-minute placement throttle, so
+# every pass writes a full round.  Measured 2026-09-16T07:34Z, the first pass
+# after the scan was indexed: place 14,028 inserts and resolve 16,080 updates
+# into a 4.7M-row table carrying five indexes, all of it after the deadline,
+# and the pass ran 337s against a 240s lease.  Flushing every FLUSH_ROWS
+# bounds what a spent clock can still owe to one chunk.  Every write here is
+# idempotent -- INSERT OR IGNORE on a content hash, or an UPDATE that takes a
+# row out of the set the next pass selects -- so a pass that stops between
+# chunks leaves nothing the next one cannot finish.
+FLUSH_ROWS = 2000
+
+PLACE_INSERT_SQL = (
+    "INSERT OR IGNORE INTO maker_shadow_order ("
+    " order_id, station_id, event_date, bucket, price_rule,"
+    " horizon_minutes, placed_at_utc, book_observed_at_utc,"
+    " expires_at_utc, lead_hours, limit_price,"
+    " reference_bid, reference_ask, reference_tick,"
+    " queue_ahead_shares, queue_known, model_probability, state,"
+    " filled_at_utc, fill_observed_ask, content_sha256"
+    ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+)
+RESOLVE_FILL_SQL = (
+    "UPDATE maker_shadow_order SET state='FILLED',"
+    " filled_at_utc=?, fill_observed_ask=?, fill_limit_price=?,"
+    " fill_kind=? WHERE order_id=?"
+)
+RESOLVE_EXPIRE_SQL = (
+    "UPDATE maker_shadow_order SET state='EXPIRED' WHERE order_id=?"
+)
+SETTLE_INSERT_SQL = (
+    "INSERT OR IGNORE INTO maker_shadow_settlement ("
+    " order_id, station_id, event_date, settled_bucket, hit,"
+    " limit_price, pnl_per_share, settled_at_utc"
+    ") VALUES (?,?,?,?,?,?,?,?)"
+)
+
+
+def _flush(conn: sqlite3.Connection, sql: str, rows: list[tuple]) -> int:
+    """Write and commit ``rows``; return how many, and empty the buffer."""
+
+    if not rows:
+        return 0
+    conn.executemany(sql, rows)
+    conn.commit()
+    written = len(rows)
+    rows.clear()
+    return written
+
+
 # What the claim_cap reading needs before it is allowed to start.  It is two
 # self-joins over 4.7M orders -- 21.0s and 26.4s measured warm on 2026-09-16
 # -- and it cannot stop half way, so the pass reserves room for it rather
@@ -419,7 +473,10 @@ def place(
     ):
         last_placed[(str(station), str(day))] = str(when)
     pending: list[tuple] = []
+    written = 0
     for (station, day), (moment, book) in books.items():
+        if len(pending) >= FLUSH_ROWS:
+            written += _flush(conn, PLACE_INSERT_SQL, pending)
         if _spent(deadline):
             counts["stopped_for_time"] += 1
             break
@@ -490,20 +547,9 @@ def place(
                         float(probabilities[bucket]), "OPEN", None, None,
                         digest,
                     ))
-    if pending:
-        conn.executemany(
-            "INSERT OR IGNORE INTO maker_shadow_order ("
-            " order_id, station_id, event_date, bucket, price_rule,"
-            " horizon_minutes, placed_at_utc, book_observed_at_utc,"
-            " expires_at_utc, lead_hours, limit_price,"
-            " reference_bid, reference_ask, reference_tick,"
-            " queue_ahead_shares, queue_known, model_probability, state,"
-            " filled_at_utc, fill_observed_ask, content_sha256"
-            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            pending,
-        )
-        conn.commit()
-        counts["intents_written"] = len(pending)
+    written += _flush(conn, PLACE_INSERT_SQL, pending)
+    if written:
+        counts["intents_written"] = written
     return dict(counts)
 
 
@@ -535,7 +581,13 @@ def resolve(
         by_scope[(str(row[1]), str(row[2]))].append(row)
     filled: list[tuple] = []
     expired: list[tuple] = []
+    n_filled = 0
+    n_expired = 0
     for (station, day), rows in by_scope.items():
+        if len(filled) >= FLUSH_ROWS:
+            n_filled += _flush(conn, RESOLVE_FILL_SQL, filled)
+        if len(expired) >= FLUSH_ROWS:
+            n_expired += _flush(conn, RESOLVE_EXPIRE_SQL, expired)
         if _spent(deadline):
             counts["stopped_for_time"] += 1
             break
@@ -644,23 +696,13 @@ def resolve(
                 continue
             if str(expires) < now:
                 expired.append((order_id,))
-    if filled:
-        conn.executemany(
-            "UPDATE maker_shadow_order SET state='FILLED',"
-            " filled_at_utc=?, fill_observed_ask=?, fill_limit_price=?,"
-            " fill_kind=? WHERE order_id=?",
-            filled,
-        )
-        counts["filled"] = len(filled)
-    if expired:
-        conn.executemany(
-            "UPDATE maker_shadow_order SET state='EXPIRED' WHERE order_id=?",
-            expired,
-        )
-        counts["expired"] = len(expired)
-    if filled or expired:
-        conn.commit()
-    counts["still_open"] = len(open_rows) - len(filled) - len(expired)
+    n_filled += _flush(conn, RESOLVE_FILL_SQL, filled)
+    n_expired += _flush(conn, RESOLVE_EXPIRE_SQL, expired)
+    if n_filled:
+        counts["filled"] = n_filled
+    if n_expired:
+        counts["expired"] = n_expired
+    counts["still_open"] = len(open_rows) - n_filled - n_expired
     return dict(counts)
 
 
@@ -691,8 +733,11 @@ def settle(
         truth[(str(station), str(day))] = float(value)
     intervals_cache: dict[tuple[str, str], dict[str, Any]] = {}
     pending: list[tuple] = []
+    settled = 0
     now = _stamp(_now())
     for order_id, station, day, bucket, limit in rows:
+        if len(pending) >= FLUSH_ROWS:
+            settled += _flush(conn, SETTLE_INSERT_SQL, pending)
         if _spent(deadline):
             counts["stopped_for_time"] += 1
             break
@@ -739,16 +784,9 @@ def settle(
             order_id, station, day, landed, hit, price,
             (1.0 - price) if hit else -price, now,
         ))
-    if pending:
-        conn.executemany(
-            "INSERT OR IGNORE INTO maker_shadow_settlement ("
-            " order_id, station_id, event_date, settled_bucket, hit,"
-            " limit_price, pnl_per_share, settled_at_utc"
-            ") VALUES (?,?,?,?,?,?,?,?)",
-            pending,
-        )
-        conn.commit()
-        counts["settled"] = len(pending)
+    settled += _flush(conn, SETTLE_INSERT_SQL, pending)
+    if settled:
+        counts["settled"] = settled
     return dict(counts)
 
 

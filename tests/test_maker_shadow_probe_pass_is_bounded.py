@@ -297,6 +297,128 @@ def test_a_pass_with_a_sliver_of_clock_does_not_start_the_reading(
     assert probe.CLAIM_CAP_READING_RESERVE_SEC >= 90.0
 
 
+def _seed_open_orders(conn, probe, *, scopes: int, per_scope: int) -> int:
+    """OPEN orders whose horizon has passed and that no book ever reached."""
+
+    rows = []
+    for s_index in range(scopes):
+        for o_index in range(per_scope):
+            rows.append((
+                f"o-{s_index}-{o_index}", f"ST{s_index:02d}", "2026-09-10",
+                f"b{o_index}", "bid", 15,
+                "2026-09-10T00:00:00Z", "2026-09-10T00:00:00Z",
+                "2026-09-10T00:15:00Z", 12.0, 0.30, 0.29, 0.31, 0.01,
+                None, 0, 0.3, "OPEN", None, None, "0" * 64,
+            ))
+    conn.executemany(probe.PLACE_INSERT_SQL, rows)
+    conn.commit()
+    return len(rows)
+
+
+def test_resolve_writes_in_chunks_and_loses_no_row(tmp_path, monkeypatch) -> None:
+    """Chunking the write must not change what is written.
+
+    The fix bounds what a spent clock can still owe to one chunk, which only
+    helps if a chunked pass is the same pass: every row resolved, every
+    count the sum across chunks, and ``still_open`` computed from those sums
+    rather than from a buffer that has been emptied along the way.
+    """
+
+    probe = _probe_module()
+    conn = sqlite3.connect(tmp_path / "ssot.db")
+    apply_production_ssot_schema(conn)
+    probe.ensure_schema(conn)
+    seeded = _seed_open_orders(conn, probe, scopes=5, per_scope=7)
+
+    flushes: list[int] = []
+    real_flush = probe._flush
+
+    def counting_flush(connection, sql, rows):
+        flushes.append(len(rows))
+        return real_flush(connection, sql, rows)
+
+    monkeypatch.setattr(probe, "FLUSH_ROWS", 3)
+    monkeypatch.setattr(probe, "_flush", counting_flush)
+    receipt = probe.resolve(conn, deadline=None)
+
+    assert receipt.get("expired") == seeded, receipt
+    assert receipt["still_open"] == 0, receipt
+    assert conn.execute(
+        "SELECT COUNT(*) FROM maker_shadow_order WHERE state='OPEN'"
+    ).fetchone()[0] == 0
+    # It really did write in more than one piece, and no piece was large.
+    non_empty = [n for n in flushes if n]
+    assert len(non_empty) > 1, flushes
+    # A scope's rows can top a chunk up past the threshold before the next
+    # scope boundary flushes it, so the bound is threshold + one scope.
+    assert max(non_empty) <= 3 + 7, flushes
+
+
+def test_a_spent_clock_keeps_what_was_already_flushed(tmp_path, monkeypatch) -> None:
+    """Stopping between chunks leaves committed work committed.
+
+    The clock runs out part way; what was flushed before it stays written and
+    the rest stays OPEN for the next pass to select -- which is the whole
+    reason stopping early is safe.
+    """
+
+    probe = _probe_module()
+    conn = sqlite3.connect(tmp_path / "ssot.db")
+    apply_production_ssot_schema(conn)
+    probe.ensure_schema(conn)
+    seeded = _seed_open_orders(conn, probe, scopes=6, per_scope=4)
+
+    monkeypatch.setattr(probe, "FLUSH_ROWS", 2)
+    # Spent after the third scope boundary has been checked.
+    checks = {"n": 0}
+
+    def spent_after_three(_deadline):
+        checks["n"] += 1
+        return checks["n"] > 3
+
+    monkeypatch.setattr(probe, "_spent", spent_after_three)
+    receipt = probe.resolve(conn, deadline=0.0)
+
+    assert receipt.get("stopped_for_time") == 1, receipt
+    done = receipt.get("expired", 0)
+    assert 0 < done < seeded, receipt
+    still = conn.execute(
+        "SELECT COUNT(*) FROM maker_shadow_order WHERE state='OPEN'"
+    ).fetchone()[0]
+    # Committed and left-open partition the seeded rows exactly.
+    assert done + still == seeded, (done, still, seeded)
+    assert receipt["still_open"] == still, receipt
+
+
+def test_every_write_in_the_pass_goes_through_the_chunked_flush() -> None:
+    """One place writes, so the bound cannot be skipped by a new phase.
+
+    Read off the AST: the only ``executemany`` in the probe is the one inside
+    ``_flush``.  A phase that writes its own batch after its loop reopens
+    exactly the gap this closed.
+    """
+
+    tree = ast.parse(PROBE.read_text(encoding="utf-8"))
+    sites: list[str] = []
+
+    class Visitor(ast.NodeVisitor):
+        def __init__(self) -> None:
+            self.fn = "<module>"
+
+        def visit_FunctionDef(self, node):  # noqa: N802
+            previous, self.fn = self.fn, node.name
+            self.generic_visit(node)
+            self.fn = previous
+
+        def visit_Call(self, node):  # noqa: N802
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "executemany":
+                sites.append(self.fn)
+            self.generic_visit(node)
+
+    Visitor().visit(tree)
+    assert sites == ["_flush"], sites
+
+
 def test_the_lane_still_declares_itself_sliced_against_the_lease() -> None:
     """The contract this pass kept breaking, so a change to it is loud.
 
