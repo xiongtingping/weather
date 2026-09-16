@@ -589,9 +589,18 @@ def band_table_axis(
 
     ensure_band_table_schema(conn)
     if table_sha256 is None:
+        # Activated first; then the stage's newest row, retired or not.  The
+        # axis is a property of the TABLE, so a vetoed stage has no activated
+        # row to read it from -- and the fallback below is ``claim``, which
+        # would silently refit P0 on the axis it left on 2026-09-07.  Asked
+        # 2026-09-15 with P0's table retired at 18:26Z: this returned claim
+        # while the retired row still said centre_distance.  A stage with no
+        # rows at all is still claim: that is the axis every table was fitted
+        # on before the column existed.
         row = conn.execute(
             "SELECT axis FROM calibration_band_reliability_table"
-            " WHERE activated=1 AND stage=?",
+            " WHERE stage=? ORDER BY activated DESC, fitted_at_utc DESC"
+            " LIMIT 1",
             (_check_stage(stage),),
         ).fetchone()
     else:

@@ -28,6 +28,7 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target.band_reliability_store import (  # noqa: E402
     BAND_AXIS_CENTRE_DISTANCE,
+    band_table_axis,
     band_table_sha256,
     ensure_band_table_schema,
     persist_and_activate_band_table,
@@ -152,3 +153,22 @@ def test_the_receipt_of_the_incident_is_reproducible() -> None:
     assert set(json.loads(json.dumps(receipt))["applied_factors"].values()) <= {
         0.86, 1.08, 1.1
     }
+
+
+def test_a_vetoed_stage_still_knows_which_axis_it_fits_on() -> None:
+    """Otherwise the next refit moves the stage back to the claim axis.
+
+    ``refit_all_stages(axis=None)`` asks this for the axis to fit on, and the
+    nightly sweep passes no axis.  With P0's table retired on 2026-09-15 this
+    answered ``claim`` -- so the next fit would have undone charter 105's
+    2026-09-07 move to ``centre_distance`` without anybody deciding it.
+    """
+
+    conn, _sha = _store_with_table()
+    assert band_table_axis(conn, stage="P0") == BAND_AXIS_CENTRE_DISTANCE
+    retire_band_table(conn, stage="P0")
+    assert band_table_axis(conn, stage="P0") == BAND_AXIS_CENTRE_DISTANCE
+
+    # A stage that never had a table is still claim: that is what every
+    # table was fitted on before the column existed.
+    assert band_table_axis(conn, stage="P1") == "claim"
