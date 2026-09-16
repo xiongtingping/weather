@@ -32,6 +32,11 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
 )
 from bayes_basket_target import effective_edge_store as store  # noqa: E402
 
+# Charter 140: these fixtures build the paper candidate table, and the estimator
+# under test does not depend on the source; see ``ledger_evidence_source`` in
+# conftest.
+pytestmark = pytest.mark.usefixtures("ledger_evidence_source")
+
 
 def test_p1_table_is_identity_today_so_nothing_p1_sizes_moves() -> None:
     """The exemption survives as a row of ones until a band is promoted."""

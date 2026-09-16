@@ -244,7 +244,11 @@ def test_no_claims_layer_query_reads_the_post_execution_columns():
     # Eight since charter 132 (2026-09-13): a walk-forward fit reads which
     # station-days' labels were not yet knowable at its cutoff -- station,
     # event date, settlement time and hit, none of them a filled column.
-    assert edge.count("FROM paper_trade_candidate_window") - 2 == 8, (
+    # Charter 140 (2026-09-16): the served population is read through
+    # ``CANDIDATE_SOURCE`` -- production's scored view by rule, the paper
+    # table on the ledger arm -- so the eight reads name the source rather
+    # than the paper table.
+    assert edge.count("FROM {CANDIDATE_SOURCE}") == 8, (
         "band-partition lookup, the shared population read, its"
         " excluded-axis tally, its excluded-claim-vintage tally, its"
         " excluded-seat-shape tally,"

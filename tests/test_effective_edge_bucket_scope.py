@@ -25,6 +25,11 @@ from bayes_basket_target.basket_kernel.delta_v2 import (
     effective_edge_bucket_lambda_for_stage,
 )
 
+# Charter 140: these fixtures build the paper candidate table, and the estimator
+# under test does not depend on the source; see ``ledger_evidence_source`` in
+# conftest.
+pytestmark = pytest.mark.usefixtures("ledger_evidence_source")
+
 
 def _book() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")

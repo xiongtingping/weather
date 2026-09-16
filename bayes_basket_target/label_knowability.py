@@ -51,10 +51,52 @@ def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
 def knowable_labels(conn: sqlite3.Connection) -> dict[tuple[str, str], dict[str, Any]]:
     """``(station_id, event_date) -> {bucket, known_at, source, revision}``.
 
-    Read off the candidate-window table's settlement, one row per station-day
-    (every window of a station-day carries the same settlement).  Empty when
-    the table cannot state a settlement time at all.
+    Charter 140: on production evidence (the rule) the labels are the truth
+    lane's own, appended per revision by ``refresh_settlement_labels`` with
+    the revision's commit time as the knowable moment -- no paper table in
+    the path.  The ledger source reads the paper candidate table's
+    settlement as before, one row per station-day.
     """
+
+    from .candidate_window_evidence import (  # noqa: PLC0415
+        EVIDENCE_SOURCE,
+        LABEL_TABLE,
+    )
+
+    if EVIDENCE_SOURCE == "production":
+        return _truth_lane_labels(conn, LABEL_TABLE)
+    return _ledger_labels(conn)
+
+
+def _truth_lane_labels(
+    conn: sqlite3.Connection, table: str
+) -> dict[tuple[str, str], dict[str, Any]]:
+    if not _has_table(conn, table):
+        return {}
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    try:
+        rows = conn.execute(
+            "SELECT station_id, event_date, settled_bucket, known_at_utc,"
+            " truth_revision_no FROM " + table
+        ).fetchall()
+    except sqlite3.Error:
+        return {}
+    for station, day, bucket, known_at, revision in rows:
+        key = (str(station), str(day))
+        rank = int(revision)
+        current = out.get(key)
+        # The standing revision's label, at that revision's commit time.
+        if current is None or rank > current["revision_rank"]:
+            out[key] = {
+                "bucket": str(bucket), "known_at": str(known_at),
+                "source": SOURCE_TRUTH_COMMIT,
+                "revision": rank, "revision_rank": rank,
+            }
+    return out
+
+
+def _ledger_labels(conn: sqlite3.Connection) -> dict[tuple[str, str], dict[str, Any]]:
+    """The paper candidate table's settlement (the pre-charter-140 reading)."""
 
     if not _has_table(conn, "paper_trade_candidate_window"):
         return {}

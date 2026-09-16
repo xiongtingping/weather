@@ -34,6 +34,11 @@ import paper_trading_ledger as ledger  # noqa: E402
 from bayes_basket_target.basket_kernel.delta_v2 import SEAT_SHAPE_RULE_VERSION  # noqa: E402
 from bayes_basket_target.effective_edge_store import _fit_axis  # noqa: E402
 
+# Charter 140: these fixtures build the paper candidate table, and the estimator
+# under test does not depend on the source; see ``ledger_evidence_source`` in
+# conftest.
+pytestmark = pytest.mark.usefixtures("ledger_evidence_source")
+
 
 def _db() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")

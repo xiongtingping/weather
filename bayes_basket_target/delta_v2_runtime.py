@@ -159,6 +159,7 @@ from .basket_kernel.valuation_v1 import (
     valuation_vector_v1,
     window_mass as valuation_window_mass,
 )
+from .candidate_window_evidence import candidate_windows_v1
 from .delta_v2_artifact import DeltaV2PolicyArtifact
 from .shadow_objective import solve_fractional_kelly
 
@@ -7214,6 +7215,18 @@ def compile_delta_v2_runtime_plan(
         reason_codes.append("center_probability_lead_unstable")
     delta_v2_audit = {
         "schema": "delta_basket_score_authorization_v2",
+        # Charter 140: every window the enumeration offered, refused ones
+        # included, projected onto what the lambda and beta lanes fit on.
+        # The plan's ``basket_support_selection`` keeps only the shortlist,
+        # so until this the whole enumeration survived only in the paper
+        # ledger's replay of it; the atomic ledger appends these rows to
+        # ``basket_candidate_window_evidence`` with the decision fact.
+        "candidate_windows": candidate_windows_v1(
+            support_windows,
+            seated_buckets=(support_selection.get("seated") or {}).get(
+                "buckets"
+            ),
+        ),
         # The stake tilt this decision compiled under, so the ledger and a
         # reviewer can prove the sizing basis without re-deriving lights.
         "consolidation_tilt": {

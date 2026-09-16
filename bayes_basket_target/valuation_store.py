@@ -214,9 +214,18 @@ def population(
 
     if stage_scope not in STAGE_SCOPES:
         raise ValueError(f"valuation_scope_invalid:{stage_scope}")
+    from .candidate_window_evidence import (  # noqa: PLC0415
+        EVIDENCE_SOURCE,
+        LABEL_TABLE,
+    )
+
+    # Charter 140: the labels come from the truth lane's own table on
+    # production evidence; only the ledger arm still needs the paper table.
     needed = (
         "basket_policy_training_fact", "basket_probability_envelope",
-        "basket_official_ws_snapshot", "paper_trade_candidate_window",
+        "basket_official_ws_snapshot",
+        LABEL_TABLE if EVIDENCE_SOURCE == "production"
+        else "paper_trade_candidate_window",
     )
     for table in needed:
         if not _has_table(conn, table):

@@ -93,7 +93,38 @@ from .basket_kernel.delta_v2 import (
     EFFECTIVE_EDGE_P1_LAMBDA,
     SEAT_SHAPE_RULE_VERSION,
 )
+from .candidate_window_evidence import (
+    CANDIDATE_SOURCE,
+    EVIDENCE_SOURCE,
+    latest_labelled_event_date,
+)
 from .contracts import content_sha256
+
+
+def _latest_settled_event_date(conn: sqlite3.Connection) -> str | None:
+    """Where a rolling fit ends: the newest event day with a known outcome.
+
+    Charter 140: on production evidence that is the newest labelled day.
+    The ledger source keeps reading the paper settlement table it always
+    read, so the comparison arm is the old lane unchanged.
+    """
+
+    if EVIDENCE_SOURCE == "production":
+        return latest_labelled_event_date(conn)
+    row = conn.execute(
+        "SELECT MAX(event_date) FROM paper_trade_settlement"
+    ).fetchone()
+    return str(row[0]) if row and row[0] else None
+
+
+def _candidate_source_exists(conn: sqlite3.Connection) -> bool:
+    try:
+        return conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE name=? AND type IN ('table','view')",
+            (CANDIDATE_SOURCE,),
+        ).fetchone() is not None
+    except sqlite3.Error:
+        return False
 
 
 # The rolling window the fit reads.  Long enough that a quiet week cannot
@@ -399,7 +430,7 @@ def _has_candidate_column(conn: sqlite3.Connection, name: str) -> bool:
         return any(
             str(row[1]) == name
             for row in conn.execute(
-                "PRAGMA table_info(paper_trade_candidate_window)"
+                f"PRAGMA table_info({CANDIDATE_SOURCE})"
             )
         )
     except sqlite3.Error:
@@ -589,7 +620,7 @@ def _band_partition_by_decision(
         rows = conn.execute(
             "SELECT c.station_id, c.event_date, c.stage, c.decision_at_utc,"
             " json_extract(e.lineage_json,'$.band_reliability_json')"
-            " FROM paper_trade_candidate_window c"
+            f" FROM {CANDIDATE_SOURCE} c"
             " JOIN basket_probability_bridge_history h"
             "   ON h.station_id = c.station_id"
             "  AND h.event_date = c.event_date"
@@ -670,6 +701,28 @@ def _candidate_population(
     served row always wins over its own replay.
     """
 
+    if EVIDENCE_SOURCE == "production":
+        # Charter 140: the replay lane re-derives the paper ledger's windows
+        # onto today's band table.  Production's evidence has no such lane:
+        # it is recorded forward, on the band table that served each
+        # decision, and a row keyed on another axis is excluded, not restated.
+        include_replayed = False
+    if not _candidate_source_exists(conn):
+        # Before the first decision under charter 140 writes a row the view
+        # does not exist; that is an empty population, and every band keeps
+        # its incumbent.
+        return {
+            "rows": [], "leg_rows": [], "off_centre_row_count": 0,
+            "band_axis": None, "claim_vintages": None,
+            "excluded_other_band_axis": 0, "seat_shape_rule": None,
+            "excluded_other_seat_shape": 0,
+            "excluded_other_claim_transform": 0,
+            "served_row_count": 0, "replayed_row_count": 0,
+            "replay_band_table_sha256": None,
+            "ceiling_day": ceiling_day, "cutoff_utc": cutoff_utc,
+            "excluded_label_not_yet_knowable": 0,
+        }
+
     placeholders = ",".join("?" for _ in stages)
     # The serving-arithmetic floor (2026-09-11): a candidate window decided
     # before the stage's declared version start carries a claim from a
@@ -709,7 +762,7 @@ def _candidate_population(
             (str(station), str(day))
             for station, day in conn.execute(
                 "SELECT DISTINCT station_id, event_date"
-                " FROM paper_trade_candidate_window WHERE hit IS NOT NULL"
+                f" FROM {CANDIDATE_SOURCE} WHERE hit IS NOT NULL"
             )
             if (str(station), str(day)) not in known
             or str(known[(str(station), str(day))]["known_at"]) > str(cutoff_utc)
@@ -791,7 +844,7 @@ def _candidate_population(
     rows = conn.execute(
         "SELECT win_probability, all_in_price, hit, station_id, event_date,"
         " stage, decision_at_utc"
-        " FROM paper_trade_candidate_window"
+        f" FROM {CANDIDATE_SOURCE}"
         f" WHERE stage IN ({placeholders}) AND event_date >= ?" f"{decision_clause}"
         "   AND hit IS NOT NULL" + axis_clause + claim_clause + shape_clause,
         (*stages, floor_day, *decision_args, *axis_args, *claim_args, *shape_args),
@@ -803,13 +856,13 @@ def _candidate_population(
         rows = kept
     served_row_count = len(rows)
     excluded_axis = 0 if axis is None else conn.execute(
-        "SELECT COUNT(*) FROM paper_trade_candidate_window"
+        f"SELECT COUNT(*) FROM {CANDIDATE_SOURCE}"
         f" WHERE stage IN ({placeholders}) AND event_date >= ?" f"{decision_clause}"
         "   AND hit IS NOT NULL AND band_axis IS NOT ?",
         (*stages, floor_day, *decision_args, axis),
     ).fetchone()[0]
     excluded_claim = 0 if claim_vintages is None else conn.execute(
-        "SELECT COUNT(*) FROM paper_trade_candidate_window"
+        f"SELECT COUNT(*) FROM {CANDIDATE_SOURCE}"
         f" WHERE stage IN ({placeholders}) AND event_date >= ?" f"{decision_clause}"
         "   AND hit IS NOT NULL"
         "   AND (claim_transform_sha256 IS NULL"
@@ -817,7 +870,7 @@ def _candidate_population(
         (*stages, floor_day, *decision_args, *claim_vintages),
     ).fetchone()[0]
     excluded_shape = 0 if shape is None else conn.execute(
-        "SELECT COUNT(*) FROM paper_trade_candidate_window"
+        f"SELECT COUNT(*) FROM {CANDIDATE_SOURCE}"
         f" WHERE stage IN ({placeholders}) AND event_date >= ?" f"{decision_clause}"
         "   AND hit IS NOT NULL AND seat_shape_rule IS NOT ?",
         (*stages, floor_day, *decision_args, shape),
@@ -872,7 +925,7 @@ def _candidate_population(
     if claim_vintages is not None:
         try:
             off_centre_rows = int(conn.execute(
-                "SELECT COUNT(*) FROM paper_trade_candidate_window"
+                f"SELECT COUNT(*) FROM {CANDIDATE_SOURCE}"
                 f" WHERE stage IN ({placeholders}) AND event_date >= ?" f"{decision_clause}"
                 "   AND hit IS NOT NULL AND claim_transform_sha256 IS ?",
                 (*stages, floor_day, *decision_args, claim_vintages[1]),
@@ -899,7 +952,7 @@ def _candidate_population(
     legs_seen: set[tuple[str, str, str, str, str]] = set()
     if _has_candidate_column(conn, "leg_claim_cost_json"):
         leg_sources = [
-            ("paper_trade_candidate_window", shape_clause, shape_args),
+            (CANDIDATE_SOURCE, shape_clause, shape_args),
         ]
         if include_replayed:
             leg_sources.append((
@@ -1008,10 +1061,9 @@ def fit_lambda_table(
     stages = STAGE_SCOPES[stage_scope]
     ceiling = P1_LAMBDA_CEILING if stage_scope == "P1" else LAMBDA_CEILING
     incumbent = _incumbent_bands(conn, stage_scope, claim_scope)
-    newest = conn.execute(
-        "SELECT MAX(event_date) FROM paper_trade_settlement"
-    ).fetchone()
-    latest = str(as_of or (newest[0] if newest else "") or "")
+    # Charter 140: production evidence has no replay lane.
+    include_replayed = bool(include_replayed) and EVIDENCE_SOURCE == "ledger"
+    latest = str(as_of or _latest_settled_event_date(conn) or "")
     if not latest:
         raise ValueError("effective_edge_fit_no_settlements")
     floor_day = (
@@ -1284,6 +1336,8 @@ def fit_lambda_table(
             _fit_band_sha(conn, stages) if include_replayed else None
         ),
         "include_replayed": bool(include_replayed),
+        # Charter 140: which population the table was fitted on.
+        "evidence_source": EVIDENCE_SOURCE,
         "content_sha256": content_sha256(payload),
         "bands": bands,
         "evidence": evidence,
@@ -1797,7 +1851,7 @@ def _has_lambda_band_axis_column(conn: sqlite3.Connection) -> bool:
     """Whether the lambda TABLE carries its own band-axis column.
 
     Deliberately not ``_has_band_axis_column``: that one asks about
-    ``paper_trade_candidate_window``, a different table on a different
+    the candidate window source, a different table on a different
     migration, and a read path that keyed off it would be right only by
     coincidence.
     """
@@ -2091,10 +2145,7 @@ def fit_lambda_table_dq_shadow(
     stages = STAGE_SCOPES[stage_scope]
     ceiling = P1_LAMBDA_CEILING if stage_scope == "P1" else LAMBDA_CEILING
     incumbent = _incumbent_bands(conn, stage_scope)
-    newest = conn.execute(
-        "SELECT MAX(event_date) FROM paper_trade_settlement"
-    ).fetchone()
-    latest = str(as_of or (newest[0] if newest else "") or "")
+    latest = str(as_of or _latest_settled_event_date(conn) or "")
     if not latest:
         raise ValueError("effective_edge_fit_no_settlements")
     floor_day = (
@@ -2111,7 +2162,7 @@ def fit_lambda_table_dq_shadow(
         # shadow's ``price_now`` by construction, with no ladder to re-sum.
         "SELECT win_probability, all_in_price, hit, buckets_json,"
         "       station_id, event_date, stage, decision_at_utc"
-        " FROM paper_trade_candidate_window"
+        f" FROM {CANDIDATE_SOURCE}"
         f" WHERE stage IN ({placeholders}) AND event_date >= ?"
         "   AND hit IS NOT NULL",
         (*stages, floor_day),

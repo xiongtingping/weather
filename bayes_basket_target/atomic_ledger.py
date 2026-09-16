@@ -1994,7 +1994,40 @@ def _insert_training_fact(conn: sqlite3.Connection, fact: Mapping[str, Any]) -> 
     state = str(receipt.get("state") or "")
     if state not in {"committed", "already_committed"}:
         raise AtomicLedgerError("training_fact_commit_state_invalid")
+    if state == "committed":
+        _record_candidate_window_evidence(conn, fact)
     return state
+
+
+def _record_candidate_window_evidence(
+    conn: sqlite3.Connection, fact: Mapping[str, Any]
+) -> None:
+    """Charter 140: the decision's whole enumeration, beside its fact.
+
+    Same transaction, so evidence is never written for a decision that
+    rolled back.  Inside a savepoint, and never fatal: the rows are what the
+    lambda and beta lanes fit on, not what this decision trades on, and a
+    research table must not be able to stop a decision from committing.  A
+    failure rolls the evidence back alone and is counted in the cycle's
+    ledger spans (``candidate_window_evidence_write_failed``), where a lane
+    going quiet is visible without reading the table.
+    """
+
+    started = time.perf_counter()
+    conn.execute("SAVEPOINT candidate_window_evidence")
+    try:
+        from .candidate_window_evidence import record_fact_windows
+
+        record_fact_windows(conn, fact)
+    except (sqlite3.Error, ContractError, KeyError, TypeError, ValueError):
+        conn.execute("ROLLBACK TO SAVEPOINT candidate_window_evidence")
+        note_ledger_span("candidate_window_evidence_write_failed", 0.0)
+    finally:
+        conn.execute("RELEASE SAVEPOINT candidate_window_evidence")
+    note_ledger_span(
+        "candidate_window_evidence_write",
+        (time.perf_counter() - started) * 1000.0,
+    )
 
 
 def _assert_existing_cycle_training_fact_binding_timed(

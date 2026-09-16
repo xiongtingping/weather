@@ -56,7 +56,7 @@ reading of "no evidence yet".
 The sample is bounded below at the stage's serving-arithmetic anchor, like
 every claim lane: rows from before the served distribution changed shape
 describe a claim nobody serves.  Rows written before the ledger carried the
-market mid (``paper_trade_candidate_window.market_mid``) are not evidence on
+market mid (the candidate source's ``market_mid``) are not evidence on
 this basis and are counted out, never priced at the ask instead.
 
 Shadow first.  ``BETA_EDGE_MODE`` in the kernel defaults to ``shadow``: the
@@ -81,6 +81,7 @@ from .basket_kernel.delta_v2 import (
     BETA_TABLE_KEY,
     beta_lead_band,
 )
+from .candidate_window_evidence import CANDIDATE_SOURCE
 from .contracts import content_sha256
 
 SCHEMA = "beta_edge_table_v3"
@@ -163,7 +164,9 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 
 def _has_table(conn: sqlite3.Connection, name: str) -> bool:
     return conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+        # Views count: the candidate source is one (charter 140).
+        "SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name=?",
+        (name,),
     ).fetchone() is not None
 
 
@@ -264,13 +267,13 @@ def population(
 
     if stage_scope not in STAGE_SCOPES:
         raise ValueError(f"beta_edge_scope_invalid:{stage_scope}")
-    if not _has_table(conn, "paper_trade_candidate_window"):
+    if not _has_table(conn, CANDIDATE_SOURCE):
         return [], {"error": "no_candidate_windows"}
-    if not _has_column(conn, "paper_trade_candidate_window", "settled_at_utc"):
+    if not _has_column(conn, CANDIDATE_SOURCE, "settled_at_utc"):
         return [], {"error": "no_label_knowable_column"}
-    if not _has_column(conn, "paper_trade_candidate_window", "market_mid"):
+    if not _has_column(conn, CANDIDATE_SOURCE, "market_mid"):
         return [], {"error": "no_market_mid_column", "price_basis": PRICE_BASIS}
-    has_clock = _has_column(conn, "paper_trade_candidate_window", "hours_to_cutoff")
+    has_clock = _has_column(conn, CANDIDATE_SOURCE, "hours_to_cutoff")
     stages = STAGE_SCOPES[stage_scope]
     cutoff = str(cutoff_utc or _utc_now_iso())
     from .label_knowability import knowable_labels  # noqa: PLC0415
@@ -308,7 +311,7 @@ def population(
                     anchors.append(str(value))
     anchor_utc = max(anchors) if anchors else None
     shape = None
-    if _has_column(conn, "paper_trade_candidate_window", "seat_shape_rule"):
+    if _has_column(conn, CANDIDATE_SOURCE, "seat_shape_rule"):
         from .basket_kernel.delta_v2 import (  # noqa: PLC0415
             SEAT_SHAPE_RULE_VERSION,
         )
@@ -329,7 +332,7 @@ def population(
         + (" seat_shape_rule," if shape is not None else " NULL,")
         + " market_mid,"
         + (" hours_to_cutoff" if has_clock else " NULL")
-        + " FROM paper_trade_candidate_window" + base_where,
+        + f" FROM {CANDIDATE_SOURCE}" + base_where,
         base_args,
     ).fetchall()
     out = []

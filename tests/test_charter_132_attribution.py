@@ -21,6 +21,11 @@ for extra in (ROOT, ROOT / "scripts"):
 
 import edge_attribution as A  # noqa: E402
 
+# Charter 140: these fixtures build the paper candidate table, and the estimator
+# under test does not depend on the source; see ``ledger_evidence_source`` in
+# conftest.
+pytestmark = pytest.mark.usefixtures("ledger_evidence_source")
+
 
 @pytest.mark.parametrize("y", [0.0, 1.0])
 @pytest.mark.parametrize("paid", [0.30, 0.45])

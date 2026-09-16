@@ -7967,14 +7967,13 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
                 # that closed the chain; that seat, and only it, is where
                 # the chain's money belongs -- the same one-book rule the
                 # rest of the page reads.
+                # Charter 140: the lane's own population, production's
+                # evidence.  The money half joined the paper settlement of
+                # the ledger's seat; production evidence has no paper seat,
+                # so that half reads nothing rather than another book's P&L.
                 "SELECT c.win_probability, c.all_in_price, c.hit,"
-                " s.pnl_usdc, s.stake_usdc"
-                " FROM paper_trade_candidate_window c"
-                " LEFT JOIN paper_trade_settlement s"
-                "   ON s.station_id = c.station_id"
-                "  AND s.event_date = c.event_date"
-                "  AND s.stage = c.stage"
-                "  AND c.seated = 1"
+                " NULL, NULL"
+                f" FROM {_store.CANDIDATE_SOURCE} c"
                 f" WHERE c.stage IN ({placeholders}){clause}"
                 "   AND c.hit IS NOT NULL",
                 params,
@@ -8074,12 +8073,15 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
             ],
         }
 
-    days = [
-        str(row[0]) for row in conn.execute(
-            "SELECT DISTINCT event_date FROM paper_trade_settlement"
-            " ORDER BY event_date"
-        )
-    ]
+    try:
+        days = [
+            str(row[0]) for row in conn.execute(
+                f"SELECT DISTINCT event_date FROM {_store.CANDIDATE_SOURCE}"
+                " WHERE hit IS NOT NULL ORDER BY event_date"
+            )
+        ]
+    except sqlite3.Error:
+        days = []
     midpoint = days[len(days) // 2] if days else None
 
     def serving(scope: str, bootstrap) -> tuple[tuple[float, float], ...]:
@@ -8289,7 +8291,7 @@ def collect_beta_shadow(conn: sqlite3.Connection) -> dict[str, Any]:
         rows = conn.execute(
             "SELECT stage, event_date, decision_at_utc, raw_win_probability,"
             " all_in_price, hit, admissible, market_mid"
-            " FROM paper_trade_candidate_window"
+            f" FROM {_b.CANDIDATE_SOURCE}"
             " WHERE settled_bucket IS NOT NULL AND event_date >= ?"
             "   AND raw_win_probability IS NOT NULL AND all_in_price > 0",
             (since,),

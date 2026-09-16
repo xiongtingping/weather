@@ -30,6 +30,11 @@ if str(ROOT) not in sys.path:
 from bayes_basket_target import valuation_store as store  # noqa: E402
 from bayes_basket_target.basket_kernel import valuation_v1 as kernel  # noqa: E402
 
+# Charter 140: these fixtures build the paper candidate table, and the estimator
+# under test does not depend on the source; see ``ledger_evidence_source`` in
+# conftest.
+pytestmark = pytest.mark.usefixtures("ledger_evidence_source")
+
 
 def _book(asks, bids=None, *, stamps=None, unmaterialized=()):
     rows = []

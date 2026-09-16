@@ -34,6 +34,14 @@ PY="$(resolve_project_python "$PROJECT_DIR")" || {
 cd "$PROJECT_DIR"
 RC=0
 
+# Charter 140 (2026-09-16): the settlement labels the claim lanes score their
+# evidence against, off the truth lane.  First, so every fit below reads
+# today's labels.  Never fatal: a failed pass leaves yesterday's labels, and
+# a lane short of labels reads its bands as accumulating.
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] settlement labels"
+"$PY" scripts/refresh_settlement_labels.py --commit \
+  || echo "settlement labels failed; the lanes read the labels already written" >&2
+
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] band_reliability refit"
 "$PY" scripts/refit_band_reliability.py --commit --summary || RC=$?
 
