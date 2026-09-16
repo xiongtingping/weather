@@ -322,6 +322,193 @@ def nearest_point_kelvin(
     return kelvin, distance
 
 
+# How a CONUS grid's ``values`` array is ordered against its
+# latitudes/longitudes iterator, for the one layout this reader has been
+# checked against.  Lambert conformal (template 30), no bitmap, i ascending,
+# j ascending; ``alternativeRowScanning`` either way.  Anything else is read
+# by the eccodes search, unchanged.
+_LAMBERT_CONFORMAL_TEMPLATE = 30
+_GRID_LAYOUT_KEYS = (
+    b"gridDefinitionTemplateNumber", b"iScansNegatively", b"jScansPositively",
+    b"bitmapPresent", b"alternativeRowScanning", b"Nx",
+)
+
+
+def _values_index(nearest: int, nx: int, alternate: bool) -> int:
+    """Map an index in iterator (geographic) order to one in ``values``.
+
+    With ``alternativeRowScanning=1`` the odd rows of ``values`` run the
+    other way: measured on the NBM, flipping odd rows made 72 of 72 values
+    bit-identical to the eccodes search, and flipping none or the even rows
+    did not.
+    """
+
+    row, column = divmod(int(nearest), int(nx))
+    if alternate and row % 2 == 1:
+        return row * nx + (nx - 1 - column)
+    return int(nearest)
+
+
+class GridPointReader:
+    """Many stations out of many messages that share one CONUS grid.
+
+    ``nearest_point_kelvin`` is correct and it is slow: eccodes searches the
+    whole grid for every point, and on a Lambert grid that cost does not
+    amortise.  Measured 2026-09-16 on real messages -- NBM 1.24s a station,
+    HRRR 0.46s -- and a P1 run decodes every (station, hour) it wants, so one
+    NBM run of 12 stations over ~40 hours spent about 600 seconds here.  That
+    ran past its 240s phase clock (the downloads check the clock, the decode
+    did not) and left the member-run loop 0 of 6 attempts.
+
+    Three cheaper reads were measured and refused before this one:
+
+      * one handle with SAME_GRID|SAME_DATA -- identical values, no faster;
+      * codes_grib_nearest_find_multiple -- identical values, no faster;
+      * eccodes' own nearest ``indexes`` read back out of ``values`` -- the
+        WRONG cell at 5 of 12 NBM stations, by up to 10.6 K.
+
+    The last one is why this reader computes its own index from the
+    latitudes/longitudes arrays and maps it into ``values`` itself: the NBM
+    is ``alternativeRowScanning=1``, and its odd rows run the other way in
+    ``values`` than in the iterator.  With that mapping, 44 of 44 HRRR and 72
+    of 72 NBM (station, hour) values were bit-identical to
+    ``nearest_point_kelvin`` -- and anything that holds that on the day it
+    was measured is not enough to trust on a day NOAA changes a grid.  So it
+    is not trusted: the first message of every grid in a pass re-derives
+    every station through ``nearest_point_kelvin`` and keeps an index only
+    where the two agree exactly.  A station that disagrees, or a layout this
+    reader has never been checked against, is read the slow way for the rest
+    of the pass.  The fast path can therefore never return a value the
+    eccodes search would not have.
+    """
+
+    def __init__(self, points: "list[tuple[float, float]]") -> None:
+        self._points = [(float(lat), float(lon)) for lat, lon in points]
+        # grid identity -> per-point index into ``values``, None = slow path
+        self._indexes: dict[str, list[int | None]] = {}
+        self.slow_points = 0
+
+    @staticmethod
+    def _long(library: ctypes.CDLL, handle: Any, key: bytes) -> int | None:
+        value = ctypes.c_long()
+        if library.codes_get_long(handle, key, ctypes.byref(value)) != 0:
+            return None
+        return int(value.value)
+
+    @staticmethod
+    def _array(library: ctypes.CDLL, handle: Any, key: bytes) -> "Any":
+        import numpy as np  # noqa: PLC0415
+
+        size = ctypes.c_size_t()
+        if library.codes_get_size(handle, key, ctypes.byref(size)) != 0:
+            raise ContractError("noaa_conus_grid_array_size_unreadable")
+        out = np.empty(size.value, dtype=np.float64)
+        length = ctypes.c_size_t(size.value)
+        if library.codes_get_double_array(
+            handle, key,
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+            ctypes.byref(length),
+        ) != 0:
+            raise ContractError("noaa_conus_grid_array_unreadable")
+        return out
+
+    @staticmethod
+    def _grid_identity(library: ctypes.CDLL, handle: Any) -> str:
+        library.codes_get_string.argtypes = [
+            ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p,
+            ctypes.POINTER(ctypes.c_size_t),
+        ]
+        library.codes_get_string.restype = ctypes.c_int
+        buffer = ctypes.create_string_buffer(64)
+        length = ctypes.c_size_t(64)
+        if library.codes_get_string(
+            handle, b"md5GridSection", buffer, ctypes.byref(length)
+        ) != 0:
+            raise ContractError("noaa_conus_grid_identity_unreadable")
+        return buffer.value.decode("ascii")
+
+    def _derive(
+        self, library: ctypes.CDLL, handle: Any, message: bytes,
+    ) -> list[int | None]:
+        """Each point's index into ``values``, proven against eccodes."""
+
+        import math  # noqa: PLC0415
+
+        import numpy as np  # noqa: PLC0415
+
+        layout = {key: self._long(library, handle, key) for key in _GRID_LAYOUT_KEYS}
+        supported = (
+            layout[b"gridDefinitionTemplateNumber"] == _LAMBERT_CONFORMAL_TEMPLATE
+            and layout[b"iScansNegatively"] == 0
+            and layout[b"jScansPositively"] == 1
+            and layout[b"bitmapPresent"] == 0
+            and layout[b"alternativeRowScanning"] in (0, 1)
+            and (layout[b"Nx"] or 0) > 0
+        )
+        if not supported:
+            return [None] * len(self._points)
+        nx = int(layout[b"Nx"])
+        alternate = layout[b"alternativeRowScanning"] == 1
+        lat = np.radians(self._array(library, handle, b"latitudes"))
+        lon = np.radians(self._array(library, handle, b"longitudes") % 360.0)
+        values = self._array(library, handle, b"values")
+        sin_lat, cos_lat = np.sin(lat), np.cos(lat)
+        indexes: list[int | None] = []
+        for point_lat, point_lon in self._points:
+            p_lat = math.radians(point_lat)
+            p_lon = math.radians(point_lon % 360.0)
+            # Largest cosine of the central angle is the nearest cell.
+            nearest = int(np.argmax(
+                math.sin(p_lat) * sin_lat
+                + math.cos(p_lat) * cos_lat * np.cos(lon - p_lon)
+            ))
+            index = _values_index(nearest, nx, alternate)
+            try:
+                reference, _distance = nearest_point_kelvin(
+                    message, latitude=point_lat, longitude=point_lon,
+                )
+            except ContractError:
+                # The slow path raises for this point today; let it keep
+                # doing so rather than guess what it should have returned.
+                indexes.append(None)
+                continue
+            indexes.append(index if float(values[index]) == reference else None)
+        return indexes
+
+    def kelvin(self, message: bytes) -> list[float | None]:
+        """Each point's value in kelvin; None where it must be read slowly.
+
+        No range check here: a point nobody consumes from this message must
+        not raise where the per-(station, hour) decode it replaces would not
+        have been called at all.  The caller checks what it takes.
+        """
+
+        library = _eccodes()
+        buffer = ctypes.create_string_buffer(message, len(message))
+        handle = library.codes_handle_new_from_message(
+            None, buffer, ctypes.c_size_t(len(message))
+        )
+        if not handle:
+            raise ContractError("noaa_conus_message_unreadable")
+        try:
+            identity = self._grid_identity(library, handle)
+            if identity not in self._indexes:
+                self._indexes[identity] = self._derive(library, handle, message)
+                self.slow_points += sum(
+                    1 for index in self._indexes[identity] if index is None
+                )
+            indexes = self._indexes[identity]
+            if all(index is None for index in indexes):
+                return [None] * len(indexes)
+            values = self._array(library, handle, b"values")
+            return [
+                None if index is None else float(values[index])
+                for index in indexes
+            ]
+        finally:
+            library.codes_handle_delete(handle)
+
+
 def decode_field(
     message: bytes, *, latitude: float, longitude: float,
     run_init: datetime, forecast_hour: int, url: str,

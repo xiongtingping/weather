@@ -462,8 +462,8 @@ def fetch_noaa_run_for_targets(
     """One download per forecast hour, decoded once per station that wants it."""
 
     from .noaa_conus_archive import (
-        _field_range, _range_get, decode_field, file_url, local_day_hours,
-        product_hours, run_directory_url,
+        GridPointReader, _field_range, _range_get, decode_field, file_url,
+        local_day_hours, product_hours, run_directory_url,
     )
 
     published = set(product_hours(product, run_init))
@@ -487,19 +487,34 @@ def fetch_noaa_run_for_targets(
         message = _range_get(url, span[0], span[1])
         if message is not None:
             messages[hour] = message
+    # One grid search per station per pass, not one per (station, hour):
+    # see ``GridPointReader`` for the 600-second NBM decode this replaces and
+    # the per-station proof against eccodes that keeps it honest.  A station
+    # the reader could not prove falls through to ``decode_field`` below,
+    # exactly as before, range check and all.
+    reader = GridPointReader(
+        [(float(t["latitude"]), float(t["longitude"])) for t in targets]
+    )
+    kelvin_by_hour = {hour: reader.kelvin(message) for hour, message in messages.items()}
     results: dict[tuple[str, str], dict[str, Any]] = {}
-    for target in targets:
+    for position, target in enumerate(targets):
         key = (str(target["station_id"]), target["event_date"].isoformat())
         values: dict[int, float] = {}
         for hour in wanted_by_key[key]:
             message = messages.get(hour)
             if message is None:
                 continue
-            field = decode_field(
-                message, latitude=float(target["latitude"]), longitude=float(target["longitude"]),
-                run_init=run_init, forecast_hour=hour, url=file_url(product, run_init, hour),
-            )
-            values[hour] = field.value_c
+            kelvin = kelvin_by_hour[hour][position]
+            if kelvin is None:
+                field = decode_field(
+                    message, latitude=float(target["latitude"]), longitude=float(target["longitude"]),
+                    run_init=run_init, forecast_hour=hour, url=file_url(product, run_init, hour),
+                )
+                values[hour] = field.value_c
+                continue
+            if not 180.0 <= kelvin <= 340.0:
+                raise ContractError("noaa_conus_value_out_of_range")
+            values[hour] = kelvin - 273.15
         results[key] = {
             "hourly_c": values, "hours_wanted": len(wanted_by_key[key]),
             "source_url": run_directory_url(product, run_init),
