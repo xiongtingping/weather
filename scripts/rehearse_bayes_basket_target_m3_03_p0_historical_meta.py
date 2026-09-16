@@ -427,6 +427,16 @@ def run_rehearsal(
         rebound_decode = temp_root / "native_decode.rebound.json"
         output_dir = temp_root / "p0-output"
         inbox_path = temp_root / "p0-inbox.json"
+        # A scope the current registry no longer carries cannot be rebound
+        # whatever the clone holds, so say so before cloning the store: the
+        # backup needs three times the SSOT free, and the answer was
+        # "free space insufficient" instead of the true refusal.
+        if str(decode.get("market_registry_snapshot_sha256") or "") != str(
+            registry.get("snapshot_sha256") or ""
+        ):
+            _rows_from_current_registry(
+                registry, station_id=station_id, event_date=target_date
+            )
         _online_backup(source_db, clone)
         with sqlite3.connect(clone, timeout=60.0) as conn:
             conn.execute("PRAGMA busy_timeout=60000")
