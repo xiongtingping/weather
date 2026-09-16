@@ -13535,78 +13535,6 @@ function windowDivergence(){
 
 
 
-function consolidation(){
-  const S=D.selection||{};
-  const cons=(S.consolidation_lights||{});
-  if(!cons.available) return "";
-  const consRule=cons.rule||{};
-  const LAMP={stable:"稳",sharp:"尖"};
-  const LAMPDEF={stable:"中心稳：中心桶连续 3 次未变",
-    sharp:"分布尖：头两桶质量 ≥60%"};
-  const lamp=(on)=>on?`<span class="down">●</span>`:`<span class="muted">○</span>`;
-  const fmtRoi=(v)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(1)+"%");
-  const roiTd=(v)=>`<td class="mono ${v==null?"":(v>=0?"up":"down")}">${fmtRoi(v)}</td>`;
-  const statTds=(r)=>`
-      <td class="mono">${r.chains}</td>
-      <td class="mono">${r.chains?((100*r.hit_chains/r.chains).toFixed(0)+"%"):"—"}</td>
-      <td class="mono">${r.staked.toFixed(0)}</td>
-      <td class="mono ${r.pnl>=0?"up":"down"}">${r.pnl>=0?"+":""}${r.pnl.toFixed(1)}</td>
-      ${roiTd(r.roi)}${roiTd(r.roi_ex_best)}${roiTd(r.roi_ex_best2)}`;
-  const comboRows=(cons.combos||[]).filter(r=>r.chains>0)
-    .sort((a,b)=>a.count-b.count||b.chains-a.chains).map(r=>`<tr>
-      <td class="mono">${lamp(r.stable)}${lamp(r.sharp)}
-        <span class="muted">${["stable","sharp"]
-          .filter(k=>r[k]).map(k=>LAMP[k]).join("")||"全灭"}</span></td>
-      <td class="mono">${r.tilted
-        ?`<span class="pill amber">×${consRule.factor}</span>`:"满仓"}</td>
-      ${statTds(r)}
-    </tr>`).join("");
-  const countRows=(cons.counts||[]).map(r=>`<tr>
-      <td class="mono">${r.count} 盏${r.count>=(consRule.min_signals||2)
-        ?` <span class="pill amber">×${consRule.factor}</span>`:""}</td>
-      <td></td>${statTds(r)}
-    </tr>`).join("");
-  const singleRows=(cons.singles||[]).map(r=>`<tr>
-      <td>${h(LAMPDEF[r.signal]||r.signal)}</td>
-      <td class="mono ${r.lit?"down":"up"}">${r.lit?"亮":"灭"}</td>
-      ${statTds(r)}
-    </tr>`).join("");
-  const consHead=`<tr><th></th><th>注码</th><th>链</th><th>命中链</th>
-      <th>投入</th><th>pnl</th><th>ROI</th><th>去最大赢</th><th>去前两赢</th></tr>`;
-  return `<h2>固化减仓：模型答案定型后缩小注码</h2>
-  <p class="sub">驱动固化减仓的两盏模型灯，P0 开链定档、全链继承。
-  原与挂单执行同节；挂单显示退役后（2026-08-29）自立门户，规则本身没动。</p>
-  <div class="card">
-    <div class="why" style="margin-top:8px"><b>入场那一刻记两盏模型灯，
-    量的是"当天的答案定型了没有"：</b>
-    ${Object.values(LAMPDEF).join("；")}。
-    灯亮=市场的定价功课做完了，此时还剩的价差多半是别人知道我们不知道的事。
-    两盏都记账，但只有触发灯砍注码：09-08 按灯分组 264 笔读出
-    <span class="mono">sharp</span> 亮的日子 +8.7%（全库唯一为正的一组）、
-    <span class="mono">stable</span> 亮的日子 −8.6%，旧的"任一盏亮即减"把前者也砍了，
-    信号集遂收成 <span class="mono">stable</span>，另一盏留作研究臂。
-    <b>现行规则（深度 2026-08-28 裁定、触发灯 2026-09-08 裁定）：
-    ${(consRule.signals||["stable"]).map(k=>LAMPDEF[k]||k).join("、")}
-    亮满 ${consRule.min_signals??1} 盏，整链注码 ×${consRule.factor??0.05}</b>——只在开仓时少买，
-    永不拒入场、永不卖出、永不撤单（改成门会自反，折扣门 −54% 判例）。<br>
-    <b>第三盏灯「报满价」已退役（2026-08-28）：</b>它几乎天天亮，
-    说的是"有没有盘口"而非"市场多确定"，不再计数也不再显示；
-    原始记录仍逐链落盘。层薄的格子以"去前两赢"为准，
-    符号靠最大一两条链撑住的读数是彩票不是发现。灯取 <b>P0 开链那一刻</b>的读数，
-    链级合计（P0+P0-M+P1 同链同档）。</div>
-    <table style="margin-top:8px"><thead>${consHead}</thead>
-    <tbody>${comboRows}</tbody></table>
-    <div class="muted" style="margin-top:10px">按亮灯数</div>
-    <table style="margin-top:4px"><thead>${consHead}</thead>
-    <tbody>${countRows}</tbody></table>
-    <div class="muted" style="margin-top:10px">单灯切分</div>
-    <table style="margin-top:4px"><thead><tr><th>灯</th><th>状态</th>
-      <th>链</th><th>命中链</th><th>投入</th><th>pnl</th>
-      <th>ROI</th><th>去最大赢</th><th>去前两赢</th></tr></thead>
-    <tbody>${singleRows}</tbody></table>
-  </div>`;
-}
-
 
 // 纸面账本, one board (user ruling, 2026-09-13: 有些指标重复了，把纸面账本的
 // 所有数据看板重新整理合并).  It was three tabs -- the 钱 lamps with the
@@ -16440,9 +16368,8 @@ const GROUPS = [
    sections:[[marketLeanGate,"市场方向闸"],
      [coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"]]},
   {id:"sizing", label:"定注", short:"定注", tone:"#56d4dd",
-   note:"定注层：下多少、最后真正拿着什么——固化减仓、分布与持仓分家",
-   sections:[[consolidation,"固化减仓"],
-     [windowDivergence,"分布与持仓分家"]]},
+   note:"定注层：最后真正拿着什么——分布与持仓分家",
+   sections:[[windowDivergence,"分布与持仓分家"]]},
 ];
 const tabs = `<nav class="tabs" id="tabs" aria-label="区域">${
   GROUPS.map(g => `<button type="button" data-tab="${g.id}"
@@ -16539,8 +16466,6 @@ const LANES = {
   "篮子命中率": {layer:"选窗层 · 读数", status:"audit",
     role:"几桶的篮子实际命中多少"},
   // --- sizing: from a seat to a stake, and what is actually held ---
-  "固化减仓": {layer:"定注 · 资金层", status:"live",
-    role:"我们自己不动了 → 少花钱（整链注码 ×0.05，永不拒入场）"},
   "分布与持仓分家": {layer:"定注层 · 读数", status:"audit",
     role:"分布说的桶和真正持有的桶差多少"},
   // --- the book's own account ---
