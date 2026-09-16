@@ -7972,7 +7972,7 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
                 # the ledger's seat; production evidence has no paper seat,
                 # so that half reads nothing rather than another book's P&L.
                 "SELECT c.win_probability, c.all_in_price, c.hit,"
-                " NULL, NULL"
+                " NULL, NULL, c.station_id, c.event_date"
                 f" FROM {_store.CANDIDATE_SOURCE} c"
                 f" WHERE c.stage IN ({placeholders}){clause}"
                 "   AND c.hit IS NOT NULL",
@@ -7981,10 +7981,11 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
         except sqlite3.Error:
             return []
         tally = [
-            {"seats": 0, "claim": 0.0, "hits": 0, "pnl": 0.0, "stake": 0.0}
+            {"seats": 0, "claim": 0.0, "hits": 0, "pnl": 0.0, "stake": 0.0,
+             "station_days": set()}
             for _ in served
         ]
-        for claim, cost, hit, pnl, stake in rows:
+        for claim, cost, hit, pnl, stake, station, day in rows:
             if claim is None or cost is None or hit is None:
                 continue
             claimed = float(claim or 0.0)
@@ -7994,6 +7995,7 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
             index = _store._band_index(price / claimed, served)
             slot = tally[index]
             slot["seats"] += 1
+            slot["station_days"].add((station, day))
             slot["claim"] += claimed
             slot["hits"] += int(hit or 0)
             slot["pnl"] += float(pnl or 0.0)
@@ -8009,6 +8011,7 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
                 "admits": admits(lower_bound, float(bound), float(lam)),
                 "served": round(float(lam), 4),
                 "seats": slot["seats"],
+                "station_days": len(slot["station_days"]),
                 "claim_mass": round(slot["claim"], 2),
                 "hits": slot["hits"],
                 "raw_lambda": None if raw is None else round(raw, 4),
@@ -8016,8 +8019,13 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
                     None if slot["stake"] <= 0
                     else round(slot["pnl"] / slot["stake"], 4)
                 ),
+                # The store's three hurdles, all of them: a band the page
+                # marked readable on seats and mass alone could still be one
+                # the fit keeps at its incumbent for want of station-days.
                 "admissible": (
                     slot["seats"] >= _store.MIN_SEATS_PER_BAND
+                    and len(slot["station_days"])
+                    >= _store.MIN_STATION_DAYS_PER_BAND
                     and slot["claim"] >= _store.MIN_CLAIM_MASS
                 ),
             })
@@ -8084,6 +8092,60 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
         days = []
     midpoint = days[len(days) // 2] if days else None
 
+    from bayes_basket_target import candidate_window_evidence as _evidence
+
+    try:
+        # Rowid order is insertion order on this append-only table, so the
+        # first row is one seek rather than a scan of a created_at column
+        # nothing indexes.
+        first = conn.execute(
+            f"SELECT created_at_utc FROM {_evidence.EVIDENCE_TABLE}"
+            " ORDER BY rowid LIMIT 1"
+        ).fetchone()
+    except sqlite3.Error:
+        first = None
+    first_written_at_utc = str(first[0]) if first else None
+
+    def evidence_status(stages: tuple[str, ...]) -> dict[str, Any] | None:
+        """Why a band column is blank, in numbers the reader can check.
+
+        Charter 140 moved the population from the paper table, which held
+        history back to 2026-08-15, onto production's own record, which
+        starts on the day it shipped.  Every column but the served one reads
+        settled rows, so for the first days after the move the whole table
+        is dashes -- the same page a broken query would print.  This says
+        which it is: how many windows are written, how many have a label,
+        and the earliest event day still waiting for one.
+        """
+
+        placeholders = ",".join("?" for _ in stages)
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*), COALESCE(SUM(c.hit IS NOT NULL), 0),"
+                " MIN(CASE WHEN c.hit IS NULL THEN c.event_date END),"
+                " MAX(CASE WHEN c.hit IS NOT NULL THEN c.event_date END)"
+                f" FROM {_store.CANDIDATE_SOURCE} c"
+                f" WHERE c.stage IN ({placeholders})",
+                stages,
+            ).fetchone()
+        except sqlite3.Error:
+            return None
+        return {
+            "source": _evidence.EVIDENCE_SOURCE,
+            "relation": _store.CANDIDATE_SOURCE,
+            "first_written_at_utc": (
+                first_written_at_utc
+                if _evidence.EVIDENCE_SOURCE == "production" else None
+            ),
+            "windows": int(row[0] or 0),
+            "labelled": int(row[1] or 0),
+            "earliest_pending_event_date": row[2],
+            "latest_labelled_event_date": row[3],
+            "min_seats": _store.MIN_SEATS_PER_BAND,
+            "min_station_days": _store.MIN_STATION_DAYS_PER_BAND,
+            "min_claim_mass": _store.MIN_CLAIM_MASS,
+        }
+
     def serving(scope: str, bootstrap) -> tuple[tuple[float, float], ...]:
         """The table production is actually serving for this scope.
 
@@ -8149,6 +8211,7 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
             "stages": list(stages),
             "ceiling": float(ceiling),
             "bands": whole,
+            "evidence": evidence_status(stages),
             "store": activated(scope),
             # Shadow axis (2026-09-06): the same bands split by which way the
             # market moved the window in the hours before the seat.  Read
@@ -12638,7 +12701,7 @@ ${b.admits?"可买 ["+b.admits[0].toFixed(3)+", "+b.admits[1].toFixed(3)+")"
         <td>${win}</td>
         <td class="mono ${gap==null?"":(gap<0?"down":"up")}">${num(b.raw_lambda)}</td>
         <td class="mono">${num(b.fitted_capped)}</td>
-        <td>${b.seats}${b.admissible?"":" ⚠"}</td>
+        <td title="已结算窗口 ${b.seats} · 站日 ${b.station_days??"—"} · 声称质量 ${num(b.claim_mass)}；⚠＝未过拟合的三道门槛，服务值保持在任值">${b.seats}${b.admissible?"":" ⚠"}</td>
         <td class="mono">${num(b.early_lambda)} / ${num(b.late_lambda)}</td>
         <td class="mono">${pct(b.return)}</td>
         <td class="${mark[1]}">${mark[0]}</td></tr>`;
@@ -12663,9 +12726,10 @@ ${b.admits?"可买 ["+b.admits[0].toFixed(3)+", "+b.admits[1].toFixed(3)+")"
       <table><thead><tr>
         <th title="a ＝ 市场价 ÷ 模型声称">一致度带 a=价/声称</th><th>当前服务 λ</th>
         <th title="闸的判据化简后是 λ(a)>a，所以这一档只放行 [档下界, 该档自己的 λ)">可买区间</th>
-        <th>本账本 raw λ</th>
+        <th title="已结算候选窗的 命中数 ÷ 声称质量，读生产证据（宪章 140），不是纸面账本">生产证据 raw λ</th>
         <th>封顶后</th><th>座位</th><th>前半 / 后半</th><th>该带回报</th><th>状态</th>
       </tr></thead><tbody>${rows}</tbody></table>
+      ${evidenceNote(sc)}
       <div class="muted mono" style="margin-top:4px">${
         st?`store 已激活 ${st.sha256} · ${st.fitted_at_utc} · ${st.seat_count} 座`
           :"store 尚无该档的激活行（明日 refit 起逐日记录）"
@@ -12676,6 +12740,24 @@ ${b.admits?"可买 ["+b.admits[0].toFixed(3)+", "+b.admits[1].toFixed(3)+")"
   // window over the hours before the seat.  A cell shows its fitted λ only
   // when it clears the store's admission rule; otherwise the seat count
   // alone, so a thin cell reads as thin rather than as a number.
+  // Charter 140 (2026-09-16) moved the population onto production's record,
+  // which starts the day it shipped.  Until a day settles every column but
+  // the served one is dashes -- the page a broken query prints -- so the
+  // table says which one it is.
+  const evidenceNote=sc=>{
+    const ev=sc.evidence;
+    if(!ev) return "";
+    const src=ev.source==="production"?"生产证据":"纸面账本（对比臂）";
+    const since=ev.first_written_at_utc
+      ?`自 ${String(ev.first_written_at_utc).slice(5,16).replace("T"," ")}Z 起`:"";
+    const bar=`每档要 ≥${ev.min_seats} 窗、≥${ev.min_station_days} 个站日、声称质量 ≥${ev.min_claim_mass} 才算可读`;
+    if(!ev.labelled) return `<div class="note" style="margin-top:6px"><b>空表不是故障：</b>
+      λ 证据${since}改读${src}（宪章 140），${sc.scope} 已写 ${ev.windows} 个抽样候选窗、已结算 0 个${
+      ev.earliest_pending_event_date?`；最早 ${ev.earliest_pending_event_date} 的站日结算后出第一批读数`:""}。
+      ${bar}，此前 raw 各列为空、服务 λ 保持在任值。</div>`;
+    return `<div class="muted" style="margin-top:4px">证据：${src}${since} · ${ev.windows} 个抽样候选窗，已结算 ${ev.labelled} 个${
+      ev.latest_labelled_event_date?`（最新结算日 ${ev.latest_labelled_event_date}）`:""} · ${bar}</div>`;
+  };
   const dqShadow=sc=>{
     const sh=sc.dq_shadow;
     if(!sh) return `<div class="muted" style="margin-top:6px">Δq 影子：尚无拟合行（下一轮 refit 起记录）。</div>`;
@@ -12713,7 +12795,7 @@ ${b.admits?"可买 ["+b.admits[0].toFixed(3)+", "+b.admits[1].toFixed(3)+")"
         <div style="font-size:13.4px">
           <p style="margin:0 0 8px">a = 篮子价格 / 声称胜率，λ = 历史上这声称真正到账的比例。
           <b>服务列＝库里此刻激活的那张表</b>（宪章 68(c) 起机器自晋级，
-          内核常量只在某 scope 从未激活过时兜底）；raw 列是本账本说它该是多少，
+          内核常量只在某 scope 从未激活过时兜底）；raw 列是生产证据（宪章 140）说它该是多少，
           两者的差就是待晋级的量，能不能晋级由前半/后半那一列决定 ——
           两半不一致的带还没挣到一个常量。</p>
           <p style="margin:0">宪章 96（2026-09-06）：闸判的是折后声称减价格为正，化简后就是
