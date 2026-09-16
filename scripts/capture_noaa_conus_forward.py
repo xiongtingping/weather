@@ -250,7 +250,23 @@ def main() -> int:
     args = parser.parse_args()
 
     now = datetime.now(timezone.utc)
-    pass_ends = time.monotonic() + BUDGET_SEC_PER_PASS
+    pass_started = time.monotonic()
+    pass_ends = pass_started + BUDGET_SEC_PER_PASS
+    # Where the pass's seconds went, printed last so it survives the
+    # resident's 600-character output tail.  Measured 2026-09-16T09:30Z the
+    # pass spent its whole 1140s before the member-run loop, which then made
+    # 0 of 6 attempts -- and the receipt could not say where: download and
+    # decode together account for about half, and the rest had to be
+    # guessed.  Every diagnosis of this lane that day was inference.
+    phase_sec: dict[str, float] = {}
+    phase_mark = pass_started
+
+    def _mark(name: str) -> None:
+        nonlocal phase_mark
+        now_mono = time.monotonic()
+        phase_sec[name] = phase_sec.get(name, 0.0) + (now_mono - phase_mark)
+        phase_mark = now_mono
+
     conn = sqlite3.connect(str(DB), timeout=120.0)
     # Charter 95 (re-ruled 2026-09-06): the P1 lane -- every HRRR and NBM
     # cycle, run-scoped, into the lane's own table.  Runs before the P0
@@ -264,9 +280,12 @@ def main() -> int:
     try:
         prepare(conn)
     except sqlite_busy.WriteBlocked as exc:
+        _mark("prepare")
         announce_write_blocked(f"建表/注册 {exc}")
+        _print_phase_seconds(phase_sec, pass_started)
         conn.close()
         return 0
+    _mark("prepare")
     for _product in ("HRRR", "NBM"):
         # Each phase arms its own clock, the same seconds its own budget
         # names, so the requests inside a run stop where the run loop would
@@ -292,6 +311,7 @@ def main() -> int:
             f"已有 {_receipt['existed']}，空 {_receipt['empty']}，失败 {len(_receipt['failed'])}"
             + ("，预算用尽" if _receipt["budget_exhausted"] else "")
         )
+        _mark(f"p1_{_product.lower()}")
         for _line in _receipt["failed"][:4]:
             print(f"  {_line}")
         if _receipt.get("write_blocked"):
@@ -303,6 +323,7 @@ def main() -> int:
     conn.execute("PRAGMA busy_timeout=60000")
     if p1_write_blocked:
         announce_write_blocked(p1_write_blocked)
+        _print_phase_seconds(phase_sec, pass_started)
         conn.close()
         return 0
 
@@ -319,8 +340,10 @@ def main() -> int:
             reason = _transport_is_writable(conn, TRANSPORTS[product])[1]
             print(f"  {product} 采集已就绪但无法落库：{reason}")
 
+    _mark("transport_check")
     try:
         plan, skipped = _plan(conn, now)
+        _mark("plan")
         deadline = pass_ends
         set_pass_deadline(max(0.0, pass_ends - time.monotonic()))
         budget_exhausted = False
@@ -423,6 +446,7 @@ def main() -> int:
         # the same INSERT, so the pass stops and asks to come back soon.
         write_blocked = str(exc)
     finally:
+        _mark("member_loop")
         close_client()
         conn.close()
 
@@ -442,7 +466,16 @@ def main() -> int:
         print(f"  {line}")
     if write_blocked:
         announce_write_blocked(write_blocked)
+    _print_phase_seconds(phase_sec, pass_started)
     return 0
+
+
+def _print_phase_seconds(phase_sec: dict[str, float], started: float) -> None:
+    """One line, last, naming where the pass's wall clock went."""
+
+    total = time.monotonic() - started
+    parts = " | ".join(f"{name} {sec:.0f}s" for name, sec in phase_sec.items())
+    print(f"阶段耗时 {total:.0f}s：{parts}")
 
 
 if __name__ == "__main__":
