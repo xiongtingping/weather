@@ -10992,7 +10992,9 @@ color:var(--text);white-space:nowrap}
 /* Three areas (user ruling, 2026-08-29), now one segmented control rather
    than four bordered cards.  The hue stays -- a dot per area, the same
    hue the group titles below carry -- and the chosen area is the one
-   segment lifted onto the card colour.  "全部" is the last segment, with
+   segment lifted onto the card colour.  No section counts on the tabs: the
+   row under them lists the sections themselves, and the count is in the
+   hover.  "全部" is the last segment, with
    no dot, because it is not one of the areas; it is the way out of them. */
 .tabs{display:inline-flex;gap:2px;flex-wrap:wrap;align-items:center;
 margin:0;padding:3px;background:var(--bar-bg);border-radius:10px}
@@ -11007,8 +11009,6 @@ border-radius:50%;background:var(--tone,transparent)}
 .tabs button:hover{color:var(--text)}
 .tabs button[data-active="1"]{color:var(--text);background:var(--card);
 font-weight:620;box-shadow:0 1px 2px rgba(0,0,0,.14)}
-.tabs button .cnt{font-size:11px;color:var(--muted);font-weight:400;
-font-variant-numeric:tabular-nums}
 /* The group heading wears its area's colour on the same edge as its tab. */
 .grouptitle{border-left:3px solid var(--tone,var(--line));padding-left:10px}
 /* Per-day tabs inside a card.  The same pill as the group switcher, one
@@ -11084,15 +11084,19 @@ padding:6px 12px;background:var(--card);box-shadow:var(--shadow)}
    off-screen is the problem it was added to solve.  The chips are text,
    not boxes, and each area gets its own line behind a caption that wears
    the area's hue on the same edge as the area title below, so the thirty
-   chips under 全部 read as four short lists rather than one long one.  The
-   chip for the section under the bar is marked, which makes the same rows
-   answer "where am I" as well as "where can I go". */
-.jump{display:grid;grid-template-columns:auto minmax(0,1fr);gap:1px 8px;
-align-items:start;padding:0 0 7px}
-.jump-g{margin-top:3px;padding:0 2px 0 6px;font-size:11px;font-weight:650;
-line-height:16px;color:var(--muted);white-space:nowrap;
+   chips under 全部 read as six short lists rather than one long one.  An
+   area wraps as a unit: a two-section area shares a line with its
+   neighbour instead of spending a line of the bar on itself.  The chip for
+   the section under the bar is marked, which makes the same rows answer
+   "where am I" as well as "where can I go". */
+.jump{display:flex;flex-wrap:wrap;gap:1px 20px;align-items:flex-start;
+padding:0 0 7px}
+.jump-area{display:flex;align-items:flex-start;gap:4px;max-width:100%;
+min-width:0}
+.jump-g{flex:none;margin-top:3px;padding:0 2px 0 6px;font-size:11px;
+font-weight:650;line-height:16px;color:var(--muted);white-space:nowrap;
 border-left:3px solid var(--tone,var(--line))}
-.jump-run{display:flex;flex-wrap:wrap;gap:0 1px;align-items:center}
+.jump-run{display:flex;flex-wrap:wrap;gap:0 1px;align-items:center;min-width:0}
 .jump button{cursor:pointer;white-space:nowrap;flex:none;background:none;
 color:var(--muted);border:0;border-radius:6px;padding:2px 7px;
 font-family:inherit;font-size:12.5px;line-height:1.45}
@@ -11142,12 +11146,14 @@ box-shadow:0 0 0 3px var(--pill-red-bg)}
    hides the page it navigates. */
 @media(max-width:760px){
 .navtop{gap:6px}
-.nav-div,.nav-fill,.tabs button .cnt{display:none}
+.nav-div,.nav-fill{display:none}
 #theme{order:1;margin-left:auto}
 .tabs{order:2;width:100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
 .navctl{order:3;width:100%;justify-content:space-between}
-.jump-run{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
-.jump-run::-webkit-scrollbar{display:none}
+.jump,.jump-run{flex-wrap:nowrap}
+.jump-area{max-width:none;flex:none}
+.jump{overflow-x:auto;scrollbar-width:none}
+.jump::-webkit-scrollbar{display:none}
 }
 /* The same number under all three weightings, inside the tile that owns it.
    A row rather than a table: three values is not a table, and the table it
@@ -11368,7 +11374,8 @@ function head(){
   都在选标签页之前就该看见，所以放在标签栏上面而不是某个分组里面。
   紧接着是<b>资金看板</b>：这本账值多少，按纸面账本与实盘两类分页签；
   然后是 Live 上线准备，再往下是逐站账：每日统计、逐站逐日明细与三张跟进表；
-  再往下按三个<b>区域</b>分组，每区一个颜色，标签栏与区标题同色。</p>
+  再往下按链条顺序分五个<b>区域</b>——模型、模型 vs 市场、声称、选窗、定注，
+  每区一个颜色，标签栏与区标题同色。</p>
   <div class="card"><div style="display:flex;gap:14px;align-items:center;
     flex-wrap:wrap">
     <span class="dot ${D.overall_health}" style="width:13px;height:13px"></span>
@@ -17000,15 +17007,21 @@ function ledgerAlignment(){
 // renumbered one, because it only reads as an accident.
 const GROUPS = [
   // Grouped by what the reader is asking, not by the order the sections
-  // were built in (user ruling, 2026-08-29).  Three questions now: is the
-  // model any good, what shape is the probability and the position it
-  // buys, and does the market let that make money.  The other two -- is
+  // were built in (user ruling, 2026-08-29).  The other two questions -- is
   // the data arriving, is the machine running -- left the tab bar on
   // 2026-09-11: they are answered by the head's lamps, and an answer read
   // on arrival does not belong behind a tab.  Each group carries a colour
   // so the tab bar and the group titles agree without matching text.
+  //
+  // Five areas in the order of the chain, one per layer the sections'
+  // own strips already declare (user ruling, 2026-09-16: "固化减仓不应该
+  // 放在形状里").  The three-way split filed a sizing rule and a holdings
+  // reading under "概率与持仓形状" beside the claim tables, and the two
+  // readings of whether the model knows anything the market does not were
+  // split across two areas.  A section's tab is now the layer written on
+  // its strip: 概率层 → 模型 vs 市场 → 声称层 → 选窗层 → 定注层.
   {id:"model", label:"模型", short:"模型", tone:"#d2a8ff",
-   note:"模型本身准不准：订正与权重、离散度、命中率、OOS、中心/宽度、总检",
+   note:"概率层：模型本身准不准——订正与权重、离散度、命中率、OOS、中心/宽度、总检",
    sections:[[tables,"偏差订正与权重"],
      [servingWeights,"四大模型权重"],
      [dispersion,"模型离散度"],[hitRate,"模型命中率"],
@@ -17016,29 +17029,33 @@ const GROUPS = [
      [centreLanding,"真值离均值多远"],
      [scorecard,"模型校准总检"],[h5Readiness,"H5 换代进度"],
      [correctionAccuracy,"订正准度与政权偏移"]]},
-  {id:"shape", label:"概率与持仓形状", short:"形状", tone:"#7ee787",
-   note:"概率怎么被分档修正、声称被哪几层乘过、注码怎么被固化减仓、分布和实际持仓差在哪",
+  {id:"edge", label:"模型 vs 市场", short:"对市场", tone:"#79c0ff",
+   note:"模型比市场多知道什么：EV 恒等式按误差拆边际，统一估值车道把盘口当第二份预报",
+   sections:[[charterEv,"宪章 EV 恒等式"],
+     [valuationLane,"统一估值车道"]]},
+  {id:"claim", label:"声称", short:"声称", tone:"#7ee787",
+   note:"声称层：模型说的概率和边际信几成——band 表按档修正、体温计量兑现、λ 表与 β 车道定折扣、双向收敛",
    sections:[[bandTable,"band 表"],
      [edgeBandHealth,"声称边际体温计"],
      [effectiveEdgeLambda,"有效边际 λ 表"],
-     [valuationLane,"统一估值车道"],
      [betaShadow,"β 车道（影子）"],
-     [convergenceClaim,"双向收敛系数"],
-     [consolidation,"固化减仓"],
-     [windowDivergence,"分布与持仓分家"]]},
-  {id:"market", label:"市场与执行门槛", short:"市场", tone:"#e3b341",
-   note:"市场肯不肯让这套东西赚钱：盘口方向闸、覆盖与 EV、篮子命中率、真值落位",
-   sections:[[charterEv,"宪章 EV 恒等式"],
-     [marketLeanGate,"市场方向闸"],
+     [convergenceClaim,"双向收敛系数"]]},
+  {id:"select", label:"选窗", short:"选窗", tone:"#e3b341",
+   note:"选窗层：挑哪几个桶、挑得值不值——市场方向闸、覆盖与 EV、篮子命中率、真值落位",
+   sections:[[marketLeanGate,"市场方向闸"],
      [coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"],
      [truthLanding,"真值落位"]]},
+  {id:"sizing", label:"定注", short:"定注", tone:"#56d4dd",
+   note:"定注层：下多少、最后真正拿着什么——固化减仓、分布与持仓分家",
+   sections:[[consolidation,"固化减仓"],
+     [windowDivergence,"分布与持仓分家"]]},
 ];
 const tabs = `<nav class="tabs" id="tabs" aria-label="区域">${
   GROUPS.map(g => `<button type="button" data-tab="${g.id}"
-    style="--tone:${g.tone}" title="${g.note}">${g.label}
-    <span class="cnt">${g.sections.length}</span></button>`).join("")
+    style="--tone:${g.tone}" title="${g.label}（${g.sections.length} 个区块）· ${
+    g.note}">${g.short}</button>`).join("")
 }<button type="button" class="all" data-tab="all"
-  title="三个区域叠在一页">全部</button></nav>`;
+  title="所有区域叠在一页">全部</button></nav>`;
 
 // Every section gets its own element and id so the jump bar has somewhere
 // to land.  The chip says the name the section is filed under here -- the
@@ -17102,7 +17119,13 @@ const LANES = {
     role:"偏差半衰期新代铺到哪了、还剩多少格在服旧代"},
   "订正准度与政权偏移": {layer:"概率层 · 读数", status:"audit",
     role:"全队日偏差能不能提前知道（实测：不能，所以 regime 层关着）"},
-  // --- shape: from probability to a claim, and from a claim to a stake ---
+  // --- edge: whether the model knows anything the market does not ---
+  "宪章 EV 恒等式": {layer:"模型 vs 市场 · 读数", status:"audit",
+    role:"edge = 市场的错 − 模型的错 = Var(e_q) − Cov(e_p,e_q)；k = Cov/Var 低于 1 才有 edge"},
+  // PM_VALUATION_MODE defaults to shadow (valuation_v1) and nothing sets it.
+  "统一估值车道": {layer:"模型 vs 市场", status:"shadow",
+    role:"盘口当第二份预报与模型融合（权重 β）→ 切 on 时闸读融合后的动作下界，现在只量不用"},
+  // --- claim: how much of a claimed probability or edge to believe ---
   "band 表": {layer:"声称层", status:"live",
     role:"声称 X 时真值其实落窗多少 → 按档把声称修正回去"},
   "声称边际体温计": {layer:"声称层 · 读数", status:"audit",
@@ -17113,13 +17136,7 @@ const LANES = {
     role:"我们和市场的分歧兑现几成（斜率 β）→ 目前只量不用"},
   "双向收敛系数": {layer:"声称层", status:"shadow",
     role:"我们往上、市场往下、还没走到一起 → 把声称抬三成（只记账）"},
-  "固化减仓": {layer:"定注 · 资金层", status:"live",
-    role:"我们自己不动了 → 少花钱（整链注码 ×0.05，永不拒入场）"},
-  "分布与持仓分家": {layer:"定注层 · 读数", status:"audit",
-    role:"分布说的桶和真正持有的桶差多少"},
-  // --- market: whether the book lets any of it make money ---
-  "宪章 EV 恒等式": {layer:"模型 vs 市场 · 读数", status:"audit",
-    role:"edge = 市场的错 − 模型的错 = Var(e_q) − Cov(e_p,e_q)；k = Cov/Var 低于 1 才有 edge"},
+  // --- select: which buckets to seat, and whether seating them paid ---
   "市场方向闸": {layer:"选窗层", status:"shadow",
     role:"只看市场往哪边歪 → 不许逆着它开窗（09-05 上线、09-12 退回影子）"},
   "覆盖 · 价格 · EV": {layer:"选窗层 · 读数", status:"audit",
@@ -17128,6 +17145,11 @@ const LANES = {
     role:"几桶的篮子实际命中多少"},
   "真值落位": {layer:"选窗层 · 读数", status:"audit",
     role:"真值落在价格 × 概率的哪一格"},
+  // --- sizing: from a seat to a stake, and what is actually held ---
+  "固化减仓": {layer:"定注 · 资金层", status:"live",
+    role:"我们自己不动了 → 少花钱（整链注码 ×0.05，永不拒入场）"},
+  "分布与持仓分家": {layer:"定注层 · 读数", status:"audit",
+    role:"分布说的桶和真正持有的桶差多少"},
   // --- the book's own account ---
   "资金看板": {layer:"账本 · 读数", status:"audit",
     role:"这本账值多少：纸面账本（总账、对比、风险、曲线）与实盘（订单、意向簿）"},
@@ -17296,13 +17318,13 @@ document.getElementById("app").innerHTML =
       lane ? ` data-lane="${esc(lane)}"` : ""}${
       node.dataset.star ? ` class="star"` : ""}>${esc(short2)}</button>`;
   };
-  // One line of chips per area, behind the area's caption.
+  // One run of chips per area, behind the area's caption, wrapping as a unit.
   const run = (label, tone, nodes) => {
     const chips = nodes.map(chip).filter(Boolean);
     if(!chips.length) return "";
-    return `<span class="jump-g"${
+    return `<span class="jump-area"><span class="jump-g"${
       tone ? ` style="--tone:${esc(tone)}"` : ""}>${esc(label)}</span>
-      <span class="jump-run">${chips.join("")}</span>`;
+      <span class="jump-run">${chips.join("")}</span></span>`;
   };
   const paintJump = () => {
     if(!jump) return;
