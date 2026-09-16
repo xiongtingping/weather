@@ -3270,6 +3270,7 @@ def _support_windows(
         # but the leg floor is about what the quote *means*, not about which
         # window earned its place -- an inherited support resting on a penny
         # leg is the same lottery as a freshly enumerated one.
+        incumbent_leg_floor_hit = False
         if priced and any(
             _leg_below_floor(
                 by_bucket[bucket],
@@ -3278,6 +3279,7 @@ def _support_windows(
             )
             for bucket, quote in zip(incumbent, quotes)
         ):
+            incumbent_leg_floor_hit = True
             priced = False
         price = sum(quote for quote in quotes if quote is not None)
         win = sum(float(probabilities[bucket]) for bucket in incumbent)
@@ -3341,7 +3343,17 @@ def _support_windows(
             ),
         )
         if not incumbent_admissible and not structurally_refused:
-            if not priced:
+            if incumbent_leg_floor_hit:
+                # The floor de-priced it; booking that as "no offer" reads
+                # as a venue with nothing to sell when the venue is selling
+                # pennies.  The loop's branch has kept the two apart since
+                # 2026-08-20; this one had the same arithmetic and only the
+                # one counter, and it is the branch every HELD chain takes --
+                # so the mis-attribution landed precisely on the population
+                # a reader consults to ask why a chain stopped adding.
+                # Audit only: the window is refused either way.
+                leg_floor_refused += 1
+            elif not priced:
                 unpriced_refused += 1
             else:
                 edge_refused += 1
