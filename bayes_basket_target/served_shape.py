@@ -66,12 +66,22 @@ class CenterWidthLayer:
 class BandLayer:
     """A band table and the axis it was fitted on.
 
-    ``factors=None`` is the static bootstrap table, the same default
-    ``apply_band_reliability`` has always had.
+    ``factors`` is required and may be empty (a pin to a table the lane
+    vetoed loads as the empty table -- identity, with its sha kept).  It may
+    NOT be None: that used to fall through to ``apply_band_reliability``'s
+    pre-store bootstrap constants, and on 2026-09-15 that is how a vetoed P0
+    kept rescaling for six hours -- hand-written 2026-08 factors on the claim
+    axis, while the lane had been on centre_distance since 09-07.  No table
+    means no layer, so callers pass None for the LAYER, never for its
+    factors.
     """
 
-    factors: Sequence[tuple[tuple[float, float], float]] | None
+    factors: Sequence[tuple[tuple[float, float], float]]
     axis: str
+
+    def __post_init__(self) -> None:
+        if self.factors is None:
+            raise ValueError("band_layer_factors_required")
 
 
 def model_center_c(
