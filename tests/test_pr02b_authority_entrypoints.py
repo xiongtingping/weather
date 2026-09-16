@@ -132,6 +132,11 @@ def test_only_three_user_domain_services_and_targetctl_remain() -> None:
         # miss is worth killing it over, so it left the resident for
         # launchd, which imposes no timeout.
         "com.weather.dashboard_render.plist",
+        # 2026-09-16 (user ruling: 前端改为热更新): redraws the page with the
+        # template on disk around the last render's payload whenever the
+        # template changes.  A file watch, not a clock, and a reader like the
+        # render -- no resident has a turn to host it in.
+        "com.weather.dashboard_reinflate.plist",
         # The regional admission check asks whether a lane has come due,
         # which is not on the decision cycle's critical path.
         "com.weather.regional_admission_due_check.plist",

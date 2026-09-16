@@ -44,3 +44,6 @@ output/audits/
 tmp/*.pkl
 tmp/cal_dashboard_preview.html
 tmp/h1_night_ceiling_rows.json
+# Hot update sidecars (2026-09-16): the last full render's payload and the page version.
+tmp/cal_dashboard_payload.json
+tmp/cal_dashboard_version.js

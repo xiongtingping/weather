@@ -19,12 +19,16 @@ import argparse
 import ast
 import collections
 import hashlib
+import importlib.util
 import inspect
 import json
 import math
 import os
 import re
+import shutil
 import statistics
+import subprocess
+import tempfile
 from bisect import bisect_left
 from collections import Counter, defaultdict
 import random
@@ -10436,7 +10440,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     }
 
 
-HTML_TEMPLATE = r"""<!doctype html><!--render-start:__RENDER_STARTED__-->
+HTML_TEMPLATE = r"""<!doctype html><!--render-start:__RENDER_STARTED__--><!--payload-start:__PAYLOAD_STARTED__-->
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>气温篮子全链看板</title>
@@ -11194,6 +11198,11 @@ function head(){
 // So: local time, an age in minutes, and the build's own cost -- amber once
 // the age passes a full cycle, because past that the reader is looking at
 // something a render should already have replaced.
+// The two vintages the file was written with: when its template was read,
+// and when the build behind its data began.  A hot update moves only the
+// first (``reinflate``).
+const PAGE_STAMP = "__RENDER_STARTED__";
+const PAYLOAD_STAMP = "__PAYLOAD_STARTED__";
 function renderStamp(){
   const R = D.render || {};
   const stamp = R.generated_at_utc || D.generated_at_utc;
@@ -11221,13 +11230,21 @@ function renderStamp(){
                          : Math.round(R.build_sec) + " 秒");
   const reused = R.reused_sections
     ? ` · 沿用 ${R.reused_sections} 区块` : "";
+  // A hot update redraws the page around the same data; say when, so a
+  // section that changed shape is not read as a section whose numbers moved.
+  const drawn = Number(PAGE_STAMP), built = Number(PAYLOAD_STAMP);
+  const hot = isFinite(drawn) && isFinite(built) && drawn - built > 120
+    ? `<span class="muted" title="改前端只重灌模板、秒级生效；数据仍是左边那次整库渲染的，新增的数据字段要等下一轮整库渲染">模板热更新于 ${
+        h(new Date(drawn * 1000).toLocaleString(undefined, {
+          month: "2-digit", day: "2-digit", hour: "2-digit",
+          minute: "2-digit", hour12: false}))}</span>` : "";
   return `<div style="display:flex;gap:10px;align-items:center;
     flex-wrap:wrap;margin-top:9px;padding-top:9px;
     border-top:1px solid var(--line)">
     <span class="dot ${stale ? "amber" : "green"}"></span>
     <b>本页渲染</b>
     <span class="${stale ? "pill amber" : "muted"}">${h(local)}
-      · ${ageMin} 分钟前</span>
+      · ${ageMin} 分钟前</span>${hot}
     <span class="muted">${stale
       ? `已超过一轮重建周期＋本轮构建耗时（${staleAfter} 分钟），页面上的数字可能落后于库里的`
       : `页面每 ${cycleMin} 分钟起一轮、本轮构建 ${buildMin} 分钟，刷新浏览器不会重算`}</span>
@@ -13863,6 +13880,11 @@ function liveCell(e){
 function daily(){
   const rows=D.daily||[];
   if(!rows.length) return "";
+  // A hot update can draw this template around a payload built before the
+  // table moved to the live book; its rows are the paper table's shape.
+  if(rows[0].stations_posted===undefined)
+    return `<h2>每日统计：按天汇总实盘下单、成交与结算</h2>
+    <div class="card muted">这一节已改读实盘，当前数据来自改动之前的整库渲染，下一轮整库渲染后显示。</div>`;
   const STAGES=["P0","P0-M","P1"];
   const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
   const usd=v=>v==null?"—":v.toFixed(2);
@@ -16900,37 +16922,97 @@ document.querySelectorAll(".why,.sub").forEach(node=>{
   });
   paint();
 })();
+
+// Hot update (user ruling, 2026-09-16: 前端改为热更新).  Every save of the
+// template redraws the page file in a second (``reinflate``) and writes its
+// version beside it as a script, because a page opened from file:// may not
+// fetch but may still load a script.  The open page asks every ten seconds;
+// a newer version reloads it where the reader was.  Not while a control
+// request is in flight -- a reload would drop the answer the switch is
+// waiting for -- and not on a copy served from anywhere but this machine.
+(function(){
+  const KEY = "board-hot-scroll";
+  try{
+    const saved = JSON.parse(sessionStorage.getItem(KEY) || "null");
+    if(saved && saved.path === location.pathname){
+      sessionStorage.removeItem(KEY);
+      window.addEventListener("load", () => window.scrollTo(0, saved.y));
+      setTimeout(() => window.scrollTo(0, saved.y), 0);
+    }
+  }catch(e){}
+  const local = location.protocol === "file:"
+    || location.hostname === "127.0.0.1" || location.hostname === "localhost";
+  if(!local || !/\.html?$/.test(location.pathname)) return;
+  const file = location.pathname.split("/").pop().replace(/\.html?$/, "_version.js");
+  let asking = false;
+  setInterval(() => {
+    if(asking || document.hidden) return;
+    asking = true;
+    const probe = document.createElement("script");
+    const done = () => { asking = false; probe.remove(); };
+    probe.onerror = done;
+    probe.onload = () => {
+      done();
+      const seen = Number(window.__BOARD_VERSION__);
+      if(!(seen > Number(PAGE_STAMP) + 0.0005)) return;
+      if(typeof lcBusy !== "undefined" && lcBusy > 0) return;
+      try{
+        sessionStorage.setItem(KEY, JSON.stringify(
+          {path: location.pathname, y: window.scrollY}));
+      }catch(e){}
+      location.reload();
+    };
+    probe.src = file + "?t=" + Date.now();
+    document.head.appendChild(probe);
+  }, 10000);
+})();
 </script></body></html>"""
 
 
 #: The build's own start time, written into the first line of the document.
 #: The guard below compares these rather than file mtimes; see it for why.
 RENDER_STAMP_RE = re.compile(r"<!--render-start:([0-9.]+)-->")
+PAYLOAD_STAMP_RE = re.compile(r"<!--payload-start:([0-9.]+)-->")
 
 
-def render_html(payload: dict[str, Any], started_at: float | None = None) -> str:
+def render_html(
+    payload: dict[str, Any],
+    started_at: float | None = None,
+    payload_started_at: float | None = None,
+) -> str:
+    """The page: this template around ``payload``, with both vintages stamped.
+
+    ``started_at`` is the page's code vintage -- when the template it was
+    drawn with was read -- and ``payload_started_at`` the data's, when the
+    build that produced the payload began.  A full render has one moment for
+    both; a hot update (``reinflate``) draws a new template around the last
+    payload, so the two part company and the page says so.
+    """
+
+    page = time.time() if started_at is None else started_at
+    data = page if payload_started_at is None else payload_started_at
     return HTML_TEMPLATE.replace(
         "__PAYLOAD__", json.dumps(payload, ensure_ascii=False)
     ).replace(
-        "__RENDER_STARTED__",
-        f"{time.time() if started_at is None else started_at:.3f}",
+        "__RENDER_STARTED__", f"{page:.3f}"
+    ).replace(
+        "__PAYLOAD_STARTED__", f"{data:.3f}"
     )
 
 
-def _render_started_at(target: Path) -> float | None:
-    """When the build that wrote this file began, if the file says.
+def _head_stamp(target: Path, pattern: re.Pattern[str]) -> float | None:
+    """A stamp from the first line of a rendered page, if the page carries it.
 
-    Only the first line is read: the stamp sits before anything else in the
-    document precisely so this check never touches the seven megabytes
-    behind it.
+    Only the first line is read: the stamps sit before anything else in the
+    document precisely so this check never touches the megabytes behind it.
     """
 
     try:
         with target.open("r", encoding="utf-8") as handle:
-            head = handle.read(200)
+            head = handle.read(300)
     except OSError:
         return None
-    match = RENDER_STAMP_RE.search(head)
+    match = pattern.search(head)
     if match is None:
         return None
     try:
@@ -16939,34 +17021,211 @@ def _render_started_at(target: Path) -> float | None:
         return None
 
 
-def _newer_render_landed(target: Path, started_at: float) -> bool:
-    """Whether the file on disk came from a build newer than this one.
+def _render_started_at(target: Path) -> float | None:
+    """When the template on this page was read."""
 
-    The old test was ``mtime > started_at`` -- did anyone WRITE after I
-    started -- and the comment beside it claimed that compared code
-    vintages.  It did not, and the difference bit on 2026-09-09: a sweep
-    that began at 14:34 finished at 15:15, a hand render that began at
-    15:14 with the edit in it finished at 15:28, and the guard threw away
-    the newer code because the older process had touched the file more
-    recently.  That is the exact failure the guard exists to prevent, run
-    backwards.
+    return _head_stamp(target, RENDER_STAMP_RE)
 
-    A process runs whatever was on disk when it imported, so START time is
-    the code vintage.  Compare those: a build that began later has code at
-    least as new, and it wins; a build that began earlier loses no matter
-    when it happened to finish writing.  Files with no stamp predate this
-    and fall back to the mtime test, which is right for them -- an unstamped
-    file is older code by construction.
+
+def _payload_started_at(target: Path) -> float | None:
+    """When the build behind this page's data began.
+
+    A page written before the data stamp existed was a full render, whose
+    template and data share one start, so its render stamp stands in.
+    """
+
+    stamp = _head_stamp(target, PAYLOAD_STAMP_RE)
+    return _render_started_at(target) if stamp is None else stamp
+
+
+def _newer_payload_landed(target: Path, payload_started_at: float) -> bool:
+    """Whether the page on disk carries data from a build newer than this one.
+
+    A full render takes twenty minutes and two run on different clocks, so
+    the guard's job is that an older build never puts older numbers back on
+    the page.  It compared code vintages until 2026-09-16, because a render
+    used to draw its page with whatever template it had imported when it
+    started -- a sweep that began before an edit put pre-edit HTML back
+    (2026-08-26), and comparing write times instead let the older process
+    win whenever it finished last (2026-09-09).  Since the hot update every
+    page is drawn with the template on disk at the moment it is written, so
+    the code can no longer regress and only the data vintage is left to
+    guard.  Files with no stamp at all fall back to the mtime test, which is
+    right for them: an unstamped file is older than any of this.
     """
 
     try:
         existing_mtime = target.stat().st_mtime
     except OSError:
         return False
-    landed = _render_started_at(target)
+    landed = _payload_started_at(target)
     if landed is None:
-        return existing_mtime > started_at
-    return landed > started_at
+        return existing_mtime > payload_started_at
+    return landed > payload_started_at
+
+
+def _payload_sidecar(target: Path) -> Path:
+    """The last full build's payload, beside the page it was drawn into."""
+
+    return target.with_name(target.stem + "_payload.json")
+
+
+def _version_sidecar(target: Path) -> Path:
+    """The page's version, as a script the open page can poll from file://."""
+
+    return target.with_name(target.stem + "_version.js")
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    """Write beside, then rename: a browser reloading mid-write never reads
+    half a page."""
+
+    scratch = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    scratch.write_text(text, encoding="utf-8")
+    os.replace(scratch, path)
+
+
+def _save_payload(
+    target: Path, payload: dict[str, Any], started_at: float
+) -> bool:
+    """Keep this build's payload for hot updates, unless a newer one is kept.
+
+    The build start is serialised first so the check reads a few bytes, not
+    the whole payload.
+    """
+
+    sidecar = _payload_sidecar(target)
+    try:
+        with sidecar.open("r", encoding="utf-8") as handle:
+            head = handle.read(80)
+        match = re.search(r'"build_started_at":\s*([0-9.]+)', head)
+        if match and float(match.group(1)) > started_at:
+            return False
+    except OSError:
+        pass
+    _atomic_write(sidecar, json.dumps(
+        {"build_started_at": started_at, "payload": payload},
+        ensure_ascii=False,
+    ))
+    return True
+
+
+def _inline_script_error(html: str) -> str | None:
+    """Why the page's inline script would not run, or None.
+
+    A hot update fires on every save of this file, including a save in the
+    middle of an edit.  A template whose script does not parse draws a blank
+    page, so it never reaches the page on disk; the previous page stays up
+    and the next save tries again.  Without node there is nothing to check
+    with, and the page is written as before.
+    """
+
+    node = shutil.which("node")
+    if node is None:
+        return None
+    bodies = re.findall(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", html, re.S)
+    with tempfile.TemporaryDirectory() as scratch:
+        for index, body in enumerate(bodies):
+            script = Path(scratch) / f"inline_{index}.js"
+            script.write_text(body, encoding="utf-8")
+            done = subprocess.run(
+                [node, "--check", str(script)],
+                capture_output=True, text=True, timeout=60,
+            )
+            if done.returncode != 0:
+                lines = [line for line in done.stderr.splitlines() if line.strip()]
+                return f"inline script #{index}: " + " | ".join(lines[-3:])
+    return None
+
+
+def _payload_in_page(target: Path) -> tuple[dict[str, Any], float] | None:
+    """The payload a rendered page was drawn with, and its data vintage.
+
+    Decoded with the JSON parser from where the template put it, rather than
+    scanned for a closing brace: section labels contain braces, and a scan
+    that stops at the first one cuts the payload short.
+    """
+
+    try:
+        html = target.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    marker = HTML_TEMPLATE.split("__PAYLOAD__", 1)[0].rsplit("\n", 1)[-1]
+    start = html.find(marker)
+    stamp = _payload_started_at(target)
+    if start < 0 or stamp is None:
+        return None
+    try:
+        payload, _end = json.JSONDecoder().raw_decode(html, start + len(marker))
+    except ValueError:
+        return None
+    return (payload, stamp) if isinstance(payload, dict) else None
+
+
+def _renderer_on_disk() -> Any:
+    """``render_html`` as this file reads NOW, not as this process imported it.
+
+    A full render imports the template when it starts and finishes twenty
+    minutes later; any edit in between is on disk and not in memory.  When
+    the source is unchanged this process's own function is it.
+    """
+
+    source = Path(__file__)
+    try:
+        current = source.read_text(encoding="utf-8").splitlines(keepends=True)
+    except OSError:
+        return render_html
+    if current == _LOADED_SOURCE_LINES:
+        return render_html
+    spec = importlib.util.spec_from_file_location(
+        "_calibration_dashboard_on_disk", source
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module.render_html
+
+
+def reinflate(target: Path, renderer: Any | None = None) -> str:
+    """Hot update: the template on disk around the last full build's payload.
+
+    User ruling, 2026-09-16: 前端改为热更新.  The page is data and template
+    in one file, and the data takes twenty minutes to build, so a change to
+    a section's HTML used to wait for the next full render to be seen.  The
+    template alone draws in a second.  A launchd watch on this file runs
+    this on every save, and every full render ends with it too, so the page
+    on disk always carries the newest template around the newest payload.
+
+    A section that needs a payload field the last build did not have draws
+    its empty state until the next full render supplies it.
+    """
+
+    sidecar = _payload_sidecar(target)
+    try:
+        blob = json.loads(sidecar.read_text(encoding="utf-8"))
+        payload = blob["payload"]
+        payload_started = float(blob["build_started_at"])
+    except (OSError, ValueError, KeyError, TypeError):
+        # No saved payload yet -- the page was drawn before builds kept one.
+        # The page carries its own, verbatim, so read it back out.
+        recovered = _payload_in_page(target)
+        if recovered is None:
+            return f"{target}: skipped, no saved payload at {sidecar.name}"
+        payload, payload_started = recovered
+    if _newer_payload_landed(target, payload_started):
+        return f"{target}: skipped, the page carries newer data than {sidecar.name}"
+    now = time.time()
+    render = renderer or _renderer_on_disk()
+    html = render(payload, started_at=now, payload_started_at=payload_started)
+    error = _inline_script_error(html)
+    if error is not None:
+        return f"{target}: skipped, the template does not parse -- {error}"
+    _atomic_write(target, html)
+    _atomic_write(
+        _version_sidecar(target),
+        f'window.__BOARD_VERSION__ = "{now:.3f}";\n',
+    )
+    return str(target)
 
 
 def serve(db: Path, port: int) -> None:
@@ -17001,6 +17260,14 @@ def main() -> int:
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--html-out", type=Path)
     parser.add_argument(
+        "--reinflate",
+        type=Path,
+        help=(
+            "hot update: redraw this page with the template on disk around"
+            " the payload its last full render saved, in seconds"
+        ),
+    )
+    parser.add_argument(
         "--no-section-cache",
         action="store_true",
         help=(
@@ -17011,6 +17278,9 @@ def main() -> int:
     args = parser.parse_args()
     global SECTION_CACHE_ENABLED
     SECTION_CACHE_ENABLED = not args.no_section_cache
+    if args.reinflate:
+        print(reinflate(args.reinflate, renderer=render_html))
+        return 0
     database = args.db.expanduser().resolve(strict=True)
     if args.json:
         print(json.dumps(
@@ -17018,27 +17288,23 @@ def main() -> int:
         ))
         return 0
     if args.html_out:
-        # Render first, write once, and never replace a file that a NEWER
-        # BUILD wrote -- newer build, not later write.  A full render takes
-        # minutes and the hosted sweep renders on its own timer, so a sweep
-        # that started before an edit finishes after it and puts pre-edit
-        # HTML back on the page, indistinguishable from the edit never
-        # having landed (measured repeatedly on 2026-08-26; three sections
-        # "disappeared" this way).  The start stamp now travels IN the file
-        # so the comparison is actually between code vintages -- reading it
-        # off the mtime compared write moments and let the older process
-        # win whenever it happened to finish last.
+        # Build the payload, keep it, then draw the page with the template
+        # as it is on disk NOW (user ruling 2026-09-16, hot update).  A build
+        # takes twenty minutes and an edit landing inside them used to be
+        # thrown away or to throw this build away (see
+        # ``_newer_payload_landed``); drawing at the end with the current
+        # template means neither happens, and the payload stays behind for
+        # the watch to redraw on the next save.
         started_at = time.time()
-        rendered = render_html(build_payload(database), started_at=started_at)
+        payload = build_payload(database)
         target = args.html_out
-        if _newer_render_landed(target, started_at):
+        if not _save_payload(target, payload, started_at):
             print(
-                f"{target}: skipped, a newer render landed while this one "
-                "was building"
+                f"{target}: skipped, a newer build's payload landed while "
+                "this one was building"
             )
             return 0
-        target.write_text(rendered, encoding="utf-8")
-        print(str(target))
+        print(reinflate(target))
         return 0
     serve(database, args.port)
     return 0

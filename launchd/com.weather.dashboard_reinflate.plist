@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.weather.dashboard_reinflate</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/xiong/weather/scripts/dashboard_reinflate.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/xiong/weather</string>
+  <!-- Hot update (user ruling 2026-09-16: 前端改为热更新).  A full render
+       takes twenty minutes because building the payload does; drawing the
+       template around the last payload takes a second.  So the page is
+       redrawn whenever the template changes rather than when the next render
+       comes round.  The file for an in-place write; the directory for a save
+       that replaces it by rename.  The script exits at once when the source
+       has not changed, which is most directory events. -->
+  <key>WatchPaths</key>
+  <array>
+    <string>/Users/xiong/weather/scripts/calibration_dashboard.py</string>
+    <string>/Users/xiong/weather/scripts</string>
+  </array>
+  <key>ThrottleInterval</key>
+  <integer>2</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/xiong/weather/data/logs/dashboard_reinflate.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/xiong/weather/data/logs/dashboard_reinflate.err.log</string>
+</dict>
+</plist>
