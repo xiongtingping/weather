@@ -249,3 +249,24 @@ def test_the_compiled_plan_carries_the_whole_enumeration():
     for key in ("buckets", "win_probability", "all_in_price", "admissible",
                 "market_mid", "hours_to_cutoff"):
         assert key in windows[0]
+
+
+def test_a_window_the_price_gate_refused_is_evidence_not_just_a_count():
+    """The list the enumeration returns keeps only admitted windows and
+    refused incumbents; a window the hurdle turned away used to leave a
+    counter and nothing else, in production and in the paper ledger alike.
+    Charter 87's population is every window offered a price, so the refused
+    one has to reach the evidence with its own claim and price."""
+
+    from tests.test_charter_130_one_hurdle import _seat
+
+    tables = {"P0": ((float("inf"), 1.0),)}
+    four = [0.03, 0.12, 0.30, 0.26, 0.13, 0.09]
+    _seat_row, audit = _seat(four, tables=tables)
+    assert audit["edge_refused_window_count"] == 1
+    refused = audit["refused_priced_windows"]
+    assert [row["buckets"] for row in refused] == [["32°C", "33°C", "34°C"]]
+    projected = E.candidate_windows_v1(refused, seated_buckets=None)
+    assert projected[0]["admissible"] is False
+    assert projected[0]["all_in_price"] == pytest.approx(0.48)
+    assert projected[0]["raw_win_probability"] is not None

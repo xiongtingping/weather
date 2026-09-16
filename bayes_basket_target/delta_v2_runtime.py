@@ -2252,6 +2252,14 @@ def _support_windows(
     unpriced_refused = 0
     edge_refused = 0
     lambda_refused = 0
+    # Charter 140: the windows the price stage refused, as the claim lanes'
+    # evidence.  The list below keeps only admitted windows and refused
+    # incumbents, so without this the lambda and beta populations -- "every
+    # window the enumeration offered" (charter 87) -- were the gate's own
+    # survivors in production and in the paper ledger alike.  Structural
+    # refusals (centre, length, shape, gaps) are not offered seats and stay
+    # counts only.
+    refused_priced_windows: list[dict[str, Any]] = []
     # Charter 128 (shadow): what the beta gate would have done to the
     # windows the standing gate admitted and refused.
     beta_would_refuse = 0
@@ -3126,6 +3134,25 @@ def _support_windows(
                             "friction": float(friction),
                         }
                 if not is_incumbent:
+                    refused_priced_windows.append({
+                        "buckets": list(window),
+                        "win_probability": win,
+                        "raw_win_probability": raw_win,
+                        "all_in_price": price if priced else None,
+                        "effective_edge_agreement": gate_agreement,
+                        "admissible": False,
+                        "center_gap_buckets": center_gap,
+                        "leg_claim_cost": {
+                            str(bucket): [
+                                float(probabilities.get(bucket, 0.0) or 0.0),
+                                float(quote),
+                            ]
+                            for bucket, quote in zip(window, quotes)
+                            if quote is not None
+                        },
+                        "beta_market_mid": beta_market_mid,
+                        "beta_hours_to_cutoff": hours_to_cutoff,
+                    })
                     continue
                 # Charter 78: the refused incumbent is not seated, but it
                 # stays on the list flagged inadmissible so the solver has
@@ -3539,6 +3566,10 @@ def _support_windows(
             ),
         }
     audit = {
+        # Charter 140: evidence only.  Read by the compile into
+        # ``delta_v2_audit.candidate_windows`` and left out of the plan's
+        # support selection, which spreads this audit.
+        "refused_priced_windows": refused_priced_windows,
         # Charter 131: the shape the seat was confined to, and why.
         "seat_shape": seat_shape_audit,
         "seat_shape_rule": SEAT_SHAPE_RULE_VERSION,
@@ -4394,7 +4425,13 @@ def _solve_over_support_windows(
         "robust_claim_divergence_nats": ROBUST_CLAIM_DIVERGENCE_BUDGET_NATS,
         "admissible_window_count": len(windows),
         "solved_window_count": len(scored),
-        **dict(window_audit),
+        **{
+            key: value for key, value in window_audit.items()
+            # Charter 140: the refused windows ride in the decision audit's
+            # ``candidate_windows``; spreading them here too would store
+            # every refused window twice on every plan.
+            if key != "refused_priced_windows"
+        },
         "unsolvable_windows": failures,
         "seated": {
             "buckets": list(best["window"]["buckets"]),
@@ -7222,7 +7259,10 @@ def compile_delta_v2_runtime_plan(
         # ledger's replay of it; the atomic ledger appends these rows to
         # ``basket_candidate_window_evidence`` with the decision fact.
         "candidate_windows": candidate_windows_v1(
-            support_windows,
+            [
+                *support_windows,
+                *(support_window_audit.get("refused_priced_windows") or ()),
+            ],
             seated_buckets=(support_selection.get("seated") or {}).get(
                 "buckets"
             ),
