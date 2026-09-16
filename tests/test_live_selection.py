@@ -179,6 +179,62 @@ def test_the_seat_side_is_productions_two_centres_on_envelope_ordinals() -> None
     assert abs(account["ev_per_usdc_mean"] - (0.9 / 0.8 - 1)) < 1e-9
 
 
+def test_a_barred_stations_orders_are_on_its_row_and_baskets_count_what_filled(
+) -> None:
+    """The merged station table reads every live intent, refused ones too.
+
+    EGLC's only orders were refused by the send gate: its row still exists,
+    with every leg counted as refused and no basket (no market was asked).
+    KMIA posted three buckets and bought two: one basket, 2/3 complete.
+    """
+
+    day = "2026-09-10"
+    legs = [
+        _leg("i1", "d1", "KMIA", day, "P0", "30", filled=5, notional=1,
+             state="filled"),
+        _leg("i2", "d1", "KMIA", day, "P0", "31", filled=5, notional=1,
+             state="filled"),
+        _leg("i3", "d1", "KMIA", day, "P0", "32"),
+        _leg("i4", "d2", "EGLC", day, "P0", "20", state="failed"),
+        _leg("i5", "d2", "EGLC", day, "P0", "21", state="failed"),
+    ]
+    book = _book(legs, {})
+    rows = {r["station_id"]: r for r in LS.station_stats(book, {})}
+    eglc = rows["EGLC"]
+    assert eglc["intent_leg_total"] == 2 and eglc["refused_leg_total"] == 2
+    assert eglc["reached_leg_total"] == 0
+    assert eglc["completeness"]["baskets"] == 0
+    kmia = rows["KMIA"]
+    assert kmia["reached_leg_total"] == 3 and kmia["filled_leg_total"] == 2
+    fleet = LS._completeness(LS._baskets(legs))
+    assert fleet["baskets"] == 1 and fleet["complete"] == 0
+    assert abs(fleet["mean"] - 2 / 3) < 1e-9
+    assert fleet["matrix"] == [{"intended": 3, "bought": 2, "count": 1}]
+
+
+def test_the_funnel_names_each_station_day_it_counted_as_not_built() -> None:
+    conn = _conn()
+    day = "2026-09-10"
+    legs = [_leg("a", "dA", "AAAA", day, "P0", "1", filled=5, notional=1,
+                 state="filled")]
+    _fact(conn, "AAAA", day, "P0", "2026-09-09T01:00Z", "dA", state="TRADE")
+    _fact(conn, "BBBB", day, "P0", "2026-09-09T01:00Z", "dB",
+          codes=["support_edge_after_lift"])
+    funnel = LS.refusal_funnel(conn, _book(legs, {}))
+    assert funnel["station_days"] == [{
+        "station_id": "BBBB", "event_date": day,
+        "reason": "hold_edge_after_lift",
+        "label": "抬到一手后整篮边际不正（宪章 123）",
+    }]
+
+
+def _template_function(template: str, name: str) -> str | None:
+    match = re.search(
+        r"\nfunction " + name + r"\(\)\{(.*?)\n\}\n", template, re.S
+    )
+    return match.group(1) if match else None
+
+
 def test_the_board_hands_these_sections_the_live_payload_only() -> None:
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(
         encoding="utf-8"
@@ -193,14 +249,22 @@ def test_the_board_hands_these_sections_the_live_payload_only() -> None:
     )
     keys = {k.value for k in returned.value.keys if isinstance(k, ast.Constant)}
     assert "live_selection" in keys
+    # The alignment guard left the page (user ruling, 2026-09-16).
+    assert "ledger_alignment" not in keys
     # The paper selection payload is no longer built for the page.
     assert "build_selection_payload" not in source
     template = source[source.index('HTML_TEMPLATE = r"""'):]
-    for name in ("overviewLamps", "stationSummary", "refusalStats",
-                 "coverage", "basketHit"):
-        match = re.search(
-            r"\nfunction " + name + r"\(\)\{(.*?)\n\}\n", template, re.S
-        )
-        assert match, name
-        assert "D.selection" not in match.group(1), name
-        assert "D.live_selection" in match.group(1), name
+    for name in ("overviewLamps", "refusalStats", "coverage", "basketHit",
+                 "liveReadiness", "roster"):
+        body = _template_function(template, name)
+        assert body is not None, name
+        assert "D.selection" not in body, name
+        assert "D.live_selection" in body, name
+    # 逐站汇总（跨日） merged into the go-live table, 没建仓是因为什么 moved
+    # into 逐站逐日明细: neither is a section of its own any more.
+    for gone in ("stationSummary", "ledgerAlignment"):
+        assert _template_function(template, gone) is None, gone
+    top = template[template.index("const TOP = "):]
+    top = top[: top.index("];") + 2]
+    assert "refusalStats" not in top and "stationSummary" not in top
+    assert "paper_roi" not in template and "paper_chains" not in template

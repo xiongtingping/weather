@@ -308,15 +308,79 @@ def _money_account(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _baskets(legs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """What each basket meant to buy against what it bought.
+
+    A basket is one (station, day, stage): the stage's decisions posted one
+    ladder between them, and it is the grain the settlement rows and the
+    go-live table read.  ``intended`` is the distinct buckets posted to the
+    exchange, ``bought`` the distinct buckets that filled.  Legs the send
+    gate refused are not intended here -- no market was asked to fill them;
+    they are counted apart as refused orders.
+    """
+
+    groups: dict[tuple[str, str, str], list[Mapping[str, Any]]] = defaultdict(list)
+    for leg in legs:
+        if reached_exchange(leg):
+            groups[(str(leg["station_id"]), str(leg["event_date"]),
+                    str(leg["stage"]))].append(leg)
+    out = []
+    for (station, day, stage), group in sorted(groups.items()):
+        intended = {str(leg["bucket"]) for leg in group}
+        bought = {
+            str(leg["bucket"]) for leg in group
+            if float(leg.get("filled_size") or 0.0) > 0
+        }
+        out.append({
+            "station_id": station, "event_date": day, "stage": stage,
+            "intended": len(intended), "bought": len(bought),
+        })
+    return out
+
+
+def _completeness(baskets: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Baskets that bought every bucket they posted, and how close the rest got.
+
+    ``mean`` averages bought/intended per basket, so a three-bucket basket
+    that bought two is 67% whatever its money.  ``matrix`` counts each
+    (intended, bought) pair -- "posted 3, bought 2" -- because a 67% average
+    cannot say whether it is every basket missing a leg or a third missing
+    all of them.
+    """
+
+    if not baskets:
+        return {"baskets": 0, "complete": 0, "complete_share": None,
+                "mean": None, "unfilled": 0, "matrix": []}
+    pairs: dict[tuple[int, int], int] = defaultdict(int)
+    for basket in baskets:
+        pairs[(int(basket["intended"]), int(basket["bought"]))] += 1
+    complete = sum(1 for b in baskets if b["bought"] == b["intended"])
+    return {
+        "baskets": len(baskets),
+        "complete": complete,
+        "complete_share": complete / len(baskets),
+        "mean": sum(b["bought"] / b["intended"] for b in baskets) / len(baskets),
+        "unfilled": sum(1 for b in baskets if b["bought"] == 0),
+        "matrix": [
+            {"intended": intended, "bought": bought, "count": count}
+            for (intended, bought), count in sorted(pairs.items())
+        ],
+    }
+
+
 def station_stats(
     book: Mapping[str, Any], seats: Mapping[str, Mapping[str, Any]]
 ) -> list[dict[str, Any]]:
-    """One row per station that placed a live order, across the window."""
+    """One row per station that minted a live intent, across the window.
+
+    Every live intent counts toward the order columns -- refused by the send
+    gate, posted and unfilled, or filled -- so a barred station's orders are
+    on its row rather than missing from it.
+    """
 
     legs_by_station: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
     for leg in book.get("legs") or []:
-        if reached_exchange(leg):
-            legs_by_station[str(leg["station_id"])].append(leg)
+        legs_by_station[str(leg["station_id"])].append(leg)
     rows_by_station: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
     for row in book.get("settlements") or []:
         rows_by_station[str(row["station_id"])].append(row)
@@ -326,6 +390,7 @@ def station_stats(
     out = []
     for station in sorted(legs_by_station):
         legs = legs_by_station[station]
+        reached = [leg for leg in legs if reached_exchange(leg)]
         filled = [leg for leg in legs if float(leg["filled_size"] or 0) > 0]
         seat = _seat_account(seats_by_station.get(station, []))
         out.append({
@@ -336,8 +401,22 @@ def station_stats(
             "position_count": len({
                 (leg["event_date"], leg["stage"]) for leg in filled
             }),
-            "posted_leg_total": len(legs),
+            "intent_leg_total": len(legs),
+            "reached_leg_total": len(reached),
+            "refused_leg_total": len(legs) - len(reached),
             "filled_leg_total": len(filled),
+            "intent_notional_usdc": sum(
+                float(leg.get("requested_notional_usdc") or 0.0) for leg in legs
+            ),
+            "reached_notional_usdc": sum(
+                float(leg.get("requested_notional_usdc") or 0.0)
+                for leg in reached
+            ),
+            "filled_notional_usdc": sum(
+                float(leg.get("filled_notional_usdc") or 0.0) for leg in filled
+            ),
+            "event_days": len({leg["event_date"] for leg in legs}),
+            "completeness": _completeness(_baskets(legs)),
             "sides": seat["sides"],
             "model_coverage_mean": seat["model_coverage_mean"],
             "seat_ask_total_mean": seat["seat_ask_total_mean"],
@@ -428,6 +507,15 @@ def refusal_funnel(
         slot[1] += 1
 
     seated = 0
+    station_days: list[dict[str, str]] = []
+
+    def record(key: tuple[str, str], reason: str, label: str) -> None:
+        count(reason, label)
+        station_days.append({
+            "station_id": key[0], "event_date": key[1],
+            "reason": reason, "label": label,
+        })
+
     for key in sorted(set(decided) | set(by_day)):
         if key not in decided:
             continue
@@ -436,18 +524,18 @@ def refusal_funnel(
             seated += 1
             continue
         if any(reached_exchange(leg) for leg in day_legs):
-            count("live_unfilled", "挂到交易所未成交")
+            record(key, "live_unfilled", "挂到交易所未成交")
             continue
         if day_legs:
             reasons = [
                 gate.get(str(leg["order_intent_id"]), "") for leg in day_legs
             ]
             named = next((r for r in reasons if r), "not_placed")
-            count(named, GATE_LABELS.get(named, "实盘门拒单（%s）" % named))
+            record(key, named, GATE_LABELS.get(named, "实盘门拒单（%s）" % named))
             continue
         plans = sorted(decided[key])
         if any(state == "TRADE" for _, state, _ in plans):
-            count("traded_without_live_intent", "出了交易计划、没铸实盘意向")
+            record(key, "traded_without_live_intent", "出了交易计划、没铸实盘意向")
             continue
         try:
             codes = {
@@ -461,7 +549,7 @@ def refusal_funnel(
              if code in codes),
             HOLD_OTHER,
         )
-        count(match[0], match[1])
+        record(key, match[0], match[1])
     refused = sum(slot[1] for slot in tally.values())
     scopes = refused + seated
     if not scopes:
@@ -475,6 +563,9 @@ def refusal_funnel(
     )
     return {
         "since_event_date": first_day,
+        # Every station-day that ended without a live position, with its
+        # reason, so the station-day listing can say why beside each day.
+        "station_days": station_days,
         "stages": [{
             "stage": OPENING_STAGE,
             "seated_count": seated,
@@ -511,6 +602,7 @@ def build(conn: sqlite3.Connection) -> dict[str, Any]:
             **_money_account(rows),
         },
         "station_stats": station_stats(book, seats),
+        "basket_completeness": _completeness(_baskets(book.get("legs") or [])),
         "basket_hit_by_size": basket_hit_by_width(book),
         "chosen_basket_hit": chosen_basket_hit_trend(chains),
         "chosen_miss_offsets": chosen_miss_offsets(chains),

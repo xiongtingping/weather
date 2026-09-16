@@ -4721,8 +4721,10 @@ def collect_live_readiness(
     settled live baskets (claim honesty), their held centre against settled
     truth, the live settled station-days and ROI, and truth freshness.  The
     five-dimension read rides on the same rows (``failure``), off the same
-    settlements.  The paper figures stay on each row under ``paper_*`` for
-    comparison only.  ``band_stations`` only widens the roster to stations
+    settlements.  No paper figure is on the row: the columns that sat beside
+    the live ones for comparison left the page with the rest of the paper
+    readings (user ruling, 2026-09-16).  ``band_stations`` only widens the
+    roster to stations
     the model serves.  The three control files are read fresh at render so
     the page shows what production would read this cycle; the write path is
     scripts/live_control_server.py, never this page.
@@ -4731,40 +4733,7 @@ def collect_live_readiness(
     ratio_by_station = {
         str(row["station"]): row for row in (band_stations or [])
     }
-    bias: dict[str, tuple[int, float]] = {}
     try:
-        for sid, n, value in conn.execute(
-            "SELECT p.station_id, COUNT(*),"
-            " AVG(p.center_c - t.official_tmax_c)"
-            " FROM paper_trade_position p"
-            " JOIN calibration_station_daily_high_truth t"
-            "   ON t.station_id=p.station_id AND t.local_date=p.event_date"
-            " WHERE p.center_c IS NOT NULL GROUP BY p.station_id"
-        ):
-            bias[str(sid)] = (int(n), float(value))
-        book: dict[str, dict[str, Any]] = {}
-        settled = conn.execute(
-            "SELECT station_id, event_date, hit, stake_usdc, pnl_usdc"
-            " FROM paper_trade_settlement"
-        ).fetchall()
-        # The trailing window the release criterion reads.  Five settled days
-        # is short enough to answer "has it stopped bleeding" and long enough
-        # that one lucky basket cannot carry it on its own.
-        recent_floor = sorted({str(row[1]) for row in settled})[-5:]
-        recent_floor = recent_floor[0] if recent_floor else ""
-        for sid, day, hit, stake, pnl in settled:
-            slot = book.setdefault(str(sid), {
-                "stake": 0.0, "pnl": 0.0, "days": set(), "settlements": 0,
-                "recent_stake": 0.0, "recent_pnl": 0.0, "recent_n": 0,
-            })
-            slot["settlements"] += 1
-            slot["stake"] += float(stake or 0.0)
-            slot["pnl"] += float(pnl or 0.0)
-            slot["days"].add(str(day))
-            if str(day) >= recent_floor:
-                slot["recent_stake"] += float(stake or 0.0)
-                slot["recent_pnl"] += float(pnl or 0.0)
-                slot["recent_n"] = slot.get("recent_n", 0) + 1
         truth_latest = {
             str(sid): str(day) for sid, day in conn.execute(
                 "SELECT station_id, MAX(local_date)"
@@ -4888,8 +4857,7 @@ def collect_live_readiness(
     # and ROI -- and the add / release candidates read it (user rulings,
     # 2026-09-16: the paper ledger is a rule comparator, and a reader
     # deciding whether a station may trade real money asked for what that
-    # station's real money did).  The paper columns stay on the row under
-    # ``paper_*`` names, for comparison only.  Read once here and handed to
+    # station's real money did).  Read once here and handed to
     # the return below, so the row and the money card are the same
     # collector's output.  A station with live fills is listed even when the
     # paper book never seated it: LTAC and NZWN had traded live and had no
@@ -4906,9 +4874,7 @@ def collect_live_readiness(
     quality = live_book.station_quality(live_book.build(conn)["settlements"])
     quality_by_station = quality["stations"]
     stations = []
-    for sid in sorted(
-        set(ratio_by_station) | set(book) | set(bias) | set(live_by_station)
-    ):
+    for sid in sorted(set(ratio_by_station) | set(live_by_station)):
         live = live_by_station.get(sid)
         fx = quality_by_station.get(sid)
         ratio = fx["calibration_ratio"] if fx else None
@@ -4924,12 +4890,6 @@ def collect_live_readiness(
             "roi": roi is not None and roi > -0.08,
             "truth_fresh": truth_latest.get(sid, "") >= fresh_floor,
         }
-        paper_stake = book[sid]["stake"] if sid in book else 0.0
-        paper_recent = None
-        if sid in book and book[sid]["recent_stake"]:
-            paper_recent = (
-                book[sid]["recent_pnl"] / book[sid]["recent_stake"]
-            )
         stations.append({
             "climate_jump_c": round(climate_jump[sid], 2)
             if sid in climate_jump else None,
@@ -4948,13 +4908,6 @@ def collect_live_readiness(
             "recent_days": int(live["recent_days"]) if live else 0,
             # The five dimensions, same settlements.
             "failure": fx,
-            # The paper book's, for comparison only.
-            "paper_bias_c": bias[sid][1] if sid in bias else None,
-            "paper_chains": len(book[sid]["days"]) if sid in book else 0,
-            "paper_roi": (
-                (book[sid]["pnl"] / paper_stake) if paper_stake else None
-            ),
-            "paper_recent_roi": paper_recent,
             "truth_latest": truth_latest.get(sid),
             "live": live,
         })
@@ -9479,33 +9432,38 @@ def collect_window_divergence(conn: sqlite3.Connection) -> dict[str, Any]:
     below, so a model stuck high is a wrongness no observation can remove.
     The settled column is what says who was right, station-day by
     station-day.
+
+    The held window is what the live book filled (user ruling, 2026-09-16:
+    the paper ledger is a rule comparator): every bucket a live leg bought
+    that station-day, from the first fill's decision on.  The outcome is the
+    day's settled live money.
     """
 
+    book = live_book.build(conn)
     chains: dict[tuple[str, str], dict[str, Any]] = {}
-    for row in conn.execute(
-        "SELECT station_id, event_date, decision_at_utc,"
-        " window_buckets_json, leg_shares_json"
-        " FROM paper_trade_position ORDER BY decision_at_utc"
+    for leg in sorted(
+        book["legs"], key=lambda leg: str(leg.get("decision_at_utc") or "")
     ):
-        key = (str(row[0]), str(row[1]))
-        entry = chains.setdefault(
-            key, {"held": set(), "opened": str(row[2])}
+        if float(leg["filled_size"] or 0.0) <= 0:
+            continue
+        key = (str(leg["station_id"]), str(leg["event_date"]))
+        entry = chains.setdefault(key, {
+            "held": set(),
+            "opened": str(leg.get("decision_at_utc") or leg["created_at"]),
+        })
+        entry["held"].add(str(leg["bucket"]))
+    money: dict[tuple[str, str], float] = defaultdict(float)
+    for row in book["settlements"]:
+        money[(str(row["station_id"]), str(row["event_date"]))] += float(
+            row["pnl_usdc"]
         )
-        legs = json.loads(row[4] or "{}")
-        held = [
-            bucket for bucket, shares in legs.items() if (shares or 0) > 0
-        ] or json.loads(row[3])
-        entry["held"].update(held)
     settled = {
-        (str(row[0]), str(row[1])): {
-            "hit": int(row[2]),
-            "pnl": float(row[3]),
-            "truth_bucket": str(row[4]),
+        key: {
+            "hit": int(book["settled"][key][0] in chains[key]["held"]),
+            "pnl": money.get(key, 0.0),
+            "truth_bucket": str(book["settled"][key][0]),
         }
-        for row in conn.execute(
-            "SELECT station_id, event_date, hit, pnl_usdc, settled_bucket"
-            " FROM paper_trade_settlement"
-        )
+        for key in chains if key in book["settled"]
     }
     rows = []
     for (station, day), entry in chains.items():
@@ -9617,94 +9575,6 @@ def collect_window_divergence(conn: sqlite3.Connection) -> dict[str, Any]:
         "thresholds": thresholds,
         "flagged": flagged[:80],
     }
-
-
-def collect_ledger_alignment(conn: sqlite3.Connection) -> dict[str, Any]:
-    """The guard's own rows: how far the ledger is from the book it replays.
-
-    Read back rather than re-derived.  The measurement runs on its own daily
-    sweep and writes the fingerprint it measured under, and a page that
-    recomputed it here would answer a slightly different question every
-    render -- the one thing this section must not do, since its whole job is
-    to let a reader date a divergence against the commits that caused it.
-
-    The history is what makes it a guard rather than a reading.  A single
-    amber render says nothing; the same amber for a week, starting on the day
-    a fingerprint moved, is a diagnosis.
-    """
-
-    from bayes_basket_target import ledger_alignment as alignment
-
-    out: dict[str, Any] = {
-        "schema": alignment.SCHEMA, "latest": None, "history": [],
-        "thresholds": {
-            "seat_jaccard_green": alignment.SEAT_JACCARD_GREEN,
-            "fill_rate_gap_green": alignment.FILL_RATE_GAP_GREEN,
-            "identity_lift_green": alignment.IDENTITY_LIFT_GREEN,
-            "clock_hours_green": alignment.CLOCK_MEDIAN_HOURS_GREEN,
-        },
-    }
-    if not _table_exists(conn, "paper_ledger_alignment_guard"):
-        return out
-    try:
-        rows = conn.execute(
-            "SELECT measured_at_utc, verdict, selection_rule_sha256,"
-            "       seat_choice_verdict, seat_choice_n, seat_choice_jaccard,"
-            "       seat_choice_disjoint, fill_rate_verdict, fill_rate_n,"
-            "       fill_rate_live, fill_rate_ledger, fill_identity_verdict,"
-            "       fill_identity_n, fill_identity_jaccard,"
-            "       fill_identity_chance, clock_verdict, clock_n,"
-            "       clock_median_hours, reach_rate, cells_shared,"
-            "       definition_version, reading_json"
-            " FROM paper_ledger_alignment_guard"
-            " ORDER BY measured_at_utc DESC LIMIT 30"
-        ).fetchall()
-    except sqlite3.Error:
-        return out
-    history = []
-    for row in rows:
-        history.append({
-            "at": str(row[0]), "verdict": str(row[1]),
-            "rule_sha": str(row[2] or "")[:8],
-            "seat": {"verdict": row[3], "n": row[4], "jaccard": row[5],
-                     "disjoint": row[6]},
-            "rate": {"verdict": row[7], "n": row[8], "live": row[9],
-                     "ledger": row[10]},
-            "identity": {"verdict": row[11], "n": row[12],
-                         "jaccard": row[13], "chance": row[14]},
-            "clock": {"verdict": row[15], "n": row[16], "median": row[17]},
-            "reach_rate": row[18], "cells_shared": row[19],
-            # Two rows under different definitions are not comparable, so the
-            # history column says which one each was taken under rather than
-            # letting a redefinition pass as a movement in the book.
-            "definition": row[20],
-        })
-    out["history"] = history
-    if history:
-        out["latest"] = history[0]
-        try:
-            reading = json.loads(rows[0][21] or "{}")
-        except (TypeError, ValueError):
-            reading = {}
-        out["latest"]["window_from"] = reading.get("window_from")
-        out["latest"]["window_days"] = reading.get("window_days")
-        out["latest"]["authorized"] = reading.get("live_orders_authorized")
-        out["latest"]["reached"] = reading.get(
-            "live_orders_reached_exchange"
-        )
-        out["latest"]["minimums"] = {
-            name: (reading.get("layers", {}).get(name) or {}).get("minimum_n")
-            for name in ("seat_choice", "fill_rate", "fill_identity", "clock")
-        }
-        out["latest"]["identity_lift"] = (
-            (reading.get("layers", {}).get("fill_identity") or {}).get("lift")
-        )
-        out["latest"]["clock_within_quarter_share"] = (
-            (reading.get("layers", {}).get("clock") or {})
-            .get("within_quarter_share")
-        )
-        out["examples"] = list(reading.get("examples") or [])[:12]
-    return out
 
 
 def build_payload(db: Path) -> dict[str, Any]:
@@ -9985,7 +9855,6 @@ SECTION_CACHE_EPOCH = 1
 SECTION_CACHE_TTL_SEC = {
     "beta_shadow": 1800,
     "truth_landing": 150 * 60,
-    "window_divergence": 165 * 60,
     "scorecard": 180 * 60,
     "h5_readiness": 195 * 60,
     "skill": 210 * 60,
@@ -10435,9 +10304,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         # it: the ledger is a rule comparator, not the account.
         "live_money": _cached_section(
             "live_money", collect_live_money, conn
-        ),
-        "ledger_alignment": _cached_section(
-            "ledger_alignment", collect_ledger_alignment, conn
         ),
         "regional": _cached_section(
             "regional", collect_regional_lanes, conn
@@ -11375,8 +11241,11 @@ function overviewLamps(){
       : ""));
 
   // 4. How much of the live fleet actually filled on the newest event day
-  // that has live orders, against the stations allowed to trade.
-  const day0=(D.daily||[])[0]||null;
+  // that has settled anything, against the stations allowed to trade.  The
+  // newest day with orders is still opening -- tomorrow's P0 has filled two
+  // stations by the evening before -- and would read as a collapse.
+  const day0=(D.daily||[]).find(d=>d.settled_station_days>0)
+    ||(D.daily||[])[0]||null;
   const liveStations=((D.live_readiness||{}).station_allowlist||[]).length;
   const opened=day0?day0.stations_filled:null;
   const rate=(day0&&liveStations)?opened/liveStations:null;
@@ -12240,7 +12109,9 @@ function refusalStats(){
   // Production's decisions and the live book (user ruling, 2026-09-16: the
   // paper ledger is a rule comparator).  One count per station-day at the
   // opening stage: only P0 opens a chain (charter 74), so a P0-M or P1
-  // decision on a day P0 never opened is not a second refusal.
+  // decision on a day P0 never opened is not a second refusal.  Drawn inside
+  // 逐站逐日明细 since 2026-09-16 (user ruling), with each day's own list of
+  // station-days that did not build beside that day's orders.
   const F=(D.live_selection||{}).refusal_stats||{};
   const st=(F.stages||[])[0];
   if(!st) return "";
@@ -12250,7 +12121,7 @@ function refusalStats(){
   const scope=st.scope_count||0, seated=st.seated_count||0;
   const rate=scope?seated/scope:0;
   const pctOf=n=>scope?(100*n/scope).toFixed(1)+"%":"—";
-  return `<h2>没建仓是因为什么：实盘为什么没建上仓</h2>
+  return `<h3 style="margin-top:14px">没建仓是因为什么：实盘为什么没建上仓</h3>
   <p class="sub">${h(F.since_event_date||"")} 起，生产在开仓阶段 P0 做过决策的站日，一个站日算一次；
   <b>建仓＝当天有实盘成交</b>。没建仓的按先到先判归因：挂到交易所没成交 → 实盘门拒单（禁入/总闸/待观察/网关）
   → 出了交易计划没铸实盘意向 → P0 一直持有不动时，读最后一次 P0 计划自己记下的拒因。
@@ -13468,7 +13339,7 @@ function windowDivergence(){
     <td>${t.cold_n}</td><td>${pct(t.cold_hit_rate)}</td>
     <td class="${t.cold_pnl>=0?"up":"down"}">${t.cold_pnl>=0?"+":""}${t.cold_pnl.toFixed(1)}</td></tr>`).join("");
   return `<h2>分布与持仓分家：对比概率分布指向的桶与实际持有的桶</h2>
-  <p class="sub">每个已结算的持仓站日，取<b>持仓桶还活着的最后一次概率重算</b>
+  <p class="sub">每个已结算的<b>实盘</b>持仓站日（持仓＝实盘成交的桶，盈亏＝该站日实盘结算），取<b>持仓桶还活着的最后一次概率重算</b>
   （持仓桶质量仍高于 5%，即加仓还来得及的最后时刻），量它有多少后验质量落在持仓窗之外。
   共评估 ${W.evaluated_station_days||0} 个站日，其中末态窗外质量超过 40% 的
   ${rows.length} 个——逐站日明细不在此列出，只按阈值切分看总账。</p>
@@ -13864,182 +13735,33 @@ function coverage(){
 // no book that day still showed an ask total and an EV and read as that
 // day's price.  Here the window is stated once in the header and a row is a
 // station, so the number cannot be mistaken for a date's.
-function stationSummary(){
-  // The live book (user ruling, 2026-09-16): what each station's orders
-  // filled and settled, with the seat production compiled for them.
-  const S=D.live_selection||{};const ss=S.station_stats||[];
-  if(!ss.length) return "";
-  const p2=v=>v==null?"—":(v*100).toFixed(1)+"%";
-  const n2=(v,d=3)=>v==null?"—":Number(v).toFixed(d);
-  // Stations allowed to trade that placed nothing in the window have no row
-  // to average.  Say so, or their absence reads as an omission.
-  const seated=new Set(ss.map(s=>s.station_id));
-  const silent=((D.live_readiness||{}).station_allowlist||[])
-    .filter(id=>!seated.has(id)).sort();
-  // Barred stations stay in this table on purpose: their rows are the live
-  // money they made before the bar, which is what a review of the bar has
-  // to read -- so they are marked, greyed, and counted separately.
-  const barred=new Set((D.live_readiness||{}).station_exclusions||[]);
-  const probation=new Set((D.live_readiness||{}).station_probation||[]);
-  // Difficulty instruments, joined from the readiness payload so this table
-  // and that one cannot quote different numbers for the same station.
-  const difficulty={};
-  for(const rr0 of ((D.live_readiness||{}).stations||[]))
-    difficulty[rr0.station]={j:rr0.climate_jump_c,g:rr0.shape_gap_buckets};
-  // Station geography, [latitude, coastal].  Copied from
-  // calibration_station_forecast_physics rather than added to the payload:
-  // an airport does not move, so shipping it per render would only make a
-  // frontend-only change need the full 20-minute rebuild.  Coastal means
-  // the station sits within roughly 30 km of open sea -- lakes and tidal
-  // rivers do not count, which is why Chicago and Toronto (Great Lakes),
-  // London City (Thames) and Guangzhou (60 km up the Pearl River estuary,
-  // unlike Shenzhen on its mouth) are inland here.
-  const GEO={CYYZ:[43.679,0],EDDM:[48.348,0],EFHK:[60.327,1],EGLC:[51.505,0],
-    EHAM:[52.315,1],EPWA:[52.163,0],FACT:[-33.965,1],KATL:[33.63,0],
-    KAUS:[30.183,0],KBKF:[39.713,0],KDAL:[32.838,0],KHOU:[29.646,1],
-    KLAX:[33.938,1],KLGA:[40.779,1],KMIA:[25.788,1],KORD:[41.96,0],
-    KSEA:[47.445,1],KSFO:[37.62,1],LEMD:[40.466,0],LFPB:[48.967,0],
-    LIMC:[45.631,0],LLBG:[32.011,1],LTAC:[40.128,0],LTFM:[41.262,1],
-    MMMX:[19.436,0],MPMG:[8.967,1],NZWN:[-41.331,1],OEJN:[21.685,1],
-    OPKC:[24.902,1],RCSS:[25.069,1],RJTT:[35.553,1],RKPK:[35.179,1],
-    RKSI:[37.469,1],RPLL:[14.507,1],SAEZ:[-34.822,1],SBGR:[-23.432,0],
-    UUWW:[55.592,0],VILK:[26.761,0],WMKK:[2.747,1],WSSS:[1.368,1],
-    ZBAA:[40.082,0],ZGGG:[23.392,0],ZGSZ:[22.639,1],ZHHH:[30.783,0],
-    ZSPD:[31.146,1],ZSQD:[36.362,1],ZUCK:[29.718,0],ZUUU:[30.576,0]};
-  // Band edges at the tropic (23.4), 35 and 55 degrees.  The tropic edge is
-  // deliberately the line itself, not a rounded 23.5: Sao Paulo (-23.432)
-  // and Guangzhou (23.392) both sit within 5 km of it, and 23.5 would put
-  // Sao Paulo -- a 750 m subtropical-highland station -- in the tropics
-  // band while the line itself does not.
-  const bandOf=lat=>lat>=55?"北半球·高纬":lat>=35?"北半球·温带"
-    :lat>=23.4?"北半球·副热带":lat>=-23.4?"热带"
-    :lat>=-35?"南半球·副热带":"南半球·温带";
-  const BAND_ORDER=["北半球·高纬","北半球·温带","北半球·副热带","热带",
-    "南半球·副热带","南半球·温带"];
-  const fmtLat=lat=>Math.abs(lat).toFixed(1)+"°"+(lat>=0?"N":"S");
-  const rowEntries=ss.map((s,i)=>{
-    const sd=s.sides||{};const cal=s.calibration_ratio;
-    const rr=s.realization_ratio;const ev=s.ev_per_usdc;
-    // A number per station (user ruling, 2026-08-21).  Assigned in the
-    // table's natural order -- station id, ascending -- and printed in the
-    // row rather than derived from the row's position, so it stays with the
-    // station when a column is sorted instead of renumbering under it.
-    // Geographic grouping reorders the rows but must not renumber them, so
-    // the number keeps coming from this map index, not the display order.
-    const off=barred.has(s.station_id);
-    const g=GEO[s.station_id];const bd=g?bandOf(g[0]):null;
-    const html=`<tr${off?' style="opacity:.55"':""}>
-      <td class="mono muted">${i+1}</td>
-      <td>${off?'<span class="pill" style="background:#f8514922;color:#f85149;border-color:#f8514955" title="实盘禁入：已判且不合格">⛔ 禁入</span> ':(probation.has(s.station_id)?'<span class="pill amber" title="尚未上线">⏳ 待观察</span> ':"")}<span class="mono">${h(s.station_id)}</span>
-        <span class="muted">${h(s.station_label)}</span></td>
-      <td>${bd?h(bd.replace("半球·","")):"—"}
-        <span class="muted">${g?fmtLat(g[0]):""}</span></td>
-      <td>${g?(g[1]?"沿海":"内陆"):"—"}</td>
-      <td>${s.position_count}</td>
-      <td>${s.settled_count}</td>
-      <td class="muted">${sd.above||0}/${sd.aligned||0}/${sd.below||0}</td>
-      <td>${p2(s.model_coverage_mean)}</td>
-      <td class="mono">${n2(s.seat_ask_total_mean)}</td>
-      <td class="mono">${s.odds_mean==null?"—":n2(s.odds_mean,1)+"x"}</td>
-      <td class="${ev==null?"":(ev>0?"up":"down")}">${ev==null?"—":((ev>0?"+":"")+n2(ev,2))}</td>
-      <td>${p2(s.hit_rate)}</td>
-      <td>${p2(s.claimed_win_probability_mean)}</td>
-      <td class="${cal==null?"":(cal>=0.9&&cal<=1.15?"up":"down")}">${cal==null?"—":n2(cal,2)+"×"}</td>
-      <td class="mono">${n2(s.staked_usdc,2)}</td>
-      <td class="mono ${(s.realized_usdc||0)>=0?"up":"down"}">${((s.realized_usdc||0)>=0?"+":"")+n2(s.realized_usdc,2)}</td>
-      <td class="${rr==null?"":(rr>=1?"up":"down")}">${rr==null?"—":n2(rr,2)+"×"}</td>
-      <td class="mono ${(difficulty[s.station_id]||{}).j>1.76?"down":""}">${(difficulty[s.station_id]||{}).j==null?"—":difficulty[s.station_id].j.toFixed(2)}</td>
-      <td class="mono ${(difficulty[s.station_id]||{}).g>0.93?"down":""}">${(difficulty[s.station_id]||{}).g==null?"—":difficulty[s.station_id].g.toFixed(2)}</td>
-      <td class="mono">${s.filled_leg_total}/${s.posted_leg_total}</td></tr>`;
-    return {html,band:bd?BAND_ORDER.indexOf(bd):BAND_ORDER.length,
-      coastal:g&&g[1]?0:1,id:s.station_id};
-  });
-  // Default order walks the globe north to south, coastal before inland
-  // inside each band.  Clicking a header still re-sorts freely; this is
-  // only where the table starts.
-  rowEntries.sort((a,b)=>a.band-b.band||a.coastal-b.coastal
-    ||(a.id<b.id?-1:a.id>b.id?1:0));
-  const rows=rowEntries.map(e=>e.html).join("");
-  // Group subtotals.  Hit and claimed are weighted by settled count -- the
-  // only weight under which their ratio stays comparable to the per-station
-  // 实现/声称 column -- and the money columns are plain sums, so 每U净益 is
-  // the group's actual return, not an average of ratios.
-  const groups=new Map();
-  ss.forEach(s=>{const g=GEO[s.station_id];if(!g)return;
-    const k=bandOf(g[0])+"·"+(g[1]?"沿海":"内陆");
-    const a=groups.get(k)||{n:0,pos:0,set:0,wHit:0,wClaim:0,wSet:0,
-      stake:0,real:0};
-    a.n++;a.pos+=s.position_count||0;a.set+=s.settled_count||0;
-    if(s.hit_rate!=null&&s.settled_count){a.wHit+=s.hit_rate*s.settled_count;
-      a.wClaim+=(s.claimed_win_probability_mean||0)*s.settled_count;
-      a.wSet+=s.settled_count;}
-    a.stake+=s.staked_usdc||0;a.real+=s.realized_usdc||0;
-    groups.set(k,a);});
-  const groupRows=BAND_ORDER.flatMap(bd=>["沿海","内陆"].map(cl=>{
-    const a=groups.get(bd+"·"+cl);if(!a)return "";
-    const hit=a.wSet?a.wHit/a.wSet:null;
-    const claim=a.wSet?a.wClaim/a.wSet:null;
-    const cal=(hit!=null&&claim)?hit/claim:null;
-    const roi=a.stake>0?a.real/a.stake:null;
-    return `<tr><td>${h(bd)}</td><td>${cl}</td><td>${a.n}</td>
-      <td>${a.pos}</td><td>${a.set}</td>
-      <td>${p2(hit)}</td><td>${p2(claim)}</td>
-      <td class="${cal==null?"":(cal>=1?"up":"down")}">${cal==null?"—":n2(cal,2)+"×"}</td>
-      <td class="mono">${n2(a.stake,2)}</td>
-      <td class="mono ${a.real>=0?"up":"down"}">${(a.real>=0?"+":"")+n2(a.real,2)}</td>
-      <td class="${roi==null?"":(roi>=0?"up":"down")}">${roi==null?"—":(roi>=0?"+":"")+n2(roi,2)}</td></tr>`;
-  })).join("");
-  // Lives inside the section's one card, above the per-station table:
-  // shipped as its own card first, and the extra card boundary read as a
-  // separate section (user, 2026-08-31).
-  const groupBlock=groupRows?`<div style="margin-bottom:14px"><b>分组小计</b>
-  <div class="scroll"><table><thead><tr>
-    <th>气候带</th><th>海陆</th><th>站数</th><th>成交笔</th><th>已结算</th>
-    <th>命中率</th><th>声称</th><th>实现/声称</th>
-    <th>投入</th><th>实得</th><th>每U净益</th>
-  </tr></thead><tbody>${groupRows}</tbody></table></div>
-  <div class="muted" style="margin-top:8px">禁入站也计入小计，口径与下表一致。
-  读的时候记住季节相位：现在（8 月底）北半球是夏末、南半球是冬末，
-  南北两边的命中率不在同一个季节里，别直接横比。</div></div>`:"";
-  const idList=(ids)=>`<span class="mono">${
-    ids.map((id,i)=>`${i+1}.${h(id)}`).join("　")}</span>`;
-  const barredHere=ss.map(s=>s.station_id).filter(id=>barred.has(id));
-  const barNote=barredHere.length?`<div class="muted" style="margin-top:8px">
-    <span class="pill" style="background:#f8514922;color:#f85149;border-color:#f8514955">⛔ 禁入</span>
-    ${barredHere.length} 个站已被实盘禁入，仍留在本表里——表里是它们被禁之前的实盘账，
-    这些数就是下次复核放不放它们出来的依据。
-    控制服务拒绝把它们加进 allowlist：${idList(barredHere)}</div>`:"";
-  const note=silent.length
-    ?`<div class="muted" style="margin-top:8px">另有 ${silent.length} 个允许实盘交易的站
-    在这段窗口里一笔单都没挂到交易所，因此没有可平均的数：${idList(silent)}</div>`:"";
-  return `<h2>逐站汇总（跨日）：按站看长期盈亏与命中</h2>
-  <p class="sub">一站一行，<b>实盘账</b>：该站 ${h(S.since_event_date||"")} 起挂到交易所的单，
-  成交、结算、盈亏合在一起。<b>这些数不属于任何一天</b>——它们回答的是
-  「这个站长期表现如何」，逐日的账在页顶「逐站逐日明细」。纸面账本只做规则对照，不在本表。</p>
-  <div class="why"><b>列的意思：</b>「#」是站的编号，按站号字母序编，
-  排序时跟着这一站走，所以可以直接拿它点名某一行；
-  「气候带」按站点纬度分：回归线（±23.4°）以内是热带，23.4°–35° 副热带，
-  35°–55° 温带，55° 以上高纬，南北半球分开写，灰字是站点纬度；
-  「海陆」按站点离开阔海面约 30 公里内算沿海——湖和内河不算，
-  所以芝加哥（密歇根湖）、广州（离珠江口约 60 公里）算内陆，
-  深圳（就在珠江口上）算沿海。默认行序按气候带从北到南、组内沿海在前；
-  「成交笔」是成交过的（站日×阶段）数，「已结算」是其中真值已到的，样本少于三笔时右侧的
-  命中率与实现/声称基本读不出信号；
-  「位置」是生产那一笔决策的席位中心桶相对市场中心桶偏上/一致/偏下的决策数；
-  「概率和/卖价和」是生产入座时记下的整篮声称与全含费卖价，「赔率/EV」按实际成交成本算；
-  「实现/声称」是命中率÷声称胜率；「兑现比」是实得÷期望；
-  「挂出/成交腿」是挂到交易所的腿数与其中成交的腿数。</div>
-  <div class="card">${groupBlock}<div class="scroll"><table><thead><tr>
-    <th>#</th><th>站点</th>
-    <th>气候带<br><span class="muted">纬度</span></th><th>海陆</th>
-    <th>成交笔</th><th>已结算</th>
-    <th>位置<br><span class="muted">上/平/下</span></th>
-    <th>概率和</th><th>卖价和</th><th>赔率</th><th>EV/U</th>
-    <th>命中率</th><th>声称</th><th>实现/声称</th>
-    <th>投入</th><th>实得</th><th>兑现比</th><th title="该站真值的日际跳变均值(°C)：>1.76 的站在真边际枯竭期实测 −43% vs 留存 +23% (p=0.023)">跳变/日</th><th title="近14天模型分布的均值−众数距离(桶)，跳变的模型层影子(r=+0.32)">形状gap</th>
-    <th title="挂到交易所的腿（不含被实盘门拒掉、从未到过交易所的）与其中成交的">成交/挂出<br><span class="muted">腿</span></th>
-  </tr></thead><tbody>${rows}</tbody></table></div>${barNote}${note}</div>`;
-}
+// Station geography, [latitude, coastal], and the climate bands the station
+// table groups by.  Top level since 逐站汇总（跨日） merged into the go-live
+// station table (user ruling, 2026-09-16).
+const GEO={CYYZ:[43.679,0],EDDM:[48.348,0],EFHK:[60.327,1],EGLC:[51.505,0],
+  EHAM:[52.315,1],EPWA:[52.163,0],FACT:[-33.965,1],KATL:[33.63,0],
+  KAUS:[30.183,0],KBKF:[39.713,0],KDAL:[32.838,0],KHOU:[29.646,1],
+  KLAX:[33.938,1],KLGA:[40.779,1],KMIA:[25.788,1],KORD:[41.96,0],
+  KSEA:[47.445,1],KSFO:[37.62,1],LEMD:[40.466,0],LFPB:[48.967,0],
+  LIMC:[45.631,0],LLBG:[32.011,1],LTAC:[40.128,0],LTFM:[41.262,1],
+  MMMX:[19.436,0],MPMG:[8.967,1],NZWN:[-41.331,1],OEJN:[21.685,1],
+  OPKC:[24.902,1],RCSS:[25.069,1],RJTT:[35.553,1],RKPK:[35.179,1],
+  RKSI:[37.469,1],RPLL:[14.507,1],SAEZ:[-34.822,1],SBGR:[-23.432,0],
+  UUWW:[55.592,0],VILK:[26.761,0],WMKK:[2.747,1],WSSS:[1.368,1],
+  ZBAA:[40.082,0],ZGGG:[23.392,0],ZGSZ:[22.639,1],ZHHH:[30.783,0],
+  ZSPD:[31.146,1],ZSQD:[36.362,1],ZUCK:[29.718,0],ZUUU:[30.576,0]};
+// Band edges at the tropic (23.4), 35 and 55 degrees.  The tropic edge is
+// deliberately the line itself, not a rounded 23.5: Sao Paulo (-23.432)
+// and Guangzhou (23.392) both sit within 5 km of it, and 23.5 would put
+// Sao Paulo -- a 750 m subtropical-highland station -- in the tropics
+// band while the line itself does not.
+const bandOf=lat=>lat>=55?"北半球·高纬":lat>=35?"北半球·温带"
+  :lat>=23.4?"北半球·副热带":lat>=-23.4?"热带"
+  :lat>=-35?"南半球·副热带":"南半球·温带";
+const BAND_ORDER=["北半球·高纬","北半球·温带","北半球·副热带","热带",
+  "南半球·副热带","南半球·温带"];
+const fmtLat=lat=>Math.abs(lat).toFixed(1)+"°"+(lat>=0?"N":"S");
+
 
 
 // 逐站逐日明细 off the live book (user ruling, 2026-09-16).  One row per
@@ -14050,7 +13772,13 @@ function stationSummary(){
 // account of them to show -- and the day line counts them.
 function roster(){
   const R=D.live_roster||{};
-  const dates=Object.keys(R).sort().reverse();
+  // Why each station-day without a live position did not build, by day.
+  const NOT_BUILT={};
+  (((D.live_selection||{}).refusal_stats||{}).station_days||[]).forEach(x=>{
+    (NOT_BUILT[x.event_date]||(NOT_BUILT[x.event_date]=[])).push(x);
+  });
+  const dates=[...new Set([...Object.keys(R), ...Object.keys(NOT_BUILT)])]
+    .sort().reverse();
   if(!dates.length) return "";
   const short=x=>String(x).replace("°C","").replace("°F","");
   const usd2=v=>v==null?"—":v.toFixed(2);
@@ -14096,7 +13824,7 @@ function roster(){
   const row=(e)=>{
     const state=stateOf(e);
     const src=e.settled_source==="truth_lane"
-      ?`<div class="muted" style="font-size:11px" title="纸面账本没坐过这个站日，没有它的结算行：真值取自真值车道，按当日自己的桶阶梯落桶">真值车道</div>`:"";
+      ?`<div class="muted" style="font-size:11px" title="结算桶取自真值车道，按当日自己的桶阶梯落桶">真值车道</div>`:"";
     const pnl=e.pnl_usdc==null
       ?`<span class="muted">—</span>`
       :`<span class="${e.pnl_usdc>=0?"up":"down"}">${e.pnl_usdc>=0?"+":""}${e.pnl_usdc.toFixed(2)}</span>`;
@@ -14117,6 +13845,17 @@ function roster(){
   };
   const head=`<tr><th>站点</th><th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th>
     <th>结算桶</th><th>实得</th></tr>`;
+  const notBuiltLine=(day)=>{
+    const items=NOT_BUILT[day]||[];
+    if(!items.length) return "";
+    const byReason={};
+    items.forEach(x=>{(byReason[x.label]||(byReason[x.label]=[])).push(x.station_id);});
+    const parts=Object.entries(byReason).sort((a,b)=>b[1].length-a[1].length)
+      .map(([label,ids])=>`<div><b>${h(label)}</b> ${ids.length}：<span class="mono">${
+        ids.sort().map(h).join(" ")}</span></div>`).join("");
+    return `<details class="note" style="margin-top:8px"><summary>没建仓 ${items.length} 个站日 · 按原因</summary>
+      <div class="muted" style="font-size:12px">${parts}</div></details>`;
+  };
   const blocks=dates.map(day=>{
     const rows=R[day]||[];
     const filled=rows.filter(e=>e.filled_legs).length;
@@ -14131,8 +13870,9 @@ function roster(){
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:baseline">
           <b class="mono">${h(day)}</b>
           <span class="muted">${rows.length} 站下单 · ${filled} 站成交 · 实投 ${usd2(staked)} U${money}</span></div>
-        <div class="scroll" style="margin-top:10px"><table>
-          <thead>${head}</thead><tbody>${rows.map(row).join("")}</tbody></table></div>
+        ${rows.length?`<div class="scroll" style="margin-top:10px"><table>
+          <thead>${head}</thead><tbody>${rows.map(row).join("")}</tbody></table></div>`:""}
+        ${notBuiltLine(day)}
       </div></div>`};
   });
   // Nothing open until a date is clicked (user ruling, 2026-09-11).
@@ -14142,8 +13882,9 @@ function roster(){
       <span class="muted">成交 ${b.filled}</span></button>`).join("")
     }<button type="button" data-day="all">全部 <span class="muted">${
       blocks.length} 天</span></button></nav>`;
-  return `<h2>逐站逐日明细：逐个站日核对实盘挂了哪些桶、买到了哪些</h2>
-  <p class="sub">全部读<b>实盘成交</b>。每个事件日一组，只列当天铸出过实盘意向的站；纸面账本从 2026-09-16 起只当规则对比器，不在这里。
+  return `<h2>逐站逐日明细：逐个站日核对实盘挂了哪些桶、买到了哪些，没建仓的为什么</h2>
+  <p class="sub">全部读<b>实盘成交</b>与生产决策。每个事件日一组，表里列当天铸出过实盘意向的站，
+  表下「没建仓」列出当天生产在 P0 决策过、却没有实盘成交的站日和原因。
   每格上行是这一阶段挂出的桶（冷到暖，划线＝一份没成交，✓＝结算桶），下方是持有各桶的声称 @ 成本 · 赔率、实投与成交腿数，
   展开「逐腿」是每个桶挂出份数 / 成交份数 / 均价 / 资金 / 声称。
   <b>默认一天都不展开</b>——点日期展开，「全部」是通栏视图。</p>
@@ -14154,6 +13895,7 @@ function roster(){
   <span class="pill amber">未结算</span>买了但真值还没到 ·
   <span class="pill">未成交</span>挂了一腿都没成交。
   <b>声称</b>＝下单那个决策绑定的概率包里该桶的概率；份数不等的持仓按概率加权份数算成本，保证「投入×(声称÷成本−1)」就是这些腿声称能赚的钱。</div>
+  ${refusalStats()}
   <div data-daytabs="roster">${dayNav}${blocks.map(b=>b.pane).join("")}</div>`;
 }
 
@@ -15428,10 +15170,105 @@ function liveReadiness(){
   };
   // The live book per station: what the exchange filled, settled on the
   // same resolver as the money card.  The gates, the five dimensions and
-  // their seven columns read the same book; the paper ledger's four columns
-  // come last, for comparison only (user rulings, 2026-09-16).  Pending legs
-  // stay out of the ratio.
+  // their seven columns read the same book (user rulings, 2026-09-16).
+  // Pending legs stay out of the ratio.
   const LP = (L.live_orders||{}).pnl || {};
+  // 逐站汇总（跨日） lives in this table since 2026-09-16 (user ruling): every
+  // live intent a station minted -- refused by the send gate, posted and
+  // unfilled, or filled -- its basket completeness, the seat production
+  // compiled, and where the station sits on the globe.
+  const SEL = D.live_selection || {};
+  const SS = {};
+  (SEL.station_stats||[]).forEach(x=>{ SS[x.station_id]=x; });
+  const pc0 = v => v==null ? "—" : (100*v).toFixed(0)+"%";
+  const n2 = (v,d=2) => v==null ? "—" : Number(v).toFixed(d);
+  const ocells = (sid) => {
+    const x = SS[sid];
+    if(!x) return `<td class="mono muted" ${EDGE}>—</td>`
+      + '<td class="mono muted">—</td>'.repeat(12);
+    const c = x.completeness || {};
+    const sd = x.sides || {};
+    const ev = x.ev_per_usdc;
+    return `<td class="mono" ${EDGE}>${x.intent_leg_total}</td>
+      <td class="mono">${x.reached_leg_total}</td>
+      <td class="mono ${x.refused_leg_total?"down":""}">${x.refused_leg_total}</td>
+      <td class="mono">${x.filled_leg_total}</td>
+      <td class="mono">${n2(x.intent_notional_usdc,1)}</td>
+      <td class="mono">${n2(x.filled_notional_usdc,1)}</td>
+      <td class="mono" ${EDGE}>${c.baskets?`${c.complete}/${c.baskets}`:"—"}</td>
+      <td class="mono ${c.mean==null?"":(c.mean>=0.9?"up":(c.mean<0.6?"down":""))}">${pc0(c.mean)}</td>
+      <td class="mono muted" ${EDGE}>${(sd.above||0)}/${(sd.aligned||0)}/${(sd.below||0)}</td>
+      <td class="mono">${pc0(x.model_coverage_mean)}</td>
+      <td class="mono">${n2(x.seat_ask_total_mean,3)}</td>
+      <td class="mono">${x.odds_mean==null?"—":n2(x.odds_mean,2)+"x"}</td>
+      <td class="mono ${ev==null?"":(ev>0?"up":"down")}">${ev==null?"—":(ev>0?"+":"")+n2(ev,2)}</td>`;
+  };
+  const geoCells = (sid) => {
+    const g = GEO[sid];
+    const bd = g ? bandOf(g[0]) : null;
+    return `<td ${EDGE}>${bd?h(bd.replace("半球·","")):"—"}
+        <span class="muted">${g?fmtLat(g[0]):""}</span></td>
+      <td>${g?(g[1]?"沿海":"内陆"):"—"}</td>`;
+  };
+  // Fleet basket completeness: how many buckets each live basket meant to
+  // buy against how many it bought, e.g. posted 3 and bought 2.
+  const BC = SEL.basket_completeness || {};
+  const matrix = BC.matrix || [];
+  const completenessCard = BC.baskets ? `<div class="card" style="margin-top:12px">
+    <div class="muted">篮子完整度（实盘，挂到交易所的篮子；一个站日的一个阶段算一篮）</div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:baseline;margin-top:6px">
+      <div><span class="big">${pc0(BC.complete_share)}</span>
+        <span class="muted">完整篮 ${BC.complete}/${BC.baskets}（挂出的桶全部买到）</span></div>
+      <div><span class="big">${pc0(BC.mean)}</span>
+        <span class="muted">平均完整度（买到桶数÷挂出桶数）</span></div>
+      <div><span class="big down">${BC.unfilled}</span>
+        <span class="muted">篮一桶都没买到</span></div></div>
+    <table class="mono" style="margin-top:8px;font-size:12px"><thead><tr>
+      <th>挂出桶数</th><th>买到桶数</th><th>篮数</th><th>占比</th></tr></thead><tbody>${
+      matrix.map(m=>`<tr><td>${m.intended}</td><td class="${m.bought===m.intended?"up":(m.bought===0?"down":"")}">${m.bought}</td>
+        <td>${m.count}</td><td>${pc0(m.count/BC.baskets)}</td></tr>`).join("")
+    }</tbody></table></div>` : "";
+  // Group subtotals by climate band and coast, off the same station rows:
+  // plain sums for money, hit and claim weighted by settled rows.
+  const groups = new Map();
+  Object.values(SS).forEach(x=>{
+    const g = GEO[x.station_id]; if(!g) return;
+    const k = bandOf(g[0])+"·"+(g[1]?"沿海":"内陆");
+    const a = groups.get(k) || {n:0,intents:0,filled:0,set:0,wHit:0,wClaim:0,
+      wSet:0,stake:0,real:0,baskets:0,complete:0};
+    a.n++; a.intents+=x.intent_leg_total||0; a.filled+=x.filled_leg_total||0;
+    a.set+=x.settled_count||0; a.stake+=x.staked_usdc||0; a.real+=x.realized_usdc||0;
+    const c = x.completeness||{}; a.baskets+=c.baskets||0; a.complete+=c.complete||0;
+    if(x.hit_rate!=null && x.settled_count){
+      a.wHit+=x.hit_rate*x.settled_count;
+      a.wClaim+=(x.claimed_win_probability_mean||0)*x.settled_count;
+      a.wSet+=x.settled_count;
+    }
+    groups.set(k, a);
+  });
+  const groupRows = BAND_ORDER.flatMap(bd=>["沿海","内陆"].map(cl=>{
+    const a = groups.get(bd+"·"+cl); if(!a) return "";
+    const hit = a.wSet ? a.wHit/a.wSet : null;
+    const claim = a.wSet ? a.wClaim/a.wSet : null;
+    const cal = (hit!=null && claim) ? hit/claim : null;
+    const roi = a.stake>0 ? a.real/a.stake : null;
+    return `<tr><td>${h(bd)}</td><td>${cl}</td><td>${a.n}</td>
+      <td class="mono">${a.intents}</td><td class="mono">${a.filled}</td>
+      <td class="mono">${a.baskets?`${a.complete}/${a.baskets}`:"—"}</td>
+      <td class="mono">${a.set}</td><td>${pc0(hit)}</td><td>${pc0(claim)}</td>
+      <td class="${cal==null?"":(cal>=1?"up":"down")}">${cal==null?"—":n2(cal)+"×"}</td>
+      <td class="mono">${n2(a.stake)}</td>
+      <td class="mono ${a.real>=0?"up":"down"}">${(a.real>=0?"+":"")+n2(a.real)}</td>
+      <td class="${roi==null?"":(roi>=0?"up":"down")}">${roi==null?"—":(roi>=0?"+":"")+(100*roi).toFixed(1)+"%"}</td></tr>`;
+  })).join("");
+  const groupBlock = groupRows ? `<details class="note" style="margin-top:12px">
+    <summary>按气候带 × 海陆分组小计（实盘）</summary>
+    <div class="scroll"><table><thead><tr>
+      <th>气候带</th><th>海陆</th><th>站数</th><th>意向腿</th><th>成交腿</th><th>完整篮</th>
+      <th>已结算笔</th><th>命中率</th><th>声称</th><th>命中/声称</th>
+      <th>投入</th><th>实得</th><th>ROI</th></tr></thead><tbody>${groupRows}</tbody></table></div>
+    <div class="muted" style="margin-top:6px">禁入站也计入小计。南北半球季节相位相反，命中率别直接横比。</div>
+    </details>` : "";
   const lpct = v => v==null ? "—" : (v>=0?"+":"")+(100*v).toFixed(1)+"%";
   const lsign = v => v==null ? "" : (v>=0?"up":"down");
   const lcells = (x) => {
@@ -15459,10 +15296,8 @@ function liveReadiness(){
     ${fcells(r.station)}
     <td class="mono ${r.climate_jump_c==null?"":(r.climate_jump_c>1.76?"down":"up")}" ${EDGE}>${r.climate_jump_c==null?"—":r.climate_jump_c.toFixed(2)}</td>
     <td class="mono ${r.shape_gap_buckets==null?"":(r.shape_gap_buckets>0.93?"down":"")}">${r.shape_gap_buckets==null?"—":r.shape_gap_buckets.toFixed(2)}</td>
-    <td class="mono muted" ${EDGE}>${r.paper_chains}</td>
-    <td class="mono muted">${r.paper_roi==null?"—":((r.paper_roi>=0?"+":"")+(100*r.paper_roi).toFixed(1)+"%")}</td>
-    <td class="mono muted">${r.paper_recent_roi==null?"—":((r.paper_recent_roi>=0?"+":"")+(100*r.paper_recent_roi).toFixed(1)+"%")}</td>
-    <td class="mono muted">${r.paper_bias_c==null?"—":(r.paper_bias_c>0?"+":"")+r.paper_bias_c.toFixed(2)}</td>
+    ${ocells(r.station)}
+    ${geoCells(r.station)}
   </tr>`).join("");
   const CT = L.contracts || {};
   const authorised = CT.live_submit_authorized === true;
@@ -15486,7 +15321,10 @@ function liveReadiness(){
   ${L.submission_paused
     ? `<b style="color:var(--red)">暂停旗在位</b>——它是被手动放上去的（或某次举旗撤旗失败），网关不发单`
     : "暂停旗不在位"}。
-  实盘订单与意向簿在上面的<a href="#sec-money">资金看板</a>「实盘」一类里。</p>
+  实盘订单与意向簿在上面的<a href="#sec-money">资金看板</a>「实盘」一类里。
+  下面的首批站点闸门表同时是<b>逐站汇总（跨日）</b>：每站的实盘订单（含被实盘门拒掉的）、篮子完整度、
+  生产入座时的席位读数和地理分组都在同一行，全部读实盘与生产记录，没有纸面账本的列。</p>
+  ${completenessCard}
   <div class="card" style="margin-top:12px">
     <div class="muted" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">首批站点闸门
       <button type="button" class="lc-bulk" data-bulk="waive_all" disabled
@@ -15501,8 +15339,12 @@ function liveReadiness(){
       FX?`<th title="实盘：五个维度各指认不同的一层，见上方折叠说明" style="border-left:1px solid var(--line)">不行</th><th title="实盘">不行的维度</th>
       <th title="实盘：已结算的实盘篮子数（站日×阶段，每个阶段各持一个篮子）" style="border-left:1px solid var(--line)">实盘结算笔</th><th title="实盘：站日里挂出的桶盖住真值的比例；＜${(100*(FX.thresholds.coverage_floor||0)).toFixed(0)}% 算「覆盖」不行">覆盖率</th><th title="实盘：实得盈亏÷声称期望；＜0 算「实现」不行">实现/期望</th><th title="实盘：命中率÷平均声称。五闸「声称诚实」要求 0.88–1.18；＜${FX.thresholds.claim_floor} 算「声称」不行">命中/声称</th><th title="实盘：成交篮子所依据的模型中心−结算真值，按站日平均。五闸「中心偏差」要求 |x|≤0.8°C；＞${FX.thresholds.centre_limit_c}°C 算「中心」不行">中心偏差</th><th title="实盘：分割日之前的站日盈亏(U)，括号里是站日数">前半段</th><th title="实盘：分割日及之后的站日盈亏(U)，括号里是站日数；前后都亏算「持续」不行">后半段</th>`:""}
       <th title="该站真值的日际跳变均值(°C)：天气性格，>1.76 的站在真边际枯竭期实测 −43%（留存组 +23%，p=0.023）。外生、慢变、先于账本。" style="border-left:1px solid var(--line)">跳变/日</th><th title="近14天池子里模型分布的均值−众数距离(桶)：跳变在模型层的影子(r=+0.32)，>0.93 为高。">形状gap</th>
-      <th title="纸面账本：已结算站日数，只供对照，不参与判断" style="border-left:1px solid var(--line)">账本链</th><th title="纸面账本：模拟成交的盈亏÷投入，不是实盘，只供对照">账本ROI</th><th title="纸面账本：最近 5 个结算日，只供对照">账本近5日</th><th title="纸面账本：持仓中心−真值，只供对照">账本中心偏差</th>
+      <th title="实盘订单：该站铸出的全部实盘意向腿，含被实盘门拒掉的" style="border-left:1px solid var(--line)">意向腿</th><th title="实盘订单：到过交易所的腿">到所</th><th title="实盘订单：被实盘门（禁入/总闸/待观察/网关）拒掉、从没到过交易所的腿">被拒</th><th title="实盘订单：成交过的腿">成交腿</th><th title="实盘订单：全部意向的请求名义金额(U)">意向名义</th><th title="实盘订单：成交金额(U)">成交额</th>
+      <th title="篮子完整：挂出的桶全部买到的篮数/挂到交易所的篮数（一个站日的一个阶段算一篮）" style="border-left:1px solid var(--line)">完整篮</th><th title="篮子完整：每篮 买到桶数÷挂出桶数 的平均，如挂 3 买 2 记 67%">完整度</th>
+      <th title="生产那一笔决策的席位中心桶相对市场中心桶：偏上/一致/偏下的决策数" style="border-left:1px solid var(--line)">位置<br><span class="muted">上/平/下</span></th><th title="生产入座时记下的整篮声称概率，按决策平均">概率和</th><th title="生产入座时记下的整篮全含费卖价，按决策平均">卖价和</th><th title="按实际成交成本算的赔率（按投入加权的均价再求赔率）">赔率</th><th title="已结算实盘单的声称期望÷投入">EV/U</th>
+      <th title="站点纬度分带：回归线以内热带，23.4°–35° 副热带，35°–55° 温带，55° 以上高纬" style="border-left:1px solid var(--line)">气候带</th><th title="离开阔海面约 30 公里内算沿海，湖和内河不算">海陆</th>
       </tr></thead><tbody>${rows}</tbody></table></div>
+    ${groupBlock}
     ${FX?`<div class="muted" style="margin-top:4px;font-size:11.5px">
       五维诊断：${FX.worst.length?h(FX.worst.join("、"))+" 至少四项不行":"没有站四项以上不行"}，
       另有 ${FX.clean} 站一项都不占。</div>`:""}
@@ -16100,113 +15942,6 @@ function servingWeights(){
   </details>`;
 }
 
-// The guard that watches the ledger against the live book (user ruling,
-// 2026-09-16: 加对齐守卫).  It sits in the ledger area because everything
-// else here is read OFF the ledger, and this is the one section that says
-// how much of that reading carries over to the book production actually ran.
-//
-// Four layers, never averaged.  On the day it shipped the seat layer agreed,
-// the clock layer did not, and the other two had no sample yet -- a single
-// score over that reads "roughly fine", which is exactly the misreading that
-// let the divergence stand for three weeks.  A layer below its minimum
-// sample says so instead of going green: 样本不足 is not a pass.
-function ledgerAlignment(){
-  const A=D.ledger_alignment||{}; const L=A.latest;
-  if(!L) return `<h2>账本 ↔ 生产 对齐守卫</h2>
-    <div class="card muted">守卫还没有写过读数。它每天一轮
-    （<span class="mono">ledger_alignment_guard</span>），首轮落盘后这里出数。</div>`;
-  const num=(v,d)=>v==null?"—":Number(v).toFixed(d==null?3:d);
-  const pct=v=>v==null?"—":(100*Number(v)).toFixed(1)+"%";
-  const WORD={green:"对齐",amber:"偏离",red:"分叉",insufficient:"样本不足"};
-  const TONE={green:"green",amber:"amber",red:"red",insufficient:""};
-  const pill=v=>`<span class="pill ${TONE[v]||""}">${h(WORD[v]||v)}</span>`;
-  const M=L.minimums||{};
-  const row=(name,verdict,n,min,reading,why)=>`<tr>
-      <td><b>${h(name)}</b><div class="muted">${why}</div></td>
-      <td>${pill(verdict)}</td>
-      <td class="mono">${n==null?"—":n}${min?` <span class="muted">/ ${min}</span>`:""}</td>
-      <td class="mono">${reading}</td>
-    </tr>`;
-  const layers=[
-    row("选哪几个桶", L.seat.verdict, L.seat.n, M.seat_choice,
-      `Jaccard ${num(L.seat.jaccard)} · 完全不重合 ${L.seat.disjoint} 格`,
-      "账本挂出的桶集 ↔ 生产挂出的桶集"),
-    row("开仓后成交几成", L.rate.verdict, L.rate.n, M.fill_rate,
-      `实盘 ${pct(L.rate.live)} ↔ 账本 ${pct(L.rate.ledger)}`,
-      "只看两边都买到东西的格：账本没开的链只留拒绝行、不留仓位行，"
-      + "不同时给两边加这个条件，比的就是两个不同的群体"),
-    row("哪一条腿成交", L.identity.verdict, L.identity.n, M.fill_identity,
-      `Jaccard ${num(L.identity.jaccard)} 对同池随机 ${
-        num(L.identity.chance)} <b>（差 ${num(L.identity_lift)}）</b>`,
-      "同一站日，两边买到的是不是同几条腿"),
-    row("什么时刻下的单", L.clock.verdict, L.clock.n, M.clock,
-      `中位差 ${num(L.clock.median,2)} 小时 · ${
-        pct(L.clock_within_quarter_share)} 在 15 分钟内`,
-      "账本的决策时刻 ↔ 生产最近一单的时刻"),
-  ].join("");
-  const hist=(A.history||[]).slice(0,14).map(r=>`<tr>
-      <td class="mono">${h(String(r.at).slice(0,16).replace("T"," "))}</td>
-      <td class="mono">${h(r.rule_sha)}</td>
-      <td class="mono">v${r.definition==null?"?":r.definition}</td>
-      <td>${pill(r.verdict)}</td>
-      <td>${pill(r.seat.verdict)}</td>
-      <td>${pill(r.rate.verdict)}</td>
-      <td>${pill(r.identity.verdict)}</td>
-      <td>${pill(r.clock.verdict)}</td>
-      <td class="mono">${r.cells_shared}</td>
-    </tr>`).join("");
-  const ex=(A.examples||[]).map(e=>`<tr>
-      <td>${h(e.station_id)} ${h(e.event_date)} <span class="muted">${
-        h(e.stage)}</span></td>
-      <td class="mono">${(e.ledger_filled||[]).join(" / ")}</td>
-      <td class="mono">${(e.live_filled||[]).join(" / ")}</td>
-      <td class="mono ${e.jaccard<e.chance?"down":""}">${num(e.jaccard,2)}</td>
-      <td class="mono muted">${num(e.chance,2)}</td>
-    </tr>`).join("");
-  return `<h2>账本 ↔ 生产 对齐守卫</h2>
-    <div class="card">
-      <b>它回答什么：</b>账本是重放器，生产是真下的单。
-      <span class="mono">test_ledger_production_rule_binding</span>
-      管的是<b>两边的规则有没有分叉</b>——它比对代码；
-      这里管的是<b>两边的结果有没有分叉</b>。2026-09-16 那个测试全绿，
-      而两边在同一个站日买的是不同的腿：<b>规则共用，账却是两本</b>。<br>
-      <b>可比样本怎么取：</b>只比<b>真到过交易所的单</b>。实盘
-      ${L.authorized} 单里只有 <b>${L.reached} 单</b>（${pct(L.reach_rate)}）
-      到了交易所，其余全被站点准入挡在门口（禁入／未武装／待观察／试用期）。
-      拿那些去比，量的是准入名单不是账本——而账本<b>本来就该</b>覆盖被禁的站，
-      那是它们唯一能攒出证据的地方。<br>
-      <b>当前总判定 ${pill(L.verdict)}</b>
-      <span class="muted">窗口 ${h(L.window_from)} 起 ${L.window_days} 天 ·
-      共同站日阶段 ${L.cells_shared} 个 ·
-      指纹 <span class="mono">${h(L.rule_sha)}</span></span>
-    </div>
-    <div class="why"><b>为什么四层分开量、永不平均：</b>上线当天，选桶层对齐、
-    时刻层偏离、另外两层样本还不够说话。任何把它们揉成一个总分的做法都会读成
-    「大致没问题」——正是这个误读让分歧站了三周没人发现。
-    <b>样本不够的层显示「样本不足」，不显示绿</b>：n=14 是提示不是结论，
-    一个敢把 n=14 判成红的守卫，是在断言它并不知道的事。<br>
-    <b>「哪一条腿成交」为什么要对着随机基线读：</b>两边各挂 2–3 条腿、各成交
-    四成多，本来就会<b>碰巧</b>撞上几条相同的。所以问的不是重合了多少，
-    而是<b>比碰巧多重合了多少</b>。基线按同一个桶池、同样的成交条数精确算出
-    （超几何分布，不是模拟），所以它明天还是同一个数，差值才读得懂。<br>
-    <b>指纹为什么在每一行上：</b>任何规则改动都会换指纹并重导整本账。
-    读数跟着指纹一起动，和读数自己动，是两个完全不同的诊断；
-    不把指纹记在行上，事后就分不出来了。</div>
-    <h3 style="margin-top:12px">四层读数</h3>
-    <table><thead><tr><th>层</th><th>判定</th><th>n / 下限</th><th>读数</th>
-      </tr></thead><tbody>${layers}</tbody></table>
-    ${ex?`<h3 style="margin-top:12px">同站日两边买到的腿（最近 ${
-      (A.examples||[]).length} 格）</h3>
-    <table><thead><tr><th>站日 / 阶段</th><th>账本买到</th><th>实盘买到</th>
-      <th>Jaccard</th><th>同池随机</th></tr></thead><tbody>${ex}</tbody></table>`:""}
-    ${hist?`<h3 style="margin-top:12px">历史（每天一行）</h3>
-    <table><thead><tr><th>时刻</th><th>指纹</th><th>口径</th><th>总判定</th>
-      <th>选桶</th><th>成交率</th><th>成交身份</th><th>时刻差</th><th>共同格</th>
-      </tr></thead><tbody>${hist}</tbody></table>
-    <div class="muted" style="margin-top:6px">「口径」变了就<b>不能跨行比</b>：
-      改的是测量本身，不是账本动了。指纹变了则是<b>规则换了、整本账重导</b>。
-      两列并排，正是为了事后能把这两种「读数变了」分开。</div>`:""}`;
-}
 
 
 // Sections of one kind stand together, and only one kind is on screen at a
@@ -16374,12 +16109,6 @@ const LANES = {
     role:"实盘每天下了几站、成交多少、结算赚没赚"},
   "逐站逐日明细": {layer:"实盘 · 读数", status:"audit",
     role:"每个站日实盘挂了哪些桶、买到了哪些"},
-  "逐站汇总（跨日）": {layer:"实盘 · 读数", status:"audit",
-    role:"跨日看每个站的实盘账"},
-  "没建仓是因为什么": {layer:"全链闸 · 读数", status:"audit",
-    role:"生产在 P0 决策过的站日，实盘为什么没建上仓"},
-  "账本 ↔ 生产 对齐守卫": {layer:"账本 · 守卫", status:"audit",
-    role:"账本重放的结果和真下的单差在哪 —— 规则绑定测试比代码，它比结果"},
 };
 const LANE_WORD = {live:"已上线", shadow:"影子", off:"已关闭", audit:"读数"};
 const LANE_TONE = {live:"green", shadow:"amber", off:"red", audit:""};
@@ -16443,14 +16172,10 @@ const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}"
 // not scan them -- so they move into their own area together, keeping the
 // order the reader asked for: detail first, then the three tables that
 // answer what the detail raises.
-const TOP = [[daily, "每日统计"], [roster, "逐站逐日明细"],
-  [stationSummary, "逐站汇总（跨日）"],
-  [refusalStats, "没建仓是因为什么"],
-  // Last rather than first, because the four above it were ordered by a
-  // ruling (2026-08-30) and this does not get to reshuffle them.  It reads
-  // as a caveat on all of them: how much of what those tables say carries
-  // over to the book production actually ran.
-  [ledgerAlignment, "账本 ↔ 生产 对齐守卫"]];
+// 2026-09-16 (user rulings): 逐站汇总（跨日） merged into the go-live
+// station table, 没建仓是因为什么 moved inside 逐站逐日明细, and the
+// ledger ↔ production guard left the page with the paper readings.
+const TOP = [[daily, "每日统计"], [roster, "逐站逐日明细"]];
 
 // Which sections on this page were reused from the previous build, and how
 // old each one is.  A cached section that quietly stops refreshing is the
@@ -16543,7 +16268,9 @@ document.getElementById("app").innerHTML =
   };
   const paintJump = () => {
     if(!jump) return;
-    const runs = [run("账本", "", [...document.querySelectorAll("#app > .sec")])]
+    // "实盘", not "账本": every section above the tabs reads the live book
+    // since 2026-09-16, and "账本" read as the paper ledger.
+    const runs = [run("实盘", "", [...document.querySelectorAll("#app > .sec")])]
       .concat([...document.querySelectorAll(".group:not([hidden])")].map(g => {
         const G = GROUPS.find(x => x.id === g.dataset.group) || {};
         return run(G.short || G.label || "", G.tone || "",

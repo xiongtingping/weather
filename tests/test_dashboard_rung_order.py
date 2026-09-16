@@ -85,6 +85,9 @@ PRELUDE = (
     "const h = (s) => String(s == null ? '' : s);\n"
     "const shares = (v) => String(v);\n"
     "const hours = (v) => v == null ? '-' : String(v);\n"
+    # The funnel card the roster draws above its day tabs.  Stubbed rather
+    # than extracted: it prints reasons, never a rung.
+    "function refusalStats(){ return ''; }\n"
 )
 
 

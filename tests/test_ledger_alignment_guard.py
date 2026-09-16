@@ -52,7 +52,6 @@ def _load(name: str, relative: str):
 
 ledger_module = _load("_ptl_for_guard", "scripts/paper_trading_ledger.py")
 guard = _load("_guard_cli", "scripts/ledger_production_alignment_guard.py")
-board = _load("_board_for_guard", "scripts/calibration_dashboard.py")
 
 NOW = datetime(2026, 9, 16, 12, 0, tzinfo=timezone.utc)
 DAY = "2026-09-15"
@@ -361,14 +360,14 @@ def test_an_empty_book_says_insufficient_rather_than_aligned():
     assert reading["reach_rate"] is None
 
 
-# --- the row, and the board that reads it --------------------------------
+# --- the row the sweep writes ------------------------------------------------
 
-def test_reading_round_trips_through_the_guard_table_and_the_board():
-    """What the sweep writes is what the board draws.
+def test_reading_round_trips_through_the_guard_table():
+    """What the sweep writes carries the fingerprint it measured under.
 
-    The board reads the row back rather than recomputing, so that a reader
-    can date a divergence against the commit that caused it -- which only
-    works if the row carries the fingerprint the measurement ran under.
+    A reader can date a divergence against the commit that caused it only if
+    the row says which rule the rows it measured were seated under.  (The
+    board section that drew these rows left the page on 2026-09-16.)
     """
 
     conn = _book()
@@ -390,21 +389,6 @@ def test_reading_round_trips_through_the_guard_table_and_the_board():
     assert row[1] == RULE_SHA
     assert row[2] == reading["layers"]["fill_identity"]["n"]
 
-    section = board.collect_ledger_alignment(conn)
-    assert section["latest"]["verdict"] == reading["verdict"]
-    assert section["latest"]["rule_sha"] == RULE_SHA[:8]
-    assert section["latest"]["minimums"]["fill_identity"] == (
-        alignment.IDENTITY_MIN_CELLS
-    )
-    assert section["history"]
-
-
-def test_board_section_is_quiet_before_the_guard_has_ever_run():
-    """A missing table is a page that says so, not a page that breaks."""
-
-    section = board.collect_ledger_alignment(_book())
-    assert section["latest"] is None
-    assert section["history"] == []
 
 
 def test_a_cell_with_no_room_to_disagree_is_not_evidence_of_agreement():

@@ -172,6 +172,7 @@ HEALTH_BANNER_SOURCES = {
 # The live book, which is what the page is opened for during a session.
 LIVE_SECTIONS = {
     "live_readiness", "live_selection", "live_days", "live_money",
+    "window_divergence",
 }
 
 

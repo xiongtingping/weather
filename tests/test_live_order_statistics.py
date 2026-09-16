@@ -814,7 +814,10 @@ def test_the_gates_and_candidates_read_live_money_not_paper(monkeypatch) -> None
     assert row["gates"]["roi"] is True
     assert row["chains"] == 3 and row["gates"]["chains"] is False
     assert row["recent_days"] == 3 and row["recent_roi"] > 0
-    assert row["paper_roi"] == -1.0 and row["paper_chains"] == 3
+    # No paper figure rides along any more (user ruling, 2026-09-16: the
+    # paper columns left the go-live table with the rest of the paper
+    # readings).
+    assert not any(key.startswith("paper_") for key in row)
     assert "bar_split" not in ready
 
 
@@ -826,8 +829,7 @@ def test_claim_centre_and_the_five_dimensions_read_live_not_paper(
     The live decisions of AAAA stood on a centre 0.1C off truth and ZZZZ's
     on one 2.0C off; the paper positions carry the reverse.  The centre gate,
     the claim gate and the five-dimension read follow the live envelopes, and
-    the gate and the dimension are the same number.  The paper centre rides
-    along under its own name.
+    the gate and the dimension are the same number.
     """
 
     ready = _readiness_book(monkeypatch)
@@ -835,7 +837,7 @@ def test_claim_centre_and_the_five_dimensions_read_live_not_paper(
     clean, off = by["AAAA"], by["ZZZZ"]
     assert clean["bias_c"] == pytest.approx(0.1)
     assert off["bias_c"] == pytest.approx(2.0)
-    assert clean["paper_bias_c"] == pytest.approx(2.0)
+    assert "paper_bias_c" not in clean
     # Three wins at a claim of 0.95.
     assert clean["ratio"] == pytest.approx(1.0 / 0.95)
     assert clean["gates"]["claim_honest"] is True
