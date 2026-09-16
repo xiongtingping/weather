@@ -104,6 +104,30 @@ WRITER_LEASE_ENV = "PM_WRITER_LEASE_SEC"
 # left; the resident brings it due again after a short delay instead of its
 # whole interval.  The daemon and the paper ledger spell the same line.
 HOSTED_SWEEP_CONTINUE_MARKER = "hosted_sweep:continue"
+# The line a capture prints when it stopped because it could not take the
+# SSOT write lock.  Distinct from the continue marker because the two say
+# opposite things about the pass: continue means "I did my slice and there
+# is more", this means "I did none of it and the reason was not mine".  The
+# resident records it as its own last_state -- so the lane reads blocked on
+# the board and its COMPLETION stamp does not advance -- and brings it due
+# again after the short delay, which is safe here and nowhere else: a
+# capture is writer-turn exempt, so retrying it soon takes no turn from
+# production, and it stops at its first blocked write rather than spending
+# the network it cannot store.
+HOSTED_SWEEP_WRITE_BLOCKED_MARKER = "hosted_sweep:write_blocked"
+
+
+def announce_write_blocked(detail: str) -> None:
+    """Say the pass stopped on the write lock, in the two places it is read.
+
+    The human line is for whoever opens the sweep's output tail; the marker
+    is for the resident.  Spelled together here so a lane cannot print one
+    without the other -- a lane that says it was blocked but omits the
+    marker reads as a clean, empty, successful pass.
+    """
+
+    print(f"  写锁挡下，本轮停在：{detail}")
+    print(HOSTED_SWEEP_WRITE_BLOCKED_MARKER)
 
 
 def writer_lease_seconds(default: float) -> float:

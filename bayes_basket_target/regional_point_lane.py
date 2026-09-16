@@ -18,7 +18,9 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
+from . import sqlite_busy
 from .contracts import ContractError, content_sha256
+from .sqlite_busy import WriteBlocked
 
 TABLE = "calibration_regional_point_run"
 SCHEMA_VERSION = "regional_point_run_v1"
@@ -281,26 +283,27 @@ def write_run(
         "extraction_version": EXTRACTION_VERSIONS[product],
     }
     digest = content_sha256(identity)
-    cursor = conn.execute(
-        f"INSERT OR IGNORE INTO {TABLE}("
-        "regional_point_run_id, ensemble_system_id, station_id, target_local_date,"
-        " settlement_timezone, run_init_utc, run_cycle_hour,"
-        " lead_hours_to_local_day_start, forecast_tmax_c, remaining_peak_complete,"
-        " hours_wanted, hours_covered, hourly_c_json, transport_provider_id,"
-        " extraction_version, archive_query_at_utc, knowable_at_utc, source_url,"
-        " schema_version, content_sha256) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (
-            f"{product.lower()}-{digest[:32]}", system_id, str(station_id).upper(),
-            event_date.isoformat(), settlement_timezone, _iso(run_init),
-            int(run_init.astimezone(timezone.utc).hour),
-            round(lead_hours_to_local_day_start(run_init, event_date, settlement_timezone), 3),
-            float(max(valid_map.values())),
-            int(remaining_peak_complete(run_init, event_date, settlement_timezone, hourly_c)),
-            int(hours_wanted), len(valid_map), json.dumps(valid_map, sort_keys=True),
-            TRANSPORTS[product], EXTRACTION_VERSIONS[product], _iso(archive_query_at),
-            _iso(knowable_at), str(source_url), SCHEMA_VERSION, digest,
-        ),
-    )
+    with sqlite_busy.blocked_when_busy():
+        cursor = conn.execute(
+            f"INSERT OR IGNORE INTO {TABLE}("
+            "regional_point_run_id, ensemble_system_id, station_id, target_local_date,"
+            " settlement_timezone, run_init_utc, run_cycle_hour,"
+            " lead_hours_to_local_day_start, forecast_tmax_c, remaining_peak_complete,"
+            " hours_wanted, hours_covered, hourly_c_json, transport_provider_id,"
+            " extraction_version, archive_query_at_utc, knowable_at_utc, source_url,"
+            " schema_version, content_sha256) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                f"{product.lower()}-{digest[:32]}", system_id, str(station_id).upper(),
+                event_date.isoformat(), settlement_timezone, _iso(run_init),
+                int(run_init.astimezone(timezone.utc).hour),
+                round(lead_hours_to_local_day_start(run_init, event_date, settlement_timezone), 3),
+                float(max(valid_map.values())),
+                int(remaining_peak_complete(run_init, event_date, settlement_timezone, hourly_c)),
+                int(hours_wanted), len(valid_map), json.dumps(valid_map, sort_keys=True),
+                TRANSPORTS[product], EXTRACTION_VERSIONS[product], _iso(archive_query_at),
+                _iso(knowable_at), str(source_url), SCHEMA_VERSION, digest,
+            ),
+        )
     return int(cursor.rowcount or 0) > 0
 
 
@@ -361,6 +364,27 @@ def _candidate_runs(
             runs.append(stamp)
         stamp += timedelta(hours=1)
     return runs
+
+
+def prepare(conn: sqlite3.Connection) -> None:
+    """Register the lane's systems and ensure its schema, guarded as one step.
+
+    Both halves write: ``register_regional_point_systems`` inserts the
+    registry rows Charter 95 resolves each system from, and ``ensure_schema``
+    runs DDL.  Every capture lane does them, in this order, before it fetches
+    anything -- so this is also where a pass learns, for free, that the file
+    is not taking writes, before it has spent a byte of network on runs it
+    could not store.  ``WriteBlocked`` if that is the answer.
+    """
+
+    from .native_ensemble_training_facts import (  # noqa: PLC0415
+        register_regional_point_systems,
+    )
+
+    with sqlite_busy.blocked_when_busy():
+        register_regional_point_systems(conn)
+        conn.commit()
+        ensure_schema(conn)
 
 
 def plan_p1(
@@ -499,6 +523,11 @@ def capture_p1(
     )
     unpublished: list[str] = []
     failed: list[str] = []
+    # Why the pass stopped early, when a writer other than this one is the
+    # reason.  Reported rather than raised: the runs already committed are
+    # real and the lane needs to come back in minutes, not in its whole
+    # interval -- see ``WriteBlocked``.
+    write_blocked = ""
     for item in plan:
         if productive >= max(0, int(max_runs)):
             break
@@ -574,38 +603,64 @@ def capture_p1(
             unpublished.append(f"{product} {run_init:%Y-%m-%dT%HZ}")
             continue
         productive += 1
-        for target in item["targets"]:
-            key = (str(target["station_id"]), target["event_date"].isoformat())
-            captured = results.get(key)
-            if not captured or not captured["hourly_c"]:
-                empty += 1
-                continue
-            if dry_run:
-                written += 1
-                continue
-            if write_run(
-                conn, product=product, station_id=key[0], event_date=target["event_date"],
-                settlement_timezone=str(target["settlement_timezone"]), run_init=run_init,
-                hourly_c=captured["hourly_c"], hours_wanted=int(captured["hours_wanted"]),
-                archive_query_at=now, source_url=str(captured["source_url"]),
-                backfill=backfill,
-            ):
-                written += 1
-            else:
-                existed += 1
-        if not dry_run:
-            conn.commit()
+        # The ingest of one run, all-or-nothing.  A write that cannot take
+        # the lock stops the pass here: the next run's fetch would cost the
+        # network the same minutes and end at the same lock, and this run's
+        # half-written rows are rolled back so the next pass plans it whole.
+        run_written = run_existed = run_empty = 0
+        try:
+            for target in item["targets"]:
+                key = (str(target["station_id"]), target["event_date"].isoformat())
+                captured = results.get(key)
+                if not captured or not captured["hourly_c"]:
+                    run_empty += 1
+                    continue
+                if dry_run:
+                    run_written += 1
+                    continue
+                if write_run(
+                    conn, product=product, station_id=key[0], event_date=target["event_date"],
+                    settlement_timezone=str(target["settlement_timezone"]), run_init=run_init,
+                    hourly_c=captured["hourly_c"], hours_wanted=int(captured["hours_wanted"]),
+                    archive_query_at=now, source_url=str(captured["source_url"]),
+                    backfill=backfill,
+                ):
+                    run_written += 1
+                else:
+                    run_existed += 1
+            if not dry_run:
+                # The COMMIT is part of the same ingest and takes the same
+                # lock: one that waits out busy_timeout leaves this run's
+                # rows pending, so it is classified like the inserts.
+                with sqlite_busy.blocked_when_busy():
+                    conn.commit()
+        except WriteBlocked as exc:
+            # This run's counters are folded in only after its commit, so
+            # nothing here has to be taken back: a run that did not land is
+            # a run the next pass plans again, whole.
+            try:
+                conn.rollback()
+            except sqlite3.Error:
+                pass
+            write_blocked = f"{product} {run_init:%Y-%m-%dT%HZ} {exc}"
+            break
+        written += run_written
+        existed += run_existed
+        empty += run_empty
     return {
         "product": product, "runs_planned": len(plan), "runs_with_data": productive,
         "runs_attempted": attempted, "budget_exhausted": budget_exhausted,
         "written": written, "existed": existed, "empty": empty,
         "unpublished": unpublished, "failed": failed,
+        "write_blocked": write_blocked,
     }
 
 
 __all__ = [
     "TABLE", "SCHEMA_VERSION", "SYSTEM_IDS", "RUN_CYCLE_HOURS", "PEAK_LOCAL_HOURS",
-    "ensure_schema", "repair_knowable_at", "write_run", "runs_for", "plan_p1", "capture_p1",
+    "WriteBlocked",
+    "ensure_schema", "prepare", "repair_knowable_at", "write_run", "runs_for",
+    "plan_p1", "capture_p1",
     "fetch_noaa_run_for_targets", "lead_hours_to_local_day_start",
     "hourly_valid_map", "remaining_peak_complete", "stored_run_inits",
 ]

@@ -104,7 +104,10 @@ from asos_argmax_taf_reference import materialize_argmax_taf_references
 from asos_p1_slot_materializer import materialize_scheduled_asos_p1_observations
 from bayes_basket_target import serving_arithmetic
 from bayes_basket_target.database import DEFAULT_TARGET_DB
-from bayes_basket_target.pass_deadline import WRITER_LEASE_ENV
+from bayes_basket_target.pass_deadline import (
+    HOSTED_SWEEP_WRITE_BLOCKED_MARKER,
+    WRITER_LEASE_ENV,
+)
 from bayes_basket_target.market_registry import (
     export_shared_live_registry,
     load_active_registry_rows,
@@ -895,6 +898,25 @@ def _stamp_serving_arithmetic(
 # holding its write domain every few minutes.
 HOSTED_SWEEP_CONTINUE_MARKER = "hosted_sweep:continue"
 HOSTED_SWEEP_CONTINUATION_DELAY_SEC = 300.0
+# A capture that could not take the SSOT write lock gets its own state, not
+# ``failed``, and comes due again after the same short delay.
+#
+# It is neither of the two states it would otherwise be squeezed into.  It
+# is not ``ok``: the pass stored nothing and the completion stamp has to go
+# on saying so, or a lane blocked for an hour renders green while it
+# captures nothing -- the shape ``collect_hosted_sweeps`` exists to catch.
+# And waiting a whole interval, which is what ``failed`` buys, is what made
+# it worth naming: on 2026-09-15 a contended INSERT ended
+# capture_jma_msm_forward after 955 seconds of ranged reads and
+# capture_cma_grapes_forward after 115, and the next attempt was three and
+# six hours away -- long enough, for a product whose transport serves only
+# the run it currently holds, to lose the cycle for good.
+#
+# The short retry is safe for these lanes and would not be for the others:
+# a capture is writer-turn exempt, so its retry takes no turn from
+# production, and it stops at its first blocked write, so a pass that
+# retries into a still-locked file costs one fetch, not a full round.
+HOSTED_SWEEP_WRITE_BLOCKED_STATE = "write_blocked"
 
 # The lanes that take the writer in turn.  Production is what the process
 # exists to run; the hosted sweeps are everything that must also write the
@@ -1014,6 +1036,8 @@ def hosted_sweep_interval_after(
 
     if result.get("state") == "ok" and result.get("continue"):
         return min(float(interval_sec), HOSTED_SWEEP_CONTINUATION_DELAY_SEC)
+    if result.get("state") == HOSTED_SWEEP_WRITE_BLOCKED_STATE:
+        return min(float(interval_sec), HOSTED_SWEEP_CONTINUATION_DELAY_SEC)
     return float(interval_sec)
 
 
@@ -1061,9 +1085,20 @@ def run_hosted_sweep(script_path: str, timeout_sec: float) -> dict[str, Any]:
             returncode: int | None = process.returncode
             tail = (_text(out) + _text(err))[-600:]
             state_text = "ok" if returncode == 0 else "failed"
-            continues = returncode == 0 and HOSTED_SWEEP_CONTINUE_MARKER in {
-                line.strip() for line in _text(out).splitlines()
-            }
+            markers = {line.strip() for line in _text(out).splitlines()}
+            continues = (
+                returncode == 0 and HOSTED_SWEEP_CONTINUE_MARKER in markers
+            )
+            # A clean exit that says it was blocked is not a success: the
+            # pass ran, reported, and stored nothing.  Read off stdout for
+            # the same reason the continue marker is -- the exit code has
+            # room for "ran" and "died" and nothing in between.
+            if (
+                returncode == 0
+                and HOSTED_SWEEP_WRITE_BLOCKED_MARKER in markers
+            ):
+                state_text = HOSTED_SWEEP_WRITE_BLOCKED_STATE
+                continues = False
         except subprocess.TimeoutExpired:
             # Signal the group, not the shell.  Every wrapper execs python,
             # and reaping only the direct child leaves that python running

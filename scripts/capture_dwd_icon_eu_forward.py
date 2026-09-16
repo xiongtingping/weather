@@ -29,12 +29,16 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target import sqlite_busy
 from bayes_basket_target.contracts import content_sha256
 from bayes_basket_target.dwd_icon_eu_point_archive import (
     CAPTURE_STATIONS, PROVIDER_ID, SYSTEM_ID, TRANSPORT_PROVIDER_ID,
     close_client, fetch_run_day_maxima, run_directory_url,
 )
 from bayes_basket_target.native_archive_lead import capture_lead_bucket
+from bayes_basket_target.pass_deadline import (
+    announce_write_blocked,
+)
 
 DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 EXTRACTION_VERSION = "dwd_icon_eu_surface_nearest_cell_v1"
@@ -126,17 +130,19 @@ def main() -> int:
     now = datetime.now(timezone.utc)
     pass_ends = time.monotonic() + BUDGET_SEC_PER_PASS
     conn = sqlite3.connect(str(DB), timeout=120.0)
-    # Charter 95: the registry row the compiler resolves this system from.
-    from bayes_basket_target.native_ensemble_training_facts import (  # noqa: PLC0415
-        register_regional_point_systems,
-    )
-    register_regional_point_systems(conn)
-    conn.commit()
     # Charter 95 (re-ruled 2026-09-06): the P1 lane -- every ICON-EU cycle.
+    # ``prepare`` registers the system and ensures the schema; both write, so
+    # a locked file is answered here rather than after a whole-domain
+    # download.
     from bayes_basket_target.regional_point_lane import (  # noqa: PLC0415
-        capture_p1, ensure_schema,
+        capture_p1, prepare,
     )
-    ensure_schema(conn)
+    try:
+        prepare(conn)
+    except sqlite_busy.WriteBlocked as exc:
+        announce_write_blocked(f"建表/注册 {exc}")
+        conn.close()
+        return 0
     _receipt = capture_p1(
         conn, product="ICON_EU", now=now, stations=STATIONS,
         max_runs=P1_MAX_RUNS_PER_PASS,
@@ -154,6 +160,14 @@ def main() -> int:
     )
     for _line in _receipt["failed"][:4]:
         print(f"  {_line}")
+    # A P1 pass that stopped on the write lock has already answered what the
+    # loop below would spend a whole-domain download asking: the file is not
+    # taking writes.  Report and stop; the DWD archive keeps no history, so
+    # what matters is coming back in minutes, not in three hours.
+    if _receipt.get("write_blocked"):
+        announce_write_blocked(_receipt["write_blocked"])
+        conn.close()
+        return 0
     conn.execute("PRAGMA busy_timeout=60000")
     writable, reason = _transport_is_writable(conn)
     if not writable and not args.dry_run:
@@ -167,6 +181,7 @@ def main() -> int:
     failed: list[str] = []
     deadline = pass_ends
     budget_exhausted = False
+    write_blocked = ""
 
     try:
         for hour in RUN_CYCLES:
@@ -264,7 +279,10 @@ def main() -> int:
                 )
                 if args.dry_run:
                     continue
-                conn.execute(
+                # Committed row by row, and a contended file stops the
+                # pass rather than ending it: see ``sqlite_busy``.
+                sqlite_busy.write_row(
+                    conn,
                     "INSERT INTO"
                     " calibration_native_ensemble_historical_member_run("
                     " historical_member_run_id, ensemble_system_id,"
@@ -295,8 +313,12 @@ def main() -> int:
                         digest,
                     ),
                 )
-                conn.commit()
                 written += 1
+    except sqlite_busy.WriteBlocked as exc:
+        # Every row before this one is committed; this run is not.  Fetching
+        # on would cost another whole-domain download and end at the same
+        # INSERT, so the pass stops and asks to come back soon.
+        write_blocked = str(exc)
     finally:
         close_client()
         conn.close()
@@ -313,6 +335,8 @@ def main() -> int:
         )
     for line in failed[:10]:
         print(f"  {line}")
+    if write_blocked:
+        announce_write_blocked(write_blocked)
     return 0
 
 

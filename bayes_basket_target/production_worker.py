@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any, Collection, Iterator, Mapping, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from . import sqlite_busy
 from .fleet import expected_station_count
 from .activation import (
     assert_target_database_owner,
@@ -1017,46 +1018,32 @@ def _p0_bridge_only_semantic_equivalent(
 
 
 # ``database is locked`` is the same message for two unrelated faults, and
-# telling them apart decides whether waiting longer can ever help:
-#
-#   * ``SQLITE_BUSY`` (5) -- another connection holds the file's write lock
-#     and this one waited out its whole ``busy_timeout``.  Retrying is the
-#     right answer: the holder is making progress and will commit.
-#   * ``SQLITE_BUSY_SNAPSHOT`` (517) -- this connection already holds a read
-#     snapshot that someone else has since written past, so the read cannot
-#     be promoted to a write.  SQLite returns this *immediately* and never
-#     invokes the busy handler, because no amount of waiting fixes a stale
-#     snapshot.  Only ending the read does, and the read belongs to a caller
-#     this function cannot reach.
+# telling them apart decides whether waiting longer can ever help.  The
+# distinction itself lives in ``sqlite_busy`` -- the capture lanes need the
+# same answer and a second copy of it would drift -- and what stays here is
+# the vocabulary production reports it under: a blocked scope names the
+# writer it could not take, so ``target_writer_`` prefixes the shared kind.
 #
 # Measured: with a pinned cursor and a competing committer, BEGIN IMMEDIATE
-# fails in 0.000s with 517 while busy_timeout is 60000, and neither
-# ``rollback()``, ``commit()``, nor a raw ROLLBACK releases it -- only
-# closing or draining the cursor does.  So the two need different handling
-# and, above all, different names: production blocked ten to fifteen
-# stations at a time roughly six times a day under the shared message, with
-# nothing in the record to say which fault it was.
+# fails in 0.000s with 517 while busy_timeout is 60000.  Production blocked
+# ten to fifteen stations at a time roughly six times a day under the shared
+# message, with nothing in the record to say which fault it was.
 WRITER_LOCK_RETRY_ATTEMPTS = 3
-SQLITE_BUSY_PRIMARY = 5
-SQLITE_BUSY_SNAPSHOT = 517
+SQLITE_BUSY_PRIMARY = sqlite_busy.SQLITE_BUSY_PRIMARY
+SQLITE_BUSY_SNAPSHOT = sqlite_busy.SQLITE_BUSY_SNAPSHOT
+#: The one kind retrying cannot fix; spelled from the shared name so the
+#: branch below cannot drift away from the classifier that produces it.
+WRITER_STALE_READ_SNAPSHOT = f"target_writer_{sqlite_busy.STALE_READ_SNAPSHOT}"
 
 
 def _sqlite_busy_kind(exc: BaseException) -> tuple[str, int] | None:
     """Name a lock failure by its extended result code, or None if unrelated."""
 
-    if not isinstance(exc, sqlite3.OperationalError):
+    kind = sqlite_busy.busy_kind(exc)
+    if kind is None:
         return None
-    code = int(getattr(exc, "sqlite_errorcode", 0) or 0)
-    if code == SQLITE_BUSY_SNAPSHOT:
-        return ("target_writer_stale_read_snapshot", code)
-    if code == SQLITE_BUSY_PRIMARY:
-        return ("target_writer_lock_starved", code)
-    # Older interpreters do not carry the extended code.  Fall back to the
-    # message so the blocker is still named rather than opaque, and mark the
-    # code 0 so a reader knows the kind was inferred, not measured.
-    if "locked" in str(exc).lower() or "busy" in str(exc).lower():
-        return ("target_writer_lock_unavailable", 0)
-    return None
+    name, code = kind
+    return (f"target_writer_{name}", code)
 
 
 def _begin_writer_lock(
@@ -1113,7 +1100,7 @@ def _begin_writer_lock(
                 _restore_timeout()
                 raise
             name, code = kind
-            if name == "target_writer_stale_read_snapshot":
+            if name == WRITER_STALE_READ_SNAPSHOT:
                 # Deterministic until the caller's read ends; retrying would
                 # only burn the cycle.  Name it and let the scope block.
                 _restore_timeout()

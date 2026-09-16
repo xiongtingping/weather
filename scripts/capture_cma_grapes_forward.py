@@ -29,8 +29,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target import sqlite_busy  # noqa: E402
 from bayes_basket_target.cma_grapes_point_archive import (  # noqa: E402
     CAPTURE_STATIONS, close_client,
+)
+from bayes_basket_target.pass_deadline import (  # noqa: E402
+    announce_write_blocked,
 )
 
 DB = ROOT / "data" / "bayes_basket_target_ssot.db"
@@ -57,15 +61,17 @@ def main() -> int:
     now = datetime.now(timezone.utc)
     conn = sqlite3.connect(str(args.db), timeout=120.0)
     try:
-        from bayes_basket_target.native_ensemble_training_facts import (  # noqa: PLC0415
-            register_regional_point_systems,
-        )
-        register_regional_point_systems(conn)
-        conn.commit()
+        # ``prepare`` registers the system and ensures the schema; both
+        # write, so a locked file is answered here rather than after eight
+        # station fetches this pass could not store.
         from bayes_basket_target.regional_point_lane import (  # noqa: PLC0415
-            capture_p1, ensure_schema,
+            capture_p1, prepare,
         )
-        ensure_schema(conn)
+        try:
+            prepare(conn)
+        except sqlite_busy.WriteBlocked as exc:
+            announce_write_blocked(f"建表/注册 {exc}")
+            return 0
         conn.execute("PRAGMA busy_timeout=60000")
         receipt = capture_p1(
             conn, product="CMA", now=now, stations=STATIONS,
@@ -82,6 +88,14 @@ def main() -> int:
             print(f"  尚未发布：{line}")
         for line in receipt["failed"][:4]:
             print(f"  {line}")
+        if receipt.get("write_blocked"):
+            # Another writer held the SSOT lock past this connection's
+            # busy_timeout, so the pass stopped rather than fetching runs it
+            # could not store.  Said on stdout in the resident's own words:
+            # the lane gets its own state on the board and comes due again
+            # in minutes instead of six hours.  Six hours is the whole
+            # window here -- this transport serves only the run it holds.
+            announce_write_blocked(receipt["write_blocked"])
         return 0
     finally:
         close_client()
