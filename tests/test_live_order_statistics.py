@@ -15,6 +15,8 @@ import sqlite3
 import sys
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "scripts") not in sys.path:
@@ -785,3 +787,56 @@ def test_the_gates_and_candidates_read_live_money_not_paper(monkeypatch) -> None
     assert row["recent_days"] == 3 and row["recent_roi"] > 0
     assert row["paper_roi"] == -1.0 and row["paper_chains"] == 3
     assert "bar_split" not in ready
+
+
+def test_the_daily_table_and_roster_read_the_live_book_at_two_named_grains(
+    monkeypatch,
+) -> None:
+    """每日统计 and 逐站逐日明细 off live fills (user ruling, 2026-09-16).
+
+    One settled day, three stations: KMIA held the truth; KLGA posted the
+    truth's bucket and filled only the other; EGLL posted and filled
+    nothing.  Basket verdicts are station-day grained -- a posted bucket
+    counts filled or not -- and the money is only what filled.
+    """
+
+    monkeypatch.setattr(board, "_live_market_slugs", lambda conn, rows: {})
+    day = "2026-08-30"
+    conn = _book(
+        rows=[("m1", "dm", "KMIA", day, "31°C", 1),
+              ("m2", "dm", "KMIA", day, "32°C", 1),
+              ("l1", "dl", "KLGA", day, "24°C", 1),
+              ("l2", "dl", "KLGA", day, "25°C", 1),
+              ("e1", "de", "EGLL", day, "19°C", 1),
+              ("p1", "dp", "KSEA", day, "70-71°F", 0)],
+        fills=[("m1", 10.0, 3.0), ("m2", 10.0, 2.0), ("l2", 10.0, 4.0)],
+        settled=[("KMIA", day, "31°C"), ("KLGA", day, "24°C"),
+                 ("EGLL", day, "19°C"), ("KSEA", day, "70-71°F")],
+    )
+    got = board.collect_live_days(conn)
+    (row,) = got["daily"]
+    assert row["stations_posted"] == 3  # the paper intent is not live
+    assert row["stations_filled"] == 2
+    assert row["baskets"] == 3
+    assert (row["posted_legs"], row["filled_legs"]) == (5, 3)
+    assert row["staked_usdc"] == pytest.approx(9.0)
+    assert row["settled_station_days"] == 3
+    # Posted the truth: all three.  Held it: KMIA of the two that filled.
+    assert row["basket_hit_station_days"] == 3
+    assert (row["held_hit_station_days"], row["held_station_days"]) == (1, 2)
+    assert row["pnl_usdc"] == pytest.approx(10.0 - 9.0)
+    assert row["roi"] == pytest.approx(1.0 / 9.0)
+
+    roster = {e["station_id"]: e for e in got["roster"][day]}
+    assert set(roster) == {"KMIA", "KLGA", "EGLL"}
+    assert roster["KMIA"]["held_hit"] is True
+    assert roster["KLGA"]["held_hit"] is False
+    assert roster["KLGA"]["basket_hit"] is True
+    assert roster["KLGA"]["pnl_usdc"] == pytest.approx(-4.0)
+    # Nothing filled: no money verdict, but the basket still has one.
+    assert roster["EGLL"]["pnl_usdc"] is None
+    assert roster["EGLL"]["held_hit"] is None
+    assert roster["EGLL"]["basket_hit"] is True
+    # The fixture's decisions carry no binding, so their stage is unknown;
+    # the legs are still counted under that key rather than dropped.
+    assert roster["KMIA"]["stages"]["?"]["filled_legs"] == 2

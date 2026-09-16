@@ -207,86 +207,57 @@ def test_live_basket_legs_sort_on_the_rung_not_the_string() -> None:
     assert _order(html, scrambled) == ["96-97°F", "98-99°F", "100-101°F"]
 
 
-def _roster_payload(window: list[str], legs: list[str]) -> dict:
+def _roster_payload(buckets: list[str]) -> dict:
+    """The live roster (2026-09-16): one station-day, one stage, scrambled."""
+
     return {
-        "selection": {
-            "current_selection_rule_label": "r",
-            "roster_event_dates": ["2026-09-13"],
-            "station_roster": [{
-                "station_id": "EPWA",
-                "event_date": "2026-09-13",
-                "settlement_unit": "C",
-                "settled_tmax_c": None,
-                "seated_stage_count": 1,
-                "realized_usdc": None,
-                "chain_stake_usdc": None,
-                "p1_history": [],
-                "refusals": {"P0": None, "P0-M": None, "P1": None},
-                "stages": {"P0": {
-                    "window": window,
-                    "centre_bucket": window[len(window) // 2],
-                    "win_probability": 0.5,
-                    "all_in_cost": 0.5,
-                    "odds": 2.0,
-                    "edge": 0.01,
-                    "ask_total": 0.5,
-                    "hit": None,
-                    "chain_tail": True,
-                    "dust_offer": False,
-                    "skew_sign": 0,
-                    "selection_rule_label": "r",
-                    "entry": {
-                        "posted_buckets": legs,
-                        "posted_leg_count": len(legs),
-                        "filled_leg_count": len(legs),
-                        "empty_leg_count": 0,
-                        "filled_stake_usdc": 3.0,
-                        "leg_cash_derived": False,
-                        "leg_cash_shortfall_usdc": None,
-                        "legs": [
-                            {"bucket": bucket, "empty": False,
-                             "filled_shares": 5.0, "filled_stake_usdc": 1.0,
-                             "intended_shares": 5.0, "fill_price": 0.2}
-                            for bucket in legs
-                        ],
-                    },
-                }},
-            }],
-        }
+        "live_roster": {"2026-09-13": [{
+            "station_id": "EPWA",
+            "event_date": "2026-09-13",
+            "station_label": "",
+            "market_slug": "",
+            "settled_bucket": None,
+            "settled_source": None,
+            "posted_legs": len(buckets),
+            "filled_legs": len(buckets),
+            "staked_usdc": 3.0,
+            "payout_usdc": None,
+            "pnl_usdc": None,
+            "held_hit": None,
+            "basket_hit": None,
+            "stages": {"P0": {
+                "baskets": 1,
+                "posted_legs": len(buckets),
+                "filled_legs": len(buckets),
+                "stake_usdc": 3.0,
+                "claimed_win_probability": 0.5,
+                "basket_all_in_cost": 0.5,
+                "claimed_ev_usdc": 0.0,
+                "held_shares": {bucket: 5.0 for bucket in buckets},
+                "held_buckets": sorted(buckets),
+                "intended_buckets": sorted(buckets),
+                "buckets": [
+                    {"bucket": bucket, "posted_size": 5.0, "legs": 1,
+                     "filled_size": 5.0, "filled_notional_usdc": 1.0,
+                     "claimed_probability": 0.2}
+                    for bucket in buckets
+                ],
+            }},
+        }]},
     }
 
 
-def test_the_chosen_window_and_its_legs_are_drawn_cold_to_warm() -> None:
+def test_the_posted_ladder_and_its_legs_are_drawn_cold_to_warm() -> None:
     """The roster's ladder and its per-leg table, both off scrambled input."""
 
     scrambled = ["20°C", "18°C", "19°C"]
-    html = _run(
-        _roster_payload(scrambled, scrambled),
-        _const("ABSENT_REASON") + "\n" + _extract("roster"),
-        "roster()",
-    )
+    html = _run(_roster_payload(scrambled), _extract("roster"), "roster()")
     # The ladder line: "18+19+20", with the unit stripped as the cell does.
-    assert "18+19+20" in html
+    ladder = html[:html.index("<details")]
+    assert _order(ladder, ["18<", "19<", "20<"]) == ["18<", "19<", "20<"]
     # And the per-leg table under it, which reads the same list.
     table = html[html.index("<tbody>"):]
     assert _order(table, scrambled) == ["18°C", "19°C", "20°C"]
-
-
-def test_the_window_lean_counts_the_ladder_the_cell_prints() -> None:
-    """A window drawn in one order and counted in another lies about its lean.
-
-    Centre 19°C with a warm shoulder at 20°C and nothing cold of it is a
-    window leaning one rung warm.  Read off the unsorted list the centre
-    lands last and the same window reads one rung cold.
-    """
-
-    html = _run(
-        _roster_payload(["20°C", "19°C"], ["19°C", "20°C"]),
-        _const("ABSENT_REASON") + "\n" + _extract("roster"),
-        "roster()",
-    )
-    assert "窗+1热" in html
-    assert "窗-1冷" not in html
 
 
 def test_convergence_candidate_buckets_are_drawn_cold_to_warm() -> None:

@@ -770,51 +770,6 @@ def test_every_refusal_reason_has_page_copy_and_p0m_counts_taf_only() -> None:
     assert "六成" in priced_out and "−0.25" in priced_out, priced_out
 
 
-def test_both_copies_of_the_reason_table_cover_every_code() -> None:
-    """Section 13 and the roster carry separate copies of the same codes.
-
-    One is long-form, one is a short cell label with a tooltip, so they are
-    not duplicates -- but a reason added to the ledger has to reach both or
-    the page shows a raw identifier in one of them.  It had already drifted:
-    the roster still explained no_priced_window as the market pricing above
-    the model, which measurement reversed, and knew nothing about
-    cost_exceeds_payout, chain_never_opened, no_top_up_needed or
-    resting_unfilled.
-    """
-
-    import re
-    import sys
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[1]
-    if str(root / "scripts") not in sys.path:
-        sys.path.insert(0, str(root / "scripts"))
-    from paper_trading_ledger import REFUSAL_REASONS  # noqa: PLC0415
-
-    page = (root / "scripts" / "calibration_dashboard.py").read_text(
-        encoding="utf-8"
-    )
-    # ``ABSENT_REASON`` since 2026-09-02: the map was hoisted to the top of
-    # the script so the daily table's station breakdown reads it too.
-    block = re.search(r"const ABSENT_REASON=\{.*?\};", page, re.S)
-    assert block, "the shared reason table moved or was renamed"
-    roster = block.group(0)
-    missing = [
-        name for name in REFUSAL_REASONS if f"{name}:[" not in roster
-    ]
-    assert not missing, missing
-
-    # Both single-cause readings of the old pooled code were wrong: it was
-    # 44% width and 56% price.  Each share now sits on the code that owns it,
-    # and the roster's short notes have to carry them the way section 13's
-    # do -- a split that drops the number is a split that hid a half.
-    for name, share in (("no_legal_window", "四成"),
-                        ("negative_edge_window", "六成")):
-        short = re.search(r"%s:\[(.*?)\],\n" % name, page, re.S)
-        assert short, "the roster's %s entry moved" % name
-        assert share in short.group(1), short.group(1)
-
-
 def test_a_leg_nobody_offers_is_unbuyable_not_expensive() -> None:
     """The unfillable ceiling is a placeholder, not a price.
 
@@ -2172,14 +2127,10 @@ def test_the_page_prices_a_leg_and_says_when_it_only_derived_it() -> None:
         10.0, 15.0
     ]
     assert derived["leg_cash_shortfall_usdc"] == pytest.approx(1.0)
-
-    page = (root / "scripts" / "calibration_dashboard.py").read_text(
-        encoding="utf-8"
-    )
-    # The column exists, and the derived rows are marked where they are read.
-    assert "<th title=\"该腿的资金成本" in page
-    assert "const approx=e.leg_cash_derived;" in page
-    assert "leg_cash_shortfall_usdc" in page
+    # The go-live board drew these marks in its station-day roster until
+    # 2026-09-16, when the roster moved to the live book (whose cash is the
+    # exchange's own fill notional, never derived) and the paper ledger
+    # became a rule comparator.  The arithmetic above still carries them.
 
 
 def test_charter_66_a_topup_answers_to_the_chain_not_to_itself() -> None:
@@ -2440,8 +2391,8 @@ def test_a_settled_refusal_is_an_answer_and_an_open_one_is_not() -> None:
     assert not _scope_answer_is_final(set(), set(), set(), settled=True)
 
 
-def test_a_refusal_reason_must_be_registered_in_all_four_places() -> None:
-    """Four registries, four different silent failures.
+def test_a_refusal_reason_must_be_registered_in_every_place() -> None:
+    """Three registries, three different silent failures.
 
     Adding one reason on 2026-09-01 hit three of them in sequence, each
     only after the previous was fixed:
@@ -2451,15 +2402,17 @@ def test_a_refusal_reason_must_be_registered_in_all_four_places() -> None:
     * ``REFUSAL_REASONS`` -- absent, the table CHECK rejects the entire
       end-of-run write burst, after a full replay arm has already walked
       every station-day.
-    * the two dashboards' copy tables -- absent, the page renders a bare
-      code where a sentence belongs.
+    * the market board's copy table -- absent, the page renders a bare code
+      where a sentence belongs.
 
     The import-time assert in the ledger now covers the first two.  This
-    covers all four together, because the count is the point: a reason is
-    not "added" until every reader can say what it means.
+    covers the rest together, because the count is the point: a reason is
+    not "added" until every reader can say what it means.  The go-live
+    board's roster copy went on 2026-09-16, when the roster moved to the
+    live book (the paper ledger is a rule comparator) and stopped drawing
+    paper refusals.
     """
 
-    import re
     import sys
     from pathlib import Path
 
@@ -2472,19 +2425,8 @@ def test_a_refusal_reason_must_be_registered_in_all_four_places() -> None:
         REFUSAL_LABELS,
     )
 
-    board = (root / "scripts" / "calibration_dashboard.py").read_text(
-        encoding="utf-8"
-    )
-    # Hoisted out of ``roster()`` on 2026-09-02 so the daily table's station
-    # breakdown reads the same map instead of copying it into a fifth place.
-    # Matched by the name it now has; the old nested ``const REASON=`` is an
-    # alias inside the roster and carries no entries of its own.
-    roster = re.search(r"const ABSENT_REASON=\{.*?\};", board, re.S)
-    assert roster, "the shared reason table moved or was renamed"
-
     for reason in ledger.REFUSAL_REASONS:
         assert reason in ledger.REFUSAL_DEPTH, f"{reason}: no depth"
-        assert f"{reason}:[" in roster.group(0), f"{reason}: no roster copy"
         assert reason in REFUSAL_LABELS, f"{reason}: no market-board copy"
 
 

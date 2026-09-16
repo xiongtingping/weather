@@ -211,7 +211,11 @@ def test_a_hold_on_an_empty_chain_is_not_a_declined_top_up() -> None:
     # ticket still failed.
     assert REFUSAL_DEPTH["negative_edge_window"] < REFUSAL_DEPTH["production_judge_hold"]
 
-    for path in ("scripts/calibration_dashboard.py", "scripts/selection_market_dashboard.py"):
-        source = (ROOT / path).read_text(encoding="utf-8")
-        assert "生产裁判：不加仓" not in source
-        assert "生产裁判：不下注" in source
+    # The market board carries the reason labels.  The go-live board's
+    # roster copy left on 2026-09-16 with the paper roster (the roster reads
+    # the live book now); it must not come back carrying the old wording.
+    board = (ROOT / "scripts/calibration_dashboard.py").read_text(encoding="utf-8")
+    assert "生产裁判：不加仓" not in board
+    source = (ROOT / "scripts/selection_market_dashboard.py").read_text(encoding="utf-8")
+    assert "生产裁判：不加仓" not in source
+    assert "生产裁判：不下注" in source

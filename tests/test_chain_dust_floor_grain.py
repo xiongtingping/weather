@@ -33,79 +33,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
-import calibration_dashboard as C  # noqa: E402
 import selection_market_dashboard as SM  # noqa: E402
-
-
-def _row(
-    station: str,
-    day: str,
-    stage: str,
-    cost: float,
-    chain_cost: float,
-    tail: bool,
-    stake: float,
-    pnl: float,
-    hit: int,
-) -> dict:
-    """One selection row, carrying both prices the page can filter on."""
-
-    return {
-        "station_id": station, "event_date": day, "stage": stage,
-        "decision_at_utc": f"{day}T00:00:00Z",
-        "all_in_cost": cost, "chain_all_in_cost": chain_cost,
-        "dust_offer": cost < SM.DUST_COST_FLOOR,
-        "chain_dust_offer": chain_cost < SM.DUST_COST_FLOOR,
-        "chain_tail": tail, "settled": True, "hit": hit, "pnl_usdc": pnl,
-        "chain_stake_usdc": stake, "stake_usdc": stake,
-        "win_probability": 0.5, "seat_ask_total": cost, "edge": 0.0,
-        "entry": {"posted_leg_count": 3, "filled_leg_count": 2},
-        "side": "aligned", "ladder_side": "aligned", "skew_sign": 0,
-        "odds": (1.0 - cost) / cost, "ev_usdc": 0.0, "ev_per_usdc": 0.0,
-        "selection_rule_label": "r", "window": ["30C"], "window_size": 1,
-        "net_profit_probability": None, "consolidation": {},
-        "lean_buckets": [], "ladder_lean_buckets": [],
-        "centre_bucket": "30C", "settled_bucket": "30C",
-        "settled_tmax_c": 30.0, "chain_shares": {}, "ask_total": cost,
-    }
-
-
-# The live case, reduced: a 35-cent chain whose last top-up was 0.3 of a
-# cent, a genuinely sub-cent chain, and an ordinary cheap one.
-LIVE_SHAPE = {
-    "rows": [
-        _row("VILK", "2026-08-25", "P0", 0.414, 0.3488, False, 5.811,
-             -5.811, 0),
-        _row("VILK", "2026-08-25", "P1", 0.003, 0.3488, True, 5.811,
-             -5.811, 0),
-        _row("ZGSZ", "2026-08-25", "P0", 0.003, 0.003, True, 0.045,
-             -0.045, 0),
-        _row("KMIA", "2026-08-25", "P0", 0.021, 0.021, True, 0.231,
-             -0.231, 0),
-    ],
-    "station_roster": [],
-}
-
-
-def test_a_topped_up_chain_is_not_dust_because_its_last_leg_was():
-    table = C._daily_table(LIVE_SHAPE, {})
-    assert len(table) == 1
-    day = table[0]
-    # VILK and KMIA settle; only the genuinely sub-cent ZGSZ chain drops.
-    assert day["settled_count"] == 2
-    assert day["pnl_usdc"] == pytest.approx(-6.042)
-    assert day["staked_usdc"] == pytest.approx(6.042)
-
-
-def test_the_days_odds_come_from_the_chain_price_not_the_last_leg():
-    day = C._daily_table(LIVE_SHAPE, {})[0]
-    # Mean chain price over the two credible chains, inverted once.
-    mean_cost = (0.3488 + 0.021) / 2
-    assert day["odds_mean"] == pytest.approx((1 - mean_cost) / mean_cost)
-    # Read off the tail stage instead, this day priced at 1.2 cents and
-    # printed odds in the eighties.
-    tail_mean = (0.003 + 0.021) / 2
-    assert day["odds_mean"] < (1 - tail_mean) / tail_mean / 10
 
 
 def test_basket_hit_table_gates_on_the_chain_price():
@@ -149,8 +77,6 @@ def test_the_stage_flag_survives_for_the_readings_that_are_stage_grained():
     """
 
     source = (ROOT / "scripts" / "selection_market_dashboard.py").read_text()
-    page = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
     assert '"chain_dust_offer": (' in source
     assert 'credible_rows = [r for r in rows if not r["dust_offer"]]' in source
     assert 'and not r["chain_dust_offer"]' in source
-    assert 'row.get("chain_dust_offer", row.get("dust_offer"))' in page

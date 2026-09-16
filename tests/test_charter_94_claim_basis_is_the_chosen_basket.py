@@ -253,10 +253,12 @@ def test_no_claims_layer_query_reads_the_post_execution_columns():
         " issuing its own query on 2026-09-09 and reads the fit's"
         " population instead"
     )
-    # The thermometer's unit is the posted leg, with the fill an
-    # observation about it -- not a precondition for counting it.
-    dashboard = sources["calibration_dashboard"]
-    assert "intended_legs_json" in dashboard
+    # The thermometer's unit was the posted leg, read on the board off
+    # ``intended_legs_json``.  The thermometer has since moved into the
+    # claims layer above (its population is every enumerated window), and
+    # the board's last reader of that column was the paper daily table's
+    # intended-cover rate, retired 2026-09-16 when the daily table moved to
+    # the live book -- so the string no longer anchors anything here.
 
 
 def test_the_gates_own_numbers_come_from_the_lane_that_gated():

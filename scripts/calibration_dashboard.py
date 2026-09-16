@@ -6803,9 +6803,9 @@ LIVE_STATION_EXCLUSIONS_PATH = (
 def barred_station_set() -> set[str]:
     """Stations the live lane may not trade -- hand-ruled and automatic.
 
-    One reader on purpose.  The live-readiness panel and the daily table's
-    station breakdown both need this list, and two copies of the same file
-    read is how two panels come to disagree about who is barred.
+    One reader on purpose.  The live-readiness panel and the money board's
+    bar sides both need this list, and two copies of the same file read is
+    how two panels come to disagree about who is barred.
     """
 
     try:
@@ -6820,60 +6820,6 @@ def barred_station_set() -> set[str]:
         for row in (doc.get(key) or [])
         if isinstance(row, dict) and row.get("station")
     }
-
-
-def _station_breakdown(
-    roster: list[dict[str, Any]], barred: set[str]
-) -> dict[str, dict[str, Any]]:
-    """Per event day: of the whole fleet, who opened and why the rest did not.
-
-    The daily table's station count says how many stations carried a
-    position; on 2026-08-30 that was 29 and the fleet was 48, and the page
-    left the other nineteen unaccounted for -- a reader could not tell a day
-    the model had nothing to say about from a day the market priced us out.
-    The ledger already records its own reason per station-day, so this
-    groups those rather than guessing at them (user ruling, 2026-09-02).
-
-    The live bar is counted separately and never folded into the reasons.
-    It is a trading ruling about the live lane, not a reason a paper seat
-    was not taken -- the book seats a barred station exactly as it seats any
-    other -- so adding it to the same total would double-count the ones that
-    opened.
-    """
-
-    by_day: dict[str, dict[str, Any]] = {}
-    grouped: dict[str, Counter] = defaultdict(Counter)
-    fleet: Counter = Counter()
-    opened: Counter = Counter()
-    barred_seen: dict[str, set[str]] = defaultdict(set)
-    for entry in roster:
-        day = str(entry.get("event_date") or "")
-        if not day:
-            continue
-        station = str(entry.get("station_id") or "")
-        fleet[day] += 1
-        if station.upper() in barred:
-            barred_seen[day].add(station)
-        stages = entry.get("stages") or {}
-        if any(stages.get(name) for name in ("P0", "P0-M", "P1")):
-            opened[day] += 1
-            continue
-        grouped[day][str(entry.get("absent_reason") or "unknown")] += 1
-    for day, total in fleet.items():
-        counts = grouped.get(day) or Counter()
-        by_day[day] = {
-            "fleet": total,
-            "opened": opened.get(day, 0),
-            "not_opened": total - opened.get(day, 0),
-            "reasons": [
-                {"reason": reason, "count": count}
-                for reason, count in sorted(
-                    counts.items(), key=lambda item: (-item[1], item[0])
-                )
-            ],
-            "live_barred": len(barred_seen.get(day) or ()),
-        }
-    return by_day
 
 
 # What a scope refusal means, for the one surface a person reads it on.
@@ -6908,373 +6854,6 @@ BLOCKED_SCOPE_REASON_LABELS = {
     "support_floor_after_lift": "抬手后支持集地板拒",
     "no_decision_moment": "非决策时刻",
 }
-
-
-def _daily_table(
-    selection: dict[str, Any],
-    cover: dict[str, dict[str, Any]] | None = None,
-) -> list[dict[str, Any]]:
-    """One row per event day: what was seated, and how it settled.
-
-    Credible fills only.  A sub-one-cent basket is a minimum-tick offer with
-    nothing bid against it, and letting those into a daily P&L makes every
-    day they appear on unreadable.
-
-    ``cover`` is the P0 intended-window cover rate keyed by event date,
-    folded in here because the panel that used to carry it was a second
-    place to look for the same day's account (user ruling, 2026-08-28).
-    Its population is not this table's: it counts every P0 station-day the
-    ledger recorded a centre for, seated or not, filled or not, so its
-    station count can exceed the day's position count.
-    """
-
-    stages = ("P0", "P0-M", "P1")
-    breakdown = _station_breakdown(
-        list(selection.get("station_roster") or []), barred_station_set()
-    )
-    by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in selection.get("rows") or []:
-        # The chain's price, not the last stage's.  This table is
-        # chain-grained -- one settlement, one stake, one P&L per
-        # station-day -- and a chain topped up by a third-of-a-cent leg is
-        # not a third-of-a-cent basket.  Filtering on the stage flag
-        # dropped three credible chains carrying 15.07 USDC and -10.06 of
-        # P&L, which is why this table totalled -84.77 while the portfolio
-        # card totalled -95.08 off the same book (2026-09-10).
-        if row.get("chain_dust_offer", row.get("dust_offer")):
-            continue
-        by_day[str(row["event_date"])].append(row)
-    table = []
-    for day in sorted(set(by_day) | set(cover or {}), reverse=True):
-        rows = by_day.get(day, [])
-        # One row per chain: the settlement is joined onto every stage row
-        # of its station-day, so summing settled stage rows counts one
-        # chain's P&L two or three times.  Only the tail row is the chain.
-        settled = [
-            r for r in rows if r.get("settled") and r.get("chain_tail")
-        ]
-        hits = sum(int(r["hit"]) for r in settled)
-        pnl = sum(float(r["pnl_usdc"] or 0.0) for r in settled)
-        # What the day actually put on the table.  Summing over settled
-        # chains made an unsettled day read as 0.00 deployed while it was
-        # carrying real positions (user ruling, 2026-08-29).  One reading
-        # per station -- the chain stake, which every stage of the chain
-        # carries -- so a topped-up day is not counted twice.
-        chain_stake_by_station: dict[str, float] = {}
-        for row in rows:
-            key = str(row["station_id"])
-            value = float(row.get("chain_stake_usdc") or 0.0)
-            if value > chain_stake_by_station.get(key, 0.0):
-                chain_stake_by_station[key] = value
-        staked = sum(chain_stake_by_station.values())
-        # P&L only ever belongs to settled chains, so the ratio a reader
-        # forms from these two columns is only meaningful once the day has
-        # settled; the settled-only stake is kept for that.
-        settled_staked = sum(float(r["chain_stake_usdc"]) for r in settled)
-        # Odds from the day's average ticket price, not the average of
-        # each ticket's own odds.  (1-c)/c is convex, so averaging it
-        # rewards the cheapest basket of the day out of all proportion to
-        # the money in it: measured 2026-09-10 the per-row mean over the
-        # whole book was 14.7x -- one day printed 32.8x -- against a book
-        # whose money actually bought 1.53x.  Same set of rows, same cost
-        # column; only the order of the average and the inversion changed.
-        # And the price the odds come from is the chain's too: the tail
-        # row is whichever stage last topped the position up, so reading
-        # its own ``all_in_cost`` priced 2026-08-25 at 3.5 cents -- one
-        # 0.3-cent P1 add-on beside one real basket -- and printed 27.17x
-        # for a day that bought 0.35-cent-dollar baskets.
-        costs = [
-            float(r["chain_all_in_cost"]) for r in settled
-            if r.get("chain_all_in_cost") is not None
-            and float(r["chain_all_in_cost"]) > 0
-        ]
-        claimed = (
-            sum(float(r["win_probability"]) for r in settled) / len(settled)
-            if settled else None
-        )
-        # A day that has not settled still knows what it claimed: the seat
-        # stated a win probability the moment it was taken.  Averaging only
-        # over settled chains left the two newest rows -- the days a reader
-        # most wants to look at -- printing a dash for a number that has
-        # existed since the position opened (user ruling, 2026-08-29).
-        # One reading per station: the chain's latest stage, which is the
-        # claim the position currently carries.
-        latest: dict[str, dict[str, Any]] = {}
-        for row in rows:
-            key = str(row["station_id"])
-            prior = latest.get(key)
-            if prior is None or str(row["decision_at_utc"]) > str(
-                prior["decision_at_utc"]
-            ):
-                latest[key] = row
-        claimed_open = (
-            sum(float(r["win_probability"]) for r in latest.values())
-            / len(latest)
-            if latest else None
-        )
-        # Coverage is not the chance of coming out ahead, and on an unequal
-        # basket the two are far apart (user ruling, 2026-09-09).  A seat
-        # holding ``n_k`` shares of bucket k against an all-in premium C
-        # profits by ``n_k - C`` when the day settles there, so a rung with
-        # ``n_k <= C`` LOSES on the day it wins -- and ``win_probability``
-        # counts that day as a hit.  Measured 2026-09-09 over 235 seated
-        # baskets, 26 carried such a rung: MMMX 2026-09-06 covered 0.789 of
-        # the claim and had a 0.107 chance of ending ahead.
-        #
-        # Unheld buckets contribute nothing by construction: they pay zero,
-        # so they are never profitable, which is why this is read off the
-        # legs rather than off the window.
-        def _net_profit_probability(row: Mapping[str, Any]) -> float | None:
-            try:
-                legs = json.loads(str(row.get("leg_shares_json") or "{}"))
-                claims = json.loads(str(row.get("probabilities_json") or "{}"))
-                cost = float(row.get("chain_stake_usdc") or 0.0)
-            except (TypeError, ValueError):
-                return None
-            if not isinstance(legs, dict) or not isinstance(claims, dict):
-                return None
-            if cost <= 0.0:
-                return None
-            return sum(
-                float(claims.get(bucket, 0.0) or 0.0)
-                for bucket, shares in legs.items()
-                if float(shares or 0.0) > cost
-            )
-
-        net_profit_open = [
-            value for value in (
-                _net_profit_probability(row) for row in latest.values()
-            ) if value is not None
-        ]
-        net_profit_settled = [
-            value for value in (
-                _net_profit_probability(row) for row in settled
-            ) if value is not None
-        ]
-        table.append({
-            "event_date": day,
-            # The open claim is only shown where the settled one cannot be:
-            # they are averaged over different populations and must never be
-            # read as the same column.
-            "claimed_open_mean": claimed_open,
-            # Beside the claim, never instead of it: the two answer
-            # different questions and a reader who sees only the first
-            # reads a covered day as a winning one.
-            "net_profit_probability_mean": (
-                sum(net_profit_settled) / len(net_profit_settled)
-                if net_profit_settled else None
-            ),
-            "net_profit_probability_open_mean": (
-                sum(net_profit_open) / len(net_profit_open)
-                if net_profit_open else None
-            ),
-            "station_count": len({r["station_id"] for r in rows}),
-            # The rest of the fleet, and the ledger's own word for why each
-            # one is not in the count above.
-            "station_breakdown": breakdown.get(day),
-            "position_count": len(rows),
-            "settled_count": len(settled),
-            # Where the seat sat against the market, judged by the bucket
-            # the seat was actually built around: charter 54's mean landing
-            # bucket, not the unsnapped centre of mass (user ruling,
-            # 2026-08-28).  The other sections still read ``side``; this one
-            # is the mean-bucket reading and says so in its header.
-            "sides": {
-                side: sum(1 for r in rows if r["ladder_side"] == side)
-                for side in ("above", "aligned", "below")
-            },
-            "mean_window_size": (
-                sum(int(r["window_size"]) for r in rows) / len(rows)
-                if rows else None
-            ),
-            # What the day posted against what it bought, in rungs.  The
-            # window mean above counts filled rungs only, so a day that
-            # posted three-rung ladders and was sold one of each reads as a
-            # day of one-rung baskets -- which is a statement about the book,
-            # not about what was chosen.
-            "posted_leg_total": sum(
-                int(r["entry"]["posted_leg_count"]) for r in rows
-            ),
-            "filled_leg_total": sum(
-                int(r["entry"]["filled_leg_count"]) for r in rows
-            ),
-            # The same bought rungs split by which stage bought them.  One
-            # position is opened by P0 and topped up by P0-M and P1, so a
-            # single filled total cannot say whether a day was built at
-            # entry or added to afterwards.
-            "filled_leg_by_stage": {
-                stage: sum(
-                    int(r["entry"]["filled_leg_count"])
-                    for r in rows if str(r["stage"]) == stage
-                )
-                for stage in stages
-            },
-            "posted_leg_by_stage": {
-                stage: sum(
-                    int(r["entry"]["posted_leg_count"])
-                    for r in rows if str(r["stage"]) == stage
-                )
-                for stage in stages
-            },
-            "posted_leg_mean": (
-                sum(int(r["entry"]["posted_leg_count"]) for r in rows)
-                / len(rows) if rows else None
-            ),
-            "filled_leg_mean": (
-                sum(int(r["entry"]["filled_leg_count"]) for r in rows)
-                / len(rows) if rows else None
-            ),
-            "hit_rate": hits / len(settled) if settled else None,
-            "claimed_win_probability_mean": claimed,
-            "calibration_ratio": (
-                (hits / len(settled)) / claimed
-                if settled and claimed else None
-            ),
-            "odds_mean": _odds_from_mean_cost(costs),
-            "staked_usdc": staked,
-            "settled_staked_usdc": settled_staked,
-            "pnl_usdc": pnl,
-            **((cover or {}).get(day) or {
-                "cover_rate": None,
-                "truth_inside_rate": None,
-                "cover_station_count": 0,
-                "cover_settled_count": 0,
-                "unfilled_intended": 0,
-            }),
-        })
-    return table
-
-
-def _intended_cover_by_day(
-    conn: sqlite3.Connection,
-) -> dict[str, dict[str, Any]]:
-    """Did the truth land inside the P0 basket we meant to buy?
-
-    One reading per station-day the P0 stage posted an intended basket for,
-    settled or not, part-filled or not (user ruling, 2026-08-25), rolled up
-    by event date for the daily table (user ruling, 2026-08-28: one place to
-    read a day's account, not two).  The window is the INTENDED legs, not
-    the filled ones -- what the book sold us is execution, and cover grades
-    the choice.  ``ladder_center_bucket`` is read back verbatim as the
-    seat's own record of its centre, never recomputed here, and a row whose
-    centre cannot be located in the ladder is dropped rather than guessed.
-
-    Station-days whose resting orders never filled a single leg carry no
-    position row, and the refusal table keeps only prose for them, so their
-    centres cannot be read back; each day counts them as absent so the gap
-    is on the record rather than silent.
-    """
-
-    if not _table_exists(conn, "paper_trade_position"):
-        return {}
-    # The same generation floor the position rows carry.  These two
-    # populations now share a table, and a day that reached one of them but
-    # not the other would read as a day the other one lost.
-    unfilled: dict[str, int] = {}
-    for day, count in conn.execute(
-        "SELECT event_date, COUNT(*) FROM paper_trade_refusal"
-        " WHERE stage = 'P0'"
-        " AND reason IN ('resting_unfilled', 'belief_withdrew_order')"
-        " AND event_date >= ?"
-        " GROUP BY event_date",
-        (STATS_START_EVENT_DATE,),
-    ):
-        unfilled[str(day)] = int(count)
-    query = conn.execute(
-        "SELECT p.event_date, p.station_id, p.ladder_center_bucket,"
-        " p.probabilities_json, p.intended_legs_json,"
-        " s.settled_bucket, s.settled_tmax_c"
-        " FROM paper_trade_position p"
-        " LEFT JOIN paper_trade_settlement s"
-        " ON s.station_id = p.station_id AND s.event_date = p.event_date"
-        " WHERE p.stage = 'P0' AND p.event_date >= ?"
-        # One reading per station-day, and the ``seen`` set below keeps the
-        # first row it meets.  P0 may seat twice on one day since the
-        # one-seat constraint was rebuilt away (2026-09-02), so without an
-        # order that "first" is whatever the query planner hands back and
-        # the cover rate can move without the ledger moving.  The opening
-        # decision is the one this reading has always taken; name it.
-        " ORDER BY p.event_date, p.station_id, p.decision_at_utc",
-        (STATS_START_EVENT_DATE,),
-    )
-    rows: list[dict[str, Any]] = []
-    seen: set[tuple[str, str]] = set()
-    for record in query:
-        key = (str(record[0]), str(record[1]))
-        if key in seen:
-            continue
-        seen.add(key)
-        try:
-            probabilities = json.loads(record[3] or "{}") or {}
-            intended = json.loads(record[4] or "{}") or {}
-        except (TypeError, ValueError):
-            continue
-        # Key order is ladder order: the ledger writes probabilities_json
-        # from the ladder walk, and the selection payload's own lean and
-        # skew columns already lean on that.
-        ordinals = {
-            str(bucket): index
-            for index, bucket in enumerate(probabilities.keys())
-        }
-        center = str(record[2] or "")
-        center_ordinal = ordinals.get(center)
-        if center_ordinal is None:
-            continue
-        window = sorted(
-            (str(bucket) for bucket in intended if str(bucket) in ordinals),
-            key=lambda bucket: ordinals[bucket],
-        )
-        settled_bucket = str(record[5] or "")
-        truth_ordinal = (
-            ordinals.get(settled_bucket) if settled_bucket else None
-        )
-        rows.append({
-            "event_date": key[0],
-            "intended_cover": (
-                None if truth_ordinal is None
-                else (1 if settled_bucket in set(window) else 0)
-            ),
-            # What the model CLAIMED the intended window covers: the mass it
-            # put on those buckets, summed.  Known the moment the basket is
-            # chosen (user ruling, 2026-08-29) -- the realised cover above
-            # needs the truth, this does not, and a day with no settlement
-            # was printing a dash for both.
-            "claimed_cover": sum(
-                float(probabilities.get(bucket) or 0.0) for bucket in window
-            ),
-        })
-    by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for entry in rows:
-        by_day[entry["event_date"]].append(entry)
-    out: dict[str, dict[str, Any]] = {}
-    for day in sorted(set(by_day) | set(unfilled), reverse=True):
-        members = by_day.get(day, ())
-        covers = [
-            e["intended_cover"] for e in members
-            if e["intended_cover"] is not None
-        ]
-        claims = [
-            e["claimed_cover"] for e in members
-            if e.get("claimed_cover") is not None
-        ]
-        out[day] = {
-            # 意向窗盖住率 IS the probability the chosen buckets carry --
-            # the model's own mass summed over the intended window (user
-            # ruling, 2026-08-30).  It is not a hit rate, claimed or
-            # realised: those are different questions and they already have
-            # their own columns.  Known the moment the basket is chosen, so
-            # it never waits for settlement.
-            "cover_rate": sum(claims) / len(claims) if claims else None,
-            # Whether the truth actually landed inside that window, kept
-            # under its own name so it can never be read as the line above.
-            "truth_inside_rate": (
-                sum(covers) / len(covers) if covers else None
-            ),
-            "cover_station_count": len(members),
-            "cover_settled_count": len(covers),
-            "unfilled_intended": unfilled.get(day, 0),
-        }
-    return out
 
 
 def _risk_metrics_from_days(
@@ -7913,6 +7492,146 @@ def collect_live_money(conn: sqlite3.Connection) -> dict[str, Any]:
             "probation": set(scope["probation"]),
             "barred": set(scope.get("barred") or barred_station_set()),
         }),
+    }
+
+
+def collect_live_days(conn: sqlite3.Connection) -> dict[str, Any]:
+    """每日统计 and 逐站逐日明细, off the live book (user ruling, 2026-09-16).
+
+    Both tables used to read the paper ledger's seats; the ruling that made
+    the ledger a rule comparator moved them to the live fills.  One pass
+    builds both, so a day's row and that day's station rows count the same
+    legs.
+
+    Two grains, each named where it is used.  A *station-day* is one station
+    on one event day, whatever stages it traded; the basket verdicts are
+    read at that grain -- 持仓命中 when a filled leg sits on the settled
+    bucket, 篮子命中 when any posted leg does, filled or not (user ruling,
+    2026-09-14).  A *笔* is one stage of one station-day that filled, the
+    settlement row the money board reads; the claim, the hit rate against it
+    and the odds are read at that grain, so this table and the board's
+    nine numbers agree.
+    """
+
+    book = live_book.build(conn)
+    legs = book["legs"]
+    settled = book["settled"]
+    rows_by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in book["settlements"]:
+        rows_by_day[row["event_date"]].append(row)
+    legs_by_sd: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for leg in legs:
+        legs_by_sd[(leg["station_id"], leg["event_date"])].append(leg)
+    slugs = _live_market_slugs(conn, [
+        {"station_id": station, "event_date": day}
+        for station, day in legs_by_sd
+    ])
+
+    roster: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for (station, day), sd_legs in sorted(legs_by_sd.items()):
+        landed = settled.get((station, day))
+        truth = landed[0] if landed else None
+        stages: dict[str, Any] = {}
+        stake = 0.0
+        payout = 0.0
+        held: set[str] = set()
+        posted: set[str] = set()
+        # A leg whose decision named no stage still spent money on this
+        # station-day; it is counted under its own key, never dropped.
+        extra = sorted({leg["stage"] for leg in sd_legs} - set(live_book.STAGES))
+        for stage in list(live_book.STAGES) + extra:
+            group = [leg for leg in sd_legs if leg["stage"] == stage]
+            if not group:
+                continue
+            summary = live_book.stage_summary(group)
+            stages[stage] = summary
+            stake += summary["stake_usdc"]
+            held |= set(summary["held_buckets"])
+            posted |= set(summary["intended_buckets"])
+            if truth is not None:
+                payout += summary["held_shares"].get(truth, 0.0)
+        filled = sum(1 for leg in sd_legs if leg["filled_size"] > 0)
+        roster[day].append({
+            "station_id": station,
+            "event_date": day,
+            "station_label": STATION_LABELS.get(station, ""),
+            "market_slug": slugs.get(f"{station}|{day}", ""),
+            "settled_bucket": truth,
+            "settled_source": landed[1] if landed else None,
+            "stages": stages,
+            "posted_legs": len(sd_legs),
+            "filled_legs": filled,
+            "staked_usdc": stake,
+            "payout_usdc": payout if truth is not None else None,
+            "pnl_usdc": (payout - stake) if truth is not None and filled else None,
+            "held_hit": (truth in held) if truth is not None and filled else None,
+            "basket_hit": (truth in posted) if truth is not None else None,
+        })
+
+    daily: list[dict[str, Any]] = []
+    for day in sorted(roster, reverse=True):
+        entries = roster[day]
+        rows = rows_by_day.get(day, [])
+        by_stage = {stage: 0 for stage in live_book.STAGES}
+        for entry in entries:
+            for stage, summary in entry["stages"].items():
+                by_stage[stage] = by_stage.get(stage, 0) + summary["filled_legs"]
+        settled_sd = [e for e in entries if e["settled_bucket"] is not None]
+        held_sd = [e for e in settled_sd if e["filled_legs"]]
+        claimed = [r for r in rows if r["claimed_win_probability"] is not None]
+        costed = [r for r in rows if r["basket_all_in_cost"] is not None]
+        settled_stake = sum(r["stake_usdc"] for r in rows)
+        pnl = sum(r["pnl_usdc"] for r in rows)
+        hit_rate = (
+            sum(r["hit"] for r in claimed) / len(claimed) if claimed else None
+        )
+        claim_mean = (
+            sum(r["claimed_win_probability"] for r in claimed) / len(claimed)
+            if claimed else None
+        )
+        # The day's price, stake-weighted, then inverted: the mean of each
+        # row's own (1-c)/c is convex and rewards the cheapest basket out of
+        # all proportion to its money (14.7x against 1.53x, 2026-09-10).
+        cost_stake = sum(r["stake_usdc"] for r in costed)
+        cost_mean = (
+            sum(r["stake_usdc"] * r["basket_all_in_cost"] for r in costed)
+            / cost_stake if cost_stake > 0 else None
+        )
+        daily.append({
+            "event_date": day,
+            "stations_posted": len(entries),
+            "stations_filled": sum(1 for e in entries if e["filled_legs"]),
+            "baskets": len({
+                leg["decision_id"] for e in entries
+                for leg in legs_by_sd[(e["station_id"], day)]
+            }),
+            "posted_legs": sum(e["posted_legs"] for e in entries),
+            "filled_legs": sum(e["filled_legs"] for e in entries),
+            "filled_leg_by_stage": by_stage,
+            "staked_usdc": sum(e["staked_usdc"] for e in entries),
+            "settled_station_days": len(settled_sd),
+            "open_station_days": len(entries) - len(settled_sd),
+            "basket_hit_station_days": sum(1 for e in settled_sd if e["basket_hit"]),
+            "held_station_days": len(held_sd),
+            "held_hit_station_days": sum(1 for e in held_sd if e["held_hit"]),
+            "settled_rows": len(rows),
+            "hit_rate": hit_rate,
+            "claimed_win_probability_mean": claim_mean,
+            "calibration_ratio": (
+                hit_rate / claim_mean if hit_rate is not None and claim_mean
+                else None
+            ),
+            "odds_mean": (
+                (1.0 - cost_mean) / cost_mean if cost_mean else None
+            ),
+            "settled_staked_usdc": settled_stake,
+            "pnl_usdc": pnl if rows else None,
+            "roi": (pnl / settled_stake) if settled_stake > 0 else None,
+        })
+    return {
+        "available": bool(legs),
+        "daily": daily,
+        "roster": {day: roster[day] for day in sorted(roster, reverse=True)},
     }
 
 
@@ -10623,14 +10342,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         else ("amber" if alerts else "green")
     )
     selection = _cached_section("selection", build_selection_payload, db)
-    daily = _cached_section(
-        "daily", _daily_table, selection,
-        _cached_section("intended_cover", _intended_cover_by_day, conn),
-    )
-    # Aggregate first, then trim.  The rows ship as a hand-audit sample --
-    # no section reads them -- and they arrive newest first, so trimming
-    # before the daily table is built deletes whole event days off the
-    # bottom of it.
+    # 每日统计 and 逐站逐日明细 read the live book (user ruling, 2026-09-16).
+    live_days = _cached_section("live_days", collect_live_days, conn)
+    # The rows ship as a hand-audit sample -- no section reads them.
     selection["rows"] = (selection.get("rows") or [])[:400]
     return {
         "schema": "calibration_dashboard_v2",
@@ -10638,7 +10352,8 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "overall_health": overall,
         "alerts": alerts,
         "selection": selection,
-        "daily": daily,
+        "daily": live_days["daily"],
+        "live_roster": live_days["roster"],
         "members": members,
         "tables": tables,
         "truth_landing": truth_landing,
@@ -11655,7 +11370,7 @@ function overviewLamps(){
   push("selection", band(rate,0.5,0.25), "建仓率",
     `${opened}/${roster.length||"—"}`,
     `${h(day||"")} · ${pct0(rate)} 的站建了仓`,
-    "「逐站逐日明细」（每日统计下方）：没建仓的站，格子里写着原因");
+    "纸面账本的建仓率（规则对比用）；逐站逐日明细自 2026-09-16 起读实盘，不再列纸面的未入座原因");
 
   // 6. Does the model's stated probability survive contact with the truth.
   const stagesAll=S.stages||{};
@@ -14136,195 +13851,85 @@ function liveCell(e){
 }
 
 // The one table that lives above the tabs, with the health light and the
-// strip (user ruling, 2026-08-21).  It is the page's core: one row per
-// event day, every stage's account of it on the same line, and it answers
-// "what happened yesterday" without choosing a group first.  Unnumbered for
-// that reason -- the numbered sections are what the three groups hold, and
-// a number here would imply it sits in one of them.
-// Why a station-day carries no seat, in the ledger's own words.  Read by
-// both the roster (section 12) and the daily table's station breakdown, so
-// a reason code added to the ledger needs one entry here rather than two.
-const ABSENT_REASON={no_probability:["无概率","这一天没有为该站算出概率"],
-    no_market_book:["无盘口","有概率但没抓到可定价的市场"],
-    no_book_at_decision:["盘口未落库","每次决策时刻都没有半小时内的盘口快照"],
-    incomplete_book:["盘口缺桶","有盘口但缺了模型认得的桶，整站不可定价"],
-    selection_failed:["选桶报错","枚举窗口时抛错，该轮跳过"],
-    no_legal_window:["无合法窗口","结构闸拿走了整批枚举：断桶、不含中心桶、或长度不够。这些窗口没走到看报价那一步，跟贵不贵无关。约四成的未入座是这一类"],
-    no_priced_window:["窗口定不出价","窗口过了全部结构闸，但里面有腿根本没有卖价，成本算不出来。缺的是盘口"],
-    negative_edge_window:["边际不敌摩擦","窗口过闸也报得出价，胜率减全包成本仍盖不住逐腿最小跳动——这一条才是市场比模型贵。约六成的未入座是这一类，最好的一篮边际中位数 −0.25"],
-    leg_below_floor:["单腿报价过低","窗口里有腿的报价低于一分——那是无人出价那侧的挂牌，不是价格。这是我们自己设的闸，不是市场没给价"],
-    no_positive_kelly:["赔率不划算","篮子凑出来也定了价，但赢面低于要价，Kelly 给出零仓位"],
-    production_judge_blocked:["生产裁判无法运行","账本研究臂调用生产求解器，但该 scope 解析不到生产政策或求解器 fail-closed"],
-    production_judge_hold:["生产裁判：不下注","生产目标函数看过了篮子，给出的目标份额不高于已持仓。加仓日就是按兵不动；开仓日（P0 空链）从 2026-09-05 起只剩一种情况记在这里：有窗口过了整篮正EV闸，但宪章 74 的门票没成（门票超出固化减仓后的资本，或某腿卖一档无量）。没有窗口过闸的开仓日改按拒掉最后一个窗口的那道闸记，多数是「边际不敌摩擦」"],
-    shape_gap_too_wide:["分布撕裂","均值离众数超过门限（研究臂，默认关）：撕裂形态下不入座"],
-certainty_gate_lit:["市场已定价完毕","中心桶连三次没动，或头两桶已占六成——证据收敛了，溢价市场早收过了，这一轮主动不做，等下一个决策时刻。与「赔率不划算」相反：那是算过嫌贵，这是压根没问"],
-    unquoted_ideal_window:["理想窗口没报价","中心±1 里凑不出八成质量有像样卖价的桶。市场不报价常常不是疏忽，是它判定这些桶不会发生。默认关闭，由前向验证决定是否启用"],
-    cost_exceeds_payout:["比满赔还贵","整篮成本超过它赢了能赔的 1.00，多高的概率都是亏——模型没被问到，是书的问题"],
-    resting_unfilled:["挂单没成交","价格没等到；规模是够的，市场没走到我们这里来。每 60 分钟重挂一次，但过了本站达峰时刻就收摊，不是挂到结算"],
-    belief_withdrew_order:["信念转负撤单","不是市场没来，是我们自己撤的：重挂时用最新概率重算整篮期望，转负即全撤。该查模型，不是执行"],
-    no_top_up_needed:["无需加仓","这一阶段想要的梯级已经在仓里了，按兵不动"],
-    completion_take_above_authorized_cost:["补齐越价超出授权","补齐改越价买后，走完深度要付的钱高于各道闸批准的那笔；盘口在求解之后走坏，不给更差的成交"],
-    topup_not_complete_basket:["只缺部分腿，整篮不动","篮子完整性重放臂：目标里只有部分腿需要加，整篮不动"],
-    p1_execution_evidence:["P1 没带自己的证据","宪章119：软似然 09-02 起停用后，P1 能拿出的证据是观测硬下界＋最外层三个申请者（四层链／区域路径先验／时钟天花板）里说话的那一个。三个都没留回执的那一轮不判——这一步的分布只是模型自己重新归一。同一天更晚的轮次通常就有回执，是一轮的拒绝不是一天的"],
-    entry_window_not_open:["P1 入座窗未开","宪章67：P1 只允许在本地 11 时后入座——它的本事是盘中观测，日高在午后才成形。11 时前的轮次一律不判；实测 11 时前入座的加仓净亏 49.5，11–16 时入座净赚 99.8。本地已过 11 时仍见此项＝窗开后温度从未创当日新高、P1 没有触发过重算（阴雨天常见），是天气不是故障"],
-    no_chain_growth:["加仓救不动链曲线","宪章66乙款：加仓按整条链的对数增长定规模，从已持仓位出发这一笔要让链的赔率曲线变优才买；求解器给出的最优增量为零——已持仓覆盖，或价格吃尽了增益"],
-    chain_cost_at_par:["买入后整链必亏","宪章66甲款：这一笔单独看过得了本阶段的闸，但买下去之后整条链的混合成本≥1.00——满额赔付也回不了本，中了也亏。只做算术不读声称；实测这类链38条中37仍净亏31.9"],
-    no_decision_moment:["不是决策时刻（修复前旧行）","宪章77 是按轮的规则，不是站日的原因：这一轮概率身份与当日可入座状态都与本阶段上次记录的决策相同，只是盘口动了，于是沿用上次决策；站日没入座的真因在被沿用的那次决策里。2026-09-05 起账本只按轮计数、不再把它记成站日原因；还挂着它的是修复前已结算的旧行，重走（--rebuild）后改按真因记"],
-    topup_requires_probability_change:["概率没变，不加仓","宪章71甲款：加仓以概率变化为前提，这一轮概率身份与上次买入相同，只是盘口或额度变了"],
-    topup_increment_edge_negative:["这笔加仓自己不划算","宪章71乙款收紧臂：增量按折后划分的期望赔付不高于本笔成本"],
-    decline_clamp_hold_basket:["整篮等下一轮","目标篮里有桶的概率比上一 cycle 低了，这一轮整篮不入座（研究臂：钳位=hold）。生产默认不是这条——它砍掉那条腿照买其余"],
-    decline_clamp_emptied_basket:["全篮都在跌","目标篮每一个桶的概率都比上一 cycle 低，砍完没有腿剩下（研究臂：钳位=leg）"],
-    chain_never_opened:["P0 未开仓","只有 P0 开仓，后面两阶段是加仓；P0 没坐下这里就没仓可加，真正的原因看 P0"],
-    no_depth:["盘口太薄","价格划算但卖方挂出的量填不满最小整篮"],
-    exchange_minimum_lot_unaffordable:["不足一手，整篮不下","交易所最小下单量是 5 股，比这更小的单它根本不收。这一篮里有腿抬不到一手——要么额度不够，要么那一档没那么多量——生产在这种时候整篮不下单。2026-09-04 之前账本把不足一手的碎股记成已成交，那是交易所不会接的单"],
-    execution_edge_not_authorized:["增量边际不过授权","宪章 73：生产在下单前按入座时的信念再算一次这笔增量的期望赔付减成本，不高于 ε 就不发。第 92 条起门票同样受检。等份额 Kelly 篮子几乎碰不到它"],
-    support_floor_after_lift:["抬手后篮子赢了也亏","宪章 93：最小手和一美元底线把各腿抬到整手之后，再按抬后股数和成本算一次支持集内最坏结算，真值落在自己窗口里任何一桶都不得亏损（此前允许亏一成，已归零）。等份形状永远合法，只有抬手抬成不等份时才会撞上"],
-    station_loss_floor_exceeded:["最坏结算超过站亏损下限","生产内核的 profit_floor_ok：买完之后，支持集里最坏的那个结算结果（那一桶持有的股数减去整链付出的钱）不能亏过运营给这个站定的上限（当前 15 USDC）。等份额篮子几乎碰不到它；它不是逐腿预算闸，仓位大小由本金的 2% 和阶段份额决定"],
-    no_seat_taken:["未入座","有概率也有盘口，目标函数看过后选择不坐"],
-    station_not_onboarded:["未接入舰队","这个站有结算时区和已挂牌的市场，但模型从来没为它算过概率——舰队是 45 站，时区册是 48 站，多出来的三站是备好未接入。不是今天算不出来，是从来没算过；接入是舰队身份变更（22 个文件硬编码 45 站）"]};
-
-// The station count, and what the rest of the fleet was doing.
+// strip (user ruling, 2026-08-21): one row per event day, and it answers
+// "what happened yesterday" without choosing a group first.
 //
-// "29" on its own could not tell a day the model had nothing to say about
-// from a day the market priced us out; both read as nineteen stations that
-// simply are not there (user ruling, 2026-09-02).  The reasons are the
-// ledger's own -- one per station-day, the same codes section 12 shows --
-// so this groups what is already recorded rather than inferring it.
-//
-// The live bar is on its own line and deliberately outside the arithmetic:
-// it says what the live lane may not trade, while every number to its left
-// is the paper book, which seats a barred station like any other.
-function stationCell(r){
-  const b=r.station_breakdown;
-  if(!b) return String(r.station_count);
-  const head=`<b>${b.opened}</b><span class="muted">/${b.fleet}</span>`;
-  const parts=(b.reasons||[]).map(x=>{
-    const lab=ABSENT_REASON[x.reason]||[x.reason,""];
-    return `<span title="${h(lab[1]||lab[0])}">${h(lab[0])} ${x.count}</span>`;
-  });
-  const why=parts.length
-    ? `<div class="muted" style="font-size:11px;margin-top:2px">${
-        parts.join(`<span class="muted"> · </span>`)}</div>`
-    : "";
-  const bar=b.live_barred
-    ? `<div class="muted" style="font-size:11px" title="实盘禁入名单上的站，属实盘裁定；纸面账本照常入座，所以这个数不参与左边的加减">实盘禁入 ${b.live_barred}</div>`
-    : "";
-  return head+why+bar;
-}
-
+// The live book since 2026-09-16 (user ruling: 每日统计、逐站逐日明细也改为
+// 实盘数据; the paper ledger is a rule comparator).  Two grains, each named
+// in its header: a station-day for the basket verdicts, a 笔 (one stage of
+// one station-day that filled) for the claim, the hit rate against it and
+// the odds -- the grain the money board's nine numbers read, so the two
+// agree.
 function daily(){
-  if(!D.daily || !D.daily.length) return "";
+  const rows=D.daily||[];
+  if(!rows.length) return "";
   const STAGES=["P0","P0-M","P1"];
   const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
-  // Newest five open, the rest folded (user ruling, 2026-09-11).  The table
-  // arrives newest-first and runs to fourteen rows; what gets read on
-  // arrival is this week, and the older rows were costing two thirds of the
-  // section's height to be scrolled past.  Folded rather than dropped: the
-  // day a number went wrong is usually not one of the five.
+  const usd=v=>v==null?"—":v.toFixed(2);
+  const signed=v=>v==null?"—":((v>=0?"+":"")+v.toFixed(2));
+  // Newest five open, the rest folded (user ruling, 2026-09-11).
   const OPEN_DAYS=5;
   const rowHtml=r=>{
-    const s=r.sides||{};
-    const cal=r.calibration_ratio;
-    const calCls=cal==null?"":(cal>=0.9&&cal<=1.15?"up":"down");
     const byStage=r.filled_leg_by_stage||{};
-    // Three stages of one position, so the split is written out rather
-    // than folded into a total: a day built at entry and a day topped up
-    // afterwards have the same leg count and are not the same day.
     const stageTxt=STAGES.map(st=>{
       const n=byStage[st]||0;
-      if(!n) return `<span class="muted">${st} —</span>`;
-      return `<span title="${st}：${n} 腿">${st} <b>${n}</b></span>`;
+      return n?`<span title="${st}：${n} 条成交腿">${st} <b>${n}</b></span>`
+        :`<span class="muted">${st} —</span>`;
     }).join(`<span class="muted"> · </span>`);
-    const cov=r.cover_rate;
-    const covCls=cov==null?"":(cov>=0.6?"up":(cov<0.4?"down":""));
+    const cal=r.calibration_ratio;
+    const calCls=cal==null?"":(cal>=0.9&&cal<=1.15?"up":"down");
+    const frac=(a,b)=>b?`${a}/${b} <span class="muted">${pct(a/b)}</span>`:"—";
     return `<tr>
       <td class="mono">${h(r.event_date)}</td>
-      <td>${stationCell(r)}</td>
-      <td>${r.position_count}</td>
-      <td class="muted">${s.above||0}/${s.aligned||0}/${s.below||0}</td>
-      <td class="${covCls}" title="意向窗各桶概率之和，按站取均值——选桶那一刻就知道，与结算无关">${
-        pct(cov)}${
-        r.truth_inside_rate!=null?`<span class="muted" title="真值确实落进意向篮子的站比例（要等结算，与左边不是一回事）"> 真值落入 ${
-          (r.truth_inside_rate*100).toFixed(0)}%</span>`:""}${
-        r.unfilled_intended?`<span class="muted"> +${
-          r.unfilled_intended} 缺席</span>`:""}</td>
-      <td class="mono">${r.filled_leg_total}
-        <span class="muted">均 ${r.filled_leg_mean==null?"—"
-          :r.filled_leg_mean.toFixed(1)}</span>
-        <div class="muted" style="font-size:11px;margin-top:2px"
-          >${stageTxt}</div></td>
-      <td>${r.settled_count}</td>
-      <td>${r.hit_rate==null?"—":(r.hit_rate*100).toFixed(0)+"%"}</td>
-      <td>${r.claimed_win_probability_mean!=null
-        ?(r.claimed_win_probability_mean*100).toFixed(0)+"%"
-        :r.claimed_open_mean!=null
-          ?`<span class="muted" title="本日尚未结算：这是已入座各链最新阶段的声称胜率均值，没有结算样本可比"
-            >${(r.claimed_open_mean*100).toFixed(0)}%*</span>`
-          :"—"}</td>
-      <td title="净盈利概率 Σp·[n>C]：只数「持有的腿里，股数超过整篮成本的那些」。覆盖率把每个中了的桶都算成命中，但 n≤C 的腿中了照样亏 —— 2026-09-06 的 MMMX 覆盖 79%、净盈利概率 11%。">${
-        (()=>{const v=r.net_profit_probability_mean!=null
-          ?r.net_profit_probability_mean:r.net_profit_probability_open_mean;
-          if(v==null) return "—";
-          const c=r.claimed_win_probability_mean!=null
-            ?r.claimed_win_probability_mean:r.claimed_open_mean;
-          const star=r.net_profit_probability_mean==null?"*":"";
-          // Amber when the two readings disagree by more than a fifth of the
-          // claim: that gap is a basket holding a rung it loses on.
-          const wide=(c!=null&&c>0&&(c-v)/c>0.2);
-          return `<span class="${wide?"down":""}${star?" muted":""}"
-            >${(v*100).toFixed(0)}%${star}</span>`;})()}</td>
+      <td class="mono">${r.stations_posted}<span class="muted"> / ${r.stations_filled}</span></td>
+      <td class="mono">${r.baskets}</td>
+      <td class="mono">${r.filled_legs}<span class="muted">/${r.posted_legs}</span>
+        <div class="muted" style="font-size:11px;margin-top:2px">${stageTxt}</div></td>
+      <td class="mono">${usd(r.staked_usdc)}</td>
+      <td class="mono">${r.settled_station_days}${r.open_station_days
+        ?`<span class="muted"> · 未结 ${r.open_station_days}</span>`:""}</td>
+      <td class="mono">${frac(r.basket_hit_station_days, r.settled_station_days)}</td>
+      <td class="mono">${frac(r.held_hit_station_days, r.held_station_days)}</td>
+      <td class="mono">${r.settled_rows||"—"}</td>
+      <td>${pct(r.hit_rate)}</td>
+      <td>${pct(r.claimed_win_probability_mean)}</td>
       <td class="factor ${calCls}">${cal==null?"—":cal.toFixed(2)+"×"}</td>
-      <td>${r.odds_mean==null?"—":r.odds_mean.toFixed(1)+"x"}</td>
-      <td class="mono">${r.staked_usdc.toFixed(2)}</td>
-      <td class="mono ${r.pnl_usdc>=0?"up":"down"}">${(r.pnl_usdc>=0?"+":"")+r.pnl_usdc.toFixed(2)}</td>
-      <td>${liveCell(liveAgg((st,day)=>day===r.event_date))}</td>
+      <td>${r.odds_mean==null?"—":r.odds_mean.toFixed(2)+"x"}</td>
+      <td class="mono">${r.settled_rows?usd(r.settled_staked_usdc):"—"}</td>
+      <td class="mono ${r.pnl_usdc==null?"":(r.pnl_usdc>=0?"up":"down")}">${signed(r.pnl_usdc)}</td>
+      <td class="mono ${r.roi==null?"":(r.roi>=0?"up":"down")}">${r.roi==null?"—":((r.roi>=0?"+":"")+(100*r.roi).toFixed(1)+"%")}</td>
     </tr>`;
   };
-  const recent=D.daily.slice(0,OPEN_DAYS).map(rowHtml).join("");
-  const older=D.daily.slice(OPEN_DAYS);
-  return `<h2>每日统计：按天汇总建仓、投入与结算</h2>
-  <p class="sub">按事件日汇总，只算可成交的（整篮成本 ≥1 分）——不足一分的多是无人出价那侧的
-  单边报价，名义上有价、实际买不到，混进来会让当天的盈亏读不出意思。</p>
-  <div class="why"><b>列的意思：</b>「站数」是当天<b>建仓的站 / 舰队全部站</b>，
-  下面按账本自己记的原因拆开没建仓的那些——盘口太薄和边际为负是两回事，
-  一个是买不到，一个是不划算；「实盘禁入」单列，那是实盘裁定，
-  纸面账本照常入座，不参与这一格的加减；
-  「位置」是相对市场偏上/一致/偏下的笔数，
-  用的是<b>均值落点桶</b>（宪章 54 生产就座的那个中心桶，直接读账本记录）与市场质心比，
-  差 ${(0.35).toFixed(2)} 桶以内算一致；
-  「意向窗盖住率」是真值有没有落进 P0<b>意向</b>篮子——评的是选桶质量、与成交无关，
-  所以它的站数按 P0 记录的站日算，可以多于当天仓位数，全程没买到、账本只留文字的站日
-  单列为「缺席」；
-  「建仓桶」是当天所有座位买到的腿数合计（括号里是每座位平均几腿），
-  下面一行按 <b>P0 / P0-M / P1</b> 拆开，
-  三个阶段是同一个仓位：P0 建仓，后两个只加不减；
-  「声称」带 * 的是尚未结算日：取各链最新阶段的声称胜率均值，
-  与已结算日的口径不同（那一列只算结算样本），不可直接相比；
-  「意向窗盖住率」<b>就是选中那几个桶的概率之和</b>（按站取均值）——选桶当刻即知，
-  不等结算，也<b>不是</b>声称胜率或实际命中率（那两个另有其列）。
-  它后面的「真值落入 N%」才是事后的：真值确实掉进意向篮子的站比例；
-  「投入」是当天真实部署的资金（每站按整链算一次），不等结算；「盈亏」只属于已结算链，
-  所以未结算日的这两列不能相除；
-  「实现/声称」是命中率÷声称胜率，1.00× 表示概率说得准；
-  「赔率」是 (1−成本)/成本。</div>
-  <div class="card">${(()=>{const head=`<thead><tr>
-    <th>事件日</th><th>站数<br><span class="muted">建仓/舰队</span></th><th>仓位</th>
-    <th>位置<br><span class="muted">均值桶 上/平/下</span></th>
-    <th>意向窗盖住率<br><span class="muted">选桶概率和</span></th>
-    <th>建仓桶<br><span class="muted">腿数 · 分阶段</span></th>
-    <th>已结算</th><th>命中率</th><th>声称</th>
-    <th title="净盈利概率 Σp·[n>C]，与左侧的「声称」是两个量：声称数的是窗口盖住的概率，这一列只数「持有的腿里股数超过整篮成本的那些」。n≤C 的腿中了照样亏钱，而声称把那天算成命中。">净盈利<br><span class="muted">Σp·[n&gt;C]</span></th>
-    <th>实现/声称</th>
-    <th>赔率</th><th>投入</th><th>盈亏</th>
-    <th title="实盘意向（live_submit_authorized=1），与左侧纸面各列是两套账，不可相加">实盘<br><span class="muted">腿 · 名义</span></th>
+  const recent=rows.slice(0,OPEN_DAYS).map(rowHtml).join("");
+  const older=rows.slice(OPEN_DAYS);
+  const head=`<thead><tr>
+    <th>事件日</th>
+    <th title="当天有实盘意向的站 / 其中真有腿成交的站">站数<br><span class="muted">下单/成交</span></th>
+    <th title="决策数：每个决策是一个篮子">篮子</th>
+    <th title="成交腿 / 挂出的腿，下面按阶段拆成交腿">腿<br><span class="muted">成交/挂出 · 分阶段</span></th>
+    <th title="当天所有成交腿的实付，不等结算">投入</th>
+    <th title="有真值的站日（不论成交没有）· 还没真值的站日">已结算<br><span class="muted">站日</span></th>
+    <th title="真值落在挂出的桶里，成交与否都算（2026-09-14 裁决）">篮子命中<br><span class="muted">站日</span></th>
+    <th title="真值落在成交的桶里，只数有成交的站日">持仓命中<br><span class="muted">站日</span></th>
+    <th title="一笔＝一个站日一个阶段里成交过的腿，资金看板的九个数按这个口径">已结算<br><span class="muted">笔</span></th>
+    <th title="按笔：持有的桶里含真值的比例">命中率<br><span class="muted">笔</span></th>
+    <th title="按笔：下单决策绑定的概率包里，持有各桶概率之和">声称<br><span class="muted">笔</span></th>
+    <th title="命中率 ÷ 声称，1.00× 是说得准">实现/声称</th>
+    <th title="(1−成本)/成本，成本按投入加权后再取倒数">赔率</th>
+    <th title="已结算笔的实付">结算投入</th><th>盈亏</th><th>ROI</th>
   </tr></thead>`;
-  return `<table>${head}<tbody>${recent}</tbody></table>`
-    + (older.length ? `<details style="margin-top:10px">
+  return `<h2>每日统计：按天汇总实盘下单、成交与结算</h2>
+  <p class="sub">全部读<b>实盘成交</b>（<span class="mono">live_submit_authorized=1</span>）：
+  钱是交易所报回来的成交名义，结算桶与资金看板同一个解析器。纸面账本从 2026-09-16 起只当规则对比器，不在这里。</p>
+  <div class="why"><b>两种口径，列头写明：</b><b>站日</b>＝一个站一个事件日，不论交易了几个阶段——
+  「篮子命中」看真值是否落在挂出的桶里（成交没有都算），「持仓命中」看是否落在成交的桶里；
+  <b>笔</b>＝一个站日里一个阶段成交过的腿，「命中率 / 声称 / 实现/声称 / 赔率 / 盈亏」按笔算，和资金看板的九个数同一口径。
+  「投入」是当天全部成交的实付、不等结算；「盈亏」只属于已结算的笔，所以未结算日这两列不能相除，ROI 用的是「结算投入」。</div>
+  <div class="card"><table>${head}<tbody>${recent}</tbody></table>${older.length ? `<details style="margin-top:10px">
       <summary class="muted" style="cursor:pointer">更早的 ${older.length} 天
         （${h(older[older.length-1].event_date)} 到 ${h(older[0].event_date)}）</summary>
       <table style="margin-top:8px">${head}
-        <tbody>${older.map(rowHtml).join("")}</tbody></table></details>` : "");
-  })()}</div>`;
+        <tbody>${older.map(rowHtml).join("")}</tbody></table></details>` : ""}</div>`;
 }
 
 function coverage(){
@@ -14566,434 +14171,118 @@ function stationSummary(){
 }
 
 
+// 逐站逐日明细 off the live book (user ruling, 2026-09-16).  One row per
+// station that minted a live intent that day, one cell per stage: every
+// bucket the stage posted, cold to warm, struck through where nothing
+// filled; what the held legs claimed and cost; and the per-leg fill under a
+// fold.  Stations with no live intent are not listed -- there is no live
+// account of them to show -- and the day line counts them.
 function roster(){
-  const S=D.selection||{};const rs=S.station_roster||[];
-  if(!rs.length) return "";
-  // The ledger now records why it did not seat, so these are its own words
-  // rather than the page's guess.  What "未入座" used to cover
-  // indiscriminately splits by which gate of the enumeration funnel took the
-  // last window still standing: the structural floors never reach a price at
-  // all (44% of those days could not reach three contiguous quoted buckets
-  // through the centre), a missing ask cannot be priced, a sub-floor leg is
-  // our own refusal to treat a tail offer as a price, and only a cleared
-  // window whose edge misses friction is the market pricing above the model
-  // (the other 56%, best-basket edge median -0.25).  Those two percentages
-  // were the argument for splitting the code and are now each attached to
-  // the code they describe.  A refused Kelly is a basket that was priced and
-  // judged not worth its price, a basket over its own payout is a loss by
-  // arithmetic the model never got asked about, and no depth is a book too
-  // thin to fill at any size.
-  //
-  // Short labels here, long ones in section 13; both come from the same
-  // reason codes, so a code added to the ledger needs an entry in both.
-  // The rule set the ledger currently compiles under.  Everything stamped
-  // with it is directly comparable; anything else is a leftover from before
-  // a rule change and is flagged per basket.
-  const CURRENT_RULE=(D.selection||{}).current_selection_rule_label||"";
-  const REASON=ABSENT_REASON;
+  const R=D.live_roster||{};
+  const dates=Object.keys(R).sort().reverse();
+  if(!dates.length) return "";
   const short=x=>String(x).replace("°C","").replace("°F","");
-  const LAB={above:"偏上",below:"偏下",aligned:"一致",unknown:"—"};
-  // Charter 55's own reading, named in its own words: a positive gap
-  // (mean above mode) is a warm tail.  Deliberately NOT reusing LAB --
-  // "偏上" there means "model above market", a quantity this column no
-  // longer shows, and one word for two different readings is how the
-  // disagreement between them stayed invisible.
-  const SKEW_LAB={"1":"偏暖","-1":"偏冷","0":"无偏斜"};
-  // An empty stage cell used to be a dash and nothing else, so a station with
-  // no P0 basket looked identical whether the market was never quoted or the
-  // objective priced it and declined.  The refusal goes in the cell it
-  // belongs to.
-  // The funnel enumeration ("枚举 26 = 断桶 0 + 不含中心桶 16 + …") is the same
-  // eight terms on every station of every day, and when the ledger names the
-  // basket the objective actually wanted, that clause is the only part of
-  // the line that is about THIS station.  So the target leads in the cell and
-  // the funnel moves to the tooltip, where its checkable equation is still
-  // one hover away (user ruling, 2026-08-28).  Split on the ledger's own
-  // marker; a detail without one is shown whole, exactly as before.
-  const FUNNEL=" · 枚举 ";
-  const why=(r)=>{
-    if(!r) return "";
-    const lab=REASON[r.reason]||[r.reason,""];
-    const d=r.detail||"";
-    const cut=d.indexOf(FUNNEL);
-    const shown=cut>0?d.slice(0,cut):d;
-    const tip=cut>0?`${lab[1]}\n\n${d.slice(cut+3)}`:lab[1];
-    return `<div class="muted" title="${h(tip)}">${h(lab[0])}</div>`+
-      (shown?`<div class="muted mono" style="font-size:11px"
-        title="${h(d)}">${h(shown)}</div>`:"");
-  };
-  const pctS=v=>v==null?"—":(v*100).toFixed(0)+"%";
   const usd2=v=>v==null?"—":v.toFixed(2);
-  // The order as posted, drawn through the window it filled.  A bucket that
-  // bought nothing is struck through rather than dropped: the charter's
-  // three-rung floor is a rule about what was posted, so a cell that shows
-  // only the fill cannot be read against it -- which is how one filled rung
-  // came to look like a one-rung basket that should never have been chosen.
-  // Charter 50a gives P1 a floor of two rungs, not three: the ladder
-  // converges as the day resolves and the tail rung is still carrying the
-  // insurance.  A flat three-rung test marks every legitimate P1 seat as a
-  // violation.
-  const FLOOR={"P0":3,"P0-M":3,"P1":2};
-  const entryCell=(e,stage)=>{
-    if(!e||!e.posted_leg_count) return "";
-    // Coldest rung first, rather than trusting the key order the writer
-    // happened to serialise ``posted_buckets_json`` in.
-    const ladder=rungSorted(e.legs, l=>l.bucket);
-    const legs=ladder.map(l=>l.empty
-      ? `<span class="muted" style="text-decoration:line-through">${short(l.bucket)}</span>`
-      : `<span>${short(l.bucket)}</span>`).join("+");
-    // Charter 50/50a is a rule about the ladder that was CHOSEN, so it
-    // stays; the fill pills beside it do not.  Crossing buys the basket
-    // whole, so "整篮" was true on every row and "缺腿" on none -- two
-    // badges that never varied, describing a resting lane this book has
-    // not run since charter 65 made taker the law.
-    const floorBad=e.posted_leg_count<(FLOOR[stage]||3);
-    const legLine=`<div class="mono" style="font-size:11px">${legs}
-      <span class="muted">${e.posted_leg_count}腿</span>
-      ${floorBad?`<span class="pill red" title="宪章 50/50a：${stage} 的桶数下界是 ${FLOOR[stage]||3}">桶数不足${FLOOR[stage]||3}</span>`:""}</div>`;
-    // What the position cost.  The three completion rates that used to sit
-    // here -- money, shares, rungs -- are all a resting lane's questions:
-    // a crossing basket fills whole or refuses, so all three read 100% (or
-    // a dash) on every row of this book.
-    const money=`<div class="muted" style="font-size:11px">实投 ${
-      usd2(e.filled_stake_usdc)}</div>`;
-    // What this rung cost, which the share count does not say: the rungs
-    // sell at different prices, so the widest leg is routinely not the
-    // dearest one and the basket total cannot be split by eye.  Shown as a
-    // share of the basket beside the cash, because "where is the money" is
-    // the question a four-leg ladder actually raises.
-    const approx=e.leg_cash_derived;
-    const cashTip=approx
-      ? "本行按建仓时的盘口卖一价折算（该行早于逐腿现金记账）；"
-        +"吃单走深盘口的部分它看不见，所以是下界"
-      : "成交时逐腿实付";
-    const legCash=(l)=>{
-      const got=l.filled_stake_usdc;
-      if(got==null) return "—";
-      const share=e.filled_stake_usdc>0
-        ? ` <span class="muted">(${(100*got/e.filled_stake_usdc).toFixed(0)}%)</span>`:"";
-      return `<span title="${h(cashTip)}">${approx?"≈":""}${
-        usd2(got)}</span>${share}`;
-    };
-    // The walked average the leg actually paid.  A crossing basket records
-    // no rung fills, so the price column is empty for every taker row on
-    // the page even though the money says exactly what was paid per share.
-    const legPrice=(l)=>{
-      if(l.empty) return "—";
-      if(l.filled_stake_usdc==null||!(l.filled_shares>0)) return "—";
-      const tip=approx?"建仓时的盘口卖一价，吃单走深的部分不在里面（下界）"
-        :"资金÷份数，即含走深盘口后的实付均价";
-      return `<span title="${h(tip)}">${
-        approx?"≈":""}${(l.filled_stake_usdc/l.filled_shares).toFixed(4)}</span>`;
-    };
-    // "目标份" and "档" were both the resting lane's account of a leg:
-    // what was posted versus what the book came down to.  Crossing has one
-    // number per leg, so the columns held a duplicate and a dash.
-    const rows=ladder.map(l=>`<tr${l.empty?' class="muted"':''}>
-      <td>${h(l.bucket)}</td>
-      <td>${l.empty?"<b>0</b>":shares(l.filled_shares)}</td>
-      <td>${legPrice(l)}</td>
-      <td>${legCash(l)}</td></tr>`).join("");
-    // A derived column that does not add up to the recorded stake says so
-    // rather than letting the reader sum it and trust the answer.
-    const gap=(approx&&e.leg_cash_shortfall_usdc>0.005)
-      ?`<div class="muted" style="font-size:11px">逐腿合计比实投少
-        ${usd2(e.leg_cash_shortfall_usdc)}（吃单走深了盘口，盘口价折算看不见这部分）</div>`:"";
-    return legLine+money+`<details style="font-size:11px">
-      <summary class="muted">逐腿</summary>
-      <table class="mono" style="font-size:11px"><thead><tr>
-        <th>腿</th><th>份数</th><th>均价</th>
-        <th title="该腿的资金成本（USDC）与占整篮比重">资金</th>
-      </tr></thead><tbody>${rows}</tbody></table>${gap}</details>`;
-  };
-  const cell=(s,extra,refusal,stage)=>{
-    if(!s) return `<td class="muted">—${why(refusal)}${extra||""}</td>`;
-    // One ladder, read cold to warm, used both for the rungs printed
-    // here and for the lean measured below: a window drawn in one order
-    // and counted in another can print "窗+1热" over a ladder that leans
-    // the other way.
-    const win=rungSorted(s.window);
-    const w=win.map(short).join("+");
-    // The chain settles once, and the stage that last topped the position
-    // up is the one that carries the result.  Marking every stage of a
-    // chain with the same hit reads as three bets that all won.
-    const res=s.hit==null?""
-      :(s.chain_tail
-        ?(s.hit?` <span class="up">中</span>`:` <span class="down">未中</span>`)
-        :` <span class="muted" title="本阶段是加仓，结算记在本链最后一次加仓上">并入本链</span>`);
-    // "Dust offer" is trading jargon and reads as nothing in Chinese; the
-    // thing itself is a price that exists on the book but cannot be filled.
-    const dust=s.dust_offer?` <span class="pill red">虚价</span>`:"";
-    const rung=s.centre_bucket?
-      `<div class="muted">均值桶 <span class="mono" style="color:var(--violet)" title="宪章54：概率加权重心落点，窗口必含此桶">${short(s.centre_bucket)}</span></div>`:"";
-    // Charter 55/58 read off the seat: the day's skew, which way the
-    // seated window leans around the mean centre, the whole-basket EV the
-    // price gate admitted on, and what crossing the book would have paid.
-    const skewLab=s.skew_sign==null?""
-      :s.skew_sign>0?`<span title="重心在众数热侧≥半桶：窗口不得向冷侧倾">右偏</span>`
-      :s.skew_sign<0?`<span title="重心在众数冷侧≥半桶：窗口不得向热侧倾">左偏</span>`
-      :`<span title="重心与众数差不足半桶：扩边方向不设约束">对称</span>`;
-    let leanLab="";
-    if(s.centre_bucket&&Array.isArray(s.window)){
-      const ci=win.indexOf(s.centre_bucket);
-      if(ci>=0){
-        const net=(win.length-1-ci)-ci;
-        leanLab=net>0?`窗+${net}热`:net<0?`窗${net}冷`:"窗居中";
-      }
-    }
-    const evLab=(s.edge==null)?""
-      :`<span class="${s.edge>0?"up":"down"}" title="宪章58：整篮正EV=概率和−买价和，唯一价格门">EV${s.edge>=0?"+":""}${s.edge.toFixed(3)}${s.edge>0?"✓":"✗"}</span>`;
-    const askLab=(s.ask_total==null)?""
-      :`<span title="按卖一全吃这套窗口的价格合计">买价和${s.ask_total.toFixed(3)}</span>`;
-    const seatFacts=(skewLab||leanLab||evLab||askLab)
-      ?`<div class="muted" style="font-size:11px">${[skewLab,leanLab,evLab,askLab].filter(Boolean).join(" · ")}</div>`:"";
-    // Which rule chose this basket.  A day compiled under a retired rule set
-    // sits beside one compiled under the current rule and is not comparable
-    // to it; without this the page invites exactly that comparison.  Current
-    // rule is stated once in the section header, so a basket only carries the
-    // tag when it differs from it -- otherwise every cell repeats the same
-    // string and the ones that matter stop standing out.
-    // The full rule string is a fingerprint; a cell only needs to warn that
-    // this basket is not comparable to the others, and the name belongs in
-    // the tooltip where it does not crowd the numbers out.
-    const tag=(s.selection_rule_label && s.selection_rule_label!==CURRENT_RULE)
-      ? `<div><span class="pill amber" title="按已退役规则选出，与当前规则不可直接比较：${h(s.selection_rule_label)}">旧规则</span></div>`
-      : "";
-    return `<td><div class="mono">${w}</div>${rung}${seatFacts}${tag}
-      <div class="muted">${(s.win_probability*100).toFixed(0)}%
-      @ ${s.all_in_cost.toFixed(3)} · ${s.odds==null?"—":s.odds.toFixed(1)+"x"}${res}${dust}</div>
-      ${entryCell(s.entry,stage)}${extra||""}</td>`;
-  };
-  // Every temperature on this row is in the market's own unit except the
-  // settled truth, which is Celsius everywhere.  For the eleven Fahrenheit
-  // stations that put "96-97" beside "36.0" in the same row, which is a
-  // 60-degree disagreement that is really no disagreement at all.  So the
-  // truth is shown in the unit the row's buckets are named in, and the unit
-  // is stated on the station rather than repeated in every cell.
-  const asUnit=(celsius,unit)=>unit==="F"?celsius*9/5+32:celsius;
-  // What the station-day did, as one of four states.  Reconstructing it
-  // meant reading three stage cells and a P&L column.
+  const pctS=v=>v==null?"—":(v*100).toFixed(0)+"%";
   const STATE={
-    hit:["st-hit","命中"],miss:["st-miss","未命中"],
-    open:["st-open","未结算"],flat:["st-flat","未建仓"],
+    hit:["st-hit","持仓命中"],basket:["st-open","篮子命中·没买到"],
+    miss:["st-miss","未命中"],open:["st-open","未结算"],flat:["st-flat","未成交"],
   };
   const stateOf=(e)=>{
-    if(!e.seated_stage_count) return "flat";
-    const settled=["P0","P0-M","P1"].map(k=>e.stages[k])
-      .find(v=>v&&v.chain_tail&&v.hit!=null);
-    if(!settled) return "open";
-    return settled.hit?"hit":"miss";
+    if(e.settled_bucket==null) return e.filled_legs?"open":"flat";
+    if(e.held_hit) return "hit";
+    if(e.basket_hit) return "basket";
+    return e.filled_legs?"miss":"flat";
+  };
+  const cell=(s, truth)=>{
+    if(!s) return `<td class="muted">—</td>`;
+    const ladder=rungSorted(s.buckets, b=>b.bucket);
+    const chips=ladder.map(b=>{
+      const got=b.filled_size>0;
+      const isTruth=truth!=null&&String(b.bucket)===String(truth);
+      return `<span class="mono ${got?(truth==null?"":(isTruth?"up":"down")):"muted"}"
+        style="${got?"":"text-decoration:line-through"}"
+        title="${h(b.bucket)} · 挂 ${shares(b.posted_size)} 份 · 成交 ${shares(b.filled_size)} 份 · 声称 ${pctS(b.claimed_probability)}${isTruth?" · 结算桶":""}">${h(short(b.bucket))}${isTruth?"✓":""}</span>`;
+    }).join("+");
+    const claim=s.claimed_win_probability, cost=s.basket_all_in_cost;
+    const odds=cost?((1-cost)/cost):null;
+    const money=s.filled_legs
+      ? `<div class="muted">${pctS(claim)} @ ${cost==null?"—":cost.toFixed(3)} · ${odds==null?"—":odds.toFixed(2)+"x"}</div>
+         <div class="muted" style="font-size:11px">实投 ${usd2(s.stake_usdc)} · ${s.filled_legs}/${s.posted_legs} 腿成交${s.baskets>1?` · ${s.baskets} 篮`:""}</div>`
+      : `<div class="muted" style="font-size:11px">${s.posted_legs} 腿挂出、一腿都没成交${s.baskets>1?` · ${s.baskets} 篮`:""}</div>`;
+    const legs=ladder.map(b=>`<tr${b.filled_size>0?"":' class="muted"'}>
+      <td>${h(b.bucket)}</td><td>${shares(b.posted_size)}</td>
+      <td>${b.filled_size>0?shares(b.filled_size):"<b>0</b>"}</td>
+      <td>${b.filled_size>0?(b.filled_notional_usdc/b.filled_size).toFixed(4):"—"}</td>
+      <td>${b.filled_size>0?usd2(b.filled_notional_usdc):"—"}</td>
+      <td>${pctS(b.claimed_probability)}</td></tr>`).join("");
+    return `<td><div class="mono" style="font-size:11.5px">${chips}</div>${money}
+      <details style="font-size:11px"><summary class="muted">逐腿</summary>
+      <table class="mono" style="font-size:11px"><thead><tr>
+        <th>桶</th><th>挂出份</th><th>成交份</th><th>均价</th><th>资金</th><th>声称</th>
+      </tr></thead><tbody>${legs}</tbody></table></details></td>`;
   };
   const row=(e)=>{
-    const any=e.stages.P0||e.stages["P0-M"]||e.stages.P1;
-    // One definition: mean minus mode, which is the predicate charter 55
-    // gates window selection on (user ruling, 2026-08-28).  This column
-    // used to show model-mean minus market-mean instead -- a different
-    // quantity, disagreeing with the skew on 34 of 400 seated rows
-    // (above/cold and below/warm) -- so the position a reader saw was not
-    // the position that chose the basket.  The market lean is still real
-    // information and is kept, but on the hover rather than presented as
-    // the answer, because two quantities under one heading is how the
-    // disagreement became invisible in the first place.
-    const side=any&&any.skew_sign!=null?`<span class="pill ${
-      any.skew_sign>0?"amber":any.skew_sign<0?"green":""}"
-      title="均值−众数（宪章55 选桶闸的同一把尺）· 模型相对市场：${
-        LAB[any.side]||"—"}${any.lean_buckets==null?"":
-        "（"+(any.lean_buckets>0?"+":"")+any.lean_buckets.toFixed(2)+" 桶）"}"
-      >${SKEW_LAB[String(any.skew_sign)]}</span>`:"";
-    const note=e.seated_stage_count?"":
-      `<span class="muted">${(REASON[e.absent_reason]||["—",""])[0]}</span>`;
-    // "No TX" used to cover both an aerodrome that never publishes one and a
-    // station-day the rotation never polled.  The first is a fact about the
-    // airport and closes the question; the second is an outage and opens it.
-    // ZUUU sat unpolled from 2026-09-02 to 2026-09-06 -- AWC publishing TX35
-    // the whole time -- reading as though Chengdu simply did not issue one.
-    const TAF_ABSENCE={
-      station_issues_no_tx:["该站不发温度组",
-        "该机场的 TAF 从不带 TX 组（45 站里有 28 站如此），P0-M 结构上无法服务该站"],
-      never_captured:["TAF 未采到",
-        "该站会发 TX 组，但这个站日一条前向采集都没有——是采集缺口，不是报文属性"],
-      captured_without_tx:["TAF 无温度组",
-        "该站日采到了 TAF，但报文里没有覆盖当地峰值的 TX 组"],
-    };
-    const tafGap=TAF_ABSENCE[e.taf_state]||TAF_ABSENCE.captured_without_tx;
-    const taf=e.taf_tx_c==null
-      ?`<div class="muted ${e.taf_state==="never_captured"?"down":""}"
-         title="${h(tafGap[1])}">${h(tafGap[0])}</div>`
-      :`<div class="muted">TAF 最高 <span class="mono" style="color:var(--up)">${
-        asUnit(e.taf_tx_c,e.settlement_unit||"C").toFixed(1)
-      }°${h(e.settlement_unit||"C")}</span></div>`;
-    // Recomputations and rung moves are different counts; conflating them
-    // reads as a rung that thrashed when it never budged.
-    const hist=e.p1_history||[];
-    const rungs=hist.map(x=>x.centre_bucket).filter(Boolean);
-    const path=rungs.filter((x,i)=>i===0||x!==rungs[i-1]);
-    // The last recompute's point estimate is P1's own predicted maximum for
-    // the day, shown in the market's unit.  The tag says which conditioner
-    // produced it: a physical-path prediction, the retired curve method, or
-    // -- at zero strength -- the bare hard bound, which is not a prediction
-    // and must not read as one.
-    const MODE_LABEL={
-      HARD_EXCLUSION_PLUS_CLOCK_CEILING_SOFT_LR_SUSPENDED_V6:"硬下界+天花板(软层暂停)",
-      PHYSICAL_ABSOLUTE_TMAX_SOFT_LR_PLUS_HARD_EXCLUSION_V5:"物理路径",
-      CONDITIONAL_HOURLY_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V4:"曲线法",
-      CONDITIONAL_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V3:"路径法(旧)",
-      FULL_PREFIX_ROOT_RECOMPUTE_SOFT_LR_PLUS_HARD_EXCLUSION_V2:"重算法(旧)",
-    };
-    const last=hist.length?hist[hist.length-1]:null;
-    const lastC=last==null?null:Number(last.centre_c);
-    const predUnit=e.settlement_unit||"C";
-    const strength=last&&last.trajectory_strength!=null
-      ?Number(last.trajectory_strength):null;
-    const modeTag=last==null?"":
-      (strength!=null&&strength<=0
-        ?`<span class="muted">仅硬下界</span>`
-        :`<span class="muted">${MODE_LABEL[last.likelihood_mode]||"—"}${
-            strength==null?"":" · 强度"+strength.toFixed(2)}</span>`);
-    const pred=(last==null||lastC==null||!isFinite(lastC))?"":
-      `<div class="muted">预测最高 <span class="mono" style="color:var(--up)">${
-        asUnit(lastC,predUnit).toFixed(1)}°${h(predUnit)}</span> ${modeTag}</div>`;
-    const drift=(!hist.length?"":
-      `<div class="muted">${hist.length} 次重算 ·
-       ${path.length<2
-         ? `横梁未动 <span class="mono">${path.length?short(path[0]):"—"}</span>`
-         : `横梁 <span class="mono">${path.map(short).join(" → ")}</span>`}</div>`)+pred;
-    // One number for the station-day, because it held one position.  The
-    // stake beside it is everything the chain spent, opening and top-ups.
-    const pnl=e.realized_usdc==null?'<span class="muted">—</span>':
-      `<span class="${e.realized_usdc>=0?"up":"down"}">${e.realized_usdc>=0?"+":""}${e.realized_usdc.toFixed(2)}</span>`
-      +(e.chain_stake_usdc==null?"":
-        `<div class="muted" style="font-size:11px">投入 ${e.chain_stake_usdc.toFixed(2)}</div>`);
-    // Only what happened at this station on this day.  The averages that
-    // used to sit here -- coverage, ask total, odds, EV, hit rate,
-    // calibration -- are computed over the station's whole window, so the
-    // same six numbers repeated on every date and read as the day's own
-    // account: ZUUU showed an ask total of 0.514 on 2026-08-17, a day whose
-    // book never reached the table.  They now live in section eight.
     const state=stateOf(e);
-    const unit=e.settlement_unit||"C";
+    const src=e.settled_source==="truth_lane"
+      ?`<div class="muted" style="font-size:11px" title="纸面账本没坐过这个站日，没有它的结算行：真值取自真值车道，按当日自己的桶阶梯落桶">真值车道</div>`:"";
+    const pnl=e.pnl_usdc==null
+      ?`<span class="muted">—</span>`
+      :`<span class="${e.pnl_usdc>=0?"up":"down"}">${e.pnl_usdc>=0?"+":""}${e.pnl_usdc.toFixed(2)}</span>`;
     return `<tr>
       <td class="st ${STATE[state][0]}" title="${STATE[state][1]}">
         <div class="mono">${e.market_slug
           ? `<a class="mkt" target="_blank" rel="noopener noreferrer"
-              href="https://polymarket.com/event/${encodeURIComponent(
-                e.market_slug)}"
-              title="打开 ${h(e.station_id)} ${h(e.event_date)} 的盘口"
-              >${h(e.station_id)} ↗</a>`
+              href="https://polymarket.com/event/${encodeURIComponent(e.market_slug)}"
+              title="打开 ${h(e.station_id)} ${h(e.event_date)} 的盘口">${h(e.station_id)} ↗</a>`
           : h(e.station_id)}</div>
         <div class="muted">${h(e.station_label)}</div>
-        <div class="muted" style="font-size:11px">${STATE[state][1]} ·
-          盘口 °${h(unit)}</div></td>
-      ${cell(e.stages.P0,"",(e.refusals||{}).P0,"P0")}
-      ${cell(e.stages["P0-M"],taf,(e.refusals||{})["P0-M"],"P0-M")}
-      ${cell(e.stages.P1,drift,(e.refusals||{}).P1,"P1")}
-      <td>${side}${note}</td>
-      <td class="mono">${e.settled_tmax_c==null?"—"
-        :asUnit(e.settled_tmax_c,unit).toFixed(1)+"°"+h(unit)}</td>
-      <td class="mono">${pnl}</td>
-      <td>${liveCell(LIVE_BY_SD[e.station_id+"|"+e.event_date])}</td></tr>`;
+        <div class="muted" style="font-size:11px">${STATE[state][1]}</div></td>
+      ${cell(e.stages.P0, e.settled_bucket)}
+      ${cell(e.stages["P0-M"], e.settled_bucket)}
+      ${cell(e.stages.P1, e.settled_bucket)}
+      <td class="mono">${e.settled_bucket==null?`<span class="muted">未结算</span>`:h(e.settled_bucket)}${src}</td>
+      <td class="mono">${pnl}<div class="muted" style="font-size:11px">投入 ${usd2(e.staked_usdc)}</div></td></tr>`;
   };
   const head=`<tr><th>站点</th><th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th>
-    <th title="均值−众数">偏斜</th><th>实测</th><th>实得</th>
-    <th title="这一站这一天的实盘意向（live_submit_authorized=1）。左边各列是纸面账本，两套账不可相加">实盘</th></tr>`;
-  const dates=S.roster_event_dates||[];
-  const block=(day)=>{
-    const rows=rs.filter(e=>e.event_date===day);
-    const seated=rows.filter(e=>e.seated_stage_count>0).length;
-    // P0 counted on its own: it is the opening stage, so "how many stations
-    // got a basket today" is a question about P0 and the all-stage count
-    // answers it only by accident.
-    const p0=rows.filter(e=>e.stages.P0).length;
-    // The rule name is a fingerprint, not prose, and printing it in full on
-    // every day pushed the numbers off the line.  What a reader needs from
-    // it is the exception: a day compiled under more than one rule set mixes
-    // two strategies and its totals are not one account.  Say that, and put
-    // the names in the tooltip.
-    const dayRules=[...new Set(rows.flatMap(e=>
-      ["P0","P0-M","P1"].map(k=>e.stages[k]&&e.stages[k].selection_rule_label)
-        .filter(Boolean)))].sort();
-    const stale=dayRules.filter(r=>r!==CURRENT_RULE);
-    const ruleNote=(dayRules.length>1||stale.length)
-      ? ` <span class="pill amber" title="${h(dayRules.join(" / "))}">${
-          dayRules.length>1?"混用两套选桶规则":"按已退役规则选出"}</span>`
-      : "";
-    // The day's entry account, summed over every seat it took.  A seat is a
-    // posted order first and a position second, and the gap between the two
-    // is the day's own number -- not a per-station curiosity.
-    const seats=rows.flatMap(e=>["P0","P0-M","P1"]
-      .map(k=>e.stages[k]).filter(v=>v&&v.entry&&v.entry.posted_leg_count));
-    const short3=rows.flatMap(e=>["P0","P0-M","P1"].map(k=>[k,e.stages[k]]))
-      .filter(([k,v])=>v&&v.entry&&v.entry.posted_leg_count
-        &&v.entry.posted_leg_count<(FLOOR[k]||3)).length;
-    const got=seats.reduce((s,v)=>s+v.stake_usdc,0);
-    const fill=seats.length?` · 实投 ${usd2(got)}${
-        short3?`<span class="pill red">桶数低于本阶段下界 ${short3}</span>`:""}`:"";
-    return {day:day, count:rows.length, p0:p0, seated:seated,
+    <th>结算桶</th><th>实得</th></tr>`;
+  const blocks=dates.map(day=>{
+    const rows=R[day]||[];
+    const filled=rows.filter(e=>e.filled_legs).length;
+    const staked=rows.reduce((a,e)=>a+(e.staked_usdc||0),0);
+    const settled=rows.filter(e=>e.pnl_usdc!=null);
+    const pnl=settled.reduce((a,e)=>a+e.pnl_usdc,0);
+    const money=settled.length
+      ?` · <span class="${pnl>=0?"up":"down"}">${pnl>=0?"+":""}${pnl.toFixed(2)} U</span>`:"";
+    return {day, count:rows.length, filled,
       pane:`<div data-daypane="${h(day)}" hidden>
       <div class="card">
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:baseline">
           <b class="mono">${h(day)}</b>
-          <span class="muted">${rows.length} 站 · P0 建仓 ${p0} · 任一阶段有座位 ${seated}${ruleNote}${fill}</span></div>
+          <span class="muted">${rows.length} 站下单 · ${filled} 站成交 · 实投 ${usd2(staked)} U${money}</span></div>
         <div class="scroll" style="margin-top:10px"><table>
           <thead>${head}</thead><tbody>${rows.map(row).join("")}</tbody></table></div>
       </div></div>`};
-  };
-  // Forty-five stations times thirteen days.  It used to stack thirteen
-  // <details>, newest open -- which is already an admission that nobody
-  // reads this across dates, and still cost twelve summary bars of height
-  // and a click to get anywhere.  Same day tabs as the centre-bias roster
-  // (user ruling, 2026-08-26), 全部 for reading it through or searching it
-  // with the browser's own find, which cannot see into a hidden pane.
-  // The pill carries the P0 seat count, not the station count: every day
-  // has all forty-five stations by construction, so that number describes
-  // the registry rather than the day and reads as noise on thirteen pills.
-  const blocks=dates.map(day=>block(day));
-  // Nothing open until a date is clicked (user ruling, 2026-09-11).  Even
-  // one day of this is forty-five stations wide; it is a table you arrive
-  // at with a question, and opening the newest one by default spent the
-  // height whether or not anyone had that question.
-  const dayNav=`<nav class="daytabs">${blocks.map((b,i)=>
+  });
+  // Nothing open until a date is clicked (user ruling, 2026-09-11).
+  const dayNav=`<nav class="daytabs">${blocks.map(b=>
     `<button type="button" data-day="${h(b.day)}"
-      title="${b.count} 站 · P0 建仓 ${b.p0} · 任一阶段有座位 ${b.seated}">${h(b.day)}
-      <span class="muted">建仓 ${b.p0}</span></button>`).join("")
+      title="${b.count} 站下单 · ${b.filled} 站成交">${h(b.day)}
+      <span class="muted">成交 ${b.filled}</span></button>`).join("")
     }<button type="button" data-day="all">全部 <span class="muted">${
       blocks.length} 天</span></button></nav>`;
-  const legend=Object.entries(REASON).map(([k,v])=>
-    `<div class="muted">· <b>${v[0]}</b>：${v[1]}</div>`).join("");
-  // Newest day open, everything older folded away beneath it.
-  return `<h2>逐站逐日明细：逐个站日核对选了哪些桶、买到了哪些</h2>
-  <p class="sub">每个事件日一组，注册表里的每个站都在，包括没有座位、甚至当天没算出概率的
-  ——没坐比坐了更值得看清原因。
-  每格上行是买到的桶，下方是横梁与胜率 @ 成本 · 赔率；再下一行是这一笔的腿数与实投，
-  展开「逐腿」是每条腿的份数 / 均价 / 资金成本
-  （该腿实付的 USDC 与它占整篮资金的比重；带 ≈ 的是按建仓盘口价折算的下界，
-  早于逐腿现金记账的旧行才会出现）。
-  空格里写的是账本自己给出的拒绝理由，不再统一算作「未入座」。
-  P1 格里的「预测最高」是当天<b>最后一次重算</b>的点预测（后验加权中心，随盘口单位显示），
-  旁边注明它出自哪个条件化器：<b>物理路径</b>是只看观测的 v5 预测器（带生效强度），
-  「仅硬下界」表示该次重算没有任何软证据参与——那不是预测，只是排除。
-  每行只讲这一天：跨日均值在「市场与执行」的「逐站汇总（跨日）」逐站汇总。
-  <b>默认一天都不展开</b>——点下面的日期展开那一天，
-  「全部」是通栏视图，也是浏览器自带查找唯一能搜到所有日期的那一档。</p>
+  return `<h2>逐站逐日明细：逐个站日核对实盘挂了哪些桶、买到了哪些</h2>
+  <p class="sub">全部读<b>实盘成交</b>。每个事件日一组，只列当天铸出过实盘意向的站；纸面账本从 2026-09-16 起只当规则对比器，不在这里。
+  每格上行是这一阶段挂出的桶（冷到暖，划线＝一份没成交，✓＝结算桶），下方是持有各桶的声称 @ 成本 · 赔率、实投与成交腿数，
+  展开「逐腿」是每个桶挂出份数 / 成交份数 / 均价 / 资金 / 声称。
+  <b>默认一天都不展开</b>——点日期展开，「全部」是通栏视图。</p>
   <div class="why"><b>站点格的底色＝这个站日最后怎么了：</b>
-  <span class="pill green">命中</span>真值落在最终持仓里 ·
-  <span class="pill red">未命中</span>落在持仓外 ·
-  <span class="pill amber">未结算</span>建了仓但当天真值还没到 ·
-  <span class="pill" style="background:var(--why-bg);color:var(--accent)">未建仓</span>
-  P0 没入座，原因写在格子里。
-  <b>温度单位随盘口</b>：11 个美国站的桶名是华氏，其余是摄氏，站点格里注明了是哪一种；
-  「实测」与 TAF 都换算成该站盘口的单位显示，所以一行之内不会出现摄氏和华氏并排。</div>
-  <div class="why"><b>三个阶段是一个仓位、一本账。</b>P0 建仓，P0-M 与 P1 在同一个仓位上
-  <b>加仓</b>（只加不减：可以加宽梯子、也可以把已有的一级买厚，但不卖回），
-  一个站日只结算一次，命中按<b>最终持仓</b>判。所以「实得」是整条链的一个数，
-  「投入」是开仓加历次加仓的总和；后面两个阶段的格子里写「并入本链」，
-  不是没结算，是结算记在本链最后一次加仓那一格。
-  同一个 2% 单站上限也管整条链——三个阶段各拿 2% 就是同一件事上押了 6%。</div>
-  <div class="why"><b>桶数下界是选桶层的规则。</b>宪章 50/50a 要求席位 ≥3 桶
-  （P1 是 ≥2），低于下界才标红。宪章 65 之后建仓一律吃单，整篮要么按卖价买齐、
-  要么不买，所以这一栏只有一个腿数——从前那套"挂出去几腿、买到几腿、三个完成率"
-  是挂单车道的账，那条车道已经不在跑。</div>
-  <div class="why">${legend}</div>
+  <span class="pill green">持仓命中</span>成交的桶里有真值 ·
+  <span class="pill amber">篮子命中·没买到</span>挂出的桶里有真值、但那一桶没成交 ·
+  <span class="pill red">未命中</span>挂出的桶里没有真值 ·
+  <span class="pill amber">未结算</span>买了但真值还没到 ·
+  <span class="pill">未成交</span>挂了一腿都没成交。
+  <b>声称</b>＝下单那个决策绑定的概率包里该桶的概率；份数不等的持仓按概率加权份数算成本，保证「投入×(声称÷成本−1)」就是这些腿声称能赚的钱。</div>
   <div data-daytabs="roster">${dayNav}${blocks.map(b=>b.pane).join("")}</div>`;
 }
 
@@ -17243,14 +16532,14 @@ const LANES = {
   "分布与持仓分家": {layer:"定注层 · 读数", status:"audit",
     role:"分布说的桶和真正持有的桶差多少"},
   // --- the book's own account ---
-  "资金看板": {layer:"账本 · 读数", status:"audit",
-    role:"这本账值多少：纸面账本（总账、对比、风险、曲线）与实盘（订单、意向簿）"},
+  "资金看板": {layer:"实盘 · 读数", status:"audit",
+    role:"实盘赚没赚：总账、对比、风险、曲线，订单数量与站明细，意向簿"},
   "Live 上线准备": {layer:"执行层 · 运维", status:"audit",
     role:"开关能不能翻、翻了之后哪几道门还拦着"},
-  "每日统计": {layer:"账本 · 读数", status:"audit",
-    role:"每天开了几条链、投入多少、结算多少"},
-  "逐站逐日明细": {layer:"账本 · 读数", status:"audit",
-    role:"每个站日到底发生了什么"},
+  "每日统计": {layer:"实盘 · 读数", status:"audit",
+    role:"实盘每天下了几站、成交多少、结算赚没赚"},
+  "逐站逐日明细": {layer:"实盘 · 读数", status:"audit",
+    role:"每个站日实盘挂了哪些桶、买到了哪些"},
   "逐站汇总（跨日）": {layer:"账本 · 读数", status:"audit",
     role:"跨日看每个站的账"},
   "没建仓是因为什么": {layer:"全链闸 · 读数", status:"audit",

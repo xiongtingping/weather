@@ -303,6 +303,79 @@ def load_legs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return legs
 
 
+def stage_summary(group: list[dict[str, Any]]) -> dict[str, Any]:
+    """What one stage of one station-day posted, held, paid and claimed.
+
+    ``group`` is every live leg of that stage, filled or not.  Settled or
+    not: the settlement rows add the truth to this, and the station-day
+    roster reads it for days still open.
+    """
+
+    filled = [leg for leg in group if leg["filled_size"] > 0]
+    shares: dict[str, float] = defaultdict(float)
+    cash: dict[str, float] = defaultdict(float)
+    # A bucket bought by two decisions of one stage at different claims is
+    # held at the share-weighted claim of the two.
+    claim_mass: dict[str, float] = defaultdict(float)
+    claim_known = True
+    for leg in filled:
+        bucket = leg["bucket"]
+        shares[bucket] += leg["filled_size"]
+        cash[bucket] += leg["filled_notional_usdc"]
+        if leg["claimed_probability"] is None:
+            claim_known = False
+        else:
+            claim_mass[bucket] += leg["claimed_probability"] * leg["filled_size"]
+    stake = sum(cash.values())
+    claim = None
+    cost = None
+    claimed_ev = None
+    if filled and claim_known:
+        per_bucket = {
+            bucket: claim_mass[bucket] / shares[bucket]
+            for bucket in shares if shares[bucket] > 0
+        }
+        claim = sum(per_bucket.values())
+        weighted = sum(per_bucket[b] * shares[b] for b in per_bucket)
+        claimed_ev = weighted - stake
+        if claim > 0 and weighted > 0:
+            cost = stake / (weighted / claim)
+    posted: dict[str, dict[str, Any]] = {}
+    for leg in group:
+        slot = posted.setdefault(leg["bucket"], {
+            "bucket": leg["bucket"], "posted_size": 0.0, "legs": 0,
+            "filled_size": 0.0, "filled_notional_usdc": 0.0,
+            "claimed_probability": leg["claimed_probability"],
+        })
+        slot["posted_size"] += leg["requested_size"]
+        slot["legs"] += 1
+        slot["filled_size"] += leg["filled_size"]
+        slot["filled_notional_usdc"] += leg["filled_notional_usdc"]
+        # The newest decision's claim for a bucket nothing filled; the held
+        # claim for one that did.
+        if leg["claimed_probability"] is not None:
+            slot["claimed_probability"] = leg["claimed_probability"]
+    for bucket, slot in posted.items():
+        if shares.get(bucket):
+            slot["claimed_probability"] = (
+                claim_mass[bucket] / shares[bucket] if claim_known
+                else slot["claimed_probability"]
+            )
+    return {
+        "baskets": len({leg["decision_id"] for leg in group}),
+        "posted_legs": len(group),
+        "filled_legs": len(filled),
+        "stake_usdc": stake,
+        "claimed_win_probability": claim,
+        "basket_all_in_cost": cost,
+        "claimed_ev_usdc": claimed_ev,
+        "held_shares": dict(shares),
+        "held_buckets": sorted(shares),
+        "intended_buckets": sorted(posted),
+        "buckets": list(posted.values()),
+    }
+
+
 def settlement_rows(
     legs: list[dict[str, Any]],
     settled: dict[tuple[str, str], tuple[str, str]],
@@ -315,67 +388,47 @@ def settlement_rows(
     pair the paper book scores as ``hit`` and ``intended_hit``.
     """
 
-    groups: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
-    for leg in legs:
-        groups[(leg["station_id"], leg["event_date"], leg["stage"])].append(leg)
     out: list[dict[str, Any]] = []
-    for (station, day, stage), group in sorted(groups.items()):
+    for (station, day, stage), group in sorted(group_legs(legs).items()):
         landed = settled.get((station, day))
-        filled = [leg for leg in group if leg["filled_size"] > 0]
-        if landed is None or not filled:
+        if landed is None:
+            continue
+        summary = stage_summary(group)
+        if not summary["filled_legs"]:
             continue
         truth, source = landed
-        shares: dict[str, float] = defaultdict(float)
-        cash: dict[str, float] = defaultdict(float)
-        # A bucket bought by two decisions of one stage at different claims
-        # is held at the share-weighted claim of the two.
-        claim_mass: dict[str, float] = defaultdict(float)
-        claim_known = True
-        for leg in filled:
-            bucket = leg["bucket"]
-            shares[bucket] += leg["filled_size"]
-            cash[bucket] += leg["filled_notional_usdc"]
-            if leg["claimed_probability"] is None:
-                claim_known = False
-            else:
-                claim_mass[bucket] += (
-                    leg["claimed_probability"] * leg["filled_size"]
-                )
-        stake = sum(cash.values())
-        payout = shares.get(truth, 0.0)
-        intended = sorted({leg["bucket"] for leg in group})
-        claim = None
-        cost = None
-        claimed_ev = None
-        if claim_known:
-            per_bucket = {
-                bucket: claim_mass[bucket] / shares[bucket]
-                for bucket in shares if shares[bucket] > 0
-            }
-            claim = sum(per_bucket.values())
-            weighted = sum(per_bucket[b] * shares[b] for b in per_bucket)
-            claimed_ev = weighted - stake
-            if claim > 0 and weighted > 0:
-                cost = stake / (weighted / claim)
+        stake = summary["stake_usdc"]
+        payout = summary["held_shares"].get(truth, 0.0)
         out.append({
             "station_id": station,
             "event_date": day,
             "stage": stage,
             "settled_bucket": truth,
             "settled_source": source,
-            "hit": 1 if truth in shares else 0,
-            "intended_hit": 1 if truth in intended else 0,
+            "hit": 1 if truth in summary["held_shares"] else 0,
+            "intended_hit": 1 if truth in summary["intended_buckets"] else 0,
             "stake_usdc": stake,
             "payout_usdc": payout,
             "pnl_usdc": payout - stake,
-            "claimed_win_probability": claim,
-            "basket_all_in_cost": cost,
-            "claimed_ev_usdc": claimed_ev,
-            "filled_legs": len(filled),
-            "held_buckets": sorted(shares),
-            "intended_buckets": intended,
+            "claimed_win_probability": summary["claimed_win_probability"],
+            "basket_all_in_cost": summary["basket_all_in_cost"],
+            "claimed_ev_usdc": summary["claimed_ev_usdc"],
+            "filled_legs": summary["filled_legs"],
+            "held_buckets": summary["held_buckets"],
+            "intended_buckets": summary["intended_buckets"],
         })
     return out
+
+
+def group_legs(
+    legs: list[dict[str, Any]],
+) -> dict[tuple[str, str, str], list[dict[str, Any]]]:
+    """Legs by (station, event day, stage)."""
+
+    groups: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
+    for leg in legs:
+        groups[(leg["station_id"], leg["event_date"], leg["stage"])].append(leg)
+    return groups
 
 
 def build(conn: sqlite3.Connection) -> dict[str, Any]:
