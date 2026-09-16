@@ -10965,35 +10965,50 @@ font-size:12px;margin:2px 0}
 .cl-axis b{position:absolute;left:50%;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:var(--text)}
 @media (max-width:640px){.tl-row{grid-template-columns:1fr}.tl-verdict{text-align:left}}
 footer{margin-top:34px;color:var(--muted);font-size:12.5px;text-align:center}
-/* The group switcher.  Sticky, because it is the only way back to the
-   other two thirds of the page once a long section has been scrolled
-   into. */
-.topnav{position:sticky;top:0;z-index:8;margin:0 0 16px;padding:9px 0 0;
+/* The sticky head.  Sticky, because it is the only way back to the other
+   two thirds of the page once a long section has been scrolled into.
+   Two rows at two weights (user ruling, 2026-09-16: "信息太密集，没有主次").
+   The first row is what a reader ACTS on -- home, the three areas, the
+   live knobs, the theme -- drawn at full weight.  The second is the
+   section index, which is looked up rather than scanned, so it is small
+   borderless text under its area's caption.  Before this every one of
+   thirty-odd chips, tabs and steppers wore the same border, and a bar of
+   equal boxes has no first thing to read. */
+.topnav{position:sticky;top:0;z-index:8;margin:0 0 16px;padding:8px 0 0;
 background:var(--bg);border-bottom:1px solid var(--line)}
-/* Five areas, not one flat row (user ruling, 2026-08-29).  Each group
-   carries its own hue -- set per button as --tone -- so the bar reads as
-   regions rather than as eleven identical pills, and the group titles
-   below repeat the same hue so a reader never has to match text to know
-   where a tab landed.  "全部" is pushed to its own end of the bar because
-   it is not one of the areas; it is the way out of them. */
-.tabs{display:flex;gap:7px;flex-wrap:wrap;align-items:stretch;
-margin:0;padding:0 0 9px}
-.tabs button{cursor:pointer;background:var(--card);color:var(--muted);
-border:1px solid var(--line);border-radius:9px;padding:5px 12px 5px 10px;
-font-family:inherit;font-size:13px;line-height:1.35;
-display:flex;align-items:center;gap:7px;
-border-left:3px solid var(--tone,var(--line))}
-.tabs button:hover{color:var(--text);border-color:var(--line);
-border-left-color:var(--tone,var(--accent));background:var(--why-bg)}
-.tabs button[data-active="1"]{color:var(--text);
-border-color:var(--tone,var(--accent));background:var(--why-bg);
-box-shadow:inset 0 0 0 1px var(--tone,var(--accent))}
-.tabs button .cnt{font-size:11px;color:var(--muted);
-background:var(--bar-bg);border-radius:99px;padding:0 6px;min-width:18px;
-text-align:center}
-.tabs .spacer{flex:1;min-width:10px}
-.tabs button.all{border-left-color:var(--line);color:var(--muted)}
-.tabs .muted{font-size:11.5px}
+.navtop{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;
+padding:0 0 8px}
+.nav-fill{flex:1;min-width:0}
+.nav-div{flex:none;width:1px;height:20px;background:var(--line)}
+/* 首页 (user ruling, 2026-09-16): back to the page head -- the total
+   light, the LIVE switch and the lamp rows -- from anywhere on the page. */
+.nav-home{cursor:pointer;display:inline-flex;align-items:center;gap:6px;
+background:none;border:0;border-radius:8px;padding:5px 9px 5px 6px;
+font-family:inherit;font-size:14px;font-weight:650;line-height:1.3;
+color:var(--text);white-space:nowrap}
+.nav-home svg{width:16px;height:16px;flex:none}
+.nav-home:hover{background:var(--why-bg);color:var(--accent)}
+.nav-home[data-here="1"]{color:var(--accent)}
+/* Three areas (user ruling, 2026-08-29), now one segmented control rather
+   than four bordered cards.  The hue stays -- a dot per area, the same
+   hue the group titles below carry -- and the chosen area is the one
+   segment lifted onto the card colour.  "全部" is the last segment, with
+   no dot, because it is not one of the areas; it is the way out of them. */
+.tabs{display:inline-flex;gap:2px;flex-wrap:wrap;align-items:center;
+margin:0;padding:3px;background:var(--bar-bg);border-radius:10px}
+.tabs button{cursor:pointer;background:none;color:var(--muted);border:0;
+border-radius:7px;padding:4px 11px 4px 9px;font-family:inherit;
+font-size:13px;line-height:1.4;display:flex;align-items:center;gap:6px;
+white-space:nowrap}
+.tabs button::before{content:"";flex:none;width:7px;height:7px;
+border-radius:50%;background:var(--tone,transparent)}
+.tabs button.all{padding-left:11px}
+.tabs button.all::before{display:none}
+.tabs button:hover{color:var(--text)}
+.tabs button[data-active="1"]{color:var(--text);background:var(--card);
+font-weight:620;box-shadow:0 1px 2px rgba(0,0,0,.14)}
+.tabs button .cnt{font-size:11px;color:var(--muted);font-weight:400;
+font-variant-numeric:tabular-nums}
 /* The group heading wears its area's colour on the same edge as its tab. */
 .grouptitle{border-left:3px solid var(--tone,var(--line));padding-left:10px}
 /* Per-day tabs inside a card.  The same pill as the group switcher, one
@@ -11054,40 +11069,86 @@ background:var(--card);border:1px solid var(--line);border-radius:7px}
 .grouptitle{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;
 margin:18px 0 0;font-weight:650}
 .grouptitle .muted{font-weight:400}
-#theme{position:fixed;top:14px;right:16px;z-index:9;cursor:pointer;
-background:var(--card);color:var(--muted);border:1px solid var(--line);
-border-radius:99px;padding:6px 13px;font-family:inherit;font-size:13px;
-line-height:1;box-shadow:var(--shadow)}
+/* The theme button rides at the end of the bar.  It is still a static
+   element of the body, moved in once the bar exists, so a page whose
+   render failed keeps it -- in the corner where it always was. */
+#theme{cursor:pointer;background:none;color:var(--muted);
+border:1px solid var(--line);border-radius:8px;padding:0;width:30px;
+height:28px;font-family:inherit;font-size:14px;line-height:1;flex:none}
 #theme:hover{color:var(--text);border-color:var(--accent)}
+body > #theme{position:fixed;top:14px;right:16px;z-index:9;width:auto;
+padding:6px 12px;background:var(--card);box-shadow:var(--shadow)}
 /* Second row of the sticky bar: one chip per section on screen, so a
    twenty-section page is one click deep instead of one scroll long.  It
    wraps rather than scrolling sideways -- a jump bar whose far half is
-   off-screen is the problem it was added to solve, and the labels are cut
-   short enough that two rows is the worst case. */
-.jump{display:flex;gap:5px;flex-wrap:wrap;align-items:center;
-padding:0 0 8px}
+   off-screen is the problem it was added to solve.  The chips are text,
+   not boxes, and each area gets its own line behind a caption that wears
+   the area's hue on the same edge as the area title below, so the thirty
+   chips under 全部 read as four short lists rather than one long one.  The
+   chip for the section under the bar is marked, which makes the same rows
+   answer "where am I" as well as "where can I go". */
+.jump{display:grid;grid-template-columns:auto minmax(0,1fr);gap:1px 8px;
+align-items:start;padding:0 0 7px}
+.jump-g{margin-top:3px;padding:0 2px 0 6px;font-size:11px;font-weight:650;
+line-height:16px;color:var(--muted);white-space:nowrap;
+border-left:3px solid var(--tone,var(--line))}
+.jump-run{display:flex;flex-wrap:wrap;gap:0 1px;align-items:center}
 .jump button{cursor:pointer;white-space:nowrap;flex:none;background:none;
-color:var(--muted);border:1px solid transparent;border-radius:99px;
-padding:3px 9px;font-family:inherit;font-size:12.5px;line-height:1.35}
-.jump button:hover{color:var(--text);border-color:var(--line);
-background:var(--card)}
-.jump .sep{flex:none;width:1px;height:14px;background:var(--line);margin:0 4px}
-/* The live knobs, top right of the bar.  Small, because they are three
-   numbers and six steppers; never hidden, because they are the controls
-   that change what production does on its next round. */
-.navtop{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.navtop .tabs{flex:1;min-width:240px}
-.navctl{display:flex;align-items:center;gap:9px;flex-wrap:wrap;
-margin-left:auto;font-size:12px;color:var(--text)}
-.navctl-i{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
-.navctl-i b{font-variant-numeric:tabular-nums}
-.navctl .lc-w{cursor:pointer;background:var(--card);color:var(--muted);
-border:1px solid var(--line);border-radius:6px;padding:1px 6px;
-font-family:inherit;font-size:11.5px;line-height:1.45}
-.navctl .lc-w:disabled{opacity:.45;cursor:not-allowed}
-.navctl .lc-w:not(:disabled):hover{color:var(--text);border-color:var(--accent)}
-.navctl-s{font-size:11px;max-width:210px;overflow:hidden;text-overflow:ellipsis;
-white-space:nowrap}
+color:var(--muted);border:0;border-radius:6px;padding:2px 7px;
+font-family:inherit;font-size:12.5px;line-height:1.45}
+.jump button:hover{color:var(--text);background:var(--bar-bg)}
+.jump button[aria-current="true"]{color:var(--accent);background:var(--why-bg)}
+/* The live knobs, top right of the bar (user ruling, 2026-09-11).  One
+   card, one stepper per knob: the value sits between its own two buttons,
+   so which button moves which number is never a matter of reading
+   distances.  The status at the front says what a click would reach --
+   the control server, and whether the book behind it is sending orders --
+   because the same click means paper on one day and money on the next. */
+.navctl{display:flex;align-items:center;flex-wrap:wrap;font-size:12px;
+color:var(--text);background:var(--card);border:1px solid var(--line);
+border-radius:10px;padding:2px 3px}
+.navctl[data-lc="live"]{border-color:var(--red)}
+.navctl-k{display:inline-flex;align-items:center;gap:6px;padding:1px 7px;
+white-space:nowrap;border-left:1px solid var(--line)}
+.navctl-l{color:var(--muted)}
+.stp{display:inline-flex;align-items:center;background:var(--bar-bg);
+border-radius:7px;padding:1px}
+.stp b{min-width:3.3em;padding:0 3px;text-align:center;font-size:13px;
+font-weight:650;font-variant-numeric:tabular-nums;border-radius:5px}
+.navctl .lc-w{cursor:pointer;background:none;color:var(--muted);border:0;
+border-radius:6px;min-width:22px;height:22px;padding:0 5px;
+font-family:inherit;font-size:14px;line-height:22px}
+.navctl .lc-w.coarse{font-size:11px;font-variant-numeric:tabular-nums}
+.navctl .lc-w:not(:disabled):hover{background:var(--card);color:var(--text);
+box-shadow:0 1px 2px rgba(0,0,0,.14)}
+.navctl .lc-w:disabled{opacity:.35;cursor:not-allowed}
+.navctl-k[aria-busy="true"] b{opacity:.45}
+.stp b.lc-flash{animation:lc-flash .9s ease-out}
+@keyframes lc-flash{from{background:var(--pill-green-bg);
+color:var(--pill-green-fg)}}
+.navctl-s{display:inline-flex;align-items:center;gap:6px;padding:1px 9px 1px 6px;
+font-size:12px;color:var(--muted);white-space:nowrap}
+.navctl-s i{flex:none;width:8px;height:8px;border-radius:50%;
+background:var(--muted)}
+.navctl[data-lc="down"] .navctl-s{color:var(--amber)}
+.navctl[data-lc="down"] .navctl-s i{background:none;
+box-shadow:inset 0 0 0 1.5px var(--amber)}
+.navctl[data-lc="armed"] .navctl-s i{background:var(--amber)}
+.navctl[data-lc="live"] .navctl-s{color:var(--red);font-weight:620}
+.navctl[data-lc="live"] .navctl-s i{background:var(--red);
+box-shadow:0 0 0 3px var(--pill-red-bg)}
+/* A phone gets the same two rows, but the section index scrolls sideways:
+   wrapped at 375px it would be the whole screen, which is a bar that
+   hides the page it navigates. */
+@media(max-width:760px){
+.navtop{gap:6px}
+.nav-div,.nav-fill,.tabs button .cnt{display:none}
+#theme{order:1;margin-left:auto}
+.tabs{order:2;width:100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+.navctl{order:3;width:100%;justify-content:space-between}
+.jump-run{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+.jump-run::-webkit-scrollbar{display:none}
+}
 /* The same number under all three weightings, inside the tile that owns it.
    A row rather than a table: three values is not a table, and the table it
    replaced printed every figure on the section twice. */
@@ -11099,22 +11160,16 @@ padding-top:6px;border-top:1px solid var(--line);font-size:11.5px}
    inferred from one cell of nine. */
 tr.buyable td:first-child{box-shadow:inset 3px 0 0 var(--green)}
 tr.buyable td{background:rgba(63,185,80,.07)}
-/* The starred chips.  Filled rather than merely coloured: the bar already
-   spends colour on the group tone, and a chip that differs only in hue is
-   found no faster than one that does not. */
-.jump button.star{color:var(--text);border-color:var(--accent);
-background:var(--why-bg);font-weight:620}
-.jump button.star::before{content:"★";margin-right:4px;font-size:10.5px;
+/* The starred chips.  Weight rather than hue: the bar already spends
+   colour on the area tone, and a chip that differs only in hue is found no
+   faster than one that does not.  They were filled pills until 2026-09-16;
+   among borderless text, full-strength bold with a star is the contrast,
+   and five filled pills were the loudest thing on a bar whose loudest
+   thing should be the knobs. */
+.jump button.star{color:var(--text);font-weight:620}
+.jump button.star::before{content:"★";margin-right:3px;font-size:10px;
 color:var(--accent);vertical-align:1px}
-.jump button.star:hover{background:var(--card);border-color:var(--accent)}
-/* Only once there is something to come back from. */
-#totop{position:fixed;right:16px;bottom:18px;z-index:9;cursor:pointer;
-background:var(--card);color:var(--muted);border:1px solid var(--line);
-border-radius:99px;padding:7px 14px;font-family:inherit;font-size:13px;
-line-height:1;box-shadow:var(--shadow);display:none}
-#totop[data-show="1"]{display:block}
-#totop:hover{color:var(--text);border-color:var(--accent)}
-@media(max-width:820px){#theme{position:static;margin:14px 20px 0}}
+@media(max-width:820px){body > #theme{position:static;margin:14px 20px 0}}
 </style>
 <script>
 // Before first paint, so a light-mode reader does not get a dark flash.
@@ -11132,7 +11187,6 @@ line-height:1;box-shadow:var(--shadow);display:none}
 </script>
 </head><body>
 <button id="theme" type="button"></button>
-<button id="totop" type="button" title="返回顶部">↑ 顶部</button>
 <div class="wrap" id="app"></div>
 <script>
 const D = __PAYLOAD__;
@@ -16032,26 +16086,52 @@ function moneyBoard(){
 // the section that explains it.  Same ids as before, because the control
 // server's own script paints into them and enables the buttons; only the
 // layout moved.
+// The knobs, their names, and how each one reads back out of the control
+// server's answer.  One table, because the stepper that draws a knob, the
+// paint that fills it and the click that moves it all have to agree on
+// which field is which -- the cap's "unset means the default" rule used to
+// be written out twice.
+const LC_KNOBS = {
+  kelly:  {id:"lc-kelly", name:"凯利", path:"/api/kelly",
+    field:"portfolio_risk_fraction", spec:s=>s.kelly,
+    read:s=>s.kelly.portfolio_risk_fraction,
+    fmt:v=>Number(v).toFixed(2)},
+  budget: {id:"lc-budget", name:"预算", path:"/api/budget", unit:" USDC",
+    field:"target_remaining_budget_usdc", spec:s=>s.budget,
+    read:s=>s.budget.target_remaining_budget_usdc,
+    fmt:v=>Number(v).toFixed(2)},
+  cap:    {id:"lc-cap", name:"单站", path:"/api/station-cap", unit:" USDC",
+    field:"station_cap_usdc", spec:s=>s.station_cap,
+    read:s=>(s.station_cap&&s.station_cap.station_cap_usdc!=null)
+      ? s.station_cap.station_cap_usdc
+      : ((s.station_cap&&s.station_cap.default_usdc)||15),
+    fmt:v=>String(Math.round(Number(v)*100)/100)},
+};
 function liveControlStrip(){
   const L = D.live_readiness || {};
   if(!L.available) return "";
-  const b=(knob,delta,text)=>`<button type="button" disabled class="lc-w"
+  const b=(knob,delta,text,coarse)=>`<button type="button" disabled
+    class="lc-w${coarse?" coarse":""}" data-knob="${knob}" data-delta="${delta}"
+    aria-label="${LC_KNOBS[knob].name} ${delta>0?"+":"−"}${Math.abs(delta)}"
     onclick="lcAdjust('${knob}',${delta})">${text}</button>`;
-  return `<div class="navctl" title="凯利系数 portfolio_risk_fraction ·
-预算 target_remaining_budget_usdc · 单站上限 station_cap_usdc（默认 15，范围 1-30；
-三个本金型边界同步派生）。控制服务只监听 127.0.0.1:8788，每次改动写审计日志。">
-    <span class="navctl-i"><span class="muted">凯利</span>
-      <b id="lc-kelly">${L.kelly==null?"—":L.kelly}</b>
-      ${b("kelly",-0.05,"−")}${b("kelly",0.05,"＋")}</span>
-    <span class="navctl-i"><span class="muted">预算</span>
-      <b id="lc-budget">${L.budget_usdc==null?"—":L.budget_usdc}</b>
-      ${b("budget",-50,"−")}${b("budget",50,"＋")}</span>
-    <span class="navctl-i"><span class="muted">单站</span>
-      <b id="lc-cap">—</b>
-      ${b("cap",-1,"−")}${b("cap",1,"＋")}${b("cap",-5,"−5")}${b("cap",5,"＋5")}</span>
-    <span class="muted navctl-s" id="lc-status"
+  const knob=(key,title,buttons)=>`<span class="navctl-k" data-knob="${key}"
+    title="${title}"><span class="navctl-l">${LC_KNOBS[key].name}</span>
+    <span class="stp">${buttons}</span></span>`;
+  return `<div class="navctl" id="lc-strip" data-lc="down" role="group"
+    aria-label="实盘旋钮">
+    <span class="navctl-s" id="lc-status"
       title="控制服务未连接——launchd 常驻 com.weather.live_control；拉起：launchctl kickstart -k gui/$(id -u)/com.weather.live_control"
-      >控制服务未连接</span>
+      ><i></i><span id="lc-status-t">控制服务未连接</span></span>
+    ${knob("kelly", "凯利系数 portfolio_risk_fraction",
+      `${b("kelly",-0.05,"−")}<b id="lc-kelly">${
+        L.kelly==null?"—":LC_KNOBS.kelly.fmt(L.kelly)}</b>${b("kelly",0.05,"+")}`)}
+    ${knob("budget", "预算 target_remaining_budget_usdc（USDC）",
+      `${b("budget",-50,"−")}<b id="lc-budget">${
+        L.budget_usdc==null?"—":LC_KNOBS.budget.fmt(L.budget_usdc)}</b>${
+        b("budget",50,"+")}`)}
+    ${knob("cap", "单站上限 station_cap_usdc（USDC，三个本金型边界同步派生）",
+      `${b("cap",-5,"−5",true)}${b("cap",-1,"−")}<b id="lc-cap">—</b>${
+        b("cap",1,"+")}${b("cap",5,"+5",true)}`)}
   </div>`;
 }
 
@@ -16219,15 +16299,25 @@ function liveReadiness(){
   </div>`;
 }
 
+// Every request is numbered and every write is counted while it is out, so
+// an answer that is not the newest -- or that lands while a click is still
+// in flight -- can tell, and does not paint over a state that has moved.
+let lcSeq = 0, lcBusy = 0, lcSynced = 0, lcRetry = null;
 function lcApi(path, body){
+  lcSeq += 1;
+  if(body) lcBusy += 1;
   return fetch("http://127.0.0.1:8788"+path, body?{
     method:"POST", headers:{"Content-Type":"application/json"},
     body:JSON.stringify(body)}:{}).catch(()=>{
       // A refused connection surfaced as "TypeError: Failed to fetch", which
       // names neither the server nor how to bring it back.
-      throw new Error("控制服务未连接（127.0.0.1:8788）——"
+      const err = new Error("控制服务未连接（127.0.0.1:8788）——"
         + "launchctl kickstart -k gui/$(id -u)/com.weather.live_control");
-    }).then(r=>r.json()).then(j=>{
+      // Marked, so a caller can tell "nobody is listening" (every control
+      // goes back to disabled) from "the server refused this one".
+      err.lcDown = true;
+      throw err;
+    }).finally(()=>{ if(body) lcBusy -= 1; }).then(r=>r.json()).then(j=>{
       // A refused or half-applied request answers with {error}.  Returning
       // it as if it were state let lcRender die on a TypeError whose alert
       // named a missing property instead of the server's reason -- which
@@ -16239,15 +16329,9 @@ function lcApi(path, body){
 }
 function lcRender(s){
   if(!s) return;
-  const kelly=document.getElementById("lc-kelly");
-  const budget=document.getElementById("lc-budget");
   const live=document.getElementById("lc-live");
-  if(kelly) kelly.textContent = s.kelly.portfolio_risk_fraction;
-  if(budget) budget.textContent = s.budget.target_remaining_budget_usdc;
-  const cap=document.getElementById("lc-cap");
-  if(cap) cap.textContent = (s.station_cap&&s.station_cap.station_cap_usdc!=null)
-    ? s.station_cap.station_cap_usdc
-    : ((s.station_cap&&s.station_cap.default_usdc)||15)+"(默认)";
+  lcPaintKnobs(s);
+  lcPaintStatus(s);
   if(live) live.textContent = s.live.enabled?"ARMED":"OFF";
   // The switch is repainted from the server's answer, never from the click:
   // an optimistic flip would show ARMED over a refused arm, which is the one
@@ -16290,36 +16374,114 @@ function lcRender(s){
             ? "旗已举起 · 代码 live，合同未授权发单"
             : "旗已举起 · 代码仍编译为 no-live";
   }
-  const status=document.getElementById("lc-status");
-  if(status) status.textContent =
-    "控制服务已连接 · 每次改动写 data/live_control_audit.jsonl";
-  document.querySelectorAll(".lc-w, #lc-live-btn")
-    .forEach(b=>b.disabled=false);
+  if(sw) sw.disabled = false;
   // The station gate repaints from the server's answer like the rest: an
   // optimistic flip would show a bar the server refused, which is the one
   // lie a control that stops orders must never tell.
   lcPaintGates(s);
   window.__lcState = s;
+  lcSynced = Date.now();
+}
+// The three steppers, from the server's answer.  A button whose step would
+// leave the server's own bounds is drawn disabled rather than left to be
+// refused by an alert, and every button's hover names the exact move --
+// "预算 114.29 → 64.29" -- because a bare minus that takes fifty dollars off
+// is not something a reader should have to learn by clicking it.
+function lcPaintKnobs(s){
+  const prev = window.__lcState;
+  Object.entries(LC_KNOBS).forEach(([key, K])=>{
+    const cur = K.read(s);
+    const spec = K.spec(s) || {};
+    const [lo, hi] = spec.bounds || [-Infinity, Infinity];
+    const unit = K.unit || "";
+    const el = document.getElementById(K.id);
+    if(el){
+      el.textContent = K.fmt(cur);
+      // A value the answer moved blinks once, so a click that landed is
+      // seen landing -- and one that did not is seen not to.
+      if(prev && K.read(prev) !== cur){
+        el.classList.remove("lc-flash");
+        void el.offsetWidth;
+        el.classList.add("lc-flash");
+      }
+    }
+    const box = document.querySelector(`.navctl-k[data-knob="${key}"]`);
+    if(box){
+      if(!box.dataset.base) box.dataset.base = box.title;
+      const unset = key === "cap" && !(s.station_cap
+        && s.station_cap.station_cap_usdc != null);
+      box.title = `${box.dataset.base} · 当前 ${K.fmt(cur)}${unit}${
+        unset ? "（未设置，按默认值）" : ""}${isFinite(lo)
+        ? ` · 范围 ${K.fmt(lo)}–${K.fmt(hi)}` : ""} · 每次改动写 data/live_control_audit.jsonl`;
+      box.removeAttribute("aria-busy");
+    }
+    document.querySelectorAll(`.lc-w[data-knob="${key}"]`).forEach(btn=>{
+      const delta = Number(btn.dataset.delta);
+      const next = Math.round((cur + delta) * 100) / 100;
+      const out = next < lo - 1e-9 || next > hi + 1e-9;
+      btn.disabled = out;
+      btn.title = out
+        ? `${K.name} ${delta < 0 ? "再减会低于下限" : "再加会超过上限"} ${
+            K.fmt(delta < 0 ? lo : hi)}${unit}`
+        : `${K.name} ${K.fmt(cur)} → ${K.fmt(next)}${unit}`;
+    });
+  });
+}
+// One word in front of the knobs for what a click on them reaches.  It is
+// read from the same answer as the LIVE switch, so the bar that stays on
+// screen says what the switch at the page head says: the same click moves
+// paper on one day and money on the next.
+function lcPaintStatus(s){
+  const strip = document.getElementById("lc-strip");
+  const status = document.getElementById("lc-status");
+  const text = document.getElementById("lc-status-t");
+  const mode = !s ? "down"
+    : s.live.submitting ? "live" : s.live.enabled ? "armed" : "idle";
+  const WORD = {down:"控制服务未连接", live:"实盘发单中",
+    armed:"已举旗 · 未发单", idle:"未举旗"};
+  const NOTE = {
+    live:"网关正在用真实资金下单，旋钮改的是下一轮真钱的注码",
+    armed:"旗已举起但网关没有发单，原因见页首 LIVE 开关旁",
+    idle:"没有举旗，旋钮改的是生产下一轮的注码，不发单",
+  };
+  if(strip) strip.dataset.lc = mode;
+  if(text) text.textContent = WORD[mode];
+  if(status) status.title = mode === "down"
+    ? "控制服务未连接——launchd 常驻 com.weather.live_control；拉起：launchctl kickstart -k gui/$(id -u)/com.weather.live_control"
+    : `控制服务已连接（127.0.0.1:8788）· ${NOTE[mode]} · LIVE 开关在页首`;
+}
+// Nobody is listening.  Every control goes back to the disabled state it
+// was drawn in -- one that looks clickable while the server is down would
+// let an operator believe a click did something -- and the page keeps
+// asking, so launchd bringing the server back needs no reload.
+function lcDown(){
+  window.__lcState = null;
+  lcPaintStatus(null);
+  document.querySelectorAll(".lc-w, #lc-live-btn, .lc-gate")
+    .forEach(b=>{ b.disabled = true; });
+  document.querySelectorAll(".navctl-k[aria-busy]")
+    .forEach(k=>k.removeAttribute("aria-busy"));
+  const headNote = document.getElementById("lc-head-note");
+  if(headNote) headNote.textContent = "控制服务未连接";
+  if(!lcRetry) lcRetry = setTimeout(()=>{ lcRetry = null; lcInit(); }, 10000);
 }
 function lcAdjust(knob, delta){
-  const s = window.__lcState; if(!s) return;
-  if(knob==="kelly"){
-    const next = Math.round((s.kelly.portfolio_risk_fraction+delta)*100)/100;
-    lcApi("/api/kelly", {value: next}).then(lcRender)
-      .catch(e=>alert("失败: "+e));
-  } else if(knob==="cap"){
-    const cur = (s.station_cap&&s.station_cap.station_cap_usdc!=null)
-      ? s.station_cap.station_cap_usdc
-      : ((s.station_cap&&s.station_cap.default_usdc)||15);
-    const next = Math.round((cur+delta)*100)/100;
-    lcApi("/api/station-cap", {value: next}).then(lcRender)
-      .catch(e=>alert("失败: "+e));
-  } else {
-    const next = Math.round(
-      (s.budget.target_remaining_budget_usdc+delta)*100)/100;
-    lcApi("/api/budget", {value: next}).then(lcRender)
-      .catch(e=>alert("失败: "+e));
-  }
+  const s = window.__lcState, K = LC_KNOBS[knob];
+  if(!s || !K) return;
+  const next = Math.round((K.read(s) + delta) * 100) / 100;
+  // Held down for the round trip, like the LIVE switch.  A second click
+  // before the answer computed its step from the state the first had not
+  // yet replaced, so it sent the same value again: two clicks, one step,
+  // and nothing on screen said so.
+  const box = document.querySelector(`.navctl-k[data-knob="${knob}"]`);
+  if(box) box.setAttribute("aria-busy", "true");
+  document.querySelectorAll(`.lc-w[data-knob="${knob}"]`)
+    .forEach(b=>{ b.disabled = true; });
+  lcApi(K.path, {value: next}).then(lcRender).catch(e=>{
+    if(e && e.lcDown) lcDown();
+    else if(window.__lcState) lcPaintKnobs(window.__lcState);
+    alert("失败: "+e);
+  });
 }
 function lcLive(){
   const s = window.__lcState; if(!s) return;
@@ -16342,7 +16504,10 @@ function lcLive(){
       ? {enabled:true, confirm:"LIVE", by:"dashboard"}
       : {enabled:false, by:"dashboard"})
     .then(lcRender)
-    .catch(e=>{ if(btn) btn.disabled=false; alert("失败: "+e); });
+    .catch(e=>{
+      if(e && e.lcDown) lcDown(); else if(btn) btn.disabled=false;
+      alert("失败: "+e);
+    });
 }
 // The station gate: three switches per row, one click each.
 //
@@ -16393,7 +16558,7 @@ function lcGate(btn){
     // refusal here is usually the server enforcing the exclusivity the row
     // shows (no waiver or hold on a barred station), and leaving the row
     // disabled would look like the page had broken instead.
-    lcPaintGates(window.__lcState);
+    if(e && e.lcDown) lcDown(); else lcPaintGates(window.__lcState);
     alert("失败: "+e);
   });
 }
@@ -16440,8 +16605,23 @@ function lcInit(){
   // is also the one that stops orders.  Only a failed connection retries: a
   // render error is thrown past this handler rather than hidden behind a
   // silent retry loop.
-  lcApi("/api/state").then(lcRender, ()=>setTimeout(lcInit, 10000));
+  lcApi("/api/state").then(lcRender, lcDown);
 }
+// Read again when the tab comes back into view, at most once a minute --
+// not on a timer.  Every answer walks the SSOT for the station scope (about
+// half a second), and a board left open all day would ask thousands of
+// times for numbers that move a few times a day.  What it catches is the
+// case a timer was wanted for: a knob or the flag moved from another tab
+// or by hand while this one sat in the background.
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState !== "visible") return;
+  if(!document.getElementById("lc-status") || lcRetry) return;
+  if(Date.now() - lcSynced < 60000) return;
+  const request = lcApi("/api/state");
+  const at = lcSeq;
+  request.then(s=>{ if(lcSeq === at && !lcBusy) lcRender(s); },
+    e=>{ if(lcSeq === at && e && e.lcDown) lcDown(); });
+});
 
 // Click a header to sort by that column.  Numbers, percentages, prices and
 // odds all read as numbers; anything else falls back to text, and an em dash
@@ -16827,7 +17007,7 @@ const GROUPS = [
   // 2026-09-11: they are answered by the head's lamps, and an answer read
   // on arrival does not belong behind a tab.  Each group carries a colour
   // so the tab bar and the group titles agree without matching text.
-  {id:"model", label:"模型", tone:"#d2a8ff",
+  {id:"model", label:"模型", short:"模型", tone:"#d2a8ff",
    note:"模型本身准不准：订正与权重、离散度、命中率、OOS、中心/宽度、总检",
    sections:[[tables,"偏差订正与权重"],
      [servingWeights,"四大模型权重"],
@@ -16836,7 +17016,7 @@ const GROUPS = [
      [centreLanding,"真值离均值多远"],
      [scorecard,"模型校准总检"],[h5Readiness,"H5 换代进度"],
      [correctionAccuracy,"订正准度与政权偏移"]]},
-  {id:"shape", label:"概率与持仓形状", tone:"#7ee787",
+  {id:"shape", label:"概率与持仓形状", short:"形状", tone:"#7ee787",
    note:"概率怎么被分档修正、声称被哪几层乘过、注码怎么被固化减仓、分布和实际持仓差在哪",
    sections:[[bandTable,"band 表"],
      [edgeBandHealth,"声称边际体温计"],
@@ -16846,24 +17026,27 @@ const GROUPS = [
      [convergenceClaim,"双向收敛系数"],
      [consolidation,"固化减仓"],
      [windowDivergence,"分布与持仓分家"]]},
-  {id:"market", label:"市场与执行门槛", tone:"#e3b341",
+  {id:"market", label:"市场与执行门槛", short:"市场", tone:"#e3b341",
    note:"市场肯不肯让这套东西赚钱：盘口方向闸、覆盖与 EV、篮子命中率、真值落位",
    sections:[[charterEv,"宪章 EV 恒等式"],
      [marketLeanGate,"市场方向闸"],
      [coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"],
      [truthLanding,"真值落位"]]},
 ];
-const tabs = `<nav class="tabs" id="tabs">${
+const tabs = `<nav class="tabs" id="tabs" aria-label="区域">${
   GROUPS.map(g => `<button type="button" data-tab="${g.id}"
-    style="--tone:${g.tone}">${g.label}
+    style="--tone:${g.tone}" title="${g.note}">${g.label}
     <span class="cnt">${g.sections.length}</span></button>`).join("")
-}<span class="spacer"></span><button type="button" class="all"
-  data-tab="all">全部</button></nav>`;
+}<button type="button" class="all" data-tab="all"
+  title="三个区域叠在一页">全部</button></nav>`;
 
 // Every section gets its own element and id so the jump bar has somewhere
-// to land.  The label the bar shows is read back out of the section's own
-// <h2> rather than restated here: a chip that disagrees with the heading it
-// scrolls to is worse than no chip.
+// to land.  The chip says the name the section is filed under here -- the
+// name its lane strip, its star and its error guard all key on -- and its
+// hover carries the section's own <h2> in full.  Until 2026-09-16 the chip
+// was the heading cut at its first colon, which ran the model area to two
+// lines ("四大模型的" three times over) and named only the first of the two
+// headings under 订正准度与政权偏移.
 // The homepage board is one section, not two (user ruling, 2026-08-31):
 // the tile strip and the three-state comparison of what the bars cost read
 // the same account, and splitting them behind another heading and another
@@ -17056,8 +17239,16 @@ function sectionCacheNote(){
 
 document.getElementById("app").innerHTML =
   `<div class="topnav" id="topnav">
-    <div class="navtop">${tabs}${safe(liveControlStrip, "实盘控制")}</div>
-    <nav class="jump" id="jump"></nav></div>` +
+    <div class="navtop">
+      <button type="button" class="nav-home" id="nav-home"
+        title="回到页首：总灯、LIVE 开关与三排状态灯"><svg viewBox="0 0 16 16"
+        fill="none" stroke="currentColor" stroke-width="1.6"
+        stroke-linejoin="round" aria-hidden="true"><path
+        d="M2.5 7.2 8 2.6l5.5 4.6V13a.9.9 0 0 1-.9.9H9.8V10H6.2v3.9H3.4a.9.9 0 0 1-.9-.9z"/></svg>首页</button>
+      <span class="nav-div"></span>
+      ${tabs}<span class="nav-fill"></span>${safe(liveControlStrip, "实盘控制")}
+      <span id="nav-theme"></span></div>
+    <nav class="jump" id="jump" aria-label="区块"></nav></div>` +
   safe(head, "页头") +
   sec(moneyBoard, "资金看板", "sec-money") +
   sec(liveReadiness, "Live 上线准备", "sec-live") +
@@ -17085,6 +17276,7 @@ document.getElementById("app").innerHTML =
   const bar = document.getElementById("topnav");
   const esc = (t) => String(t).replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  const home = document.getElementById("nav-home");
   const chip = (node) => {
     if(!node.firstElementChild) return "";
     const head2 = node.querySelector("h2");
@@ -17092,7 +17284,8 @@ document.getElementById("app").innerHTML =
       ? head2.textContent.trim().replace(/\s+/g, " ")
       : (node.dataset.name || "");
     if(!full) return "";
-    const short2 = full.split(/[：（(·]/)[0].trim() || full;
+    const short2 = (node.dataset.name || "").split(/[（(]/)[0].trim()
+      || full.split(/[：（(·]/)[0].trim() || full;
     // The lane dot rides the chip too (user ruling, 2026-09-13): the bar is
     // where a reader picks a section, so "is this one live or shadow" has
     // to be answerable before the click, not after it.
@@ -17103,15 +17296,59 @@ document.getElementById("app").innerHTML =
       lane ? ` data-lane="${esc(lane)}"` : ""}${
       node.dataset.star ? ` class="star"` : ""}>${esc(short2)}</button>`;
   };
+  // One line of chips per area, behind the area's caption.
+  const run = (label, tone, nodes) => {
+    const chips = nodes.map(chip).filter(Boolean);
+    if(!chips.length) return "";
+    return `<span class="jump-g"${
+      tone ? ` style="--tone:${esc(tone)}"` : ""}>${esc(label)}</span>
+      <span class="jump-run">${chips.join("")}</span>`;
+  };
   const paintJump = () => {
     if(!jump) return;
-    const top = [...document.querySelectorAll("#app > .sec")].map(chip);
-    const inGroup = [...document.querySelectorAll(".group:not([hidden]) .sec")]
-      .map(chip);
-    jump.innerHTML = top.filter(Boolean).join("")
-      + (inGroup.filter(Boolean).length ? `<span class="sep"></span>` : "")
-      + inGroup.filter(Boolean).join("");
+    const runs = [run("账本", "", [...document.querySelectorAll("#app > .sec")])]
+      .concat([...document.querySelectorAll(".group:not([hidden])")].map(g => {
+        const G = GROUPS.find(x => x.id === g.dataset.group) || {};
+        return run(G.short || G.label || "", G.tone || "",
+          [...g.querySelectorAll(".sec")]);
+      }));
+    jump.innerHTML = runs.filter(Boolean).join("");
+    spy();
   };
+  // Which section is under the bar: the last one whose top has scrolled up
+  // past it.  An area's title counts as a boundary -- once it is under the
+  // bar the reader has left the section above it, even before the area's
+  // first section arrives, which is exactly where a tab click lands.  Above
+  // the first section the reader is at the page head, and the home button
+  // is the one lit.
+  let spyQueued = false;
+  function spy(){
+    spyQueued = false;
+    if(!jump) return;
+    const line = (bar ? bar.getBoundingClientRect().bottom : 0) + 24;
+    let here = null, area = null, passed = false;
+    jump.querySelectorAll("button[data-goto]").forEach(b => {
+      const node = document.getElementById(b.dataset.goto);
+      if(!node || !node.offsetParent) return;
+      const group = node.closest(".group");
+      if(group && group !== area){
+        area = group;
+        if(group.getBoundingClientRect().top <= line){ here = null; passed = true; }
+      }
+      if(node.getBoundingClientRect().top <= line){ here = b; passed = true; }
+    });
+    jump.querySelectorAll('[aria-current="true"]').forEach(b => {
+      if(b !== here) b.removeAttribute("aria-current");
+    });
+    if(here) here.setAttribute("aria-current", "true");
+    if(home) home.dataset.here = passed ? "" : "1";
+  }
+  window.addEventListener("scroll", () => {
+    if(spyQueued) return;
+    spyQueued = true;
+    requestAnimationFrame(spy);
+  }, {passive: true});
+  if(home) home.addEventListener("click", () => window.scrollTo(0, 0));
   // Land the heading below the sticky bar instead of underneath it.
   const goTo = (node) => {
     if(!node) return;
@@ -17193,20 +17430,15 @@ document.addEventListener("click", (ev) => {
   if(button) button.click();
 });
 
-// Back to the top, from wherever the reader got to.  The floating button
-// only exists once there is a scroll to undo; the footer link is there for
-// anyone who reached the end.
+// Back to the top from the end of the page.  The floating "↑ 顶部" button
+// left on 2026-09-16: 首页 in the sticky bar does the same from anywhere,
+// and a second way to one place was one more thing on screen.
 (function(){
-  const button = document.getElementById("totop");
   const link = document.getElementById("footer-top");
-  const up = () => window.scrollTo(0, 0);
-  if(button){
-    const show = () => { button.dataset.show = window.scrollY > 600 ? "1" : ""; };
-    window.addEventListener("scroll", show, {passive: true});
-    button.addEventListener("click", up);
-    show();
-  }
-  if(link) link.addEventListener("click", (ev) => { ev.preventDefault(); up(); });
+  if(link) link.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    window.scrollTo(0, 0);
+  });
 })();
 
 document.querySelectorAll("table").forEach(makeSortable);
@@ -17244,10 +17476,17 @@ document.querySelectorAll(".why,.sub").forEach(node=>{
 // exactly when a reader is most likely to be squinting at it.
 (function(){
   const button = document.getElementById("theme");
+  // Into the bar once the bar exists; a page whose render failed has no
+  // slot, and the button stays in its corner.
+  const slot = document.getElementById("nav-theme");
+  if(slot) slot.replaceWith(button);
   const paint = () => {
     const dark = document.documentElement.dataset.theme !== "light";
-    button.textContent = dark ? "☀ 亮色" : "☾ 暗色";
+    const docked = button.parentElement !== document.body;
+    button.textContent = dark ? (docked ? "☀" : "☀ 亮色")
+                              : (docked ? "☾" : "☾ 暗色");
     button.title = dark ? "切换到亮色" : "切换到暗色";
+    button.setAttribute("aria-label", button.title);
   };
   button.addEventListener("click", () => {
     const dark = document.documentElement.dataset.theme !== "light";
