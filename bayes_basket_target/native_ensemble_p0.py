@@ -1404,6 +1404,67 @@ def _activations_ambiguous(
     )
 
 
+
+def resolve_pinned_band_layer(
+    conn: "sqlite3.Connection",
+    artifact_combination_method: str,
+    band_table_override: "tuple | None" = None,
+) -> "tuple[BandLayer | None, str | None, str]":
+    """Which band table this artifact is served through, its sha and its axis.
+
+    The layer is None when nothing is to be applied -- identity.
+
+    The artifact pins the table version its holdout was scored against
+    (``band_table_sha256=`` in the combination method).  A pinned-but-missing
+    table fails closed inside the loader: serving an approximation of gated
+    math is exactly what the pin exists to forbid.  A pinned table the lane
+    has VETOED loads as an empty table -- identity, with its sha kept so the
+    receipt can say which version was retired out from under it.
+
+    A BARE tag is identity too, not the pre-store bootstrap constants.  It
+    meant them while artifacts older than the store were still alive (the
+    store took over 2026-08-15); today its one producer is a build made when
+    no table is activated, which is what a veto leaves behind.  Measured
+    2026-09-15: the veto retired P0's table at 18:26Z, the next builds minted
+    bare tags, and 284 P0 decisions went on being rescaled by the
+    hand-written constants -- on the CLAIM axis, while the lane has been on
+    centre_distance since 09-07: the layer the veto had just called harmful,
+    in a shape nothing had gated.  "No active table" means identity.
+
+    Charter 105: the lookup follows the TABLE's axis, never the caller's.
+    """
+
+    if BAND_RELIABILITY_METHOD_TAG not in artifact_combination_method:
+        return None, None, BAND_AXIS_CLAIM
+    pinned_sha = pinned_band_table_sha(artifact_combination_method)
+    pinned_factors = None
+    pinned_axis = BAND_AXIS_CLAIM
+    if pinned_sha is not None:
+        pinned_factors, _sha, pinned_axis = load_band_table_with_axis(
+            conn, table_sha256=pinned_sha
+        )
+    if band_table_override is not None:
+        # The counterfactual arm.  Replaces the pinned lookup outright, axis
+        # included -- a table handed in without its axis would be applied
+        # through whichever one the pin happened to name, which is the
+        # failure this triple exists to make impossible.  The receipt records
+        # the substitution so a replayed envelope can never be mistaken for a
+        # served one.
+        pinned_factors = tuple(
+            ((float(lo), float(hi)), float(factor))
+            for (lo, hi), factor in band_table_override[0]
+        )
+        pinned_sha = str(band_table_override[1])
+        pinned_axis = str(band_table_override[2])
+        if pinned_axis not in {BAND_AXIS_CLAIM, BAND_AXIS_CENTRE_DISTANCE}:
+            raise ContractError(
+                "FAIL_CLOSED_NO_P0:band_table_override_axis_unknown"
+            )
+    if pinned_factors is None:
+        return None, pinned_sha, pinned_axis
+    return BandLayer(factors=pinned_factors, axis=pinned_axis), pinned_sha, pinned_axis
+
+
 def compile_native_ensemble_p0(
     conn: sqlite3.Connection,
     *,
@@ -3138,44 +3199,9 @@ def compile_native_ensemble_p0(
     # says why in ``materialization._posterior``: geometry before claim.
     # The order itself lives in ``served_shape``; this block only resolves
     # which table version the artifact pinned.
-    # The artifact pins the table version its holdout was scored against
-    # (``band_table_sha256=`` in the combination method); a bare tag means
-    # the static bootstrap constants.  A pinned-but-missing table fails
-    # closed inside the loader: serving an approximation of gated math is
-    # exactly what the pin exists to forbid.
-    band_layer = None
-    if BAND_RELIABILITY_METHOD_TAG in artifact_combination_method:
-        pinned_sha = pinned_band_table_sha(artifact_combination_method)
-        pinned_factors = None
-        pinned_axis = BAND_AXIS_CLAIM
-        if pinned_sha is not None:
-            pinned_factors, _sha, pinned_axis = load_band_table_with_axis(
-                conn, table_sha256=pinned_sha
-            )
-        if band_table_override is not None:
-            # The counterfactual arm.  Replaces the pinned lookup outright,
-            # axis included -- a table handed in without its axis would be
-            # applied through whichever one the pin happened to name, which
-            # is the failure this triple exists to make impossible.  The
-            # receipt records the substitution so a replayed envelope can
-            # never be mistaken for a served one.
-            pinned_factors = tuple(
-                ((float(lo), float(hi)), float(factor))
-                for (lo, hi), factor in band_table_override[0]
-            )
-            pinned_sha = str(band_table_override[1])
-            pinned_axis = str(band_table_override[2])
-            if pinned_axis not in {
-                BAND_AXIS_CLAIM, BAND_AXIS_CENTRE_DISTANCE
-            }:
-                raise ContractError(
-                    "FAIL_CLOSED_NO_P0:band_table_override_axis_unknown"
-                )
-        # Charter 105: the lookup follows the TABLE's axis, never the
-        # caller's preference.  ``ordered`` is this stage's bucket axis and
-        # is the same map the packet publishes as ``bucket_ordinals`` below,
-        # so the fit and the serve read one ordering.
-        band_layer = BandLayer(factors=pinned_factors, axis=pinned_axis)
+    band_layer, pinned_sha, pinned_axis = resolve_pinned_band_layer(
+        conn, artifact_combination_method, band_table_override
+    )
     probability, center_width_receipt, band_reliability_receipt = (
         apply_served_table_layers(
             probability,

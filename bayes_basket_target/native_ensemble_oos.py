@@ -1872,7 +1872,10 @@ def _select_minimum_crps_subset(
                     },
                 ),
                 center_width_layer=center_width_layer,
-                band_layer=BandLayer(factors=band_factors, axis=band_axis),
+                band_layer=(
+                    BandLayer(factors=band_factors, axis=band_axis)
+                    if band_factors is not None else None
+                ),
             )
             actual = float(
                 predictions_by_system[subset[0]][day]["actual_tmax_c"]
@@ -4052,7 +4055,13 @@ def p0_gate_tables(
         )
         else None
     )
-    gate_band_layer = BandLayer(factors=band_factors, axis=band_table_axis_id)
+    # No active table means identity, for the holdout exactly as for serving:
+    # ``factors=None`` would reach ``apply_band_reliability``'s pre-store
+    # bootstrap constants, which is the shape a veto exists to stop.
+    gate_band_layer = (
+        BandLayer(factors=band_factors, axis=band_table_axis_id)
+        if band_factors is not None else None
+    )
     return {
         "band_factors": band_factors,
         "band_table_sha256": band_table_sha,
@@ -6528,12 +6537,14 @@ def persist_native_ensemble_oos(
                     # served the legacy value and so keep their own math.
                     + "::radiation_shift_sigma="
                     + f"{float(candidate['radiation_shift_sigma']):g}"
-                    + "::" + BAND_RELIABILITY_METHOD_TAG
-                    # Pin the DB table version the holdout above was scored
-                    # against; a bare tag means the static bootstrap
-                    # constants and stays byte-identical for old reports.
+                    # The tag rides only with a table: it keys the serving
+                    # transform, and a bare one used to mean the pre-store
+                    # bootstrap constants (2026-09-15: that is how a vetoed
+                    # stage kept rescaling, on the wrong axis).  No table
+                    # means no band layer, said by leaving the tag off.
                     + (
-                        "::band_table_sha256="
+                        "::" + BAND_RELIABILITY_METHOD_TAG
+                        + "::band_table_sha256="
                         + str(candidate["band_table_sha256"])
                         if candidate.get("band_table_sha256")
                         else ""
