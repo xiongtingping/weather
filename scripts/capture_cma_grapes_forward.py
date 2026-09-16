@@ -13,6 +13,14 @@ distribution is decided by scripts/measure_regional_serving_value.py and
 recorded in regional_path_prior.SERVING_SYSTEMS, which today admits the MSM
 alone.  Nothing in this script changes what P1 serves.
 
+One row per station-day per pass, not one per cadence slot.  Until
+2026-09-16 the shared planner enumerated the cadence the way it does for the
+run-addressable products, and this lane answered every label with the same
+current forecast: two stored copies per fetch, one of them wearing a stamp
+that could be a day and a half older than the data.  Rows written that way
+carry extraction_version ...derived_cycle_v1; what this lane writes now
+carries v2.
+
 Forward only: see bayes_basket_target/cma_grapes_point_archive.py for why a
 backfilled row could not honestly state when it became knowable.
 """
@@ -39,10 +47,13 @@ from bayes_basket_target.pass_deadline import (  # noqa: E402
 
 DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 STATIONS = CAPTURE_STATIONS
-# One pass fetches the whole series per station, so a run costs eight
-# requests.  Two runs a pass keeps an hourly sweep inside its own hour even
-# when the aggregator is slow.
-P1_MAX_RUNS_PER_PASS = 2
+# One cycle, because only one is obtainable.  The aggregator serves the
+# forecast it currently holds and publishes no run stamp, so
+# ``_candidate_runs`` plans the single cycle in force at this clock; a cap
+# above one could only be filled by storing that one fetch under a second
+# label, which is what it used to do.  One pass is eight requests, one per
+# station, and an already-stored cycle costs none.
+P1_MAX_RUNS_PER_PASS = 1
 # Seconds of writer occupancy this lane's P1 pass may spend.  The resident
 # admits one writer at a time, so a capture that runs to its subprocess
 # timeout is a production cycle that cannot start for that long.  The run

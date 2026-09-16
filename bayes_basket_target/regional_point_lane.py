@@ -71,7 +71,17 @@ EXTRACTION_VERSIONS = {
     # this product publishes no run stamp, so the row's cycle label is
     # inferred from the product's own cadence.  What the replay actually
     # filters on -- knowable_at_utc -- is the fetch clock and is exact.
-    "CMA": "cma_grapes_global_open_meteo_derived_cycle_v1",
+    #
+    # v2 (2026-09-16) is where the implementation caught up with that
+    # sentence.  "Inferred from the cadence" is singular -- one cycle is in
+    # force at a time -- but the planner enumerated the cadence and stored
+    # the one current forecast under every unstored label, so a v1 row's
+    # cycle stamp may be pure fiction while its curve and its
+    # knowable_at_utc are sound.  The version is bumped rather than the old
+    # rows deleted: they hold real forecasts honestly stamped with when
+    # they became knowable, and only the label is wrong.  Anything that
+    # counts runs, or reads run age, must tell the two apart.
+    "CMA": "cma_grapes_global_open_meteo_derived_cycle_v2",
     "HRRR": "ncep_hrrr_surface_nearest_cell_v1",
     "NBM": "ncep_nbm_core_nearest_cell_v1",
     "ICON_EU": "dwd_icon_eu_surface_nearest_cell_v1",
@@ -356,6 +366,31 @@ def _candidate_runs(
     day_start = datetime.combine(event_date, datetime.min.time(), tzinfo=zone).astimezone(timezone.utc)
     day_end = day_start + timedelta(days=1)
     latest = now - timedelta(hours=PUBLICATION_LAG_HOURS[product])
+    if product == "CMA":
+        # This product's archive is not addressable by run.  The aggregator
+        # publishes no run stamp and serves whatever forecast it currently
+        # holds, so ``run_init_utc`` is derived from the cadence -- and
+        # exactly ONE cycle is in force at ``now``.
+        #
+        # Enumerating the cadence the way the run-addressable products need
+        # planned every unstored cycle in the window, fetched the same
+        # current forecast once per label, and stored a copy under each.
+        # Measured 2026-09-16 over five days: every pass wrote exactly two
+        # labels off one fetch, identical hour by hour where their windows
+        # overlap and differing only in where the truncation starts -- and
+        # some labels were pure fiction, 2026-09-13T18Z written by the pass
+        # of 2026-09-15T07:54Z, a stamp 38 hours older than the forecast it
+        # carried.  ``regional_path_prior`` refuses a row whose
+        # ``as_of - run_init`` exceeds ``MAX_RUN_AGE_HOURS``, so a fresh
+        # forecast wearing a stale label reads as too old to serve, and the
+        # surviving twin is the one truncated hardest.
+        #
+        # ``derived_run_init`` is the archive module's own answer and was
+        # exported for this; what it lacked was a caller.
+        from .cma_grapes_point_archive import derived_run_init  # noqa: PLC0415
+
+        run = derived_run_init(now)
+        return [run] if day_start - timedelta(days=1) <= run < day_end else []
     runs: list[datetime] = []
     first = (day_start - timedelta(days=1)).replace(minute=0, second=0, microsecond=0)
     stamp = first

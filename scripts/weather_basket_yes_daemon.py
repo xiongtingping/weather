@@ -470,15 +470,28 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     ),
     # CMA GRAPES Global for the eight mainland Chinese stations, which had
     # no regional coverage of any kind: HRRR and the NBM are CONUS, ICON-EU
-    # stops far to their west, and MSM's domain begins at 120E.  Hourly
-    # against a six-hourly product for the ICON-EU lane's reason -- the
+    # stops far to their west, and MSM's domain begins at 120E.  The
     # transport serves only the run it currently holds, so a missed cycle
-    # is gone, and an idle pass is eight small JSON reads.  Capture only:
-    # regional_path_prior.SERVING_SYSTEMS decides what actually serves.
+    # is gone, and an idle pass is a handful of indexed reads with no fetch
+    # at all.  Capture only: regional_path_prior.SERVING_SYSTEMS decides
+    # what actually serves.
+    #
+    # Half its own cadence, not equal to it (2026-09-16).  At 21600s a
+    # six-hourly product got exactly one attempt per cycle, so one missed
+    # pass lost that cycle for good -- and passes were missed, because the
+    # queue ranks by intervals late and this was the longest interval on
+    # it: twelve minutes past due scored 0.037 where an hourly member
+    # scored 0.25, so it sat behind the short lanes for hours.  Measured
+    # over five days the lane fired every 7 to 19.5 hours against a
+    # 6-hour contract, and 2026-09-15 lost a cycle outright.  Halving buys
+    # a second attempt inside each cycle window AND reaches any given rank
+    # twice as fast.  The empty pass is genuinely cheap here: with
+    # ``_candidate_runs`` down to the one cycle in force, an already-stored
+    # cycle is refused by ``plan_p1`` before a single request is made.
     (
         "capture_cma_grapes_forward",
         "scripts/capture_cma_grapes_forward_sweep.sh",
-        21600.0,
+        10800.0,
         900.0,
     ),
     # ICON-EU deterministic, run-scoped: one whole-domain download serves

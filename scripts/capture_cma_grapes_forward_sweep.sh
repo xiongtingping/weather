@@ -2,9 +2,10 @@
 # Capture CMA GRAPES Global point curves for the eight mainland Chinese
 # stations, which had no regional coverage at all before this lane.
 #
-# Hourly against a six-hourly product for the ICON-EU lane's reason: the
-# transport serves only the run it currently holds, so a cycle missed is a
-# cycle gone, and a pass with nothing new costs eight small JSON reads.
+# Twice per cycle against a six-hourly product: the transport serves only
+# the run it currently holds, so a cycle missed is a cycle gone, and one
+# attempt per cycle left no second chance.  A pass whose cycle is already
+# stored makes no request at all.
 #
 # Writes the SSOT, so it takes the sweep lock like the other writers.
 

@@ -524,6 +524,32 @@ def test_a_capture_interval_is_never_shorter_than_its_upstream_cadence(
     The bound is the model's own cycle, not a guess: an interval at or under
     it still visits every run, and publication lag (hours, on every product)
     means nothing is missed by arriving late within the cycle.
+
+    The FLOOR was "no faster than the cadence" until 2026-09-16, and the two
+    premises it rested on have since gone:
+
+      * "an empty pass takes the exclusive SSOT write domain" -- a capture is
+        writer-turn exempt since 2026-09-14, so a running one holds the other
+        captures and not the queue.  What an empty pass still costs is an
+        admission slot, and that is priced by
+        ``test_the_ssot_sweep_queue_fits_its_drain_rate``, not here.
+      * "an empty pass is empty by construction" -- ``plan_p1`` refuses an
+        already-stored cycle before a single request, so an empty CMA pass is
+        a handful of indexed reads.
+
+    And against them stands what equal-to-cadence costs a transport that
+    serves only the run it currently holds: exactly ONE attempt per cycle,
+    so a pass that is blocked or loses the queue loses that cycle for good.
+    ``capture_cma_grapes_forward`` was the measurement.  It ran every 7 to
+    19.5 hours against its 6-hour contract over 2026-09-11..16 -- the queue
+    ranks by intervals late and it held the longest interval on that queue,
+    so twelve minutes past due scored 0.037 where an hourly member scored
+    0.25 -- and 2026-09-15 lost a cycle outright: nothing was captured
+    between 07:54Z and the next day.
+
+    So the floor is now half the cadence: one spare attempt per cycle, and
+    no more.  A lane asking for a third would be buying a second chance it
+    has already got, and would owe the drain-rate budget for it.
     """
     from bayes_basket_target.regional_point_lane import RUN_CYCLE_HOURS
 
@@ -542,14 +568,19 @@ def test_a_capture_interval_is_never_shorter_than_its_upstream_cadence(
             f"{lane} sweeps every {intervals[lane]:.0f}s but its fastest"
             f" product issues every {cadence_sec:.0f}s -- runs would be missed"
         )
-        # ...and no faster than it, or the surplus passes are empty and still
-        # cost a turn of the exclusive writer.
-        assert intervals[lane] >= cadence_sec - 1.0, (
+        assert intervals[lane] >= cadence_sec / 2.0 - 1.0, (
             f"{lane} sweeps every {intervals[lane]:.0f}s against a"
-            f" {cadence_sec:.0f}s cadence -- "
-            f"{(1 - intervals[lane] / cadence_sec) * 100:.0f}% of its passes"
-            " can find nothing and each one takes the SSOT write domain"
+            f" {cadence_sec:.0f}s cadence -- more than one spare attempt per"
+            " cycle, and every surplus pass still takes an admission slot"
         )
+        # A lane that does go faster than its cadence must be one a running
+        # pass does not hold the queue for, or the first premise above is
+        # back and the floor was the thing protecting the queue.
+        if intervals[lane] < cadence_sec - 1.0:
+            assert lane in daemon.WRITER_TURN_EXEMPT_SWEEPS, (
+                f"{lane} sweeps faster than its cadence but holds the writer"
+                " turn: its empty passes cost what this floor existed to stop"
+            )
 
 
 # ---------------------------------------------------------------- writer gates
