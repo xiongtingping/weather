@@ -91,15 +91,24 @@ def _seed(
     day_count: int,
     station_count: int = 20,
     stage: str = "P0",
+    applied: tuple[float, float] | None = None,
+    receipt: bool = True,
+    receipt_drops: tuple[str, ...] = (),
 ) -> None:
-    """Serve ``station_count`` stations a N(CENTRE, served_sd) distribution a
-    day, and settle each day's truth at CENTRE + noise * truth_sd.
+    """Serve ``station_count`` stations a distribution a day, and settle each
+    day's truth at CENTRE + noise * truth_sd.
 
-    ``truth_sd > served_sd`` is a fleet served TOO NARROW -- the case the
-    grid could not express and the case the veto exists to catch.  The served
-    envelope is what the fit reads, so whatever pair was active when it was
-    written is already inside it: these cells ARE the served distribution,
-    not the model's input to it.
+    ``truth_sd`` wider than what is served is a fleet served TOO NARROW --
+    the case the grid could not express and the case the veto exists to
+    catch.  The served envelope is what the fit reads, so whatever pair was
+    active when it was written is already inside it: these cells ARE the
+    served distribution, not the model's input to it.
+
+    ``applied`` runs the kernel the way production does -- an input of width
+    ``served_sd / lambda`` through the pair, so the SERVED width is
+    ``served_sd`` -- and stores the receipt the kernel returned, the row's own
+    record of what it had applied.  ``receipt=False`` is a row written before
+    that record existed, which is every historical row.
     """
 
     conn.executescript(
@@ -112,7 +121,21 @@ def _seed(
         " station_id TEXT, local_date TEXT, official_tmax_c REAL,"
         " revision_no INTEGER, qc_status TEXT);"
     )
-    probabilities = _bucketed(served_sd)
+    lineage_extra: dict[str, str] = {}
+    if applied is None:
+        probabilities = _bucketed(served_sd)
+    else:
+        delta, lam = applied
+        probabilities, kernel_receipt = apply_center_width_calibration(
+            _bucketed(served_sd / lam), delta_c=delta, width_lambda=lam,
+            ordered_keys=KEYS, key_centers_c=CENTERS,
+        )
+        if receipt:
+            kernel_receipt = {
+                key: value for key, value in kernel_receipt.items()
+                if key not in receipt_drops
+            }
+            lineage_extra["center_width_json"] = json.dumps(kernel_receipt)
     ordinals = {k: i for i, k in enumerate(KEYS)}
     for day_index in range(day_count):
         day = f"2026-07-{day_index + 1:02d}"
@@ -124,6 +147,7 @@ def _seed(
                 "lineage": {
                     "bucket_intervals_c_json": json.dumps(INTERVALS),
                     "hard_excluded_buckets": "NONE",
+                    **lineage_extra,
                 },
             }
             conn.execute(
@@ -220,7 +244,8 @@ def test_an_incumbent_that_hurts_after_activation_is_vetoed() -> None:
 
     conn = sqlite3.connect(":memory:")
     ensure_center_width_schema(conn)
-    _seed(conn, served_sd=1.0, truth_sd=2.4, day_count=MIN_QUALIFYING_DAYS - 1)
+    _seed(conn, served_sd=1.0, truth_sd=2.4, day_count=MIN_QUALIFYING_DAYS - 1,
+          applied=(0.0, 0.5))
     _activate(conn, delta_c=0.0, lam=0.5)
     fitted = fit_center_width(conn, stage="P0")
     assert fitted["vetoed"]
@@ -242,7 +267,8 @@ def test_the_veto_is_judged_before_the_accumulating_hold() -> None:
     ensure_center_width_schema(conn)
     days = MIN_QUALIFYING_DAYS - 1
     assert CENTER_WIDTH_VETO_MIN_DAYS <= days < MIN_QUALIFYING_DAYS
-    _seed(conn, served_sd=1.0, truth_sd=2.4, day_count=days)
+    _seed(conn, served_sd=1.0, truth_sd=2.4, day_count=days,
+          applied=(0.0, 0.5))
     _activate(conn, delta_c=0.0, lam=0.5)
     fitted = fit_center_width(conn, stage="P0")
     assert fitted["accumulating"], "the fit must still be short of the floor"
@@ -255,7 +281,10 @@ def test_the_veto_is_judged_before_the_accumulating_hold() -> None:
 def test_an_incumbent_that_earns_its_place_is_held_not_vetoed() -> None:
     conn = sqlite3.connect(":memory:")
     ensure_center_width_schema(conn)
-    _seed(conn, served_sd=2.0, truth_sd=2.0, day_count=MIN_QUALIFYING_DAYS - 1)
+    # Served 2.0 wide against truth spread 1.5: the input was 2.67 and the
+    # pair is what brought it near the truth, so leaving the pair off loses.
+    _seed(conn, served_sd=2.0, truth_sd=1.5, day_count=MIN_QUALIFYING_DAYS - 1,
+          applied=(0.0, 0.75))
     _activate(conn, delta_c=0.0, lam=0.75)
     fitted = fit_center_width(conn, stage="P0")
     assert not fitted["vetoed"]
@@ -263,6 +292,9 @@ def test_an_incumbent_that_earns_its_place_is_held_not_vetoed() -> None:
     assert (fitted["delta_c"], fitted["width_lambda"]) == (0.0, 0.75)
     veto = fitted["evidence"]["incumbent_veto"]
     assert veto["undo_gain"] <= MIN_FORWARD_NLL_GAIN
+    # lambda 0.75 is rank-deficient on this axis, so this verdict exists only
+    # because the row recorded the input rather than leaving it to be solved.
+    assert veto["counterfactual_basis"] == {"recorded_input": veto["cell_count"]}
 
 
 def test_a_stage_with_no_table_records_no_veto() -> None:
@@ -277,7 +309,8 @@ def test_a_stage_with_no_table_records_no_veto() -> None:
 def test_the_sweep_retires_a_vetoed_pair_and_journals_it() -> None:
     conn = sqlite3.connect(":memory:")
     ensure_center_width_schema(conn)
-    _seed(conn, served_sd=1.0, truth_sd=2.4, day_count=MIN_QUALIFYING_DAYS - 1)
+    _seed(conn, served_sd=1.0, truth_sd=2.4, day_count=MIN_QUALIFYING_DAYS - 1,
+          applied=(0.0, 0.5))
     _activate(conn, delta_c=0.0, lam=0.5)
     entry = refit_all_center_width(conn, commit=True, stages=["P0"])["P0"]
     assert "error" not in entry, entry
@@ -391,7 +424,8 @@ def test_the_as_of_resolver_stops_replaying_a_retired_pair() -> None:
 
     conn = sqlite3.connect(":memory:")
     ensure_center_width_schema(conn)
-    _seed(conn, served_sd=1.0, truth_sd=2.4, day_count=MIN_QUALIFYING_DAYS - 1)
+    _seed(conn, served_sd=1.0, truth_sd=2.4, day_count=MIN_QUALIFYING_DAYS - 1,
+          applied=(0.0, 0.5))
     sha = _activate(conn, delta_c=0.0, lam=0.5)
     conn.execute(
         "INSERT INTO calibration_center_width_fit_journal VALUES"
@@ -540,3 +574,156 @@ def test_a_store_without_the_retirement_column_reads_as_never_retired() -> None:
     assert load_center_width_floor(
         conn, stage="P0", table_sha256=sha
     ) == 0.0
+
+
+# --- (四) the counterfactual is recovered, not re-run -------------------
+
+
+def _sigma(probability: dict[str, float]) -> float:
+    total = sum(probability.values())
+    mean = sum(
+        c * probability[k] / total for k, c in zip(KEYS, CENTERS)
+    )
+    return math.sqrt(sum(
+        probability[k] / total * (c - mean) ** 2
+        for k, c in zip(KEYS, CENTERS)
+    ))
+
+
+def test_running_the_pair_backwards_is_not_its_inverse() -> None:
+    """Why the counterfactual is recovered rather than re-run.
+
+    The move is a linear map on the bucket vector, and a second pass through
+    it is not an inverse: lambda and then 1/lambda smears mass across
+    neighbours.  How far off that lands depends on how narrow the claim is
+    relative to the rung -- on the live window of 2026-09-16, where the
+    served spread runs near one rung, re-running came out 14% too wide on P0
+    and 23% on P0-M, all of it pointing towards keeping the incumbent.
+
+    Asserted as the claim itself rather than as a fixed bias: re-running does
+    not return the input, and recording it does.
+    """
+
+    for width in (1.0, 1.6, 2.4):
+        source = _bucketed(width)
+        served, receipt = apply_center_width_calibration(
+            source, delta_c=0.0, width_lambda=0.9,
+            ordered_keys=KEYS, key_centers_c=CENTERS,
+        )
+        rerun, _ = apply_center_width_calibration(
+            served, delta_c=0.0, width_lambda=1.0 / 0.9,
+            ordered_keys=KEYS, key_centers_c=CENTERS,
+        )
+        recovered = {
+            key: float(value)
+            for key, value in receipt["input_probability"].items()
+        }
+        drift = sum(abs(rerun[k] - source[k]) for k in KEYS)
+        exact = sum(abs(recovered[k] - source[k]) for k in KEYS)
+        assert drift > 0.02, (width, drift)
+        assert exact < 1e-6, (width, exact)
+
+    # And in the regime production actually serves -- a claim about one rung
+    # wide -- the drift is a widening, which is the direction that flatters
+    # the incumbent.
+    narrow = _bucketed(1.0)
+    served, _ = apply_center_width_calibration(
+        narrow, delta_c=0.0, width_lambda=0.9,
+        ordered_keys=KEYS, key_centers_c=CENTERS,
+    )
+    rerun, _ = apply_center_width_calibration(
+        served, delta_c=0.0, width_lambda=1.0 / 0.9,
+        ordered_keys=KEYS, key_centers_c=CENTERS,
+    )
+    assert _sigma(rerun) > _sigma(narrow) * 1.05
+
+
+def test_the_receipt_records_the_distribution_the_layer_was_applied_to() -> None:
+    source = _bucketed(2.2)
+    _, receipt = apply_center_width_calibration(
+        source, delta_c=0.1, width_lambda=0.85,
+        ordered_keys=KEYS, key_centers_c=CENTERS,
+    )
+    recorded = receipt["input_probability"]
+    assert set(recorded) == set(source)
+    assert sum(recorded.values()) == pytest.approx(1.0, abs=1e-6)
+    for key, value in source.items():
+        assert recorded[key] == pytest.approx(value, abs=1e-8)
+
+
+def test_a_contraction_the_solve_cannot_invert_is_not_judged() -> None:
+    """A historical row -- one written before the input was recorded -- under
+    a contraction that is rank-deficient on its own axis.  Nothing short of
+    the recorded input can answer it, and guessing would be a number with no
+    evidence behind it, so the lane declines and holds."""
+
+    conn = sqlite3.connect(":memory:")
+    ensure_center_width_schema(conn)
+    _seed(conn, served_sd=1.0, truth_sd=2.4, day_count=MIN_QUALIFYING_DAYS - 1,
+          applied=(0.0, 0.5), receipt_drops=("input_probability",))
+    _activate(conn, delta_c=0.0, lam=0.5)
+    fitted = fit_center_width(conn, stage="P0")
+    veto = fitted["evidence"]["incumbent_veto"]
+    assert not fitted["vetoed"]
+    assert veto["cell_count"] == 0
+    assert not veto["enough_evidence"]
+    assert veto["skipped"] == {"not_recoverable": veto["skipped_count"]}
+    assert veto["skipped_count"] > 0
+    assert load_center_width(conn, stage="P0") is not None
+
+
+def test_a_historical_row_a_full_rank_map_can_answer_is_judged() -> None:
+    """The same row without a recorded input, but under a gentler pair the
+    map keeps the rank of: the input is solved for, and the verdict stands on
+    that rather than on the pair run backwards."""
+
+    conn = sqlite3.connect(":memory:")
+    ensure_center_width_schema(conn)
+    _seed(conn, served_sd=1.0, truth_sd=2.4, day_count=MIN_QUALIFYING_DAYS - 1,
+          applied=(0.0, 0.9), receipt_drops=("input_probability",))
+    _activate(conn, delta_c=0.0, lam=0.9)
+    fitted = fit_center_width(conn, stage="P0")
+    veto = fitted["evidence"]["incumbent_veto"]
+    assert veto["counterfactual_basis"] == {"recovered": veto["cell_count"]}
+    assert veto["cell_count"] > 0
+    assert fitted["vetoed"]
+
+
+def test_a_row_with_no_receipt_at_all_is_not_judged() -> None:
+    conn = sqlite3.connect(":memory:")
+    ensure_center_width_schema(conn)
+    _seed(conn, served_sd=1.0, truth_sd=2.4, day_count=MIN_QUALIFYING_DAYS - 1,
+          applied=(0.0, 0.9), receipt=False)
+    _activate(conn, delta_c=0.0, lam=0.9)
+    fitted = fit_center_width(conn, stage="P0")
+    veto = fitted["evidence"]["incumbent_veto"]
+    assert not fitted["vetoed"]
+    assert veto["cell_count"] == 0
+    assert veto["skipped"] == {"no_receipt": veto["skipped_count"]}
+
+
+def test_the_verdict_reads_the_width_the_row_was_served_under() -> None:
+    """Not the width the stage serves today.  A row served under a pair the
+    stage has since replaced is evidence about that row's pair, and undoing
+    the current one on it would be undoing something that was never there."""
+
+    conn = sqlite3.connect(":memory:")
+    ensure_center_width_schema(conn)
+    _seed(conn, served_sd=1.0, truth_sd=2.4, day_count=MIN_QUALIFYING_DAYS - 1,
+          applied=(0.0, 0.9))
+    _activate(conn, delta_c=0.0, lam=0.9)
+    from bayes_basket_target.center_width_store import _identity_counterfactual
+
+    cell = _cells(conn)[0]
+    assert cell["center_width_receipt"]["width_lambda"] == pytest.approx(0.9)
+    counterfactual, basis = _identity_counterfactual(
+        cell, delta_c=0.0, width_lambda=0.9
+    )
+    assert basis == "recorded_input"
+    assert counterfactual is not None
+    # Leaving off exactly what was applied returns the input, unchanged.
+    assert _sigma(counterfactual) == pytest.approx(
+        _sigma({k: float(v) for k, v in
+                cell["center_width_receipt"]["input_probability"].items()}),
+        rel=1e-9,
+    )

@@ -1054,39 +1054,212 @@ def _active_center_width_activated_at(
     return None if row is None or row[0] is None else str(row[0])
 
 
-def _undo_center_width_nll(
-    cell: Mapping[str, Any], *, delta_c: float, width_lambda: float
-) -> float:
-    """The cell's NLL with the pooled pair it was served under taken back off.
+# How far the recovered input may fail to reproduce the row that was served
+# before the recovery is called a description of something else and the cell
+# is not judged (total variation on the bucket vector).
+MAX_RECOVERY_RESIDUAL = 0.01
+# A forward map this ill-conditioned has lost the input rather than moved it.
+MAX_RECOVERY_CONDITION = 1.0e6
 
-    The kernel moves each bucket to ``mean + (origin - mean) * lam + shift``
-    about the INPUT distribution's mean, so the served distribution's mean is
-    ``mean + shift`` and applying ``(-shift, 1/lam)`` to it lands every bucket
-    back on its origin -- the exact inverse, not a probe, up to the rebinning
-    and the hard bound that neither direction can undo.
 
-    Clamped to the kernel's own bounds for the same reason the station lane
-    clamps: undoing a very hard contraction asks for a lambda the kernel
-    refuses, and if even the clamped widening beats the served cell then the
-    contraction was too much, which is the only question the veto asks.
+def _receipt_of(lineage: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The row's own centre/width receipt, or None if it carries none."""
+
+    raw = lineage.get("center_width_json")
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(str(raw))
+    except (TypeError, ValueError):
+        return None
+    return parsed if isinstance(parsed, Mapping) else None
+
+
+def _center_width_forward_matrix(
+    centers: Sequence[float], *, mean_c: float, lam: float, delta: float
+):
+    """The kernel's move written as a matrix: column j is where input bucket
+    j's mass lands.  Same clipping and the same linear split, so it is the
+    transform itself rather than a model of it."""
+
+    import numpy as np
+
+    size = len(centers)
+    matrix = np.zeros((size, size))
+    for column, origin in enumerate(centers):
+        position = mean_c + (float(origin) - mean_c) * lam + delta
+        if position <= centers[0]:
+            matrix[0, column] = 1.0
+            continue
+        if position >= centers[-1]:
+            matrix[size - 1, column] = 1.0
+            continue
+        for row in range(size - 1):
+            lower, upper = float(centers[row]), float(centers[row + 1])
+            if lower <= position <= upper:
+                span = upper - lower
+                share = (position - lower) / span if span > 0 else 0.0
+                matrix[row, column] += 1.0 - share
+                matrix[row + 1, column] += share
+                break
+    return matrix
+
+
+def _nnls(matrix, target, *, tol: float = 1e-10):
+    """Lawson-Hanson non-negative least squares.
+
+    Carried here rather than imported: numpy is already a dependency of this
+    package and scipy is not, and the problem is eleven by eleven.
     """
 
-    lam = float(width_lambda)
-    inverse = MAX_WIDTH_LAMBDA if lam <= 0.0 else 1.0 / lam
-    inverse = min(MAX_WIDTH_LAMBDA, max(MIN_WIDTH_LAMBDA, inverse))
-    shift = max(-MAX_ABS_SHIFT_C, min(MAX_ABS_SHIFT_C, -float(delta_c)))
-    adjusted, _ = apply_center_width_calibration(
-        cell["probabilities"],
-        delta_c=shift,
-        width_lambda=inverse,
-        ordered_keys=cell["ordered_keys"],
-        key_centers_c=cell["key_centers_c"],
-        excluded_buckets=cell["excluded_buckets"],
-    )
-    total_mass = sum(adjusted.values())
-    if total_mass <= 0.0:
-        return -math.log(1e-6)
-    return -math.log(max(adjusted[cell["settled_bucket"]] / total_mass, 1e-6))
+    import numpy as np
+
+    columns = matrix.shape[1]
+    chosen = np.zeros(columns, dtype=bool)
+    solution = np.zeros(columns)
+    gradient = matrix.T @ (target - matrix @ solution)
+    budget = 3 * columns
+    outer = 0
+    while (~chosen).any() and gradient[~chosen].max() > tol:
+        outer += 1
+        if outer > budget:
+            break
+        chosen[int(np.argmax(np.where(chosen, -np.inf, gradient)))] = True
+        trial = np.zeros(columns)
+        trial[chosen] = np.linalg.lstsq(
+            matrix[:, chosen], target, rcond=None
+        )[0]
+        inner = 0
+        while chosen.any() and trial[chosen].min() <= tol:
+            inner += 1
+            if inner > budget:
+                break
+            blocking = chosen & (trial <= tol)
+            denominator = solution[blocking] - trial[blocking]
+            with np.errstate(divide="ignore", invalid="ignore"):
+                ratios = np.where(
+                    denominator != 0.0, solution[blocking] / denominator, 0.0
+                )
+            step = float(np.min(ratios)) if ratios.size else 0.0
+            solution = solution + step * (trial - solution)
+            chosen &= np.abs(solution) > tol
+            trial = np.zeros(columns)
+            if chosen.any():
+                trial[chosen] = np.linalg.lstsq(
+                    matrix[:, chosen], target, rcond=None
+                )[0]
+        solution = np.where(chosen, trial, 0.0)
+        gradient = matrix.T @ (target - matrix @ solution)
+    return np.clip(solution, 0.0, None)
+
+
+def _identity_counterfactual(
+    cell: Mapping[str, Any], *, delta_c: float, width_lambda: float
+) -> tuple[dict[str, float] | None, str]:
+    """What this row would have been served with the pooled pair left off.
+
+    NOT the pair run backwards.  The move is a linear map on the bucket
+    vector and running it a second time is not its inverse: lambda and then
+    1/lambda smears mass across neighbours every pass, so an undone arm comes
+    out both wider than the input ever was and blurrier than it ever was --
+    measured 2026-09-16 over the live window at 14% too wide for P0 and 23%
+    for P0-M, plus 0.045 to 0.063 nat of pure rebinning, every bit of it
+    pointing the same way, towards keeping the incumbent.
+
+    So: take the input the row records, or solve the kernel's own map for it,
+    and re-apply whatever the pooled pair was NOT (the station scale, the
+    floor lift, a regime shift).  A row that cannot answer is not judged, and
+    says which question it could not answer -- a contraction is
+    rank-deficient, and at lambda 0.75 on an eleven-bucket axis the map has
+    rank nine, so for those rows nothing short of the recorded input will do.
+    """
+
+    import numpy as np
+
+    receipt = cell.get("center_width_receipt")
+    if not receipt:
+        return None, "no_receipt"
+    if str(receipt.get("state") or "") not in ("APPLIED", "IDENTITY"):
+        # Served untouched (the hard bound emptied the transform): this row
+        # says nothing about whether the pair earns its place.
+        return None, "not_applied"
+    if receipt.get("width_tier_lambda") is not None:
+        # A tier lambda replaces the pooled one rather than composing with
+        # it, so "the pooled pair left off" is not a factor of what was
+        # applied.  No tier table has ever been served; this fails closed
+        # the day one is.
+        return None, "tiered"
+    keys = list(cell["ordered_keys"])
+    applied_lambda = float(receipt.get("width_lambda") or 1.0)
+    applied_delta = float(receipt.get("delta_c") or 0.0)
+    if applied_lambda <= 0.0:
+        return None, "no_receipt"
+    recorded = receipt.get("input_probability")
+    if isinstance(recorded, Mapping) and set(recorded) == set(keys):
+        recovered = np.array([float(recorded[key]) for key in keys])
+        basis = "recorded_input"
+    else:
+        mean_c = receipt.get("distribution_mean_c")
+        if mean_c is None:
+            return None, "no_receipt"
+        centers = [float(value) for value in cell["key_centers_c"]]
+        matrix = _center_width_forward_matrix(
+            centers, mean_c=float(mean_c),
+            lam=applied_lambda, delta=applied_delta,
+        )
+        if (
+            np.linalg.matrix_rank(matrix, tol=1e-9) < len(centers)
+            or not np.isfinite(np.linalg.cond(matrix))
+            or np.linalg.cond(matrix) > MAX_RECOVERY_CONDITION
+        ):
+            return None, "not_recoverable"
+        served = np.array([
+            float(cell["probabilities"][key]) for key in keys
+        ])
+        total_served = served.sum()
+        if total_served <= 0.0:
+            return None, "no_receipt"
+        served = served / total_served
+        recovered = _nnls(matrix, served)
+        if recovered.sum() <= 0.0:
+            return None, "not_recoverable"
+        recovered = recovered / recovered.sum()
+        if float(np.abs(matrix @ recovered - served).sum()) > (
+            MAX_RECOVERY_RESIDUAL
+        ):
+            return None, "residual"
+        settled = keys.index(cell["settled_bucket"])
+        if recovered[settled] < 1e-4 <= served[settled]:
+            # The solve drove the settled bucket to nothing while the row
+            # served it real mass.  -log of that is 13.8 nat and would set
+            # the mean by itself; it is an artefact of an ill-posed solve,
+            # not a reading.
+            return None, "degenerate"
+        basis = "recovered"
+    probability = {key: float(value) for key, value in zip(keys, recovered)}
+    # Whatever the pooled pair was not.  Identity in both factors leaves the
+    # recovered input untouched -- the kernel's identity lands every bucket
+    # exactly on its own centre, so it costs no rebinning either.
+    residual_lambda = applied_lambda / float(width_lambda or 1.0)
+    residual_delta = applied_delta - float(delta_c)
+    if abs(residual_lambda - 1.0) > 1e-9 or abs(residual_delta) > 1e-9:
+        if not (
+            MIN_WIDTH_LAMBDA <= residual_lambda <= MAX_WIDTH_LAMBDA
+            and abs(residual_delta) <= MAX_ABS_SHIFT_C
+        ):
+            return None, "residual"
+        probability, _ = apply_center_width_calibration(
+            probability,
+            delta_c=residual_delta,
+            width_lambda=residual_lambda,
+            ordered_keys=keys,
+            key_centers_c=cell["key_centers_c"],
+            excluded_buckets=cell["excluded_buckets"],
+        )
+    total = sum(probability.values())
+    if total <= 0.0:
+        return None, "residual"
+    return {key: value / total for key, value in probability.items()}, basis
 
 
 def _center_width_veto(
@@ -1097,25 +1270,41 @@ def _center_width_veto(
     activated_at_utc: str | None,
 ) -> dict[str, Any]:
     """Score the active pair on the cells served after it went live: kept
-    (served as-is) against undone.  ``vetoed`` when undoing wins by more than
-    the admission hurdle on at least the veto window (charter 138)."""
+    (served as-is) against the same rows with the pair left off.  ``vetoed``
+    when leaving it off wins by more than the admission hurdle on at least
+    the veto window (charter 138).
+
+    Rows that cannot say what identity would have served are not judged and
+    are counted by reason.  Declining is the safe direction here -- it holds
+    the incumbent -- and it is the honest one: a reconstruction of an input
+    the transform destroyed is a guess wearing a number's clothes.
+    """
 
     since = activated_at_utc or ""
     kept_total = undone_total = 0.0
     count = 0
     per_day: dict[str, dict[str, float]] = {}
+    skipped: dict[str, int] = {}
+    bases: dict[str, int] = {}
     for day in sorted(by_day):
         day_kept = day_undone = 0.0
         day_count = 0
         for cell in by_day[day]:
             if str(cell.get("decision_at_utc") or "") < since:
                 continue
+            counterfactual, basis = _identity_counterfactual(
+                cell, delta_c=delta_c, width_lambda=width_lambda
+            )
+            if counterfactual is None:
+                skipped[basis] = skipped.get(basis, 0) + 1
+                continue
+            bases[basis] = bases.get(basis, 0) + 1
             # The served pair is already inside the cell, so serving it as-is
             # is the identity residual -- applying the pair again here would
             # score the incumbent against its own scalars squared.
             day_kept += _cell_nll(cell, delta_c=0.0, width_lambda=1.0)
-            day_undone += _undo_center_width_nll(
-                cell, delta_c=delta_c, width_lambda=width_lambda
+            day_undone += -math.log(
+                max(counterfactual[cell["settled_bucket"]], 1e-6)
             )
             day_count += 1
         if day_count:
@@ -1138,6 +1327,11 @@ def _center_width_veto(
         "incumbent_width_lambda": float(width_lambda),
         "day_count": len(per_day),
         "cell_count": count,
+        # Never a silent cap: a window that mostly could not be judged must
+        # not read as a window that was judged and held.
+        "counterfactual_basis": bases,
+        "skipped": skipped,
+        "skipped_count": sum(skipped.values()),
         "nll_kept": None if count == 0 else kept_total / count,
         "nll_undone": None if count == 0 else undone_total / count,
         "undo_gain": gain,
@@ -1863,6 +2057,10 @@ def _serving_cell(
         "event_date": day,
         "decision_at_utc": decided,
         "model_center_c": lineage.get("model_center_c"),
+        # What this row actually had applied, from the row itself: the veto
+        # scores the width this decision was served under, not the width the
+        # stage is serving now (charter 138).
+        "center_width_receipt": _receipt_of(lineage),
         # What the served row itself says the forecaster's TX was -- the TAF
         # cell a day belongs to is read from here, not re-derived.
         "taf_observed_tx_c": lineage.get("taf_observed_tx_c"),

@@ -414,6 +414,12 @@ def apply_center_width_calibration(
             "width_tier": tier_index,
             "width_tier_lambda": tier_lambda,
             "pooled_width_lambda": float(width_lambda),
+            # Served untouched, so the input is also the output -- recorded
+            # anyway so every receipt answers the same question the same way.
+            "input_probability": {
+                str(key): round(float(value) / total_in, 9)
+                for key, value in probability.items()
+            },
         }
     adjusted = {key: value / total for key, value in moved.items()}
     return adjusted, {
@@ -447,6 +453,20 @@ def apply_center_width_calibration(
         "pooled_width_lambda": float(width_lambda),
         "mass_returned_to_hard_bound": restored,
         "pre_normalisation_mass": total,
+        # The distribution this layer was applied TO (charter 138).  The
+        # incumbent veto has to score what identity would have served, and
+        # that is exactly this -- but it is not recoverable afterwards: the
+        # move is a linear map on the bucket vector, and a contraction is
+        # rank-deficient.  At lambda 0.75 on an eleven-bucket axis the map
+        # has rank nine, so two dimensions of the input are destroyed and
+        # any reconstruction is one of infinitely many.  The mean and sigma
+        # above were already kept for the same reason and are not enough to
+        # score a bucket.  Additive and absent from every row written before
+        # this, which readers take as "solve for it or decline".
+        "input_probability": {
+            str(key): round(float(value) / total_in, 9)
+            for key, value in probability.items()
+        },
     }
 
 
