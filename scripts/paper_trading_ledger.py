@@ -217,7 +217,9 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     OFF_CENTRE_CLAIM_MODE,
     BETA_EDGE_MODE,
     BETA_EDGE_RULE_VERSION,
-    STAGE_BUDGET_SHARE,
+    STATION_DAY_HARD_FRACTION,
+    CAPITAL_LAYER_RULE_VERSION,
+    station_day_ceiling_usdc,
     ECONOMIC_HURDLE_V1,
     ECONOMIC_HURDLE_RULE_VERSION,
     EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
@@ -320,7 +322,7 @@ from bayes_basket_target.production_io import (  # noqa: E402
 )
 from bayes_basket_target.runtime import (  # noqa: E402
     _DEFAULT_POLICY as _PRODUCTION_DEFAULT_POLICY,
-    _station_cap_override,
+    _capital_layer_policy_bounds,
     snapshot_from_probability_envelope,
 )
 from bayes_basket_target.station_season import station_season_bin  # noqa: E402
@@ -396,7 +398,7 @@ if EXCHANGE_LOT_TOP_UP not in EXCHANGE_LOT_TOP_UP_MODES:
 # default: gate A already caps what a wrong near-1 claim can cost.
 CHAIN_TOPUP_BANKROLL_USDC = float(
     os.environ.get("PAPER_LEDGER_TOPUP_BANKROLL", "") or 0.0
-)  # 0 = the scope's own allowance, equity * MAX_STAKE_FRACTION_PER_SCOPE
+)  # 0 = the station-day's ceiling, equity * STATION_DAY_HARD_FRACTION
 CHAIN_TOPUP_MISS_FLOOR = float(
     os.environ.get("PAPER_LEDGER_TOPUP_MISS_FLOOR", "") or 0.0
 )
@@ -525,14 +527,9 @@ REQUIRE_QUOTED_BOOK = (
     if _REQUIRE_QUOTED_ENV
     else _quoted_gate_promoted()
 )
-# Kernel-owned (see the import).  The research arm may still move P0's share;
-# anything else is a rule change and belongs in the kernel where production
-# reads it too.
-_P0_SHARE_ENV = os.environ.get("PAPER_LEDGER_P0_BUDGET_SHARE", "").strip()
-if _P0_SHARE_ENV:
-    STAGE_BUDGET_SHARE = {
-        **STAGE_BUDGET_SHARE, "P0": float(_P0_SHARE_ENV),
-    }
+# Charter 141 retired the per-stage share of the station-day allowance, and
+# with it this lane's ``PAPER_LEDGER_P0_BUDGET_SHARE`` research arm: there is
+# no share left to move.
 # Research arm only: the production cap is charter 50's and lives in the
 # kernel's policy.  This exists so a width sweep can pin the window to an
 # exact size (min=max=k) without editing the file per arm; the default is the
@@ -2824,8 +2821,10 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     "initial_capital_usdc": INITIAL_CAPITAL_USDC,
     "kelly_fraction": KELLY_FRACTION,
     "max_stake_fraction_per_scope": MAX_STAKE_FRACTION_PER_SCOPE,
-    # Which share of that cap each stage may have committed by its
-    # end.  It changes what every seat after the first may be.
+    # Charter 141: the ceiling the lift, a completion and the budget gate
+    # read, and the rule string that names the two-number station-day.
+    "station_day_hard_fraction": STATION_DAY_HARD_FRACTION,
+    "capital_layer_rule": CAPITAL_LAYER_RULE_VERSION,
     "certainty_gate": list(CERTAINTY_GATE),
     # Which decisions the gate judges.  It stopped being the opener's alone
     # on 2026-08-24, when the ledger was aligned to the live rule, and that
@@ -2837,7 +2836,6 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     # Whether an unpriced ideal window is a refusal.  It selects a different
     # population, so rows either side of it are different books.
     "require_quoted_book": REQUIRE_QUOTED_BOOK,
-    "stage_budget_share": STAGE_BUDGET_SHARE,
     "maximum_support_buckets": MAXIMUM_SUPPORT_BUCKETS,
     "minimum_support_buckets": MINIMUM_SUPPORT_BUCKETS,
     # Arm G: how many rungs from the book's own centre a leg may sit.  0 is
@@ -5320,8 +5318,8 @@ def _production_judge(
             ),
         }
     policy_config = dict(_PRODUCTION_DEFAULT_POLICY)
-    policy_config.update(_station_cap_override())
     policy_config.update(resolved.to_adaptive_policy_overrides())
+    policy_config.update(_capital_layer_policy_bounds(float(equity)))
     try:
         basket_policy = TargetBasketPolicy.from_mapping(policy_config)
         basket_policy.validate()
@@ -5521,15 +5519,18 @@ def _production_judge(
     # operator's dial binds only at the execution gate, per leg
     # (``budget_ok``).  The walk applies that gate at the same place.
     capital = scope_cap
-    # Charter 70 as production runs it: ``cash_phase`` lifts each leg to
-    # one exchange lot against the *untilted* remaining scope allowance,
-    # so a rung the tilted capital could not lift is lifted there anyway
-    # when the allowance can pay.  Handed back for the walk's lot raise.
-    lot_room = scope_cap
-    # Charter 71(b)'s frame: the scope's share of the whole book, the
-    # number production passes as ``chain_growth_frame_usdc``.
+    # Charter 70 as production runs it, bounded as charter 141 bounds it:
+    # the lift to one exchange lot, a completion and the budget gate read the
+    # station-day's ceiling, not the sizing allowance.  Handed back for the
+    # walk's lot raise.
+    lot_room = station_day_ceiling_usdc(
+        book_equity_usdc=float(equity),
+        committed_usdc=float(chain_stake),
+    )
+    # Charter 71(b)'s frame: the station-day's ceiling share of the whole
+    # book, the number production passes as ``chain_growth_frame_usdc``.
     growth_frame = CHAIN_TOPUP_BANKROLL_USDC or (
-        float(equity) * MAX_STAKE_FRACTION_PER_SCOPE
+        float(equity) * STATION_DAY_HARD_FRACTION
     )
     if 0.0 < tilt < 1.0 and capital > 0.0:
         # The kernel's floor (2026-09-06): the venue's minimum order on each
@@ -5618,6 +5619,9 @@ def _production_judge(
             # post-lift floor downstream, so the winner chain picks among
             # what is left rather than this lane holding the whole payload.
             excluded_candidate_ids=tuple(excluded_candidate_ids),
+            # Charter 84 (八) as charter 141 bounds it: production sizes a
+            # completion against the station-day's ceiling.
+            completion_capital_usdc=lot_room,
             chain_growth_frame_usdc=growth_frame,
             last_decision_signature=last_decision_signature,
             # Charter 68(c)/87: production's solver reads the store's
@@ -10069,9 +10073,7 @@ def backfill(
                             production_verdict["delta_cost_usdc"]
                         )
                         stage_budget = (
-                            equity_at_open
-                            * MAX_STAKE_FRACTION_PER_SCOPE
-                            * STAGE_BUDGET_SHARE.get(stage, 1.0)
+                            equity_at_open * MAX_STAKE_FRACTION_PER_SCOPE
                         )
                         stage_room = float(production_verdict["capital_usdc"])
                         stake = wanted_stake
@@ -10082,9 +10084,7 @@ def backfill(
                             equity=equity_at_open,
                         )
                         stage_budget = (
-                            equity_at_open
-                            * MAX_STAKE_FRACTION_PER_SCOPE
-                            * STAGE_BUDGET_SHARE.get(stage, 1.0)
+                            equity_at_open * MAX_STAKE_FRACTION_PER_SCOPE
                         )
                         stage_room = stage_budget * tilt - chain_stake
                         # Charter 137: the level reads off the kernel's
@@ -10854,7 +10854,7 @@ def backfill(
                                 ))
                                 continue
                         growth_frame = CHAIN_TOPUP_BANKROLL_USDC or (
-                            equity_at_open * MAX_STAKE_FRACTION_PER_SCOPE
+                            equity_at_open * STATION_DAY_HARD_FRACTION
                         )
                         growth = _chain_topup_growth(
                             held=held,

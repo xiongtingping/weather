@@ -99,8 +99,9 @@ def test_net_returns_the_room_and_gross_returns_the_stage_allowance() -> None:
         capital_available_usdc=room, basis="gross",
     )
     assert net == pytest.approx(room)
-    # 2% of the book, times P0-M's 0.8 share, with nothing committed.
-    assert gross == pytest.approx(300.0 * 0.02 * 0.8)
+    # The sizing share of the book with nothing committed -- no stage share
+    # since charter 141.
+    assert gross == pytest.approx(300.0 * K.MAX_STAKE_FRACTION_PER_SCOPE)
     # The arm may only widen a target, never narrow one.
     assert gross >= net
 
@@ -111,8 +112,8 @@ def test_gross_never_narrows_and_refuses_an_unnamed_stage() -> None:
         book_equity_usdc=300.0, stage="P1",
         capital_available_usdc=wide_room, basis="gross",
     ) == pytest.approx(wide_room)
-    # A stage with no share of its own keeps the room it was handed rather
-    # than helping itself to the whole 2%.
+    # A caller that is not a chain stage keeps the room it was handed rather
+    # than helping itself to the whole sizing allowance.
     assert K.kelly_target_budget_usdc_v1(
         book_equity_usdc=300.0, stage="",
         capital_available_usdc=2.0, basis="gross",

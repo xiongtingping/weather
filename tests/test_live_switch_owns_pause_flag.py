@@ -74,7 +74,7 @@ def _bench(tmp_path: Path, monkeypatch, *, armed: bool, paused: bool) -> dict:
     monkeypatch.setattr(control, "POLICY_PATH", policy)
     monkeypatch.setattr(control, "RUNTIME_PATH", runtime)
     monkeypatch.setattr(control, "LIVE_RUNTIME_PATH", live_runtime)
-    monkeypatch.setattr(control, "STATION_CAP_PATH", tmp_path / "absent.json")
+    monkeypatch.setattr(control, "SSOT_PATH", tmp_path / "absent.db")
     monkeypatch.setattr(control, "EXCLUSION_PATH", tmp_path / "absent.json")
     monkeypatch.setattr(control, "PAUSE_FLAG_PATH", flag)
     monkeypatch.setattr(control, "AUDIT_PATH", audit)

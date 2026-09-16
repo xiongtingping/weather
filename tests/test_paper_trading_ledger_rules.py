@@ -364,8 +364,10 @@ def test_only_credible_fills_bankroll_the_book() -> None:
     assert "credible = all_in_cost >= DUST_COST_FLOOR" in source
     assert "chain_credible = chain_cost >= DUST_COST_FLOOR" in source
     # Charter 66 reshaped the spelling: the stage budget is built first,
-    # then the tilt scales it and the chain's spend comes off.
-    assert "* STAGE_BUDGET_SHARE.get(stage, 1.0)" in source
+    # then the tilt scales it and the chain's spend comes off.  Charter 141
+    # took the stage share out of it.
+    assert "equity_at_open * MAX_STAKE_FRACTION_PER_SCOPE\n" in source
+    assert "STAGE_BUDGET_SHARE" not in source
     assert "stage_room = stage_budget * tilt - chain_stake" in source
     assert "if chain_credible:\n                day_pnl += scored.pnl_usdc" in source
 
@@ -394,7 +396,11 @@ def test_only_credible_fills_bankroll_the_book() -> None:
     if not rows:
         return
 
-    initial, cap, floor = 1000.0, 0.02, 0.01
+    # Charter 141: the per-scope sizing share is the ledger's own constant
+    # (6.5% since 2026-09-17), not a number restated here.
+    import paper_trading_ledger as _ledger  # noqa: PLC0415
+
+    initial, cap, floor = 1000.0, float(_ledger.MAX_STAKE_FRACTION_PER_SCOPE), 0.01
     equity = initial
     by_day: dict[str, list] = defaultdict(list)
     for event_date, station_id, stake, pnl, cost, current in rows:
@@ -453,20 +459,20 @@ def test_the_opening_cannot_spend_the_whole_chain_cap() -> None:
         sys.path.insert(0, str(root / "scripts"))
     from paper_trading_ledger import (  # noqa: PLC0415
         MAX_STAKE_FRACTION_PER_SCOPE,
-        STAGE_BUDGET_SHARE,
+        STATION_DAY_HARD_FRACTION,
     )
 
-    assert set(STAGE_BUDGET_SHARE) == {"P0", "P0-M", "P1"}
-    assert STAGE_BUDGET_SHARE["P0"] < 1.0, (
-        "the opening must leave room for the adjustments"
-    )
-    shares = [STAGE_BUDGET_SHARE[s] for s in ("P0", "P0-M", "P1")]
-    assert shares == sorted(shares), "a later stage may never have less room"
-    assert shares[-1] == 1.0, (
-        "the last stage reaches the whole cap, so the chain total is "
-        "unchanged"
-    )
-    assert 0 < MAX_STAKE_FRACTION_PER_SCOPE <= 0.05
+    # Charter 141 (2026-09-17) retired the 2026-08-19 staging this test used
+    # to pin: the per-stage share held 40% of the allowance back for stages
+    # that charter 137 measured could never reach it, and left a P0
+    # completion unable to afford the leg its own opening planned (EPWA
+    # 2026-09-18).  What remains is the property the staging existed for --
+    # the chain as a whole cannot grow past one bound -- carried now by the
+    # ceiling, which every stage and every completion shares.
+    import paper_trading_ledger as ledger  # noqa: PLC0415
+
+    assert not hasattr(ledger, "STAGE_BUDGET_SHARE")
+    assert 0 < MAX_STAKE_FRACTION_PER_SCOPE <= STATION_DAY_HARD_FRACTION <= 0.25
 
 
 def test_a_station_day_settles_once() -> None:
@@ -999,7 +1005,7 @@ def test_the_budget_line_only_appears_when_the_budget_bound() -> None:
     from paper_trading_ledger import (  # noqa: PLC0415
         KELLY_TOPUP_BASIS,
         MAX_STAKE_FRACTION_PER_SCOPE,
-        STAGE_BUDGET_SHARE,
+        STATION_DAY_HARD_FRACTION,
         kelly_target_budget_usdc_v1,
     )
 
@@ -1026,11 +1032,10 @@ def test_the_budget_line_only_appears_when_the_budget_bound() -> None:
     assert "if wanted_stake > 0.0 and stage_room <= 0.0" in source
     assert "if not held\n" not in source
 
-    # The staging still exists and still totals the per-scope cap at P1 --
-    # this test is about the copy, not a licence to widen the cap.
-    assert STAGE_BUDGET_SHARE["P1"] == 1.0
-    assert STAGE_BUDGET_SHARE["P0"] < STAGE_BUDGET_SHARE["P0-M"] < 1.0
-    assert MAX_STAKE_FRACTION_PER_SCOPE == 0.02
+    # Charter 141's two numbers -- this test is about the copy, not a licence
+    # to widen them.
+    assert MAX_STAKE_FRACTION_PER_SCOPE == 0.065
+    assert STATION_DAY_HARD_FRACTION == 0.10
 
 
 def test_posted_basket_hit_is_grouped_on_what_was_chosen() -> None:

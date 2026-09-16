@@ -53,12 +53,21 @@ def _budget(**overrides):
     return kernel.completion_risk_budget_v1(**kwargs)
 
 
-def test_the_budget_is_one_and_a_half_stage_allowances_less_the_chain() -> None:
-    # EHAM 2026-09-16 at P0: equity 330.565, allowance 2% x 0.6 = 3.967.
+def test_the_budget_is_the_station_days_ceiling_less_the_chain() -> None:
+    # Charter 141: one number for everything that goes out -- 10% of the real
+    # book less the chain.  It was 1.5x the 2% x stage-share allowance, a
+    # second number for the same question.
     budget = kernel.completion_budget_usdc_v1(
-        book_equity_usdc=330.5650879490001, stage="P0", committed_usdc=1.65,
+        book_equity_usdc=99.80, stage="P0", committed_usdc=2.15,
     )
-    assert budget == pytest.approx(1.5 * 330.5650879490001 * 0.02 * 0.6 - 1.65)
+    assert budget == pytest.approx(99.80 * kernel.STATION_DAY_HARD_FRACTION - 2.15)
+    assert budget == pytest.approx(kernel.station_day_ceiling_usdc(
+        book_equity_usdc=99.80, committed_usdc=2.15,
+    ))
+    # Every stage reads the same ceiling.
+    assert kernel.completion_budget_usdc_v1(
+        book_equity_usdc=99.80, stage="P1", committed_usdc=2.15,
+    ) == pytest.approx(budget)
     assert kernel.completion_budget_usdc_v1(
         book_equity_usdc=100.0, stage="P0", committed_usdc=50.0,
     ) == 0.0

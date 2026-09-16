@@ -31,14 +31,14 @@ from .basket_kernel.delta_v2 import (
     EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
     EXECUTION_AUTHORIZATION_JOINT_VALUE,
     execution_authorization_rule_v1,
+    CAPITAL_LAYER_RULE_VERSION,
     KELLY_OBJECTIVE_FORM,
-    MAX_STAKE_FRACTION_PER_SCOPE,
     PRODUCTION_EXECUTION_AUTHORIZATION,
     rescore_maker_bundle_v2,
     scope_stake_cap_usdc,
+    station_day_ceiling_usdc,
+    STATION_DAY_HARD_FRACTION,
     completion_budget_usdc_v1,
-    COMPLETION_RISK_BUDGET_RULE_VERSION,
-    LADDER_BALANCE_CANDIDATE_ORIGIN as _LADDER_BALANCE_ORIGIN_136,
     venue_minimum_shares_v1,
 )
 from .cash_phase import (
@@ -112,33 +112,38 @@ DELTA_V2_OPTIMIZER_SCHEMA = "bayes_basket_target_delta_v2_optimizer_v2"
 DELTA_V2_OPTIMIZER_ID = "DeltaBasketScoreV2Optimizer"
 
 
-def _station_cap_override() -> dict[str, float]:
-    """The operator's per-station bankroll, read fresh at every compile.
+def _capital_layer_policy_bounds(
+    book_equity_usdc: float | None,
+) -> dict[str, float]:
+    """Charter 141: the policy's bankroll-shaped bounds, off the real book.
 
-    scripts/live_control_server.py writes station_cap_v1.json from the
-    dashboard dial; absent or unreadable, the compiled-in default stands.
-    The three bankroll-shaped bounds are derived here rather than stored in
-    the file, because they are the same number wearing three names --
-    protected floor, outside loss, minimum expected pnl -- and letting them
-    be set independently is how a floor ends up deeper than the bankroll.
+    ``total_budget_usdc`` and the three loss bounds (protected floor, outside
+    loss, minimum expected pnl) are one number wearing four names.  They read
+    the dashboard's per-station dial (``station_cap_v1.json``) until
+    2026-09-17 -- a dial that no longer bounded spend (the per-scope stake
+    cap replaced it on 2026-08-26) and that the station policy's own
+    ``total_budget_usdc: 20`` then overwrote.  They are now the station-day's
+    ceiling on the real book: nothing a station-day spends can exceed it, so
+    a loss floor at minus the ceiling can never refuse what the ceiling
+    admits.  Applied after the station policy, so no artifact can reinstate
+    a stale number.  With no equity on the snapshot (a fixture) the policy
+    keeps what it had.
     """
 
-    path = (
-        Path(__file__).resolve().parents[1]
-        / "config" / "trading" / "station_cap_v1.json"
-    )
+    if book_equity_usdc in (None, ""):
+        return {}
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        cap = float(raw["station_cap_usdc"])
-    except (OSError, ValueError, KeyError, TypeError):
+        equity = float(book_equity_usdc)
+    except (TypeError, ValueError):
         return {}
-    if not math.isfinite(cap) or not 1.0 <= cap <= 30.0:
+    if not math.isfinite(equity) or equity <= 0.0:
         return {}
+    ceiling = max(1.0, equity * STATION_DAY_HARD_FRACTION)
     return {
-        "total_budget_usdc": cap,
-        "minimum_expected_pnl_after_usdc": -cap,
-        "protected_floor_usdc": -cap,
-        "max_outside_loss_usdc": cap,
+        "total_budget_usdc": ceiling,
+        "minimum_expected_pnl_after_usdc": -ceiling,
+        "protected_floor_usdc": -ceiling,
+        "max_outside_loss_usdc": ceiling,
     }
 
 
@@ -1172,9 +1177,11 @@ def _compile_target_plan(
         )
 
     policy_config = dict(_DEFAULT_POLICY)
-    policy_config.update(_station_cap_override())
     policy_config.update(resolved.to_adaptive_policy_overrides())
     policy_config.update(dict(base_policy or {}))
+    policy_config.update(
+        _capital_layer_policy_bounds(market_snapshot.get("book_equity_usdc"))
+    )
     policy = TargetBasketPolicy.from_mapping(policy_config)
     if resolved_regime is not None:
         # Regime may only tighten concentration; never alter p(B).
@@ -1238,13 +1245,38 @@ def _compile_target_plan(
     book_equity_usdc = float(
         market_snapshot.get("book_equity_usdc") or remaining_budget
     )
+    # Charter 141 (user rulings 2026-09-17): two numbers for the station-day.
+    # ``station_capital_usdc`` is what sizing may target (6.5% of the real
+    # book less the chain), ``station_ceiling_usdc`` what may go out (10%):
+    # the venue-minimum lift, a completion, the budget gate and the order
+    # sizing below.  No stage share.
     station_capital_usdc = scope_stake_cap_usdc(
         book_equity_usdc=book_equity_usdc,
         stage=str(snapshot.evidence.probability_stage or ""),
         committed_usdc=station_committed_usdc,
     )
+    station_ceiling_usdc = station_day_ceiling_usdc(
+        book_equity_usdc=book_equity_usdc,
+        committed_usdc=station_committed_usdc,
+    )
+    # Charter 141: the whole book's exposure bound, when the producer read
+    # the account.  Open exposure is the marked value of open positions plus
+    # resting buys; the room is what the exposure fraction of the real book
+    # still leaves, and no station-day may spend past it.  Absent (a fixture,
+    # the paper ledger), no bound -- the ledger has no account to read.
+    portfolio_room_usdc: float | None = None
+    _exposure = market_snapshot.get("account_open_exposure_usdc")
+    _exposure_fraction = market_snapshot.get("portfolio_exposure_fraction")
+    if _exposure not in (None, "") and _exposure_fraction not in (None, ""):
+        portfolio_room_usdc = max(
+            0.0,
+            float(_exposure_fraction) * book_equity_usdc - float(_exposure),
+        )
+        station_capital_usdc = min(station_capital_usdc, portfolio_room_usdc)
+        station_ceiling_usdc = min(station_ceiling_usdc, portfolio_room_usdc)
     pool_remaining_usdc = remaining_budget
-    remaining_budget = min(remaining_budget, station_capital_usdc)
+    sizing_capital_usdc = min(remaining_budget, station_capital_usdc)
+    remaining_budget = min(remaining_budget, station_ceiling_usdc)
 
     try:
         resolved_delta_policy = (
@@ -1357,7 +1389,9 @@ def _compile_target_plan(
             basket_policy=policy,
             delta_policy=resolved_delta_policy,
             fill_resolver=delta_v2_fill_resolver,
-            capital_available_usdc=remaining_budget,
+            capital_available_usdc=sizing_capital_usdc,
+            # Charter 141: the ceiling everything after the seat reads.
+            capital_ceiling_usdc=remaining_budget,
             minimum_profit_floor=float(
                 policy.minimum_expected_pnl_after_usdc
             ),
@@ -1374,10 +1408,11 @@ def _compile_target_plan(
             # ledger passed it, so the arm could not have acted live.
             taf_tx_bucket=taf_tx_bucket_for(envelope, str(envelope.stage)),
             # Charter 71: the identity this compile is served under, and the
-            # frame the growth gate reads -- the scope's share of the whole
-            # book, the same number the paper ledger frames it in.
+            # frame the growth gate reads -- since charter 141 the station-
+            # day's ceiling share of the whole book, so a chain that spent
+            # past the sizing share is not ruined by its own completion.
             chain_growth_frame_usdc=(
-                book_equity_usdc * MAX_STAKE_FRACTION_PER_SCOPE
+                book_equity_usdc * STATION_DAY_HARD_FRACTION
                 if market_snapshot.get("book_equity_usdc") not in (None, "")
                 else None
             ),
@@ -1395,8 +1430,8 @@ def _compile_target_plan(
                 for item in reversed(_earlier)
                 if item.probabilities
             ],
-            # Charter 136 (四): what a broken seat may spend to complete itself
-            # -- 1.5x this station-day's stage allowance, less the chain.
+            # Charter 136 (四) as charter 141 rewrote it: what a broken seat
+            # may spend to complete itself -- the station-day's ceiling.
             completion_budget_usdc=completion_budget_usdc_v1(
                 book_equity_usdc=book_equity_usdc,
                 stage=str(snapshot.evidence.probability_stage or ""),
@@ -1566,31 +1601,10 @@ def _compile_target_plan(
         )
 
     row_by_bucket = {row.bucket: row for row in snapshot.buckets}
-    # Charter 136 (四): a completion the risk budget admitted is sized and
-    # re-scored against that budget, never past the pool's own cash.  The
-    # compile already judged it there; sizing it against the tighter
-    # station remainder would cut the one order the budget exists for.
-    if isinstance(delta_plan, Mapping):
-        _seated_completion = dict(
-            ((delta_plan.get("basket_support_selection") or {}).get("seated")
-             or {}).get("completion") or {}
-        )
-        if (
-            str(delta_plan.get("basket_winner_candidate_origin")
-                or (delta_plan.get("target_solution") or {}).get(
-                    "winner_candidate_origin") or "")
-            == _LADDER_BALANCE_ORIGIN_136
-            and _seated_completion.get("admitted_by")
-            == COMPLETION_RISK_BUDGET_RULE_VERSION
-            and delta_plan.get("completion_budget_usdc") is not None
-        ):
-            remaining_budget = min(
-                float(pool_remaining_usdc),
-                max(
-                    float(remaining_budget),
-                    float(delta_plan["completion_budget_usdc"]),
-                ),
-            )
+    # Charter 136 (四)'s special case -- a risk-budget completion sized past the
+    # station remainder -- is gone with charter 141: ``remaining_budget`` is
+    # the station-day's ceiling for every order, and the completion budget is
+    # that same ceiling.
     # Which family each leg goes out as, read off the plan the optimizer
     # wrote.  Charter 127 lets one basket carry both -- a held ladder whose
     # short rung is completed crosses while an ordinary entry rests -- so
@@ -2014,6 +2028,12 @@ def _compile_target_plan(
         # Both sides of the cap, so a reader can tell a station held back by
         # its own bankroll from one held back by an empty book.
         "station_capital_usdc": station_capital_usdc,
+        # Charter 141: the ceiling orders were sized inside, the book it was
+        # read off, and the whole-book room when the account was read.
+        "station_ceiling_usdc": station_ceiling_usdc,
+        "book_equity_usdc": book_equity_usdc,
+        "portfolio_room_usdc": portfolio_room_usdc,
+        "capital_layer_rule": CAPITAL_LAYER_RULE_VERSION,
         "station_committed_usdc": station_committed_usdc,
         "pool_remaining_usdc": pool_remaining_usdc,
         "station_reserve_violations": [],

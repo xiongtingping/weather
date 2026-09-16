@@ -38,6 +38,12 @@ from pathlib import Path
 from typing import Any
 
 from .contracts import ContractError, content_sha256
+from .account_equity import (
+    budget_capped_equity,
+    equity_peak_usdc,
+    load_account_equity,
+    open_exposure_by_station_day,
+)
 
 SCHEMA = "basket_target_portfolio_inventory_v1"
 POLICY_SCHEMA = "basket_target_portfolio_capital_policy_v1"
@@ -45,7 +51,6 @@ DEFAULT_POLICY_PATH = (
     Path(__file__).resolve().parent.parent
     / "config/trading/portfolio_capital_policy_v1.json"
 )
-_OPEN_CYCLE_STATES = ("prepared", "submitting", "submitted")
 
 PORTFOLIO_INVENTORY_DDL = """
 CREATE TABLE IF NOT EXISTS basket_portfolio_inventory_snapshot (
@@ -136,53 +141,35 @@ def build_portfolio_inventory(
     as_of_utc: str,
     blocks_by_station: Mapping[str, str],
     policy: Mapping[str, Any],
+    budget_usdc: float | None = None,
     default_block: str = "UNBLOCKED_SINGLETON",
 ) -> dict[str, Any]:
-    """Aggregate open exposure and evaluate every Tier-1 bound."""
+    """Aggregate open exposure and evaluate every Tier-1 bound.
 
-    pool = conn.execute(
-        "SELECT balance_usdc,reserved_usdc FROM basket_target_capital_pool "
-        "ORDER BY pool_id LIMIT 1"
-    ).fetchone()
-    bankroll = float(pool[0]) if pool else 0.0
-    reserved = float(pool[1]) if pool else 0.0
+    Charter 141 (2026-09-17): the bankroll is the real account -- exchange
+    cash plus the marked value of open positions, read by
+    ``account_equity`` and capped by the operator's budget dial -- not the
+    pool counter, which only ever subtracted fills from a paper balance and
+    read 297.98 against an account of 99.80.  Exposure is what the ledger
+    still has at risk: filled cost on station-days that have not settled
+    plus resting buys.  The whole-book bound reads the part of the account
+    that is not cash (positions plus resting buys), the same number the
+    runtime bounds each station-day by.  With no fresh account read the book
+    takes on nothing: ``account_equity_unavailable`` is a breach.
+    """
 
-    placeholders = ",".join("?" for _ in _OPEN_CYCLE_STATES)
-    # Two questions, asked separately, because they are answered at wildly
-    # different scales.  Every bound below is computed from cycles carrying
-    # open notional; the open-cycle count is reported and gates nothing.
-    #
-    # Asking them together -- one outer join over every open cycle, grouped
-    # -- made the cheap number set the price of the expensive one.  Measured
-    # 2026-09-01: 52,005 open cycles, of which *none* carried an intent, and
-    # the aggregate cost 757ms.  The forward sweep calls this once per scope,
-    # so that was ~25 seconds a cycle spent grouping fifty-two thousand rows
-    # to arrive at an empty exposure map.  Driven from the intents instead it
-    # is 46ms, and the count is a count.
-    open_cycles = int(
-        conn.execute(
-            "SELECT COUNT(*) FROM basket_target_execution_cycles "
-            f"WHERE state IN ({placeholders})",
-            _OPEN_CYCLE_STATES,
-        ).fetchone()[0]
-        or 0
+    account = load_account_equity(conn, as_of_utc=as_of_utc)
+    bankroll = (
+        budget_capped_equity(account["equity_usdc"], budget_usdc)
+        if account is not None else 0.0
     )
-    rows = conn.execute(
-        "SELECT c.station_id,c.event_date,c.settlement_timezone,"
-        "SUM(i.requested_notional_usdc) "
-        "FROM basket_target_order_intents AS i "
-        "JOIN basket_target_execution_cycles AS c "
-        "  ON c.cycle_id=i.cycle_id "
-        "WHERE i.state IN ('prepared','submitted') "
-        f"AND c.state IN ({placeholders}) "
-        "GROUP BY i.cycle_id",
-        _OPEN_CYCLE_STATES,
-    ).fetchall()
+    reserved = float(account["resting_buy_usdc"]) if account is not None else 0.0
+    exposure_rows = open_exposure_by_station_day(conn, as_of_utc=as_of_utc)
 
     by_station: dict[str, float] = {}
     by_window: dict[str, float] = {}
     by_block: dict[str, float] = {}
-    for station_id, event_date, settlement_timezone, notional in rows:
+    for station_id, event_date, settlement_timezone, notional in exposure_rows:
         value = float(notional or 0.0)
         if value <= 0.0:
             continue
@@ -198,6 +185,10 @@ def build_portfolio_inventory(
         by_window[window] = by_window.get(window, 0.0) + value
 
     total = sum(by_station.values())
+    not_cash = (
+        float(account["positions_value_usdc"]) + float(account["resting_buy_usdc"])
+        if account is not None else total
+    )
     hhi = (
         sum((value / total) ** 2 for value in by_station.values())
         if total > 0.0
@@ -205,12 +196,14 @@ def build_portfolio_inventory(
     )
 
     breaches: list[dict[str, Any]] = []
+    if account is None:
+        breaches.append({"limit": "account_equity_unavailable"})
     if bankroll > 0.0:
         risk_cap = bankroll * float(policy["portfolio_risk_fraction"])
-        if total > risk_cap + 1e-9:
+        if not_cash > risk_cap + 1e-9:
             breaches.append({
                 "limit": "portfolio_risk_fraction",
-                "observed_usdc": round(total, 6),
+                "observed_usdc": round(not_cash, 6),
                 "cap_usdc": round(risk_cap, 6),
             })
         station_cap = bankroll * float(policy["station_cap_fraction"])
@@ -243,9 +236,24 @@ def build_portfolio_inventory(
                     "cap_usdc": round(window_cap, 6),
                 })
 
-    drawdown = evaluate_drawdown_breaker(
-        conn, as_of_utc=as_of_utc, policy=policy, bankroll_usdc=bankroll
-    )
+    if account is not None:
+        drawdown = evaluate_drawdown_breaker(
+            conn, as_of_utc=as_of_utc, policy=policy,
+            bankroll_usdc=float(account["equity_usdc"]),
+        )
+    else:
+        # No current read is not a drawdown to 0: the unavailable account is
+        # already its own breach, and a peak against nothing measures nothing.
+        breaker = policy["drawdown_circuit_breaker"]
+        drawdown = {
+            "rolling_days": int(breaker["rolling_days"]),
+            "max_drawdown_fraction": float(breaker["max_drawdown_fraction"]),
+            "peak_usdc": None,
+            "current_usdc": None,
+            "drawdown_fraction": None,
+            "tripped": False,
+            "action": str(breaker["action"]),
+        }
     if drawdown["tripped"]:
         breaches.append({
             "limit": "drawdown_circuit_breaker",
@@ -256,10 +264,11 @@ def build_portfolio_inventory(
     identity = {
         "schema": SCHEMA,
         "as_of_utc": str(as_of_utc),
-        "open_cycle_count": open_cycles,
+        "open_cycle_count": len(exposure_rows),
         "open_notional_usdc": round(total, 6),
         "reserved_usdc": round(reserved, 6),
         "bankroll_usdc": round(bankroll, 6),
+        "account_not_cash_usdc": round(not_cash, 6),
         "portfolio_hhi": round(hhi, 8),
         "window_exposure_usdc": {
             key: round(value, 6) for key, value in sorted(by_window.items())
@@ -286,35 +295,24 @@ def evaluate_drawdown_breaker(
     policy: Mapping[str, Any],
     bankroll_usdc: float,
 ) -> dict[str, Any]:
-    """Rolling peak-to-current drawdown of the recorded pool balance.
+    """Rolling peak-to-current drawdown of the real account (charter 141).
 
-    The pool's own append-only version history is the equity curve; no
-    separate accounting is introduced, so the breaker cannot disagree with
-    the ledger about what the book was worth.
+    The curve is ``basket_target_account_equity``: every account read the
+    resident recorded.  It read ``basket_target_capital_pool_history`` until
+    2026-09-17, a table no writer ever created, so the breaker abstained on
+    every call it was ever asked.  No reads in the window: abstain.
     """
 
     breaker = policy["drawdown_circuit_breaker"]
     days = int(breaker["rolling_days"])
     threshold = float(breaker["max_drawdown_fraction"])
     try:
-        since = (
-            datetime.fromisoformat(str(as_of_utc).replace("Z", "+00:00"))
-            - timedelta(days=days)
-        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        as_of = datetime.fromisoformat(str(as_of_utc).replace("Z", "+00:00"))
+        since = (as_of - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        until = as_of.strftime("%Y-%m-%dT%H:%M:%S.999Z")
     except ValueError as exc:
         raise ContractError("portfolio_drawdown_as_of_invalid") from exc
-    try:
-        peak_row = conn.execute(
-            "SELECT MAX(balance_usdc) FROM basket_target_capital_pool_history "
-            "WHERE updated_at>=?",
-            (since,),
-        ).fetchone()
-        peak = float(peak_row[0]) if peak_row and peak_row[0] else 0.0
-    except sqlite3.Error:
-        # No history table: the pool has never been versioned into one, so
-        # there is no curve to measure and the breaker abstains rather than
-        # inventing a peak from a single point.
-        peak = 0.0
+    peak = equity_peak_usdc(conn, since_utc=since, until_utc=until) or 0.0
     current = float(bankroll_usdc)
     peak = max(peak, current)
     fraction = 0.0 if peak <= 0.0 else max(0.0, (peak - current) / peak)

@@ -705,7 +705,11 @@ def test_the_half_basket_compiles_to_its_missing_rung_at_the_seats_capital(
     assert "32" in result["notional_raised_buckets"]
     tilt = result["delta_v2_audit"]["consolidation_tilt"]
     assert tilt["completion_exempt"] is True
-    assert tilt["capital_after_usdc"] == pytest.approx(10.0)
+    # Charter 141: the tilt still cuts what sizing targets, and everything
+    # after the seat -- this completion's lift included -- is bounded by the
+    # execution capital, never below the capital the seat was sized from.
+    assert tilt["capital_after_usdc"] == pytest.approx(5.5)
+    assert tilt["execution_capital_usdc"] == pytest.approx(10.0)
 
 
 def test_charter_121_off_reproduces_the_refusal_that_used_to_hold_the_day(
@@ -1304,7 +1308,8 @@ def test_ltac_the_held_rung_priced_above_its_claim_no_longer_refuses_the_window(
     # not the tilt-cut capital of this compile.
     tilt = cheaper["delta_v2_audit"]["consolidation_tilt"]
     assert tilt["completion_exempt"] is True
-    assert tilt["capital_after_usdc"] == pytest.approx(tilt["capital_before_usdc"])
+    # Charter 141: the restore rides on the execution capital.
+    assert tilt["execution_capital_usdc"] == pytest.approx(tilt["capital_before_usdc"])
     monkeypatch.setattr(delta_v2_runtime, "CHARTER_93_SUPPORT_FLOOR", "on")
 
     # With the ruling off the seat is judged whole again: every window

@@ -46,7 +46,8 @@ from bayes_basket_target.basket_kernel import delta_v2 as K  # noqa: E402
 BOUND_CONSTANTS = [
     ("KELLY_FRACTION", K, "DEFAULT_KELLY_FRACTION"),
     ("MAX_STAKE_FRACTION_PER_SCOPE", K, "MAX_STAKE_FRACTION_PER_SCOPE"),
-    ("STAGE_BUDGET_SHARE", K, "STAGE_BUDGET_SHARE"),
+    # Charter 141: the station-day's ceiling, one kernel constant.
+    ("STATION_DAY_HARD_FRACTION", K, "STATION_DAY_HARD_FRACTION"),
     # Charter 70: one kernel constant, imported by both lanes.
     ("EXCHANGE_LOT_TOP_UP", K, "EXCHANGE_LOT_TOP_UP"),
     # User ruling 2026-09-08: the two-段 share shape's one dial.  Bound
@@ -67,11 +68,13 @@ def test_the_two_sides_read_one_value_for_every_shared_constant() -> None:
         )
 
 
-def test_the_stage_shares_cover_every_stage_the_ledger_walks() -> None:
-    # A stage missing from the table silently falls back to the whole
-    # allowance, which is not a default anybody chose.
+def test_every_stage_the_ledger_walks_is_a_chain_stage() -> None:
+    # Charter 141 retired the per-stage share; the kernel still tells a chain
+    # stage from an unnamed caller (charter 137's gross level reads it), and
+    # a stage this book walks must be one it recognises.
+    assert not hasattr(K, "STAGE_BUDGET_SHARE")
     for stage in L.STAGES:
-        assert stage in K.STAGE_BUDGET_SHARE, stage
+        assert stage in K.CHAIN_STAGES, stage
 
 
 # --------------------------------------------------------------------------
@@ -185,16 +188,20 @@ def test_the_scope_stake_cap_is_the_kernels_on_both_sides() -> None:
     assert "station_bankroll_usdc=float(policy.total_budget_usdc)" not in \
         source
 
-    for equity in (100.0, 514.29, 1000.0):
+    # Charter 141: the ceiling is the kernel's on both sides too.
+    assert R.station_day_ceiling_usdc is K.station_day_ceiling_usdc
+    assert L.station_day_ceiling_usdc is K.station_day_ceiling_usdc
+    assert "station_day_ceiling_usdc(" in source
+
+    for equity in (99.80, 514.29, 1000.0):
         for stage in ("P0", "P0-M", "P1"):
-            expected = (
-                equity
-                * K.MAX_STAKE_FRACTION_PER_SCOPE
-                * K.STAGE_BUDGET_SHARE[stage]
-            )
+            # No stage share: every stage reads the one sizing share.
             assert K.scope_stake_cap_usdc(
                 book_equity_usdc=equity, stage=stage
-            ) == pytest.approx(expected)
+            ) == pytest.approx(equity * K.MAX_STAKE_FRACTION_PER_SCOPE)
+            assert K.station_day_ceiling_usdc(
+                book_equity_usdc=equity,
+            ) == pytest.approx(equity * K.STATION_DAY_HARD_FRACTION)
 
 
 # --------------------------------------------------------------------------

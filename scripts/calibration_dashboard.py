@@ -15182,7 +15182,9 @@ function moneyBoard(){
 // which field is which -- the cap's "unset means the default" rule used to
 // be written out twice.
 const LC_KNOBS = {
-  kelly:  {id:"lc-kelly", name:"凯利", path:"/api/kelly",
+  // Charter 141: the whole-book exposure bound on the real account (the
+  // non-cash share).  The endpoint keeps its historical name.
+  kelly:  {id:"lc-kelly", name:"总敞口", path:"/api/kelly",
     field:"portfolio_risk_fraction", spec:s=>s.kelly,
     read:s=>s.kelly.portfolio_risk_fraction,
     fmt:v=>Number(v).toFixed(2)},
@@ -15194,12 +15196,6 @@ const LC_KNOBS = {
     read:s=>s.budget.target_remaining_budget_usdc,
     fmt:v=>{const r=Math.round(Number(v)*100)/100;
       return Number.isInteger(r) ? String(r) : r.toFixed(2);}},
-  cap:    {id:"lc-cap", name:"单站", path:"/api/station-cap", unit:" USDC",
-    field:"station_cap_usdc", spec:s=>s.station_cap,
-    read:s=>(s.station_cap&&s.station_cap.station_cap_usdc!=null)
-      ? s.station_cap.station_cap_usdc
-      : ((s.station_cap&&s.station_cap.default_usdc)||15),
-    fmt:v=>String(Math.round(Number(v)*100)/100)},
 };
 // Where one click takes a knob.  On a grid, a step goes to the grid line
 // that far away in its direction, so 114.29 +5 is 115 and −5 is 110, and
@@ -15225,16 +15221,14 @@ function liveControlStrip(){
     <span class="navctl-s" id="lc-status"
       title="控制服务未连接——launchd 常驻 com.weather.live_control；拉起：launchctl kickstart -k gui/$(id -u)/com.weather.live_control"
       ><i></i><span id="lc-status-t">控制服务未连接</span></span>
-    ${knob("kelly", "凯利系数 portfolio_risk_fraction",
+    ${knob("kelly", "总敞口上限 portfolio_risk_fraction（持仓市值+在挂买单 占 真实余额 的上限；宪章 141）",
       `${b("kelly",-0.05,"−")}<b id="lc-kelly">${
         L.kelly==null?"—":LC_KNOBS.kelly.fmt(L.kelly)}</b>${b("kelly",0.05,"+")}`)}
     ${knob("budget", "预算 target_remaining_budget_usdc（USDC，按 5 的整数倍）",
       `${b("budget",-50,"−50",true)}${b("budget",-5,"−")}<b id="lc-budget">${
         L.budget_usdc==null?"—":LC_KNOBS.budget.fmt(L.budget_usdc)}</b>${
         b("budget",5,"+")}${b("budget",50,"+50",true)}`)}
-    ${knob("cap", "单站上限 station_cap_usdc（USDC，三个本金型边界同步派生）",
-      `${b("cap",-5,"−5",true)}${b("cap",-1,"−")}<b id="lc-cap">—</b>${
-        b("cap",1,"+")}${b("cap",5,"+5",true)}`)}
+    <span class="navctl-k" id="lc-capital" title="宪章 141：每站日 定注 6.5%×真实余额、成交上限 10%×真实余额（整条链共用，不分阶段）"><span class="navctl-l">每站日</span><span class="stp"><b id="lc-capital-v">—</b></span></span>
   </div>`;
 }
 
@@ -15575,6 +15569,17 @@ function lcRender(s){
 // is not something a reader should have to learn by clicking it.
 function lcPaintKnobs(s){
   const prev = window.__lcState;
+  // Charter 141: the station-day's two numbers off the latest real account
+  // read, shown beside the dials rather than as one (they are code, not
+  // an operator setting).
+  const cap = (s && s.capital_layer) || {};
+  const capEl = document.getElementById("lc-capital-v");
+  if(capEl){
+    const eq = cap.account && Number(cap.account.equity_usdc);
+    capEl.textContent = (eq && isFinite(eq))
+      ? `${(eq*cap.sizing_fraction).toFixed(2)} / ${(eq*cap.ceiling_fraction).toFixed(2)} U（余额 ${eq.toFixed(2)}）`
+      : `${Math.round((cap.sizing_fraction||0)*1000)/10}% / ${Math.round((cap.ceiling_fraction||0)*1000)/10}%`;
+  }
   Object.entries(LC_KNOBS).forEach(([key, K])=>{
     const cur = K.read(s);
     const spec = K.spec(s) || {};
@@ -15594,8 +15599,7 @@ function lcPaintKnobs(s){
     const box = document.querySelector(`.navctl-k[data-knob="${key}"]`);
     if(box){
       if(!box.dataset.base) box.dataset.base = box.title;
-      const unset = key === "cap" && !(s.station_cap
-        && s.station_cap.station_cap_usdc != null);
+      const unset = false;
       box.title = `${box.dataset.base} · 当前 ${K.fmt(cur)}${unit}${
         unset ? "（未设置，按默认值）" : ""}${isFinite(lo)
         ? ` · 范围 ${K.fmt(lo)}–${K.fmt(hi)}` : ""} · 每次改动写 data/live_control_audit.jsonl`;

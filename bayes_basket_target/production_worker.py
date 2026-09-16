@@ -227,6 +227,14 @@ from .metar_physical_forward import (
     plan_metar_physical_member_runs,
 )
 from .native_ensemble_training_facts import ingest_forward_taf_inbox
+from .account_equity import (
+    ACCOUNT_EQUITY_CAPTURE_INTERVAL_SECONDS,
+    budget_capped_equity,
+    capture_account_equity,
+    ensure_account_equity_table,
+    load_account_equity,
+    table_present as account_equity_table_present,
+)
 from .portfolio_inventory import (
     build_portfolio_inventory,
     load_portfolio_capital_policy,
@@ -7381,40 +7389,60 @@ class TargetProductionWorker:
             if details.get(key) is not expected:
                 raise RuntimeError(f"target_activation_state_{key}_drift")
 
-    def _pool_book_equity_usdc(self) -> float | None:
-        """The pool's balance, or None when this store has no pool yet.
+    def _capture_account_equity(self, *, as_of_utc: str) -> dict[str, Any]:
+        """Charter 141: append one real-account read, at most once a minute."""
 
-        Read on the read-only connection: it is an input to sizing, not a
-        write.  None -- not 0.0 -- when the table or its row is absent, so a
-        store that predates the pool sizes off the planning budget exactly as
-        it always did rather than being zeroed by a missing row.
+        if self.commit_conn is None:
+            return {"state": "not_attempted", "reason": "no_writer"}
+        if not getattr(self, "_account_equity_table_ensured", False):
+            # Created before the first read succeeds, so a store whose first
+            # read fails reads as stale (production refuses) rather than as
+            # a store that never had an account (which sizes off the budget).
+            with _writer_transaction(
+                self.commit_conn, savepoint="basket_target_account_equity_ddl"
+            ):
+                ensure_account_equity_table(self.commit_conn)
+            self._account_equity_table_ensured = True
+        last = getattr(self, "_account_equity_last_capture_monotonic", None)
+        now = time.monotonic()
+        if last is not None and now - float(last) < ACCOUNT_EQUITY_CAPTURE_INTERVAL_SECONDS:
+            return {"state": "throttled"}
+        self._account_equity_last_capture_monotonic = now
+        conn = self.commit_conn
+        receipt = capture_account_equity(
+            conn,
+            as_of_utc=as_of_utc,
+            write=lambda: _writer_transaction(
+                conn, savepoint="basket_target_account_equity"
+            ),
+            budget_usdc=_resolve_target_remaining_budget(),
+        )
+        self._account_equity_last = receipt
+        return receipt
+
+    def _account_book_equity_usdc(
+        self, *, as_of_utc: str,
+    ) -> tuple[float | None, str]:
+        """The book's equity for sizing: the real account, capped by the budget.
+
+        ``(None, "account_equity_table_absent")`` on a store that has never
+        read the account (a fixture), which sizes exactly as before;
+        ``(None, "account_equity_stale")`` when the table is there and no
+        read is fresh -- the caller must not size anything off that.
         """
 
         conn = self.conn if self.conn is not None else self.commit_conn
-        if conn is None:
-            return None
-        try:
-            present = conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' "
-                "AND name='basket_target_capital_pool'"
-            ).fetchone()
-            if present is None:
-                return None
-            row = conn.execute(
-                "SELECT balance_usdc FROM basket_target_capital_pool "
-                "ORDER BY pool_id LIMIT 1"
-            ).fetchone()
-        except sqlite3.Error:
-            return None
-        if row is None or row[0] is None:
-            return None
-        try:
-            equity = float(row[0])
-        except (TypeError, ValueError):
-            return None
-        if not math.isfinite(equity) or equity < 0.0:
-            return None
-        return equity
+        if conn is None or not account_equity_table_present(conn):
+            return None, "account_equity_table_absent"
+        row = load_account_equity(conn, as_of_utc=as_of_utc)
+        if row is None:
+            return None, "account_equity_stale"
+        return (
+            budget_capped_equity(
+                row["equity_usdc"], _resolve_target_remaining_budget()
+            ),
+            "recorded",
+        )
 
     def _scope_cycle_guard(
         self,
@@ -15495,6 +15523,7 @@ class TargetProductionWorker:
                 as_of_utc=as_of_utc,
                 blocks_by_station=blocks_by_station,
                 policy=policy,
+                budget_usdc=_resolve_target_remaining_budget(),
             )
             persist_portfolio_inventory(
                 self.commit_conn, inventory, created_at_utc=as_of_utc
@@ -15513,11 +15542,9 @@ class TargetProductionWorker:
                     "new_intents_allowed": False,
                 }
                 return {station: 0.0 for station in stations}
-            pool = self.commit_conn.execute(
-                "SELECT balance_usdc FROM basket_target_capital_pool "
-                "ORDER BY pool_id LIMIT 1"
-            ).fetchone()
-            bankroll = float(pool[0]) if pool else 0.0
+            # Charter 141: the bankroll is the real account the inventory
+            # just read (budget-capped), never the pool counter.
+            bankroll = float(inventory["bankroll_usdc"])
             clip_row = self.conn.execute(
                 "SELECT artifact_json FROM basket_delta_v2_policy_artifact "
                 "ORDER BY rowid DESC LIMIT 1"
@@ -15844,7 +15871,11 @@ class TargetProductionWorker:
         # the 6.17 the ruling actually grants.  The paper ledger has sized
         # off whole-book equity since it was built, so this is also what
         # makes the two sides agree again.
-        book_equity_usdc = self._pool_book_equity_usdc()
+        # Charter 141: the real account, capped by the budget dial.  A stale
+        # read plans nothing: every station's budget is zeroed below.
+        book_equity_usdc, account_equity_state = self._account_book_equity_usdc(
+            as_of_utc=evaluation_at_utc,
+        )
         # The bankroll is one book.  Handing every station the whole of it --
         # which is what the configured budget did, forty-five times over the
         # same 20 USDC -- only failed to over-commit because almost nothing
@@ -15865,6 +15896,9 @@ class TargetProductionWorker:
             station_budget = float(
                 quota_by_station.get(station_id, planning_budget_usdc)
             )
+            if account_equity_state == "account_equity_stale":
+                # Charter 141: no fresh account read, no plan that spends.
+                station_budget = 0.0
             # An unfunded station is compiled at zero budget rather than
             # skipped.  The two things this call produces are not the same
             # kind of thing: the plan is a trading decision, but the market
@@ -17078,6 +17112,19 @@ class TargetProductionWorker:
         # question about whether real money is resting at an exchange should
         # not be answerable only when the market evidence happens to
         # materialize.  Nothing above this point can keep it from running.
+        # Charter 141: read the real account before anything sizes off it.
+        # At most once a minute; a failed read leaves the last row to age out,
+        # and production refuses once it is older than the freshness bound.
+        try:
+            with self._span("account_equity_capture"):
+                account_equity_receipt = self._capture_account_equity(
+                    as_of_utc=utc_now(),
+                )
+        except Exception as exc:  # noqa: BLE001 -- observational lane
+            account_equity_receipt = {
+                "state": "blocked_fail_closed",
+                "reason": f"{type(exc).__name__}:{exc}"[:160],
+            }
         try:
             with self._span("reconcile_unresolved_intents"):
                 intent_reconcile = self._reconcile_unresolved_intents(
@@ -18822,6 +18869,7 @@ class TargetProductionWorker:
                 "candidate_count": len(results),
                 "candidates": results,
                 "listing_scope_turn": serve_listing,
+                "account_equity": account_equity_receipt,
                 "intent_reconcile": intent_reconcile,
                 "resting_reprice": resting_reprice,
                 "intent_retire": intent_retire,

@@ -19,7 +19,10 @@ pause flag back before it records the intent.  One switch, both directions
 not a go, and the reader of a switch labelled ARMED is entitled to believe
 money can move.
 
-POST /api/kelly   {"value": 0.35}          -> portfolio_risk_fraction
+POST /api/kelly   {"value": 0.80}          -> portfolio_risk_fraction (总敞口上限:
+                  the share of the real account that may be positions and
+                  resting buys; the name "kelly" is the endpoint's history,
+                  the kernel's Kelly fraction is not a dial)
 POST /api/budget  {"value": 515}           -> target_remaining_budget_usdc
 POST /api/live    {"enabled": true, "confirm": "LIVE", "by": "..."}
 POST /api/allowlist {"stations": ["ZBAA", ...]}
@@ -66,10 +69,11 @@ RUNTIME_PATH = ROOT / "config/bayes_basket_target/no_live_runtime_v1.json"
 # dial connected to nothing -- the operator turns it, the number changes, and
 # the running system never sees it.  Both are written whenever both exist.
 LIVE_RUNTIME_PATH = ROOT / "config/bayes_basket_target/live_runtime_v1.json"
-STATION_CAP_PATH = ROOT / "config/trading/station_cap_v1.json"
 INTENT_PATH = ROOT / "config/trading/live_intent_v1.json"
 EXCLUSION_PATH = ROOT / "config/trading/live_station_exclusions_v1.json"
 AUDIT_PATH = ROOT / "data" / "live_control_audit.jsonl"
+# Charter 141: read-only, for the station-day numbers the board shows.
+SSOT_PATH = ROOT / "data" / "bayes_basket_target_ssot.db"
 # The gateway's admission gate.  clob_order_service.mjs checks this file at
 # every place-order, before any idempotency write, signing or exchange POST,
 # and it stops every lane without exception.  The switch below owns it; the
@@ -78,14 +82,16 @@ AUDIT_PATH = ROOT / "data" / "live_control_audit.jsonl"
 PAUSE_FLAG_PATH = ROOT / "data" / "live_paused.flag"
 PORT = 8788
 
-KELLY_BOUNDS = (0.05, 0.50)
-KELLY_STEP_MAX = 0.50
+# Charter 141: this knob is the whole-book exposure bound on the real
+# account (the non-cash share: positions plus resting buys), so it may go to
+# the whole account.
+KELLY_BOUNDS = (0.05, 1.00)
+KELLY_STEP_MAX = 1.00
 BUDGET_BOUNDS = (0.0, 2000.0)
 # The budget moves in whole multiples of 5 USDC (operator ruling,
 # 2026-09-16).  Held here rather than only on the board's stepper, so a
 # value that did not come from the board cannot put an odd cent back.
 BUDGET_MULTIPLE = 5.0
-STATION_CAP_BOUNDS = (1.0, 30.0)
 STATION_RE = re.compile(r"^[A-Z0-9]{3,6}$")
 _EXECUTION_MODE: str | None = None
 
@@ -217,15 +223,9 @@ def state() -> dict:
             "step": BUDGET_MULTIPLE,
             "multiple": BUDGET_MULTIPLE,
         },
-        "station_cap": {
-            "station_cap_usdc": (
-                _read(STATION_CAP_PATH).get("station_cap_usdc")
-                if STATION_CAP_PATH.is_file() else None
-            ),
-            "default_usdc": 15.0,
-            "bounds": STATION_CAP_BOUNDS,
-            "step": 1.0,
-        },
+        # Charter 141: the station-day's two numbers, read-only.  The
+        # per-station dollar dial they replace never bounded spend.
+        "capital_layer": _capital_layer_state(),
         "live": {
             "enabled": intent["live_enabled"],
             "armed_by": intent.get("armed_by"),
@@ -316,36 +316,50 @@ def set_budget(value: float) -> dict:
     return state()
 
 
-def set_station_cap(value: float) -> dict:
-    """The per-station bankroll, moved live without a deploy.
+def _capital_layer_state() -> dict:
+    """Charter 141's station-day fractions and the latest real account read."""
 
-    Until 2026-08-31 this number was a code constant
-    (runtime._DEFAULT_POLICY["total_budget_usdc"]) and changing it took an
-    edit and a restart; the operator asked for a dial.  The file this writes
-    is read fresh at every plan compile, and the three bankroll-shaped
-    bounds (protected floor, outside loss, minimum expected pnl) are derived
-    from it there, not stored here -- one number, one owner.
-    """
-
-    if not STATION_CAP_BOUNDS[0] <= value <= STATION_CAP_BOUNDS[1]:
-        raise ValueError(
-            f"station cap out of bounds {STATION_CAP_BOUNDS}: {value}"
+    out: dict = {}
+    try:
+        from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: PLC0415
+            CAPITAL_LAYER_RULE_VERSION,
+            MAX_STAKE_FRACTION_PER_SCOPE,
+            STATION_DAY_HARD_FRACTION,
         )
-    current = (
-        _read(STATION_CAP_PATH) if STATION_CAP_PATH.is_file() else {}
-    )
-    before = current.get("station_cap_usdc")
-    payload = {
-        "schema": "basket_station_cap_v1",
-        "station_cap_usdc": round(float(value), 2),
-        "updated_at_utc": _now(),
-    }
-    _write_atomic(STATION_CAP_PATH, payload)
-    _audit({
-        "knob": "station_cap_usdc",
-        "before": before, "after": payload["station_cap_usdc"],
-    })
-    return state()
+
+        out.update({
+            "rule": CAPITAL_LAYER_RULE_VERSION,
+            "sizing_fraction": MAX_STAKE_FRACTION_PER_SCOPE,
+            "ceiling_fraction": STATION_DAY_HARD_FRACTION,
+        })
+    except Exception as exc:  # noqa: BLE001 -- a state read never fails the page
+        out["error"] = f"{type(exc).__name__}:{exc}"[:160]
+    if not Path(SSOT_PATH).is_file():
+        return out
+    try:
+        import sqlite3  # noqa: PLC0415
+
+        conn = sqlite3.connect(
+            f"file:{SSOT_PATH}?mode=ro",
+            uri=True, timeout=5.0,
+        )
+        try:
+            row = conn.execute(
+                "SELECT observed_at_utc,cash_usdc,positions_value_usdc,"
+                "equity_usdc,resting_buy_usdc FROM basket_target_account_equity"
+                " ORDER BY observed_at_utc DESC LIMIT 1"
+            ).fetchone()
+        finally:
+            conn.close()
+        if row is not None:
+            out["account"] = {
+                "observed_at_utc": row[0], "cash_usdc": row[1],
+                "positions_value_usdc": row[2], "equity_usdc": row[3],
+                "resting_buy_usdc": row[4],
+            }
+    except Exception as exc:  # noqa: BLE001
+        out["account_error"] = f"{type(exc).__name__}:{exc}"[:160]
+    return out
 
 
 def set_live(enabled: bool, confirm: str, by: str) -> dict:
@@ -1037,8 +1051,6 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
             if self.path.rstrip("/") == "/api/kelly":
                 out = set_kelly(float(body["value"]))
-            elif self.path.rstrip("/") == "/api/station-cap":
-                out = set_station_cap(float(body["value"]))
             elif self.path.rstrip("/") == "/api/budget":
                 out = set_budget(float(body["value"]))
             elif self.path.rstrip("/") == "/api/live":

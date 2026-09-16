@@ -30,6 +30,7 @@ from .observed_high_floor import (
 )
 from .basket_kernel.delta_v2 import (
     SEAT_SHAPE_RULE_VERSION,
+    CAPITAL_LAYER_RULE_VERSION,
     CONSOLIDATION_TILT_FLOOR_VERSION,
     CURVE_BANKROLL_CONVENTION,
     curve_effective_bankroll_v1,
@@ -5892,8 +5893,16 @@ def compile_delta_v2_runtime_plan(
     convergence_evidence: Mapping[str, Any] | None = None,
     hours_to_cutoff: float | None = None,
     completion_budget_usdc: float | None = None,
+    capital_ceiling_usdc: float | None = None,
 ) -> dict[str, Any]:
     """Compile the single-event q* and best no-live action under v2.
+
+    ``capital_available_usdc`` is what sizing may target and
+    ``capital_ceiling_usdc`` what may actually go out (charter 141): the
+    seat's candidates are sized inside the first, and everything after the
+    seat -- the venue-minimum lift, a completion, the execution candidates
+    and the bundle's budget gate -- is bounded by the second.  Absent, the
+    ceiling is the sizing capital, which is every pre-141 caller's arithmetic.
 
     ``chain_consolidation_tilt`` is the factor the chain's P0 opener earned,
     handed back by the caller that recorded it; present it wins at every
@@ -6088,6 +6097,15 @@ def compile_delta_v2_runtime_plan(
                 tilt_floor_usdc,
             ),
         )
+    # Charter 141: the ceiling that bounds what goes out.  Never below the
+    # sizing capital before the tilt, so a caller that passes none keeps its
+    # arithmetic, and a completion is never sized under the capital the seat
+    # itself was sized from (charter 84 (八)).
+    execution_capital_usdc = max(
+        capital_before_tilt_usdc,
+        float(capital_ceiling_usdc)
+        if capital_ceiling_usdc is not None else capital_before_tilt_usdc,
+    )
     bankroll_usdc = float(basket_policy.total_budget_usdc)
     # Charter 72: with the book known the size is the whole-basket Kelly
     # stake and the curve keeps only its floor.  Without the book -- a
@@ -6183,10 +6201,12 @@ def compile_delta_v2_runtime_plan(
     # exemption below mutates it, and a retry that inherited the mutation
     # would size the next candidate against a number no ruling gave it.
     capital_at_seat_entry = capital_available_usdc
+    execution_capital_at_seat_entry = execution_capital_usdc
     excluded_candidate_ids: tuple[str, ...] = ()
     restoring_first_post_lift_refusal = False
     for _post_lift_attempt in range(CHARTER_121_POST_LIFT_ATTEMPTS + 1):
         capital_available_usdc = capital_at_seat_entry
+        execution_capital_usdc = execution_capital_at_seat_entry
         seated_support, target_solution, support_selection = (
             _solve_over_support_windows(
                 windows=support_windows,
@@ -6208,9 +6228,10 @@ def compile_delta_v2_runtime_plan(
                 last_decision_signature=last_decision_signature,
                 effective_edge_tables=effective_edge_tables,
                 off_centre_claim_bands=off_centre_claim_bands,
-                # Charter 84 (八): a completion is sized against the capital the
-                # seat was opened with, before the consolidation tilt.
-                completion_capital_usdc=capital_before_tilt_usdc,
+                # Charter 84 (八) as charter 141 bounds it: a completion is
+                # sized against the station-day's ceiling -- restoring a seat
+                # is a ticket, not a new stake.
+                completion_capital_usdc=execution_capital_usdc,
                 # Charter 121: rows this seat has already had refused by the
                 # post-lift floor, so the winner chain picks among the rest.
                 excluded_candidate_ids=excluded_candidate_ids,
@@ -6222,19 +6243,21 @@ def compile_delta_v2_runtime_plan(
         # opened, and the venue's lot lifted the opener's legs past the cut
         # anyway; cutting the completion again leaves a sliver that cannot
         # cover the sunk rungs (LTAC 31°C and 33°C at 1.7 shares each against
-        # 5 held, floor-refused).  The seat the tilt sized is restored at the
-        # capital it was sized from.
+        # 5 held, floor-refused).  Recorded for the audit; since charter 141
+        # everything after the seat is bounded by ``execution_capital_usdc``,
+        # which is never below the capital the seat was sized from, so the
+        # exemption no longer has to move a number.
         completion_tilt_exempt = (
             CHARTER_84_LADDER_BALANCE == "on"
             and str(target_solution.get("winner_candidate_origin") or "")
             == LADDER_BALANCE_CANDIDATE_ORIGIN
             and capital_before_tilt_usdc > float(capital_available_usdc)
         )
-        if completion_tilt_exempt:
-            capital_available_usdc = capital_before_tilt_usdc
         # Charter 136 (四): a completion the risk budget admitted is judged
         # against that budget at the kernel's budget gate too, or the seat
         # the window admitted is refused one step later for the same cash.
+        # (In production the budget IS the ceiling since charter 141; a
+        # caller that hands a budget without a ceiling still gets it.)
         if (
             completion_budget_usdc is not None
             and str(target_solution.get("winner_candidate_origin") or "")
@@ -6244,8 +6267,8 @@ def compile_delta_v2_runtime_plan(
                 .get("admitted_by")
             ) == COMPLETION_RISK_BUDGET_RULE_VERSION
         ):
-            capital_available_usdc = max(
-                float(capital_available_usdc), float(completion_budget_usdc)
+            execution_capital_usdc = max(
+                float(execution_capital_usdc), float(completion_budget_usdc)
             )
         ordered_support = seated_support
         desired = set(seated_support)
@@ -6284,7 +6307,7 @@ def compile_delta_v2_runtime_plan(
                 )
                 for bucket in seated_support
             },
-            capital_available_usdc=capital_available_usdc,
+            capital_available_usdc=execution_capital_usdc,
             # Charter 83: the dollar floor rides with the lot; ``off`` is the
             # pre-ruling arm.
             minimum_notional_usdc=(
@@ -6738,7 +6761,7 @@ def compile_delta_v2_runtime_plan(
             )
             for rung in anchored:
                 action_clip = (gap / len(anchored)) * rung
-                if action_clip <= EPS or action_clip > capital_available_usdc + EPS:
+                if action_clip <= EPS or action_clip > execution_capital_usdc + EPS:
                     continue
                 candidate_descriptors.append(
                     (bucket, action_clip, rung,
@@ -6748,7 +6771,7 @@ def compile_delta_v2_runtime_plan(
             if (
                 EXECUTION_MODE != "maker"
                 or MAKER_LADDER_SHAPE == "bid_anchored"
-                or clip > capital_available_usdc + EPS
+                or clip > execution_capital_usdc + EPS
                 or not reservation_grid
                 or maker_anchor is None
             ):
@@ -6774,7 +6797,7 @@ def compile_delta_v2_runtime_plan(
         # (``spent >= clip``), and it may not overshoot the inventory gap.
         if EXECUTION_MODE == "taker":
             for clip in delta_policy.cash_clip_grid:
-                if clip > capital_available_usdc + EPS:
+                if clip > execution_capital_usdc + EPS:
                     continue
                 # Scale the clip to the gap rather than reject for exceeding
                 # it -- the same thing the maker branch above does with
@@ -6888,10 +6911,10 @@ def compile_delta_v2_runtime_plan(
             "hard_gates": _hard_gates(
                 snapshot,
                 positive_gap=True,
-                budget_ok=clip <= capital_available_usdc + EPS,
+                budget_ok=clip <= execution_capital_usdc + EPS,
                 resource_probe_ok=resource_probe_ok,
             ),
-            "capital_available_usdc": capital_available_usdc,
+            "capital_available_usdc": execution_capital_usdc,
             "minimum_profit_floor": minimum_profit_floor,
             "reservation_price": max(delta_policy.price_grid),
             "wait_cost": costs.get("wait", 0.0),
@@ -7085,7 +7108,7 @@ def compile_delta_v2_runtime_plan(
         breakthrough_buckets=scored_breakthrough,
         value_weights=delta_policy.value_weights,
         execution_weights=delta_policy.execution_weights,
-        capital_available_usdc=capital_available_usdc,
+        capital_available_usdc=execution_capital_usdc,
         minimum_profit_floor=minimum_profit_floor,
         fee_rate=basket_policy.fee_rate,
     )
@@ -7279,6 +7302,10 @@ def compile_delta_v2_runtime_plan(
             "signals_lit": consolidation_tilt_lit,
             "capital_before_usdc": capital_before_tilt_usdc,
             "capital_after_usdc": float(capital_available_usdc),
+            # Charter 141: what sizing targeted is ``capital_after_usdc``;
+            # what the lift, a completion and the budget gate were bounded by.
+            "execution_capital_usdc": float(execution_capital_usdc),
+            "capital_layer_rule": CAPITAL_LAYER_RULE_VERSION,
             "completion_exempt": bool(completion_tilt_exempt),
             "floor_usdc": tilt_floor_usdc,
             "floor_rule": CONSOLIDATION_TILT_FLOOR_VERSION,

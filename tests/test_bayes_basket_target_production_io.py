@@ -1976,26 +1976,30 @@ def test_maturity_bin_is_the_event_distance_not_the_run_lead() -> None:
     assert derive_policy_maturity_bin("h00_12x", **common) == "d2"
 
 
-def test_market_snapshot_reports_the_pools_equity_when_there_is_a_pool() -> None:
-    """``book_equity_usdc`` is the pool balance; absent when no pool exists.
+def test_market_snapshot_reports_the_real_account_not_the_pool(monkeypatch) -> None:
+    """Charter 141: ``book_equity_usdc`` is the real account, budget-capped.
 
-    ``_compile_target_plan`` sizes the per-scope stake cap off this and falls
-    back to ``remaining_budget_usdc`` only when it is missing.  The fallback
-    assumed the budget *was* the pool balance, which stopped being true once
-    the budget became the portfolio quota -- so production sized every scope
-    off a quarter-book or less while the paper ledger sized off the whole
-    book (see test_ledger_production_rule_binding).
+    The pool counter (seeded with a paper balance, never credited with a
+    payout) is no longer read at all: a pool of 514.29 changes nothing.  With
+    no account table the snapshot carries no equity (a fixture sizes off its
+    budget as before); with the table and a fresh read it carries cash plus
+    positions, capped by the budget dial, and the non-cash part beside it;
+    with the table and no fresh read the compile is refused.
     """
 
+    import pytest
+    from contextlib import contextmanager
+
+    import bayes_basket_target.runtime_config as runtime_config
+    from bayes_basket_target.account_equity import capture_account_equity
+
+    monkeypatch.setattr(
+        runtime_config, "load_target_live_runtime_config",
+        lambda *a, **k: {"target_remaining_budget_usdc": 90.0},
+    )
     with sqlite3.connect(":memory:") as conn:
         _seed(conn, cash_promoted=False)
         _seed_delta_v2(conn)
-        bare = load_production_market_snapshot(
-            conn, station_id="ZUUU", event_date="2026-07-23",
-            evaluation_at_utc="2026-07-23T05:00:04Z",
-        )
-        assert "book_equity_usdc" not in bare
-
         initialize_capital_pool(
             conn,
             balance_usdc=514.29,
@@ -2003,13 +2007,38 @@ def test_market_snapshot_reports_the_pools_equity_when_there_is_a_pool() -> None
             updated_at_utc="2026-07-23T05:00:04Z",
             commit=False,
         )
-        pooled = load_production_market_snapshot(
+        bare = load_production_market_snapshot(
             conn, station_id="ZUUU", event_date="2026-07-23",
             evaluation_at_utc="2026-07-23T05:00:04Z",
         )
-        assert pooled["book_equity_usdc"] == 514.29
+        assert "book_equity_usdc" not in bare
+
+        @contextmanager
+        def write():
+            yield
+
+        receipt = capture_account_equity(
+            conn, as_of_utc="2026-07-23T05:00:00.000Z", write=write,
+            cash_reader=lambda **k: (55.28, "2026-07-23T05:00:00.000Z"),
+            positions_reader=lambda **k: 44.52,
+        )
+        assert receipt["state"] == "recorded"
+        real = load_production_market_snapshot(
+            conn, station_id="ZUUU", event_date="2026-07-23",
+            evaluation_at_utc="2026-07-23T05:00:04Z",
+        )
+        # 99.80 in the account, capped at the 90 the budget dial allows.
+        assert real["book_equity_usdc"] == pytest.approx(90.0)
+        assert real["account_open_exposure_usdc"] == pytest.approx(44.52)
+        assert real["account_cash_usdc"] == pytest.approx(55.28)
         # The scope's own budget is untouched by the equity.
-        assert pooled["remaining_budget_usdc"] == bare["remaining_budget_usdc"]
+        assert real["remaining_budget_usdc"] == bare["remaining_budget_usdc"]
+
+        with pytest.raises(Exception, match="production_account_equity_stale"):
+            load_production_market_snapshot(
+                conn, station_id="ZUUU", event_date="2026-07-23",
+                evaluation_at_utc="2026-07-23T06:00:04Z",
+            )
 
 
 def _suspended_p1_lineage(

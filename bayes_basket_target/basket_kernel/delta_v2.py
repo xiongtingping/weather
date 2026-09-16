@@ -609,27 +609,60 @@ def curve_effective_bankroll_v1(
     return bankroll * fraction if mode == "w_times_f" else bankroll / fraction
 
 
-# How much of the whole book one station-day may put at risk, and how much of
-# that allowance each stage of its chain may reach.
+# How much of the whole book one station-day may put at risk.
 #
 # This lives here, in the kernel, because it is one rule and there must not be
 # a second copy of it.  Production capped a station at a flat 30 USDC while
 # the paper ledger capped it at 2% of a book that moves with its own P&L, so
 # the same station-day was sized two different ways depending on which side
-# you asked -- and the ledger is the side every measured ROI figure comes
-# from.  User ruling, 2026-08-26: the floating fraction is the rule, and both
-# sides read it from here.
+# you asked.  User ruling, 2026-08-26: the floating fraction is the rule, and
+# both sides read it from here.
 #
 # The scope is the station-day, not the station-day-stage.  One book means one
 # position per station-day, so the cap binds the whole chain: whatever P0
-# spent is spent, and a top-up at P0-M or P1 draws on what is left of the same
-# 2%.  Forty-five stations trading daily means an unbounded Kelly outlier
-# would otherwise dominate the curve.
-MAX_STAKE_FRACTION_PER_SCOPE = 0.02
-# Each stage's reach into that one allowance.  P0 opens with part of it held
-# back, because the two later stages exist to add on evidence P0 did not have;
-# P1 may reach the whole of it.
-STAGE_BUDGET_SHARE = {"P0": 0.6, "P0-M": 0.8, "P1": 1.0}
+# spent is spent, and a top-up at P0-M or P1 draws on what is left.
+#
+# Charter 141 (user rulings 2026-09-17: "统一优化资金层面", "资金池用余额",
+# then "改").  The book is now the real account -- exchange cash plus the
+# marked value of open positions (``account_equity``), not the pool counter
+# that only ever subtracted fills from a paper starting balance -- and the
+# station-day has TWO numbers instead of 2% times a stage share:
+#
+# * ``MAX_STAKE_FRACTION_PER_SCOPE`` (6.5%) bounds what SIZING may target:
+#   the Kelly stake, the grid and centre candidates.
+# * ``STATION_DAY_HARD_FRACTION`` (10%) bounds what may actually go OUT: the
+#   lift of a rung to the venue's lot and dollar minimum (charters 70/83),
+#   a completion back to the held level (charter 84), the execution
+#   authorization's budget gate, and the order sizing that follows.
+#
+# Together that is "max(6.5%, the basket's minimum ticket) <= 10%": a seat is
+# never refused because the ticket costs more than the sizing number, only
+# when it costs more than the ceiling.  Measured before the ruling on the
+# real equity (99.80): of 24 recently traded station-days, 2% x stage share
+# replayed to 0 trades (a P0 allowance of 1.20 buys no lot); this rule
+# replayed to 20, and released 9 of 37 capital-suspect holds (EPWA 09-18's
+# 22C completion among them).  Historical order spend: p50 3.95, p90 5.46,
+# max 6.36.
+#
+# The stage share (P0 0.6 / P0-M 0.8 / P1 1.0) is retired with it.  It held
+# 40% of the allowance back for later stages that charter 137 measured could
+# never reach it, and it was the reason a P0 completion could not afford the
+# leg its own opening had planned for.
+MAX_STAKE_FRACTION_PER_SCOPE = float(
+    os.environ.get("PM_STATION_DAY_SOFT_FRACTION", "") or 0.065
+)
+STATION_DAY_HARD_FRACTION = float(
+    os.environ.get("PM_STATION_DAY_HARD_FRACTION", "") or 0.10
+)
+if not (0.0 < MAX_STAKE_FRACTION_PER_SCOPE <= STATION_DAY_HARD_FRACTION <= 1.0):
+    raise RuntimeError(
+        "station-day fractions must satisfy 0 < soft <= hard <= 1: "
+        f"{MAX_STAKE_FRACTION_PER_SCOPE} / {STATION_DAY_HARD_FRACTION}"
+    )
+CAPITAL_LAYER_RULE_VERSION = "real_equity_soft_sizing_hard_ceiling_v1"
+# The stages a chain moves through.  Used only to tell a named stage from an
+# unnamed caller; no stage owns a share of the allowance any more.
+CHAIN_STAGES = frozenset({"P0", "P0-M", "P1"})
 
 
 def scope_stake_cap_usdc(
@@ -639,24 +672,46 @@ def scope_stake_cap_usdc(
     committed_usdc: float = 0.0,
     scope_fraction: float = MAX_STAKE_FRACTION_PER_SCOPE,
 ) -> float:
-    """What this station-day may still spend, in USDC.
+    """What SIZING may still target for this station-day, in USDC.
 
-    ``book_equity_usdc`` is the whole book, not the station's allotment: the
-    cap is a share of what we have, so it grows with a winning book and
-    shrinks with a losing one.  A flat per-station number cannot do that, and
-    a flat number is what production carried until 2026-08-26.
+    ``book_equity_usdc`` is the whole book -- the real account since charter
+    141 -- not the station's allotment: the cap is a share of what we have,
+    so it grows with a winning book and shrinks with a losing one.
 
     ``committed_usdc`` is what this station-day has already spent -- filled
     and confirmed-pending alike, because both have used part of the
     allowance whether or not they have settled.
+
+    ``stage`` is kept on the signature so every reader keeps its call and is
+    deliberately unread: charter 141 retired the per-stage share.
+    """
+
+    del stage
+    equity = float(book_equity_usdc)
+    if not equity > 0.0:
+        return 0.0
+    room = equity * float(scope_fraction) - float(committed_usdc)
+    return max(0.0, room)
+
+
+def station_day_ceiling_usdc(
+    *,
+    book_equity_usdc: float,
+    committed_usdc: float = 0.0,
+    hard_fraction: float = STATION_DAY_HARD_FRACTION,
+) -> float:
+    """Charter 141: what may still go OUT for this station-day, in USDC.
+
+    The ceiling the venue-minimum lift, a completion and the execution
+    authorization are bounded by.  Never below the sizing cap, so a caller
+    that reads both can only widen what sizing chose, never narrow it.
     """
 
     equity = float(book_equity_usdc)
     if not equity > 0.0:
         return 0.0
-    share = float(STAGE_BUDGET_SHARE.get(str(stage), 1.0))
-    room = equity * float(scope_fraction) * share - float(committed_usdc)
-    return max(0.0, room)
+    ceiling = equity * max(float(hard_fraction), MAX_STAKE_FRACTION_PER_SCOPE)
+    return max(0.0, ceiling - float(committed_usdc))
 
 
 # Charter 137 (user ruling, 2026-09-16).  Which budget the per-leg TARGET
@@ -717,10 +772,11 @@ def kelly_target_budget_usdc_v1(
     room = max(0.0, float(capital_available_usdc))
     if str(basis) != "gross":
         return room
-    # An unnamed stage has no allowance of its own -- ``scope_stake_cap_usdc``
-    # would hand back the whole 2% -- so it keeps the room it was given.  The
-    # arm widens a target only where the stage share says by how much.
-    if str(stage) not in STAGE_BUDGET_SHARE:
+    # An unnamed stage is a caller that is not a chain -- it keeps the room it
+    # was given.  (Until charter 141 the stage share also said by how much a
+    # named stage widened; the share is retired and every stage reads the one
+    # sizing allowance.)
+    if str(stage) not in CHAIN_STAGES:
         return room
     gross = scope_stake_cap_usdc(
         book_equity_usdc=book_equity_usdc,
@@ -2454,33 +2510,27 @@ if CHARTER_116_COMPLETION_REPAIR not in {"on", "off"}:
     )
 COMPLETION_REPAIR_RULE_VERSION = "completion_repairs_an_illegal_floor_v1"
 COMPLETION_RISK_BUDGET_RULE_VERSION = "completion_exposure_against_edge_v2"
-# Charter 136 (三): a completion may spend up to this multiple of the
-# station-day's stage allowance, less what the chain has already spent.
-COMPLETION_BUDGET_MULTIPLE = 1.5
-
-
 def completion_budget_usdc_v1(
     *,
     book_equity_usdc: float,
     stage: str,
     committed_usdc: float,
-    multiple: float = COMPLETION_BUDGET_MULTIPLE,
 ) -> float:
-    """Charter 136 (三): what a completion may spend, off the seat's own sizing.
+    """Charter 136 (三), as charter 141 rewrote it: what a completion may spend.
 
-    The seat was sized against the station-day's stage allowance
-    (``scope_stake_cap_usdc`` with nothing committed).  A completion restores
-    that seat at today's price, which may be dearer than the price the seat
-    was sized at, so it may take the chain to ``multiple`` of that allowance
-    and no further.  The bound is on the whole chain -- held legs included --
-    because the whole chain is what a miss loses.
+    The station-day's ceiling less what the chain has spent -- the same number
+    every other thing that goes out is bounded by.  It was 1.5x the stage
+    allowance, a second number for the same question, and a completion the
+    5% hurdle admitted was sized against the smaller remainder while one the
+    risk budget admitted got the larger: the stronger case bought less (EPWA
+    2026-09-18, 22C refused at 1.44 against a 2.15 lot).  ``stage`` is unread.
     """
 
-    allowance = scope_stake_cap_usdc(
-        book_equity_usdc=float(book_equity_usdc), stage=str(stage),
-        committed_usdc=0.0,
+    del stage
+    return station_day_ceiling_usdc(
+        book_equity_usdc=float(book_equity_usdc),
+        committed_usdc=float(committed_usdc),
     )
-    return max(0.0, float(multiple) * allowance - float(committed_usdc))
 
 
 def completion_risk_budget_v1(
