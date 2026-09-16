@@ -8002,7 +8002,7 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
             return []
         tally = [
             {"seats": 0, "claim": 0.0, "hits": 0, "pnl": 0.0, "stake": 0.0,
-             "station_days": set()}
+             "station_days": set(), "event_days": set()}
             for _ in served
         ]
         for claim, cost, hit, pnl, stake, station, day in rows:
@@ -8016,6 +8016,7 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
             slot = tally[index]
             slot["seats"] += 1
             slot["station_days"].add((station, day))
+            slot["event_days"].add(day)
             slot["claim"] += claimed
             slot["hits"] += int(hit or 0)
             slot["pnl"] += float(pnl or 0.0)
@@ -8032,6 +8033,7 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
                 "served": round(float(lam), 4),
                 "seats": slot["seats"],
                 "station_days": len(slot["station_days"]),
+                "event_days": len(slot["event_days"]),
                 "claim_mass": round(slot["claim"], 2),
                 "hits": slot["hits"],
                 "raw_lambda": None if raw is None else round(raw, 4),
@@ -8039,13 +8041,16 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
                     None if slot["stake"] <= 0
                     else round(slot["pnl"] / slot["stake"], 4)
                 ),
-                # The store's three hurdles, all of them: a band the page
+                # The store's four hurdles, all of them: a band the page
                 # marked readable on seats and mass alone could still be one
-                # the fit keeps at its incumbent for want of station-days.
+                # the fit keeps at its incumbent for want of station-days or
+                # of separate weather.
                 "admissible": (
                     slot["seats"] >= _store.MIN_SEATS_PER_BAND
                     and len(slot["station_days"])
                     >= _store.MIN_STATION_DAYS_PER_BAND
+                    and len(slot["event_days"])
+                    >= _store.MIN_EVENT_DAYS_PER_BAND
                     and slot["claim"] >= _store.MIN_CLAIM_MASS
                 ),
             })
@@ -8163,6 +8168,7 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
             "latest_labelled_event_date": row[3],
             "min_seats": _store.MIN_SEATS_PER_BAND,
             "min_station_days": _store.MIN_STATION_DAYS_PER_BAND,
+            "min_event_days": _store.MIN_EVENT_DAYS_PER_BAND,
             "min_claim_mass": _store.MIN_CLAIM_MASS,
         }
 
@@ -12745,7 +12751,7 @@ ${b.admits?"可买 ["+b.admits[0].toFixed(3)+", "+b.admits[1].toFixed(3)+")"
         <td>${win}</td>
         <td class="mono ${gap==null?"":(gap<0?"down":"up")}">${num(b.raw_lambda)}</td>
         <td class="mono">${num(b.fitted_capped)}</td>
-        <td title="已结算窗口 ${b.seats} · 站日 ${b.station_days??"—"} · 声称质量 ${num(b.claim_mass)}；⚠＝未过拟合的三道门槛，服务值保持在任值">${b.seats}${b.admissible?"":" ⚠"}</td>
+        <td title="已结算窗口 ${b.seats} · 站日 ${b.station_days??"—"} · 事件日 ${b.event_days??"—"} · 声称质量 ${num(b.claim_mass)}；⚠＝未过拟合的四道门槛，服务值保持在任值">${b.seats}${b.admissible?"":" ⚠"}</td>
         <td class="mono">${num(b.early_lambda)} / ${num(b.late_lambda)}</td>
         <td class="mono">${pct(b.return)}</td>
         <td class="${mark[1]}">${mark[0]}</td></tr>`;
@@ -12794,7 +12800,7 @@ ${b.admits?"可买 ["+b.admits[0].toFixed(3)+", "+b.admits[1].toFixed(3)+")"
     const src=ev.source==="production"?"生产证据":"纸面账本（对比臂）";
     const since=ev.first_written_at_utc
       ?`自 ${String(ev.first_written_at_utc).slice(5,16).replace("T"," ")}Z 起`:"";
-    const bar=`每档要 ≥${ev.min_seats} 窗、≥${ev.min_station_days} 个站日、声称质量 ≥${ev.min_claim_mass} 才算可读`;
+    const bar=`每档要 ≥${ev.min_seats} 窗、≥${ev.min_station_days} 个站日、≥${ev.min_event_days??8} 个事件日、声称质量 ≥${ev.min_claim_mass} 才算可读`;
     if(!ev.labelled) return `<div class="note" style="margin-top:6px"><b>空表不是故障：</b>
       λ 证据${since}改读${src}（宪章 140），${sc.scope} 已写 ${ev.windows} 个抽样候选窗、已结算 0 个${
       ev.earliest_pending_event_date?`；最早 ${ev.earliest_pending_event_date} 的站日结算后出第一批读数`:""}。
