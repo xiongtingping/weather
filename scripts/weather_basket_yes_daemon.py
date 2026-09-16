@@ -399,6 +399,21 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         3600.0,
         600.0,
     ),
+    # The rule-binding test refuses a fork in the rules; nothing watched for
+    # a fork in the outcomes.  On 2026-09-16 that test was green while the
+    # ledger and the live book were buying different legs on the same
+    # station-day -- same rules, different books -- and the divergence was
+    # three weeks old before it was measured, with no record that could date
+    # it.  Daily, because the four readings aggregate over a fourteen-day
+    # window and do not move inside a day; what they move with is a rule
+    # change, and the selection fingerprint rides on every row so that the
+    # two causes stay tellable apart.  0.7 seconds and one small row.
+    (
+        "ledger_alignment_guard",
+        "scripts/ledger_production_alignment_guard_sweep.sh",
+        86_400.0,
+        600.0,
+    ),
     # The inbox a P0 compile reads is overwritten every cycle, so the input to
     # any past compile is gone and no upstream parameter has ever been
     # scorable on the book -- the ledger reads compiled envelopes and cannot
@@ -537,6 +552,10 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     # Reads the SSOT ``mode=ro`` and writes only JSON config files, so it
     # holds no database lock and can overlap anything.
     "auto_station_exclusions": "none",
+    # One small row a day.  It is an SSOT writer by the letter of this map,
+    # and it is the cheapest one here: the pass measured 0.7 seconds and its
+    # insert waits on ``busy_timeout`` rather than making production wait.
+    "ledger_alignment_guard": "ssot",
     "capture_jma_msm_forward": "ssot",
     "capture_noaa_conus_forward": "ssot",
     "capture_dwd_icon_eu_forward": "ssot",
@@ -976,6 +995,10 @@ HOSTED_SWEEP_LEASE_CONTRACT: dict[str, tuple[str, float]] = {
     # Three fits in one wrapper; measured 7m37s on 2026-09-06, once a day.
     "calibration_refit": ("one_shot", 600.0),
     "station_onboarding": ("one_shot", 300.0),
+    # Four aggregates in, one row out; the pass measured 0.7s on 2026-09-16.
+    # Sixty seconds is slack, not a budget -- well inside the lease, so the
+    # interval rule below never has to bite.
+    "ledger_alignment_guard": ("one_shot", 60.0),
 }
 
 

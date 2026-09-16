@@ -9850,6 +9850,94 @@ def collect_window_divergence(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def collect_ledger_alignment(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The guard's own rows: how far the ledger is from the book it replays.
+
+    Read back rather than re-derived.  The measurement runs on its own daily
+    sweep and writes the fingerprint it measured under, and a page that
+    recomputed it here would answer a slightly different question every
+    render -- the one thing this section must not do, since its whole job is
+    to let a reader date a divergence against the commits that caused it.
+
+    The history is what makes it a guard rather than a reading.  A single
+    amber render says nothing; the same amber for a week, starting on the day
+    a fingerprint moved, is a diagnosis.
+    """
+
+    from bayes_basket_target import ledger_alignment as alignment
+
+    out: dict[str, Any] = {
+        "schema": alignment.SCHEMA, "latest": None, "history": [],
+        "thresholds": {
+            "seat_jaccard_green": alignment.SEAT_JACCARD_GREEN,
+            "fill_rate_gap_green": alignment.FILL_RATE_GAP_GREEN,
+            "identity_lift_green": alignment.IDENTITY_LIFT_GREEN,
+            "clock_hours_green": alignment.CLOCK_MEDIAN_HOURS_GREEN,
+        },
+    }
+    if not _table_exists(conn, "paper_ledger_alignment_guard"):
+        return out
+    try:
+        rows = conn.execute(
+            "SELECT measured_at_utc, verdict, selection_rule_sha256,"
+            "       seat_choice_verdict, seat_choice_n, seat_choice_jaccard,"
+            "       seat_choice_disjoint, fill_rate_verdict, fill_rate_n,"
+            "       fill_rate_live, fill_rate_ledger, fill_identity_verdict,"
+            "       fill_identity_n, fill_identity_jaccard,"
+            "       fill_identity_chance, clock_verdict, clock_n,"
+            "       clock_median_hours, reach_rate, cells_shared,"
+            "       definition_version, reading_json"
+            " FROM paper_ledger_alignment_guard"
+            " ORDER BY measured_at_utc DESC LIMIT 30"
+        ).fetchall()
+    except sqlite3.Error:
+        return out
+    history = []
+    for row in rows:
+        history.append({
+            "at": str(row[0]), "verdict": str(row[1]),
+            "rule_sha": str(row[2] or "")[:8],
+            "seat": {"verdict": row[3], "n": row[4], "jaccard": row[5],
+                     "disjoint": row[6]},
+            "rate": {"verdict": row[7], "n": row[8], "live": row[9],
+                     "ledger": row[10]},
+            "identity": {"verdict": row[11], "n": row[12],
+                         "jaccard": row[13], "chance": row[14]},
+            "clock": {"verdict": row[15], "n": row[16], "median": row[17]},
+            "reach_rate": row[18], "cells_shared": row[19],
+            # Two rows under different definitions are not comparable, so the
+            # history column says which one each was taken under rather than
+            # letting a redefinition pass as a movement in the book.
+            "definition": row[20],
+        })
+    out["history"] = history
+    if history:
+        out["latest"] = history[0]
+        try:
+            reading = json.loads(rows[0][21] or "{}")
+        except (TypeError, ValueError):
+            reading = {}
+        out["latest"]["window_from"] = reading.get("window_from")
+        out["latest"]["window_days"] = reading.get("window_days")
+        out["latest"]["authorized"] = reading.get("live_orders_authorized")
+        out["latest"]["reached"] = reading.get(
+            "live_orders_reached_exchange"
+        )
+        out["latest"]["minimums"] = {
+            name: (reading.get("layers", {}).get(name) or {}).get("minimum_n")
+            for name in ("seat_choice", "fill_rate", "fill_identity", "clock")
+        }
+        out["latest"]["identity_lift"] = (
+            (reading.get("layers", {}).get("fill_identity") or {}).get("lift")
+        )
+        out["latest"]["clock_within_quarter_share"] = (
+            (reading.get("layers", {}).get("clock") or {})
+            .get("within_quarter_share")
+        )
+        out["examples"] = list(reading.get("examples") or [])[:12]
+    return out
+
+
 def build_payload(db: Path) -> dict[str, Any]:
     # The connection lives exactly one payload and is closed on every path.
     # It used to be leaked, one per page refresh, and a leaked read-only
@@ -10580,6 +10668,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         ),
         "entry_economics": _cached_section(
             "entry_economics", collect_entry_economics, conn
+        ),
+        "ledger_alignment": _cached_section(
+            "ledger_alignment", collect_ledger_alignment, conn
         ),
         "regional": _cached_section(
             "regional", collect_regional_lanes, conn
@@ -16608,6 +16699,115 @@ function servingWeights(){
   </details>`;
 }
 
+// The guard that watches the ledger against the live book (user ruling,
+// 2026-09-16: 加对齐守卫).  It sits in the ledger area because everything
+// else here is read OFF the ledger, and this is the one section that says
+// how much of that reading carries over to the book production actually ran.
+//
+// Four layers, never averaged.  On the day it shipped the seat layer agreed,
+// the clock layer did not, and the other two had no sample yet -- a single
+// score over that reads "roughly fine", which is exactly the misreading that
+// let the divergence stand for three weeks.  A layer below its minimum
+// sample says so instead of going green: 样本不足 is not a pass.
+function ledgerAlignment(){
+  const A=D.ledger_alignment||{}; const L=A.latest;
+  if(!L) return `<h2>账本 ↔ 生产 对齐守卫</h2>
+    <div class="card muted">守卫还没有写过读数。它每天一轮
+    （<span class="mono">ledger_alignment_guard</span>），首轮落盘后这里出数。</div>`;
+  const num=(v,d)=>v==null?"—":Number(v).toFixed(d==null?3:d);
+  const pct=v=>v==null?"—":(100*Number(v)).toFixed(1)+"%";
+  const WORD={green:"对齐",amber:"偏离",red:"分叉",insufficient:"样本不足"};
+  const TONE={green:"green",amber:"amber",red:"red",insufficient:""};
+  const pill=v=>`<span class="pill ${TONE[v]||""}">${h(WORD[v]||v)}</span>`;
+  const M=L.minimums||{};
+  const row=(name,verdict,n,min,reading,why)=>`<tr>
+      <td><b>${h(name)}</b><div class="muted">${why}</div></td>
+      <td>${pill(verdict)}</td>
+      <td class="mono">${n==null?"—":n}${min?` <span class="muted">/ ${min}</span>`:""}</td>
+      <td class="mono">${reading}</td>
+    </tr>`;
+  const layers=[
+    row("选哪几个桶", L.seat.verdict, L.seat.n, M.seat_choice,
+      `Jaccard ${num(L.seat.jaccard)} · 完全不重合 ${L.seat.disjoint} 格`,
+      "账本挂出的桶集 ↔ 生产挂出的桶集"),
+    row("开仓后成交几成", L.rate.verdict, L.rate.n, M.fill_rate,
+      `实盘 ${pct(L.rate.live)} ↔ 账本 ${pct(L.rate.ledger)}`,
+      "只看两边都买到东西的格：账本没开的链只留拒绝行、不留仓位行，"
+      + "不同时给两边加这个条件，比的就是两个不同的群体"),
+    row("哪一条腿成交", L.identity.verdict, L.identity.n, M.fill_identity,
+      `Jaccard ${num(L.identity.jaccard)} 对同池随机 ${
+        num(L.identity.chance)} <b>（差 ${num(L.identity_lift)}）</b>`,
+      "同一站日，两边买到的是不是同几条腿"),
+    row("什么时刻下的单", L.clock.verdict, L.clock.n, M.clock,
+      `中位差 ${num(L.clock.median,2)} 小时 · ${
+        pct(L.clock_within_quarter_share)} 在 15 分钟内`,
+      "账本的决策时刻 ↔ 生产最近一单的时刻"),
+  ].join("");
+  const hist=(A.history||[]).slice(0,14).map(r=>`<tr>
+      <td class="mono">${h(String(r.at).slice(0,16).replace("T"," "))}</td>
+      <td class="mono">${h(r.rule_sha)}</td>
+      <td class="mono">v${r.definition==null?"?":r.definition}</td>
+      <td>${pill(r.verdict)}</td>
+      <td>${pill(r.seat.verdict)}</td>
+      <td>${pill(r.rate.verdict)}</td>
+      <td>${pill(r.identity.verdict)}</td>
+      <td>${pill(r.clock.verdict)}</td>
+      <td class="mono">${r.cells_shared}</td>
+    </tr>`).join("");
+  const ex=(A.examples||[]).map(e=>`<tr>
+      <td>${h(e.station_id)} ${h(e.event_date)} <span class="muted">${
+        h(e.stage)}</span></td>
+      <td class="mono">${(e.ledger_filled||[]).join(" / ")}</td>
+      <td class="mono">${(e.live_filled||[]).join(" / ")}</td>
+      <td class="mono ${e.jaccard<e.chance?"down":""}">${num(e.jaccard,2)}</td>
+      <td class="mono muted">${num(e.chance,2)}</td>
+    </tr>`).join("");
+  return `<h2>账本 ↔ 生产 对齐守卫</h2>
+    <div class="card">
+      <b>它回答什么：</b>账本是重放器，生产是真下的单。
+      <span class="mono">test_ledger_production_rule_binding</span>
+      管的是<b>两边的规则有没有分叉</b>——它比对代码；
+      这里管的是<b>两边的结果有没有分叉</b>。2026-09-16 那个测试全绿，
+      而两边在同一个站日买的是不同的腿：<b>规则共用，账却是两本</b>。<br>
+      <b>可比样本怎么取：</b>只比<b>真到过交易所的单</b>。实盘
+      ${L.authorized} 单里只有 <b>${L.reached} 单</b>（${pct(L.reach_rate)}）
+      到了交易所，其余全被站点准入挡在门口（禁入／未武装／待观察／试用期）。
+      拿那些去比，量的是准入名单不是账本——而账本<b>本来就该</b>覆盖被禁的站，
+      那是它们唯一能攒出证据的地方。<br>
+      <b>当前总判定 ${pill(L.verdict)}</b>
+      <span class="muted">窗口 ${h(L.window_from)} 起 ${L.window_days} 天 ·
+      共同站日阶段 ${L.cells_shared} 个 ·
+      指纹 <span class="mono">${h(L.rule_sha)}</span></span>
+    </div>
+    <div class="why"><b>为什么四层分开量、永不平均：</b>上线当天，选桶层对齐、
+    时刻层偏离、另外两层样本还不够说话。任何把它们揉成一个总分的做法都会读成
+    「大致没问题」——正是这个误读让分歧站了三周没人发现。
+    <b>样本不够的层显示「样本不足」，不显示绿</b>：n=14 是提示不是结论，
+    一个敢把 n=14 判成红的守卫，是在断言它并不知道的事。<br>
+    <b>「哪一条腿成交」为什么要对着随机基线读：</b>两边各挂 2–3 条腿、各成交
+    四成多，本来就会<b>碰巧</b>撞上几条相同的。所以问的不是重合了多少，
+    而是<b>比碰巧多重合了多少</b>。基线按同一个桶池、同样的成交条数精确算出
+    （超几何分布，不是模拟），所以它明天还是同一个数，差值才读得懂。<br>
+    <b>指纹为什么在每一行上：</b>任何规则改动都会换指纹并重导整本账。
+    读数跟着指纹一起动，和读数自己动，是两个完全不同的诊断；
+    不把指纹记在行上，事后就分不出来了。</div>
+    <h3 style="margin-top:12px">四层读数</h3>
+    <table><thead><tr><th>层</th><th>判定</th><th>n / 下限</th><th>读数</th>
+      </tr></thead><tbody>${layers}</tbody></table>
+    ${ex?`<h3 style="margin-top:12px">同站日两边买到的腿（最近 ${
+      (A.examples||[]).length} 格）</h3>
+    <table><thead><tr><th>站日 / 阶段</th><th>账本买到</th><th>实盘买到</th>
+      <th>Jaccard</th><th>同池随机</th></tr></thead><tbody>${ex}</tbody></table>`:""}
+    ${hist?`<h3 style="margin-top:12px">历史（每天一行）</h3>
+    <table><thead><tr><th>时刻</th><th>指纹</th><th>口径</th><th>总判定</th>
+      <th>选桶</th><th>成交率</th><th>成交身份</th><th>时刻差</th><th>共同格</th>
+      </tr></thead><tbody>${hist}</tbody></table>
+    <div class="muted" style="margin-top:6px">「口径」变了就<b>不能跨行比</b>：
+      改的是测量本身，不是账本动了。指纹变了则是<b>规则换了、整本账重导</b>。
+      两列并排，正是为了事后能把这两种「读数变了」分开。</div>`:""}`;
+}
+
+
 // Sections of one kind stand together, and only one kind is on screen at a
 // time (user ruling, 2026-08-21).  Twenty sections in a single column is a
 // page nobody scrolls to the end of, and the order they were written in
@@ -16758,6 +16958,8 @@ const LANES = {
     role:"跨日看每个站的账"},
   "没建仓是因为什么": {layer:"全链闸 · 读数", status:"audit",
     role:"哪一道闸拒掉了最后一个还站着的窗"},
+  "账本 ↔ 生产 对齐守卫": {layer:"账本 · 守卫", status:"audit",
+    role:"账本重放的结果和真下的单差在哪 —— 规则绑定测试比代码，它比结果"},
 };
 const LANE_WORD = {live:"已上线", shadow:"影子", off:"已关闭", audit:"读数"};
 const LANE_TONE = {live:"green", shadow:"amber", off:"red", audit:""};
@@ -16823,7 +17025,12 @@ const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}"
 // answer what the detail raises.
 const TOP = [[daily, "每日统计"], [roster, "逐站逐日明细"],
   [stationSummary, "逐站汇总（跨日）"],
-  [refusalStats, "没建仓是因为什么"]];
+  [refusalStats, "没建仓是因为什么"],
+  // Last rather than first, because the four above it were ordered by a
+  // ruling (2026-08-30) and this does not get to reshuffle them.  It reads
+  // as a caveat on all of them: how much of what those tables say carries
+  // over to the book production actually ran.
+  [ledgerAlignment, "账本 ↔ 生产 对齐守卫"]];
 
 // Which sections on this page were reused from the previous build, and how
 // old each one is.  A cached section that quietly stops refreshing is the
