@@ -3405,13 +3405,28 @@ def _band_axis_by_stage(conn: sqlite3.Connection) -> dict[str, str]:
     )
     if not has_axis:
         return {}
-    return {
+    # The axis is a property of the TABLE, so a stage whose table was vetoed
+    # has no activated row to read it from -- and every caller's fallback is
+    # ``claim``, which is how a distance-keyed stage silently gets binned on
+    # the 5% claim grid again (2026-09-15: P0's table was retired at 18:26Z
+    # and this returned nothing for P0).  The newest row for the stage still
+    # remembers which quantity its cells were keyed on, retired or not, and
+    # that is the axis the rows being read were served through.
+    axes = {
         str(stage): str(axis or BAND_AXIS_CLAIM)
         for stage, axis in conn.execute(
             "SELECT stage, axis FROM calibration_band_reliability_table"
             " WHERE activated=1"
         )
     }
+    for stage, axis in conn.execute(
+        "SELECT stage, axis FROM calibration_band_reliability_table"
+        " WHERE stage NOT IN (SELECT stage FROM"
+        "  calibration_band_reliability_table WHERE activated=1)"
+        " GROUP BY stage HAVING fitted_at_utc = MAX(fitted_at_utc)"
+    ):
+        axes.setdefault(str(stage), str(axis or BAND_AXIS_CLAIM))
+    return axes
 
 
 def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:

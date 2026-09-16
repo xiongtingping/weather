@@ -271,6 +271,29 @@ def test_a_vetoed_stage_does_not_read_as_never_built() -> None:
     assert stage["axis"] == DISTANCE
 
 
+def test_a_vetoed_stage_keeps_the_axis_its_cells_were_keyed_on() -> None:
+    """The axis lives on the table, so a veto takes it away with the row.
+
+    Every caller of ``_band_axis_by_stage`` falls back to ``claim``; after
+    P0's table was retired on 2026-09-15 that put a distance-keyed stage
+    back on the 5% claim grid in the residual audit -- charter 105's bug,
+    re-entered through the retirement door.
+    """
+
+    conn = sqlite3.connect(":memory:")
+    band_store.ensure_band_table_schema(conn)
+    conn.execute(
+        "INSERT INTO calibration_band_reliability_table"
+        " (band_table_sha256, stage, factors_json, evidence_json,"
+        "  fitted_at_utc, serving_day_count, activated, activated_at_utc,"
+        "  axis, retired_at_utc) VALUES (?,?,?,?,?,?,0,?,?,?)",
+        ("d" * 64, "P0", json.dumps(HELD_FACTORS), "{}",
+         "2026-09-10T04:20:32Z", 41, "2026-09-10T04:20:32Z", DISTANCE,
+         "2026-09-15T18:26:19Z"),
+    )
+    assert C._band_axis_by_stage(conn)["P0"] == DISTANCE
+
+
 def test_the_audit_rows_read_the_fits_window_and_the_station_court_does_not(
     monkeypatch,
 ) -> None:
