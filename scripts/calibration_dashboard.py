@@ -4732,12 +4732,17 @@ def collect_live_readiness(
 ) -> dict[str, Any]:
     """Everything the go-live page needs: gates per station, knobs, contracts.
 
-    Five gates, all measured, none aesthetic: the band table's own
-    realized/claimed ratio (claim honesty), the served centre's bias
-    against settled truth, the ledger's chain count and ROI for the
-    station, and truth freshness.  The three control files are read fresh
-    at render so the page shows what production would read this cycle;
-    the write path is scripts/live_control_server.py, never this page.
+    Five gates, all measured, none aesthetic, and since 2026-09-16 every one
+    that reads a book reads the live one (user ruling: 过闸、未过项、不行、
+    不行的维度 all on live data): the hit-to-claim ratio of the station's
+    settled live baskets (claim honesty), their held centre against settled
+    truth, the live settled station-days and ROI, and truth freshness.  The
+    five-dimension read rides on the same rows (``failure``), off the same
+    settlements.  The paper figures stay on each row under ``paper_*`` for
+    comparison only.  ``band_stations`` only widens the roster to stations
+    the model serves.  The three control files are read fresh at render so
+    the page shows what production would read this cycle; the write path is
+    scripts/live_control_server.py, never this page.
     """
 
     ratio_by_station = {
@@ -4911,16 +4916,22 @@ def collect_live_readiness(
         str(item["station_id"]): item
         for item in ((live_orders.get("pnl") or {}).get("by_station") or [])
     }
+    # Claim honesty, centre bias and the five dimensions, off the live
+    # settlements (user ruling, 2026-09-16).  The claim gate and the 声称
+    # dimension are one number read against two thresholds, and so are the
+    # centre gate and 中心: one book, so no longer two measurements.
+    quality = live_book.station_quality(live_book.build(conn)["settlements"])
+    quality_by_station = quality["stations"]
     stations = []
     for sid in sorted(
         set(ratio_by_station) | set(book) | set(bias) | set(live_by_station)
     ):
-        band_row = ratio_by_station.get(sid)
-        ratio = float(band_row["ratio"]) if band_row else None
         live = live_by_station.get(sid)
+        fx = quality_by_station.get(sid)
+        ratio = fx["calibration_ratio"] if fx else None
         chain_count = int(live["settled_days"]) if live else 0
         roi = live["roi"] if live else None
-        bias_c = bias[sid][1] if sid in bias else None
+        bias_c = fx["centre_residual_c"] if fx else None
         gates = {
             "claim_honest": (
                 ratio is not None and 0.88 <= ratio <= 1.18
@@ -4952,7 +4963,10 @@ def collect_live_readiness(
             "roi": roi,
             "recent_roi": live["recent_roi"] if live else None,
             "recent_days": int(live["recent_days"]) if live else 0,
+            # The five dimensions, same settlements.
+            "failure": fx,
             # The paper book's, for comparison only.
+            "paper_bias_c": bias[sid][1] if sid in bias else None,
             "paper_chains": len(book[sid]["days"]) if sid in book else 0,
             "paper_roi": (
                 (book[sid]["pnl"] / paper_stake) if paper_stake else None
@@ -5065,6 +5079,14 @@ def collect_live_readiness(
         ],
         "available": True,
         "stations": stations,
+        # The five-dimension read's frame; each row carries its own
+        # ``failure``.  Live settlements, so the halves split at the live
+        # book's median settled day.
+        "failure": {
+            "available": bool(quality_by_station),
+            "split_event_date": quality["split_event_date"],
+            "thresholds": quality["thresholds"],
+        },
         "kelly": policy.get("portfolio_risk_fraction"),
         "budget_usdc": runtime.get("target_remaining_budget_usdc"),
         "live_enabled": intent.get("live_enabled"),
@@ -10612,10 +10634,11 @@ box-shadow:0 1px 2px rgba(0,0,0,.35);transition:transform .13s ease}
    instead of a knob -- same contract as .lc-sw (the state and the action are
    one object), drawn small enough to live in a cell.  Off is an outline, on
    is the colour of what it means: red bars, green admits, amber waits. */
-.lc-gate{font:inherit;font-size:11px;line-height:1;padding:3px 6px;margin-right:3px;
+.lc-gate,.lc-bulk{font:inherit;font-size:11px;line-height:1;padding:3px 6px;margin-right:3px;
 border-radius:99px;border:1px solid var(--line);background:transparent;
 color:var(--muted);cursor:pointer;white-space:nowrap}
-.lc-gate:hover:not(:disabled){border-color:var(--text);color:var(--text)}
+.lc-gate:hover:not(:disabled),.lc-bulk:hover:not(:disabled){border-color:var(--text);color:var(--text)}
+.lc-bulk:disabled{opacity:.4;cursor:not-allowed}
 .lc-gate[aria-checked="true"][data-gate="bar"]{background:var(--pill-red-bg);
 border-color:var(--red);color:var(--red)}
 .lc-gate[aria-checked="true"][data-gate="waive"]{background:var(--pill-green-bg);
@@ -12220,21 +12243,23 @@ function fleetRegime(){
 // verdicts, and an operator flipping a switch needs the case for it on the
 // same row -- two tables one under the other made them line up by eye.
 //
-// It stays a separate measurement, not a merged one: the gate's ratio and
-// the matrix's calibration_ratio are different windows over different
-// populations (CYYZ reads 1.04 and 0.66 on the same day), and so are the
-// gate's bias against the matrix's centre residual, and the gate's chains
-// against the settled count.  Collapsing either pair into one column would
-// be inventing a number neither layer computed.
+// Since 2026-09-16 both read the live settlements (user ruling: 过闸、
+// 未过项、不行、不行的维度 all on live data), so they are no longer two
+// measurements: the claim gate and 声称 are one hit-to-claim ratio against
+// two thresholds, and the centre gate and 中心 one held-centre residual.
+// Until then this read the paper matrix, whose windows and populations
+// differed from the gates' (CYYZ read 1.04 and 0.66 on the same day).
 function stationFailureIndex(){
-  const M=(D.selection||{}).station_failure_matrix;
+  const L=D.live_readiness||{};
+  const M=L.failure;
   if(!M||!M.available) return null;
+  const rows=(L.stations||[]).map(r=>r.failure).filter(Boolean);
   const by={};
-  (M.stations||[]).forEach(s=>{by[s.station_id]=s;});
+  rows.forEach(s=>{by[s.station_id]=s;});
   return {by:by, thresholds:M.thresholds||{},
     split:M.split_event_date,
-    worst:(M.stations||[]).filter(s=>s.flag_count>=4).map(s=>s.station_id),
-    clean:(M.stations||[]).filter(s=>s.flag_count===0).length};
+    worst:rows.filter(s=>s.flag_count>=4).map(s=>s.station_id),
+    clean:rows.filter(s=>s.flag_count===0).length};
 }
 
 function refusalStats(){
@@ -15577,9 +15602,10 @@ function liveReadiness(){
         s.late_pnl_usdc.toFixed(1)}<span class="muted">(${s.late_chains})</span></td>`;
   };
   // The live book per station: what the exchange filled, settled on the
-  // same resolver as the money card.  Every column right of these is the
-  // paper ledger's, and the reader deciding who trades real money asked for
-  // real money (user, 2026-09-16).  Pending legs stay out of the ratio.
+  // same resolver as the money card.  The gates, the five dimensions and
+  // their seven columns read the same book; the paper ledger's four columns
+  // come last, for comparison only (user rulings, 2026-09-16).  Pending legs
+  // stay out of the ratio.
   const LP = (L.live_orders||{}).pnl || {};
   const lpct = v => v==null ? "—" : (v>=0?"+":"")+(100*v).toFixed(1)+"%";
   const lsign = v => v==null ? "" : (v>=0?"up":"down");
@@ -15605,14 +15631,13 @@ function liveReadiness(){
     <td class="muted">${r.add_candidate?"☆建议加入 ":""}${r.release_candidate?"★建议放出 ":""}${Object.entries(r.gates).filter(([k,v])=>!v).map(([k])=>GATE[k]).join("、")||"✓"}</td>
     ${lcells(r.live)}
     ${fverdict(r.station)}
-    <td class="mono" ${EDGE}>${r.ratio==null?"—":r.ratio.toFixed(2)}</td>
-    <td class="mono">${r.bias_c==null?"—":(r.bias_c>0?"+":"")+r.bias_c.toFixed(2)}</td>
-    <td class="mono muted">${r.paper_chains}</td>
+    ${fcells(r.station)}
+    <td class="mono ${r.climate_jump_c==null?"":(r.climate_jump_c>1.76?"down":"up")}" ${EDGE}>${r.climate_jump_c==null?"—":r.climate_jump_c.toFixed(2)}</td>
+    <td class="mono ${r.shape_gap_buckets==null?"":(r.shape_gap_buckets>0.93?"down":"")}">${r.shape_gap_buckets==null?"—":r.shape_gap_buckets.toFixed(2)}</td>
+    <td class="mono muted" ${EDGE}>${r.paper_chains}</td>
     <td class="mono muted">${r.paper_roi==null?"—":((r.paper_roi>=0?"+":"")+(100*r.paper_roi).toFixed(1)+"%")}</td>
     <td class="mono muted">${r.paper_recent_roi==null?"—":((r.paper_recent_roi>=0?"+":"")+(100*r.paper_recent_roi).toFixed(1)+"%")}</td>
-    <td class="mono ${r.climate_jump_c==null?"":(r.climate_jump_c>1.76?"down":"up")}">${r.climate_jump_c==null?"—":r.climate_jump_c.toFixed(2)}</td>
-    <td class="mono ${r.shape_gap_buckets==null?"":(r.shape_gap_buckets>0.93?"down":"")}">${r.shape_gap_buckets==null?"—":r.shape_gap_buckets.toFixed(2)}</td>
-    ${fcells(r.station)}
+    <td class="mono muted">${r.paper_bias_c==null?"—":(r.paper_bias_c>0?"+":"")+r.paper_bias_c.toFixed(2)}</td>
   </tr>`).join("");
   const CT = L.contracts || {};
   const authorised = CT.live_submit_authorized === true;
@@ -15638,66 +15663,20 @@ function liveReadiness(){
     : "暂停旗不在位"}。
   实盘订单与意向簿在上面的<a href="#sec-money">资金看板</a>「实盘」一类里。</p>
   <div class="card" style="margin-top:12px">
-    <div class="muted">首批站点闸门 · <b>三个开关全是人工的，点击即开启关闭</b>——
-      写盘、记审计、下一轮生产立刻照它执行；表里的五闸（实现/声称∈[0.88,1.18]、
-      |中心偏差|≤0.8°C、<b>实盘</b>站日≥5、<b>实盘</b> ROI＞−8%、真值≤2天新）是给你看的评分，不再自己决定谁上线。
-      <br><b>钱一律读实盘</b>（裁决 2026-09-16：账本只当规则对比器）：「实盘」六列＝交易所真实成交、按真值结算（待结算的腿不进 ROI），
-      五闸里的站日与 ROI、建议加入/放出、自动禁入层都读它；灰色的「账本」三列是纸面账本的模拟成交，只供对照，不参与任何判断。
-      实盘合计：已结算 ${LP.filled_legs||0} 腿（命中 ${LP.won_legs||0}）、待结算 ${LP.pending_legs||0} 腿，
-      投入 ${LP.cost_usdc==null?"—":LP.cost_usdc.toFixed(1)} U，
-      盈亏 <span class="${lsign(LP.pnl_usdc)}">${LP.pnl_usdc==null?"—":(LP.pnl_usdc>=0?"+":"")+LP.pnl_usdc.toFixed(1)} U</span>，
-      ROI <span class="${lsign(LP.roi)}">${lpct(LP.roi)}</span>。
-      <br>✔ 上线（${(L.station_allowlist||[]).length}）：<span class="mono" id="lc-batch-live">${(L.station_allowlist||[]).join(" ")||"—"}</span>
-      <br>⛔ 禁入（${(L.station_exclusions||[]).length}）：<span class="mono" id="lc-batch-barred">${(L.station_exclusions||[]).join(" ")||"—"}</span>${(L.auto_barred||[]).length?`　其中自动层写的（虚线框）：<span class="mono">${(L.auto_barred||[]).join(" ")}</span>`:""}
-      <br>✅ 豁免（证据不够也上线）：<span class="mono" id="lc-batch-waived">${(L.station_probation_waivers||[]).join(" ")||"—"}</span>
-      　⏳ 待观察（${(L.station_probation||[]).length}，其中人工按住的：<span class="mono" id="lc-batch-held">${(L.station_probation_holds||[]).join(" ")||"—"}</span>）
-      ${((L.add_candidates||[]).length||(L.release_candidates||[]).length)?`<br><span class="pill amber">待复核</span>
-      随数据每轮重算的候选（<b>只提示不执行</b>）：${(L.add_candidates||[]).length?`建议加入 <span class="mono">${(L.add_candidates||[]).join(" ")}</span>`:""}
-      ${(L.release_candidates||[]).length?`　建议放出 <span class="mono">${(L.release_candidates||[]).join(" ")}</span>`:""}`:""}</div>
-    <details class="note"><summary>三个开关分别做什么 · 禁入与候选的判据</summary>
-      <div class="muted"><b>⛔ 禁入</b>＝不给这个站下单，<b>但账本照常记账</b>——禁的是下单不是记账，
-      不然下次要不要放出来就没有证据可读。点开＝写一条操作者裁定进
-      <span class="mono">excluded_stations</span>；点关＝写一条 <span class="mono">released_stations</span>，
-      <b>自动层从此不再碰这个站</b>（不写这条的话，下一轮 sweep 几分钟内就会把它禁回去，开关看起来像坏的）。
-      <b>没有席位上限</b>（操作者裁定 2026-09-02，取代原来的 15 席）：禁一个站只损失一个跳过的市场，
-      而上限做的事是把判决藏起来——它一边逼着人工新禁去挤掉自动层的行（当天 KHOU/SAEZ/ZUUU/VILK/KSEA
-      就是这样被放出来的），一边让存下来的名单不再是判据算出来的那份。<br>
-      <b>✅ 豁免</b>＝结算笔数不够也直接上线（把"等够 ${L.minimum_settlements_to_qualify||5} 笔"这道门跳过去）。
-      <b>⏳ 待观察</b>＝够格了也先不下单，<b>不占禁入席位、也不等于说它坏</b>——账本继续给它建仓结算，
-      证据照攒。三者互斥：开一个自动关掉另外两个；已禁入的站，另外两个开关是灰的（服务端也会拒）。<br>
-      三个开关都算<b>操作者裁定</b>，自动层一律不碰带裁定的站。<b>2026-09-02 起禁入真的挡下单了</b>：
-      在此之前这张名单只活在这个页面、控制服务的 allowlist 写入口和 go-live 迁移的前置检查里，
-      发单那条路根本不读它——EDDM、KSEA、LTAC 都留着"被禁期间铸出来的 live 意向"。<br>
-      禁入是<b>风险裁定不是测量结论</b>：14 种自动规则做逐日 walk-forward，最好的一个 p=0.346——与随机剔同样多的站无异；
-      同一份手挑名单固定不动反而 +17.0 点（p=0.002）。所以<b>操作者裁定的行永远不由机器改</b>；自动层只管操作者没裁定过的站，判据＝第一看兑现比（实得÷期望；期望＜3U 时读不出，改看第二项）、第二看实得差，进出用滞回避免来回摆；<b>不再设站数上限</b>（2026-09-02 解除）：判据说禁就禁，名单即判决，人工新禁也不再挤掉任何人。<br>
-      候选判据（2026-09-16 起读实盘）：加入＝实盘全样本 ROI≤−25% 且实盘站日≥5；放出＝已禁且实盘账本最近 5 个结算日里该站 ROI＞0（≥3 个站日）<b>且中心偏差与声称诚实两闸都过</b>——只看 ROI 会把靠盘后 P1 铁板捞回来的站放出去（EPWA 判例）。
-      自动禁入层判据不变（第一看兑现比、第二看实得差），数据源同样改读实盘成交。</div>
-    </details>
-    ${FX?`<details class="note" style="margin-top:6px"><summary>「不行」的五个维度分别指认哪一层</summary>
-      <div class="muted"><b>为什么不能只看亏多少：</b>一个站只有五到十条已结算链，
-      单靠运气就能亏得很难看，所以"亏损前十"里永远混着运气差的。能分开的是
-      <b>同时在互不重复的维度上不行</b>——每一项指认不同的一层：
-      <b>实现</b>（实现/期望 &lt;0，模型想去的日子反而亏，病在声称或执行）、
-      <b>声称</b>（命中/声称 &lt;${FX.thresholds.claim_floor}，声称虚高，病在校准层）、
-      <b>中心</b>（残差 &gt;${FX.thresholds.centre_limit_c}°C，中心就是错的，病在偏差层，最上游）、
-      <b>覆盖</b>（选桶盖住真值 &lt;${(100*(FX.thresholds.coverage_floor||0)).toFixed(0)}%，病在选桶层）、
-      <b>持续</b>（前后半段都亏，是站的性格不是那两周）。前后半段分割点 ${h(FX.split)}。<br>
-      <b>旗标只列不求和：</b>它们会互相打架且那正是信息——EHAM 赚得远超模型期望
-      却另外三项不行，加总成一个分数恰好会把这件事抹掉。
-      <b>薄样本标"薄"不剔除：</b>两条链的站不是好站，是没被判过的站。
-      <b>这是诊断不是处方：</b>前瞻检验实测，按前半段排名剔掉最差十站，
-      后半段只从 −55.7 改善到 −20.4，仍是亏的——剔站买不来一本赚钱的账。<br>
-      <b>这五维与左边的五闸是两套测量，不可互相代入</b>：窗口和人口都不同——
-      同一天 CYYZ 的闸读 1.04、五维的命中/声称读 0.66，中心偏差与中心残差、
-      链与已结算同理。合成一列等于编一个哪一层都没算过的数。</div>
-    </details>`:""}
+    <div class="muted" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">首批站点闸门
+      <button type="button" class="lc-bulk" data-bulk="waive_all" disabled
+        onclick="lcBulk(this)"
+        title="点击＝全部站一起开：放出所有禁入站（记 released_stations，自动层从此不碰）、撤掉所有待观察、给全部站写豁免——下一轮生产起全部站按实盘下单。一次写盘、一条审计。">✅ 一键全部开（豁免）</button>
+      <button type="button" class="lc-bulk" data-bulk="bar_all" disabled
+        onclick="lcBulk(this)"
+        title="点击＝全部站一起禁入：每个站写一条操作者禁入裁定，同时撤掉所有豁免与待观察——下一轮生产起不再给任何站下单（账本照常记账）。一次写盘、一条审计。">⛔ 一键全部禁入</button></div>
     <div class="scroll" style="max-height:420px;margin-top:6px">
     <table style="white-space:nowrap"><thead><tr><th>站</th><th title="三个开关都是人工裁定，点击即开启关闭，改动立刻写盘并记审计。禁入=不下单（记账照旧）；豁免=证据不够也上线；待观察=够格也先不下单。三者互斥。">闸门（人工）</th><th>过闸</th><th>未过项</th>
       <th title="实盘：该站真实成交腿里已结算的站日数" style="border-left:1px solid var(--line)">实盘站日</th><th title="实盘：命中腿/已结算成交腿，+N待＝已成交但还没结算的腿">实盘腿</th><th title="实盘：已结算成交腿的实付金额(U)">实盘投入</th><th title="实盘：已结算成交腿的盈亏(U)＝命中份数×1U−实付">实盘盈亏</th><th title="实盘：盈亏÷投入，待结算腿不计入">实盘ROI</th><th title="实盘：实盘账本最近 5 个结算日的 ROI${(LP.recent_window_dates||[]).length?"（"+LP.recent_window_dates[0]+" 起）":""}">实盘近5日</th>${
-      FX?`<th title="五个维度各指认不同的一层，见上方折叠说明；与左边的五闸是两套测量" style="border-left:1px solid var(--line)">不行</th><th>不行的维度</th>`:""}
-      <th style="border-left:1px solid var(--line)">实现/声称</th><th title="纸面账本持仓的中心减真值">中心偏差</th>
-      <th title="纸面账本：已结算站日数，只供对照，不参与判断">账本链</th><th title="纸面账本：模拟成交的盈亏÷投入，不是实盘，只供对照">账本ROI</th><th title="纸面账本：最近 5 个结算日，只供对照">账本近5日</th><th title="该站真值的日际跳变均值(°C)：天气性格，>1.76 的站在真边际枯竭期实测 −43%（留存组 +23%，p=0.023）。外生、慢变、先于账本。">跳变/日</th><th title="近14天池子里模型分布的均值−众数距离(桶)：跳变在模型层的影子(r=+0.32)，>0.93 为高。">形状gap</th>${
-      FX?`<th title="以下七列属五维诊断，窗口与左侧五闸不同" style="border-left:1px solid var(--line)">已结算</th><th>覆盖率</th><th>实现/期望</th><th>命中/声称</th><th>中心残差</th><th>前半段</th><th>后半段</th>`:""}
+      FX?`<th title="实盘：五个维度各指认不同的一层，见上方折叠说明" style="border-left:1px solid var(--line)">不行</th><th title="实盘">不行的维度</th>
+      <th title="实盘：已结算的实盘篮子数（站日×阶段，每个阶段各持一个篮子）" style="border-left:1px solid var(--line)">实盘结算笔</th><th title="实盘：站日里挂出的桶盖住真值的比例；＜${(100*(FX.thresholds.coverage_floor||0)).toFixed(0)}% 算「覆盖」不行">覆盖率</th><th title="实盘：实得盈亏÷声称期望；＜0 算「实现」不行">实现/期望</th><th title="实盘：命中率÷平均声称。五闸「声称诚实」要求 0.88–1.18；＜${FX.thresholds.claim_floor} 算「声称」不行">命中/声称</th><th title="实盘：成交篮子所依据的模型中心−结算真值，按站日平均。五闸「中心偏差」要求 |x|≤0.8°C；＞${FX.thresholds.centre_limit_c}°C 算「中心」不行">中心偏差</th><th title="实盘：分割日之前的站日盈亏(U)，括号里是站日数">前半段</th><th title="实盘：分割日及之后的站日盈亏(U)，括号里是站日数；前后都亏算「持续」不行">后半段</th>`:""}
+      <th title="该站真值的日际跳变均值(°C)：天气性格，>1.76 的站在真边际枯竭期实测 −43%（留存组 +23%，p=0.023）。外生、慢变、先于账本。" style="border-left:1px solid var(--line)">跳变/日</th><th title="近14天池子里模型分布的均值−众数距离(桶)：跳变在模型层的影子(r=+0.32)，>0.93 为高。">形状gap</th>
+      <th title="纸面账本：已结算站日数，只供对照，不参与判断" style="border-left:1px solid var(--line)">账本链</th><th title="纸面账本：模拟成交的盈亏÷投入，不是实盘，只供对照">账本ROI</th><th title="纸面账本：最近 5 个结算日，只供对照">账本近5日</th><th title="纸面账本：持仓中心−真值，只供对照">账本中心偏差</th>
       </tr></thead><tbody>${rows}</tbody></table></div>
     ${FX?`<div class="muted" style="margin-top:4px;font-size:11.5px">
       五维诊断：${FX.worst.length?h(FX.worst.join("、"))+" 至少四项不行":"没有站四项以上不行"}，
@@ -15863,7 +15842,7 @@ function lcPaintStatus(s){
 function lcDown(){
   window.__lcState = null;
   lcPaintStatus(null);
-  document.querySelectorAll(".lc-w, #lc-live-btn, .lc-gate")
+  document.querySelectorAll(".lc-w, #lc-live-btn, .lc-gate, .lc-bulk")
     .forEach(b=>{ b.disabled = true; });
   document.querySelectorAll(".navctl-k[aria-busy]")
     .forEach(k=>k.removeAttribute("aria-busy"));
@@ -15956,7 +15935,7 @@ function lcGate(btn){
   // the server clears the other two on the station it moves, so more than
   // one of them may be about to change and none may show a state that has
   // not come back yet.
-  document.querySelectorAll(".lc-gate").forEach(b=>{b.disabled=true;});
+  document.querySelectorAll(".lc-gate, .lc-bulk").forEach(b=>{b.disabled=true;});
   const body = {station: station, by: "dashboard"};
   body[spec.key] = !on;
   lcApi(spec.path, body).then(lcRender).catch(e=>{
@@ -15968,8 +15947,25 @@ function lcGate(btn){
     alert("失败: "+e);
   });
 }
+// The two bulk switches (user, 2026-09-16): every station open on a waiver,
+// or every station barred, in one write and one audit line.  Same contract
+// as the per-row switches -- drawn disabled, enabled only by the server's
+// answer, every switch on the table held down for the round trip, and the
+// table repainted from what comes back rather than from the click.  No
+// dialog, as with the LIVE switch: the hover names exactly what it does.
+function lcBulk(btn){
+  const action = btn.dataset.bulk;
+  if(action!=="waive_all" && action!=="bar_all") return;
+  document.querySelectorAll(".lc-gate, .lc-bulk").forEach(b=>{b.disabled=true;});
+  lcApi("/api/station-bulk", {action: action, by: "dashboard"})
+    .then(lcRender).catch(e=>{
+      if(e && e.lcDown) lcDown(); else lcPaintGates(window.__lcState);
+      alert("失败: "+e);
+    });
+}
 function lcPaintGates(s){
   const live = s && s.live; if(!live) return;
+  document.querySelectorAll(".lc-bulk").forEach(b=>{ b.disabled = false; });
   const barred = new Set(live.station_exclusions||[]);
   const waived = new Set(live.station_probation_waivers||[]);
   const held   = new Set(live.station_probation_holds||[]);
@@ -15996,12 +15992,6 @@ function lcPaintGates(s){
     const row = el.closest("tr");
     if(row) row.className = barred.has(station) ? "muted" : "";
   });
-  const put=(id,text)=>{const el=document.getElementById(id);
-    if(el) el.textContent = text;};
-  put("lc-batch-live",  (live.station_allowlist||[]).join(" ")||"—");
-  put("lc-batch-barred",(live.station_exclusions||[]).join(" ")||"—");
-  put("lc-batch-waived",(live.station_probation_waivers||[]).join(" ")||"—");
-  put("lc-batch-held",  (live.station_probation_holds||[]).join(" ")||"—");
 }
 function lcInit(){
   if(!document.getElementById("lc-status")) return;

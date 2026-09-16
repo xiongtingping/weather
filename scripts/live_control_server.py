@@ -26,9 +26,12 @@ POST /api/allowlist {"stations": ["ZBAA", ...]}
 POST /api/station-bar     {"station": "KSEA", "barred": true}
 POST /api/station-waiver  {"station": "LIMC", "waived": true}
 POST /api/station-hold    {"station": "KDAL", "held": true}
+POST /api/station-bulk    {"action": "waive_all" | "bar_all"}
 
-The last three are the station gate, one click each: 禁入 (the bar), 豁免
+The three per-station ones are the station gate, one click each: 禁入 (the bar), 豁免
 (trade before the evidence is in) and 待观察 (hold a qualified station back).
+The bulk one moves every station at once (user, 2026-09-16): all open on a
+waiver, or all barred.
 All three are operator rulings and mutually exclusive, and the automatic
 layer never touches a station carrying one.  Until 2026-09-02 the bar was
 editable only by hand in the JSON, which is why it moved four times in one
@@ -499,37 +502,56 @@ def _station(value: str) -> str:
     return station
 
 
-def _book_row(station: str) -> dict:
-    """The station's own numbers, so a hand-ruled row carries its evidence.
+def _book_rows(stations) -> dict:
+    """Each station's own numbers, so a hand-ruled row carries its evidence.
 
-    Same definition as the board's: every settled row, stake and P&L summed.
-    A bar written without them would be a name in a list, and the next
-    reader would have to re-derive what the operator was looking at -- which
-    is exactly the re-litigation the file's ``why_not_automatic`` note
-    exists to prevent.
+    Same definition as the board's, and the board's is the live book since
+    2026-09-16 (user ruling: the paper ledger is a rule comparator, so what
+    a station is ruled on is its real money): the settled live baskets'
+    stake and P&L summed, and ``settlements`` counts the settled live
+    station-days.  A bar written without them would be a name in a list,
+    and the next reader would have to re-derive what the operator was
+    looking at -- which is exactly the re-litigation the file's
+    ``why_not_automatic`` note exists to prevent.  One build for any number
+    of stations, so the bulk switch reads the book once.
     """
 
+    empty = {"full_sample_roi": None, "settlements": 0}
+    wanted = {str(s) for s in stations}
+    out = {station: dict(empty) for station in wanted}
     try:
         conn = sqlite3.connect(f"file:{SSOT_DB}?mode=ro", uri=True, timeout=30.0)
     except sqlite3.Error:
-        return {"full_sample_roi": None, "settlements": 0}
+        return out
     try:
         conn.execute("PRAGMA busy_timeout=30000")
-        row = conn.execute(
-            "SELECT COUNT(*), COALESCE(SUM(stake_usdc),0),"
-            " COALESCE(SUM(pnl_usdc),0) FROM paper_trade_settlement"
-            " WHERE station_id=?",
-            (station,),
-        ).fetchone()
-    except sqlite3.Error:
-        return {"full_sample_roi": None, "settlements": 0}
+        import live_book  # noqa: PLC0415
+        rows = live_book.build(conn)["settlements"]
+    except (sqlite3.Error, ImportError):
+        return out
     finally:
         conn.close()
-    count, stake, pnl = int(row[0]), float(row[1]), float(row[2])
-    return {
-        "full_sample_roi": round(pnl / stake, 3) if stake else None,
-        "settlements": count,
-    }
+    totals: dict = {}
+    for row in rows:
+        station = str(row["station_id"])
+        if station not in wanted:
+            continue
+        slot = totals.setdefault(station, {"stake": 0.0, "pnl": 0.0, "days": set()})
+        slot["stake"] += float(row["stake_usdc"] or 0.0)
+        slot["pnl"] += float(row["pnl_usdc"] or 0.0)
+        slot["days"].add(str(row["event_date"]))
+    for station, slot in totals.items():
+        out[station] = {
+            "full_sample_roi": (
+                round(slot["pnl"] / slot["stake"], 3) if slot["stake"] else None
+            ),
+            "settlements": len(slot["days"]),
+        }
+    return out
+
+
+def _book_row(station: str) -> dict:
+    return _book_rows([station])[station]
 
 
 def _city(station: str) -> str:
@@ -595,14 +617,52 @@ def set_station_bar(station: str, barred: bool, by: str = "") -> dict:
     station = _station(station)
     doc = _read(EXCLUSION_PATH)
     before = sorted(excluded_stations())
-    stamp = _now()[:10]
+    was_auto = _bar_in(
+        doc, station, barred, by, _book_row(station), _now()[:10]
+    )
+    doc["updated_at_utc"] = _now()
+    _write_atomic(EXCLUSION_PATH, doc)
+    cleared = _clear_intent_switches(station) if barred else {}
+    # A barred station cannot stay pinned: the two lists are asserted
+    # disjoint and the migration refuses to run on an overlap.
+    intent = _read(INTENT_PATH)
+    pinned = [
+        s for s in (intent.get("station_allowlist") or [])
+        if str(s).strip().upper() != station
+    ]
+    if barred and pinned != list(intent.get("station_allowlist") or []):
+        intent["station_allowlist"] = pinned
+        intent["updated_at_utc"] = _now()
+        _write_atomic(INTENT_PATH, intent)
+    _audit({
+        "knob": "station_bar",
+        "station": station,
+        "before": before,
+        "after": sorted(excluded_stations()),
+        "barred": bool(barred),
+        "was_auto_barred": was_auto,
+        "by": by or "dashboard",
+        **cleared,
+    })
+    return state()
+
+
+def _bar_in(
+    doc: dict, station: str, barred: bool, by: str, book: dict, stamp: str,
+) -> bool:
+    """Move one station's bar rows inside an exclusion doc already read.
+
+    The row arithmetic of the 禁入 switch, apart from the file it lives in,
+    so the single switch and the bulk one write exactly the same rows.
+    Returns whether the station was on the automatic list.
+    """
+
     operator_rows = list(doc.get("excluded_stations") or [])
     auto_rows = list(doc.get("auto_excluded_stations") or [])
     released_rows = list(doc.get("released_stations") or [])
     was_auto = any(
         str(row.get("station") or "").upper() == station for row in auto_rows
     )
-    book = _book_row(station)
     prior_release = next(
         (row for row in released_rows
          if str(row.get("station") or "").upper() == station),
@@ -698,29 +758,88 @@ def set_station_bar(station: str, barred: bool, by: str = "") -> dict:
     doc["excluded_stations"] = operator_rows
     doc["auto_excluded_stations"] = auto_rows
     doc["released_stations"] = released_rows
-    doc["updated_at_utc"] = _now()
-    _write_atomic(EXCLUSION_PATH, doc)
-    cleared = _clear_intent_switches(station) if barred else {}
-    # A barred station cannot stay pinned: the two lists are asserted
-    # disjoint and the migration refuses to run on an overlap.
+    return was_auto
+
+
+def set_all_stations(action: str, by: str = "") -> dict:
+    """一键全部开（豁免） / 一键全部禁入: every station at once (user, 2026-09-16).
+
+    ``waive_all`` releases every bar -- operator and automatic rows alike,
+    each release recorded as a ruling so the sweep stays off -- lifts every
+    hold, and waives every station.  ``bar_all`` writes an operator bar for
+    every station not already carrying one and takes back every waiver, hold
+    and pinned allowlist entry, the same three things the single switch
+    clears.  "Every station" is the production fleet
+    (``tradeable_stations``) together with anything a switch already names,
+    so no barred, waived or held station is left behind.
+
+    The rows are the single switch's own (``_bar_in``), the book is read
+    once, and each file is written once: the exclusions first, then the
+    intent, so an interruption between the two leaves the safe half --
+    released-but-not-waived trades nothing, and barred-but-still-waived is
+    refused at the bar.  One audit line carries every list before and after.
+    """
+
+    if action not in ("waive_all", "bar_all"):
+        raise ValueError(f"unknown bulk action: {action!r}")
+    doc = _read(EXCLUSION_PATH)
     intent = _read(INTENT_PATH)
-    pinned = [
-        s for s in (intent.get("station_allowlist") or [])
-        if str(s).strip().upper() != station
-    ]
-    if barred and pinned != list(intent.get("station_allowlist") or []):
-        intent["station_allowlist"] = pinned
-        intent["updated_at_utc"] = _now()
-        _write_atomic(INTENT_PATH, intent)
+
+    def _upper(values) -> list:
+        return sorted({
+            str(s).strip().upper() for s in (values or []) if str(s).strip()
+        })
+
+    barred_before = sorted(excluded_stations())
+    operator_before = set(scope_rules.operator_bar_sources(EXCLUSION_PATH)["operator"])
+    waivers_before = _upper(intent.get("station_probation_waivers"))
+    holds_before = _upper(intent.get("station_probation_holds"))
+    pinned_before = _upper(intent.get("station_allowlist"))
+    fleet = sorted(
+        {_station(s) for s in tradeable_stations()}
+        | set(barred_before) | set(waivers_before) | set(holds_before)
+    )
+    if not fleet:
+        raise ValueError("no stations to switch: the fleet read came back empty")
+    stamp = _now()[:10]
+    if action == "bar_all":
+        moving = [s for s in fleet if s not in operator_before]
+        books = _book_rows(moving)
+        for station in moving:
+            _bar_in(doc, station, True, by, books[station], stamp)
+        waivers_after: list = []
+        holds_after: list = []
+        pinned_after: list = []
+    else:
+        moving = list(barred_before)
+        books = _book_rows(moving)
+        for station in moving:
+            _bar_in(doc, station, False, by, books[station], stamp)
+        waivers_after = list(fleet)
+        holds_after = []
+        pinned_after = pinned_before
+    if moving:
+        doc["updated_at_utc"] = _now()
+        _write_atomic(EXCLUSION_PATH, doc)
+    intent["station_probation_waivers"] = waivers_after
+    intent["station_probation_holds"] = holds_after
+    intent["station_allowlist"] = pinned_after
+    intent["updated_at_utc"] = _now()
+    _write_atomic(INTENT_PATH, intent)
     _audit({
-        "knob": "station_bar",
-        "station": station,
-        "before": before,
-        "after": sorted(excluded_stations()),
-        "barred": bool(barred),
-        "was_auto_barred": was_auto,
+        "knob": "station_bulk",
+        "action": action,
+        "stations": fleet,
+        "moved": moving,
+        "barred_before": barred_before,
+        "barred_after": sorted(excluded_stations()),
+        "waivers_before": waivers_before,
+        "waivers_after": waivers_after,
+        "holds_before": holds_before,
+        "holds_after": holds_after,
+        "pinned_before": pinned_before,
+        "pinned_after": pinned_after,
         "by": by or "dashboard",
-        **cleared,
     })
     return state()
 
@@ -946,6 +1065,11 @@ class Handler(BaseHTTPRequestHandler):
                 out = set_station_hold(
                     str(body.get("station") or ""),
                     bool(body.get("held")),
+                    str(body.get("by") or ""),
+                )
+            elif self.path.rstrip("/") == "/api/station-bulk":
+                out = set_all_stations(
+                    str(body.get("action") or ""),
                     str(body.get("by") or ""),
                 )
             elif self.path.rstrip("/") == "/api/probation_waivers":

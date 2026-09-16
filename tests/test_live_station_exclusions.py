@@ -48,7 +48,9 @@ def test_the_barred_list_is_the_operators_current_ruling() -> None:
     parsed = json.loads(EXCLUSIONS.read_text(encoding="utf-8"))
     operator = {r["station"] for r in parsed["excluded_stations"]}
     auto = {r["station"] for r in parsed.get("auto_excluded_stations") or []}
-    assert operator, "the hand list is not empty on this book"
+    # Not asserted non-empty: the board can open every station in one move
+    # (2026-09-16) and the operator did, so an empty hand list is a ruling,
+    # not a broken file.
     # The union is what binds: a station barred by either list is barred.
     assert control.excluded_stations() == operator | auto
     # And the two lists must not overlap -- a station managed by both would
@@ -156,12 +158,8 @@ def test_a_waiver_can_be_granted_and_revoked_through_the_panel(
     who decided it, in a plane where every other dial turn is recorded.
     """
 
-    before = json.loads(control.INTENT_PATH.read_text(encoding="utf-8"))
-    work = tmp_path / "intent.json"
-    work.write_text(json.dumps(before, ensure_ascii=False), encoding="utf-8")
-    audit = tmp_path / "audit.jsonl"
-    monkeypatch.setattr(control, "INTENT_PATH", work)
-    monkeypatch.setattr(control, "AUDIT_PATH", audit)
+    intent, exclusions, audit = _config_copies(tmp_path, monkeypatch)
+    _plant_bar(exclusions, "RPLL")
 
     # Derived, not named.  This was "LEMD" until the operator barred it,
     # and the test then asserted a waiver on a barred station succeeds --
@@ -464,7 +462,8 @@ def test_a_reversal_stays_visible_in_the_record() -> None:
         row for row in rows
         if row.get("released_utc") or row.get("rebarred_utc")
     ]
-    assert reversed_rows, "the file has always carried at least one reversal"
+    # Not asserted non-empty: a bulk open (2026-09-16) releases every row
+    # that carried one.  What holds is that any reversal is carried whole.
     for row in reversed_rows:
         assert row.get("released_utc"), row["station"]
         assert row.get("rebarred_utc"), row["station"]
@@ -485,14 +484,21 @@ def test_the_allowlist_and_the_exclusions_do_not_overlap() -> None:
     assert not (allowlist & control.excluded_stations())
 
 
-def test_a_barred_station_cannot_be_allowlisted() -> None:
+def test_a_barred_station_cannot_be_allowlisted(tmp_path, monkeypatch) -> None:
     """And the whole request fails rather than being quietly trimmed.
 
     Returning a shortened list would leave the caller believing a station
     is live when it is not, which is the failure this gate exists to
     prevent -- so the refusal names the station and nothing is written.
+
+    Against copies with its own bar.  It drove the live intent and relied on
+    RPLL being barred there; on 2026-09-16 the operator released every
+    station, the request was no longer refused, and the test pinned the
+    live fleet to ZBAA and RPLL in explicit scope for about a minute.
     """
 
+    intent, exclusions, audit = _config_copies(tmp_path, monkeypatch)
+    _plant_bar(exclusions, "RPLL")
     before = json.loads(control.INTENT_PATH.read_text(encoding="utf-8"))
     with pytest.raises(ValueError, match="RPLL"):
         control.set_allowlist(["ZBAA", "RPLL"])
@@ -514,13 +520,12 @@ def test_pinning_a_list_switches_the_scope_and_still_refuses_barred(
     # this drove the real control server: it wrote the live intent file and
     # left six station_allowlist entries in data/live_control_audit.jsonl,
     # which is the log an operator reads to answer "who turned this dial".
-    # A test that forges entries there can mask a real one.
+    # A test that forges entries there can mask a real one.  The bar is
+    # planted in a copy too: borrowing one from the live file went red when
+    # the operator released every station (2026-09-16).
     before = json.loads(control.INTENT_PATH.read_text(encoding="utf-8"))
-    work = tmp_path / "intent.json"
-    work.write_text(json.dumps(before, ensure_ascii=False), encoding="utf-8")
-    audit = tmp_path / "audit.jsonl"
-    monkeypatch.setattr(control, "INTENT_PATH", work)
-    monkeypatch.setattr(control, "AUDIT_PATH", audit)
+    intent, exclusions, audit = _config_copies(tmp_path, monkeypatch)
+    _plant_bar(exclusions, "RPLL")
     try:
         # Picked from what is currently admissible rather than named.  This
         # pinned ZBAA and ZSQD by hand until 2026-09-01, when the automatic
@@ -665,6 +670,33 @@ def _config_copies(tmp_path, monkeypatch):
     monkeypatch.setattr(scope_rules, "INTENT_PATH", intent)
     monkeypatch.setattr(scope_rules, "EXCLUSION_PATH", exclusions)
     return intent, exclusions, audit
+
+
+def _plant_bar(exclusions, station: str) -> None:
+    """A hand bar in the copy, for tests that need a barred station.
+
+    They used to borrow one from the live file, which went red the moment
+    the operator released every station (2026-09-16) -- and one of them,
+    finding nothing barred, wrote its "refused" request straight into the
+    live intent and pinned the fleet to two stations.
+    """
+
+    doc = json.loads(exclusions.read_text(encoding="utf-8"))
+    doc["excluded_stations"] = [
+        r for r in (doc.get("excluded_stations") or [])
+        if r["station"] != station
+    ] + [{"station": station, "city": station, "full_sample_roi": -0.5,
+          "settlements": 5, "added_utc": "2026-09-16", "by": "test",
+          "note": "planted by a test"}]
+    doc["auto_excluded_stations"] = [
+        r for r in (doc.get("auto_excluded_stations") or [])
+        if r["station"] != station
+    ]
+    doc["released_stations"] = [
+        r for r in (doc.get("released_stations") or [])
+        if r["station"] != station
+    ]
+    exclusions.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
 
 
 def test_the_bar_is_a_switch_and_writes_a_ruling_with_its_evidence(
@@ -850,7 +882,8 @@ def test_a_barred_station_takes_neither_of_the_other_two_switches(
     decision and does nothing is worse than a refusal that names the reason.
     """
 
-    _config_copies(tmp_path, monkeypatch)
+    _, exclusions, _ = _config_copies(tmp_path, monkeypatch)
+    _plant_bar(exclusions, "RPLL")
     barred = sorted(control.excluded_stations())[0]
     with pytest.raises(ValueError, match=barred):
         control.set_station_waiver(barred, True)
@@ -1209,7 +1242,9 @@ def test_a_held_station_is_told_apart_from_one_nobody_waived(
 
     import bayes_basket_target.live_station_scope as rules  # noqa: PLC0415
 
-    intent, _, _ = _config_copies(tmp_path, monkeypatch)
+    intent, exclusions, _ = _config_copies(tmp_path, monkeypatch)
+    # And a bar of its own: on 2026-09-16 the operator released every one.
+    _plant_bar(exclusions, "RPLL")
     # The copy is given one waiver and one hold when the live file carries
     # none: those two lists are the operator's switches and move with every
     # click (on 2026-09-13 the file held nobody), and a test that needs one
@@ -1258,3 +1293,144 @@ def test_a_held_station_is_told_apart_from_one_nobody_waived(
     scope = rules.live_stations(conn=conn)
     assert scope["roster_available"] is False
     assert scope["roster_source"] == "unavailable"
+
+
+def _fake_books(stations) -> dict:
+    return {
+        str(s): {"full_sample_roi": -0.25, "settlements": 3} for s in stations
+    }
+
+
+def test_open_all_releases_every_bar_and_waives_the_fleet_in_one_move(
+    tmp_path, monkeypatch,
+) -> None:
+    """一键全部开（豁免）(user, 2026-09-16).
+
+    Every bar comes off -- the operator's and the machine's -- each recorded
+    as a release so the sweep stays off, every hold is lifted, and every
+    station is waived, so the whole fleet is in the batch.  One audit line.
+    """
+
+    import auto_station_exclusions as auto  # noqa: PLC0415
+
+    intent, exclusions, audit = _config_copies(tmp_path, monkeypatch)
+    monkeypatch.setattr(control, "_book_rows", _fake_books)
+    monkeypatch.setattr(auto, "CONFIG", exclusions)
+    monkeypatch.setattr(auto, "INTENT", intent)
+    doc = json.loads(exclusions.read_text(encoding="utf-8"))
+    # A standing automatic bar and a hold, planted, so both kinds are moved.
+    doc["auto_excluded_stations"] = [{
+        "station": "KSFO", "barred_on": "fulfilment_ratio", "value": -0.9,
+        "settlements": 9, "auto_barred_utc": "2026-09-02",
+    }]
+    doc["excluded_stations"] = [
+        r for r in doc["excluded_stations"] if r["station"] != "KSFO"
+    ] + [{"station": "ZUUU", "city": "成都", "full_sample_roi": -0.3,
+          "added_utc": "2026-09-08"}]
+    doc["excluded_stations"] = list(
+        {r["station"]: r for r in doc["excluded_stations"]}.values()
+    )
+    exclusions.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    held = _an_unbarred_station()
+    if held == "KSFO":
+        held = sorted(
+            s for s in control.tradeable_stations()
+            if s not in control.excluded_stations() and s != "KSFO"
+        )[0]
+    control.set_station_hold(held, True, by="test")
+    barred_before = set(control.excluded_stations())
+    assert {"KSFO", "ZUUU"} <= barred_before
+    audit.write_text("", encoding="utf-8")
+
+    state = control.set_all_stations("waive_all", by="test")
+
+    assert control.excluded_stations() == set()
+    live = state["live"]
+    fleet = set(control.tradeable_stations()) | barred_before
+    assert set(live["station_probation_waivers"]) == fleet
+    assert live["station_probation_holds"] == []
+    assert set(control.tradeable_stations()) <= set(live["station_allowlist"])
+    after = json.loads(exclusions.read_text(encoding="utf-8"))
+    released = {r["station"]: r for r in after["released_stations"]}
+    assert barred_before <= set(released)
+    assert released["KSFO"]["full_sample_roi"] == -0.25
+    # The sweep reads the releases as rulings and stays off.
+    verdict = auto.run(apply_changes=False)
+    assert barred_before <= set(verdict["operator_ruled"])
+    (entry,) = [
+        json.loads(line)
+        for line in audit.read_text(encoding="utf-8").splitlines() if line
+    ]
+    assert entry["knob"] == "station_bulk" and entry["action"] == "waive_all"
+    assert set(entry["barred_before"]) == barred_before
+    assert entry["barred_after"] == []
+    assert held in entry["holds_before"] and entry["holds_after"] == []
+
+
+def test_bar_all_bars_every_station_and_takes_back_every_admission(
+    tmp_path, monkeypatch,
+) -> None:
+    """一键全部禁入 (user, 2026-09-16): nothing trades, and the file says why.
+
+    Every station gets an operator row carrying its evidence -- the file's
+    own invariant -- an automatic bar is taken over rather than duplicated,
+    and every waiver, hold and pin comes back, the same three things the
+    single switch clears.
+    """
+
+    intent, exclusions, audit = _config_copies(tmp_path, monkeypatch)
+    monkeypatch.setattr(control, "_book_rows", _fake_books)
+    doc = json.loads(exclusions.read_text(encoding="utf-8"))
+    doc["auto_excluded_stations"] = [{
+        "station": "KSFO", "barred_on": "fulfilment_ratio", "value": -0.9,
+        "settlements": 9, "auto_barred_utc": "2026-09-02",
+    }]
+    doc["excluded_stations"] = [
+        r for r in doc["excluded_stations"] if r["station"] != "KSFO"
+    ]
+    exclusions.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    station = _an_unbarred_station()
+    control.set_station_waiver(station, True, by="test")
+    operator_before = {
+        r["station"]: dict(r) for r in json.loads(
+            exclusions.read_text(encoding="utf-8")
+        )["excluded_stations"]
+    }
+    audit.write_text("", encoding="utf-8")
+
+    state = control.set_all_stations("bar_all", by="test")
+
+    fleet = set(control.tradeable_stations()) | {"KSFO"} | set(operator_before)
+    assert fleet <= control.excluded_stations()
+    live = state["live"]
+    assert live["station_allowlist"] == []
+    assert live["station_probation_waivers"] == []
+    assert live["station_probation_holds"] == []
+    after = json.loads(exclusions.read_text(encoding="utf-8"))
+    operator = {r["station"]: r for r in after["excluded_stations"]}
+    assert after["auto_excluded_stations"] == []
+    assert "KSFO" in operator and "automatic" in operator["KSFO"]["note"]
+    for row in after["excluded_stations"]:
+        assert row["station"] and row["city"] and "full_sample_roi" in row
+    # A standing hand ruling is left as it was, not re-stamped.
+    for name, row in operator_before.items():
+        assert operator[name] == row
+    (entry,) = [
+        json.loads(line)
+        for line in audit.read_text(encoding="utf-8").splitlines() if line
+    ]
+    assert entry["knob"] == "station_bulk" and entry["action"] == "bar_all"
+    assert station in entry["waivers_before"] and entry["waivers_after"] == []
+
+
+def test_a_bulk_action_that_is_not_one_is_refused_and_writes_nothing(
+    tmp_path, monkeypatch,
+) -> None:
+    intent, exclusions, audit = _config_copies(tmp_path, monkeypatch)
+    before = (intent.read_text(encoding="utf-8"),
+              exclusions.read_text(encoding="utf-8"))
+    with pytest.raises(ValueError, match="unknown bulk action"):
+        control.set_all_stations("release_everything")
+    assert (intent.read_text(encoding="utf-8"),
+            exclusions.read_text(encoding="utf-8")) == before
+    assert not audit.exists()

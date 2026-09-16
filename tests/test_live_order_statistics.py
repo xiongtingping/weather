@@ -11,6 +11,7 @@ unsettled day as a loss, or it reports 0% when it means "no sample".
 from __future__ import annotations
 
 import importlib.util
+import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -670,10 +671,12 @@ def _readiness_book(monkeypatch) -> dict:
     """The go-live collector over a small book, with the control plane stubbed.
 
     Two barred stations that traded live and won on the same three days,
-    differing only in the paper book's centre bias, named so the clean one
-    sorts first; and one live station the paper book never seated.  Since
-    2026-09-16 the gates' money and the candidates read the live fills; the
-    centre gate still reads the paper positions, which are not money.
+    differing only in the centre their live decisions stood on, named so the
+    clean one sorts first; and one live station the paper book never seated.
+    Since 2026-09-16 every gate that reads a book reads the live one: the
+    claim and centre gates come off the envelopes the live decisions were
+    bound to.  The paper positions carry the opposite biases, so a gate that
+    still read them would come out the other way.
     """
 
     days = ("2026-09-01", "2026-09-02", "2026-09-03")
@@ -698,9 +701,39 @@ def _readiness_book(monkeypatch) -> dict:
         " stake_usdc REAL, pnl_usdc REAL);"
         "CREATE TABLE paper_trade_position("
         " station_id TEXT, event_date TEXT, center_c REAL);"
+        "CREATE TABLE basket_probability_envelope("
+        " envelope_id TEXT PRIMARY KEY, stage TEXT, station_id TEXT,"
+        " event_date TEXT, decision_at_utc TEXT, probabilities_json TEXT,"
+        " lineage_json TEXT, content_sha256 TEXT, state TEXT);"
     )
     for station, bias_c in (("AAAA", 0.1), ("ZZZZ", 2.0)):
         for day in days:
+            decision = f"d{station}{day}"
+            sha = f"{station}{day}".ljust(64, "0")
+            conn.execute(
+                "UPDATE auto_trade_decisions SET details_json=?"
+                " WHERE decision_id=?",
+                (json.dumps({
+                    "decision_signature": {"stage": "P0"},
+                    "forward_evidence_binding": {
+                        "probability_stage": "P0",
+                        "probability_decision_at_utc":
+                            f"{day}T00:00:00.500Z",
+                        "probability_artifact_sha256": sha,
+                    },
+                }), decision),
+            )
+            conn.execute(
+                "INSERT INTO basket_probability_envelope VALUES"
+                " (?, 'P0', ?, ?, ?, ?, ?, ?, 'COMMITTED')",
+                (f"e{decision}", station, day, f"{day}T00:00:00.500000Z",
+                 json.dumps({"31°C": 0.95}),
+                 json.dumps({"model_center_c": 30.0 + bias_c}), sha),
+            )
+            conn.execute(
+                "INSERT INTO paper_trade_position VALUES (?,?,?)",
+                (station, day, 30.0 + (2.1 - bias_c)),
+            )
             # A paper book that lost, so a candidate that read it would
             # come out the other way.
             conn.execute(
@@ -712,10 +745,6 @@ def _readiness_book(monkeypatch) -> dict:
                 "INSERT INTO calibration_station_daily_high_truth VALUES"
                 " (?,?,?, 30.0, 0, ?)",
                 (f"{station}{day}", station, day, "0" * 64),
-            )
-            conn.execute(
-                "INSERT INTO paper_trade_position VALUES (?,?,?)",
-                (station, day, 30.0 + bias_c),
             )
     conn.commit()
     monkeypatch.setattr(board, "barred_station_set",
@@ -787,6 +816,46 @@ def test_the_gates_and_candidates_read_live_money_not_paper(monkeypatch) -> None
     assert row["recent_days"] == 3 and row["recent_roi"] > 0
     assert row["paper_roi"] == -1.0 and row["paper_chains"] == 3
     assert "bar_split" not in ready
+
+
+def test_claim_centre_and_the_five_dimensions_read_live_not_paper(
+    monkeypatch,
+) -> None:
+    """User ruling 2026-09-16: 过闸、未过项、不行、不行的维度 all on live data.
+
+    The live decisions of AAAA stood on a centre 0.1C off truth and ZZZZ's
+    on one 2.0C off; the paper positions carry the reverse.  The centre gate,
+    the claim gate and the five-dimension read follow the live envelopes, and
+    the gate and the dimension are the same number.  The paper centre rides
+    along under its own name.
+    """
+
+    ready = _readiness_book(monkeypatch)
+    by = {r["station"]: r for r in ready["stations"]}
+    clean, off = by["AAAA"], by["ZZZZ"]
+    assert clean["bias_c"] == pytest.approx(0.1)
+    assert off["bias_c"] == pytest.approx(2.0)
+    assert clean["paper_bias_c"] == pytest.approx(2.0)
+    # Three wins at a claim of 0.95.
+    assert clean["ratio"] == pytest.approx(1.0 / 0.95)
+    assert clean["gates"]["claim_honest"] is True
+    assert clean["failure"]["calibration_ratio"] == clean["ratio"]
+    assert clean["failure"]["centre_residual_c"] == clean["bias_c"]
+    assert clean["failure"]["flags"]["centre"] is False
+    assert off["failure"]["flags"]["centre"] is True
+    assert off["failure"]["flag_count"] == 1
+    assert clean["failure"]["settled_days"] == 3
+    # NZWN traded live without a bound envelope: no claim, no centre -- not
+    # a pass and not a zero.
+    nzwn = by["NZWN"]
+    assert nzwn["ratio"] is None and nzwn["bias_c"] is None
+    assert nzwn["gates"]["claim_honest"] is False
+    assert ready["failure"]["available"] is True
+    # A station with no live settlement has no five-dimension entry at all.
+    assert all(
+        r["failure"] is None for r in ready["stations"]
+        if not (r["live"] or {}).get("settled_legs")
+    )
 
 
 def test_the_daily_table_and_roster_read_the_live_book_at_two_named_grains(

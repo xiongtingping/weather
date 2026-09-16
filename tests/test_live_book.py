@@ -247,3 +247,103 @@ def test_the_automatic_bar_judges_live_money_and_ignores_the_paper_book(
     assert verdict["bar"] == [
         {"station": "KSFO", "on": "fulfilment_ratio", "value": -0.667}
     ]
+
+
+def _store_with_centres() -> sqlite3.Connection:
+    """The store, with the envelope's lineage and the truth table.
+
+    ``_store`` leaves both out on purpose: a store without the lineage column
+    must still read its claims, and the tests above pin that.
+    """
+
+    conn = _store()
+    conn.executescript(
+        "DROP TABLE basket_probability_envelope;"
+        "CREATE TABLE basket_probability_envelope("
+        " envelope_id TEXT PRIMARY KEY, stage TEXT NOT NULL,"
+        " station_id TEXT NOT NULL, event_date TEXT NOT NULL,"
+        " decision_at_utc TEXT NOT NULL, probabilities_json TEXT NOT NULL,"
+        " lineage_json TEXT, content_sha256 TEXT NOT NULL,"
+        " state TEXT NOT NULL);"
+        "CREATE TABLE calibration_station_daily_high_truth("
+        " truth_id TEXT PRIMARY KEY, station_id TEXT, local_date TEXT,"
+        " official_tmax_c REAL, revision_no INTEGER, content_sha256 TEXT);"
+    )
+    return conn
+
+
+def _centred_day(conn, station, day, index, *, centre, truth, bucket,
+                 claim=0.5, settle=None, stage="P0", revision_truth=None):
+    decision = f"d{station}{index}{stage}"
+    sha = f"{index:02d}{stage}".ljust(64, "c")
+    _decision(conn, decision, station, day, stage=stage,
+              bound_at=f"{day}T05:08:48.697Z", sha=sha)
+    conn.execute(
+        "INSERT INTO basket_probability_envelope VALUES (?,?,?,?,?,?,?,?,?)",
+        (f"e{decision}", stage, station, day, f"{day}T05:08:48.697000Z",
+         json.dumps({bucket: claim}), json.dumps({"model_center_c": centre}),
+         sha, "COMMITTED"),
+    )
+    _leg(conn, f"i{decision}", decision, bucket,
+         filled=10.0, filled_notional=10.0 * claim)
+    if settle is not None and stage == "P0":
+        _settle(conn, station, day, settle)
+        # An older revision first: the standing one is what scores.
+        conn.execute(
+            "INSERT INTO calibration_station_daily_high_truth VALUES"
+            " (?,?,?,?,0,'x')", (f"t{station}{day}r0", station, day, 99.0),
+        )
+        conn.execute(
+            "INSERT INTO calibration_station_daily_high_truth VALUES"
+            " (?,?,?,?,1,'y')", (f"t{station}{day}r1", station, day, truth),
+        )
+
+
+def test_a_settled_live_basket_carries_its_centre_against_the_standing_truth():
+    """The paper settlement's centre columns, off the envelope the leg was bound to."""
+
+    conn = _store_with_centres()
+    _centred_day(conn, "ZBAA", "2026-09-10", 0, centre=31.4, truth=30.9,
+                 bucket="31°C", settle="31°C")
+
+    (leg,) = live_book.load_legs(conn)
+    assert leg["center_c"] == pytest.approx(31.4)
+    (row,) = live_book.build(conn)["settlements"]
+    assert row["center_c"] == pytest.approx(31.4)
+    assert row["settled_tmax_c"] == pytest.approx(30.9)
+    assert row["center_error_c"] == pytest.approx(0.5)
+
+
+def test_station_quality_reads_claim_per_basket_and_truth_per_day():
+    """Three stages holding one day are one observation of its truth.
+
+    KAAA: day 1 held by P0 and P1, both hit at a claim of 0.5, centres 1.0C
+    and 3.0C warm -> one day at 2.0C.  Day 2 held by P0 only, a miss, centre
+    0C.  Claim is per basket (2 hits of 3 over a 0.5 claim), centre and
+    coverage per day.
+    """
+
+    conn = _store_with_centres()
+    _centred_day(conn, "KAAA", "2026-09-01", 0, centre=31.0, truth=30.0,
+                 bucket="30°C", settle="30°C")
+    _centred_day(conn, "KAAA", "2026-09-01", 1, centre=33.0, truth=30.0,
+                 bucket="30°C", stage="P1")
+    _centred_day(conn, "KAAA", "2026-09-02", 2, centre=30.0, truth=30.0,
+                 bucket="31°C", settle="30°C")
+    book = live_book.build(conn)
+    quality = live_book.station_quality(book["settlements"])
+    kaaa = quality["stations"]["KAAA"]
+    assert kaaa["settled_count"] == 3 and kaaa["settled_days"] == 2
+    assert kaaa["calibration_ratio"] == pytest.approx((2 / 3) / 0.5)
+    assert kaaa["centre_residual_c"] == pytest.approx((2.0 + 0.0) / 2)
+    assert kaaa["basket_coverage"] == pytest.approx(0.5)
+    # Each basket paid 5 for 10 shares at 0.5: +5, +5, then -5.
+    assert kaaa["realized_usdc"] == pytest.approx(5.0)
+    assert kaaa["flags"]["centre"] is True
+    assert kaaa["flags"]["claim"] is False
+    assert quality["split_event_date"] == "2026-09-02"
+    assert kaaa["early_pnl_usdc"] == pytest.approx(10.0)
+    assert kaaa["late_pnl_usdc"] == pytest.approx(-5.0)
+    assert kaaa["flags"]["persistence"] is False
+    # A station that never settled a live basket is absent, not zero.
+    assert "KBBB" not in quality["stations"]

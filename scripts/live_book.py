@@ -76,7 +76,8 @@ def table_exists(conn: sqlite3.Connection, name: str) -> bool:
 
 
 def settled_buckets(
-    conn: sqlite3.Connection, keys: set[tuple[str, str]]
+    conn: sqlite3.Connection, keys: set[tuple[str, str]],
+    truth: dict[tuple[str, str], Any] | None = None,
 ) -> dict[tuple[str, str], tuple[str, str]]:
     """Which of these station-days have settled, on which bucket, said by whom.
 
@@ -137,10 +138,11 @@ def settled_buckets(
                  "basket_probability_bridge_bucket_probability"):
         if not table_exists(conn, name):
             return out
-    try:
-        truth = _ledger_truth(conn)
-    except sqlite3.Error:
-        return out
+    if truth is None:
+        try:
+            truth = _ledger_truth(conn)
+        except sqlite3.Error:
+            return out
     for key in missing:
         standing = truth.get(key)
         if standing is None:
@@ -195,6 +197,17 @@ def _decision_meta(
 
     out: dict[str, dict[str, Any]] = {}
     has_envelope = table_exists(conn, "basket_probability_envelope")
+    # The centre the decision stood on, from the same envelope row: the
+    # lineage's ``model_center_c``, which is what the paper book records as
+    # ``center_c`` for its seats.  Read in the one seek that already finds
+    # the row, and only when the column exists -- a store without it still
+    # has claims to read.
+    centre_column = "NULL"
+    if has_envelope and any(
+        row[1] == "lineage_json"
+        for row in conn.execute("PRAGMA table_info(basket_probability_envelope)")
+    ):
+        centre_column = "json_extract(lineage_json, '$.model_center_c')"
     for decision_id, (station, day, details_json) in decisions.items():
         try:
             details = json.loads(details_json or "{}") or {}
@@ -209,14 +222,16 @@ def _decision_meta(
             "stage": stage if stage in STAGES else "?",
             "decision_at_utc": str(binding.get("decision_at_utc") or ""),
             "probabilities": None,
+            "center_c": None,
         }
         at = str(binding.get("probability_decision_at_utc") or "")
         sha = str(binding.get("probability_artifact_sha256") or "")
         probability_stage = str(binding.get("probability_stage") or stage)
         if has_envelope and len(at) >= 19 and sha:
             try:
-                for content, probabilities in conn.execute(
-                    "SELECT content_sha256, probabilities_json"
+                for content, probabilities, centre in conn.execute(
+                    "SELECT content_sha256, probabilities_json, "
+                    + centre_column +
                     " FROM basket_probability_envelope"
                     " WHERE station_id=? AND event_date=?"
                     "   AND state='COMMITTED'"
@@ -232,6 +247,8 @@ def _decision_meta(
                             json.loads(probabilities or "{}") or {}
                         ).items()
                     }
+                    if centre is not None:
+                        meta["center_c"] = float(centre)
                     break
             except (sqlite3.Error, TypeError, ValueError):
                 pass
@@ -299,6 +316,7 @@ def load_legs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 None if probabilities is None
                 else float(probabilities.get(str(bucket), 0.0))
             ),
+            "center_c": info.get("center_c"),
         })
     return legs
 
@@ -327,6 +345,18 @@ def stage_summary(group: list[dict[str, Any]]) -> dict[str, Any]:
         else:
             claim_mass[bucket] += leg["claimed_probability"] * leg["filled_size"]
     stake = sum(cash.values())
+    # The centre the held basket stood on: each filled leg's decision centre,
+    # weighted by the shares it bought.  Legs whose envelope carried no
+    # centre are left out rather than read as zero.
+    centred = [
+        leg for leg in filled if leg.get("center_c") is not None
+    ]
+    centre_shares = sum(leg["filled_size"] for leg in centred)
+    center_c = (
+        sum(leg["center_c"] * leg["filled_size"] for leg in centred)
+        / centre_shares
+        if centre_shares > 0 else None
+    )
     claim = None
     cost = None
     claimed_ev = None
@@ -369,6 +399,7 @@ def stage_summary(group: list[dict[str, Any]]) -> dict[str, Any]:
         "claimed_win_probability": claim,
         "basket_all_in_cost": cost,
         "claimed_ev_usdc": claimed_ev,
+        "center_c": center_c,
         "held_shares": dict(shares),
         "held_buckets": sorted(shares),
         "intended_buckets": sorted(posted),
@@ -379,6 +410,7 @@ def stage_summary(group: list[dict[str, Any]]) -> dict[str, Any]:
 def settlement_rows(
     legs: list[dict[str, Any]],
     settled: dict[tuple[str, str], tuple[str, str]],
+    truth_c: dict[tuple[str, str], float] | None = None,
 ) -> list[dict[str, Any]]:
     """One row per settled (station, day, stage) that filled anything.
 
@@ -386,6 +418,10 @@ def settlement_rows(
     either book.  The basket a stage *held* is its filled legs; the basket it
     *intended* is every leg its decisions posted, filled or not -- the same
     pair the paper book scores as ``hit`` and ``intended_hit``.
+
+    ``truth_c`` is the standing settled value per station-day; with it the
+    row carries ``settled_tmax_c`` and ``center_error_c`` (held centre minus
+    truth), the paper settlement's own two columns.
     """
 
     out: list[dict[str, Any]] = []
@@ -399,6 +435,8 @@ def settlement_rows(
         truth, source = landed
         stake = summary["stake_usdc"]
         payout = summary["held_shares"].get(truth, 0.0)
+        tmax_c = (truth_c or {}).get((station, day))
+        centre = summary["center_c"]
         out.append({
             "station_id": station,
             "event_date": day,
@@ -413,11 +451,142 @@ def settlement_rows(
             "claimed_win_probability": summary["claimed_win_probability"],
             "basket_all_in_cost": summary["basket_all_in_cost"],
             "claimed_ev_usdc": summary["claimed_ev_usdc"],
+            "center_c": centre,
+            "settled_tmax_c": tmax_c,
+            "center_error_c": (
+                centre - tmax_c
+                if centre is not None and tmax_c is not None else None
+            ),
             "filled_legs": summary["filled_legs"],
             "held_buckets": summary["held_buckets"],
             "intended_buckets": summary["intended_buckets"],
         })
     return out
+
+
+#: Where each quality dimension stops being noise (the paper-era matrix's
+#: thresholds, kept when it moved onto live fills on 2026-09-16).
+CLAIM_FLOOR = 0.75          # hit rate under three quarters of the claim
+CENTRE_LIMIT_C = 0.8        # most of a bucket, after every correction
+COVERAGE_FLOOR = 0.45       # the basket missed more often than not
+
+
+def station_quality(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Per station, what its live settlements say about each layer.
+
+    User ruling 2026-09-16: the go-live table's gates and its five-dimension
+    read (过闸、未过项、不行、不行的维度) all read the live book.  ``rows`` is
+    ``settlement_rows`` -- one per settled (station, day, stage) that filled.
+
+    Two grains, each where its question lives.  Claim and realisation are
+    per stage row: each stage held its own basket at its own claim.  Coverage,
+    centre and the two halves are per station-day: truth is one value a day,
+    so three stages holding the same day are one observation of it.
+
+    * ``calibration_ratio`` -- hit rate over the mean claim, rows whose claim
+      is known.  The gate wants it in [0.88, 1.18]; under ``CLAIM_FLOOR`` is
+      the 声称 dimension.
+    * ``realization_ratio`` -- realised PnL over claimed EV, same rows.
+      Negative is the 实现 dimension.
+    * ``centre_residual_c`` -- mean over days of the held centre minus truth.
+      The gate wants |x| <= 0.8; past ``CENTRE_LIMIT_C`` is 中心.
+    * ``basket_coverage`` -- share of days whose posted buckets held truth.
+    * the halves split at the fleet's median settled day; losing in both is
+      持续.
+
+    A station with no settled live row has no entry: no evidence, not a pass
+    and not a failure.
+    """
+
+    days = sorted({str(row["event_date"]) for row in rows})
+    cut = days[len(days) // 2] if days else ""
+    per: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        per[str(row["station_id"])].append(row)
+    out: dict[str, dict[str, Any]] = {}
+    for station, group in sorted(per.items()):
+        claimed = [
+            row for row in group
+            if row.get("claimed_win_probability") is not None
+        ]
+        hits = sum(int(row["hit"]) for row in claimed)
+        claim_mean = (
+            sum(float(row["claimed_win_probability"]) for row in claimed)
+            / len(claimed) if claimed else None
+        )
+        calibration = (
+            (hits / len(claimed)) / claim_mean
+            if claimed and claim_mean else None
+        )
+        expected = sum(
+            float(row["claimed_ev_usdc"]) for row in claimed
+            if row.get("claimed_ev_usdc") is not None
+        )
+        realised_claimed = sum(float(row["pnl_usdc"]) for row in claimed)
+        by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in group:
+            by_day[str(row["event_date"])].append(row)
+        covered = [
+            1 if any(int(row.get("intended_hit") or 0) for row in day_rows)
+            else 0
+            for day_rows in by_day.values()
+        ]
+        residuals = []
+        for day_rows in by_day.values():
+            errors = [
+                float(row["center_error_c"]) for row in day_rows
+                if row.get("center_error_c") is not None
+            ]
+            if errors:
+                residuals.append(sum(errors) / len(errors))
+        halves = [0.0, 0.0]
+        counts = [0, 0]
+        for day, day_rows in by_day.items():
+            index = 0 if day < cut else 1
+            halves[index] += sum(float(row["pnl_usdc"]) for row in day_rows)
+            counts[index] += 1
+        ratio = (
+            realised_claimed / expected if abs(expected) > 1e-9 else None
+        )
+        centre = sum(residuals) / len(residuals) if residuals else None
+        coverage = sum(covered) / len(covered) if covered else None
+        flags = {
+            "realization": ratio is not None and ratio < 0,
+            "claim": calibration is not None and calibration < CLAIM_FLOOR,
+            "centre": centre is not None and abs(centre) > CENTRE_LIMIT_C,
+            "coverage": coverage is not None and coverage < COVERAGE_FLOOR,
+            "persistence": bool(
+                counts[0] and counts[1] and halves[0] < 0 and halves[1] < 0
+            ),
+        }
+        out[station] = {
+            "station_id": station,
+            "settled_count": len(group),
+            "settled_days": len(by_day),
+            "hit_count": hits,
+            "claimed_win_probability_mean": claim_mean,
+            "calibration_ratio": calibration,
+            "expected_usdc": expected,
+            "realized_usdc": sum(float(row["pnl_usdc"]) for row in group),
+            "realization_ratio": ratio,
+            "centre_residual_c": centre,
+            "basket_coverage": coverage,
+            "early_pnl_usdc": halves[0],
+            "late_pnl_usdc": halves[1],
+            "early_chains": counts[0],
+            "late_chains": counts[1],
+            "flags": flags,
+            "flag_count": sum(1 for value in flags.values() if value),
+        }
+    return {
+        "split_event_date": cut,
+        "thresholds": {
+            "claim_floor": CLAIM_FLOOR,
+            "centre_limit_c": CENTRE_LIMIT_C,
+            "coverage_floor": COVERAGE_FLOOR,
+        },
+        "stations": out,
+    }
 
 
 def group_legs(
@@ -446,13 +615,28 @@ def build(conn: sqlite3.Connection) -> dict[str, Any]:
         legs = load_legs(conn)
     except sqlite3.Error:
         legs = []
+    # The standing truth, read once: the resolver needs it for the days the
+    # paper book never seated, and the settlement rows need the value itself
+    # to score the held centre.  The settler's own reader (charter 44), so
+    # "which revision stands" is not restated here.
+    truth = None
+    if legs and table_exists(conn, "calibration_station_daily_high_truth"):
+        try:
+            truth = _ledger_truth(conn)
+        except sqlite3.Error:
+            truth = None
     settled = settled_buckets(
-        conn, {(leg["station_id"], leg["event_date"]) for leg in legs}
+        conn, {(leg["station_id"], leg["event_date"]) for leg in legs},
+        truth=truth,
     )
+    truth_c = {
+        key: float(truth[key].tmax_c)
+        for key in settled if truth and key in truth
+    }
     book = {
         "legs": legs,
         "settled": settled,
-        "settlements": settlement_rows(legs, settled),
+        "settlements": settlement_rows(legs, settled, truth_c),
     }
     _BUILD_CACHE.clear()
     _BUILD_CACHE[key] = {"connection": conn, "book": book}
