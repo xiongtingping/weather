@@ -2676,7 +2676,7 @@ def collect_h5_bias_accuracy(conn: sqlite3.Connection) -> dict[str, Any]:
 
 
 def collect_h5_readiness(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Whether the bias half-life change can yet be scored on the book.
+    """Whether the bias half-life change can yet be scored against truth.
 
     The question the section answers is "has the fleet finished turning
     over onto H5", and it is asked of the DECISIONS rather than of the
@@ -2688,8 +2688,25 @@ def collect_h5_readiness(conn: sqlite3.Connection) -> dict[str, Any]:
     read, and counting them put 2026-08-29 at 18% when the decisions say
     100%.  Provisional members are excluded, not counted against: they
     have no artifact of their own by design.
+
+    A day is scoreable once the fleet served it under H5 and its truth has
+    landed.  It used to ask the paper book for settled chains instead; the
+    paper ledger is a rule comparator since 2026-09-16, and whether a day
+    can be scored is a property of the truth, not of which seats a replay
+    happened to take -- a rule change empties the paper tables for an hour
+    and every day read unscoreable meanwhile.
     """
 
+    truth_days = {
+        str(day): int(count or 0)
+        for day, count in conn.execute(
+            "SELECT local_date, COUNT(DISTINCT station_id)"
+            " FROM calibration_station_daily_high_truth"
+            " WHERE qc_status='ACCEPTED' AND local_date>=?"
+            " GROUP BY local_date",
+            (H5_FROM_UTC[:10],),
+        )
+    }
     known = {
         str(row[0]) for row in conn.execute(
             "SELECT content_sha256"
@@ -2741,21 +2758,17 @@ def collect_h5_readiness(conn: sqlite3.Connection) -> dict[str, Any]:
                 under_h5 += 1
         if not decisions:
             continue
-        settled = conn.execute(
-            "SELECT COUNT(*) FROM paper_trade_settlement WHERE event_date=?",
-            (str(day),),
-        ).fetchone()[0]
         days.append({
             "event_date": str(day),
             "decisions": decisions,
             "served_under_h5": under_h5,
             "share": round(under_h5 / decisions, 3),
             "provisional_only": provisional_only,
-            "settled_chains": int(settled or 0),
+            "truth_stations": truth_days.get(str(day), 0),
         })
     scored = [
         item for item in days
-        if item["share"] >= 0.9 and item["settled_chains"] > 0
+        if item["share"] >= 0.9 and item["truth_stations"] > 0
     ]
     return {
         "from_utc": H5_FROM_UTC,
@@ -14460,12 +14473,13 @@ function h5Readiness(){
     <td class="num">${d.served_under_h5}</td>
     <td class="num"><b>${(100*d.share).toFixed(1)}%</b></td>
     <td class="num">${d.provisional_only}</td>
-    <td class="num">${d.settled_chains || "—"}</td>
-    <td>${d.share>=0.9 && d.settled_chains>0 ? "可打分" : ""}</td>
+    <td class="num">${d.truth_stations || "—"}</td>
+    <td>${d.share>=0.9 && d.truth_stations>0 ? "可打分" : ""}</td>
   </tr>`).join("");
   return `<h2 id="h5">偏差半衰期 H5 换代进度：跟踪 5 天半衰期的订正表实际服务了多少决策 ${pill}</h2>
-  <p class="sub">偏差层的半衰期 2026-08-27 从 15 天改为 5 天。要在账本上给这个改动
-  打分，那一天的决策必须确实由 H5 拟合的订正表服务过——这里逐条决策数，不是数表。</p>
+  <p class="sub">偏差层的半衰期 2026-08-27 从 15 天改为 5 天。要给这个改动打分，
+  那一天的决策必须确实由 H5 拟合的订正表服务过、且结算真值已经到了——这里逐条决策数，不是数表；
+  「真值已到站数」读结算真值表，不读纸面账本。</p>
   <div class="why"><b>为什么按决策数而不按表数：</b>每张订正表有 30 天有效期而舰队
   每天重拟合，所以同一个 scope 会同时躺着约 21 代旧表，而一次决策只读它激活指针
   指名的那一张。按表数会把这些没人读的旧代算进分母——2026-08-29 因此显示 18%，
@@ -14473,7 +14487,7 @@ function h5Readiness(){
   就没有自己的订正表，借用同站已认证成员的参数，不属于任何半衰期。</div>
   <table style="margin-top:12px"><thead><tr>
     <th>事件日</th><th>已标定决策</th><th>其中 H5 服务</th><th>占比</th>
-    <th>纯临时成员决策</th><th>已结算链</th><th></th>
+    <th>纯临时成员决策</th><th>真值已到站数</th><th></th>
   </tr></thead><tbody>${rows}</tbody></table>
   ${ready.length ? `<div class="why" style="margin-top:10px"><b>已可打分：</b>
   ${ready.join("、")}。<b>但首次实跑（2026-08-30，8-29 单日）判定为无判别力</b>：
