@@ -21,6 +21,9 @@ import pytest
 from bayes_basket_target import delta_v2_runtime as R
 from bayes_basket_target.delta_v2_runtime import compile_delta_v2_runtime_plan
 from tests.test_bayes_basket_target_delta_v2_runtime import (
+    DeltaV2PolicyArtifact,
+    TargetBasketSnapshot,
+    content_sha256,
     _basket_policy,
     _delta_policy,
     _fill_resolver,
@@ -62,6 +65,32 @@ def test_a_lit_lamp_no_longer_moves_the_capital(
     assert audit["capital_before_usdc"] == 5.0
     assert audit["capital_after_usdc"] == 5.0
     assert audit["floor_usdc"] is None
+
+
+def test_a_row_recorded_under_the_live_rule_does_not_outlive_it() -> None:
+    """KSEA and KAUS 2026-09-17 opened at 0.05 the evening before the
+    retirement; their later stages must not inherit the cut."""
+
+    raw = _snapshot().to_dict()
+    raw["evidence"]["probability_stage"] = "P0-M"
+    policy_raw = _delta_policy().to_dict()
+    policy_raw["stage"] = "P0-M"
+    policy_raw.pop("content_sha256", None)
+    policy_raw["content_sha256"] = content_sha256(policy_raw)
+    plan = compile_delta_v2_runtime_plan(
+        snapshot=TargetBasketSnapshot.from_mapping(raw),
+        basket_policy=_basket_policy(),
+        delta_policy=DeltaV2PolicyArtifact.from_mapping(policy_raw),
+        fill_resolver=_fill_resolver,
+        capital_available_usdc=5.0,
+        minimum_profit_floor=-5.0,
+        resource_probe_ok=True,
+        chain_consolidation_tilt=0.05,
+    )
+    audit = plan["delta_v2_audit"]["consolidation_tilt"]
+    assert audit["basis"] == "opener_inherited"
+    assert audit["factor"] == 1.0
+    assert audit["capital_after_usdc"] == 5.0
 
 
 def test_the_ledger_fingerprint_names_the_retirement() -> None:

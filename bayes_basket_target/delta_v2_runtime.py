@@ -5995,7 +5995,15 @@ def compile_delta_v2_runtime_plan(
         if lit_certainty.get(name)
     ]
     if chain_consolidation_tilt is not None:
-        consolidation_tilt = min(1.0, float(chain_consolidation_tilt))
+        # Charter 139: a factor an opener recorded while the rule was live
+        # does not outlive the rule.  With the default at the identity no
+        # chain inherits a cut -- KSEA and KAUS 2026-09-17 opened at 0.05
+        # the evening before the retirement.
+        consolidation_tilt = (
+            min(1.0, float(chain_consolidation_tilt))
+            if CONSOLIDATION_TILT_FACTOR < 1.0
+            else 1.0
+        )
         consolidation_tilt_basis = "opener_inherited"
     elif str(snapshot.evidence.probability_stage or "") == "P0":
         consolidation_tilt = (

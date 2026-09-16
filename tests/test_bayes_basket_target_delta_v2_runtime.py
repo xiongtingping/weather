@@ -1976,15 +1976,21 @@ def test_consolidation_tilt_scales_capital_floored_and_recorded(
     assert control_audit["capital_after_usdc"] == 5.0
 
 
-def test_consolidation_tilt_inherits_the_opener_and_never_relights() -> None:
+def test_consolidation_tilt_inherits_the_opener_and_never_relights(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A later stage runs the opener's factor, or untilted -- never its own.
 
     The fixture's two-bucket book keeps sharp lit at every stage, which is
     exactly the trap: re-reading lights late was priced at -81.8 USDC
     against opener inheritance.  A later-stage compile with no opener record must
     ignore its own lit lights and run untilted; one handed the opener's
-    factor must run it.
+    factor must run it.  Inheritance only cuts while the rule is live, so the
+    research arm is pinned (charter 139 retired the default).
     """
+    import bayes_basket_target.delta_v2_runtime as runtime
+
+    monkeypatch.setattr(runtime, "CONSOLIDATION_TILT_FACTOR", 0.05)
 
     raw = _snapshot().to_dict()
     raw["evidence"]["probability_stage"] = "P0-M"
