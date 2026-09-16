@@ -295,7 +295,26 @@ MAX_JSON_NODES = 500_000
 # forward-only halves that table and takes 35% off the whole burn.  It is
 # an append-only table with a dozen production readers, so it is a ruling,
 # and it is the one that stops the next raise being needed.
-MAX_TARGET_DB_BYTES = 49152 * MIB
+#
+# Raised 48 -> 56 GiB on 2026-09-16, on the user's instruction, with the
+# depth ruling above still open.  The arithmetic it was chosen by:
+#
+#   file 47.30 GiB, ceiling 48 GiB      -> 0.70 GiB of headroom
+#   measured burn 2.62 GiB/day          -> 6.4 hours to a fail-closed store
+#   free disk 12 GiB, +6.9 GiB in the   -> ~19 GiB once the trash is emptied
+#     trash from the same day's cleanup
+#
+# 56 GiB gives the store 8.7 GiB to grow into -- 3.3 days at the measured
+# burn -- and leaves about 10 GiB of disk at the ceiling.  Raising further
+# would spend the cleanup rather than the surplus: the free-space guard
+# (MIN_TARGET_FREE_BYTES) would then be what fail-closes writes instead of
+# this number, which is the same outage wearing a less obvious name.
+#
+# So this buys days, not a fix.  The fix is still the one named above --
+# five ask levels, forward-only, halving the table that is 72% of the burn
+# -- and it is a ruling because the table is append-only with a dozen
+# readers.  Until it is taken, this constant comes back every few days.
+MAX_TARGET_DB_BYTES = 57344 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.
