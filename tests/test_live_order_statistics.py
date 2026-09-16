@@ -577,3 +577,141 @@ def test_neither_live_reader_is_left_on_the_old_table() -> None:
             node.name
         )
     assert seen == wanted
+
+
+def test_each_station_carries_its_own_settled_days_and_five_day_window() -> None:
+    """The go-live table reads live ROI per station, beside the paper one.
+
+    Six settled dates across the book, so the five-day window has to drop
+    the oldest -- and it drops it for every station at the same date, the
+    way the paper column next to it is cut.  The pending leg is in the leg
+    count and nowhere in the money.
+    """
+
+    days = ["2026-09-01", "2026-09-02", "2026-09-03",
+            "2026-09-04", "2026-09-05", "2026-09-06"]
+    rows, fills, settled = [], [], []
+    for index, day in enumerate(days):
+        # KMIA loses three USDC on the oldest day and wins on the other five.
+        bucket = "30°C or below" if index == 0 else "31°C"
+        rows.append((f"m{index}", f"dm{index}", "KMIA", day, bucket, 1))
+        fills.append((f"m{index}", 10.0, 3.0))
+        settled.append(("KMIA", day, "31°C"))
+    # KLGA trades only the oldest day and one unsettled day.
+    rows += [("l0", "dl0", "KLGA", days[0], "24°C", 1),
+             ("l1", "dl1", "KLGA", "2026-09-07", "24°C", 1)]
+    fills += [("l0", 10.0, 4.0), ("l1", 10.0, 5.0)]
+    settled.append(("KLGA", days[0], "24°C"))
+
+    conn = _book(rows=rows, fills=fills, settled=settled)
+    pnl = board._collect_live_pnl(conn)
+    assert pnl["recent_window_dates"] == days[1:]
+    by = {r["station_id"]: r for r in pnl["by_station"]}
+
+    kmia = by["KMIA"]
+    assert kmia["settled_days"] == 6
+    assert kmia["settled_legs"] == 6 and kmia["won"] == 5
+    assert kmia["pnl_usdc"] == round(5 * 10.0 - 6 * 3.0, 4)
+    assert kmia["recent_days"] == 5
+    assert kmia["recent_pnl_usdc"] == 35.0
+    assert kmia["recent_roi"] == round(35.0 / 15.0, 6)
+
+    klga = by["KLGA"]
+    assert klga["legs"] == 2 and klga["pending"] == 1
+    assert klga["settled_legs"] == 1 and klga["settled_days"] == 1
+    assert klga["cost_usdc"] == 4.0
+    assert klga["roi"] == round(6.0 / 4.0, 6)
+    # Its only settled day is outside the window: no sample, not 0%.
+    assert klga["recent_days"] == 0
+    assert klga["recent_roi"] is None
+
+
+def _readiness_book(monkeypatch) -> dict:
+    """The go-live collector over a small book, with the control plane stubbed.
+
+    Two barred paper stations that differ only in their centre bias, named
+    so the clean one sorts first; and one live station the paper book never
+    seated.
+    """
+
+    conn = _book(
+        rows=[("n1", "dn1", "NZWN", "2026-09-03", "31°C", 1)],
+        fills=[("n1", 10.0, 4.0)],
+        settled=[],
+        truth=[("NZWN", "2026-09-03", 31.1, 0)],
+        ladder=[("NZWN", "2026-09-03", _RUNGS)],
+    )
+    conn.executescript(
+        "DROP TABLE paper_trade_settlement;"
+        "CREATE TABLE paper_trade_settlement("
+        " settlement_id INTEGER PRIMARY KEY, station_id TEXT,"
+        " event_date TEXT, settled_bucket TEXT, hit INTEGER,"
+        " stake_usdc REAL, pnl_usdc REAL);"
+        "CREATE TABLE paper_trade_position("
+        " station_id TEXT, event_date TEXT, center_c REAL);"
+    )
+    for station, bias_c in (("AAAA", 0.1), ("ZZZZ", 2.0)):
+        for day in ("2026-09-01", "2026-09-02", "2026-09-03"):
+            conn.execute(
+                "INSERT INTO paper_trade_settlement(station_id, event_date,"
+                " settled_bucket, hit, stake_usdc, pnl_usdc)"
+                " VALUES (?,?, '31°C', 1, 1.0, 0.5)", (station, day),
+            )
+            conn.execute(
+                "INSERT INTO calibration_station_daily_high_truth VALUES"
+                " (?,?,?, 30.0, 0, ?)",
+                (f"{station}{day}", station, day, "0" * 64),
+            )
+            conn.execute(
+                "INSERT INTO paper_trade_position VALUES (?,?,?)",
+                (station, day, 30.0 + bias_c),
+            )
+    conn.commit()
+    monkeypatch.setattr(board, "barred_station_set",
+                        lambda: {"AAAA", "ZZZZ"})
+    monkeypatch.setattr(board, "_live_scope", lambda: {
+        "scope": "all_except_barred", "stations": ["NZWN"],
+        "probation": [], "barred": ["AAAA", "ZZZZ"],
+        "minimum_settlements": 5,
+    })
+    band = [{"station": "AAAA", "ratio": 1.0},
+            {"station": "ZZZZ", "ratio": 1.0}]
+    return board.collect_live_readiness(conn, band)
+
+
+def test_a_station_that_traded_live_has_a_row_with_its_live_money(
+    monkeypatch,
+) -> None:
+    """LTAC and NZWN traded real money and had no row on the go-live table.
+
+    The rows were the union of three paper-side sources, so a station the
+    paper book never seated could not be seen -- nor could its switch.
+    """
+
+    ready = _readiness_book(monkeypatch)
+    by = {r["station"]: r for r in ready["stations"]}
+    assert "NZWN" in by
+    live = by["NZWN"]["live"]
+    assert live["settled_legs"] == 1 and live["won"] == 1
+    assert live["roi"] == round(6.0 / 4.0, 6)
+    # Paper-only stations carry no live row rather than a zero one.
+    assert by["AAAA"]["live"] is None
+    # And the row reads the same collector the money card does.
+    assert ready["live_orders"]["pnl"]["by_station"][0] == live
+
+
+def test_release_candidacy_reads_the_rows_own_gates(monkeypatch) -> None:
+    """Each barred station is judged on its own centre, not the last row's.
+
+    The criterion read ``gates`` and ``sid`` left over from the loop that
+    built the rows, so AAAA -- clean centre, positive five days -- was held
+    to ZZZZ's 2°C bias and never offered for release.
+    """
+
+    ready = _readiness_book(monkeypatch)
+    by = {r["station"]: r for r in ready["stations"]}
+    assert by["AAAA"]["gates"]["centre_bias"] is True
+    assert by["ZZZZ"]["gates"]["centre_bias"] is False
+    assert by["AAAA"]["release_candidate"] is True
+    assert by["ZZZZ"]["release_candidate"] is False
+    assert ready["release_candidates"] == ["AAAA"]
