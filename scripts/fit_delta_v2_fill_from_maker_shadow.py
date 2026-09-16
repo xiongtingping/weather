@@ -28,6 +28,13 @@ the artifact rather than hidden: a cell fitted from 30 observations and one
 fitted from 30000 must not read the same downstream.
 
 Read-only unless ``--commit`` is passed.
+
+Since 2026-09-17 this runs on a clock (``delta_v2_authority`` hosted sweep,
+weekly through ``--if-older-than-days``) and mints a year of validity.  The
+batch it commits starts HANDOFF_LEAD_MINUTES ahead and the policies are
+re-pinned to start at that same instant, so the new numbers and the pin that
+accepts them arrive together.  The rules live in
+``bayes_basket_target.delta_v2_authority_clock``.
 """
 from __future__ import annotations
 
@@ -57,6 +64,15 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
 from bayes_basket_target.delta_v2_fill_artifact import (  # noqa: E402
     REQUIRED_BASELINES,
 )
+from bayes_basket_target.delta_v2_authority_clock import (  # noqa: E402
+    HANDOFF_LEAD_MINUTES,
+    VALIDITY_DAYS,
+    days_between,
+    newest_fill_batch_start,
+    repin_policies,
+    utc_text,
+    write_fill_batch,
+)
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 SCHEMA = "delta_basket_score_v2_fill_distribution_artifact_v1"
@@ -85,6 +101,11 @@ PRICE_BANDS = (
     (0.20, 0.35), (0.35, 0.55), (0.55, 0.80), (0.80, 1.0),
 )
 MINIMUM_CELL_SAMPLES = 200
+# The shadow book has no retention and grows by ~160k resolved intents a day,
+# so a fit over its whole history gets slower every week and weights August's
+# books like today's.  Four weeks is enough days for the 20% holdout to keep
+# its two forward windows many times over.
+FIT_WINDOW_DAYS = 28
 AUTHORITY_SCOPE = "PRODUCTION_NO_LIVE"
 
 
@@ -152,21 +173,47 @@ def _rung_band(
     return None
 
 
-def fit(conn: sqlite3.Connection) -> dict:
-    rows = conn.execute(
-        "SELECT limit_price, horizon_minutes, state, placed_at_utc,"
+def fit(conn: sqlite3.Connection, *, since_utc: str | None = None) -> dict:
+    # Streamed and counted per (day, cell) rather than fetched and sorted:
+    # 4.78M resolved intents on 2026-09-17, which as a list of tuples is
+    # gigabytes in the resident's machine.  The fit only ever needed the
+    # per-cell counts either side of a day cut, so the counts are all that is
+    # kept.  ``since_utc`` rides the (state, expires_at_utc) index.
+    window = "" if since_utc is None else " AND expires_at_utc>=?"
+    cursor = conn.execute(
+        "SELECT limit_price, horizon_minutes, state, substr(placed_at_utc,1,10),"
         " price_rule, reference_bid, reference_tick"
         " FROM maker_shadow_order"
-        " WHERE state IN ('FILLED','EXPIRED')"
-        " ORDER BY placed_at_utc"
-    ).fetchall()
-    if not rows:
+        f" WHERE state IN ('FILLED','EXPIRED'){window}",
+        () if since_utc is None else (since_utc,),
+    )
+    resolved = 0
+    every_day: set[str] = set()
+    counts: dict[tuple[str, tuple], list[int]] = defaultdict(lambda: [0, 0])
+    while True:
+        chunk = cursor.fetchmany(50_000)
+        if not chunk:
+            break
+        for price, horizon, state, day, rule, ref_bid, ref_tick in chunk:
+            resolved += 1
+            every_day.add(str(day))
+            band = _band(price)
+            if band is None:
+                continue
+            rung = _rung_band(rule, price, ref_bid, ref_tick)
+            if rung is None:
+                continue
+            cell = counts[(str(day), (band, int(horizon), rung))]
+            cell[0] += 1
+            if str(state) == "FILLED":
+                cell[1] += 1
+    if not resolved:
         raise SystemExit("maker shadow book has no resolved intents")
     # Cut on a day boundary, not on a row index.  A mid-day cut puts the
     # same date in both windows, and the artifact contract requires
     # ``train_end < holdout_start`` strictly -- correctly, since a day split
     # across the two is not a holdout of anything.
-    all_days = sorted({str(row[3])[:10] for row in rows})
+    all_days = sorted(every_day)
     if len(all_days) < 3:
         raise SystemExit(
             "maker shadow book spans %d days; need at least three to hold"
@@ -177,33 +224,23 @@ def fit(conn: sqlite3.Connection) -> dict:
     holdout_day_count = max(holdout_day_count, 2)
     first_holdout_day = all_days[-holdout_day_count]
     cut_at = first_holdout_day
-    train: dict[tuple, list[int]] = defaultdict(list)
-    holdout: dict[tuple, list[int]] = defaultdict(list)
+    # [placed, filled] per cell either side of the cut.
+    train: dict[tuple, list[int]] = defaultdict(lambda: [0, 0])
+    holdout: dict[tuple, list[int]] = defaultdict(lambda: [0, 0])
     holdout_days: set[str] = set()
     train_days: set[str] = set()
-    for price, horizon, state, placed, rule, ref_bid, ref_tick in rows:
-        band = _band(price)
-        if band is None:
-            continue
-        rung = _rung_band(rule, price, ref_bid, ref_tick)
-        if rung is None:
-            continue
-        filled = 1 if str(state) == "FILLED" else 0
-        key = (band, int(horizon), rung)
-        day = str(placed)[:10]
-        if day < cut_at:
-            train[key].append(filled)
-            train_days.add(day)
-        else:
-            holdout[key].append(filled)
-            holdout_days.add(day)
+    for (day, key), (placed, filled) in counts.items():
+        side = train if day < cut_at else holdout
+        (train_days if day < cut_at else holdout_days).add(day)
+        side[key][0] += placed
+        side[key][1] += filled
     fitted: dict[tuple, dict] = {}
-    for key, values in train.items():
-        if not values or key not in holdout or not holdout[key]:
+    for key, (placed, filled) in train.items():
+        if not placed or key not in holdout or not holdout[key][0]:
             continue
-        rate = sum(values) / len(values)
-        held = holdout[key]
-        observed = sum(held) / len(held)
+        rate = filled / placed
+        held_n, held_filled = holdout[key]
+        observed = held_filled / held_n
         errors = {
             "v1": abs(INCUMBENT_FLAT_RATE - observed),
             "EV_ONLY": abs(INCUMBENT_FLAT_RATE - observed),
@@ -212,8 +249,8 @@ def fit(conn: sqlite3.Connection) -> dict:
         }
         fitted[key] = {
             "rate": rate,
-            "sample_n": len(values),
-            "holdout_n": len(held),
+            "sample_n": placed,
+            "holdout_n": held_n,
             "holdout_rate": observed,
             "absolute_error": abs(rate - observed),
             "baseline_absolute_error_v1": errors["v1"],
@@ -223,7 +260,7 @@ def fit(conn: sqlite3.Connection) -> dict:
             ),
         }
     return {
-        "resolved_intents": len(rows),
+        "resolved_intents": resolved,
         "cut_at_utc": cut_at,
         "train_days": sorted(train_days),
         "holdout_days": sorted(holdout_days),
@@ -283,7 +320,9 @@ FOK_COSTS = {
 }
 
 
-def mint(fitobj: dict, *, now: datetime) -> list[dict]:
+def mint(
+    fitobj: dict, *, now: datetime, starts_at: datetime | None = None
+) -> list[dict]:
     """One artifact per cell the resolver can actually ask for.
 
     The resolver matches ``station_id`` and ``bucket`` against the row or
@@ -298,13 +337,9 @@ def mint(fitobj: dict, *, now: datetime) -> list[dict]:
     # ``trained_through < valid_from < valid_until`` strictly: an artifact
     # that claims to serve from the instant its training ended is claiming
     # to have been fitted on data it had not seen.
-    trained_through = now.isoformat(timespec="seconds").replace("+00:00", "Z")
-    valid_from = (
-        now + timedelta(minutes=1)
-    ).isoformat(timespec="seconds").replace("+00:00", "Z")
-    valid_until = (
-        now + timedelta(days=30)
-    ).isoformat(timespec="seconds").replace("+00:00", "Z")
+    trained_through = utc_text(now)
+    valid_from = utc_text(starts_at or now + timedelta(minutes=1))
+    valid_until = utc_text(now + timedelta(days=VALIDITY_DAYS))
     artifacts: list[dict] = []
     train_days = fitobj["train_days"]
     holdout_days = fitobj["holdout_days"]
@@ -443,9 +478,7 @@ def _remint_policy(db: Path, *, now: datetime) -> int:
     valid_from = (
         now + timedelta(minutes=1)
     ).isoformat(timespec="seconds").replace("+00:00", "Z")
-    valid_until = (
-        now + timedelta(days=30)
-    ).isoformat(timespec="seconds").replace("+00:00", "Z")
+    valid_until = utc_text(now + timedelta(days=VALIDITY_DAYS))
     written = 0
     # One row per scope, the newest generation of it.  Iterating every
     # activation instead meant a scope already on generation 2 produced
@@ -567,7 +600,13 @@ def _remint_policy(db: Path, *, now: datetime) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
-    parser.add_argument("--commit", action="store_true")
+    parser.add_argument(
+        "--commit", action="store_true",
+        help=(
+            "write the batch, starting HANDOFF_LEAD_MINUTES from now, and"
+            " re-pin every policy to start at that same instant"
+        ),
+    )
     parser.add_argument(
         "--remint-policy",
         action="store_true",
@@ -578,15 +617,41 @@ def main() -> int:
             " actually posts."
         ),
     )
+    parser.add_argument(
+        "--window-days", type=float, default=FIT_WINDOW_DAYS,
+        help="fit on intents resolved inside this many days (0: whole book)",
+    )
+    parser.add_argument(
+        "--if-older-than-days", type=float, default=None,
+        help=(
+            "do nothing unless the newest fill batch started at least this"
+            " many days ago -- the weekly clock the hosted sweep runs on"
+        ),
+    )
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
-    conn = sqlite3.connect(
-        f"file:{args.db.expanduser().resolve(strict=True)}?mode=ro", uri=True,
-        timeout=60.0,
-    )
-    fitobj = fit(conn)
+    database = args.db.expanduser().resolve(strict=True)
+    conn = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=60.0)
     now = datetime.now(timezone.utc)
-    artifacts = mint(fitobj, now=now)
+    if args.if_older_than_days is not None:
+        newest = newest_fill_batch_start(conn, now=now)
+        if newest is not None and (
+            -days_between(now, newest) < args.if_older_than_days
+        ):
+            print(json.dumps({
+                "schema": "delta_v2_fill_shadow_fit_v1",
+                "skipped": "newest batch is younger than the refit clock",
+                "newest_batch_start_utc": newest,
+                "refit_every_days": args.if_older_than_days,
+            }, ensure_ascii=False, sort_keys=True))
+            return 0
+    since = (
+        utc_text(now - timedelta(days=args.window_days))
+        if args.window_days else None
+    )
+    fitobj = fit(conn, since_utc=since)
+    starts_at = now + timedelta(minutes=HANDOFF_LEAD_MINUTES)
+    artifacts = mint(fitobj, now=now, starts_at=starts_at)
     by_basis = defaultdict(int)
     for row in artifacts:
         by_basis[str(row["timeout_seconds"])] += 1
@@ -596,8 +661,14 @@ def main() -> int:
     report = {
         "schema": "delta_v2_fill_shadow_fit_v1",
         "resolved_intents": fitobj["resolved_intents"],
+        "window_since_utc": since,
+        "train_days": [fitobj["train_days"][0], fitobj["train_days"][-1]],
+        "holdout_days": [
+            fitobj["holdout_days"][0], fitobj["holdout_days"][-1]
+        ],
         "price_rule": PRODUCTION_PRICE_RULE,
         "artifact_count": len(artifacts),
+        "valid_from_utc": utc_text(starts_at),
         "rows_per_timeout": dict(by_basis),
         "fill_probability_median": (
             round(statistics.median(rates), 4) if rates else None
@@ -617,89 +688,29 @@ def main() -> int:
             ),
             encoding="utf-8",
         )
+    rc = 0
     if args.commit:
         conn.close()
-        writer = sqlite3.connect(
-            str(args.db.expanduser().resolve(strict=True)), timeout=60.0
-        )
+        writer = sqlite3.connect(str(database), timeout=60.0)
         writer.execute("PRAGMA busy_timeout=60000")
-        writer.executemany(
-            f"INSERT OR IGNORE INTO {TABLE} ("
-            "artifact_id,content_sha256,schema,station_id,stage,season_bin,"
-            "maturity_bin,liquidity_bin,bucket,price,timeout_seconds,"
-            "queue_ahead_min,queue_ahead_max,spread_min,spread_max,"
-            "depth_min,depth_max,quote_version_scope,oos_gate_version,"
-            "oos_gate_passed,consecutive_forward_windows,compared_baselines,"
-            "oos_metrics,sample_n,holdout_n,trained_through_utc,"
-            "valid_from_utc,valid_until_utc,authority_scope,"
-            "fill_distribution_artifact_sha256,maker_execution_costs,"
-            "fok_execution_costs,artifact_json"
-            ") VALUES (" + ",".join("?" * 33) + ")",
-            [
-                (
-                    row["artifact_id"], row["content_sha256"], SCHEMA,
-                    row["station_id"], row["stage"], row["season_bin"],
-                    row["maturity_bin"], row["liquidity_bin"], row["bucket"],
-                    row["price"], row["timeout_seconds"],
-                    row["queue_ahead_min"], row["queue_ahead_max"],
-                    row["spread_min"], row["spread_max"],
-                    row["depth_min"], row["depth_max"],
-                    row["quote_version_scope"], row["oos_gate_version"],
-                    1 if row["oos_gate_passed"] else 0,
-                    row["consecutive_forward_windows"],
-                    json.dumps(row["compared_baselines"], sort_keys=True),
-                    json.dumps(row["oos_metrics"], sort_keys=True),
-                    row["sample_n"], row["holdout_n"],
-                    row["trained_through_utc"], row["valid_from_utc"],
-                    row["valid_until_utc"], row["authority_scope"],
-                    row["fill_distribution_artifact_sha256"],
-                    json.dumps(row["maker_execution_costs"], sort_keys=True),
-                    json.dumps(row["fok_execution_costs"], sort_keys=True),
-                    json.dumps(row, sort_keys=True),
-                )
-                for row in artifacts
-            ],
+        written = write_fill_batch(
+            writer, artifacts,
+            promoted_at=utc_text(datetime.now(timezone.utc)),
         )
-        # An artifact nobody promoted is an artifact the resolver refuses
-        # (``delta_v2_fill_distribution_not_promoted``).  Under
-        # PRODUCTION_NO_LIVE the accepted decision is NO_LIVE_ACTIVATED, and
-        # the gate version on the receipt has to match the one on the
-        # artifact or the promotion is describing a different gate.
-        promoted_at = datetime.now(timezone.utc).isoformat(
-            timespec="seconds"
-        ).replace("+00:00", "Z")
-        writer.executemany(
-            "INSERT OR IGNORE INTO basket_delta_v2_fill_promotion ("
-            "promotion_id,artifact_id,artifact_content_sha256,decision_seq,"
-            "decision,gate_version,decided_at_utc,receipt_sha256,"
-            "content_sha256,created_at_utc) VALUES (?,?,?,?,?,?,?,?,?,?)",
-            [
-                (
-                    "delta-v2-fill-no-live-" + row["artifact_id"],
-                    row["artifact_id"], row["content_sha256"], 1,
-                    "NO_LIVE_ACTIVATED", row["oos_gate_version"],
-                    promoted_at,
-                    content_sha256({
-                        "artifact_id": row["artifact_id"],
-                        "artifact_content_sha256": row["content_sha256"],
-                        "decision": "NO_LIVE_ACTIVATED",
-                        "gate_version": row["oos_gate_version"],
-                        "decided_at_utc": promoted_at,
-                    }),
-                    content_sha256({
-                        "promotion_of": row["content_sha256"],
-                        "decided_at_utc": promoted_at,
-                    }),
-                    promoted_at,
-                )
-                for row in artifacts
-            ],
-        )
-        writer.commit()
-        writer.close()
         report["committed"] = True
-        report["rows_written"] = len(artifacts)
-        report["promotions_written"] = len(artifacts)
+        report["rows_written"] = written["rows_written"]
+        if datetime.now(timezone.utc) >= starts_at:
+            # The rows went in after their own start, so a reader may have
+            # resolved the batch half-written.  Loud, and still re-pinned:
+            # a batch that has started with no policy pinning it refuses
+            # every candidate, which is worse.
+            report["handoff_late"] = True
+            rc = 1
+        report["policies"] = repin_policies(
+            writer, now=now, commit=True, handoff_at=starts_at,
+            log=lambda line: print(line, file=sys.stderr),
+        )
+        writer.close()
     # Outside --commit, deliberately.  The policy artifacts are a handful of
     # rows and the fill artifacts are tens of thousands, so nesting the
     # re-mint inside the fit meant changing one number in the policy cost a
@@ -710,10 +721,10 @@ def main() -> int:
     # independent, so --remint-policy alone re-mints only the policy.
     if args.remint_policy:
         report["policy_artifacts_reminted"] = _remint_policy(
-            args.db.expanduser().resolve(strict=True), now=now
+            database, now=now
         )
     print(json.dumps(report, ensure_ascii=False, sort_keys=True))
-    return 0
+    return rc
 
 
 if __name__ == "__main__":

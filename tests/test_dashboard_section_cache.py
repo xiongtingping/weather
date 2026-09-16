@@ -167,7 +167,7 @@ def test_every_timed_section_is_comparable_to_every_other(cache_dir) -> None:
 # ``alerts`` from exactly these, so a stale one is a light that says green
 # about a state that has already gone red.
 HEALTH_BANNER_SOURCES = {
-    "members", "chain", "stages", "truth", "worker",
+    "members", "chain", "stages", "truth", "worker", "delta_v2_authority",
 }
 # The live book, which is what the page is opened for during a session.
 LIVE_SECTIONS = {

@@ -414,6 +414,19 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         86_400.0,
         600.0,
     ),
+    # The dated authority every candidate resolves -- the fill batch and the
+    # policy generations -- kept from ending.  Both were minted with thirty
+    # days by scripts nothing ran on a clock, so on 2026-09-17 the fill batch
+    # had 4.5 days left and the policies 10.6 and 14.1, each end a fleet-wide
+    # refusal.  Daily for the renewal and re-pin checks, which are indexed
+    # reads when nothing is due; the fill refit inside it is gated to weekly
+    # because one mint is ~160k rows.
+    (
+        "delta_v2_authority",
+        "scripts/delta_v2_authority_sweep.sh",
+        86_400.0,
+        1800.0,
+    ),
     # The inbox a P0 compile reads is overwritten every cycle, so the input to
     # any past compile is gone and no upstream parameter has ever been
     # scorable on the book -- the ledger reads compiled envelopes and cannot
@@ -556,6 +569,7 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     # and it is the cheapest one here: the pass measured 0.7 seconds and its
     # insert waits on ``busy_timeout`` rather than making production wait.
     "ledger_alignment_guard": "ssot",
+    "delta_v2_authority": "ssot",
     "capture_jma_msm_forward": "ssot",
     "capture_noaa_conus_forward": "ssot",
     "capture_dwd_icon_eu_forward": "ssot",
@@ -999,6 +1013,10 @@ HOSTED_SWEEP_LEASE_CONTRACT: dict[str, tuple[str, float]] = {
     # Sixty seconds is slack, not a budget -- well inside the lease, so the
     # interval rule below never has to bite.
     "ledger_alignment_guard": ("one_shot", 60.0),
+    # A re-pin check most days (~25s of index reads); once a week the fill
+    # refit streams ~5M shadow rows (~70s) and writes ~160k in 20k-row
+    # commits, then the re-pin.  Daily, so the overrun is paid once a week.
+    "delta_v2_authority": ("one_shot", 600.0),
 }
 
 

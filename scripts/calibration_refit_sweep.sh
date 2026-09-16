@@ -129,17 +129,6 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] serving arithmetic watchdog"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] band_shadow refit (shadow, unserved)"
 "$PY" scripts/refit_band_shadow.py --commit --summary || RC=$?
 
-# The delta-v2 policies pin the fill batch they were trained to execute
-# against, and the pin goes stale the day a fill refit mints a new batch
-# -- measured 2026-08-22..28, when every candidate reaching the execution
-# compile died on the stale pin for six days.  Re-pinning is idempotent
-# (a current pin is a skip) and append-only (generation + 1), so riding
-# this sweep means a batch change is followed within a day instead of
-# waiting for someone to notice the mismatch counter.  RKPK's own fill
-# rows exist only in the placeholder batch expiring 2026-08-31: on that
-# day its finalist falls to the '*' batch and this sweep re-pins it on
-# the next run -- at most one day of refusals, named here so the gap
-# reads as the designed cost rather than a mystery.
 # Charter 68's lambda table, refitted on the rolling settled window.  The
 # rule shrinks a claim by the fraction history says arrives at its market
 # agreement, and a fitted constant goes stale the moment the selection
@@ -214,8 +203,9 @@ for VALUATION_STAGE in P0 P0-M P1; do
     || echo "valuation refit $VALUATION_STAGE failed; the served row stands" >&2
 done
 
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] delta_v2 policy re-pin"
-"$PY" scripts/repin_delta_v2_policy_to_current_fill.py --commit || RC=$?
+# The delta-v2 policy re-pin moved to its own lane on 2026-09-17
+# (scripts/delta_v2_authority_sweep.sh), beside the weekly fill refit whose
+# batches it pins and the renewals that keep both from ending.
 
 # Which listed markets this fleet cannot serve yet.  Read-only, and
 # deliberately noisy: discovery ran days ahead of onboarding and the two
