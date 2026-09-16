@@ -4892,14 +4892,16 @@ def collect_live_readiness(
                 shape_gap[sid] = sum(values) / len(values)
     except sqlite3.OperationalError:
         pass
-    # The live book, per station, beside the paper one.  Every other number
-    # on a row is the paper ledger's -- chains, ROI, the five-day window --
-    # and a reader deciding whether a station may trade real money asked for
-    # what that station's real money did (user, 2026-09-16).  Read once here
-    # and handed to the return below, so the row and the money card are the
-    # same collector's output.  A station with live fills is listed even when
-    # the paper book never seated it: LTAC and NZWN had traded live and had
-    # no row on this table at all.
+    # The live book, per station.  The gates' money -- settled station-days
+    # and ROI -- and the add / release candidates read it (user rulings,
+    # 2026-09-16: the paper ledger is a rule comparator, and a reader
+    # deciding whether a station may trade real money asked for what that
+    # station's real money did).  The paper columns stay on the row under
+    # ``paper_*`` names, for comparison only.  Read once here and handed to
+    # the return below, so the row and the money card are the same
+    # collector's output.  A station with live fills is listed even when the
+    # paper book never seated it: LTAC and NZWN had traded live and had no
+    # row on this table at all.
     live_orders = _collect_live_orders(conn)
     live_by_station = {
         str(item["station_id"]): item
@@ -4911,9 +4913,9 @@ def collect_live_readiness(
     ):
         band_row = ratio_by_station.get(sid)
         ratio = float(band_row["ratio"]) if band_row else None
-        chain_count = len(book[sid]["days"]) if sid in book else 0
-        stake = book[sid]["stake"] if sid in book else 0.0
-        roi = (book[sid]["pnl"] / stake) if stake else None
+        live = live_by_station.get(sid)
+        chain_count = int(live["settled_days"]) if live else 0
+        roi = live["roi"] if live else None
         bias_c = bias[sid][1] if sid in bias else None
         gates = {
             "claim_honest": (
@@ -4924,25 +4926,36 @@ def collect_live_readiness(
             "roi": roi is not None and roi > -0.08,
             "truth_fresh": truth_latest.get(sid, "") >= fresh_floor,
         }
-        recent_roi = None
+        paper_stake = book[sid]["stake"] if sid in book else 0.0
+        paper_recent = None
         if sid in book and book[sid]["recent_stake"]:
-            recent_roi = book[sid]["recent_pnl"] / book[sid]["recent_stake"]
+            paper_recent = (
+                book[sid]["recent_pnl"] / book[sid]["recent_stake"]
+            )
         stations.append({
             "climate_jump_c": round(climate_jump[sid], 2)
             if sid in climate_jump else None,
             "shape_gap_buckets": round(shape_gap[sid], 2)
             if sid in shape_gap else None,
-            "recent_roi": recent_roi,
             "station": sid,
             "station_label": STATION_LABELS.get(sid, ""),
             "score": sum(gates.values()),
             "gates": gates,
             "ratio": ratio,
             "bias_c": bias_c,
+            # The live figures the gates and candidates read.
             "chains": chain_count,
             "roi": roi,
+            "recent_roi": live["recent_roi"] if live else None,
+            "recent_days": int(live["recent_days"]) if live else 0,
+            # The paper book's, for comparison only.
+            "paper_chains": len(book[sid]["days"]) if sid in book else 0,
+            "paper_roi": (
+                (book[sid]["pnl"] / paper_stake) if paper_stake else None
+            ),
+            "paper_recent_roi": paper_recent,
             "truth_latest": truth_latest.get(sid),
-            "live": live_by_station.get(sid),
+            "live": live,
         })
     stations.sort(key=lambda row: (-row["score"], -(row["roi"] or -9.0)))
 
@@ -4982,27 +4995,9 @@ def collect_live_readiness(
     # candidates only.  Fourteen automatic rules were walk-forward tested on
     # 2026-08-30 and the best was p=0.346 against excluding stations at
     # random, so nothing here may move a station by itself; the criteria earn
-    # their keep by putting one in front of a person with its numbers.
-    # What the bar is worth, in the only terms that settle the argument: the
-    # money on each side of it.  Barred stations keep being seated and settled
-    # on paper precisely so this comparison exists -- stop booking them and
-    # the next release decision has nothing to read.  Both sides are the same
-    # window and the same rule fingerprint, so they are comparable; neither is
-    # a forecast of the other.
-    def _side(members: set[str]) -> dict[str, Any]:
-        rows = [r for r in stations if r["station"] in members]
-        stake = sum(book[r["station"]]["stake"] for r in rows if r["station"] in book)
-        pnl = sum(book[r["station"]]["pnl"] for r in rows if r["station"] in book)
-        return {
-            "stations": len(rows),
-            "settled_days": sum(
-                len(book[r["station"]]["days"]) for r in rows if r["station"] in book
-            ),
-            "staked_usdc": stake,
-            "pnl_usdc": pnl,
-            "roi": (pnl / stake) if stake else None,
-        }
-
+    # their keep by putting one in front of a person with its numbers.  The
+    # money on each side of the bar moved to the money board with the live
+    # book (``collect_live_money``), 2026-09-16.
     # The batch that would actually trade, derived the way the control server
     # derives it: in all_except_barred mode the stored list is empty and
     # reading it would report a live open of nothing.
@@ -5027,14 +5022,6 @@ def collect_live_readiness(
         for row in (exclusion_doc.get("excluded_stations") or [])
         if isinstance(row, dict) and row.get("station")
     })
-    every = {r["station"] for r in stations}
-    split = {
-        "barred": _side(exclusions_set),
-        "live": _side(allowlist_set),
-        "probation": _side(probation_set),
-        "not_barred": _side(every - exclusions_set),
-        "fleet": _side(every),
-    }
     for row in stations:
         row["excluded"] = row["station"] in exclusions
         barred = row["excluded"]
@@ -5053,16 +5040,17 @@ def collect_live_readiness(
         # the day was observed at claims of 0.93-0.99, and the model runs
         # 1.62C cold with a claim ratio of 0.46.  A recovery has to show in the
         # station's structure, not only in the last few settlements.
-        # The row's own gates and book.  This read ``gates`` and ``sid``,
-        # the last values the row-building loop above left behind, so every
-        # barred station was judged on the alphabetically last station's
-        # centre and claim gates and its five-day count.
-        sid = row["station"]
+        # The row's own gates.  This read ``gates`` and ``sid``, the last
+        # values the row-building loop above left behind, so every barred
+        # station was judged on the alphabetically last station's centre and
+        # claim gates and its five-day count.  The money is live since
+        # 2026-09-16: at least three settled live days in the book's last
+        # five, net positive over them.
         row["release_candidate"] = bool(
             barred and recent is not None and recent > 0.0
             and roi_now is not None and roi_now > -0.25
             and row["gates"]["claim_honest"] and row["gates"]["centre_bias"]
-            and (book[sid]["recent_n"] if sid in book else 0) >= 3
+            and row["recent_days"] >= 3
         )
     return {
         "add_candidates": [
@@ -5116,7 +5104,6 @@ def collect_live_readiness(
         "station_exclusions": exclusions,
         "auto_barred": auto_barred,
         "operator_barred": operator_barred,
-        "bar_split": split,
         "contracts": {
             "execution_mode": runtime.get("execution_mode"),
             "live_submit_authorized": runtime.get("live_submit_authorized"),
@@ -16227,7 +16214,7 @@ function liveReadiness(){
   const waiting = new Set(L.station_probation||[]);
   const autoBar = new Set(L.auto_barred||[]);
   const GATE = {claim_honest:"声称诚实", centre_bias:"中心偏差",
-    chains:"链数", roi:"账本ROI", truth_fresh:"真值新鲜"};
+    chains:"实盘站日", roi:"实盘ROI", truth_fresh:"真值新鲜"};
   // Three states, not two: on the allowlist, merely unselected, or barred.
   // An unselected station can still be added; a barred one is refused by
   // the control server, so it must not read as simply "not chosen".
@@ -16309,9 +16296,9 @@ function liveReadiness(){
     ${fverdict(r.station)}
     <td class="mono" ${EDGE}>${r.ratio==null?"—":r.ratio.toFixed(2)}</td>
     <td class="mono">${r.bias_c==null?"—":(r.bias_c>0?"+":"")+r.bias_c.toFixed(2)}</td>
-    <td class="mono">${r.chains}</td>
-    <td class="mono ${r.roi==null?"":(r.roi>=0?"up":"down")}">${r.roi==null?"—":((r.roi>=0?"+":"")+(100*r.roi).toFixed(1)+"%")}</td>
-    <td class="mono ${r.recent_roi==null?"":(r.recent_roi>=0?"up":"down")}">${r.recent_roi==null?"—":((r.recent_roi>=0?"+":"")+(100*r.recent_roi).toFixed(1)+"%")}</td>
+    <td class="mono muted">${r.paper_chains}</td>
+    <td class="mono muted">${r.paper_roi==null?"—":((r.paper_roi>=0?"+":"")+(100*r.paper_roi).toFixed(1)+"%")}</td>
+    <td class="mono muted">${r.paper_recent_roi==null?"—":((r.paper_recent_roi>=0?"+":"")+(100*r.paper_recent_roi).toFixed(1)+"%")}</td>
     <td class="mono ${r.climate_jump_c==null?"":(r.climate_jump_c>1.76?"down":"up")}">${r.climate_jump_c==null?"—":r.climate_jump_c.toFixed(2)}</td>
     <td class="mono ${r.shape_gap_buckets==null?"":(r.shape_gap_buckets>0.93?"down":"")}">${r.shape_gap_buckets==null?"—":r.shape_gap_buckets.toFixed(2)}</td>
     ${fcells(r.station)}
@@ -16342,9 +16329,9 @@ function liveReadiness(){
   <div class="card" style="margin-top:12px">
     <div class="muted">首批站点闸门 · <b>三个开关全是人工的，点击即开启关闭</b>——
       写盘、记审计、下一轮生产立刻照它执行；表里的五闸（实现/声称∈[0.88,1.18]、
-      |中心偏差|≤0.8°C、链≥5、ROI＞−8%、真值≤2天新）是给你看的评分，不再自己决定谁上线。
-      <br><b>表里两套钱：</b>「实盘」六列＝交易所真实成交、按真值结算（待结算的腿不进 ROI）；
-      「账本」列与五闸读的是纸面账本的模拟成交，不是实盘。
+      |中心偏差|≤0.8°C、<b>实盘</b>站日≥5、<b>实盘</b> ROI＞−8%、真值≤2天新）是给你看的评分，不再自己决定谁上线。
+      <br><b>钱一律读实盘</b>（裁决 2026-09-16：账本只当规则对比器）：「实盘」六列＝交易所真实成交、按真值结算（待结算的腿不进 ROI），
+      五闸里的站日与 ROI、建议加入/放出、自动禁入层都读它；灰色的「账本」三列是纸面账本的模拟成交，只供对照，不参与任何判断。
       实盘合计：已结算 ${LP.filled_legs||0} 腿（命中 ${LP.won_legs||0}）、待结算 ${LP.pending_legs||0} 腿，
       投入 ${LP.cost_usdc==null?"—":LP.cost_usdc.toFixed(1)} U，
       盈亏 <span class="${lsign(LP.pnl_usdc)}">${LP.pnl_usdc==null?"—":(LP.pnl_usdc>=0?"+":"")+LP.pnl_usdc.toFixed(1)} U</span>，
@@ -16372,7 +16359,8 @@ function liveReadiness(){
       发单那条路根本不读它——EDDM、KSEA、LTAC 都留着"被禁期间铸出来的 live 意向"。<br>
       禁入是<b>风险裁定不是测量结论</b>：14 种自动规则做逐日 walk-forward，最好的一个 p=0.346——与随机剔同样多的站无异；
       同一份手挑名单固定不动反而 +17.0 点（p=0.002）。所以<b>操作者裁定的行永远不由机器改</b>；自动层只管操作者没裁定过的站，判据＝第一看兑现比（实得÷期望；期望＜3U 时读不出，改看第二项）、第二看实得差，进出用滞回避免来回摆；<b>不再设站数上限</b>（2026-09-02 解除）：判据说禁就禁，名单即判决，人工新禁也不再挤掉任何人。<br>
-      候选判据：加入＝全样本 ROI≤−25% 且链≥5；放出＝已禁且最近 5 个结算日 ROI＞0（≥3 笔）<b>且中心偏差与声称诚实两闸都过</b>——只看 ROI 会把靠盘后 P1 铁板捞回来的站放出去（EPWA 判例）。</div>
+      候选判据（2026-09-16 起读实盘）：加入＝实盘全样本 ROI≤−25% 且实盘站日≥5；放出＝已禁且实盘账本最近 5 个结算日里该站 ROI＞0（≥3 个站日）<b>且中心偏差与声称诚实两闸都过</b>——只看 ROI 会把靠盘后 P1 铁板捞回来的站放出去（EPWA 判例）。
+      自动禁入层判据不变（第一看兑现比、第二看实得差），数据源同样改读实盘成交。</div>
     </details>
     ${FX?`<details class="note" style="margin-top:6px"><summary>「不行」的五个维度分别指认哪一层</summary>
       <div class="muted"><b>为什么不能只看亏多少：</b>一个站只有五到十条已结算链，
@@ -16397,7 +16385,7 @@ function liveReadiness(){
       <th title="实盘：该站真实成交腿里已结算的站日数" style="border-left:1px solid var(--line)">实盘站日</th><th title="实盘：命中腿/已结算成交腿，+N待＝已成交但还没结算的腿">实盘腿</th><th title="实盘：已结算成交腿的实付金额(U)">实盘投入</th><th title="实盘：已结算成交腿的盈亏(U)＝命中份数×1U−实付">实盘盈亏</th><th title="实盘：盈亏÷投入，待结算腿不计入">实盘ROI</th><th title="实盘：实盘账本最近 5 个结算日的 ROI${(LP.recent_window_dates||[]).length?"（"+LP.recent_window_dates[0]+" 起）":""}">实盘近5日</th>${
       FX?`<th title="五个维度各指认不同的一层，见上方折叠说明；与左边的五闸是两套测量" style="border-left:1px solid var(--line)">不行</th><th>不行的维度</th>`:""}
       <th style="border-left:1px solid var(--line)">实现/声称</th><th title="纸面账本持仓的中心减真值">中心偏差</th>
-      <th title="纸面账本：已结算站日数">账本链</th><th title="纸面账本：模拟成交的盈亏÷投入，不是实盘">账本ROI</th><th title="纸面账本：最近 5 个结算日">账本近5日</th><th title="该站真值的日际跳变均值(°C)：天气性格，>1.76 的站在真边际枯竭期实测 −43%（留存组 +23%，p=0.023）。外生、慢变、先于账本。">跳变/日</th><th title="近14天池子里模型分布的均值−众数距离(桶)：跳变在模型层的影子(r=+0.32)，>0.93 为高。">形状gap</th>${
+      <th title="纸面账本：已结算站日数，只供对照，不参与判断">账本链</th><th title="纸面账本：模拟成交的盈亏÷投入，不是实盘，只供对照">账本ROI</th><th title="纸面账本：最近 5 个结算日，只供对照">账本近5日</th><th title="该站真值的日际跳变均值(°C)：天气性格，>1.76 的站在真边际枯竭期实测 −43%（留存组 +23%，p=0.023）。外生、慢变、先于账本。">跳变/日</th><th title="近14天池子里模型分布的均值−众数距离(桶)：跳变在模型层的影子(r=+0.32)，>0.93 为高。">形状gap</th>${
       FX?`<th title="以下七列属五维诊断，窗口与左侧五闸不同" style="border-left:1px solid var(--line)">已结算</th><th>覆盖率</th><th>实现/期望</th><th>命中/声称</th><th>中心残差</th><th>前半段</th><th>后半段</th>`:""}
       </tr></thead><tbody>${rows}</tbody></table></div>
     ${FX?`<div class="muted" style="margin-top:4px;font-size:11.5px">

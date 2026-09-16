@@ -3,11 +3,11 @@
 
 Order of judgement, per the 2026-08-30 ruling: 第一看兑现比差 (the fulfilment
 ratio, realized over expected), 第二看实得差 (the money gap, realized minus
-expected).  Both are read from the same rows the board reads, joined the same
-way, and both were checked to reproduce the board's per-station numbers
-exactly for all 45 stations before this was written -- the point of that check
-is that a screen computing its own version of a metric invents its own
-findings.
+expected).  Both are read from the live book since 2026-09-16 (user ruling:
+the paper ledger is a rule comparator, and this layer reads live fills with
+its criterion unchanged) -- the same ``live_book`` rows the board's money
+sections read, so a screen does not compute its own version of a metric and
+invent its own findings.
 
 Two things this does NOT do, and the reasons are measured rather than
 stylistic.
@@ -41,6 +41,11 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import live_book  # noqa: E402
+
 DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 CONFIG = ROOT / "config" / "trading" / "live_station_exclusions_v1.json"
 INTENT = ROOT / "config" / "trading" / "live_intent_v1.json"
@@ -69,33 +74,37 @@ RATIO_DENOMINATOR_FLOOR_USDC = 3.0
 
 
 def station_keys(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
-    """The two keys per station, from the board's own rows and joins.
+    """The two keys per station, off the live book.
 
-    ``expected`` is production's EV -- stake x (claim/cost - 1) on the
-    *position* row, not the settlement's chain-level claim and cost.  Using
-    the settlement columns instead reproduced 27 of 45 stations wrongly, some
-    by more than 10 USDC, which is exactly the class of error that turns a
-    screen into a fiction.
+    User ruling 2026-09-16: the paper ledger is a rule comparator from that
+    day, not a verdict on a station, and this layer keeps its criterion but
+    reads live fills.  One settlement is one (station, event day, stage) that
+    filled on the exchange and has settled -- the paper settlement row's grain
+    -- from ``live_book``, the loader the board's money sections share.
+
+    ``expected`` is the claimed EV of what was actually held: the probability
+    the minting decision was bound to for each filled bucket, times the shares
+    filled, less the stake.  On paper this was stake x (claim/cost - 1) on the
+    position row, and it is the same quantity: the live book prices uneven
+    fills on the probability-weighted share count precisely so that identity
+    holds.  A settled row whose claim could not be read back contributes its
+    realized money and none of the expectation, and is counted.
     """
 
     agg: dict[str, dict[str, float]] = collections.defaultdict(
-        lambda: {"n": 0.0, "hit": 0.0, "claim": 0.0, "expected": 0.0, "realized": 0.0}
+        lambda: {"n": 0.0, "hit": 0.0, "claim": 0.0, "expected": 0.0,
+                 "realized": 0.0, "claim_missing": 0.0}
     )
-    for station, hit, win, cost, stake, pnl in conn.execute(
-        "SELECT p.station_id, s.hit, p.win_probability, p.all_in_cost,"
-        " p.stake_usdc, s.pnl_usdc"
-        " FROM paper_trade_settlement s"
-        " JOIN paper_trade_position p USING(position_id)"
-    ):
-        row = agg[str(station)]
-        row["n"] += 1
-        row["hit"] += int(hit or 0)
-        row["claim"] += float(win or 0.0)
-        if cost and float(cost) > 0.0:
-            row["expected"] += float(stake or 0.0) * (
-                float(win or 0.0) / float(cost) - 1.0
-            )
-        row["realized"] += float(pnl or 0.0)
+    for row in live_book.build(conn)["settlements"]:
+        slot = agg[str(row["station_id"])]
+        slot["n"] += 1
+        slot["hit"] += int(row["hit"] or 0)
+        if row["claimed_ev_usdc"] is None:
+            slot["claim_missing"] += 1
+        else:
+            slot["claim"] += float(row["claimed_win_probability"] or 0.0)
+            slot["expected"] += float(row["claimed_ev_usdc"])
+        slot["realized"] += float(row["pnl_usdc"] or 0.0)
 
     out: dict[str, dict[str, Any]] = {}
     for station, row in agg.items():
@@ -114,6 +123,7 @@ def station_keys(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
                 (row["hit"] / row["n"]) / (row["claim"] / row["n"])
                 if row["n"] and row["claim"] else None
             ),
+            "claim_missing": int(row["claim_missing"]),
         }
     return out
 
@@ -278,6 +288,7 @@ def run(*, apply_changes: bool) -> dict[str, Any]:
     doc["auto_excluded_stations"] = [auto_rows[k] for k in sorted(auto_rows)]
     doc["auto_policy"] = {
         "keys": "第一看 兑现比差 (realized/expected), 第二看 实得差 (realized-expected)",
+        "book": "live fills (live_book settlements), since the 2026-09-16 ruling that the paper ledger is a rule comparator",
         "bar_ratio_below": BAR_RATIO,
         "release_ratio_above": RELEASE_RATIO,
         "bar_gap_below_usdc": BAR_GAP_USDC,

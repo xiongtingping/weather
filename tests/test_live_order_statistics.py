@@ -667,15 +667,24 @@ def test_each_station_carries_its_own_settled_days_and_five_day_window() -> None
 def _readiness_book(monkeypatch) -> dict:
     """The go-live collector over a small book, with the control plane stubbed.
 
-    Two barred paper stations that differ only in their centre bias, named
-    so the clean one sorts first; and one live station the paper book never
-    seated.
+    Two barred stations that traded live and won on the same three days,
+    differing only in the paper book's centre bias, named so the clean one
+    sorts first; and one live station the paper book never seated.  Since
+    2026-09-16 the gates' money and the candidates read the live fills; the
+    centre gate still reads the paper positions, which are not money.
     """
 
+    days = ("2026-09-01", "2026-09-02", "2026-09-03")
+    rows, fills = [], []
+    for station in ("AAAA", "ZZZZ"):
+        for day in days:
+            intent = f"{station}{day}"
+            rows.append((intent, f"d{intent}", station, day, "31°C", 1))
+            fills.append((intent, 10.0, 4.0))
+    rows.append(("n1", "dn1", "NZWN", "2026-09-03", "31°C", 1))
+    fills.append(("n1", 10.0, 4.0))
     conn = _book(
-        rows=[("n1", "dn1", "NZWN", "2026-09-03", "31°C", 1)],
-        fills=[("n1", 10.0, 4.0)],
-        settled=[],
+        rows=rows, fills=fills, settled=[],
         truth=[("NZWN", "2026-09-03", 31.1, 0)],
         ladder=[("NZWN", "2026-09-03", _RUNGS)],
     )
@@ -689,11 +698,13 @@ def _readiness_book(monkeypatch) -> dict:
         " station_id TEXT, event_date TEXT, center_c REAL);"
     )
     for station, bias_c in (("AAAA", 0.1), ("ZZZZ", 2.0)):
-        for day in ("2026-09-01", "2026-09-02", "2026-09-03"):
+        for day in days:
+            # A paper book that lost, so a candidate that read it would
+            # come out the other way.
             conn.execute(
                 "INSERT INTO paper_trade_settlement(station_id, event_date,"
                 " settled_bucket, hit, stake_usdc, pnl_usdc)"
-                " VALUES (?,?, '31°C', 1, 1.0, 0.5)", (station, day),
+                " VALUES (?,?, '31°C', 0, 1.0, -1.0)", (station, day),
             )
             conn.execute(
                 "INSERT INTO calibration_station_daily_high_truth VALUES"
@@ -732,10 +743,12 @@ def test_a_station_that_traded_live_has_a_row_with_its_live_money(
     live = by["NZWN"]["live"]
     assert live["settled_legs"] == 1 and live["won"] == 1
     assert live["roi"] == round(6.0 / 4.0, 6)
-    # Paper-only stations carry no live row rather than a zero one.
-    assert by["AAAA"]["live"] is None
     # And the row reads the same collector the money card does.
-    assert ready["live_orders"]["pnl"]["by_station"][0] == live
+    card = {
+        item["station_id"]: item
+        for item in ready["live_orders"]["pnl"]["by_station"]
+    }
+    assert card["NZWN"] == live
 
 
 def test_release_candidacy_reads_the_rows_own_gates(monkeypatch) -> None:
@@ -753,3 +766,22 @@ def test_release_candidacy_reads_the_rows_own_gates(monkeypatch) -> None:
     assert by["AAAA"]["release_candidate"] is True
     assert by["ZZZZ"]["release_candidate"] is False
     assert ready["release_candidates"] == ["AAAA"]
+
+
+def test_the_gates_and_candidates_read_live_money_not_paper(monkeypatch) -> None:
+    """User ruling 2026-09-16: the paper ledger is a rule comparator.
+
+    The fixture's paper book lost every day and its live book won every
+    day.  The gates' ROI, the recent window the release reads, and the
+    sort all follow the live one; the paper figures ride along under their
+    own names for comparison and decide nothing.
+    """
+
+    ready = _readiness_book(monkeypatch)
+    row = {r["station"]: r for r in ready["stations"]}["AAAA"]
+    assert row["roi"] == round(18.0 / 12.0, 6)
+    assert row["gates"]["roi"] is True
+    assert row["chains"] == 3 and row["gates"]["chains"] is False
+    assert row["recent_days"] == 3 and row["recent_roi"] > 0
+    assert row["paper_roi"] == -1.0 and row["paper_chains"] == 3
+    assert "bar_split" not in ready
