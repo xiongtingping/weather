@@ -7420,6 +7420,17 @@ class TargetProductionWorker:
         self._account_equity_last = receipt
         return receipt
 
+    def _refresh_account_equity(self) -> None:
+        """A throttled mid-cycle read; failures stay in the receipt, never raise."""
+
+        try:
+            self._capture_account_equity(as_of_utc=utc_now())
+        except Exception as exc:  # noqa: BLE001 -- observational lane
+            self._account_equity_last = {
+                "state": "blocked_fail_closed",
+                "reason": f"{type(exc).__name__}:{exc}"[:160],
+            }
+
     def _account_book_equity_usdc(
         self, *, as_of_utc: str,
     ) -> tuple[float | None, str]:
@@ -17902,6 +17913,9 @@ class TargetProductionWorker:
                 else []
             )
             self._mark("ws_scope_catalog")
+            # Charter 141: refresh the account before a loop that sizes off
+            # it (throttled; a long cycle must not age the read out).
+            self._refresh_account_equity()
             registry_snapshot_path = (
                 self.nwp_runtime_root / "market_registry_forward.json"
             )
@@ -18046,6 +18060,7 @@ class TargetProductionWorker:
                         "reservations_written": 0,
                     })
             self._mark("forward_p0_loop")
+            self._refresh_account_equity()
             # Charter 48: a listed day's scope belongs in the merged manifest
             # the ingress reads.  The publisher already subscribes it and
             # rewrites its book alongside the open ones -- both days' scope

@@ -2037,7 +2037,7 @@ def test_market_snapshot_reports_the_real_account_not_the_pool(monkeypatch) -> N
         with pytest.raises(Exception, match="production_account_equity_stale"):
             load_production_market_snapshot(
                 conn, station_id="ZUUU", event_date="2026-07-23",
-                evaluation_at_utc="2026-07-23T06:00:04Z",
+                evaluation_at_utc="2026-07-23T06:30:04Z",
             )
 
 

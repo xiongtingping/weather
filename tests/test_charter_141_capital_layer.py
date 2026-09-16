@@ -173,8 +173,9 @@ def test_the_account_is_cash_plus_marked_positions_and_ages_out() -> None:
     assert row["equity_usdc"] == pytest.approx(99.80)
     assert row["resting_buy_usdc"] == pytest.approx(1.10)
     # Older than the freshness bound: not the account any more.
+    assert AE.ACCOUNT_EQUITY_MAX_AGE_SECONDS == 1800.0
     assert AE.load_account_equity(
-        conn, as_of_utc="2026-09-16T16:15:01.000Z",
+        conn, as_of_utc="2026-09-16T16:30:01.000Z",
     ) is None
     # Never from the future.
     assert AE.load_account_equity(

@@ -62,11 +62,14 @@ ACCOUNT_EQUITY_DDL_STATEMENTS = (
     " BEGIN SELECT RAISE(ABORT,'append_only'); END",
 )
 
-# A read older than this is not the account any more.  Fifteen minutes is a
-# few resident passes; a gateway or data-API outage longer than that stops new
-# orders rather than letting them size off a stale balance.
+# A read older than this is not the account any more.  The resident reads at
+# the head of a cycle and again before each loop that sizes (at most once a
+# minute); cycles have run to 21 minutes plus a writer wait, so thirty
+# minutes is one slow cycle's worth, and a gateway or data-API outage longer
+# than that stops new orders rather than letting them size off a stale
+# balance.
 ACCOUNT_EQUITY_MAX_AGE_SECONDS = float(
-    os.environ.get("PM_ACCOUNT_EQUITY_MAX_AGE_SECONDS", "") or 900.0
+    os.environ.get("PM_ACCOUNT_EQUITY_MAX_AGE_SECONDS", "") or 1800.0
 )
 ACCOUNT_EQUITY_CAPTURE_INTERVAL_SECONDS = float(
     os.environ.get("PM_ACCOUNT_EQUITY_CAPTURE_INTERVAL_SECONDS", "") or 60.0
