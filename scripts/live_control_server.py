@@ -20,7 +20,7 @@ not a go, and the reader of a switch labelled ARMED is entitled to believe
 money can move.
 
 POST /api/kelly   {"value": 0.35}          -> portfolio_risk_fraction
-POST /api/budget  {"value": 514.29}        -> target_remaining_budget_usdc
+POST /api/budget  {"value": 515}           -> target_remaining_budget_usdc
 POST /api/live    {"enabled": true, "confirm": "LIVE", "by": "..."}
 POST /api/allowlist {"stations": ["ZBAA", ...]}
 POST /api/station-bar     {"station": "KSEA", "barred": true}
@@ -78,6 +78,10 @@ PORT = 8788
 KELLY_BOUNDS = (0.05, 0.50)
 KELLY_STEP_MAX = 0.50
 BUDGET_BOUNDS = (0.0, 2000.0)
+# The budget moves in whole multiples of 5 USDC (operator ruling,
+# 2026-09-16).  Held here rather than only on the board's stepper, so a
+# value that did not come from the board cannot put an odd cent back.
+BUDGET_MULTIPLE = 5.0
 STATION_CAP_BOUNDS = (1.0, 30.0)
 STATION_RE = re.compile(r"^[A-Z0-9]{3,6}$")
 _EXECUTION_MODE: str | None = None
@@ -207,7 +211,8 @@ def state() -> dict:
                 runtime["target_remaining_budget_usdc"],
             ),
             "bounds": BUDGET_BOUNDS,
-            "step": 50.0,
+            "step": BUDGET_MULTIPLE,
+            "multiple": BUDGET_MULTIPLE,
         },
         "station_cap": {
             "station_cap_usdc": (
@@ -284,6 +289,11 @@ def set_budget(value: float) -> dict:
     if not BUDGET_BOUNDS[0] <= value <= BUDGET_BOUNDS[1]:
         raise ValueError(
             f"budget out of bounds {BUDGET_BOUNDS}: {value}"
+        )
+    units = float(value) / BUDGET_MULTIPLE
+    if abs(units - round(units)) > 1e-9:
+        raise ValueError(
+            f"budget must be a whole multiple of {BUDGET_MULTIPLE:g}: {value}"
         )
     runtime = _read(RUNTIME_PATH)
     before = float(runtime["target_remaining_budget_usdc"])

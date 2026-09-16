@@ -11374,7 +11374,7 @@ function head(){
   都在选标签页之前就该看见，所以放在标签栏上面而不是某个分组里面。
   紧接着是<b>资金看板</b>：这本账值多少，按纸面账本与实盘两类分页签；
   然后是 Live 上线准备，再往下是逐站账：每日统计、逐站逐日明细与三张跟进表；
-  再往下按链条顺序分五个<b>区域</b>——模型、模型 vs 市场、声称、选窗、定注，
+  再往下按层级分四个<b>区域</b>——模型（概率层）、边际、选窗、定注，顺着链条从上游到下游，
   每区一个颜色，标签栏与区标题同色。</p>
   <div class="card"><div style="display:flex;gap:14px;align-items:center;
     flex-wrap:wrap">
@@ -16103,10 +16103,14 @@ const LC_KNOBS = {
     field:"portfolio_risk_fraction", spec:s=>s.kelly,
     read:s=>s.kelly.portfolio_risk_fraction,
     fmt:v=>Number(v).toFixed(2)},
+  // Whole multiples of 5 (operator ruling, 2026-09-16; the server refuses
+  // anything else).  A value still off the grid -- 114.29 from before the
+  // ruling -- is shown as it is, and its first step lands on the grid.
   budget: {id:"lc-budget", name:"预算", path:"/api/budget", unit:" USDC",
-    field:"target_remaining_budget_usdc", spec:s=>s.budget,
+    field:"target_remaining_budget_usdc", spec:s=>s.budget, grid:5,
     read:s=>s.budget.target_remaining_budget_usdc,
-    fmt:v=>Number(v).toFixed(2)},
+    fmt:v=>{const r=Math.round(Number(v)*100)/100;
+      return Number.isInteger(r) ? String(r) : r.toFixed(2);}},
   cap:    {id:"lc-cap", name:"单站", path:"/api/station-cap", unit:" USDC",
     field:"station_cap_usdc", spec:s=>s.station_cap,
     read:s=>(s.station_cap&&s.station_cap.station_cap_usdc!=null)
@@ -16114,6 +16118,15 @@ const LC_KNOBS = {
       : ((s.station_cap&&s.station_cap.default_usdc)||15),
     fmt:v=>String(Math.round(Number(v)*100)/100)},
 };
+// Where one click takes a knob.  On a grid, a step goes to the grid line
+// that far away in its direction, so 114.29 +5 is 115 and −5 is 110, and
+// +50 is 160 rather than an off-grid 164.29.
+function lcNext(K, cur, delta){
+  if(!K.grid) return Math.round((cur + delta) * 100) / 100;
+  const g = K.grid, units = delta / g;
+  const base = delta > 0 ? Math.floor(cur / g + 1e-9) : Math.ceil(cur / g - 1e-9);
+  return Math.round((base + units) * g * 100) / 100;
+}
 function liveControlStrip(){
   const L = D.live_readiness || {};
   if(!L.available) return "";
@@ -16132,10 +16145,10 @@ function liveControlStrip(){
     ${knob("kelly", "凯利系数 portfolio_risk_fraction",
       `${b("kelly",-0.05,"−")}<b id="lc-kelly">${
         L.kelly==null?"—":LC_KNOBS.kelly.fmt(L.kelly)}</b>${b("kelly",0.05,"+")}`)}
-    ${knob("budget", "预算 target_remaining_budget_usdc（USDC）",
-      `${b("budget",-50,"−")}<b id="lc-budget">${
+    ${knob("budget", "预算 target_remaining_budget_usdc（USDC，按 5 的整数倍）",
+      `${b("budget",-50,"−50",true)}${b("budget",-5,"−")}<b id="lc-budget">${
         L.budget_usdc==null?"—":LC_KNOBS.budget.fmt(L.budget_usdc)}</b>${
-        b("budget",50,"+")}`)}
+        b("budget",5,"+")}${b("budget",50,"+50",true)}`)}
     ${knob("cap", "单站上限 station_cap_usdc（USDC，三个本金型边界同步派生）",
       `${b("cap",-5,"−5",true)}${b("cap",-1,"−")}<b id="lc-cap">—</b>${
         b("cap",1,"+")}${b("cap",5,"+5",true)}`)}
@@ -16424,7 +16437,7 @@ function lcPaintKnobs(s){
     }
     document.querySelectorAll(`.lc-w[data-knob="${key}"]`).forEach(btn=>{
       const delta = Number(btn.dataset.delta);
-      const next = Math.round((cur + delta) * 100) / 100;
+      const next = lcNext(K, cur, delta);
       const out = next < lo - 1e-9 || next > hi + 1e-9;
       btn.disabled = out;
       btn.title = out
@@ -16475,7 +16488,7 @@ function lcDown(){
 function lcAdjust(knob, delta){
   const s = window.__lcState, K = LC_KNOBS[knob];
   if(!s || !K) return;
-  const next = Math.round((K.read(s) + delta) * 100) / 100;
+  const next = lcNext(K, K.read(s), delta);
   // Held down for the round trip, like the LIVE switch.  A second click
   // before the answer computed its step from the state the first had not
   // yet replaced, so it sent the same value again: two clicks, one step,
@@ -17013,38 +17026,43 @@ const GROUPS = [
   // on arrival does not belong behind a tab.  Each group carries a colour
   // so the tab bar and the group titles agree without matching text.
   //
-  // Five areas in the order of the chain, one per layer the sections'
-  // own strips already declare (user ruling, 2026-09-16: "固化减仓不应该
-  // 放在形状里").  The three-way split filed a sizing rule and a holdings
-  // reading under "概率与持仓形状" beside the claim tables, and the two
-  // readings of whether the model knows anything the market does not were
-  // split across two areas.  A section's tab is now the layer written on
-  // its strip: 概率层 → 模型 vs 市场 → 声称层 → 选窗层 → 定注层.
+  // One area per layer, in the order of the chain (user rulings,
+  // 2026-09-16: "固化减仓不应该放在形状里", then "band表应该放在模型里,
+  // 再次按照层级归类整理").  The layer is where the rule actually runs, not
+  // the word the section happens to use: band 表 is called a claim table
+  // but it is applied inside the probability serving chain, after
+  // 中心/宽度, fitted on served probability against settled truth with no
+  // market in it -- so it is the model's last step, not a claim discount.
+  // Everything that prices our probability against the market -- the EV
+  // identity, truth landing on the price × probability grid, λ, β, the
+  // valuation lane, the thermometer that is λ's evidence, the convergence
+  // lift -- is one layer, 边际层 (the E of the P/M/E/S/Z/X layering).
+  //   模型 概率层 → 边际 边际层 → 选窗 选窗层 → 定注 定注层
+  // The book, the live switch and the refusal count stay above the tabs:
+  // they are read on arrival, whatever layer is being studied.
   {id:"model", label:"模型", short:"模型", tone:"#d2a8ff",
-   note:"概率层：模型本身准不准——订正与权重、离散度、命中率、OOS、中心/宽度、总检",
+   note:"概率层：服务分布从哪来、准不准——订正与权重、离散度、命中率、OOS、中心/宽度、band 表、总检",
    sections:[[tables,"偏差订正与权重"],
      [servingWeights,"四大模型权重"],
      [dispersion,"模型离散度"],[hitRate,"模型命中率"],
      [oosScores,"OOS 打分"],[centerWidth,"中心/宽度"],
+     [bandTable,"band 表"],
      [centreLanding,"真值离均值多远"],
      [scorecard,"模型校准总检"],[h5Readiness,"H5 换代进度"],
      [correctionAccuracy,"订正准度与政权偏移"]]},
-  {id:"edge", label:"模型 vs 市场", short:"对市场", tone:"#79c0ff",
-   note:"模型比市场多知道什么：EV 恒等式按误差拆边际，统一估值车道把盘口当第二份预报",
+  {id:"edge", label:"边际", short:"边际", tone:"#79c0ff",
+   note:"边际层：我们的概率对着市场值多少、信几成——EV 恒等式、真值落位、λ 表与体温计、β 车道、估值车道、双向收敛",
    sections:[[charterEv,"宪章 EV 恒等式"],
-     [valuationLane,"统一估值车道"]]},
-  {id:"claim", label:"声称", short:"声称", tone:"#7ee787",
-   note:"声称层：模型说的概率和边际信几成——band 表按档修正、体温计量兑现、λ 表与 β 车道定折扣、双向收敛",
-   sections:[[bandTable,"band 表"],
-     [edgeBandHealth,"声称边际体温计"],
+     [truthLanding,"真值落位"],
      [effectiveEdgeLambda,"有效边际 λ 表"],
+     [edgeBandHealth,"声称边际体温计"],
      [betaShadow,"β 车道（影子）"],
+     [valuationLane,"统一估值车道"],
      [convergenceClaim,"双向收敛系数"]]},
   {id:"select", label:"选窗", short:"选窗", tone:"#e3b341",
-   note:"选窗层：挑哪几个桶、挑得值不值——市场方向闸、覆盖与 EV、篮子命中率、真值落位",
+   note:"选窗层：挑哪几个桶、挑得值不值——市场方向闸、覆盖与 EV、篮子命中率",
    sections:[[marketLeanGate,"市场方向闸"],
-     [coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"],
-     [truthLanding,"真值落位"]]},
+     [coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"]]},
   {id:"sizing", label:"定注", short:"定注", tone:"#56d4dd",
    note:"定注层：下多少、最后真正拿着什么——固化减仓、分布与持仓分家",
    sections:[[consolidation,"固化减仓"],
@@ -17119,22 +17137,23 @@ const LANES = {
     role:"偏差半衰期新代铺到哪了、还剩多少格在服旧代"},
   "订正准度与政权偏移": {layer:"概率层 · 读数", status:"audit",
     role:"全队日偏差能不能提前知道（实测：不能，所以 regime 层关着）"},
-  // --- edge: whether the model knows anything the market does not ---
-  "宪章 EV 恒等式": {layer:"模型 vs 市场 · 读数", status:"audit",
+  "band 表": {layer:"概率层", status:"live",
+    role:"单系统校准与融合之后，服务概率按离中心距离兑现多少 → 按档修正尾形残差（市场不进）"},
+  // --- edge: what our probability is worth against the market ---
+  "宪章 EV 恒等式": {layer:"边际层 · 读数", status:"audit",
     role:"edge = 市场的错 − 模型的错 = Var(e_q) − Cov(e_p,e_q)；k = Cov/Var 低于 1 才有 edge"},
-  // PM_VALUATION_MODE defaults to shadow (valuation_v1) and nothing sets it.
-  "统一估值车道": {layer:"模型 vs 市场", status:"shadow",
-    role:"盘口当第二份预报与模型融合（权重 β）→ 切 on 时闸读融合后的动作下界，现在只量不用"},
-  // --- claim: how much of a claimed probability or edge to believe ---
-  "band 表": {layer:"声称层", status:"live",
-    role:"声称 X 时真值其实落窗多少 → 按档把声称修正回去"},
-  "声称边际体温计": {layer:"声称层 · 读数", status:"audit",
-    role:"自认便宜多少时真兑现多少 → λ 的证据，不是 λ 本身"},
-  "有效边际 λ 表": {layer:"声称层", status:"live",
+  "真值落位": {layer:"边际层 · 读数", status:"audit",
+    role:"真值落在市场价格 × 模型概率的哪一格 → 谁更能预判真值"},
+  "有效边际 λ 表": {layer:"边际层", status:"live",
     role:"市场比我们贵多少就信多少 → 闸和定注读的都是 λ(a)·声称"},
-  "β 车道（影子）": {layer:"声称层", status:"shadow",
+  "声称边际体温计": {layer:"边际层 · 读数", status:"audit",
+    role:"自认便宜多少时真兑现多少 → λ 的证据，不是 λ 本身"},
+  "β 车道（影子）": {layer:"边际层", status:"shadow",
     role:"我们和市场的分歧兑现几成（斜率 β）→ 目前只量不用"},
-  "双向收敛系数": {layer:"声称层", status:"shadow",
+  // PM_VALUATION_MODE defaults to shadow (valuation_v1) and nothing sets it.
+  "统一估值车道": {layer:"边际层", status:"shadow",
+    role:"盘口当第二份预报与模型融合（权重 β）→ 切 on 时闸读融合后的动作下界，现在只量不用"},
+  "双向收敛系数": {layer:"边际层", status:"shadow",
     role:"我们往上、市场往下、还没走到一起 → 把声称抬三成（只记账）"},
   // --- select: which buckets to seat, and whether seating them paid ---
   "市场方向闸": {layer:"选窗层", status:"shadow",
@@ -17143,8 +17162,6 @@ const LANES = {
     role:"买到的价、窗口覆盖率与事前 EV"},
   "篮子命中率": {layer:"选窗层 · 读数", status:"audit",
     role:"几桶的篮子实际命中多少"},
-  "真值落位": {layer:"选窗层 · 读数", status:"audit",
-    role:"真值落在价格 × 概率的哪一格"},
   // --- sizing: from a seat to a stake, and what is actually held ---
   "固化减仓": {layer:"定注 · 资金层", status:"live",
     role:"我们自己不动了 → 少花钱（整链注码 ×0.05，永不拒入场）"},
