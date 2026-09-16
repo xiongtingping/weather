@@ -75,7 +75,7 @@ import os
 import random
 import sqlite3
 from datetime import UTC, datetime, timedelta, timezone
-from typing import Any, Sequence
+from typing import Any, NamedTuple, Sequence
 
 from .band_reliability_store import (
     BAND_AXIS_CLAIM,
@@ -196,6 +196,69 @@ def _serving_partition(axis: str | None) -> tuple[str, int]:
 
     name = str(axis) if axis else BAND_AXIS_CLAIM
     return name, len(cells_for_axis(name))
+
+
+# The partition of a scope that serves no band table at all.  Since
+# 2026-09-15 a build with no active table mints a bare tag and a bare tag is
+# identity (``native_ensemble_p0.resolve_pinned_band_layer``), so what the
+# scope serves is the claim the band layer left alone -- not the claim-axis
+# bootstrap ``_serving_partition(None)`` still names, which is what "no
+# table" meant before that ruling.  Found 2026-09-16: P0's table was vetoed
+# on 09-15 18:26Z, every P0 envelope since is unbanded (61 with no receipt,
+# 17 pinned to the vetoed table with nothing applied), and the filter
+# excluded all 78 -- the scope could never leave its incumbent.
+BAND_PARTITION_UNBANDED = ("unbanded", 0)
+
+
+class _BandReceipt(NamedTuple):
+    """What the envelope behind one decision says the band layer did."""
+
+    partition: tuple[str, int] | None
+    # True when the band layer left the claim exactly as it was: no receipt
+    # at all, or a receipt that applied no factor.
+    unbanded: bool
+
+
+def _stages_serve_no_band_table(
+    conn: sqlite3.Connection, stages: Sequence[str]
+) -> bool:
+    """Whether every stage in the scope is served with no active band table.
+
+    ``_fit_axis`` answers ``None`` for this and for stages on different axes
+    alike; the two need opposite partitions.  A store that cannot be read is
+    not evidence of either and answers False, which keeps the historical
+    claim-axis test.
+    """
+
+    try:
+        from .band_reliability_store import load_band_table
+    except Exception:  # noqa: BLE001 -- no band store, nothing to say
+        return False
+    if not stages:
+        return False
+    for stage in stages:
+        try:
+            if load_band_table(conn, stage=str(stage)) is not None:
+                return False
+        except Exception:  # noqa: BLE001 -- unreadable is not "none active"
+            return False
+    return True
+
+
+def _band_exclusion(
+    receipt: "_BandReceipt | None", serving_partition: tuple[str, int]
+) -> str | None:
+    """Why a row is outside the serving partition, or None when it is inside."""
+
+    if receipt is None:
+        return "excluded_no_receipt"
+    if serving_partition == BAND_PARTITION_UNBANDED:
+        return None if receipt.unbanded else "excluded_old_partition"
+    if receipt.partition is None:
+        return "excluded_no_receipt"
+    if receipt.partition != serving_partition:
+        return "excluded_old_partition"
+    return None
 
 # Shadow lane, user ruling 2026-09-06 ("开影子"): the same table with one more
 # axis -- which way the market moved the seat's window over the hours before
@@ -582,7 +645,7 @@ def _band_partition_by_decision(
     conn: sqlite3.Connection,
     stages: Sequence[str],
     floor_day: str,
-) -> dict[tuple[str, str, str, str], tuple[str, int] | None] | None:
+) -> dict[tuple[str, str, str, str], _BandReceipt] | None:
     """Which band partition each candidate window's claim was served under.
 
     A candidate window is not a seat and has no ``position_id``, but it does
@@ -594,7 +657,9 @@ def _band_partition_by_decision(
 
     Each decision maps to ``(axis, cells)`` of the table its envelope names
     (a table recorded without an axis is a claim-axis one), compared by the
-    caller against ``_serving_partition``.
+    caller against ``_serving_partition``, and to whether the band layer
+    left its claim unchanged -- which is the whole question when the scope
+    serves no table (``BAND_PARTITION_UNBANDED``).
 
     Driven from the candidate table rather than from the history: the
     history is four hundred thousand rows and the candidates are a few
@@ -637,16 +702,22 @@ def _band_partition_by_decision(
         return None
     if not sizes:
         return None
-    out: dict[tuple[str, str, str, str], tuple[str, int] | None] = {}
+    out: dict[tuple[str, str, str, str], _BandReceipt] = {}
     for station_id, event_date, stage, decided, raw in rows:
         sha = None
+        unbanded = not raw
         if raw:
             try:
-                sha = json.loads(str(raw)).get("band_table_sha256")
+                receipt = json.loads(str(raw))
+                sha = receipt.get("band_table_sha256")
+                applied = receipt.get("applied_factors")
+                # An unreadable or older receipt that does not say what it
+                # applied is not evidence the claim was left alone.
+                unbanded = isinstance(applied, dict) and not applied
             except (ValueError, AttributeError):
                 sha = None
         out[(str(station_id), str(event_date), str(stage), str(decided))] = (
-            sizes.get(str(sha)) if sha else None
+            _BandReceipt(sizes.get(str(sha)) if sha else None, bool(unbanded))
         )
     return out
 
@@ -1196,7 +1267,11 @@ def fit_lambda_table(
     else:
         tally_incumbent_note = "activated_table"
     partition = _band_partition_by_decision(conn, stages, floor_day)
-    serving_partition = _serving_partition(axis)
+    serving_partition = (
+        BAND_PARTITION_UNBANDED
+        if axis is None and _stages_serve_no_band_table(conn, stages)
+        else _serving_partition(axis)
+    )
     band_filter: dict[str, Any] = {
         "axis": serving_partition[0],
         "cells": serving_partition[1],
@@ -1215,14 +1290,14 @@ def fit_lambda_table(
         if claim <= 0.0 or price <= 0.0:
             continue
         if partition is not None:
-            cells = partition.get(
-                (str(station_id), str(event_date), str(stage), str(decided))
+            reason = _band_exclusion(
+                partition.get(
+                    (str(station_id), str(event_date), str(stage), str(decided))
+                ),
+                serving_partition,
             )
-            if cells is None:
-                band_filter["excluded_no_receipt"] += 1
-                continue
-            if cells != serving_partition:
-                band_filter["excluded_old_partition"] += 1
+            if reason is not None:
+                band_filter[reason] += 1
                 continue
         slot = tally[_band_index(price / claim, incumbent)]
         slot["seats"] += 1
@@ -2169,7 +2244,12 @@ def fit_lambda_table_dq_shadow(
     ).fetchall()
     partition = _band_partition_by_decision(conn, stages, floor_day)
     # The partition the served fit reads, so the shadow stays on its sample.
-    serving_partition = _serving_partition(_fit_axis(conn, stages))
+    shadow_axis = _fit_axis(conn, stages)
+    serving_partition = (
+        BAND_PARTITION_UNBANDED
+        if shadow_axis is None and _stages_serve_no_band_table(conn, stages)
+        else _serving_partition(shadow_axis)
+    )
     tally = [
         {tier: {"seats": 0, "claim": 0.0, "hits": 0} for tier in DQ_TIERS}
         for _ in incumbent
@@ -2181,9 +2261,12 @@ def fit_lambda_table_dq_shadow(
         price = float(cost or 0.0)
         if claim <= 0.0 or price <= 0.0:
             continue
-        if partition is not None and partition.get(
-            (str(station_id), str(event_date), str(stage), str(decision_at))
-        ) != serving_partition:
+        if partition is not None and _band_exclusion(
+            partition.get(
+                (str(station_id), str(event_date), str(stage), str(decision_at))
+            ),
+            serving_partition,
+        ) is not None:
             excluded += 1
             continue
         try:

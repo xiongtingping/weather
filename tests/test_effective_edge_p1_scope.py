@@ -546,3 +546,95 @@ def test_the_partition_is_the_served_axis_and_its_cell_count(monkeypatch) -> Non
     }
     assert sum(band["seats"] for band in fit["evidence"]) == 10
     assert fit["table"]["band_partition_cells"] == 5
+
+
+def test_a_scope_serving_no_band_table_fits_its_unbanded_claims() -> None:
+    """2026-09-16: P0's band table was vetoed on 09-15, so every P0 claim
+    since is the one the band layer left alone -- a bare tag with no receipt,
+    or an artifact pinned to the vetoed table that applied nothing.  The
+    filter still compared those rows against the claim-axis bootstrap that
+    "no table" meant before bare tags became identity, excluded all of them,
+    and the scope could never leave its incumbent.  With no table active the
+    served claim is the unbanded one: those rows count, and a row whose
+    receipt did move the claim is the old partition."""
+
+    from bayes_basket_target.band_reliability_store import (
+        ensure_band_table_schema,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE paper_trade_candidate_window("
+        "candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
+        " stage TEXT, decision_at_utc TEXT, buckets_json TEXT,"
+        " win_probability REAL, all_in_price REAL, hit INTEGER, band_axis TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE paper_trade_settlement("
+        "settlement_id TEXT PRIMARY KEY, position_id TEXT, stage TEXT,"
+        " event_date TEXT, hit INTEGER)"
+    )
+    ensure_band_table_schema(conn)
+    vetoed = "a" * 64
+    conn.execute(
+        "INSERT INTO calibration_band_reliability_table"
+        "(band_table_sha256, stage, factors_json, evidence_json, fitted_at_utc,"
+        " serving_day_count, activated, activated_at_utc, retired_at_utc, axis)"
+        " VALUES(?, 'P0', ?, '{}', '2026-09-10T00:00:00Z', 1, 0, NULL,"
+        " '2026-09-15T18:26:00Z', 'centre_distance')",
+        (vetoed, json.dumps([[[0, 1], 1.0]] * 5)),
+    )
+    conn.execute(
+        "CREATE TABLE basket_probability_bridge_history("
+        "history_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
+        " stage TEXT, decision_at_utc TEXT, checkpoint_id TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_probability_envelope("
+        "envelope_id TEXT PRIMARY KEY, lineage_json TEXT)"
+    )
+    receipts = {
+        # A bare tag: no band receipt at all.
+        "bare": {},
+        # Pinned to the vetoed table, which loads empty and applied nothing.
+        "pinned_nothing": {"band_reliability_json": json.dumps({
+            "band_table_sha256": vetoed, "applied_factors": {},
+            "state": "NO_BAND_IN_SUPPORT",
+        })},
+        # A claim the band layer did move.
+        "applied": {"band_reliability_json": json.dumps({
+            "band_table_sha256": vetoed, "applied_factors": {"1": 0.9},
+            "state": "APPLIED",
+        })},
+    }
+    kinds = list(receipts)
+    for index in range(30):
+        kind = kinds[index % 3]
+        day = f"2026-09-{index % 8 + 1:02d}"
+        conn.execute(
+            "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (f"cand-{index}", f"S{index}", day, "P0", f"t{index}", '["b"]',
+             0.5, 0.15, 1, None),
+        )
+        conn.execute(
+            "INSERT INTO paper_trade_settlement VALUES(?,?,?,?,?)",
+            (f"set-{index}", f"pos-{index}", "P0", day, 1),
+        )
+        conn.execute(
+            "INSERT INTO basket_probability_bridge_history VALUES(?,?,?,?,?,?)",
+            (f"hist-{index}", f"S{index}", day, "P0", f"t{index}", f"env-{index}"),
+        )
+        conn.execute(
+            "INSERT INTO basket_probability_envelope VALUES(?,?)",
+            (f"env-{index}", json.dumps(receipts[kind])),
+        )
+    assert store._fit_axis(conn, ("P0",)) is None
+    fit = store.fit_lambda_table(conn, stage_scope="P0")
+    assert fit["band_filter"] == {
+        "axis": "unbanded",
+        "cells": 0,
+        "applied": True,
+        "excluded_old_partition": 10,
+        "excluded_no_receipt": 0,
+    }
+    assert sum(band["seats"] for band in fit["evidence"]) == 20
