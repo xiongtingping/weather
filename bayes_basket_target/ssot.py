@@ -1531,6 +1531,27 @@ ON basket_official_ws_snapshot(event_date,quote_expires_at);
 CREATE INDEX IF NOT EXISTS basket_official_ws_snapshot_scope_sequence_idx
 ON basket_official_ws_snapshot(station_id,event_date,sequence DESC);
 
+-- Tenth of the same bug class, and the most expensive yet: "the freshest
+-- book of the last twenty minutes, whatever the scope" leads on no index
+-- here, so it scanned.  Measured 2026-09-16 at 445,097 rows: 100.1 seconds
+-- to return 331 of them.
+--
+-- Half of that is the column order above.  ``state`` is declared after
+-- ``buckets_json`` and ``cash_phase_input_json``, which hold 7.99 GB
+-- between them, so a scan that needs ``state`` must decode past both and
+-- follow their overflow pages: the same scan reading only
+-- ``quote_observed_at`` (declared before them) takes 51.4s.  Leading on
+-- ``quote_observed_at`` alone is therefore both the cheaper index to build
+-- and the whole fix -- the range is a few hundred rows and ``state`` is
+-- then read from those rows only.
+--
+-- What it cost: ``maker_shadow_probe`` calls this once per pass, before its
+-- own writer-lease clock is consulted, and on 2026-09-16T04:13Z the pass was
+-- timeout_killed at 900s having run 660s past the 240s lease -- holding the
+-- exclusive SSOT writer, which is production not starting, for all of it.
+CREATE INDEX IF NOT EXISTS basket_official_ws_snapshot_quote_observed_idx
+ON basket_official_ws_snapshot(quote_observed_at);
+
 -- The calibration and weight tables are read the same way on the same path,
 -- and were scanned the same way.  The member archive is the expensive one:
 -- 818k rows, read per station-day, 1,170ms a scope -- one station cost more
@@ -6611,6 +6632,7 @@ def _upgrade_quote_freshness_columns(
         "basket_official_ws_snapshot_asof_idx",
         "basket_official_ws_snapshot_day_expiry_idx",
         "basket_official_ws_snapshot_scope_sequence_idx",
+        "basket_official_ws_snapshot_quote_observed_idx",
     ):
         conn.execute(f"DROP INDEX IF EXISTS {_index}")
     if row_count:
@@ -6656,6 +6678,7 @@ def _upgrade_settlement_timezone_columns(
                 "basket_official_ws_snapshot_asof_idx",
                 "basket_official_ws_snapshot_day_expiry_idx",
                 "basket_official_ws_snapshot_scope_sequence_idx",
+                "basket_official_ws_snapshot_quote_observed_idx",
             ),
             "triggers": (
                 "basket_official_ws_snapshot_no_update",

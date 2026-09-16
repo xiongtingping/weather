@@ -380,6 +380,19 @@ def _spent(deadline: float | None) -> bool:
     return deadline is not None and time.monotonic() >= deadline
 
 
+def _left(deadline: float | None) -> float:
+    """Seconds of pass budget remaining; unbounded when there is no clock."""
+
+    return float("inf") if deadline is None else deadline - time.monotonic()
+
+
+# What the claim_cap reading needs before it is allowed to start.  It is two
+# self-joins over 4.7M orders -- 21.0s and 26.4s measured warm on 2026-09-16
+# -- and it cannot stop half way, so the pass reserves room for it rather
+# than merely checking that the clock has not already run out.
+CLAIM_CAP_READING_RESERVE_SEC = 90.0
+
+
 def place(
     conn: sqlite3.Connection, *, deadline: float | None = None
 ) -> dict[str, int]:
@@ -894,8 +907,28 @@ def main() -> int:
         "resolve": resolve(conn, deadline=deadline),
         "settle": settle(conn, deadline=deadline),
     }
-    # The daily line a person reads, ahead of the JSON.
-    print(claim_cap_reading(conn))
+    # The daily line a person reads, ahead of the JSON -- but only on a pass
+    # that still has clock.  It is two self-joins over 4.7M orders, measured
+    # 2026-09-16 at 21.0s and 26.4s, and it sat outside the lease entirely:
+    # the three loops stop when the budget is spent and then this ran anyway,
+    # for 47 seconds of exclusive SSOT writer that nothing was bounding.
+    #
+    # Skipped rather than sliced because it is a reading, not work: it
+    # answers the same question on the next pass, and a pass that ran out of
+    # clock has already asked for one with the continuation marker.  Said out
+    # loud, because a number that silently stops appearing reads as an arm
+    # that stopped rather than a line that was not affordable.
+    #
+    # "Not spent" is not the test.  The reading is a single uninterruptible
+    # statement pair, so a pass with one second left would pass that check
+    # and then run for forty-seven -- the same "the gate between units does
+    # not bound one unit" that this whole pass was killed for.  It runs only
+    # with room for it: measured 21.0s + 26.4s warm, and the reserve is
+    # roughly double so a cold cache still lands inside the lease.
+    if _spent(deadline) or _left(deadline) < CLAIM_CAP_READING_RESERVE_SEC:
+        print("  claim_cap: 本轮预算不够读这两条自连接，跳过（下一轮再读）")
+    else:
+        print(claim_cap_reading(conn))
     print(json.dumps(passes, ensure_ascii=False, sort_keys=True))
     if any(
         isinstance(phase, Mapping) and phase.get("stopped_for_time")
