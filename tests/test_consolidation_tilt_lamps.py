@@ -9,6 +9,9 @@ group that made money is self-harm, so the trigger is ``stable`` alone.
 
 This file pins the decision AND its evidence grade, because the grade is
 weak and a later reader must not mistake it for a measured result.
+
+The tilt itself was retired as the default on 2026-09-16 (charter 139); the
+lamp ruling here still decides which lamp the research arm reads.
 """
 
 from __future__ import annotations

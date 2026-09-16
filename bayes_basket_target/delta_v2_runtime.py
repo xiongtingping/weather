@@ -347,8 +347,25 @@ CERTAINTY_SHARP_TOP2 = 0.60
 # the opener rule +14.58 with drop-1/2/3 and both temporal halves
 # positive, and under the stage reading +24.45 with sign 164:148 -- the
 # depth verdict holds under either scope.
+#
+# **Retired 2026-09-16 (charter 139, ruling "撤")**: the default is 1, the
+# identity.  Re-read on 08-31..09-15 production decisions, the premise is
+# gone and the rule had stopped biting:
+#   - per dollar, no fill model, target baskets at plan cost: P0 with
+#     ``stable`` lit -3.1% against unlit -10.3% (diff +7.2, CI -0.2..+14.4);
+#     382 openers -0.1% against -8.1%; the sign flips between halves; the
+#     standing paper book reads -15.1% lit against -37.0% unlit.  The cut
+#     landed on the half that loses less.
+#   - the floor had eaten the factor: a P0 allowance is ~4 USDC and three
+#     legs at the venue minimum cost 3.6-7, so of 428 lit P0 trades since
+#     09-08 only 48 lost any capital (mean 9.4%, 19.12 USDC in all), and no
+#     inherited later-stage trade was cut.
+# No on/off ledger arm was run: every group loses, so any stake cut shows a
+# saving; only the per-dollar split can say whether the lamp discriminates.
+# The lights are still computed and recorded; ``PM_CONSOLIDATION_TILT=0.05``
+# reproduces the retired rule as a research arm.
 CONSOLIDATION_TILT_FACTOR = min(1.0, float(
-    os.environ.get("PM_CONSOLIDATION_TILT", "0.05") or 1.0
+    os.environ.get("PM_CONSOLIDATION_TILT", "1") or 1.0
 ))
 # **两盏灯改为只看 stable（2026-09-08 裁决："该砍的是 stable 亮的日子，
 # 不该砍 sharp 亮的日子"）**。固化减仓砍的是注码，所以它砍在哪一天决定了

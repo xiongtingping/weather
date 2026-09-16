@@ -138,6 +138,24 @@ def _candidates(snapshot: TargetBasketSnapshot, *, desired=("30", "31", "32")):
     )
 
 
+def _tilted_seat(monkeypatch) -> None:
+    """Compile these seats under the consolidation tilt they were opened with.
+
+    The fixtures are the 2026-09-05 half-baskets (ZGSZ, LTAC), seated while
+    the tilt cut the capital; at that capital the whole-basket Kelly row
+    cannot form and the completion is what is under test.  The tilt is
+    retired as the default (charter 139, factor 1), where the same book
+    hands Kelly enough capital to take the seat first -- charter 84's own
+    ordering.  So the research arm is pinned here, lamp and depth both: a
+    test of the completion must not re-break when a sizing ruling moves.
+    """
+
+    monkeypatch.setattr(
+        delta_v2_runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
+    )
+    monkeypatch.setattr(delta_v2_runtime, "CONSOLIDATION_TILT_FACTOR", 0.05)
+
+
 def test_the_balance_shape_raises_every_short_rung_to_the_held_level() -> None:
     assert ladder_balance_targets_v1(
         held_by_bucket={"30": 5.0, "31": 5.0, "32": 0.0}, support=("30", "31", "32")
@@ -538,9 +556,7 @@ def test_charter_127_the_designated_completion_crosses_as_a_limit_fok(
     construction.
     """
 
-    monkeypatch.setattr(
-        delta_v2_runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
-    )
+    _tilted_seat(monkeypatch)
     result = compile_delta_v2_runtime_plan(
         snapshot=_held_snapshot(),
         basket_policy=_basket_policy(),
@@ -567,9 +583,7 @@ def test_charter_127_the_designated_completion_crosses_as_a_limit_fok(
 def test_charter_127_off_leaves_the_completion_resting(monkeypatch) -> None:
     """The arm that restores what every completion was posted as."""
 
-    monkeypatch.setattr(
-        delta_v2_runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
-    )
+    _tilted_seat(monkeypatch)
     monkeypatch.setattr(
         delta_v2_runtime, "CHARTER_127_COMPLETION_TAKE", "off"
     )
@@ -610,9 +624,7 @@ def test_a_completion_that_would_walk_past_its_authorization_is_killed(
     buy is not the basket any gate saw.
     """
 
-    monkeypatch.setattr(
-        delta_v2_runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
-    )
+    _tilted_seat(monkeypatch)
     snapshot = _held_snapshot()
     thin = type(snapshot.buckets[0].ask_levels[0])
     dearer = []
@@ -656,9 +668,7 @@ def test_the_half_basket_compiles_to_its_missing_rung_at_the_seats_capital(
     # tilt.  The trigger moved to ``stable`` alone on 2026-09-08 and these
     # fixtures are ``sharp`` shapes, so pin the signal set here: a test of the
     # completion exemption must not re-break every time the lamp ruling moves.
-    monkeypatch.setattr(
-        delta_v2_runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
-    )
+    _tilted_seat(monkeypatch)
     result = compile_delta_v2_runtime_plan(
         snapshot=_held_snapshot(),
         basket_policy=_basket_policy(),
@@ -707,9 +717,7 @@ def test_charter_121_off_reproduces_the_refusal_that_used_to_hold_the_day(
     on P0-M and P1 for the three weeks after charter 84 landed.
     """
 
-    monkeypatch.setattr(
-        delta_v2_runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
-    )
+    _tilted_seat(monkeypatch)
     monkeypatch.setattr(delta_v2_runtime, "CHARTER_121_POST_LIFT_RERANK", "off")
     result = compile_delta_v2_runtime_plan(
         snapshot=_held_snapshot(),
@@ -743,9 +751,7 @@ def test_charter_121_exclusions_reach_the_kernel_on_every_retry(
     defect a behavioural assertion alone does not catch.
     """
 
-    monkeypatch.setattr(
-        delta_v2_runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
-    )
+    _tilted_seat(monkeypatch)
     seen: list[tuple[str, ...]] = []
     original = delta_v2_runtime._solve_over_support_windows
 
@@ -1222,9 +1228,7 @@ def test_ltac_the_held_rung_priced_above_its_claim_no_longer_refuses_the_window(
     # tilt.  The trigger moved to ``stable`` alone on 2026-09-08 and these
     # fixtures are ``sharp`` shapes, so pin the signal set here: a test of the
     # completion exemption must not re-break every time the lamp ruling moves.
-    monkeypatch.setattr(
-        delta_v2_runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
-    )
+    _tilted_seat(monkeypatch)
 
     _production_arms(monkeypatch)
     # At the live prices the only sanctioned window is refused by charter

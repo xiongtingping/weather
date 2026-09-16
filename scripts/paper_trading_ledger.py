@@ -1853,8 +1853,14 @@ CONSOLIDATION_TILT_SIGNALS: tuple[str, ...] = tuple(
     ).split(",")
     if name.strip() in ("stable", "sharp", "quoted")
 )
+# **固化减仓已退役（宪章第 139 条，2026-09-16 裁决「撤」）**：默认 1＝恒等，
+# 灯仍照算照记（``consolidation_json``），``PAPER_LEDGER_CONSOLIDATION_TILT=0.05``
+# 复现旧规则作研究臂。生产 ``PM_CONSOLIDATION_TILT`` 同步。退役依据见宪章第
+# 139 条：stable 灯亮的 P0 目标篮每美元 −3.1% 对不亮 −10.3%、前后半翻号，
+# 本账本现役书亮 −15.1% 对不亮 −37.0%——砍的是亏得轻的那一半；生产里保底
+# ≈额度，灯亮下单只有 11% 真被砍到。
 CONSOLIDATION_TILT_FACTOR = min(1.0, float(
-    os.environ.get("PAPER_LEDGER_CONSOLIDATION_TILT", "0.05") or 1.0
+    os.environ.get("PAPER_LEDGER_CONSOLIDATION_TILT", "1") or 1.0
 ))
 # Whose lights decide a top-up's tilt.  ``opener`` is the measured rule:
 # the P0 opener's lights set the whole chain's factor.  ``stage`` asks the
@@ -2125,7 +2131,7 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
         if SHAPE_GAP_TILT <= 0
         else "撕裂减仓%g桶×%g" % (SHAPE_GAP_LIMIT_BUCKETS, SHAPE_GAP_TILT)
     ),
-    None
+    "固化减仓已退役(恒等)"
     if CONSOLIDATION_TILT_FACTOR >= 1.0
     else "固化≥%d减仓%g" % (
         CONSOLIDATION_TILT_MIN_SIGNALS, CONSOLIDATION_TILT_FACTOR

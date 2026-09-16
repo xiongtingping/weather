@@ -1675,29 +1675,20 @@ def test_the_consolidation_tilt_scales_stakes_and_never_selects() -> None:
         SELECTION_RULE_LABEL,
     )
 
-    # On by default, reduce-only, at the re-ruled boundary: one of the two
-    # discriminating lights fires it, and it cuts to a twentieth (0.10 ->
-    # 0.05, 2026-08-30 re-measure: monotone in depth down to the
-    # minimum-clip plateau, +14.58 over 0.10 with drop-1/2/3, sign and
-    # both temporal halves agreeing).
+    # Retired 2026-09-16 (charter 139): the default is the identity.  The
+    # 0.05 cut on a lit ``stable`` light landed on the half of the book that
+    # loses less per dollar, and the venue-minimum floor had already eaten
+    # it in production.  The machinery below stays as a research arm
+    # (``PAPER_LEDGER_CONSOLIDATION_TILT=0.05``), so what it does when on is
+    # still pinned; the lights still annotate every row.
     assert CONSOLIDATION_TILT_MIN_SIGNALS == 1
-    assert 0.0 < CONSOLIDATION_TILT_FACTOR < 1.0
-    assert CONSOLIDATION_TILT_FACTOR == 0.05
-    # Ruled 2026-09-08: ``sharp`` marks the days that made money (+8.7% on
-    # 264 settled positions against ``stable``'s -8.6%), and cutting the
-    # stake on those is self-harm.  ``sharp`` stays reachable as an arm.
+    assert CONSOLIDATION_TILT_FACTOR == 1.0
     assert CONSOLIDATION_TILT_SIGNALS == ("stable",)
-    # It reshapes the book, so it must reshape the fingerprint.
-    assert "固化≥1减仓0.05" in SELECTION_RULE_LABEL
-    # The label names the trigger, so moving it drops every row written
-    # under the old one -- which is the point: those rows describe a
-    # strategy that cuts the stake on days this one leaves alone.
-    assert "灯stable" in SELECTION_RULE_LABEL
-    assert "灯stable+sharp" not in SELECTION_RULE_LABEL
-    # The tilted stake floors at the venue's minimum order per leg (one
-    # exchange lot, at least a dollar), or the cut becomes a gate the venue
-    # enforces -- as it had, at three clips, until 2026-09-06.
-    assert "钳交易所最小单×3腿" in SELECTION_RULE_LABEL
+    # Retiring it reshapes the book, so the fingerprint says so in words
+    # rather than by the old segment's absence.
+    assert "固化减仓已退役(恒等)" in SELECTION_RULE_LABEL
+    assert "固化≥" not in SELECTION_RULE_LABEL
+    assert "钳交易所最小单×3腿" not in SELECTION_RULE_LABEL
 
     source = (root / "scripts" / "paper_trading_ledger.py").read_text(
         encoding="utf-8"

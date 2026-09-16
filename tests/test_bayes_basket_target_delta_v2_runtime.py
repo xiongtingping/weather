@@ -1905,12 +1905,16 @@ def test_consolidation_tilt_scales_capital_floored_and_recorded(
     the untilted capital exactly; the tilted arm must never fall under
     one minimum clip per target leg, and the audit must carry the basis
     either way, because the ledger proves alignment off that field.
+
+    The tilt is retired as the default (charter 139: factor 1); what is
+    pinned here is the research arm at its last ruled depth, 0.05.
     """
     import bayes_basket_target.delta_v2_runtime as runtime
 
     monkeypatch.setattr(
         runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
     )
+    monkeypatch.setattr(runtime, "CONSOLIDATION_TILT_FACTOR", 0.05)
 
     tilted = compile_delta_v2_runtime_plan(
         snapshot=_snapshot(),

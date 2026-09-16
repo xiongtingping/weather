@@ -363,8 +363,8 @@ LEDGER_ONLY = {
     ),
     "MAKER_RESTING_CRASH_TICKS": "control arm for the above",
     "CONSOLIDATION_TILT_FACTOR": (
-        "stake tilt; production carries the same 0.05 in delta_v2_runtime"
-        " (G1 port, both moved together 2026-08-30)"
+        "stake tilt; production carries the same default in delta_v2_runtime"
+        " (G1 port; both 0.05 from 2026-08-30, both retired to 1 by charter 139)"
     ),
     "CONSOLIDATION_TILT_MIN_SIGNALS": "same",
     "CONSOLIDATION_QUOTED_FRACTION": "annotation only",
