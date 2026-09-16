@@ -69,8 +69,20 @@ CENTER_WIDTH_METHOD_TAG = "center_width_scalars_v1"
 # The grids the fit searches.  Deliberately coarse: the measured optimum sits
 # on a broad, flat basin (lambda 0.80-0.85 across every slice tried), and a
 # finer grid would only be fitting the sampling noise of a two-week window.
+#
+# The lambda grid reaches past one (charter 138).  It used to stop there,
+# which was the era's own reasoning -- the basin above sat well below one, so
+# 1.000 read as a generous ceiling.  It is not a ceiling, it is a vocabulary:
+# a grid that stops at one can say "narrow" and "hold" and cannot say
+# "widen", whatever the evidence says.  Measured 2026-09-16, P0-M's window
+# containment ran 0.969/0.966/0.942 across three windows -- claiming the
+# mean+-1 window more often than it settles there, i.e. served too narrow --
+# and the residual that fixes it is 1.05 to 1.10, so every fit pinned at the
+# ceiling and reported "unchanged".  1.5 is the kernel's bound and is a
+# different statement (a correction this layer is not entitled to make, which
+# must be reported rather than served), so the grid stops short of it.
 SHIFT_GRID_C = tuple(round(-0.8 + 0.05 * step, 2) for step in range(33))
-LAMBDA_GRID = tuple(round(0.55 + 0.025 * step, 3) for step in range(19))
+LAMBDA_GRID = tuple(round(0.55 + 0.025 * step, 3) for step in range(29))
 # The fit reads served distributions, so whatever is being served is already
 # inside every cell.  Everything the grid measures is therefore a *residual*
 # on top of the incumbent, and identity means "keep serving today's width".
@@ -117,6 +129,18 @@ ROLLING_ORIGIN_MAX_FOLDS = 5
 # window.  Anything smaller is inside the noise of a window this size, and
 # activating on it would churn the served artifact every refit.
 MIN_FORWARD_NLL_GAIN = 0.005
+# The pooled table is held while the lane accumulates and held again when a
+# candidate is refused, and the evidence clock restarts on every serving
+# arithmetic change -- so the moment most likely to invalidate a pair is the
+# same moment that guarantees nobody looks at it for eight days.  The station
+# lane answered this in 2026-09-10 with a veto; this is that gate at the
+# pooled grain (charter 138).  It is a different question from admission, and
+# cheaper one: installing a table needs evidence, while going back to
+# identity needs none -- identity is applying no correction, the default, not
+# a claim to be proved.  So the window is half the qualifying floor, on the
+# station lane's reasoning: a day earlier here is one fewer day served wrong.
+CENTER_WIDTH_VETO_MIN_DAYS = 3
+CENTER_WIDTH_VETO_MIN_CELLS = 60
 # Open-ended edge buckets have no far side; this is the width the fit gives
 # them, and serving must use the same number or the correction lands
 # somewhere the measurement never looked.
@@ -183,7 +207,9 @@ WIDTH_TIER_MODE = (
 )
 if WIDTH_TIER_MODE not in {"shadow", "serve"}:
     raise RuntimeError(f"unknown center-width tier mode: {WIDTH_TIER_MODE}")
-WIDTH_TIER_LAMBDA_GRID = tuple(round(0.50 + 0.025 * step, 3) for step in range(21))
+# Reaches past one for the same reason as the pooled grid (charter 138): a
+# tier whose distributions are served too narrow has to be able to say so.
+WIDTH_TIER_LAMBDA_GRID = tuple(round(0.50 + 0.025 * step, 3) for step in range(31))
 WINDOW_TERM_WEIGHT = float(
     os.environ.get("PM_CENTER_WIDTH_WINDOW_TERM_WEIGHT", "") or 1.0
 )
@@ -362,9 +388,14 @@ _JOURNAL_DDL = (
     " serving_cell_count INTEGER NOT NULL,"
     " forward_nll_gain REAL NOT NULL,"
     " outcome TEXT NOT NULL CHECK(outcome IN"
-    "  ('ACTIVATED','UNCHANGED','ACCUMULATING','REFUSED_FORWARD','NOT_WIRED')),"
+    "  ('ACTIVATED','UNCHANGED','ACCUMULATING','REFUSED_FORWARD','NOT_WIRED',"
+    "   'INCUMBENT_VETOED')),"
     " evidence_json TEXT NOT NULL"
     ")"
+)
+_JOURNAL_OUTCOMES = (
+    "ACTIVATED", "UNCHANGED", "ACCUMULATING", "REFUSED_FORWARD", "NOT_WIRED",
+    "INCUMBENT_VETOED",
 )
 _JOURNAL_INDEX = (
     "CREATE INDEX IF NOT EXISTS idx_center_width_journal_stage_time"
@@ -433,6 +464,18 @@ def ensure_center_width_schema(conn: sqlite3.Connection) -> None:
         )
     except sqlite3.OperationalError:
         pass
+    # Same stamp for the pooled table (charter 138).  Deactivating stops the
+    # unpinned readers; only the stamp stops the pinned ones, and without it
+    # a vetoed pair keeps serving every artifact minted before the veto --
+    # which on 2026-09-10 was the whole difference between retiring the
+    # width tables and actually ceasing to serve them.
+    try:
+        conn.execute(
+            "ALTER TABLE calibration_center_width_table"
+            " ADD COLUMN retired_at_utc TEXT"
+        )
+    except sqlite3.OperationalError:
+        pass
     # The TAF-conditional cells (charter 57) ride on the same row as the
     # pooled scalars they refine; nullable so every pre-lane row keeps
     # reading as pooled-only.
@@ -471,26 +514,35 @@ def ensure_center_width_schema(conn: sqlite3.Connection) -> None:
     ).fetchone()
     live = str((row or [""])[0] or "")
     missing = [
-        outcome
-        for outcome in ("ACTIVATED", "UNCHANGED", "ACCUMULATING",
-                        "REFUSED_FORWARD", "NOT_WIRED")
-        if f"'{outcome}'" not in live
+        outcome for outcome in _JOURNAL_OUTCOMES if f"'{outcome}'" not in live
     ]
     if live and missing:
-        conn.execute(
-            "ALTER TABLE calibration_center_width_fit_journal"
-            " RENAME TO calibration_center_width_fit_journal_superseded"
-        )
-        conn.execute(_JOURNAL_DDL)
-        conn.execute(
-            "INSERT OR IGNORE INTO calibration_center_width_fit_journal"
-            " SELECT * FROM calibration_center_width_fit_journal_superseded"
-        )
-        conn.execute(
-            "DROP TABLE calibration_center_width_fit_journal_superseded"
-        )
-        conn.commit()
-    conn.execute(_JOURNAL_INDEX)
+        # Degrade on a read-only connection rather than failing the caller.
+        # Every dry run, probe and dashboard opens this store read-only and
+        # calls the schema on the way in; a rebuild that raises there would
+        # take all of them out between a deploy and the next writable sweep,
+        # for a migration none of them needs -- they read the journal, they
+        # do not insert the new outcome into it.
+        try:
+            conn.execute(
+                "ALTER TABLE calibration_center_width_fit_journal"
+                " RENAME TO calibration_center_width_fit_journal_superseded"
+            )
+            conn.execute(_JOURNAL_DDL)
+            conn.execute(
+                "INSERT OR IGNORE INTO calibration_center_width_fit_journal"
+                " SELECT * FROM calibration_center_width_fit_journal_superseded"
+            )
+            conn.execute(
+                "DROP TABLE calibration_center_width_fit_journal_superseded"
+            )
+            conn.commit()
+        except sqlite3.OperationalError:
+            conn.rollback()
+    try:
+        conn.execute(_JOURNAL_INDEX)
+    except sqlite3.OperationalError:
+        pass
     # Same widening for the station journal: the veto outcome was added
     # after the live table was created.
     row = conn.execute(
@@ -501,19 +553,25 @@ def ensure_center_width_schema(conn: sqlite3.Connection) -> None:
     if live and any(
         f"'{outcome}'" not in live for outcome in _STATION_JOURNAL_OUTCOMES
     ):
-        conn.execute(
-            "ALTER TABLE calibration_center_width_station_journal"
-            " RENAME TO calibration_center_width_station_journal_superseded"
-        )
-        conn.execute(_STATION_JOURNAL_DDL)
-        conn.execute(
-            "INSERT OR IGNORE INTO calibration_center_width_station_journal"
-            " SELECT * FROM calibration_center_width_station_journal_superseded"
-        )
-        conn.execute(
-            "DROP TABLE calibration_center_width_station_journal_superseded"
-        )
-        conn.commit()
+        try:
+            conn.execute(
+                "ALTER TABLE calibration_center_width_station_journal"
+                " RENAME TO"
+                " calibration_center_width_station_journal_superseded"
+            )
+            conn.execute(_STATION_JOURNAL_DDL)
+            conn.execute(
+                "INSERT OR IGNORE INTO"
+                " calibration_center_width_station_journal"
+                " SELECT * FROM"
+                " calibration_center_width_station_journal_superseded"
+            )
+            conn.execute(
+                "DROP TABLE calibration_center_width_station_journal_superseded"
+            )
+            conn.commit()
+        except sqlite3.OperationalError:
+            conn.rollback()
 
 
 def _check_stage(stage: str) -> str:
@@ -574,12 +632,21 @@ def load_center_width(
     *,
     stage: str,
     table_sha256: str | None = None,
+    as_of_utc: str | None = None,
 ) -> tuple[float, float, str] | None:
     """The stage's active scalars, or the pinned version an artifact names.
 
     A pinned sha that is missing fails closed, for the same reason the band
     table does: an artifact whose scored math cannot be reproduced must not
-    be served an approximation of it.
+    be served an approximation of it.  A pinned sha the lane RETIRED is the
+    one case that does not fail closed and does not serve either: the pin
+    exists so serving reproduces the width the gate scored, and the veto is
+    the settled truth saying that width was wrong, so it reads as identity
+    with the sha kept for the receipt (charter 138, the station lane's rule
+    at the pooled grain).
+
+    ``as_of_utc`` reads that retirement at a moment: serving passes nothing
+    and stops at the veto, a replay passes the decision's time.
 
     This is a read.  It creates nothing -- a missing table means no
     correction has ever been fitted, which is exactly the None case.  The
@@ -591,18 +658,35 @@ def load_center_width(
     try:
         if table_sha256 is None:
             row = conn.execute(
-                "SELECT delta_c, width_lambda, center_width_sha256"
+                "SELECT delta_c, width_lambda, center_width_sha256, NULL"
                 " FROM calibration_center_width_table"
                 " WHERE activated=1 AND stage=?",
                 (stage_id,),
             ).fetchone()
         else:
-            row = conn.execute(
-                "SELECT delta_c, width_lambda, center_width_sha256"
-                " FROM calibration_center_width_table"
-                " WHERE center_width_sha256=?",
-                (str(table_sha256),),
-            ).fetchone()
+            try:
+                row = conn.execute(
+                    "SELECT delta_c, width_lambda, center_width_sha256,"
+                    " retired_at_utc"
+                    " FROM calibration_center_width_table"
+                    " WHERE center_width_sha256=?",
+                    (str(table_sha256),),
+                ).fetchone()
+            except sqlite3.OperationalError as exc:
+                if "retired_at_utc" not in str(exc):
+                    raise
+                # A store the migration has not reached yet: the resident
+                # serves without running the schema, so between a deploy and
+                # the next sweep the column is absent.  That is not a missing
+                # table -- read it exactly as before the column existed,
+                # never retired, rather than failing closed on every artifact
+                # that pins a version.
+                row = conn.execute(
+                    "SELECT delta_c, width_lambda, center_width_sha256, NULL"
+                    " FROM calibration_center_width_table"
+                    " WHERE center_width_sha256=?",
+                    (str(table_sha256),),
+                ).fetchone()
     except sqlite3.OperationalError:
         # No table yet: nothing has been fitted, so nothing is served.  A
         # pinned request still fails closed below rather than silently
@@ -614,7 +698,39 @@ def load_center_width(
         if table_sha256 is not None:
             raise ContractError("center_width_pinned_table_missing")
         return None
+    if table_sha256 is not None and row[3] and (
+        as_of_utc is None or utc_instant(row[3]) <= utc_instant(as_of_utc)
+    ):
+        return 0.0, 1.0, str(row[2])
     return float(row[0]), float(row[1]), str(row[2])
+
+
+def _pinned_center_width_retired(
+    conn: sqlite3.Connection,
+    *,
+    table_sha256: str,
+    as_of_utc: str | None = None,
+) -> bool:
+    """Whether the pinned version had been retired by ``as_of_utc``.
+
+    Retirement retires the whole row's arithmetic, not just its scalars: a
+    pin that reads identity for the pair while still serving that row's floor
+    or tier table would serve a composition nobody ever scored.  Absent
+    column (deploy before the sweep) reads as never retired, the same way
+    the scalar loader reads it.
+    """
+
+    try:
+        row = conn.execute(
+            "SELECT retired_at_utc FROM calibration_center_width_table"
+            " WHERE center_width_sha256=?",
+            (str(table_sha256),),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return False
+    if row is None or not row[0]:
+        return False
+    return as_of_utc is None or utc_instant(row[0]) <= utc_instant(as_of_utc)
 
 
 def load_center_width_floor(
@@ -622,6 +738,7 @@ def load_center_width_floor(
     *,
     stage: str,
     table_sha256: str | None = None,
+    as_of_utc: str | None = None,
 ) -> float:
     """The width floor the active -- or pinned -- scalars were fitted under.
 
@@ -634,6 +751,10 @@ def load_center_width_floor(
     """
 
     stage_id = _check_stage(stage)
+    if table_sha256 is not None and _pinned_center_width_retired(
+        conn, table_sha256=table_sha256, as_of_utc=as_of_utc
+    ):
+        return 0.0
     try:
         if table_sha256 is None:
             row = conn.execute(
@@ -661,12 +782,17 @@ def load_center_width_tiers(
     *,
     stage: str,
     table_sha256: str | None = None,
+    as_of_utc: str | None = None,
 ) -> dict[str, Any] | None:
     """The active (or pinned) table's width tiers, if any -- None means the
     table serves one lambda, which is every row written before the tier
     lane existed and every fit whose tiers were not admitted to serve."""
 
     stage_id = _check_stage(stage)
+    if table_sha256 is not None and _pinned_center_width_retired(
+        conn, table_sha256=table_sha256, as_of_utc=as_of_utc
+    ):
+        return None
     try:
         if table_sha256 is None:
             row = conn.execute(
@@ -703,6 +829,7 @@ def load_center_width_cells(
     *,
     stage: str,
     table_sha256: str | None = None,
+    as_of_utc: str | None = None,
 ) -> dict[str, tuple[float, float, float]] | None:
     """The active (or pinned) table's TAF-conditional cells, if any.
 
@@ -713,6 +840,10 @@ def load_center_width_cells(
     """
 
     stage_id = _check_stage(stage)
+    if table_sha256 is not None and _pinned_center_width_retired(
+        conn, table_sha256=table_sha256, as_of_utc=as_of_utc
+    ):
+        return None
     try:
         if table_sha256 is None:
             row = conn.execute(
@@ -907,6 +1038,116 @@ def load_station_width(
         {str(row[0]): float(row[1]) for row in rows},
         str(rows[0][2]),
     )
+
+
+def _active_center_width_activated_at(
+    conn: sqlite3.Connection, *, stage: str
+) -> str | None:
+    try:
+        row = conn.execute(
+            "SELECT MAX(activated_at_utc) FROM calibration_center_width_table"
+            " WHERE activated=1 AND stage=?",
+            (stage,),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    return None if row is None or row[0] is None else str(row[0])
+
+
+def _undo_center_width_nll(
+    cell: Mapping[str, Any], *, delta_c: float, width_lambda: float
+) -> float:
+    """The cell's NLL with the pooled pair it was served under taken back off.
+
+    The kernel moves each bucket to ``mean + (origin - mean) * lam + shift``
+    about the INPUT distribution's mean, so the served distribution's mean is
+    ``mean + shift`` and applying ``(-shift, 1/lam)`` to it lands every bucket
+    back on its origin -- the exact inverse, not a probe, up to the rebinning
+    and the hard bound that neither direction can undo.
+
+    Clamped to the kernel's own bounds for the same reason the station lane
+    clamps: undoing a very hard contraction asks for a lambda the kernel
+    refuses, and if even the clamped widening beats the served cell then the
+    contraction was too much, which is the only question the veto asks.
+    """
+
+    lam = float(width_lambda)
+    inverse = MAX_WIDTH_LAMBDA if lam <= 0.0 else 1.0 / lam
+    inverse = min(MAX_WIDTH_LAMBDA, max(MIN_WIDTH_LAMBDA, inverse))
+    shift = max(-MAX_ABS_SHIFT_C, min(MAX_ABS_SHIFT_C, -float(delta_c)))
+    adjusted, _ = apply_center_width_calibration(
+        cell["probabilities"],
+        delta_c=shift,
+        width_lambda=inverse,
+        ordered_keys=cell["ordered_keys"],
+        key_centers_c=cell["key_centers_c"],
+        excluded_buckets=cell["excluded_buckets"],
+    )
+    total_mass = sum(adjusted.values())
+    if total_mass <= 0.0:
+        return -math.log(1e-6)
+    return -math.log(max(adjusted[cell["settled_bucket"]] / total_mass, 1e-6))
+
+
+def _center_width_veto(
+    by_day: Mapping[str, Sequence[Mapping[str, Any]]],
+    *,
+    delta_c: float,
+    width_lambda: float,
+    activated_at_utc: str | None,
+) -> dict[str, Any]:
+    """Score the active pair on the cells served after it went live: kept
+    (served as-is) against undone.  ``vetoed`` when undoing wins by more than
+    the admission hurdle on at least the veto window (charter 138)."""
+
+    since = activated_at_utc or ""
+    kept_total = undone_total = 0.0
+    count = 0
+    per_day: dict[str, dict[str, float]] = {}
+    for day in sorted(by_day):
+        day_kept = day_undone = 0.0
+        day_count = 0
+        for cell in by_day[day]:
+            if str(cell.get("decision_at_utc") or "") < since:
+                continue
+            # The served pair is already inside the cell, so serving it as-is
+            # is the identity residual -- applying the pair again here would
+            # score the incumbent against its own scalars squared.
+            day_kept += _cell_nll(cell, delta_c=0.0, width_lambda=1.0)
+            day_undone += _undo_center_width_nll(
+                cell, delta_c=delta_c, width_lambda=width_lambda
+            )
+            day_count += 1
+        if day_count:
+            per_day[day] = {
+                "cells": day_count,
+                "kept_minus_undone": (day_kept - day_undone) / day_count,
+            }
+            kept_total += day_kept
+            undone_total += day_undone
+            count += day_count
+    enough = (
+        len(per_day) >= CENTER_WIDTH_VETO_MIN_DAYS
+        and count >= CENTER_WIDTH_VETO_MIN_CELLS
+    )
+    gain = 0.0 if count == 0 else (kept_total - undone_total) / count
+    return {
+        "schema": "center_width_incumbent_veto_v1",
+        "activated_at_utc": activated_at_utc,
+        "incumbent_delta_c": float(delta_c),
+        "incumbent_width_lambda": float(width_lambda),
+        "day_count": len(per_day),
+        "cell_count": count,
+        "nll_kept": None if count == 0 else kept_total / count,
+        "nll_undone": None if count == 0 else undone_total / count,
+        "undo_gain": gain,
+        "hurdle": MIN_FORWARD_NLL_GAIN,
+        "min_days": CENTER_WIDTH_VETO_MIN_DAYS,
+        "min_cells": CENTER_WIDTH_VETO_MIN_CELLS,
+        "enough_evidence": enough,
+        "vetoed": bool(enough and gain > MIN_FORWARD_NLL_GAIN),
+        "per_day": per_day,
+    }
 
 
 def _active_station_width_activated_at(
@@ -2394,6 +2635,34 @@ def fit_center_width(
             lambda: serving_arithmetic.watchdog(conn, stage=stage_id),
         ),
     }
+    # Before anything else, and before the accumulating gate in particular:
+    # holding the incumbent is only safe while it is still earning its place,
+    # and the hold is exactly when nobody else is looking (charter 138).
+    if active is not None and (base[0] != 0.0 or base[1] != 1.0):
+        veto = _center_width_veto(
+            by_day,
+            delta_c=base[0],
+            width_lambda=base[1],
+            activated_at_utc=_active_center_width_activated_at(
+                conn, stage=stage_id
+            ),
+        )
+        evidence["incumbent_veto"] = veto
+        if veto["vetoed"]:
+            evidence["basis"] = "INCUMBENT_VETOED"
+            return {
+                "stage": stage_id,
+                "delta_c": 0.0,
+                "width_lambda": 1.0,
+                "sigma_floor_rungs": 0.0,
+                "width_tiers": None,
+                "forward_nll_gain": -float(veto["undo_gain"]),
+                "accumulating": accumulating,
+                "vetoed": True,
+                "serving_day_count": len(days),
+                "serving_cell_count": len(cells),
+                "evidence": evidence,
+            }
     if accumulating:
         evidence["basis"] = "ACCUMULATING"
         # The cells are only scored once the pooled pair is, but how far each
@@ -2424,6 +2693,7 @@ def fit_center_width(
             "width_tiers": base_tiers,
             "forward_nll_gain": 0.0,
             "accumulating": True,
+            "vetoed": False,
             "serving_day_count": len(days),
             "serving_cell_count": len(cells),
             "evidence": evidence,
@@ -2444,6 +2714,7 @@ def fit_center_width(
             "width_tiers": base_tiers,
             "forward_nll_gain": 0.0,
             "accumulating": False,
+            "vetoed": False,
             "admitted": False,
             "serving_day_count": len(days),
             "serving_cell_count": len(cells),
@@ -2694,6 +2965,7 @@ def fit_center_width(
         "forward_nll_gain": gain,
         "admitted": admitted,
         "accumulating": False,
+        "vetoed": False,
         "serving_day_count": len(days),
         "serving_cell_count": len(cells),
         "taf_cells": taf_cells,
@@ -2792,6 +3064,54 @@ def persist_and_activate_center_width(
         "state": "ACTIVATED",
         "center_width_sha256": digest,
         "activated_at_utc": now,
+    }
+
+
+def retire_center_width(
+    conn: sqlite3.Connection,
+    *,
+    stage: str,
+    retired_at_utc: str | None = None,
+) -> dict[str, Any]:
+    """Deactivate this stage's pooled scalars AND stamp them retired.
+
+    Two effects, and the second is the one that matters: deactivating stops
+    the unpinned readers, the stamp stops the pinned ones.  Every earlier
+    version of the stage is stamped with it, not just the active one -- the
+    veto is a verdict on the contraction as served, and an older version
+    still pinned by a live artifact carried the same contraction from the
+    same evidence (charter 138; the band store's ``retire_band_table`` and
+    the station lane's deactivation path answer this the same way).
+    """
+
+    stage_id = _check_stage(stage)
+    ensure_center_width_schema(conn)
+    now = retired_at_utc or datetime.now(timezone.utc).isoformat().replace(
+        "+00:00", "Z"
+    )
+    active = conn.execute(
+        "SELECT center_width_sha256 FROM calibration_center_width_table"
+        " WHERE activated=1 AND stage=?",
+        (stage_id,),
+    ).fetchone()
+    _begin_immediate(conn)
+    try:
+        cursor = conn.execute(
+            "UPDATE calibration_center_width_table"
+            " SET activated=0, activated_at_utc=NULL, retired_at_utc=?"
+            " WHERE stage=? AND retired_at_utc IS NULL",
+            (now, stage_id),
+        )
+        retired = int(cursor.rowcount or 0)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return {
+        "state": "RETIRED" if retired else "UNCHANGED",
+        "center_width_sha256": None if active is None else str(active[0]),
+        "retired_at_utc": now,
+        "retired_row_count": retired,
     }
 
 
@@ -2975,6 +3295,8 @@ def _refit_stages(
                 ),
                 "forward_nll_gain": fitted["forward_nll_gain"],
                 "accumulating": fitted["accumulating"],
+                "vetoed": fitted.get("vetoed", False),
+                "incumbent_veto": fitted["evidence"].get("incumbent_veto"),
                 "admitted": fitted.get("admitted", False),
                 "served_stage": stage in CENTER_WIDTH_SERVED_STAGES,
                 "active_sha256": None if active is None else active[2],
@@ -3000,6 +3322,11 @@ def _refit_stages(
             if commit:
                 if stage not in CENTER_WIDTH_SERVED_STAGES:
                     outcome = "NOT_WIRED"
+                elif fitted.get("vetoed", False):
+                    # Ahead of the accumulating branch, because that branch
+                    # is the hold the veto exists to interrupt.
+                    entry["commit"] = retire_center_width(conn, stage=stage)
+                    outcome = "INCUMBENT_VETOED"
                 elif fitted["accumulating"]:
                     outcome = "ACCUMULATING"
                 elif not fitted.get("admitted", False):

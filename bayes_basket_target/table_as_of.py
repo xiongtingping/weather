@@ -185,23 +185,27 @@ def center_width_as_of(
         journal="calibration_center_width_fit_journal",
         sha_column="center_width_sha256",
         stage=stage,
+        # Retirable since charter 138: the pooled lane can now veto its own
+        # incumbent, so a replay after the retirement must score identity the
+        # same way the station lane's does -- reading the pair back would
+        # replay a width the veto already ruled wrong.
         as_of_utc=as_of_utc,
-        retirable=False,
+        retirable=True,
     )
     if sha is None:
         return None
     delta_c, width_lambda, resolved = load_center_width(
-        conn, stage=stage, table_sha256=sha
+        conn, stage=stage, table_sha256=sha, as_of_utc=as_of_utc
     )
     return {
         "delta_c": delta_c,
         "width_lambda": width_lambda,
         "center_width_sha256": resolved,
         "sigma_floor_rungs": load_center_width_floor(
-            conn, stage=stage, table_sha256=sha
+            conn, stage=stage, table_sha256=sha, as_of_utc=as_of_utc
         ),
         "width_tiers": load_center_width_tiers(
-            conn, stage=stage, table_sha256=sha
+            conn, stage=stage, table_sha256=sha, as_of_utc=as_of_utc
         ),
     }
 

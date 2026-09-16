@@ -5238,6 +5238,11 @@ def collect_center_width(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             state, health = "攒证据中", "amber"
         elif outcome == "REFUSED_FORWARD":
             state, health = "试算后更差，不采用", "green"
+        elif outcome == "INCUMBENT_VETOED":
+            # Charter 138: the lane retired its own pair because undoing it
+            # beat serving it.  No active row here is a verdict, not a hole,
+            # and identity is what the stage is deliberately serving.
+            state, health = "现役被否决退役 · 按恒等服务", "green"
         else:
             state, health = "无记录", "amber"
         rows.append({
