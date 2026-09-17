@@ -12204,7 +12204,6 @@ function stationFailureIndex(){
   const by={};
   rows.forEach(s=>{by[s.station_id]=s;});
   return {by:by, thresholds:M.thresholds||{},
-    split:M.split_event_date,
     worst:rows.filter(s=>s.flag_count>=4).map(s=>s.station_id),
     clean:rows.filter(s=>s.flag_count===0).length};
 }
@@ -15294,7 +15293,7 @@ function liveReadiness(){
     if(!FX) return "";
     const s = FX.by[station];
     if(!s) return `<td class="mono muted" ${EDGE}>—</td>`
-      + '<td class="mono muted">—</td>'.repeat(6);
+      + '<td class="mono muted">—</td>'.repeat(4);
     // Thin stations are not good stations, they are unjudged ones, so the
     // count is muted rather than hidden and the cell says so in place.
     const thin = s.settled_count < 6;
@@ -15304,11 +15303,7 @@ function liveReadiness(){
         (100*s.basket_coverage).toFixed(0)+"%"}</td>
       <td class="mono">${fnum(s.realization_ratio,2)}</td>
       <td class="mono">${fnum(s.calibration_ratio,2)}</td>
-      <td class="mono">${fnum(s.centre_residual_c,2,"C")}</td>
-      <td class="mono">${s.early_pnl_usdc>=0?"+":""}${
-        s.early_pnl_usdc.toFixed(1)}<span class="muted">(${s.early_chains})</span></td>
-      <td class="mono">${s.late_pnl_usdc>=0?"+":""}${
-        s.late_pnl_usdc.toFixed(1)}<span class="muted">(${s.late_chains})</span></td>`;
+      <td class="mono">${fnum(s.centre_residual_c,2,"C")}</td>`;
   };
   // The live book per station: what the exchange filled, settled on the
   // same resolver as the money card.  The gates, the five dimensions and
@@ -15350,6 +15345,10 @@ function liveReadiness(){
   // station-day, 持仓命中 over the ones that filled, and the 笔 rate beside
   // its claim, the 90% interval in the hover.
   const hfrac = (a,b) => b ? `${a}/${b} <span class="muted">${pc0(a/b)}</span>` : "—";
+  // Sort key for a hit cell: the rate, and on a tie the larger sample sorts
+  // higher (the nudge stays below the gap between any two distinct rates on
+  // these denominators).
+  const hsort = (a,b) => `data-sort="${b ? a/b + b*1e-9 : ""}"`;
   const hcells = (sid) => {
     const x = SS[sid];
     if(!x) return `<td class="mono muted" ${EDGE}>—</td>`
@@ -15359,9 +15358,9 @@ function liveReadiness(){
     // Coloured only when the claim sits outside the interval: inside it, a
     // station's handful of 笔 cannot tell its claim from luck.
     const off = (ci && claim!=null) ? (claim>ci[1]?"down":(claim<ci[0]?"up":"")) : "";
-    return `<td class="mono" ${EDGE}>${hfrac(x.basket_hit_station_days, x.settled_station_days)}</td>
-      <td class="mono">${hfrac(x.held_hit_station_days, x.held_station_days)}</td>
-      <td class="mono ${off}"${ci?` title="90% 区间 ${pc0(ci[0])}–${pc0(ci[1])}，声称 ${pc0(claim)}"`:""}>${hfrac(x.hit_count, x.claimed_count)}</td>
+    return `<td class="mono" ${EDGE} ${hsort(x.basket_hit_station_days, x.settled_station_days)}>${hfrac(x.basket_hit_station_days, x.settled_station_days)}</td>
+      <td class="mono" ${hsort(x.held_hit_station_days, x.held_station_days)}>${hfrac(x.held_hit_station_days, x.held_station_days)}</td>
+      <td class="mono ${off}" ${hsort(x.hit_count, x.claimed_count)}${ci?` title="90% 区间 ${pc0(ci[0])}–${pc0(ci[1])}，声称 ${pc0(claim)}"`:""}>${hfrac(x.hit_count, x.claimed_count)}</td>
       <td class="mono">${pc0(claim)}</td>`;
   };
   const HT = Object.values(SS).reduce((a,x)=>{
@@ -15423,7 +15422,7 @@ function liveReadiness(){
     return `<tr><td>${h(bd)}</td><td>${cl}</td><td>${a.n}</td>
       <td class="mono">${a.intents}</td><td class="mono">${a.filled}</td>
       <td class="mono">${a.baskets?`${a.complete}/${a.baskets}`:"—"}</td>
-      <td class="mono">${hfrac(a.bh, a.sd)}</td><td class="mono">${hfrac(a.hh, a.hd)}</td>
+      <td class="mono" ${hsort(a.bh, a.sd)}>${hfrac(a.bh, a.sd)}</td><td class="mono" ${hsort(a.hh, a.hd)}>${hfrac(a.hh, a.hd)}</td>
       <td class="mono">${a.set}</td><td>${pc0(hit)}</td><td>${pc0(claim)}</td>
       <td class="${cal==null?"":(cal>=1?"up":"down")}">${cal==null?"—":n2(cal)+"×"}</td>
       <td class="mono">${n2(a.stake)}</td>
@@ -15508,12 +15507,12 @@ function liveReadiness(){
     <table style="white-space:nowrap"><thead><tr><th>站</th><th title="三个开关都是人工裁定，点击即开启关闭，改动立刻写盘并记审计。禁入=不下单（记账照旧）；豁免=证据不够也上线；待观察=够格也先不下单。三者互斥。">闸门（人工）</th><th>过闸</th><th>未过项</th>
       <th title="实盘：该站真实成交腿里已结算的站日数" style="border-left:1px solid var(--line)">实盘站日</th><th title="实盘：命中腿/已结算成交腿，+N待＝已成交但还没结算的腿">实盘腿</th><th title="实盘：已结算成交腿的实付金额(U)">实盘投入</th><th title="实盘：已结算成交腿的盈亏(U)＝命中份数×1U−实付">实盘盈亏</th><th title="实盘：盈亏÷投入，待结算腿不计入">实盘ROI</th><th title="实盘：实盘账本最近 5 个结算日的 ROI${(LP.recent_window_dates||[]).length?"（"+LP.recent_window_dates[0]+" 起）":""}">实盘近5日</th>
       <th title="命中·站日：真值落在生产挑中的桶里的站日/已结算站日；挑中的桶成交与否、是否被实盘门拒掉都算（与每日统计同一判定）" style="border-left:1px solid var(--line)">篮子命中<br><span class="muted">站日</span></th><th title="命中·站日：真值落在成交的桶里的站日/有成交的已结算站日">持仓命中<br><span class="muted">站日</span></th><th title="命中·笔：一个站日一个阶段成交过的腿算一笔；持有的桶含真值的笔/声称已知的已结算笔。悬停看 90% 区间；声称落在区间外才着色（红＝声称高于区间上沿）">命中率<br><span class="muted">笔</span></th><th title="命中·笔：下单决策绑定的概率包里持有各桶概率之和，按笔平均">声称<br><span class="muted">笔</span></th>${
-      FX?`<th title="实盘：五个维度各指认不同的一层，见上方折叠说明" style="border-left:1px solid var(--line)">不行</th><th title="实盘">不行的维度</th>
-      <th title="实盘：已结算的实盘篮子数（站日×阶段，每个阶段各持一个篮子）" style="border-left:1px solid var(--line)">实盘结算笔</th><th title="实盘：站日里挂出的桶盖住真值的比例；＜${(100*(FX.thresholds.coverage_floor||0)).toFixed(0)}% 算「覆盖」不行">覆盖率</th><th title="实盘：实得盈亏÷声称期望；＜0 算「实现」不行">实现/期望</th><th title="实盘：命中率÷平均声称。五闸「声称诚实」要求 0.88–1.18；＜${FX.thresholds.claim_floor} 算「声称」不行">命中/声称</th><th title="实盘：成交篮子所依据的模型中心−结算真值，按站日平均。五闸「中心偏差」要求 |x|≤0.8°C；＞${FX.thresholds.centre_limit_c}°C 算「中心」不行">中心偏差</th><th title="实盘：分割日之前的站日盈亏(U)，括号里是站日数">前半段</th><th title="实盘：分割日及之后的站日盈亏(U)，括号里是站日数；前后都亏算「持续」不行">后半段</th>`:""}
+      FX?`<th title="实盘：五个维度里不行的项数，每个维度指认不同的一层" style="border-left:1px solid var(--line)">不行</th><th title="实盘：实现、声称、中心、覆盖四项见右边各列的说明；「持续」＝以全队已结算站日的中位日切成前后两段，两段的站日盈亏都为负">不行的维度</th>
+      <th title="实盘：已结算的实盘篮子数（站日×阶段，每个阶段各持一个篮子）" style="border-left:1px solid var(--line)">实盘结算笔</th><th title="实盘：站日里挂出的桶盖住真值的比例；＜${(100*(FX.thresholds.coverage_floor||0)).toFixed(0)}% 算「覆盖」不行">覆盖率</th><th title="实盘：实得盈亏÷声称期望；＜0 算「实现」不行">实现/期望</th><th title="实盘：命中率÷平均声称。五闸「声称诚实」要求 0.88–1.18；＜${FX.thresholds.claim_floor} 算「声称」不行">命中/声称</th><th title="实盘：成交篮子所依据的模型中心−结算真值，按站日平均。五闸「中心偏差」要求 |x|≤0.8°C；＞${FX.thresholds.centre_limit_c}°C 算「中心」不行">中心偏差</th>`:""}
       <th title="该站真值的日际跳变均值(°C)：天气性格，>1.76 的站在真边际枯竭期实测 −43%（留存组 +23%，p=0.023）。外生、慢变、先于账本。" style="border-left:1px solid var(--line)">跳变/日</th><th title="近14天池子里模型分布的均值−众数距离(桶)：跳变在模型层的影子(r=+0.32)，>0.93 为高。">形状gap</th>
       <th title="实盘订单：该站铸出的全部实盘意向腿，含被实盘门拒掉的" style="border-left:1px solid var(--line)">意向腿</th><th title="实盘订单：到过交易所的腿">到所</th><th title="实盘订单：被实盘门（禁入/总闸/待观察/网关）拒掉、从没到过交易所的腿">被拒</th><th title="实盘订单：成交过的腿">成交腿</th><th title="实盘订单：全部意向的请求名义金额(U)">意向名义</th><th title="实盘订单：成交金额(U)">成交额</th>
       <th title="篮子完整：挂出的桶全部买到的篮数/挂到交易所的篮数（一个站日的一个阶段算一篮）" style="border-left:1px solid var(--line)">完整篮</th><th title="篮子完整：每篮 买到桶数÷挂出桶数 的平均，如挂 3 买 2 记 67%">完整度</th>
-      <th title="生产那一笔决策的席位中心桶相对市场中心桶：偏上/一致/偏下的决策数" style="border-left:1px solid var(--line)">位置<br><span class="muted">上/平/下</span></th><th title="生产入座时记下的整篮声称概率，按决策平均">概率和</th><th title="生产入座时记下的整篮全含费卖价，按决策平均">卖价和</th><th title="按实际成交成本算的赔率（按投入加权的均价再求赔率）">赔率</th><th title="已结算实盘单的声称期望÷投入">EV/U</th>
+      <th title="生产那一笔决策的席位中心桶相对市场中心桶：偏上/一致/偏下的决策数" style="border-left:1px solid var(--line)">位置<br><span class="muted">上/平/下</span></th><th title="生产入座时记下的整篮声称概率，按决策平均">选桶概率和</th><th title="生产入座时记下的整篮全含费卖价，按决策平均">卖价和</th><th title="按实际成交成本算的赔率（按投入加权的均价再求赔率）">赔率</th><th title="已结算实盘单的声称期望÷投入">EV/U</th>
       <th title="站点纬度分带：回归线以内热带，23.4°–35° 副热带，35°–55° 温带，55° 以上高纬" style="border-left:1px solid var(--line)">气候带</th><th title="离开阔海面约 30 公里内算沿海，湖和内河不算">海陆</th>
       </tr></thead><tbody>${rows}</tbody></table></div>
     <div class="muted" style="margin-top:6px;font-size:11.5px">
@@ -15899,7 +15898,9 @@ function makeSortable(table){
   const heads=[...table.querySelectorAll(":scope > thead > tr > th")];
   heads.forEach((th,index)=>{
     th.style.cursor="pointer";
-    th.title="点击排序";
+    // Appended, not assigned: assigning wiped every header's own hover
+    // text, so no column on a sortable table could say what it counts.
+    th.title=th.title ? th.title+"（点击排序）" : "点击排序";
     th.addEventListener("click",()=>{
       const body=table.querySelector(":scope > tbody");
       if(!body) return;
@@ -15911,6 +15912,14 @@ function makeSortable(table){
       const value=(row)=>{
         const cell=row.cells[index];
         if(!cell) return {n:null,s:""};
+        // A cell that shows two numbers says which one it sorts on.  "8/9
+        // 89%" read as its first number sorted the hit columns by hit count,
+        // so 1/1 sat under 8/9; the cell carries the rate instead, and an
+        // empty value sinks like a dash.
+        if(cell.dataset.sort!==undefined){
+          const n=cell.dataset.sort===""?NaN:parseFloat(cell.dataset.sort);
+          return Number.isFinite(n)?{n:n,s:""}:{n:null,s:""};
+        }
         // Sort on what the cell shows, not on what it hides.  ``textContent``
         // is recursive, so a folded-away per-leg table contributes its share
         // counts and rung prices to the sort key -- and the first number in
