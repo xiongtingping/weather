@@ -2621,7 +2621,6 @@ def collect_h5_bias_accuracy(conn: sqlite3.Connection) -> dict[str, Any]:
         ].append(float(raw))
 
     per_station_day: dict[tuple[str, str], list[float]] = defaultdict(list)
-    per_system: dict[str, list[float]] = defaultdict(list)
     cells = 0
     for (station, system, day, lead, cycle), values in members.items():
         settled = truth.get((station, day))
@@ -2641,10 +2640,9 @@ def collect_h5_bias_accuracy(conn: sqlite3.Connection) -> dict[str, Any]:
             - abs(forecast - bias_h15 - settled)
         )
         per_station_day[(station, day)].append(delta)
-        per_system[str(system)].append(delta)
         cells += 1
     if not per_station_day:
-        return {"from_utc": h5_from, "station_days": 0, "days": []}
+        return {"from_utc": h5_from, "station_days": 0}
 
     station_day_means = {
         key: statistics.mean(values)
@@ -2658,9 +2656,6 @@ def collect_h5_bias_accuracy(conn: sqlite3.Connection) -> dict[str, Any]:
         (better - decided / 2) / math.sqrt(decided / 4)
         if decided else 0.0
     )
-    by_day: dict[str, list[float]] = defaultdict(list)
-    for (_station, day), value in station_day_means.items():
-        by_day[day].append(value)
     return {
         "from_utc": h5_from,
         "cells": cells,
@@ -2678,25 +2673,6 @@ def collect_h5_bias_accuracy(conn: sqlite3.Connection) -> dict[str, Any]:
         # clustered sign test; anything inside it is "not yet decided",
         # however large the per-cell sample looks.
         "significant": abs(z) >= 1.96,
-        "days": [
-            {
-                "event_date": day,
-                "stations": len(values),
-                "mean_delta_c": round(statistics.mean(values), 4),
-                "h5_better": sum(1 for value in values if value < 0),
-            }
-            for day, values in sorted(by_day.items())
-        ],
-        "systems": [
-            {
-                "system": system,
-                "cells": len(values),
-                "mean_delta_c": round(statistics.mean(values), 4),
-                "h5_better": sum(1 for value in values if value < 0),
-                "h5_worse": sum(1 for value in values if value > 0),
-            }
-            for system, values in sorted(per_system.items())
-        ],
     }
 
 
@@ -12289,17 +12265,6 @@ function basketHit(){
   ${offBlock}`;
 }
 
-// Both halves of "did a correction land closer to truth" in one section
-// (user ruling, 2026-09-11).  One measures a parameter of the fitted bias
-// layer -- the half-life -- against held-out truth; the other is the
-// unfitted layer that reacts to yesterday's fleet-wide miss the next
-// morning.  They are the same question asked of a slow correction and a
-// fast one, and until now the fast one hung off the bottom of the basket
-// hit-rate section, where it was read as a footnote to a different table.
-function correctionAccuracy(){
-  return h5BiasAccuracy() + fleetRegime();
-}
-
 // Written as the diagnosed cause of the +1 misses: the served centre was
 // running cold while the fitted layers, which need days of held-out
 // evidence before they may move, had not moved.  This is what reacts the
@@ -12340,7 +12305,7 @@ function fleetRegime(){
     </tr>`;
   }).join("");
   const [banner,word]=LIGHT[R.alert]||LIGHT.GREEN;
-  return `<h2 style="margin-top:26px">舰队隔日政权偏移
+  return `<h2>舰队隔日政权偏移
     <span class="pill" style="background:${banner}22;color:${banner}">${
       word}</span></h2>
   <div class="card">
@@ -14451,91 +14416,62 @@ function hitRate(){
 }
 
 
-function h5BiasAccuracy(){
-  const A = D.h5_bias_accuracy || {};
-  if(!A.station_days) return "";
-  const worse = A.mean_delta_c > 0;
-  const verdict = A.significant
-    ? (worse ? `<span class="pill red">H5 显著更差</span>`
-             : `<span class="pill green">H5 显著更准</span>`)
-    : `<span class="pill amber">样本不足以判定</span>`;
-  const dayRows = (A.days||[]).map(d => `<tr>
-    <td>${d.event_date}</td><td class="num">${d.stations}</td>
-    <td class="num">${d.mean_delta_c>0?"+":""}${d.mean_delta_c.toFixed(4)}</td>
-    <td class="num">${d.h5_better}/${d.stations}</td></tr>`).join("");
-  const sysRows = (A.systems||[]).map(s => `<tr>
-    <td>${s.system}</td><td class="num">${s.cells}</td>
-    <td class="num">${s.mean_delta_c>0?"+":""}${s.mean_delta_c.toFixed(4)}</td>
-    <td class="num">${s.h5_better}:${s.h5_worse}</td></tr>`).join("");
-  return `<h2>H5 vs H15 订正准度：比较偏差半衰期取 5 天还是 15 天订正更准 ${verdict}</h2>
-  <div class="card">
-  <p class="sub">同一批已结算站日、同一批原始预报，分别用两代偏差值订正，比订正后
-  离真值有多远。Δ = H5 误差 − H15 误差，<b>负数代表 H5 更准</b>。这是纯算术反事实，
-  不需要重放，所以每多一个结算日样本就自动变厚。</p>
-  <div class="kpi" style="margin:10px 0 4px">
-    <div class="k muted"><div class="lab">站日样本</div>
-      <div class="val">${A.station_days}</div>
-      <div class="sub2">共 ${A.cells} 个系统×提前量单元</div></div>
-    <div class="k ${A.significant?(worse?"red":"green"):"amber"}">
-      <div class="lab">站日平均 Δ（负=H5更准）</div>
-      <div class="val">${A.mean_delta_c>0?"+":""}${A.mean_delta_c.toFixed(4)}°C</div>
-      <div class="sub2">中位 ${A.median_delta_c>0?"+":""}${A.median_delta_c.toFixed(4)}°C</div></div>
-    <div class="k ${A.significant?"red":"amber"}"><div class="lab">H5 更准 : 更差</div>
-      <div class="val">${A.h5_better}:${A.h5_worse}</div>
-      <div class="sub2">聚类符号检验 z=${A.sign_z}</div></div>
-  </div>
-  <div class="why"><b>为什么样本按站日数、不按单元数：</b>同一个站同一天的十几个
-  单元共享一套天气，不是独立样本。按单元数检验会得出 z=−5.21 那种假显著；
-  按站日聚类后是 z=${A.sign_z}，${A.significant?"已过 ±1.96 线":"还没过 ±1.96 线，方向仅供参考"}。
-  <b>取版严格按事件日之前</b>：H15 用换代前最后一版，H5 用该事件日之前最后一版，
-  两边都不许看见被打分的那一天。</div>
-  <table style="margin-top:12px"><thead><tr>
-    <th>事件日</th><th>站数</th><th>平均 Δ°C</th><th>H5 更准站数</th>
-  </tr></thead><tbody>${dayRows}</tbody></table>
-  <h3 style="margin-top:16px">按系统拆</h3>
-  <table><thead><tr>
-    <th>系统</th><th>单元</th><th>平均 Δ°C</th><th>更准:更差</th>
-  </tr></thead><tbody>${sysRows}</tbody></table></div>`;
-}
-
-
 function h5Readiness(){
+  // The half-life change in one place, conclusions only (user ruling,
+  // 2026-09-17: H5 vs H15 订正准度不要每天的细节，和换代进度融合，突出结论).
+  // Two answers: has the fleet turned over to the 5-day tables, and are the
+  // corrections they serve closer to truth than the 15-day ones would have
+  // been.  The accuracy verdict reads the clustered sign test the collector
+  // draws its line on -- direction from z, not from the mean: the mean and
+  // the vote can point opposite ways, and on 2026-09-17 the section wrote
+  // "H5 显著更准" over a test that said H5 lost on 494 station-days of 883.
   const H = D.h5_readiness || {}; const days = H.days || [];
-  if(!days.length) return "";
-  const latest = days[days.length-1];
-  const ready = (H.scoreable_days || []);
-  const pill = latest.share >= 0.9
-    ? `<span class="pill green">舰队已换代 ${(100*latest.share).toFixed(0)}%</span>`
+  const A = D.h5_bias_accuracy || {};
+  if(!days.length && !A.station_days) return "";
+  const latest = days.length ? days[days.length-1] : null;
+  const ready = H.scoreable_days || [];
+  const done = latest && latest.share >= 0.9;
+  const rollPill = !latest ? "" : done
+    ? `<span class="pill green">已换代 ${(100*latest.share).toFixed(0)}%</span>`
     : `<span class="pill amber">换代中 ${(100*latest.share).toFixed(0)}%</span>`;
-  const rows = days.map(d => `<tr>
-    <td>${d.event_date}</td>
-    <td class="num">${d.decisions}</td>
-    <td class="num">${d.served_under_h5}</td>
-    <td class="num"><b>${(100*d.share).toFixed(1)}%</b></td>
-    <td class="num">${d.provisional_only}</td>
-    <td class="num">${d.truth_stations || "—"}</td>
-    <td>${d.share>=0.9 && d.truth_stations>0 ? "可打分" : ""}</td>
-  </tr>`).join("");
-  return `<h2 id="h5">偏差半衰期 H5 换代进度：跟踪 5 天半衰期的订正表实际服务了多少决策 ${pill}</h2>
-  <p class="sub">偏差层的半衰期 2026-08-27 从 15 天改为 5 天。要给这个改动打分，
-  那一天的决策必须确实由 H5 拟合的订正表服务过、且结算真值已经到了——这里逐条决策数，不是数表；
-  「真值已到站数」读结算真值表，不读纸面账本。</p>
-  <div class="why"><b>为什么按决策数而不按表数：</b>每张订正表有 30 天有效期而舰队
-  每天重拟合，所以同一个 scope 会同时躺着约 21 代旧表，而一次决策只读它激活指针
-  指名的那一张。按表数会把这些没人读的旧代算进分母——2026-08-29 因此显示 18%，
-  而它的决策口径是 100%。<b>临时成员（provisional）单列不计入</b>：它们按设计
-  就没有自己的订正表，借用同站已认证成员的参数，不属于任何半衰期。</div>
-  ${ready.length ? `<div class="why" style="margin-top:10px"><b>已可打分：</b>
-  ${ready.join("、")}。<b>但首次实跑（2026-08-30，8-29 单日）判定为无判别力</b>：
-  H5 臂 31 链 −31.2%、H15 反事实臂 26 链 −8.8%，差额 +19.33 全部由 RPLL 与 SAEZ
-  两条链扛着——剔 1 剩 +8.08、剔 2 剩 +0.01、剔 3 转负 −1.21，符号 5:7 反而更多链
-  变差，且两臂开出的链集合本身就不同（H5 独有 7 条、H15 独有 2 条）。
-  单日 31 条链远低于账本判例要求的量级，<b>结论是"还不能判"，不是"H15 更好"</b>。
-  要有结论得攒到几十个事件日。</div>` : ""}
-  <table style="margin-top:12px"><thead><tr>
-    <th>事件日</th><th>已标定决策</th><th>其中 H5 服务</th><th>占比</th>
-    <th>纯临时成员决策</th><th>真值已到站数</th><th></th>
-  </tr></thead><tbody>${rows}</tbody></table>`;
+  const signed = v => (v>0?"+":"") + Number(v).toFixed(3);
+  let accPill = "", accLine = "";
+  if(A.station_days){
+    const n = A.h5_better + A.h5_worse;
+    const small = Math.abs(A.mean_delta_c) < 0.05 && Math.abs(A.median_delta_c) < 0.05;
+    const size = small
+      ? `但误差差距很小：平均 ${signed(A.mean_delta_c)}°C、中位 ${signed(A.median_delta_c)}°C，都不到 0.05°C`
+      : `平均差 ${signed(A.mean_delta_c)}°C、中位 ${signed(A.median_delta_c)}°C`;
+    if(A.significant && A.sign_z < 0){
+      accPill = `<span class="pill red">H5 没有更准</span>`;
+      accLine = `<b>换成 5 天半衰期没有让订正更准。</b>${A.station_days} 个已结算站日里，
+        H5 订正后离真值更远的有 <b>${A.h5_worse}</b> 个、更近的 ${A.h5_better} 个
+        （${(100*A.h5_worse/n).toFixed(0)}% 变差，z=${A.sign_z}，显著）；${size}。`;
+    } else if(A.significant){
+      accPill = `<span class="pill green">H5 更准</span>`;
+      accLine = `<b>5 天半衰期让订正更准。</b>${A.station_days} 个已结算站日里，
+        H5 订正后离真值更近的有 <b>${A.h5_better}</b> 个、更远的 ${A.h5_worse} 个
+        （${(100*A.h5_better/n).toFixed(0)}% 变好，z=${A.sign_z}，显著）；${size}。`;
+    } else {
+      accPill = `<span class="pill amber">还不能判</span>`;
+      accLine = `<b>还分不出 H5 和 H15 谁更准。</b>${A.station_days} 个已结算站日里
+        H5 更准 ${A.h5_better}、更差 ${A.h5_worse}（z=${A.sign_z}，没过 ±1.96）；${size}。`;
+    }
+  }
+  const rollLine = !latest ? "" : done
+    ? `<b>舰队已全部换到 H5：</b>最近事件日 ${h(latest.event_date)} 的
+       ${latest.decisions.toLocaleString()} 笔已标定决策中 ${(100*latest.share).toFixed(0)}% 由 5 天半衰期订正表服务，
+       已有 ${ready.length} 个事件日可以打分${ready.length ? `（${h(ready[0])} 至 ${h(ready[ready.length-1])}）` : ""}。`
+    : `<b>还在换代：</b>最近事件日 ${h(latest.event_date)} 只有 ${(100*latest.share).toFixed(0)}% 的决策由 H5 订正表服务，
+       可打分的事件日 ${ready.length} 个。`;
+  return `<h2 id="h5">偏差半衰期 H5：换代进度与订正准度 ${rollPill} ${accPill}</h2>
+  <p class="sub">偏差层的半衰期 2026-08-27 从 15 天改为 5 天（H5）。</p>
+  <div class="card" style="font-size:14.5px;line-height:1.7">
+    ${A.station_days ? `<div>${accPill} ${accLine}</div>` : ""}
+    ${latest ? `<div style="margin-top:6px">${rollPill} ${rollLine}</div>` : ""}
+  </div>
+  <div class="muted" style="margin-top:6px">准度＝同一批已结算站日、同一批原始预报，分别用 H5 和 H15
+    （都取事件日之前最后一版）订正，比谁离真值近；按站日计票检验，不按单元数。</div>`;
 }
 
 
@@ -16540,7 +16476,9 @@ const GROUPS = [
      // checks of what was served
      [oosScores,"OOS 打分"],[centreLanding,"真值离均值多远"],
      // research and roll-out
-     [correctionAccuracy,"订正准度与政权偏移"],[h5Readiness,"H5 换代进度"]]},
+     // the half-life's accuracy joined its roll-out on 2026-09-17, which
+     // leaves the regime reading a section of its own
+     [fleetRegime,"政权偏移"],[h5Readiness,"H5 半衰期"]]},
   // The edge area answers one question -- the model says p, the market says
   // m, how much of the gap should be believed -- and its eight sections are
   // four different kinds of thing (user ruling, 2026-09-17: "把前端显式按照
@@ -16647,9 +16585,9 @@ const LANES = {
     role:"真值实际落在离服务均值几档 → 中心诚不诚实"},
   "模型校准总检": {layer:"概率层 · 读数", status:"audit",
     role:"六层各自及格没有，一屏看完"},
-  "H5 换代进度": {layer:"概率层 · 运维", status:"audit",
-    role:"偏差半衰期新代铺到哪了、还剩多少格在服旧代"},
-  "订正准度与政权偏移": {layer:"概率层 · 读数", status:"audit",
+  "H5 半衰期": {layer:"概率层 · 读数", status:"audit",
+    role:"偏差半衰期换成 5 天：舰队换完没有、订正是否比 15 天更准"},
+  "政权偏移": {layer:"概率层 · 读数", status:"audit",
     role:"全队日偏差能不能提前知道（实测：不能，所以 regime 层关着）"},
   "band 表": {layer:"概率层", status:"live",
     role:"单系统校准与融合之后，服务概率按离中心距离兑现多少 → 按档修正尾形残差（市场不进）"},
