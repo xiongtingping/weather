@@ -2232,6 +2232,15 @@ def _support_windows(
                 "rule": COMPLETION_143_RULE_VERSION,
                 "basket_type": basket_type,
                 "past_completion_cutoff": past_cutoff,
+                # What the rule read as the chain's send history -- the
+                # snapshot's, or ``None`` on the TX-entry window / a snapshot
+                # carrying none.  Recorded because a plan that only says
+                # "unsent: []" cannot tell a leg that was sent from a history
+                # that was never read (ZUUU 2026-09-18 27C, 08:43Z).
+                "send_history": (
+                    None if sent_143 is None
+                    else {str(b): float(q) for b, q in sent_143.items()}
+                ),
                 "sent_buyable_buckets": sent_buyable,
                 "unsent_buckets": [
                     bucket for bucket in buyable if bucket not in sent_buyable

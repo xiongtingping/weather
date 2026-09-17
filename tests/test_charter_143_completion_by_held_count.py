@@ -591,3 +591,72 @@ def test_v2_the_ledger_records_the_seat_at_posting_not_at_fill() -> None:
     assert source.count("chain_intended_shares.update({") == 1
     assert posted < source.index('"resting_unfilled",\n                                "挂 %d 腿 · 成交量为零"')
     assert posted > source.index("intended_legs = {\n                        str(bucket): float(quantity)")
+
+
+# --- 2026-09-17 08:42Z: the stage lanes read no send history at all.
+
+
+def test_v2_both_snapshot_builders_carry_the_send_history() -> None:
+    """Every P0-M and P1 decision is built by ``p0_preselection``, not by
+    ``load_production_market_snapshot``; until 2026-09-17 only the latter
+    carried the chain fields, and the completion rule -- which reads them
+    off the snapshot -- read nothing on the lane where every completion is
+    decided.  One helper, both builders."""
+    import inspect
+    import json
+    import sqlite3
+
+    from bayes_basket_target import p0_preselection, production_io
+    from bayes_basket_target.atomic_ledger import apply_target_ledger_schema
+    from bayes_basket_target.execution_reconciliation import record_order_event
+
+    assert p0_preselection.chain_send_history_fields is production_io.chain_send_history_fields
+    assert "chain_send_history_fields(" in inspect.getsource(
+        p0_preselection._bind_scope_market_evidence
+    )
+    assert "chain_send_history_fields(" in inspect.getsource(
+        production_io.load_production_market_snapshot
+    )
+
+    conn = sqlite3.connect(":memory:")
+    apply_target_ledger_schema(conn)
+    assert production_io.chain_send_history_fields(
+        conn, station_id="ZUUU", event_date="2026-09-18", buckets=["26°C", "27°C"],
+    ) == {}
+    conn.execute(
+        "INSERT INTO basket_target_execution_cycles(cycle_id,plan_id,station_id,"
+        "event_date,settlement_timezone,strategy_lane,plan_sha256,"
+        "requested_reserve_usdc,state,created_at,updated_at)"
+        " VALUES('c1','p1','ZUUU','2026-09-18','Asia/Shanghai','basket',?,1,"
+        "'submitted','2026-09-16T22:15:14Z','2026-09-16T22:15:14Z')",
+        ("a" * 64,),
+    )
+    for n, (bucket, size) in enumerate((("24°C", 15.0), ("25°C", 6.0))):
+        conn.execute(
+            "INSERT INTO basket_target_order_intents(order_intent_id,decision_id,"
+            "cycle_id,bucket,token_id,side,order_action,limit_price,requested_size,"
+            "requested_notional_usdc,state,live_submit_authorized,idempotency_key,"
+            "intent_json,intent_sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (f"i{n}", "d1", "c1", bucket, f"t{n}", "YES", "BUY", 0.1, size, 1.0,
+             "submitted", 1, f"k{n}", json.dumps({}), "b" * 64, "2026-09-16T22:15:14Z"),
+        )
+        record_order_event(conn, order_intent_id=f"i{n}", event={
+            "event_type": "FILL", "exchange_order_id": f"0x{n}",
+            "observed_at": "2026-09-16T22:15:39Z", "matched_size": size,
+            "matched_notional_usdc": 1.0, "event_payload": {},
+        })
+    fields = production_io.chain_send_history_fields(
+        conn, station_id="ZUUU", event_date="2026-09-18",
+        buckets=["24°C", "25°C", "26°C", "27°C"],
+    )
+    assert fields == {
+        "chain_seat_buckets": ["24°C", "25°C"],
+        "chain_sent_shares": {"24°C": 15.0, "25°C": 6.0},
+    }
+    # And the rule reads them: 26/27 were never sent, so neither is missing.
+    assert runtime._completion_143_sent_shares(
+        type(fixture._held_snapshot()).from_mapping({
+            **fixture._held_snapshot().to_dict(),
+            "chain_seat_buckets": ["30", "31"], "chain_sent_shares": {"30": 5.0, "31": 5.0},
+        })
+    ) == {"30": 5.0, "31": 5.0}

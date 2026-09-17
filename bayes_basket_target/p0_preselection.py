@@ -32,6 +32,7 @@ from .consolidation_chain import load_last_acted_probability_identity
 from .production import compile_production_plan
 from .regime_materialization import load_regime_artifact
 from .production_io import (
+    chain_send_history_fields,
     derive_policy_maturity_bin,
     assert_current_probability_bridge,
     assert_formal_probability_model_authority,
@@ -841,6 +842,23 @@ def _bind_scope_market_evidence(
         "station_timezone": cash_policy.station_timezone,
         "checkpoint_id": "p0_cash_" + envelope.checkpoint_id,
     })
+    # Charter 136 (五) / 143 v2: the chain's send history.  Every stage-lane
+    # decision (P0-M, P1) is built here and not by
+    # ``load_production_market_snapshot``, and this builder carried neither
+    # field until 2026-09-17 -- so the completion rule, which reads them off
+    # the snapshot, read nothing and completed legs nobody had sent (ZUUU
+    # 2026-09-18 27C, OEJN 36C, ZSQD 27C, EPWA 23C on the 08:42Z cycle).
+    # In memory only, like ``book_equity_usdc`` above: the evidence rows
+    # pick their columns by name.
+    market.update(chain_send_history_fields(
+        conn,
+        station_id=station_id,
+        event_date=event_date,
+        buckets=[
+            str(item.get("bucket")) for item in market.get("buckets") or ()
+            if isinstance(item, Mapping)
+        ],
+    ))
     # The stage-open persists this snapshot as the forward evidence trio
     # (charter 46/48); the materializer requires the cash-phase input bound
     # into the quote row itself.

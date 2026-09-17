@@ -1863,17 +1863,12 @@ def load_production_market_snapshot(
     # Charter 136 (五): every bucket this station-day's chain has sent a buy
     # to the venue for.  "Sent" is an exchange answer on the intent -- an
     # intent the live flag disarmed never reached anyone and seats nothing.
-    sent = load_chain_sent_shares(
-        conn, station_id=station_id, event_date=event_date,
+    chain_send_history = chain_send_history_fields(
+        conn,
+        station_id=station_id,
+        event_date=event_date,
+        buckets=[str(item["bucket"]) for item in normalized_buckets],
     )
-    chain_seat_buckets = [
-        str(item["bucket"]) for item in normalized_buckets
-        if str(item["bucket"]) in sent
-    ]
-    # Charter 143: and the size each was last sent at.
-    chain_sent_shares = {
-        bucket: float(sent[bucket]) for bucket in chain_seat_buckets
-    }
     if current_core_buckets:
         canonical_buckets = tuple(
             str(item["bucket"]) for item in normalized_buckets
@@ -1945,11 +1940,7 @@ def load_production_market_snapshot(
         **(account_capital or {}),
         "current_core_buckets": list(current_core_buckets),
         "current_direction": current_direction,
-        **(
-            {"chain_seat_buckets": chain_seat_buckets,
-             "chain_sent_shares": chain_sent_shares}
-            if chain_seat_buckets else {}
-        ),
+        **chain_send_history,
         "buckets": normalized_buckets,
         "cash_phase_input": cash_input,
         "checkpoint_changed": True,
@@ -1984,6 +1975,38 @@ def load_chain_seat_buckets(
             conn, station_id=station_id, event_date=event_date,
         )
     )
+
+
+def chain_send_history_fields(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    buckets: Sequence[str],
+) -> dict[str, Any]:
+    """The two snapshot fields that carry the chain's send history.
+
+    ``chain_seat_buckets`` (charter 136 五) and ``chain_sent_shares``
+    (charter 143 v2), restricted to ``buckets`` -- the snapshot's own -- and
+    empty when the chain has sent nothing, so a snapshot of a chain that
+    never sent hashes as before.  ONE function for both snapshot builders:
+    ``load_production_market_snapshot`` (the production compile) and
+    ``p0_preselection`` (every stage-lane decision, P0-M and P1).  Until
+    2026-09-17 only the first carried them, and the stage lanes -- where
+    every completion is decided -- read no history at all: nine completions
+    on the 08:42Z cycle, four buying legs nobody had sent.
+    """
+
+    sent = load_chain_sent_shares(
+        conn, station_id=station_id, event_date=event_date,
+    )
+    seat = [str(bucket) for bucket in buckets if str(bucket) in sent]
+    if not seat:
+        return {}
+    return {
+        "chain_seat_buckets": seat,
+        "chain_sent_shares": {bucket: float(sent[bucket]) for bucket in seat},
+    }
 
 
 def load_chain_sent_shares(
