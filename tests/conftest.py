@@ -83,6 +83,54 @@ def _no_test_reaches_the_real_order_gateway(monkeypatch: pytest.MonkeyPatch) -> 
     )
 
 
+@pytest.fixture(autouse=True)
+def _no_test_launches_the_residents_scripts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test may start one of the resident's own scripts for real.
+
+    The production worker launches nine scripts from ``scripts/`` -- the
+    Open-Meteo d2 capture, the AWC observation sweep, the TAF backfill and
+    ingest, the METAR trajectory fit, the correction-review clearer -- each
+    with ``--commit`` and most of them over the network.  Found 2026-09-17:
+    seven worker tests started ``capture_open_meteo_d2_ensemble_daily.py``
+    through the local proxy into pytest's temp directories, the capture pool
+    kept pytest from exiting until they were killed, and one batch went from
+    270s to 547s.
+
+    Only the worker module's ``subprocess`` is replaced, by a forwarding
+    namespace whose ``run`` refuses a command that names a file under
+    ``scripts/``; the global module is untouched, so every test that runs a
+    CLI still can, and a worker test that stubs
+    ``production_worker.subprocess.run`` stubs it on this namespace and wins.
+    """
+
+    import subprocess
+    import sys
+    import types
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from bayes_basket_target import production_worker
+
+    scripts = str(root / "scripts") + "/"
+    real_run = subprocess.run
+
+    def refuse_scripts(args, *pargs, **kwargs):
+        parts = [args] if isinstance(args, (str, bytes, Path)) else list(args or ())
+        if any(str(part).startswith(scripts) for part in parts):
+            return subprocess.CompletedProcess(
+                args, 97, stdout="", stderr="test_suite_may_not_launch_resident_scripts",
+            )
+        return real_run(args, *pargs, **kwargs)
+
+    guarded = types.SimpleNamespace(
+        **{name: getattr(subprocess, name) for name in dir(subprocess) if not name.startswith("__")}
+    )
+    guarded.run = refuse_scripts
+    monkeypatch.setattr(production_worker, "subprocess", guarded)
+
+
 @pytest.fixture
 def ledger_evidence_source(monkeypatch: pytest.MonkeyPatch) -> None:
     """Read the claim lanes' population off the paper candidate table.
