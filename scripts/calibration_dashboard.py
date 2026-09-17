@@ -17042,19 +17042,22 @@ function scorecard(){
     <div class="muted" style="margin-top:8px">${h(L.detail)}</div>
   </div>`).join("");
 
+  // While the sample accumulates, no cell is graded: a lamp on four event
+  // days says more than the evidence does, in the table as on the cards.
+  const tone = health => S.accumulating ? "muted" : health;
   const leadRows = (S.rows||[]).map(r => `<tr>
     <td>${h(r.lead_label)}</td>
     <td class="mono muted">${r.station_days == null ? "—"
       : r.station_days.toLocaleString()}</td>
-    <td class="mono"><span class="dot ${r.bias_health}"></span>
+    <td class="mono"><span class="dot ${tone(r.bias_health)}"></span>
       ${r.bias_rungs == null ? "—" :
         (r.bias_rungs>0?"+":"")+r.bias_rungs.toFixed(2)} 档</td>
-    <td class="mono"><span class="dot ${r.mae_health}"></span>
+    <td class="mono"><span class="dot ${tone(r.mae_health)}"></span>
       ${r.mae_rungs == null ? "—" : r.mae_rungs.toFixed(2)} 档</td>
-    <td class="mono"><span class="dot ${r.crps_health}"></span>
+    <td class="mono"><span class="dot ${tone(r.crps_health)}"></span>
       ${pct1(r.crps_skill)}</td>
     <td class="mono muted">${pct1(r.brier_skill)}</td>
-    <td class="mono"><span class="dot ${r.spread_health}"></span>
+    <td class="mono"><span class="dot ${tone(r.spread_health)}"></span>
       ${r.spread_skill == null ? "—" : r.spread_skill.toFixed(2)}×</td>
   </tr>`).join("");
 
@@ -17063,8 +17066,8 @@ function scorecard(){
   const pitBars = pit.map((v,i) => `<div style="flex:1;text-align:center">
     <div style="height:52px;display:flex;align-items:flex-end">
       <div style="width:100%;height:${(v/pitMax*100).toFixed(0)}%;
-        background:var(--${Math.abs(v-0.1)<=0.04?"green":
-          (Math.abs(v-0.1)<=0.08?"amber":"red")});border-radius:3px 3px 0 0">
+        background:var(--${S.accumulating ? "muted" : (Math.abs(v-0.1)<=0.04?"green":
+          (Math.abs(v-0.1)<=0.08?"amber":"red"))});border-radius:3px 3px 0 0">
       </div></div>
     <div class="muted" style="font-size:10px">${(i*10)}</div>
   </div>`).join("");
