@@ -2234,6 +2234,61 @@ def beta_conditional_edge_v2(
     }
 
 
+def beta_conditional_edge_v3(
+    raw_win: float,
+    market_mid: float,
+    joint_draws: Sequence[Sequence[float]],
+    *,
+    market_centre: float | None = None,
+    quantile: float = 0.05,
+) -> dict[str, float] | None:
+    """Charter 128 v3 (user ruling, 2026-09-17: 把 β 车道补上 γ): the
+    conditional net edge ``alpha + beta * (p - m) + gamma * (m - m0)``,
+    point and lower bound on the fit's joint draws.
+
+    The third knob is the market's own slope, and it is what keeps the
+    market's reliability curve out of beta.  The model disagrees more where
+    the book is cheap (corr(p - m, m) = -0.42 on 13,337 priced buckets since
+    2026-08-15), so a market that under-realises its cheap prices and
+    over-realises its dear ones reads, with two knobs, as the disagreement
+    leaning the wrong way: beta -0.064 without gamma, +0.050 with it, gamma
+    +0.21 [+0.17, +0.25] by day.  ``m0`` is the market centre the fit was
+    taken at (the population's mean mid), carried on the row so a served
+    prediction reads the line the fit drew.
+
+    Draws are ``(alpha, beta)`` pairs or ``(alpha, beta, gamma)`` triples; a
+    pair is a fit that had no third knob and reads gamma = 0, which is
+    exactly the v2 prediction.  None when there are no draws.
+    """
+
+    triples: list[tuple[float, float, float]] = []
+    for pair in joint_draws:
+        if len(pair) not in (2, 3):
+            continue
+        values_ = [float(v) for v in pair]
+        if not all(math.isfinite(v) for v in values_):
+            continue
+        triples.append((values_[0], values_[1], values_[2] if len(values_) == 3 else 0.0))
+    if not triples:
+        return None
+    d = float(raw_win) - float(market_mid)
+    centre = 0.0 if market_centre is None else float(market_centre)
+    z = float(market_mid) - centre
+    values = sorted(alpha + beta * d + gamma * z for alpha, beta, gamma in triples)
+    q = min(max(float(quantile), 0.0), 1.0)
+    lower = values[min(len(values) - 1, int(q * len(values)))]
+    upper = values[max(0, int((1.0 - q) * len(values)) - 1)]
+    point = sum(values) / len(values)
+    return {
+        "disagreement": d,
+        "market_offset": z,
+        "edge_point": point,
+        "edge_lcb": lower,
+        "edge_ucb": upper,
+        "draws": float(len(values)),
+    }
+
+
 def effective_edge_lambda(
     agreement: float,
     table: Sequence[tuple[float, float]] | None = None,

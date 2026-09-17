@@ -47,10 +47,15 @@ def _line(fit: dict) -> str:
             f" ({fit['row_count']} rows / {fit['day_count']} days;"
             f" needs {ev['min_rows']} / {ev['min_days']}) -- serves beta_lcb 0"
         )
+    gamma = ev.get("gamma")
     return (
         f"  {name:12s} beta {ev['beta']:+.3f}"
         f" [lcb {ev['beta_lcb']:+.3f}, ucb {ev['beta_ucb']:+.3f}]"
-        f" intercept {ev['intercept']:+.3f} on {fit['row_count']} rows /"
+        f" intercept {ev['intercept']:+.3f}"
+        + ("" if gamma is None else
+           f" gamma {gamma:+.3f} [{ev['gamma_lcb']:+.3f}, {ev['gamma_ucb']:+.3f}]"
+           f" @ m0 {ev['market_centre']:.3f}")
+        + f" on {fit['row_count']} rows /"
         f" {fit['day_count']} days; days beta>0 {ev['days_beta_positive']}"
         f"/{fit['day_count']}; serves beta_lcb {ev['served_beta_lcb']:+.3f}"
     )

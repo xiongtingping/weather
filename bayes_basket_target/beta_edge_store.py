@@ -14,7 +14,7 @@ the agreement band; it is one slope.
 The identity this lane estimates, per enumerated window (v2 basis, user
 ruling 2026-09-14 "改")::
 
-    hit - m  =  a  +  beta * (p - m)
+    hit - m  =  a  +  beta * (p - m)  +  gamma * (m - m0)      (v3)
 
 with ``p`` the raw served claim (the probability layer's own number, no
 position multiplier), ``m`` the MARKET'S BELIEF for the window -- the
@@ -24,7 +24,22 @@ same vector charter 132 reads -- and ``hit`` whether the truth landed in it.
 outcomes -- 0 means the market's belief is the better estimate wherever the
 two differ, 1 means the claim is right about all of it, negative means the
 disagreement leans the wrong way.  On the mid basis ``a`` is zero when the
-market is calibrated; the spread and the fee are NOT in this regression.
+market is calibrated at its centre; the spread and the fee are NOT in this
+regression.
+
+``gamma`` (v3, user ruling 2026-09-17: 把 β 车道补上 γ) is the market's own
+slope -- how the market's error runs with its price, read at zero
+disagreement around the population's mean mid ``m0``.  It is the third of
+the three knobs a belief in ``(p, m)`` has (level, market slope,
+disagreement share), and without it the market's reliability curve leaks
+into beta: the model disagrees more where the book is cheap (corr(p - m, m)
+-0.42 on the priced buckets since 2026-08-15), so a market that
+under-realises its cheap prices and over-realises its dear ones read as the
+disagreement leaning the wrong way -- beta -0.064 with two knobs, +0.050
+with three, gamma +0.21 [+0.17, +0.25] by day.  The joint draws are
+``(a, beta, gamma)`` triples and the v3 prediction reads all three; the
+charter-128 belief ``m + beta_lcb * (p - m)`` is unchanged and still
+carries neither ``a`` nor ``gamma`` (charter 132 records why).
 They are charged where they belong: the gate compares the served belief
 ``m + beta_lcb * (p - m)`` with the window's all-in ask under charter 130's
 hurdle.
@@ -84,7 +99,11 @@ from .basket_kernel.delta_v2 import (
 from .candidate_window_evidence import CANDIDATE_SOURCE
 from .contracts import content_sha256
 
-SCHEMA = "beta_edge_table_v3"
+# v4: the fit carries gamma, the market's own slope, and its draws are
+# triples (user ruling, 2026-09-17).  The string is in the content hash, so
+# every scope refits under the new rule at the next sweep; rows fitted
+# under v3 keep serving until then and read gamma = 0.
+SCHEMA = "beta_edge_table_v4"
 STAGE_SCOPES: dict[str, tuple[str, ...]] = {
     "P0": ("P0",), "P0-M": ("P0-M",), "P1": ("P1",),
 }
@@ -222,6 +241,30 @@ def _ols(xs: Sequence[float], ys: Sequence[float]) -> tuple[float, float] | None
         return None
     beta = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / vx
     return my - beta * mx, beta
+
+
+def _ols3(
+    xs: Sequence[float], zs: Sequence[float], ys: Sequence[float],
+) -> tuple[float, float, float] | None:
+    """``y = a + beta * x + gamma * z`` by the normal equations on centred
+    regressors; None when either regressor is flat or the two are collinear
+    (then the market's slope and the disagreement cannot be told apart and
+    the caller falls back to the two-knob fit)."""
+
+    if len(xs) < 4:
+        return None
+    mx, mz, my = mean(xs), mean(zs), mean(ys)
+    sxx = sum((x - mx) ** 2 for x in xs)
+    szz = sum((z - mz) ** 2 for z in zs)
+    sxz = sum((x - mx) * (z - mz) for x, z in zip(xs, zs))
+    sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    szy = sum((z - mz) * (y - my) for z, y in zip(zs, ys))
+    det = sxx * szz - sxz * sxz
+    if sxx <= 0.0 or szz <= 0.0 or det <= 1e-12 * sxx * szz:
+        return None
+    beta = (sxy * szz - szy * sxz) / det
+    gamma = (szy * sxx - sxy * sxz) / det
+    return my - beta * mx - gamma * mz, beta, gamma
 
 
 def population(
@@ -410,12 +453,22 @@ def layered_readings(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     def cell(group: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
         if len(group) < LAYER_MIN_ROWS:
             return None
-        got = _ols([r["x"] for r in group], [r["y"] for r in group])
-        if got is None:
-            return None
+        centre = mean(r["mid"] for r in group)
+        got3 = _ols3(
+            [r["x"] for r in group], [r["mid"] - centre for r in group],
+            [r["y"] for r in group],
+        )
+        if got3 is not None:
+            intercept, beta, gamma = got3
+        else:
+            got = _ols([r["x"] for r in group], [r["y"] for r in group])
+            if got is None:
+                return None
+            intercept, beta, gamma = got[0], got[1], None
         return {
             "rows": len(group), "days": len({r["date"] for r in group}),
-            "beta": round(got[1], 4), "intercept": round(got[0], 4),
+            "beta": round(beta, 4), "intercept": round(intercept, 4),
+            "gamma": None if gamma is None else round(gamma, 4),
             "mean_x": round(mean(r["x"] for r in group), 4),
         }
 
@@ -479,14 +532,30 @@ def fit_beta(
     accumulating = len(rows) < MIN_ROWS or len(days) < MIN_DAYS
     beta = intercept = lcb = ucb = None
     intercept_lcb = intercept_ucb = None
-    joint: list[tuple[float, float]] = []
+    gamma = gamma_lcb = gamma_ucb = None
+    # v3: the market centre the fit is taken at.  The third regressor is
+    # ``mid - centre`` so the intercept stays the market's level at a
+    # typical price and gamma its slope; the centre travels with the row.
+    centre = round(mean(r["mid"] for r in rows), 6) if rows else None
+    joint: list[tuple[float, float, float]] = []
     per_day: dict[str, float] = {}
+
+    def _fit(group: Sequence[Mapping[str, Any]]) -> tuple[float, float, float] | None:
+        got3 = _ols3(
+            [r["x"] for r in group], [r["mid"] - float(centre) for r in group],
+            [r["y"] for r in group],
+        )
+        if got3 is not None:
+            return got3
+        got = _ols([r["x"] for r in group], [r["y"] for r in group])
+        return None if got is None else (got[0], got[1], 0.0)
+
     if not accumulating:
-        fitted = _ols([r["x"] for r in rows], [r["y"] for r in rows])
+        fitted = _fit(rows)
         if fitted is None:
             accumulating = True
         else:
-            intercept, beta = fitted
+            intercept, beta, gamma = fitted
             by_day: dict[str, list[Mapping[str, Any]]] = {}
             for r in rows:
                 by_day.setdefault(r["date"], []).append(r)
@@ -495,29 +564,31 @@ def fit_beta(
             samples: list[float] = []
             for _ in range(int(draws)):
                 picked = [by_day[k] for k in rng.choices(keys, k=len(keys))]
-                xs = [r["x"] for grp in picked for r in grp]
-                ys = [r["y"] for grp in picked for r in grp]
-                got = _ols(xs, ys)
+                got = _fit([r for grp in picked for r in grp])
                 if got is not None:
                     samples.append(got[1])
                     joint.append((
                         round(float(got[0]), JOINT_DRAW_DECIMALS),
                         round(float(got[1]), JOINT_DRAW_DECIMALS),
+                        round(float(got[2]), JOINT_DRAW_DECIMALS),
                     ))
             samples.sort()
             if samples:
                 lcb = samples[min(len(samples) - 1, int(LCB_QUANTILE * len(samples)))]
                 ucb = samples[max(0, int((1.0 - LCB_QUANTILE) * len(samples)) - 1)]
             if joint:
-                intercepts = sorted(a for a, _b in joint)
+                intercepts = sorted(a for a, _b, _g in joint)
                 intercept_lcb = intercepts[
                     min(len(intercepts) - 1, int(LCB_QUANTILE * len(intercepts)))
                 ]
                 intercept_ucb = intercepts[
                     max(0, int((1.0 - LCB_QUANTILE) * len(intercepts)) - 1)
                 ]
+                gammas = sorted(g for _a, _b, g in joint)
+                gamma_lcb = gammas[min(len(gammas) - 1, int(LCB_QUANTILE * len(gammas)))]
+                gamma_ucb = gammas[max(0, int((1.0 - LCB_QUANTILE) * len(gammas)) - 1)]
             for k, grp in by_day.items():
-                got = _ols([r["x"] for r in grp], [r["y"] for r in grp])
+                got = _fit(grp)
                 if got is not None:
                     per_day[k] = round(got[1], 4)
     served_lcb = 0.0 if (accumulating or lcb is None) else float(lcb)
@@ -534,9 +605,14 @@ def fit_beta(
         "intercept_ucb": (
             None if intercept_ucb is None else round(float(intercept_ucb), 6)
         ),
+        # v3: the market's own slope around the centre the fit was taken at.
+        "gamma": None if gamma is None else round(float(gamma), 6),
+        "gamma_lcb": None if gamma_lcb is None else round(float(gamma_lcb), 6),
+        "gamma_ucb": None if gamma_ucb is None else round(float(gamma_ucb), 6),
+        "market_centre": centre,
         # Empty while accumulating: an accumulating fit serves nothing, and
         # a served lower bound read off draws from too few days would be the
-        # hurdle waived by the back door.
+        # hurdle waived by the back door.  Triples since v4: (a, beta, gamma).
         "joint_draws": [] if accumulating else [list(d) for d in joint],
         "per_day_beta": per_day,
         "days_beta_positive": sum(1 for v in per_day.values() if v > 0),
@@ -553,6 +629,7 @@ def fit_beta(
         "window_days": int(window_days), "as_of_event_date": meta.get("as_of_event_date"),
         "beta": evidence["beta"], "beta_lcb": evidence["served_beta_lcb"],
         "beta_ucb": evidence["beta_ucb"], "intercept": evidence["intercept"],
+        "gamma": evidence["gamma"], "market_centre": centre,
         "row_count": len(rows), "day_count": len(days),
         "accumulating": bool(accumulating),
     }
@@ -662,20 +739,31 @@ def journal_fit(
 
 def _row_to_served(row: Sequence[Any]) -> dict[str, Any]:
     sha, beta, lcb, ucb, intercept, accumulating, rows_, days_ = row[:8]
-    draws: list[tuple[float, float]] = []
+    # v3 reads triples; a v3-schema row's pairs read gamma = 0, which is the
+    # prediction that row was fitted for.
+    draws: list[tuple[float, float, float]] = []
+    gamma = gamma_lcb = gamma_ucb = None
+    centre = None
     if len(row) > 8 and row[8]:
         try:
-            raw = json.loads(str(row[8])).get("joint_draws") or []
+            evidence = json.loads(str(row[8]))
+            raw = evidence.get("joint_draws") or []
             draws = [
-                (float(pair[0]), float(pair[1]))
-                for pair in raw
-                if isinstance(pair, (list, tuple)) and len(pair) == 2
+                (float(d[0]), float(d[1]), float(d[2]) if len(d) == 3 else 0.0)
+                for d in raw
+                if isinstance(d, (list, tuple)) and len(d) in (2, 3)
             ]
+            gamma = evidence.get("gamma")
+            gamma_lcb = evidence.get("gamma_lcb")
+            gamma_ucb = evidence.get("gamma_ucb")
+            centre = evidence.get("market_centre")
         except (ValueError, TypeError, AttributeError):
             draws = []
     return {
         "sha256": str(sha), "beta": beta, "beta_lcb": float(lcb),
         "beta_ucb": ucb, "intercept": intercept,
+        "gamma": gamma, "gamma_lcb": gamma_lcb, "gamma_ucb": gamma_ucb,
+        "market_centre": centre,
         "accumulating": bool(accumulating), "row_count": int(rows_ or 0),
         "day_count": int(days_ or 0),
         "joint_draws": tuple(draws),
@@ -751,7 +839,9 @@ def load_beta_tables(
             continue
         served = dict(whole) if whole is not None else {
             "sha256": None, "beta": None, "beta_lcb": 0.0, "beta_ucb": None,
-            "intercept": None, "accumulating": True, "row_count": 0,
+            "intercept": None, "gamma": None, "gamma_lcb": None,
+            "gamma_ucb": None, "market_centre": None,
+            "accumulating": True, "row_count": 0,
             "day_count": 0, "joint_draws": (), "lead_band": WHOLE_STAGE,
             "price_basis": PRICE_BASIS,
         }

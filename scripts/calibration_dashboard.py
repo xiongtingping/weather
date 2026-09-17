@@ -8561,6 +8561,10 @@ def collect_beta_shadow(conn: sqlite3.Connection) -> dict[str, Any]:
                 "days_beta_positive": ev.get("days_beta_positive"),
                 "layers": ev.get("layers") or {},
                 "lead_band": str(row[11] or ""),
+                # v3: the market's own slope; absent on rows fitted before it.
+                "gamma": ev.get("gamma"), "gamma_lcb": ev.get("gamma_lcb"),
+                "gamma_ucb": ev.get("gamma_ucb"),
+                "market_centre": ev.get("market_centre"),
             }
             if reading["lead_band"] == _b.WHOLE_STAGE:
                 out["served"][str(row[0])] = reading
@@ -8582,6 +8586,9 @@ def collect_beta_shadow(conn: sqlite3.Connection) -> dict[str, Any]:
             "rows": fit["row_count"], "days": fit["day_count"],
             "days_beta_positive": ev.get("days_beta_positive"),
             "by_lead": (ev.get("layers") or {}).get("by_lead") or {},
+            "gamma": ev.get("gamma"), "gamma_lcb": ev.get("gamma_lcb"),
+            "gamma_ucb": ev.get("gamma_ucb"),
+            "market_centre": ev.get("market_centre"),
         }
     # -- replay: every settled candidate window of the last 14 days,
     # re-judged with the beta served at its decision instant.
@@ -12855,12 +12862,14 @@ function betaShadow(){
   const served=B.served||{}, res=B.research||{}, rep=B.replay||{}, live=B.live||{};
   const stages=["P0","P0-M","P1"];
   const bands=B.lead_bands||{};
+  // v3 (2026-09-17): gamma, the market's own slope, beside the intercept.
+  const gam=r=>r.gamma==null?'<span class="muted">—（三旋钮前的拟合）</span>':`${num(r.gamma)} <span class="muted">[${num(r.gamma_lcb)} … ${num(r.gamma_ucb)}] @ m₀ ${num(r.market_centre,2)}</span>`;
   const servedRow=(label,r,muted)=>`<tr class="${muted?"muted":""}"><td>${label}</td><td class="mono">${num(r.beta_lcb)}</td><td class="mono">${num(r.beta)}</td>
-      <td class="mono">${num(r.beta_lcb)} … ${num(r.beta_ucb)}</td><td class="mono">${num(r.intercept)}</td>
+      <td class="mono">${num(r.beta_lcb)} … ${num(r.beta_ucb)}</td><td class="mono">${num(r.intercept)}</td><td class="mono">${gam(r)}</td>
       <td>${r.rows} / ${r.days}</td><td>${r.accumulating?"<b>累积中</b>":"够门槛"}</td>
       <td class="mono">${h((r.anchor||"").slice(0,16))}</td><td>${r.days_beta_positive==null?"—":r.days_beta_positive+"/"+r.days}</td></tr>`;
   const servedRows=stages.map(s=>{const r=served[s];
-    const head=r?servedRow(s,r,false):`<tr><td>${s}</td><td colspan="8">无激活行（中价基底）</td></tr>`;
+    const head=r?servedRow(s,r,false):`<tr><td>${s}</td><td colspan="9">无激活行（中价基底）</td></tr>`;
     // Charter 128 v2: the band rows under the stage; a band past the
     // hurdles serves in place of the whole row for decisions in its band.
     const bs=bands[s]||{};
@@ -12869,7 +12878,7 @@ function betaShadow(){
   const resRows=stages.map(s=>{const r=res[s]||{};if(r.error)return `<tr><td>${s}</td><td colspan="6">${h(r.error)}</td></tr>`;
     const lead=Object.entries(r.by_lead||{}).map(([k,v])=>`${k}: ${num(v.beta,2)} (n${v.rows})`).join("，");
     return `<tr><td>${s}</td><td class="mono">${num(r.beta)}</td><td class="mono">${num(r.beta_lcb)} … ${num(r.beta_ucb)}</td>
-      <td class="mono">${num(r.intercept)}</td><td>${r.rows} / ${r.days}</td><td>${r.days_beta_positive==null?"—":r.days_beta_positive+"/"+r.days}</td><td>${h(lead)||"—"}</td></tr>`;}).join("");
+      <td class="mono">${num(r.intercept)}</td><td class="mono">${gam(r)}</td><td>${r.rows} / ${r.days}</td><td>${r.days_beta_positive==null?"—":r.days_beta_positive+"/"+r.days}</td><td>${h(lead)||"—"}</td></tr>`;}).join("");
   const cells=rep.cells||{};
   const cell=k=>{const c=cells[k]||{};return `<td class="mono">${c.n||0}</td><td class="mono">${c.mean_hit_minus_price==null?"—":(c.mean_hit_minus_price*100).toFixed(1)+"点"}</td>`;};
   // The acceptance sample (user ruling, 2026-09-17): windows the model
@@ -12890,16 +12899,17 @@ function betaShadow(){
       <td class="mono">${d.beta_admits}</td><td class="mono">${d.beta_refuses_of_admitted}</td><td class="mono">${d.beta_admits_of_refused}</td>
       <td class="mono">${d.mean_margin_admitted==null?"—":(d.mean_margin_admitted*100).toFixed(1)}</td><td class="mono">${d.mean_margin_beta_admitted==null?"—":(d.mean_margin_beta_admitted*100).toFixed(1)}</td></tr>`).join("");
   return `<h2>β 车道（影子）：测我们和市场的分歧能兑现几成</h2>
-  <div class="card"><b>模式 ${h(B.mode)}</b>。宪章 128 v2（09-14）：每个枚举窗 <span class="mono">hit − m = a + β·(p − m)</span>，p 原始声称、<b>m 盘口中价信念</b>（整梯归一化中价在窗内之和，与估值车道同一向量）；
-    服务信念 m + β_lcb·(p − m)，闸拿它和全含卖一比、按 5% 门槛判——点差不进回归，在闸上收。第二轴按距结算截止小时分档（<6h / 6–12h / 12–24h / 24–36h / ≥36h），档过门槛才服务（下表 ★），否则整阶段行服务。
+  <div class="card"><b>模式 ${h(B.mode)}</b>。宪章 128 v3（09-17 补上 γ）：每个枚举窗 <span class="mono">hit − m = a + β·(p − m) + γ·(m − m₀)</span>，p 原始声称、<b>m 盘口中价信念</b>（整梯归一化中价在窗内之和，与估值车道同一向量）、m₀ 拟合样本的中价均值；
+    三个旋钮：a＝市场在 m₀ 处的整体偏差、<b>γ＝市场自己的斜率</b>（便宜桶兑现不足、贵桶兑现有余时为正）、β＝分歧兑现的份额。没有 γ 时市场自己的曲线会漏进 β（模型在便宜桶上分歧更大，corr(p−m, m) −0.42）：两旋钮 β −0.064、三旋钮 β +0.050、γ +0.21。
+    服务信念 m + β_lcb·(p − m) 不变（不含 a、γ，宪章 132 记了为什么）；三旋钮的预测走联合抽样的分位数（β v2 读数）。闸拿信念和全含卖一比、按 5% 门槛判——点差不进回归，在闸上收。第二轴按距结算截止小时分档（<6h / 6–12h / 12–24h / 24–36h / ≥36h），档过门槛才服务（下表 ★），否则整阶段行服务。
     影子只记不闸；晋升要影子 ≥10 个事件日且下表"β 会拒"减"β 会放"的实现差大于按日噪声，且须裁决。
     最近两天决策 ${live.decisions||0} 条，其中带影子读数 ${live.with_shadow||0} 条；影子累计：现闸放行而 β 会拒 ${live.would_refuse||0} 窗、现闸拒而 β 会放 ${live.would_admit||0} 窗。
     ${B.served_other_basis?`<span class="muted">表里还有 ${B.served_other_basis} 行卖一基底的旧行，无人服务，下次拟合即退役。</span>`:""}</div>
   <div class="card"><h3>服务中（锚定、滚动 28 天、中价基底）</h3>
-  <table><tr><th>阶段 · 档</th><th>服务 β_lcb</th><th>β 点估</th><th>90% 区间</th><th>截距(≈0 即市场校准)</th><th>行 / 日</th><th>状态</th><th>服务锚</th><th>逐日 β&gt;0</th></tr>${servedRows}</table>
+  <table><tr><th>阶段 · 档</th><th>服务 β_lcb</th><th>β 点估</th><th>90% 区间</th><th>截距 a(≈0 即市场在 m₀ 处校准)</th><th>γ 市场斜率 · 90%</th><th>行 / 日</th><th>状态</th><th>服务锚</th><th>逐日 β&gt;0</th></tr>${servedRows}</table>
   <div class="muted">锚以前的行不进样本；账本重导前写下的候选窗没有中价，计出不顶替；累积中＝行数或天数不够门槛（60 行 / 8 日），服务 β_lcb 0，信念＝市场信念。</div></div>
   <div class="card"><h3>研究读数（不锚定，28 天，不服务）</h3>
-  <table><tr><th>阶段</th><th>β</th><th>90% 区间</th><th>截距</th><th>行 / 日</th><th>逐日 β&gt;0</th><th>按提前量</th></tr>${resRows}</table></div>
+  <table><tr><th>阶段</th><th>β</th><th>90% 区间</th><th>截距 a</th><th>γ 市场斜率 · 90%</th><th>行 / 日</th><th>逐日 β&gt;0</th><th>按提前量</th></tr>${resRows}</table></div>
   <div class="card"><h3>重放：最近 14 天已结算枚举窗，按当时服务的 β 重判</h3>
   <table><tr><th></th><th>现闸放·β 放</th><th></th><th>现闸放·β 拒</th><th></th><th>现闸拒·β 放</th><th></th><th>现闸拒·β 拒</th><th></th></tr>
   <tr><td>窗数 / 均 hit−价</td>${cell("both_admit")}${cell("beta_refuses")}${cell("beta_admits")}${cell("both_refuse")}</tr></table>

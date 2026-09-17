@@ -37,6 +37,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     SEAT_SHAPE_RULE_VERSION,
     beta_belief_v1,
     beta_conditional_edge_v2,
+    beta_conditional_edge_v3,
     clears_economic_hurdle_v1,
 )
 
@@ -103,6 +104,39 @@ def test_the_bound_is_a_quantile_of_the_prediction_for_every_sign(d, alpha):
 
 def test_no_draws_serves_nothing():
     assert beta_conditional_edge_v2(0.8, 0.6, []) is None
+    assert beta_conditional_edge_v3(0.8, 0.6, []) is None
+
+
+# --------------------------------------------------------------------------
+# v3 (user ruling, 2026-09-17): the market's own slope
+# --------------------------------------------------------------------------
+
+def test_a_pair_reads_gamma_zero_and_is_the_v2_prediction():
+    draws = [(-0.05 + 0.01 * (k % 5), 0.3 - 0.02 * (k % 7)) for k in range(120)]
+    v2 = beta_conditional_edge_v2(0.8, 0.6, draws)
+    v3 = beta_conditional_edge_v3(0.8, 0.6, draws, market_centre=0.4)
+    for key in ("edge_point", "edge_lcb", "edge_ucb", "disagreement"):
+        assert v3[key] == pytest.approx(v2[key])
+
+
+def test_gamma_moves_the_prediction_by_the_markets_offset_from_the_centre():
+    """alpha -0.02, beta 0.3, gamma 0.25, m 0.6 against a centre of 0.4:
+    the market sits 0.2 above the centre, so the line adds 0.05."""
+    draws = [(-0.02, 0.3, 0.25)] * 50
+    got = beta_conditional_edge_v3(0.8, 0.6, draws, market_centre=0.4)
+    assert got["market_offset"] == pytest.approx(0.2)
+    assert got["edge_point"] == pytest.approx(-0.02 + 0.3 * 0.2 + 0.25 * 0.2)
+    below = beta_conditional_edge_v3(0.8, 0.2, draws, market_centre=0.4)
+    assert below["edge_point"] == pytest.approx(-0.02 + 0.3 * 0.6 - 0.25 * 0.2)
+
+
+@pytest.mark.parametrize("d", [-0.3, 0.0, 0.3])
+@pytest.mark.parametrize("z", [-0.2, 0.0, 0.2])
+def test_the_v3_bound_is_a_quantile_of_the_whole_prediction(d, z):
+    draws = [(0.01 * (k % 7 - 3), 0.1 * (k % 11 - 5), 0.05 * (k % 5 - 2)) for k in range(200)]
+    got = beta_conditional_edge_v3(0.5 + d, 0.5, draws, market_centre=0.5 - z)
+    assert got["edge_lcb"] <= got["edge_point"] <= got["edge_ucb"]
+    assert got["market_offset"] == pytest.approx(z)
 
 
 # --------------------------------------------------------------------------

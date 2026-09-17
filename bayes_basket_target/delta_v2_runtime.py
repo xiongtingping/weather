@@ -45,7 +45,7 @@ from .basket_kernel.delta_v2 import (
     BETA_PRICE_BASIS,
     BETA_TABLE_KEY,
     beta_belief_v1,
-    beta_conditional_edge_v2,
+    beta_conditional_edge_v3,
     beta_lead_band,
     SIZING_CLAIM_BANDS,
     sizing_claim_factor,
@@ -2886,8 +2886,13 @@ def _support_windows(
                 and isinstance(beta_row, Mapping)
                 and beta_market_mid is not None
             ):
-                beta_v2 = beta_conditional_edge_v2(
+                # v3 (user ruling, 2026-09-17): the prediction carries the
+                # market's own slope, gamma * (m - m0), beside the intercept
+                # and the disagreement share.  A row fitted before the third
+                # knob reads gamma = 0, which is the v2 prediction exactly.
+                beta_v2 = beta_conditional_edge_v3(
                     raw_win, beta_market_mid, beta_row.get("joint_draws") or (),
+                    market_centre=beta_row.get("market_centre"),
                 )
                 if beta_v2 is not None:
                     beta_v2_admissible = clears_economic_hurdle_v1(

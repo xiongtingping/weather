@@ -65,10 +65,15 @@ def _plant(conn, *, days: int, stations: int = 20, beta: float = 0.5,
            intercept: float = -0.05, noise: float = 0.1, seed: int = 1,
            stage: str = "P0", first_day: int = 1,
            hours: float | None = None, spread: float = 0.04,
-           prefix: str = "c") -> None:
-    """Rows whose outcome follows ``hit - m = intercept + beta * (p - m)``
-    on the market's belief ``m``; the all-in price sits ``spread`` above it,
-    the way an ask sits above a mid, and plays no part in the outcome."""
+           prefix: str = "c", gamma: float = 0.0,
+           disagreement_per_mid: float = 0.0) -> None:
+    """Rows whose outcome follows ``hit - m = intercept + beta * (p - m) +
+    gamma * (m - 0.65)`` on the market's belief ``m`` (v3; the planted
+    centre is the mean of the mids drawn below); the all-in price sits
+    ``spread`` above it, the way an ask sits above a mid, and plays no part
+    in the outcome.  ``disagreement_per_mid`` tilts the model's disagreement
+    against the price, the way the book's is tilted (the model disagrees
+    more where the market is cheap)."""
 
     rng = random.Random(seed)
     n = 0
@@ -77,9 +82,10 @@ def _plant(conn, *, days: int, stations: int = 20, beta: float = 0.5,
         for s in range(stations):
             mid = rng.uniform(0.4, 0.9)
             price = min(0.99, mid + spread)
-            x = rng.uniform(-0.3, 0.3)
+            x = rng.uniform(-0.3, 0.3) + disagreement_per_mid * (0.65 - mid)
             raw = min(0.99, max(0.01, mid + x))
-            y = intercept + beta * (raw - mid) + rng.gauss(0.0, noise)
+            y = (intercept + beta * (raw - mid) + gamma * (mid - 0.65)
+                 + rng.gauss(0.0, noise))
             hit = 1 if rng.random() < max(0.0, min(1.0, mid + y)) else 0
             conn.execute(
                 "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -105,6 +111,39 @@ def test_the_fit_recovers_a_planted_slope_with_a_bound_below_it() -> None:
     assert ev["served_beta_lcb"] == ev["beta_lcb"]
     assert abs(ev["intercept"] - (-0.05)) < 0.06
     assert fit["table"]["beta_lcb"] == ev["served_beta_lcb"]
+
+
+def test_the_fit_recovers_a_planted_market_slope_beside_the_disagreement() -> None:
+    """v3 (user ruling, 2026-09-17): gamma, the market's own slope, is the
+    third knob; the draws are triples and the row carries the centre."""
+    conn = _db()
+    _plant(conn, days=14, stations=120, beta=0.5, gamma=0.3, noise=0.05, seed=5)
+    fit = store.fit_beta(conn, stage_scope="P0")
+    ev = fit["evidence"]
+    assert not fit["accumulating"]
+    assert abs(ev["beta"] - 0.5) < 0.2
+    assert abs(ev["gamma"] - 0.3) < 0.2
+    assert ev["gamma_lcb"] < ev["gamma"] < ev["gamma_ucb"]
+    assert abs(ev["market_centre"] - 0.65) < 0.03
+    assert all(len(d) == 3 for d in ev["joint_draws"])
+    assert fit["table"]["gamma"] == ev["gamma"]
+    assert fit["table"]["market_centre"] == ev["market_centre"]
+
+
+def test_without_gamma_the_markets_slope_leaks_into_beta() -> None:
+    """Why the third knob exists.  No disagreement realises (beta 0), the
+    market runs its own slope (gamma 0.3), and the model disagrees more where
+    the book is cheap: the two-knob line reads the market's curve as a
+    negative beta; the three-knob fit tells the two apart."""
+    conn = _db()
+    _plant(conn, days=14, stations=120, beta=0.0, gamma=0.3, noise=0.05,
+           seed=8, disagreement_per_mid=1.5)
+    rows, _ = store.population(conn, stage_scope="P0")
+    two_knobs = store._ols([r["x"] for r in rows], [r["y"] for r in rows])
+    assert two_knobs is not None and two_knobs[1] < -0.1
+    fit = store.fit_beta(conn, stage_scope="P0")
+    assert abs(fit["evidence"]["beta"]) < 0.1
+    assert abs(fit["evidence"]["gamma"] - 0.3) < 0.15
 
 
 def test_a_zero_slope_serves_a_bound_at_or_below_zero() -> None:
