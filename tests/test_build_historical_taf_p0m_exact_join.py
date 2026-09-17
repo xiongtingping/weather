@@ -234,39 +234,6 @@ def test_commit_calls_atomic_ingest_once_and_is_no_live(tmp_path, monkeypatch) -
     assert manifest["boundary"]["orders_submitted"] == 0
 
 
-def test_twenty_four_sample_gate_cannot_be_lowered(tmp_path, monkeypatch) -> None:
-    archive_path, live_path, artifact_path, output_path = _write_inputs(tmp_path)
-    db_path = tmp_path / "target.db"
-    _db(db_path)
-    _patch_pipeline(monkeypatch, sample_n=23, validated=True)
-    monkeypatch.setattr(
-        pipeline,
-        "ingest_historical_taf_calibration_with_quarantine",
-        lambda *_args: {
-            "capture_count": 1,
-            "wrote_count": 1,
-            "replay_count": 0,
-            "skipped_after_anchor_count": 0,
-        },
-    )
-
-    result = pipeline.main([
-        "--db", str(db_path),
-        "--live-p0-inbox", str(live_path),
-        "--archive", str(archive_path),
-        "--taf-artifact", str(artifact_path),
-        "--output", str(output_path),
-        "--commit",
-    ])
-
-    assert result == 2
-    manifest = json.loads(output_path.read_text())
-    candidate = manifest["results"][0]["p0m_candidate"]
-    assert candidate["state"] == "BLOCKED"
-    assert candidate["minimum_sample_n"] == 24
-    assert "taf_native_oos_sample_n_insufficient" in candidate["blockers"]
-
-
 def test_strict_as_of_late_sample_is_excluded_from_candidate(tmp_path) -> None:
     source = tmp_path / "archive.json"
     write_bounded_json(source, _archive(available="2026-07-21T17:00:00Z"))

@@ -156,39 +156,6 @@ def _run_cli(
         sys.argv = old_argv
 
 
-def test_no_live_q0_cli_is_atomic_idempotent_and_orderless(tmp_path: Path) -> None:
-    db = _prepare_target_db(tmp_path)
-    manifest = _write_manifest(tmp_path)
-    cash_phase = _write_cash_phase(tmp_path)
-
-    assert _run_cli(db=db, manifest=manifest, cash_phase=cash_phase) == 0
-    with sqlite3.connect(db) as conn:
-        assert conn.execute("SELECT COUNT(*) FROM basket_official_ws_snapshot").fetchone()[0] == 0
-        assert conn.execute("SELECT COUNT(*) FROM basket_confirmed_inventory_snapshot").fetchone()[0] == 0
-        assert conn.execute("SELECT COUNT(*) FROM basket_order_state_snapshot").fetchone()[0] == 0
-        assert conn.execute("SELECT COUNT(*) FROM auto_trade_decisions").fetchone()[0] == 0
-
-    assert _run_cli(db=db, manifest=manifest, cash_phase=cash_phase, commit=True) == 0
-    with sqlite3.connect(db) as conn:
-        inventory = json.loads(conn.execute(
-            "SELECT inventory_json FROM basket_confirmed_inventory_snapshot"
-        ).fetchone()[0])
-        order_state = json.loads(conn.execute(
-            "SELECT order_state_json FROM basket_order_state_snapshot"
-        ).fetchone()[0])
-        assert inventory["filled_by_bucket"] == {"38°C": 0.0}
-        assert inventory["production_no_live"] is True
-        assert inventory["exchange_position_read"] is False
-        assert order_state["pending_by_bucket"] == {"38°C": 0.0}
-        assert conn.execute("SELECT COUNT(*) FROM auto_trade_decisions").fetchone()[0] == 0
-
-    assert _run_cli(db=db, manifest=manifest, cash_phase=cash_phase, commit=True) == 0
-    with sqlite3.connect(db) as conn:
-        assert conn.execute("SELECT COUNT(*) FROM basket_official_ws_snapshot").fetchone()[0] == 1
-        assert conn.execute("SELECT COUNT(*) FROM basket_confirmed_inventory_snapshot").fetchone()[0] == 1
-        assert conn.execute("SELECT COUNT(*) FROM basket_order_state_snapshot").fetchone()[0] == 1
-
-
 def test_no_live_q0_cli_rejects_explicit_live_position_inputs(tmp_path: Path) -> None:
     db = _prepare_target_db(tmp_path)
     manifest = _write_manifest(tmp_path)

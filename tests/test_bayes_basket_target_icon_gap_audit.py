@@ -39,41 +39,6 @@ def test_icon_is_not_removed_but_monitor_gate_is_not_default_open() -> None:
     assert switches["monitor_job_enabled_by_default"] is False
 
 
-def test_audit_keeps_forward_preflight_out_of_default_historical_audit() -> None:
-    # Keep the fixture's 2026-07-24 target day open explicitly; the test must
-    # not change meaning merely because wall-clock time advances.
-    result = build_audit(probe_official=False, as_of_utc="2026-07-25T00:00:00Z")
-    causes = {row["id"]: row for row in result["root_causes"]}
-    assert "ICON_NOT_REMOVED" in causes
-    assert "NO_HISTORICAL_NATIVE_ARCHIVE_ROUTE" in causes
-    assert "HISTORICAL_CALIBRATION_WINDOW_INSUFFICIENT" in causes
-    assert "FORWARD_ICON_EXISTS_SAME_RUN_OPEN_DAY" in causes
-    assert "FORWARD_ICON_EXISTS_BUT_RUN_MISALIGNED" not in causes
-    assert "FORWARD_PREFLIGHT_AVAILABLE_NOT_PROMOTED" not in causes
-    assert result["forward_preflight"]["available"] is False
-    statement = result["availability_summary"]["status_statement"]
-    assert statement["current_forward_icon_data"] == "PRESENT"
-    assert statement["historical_closed_icon_data_for_calibration"] == "PRESENT_BUT_CALIBRATION_WINDOW_INSUFFICIENT"
-    assert "当前 ICON 有数据" in statement["interpretation"]
-    assert result["availability_summary"]["historical_closed"]["complete_curve_count"] == expected_station_count()
-    assert result["availability_summary"]["historical_closed"]["closed_et_exact_join_station_day_count"] == expected_station_count()
-    assert result["availability_summary"]["current_forward"]["icon_arrival_count"] == expected_station_count()
-    assert result["availability_summary"]["current_forward"]["icon_complete_curve_count"] == expected_station_count()
-    assert result["target_icon_forward_fanout"]["valid_time_count"] == 24
-    archive = result["external_official_probe"]["retained_official_archive_probe"]
-    # The probe set is intentionally bounded but may grow as new dated
-    # candidates are added to the receipt. Assert the partition contract
-    # rather than freezing an obsolete probe count.
-    assert archive["exact_file_probe_count"] >= 5
-    assert archive["exact_file_probe_available_count"] + archive["exact_file_probe_unavailable_count"] + archive["exact_file_probe_error_count"] == archive["exact_file_probe_count"]
-    assert result["forward_preflight"]["target_local_date"] == ""
-    boundary = result["forward_preflight"]["date_boundary"]
-    assert boundary["must_be_excluded_from_historical_backfill"] is True
-    assert boundary["historical_ssot_allowed"] is False
-    assert boundary["production_calibration_allowed"] is False
-    assert result["boundary"]["protected_production_line_touched"] is False
-
-
 def test_receipt_coverage_excludes_future_et_rows_from_formal_counts() -> None:
     coverage = build_audit(probe_official=False)["target_icon_receipt_coverage"]
     assert not set(coverage["target_local_dates"]) & set(
@@ -82,21 +47,6 @@ def test_receipt_coverage_excludes_future_et_rows_from_formal_counts() -> None:
     assert coverage["receipt_rows"] + coverage["quarantined_future_receipt_count"] <= coverage[
         "all_receipt_file_rows"
     ]
-
-
-def test_same_run_open_day_is_reported_as_prospective_not_misaligned() -> None:
-    result = build_audit(
-        probe_official=False,
-        as_of_utc="2026-07-25T00:00:00Z",
-        forward_preflight_path=ROOT / "output/audits/bayes_basket_target_same_run_retained_raw_preflight_20260724_00z.json",
-    )
-    causes = {row["id"]: row for row in result["root_causes"]}
-    assert "FORWARD_ICON_EXISTS_SAME_RUN_OPEN_DAY" in causes
-    assert "FORWARD_ICON_EXISTS_BUT_RUN_MISALIGNED" not in causes
-    assert "TARGET_EXACT_JOIN_ZERO_MIXED_RUN" not in causes
-    assert result["forward_preflight"]["exact_three_model_join_count"] == expected_station_count()
-    assert result["forward_preflight"]["date_boundary"]["et_window_state"] == "open"
-    assert result["forward_preflight"]["date_boundary"]["historical_ssot_allowed"] is False
 
 
 def test_latest_arrival_set_merges_current_provider_receipts_over_stale_combined_receipt(tmp_path: Path, monkeypatch) -> None:

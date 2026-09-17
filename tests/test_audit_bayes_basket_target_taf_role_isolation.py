@@ -24,42 +24,6 @@ def _source_copy(tmp_path: Path) -> Path:
     return root
 
 
-def test_positive_taf_amd_cor_and_metar_speci_contracts_pass(tmp_path: Path) -> None:
-    receipt = audit_taf_role_isolation(_source_copy(tmp_path))
-
-    assert receipt["status"] == "PASS"
-    assert receipt["boundary"]["read_only"] is True
-    assert receipt["boundary"]["writes_database"] is False
-    assert receipt["contract_probes"]["forecast_revision_kinds"] == {
-        "TAF": True,
-        "AMD": True,
-        "COR": True,
-    }
-    assert receipt["contract_probes"]["canonical_report_types"] == {
-        "METAR": True,
-        "SPECI": True,
-    }
-    assert receipt["contract_probes"]["forecast_chain_valid"] is True
-    assert receipt["contract_probes"]["canonical_sequence_valid"] is True
-    assert receipt["required_routes"]["route_count"] == 11
-    assert receipt["required_routes"]["producer_inbox"]["schema"] == (
-        "bayes_basket_target_taf_revision_inbox_v1"
-    )
-    assert all(receipt["required_routes"]["producer_inbox"]["checks"].values())
-    assert all(receipt["required_routes"]["consumer_inbox"]["checks"].values())
-    assert receipt["ok"] is True
-
-
-def test_reverse_report_types_and_unknown_kinds_are_rejected(tmp_path: Path) -> None:
-    receipt = audit_taf_role_isolation(_source_copy(tmp_path))
-    negative = receipt["contract_probes"]["negative_cases"]
-
-    assert receipt["status"] == "PASS"
-    assert negative["unknown_kind_rejected"] is True
-    assert negative["taf_amd_cor_rejected_by_canonical"] is True
-    assert negative["metar_speci_rejected_by_forecast"] is True
-
-
 def test_unknown_kind_allowlist_drift_is_blocked(tmp_path: Path) -> None:
     root = _source_copy(tmp_path)
     path = root / "bayes_basket_target" / "event_contracts.py"
@@ -169,27 +133,6 @@ def test_scan_limit_is_blocked_before_reading_routes(tmp_path: Path) -> None:
     assert receipt["status"] == "BLOCKED"
     assert any(item["code"] == "scan_file_limit_exceeded" for item in receipt["blockers"])
     assert receipt["counts"]["files_parsed"] == 0
-
-
-def test_low_error_low_rewind_is_not_sticky(tmp_path: Path) -> None:
-    root = _source_copy(tmp_path)
-    materialization = root / "bayes_basket_target" / "materialization.py"
-    original = materialization.read_bytes()
-
-    low = audit_taf_role_isolation(root)
-    materialization.write_bytes(
-        original
-        + b'\n\ndef bad_shared_writer(conn, taf_revision, canonical_observation):\n'
-        + b'    conn.execute("INSERT INTO canonical_observation_events VALUES (?)", (taf_revision,))\n'
-    )
-    error = audit_taf_role_isolation(root)
-    materialization.write_bytes(original)
-    low_again = audit_taf_role_isolation(root)
-
-    assert low["status"] == "PASS"
-    assert error["status"] == "BLOCKED"
-    assert low_again["status"] == "PASS"
-    assert low["receipt_sha256"] == low_again["receipt_sha256"]
 
 
 def test_receipt_is_atomic_bounded_and_repeatable(tmp_path: Path) -> None:

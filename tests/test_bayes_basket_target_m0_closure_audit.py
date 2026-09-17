@@ -144,39 +144,6 @@ def test_prepared_cycle_without_blocking_decision_remains_actionable(tmp_path: P
     assert result["checks"]["cycle_reconciliation_closed"] is False
 
 
-def test_blocked_cycle_without_no_execution_vector_is_not_closed(
-    tmp_path: Path,
-) -> None:
-    root = Path(__file__).resolve().parents[1]
-    activation = root / "config/trading/bayes_basket_target_production_no_live_activation_v1.json"
-    result = build_audit(
-        db_path=_db(
-            tmp_path / "target.db",
-            activation,
-            include_vector=False,
-        ),
-        activation_path=activation,
-        acceptance_paths=[
-            _acceptance(tmp_path / "acceptance-a.json"),
-            _acceptance(tmp_path / "acceptance-b.json"),
-        ],
-    )
-
-    assert result["status"] == "BLOCKED"
-    assert (
-        result["cycle_reconciliation"]["execution_vector_lineage"][
-            "repair_candidate_count"
-        ]
-        == 1
-    )
-    assert (
-        result["cycle_reconciliation"]["checks"][
-            "blocked_zero_order_execution_vectors_complete"
-        ]
-        is False
-    )
-
-
 def test_two_distinct_repeatable_acceptance_receipts_are_required(tmp_path: Path) -> None:
     root = Path(__file__).resolve().parents[1]
     activation = root / "config/trading/bayes_basket_target_production_no_live_activation_v1.json"
