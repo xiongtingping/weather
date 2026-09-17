@@ -366,18 +366,13 @@ def _completeness(baskets: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Baskets that bought every bucket they posted, and how close the rest got.
 
     ``mean`` averages bought/intended per basket, so a three-bucket basket
-    that bought two is 67% whatever its money.  ``matrix`` counts each
-    (intended, bought) pair -- "posted 3, bought 2" -- because a 67% average
-    cannot say whether it is every basket missing a leg or a third missing
-    all of them.
+    that bought two is 67% whatever its money; ``unfilled`` counts the ones
+    that bought nothing.
     """
 
     if not baskets:
         return {"baskets": 0, "complete": 0, "complete_share": None,
-                "mean": None, "unfilled": 0, "matrix": []}
-    pairs: dict[tuple[int, int], int] = defaultdict(int)
-    for basket in baskets:
-        pairs[(int(basket["intended"]), int(basket["bought"]))] += 1
+                "mean": None, "unfilled": 0}
     complete = sum(1 for b in baskets if b["bought"] == b["intended"])
     return {
         "baskets": len(baskets),
@@ -385,10 +380,6 @@ def _completeness(baskets: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "complete_share": complete / len(baskets),
         "mean": sum(b["bought"] / b["intended"] for b in baskets) / len(baskets),
         "unfilled": sum(1 for b in baskets if b["bought"] == 0),
-        "matrix": [
-            {"intended": intended, "bought": bought, "count": count}
-            for (intended, bought), count in sorted(pairs.items())
-        ],
     }
 
 

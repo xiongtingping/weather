@@ -15379,9 +15379,10 @@ function liveReadiness(){
       <td>${g?(g[1]?"沿海":"内陆"):"—"}</td>`;
   };
   // Fleet basket completeness: how many buckets each live basket meant to
-  // buy against how many it bought, e.g. posted 3 and bought 2.
+  // buy against how many it bought, e.g. posted 3 and bought 2.  The three
+  // headline numbers only; the per-(posted, bought) table under them came
+  // off the card (user ruling, 2026-09-17).
   const BC = SEL.basket_completeness || {};
-  const matrix = BC.matrix || [];
   const completenessCard = BC.baskets ? `<div class="card" style="margin-top:12px">
     <div class="muted">篮子完整度（实盘，挂到交易所的篮子；一个站日的一个阶段算一篮）</div>
     <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:baseline;margin-top:6px">
@@ -15390,12 +15391,7 @@ function liveReadiness(){
       <div><span class="big">${pc0(BC.mean)}</span>
         <span class="muted">平均完整度（买到桶数÷挂出桶数）</span></div>
       <div><span class="big down">${BC.unfilled}</span>
-        <span class="muted">篮一桶都没买到</span></div></div>
-    <table class="mono" style="margin-top:8px;font-size:12px"><thead><tr>
-      <th>挂出桶数</th><th>买到桶数</th><th>篮数</th><th>占比</th></tr></thead><tbody>${
-      matrix.map(m=>`<tr><td>${m.intended}</td><td class="${m.bought===m.intended?"up":(m.bought===0?"down":"")}">${m.bought}</td>
-        <td>${m.count}</td><td>${pc0(m.count/BC.baskets)}</td></tr>`).join("")
-    }</tbody></table></div>` : "";
+        <span class="muted">篮一桶都没买到</span></div></div></div>` : "";
   // Group subtotals by climate band and coast, off the same station rows:
   // plain sums for money, hit and claim weighted by settled rows.
   const groups = new Map();

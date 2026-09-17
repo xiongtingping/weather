@@ -236,7 +236,8 @@ def test_a_barred_stations_orders_are_on_its_row_and_baskets_count_what_filled(
     fleet = LS._completeness(LS._baskets(legs))
     assert fleet["baskets"] == 1 and fleet["complete"] == 0
     assert abs(fleet["mean"] - 2 / 3) < 1e-9
-    assert fleet["matrix"] == [{"intended": 3, "bought": 2, "count": 1}]
+    assert fleet["unfilled"] == 0
+    assert "matrix" not in fleet
 
 
 def test_each_station_row_counts_its_hits_at_the_daily_tables_grains() -> None:
