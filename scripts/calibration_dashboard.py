@@ -10818,6 +10818,12 @@ margin:18px 0 0;font-weight:650}
 border:1px solid var(--line);border-radius:8px;padding:0;width:30px;
 height:28px;font-family:inherit;font-size:14px;line-height:1;flex:none}
 #theme:hover{color:var(--text);border-color:var(--accent)}
+/* Charter 141's dials made the live strip wider than the bar's first row.
+   The theme button keeps its place at the end of that row (after the fill),
+   and the strip takes the next row, right-aligned under it, whatever the
+   width -- rather than the strip wrapping and pushing the button off. */
+.navtop > #theme{order:1}
+.navtop > .navctl{order:2;margin-left:auto}
 body > #theme{position:fixed;top:14px;right:16px;z-index:9;width:auto;
 padding:6px 12px;background:var(--card);box-shadow:var(--shadow)}
 /* Second row of the sticky bar: one chip per section on screen, so a
@@ -10852,7 +10858,10 @@ font-family:inherit;font-size:12.5px;line-height:1.45}
    because the same click means paper on one day and money on the next. */
 .navctl{display:flex;align-items:center;flex-wrap:wrap;font-size:12px;
 color:var(--text);background:var(--card);border:1px solid var(--line);
-border-radius:10px;padding:2px 3px}
+border-radius:10px;padding:2px 3px;
+/* Charter 141 added four dials: on a narrow bar the strip wraps its own
+   knobs rather than overflowing. */
+flex:0 1 auto;min-width:0}
 .navctl[data-lc="live"]{border-color:var(--red)}
 .navctl-k{display:inline-flex;align-items:center;gap:6px;padding:1px 7px;
 white-space:nowrap;border-left:1px solid var(--line)}
@@ -15198,11 +15207,11 @@ const LC_KNOBS = {
     field:"portfolio_risk_fraction", spec:s=>s.exposure, decimals:2, pct:true,
     read:s=>s.exposure.portfolio_risk_fraction,
     fmt:v=>`${Math.round(Number(v)*100)}%`},
-  sizing: {id:"lc-sizing", name:"单站日定注", path:"/api/station-sizing",
+  sizing: {id:"lc-sizing", name:"定注", path:"/api/station-sizing",
     field:"station_day_sizing_fraction", spec:s=>s.station_sizing, decimals:3, pct:true,
     read:s=>s.station_sizing.station_day_sizing_fraction,
     fmt:v=>`${Math.round(Number(v)*1000)/10}%`},
-  ceiling: {id:"lc-ceiling", name:"单站日上限", path:"/api/station-ceiling",
+  ceiling: {id:"lc-ceiling", name:"上限", path:"/api/station-ceiling",
     field:"station_day_ceiling_fraction", spec:s=>s.station_ceiling, decimals:3, pct:true,
     read:s=>s.station_ceiling.station_day_ceiling_fraction,
     fmt:v=>`${Math.round(Number(v)*1000)/10}%`},
@@ -15258,7 +15267,7 @@ function liveControlStrip(){
       `${b("budget",-50,"−50",true)}${b("budget",-5,"−")}<b id="lc-budget">${
         L.budget_usdc==null?"—":LC_KNOBS.budget.fmt(L.budget_usdc)}</b>${
         b("budget",5,"+")}${b("budget",50,"+50",true)}`)}
-    <span class="navctl-k" id="lc-capital" title="宪章 141：按最新真实余额换算的每站日 定注 / 上限（美元），和真实余额"><span class="navctl-l">每站日</span><span class="stp"><b id="lc-capital-v">—</b></span></span>
+    <span class="navctl-k" id="lc-capital" title="宪章 141：按最新真实余额换算的每站日 定注 / 上限（美元）"><span class="stp"><b id="lc-capital-v">—</b></span></span>
   </div>`;
 }
 
@@ -15607,8 +15616,13 @@ function lcPaintKnobs(s){
   if(capEl){
     const eq = cap.account && Number(cap.account.equity_usdc);
     capEl.textContent = (eq && isFinite(eq))
-      ? `${(eq*cap.sizing_fraction).toFixed(2)} / ${(eq*cap.ceiling_fraction).toFixed(2)} U（余额 ${eq.toFixed(2)}）`
-      : `${Math.round((cap.sizing_fraction||0)*1000)/10}% / ${Math.round((cap.ceiling_fraction||0)*1000)/10}%`;
+      ? `$${(eq*cap.sizing_fraction).toFixed(1)}/${(eq*cap.ceiling_fraction).toFixed(1)}`
+      : "—";
+    const capBox = document.getElementById("lc-capital");
+    if(capBox && eq && isFinite(eq)){
+      capBox.title = `每站日 定注 $${(eq*cap.sizing_fraction).toFixed(2)} / 上限 $${(eq*cap.ceiling_fraction).toFixed(2)}`
+        + `（真实余额 $${eq.toFixed(2)}，读于 ${cap.account.observed_at_utc||"—"}；宪章 141）`;
+    }
   }
   Object.entries(LC_KNOBS).forEach(([key, K])=>{
     const cur = K.read(s);
