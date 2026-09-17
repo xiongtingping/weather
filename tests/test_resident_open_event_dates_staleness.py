@@ -88,11 +88,18 @@ def test_closed_state_is_still_ignored(tmp_path: Path) -> None:
     assert _resident_open_event_dates(path, as_of_utc="2026-08-06T14:00:00Z") == ()
 
 
-def test_multiple_open_days_still_refuse_to_guess(tmp_path: Path) -> None:
-    path = _manifest(tmp_path, event_dates=["2026-08-06", "2026-08-07"])
+def test_multiple_open_days_are_all_reported(tmp_path: Path) -> None:
+    path = _manifest(tmp_path, event_dates=["2026-08-07", "2026-08-06"])
 
-    # Mixing station-days would turn the 45-station cap into a station-day cap.
-    assert _resident_open_event_dates(path, as_of_utc="2026-08-06T14:00:00Z") == ()
+    # The dates are reported, never used to narrow scope: live registry
+    # discovery owns the scope (the 2026-08-08 deadlock, where a manifest
+    # naming one day held capture to 16 stations while the registry carried
+    # 45 for the next).  Refusing a two-day handoff was a narrowing rule, and
+    # a station carries both listed days since c0da0751, so both are named.
+    assert _resident_open_event_dates(path, as_of_utc="2026-08-06T14:00:00Z") == (
+        "2026-08-06",
+        "2026-08-07",
+    )
 
 
 def test_stale_day_dropped_leaves_a_single_current_day(tmp_path: Path) -> None:

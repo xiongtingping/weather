@@ -100,17 +100,20 @@ def test_no_side_is_ever_driven_to_exactly_zero(monkeypatch) -> None:
     assert sum(out.values()) == pytest.approx(1.0)
 
 
-def test_the_ceiling_speaks_from_ten_local_by_ruling(monkeypatch) -> None:
-    """Operator ruling 2026-09-06: the window opens at 14 hours left.
+def test_the_ceiling_window_is_ten_hours_by_measurement(monkeypatch) -> None:
+    """The window opens at 10 hours left (about 14:00 local).
 
-    ZGSZ 2026-09-06 held 80% on 30-32°C through a rainy morning at 25°C with
-    the receipt reading TOO_EARLY under the 10-hour window.  The default is
-    now 14 (10:00 local); the fitted artifact's 13-16h bin is populated, so
-    the layer rescales on it rather than declining.
+    The operator widened it to 14 on 2026-09-06 (ZGSZ held 80% on 30-32°C
+    through a rainy 25°C morning with the receipt reading TOO_EARLY), and
+    8bed2ebe reverted it on 2026-09-07 by measurement: on the 4,232 committed
+    P1 prefixes the widening newly admitted, the ceiling cost 0.136 nat and
+    rescued as many catastrophic misses (36) as it created (38).  The knob
+    stays, so the widened window is pinned too.
     """
 
+    monkeypatch.delenv("PM_METAR_CEILING_MAX_HOURS_LEFT", raising=False)
     importlib.reload(metar_ceiling)
-    assert metar_ceiling.CEILING_MAX_HOURS_LEFT == 14.0
+    assert metar_ceiling.CEILING_MAX_HOURS_LEFT == 10.0
     artifact = {
         "schema": metar_ceiling.SCHEMA,
         "trained_through": "2026-08-01",
@@ -126,20 +129,30 @@ def test_the_ceiling_speaks_from_ten_local_by_ruling(monkeypatch) -> None:
         },
     }
     monkeypatch.setattr(metar_ceiling, "CEILING_ENABLED", True)
-    # 10:30 local on a UTC station: 13.5 hours left -- inside the new window.
-    out, note = metar_ceiling.apply_ceiling(
-        POSTERIOR, ordinals=ORDINALS, running_high_bucket="22°C",
-        event_date="2026-08-20", settlement_timezone="UTC",
-        as_of_utc="2026-08-20T10:30:00.000Z", artifact=artifact,
-    )
+
+    def at(clock: str):
+        return metar_ceiling.apply_ceiling(
+            POSTERIOR, ordinals=ORDINALS, running_high_bucket="22°C",
+            event_date="2026-08-20", settlement_timezone="UTC",
+            as_of_utc=clock, artifact=artifact,
+        )
+
+    # 10:30 local on a UTC station: 13.5 hours left -- too early by default.
+    out, note = at("2026-08-20T10:30:00.000Z")
+    assert note["metar_ceiling_skip_reason"] == "TOO_EARLY"
+    assert out == POSTERIOR
+    # 14:30 local: 9.5 hours left -- inside the window, on the 0-10h bin.
+    out, note = at("2026-08-20T14:30:00.000Z")
+    assert note["metar_ceiling_applied"] == "true"
+    assert out["23°C"] + out["24°C"] == pytest.approx(0.20, abs=1e-6)
+
+    # The 2026-09-06 widening, through the knob: 13.5 hours left now speaks
+    # on the populated 13-16h bin, and 14.5 is still too early.
+    monkeypatch.setattr(metar_ceiling, "CEILING_MAX_HOURS_LEFT", 14.0)
+    out, note = at("2026-08-20T10:30:00.000Z")
     assert note["metar_ceiling_applied"] == "true"
     assert out["23°C"] + out["24°C"] == pytest.approx(0.859, abs=1e-6)
-    # 09:30 local: 14.5 hours left -- still too early.
-    out, note = metar_ceiling.apply_ceiling(
-        POSTERIOR, ordinals=ORDINALS, running_high_bucket="22°C",
-        event_date="2026-08-20", settlement_timezone="UTC",
-        as_of_utc="2026-08-20T09:30:00.000Z", artifact=artifact,
-    )
+    out, note = at("2026-08-20T09:30:00.000Z")
     assert note["metar_ceiling_skip_reason"] == "TOO_EARLY"
     assert out == POSTERIOR
 

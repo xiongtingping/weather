@@ -59,7 +59,19 @@ def _zero_active_reservation(conn: sqlite3.Connection, suffix: str) -> None:
     conn.commit()
 
 
-def test_migration_aligns_target_budget_and_releases_zero_residue() -> None:
+def test_migration_aligns_target_budget_and_releases_zero_residue(monkeypatch) -> None:
+    # The runtime file is the operator's: the board's budget dial writes
+    # target_remaining_budget_usdc (20 in July, 120 on 2026-09-17), and a test
+    # that read it would move with every click.  The real file is still read
+    # and validated by the real loader; only the budget is pinned.
+    import bayes_basket_target.no_live_capital_epoch as module
+
+    real_loader = module.load_target_no_live_runtime_config
+    monkeypatch.setattr(
+        module,
+        "load_target_no_live_runtime_config",
+        lambda path: {**real_loader(path), "target_remaining_budget_usdc": 20.0},
+    )
     conn = _db()
     _zero_active_reservation(conn, "a")
     result = migrate_target_no_live_capital_epoch(

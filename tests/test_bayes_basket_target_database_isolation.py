@@ -74,9 +74,15 @@ def test_online_no_live_activation_cas_preserves_blocked_cycle(
                 "2026-07-27T00:00:00Z", "2026-07-27T00:00:00Z",
             ),
         )
+        # Named columns: decision_scope_key (2026-09-02) sits between the
+        # decision hash and created_at, and a positional insert breaks on the
+        # next column the table grows.  A blocked cycle has no scope key.
         held.execute(
-            "INSERT INTO auto_trade_decisions VALUES"
-            "(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO auto_trade_decisions(decision_id,cycle_id,plan_id,"
+            "station_id,event_date,settlement_timezone,strategy_lane,"
+            "decided_state,will_order,target_execution_hard_deadline_at,"
+            "reason_codes_json,details_json,decision_sha256,created_at)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 "decision-1", "cycle-1", "plan-1", "RKPK", "2026-07-27",
                 "Asia/Seoul", "basket", "blocked", 0, None, '["no_live"]', "{}",

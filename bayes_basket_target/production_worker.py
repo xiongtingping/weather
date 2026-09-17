@@ -3700,8 +3700,10 @@ def _resident_open_event_dates(
     observational dates.  A production cycle must therefore get its event-day
     scope from the resident market handoff, not from whichever dates happen to
     be present in that inbox.  This helper is deliberately conservative: a
-    missing, malformed, or multi-date open handoff yields no inferred scope and
-    lets the normal downstream fail-closed gates report the actual blocker.
+    missing or malformed handoff yields no dates and lets the normal
+    downstream fail-closed gates report the actual blocker.  Every open date a
+    well-formed handoff names is returned; the result is reported, never used
+    to narrow scope (see the note at the end).
 
     ``event_day_state`` inside the handoff is frozen at write time, so a stale
     manifest keeps advertising a day that closed long ago.  That is not a
