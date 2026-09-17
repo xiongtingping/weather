@@ -26,6 +26,7 @@ Three sources, each read where it is the record:
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
@@ -245,6 +246,23 @@ def _mean(values: Sequence[float | None]) -> float | None:
     return sum(clean) / len(clean) if clean else None
 
 
+def _wilson_90(hits: int, n: int) -> list[float] | None:
+    """Two-sided 90% Wilson interval on a hit rate, ``None`` with no sample.
+
+    The go-live table reads a station's hit rate off a handful of 笔; the
+    interval is what says whether a claim outside it is the station or luck.
+    """
+
+    if n <= 0:
+        return None
+    z = 1.6449
+    p = hits / n
+    d = 1.0 + z * z / n
+    centre = (p + z * z / (2 * n)) / d
+    half = z * math.sqrt(p * (1.0 - p) / n + z * z / (4.0 * n * n)) / d
+    return [max(0.0, centre - half), min(1.0, centre + half)]
+
+
 def _seat_account(seats: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     priced = [
         s for s in seats
@@ -294,7 +312,11 @@ def _money_account(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         ),
         "return_on_stake": realized / staked if staked > 0 else None,
         "hit_count": hits,
+        # The hit rate's denominator: rows whose claim is known, which is
+        # not always every settled row.
+        "claimed_count": len(claimed),
         "hit_rate": hits / len(claimed) if claimed else None,
+        "hit_rate_interval_90": _wilson_90(hits, len(claimed)),
         "claimed_win_probability_mean": claim_mean,
         "calibration_ratio": (
             (hits / len(claimed)) / claim_mean
@@ -368,6 +390,25 @@ def _completeness(baskets: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _station_day_hits(days: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """The two station-day verdicts, counted: 每日统计's columns per station.
+
+    ``days`` are ``live_book.station_days`` records.  篮子命中 is over every
+    settled station-day, filled or not; 持仓命中 only over the ones that
+    filled -- the gap between the two is the legs that did not fill, which
+    is an execution number, not a model one.
+    """
+
+    settled = [d for d in days if d["settled_bucket"] is not None]
+    held = [d for d in settled if d["filled_legs"]]
+    return {
+        "settled_station_days": len(settled),
+        "basket_hit_station_days": sum(1 for d in settled if d["basket_hit"]),
+        "held_station_days": len(held),
+        "held_hit_station_days": sum(1 for d in held if d["held_hit"]),
+    }
+
+
 def station_stats(
     book: Mapping[str, Any], seats: Mapping[str, Mapping[str, Any]]
 ) -> list[dict[str, Any]]:
@@ -387,6 +428,9 @@ def station_stats(
     seats_by_station: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
     for seat in seats.values():
         seats_by_station[str(seat["station_id"])].append(seat)
+    days_by_station: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for day in live_book.station_days(book):
+        days_by_station[str(day["station_id"])].append(day)
     out = []
     for station in sorted(legs_by_station):
         legs = legs_by_station[station]
@@ -420,6 +464,7 @@ def station_stats(
             "sides": seat["sides"],
             "model_coverage_mean": seat["model_coverage_mean"],
             "seat_ask_total_mean": seat["seat_ask_total_mean"],
+            **_station_day_hits(days_by_station.get(station, [])),
             **_money_account(rows_by_station.get(station, [])),
         })
     return out

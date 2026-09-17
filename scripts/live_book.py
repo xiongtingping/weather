@@ -42,6 +42,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections import defaultdict
+from collections.abc import Mapping
 from typing import Any
 
 from paper_trading_ledger import (
@@ -405,6 +406,65 @@ def stage_summary(group: list[dict[str, Any]]) -> dict[str, Any]:
         "intended_buckets": sorted(posted),
         "buckets": list(posted.values()),
     }
+
+
+def station_days(book: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """One record per station-day with a live leg, and its two basket verdicts.
+
+    A *station-day* is one station on one event day, whatever stages it
+    traded.  ``basket_hit`` is truth in any bucket production posted that
+    day, filled or not; ``held_hit`` is truth in a bucket that filled, and
+    exists only on a day something did (user ruling, 2026-09-14).  Both are
+    ``None`` until the truth lands.
+
+    Decided here once: 每日统计 and 逐站逐日明细 count these records by day,
+    the go-live table's hit columns count them by station, and a day's
+    verdict cannot come out one way in one table and another in the next.
+    """
+
+    settled = book.get("settled") or {}
+    by_station_day: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for leg in book.get("legs") or []:
+        by_station_day[(leg["station_id"], leg["event_date"])].append(leg)
+    out: list[dict[str, Any]] = []
+    for (station, day), day_legs in sorted(by_station_day.items()):
+        landed = settled.get((station, day))
+        truth = landed[0] if landed else None
+        stages: dict[str, Any] = {}
+        stake = 0.0
+        payout = 0.0
+        held: set[str] = set()
+        posted: set[str] = set()
+        # A leg whose decision named no stage still spent money on this
+        # station-day; it is counted under its own key, never dropped.
+        extra = sorted({leg["stage"] for leg in day_legs} - set(STAGES))
+        for stage in list(STAGES) + extra:
+            group = [leg for leg in day_legs if leg["stage"] == stage]
+            if not group:
+                continue
+            summary = stage_summary(group)
+            stages[stage] = summary
+            stake += summary["stake_usdc"]
+            held |= set(summary["held_buckets"])
+            posted |= set(summary["intended_buckets"])
+            if truth is not None:
+                payout += summary["held_shares"].get(truth, 0.0)
+        filled = sum(1 for leg in day_legs if leg["filled_size"] > 0)
+        out.append({
+            "station_id": station,
+            "event_date": day,
+            "settled_bucket": truth,
+            "settled_source": landed[1] if landed else None,
+            "stages": stages,
+            "posted_legs": len(day_legs),
+            "filled_legs": filled,
+            "staked_usdc": stake,
+            "payout_usdc": payout if truth is not None else None,
+            "pnl_usdc": (payout - stake) if truth is not None and filled else None,
+            "held_hit": (truth in held) if truth is not None and filled else None,
+            "basket_hit": (truth in posted) if truth is not None else None,
+        })
+    return out
 
 
 def settlement_rows(

@@ -212,6 +212,79 @@ def test_a_barred_stations_orders_are_on_its_row_and_baskets_count_what_filled(
     assert fleet["matrix"] == [{"intended": 3, "bought": 2, "count": 1}]
 
 
+def test_each_station_row_counts_its_hits_at_the_daily_tables_grains() -> None:
+    """The go-live table's hit columns, per station (2026-09-17).
+
+    KMIA, day 1: posted 30/31, filled 30, truth 31 -- a basket hit, a held
+    miss.  Day 2: filled 40, truth 40 -- both.  Day 3: filled, no truth yet
+    -- neither.  EGLC's only day was refused whole by the send gate on the
+    truth's bucket: a basket hit (production chose it) with no held day and
+    no 笔.  笔 are (day, stage) that filled and settled, with the interval
+    on their hit rate.
+    """
+
+    legs = [
+        _leg("a1", "d1", "KMIA", "2026-09-10", "P0", "30", filled=5,
+             notional=1, state="filled", claim=0.4),
+        _leg("a2", "d1", "KMIA", "2026-09-10", "P0", "31", claim=0.2),
+        _leg("b1", "d2", "KMIA", "2026-09-11", "P0", "40", filled=5,
+             notional=1, state="filled", claim=0.5),
+        _leg("c1", "d3", "KMIA", "2026-09-12", "P0", "50", filled=5,
+             notional=1, state="filled", claim=0.5),
+        _leg("e1", "d4", "EGLC", "2026-09-10", "P0", "20", state="failed"),
+    ]
+    settled = {("KMIA", "2026-09-10"): ("31", "truth"),
+               ("KMIA", "2026-09-11"): ("40", "truth"),
+               ("EGLC", "2026-09-10"): ("20", "truth")}
+    rows = {r["station_id"]: r for r in LS.station_stats(_book(legs, settled), {})}
+    kmia = rows["KMIA"]
+    assert (kmia["basket_hit_station_days"], kmia["settled_station_days"]) == (2, 2)
+    assert (kmia["held_hit_station_days"], kmia["held_station_days"]) == (1, 2)
+    assert (kmia["hit_count"], kmia["claimed_count"]) == (1, 2)
+    assert abs(kmia["claimed_win_probability_mean"] - 0.45) < 1e-9
+    low, high = kmia["hit_rate_interval_90"]
+    assert 0.0 < low < 0.5 < high < 1.0
+    eglc = rows["EGLC"]
+    assert (eglc["basket_hit_station_days"], eglc["settled_station_days"]) == (1, 1)
+    assert eglc["held_station_days"] == 0
+    assert eglc["claimed_count"] == 0 and eglc["hit_rate_interval_90"] is None
+
+
+def test_the_board_counts_station_day_verdicts_from_the_live_book_only() -> None:
+    """每日统计 and the go-live table read one decision of a day's verdict.
+
+    Both used to be free to compute 篮子命中/持仓命中 on their own; the
+    verdict now lives in ``live_book.station_days`` and neither caller may
+    restate the membership test.
+    """
+
+    source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(
+        encoding="utf-8"
+    )
+    tree = ast.parse(source)
+    days = next(
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "collect_live_days"
+    )
+    calls = {
+        ast.unparse(node.func) for node in ast.walk(days)
+        if isinstance(node, ast.Call)
+    }
+    assert "live_book.station_days" in calls
+    assert "live_book.stage_summary" not in calls
+    selection = ast.parse(
+        (ROOT / "scripts" / "live_selection.py").read_text(encoding="utf-8")
+    )
+    stats = next(
+        node for node in ast.walk(selection)
+        if isinstance(node, ast.FunctionDef) and node.name == "station_stats"
+    )
+    assert "live_book.station_days" in {
+        ast.unparse(node.func) for node in ast.walk(stats)
+        if isinstance(node, ast.Call)
+    }
+
+
 def test_the_funnel_names_each_station_day_it_counted_as_not_built() -> None:
     conn = _conn()
     day = "2026-09-10"

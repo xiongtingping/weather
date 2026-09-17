@@ -911,3 +911,13 @@ def test_the_daily_table_and_roster_read_the_live_book_at_two_named_grains(
     # The fixture's decisions carry no binding, so their stage is unknown;
     # the legs are still counted under that key rather than dropped.
     assert roster["KMIA"]["stages"]["?"]["filled_legs"] == 2
+
+    # The go-live table counts the same verdicts by station: summed over
+    # stations they are the day's row.
+    import live_selection  # noqa: PLC0415
+
+    stats = live_selection.station_stats(board.live_book.build(conn), {})
+    assert sum(x["settled_station_days"] for x in stats) == row["settled_station_days"]
+    assert sum(x["basket_hit_station_days"] for x in stats) == row["basket_hit_station_days"]
+    assert sum(x["held_station_days"] for x in stats) == row["held_station_days"]
+    assert sum(x["held_hit_station_days"] for x in stats) == row["held_hit_station_days"]

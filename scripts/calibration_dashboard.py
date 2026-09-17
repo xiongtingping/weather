@@ -7502,7 +7502,6 @@ def collect_live_days(conn: sqlite3.Connection) -> dict[str, Any]:
 
     book = live_book.build(conn)
     legs = book["legs"]
-    settled = book["settled"]
     rows_by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in book["settlements"]:
         rows_by_day[row["event_date"]].append(row)
@@ -7514,45 +7513,18 @@ def collect_live_days(conn: sqlite3.Connection) -> dict[str, Any]:
         for station, day in legs_by_sd
     ])
 
+    # The station-day verdicts are the live book's (``live_book.station_days``),
+    # the same records the go-live table counts by station.
     roster: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for (station, day), sd_legs in sorted(legs_by_sd.items()):
-        landed = settled.get((station, day))
-        truth = landed[0] if landed else None
-        stages: dict[str, Any] = {}
-        stake = 0.0
-        payout = 0.0
-        held: set[str] = set()
-        posted: set[str] = set()
-        # A leg whose decision named no stage still spent money on this
-        # station-day; it is counted under its own key, never dropped.
-        extra = sorted({leg["stage"] for leg in sd_legs} - set(live_book.STAGES))
-        for stage in list(live_book.STAGES) + extra:
-            group = [leg for leg in sd_legs if leg["stage"] == stage]
-            if not group:
-                continue
-            summary = live_book.stage_summary(group)
-            stages[stage] = summary
-            stake += summary["stake_usdc"]
-            held |= set(summary["held_buckets"])
-            posted |= set(summary["intended_buckets"])
-            if truth is not None:
-                payout += summary["held_shares"].get(truth, 0.0)
-        filled = sum(1 for leg in sd_legs if leg["filled_size"] > 0)
+    for entry in live_book.station_days(book):
+        station, day = entry["station_id"], entry["event_date"]
         roster[day].append({
             "station_id": station,
             "event_date": day,
             "station_label": STATION_LABELS.get(station, ""),
             "market_slug": slugs.get(f"{station}|{day}", ""),
-            "settled_bucket": truth,
-            "settled_source": landed[1] if landed else None,
-            "stages": stages,
-            "posted_legs": len(sd_legs),
-            "filled_legs": filled,
-            "staked_usdc": stake,
-            "payout_usdc": payout if truth is not None else None,
-            "pnl_usdc": (payout - stake) if truth is not None and filled else None,
-            "held_hit": (truth in held) if truth is not None and filled else None,
-            "basket_hit": (truth in posted) if truth is not None else None,
+            **{k: v for k, v in entry.items()
+               if k not in ("station_id", "event_date")},
         })
 
     daily: list[dict[str, Any]] = []
@@ -15373,6 +15345,32 @@ function liveReadiness(){
       <td class="mono">${x.odds_mean==null?"—":n2(x.odds_mean,2)+"x"}</td>
       <td class="mono ${ev==null?"":(ev>0?"up":"down")}">${ev==null?"—":(ev>0?"+":"")+n2(ev,2)}</td>`;
   };
+  // Hit rates per station at 每日统计's grains, counted off the same
+  // station-day verdicts (live_book.station_days): 篮子命中 over every settled
+  // station-day, 持仓命中 over the ones that filled, and the 笔 rate beside
+  // its claim, the 90% interval in the hover.
+  const hfrac = (a,b) => b ? `${a}/${b} <span class="muted">${pc0(a/b)}</span>` : "—";
+  const hcells = (sid) => {
+    const x = SS[sid];
+    if(!x) return `<td class="mono muted" ${EDGE}>—</td>`
+      + '<td class="mono muted">—</td>'.repeat(3);
+    const ci = x.hit_rate_interval_90;
+    const claim = x.claimed_win_probability_mean;
+    // Coloured only when the claim sits outside the interval: inside it, a
+    // station's handful of 笔 cannot tell its claim from luck.
+    const off = (ci && claim!=null) ? (claim>ci[1]?"down":(claim<ci[0]?"up":"")) : "";
+    return `<td class="mono" ${EDGE}>${hfrac(x.basket_hit_station_days, x.settled_station_days)}</td>
+      <td class="mono">${hfrac(x.held_hit_station_days, x.held_station_days)}</td>
+      <td class="mono ${off}"${ci?` title="90% 区间 ${pc0(ci[0])}–${pc0(ci[1])}，声称 ${pc0(claim)}"`:""}>${hfrac(x.hit_count, x.claimed_count)}</td>
+      <td class="mono">${pc0(claim)}</td>`;
+  };
+  const HT = Object.values(SS).reduce((a,x)=>{
+    a.sd+=x.settled_station_days||0; a.bh+=x.basket_hit_station_days||0;
+    a.hd+=x.held_station_days||0; a.hh+=x.held_hit_station_days||0;
+    a.k+=x.hit_count||0; a.n+=x.claimed_count||0;
+    a.c+=(x.claimed_win_probability_mean||0)*(x.claimed_count||0);
+    return a;
+  }, {sd:0,bh:0,hd:0,hh:0,k:0,n:0,c:0});
   const geoCells = (sid) => {
     const g = GEO[sid];
     const bd = g ? bandOf(g[0]) : null;
@@ -15405,14 +15403,18 @@ function liveReadiness(){
     const g = GEO[x.station_id]; if(!g) return;
     const k = bandOf(g[0])+"·"+(g[1]?"沿海":"内陆");
     const a = groups.get(k) || {n:0,intents:0,filled:0,set:0,wHit:0,wClaim:0,
-      wSet:0,stake:0,real:0,baskets:0,complete:0};
+      wSet:0,stake:0,real:0,baskets:0,complete:0,sd:0,bh:0,hd:0,hh:0};
     a.n++; a.intents+=x.intent_leg_total||0; a.filled+=x.filled_leg_total||0;
     a.set+=x.settled_count||0; a.stake+=x.staked_usdc||0; a.real+=x.realized_usdc||0;
     const c = x.completeness||{}; a.baskets+=c.baskets||0; a.complete+=c.complete||0;
-    if(x.hit_rate!=null && x.settled_count){
-      a.wHit+=x.hit_rate*x.settled_count;
-      a.wClaim+=(x.claimed_win_probability_mean||0)*x.settled_count;
-      a.wSet+=x.settled_count;
+    a.sd+=x.settled_station_days||0; a.bh+=x.basket_hit_station_days||0;
+    a.hd+=x.held_station_days||0; a.hh+=x.held_hit_station_days||0;
+    // Weighted by the rate's own denominator -- the 笔 whose claim is known
+    // -- so the group's rate is its hits over its 笔, not a mean of means.
+    if(x.hit_rate!=null && x.claimed_count){
+      a.wHit+=x.hit_count;
+      a.wClaim+=(x.claimed_win_probability_mean||0)*x.claimed_count;
+      a.wSet+=x.claimed_count;
     }
     groups.set(k, a);
   });
@@ -15425,6 +15427,7 @@ function liveReadiness(){
     return `<tr><td>${h(bd)}</td><td>${cl}</td><td>${a.n}</td>
       <td class="mono">${a.intents}</td><td class="mono">${a.filled}</td>
       <td class="mono">${a.baskets?`${a.complete}/${a.baskets}`:"—"}</td>
+      <td class="mono">${hfrac(a.bh, a.sd)}</td><td class="mono">${hfrac(a.hh, a.hd)}</td>
       <td class="mono">${a.set}</td><td>${pc0(hit)}</td><td>${pc0(claim)}</td>
       <td class="${cal==null?"":(cal>=1?"up":"down")}">${cal==null?"—":n2(cal)+"×"}</td>
       <td class="mono">${n2(a.stake)}</td>
@@ -15435,7 +15438,8 @@ function liveReadiness(){
     <summary>按气候带 × 海陆分组小计（实盘）</summary>
     <div class="scroll"><table><thead><tr>
       <th>气候带</th><th>海陆</th><th>站数</th><th>意向腿</th><th>成交腿</th><th>完整篮</th>
-      <th>已结算笔</th><th>命中率</th><th>声称</th><th>命中/声称</th>
+      <th>篮子命中<br><span class="muted">站日</span></th><th>持仓命中<br><span class="muted">站日</span></th>
+      <th>已结算笔</th><th>命中率<br><span class="muted">笔</span></th><th>声称</th><th>命中/声称</th>
       <th>投入</th><th>实得</th><th>ROI</th></tr></thead><tbody>${groupRows}</tbody></table></div>
     <div class="muted" style="margin-top:6px">禁入站也计入小计。南北半球季节相位相反，命中率别直接横比。</div>
     </details>` : "";
@@ -15462,6 +15466,7 @@ function liveReadiness(){
     <td class="mono ${r.score>=5?"up":(r.score>=4?"":"down")}">${r.score}/5</td>
     <td class="muted">${r.add_candidate?"☆建议加入 ":""}${r.release_candidate?"★建议放出 ":""}${Object.entries(r.gates).filter(([k,v])=>!v).map(([k])=>GATE[k]).join("、")||"✓"}</td>
     ${lcells(r.live)}
+    ${hcells(r.station)}
     ${fverdict(r.station)}
     ${fcells(r.station)}
     <td class="mono ${r.climate_jump_c==null?"":(r.climate_jump_c>1.76?"down":"up")}" ${EDGE}>${r.climate_jump_c==null?"—":r.climate_jump_c.toFixed(2)}</td>
@@ -15505,7 +15510,8 @@ function liveReadiness(){
         title="点击＝全部站一起禁入：每个站写一条操作者禁入裁定，同时撤掉所有豁免与待观察——下一轮生产起不再给任何站下单（账本照常记账）。一次写盘、一条审计。">⛔ 一键全部禁入</button></div>
     <div class="scroll" style="max-height:420px;margin-top:6px">
     <table style="white-space:nowrap"><thead><tr><th>站</th><th title="三个开关都是人工裁定，点击即开启关闭，改动立刻写盘并记审计。禁入=不下单（记账照旧）；豁免=证据不够也上线；待观察=够格也先不下单。三者互斥。">闸门（人工）</th><th>过闸</th><th>未过项</th>
-      <th title="实盘：该站真实成交腿里已结算的站日数" style="border-left:1px solid var(--line)">实盘站日</th><th title="实盘：命中腿/已结算成交腿，+N待＝已成交但还没结算的腿">实盘腿</th><th title="实盘：已结算成交腿的实付金额(U)">实盘投入</th><th title="实盘：已结算成交腿的盈亏(U)＝命中份数×1U−实付">实盘盈亏</th><th title="实盘：盈亏÷投入，待结算腿不计入">实盘ROI</th><th title="实盘：实盘账本最近 5 个结算日的 ROI${(LP.recent_window_dates||[]).length?"（"+LP.recent_window_dates[0]+" 起）":""}">实盘近5日</th>${
+      <th title="实盘：该站真实成交腿里已结算的站日数" style="border-left:1px solid var(--line)">实盘站日</th><th title="实盘：命中腿/已结算成交腿，+N待＝已成交但还没结算的腿">实盘腿</th><th title="实盘：已结算成交腿的实付金额(U)">实盘投入</th><th title="实盘：已结算成交腿的盈亏(U)＝命中份数×1U−实付">实盘盈亏</th><th title="实盘：盈亏÷投入，待结算腿不计入">实盘ROI</th><th title="实盘：实盘账本最近 5 个结算日的 ROI${(LP.recent_window_dates||[]).length?"（"+LP.recent_window_dates[0]+" 起）":""}">实盘近5日</th>
+      <th title="命中·站日：真值落在生产挑中的桶里的站日/已结算站日；挑中的桶成交与否、是否被实盘门拒掉都算（与每日统计同一判定）" style="border-left:1px solid var(--line)">篮子命中<br><span class="muted">站日</span></th><th title="命中·站日：真值落在成交的桶里的站日/有成交的已结算站日">持仓命中<br><span class="muted">站日</span></th><th title="命中·笔：一个站日一个阶段成交过的腿算一笔；持有的桶含真值的笔/声称已知的已结算笔。悬停看 90% 区间；声称落在区间外才着色（红＝声称高于区间上沿）">命中率<br><span class="muted">笔</span></th><th title="命中·笔：下单决策绑定的概率包里持有各桶概率之和，按笔平均">声称<br><span class="muted">笔</span></th>${
       FX?`<th title="实盘：五个维度各指认不同的一层，见上方折叠说明" style="border-left:1px solid var(--line)">不行</th><th title="实盘">不行的维度</th>
       <th title="实盘：已结算的实盘篮子数（站日×阶段，每个阶段各持一个篮子）" style="border-left:1px solid var(--line)">实盘结算笔</th><th title="实盘：站日里挂出的桶盖住真值的比例；＜${(100*(FX.thresholds.coverage_floor||0)).toFixed(0)}% 算「覆盖」不行">覆盖率</th><th title="实盘：实得盈亏÷声称期望；＜0 算「实现」不行">实现/期望</th><th title="实盘：命中率÷平均声称。五闸「声称诚实」要求 0.88–1.18；＜${FX.thresholds.claim_floor} 算「声称」不行">命中/声称</th><th title="实盘：成交篮子所依据的模型中心−结算真值，按站日平均。五闸「中心偏差」要求 |x|≤0.8°C；＞${FX.thresholds.centre_limit_c}°C 算「中心」不行">中心偏差</th><th title="实盘：分割日之前的站日盈亏(U)，括号里是站日数">前半段</th><th title="实盘：分割日及之后的站日盈亏(U)，括号里是站日数；前后都亏算「持续」不行">后半段</th>`:""}
       <th title="该站真值的日际跳变均值(°C)：天气性格，>1.76 的站在真边际枯竭期实测 −43%（留存组 +23%，p=0.023）。外生、慢变、先于账本。" style="border-left:1px solid var(--line)">跳变/日</th><th title="近14天池子里模型分布的均值−众数距离(桶)：跳变在模型层的影子(r=+0.32)，>0.93 为高。">形状gap</th>
@@ -15514,6 +15520,10 @@ function liveReadiness(){
       <th title="生产那一笔决策的席位中心桶相对市场中心桶：偏上/一致/偏下的决策数" style="border-left:1px solid var(--line)">位置<br><span class="muted">上/平/下</span></th><th title="生产入座时记下的整篮声称概率，按决策平均">概率和</th><th title="生产入座时记下的整篮全含费卖价，按决策平均">卖价和</th><th title="按实际成交成本算的赔率（按投入加权的均价再求赔率）">赔率</th><th title="已结算实盘单的声称期望÷投入">EV/U</th>
       <th title="站点纬度分带：回归线以内热带，23.4°–35° 副热带，35°–55° 温带，55° 以上高纬" style="border-left:1px solid var(--line)">气候带</th><th title="离开阔海面约 30 公里内算沿海，湖和内河不算">海陆</th>
       </tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="muted" style="margin-top:6px;font-size:11.5px">
+      全队命中（含禁入站）：篮子命中 ${hfrac(HT.bh, HT.sd)} 站日 · 持仓命中 ${hfrac(HT.hh, HT.hd)} 站日 ·
+      命中率 ${hfrac(HT.k, HT.n)} 笔，声称 ${HT.n?pc0(HT.c/HT.n):"—"}。
+      篮子命中算挑中的桶，持仓命中只算买到的桶，两者之差在执行；命中率对声称看的是模型。</div>
     ${groupBlock}
     ${FX?`<div class="muted" style="margin-top:4px;font-size:11.5px">
       五维诊断：${FX.worst.length?h(FX.worst.join("、"))+" 至少四项不行":"没有站四项以上不行"}，
