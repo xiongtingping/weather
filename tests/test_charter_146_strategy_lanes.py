@@ -34,7 +34,7 @@ def test_missing_is_the_defaults_and_unreadable_pauses_everything(tmp_path) -> N
     absent = lanes.load_strategy_lanes(tmp_path / "absent.json")
     assert absent["source"] == "defaults"
     assert all(absent["lanes"][name]["enabled"] is True for name in lanes.KNOWN_LANES)
-    assert absent["lanes"]["tiebreak"]["stake_usdc"] == 20.0
+    assert absent["lanes"]["tiebreak"]["stake_usdc"] == 5.0
     broken = tmp_path / "broken.json"
     broken.write_text("{not json", encoding="utf-8")
     assert lanes.load_strategy_lanes(broken)["source"] == "unreadable"
@@ -74,7 +74,7 @@ def test_the_served_file_pauses_the_three_and_runs_the_tiebreak() -> None:
     assert served["lanes"]["certain_win_recycle"]["enabled"] is False
     assert served["lanes"]["mis_bought_leg_exit"]["enabled"] is False
     assert served["lanes"]["tiebreak"]["enabled"] is True
-    assert served["lanes"]["tiebreak"]["stake_usdc"] == 20.0
+    assert served["lanes"]["tiebreak"]["stake_usdc"] == 5.0
     assert served["lanes"]["tiebreak"]["min_market_share_on_model_mode"] == 0.40
 
 
@@ -200,3 +200,80 @@ def test_the_daemon_skips_paused_lanes_and_runs_the_tiebreak(tmp_path, monkeypat
     result = daemon.run_target_production_cycle(Worker())
     assert result["tiebreak_lane"] == {"state": "lane_paused", "lane": "tiebreak"}
     assert len(ran) == 1
+
+
+# ---------------------------------------------------------------------------
+# The board's dial and lane switches (control server).
+
+
+def _control(tmp_path, monkeypatch):
+    if str(ROOT / "scripts") not in sys.path:
+        sys.path.insert(0, str(ROOT / "scripts"))
+    import live_control_server as control  # noqa: PLC0415
+
+    intent = tmp_path / "live_intent.json"
+    intent.write_text(json.dumps({"schema": "basket_target_live_intent_v1", "live_enabled": False,
+                                  "station_scope": "explicit", "station_allowlist": [],
+                                  "minimum_settlements_to_qualify": 5}), encoding="utf-8")
+    policy = tmp_path / "policy.json"
+    policy.write_text(json.dumps({"portfolio_risk_fraction": 0.3, "authority_scope": "x"}), encoding="utf-8")
+    runtime = tmp_path / "no_live_runtime.json"
+    live_runtime = tmp_path / "live_runtime.json"
+    for path, mode in ((runtime, "production_no_live"), (live_runtime, "production_live")):
+        path.write_text(json.dumps({"execution_mode": mode, "target_remaining_budget_usdc": 100.0}), encoding="utf-8")
+    lanes_path = _lanes_file(tmp_path, {"basket": {"enabled": False, "note": "kept"}, "tiebreak": {"enabled": True, "stake_usdc": 5.0}}, "lanes_ctl.json")
+    monkeypatch.setattr(control, "INTENT_PATH", intent)
+    monkeypatch.setattr(control, "POLICY_PATH", policy)
+    monkeypatch.setattr(control, "RUNTIME_PATH", runtime)
+    monkeypatch.setattr(control, "LIVE_RUNTIME_PATH", live_runtime)
+    monkeypatch.setattr(control, "SSOT_PATH", tmp_path / "absent.db")
+    monkeypatch.setattr(control, "EXCLUSION_PATH", tmp_path / "absent.json")
+    monkeypatch.setattr(control, "PAUSE_FLAG_PATH", tmp_path / "paused.flag")
+    monkeypatch.setattr(control, "AUDIT_PATH", tmp_path / "audit.jsonl")
+    monkeypatch.setattr(control, "STRATEGY_LANES_PATH", lanes_path)
+    monkeypatch.setattr(control, "_EXECUTION_MODE", "production_live")
+    return control, lanes_path
+
+
+def test_the_stake_dial_writes_the_lane_file_and_keeps_every_other_field(tmp_path, monkeypatch) -> None:
+    control, lanes_path = _control(tmp_path, monkeypatch)
+    before = control.state()
+    assert before["tiebreak_stake"]["stake_usdc"] == 5.0
+    assert before["tiebreak_stake"]["bounds"] == [1.0, 100.0]
+    assert before["strategy_lanes"]["lanes"]["basket"]["enabled"] is False
+    after = control.set_tiebreak_stake(7)
+    assert after["tiebreak_stake"]["stake_usdc"] == 7.0
+    doc = json.loads(lanes_path.read_text(encoding="utf-8"))
+    assert doc["lanes"]["tiebreak"]["stake_usdc"] == 7.0
+    assert doc["lanes"]["basket"] == {"enabled": False, "note": "kept"}
+    assert doc["lanes"]["tiebreak"]["enabled"] is True
+    assert "updated_at_utc" in doc
+    # And the lane reads exactly what the board wrote.
+    assert lanes.lane_settings("tiebreak", lanes_path)["stake_usdc"] == 7.0
+    for bad in (0.5, 101, "x", float("nan")):
+        with pytest.raises(ValueError):
+            control.set_tiebreak_stake(bad)
+    assert json.loads(lanes_path.read_text(encoding="utf-8"))["lanes"]["tiebreak"]["stake_usdc"] == 7.0
+
+
+def test_a_lane_switch_flips_one_lane_and_is_audited(tmp_path, monkeypatch) -> None:
+    control, lanes_path = _control(tmp_path, monkeypatch)
+    out = control.set_lane_enabled("basket", True, by="test")
+    assert out["strategy_lanes"]["lanes"]["basket"]["enabled"] is True
+    assert lanes.lane_enabled("basket", lanes_path) is True
+    assert lanes.lane_enabled("tiebreak", lanes_path) is True
+    out = control.set_lane_enabled("tiebreak", False)
+    assert out["tiebreak_stake"]["enabled"] is False
+    assert lanes.lane_enabled("tiebreak", lanes_path) is False
+    with pytest.raises(ValueError):
+        control.set_lane_enabled("no_such_lane", True)
+    audit = [json.loads(line) for line in (tmp_path / "audit.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert any(a.get("knob") == "strategy_lane:basket" for a in audit)
+
+
+def test_an_unreadable_lane_file_is_not_edited_into_shape(tmp_path, monkeypatch) -> None:
+    control, lanes_path = _control(tmp_path, monkeypatch)
+    lanes_path.write_text("{not json", encoding="utf-8")
+    with pytest.raises(ValueError):
+        control.set_tiebreak_stake(5)
+    assert lanes_path.read_text(encoding="utf-8") == "{not json"

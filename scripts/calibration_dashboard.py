@@ -70,6 +70,9 @@ from paper_trading_ledger import (  # noqa: E402
 # resolver.
 import live_book  # noqa: E402
 from live_book import settled_buckets as _live_settled_buckets  # noqa: E402
+from bayes_basket_target.strategy_lanes import (  # noqa: E402
+    load_strategy_lanes as _load_strategy_lanes,
+)
 # The selection readings -- the top strip's 选桶 row, 逐站汇总（跨日）,
 # 没建仓是因为什么, 覆盖 · 价格 · EV, 篮子命中率 -- off production's decisions
 # and the live fills (same ruling).  The paper selection payload they read
@@ -5145,6 +5148,15 @@ def collect_live_readiness(
         "station_sizing": capital_layer.get("station_day_sizing_fraction", 0.065),
         "station_ceiling": capital_layer.get("station_day_ceiling_fraction", 0.10),
         "budget_usdc": runtime.get("target_remaining_budget_usdc"),
+        # Charter 146: the tiebreak lane's per-trade stake and the four
+        # lane switches, as the resident will read them.
+        "tiebreak_stake": (
+            (_load_strategy_lanes()["lanes"].get("tiebreak") or {}).get("stake_usdc")
+        ),
+        "strategy_lanes": {
+            name: bool(lane.get("enabled") is True)
+            for name, lane in _load_strategy_lanes()["lanes"].items()
+        },
         "live_enabled": intent.get("live_enabled"),
         # What the system is, not what it was when this panel was written.
         # The banner used to state "三重合同仍锁 no_live" as a fixed string,
@@ -8154,6 +8166,187 @@ def collect_live_days(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
+    """「秤砣线」-- the tiebreak lane's own statistics (charter 146).
+
+    User ruling 2026-09-18: 前端增加可自行调整每笔预算和单独的统计.  Three
+    reads, each from where the lane itself writes: the lane switches and
+    the stake from the operator file; every first decision the lane scored
+    from ``tiebreak_lane_evaluation`` (fired or not, with the reason a fired
+    one did not send); and the trades from the live book, restricted to the
+    lane's own decision rows (``tiebreak_decision_*``), scored against the
+    settled bucket exactly as every other live leg is.
+
+    The acceptance the charter names is printed as three conditions, not a
+    verdict: realised minus ask with a day-clustered lower bound above zero,
+    both halves the same sign, and at least thirty event days.
+    """
+
+    lanes = _load_strategy_lanes()
+    tiebreak = lanes["lanes"].get("tiebreak") or {}
+    out: dict[str, Any] = {
+        "available": True,
+        "settings": {
+            "enabled": tiebreak.get("enabled") is True,
+            "stake_usdc": tiebreak.get("stake_usdc"),
+            "min_market_share_on_model_mode": tiebreak.get(
+                "min_market_share_on_model_mode"
+            ),
+            "first_decision_fresh_seconds": tiebreak.get(
+                "first_decision_fresh_seconds"
+            ),
+            "source": lanes.get("source"),
+            "updated_at_utc": lanes.get("updated_at_utc"),
+        },
+        "lanes": {
+            name: bool(lane.get("enabled") is True)
+            for name, lane in lanes["lanes"].items()
+        },
+        "evaluations": {"available": False},
+        "trades": {"available": False},
+    }
+    has_eval = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table'"
+        " AND name='tiebreak_lane_evaluation'"
+    ).fetchone() is not None
+    if has_eval:
+        total, fired, days, first_at, last_at = conn.execute(
+            "SELECT COUNT(*), COALESCE(SUM(fired),0), COUNT(DISTINCT event_date),"
+            " MIN(evaluated_at_utc), MAX(evaluated_at_utc)"
+            " FROM tiebreak_lane_evaluation"
+        ).fetchone()
+        refusals = [
+            {"refusal": str(r[0] or "sent"), "count": int(r[1]), "fired": int(r[2] or 0)}
+            for r in conn.execute(
+                "SELECT COALESCE(refusal,''), COUNT(*), SUM(fired)"
+                " FROM tiebreak_lane_evaluation GROUP BY COALESCE(refusal,'')"
+                " ORDER BY COUNT(*) DESC LIMIT 14"
+            )
+        ]
+        fired_rows = [
+            {
+                "station_id": r[0], "event_date": r[1], "stage": r[2],
+                "model_mode": r[3], "market_mode": r[4],
+                "market_share_on_model_mode": r[5],
+                "model_mode_share": r[6], "refusal": r[7],
+                "order_intent_id": r[8], "evaluated_at_utc": r[9],
+            }
+            for r in conn.execute(
+                "SELECT station_id, event_date, stage, model_mode, market_mode,"
+                " market_share_on_model_mode, model_mode_share, refusal,"
+                " order_intent_id, evaluated_at_utc"
+                " FROM tiebreak_lane_evaluation WHERE fired=1"
+                " ORDER BY evaluated_at_utc DESC LIMIT 40"
+            )
+        ]
+        by_day = [
+            {"event_date": r[0], "evaluated": int(r[1]), "fired": int(r[2] or 0),
+             "sent": int(r[3] or 0)}
+            for r in conn.execute(
+                "SELECT event_date, COUNT(*), SUM(fired),"
+                " SUM(CASE WHEN fired=1 AND refusal IS NULL THEN 1 ELSE 0 END)"
+                " FROM tiebreak_lane_evaluation GROUP BY event_date"
+                " ORDER BY event_date DESC LIMIT 21"
+            )
+        ]
+        out["evaluations"] = {
+            "available": True, "total": int(total or 0), "fired": int(fired or 0),
+            "event_days": int(days or 0), "first_at_utc": first_at,
+            "last_at_utc": last_at, "refusals": refusals,
+            "fired_rows": fired_rows, "by_day": by_day,
+        }
+    book = live_book.build(conn)
+    settled = book.get("settled") or {}
+    legs = [
+        leg for leg in (book.get("legs") or [])
+        if str(leg.get("decision_id") or "").startswith("tiebreak_decision_")
+    ]
+    trades: list[dict[str, Any]] = []
+    for leg in legs:
+        key = (leg["station_id"], leg["event_date"])
+        landed = settled.get(key)
+        filled = float(leg.get("filled_size") or 0.0)
+        notional = float(leg.get("filled_notional_usdc") or 0.0)
+        hit = (landed[0] == leg["bucket"]) if (landed and filled > 0) else None
+        payout = filled if hit else (0.0 if hit is False else None)
+        trades.append({
+            "station_id": leg["station_id"], "event_date": leg["event_date"],
+            "stage": leg.get("stage"), "bucket": leg["bucket"],
+            "limit_price": leg.get("limit_price"),
+            "requested_size": leg.get("requested_size"),
+            "requested_notional_usdc": leg.get("requested_notional_usdc"),
+            "filled_size": filled, "filled_notional_usdc": notional,
+            "ask_paid": (notional / filled) if filled > 0 else None,
+            "claimed_probability": leg.get("claimed_probability"),
+            "state": leg.get("state"), "created_at": leg.get("created_at"),
+            "settled_bucket": landed[0] if landed else None,
+            "hit": hit, "payout_usdc": payout,
+            "pnl_usdc": (payout - notional) if payout is not None else None,
+        })
+    trades.sort(key=lambda t: (t["event_date"], t["station_id"]), reverse=True)
+    filled_rows = [t for t in trades if t["filled_size"] > 0]
+    settled_rows = [t for t in filled_rows if t["hit"] is not None]
+    stake = sum(t["filled_notional_usdc"] for t in settled_rows)
+    payout = sum(t["payout_usdc"] or 0.0 for t in settled_rows)
+    shares = sum(t["filled_size"] for t in settled_rows)
+    hits = sum(1 for t in settled_rows if t["hit"])
+    avg_ask = (stake / shares) if shares > 0 else None
+    hit_rate = (hits / len(settled_rows)) if settled_rows else None
+    edge_rows = [
+        ((1.0 if t["hit"] else 0.0) - (t["ask_paid"] or 0.0), t["event_date"])
+        for t in settled_rows if t["ask_paid"] is not None
+    ]
+    edge = (sum(e for e, _d in edge_rows) / len(edge_rows)) if edge_rows else None
+    ci = None
+    event_days = sorted({t["event_date"] for t in settled_rows})
+    if len(edge_rows) >= 5 and len(event_days) >= 3:
+        import random as _random  # noqa: PLC0415
+
+        rng = _random.Random(146)
+        by_day_edges: dict[str, list[float]] = defaultdict(list)
+        for e, d in edge_rows:
+            by_day_edges[d].append(e)
+        days_list = list(by_day_edges)
+        draws: list[float] = []
+        for _ in range(500):
+            picked = [rng.choice(days_list) for _ in days_list]
+            pool = [e for d in picked for e in by_day_edges[d]]
+            draws.append(sum(pool) / len(pool))
+        draws.sort()
+        ci = [draws[int(0.05 * len(draws))], draws[int(0.95 * len(draws))]]
+    halves = None
+    if len(event_days) >= 2:
+        cut = event_days[len(event_days) // 2]
+        first = [e for e, d in edge_rows if d < cut]
+        second = [e for e, d in edge_rows if d >= cut]
+        halves = {
+            "split_event_date": cut,
+            "first": (sum(first) / len(first)) if first else None,
+            "second": (sum(second) / len(second)) if second else None,
+        }
+    out["trades"] = {
+        "available": True,
+        "sent": len(trades), "filled": len(filled_rows),
+        "settled": len(settled_rows), "hits": hits,
+        "open": len(filled_rows) - len(settled_rows),
+        "stake_usdc": stake, "payout_usdc": payout, "pnl_usdc": payout - stake,
+        "roi": ((payout - stake) / stake) if stake > 0 else None,
+        "avg_ask": avg_ask, "hit_rate": hit_rate,
+        "realised_minus_ask": edge, "realised_minus_ask_ci90": ci,
+        "halves": halves, "event_days": len(event_days),
+        "acceptance": {
+            "lower_bound_positive": bool(ci and ci[0] > 0),
+            "halves_same_sign": bool(
+                halves and halves["first"] is not None and halves["second"] is not None
+                and (halves["first"] > 0) == (halves["second"] > 0)
+            ),
+            "event_days": len(event_days), "event_days_needed": 30,
+        },
+        "rows": trades[:60],
+    }
+    return out
+
+
 def collect_convergence_claim(conn: sqlite3.Connection) -> dict[str, Any]:
     """Arm B (2026-09-06): the convergence claim lift, in shadow.
 
@@ -10687,6 +10880,9 @@ SECTION_CACHE_TTL_SEC = {
     # skill score; the journal moves once a day.  Five minutes off the
     # valuation lane's so the two do not expire on the same render.
     "posterior_lane": 55 * 60,
+    # 秤砣线 (charter 146): one small table and the live book the money
+    # board already built; the lane moves every production cycle.
+    "tiebreak_lane": 4 * 60,
     # Three populations of settled decisions with their books (~60s on the
     # 45GB store); every row is a settled station-day, so the reading moves
     # once a day when the truth lands.
@@ -11079,6 +11275,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "live_readiness": _cached_section(
             "live_readiness", collect_live_readiness,
             conn, band_audit.get("stations") or [],
+        ),
+        "tiebreak_lane": _cached_section(
+            "tiebreak_lane", collect_tiebreak_lane, conn
         ),
         "stages": stages,
         "band_shadow": band_shadow,
@@ -16146,7 +16345,12 @@ const MONEY_BOARD = [
       "sec-live-orders"],
      ["book", "实盘意向簿",
       () => liveMoney((L) => orderBookCard((L.live_orders||{}).book||{})),
-      "sec-live-book"]]},
+      "sec-live-book"],
+     // Charter 146: the tiebreak lane's own page -- its switch and stake,
+     // every first decision it scored, and its trades on their own.
+     ["tiebreak", "秤砣线 · 宪章 146",
+      () => tiebreakLane(),
+      "sec-tiebreak"]]},
 ];
 
 // Both live blocks read the live-readiness payload, which is absent when the
@@ -16156,6 +16360,68 @@ function liveMoney(render){
   if(!L.available) return `<div class="muted">实盘读数这一轮没有生成
     （live_readiness 不可用），实盘订单与意向簿无从读起。</div>`;
   return render(L);
+}
+
+// 「秤砣线」(charter 146): the lane's switch and stake, the first decisions it
+// scored, and its trades -- on their own page, never mixed into the basket
+// book's numbers (user ruling 2026-09-18: 单独的统计).
+function tiebreakLane(){
+  const T=D.tiebreak_lane||{};
+  if(!T.available) return `<div class="muted">秤砣线读数这一轮没有生成。</div>`;
+  const S=T.settings||{}, E=T.evaluations||{}, R=T.trades||{}, A=R.acceptance||{};
+  const usd=v=>v==null?"—":((v<0?"−":"")+"$"+Math.abs(+v).toFixed(2));
+  const pc=v=>v==null?"—":(Math.round(+v*1000)/10)+"%";
+  const sp=v=>v==null?"—":((v>=0?"+":"−")+Math.abs(Math.round(+v*1000)/10)+"点");
+  const n3=v=>v==null?"—":(+v).toFixed(3);
+  const lanes=T.lanes||{};
+  const laneWord=(k,zh)=>`<span class="pill ${lanes[k]?"green":"amber"}">${zh}：${lanes[k]?"运行":"暂停"}</span>`;
+  const tile=(label,val,sub)=>`<div class="card"><div class="muted">${label}</div>
+    <div class="mono" style="font-size:1.35em">${val}</div>${sub?`<div class="muted">${sub}</div>`:""}</div>`;
+  const cond=(ok,text)=>`<span class="pill ${ok?"green":"amber"}">${text}</span>`;
+  const settings=`<div class="card"><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+      <b>秤砣线</b>
+      <span class="pill ${S.enabled?"green":"red"}">${S.enabled?"运行中":"已关闭"}</span>
+      <span>每笔 <b class="mono">${usd(S.stake_usdc)}</b>（顶部「秤砣每笔」旋钮可调）</span>
+      <span class="muted">市场给模型桶 ≥ ${n3(S.min_market_share_on_model_mode)}，首决策 ${S.first_decision_fresh_seconds==null?"—":Math.round(S.first_decision_fresh_seconds/60)} 分钟内</span>
+      <span style="flex:1"></span>
+      ${laneWord("basket","篮子买单")} ${laneWord("certain_win_recycle","0.998 回收")} ${laneWord("mis_bought_leg_exit","144 卖回")}
+    </div>
+    <div class="muted" style="margin-top:6px">规则：每个阶段的首个决策，模型众数桶与市场众数桶相邻、市场归一化中价给模型桶不低于门槛，就按卖一梯走到预算所及的最深一档 FOK 买模型桶，一个站日只买一次。读数依据：2,255 首决策 / 33 日里唯一模型胜市场的格（n=42，+17.8% 于 20U/笔，日聚类 90% [−7.3%, +41.8%]）——假设，不是结论。</div></div>`;
+  const evalTiles=E.available?`<div class="grid g3" style="margin-top:8px">
+    ${tile("评估过的阶段首决策",E.total,`${E.event_days} 个事件日 · 最近 ${h((E.last_at_utc||"").slice(0,16).replace("T"," "))}Z`)}
+    ${tile("触发（四条件成立）",E.fired,`${E.total?pc(E.fired/E.total):"—"} 的首决策`)}
+    ${tile("发单 / 成交 / 已结算",`${R.sent==null?"—":R.sent} / ${R.filled==null?"—":R.filled} / ${R.settled==null?"—":R.settled}`,`在途 ${R.open==null?"—":R.open}`)}
+  </div>`:`<div class="muted" style="margin-top:8px">评估表尚未建立（常驻重启后第一轮才写）。</div>`;
+  const money=R.available?`<div class="grid g3" style="margin-top:8px">
+    ${tile("投入 → 赔付",`${usd(R.stake_usdc)} → ${usd(R.payout_usdc)}`,`已结算 ${R.settled} 笔`)}
+    ${tile("盈亏 / ROI",`${usd(R.pnl_usdc)} / ${pc(R.roi)}`,`命中 ${R.hits==null?"—":R.hits}${R.settled?` / ${R.settled}`:""}`)}
+    ${tile("实现 − 付出的卖一",`${sp(R.realised_minus_ask)}`,`命中率 ${pc(R.hit_rate)} 对 均价 ${n3(R.avg_ask)}${R.realised_minus_ask_ci90?` · 90% [${sp(R.realised_minus_ask_ci90[0])}, ${sp(R.realised_minus_ask_ci90[1])}]`:" · 样本不足 5 笔或 3 日，无区间"}`)}
+  </div>
+  <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+    ${cond(A.lower_bound_positive,"① 实现−卖一 日聚类下界 > 0")}
+    ${cond(A.halves_same_sign,"② 前后半段同号"+(R.halves&&R.halves.first!=null?`（${sp(R.halves.first)} / ${sp(R.halves.second)}）`:""))}
+    ${cond((A.event_days||0)>=(A.event_days_needed||30),`③ 事件日 ${A.event_days||0} / ${A.event_days_needed||30}`)}
+    <span class="muted">三条同时满足才算过；不过则关掉本线、恢复其余车道（同一文件）。首次复核 09-25。</span>
+  </div>`:"";
+  const refusals=(E.refusals||[]).map(r=>`<tr><td class="mono">${h(r.refusal)}</td><td class="mono">${r.count}</td><td class="mono">${r.fired}</td></tr>`).join("");
+  const refTable=E.available&&refusals?`<details style="margin-top:8px"><summary>为什么没买（评估结果分布，${E.total} 条）</summary>
+    <table><thead><tr><th>结果 / 未发单原因</th><th>条数</th><th>其中触发</th></tr></thead><tbody>${refusals}</tbody></table>
+    <div class="muted">rule_not_met:* 是四条件不成立；first_decision_stale 是上线时已过时的首决策；station_* / account_* / ask_book_* / market_* 是触发后被各闸挡下；空白（sent）是已发单。</div></details>`:"";
+  const rows=(R.rows||[]).map(t=>`<tr>
+    <td>${h(t.station_id)}</td><td class="mono">${h(t.event_date)}</td><td>${h(t.stage||"")}</td><td>${h(t.bucket)}</td>
+    <td class="mono">${n3(t.limit_price)}</td><td class="mono">${t.requested_size==null?"—":(+t.requested_size).toFixed(2)}</td>
+    <td class="mono">${(+t.filled_size).toFixed(2)}</td><td class="mono">${usd(t.filled_notional_usdc)}</td>
+    <td>${h(t.state||"")}</td><td>${t.settled_bucket?h(t.settled_bucket):"<span class='muted'>未结算</span>"}</td>
+    <td>${t.hit==null?"—":(t.hit?"<span class='pill green'>中</span>":"<span class='pill red'>未中</span>")}</td>
+    <td class="mono">${t.pnl_usdc==null?"—":usd(t.pnl_usdc)}</td></tr>`).join("");
+  const tradeTable=`<details open style="margin-top:8px"><summary>逐笔（${(R.rows||[]).length} 笔，新的在上）</summary>
+    ${rows?`<table><thead><tr><th>站</th><th>事件日</th><th>阶段</th><th>桶</th><th>限价</th><th>下单股</th><th>成交股</th><th>成交额</th><th>状态</th><th>结算桶</th><th>命中</th><th>盈亏</th></tr></thead><tbody>${rows}</tbody></table>`:`<div class="muted">还没有一笔。</div>`}</details>`;
+  const firedRows=(E.fired_rows||[]).map(r=>`<tr><td>${h(r.station_id)}</td><td class="mono">${h(r.event_date)}</td><td>${h(r.stage)}</td>
+    <td>${h(r.model_mode)} ← ${h(r.market_mode)}</td><td class="mono">${n3(r.market_share_on_model_mode)}</td><td class="mono">${n3(r.model_mode_share)}</td>
+    <td class="mono">${r.refusal?h(r.refusal):"<span class='pill green'>已发单</span>"}</td><td class="mono">${h((r.evaluated_at_utc||"").slice(5,16).replace("T"," "))}</td></tr>`).join("");
+  const firedTable=E.available?`<details style="margin-top:8px"><summary>触发过的首决策（${(E.fired_rows||[]).length} 条，含被闸挡下的）</summary>
+    ${firedRows?`<table><thead><tr><th>站</th><th>事件日</th><th>阶段</th><th>模型桶 ← 市场桶</th><th>市场给模型桶</th><th>模型自报</th><th>结果</th><th>评估于</th></tr></thead><tbody>${firedRows}</tbody></table>`:`<div class="muted">还没有触发过。</div>`}</details>`:"";
+  return settings+evalTiles+money+refTable+tradeTable+firedTable;
 }
 
 function moneyBoard(){
@@ -16228,6 +16494,14 @@ const LC_KNOBS = {
     read:s=>s.budget.target_remaining_budget_usdc,
     fmt:v=>{const r=Math.round(Number(v)*100)/100;
       return Number.isInteger(r) ? String(r) : r.toFixed(2);}},
+  // Charter 146: the tiebreak lane's per-trade stake (秤砣线每笔预算), whole
+  // dollars on the board; the server accepts cents and bounds it.  Absent
+  // from an older control server's answer: read as unset, never thrown on.
+  tiebreak: {id:"lc-tiebreak", name:"秤砣每笔", path:"/api/tiebreak-stake", unit:" USDC",
+    field:"stake_usdc", spec:s=>s.tiebreak_stake||{bounds:[1,100],step:1}, grid:1,
+    read:s=>(s.tiebreak_stake||{}).stake_usdc,
+    fmt:v=>{const r=Math.round(Number(v)*100)/100;
+      return Number.isInteger(r) ? String(r) : r.toFixed(2);}},
 };
 // Where one click takes a knob.  On a grid, a step goes to the grid line
 // that far away in its direction, so 114.29 +5 is 115 and −5 is 110, and
@@ -16272,6 +16546,10 @@ function liveControlStrip(){
       `${b("budget",-50,"−50",true)}${b("budget",-5,"−")}<b id="lc-budget">${
         L.budget_usdc==null?"—":LC_KNOBS.budget.fmt(L.budget_usdc)}</b>${
         b("budget",5,"+")}${b("budget",50,"+50",true)}`)}
+    ${knob("tiebreak", "秤砣线每笔预算 stake_usdc（USDC；每个站日至多一笔 FOK 买单花这么多；宪章 146）",
+      `${b("tiebreak",-5,"−5",true)}${b("tiebreak",-1,"−")}<b id="lc-tiebreak">${
+        L.tiebreak_stake==null?"—":LC_KNOBS.tiebreak.fmt(L.tiebreak_stake)}</b>${
+        b("tiebreak",1,"+")}${b("tiebreak",5,"+5",true)}`)}
     <span class="navctl-k" id="lc-capital" title="宪章 141：按最新真实余额换算的每站日 定注 / 上限（美元）"><span class="stp"><b id="lc-capital-v">—</b></span></span>
   </div>`;
 }

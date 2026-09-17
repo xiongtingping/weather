@@ -61,10 +61,16 @@ KNOWN_LANES: tuple[str, ...] = (
 #: trade at the ask.  See ``tiebreak_lane`` for the reading.
 TIEBREAK_DEFAULT_SETTINGS: dict[str, Any] = {
     "enabled": True,
-    "stake_usdc": 20.0,
+    # 20 USDC in the reading; 5 USDC by user ruling 2026-09-18 ("单笔金额改为5u").
+    "stake_usdc": 5.0,
     "min_market_share_on_model_mode": 0.40,
     "first_decision_fresh_seconds": 3600.0,
 }
+
+#: The per-trade stake is a board dial (charter 146); the server refuses a
+#: value outside this range, and the lane reads whatever the file says.
+TIEBREAK_STAKE_BOUNDS = (1.0, 100.0)
+TIEBREAK_STAKE_STEP = 1.0
 
 DEFAULT_LANES: dict[str, dict[str, Any]] = {
     LANE_BASKET: {"enabled": True},
@@ -149,8 +155,26 @@ def lane_enabled(name: str, path: Path | str | None = None) -> bool:
     return lane_settings(name, path).get("enabled") is True
 
 
+def validate_tiebreak_stake(value: Any) -> float:
+    """A stake the lane may be set to: finite, inside the bounds, to the cent."""
+
+    try:
+        stake = round(float(value), 2)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("tiebreak_stake_not_a_number") from exc
+    if not (stake == stake) or stake in (float("inf"), float("-inf")):
+        raise ValueError("tiebreak_stake_not_finite")
+    low, high = TIEBREAK_STAKE_BOUNDS
+    if not (low <= stake <= high):
+        raise ValueError(f"tiebreak_stake_out_of_bounds:{low}..{high}")
+    return stake
+
+
 __all__ = [
     "DEFAULT_LANES",
+    "TIEBREAK_STAKE_BOUNDS",
+    "TIEBREAK_STAKE_STEP",
+    "validate_tiebreak_stake",
     "DEFAULT_PATH",
     "ENV_VAR",
     "KNOWN_LANES",

@@ -48,7 +48,13 @@ from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from .account_equity import load_account_equity, table_present as account_equity_table_present
+from contextlib import nullcontext
+
+from .account_equity import (
+    capture_account_equity,
+    load_account_equity,
+    table_present as account_equity_table_present,
+)
 from .basket_kernel.valuation_v1 import market_reference_v1
 from .certain_win_recycle import _registry_rows
 from .contracts import content_sha256
@@ -331,10 +337,13 @@ def _snapshot(conn: sqlite3.Connection, snapshot_id: str) -> dict[str, Any] | No
     return {"buckets": buckets, "observed_at": str(row[1]), "state": str(row[2])}
 
 
-def _evaluated(conn: sqlite3.Connection) -> set[tuple[str, str, str]]:
+def _evaluated(conn: sqlite3.Connection, *, since_event_date: str) -> set[tuple[str, str, str]]:
     return {
         (str(r[0]), str(r[1]), str(r[2]))
-        for r in conn.execute(f"SELECT station_id, event_date, stage FROM {EVALUATION_TABLE}")
+        for r in conn.execute(
+            f"SELECT station_id, event_date, stage FROM {EVALUATION_TABLE} WHERE event_date >= ?",
+            (since_event_date,),
+        )
     }
 
 
@@ -404,7 +413,10 @@ def plan_tiebreak_entries(
     fresh_seconds = float(cfg.get("first_decision_fresh_seconds") or TIEBREAK_DEFAULT_SETTINGS["first_decision_fresh_seconds"])
     gate = admission or (lambda station, conn: live_station_admission(station, conn=conn))
     now = _utc(now_utc)
-    done = _evaluated(target_conn)
+    done = _evaluated(
+        target_conn,
+        since_event_date=(now - timedelta(days=DEFAULT_LOOKBACK_DAYS)).date().isoformat(),
+    )
     evaluations: list[dict[str, Any]] = []
     plans: list[dict[str, Any]] = []
     for key in stage_first_decisions(target_conn, now_utc=now_utc):
@@ -513,11 +525,35 @@ def _cash_refusal(conn: sqlite3.Connection, *, now_utc: str, needed: float) -> s
         return None
     row = load_account_equity(conn, as_of_utc=now_utc)
     if row is None:
+        # The resident reads the account at the head of its cycle; this lane
+        # runs at the tail, and a slow cycle can put the head read past the
+        # thirty-minute freshness bound.  Read once more before refusing --
+        # the same capture the head uses -- and refuse only if that too
+        # leaves nothing fresh.  A failed capture is a receipt, never a raise.
+        try:
+            capture_account_equity(
+                conn, as_of_utc=now_utc, write=nullcontext,
+                budget_usdc=_budget_dial(),
+            )
+        except Exception:  # noqa: BLE001 -- a failed read leaves the stale row
+            pass
+        row = load_account_equity(conn, as_of_utc=now_utc)
+    if row is None:
         return "account_equity_stale"
     cash = float(row.get("cash_usdc") or 0.0)
     if cash < float(needed):
         return f"insufficient_cash:{cash:.2f}<{float(needed):.2f}"
     return None
+
+
+def _budget_dial() -> float | None:
+    try:
+        from .production import PRODUCTION_EXECUTION_MODE  # noqa: PLC0415
+        from .runtime_config import resolve_target_remaining_budget  # noqa: PLC0415
+
+        return float(resolve_target_remaining_budget(execution_mode=PRODUCTION_EXECUTION_MODE))
+    except Exception:  # noqa: BLE001 -- no dial means no cap
+        return None
 
 
 # ---------------------------------------------------------------------------

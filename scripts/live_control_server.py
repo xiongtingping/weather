@@ -29,6 +29,8 @@ POST /api/kelly  is retired: it wrote the exposure bound under Kelly's name, and
                   board still open from before 2026-09-17 must fail loudly
                   rather than move the wrong dial.
 POST /api/budget  {"value": 515}           -> target_remaining_budget_usdc
+POST /api/tiebreak-stake {"value": 5}     -> tiebreak lane stake_usdc (秤砣线每笔预算, charter 146)
+POST /api/lane    {"lane": "basket", "enabled": false} -> one strategy lane's switch (charter 146)
 POST /api/live    {"enabled": true, "confirm": "LIVE", "by": "..."}
 POST /api/allowlist {"stations": ["ZBAA", ...]}
 POST /api/station-bar     {"station": "KSEA", "barred": true}
@@ -82,6 +84,11 @@ SSOT_PATH = ROOT / "data" / "bayes_basket_target_ssot.db"
 # Charter 141: the three capital dials, the file the resident re-reads before
 # every compile (``basket_kernel.delta_v2.refresh_capital_layer``).
 CAPITAL_LAYER_PATH = ROOT / "config/trading/capital_layer_v1.json"
+# Charter 146: one switch per strategy lane, and the tiebreak lane's stake
+# (user ruling 2026-09-18: 前端增加可自行调整每笔预算).  Read and written
+# through ``bayes_basket_target.strategy_lanes`` so the board, the daemon and
+# the submitter cannot hold different opinions about the file.
+STRATEGY_LANES_PATH = ROOT / "config/trading/strategy_lanes_v1.json"
 # The gateway's admission gate.  clob_order_service.mjs checks this file at
 # every place-order, before any idempotency write, signing or exchange POST,
 # and it stops every lane without exception.  The switch below owns it; the
@@ -254,6 +261,10 @@ def state() -> dict:
         # Charter 141: the station-day's two numbers, read-only.  The
         # per-station dollar dial they replace never bounded spend.
         "capital_layer": _capital_layer_state(),
+        # Charter 146: the tiebreak lane's per-trade stake, a real dial, and
+        # the four lane switches beside it.
+        "tiebreak_stake": _tiebreak_stake_state(),
+        "strategy_lanes": _strategy_lanes_state(),
         "live": {
             "enabled": intent["live_enabled"],
             "armed_by": intent.get("armed_by"),
@@ -361,6 +372,99 @@ def _set_capital_dial(key: str, value: float) -> dict:
             payload["rationale"] = existing["rationale"]
     _write_atomic(CAPITAL_LAYER_PATH, payload)
     _audit({"knob": key, "before": before, "after": values[key]})
+    return state()
+
+
+def _lanes_module():
+    from bayes_basket_target import strategy_lanes  # noqa: PLC0415
+
+    return strategy_lanes
+
+
+def _read_strategy_lanes() -> dict:
+    return _lanes_module().load_strategy_lanes(STRATEGY_LANES_PATH)
+
+
+def _strategy_lanes_state() -> dict:
+    doc = _read_strategy_lanes()
+    return {
+        "source": doc.get("source"),
+        "updated_at_utc": doc.get("updated_at_utc"),
+        "lanes": {
+            name: {"enabled": bool(lane.get("enabled") is True)}
+            for name, lane in doc["lanes"].items()
+        },
+    }
+
+
+def _tiebreak_stake_state() -> dict:
+    lanes = _lanes_module()
+    doc = _read_strategy_lanes()
+    return {
+        "stake_usdc": doc["lanes"][lanes.LANE_TIEBREAK].get("stake_usdc"),
+        "bounds": list(lanes.TIEBREAK_STAKE_BOUNDS),
+        "step": lanes.TIEBREAK_STAKE_STEP,
+        "enabled": doc["lanes"][lanes.LANE_TIEBREAK].get("enabled") is True,
+    }
+
+
+def _write_strategy_lanes(mutate) -> None:
+    """Rewrite the lane file through ``mutate(document)``, keeping every
+    field the operator or a charter wrote there.  An unreadable file is not
+    edited into shape: the operator sees it refuse and repairs it."""
+
+    lanes = _lanes_module()
+    current = _read_strategy_lanes()
+    if current.get("source") == "unreadable":
+        raise ValueError(f"strategy_lanes_unreadable:{current.get('reason')}")
+    try:
+        document = _read(STRATEGY_LANES_PATH)
+    except Exception:  # noqa: BLE001 -- no file yet: start from the defaults
+        document = {}
+    if not isinstance(document.get("lanes"), dict):
+        document["lanes"] = {}
+    for name in lanes.KNOWN_LANES:
+        document["lanes"].setdefault(name, {})
+        for key, value in current["lanes"][name].items():
+            document["lanes"][name].setdefault(key, value)
+    document.setdefault("schema", lanes.SCHEMA)
+    mutate(document)
+    document["updated_at_utc"] = _now()
+    _write_atomic(STRATEGY_LANES_PATH, document)
+
+
+def set_tiebreak_stake(value: float) -> dict:
+    """POST /api/tiebreak-stake {"value": 5}: the lane's per-trade stake."""
+
+    lanes = _lanes_module()
+    stake = lanes.validate_tiebreak_stake(value)
+    before = _tiebreak_stake_state()["stake_usdc"]
+
+    def mutate(document: dict) -> None:
+        document["lanes"][lanes.LANE_TIEBREAK]["stake_usdc"] = stake
+
+    _write_strategy_lanes(mutate)
+    _audit({"knob": "tiebreak_stake_usdc", "before": before, "after": stake})
+    return state()
+
+
+def set_lane_enabled(lane: str, enabled: bool, by: str = "") -> dict:
+    """POST /api/lane {"lane": "basket", "enabled": false}: one lane's switch."""
+
+    lanes = _lanes_module()
+    name = str(lane or "").strip()
+    if name not in lanes.KNOWN_LANES:
+        raise ValueError(f"strategy_lane_unknown:{name}")
+    before = _strategy_lanes_state()["lanes"][name]["enabled"]
+
+    def mutate(document: dict) -> None:
+        document["lanes"][name]["enabled"] = bool(enabled)
+        document["lanes"][name][
+            "paused_at_utc" if not enabled else "enabled_at_utc"
+        ] = _now()
+
+    _write_strategy_lanes(mutate)
+    _audit({"knob": f"strategy_lane:{name}", "before": before, "after": bool(enabled), "by": str(by or "")})
     return state()
 
 
@@ -1155,6 +1259,14 @@ class Handler(BaseHTTPRequestHandler):
                 out = set_station_ceiling(float(body["value"]))
             elif self.path.rstrip("/") == "/api/budget":
                 out = set_budget(float(body["value"]))
+            elif self.path.rstrip("/") == "/api/tiebreak-stake":
+                out = set_tiebreak_stake(float(body["value"]))
+            elif self.path.rstrip("/") == "/api/lane":
+                out = set_lane_enabled(
+                    str(body.get("lane") or ""),
+                    bool(body.get("enabled")),
+                    str(body.get("by") or ""),
+                )
             elif self.path.rstrip("/") == "/api/live":
                 out = set_live(
                     bool(body.get("enabled")),
