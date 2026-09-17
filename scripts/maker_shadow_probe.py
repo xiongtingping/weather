@@ -402,6 +402,25 @@ def _left(deadline: float | None) -> float:
 # chunks leaves nothing the next one cannot finish.
 FLUSH_ROWS = 2000
 
+# How far back the settle phase looks for fills without a settlement.
+#
+# Unbounded, its one statement was an anti-join over every FILLED row the
+# table has ever held: 1,270,432 of them on 2026-09-17, read to find the
+# 100,512 without a settlement, 102s cold and 138s while the dashboard
+# render was reading the same disk -- one uninterruptible statement, run
+# before the loop's first deadline check, against a 240s lease.  It grows
+# with the table, which only appends.
+#
+# A fill settles when its station-day's truth lands, which is the next
+# local morning; the settle lane has never been two weeks late.  Bounded
+# to fills that expired inside the window the read is three index seeks
+# over 301k rows (36s the same morning) and keeps 100,461 of the 100,512.
+# The 51 outside are fills whose truth is more than two weeks late, and
+# they stay unsettled rather than be read again on every pass forever.
+# ``expires_at_utc`` is the bound because it leads the (state, expiry)
+# index and a fill's expiry is at most a horizon after the fill.
+SETTLE_LOOKBACK_DAYS = 14
+
 PLACE_INSERT_SQL = (
     "INSERT OR IGNORE INTO maker_shadow_order ("
     " order_id, station_id, event_date, bucket, price_rule,"
@@ -465,11 +484,22 @@ def place(
         lambda_tables = None
     widest = _stamp(now - timedelta(minutes=PLACEMENT_INTERVAL_MINUTES))
     last_placed: dict[tuple[str, str], str] = {}
+    # ``placed_at_utc`` leads no index and the table is 4.9M rows, so this
+    # read walked a covering index end to end -- 13-20s measured
+    # 2026-09-17, before the loop's first deadline check.  Every row's
+    # expiry is its placement plus a horizon of at least five minutes
+    # (``HORIZON_MINUTES``, stamped from the same ``now`` below), so
+    # "placed since ``widest``" implies "expires after ``widest``", and the
+    # expiry leads the (state, expires_at_utc) index once the state is
+    # named: three seeks instead of a scan.  The placement bound stays as
+    # the exact filter; the expiry bound only narrows what is read.
     for station, day, when in conn.execute(
         "SELECT station_id, event_date, MAX(placed_at_utc)"
-        " FROM maker_shadow_order WHERE placed_at_utc >= ?"
+        " FROM maker_shadow_order"
+        " WHERE state IN ('OPEN','FILLED','EXPIRED')"
+        "   AND expires_at_utc >= ? AND placed_at_utc >= ?"
         " GROUP BY station_id, event_date",
-        (widest,),
+        (widest, widest),
     ):
         last_placed[(str(station), str(day))] = str(when)
     pending: list[tuple] = []
@@ -593,13 +623,24 @@ def resolve(
             break
         earliest = min(str(row[5]) for row in rows)
         book_path: list[tuple[str, dict[str, float]]] = []
+        # The as-of index is (station_id, event_date, state, observed_at,
+        # sequence); ``quote_observed_at`` is not in it, so bounding on that
+        # column alone read the scope's whole day -- every snapshot of the
+        # station-day, ~735 rows of 19KB books, sorted, before the first
+        # row came back -- and did so for every open scope, 178 of them on
+        # 2026-09-17.  The two clocks are one value at the writer
+        # (``p0_preselection`` stamps both from ``quote_observed``; asserted
+        # in ``test_maker_shadow_probe_pass_is_bounded``), so the same bound
+        # on ``observed_at`` is the same predicate and lets the index seek to
+        # the first row after the earliest open order.  For a scope whose
+        # orders were placed this pass that is a few rows, not the day.
         for observed, payload in conn.execute(
             "SELECT quote_observed_at, buckets_json"
             " FROM basket_official_ws_snapshot"
             " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-            "   AND quote_observed_at > ?"
+            "   AND observed_at > ? AND quote_observed_at > ?"
             " ORDER BY quote_observed_at",
-            (station, day, earliest),
+            (station, day, earliest, earliest),
         ):
             try:
                 entries = json.loads(payload)
@@ -713,15 +754,20 @@ def settle(
 
     ensure_schema(conn)
     counts: dict[str, int] = defaultdict(int)
+    floor = _stamp(_now() - timedelta(days=SETTLE_LOOKBACK_DAYS))
     rows = conn.execute(
         "SELECT o.order_id, o.station_id, o.event_date, o.bucket,"
         " COALESCE(o.fill_limit_price, o.limit_price)"
         " FROM maker_shadow_order o"
         " LEFT JOIN maker_shadow_settlement s USING(order_id)"
-        " WHERE o.state='FILLED' AND s.order_id IS NULL"
+        " WHERE o.state='FILLED' AND o.expires_at_utc >= ?"
+        "   AND s.order_id IS NULL",
+        (floor,),
     ).fetchall()
+    counts["lookback_days"] = SETTLE_LOOKBACK_DAYS
     if not rows:
-        return {"unsettled_fills": 0}
+        return {"unsettled_fills": 0, "lookback_days": SETTLE_LOOKBACK_DAYS}
+    counts["unsettled_fills"] = len(rows)
     truth: dict[tuple[str, str], float] = {}
     for station, day, value in conn.execute(
         "SELECT station_id, local_date, official_tmax_c"
@@ -938,13 +984,27 @@ def main() -> int:
     # how a maintenance pass takes production down.
     conn.execute("PRAGMA wal_autocheckpoint=0")
     deadline = time.monotonic() + PASS_BUDGET_SEC
-    passes = {
+    passes: dict[str, Any] = {
         "schema": "maker_shadow_pass_v1",
         "pass_budget_sec": PASS_BUDGET_SEC,
-        "place": place(conn, deadline=deadline),
-        "resolve": resolve(conn, deadline=deadline),
-        "settle": settle(conn, deadline=deadline),
     }
+    # One line per phase, flushed as the phase returns.  The resident keeps
+    # the last 600 characters of a sweep's output, and a pass it kills at
+    # its 900s timeout dies with stdout still buffered: the pass of
+    # 2026-09-17T12:59Z ran 902s and left one line, the wrapper's lock
+    # notice, so nothing said which phase it died in.  Written as each
+    # phase ends, a killed pass at least names the phase it did not finish
+    # and how long the ones before it took.
+    for name, phase in (
+        ("place", place), ("resolve", resolve), ("settle", settle)
+    ):
+        started = time.monotonic()
+        passes[name] = phase(conn, deadline=deadline)
+        print(
+            f"  {name}: {time.monotonic() - started:.1f}s "
+            + json.dumps(passes[name], ensure_ascii=False, sort_keys=True),
+            flush=True,
+        )
     # The daily line a person reads, ahead of the JSON -- but only on a pass
     # that still has clock.  It is two self-joins over 4.7M orders, measured
     # 2026-09-16 at 21.0s and 26.4s, and it sat outside the lease entirely:
@@ -964,15 +1024,18 @@ def main() -> int:
     # with room for it: measured 21.0s + 26.4s warm, and the reserve is
     # roughly double so a cold cache still lands inside the lease.
     if _spent(deadline) or _left(deadline) < CLAIM_CAP_READING_RESERVE_SEC:
-        print("  claim_cap: 本轮预算不够读这两条自连接，跳过（下一轮再读）")
+        print(
+            "  claim_cap: 本轮预算不够读这两条自连接，跳过（下一轮再读）",
+            flush=True,
+        )
     else:
-        print(claim_cap_reading(conn))
-    print(json.dumps(passes, ensure_ascii=False, sort_keys=True))
+        print(claim_cap_reading(conn), flush=True)
+    print(json.dumps(passes, ensure_ascii=False, sort_keys=True), flush=True)
     if any(
         isinstance(phase, Mapping) and phase.get("stopped_for_time")
         for phase in (passes["place"], passes["resolve"], passes["settle"])
     ):
-        print(HOSTED_SWEEP_CONTINUE_MARKER)
+        print(HOSTED_SWEEP_CONTINUE_MARKER, flush=True)
     return 0
 
 

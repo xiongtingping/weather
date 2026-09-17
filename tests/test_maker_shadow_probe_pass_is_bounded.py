@@ -18,8 +18,16 @@ None of those three is inside the budget.  The first and third run before
 their loop's first deadline check, and the reading ran after all three loops
 had already stopped for time.
 
-Two of them are fixed and this file holds both fixes.  The third is left,
-and is named here so that is a decision rather than an oversight.
+Two of them were fixed that day and this file holds both fixes.  The third
+was left, priced, until 2026-09-17, when the pass was killed at 900s again
+-- 662s past the lease, production waiting behind it -- and the statements
+that were "inside the loop" turned out not to be bounded by it either: the
+resolve loop's per-scope book read bound on a column its index does not
+carry and read the scope's whole day before returning a row, and the settle
+phase's one anti-join read every FILLED row the table ever held (1.27M)
+before its loop's first deadline check.  All three are seeks now, the
+settle read is windowed, and each phase reports as it ends so a killed pass
+says where it died.
 
 The scan is the ninth and tenth instance of the bug class
 ``test_target_quiescence_guard_is_indexed`` was written for: an unindexed
@@ -34,6 +42,7 @@ import ast
 import re
 import sqlite3
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -57,12 +66,10 @@ LATEST_BOOKS_SQL = (
 #: Scans this pass still pays, by the statement that pays them.  A scan not
 #: listed here fails the sweep below; one listed here has been priced.
 DECLARED_REMAINING_SCANS = {
-    # 16.8s over 4.7M orders, before the place loop's first deadline check.
-    # An index leading on placed_at_utc would seek it, and costs about
-    # 140MB on a database roughly 0.7GiB under its own ceiling -- so it is
-    # deferred rather than taken, and it fits inside the 240s lease once
-    # the 100s scan above is gone.
-    "SELECT station_id, event_date, MAX(placed_at_utc)",
+    # The throttle read (MAX(placed_at_utc) per scope) was here until
+    # 2026-09-17 at 13-20s over 4.9M orders.  It now names the state and
+    # bounds the expiry, which the (state, expires_at_utc) index seeks --
+    # asserted below -- so it is no longer a declared scan.
     # 3,923 rows, correlated max-revision subquery; milliseconds.
     "SELECT station_id, local_date, official_tmax_c",
     # The claim_cap reading, 21.0s + 26.4s over 4.7M orders.  Left as scans
@@ -443,3 +450,202 @@ def test_the_lane_still_declares_itself_sliced_against_the_lease() -> None:
     # every second past the lease is a second production cannot start.
     assert "maker_shadow_probe" not in daemon.WRITER_TURN_EXEMPT_SWEEPS
     assert daemon.hosted_sweep_write_domain("maker_shadow_probe") == "ssot"
+
+
+# ---------------------------------------------------------------------------
+# 2026-09-17: the statements inside the loops, and the phase trail.
+# ---------------------------------------------------------------------------
+
+#: The place loop's throttle read, exactly as ``place`` asks it.
+THROTTLE_SQL = (
+    "SELECT station_id, event_date, MAX(placed_at_utc)"
+    " FROM maker_shadow_order"
+    " WHERE state IN ('OPEN','FILLED','EXPIRED')"
+    "   AND expires_at_utc >= ? AND placed_at_utc >= ?"
+    " GROUP BY station_id, event_date"
+)
+
+#: The resolve loop's per-scope book path, exactly as ``resolve`` asks it.
+BOOK_PATH_SQL = (
+    "SELECT quote_observed_at, buckets_json"
+    " FROM basket_official_ws_snapshot"
+    " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+    "   AND observed_at > ? AND quote_observed_at > ?"
+    " ORDER BY quote_observed_at"
+)
+
+#: The settle phase's anti-join, exactly as ``settle`` asks it.
+SETTLE_SQL = (
+    "SELECT o.order_id, o.station_id, o.event_date, o.bucket,"
+    " COALESCE(o.fill_limit_price, o.limit_price)"
+    " FROM maker_shadow_order o"
+    " LEFT JOIN maker_shadow_settlement s USING(order_id)"
+    " WHERE o.state='FILLED' AND o.expires_at_utc >= ?"
+    "   AND s.order_id IS NULL"
+)
+
+
+def _statement_in_probe(sql: str) -> bool:
+    """Whether the probe still executes exactly this statement."""
+
+    return any(" ".join(sql.split()) == found for _, _, found in _probe_selects())
+
+
+def test_the_throttle_read_seeks_the_state_expiry_index(conn) -> None:
+    """13-20s of covering-index walk, measured 2026-09-17, before the place
+    loop's first deadline check.  The expiry is placement plus a horizon,
+    so bounding it loses no row and lets the (state, expiry) index seek."""
+
+    assert _statement_in_probe(THROTTLE_SQL), "the probe no longer asks this"
+    steps = _plan(conn, THROTTLE_SQL, ("", ""))
+    assert any(
+        "idx_maker_shadow_open" in step and "expires_at_utc>?" in step
+        for step in steps
+    ), steps
+    assert not any(step.startswith("SCAN") for step in steps), steps
+
+
+def test_the_book_path_read_seeks_from_the_earliest_open_order(conn) -> None:
+    """The per-scope read the resolve loop's deadline check could not bound.
+
+    Bounding on ``quote_observed_at`` alone, the as-of index served only
+    the equality columns and the range was applied to the scope's whole
+    day -- ~735 snapshots of 19KB each, sorted, before the first row -- on
+    every one of 178 open scopes.  The same bound on ``observed_at`` is
+    the fourth column of that index, so the read starts at the earliest
+    open order instead of at midnight.
+    """
+
+    assert _statement_in_probe(BOOK_PATH_SQL), "the probe no longer asks this"
+    steps = _plan(conn, BOOK_PATH_SQL, ("", "", "", ""))
+    assert any(
+        "basket_official_ws_snapshot_asof_idx" in step
+        and "observed_at>?" in step
+        for step in steps
+    ), steps
+
+
+def test_the_two_snapshot_clocks_are_one_value_at_the_writer() -> None:
+    """The bound above is only the same predicate because the producer
+    stamps ``observed_at`` and ``quote_observed_at`` from one variable.
+
+    Read off the AST of the one place that builds the identity, not off a
+    sample of rows: 8,000 rows over four days measured a difference of
+    0.000s, but a sample says what was written, and this says what will
+    be.  A producer that ever stamped them apart would make the probe's
+    read drop snapshots, and this is where that would be caught.
+    """
+
+    source = (ROOT / "bayes_basket_target" / "p0_preselection.py").read_text(
+        encoding="utf-8"
+    )
+    tree = ast.parse(source)
+    pairs: list[tuple[str, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict):
+            continue
+        values: dict[str, ast.expr] = {}
+        for key, value in zip(node.keys, node.values):
+            if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                values[key.value] = value
+        if "observed_at" in values and "quote_observed_at" in values:
+            left, right = values["observed_at"], values["quote_observed_at"]
+            pairs.append((ast.dump(left), ast.dump(right)))
+    assert pairs, "no identity dict carries both clocks"
+    for left, right in pairs:
+        assert left == right, (left, right)
+
+
+def test_the_settle_read_is_windowed_on_the_expiry_index(conn) -> None:
+    """One anti-join over every FILLED row ever written -- 1,270,432 on
+    2026-09-17, 102s cold, 138s beside the dashboard render -- before the
+    settle loop's first deadline check.  Windowed on the expiry it is a
+    seek over the last fortnight's fills."""
+
+    assert _statement_in_probe(SETTLE_SQL), "the probe no longer asks this"
+    steps = _plan(conn, SETTLE_SQL, ("",))
+    assert any(
+        "idx_maker_shadow_open" in step and "expires_at_utc>?" in step
+        for step in steps
+    ), steps
+    assert not any(step.startswith("SCAN") for step in steps), steps
+    probe = _probe_module()
+    assert probe.SETTLE_LOOKBACK_DAYS >= 14
+
+
+def _stamp(moment: datetime) -> str:
+    return moment.isoformat().replace("+00:00", "Z")
+
+
+def test_settle_examines_only_fills_inside_the_lookback_window(tmp_path) -> None:
+    """A fill older than the window is not read again on every pass.
+
+    Two fills, no truth for either: the one inside the window is examined
+    and reported as awaiting truth; the one outside is not read at all.
+    """
+
+    probe = _probe_module()
+    conn = sqlite3.connect(tmp_path / "ssot.db")
+    apply_production_ssot_schema(conn)
+    probe.ensure_schema(conn)
+    now = datetime.now(timezone.utc)
+
+    def seed(order_id: str, expires: datetime) -> None:
+        placed = expires - timedelta(minutes=15)
+        conn.execute(probe.PLACE_INSERT_SQL, (
+            order_id, "ST00", "2026-09-10", "b0", "bid", 15,
+            _stamp(placed), _stamp(placed), _stamp(expires), 12.0,
+            0.30, 0.29, 0.31, 0.01, None, 0, 0.3, "FILLED",
+            _stamp(placed + timedelta(minutes=1)), 0.30, "0" * 64,
+        ))
+
+    seed("inside", now - timedelta(days=1))
+    seed("outside", now - timedelta(days=probe.SETTLE_LOOKBACK_DAYS + 1))
+    conn.commit()
+
+    receipt = probe.settle(conn, deadline=None)
+    assert receipt.get("unsettled_fills") == 1, receipt
+    assert receipt.get("awaiting_truth") == 1, receipt
+    assert receipt.get("lookback_days") == probe.SETTLE_LOOKBACK_DAYS, receipt
+
+
+def test_each_phase_reports_before_the_next_one_starts(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """A pass killed at its timeout leaves the phases it finished on stdout.
+
+    The resident keeps a sweep's last 600 characters of output.  The pass of
+    2026-09-17T12:59Z ran 902s to its kill and left one line -- the
+    wrapper's lock notice -- because everything the probe prints was
+    printed after the third loop.  Each phase's line has to be flushed
+    before the next phase starts, or a kill takes it with the buffer.
+    """
+
+    probe = _probe_module()
+    database = tmp_path / "ssot.db"
+    setup = sqlite3.connect(database)
+    apply_production_ssot_schema(setup)
+    probe.ensure_schema(setup)
+    setup.commit()
+    setup.close()
+
+    seen_before: dict[str, str] = {}
+    for name in ("place", "resolve", "settle"):
+        real = getattr(probe, name)
+
+        def wrapped(conn, *, deadline=None, _name=name, _real=real):
+            # What stdout held at the moment this phase was entered.
+            seen_before[_name] = capsys.readouterr().out
+            return _real(conn, deadline=deadline)
+
+        monkeypatch.setattr(probe, name, wrapped)
+    monkeypatch.setattr(sys, "argv", ["probe", "--db", str(database)])
+    monkeypatch.setattr(probe, "PASS_BUDGET_SEC", 600.0)
+    assert probe.main() == 0
+
+    assert "place:" not in seen_before["place"]
+    assert "place:" in seen_before["resolve"], seen_before["resolve"]
+    assert "resolve:" in seen_before["settle"], seen_before["settle"]
+    tail = capsys.readouterr().out
+    assert "settle:" in tail, tail
+    assert '"schema": "maker_shadow_pass_v1"' in tail, tail

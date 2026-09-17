@@ -36,27 +36,51 @@ probe = importlib.util.module_from_spec(_spec)
 assert _spec.loader is not None
 _spec.loader.exec_module(probe)
 
+from bayes_basket_target.ssot import apply_production_ssot_schema  # noqa: E402
+
+_SEQUENCE = {"n": 0}
+
 
 def _book(conn, observed, *, bid, ask, tick=0.01, bucket="30°C"):
+    """One committed snapshot, on the production table.
+
+    The fixture used to declare a five-column stand-in for the snapshot
+    table, and the probe's book-path read then bound on a column the
+    stand-in did not have (``observed_at``, 2026-09-17) -- the tests were
+    green against a table production does not write.  Both clocks are set
+    from one value here because that is what the producer does
+    (``p0_preselection`` stamps ``observed_at`` and ``quote_observed_at``
+    from the same ``quote_observed``), and the read relies on it.
+    """
+
+    _SEQUENCE["n"] += 1
     conn.execute(
-        "INSERT INTO basket_official_ws_snapshot"
-        " (station_id, event_date, quote_observed_at, state, buckets_json)"
-        " VALUES('ZSQD','2026-09-01',?,'COMMITTED',?)",
-        (observed, json.dumps([{
-            "bucket": bucket, "best_ask": ask, "bid_price": bid,
-            "price_tick_size": tick,
-            "ask_levels": [{"price": ask, "shares": 50.0}],
-        }])),
+        "INSERT INTO basket_official_ws_snapshot("
+        " snapshot_id, market_id, station_id, event_date,"
+        " settlement_timezone, sequence, observed_at, quote_version,"
+        " quote_observed_at, quote_expires_at, quote_freshness_policy_sha256,"
+        " quote_source, inventory_version, order_state_version,"
+        " remaining_budget_usdc, buckets_json, cash_phase_input_json,"
+        " content_sha256, state, created_at)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            f"snap-{_SEQUENCE['n']}", "market", "ZSQD", "2026-09-01",
+            "Asia/Shanghai", _SEQUENCE["n"], observed, "quote", observed,
+            observed, "f" * 64, "OFFICIAL_CLOB_WS", "inventory", "orders",
+            0.0,
+            json.dumps([{
+                "bucket": bucket, "best_ask": ask, "bid_price": bid,
+                "price_tick_size": tick,
+                "ask_levels": [{"price": ask, "shares": 50.0}],
+            }]),
+            "{}", "c" * 64, "COMMITTED", observed,
+        ),
     )
 
 
 def _db(tmp_path) -> sqlite3.Connection:
     conn = sqlite3.connect(tmp_path / "probe.db")
-    conn.execute(
-        "CREATE TABLE basket_official_ws_snapshot("
-        " station_id TEXT, event_date TEXT, quote_observed_at TEXT,"
-        " state TEXT, buckets_json TEXT)"
-    )
+    apply_production_ssot_schema(conn)
     probe.ensure_schema(conn)
     return conn
 

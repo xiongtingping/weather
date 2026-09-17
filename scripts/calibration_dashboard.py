@@ -643,6 +643,17 @@ def _production_health(status: Mapping[str, Any]) -> dict[str, Any]:
                     f"，已超时（上限 {float(after):.0f} 秒）"
                     if isinstance(after, (int, float)) else "，已超时"
                 )
+            # The page is a render, not a live view: this card is read off
+            # status.json when the build starts and shown until the next
+            # render lands, 30-80 minutes later at current render times.
+            # On 2026-09-17 "本轮进行中 1151 秒，已超时" stayed on the page
+            # for half an hour after that cycle had finished (1197s at
+            # 12:35Z) and a restarted resident had run four more.  A counter
+            # that says when it was read is a reading; one that does not is
+            # an alarm about a cycle that may no longer exist.
+            seen_at = status.get("heartbeat_at")
+            if isinstance(seen_at, str) and len(seen_at) >= 16:
+                note += f"；状态快照 {seen_at[11:16]}Z"
             return {
                 "production_health": (
                     "red" if seconds is not None and seconds > 900.0
@@ -10685,7 +10696,18 @@ SECTION_CACHE_TTL_SEC = {
     # read from status.json every build and is never cached; only the
     # composition is, and a composition that is half an hour old still
     # names the same tables.
-    "ssot_capacity": 45 * 60,
+    #
+    # Measured 2026-09-17: the largest cached section of the page, by its
+    # own build_sec -- 397s in the 12:14Z render, beside a production
+    # cycle and a ledger rebuild; 77s read-only at 13:41Z with the disk
+    # quiet.  All ten day-counts are scans (eight over covering indexes,
+    # the registry and the settlement table over the table itself), and
+    # the two maker_shadow tables alone are 36s of the quiet figure.  On a
+    # 30-minute render clock a 45-minute TTL rebuilt the walk on nearly
+    # every render, ~32 times a day.  The composition moves on the scale
+    # of days -- the retention ruling reads it once a day at most -- so six
+    # hours costs the reading nothing and leaves four walks a day.
+    "ssot_capacity": 6 * 60 * 60,
 }
 # Set by ``--no-section-cache`` so a reader who needs every number computed
 # against this instant can have it, at the price of the long build.
