@@ -2506,196 +2506,186 @@ TRUTH_LANDING_UNLIKELY = 0.05
 # Both are facts about a past deployment, so they are stated rather than
 # derived -- the same two constants ``h5_ledger_readiness_check`` states.
 H5_FROM_UTC = "2026-08-27T06:48:00Z"
-# How far back to read bias history.  Only needs to reach far enough that
-# every scope still has its last pre-H5 artifact to serve as the control.
-H5_BASELINE_FROM_UTC = "2026-08-01"
-# An ensemble mean over fewer members than this is not a forecast worth
-# scoring a correction against.
-MIN_MEMBERS_FOR_BIAS_CELL = 3
+# The half-lives the section compares (user rulings, 2026-09-17: 增加 h15 的
+# 对比, 测试 H3): the one that serves and one either side of it.
+BIAS_HALF_LIFE_ARMS: tuple[float, ...] = (3.0, 5.0, 15.0)
+# The scored window: this many of the most recent settled event days.
+BIAS_HALF_LIFE_WINDOW_DAYS = 31
+BIAS_HALF_LIFE_BOOTSTRAP = 2000
 
 
-def collect_h5_bias_accuracy(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Did the shorter half-life put the corrected forecast closer to truth?
+def collect_bias_half_life(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Which bias half-life corrects closest to truth, with nothing else changed.
 
-    The ledger cannot answer this yet -- one scoreable day carries 31
-    chains, and the book needs far more than that to separate a parameter
-    from a lottery -- but the calibration side can: every settled
-    station-day gives a few hundred (system x lead x cycle) cells, and the
-    counterfactual is arithmetic rather than a replay.  Each cell's raw
-    ensemble mean is corrected twice, once by the bias the scope actually
-    served under H5 and once by the last bias it had under H15, and the
-    two absolute errors are compared against the same truth.
+    Every settled event day in the window is corrected once per half-life,
+    each time refitted from scratch on the cases strictly before that day
+    inside the rolling train window, through production's own case loader,
+    fit and centre resolver (``native_ensemble_oos``) -- only the half-life
+    constant differs between arms.  Absolute error is averaged over a
+    station-day's cells before anything is compared.
 
-    Three rules this measurement lives by, each one a trap already fallen
-    into once:
+    Why a refit and not the stored artifacts.  The section read the served
+    tables until 2026-09-17: H5 as served each day against the last H15 table
+    fitted before the switch.  That control froze on 2026-08-27, so by
+    mid-September it was three weeks stale and most of H5's 0.116C lead was
+    freshness, not half-life -- refitted daily, the same days put H5 ahead of
+    H15 by 0.008C.  (It had also been correcting the wrong way round.)
 
-    * **As-of selection.**  Both biases are taken as of the event day's
-      start, never the newest fitted.  Using the newest H5 artifact lets
-      it see days it is being scored on.
-    * **Cluster by station-day.**  The cells within one station-day share
-      a station and a day's weather, so they are not independent samples.
-      Counting them as such reported z = -5.21 where the honest clustered
-      test says -1.38 -- the difference between "settled" and "not yet".
-    * **Both sides needed.**  A scope that has no pre-H5 artifact, or has
-      not yet been refit under H5, contributes nothing rather than a
-      half-comparison.
-
-    Accumulates on its own: every newly settled day adds its station-days
-    to the sample, so the section sharpens without anyone re-running it.
+    Two tests, both on the station-day: a sign vote, and an interval on the
+    mean difference that resamples whole event days, because every station
+    on one day shares that day's weather.  Loading the cases is the cost --
+    about five minutes for the fleet -- so the section is cached for a day.
     """
 
-    # The correction is production's own resolver, never restated here.
-    # Until 2026-09-17 this read ``bias_c`` and subtracted it, while the
-    # server centres on ``mean + resolved bias``: both arms were corrected
-    # the wrong way round, each corrected error came out near 2.8C against a
-    # raw error nearer 1.5C, and the H5-vs-H15 verdict was a comparison of
-    # two doubled biases.  A binned correction form was read as its constant.
-    from bayes_basket_target.native_ensemble_oos import (  # noqa: PLC0415
-        _corrected_center,
-    )
+    from bayes_basket_target import native_ensemble_oos as OOS  # noqa: PLC0415
     from bayes_basket_target.contracts import ContractError  # noqa: PLC0415
 
-    h5_from = H5_FROM_UTC
-    series: dict[
-        tuple[str, str, str, str], list[tuple[str, dict[str, Any]]]
-    ] = defaultdict(list)
-    for station, system, lead, cycle, valid_from, params in conn.execute(
-        "SELECT station_id, ensemble_system_id, lead_bucket, run_cycle,"
-        " valid_from_utc, bias_parameters_json"
-        " FROM calibration_native_ensemble_system_artifact"
-        " WHERE valid_from_utc>=?"
-        " ORDER BY valid_from_utc",
-        (H5_BASELINE_FROM_UTC,),
-    ):
+    try:
+        stations = [
+            str(row[0]) for row in conn.execute(
+                "SELECT station_id FROM calibration_station_registry"
+                " ORDER BY station_id"
+            )
+        ]
+    except sqlite3.Error:
+        return {"available": False, "reason": "station_registry_missing"}
+    as_of = _now().isoformat().replace("+00:00", "Z")
+    by_station: dict[str, dict[Any, list[dict[str, Any]]]] = {}
+    for station in stations:
         try:
-            parameters = json.loads(params)
-        except (TypeError, ValueError):
+            by_scope = OOS._load_cases(conn, station_id=station, as_of_utc=as_of)
+        except (ContractError, sqlite3.Error, ValueError, KeyError):
             continue
-        if not isinstance(parameters, dict) or parameters.get("bias_c") is None:
-            continue
-        series[(station, system, lead, cycle)].append(
-            (str(valid_from), parameters)
-        )
+        by_station[station] = {
+            scope: sorted(
+                (
+                    case for case in cases
+                    if case.get("values")
+                    and case.get("actual_tmax_c") is not None
+                ),
+                key=lambda case: str(case["event_date"])[:10],
+            )
+            for scope, cases in by_scope.items()
+        }
+    days_seen = sorted({
+        str(case["event_date"])[:10]
+        for scopes in by_station.values()
+        for cases in scopes.values() for case in cases
+    })
+    if not days_seen:
+        return {"available": False, "reason": "no_settled_cases"}
+    window_to = days_seen[-1]
+    window_from = (
+        date.fromisoformat(window_to)
+        - timedelta(days=BIAS_HALF_LIFE_WINDOW_DAYS - 1)
+    ).isoformat()
 
-    def _as_of(
-        key: tuple[str, str, str, str],
-        cutoff: str,
-        *,
-        before: str | None = None,
-    ) -> dict[str, Any] | None:
-        chosen: dict[str, Any] | None = None
-        for valid_from, parameters in series.get(key, ()):
-            if valid_from > cutoff:
-                break
-            if before is not None and valid_from >= before:
-                break
-            chosen = parameters
-        return chosen
-
-    def _first_h5_at(key: tuple[str, str, str, str], cutoff: str) -> bool:
-        """Whether the scope had actually turned over to H5 by ``cutoff``."""
-
-        latest = None
-        for valid_from, _bias in series.get(key, ()):
-            if valid_from > cutoff:
-                break
-            latest = valid_from
-        return latest is not None and latest >= h5_from
-
-    truth = {
-        (str(row[0]), str(row[1])): float(row[2])
-        for row in conn.execute(
-            "SELECT station_id, local_date, official_tmax_c"
-            " FROM calibration_station_daily_high_truth"
-            " WHERE qc_status='ACCEPTED' AND local_date>=?"
-            " AND official_tmax_c IS NOT NULL",
-            (h5_from[:10],),
-        )
-    }
-    if not truth:
-        return {"from_utc": h5_from, "station_days": 0}
-    members: dict[tuple[str, str, str, str, str], list[float]] = (
-        defaultdict(list)
+    serving = float(OOS.BIAS_HALF_LIFE_DAYS)
+    arms = tuple(sorted(set(BIAS_HALF_LIFE_ARMS) | {serving}))
+    errors: dict[tuple[str, str], dict[float, list[float]]] = defaultdict(
+        lambda: defaultdict(list)
     )
-    for station, system, day, lead, cycle, raw in conn.execute(
-        "SELECT station_id, ensemble_system_id, target_local_date,"
-        " archive_lead_bucket, run_cycle, raw_tmax_c"
-        " FROM calibration_native_ensemble_historical_member_run"
-        " WHERE target_local_date>=? AND qc_status='ACCEPTED'"
-        " AND raw_tmax_c IS NOT NULL",
-        (h5_from[:10],),
-    ):
-        members[
-            (str(station), str(system), str(day), str(lead), str(cycle))
-        ].append(float(raw))
-
-    per_station_day: dict[tuple[str, str], list[float]] = defaultdict(list)
-    # Each arm's own corrected error, on the same cells, so the page can put
-    # H15 beside H5; averaged the same way the delta is, station-day first,
-    # which makes the two means differ by exactly ``mean_delta_c``.
-    error_h5: dict[tuple[str, str], list[float]] = defaultdict(list)
-    error_h15: dict[tuple[str, str], list[float]] = defaultdict(list)
     cells = 0
-    for (station, system, day, lead, cycle), values in members.items():
-        settled = truth.get((station, day))
-        if settled is None or len(values) < MIN_MEMBERS_FOR_BIAS_CELL:
-            continue
-        key = (station, system, lead, cycle)
-        cutoff = f"{day}T00:00:00Z"
-        if not _first_h5_at(key, cutoff):
-            continue
-        params_h5 = _as_of(key, cutoff)
-        params_h15 = _as_of(key, cutoff, before=h5_from)
-        if params_h5 is None or params_h15 is None:
-            continue
-        forecast = statistics.mean(values)
-        try:
-            miss_h5 = abs(_corrected_center(forecast, params_h5) - settled)
-            miss_h15 = abs(_corrected_center(forecast, params_h15) - settled)
-        except (ContractError, KeyError, TypeError, ValueError):
-            continue
-        per_station_day[(station, day)].append(miss_h5 - miss_h15)
-        error_h5[(station, day)].append(miss_h5)
-        error_h15[(station, day)].append(miss_h15)
-        cells += 1
-    if not per_station_day:
-        return {"from_utc": h5_from, "station_days": 0}
+    try:
+        for station, scopes in by_station.items():
+            for cases in scopes.values():
+                for case in cases:
+                    day = str(case["event_date"])[:10]
+                    if not window_from <= day <= window_to:
+                        continue
+                    floor = (
+                        date.fromisoformat(day)
+                        - timedelta(days=OOS.ROLLING_TRAIN_WINDOW_DAYS)
+                    ).isoformat()
+                    history = [
+                        prior for prior in cases
+                        if floor <= str(prior["event_date"])[:10] < day
+                    ]
+                    if len({
+                        str(prior["event_date"])[:10] for prior in history
+                    }) < OOS.DEFAULT_MIN_TRAIN_DAYS:
+                        continue
+                    values = [float(value) for value in case["values"]]
+                    mean = sum(values) / len(values)
+                    actual = float(case["actual_tmax_c"])
+                    misses: dict[float, float] = {}
+                    try:
+                        for arm in arms:
+                            OOS.BIAS_HALF_LIFE_DAYS = arm
+                            parameters = OOS._fit_parameters(history)
+                            misses[arm] = abs(
+                                OOS._corrected_center(mean, parameters) - actual
+                            )
+                    except (ContractError, KeyError, TypeError, ValueError):
+                        continue
+                    finally:
+                        OOS.BIAS_HALF_LIFE_DAYS = serving
+                    for arm, miss in misses.items():
+                        errors[(station, day)][arm].append(miss)
+                    cells += 1
+    finally:
+        OOS.BIAS_HALF_LIFE_DAYS = serving
+    if not errors:
+        return {"available": False, "reason": "no_scoreable_cells"}
 
-    station_day_means = {
-        key: statistics.mean(values)
-        for key, values in per_station_day.items()
+    station_days = {
+        key: {arm: statistics.mean(values) for arm, values in by_arm.items()}
+        for key, by_arm in errors.items()
     }
-    better = sum(1 for value in station_day_means.values() if value < 0)
-    worse = sum(1 for value in station_day_means.values() if value > 0)
-    decided = better + worse
-    # Clustered sign test: one vote per station-day, not per cell.
-    z = (
-        (better - decided / 2) / math.sqrt(decided / 4)
-        if decided else 0.0
-    )
+    keys = sorted(station_days)
+
+    def compare(arm: float) -> dict[str, Any]:
+        diffs = [station_days[key][arm] - station_days[key][serving] for key in keys]
+        arm_closer = sum(1 for diff in diffs if diff < 0)
+        serving_closer = sum(1 for diff in diffs if diff > 0)
+        decided = arm_closer + serving_closer
+        by_day: dict[str, list[float]] = defaultdict(list)
+        for (_station, day), diff in zip(keys, diffs):
+            by_day[day].append(diff)
+        days = sorted(by_day)
+        rng = random.Random(7)
+        means = sorted(
+            statistics.mean([
+                diff for pick in (rng.choice(days) for _ in days)
+                for diff in by_day[pick]
+            ])
+            for _ in range(BIAS_HALF_LIFE_BOOTSTRAP)
+        )
+        tail = int(round(0.025 * BIAS_HALF_LIFE_BOOTSTRAP))
+        return {
+            "half_life_days": arm,
+            "mean_diff_c": round(statistics.mean(diffs), 4),
+            "ci_low_c": round(means[tail], 4),
+            "ci_high_c": round(means[-tail - 1], 4),
+            "arm_closer": arm_closer,
+            "serving_closer": serving_closer,
+            "sign_z": round(
+                (arm_closer - decided / 2) / math.sqrt(decided / 4), 2
+            ) if decided else 0.0,
+            "days_arm_better": sum(
+                1 for day in days if statistics.mean(by_day[day]) < 0
+            ),
+            "days": len(days),
+        }
+
     return {
-        "from_utc": h5_from,
+        "available": True,
+        "measured_at_utc": as_of,
+        "window_from": window_from,
+        "window_to": window_to,
         "cells": cells,
-        "station_days": len(station_day_means),
-        "mean_delta_c": round(
-            statistics.mean(station_day_means.values()), 4
-        ),
-        "median_delta_c": round(
-            statistics.median(station_day_means.values()), 4
-        ),
-        "mae_h5_c": round(statistics.mean(
-            statistics.mean(values) for values in error_h5.values()
-        ), 4),
-        "mae_h15_c": round(statistics.mean(
-            statistics.mean(values) for values in error_h15.values()
-        ), 4),
-        "h5_better": better,
-        "h5_worse": worse,
-        "sign_z": round(z, 2),
-        # The line the section draws its verdict on.  Two-sided 5% on a
-        # clustered sign test; anything inside it is "not yet decided",
-        # however large the per-cell sample looks.
-        "significant": abs(z) >= 1.96,
+        "station_days": len(keys),
+        "serving_half_life_days": serving,
+        "arms": [
+            {
+                "half_life_days": arm,
+                "mae_c": round(statistics.mean(
+                    station_days[key][arm] for key in keys
+                ), 4),
+            }
+            for arm in arms
+        ],
+        "comparisons": [compare(arm) for arm in arms if arm != serving],
     }
 
 
@@ -10369,7 +10359,9 @@ SECTION_CACHE_TTL_SEC = {
     "scorecard": 180 * 60,
     "h5_readiness": 195 * 60,
     "skill": 210 * 60,
-    "h5_bias_accuracy": 225 * 60,
+    # Refits the fleet's bias under each half-life (~5 min); the verdict
+    # moves with a settled day at most.
+    "bias_half_life": 1440 * 60,
     "band_residual_audit": 240 * 60,
     "center_landing": 255 * 60,
     "convergence_claim": 270 * 60,
@@ -10786,8 +10778,8 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "h5_readiness": _cached_section(
             "h5_readiness", collect_h5_readiness, conn
         ),
-        "h5_bias_accuracy": _cached_section(
-            "h5_bias_accuracy", collect_h5_bias_accuracy, conn
+        "bias_half_life": _cached_section(
+            "bias_half_life", collect_bias_half_life, conn
         ),
         "window_divergence": _cached_section(
             "window_divergence", collect_window_divergence, conn
@@ -14838,79 +14830,82 @@ function hitRate(){
 
 
 function h5Readiness(){
-  // The half-life change in one place, conclusions only (user ruling,
-  // 2026-09-17: H5 vs H15 订正准度不要每天的细节，和换代进度融合，突出结论).
-  // Two answers: has the fleet turned over to the 5-day tables, and are the
-  // corrections they serve closer to truth than the 15-day ones would have
-  // been.  The accuracy verdict reads the clustered sign test the collector
-  // draws its line on -- direction from z, not from the mean, since the
-  // mean and the vote can point opposite ways.  (The 2026-09-17 reading
-  // that had H5 losing 494 of 883 station-days was the collector correcting
-  // the wrong way round; corrected as the server does, H5 is closer on
-  // 545 of 885.)
+  // The single-system bias half-life in one place, conclusions only (user
+  // rulings, 2026-09-17: 和换代进度融合，突出结论; 增加 h15 的对比; 测试 H3;
+  // 文案前加单系统校准).  Two answers: has the fleet turned over to the
+  // 5-day tables, and which half-life corrects closest to truth when the
+  // half-life is the only thing changed (``collect_bias_half_life``).  An arm
+  // differs from the serving one only when its day-resampled interval
+  // clears zero -- a station-day vote alone reads weather shared across the
+  // fleet as independent evidence.
   const H = D.h5_readiness || {}; const days = H.days || [];
-  const A = D.h5_bias_accuracy || {};
-  if(!days.length && !A.station_days) return "";
+  const B = D.bias_half_life || {};
+  if(!days.length && !B.available) return "";
   const latest = days.length ? days[days.length-1] : null;
   const ready = H.scoreable_days || [];
   const done = latest && latest.share >= 0.9;
   const rollPill = !latest ? "" : done
     ? `<span class="pill green">已换代 ${(100*latest.share).toFixed(0)}%</span>`
     : `<span class="pill amber">换代中 ${(100*latest.share).toFixed(0)}%</span>`;
-  const signed = v => (v>0?"+":"") + Number(v).toFixed(3);
-  let accPill = "", accLine = "";
-  if(A.station_days){
-    const n = A.h5_better + A.h5_worse;
-    const small = Math.abs(A.mean_delta_c) < 0.05 && Math.abs(A.median_delta_c) < 0.05;
-    const size = small
-      ? `但误差差距很小：平均 ${signed(A.mean_delta_c)}°C、中位 ${signed(A.median_delta_c)}°C，都不到 0.05°C`
-      : `平均差 ${signed(A.mean_delta_c)}°C、中位 ${signed(A.median_delta_c)}°C`;
-    if(A.significant && A.sign_z < 0){
-      accPill = `<span class="pill red">H5 没有更准</span>`;
-      accLine = `<b>换成 5 天半衰期没有让订正更准。</b>${A.station_days} 个已结算站日里，
-        H5 订正后离真值更远的有 <b>${A.h5_worse}</b> 个、更近的 ${A.h5_better} 个
-        （${(100*A.h5_worse/n).toFixed(0)}% 变差，z=${A.sign_z}，显著）；${size}。`;
-    } else if(A.significant){
-      accPill = `<span class="pill green">H5 更准</span>`;
-      accLine = `<b>5 天半衰期让订正更准。</b>${A.station_days} 个已结算站日里，
-        H5 订正后离真值更近的有 <b>${A.h5_better}</b> 个、更远的 ${A.h5_worse} 个
-        （${(100*A.h5_better/n).toFixed(0)}% 变好，z=${A.sign_z}，显著）；${size}。`;
-    } else {
-      accPill = `<span class="pill amber">还不能判</span>`;
-      accLine = `<b>还分不出 H5 和 H15 谁更准。</b>${A.station_days} 个已结算站日里
-        H5 更准 ${A.h5_better}、更差 ${A.h5_worse}（z=${A.sign_z}，没过 ±1.96）；${size}。`;
-    }
-  }
   const rollLine = !latest ? "" : done
     ? `<b>舰队已全部换到 H5：</b>最近事件日 ${h(latest.event_date)} 的
-       ${latest.decisions.toLocaleString()} 笔已标定决策中 ${(100*latest.share).toFixed(0)}% 由 5 天半衰期订正表服务，
-       已有 ${ready.length} 个事件日可以打分${ready.length ? `（${h(ready[0])} 至 ${h(ready[ready.length-1])}）` : ""}。`
-    : `<b>还在换代：</b>最近事件日 ${h(latest.event_date)} 只有 ${(100*latest.share).toFixed(0)}% 的决策由 H5 订正表服务，
-       可打分的事件日 ${ready.length} 个。`;
-  // H15 beside H5 on the same station-days (user ruling, 2026-09-17: 前端
-  // 增加 h15 的对比): the corrected error each would have left, and how many
-  // station-days each came out closer on.  Ties count for neither.
-  const deg = v => v == null ? "—" : Number(v).toFixed(3) + "°C";
-  const decided = (A.h5_better || 0) + (A.h5_worse || 0);
-  const share = k => decided ? ` <span class="muted">${(100*k/decided).toFixed(0)}%</span>` : "";
-  const closer = (mine, theirs) => mine > theirs ? "up" : "";
-  const vs = A.station_days ? `<table style="margin-top:8px;font-size:13.5px"><thead><tr>
-      <th></th><th>H15（15 天半衰期，换代前）</th><th>H5（5 天半衰期，现役）</th></tr></thead><tbody>
-    <tr><td>订正后平均绝对误差</td>
-      <td class="mono ${A.mae_h15_c!=null&&A.mae_h5_c!=null&&A.mae_h15_c<A.mae_h5_c?"up":""}">${deg(A.mae_h15_c)}</td>
-      <td class="mono ${A.mae_h15_c!=null&&A.mae_h5_c!=null&&A.mae_h5_c<A.mae_h15_c?"up":""}">${deg(A.mae_h5_c)}</td></tr>
-    <tr><td>离真值更近的站日</td>
-      <td class="mono ${closer(A.h5_worse, A.h5_better)}">${A.h5_worse}${share(A.h5_worse)}</td>
-      <td class="mono ${closer(A.h5_better, A.h5_worse)}">${A.h5_better}${share(A.h5_better)}</td></tr>
-    </tbody></table>` : "";
-  return `<h2 id="h5">偏差半衰期 H5：换代进度与订正准度 ${rollPill} ${accPill}</h2>
-  <p class="sub">偏差层的半衰期 2026-08-27 从 15 天改为 5 天（H5）。</p>
+       ${latest.decisions.toLocaleString()} 笔已标定决策中 ${(100*latest.share).toFixed(0)}% 由 5 天半衰期订正表服务。`
+    : `<b>还在换代：</b>最近事件日 ${h(latest.event_date)} 只有 ${(100*latest.share).toFixed(0)}% 的决策由 H5 订正表服务。`;
+
+  const hl = v => "H" + Number(v).toFixed(0);
+  // Rounded first, so a value that rounds to zero reads 0.000, not -0.000.
+  const signed = (v, d=3) => {
+    const r = Number(Number(v).toFixed(d));
+    return r === 0 ? (0).toFixed(d) : (r > 0 ? "+" : "") + r.toFixed(d);
+  };
+  let accPill = "", accLine = "", table = "";
+  if(B.available){
+    const serving = B.serving_half_life_days;
+    const mae = {}; (B.arms||[]).forEach(a => { mae[a.half_life_days] = a.mae_c; });
+    const best = (B.arms||[]).reduce((x, a) => (!x || a.mae_c < x.mae_c) ? a : x, null);
+    const verdict = c => c.ci_low_c > 0 ? "worse" : (c.ci_high_c < 0 ? "better" : "tie");
+    const beaten = (B.comparisons||[]).filter(c => verdict(c) === "better");
+    const phrase = c => {
+      const v = verdict(c);
+      return `${hl(c.half_life_days)} ${v === "worse" ? "显著更差" : v === "better" ? "显著更准" : "没有显著差别"}（误差${
+        c.mean_diff_c >= 0 ? "多" : "少"} ${Math.abs(c.mean_diff_c).toFixed(3)}°C，95% 区间 ${signed(c.ci_low_c)} 至 ${signed(c.ci_high_c)}）`;
+    };
+    if(beaten.length){
+      accPill = `<span class="pill amber">${beaten.map(c => hl(c.half_life_days)).join("、")} 比 ${hl(serving)} 更准</span>`;
+      accLine = `<b>现役 ${hl(serving)} 不是最准的：</b>${(B.comparisons||[]).map(phrase).join("；")}。`;
+    } else if(best && best.half_life_days === serving){
+      accPill = `<span class="pill green">${hl(serving)} 最准</span>`;
+      accLine = `<b>现役 ${hl(serving)} 在三者里订正后误差最小：</b>${(B.comparisons||[]).map(phrase).join("；")}。`;
+    } else {
+      accPill = `<span class="pill green">${hl(serving)} 没有被超过</span>`;
+      accLine = `<b>没有哪个半衰期显著好过现役 ${hl(serving)}：</b>${(B.comparisons||[]).map(phrase).join("；")}。`;
+    }
+    const cmp = {}; (B.comparisons||[]).forEach(c => { cmp[c.half_life_days] = c; });
+    const rows = (B.arms||[]).map(a => {
+      const c = cmp[a.half_life_days];
+      const isServing = a.half_life_days === serving;
+      const decided = c ? c.arm_closer + c.serving_closer : 0;
+      return `<tr${isServing ? ' style="font-weight:600"' : ""}>
+        <td>${hl(a.half_life_days)}（${Number(a.half_life_days).toFixed(0)} 天${isServing ? "，现役" : ""}）</td>
+        <td class="mono ${best && a.half_life_days === best.half_life_days ? "up" : ""}">${a.mae_c.toFixed(3)}°C</td>
+        <td class="mono ${!c ? "muted" : verdict(c) === "worse" ? "down" : verdict(c) === "better" ? "up" : ""}">${
+          !c ? "—" : `${signed(c.mean_diff_c)}°C <span class="muted">[${signed(c.ci_low_c)}, ${signed(c.ci_high_c)}]</span>`}</td>
+        <td class="mono">${!c ? "—" : `${c.arm_closer}:${c.serving_closer}${decided ? ` <span class="muted">${(100*c.arm_closer/decided).toFixed(0)}%</span>` : ""}`}</td>
+      </tr>`;
+    }).join("");
+    table = `<table style="margin-top:8px;font-size:13.5px"><thead><tr>
+        <th>半衰期</th><th>订正后平均绝对误差</th><th>比 ${hl(serving)} 多出的误差 <span class="muted">[95% 区间]</span></th>
+        <th>离真值更近的站日 <span class="muted">它:${hl(serving)}</span></th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  return `<h2 id="h5">单系统校准 · 偏差半衰期 H5：换代进度与订正准度 ${rollPill} ${accPill}</h2>
+  <p class="sub">单系统校准里每个模型自己的中心偏差，按最近真值加权拟合；半衰期 2026-08-27 从 15 天改为 5 天（H5）。</p>
   <div class="card" style="font-size:14.5px;line-height:1.7">
-    ${A.station_days ? `<div>${accPill} ${accLine}</div>${vs}` : ""}
+    ${B.available ? `<div>${accPill} ${accLine}</div>${table}` : ""}
     ${latest ? `<div style="margin-top:6px">${rollPill} ${rollLine}</div>` : ""}
   </div>
-  <div class="muted" style="margin-top:6px">准度＝同一批已结算站日、同一批原始预报，分别用 H5 和 H15
-    （都取事件日之前最后一版）订正，比谁离真值近；按站日计票检验，不按单元数。</div>`;
+  ${B.available ? `<div class="muted" style="margin-top:6px">准度＝最近 ${h(B.window_from)} 至 ${h(B.window_to)} 的
+    ${B.station_days.toLocaleString()} 个已结算站日，每天只用之前的数据按各半衰期重拟合（生产的样本加载、拟合、订正函数），
+    只换半衰期；区间按整天重抽样。每天算一次，测于 ${h(String(B.measured_at_utc||"").slice(0,16).replace("T"," "))}Z。</div>` : ""}`;
 }
 
 
@@ -15087,7 +15082,7 @@ function centerWidth(){
       <br>2026-08-27 起指纹只报警不清零：它认代码不认分布，
       只补记账的提交曾与真改算术一样清空八天证据。</div>`}
   </div>`).join("");
-  return `<h2>中心/宽度两标量：平移分布中心、缩放分布宽度</h2>
+  return `<h2>融合分布层 · 中心/宽度两标量：平移分布中心、缩放分布宽度</h2>
   <p class="sub">最后一层修正只有两个数：把整条分布左右平移多少（中心 δ），
   再横向拉宽或收窄多少倍（宽度 λ）。δ=0、λ=1 就是原样不动。</p>
   <div class="why"><b>为什么必须按阶段分开拟合：</b>P0 面对的是一堆模型融出来的
@@ -17039,7 +17034,7 @@ const LANES = {
   "模型校准总检": {layer:"概率层 · 读数", status:"audit",
     role:"六层各自及格没有，一屏看完"},
   "H5 半衰期": {layer:"概率层 · 读数", status:"audit",
-    role:"偏差半衰期换成 5 天：舰队换完没有、订正是否比 15 天更准"},
+    role:"单系统校准的偏差半衰期：舰队换完没有、3/5/15 天哪个订正最准"},
   "band 表": {layer:"概率层", status:"live",
     role:"单系统校准与融合之后，服务概率按离中心距离兑现多少 → 按档修正尾形残差（市场不进）"},
   // --- edge: what our probability is worth against the market ---
@@ -17169,7 +17164,7 @@ function sectionCacheNote(){
   const c=D.section_cache||{};
   const NAME={truth_landing:"真值落点",window_divergence:"窗口分歧",
     scorecard:"校准计分卡",h5_readiness:"H5 就绪",skill:"模型技巧",
-    h5_bias_accuracy:"H5 偏差准确度",band_residual_audit:"band 残差审计",
+    bias_half_life:"半衰期对比",band_residual_audit:"band 残差审计",
     center_landing:"真值离均值多远"};
   const reused=Object.entries(c).filter(([,v])=>v&&v.reused);
   if(!reused.length){
