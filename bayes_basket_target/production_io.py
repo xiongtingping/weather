@@ -2035,6 +2035,9 @@ def assemble_market_snapshot(
     }
 
 
+# Charter 127 (五): a completion crosses as this candidate; its send does
+# not define the basket (charter 145).
+COMPLETION_EXECUTION_CANDIDATE = "TAKER_FOK"
 CHAIN_SEAT_EVENT_TYPES = (
     "POST_ACK", "FILL", "PARTIAL_FILL", "LATE_FILL", "CANCEL_ACK", "EXPIRED",
 )
@@ -2106,6 +2109,13 @@ def load_chain_sent_shares(
     when the held leg was a penny rung the dollar minimum lifted (SBGR
     2026-09-18 held 20C x34 @0.03 and completed 21C to 34 @0.14, against the
     13 it had been sent for).
+
+    A completion's own order (charter 127 (五): the FOK, ``TAKER_FOK``) is
+    not a send that defines the basket (charter 145, 2026-09-17).  Read as
+    one, a leg the completion had bought outside its definition and charter
+    144 had sold back was "sent" the next cycle and bought again: EPWA
+    2026-09-18 23C x8 bought 08:42Z, sold 12:45Z, bought 13:59Z; OEJN 36C
+    the same.  The seat's own posts -- GTD, post-only -- are the basket.
     """
 
     if conn.execute(
@@ -2119,8 +2129,9 @@ def load_chain_sent_shares(
     # mis-bought-leg exit judges a fill by what had been sent before it.
     before_clause = "" if before_utc is None else " AND i.created_at<?"
     before_args: tuple[str, ...] = () if before_utc is None else (str(before_utc),)
-    for bucket, size in conn.execute(
-        "SELECT i.bucket, i.requested_size FROM basket_target_order_intents i"
+    for bucket, size, intent_json in conn.execute(
+        "SELECT i.bucket, i.requested_size, i.intent_json"
+        " FROM basket_target_order_intents i"
         " JOIN basket_target_execution_cycles cy ON cy.cycle_id=i.cycle_id"
         " WHERE cy.station_id=? AND cy.event_date=?"
         "   AND i.order_action='BUY'"
@@ -2131,6 +2142,14 @@ def load_chain_sent_shares(
         " ORDER BY i.created_at, i.order_intent_id",
         (station_id, event_date, *before_args, *CHAIN_SEAT_EVENT_TYPES),
     ):
+        try:
+            candidate = str(
+                (json.loads(intent_json or "{}") or {}).get("execution_candidate") or ""
+            )
+        except (TypeError, ValueError):
+            candidate = ""
+        if candidate == COMPLETION_EXECUTION_CANDIDATE:
+            continue
         sent[str(bucket)] = max(0.0, float(size or 0.0))
     return sent
 

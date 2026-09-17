@@ -227,3 +227,30 @@ def test_the_daemon_runs_the_lane_after_the_recycle_on_the_writer_connection() -
     assert lane.TRANSPORT_TIMEOUT_SECONDS > 15.0
     assert '"mis_bought_leg_exit": exit_receipt' in source
     assert "load_chain_sent_shares" in inspect.getsource(lane.mis_bought_legs)
+
+
+def test_charter_145_a_taf_entry_fill_is_a_seat_not_a_mis_buy() -> None:
+    """Charter 145: charter 90's TX entry rides the completion channel and
+    buys legs the chain never sent -- on TAF authority.  The plan marks it
+    (``completion_143_after_lift.taf_entry``) and this lane leaves it."""
+
+    conn = _store()
+    at = "2026-09-17T13:59:45.990Z"
+    _insert(conn, "basket_target_execution_cycles", {"cycle_id": "c3", "plan_id": "pc3", "station_id": ST, "event_date": ED, "settlement_timezone": TZ, "strategy_lane": "basket", "requested_reserve_usdc": 1.0, "state": "settled", "created_at": at, "updated_at": at})
+    _insert(conn, "auto_trade_decisions", {"decision_id": "d3", "cycle_id": "c3", "plan_id": "pc3", "station_id": ST, "event_date": ED, "settlement_timezone": TZ, "strategy_lane": "basket", "decided_state": "submitted", "will_order": 1, "created_at": at})
+    conn.execute("INSERT INTO basket_policy_training_fact VALUES(?,?,?,?)", (ST, ED, at, json.dumps({
+        "plan": {"target_solution": {"winner_completion_rule": V2},
+                 "completion_143_after_lift": {"exempt": True, "taf_entry": True}},
+    })))
+    # 24C was sent at 15; the entry buys 20 of it -- over the sent size, which
+    # an ordinary completion would owe back.
+    _buy(conn, cycle_id="c3", decision_id="d3", bucket="24°C", size=20.0, at=at, filled=20.0, events=("FILL",))
+    legs = {leg["bucket"]: leg for leg in lane.mis_bought_legs(conn)}
+    assert set(legs) == {"27°C", "25°C"}
+    # The same fill under a plain completion is the excess it always was.
+    conn.execute("UPDATE basket_policy_training_fact SET feature_json=? WHERE created_at_utc=?", (json.dumps({
+        "plan": {"target_solution": {"winner_completion_rule": V2},
+                 "completion_143_after_lift": {"exempt": True, "taf_entry": False}},
+    }), at))
+    legs = {leg["bucket"]: leg for leg in lane.mis_bought_legs(conn)}
+    assert legs["24°C"]["mis_bought_shares"] == pytest.approx(5.0)

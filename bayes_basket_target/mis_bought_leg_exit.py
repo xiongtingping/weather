@@ -108,7 +108,7 @@ def mis_bought_legs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         " ORDER BY d.created_at",
         (MIS_BUY_WINDOW_START_UTC,),
     ).fetchall()
-    fact_cache: dict[tuple[str, str, str], str | None] = {}
+    fact_cache: dict[tuple[str, str, str], tuple[str | None, bool]] = {}
     for station_id, event_date, timezone_name, decided_at, bucket, token_id, filled, intent_id in rows:
         key = (str(station_id), str(event_date), str(decided_at))
         if key not in fact_cache:
@@ -118,16 +118,23 @@ def mis_bought_legs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 key,
             ).fetchone()
             rule = None
+            taf_entry = False
             if fact:
                 try:
                     plan = json.loads(fact[0]).get("plan") or {}
                     rule = (plan.get("target_solution") or {}).get(
                         "winner_completion_rule"
                     )
+                    # Charter 145: charter 90's TX-entry span rides the
+                    # completion channel and buys legs the chain never sent
+                    # -- on TAF authority.  Those are a seat, not a mis-buy.
+                    taf_entry = bool(
+                        (plan.get("completion_143_after_lift") or {}).get("taf_entry")
+                    )
                 except (ValueError, AttributeError):
-                    rule = None
-            fact_cache[key] = rule
-        if fact_cache[key] not in COMPLETION_RULES:
+                    rule, taf_entry = None, False
+            fact_cache[key] = (rule, taf_entry)
+        if fact_cache[key][0] not in COMPLETION_RULES or fact_cache[key][1]:
             continue
         sent = load_chain_sent_shares(
             conn, station_id=str(station_id), event_date=str(event_date),
@@ -154,7 +161,7 @@ def mis_bought_legs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         entry["fills"].append({
             "order_intent_id": str(intent_id), "decided_at": str(decided_at),
             "filled_shares": filled_shares, "mis_bought_shares": excess, "kind": kind,
-            "rule": fact_cache[key],
+            "rule": fact_cache[key][0],
         })
     return list(legs.values())
 

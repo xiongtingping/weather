@@ -11378,12 +11378,17 @@ def backfill(
                     # could complete while production could.  The size is
                     # the posted size of a leg not yet held -- the one bound
                     # charter 143 v2 reads.
-                    chain_intended.update(str(b) for b in intended_legs)
-                    chain_intended_shares.update({
-                        str(b): float(q) for b, q in intended_legs.items()
-                        if float(q) > 0.0
-                        and float(held.get(str(b), 0.0)) <= 1e-9
-                    })
+                    # Charter 145: a completion's post -- a charter-143
+                    # winner, the TX entry included -- is not a send that
+                    # defines the basket, on either side (production skips
+                    # the FOK in ``load_chain_sent_shares``).
+                    if (production_verdict or {}).get("winner_completion_rule") is None:
+                        chain_intended.update(str(b) for b in intended_legs)
+                        chain_intended_shares.update({
+                            str(b): float(q) for b, q in intended_legs.items()
+                            if float(q) > 0.0
+                            and float(held.get(str(b), 0.0)) <= 1e-9
+                        })
                     # What each posted leg was priced to cost.  Sizing
                     # weights the share counts, not the cash, so the cash
                     # per leg is the share count times whatever the book

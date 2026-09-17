@@ -566,3 +566,58 @@ def test_145_a_residue_under_one_share_is_not_a_held_leg() -> None:
     assert audit["p0m_taf"]["held_buckets"] == ["30"]
     assert audit["p0m_taf"]["confirmed"] is False
     assert audit["p0m_taf"]["entry_required"] is True
+
+
+def test_145_a_completions_own_fok_is_not_a_send_that_defines_the_basket() -> None:
+    """EPWA 2026-09-18 23C: bought 08:42Z by a completion outside its
+    definition, sold back 12:45Z by charter 144, bought again 13:59Z because
+    the mis-buy's own FOK read as a send.  The seat's GTD posts are the
+    basket; a ``TAKER_FOK`` is not."""
+    import json
+    import sqlite3
+
+    from bayes_basket_target.atomic_ledger import apply_target_ledger_schema
+    from bayes_basket_target.execution_reconciliation import record_order_event
+    from bayes_basket_target.production_io import (
+        COMPLETION_EXECUTION_CANDIDATE,
+        load_chain_seat_buckets,
+        load_chain_sent_shares,
+    )
+
+    assert COMPLETION_EXECUTION_CANDIDATE == "TAKER_FOK"
+    conn = sqlite3.connect(":memory:")
+    apply_target_ledger_schema(conn)
+    conn.execute(
+        "INSERT INTO basket_target_execution_cycles(cycle_id,plan_id,station_id,"
+        "event_date,settlement_timezone,strategy_lane,plan_sha256,"
+        "requested_reserve_usdc,state,created_at,updated_at)"
+        " VALUES('c1','p1','EPWA','2026-09-18','Europe/Warsaw','basket',?,1,"
+        "'submitted','2026-09-16T11:00:00Z','2026-09-16T11:00:00Z')",
+        ("a" * 64,),
+    )
+    for n, (bucket, size, at, event, candidate) in enumerate((
+        ("21°C", 5.0, "2026-09-16T11:20:48Z", "FILL", "MAKER"),
+        ("22°C", 10.0, "2026-09-16T11:20:48Z", "CANCEL_ACK", "MAKER"),
+        ("23°C", 8.0, "2026-09-17T08:42:30Z", "FILL", "TAKER_FOK"),
+    )):
+        intent = f"i{n}"
+        conn.execute(
+            "INSERT INTO basket_target_order_intents(order_intent_id,decision_id,"
+            "cycle_id,bucket,token_id,side,order_action,limit_price,requested_size,"
+            "requested_notional_usdc,state,live_submit_authorized,idempotency_key,"
+            "intent_json,intent_sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (intent, "d1", "c1", bucket, f"t{n}", "YES", "BUY", 0.1, size, 0.5,
+             "submitted", 1, f"k{n}", json.dumps({"execution_candidate": candidate}),
+             "b" * 64, at),
+        )
+        record_order_event(conn, order_intent_id=intent, event={
+            "event_type": event, "exchange_order_id": f"0x{n}",
+            "observed_at": at, "matched_size": size if event == "FILL" else 0.0,
+            "matched_notional_usdc": 1.0 if event == "FILL" else 0.0, "event_payload": {},
+        })
+    assert load_chain_sent_shares(conn, station_id="EPWA", event_date="2026-09-18") == {
+        "21°C": 5.0, "22°C": 10.0,
+    }
+    assert load_chain_seat_buckets(conn, station_id="EPWA", event_date="2026-09-18") == (
+        frozenset({"21°C", "22°C"})
+    )
