@@ -128,6 +128,7 @@ from .basket_kernel.delta_v2 import (
     completion_repair_exemption_v1,
     CHARTER_143_COMPLETION,
     COMPLETION_143_RULE_VERSION,
+    held_leg_shares,
     completion_143_basket_type_v1,
     completion_143_exemption_v1,
     completion_143_targets_v1,
@@ -2083,8 +2084,10 @@ def _support_windows(
         quote_by_bucket = dict(zip(window, quotes))
         held = [
             bucket for bucket in window
-            if float(by_bucket[bucket].filled_shares)
-            + float(by_bucket[bucket].pending_shares) > EPS
+            if held_leg_shares(
+                float(by_bucket[bucket].filled_shares)
+                + float(by_bucket[bucket].pending_shares)
+            ) > EPS
         ]
         if len(held) == len(window) or (not held and not taf_entry):
             return None
@@ -2633,11 +2636,15 @@ def _support_windows(
         ordinal_of = {
             bucket: int(row.ordinal) for bucket, row in by_bucket.items()
         }
+        # Charter 145: a residue under one share is not a held leg -- it
+        # confirms no TX and anchors no level.
         held_ordinals = {
             ordinal_of[bucket]
             for bucket, row in by_bucket.items()
-            if float(getattr(row, "filled_shares", 0.0) or 0.0)
-            + float(getattr(row, "pending_shares", 0.0) or 0.0) > EPS
+            if held_leg_shares(
+                float(getattr(row, "filled_shares", 0.0) or 0.0)
+                + float(getattr(row, "pending_shares", 0.0) or 0.0)
+            ) > EPS
         }
         taf_held_buckets = sorted(
             (bucket for bucket in by_bucket if ordinal_of[bucket] in held_ordinals),
@@ -4274,9 +4281,13 @@ def _solve_over_support_windows(
     # cheapest held rung when the span itself holds none, and never under
     # the venue lot.
     chain_levels = [
-        float(bucket_row.filled_shares) + float(bucket_row.pending_shares)
+        held_leg_shares(
+            float(bucket_row.filled_shares) + float(bucket_row.pending_shares)
+        )
         for bucket_row in snapshot.buckets
-        if float(bucket_row.filled_shares) + float(bucket_row.pending_shares) > EPS
+        if held_leg_shares(
+            float(bucket_row.filled_shares) + float(bucket_row.pending_shares)
+        ) > EPS
     ]
     taf_entry_level_shares = min(chain_levels) if chain_levels else None
     taf_entry_minimum_level_shares = max(

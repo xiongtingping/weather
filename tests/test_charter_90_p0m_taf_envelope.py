@@ -525,3 +525,44 @@ def test_145_the_ledger_hands_its_walk_the_entry_flag() -> None:
     assert ledger._completion_143_exempt_on_legs(
         verdict=dict(verdict, completion_143_taf_entry=False), **kwargs
     ) is False
+
+
+def test_145_a_residue_under_one_share_is_not_a_held_leg() -> None:
+    """ZUUU 2026-09-18: 24C x15, 25C x6 and a 0.0083-share residue on 27C
+    left by charter 144's sell.  Read as held, the residue made the chain's
+    cheapest rung a dust level and the entry was refused for capital; read
+    as dust, the level is the real legs' and the TX rung is bought."""
+
+    assert kernel.held_leg_shares(0.0083) == 0.0
+    assert kernel.held_leg_shares(0.999) == 0.0
+    assert kernel.held_leg_shares(1.0) == 1.0
+    assert kernel.held_leg_shares(6.0) == 6.0
+    reading = kernel.completion_143_targets_v1(
+        held_by_bucket={"24": 15.0, "25": 6.0, "26": 0.0, "27": 0.0083},
+        support=("24", "25", "26", "27"),
+        held_cost_by_bucket={"24": 2.0, "25": 1.5, "27": 0.0018},
+        depth_by_bucket={"24": _book(0.17), "25": _book(0.26), "26": _book(0.30), "27": _book(0.22)},
+        capital_available_usdc=4.17, hours_to_cutoff=27.0, taf_entry=True,
+    )
+    assert reading["refused"] is None
+    assert reading["level_shares"] == 6.0
+    assert reading["buy_buckets"] == ["26", "27"]
+    # The residue counts for nothing in charter 90 either: a TX on it is
+    # not confirmed, and it is not a rung the span keeps.
+    snapshot = fixture._partly_held(
+        rungs=[("28", 28, 0.05, 0.08), ("29", 29, 0.20, 0.20), ("30", 30, 0.50, 0.45),
+               ("31", 31, 0.20, 0.60), ("32", 32, 0.05, 0.08)],
+        held={"30": 5.0, "31": 0.0083}, cost={"30": 2.15, "31": 0.005},
+    )
+    from dataclasses import replace
+    snapshot = replace(snapshot, evidence=replace(snapshot.evidence, probability_stage="P0-M"))
+    by_bucket = {row.bucket: float(row.probability) for row in snapshot.buckets}
+    _, audit = _support_windows(
+        snapshot=snapshot, desired={"29", "30", "31"}, probabilities=by_bucket,
+        fee_rate=0.0, maximum_support_buckets=4, minimum_support_buckets=3,
+        center_bucket="30", probability_stage="P0-M", taf_tx_bucket="31",
+        hours_to_cutoff=27.0, completion_budget_usdc=10.0,
+    )
+    assert audit["p0m_taf"]["held_buckets"] == ["30"]
+    assert audit["p0m_taf"]["confirmed"] is False
+    assert audit["p0m_taf"]["entry_required"] is True

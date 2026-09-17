@@ -506,6 +506,24 @@ CHAIN_OPENING_STAGE = "P0"
 # is still a fill too small to compound.  The paper ledger's DUST_COST_FLOOR
 # is this same number.
 DUST_FILL_FLOOR_USDC = 0.01
+# A held leg under one whole share is dust, not a leg (charter 145, 2026-09-17).
+# The venue trades whole shares, so a residue cannot be sold and cannot be
+# completed to; and charter 144's sells leave exactly such residues (ZUUU
+# 2026-09-18 27C held 0.0083 after 14.11 of 14.1111 sold; KORD 76-77F
+# 0.0011).  Read as held, a residue made the chain's "cheapest held rung" a
+# dust level -- charter 143 then completed the seat to 0.0083 shares and the
+# capital gate refused it -- and it counted as a held leg for the basket
+# type and for charter 90's confirmation.  Below this the leg is read as not
+# held wherever a completion or an entry counts legs.
+HELD_LEG_DUST_SHARES = 1.0
+
+
+def held_leg_shares(value: Any) -> float:
+    """The shares a leg is read as holding: its size, or zero under the dust
+    floor."""
+
+    shares = float(value or 0.0)
+    return shares if shares >= HELD_LEG_DUST_SHARES - EPS else 0.0
 EXECUTION_AUTHORIZATION_RULES = frozenset({
     EXECUTION_AUTHORIZATION_JOINT_VALUE,
     EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE,
@@ -3634,7 +3652,9 @@ def completion_143_targets_v1(
         _text("delta_v2_c143_dead", bucket) for bucket in below_leg_floor_buckets
     }
     held = {
-        b: _nonnegative("delta_v2_c143_held", held_by_bucket.get(b, 0.0) or 0.0)
+        b: held_leg_shares(
+            _nonnegative("delta_v2_c143_held", held_by_bucket.get(b, 0.0) or 0.0)
+        )
         for b in window
     }
     paid = {
@@ -3885,7 +3905,9 @@ def completion_143_exemption_v1(
         _text("delta_v2_c143x_dead", bucket) for bucket in below_leg_floor_buckets
     }
     held = {
-        b: _nonnegative("delta_v2_c143x_held", held_shares.get(b, 0.0) or 0.0)
+        b: held_leg_shares(
+            _nonnegative("delta_v2_c143x_held", held_shares.get(b, 0.0) or 0.0)
+        )
         for b in window
     }
     paid = {
@@ -7068,4 +7090,6 @@ __all__ = [
     "ladder_balance_targets_v1",
     "completion_143_targets_v1",
     "completion_143_exemption_v1",
+    "HELD_LEG_DUST_SHARES",
+    "held_leg_shares",
 ]
