@@ -15282,32 +15282,6 @@ function liveReadiness(){
   const fnum = (v,d,suffix="") => v==null ? "—"
     : ((v>=0&&suffix==="C")?"+":"") + Number(v).toFixed(d) + suffix;
   const EDGE = 'style="border-left:1px solid var(--line)"';
-  const fverdict = (station) => {
-    if(!FX) return "";
-    const s = FX.by[station];
-    if(!s) return `<td class="mono muted" ${EDGE}>—</td><td class="muted">—</td>`;
-    const bad = Object.keys(FLAG).filter(k=>(s.flags||{})[k]);
-    return `<td class="mono ${s.flag_count>=4?"down":""}" ${EDGE}><b>${
-        s.flag_count}</b>/5</td>
-      <td>${bad.map(k=>`<span class="pill amber">${FLAG[k]}</span>`).join(" ")
-        || '<span class="muted">✓</span>'}</td>`;
-  };
-  const fcells = (station) => {
-    if(!FX) return "";
-    const s = FX.by[station];
-    if(!s) return `<td class="mono muted" ${EDGE}>—</td>`
-      + '<td class="mono muted">—</td>'.repeat(4);
-    // Thin stations are not good stations, they are unjudged ones, so the
-    // count is muted rather than hidden and the cell says so in place.
-    const thin = s.settled_count < 6;
-    return `<td class="mono${thin?" muted":""}" ${EDGE}>${s.settled_count}${
-        thin?" 薄":""}</td>
-      <td class="mono" ${hsort(s.basket_hit_days, s.basket_hit_rate==null?0:s.settled_days)}>${
-        s.basket_hit_rate==null?"—":hfrac(s.basket_hit_days, s.settled_days)}</td>
-      <td class="mono">${fnum(s.realization_ratio,2)}</td>
-      <td class="mono">${fnum(s.calibration_ratio,2)}</td>
-      <td class="mono">${fnum(s.centre_residual_c,2,"C")}</td>`;
-  };
   // The live book per station: what the exchange filled, settled on the
   // same resolver as the money card.  The gates, the five dimensions and
   // their seven columns read the same book (user rulings, 2026-09-16).
@@ -15322,27 +15296,6 @@ function liveReadiness(){
   (SEL.station_stats||[]).forEach(x=>{ SS[x.station_id]=x; });
   const pc0 = v => v==null ? "—" : (100*v).toFixed(0)+"%";
   const n2 = (v,d=2) => v==null ? "—" : Number(v).toFixed(d);
-  const ocells = (sid) => {
-    const x = SS[sid];
-    if(!x) return `<td class="mono muted" ${EDGE}>—</td>`
-      + '<td class="mono muted">—</td>'.repeat(12);
-    const c = x.completeness || {};
-    const sd = x.sides || {};
-    const ev = x.ev_per_usdc;
-    return `<td class="mono" ${EDGE}>${x.intent_leg_total}</td>
-      <td class="mono">${x.reached_leg_total}</td>
-      <td class="mono ${x.refused_leg_total?"down":""}">${x.refused_leg_total}</td>
-      <td class="mono">${x.filled_leg_total}</td>
-      <td class="mono">${n2(x.intent_notional_usdc,1)}</td>
-      <td class="mono">${n2(x.filled_notional_usdc,1)}</td>
-      <td class="mono" ${EDGE}>${c.baskets?`${c.complete}/${c.baskets}`:"—"}</td>
-      <td class="mono ${c.mean==null?"":(c.mean>=0.9?"up":(c.mean<0.6?"down":""))}">${pc0(c.mean)}</td>
-      <td class="mono muted" ${EDGE}>${(sd.above||0)}/${(sd.aligned||0)}/${(sd.below||0)}</td>
-      <td class="mono">${pc0(x.model_coverage_mean)}</td>
-      <td class="mono">${n2(x.seat_ask_total_mean,3)}</td>
-      <td class="mono">${x.odds_mean==null?"—":n2(x.odds_mean,2)+"x"}</td>
-      <td class="mono ${ev==null?"":(ev>0?"up":"down")}">${ev==null?"—":(ev>0?"+":"")+n2(ev,2)}</td>`;
-  };
   // Hit rates per station at 每日统计's grains, counted off the same
   // station-day verdicts (live_book.station_days): 篮子命中 over every settled
   // station-day, 持仓命中 over the ones that filled, and the 笔 rate beside
@@ -15352,20 +15305,6 @@ function liveReadiness(){
   // higher (the nudge stays below the gap between any two distinct rates on
   // these denominators).
   const hsort = (a,b) => `data-sort="${b ? a/b + b*1e-9 : ""}"`;
-  const hcells = (sid) => {
-    const x = SS[sid];
-    if(!x) return `<td class="mono muted" ${EDGE}>—</td>`
-      + '<td class="mono muted">—</td>'.repeat(3);
-    const ci = x.hit_rate_interval_90;
-    const claim = x.claimed_win_probability_mean;
-    // Coloured only when the claim sits outside the interval: inside it, a
-    // station's handful of 笔 cannot tell its claim from luck.
-    const off = (ci && claim!=null) ? (claim>ci[1]?"down":(claim<ci[0]?"up":"")) : "";
-    return `<td class="mono" ${EDGE} ${hsort(x.basket_hit_station_days, x.settled_station_days)}>${hfrac(x.basket_hit_station_days, x.settled_station_days)}</td>
-      <td class="mono" ${hsort(x.held_hit_station_days, x.held_station_days)}>${hfrac(x.held_hit_station_days, x.held_station_days)}</td>
-      <td class="mono ${off}" ${hsort(x.hit_count, x.claimed_count)}${ci?` title="90% 区间 ${pc0(ci[0])}–${pc0(ci[1])}，声称 ${pc0(claim)}"`:""}>${hfrac(x.hit_count, x.claimed_count)}</td>
-      <td class="mono">${pc0(claim)}</td>`;
-  };
   const HT = Object.values(SS).reduce((a,x)=>{
     a.sd+=x.settled_station_days||0; a.bh+=x.basket_hit_station_days||0;
     a.hd+=x.held_station_days||0; a.hh+=x.held_hit_station_days||0;
@@ -15373,13 +15312,6 @@ function liveReadiness(){
     a.c+=(x.claimed_win_probability_mean||0)*(x.claimed_count||0);
     return a;
   }, {sd:0,bh:0,hd:0,hh:0,k:0,n:0,c:0});
-  const geoCells = (sid) => {
-    const g = GEO[sid];
-    const bd = g ? bandOf(g[0]) : null;
-    return `<td ${EDGE}>${bd?h(bd.replace("半球·","")):"—"}
-        <span class="muted">${g?fmtLat(g[0]):""}</span></td>
-      <td>${g?(g[1]?"沿海":"内陆"):"—"}</td>`;
-  };
   // Fleet basket completeness: how many buckets each live basket meant to
   // buy against how many it bought, e.g. posted 3 and bought 2.  The three
   // headline numbers only; the per-(posted, bought) table under them came
@@ -15443,35 +15375,146 @@ function liveReadiness(){
     </details>` : "";
   const lpct = v => v==null ? "—" : (v>=0?"+":"")+(100*v).toFixed(1)+"%";
   const lsign = v => v==null ? "" : (v>=0?"up":"down");
-  const lcells = (x) => {
-    if(!x) return `<td class="mono muted" ${EDGE}>—</td>`
-      + '<td class="mono muted">—</td>'.repeat(5);
-    const settled = x.settled_legs > 0;
-    return `<td class="mono" ${EDGE}>${x.settled_days}</td>
-      <td class="mono">${x.won}/${x.settled_legs}${
-        x.pending?`<span class="muted"> +${x.pending}待</span>`:""}</td>
-      <td class="mono">${settled?x.cost_usdc.toFixed(1):"—"}</td>
-      <td class="mono ${settled?lsign(x.pnl_usdc):""}">${settled
-        ?(x.pnl_usdc>=0?"+":"")+x.pnl_usdc.toFixed(1):"—"}</td>
-      <td class="mono ${lsign(x.roi)}"><b>${lpct(x.roi)}</b></td>
-      <td class="mono ${lsign(x.recent_roi)}">${lpct(x.recent_roi)}</td>`;
+  // One list of columns, grouped by what they measure (user ruling,
+  // 2026-09-17: 同类的放在一起).  The header and every row are drawn from it,
+  // so a column cannot move in one without the other -- the cells used to be
+  // six hand-counted runs that had to line up with a separate header by eye.
+  // Each ``td`` returns [attributes, content]; the first column of a group
+  // gets the group's rule.
+  const MISS = ['class="mono muted"', "—"];
+  const fx = sid => FX ? FX.by[sid] : null;
+  const COLUMN_GROUPS = [
+    ["站点与开关", [
+      {th:['', "站"], td:r=>['class="mono" style="white-space:nowrap"',
+        `<span data-lc-state="${h(r.station)}">${allow.has(r.station)?"✔ ":(barred.has(r.station)?"⛔ ":(waiting.has(r.station)?"⏳ ":""))}</span>${h(r.station)}${r.station_label?` <span class="muted">${h(r.station_label)}</span>`:""}`]},
+      {th:['title="三个开关都是人工裁定，点击即开启关闭，改动立刻写盘并记审计。禁入=不下单（记账照旧）；豁免=证据不够也上线；待观察=够格也先不下单。三者互斥。"', "闸门（人工）"],
+        td:r=>['style="white-space:nowrap"', lcGateButtons(r.station, barred.has(r.station),
+          waived.has(r.station), heldSet.has(r.station), autoBar.has(r.station))]},
+    ]],
+    ["判定", [
+      {th:['', "过闸"], td:r=>[`class="mono ${r.score>=5?"up":(r.score>=4?"":"down")}"`, `${r.score}/5`]},
+      {th:['', "未过项"], td:r=>['class="muted"',
+        `${r.add_candidate?"☆建议加入 ":""}${r.release_candidate?"★建议放出 ":""}${Object.entries(r.gates).filter(([k,v])=>!v).map(([k])=>GATE[k]).join("、")||"✓"}`]},
+      {fx:true, th:['title="实盘：五个维度里不行的项数，每个维度指认不同的一层"', "不行"],
+        td:r=>{ const s=fx(r.station); return !s ? MISS
+          : [`class="mono ${s.flag_count>=4?"down":""}"`, `<b>${s.flag_count}</b>/5`]; }},
+      {fx:true, th:['title="实盘：实现、声称、中心、篮子命中四项见右边各列的说明；「持续」＝以全队已结算站日的中位日切成前后两段，两段的站日盈亏都为负"', "不行的维度"],
+        td:r=>{ const s=fx(r.station); if(!s) return ['class="muted"', "—"];
+          const bad = Object.keys(FLAG).filter(k=>(s.flags||{})[k]);
+          return ['', bad.map(k=>`<span class="pill amber">${FLAG[k]}</span>`).join(" ")
+            || '<span class="muted">✓</span>']; }},
+    ]],
+    ["下单与成交", [
+      {th:['title="实盘订单：该站铸出的全部实盘意向腿，含被实盘门拒掉的"', "意向腿"],
+        td:r=>{ const x=SS[r.station]; return x ? ['class="mono"', x.intent_leg_total] : MISS; }},
+      {th:['title="实盘订单：被实盘门（禁入/总闸/待观察/网关）拒掉、从没到过交易所的腿"', "被拒"],
+        td:r=>{ const x=SS[r.station]; return x ? [`class="mono ${x.refused_leg_total?"down":""}"`, x.refused_leg_total] : MISS; }},
+      {th:['title="实盘订单：到过交易所的腿"', "到所"],
+        td:r=>{ const x=SS[r.station]; return x ? ['class="mono"', x.reached_leg_total] : MISS; }},
+      {th:['title="实盘订单：成交过的腿"', "成交腿"],
+        td:r=>{ const x=SS[r.station]; return x ? ['class="mono"', x.filled_leg_total] : MISS; }},
+      {th:['title="实盘订单：全部意向的请求名义金额(U)"', "意向名义"],
+        td:r=>{ const x=SS[r.station]; return x ? ['class="mono"', n2(x.intent_notional_usdc,1)] : MISS; }},
+      {th:['title="实盘订单：成交金额(U)"', "成交额"],
+        td:r=>{ const x=SS[r.station]; return x ? ['class="mono"', n2(x.filled_notional_usdc,1)] : MISS; }},
+      {th:['title="篮子完整：挂出的桶全部买到的篮数/挂到交易所的篮数（一个站日的一个阶段算一篮）"', "完整篮"],
+        td:r=>{ const x=SS[r.station]; if(!x) return MISS; const c=x.completeness||{};
+          return ['class="mono"', c.baskets?`${c.complete}/${c.baskets}`:"—"]; }},
+      {th:['title="篮子完整：每篮 买到桶数÷挂出桶数 的平均，如挂 3 买 2 记 67%"', "完整度"],
+        td:r=>{ const x=SS[r.station]; if(!x) return MISS; const c=x.completeness||{};
+          return [`class="mono ${c.mean==null?"":(c.mean>=0.9?"up":(c.mean<0.6?"down":""))}"`, pc0(c.mean)]; }},
+    ]],
+    ["命中（结算后）", [
+      {th:['title="实盘：该站真实成交腿里已结算的站日数"', "实盘站日"],
+        td:r=>r.live ? ['class="mono"', r.live.settled_days] : MISS},
+      {fx:true, th:['title="实盘：已结算的实盘篮子数（站日×阶段，每个阶段各持一个篮子）"', "实盘结算笔"],
+        td:r=>{ const s=fx(r.station); if(!s) return MISS;
+          // Thin stations are not good stations, they are unjudged ones, so
+          // the count is muted rather than hidden and says so in place.
+          const thin = s.settled_count < 6;
+          return [`class="mono${thin?" muted":""}"`, `${s.settled_count}${thin?" 薄":""}`]; }},
+      {th:['title="命中·站日：真值落在生产挑中的桶里的站日/已结算站日；挑中的桶成交与否、是否被实盘门拒掉都算（与每日统计同一判定）"', '篮子命中<br><span class="muted">站日</span>'],
+        td:r=>{ const x=SS[r.station]; return x ? [`class="mono" ${hsort(x.basket_hit_station_days, x.settled_station_days)}`,
+          hfrac(x.basket_hit_station_days, x.settled_station_days)] : MISS; }},
+      {fx:true, th:[`title="实盘：真值落在当天挂出的桶里（各阶段合并，成交与否都算）的站日 ÷ 有成交的已结算站日——即只算有成交站日的「篮子命中·站日」；＜${FX?(100*(FX.thresholds.basket_hit_floor||0)).toFixed(0):"—"}% 算「篮子命中」不行"`, '篮子命中<br><span class="muted">有成交站日</span>'],
+        td:r=>{ const s=fx(r.station); if(!s) return MISS;
+          return [`class="mono" ${hsort(s.basket_hit_days, s.basket_hit_rate==null?0:s.settled_days)}`,
+            s.basket_hit_rate==null?"—":hfrac(s.basket_hit_days, s.settled_days)]; }},
+      {th:['title="命中·站日：真值落在成交的桶里的站日/有成交的已结算站日"', '持仓命中<br><span class="muted">站日</span>'],
+        td:r=>{ const x=SS[r.station]; return x ? [`class="mono" ${hsort(x.held_hit_station_days, x.held_station_days)}`,
+          hfrac(x.held_hit_station_days, x.held_station_days)] : MISS; }},
+      {th:['title="实盘：命中腿/已结算成交腿，+N待＝已成交但还没结算的腿"', "实盘腿"],
+        td:r=>{ const x=r.live; return x ? ['class="mono"',
+          `${x.won}/${x.settled_legs}${x.pending?`<span class="muted"> +${x.pending}待</span>`:""}`] : MISS; }},
+      {th:['title="命中·笔：一个站日一个阶段成交过的腿算一笔；持有的桶含真值的笔/声称已知的已结算笔。悬停看 90% 区间；声称落在区间外才着色（红＝声称高于区间上沿）"', '命中率<br><span class="muted">笔</span>'],
+        td:r=>{ const x=SS[r.station]; if(!x) return MISS;
+          const ci = x.hit_rate_interval_90;
+          const claim = x.claimed_win_probability_mean;
+          // Coloured only when the claim sits outside the interval: inside
+          // it, a station's handful of 笔 cannot tell its claim from luck.
+          const off = (ci && claim!=null) ? (claim>ci[1]?"down":(claim<ci[0]?"up":"")) : "";
+          return [`class="mono ${off}" ${hsort(x.hit_count, x.claimed_count)}${ci?` title="90% 区间 ${pc0(ci[0])}–${pc0(ci[1])}，声称 ${pc0(claim)}"`:""}`,
+            hfrac(x.hit_count, x.claimed_count)]; }},
+    ]],
+    ["模型声称（下单时）", [
+      {th:['title="生产入座时记下的整篮声称概率，按决策平均"', "选桶概率和"],
+        td:r=>{ const x=SS[r.station]; return x ? ['class="mono"', pc0(x.model_coverage_mean)] : MISS; }},
+      {th:['title="命中·笔：下单决策绑定的概率包里持有各桶概率之和，按笔平均"', '声称<br><span class="muted">笔</span>'],
+        td:r=>{ const x=SS[r.station]; return x ? ['class="mono"', pc0(x.claimed_win_probability_mean)] : MISS; }},
+      {fx:true, th:[`title="实盘：命中率÷平均声称。五闸「声称诚实」要求 0.88–1.18；＜${FX?FX.thresholds.claim_floor:"—"} 算「声称」不行"`, "命中/声称"],
+        td:r=>{ const s=fx(r.station); return s ? ['class="mono"', fnum(s.calibration_ratio,2)] : MISS; }},
+      {th:['title="生产那一笔决策的席位中心桶相对市场中心桶：偏上/一致/偏下的决策数"', '位置<br><span class="muted">上/平/下</span>'],
+        td:r=>{ const x=SS[r.station]; if(!x) return MISS; const sd=x.sides||{};
+          return ['class="mono muted"', `${(sd.above||0)}/${(sd.aligned||0)}/${(sd.below||0)}`]; }},
+      {fx:true, th:[`title="实盘：成交篮子所依据的模型中心−结算真值，按站日平均。五闸「中心偏差」要求 |x|≤0.8°C；＞${FX?FX.thresholds.centre_limit_c:"—"}°C 算「中心」不行"`, "中心偏差"],
+        td:r=>{ const s=fx(r.station); return s ? ['class="mono"', fnum(s.centre_residual_c,2,"C")] : MISS; }},
+    ]],
+    ["价格与盈亏", [
+      {th:['title="生产入座时记下的整篮全含费卖价，按决策平均"', "卖价和"],
+        td:r=>{ const x=SS[r.station]; return x ? ['class="mono"', n2(x.seat_ask_total_mean,3)] : MISS; }},
+      {th:['title="按实际成交成本算的赔率（按投入加权的均价再求赔率）"', "赔率"],
+        td:r=>{ const x=SS[r.station]; return x ? ['class="mono"', x.odds_mean==null?"—":n2(x.odds_mean,2)+"x"] : MISS; }},
+      {th:['title="已结算实盘单的声称期望÷投入"', "EV/U"],
+        td:r=>{ const x=SS[r.station]; if(!x) return MISS; const ev=x.ev_per_usdc;
+          return [`class="mono ${ev==null?"":(ev>0?"up":"down")}"`, ev==null?"—":(ev>0?"+":"")+n2(ev,2)]; }},
+      {th:['title="实盘：已结算成交腿的实付金额(U)"', "实盘投入"],
+        td:r=>{ const x=r.live; return x ? ['class="mono"', x.settled_legs>0?x.cost_usdc.toFixed(1):"—"] : MISS; }},
+      {th:['title="实盘：已结算成交腿的盈亏(U)＝命中份数×1U−实付"', "实盘盈亏"],
+        td:r=>{ const x=r.live; if(!x) return MISS; const settled=x.settled_legs>0;
+          return [`class="mono ${settled?lsign(x.pnl_usdc):""}"`, settled?(x.pnl_usdc>=0?"+":"")+x.pnl_usdc.toFixed(1):"—"]; }},
+      {fx:true, th:['title="实盘：实得盈亏÷声称期望；＜0 算「实现」不行"', "实现/期望"],
+        td:r=>{ const s=fx(r.station); return s ? ['class="mono"', fnum(s.realization_ratio,2)] : MISS; }},
+      {th:['title="实盘：盈亏÷投入，待结算腿不计入"', "实盘ROI"],
+        td:r=>r.live ? [`class="mono ${lsign(r.live.roi)}"`, `<b>${lpct(r.live.roi)}</b>`] : MISS},
+      {th:[`title="实盘：实盘账本最近 5 个结算日的 ROI${(LP.recent_window_dates||[]).length?"（"+LP.recent_window_dates[0]+" 起）":""}"`, "实盘近5日"],
+        td:r=>r.live ? [`class="mono ${lsign(r.live.recent_roi)}"`, lpct(r.live.recent_roi)] : MISS},
+    ]],
+    ["站点属性", [
+      {th:['title="该站真值的日际跳变均值(°C)：天气性格，>1.76 的站在真边际枯竭期实测 −43%（留存组 +23%，p=0.023）。外生、慢变、先于账本。"', "跳变/日"],
+        td:r=>[`class="mono ${r.climate_jump_c==null?"":(r.climate_jump_c>1.76?"down":"up")}"`, r.climate_jump_c==null?"—":r.climate_jump_c.toFixed(2)]},
+      {th:['title="近14天池子里模型分布的均值−众数距离(桶)：跳变在模型层的影子(r=+0.32)，>0.93 为高。"', "形状gap"],
+        td:r=>[`class="mono ${r.shape_gap_buckets==null?"":(r.shape_gap_buckets>0.93?"down":"")}"`, r.shape_gap_buckets==null?"—":r.shape_gap_buckets.toFixed(2)]},
+      {th:['title="站点纬度分带：回归线以内热带，23.4°–35° 副热带，35°–55° 温带，55° 以上高纬"', "气候带"],
+        td:r=>{ const g=GEO[r.station]; const bd=g?bandOf(g[0]):null;
+          return ['', `${bd?h(bd.replace("半球·","")):"—"} <span class="muted">${g?fmtLat(g[0]):""}</span>`]; }},
+      {th:['title="离开阔海面约 30 公里内算沿海，湖和内河不算"', "海陆"],
+        td:r=>{ const g=GEO[r.station]; return ['', g?(g[1]?"沿海":"内陆"):"—"]; }},
+    ]],
+  ].map(([name, cols]) => [name, cols.filter(c => !c.fx || FX)]);
+  // The group's rule goes on its first column; a cell that already carries
+  // a style takes the rule inside it rather than as a second attribute.
+  const cell = (tag, [attrs, content], edge) => {
+    let a = String(attrs||"");
+    if(edge) a = a.includes('style="') ? a.replace('style="', 'style="border-left:1px solid var(--line);') : `${a} ${EDGE}`;
+    return `<${tag}${a?" "+a:""}>${content}</${tag}>`;
   };
-  const rows = (L.stations||[]).map(r=>`<tr class="${barred.has(r.station)?"muted":""}">
-    <td class="mono" style="white-space:nowrap"><span data-lc-state="${h(r.station)}">${allow.has(r.station)?"✔ ":(barred.has(r.station)?"⛔ ":(waiting.has(r.station)?"⏳ ":""))}</span>${h(r.station)}${r.station_label?` <span class="muted">${h(r.station_label)}</span>`:""}</td>
-    <td style="white-space:nowrap">${lcGateButtons(r.station, barred.has(r.station),
-      waived.has(r.station), heldSet.has(r.station),
-      autoBar.has(r.station))}</td>
-    <td class="mono ${r.score>=5?"up":(r.score>=4?"":"down")}">${r.score}/5</td>
-    <td class="muted">${r.add_candidate?"☆建议加入 ":""}${r.release_candidate?"★建议放出 ":""}${Object.entries(r.gates).filter(([k,v])=>!v).map(([k])=>GATE[k]).join("、")||"✓"}</td>
-    ${lcells(r.live)}
-    ${hcells(r.station)}
-    ${fverdict(r.station)}
-    ${fcells(r.station)}
-    <td class="mono ${r.climate_jump_c==null?"":(r.climate_jump_c>1.76?"down":"up")}" ${EDGE}>${r.climate_jump_c==null?"—":r.climate_jump_c.toFixed(2)}</td>
-    <td class="mono ${r.shape_gap_buckets==null?"":(r.shape_gap_buckets>0.93?"down":"")}">${r.shape_gap_buckets==null?"—":r.shape_gap_buckets.toFixed(2)}</td>
-    ${ocells(r.station)}
-    ${geoCells(r.station)}
-  </tr>`).join("");
+  const groupHead = COLUMN_GROUPS.map(([name, cols], gi) =>
+    `<th colspan="${cols.length}" style="text-align:center;font-weight:normal${gi?";border-left:1px solid var(--line)":""}" class="muted">${name}</th>`).join("");
+  const columnHead = COLUMN_GROUPS.flatMap(([_, cols], gi) =>
+    cols.map((c, ci) => cell("th", c.th, gi>0 && ci===0))).join("");
+  const rows = (L.stations||[]).map(r=>`<tr class="${barred.has(r.station)?"muted":""}">${
+    COLUMN_GROUPS.flatMap(([_, cols], gi) =>
+      cols.map((c, ci) => cell("td", c.td(r), gi>0 && ci===0))).join("")}</tr>`).join("");
   const CT = L.contracts || {};
   const authorised = CT.live_submit_authorized === true;
   return `<h2>站点实盘上线闸门</h2>
@@ -15507,17 +15550,7 @@ function liveReadiness(){
         onclick="lcBulk(this)"
         title="点击＝全部站一起禁入：每个站写一条操作者禁入裁定，同时撤掉所有豁免与待观察——下一轮生产起不再给任何站下单（账本照常记账）。一次写盘、一条审计。">⛔ 一键全部禁入</button></div>
     <div class="scroll" style="max-height:420px;margin-top:6px">
-    <table style="white-space:nowrap"><thead><tr><th>站</th><th title="三个开关都是人工裁定，点击即开启关闭，改动立刻写盘并记审计。禁入=不下单（记账照旧）；豁免=证据不够也上线；待观察=够格也先不下单。三者互斥。">闸门（人工）</th><th>过闸</th><th>未过项</th>
-      <th title="实盘：该站真实成交腿里已结算的站日数" style="border-left:1px solid var(--line)">实盘站日</th><th title="实盘：命中腿/已结算成交腿，+N待＝已成交但还没结算的腿">实盘腿</th><th title="实盘：已结算成交腿的实付金额(U)">实盘投入</th><th title="实盘：已结算成交腿的盈亏(U)＝命中份数×1U−实付">实盘盈亏</th><th title="实盘：盈亏÷投入，待结算腿不计入">实盘ROI</th><th title="实盘：实盘账本最近 5 个结算日的 ROI${(LP.recent_window_dates||[]).length?"（"+LP.recent_window_dates[0]+" 起）":""}">实盘近5日</th>
-      <th title="命中·站日：真值落在生产挑中的桶里的站日/已结算站日；挑中的桶成交与否、是否被实盘门拒掉都算（与每日统计同一判定）" style="border-left:1px solid var(--line)">篮子命中<br><span class="muted">站日</span></th><th title="命中·站日：真值落在成交的桶里的站日/有成交的已结算站日">持仓命中<br><span class="muted">站日</span></th><th title="命中·笔：一个站日一个阶段成交过的腿算一笔；持有的桶含真值的笔/声称已知的已结算笔。悬停看 90% 区间；声称落在区间外才着色（红＝声称高于区间上沿）">命中率<br><span class="muted">笔</span></th><th title="命中·笔：下单决策绑定的概率包里持有各桶概率之和，按笔平均">声称<br><span class="muted">笔</span></th>${
-      FX?`<th title="实盘：五个维度里不行的项数，每个维度指认不同的一层" style="border-left:1px solid var(--line)">不行</th><th title="实盘：实现、声称、中心、篮子命中四项见右边各列的说明；「持续」＝以全队已结算站日的中位日切成前后两段，两段的站日盈亏都为负">不行的维度</th>
-      <th title="实盘：已结算的实盘篮子数（站日×阶段，每个阶段各持一个篮子）" style="border-left:1px solid var(--line)">实盘结算笔</th><th title="实盘：真值落在当天挂出的桶里（各阶段合并，成交与否都算）的站日 ÷ 有成交的已结算站日——即只算有成交站日的「篮子命中·站日」；＜${(100*(FX.thresholds.basket_hit_floor||0)).toFixed(0)}% 算「篮子命中」不行">篮子命中<br><span class="muted">有成交站日</span></th><th title="实盘：实得盈亏÷声称期望；＜0 算「实现」不行">实现/期望</th><th title="实盘：命中率÷平均声称。五闸「声称诚实」要求 0.88–1.18；＜${FX.thresholds.claim_floor} 算「声称」不行">命中/声称</th><th title="实盘：成交篮子所依据的模型中心−结算真值，按站日平均。五闸「中心偏差」要求 |x|≤0.8°C；＞${FX.thresholds.centre_limit_c}°C 算「中心」不行">中心偏差</th>`:""}
-      <th title="该站真值的日际跳变均值(°C)：天气性格，>1.76 的站在真边际枯竭期实测 −43%（留存组 +23%，p=0.023）。外生、慢变、先于账本。" style="border-left:1px solid var(--line)">跳变/日</th><th title="近14天池子里模型分布的均值−众数距离(桶)：跳变在模型层的影子(r=+0.32)，>0.93 为高。">形状gap</th>
-      <th title="实盘订单：该站铸出的全部实盘意向腿，含被实盘门拒掉的" style="border-left:1px solid var(--line)">意向腿</th><th title="实盘订单：到过交易所的腿">到所</th><th title="实盘订单：被实盘门（禁入/总闸/待观察/网关）拒掉、从没到过交易所的腿">被拒</th><th title="实盘订单：成交过的腿">成交腿</th><th title="实盘订单：全部意向的请求名义金额(U)">意向名义</th><th title="实盘订单：成交金额(U)">成交额</th>
-      <th title="篮子完整：挂出的桶全部买到的篮数/挂到交易所的篮数（一个站日的一个阶段算一篮）" style="border-left:1px solid var(--line)">完整篮</th><th title="篮子完整：每篮 买到桶数÷挂出桶数 的平均，如挂 3 买 2 记 67%">完整度</th>
-      <th title="生产那一笔决策的席位中心桶相对市场中心桶：偏上/一致/偏下的决策数" style="border-left:1px solid var(--line)">位置<br><span class="muted">上/平/下</span></th><th title="生产入座时记下的整篮声称概率，按决策平均">选桶概率和</th><th title="生产入座时记下的整篮全含费卖价，按决策平均">卖价和</th><th title="按实际成交成本算的赔率（按投入加权的均价再求赔率）">赔率</th><th title="已结算实盘单的声称期望÷投入">EV/U</th>
-      <th title="站点纬度分带：回归线以内热带，23.4°–35° 副热带，35°–55° 温带，55° 以上高纬" style="border-left:1px solid var(--line)">气候带</th><th title="离开阔海面约 30 公里内算沿海，湖和内河不算">海陆</th>
-      </tr></thead><tbody>${rows}</tbody></table></div>
+    <table style="white-space:nowrap"><thead><tr>${groupHead}</tr><tr>${columnHead}</tr></thead><tbody>${rows}</tbody></table></div>
     <div class="muted" style="margin-top:6px;font-size:11.5px">
       全队命中（含禁入站）：篮子命中 ${hfrac(HT.bh, HT.sd)} 站日 · 持仓命中 ${hfrac(HT.hh, HT.hd)} 站日 ·
       命中率 ${hfrac(HT.k, HT.n)} 笔，声称 ${HT.n?pc0(HT.c/HT.n):"—"}。
@@ -15898,8 +15931,27 @@ function makeSortable(table){
   // showed bucket names under the station column and rung counts under the
   // stage columns -- the inner table's rows, wearing the outer table's
   // header.
-  const heads=[...table.querySelectorAll(":scope > thead > tr > th")];
-  heads.forEach((th,index)=>{
+  //
+  // A header can span rows -- a group title over its columns -- so a
+  // header's column is read off the grid its rows lay out, not off its
+  // place in a flat list of every th: that list counted a group title as a
+  // column and sorted each header on a neighbour's cells.  Only a header
+  // that ends on the last header row and covers one column sorts.
+  const headRows=[...table.querySelectorAll(":scope > thead > tr")];
+  const taken=headRows.map(()=>[]);
+  const heads=[];
+  headRows.forEach((tr,ri)=>{
+    let col=0;
+    [...tr.children].forEach(th=>{
+      while(taken[ri][col]) col++;
+      const cs=Math.max(1,th.colSpan||1), rs=Math.max(1,th.rowSpan||1);
+      for(let dr=0;dr<rs&&ri+dr<headRows.length;dr++)
+        for(let dc=0;dc<cs;dc++) taken[ri+dr][col+dc]=true;
+      if(cs===1&&ri+rs>=headRows.length) heads.push({th,index:col});
+      col+=cs;
+    });
+  });
+  heads.forEach(({th,index})=>{
     th.style.cursor="pointer";
     // Appended, not assigned: assigning wiped every header's own hover
     // text, so no column on a sortable table could say what it counts.
@@ -15909,7 +15961,7 @@ function makeSortable(table){
       if(!body) return;
       const rows=[...body.querySelectorAll(":scope > tr")];
       const asc=th.dataset.sortDir!=="asc";
-      heads.forEach(o=>{o.dataset.sortDir="";o.dataset.sorted="";});
+      heads.forEach(({th:o})=>{o.dataset.sortDir="";o.dataset.sorted="";});
       th.dataset.sortDir=asc?"asc":"desc";
       th.dataset.sorted="1";
       const value=(row)=>{
