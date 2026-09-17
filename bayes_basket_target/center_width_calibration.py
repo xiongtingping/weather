@@ -90,14 +90,6 @@ MIN_COMPOSED_WIDTH_LAMBDA = 0.5
 # it here would hide the fault it should be reporting.
 MAX_SIGMA_FLOOR_LIFT = 2.0
 MAX_SIGMA_FLOOR_RUNGS = 4.0
-# The next-day fleet regime shift composes onto the same axis as ``delta_c``
-# -- two shifts along one line add -- and carries its own entitlement bound,
-# checked separately for the same reason the station width scale is.  The two
-# answer different questions on different clocks: ``delta_c`` is a fitted
-# scalar that had to clear a forward gate, this is an unfitted read of what
-# the fleet settled yesterday.  Keeping the bounds apart keeps a fast layer
-# from ever spending a slow layer's entitlement.
-MAX_ABS_REGIME_SHIFT_C = 1.0
 # Width tiers (user ruling, 2026-09-05: "上新设计").  One lambda cannot serve
 # days whose served spread means different things: measured on P0's own
 # serving cells (3,789 cells, 2026-08-27..09-04, under the served 0.75), the
@@ -273,7 +265,6 @@ def apply_center_width_calibration(
     key_centers_c: Sequence[float],
     excluded_buckets: Sequence[str] = (),
     station_width_scale: float = 1.0,
-    regime_delta_c: float = 0.0,
     sigma_floor_rungs: float = 0.0,
     width_tier_lambdas: Sequence[float] | None = None,
     width_tier_boundaries: Sequence[float] | None = None,
@@ -315,11 +306,8 @@ def apply_center_width_calibration(
     shift = float(delta_c)
     lam = float(width_lambda)
     scale = float(station_width_scale)
-    regime = float(regime_delta_c)
     if not math.isfinite(shift) or abs(shift) > MAX_ABS_SHIFT_C:
         raise ValueError("center_width_shift_out_of_range")
-    if not math.isfinite(regime) or abs(regime) > MAX_ABS_REGIME_SHIFT_C:
-        raise ValueError("center_width_regime_shift_out_of_range")
     if not math.isfinite(lam) or not (
         MIN_WIDTH_LAMBDA <= lam <= MAX_WIDTH_LAMBDA
     ):
@@ -368,7 +356,6 @@ def apply_center_width_calibration(
     lam = max(MIN_COMPOSED_WIDTH_LAMBDA, composed_lambda)
     composed_floored = lam != composed_lambda
     fitted_shift = shift
-    shift = shift + regime
 
     index = {key: position for position, key in enumerate(keys)}
     total_in = sum(float(value) for value in probability.values())
@@ -420,7 +407,6 @@ def apply_center_width_calibration(
             "state": "REFUSED_EMPTY_AFTER_HARD_BOUND",
             "delta_c": shift,
             "fitted_delta_c": fitted_shift,
-            "regime_delta_c": regime,
             "width_lambda": lam,
             "composed_width_lambda_unfloored": composed_lambda,
             "composed_width_lambda_floor": MIN_COMPOSED_WIDTH_LAMBDA,
@@ -452,11 +438,10 @@ def apply_center_width_calibration(
         ),
         "station_width_scale": scale,
         "delta_c": shift,
-        # Kept apart from the composed total so an audit can say which layer
-        # moved the distribution.  A single ``delta_c`` would make a fitted
-        # scalar and a next-day reaction indistinguishable after the fact.
+        # Equal to ``delta_c`` since the fleet regime shift that composed onto
+        # it was removed (2026-09-17); kept so every receipt, old and new,
+        # answers the fitted shift under one key.
         "fitted_delta_c": fitted_shift,
-        "regime_delta_c": regime,
         "width_lambda": lam,
         # Charter 142: the product before the composed floor, the floor, and
         # whether it bound.  ``width_lambda`` above is what was served.

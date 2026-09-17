@@ -67,10 +67,6 @@ from .center_width_store import (
     load_center_width_tiers,
     load_station_width,
 )
-from .fleet_regime_shift import (
-    load_regime_shift,
-    refresh_fleet_regime_daily,
-)
 from .contracts import (
     MIN_USABLE_FRESHNESS_SECONDS,
     PROBABILITY_MAX_STALE_SECONDS,
@@ -13105,12 +13101,6 @@ class TargetProductionWorker:
                     station_width=load_station_width(
                         self.commit_conn, stage="P1"
                     ),
-                    fleet_regime=load_regime_shift(
-                        self.commit_conn,
-                        stage="P1",
-                        event_date=predecessor.event_date,
-                        as_of_utc=as_of_utc,
-                    ),
                     observations=observations,
                     registry_rows=registry_rows,
                     compilation_at_utc=as_of_utc,
@@ -14376,12 +14366,6 @@ class TargetProductionWorker:
                             root=root,
                         )
                     )
-                    fleet_regime = load_regime_shift(
-                        self.commit_conn,
-                        stage="P0-M",
-                        event_date=day,
-                        as_of_utc=decision_at,
-                    )
                     return materialize_p0m_observed(
                         predecessor,
                         p0_root=root,
@@ -14396,7 +14380,6 @@ class TargetProductionWorker:
                         fresh_until_utc=window_until,
                         bridge_sha256=root.bridge_sha256,
                         **p0m_serving_tables,
-                        fleet_regime=fleet_regime,
                     )
 
                 for revision in new_revisions:

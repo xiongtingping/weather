@@ -719,7 +719,6 @@ def _posterior(
     center_width_floor_rungs: float = 0.0,
     center_width_tiers: Mapping[str, Any] | None = None,
     station_width: tuple[Mapping[str, float], str] | None = None,
-    fleet_regime: Mapping[str, Any] | None = None,
     ceiling: Mapping[str, Any] | None = None,
     regional_prior: Mapping[str, Any] | None = None,
     four_layer_serving: Mapping[str, Any] | None = None,
@@ -769,15 +768,9 @@ def _posterior(
         station_width_sha = (
             str(station_width[1]) if station_scale != 1.0 else None
         )
-    # The next-day fleet regime shift travels the same axis as the scalars and
-    # is composed with them, but is loaded per stage-day by the caller rather
-    # than read from an activated table: it is a reading of yesterday, not a
-    # fitted artifact, and it has no version for a pointer to name.
-    regime_delta = float((fleet_regime or {}).get("regime_delta_c") or 0.0)
     if (
         center_width is not None
         or station_scale != 1.0
-        or regime_delta != 0.0
         or center_width_floor_rungs
         or center_width_tiers
     ):
@@ -808,7 +801,6 @@ def _posterior(
                 delta_c=shift_c,
                 width_lambda=width_lambda,
                 station_width_scale=station_scale,
-                regime_delta_c=regime_delta,
                 # The floor the pinned pair was fitted under, carried on the
                 # same row and therefore on the same sha.
                 sigma_floor_rungs=center_width_floor_rungs,
@@ -825,8 +817,6 @@ def _posterior(
             center_receipt["center_width_sha256"] = str(center_width_sha)
             if station_width_sha is not None:
                 center_receipt["station_width_sha256"] = station_width_sha
-            if fleet_regime:
-                center_receipt["fleet_regime"] = dict(fleet_regime)
             lineage["center_width_json"] = json.dumps(
                 center_receipt, sort_keys=True
             )
@@ -1184,7 +1174,6 @@ def materialize_p0m_observed(
     center_width_floor_rungs: float = 0.0,
     center_width_tiers: Mapping[str, Any] | None = None,
     center_width_taf_cells: Mapping[str, Sequence[float]] | None = None,
-    fleet_regime: Mapping[str, Any] | None = None,
     station_width: tuple[Mapping[str, float], str] | None = None,
 ) -> ProbabilityEnvelope:
     """Seat P0-M on a TAF that arrived without a calibrated correction.
@@ -1291,7 +1280,6 @@ def materialize_p0m_observed(
         center_width_floor_rungs=center_width_floor_rungs,
         center_width_tiers=center_width_tiers,
         station_width=station_width,
-        fleet_regime=fleet_regime,
     )
 
 
@@ -1316,7 +1304,6 @@ def materialize_p0m(
     center_width_floor_rungs: float = 0.0,
     center_width_tiers: Mapping[str, Any] | None = None,
     center_width_taf_cells: Mapping[str, Sequence[float]] | None = None,
-    fleet_regime: Mapping[str, Any] | None = None,
     station_width: tuple[Mapping[str, float], str] | None = None,
     observed_hard_excluded_buckets: Sequence[str] = (),
     observed_running_high_c: float | None = None,
@@ -1451,7 +1438,6 @@ def materialize_p0m(
         center_width_floor_rungs=center_width_floor_rungs,
         center_width_tiers=center_width_tiers,
         station_width=station_width,
-        fleet_regime=fleet_regime,
     )
 
 
@@ -1558,7 +1544,6 @@ def materialize_p1(
     center_width_floor_rungs: float = 0.0,
     center_width_tiers: Mapping[str, Any] | None = None,
     station_width: tuple[Mapping[str, float], str] | None = None,
-    fleet_regime: Mapping[str, Any] | None = None,
     # The head this envelope recomputes, when it is a state refresh rather
     # than a step the day's high advanced on.  A refresh re-runs the whole
     # chain on the current clock over the complete visible prefix, so unlike
@@ -1882,7 +1867,6 @@ def materialize_p1(
         center_width_floor_rungs=center_width_floor_rungs,
         center_width_tiers=center_width_tiers,
         station_width=station_width,
-        fleet_regime=fleet_regime,
         # The proof already decided both of the ceiling's preconditions: which
         # bucket the day's high sits in, and whether this step's high is the
         # current one.  Reading them off the proof keeps the served

@@ -73,12 +73,10 @@ from live_book import settled_buckets as _live_settled_buckets  # noqa: E402
 # The selection readings -- the top strip's 选桶 row, 逐站汇总（跨日）,
 # 没建仓是因为什么, 覆盖 · 价格 · EV, 篮子命中率 -- off production's decisions
 # and the live fills (same ruling).  The paper selection payload they read
-# until then is no longer built here; the drift light is its one reading
-# that was never about the paper book.
+# until then is no longer built here.
 import live_selection  # noqa: E402
 from selection_market_dashboard import (  # noqa: E402
     STATION_LABELS,
-    _fleet_regime,
 )
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 STATUS_JSON = ROOT / "data" / "weather_basket_yes_status.json"
@@ -10676,7 +10674,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "red" if any(a["health"] == "red" for a in alerts)
         else ("amber" if alerts else "green")
     )
-    selection = {"fleet_regime": _fleet_regime(conn)}
     # 每日统计 and 逐站逐日明细 read the live book (user ruling, 2026-09-16).
     live_days = _cached_section("live_days", collect_live_days, conn)
     live_selection_payload = _cached_section(
@@ -10687,7 +10684,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "generated_at_utc": _now().isoformat().replace("+00:00", "Z"),
         "overall_health": overall,
         "alerts": alerts,
-        "selection": selection,
         "live_selection": live_selection_payload,
         "daily": live_days["daily"],
         "live_roster": live_days["roster"],
@@ -11442,7 +11438,6 @@ const SWEEP_LABEL = {
   paper_trading_ledger:"纸面账本", settlement_truth:"结算真值",
   calibration_refit:"校准重拟", pr12_awc_observation:"观测身份（P1 的根）",
   settled_day_cycle_close:"已结算日收盘", maker_shadow_probe:"挂单影子探针",
-  fleet_regime_refresh:"全队政权刷新",
   correction_review_auto_clear:"订正复核自动清除",
   forward_packet_retention:"前瞻包保留", auto_station_exclusions:"自动禁入站",
   capture_jma_msm_forward:"JMA MSM 捕获",
@@ -12553,69 +12548,6 @@ function basketHit(){
     <tbody>${rows}</tbody></table>
   ${chosenBlock}
   ${offBlock}`;
-}
-
-// Written as the diagnosed cause of the +1 misses: the served centre was
-// running cold while the fitted layers, which need days of held-out
-// evidence before they may move, had not moved.  This is what reacts the
-// next morning instead.
-function fleetRegime(){
-  const R=(D.selection||{}).fleet_regime;
-  if(!R||!R.available) return "";
-  const LIGHT={GREEN:["#3fb950","正常"],YELLOW:["#d29922","偏移"],
-    RED:["#f85149","显著偏移"]};
-  const rows=Object.entries(R.stages||{}).map(([stage,s])=>{
-    const [colour,word]=LIGHT[s.alert]||LIGHT.GREEN;
-    const sig=s.signal_c==null?"—":`${s.signal_c>=0?"+":""}${s.signal_c.toFixed(2)}`;
-    // A dark stage shows what it would have served, in brackets, so the
-    // number it is withholding stays visible rather than reading as zero.
-    const shift=s.served
-      ?`${s.regime_delta_c>=0?"+":""}${s.regime_delta_c.toFixed(2)}`
-      :(s.withheld_delta_c==null?"—"
-        :`(${s.withheld_delta_c>=0?"+":""}${s.withheld_delta_c.toFixed(2)})`);
-    const spark=(s.recent||[]).map(d=>{
-      const v=d.residual_c_mean;
-      const c=Math.abs(v)<0.3?"#8b949e":(v>0?"#f85149":"#58a6ff");
-      return `<span style="color:${c}" title="${h(d.event_date)} ${
-        v>=0?"+":""}${v.toFixed(2)}°C，${d.station_count} 站">${
-        v>=0?"▲":"▼"}</span>`;
-    }).join(" ");
-    return `<tr>
-      <td><b>${h(stage)}</b>${s.served?"":
-        '<span class="muted"> 暗</span>'}</td>
-      <td><span class="pill" style="background:${colour}22;color:${
-        colour}">${word}</span></td>
-      <td class="mono">${sig}</td>
-      <td class="mono">${s.run_length}</td>
-      <td class="mono">${h(s.tier)}</td>
-      <td class="mono">${shift}</td>
-      <td class="mono">${s.station_count||"—"}</td>
-      <td>${spark}</td>
-      <td class="muted">${h(s.reason||s.state||"")}</td>
-    </tr>`;
-  }).join("");
-  const [banner,word]=LIGHT[R.alert]||LIGHT.GREEN;
-  return `<h2>舰队隔日政权偏移
-    <span class="pill" style="background:${banner}22;color:${banner}">${
-      word}</span></h2>
-  <div class="card">
-  <p class="sub">昨天全舰队结算下来，服务出去的分布中心差了多少度；
-  今天按这个差额把中心挪回来。</p>
-  <div class="why"><b>这一层目前只测不修，三个阶段全暗。</b>
-  它读昨天全舰队真实差了多少，乘写死的系数并封顶——不拟合任何参数，所以
-  本来敢在一天证据上动，而旁边那个拟合的中心/宽度层要攒八天才敢。
-  <b>但账本重放否决了它：</b>08-17~26 共同结算的 207 条链，选桶覆盖
-  118→117（得 3 失 4，p=1.000，纯噪声），ROI −19.4%→−26.7%（差 7.3 点，
-  剔除最好 1/2/3 条后仍差 6.7/6.3/6.7 点）。<b>病灶不在选桶：</b>207 条里
-  200 条选的桶一模一样，光这 200 条就从 −323 掉到 −454 USDC。变的是
-  <i>声称概率</i>——Kelly 按它定注、EV 闸按它准入。舰队均值中心变准了，
-  可每站自己的真值桶概率反而略降（中位 −0.0011）。
-  <b>教训：账本不是按舰队均值定价的，一个不含站的数字改不好每站的声称。</b>
-  日序列和预警继续跑（两者都不花钱且有用），修正要等一个能改善每站声称的
-  版本。</div>
-  <table><thead><tr><th>阶段</th><th>灯</th><th>昨日差额°C</th><th>连续</th>
-    <th>档位</th><th>今日修正°C</th><th>站数</th><th>近七日</th><th>状态</th>
-    </tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 // Sits after the per-station summary because it is that table's follow-up
@@ -16878,9 +16810,9 @@ const GROUPS = [
   // down: the four models' own inputs (correction, weights, spread, hit
   // rate), the two steps that shape the served distribution (centre/width,
   // band table), the checks of that served distribution (OOS, where truth
-  // lands against its mean), and last the research and roll-out readings.
+  // lands against its mean), and last the half-life roll-out.
   {id:"model", label:"模型", short:"模型", tone:"#d2a8ff",
-   note:"概率层：先看总检，再沿链条从上游到下游——四大模型（订正、权重、离散度、命中率）→ 服务分布（中心/宽度、band 表）→ 检验（OOS、真值离均值）→ 研究与换代（政权偏移、H5）",
+   note:"概率层：先看总检，再沿链条从上游到下游——四大模型（订正、权重、离散度、命中率）→ 服务分布（中心/宽度、band 表）→ 检验（OOS、真值离均值）→ 换代（H5 半衰期）",
    sections:[[scorecard,"模型校准总检"],
      // the four models, as they come in
      [tables,"偏差订正与权重"],[servingWeights,"四大模型权重"],
@@ -16889,10 +16821,8 @@ const GROUPS = [
      [centerWidth,"中心/宽度"],[bandTable,"band 表"],
      // checks of what was served
      [oosScores,"OOS 打分"],[centreLanding,"真值离均值多远"],
-     // research and roll-out
-     // the half-life's accuracy joined its roll-out on 2026-09-17, which
-     // leaves the regime reading a section of its own
-     [fleetRegime,"政权偏移"],[h5Readiness,"H5 半衰期"]]},
+     // roll-out
+     [h5Readiness,"H5 半衰期"]]},
   // The edge area answers one question -- the model says p, the market says
   // m, how much of the gap should be believed -- and its eight sections are
   // four different kinds of thing (user ruling, 2026-09-17: "把前端显式按照
@@ -17001,8 +16931,6 @@ const LANES = {
     role:"六层各自及格没有，一屏看完"},
   "H5 半衰期": {layer:"概率层 · 读数", status:"audit",
     role:"偏差半衰期换成 5 天：舰队换完没有、订正是否比 15 天更准"},
-  "政权偏移": {layer:"概率层 · 读数", status:"audit",
-    role:"全队日偏差能不能提前知道（实测：不能，所以 regime 层关着）"},
   "band 表": {layer:"概率层", status:"live",
     role:"单系统校准与融合之后，服务概率按离中心距离兑现多少 → 按档修正尾形残差（市场不进）"},
   // --- edge: what our probability is worth against the market ---

@@ -581,7 +581,6 @@ def compile_station_p1_packets(
     center_width_floor_rungs: float = 0.0,
     center_width_tiers: Mapping[str, Any] | None = None,
     station_width: tuple[Mapping[str, float], str] | None = None,
-    fleet_regime: Mapping[str, Any] | None = None,
     ceiling_artifact: Mapping[str, Any] | None = None,
     # Charter 99: the lane's runs for this station-day, read once by the
     # caller, plus the fitted artifact.  Each prefix resolves its own run on
@@ -1229,7 +1228,6 @@ def compile_station_p1_packets(
                 center_width_floor_rungs=center_width_floor_rungs,
                 center_width_tiers=center_width_tiers,
                 station_width=station_width,
-                fleet_regime=fleet_regime,
                 ceiling_artifact=ceiling_artifact,
                 regional_prior=(
                     None

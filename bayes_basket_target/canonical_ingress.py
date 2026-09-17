@@ -61,7 +61,6 @@ from .center_width_store import (
     load_center_width_tiers,
     load_station_width,
 )
-from .fleet_regime_shift import load_regime_shift
 from .contracts import (
     MAX_REPORT_TRANSMISSION_LEAD_SECONDS,
     ContractError,
@@ -377,15 +376,6 @@ def materialize_p1_from_canonical_observation(
         center_width_floor_rungs=load_center_width_floor(conn, stage="P1"),
         center_width_tiers=load_center_width_tiers(conn, stage="P1"),
         station_width=load_station_width(conn, stage="P1"),
-        # The unfitted half of the same axis: how far the fleet settled from
-        # what P1 served on the most recent day whose truth was already
-        # visible here.  Identity until that series exists.
-        fleet_regime=load_regime_shift(
-            conn,
-            stage="P1",
-            event_date=envelope.event_date,
-            as_of_utc=decision_at_utc,
-        ),
         prediction_root=prediction_root,
         trajectory_artifact=trajectory_artifact,
         trajectory_proof=trajectory_proof,

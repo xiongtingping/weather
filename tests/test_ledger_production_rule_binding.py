@@ -433,10 +433,6 @@ LEDGER_ONLY = {
     "SEAT_PRICING_BASIS": "crossing-priced gates, the 2026-08-27 ruling",
     "SEAT_PRICING_BASES": "same",
     "SEAT_PRICING_LANE_STAGES": "the ruling's P0-M exemption",
-    "PAPER_LEDGER_FLEET_REGIME": (
-        "research arm (fleet regime, measured -7 points and taken back out)"
-    ),
-    "PAPER_LEDGER_FLEET_REGIME_STAGES": "same",
     "SELECTION_DISCOUNT": "measurement lane; must not become a gate",
     "SHAPE_GAP_TILT": (
         "replay arm; scales the split-day opening stake instead of refusing,"

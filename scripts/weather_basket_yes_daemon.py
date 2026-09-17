@@ -371,18 +371,6 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         600.0,
         900.0,
     ),
-    # The next-day fleet regime series.  Every other calibration layer here
-    # refits on a daily clock because it fits parameters and has to earn a
-    # forward window first; this one fits nothing and exists to react to
-    # yesterday, so a daily cadence would defeat the only thing it is for.
-    # Half-hourly matches the truth sweep that feeds it, and a pass whose
-    # truth has not moved skips the bridge scan and costs one indexed read.
-    (
-        "fleet_regime_refresh",
-        "scripts/fleet_regime_refresh_sweep.sh",
-        10800.0,
-        1800.0,
-    ),
     # The bar and release policy of 2026-08-30 was written to run
     # automatically and then ran only when somebody invoked it -- the same
     # failure the correction-review sweep two entries up was built to end.  A
@@ -560,7 +548,6 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     "calibration_refit": "ssot",
     "settled_day_cycle_close": "ssot",
     "correction_review_auto_clear": "archive",
-    "fleet_regime_refresh": "ssot",
     "forward_packet_retention": "none",
     # Reads the SSOT ``mode=ro`` and writes only JSON config files, so it
     # holds no database lock and can overlap anything.
@@ -1004,7 +991,6 @@ HOSTED_SWEEP_LEASE_CONTRACT: dict[str, tuple[str, float]] = {
     "settled_day_cycle_close": ("sliced", WRITER_LEASE_SEC),
     "pr12_awc_observation": ("one_shot", 120.0),
     "market_registry_retention": ("one_shot", 120.0),
-    "fleet_regime_refresh": ("one_shot", 120.0),
     "correction_review_auto_clear": ("one_shot", 60.0),
     # Three fits in one wrapper; measured 7m37s on 2026-09-06, once a day.
     "calibration_refit": ("one_shot", 600.0),
@@ -1973,34 +1959,6 @@ def cash_phase_authority_window_guard(db_path: Path) -> dict[str, Any]:
             " --valid-from <old valid_until> --valid-until <new end>"
         ),
     }
-
-
-def _fleet_regime_status_probe() -> dict[str, Any]:
-    """The fleet drift light, read on its own read-only connection.
-
-    Read-only and separate from the resident's commit connection on purpose:
-    this is a status probe on the same five-second cadence as the capacity
-    guards, and nothing about publishing a light should be able to touch the
-    transaction that prices the book.
-    """
-
-    from bayes_basket_target.fleet_regime_shift import (  # noqa: PLC0415
-        fleet_regime_status,
-    )
-
-    database = DEFAULT_TARGET_DB.expanduser().resolve()
-    if not database.is_file():
-        return {"ok": False, "state": "fleet_regime_database_missing"}
-    now_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    conn = sqlite3.connect(
-        f"file:{database}?mode=ro", uri=True, timeout=30.0
-    )
-    try:
-        status = fleet_regime_status(conn, now_utc=now_utc)
-    finally:
-        conn.close()
-    status["ok"] = True
-    return status
 
 
 def stage_policy_lineage_guard(db_path: Path) -> dict[str, Any]:
@@ -4960,19 +4918,6 @@ def main() -> int:
                     state["stage_policy_lineage"] = {
                         "ok": False,
                         "state": "stage_policy_lineage_probe_failed",
-                        "reason": f"{type(exc).__name__}:{exc}",
-                    }
-                # The next-day drift light.  Published on the same probe as
-                # the other guards because it answers the same class of
-                # question -- is something wrong right now that nobody would
-                # otherwise be told about -- and because the alert has to
-                # appear even on the days the correction itself stands down.
-                try:
-                    state["fleet_regime"] = _fleet_regime_status_probe()
-                except Exception as exc:
-                    state["fleet_regime"] = {
-                        "ok": False,
-                        "state": "fleet_regime_probe_failed",
                         "reason": f"{type(exc).__name__}:{exc}",
                     }
                 next_storage_probe = now_mono + 5.0

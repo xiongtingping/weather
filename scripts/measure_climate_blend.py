@@ -127,9 +127,12 @@ def downstream(sysprob, centers, weights, lin, intervals, ordered, shift_sigma):
     if cw and cw.get("state") == "APPLIED":
         lam = cw["width_tier_lambda"] if cw.get("width_tier_lambda") is not None else cw["pooled_width_lambda"]
         p, _ = apply_center_width_calibration(
-            p, delta_c=float(cw["fitted_delta_c"]), width_lambda=float(lam),
+            # A receipt from before 2026-09-17 may carry the fleet regime
+            # shift, which the transform composed onto the fitted one; the
+            # parameter is gone, so the sum is passed as the shift.
+            p, delta_c=float(cw["fitted_delta_c"]) + float(cw.get("regime_delta_c", 0.0)),
+            width_lambda=float(lam),
             station_width_scale=float(cw.get("station_width_scale", 1.0)),
-            regime_delta_c=float(cw.get("regime_delta_c", 0.0)),
             sigma_floor_rungs=float(cw.get("sigma_floor_rungs", 0.0)),
             ordered_keys=ordered, key_centers_c=kc)
     bd = lin.get("band_reliability_json")

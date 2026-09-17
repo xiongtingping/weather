@@ -40,7 +40,6 @@ from .center_width_store import (
     pinned_center_width_sha,
     pinned_station_width_sha,
 )
-from .fleet_regime_shift import load_regime_shift
 from .cross_consensus import (
     BAND_RELIABILITY_METHOD_TAG,
     CONSENSUS_BRIDGE_METHOD_TAG,
@@ -3154,28 +3153,11 @@ def compile_native_ensemble_p0(
                 # An empty table under a pinned sha is the loader saying the
                 # version was retired by the lane's veto; the receipt says so.
                 pinned_station_width_retired = not station_table[0]
-    # The next-day fleet regime shift, which is deliberately *not* pinned to
-    # the artifact the way the scalars above are.  The pin exists because a
-    # fitted scalar must be served at the version its holdout was scored
-    # against; this layer fits nothing, and what it reads -- how far the fleet
-    # settled from what was served yesterday -- cannot exist when the artifact
-    # is built.  There is no version of it a gate could have scored, so the
-    # risk the pin manages is not the risk this layer carries.  What bounds it
-    # instead is its own cap and the fact that it measures the served
-    # distribution, so it retires itself the moment the fitted layers catch up.
-    regime = load_regime_shift(
-        conn,
-        stage="P0",
-        event_date=event_date,
-        as_of_utc=decision_at_utc,
-    )
-    regime_delta = float(regime.get("regime_delta_c") or 0.0)
     center_width_layer = (
         CenterWidthLayer(
             delta_c=scalars[0] if scalars else 0.0,
             width_lambda=scalars[1] if scalars else 1.0,
             station_width_scale=station_scale,
-            regime_delta_c=regime_delta,
             sigma_floor_rungs=sigma_floor_rungs,
             width_tier_lambdas=(width_tiers or {}).get("lambdas") or None,
             width_tier_boundaries=(
@@ -3185,7 +3167,6 @@ def compile_native_ensemble_p0(
         if (
             scalars is not None
             or station_scale != 1.0
-            or regime_delta != 0.0
             or sigma_floor_rungs
             or width_tiers
         )
@@ -3212,7 +3193,6 @@ def compile_native_ensemble_p0(
         )
     )
     if center_width_receipt is not None:
-        center_width_receipt["fleet_regime"] = regime
         if pinned_center_width is not None:
             center_width_receipt["center_width_sha256"] = (
                 pinned_center_width

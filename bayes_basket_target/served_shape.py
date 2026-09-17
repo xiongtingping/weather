@@ -24,10 +24,6 @@ two tables in sequence.
 
 What is deliberately not in here:
 
-* the fleet regime shift (``regime_delta_c``) is a serving-only input.  It
-  reads how far the fleet settled from yesterday's served distribution, which
-  does not exist when an artifact is gated, so the gate passes zero and
-  serving passes the day's value through the same layer;
 * the upstream position and lean layers (radiation shift, neighbour direction
   tilt, the withdrawn conditional tail skew).  They run on each face's own
   bucket grid -- integer degree labels in the holdout, market intervals in
@@ -56,7 +52,6 @@ class CenterWidthLayer:
     delta_c: float = 0.0
     width_lambda: float = 1.0
     station_width_scale: float = 1.0
-    regime_delta_c: float = 0.0
     sigma_floor_rungs: float = 0.0
     width_tier_lambdas: Sequence[float] | None = None
     width_tier_boundaries: Sequence[float] | None = None
@@ -135,7 +130,6 @@ def apply_served_table_layers(
             delta_c=center_width.delta_c,
             width_lambda=center_width.width_lambda,
             station_width_scale=center_width.station_width_scale,
-            regime_delta_c=center_width.regime_delta_c,
             sigma_floor_rungs=center_width.sigma_floor_rungs,
             width_tier_lambdas=center_width.width_tier_lambdas,
             width_tier_boundaries=center_width.width_tier_boundaries,
