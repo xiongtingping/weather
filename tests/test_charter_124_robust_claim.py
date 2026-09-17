@@ -22,6 +22,7 @@ from bayes_basket_target.basket_kernel.contracts import ContractError
 from bayes_basket_target.basket_kernel.delta_v2 import robust_window_claim_v1
 from bayes_basket_target.delta_v2_runtime import compile_delta_v2_runtime_plan
 
+from tests.charter_143_switch import set_charter_143
 from tests.test_bayes_basket_target_delta_v2_runtime import _delta_policy
 from tests.test_charter_84_ladder_balance import (
     _basket_policy,
@@ -116,6 +117,10 @@ def test_the_authority_arm_can_only_buy_less(
     monkeypatch.setattr(
         delta_v2_runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
     )
+    # The fixture is a two-leg basket short a rung, which charter 143
+    # completes without reading the claim; the claim-driven path this clause
+    # deflates is pinned under its rollback.
+    set_charter_143(monkeypatch, "off")
 
     def compile_at(mode: str, nats: float):
         monkeypatch.setattr(

@@ -26,6 +26,7 @@ from bayes_basket_target.basket_kernel import delta_v2 as kernel
 from bayes_basket_target.execution_reconciliation import record_order_event
 from bayes_basket_target.production_io import load_chain_seat_buckets
 from tests import test_charter_84_ladder_balance as fixture
+from tests.charter_143_switch import set_charter_143
 
 ROOT = Path(__file__).resolve().parents[1]
 RULE = kernel.COMPLETION_RISK_BUDGET_RULE_VERSION
@@ -136,6 +137,9 @@ def test_each_guard_refuses_by_name(overrides, reason) -> None:
 
 @pytest.fixture
 def armed(monkeypatch):
+    # Charter 143 replaced this admission for completions; the budget is
+    # read only under its rollback.
+    set_charter_143(monkeypatch, "off")
     monkeypatch.setattr(runtime, "CHARTER_136_COMPLETION", "on")
 
 
@@ -178,7 +182,8 @@ def test_the_arm_ships_off() -> None:
     assert runtime.CHARTER_136_COMPLETION == "off"
 
 
-def test_off_is_the_charter_130_book() -> None:
+def test_off_is_the_charter_130_book(monkeypatch) -> None:
+    set_charter_143(monkeypatch, "off")
     result = _compile(_snapshot(0.24))
     assert result["basket_target_activated"] is False
     assert _short(result) == []

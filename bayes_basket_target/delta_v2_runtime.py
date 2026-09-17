@@ -126,6 +126,11 @@ from .basket_kernel.delta_v2 import (
     completion_conditioned_claim_v1,
     completion_floor_delta_v1,
     completion_repair_exemption_v1,
+    CHARTER_143_COMPLETION,
+    COMPLETION_143_RULE_VERSION,
+    completion_143_basket_type_v1,
+    completion_143_exemption_v1,
+    completion_143_targets_v1,
     COMPLETION_RISK_BUDGET_RULE_VERSION,
     completion_budget_usdc_v1,
     completion_risk_budget_v1,
@@ -2129,6 +2134,55 @@ def _support_windows(
             else None
         )
         risk_admits = bool(risk_budget and risk_budget["admits"])
+        admissible = bool(clears_hurdle or risk_admits)
+        admitted_by = (
+            "hurdle" if clears_hurdle
+            else COMPLETION_RISK_BUDGET_RULE_VERSION if risk_admits
+            else None
+        )
+        # Charter 143: the completion is admitted by what the window already
+        # holds, and replaces both readings above (charter 130's hurdle on
+        # the increment, charter 136's exposure budget).  Two held legs or
+        # more: every buyable rung, priced.  One: the rungs that clear the
+        # hurdle on their own offer -- the candidate then buys those alone.
+        # Past the completion cutoff neither.  Which level, and whether the
+        # multi-leg completion leaves the window better off, is the
+        # candidate's reading (``completion_143_targets_v1``), priced down
+        # the ladder it will buy.
+        completion_143 = None
+        if CHARTER_143_COMPLETION == "on":
+            basket_type = completion_143_basket_type_v1(len(held))
+            past_cutoff = bool(
+                hours_to_cutoff is not None
+                and float(hours_to_cutoff) <= COMPLETION_CUTOFF_HOURS
+            )
+            cheap = [
+                bucket for bucket, quote in zip(buyable, increment_quotes)
+                if quote is not None
+                and clears_economic_hurdle_v1(
+                    expected_payout=min(
+                        1.0 - EPS,
+                        float(probabilities[bucket]) * float(claim_factor),
+                    ),
+                    cost=float(quote),
+                )
+            ]
+            admits_143 = bool(
+                not past_cutoff
+                and (
+                    (basket_type == "multi" and increment_priced)
+                    or (basket_type == "single" and cheap)
+                )
+            )
+            completion_143 = {
+                "rule": COMPLETION_143_RULE_VERSION,
+                "basket_type": basket_type,
+                "past_completion_cutoff": past_cutoff,
+                "hurdle_clearing_buckets": cheap,
+                "admits": admits_143,
+            }
+            admissible = admits_143
+            admitted_by = COMPLETION_143_RULE_VERSION if admits_143 else None
         return {
             "held_buckets": held,
             "missing_buckets": missing,
@@ -2138,14 +2192,14 @@ def _support_windows(
             "increment_win_probability": increment_win,
             "increment_edge": increment_edge,
             "increment_friction": increment_friction,
-            "admissible": bool(clears_hurdle or risk_admits),
-            "admitted_by": (
-                "hurdle" if clears_hurdle
-                else COMPLETION_RISK_BUDGET_RULE_VERSION if risk_admits
-                else None
-            ),
+            "admissible": admissible,
+            "admitted_by": admitted_by,
             "outside_seat": outside_seat,
             "completion_risk_budget": risk_budget,
+            **(
+                {"completion_143": completion_143}
+                if completion_143 is not None else {}
+            ),
         }
 
     # The domain stays the whole day (above); what the seat must do is hold
@@ -3070,10 +3124,12 @@ def _support_windows(
                         valuation_hold_refused += 1
                     admissible = False
                 elif admissible:
-                    if completion is not None and completion.get("admitted_by") == (
-                        COMPLETION_RISK_BUDGET_RULE_VERSION
+                    if completion is not None and completion.get("admitted_by") in (
+                        COMPLETION_RISK_BUDGET_RULE_VERSION,
+                        COMPLETION_143_RULE_VERSION,
                     ):
-                        # Charter 136: admitted on the exposure, not on value.
+                        # Charters 136/143: admitted on the exposure or the
+                        # held count, not on value.
                         _clears = True
                     elif completion is not None:
                         _inc_price = completion.get("increment_all_in_price")
@@ -4110,6 +4166,13 @@ def _solve_over_support_windows(
                     ),
                     # Charter 90: the TX-entry seat may open the day at P0-M.
                     taf_tx_entry=taf_tx_entry and bool(row.get("taf_tx_entry")),
+                    # Charter 143: the completion of a broken seat is not
+                    # held back for a decision moment.
+                    completion_143_admitted=bool(
+                        row.get("admissible", True)
+                        and (row.get("completion") or {}).get("admitted_by")
+                        == COMPLETION_143_RULE_VERSION
+                    ),
                     desired=window,
                     artifact=delta_policy,
                     capital_available_usdc=capital_available_usdc,
@@ -4235,8 +4298,16 @@ def _solve_over_support_windows(
                     target_shares[bucket_row.bucket] = inventory
                     target_cost[bucket_row.bucket] = sunk_here
         planned_total = sum(target_cost.values())
+        # Charter 143: a completion by held count answers to its own rule;
+        # the chain law on top-ups (66(A) par, 71(a) identity, 71(b) growth)
+        # is the reading it replaces -- each refuses a completion the rule
+        # was measured to want, on the same negative increment.
+        completion_143_winner = (
+            solution.get("winner_completion_rule") == COMPLETION_143_RULE_VERSION
+        )
         if (
             CHARTER_66A_CHAIN_PAR == "on"
+            and not completion_143_winner
             and holds_anything
             and planned_total > inventory_cost + EPS
         ):
@@ -4262,7 +4333,11 @@ def _solve_over_support_windows(
         # the charter-68 partition, lambda*p, from the held curve.  An
         # unknown last-acted identity cannot bind (a): the gate refuses
         # on evidence, never on its absence, and the audit names it.
-        if holds_anything and planned_total > inventory_cost + EPS:
+        if (
+            holds_anything
+            and not completion_143_winner
+            and planned_total > inventory_cost + EPS
+        ):
             # Charter 90: the TX leg entering the basket is bought on TAF
             # evidence the vector does not carry; gate (a) yields to it.
             if (
@@ -4520,6 +4595,7 @@ def _target_candidates(
     decision_moment: bool = True,
     completion_capital_usdc: float | None = None,
     taf_tx_entry: bool = False,
+    completion_143_admitted: bool = False,
 ) -> list[dict[str, Any]]:
     """Build a bounded q-grid priced from official WS ask depth.
 
@@ -4818,9 +4894,20 @@ def _target_candidates(
         # Charter 77: nothing changed that a decision reads, or the window
         # itself is inadmissible (charter 78) -- the baseline (hold what we
         # hold) is the only candidate offered.
+        #
+        # Charter 143: a broken basket is a standing condition, not news, so
+        # its completion is offered whether or not anything moved -- on a
+        # window the rule admitted, and only the candidate the rule itself
+        # certified.
         candidates = [
             row for row in candidates
             if row.get("candidate_kind") == CANDIDATE_KIND_BASELINE
+            or (
+                completion_143_admitted
+                and CHARTER_143_COMPLETION == "on"
+                and row.get("candidate_origin") == LADDER_BALANCE_CANDIDATE_ORIGIN
+                and (row.get("completion_143") or {}).get("exempt") is True
+            )
         ]
     if not candidates:
         raise ContractError("delta_v2_target_candidate_set_empty")
@@ -5175,7 +5262,15 @@ def _ladder_balance_candidate(
     # of charter 110(四) here is that a completion needing a leg the market
     # is handing us cheap is a completion not worth making.  Refusing the
     # candidate outright relaxes nothing.
-    if CHARTER_110_COMPLETION == "on" and probabilities_by_bucket is not None:
+    #
+    # Charter 143 supersedes this refusal: a single-leg basket is completed
+    # on exactly the legs it names as not worth it, and a multi-leg one
+    # regardless of their price.
+    if (
+        CHARTER_143_COMPLETION != "on"
+        and CHARTER_110_COMPLETION == "on"
+        and probabilities_by_bucket is not None
+    ):
         dead = {str(bucket) for bucket in unbuyable}
         for bucket in ordered:
             if held.get(bucket, 0.0) > EPS or bucket in dead:
@@ -5211,7 +5306,32 @@ def _ladder_balance_candidate(
         )
         for bucket in ordered
     }
-    targets = ladder_balance_targets_v1(
+    completion_143_reading: dict[str, Any] | None = None
+    if CHARTER_143_COMPLETION == "on":
+        # Charter 143: which rungs and to what level is decided by the held
+        # count -- a multi-leg basket's missing rungs to its cheapest held
+        # size while the worst in-window settlement improves; a single leg
+        # buys only the rungs that clear the hurdle.  Priced down the same
+        # ladder and bounded by the same capital as the build below.
+        completion_143_reading = completion_143_targets_v1(
+            held_by_bucket=held,
+            support=ordered,
+            held_cost_by_bucket={
+                bucket: float(current_cost[bucket]) + float(pending_cost[bucket])
+                for bucket in ordered
+            },
+            depth_by_bucket=depth_by_bucket,
+            capital_available_usdc=max(0.0, float(capital_available_usdc)),
+            claim_by_bucket=probabilities_by_bucket,
+            below_leg_floor_buckets=tuple(str(bucket) for bucket in unbuyable),
+            hours_to_cutoff=hours_to_cutoff,
+            fee_rate=0.0,
+        )
+        if not completion_143_reading["targets"]:
+            return None
+    targets = dict(completion_143_reading["targets"]) if (
+        completion_143_reading is not None
+    ) else ladder_balance_targets_v1(
         held_by_bucket=held,
         support=ordered,
         held_cost_by_bucket={
@@ -5291,7 +5411,39 @@ def _ladder_balance_candidate(
     # The level the kernel actually chose, not ``max(held)``: the two differ
     # whenever the search walked past a rung the venue had lifted.
     level = max(float(targets[bucket]) for bucket in ordered)
+    # Charter 143: the exemption the solver's floor reads, taken on the
+    # shape this candidate builds -- the same function the compile re-reads
+    # on the lifted bundle.
+    completion_143 = None
+    if completion_143_reading is not None:
+        completion_143 = {
+            **completion_143_exemption_v1(
+                support=tuple(ordered),
+                held_shares=held,
+                held_cost_usdc={
+                    bucket: float(current_cost[bucket])
+                    + float(pending_cost[bucket])
+                    for bucket in ordered
+                },
+                target_shares={bucket: shares[bucket] for bucket in ordered},
+                target_cost_usdc={bucket: costs[bucket] for bucket in ordered},
+                claim_by_bucket=probabilities_by_bucket,
+                below_leg_floor_buckets=tuple(str(b) for b in unbuyable),
+                hours_to_cutoff=hours_to_cutoff,
+            ),
+            "level_rule": completion_143_reading["level_rule"],
+            "level_shares": completion_143_reading["level_shares"],
+            # A single-leg completion leaves the rungs that do not clear the
+            # hurdle unbought, on purpose; the support contract reads this.
+            "declined_buckets": [
+                bucket for bucket in ordered
+                if bucket not in dead
+                and held[bucket] <= EPS
+                and shares[bucket] <= EPS
+            ],
+        }
     return {
+        **({"completion_143": completion_143} if completion_143 else {}),
         "candidate_id": "balance-" + content_sha256({
             "ordered_support": tuple(ordered),
             "level_shares": round(level, 6),
@@ -5778,6 +5930,19 @@ def _assert_candidate_support_contract(
                 - float(baseline_shares.get(bucket, 0.0))
                 for bucket in support
             }
+            # Charter 143: a single-leg completion buys only the rungs that
+            # clear the hurdle; the rest are declined by the rule, not left
+            # short by accident.  Only a candidate the rule itself certified.
+            completion_143 = row.get("completion_143") or {}
+            declined = (
+                {str(item) for item in completion_143.get("declined_buckets") or ()}
+                if CHARTER_143_COMPLETION == "on"
+                and completion_143.get("exempt") is True
+                and completion_143.get("basket_type") == "single"
+                and str(row.get("candidate_origin") or "")
+                == LADDER_BALANCE_CANDIDATE_ORIGIN
+                else set()
+            )
             if (
                 not any(value > EPS for value in increments.values())
                 or any(
@@ -5786,6 +5951,7 @@ def _assert_candidate_support_contract(
                     # Charter 84 (八): a rung the market prices under the
                     # leg floor is dead and may stay unbought.
                     and bucket not in {str(item) for item in unbuyable}
+                    and bucket not in declined
                     for bucket in support
                 )
             ):
@@ -6203,6 +6369,7 @@ def compile_delta_v2_runtime_plan(
     execution_capital_at_seat_entry = execution_capital_usdc
     excluded_candidate_ids: tuple[str, ...] = ()
     restoring_first_post_lift_refusal = False
+    completion_143_after_lift: dict[str, Any] | None = None
     for _post_lift_attempt in range(CHARTER_121_POST_LIFT_ATTEMPTS + 1):
         capital_available_usdc = capital_at_seat_entry
         execution_capital_usdc = execution_capital_at_seat_entry
@@ -6479,6 +6646,46 @@ def compile_delta_v2_runtime_plan(
                     for bucket in seated_support
                 },
             )
+        # Charter 143: the completion by held count is re-read on the lifted
+        # bundle -- the lot and dollar lifts change what it buys -- by the
+        # same function the candidate was certified with.  Exempt, it answers
+        # to neither the floor nor the post-lift edge: it fails both by
+        # construction wherever the rule was measured to want it.
+        completion_143_after_lift = None
+        if (
+            target_solution.get("winner_completion_rule")
+            == COMPLETION_143_RULE_VERSION
+        ):
+            completion_143_after_lift = completion_143_exemption_v1(
+                support=tuple(seated_support),
+                held_shares={
+                    bucket: float(by_bucket[bucket].filled_shares)
+                    + float(by_bucket[bucket].pending_shares)
+                    for bucket in seated_support
+                },
+                held_cost_usdc={
+                    bucket: float(by_bucket[bucket].filled_cost_usdc)
+                    + float(by_bucket[bucket].pending_notional_usdc)
+                    for bucket in seated_support
+                },
+                target_shares={
+                    bucket: float(target_shares[bucket])
+                    for bucket in seated_support
+                },
+                target_cost_usdc={
+                    bucket: float(lifted_cost.get(bucket, 0.0) or 0.0)
+                    for bucket in seated_support
+                },
+                claim_by_bucket=edge_belief,
+                below_leg_floor_buckets=tuple(
+                    ((support_selection.get("seated") or {}).get("completion") or {})
+                    .get("market_dead_buckets") or ()
+                ),
+                hours_to_cutoff=hours_to_cutoff,
+            )
+        completion_143_exempt = bool(
+            completion_143_after_lift and completion_143_after_lift["exempt"]
+        )
         # Charter 136: the completion the window admitted on the exposure is
         # not re-refused on the increment's edge after the lift -- the same
         # negative edge it was admitted despite.  Charter 93's floor above
@@ -6490,13 +6697,14 @@ def compile_delta_v2_runtime_plan(
                 ((support_selection.get("seated") or {}).get("completion") or {})
                 .get("admitted_by")
             ) == COMPLETION_RISK_BUDGET_RULE_VERSION
-        )
+        ) or completion_143_exempt
         basket_target_activated = (
             target_solution.get("winner_candidate_kind")
             == "COMPLETE_BASKET_TARGET"
             and (
                 support_floor_after_lift is None
                 or bool(support_floor_after_lift["legal"])
+                or completion_143_exempt
             )
             and (
                 post_lift_edge is None
@@ -6524,6 +6732,7 @@ def compile_delta_v2_runtime_plan(
                 (
                     support_floor_after_lift is not None
                     and not bool(support_floor_after_lift["legal"])
+                    and not completion_143_exempt
                 )
                 or (
                     post_lift_edge is not None
@@ -7092,6 +7301,23 @@ def compile_delta_v2_runtime_plan(
         claim_by_bucket=edge_probabilities,
         fee_rate=float(basket_policy.fee_rate),
     ) if ordered_support else None
+    # Charter 143: a completion by held count carries the same waiver past
+    # the bundle's score here and the 5% execution target in ``runtime.py``
+    # that a charter-116 repair does -- read on the lifted bundle above, and
+    # carried on the plan so the re-score at execution cannot re-judge it on
+    # a book that has moved.
+    if (
+        completion_repair is not None
+        and completion_143_after_lift is not None
+        and completion_143_after_lift["exempt"]
+        and basket_target_activated
+    ):
+        completion_repair = {
+            **completion_repair,
+            "exempt": True,
+            "exempt_rule": COMPLETION_143_RULE_VERSION,
+            "completion_143": completion_143_after_lift,
+        }
     selection = select_complete_maker_bundle_v2(
         actions,
         completion_repair=completion_repair,
@@ -7600,8 +7826,18 @@ def compile_delta_v2_runtime_plan(
         "post_lift_edge_rule": POST_LIFT_EDGE_RULE_VERSION,
         "post_lift_edge_mode": CHARTER_123_POST_LIFT_EDGE,
         "post_lift_edge_exempt_rule": (
-            COMPLETION_RISK_BUDGET_RULE_VERSION if post_lift_edge_exempt else None
+            (
+                COMPLETION_143_RULE_VERSION
+                if completion_143_after_lift is not None
+                and completion_143_after_lift["exempt"]
+                else COMPLETION_RISK_BUDGET_RULE_VERSION
+            )
+            if post_lift_edge_exempt else None
         ),
+        # Charter 143: the completion by held count, as read on the lifted
+        # bundle; ``None`` when the winner was not one.
+        "completion_143_mode": CHARTER_143_COMPLETION,
+        "completion_143_after_lift": completion_143_after_lift,
         "completion_budget_usdc": completion_budget_usdc,
         "completion_risk_budget": (
             ((support_selection.get("seated") or {}).get("completion") or {})

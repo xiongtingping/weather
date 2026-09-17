@@ -21,6 +21,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (
 )
 from bayes_basket_target.delta_v2_runtime import compile_delta_v2_runtime_plan
 
+from tests.charter_143_switch import set_charter_143
 from tests.test_bayes_basket_target_delta_v2_runtime import _delta_policy
 from tests.test_charter_84_ladder_balance import (
     _basket_policy,
@@ -130,7 +131,12 @@ def test_the_reading_is_taken_on_the_lifted_targets_not_the_solved_ones() -> Non
     assert edge != pytest.approx(solved_edge)
 
 
-def test_a_basket_the_lift_puts_under_water_holds_by_name() -> None:
+def test_a_basket_the_lift_puts_under_water_holds_by_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # This fixture's winner is a completion, which charter 143 exempts from
+    # this re-read; the refusal this clause names is pinned under its rollback.
+    set_charter_143(monkeypatch, "off")
     # Raise the authorization epsilon above what this basket reads after the
     # lift.  The gate, the threshold and the arithmetic are the policy's; what
     # is being tested is that a failure here reaches the plan as a refusal

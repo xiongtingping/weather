@@ -274,6 +274,11 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     completion_repair_exemption_v1 as _completion_repair_exemption_v1,
     COMPLETION_RISK_BUDGET_RULE_VERSION as _COMPLETION_RISK_BUDGET_RULE,
     completion_budget_usdc_v1 as _completion_budget_usdc_v1,
+    # Charter 143: the completion by held count -- the rule a window records
+    # when it admitted one, and the exemption read on the lifted legs.
+    CHARTER_143_COMPLETION,
+    COMPLETION_143_RULE_VERSION as _COMPLETION_143_RULE,
+    completion_143_exemption_v1 as _completion_143_exemption_v1,
     # Charter 92: the ticket is authorized on that same edge; ``off`` is
     # charter 74's structural authorization, the replay arm.
     # Charter 93: the in-support floor, re-read on the lifted legs with the
@@ -2520,6 +2525,12 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     # sizes it on that budget and this book's edge mirror exempts it.
     "charter_136_completion": (
         _COMPLETION_RISK_BUDGET_RULE if _CHARTER_136_COMPLETION == "on" else "off"
+    ),
+    # Charter 143 (user ruling 2026-09-17): a broken seat is completed by its
+    # held count -- multi-leg in full while the worst in-window settlement
+    # improves, single-leg on the legs that clear the hurdle.
+    "charter_143_completion": (
+        _COMPLETION_143_RULE if CHARTER_143_COMPLETION == "on" else "off"
     ),
     "completion_pricing": (
         _COMPLETION_CROSSING_PRICING
@@ -5485,12 +5496,22 @@ def _production_judge(
         "basket_holding": basket_holding_signature_v1(held),
     }
     holds_anything = any(float(v or 0.0) > 0.0 for v in held.values())
+    # Charter 143: a window that admitted a completion by held count is not
+    # held back by 71(a) -- production's solver exempts that winner -- so the
+    # identity question is left to the solve whenever one is on the table.
+    completion_143_on_table = CHARTER_143_COMPLETION == "on" and any(
+        bool(row.get("admissible", True))
+        and ((row.get("completion") or {}).get("admitted_by")
+             == _COMPLETION_143_RULE)
+        for row in windows
+    )
     # Charter 71(a) is window-independent, so it is answered here under its
     # own name.  Inside the solver every spending window fails it
     # identically and the seat falls to a window that stands pat, which
     # the walk could only report as a hold.
     if (
         holds_anything
+        and not completion_143_on_table
         and last_acted_probability_identity
         and probability_identity
         and str(last_acted_probability_identity) == probability_identity
@@ -5687,7 +5708,10 @@ def _production_judge(
             "refusal": ("production_judge_blocked", detail),
         }
     moment = dict(selection.get("decision_moment") or {})
-    if moment.get("is_decision_moment") is False:
+    completion_143_winner = (
+        solution.get("winner_completion_rule") == _COMPLETION_143_RULE
+    )
+    if moment.get("is_decision_moment") is False and not completion_143_winner:
         # Charter 77, as the solver ruled it: same served identity, same
         # admissibility as the last recorded decision of this stage.
         return {
@@ -5739,6 +5763,10 @@ def _production_judge(
         "winner_candidate_origin": str(
             solution.get("winner_candidate_origin") or ""
         ),
+        # Charter 143: set only when the winner is a completion by held
+        # count; the walk's 71(a), floor and edge mirrors read it.
+        "winner_completion_rule": solution.get("winner_completion_rule"),
+        "hours_to_cutoff": judge_hours_to_cutoff,
         "target_shares": target,
         "delta_cost_usdc": delta_cost,
         "capital_usdc": capital,
@@ -5782,6 +5810,46 @@ def _production_judge(
             delta_policy.execution_weights.epsilon_score
         ),
     }
+
+
+def _completion_143_exempt_on_legs(
+    *,
+    verdict: Mapping[str, Any] | None,
+    seat: Mapping[str, Any],
+    held: Mapping[str, float],
+    held_cost: Mapping[str, float],
+    leg_shares: Sequence[float],
+    leg_cash: Sequence[float],
+) -> bool:
+    """Charter 143 on this book's legs, as production reads its lifted bundle.
+
+    ``True`` only when the production judge's winner was a completion by held
+    count and the kernel's exemption holds on the increments this walk is
+    about to post -- ``leg_shares``/``leg_cash`` are per seat bucket, added to
+    what the chain holds.
+    """
+
+    if (verdict or {}).get("winner_completion_rule") != _COMPLETION_143_RULE:
+        return False
+    buckets = [str(b) for b in seat["buckets"]]
+    return bool(_completion_143_exemption_v1(
+        support=tuple(buckets),
+        held_shares=held,
+        held_cost_usdc=held_cost,
+        target_shares={
+            b: float(held.get(b, 0.0)) + float(q)
+            for b, q in zip(buckets, leg_shares)
+        },
+        target_cost_usdc={
+            b: float(held_cost.get(b, 0.0)) + float(c)
+            for b, c in zip(buckets, leg_cash)
+        },
+        claim_by_bucket=verdict.get("edge_probabilities") or {},
+        below_leg_floor_buckets=tuple(
+            (seat.get("completion") or {}).get("market_dead_buckets") or ()
+        ),
+        hours_to_cutoff=verdict.get("hours_to_cutoff"),
+    )["exempt"])
 
 
 def _production_sized_legs(
@@ -10706,12 +10774,16 @@ def backfill(
                     if held:
                         # Charter 71(a): the probability must have moved
                         # since the chain last bought.  A refreshed book or
-                        # refreshed room is not a reason to add.
+                        # refreshed room is not a reason to add.  Charter
+                        # 143: not asked of a completion by held count.
                         _identity = str(
                             payload.get("probability_identity") or ""
                         )
                         if (
-                            chain_probability_identity
+                            (production_verdict or {}).get(
+                                "winner_completion_rule"
+                            ) != _COMPLETION_143_RULE
+                            and chain_probability_identity
                             and _identity
                             and _identity == chain_probability_identity
                         ):
@@ -11097,8 +11169,16 @@ def backfill(
                         # legs -- held plus this increment -- the way
                         # production re-reads it on its lifted targets.  A
                         # basket that would lose inside its own window is
-                        # refused by name, whatever the edge said.
-                        if CHARTER_93_SUPPORT_FLOOR == "on":
+                        # refused by name, whatever the edge said.  Charter
+                        # 143: not a completion by held count, which
+                        # production exempts on its lifted bundle.
+                        if CHARTER_93_SUPPORT_FLOOR == "on" and not (
+                            _completion_143_exempt_on_legs(
+                                verdict=production_verdict, seat=seat,
+                                held=held, held_cost=held_cost,
+                                leg_shares=leg_shares, leg_cash=leg_cash,
+                            )
+                        ):
                             _floor_shares = {
                                 str(b): float(held.get(str(b), 0.0)) + float(q)
                                 for b, q in zip(seat["buckets"], leg_shares)
@@ -11307,7 +11387,15 @@ def backfill(
                                     ],
                                 ).get("exempt"))
                             )
-                            if not _exposure_repair and not _edge > _epsilon + 1e-9:
+                            if (
+                                not _exposure_repair
+                                and not _completion_143_exempt_on_legs(
+                                    verdict=production_verdict, seat=seat,
+                                    held=held, held_cost=held_cost,
+                                    leg_shares=leg_shares, leg_cash=leg_cash,
+                                )
+                                and not _edge > _epsilon + 1e-9
+                            ):
                                 refusal = _deeper_refusal(refusal, (
                                     "execution_edge_not_authorized",
                                     "宪章 73：增量在入座信念上的边际 %.4f"

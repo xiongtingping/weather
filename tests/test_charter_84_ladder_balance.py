@@ -37,6 +37,7 @@ from bayes_basket_target.delta_v2_runtime import (
     _target_candidates,
     compile_delta_v2_runtime_plan,
 )
+from tests.charter_143_switch import set_charter_143
 from tests.test_bayes_basket_target_delta_v2 import _value_weights
 from tests.test_bayes_basket_target_delta_v2_runtime import (
     _basket_policy,
@@ -369,8 +370,14 @@ def test_a_completion_the_floor_refused_is_not_reported_as_shadowed() -> None:
     assert solution["shadowed_completion"] is False
 
 
-def test_the_search_prices_the_ladder_the_build_will_walk() -> None:
+def test_the_search_prices_the_ladder_the_build_will_walk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Charter 120 (user ruling 2026-09-08: "B+A").
+
+    Pinned under charter 143's rollback: with the rule on, half B's thin
+    book is a multi-leg basket whose completion still improves the worst
+    in-window settlement, and it is offered (``test_charter_143_*``).
 
     The level search used to price a gap at the first ask while the build
     walked the book with the cash that price implied.  A rung offering one
@@ -390,6 +397,8 @@ def test_the_search_prices_the_ladder_the_build_will_walk() -> None:
         raw = _held_snapshot().to_dict()
         raw["buckets"][3]["ask_levels"] = levels
         return TargetBasketSnapshot.from_mapping(raw)
+
+    set_charter_143(monkeypatch, "off")
 
     def _completion(snapshot: TargetBasketSnapshot) -> dict | None:
         rows = [
@@ -1237,6 +1246,9 @@ def test_ltac_the_held_rung_priced_above_its_claim_no_longer_refuses_the_window(
     _tilted_seat(monkeypatch)
 
     _production_arms(monkeypatch)
+    # Charter 66 A's refusal of a completion is the reading charter 143
+    # replaced; pinned under its rollback.
+    set_charter_143(monkeypatch, "off")
     # At the live prices the only sanctioned window is refused by charter
     # 66 A -- a chain at par -- and with nothing else admitted the compile
     # has no window: support_empty, which is what LTAC's plans said all
