@@ -14,11 +14,21 @@ from bayes_basket_target.atomic_ledger import (
 )
 from bayes_basket_target.p0_preselection import (
     _decision_semantic_projection,
-    _market_snapshot,
+    _market_snapshot as _build_market_snapshot,
     commit_p0_preselection,
     latest_visible_p0_station_ids,
 )
 from bayes_basket_target.ssot import apply_production_ssot_schema
+
+
+def _market_snapshot(**kwargs):
+    """The builder on an empty store: no decision, no order ledger, no
+    account read -- the assembler then attaches no station-day field, which
+    is what every test here built against before the assembler existed."""
+
+    import sqlite3 as _sqlite3
+
+    return _build_market_snapshot(_sqlite3.connect(":memory:"), **kwargs)
 
 
 def _value() -> dict[str, object]:

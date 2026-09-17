@@ -596,33 +596,49 @@ def test_v2_the_ledger_records_the_seat_at_posting_not_at_fill() -> None:
 # --- 2026-09-17 08:42Z: the stage lanes read no send history at all.
 
 
-def test_v2_both_snapshot_builders_carry_the_send_history() -> None:
-    """Every P0-M and P1 decision is built by ``p0_preselection``, not by
-    ``load_production_market_snapshot``; until 2026-09-17 only the latter
-    carried the chain fields, and the completion rule -- which reads them
-    off the snapshot -- read nothing on the lane where every completion is
-    decided.  One helper, both builders."""
+def test_one_assembler_attaches_the_station_day_fields_for_both_sources() -> None:
+    """Two sources of a book (materialized SSOT rows; live WS quotes on a
+    forward day), one assembly.  Until 2026-09-17 each source had its own
+    builder attaching its own idea of the chain-level fields: the send
+    history (charters 136 五 / 143) and the real account (charter 141)
+    reached only ``load_production_market_snapshot`` while every P0-M and
+    P1 decision came through ``p0_preselection`` -- the completion rule read
+    no history and bought legs nobody had sent, and the whole-book exposure
+    bound never bound a stage-lane decision."""
     import inspect
     import json
+    import re
     import sqlite3
+    from pathlib import Path
 
     from bayes_basket_target import p0_preselection, production_io
     from bayes_basket_target.atomic_ledger import apply_target_ledger_schema
     from bayes_basket_target.execution_reconciliation import record_order_event
 
-    assert p0_preselection.chain_send_history_fields is production_io.chain_send_history_fields
-    assert "chain_send_history_fields(" in inspect.getsource(
-        p0_preselection._bind_scope_market_evidence
-    )
-    assert "chain_send_history_fields(" in inspect.getsource(
+    # Both builders end in the assembler, and nothing else attaches the
+    # send history: one place to add a station-day field.
+    assert "assemble_market_snapshot(" in inspect.getsource(
         production_io.load_production_market_snapshot
+    )
+    assert "assemble_market_snapshot(" in inspect.getsource(
+        p0_preselection._market_snapshot
+    )
+    package = Path(production_io.__file__).parent
+    callers = {
+        path.name
+        for path in package.glob("*.py")
+        if re.search(r"(?<!def )chain_send_history_fields\(", path.read_text(encoding="utf-8"))
+    }
+    assert callers == {"production_io.py"}
+    assert "account_capital=account_capital_for_snapshot(" in inspect.getsource(
+        p0_preselection.compile_p0_preselection
+    )
+    assert "account_capital=None" in inspect.getsource(
+        p0_preselection.compile_p0_market_evidence
     )
 
     conn = sqlite3.connect(":memory:")
     apply_target_ledger_schema(conn)
-    assert production_io.chain_send_history_fields(
-        conn, station_id="ZUUU", event_date="2026-09-18", buckets=["26°C", "27°C"],
-    ) == {}
     conn.execute(
         "INSERT INTO basket_target_execution_cycles(cycle_id,plan_id,station_id,"
         "event_date,settlement_timezone,strategy_lane,plan_sha256,"
@@ -645,14 +661,41 @@ def test_v2_both_snapshot_builders_carry_the_send_history() -> None:
             "observed_at": "2026-09-16T22:15:39Z", "matched_size": size,
             "matched_notional_usdc": 1.0, "event_payload": {},
         })
-    fields = production_io.chain_send_history_fields(
-        conn, station_id="ZUUU", event_date="2026-09-18",
-        buckets=["24°C", "25°C", "26°C", "27°C"],
-    )
-    assert fields == {
-        "chain_seat_buckets": ["24°C", "25°C"],
-        "chain_sent_shares": {"24°C": 15.0, "25°C": 6.0},
+    buckets = [
+        {"bucket": b, "ordinal": i, "ask_levels": [{"price": 0.2, "shares": 10.0}],
+         "bid_levels": [], "bid_price": 0.0, "filled_shares": 0.0, "filled_cost_usdc": 0.0,
+         "pending_shares": 0.0, "pending_notional_usdc": 0.0}
+        for i, b in enumerate(["24°C", "25°C", "26°C", "27°C"])
+    ]
+    identity = {
+        "snapshot_id": "s1", "sequence": 0, "observed_at": "2026-09-17T08:42:00Z",
+        "market_id": "m1", "settlement_timezone": "Asia/Shanghai", "quote_version": "q1",
+        "quote_observed_at": "2026-09-17T08:42:00Z", "quote_expires_at": "2026-09-17T08:52:00Z",
+        "quote_source": "OFFICIAL_CLOB_WS", "inventory_version": "i1", "order_state_version": "o1",
     }
+    account = {"book_equity_usdc": 88.0, "account_open_exposure_usdc": 50.0,
+               "portfolio_exposure_fraction": 0.9}
+    snapshot = production_io.assemble_market_snapshot(
+        conn, station_id="ZUUU", event_date="2026-09-18",
+        evaluation_at_utc="2026-09-17T08:42:57Z", identity=identity, buckets=buckets,
+        remaining_budget_usdc=5.0, cash_phase_input=None, account_capital=account,
+        extra={"book_equity_usdc": 1.0},
+    )
+    assert snapshot["chain_seat_buckets"] == ["24°C", "25°C"]
+    assert snapshot["chain_sent_shares"] == {"24°C": 15.0, "25°C": 6.0}
+    # The real account overrides the source's planning equity.
+    assert snapshot["book_equity_usdc"] == 88.0
+    assert snapshot["account_open_exposure_usdc"] == 50.0
+    assert snapshot["portfolio_exposure_fraction"] == 0.9
+    assert snapshot["current_core_buckets"] == [] and snapshot["current_direction"] is None
+    # A chain that sent nothing carries neither field and hashes as before.
+    empty = production_io.assemble_market_snapshot(
+        conn, station_id="ZGSZ", event_date="2026-09-18",
+        evaluation_at_utc="2026-09-17T08:42:57Z", identity=identity, buckets=buckets,
+        remaining_budget_usdc=5.0, cash_phase_input=None, account_capital=None,
+    )
+    assert "chain_seat_buckets" not in empty and "chain_sent_shares" not in empty
+    assert "account_open_exposure_usdc" not in empty
     # And the rule reads them: 26/27 were never sent, so neither is missing.
     assert runtime._completion_143_sent_shares(
         type(fixture._held_snapshot()).from_mapping({

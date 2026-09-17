@@ -1617,7 +1617,7 @@ def target_stage_zero_execution_anchor_from_cycle(
     return anchor
 
 
-def _account_capital_for_snapshot(
+def account_capital_for_snapshot(
     conn: sqlite3.Connection, *, evaluation_at_utc: str,
 ) -> dict[str, Any] | None:
     """Charter 141: the real account as of the compile, for the snapshot.
@@ -1697,7 +1697,7 @@ def load_production_market_snapshot(
     quote = _latest_snapshot_row(conn, "basket_official_ws_snapshot", station_id, event_date, evaluation_at_utc)
     inventory = _latest_snapshot_row(conn, "basket_confirmed_inventory_snapshot", station_id, event_date, evaluation_at_utc)
     order_state = _latest_snapshot_row(conn, "basket_order_state_snapshot", station_id, event_date, evaluation_at_utc)
-    account_capital = _account_capital_for_snapshot(
+    account_capital = account_capital_for_snapshot(
         conn, evaluation_at_utc=evaluation_at_utc,
     )
     quote_version = str(quote["quote_version"] or "")
@@ -1748,53 +1748,6 @@ def load_production_market_snapshot(
     pending = order_json.get("pending_by_bucket") or order_json.get("pending_quantities") or {}
     if not isinstance(filled, Mapping) or not isinstance(pending, Mapping):
         raise ContractError("production_inventory_order_state_shape_invalid")
-    current_core_buckets: tuple[str, ...] = ()
-    current_direction: str | None = None
-    decision_table_present = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' "
-        "AND name='auto_trade_decisions'"
-    ).fetchone() is not None
-    if decision_table_present:
-        prior_decision = conn.execute(
-            "SELECT details_json FROM auto_trade_decisions "
-            "WHERE station_id=? AND event_date=? AND strategy_lane='basket' "
-            "ORDER BY created_at DESC,rowid DESC LIMIT 1",
-            (station_id, event_date),
-        ).fetchone()
-        if prior_decision is not None:
-            prior_decision_fields = _row_mapping(
-                prior_decision,
-                ("details_json",),
-            )
-            prior_details = _json(
-                "prior_basket_decision_details",
-                prior_decision_fields["details_json"],
-                mapping=True,
-            )
-            raw_core = prior_details.get("core_buckets")
-            if raw_core is not None:
-                if (
-                    not isinstance(raw_core, list)
-                    or any(
-                        not isinstance(item, str) or not item.strip()
-                        for item in raw_core
-                    )
-                    or len(raw_core) != len(set(raw_core))
-                ):
-                    raise ContractError(
-                        "production_prior_core_buckets_invalid"
-                    )
-                current_core_buckets = tuple(raw_core)
-            raw_direction = prior_details.get("direction")
-            if raw_direction is not None:
-                current_direction = str(raw_direction).strip().upper()
-                if current_direction not in {"UP", "DOWN", "NEUTRAL"}:
-                    raise ContractError(
-                        "production_prior_direction_invalid"
-                    )
-    # Verify the immutable quote record before adding the joined inventory and
-    # order-state projections.  The latter are derived fields and must not be
-    # fed back into the quote content hash.
     cash_input = _json("cash_phase_input", quote["cash_phase_input_json"], mapping=True)
     _verify_record_sha(
         "basket_official_ws_snapshot_v1",
@@ -1863,16 +1816,116 @@ def load_production_market_snapshot(
     # Charter 136 (五): every bucket this station-day's chain has sent a buy
     # to the venue for.  "Sent" is an exchange answer on the intent -- an
     # intent the live flag disarmed never reached anyone and seats nothing.
-    chain_send_history = chain_send_history_fields(
+    if str(cash_input.get("station_id") or "") != station_id or str(cash_input.get("event_date_local") or "") != event_date:
+        raise ContractError("production_cash_phase_scope_mismatch")
+    return assemble_market_snapshot(
         conn,
         station_id=station_id,
         event_date=event_date,
-        buckets=[str(item["bucket"]) for item in normalized_buckets],
+        evaluation_at_utc=evaluation_at_utc,
+        identity={
+            "snapshot_id": str(quote["snapshot_id"]),
+            "sequence": int(quote["sequence"]),
+            "observed_at": str(quote["observed_at"]),
+            "market_id": str(quote["market_id"]),
+            "settlement_timezone": str(quote["settlement_timezone"] or ""),
+            "quote_version": quote_version,
+            "quote_observed_at": str(quote["quote_observed_at"]),
+            "quote_expires_at": str(quote["quote_expires_at"]),
+            "quote_freshness_policy_sha256": str(
+                quote["quote_freshness_policy_sha256"]
+            ),
+            "quote_source": str(quote["quote_source"]),
+            "official_ws_quote_sha256": str(quote["content_sha256"]),
+            "inventory_snapshot_id": str(inventory["inventory_snapshot_id"]),
+            "inventory_version": inventory_version,
+            "inventory_sha256": str(inventory["content_sha256"]),
+            "inventory_observed_at": str(inventory["observed_at"]),
+            "order_state_snapshot_id": str(
+                order_state["order_state_snapshot_id"]
+            ),
+            "order_state_version": order_version,
+            "order_state_sha256": str(order_state["content_sha256"]),
+            "order_state_observed_at": str(order_state["observed_at"]),
+            # A property of this source's expiry clock, not of the
+            # station-day: the compile from materialized rows binds its
+            # execution deadline to the quote row's expiry.
+            "target_execution_hard_deadline_at": derive_target_execution_hard_deadline(
+                evaluation_at_utc,
+                quote_expires_at=quote["quote_expires_at"],
+            ),
+        },
+        buckets=normalized_buckets,
+        remaining_budget_usdc=float(quote["remaining_budget_usdc"]),
+        cash_phase_input=cash_input,
+        account_capital=account_capital,
     )
+
+
+def _prior_decision_core(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    canonical_buckets: Sequence[str],
+) -> tuple[tuple[str, ...], str | None]:
+    """The core buckets and direction the station-day's last decision recorded.
+
+    Empty on a store without the decision table or a day without a decision;
+    a recorded core is validated as a contiguous run of the snapshot's own
+    buckets.  Audit lineage for the seat (``support.py``'s transition
+    record), read by both snapshot builders through the assembler.
+    """
+
+    current_core_buckets: tuple[str, ...] = ()
+    current_direction: str | None = None
+    decision_table_present = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' "
+        "AND name='auto_trade_decisions'"
+    ).fetchone() is not None
+    if decision_table_present:
+        prior_decision = conn.execute(
+            "SELECT details_json FROM auto_trade_decisions "
+            "WHERE station_id=? AND event_date=? AND strategy_lane='basket' "
+            "ORDER BY created_at DESC,rowid DESC LIMIT 1",
+            (station_id, event_date),
+        ).fetchone()
+        if prior_decision is not None:
+            prior_decision_fields = _row_mapping(
+                prior_decision,
+                ("details_json",),
+            )
+            prior_details = _json(
+                "prior_basket_decision_details",
+                prior_decision_fields["details_json"],
+                mapping=True,
+            )
+            raw_core = prior_details.get("core_buckets")
+            if raw_core is not None:
+                if (
+                    not isinstance(raw_core, list)
+                    or any(
+                        not isinstance(item, str) or not item.strip()
+                        for item in raw_core
+                    )
+                    or len(raw_core) != len(set(raw_core))
+                ):
+                    raise ContractError(
+                        "production_prior_core_buckets_invalid"
+                    )
+                current_core_buckets = tuple(raw_core)
+            raw_direction = prior_details.get("direction")
+            if raw_direction is not None:
+                current_direction = str(raw_direction).strip().upper()
+                if current_direction not in {"UP", "DOWN", "NEUTRAL"}:
+                    raise ContractError(
+                        "production_prior_direction_invalid"
+                    )
+    # Verify the immutable quote record before adding the joined inventory and
+    # order-state projections.  The latter are derived fields and must not be
+    # fed back into the quote content hash.
+    canonical_buckets = tuple(str(bucket) for bucket in canonical_buckets)
     if current_core_buckets:
-        canonical_buckets = tuple(
-            str(item["bucket"]) for item in normalized_buckets
-        )
         ordinal_by_bucket = {
             bucket: ordinal
             for ordinal, bucket in enumerate(canonical_buckets)
@@ -1894,55 +1947,80 @@ def load_production_market_snapshot(
             )
         ):
             raise ContractError("production_prior_core_buckets_invalid")
-    if str(cash_input.get("station_id") or "") != station_id or str(cash_input.get("event_date_local") or "") != event_date:
-        raise ContractError("production_cash_phase_scope_mismatch")
+    return current_core_buckets, current_direction
+
+
+MARKET_SNAPSHOT_SCHEMA = "bayes_basket_production_market_snapshot_v1"
+
+
+def assemble_market_snapshot(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    evaluation_at_utc: str,
+    identity: Mapping[str, Any],
+    buckets: Sequence[Mapping[str, Any]],
+    remaining_budget_usdc: float,
+    cash_phase_input: Mapping[str, Any] | None,
+    account_capital: Mapping[str, Any] | None,
+    extra: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The one assembly of a market snapshot, whatever the book was read from.
+
+    There are two legitimate SOURCES of a book -- the materialized SSOT
+    generations (``load_production_market_snapshot``: quote, confirmed
+    inventory and order-state rows with their versions) and the live WS
+    quotes a forward day has before any generation exists
+    (``p0_preselection._market_snapshot``) -- and there was, until
+    2026-09-17, a builder per source, each attaching its own idea of the
+    chain-level fields.  That is how the send history (charters 136 五 and
+    143) and the real-account capital (charter 141) reached only the first
+    while every P0-M and P1 decision came through the second: the
+    completion rule read no history and bought legs nobody had sent, and the
+    whole-book exposure bound never bound a stage-lane decision at all.
+
+    So the sources stay two and the assembly is one.  ``identity`` is what
+    the source knows about the book (ids, versions, clocks); ``buckets`` its
+    per-rung rows; ``extra`` its in-memory-only fields (a planning book
+    equity, the ledger holdings).  Everything that is a property of the
+    station-day rather than of the source -- the real account
+    (``account_capital``, ``None`` only where the caller does not size),
+    the chain's send history, the last decision's core -- is attached here,
+    and a field added here reaches every decision.  A property of the
+    source (its expiry clock, its versions) stays in ``identity``.  The evidence
+    materializer picks its columns by name, so the in-memory fields never
+    reach a row.
+    """
+
+    rows = [dict(item) for item in buckets]
+    canonical = [str(item.get("bucket") or "") for item in rows]
+    core_buckets, direction = _prior_decision_core(
+        conn, station_id=station_id, event_date=event_date,
+        canonical_buckets=canonical,
+    )
+    budget = float(remaining_budget_usdc)
+    if not math.isfinite(budget) or budget < 0.0:
+        raise ContractError("production_market_remaining_budget_invalid")
     return {
-        "schema": "bayes_basket_production_market_snapshot_v1",
-        "snapshot_id": str(quote["snapshot_id"]),
-        "sequence": int(quote["sequence"]),
-        "observed_at": str(quote["observed_at"]),
-        "market_id": str(quote["market_id"]),
+        "schema": MARKET_SNAPSHOT_SCHEMA,
+        **dict(identity),
         "station_id": station_id,
         "event_date": event_date,
-        "settlement_timezone": str(quote["settlement_timezone"] or ""),
-        "quote_version": quote_version,
-        "quote_observed_at": str(quote["quote_observed_at"]),
-        "quote_expires_at": str(quote["quote_expires_at"]),
-        "target_execution_hard_deadline_at": derive_target_execution_hard_deadline(
-            # The complete multi-bucket snapshot first becomes actionable at
-            # this compile evaluation.  Quote age remains anchored to the
-            # oldest official book observation above; do not conflate the two
-            # clocks or a valid snapshot can expire before it is joinable.
-            evaluation_at_utc,
-            quote_expires_at=quote["quote_expires_at"],
+        "remaining_budget_usdc": budget,
+        **dict(extra or {}),
+        **dict(account_capital or {}),
+        "current_core_buckets": list(core_buckets),
+        "current_direction": direction,
+        **chain_send_history_fields(
+            conn, station_id=station_id, event_date=event_date,
+            buckets=canonical,
         ),
-        "quote_freshness_policy_sha256": str(
-            quote["quote_freshness_policy_sha256"]
+        "buckets": rows,
+        **(
+            {"cash_phase_input": dict(cash_phase_input)}
+            if cash_phase_input is not None else {}
         ),
-        "quote_source": str(quote["quote_source"]),
-        "official_ws_quote_sha256": str(quote["content_sha256"]),
-        "inventory_snapshot_id": str(inventory["inventory_snapshot_id"]),
-        "inventory_version": inventory_version,
-        "inventory_sha256": str(inventory["content_sha256"]),
-        "inventory_observed_at": str(inventory["observed_at"]),
-        "order_state_snapshot_id": str(
-            order_state["order_state_snapshot_id"]
-        ),
-        "order_state_version": order_version,
-        "order_state_sha256": str(order_state["content_sha256"]),
-        "order_state_observed_at": str(order_state["observed_at"]),
-        "remaining_budget_usdc": float(quote["remaining_budget_usdc"]),
-        # The book's equity, distinct from this scope's remaining budget --
-        # since charter 141 the real account (cash plus marked positions,
-        # capped by the budget dial), with the whole-book exposure and its
-        # bound beside it.  Absent, not zero, when the store has never read
-        # the account: an older store then sizes exactly as before.
-        **(account_capital or {}),
-        "current_core_buckets": list(current_core_buckets),
-        "current_direction": current_direction,
-        **chain_send_history,
-        "buckets": normalized_buckets,
-        "cash_phase_input": cash_input,
         "checkpoint_changed": True,
         "quote_changed": True,
         "fill_changed": True,

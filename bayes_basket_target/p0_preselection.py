@@ -32,7 +32,8 @@ from .consolidation_chain import load_last_acted_probability_identity
 from .production import compile_production_plan
 from .regime_materialization import load_regime_artifact
 from .production_io import (
-    chain_send_history_fields,
+    account_capital_for_snapshot,
+    assemble_market_snapshot,
     derive_policy_maturity_bin,
     assert_current_probability_bridge,
     assert_formal_probability_model_authority,
@@ -323,6 +324,7 @@ def _forward_tick_size(registry_row: Mapping[str, Any]) -> float | None:
 
 
 def _market_snapshot(
+    conn: sqlite3.Connection,
     *,
     envelope: Any,
     registry_rows: list[Mapping[str, Any]],
@@ -332,6 +334,7 @@ def _market_snapshot(
     planning_budget_usdc: float = 0.0,
     book_equity_usdc: float | None = None,
     ledger_holdings: Mapping[str, Any] | None = None,
+    account_capital: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     evaluation = _utc(
         evaluation_at_utc,
@@ -702,72 +705,80 @@ def _market_snapshot(
     quote_version = "p0_ws_" + economic_quote_sha256[:32]
     if holdings_by_token:
         quote_version += "_h" + holdings_sha256[:12]
-    return {
-        "snapshot_id": quote_version,
-        "sequence": 0,
-        "observed_at": quote_observed,
-        "market_id": market_id,
-        "station_id": envelope.station_id,
-        "event_date": envelope.event_date,
-        "settlement_timezone": registry_timezone,
-        "quote_version": quote_version,
-        "official_ws_quote_sha256": economic_quote_sha256,
-        "economic_quote_sha256": economic_quote_sha256,
-        "quote_observed_at": quote_observed,
-        # A streaming book has no exchange-stated expiry; what bounds its
-        # actionability is the same strict-as-of freshness budget that
-        # gates staleness above.  The forward evidence binding requires an
-        # explicit expiry clock (decision must precede it), and leaving the
-        # field absent failed every listing-day stage-open as an invalid
-        # timestamp -- the whole fleet fell back to preliminary records.
-        "quote_expires_at": (
-            _utc(
-                quote_observed,
-                reason="p0_preselection_quote_observed_at_missing",
-            )
-            + timedelta(seconds=maximum_age)
-        ).isoformat().replace("+00:00", "Z"),
-        "quote_source": "OFFICIAL_CLOB_WS",
-        # q0 is the empty book; a scope the ledger says is held names the
-        # holdings it was priced on, and the forward evidence trio writes
-        # that inventory row under this version.
-        "inventory_version": (
-            "p0_preselection_ledger_" + holdings_sha256[:16]
-            if holdings_by_token
-            else "p0_preselection_q0"
-        ),
-        "order_state_version": "p0_preselection_known_zero",
-        **(
-            {
-                "ledger_holdings": holdings_by_token,
-                "ledger_holdings_sha256": holdings_sha256,
-            }
-            if holdings_by_token
-            else {}
-        ),
+    # Charter 141 / 136 (五) / 143: everything that is a property of the
+    # station-day rather than of this source -- the real account, the chain's
+    # send history, the last decision's core -- is attached by the one
+    # assembler both builders share.  This builder carried none of them
+    # until 2026-09-17, and it is the builder of every P0-M and P1 decision.
+    return assemble_market_snapshot(
+        conn,
+        station_id=str(envelope.station_id),
+        event_date=str(envelope.event_date),
+        evaluation_at_utc=evaluation_at_utc,
+        identity={
+            "snapshot_id": quote_version,
+            "sequence": 0,
+            "observed_at": quote_observed,
+            "market_id": market_id,
+            "settlement_timezone": registry_timezone,
+            "quote_version": quote_version,
+            "official_ws_quote_sha256": economic_quote_sha256,
+            "economic_quote_sha256": economic_quote_sha256,
+            "quote_observed_at": quote_observed,
+            # A streaming book has no exchange-stated expiry; what bounds its
+            # actionability is the same strict-as-of freshness budget that
+            # gates staleness above.  The forward evidence binding requires
+            # an explicit expiry clock (decision must precede it), and
+            # leaving the field absent failed every listing-day stage-open
+            # as an invalid timestamp -- the whole fleet fell back to
+            # preliminary records.
+            "quote_expires_at": (
+                _utc(
+                    quote_observed,
+                    reason="p0_preselection_quote_observed_at_missing",
+                )
+                + timedelta(seconds=maximum_age)
+            ).isoformat().replace("+00:00", "Z"),
+            "quote_source": "OFFICIAL_CLOB_WS",
+            # q0 is the empty book; a scope the ledger says is held names the
+            # holdings it was priced on, and the forward evidence trio writes
+            # that inventory row under this version.
+            "inventory_version": (
+                "p0_preselection_ledger_" + holdings_sha256[:16]
+                if holdings_by_token
+                else "p0_preselection_q0"
+            ),
+            "order_state_version": "p0_preselection_known_zero",
+        },
+        buckets=buckets,
         # This is a no-live planning ceiling, not reserved or executable
         # capital.  Keeping it distinct from capital_authorized allows P0
         # and P0-M to compute a real DeltaBasketScore target before P1
         # without creating an intent, reservation, or order.
-        "remaining_budget_usdc": planning_budget,
-        # Absent when the caller has no pool to report; the compiler then
-        # sizes off the budget as before.  Never persisted: the materialized
-        # quote row picks its columns by name, so this rides in memory only.
-        **(
-            {"book_equity_usdc": book_equity}
-            if book_equity is not None
-            else {}
-        ),
-        "buckets": buckets,
-        "checkpoint_changed": True,
-        "quote_changed": True,
-        "fill_changed": False,
-        "time_gate_changed": False,
-        "evidence_fresh": True,
-        "contract_matches": True,
-        "order_state_known": True,
-        "risk_inputs_complete": True,
-    }
+        remaining_budget_usdc=planning_budget,
+        cash_phase_input=None,
+        account_capital=account_capital,
+        extra={
+            **(
+                {
+                    "ledger_holdings": holdings_by_token,
+                    "ledger_holdings_sha256": holdings_sha256,
+                }
+                if holdings_by_token
+                else {}
+            ),
+            # Absent when the caller has no pool to report; the compiler
+            # then sizes off the budget as before.  Never persisted: the
+            # materialized quote row picks its columns by name, so this
+            # rides in memory only.  The real account, when the store has
+            # one, overrides it in the assembler.
+            **(
+                {"book_equity_usdc": book_equity}
+                if book_equity is not None
+                else {}
+            ),
+        },
+    )
 
 
 def _bind_scope_market_evidence(
@@ -786,8 +797,16 @@ def _bind_scope_market_evidence(
         CashPhaseAuthorityManifest | Mapping[str, Any] | None
     ) = None,
     book_equity_usdc: float | None = None,
+    account_capital: Mapping[str, Any] | None,
 ) -> tuple[dict[str, Any], Any, BasketCashPhaseInput]:
     """Resolve the scope's book and the cash-phase input bound into it.
+
+    ``account_capital`` is charter 141's real-account read
+    (``production_io.account_capital_for_snapshot``) for a caller that will
+    SIZE on this snapshot, and ``None`` for the evidence-only pass, which
+    writes the forward evidence trio and sizes nothing.  Required, not
+    defaulted: forgetting it is how the stage lanes sized without the
+    whole-book bound until 2026-09-17.
 
     This is the evidence half of a preselection, and the only builder of it:
     the compile path and the evidence-only path below must produce the same
@@ -812,6 +831,7 @@ def _bind_scope_market_evidence(
         required_authority_scope=AUTHORITY_SCOPE,
     )
     market = _market_snapshot(
+        conn,
         envelope=envelope,
         registry_rows=_registry_rows(
             registry_snapshot,
@@ -830,6 +850,7 @@ def _bind_scope_market_evidence(
             station_id=station_id,
             event_date=event_date,
         ),
+        account_capital=account_capital,
     )
     phase_input = BasketCashPhaseInput.from_mapping({
         "policy_version": cash_policy.policy_version,
@@ -842,23 +863,6 @@ def _bind_scope_market_evidence(
         "station_timezone": cash_policy.station_timezone,
         "checkpoint_id": "p0_cash_" + envelope.checkpoint_id,
     })
-    # Charter 136 (五) / 143 v2: the chain's send history.  Every stage-lane
-    # decision (P0-M, P1) is built here and not by
-    # ``load_production_market_snapshot``, and this builder carried neither
-    # field until 2026-09-17 -- so the completion rule, which reads them off
-    # the snapshot, read nothing and completed legs nobody had sent (ZUUU
-    # 2026-09-18 27C, OEJN 36C, ZSQD 27C, EPWA 23C on the 08:42Z cycle).
-    # In memory only, like ``book_equity_usdc`` above: the evidence rows
-    # pick their columns by name.
-    market.update(chain_send_history_fields(
-        conn,
-        station_id=station_id,
-        event_date=event_date,
-        buckets=[
-            str(item.get("bucket")) for item in market.get("buckets") or ()
-            if isinstance(item, Mapping)
-        ],
-    ))
     # The stage-open persists this snapshot as the forward evidence trio
     # (charter 46/48); the materializer requires the cash-phase input bound
     # into the quote row itself.
@@ -931,6 +935,8 @@ def compile_p0_market_evidence(
         planning_budget_usdc=planning_budget_usdc,
         cash_phase_authority_manifest=cash_phase_authority_manifest,
         book_equity_usdc=book_equity_usdc,
+        # Evidence only: this pass writes the trio and sizes nothing.
+        account_capital=None,
     )
     return market
 
@@ -1014,6 +1020,11 @@ def compile_p0_preselection(
         planning_budget_usdc=planning_budget_usdc,
         cash_phase_authority_manifest=cash_phase_authority_manifest,
         book_equity_usdc=book_equity_usdc,
+        # Charter 141: the real account, read the way the production
+        # compile reads it -- stale is a refusal, never a guess.
+        account_capital=account_capital_for_snapshot(
+            conn, evaluation_at_utc=evaluation_at_utc,
+        ),
     )
     (
         delta_v2_artifact,
