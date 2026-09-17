@@ -1268,7 +1268,18 @@ if P0M_TAF_MODE not in {
     "off", "tx_envelope", "tx_anchor", "confirm_hold", "confirm_override",
 }:
     raise RuntimeError(f"unknown P0-M TAF mode: {P0M_TAF_MODE}")
-P0M_TAF_ENVELOPE_RULE_VERSION = "p0m_taf_second_confirmation_v2"
+# v3 (charter 145, user "打通p0m的taf动态调仓", 2026-09-17): the entry span is
+# bought through charter 143's completion channel -- its missing rungs to the
+# cheapest held rung, admitted when the worst in-window settlement improves,
+# never on the model's claim for the TX rung.  Under v2 the span had to clear
+# the whole-window gate on that very claim, and from charter 131 (2026-09-12)
+# to this ruling every one of the 13 held-basket entries the book computed
+# was refused there (``edge``), the one seated span (ZUCK 2026-09-18) then
+# held because the solver had no candidate that survives a negative model
+# edge.  The whole-window verdict is still recorded
+# (``completion.whole_window_admissible``) and binds only when charter 143
+# does not certify the span (off, unpriced, inside the cutoff, worse).
+P0M_TAF_ENVELOPE_RULE_VERSION = "p0m_taf_second_confirmation_v3"
 # Charter 81 (user ruling, 2026-09-05): the centre-holding claim lift.  One
 # implementation in the kernel, read here, by the paper ledger and by the
 # charter-68 lambda store (whose agreement must be computed on the same
@@ -2046,8 +2057,16 @@ def _support_windows(
         *,
         quotes: Sequence[float | None],
         claim_factor: float,
+        taf_entry: bool = False,
     ) -> dict[str, Any] | None:
         """Charter 84 (八): what completing a partly held window would buy.
+
+        ``taf_entry`` (charter 145): the window is charter 90's TX-entry
+        span.  It is read even when it holds no rung (the model's centre
+        may have walked away from what P0 bought), its legs need no send
+        history, and charter 143 reads it as multi-leg whatever it holds --
+        the single-leg hurdle is the model's claim on the TX rung, which
+        charter 90 says not to judge the entry on.
 
         ``None`` when the window holds nothing, holds everything, or the
         ruling is off -- the whole-window rule then stands.  Otherwise the
@@ -2067,7 +2086,7 @@ def _support_windows(
             if float(by_bucket[bucket].filled_shares)
             + float(by_bucket[bucket].pending_shares) > EPS
         ]
-        if not held or len(held) == len(window):
+        if len(held) == len(window) or (not held and not taf_entry):
             return None
         missing = [bucket for bucket in window if bucket not in held]
         dead = [
@@ -2184,7 +2203,10 @@ def _support_windows(
         # the ladder it will buy.
         completion_143 = None
         if CHARTER_143_COMPLETION == "on":
-            basket_type = completion_143_basket_type_v1(len(held))
+            basket_type = (
+                "multi" if taf_entry
+                else completion_143_basket_type_v1(len(held))
+            )
             past_cutoff = bool(
                 hours_to_cutoff is not None
                 and float(hours_to_cutoff) <= COMPLETION_CUTOFF_HOURS
@@ -2192,11 +2214,7 @@ def _support_windows(
             # v2: a leg the chain never sent is not missing -- it belongs to
             # a seat the label moved to (ZGGG 32C, ZSQD 27C, 2026-09-17).
             sent_143 = _completion_143_sent_shares(snapshot)
-            if (
-                taf_entry_window is not None
-                and frozenset(int(by_bucket[b].ordinal) for b in window)
-                == taf_entry_window
-            ):
+            if taf_entry:
                 # Charter 90: the TX-entry window is sanctioned whole on TAF
                 # authority; its legs need no send history (the TX leg has
                 # none by definition).
@@ -2231,6 +2249,8 @@ def _support_windows(
             completion_143 = {
                 "rule": COMPLETION_143_RULE_VERSION,
                 "basket_type": basket_type,
+                # Charter 145: read as the TX-entry span.
+                "taf_entry": bool(taf_entry),
                 "past_completion_cutoff": past_cutoff,
                 # What the rule read as the chain's send history -- the
                 # snapshot's, or ``None`` on the TX-entry window / a snapshot
@@ -2602,6 +2622,7 @@ def _support_windows(
     taf_no_p0_basket = False
     taf_entry_window: frozenset[int] | None = None
     taf_unreachable = False
+    taf_unreachable_reason: str | None = None
     taf_held_buckets: list[str] = []
     if (
         P0M_TAF_MODE == "tx_envelope"
@@ -2637,6 +2658,9 @@ def _support_windows(
                 # Wider than the policy's cap, or a TX the observations
                 # have already ruled out (charter 61): nothing to seat.
                 taf_unreachable = True
+                taf_unreachable_reason = (
+                    "span_over_cap" if len(span) > policy_cap else "tx_excluded"
+                )
             else:
                 mass_of = {
                     ordinal_of[bucket]: float(probabilities.get(bucket, 0.0) or 0.0)
@@ -3243,24 +3267,39 @@ def _support_windows(
             # claim, its all-in offer and its friction are the three
             # quantities the whole-window rule reads, over the rungs being
             # bought.
+            taf_entry_here = bool(
+                taf_entry_window is not None
+                and frozenset(int(by_bucket[b].ordinal) for b in window)
+                == taf_entry_window
+            )
             completion = _completion_increment(
                 window, quotes=quotes,
                 claim_factor=claim_factor * (
                     gate_lambda if gate_lambda is not None else 1.0
                 ),
+                taf_entry=taf_entry_here,
             )
             # Charter 90: the TX-entry seat is bought on TAF authority --
             # information the served vector does not carry -- so the
-            # increment is not judged on the model's claim for the TX rung;
-            # the whole-basket gate above still has to have passed.
-            if (
-                completion is not None
-                and taf_entry_window is not None
-                and frozenset(int(by_bucket[b].ordinal) for b in window)
-                == taf_entry_window
-            ):
-                completion = dict(completion, taf_tx_entry=True,
-                                  admissible=bool(admissible))
+            # increment is not judged on the model's claim for the TX rung.
+            # Charter 145 (2026-09-17): nor is the whole window.  v2 made the
+            # span clear the whole-window gate on that same claim, and from
+            # charter 131 to this ruling no held-basket entry ever cleared
+            # it.  The span is admitted the way charter 143 admits a broken
+            # basket -- on the structure it completes, priced down the
+            # ladder -- and the whole-window verdict is recorded, binding
+            # only when charter 143 does not certify the span.
+            if completion is not None and taf_entry_here:
+                completion = dict(
+                    completion, taf_tx_entry=True,
+                    whole_window_admissible=bool(admissible),
+                    admissible=(
+                        bool(completion["admissible"])
+                        if completion.get("admitted_by")
+                        == COMPLETION_143_RULE_VERSION
+                        else bool(admissible)
+                    ),
+                )
             if completion is not None:
                 leg_floor_hit = False
                 admissible = bool(completion["admissible"])
@@ -3270,6 +3309,7 @@ def _support_windows(
                     # and fell to lambda.
                     pre_lambda = _completion_increment(
                         window, quotes=quotes, claim_factor=claim_factor,
+                        taf_entry=taf_entry_here,
                     )
                     if pre_lambda is not None and bool(pre_lambda["admissible"]):
                         lambda_refused += 1
@@ -3790,6 +3830,7 @@ def _support_windows(
                 )
             ),
             "tx_unreachable": taf_unreachable,
+            "tx_unreachable_reason": taf_unreachable_reason,
             "seat_holds_tx": any(
                 taf_tx_bucket in row["buckets"] and row.get("admissible", True)
                 for row in windows
@@ -4229,6 +4270,22 @@ def _solve_over_support_windows(
         "last_order_ends": last_signature.get("order_ends") or None,
         "is_decision_moment": bool(decision_moment),
     }
+    # Charter 145: charter 90's entry span is completed to the chain's
+    # cheapest held rung when the span itself holds none, and never under
+    # the venue lot.
+    chain_levels = [
+        float(bucket_row.filled_shares) + float(bucket_row.pending_shares)
+        for bucket_row in snapshot.buckets
+        if float(bucket_row.filled_shares) + float(bucket_row.pending_shares) > EPS
+    ]
+    taf_entry_level_shares = min(chain_levels) if chain_levels else None
+    taf_entry_minimum_level_shares = max(
+        (
+            float(getattr(bucket_row, "min_order_size", 0.0) or 0.0)
+            for bucket_row in snapshot.buckets
+        ),
+        default=0.0,
+    )
     scored: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
     stage = str(snapshot.evidence.probability_stage or "")
@@ -4351,6 +4408,9 @@ def _solve_over_support_windows(
                     ),
                     # Charter 90: the TX-entry seat may open the day at P0-M.
                     taf_tx_entry=taf_tx_entry and bool(row.get("taf_tx_entry")),
+                    # Charter 145: the entry span's level and lot floor.
+                    taf_entry_level_shares=taf_entry_level_shares,
+                    taf_entry_minimum_level_shares=taf_entry_minimum_level_shares,
                     # Charter 143: the completion of a broken seat is not
                     # held back for a decision moment.
                     completion_143_admitted=bool(
@@ -4840,6 +4900,8 @@ def _target_candidates(
     completion_capital_usdc: float | None = None,
     taf_tx_entry: bool = False,
     completion_143_admitted: bool = False,
+    taf_entry_level_shares: float | None = None,
+    taf_entry_minimum_level_shares: float = 0.0,
 ) -> list[dict[str, Any]]:
     """Build a bounded q-grid priced from official WS ask depth.
 
@@ -5104,6 +5166,12 @@ def _target_candidates(
             sent_shares_by_bucket=(
                 None if taf_tx_entry else _completion_143_sent_shares(snapshot)
             ),
+            # Charter 145: the entry span is read as multi-leg whatever it
+            # holds, levelled to the chain when it holds nothing, and steps
+            # its level down to the lot before the capital refuses it.
+            taf_entry=bool(taf_tx_entry),
+            chain_level_shares=taf_entry_level_shares,
+            minimum_level_shares=taf_entry_minimum_level_shares,
         )
         if balance_candidate is not None:
             candidates.append(balance_candidate)
@@ -5438,8 +5506,16 @@ def _ladder_balance_candidate(
     probabilities_by_bucket: Mapping[str, float] | None = None,
     hours_to_cutoff: float | None = None,
     sent_shares_by_bucket: Mapping[str, float] | None = None,
+    taf_entry: bool = False,
+    chain_level_shares: float | None = None,
+    minimum_level_shares: float = 0.0,
 ) -> dict[str, Any] | None:
     """Charter 84's candidate: the seat's short rungs raised to its held level.
+
+    ``taf_entry`` (charter 145): charter 90's TX-entry span, which charter
+    143 reads as multi-leg whatever it holds, levelled to
+    ``chain_level_shares`` when the span holds no rung, stepping down to
+    ``minimum_level_shares`` before the capital refuses it.
 
     ``unbuyable`` (charter 84 八) names the short rungs the market prices
     under the leg floor: left as they are, the completion covers the rest;
@@ -5577,6 +5653,9 @@ def _ladder_balance_candidate(
             hours_to_cutoff=hours_to_cutoff,
             fee_rate=0.0,
             sent_shares_by_bucket=sent_shares_by_bucket,
+            taf_entry=taf_entry,
+            chain_level_shares=chain_level_shares,
+            minimum_level_shares=minimum_level_shares,
         )
         if not completion_143_reading["targets"]:
             return None
@@ -5682,6 +5761,7 @@ def _ladder_balance_candidate(
                 below_leg_floor_buckets=tuple(str(b) for b in unbuyable),
                 hours_to_cutoff=hours_to_cutoff,
                 sent_shares_by_bucket=sent_shares_by_bucket,
+                taf_entry=taf_entry,
             ),
             "level_rule": completion_143_reading["level_rule"],
             "level_shares": completion_143_reading["level_shares"],
@@ -6945,6 +7025,11 @@ def compile_delta_v2_runtime_plan(
                     if ((support_selection.get("seated") or {}).get("completion") or {})
                     .get("taf_tx_entry")
                     else _completion_143_sent_shares(snapshot)
+                ),
+                # Charter 145: the entry span is re-read as the span.
+                taf_entry=bool(
+                    ((support_selection.get("seated") or {}).get("completion") or {})
+                    .get("taf_tx_entry")
                 ),
             )
         completion_143_exempt = bool(

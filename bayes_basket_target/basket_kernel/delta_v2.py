@@ -3591,8 +3591,23 @@ def completion_143_targets_v1(
     hours_to_cutoff: float | None = None,
     fee_rate: float = 0.0,
     sent_shares_by_bucket: Mapping[str, Any] | None = None,
+    taf_entry: bool = False,
+    chain_level_shares: float | None = None,
+    minimum_level_shares: float = 0.0,
 ) -> dict[str, Any]:
     """Charter 143's completion of a broken window, or the reason there is none.
+
+    ``taf_entry`` (charter 145, 2026-09-17): the window is charter 90's
+    TX-entry span, sanctioned whole on TAF authority.  Every live rung of
+    the window is the basket whatever the send history says, the basket is
+    read as multi-leg however many legs it holds -- the single-leg hurdle
+    is the model's claim on the TX rung, the one number charter 90 says
+    not to read -- and, when the span holds no rung at all (the model's
+    centre has walked away from what P0 bought), the level is
+    ``chain_level_shares``, the cheapest rung the chain holds anywhere.  A
+    level the capital cannot carry steps down a share at a time to
+    ``minimum_level_shares`` (the venue lot) before it is refused: the
+    entry is a must, its size is not.
 
     ``targets`` is the whole window's share map after the completion (a rung
     not bought keeps what it holds; charter 84 (八)'s dead rungs are never
@@ -3630,17 +3645,20 @@ def completion_143_targets_v1(
     }
     sent = _completion_143_sent(sent_shares_by_bucket)
     live = tuple(b for b in window if b not in dead)
-    basket = tuple(
+    basket = live if taf_entry else tuple(
         b for b in live if held[b] > EPS or sent is None or b in sent
     )
     held_legs = [b for b in basket if held[b] > EPS]
     missing = [b for b in basket if held[b] <= EPS]
     unsent = [b for b in live if b not in basket]
-    basket_type = completion_143_basket_type_v1(len(held_legs))
+    basket_type = (
+        "multi" if taf_entry else completion_143_basket_type_v1(len(held_legs))
+    )
     base: dict[str, Any] = {
         "rule": COMPLETION_143_RULE_VERSION,
         "mode": CHARTER_143_COMPLETION,
         "basket_type": basket_type,
+        "taf_entry": bool(taf_entry),
         "held_buckets": held_legs,
         "missing_buckets": missing,
         "unsent_buckets": unsent,
@@ -3701,37 +3719,76 @@ def completion_143_targets_v1(
 
     if basket_type == "multi":
         # The cheapest held size: no held rung is below it, so only the
-        # missing rungs are short.
-        level = min(held[b] for b in held_legs)
-        short = [b for b in missing if _size(b, level) > EPS]
-        if not short:
-            return {**base, "refused": "no_sent_leg_missing"}
-        level_rule = "cheapest_held_level_worst_improves"
-        targets = {
-            b: (_size(b, level) if b in short else held[b]) for b in window
-        }
-        cost = dict(paid)
-        spend = 0.0
-        legs: dict[str, Any] = {}
-        for bucket in short:
-            shares = _size(bucket, level)
-            cash = _walk(bucket, shares)
-            if cash is None:
-                return {**base, "refused": "unpriced"}
-            cost[bucket] += cash
-            spend += cash
-            legs[bucket] = {"shares": shares, "cash": cash,
-                            "sent_shares": None if sent is None else sent[bucket]}
-        if spend > budget + EPS:
-            return {**base, "refused": "capital"}
-        accepted = _accept(targets, short, level, level_rule, spend, cost, legs)
-        if not accepted["floor_after"] > before["worst_in_support_pnl"] + EPS:
-            return {
-                **base,
-                "floor_after": accepted["floor_after"],
-                "refused": "worst_not_improved",
+        # missing rungs are short.  Charter 145: an entry span holding no
+        # rung reads the chain's cheapest rung instead.
+        if taf_entry and not held_legs:
+            if chain_level_shares is None or float(chain_level_shares) <= EPS:
+                return {**base, "refused": "no_held_level"}
+            top_level = float(chain_level_shares)
+        else:
+            top_level = min(held[b] for b in held_legs)
+        level_rule = (
+            "taf_entry_span_to_held_level" if taf_entry
+            else "cheapest_held_level_worst_improves"
+        )
+
+        def _multi_at(level: float) -> dict[str, Any]:
+            short = [b for b in missing if _size(b, level) > EPS]
+            if not short:
+                return {**base, "refused": "no_sent_leg_missing"}
+            targets = {
+                b: (_size(b, level) if b in short else held[b]) for b in window
             }
-        return accepted
+            cost = dict(paid)
+            spend = 0.0
+            legs: dict[str, Any] = {}
+            for bucket in short:
+                shares = _size(bucket, level)
+                cash = _walk(bucket, shares)
+                if cash is None:
+                    return {**base, "refused": "unpriced"}
+                cost[bucket] += cash
+                spend += cash
+                legs[bucket] = {"shares": shares, "cash": cash,
+                                "sent_shares": None if sent is None else sent[bucket]}
+            if spend > budget + EPS:
+                return {**base, "refused": "capital", "spend_usdc": float(spend),
+                        "level_shares": float(level)}
+            accepted = _accept(targets, short, level, level_rule, spend, cost, legs)
+            if not accepted["floor_after"] > before["worst_in_support_pnl"] + EPS:
+                return {
+                    **base,
+                    "floor_after": accepted["floor_after"],
+                    "refused": "worst_not_improved",
+                }
+            return accepted
+
+        levels = [top_level]
+        if taf_entry:
+            # Charter 145: the entry is a must, its size is not -- a level
+            # the capital cannot carry steps down a whole share at a time,
+            # never under the venue lot.
+            lowest = max(float(minimum_level_shares), 1.0)
+            step = math.floor(top_level - 1e-9)
+            while step >= lowest - EPS:
+                levels.append(float(step))
+                step -= 1
+        result = base
+        for level in levels:
+            result = _multi_at(level)
+            if result["refused"] != "capital":
+                break
+        if (
+            result["refused"] is None
+            and taf_entry
+            and float(result["level_shares"]) < top_level - EPS
+        ):
+            result = {
+                **result,
+                "level_rule": "taf_entry_span_to_held_level_fit_capital",
+                "top_level_shares": float(top_level),
+            }
+        return result
 
     # Single held leg: only what pays for itself at the held size.
     if claim_by_bucket is None:
@@ -3796,8 +3853,13 @@ def completion_143_exemption_v1(
     below_leg_floor_buckets: Sequence[str] = (),
     hours_to_cutoff: float | None = None,
     sent_shares_by_bucket: Mapping[str, Any] | None = None,
+    taf_entry: bool = False,
 ) -> dict[str, Any]:
     """Whether a bundle IS a charter-143 completion, read on what it buys.
+
+    ``taf_entry`` (charter 145): charter 90's TX-entry span -- every live
+    rung is the basket and it is read as multi-leg whatever it holds, so
+    the one test is that the worst in-window settlement improves.
 
     The exemption the completion carries past charter 93's floor, charter
     123's post-lift edge, charter 73's bundle score and the 5% execution
@@ -3852,11 +3914,13 @@ def completion_143_exemption_v1(
     added = {b: want[b] - held[b] for b in window}
     sent = _completion_143_sent(sent_shares_by_bucket)
     live = tuple(b for b in window if b not in dead)
-    basket = tuple(
+    basket = live if taf_entry else tuple(
         b for b in live if held[b] > EPS or sent is None or b in sent
     )
     held_legs = [b for b in basket if held[b] > EPS]
-    basket_type = completion_143_basket_type_v1(len(held_legs))
+    basket_type = (
+        "multi" if taf_entry else completion_143_basket_type_v1(len(held_legs))
+    )
     reason: str | None = None
     before = support_scenario_floor_v1(
         shares_by_bucket=held, cost_by_bucket=paid, support=basket
@@ -3917,6 +3981,7 @@ def completion_143_exemption_v1(
         "exempt": reason is None,
         "reason": reason,
         "basket_type": basket_type,
+        "taf_entry": bool(taf_entry),
         "floor_before": None if before is None else before["worst_in_support_pnl"],
         "floor_after": None if after is None else after["worst_in_support_pnl"],
         "floor_legal_after": None if after is None else bool(after["legal"]),

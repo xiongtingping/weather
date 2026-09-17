@@ -5760,6 +5760,12 @@ def _production_judge(
             .get("taf_tx_entry")
             else _completion_143_sent_shares(snapshot)
         ),
+        # Charter 145: the seat is charter 90's TX-entry span, which the
+        # exemption reads as multi-leg whatever it holds.
+        "completion_143_taf_entry": bool(
+            ((selection.get("seated") or {}).get("completion") or {})
+            .get("taf_tx_entry")
+        ),
         "target_shares": target,
         "delta_cost_usdc": delta_cost,
         "capital_usdc": capital,
@@ -5843,6 +5849,7 @@ def _completion_143_exempt_on_legs(
         ),
         hours_to_cutoff=verdict.get("hours_to_cutoff"),
         sent_shares_by_bucket=verdict.get("completion_143_sent_shares"),
+        taf_entry=bool(verdict.get("completion_143_taf_entry")),
     )["exempt"])
 
 
