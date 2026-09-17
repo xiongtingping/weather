@@ -10820,10 +10820,13 @@ height:28px;font-family:inherit;font-size:14px;line-height:1;flex:none}
 #theme:hover{color:var(--text);border-color:var(--accent)}
 /* Charter 141's dials made the live strip wider than the bar's first row.
    The theme button keeps its place at the end of that row (after the fill),
-   and the strip takes the next row, right-aligned under it, whatever the
-   width -- rather than the strip wrapping and pushing the button off. */
+   and the strip takes the next row from the bar's left edge -- the same edge
+   首页 and the section index below start on -- whatever the width, rather
+   than the strip wrapping and pushing the button off.  Right-aligned it
+   floated with its left edge mid-bar, lined up with nothing (user,
+   2026-09-17: "没有对齐"). */
 .navtop > #theme{order:1}
-.navtop > .navctl{order:2;margin-left:auto}
+.navtop > .navctl{order:2;margin-left:0}
 body > #theme{position:fixed;top:14px;right:16px;z-index:9;width:auto;
 padding:6px 12px;background:var(--card);box-shadow:var(--shadow)}
 /* Second row of the sticky bar: one chip per section on screen, so a
