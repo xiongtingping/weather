@@ -113,6 +113,12 @@ from bayes_basket_target.market_registry import (
     load_active_registry_rows,
 )
 from bayes_basket_target.settlement_time import settlement_day_window
+from bayes_basket_target.strategy_lanes import (
+    LANE_CERTAIN_WIN_RECYCLE,
+    LANE_MIS_BOUGHT_LEG_EXIT,
+    LANE_TIEBREAK,
+    lane_enabled,
+)
 from bayes_basket_target.production_worker import (
     DEFAULT_TARGET_ACTIVATION,
     DEFAULT_TARGET_MARKET_MANIFEST,
@@ -3296,8 +3302,13 @@ def run_target_production_cycle(
     # raised -- a take-profit convenience must not be able to stop the lane
     # that produces the positions it profits from.
     recycle_receipt: dict[str, Any] | None = None
-    if PRODUCTION_EXECUTION_MODE == "production_live":
-        canonical = getattr(worker, "canonical_source_conn", None)
+    canonical = getattr(worker, "canonical_source_conn", None)
+    if PRODUCTION_EXECUTION_MODE == "production_live" and not lane_enabled(
+        LANE_CERTAIN_WIN_RECYCLE
+    ):
+        # Charter 146: paused by the operator's lane switch, not retired.
+        recycle_receipt = {"state": "lane_paused", "lane": LANE_CERTAIN_WIN_RECYCLE}
+    elif PRODUCTION_EXECUTION_MODE == "production_live":
         if canonical is not None:
             try:
                 from bayes_basket_target.certain_win_recycle import (
@@ -3324,7 +3335,11 @@ def run_target_production_cycle(
     # connection, same sell transport, reported on the receipt rather than
     # raised.
     exit_receipt: dict[str, Any] | None = None
-    if PRODUCTION_EXECUTION_MODE == "production_live":
+    if PRODUCTION_EXECUTION_MODE == "production_live" and not lane_enabled(
+        LANE_MIS_BOUGHT_LEG_EXIT
+    ):
+        exit_receipt = {"state": "lane_paused", "lane": LANE_MIS_BOUGHT_LEG_EXIT}
+    elif PRODUCTION_EXECUTION_MODE == "production_live":
         try:
             from bayes_basket_target.exit_orders import (
                 default_transport as _exit_transport,
@@ -3343,6 +3358,39 @@ def run_target_production_cycle(
                 "ok": False,
                 "error": f"{type(exc).__name__}:{exc}",
             }
+    # 「秤砣线」-- the tiebreak lane (charter 146, user ruling 2026-09-18):
+    # at a stage's first decision, when the market is a coin toss between
+    # two adjacent buckets and the model's mode is the second one, buy the
+    # model's bucket, 20 USDC FOK at the ask, once per station-day.  Runs
+    # after the main cycle on the same writer connection; reads the fact
+    # rows that cycle wrote, so it sees exactly what the decision saw.  A
+    # failure is reported on the receipt rather than raised, as the two
+    # sell lanes are.
+    tiebreak_receipt: dict[str, Any] | None = None
+    if PRODUCTION_EXECUTION_MODE == "production_live" and not lane_enabled(
+        LANE_TIEBREAK
+    ):
+        tiebreak_receipt = {"state": "lane_paused", "lane": LANE_TIEBREAK}
+    elif PRODUCTION_EXECUTION_MODE == "production_live":
+        try:
+            from bayes_basket_target.exit_orders import (
+                default_transport as _buy_transport,
+            )
+            from bayes_basket_target.tiebreak_lane import (
+                execute_tiebreak_entries,
+            )
+            tiebreak_receipt = execute_tiebreak_entries(
+                connection,
+                canonical,
+                transport=_buy_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+            )
+        except Exception as exc:
+            tiebreak_receipt = {
+                "ok": False,
+                "error": f"{type(exc).__name__}:{exc}",
+            }
     return {
         **result,
         "post_cycle_resource_guard": {
@@ -3352,6 +3400,7 @@ def run_target_production_cycle(
         "target_cycle_runtime": runtime,
         **({"certain_win_recycle": recycle_receipt} if recycle_receipt else {}),
         **({"mis_bought_leg_exit": exit_receipt} if exit_receipt else {}),
+        **({"tiebreak_lane": tiebreak_receipt} if tiebreak_receipt else {}),
     }
 
 

@@ -33,6 +33,7 @@ from .execution_reconciliation import (
     record_order_event,
 )
 from .live_station_scope import admission as live_station_admission
+from .strategy_lanes import LANE_BASKET, lane_enabled
 
 
 SCHEMA = "bayes_basket_target_order_submission_v1"
@@ -561,6 +562,12 @@ def submit_prepared_intents(
     # Once per cycle, before the walk: the flag governs this pass, and asking
     # it per intent would let it change halfway through one basket.
     armed = live_intent_armed()
+    # Charter 146 (user ruling 2026-09-18): the basket lane's own switch,
+    # read once per pass beside the arming flag.  A paused lane compiles,
+    # reserves and records exactly as before; only its BUYs are held here,
+    # each ending ``failed`` with the reason on its event, so the pause is
+    # visible on every intent it stopped and reversible by one file.
+    basket_lane_enabled = lane_enabled(LANE_BASKET)
     # The station gate, resolved once per pass for the same reason the flag
     # is: a cycle trades one station, and asking per intent would let the
     # answer change halfway through one basket.
@@ -632,8 +639,11 @@ def submit_prepared_intents(
         # ruling meant to reduce risk would be the thing preventing the
         # reduction.  Exits are out of scope on the other path too, by
         # construction: certain_win_recycle only ever sells.
+        is_buy = str(intent["order_action"]).upper() == "BUY"
         admitted = (
-            _station_gate() if str(intent["order_action"]).upper() == "BUY"
+            {"admitted": False, "reason": f"strategy_lane_paused:{LANE_BASKET}"}
+            if is_buy and not basket_lane_enabled
+            else _station_gate() if is_buy
             else {"admitted": True, "reason": "exit_not_gated"}
         )
         if not live_submit_authorized or not armed or not admitted["admitted"]:
@@ -789,6 +799,8 @@ def submit_prepared_intents(
         "cycle_id": cycle_id,
         "live_submit_authorized": bool(live_submit_authorized),
         "live_intent_armed": bool(armed),
+        # Charter 146: the basket lane's own switch, as read for this pass.
+        "strategy_lane_basket_enabled": bool(basket_lane_enabled),
         # What this pass could actually do, not what the contract allows: a
         # receipt that says the gateway was callable while a lowered flag
         # held every send is a receipt that describes the wrong system.

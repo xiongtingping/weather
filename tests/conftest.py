@@ -14,6 +14,15 @@ os.environ.setdefault(
     "PM_CAPITAL_LAYER_CONFIG",
     os.path.join(os.path.dirname(__file__), "_no_capital_layer_config.json"),
 )
+# Charter 146: the strategy-lane switches are an operator file too (the
+# basket paused, the tiebreak lane live).  Tests run every lane as designed
+# -- a missing file reads as the defaults -- so an operator's pause does
+# not turn the submit-path tests red.  A test of the switch itself points
+# the path at its own copy.
+os.environ.setdefault(
+    "PM_STRATEGY_LANES_CONFIG",
+    os.path.join(os.path.dirname(__file__), "_no_strategy_lanes_config.json"),
+)
 
 
 @pytest.fixture(autouse=True)
