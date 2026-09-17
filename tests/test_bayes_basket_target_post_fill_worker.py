@@ -167,6 +167,14 @@ def test_authoritative_fill_request_recompiles_and_completes_atomically(
         "_event_day_open",
         staticmethod(lambda *_args, **_kwargs: True),
     )
+    # Charter 125 (c52267cc): every recompile reads the day's observed running
+    # high, through the market registry this fixture's ledger does not carry.
+    # The recompile's atomicity is the subject here, so the day has no high yet.
+    monkeypatch.setattr(
+        TargetProductionWorker,
+        "_observed_running_high_c",
+        lambda *_args, **_kwargs: None,
+    )
     compile_calls: list[dict] = []
 
     def compile_cycle(_conn: sqlite3.Connection, **kwargs: object) -> dict:

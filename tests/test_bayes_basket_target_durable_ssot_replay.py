@@ -348,11 +348,19 @@ def test_real_schema_replay_is_read_only_prefix_suffix_and_oos_nonblocking(
         "materialized_label_count": 0,
         "required_for_production_no_live_replay": False,
     }
+    # 1558ece5: forward data is never OOS and never blocks; what gates formal
+    # promotion is historical strict OOS, stated under ``historical_oos``.
+    # ``forward_oos`` survives only as a projection for older readers.
     assert full["forward_oos"] == {
         "consulted": False,
+        "future_data_counts_as_oos": False,
         "blocks_production_no_live": False,
-        "blocks_formal_parameter_promotion_or_live": True,
+        "blocks_formal_parameter_promotion_or_live": False,
     }
+    assert full["historical_oos"]["future_data_counts_as_oos"] is False
+    assert full["historical_oos"][
+        "historical_strict_oos_required_for_formal_parameter_promotion_or_live"
+    ] is True
     assert all(row["execution_policy"] == "NO_EXECUTION" for row in full["rows"])
     before = path.read_bytes()
     replay_durable_target_chain(

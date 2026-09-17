@@ -6,6 +6,7 @@ import sqlite3
 import pytest
 from tests.pr12_atomic_test_support import awc_contract, install_canonical_v12
 
+from bayes_basket_target.settlement_truth import CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1
 from bayes_basket_target.production import PRODUCTION_EXECUTION_MODE
 from bayes_basket_target.atomic_ledger import (
     AtomicLedgerError,
@@ -797,9 +798,12 @@ def test_final_label_waits_for_registry_close_and_accepted_truth() -> None:
         )
         """,
         (
-            "truth-1", STATION, EVENT_DATE, TZ, 38.2, "AMSC", "daily_high_c",
+            # The AWC settlement ingress is the only truth a delta-v2 label
+            # reads since 1558ece5, and the only lane the live table holds.
+            "truth-1", STATION, EVENT_DATE, TZ, 38.2, "AWC", "daily_high_c",
             0, "2026-07-24T04:01:00Z", "2026-07-24T04:01:01Z",
-            "2026-07-24T04:01:02Z", 1, "ACCEPTED", "formal_truth",
+            "2026-07-24T04:01:02Z", 1, "ACCEPTED",
+            CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
             SHA_B, "[]", "FORMAL_NATIVE_ELIGIBLE", SHA_C,
         ),
     )

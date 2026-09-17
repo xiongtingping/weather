@@ -262,6 +262,10 @@ def test_writer_reader_are_idempotent_and_scope_exact() -> None:
                 "observation_id": "obs-1",
                 "station_id": "RKPK",
                 "event_date": "2026-07-30",
+                # Required on a canonical observation since b0dcbbd5: the
+                # station-day is local, and a report cannot be placed in it
+                # without the zone it is local to.
+                "settlement_timezone": "Asia/Seoul",
                 "source_lane": "awc",
                 "report_type": "METAR",
                 "sequence": 1,

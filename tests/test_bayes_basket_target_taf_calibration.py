@@ -82,6 +82,11 @@ def test_awc_taf_fetch_bypasses_only_aviationweather_proxy(
         )
 
     monkeypatch.setattr(awc_capture.subprocess, "run", fake_run)
+    # The direct path is the default only when no proxy is selected, and this
+    # machine's shell exports HTTPS_PROXY -- read from the environment, the
+    # test measured the shell, not the fetch.
+    for name in ("AWC_HTTP_PROXY", "HTTPS_PROXY", "https_proxy"):
+        monkeypatch.delenv(name, raising=False)
 
     rows, _sha, size = awc_capture._fetch_json(
         "https://aviationweather.gov/api/data/taf?ids=RKPK",
@@ -93,6 +98,17 @@ def test_awc_taf_fetch_bypasses_only_aviationweather_proxy(
     assert captured[captured.index("--noproxy") + 1] == (
         "aviationweather.gov"
     )
+    assert "--proxy" not in captured
+
+    # An explicitly selected AWC proxy is used, and the direct flag is not.
+    captured.clear()
+    monkeypatch.setenv("AWC_HTTP_PROXY", "http://127.0.0.1:1082")
+    awc_capture._fetch_json(
+        "https://aviationweather.gov/api/data/taf?ids=RKPK",
+        timeout_sec=8,
+    )
+    assert captured[captured.index("--proxy") + 1] == "http://127.0.0.1:1082"
+    assert "--noproxy" not in captured
 
 
 def test_awc_taf_fetch_retries_only_transient_curl_failures(

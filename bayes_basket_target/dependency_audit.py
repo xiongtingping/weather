@@ -28,6 +28,32 @@ NON_MARKET_NETWORK_MODULES = frozenset(
         "bayes_basket_target/ecmwf_ifs_archive.py",
         "bayes_basket_target/noaa_gefs_archive.py",
         "bayes_basket_target/open_meteo_ensemble.py",
+        # Sources added after the list was written (found red 2026-09-17):
+        # each fetches weather or observation data from its own archive --
+        # DWD open data, ECCC Datamart, RISH Kyoto, the NOAA S3 buckets, the
+        # Open-Meteo CMA endpoint, aviationweather.gov -- and none reads a
+        # quote, a book or a tick.
+        "bayes_basket_target/awc_historical_gap_fetch.py",
+        "bayes_basket_target/cma_grapes_point_archive.py",
+        "bayes_basket_target/dwd_icon_eps_archive.py",
+        "bayes_basket_target/dwd_icon_eu_point_archive.py",
+        "bayes_basket_target/eccc_geps_archive.py",
+        "bayes_basket_target/historical_awc_replay.py",
+        "bayes_basket_target/icon_eps_native_arrival_index.py",
+        "bayes_basket_target/jma_msm_archive.py",
+        "bayes_basket_target/noaa_conus_archive.py",
+        "bayes_basket_target/republisher_native_forward_probe.py",
+        "bayes_basket_target/republisher_no_live_p0_contract.py",
+    }
+)
+# The account's own balance, not the market.  Charter 141 (2026-09-17) sizes
+# on the real account: cash from the loopback order gateway's /health and the
+# value of held positions from the data API.  Neither is a quote or a book,
+# so neither is a second market reader; kept apart from the weather sources
+# so the reason each module is exempt stays legible.
+ACCOUNT_NETWORK_MODULES = frozenset(
+    {
+        "bayes_basket_target/account_equity.py",
     }
 )
 FORBIDDEN_IMPORT_ROOTS = frozenset(
@@ -122,6 +148,7 @@ def audit_official_ws_dependencies(
                     legacy_import_hits.append({"file": relative, "line": int(node.lineno), "module": module})
                 if (
                     relative not in NON_MARKET_NETWORK_MODULES
+                    and relative not in ACCOUNT_NETWORK_MODULES
                     and _module_name(module) in FORBIDDEN_IMPORT_ROOTS
                 ):
                     import_hits.append({"file": relative, "line": int(node.lineno), "module": module})

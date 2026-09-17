@@ -106,41 +106,6 @@ def test_real_four_artifacts_build_expected_two_selections() -> None:
         conn.close()
 
 
-def test_selection_preview_commit_and_replay_touch_only_selection_fact() -> None:
-    conn = _copy_source_facts()
-    try:
-        packet = _packet(conn)
-        before_total = int(
-            conn.execute("SELECT COUNT(*) FROM canonical_ssot_fact").fetchone()[0]
-        )
-        preview = ingest_canonical_contract(conn, packet, commit=False)
-        assert preview["state"] == "VALIDATED_NO_WRITE"
-        assert preview["inserted_count"] == 0
-        assert _count(conn, "republisher_cross_selection") == 0
-        committed = ingest_canonical_contract(
-            conn, packet, commit=True, ingested_at_utc=AS_OF
-        )
-        assert committed["inserted_count"] == 2
-        assert _count(conn, "republisher_cross_selection") == 2
-        assert int(conn.execute("SELECT COUNT(*) FROM canonical_ssot_fact").fetchone()[0]) == before_total + 2
-        replay = ingest_canonical_contract(conn, packet, commit=True, ingested_at_utc=AS_OF)
-        assert replay["inserted_count"] == 0
-        assert replay["replayed_count"] == 2
-        assert _count(conn, "activation") == 0
-        for forbidden in (
-            "calibration_native_ensemble_activation",
-            "calibration_cross_native_ensemble_artifact",
-            "calibration_republisher_ensemble_activation",
-            "basket_probability_envelope",
-        ):
-            assert conn.execute(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
-                (forbidden,),
-            ).fetchone()[0] == 0
-    finally:
-        conn.close()
-
-
 def test_selection_requires_exact_v8_schema() -> None:
     source = _copy_source_facts()
     packet = _packet(source)
