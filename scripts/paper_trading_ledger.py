@@ -5754,7 +5754,12 @@ def _production_judge(
         "hours_to_cutoff": judge_hours_to_cutoff,
         # Charter 143 v2: the send history production's exemption reads, off
         # the same snapshot and the same helper.
-        "completion_143_sent_shares": _completion_143_sent_shares(snapshot),
+        "completion_143_sent_shares": (
+            None
+            if ((selection.get("seated") or {}).get("completion") or {})
+            .get("taf_tx_entry")
+            else _completion_143_sent_shares(snapshot)
+        ),
         "target_shares": target,
         "delta_cost_usdc": delta_cost,
         "capital_usdc": capital,
@@ -11358,6 +11363,20 @@ def backfill(
                             seat["buckets"], leg_shares
                         )
                     }
+                    # Charter 136 (五) / 143 v2: the seat is what the chain
+                    # POSTED, recorded here at posting.  Production's "sent"
+                    # is an exchange answer on the intent, a cancel included;
+                    # until 2026-09-17 this book recorded the seat only on a
+                    # fill, so a leg the venue cancelled was never one it
+                    # could complete while production could.  The size is
+                    # the posted size of a leg not yet held -- the one bound
+                    # charter 143 v2 reads.
+                    chain_intended.update(str(b) for b in intended_legs)
+                    chain_intended_shares.update({
+                        str(b): float(q) for b, q in intended_legs.items()
+                        if float(q) > 0.0
+                        and float(held.get(str(b), 0.0)) <= 1e-9
+                    })
                     # What each posted leg was priced to cost.  Sizing
                     # weights the share counts, not the cash, so the cash
                     # per leg is the share count times whatever the book
@@ -11530,11 +11549,6 @@ def backfill(
                             held_cost.get(bucket, 0.0) + float(cash)
                         )
                     chain_stake += stake
-                    chain_intended.update(str(b) for b in intended_legs)
-                    chain_intended_shares.update({
-                        str(b): float(q) for b, q in intended_legs.items()
-                        if float(q) > 0.0
-                    })
                     chain_probabilities = probabilities
                     chain_probability_identity = str(
                         payload.get("probability_identity") or ""

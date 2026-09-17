@@ -2277,9 +2277,8 @@ def test_charter_66_binds_production_and_ledger_together() -> None:
     # scored-window loop upstream of seat choice, where every window --
     # incumbent included -- passes through.
     # Charter 143 exempts a completion by held count, and nothing else.
-    assert "and not completion_143_winner\n            and holds_anything" in (
-        runtime_source
-    )
+    assert "and not completion_143_winner" in runtime_source
+    assert "and holds_anything" in runtime_source
     assert "and planned_total > inventory_cost + EPS" in runtime_source
     # The identity travels: rows record which sizing produced them.
     from paper_trading_ledger import SELECTION_RULE_SHA256  # noqa: PLC0415

@@ -510,3 +510,84 @@ def test_v2_the_ledger_hands_production_the_same_send_history() -> None:
         held_cost={"30": 1.25, "31": 2.15},
         leg_shares=[0.0, 0.0, 5.0], leg_cash=[0.0, 0.0, 3.0],
     ) is False
+
+
+# --- second review, 2026-09-17 evening (user: "再次全面检查是否还有bug和漏洞").
+
+
+def test_v2_the_taf_entry_window_needs_no_send_history() -> None:
+    """Charter 90: the TX leg entering a held basket has never been sent --
+    that is what entering means.  v2's send-history bound must not refuse
+    the one leg charter 90 exists to buy."""
+    from dataclasses import replace
+
+    snapshot = replace(
+        fixture._held_snapshot(ask_32=0.24),
+        chain_seat_buckets=("30", "31"), chain_sent_shares={"30": 5.0, "31": 5.0},
+    )
+
+    def balance(**kwargs):
+        rows = runtime._target_candidates(
+            snapshot=snapshot, desired=("30", "31", "32"),
+            artifact=fixture._delta_policy(), capital_available_usdc=10.0,
+            minimum_clip_notional_usdc=0.01,
+            bankroll_usdc=fixture._basket_policy().total_budget_usdc,
+            probabilities_by_bucket={r.bucket: r.probability for r in snapshot.buckets},
+            book_equity_usdc=514.29, **kwargs,
+        )
+        return [r for r in rows if r["candidate_origin"] == kernel.LADDER_BALANCE_CANDIDATE_ORIGIN]
+
+    assert balance() == []
+    entry = balance(taf_tx_entry=True)
+    assert len(entry) == 1 and entry[0]["completion_143"]["exempt"] is True
+    assert entry[0]["shares_by_bucket"]["32"] == 5.0
+
+
+def test_a_kelly_top_up_the_chain_law_refuses_does_not_take_the_completion_with_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The kernel seats a Kelly row ahead of the completion (charter 72);
+    the chain law then judges it as the top-up it is.  Refused, the window
+    used to fall with it and the certified completion was never asked.
+
+    On this fixture the Kelly row is floor-legal and takes the seat first;
+    with every adding chain read at par, 66(A) refuses it, the solve is
+    asked again without it, and the completion is seated."""
+    monkeypatch.setattr(runtime, "CHARTER_66A_CHAIN_PAR", "on")
+    monkeypatch.setattr(runtime, "_chain_blended_cost", lambda **kw: 1.5)
+    result = zgsz._compile(zgsz._snapshot(0.24))
+    solution = result["target_solution"]
+    assert solution["winner_candidate_origin"] == kernel.LADDER_BALANCE_CANDIDATE_ORIGIN
+    assert solution["winner_completion_rule"] == RULE
+    assert _short(result) == [("32", "TAKER_FOK")]
+    excluded = result["basket_support_selection"]["seated"]["chain_gate_excluded_candidate_ids"]
+    assert len(excluded) == 1 and excluded[0].startswith("kelly-")
+    # Without the retry the same window is refused outright.
+    set_charter_143(monkeypatch, "off")
+    held = zgsz._compile(zgsz._snapshot(0.24))
+    assert held["basket_target_activated"] is False
+
+
+def test_an_uncertified_shape_is_not_offered(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The build and the rule read the same ladder; force them apart and the
+    # candidate is withheld rather than sent to the support contract.
+    real = kernel.completion_143_exemption_v1
+
+    def refused(**kwargs):
+        return {**real(**kwargs), "exempt": False, "reason": "forced"}
+
+    monkeypatch.setattr(runtime, "completion_143_exemption_v1", refused)
+    snapshot = fixture._held_snapshot(ask_32=0.60)
+    rows = fixture._candidates(snapshot)
+    assert not [r for r in rows if r["candidate_origin"] == kernel.LADDER_BALANCE_CANDIDATE_ORIGIN]
+
+
+def test_v2_the_ledger_records_the_seat_at_posting_not_at_fill() -> None:
+    # Production's "sent" includes a leg the venue cancelled; the ledger's
+    # seat must be written where the order is posted, before the resting
+    # simulation decides whether it filled.
+    source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
+    posted = source.index("chain_intended_shares.update({")
+    assert source.count("chain_intended_shares.update({") == 1
+    assert posted < source.index('"resting_unfilled",\n                                "挂 %d 腿 · 成交量为零"')
+    assert posted > source.index("intended_legs = {\n                        str(bucket): float(quantity)")

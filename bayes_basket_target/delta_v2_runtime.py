@@ -2192,6 +2192,15 @@ def _support_windows(
             # v2: a leg the chain never sent is not missing -- it belongs to
             # a seat the label moved to (ZGGG 32C, ZSQD 27C, 2026-09-17).
             sent_143 = _completion_143_sent_shares(snapshot)
+            if (
+                taf_entry_window is not None
+                and frozenset(int(by_bucket[b].ordinal) for b in window)
+                == taf_entry_window
+            ):
+                # Charter 90: the TX-entry window is sanctioned whole on TAF
+                # authority; its legs need no send history (the TX leg has
+                # none by definition).
+                sent_143 = None
             sent_buyable = [
                 bucket for bucket in buyable
                 if sent_143 is None or bucket in sent_143
@@ -4326,9 +4335,7 @@ def _solve_over_support_windows(
                     ),
                 )
         try:
-            solution = solve_target_inventory_v2(
-                probabilities=window_probabilities,
-                feasible_inventory_candidates=_target_candidates(
+            window_candidates = _target_candidates(
                     snapshot=snapshot,
                     decision_moment=(
                         decision_moment and bool(row.get("admissible", True))
@@ -4379,7 +4386,153 @@ def _solve_over_support_windows(
                         if objective_form == KELLY_OBJECTIVE_FORM
                         else None
                     ),
-                ),
+            )
+        except ContractError as exc:
+            failures.append({
+                "buckets": list(window),
+                "reason": f"ContractError:{exc}",
+            })
+            continue
+        def _chain_gate_refusal(solution: Mapping[str, Any]) -> str | None:
+            """The chain law on a solved window -- 66(A), 71(a), 71(b) -- as
+            the reason it refuses, or ``None``.  A function so the solve can
+            be asked again with a refused row out of the running."""
+
+            # Charter 66 clause A.  Binds only when the plan spends new money
+            # on a station that already holds -- a HOLD (target == inventory)
+            # is never refused here, and an opening stage has no chain to
+            # protect.  Buckets the window cannot touch still pay and still
+            # cost, so they join the arithmetic before the division.
+            target_shares = {
+                str(bucket): float(quantity)
+                for bucket, quantity in (
+                    solution.get("target_shares_by_bucket") or {}
+                ).items()
+            }
+            target_cost = {
+                str(bucket): float(value)
+                for bucket, value in (
+                    solution.get("target_cost_by_bucket") or {}
+                ).items()
+            }
+            inventory_cost = 0.0
+            holds_anything = False
+            for bucket_row in snapshot.buckets:
+                inventory = (
+                    float(bucket_row.filled_shares)
+                    + float(bucket_row.pending_shares)
+                )
+                sunk_here = (
+                    float(bucket_row.filled_cost_usdc)
+                    + float(bucket_row.pending_notional_usdc)
+                )
+                inventory_cost += sunk_here
+                if inventory > EPS:
+                    holds_anything = True
+                    if bucket_row.bucket not in target_shares:
+                        target_shares[bucket_row.bucket] = inventory
+                        target_cost[bucket_row.bucket] = sunk_here
+            planned_total = sum(target_cost.values())
+            # Charter 143: a completion by held count answers to its own rule;
+            # the chain law on top-ups (66(A) par, 71(a) identity, 71(b) growth)
+            # is the reading it replaces -- each refuses a completion the rule
+            # was measured to want, on the same negative increment.
+            completion_143_winner = (
+                solution.get("winner_completion_rule") == COMPLETION_143_RULE_VERSION
+            )
+            if (
+                CHARTER_66A_CHAIN_PAR == "on"
+                and not completion_143_winner
+                and holds_anything
+                and planned_total > inventory_cost + EPS
+            ):
+                chain_cost = _chain_blended_cost(
+                    shares_by_bucket=target_shares,
+                    cost_total=planned_total,
+                    probabilities=probabilities,
+                )
+                if chain_cost is None or chain_cost >= CHAIN_COST_PAR_BOUND:
+                    return "chain_cost_at_par:%s" % (
+                        "%.4f" % chain_cost
+                        if chain_cost is not None else "no_expected_payout"
+                    )
+            # Charter 71 (user ruling, 2026-09-03): two hard gates on a
+            # top-up, judged on the increment.  (a) The probability this
+            # window is served must differ from the one the chain last
+            # bought under -- the book moving is not a reason to buy.  (b)
+            # The buy must improve the chain's expected log wealth read on
+            # the charter-68 partition, lambda*p, from the held curve.  An
+            # unknown last-acted identity cannot bind (a): the gate refuses
+            # on evidence, never on its absence, and the audit names it.
+            if (
+                holds_anything
+                and not completion_143_winner
+                and planned_total > inventory_cost + EPS
+            ):
+                # Charter 90: the TX leg entering the basket is bought on TAF
+                # evidence the vector does not carry; gate (a) yields to it.
+                if (
+                    CHARTER_71A_TOPUP_IDENTITY == "on"
+                    and not bool(row.get("taf_tx_entry"))
+                    and last_acted_probability_identity
+                    and probability_identity
+                    and str(last_acted_probability_identity)
+                    == str(probability_identity)
+                ):
+                    return "topup_requires_probability_change"
+                inventory_by_bucket: dict[str, float] = {}
+                for bucket_row in snapshot.buckets:
+                    inventory = (
+                        float(bucket_row.filled_shares)
+                        + float(bucket_row.pending_shares)
+                    )
+                    if inventory > EPS:
+                        inventory_by_bucket[str(bucket_row.bucket)] = inventory
+                bought_by_bucket: dict[str, float] = {}
+                for bucket, quantity in target_shares.items():
+                    increment = float(quantity) - inventory_by_bucket.get(
+                        str(bucket), 0.0
+                    )
+                    if increment > EPS:
+                        bought_by_bucket[str(bucket)] = increment
+                # (b) binds on the scope's own frame -- the book's 2%, the
+                # number the ledger frames it in -- which the caller knows
+                # only when it knows the book.  Without it the gate cannot
+                # bind, and the audit says so.
+                if (
+                    CHARTER_71B_CHAIN_GROWTH == "on"
+                    and chain_growth_frame_usdc is not None
+                    and float(chain_growth_frame_usdc) > 0.0
+                ):
+                    growth = chain_topup_growth_v1(
+                        held=inventory_by_bucket,
+                        bought=bought_by_bucket,
+                        probabilities=window_probabilities,
+                        spend=planned_total - inventory_cost,
+                        bankroll=float(chain_growth_frame_usdc),
+                    )
+                    if not growth > 0.0:
+                        return "no_chain_growth:%s" % (
+                            "%.4f" % growth
+                            if math.isfinite(growth) else "-inf"
+                        )
+            return None
+
+        # Charter 143: the kernel seats a Kelly row ahead of the completion
+        # (charter 72's law), and the chain law then judges the Kelly row as
+        # the top-up it is.  Refused, it used to take the window down with
+        # it -- the completion the rule had certified was never asked.  The
+        # solve is asked again with the refused Kelly row out of the running,
+        # once; a completion by held count answers to its own rule, and the
+        # chain law is not put to it.
+        local_excluded = tuple(excluded_candidate_ids)
+        solution = None
+        refused_reason: str | None = None
+        while True:
+            try:
+                solution = solve_target_inventory_v2(
+                probabilities=window_probabilities,
+                feasible_inventory_candidates=window_candidates,
                 # The floor guards the whole live set exactly when full
                 # coverage is structurally possible (charter 38, amended
                 # 2026-08-14).  While the hard bound still holds more live
@@ -4414,7 +4567,7 @@ def _solve_over_support_windows(
                     (row.get("completion") or {}).get("market_dead_buckets")
                     or ()
                 ),
-                excluded_candidate_ids=tuple(excluded_candidate_ids),
+                excluded_candidate_ids=local_excluded,
                 shortfall_buckets=tuple(sorted(shortfall & set(window))),
                 breakthrough_buckets=tuple(
                     sorted(breakthrough & set(window))
@@ -4422,146 +4575,36 @@ def _solve_over_support_windows(
                 weights=delta_policy.value_weights,
                 objective_form=objective_form,
                 bankroll_usdc=bankroll_usdc,
-            )
-        except ContractError as exc:
-            # One infeasible window -- no legal shape at these prices, or a
-            # candidate lattice too wide -- must not deny the others their
-            # comparison.  It is recorded, not silently dropped.
+                )
+            except ContractError as exc:
+                # One infeasible window -- no legal shape at these prices, or
+                # a candidate lattice too wide -- must not deny the others
+                # their comparison.  It is recorded, not silently dropped.
+                refused_reason = f"ContractError:{exc}"
+                solution = None
+                break
+            refused_reason = _chain_gate_refusal(solution)
+            if refused_reason is None:
+                break
+            winner_id = str(solution.get("winner_candidate_id") or "")
+            if (
+                str(solution.get("winner_candidate_origin") or "")
+                == KELLY_CANDIDATE_ORIGIN
+                and (row.get("completion") or {}).get("admitted_by")
+                == COMPLETION_143_RULE_VERSION
+                and winner_id
+                and winner_id not in local_excluded
+            ):
+                local_excluded += (winner_id,)
+                continue
+            solution = None
+            break
+        if solution is None:
             failures.append({
                 "buckets": list(window),
-                "reason": f"ContractError:{exc}",
+                "reason": str(refused_reason or "unsolved"),
             })
             continue
-        # Charter 66 clause A.  Binds only when the plan spends new money
-        # on a station that already holds -- a HOLD (target == inventory)
-        # is never refused here, and an opening stage has no chain to
-        # protect.  Buckets the window cannot touch still pay and still
-        # cost, so they join the arithmetic before the division.
-        target_shares = {
-            str(bucket): float(quantity)
-            for bucket, quantity in (
-                solution.get("target_shares_by_bucket") or {}
-            ).items()
-        }
-        target_cost = {
-            str(bucket): float(value)
-            for bucket, value in (
-                solution.get("target_cost_by_bucket") or {}
-            ).items()
-        }
-        inventory_cost = 0.0
-        holds_anything = False
-        for bucket_row in snapshot.buckets:
-            inventory = (
-                float(bucket_row.filled_shares)
-                + float(bucket_row.pending_shares)
-            )
-            sunk_here = (
-                float(bucket_row.filled_cost_usdc)
-                + float(bucket_row.pending_notional_usdc)
-            )
-            inventory_cost += sunk_here
-            if inventory > EPS:
-                holds_anything = True
-                if bucket_row.bucket not in target_shares:
-                    target_shares[bucket_row.bucket] = inventory
-                    target_cost[bucket_row.bucket] = sunk_here
-        planned_total = sum(target_cost.values())
-        # Charter 143: a completion by held count answers to its own rule;
-        # the chain law on top-ups (66(A) par, 71(a) identity, 71(b) growth)
-        # is the reading it replaces -- each refuses a completion the rule
-        # was measured to want, on the same negative increment.
-        completion_143_winner = (
-            solution.get("winner_completion_rule") == COMPLETION_143_RULE_VERSION
-        )
-        if (
-            CHARTER_66A_CHAIN_PAR == "on"
-            and not completion_143_winner
-            and holds_anything
-            and planned_total > inventory_cost + EPS
-        ):
-            chain_cost = _chain_blended_cost(
-                shares_by_bucket=target_shares,
-                cost_total=planned_total,
-                probabilities=probabilities,
-            )
-            if chain_cost is None or chain_cost >= CHAIN_COST_PAR_BOUND:
-                failures.append({
-                    "buckets": list(window),
-                    "reason": "chain_cost_at_par:%s" % (
-                        "%.4f" % chain_cost
-                        if chain_cost is not None else "no_expected_payout"
-                    ),
-                })
-                continue
-        # Charter 71 (user ruling, 2026-09-03): two hard gates on a
-        # top-up, judged on the increment.  (a) The probability this
-        # window is served must differ from the one the chain last
-        # bought under -- the book moving is not a reason to buy.  (b)
-        # The buy must improve the chain's expected log wealth read on
-        # the charter-68 partition, lambda*p, from the held curve.  An
-        # unknown last-acted identity cannot bind (a): the gate refuses
-        # on evidence, never on its absence, and the audit names it.
-        if (
-            holds_anything
-            and not completion_143_winner
-            and planned_total > inventory_cost + EPS
-        ):
-            # Charter 90: the TX leg entering the basket is bought on TAF
-            # evidence the vector does not carry; gate (a) yields to it.
-            if (
-                CHARTER_71A_TOPUP_IDENTITY == "on"
-                and not bool(row.get("taf_tx_entry"))
-                and last_acted_probability_identity
-                and probability_identity
-                and str(last_acted_probability_identity)
-                == str(probability_identity)
-            ):
-                failures.append({
-                    "buckets": list(window),
-                    "reason": "topup_requires_probability_change",
-                })
-                continue
-            inventory_by_bucket: dict[str, float] = {}
-            for bucket_row in snapshot.buckets:
-                inventory = (
-                    float(bucket_row.filled_shares)
-                    + float(bucket_row.pending_shares)
-                )
-                if inventory > EPS:
-                    inventory_by_bucket[str(bucket_row.bucket)] = inventory
-            bought_by_bucket: dict[str, float] = {}
-            for bucket, quantity in target_shares.items():
-                increment = float(quantity) - inventory_by_bucket.get(
-                    str(bucket), 0.0
-                )
-                if increment > EPS:
-                    bought_by_bucket[str(bucket)] = increment
-            # (b) binds on the scope's own frame -- the book's 2%, the
-            # number the ledger frames it in -- which the caller knows
-            # only when it knows the book.  Without it the gate cannot
-            # bind, and the audit says so.
-            if (
-                CHARTER_71B_CHAIN_GROWTH == "on"
-                and chain_growth_frame_usdc is not None
-                and float(chain_growth_frame_usdc) > 0.0
-            ):
-                growth = chain_topup_growth_v1(
-                    held=inventory_by_bucket,
-                    bought=bought_by_bucket,
-                    probabilities=window_probabilities,
-                    spend=planned_total - inventory_cost,
-                    bankroll=float(chain_growth_frame_usdc),
-                )
-                if not growth > 0.0:
-                    failures.append({
-                        "buckets": list(window),
-                        "reason": "no_chain_growth:%s" % (
-                            "%.4f" % growth
-                            if math.isfinite(growth) else "-inf"
-                        ),
-                    })
-                    continue
         score = (
             solution["target_curve_score"]
             if objective_form in (CURVE_OBJECTIVE_FORM, KELLY_OBJECTIVE_FORM)
@@ -4571,6 +4614,11 @@ def _solve_over_support_windows(
             "window": row,
             "solution": solution,
             "score": float(score),
+            # Charter 143: Kelly rows the chain law refused before the
+            # completion was seated on this window; empty on every other.
+            "chain_gate_excluded_candidate_ids": list(
+                local_excluded[len(tuple(excluded_candidate_ids)):]
+            ),
             # The belief this window was judged on, for the execution
             # layer's edge rule (charter 73).
             "window_probabilities": {
@@ -4728,6 +4776,11 @@ def _solve_over_support_windows(
             "admissible": bool(best["window"].get("admissible", True)),
             "window_probabilities": dict(best["window_probabilities"]),
             "completion": best["window"].get("completion"),
+            # Charter 143: Kelly rows the chain law refused before this
+            # window's completion was seated; empty on every other seat.
+            "chain_gate_excluded_candidate_ids": list(
+                best.get("chain_gate_excluded_candidate_ids") or []
+            ),
         },
         # Charter 131 (14): BUILDING never reads as protected.
         "chain_protection": chain_protection_v1(
@@ -4923,8 +4976,8 @@ def _target_candidates(
     # Charter 131 (2026-09-12 evening): P0-M does not open a chain, TAF or
     # no TAF -- there must be a P0.  Charter 90's one later-stage opening is
     # retired; ``taf_tx_entry`` only lets an entry leg join a HELD basket,
-    # which is not an opening and needs no exemption here.
-    del taf_tx_entry
+    # which is not an opening and needs no exemption here.  Charter 143 v2
+    # reads it once more: the entry window's legs need no send history.
     later_stage_on_empty_chain = (
         chain_empty and stage_name not in CHAIN_OPENING_STAGES
     )
@@ -5037,8 +5090,11 @@ def _target_candidates(
             # (``window_probabilities``), which is what the kernel requires.
             probabilities_by_bucket=probabilities_by_bucket,
             hours_to_cutoff=hours_to_cutoff,
-            # Charter 143 v2: only legs the chain sent, at most at their size.
-            sent_shares_by_bucket=_completion_143_sent_shares(snapshot),
+            # Charter 143 v2: only legs the chain sent, at most at their size
+            # -- except on charter 90's entry window, sanctioned whole.
+            sent_shares_by_bucket=(
+                None if taf_tx_entry else _completion_143_sent_shares(snapshot)
+            ),
         )
         if balance_candidate is not None:
             candidates.append(balance_candidate)
@@ -5630,6 +5686,11 @@ def _ladder_balance_candidate(
                 and shares[bucket] <= EPS
             ],
         }
+        if not completion_143["exempt"]:
+            # The build and the rule read the same ladder, so this can only
+            # fire on a defect; offered anyway, a shape with a declined leg
+            # would fail the support contract and take the window with it.
+            return None
     return {
         **({"completion_143": completion_143} if completion_143 else {}),
         "candidate_id": "balance-" + content_sha256({
@@ -6870,7 +6931,12 @@ def compile_delta_v2_runtime_plan(
                     .get("market_dead_buckets") or ()
                 ),
                 hours_to_cutoff=hours_to_cutoff,
-                sent_shares_by_bucket=_completion_143_sent_shares(snapshot),
+                sent_shares_by_bucket=(
+                    None
+                    if ((support_selection.get("seated") or {}).get("completion") or {})
+                    .get("taf_tx_entry")
+                    else _completion_143_sent_shares(snapshot)
+                ),
             )
         completion_143_exempt = bool(
             completion_143_after_lift and completion_143_after_lift["exempt"]
