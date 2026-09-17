@@ -3303,13 +3303,13 @@ def run_target_production_cycle(
                 from bayes_basket_target.certain_win_recycle import (
                     execute_certain_win_recycles,
                 )
-                from bayes_basket_target.production import (
-                    _default_order_transport,
+                from bayes_basket_target.exit_orders import (
+                    default_transport as _sell_transport,
                 )
                 recycle_receipt = execute_certain_win_recycles(
                     connection,
                     canonical,
-                    transport=_default_order_transport,
+                    transport=_sell_transport,
                     now_utc=utc_now(),
                     live_submit_authorized=True,
                 )
@@ -3318,15 +3318,18 @@ def run_target_production_cycle(
                     "ok": False,
                     "error": f"{type(exc).__name__}:{exc}",
                 }
-    # The mis-bought-leg exit (user ruling 2026-09-17: "卖"): the shares the
-    # completion rule bought outside its own definition are sold into the
-    # bid when the bid is at or above the served probability.  Same writer
-    # connection, same transport, reported on the receipt rather than raised.
+    # The mis-bought-leg exit (user ruling 2026-09-17: "卖", then "不符合缺腿
+    # 条件的全部卖出"): the shares the completion rule bought outside its own
+    # definition are sold into the bid, whatever the bid is.  Same writer
+    # connection, same sell transport, reported on the receipt rather than
+    # raised.
     exit_receipt: dict[str, Any] | None = None
     if PRODUCTION_EXECUTION_MODE == "production_live":
         try:
-            from bayes_basket_target.mis_bought_leg_exit import (
+            from bayes_basket_target.exit_orders import (
                 default_transport as _exit_transport,
+            )
+            from bayes_basket_target.mis_bought_leg_exit import (
                 execute_mis_bought_leg_exits,
             )
             exit_receipt = execute_mis_bought_leg_exits(

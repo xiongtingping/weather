@@ -36,15 +36,15 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .contracts import ContractError, content_sha256
-from .execution_reconciliation import can_submit_next_order, record_order_event
-from .inventory_producer import ledger_holdings_by_token
-from .order_submission import (
-    BASKET_STRATEGY_ID,
-    PLACE_ORDER_PATH,
-    classify_submission_response,
-    fill_quantities,
-    live_intent_armed,
+from .exit_orders import (
+    TRANSPORT_TIMEOUT_SECONDS,
+    default_transport,
+    lane_sold_and_open,
+    send_exit_sell,
+    wall_clock_utc,
 )
+from .inventory_producer import ledger_holdings_by_token
+from .order_submission import live_intent_armed
 from .production_io import load_chain_sent_shares
 from .settlement_time import settlement_day_state
 
@@ -78,34 +78,6 @@ MAX_BID_AGE_SECONDS = 900.0
 # earlier.
 GTD_HORIZON_SECONDS = 300
 DEFAULT_MIN_ORDER_SHARES = 5.0
-# A sell makes the gateway fetch the token's conditional balance before it
-# signs; four of the first eleven timed out at the basket lanes' 15s.
-TRANSPORT_TIMEOUT_SECONDS = 45.0
-
-
-def wall_clock_utc() -> str:
-    """The moment an order is sent, for its expiry and its event clock."""
-
-    return _iso(datetime.now(timezone.utc))
-
-
-def default_transport(path: str, payload: Mapping[str, Any]) -> Mapping[str, Any]:
-    """The one local gateway, reached the one approved way, with this lane's
-    longer patience for a sell."""
-
-    import sys  # noqa: PLC0415
-    from pathlib import Path as _Path  # noqa: PLC0415
-
-    root = str(_Path(__file__).resolve().parents[1])
-    if root not in sys.path:
-        sys.path.insert(0, root)
-    from clob_order_service_client import ClobOrderServiceClient  # noqa: PLC0415
-
-    if path != PLACE_ORDER_PATH:
-        raise ContractError("mis_bought_leg_exit_transport_unknown_path")
-    return ClobOrderServiceClient(timeout_seconds=TRANSPORT_TIMEOUT_SECONDS).place_order(payload)
-
-
 def _utc(value: str) -> datetime:
     return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
 
@@ -185,30 +157,6 @@ def mis_bought_legs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             "rule": fact_cache[key],
         })
     return list(legs.values())
-
-
-def _sold_by_this_lane(conn: sqlite3.Connection, *, station_id: str, event_date: str, bucket: str) -> tuple[float, bool]:
-    """Shares this lane has already sold on the leg, and whether one of its
-    sells is still open (pending or unresolved) -- which blocks another."""
-
-    rows = conn.execute(
-        "SELECT i.state, COALESCE(r.state, ''), COALESCE(r.filled_size, 0)"
-        " FROM basket_target_order_intents i"
-        " LEFT JOIN basket_target_order_reconciliations r"
-        "   ON r.order_intent_id=i.order_intent_id"
-        " WHERE i.order_intent_id LIKE ? AND i.order_action='SELL'"
-        "   AND i.bucket=? AND i.decision_id=?",
-        (INTENT_PREFIX + "_%", bucket, _decision_id(station_id, event_date)),
-    ).fetchall()
-    sold = 0.0
-    open_order = False
-    for intent_state, reconciliation_state, filled in rows:
-        sold += float(filled or 0.0)
-        if str(intent_state) in {"prepared", "submitting", "submitted", "reconcile_required"} and str(
-            reconciliation_state
-        ) not in {"resolved_filled", "resolved_cancelled", "resolved_failed", "resolved_expired", "resolved_not_placed"}:
-            open_order = True
-    return sold, open_order
 
 
 def _decision_id(station_id: str, event_date: str) -> str:
@@ -325,7 +273,7 @@ def plan_mis_bought_leg_exits(
             # Settlement or the recycle lane owns a closed day.
             reading["skipped"] = "day_closed"
             continue
-        sold, open_order = _sold_by_this_lane(conn, station_id=station_id, event_date=event_date, bucket=bucket)
+        sold, open_order = lane_sold_and_open(conn, lane=INTENT_PREFIX, station_id=station_id, event_date=event_date, bucket=bucket)
         reading["sold_shares"] = round(sold, 6)
         if open_order:
             reading["skipped"] = "sell_open"
@@ -400,7 +348,6 @@ def execute_mis_bought_leg_exits(
     """Mint the intents, send the GTD sells, record what came back."""
 
     planned = plan_mis_bought_leg_exits(conn, now_utc=now_utc, claim_reader=claim_reader, bid_reader=bid_reader)
-    armed = live_intent_armed()
     receipts: list[dict[str, Any]] = []
     submitted = 0
     for plan in planned["plans"]:
@@ -410,113 +357,41 @@ def execute_mis_bought_leg_exits(
         ).fetchone():
             receipts.append({"order_intent_id": intent_id, "state": "already_minted"})
             continue
-        cycle_id = f"{INTENT_PREFIX}_cycle_{content_sha256({'intent': intent_id})[:32]}"
-        plan_sha = content_sha256(plan)
-        conn.execute(
-            "INSERT INTO basket_target_execution_cycles(cycle_id,plan_id,station_id,event_date,"
-            "settlement_timezone,strategy_lane,plan_sha256,requested_reserve_usdc,state,created_at,updated_at)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-            (cycle_id, f"{INTENT_PREFIX}_plan_{plan_sha[:32]}", plan["station_id"], plan["event_date"],
-             plan["settlement_timezone"], "basket", plan_sha, 0.0, "submitting", now_utc, now_utc),
+        # The expiry counts from the moment this order is sent, not from the
+        # cycle's clock: the first live batch stamped eleven sells with one
+        # expiry and the last two were refused ``gtd_expiration_too_soon``.
+        expiration = int(_utc(wall_clock_utc()).timestamp()) + GTD_HORIZON_SECONDS
+        entry = send_exit_sell(
+            conn, lane=INTENT_PREFIX, intent_id=intent_id,
+            station_id=plan["station_id"], event_date=plan["event_date"],
+            settlement_timezone=plan["settlement_timezone"], bucket=plan["bucket"],
+            token_id=plan["token_id"], price=plan["limit_price"], shares=plan["shares"],
+            order_type="GTD", post_only=False, expiration=expiration,
+            intent_body={"schema": "mis_bought_leg_exit_intent_v1", "rule": RULE_VERSION,
+                         "execution_candidate": "EXIT_GTD", "plan": plan},
+            transport=transport, live_submit_authorized=live_submit_authorized,
         )
-        sent_at = wall_clock_utc()
-        expiration = int(_utc(sent_at).timestamp()) + GTD_HORIZON_SECONDS
-        intent_body = {
-            "schema": "mis_bought_leg_exit_intent_v1",
-            "rule": RULE_VERSION,
-            "execution_candidate": "EXIT_GTD",
-            "order_type": "GTD",
-            "post_only": False,
-            "expiration": expiration,
-            "live_submit_authorized": bool(live_submit_authorized),
-            "plan": plan,
-        }
-        conn.execute(
-            "INSERT INTO basket_target_order_intents(order_intent_id,decision_id,cycle_id,bucket,"
-            "token_id,side,order_action,limit_price,requested_size,requested_notional_usdc,state,"
-            "live_submit_authorized,idempotency_key,intent_json,intent_sha256,created_at,"
-            "target_execution_hard_deadline_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (intent_id, _decision_id(plan["station_id"], plan["event_date"]), cycle_id, plan["bucket"],
-             plan["token_id"], "YES", "SELL", plan["limit_price"], plan["shares"],
-             round(plan["shares"] * plan["limit_price"], 6), "prepared", 1 if live_submit_authorized else 0,
-             intent_id, json.dumps(intent_body, ensure_ascii=False, sort_keys=True), content_sha256(intent_body),
-             sent_at, None),
-        )
-        gate = can_submit_next_order(conn, bucket=plan["bucket"], token_id=plan["token_id"], exclude_order_intent_id=intent_id, same_cycle_id=cycle_id)
-        payload = {
-            "strategy_id": BASKET_STRATEGY_ID,
-            "order_intent_id": intent_id,
-            "idempotency_key": intent_id,
-            "token_id": plan["token_id"],
-            "outcome_side": "YES",
-            "side": "SELL",
-            "price": plan["limit_price"],
-            "size": plan["shares"],
-            "order_type": "GTD",
-            "post_only": False,
-            "expiration": expiration,
-        }
-        entry: dict[str, Any] = {"order_intent_id": intent_id, "station_id": plan["station_id"], "bucket": plan["bucket"], "shares": plan["shares"], "limit_price": plan["limit_price"]}
-        if gate.get("allowed") is not True or not live_submit_authorized or not armed:
-            reason = (
-                str(gate.get("reason") or "sequential_gate_blocked") if gate.get("allowed") is not True
-                else "live_submit_not_authorized" if not live_submit_authorized else "live_intent_disarmed"
-            )
-            receipt = record_order_event(conn, order_intent_id=intent_id, event={
-                "event_type": "NEVER_REACHED_EXCHANGE", "exchange_order_id": "", "observed_at": sent_at,
-                "matched_size": 0.0, "matched_notional_usdc": 0.0,
-                "event_payload": {"idempotency_key": intent_id, "payload_sha256": content_sha256(payload), "reason": reason, "source": "mis_bought_leg_exit"},
-            })
-            entry.update({"state": receipt.get("state"), "reason": reason})
-            receipts.append(entry)
-            _close_cycle(conn, cycle_id, wall_clock_utc())
-            continue
-        response = transport(PLACE_ORDER_PATH, payload)
-        outcome = classify_submission_response(response, order_type="GTD")
-        if not outcome["submitted"]:
-            receipt = record_order_event(conn, order_intent_id=intent_id, event={
-                "event_type": outcome["event_type"], "exchange_order_id": "", "observed_at": wall_clock_utc(),
-                "matched_size": 0.0, "matched_notional_usdc": 0.0,
-                "event_payload": {"idempotency_key": intent_id, "payload_sha256": content_sha256(payload), "reason": outcome["reason"], "source": str(response.get("source") or ""), "http_status": response.get("http_status")},
-            })
-            entry.update({"state": receipt.get("state"), "event_type": outcome["event_type"], "reason": outcome["reason"]})
-            receipts.append(entry)
-            _close_cycle(conn, cycle_id, wall_clock_utc())
-            continue
-        fill = outcome.get("fill") or {}
-        matched_size, matched_notional = fill_quantities(fill, event_type=outcome["event_type"], order_action="SELL", limit_price=float(plan["limit_price"]))
-        receipt = record_order_event(conn, order_intent_id=intent_id, event={
-            "event_type": outcome["event_type"],
-            "exchange_order_id": str(fill.get("exchange_order_id") or response.get("exchange_order_id") or ""),
-            "observed_at": wall_clock_utc(), "matched_size": matched_size, "matched_notional_usdc": matched_notional,
-            "event_payload": {"idempotency_key": intent_id, "payload_sha256": content_sha256(payload), "reason": outcome["reason"], "source": str(response.get("source") or ""), "exchange_status": str(fill.get("status") or "")},
-        })
-        submitted += 1
-        entry.update({"state": receipt.get("state"), "event_type": outcome["event_type"], "matched_size": matched_size, "matched_notional_usdc": matched_notional})
+        if entry.get("exchange_post_started"):
+            submitted += 1
         receipts.append(entry)
-        _close_cycle(conn, cycle_id, wall_clock_utc())
     return {
         "schema": "mis_bought_leg_exit_receipt_v1",
         "rule": RULE_VERSION,
         "mode": MIS_BOUGHT_LEG_EXIT,
         "planned": len(planned["plans"]),
         "submitted": submitted,
-        "live_intent_armed": bool(armed),
+        "live_intent_armed": bool(live_intent_armed()),
         "receipts": receipts,
         "readings": planned["readings"],
     }
 
 
-def _close_cycle(conn: sqlite3.Connection, cycle_id: str, now_utc: str) -> None:
-    conn.execute(
-        "UPDATE basket_target_execution_cycles SET state='submitted', updated_at=? WHERE cycle_id=?",
-        (now_utc, cycle_id),
-    )
-
-
 __all__ = [
     "MIS_BOUGHT_LEG_EXIT",
     "RULE_VERSION",
+    "TRANSPORT_TIMEOUT_SECONDS",
+    "default_transport",
+    "wall_clock_utc",
     "mis_bought_legs",
     "plan_mis_bought_leg_exits",
     "execute_mis_bought_leg_exits",

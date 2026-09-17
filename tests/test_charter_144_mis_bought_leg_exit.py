@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from bayes_basket_target import exit_orders
 from bayes_basket_target import mis_bought_leg_exit as lane
 from bayes_basket_target.atomic_ledger import apply_target_ledger_schema
 from bayes_basket_target.execution_reconciliation import record_order_event
@@ -159,9 +160,11 @@ def test_off_sells_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_the_sell_is_a_gtd_at_the_bid_recorded_like_any_order_and_never_sold_twice(monkeypatch: pytest.MonkeyPatch) -> None:
     conn = _store()
+    monkeypatch.setattr(exit_orders, "live_intent_armed", lambda: True)
     monkeypatch.setattr(lane, "live_intent_armed", lambda: True)
     # The expiry and the event clock are the SEND moment, per order.
     monkeypatch.setattr(lane, "wall_clock_utc", lambda: "2026-09-17T12:02:30.000Z")
+    monkeypatch.setattr(exit_orders, "wall_clock_utc", lambda: "2026-09-17T12:02:30.000Z")
     sent: list[dict] = []
 
     def transport(path, payload):
@@ -206,6 +209,7 @@ def test_the_sell_is_a_gtd_at_the_bid_recorded_like_any_order_and_never_sold_twi
 
 def test_disarmed_or_unauthorized_never_reaches_the_exchange(monkeypatch: pytest.MonkeyPatch) -> None:
     conn = _store()
+    monkeypatch.setattr(exit_orders, "live_intent_armed", lambda: False)
     monkeypatch.setattr(lane, "live_intent_armed", lambda: False)
     calls: list = []
     receipt = lane.execute_mis_bought_leg_exits(conn, transport=lambda p, payload: calls.append(payload), now_utc=NOW, live_submit_authorized=True, claim_reader=_claim(None), bid_reader=_bids({"27°C": [(0.21, 7.4)]}))
