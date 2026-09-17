@@ -13587,7 +13587,7 @@ function edgeMap(){
     <div class="em-two">
       <div class="em-band em-audit">
         <div class="em-cap">验收：这个公式赢没赢市场（到底有没有 edge）</div>
-        ${node("宪章 EV 恒等式","宪章 EV 恒等式","k = Cov/Var 低于 1 ⇔ w 大于 0")}
+        ${node("宪章 EV 恒等式","宪章 EV 恒等式","量原始 p 对 m，不经过 L4：k 低于 1 说明 p 有市场没有的信息")}
         ${node("L4 后验层（影子）","L4 前瞻技能分 S","log b − log m 的按日下界大于 0 才算赢")}
       </div>
       <div class="em-band em-shadow">
@@ -16545,7 +16545,7 @@ const GROUPS = [
    intro: edgeMap,
    sections:[
      {sub:"① 验收：这个公式赢没赢市场（到底有没有 edge）", status:"audit",
-      note:"读真值，不参与决策。k 低于 1 ⇔ w 大于 0；真值跟价格走说明该信 m"},
+      note:"读真值，不参与决策。EV 恒等式量的是模型原始 p（不是 L4 的 b）有没有市场没有的信息；L4 自己赢没赢看 L4 小节的前瞻技能分"},
      [charterEv,"宪章 EV 恒等式"],
      [truthLanding,"真值落位"],
      {sub:"② 实盘此刻用来代替 w 的：λ 表", status:"live",
@@ -16645,7 +16645,7 @@ const LANES = {
     role:"单系统校准与融合之后，服务概率按离中心距离兑现多少 → 按档修正尾形残差（市场不进）"},
   // --- edge: what our probability is worth against the market ---
   "宪章 EV 恒等式": {layer:"边际层 · ① 验收", status:"audit",
-    role:"edge = 市场的错 − 模型的错 = Var(e_q) − Cov(e_p,e_q)；k = Cov/Var 低于 1 ⇔ L4 的 w 大于 0"},
+    role:"edge = 市场的错 − 模型的错 = Var(e_q) − Cov(e_p,e_q)，量的是原始 p 对 m（概率空间、整梯、不经过 L4）；k 低于 1 才有 edge"},
   "真值落位": {layer:"边际层 · ① 验收", status:"audit",
     role:"真值落在市场价格 × 模型概率的哪一格 → 跟价格走说明该信 m"},
   "有效边际 λ 表": {layer:"边际层 · ② 实盘代替 w", status:"live",
