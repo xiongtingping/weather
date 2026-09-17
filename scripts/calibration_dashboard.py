@@ -2791,6 +2791,64 @@ def collect_h5_readiness(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def three_knob_fit(
+    rows: Sequence[tuple[str, float, float, int]],
+    *,
+    since: str,
+    draws: int = 200,
+    seed: int = 20260917,
+) -> dict[str, Any]:
+    """The three knobs of a belief in ``(p, m)`` on the bucket proxy (user
+    ruling, 2026-09-17: 把三旋钮度数放在一排对比): ``hit - m = alpha + beta *
+    (p - m) + gamma * (m - m0)`` by the beta lane's own fitter, so the row
+    sits beside the lane's in the same arithmetic, with a by-day bootstrap
+    90% interval on each knob.  ``rows`` are ``(day, p, m, hit)`` -- the
+    served claim, the entry ask normalised over the ladder, the market's
+    adjudication.  A proxy, not a lane: buckets not windows, the 4h ask not
+    the mid; it is here because the lanes read nothing until their evidence
+    settles and the reader still needs a number to compare against.
+    """
+
+    from bayes_basket_target.beta_edge_store import _ols3  # noqa: PLC0415
+
+    out: dict[str, Any] = {"since": since, "rows": len(rows), "days": 0}
+    if not rows:
+        return out
+    centre = sum(r[2] for r in rows) / len(rows)
+
+    def fit(sample: Sequence[tuple[str, float, float, int]]) -> tuple[float, float, float] | None:
+        return _ols3(
+            [r[1] - r[2] for r in sample], [r[2] - centre for r in sample],
+            [r[3] - r[2] for r in sample],
+        )
+
+    point = fit(rows)
+    by_day: dict[str, list[tuple[str, float, float, int]]] = {}
+    for r in rows:
+        by_day.setdefault(r[0], []).append(r)
+    out["days"] = len(by_day)
+    out["market_centre"] = round(centre, 4)
+    if point is None:
+        return out
+    keys = sorted(by_day)
+    rng = random.Random(seed)
+    boot: list[tuple[float, float, float]] = []
+    for _ in range(int(draws)):
+        sample = [r for k in rng.choices(keys, k=len(keys)) for r in by_day[k]]
+        got = fit(sample)
+        if got is not None:
+            boot.append(got)
+    for index, name in enumerate(("alpha", "beta", "gamma")):
+        out[name] = round(point[index], 4)
+        values = sorted(b[index] for b in boot)
+        out[f"{name}_ci"] = (
+            [round(values[min(len(values) - 1, int(0.05 * len(values)))], 4),
+             round(values[max(0, int(0.95 * len(values)) - 1)], 4)]
+            if values else [None, None]
+        )
+    return out
+
+
 def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
     """Where truth settles, by market price and by model claim.
 
@@ -3014,6 +3072,13 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
         in_acceptance_class,
     )
     acceptance = [0, 0, 0.0, 0.0]
+    # The ladder's ask mass per station-day, so the three-knob proxy can
+    # read the market as a normalised belief the way the lanes do.
+    ladder_ask: dict[tuple[str, str], float] = defaultdict(float)
+    for (station, event, bucket), asks in entry_asks.items():
+        if (station, event) in winners and len(asks) >= 2:
+            ladder_ask[(station, event)] += median(asks)
+    knob_rows: list[tuple[str, float, float, int]] = []
     for (station, event, bucket), asks in entry_asks.items():
         key = (station, event)
         if key not in winners or len(asks) < 2:
@@ -3023,6 +3088,8 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
             continue
         price = median(asks)
         hit = 1 if winners[key] == bucket else 0
+        if ladder_ask.get(key, 0.0) > 0:
+            knob_rows.append((event, claim, price / ladder_ask[key], hit))
         if in_acceptance_class(claim, price):
             acceptance[0] += 1
             acceptance[1] += hit
@@ -3049,6 +3116,7 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
         "capture_truncated_days": len(first_decision) - len(winners),
         "by_price": banded(TRUTH_LANDING_PRICE_BANDS, price_rows),
         "by_claim": banded(TRUTH_LANDING_PRICE_BANDS, claim_rows),
+        "three_knob_proxy": three_knob_fit(knob_rows, since=TRUTH_LANDING_SINCE),
         "disagreement": {
             "unlikely_below": TRUTH_LANDING_UNLIKELY,
             "unlikely_buckets": unlikely[0],
@@ -8565,6 +8633,8 @@ def collect_beta_shadow(conn: sqlite3.Connection) -> dict[str, Any]:
                 "gamma": ev.get("gamma"), "gamma_lcb": ev.get("gamma_lcb"),
                 "gamma_ucb": ev.get("gamma_ucb"),
                 "market_centre": ev.get("market_centre"),
+                "intercept_lcb": ev.get("intercept_lcb"),
+                "intercept_ucb": ev.get("intercept_ucb"),
             }
             if reading["lead_band"] == _b.WHOLE_STAGE:
                 out["served"][str(row[0])] = reading
@@ -12905,6 +12975,7 @@ function betaShadow(){
     影子只记不闸；晋升要影子 ≥10 个事件日且下表"β 会拒"减"β 会放"的实现差大于按日噪声，且须裁决。
     最近两天决策 ${live.decisions||0} 条，其中带影子读数 ${live.with_shadow||0} 条；影子累计：现闸放行而 β 会拒 ${live.would_refuse||0} 窗、现闸拒而 β 会放 ${live.would_admit||0} 窗。
     ${B.served_other_basis?`<span class="muted">表里还有 ${B.served_other_basis} 行卖一基底的旧行，无人服务，下次拟合即退役。</span>`:""}</div>
+  <div class="card">${threeKnobs()}</div>
   <div class="card"><h3>服务中（锚定、滚动 28 天、中价基底）</h3>
   <table><tr><th>阶段 · 档</th><th>服务 β_lcb</th><th>β 点估</th><th>90% 区间</th><th>截距 a(≈0 即市场在 m₀ 处校准)</th><th>γ 市场斜率 · 90%</th><th>行 / 日</th><th>状态</th><th>服务锚</th><th>逐日 β&gt;0</th></tr>${servedRows}</table>
   <div class="muted">锚以前的行不进样本；账本重导前写下的候选窗没有中价，计出不顶替；累积中＝行数或天数不够门槛（60 行 / 8 日），服务 β_lcb 0，信念＝市场信念。</div></div>
@@ -12916,6 +12987,51 @@ function betaShadow(){
   <table><tr><th>事件日</th><th>窗</th><th>现闸放</th><th>β 放</th><th>β 会拒(现放)</th><th>β 会放(现拒)</th><th>现放 均 hit−价(点)</th><th>β 放 均 hit−价(点)</th></tr>${dayRows||'<tr><td colspan="8">尚无可重判的窗（服务 β 的日志晚于这些窗的决策时刻）</td></tr>'}</table>
   <div class="muted">"β 会拒(现放)"那一格的均 hit−价 若持续低于"现闸放·β 放"，闸换 β 就是净少亏；两格打平则 β 只是少买。</div>
   ${acceptance}</div>`;
+}
+
+// The three knobs of a belief in (p, m) -- alpha the level, gamma the
+// market's own slope, beta/w the share of the disagreement -- in one row
+// per stage, the beta lane (probability space) beside L4 (logit space),
+// with the bucket proxy's own fit under them (user ruling, 2026-09-17:
+// 把三旋钮度数放在一排对比).  Same knob, two arithmetics: the columns compare
+// sign and whether the interval crosses zero, never the magnitude.
+function threeKnobs(){
+  const B=D.beta_shadow||{}, L=D.posterior_lane||{};
+  const X=(D.truth_landing||{}).three_knob_proxy||null;
+  const h=s=>String(s==null?"":s).replace(/</g,"&lt;");
+  const num=v=>v==null?"—":Number(v).toFixed(3);
+  const cell=(pt,lo,hi,acc)=>acc?'<span class="muted">累积中</span>'
+    :(pt==null?"—":`<b>${num(pt)}</b> <span class="muted">[${num(lo)} … ${num(hi)}]</span>`);
+  const EDGE='style="border-left:1px solid var(--line)"';
+  const lane=(b,l)=>{
+    const lc=(l&&l.ci)||{};
+    const bAcc=!!b&&!!b.accumulating, lAcc=!!l&&!!l.accumulating;
+    const bc=(k,lo,hi)=>!b?"—":cell(b[k],b[lo],b[hi],bAcc);
+    const lcell=(pt,c)=>!l?"—":cell(pt,(c||[])[0],(c||[])[1],lAcc);
+    return `<td ${EDGE}>${bc("intercept","intercept_lcb","intercept_ucb")}</td><td>${lcell(l&&l.alpha,lc.alpha)}</td>
+      <td ${EDGE}>${bc("gamma","gamma_lcb","gamma_ucb")}</td><td>${lcell(l&&l.gamma,lc.gamma)}</td>
+      <td ${EDGE}>${bc("beta","beta_lcb","beta_ucb")}</td><td>${!l?"—":cell(l.w,l.w_lcb,l.w_ucb,lAcc)}</td>
+      <td ${EDGE} class="mono">${b?`${b.rows} / ${b.days}`:"—"}</td><td class="mono">${l?`${l.decision_count} / ${l.day_count}`:"—"}</td>`;
+  };
+  const rows=["P0","P0-M","P1"].map(s=>{
+    const b=(B.served||{})[s]||null;
+    const l=((L.stages||[]).find(x=>x.stage===s)||{}).served||null;
+    return `<tr><td>${s}</td>${lane(b,l)}</tr>`;
+  }).join("");
+  const proxy=!X||!X.rows||X.alpha==null?"":`<tr class="muted"><td>桶级代理 · 概率空间（真值落位口径，${h(X.since)} 起，非车道）</td>
+      <td ${EDGE}>${cell(X.alpha,X.alpha_ci[0],X.alpha_ci[1])}</td><td>—</td>
+      <td ${EDGE}>${cell(X.gamma,X.gamma_ci[0],X.gamma_ci[1])}</td><td>—</td>
+      <td ${EDGE}>${cell(X.beta,X.beta_ci[0],X.beta_ci[1])}</td><td>—</td>
+      <td ${EDGE} class="mono">${X.rows} / ${X.days}</td><td>—</td></tr>`;
+  return `<h3>三旋钮一排对比：β 车道（概率空间）× L4（logit 空间）</h3>
+  <div style="overflow-x:auto"><table><thead><tr><th rowspan="2">阶段</th>
+    <th colspan="2" ${EDGE}>α 截距（市场在中心处的整体偏差）</th><th colspan="2" ${EDGE}>γ 市场斜率</th>
+    <th colspan="2" ${EDGE}>β / w 分歧份额</th><th colspan="2" ${EDGE}>样本 行 / 日</th></tr>
+  <tr>${`<th ${EDGE}>β 车道</th><th>L4</th>`.repeat(4)}</tr></thead>
+  <tbody>${rows}${proxy}</tbody></table></div>
+  <p class="sub" style="margin-top:6px">β 车道：hit − m = a + β·(p − m) + γ·(m − m₀)，概率空间；L4：logit b = logit m + w·(logit p − logit m) + α + γ·logit m，logit 空间。
+    同一个旋钮两套算术，量纲不同——比符号、比区间是否跨零，不比大小；β 对应 w。三个 0 就是"市场对"。
+    两条车道都在等生产证据结算（约 09-25 起有数）；末行是同一批桶级代理上用 β 车道的拟合器算的，有数但不是车道，量纲同 β 车道。</p>`;
 }
 
 function effectiveEdgeLambda(){

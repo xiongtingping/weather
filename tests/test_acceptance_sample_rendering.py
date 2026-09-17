@@ -49,6 +49,7 @@ def _run(payload: dict, call: str) -> str:
         "const D = " + json.dumps(payload, ensure_ascii=False) + ";\n"
         "const h = (s) => String(s == null ? '' : s);\n"
         + _function("betaShadow") + "\n" + _function("posteriorRealisation")
+        + "\n" + _function("threeKnobs")
         + f"\nconsole.log({call});\n"
     )
     result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
