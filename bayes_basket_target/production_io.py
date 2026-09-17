@@ -2091,7 +2091,11 @@ def chain_send_history_fields(
 
 
 def load_chain_sent_shares(
-    conn: sqlite3.Connection, *, station_id: str, event_date: str,
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    before_utc: str | None = None,
 ) -> dict[str, float]:
     """Charter 143: the size of the last buy this station-day SENT, per bucket.
 
@@ -2111,16 +2115,21 @@ def load_chain_sent_shares(
         return {}
     placeholders = ",".join("?" for _ in CHAIN_SEAT_EVENT_TYPES)
     sent: dict[str, float] = {}
+    # ``before_utc`` reads the history as it stood before a decision -- the
+    # mis-bought-leg exit judges a fill by what had been sent before it.
+    before_clause = "" if before_utc is None else " AND i.created_at<?"
+    before_args: tuple[str, ...] = () if before_utc is None else (str(before_utc),)
     for bucket, size in conn.execute(
         "SELECT i.bucket, i.requested_size FROM basket_target_order_intents i"
         " JOIN basket_target_execution_cycles cy ON cy.cycle_id=i.cycle_id"
         " WHERE cy.station_id=? AND cy.event_date=?"
         "   AND i.order_action='BUY'"
+        + before_clause +
         "   AND EXISTS (SELECT 1 FROM basket_target_order_events e"
         "     WHERE e.order_intent_id=i.order_intent_id"
         f"      AND e.event_type IN ({placeholders}))"
         " ORDER BY i.created_at, i.order_intent_id",
-        (station_id, event_date, *CHAIN_SEAT_EVENT_TYPES),
+        (station_id, event_date, *before_args, *CHAIN_SEAT_EVENT_TYPES),
     ):
         sent[str(bucket)] = max(0.0, float(size or 0.0))
     return sent

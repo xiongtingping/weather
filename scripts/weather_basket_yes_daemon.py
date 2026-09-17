@@ -3318,6 +3318,30 @@ def run_target_production_cycle(
                     "ok": False,
                     "error": f"{type(exc).__name__}:{exc}",
                 }
+    # The mis-bought-leg exit (user ruling 2026-09-17: "卖"): the shares the
+    # completion rule bought outside its own definition are sold into the
+    # bid when the bid is at or above the served probability.  Same writer
+    # connection, same transport, reported on the receipt rather than raised.
+    exit_receipt: dict[str, Any] | None = None
+    if PRODUCTION_EXECUTION_MODE == "production_live":
+        try:
+            from bayes_basket_target.mis_bought_leg_exit import (
+                execute_mis_bought_leg_exits,
+            )
+            from bayes_basket_target.production import (
+                _default_order_transport,
+            )
+            exit_receipt = execute_mis_bought_leg_exits(
+                connection,
+                transport=_default_order_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+            )
+        except Exception as exc:
+            exit_receipt = {
+                "ok": False,
+                "error": f"{type(exc).__name__}:{exc}",
+            }
     return {
         **result,
         "post_cycle_resource_guard": {
@@ -3326,6 +3350,7 @@ def run_target_production_cycle(
         },
         "target_cycle_runtime": runtime,
         **({"certain_win_recycle": recycle_receipt} if recycle_receipt else {}),
+        **({"mis_bought_leg_exit": exit_receipt} if exit_receipt else {}),
     }
 
 
