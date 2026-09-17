@@ -6032,6 +6032,15 @@ def _truth_bucket(centers: dict[str, float], order: list[str], truth: float) -> 
     return min(order, key=lambda key: abs(centers[key] - truth))
 
 
+# Reading rules for the scorecard sample (2026-09-17 review).  Eight
+# settled event days is the bar the width lane already holds its own fit to
+# (``center_width_store.MIN_QUALIFYING_DAYS``), and it is also the fewest
+# whole days a day-level bootstrap can resample into an interval.
+SCORECARD_MIN_EVENT_DAYS = 8
+SCORECARD_MAX_WINDOW_DAYS = 45
+PIT_BIN_COUNT = 10
+
+
 def _prediction_scores(
     probability: dict[str, float],
     centers: dict[str, float],
@@ -6074,11 +6083,32 @@ def _prediction_scores(
         (p - (1.0 if index == actual_index else 0.0)) ** 2
         for index, p in enumerate(probabilities)
     )
-    # Randomised PIT, the standard fix for a discrete forecast: without the
-    # within-bucket term every PIT would pile up on the bucket edges and a
-    # perfectly calibrated forecast would look badly non-uniform.
-    below = sum(probabilities[:actual_index])
-    pit = below + 0.5 * probabilities[actual_index]
+    # Randomised PIT, taken in expectation so the page needs no random draw.
+    # A discrete forecast puts the truth somewhere in [F(below), F(at)], and
+    # the randomised PIT is uniform on that interval; spreading one unit of
+    # mass across it is exactly the average over every draw.  Under a
+    # calibrated forecast the ten bins are then equal by construction.
+    #
+    # Until 2026-09-17 this was the mid-PIT, ``F(below) + p/2``, described
+    # as randomised.  The mid-PIT is not uniform when calibrated: every
+    # truth lands mid-bucket, so a forecast with 30-40% on its peak bucket
+    # humps in the middle on its own.  Measured on the page's own sample,
+    # a perfectly calibrated forecast would have read 0.115 in the middle
+    # and 0.082 at the ends, and the page's 5.7% deviation was 4.0% as a
+    # randomised PIT -- the bars doubled the hump they were reporting.
+    lower = sum(probabilities[:actual_index])
+    upper = lower + probabilities[actual_index]
+    pit_bins = [0.0] * PIT_BIN_COUNT
+    if upper - lower <= 1e-12:
+        pit_bins[min(PIT_BIN_COUNT - 1, max(0, int(lower * PIT_BIN_COUNT)))] = 1.0
+    else:
+        for index in range(PIT_BIN_COUNT):
+            left = max(lower, index / PIT_BIN_COUNT)
+            right = min(upper, (index + 1) / PIT_BIN_COUNT)
+            if right > left:
+                pit_bins[index] = (right - left) / (upper - lower)
+    pit_total = sum(pit_bins)
+    pit_bins = [value / pit_total for value in pit_bins]
     # The reliability diagram is built from EVERY rung, not just the settled
     # one: each (promised probability, did it happen) pair is one observation.
     # Scoring only the settled rung would take a biased sample of high
@@ -6099,29 +6129,44 @@ def _prediction_scores(
         "rung_c": rung_c,
         "crps": crps,
         "brier": brier,
-        "pit": pit,
-        "truth_probability": probabilities[actual_index],
-        "peak_probability": max(probabilities),
-        "spread_rungs": variance ** 0.5 / rung_c,
-        "spread_c": variance ** 0.5,
+        "pit_bins": pit_bins,
+        # Variance, not standard deviation: a calibrated forecast's mean
+        # squared error equals its mean VARIANCE, so the width that answers
+        # RMSE is the root of the averaged variance.  Averaging standard
+        # deviations first reads narrower by Jensen -- 1.25 against 1.43 on
+        # the 2026-09-17 sample -- and flattered a too-wide book.
+        "variance_rungs": variance / (rung_c * rung_c),
+        "variance_c": variance,
         "reliability_pairs": reliability_pairs,
     }
 
 
-def _bootstrap_half_width(
-    values: list[float], draws: int = 600, seed: int = 7
+def _cluster_bootstrap_half_width(
+    clusters: Mapping[str, tuple[float, float]],
+    draws: int = 600,
+    seed: int = 7,
 ) -> float | None:
-    """Half-width of a 95% interval on the mean, for the stability layer."""
+    """Half-width of a 95% interval on a weighted mean, resampling whole days.
 
-    if len(values) < 8:
+    ``clusters`` maps an event day to ``(sum of weight * value, sum of
+    weight)``.  Every station's error on one day shares that day's weather,
+    so rows are not independent draws: resampled one row at a time, the
+    2026-09-17 sample reported +-0.004 rungs on its MAE where resampling
+    event days gives +-0.056, fifteen times wider.
+    """
+
+    keys = sorted(key for key, (_value, weight) in clusters.items() if weight > 0)
+    if len(keys) < SCORECARD_MIN_EVENT_DAYS:
         return None
     rng = random.Random(seed)
-    count = len(values)
     means = []
     for _ in range(draws):
-        means.append(
-            sum(values[rng.randrange(count)] for _ in range(count)) / count
-        )
+        value_sum = weight_sum = 0.0
+        for _day in keys:
+            value, weight = clusters[keys[rng.randrange(len(keys))]]
+            value_sum += value
+            weight_sum += weight
+        means.append(value_sum / weight_sum)
     means.sort()
     low = means[int(0.025 * draws)]
     high = means[int(0.975 * draws)]
@@ -6129,7 +6174,8 @@ def _bootstrap_half_width(
 
 
 def _reliability_decomposition(
-    pairs: list[tuple[float, float]], bins: int = 10
+    pairs: list[tuple[float, float]] | list[tuple[float, float, float]],
+    bins: int = 10,
 ) -> dict[str, float | list[dict[str, Any]]]:
     """Murphy's decomposition, on the probability given to the settled rung.
 
@@ -6137,6 +6183,10 @@ def _reliability_decomposition(
     resolution is how far the forecasts move away from the base rate, and the
     two only mean something together: a forecast that always says the base
     rate is perfectly reliable and completely useless.
+
+    A pair may carry a third element, its weight; ``n`` in each bin is then
+    the summed weight, so a population threshold reads in the same units the
+    sample is weighted in.
     """
 
     if not pairs:
@@ -6147,28 +6197,40 @@ def _reliability_decomposition(
     # and this audit finally line up row for row.  Everything promised at
     # half or more pools into one open top bin -- claims that high are rare
     # enough that finer rows would be noise wearing labels.
-    buckets: dict[int, list[tuple[float, float]]] = defaultdict(list)
-    for promised, happened in pairs:
+    buckets: dict[int, list[float]] = defaultdict(lambda: [0.0, 0.0, 0.0])
+    total = happened_total = 0.0
+    for pair in pairs:
+        promised, happened = float(pair[0]), float(pair[1])
+        weight = float(pair[2]) if len(pair) > 2 else 1.0
         index = min(10, max(0, int(promised / 0.05)))
-        buckets[index].append((promised, happened))
-    base_rate = sum(happened for _p, happened in pairs) / len(pairs)
-    total = len(pairs)
+        slot = buckets[index]
+        slot[0] += weight * promised
+        slot[1] += weight * happened
+        slot[2] += weight
+        total += weight
+        happened_total += weight * happened
+    if total <= 0:
+        return {"ece": None, "reliability": None, "resolution": None,
+                "uncertainty": None, "bins": []}
+    base_rate = happened_total / total
     ece = reliability = resolution = 0.0
     rows = []
     for index in sorted(buckets):
-        group = buckets[index]
-        weight = len(group) / total
-        mean_promised = sum(p for p, _o in group) / len(group)
-        mean_happened = sum(o for _p, o in group) / len(group)
-        ece += weight * abs(mean_promised - mean_happened)
-        reliability += weight * (mean_promised - mean_happened) ** 2
-        resolution += weight * (mean_happened - base_rate) ** 2
+        promised_sum, happened_sum, weight = buckets[index]
+        if weight <= 0:
+            continue
+        share = weight / total
+        mean_promised = promised_sum / weight
+        mean_happened = happened_sum / weight
+        ece += share * abs(mean_promised - mean_happened)
+        reliability += share * (mean_promised - mean_happened) ** 2
+        resolution += share * (mean_happened - base_rate) ** 2
         rows.append({
             "bin": (
                 "≥50%" if index >= 10
                 else f"{index * 5}-{index * 5 + 5}%"
             ),
-            "n": len(group),
+            "n": weight,
             "promised": mean_promised,
             "happened": mean_happened,
         })
@@ -6181,6 +6243,43 @@ def _reliability_decomposition(
     }
 
 
+def _scorecard_window(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Where the scored sample starts: P0's serving-arithmetic anchor.
+
+    The scorecard read a calendar window over an append-only table, so a
+    rule change never reached it: on 2026-09-17 the stable pool (charter
+    134) had served for three days while 95% of the scored station-day-leads
+    were decided under the contest it replaced, and the retired rule's too-
+    wide book (width/error 1.53) painted the sharpness, PIT and calibration
+    lamps for a book serving at 1.00.  The anchor is the same boundary the
+    band audit and the fitting lanes already cut at.  The calendar window
+    stays as an outer cap, and is the whole window only when no anchor can
+    be read -- which the header then says.
+    """
+
+    try:
+        from bayes_basket_target.center_width_store import (  # noqa: PLC0415
+            served_arithmetic_anchor,
+        )
+    except ImportError:
+        return {"anchor": None, "anchor_state": "unavailable"}
+    try:
+        anchor = served_arithmetic_anchor(conn, stage="P0")
+    except Exception:  # noqa: BLE001 -- a broken anchor store is a reading, not a crash
+        return {"anchor": None, "anchor_state": "error"}
+    if not anchor:
+        return {"anchor": None, "anchor_state": "missing"}
+    return {"anchor": str(anchor), "anchor_state": "ok"}
+
+
+def _parse_utc(stamp: str) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
 def collect_calibration_scorecard(conn: sqlite3.Connection) -> dict[str, Any]:
     """Six layers of calibration quality, each reduced to one verdict.
 
@@ -6188,6 +6287,16 @@ def collect_calibration_scorecard(conn: sqlite3.Connection) -> dict[str, Any]:
     was a judgement.  Every layer here answers "is this good" with a colour
     and a sentence, and keeps the number beside it as the evidence rather
     than the headline.
+
+    Two rules on the sample, both from the 2026-09-17 review.  It starts at
+    P0's serving-arithmetic anchor (``_scorecard_window``).  And each
+    station x event day x lead counts once: the evaluation table writes a
+    row per candidate view, cycle, season bin and re-evaluation, a median 59
+    rows per station-day and up to 1,459, so an unweighted mean was a vote
+    of whichever scopes the pool happened to mint most.  Weighted equally,
+    the calibration lamp's worst bin moved from ">=50% under-claimed by 7.7
+    points" to "25-30% under-claimed by 5.6", and the >=50% bin read 58.5%
+    promised against 58.2% happened.
     """
 
     if not _table_exists(
@@ -6204,8 +6313,19 @@ def collect_calibration_scorecard(conn: sqlite3.Connection) -> dict[str, Any]:
     if not truth:
         return {"available": False}
 
-    per_lead: dict[str, list[dict[str, float]]] = defaultdict(list)
-    climate: dict[str, list[dict[str, float]]] = defaultdict(list)
+    window = _scorecard_window(conn)
+    anchor_at = _parse_utc(window["anchor"]) if window["anchor"] else None
+    if window["anchor"] and anchor_at is None:
+        window = {"anchor": None, "anchor_state": "unparseable"}
+    window["max_days"] = SCORECARD_MAX_WINDOW_DAYS
+    # The SQL bound is the anchor's whole second, which can only admit a few
+    # rows too many; the exact comparison below drops them.
+    anchor_prefix = (
+        anchor_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+        if anchor_at is not None else ""
+    )
+
+    scored: list[dict[str, Any]] = []
     stations: set[str] = set()
     latest = ""
     for (
@@ -6214,8 +6334,9 @@ def collect_calibration_scorecard(conn: sqlite3.Connection) -> dict[str, Any]:
         "SELECT station_id, event_date, lead_bucket, probabilities_json,"
         " bucket_centers_c_json, decision_at_utc"
         " FROM calibration_cross_native_ensemble_oos_prediction"
-        " WHERE event_date>=date('now','-45 days')"
-        " ORDER BY decision_at_utc"
+        " WHERE event_date>=date('now',?) AND decision_at_utc>=?"
+        " ORDER BY decision_at_utc",
+        (f"-{SCORECARD_MAX_WINDOW_DAYS} days", anchor_prefix),
     ):
         actual = truth.get((str(station), str(day)))
         if actual is None:
@@ -6225,6 +6346,10 @@ def collect_calibration_scorecard(conn: sqlite3.Connection) -> dict[str, Any]:
         # into a board that is meant to read as current.
         if not str(lead).startswith("h"):
             continue
+        if anchor_at is not None:
+            decided_at = _parse_utc(str(decided))
+            if decided_at is None or decided_at < anchor_at:
+                continue
         try:
             probability = json.loads(probabilities_json)
             centers = {
@@ -6236,53 +6361,89 @@ def collect_calibration_scorecard(conn: sqlite3.Connection) -> dict[str, Any]:
         scores = _prediction_scores(probability, centers, actual)
         if scores is None:
             continue
-        per_lead[str(lead)].append(scores)
+        # The no-skill reference, a flat forecast over the same ladder.  It
+        # is not the gate's climatology, but measured on the 2026-09-17
+        # sample it scores alike (mean CRPS 2.05 against 2.06 for a 60-day
+        # kernel climatology built with the gate's own function), because a
+        # summer window drifts off an autumn event as far as flat does.
+        order = _bucket_order(centers)
+        flat_scores = _prediction_scores(
+            {key: 1.0 / len(order) for key in order}, centers, actual
+        )
+        if flat_scores is None:
+            continue
+        scores["flat_crps"] = flat_scores["crps"]
+        scores["flat_brier"] = flat_scores["brier"]
+        scores["station"] = str(station)
+        scores["event_date"] = str(day)
+        scores["lead"] = str(lead)
+        scored.append(scores)
         stations.add(str(station))
         latest = max(latest, str(decided))
-        # The climatology comparison the gate uses, rebuilt on the same day:
-        # a flat forecast over the same ladder is the "no skill" reference.
-        order = _bucket_order(centers)
-        flat = {key: 1.0 / len(order) for key in order}
-        flat_scores = _prediction_scores(flat, centers, actual)
-        if flat_scores is not None:
-            climate[str(lead)].append(flat_scores)
 
-    everything = [row for rows in per_lead.values() for row in rows]
-    if not everything:
-        return {"available": False}
-    everything_climate = [row for rows in climate.values() for row in rows]
+    if not scored:
+        return {"available": False, "window": window}
+    copies = Counter(
+        (row["station"], row["event_date"], row["lead"]) for row in scored
+    )
+    for row in scored:
+        row["weight"] = 1.0 / copies[
+            (row["station"], row["event_date"], row["lead"])
+        ]
+    station_days = {(row["station"], row["event_date"]) for row in scored}
+    event_days = {row["event_date"] for row in scored}
+    accumulating = len(event_days) < SCORECARD_MIN_EVENT_DAYS
 
-    def _mean(rows: list[dict[str, float]], key: str) -> float | None:
-        values = [row[key] for row in rows]
-        return sum(values) / len(values) if values else None
+    def _mean(rows: list[dict[str, Any]], key: str) -> float | None:
+        weight = sum(row["weight"] for row in rows)
+        if weight <= 0:
+            return None
+        return sum(row["weight"] * row[key] for row in rows) / weight
 
-    def _skill(rows, base, key) -> float | None:
-        ours, theirs = _mean(rows, key), _mean(base, key)
+    def _skill(rows: list[dict[str, Any]], key: str) -> float | None:
+        ours, theirs = _mean(rows, key), _mean(rows, f"flat_{key}")
         if ours is None or theirs is None or theirs <= 0:
             return None
         return 1.0 - ours / theirs
 
+    def _width_ratio(rows: list[dict[str, Any]]) -> float | None:
+        variance = _mean(rows, "variance_rungs")
+        square = _mean(rows, "square_error")
+        if variance is None or not square:
+            return None
+        return (variance ** 0.5) / (square ** 0.5)
+
+    def _day_clusters(key: str) -> dict[str, tuple[float, float]]:
+        clusters: dict[str, list[float]] = defaultdict(lambda: [0.0, 0.0])
+        for row in scored:
+            slot = clusters[row["event_date"]]
+            slot[0] += row["weight"] * row[key]
+            slot[1] += row["weight"]
+        return {day: (slot[0], slot[1]) for day, slot in clusters.items()}
+
     # ---- layer 1: point forecast --------------------------------------
-    bias = _mean(everything, "error")
-    mae = _mean(everything, "abs_error")
-    rmse = (_mean(everything, "square_error") or 0.0) ** 0.5
-    bias_c = _mean(everything, "error_c")
-    mae_c = _mean(everything, "abs_error_c")
-    rmse_c = (_mean(everything, "square_error_c") or 0.0) ** 0.5
+    bias = _mean(scored, "error")
+    mae = _mean(scored, "abs_error")
+    rmse = (_mean(scored, "square_error") or 0.0) ** 0.5
+    bias_c = _mean(scored, "error_c")
+    mae_c = _mean(scored, "abs_error_c")
+    rmse_c = (_mean(scored, "square_error_c") or 0.0) ** 0.5
     point_health = _worst([
         _grade(abs(bias) if bias is not None else None, "bias_rungs"),
         _grade(mae, "mae_rungs"),
     ])
 
     # ---- layer 2: probability -----------------------------------------
-    crps_skill = _skill(everything, everything_climate, "crps")
-    brier_skill = _skill(everything, everything_climate, "brier")
-    pit_values = [row["pit"] for row in everything]
-    pit_bins = [0] * 10
-    for value in pit_values:
-        pit_bins[min(9, max(0, int(value * 10)))] += 1
+    crps_skill = _skill(scored, "crps")
+    brier_skill = _skill(scored, "brier")
+    total_weight = sum(row["weight"] for row in scored)
+    pit_bins = [
+        sum(row["weight"] * row["pit_bins"][index] for row in scored)
+        / total_weight
+        for index in range(PIT_BIN_COUNT)
+    ]
     pit_deviation = max(
-        abs(count / len(pit_values) - 0.1) for count in pit_bins
+        abs(value - 1.0 / PIT_BIN_COUNT) for value in pit_bins
     )
     probability_health = _worst([
         _grade(crps_skill, "crps_skill", higher_better=True),
@@ -6292,15 +6453,17 @@ def collect_calibration_scorecard(conn: sqlite3.Connection) -> dict[str, Any]:
 
     # ---- layer 3: calibration -----------------------------------------
     decomposition = _reliability_decomposition([
-        pair for row in everything for pair in row["reliability_pairs"]
+        (promised, happened, row["weight"])
+        for row in scored for promised, happened in row["reliability_pairs"]
     ])
     ece = decomposition["ece"]
     # ECE alone hides the shape.  Four fifths of all (rung, day) pairs sit in
     # the 0-10% bin, where the gap is tiny, so a weighted average stays small
     # even when every confident forecast is off by ten points.  The worst
     # well-populated bin is what says whether a number can be acted on.
+    # ``n`` is summed weight: 100 station-day-lead rungs, not 100 rows.
     populated = [
-        row for row in decomposition["bins"] if int(row["n"]) >= 100
+        row for row in decomposition["bins"] if float(row["n"]) >= 100
     ]
     conditional_gap = max(
         (abs(row["promised"] - row["happened"]) for row in populated),
@@ -6318,19 +6481,17 @@ def collect_calibration_scorecard(conn: sqlite3.Connection) -> dict[str, Any]:
     ])
 
     # ---- layer 5: sharpness (read against realised error) --------------
-    mean_spread = _mean(everything, "spread_rungs")
-    mean_spread_c = _mean(everything, "spread_c")
-    spread_skill = (
-        mean_spread / rmse if mean_spread is not None and rmse > 0 else None
-    )
+    width_rungs = (_mean(scored, "variance_rungs") or 0.0) ** 0.5
+    width_c = (_mean(scored, "variance_c") or 0.0) ** 0.5
+    spread_skill = _width_ratio(scored)
     sharpness_health = _grade(
         abs(spread_skill - 1.0) if spread_skill is not None else None,
         "spread_skill",
     )
 
     # ---- layer 6: stability --------------------------------------------
-    mae_ci = _bootstrap_half_width([row["abs_error"] for row in everything])
-    crps_ci = _bootstrap_half_width([row["crps"] for row in everything])
+    mae_ci = _cluster_bootstrap_half_width(_day_clusters("abs_error"))
+    crps_ci = _cluster_bootstrap_half_width(_day_clusters("crps"))
     ci_relative = None
     if mae_ci is not None and mae:
         ci_relative = mae_ci / mae
@@ -6338,28 +6499,29 @@ def collect_calibration_scorecard(conn: sqlite3.Connection) -> dict[str, Any]:
 
     rows = []
     order = {name: index for index, (name, _label) in enumerate(LEAD_LABELS)}
-    for lead in sorted(per_lead, key=lambda name: order.get(name, 9)):
-        group = per_lead[lead]
-        base = climate[lead]
+    by_lead: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in scored:
+        by_lead[row["lead"]].append(row)
+    for lead in sorted(by_lead, key=lambda name: order.get(name, 9)):
+        group = by_lead[lead]
         group_bias = _mean(group, "error")
         group_mae = _mean(group, "abs_error")
         group_rmse = (_mean(group, "square_error") or 0.0) ** 0.5
-        group_spread = _mean(group, "spread_rungs")
-        group_ratio = (
-            group_spread / group_rmse
-            if group_spread is not None and group_rmse > 0 else None
-        )
+        group_ratio = _width_ratio(group)
+        group_crps_skill = _skill(group, "crps")
         rows.append({
             "lead_bucket": lead,
             "lead_label": dict(LEAD_LABELS).get(lead, lead),
-            "days": len(group),
+            "station_days": len({
+                (row["station"], row["event_date"]) for row in group
+            }),
             "bias_rungs": group_bias,
             "mae_rungs": group_mae,
             "rmse_rungs": group_rmse,
             "bias_c": _mean(group, "error_c"),
             "mae_c": _mean(group, "abs_error_c"),
-            "crps_skill": _skill(group, base, "crps"),
-            "brier_skill": _skill(group, base, "brier"),
+            "crps_skill": group_crps_skill,
+            "brier_skill": _skill(group, "brier"),
             "spread_skill": group_ratio,
             "bias_health": _grade(
                 abs(group_bias) if group_bias is not None else None,
@@ -6367,7 +6529,7 @@ def collect_calibration_scorecard(conn: sqlite3.Connection) -> dict[str, Any]:
             ),
             "mae_health": _grade(group_mae, "mae_rungs"),
             "crps_health": _grade(
-                _skill(group, base, "crps"), "crps_skill", higher_better=True
+                group_crps_skill, "crps_skill", higher_better=True
             ),
             "spread_health": _grade(
                 abs(group_ratio - 1.0) if group_ratio is not None else None,
@@ -6431,7 +6593,7 @@ def collect_calibration_scorecard(conn: sqlite3.Connection) -> dict[str, Any]:
             "health": sharpness_health,
             "verdict": _sharpness_verdict(spread_skill),
             "detail": (
-                f"平均宽度 {mean_spread:.2f} 档（{mean_spread_c:.2f}°C） · "
+                f"宽度 {width_rungs:.2f} 档（{width_c:.2f}°C，方差均值开方） · "
                 f"实际误差 {rmse:.2f} 档 · 宽度/误差 {spread_skill:.2f}"
             ) if spread_skill is not None else "证据不足",
         },
@@ -6440,27 +6602,48 @@ def collect_calibration_scorecard(conn: sqlite3.Connection) -> dict[str, Any]:
             "name": "稳定性",
             "question": "上面这些数字靠不靠得住",
             "health": stability_health,
-            "verdict": _stability_verdict(ci_relative, len(everything)),
+            "verdict": _stability_verdict(
+                ci_relative, len(station_days), len(event_days)
+            ),
             "detail": (
                 # mae_ci bootstraps `abs_error`, which is rung-denominated so
                 # a Celsius and a Fahrenheit book average together honestly.
                 # Labelling it °C read one rung as one degree, which is only
                 # true on the 34 Celsius stations.
-                f"{len(everything):,} 个站日 · 平均误差 95% 区间 ±{mae_ci:.3f} 档"
+                f"{len(station_days):,} 个站日 · {len(event_days)} 个事件日"
+                f" · 按事件日重采样，平均误差 95% 区间 ±{mae_ci:.3f} 档"
                 f" · CRPS ±{crps_ci:.3f}"
-            ) if mae_ci is not None and crps_ci is not None else "证据不足",
+            ) if mae_ci is not None and crps_ci is not None
+            else f"{len(station_days):,} 个站日 · {len(event_days)} 个事件日",
         },
     ]
+    if accumulating:
+        # Every lamp but fusion reads this sample; fusion reads the served
+        # seats and keeps its own colour.  The numbers stay in ``detail`` so
+        # the reading is visible while it cannot yet be judged.
+        for layer in layers:
+            if layer["key"] == "fusion":
+                continue
+            layer["health"] = "muted"
+            layer["verdict"] = (
+                f"攒证据 {len(event_days)}/{SCORECARD_MIN_EVENT_DAYS} 个事件日："
+                "服务算术锚之后的已结算样本还不够下结论，下面的数字只作参考"
+            )
     return {
         "available": True,
         "overall": _worst([layer["health"] for layer in layers]),
         "layers": layers,
         "rows": rows,
-        "pit_bins": [count / len(pit_values) for count in pit_bins],
-        "reliability_bins": decomposition["bins"],
+        "pit_bins": pit_bins,
         "fusion_pairs": fusion["pairs"],
         "fusion_summary": fusion["summary"],
-        "sample_days": len(everything),
+        "window": window,
+        "accumulating": accumulating,
+        "min_event_days": SCORECARD_MIN_EVENT_DAYS,
+        "row_count": len(scored),
+        "station_day_count": len(station_days),
+        "station_day_lead_count": len(copies),
+        "event_day_count": len(event_days),
         "station_count": len(stations),
         "latest_decision_at_utc": latest or None,
         "latest_age_hours": _age_hours(latest or None),
@@ -6483,14 +6666,24 @@ def _point_verdict(bias: float | None, mae: float | None) -> str:
 
 
 def _probability_verdict(skill: float | None, pit: float | None) -> str:
+    """Worded on the same lines the lamp is graded on.
+
+    The PIT sentence used to start at 8% while the lamp turned amber at 4%,
+    so an amber lamp read "分布形状匀称，概率可以直接用" (2026-09-17).
+    """
+
     if skill is None or pit is None:
         return "还没有足够的已结算日可以判断"
     if skill < 0:
         return f"概率比直接用气候还差 {abs(skill):.0%}，这一层目前是负价值"
+    pit_good, pit_warn = SCORECARD_THRESHOLDS["pit_deviation"]
+    skill_good, _skill_warn = SCORECARD_THRESHOLDS["crps_skill"]
     head = f"比气候基准好 {skill:.0%}"
-    if pit > 0.08:
+    if pit > pit_warn:
         return f"{head}，但概率分布形状明显歪（PIT 偏离 {pit:.1%}），尾部不可信"
-    if skill < 0.10:
+    if pit > pit_good:
+        return f"{head}，但分布形状有点歪（PIT 偏离 {pit:.1%}），尾部别压满"
+    if skill < skill_good:
         return f"{head}，优势很薄，接近没有信息"
     return f"{head}，且分布形状匀称，概率可以直接用"
 
@@ -6510,15 +6703,15 @@ def _calibration_verdict(
     direction = (
         "说少了" if (conditional_signed or 0.0) > 0 else "说多了"
     )
-    points = abs(conditional_signed or 0.0)
+    points = abs(conditional_signed or 0.0) * 100.0
     if conditional_gap > 0.10:
         return (
             f"能下注的那一段不可信：概率高的时候{direction} "
-            f"{points:.0%} 个百分点，整体 ECE {ece:.1%} 是被低概率段拉平的"
+            f"{points:.0f} 个百分点，整体 ECE {ece:.1%} 是被低概率段拉平的"
         )
     if conditional_gap > 0.05:
         return (
-            f"低概率段准，但概率一上来就{direction} {points:.0%} 个百分点"
+            f"低概率段准，但概率一上来就{direction} {points:.0f} 个百分点"
             f"——真要下注的那一段有系统性偏差"
         )
     if resolution <= reliability:
@@ -6540,14 +6733,19 @@ def _sharpness_verdict(ratio: float | None) -> str:
     return f"分布偏宽（{ratio:.2f} 倍），信息量打了折扣"
 
 
-def _stability_verdict(relative: float | None, days: int) -> str:
+def _stability_verdict(
+    relative: float | None, station_days: int, event_days: int
+) -> str:
+    """Resampled by event day, so it says so in days, not rows."""
+
+    sample = f"{station_days:,} 个站日、{event_days} 个事件日"
     if relative is None:
-        return f"只有 {days} 个站日，还不足以给出置信区间"
+        return f"只有 {sample}，还不足以按事件日重采样出区间"
     if relative <= 0.15:
-        return f"{days:,} 个站日，上面的结论稳，重采样不会翻号"
+        return f"{sample}，整天整天重采样，平均误差区间在数值的 {relative:.0%} 以内，结论稳"
     if relative <= 0.30:
-        return f"{days:,} 个站日，结论大方向可信，但小差距（几个百分点）别当真"
-    return f"只有 {days:,} 个站日，区间比数值本身还宽——上面每个判断都是暂定的"
+        return f"{sample}，结论大方向可信，但小差距（几个百分点）别当真"
+    return f"只有 {sample}，区间比数值本身还宽——上面每个判断都是暂定的"
 
 
 def _fusion_synthetic_residuals(
@@ -6734,13 +6932,14 @@ def _fusion_rule_label(kappa: float | None, skill_rule: str | None) -> str:
     return "最小方差" if covariance else "逆误差兜底"
 
 
-def _fusion_salt() -> str:
+def _scorecard_salt(conn: sqlite3.Connection) -> str:
     """What the scorecard cache must also expire on.
 
-    ``_section_fingerprint`` hashes only the collector it is handed, and the
-    fusion layer lives in helpers the scorecard calls -- and, since the
-    re-solve defers to production, in production's weighting functions too.
-    Editing any of them changes what the lamp reads.
+    ``_section_fingerprint`` hashes only the collector it is handed.  The
+    scorecard's arithmetic lives in the helpers it calls, the fusion layer
+    defers to production's weighting functions, and the sample starts at
+    P0's serving anchor, which moves when a version is declared.  A change
+    to any of them changes what the lamps read.
     """
 
     from bayes_basket_target import (  # noqa: PLC0415
@@ -6748,9 +6947,23 @@ def _fusion_salt() -> str:
         stable_pool,
     )
 
-    return "\n".join(
+    sources = "\n".join(
         _loaded_source(function)
         for function in (
+            _bucket_order,
+            _truth_bucket,
+            _grade,
+            _worst,
+            _prediction_scores,
+            _cluster_bootstrap_half_width,
+            _reliability_decomposition,
+            _scorecard_window,
+            _parse_utc,
+            _point_verdict,
+            _probability_verdict,
+            _calibration_verdict,
+            _sharpness_verdict,
+            _stability_verdict,
             _collect_fusion_layer,
             _fusion_reconstruction,
             _fusion_synthetic_residuals,
@@ -6765,6 +6978,13 @@ def _fusion_salt() -> str:
             stable_pool.family_balanced_weights,
         )
     )
+    return "\n".join((
+        json.dumps(_scorecard_window(conn), sort_keys=True),
+        repr(sorted(SCORECARD_THRESHOLDS.items())),
+        repr((SCORECARD_MIN_EVENT_DAYS, SCORECARD_MAX_WINDOW_DAYS,
+              PIT_BIN_COUNT)),
+        sources,
+    ))
 
 
 def _collect_fusion_layer(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -10677,7 +10897,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     )
     scorecard = _cached_section(
         "scorecard", collect_calibration_scorecard, conn,
-        _salt=_fusion_salt(),
+        _salt=_scorecard_salt(conn),
     )
     truth_landing = _cached_section(
         "truth_landing", collect_truth_landing, conn,
@@ -16824,7 +17044,8 @@ function scorecard(){
 
   const leadRows = (S.rows||[]).map(r => `<tr>
     <td>${h(r.lead_label)}</td>
-    <td class="mono muted">${r.days.toLocaleString()}</td>
+    <td class="mono muted">${r.station_days == null ? "—"
+      : r.station_days.toLocaleString()}</td>
     <td class="mono"><span class="dot ${r.bias_health}"></span>
       ${r.bias_rungs == null ? "—" :
         (r.bias_rungs>0?"+":"")+r.bias_rungs.toFixed(2)} 档</td>
@@ -16875,11 +17096,20 @@ function scorecard(){
     .join("、");
   const fusionPct = v => v == null ? "—" : (v*100).toFixed(1) + "%";
 
+  const W = S.window || {};
+  const count = v => v == null ? "—" : v.toLocaleString();
+  const windowText = W.anchor
+    ? `P0 服务算术锚 ${h(String(W.anchor).slice(5,16).replace("T"," "))}Z 起、最多回看 ${W.max_days ?? 45} 天`
+    : `近 ${W.max_days ?? 45} 天（没读到服务算术锚，样本没有按规则换代截断）`;
   return `<h2>模型校准总检：检查概率模型六层是否各自达标</h2>
-  <p class="sub">近 45 天 ${S.sample_days.toLocaleString()} 个已结算站日、
-  ${S.station_count} 个站，全部在样本外。总体
+  <p class="sub">${windowText}：${count(S.station_day_count)} 个已结算站日，
+  ${count(S.event_day_count)} 个事件日、${count(S.station_count)} 个站，全部在样本外。
+  同一站×事件日×提前量不论被多少个候选视图、cycle 重复打分，都只按一份计。总体
   <span class="pill ${S.overall}">${VERDICT_WORD[S.overall]||""}</span>，
   最近一次预测 ${hours(S.latest_age_hours)}。</p>
+  ${S.accumulating ? `<div class="why"><b>攒证据 ${count(S.event_day_count)}/${count(S.min_event_days)} 个事件日：</b>
+  锚点之前的预测出自已退役的规则，不再计入。除「模型融合」外，五盏灯暂不评级，
+  数字照常显示；够 ${count(S.min_event_days)} 个事件日后自动恢复评级。</div>` : ""}
   <div class="why"><b>怎么看：</b>先看六个灯，绿＝这一层能用，黄＝能用但别压满，
   红＝这一层的数字现在不能直接拿来下注。每个灯下面那句话就是结论，再下面的数字
   只是给你复核用的。<br>
@@ -16887,8 +17117,9 @@ function scorecard(){
   摄氏每档 1°C，用度会把两种盘口按不同标准打分。而且真正要押的就是档位，
   所以「差几档」才是会亏钱的那个误差。<br>
   <b>红黄绿的线划在哪：</b>偏差 0.3/0.8 档、平均误差 1.0/1.5 档（半档起就会系统性押错）；
-  概率分要赢气候基准 10% 以上；ECE 与最差分箱偏离 5%/10%；
-  宽度/误差偏离 1.0 超过 0.20/0.45；自举区间超过数值本身 15%/30% 就说明天数还不够。</div>
+  概率分要赢气候基准 10% 以上，PIT 最大偏离 4%/8%；ECE 与最差分箱偏离 5%/10%；
+  宽度/误差偏离 1.0 超过 0.20/0.45；按事件日整天重采样的区间超过数值本身 15%/30%
+  就说明天数还不够。</div>
   <div class="grid g3" style="margin-top:12px">${cards}</div>
 
   <h2 style="margin-top:26px">按提前量拆开</h2>
@@ -16904,7 +17135,9 @@ function scorecard(){
 
   <h2 style="margin-top:26px">PIT：分布形状正不正</h2>
   <p class="sub">如果分布形状是对的，真值落在分布各个位置的次数应该一样多，
-  下面十根柱子应该一样高（每根 10%）。中间鼓＝分布太宽，两头翘＝分布太窄。</p>
+  下面十根柱子应该一样高（每根 10%）。中间鼓＝分布太宽，两头翘＝分布太窄。
+  这里用的是随机化 PIT：真值所在那一档在分布里占一段区间，真值按这段区间均匀摊开，
+  所以完全校准时十根柱子严格一样高。</p>
   <div style="display:flex;gap:4px;align-items:flex-end;margin-top:10px">
     ${pitBars}</div>
   <div class="muted" style="margin-top:4px">横轴：真值在预测分布中的位置（百分位）</div>

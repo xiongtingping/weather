@@ -256,7 +256,8 @@ def test_the_panel_no_longer_carries_a_solver_of_its_own():
 
 
 def test_the_scorecard_cache_expires_when_the_fusion_resolve_changes():
-    salt = C._fusion_salt()
+    import sqlite3
+    salt = C._scorecard_salt(sqlite3.connect(":memory:"))
     for name in ("_collect_fusion_layer", "_fusion_reconstruction",
                  "_seat_weights", "stable_pool_weights"):
         assert f"def {name}(" in salt
