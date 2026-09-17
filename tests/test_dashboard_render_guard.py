@@ -70,6 +70,17 @@ def test_newer_data_on_the_page_is_not_overwritten(tmp_path) -> None:
     assert C._newer_payload_landed(target, 1500.0) is True
 
 
+def test_a_builds_own_page_is_not_newer_than_its_own_payload(tmp_path) -> None:
+    """The page stamps the data start to the millisecond and the sidecar
+    keeps the full float; 2026-09-17 the rounding went up and every save
+    after the render was refused as "the page carries newer data"."""
+
+    target = tmp_path / "board.html"
+    _write(target, 1789612698.5898612)
+    assert C._newer_payload_landed(target, 1789612698.5898612) is False
+    assert C._newer_payload_landed(target, 1789612698.588) is True
+
+
 def test_a_build_that_began_earlier_does_not_win_by_finishing_last(tmp_path) -> None:
     """The 2026-09-09 regression, on the data vintage: the sweep started at
     14:34 and wrote at 15:15; the hand render started at 15:14 and must

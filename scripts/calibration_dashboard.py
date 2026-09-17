@@ -10051,8 +10051,9 @@ SECTION_CACHE_TTL_SEC = {
     # daily at most.
     "valuation_lane": 50 * 60,
     # Three small tables plus one population read per stage for the forward
-    # skill score; the journal moves once a day.
-    "posterior_lane": 50 * 60,
+    # skill score; the journal moves once a day.  Five minutes off the
+    # valuation lane's so the two do not expire on the same render.
+    "posterior_lane": 55 * 60,
     # Three populations of settled decisions with their books (~60s on the
     # 45GB store); every row is a settled station-day, so the reading moves
     # once a day when the truth lands.
@@ -10899,6 +10900,16 @@ background:var(--card);border:1px solid var(--line);border-radius:7px}
 .grouptitle{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;
 margin:18px 0 0;font-weight:650}
 .grouptitle .muted{font-weight:400}
+/* The five kinds of reading -- 实盘 above the tabs, then 模型, 边际, 选窗,
+   定注 -- each open on a rule in their own colour and a banner title
+   (user ruling, 2026-09-17: 五大分类之间加明显的分界线).  A section title
+   and an area title used to differ by one thin edge, so where one kind of
+   reading ended and the next began had to be read off the chips. */
+.group,.toparea{margin-top:40px;padding-top:14px;
+border-top:4px solid var(--tone,var(--line))}
+.group > .grouptitle,.toparea > .grouptitle{margin:0 0 4px;padding:9px 12px;
+border-left:0;border-radius:6px;font-size:17px;
+background:color-mix(in srgb,var(--tone,var(--line)) 14%,transparent)}
 /* The theme button rides at the end of the bar.  It is still a static
    element of the body, moved in once the bar exists, so a page whose
    render failed keeps it -- in the corner where it always was. */
@@ -12445,12 +12456,13 @@ function truthLanding(){
     真值＝市场收敛裁定（末端买价 ≥0.80 的桶）；
     价格＝首个 P0 决策后 4 小时的中位卖一；概率＝同一时刻的服务后验。</p>
   <div class="why"><b>这三张表回答一件事：</b>真值到底住在哪个价位、哪个声称档，
-  以及两把尺子对不齐时该信谁——最后一张直接给答案。</div>
+  以及两把尺子对不齐时该信谁——第一张直接给答案，后两张是它读自的两把尺子
+  （先结论后明细，2026-09-17 裁定）。</div>
+  ${gapTable}
   <h3 style="margin-top:14px">按市场价格（入场后 4h 中位卖一）</h3>
   <table>${head("均价")}<tbody>${bandRows(T.by_price,true)}</tbody></table>
   <h3 style="margin-top:14px">按模型概率（P0 建仓时刻声称）</h3>
-  <table>${head("声称均值")}<tbody>${bandRows(T.by_claim,true)}</tbody></table>
-  ${gapTable}`;
+  <table>${head("声称均值")}<tbody>${bandRows(T.by_claim,true)}</tbody></table>`;
 }
 
 // The lambda tables, one per stage scope.  Placed beside the edge
@@ -14400,17 +14412,17 @@ function h5Readiness(){
   指名的那一张。按表数会把这些没人读的旧代算进分母——2026-08-29 因此显示 18%，
   而它的决策口径是 100%。<b>临时成员（provisional）单列不计入</b>：它们按设计
   就没有自己的订正表，借用同站已认证成员的参数，不属于任何半衰期。</div>
-  <table style="margin-top:12px"><thead><tr>
-    <th>事件日</th><th>已标定决策</th><th>其中 H5 服务</th><th>占比</th>
-    <th>纯临时成员决策</th><th>真值已到站数</th><th></th>
-  </tr></thead><tbody>${rows}</tbody></table>
   ${ready.length ? `<div class="why" style="margin-top:10px"><b>已可打分：</b>
   ${ready.join("、")}。<b>但首次实跑（2026-08-30，8-29 单日）判定为无判别力</b>：
   H5 臂 31 链 −31.2%、H15 反事实臂 26 链 −8.8%，差额 +19.33 全部由 RPLL 与 SAEZ
   两条链扛着——剔 1 剩 +8.08、剔 2 剩 +0.01、剔 3 转负 −1.21，符号 5:7 反而更多链
   变差，且两臂开出的链集合本身就不同（H5 独有 7 条、H15 独有 2 条）。
   单日 31 条链远低于账本判例要求的量级，<b>结论是"还不能判"，不是"H15 更好"</b>。
-  要有结论得攒到几十个事件日。</div>` : ""}`;
+  要有结论得攒到几十个事件日。</div>` : ""}
+  <table style="margin-top:12px"><thead><tr>
+    <th>事件日</th><th>已标定决策</th><th>其中 H5 服务</th><th>占比</th>
+    <th>纯临时成员决策</th><th>真值已到站数</th><th></th>
+  </tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 
@@ -15714,16 +15726,16 @@ function liveReadiness(){
       <button type="button" class="lc-bulk" data-bulk="bar_all" disabled
         onclick="lcBulk(this)"
         title="点击＝全部站一起禁入：每个站写一条操作者禁入裁定，同时撤掉所有豁免与待观察——下一轮生产起不再给任何站下单（账本照常记账）。一次写盘、一条审计。">⛔ 一键全部禁入</button></div>
-    <div class="scroll" style="max-height:420px;margin-top:6px">
-    <table style="white-space:nowrap"><thead><tr>${groupHead}</tr><tr>${columnHead}</tr></thead><tbody>${rows}</tbody></table></div>
     <div class="muted" style="margin-top:6px;font-size:11.5px">
       全队命中（含禁入站）：篮子命中 ${hfrac(HT.bh, HT.sd)} 站日 · 持仓命中 ${hfrac(HT.hh, HT.hd)} 站日 ·
       命中率 ${hfrac(HT.k, HT.n)} 笔，声称 ${HT.n?pc0(HT.c/HT.n):"—"}。
       篮子命中算挑中的桶，持仓命中只算买到的桶，两者之差在执行；命中率对声称看的是模型。</div>
-    ${groupBlock}
     ${FX?`<div class="muted" style="margin-top:4px;font-size:11.5px">
       五维诊断：${FX.worst.length?h(FX.worst.join("、"))+" 至少四项不行":"没有站四项以上不行"}，
       另有 ${FX.clean} 站一项都不占。</div>`:""}
+    ${groupBlock}
+    <div class="scroll" style="max-height:420px;margin-top:6px">
+    <table style="white-space:nowrap"><thead><tr>${groupHead}</tr><tr>${columnHead}</tr></thead><tbody>${rows}</tbody></table></div>
   </div>`;
 }
 
@@ -16396,18 +16408,28 @@ const GROUPS = [
   //   模型 概率层 → 边际 边际层 → 选窗 选窗层 → 定注 定注层
   // The book, the live switch and the refusal count stay above the tabs:
   // they are read on arrival, whatever layer is being studied.
+  //
+  // Inside an area the summary comes first and the detail follows it (user
+  // rulings, 2026-09-17: 总分逻辑; 四大模型的权重、离散度要前移).  The model
+  // area opens on 模型校准总检, then walks the serving chain from upstream
+  // down: the four models' own inputs (correction, weights, spread, hit
+  // rate), the two steps that shape the served distribution (centre/width,
+  // band table), the checks of that served distribution (OOS, where truth
+  // lands against its mean), and last the research and roll-out readings.
   {id:"model", label:"模型", short:"模型", tone:"#d2a8ff",
-   note:"概率层：服务分布从哪来、准不准——订正与权重、离散度、命中率、OOS、中心/宽度、band 表、总检",
-   sections:[[tables,"偏差订正与权重"],
-     [servingWeights,"四大模型权重"],
+   note:"概率层：先看总检，再沿链条从上游到下游——四大模型（订正、权重、离散度、命中率）→ 服务分布（中心/宽度、band 表）→ 检验（OOS、真值离均值）→ 研究与换代（政权偏移、H5）",
+   sections:[[scorecard,"模型校准总检"],
+     // the four models, as they come in
+     [tables,"偏差订正与权重"],[servingWeights,"四大模型权重"],
      [dispersion,"模型离散度"],[hitRate,"模型命中率"],
-     [oosScores,"OOS 打分"],[centerWidth,"中心/宽度"],
-     [bandTable,"band 表"],
-     [centreLanding,"真值离均值多远"],
-     [scorecard,"模型校准总检"],[h5Readiness,"H5 换代进度"],
-     [correctionAccuracy,"订正准度与政权偏移"]]},
+     // the served distribution
+     [centerWidth,"中心/宽度"],[bandTable,"band 表"],
+     // checks of what was served
+     [oosScores,"OOS 打分"],[centreLanding,"真值离均值多远"],
+     // research and roll-out
+     [correctionAccuracy,"订正准度与政权偏移"],[h5Readiness,"H5 换代进度"]]},
   {id:"edge", label:"边际", short:"边际", tone:"#79c0ff",
-   note:"边际层：我们的概率对着市场值多少、信几成——EV 恒等式、真值落位、λ 表与体温计、β 车道、估值车道、双向收敛",
+   note:"边际层：我们的概率对着市场值多少、信几成——EV 恒等式（总）、真值落位、λ 表与体温计（上线）、β 车道、估值车道、L4 后验、双向收敛（影子）",
    sections:[[charterEv,"宪章 EV 恒等式"],
      [truthLanding,"真值落位"],
      [effectiveEdgeLambda,"有效边际 λ 表"],
@@ -16416,10 +16438,13 @@ const GROUPS = [
      [valuationLane,"统一估值车道"],
      [posteriorLane,"L4 后验层（影子）"],
      [convergenceClaim,"双向收敛系数"]]},
+  // 覆盖 · 价格 · EV is the whole seat in one line (what it covered, cost
+  // and was worth), 篮子命中率 splits it by width, and the market-lean gate
+  // -- a rule in shadow -- follows the readings of what actually seated.
   {id:"select", label:"选窗", short:"选窗", tone:"#e3b341",
-   note:"选窗层：挑哪几个桶、挑得值不值——市场方向闸、覆盖与 EV、篮子命中率",
-   sections:[[marketLeanGate,"市场方向闸"],
-     [coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"]]},
+   note:"选窗层：挑哪几个桶、挑得值不值——覆盖与 EV（总）、篮子命中率、市场方向闸（影子）",
+   sections:[[coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"],
+     [marketLeanGate,"市场方向闸"]]},
   {id:"sizing", label:"定注", short:"定注", tone:"#56d4dd",
    note:"定注层：最后真正拿着什么——分布与持仓分家",
    sections:[[windowDivergence,"分布与持仓分家"]]},
@@ -16597,6 +16622,11 @@ const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}"
 // station table, 没建仓是因为什么 moved inside 逐站逐日明细, and the
 // ledger ↔ production guard left the page with the paper readings.
 const TOP = [[daily, "每日统计"], [roster, "逐站逐日明细"]];
+// The area above the tabs is the fifth kind of reading and wears a title
+// and a colour like the four below it; the jump bar paints its chips in the
+// same colour.
+const TOP_AREA = {label:"实盘", tone:"#7ee787",
+  note:"打开页面先看：资金、站点上线闸门、每日统计、逐站逐日明细"};
 
 // Which sections on this page were reused from the previous build, and how
 // old each one is.  A cached section that quietly stops refreshing is the
@@ -16633,9 +16663,12 @@ document.getElementById("app").innerHTML =
       <span id="nav-theme"></span></div>
     <nav class="jump" id="jump" aria-label="区块"></nav></div>` +
   safe(head, "页头") +
+  `<section class="toparea" style="--tone:${TOP_AREA.tone}">
+    <div class="grouptitle">${TOP_AREA.label}<span class="muted">${TOP_AREA.note}</span></div>` +
   sec(moneyBoard, "资金看板", "sec-money") +
   sec(liveReadiness, "站点实盘上线闸门", "sec-live") +
   TOP.map(([fn, name], i) => sec(fn, name, `sec-top-${i}`)).join("") +
+  `</section>` +
   groupHtml +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据 ·
     ${sectionCacheNote()}
@@ -16691,7 +16724,8 @@ document.getElementById("app").innerHTML =
     if(!jump) return;
     // "实盘", not "账本": every section above the tabs reads the live book
     // since 2026-09-16, and "账本" read as the paper ledger.
-    const runs = [run("实盘", "", [...document.querySelectorAll("#app > .sec")])]
+    const runs = [run(TOP_AREA.label, TOP_AREA.tone,
+        [...document.querySelectorAll(".toparea > .sec")])]
       .concat([...document.querySelectorAll(".group:not([hidden])")].map(g => {
         const G = GROUPS.find(x => x.id === g.dataset.group) || {};
         return run(G.short || G.label || "", G.tone || "",
@@ -17027,7 +17061,12 @@ def _newer_payload_landed(target: Path, payload_started_at: float) -> bool:
     landed = _payload_started_at(target)
     if landed is None:
         return existing_mtime > payload_started_at
-    return landed > payload_started_at
+    # The page's stamp is written to the millisecond, the sidecar keeps the
+    # full float: read at one precision, or a build's own page reads as
+    # newer than its own payload whenever the rounding went up -- 698.590
+    # against 698.5898612 on 2026-09-17, which refused every template save
+    # until the next full render.
+    return round(landed, 3) > round(payload_started_at, 3)
 
 
 def _payload_sidecar(target: Path) -> Path:
