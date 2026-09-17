@@ -668,6 +668,16 @@ def snapshot_from_probability_envelope(
             ]}
             if market_snapshot.get("chain_seat_buckets") else {}
         ),
+        # Charter 143: the size each seat bucket was last sent at.
+        **(
+            {"chain_sent_shares": {
+                str(bucket): float(shares)
+                for bucket, shares in dict(
+                    market_snapshot["chain_sent_shares"]
+                ).items()
+            }}
+            if market_snapshot.get("chain_sent_shares") else {}
+        ),
     }
     return TargetBasketSnapshot.from_mapping(raw)
 

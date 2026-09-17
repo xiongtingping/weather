@@ -109,6 +109,8 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     TARGET_PRICING_LANE_STAGES as _TARGET_PRICING_LANE_STAGES,
     COMPLETION_CROSSING_PRICING_RULE_VERSION as _COMPLETION_CROSSING_PRICING,
     CHARTER_136_COMPLETION as _CHARTER_136_COMPLETION,
+    # Charter 143 v2: the send history a completion reads, off the snapshot.
+    _completion_143_sent_shares,
     CENTRE_ANCHOR_DISTANCE_DECAY,
     CENTRE_ANCHOR_EDGE_TILT,
     CENTRE_ANCHOR_MIN_RUNG_SHARE,
@@ -4795,6 +4797,7 @@ def _paper_snapshot_mapping(
     reported_high: tuple[str, int] | None = None,
     observed_running_high_c: float | None = None,
     chain_seat_buckets: Sequence[str] = (),
+    chain_sent_shares: Mapping[str, float] | None = None,
 ) -> tuple[
     Any, dict[str, float], dict[str, float],
     dict[str, list[dict[str, float]]]
@@ -4963,6 +4966,15 @@ def _paper_snapshot_mapping(
                 if str(bucket) in {str(b) for b in chain_seat_buckets}
             ]}
             if chain_seat_buckets else {}
+        ),
+        # Charter 143 v2: the size each posted leg was posted at.
+        **(
+            {"chain_sent_shares": {
+                str(bucket): float((chain_sent_shares or {})[str(bucket)])
+                for bucket, _o, _l, _u, _p in buckets
+                if str(bucket) in (chain_sent_shares or {})
+            }}
+            if chain_sent_shares else {}
         ),
     }
     return mapping, probabilities, prices, depth
@@ -5189,6 +5201,7 @@ def _production_judge(
     last_acted_probability_identity: str | None = None,
     excluded_candidate_ids: Sequence[str] = (),
     chain_seat_buckets: Sequence[str] = (),
+    chain_sent_shares: Mapping[str, float] | None = None,
 ) -> dict[str, Any]:
     """Production's whole-basket judge, run on this lane's book.
 
@@ -5352,6 +5365,7 @@ def _production_judge(
             at_utc=str(payload["observed_at"]),
         ),
         chain_seat_buckets=chain_seat_buckets,
+        chain_sent_shares=chain_sent_shares,
     )
     if built is None:
         return {
@@ -5738,6 +5752,9 @@ def _production_judge(
         # count; the walk's 71(a), floor and edge mirrors read it.
         "winner_completion_rule": solution.get("winner_completion_rule"),
         "hours_to_cutoff": judge_hours_to_cutoff,
+        # Charter 143 v2: the send history production's exemption reads, off
+        # the same snapshot and the same helper.
+        "completion_143_sent_shares": _completion_143_sent_shares(snapshot),
         "target_shares": target,
         "delta_cost_usdc": delta_cost,
         "capital_usdc": capital,
@@ -5820,6 +5837,7 @@ def _completion_143_exempt_on_legs(
             (seat.get("completion") or {}).get("market_dead_buckets") or ()
         ),
         hours_to_cutoff=verdict.get("hours_to_cutoff"),
+        sent_shares_by_bucket=verdict.get("completion_143_sent_shares"),
     )["exempt"])
 
 
@@ -9231,6 +9249,9 @@ def backfill(
             # be compared at settlement instead of only the survivor being
             # recorded.
             chain_intended: set[str] = set()
+            # Charter 143 v2: the size each leg was last posted at -- the
+            # most a completion may buy of it.
+            chain_intended_shares: dict[str, float] = {}
             chain_probability_identity = ""
             # Charter 77: the last recorded decision per stage.
             chain_decision_signatures: dict[str, dict] = {}
@@ -9842,6 +9863,8 @@ def backfill(
                             ),
                             # Charter 136 (五): the legs this chain posted.
                             chain_seat_buckets=tuple(sorted(chain_intended)),
+                            # Charter 143 v2: and the size each was posted at.
+                            chain_sent_shares=dict(chain_intended_shares),
                         )
                         counts["production_judge_cycles"] += 1
                         # Charter 104: the enumeration that DECIDED.  The
@@ -11508,6 +11531,10 @@ def backfill(
                         )
                     chain_stake += stake
                     chain_intended.update(str(b) for b in intended_legs)
+                    chain_intended_shares.update({
+                        str(b): float(q) for b, q in intended_legs.items()
+                        if float(q) > 0.0
+                    })
                     chain_probabilities = probabilities
                     chain_probability_identity = str(
                         payload.get("probability_identity") or ""

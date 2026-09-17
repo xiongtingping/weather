@@ -1829,6 +1829,31 @@ def chain_protection_v1(
     }
 
 
+# A seat bucket the snapshot knows was sent but not at what size (a caller
+# that carries ``chain_seat_buckets`` alone): the held level binds.
+COMPLETION_143_UNSIZED_SENT_SHARES = 1.0e9
+
+
+def _completion_143_sent_shares(
+    snapshot: TargetBasketSnapshot,
+) -> dict[str, float] | None:
+    """Charter 143 v2: the legs a completion may buy, and at most how many.
+
+    The chain's send history off the snapshot -- per bucket, the size it was
+    last sent at.  ``None`` only for a snapshot that carries no history at
+    all, which production never builds for a chain that holds anything (a
+    fill is a send).
+    """
+
+    sent = dict(getattr(snapshot, "chain_sent_shares", {}) or {})
+    if sent:
+        return {str(bucket): float(shares) for bucket, shares in sent.items()}
+    seat = tuple(getattr(snapshot, "chain_seat_buckets", ()) or ())
+    if seat:
+        return {str(bucket): COMPLETION_143_UNSIZED_SENT_SHARES for bucket in seat}
+    return None
+
+
 def _support_windows(
     *,
     snapshot: TargetBasketSnapshot,
@@ -2164,8 +2189,20 @@ def _support_windows(
                 hours_to_cutoff is not None
                 and float(hours_to_cutoff) <= COMPLETION_CUTOFF_HOURS
             )
+            # v2: a leg the chain never sent is not missing -- it belongs to
+            # a seat the label moved to (ZGGG 32C, ZSQD 27C, 2026-09-17).
+            sent_143 = _completion_143_sent_shares(snapshot)
+            sent_buyable = [
+                bucket for bucket in buyable
+                if sent_143 is None or bucket in sent_143
+            ]
+            sent_priced = bool(sent_buyable) and all(
+                quote_by_bucket.get(bucket) is not None
+                for bucket in sent_buyable
+            )
             cheap = [
-                bucket for bucket, quote in zip(buyable, increment_quotes)
+                bucket for bucket in sent_buyable
+                for quote in (quote_by_bucket.get(bucket),)
                 if quote is not None
                 and clears_economic_hurdle_v1(
                     expected_payout=min(
@@ -2178,7 +2215,7 @@ def _support_windows(
             admits_143 = bool(
                 not past_cutoff
                 and (
-                    (basket_type == "multi" and increment_priced)
+                    (basket_type == "multi" and sent_priced)
                     or (basket_type == "single" and cheap)
                 )
             )
@@ -2186,6 +2223,10 @@ def _support_windows(
                 "rule": COMPLETION_143_RULE_VERSION,
                 "basket_type": basket_type,
                 "past_completion_cutoff": past_cutoff,
+                "sent_buyable_buckets": sent_buyable,
+                "unsent_buckets": [
+                    bucket for bucket in buyable if bucket not in sent_buyable
+                ],
                 "hurdle_clearing_buckets": cheap,
                 "admits": admits_143,
             }
@@ -4996,6 +5037,8 @@ def _target_candidates(
             # (``window_probabilities``), which is what the kernel requires.
             probabilities_by_bucket=probabilities_by_bucket,
             hours_to_cutoff=hours_to_cutoff,
+            # Charter 143 v2: only legs the chain sent, at most at their size.
+            sent_shares_by_bucket=_completion_143_sent_shares(snapshot),
         )
         if balance_candidate is not None:
             candidates.append(balance_candidate)
@@ -5329,6 +5372,7 @@ def _ladder_balance_candidate(
     unbuyable: Collection[str] = (),
     probabilities_by_bucket: Mapping[str, float] | None = None,
     hours_to_cutoff: float | None = None,
+    sent_shares_by_bucket: Mapping[str, float] | None = None,
 ) -> dict[str, Any] | None:
     """Charter 84's candidate: the seat's short rungs raised to its held level.
 
@@ -5467,6 +5511,7 @@ def _ladder_balance_candidate(
             below_leg_floor_buckets=tuple(str(bucket) for bucket in unbuyable),
             hours_to_cutoff=hours_to_cutoff,
             fee_rate=0.0,
+            sent_shares_by_bucket=sent_shares_by_bucket,
         )
         if not completion_143_reading["targets"]:
             return None
@@ -5571,11 +5616,13 @@ def _ladder_balance_candidate(
                 claim_by_bucket=probabilities_by_bucket,
                 below_leg_floor_buckets=tuple(str(b) for b in unbuyable),
                 hours_to_cutoff=hours_to_cutoff,
+                sent_shares_by_bucket=sent_shares_by_bucket,
             ),
             "level_rule": completion_143_reading["level_rule"],
             "level_shares": completion_143_reading["level_shares"],
-            # A single-leg completion leaves the rungs that do not clear the
-            # hurdle unbought, on purpose; the support contract reads this.
+            # The rungs the rule leaves unbought on purpose -- a single leg's
+            # that do not clear the hurdle, any leg the chain never sent --
+            # which the support contract reads.
             "declined_buckets": [
                 bucket for bucket in ordered
                 if bucket not in dead
@@ -6071,15 +6118,15 @@ def _assert_candidate_support_contract(
                 - float(baseline_shares.get(bucket, 0.0))
                 for bucket in support
             }
-            # Charter 143: a single-leg completion buys only the rungs that
-            # clear the hurdle; the rest are declined by the rule, not left
-            # short by accident.  Only a candidate the rule itself certified.
+            # Charter 143: a completion buys a single leg's rungs that clear
+            # the hurdle and only legs the chain sent; the rest are declined
+            # by the rule, not left short by accident.  Only a candidate the
+            # rule itself certified.
             completion_143 = row.get("completion_143") or {}
             declined = (
                 {str(item) for item in completion_143.get("declined_buckets") or ()}
                 if CHARTER_143_COMPLETION == "on"
                 and completion_143.get("exempt") is True
-                and completion_143.get("basket_type") == "single"
                 and str(row.get("candidate_origin") or "")
                 == LADDER_BALANCE_CANDIDATE_ORIGIN
                 else set()
@@ -6823,6 +6870,7 @@ def compile_delta_v2_runtime_plan(
                     .get("market_dead_buckets") or ()
                 ),
                 hours_to_cutoff=hours_to_cutoff,
+                sent_shares_by_bucket=_completion_143_sent_shares(snapshot),
             )
         completion_143_exempt = bool(
             completion_143_after_lift and completion_143_after_lift["exempt"]

@@ -1863,13 +1863,17 @@ def load_production_market_snapshot(
     # Charter 136 (五): every bucket this station-day's chain has sent a buy
     # to the venue for.  "Sent" is an exchange answer on the intent -- an
     # intent the live flag disarmed never reached anyone and seats nothing.
-    sent = load_chain_seat_buckets(
+    sent = load_chain_sent_shares(
         conn, station_id=station_id, event_date=event_date,
     )
     chain_seat_buckets = [
         str(item["bucket"]) for item in normalized_buckets
         if str(item["bucket"]) in sent
     ]
+    # Charter 143: and the size each was last sent at.
+    chain_sent_shares = {
+        bucket: float(sent[bucket]) for bucket in chain_seat_buckets
+    }
     if current_core_buckets:
         canonical_buckets = tuple(
             str(item["bucket"]) for item in normalized_buckets
@@ -1942,7 +1946,8 @@ def load_production_market_snapshot(
         "current_core_buckets": list(current_core_buckets),
         "current_direction": current_direction,
         **(
-            {"chain_seat_buckets": chain_seat_buckets}
+            {"chain_seat_buckets": chain_seat_buckets,
+             "chain_sent_shares": chain_sent_shares}
             if chain_seat_buckets else {}
         ),
         "buckets": normalized_buckets,
@@ -1974,25 +1979,47 @@ def load_chain_seat_buckets(
     without the order ledger.
     """
 
+    return frozenset(
+        load_chain_sent_shares(
+            conn, station_id=station_id, event_date=event_date,
+        )
+    )
+
+
+def load_chain_sent_shares(
+    conn: sqlite3.Connection, *, station_id: str, event_date: str,
+) -> dict[str, float]:
+    """Charter 143: the size of the last buy this station-day SENT, per bucket.
+
+    The same "sent" as ``load_chain_seat_buckets`` -- an exchange answer on
+    the intent -- carrying the ``requested_size`` of the newest such intent
+    per bucket.  A completion restores the legs the basket was sent for, at
+    no more than they were sent at: the held level alone is not that size
+    when the held leg was a penny rung the dollar minimum lifted (SBGR
+    2026-09-18 held 20C x34 @0.03 and completed 21C to 34 @0.14, against the
+    13 it had been sent for).
+    """
+
     if conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table'"
         " AND name='basket_target_order_events'"
     ).fetchone() is None:
-        return frozenset()
+        return {}
     placeholders = ",".join("?" for _ in CHAIN_SEAT_EVENT_TYPES)
-    return frozenset(
-        str(row[0])
-        for row in conn.execute(
-            "SELECT DISTINCT i.bucket FROM basket_target_order_intents i"
-            " JOIN basket_target_execution_cycles cy ON cy.cycle_id=i.cycle_id"
-            " WHERE cy.station_id=? AND cy.event_date=?"
-            "   AND i.order_action='BUY'"
-            "   AND EXISTS (SELECT 1 FROM basket_target_order_events e"
-            "     WHERE e.order_intent_id=i.order_intent_id"
-            f"      AND e.event_type IN ({placeholders}))",
-            (station_id, event_date, *CHAIN_SEAT_EVENT_TYPES),
-        )
-    )
+    sent: dict[str, float] = {}
+    for bucket, size in conn.execute(
+        "SELECT i.bucket, i.requested_size FROM basket_target_order_intents i"
+        " JOIN basket_target_execution_cycles cy ON cy.cycle_id=i.cycle_id"
+        " WHERE cy.station_id=? AND cy.event_date=?"
+        "   AND i.order_action='BUY'"
+        "   AND EXISTS (SELECT 1 FROM basket_target_order_events e"
+        "     WHERE e.order_intent_id=i.order_intent_id"
+        f"      AND e.event_type IN ({placeholders}))"
+        " ORDER BY i.created_at, i.order_intent_id",
+        (station_id, event_date, *CHAIN_SEAT_EVENT_TYPES),
+    ):
+        sent[str(bucket)] = max(0.0, float(size or 0.0))
+    return sent
 
 
 def derive_policy_maturity_bin(

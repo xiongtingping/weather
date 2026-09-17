@@ -982,6 +982,9 @@ class TargetBasketSnapshot:
     # Charter 136 (五): every bucket the station-day's chain has sent a buy
     # to the venue for -- the seat a broken basket is completed back to.
     chain_seat_buckets: tuple[str, ...] = ()
+    # Charter 143: the size each of those buckets was last sent at.  Empty
+    # on a snapshot that carries no send history.
+    chain_sent_shares: Mapping[str, float] = field(default_factory=dict)
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "TargetBasketSnapshot":
@@ -1033,6 +1036,14 @@ class TargetBasketSnapshot:
                 _required_text("chain_seat_bucket", item)
                 for item in (raw.get("chain_seat_buckets") or ())
             ),
+            chain_sent_shares={
+                _required_text("chain_sent_bucket", bucket): _nonnegative(
+                    "chain_sent_shares", shares
+                )
+                for bucket, shares in dict(
+                    raw.get("chain_sent_shares") or {}
+                ).items()
+            },
         )
         value.validate()
         return value
@@ -1056,6 +1067,8 @@ class TargetBasketSnapshot:
             raise ContractError("snapshot_chain_seat_bucket_duplicate")
         if set(self.chain_seat_buckets) - set(buckets):
             raise ContractError("snapshot_chain_seat_bucket_unknown")
+        if set(self.chain_sent_shares) - set(buckets):
+            raise ContractError("snapshot_chain_sent_bucket_unknown")
         if self.current_core_buckets:
             ordinal_by_bucket = {
                 item.bucket: item.ordinal for item in self.buckets
@@ -1114,6 +1127,9 @@ class TargetBasketSnapshot:
         # every snapshot written before the field existed.
         if not value.get("chain_seat_buckets"):
             value.pop("chain_seat_buckets", None)
+        # Charter 143: likewise.
+        if not value.get("chain_sent_shares"):
+            value.pop("chain_sent_shares", None)
         return value
 
     @property

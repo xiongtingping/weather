@@ -345,3 +345,168 @@ def test_the_ledger_reads_the_same_exemption_on_its_legs() -> None:
         verdict=dict(verdict, hours_to_cutoff=1.0), **kwargs
     ) is False
     assert ledger._completion_143_exempt_on_legs(verdict=None, **kwargs) is False
+
+
+# --- v2 (2026-09-17, first live morning): only legs the chain sent, at most at
+# the size they were sent at.
+
+
+def test_v2_a_leg_nobody_sent_is_not_missing() -> None:
+    # ZGGG 2026-09-17: 33/34/35C sent and held; the label moved the seat to
+    # 32/33/34C and v1 bought 32C.
+    reading = _targets(
+        held_by_bucket={"33": 5.0, "34": 5.0},
+        support=("32", "33", "34"),
+        held_cost_by_bucket={"33": 1.30, "34": 1.85},
+        depth_by_bucket={"32": _book(0.07), "33": _book(0.40), "34": _book(0.40)},
+        sent_shares_by_bucket={"33": 5.0, "34": 5.0, "35": 5.0},
+    )
+    assert reading["refused"] == "no_sent_leg_missing"
+    assert reading["unsent_buckets"] == ["32"]
+    assert reading["targets"] == {}
+
+
+def test_v2_the_basket_is_the_held_and_sent_legs() -> None:
+    # 33/34 held, 35 sent and missing, 32 never sent: buy 35 alone, and the
+    # in-window reading is over 33/34/35 -- 32 paying nothing is not a
+    # settlement this basket was ever built to cover.
+    reading = _targets(
+        held_by_bucket={"33": 5.0, "34": 5.0},
+        support=("32", "33", "34", "35"),
+        held_cost_by_bucket={"33": 1.30, "34": 1.85},
+        depth_by_bucket={"32": _book(0.07), "33": _book(0.40), "34": _book(0.40),
+                         "35": _book(0.24)},
+        sent_shares_by_bucket={"33": 5.0, "34": 5.0, "35": 5.0},
+    )
+    assert reading["refused"] is None
+    assert reading["buy_buckets"] == ["35"]
+    assert reading["targets"]["32"] == 0.0
+    assert reading["floor_before"] == pytest.approx(-3.15)
+    assert reading["floor_after"] == pytest.approx(5.0 - 3.15 - 1.20)
+
+
+def test_v2_a_completion_buys_no_more_than_the_leg_was_sent_at() -> None:
+    # SBGR 2026-09-18: 20C held x34 (a 0.03 rung the dollar minimum lifted),
+    # 21C sent at 13; v1 bought 34 @0.14.
+    reading = _targets(
+        held_by_bucket={"20": 34.0},
+        support=("20", "21", "22"),
+        held_cost_by_bucket={"20": 1.02},
+        depth_by_bucket={"20": _book(0.03), "21": _book(0.14), "22": _book(0.28)},
+        claim_by_bucket={"20": 0.137, "21": 0.239, "22": 0.182},
+        sent_shares_by_bucket={"20": 34.0, "21": 13.0, "22": 5.0},
+    )
+    assert reading["buy_buckets"] == ["21"]
+    assert reading["targets"]["21"] == 13.0
+    assert reading["spend_usdc"] == pytest.approx(13 * 0.14)
+    multi = _targets(sent_shares_by_bucket={"30": 5.0, "31": 5.0, "32": 3.0})
+    assert multi["targets"]["32"] == 3.0
+
+
+def test_v2_the_exemption_refuses_an_unsent_leg() -> None:
+    reading = _exempt(sent_shares_by_bucket={"30": 5.0, "31": 5.0})
+    assert reading["reason"] == "buys_unsent_leg"
+    assert _exempt(sent_shares_by_bucket={"30": 5.0, "31": 5.0, "32": 1.0})["exempt"] is True
+
+
+def test_v2_the_snapshot_carries_the_sent_sizes_and_hashes_as_before_without() -> None:
+    from dataclasses import replace
+
+    snapshot = fixture._held_snapshot(ask_32=0.15)
+    assert "chain_sent_shares" not in snapshot.to_dict()
+    sent = replace(snapshot, chain_seat_buckets=("30", "31"),
+                   chain_sent_shares={"30": 5.0, "31": 5.0})
+    again = type(snapshot).from_mapping(sent.to_dict())
+    assert dict(again.chain_sent_shares) == {"30": 5.0, "31": 5.0}
+    with pytest.raises(Exception, match="snapshot_chain_sent_bucket_unknown"):
+        type(snapshot).from_mapping({**snapshot.to_dict(), "chain_sent_shares": {"99": 1.0}})
+    assert runtime._completion_143_sent_shares(snapshot) is None
+    assert runtime._completion_143_sent_shares(sent) == {"30": 5.0, "31": 5.0}
+    seat_only = replace(snapshot, chain_seat_buckets=("30",))
+    assert runtime._completion_143_sent_shares(seat_only) == {
+        "30": runtime.COMPLETION_143_UNSIZED_SENT_SHARES
+    }
+
+
+def test_v2_the_loader_reads_the_last_sent_size() -> None:
+    import json
+    import sqlite3
+
+    from bayes_basket_target.atomic_ledger import apply_target_ledger_schema
+    from bayes_basket_target.execution_reconciliation import record_order_event
+    from bayes_basket_target.production_io import (
+        load_chain_seat_buckets,
+        load_chain_sent_shares,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    apply_target_ledger_schema(conn)
+    conn.execute(
+        "INSERT INTO basket_target_execution_cycles(cycle_id,plan_id,station_id,"
+        "event_date,settlement_timezone,strategy_lane,plan_sha256,"
+        "requested_reserve_usdc,state,created_at,updated_at)"
+        " VALUES('c1','p1','SBGR','2026-09-18','America/Sao_Paulo','basket',?,1,"
+        "'submitted','2026-09-16T15:00:00Z','2026-09-16T15:00:00Z')",
+        ("a" * 64,),
+    )
+    for n, (bucket, size, at, event) in enumerate((
+        ("21°C", 7.0, "2026-09-16T15:38:04Z", "CANCEL_ACK"),
+        ("21°C", 13.0, "2026-09-16T17:10:01Z", "CANCEL_ACK"),
+        ("21°C", 40.0, "2026-09-16T18:00:00Z", "NEVER_REACHED_EXCHANGE"),
+        ("20°C", 34.0, "2026-09-16T23:42:14Z", "FILL"),
+    )):
+        intent = f"i{n}"
+        conn.execute(
+            "INSERT INTO basket_target_order_intents(order_intent_id,decision_id,"
+            "cycle_id,bucket,token_id,side,order_action,limit_price,requested_size,"
+            "requested_notional_usdc,state,live_submit_authorized,idempotency_key,"
+            "intent_json,intent_sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (intent, "d1", "c1", bucket, f"t{n}", "YES", "BUY", 0.1, size, 0.5,
+             "submitted", 1, f"k{n}", json.dumps({}), "b" * 64, at),
+        )
+        record_order_event(conn, order_intent_id=intent, event={
+            "event_type": event, "exchange_order_id": f"0x{n}",
+            "observed_at": at, "matched_size": size if event == "FILL" else 0.0,
+            "matched_notional_usdc": 1.0 if event == "FILL" else 0.0, "event_payload": {},
+        })
+    assert load_chain_sent_shares(conn, station_id="SBGR", event_date="2026-09-18") == {
+        "21°C": 13.0, "20°C": 34.0,
+    }
+    assert load_chain_seat_buckets(conn, station_id="SBGR", event_date="2026-09-18") == (
+        frozenset({"20°C", "21°C"})
+    )
+
+
+def test_v2_zgsz_holds_on_a_leg_it_never_sent_and_completes_one_it_did() -> None:
+    from dataclasses import replace
+
+    unsent = replace(zgsz._snapshot(0.24), chain_seat_buckets=("30", "31"),
+                     chain_sent_shares={"30": 5.0, "31": 5.0})
+    result = zgsz._compile(unsent)
+    assert result["basket_target_activated"] is False
+    assert _short(result) == []
+    sent = replace(unsent, chain_seat_buckets=("30", "31", "32"),
+                   chain_sent_shares={"30": 5.0, "31": 5.0, "32": 5.0})
+    assert _short(zgsz._compile(sent)) == [("32", "TAKER_FOK")]
+
+
+def test_v2_the_ledger_hands_production_the_same_send_history() -> None:
+    spec = importlib.util.spec_from_file_location(
+        "ledger_143_v2", ROOT / "scripts" / "paper_trading_ledger.py"
+    )
+    ledger = importlib.util.module_from_spec(spec)
+    sys.modules["ledger_143_v2"] = ledger
+    spec.loader.exec_module(ledger)
+    assert ledger._completion_143_sent_shares is runtime._completion_143_sent_shares
+    import inspect
+    assert "chain_sent_shares" in inspect.signature(ledger._production_judge).parameters
+    assert "chain_sent_shares" in inspect.signature(ledger._paper_snapshot_mapping).parameters
+    seat = {"buckets": ["30", "31", "32"], "completion": {"market_dead_buckets": []}}
+    verdict = {"winner_completion_rule": RULE, "edge_probabilities": {},
+               "hours_to_cutoff": 20.0,
+               "completion_143_sent_shares": {"30": 5.0, "31": 5.0}}
+    assert ledger._completion_143_exempt_on_legs(
+        verdict=verdict, seat=seat, held={"30": 5.0, "31": 5.0},
+        held_cost={"30": 1.25, "31": 2.15},
+        leg_shares=[0.0, 0.0, 5.0], leg_cash=[0.0, 0.0, 3.0],
+    ) is False
