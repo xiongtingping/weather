@@ -5428,7 +5428,7 @@ SCORECARD_THRESHOLDS = {
     "ece": (0.05, 0.10),             # expected calibration error
     "conditional_gap": (0.05, 0.10),  # worst well-populated reliability bin
     "residual_correlation": (0.5, 0.75),   # max off-diagonal
-    "weight_distance": (0.10, 0.25),       # L1 gap, served vs minimum variance
+    "weight_distance": (0.10, 0.25),       # half-L1 gap, served vs production re-solve
     "spread_skill": (0.20, 0.45),    # |ratio - 1|, ensemble spread vs realised error
     "ci_relative": (0.15, 0.30),     # bootstrap half-width / value
 }
@@ -6379,6 +6379,7 @@ def collect_calibration_scorecard(conn: sqlite3.Connection) -> dict[str, Any]:
         "pit_bins": [count / len(pit_values) for count in pit_bins],
         "reliability_bins": decomposition["bins"],
         "fusion_pairs": fusion["pairs"],
+        "fusion_summary": fusion["summary"],
         "sample_days": len(everything),
         "station_count": len(stations),
         "latest_decision_at_utc": latest or None,
@@ -6469,228 +6470,472 @@ def _stability_verdict(relative: float | None, days: int) -> str:
     return f"只有 {days:,} 个站日，区间比数值本身还宽——上面每个判断都是暂定的"
 
 
-def _solve(matrix: list[list[float]], vector: list[float]) -> list[float] | None:
-    """Gaussian elimination with partial pivoting, for an 8x8 at most."""
+def _fusion_synthetic_residuals(
+    systems: Sequence[str],
+    correlation: Mapping[str, Mapping[str, float]],
+    sigmas: Sequence[float],
+) -> dict[str, dict[str, float]] | None:
+    """Residual series whose population covariance is exactly ``D R D``.
 
-    size = len(vector)
-    augmented = [list(matrix[row]) + [vector[row]] for row in range(size)]
-    for column in range(size):
-        pivot = max(
-            range(column, size), key=lambda row: abs(augmented[row][column])
-        )
-        if abs(augmented[pivot][column]) < 1e-12:
-            return None
-        augmented[column], augmented[pivot] = (
-            augmented[pivot], augmented[column]
-        )
-        for row in range(size):
-            if row == column:
-                continue
-            factor = augmented[row][column] / augmented[column][column]
-            for term in range(column, size + 1):
-                augmented[row][term] -= factor * augmented[column][term]
-    return [augmented[row][size] / augmented[row][row] for row in range(size)]
+    Production weighs a seat from per-day train residuals.  The SSOT keeps
+    what those residuals summarise -- the correlation matrix on the evidence
+    row, and each system's variance through the inverse-variance shadow --
+    but not the days.  Re-deriving the solver from those pieces would put a
+    second copy of the rule on this page, and the copy that stood here until
+    2026-09-17 had drifted three ways: it refused a lone active system where
+    production allows one, ignored the family caps, and scaled by train RMSE
+    where production scales by the residual sigma.  So the covariance is
+    turned back into series that carry it exactly, and those are handed to
+    the production function unchanged.
 
-
-def _minimum_variance_from_correlation(
-    systems: list[str],
-    correlation: dict[str, dict[str, float]],
-    sigmas: list[float],
-    shrinkage: float,
-) -> dict[str, float] | None:
-    """Minimum-variance shares from a stored correlation and per-system RMSE.
-
-    Negative shares are refused rather than clipped, because a blend is a
-    mixture of distributions and a negative share has no meaning in one.  The
-    constrained optimum is found by enumerating which systems sit at zero,
-    which is cheap at this cohort size.
+    Column ``m`` is ``sqrt(2) cos(2 pi (m+1) t / n)``: zero mean, mean square
+    one, and orthogonal to its siblings while ``n > 2k``.  With ``S = L L^T``
+    the rows ``x_t = L z_t`` have population covariance ``S``, the normaliser
+    production divides by.  ``None`` when the stored correlation is not
+    positive definite, which a matrix built from pairwise day sets can be.
     """
 
-    size = len(systems)
-    if size < 2 or size > 8:
-        return None
-    covariance = [[0.0] * size for _ in range(size)]
-    for row, a in enumerate(systems):
-        for column, b in enumerate(systems):
-            try:
-                value = float(correlation[a][b])
-            except (KeyError, TypeError, ValueError):
-                return None
-            if row != column:
-                value *= 1.0 - shrinkage
-            covariance[row][column] = value * sigmas[row] * sigmas[column]
+    from bayes_basket_target.native_ensemble_oos import (  # noqa: PLC0415
+        MINIMUM_VARIANCE_MIN_DAYS,
+    )
 
-    best: tuple[float, dict[str, float]] | None = None
-    for mask in range(1, 1 << size):
-        active = [index for index in range(size) if mask & (1 << index)]
-        if len(active) < 2:
-            continue
-        block = [[covariance[r][c] for c in active] for r in active]
-        solution = _solve(block, [1.0] * len(active))
-        if solution is None or any(value <= 0 for value in solution):
-            continue
-        total = sum(solution)
-        if total <= 0:
-            continue
-        shares = [value / total for value in solution]
-        variance = sum(
-            shares[i] * shares[j] * block[i][j]
-            for i in range(len(active))
-            for j in range(len(active))
-        )
-        if best is None or variance < best[0]:
-            best = (
-                variance,
-                {
-                    systems[index]: shares[position]
-                    for position, index in enumerate(active)
-                },
-            )
-    if best is None:
+    size = len(systems)
+    if size < 2 or len(sigmas) != size:
         return None
-    return {system: best[1].get(system, 0.0) for system in systems}
+    try:
+        covariance = [
+            [
+                float(correlation[left][right])
+                * float(sigmas[row])
+                * float(sigmas[column])
+                for column, right in enumerate(systems)
+            ]
+            for row, left in enumerate(systems)
+        ]
+    except (KeyError, TypeError, ValueError):
+        return None
+    lower = [[0.0] * size for _ in range(size)]
+    for row in range(size):
+        for column in range(row + 1):
+            value = covariance[row][column] - sum(
+                lower[row][term] * lower[column][term]
+                for term in range(column)
+            )
+            if row == column:
+                if value <= 1e-12:
+                    return None
+                lower[row][row] = math.sqrt(value)
+            else:
+                lower[row][column] = value / lower[column][column]
+    days = max(MINIMUM_VARIANCE_MIN_DAYS, 2 * size + 2)
+    basis = [
+        [
+            math.sqrt(2.0) * math.cos(2.0 * math.pi * (term + 1) * day / days)
+            for term in range(size)
+        ]
+        for day in range(days)
+    ]
+    return {
+        system: {
+            f"synthetic-{day:02d}": sum(
+                lower[row][term] * basis[day][term]
+                for term in range(row + 1)
+            )
+            for day in range(days)
+        }
+        for row, system in enumerate(systems)
+    }
+
+
+def _fusion_reconstruction(
+    *,
+    served: Mapping[str, float],
+    correlation: Mapping[str, Mapping[str, float]],
+    inverse_variance: Mapping[str, float] | None,
+    member_scale: Mapping[str, float],
+    member_train_n: Mapping[str, int | None],
+    family_by_system: Mapping[str, str],
+    family_caps: Mapping[str, float],
+    kappa: float | None,
+) -> dict[str, Any]:
+    """A served seat's weights, re-solved by production's own functions.
+
+    Every input is what the SSOT kept of what production read:
+
+    * ``inverse_variance`` is the evaluation's shadow scheme, which is
+      ``_minimum_variance_weights`` at shrinkage 1.0 over the same train
+      series, so its shares are ``1/var`` of exactly the diagonal the served
+      solve used.  Absent means that call returned nothing: the shared train
+      window was under ``MINIMUM_VARIANCE_MIN_DAYS`` and production weighed
+      the seat by inverse error.
+    * ``member_scale`` and ``member_train_n`` are the member artifact's
+      residual sigma and fit case count, which is what that fallback reads.
+      The artifact persists the serving fit while the seat was weighed on
+      the gate fit, a few days shorter, so a fallback seat re-solves only
+      approximately.
+    * ``kappa`` is parsed from the artifact's combination method, so a pool
+      seat is shrunk by the value it was minted with.
+
+    ``basis`` says which reconstruction this was: ``exact`` when the
+    diagonal came from the shadow; ``capped`` when the shadow's shares had
+    hit a family cap, which hides the variance ratio, so the member sigma
+    stands in; ``fallback`` when the seat was weighed by inverse error; and
+    ``non_psd`` when the stored correlation admits no covariance.  Only an
+    ``exact`` distance checks production -- the others measure how much of
+    it this page can reconstruct.
+    """
+
+    from bayes_basket_target.contracts import ContractError  # noqa: PLC0415
+    from bayes_basket_target.native_ensemble_oos import (  # noqa: PLC0415
+        SEAT_WEIGHT_RULE_INVERSE_RMSE,
+        _seat_weights,
+    )
+    from bayes_basket_target.stable_pool import (  # noqa: PLC0415
+        stable_pool_weights,
+    )
+
+    systems = sorted(served)
+    families = {system: family_by_system[system] for system in systems}
+    residuals: dict[str, dict[str, float]] = {system: {} for system in systems}
+    basis = "fallback"
+    if inverse_variance:
+        shares = {
+            system: float(inverse_variance.get(system) or 0.0)
+            for system in systems
+        }
+        family_share: dict[str, float] = defaultdict(float)
+        for system, share in shares.items():
+            family_share[families[system]] += share
+        capped = any(
+            abs(share - float(family_caps.get(family, 0.75))) <= 1e-9
+            for family, share in family_share.items()
+        )
+        if capped or min(shares.values()) <= 0.0:
+            basis = "capped"
+            sigmas = [float(member_scale[system]) for system in systems]
+        else:
+            basis = "exact"
+            sigmas = [1.0 / math.sqrt(shares[system]) for system in systems]
+        synthetic = _fusion_synthetic_residuals(systems, correlation, sigmas)
+        if synthetic is None:
+            return {"basis": "non_psd", "weights": None, "skill_rule": None}
+        residuals = synthetic
+    try:
+        weights, skill_rule = _seat_weights(
+            residuals_by_system=residuals,
+            train_error_scale_by_system={
+                system: float(member_scale[system]) for system in systems
+            },
+            family_by_system=families,
+            family_caps=family_caps,
+            train_n_by_system={
+                system: member_train_n.get(system) for system in systems
+            },
+        )
+        if kappa is not None:
+            weights = stable_pool_weights(weights, families, kappa=kappa)
+    except (ContractError, KeyError, ValueError, ZeroDivisionError):
+        return {"basis": basis, "weights": None, "skill_rule": None}
+    if skill_rule == SEAT_WEIGHT_RULE_INVERSE_RMSE:
+        basis = "fallback"
+    return {"basis": basis, "weights": dict(weights), "skill_rule": skill_rule}
+
+
+def _fusion_rule_label(kappa: float | None, skill_rule: str | None) -> str:
+    from bayes_basket_target.native_ensemble_oos import (  # noqa: PLC0415
+        SEAT_WEIGHT_RULE_COVARIANCE,
+    )
+
+    if skill_rule is None:
+        return "—"
+    covariance = skill_rule == SEAT_WEIGHT_RULE_COVARIANCE
+    if kappa is not None:
+        return f"稳定池 κ={kappa:g} · {'协方差' if covariance else '逆误差'}"
+    return "最小方差" if covariance else "逆误差兜底"
+
+
+def _fusion_salt() -> str:
+    """What the scorecard cache must also expire on.
+
+    ``_section_fingerprint`` hashes only the collector it is handed, and the
+    fusion layer lives in helpers the scorecard calls -- and, since the
+    re-solve defers to production, in production's weighting functions too.
+    Editing any of them changes what the lamp reads.
+    """
+
+    from bayes_basket_target import (  # noqa: PLC0415
+        native_ensemble_oos,
+        stable_pool,
+    )
+
+    return "\n".join(
+        _loaded_source(function)
+        for function in (
+            _collect_fusion_layer,
+            _fusion_reconstruction,
+            _fusion_synthetic_residuals,
+            _fusion_rule_label,
+            native_ensemble_oos._seat_weights,
+            native_ensemble_oos._minimum_variance_weights,
+            native_ensemble_oos._bounded_family_weights,
+            native_ensemble_oos._capped_family_weights,
+            native_ensemble_oos._weight_maturity,
+            stable_pool.stable_pool_weights,
+            stable_pool.shrink_toward_baseline,
+            stable_pool.family_balanced_weights,
+        )
+    )
 
 
 def _collect_fusion_layer(conn: sqlite3.Connection) -> dict[str, Any]:
-    """How much the served weights differ from the covariance-aware optimum.
+    """Whether each served blend carries the weights production's rule gives.
 
-    Inverse-RMSE pays each system for being good alone, so two systems making
-    the same mistake get paid twice for one piece of information.  The
-    minimum-variance solution prices that overlap.  The gap between the two
-    is what the measured correlations are worth -- and a high correlation
-    with a small gap means the fleet is redundant but the weights already
-    know it.
+    Until 2026-09-17 this compared the served weights against a minimum-
+    variance optimum solved here from train RMSE, and three things had moved
+    under it.  Charter 134 (2026-09-14) shrinks every pool seat halfway
+    toward family-balanced weights, so a gap of about 20% was the design
+    rather than a finding.  Production had weighed on the residual sigma
+    since the bias correction, so a system with a large offset but a steady
+    error -- GEFS at OEJN, RMSE 6.4 against sigma 0.8 -- was pointed the
+    wrong way.  And the sample was the newest 400 evidence rows, of which 85
+    were served.
+
+    Now every served seat -- activation pointer, artifact, evidence, the
+    path ``collect_serving_weights`` reads -- is re-solved by production's
+    own functions from what the SSOT kept (``_fusion_reconstruction``).  The
+    distance grades the lamp only where the diagonal is recovered exactly;
+    measured at the rewrite, 686 of 826 served seats, 99th percentile 0.8%.
+    The residual correlation grades it as before.
     """
 
-    # The production solver takes per-day residuals, which this page does not
-    # hold; what the SSOT stores is the finished correlation matrix.  The
-    # covariance is recoverable from it -- S = D R D, with D the per-system
-    # training RMSE -- so the optimum is solved here from the stored pieces
-    # rather than re-deriving residuals.  Same shrinkage as production, and
-    # the same refusal to clip negative shares.
-    from bayes_basket_target.native_ensemble_oos import (  # noqa: PLC0415
-        MINIMUM_VARIANCE_SHRINKAGE,
-    )
+    family_by_system = {
+        str(system): str(family)
+        for system, family in conn.execute(
+            "SELECT ensemble_system_id, independence_family_id"
+            " FROM calibration_native_ensemble_system"
+        )
+    }
+    served_rows = conn.execute(
+        "SELECT p.station_id, p.season_bin, p.lead_bucket, p.run_cycle,"
+        " p.set_hash, ar.combination_method, se.content_sha256,"
+        " se.selected_weights_json,"
+        " se.cross_system_residual_correlation_json,"
+        " se.run_cycle_by_system_json, se.family_weight_caps_json,"
+        " se.train_end_date"
+        " FROM (SELECT station_id, season_bin, lead_bucket, run_cycle,"
+        "   artifact_id, available_system_set_hash_or_star AS set_hash,"
+        "   MAX(generation)"
+        "  FROM calibration_native_ensemble_activation"
+        "  WHERE artifact_kind='CROSS_NATIVE_ENSEMBLE'"
+        "  AND season_bin IN"
+        "   ('PEAK','DESCENT','TROUGH','ASCENT','ALLYEAR')"
+        "  AND valid_until_utc > strftime('%Y-%m-%dT%H:%M:%SZ','now')"
+        "  GROUP BY station_id, season_bin, lead_bucket, run_cycle) p"
+        " JOIN calibration_cross_native_ensemble_artifact ar"
+        "  ON ar.cross_ensemble_artifact_id = p.artifact_id"
+        " JOIN calibration_cross_native_ensemble_selection_evidence se"
+        "  ON se.content_sha256 = ar.selection_evidence_sha256"
+        " WHERE se.selected_system_count > 1"
+    ).fetchall()
 
-    deviation: dict[tuple[str, str, str], float] = {}
-    for station, lead, cycle, system, spread_json in conn.execute(
-        "SELECT station_id, lead_bucket, run_cycle, ensemble_system_id,"
-        " spread_parameters_json"
-        " FROM calibration_native_ensemble_system_artifact"
-    ):
+    rows: list[dict[str, Any]] = []
+    unread = 0
+    for (
+        station, season, lead, cycle, set_hash, method, evidence_sha,
+        weights_json, correlation_json, cycles_json, caps_json, train_end,
+    ) in served_rows:
         try:
-            value = float(json.loads(spread_json)["train_rmse_c"])
-        except (ValueError, KeyError, TypeError):
-            continue
-        if value > 0:
-            deviation[(str(station), str(lead), str(system))] = value
-
-    pairs: list[dict[str, Any]] = []
-    correlations: list[float] = []
-    distances: list[float] = []
-    for station, lead, correlation_json, weights_json in conn.execute(
-        "SELECT station_id, lead_bucket,"
-        " cross_system_residual_correlation_json, selected_weights_json"
-        " FROM calibration_cross_native_ensemble_selection_evidence"
-        " WHERE selected_system_count>1 AND lead_bucket LIKE 'h%'"
-        " ORDER BY rowid DESC LIMIT 400"
-    ):
-        try:
+            served = {
+                str(system): float(value)
+                for system, value in json.loads(weights_json).items()
+            }
             correlation = json.loads(correlation_json)
-            served = json.loads(weights_json)
-        except (ValueError, TypeError):
-            continue
-        if not isinstance(correlation, dict) or len(correlation) < 2:
+            cycles = json.loads(cycles_json) if cycles_json else {}
+            caps = {
+                str(family): float(value)
+                for family, value in json.loads(caps_json).items()
+            }
+        except (AttributeError, TypeError, ValueError):
+            unread += 1
             continue
         systems = sorted(served)
-        off_diagonal = [
-            float(correlation[a][b])
-            for a in systems for b in systems
-            if a != b and a in correlation and b in correlation.get(a, {})
-        ]
-        if not off_diagonal:
+        if (
+            len(systems) < 2
+            or not isinstance(correlation, dict)
+            or any(system not in family_by_system for system in systems)
+        ):
+            unread += 1
             continue
-        peak = max(off_diagonal)
-        correlations.append(peak)
-        sigmas = [
-            deviation.get((str(station), str(lead), system))
-            for system in systems
-        ]
-        optimum = None
-        if all(sigma is not None for sigma in sigmas):
-            optimum = _minimum_variance_from_correlation(
-                systems, correlation, sigmas, MINIMUM_VARIANCE_SHRINKAGE
+        off_diagonal = []
+        for left in systems:
+            for right in systems:
+                if left == right:
+                    continue
+                try:
+                    off_diagonal.append(float(correlation[left][right]))
+                except (KeyError, TypeError, ValueError):
+                    pass
+        kappa = None
+        for part in str(method or "").split("::")[1:]:
+            if part.startswith("stable_pool_kappa="):
+                try:
+                    kappa = float(part.split("=", 1)[1])
+                except ValueError:
+                    pass
+        evaluation = conn.execute(
+            "SELECT json_extract(oos_metrics_json, '$.equal_weight_diagnostic"
+            ".shadow_schemes.inverse_variance.weights')"
+            " FROM calibration_cross_native_ensemble_oos_evaluation"
+            " WHERE station_id=? AND season_bin=? AND lead_bucket=?"
+            " AND run_cycle=? AND available_system_set_hash=?"
+            " AND selection_evidence_sha256=?"
+            " ORDER BY evaluated_at_utc DESC LIMIT 1",
+            (station, season, lead, cycle, set_hash, evidence_sha),
+        ).fetchone()
+        member_scale: dict[str, float] = {}
+        member_train_n: dict[str, int | None] = {}
+        for system in systems:
+            member = conn.execute(
+                "SELECT spread_parameters_json, reliability_parameters_json"
+                " FROM calibration_native_ensemble_system_artifact"
+                " WHERE station_id=? AND lead_bucket=? AND run_cycle=?"
+                " AND ensemble_system_id=? AND train_end_date<=?"
+                " AND season_bin=?"
+                " ORDER BY rowid DESC LIMIT 1",
+                (
+                    station, lead, str(cycles.get(system) or cycle), system,
+                    train_end, season,
+                ),
+            ).fetchone()
+            if member is None:
+                break
+            try:
+                spread = json.loads(member[0])
+                reliability = json.loads(member[1] or "{}")
+                member_scale[system] = float(
+                    spread.get("train_residual_sigma_c")
+                    or spread["train_rmse_c"]
+                )
+            except (KeyError, TypeError, ValueError):
+                break
+            count = reliability.get("fit_case_count")
+            member_train_n[system] = int(count) if count else None
+        if evaluation is None or len(member_scale) != len(systems):
+            unread += 1
+            continue
+        try:
+            inverse_variance = (
+                json.loads(evaluation[0]) if evaluation[0] else None
             )
-        distance = None
-        if optimum:
-            distance = 0.5 * sum(
-                abs(float(served.get(system, 0.0))
-                    - float(optimum.get(system, 0.0)))
-                for system in systems
-            )
-            distances.append(distance)
-        pairs.append({
+        except (TypeError, ValueError):
+            inverse_variance = None
+        rebuilt = _fusion_reconstruction(
+            served=served,
+            correlation=correlation,
+            inverse_variance=inverse_variance,
+            member_scale=member_scale,
+            member_train_n=member_train_n,
+            family_by_system=family_by_system,
+            family_caps=caps,
+            kappa=kappa,
+        )
+        resolved = rebuilt["weights"]
+        basis = rebuilt["basis"]
+        if resolved is None and basis != "non_psd":
+            basis = "unsolved"
+        rows.append({
             "station_id": str(station),
+            "season_bin": str(season),
             "lead_bucket": str(lead),
-            "max_correlation": peak,
-            "distance": distance,
+            "run_cycle": str(cycle),
+            "rule": _fusion_rule_label(kappa, rebuilt["skill_rule"]),
+            "basis": basis,
+            "max_correlation": max(off_diagonal) if off_diagonal else None,
+            "distance": (
+                0.5 * sum(
+                    abs(served[system] - float(resolved.get(system, 0.0)))
+                    for system in systems
+                )
+                if resolved is not None else None
+            ),
             "served": served,
-            "optimum": optimum,
+            "resolved": resolved,
         })
 
+    correlations = [
+        row["max_correlation"] for row in rows
+        if row["max_correlation"] is not None
+    ]
     if not correlations:
         return {
             "health": "muted",
-            "verdict": "还没有两家以上模型同时在座的组合",
+            "verdict": "还没有两家以上模型同时在座的在役组合",
             "detail": "证据不足",
             "pairs": [],
+            "summary": {"served_count": len(rows), "unread_count": unread},
         }
+    exact = [
+        row for row in rows
+        if row["basis"] == "exact" and row["distance"] is not None
+    ]
+    approximate = [row for row in rows if row not in exact]
+    approximate_distances = sorted(
+        row["distance"] for row in approximate if row["distance"] is not None
+    )
     mean_correlation = sum(correlations) / len(correlations)
     mean_distance = (
-        sum(distances) / len(distances) if distances else None
+        sum(row["distance"] for row in exact) / len(exact) if exact else None
     )
-    health = _worst([
-        _grade(mean_correlation, "residual_correlation"),
-        _grade(mean_distance, "weight_distance"),
-    ])
+    correlation_health = _grade(mean_correlation, "residual_correlation")
+    distance_health = _grade(mean_distance, "weight_distance")
+    health = _worst([correlation_health, distance_health])
     if mean_distance is None:
         verdict = (
             f"模型之间残差相关 {mean_correlation:.2f}，"
-            "但最优权重解不出来（多为单族占满）"
+            "但没有一份在役权重能从存档精确重解，自检做不了"
         )
-    elif mean_correlation >= 0.75 and mean_distance > 0.25:
+    elif distance_health != "green":
         verdict = (
-            f"几家模型在犯同一个错（相关 {mean_correlation:.2f}），"
-            f"而权重没有反映这件事（离最优 {mean_distance:.0%}）——重复计票"
+            f"在役权重和存档证据重解对不上（平均差 {mean_distance:.1%}）"
+            "——先查数据再查解法"
         )
-    elif mean_correlation >= 0.75:
+    elif correlation_health == "green":
         verdict = (
-            f"模型高度重复（相关 {mean_correlation:.2f}），"
-            f"但权重已经知道（离最优 {mean_distance:.0%}），暂时不亏"
-        )
-    elif mean_distance > 0.25:
-        verdict = (
-            f"模型互补性尚可（相关 {mean_correlation:.2f}），"
-            f"但权重偏离协方差最优 {mean_distance:.0%}，有改进空间"
+            f"在役权重与生产算术重解一致（平均差 {mean_distance:.1%}），"
+            f"几家模型残差也互相独立（相关 {mean_correlation:.2f}）"
         )
     else:
         verdict = (
-            f"几家模型互相独立（相关 {mean_correlation:.2f}），"
-            f"权重也接近最优（差 {mean_distance:.0%}）"
+            f"在役权重与生产算术重解一致（平均差 {mean_distance:.1%}）；"
+            f"灯色来自模型残差相关 {mean_correlation:.2f}，几家模型在犯相近的错"
         )
     return {
         "health": health,
         "verdict": verdict,
         "detail": (
-            f"{len(correlations)} 个组合 · 平均最大相关 {mean_correlation:.2f}"
-            + (f" · 离最小方差最优 {mean_distance:.0%}"
+            f"{len(rows)} 份在役权重 · 精确重解 {len(exact)} 份"
+            f" · 平均最大相关 {mean_correlation:.2f}"
+            + (f" · 离重解 {mean_distance:.1%}"
                if mean_distance is not None else "")
         ),
         "pairs": sorted(
-            pairs,
-            key=lambda row: (row["distance"] or 0.0),
-            reverse=True,
+            exact, key=lambda row: row["distance"], reverse=True
         )[:12],
+        "summary": {
+            "served_count": len(rows),
+            "exact_count": len(exact),
+            "unread_count": unread,
+            "approximate_by_basis": dict(
+                Counter(row["basis"] for row in approximate)
+            ),
+            "approximate_median_distance": (
+                median(approximate_distances)
+                if approximate_distances else None
+            ),
+            "approximate_max_distance": (
+                approximate_distances[-1] if approximate_distances else None
+            ),
+        },
     }
 
 
@@ -10292,7 +10537,8 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         _salt=_center_landing_salt(),
     )
     scorecard = _cached_section(
-        "scorecard", collect_calibration_scorecard, conn
+        "scorecard", collect_calibration_scorecard, conn,
+        _salt=_fusion_salt(),
     )
     truth_landing = _cached_section(
         "truth_landing", collect_truth_landing, conn,
@@ -16390,6 +16636,7 @@ function scorecard(){
     <div class="muted" style="font-size:10px">${(i*10)}</div>
   </div>`).join("");
 
+  const fusionSummary = S.fusion_summary || {};
   const fusion = (S.fusion_pairs||[]).filter(p => p.distance != null)
     .slice(0,8).map(p => {
       const names = Object.keys(p.served||{}).sort();
@@ -16398,14 +16645,23 @@ function scorecard(){
       return `<tr>
         <td class="mono">${h(p.station_id)}</td>
         <td class="mono muted">${h(p.lead_bucket)}</td>
-        <td class="mono">${p.max_correlation.toFixed(2)}</td>
+        <td class="mono muted">${h(p.run_cycle)} · ${h(p.season_bin)}</td>
+        <td class="muted" style="font-size:12px">${h(p.rule)}</td>
+        <td class="mono">${p.max_correlation == null ? "—"
+          : p.max_correlation.toFixed(2)}</td>
         <td class="mono"><span class="dot ${tone}"></span>
-          ${(p.distance*100).toFixed(0)}%</td>
+          ${(p.distance*100).toFixed(1)}%</td>
         <td class="muted" style="font-size:12px">${names.map(n =>
           `${h(n.split("_")[0])} ${(p.served[n]*100).toFixed(0)}→${
-           ((p.optimum||{})[n]*100||0).toFixed(0)}%`).join(" · ")}</td>
+           (((p.resolved||{})[n]||0)*100).toFixed(0)}%`).join(" · ")}</td>
       </tr>`;
     }).join("");
+  const fusionBasisWords = {capped: "族上限咬住", fallback: "逆误差兜底",
+    non_psd: "相关阵非正定", unsolved: "重解失败"};
+  const fusionApprox = Object.entries(fusionSummary.approximate_by_basis||{})
+    .map(([basis, count]) => `${fusionBasisWords[basis]||basis} ${count}`)
+    .join("、");
+  const fusionPct = v => v == null ? "—" : (v*100).toFixed(1) + "%";
 
   return `<h2>模型校准总检：检查概率模型六层是否各自达标</h2>
   <p class="sub">近 45 天 ${S.sample_days.toLocaleString()} 个已结算站日、
@@ -16441,19 +16697,25 @@ function scorecard(){
     ${pitBars}</div>
   <div class="muted" style="margin-top:4px">横轴：真值在预测分布中的位置（百分位）</div>
 
-  ${fusion ? `<h2 style="margin-top:26px">融合权重 vs 协方差最优</h2>
-  <p class="sub"><b>现役权重就是最小方差（收缩协方差，2026-08-18 上线，
-  影子先行后晋升 +0.0197 bits，282/282 个 scope 在役）。</b>这张表因此是
-  一致性自检而非改进提示：右边是用存档的残差相关性当场重解的最优，
-  距离应当接近零；不为零的地方是族权重上限咬住了，或该 scope 落回了
-  逆 RMSE 兜底（共享训练窗太短撑不起协方差时）。距离若系统性变大，
-  说明上线的解和存档的相关性对不上了，先查数据再查解法。</p>
+  ${fusion ? `<h2 style="margin-top:26px">融合权重 vs 生产重解</h2>
+  <p class="sub"><b>现役权重由稳定池规则给出（宪章 134，2026-09-14 上线）。</b>
+  先按训练残差的收缩协方差求最小方差权重，共享训练日不足 12 天时落回逆误差兜底；
+  再把结果向「按族均分」收缩一半（κ=0.5）。八月的竞赛件在过期前仍按最小方差服务。
+  这张表是一致性自检，只读在役指针指向的那份证据。右边是用存档的残差相关性、
+  影子逆方差权重（还原各家方差）和生产同一组函数当场重解的权重，距离应当接近零。
+  距离若系统性变大，说明上线的解和存档的证据对不上了，先查数据再查解法。</p>
   <table><thead><tr>
-    <th>站</th><th>提前量</th><th>最大相关</th><th>离最优</th>
-    <th>现在 → 最优</th>
+    <th>站</th><th>提前量</th><th>cycle · 季节</th><th>规则</th>
+    <th>最大相关</th><th>离重解</th><th>现在 → 重解</th>
   </tr></thead><tbody>${fusion}</tbody></table>
   <div class="muted" style="margin-top:6px">
-    只列偏离最大的几个。相关高但偏离小＝模型重复但权重已经知道，不亏。</div>` : ""}`;
+    共 ${fusionSummary.served_count ?? "—"} 份在役权重，
+    只列能精确重解的 ${fusionSummary.exact_count ?? "—"} 份里偏离最大的几个。
+    ${fusionApprox ? `另有 ${fusionApprox} 份只能近似重解，不计入灯色
+    （中位差 ${fusionPct(fusionSummary.approximate_median_distance)}、
+    最大 ${fusionPct(fusionSummary.approximate_max_distance)}）：
+    兜底分支生产读的是闸门那次拟合的误差与天数，存档只留了服务拟合那一份。` : ""}
+    相关高但距离小＝模型在重复犯错，权重照规则分，不代表算错。</div>` : ""}`;
 }
 
 function servingWeights(){
