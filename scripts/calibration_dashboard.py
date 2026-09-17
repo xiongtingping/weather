@@ -9263,6 +9263,7 @@ def collect_posterior_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             MIN_STATION_DAYS,
             forward_skill,
             load_posterior_tables,
+            realisation,
         )
     except ImportError:
         return out
@@ -9343,10 +9344,20 @@ def collect_posterior_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             })
     except sqlite3.Error:
         pass
+    # The money edge: every settled window production enumerated in the
+    # last 14 days, re-judged with the L4 row active at its decision, against
+    # the verdict production's lambda gate gave it.
+    try:
+        realised = realisation(
+            conn, since_event_date=(date.today() - timedelta(days=14)).isoformat(),
+        )
+    except (sqlite3.Error, ValueError, TypeError, KeyError):
+        realised = None
     out.update({
         "available": True, "mode": POSTERIOR_MODE, "rule": POSTERIOR_RULE,
         "stages": stages, "shadow": shadow, "hypotheses": hypotheses,
         "min_station_days": MIN_STATION_DAYS, "min_days": MIN_DAYS,
+        "realisation": realised,
     })
     return out
 
@@ -13656,7 +13667,40 @@ function posteriorLane(){
   默认影子，只记录不改裁决；切 on 需前瞻 S 下界 > 0（E15），且尚未实现。门槛 ${V.min_station_days} 站日 / ${V.min_days} 事件日。</p>
   <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:12px">${cards}</div>
   <p class="note" style="margin-top:10px">影子（最近 ${sh.decisions||0} 份计划头）：${states}；
-  会多放行 ${sh.would_admit||0} 窗 · 会拒 ${sh.would_refuse||0} 窗。已注册假设（E11）：${hyps}。</p>`;
+  会多放行 ${sh.would_admit||0} 窗 · 会拒 ${sh.would_refuse||0} 窗。已注册假设（E11）：${hyps}。</p>
+  ${posteriorRealisation(V.realisation)}`;
+}
+
+// L4's money edge (user ruling, 2026-09-17 "补"): the windows L4 would buy,
+// after they settled.  Every settled window production enumerated in the
+// last 14 days, re-judged with the L4 row that was active at its decision,
+// crossed with the verdict the live lambda gate gave the same window.
+function posteriorRealisation(R){
+  const title=`<h3 style="margin-top:18px">兑现表：L4 会买的窗，结算后赚没赚</h3>`;
+  if(!R) return `${title}<div class="card muted">未采集。</div>`;
+  if(R.error) return `${title}<div class="card muted">不可读：${h(R.error)}。</div>`;
+  const n3=v=>v==null?"—":(+v).toFixed(3);
+  const pp=v=>v==null?"—":((v>=0?"+":"")+(v*100).toFixed(1)+" 点");
+  const ci=c=>!c||c[0]==null?"":` <span class="muted">[${pp(c[0])}, ${pp(c[1])}]</span>`;
+  const tone=x=>x.hit_minus_price==null?"":(x.ci&&x.ci[0]!=null&&x.ci[0]>0?"up":(x.ci&&x.ci[1]!=null&&x.ci[1]<0?"down":""));
+  const row=(label,x,strong)=>{x=x||{};return `<tr${strong?' style="font-weight:620"':""}><td>${label}</td>
+    <td class="mono">${x.n||0} / ${x.station_days||0} / ${x.days||0}</td>
+    <td class="mono">${n3(x.price)}</td><td class="mono">${n3(x.hit)}</td>
+    <td class="mono">${pp(x.claimed_edge)}</td>
+    <td class="mono ${tone(x)}"><b>${pp(x.hit_minus_price)}</b>${ci(x.ci)}</td></tr>`;};
+  const c=R.cells||{};
+  const stages=Object.entries(R.by_stage||{}).map(([st,v])=>`${h(st)}：L4 会买 ${(v.l4_admitted||{}).n||0} 窗 ${pp((v.l4_admitted||{}).hit_minus_price)} · λ 会买 ${(v.lambda_admitted||{}).n||0} 窗 ${pp((v.lambda_admitted||{}).hit_minus_price)}`).join("；");
+  const empty=!R.judged;
+  return `${title}
+  <p class="sub">最近 14 天（${h(R.since)} 起）生产枚举过、已结算的每个定价窗，用<b>决策当时生效的 L4 拟合</b>重判买不买，
+  再和实盘 λ 闸对同一个窗的判决交叉。「L4 声称 edge」= L4 信念 − 全含价；「实际」= 命中 − 全含价，按事件日自助 90%。
+  L4 放行那两行的实际值区间下界 &gt; 0 才算 L4 的 edge 兑现了。</p>
+  <div class="card" style="overflow-x:auto"><table><thead><tr><th>哪些窗</th><th>窗 / 站日 / 天</th><th>平均价</th><th>命中率</th><th>L4 声称 edge</th><th>实际 命中 − 价 · 90%</th></tr></thead>
+  <tbody>${row("L4 会买（合计）",R.l4_admitted,true)}${row("实盘 λ 会买（合计，对照）",R.lambda_admitted,true)}
+  ${row("两边都买",c.both_admit)}${row("只有 L4 买",c.l4_only)}${row("只有 λ 买",c.lambda_only)}${row("两边都不买",c.both_refuse)}</tbody></table>
+  <div class="muted" style="margin-top:6px;font-size:11.5px">${empty
+    ?`还没有可判的窗：已结算窗 ${R.windows} 个，其中当时 L4 还在累积中 ${R.accumulating} 个（服务 b = m，不给判决）、当时还没有拟合 ${R.no_fit} 个、盘口或向量不全 ${R.no_vector} 个。L4 过门槛（约 09-25）后开始出数。`
+    :`已判 ${R.judged} 窗；累积中未判 ${R.accumulating}、无拟合 ${R.no_fit}、盘口或向量不全 ${R.no_vector}。${stages}`}</div></div>`;
 }
 
 function charterEv(){
