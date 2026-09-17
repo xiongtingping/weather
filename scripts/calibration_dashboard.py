@@ -10910,6 +10910,62 @@ border-top:4px solid var(--tone,var(--line))}
 .group > .grouptitle,.toparea > .grouptitle{margin:0 0 4px;padding:9px 12px;
 border-left:0;border-radius:6px;font-size:17px;
 background:color-mix(in srgb,var(--tone,var(--line)) 14%,transparent)}
+/* The chain strip under each area title (user ruling, 2026-09-17): where
+   this area sits between 模型 and 实盘, the current step lit in the area's
+   colour.  Wraps whole steps on a phone. */
+.pipe{display:flex;flex-wrap:wrap;align-items:stretch;gap:4px;margin:6px 0 14px}
+.pipe-step{cursor:pointer;display:flex;flex-direction:column;gap:1px;
+text-align:left;background:var(--card);color:var(--muted);
+border:1px solid var(--line);border-radius:7px;padding:5px 9px;
+font-family:inherit;font-size:11.5px;line-height:1.3;max-width:13em}
+.pipe-step b{color:var(--text);font-size:12.5px;font-weight:620}
+.pipe-step:hover{border-color:var(--accent)}
+.pipe-step[aria-current="step"]{border-color:var(--tone,var(--accent));
+background:color-mix(in srgb,var(--tone,var(--accent)) 16%,var(--card))}
+.pipe-arrow{align-self:center;color:var(--muted);font-size:13px}
+/* A sub-heading inside an area: the kind of thing the sections under it
+   are.  Its edge wears the lane colour so "live" and "shadow" read before
+   any number does. */
+.subgroup{margin:26px 0 10px;padding:8px 12px;border-radius:7px;
+border:1px solid var(--line);border-left:4px solid var(--line);
+background:color-mix(in srgb,var(--tone,var(--line)) 7%,var(--card))}
+.subgroup[data-lane="live"]{border-left-color:var(--green)}
+.subgroup[data-lane="shadow"]{border-left-color:var(--amber)}
+.subgroup-t{font-size:15px;font-weight:650;display:flex;gap:8px;
+align-items:baseline;flex-wrap:wrap}
+.subgroup-n{font-size:12.5px;margin-top:3px}
+/* The edge map. */
+.emap{padding:14px;margin-bottom:6px}
+.em-q{font-size:14px;margin-bottom:10px}
+.em-inputs{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));margin-bottom:10px}
+.em-band{border:1px dashed var(--line);border-radius:9px;padding:10px;margin-top:10px}
+.em-band.em-live{border:1px solid var(--green);
+background:color-mix(in srgb,var(--green) 6%,transparent)}
+.em-band.em-shadow{border-color:var(--amber)}
+.em-cap{font-size:12.5px;font-weight:620;margin-bottom:8px}
+.em-flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px}
+.em-flow > .em-node{flex:1 1 170px}
+.em-arrow{align-self:center;color:var(--muted);font-size:18px;padding:0 2px}
+.em-ev{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.em-ev > .em-node{flex:0 1 300px}
+.em-two{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))}
+.em-two > .em-band > .em-node{width:100%;margin-bottom:6px}
+.em-inner{margin:2px 0 0 14px;padding-left:10px;border-left:2px solid var(--amber);
+display:flex;flex-direction:column;gap:6px}
+.em-inner > .muted{font-size:11.5px}
+.em-node{cursor:pointer;display:flex;flex-direction:column;gap:3px;text-align:left;
+font-family:inherit;color:var(--text);background:var(--card);
+border:1px solid var(--line);border-left:4px solid var(--line);border-radius:7px;
+padding:7px 10px;font-size:12.5px;line-height:1.35}
+.em-node[data-lane="live"]{border-left-color:var(--green)}
+.em-node[data-lane="shadow"]{border-left-color:var(--amber)}
+.em-node:hover{border-color:var(--accent)}
+.em-node.em-plain{cursor:default;background:transparent;border-left-width:1px}
+.em-node.em-plain:hover{border-color:var(--line)}
+.em-h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.em-h .pill{margin-left:auto}
+.em-w{color:var(--muted);font-size:12px}
+.em-key{margin-top:12px;display:flex;flex-direction:column;gap:5px;font-size:12.5px}
 /* The theme button rides at the end of the bar.  It is still a static
    element of the body, moved in once the bar exists, so a page whose
    render failed keeps it -- in the corner where it always was. */
@@ -13489,6 +13545,63 @@ function valuationLane(){
   会多放行 ${sh.would_admit||0} 窗 · 会拒 ${sh.would_refuse||0} 窗。
   λ 表形状血统：${vint.length} 张现役表里 <b>${stale}</b> 张不是按当前席位形状拟的
   （服务侧暂不改，证据读者严格拒绝，见宪章 132）。</p>`;
+}
+
+// The edge area's map (user ruling, 2026-09-17).  One picture of how the
+// eight sections relate: the inputs, the path production actually buys on,
+// the three shadow candidates for that path's one table, and the referees
+// that read truth.  Every node is a button onto its section.  Statuses are
+// read from LANES so the map and the strips cannot disagree.
+function edgeMap(){
+  const st=(name)=>(LANES[name]||{}).status||"audit";
+  const node=(name,label,what,extra)=>{
+    const s=st(name);
+    return `<button type="button" class="em-node" data-lane="${s}" data-goto-name="${h(name)}"${
+      extra?` data-kind="${extra}"`:""}>
+      <span class="em-h"><b>${h(label)}</b><span class="pill ${LANE_TONE[s]||""}">${h(LANE_WORD[s]||s)}</span></span>
+      <span class="em-w">${what}</span></button>`;
+  };
+  const plain=(label,what)=>`<div class="em-node em-plain"><span class="em-h"><b>${h(label)}</b></span><span class="em-w">${what}</span></div>`;
+  const arrow=`<span class="em-arrow" aria-hidden="true">→</span>`;
+  return `<div class="card emap">
+    <div class="em-q">这一页只回答一个问题：<b>模型说 p，市场说 m，真值该信几成？</b></div>
+    <div class="em-inputs">
+      ${plain("模型概率 p","模型页产出")}
+      ${plain("市场价 m","盘口中价，本身也是一份预报")}
+      ${plain("真值","结算后才知道，只给裁判用")}
+    </div>
+    <div class="em-band em-live">
+      <div class="em-cap">实盘路径：从 p 到下单，实际在跑的只有这一条</div>
+      <div class="em-flow">
+        ${node("双向收敛系数","④ 双向收敛","进闸前抬高 p，只记账")}
+        ${arrow}
+        ${node("有效边际 λ 表","② 有效边际 λ 表","λ(价格 ÷ 声称) × p 过门槛就买")}
+        ${arrow}
+        ${plain("选窗 → 定注 → 实盘","后面三页")}
+      </div>
+      <div class="em-ev">${node("声称边际体温计","② 体温计","λ 打折后实际兑现多少 → λ 的证据")}<span class="muted">↑ 为 λ 表提供证据</span></div>
+    </div>
+    <div class="em-two">
+      <div class="em-band em-shadow">
+        <div class="em-cap">③ 候选：想替代 λ 表，答同一个问题，只记录不买</div>
+        ${node("L4 后验层（影子）","L4 后验层","logit m + w·分歧 + 市场自校正","outer")}
+        <div class="em-inner"><span class="muted">包含 ↓</span>
+          ${node("β 车道（影子）","β 车道","m + β(p − m)")}
+          ${node("统一估值车道","统一估值车道","(1 − β)m + βp")}
+        </div>
+      </div>
+      <div class="em-band em-audit">
+        <div class="em-cap">① 裁判：读真值，判断到底有没有 edge</div>
+        ${node("宪章 EV 恒等式","宪章 EV 恒等式","模型的错里有没有市场没有的部分")}
+        ${node("真值落位","真值落位","真值跟价格走还是跟模型走")}
+      </div>
+    </div>
+    <div class="em-key">
+      <div><b>λ 表与三个候选的根本区别：没证据时往哪倒。</b>λ 从「信模型」出发，没证据就沿用常数继续买；三个候选从「信市场」出发，没证据就不买。</div>
+      <div class="muted">例：09-16 ZUUU P0 22–24°C，模型 72%、市场 33%、卖价 40。λ 打六折成 43% 高于 40，买；三个候选都信 33%，不买。真值 26°C，没中。</div>
+      <div class="muted">阅读顺序：① 裁判先看有没有 edge → ② 看实盘现在按什么买 → ③ 看 L4 替代者的进度（β、估值两条可跳过）。点任一方框跳到对应区块。</div>
+    </div>
+  </div>`;
 }
 
 function posteriorLane(){
@@ -16428,15 +16541,34 @@ const GROUPS = [
      [oosScores,"OOS 打分"],[centreLanding,"真值离均值多远"],
      // research and roll-out
      [correctionAccuracy,"订正准度与政权偏移"],[h5Readiness,"H5 换代进度"]]},
+  // The edge area answers one question -- the model says p, the market says
+  // m, how much of the gap should be believed -- and its eight sections are
+  // four different kinds of thing (user ruling, 2026-09-17: "把前端显式按照
+  // 这个逻辑改一下").  Filed under explicit sub-headings, in reading order:
+  // the referees that read truth and say whether there is an edge at all;
+  // the one table production buys on, with its evidence; the three
+  // candidates that answer the same question in shadow (L4 contains the
+  // other two); and the extra lift applied to p before any of them.  The
+  // map at the head of the area draws the same relations and jumps to each.
   {id:"edge", label:"边际", short:"边际", tone:"#79c0ff",
-   note:"边际层：我们的概率对着市场值多少、信几成——EV 恒等式（总）、真值落位、λ 表与体温计（上线）、β 车道、估值车道、L4 后验、双向收敛（影子）",
-   sections:[[charterEv,"宪章 EV 恒等式"],
+   note:"边际层：模型说 p、市场说 m，真值该信几成——① 裁判（有没有 edge）→ ② 上线（实盘按它买）→ ③ 候选（影子，想替代上线那张表）→ ④ 额外修正（影子）",
+   intro: edgeMap,
+   sections:[
+     {sub:"① 裁判：到底有没有 edge", status:"audit",
+      note:"读真值，不参与决策。先看这里：模型的错里有没有市场没有的部分"},
+     [charterEv,"宪章 EV 恒等式"],
      [truthLanding,"真值落位"],
+     {sub:"② 上线：实盘此刻按它决定买不买、买多少", status:"live",
+      note:"λ 表按「价格 ÷ 声称」分档打折；体温计是它的证据，不是规则"},
      [effectiveEdgeLambda,"有效边际 λ 表"],
      [edgeBandHealth,"声称边际体温计"],
+     {sub:"③ 候选（影子）：同一个问题的三个替代版本，只记录不买", status:"shadow",
+      note:"都从「信市场」出发，没证据就不买；L4 包含后两条——取概率空间、去掉市场自校正就退化成 β 车道"},
+     [posteriorLane,"L4 后验层（影子）"],
      [betaShadow,"β 车道（影子）"],
      [valuationLane,"统一估值车道"],
-     [posteriorLane,"L4 后验层（影子）"],
+     {sub:"④ 额外修正（影子）：在进入上面之前先改 p", status:"shadow",
+      note:"模型往上、市场往下时把声称抬高；只记账"},
      [convergenceClaim,"双向收敛系数"]]},
   // 覆盖 · 价格 · EV is the whole seat in one line (what it covered, cost
   // and was worth), 篮子命中率 splits it by width, and the market-lean gate
@@ -16451,7 +16583,8 @@ const GROUPS = [
 ];
 const tabs = `<nav class="tabs" id="tabs" aria-label="区域">${
   GROUPS.map(g => `<button type="button" data-tab="${g.id}"
-    style="--tone:${g.tone}" title="${g.label}（${g.sections.length} 个区块）· ${
+    style="--tone:${g.tone}" title="${g.label}（${
+    g.sections.filter(Array.isArray).length} 个区块）· ${
     g.note}">${g.short}</button>`).join("")
 }<button type="button" class="all" data-tab="all"
   title="所有区域叠在一页">全部</button></nav>`;
@@ -16521,21 +16654,23 @@ const LANES = {
   "band 表": {layer:"概率层", status:"live",
     role:"单系统校准与融合之后，服务概率按离中心距离兑现多少 → 按档修正尾形残差（市场不进）"},
   // --- edge: what our probability is worth against the market ---
-  "宪章 EV 恒等式": {layer:"边际层 · 读数", status:"audit",
+  "宪章 EV 恒等式": {layer:"边际层 · ① 裁判", status:"audit",
     role:"edge = 市场的错 − 模型的错 = Var(e_q) − Cov(e_p,e_q)；k = Cov/Var 低于 1 才有 edge"},
-  "真值落位": {layer:"边际层 · 读数", status:"audit",
+  "真值落位": {layer:"边际层 · ① 裁判", status:"audit",
     role:"真值落在市场价格 × 模型概率的哪一格 → 谁更能预判真值"},
-  "有效边际 λ 表": {layer:"边际层", status:"live",
-    role:"市场比我们贵多少就信多少 → 闸和定注读的都是 λ(a)·声称"},
-  "声称边际体温计": {layer:"边际层 · 读数", status:"audit",
+  "有效边际 λ 表": {layer:"边际层 · ② 上线", status:"live",
+    role:"按「价格 ÷ 声称」分档打折 → 闸和定注读的都是 λ(a)·声称；没证据时沿用常数继续买"},
+  "声称边际体温计": {layer:"边际层 · ② λ 的证据", status:"audit",
     role:"自认便宜多少时真兑现多少 → λ 的证据，不是 λ 本身"},
-  "β 车道（影子）": {layer:"边际层", status:"shadow",
-    role:"我们和市场的分歧兑现几成（斜率 β）→ 目前只量不用"},
+  "L4 后验层（影子）": {layer:"边际层 · ③ 候选", status:"shadow",
+    role:"对数几率里先信市场，再看分歧兑现几成 w、市场自己偏多少 γ → 包含 β 车道与估值车道；没证据时 b = m 不买"},
+  "β 车道（影子）": {layer:"边际层 · ③ 候选", status:"shadow",
+    role:"分歧兑现几成（斜率 β）→ L4 的特例：概率空间、无市场自校正"},
   // PM_VALUATION_MODE defaults to shadow (valuation_v1) and nothing sets it.
-  "统一估值车道": {layer:"边际层", status:"shadow",
-    role:"盘口当第二份预报与模型融合（权重 β）→ 切 on 时闸读融合后的动作下界，现在只量不用"},
-  "双向收敛系数": {layer:"边际层", status:"shadow",
-    role:"我们往上、市场往下、还没走到一起 → 把声称抬三成（只记账）"},
+  "统一估值车道": {layer:"边际层 · ③ 候选", status:"shadow",
+    role:"市场与模型线性混合（权重 β）→ L4 的特例：概率空间、无市场自校正"},
+  "双向收敛系数": {layer:"边际层 · ④ 额外修正", status:"shadow",
+    role:"模型往上、市场往下、还没走到一起 → 进闸之前把声称抬三成（只记账）"},
   // --- select: which buckets to seat, and whether seating them paid ---
   "市场方向闸": {layer:"选窗层", status:"shadow",
     role:"只看市场往哪边歪 → 不许逆着它开窗（09-05 上线、09-12 退回影子）"},
@@ -16588,11 +16723,37 @@ const sec = (fn, name, id) => {
     lane ? laneStrip(name) : ""}${body}</section>`;
 };
 
+// Where each area sits on the chain (user ruling, 2026-09-17: the page
+// follows one logic).  The strip rides under every area title with the
+// current step lit; a step is a button that opens its area, and 实盘 --
+// which lives above the tabs -- goes back to the page head.
+const PIPELINE = [
+  {tab:"model", word:"模型", q:"我们的概率 p 准不准"},
+  {tab:"edge", word:"边际", q:"p 对着市场价 m 该信几成"},
+  {tab:"select", word:"选窗", q:"据此挑哪几个桶"},
+  {tab:"sizing", word:"定注", q:"最后实际拿着什么"},
+  {tab:"", word:"实盘", q:"真交到交易所的单和钱"},
+];
+const pipeStrip = (current) => `<div class="pipe" role="list">${
+  PIPELINE.map((s, i) => `${i ? `<span class="pipe-arrow" aria-hidden="true">→</span>` : ""}<button
+    type="button" role="listitem" class="pipe-step" data-pipe-tab="${s.tab}"${
+    s.tab === current ? ` aria-current="step"` : ""} title="${s.q}"><b>${
+    i + 1} ${s.word}</b><span>${s.q}</span></button>`).join("")}</div>`;
+// A sub-heading inside an area: not a section, so it carries no jump chip
+// and no guard -- it names the kind of thing the sections under it are.
+const subHtml = (item) => `<div class="subgroup" data-lane="${
+  item.status || ""}"><div class="subgroup-t">${h(item.sub)}${
+  item.status ? ` <span class="pill ${LANE_TONE[item.status] || ""}">${
+  h(LANE_WORD[item.status] || item.status)}</span>` : ""}</div>${
+  item.note ? `<div class="subgroup-n muted">${h(item.note)}</div>` : ""}</div>`;
 const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}"
   style="--tone:${g.tone}">
   <div class="grouptitle">${g.label}<span class="muted">${g.note}</span></div>
-  ${g.sections.map(([fn, name], i) =>
-    sec(fn, name, `sec-${g.id}-${i}`)).join("")}</section>`).join("");
+  ${pipeStrip(g.id)}
+  ${g.intro ? safe(g.intro, `${g.label}逻辑图`) : ""}
+  ${g.sections.map((item, i) => Array.isArray(item)
+    ? sec(item[0], item[1], `sec-${g.id}-${i}`)
+    : subHtml(item)).join("")}</section>`).join("");
 
 // The bar is the first thing on the page (user ruling, 2026-09-09).  It was
 // already sticky, but sitting under the banner and the live-readiness
@@ -16788,6 +16949,24 @@ document.getElementById("app").innerHTML =
     const button = ev.target.closest("button[data-goto]");
     if(!button) return;
     goTo(document.getElementById(button.dataset.goto));
+  });
+  // The chain strip under each area title and the edge map's nodes: a step
+  // opens its area (实盘 goes to the page head), a node lands on its section.
+  document.addEventListener("click", (ev) => {
+    const step = ev.target.closest("button[data-pipe-tab]");
+    if(step){
+      const tab = step.dataset.pipeTab;
+      if(!tab){ window.scrollTo(0, 0); return; }
+      const target = nav.querySelector(`button[data-tab="${tab}"]`);
+      if(target) target.click();
+      return;
+    }
+    const node = ev.target.closest("[data-goto-name]");
+    if(!node) return;
+    const name = node.dataset.gotoName;
+    const found = [...document.querySelectorAll(".group:not([hidden]) .sec")]
+      .find(s => s.dataset.name === name);
+    goTo(found);
   });
   nav.addEventListener("click", (ev) => {
     const button = ev.target.closest("button[data-tab]");
