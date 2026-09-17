@@ -12680,20 +12680,6 @@ function truthLanding(){
   const T=D.truth_landing||{};
   if(!(T.by_price||[]).length) return "";
   const p=v=>v==null?"—":(v*100).toFixed(1)+"%";
-  const bandRows=(rows,valueLabel)=>rows.filter(r=>r.bucket_count>0).map(r=>{
-    const ratio=(valueLabel&&r.value_mean>0&&r.hit_rate!=null)
-      ? r.hit_rate/r.value_mean : null;
-    return `<tr><td class="mono">${r.band[0].toFixed(2)}–${r.band[1]>=1?"1.00":r.band[1].toFixed(2)}</td>
-      <td class="mono">${r.truth_count}</td>
-      <td class="mono">${r.bucket_count}</td>
-      <td>${p(r.truth_share)}</td>
-      <td>${p(r.hit_rate)}</td>
-      <td>${p(r.value_mean)}</td>
-      <td class="${ratio==null?"":(ratio>=0.85&&ratio<=1.2?"up":"down")}">${
-        ratio==null?"—":ratio.toFixed(2)+"×"}</td></tr>`;
-  }).join("");
-  const head=label=>`<thead><tr><th>档</th><th>真值</th><th>桶数</th>
-    <th>占真值</th><th>中标率</th><th>${label}</th><th>实现/声称</th></tr></thead>`;
   // Who was right when the two disagreed (user ruling, 2026-09-15: the
   // price x claim cross-tab was unreadable -- one simple table, with its
   // conclusion and a summary).  Each group is buckets where the model's
@@ -12760,20 +12746,84 @@ function truthLanding(){
   <p class="sub" style="margin-top:6px">市场价＝入场后 4 小时的中位卖一；「更准」＝实际开出率离谁更近（差不到 1 点算一样准）；
     不足 ${MIN_N} 个桶的组标灰不判。另有 ${G.unlikely_buckets||0} 个桶两边都低于 ${
     Math.round(100*(G.unlikely_below||0.05))}%（都说几乎不可能），实际开出 ${G.unlikely_hits||0} 个，未计入。</p>`;
+  // The two rulers in one table (user ruling, 2026-09-17: 两张表融合在一起对比).
+  // Rows are the shared 0.05 bands; each metric is a pair, market beside
+  // model, as the model-skill table does (放在一起对比，不要左右).  The two
+  // sides of a row are different buckets -- those the market priced in the
+  // band and those the model claimed in it -- so the last column judges each
+  // ruler against its own buckets, by the rule the table above uses.
+  const bandKey=r=>r.band.join("|");
+  const priceByBand=Object.fromEntries((T.by_price||[]).map(r=>[bandKey(r),r]));
+  const claimByBand=Object.fromEntries((T.by_claim||[]).map(r=>[bandKey(r),r]));
+  const bands=[...(T.by_price||[]),...(T.by_claim||[])].map(r=>r.band)
+    .filter((b,i,all)=>all.findIndex(o=>o.join("|")===b.join("|"))===i)
+    .sort((a,b)=>a[0]-b[0]);
+  const bandLabel=b=>`${b[0].toFixed(2)}–${b[1]>=1?"1.00":b[1].toFixed(2)}`;
+  const live=r=>r&&r.bucket_count>0?r:null;
+  const ratioOf=r=>r&&r.value_mean>0&&r.hit_rate!=null?r.hit_rate/r.value_mean:null;
+  const bandJudge=(mk,md)=>{
+    if(!mk||!md||mk.hit_rate==null||md.hit_rate==null
+      ||mk.bucket_count<MIN_N||md.bucket_count<MIN_N) return "thin";
+    const offMarket=Math.abs(mk.hit_rate-mk.value_mean);
+    const offModel=Math.abs(md.hit_rate-md.value_mean);
+    return Math.abs(offModel-offMarket)<0.01?"tie"
+      :(offMarket<offModel?"market":"model");
+  };
+  const EDGE='style="border-left:1px solid var(--line)"';
+  const ratioCell=(r,edge)=>{
+    const x=ratioOf(r);
+    return `<td class="mono ${x==null?"":(x>=0.85&&x<=1.2?"up":"down")}"${edge?" "+EDGE:""}>${
+      x==null?"—":x.toFixed(2)+"×"}</td>`;
+  };
+  const pair=(mk,md,f,cls="")=>`<td class="${cls}" ${EDGE}>${mk?f(mk):"—"}</td><td class="${cls}">${md?f(md):"—"}</td>`;
+  const judged=[];
+  const fusedRows=bands.map(b=>{
+    const mk=live(priceByBand[b.join("|")]), md=live(claimByBand[b.join("|")]);
+    if(!mk&&!md) return "";
+    const who=bandJudge(mk,md);
+    judged.push([who,bandLabel(b)]);
+    const [tone,word]=WHO[who];
+    return `<tr${who==="thin"?' class="muted"':""}><td class="mono">${bandLabel(b)}</td>
+      ${pair(mk,md,r=>p(r.value_mean))}
+      ${pair(mk,md,r=>`<b>${p(r.hit_rate)}</b>`)}
+      ${ratioCell(mk,true)}${ratioCell(md,false)}
+      ${pair(mk,md,r=>p(r.truth_share))}
+      ${pair(mk,md,r=>`${r.bucket_count}<span class="muted">（${r.truth_count}）</span>`,"mono")}
+      <td ${EDGE}><span class="pill ${tone}">${word}</span></td></tr>`;
+  }).join("");
+  const bandsWhere=w=>judged.filter(([who])=>who===w).map(([,label])=>label);
+  const fusedVerdict=["market","model","tie"].map(w=>{
+    const hit=bandsWhere(w);
+    return hit.length?`<b>${WHO[w][1]} ${hit.length} 档</b>（${hit.join("、")}）`:`${WHO[w][1]} 0 档`;
+  }).join("；");
+  const sumOf=(rows,k)=>(rows||[]).reduce((a,r)=>a+(r[k]||0),0);
+  const fusedTable=!fusedRows?"":`<h3 style="margin-top:14px">两把尺子按档对比：市场价格（入场后 4h 中位卖一）× 模型概率（P0 建仓时刻声称）</h3>
+  <div class="card tl-verdict-card"><b>结论：</b>各档实际开出率离自己说的数更近的一方——${fusedVerdict}。</div>
+  <div style="overflow-x:auto"><table><thead><tr>
+    <th rowspan="2">档</th>
+    <th colspan="2" ${EDGE}>说的概率</th><th colspan="2" ${EDGE}>实际开出</th>
+    <th colspan="2" ${EDGE}>实现/声称</th><th colspan="2" ${EDGE}>占真值</th>
+    <th colspan="2" ${EDGE}>桶数（其中真值）</th>
+    <th rowspan="2" ${EDGE}>这一档谁说得准</th>
+  </tr><tr>${`<th ${EDGE}>市场</th><th>模型</th>`.repeat(5)}</tr></thead>
+  <tbody>${fusedRows}</tbody></table></div>
+  <p class="sub" style="margin-top:6px">市场列＝入场后 4h 中位卖一落在这档的桶（至少两次卖一报价才计入，共 ${
+    sumOf(T.by_price,"bucket_count")} 个桶、${sumOf(T.by_price,"truth_count")} 个真值）；
+    模型列＝P0 建仓时刻声称落在这档的桶（共 ${sumOf(T.by_claim,"bucket_count")} 个桶、${
+    sumOf(T.by_claim,"truth_count")} 个真值）。同一行左右<b>不是同一批桶</b>，各自对自己的桶打分；
+    同一批桶上一对一比谁更准看上一张表。实现/声称在 0.85–1.20× 为绿；「谁说得准」口径同上表
+    （差不到 1 点算一样准，任一侧不足 ${MIN_N} 个桶标灰不判）。</p>`;
   return `<h2>真值落位：按市场价格 × 模型概率分格，比谁更能预判真值</h2>
   <p class="sub">${T.since} 起 · 已闭合站日 ${T.closed_station_days}
     · 市场裁定出赢家 ${T.adjudicated_station_days}
     · 采集截断剔除 ${T.capture_truncated_days}。
     真值＝市场收敛裁定（末端买价 ≥0.80 的桶）；
     价格＝首个 P0 决策后 4 小时的中位卖一；概率＝同一时刻的服务后验。</p>
-  <div class="why"><b>这三张表回答一件事：</b>真值到底住在哪个价位、哪个声称档，
-  以及两把尺子对不齐时该信谁——第一张直接给答案，后两张是它读自的两把尺子
-  （先结论后明细，2026-09-17 裁定）。</div>
+  <div class="why"><b>这两张表回答一件事：</b>真值到底住在哪个价位、哪个声称档，
+  以及两把尺子对不齐时该信谁——第一张直接给答案，第二张把它读自的两把尺子按档并排
+  （先结论后明细，2026-09-17 裁定；两把尺子合成一张对比，同日裁定）。</div>
   ${gapTable}
-  <h3 style="margin-top:14px">按市场价格（入场后 4h 中位卖一）</h3>
-  <table>${head("均价")}<tbody>${bandRows(T.by_price,true)}</tbody></table>
-  <h3 style="margin-top:14px">按模型概率（P0 建仓时刻声称）</h3>
-  <table>${head("声称均值")}<tbody>${bandRows(T.by_claim,true)}</tbody></table>`;
+  ${fusedTable}`;
 }
 
 // The lambda tables, one per stage scope.  Placed beside the edge

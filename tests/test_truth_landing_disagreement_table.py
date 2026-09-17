@@ -50,16 +50,17 @@ def _group(key, buckets, claim, price, hit):
             "claim_mean": claim, "price_mean": price, "hit_rate": hit}
 
 
-def _render(groups) -> str:
+def _render(groups, by_price=None, by_claim=None) -> str:
     node = shutil.which("node")
     if node is None:  # pragma: no cover
         pytest.skip("node is required to run the board's renderer")
     payload = {"truth_landing": {
         "since": "2026-08-15", "closed_station_days": 10, "adjudicated_station_days": 9,
         "capture_truncated_days": 1,
-        "by_price": [{"band": [0, 0.05], "truth_count": 1, "bucket_count": 5,
-                      "truth_share": 1, "hit_rate": 0.2, "value_mean": 0.02}],
-        "by_claim": [],
+        "by_price": by_price if by_price is not None else [
+            {"band": [0, 0.05], "truth_count": 1, "bucket_count": 5,
+             "truth_share": 1, "hit_rate": 0.2, "value_mean": 0.02}],
+        "by_claim": by_claim if by_claim is not None else [],
         "disagreement": {"unlikely_below": 0.05, "unlikely_buckets": 50,
                          "unlikely_hits": 1, "groups": groups},
     }}
@@ -137,3 +138,72 @@ def test_a_thin_group_is_not_judged():
 
     assert _verdicts(html)[0] == "样本少"
     assert "3 组里" in html
+
+
+# The two rulers, fused (user ruling, 2026-09-17: 按市场价格 and 按模型概率
+# 两张表融合在一起对比).  Shaped like the book on 2026-09-17.
+def _band(low, high, truths, buckets, hit, mean):
+    return {"band": [low, high], "truth_count": truths, "bucket_count": buckets,
+            "truth_share": 0.1, "hit_rate": hit, "value_mean": mean}
+
+
+BY_PRICE = [
+    _band(0.0, 0.05, 27, 6814, 0.004, 0.015),
+    _band(0.05, 0.1, 62, 1840, 0.034, 0.068),
+    _band(0.4, 0.45, 135, 329, 0.410, 0.418),
+    _band(0.5, 1.01, 183, 307, 0.596, 0.560),
+]
+BY_CLAIM = [
+    _band(0.0, 0.05, 124, 7669, 0.016, 0.013),
+    _band(0.05, 0.1, 149, 2045, 0.073, 0.071),
+    _band(0.4, 0.45, 59, 153, 0.386, 0.423),
+    _band(0.5, 1.01, 33, 100, 0.330, 0.574),
+]
+
+
+def _band_verdicts(html: str) -> list[tuple[str, str]]:
+    rows = re.findall(r'<td class="mono">(\d\.\d\d–\d\.\d\d)</td>.*?'
+                      r'<span class="pill \w*">([^<]+)</span></td></tr>', html, re.S)
+    return rows
+
+
+def test_the_two_band_tables_are_one():
+    html = _render(BOOK, BY_PRICE, BY_CLAIM)
+
+    assert "<h3 style=\"margin-top:14px\">按市场价格（入场后 4h 中位卖一）</h3>" not in html
+    assert "<h3 style=\"margin-top:14px\">按模型概率（P0 建仓时刻声称）</h3>" not in html
+    assert html.count("<table>") == 1
+    # Market beside model under every metric, not market's half then model's.
+    pair = '<th style="border-left:1px solid var(--line)">市场</th><th>模型</th>'
+    assert re.search(r"</tr><tr>(.*?)</tr></thead>", html, re.S).group(1) == pair * 5
+
+
+def test_each_band_names_the_ruler_that_landed_nearer_its_own_number():
+    html = _render(BOOK, BY_PRICE, BY_CLAIM)
+
+    # 0.00: |0.4-1.5| vs |1.6-1.3| inside a point; 0.05: 3.4 vs 0.2;
+    # 0.40: 0.8 vs 3.7; 0.50: 3.6 vs 24.4.
+    assert _band_verdicts(html) == [
+        ("0.00–0.05", "一样准"), ("0.05–0.10", "模型更准"),
+        ("0.40–0.45", "市场更准"), ("0.50–1.00", "市场更准"),
+    ]
+    assert "市场更准 2 档</b>（0.40–0.45、0.50–1.00）" in html
+    assert "模型更准 1 档</b>（0.05–0.10）" in html
+
+
+def test_the_ratio_is_each_rulers_own():
+    html = _render(BOOK, BY_PRICE, BY_CLAIM)
+    row = re.search(r'0\.50–1\.00</td>(.*?)</tr>', html, re.S).group(1)
+
+    assert f"{0.596 / 0.560:.2f}×" in row and f"{0.330 / 0.574:.2f}×" in row
+
+
+def test_a_band_one_ruler_never_reached_is_not_judged():
+    by_claim = [b for b in BY_CLAIM if b["band"][0] != 0.5]
+    thin = [_band(0.4, 0.45, 3, 12, 0.25, 0.42)] + [b for b in by_claim if b["band"][0] != 0.4]
+    html = _render(BOOK, BY_PRICE, thin)
+    verdicts = dict(_band_verdicts(html))
+
+    assert verdicts["0.50–1.00"] == "样本少" and verdicts["0.40–0.45"] == "样本少"
+    row = re.search(r'0\.50–1\.00</td>(.*?)</tr>', html, re.S).group(1)
+    assert row.count(">—</td>") == 5
