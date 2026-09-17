@@ -11100,7 +11100,7 @@ function head(){
   <b>选桶</b>挑得准不准。三个问题按人实际发问的顺序排，
   都在选标签页之前就该看见，所以放在标签栏上面而不是某个分组里面。
   紧接着是<b>资金看板</b>：这本账值多少，按纸面账本与实盘两类分页签；
-  然后是 Live 上线准备，再往下是逐站账：每日统计、逐站逐日明细与三张跟进表；
+  然后是站点实盘上线闸门，再往下是逐站账：每日统计、逐站逐日明细与三张跟进表；
   再往下按层级分四个<b>区域</b>——模型（概率层）、边际、选窗、定注，顺着链条从上游到下游，
   每区一个颜色，标签栏与区标题同色。</p>
   <div class="card"><div style="display:flex;gap:14px;align-items:center;
@@ -15092,7 +15092,7 @@ function orderBookCard(B){
 // 钱 · 这本账值多少、实盘订单、实盘意向簿融合在一个大容器内，做成一个数据看板，
 // 分类展示).  Five readings of what the book is worth sat in three places:
 // the 钱 lamp row in the head, two sections under it, and two cards inside
-// Live 上线准备 -- where the live P&L was read under a paragraph about the
+// 站点实盘上线闸门 -- where the live P&L was read under a paragraph about the
 // arming flag.  They are one container now, in two categories: the paper
 // book every rule is measured on, and the live account that actually
 // spends.  Each category shows one block at a time and remembers which
@@ -15472,7 +15472,7 @@ function liveReadiness(){
   </tr>`).join("");
   const CT = L.contracts || {};
   const authorised = CT.live_submit_authorized === true;
-  return `<h2>Live 上线准备：决定哪些站可以用真钱下单</h2>
+  return `<h2>站点实盘上线闸门</h2>
   <p class="sub">下面的开关是<b>上线意向旗</b>。能不能真发单由<b>两个闸一起决定</b>：
   代码编译的执行模式 <span class="mono">${h(L.execution_mode||"—")}</span>，
   和 runtime 合同 <span class="mono">${h(CT.execution_mode||"—")}</span>
@@ -16294,7 +16294,7 @@ const LANES = {
   // --- the book's own account ---
   "资金看板": {layer:"实盘 · 读数", status:"audit",
     role:"实盘赚没赚：总账、对比、风险、曲线，订单数量与站明细，意向簿"},
-  "Live 上线准备": {layer:"执行层 · 运维", status:"audit",
+  "站点实盘上线闸门": {layer:"执行层 · 运维", status:"audit",
     role:"开关能不能翻、翻了之后哪几道门还拦着"},
   "每日统计": {layer:"实盘 · 读数", status:"audit",
     role:"实盘每天下了几站、成交多少、结算赚没赚"},
@@ -16404,7 +16404,7 @@ document.getElementById("app").innerHTML =
     <nav class="jump" id="jump" aria-label="区块"></nav></div>` +
   safe(head, "页头") +
   sec(moneyBoard, "资金看板", "sec-money") +
-  sec(liveReadiness, "Live 上线准备", "sec-live") +
+  sec(liveReadiness, "站点实盘上线闸门", "sec-live") +
   TOP.map(([fn, name], i) => sec(fn, name, `sec-top-${i}`)).join("") +
   groupHtml +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据 ·

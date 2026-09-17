@@ -3,7 +3,7 @@
 User ruling, 2026-09-13: 把「组合风险指标」、入场的九个数、钱 · 这本账值多少、
 实盘订单 · 数量 / ROI / PnL、实盘意向簿 这五块融合在一个大容器内，做成一个
 数据看板，分类展示.  They sat in three places: the 钱 lamp row in the head,
-two sections under it, and two cards inside Live 上线准备.
+two sections under it, and two cards inside 站点实盘上线闸门.
 
 The same evening the paper category's three blocks became one board
 (有些指标重复了，把纸面账本的所有数据看板重新整理合并).
@@ -152,7 +152,7 @@ def test_the_board_sits_between_the_head_and_live_readiness():
 
     head = page.index('safe(head, "页头")')
     board = page.index('sec(moneyBoard, "资金看板", "sec-money")')
-    live = page.index('sec(liveReadiness, "Live 上线准备", "sec-live")')
+    live = page.index('sec(liveReadiness, "站点实盘上线闸门", "sec-live")')
     assert head < board < live
     assert "sec(entryEconomics" not in page and "sec(riskMetrics" not in page
 
