@@ -70,9 +70,40 @@ MIS_BUY_WINDOW_START_UTC = "2026-09-17T02:00:42Z"
 # be a book that has since fallen through, and the sell would rest under it.
 MAX_BID_AGE_SECONDS = 900.0
 # The venue's floor on a GTD (180s); a little longer so the bid has a
-# chance to refill under a partially filled remainder.
+# chance to refill under a partially filled remainder.  Counted from the
+# moment each order is SENT, not from the cycle's clock: the first live
+# batch (2026-09-17 12:33Z) sent eleven sells one after another, the
+# gateway took a quarter of a minute over each, and the last two were
+# refused ``gtd_expiration_too_soon:166s`` on an expiry stamped two minutes
+# earlier.
 GTD_HORIZON_SECONDS = 300
 DEFAULT_MIN_ORDER_SHARES = 5.0
+# A sell makes the gateway fetch the token's conditional balance before it
+# signs; four of the first eleven timed out at the basket lanes' 15s.
+TRANSPORT_TIMEOUT_SECONDS = 45.0
+
+
+def wall_clock_utc() -> str:
+    """The moment an order is sent, for its expiry and its event clock."""
+
+    return _iso(datetime.now(timezone.utc))
+
+
+def default_transport(path: str, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    """The one local gateway, reached the one approved way, with this lane's
+    longer patience for a sell."""
+
+    import sys  # noqa: PLC0415
+    from pathlib import Path as _Path  # noqa: PLC0415
+
+    root = str(_Path(__file__).resolve().parents[1])
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    from clob_order_service_client import ClobOrderServiceClient  # noqa: PLC0415
+
+    if path != PLACE_ORDER_PATH:
+        raise ContractError("mis_bought_leg_exit_transport_unknown_path")
+    return ClobOrderServiceClient(timeout_seconds=TRANSPORT_TIMEOUT_SECONDS).place_order(payload)
 
 
 def _utc(value: str) -> datetime:
@@ -388,7 +419,8 @@ def execute_mis_bought_leg_exits(
             (cycle_id, f"{INTENT_PREFIX}_plan_{plan_sha[:32]}", plan["station_id"], plan["event_date"],
              plan["settlement_timezone"], "basket", plan_sha, 0.0, "submitting", now_utc, now_utc),
         )
-        expiration = int(_utc(now_utc).timestamp()) + GTD_HORIZON_SECONDS
+        sent_at = wall_clock_utc()
+        expiration = int(_utc(sent_at).timestamp()) + GTD_HORIZON_SECONDS
         intent_body = {
             "schema": "mis_bought_leg_exit_intent_v1",
             "rule": RULE_VERSION,
@@ -408,7 +440,7 @@ def execute_mis_bought_leg_exits(
              plan["token_id"], "YES", "SELL", plan["limit_price"], plan["shares"],
              round(plan["shares"] * plan["limit_price"], 6), "prepared", 1 if live_submit_authorized else 0,
              intent_id, json.dumps(intent_body, ensure_ascii=False, sort_keys=True), content_sha256(intent_body),
-             now_utc, None),
+             sent_at, None),
         )
         gate = can_submit_next_order(conn, bucket=plan["bucket"], token_id=plan["token_id"], exclude_order_intent_id=intent_id, same_cycle_id=cycle_id)
         payload = {
@@ -431,38 +463,38 @@ def execute_mis_bought_leg_exits(
                 else "live_submit_not_authorized" if not live_submit_authorized else "live_intent_disarmed"
             )
             receipt = record_order_event(conn, order_intent_id=intent_id, event={
-                "event_type": "NEVER_REACHED_EXCHANGE", "exchange_order_id": "", "observed_at": now_utc,
+                "event_type": "NEVER_REACHED_EXCHANGE", "exchange_order_id": "", "observed_at": sent_at,
                 "matched_size": 0.0, "matched_notional_usdc": 0.0,
                 "event_payload": {"idempotency_key": intent_id, "payload_sha256": content_sha256(payload), "reason": reason, "source": "mis_bought_leg_exit"},
             })
             entry.update({"state": receipt.get("state"), "reason": reason})
             receipts.append(entry)
-            _close_cycle(conn, cycle_id, now_utc)
+            _close_cycle(conn, cycle_id, wall_clock_utc())
             continue
         response = transport(PLACE_ORDER_PATH, payload)
         outcome = classify_submission_response(response, order_type="GTD")
         if not outcome["submitted"]:
             receipt = record_order_event(conn, order_intent_id=intent_id, event={
-                "event_type": outcome["event_type"], "exchange_order_id": "", "observed_at": now_utc,
+                "event_type": outcome["event_type"], "exchange_order_id": "", "observed_at": wall_clock_utc(),
                 "matched_size": 0.0, "matched_notional_usdc": 0.0,
                 "event_payload": {"idempotency_key": intent_id, "payload_sha256": content_sha256(payload), "reason": outcome["reason"], "source": str(response.get("source") or ""), "http_status": response.get("http_status")},
             })
             entry.update({"state": receipt.get("state"), "event_type": outcome["event_type"], "reason": outcome["reason"]})
             receipts.append(entry)
-            _close_cycle(conn, cycle_id, now_utc)
+            _close_cycle(conn, cycle_id, wall_clock_utc())
             continue
         fill = outcome.get("fill") or {}
         matched_size, matched_notional = fill_quantities(fill, event_type=outcome["event_type"], order_action="SELL", limit_price=float(plan["limit_price"]))
         receipt = record_order_event(conn, order_intent_id=intent_id, event={
             "event_type": outcome["event_type"],
             "exchange_order_id": str(fill.get("exchange_order_id") or response.get("exchange_order_id") or ""),
-            "observed_at": now_utc, "matched_size": matched_size, "matched_notional_usdc": matched_notional,
+            "observed_at": wall_clock_utc(), "matched_size": matched_size, "matched_notional_usdc": matched_notional,
             "event_payload": {"idempotency_key": intent_id, "payload_sha256": content_sha256(payload), "reason": outcome["reason"], "source": str(response.get("source") or ""), "exchange_status": str(fill.get("status") or "")},
         })
         submitted += 1
         entry.update({"state": receipt.get("state"), "event_type": outcome["event_type"], "matched_size": matched_size, "matched_notional_usdc": matched_notional})
         receipts.append(entry)
-        _close_cycle(conn, cycle_id, now_utc)
+        _close_cycle(conn, cycle_id, wall_clock_utc())
     return {
         "schema": "mis_bought_leg_exit_receipt_v1",
         "rule": RULE_VERSION,

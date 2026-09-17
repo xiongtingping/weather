@@ -160,6 +160,8 @@ def test_off_sells_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_the_sell_is_a_gtd_at_the_bid_recorded_like_any_order_and_never_sold_twice(monkeypatch: pytest.MonkeyPatch) -> None:
     conn = _store()
     monkeypatch.setattr(lane, "live_intent_armed", lambda: True)
+    # The expiry and the event clock are the SEND moment, per order.
+    monkeypatch.setattr(lane, "wall_clock_utc", lambda: "2026-09-17T12:02:30.000Z")
     sent: list[dict] = []
 
     def transport(path, payload):
@@ -181,7 +183,7 @@ def test_the_sell_is_a_gtd_at_the_bid_recorded_like_any_order_and_never_sold_twi
         "side": "SELL", "price": 0.21, "size": 6.2, "order_type": "GTD", "post_only": False,
         "expiration": by_token["t27"]["expiration"],
     }
-    assert by_token["t27"]["expiration"] == int(lane._utc(NOW).timestamp()) + lane.GTD_HORIZON_SECONDS
+    assert by_token["t27"]["expiration"] == int(lane._utc("2026-09-17T12:02:30.000Z").timestamp()) + lane.GTD_HORIZON_SECONDS
     assert by_token["t27"]["order_intent_id"].startswith("misbuyexit_")
     rows = conn.execute(
         "SELECT i.bucket, i.order_action, i.state, r.state, r.filled_size"
@@ -217,5 +219,7 @@ def test_the_daemon_runs_the_lane_after_the_recycle_on_the_writer_connection() -
     recycle = source.index("execute_certain_win_recycles(")
     exit_call = source.index("execute_mis_bought_leg_exits(")
     assert recycle < exit_call
+    assert "transport=_exit_transport" in source
+    assert lane.TRANSPORT_TIMEOUT_SECONDS > 15.0
     assert '"mis_bought_leg_exit": exit_receipt' in source
     assert "load_chain_sent_shares" in inspect.getsource(lane.mis_bought_legs)

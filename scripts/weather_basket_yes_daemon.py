@@ -3326,14 +3326,12 @@ def run_target_production_cycle(
     if PRODUCTION_EXECUTION_MODE == "production_live":
         try:
             from bayes_basket_target.mis_bought_leg_exit import (
+                default_transport as _exit_transport,
                 execute_mis_bought_leg_exits,
-            )
-            from bayes_basket_target.production import (
-                _default_order_transport,
             )
             exit_receipt = execute_mis_bought_leg_exits(
                 connection,
-                transport=_default_order_transport,
+                transport=_exit_transport,
                 now_utc=utc_now(),
                 live_submit_authorized=True,
             )
