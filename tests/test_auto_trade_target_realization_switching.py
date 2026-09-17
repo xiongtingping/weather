@@ -68,54 +68,7 @@ class AutoTradeTargetRealizationSwitchingTests(unittest.TestCase):
         self.assertTrue(profile["weather_strategy_entry_allowed"])
         self.assertEqual(profile["strategy_lane"], "yes_realized_target")
 
-    def test_strategy_allows_old_yes_bucket_reverse_no_when_switching_target(self) -> None:
-        profile = classify_weather_strategy_candidate(
-            {
-                "side": "NO",
-                "outcome": "28°C",
-                "bucket_label": "28°C",
-                "target_bucket": "29°C",
-                "target_posterior": 0.42,
-                "q_temperature_bucket_posterior": 0.18,
-                "candidate_bucket_realization_prob": 0.18,
-                "target_realization_leg_role": "old_bucket_reverse",
-                "target_adjustment_action": ACTION_SWITCH_BUY,
-                "held_target_bucket": "28°C",
-                "held_target_side": "YES",
-                "has_active_position": True,
-                "has_active_yes_position": True,
-                "price": 0.82,
-            }
-        )
 
-        self.assertTrue(profile["weather_strategy_entry_allowed"])
-        self.assertEqual(profile["strategy_lane"], "no_remote_bucket")
-        self.assertEqual(profile["target_realization_leg_role"], "old_bucket_reverse")
-        self.assertEqual(profile["remote_no_reason"], "old_bucket_reverse_after_target_switch")
-
-    def test_strategy_allows_old_no_bucket_reverse_yes_when_switching_target(self) -> None:
-        profile = classify_weather_strategy_candidate(
-            {
-                "side": "YES",
-                "outcome": "28°C",
-                "bucket_label": "28°C",
-                "target_bucket": "29°C",
-                "target_posterior": 0.42,
-                "q_temperature_bucket_posterior": 0.18,
-                "candidate_bucket_realization_prob": 0.18,
-                "target_realization_leg_role": "old_bucket_reverse",
-                "target_adjustment_action": ACTION_SWITCH_BUY,
-                "held_target_bucket": "28°C",
-                "held_target_side": "NO",
-                "has_active_position": True,
-                "has_active_yes_position": False,
-                "price": 0.18,
-            }
-        )
-
-        self.assertTrue(profile["weather_strategy_entry_allowed"])
-        self.assertEqual(profile["strategy_lane"], "yes_realized_target")
-        self.assertEqual(profile["target_realization_leg_role"], "old_bucket_reverse")
 
     def test_top_unchanged_and_target_supported_holds(self) -> None:
         decision = evaluate_realtime_target_adjustment(

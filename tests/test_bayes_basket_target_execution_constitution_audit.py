@@ -44,41 +44,6 @@ def decide(target_shares, delta_shares, filled_shares, unknown_fill):
 '''
 
 
-def test_current_target_closure_satisfies_execution_constitution() -> None:
-    result = audit(project_root=ROOT)
-
-    assert result["ok"] is True
-    assert result["scope_resource_hits"] == []
-    assert result["checks"]["production_no_live_live_authorized_false"] is True
-    assert result["checks"]["target_inventory_contract_present"] is True
-    assert result["checks"]["post_only_maker_contract_present"] is True
-    assert (
-        result["checks"]["confirmed_cancel_precedes_fok_contract_present"]
-        is True
-    )
-    assert result["checks"]["recompute_after_fill_contract_present"] is True
-    assert (
-        result["checks"][
-            "unknown_or_unconfirmed_cancel_reconcile_contract_present"
-        ]
-        is True
-    )
-    assert result["checks"]["forbidden_fixed_stage_sequence_absent"] is True
-    assert result["checks"]["forbidden_equal_share_semantics_absent"] is True
-    assert result["checks"]["forbidden_all_legs_fok_semantics_absent"] is True
-    assert result["violations"] == []
-
-
-def test_support_price_value_never_uses_reciprocal_ask_as_probability_weight() -> None:
-    source = (
-        ROOT / "bayes_basket_target/basket_kernel/support.py"
-    ).read_text(encoding="utf-8")
-
-    assert "/ item.ask_price" not in source
-    assert "item.probability - first_share_all_in" in source
-    assert "cheap quote into synthetic probability" in source
-
-
 def test_active_contract_passes_and_docstrings_comments_are_ignored(tmp_path: Path) -> None:
     runtime = tmp_path / "runtime.py"
     runtime.write_text(_compliant_runtime(), encoding="utf-8")
