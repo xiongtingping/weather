@@ -173,20 +173,25 @@ def test_candidate_boundary_does_not_equal_sparse_final_support() -> None:
         "40C",
     )
     assert result.support_set.core_buckets == ("36C", "37C", "38C")
-    assert result.support_set.optional_risk_buckets == ("35C", "40C")
+    # 39C carries no price coverage at its ask and is still a rung: charter 52d
+    # (2026-08-16) removed the per-bucket coverage-value gate, so a tail rung
+    # earns its place through the odds it adds to the basket, not by clearing
+    # expectation on its own.  The support stays sparse on the other gates.
+    assert result.support_set.optional_risk_buckets == ("35C", "39C", "40C")
     assert result.support_set.buckets == (
         "35C",
         "36C",
         "37C",
         "38C",
+        "39C",
         "40C",
     )
     assert ("33C", "outside_candidate_boundary") in result.rejected_risk_buckets
     assert ("34C", "model_reliability_gate_failed") in result.rejected_risk_buckets
-    assert ("39C", "price_coverage_gate_failed") in result.rejected_risk_buckets
     assert ("41C", "outside_candidate_boundary") in result.rejected_risk_buckets
+    assert all(reason != "price_coverage_gate_failed" for _, reason in result.rejected_risk_buckets)
     assert "34C" not in result.support_set.buckets
-    assert "39C" not in result.support_set.buckets
+    assert result.support_set.buckets != result.candidate_boundary.buckets
 
 
 @pytest.mark.parametrize("direction", list(Direction))

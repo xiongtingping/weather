@@ -398,7 +398,12 @@ def test_awc_reference_only_keeps_hourly_metar_out_of_formal_rows(monkeypatch):
     assert receipt["reference_only"] is True
 
 
-def test_awc_fetch_discards_non_hourly_metar_but_keeps_effective_speci(monkeypatch):
+def test_awc_fetch_keeps_routine_metar_off_the_hour_and_effective_speci(monkeypatch):
+    # 38b901cc (2026-08-16): the historical lane used to keep a routine METAR
+    # only at minute :00, which threw away every report from stations that
+    # file at :25/:55 (Europe) or :52-:56 (US).  AWC's metarType already
+    # separates routine from special, so the minute test is gone and the
+    # :30 routine report below is truth like any other.
     payload = [
         {
             "icaoId": "RCSS",
@@ -434,9 +439,10 @@ def test_awc_fetch_discards_non_hourly_metar_but_keeps_effective_speci(monkeypat
 
     assert [(row["report_type"], row["valid_at_utc"]) for row in rows] == [
         ("METAR", "2026-07-17T16:00:00Z"),
+        ("METAR", "2026-07-17T16:30:00Z"),
         ("SPECI", "2026-07-17T16:31:00Z"),
     ]
-    assert receipt["returned"] == 2
+    assert receipt["returned"] == 3
 
 
 def test_reference_only_cli_success_depends_on_reference_rows() -> None:

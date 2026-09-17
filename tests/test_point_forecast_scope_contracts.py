@@ -21,16 +21,34 @@ import pytest
 
 from bayes_basket_target import native_ensemble_oos as oos
 from bayes_basket_target.official_native_forward_packet import (
+    CMA_GRAPES_GLOBAL_POINT_SYSTEM_ID,
     POINT_FORECAST_SYSTEMS,
     RETIRED_POINT_FORECAST_SYSTEM_IDS,
 )
+
+# Captured and deliberately not admitted.  Charter 102 (2026-09-07, a38f1921)
+# registered CMA GRAPES Global so the P0 layer recognises the id and the
+# regional point lane can store it, and ruled in the same breath that capture
+# is not admission: it measured a tie with the served posterior, and its
+# aggregator publishes no run stamp, so its cycle label is derived rather
+# than observed.  A scope contract would let the OOS reader score it as a P0
+# candidate the day any row reached the member table, which is the admission
+# the ruling withheld.  Pinned below the other way round: it must NOT have one.
+CAPTURE_ONLY_POINT_SYSTEMS = frozenset({CMA_GRAPES_GLOBAL_POINT_SYSTEM_ID})
 
 # The roster keeps a retired system so what was written before still reads;
 # a retired system is exactly one whose rows the reader must NOT see.
 LIVE_POINT_SYSTEMS = tuple(
     system_id for system_id in POINT_FORECAST_SYSTEMS
     if system_id not in RETIRED_POINT_FORECAST_SYSTEM_IDS
+    and system_id not in CAPTURE_ONLY_POINT_SYSTEMS
 )
+
+
+def test_a_capture_only_system_has_no_scope_contract() -> None:
+    assert CAPTURE_ONLY_POINT_SYSTEMS <= set(POINT_FORECAST_SYSTEMS)
+    for system_id in CAPTURE_ONLY_POINT_SYSTEMS:
+        assert oos._admitted_scope_contract(system_id) is None
 
 
 def test_every_registered_point_system_has_a_scope_contract() -> None:

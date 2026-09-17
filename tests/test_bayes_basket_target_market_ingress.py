@@ -418,6 +418,25 @@ def test_market_ingress_rejects_official_tick_price_mismatch() -> None:
         _scope_quote_values(rows, quotes)
 
 
+@pytest.fixture
+def _fixture_day_inside_the_cache_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the fixture's 2026-07-23 book inside the evidence cache's window.
+
+    Every materialization ages out scopes older than
+    ``WS_EVIDENCE_CACHE_RETAIN_DAYS`` against the wall clock before it writes
+    (504fc730, 2026-08-19: the cache had filled its 512-scope ceiling).  From
+    2026-07-26 on, the fixture day was deleted at the top of each call, so a
+    replay re-inserted it (``wrote`` True) and a rewind had no row left to
+    rewind against -- the guard was never reached, not broken.  The window is
+    widened for these tests; the ageing itself is not what they are about.
+    """
+
+    import bayes_basket_target.market_ingress as ingress
+
+    monkeypatch.setattr(ingress, "WS_EVIDENCE_CACHE_RETAIN_DAYS", 100_000)
+
+
+@pytest.mark.usefixtures("_fixture_day_inside_the_cache_window")
 def test_evidence_only_ws_cache_is_independent_and_latest_only(tmp_path: Path) -> None:
     manifest = _manifest(tmp_path)
     with sqlite3.connect(":memory:") as conn:
@@ -460,6 +479,7 @@ def test_evidence_only_ws_cache_is_independent_and_latest_only(tmp_path: Path) -
         ).fetchone()[0] == 0
 
 
+@pytest.mark.usefixtures("_fixture_day_inside_the_cache_window")
 def test_evidence_only_ws_cache_rejects_time_rewind(tmp_path: Path) -> None:
     manifest = _manifest(tmp_path)
     with sqlite3.connect(":memory:") as conn:
