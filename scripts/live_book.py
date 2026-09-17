@@ -583,20 +583,24 @@ def settlement_rows(
 #: thresholds, kept when it moved onto live fills on 2026-09-16).
 CLAIM_FLOOR = 0.75          # hit rate under three quarters of the claim
 CENTRE_LIMIT_C = 0.8        # most of a bucket, after every correction
-COVERAGE_FLOOR = 0.45       # the basket missed more often than not
+BASKET_HIT_FLOOR = 0.45     # the basket missed more often than not
 
 
-def station_quality(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def station_quality(
+    rows: list[dict[str, Any]], days: Iterable[Mapping[str, Any]]
+) -> dict[str, Any]:
     """Per station, what its live settlements say about each layer.
 
     User ruling 2026-09-16: the go-live table's gates and its five-dimension
     read (过闸、未过项、不行、不行的维度) all read the live book.  ``rows`` is
-    ``settlement_rows`` -- one per settled (station, day, stage) that filled.
+    ``settlement_rows`` -- one per settled (station, day, stage) that filled;
+    ``days`` is ``station_days`` of the same book.
 
     Two grains, each where its question lives.  Claim and realisation are
-    per stage row: each stage held its own basket at its own claim.  Coverage,
-    centre and the two halves are per station-day: truth is one value a day,
-    so three stages holding the same day are one observation of it.
+    per stage row: each stage held its own basket at its own claim.  The
+    basket hit, centre and the two halves are per station-day: truth is one
+    value a day, so three stages holding the same day are one observation of
+    it.
 
     * ``calibration_ratio`` -- hit rate over the mean claim, rows whose claim
       is known.  The gate wants it in [0.88, 1.18]; under ``CLAIM_FLOOR`` is
@@ -605,7 +609,13 @@ def station_quality(rows: list[dict[str, Any]]) -> dict[str, Any]:
       Negative is the 实现 dimension.
     * ``centre_residual_c`` -- mean over days of the held centre minus truth.
       The gate wants |x| <= 0.8; past ``CENTRE_LIMIT_C`` is 中心.
-    * ``basket_coverage`` -- share of days whose posted buckets held truth.
+    * ``basket_hit_rate`` -- over the settled station-days that filled, the
+      share whose posted buckets held truth: ``station_days``' own 篮子命中
+      verdict (every stage's posted buckets, filled or not), so it is the
+      table's 篮子命中·站日 on the days that filled.  Named 覆盖率 until
+      2026-09-17 and read off the filled stages' posts alone, so a stage
+      that posted the truth and filled nothing did not count (KSFO); under
+      ``BASKET_HIT_FLOOR`` is the 篮子命中 dimension.
     * the halves split at the fleet's median settled day; losing in both is
       持续.
 
@@ -613,11 +623,16 @@ def station_quality(rows: list[dict[str, Any]]) -> dict[str, Any]:
     and not a failure.
     """
 
-    days = sorted({str(row["event_date"]) for row in rows})
-    cut = days[len(days) // 2] if days else ""
+    dates = sorted({str(row["event_date"]) for row in rows})
+    cut = dates[len(dates) // 2] if dates else ""
     per: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
         per[str(row["station_id"])].append(row)
+    basket_hit: dict[tuple[str, str], bool] = {
+        (str(day["station_id"]), str(day["event_date"])): bool(day["basket_hit"])
+        for day in days
+        if day["settled_bucket"] is not None and day["filled_legs"]
+    }
     out: dict[str, dict[str, Any]] = {}
     for station, group in sorted(per.items()):
         claimed = [
@@ -641,10 +656,9 @@ def station_quality(rows: list[dict[str, Any]]) -> dict[str, Any]:
         by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for row in group:
             by_day[str(row["event_date"])].append(row)
-        covered = [
-            1 if any(int(row.get("intended_hit") or 0) for row in day_rows)
-            else 0
-            for day_rows in by_day.values()
+        verdicts = [
+            basket_hit[(station, day)] for day in by_day
+            if (station, day) in basket_hit
         ]
         residuals = []
         for day_rows in by_day.values():
@@ -664,12 +678,15 @@ def station_quality(rows: list[dict[str, Any]]) -> dict[str, Any]:
             realised_claimed / expected if abs(expected) > 1e-9 else None
         )
         centre = sum(residuals) / len(residuals) if residuals else None
-        coverage = sum(covered) / len(covered) if covered else None
+        basket_hits = sum(1 for hit in verdicts if hit)
+        basket_rate = basket_hits / len(verdicts) if verdicts else None
         flags = {
             "realization": ratio is not None and ratio < 0,
             "claim": calibration is not None and calibration < CLAIM_FLOOR,
             "centre": centre is not None and abs(centre) > CENTRE_LIMIT_C,
-            "coverage": coverage is not None and coverage < COVERAGE_FLOOR,
+            "basket_hit": (
+                basket_rate is not None and basket_rate < BASKET_HIT_FLOOR
+            ),
             "persistence": bool(
                 counts[0] and counts[1] and halves[0] < 0 and halves[1] < 0
             ),
@@ -685,7 +702,8 @@ def station_quality(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "realized_usdc": sum(float(row["pnl_usdc"]) for row in group),
             "realization_ratio": ratio,
             "centre_residual_c": centre,
-            "basket_coverage": coverage,
+            "basket_hit_days": basket_hits,
+            "basket_hit_rate": basket_rate,
             "early_pnl_usdc": halves[0],
             "late_pnl_usdc": halves[1],
             "early_chains": counts[0],
@@ -698,7 +716,7 @@ def station_quality(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "thresholds": {
             "claim_floor": CLAIM_FLOOR,
             "centre_limit_c": CENTRE_LIMIT_C,
-            "coverage_floor": COVERAGE_FLOOR,
+            "basket_hit_floor": BASKET_HIT_FLOOR,
         },
         "stations": out,
     }

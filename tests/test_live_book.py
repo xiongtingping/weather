@@ -382,7 +382,7 @@ def test_station_quality_reads_claim_per_basket_and_truth_per_day():
     KAAA: day 1 held by P0 and P1, both hit at a claim of 0.5, centres 1.0C
     and 3.0C warm -> one day at 2.0C.  Day 2 held by P0 only, a miss, centre
     0C.  Claim is per basket (2 hits of 3 over a 0.5 claim), centre and
-    coverage per day.
+    basket hit per day.
     """
 
     conn = _store_with_centres()
@@ -393,12 +393,15 @@ def test_station_quality_reads_claim_per_basket_and_truth_per_day():
     _centred_day(conn, "KAAA", "2026-09-02", 2, centre=30.0, truth=30.0,
                  bucket="31°C", settle="30°C")
     book = live_book.build(conn)
-    quality = live_book.station_quality(book["settlements"])
+    quality = live_book.station_quality(
+        book["settlements"], live_book.station_days(book)
+    )
     kaaa = quality["stations"]["KAAA"]
     assert kaaa["settled_count"] == 3 and kaaa["settled_days"] == 2
     assert kaaa["calibration_ratio"] == pytest.approx((2 / 3) / 0.5)
     assert kaaa["centre_residual_c"] == pytest.approx((2.0 + 0.0) / 2)
-    assert kaaa["basket_coverage"] == pytest.approx(0.5)
+    assert (kaaa["basket_hit_days"], kaaa["settled_days"]) == (1, 2)
+    assert kaaa["basket_hit_rate"] == pytest.approx(0.5)
     # Each basket paid 5 for 10 shares at 0.5: +5, +5, then -5.
     assert kaaa["realized_usdc"] == pytest.approx(5.0)
     assert kaaa["flags"]["centre"] is True

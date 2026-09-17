@@ -4891,7 +4891,10 @@ def collect_live_readiness(
     # settlements (user ruling, 2026-09-16).  The claim gate and the 声称
     # dimension are one number read against two thresholds, and so are the
     # centre gate and 中心: one book, so no longer two measurements.
-    quality = live_book.station_quality(live_book.build(conn)["settlements"])
+    book = live_book.build(conn)
+    quality = live_book.station_quality(
+        book["settlements"], live_book.station_days(book)
+    )
     quality_by_station = quality["stations"]
     stations = []
     for sid in sorted(set(ratio_by_station) | set(live_by_station)):
@@ -15275,7 +15278,7 @@ function liveReadiness(){
   // a clean station's evidence simply was not on the page.
   const FX = stationFailureIndex();
   const FLAG = {realization:"实现", claim:"声称", centre:"中心",
-    coverage:"覆盖", persistence:"持续"};
+    basket_hit:"篮子命中", persistence:"持续"};
   const fnum = (v,d,suffix="") => v==null ? "—"
     : ((v>=0&&suffix==="C")?"+":"") + Number(v).toFixed(d) + suffix;
   const EDGE = 'style="border-left:1px solid var(--line)"';
@@ -15299,8 +15302,8 @@ function liveReadiness(){
     const thin = s.settled_count < 6;
     return `<td class="mono${thin?" muted":""}" ${EDGE}>${s.settled_count}${
         thin?" 薄":""}</td>
-      <td class="mono">${s.basket_coverage==null?"—":
-        (100*s.basket_coverage).toFixed(0)+"%"}</td>
+      <td class="mono" ${hsort(s.basket_hit_days, s.basket_hit_rate==null?0:s.settled_days)}>${
+        s.basket_hit_rate==null?"—":hfrac(s.basket_hit_days, s.settled_days)}</td>
       <td class="mono">${fnum(s.realization_ratio,2)}</td>
       <td class="mono">${fnum(s.calibration_ratio,2)}</td>
       <td class="mono">${fnum(s.centre_residual_c,2,"C")}</td>`;
@@ -15507,8 +15510,8 @@ function liveReadiness(){
     <table style="white-space:nowrap"><thead><tr><th>站</th><th title="三个开关都是人工裁定，点击即开启关闭，改动立刻写盘并记审计。禁入=不下单（记账照旧）；豁免=证据不够也上线；待观察=够格也先不下单。三者互斥。">闸门（人工）</th><th>过闸</th><th>未过项</th>
       <th title="实盘：该站真实成交腿里已结算的站日数" style="border-left:1px solid var(--line)">实盘站日</th><th title="实盘：命中腿/已结算成交腿，+N待＝已成交但还没结算的腿">实盘腿</th><th title="实盘：已结算成交腿的实付金额(U)">实盘投入</th><th title="实盘：已结算成交腿的盈亏(U)＝命中份数×1U−实付">实盘盈亏</th><th title="实盘：盈亏÷投入，待结算腿不计入">实盘ROI</th><th title="实盘：实盘账本最近 5 个结算日的 ROI${(LP.recent_window_dates||[]).length?"（"+LP.recent_window_dates[0]+" 起）":""}">实盘近5日</th>
       <th title="命中·站日：真值落在生产挑中的桶里的站日/已结算站日；挑中的桶成交与否、是否被实盘门拒掉都算（与每日统计同一判定）" style="border-left:1px solid var(--line)">篮子命中<br><span class="muted">站日</span></th><th title="命中·站日：真值落在成交的桶里的站日/有成交的已结算站日">持仓命中<br><span class="muted">站日</span></th><th title="命中·笔：一个站日一个阶段成交过的腿算一笔；持有的桶含真值的笔/声称已知的已结算笔。悬停看 90% 区间；声称落在区间外才着色（红＝声称高于区间上沿）">命中率<br><span class="muted">笔</span></th><th title="命中·笔：下单决策绑定的概率包里持有各桶概率之和，按笔平均">声称<br><span class="muted">笔</span></th>${
-      FX?`<th title="实盘：五个维度里不行的项数，每个维度指认不同的一层" style="border-left:1px solid var(--line)">不行</th><th title="实盘：实现、声称、中心、覆盖四项见右边各列的说明；「持续」＝以全队已结算站日的中位日切成前后两段，两段的站日盈亏都为负">不行的维度</th>
-      <th title="实盘：已结算的实盘篮子数（站日×阶段，每个阶段各持一个篮子）" style="border-left:1px solid var(--line)">实盘结算笔</th><th title="实盘：站日里挂出的桶盖住真值的比例；＜${(100*(FX.thresholds.coverage_floor||0)).toFixed(0)}% 算「覆盖」不行">覆盖率</th><th title="实盘：实得盈亏÷声称期望；＜0 算「实现」不行">实现/期望</th><th title="实盘：命中率÷平均声称。五闸「声称诚实」要求 0.88–1.18；＜${FX.thresholds.claim_floor} 算「声称」不行">命中/声称</th><th title="实盘：成交篮子所依据的模型中心−结算真值，按站日平均。五闸「中心偏差」要求 |x|≤0.8°C；＞${FX.thresholds.centre_limit_c}°C 算「中心」不行">中心偏差</th>`:""}
+      FX?`<th title="实盘：五个维度里不行的项数，每个维度指认不同的一层" style="border-left:1px solid var(--line)">不行</th><th title="实盘：实现、声称、中心、篮子命中四项见右边各列的说明；「持续」＝以全队已结算站日的中位日切成前后两段，两段的站日盈亏都为负">不行的维度</th>
+      <th title="实盘：已结算的实盘篮子数（站日×阶段，每个阶段各持一个篮子）" style="border-left:1px solid var(--line)">实盘结算笔</th><th title="实盘：真值落在当天挂出的桶里（各阶段合并，成交与否都算）的站日 ÷ 有成交的已结算站日——即只算有成交站日的「篮子命中·站日」；＜${(100*(FX.thresholds.basket_hit_floor||0)).toFixed(0)}% 算「篮子命中」不行">篮子命中<br><span class="muted">有成交站日</span></th><th title="实盘：实得盈亏÷声称期望；＜0 算「实现」不行">实现/期望</th><th title="实盘：命中率÷平均声称。五闸「声称诚实」要求 0.88–1.18；＜${FX.thresholds.claim_floor} 算「声称」不行">命中/声称</th><th title="实盘：成交篮子所依据的模型中心−结算真值，按站日平均。五闸「中心偏差」要求 |x|≤0.8°C；＞${FX.thresholds.centre_limit_c}°C 算「中心」不行">中心偏差</th>`:""}
       <th title="该站真值的日际跳变均值(°C)：天气性格，>1.76 的站在真边际枯竭期实测 −43%（留存组 +23%，p=0.023）。外生、慢变、先于账本。" style="border-left:1px solid var(--line)">跳变/日</th><th title="近14天池子里模型分布的均值−众数距离(桶)：跳变在模型层的影子(r=+0.32)，>0.93 为高。">形状gap</th>
       <th title="实盘订单：该站铸出的全部实盘意向腿，含被实盘门拒掉的" style="border-left:1px solid var(--line)">意向腿</th><th title="实盘订单：到过交易所的腿">到所</th><th title="实盘订单：被实盘门（禁入/总闸/待观察/网关）拒掉、从没到过交易所的腿">被拒</th><th title="实盘订单：成交过的腿">成交腿</th><th title="实盘订单：全部意向的请求名义金额(U)">意向名义</th><th title="实盘订单：成交金额(U)">成交额</th>
       <th title="篮子完整：挂出的桶全部买到的篮数/挂到交易所的篮数（一个站日的一个阶段算一篮）" style="border-left:1px solid var(--line)">完整篮</th><th title="篮子完整：每篮 买到桶数÷挂出桶数 的平均，如挂 3 买 2 记 67%">完整度</th>
