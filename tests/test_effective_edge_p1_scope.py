@@ -422,11 +422,15 @@ def test_as_of_reads_the_journal_so_a_reactivated_sha_keeps_its_history() -> Non
     # stage rather than a band table, None everywhere before its first fit.
     # Charter 132: the valuation lane rides beside beta under its own key.
     from bayes_basket_target.basket_kernel.valuation_v1 import VALUATION_TABLE_KEY
+    # The L4 posterior lane (2026-09-17, ee741655) rides beside them the same
+    # way: a dict per stage under its own key, None before its first fit.
+    from bayes_basket_target.basket_kernel.posterior_v1 import POSTERIOR_TABLE_KEY
     assert set(tables) == {
         "P0", "P0-M", "P1", store.BUCKET_TABLE_KEY, store.BETA_TABLE_KEY,
-        VALUATION_TABLE_KEY,
+        VALUATION_TABLE_KEY, POSTERIOR_TABLE_KEY,
     }
     assert all(v is None for v in tables[VALUATION_TABLE_KEY].values())
+    assert tables[POSTERIOR_TABLE_KEY] == {"P0": None, "P0-M": None, "P1": None}
     assert set(tables[store.BETA_TABLE_KEY]) == {"P0", "P0-M", "P1"}
     assert all(v is None for v in tables[store.BETA_TABLE_KEY].values())
     # No bucket fit in this fixture, so the dispatch falls to the kernel
