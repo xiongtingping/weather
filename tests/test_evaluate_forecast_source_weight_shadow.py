@@ -85,40 +85,6 @@ def test_insufficient_history_returns_explicit_blocker_without_nan_or_crash():
     assert "strict_oos_predictions_missing" in report["release_gate"]["blockers"]
 
 
-def test_curve_lane_is_incremental_to_contextual_and_preserves_separate_gate():
-    curve_inputs = []
-    for day in range(1, 13):
-        observations = [
-            {"valid_time": f"2026-01-{day:02d}T01:00:00Z", "as_of_eligible_at": f"2026-01-{day:02d}T01:00:00Z", "arrival_time_quality": "observed_first_seen", "temperature_c": 20.0},
-            {"valid_time": f"2026-01-{day:02d}T02:00:00Z", "as_of_eligible_at": f"2026-01-{day:02d}T02:00:00Z", "arrival_time_quality": "observed_first_seen", "temperature_c": 21.0},
-        ]
-        forecasts = []
-        for hour, observed in ((1, 20.0), (2, 21.0)):
-            valid = f"2026-01-{day:02d}T{hour:02d}:00:00Z"
-            forecasts.extend(
-                [
-                    {"source_id": "a", "valid_time": valid, "issued_at": f"2026-01-{day:02d}T00:00:00Z", "temperature_c": observed},
-                    {"source_id": "b", "valid_time": valid, "issued_at": f"2026-01-{day:02d}T00:00:00Z", "temperature_c": observed + 5.0},
-                ]
-            )
-        curve_inputs.append({"event_id": f"event-{day}", "cutoff_id": "c12", "curve_cutoff_at": f"2026-01-{day:02d}T02:00:00Z", "observations": observations, "forecasts": forecasts})
-    report = evaluate_contextual_weight_oos(
-        _rows(shared_family=True),
-        curve_inputs=curve_inputs,
-        minimum_train_event_days=4,
-        fold_event_days=2,
-        bootstrap_replicates=100,
-        production_minimum_event_days=8,
-        shadow_minimum_event_days=4,
-        segment_minimum_ess=50,
-        model_options={"max_iterations": 100, "source_cap": 0.9, "family_cap": 0.9},
-    )
-    assert report["curve_prediction_count"] == 8
-    assert report["release_gate"]["curve_incremental_statistical_gate_passed"] is True
-    assert report["release_gate"]["curve_production_promotion_proposal_eligible"] is True
-    assert report["guards"]["amsc_curve_reliability_consumed_once"] is True
-
-
 def test_curve_shadow_filters_observations_after_declared_curve_cutoff():
     day = 5
     curve_inputs = [

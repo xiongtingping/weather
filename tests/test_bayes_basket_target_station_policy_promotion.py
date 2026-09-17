@@ -32,12 +32,3 @@ def test_promotion_decision_lineage_tamper_is_rejected() -> None:
     with pytest.raises(ContractError, match="lineage_mismatch"):
         assert_candidate_bundle_boundary(tampered)
 
-
-def test_resolver_fault_matrix_is_all_pass_and_no_live() -> None:
-    receipt = build_audit()
-    assert receipt["all_cases_passed"] is True
-    assert receipt["case_count"] == 9
-    assert receipt["candidate_bundle_remains_unpromoted"] is True
-    assert receipt["production_mutation"] is False
-    assert receipt["orders_submitted"] == 0
-

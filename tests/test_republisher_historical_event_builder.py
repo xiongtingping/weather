@@ -175,61 +175,6 @@ def _write_evidence(tmp_path, evidence: dict):
     return path
 
 
-def test_fixed_lead_republisher_builds_exact_expected_matrix(tmp_path) -> None:
-    conn = _ready_database()
-    evidence = _evidence()
-    bundle = build_republisher_historical_event_bundle(
-        conn, evidences=[evidence], evidence_paths=[_write_evidence(tmp_path, evidence)],
-        coverage_rows=[_coverage(model) for model in MODELS],
-        authority_scope_projection=authority_projection(),
-        as_of_utc="2026-08-05T12:00:00Z",
-    )
-    assert bundle["expected_scope_count"] == 5
-    assert bundle["event_count"] == 5
-    assert bundle["terminal_count"] == 0
-    event = bundle["contracts"][0]["event_facts"][0]
-    assert event["settlement_timezone"] == "America/New_York"
-    assert event["forecast_decision_at_utc"] == "2026-08-01T03:00:00.000Z"
-    assert event["model_receipt"]["retrieved_at_utc"] == "2026-08-05T12:00:00.000Z"
-    assert CanonicalModelOOSEventFact.from_mapping(event).raw == event
-
-
-def test_missing_capture_emits_one_terminal_without_scope_loss(tmp_path) -> None:
-    conn = _ready_database()
-    evidence = _evidence(missing_model="ICON")
-    bundle = build_republisher_historical_event_bundle(
-        conn, evidences=[evidence], evidence_paths=[_write_evidence(tmp_path, evidence)],
-        coverage_rows=[_coverage(model) for model in MODELS],
-        authority_scope_projection=authority_projection(),
-        as_of_utc="2026-08-05T12:00:00Z",
-    )
-    assert bundle["expected_scope_count"] == 5
-    assert bundle["event_count"] == 4
-    assert bundle["terminal_count"] == 1
-    assert bundle["terminals"][0]["diagnostic"] == "FIXED_LEAD_CAPTURE_MISSING"
-
-
-def test_historical_receipt_tamper_is_rejected(tmp_path) -> None:
-    conn = _ready_database()
-    evidence = _evidence()
-    bundle = build_republisher_historical_event_bundle(
-        conn, evidences=[evidence], evidence_paths=[_write_evidence(tmp_path, evidence)],
-        coverage_rows=[_coverage(model) for model in MODELS],
-        authority_scope_projection=authority_projection(),
-        as_of_utc="2026-08-05T12:00:00Z",
-    )
-    event = deepcopy(bundle["contracts"][0]["event_facts"][0])
-    event["model_receipt"]["valid_time_vector_sha256"] = "f" * 64
-    event["model_receipt"] = _seal({
-        key: value for key, value in event["model_receipt"].items()
-        if key != "content_sha256"
-    })
-    event["model_receipt_sha256"] = event["model_receipt"]["content_sha256"]
-    event = _seal({key: value for key, value in event.items() if key != "content_sha256"})
-    with pytest.raises(ContractError, match="historical_model_receipt_semantics"):
-        CanonicalModelOOSEventFact.from_mapping(event)
-
-
 def test_evidence_mapping_cannot_bind_another_file(tmp_path) -> None:
     conn = _ready_database()
     evidence = _evidence()

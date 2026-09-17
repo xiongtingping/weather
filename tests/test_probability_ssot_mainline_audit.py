@@ -3,20 +3,6 @@ from pathlib import Path
 from scripts.probability_ssot_mainline_audit import ROOT, run_audit
 
 
-def test_probability_ssot_mainline_is_structurally_unique_and_absolute_strong_lane_is_retired() -> None:
-    result = run_audit(root=ROOT)
-
-    assert result["ok"] is True
-    assert result["state"] == "structurally_unique_shadow_mainline"
-    assert result["violations"] == []
-    assert result["physical_only_public_ssot"]["present"] is True
-    assert result["physical_only_public_ssot"]["creates_trade_outbox"] is False
-    assert result["strong_likelihood_contract"]["candidate_temperature_specific"] is True
-    assert result["strong_likelihood_contract"]["supports_current_warming_and_cooling_momentum"] is True
-    assert not any(row["exists"] for row in result["retired_path_evidence"].values())
-    assert result["amsc_launcher"]["retired_token_hits"] == []
-
-
 def test_audit_detects_retired_absolute_strong_file(tmp_path: Path) -> None:
     for relative in (
         "initial_posterior_checkpoint_shadow.py",

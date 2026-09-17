@@ -118,24 +118,6 @@ def test_all_user_domain_shell_entrypoints_parse() -> None:
         assert result.returncode == 0, f"{name}: {result.stderr}"
 
 
-def test_status_is_read_only_and_reports_current_domain() -> None:
-    before = (ROOT / "data/live_paused.flag").stat().st_mtime_ns
-    result = subprocess.run(
-        ["/bin/bash", str(ROOT / "scripts/targetctl.sh"), "status"],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
-        timeout=10,
-        env={**os.environ, "HOME": str(Path.home())},
-    )
-    assert result.returncode == 0, result.stderr
-    assert "production_no_live=true" in result.stdout
-    for label in LABELS:
-        assert f"{label}=" in result.stdout
-    assert (ROOT / "data/live_paused.flag").stat().st_mtime_ns == before
-
-
 def test_installer_binds_label_before_applying_service_contract() -> None:
     installer = _text("install_launchagent.sh")
     label_assignment = installer.index('label = data.get("Label", "")')

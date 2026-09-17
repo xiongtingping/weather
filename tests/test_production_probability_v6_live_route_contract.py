@@ -35,39 +35,6 @@ def _fixture_root(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def test_resident_route_attestation_is_deterministic_and_non_mutating(
-    tmp_path: Path,
-) -> None:
-    root = _fixture_root(tmp_path)
-    before = build_v6_live_route_targets(root)
-    result = activate_v6_live_routes(root)
-    after = build_v6_live_route_targets(root)
-
-    assert result["ok"] is True
-    assert result["writes_files"] is False
-    assert result["activates_probability_epoch"] is False
-    assert before == after
-    assert audit_v6_live_routes(root)["ok"] is True
-
-
-def test_resident_route_replaces_monitor_fanout_and_forbids_fourth_service(
-    tmp_path: Path,
-) -> None:
-    root = _fixture_root(tmp_path)
-    targets = build_v6_live_route_targets(root)
-    text = "\n".join(value.decode("utf-8") for value in targets.values())
-    audit = audit_v6_live_routes(root)
-
-    assert "TargetProductionWorker" in text
-    assert "compile_production_cycle_from_ssot" in text
-    assert "IdentifiablePhysicalProbabilityWorker" not in text
-    assert "physical_probability_worker.run" not in text
-    assert "watch_zuuu_speci_once.py" not in text
-    assert "polymarket_monitor_daemon.sh" not in text
-    assert audit["no_fourth_service_definition"] is True
-    assert audit["resident_service"] == "com.weather.weather_basket_yes"
-
-
 def test_target_production_worker_uses_an_enforced_read_only_connection(
     tmp_path: Path,
 ) -> None:

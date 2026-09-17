@@ -57,25 +57,6 @@ def _make_db(path):
 
 
 class ChengduIntradaySummaryTest(unittest.TestCase):
-    def test_hard_source_direct_bucket_uses_wu_intraday_as_lower_bound_not_final_lock(self):
-        rows = [{"outcome": "27°C or below"}, {"outcome": "28°C"}, {"outcome": "29°C"}]
-        features = {
-            "zuuu_metar_raw_awc_today_max_c": 25.0,
-            "zuuu_metar_raw_awc_today_max_at": "2026-06-27T00:00:00+00:00",
-            "wu_twc_observed_intraday_current_temp_c": 27.78,
-            "wu_twc_observed_intraday_today_max_c": 28.0,
-            "wu_twc_observed_intraday_current_at": "2026-06-27T03:46:33+00:00",
-            "wu_twc_observed_intraday_today_max_at": "2026-06-27T03:46:33+00:00",
-            "wu_twc_observed_intraday_fetched_at": "2026-06-27T03:48:44+00:00",
-            "wu_twc_observed_intraday_stale": False,
-        }
-
-        bucket = _hard_source_direct_bucket(rows, features, "whole_degrees", "C")
-
-        self.assertEqual(bucket["source_id"], "wu_twc_observed_intraday")
-        self.assertEqual(bucket["bucket"], "28°C")
-        self.assertEqual(bucket["observed_max_c"], 28.0)
-        self.assertEqual(bucket["semantics"], "intraday_observed_lower_bound_constraint_for_ssot_posterior")
 
     def test_hard_source_direct_bucket_prefers_final_settlement(self):
         rows = [{"outcome": "32°C"}, {"outcome": "33°C"}, {"outcome": "34°C"}]

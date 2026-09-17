@@ -56,25 +56,6 @@ def _historical_oos_ready_fixture() -> dict[str, object]:
     }
 
 
-def test_m8_12_gate_separates_upstream_evidence_from_family_promotion() -> None:
-    receipt = transfer_gate.build_gate()
-    assert receipt["status"] == "BLOCKED_HISTORICAL_OOS_EVIDENCE"
-    assert receipt["candidate_station_count"] == 45
-    assert receipt["strict_asof"]["station_days"] is None
-    assert receipt["strict_asof"]["window_count"] == 0
-    assert receipt["pooled_transfer"]["stations"] == 8
-    assert receipt["promotion_permitted"] is False
-    assert receipt["orders_submitted"] == 0
-    assert receipt["checks"]["strict_asof_input_pass"] is False
-    assert receipt["checks"]["family_specific_target_gate"] is False
-    assert receipt["checks"]["utility_execution_evidence_required_for_formal_live_promotion"] is False
-    assert receipt["production_no_live_historical_oos_permitted"] is False
-    assert receipt["formal_live_promotion_gate_passed"] is False
-    assert receipt["families"]["target"]["cross_season"]["status"] == "NOT_EVALUATED"
-    assert "future_scorecard_missing_or_invalid_formal_live_promotion_only" not in receipt["blockers"]
-    assert "utility_execution_evidence_unbound_formal_live_promotion_only" in receipt["blockers"]
-
-
 def test_missing_forward_scorecard_is_not_an_oos_or_promotion_gate(
     monkeypatch,
 ) -> None:

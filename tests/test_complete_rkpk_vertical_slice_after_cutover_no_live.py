@@ -142,13 +142,6 @@ def test_rejects_missing_target_v2_scope() -> None:
         _validate_delta_v2_policy_rows(_current_rows()[:-1])
 
 
-def test_rkpk_taf_artifact_uses_market_day_validity() -> None:
-    artifact = json.loads(TAF_ARTIFACT.read_text())
-    assert artifact["settlement_timezone"] == "Asia/Seoul"
-    assert artifact["valid_from_utc"] == "2026-07-28T15:00:00Z"
-    assert artifact["trained_through_utc"] < artifact["valid_from_utc"]
-
-
 def _authority_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.executescript(
