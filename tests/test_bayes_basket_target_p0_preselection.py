@@ -1435,4 +1435,9 @@ def test_the_opening_compile_hands_in_the_chains_last_acted_identity() -> None:
     source = inspect.getsource(p0_preselection.compile_p0_preselection)
     assert "last_acted_probability_identity=load_last_acted_probability_identity(" in source
     assert "last_decision_signature=load_last_decision_signature(" in source
-    assert 'stage="P0"' in source
+    # The policy stage is P0 by ruling; the signature is the envelope stage's
+    # own, because decisions are recorded under it -- read from P0, a P0-M
+    # envelope compared two different vectors and every cycle was a moment
+    # (2026-09-17 fork sweep).
+    assert 'station_policy_stage="P0"' in source
+    assert "stage=str(envelope.stage)," in source

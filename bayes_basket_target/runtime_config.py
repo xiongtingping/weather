@@ -9,6 +9,8 @@ borrowing capital.
 
 from __future__ import annotations
 
+import os
+
 import math
 from pathlib import Path
 from typing import Any, Mapping
@@ -184,3 +186,35 @@ __all__ = [
     "TargetRuntimeConfigError",
     "load_target_no_live_runtime_config",
 ]
+
+
+def resolve_target_remaining_budget(*, execution_mode: str) -> float:
+    """The target lane's remaining-budget dial, from one place.
+
+    An explicit ``PM_TARGET_REMAINING_BUDGET_USDC`` is a controlled
+    rehearsal's override; otherwise the live runtime config under
+    ``production_live`` and the no-live config under any other mode.  The
+    resident daemon config and activation ``basket`` fields are never a
+    fallback: that could borrow a live-line bankroll into the target lane.
+    Until 2026-09-17 the worker resolved this with the override and the
+    account read in ``production_io`` without it -- two answers to one dial.
+    """
+
+    raw_budget = os.environ.get("PM_TARGET_REMAINING_BUDGET_USDC", "").strip()
+    if raw_budget:
+        try:
+            remaining_budget = float(raw_budget)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("target_remaining_budget_usdc_invalid") from exc
+        if not math.isfinite(remaining_budget) or remaining_budget < 0.0:
+            raise RuntimeError("target_remaining_budget_usdc_invalid")
+        return remaining_budget
+    if str(execution_mode) == "production_live":
+        return float(
+            load_target_live_runtime_config()["target_remaining_budget_usdc"]
+        )
+    return float(
+        load_target_no_live_runtime_config(DEFAULT_TARGET_NO_LIVE_RUNTIME_CONFIG)[
+            "target_remaining_budget_usdc"
+        ]
+    )

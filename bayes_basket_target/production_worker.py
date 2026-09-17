@@ -2690,28 +2690,16 @@ def _resolve_target_remaining_budget() -> float:
     live-line bankroll into the target lane.
     """
 
-    raw_budget = os.environ.get("PM_TARGET_REMAINING_BUDGET_USDC", "").strip()
-    if raw_budget:
-        try:
-            remaining_budget = float(raw_budget)
-        except (TypeError, ValueError) as exc:
-            raise RuntimeError("target_remaining_budget_usdc_invalid") from exc
-        if not math.isfinite(remaining_budget) or remaining_budget < 0.0:
-            raise RuntimeError("target_remaining_budget_usdc_invalid")
-        return remaining_budget
-    # The budget comes from the runtime config the mode selects.  After the
-    # go-live migration this still read the no-live file; the two happened to
-    # carry the same number, which is the only reason it went unnoticed -- a
-    # live system taking its budget from a contract that says
-    # live_submit_authorized: false is wrong even on the day the numbers agree.
-    if PRODUCTION_EXECUTION_MODE == "production_live":
-        from .runtime_config import load_target_live_runtime_config  # noqa: PLC0415
+    # One resolver for the dial (``runtime_config``), shared with the account
+    # read in ``production_io``: the override, then the config the mode
+    # selects.  After the go-live migration this still read the no-live
+    # file; the two happened to carry the same number, which is the only
+    # reason it went unnoticed -- a live system taking its budget from a
+    # contract that says live_submit_authorized: false is wrong even on the
+    # day the numbers agree.
+    from .runtime_config import resolve_target_remaining_budget  # noqa: PLC0415
 
-        return float(
-            load_target_live_runtime_config()["target_remaining_budget_usdc"]
-        )
-    runtime_config = load_target_no_live_runtime_config(DEFAULT_TARGET_NO_LIVE_RUNTIME_CONFIG)
-    return float(runtime_config["target_remaining_budget_usdc"])
+    return resolve_target_remaining_budget(execution_mode=PRODUCTION_EXECUTION_MODE)
 
 
 def _group_scope_manifests_by_day_state(
@@ -15941,6 +15929,11 @@ class TargetProductionWorker:
                                 event_date=event_date,
                                 as_of_utc=evaluation_at_utc,
                             )
+                        ),
+                        base_policy=(
+                            scope.get("base_policy")
+                            if isinstance(scope.get("base_policy"), Mapping)
+                            else None
                         ),
                     ))
             except ResourceBoundError:

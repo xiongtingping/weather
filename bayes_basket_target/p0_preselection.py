@@ -28,7 +28,10 @@ from .effective_edge_store import load_effective_edge_tables
 from .off_centre_claim_store import load_off_centre_tables
 from .convergence_evidence import load_convergence_evidence
 from .inventory_producer import ledger_holdings_by_token
-from .consolidation_chain import load_last_acted_probability_identity
+from .consolidation_chain import (
+    load_chain_tilt,
+    load_last_acted_probability_identity,
+)
 from .production import compile_production_plan
 from .regime_materialization import load_regime_artifact
 from .production_io import (
@@ -958,6 +961,7 @@ def compile_p0_preselection(
     cash_phase_authority_manifest: CashPhaseAuthorityManifest | Mapping[str, Any] | None = None,
     book_equity_usdc: float | None = None,
     observed_running_high_c: float | None = None,
+    base_policy: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     expected_source_lane = target_registry_source_lane(
         conn,
@@ -1046,8 +1050,19 @@ def compile_p0_preselection(
         # A preselection is the opening plan, and a position is opened at P0
         # whichever stage's probability it opens on.  P0-M is a confirmation
         # of an opening, not an opening of its own, and has no execution
-        # policy of its own under this strategy version.
+        # policy of its own under this strategy version.  (Pinned by
+        # ``test_opening_plan_resolves_the_opening_stage_policy_not_the_envelope_stage``;
+        # the 2026-09-17 fork sweep confirmed the three stages' policies
+        # carry the same values today and left this ruling alone.)
         station_policy_stage="P0",
+        # Parity with the compile entry: the opener's recorded tilt and the
+        # scope's base policy reach this lane too (charter 139 makes the tilt
+        # 1.0 for every chain opened since; no scope carries a base policy
+        # today).
+        chain_consolidation_tilt=load_chain_tilt(
+            conn, station_id=station_id, event_date=event_date,
+        ),
+        base_policy=base_policy,
         # Charter 68(c): the lambda tables the store activated, as of now.
         # This lane compiles the opening plan and bypasses production_io's
         # entry, so it has to hand the tables in itself -- the first
@@ -1071,11 +1086,18 @@ def compile_p0_preselection(
             station_id=station_id,
             event_date=event_date,
         ),
+        # Charter 77: the signature of the last decision of THIS stage.  The
+        # stage that governs the action is P0 (above); the stage that produced
+        # the distribution is the envelope's, and decisions are recorded under
+        # it.  Reading the last P0 signature for a P0-M envelope compared two
+        # different vectors, so every forward-day P0-M cycle was a moment
+        # (ZUUU 2026-09-18 08:43Z) -- the opposite of what this argument was
+        # added for on 2026-09-05.
         last_decision_signature=load_last_decision_signature(
             conn,
             station_id=station_id,
             event_date=event_date,
-            stage="P0",
+            stage=str(envelope.stage),
         ),
         probability_envelopes=envelopes,
         # Charter 125: the day's observed high rides on the book the plan is

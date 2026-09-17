@@ -1637,10 +1637,13 @@ def account_capital_for_snapshot(
         raise ContractError("production_account_equity_stale")
     budget: float | None = None
     try:
-        from .runtime_config import load_target_live_runtime_config  # noqa: PLC0415
+        from .production import PRODUCTION_EXECUTION_MODE  # noqa: PLC0415
+        from .runtime_config import resolve_target_remaining_budget  # noqa: PLC0415
 
-        budget = float(
-            load_target_live_runtime_config()["target_remaining_budget_usdc"]
+        # The worker's own resolver (override, then the mode's config): one
+        # dial, one reading, on the account as on the station budget.
+        budget = resolve_target_remaining_budget(
+            execution_mode=PRODUCTION_EXECUTION_MODE,
         )
     except Exception:  # noqa: BLE001 -- no dial means no cap, not no book
         budget = None
