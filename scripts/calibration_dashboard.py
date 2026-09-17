@@ -9237,6 +9237,113 @@ def collect_valuation_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     return out
 
 
+def collect_posterior_lane(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The L4 posterior lane (first-principles baseline, shadow): the served
+    ``(alpha, gamma, w)`` rows per stage and lead band, the in-sample skill
+    beside the forward skill read off the journal, the registered
+    hypotheses, and what the shadow recorded on recent decisions.
+
+    Read-only.  ``forward_skill`` re-reads each stage's population (the same
+    ~10s the valuation lane's fit pays), which is why the section is cached.
+    """
+
+    out: dict[str, Any] = {"available": False}
+    try:
+        from bayes_basket_target.basket_kernel.posterior_v1 import (  # noqa: PLC0415
+            POSTERIOR_MODE,
+            POSTERIOR_RULE,
+        )
+        from bayes_basket_target.posterior_store import (  # noqa: PLC0415
+            LEAD_BAND_LABELS,
+            MIN_DAYS,
+            MIN_STATION_DAYS,
+            forward_skill,
+            load_posterior_tables,
+        )
+    except ImportError:
+        return out
+    try:
+        served = load_posterior_tables(conn)
+    except sqlite3.Error:
+        return out
+
+    def _row(row: dict[str, Any] | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        return {
+            key: row.get(key) for key in (
+                "lead_band", "alpha", "gamma", "w", "w_lcb", "w_ucb",
+                "accumulating", "decision_count", "station_day_count",
+                "day_count", "fit_cutoff_utc", "activated_at_utc", "skill", "ci",
+            )
+        }
+
+    stages: list[dict[str, Any]] = []
+    for scope in ("P0", "P0-M", "P1"):
+        row = served.get(scope)
+        try:
+            forward = forward_skill(conn, stage_scope=scope)
+        except (sqlite3.Error, ValueError, TypeError, KeyError):
+            forward = None
+        stages.append({
+            "stage": scope,
+            "served": None if row is None else {
+                **(_row(row) or {}),
+                "lead_bands": {
+                    label: _row((row.get("lead_bands") or {}).get(label))
+                    for label in LEAD_BAND_LABELS
+                },
+            },
+            "forward": forward,
+        })
+    shadow = {"decisions": 0, "states": {}, "would_admit": 0, "would_refuse": 0}
+    try:
+        rows = conn.execute(
+            "SELECT details_json FROM auto_trade_decisions"
+            " WHERE details_json LIKE '%posterior_state%'"
+            " ORDER BY created_at DESC LIMIT 300"
+        ).fetchall()
+    except sqlite3.Error:
+        rows = []
+    for (payload,) in rows:
+        try:
+            detail = json.loads(payload or "{}")
+        except ValueError:
+            continue
+        stack = [detail]
+        while stack:
+            node = stack.pop()
+            if isinstance(node, dict):
+                if "posterior_state" in node:
+                    shadow["decisions"] += 1
+                    state = str(node.get("posterior_state"))
+                    shadow["states"][state] = shadow["states"].get(state, 0) + 1
+                    shadow["would_admit"] += int(node.get("posterior_would_admit_count") or 0)
+                    shadow["would_refuse"] += int(node.get("posterior_would_refuse_count") or 0)
+                    continue
+                stack.extend(node.values())
+            elif isinstance(node, list):
+                stack.extend(node)
+    hypotheses: list[dict[str, Any]] = []
+    try:
+        for hid, status, min_days, expected in conn.execute(
+            "SELECT hypothesis_id, status, min_event_days, expected_sign"
+            " FROM calibration_posterior_hypothesis ORDER BY hypothesis_id"
+        ):
+            hypotheses.append({
+                "id": hid, "status": status, "min_event_days": min_days,
+                "expected_sign": expected,
+            })
+    except sqlite3.Error:
+        pass
+    out.update({
+        "available": True, "mode": POSTERIOR_MODE, "rule": POSTERIOR_RULE,
+        "stages": stages, "shadow": shadow, "hypotheses": hypotheses,
+        "min_station_days": MIN_STATION_DAYS, "min_days": MIN_DAYS,
+    })
+    return out
+
+
 def charter_ev_identity(
     rows: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
@@ -9943,6 +10050,9 @@ SECTION_CACHE_TTL_SEC = {
     # Three small tables and the last 300 plan headers; the verdict moves
     # daily at most.
     "valuation_lane": 50 * 60,
+    # Three small tables plus one population read per stage for the forward
+    # skill score; the journal moves once a day.
+    "posterior_lane": 50 * 60,
     # Three populations of settled decisions with their books (~60s on the
     # 45GB store); every row is a settled station-day, so the reading moves
     # once a day when the truth lands.
@@ -10364,6 +10474,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         ),
         "valuation_lane": _cached_section(
             "valuation_lane", collect_valuation_lane, conn
+        ),
+        "posterior_lane": _cached_section(
+            "posterior_lane", collect_posterior_lane, conn
         ),
         "charter_ev": _cached_section(
             "charter_ev", collect_charter_ev, conn,
@@ -13366,6 +13479,56 @@ function valuationLane(){
   （服务侧暂不改，证据读者严格拒绝，见宪章 132）。</p>`;
 }
 
+function posteriorLane(){
+  const V=D.posterior_lane||{};
+  if(!V.available) return "";
+  const n3=v=>v==null?"—":(+v).toFixed(3);
+  const n4=v=>v==null?"—":((v>=0?"+":"")+(+v).toFixed(4));
+  const ci=(c,f)=>!c||c[0]==null?"":` <span class="muted">[${f(c[0])}, ${f(c[1])}]</span>`;
+  const cards=(V.stages||[]).map(st=>{
+    const s=st.served, f=st.forward||{}, sk=(s&&s.skill)||{}, c=(s&&s.ci)||{};
+    const fwdOk=f.s_forward_ci&&f.s_forward_ci[0]!=null&&f.s_forward_ci[0]>0;
+    const word=!s?"无拟合":(s.accumulating?"累积中，服务 b = m":(fwdOk?"前瞻技能分下界 > 0":"影子服务中，前瞻未过"));
+    const tone=!s||s.accumulating?"amber":(fwdOk?"green":"amber");
+    const bands=Object.values((s&&s.lead_bands)||{}).filter(Boolean).map(b=>`<tr><td>${h(b.lead_band)}</td>
+      <td class="mono">${b.decision_count} / ${b.day_count}</td>
+      <td class="mono">${b.accumulating?"<span class='muted'>累积中</span>":n3(b.w)+ci([b.w_lcb,b.w_ucb],n3)}</td>
+      <td class="mono">${b.accumulating?"—":n3(b.gamma)}</td>
+      <td class="mono">${b.accumulating?"—":n4((b.skill||{}).s_in_sample)}</td></tr>`).join("");
+    return `<div class="card">
+      <div style="display:flex;align-items:center;gap:8px"><b>${h(st.stage)}</b><span style="flex:1"></span>
+        <span class="pill ${tone}">${word}</span></div>
+      <div style="display:flex;gap:18px;margin-top:10px;flex-wrap:wrap">
+        <div><div class="muted">分歧权重 w（logit）</div>
+          <div class="big">${s&&!s.accumulating?n3(s.w):"—"}</div>
+          <div class="muted">${s&&!s.accumulating?`[${n3(s.w_lcb)}, ${n3(s.w_ucb)}]`:""} · ${s?s.decision_count:"—"} 决策 / ${s?s.station_day_count:"—"} 站日 / ${s?s.day_count:"—"} 天</div></div>
+        <div><div class="muted">市场自校正 γ · α</div>
+          <div class="big">${s&&!s.accumulating?n3(s.gamma):"—"}</div>
+          <div class="muted">${s&&!s.accumulating?`γ ${ci(c.gamma,n3)||""} · α ${n3(s.alpha)}${ci(c.alpha,n3)}`:""}</div></div>
+        <div><div class="muted">技能分 S = log b − log m（样本内）</div>
+          <div class="big ${sk.s_in_sample==null?"":(sk.s_in_sample<0?"down":"up")}">${n4(sk.s_in_sample)}</div>
+          <div class="muted">${ci(sk.s_in_sample_ci,n4)||"—"} nat · IC ${n3(sk.ic_in_sample)}</div></div>
+        <div><div class="muted">技能分 S（前瞻，按当时服务的拟合）</div>
+          <div class="big ${f.s_forward==null?"":(f.s_forward<0?"down":"up")}">${n4(f.s_forward)}</div>
+          <div class="muted">${ci(f.s_forward_ci,n4)||"—"} nat · IC ${n3(f.ic_forward)} · ${f.decisions||0} 决策 / ${f.days||0} 天${f.served_market?` · 其中 ${f.served_market} 次服务的是市场`:""}</div></div>
+      </div>
+      <table style="margin-top:10px"><thead><tr><th>提前量档</th><th>决策 / 天</th><th>w · 90%</th><th>γ</th><th>S 样本内</th></tr></thead>
+      <tbody>${bands||"<tr><td colspan=5 class='muted'>无档行</td></tr>"}</tbody></table>
+    </div>`;
+  }).join("");
+  const sh=V.shadow||{};
+  const states=Object.entries(sh.states||{}).map(([k,c])=>`${h(k)} ${c}`).join(" · ")||"重启后开始记录";
+  const hyps=(V.hypotheses||[]).map(x=>`${h(x.id)}（${h(x.status)}）`).join("、")||"未注册";
+  return `<h2>L4 后验层（影子）：先信市场，再看分歧兑现几成</h2>
+  <p class="sub">第一性原理基线 §4.4：<span class="mono">logit b = logit m + w·(logit p − logit m) + α + γ·logit m</span>，
+  在全部站日 × 整梯全部桶上前瞻拟合，先验 w = γ = α = 0（市场对）。
+  唯一验收量是相对市场的技能分 S 与 IC 的按日下界；<b>w ≈ 0 表示分歧不兑现，此时 b = m，闸门什么都不买</b>。
+  默认影子，只记录不改裁决；切 on 需前瞻 S 下界 > 0（E15），且尚未实现。门槛 ${V.min_station_days} 站日 / ${V.min_days} 事件日。</p>
+  <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:12px">${cards}</div>
+  <p class="note" style="margin-top:10px">影子（最近 ${sh.decisions||0} 份计划头）：${states}；
+  会多放行 ${sh.would_admit||0} 窗 · 会拒 ${sh.would_refuse||0} 窗。已注册假设（E11）：${hyps}。</p>`;
+}
+
 function charterEv(){
   const E=D.charter_ev||{};
   const title=`<h2>宪章 EV 恒等式：edge = 市场的错 − 模型的错，量出来是多少</h2>`;
@@ -16249,6 +16412,7 @@ const GROUPS = [
      [edgeBandHealth,"声称边际体温计"],
      [betaShadow,"β 车道（影子）"],
      [valuationLane,"统一估值车道"],
+     [posteriorLane,"L4 后验层（影子）"],
      [convergenceClaim,"双向收敛系数"]]},
   {id:"select", label:"选窗", short:"选窗", tone:"#e3b341",
    note:"选窗层：挑哪几个桶、挑得值不值——市场方向闸、覆盖与 EV、篮子命中率",

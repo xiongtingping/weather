@@ -340,6 +340,9 @@
 
 **采纳前置条件**：对照现有宪章逐条列出冲突、取代、收窄；有冲突先裁决再落地。本文件不替代该清单。
 
+**落地记录**
+- 2026-09-17：阶段 1 的 L4 影子已上线。`bayes_basket_target/basket_kernel/posterior_v1.py`（算术）、`bayes_basket_target/posterior_store.py`（总体、拟合、日志、前瞻技能分、假设注册表）、`scripts/refit_posterior.py`（夜间 sweep，每阶段一次）、运行时枚举段按窗记录 `posterior_*` 与计划头 `posterior_state`，看板「L4 后验层（影子）」一节。`PM_POSTERIOR_LANE` 只有 off/shadow，on 未实现。拟合总体复用估值车道的「逐决策 × 整梯 × 真值」，加提前量档；先验 (α, γ, w) = 0；档行按 8 个伪日向阶段收缩。生产零变化，账本指纹未动。
+
 ---
 
 ## 11. 开放问题

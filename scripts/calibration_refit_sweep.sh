@@ -203,6 +203,19 @@ for VALUATION_STAGE in P0 P0-M P1; do
     || echo "valuation refit $VALUATION_STAGE failed; the served row stands" >&2
 done
 
+# L4 posterior lane (first-principles baseline, 2026-09-17): the logit-space
+# posterior ``logit m + w (logit p - logit m) + c(m)`` fitted on every
+# labelled decision's whole ladder, the stage row and its lead-band rows, with
+# the market as prior.  Shadow: activation serves the recorded values only;
+# the runtime records the belief and its verdict on every priced window and
+# gates nothing.  One stage per invocation.  Never fatal.
+for POSTERIOR_STAGE in P0 P0-M P1; do
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] posterior refit $POSTERIOR_STAGE"
+  "$PY" scripts/refit_posterior.py --commit --stage "$POSTERIOR_STAGE" \
+    --as-of "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    || echo "posterior refit $POSTERIOR_STAGE failed; the served row stands" >&2
+done
+
 # The delta-v2 policy re-pin moved to its own lane on 2026-09-17
 # (scripts/delta_v2_authority_sweep.sh), beside the weekly fill refit whose
 # batches it pins and the renewals that keep both from ending.

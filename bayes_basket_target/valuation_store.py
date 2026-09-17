@@ -282,9 +282,19 @@ def population(
             "   AND f.decision_at_utc < ?",
             (*stages, floor_day, latest, str(anchor_utc)[:19]),
         ).fetchone()[0] or 0)
+    # The envelope's settlement clock rides along for the posterior lane's
+    # lead bands; a fixture without the column reads None and has no band.
+    try:
+        has_tz = any(
+            str(col[1]) == "settlement_timezone"
+            for col in conn.execute("PRAGMA table_info(basket_probability_envelope)")
+        )
+    except sqlite3.Error:
+        has_tz = False
+    tz_col = "e.settlement_timezone" if has_tz else "NULL"
     cursor = conn.execute(
         "SELECT f.station_id, f.event_date, f.stage, f.decision_at_utc,"
-        "       e.probabilities_json, s.buckets_json"
+        f"       e.probabilities_json, s.buckets_json, {tz_col}"
         " FROM basket_policy_training_fact f"
         " JOIN basket_probability_envelope e"
         "   ON e.envelope_id = f.probability_envelope_id"
@@ -297,7 +307,7 @@ def population(
         (*stages, floor_day, latest,
          *(() if anchor_utc is None else (str(anchor_utc)[:19],))),
     )
-    for station, day, stage, decided_at, probs_json, book_json in cursor:
+    for station, day, stage, decided_at, probs_json, book_json, tz in cursor:
         counts["decisions_read"] += 1
         labelled = labels.get((str(station), str(day)))
         if labelled is None:
@@ -344,6 +354,9 @@ def population(
             "brier_m": _brier(m, label),
             "brier_p": _brier_on(p_weather, m, label),
             "m": m, "p": p_weather,
+            # The station's settlement clock, so the posterior lane can put
+            # the decision in its lead band without a second scan.
+            "settlement_timezone": None if tz is None else str(tz),
             # Per bucket, on the vector's scale: what crossing the book costs
             # from the mid.  The charter EV page prices the disagreement
             # strategy's spread cost from it; the fit does not read it.

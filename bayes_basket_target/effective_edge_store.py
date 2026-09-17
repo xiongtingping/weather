@@ -2658,4 +2658,11 @@ def load_effective_edge_tables(
     from .valuation_store import load_valuation_tables  # noqa: PLC0415
 
     tables[VALUATION_TABLE_KEY] = load_valuation_tables(conn, as_of_utc=as_of_utc)
+    # L4 posterior lane (first-principles baseline, shadow): a dict per
+    # stage with its band rows, under its own key, read as of the same
+    # moment.
+    from .basket_kernel.posterior_v1 import POSTERIOR_TABLE_KEY  # noqa: PLC0415
+    from .posterior_store import load_posterior_tables  # noqa: PLC0415
+
+    tables[POSTERIOR_TABLE_KEY] = load_posterior_tables(conn, as_of_utc=as_of_utc)
     return tables

@@ -152,6 +152,14 @@ from .basket_kernel.support import (
     probability_center_diagnostics,
 )
 from .basket_kernel.state_machine import resolve_basket_state
+from .basket_kernel.posterior_v1 import (
+    POSTERIOR_MODE,
+    POSTERIOR_RULE,
+    POSTERIOR_TABLE_KEY,
+    posterior_draw_vectors_v1,
+    posterior_vector_v1,
+    window_mass as posterior_window_mass,
+)
 from .basket_kernel.valuation_v1 import (
     MARKET_REFERENCE_RULE as VALUATION_MARKET_REFERENCE_RULE,
     VALUATION_MODE,
@@ -2330,7 +2338,10 @@ def _support_windows(
     # one vector.
     market_reference: dict[str, Any] | None = (
         market_reference_v1(snapshot.buckets)
-        if (VALUATION_MODE != "off" or BETA_EDGE_MODE != "off")
+        if (
+            VALUATION_MODE != "off" or BETA_EDGE_MODE != "off"
+            or POSTERIOR_MODE != "off"
+        )
         else None
     )
     beta_market_vector: dict[str, float] | None = (
@@ -2409,6 +2420,64 @@ def _support_windows(
     valuation_would_admit = 0
     valuation_refused = 0
     valuation_hold_refused = 0
+    # L4 posterior lane (first-principles baseline, shadow): the belief the
+    # baseline's gate would read, built once per snapshot from the served
+    # ``(alpha, gamma, w)`` row -- the decision's lead band when that band's
+    # row clears the hurdles, else the stage's whole row -- and its draws.
+    # Wide catch on purpose: a shadow reading that cannot be taken is a
+    # state on the record, never a blocked decision.
+    posterior_served = (effective_edge_tables or {}).get(POSTERIOR_TABLE_KEY) or {}
+    posterior_row: Mapping[str, Any] | None = None
+    posterior_band: str | None = None
+    posterior_point_vector: dict[str, float] | None = None
+    posterior_draws: list[dict[str, float]] = []
+    posterior_state = "off"
+    if POSTERIOR_MODE != "off":
+        try:
+            _stage_row = (
+                posterior_served.get(str(probability_stage or ""))
+                if isinstance(posterior_served, Mapping) else None
+            )
+            if not isinstance(_stage_row, Mapping):
+                posterior_state = "no_fit"
+            else:
+                posterior_row, posterior_band = _stage_row, None
+                if beta_lead_band_label is not None:
+                    _band_row = (_stage_row.get("lead_bands") or {}).get(
+                        beta_lead_band_label
+                    )
+                    if isinstance(_band_row, Mapping) and not _band_row.get("accumulating"):
+                        posterior_row, posterior_band = _band_row, beta_lead_band_label
+                if posterior_row.get("accumulating") or posterior_row.get("w") is None:
+                    posterior_state = "accumulating"
+                elif market_reference is None or market_reference["state"] != "complete":
+                    posterior_state = "market_" + str(
+                        (market_reference or {}).get("reason") or "incomplete"
+                    ).split(":")[0]
+                else:
+                    _params = {
+                        key: posterior_row.get(key) for key in ("alpha", "gamma", "w")
+                    }
+                    posterior_point_vector = posterior_vector_v1(
+                        probabilities, market_reference["vector"], _params,
+                        excluded=observed_dead,
+                    )
+                    posterior_draws = posterior_draw_vectors_v1(
+                        probabilities, market_reference["vector"],
+                        posterior_row.get("draws") or (), excluded=observed_dead,
+                    )
+                    if posterior_point_vector is None or not posterior_draws:
+                        posterior_state = "no_vector"
+                        posterior_point_vector = None
+                        posterior_draws = []
+                    else:
+                        posterior_state = "shadow"
+        except Exception as exc:  # noqa: BLE001 -- a shadow never blocks a decision
+            posterior_state = "error_" + type(exc).__name__
+            posterior_point_vector = None
+            posterior_draws = []
+    posterior_would_refuse = 0
+    posterior_would_admit = 0
     enumerated = 0
     shortlisted = 0
     # The window the price gate came closest to admitting.  The counters
@@ -2875,6 +2944,31 @@ def _support_windows(
                     gate_lambda = effective_win / win if win > EPS else None
                     gate_lambda_source = "valuation_pool"
                     gate_agreement = price / win if win > EPS else None
+            # L4 posterior lane (shadow): this window's belief as a sum over
+            # the snapshot's one posterior vector, the net edge's lower bound
+            # across the draws, and the verdict the baseline's gate (E8:
+            # EV_q05 > hurdle) would give.  Recorded; the gate never reads it.
+            posterior_mass = None
+            posterior_market_mass = None
+            posterior_edge_point = None
+            posterior_edge_lcb = None
+            posterior_admissible = None
+            if posterior_point_vector is not None and priced:
+                posterior_mass = posterior_window_mass(posterior_point_vector, window)
+                posterior_market_mass = posterior_window_mass(
+                    market_reference["vector"], window
+                )
+                _pvalue = valuation_action_value_v1(
+                    posterior_draws, {bucket: 1.0 for bucket in window}, price,
+                )
+                posterior_edge_point = posterior_mass - price
+                posterior_edge_lcb = (
+                    None if _pvalue is None else float(_pvalue["value_lcb"])
+                )
+                if posterior_edge_lcb is not None:
+                    posterior_admissible = (
+                        posterior_edge_lcb >= economic_hurdle_usdc(price) - EPS
+                    )
             edge = effective_win - price if priced else None
             is_incumbent = window == incumbent
             # The incumbent has no exemption left.  It used to be waived past
@@ -3247,6 +3341,11 @@ def _support_windows(
                     valuation_would_refuse += 1
                 elif (not admissible) and valuation_admissible:
                     valuation_would_admit += 1
+            if posterior_admissible is not None and POSTERIOR_MODE == "shadow":
+                if admissible and not posterior_admissible:
+                    posterior_would_refuse += 1
+                elif (not admissible) and posterior_admissible:
+                    posterior_would_admit += 1
             windows.append({
                 "buckets": window,
                 "win_probability": win,
@@ -3304,6 +3403,13 @@ def _support_windows(
                 "valuation_edge_point": valuation_edge_point,
                 "valuation_edge_lcb": valuation_edge_lcb,
                 "valuation_admissible": valuation_admissible,
+                # L4 posterior lane (shadow): the belief the baseline's gate
+                # would read, its lower-bound net edge and its verdict.
+                "posterior_mass": posterior_mass,
+                "posterior_market_mass": posterior_market_mass,
+                "posterior_edge_point": posterior_edge_point,
+                "posterior_edge_lcb": posterior_edge_lcb,
+                "posterior_admissible": posterior_admissible,
                 "valuation_capacity_shares": (
                     None if valuation_capacity is None
                     else valuation_capacity["capacity_shares"]
@@ -3743,6 +3849,23 @@ def _support_windows(
                 "one_sided_buckets": valuation_market.get("one_sided_buckets"),
             }
         ),
+        # L4 posterior lane (shadow): what the snapshot read and what the
+        # gate would have done.  ``posterior_state``: ``shadow`` (computed
+        # and recorded), ``accumulating``, ``no_fit``, ``market_*``,
+        # ``no_vector``, ``error_*``, ``off``.
+        "posterior_mode": POSTERIOR_MODE,
+        "posterior_rule": POSTERIOR_RULE,
+        "posterior_state": posterior_state,
+        "posterior_lead_band": posterior_band,
+        "posterior_served": (
+            None if not isinstance(posterior_row, Mapping) else {
+                key: posterior_row.get(key)
+                for key in ("alpha", "gamma", "w", "w_lcb", "w_ucb",
+                            "accumulating", "sha256", "lead_band")
+            }
+        ),
+        "posterior_would_refuse_count": posterior_would_refuse,
+        "posterior_would_admit_count": posterior_would_admit,
         "valuation_would_refuse_count": valuation_would_refuse,
         "valuation_would_admit_count": valuation_would_admit,
         "valuation_refused_window_count": valuation_refused,
@@ -4456,7 +4579,7 @@ def _solve_over_support_windows(
             ]
         )
         for scope, bands in (effective_edge_tables or {}).items()
-        if scope not in (BETA_TABLE_KEY, VALUATION_TABLE_KEY)
+        if scope not in (BETA_TABLE_KEY, VALUATION_TABLE_KEY, POSTERIOR_TABLE_KEY)
     }
     selection = {
         "decision_moment": decision_moment_audit,
@@ -4476,6 +4599,19 @@ def _solve_over_support_windows(
             )
             for scope, row in dict(
                 (effective_edge_tables or {}).get(VALUATION_TABLE_KEY) or {}
+            ).items()
+        },
+        # L4 posterior lane (shadow): the served rows, draws elided.
+        "posterior_tables": {
+            str(scope): (
+                None if not isinstance(row, Mapping) else {
+                    key: row.get(key)
+                    for key in ("alpha", "gamma", "w", "w_lcb", "w_ucb",
+                                "accumulating", "sha256")
+                }
+            )
+            for scope, row in dict(
+                (effective_edge_tables or {}).get(POSTERIOR_TABLE_KEY) or {}
             ).items()
         },
         # Charter 131 (2026-09-12 evening): the head of the shortlist is the
