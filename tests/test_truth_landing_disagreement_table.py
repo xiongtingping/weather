@@ -50,7 +50,7 @@ def _group(key, buckets, claim, price, hit):
             "claim_mean": claim, "price_mean": price, "hit_rate": hit}
 
 
-def _render(groups, by_price=None, by_claim=None) -> str:
+def _render(groups, by_price=None, by_claim=None, baseline=None) -> str:
     node = shutil.which("node")
     if node is None:  # pragma: no cover
         pytest.skip("node is required to run the board's renderer")
@@ -62,7 +62,8 @@ def _render(groups, by_price=None, by_claim=None) -> str:
              "truth_share": 1, "hit_rate": 0.2, "value_mean": 0.02}],
         "by_claim": by_claim if by_claim is not None else [],
         "disagreement": {"unlikely_below": 0.05, "unlikely_buckets": 50,
-                         "unlikely_hits": 1, "groups": groups},
+                         "unlikely_hits": 1, "groups": groups,
+                         **({"acceptance_baseline": baseline} if baseline else {})},
     }}
     script = (
         "const D = " + json.dumps(payload, ensure_ascii=False) + ";\n"
@@ -207,3 +208,24 @@ def test_a_band_one_ruler_never_reached_is_not_judged():
     assert verdicts["0.50–1.00"] == "样本少" and verdicts["0.40–0.45"] == "样本少"
     row = re.search(r'0\.50–1\.00</td>(.*?)</tr>', html, re.S).group(1)
     assert row.count(">—</td>") == 5
+
+
+# The acceptance sample's baseline (user ruling, 2026-09-17): the buckets the
+# model claims at >=45% while the market asks under 30%, as the book stood.
+BASELINE = {"claim_floor": 0.45, "market_ceiling": 0.30, "buckets": 51, "hits": 3,
+            "hit_rate": 3 / 51, "claim_mean": 0.508, "price_mean": 0.18}
+
+
+def test_the_baseline_line_prices_the_class_at_the_market():
+    html = _render(BOOK, baseline=BASELINE)
+
+    assert "验收样本底数" in html
+    assert "≥45% 而市场价 &lt;30% 的桶 <b>51 个，开出 3 个</b>（5.9%）" in html
+    assert f"{100 * (3 / 51 - 0.18):.1f}¢" in html and 'class="down"' in html
+    assert "β 车道和 L4 的验收样本" in html
+
+
+def test_a_page_without_the_baseline_draws_no_line():
+    html = _render(BOOK)
+
+    assert "验收样本底数" not in html

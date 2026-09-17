@@ -474,6 +474,45 @@ def test_realisation_judges_each_window_with_the_fit_active_at_its_decision() ->
     assert got["by_stage"]["P0"]["judged"] == 6
 
 
+def test_realisation_draws_the_acceptance_class_from_the_rows_own_claim_and_mid() -> None:
+    """User ruling, 2026-09-17: the disagreement class (raw claim >= 0.45,
+    market mid < 0.30) is L4's acceptance sample, read off the evidence
+    row's own columns as the lanes do."""
+    from bayes_basket_target import candidate_window_evidence as ev
+
+    conn, buckets, m, p, draws = _realisation_db(w=1.0, fitted_at="2026-09-09T00:00:00Z")
+    # One more window per day, w1's window at w1's price, carrying the
+    # class on its own columns: raw claim 0.50 against a mid of 0.25.
+    for day in ("2026-09-10", "2026-09-11"):
+        conn.execute(
+            f"INSERT INTO {ev.EVIDENCE_TABLE}(evidence_id, fact_id, decision_id,"
+            " station_id, event_date, stage, decision_at_utc,"
+            " production_decision_at_utc, lead_band, sampled, buckets_json,"
+            " window_size, win_probability, raw_win_probability, all_in_price,"
+            " admissible, seated, market_mid, hours_to_cutoff, created_at_utc)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (f"w4-{day}", f"f-{day}", f"d-{day}", "X", day, "P0",
+             f"{day}T06:00:00Z", f"{day}T06:00:00Z", ">=36h", 1,
+             json.dumps(["23°C"]), 1, 0.5, 0.5, 0.31, 1, 0, 0.25, 40.0,
+             f"{day}T06:00:00Z"),
+        )
+    conn.commit()
+
+    got = store.realisation(conn, since_event_date="2026-09-01")
+    A = got["acceptance"]
+
+    assert got["windows"] == 8 and got["judged"] == 8
+    assert (A["claim_floor"], A["market_ceiling"]) == (0.45, 0.30)
+    assert A["windows"] == 2 and A["judged"] == 2
+    assert A["all"]["n"] == 2 and A["all"]["days"] == 2
+    assert A["all"]["hit"] == pytest.approx(0.5)
+    assert A["all"]["hit_minus_price"] == pytest.approx(((1 - 0.31) + (0 - 0.31)) / 2)
+    # L4 buys w1's window (the other test pins that), so it buys these too.
+    assert A["l4_admitted"]["n"] == 2 and A["lambda_admitted"]["n"] == 2
+    # The fixture's own windows carry no claim or mid: none of them is in the class.
+    assert got["cells"]["both_admit"]["n"] == 4
+
+
 def test_realisation_does_not_judge_before_a_fit_or_while_accumulating() -> None:
     late, *_ = _realisation_db(w=1.0, fitted_at="2026-09-12T00:00:00Z")
     got = store.realisation(late, since_event_date="2026-09-01")

@@ -67,6 +67,33 @@ CANDIDATE_SOURCE = SCORED_VIEW if EVIDENCE_SOURCE == "production" else LEDGER_TA
 #: the paper book's own, which every lane that reads labels starts after.
 LABEL_FLOOR_EVENT_DATE = "2026-08-15"
 
+#: The acceptance sample for the lanes that read the market (user ruling,
+#: 2026-09-17): a window the model claims at 0.45 or more while the market's
+#: mid sits under 0.30.  Measured on the served vector against the entry ask
+#: since 2026-08-15, buckets of this shape came in 3 times in 51 and lost 12
+#: cents a share at the market's price -- the largest single loss shape the
+#: book knows -- while the confident claims the market agreed with came in
+#: 30 of 54.  Nothing the model carries (members, lead, envelope span,
+#: decision hour, season, station) separates the two, so the band table
+#: cannot see them by construction: it reads the vector alone.  The beta and
+#: L4 lanes read the market, and this is where they must show their edge
+#: first; both realisation tables draw the class with this predicate, on the
+#: row's own raw claim and market mid.
+ACCEPTANCE_CLAIM_FLOOR = 0.45
+ACCEPTANCE_MARKET_CEILING = 0.30
+
+
+def in_acceptance_class(claim: Any, market_mid: Any) -> bool:
+    """Whether a window sits in the disagreement acceptance class."""
+
+    try:
+        p = float(claim)
+        m = float(market_mid)
+    except (TypeError, ValueError):
+        return False
+    return p >= ACCEPTANCE_CLAIM_FLOOR and m < ACCEPTANCE_MARKET_CEILING
+
+
 _SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS {EVIDENCE_TABLE} (
   evidence_id TEXT PRIMARY KEY,
@@ -485,6 +512,9 @@ def latest_labelled_event_date(conn: sqlite3.Connection) -> str | None:
 
 
 __all__ = [
+    "ACCEPTANCE_CLAIM_FLOOR",
+    "ACCEPTANCE_MARKET_CEILING",
+    "in_acceptance_class",
     "CANDIDATE_SOURCE",
     "EVIDENCE_SOURCE",
     "EVIDENCE_TABLE",

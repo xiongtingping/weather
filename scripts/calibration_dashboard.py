@@ -3014,6 +3014,16 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
         key: [0, 0, 0.0, 0.0] for key, *_ in TRUTH_LANDING_GAP_GROUPS
     }
     unlikely = [0, 0]
+    # The acceptance sample's baseline (user ruling, 2026-09-17): the buckets
+    # the model claims at 0.45 or more while the market asks under 0.30 --
+    # the shape the band table cannot see, on which the lanes that read the
+    # market are judged first.  [buckets, hits, sum of claims, sum of prices].
+    from bayes_basket_target.candidate_window_evidence import (  # noqa: PLC0415
+        ACCEPTANCE_CLAIM_FLOOR,
+        ACCEPTANCE_MARKET_CEILING,
+        in_acceptance_class,
+    )
+    acceptance = [0, 0, 0.0, 0.0]
     for (station, event, bucket), asks in entry_asks.items():
         key = (station, event)
         if key not in winners or len(asks) < 2:
@@ -3023,6 +3033,11 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
             continue
         price = median(asks)
         hit = 1 if winners[key] == bucket else 0
+        if in_acceptance_class(claim, price):
+            acceptance[0] += 1
+            acceptance[1] += hit
+            acceptance[2] += claim
+            acceptance[3] += price
         if claim < TRUTH_LANDING_UNLIKELY and price < TRUTH_LANDING_UNLIKELY:
             unlikely[0] += 1
             unlikely[1] += hit
@@ -3048,6 +3063,15 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
             "unlikely_below": TRUTH_LANDING_UNLIKELY,
             "unlikely_buckets": unlikely[0],
             "unlikely_hits": unlikely[1],
+            "acceptance_baseline": {
+                "claim_floor": ACCEPTANCE_CLAIM_FLOOR,
+                "market_ceiling": ACCEPTANCE_MARKET_CEILING,
+                "buckets": acceptance[0],
+                "hits": acceptance[1],
+                "hit_rate": (acceptance[1] / acceptance[0]) if acceptance[0] else None,
+                "claim_mean": (acceptance[2] / acceptance[0]) if acceptance[0] else None,
+                "price_mean": (acceptance[3] / acceptance[0]) if acceptance[0] else None,
+            },
             "groups": [
                 {
                     "key": name, "label": label,
@@ -8614,7 +8638,31 @@ def collect_beta_shadow(conn: sqlite3.Connection) -> dict[str, Any]:
         # be re-judged on this basis, and nothing is judged on another.
         rows = []
     no_market_mid = 0
+    # The acceptance sample (user ruling, 2026-09-17): the windows the model
+    # claims at 0.45 or more while the market's mid sits under 0.30 -- the
+    # shape the band table cannot see and this lane exists to catch.  Counted
+    # on every settled window, judged where a beta was being served.
+    from bayes_basket_target.candidate_window_evidence import (  # noqa: PLC0415
+        ACCEPTANCE_CLAIM_FLOOR,
+        ACCEPTANCE_MARKET_CEILING,
+        in_acceptance_class,
+    )
+    acc: dict[str, Any] = {
+        "windows": 0, "judged": 0, "hits": 0.0, "price": 0.0, "margin": 0.0,
+        "current_admits": 0, "current_margin": 0.0,
+        "beta_admits": 0, "beta_margin": 0.0, "days": set(),
+    }
     for stage, day, at, raw, price, hit, adm, mid in rows:
+        in_class = in_acceptance_class(raw, mid)
+        if in_class:
+            acc["windows"] += 1
+            acc["days"].add(str(day))
+            acc["hits"] += float(hit or 0)
+            acc["price"] += float(price)
+            acc["margin"] += float(hit or 0) - float(price)
+            if bool(adm):
+                acc["current_admits"] += 1
+                acc["current_margin"] += float(hit or 0) - float(price)
         lcb = served_at(str(stage), str(at or ""))
         if lcb is None:
             continue
@@ -8636,6 +8684,11 @@ def collect_beta_shadow(conn: sqlite3.Connection) -> dict[str, Any]:
         key = ("both_admit" if beta_adm else "beta_refuses") if cur_adm else (
             "beta_admits" if beta_adm else "both_refuse")
         margin = float(hit or 0) - float(price)
+        if in_class:
+            acc["judged"] += 1
+            if beta_adm:
+                acc["beta_admits"] += 1
+                acc["beta_margin"] += margin
         d = days.setdefault(str(day), {"date": str(day), "windows": 0, "current_admits": 0,
                                        "beta_admits": 0, "beta_refuses_of_admitted": 0,
                                        "beta_admits_of_refused": 0, "sum_margin_admitted": 0.0,
@@ -8674,6 +8727,25 @@ def collect_beta_shadow(conn: sqlite3.Connection) -> dict[str, Any]:
     for d in out["replay"]["days"]:
         d.pop("sum_margin_admitted", None)
         d.pop("sum_margin_beta_admitted", None)
+    n_acc = acc["windows"]
+    out["replay"]["acceptance"] = {
+        "claim_floor": ACCEPTANCE_CLAIM_FLOOR,
+        "market_ceiling": ACCEPTANCE_MARKET_CEILING,
+        "windows": n_acc, "days": len(acc["days"]), "judged": acc["judged"],
+        "hit_rate": (acc["hits"] / n_acc) if n_acc else None,
+        "mean_price": round(acc["price"] / n_acc, 4) if n_acc else None,
+        "mean_hit_minus_price": round(acc["margin"] / n_acc, 4) if n_acc else None,
+        "current_admits": acc["current_admits"],
+        "current_mean_hit_minus_price": (
+            round(acc["current_margin"] / acc["current_admits"], 4)
+            if acc["current_admits"] else None
+        ),
+        "beta_admits": acc["beta_admits"],
+        "beta_mean_hit_minus_price": (
+            round(acc["beta_margin"] / acc["beta_admits"], 4)
+            if acc["beta_admits"] else None
+        ),
+    }
     # -- live: the shadow's own counters off recent decisions
     live_since = (date.today() - timedelta(days=2)).isoformat()
     live = {"since": live_since, "decisions": 0, "with_shadow": 0,
@@ -12670,10 +12742,24 @@ function truthLanding(){
         <b class="down">${overCents.toFixed(1)}¢</b>——模型的分歧不是赚钱机会，市场价才是更好的概率。`
       :`<b>总结：</b>专挑「模型觉得比市场便宜」的桶去买，实际开出率高于买入价，平均每股
         <b class="up">+${overCents.toFixed(1)}¢</b>（未计手续费）——这部分分歧是模型的真信息。`;
+  // The acceptance sample's baseline (user ruling, 2026-09-17): the buckets
+  // the model claims at >=45% while the market asks under 30%.  The band
+  // table reads the vector alone and cannot see them, so the lanes that
+  // read the market -- beta and L4 -- are judged on them first.  This line
+  // is the shape they have to beat; their own readings sit in their sections.
+  const A=G.acceptance_baseline;
+  const acceptCents=A&&A.hit_rate!=null&&A.price_mean!=null?100*(A.hit_rate-A.price_mean):null;
+  const acceptLine=!A||!A.buckets||acceptCents==null?"":`<div class="card tl-verdict-card" style="margin-top:8px"><b>验收样本底数：</b>模型说 ≥${
+    Math.round(100*A.claim_floor)}% 而市场价 &lt;${Math.round(100*A.market_ceiling)}% 的桶 <b>${A.buckets} 个，开出 ${A.hits} 个</b>（${p(A.hit_rate)}）；
+    模型均说 ${p(A.claim_mean)}、市场均价 ${p(A.price_mean)}，按市场价买每股 <b class="${acceptCents<0?"down":"up"}">${
+    acceptCents>=0?"+":""}${acceptCents.toFixed(1)}¢</b>。
+    这类桶是 β 车道和 L4 的验收样本（2026-09-17 裁定）：band 表只读概率向量，按构造看不见它们；
+    两条车道各自的「验收样本」行写着放行了几个、兑现了几成。</div>`;
   const gapTable=!groups.length?"":`<h3 style="margin-top:14px">模型和市场意见不一致时，谁更准</h3>
   <div class="card tl-verdict-card"><b>结论：</b>${verdict}<br>
     ${[line(byKey.model_much),line(byKey.market_much)].filter(Boolean).join("；<br>")}。
     ${summary?`<div style="margin-top:6px">${summary}</div>`:""}</div>
+  ${acceptLine}
   <div class="tl-rows">${gapRows}</div>
   <p class="sub" style="margin-top:6px">市场价＝入场后 4 小时的中位卖一；「更准」＝实际开出率离谁更近（差不到 1 点算一样准）；
     不足 ${MIN_N} 个桶的组标灰不判。另有 ${G.unlikely_buckets||0} 个桶两边都低于 ${
@@ -12794,6 +12880,20 @@ function betaShadow(){
       <td class="mono">${num(r.intercept)}</td><td>${r.rows} / ${r.days}</td><td>${r.days_beta_positive==null?"—":r.days_beta_positive+"/"+r.days}</td><td>${h(lead)||"—"}</td></tr>`;}).join("");
   const cells=rep.cells||{};
   const cell=k=>{const c=cells[k]||{};return `<td class="mono">${c.n||0}</td><td class="mono">${c.mean_hit_minus_price==null?"—":(c.mean_hit_minus_price*100).toFixed(1)+"点"}</td>`;};
+  // The acceptance sample (user ruling, 2026-09-17): windows the model
+  // claims at >=45% while the market's mid sits under 30% -- the shape the
+  // band table cannot see and this lane exists to catch.  Its baseline is
+  // drawn in 真值落位; here is what the lane does with it.
+  const A=rep.acceptance;
+  const pt=v=>v==null?"—":((v>=0?"+":"")+(v*100).toFixed(1)+"点");
+  const pc=v=>v==null?"—":(v*100).toFixed(0)+"%";
+  const acceptance=!A?`<div class="muted" style="margin-top:8px"><b>验收样本</b>：本页数据还没带这一项，等下一轮整库渲染。</div>`
+    :`<h3 style="margin-top:12px">验收样本：模型说 ≥${pc(A.claim_floor)} 而市场中价 &lt;${pc(A.market_ceiling)} 的窗</h3>
+    ${!A.windows?`<div class="muted">最近 14 天还没有这类已结算的窗（历史上约 4% 的站日出现一次），累积中。</div>`
+    :`<table><tr><th>窗 / 日</th><th>已判</th><th>命中率</th><th>均价</th><th>全部 均 hit−价</th><th>现闸放</th><th>现放 均 hit−价</th><th>β 放</th><th>β 放 均 hit−价</th></tr>
+    <tr><td class="mono">${A.windows} / ${A.days}</td><td class="mono">${A.judged}</td><td class="mono">${pc(A.hit_rate)}</td><td class="mono">${num(A.mean_price,2)}</td><td class="mono">${pt(A.mean_hit_minus_price)}</td>
+    <td class="mono">${A.current_admits}</td><td class="mono">${pt(A.current_mean_hit_minus_price)}</td><td class="mono">${A.beta_admits}</td><td class="mono">${pt(A.beta_mean_hit_minus_price)}</td></tr></table>`}
+    <div class="muted">真值落位一节有这类桶的历史底数。β 放行的这类窗兑现为正，这条车道才算抓住了它该抓的东西；β 放 0 个就是它在这里什么也没说，现闸放了几个、亏了多少是它要拦的对象。</div>`;
   const dayRows=(rep.days||[]).map(d=>`<tr><td>${h(d.date)}</td><td class="mono">${d.windows}</td><td class="mono">${d.current_admits}</td>
       <td class="mono">${d.beta_admits}</td><td class="mono">${d.beta_refuses_of_admitted}</td><td class="mono">${d.beta_admits_of_refused}</td>
       <td class="mono">${d.mean_margin_admitted==null?"—":(d.mean_margin_admitted*100).toFixed(1)}</td><td class="mono">${d.mean_margin_beta_admitted==null?"—":(d.mean_margin_beta_admitted*100).toFixed(1)}</td></tr>`).join("");
@@ -12812,7 +12912,8 @@ function betaShadow(){
   <table><tr><th></th><th>现闸放·β 放</th><th></th><th>现闸放·β 拒</th><th></th><th>现闸拒·β 放</th><th></th><th>现闸拒·β 拒</th><th></th></tr>
   <tr><td>窗数 / 均 hit−价</td>${cell("both_admit")}${cell("beta_refuses")}${cell("beta_admits")}${cell("both_refuse")}</tr></table>
   <table><tr><th>事件日</th><th>窗</th><th>现闸放</th><th>β 放</th><th>β 会拒(现放)</th><th>β 会放(现拒)</th><th>现放 均 hit−价(点)</th><th>β 放 均 hit−价(点)</th></tr>${dayRows||'<tr><td colspan="8">尚无可重判的窗（服务 β 的日志晚于这些窗的决策时刻）</td></tr>'}</table>
-  <div class="muted">"β 会拒(现放)"那一格的均 hit−价 若持续低于"现闸放·β 放"，闸换 β 就是净少亏；两格打平则 β 只是少买。</div></div>`;
+  <div class="muted">"β 会拒(现放)"那一格的均 hit−价 若持续低于"现闸放·β 放"，闸换 β 就是净少亏；两格打平则 β 只是少买。</div>
+  ${acceptance}</div>`;
 }
 
 function effectiveEdgeLambda(){
@@ -13917,6 +14018,13 @@ function posteriorRealisation(R){
     <td class="mono">${pp(x.claimed_edge)}</td>
     <td class="mono ${tone(x)}"><b>${pp(x.hit_minus_price)}</b>${ci(x.ci)}</td></tr>`;};
   const c=R.cells||{};
+  // The acceptance sample (user ruling, 2026-09-17): the disagreement class
+  // the band table cannot see; L4's edge is read here first.
+  const A=R.acceptance;
+  const pc=v=>v==null?"—":(v*100).toFixed(0)+"%";
+  const acceptRows=!A?`<tr><td colspan="6" class="muted">验收样本：本页数据还没带这一项，等下一轮整库渲染。</td></tr>`
+    :`<tr><td colspan="6" style="padding-top:10px"><b>验收样本</b>：模型说 ≥${pc(A.claim_floor)} 而市场中价 &lt;${pc(A.market_ceiling)} 的窗——已结算 ${A.windows}、已判 ${A.judged}${A.windows?"":"（累积中）"}</td></tr>
+    ${row("　这类窗全部（不论谁买）",A.all)}${row("　其中 L4 会买",A.l4_admitted,true)}${row("　其中实盘 λ 会买",A.lambda_admitted)}`;
   const stages=Object.entries(R.by_stage||{}).map(([st,v])=>`${h(st)}：L4 会买 ${(v.l4_admitted||{}).n||0} 窗 ${pp((v.l4_admitted||{}).hit_minus_price)} · λ 会买 ${(v.lambda_admitted||{}).n||0} 窗 ${pp((v.lambda_admitted||{}).hit_minus_price)}`).join("；");
   const empty=!R.judged;
   return `${title}
@@ -13925,7 +14033,8 @@ function posteriorRealisation(R){
   L4 放行那两行的实际值区间下界 &gt; 0 才算 L4 的 edge 兑现了。</p>
   <div class="card" style="overflow-x:auto"><table><thead><tr><th>哪些窗</th><th>窗 / 站日 / 天</th><th>平均价</th><th>命中率</th><th>L4 声称 edge</th><th>实际 命中 − 价 · 90%</th></tr></thead>
   <tbody>${row("L4 会买（合计）",R.l4_admitted,true)}${row("实盘 λ 会买（合计，对照）",R.lambda_admitted,true)}
-  ${row("两边都买",c.both_admit)}${row("只有 L4 买",c.l4_only)}${row("只有 λ 买",c.lambda_only)}${row("两边都不买",c.both_refuse)}</tbody></table>
+  ${row("两边都买",c.both_admit)}${row("只有 L4 买",c.l4_only)}${row("只有 λ 买",c.lambda_only)}${row("两边都不买",c.both_refuse)}
+  ${acceptRows}</tbody></table>
   <div class="muted" style="margin-top:6px;font-size:11.5px">${empty
     ?`还没有可判的窗：已结算窗 ${R.windows} 个，其中当时 L4 还在累积中 ${R.accumulating} 个（服务 b = m，不给判决）、当时还没有拟合 ${R.no_fit} 个、盘口或向量不全 ${R.no_vector} 个。L4 过门槛（约 09-25）后开始出数。`
     :`已判 ${R.judged} 窗；累积中未判 ${R.accumulating}、无拟合 ${R.no_fit}、盘口或向量不全 ${R.no_vector}。${stages}`}</div></div>`;

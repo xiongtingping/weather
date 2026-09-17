@@ -108,6 +108,50 @@ def test_the_replay_judges_each_window_by_the_beta_served_at_its_instant() -> No
     assert set(out["research"]) == {"P0", "P0-M", "P1"}
 
 
+def test_the_acceptance_sample_is_the_disagreement_class() -> None:
+    """User ruling, 2026-09-17: windows the model claims at >=0.45 while the
+    market's mid sits under 0.30 are the lane's acceptance sample -- counted
+    on every settled window, judged where a beta was served."""
+    from datetime import date, timedelta  # noqa: PLC0415
+
+    conn = _book()
+    store.ensure_schema(conn)
+    d = (date.today() - timedelta(days=2)).isoformat()
+    # In the class, decided before any fit: counted, not judged.
+    _window(conn, "a0", day=d, at=f"{d}T00:00:00Z", raw=0.5, price=0.25, hit=0, adm=1)
+    _activate(conn, lcb=1.0, at=f"{d}T01:00:00Z")
+    # In the class (mid is price - 0.05 = 0.20): production admitted a1 and it
+    # missed, refused a2 and it hit; a served beta_lcb of 1 believes the raw
+    # claim, so beta admits both.
+    _window(conn, "a1", day=d, at=f"{d}T02:00:00Z", raw=0.5, price=0.25, hit=0, adm=1)
+    _window(conn, "a2", day=d, at=f"{d}T02:00:00Z", raw=0.6, price=0.25, hit=1, adm=0)
+    # Out of the class on either side: the market agrees / the model is not confident.
+    _window(conn, "b1", day=d, at=f"{d}T02:00:00Z", raw=0.5, price=0.55, hit=1, adm=1)
+    _window(conn, "b2", day=d, at=f"{d}T02:00:00Z", raw=0.3, price=0.25, hit=0, adm=1)
+    conn.commit()
+
+    A = C.collect_beta_shadow(conn)["replay"]["acceptance"]
+
+    assert (A["claim_floor"], A["market_ceiling"]) == (0.45, 0.30)
+    assert A["windows"] == 3 and A["judged"] == 2 and A["days"] == 1
+    assert A["hit_rate"] == pytest.approx(1 / 3)
+    assert A["mean_price"] == pytest.approx(0.25)
+    assert A["mean_hit_minus_price"] == pytest.approx(round((1 - 3 * 0.25) / 3, 4))
+    assert A["current_admits"] == 2 and A["current_mean_hit_minus_price"] == pytest.approx(-0.25)
+    assert A["beta_admits"] == 2 and A["beta_mean_hit_minus_price"] == pytest.approx(0.25)
+
+
+def test_the_class_is_a_confident_model_against_a_cheap_market() -> None:
+    from bayes_basket_target import candidate_window_evidence as ev  # noqa: PLC0415
+
+    assert ev.in_acceptance_class(0.45, 0.29)
+    assert not ev.in_acceptance_class(0.44, 0.29)
+    assert not ev.in_acceptance_class(0.45, 0.30)
+    assert not ev.in_acceptance_class(None, 0.1)
+    assert not ev.in_acceptance_class(0.9, None)
+    assert not ev.in_acceptance_class("x", 0.1)
+
+
 def test_the_section_survives_a_book_without_the_shadow_tables() -> None:
     conn = _book()
     out = C.collect_beta_shadow(conn)

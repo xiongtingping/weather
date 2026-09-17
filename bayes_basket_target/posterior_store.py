@@ -878,12 +878,18 @@ def realisation(
         action_value_v1,
         market_reference_v1,
     )
-    from .candidate_window_evidence import EVIDENCE_TABLE, SCORED_VIEW  # noqa: PLC0415
+    from .candidate_window_evidence import (  # noqa: PLC0415
+        ACCEPTANCE_CLAIM_FLOOR,
+        ACCEPTANCE_MARKET_CEILING,
+        EVIDENCE_TABLE,
+        SCORED_VIEW,
+        in_acceptance_class,
+    )
 
     out: dict[str, Any] = {
         "since": str(since_event_date), "windows": 0, "judged": 0,
         "no_fit": 0, "accumulating": 0, "no_vector": 0,
-        "cells": {}, "by_stage": {},
+        "cells": {}, "by_stage": {}, "acceptance": {},
     }
     needed = (
         SCORED_VIEW, EVIDENCE_TABLE, "calibration_posterior_fit_journal",
@@ -896,7 +902,8 @@ def realisation(
     rows = conn.execute(
         "SELECT v.station_id, v.event_date, v.stage, v.decision_at_utc,"
         "       v.buckets_json, v.all_in_price, v.admissible, v.hit,"
-        "       v.hours_to_cutoff, f.probability_envelope_id, f.ws_snapshot_id"
+        "       v.hours_to_cutoff, f.probability_envelope_id, f.ws_snapshot_id,"
+        "       v.raw_win_probability, v.market_mid"
         f" FROM {SCORED_VIEW} v"
         f" JOIN {EVIDENCE_TABLE} e ON e.evidence_id = v.candidate_id"
         " JOIN basket_policy_training_fact f ON f.fact_id = e.fact_id"
@@ -907,9 +914,15 @@ def realisation(
     journals: dict[str, tuple[list[str], dict[str, dict[str, dict[str, Any]]]]] = {}
     vectors: dict[tuple[str, str, str], tuple[list[dict[str, float]], dict[str, float]] | None] = {}
     judged: list[dict[str, Any]] = []
+    acceptance_windows = 0
     for (station, day, stage, decided_at, buckets_json, price, admissible, hit,
-         hours, envelope_id, snapshot_id) in rows:
+         hours, envelope_id, snapshot_id, raw_claim, market_mid) in rows:
         out["windows"] += 1
+        # The acceptance class (user ruling, 2026-09-17), on the row's own
+        # raw claim and market mid, counted before any verdict so the
+        # windows still waiting for a fit are visible too.
+        in_class = in_acceptance_class(raw_claim, market_mid)
+        acceptance_windows += int(in_class)
         stage = str(stage)
         if stage not in journals:
             journals[stage] = _journal_groups(conn, stage)
@@ -982,6 +995,7 @@ def realisation(
         judged.append({
             "cell": cell, "stage": stage, "station": str(station), "date": str(day),
             "price": cost, "hit": float(hit), "edge": mass - cost,
+            "acceptance": in_class,
         })
     out["judged"] = len(judged)
 
@@ -1026,6 +1040,19 @@ def realisation(
             "l4_admitted": _summary([j for j in items if j["cell"] in ("both_admit", "l4_only")]),
             "lambda_admitted": _summary([j for j in items if j["cell"] in ("both_admit", "lambda_only")]),
         }
+    # The acceptance sample: the class's windows, whoever bought them, then
+    # the ones L4 would buy and the ones the live gate bought.  L4's edge is
+    # read here first, because this is the shape nothing upstream can see.
+    accepted = [j for j in judged if j["acceptance"]]
+    out["acceptance"] = {
+        "claim_floor": ACCEPTANCE_CLAIM_FLOOR,
+        "market_ceiling": ACCEPTANCE_MARKET_CEILING,
+        "windows": acceptance_windows,
+        "judged": len(accepted),
+        "all": _summary(accepted),
+        "l4_admitted": _summary([j for j in accepted if j["cell"] in ("both_admit", "l4_only")]),
+        "lambda_admitted": _summary([j for j in accepted if j["cell"] in ("both_admit", "lambda_only")]),
+    }
     return out
 
 
