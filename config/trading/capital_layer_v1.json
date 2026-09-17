@@ -1,0 +1,8 @@
+{
+  "schema": "basket_capital_layer_v1",
+  "kelly_fraction": 0.25,
+  "station_day_sizing_fraction": 0.065,
+  "station_day_ceiling_fraction": 0.1,
+  "updated_at_utc": "2026-09-17T00:00:00Z",
+  "rationale": "Charter 141's three capital dials, moved from the board (scripts/live_control_server.py). kelly_fraction: the share of full Kelly a basket stakes. station_day_sizing_fraction: the share of the real account a station-day's sizing may target. station_day_ceiling_fraction: the share that may go out for it, the venue-minimum lift and a completion included. Read fresh before every production compile."
+}

@@ -95,7 +95,6 @@ from .basket_kernel.delta_v2 import (
     CANDIDATE_KIND_COMPLETE,
     CANDIDATE_KINDS,
     CURVE_OBJECTIVE_FORM,
-    DEFAULT_KELLY_FRACTION,
     EXCHANGE_LOT_TOP_UP,
     CHAIN_OPENING_STAGE,
     execution_authorization_rule_v1,
@@ -5637,7 +5636,7 @@ def _continuous_optimum_candidates(
     # asked the solver for four times full Kelly; see
     # ``curve_effective_bankroll_v1``.
     effective_bankroll_usdc = curve_effective_bankroll_v1(
-        float(bankroll_usdc), DEFAULT_KELLY_FRACTION
+        float(bankroll_usdc), None
     )
     free_budget_usdc = max(0.0, capital_available_usdc - seat_cost_usdc)
 

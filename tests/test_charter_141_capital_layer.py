@@ -230,7 +230,8 @@ def test_the_runtime_bounds_a_station_day_by_the_whole_books_room() -> None:
     assert "capital_available_usdc=sizing_capital_usdc" in source
     assert "capital_ceiling_usdc=remaining_budget" in source
     assert 'market_snapshot.get("account_open_exposure_usdc")' in source
-    assert "book_equity_usdc * STATION_DAY_HARD_FRACTION" in source
+    assert "book_equity_usdc * _capital_kernel.STATION_DAY_HARD_FRACTION" in source
+    assert "refresh_capital_layer()" in source
 
 
 # ----------------------------------------------------------------- worker
@@ -322,3 +323,78 @@ def test_the_reservation_pool_is_rebased_on_the_account() -> None:
         "SELECT balance_usdc,reserved_usdc FROM basket_target_capital_pool"
     ).fetchone()
     assert balance - reserved == pytest.approx(60.0)
+
+
+# ------------------------------------------------------------- the dials
+
+
+def test_the_dials_are_read_fresh_and_a_bad_file_changes_nothing(tmp_path, monkeypatch) -> None:
+    import json as _json
+
+    path = tmp_path / "capital_layer_v1.json"
+    monkeypatch.setattr(K, "CAPITAL_LAYER_CONFIG_PATH", str(path))
+    monkeypatch.setattr(K, "_CAPITAL_LAYER_MTIME", None)
+    for key in ("PM_KELLY_FRACTION", "PM_STATION_DAY_SOFT_FRACTION", "PM_STATION_DAY_HARD_FRACTION"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(K, "DEFAULT_KELLY_FRACTION", 0.25)
+    monkeypatch.setattr(K, "MAX_STAKE_FRACTION_PER_SCOPE", 0.065)
+    monkeypatch.setattr(K, "STATION_DAY_HARD_FRACTION", 0.10)
+
+    path.write_text(_json.dumps({
+        "schema": K.CAPITAL_LAYER_SCHEMA, "kelly_fraction": 0.5,
+        "station_day_sizing_fraction": 0.04, "station_day_ceiling_fraction": 0.08,
+    }), encoding="utf-8")
+    layer = K.refresh_capital_layer()
+    assert (layer["kelly_fraction"], layer["station_day_sizing_fraction"],
+            layer["station_day_ceiling_fraction"], layer["source"]) == (0.5, 0.04, 0.08, "config")
+    # Every reader resolves at call time.
+    assert K.scope_stake_cap_usdc(book_equity_usdc=100.0) == pytest.approx(4.0)
+    assert K.station_day_ceiling_usdc(book_equity_usdc=100.0) == pytest.approx(8.0)
+    fraction, stake = K.whole_basket_kelly_stake_v1(
+        win_probability=0.875, cost=0.83, book_equity_usdc=100.0,
+    )
+    assert fraction == pytest.approx(0.04)  # half Kelly 0.13, capped at 4%
+
+    # Sizing above the ceiling: refused, the last good values stand.
+    import os as _os
+    import time as _time
+
+    path.write_text(_json.dumps({
+        "schema": K.CAPITAL_LAYER_SCHEMA, "kelly_fraction": 0.25,
+        "station_day_sizing_fraction": 0.12, "station_day_ceiling_fraction": 0.08,
+    }), encoding="utf-8")
+    _os.utime(path, ns=(_time.time_ns(), _time.time_ns() + 10_000_000))
+    layer = K.refresh_capital_layer()
+    assert layer["station_day_sizing_fraction"] == pytest.approx(0.04)
+    assert "sizing_above_ceiling" in (layer["error"] or "")
+
+
+def test_the_board_writes_the_dials_and_refuses_sizing_above_the_ceiling(tmp_path, monkeypatch) -> None:
+    import json as _json
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in _sys.path:
+        _sys.path.insert(0, str(root / "scripts"))
+    import live_control_server as control  # noqa: PLC0415
+
+    layer = tmp_path / "capital_layer_v1.json"
+    audit = tmp_path / "audit.jsonl"
+    monkeypatch.setattr(control, "CAPITAL_LAYER_PATH", layer)
+    monkeypatch.setattr(control, "AUDIT_PATH", audit)
+    monkeypatch.setattr(control, "state", lambda: {"ok": True})
+
+    control.set_kelly_fraction(0.3)
+    control.set_station_ceiling(0.12)
+    control.set_station_sizing(0.08)
+    written = _json.loads(layer.read_text(encoding="utf-8"))
+    assert (written["kelly_fraction"], written["station_day_sizing_fraction"],
+            written["station_day_ceiling_fraction"]) == (0.3, 0.08, 0.12)
+    with pytest.raises(ValueError, match="sizing_above_ceiling"):
+        control.set_station_sizing(0.15)
+    with pytest.raises(ValueError, match="out_of_bounds"):
+        control.set_kelly_fraction(1.5)
+    assert _json.loads(layer.read_text(encoding="utf-8"))["station_day_sizing_fraction"] == 0.08
+    knobs = [_json.loads(line)["knob"] for line in audit.read_text(encoding="utf-8").splitlines()]
+    assert knobs == ["kelly_fraction", "station_day_ceiling_fraction", "station_day_sizing_fraction"]

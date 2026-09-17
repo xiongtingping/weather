@@ -19,10 +19,15 @@ pause flag back before it records the intent.  One switch, both directions
 not a go, and the reader of a switch labelled ARMED is entitled to believe
 money can move.
 
-POST /api/kelly   {"value": 0.80}          -> portfolio_risk_fraction (总敞口上限:
+POST /api/kelly-fraction  {"value": 0.25}   -> kelly_fraction (凯利系数, charter 141)
+POST /api/exposure        {"value": 0.80}   -> portfolio_risk_fraction (总敞口上限:
                   the share of the real account that may be positions and
-                  resting buys; the name "kelly" is the endpoint's history,
-                  the kernel's Kelly fraction is not a dial)
+                  resting buys)
+POST /api/station-sizing  {"value": 0.065}  -> station_day_sizing_fraction (单站日定注)
+POST /api/station-ceiling {"value": 0.10}   -> station_day_ceiling_fraction (单站日上限)
+POST /api/kelly  is retired: it wrote the exposure bound under Kelly's name, and a
+                  board still open from before 2026-09-17 must fail loudly
+                  rather than move the wrong dial.
 POST /api/budget  {"value": 515}           -> target_remaining_budget_usdc
 POST /api/live    {"enabled": true, "confirm": "LIVE", "by": "..."}
 POST /api/allowlist {"stations": ["ZBAA", ...]}
@@ -74,6 +79,9 @@ EXCLUSION_PATH = ROOT / "config/trading/live_station_exclusions_v1.json"
 AUDIT_PATH = ROOT / "data" / "live_control_audit.jsonl"
 # Charter 141: read-only, for the station-day numbers the board shows.
 SSOT_PATH = ROOT / "data" / "bayes_basket_target_ssot.db"
+# Charter 141: the three capital dials, the file the resident re-reads before
+# every compile (``basket_kernel.delta_v2.refresh_capital_layer``).
+CAPITAL_LAYER_PATH = ROOT / "config/trading/capital_layer_v1.json"
 # The gateway's admission gate.  clob_order_service.mjs checks this file at
 # every place-order, before any idempotency write, signing or exchange POST,
 # and it stops every lane without exception.  The switch below owns it; the
@@ -87,6 +95,7 @@ PORT = 8788
 # the whole account.
 KELLY_BOUNDS = (0.05, 1.00)
 KELLY_STEP_MAX = 1.00
+EXPOSURE_BOUNDS = (0.05, 1.00)
 BUDGET_BOUNDS = (0.0, 2000.0)
 # The budget moves in whole multiples of 5 USDC (operator ruling,
 # 2026-09-16).  Held here rather than only on the board's stepper, so a
@@ -202,13 +211,32 @@ def state() -> dict:
         "calls_order_gateway": contract.get("calls_order_gateway"),
         "policy_authority_scope": policy.get("authority_scope"),
     }
+    capital = _read_capital_layer()
     return {
         "schema": "live_control_state_v1",
         "at_utc": _now(),
+        # Charter 141: the kernel's Kelly fraction, a real dial now.
         "kelly": {
-            "portfolio_risk_fraction": policy["portfolio_risk_fraction"],
+            "kelly_fraction": capital["kelly_fraction"],
             "bounds": KELLY_BOUNDS,
             "step": 0.05,
+        },
+        # The whole-book exposure bound (this key was "kelly" until
+        # 2026-09-17, which is what it was never).
+        "exposure": {
+            "portfolio_risk_fraction": policy["portfolio_risk_fraction"],
+            "bounds": EXPOSURE_BOUNDS,
+            "step": 0.05,
+        },
+        "station_sizing": {
+            "station_day_sizing_fraction": capital["station_day_sizing_fraction"],
+            "bounds": CAPITAL_BOUNDS["station_day_sizing_fraction"],
+            "step": 0.005,
+        },
+        "station_ceiling": {
+            "station_day_ceiling_fraction": capital["station_day_ceiling_fraction"],
+            "bounds": CAPITAL_BOUNDS["station_day_ceiling_fraction"],
+            "step": 0.01,
         },
         "budget": {
             # From the same mode-selected file as the contract facts above.
@@ -272,10 +300,13 @@ def state() -> dict:
     }
 
 
-def set_kelly(value: float) -> dict:
-    if not KELLY_BOUNDS[0] <= value <= KELLY_BOUNDS[1]:
+def set_exposure(value: float) -> dict:
+    """The whole-book exposure bound (charter 141): positions plus resting buys
+    may be at most this share of the real account."""
+
+    if not EXPOSURE_BOUNDS[0] <= value <= EXPOSURE_BOUNDS[1]:
         raise ValueError(
-            f"kelly out of bounds {KELLY_BOUNDS}: {value}"
+            f"exposure out of bounds {EXPOSURE_BOUNDS}: {value}"
         )
     policy = _read(POLICY_PATH)
     before = float(policy["portfolio_risk_fraction"])
@@ -286,6 +317,63 @@ def set_kelly(value: float) -> dict:
         "before": before, "after": policy["portfolio_risk_fraction"],
     })
     return state()
+
+
+def _capital_kernel():
+    from bayes_basket_target.basket_kernel import delta_v2  # noqa: PLC0415
+
+    return delta_v2
+
+
+def _read_capital_layer() -> dict:
+    """The dials as the file says them, else the kernel's defaults."""
+
+    kernel = _capital_kernel()
+    try:
+        raw = _read(CAPITAL_LAYER_PATH)
+        if raw.get("schema") != kernel.CAPITAL_LAYER_SCHEMA:
+            raise ValueError("capital_layer_schema_invalid")
+        return {**kernel.validate_capital_layer(raw), "source": "config"}
+    except Exception:  # noqa: BLE001 -- a missing or bad file reads as defaults
+        return {**kernel.CAPITAL_LAYER_DEFAULTS, "source": "defaults"}
+
+
+def _set_capital_dial(key: str, value: float) -> dict:
+    kernel = _capital_kernel()
+    current = _read_capital_layer()
+    before = current[key]
+    proposed = {
+        k: current[k] for k in kernel.CAPITAL_LAYER_DEFAULTS
+    }
+    proposed[key] = round(float(value), 4)
+    try:
+        values = kernel.validate_capital_layer(proposed)
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(str(exc)) from exc
+    payload = {
+        "schema": kernel.CAPITAL_LAYER_SCHEMA,
+        **values,
+        "updated_at_utc": _now(),
+    }
+    if CAPITAL_LAYER_PATH.is_file():
+        existing = _read(CAPITAL_LAYER_PATH)
+        if existing.get("rationale"):
+            payload["rationale"] = existing["rationale"]
+    _write_atomic(CAPITAL_LAYER_PATH, payload)
+    _audit({"knob": key, "before": before, "after": values[key]})
+    return state()
+
+
+def set_kelly_fraction(value: float) -> dict:
+    return _set_capital_dial("kelly_fraction", value)
+
+
+def set_station_sizing(value: float) -> dict:
+    return _set_capital_dial("station_day_sizing_fraction", value)
+
+
+def set_station_ceiling(value: float) -> dict:
+    return _set_capital_dial("station_day_ceiling_fraction", value)
 
 
 def set_budget(value: float) -> dict:
@@ -316,21 +404,24 @@ def set_budget(value: float) -> dict:
     return state()
 
 
+CAPITAL_BOUNDS = {
+    "station_day_sizing_fraction": (0.005, 0.25),
+    "station_day_ceiling_fraction": (0.01, 0.50),
+}
+
+
 def _capital_layer_state() -> dict:
     """Charter 141's station-day fractions and the latest real account read."""
 
     out: dict = {}
     try:
-        from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: PLC0415
-            CAPITAL_LAYER_RULE_VERSION,
-            MAX_STAKE_FRACTION_PER_SCOPE,
-            STATION_DAY_HARD_FRACTION,
-        )
-
+        capital = _read_capital_layer()
         out.update({
-            "rule": CAPITAL_LAYER_RULE_VERSION,
-            "sizing_fraction": MAX_STAKE_FRACTION_PER_SCOPE,
-            "ceiling_fraction": STATION_DAY_HARD_FRACTION,
+            "rule": _capital_kernel().CAPITAL_LAYER_RULE_VERSION,
+            "kelly_fraction": capital["kelly_fraction"],
+            "sizing_fraction": capital["station_day_sizing_fraction"],
+            "ceiling_fraction": capital["station_day_ceiling_fraction"],
+            "source": capital["source"],
         })
     except Exception as exc:  # noqa: BLE001 -- a state read never fails the page
         out["error"] = f"{type(exc).__name__}:{exc}"[:160]
@@ -1050,7 +1141,18 @@ class Handler(BaseHTTPRequestHandler):
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
             if self.path.rstrip("/") == "/api/kelly":
-                out = set_kelly(float(body["value"]))
+                raise ValueError(
+                    "/api/kelly is retired (charter 141): reload the board; "
+                    "use /api/exposure or /api/kelly-fraction"
+                )
+            elif self.path.rstrip("/") == "/api/exposure":
+                out = set_exposure(float(body["value"]))
+            elif self.path.rstrip("/") == "/api/kelly-fraction":
+                out = set_kelly_fraction(float(body["value"]))
+            elif self.path.rstrip("/") == "/api/station-sizing":
+                out = set_station_sizing(float(body["value"]))
+            elif self.path.rstrip("/") == "/api/station-ceiling":
+                out = set_station_ceiling(float(body["value"]))
             elif self.path.rstrip("/") == "/api/budget":
                 out = set_budget(float(body["value"]))
             elif self.path.rstrip("/") == "/api/live":

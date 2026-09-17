@@ -538,7 +538,78 @@ def execution_authorization_rule_v1(
 OBJECTIVE_FORMS = frozenset({
     VALUE_OBJECTIVE_FORM, CURVE_OBJECTIVE_FORM, KELLY_OBJECTIVE_FORM,
 })
-DEFAULT_KELLY_FRACTION = 0.25
+# Charter 141 (user, 2026-09-17: "前端增加凯利的调整按钮", "单站不能调整么"):
+# the capital layer's three numbers are operator dials, written by the board
+# to ``config/trading/capital_layer_v1.json`` and read fresh before every
+# production compile (``refresh_capital_layer``).  An environment override
+# still pins a value for a research arm; the built-in defaults stand when the
+# file is absent or invalid.  The paper ledger runs as a fresh process and
+# reads the file once at import, so its fingerprint names the values it used.
+CAPITAL_LAYER_CONFIG_PATH = os.environ.get("PM_CAPITAL_LAYER_CONFIG", "") or os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "config", "trading", "capital_layer_v1.json",
+)
+CAPITAL_LAYER_SCHEMA = "basket_capital_layer_v1"
+CAPITAL_LAYER_DEFAULTS = {
+    "kelly_fraction": 0.25,
+    "station_day_sizing_fraction": 0.065,
+    "station_day_ceiling_fraction": 0.10,
+}
+CAPITAL_LAYER_BOUNDS = {
+    "kelly_fraction": (0.05, 1.0),
+    "station_day_sizing_fraction": (0.005, 0.25),
+    "station_day_ceiling_fraction": (0.01, 0.50),
+}
+_CAPITAL_LAYER_ENV = {
+    "kelly_fraction": "PM_KELLY_FRACTION",
+    "station_day_sizing_fraction": "PM_STATION_DAY_SOFT_FRACTION",
+    "station_day_ceiling_fraction": "PM_STATION_DAY_HARD_FRACTION",
+}
+
+
+def validate_capital_layer(raw: Mapping[str, Any]) -> dict[str, float]:
+    """The three dials, bounded and ordered, or ``ContractError``."""
+
+    out: dict[str, float] = {}
+    for key, (lo, hi) in CAPITAL_LAYER_BOUNDS.items():
+        try:
+            value = float(raw[key])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ContractError(f"capital_layer_{key}_missing") from exc
+        if not math.isfinite(value) or not lo - 1e-12 <= value <= hi + 1e-12:
+            raise ContractError(f"capital_layer_{key}_out_of_bounds")
+        out[key] = value
+    if out["station_day_sizing_fraction"] > out["station_day_ceiling_fraction"] + 1e-12:
+        raise ContractError("capital_layer_sizing_above_ceiling")
+    return out
+
+
+def _resolve_capital_layer() -> tuple[dict[str, float], str, str | None]:
+    values = dict(CAPITAL_LAYER_DEFAULTS)
+    source = "defaults"
+    error: str | None = None
+    try:
+        with open(CAPITAL_LAYER_CONFIG_PATH, encoding="utf-8") as handle:
+            raw = json.load(handle)
+        if raw.get("schema") != CAPITAL_LAYER_SCHEMA:
+            raise ContractError("capital_layer_schema_invalid")
+        values = validate_capital_layer(raw)
+        source = "config"
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError, ContractError) as exc:
+        error = f"{type(exc).__name__}:{exc}"[:160]
+    for key, env in _CAPITAL_LAYER_ENV.items():
+        pinned = os.environ.get(env, "").strip()
+        if pinned:
+            values[key] = float(pinned)
+            source = "env" if source == "defaults" else source + "+env"
+    values = validate_capital_layer(values)
+    return values, source, error
+
+
+_CAPITAL_LAYER_INITIAL, _CAPITAL_LAYER_SOURCE, _CAPITAL_LAYER_ERROR = _resolve_capital_layer()
+DEFAULT_KELLY_FRACTION = _CAPITAL_LAYER_INITIAL["kelly_fraction"]
 # Which way the Kelly fraction enters the curve's bankroll (2026-09-09).
 #
 # Fractional Kelly is ``f * q*(W)``, and the log-optimal stake is linear in
@@ -584,7 +655,7 @@ if CURVE_BANKROLL_CONVENTION not in CURVE_BANKROLL_CONVENTIONS:
 
 def curve_effective_bankroll_v1(
     bankroll_usdc: float,
-    kelly_fraction: float = DEFAULT_KELLY_FRACTION,
+    kelly_fraction: float | None = None,
     *,
     convention: str | None = None,
 ) -> float:
@@ -598,7 +669,9 @@ def curve_effective_bankroll_v1(
     """
 
     bankroll = float(bankroll_usdc)
-    fraction = float(kelly_fraction)
+    fraction = float(
+        DEFAULT_KELLY_FRACTION if kelly_fraction is None else kelly_fraction
+    )
     if not (bankroll > 0.0) or not math.isfinite(bankroll):
         raise ContractError("delta_v2_curve_bankroll_invalid")
     if not (0.0 < fraction <= 1.0):
@@ -648,17 +721,57 @@ def curve_effective_bankroll_v1(
 # 40% of the allowance back for later stages that charter 137 measured could
 # never reach it, and it was the reason a P0 completion could not afford the
 # leg its own opening had planned for.
-MAX_STAKE_FRACTION_PER_SCOPE = float(
-    os.environ.get("PM_STATION_DAY_SOFT_FRACTION", "") or 0.065
-)
-STATION_DAY_HARD_FRACTION = float(
-    os.environ.get("PM_STATION_DAY_HARD_FRACTION", "") or 0.10
-)
-if not (0.0 < MAX_STAKE_FRACTION_PER_SCOPE <= STATION_DAY_HARD_FRACTION <= 1.0):
-    raise RuntimeError(
-        "station-day fractions must satisfy 0 < soft <= hard <= 1: "
-        f"{MAX_STAKE_FRACTION_PER_SCOPE} / {STATION_DAY_HARD_FRACTION}"
-    )
+MAX_STAKE_FRACTION_PER_SCOPE = _CAPITAL_LAYER_INITIAL["station_day_sizing_fraction"]
+STATION_DAY_HARD_FRACTION = _CAPITAL_LAYER_INITIAL["station_day_ceiling_fraction"]
+_CAPITAL_LAYER_MTIME: int | None = None
+
+
+def current_capital_layer() -> dict[str, Any]:
+    """The three dials this process is sizing with, and where they came from."""
+
+    return {
+        "schema": CAPITAL_LAYER_SCHEMA,
+        "kelly_fraction": DEFAULT_KELLY_FRACTION,
+        "station_day_sizing_fraction": MAX_STAKE_FRACTION_PER_SCOPE,
+        "station_day_ceiling_fraction": STATION_DAY_HARD_FRACTION,
+        "source": _CAPITAL_LAYER_SOURCE,
+        "error": _CAPITAL_LAYER_ERROR,
+    }
+
+
+def refresh_capital_layer() -> dict[str, Any]:
+    """Re-read the dials when the file changed; an invalid file changes nothing.
+
+    Every kernel function that reads a dial resolves it at call time, so the
+    module attributes set here are the values the next compile sizes with.
+    """
+
+    global DEFAULT_KELLY_FRACTION, MAX_STAKE_FRACTION_PER_SCOPE
+    global STATION_DAY_HARD_FRACTION, _CAPITAL_LAYER_MTIME
+    global _CAPITAL_LAYER_SOURCE, _CAPITAL_LAYER_ERROR
+    try:
+        mtime: int | None = os.stat(CAPITAL_LAYER_CONFIG_PATH).st_mtime_ns
+    except OSError:
+        mtime = None
+    if mtime == _CAPITAL_LAYER_MTIME:
+        return current_capital_layer()
+    try:
+        values, source, error = _resolve_capital_layer()
+    except ContractError as exc:
+        _CAPITAL_LAYER_ERROR = f"ContractError:{exc}"[:160]
+        return current_capital_layer()
+    if error is not None:
+        # A file the board half-wrote or a value out of bounds: the book keeps
+        # sizing with the last good dials rather than falling to the defaults.
+        _CAPITAL_LAYER_MTIME = mtime
+        _CAPITAL_LAYER_ERROR = error
+        return current_capital_layer()
+    _CAPITAL_LAYER_MTIME = mtime
+    DEFAULT_KELLY_FRACTION = values["kelly_fraction"]
+    MAX_STAKE_FRACTION_PER_SCOPE = values["station_day_sizing_fraction"]
+    STATION_DAY_HARD_FRACTION = values["station_day_ceiling_fraction"]
+    _CAPITAL_LAYER_SOURCE, _CAPITAL_LAYER_ERROR = source, error
+    return current_capital_layer()
 CAPITAL_LAYER_RULE_VERSION = "real_equity_soft_sizing_hard_ceiling_v1"
 # The stages a chain moves through.  Used only to tell a named stage from an
 # unnamed caller; no stage owns a share of the allowance any more.
@@ -670,7 +783,7 @@ def scope_stake_cap_usdc(
     book_equity_usdc: float,
     stage: str = "",
     committed_usdc: float = 0.0,
-    scope_fraction: float = MAX_STAKE_FRACTION_PER_SCOPE,
+    scope_fraction: float | None = None,
 ) -> float:
     """What SIZING may still target for this station-day, in USDC.
 
@@ -687,6 +800,8 @@ def scope_stake_cap_usdc(
     """
 
     del stage
+    if scope_fraction is None:
+        scope_fraction = MAX_STAKE_FRACTION_PER_SCOPE
     equity = float(book_equity_usdc)
     if not equity > 0.0:
         return 0.0
@@ -698,7 +813,7 @@ def station_day_ceiling_usdc(
     *,
     book_equity_usdc: float,
     committed_usdc: float = 0.0,
-    hard_fraction: float = STATION_DAY_HARD_FRACTION,
+    hard_fraction: float | None = None,
 ) -> float:
     """Charter 141: what may still go OUT for this station-day, in USDC.
 
@@ -707,6 +822,8 @@ def station_day_ceiling_usdc(
     that reads both can only widen what sizing chose, never narrow it.
     """
 
+    if hard_fraction is None:
+        hard_fraction = STATION_DAY_HARD_FRACTION
     equity = float(book_equity_usdc)
     if not equity > 0.0:
         return 0.0
@@ -2476,8 +2593,8 @@ def whole_basket_kelly_stake_v1(
     win_probability: float,
     cost: float,
     book_equity_usdc: float,
-    kelly_fraction: float = DEFAULT_KELLY_FRACTION,
-    scope_fraction: float = MAX_STAKE_FRACTION_PER_SCOPE,
+    kelly_fraction: float | None = None,
+    scope_fraction: float | None = None,
 ) -> tuple[float, float]:
     """Charter 72's size: fractional Kelly on the basket as a binary bet.
 
@@ -2491,6 +2608,10 @@ def whole_basket_kelly_stake_v1(
     measured every charter since 2026-08-15 under it.
     """
 
+    if kelly_fraction is None:
+        kelly_fraction = DEFAULT_KELLY_FRACTION
+    if scope_fraction is None:
+        scope_fraction = MAX_STAKE_FRACTION_PER_SCOPE
     cost = float(cost)
     if cost <= 0.0 or cost >= 1.0:
         return 0.0, 0.0
@@ -4430,7 +4551,7 @@ def curve_score(
     audit: Mapping[str, Any],
     *,
     bankroll_usdc: float,
-    kelly_fraction: float = DEFAULT_KELLY_FRACTION,
+    kelly_fraction: float | None = None,
 ) -> float:
     """Score the settled-outcome PnL curve by fractional log wealth.
 
@@ -4618,7 +4739,7 @@ def solve_target_inventory_v2(
     maximum_candidates: int = 4096,
     objective_form: str = VALUE_OBJECTIVE_FORM,
     bankroll_usdc: float | None = None,
-    kelly_fraction: float = DEFAULT_KELLY_FRACTION,
+    kelly_fraction: float | None = None,
     below_leg_floor_buckets: Sequence[str] = (),
     excluded_candidate_ids: Sequence[str] = (),
 ) -> dict[str, Any]:
@@ -4805,7 +4926,7 @@ def solve_target_inventory_v2(
         "kernel_version": KERNEL_VERSION,
         "objective_form": form,
         "kelly_fraction": (
-            kelly_fraction
+            (DEFAULT_KELLY_FRACTION if kelly_fraction is None else kelly_fraction)
             if form in (CURVE_OBJECTIVE_FORM, KELLY_OBJECTIVE_FORM)
             else None
         ),

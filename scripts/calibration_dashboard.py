@@ -4940,6 +4940,8 @@ def collect_live_readiness(
             return {}
 
     policy = _config(ROOT / "config/trading/portfolio_capital_policy_v1.json")
+    # Charter 141: the three capital dials, as the resident will read them.
+    capital_layer = _config(ROOT / "config/trading/capital_layer_v1.json")
     # The runtime contract the mode selects, which is the rule production
     # itself follows (weather_basket_yes_daemon.py, and the budget read in
     # production_worker.py).  This panel read the no-live file
@@ -5043,7 +5045,10 @@ def collect_live_readiness(
             "split_event_date": quality["split_event_date"],
             "thresholds": quality["thresholds"],
         },
-        "kelly": policy.get("portfolio_risk_fraction"),
+        "kelly": capital_layer.get("kelly_fraction", 0.25),
+        "exposure": policy.get("portfolio_risk_fraction"),
+        "station_sizing": capital_layer.get("station_day_sizing_fraction", 0.065),
+        "station_ceiling": capital_layer.get("station_day_ceiling_fraction", 0.10),
         "budget_usdc": runtime.get("target_remaining_budget_usdc"),
         "live_enabled": intent.get("live_enabled"),
         # What the system is, not what it was when this panel was written.
@@ -15182,12 +15187,25 @@ function moneyBoard(){
 // which field is which -- the cap's "unset means the default" rule used to
 // be written out twice.
 const LC_KNOBS = {
-  // Charter 141: the whole-book exposure bound on the real account (the
-  // non-cash share).  The endpoint keeps its historical name.
-  kelly:  {id:"lc-kelly", name:"总敞口", path:"/api/kelly",
-    field:"portfolio_risk_fraction", spec:s=>s.kelly,
-    read:s=>s.kelly.portfolio_risk_fraction,
+  // Charter 141 (2026-09-17): four capital dials.  Kelly is the share of full
+  // Kelly a basket stakes; the other three are shares of the real account,
+  // shown as percentages.  ``decimals`` is how finely a step may land.
+  kelly:  {id:"lc-kelly", name:"凯利", path:"/api/kelly-fraction",
+    field:"kelly_fraction", spec:s=>s.kelly, decimals:2,
+    read:s=>s.kelly.kelly_fraction,
     fmt:v=>Number(v).toFixed(2)},
+  exposure: {id:"lc-exposure", name:"总敞口", path:"/api/exposure",
+    field:"portfolio_risk_fraction", spec:s=>s.exposure, decimals:2, pct:true,
+    read:s=>s.exposure.portfolio_risk_fraction,
+    fmt:v=>`${Math.round(Number(v)*100)}%`},
+  sizing: {id:"lc-sizing", name:"单站日定注", path:"/api/station-sizing",
+    field:"station_day_sizing_fraction", spec:s=>s.station_sizing, decimals:3, pct:true,
+    read:s=>s.station_sizing.station_day_sizing_fraction,
+    fmt:v=>`${Math.round(Number(v)*1000)/10}%`},
+  ceiling: {id:"lc-ceiling", name:"单站日上限", path:"/api/station-ceiling",
+    field:"station_day_ceiling_fraction", spec:s=>s.station_ceiling, decimals:3, pct:true,
+    read:s=>s.station_ceiling.station_day_ceiling_fraction,
+    fmt:v=>`${Math.round(Number(v)*1000)/10}%`},
   // Whole multiples of 5 (operator ruling, 2026-09-16; the server refuses
   // anything else).  A value still off the grid -- 114.29 from before the
   // ruling -- is shown as it is, and its first step lands on the grid.
@@ -15201,7 +15219,10 @@ const LC_KNOBS = {
 // that far away in its direction, so 114.29 +5 is 115 and −5 is 110, and
 // +50 is 160 rather than an off-grid 164.29.
 function lcNext(K, cur, delta){
-  if(!K.grid) return Math.round((cur + delta) * 100) / 100;
+  if(!K.grid){
+    const scale = Math.pow(10, K.decimals == null ? 2 : K.decimals);
+    return Math.round((cur + delta) * scale) / scale;
+  }
   const g = K.grid, units = delta / g;
   const base = delta > 0 ? Math.floor(cur / g + 1e-9) : Math.ceil(cur / g - 1e-9);
   return Math.round((base + units) * g * 100) / 100;
@@ -15221,14 +15242,23 @@ function liveControlStrip(){
     <span class="navctl-s" id="lc-status"
       title="控制服务未连接——launchd 常驻 com.weather.live_control；拉起：launchctl kickstart -k gui/$(id -u)/com.weather.live_control"
       ><i></i><span id="lc-status-t">控制服务未连接</span></span>
-    ${knob("kelly", "总敞口上限 portfolio_risk_fraction（持仓市值+在挂买单 占 真实余额 的上限；宪章 141）",
+    ${knob("kelly", "凯利系数 kelly_fraction（每个篮子押完整凯利的几分之几；宪章 141）",
       `${b("kelly",-0.05,"−")}<b id="lc-kelly">${
         L.kelly==null?"—":LC_KNOBS.kelly.fmt(L.kelly)}</b>${b("kelly",0.05,"+")}`)}
+    ${knob("exposure", "总敞口上限 portfolio_risk_fraction（持仓市值+在挂买单 占 真实余额 的上限；宪章 141）",
+      `${b("exposure",-0.05,"−")}<b id="lc-exposure">${
+        L.exposure==null?"—":LC_KNOBS.exposure.fmt(L.exposure)}</b>${b("exposure",0.05,"+")}`)}
+    ${knob("sizing", "单站日定注 station_day_sizing_fraction（凯利押注、各类候选方案最多按真实余额的这个比例定大小，整条链共用；宪章 141）",
+      `${b("sizing",-0.005,"−")}<b id="lc-sizing">${
+        L.station_sizing==null?"—":LC_KNOBS.sizing.fmt(L.station_sizing)}</b>${b("sizing",0.005,"+")}`)}
+    ${knob("ceiling", "单站日上限 station_day_ceiling_fraction（抬到最小一手、补腿、下单最多花真实余额的这个比例，整条链共用；不能低于定注；宪章 141）",
+      `${b("ceiling",-0.01,"−")}<b id="lc-ceiling">${
+        L.station_ceiling==null?"—":LC_KNOBS.ceiling.fmt(L.station_ceiling)}</b>${b("ceiling",0.01,"+")}`)}
     ${knob("budget", "预算 target_remaining_budget_usdc（USDC，按 5 的整数倍）",
       `${b("budget",-50,"−50",true)}${b("budget",-5,"−")}<b id="lc-budget">${
         L.budget_usdc==null?"—":LC_KNOBS.budget.fmt(L.budget_usdc)}</b>${
         b("budget",5,"+")}${b("budget",50,"+50",true)}`)}
-    <span class="navctl-k" id="lc-capital" title="宪章 141：每站日 定注 6.5%×真实余额、成交上限 10%×真实余额（整条链共用，不分阶段）"><span class="navctl-l">每站日</span><span class="stp"><b id="lc-capital-v">—</b></span></span>
+    <span class="navctl-k" id="lc-capital" title="宪章 141：按最新真实余额换算的每站日 定注 / 上限（美元），和真实余额"><span class="navctl-l">每站日</span><span class="stp"><b id="lc-capital-v">—</b></span></span>
   </div>`;
 }
 

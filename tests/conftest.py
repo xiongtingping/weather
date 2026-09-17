@@ -1,7 +1,19 @@
 """Shared fixtures for the test suite."""
 from __future__ import annotations
 
+import os
+
 import pytest
+
+# Charter 141: the capital dials are an operator file the board writes while
+# the book trades.  Tests size with the built-in defaults, never with whatever
+# the operator last clicked -- set before any test module imports the kernel,
+# which reads the file at import.  A test of the file itself points the path
+# at its own copy.
+os.environ.setdefault(
+    "PM_CAPITAL_LAYER_CONFIG",
+    os.path.join(os.path.dirname(__file__), "_no_capital_layer_config.json"),
+)
 
 
 @pytest.fixture(autouse=True)

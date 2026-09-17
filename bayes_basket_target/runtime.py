@@ -37,10 +37,11 @@ from .basket_kernel.delta_v2 import (
     rescore_maker_bundle_v2,
     scope_stake_cap_usdc,
     station_day_ceiling_usdc,
-    STATION_DAY_HARD_FRACTION,
+    refresh_capital_layer,
     completion_budget_usdc_v1,
     venue_minimum_shares_v1,
 )
+from .basket_kernel import delta_v2 as _capital_kernel
 from .cash_phase import (
     BasketCashPhaseInput,
     BasketCashPhasePolicyArtifact,
@@ -138,7 +139,7 @@ def _capital_layer_policy_bounds(
         return {}
     if not math.isfinite(equity) or equity <= 0.0:
         return {}
-    ceiling = max(1.0, equity * STATION_DAY_HARD_FRACTION)
+    ceiling = max(1.0, equity * _capital_kernel.STATION_DAY_HARD_FRACTION)
     return {
         "total_budget_usdc": ceiling,
         "minimum_expected_pnl_after_usdc": -ceiling,
@@ -978,6 +979,9 @@ def _compile_target_plan(
 ) -> dict[str, Any]:
     """Compile one full stage → policy → v2 delta plan, no-live boundary."""
 
+    # Charter 141: the operator's capital dials, re-read when the file moved.
+    capital_layer = refresh_capital_layer()
+
     def _blocked(
         *,
         blockers: Sequence[str],
@@ -1412,7 +1416,7 @@ def _compile_target_plan(
             # day's ceiling share of the whole book, so a chain that spent
             # past the sizing share is not ruined by its own completion.
             chain_growth_frame_usdc=(
-                book_equity_usdc * STATION_DAY_HARD_FRACTION
+                book_equity_usdc * _capital_kernel.STATION_DAY_HARD_FRACTION
                 if market_snapshot.get("book_equity_usdc") not in (None, "")
                 else None
             ),
@@ -2034,6 +2038,7 @@ def _compile_target_plan(
         "book_equity_usdc": book_equity_usdc,
         "portfolio_room_usdc": portfolio_room_usdc,
         "capital_layer_rule": CAPITAL_LAYER_RULE_VERSION,
+        "capital_layer": capital_layer,
         "station_committed_usdc": station_committed_usdc,
         "pool_remaining_usdc": pool_remaining_usdc,
         "station_reserve_violations": [],
