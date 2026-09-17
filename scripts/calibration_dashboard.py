@@ -14260,41 +14260,43 @@ function hitRate(){
         这个模型在本窗口内没有自己的校正表，无法给出校正后数字</div>`}
     </div>`;
   }).join("");
-  // One table (user ruling, 2026-09-17): each model x lead row carries its
-  // raw reading over every settled run and, on the runs that had a
-  // calibration table fitted before the event day, the same reading before
-  // and after it.  A row with no such run shows its cells empty rather than
-  // one merged note, so a column sort still reads each row's own cells.
+  // One table, compared metric by metric (user rulings, 2026-09-17: 放在一起
+  // 对比，不要左右).  Each metric is a group of three: 原始 over every settled
+  // run, then 校正前 and 校正后 on the same runs -- the ones that had a
+  // calibration table fitted before the event day -- side by side.  A row
+  // with no such run shows those cells empty.
   const EDGE = 'style="border-left:1px solid var(--line)"';
-  const arrow = (before, after) => {
-    if(before == null || after == null) return `<td class="muted">—</td>`;
-    const better = after > before;
-    return `<td data-sort="${after}"><span class="muted">${pct1(before)}</span> →
-      <b class="${better ? "up" : (after < before ? "down" : "")}">${
-      pct1(after)}</b></td>`;
+  const rate = (v, edge="", cls="") => `<td class="${cls}"${edge?" "+edge:""}>${v == null ? "—" : pct1(v)}</td>`;
+  const after = (before, v) => `<td>${v == null ? '<span class="muted">—</span>'
+    : `<b class="${before == null ? "" : (v > before ? "up" : (v < before ? "down" : ""))}">${pct1(v)}</b>`}</td>`;
+  const metric = (r, k, rawCls="") => {
+    const before = r.paired ? r.paired_raw_rates[k] : null;
+    const cal = r.paired ? r.paired_calibrated_rates[k] : null;
+    return rate(r.raw_rates[k], EDGE, rawCls)
+      + `<td class="${before == null ? "muted" : ""}">${before == null ? "—" : pct1(before)}</td>`
+      + after(before, cal);
   };
   const body = rows.map(r => `<tr>
     <td><b>${h(r.label)}</b></td>
     <td>${h(r.lead_label)}</td>
     <td class="mono" ${EDGE}>${r.scored.toLocaleString()}</td>
-    <td class="${r.raw_rates[0] >= 0.25 ? "up" : ""}">${
-      pct1(r.raw_rates[0])}</td>
-    <td>${pct1(r.raw_rates[1])}</td>
-    <td>${pct1(r.raw_rates[2])}</td>
+    <td class="mono ${r.paired ? "" : "muted"}"${r.paired ? "" :
+      ` title="这一格的 ${r.uncorrected.toLocaleString()} 个 run 都没有事件日之前就已拟合好的校正表，不参与校正前后对比"`}>${
+      (r.paired || 0).toLocaleString()}</td>
+    ${metric(r, 0, r.raw_rates[0] >= 0.25 ? "up" : "")}
+    ${metric(r, 1)}
+    ${metric(r, 2)}
+    <td class="mono" ${EDGE}>${deg2(r.mae_c)}</td>
+    <td class="mono">${r.paired ? `<b>${deg2(r.paired_mae_c)}</b>` : '<span class="muted">—</span>'}</td>
     <td class="mono ${r.signed_bias_c == null ? "" :
-      (Math.abs(r.signed_bias_c) <= 0.5 ? "up" : "down")}">${
+      (Math.abs(r.signed_bias_c) <= 0.5 ? "up" : "down")}" ${EDGE}>${
       r.signed_bias_c == null ? "—" :
       (r.signed_bias_c >= 0 ? "+" : "") + r.signed_bias_c.toFixed(2)}</td>
-    <td class="mono">${deg2(r.mae_c)}</td>
-    ${r.paired
-      ? `<td class="mono" ${EDGE}>${r.paired.toLocaleString()}</td>
-        ${arrow(r.paired_raw_rates[0], r.paired_calibrated_rates[0])}
-        ${arrow(r.paired_raw_rates[1], r.paired_calibrated_rates[1])}
-        ${arrow(r.paired_raw_rates[2], r.paired_calibrated_rates[2])}
-        <td class="mono">${deg2(r.paired_mae_c)}</td>`
-      : `<td class="mono muted" ${EDGE} title="这一格的 ${r.uncorrected.toLocaleString()} 个 run 都没有事件日之前就已拟合好的校正表，不参与对比">0</td>
-        <td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td>`}
   </tr>`).join("");
+  const group = (label, span) => `<th colspan="${span}" class="muted" style="text-align:center;font-weight:normal;border-left:1px solid var(--line)">${label}</th>`;
+  const trio = `<th ${EDGE} title="原始：全部已结算 run">原始</th>
+    <th title="校正前：有事件日之前拟合好校正表的那批 run，校正之前">校正前</th>
+    <th title="校正后：同一批 run，套上事件日之前拟合好的校正表之后">校正后</th>`;
   return `<h2>四大模型的命中率：检验偏差订正有没有让预报更准</h2>
   <p class="sub">把一个模型的成员均值当成它的答案，看它落在市场的哪个桶里，
   再和当天结算真值所在的桶比。桶按各站自己的市场刻度数——美国站 2°F 一档，
@@ -14303,24 +14305,24 @@ function hitRate(){
   <div class="why" style="margin-top:12px"><b>为什么原始命中率这么低：</b>
   全球集合预报没有见过某一个跑道旁的温度计。它给的是格点上的温度，
   站点的地形、下垫面、仪器位置带来的系统性偏差要靠每站的偏差订正表补回来，
-  这正是下表右半边「校正前后」在量的东西。</div>
-  <div class="why" style="margin-top:12px"><b>右半边两点必须说明：</b>一是用的校正表必须是<b>事件日之前</b>就已经
-  拟合好的那一版，所以它没见过被打分的这一天；二是校正前后跑在<b>同一批 run</b> 上，
-  只有约三成 run 在当时已经有可用的校正表，拿左半边全样本的原始命中率去比这三成的
-  校正后命中率，比的是覆盖面而不是校正本身。</div>
+  这正是下表「校正前 → 校正后」两列在量的东西。</div>
+  <div class="why" style="margin-top:12px"><b>读表前两点必须说明：</b>一是用的校正表必须是<b>事件日之前</b>就已经
+  拟合好的那一版，所以它没见过被打分的这一天；二是「校正前」「校正后」跑在<b>同一批 run</b>（可比 run）上，
+  只有约三成 run 在当时已经有可用的校正表。「原始」是全部已结算 run，拿它去比校正后，
+  比的是覆盖面而不是校正本身——比校正效果看紧挨着的校正前和校正后。</div>
   <table style="margin-top:12px"><thead><tr>
     <th rowspan="2">模型</th><th rowspan="2">提前量</th>
-    <th colspan="6" class="muted" style="text-align:center;font-weight:normal;border-left:1px solid var(--line)">原始（全部已结算 run）</th>
-    <th colspan="5" class="muted" style="text-align:center;font-weight:normal;border-left:1px solid var(--line)">校正前 → 校正后（同一批 run）</th>
+    ${group("run 数", 2)}${group("精准命中", 3)}${group("±1 桶内", 3)}${group("±2 桶内", 3)}
+    ${group("平均绝对误差", 2)}
+    <th rowspan="2" ${EDGE} title="预报减真值，全部已结算 run">平均偏差</th>
   </tr><tr>
-    <th ${EDGE}>已结算 run</th><th>精准命中</th>
-    <th>±1 桶内</th><th>±2 桶内</th><th>平均偏差</th><th>平均绝对误差</th>
-    <th ${EDGE}>可比 run</th><th>精准命中</th><th>±1 桶内</th><th>±2 桶内</th>
-    <th>校正后平均绝对误差</th>
+    <th ${EDGE} title="全部已结算 run">已结算</th><th title="有事件日之前拟合好校正表的 run，校正前后都在这批上算">可比</th>
+    ${trio}${trio}${trio}
+    <th ${EDGE} title="全部已结算 run，校正前">原始</th><th title="可比 run，校正后">校正后</th>
   </tr></thead><tbody>${body}</tbody></table>
   <div class="muted" style="margin-top:6px">「平均偏差」是预报减真值：
-  负数表示这个模型在这一提前量上系统性报冷。「可比 run」为 0 的格子没有事件日之前就已拟合好的校正表，
-  不参与校正前后对比（悬停看 run 数）。校正前后三列按校正后的值排序。</div>`;
+  负数表示这个模型在这一提前量上系统性报冷。「校正后」绿色＝比紧挨着的校正前高、红色＝低。
+  「可比」为 0 的格子没有事件日之前就已拟合好的校正表，不参与校正前后对比（悬停看 run 数）。</div>`;
 }
 
 
