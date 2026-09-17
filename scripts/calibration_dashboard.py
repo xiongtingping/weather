@@ -14260,10 +14260,23 @@ function hitRate(){
         这个模型在本窗口内没有自己的校正表，无法给出校正后数字</div>`}
     </div>`;
   }).join("");
-  const raw = rows.map(r => `<tr>
+  // One table (user ruling, 2026-09-17): each model x lead row carries its
+  // raw reading over every settled run and, on the runs that had a
+  // calibration table fitted before the event day, the same reading before
+  // and after it.  A row with no such run shows its cells empty rather than
+  // one merged note, so a column sort still reads each row's own cells.
+  const EDGE = 'style="border-left:1px solid var(--line)"';
+  const arrow = (before, after) => {
+    if(before == null || after == null) return `<td class="muted">—</td>`;
+    const better = after > before;
+    return `<td data-sort="${after}"><span class="muted">${pct1(before)}</span> →
+      <b class="${better ? "up" : (after < before ? "down" : "")}">${
+      pct1(after)}</b></td>`;
+  };
+  const body = rows.map(r => `<tr>
     <td><b>${h(r.label)}</b></td>
     <td>${h(r.lead_label)}</td>
-    <td class="mono">${r.scored.toLocaleString()}</td>
+    <td class="mono" ${EDGE}>${r.scored.toLocaleString()}</td>
     <td class="${r.raw_rates[0] >= 0.25 ? "up" : ""}">${
       pct1(r.raw_rates[0])}</td>
     <td>${pct1(r.raw_rates[1])}</td>
@@ -14273,28 +14286,14 @@ function hitRate(){
       r.signed_bias_c == null ? "—" :
       (r.signed_bias_c >= 0 ? "+" : "") + r.signed_bias_c.toFixed(2)}</td>
     <td class="mono">${deg2(r.mae_c)}</td>
-  </tr>`).join("");
-  const arrow = (before, after) => {
-    if(before == null || after == null) return "—";
-    const better = after > before;
-    return `<span class="muted">${pct1(before)}</span> →
-      <b class="${better ? "up" : (after < before ? "down" : "")}">${
-      pct1(after)}</b>`;
-  };
-  const cal = rows.map(r => r.paired ? `<tr>
-    <td><b>${h(r.label)}</b></td>
-    <td>${h(r.lead_label)}</td>
-    <td class="mono">${r.paired.toLocaleString()}</td>
-    <td>${arrow(r.paired_raw_rates[0], r.paired_calibrated_rates[0])}</td>
-    <td>${arrow(r.paired_raw_rates[1], r.paired_calibrated_rates[1])}</td>
-    <td>${arrow(r.paired_raw_rates[2], r.paired_calibrated_rates[2])}</td>
-    <td class="mono">${deg2(r.paired_mae_c)}</td>
-  </tr>` : `<tr>
-    <td><b>${h(r.label)}</b></td>
-    <td>${h(r.lead_label)}</td>
-    <td class="mono">0</td>
-    <td colspan="4" class="muted">这一格的 ${r.uncorrected.toLocaleString()}
-      个 run 都没有事件日之前就已拟合好的校正表，不参与对比</td>
+    ${r.paired
+      ? `<td class="mono" ${EDGE}>${r.paired.toLocaleString()}</td>
+        ${arrow(r.paired_raw_rates[0], r.paired_calibrated_rates[0])}
+        ${arrow(r.paired_raw_rates[1], r.paired_calibrated_rates[1])}
+        ${arrow(r.paired_raw_rates[2], r.paired_calibrated_rates[2])}
+        <td class="mono">${deg2(r.paired_mae_c)}</td>`
+      : `<td class="mono muted" ${EDGE} title="这一格的 ${r.uncorrected.toLocaleString()} 个 run 都没有事件日之前就已拟合好的校正表，不参与对比">0</td>
+        <td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td>`}
   </tr>`).join("");
   return `<h2>四大模型的命中率：检验偏差订正有没有让预报更准</h2>
   <p class="sub">把一个模型的成员均值当成它的答案，看它落在市场的哪个桶里，
@@ -14304,23 +14303,24 @@ function hitRate(){
   <div class="why" style="margin-top:12px"><b>为什么原始命中率这么低：</b>
   全球集合预报没有见过某一个跑道旁的温度计。它给的是格点上的温度，
   站点的地形、下垫面、仪器位置带来的系统性偏差要靠每站的偏差订正表补回来，
-  这正是下面第二张表在量的东西。</div>
-  <table style="margin-top:12px"><thead><tr>
-    <th>模型</th><th>提前量</th><th>已结算 run</th><th>精准命中</th>
-    <th>±1 桶内</th><th>±2 桶内</th><th>平均偏差</th><th>平均绝对误差</th>
-  </tr></thead><tbody>${raw}</tbody></table>
-  <div class="muted" style="margin-top:6px">「平均偏差」是预报减真值：
-  负数表示这个模型在这一提前量上系统性报冷。</div>
-  <h2 style="margin-top:28px">校正后（同样本对比）</h2>
-  <div class="why"><b>两点必须说明：</b>一是用的校正表必须是<b>事件日之前</b>就已经
-  拟合好的那一版，所以它没见过被打分的这一天；二是左右两列跑在<b>同一批 run</b> 上，
-  只有约三成 run 在当时已经有可用的校正表，拿全样本的原始命中率去比这三成的
+  这正是下表右半边「校正前后」在量的东西。</div>
+  <div class="why" style="margin-top:12px"><b>右半边两点必须说明：</b>一是用的校正表必须是<b>事件日之前</b>就已经
+  拟合好的那一版，所以它没见过被打分的这一天；二是校正前后跑在<b>同一批 run</b> 上，
+  只有约三成 run 在当时已经有可用的校正表，拿左半边全样本的原始命中率去比这三成的
   校正后命中率，比的是覆盖面而不是校正本身。</div>
   <table style="margin-top:12px"><thead><tr>
-    <th>模型</th><th>提前量</th><th>可比 run</th><th>精准命中 原始→校正</th>
-    <th>±1 桶内 原始→校正</th><th>±2 桶内 原始→校正</th>
+    <th rowspan="2">模型</th><th rowspan="2">提前量</th>
+    <th colspan="6" class="muted" style="text-align:center;font-weight:normal;border-left:1px solid var(--line)">原始（全部已结算 run）</th>
+    <th colspan="5" class="muted" style="text-align:center;font-weight:normal;border-left:1px solid var(--line)">校正前 → 校正后（同一批 run）</th>
+  </tr><tr>
+    <th ${EDGE}>已结算 run</th><th>精准命中</th>
+    <th>±1 桶内</th><th>±2 桶内</th><th>平均偏差</th><th>平均绝对误差</th>
+    <th ${EDGE}>可比 run</th><th>精准命中</th><th>±1 桶内</th><th>±2 桶内</th>
     <th>校正后平均绝对误差</th>
-  </tr></thead><tbody>${cal}</tbody></table>`;
+  </tr></thead><tbody>${body}</tbody></table>
+  <div class="muted" style="margin-top:6px">「平均偏差」是预报减真值：
+  负数表示这个模型在这一提前量上系统性报冷。「可比 run」为 0 的格子没有事件日之前就已拟合好的校正表，
+  不参与校正前后对比（悬停看 run 数）。校正前后三列按校正后的值排序。</div>`;
 }
 
 
