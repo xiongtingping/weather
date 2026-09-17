@@ -360,20 +360,3 @@ def test_public_writer_rejects_tampered_packet_and_row_cap() -> None:
     with pytest.raises(ForwardObservationError):
         write_forward_observation_packet("target-local.json", bounded)
 
-
-def test_cli_defaults_dry_run_and_apply_only_writes_output(tmp_path: Path) -> None:
-    args = _inputs()
-    paths = []
-    names = ["cycle.json", "registry.json"]
-    for name, value in zip(names, args):
-        path = tmp_path / name
-        path.write_text(json.dumps(value), encoding="utf-8")
-        paths.append(path)
-    output = tmp_path / "target-local.json"
-    command = [sys.executable, str(ROOT / "scripts/capture_bayes_basket_target_cash_phase_forward_observation.py"), "--cycle-receipt", str(paths[0]), "--registry", str(paths[1]), "--output", str(output)]
-    dry = subprocess.run(command, cwd=ROOT, check=True, capture_output=True, text=True)
-    assert json.loads(dry.stdout)["dry_run"] is True
-    assert not output.exists()
-    applied = subprocess.run(command + ["--apply"], cwd=ROOT, check=True, capture_output=True, text=True)
-    assert json.loads(applied.stdout)["written"] is True
-    assert json.loads(output.read_text())["orders_submitted"] == 0

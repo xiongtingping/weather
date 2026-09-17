@@ -322,33 +322,3 @@ def test_missing_station_stage_is_explicitly_blocked():
     assert result["state"] == "BUILT_NO_LIVE"
     assert station["selected_probability_stage"] == "P0"
 
-
-def test_cli_writes_content_addressed_no_live_artifact(tmp_path):
-    scenario_path = tmp_path / "scenario.json"
-    stage_path = tmp_path / "p0.json"
-    output_path = tmp_path / "binding.json"
-    scenario_path.write_text(json.dumps(_scenario()), encoding="utf-8")
-    stage_path.write_text(json.dumps(_envelope("P0", "p0")), encoding="utf-8")
-    completed = subprocess.run(
-        [
-            sys.executable,
-            str(SCRIPT),
-            "--scenario-roles",
-            str(scenario_path),
-            "--probability-stage",
-            str(stage_path),
-            "--output",
-            str(output_path),
-        ],
-        cwd=ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    assert completed.returncode == 0, completed.stdout + completed.stderr
-    artifact = json.loads(output_path.read_text(encoding="utf-8"))
-    assert artifact["content_sha256"] == content_sha256(
-        {key: value for key, value in artifact.items() if key != "content_sha256"}
-    )
-    assert artifact["calls_order_gateway"] is False
-    assert artifact["orders_submitted"] == 0

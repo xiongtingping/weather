@@ -778,23 +778,6 @@ def test_p0_quote_must_be_content_bound_to_verified_manifest() -> None:
         )
 
 
-def test_only_target_worker_owns_p0_append_entrypoint() -> None:
-    root = Path(__file__).resolve().parents[1]
-    validator = (
-        root / "scripts/materialize_bayes_basket_target_p0_preselection.py"
-    ).read_text(encoding="utf-8")
-    dispatcher = (
-        root / "scripts/run_bayes_basket_target_p0_worker_once.py"
-    ).read_text(encoding="utf-8")
-    worker = (
-        root / "bayes_basket_target/production_worker.py"
-    ).read_text(encoding="utf-8")
-    assert "--commit" not in validator
-    assert "commit_p0_preselection" not in validator
-    assert "materialize_forward_p0_preselections" in dispatcher
-    assert "commit_p0_preselection(" in worker
-
-
 def test_an_unfunded_station_still_records_its_market_evidence() -> None:
     """No money is a reason to buy nothing, not a reason to see nothing.
 

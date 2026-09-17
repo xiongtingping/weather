@@ -14,12 +14,145 @@ from scripts.plan_native_ensemble_activation_repair import (
     _strict_oos_sample_evidence,
     build_plan,
 )
-from tests.test_audit_native_ensemble_activation_oos_linkage import (
-    _insert_activation,
-    _insert_evaluation,
-    _schema,
-)
 from bayes_basket_target.fleet import expected_station_count
+
+
+
+# Schema and rows for the native-ensemble activation / OOS linkage tables,
+# moved here from the retired audit's test when the audit went with the
+# legacy tree; this plan still reads the same three tables.
+AS_OF = "2026-08-02T02:00:00.000Z"
+SYSTEM_IDS = ["ECMWF_IFS_ENS_OPEN_PF50", "NOAA_GEFS_05"]
+CYCLE_BY_SYSTEM = {
+    "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+    "NOAA_GEFS_05": "18Z",
+}
+SYSTEM_IDS_JSON = json.dumps(SYSTEM_IDS, separators=(",", ":"))
+CYCLE_JSON = json.dumps(
+    CYCLE_BY_SYSTEM, sort_keys=True, separators=(",", ":")
+)
+MASK_SHA = content_sha256(SYSTEM_IDS)
+CYCLE_SHA = content_sha256(CYCLE_BY_SYSTEM)
+SELECTION_SHA = "a" * 64
+
+
+def _schema(connection: sqlite3.Connection) -> None:
+    connection.executescript(
+        """
+        CREATE TABLE calibration_native_ensemble_activation (
+          activation_id TEXT PRIMARY KEY,
+          artifact_kind TEXT NOT NULL,
+          artifact_id TEXT NOT NULL,
+          station_id TEXT NOT NULL,
+          ensemble_system_id_or_star TEXT NOT NULL,
+          season_bin TEXT NOT NULL,
+          lead_bucket TEXT NOT NULL,
+          run_cycle TEXT NOT NULL,
+          settlement_definition TEXT NOT NULL,
+          available_system_set_hash_or_star TEXT NOT NULL,
+          generation INTEGER NOT NULL,
+          valid_from_utc TEXT NOT NULL,
+          valid_until_utc TEXT NOT NULL,
+          activated_at_utc TEXT NOT NULL,
+          authority_scope TEXT NOT NULL,
+          content_sha256 TEXT NOT NULL,
+          run_cycle_by_system_json TEXT,
+          run_cycle_by_system_sha256 TEXT
+        );
+        CREATE TABLE calibration_cross_native_ensemble_artifact (
+          cross_ensemble_artifact_id TEXT PRIMARY KEY,
+          station_id TEXT NOT NULL,
+          season_bin TEXT NOT NULL,
+          lead_bucket TEXT NOT NULL,
+          run_cycle TEXT NOT NULL,
+          settlement_definition TEXT NOT NULL,
+          ensemble_system_ids_json TEXT NOT NULL,
+          ensemble_system_count INTEGER NOT NULL,
+          independent_family_count INTEGER NOT NULL,
+          supported_exact_masks_json TEXT NOT NULL,
+          selection_evidence_sha256 TEXT NOT NULL,
+          combination_method TEXT NOT NULL,
+          family_weight_caps_json TEXT NOT NULL,
+          probability_pathway TEXT NOT NULL,
+          valid_from_utc TEXT NOT NULL,
+          valid_until_utc TEXT NOT NULL,
+          content_sha256 TEXT NOT NULL,
+          run_cycle_by_system_json TEXT,
+          run_cycle_by_system_sha256 TEXT
+        );
+        CREATE TABLE calibration_cross_native_ensemble_oos_evaluation (
+          evaluation_id TEXT PRIMARY KEY,
+          station_id TEXT NOT NULL,
+          season_bin TEXT NOT NULL,
+          lead_bucket TEXT NOT NULL,
+          run_cycle TEXT NOT NULL,
+          run_cycle_by_system_json TEXT NOT NULL,
+          run_cycle_by_system_sha256 TEXT NOT NULL,
+          settlement_definition TEXT NOT NULL,
+          ensemble_system_ids_json TEXT NOT NULL,
+          available_system_set_hash TEXT NOT NULL,
+          selection_evidence_sha256 TEXT NOT NULL,
+          oos_state TEXT NOT NULL,
+          threshold_profile TEXT NOT NULL,
+          min_train_days INTEGER NOT NULL,
+          min_holdout_days INTEGER NOT NULL,
+          train_end_date TEXT NOT NULL,
+          holdout_start_date TEXT NOT NULL,
+          holdout_end_date TEXT NOT NULL,
+          oos_metrics_json TEXT NOT NULL,
+          climatology_baseline_metrics_json TEXT NOT NULL,
+          evaluated_at_utc TEXT NOT NULL,
+          content_sha256 TEXT NOT NULL
+        );
+        """
+    )
+
+
+def _insert_activation(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        "INSERT INTO calibration_cross_native_ensemble_artifact VALUES(?,?,?,?,?"
+        ",?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            "artifact-1", "KATL", "JJA", "d2", "18Z",
+            "official_daily_tmax_c", SYSTEM_IDS_JSON, len(SYSTEM_IDS), 2,
+            SYSTEM_IDS_JSON, SELECTION_SHA, "test", "{}",
+            "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+            "2026-08-01T00:00:00.000Z", "2026-09-01T00:00:00.000Z",
+            "b" * 64, CYCLE_JSON, CYCLE_SHA,
+        ),
+    )
+    connection.execute(
+        "INSERT INTO calibration_native_ensemble_activation VALUES(?,?,?,?,?"
+        ",?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            "activation-1", "CROSS_NATIVE_ENSEMBLE", "artifact-1", "KATL",
+            "*", "JJA", "d2", "18Z", "official_daily_tmax_c", MASK_SHA,
+            1, "2026-08-01T00:00:00.000Z", "2026-09-01T00:00:00.000Z",
+            "2026-08-01T00:00:00.000Z", "PRODUCTION_NO_LIVE_ONLY",
+            "c" * 64, CYCLE_JSON, CYCLE_SHA,
+        ),
+    )
+
+
+def _insert_evaluation(
+    connection: sqlite3.Connection,
+    *,
+    evaluation_id: str,
+    selection_sha: str,
+    state: str = "PRODUCTION_NO_LIVE_OOS_PASS",
+    evaluated_at_utc: str = "2026-08-01T01:00:00.000Z",
+) -> None:
+    connection.execute(
+        "INSERT INTO calibration_cross_native_ensemble_oos_evaluation "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            evaluation_id, "KATL", "JJA", "d2", "18Z", CYCLE_JSON,
+            CYCLE_SHA, "official_daily_tmax_c", SYSTEM_IDS_JSON, MASK_SHA,
+            selection_sha, state, "strict", 20, 8, "2026-07-01",
+            "2026-07-02", "2026-07-10", "{}", "{}", evaluated_at_utc,
+            "d" * 63 + evaluation_id[-1],
+        ),
+    )
 
 
 AS_OF = "2026-08-02T00:00:00.000Z"

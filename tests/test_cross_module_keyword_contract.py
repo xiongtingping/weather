@@ -48,10 +48,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 # contract now wants cohort *references*).  They are the evidence that this
 # check was needed, so they are named rather than deleted, and the check
 # exists to stop the next one reaching the resident.
-KNOWN_BROKEN_CALL_SITES = {
-    ("scripts/evaluate_pr10_reserved_p0.py", "build_model_oos_selection_contract"),
-    ("scripts/build_pr10_reserved_masks.py", "build_historical_holdout_reservation"),
-}
+# Empty since 2026-09-17: both orphans that used to be listed here
+# (evaluate_pr10_reserved_p0.py, build_pr10_reserved_masks.py) were deleted
+# with the July-August legacy tree, so the tree carries no known-broken call.
+KNOWN_BROKEN_CALL_SITES: set[tuple[str, str]] = set()
 
 
 def _python_files(root: pathlib.Path) -> list[pathlib.Path]:

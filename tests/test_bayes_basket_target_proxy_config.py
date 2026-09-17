@@ -23,7 +23,6 @@ RESEARCH_CONFIG_PATH = ROOT / "config" / "trading" / "bayes_basket_target_resear
 LAUNCHD_PATH = ROOT / "launchd" / "com.weather.weather_basket_yes.plist"
 LAUNCHD_ENV_LOADER_PATH = ROOT / "scripts" / "lib" / "load_launchctl_env.sh"
 CLOB_ORDER_SERVICE_PATH = ROOT / "scripts" / "clob_order_service.mjs"
-SETTLEMENT_FLOOR_EXECUTE_PATH = ROOT / "scripts" / "settlement_floor_execute.py"
 
 PROXY_URL_KEYS = (
     "HTTP_PROXY",
@@ -42,12 +41,10 @@ CORE_ARTIFACT_PATHS = (
     LAUNCHD_PATH,
     LAUNCHD_ENV_LOADER_PATH,
     CLOB_ORDER_SERVICE_PATH,
-    SETTLEMENT_FLOOR_EXECUTE_PATH,
 )
 TARGET_CORE_SCRIPT_PATHS = (
     LAUNCHD_ENV_LOADER_PATH,
     CLOB_ORDER_SERVICE_PATH,
-    SETTLEMENT_FLOOR_EXECUTE_PATH,
 )
 FORBIDDEN_RESIDUES = ("7897", "shadowrocket")
 
@@ -84,7 +81,7 @@ def _parse_dotenv(text: str) -> dict[str, list[str]]:
 def test_proxy_artifacts_are_explicit_and_bounded() -> None:
     """The consistency check must have a finite, small read set."""
 
-    assert len(CORE_ARTIFACT_PATHS) == 6
+    assert len(CORE_ARTIFACT_PATHS) == 5
     for path in CORE_ARTIFACT_PATHS:
         assert path.is_file(), f"missing explicit proxy artifact: {path}"
         _read_bounded(path)
@@ -129,10 +126,8 @@ def test_target_core_scripts_have_no_old_proxy_residue() -> None:
 def test_target_core_scripts_keep_1082_proxy_candidate() -> None:
     loader = _read_bounded(LAUNCHD_ENV_LOADER_PATH)
     clob = _read_bounded(CLOB_ORDER_SERVICE_PATH)
-    settlement_floor = _read_bounded(SETTLEMENT_FLOOR_EXECUTE_PATH)
 
     assert "PM_PROXY_LOCAL_FALLBACK_PORTS:-1082" in loader
     assert 'env("PM_PROXY_LOCAL_FALLBACK_PORTS", "1082")' in clob
-    assert 'os.environ.get("PM_PROXY_LOCAL_FALLBACK_PORTS", "1082")' in settlement_floor
     assert "127.0.0.1:$candidate" in loader
     assert "http://127.0.0.1:${port}" in clob

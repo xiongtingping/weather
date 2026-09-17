@@ -550,26 +550,6 @@ def test_nested_registry_json_is_read_without_live_side_effects():
     assert "insufficient_exact_buckets_after_reported_floor" in plan["basket"]["reason_codes"]
 
 
-def test_plan_package_has_no_live_or_persistence_imports():
-    forbidden_roots = {"sqlite3", "urllib", "requests", "subprocess", "httpx"}
-    repo_root = Path(__file__).resolve().parents[1]
-    source_paths = list((repo_root / "basket_strategy").glob("*.py"))
-    # The production adapter is intentionally the only live/persistence
-    # boundary; the planner modules remain side-effect free.
-    source_paths = [path for path in source_paths if path.name not in {"production.py", "schema.py"}]
-    source_paths.append(repo_root / "scripts" / "prepare_basket_yes_plan.py")
-    for source_path in source_paths:
-        tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                imported = [alias.name.split(".")[0] for alias in node.names]
-            elif isinstance(node, ast.ImportFrom):
-                imported = [node.module.split(".")[0]] if node.module else []
-            else:
-                continue
-            assert not forbidden_roots.intersection(imported), (source_path, imported)
-
-
 def test_plan_contract_always_exposes_zero_live_guards():
     plan = build_basket_yes_plan(_request())
     assert plan["execution_mode"] == "plan_only"

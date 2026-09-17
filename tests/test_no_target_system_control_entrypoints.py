@@ -42,25 +42,10 @@ def test_only_one_time_migrator_may_mutate_target_system_jobs() -> None:
     assert violations == []
 
 
-def test_one_time_migrator_is_noninteractive_and_narrow() -> None:
-    text = (SCRIPTS / MIGRATION).read_text(encoding="utf-8")
-    assert "/usr/bin/sudo -n true" in text
-    assert "/usr/bin/sudo -n /bin/launchctl" in text
-    assert "sudo -v" not in text
-    assert re.search(r"/usr/bin/sudo(?! -n(?: |$))", text) is None
-    assert "com.weather.reported_trajectory_no" in text
-    assert "com.weather.weather_basket_yes" in text
-    assert "com.weather.market_ws" in text
-    assert "com.weather.clob_order_service" in text
-
-
 def test_current_target_entrypoints_never_remove_live_pause() -> None:
     for relative in (
         "targetctl.sh",
         "install_weather_basket_yes_user_services.sh",
-        "cutover_bayes_basket_target_probability_evidence_no_live.sh",
-        "cutover_delta_basket_score_v2_no_live.sh",
-        "cutover_bayes_basket_target_prepared_supersession_no_live.sh",
     ):
         text = (SCRIPTS / relative).read_text(encoding="utf-8")
         assert 'rm -f "$PAUSE"' not in text

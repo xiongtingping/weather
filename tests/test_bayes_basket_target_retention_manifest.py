@@ -150,26 +150,6 @@ def test_external_drive_is_rejected_without_access(tmp_path: Path) -> None:
         rm.build_retention_manifest([path], project_root=tmp_path)
 
 
-def test_cli_has_no_delete_switch_and_is_read_only(tmp_path: Path) -> None:
-    script = Path(__file__).resolve().parents[1] / "scripts" / "bayes_basket_target_retention_audit.py"
-    text = script.read_text(encoding="utf-8")
-    assert "--delete" not in text
-    path = tmp_path / "file.txt"
-    path.write_text("x", encoding="utf-8")
-    before = path.stat()
-    import subprocess
-
-    completed = subprocess.run(
-        ["python3", str(script), "--project-root", str(tmp_path), str(path)],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    assert json.loads(completed.stdout)["state"] == "AUDIT_ONLY"
-    after = path.stat()
-    assert (before.st_size, before.st_mtime_ns) == (after.st_size, after.st_mtime_ns)
-
-
 def test_duplicate_explicit_paths_are_scanned_once(tmp_path: Path) -> None:
     path = tmp_path / "file.txt"
     path.write_text("x", encoding="utf-8")

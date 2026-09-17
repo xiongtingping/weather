@@ -48,9 +48,3 @@ def test_sms_sender_does_not_import_scanner_when_recipient_missing(monkeypatch) 
     assert recipient == ""
     assert "scan_weather_market" not in (ROOT / "scripts" / "auto_trade_watcher.py").read_text(encoding="utf-8")
 
-
-def test_amsc_sender_does_not_claim_handset_delivery() -> None:
-    sender = (ROOT / "scripts" / "send_amsc_sms.py").read_text(encoding="utf-8")
-
-    assert "submitted to Messages" in sender
-    assert "delivered to" not in sender

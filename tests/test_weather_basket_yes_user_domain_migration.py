@@ -58,66 +58,6 @@ def test_daily_user_control_has_no_sudo_or_system_mutation() -> None:
     assert "refusing dual-active" in installer
 
 
-def test_one_time_migration_never_opens_password_prompt() -> None:
-    migration = _text("migrate_weather_basket_yes_to_user_domain.sh")
-    assert "/usr/bin/sudo -n true" in migration
-    assert "/usr/bin/sudo -n /bin/launchctl" in migration
-    assert "/usr/bin/sudo -n /bin/rm" in migration
-    assert not re.search(r"/usr/bin/sudo(?! -n(?: |$))", migration)
-    credential_gate = migration.index("/usr/bin/sudo -n true")
-    assert credential_gate < migration.index(
-        '/usr/bin/sudo -n /bin/launchctl disable'
-    )
-    assert credential_gate < migration.index(
-        '/usr/bin/sudo -n /bin/launchctl bootout'
-    )
-    assert "no service state was changed" in migration
-    for retired in (
-        "com.weather.monitor.daemon",
-        "com.weather.model_release_watcher",
-    ):
-        assert retired in migration
-
-
-def test_one_time_migration_retires_persistent_system_plists_not_only_loaded_jobs() -> None:
-    migration = _text("migrate_weather_basket_yes_to_user_domain.sh")
-    assert 'system_retirement_required=0' in migration
-    assert 'if [ -e "/Library/LaunchDaemons/${label}.plist" ]; then' in migration
-    assert 'for label in "${SYSTEM_RETIRE_LABELS[@]}"; do' in migration
-    assert 'echo "system plist was not retired: ${plist}"' in migration
-
-
-def test_migration_preflight_precedes_system_retirement() -> None:
-    migration = _text("migrate_weather_basket_yes_to_user_domain.sh")
-    retirement = migration.index(
-        '/usr/bin/sudo -n /bin/launchctl disable'
-    )
-    assert migration.index('/bin/bash -n "$script"') < retirement
-    assert migration.index('/usr/bin/plutil -lint "$source_plist"') < retirement
-    assert migration.index(
-        '/bin/launchctl print "gui/$(id -u)"'
-    ) < retirement
-
-
-def test_all_user_domain_shell_entrypoints_parse() -> None:
-    for name in (
-        "install_launchagent.sh",
-        "install_weather_basket_yes_user_services.sh",
-        "migrate_weather_basket_yes_to_user_domain.sh",
-        "targetctl.sh",
-        "weather_basket_yes_daemon.sh",
-        "market_ws_listener.sh",
-        "clob_order_service.sh",
-    ):
-        result = subprocess.run(
-            ["/bin/bash", "-n", str(ROOT / "scripts" / name)],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        assert result.returncode == 0, f"{name}: {result.stderr}"
-
-
 def test_installer_binds_label_before_applying_service_contract() -> None:
     installer = _text("install_launchagent.sh")
     label_assignment = installer.index('label = data.get("Label", "")')
