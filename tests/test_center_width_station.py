@@ -45,10 +45,11 @@ CENTERS = [22.5, 24.0, 25.0, 26.0, 27.0, 28.5]
 def test_station_scale_composes_with_the_stage_lambda() -> None:
     """Two scalings about the same mean multiply, and each keeps its bounds.
 
-    The composed product may reach 0.25, which neither layer may claim
-    alone -- that is why the scale is a separate argument with its own
-    validation rather than being folded into ``width_lambda`` by the caller,
-    where the lambda bounds would spuriously reject it.
+    The scale is a separate argument with its own validation rather than
+    being folded into ``width_lambda`` by the caller, where the lambda bounds
+    would spuriously reject it.  The product itself is floored at 0.5 since
+    charter 142 (tests/test_charter_142_composed_width_lambda_floor.py); the
+    pair below composes to 0.56 and is served as such.
     """
 
     probability = {k: p for k, p in zip(KEYS, [0.05, 0.15, 0.3, 0.3, 0.15, 0.05])}

@@ -52,10 +52,25 @@ MAX_WIDTH_LAMBDA = 1.5
 # 0.744 pool: the stage lambda can centre that dispersion but cannot flatten
 # it, which is the same shape that moved the spread factor from a global
 # constant to a per-scope fit.  Each factor is validated separately so each
-# layer stays inside its own bounds; their product may legitimately reach
-# 0.25, which no single layer would be entitled to claim alone.
+# layer stays inside its own bounds.
 MIN_STATION_WIDTH_SCALE = 0.5
 MAX_STATION_WIDTH_SCALE = 1.5
+# The composed lambda -- pooled lambda times station scale times floor lift,
+# the one number a point's deviation from the mean is actually multiplied by
+# -- has a floor of its own (user ruling 2026-09-17, charter 142).  Until then
+# the product was allowed to reach 0.25 on the argument that each factor had
+# passed its own bounds, and that is exactly what the station width table v1
+# did: activated 2026-09-06 09:32Z on a forward gain of +0.028 nat, it served
+# 1,611 P0 rows at 0.75 x 0.5 = 0.375 until the incumbent veto retired it on
+# 2026-09-10 15:27Z.  Rebuilt from lineage (tmp/r3_zero_bucket_20260917/),
+# those rows put the settled truth on an exact-zero bucket 4.59% of the time
+# against 0.13% under the pooled 0.75 alone, and cost +0.57 nat against
+# identity -- the whole of what the review filed as R3.  The fit and the
+# serving path share this function, so a lane cannot buy a width below the
+# floor either: a candidate scale that would compose below it is scored, and
+# served, at the floor.  Receipts carry the unfloored product beside the
+# served one so an audit can see when the floor bound.
+MIN_COMPOSED_WIDTH_LAMBDA = 0.5
 # The width floor.  One lambda cannot serve a fleet whose own
 # claimed spread means different things at different sizes.  Measured
 # 2026-09-05 on this stage's own serving cells, the standardised error's
@@ -349,7 +364,9 @@ def apply_center_width_calibration(
         tier_index = width_tier_index_v1(sigma_rungs, boundaries)
         tier_lambda = lambdas[tier_index]
         lam = tier_lambda
-    lam = lam * scale * lift
+    composed_lambda = lam * scale * lift
+    lam = max(MIN_COMPOSED_WIDTH_LAMBDA, composed_lambda)
+    composed_floored = lam != composed_lambda
     fitted_shift = shift
     shift = shift + regime
 
@@ -405,6 +422,9 @@ def apply_center_width_calibration(
             "fitted_delta_c": fitted_shift,
             "regime_delta_c": regime,
             "width_lambda": lam,
+            "composed_width_lambda_unfloored": composed_lambda,
+            "composed_width_lambda_floor": MIN_COMPOSED_WIDTH_LAMBDA,
+            "composed_width_lambda_floored": composed_floored,
             "distribution_mean_c": mean_c,
             "sigma_floor_rungs": float(sigma_floor_rungs),
             "sigma_floor_lift": lift,
@@ -438,6 +458,11 @@ def apply_center_width_calibration(
         "fitted_delta_c": fitted_shift,
         "regime_delta_c": regime,
         "width_lambda": lam,
+        # Charter 142: the product before the composed floor, the floor, and
+        # whether it bound.  ``width_lambda`` above is what was served.
+        "composed_width_lambda_unfloored": composed_lambda,
+        "composed_width_lambda_floor": MIN_COMPOSED_WIDTH_LAMBDA,
+        "composed_width_lambda_floored": composed_floored,
         "distribution_mean_c": mean_c,
         # The floor's three numbers travel together: the parameter, the lift
         # it produced, and the spread it was judged against.  A receipt
