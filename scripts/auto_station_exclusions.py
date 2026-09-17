@@ -82,13 +82,15 @@ def station_keys(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
     filled on the exchange and has settled -- the paper settlement row's grain
     -- from ``live_book``, the loader the board's money sections share.
 
-    ``expected`` is the claimed EV of what was actually held: the probability
-    the minting decision was bound to for each filled bucket, times the shares
-    filled, less the stake.  On paper this was stake x (claim/cost - 1) on the
-    position row, and it is the same quantity: the live book prices uneven
-    fills on the probability-weighted share count precisely so that identity
-    holds.  A settled row whose claim could not be read back contributes its
-    realized money and none of the expectation, and is counted.
+    ``expected`` is the claimed EV of what was actually held: each filled
+    bucket's probability on the stage's newest filling decision's envelope --
+    the one decision that judged the held basket whole (``live_book``, "Mixed
+    decisions") -- times the shares filled, less the stake.  On paper this was
+    stake x (claim/cost - 1) on the position row, and it is the same quantity:
+    the live book prices uneven fills on the probability-weighted share count
+    precisely so that identity holds.  A settled row whose claim could not be
+    read back contributes its realized money and none of the expectation, and
+    is counted.
     """
 
     agg: dict[str, dict[str, float]] = collections.defaultdict(

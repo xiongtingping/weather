@@ -35,6 +35,19 @@ as the probability-weighted share count ``S = sum(p_b s_b) / sum(p_b)`` and
 ``cost = stake / S``.  Then ``S x (claim - cost) = sum(p_b s_b) - stake``,
 which is exactly what the held legs were claimed to return, and a basket with
 one share count reduces to the paper definition.
+
+Mixed decisions.  One stage can hold buckets bought by different decisions,
+each bound to its own envelope.  Each ``p_b`` above used to be the claim of
+the decision that bought ``b``, so one basket's claim added up masses from
+different envelopes: KLAX's 2026-09-15 P0 basket came to 1.35 and EFHK's
+2026-09-10 to 1.11, while ZGGG's 2026-09-09 P0-M -- three completion legs,
+each cheap on its own bucket -- came to 0.72 under three envelopes that each
+put 0.98 on the three together.  Every reading of 命中/声称 divided by those.
+The held basket as a whole was judged by one decision only: the last one to
+fill, which planned against the inventory the earlier ones left (charters
+84, 136).  So the claim, the claimed EV and the cost all read that
+decision's envelope (``basket_belief``); a stage with one decision reads
+exactly as before.
 """
 
 from __future__ import annotations
@@ -42,7 +55,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from paper_trading_ledger import (
@@ -317,9 +330,55 @@ def load_legs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 None if probabilities is None
                 else float(probabilities.get(str(bucket), 0.0))
             ),
+            # The decision's whole envelope, one dict shared by its legs:
+            # a basket's claim needs its newest decision's mass on buckets
+            # earlier decisions bought (``basket_belief``).
+            "decision_probabilities": probabilities,
             "center_c": info.get("center_c"),
         })
     return legs
+
+
+def basket_belief(
+    legs: Iterable[Mapping[str, Any]], *, strict: bool = True
+) -> Mapping[str, float] | None:
+    """The one envelope a basket made of ``legs`` is claimed on.
+
+    The newest decision behind the legs: it planned against what the earlier
+    ones had already bought, so it is the only one that judged the basket as
+    a whole.  Adding each bucket at the claim of the decision that bought it
+    read several envelopes as one and could pass 1.
+
+    A leg carries its decision's envelope as ``decision_probabilities``; one
+    built without that key falls back to what its decision's own legs
+    claimed, the buckets it posted and nothing else.  When the newest
+    decision's envelope is unknown the answer is ``None`` if ``strict``, and
+    otherwise the newest decision whose envelope is known.
+    """
+
+    order: dict[str, tuple[str, str, str]] = {}
+    envelopes: dict[str, Mapping[str, float] | None] = {}
+    posted: dict[str, dict[str, float]] = {}
+    for leg in legs:
+        decision = str(leg["decision_id"])
+        created = str(leg.get("created_at") or "")
+        at = (str(leg.get("decision_at_utc") or created), created, decision)
+        order[decision] = max(order.get(decision, at), at)
+        if "decision_probabilities" in leg:
+            envelopes[decision] = leg["decision_probabilities"]
+        elif leg.get("claimed_probability") is None:
+            envelopes[decision] = None
+        else:
+            posted.setdefault(decision, {})[str(leg["bucket"])] = float(
+                leg["claimed_probability"]
+            )
+    for decision, claims in posted.items():
+        envelopes.setdefault(decision, claims)
+    for decision in sorted(order, key=order.get, reverse=True):
+        envelope = envelopes.get(decision)
+        if envelope is not None or strict:
+            return envelope
+    return None
 
 
 def stage_summary(group: list[dict[str, Any]]) -> dict[str, Any]:
@@ -333,9 +392,6 @@ def stage_summary(group: list[dict[str, Any]]) -> dict[str, Any]:
     filled = [leg for leg in group if leg["filled_size"] > 0]
     shares: dict[str, float] = defaultdict(float)
     cash: dict[str, float] = defaultdict(float)
-    # A bucket bought by two decisions of one stage at different claims is
-    # held at the share-weighted claim of the two.
-    claim_mass: dict[str, float] = defaultdict(float)
     claim_known = True
     for leg in filled:
         bucket = leg["bucket"]
@@ -343,8 +399,6 @@ def stage_summary(group: list[dict[str, Any]]) -> dict[str, Any]:
         cash[bucket] += leg["filled_notional_usdc"]
         if leg["claimed_probability"] is None:
             claim_known = False
-        else:
-            claim_mass[bucket] += leg["claimed_probability"] * leg["filled_size"]
     stake = sum(cash.values())
     # The centre the held basket stood on: each filled leg's decision centre,
     # weighted by the shares it bought.  Legs whose envelope carried no
@@ -361,13 +415,17 @@ def stage_summary(group: list[dict[str, Any]]) -> dict[str, Any]:
     claim = None
     cost = None
     claimed_ev = None
-    if filled and claim_known:
-        per_bucket = {
-            bucket: claim_mass[bucket] / shares[bucket]
+    held_claims: dict[str, float] = {}
+    # One envelope for the held basket, not each bucket at the claim of the
+    # decision that bought it (see "Mixed decisions" above).
+    belief = basket_belief(filled) if filled and claim_known else None
+    if belief is not None:
+        held_claims = {
+            bucket: float(belief.get(bucket, 0.0))
             for bucket in shares if shares[bucket] > 0
         }
-        claim = sum(per_bucket.values())
-        weighted = sum(per_bucket[b] * shares[b] for b in per_bucket)
+        claim = sum(held_claims.values())
+        weighted = sum(held_claims[b] * shares[b] for b in held_claims)
         claimed_ev = weighted - stake
         if claim > 0 and weighted > 0:
             cost = stake / (weighted / claim)
@@ -387,11 +445,8 @@ def stage_summary(group: list[dict[str, Any]]) -> dict[str, Any]:
         if leg["claimed_probability"] is not None:
             slot["claimed_probability"] = leg["claimed_probability"]
     for bucket, slot in posted.items():
-        if shares.get(bucket):
-            slot["claimed_probability"] = (
-                claim_mass[bucket] / shares[bucket] if claim_known
-                else slot["claimed_probability"]
-            )
+        if shares.get(bucket) and bucket in held_claims:
+            slot["claimed_probability"] = held_claims[bucket]
     return {
         "baskets": len({leg["decision_id"] for leg in group}),
         "posted_legs": len(group),

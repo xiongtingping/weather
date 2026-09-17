@@ -69,14 +69,15 @@ def _store() -> sqlite3.Connection:
 
 
 def _decision(conn, decision, station, day, *, stage="P0",
-              bound_at="2026-09-10T05:08:48.697Z", sha=SHA):
+              bound_at="2026-09-10T05:08:48.697Z", sha=SHA,
+              decided_at="2026-09-10T05:18:29.926Z"):
     details = {
         "decision_signature": {"stage": stage},
         "forward_evidence_binding": {
             "probability_stage": stage,
             "probability_decision_at_utc": bound_at,
             "probability_artifact_sha256": sha,
-            "decision_at_utc": "2026-09-10T05:18:29.926Z",
+            "decision_at_utc": decided_at,
         },
     }
     conn.execute(
@@ -177,6 +178,67 @@ def test_an_uneven_basket_keeps_the_claimed_ev_identity():
     # Held misses, the posted basket held the truth.
     assert row["hit"] == 0 and row["intended_hit"] == 1
     assert row["pnl_usdc"] == pytest.approx(-stake)
+
+
+def test_a_basket_two_decisions_bought_is_claimed_on_the_last_ones_envelope():
+    """KLAX 2026-09-15: three buckets from two envelopes summed to 1.35.
+
+    One decision bought 30°C believing it 0.5; a later one bought 31°C
+    believing it 0.7 while holding the first leg.  Added up, the basket "won"
+    1.2 of the time.  The later decision is the one that judged the pair: its
+    envelope puts 0.9 on it, and the EV, the cost and each held bucket read
+    that same envelope.
+    """
+
+    conn = _store()
+    # "late" sorts before "early" by id and its intent row comes first, so
+    # only the decision instant can say which one judged the pair.
+    _decision(conn, "early", "ZBAA", "2026-09-10", sha=SHA)
+    _decision(conn, "late", "ZBAA", "2026-09-10", sha=OTHER,
+              bound_at="2026-09-10T07:00:00.000Z",
+              decided_at="2026-09-10T07:05:00.000Z")
+    _envelope(conn, "ZBAA", "2026-09-10",
+              {"30°C": 0.5, "31°C": 0.45, "32°C": 0.05}, sha=SHA, name="e1")
+    _envelope(conn, "ZBAA", "2026-09-10",
+              {"30°C": 0.2, "31°C": 0.7, "32°C": 0.1}, sha=OTHER, name="e2",
+              at="2026-09-10T07:00:00.000000Z")
+    _leg(conn, "i2", "late", "31°C", filled=10.0, filled_notional=4.0)
+    _leg(conn, "i1", "early", "30°C", filled=10.0, filled_notional=3.0)
+    _settle(conn, "ZBAA", "2026-09-10", "31°C")
+
+    book = live_book.build(conn)
+    (row,) = book["settlements"]
+    stake = 7.0
+    assert row["claimed_win_probability"] == pytest.approx(0.9)
+    assert row["claimed_ev_usdc"] == pytest.approx(0.2 * 10 + 0.7 * 10 - stake)
+    assert stake * (row["claimed_win_probability"]
+                    / row["basket_all_in_cost"] - 1.0) == pytest.approx(
+        row["claimed_ev_usdc"])
+    # The held buckets are drawn on the same envelope, so they add up to it.
+    (day,) = live_book.station_days(book)
+    held = [b for b in day["stages"]["P0"]["buckets"] if b["filled_size"] > 0]
+    assert sum(b["claimed_probability"] for b in held) == pytest.approx(0.9)
+
+
+def test_one_unknown_envelope_leaves_a_mixed_basket_unclaimed():
+    conn = _store()
+    _decision(conn, "early", "ZBAA", "2026-09-10", sha=SHA)
+    _decision(conn, "late", "ZBAA", "2026-09-10", sha="c" * 64,  # no envelope
+              bound_at="2026-09-10T07:00:00.000Z",
+              decided_at="2026-09-10T07:05:00.000Z")
+    _envelope(conn, "ZBAA", "2026-09-10", {"30°C": 0.5, "31°C": 0.45})
+    _leg(conn, "i1", "early", "30°C", filled=10.0, filled_notional=3.0)
+    _leg(conn, "i2", "late", "31°C", filled=10.0, filled_notional=4.0)
+    _settle(conn, "ZBAA", "2026-09-10", "31°C")
+
+    book = live_book.build(conn)
+    (row,) = book["settlements"]
+    assert row["claimed_win_probability"] is None
+    assert row["basket_all_in_cost"] is None
+    # A reading that tolerates it steps back to the newest envelope it has.
+    assert live_book.basket_belief(book["legs"], strict=False) == {
+        "30°C": 0.5, "31°C": 0.45}
+    assert live_book.basket_belief(book["legs"]) is None
 
 
 def test_an_even_basket_prices_like_the_paper_seat():

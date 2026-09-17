@@ -16,6 +16,8 @@ import sqlite3
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
@@ -94,6 +96,31 @@ def test_a_day_the_send_gate_refused_whole_is_not_a_chosen_basket() -> None:
     assert chain["bought"] == {"30"}
     assert chain["landed"] == "31"
     assert abs(chain["claimed"] - 0.6) < 1e-9
+
+
+def test_the_chosen_claim_reads_the_newest_decisions_envelope() -> None:
+    """Newest-leg-per-bucket added two envelopes and passed 1.
+
+    d1 posted 30 (its envelope: 30 at 0.6, 31 at 0.3); d2 later posted 31
+    (30 at 0.3, 31 at 0.65).  Added bucket by bucket that is 0.6 + 0.65 =
+    1.25; on d2's envelope, the newest, the chosen pair is 0.95.
+    """
+
+    e1 = {"30": 0.6, "31": 0.3}
+    e2 = {"30": 0.3, "31": 0.65}
+    # The later decision's id sorts first: only its instant says it is newer.
+    legs = [
+        dict(_leg("i1", "d9", "KMIA", "2026-09-10", "P0", "30", filled=5,
+                  notional=1, state="filled", claim=0.6),
+             decision_probabilities=e1),
+        dict(_leg("i2", "d1", "KMIA", "2026-09-10", "P0", "31", claim=0.65,
+                  at="2026-09-10T03:00Z"),
+             decision_probabilities=e2),
+    ]
+    (chain,) = LS.settled_chains(
+        _book(legs, {("KMIA", "2026-09-10"): ("31", "truth")})
+    )
+    assert chain["claimed"] == pytest.approx(0.95)
 
 
 def test_basket_width_is_the_buckets_that_filled() -> None:

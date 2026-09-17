@@ -98,8 +98,10 @@ def settled_chains(book: Mapping[str, Any]) -> list[dict[str, Any]]:
     """One record per settled station-day whose orders reached the exchange.
 
     ``chosen`` is every bucket production posted that day, across stages;
-    ``bought`` the buckets that filled; ``claimed`` the chosen set's mass,
-    each bucket at the claim of the newest leg posted on it.  A day whose
+    ``bought`` the buckets that filled; ``claimed`` the chosen set's mass on
+    one envelope, the newest decision's that posted (``live_book
+    .basket_belief``).  Each bucket at the claim of the newest leg posted on
+    it added several envelopes' masses together and could pass 1.  A day whose
     every intent the send gate refused is not here: no market was asked, so
     "chosen but not bought" would blame the market for a switch.
     """
@@ -112,11 +114,8 @@ def settled_chains(book: Mapping[str, Any]) -> list[dict[str, Any]]:
         landed = settled.get((station, day))
         if landed is None or not any(reached_exchange(leg) for leg in legs):
             continue
-        claims: dict[str, float] = {}
-        for leg in sorted(legs, key=lambda leg: str(leg.get("created_at"))):
-            if leg.get("claimed_probability") is not None:
-                claims[str(leg["bucket"])] = float(leg["claimed_probability"])
         chosen = {str(leg["bucket"]) for leg in legs}
+        belief = live_book.basket_belief(legs, strict=False)
         chains.append({
             "station_id": station,
             "event_date": day,
@@ -126,7 +125,10 @@ def settled_chains(book: Mapping[str, Any]) -> list[dict[str, Any]]:
                 if float(leg.get("filled_size") or 0.0) > 0
             },
             "landed": str(landed[0]),
-            "claimed": sum(claims.get(bucket, 0.0) for bucket in chosen),
+            "claimed": (
+                sum(float(belief.get(bucket, 0.0)) for bucket in chosen)
+                if belief is not None else 0.0
+            ),
         })
     return chains
 
