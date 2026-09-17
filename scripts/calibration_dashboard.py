@@ -9183,10 +9183,13 @@ def collect_valuation_lane(conn: sqlite3.Connection) -> dict[str, Any]:
         })
     shadow = {"decisions": 0, "states": {}, "would_admit": 0, "would_refuse": 0}
     try:
+        # The plan header lives on the training fact, one per decision;
+        # auto_trade_decisions carries it on a few rows only (2 of 121 on
+        # 2026-09-17), so reading it there counted almost nothing.  The
+        # table is append-only, so the newest rows are the highest rowids.
         rows = conn.execute(
-            "SELECT details_json FROM auto_trade_decisions"
-            " WHERE details_json LIKE '%valuation_state%'"
-            " ORDER BY created_at DESC LIMIT 300"
+            "SELECT feature_json FROM basket_policy_training_fact"
+            " ORDER BY rowid DESC LIMIT 300"
         ).fetchall()
     except sqlite3.Error:
         rows = []
@@ -9299,10 +9302,13 @@ def collect_posterior_lane(conn: sqlite3.Connection) -> dict[str, Any]:
         })
     shadow = {"decisions": 0, "states": {}, "would_admit": 0, "would_refuse": 0}
     try:
+        # The plan header lives on the training fact, one per decision;
+        # auto_trade_decisions carries it on a few rows only (2 of 121 on
+        # 2026-09-17), so reading it there counted almost nothing.  The
+        # table is append-only, so the newest rows are the highest rowids.
         rows = conn.execute(
-            "SELECT details_json FROM auto_trade_decisions"
-            " WHERE details_json LIKE '%posterior_state%'"
-            " ORDER BY created_at DESC LIMIT 300"
+            "SELECT feature_json FROM basket_policy_training_fact"
+            " ORDER BY rowid DESC LIMIT 300"
         ).fetchall()
     except sqlite3.Error:
         rows = []
