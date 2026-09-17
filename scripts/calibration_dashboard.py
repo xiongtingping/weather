@@ -2546,10 +2546,21 @@ def collect_h5_bias_accuracy(conn: sqlite3.Connection) -> dict[str, Any]:
     to the sample, so the section sharpens without anyone re-running it.
     """
 
-    h5_from = H5_FROM_UTC
-    series: dict[tuple[str, str, str, str], list[tuple[str, float]]] = (
-        defaultdict(list)
+    # The correction is production's own resolver, never restated here.
+    # Until 2026-09-17 this read ``bias_c`` and subtracted it, while the
+    # server centres on ``mean + resolved bias``: both arms were corrected
+    # the wrong way round, each corrected error came out near 2.8C against a
+    # raw error nearer 1.5C, and the H5-vs-H15 verdict was a comparison of
+    # two doubled biases.  A binned correction form was read as its constant.
+    from bayes_basket_target.native_ensemble_oos import (  # noqa: PLC0415
+        _corrected_center,
     )
+    from bayes_basket_target.contracts import ContractError  # noqa: PLC0415
+
+    h5_from = H5_FROM_UTC
+    series: dict[
+        tuple[str, str, str, str], list[tuple[str, dict[str, Any]]]
+    ] = defaultdict(list)
     for station, system, lead, cycle, valid_from, params in conn.execute(
         "SELECT station_id, ensemble_system_id, lead_bucket, run_cycle,"
         " valid_from_utc, bias_parameters_json"
@@ -2559,13 +2570,13 @@ def collect_h5_bias_accuracy(conn: sqlite3.Connection) -> dict[str, Any]:
         (H5_BASELINE_FROM_UTC,),
     ):
         try:
-            bias = json.loads(params).get("bias_c")
-        except (TypeError, ValueError, AttributeError):
+            parameters = json.loads(params)
+        except (TypeError, ValueError):
             continue
-        if bias is None:
+        if not isinstance(parameters, dict) or parameters.get("bias_c") is None:
             continue
         series[(station, system, lead, cycle)].append(
-            (str(valid_from), float(bias))
+            (str(valid_from), parameters)
         )
 
     def _as_of(
@@ -2573,14 +2584,14 @@ def collect_h5_bias_accuracy(conn: sqlite3.Connection) -> dict[str, Any]:
         cutoff: str,
         *,
         before: str | None = None,
-    ) -> float | None:
-        chosen: float | None = None
-        for valid_from, bias in series.get(key, ()):
+    ) -> dict[str, Any] | None:
+        chosen: dict[str, Any] | None = None
+        for valid_from, parameters in series.get(key, ()):
             if valid_from > cutoff:
                 break
             if before is not None and valid_from >= before:
                 break
-            chosen = bias
+            chosen = parameters
         return chosen
 
     def _first_h5_at(key: tuple[str, str, str, str], cutoff: str) -> bool:
@@ -2604,7 +2615,7 @@ def collect_h5_bias_accuracy(conn: sqlite3.Connection) -> dict[str, Any]:
         )
     }
     if not truth:
-        return {"from_utc": h5_from, "station_days": 0, "days": []}
+        return {"from_utc": h5_from, "station_days": 0}
     members: dict[tuple[str, str, str, str, str], list[float]] = (
         defaultdict(list)
     )
@@ -2621,6 +2632,11 @@ def collect_h5_bias_accuracy(conn: sqlite3.Connection) -> dict[str, Any]:
         ].append(float(raw))
 
     per_station_day: dict[tuple[str, str], list[float]] = defaultdict(list)
+    # Each arm's own corrected error, on the same cells, so the page can put
+    # H15 beside H5; averaged the same way the delta is, station-day first,
+    # which makes the two means differ by exactly ``mean_delta_c``.
+    error_h5: dict[tuple[str, str], list[float]] = defaultdict(list)
+    error_h15: dict[tuple[str, str], list[float]] = defaultdict(list)
     cells = 0
     for (station, system, day, lead, cycle), values in members.items():
         settled = truth.get((station, day))
@@ -2630,16 +2646,19 @@ def collect_h5_bias_accuracy(conn: sqlite3.Connection) -> dict[str, Any]:
         cutoff = f"{day}T00:00:00Z"
         if not _first_h5_at(key, cutoff):
             continue
-        bias_h5 = _as_of(key, cutoff)
-        bias_h15 = _as_of(key, cutoff, before=h5_from)
-        if bias_h5 is None or bias_h15 is None:
+        params_h5 = _as_of(key, cutoff)
+        params_h15 = _as_of(key, cutoff, before=h5_from)
+        if params_h5 is None or params_h15 is None:
             continue
         forecast = statistics.mean(values)
-        delta = (
-            abs(forecast - bias_h5 - settled)
-            - abs(forecast - bias_h15 - settled)
-        )
-        per_station_day[(station, day)].append(delta)
+        try:
+            miss_h5 = abs(_corrected_center(forecast, params_h5) - settled)
+            miss_h15 = abs(_corrected_center(forecast, params_h15) - settled)
+        except (ContractError, KeyError, TypeError, ValueError):
+            continue
+        per_station_day[(station, day)].append(miss_h5 - miss_h15)
+        error_h5[(station, day)].append(miss_h5)
+        error_h15[(station, day)].append(miss_h15)
         cells += 1
     if not per_station_day:
         return {"from_utc": h5_from, "station_days": 0}
@@ -2666,6 +2685,12 @@ def collect_h5_bias_accuracy(conn: sqlite3.Connection) -> dict[str, Any]:
         "median_delta_c": round(
             statistics.median(station_day_means.values()), 4
         ),
+        "mae_h5_c": round(statistics.mean(
+            statistics.mean(values) for values in error_h5.values()
+        ), 4),
+        "mae_h15_c": round(statistics.mean(
+            statistics.mean(values) for values in error_h15.values()
+        ), 4),
         "h5_better": better,
         "h5_worse": worse,
         "sign_z": round(z, 2),
@@ -10886,19 +10911,6 @@ border-top:4px solid var(--tone,var(--line))}
 .group > .grouptitle,.toparea > .grouptitle{margin:0 0 4px;padding:9px 12px;
 border-left:0;border-radius:6px;font-size:17px;
 background:color-mix(in srgb,var(--tone,var(--line)) 14%,transparent)}
-/* The chain strip under each area title (user ruling, 2026-09-17): where
-   this area sits between 模型 and 实盘, the current step lit in the area's
-   colour.  Wraps whole steps on a phone. */
-.pipe{display:flex;flex-wrap:wrap;align-items:stretch;gap:4px;margin:6px 0 14px}
-.pipe-step{cursor:pointer;display:flex;flex-direction:column;gap:1px;
-text-align:left;background:var(--card);color:var(--muted);
-border:1px solid var(--line);border-radius:7px;padding:5px 9px;
-font-family:inherit;font-size:11.5px;line-height:1.3;max-width:13em}
-.pipe-step b{color:var(--text);font-size:12.5px;font-weight:620}
-.pipe-step:hover{border-color:var(--accent)}
-.pipe-step[aria-current="step"]{border-color:var(--tone,var(--accent));
-background:color-mix(in srgb,var(--tone,var(--accent)) 16%,var(--card))}
-.pipe-arrow{align-self:center;color:var(--muted);font-size:13px}
 /* A sub-heading inside an area: the kind of thing the sections under it
    are.  Its edge wears the lane colour so "live" and "shadow" read before
    any number does. */
@@ -10913,6 +10925,21 @@ align-items:baseline;flex-wrap:wrap}
 /* The edge map. */
 .emap{padding:14px;margin-bottom:6px}
 .em-q{font-size:14px;margin-bottom:10px}
+.em-formula{font-size:15px;padding:8px 12px;border-radius:7px;margin-bottom:10px;
+background:color-mix(in srgb,var(--accent) 10%,var(--card));border:1px solid var(--line);
+overflow-x:auto;white-space:nowrap}
+.em-eq{display:grid;gap:8px;align-items:stretch;
+grid-template-columns:minmax(0,1fr) auto minmax(0,1.6fr) auto minmax(0,1fr) auto minmax(0,.8fr)}
+.em-op{align-self:center;font-size:22px;color:var(--muted);text-align:center}
+.em-term{border:1px solid var(--line);border-radius:9px;padding:9px 10px;
+display:flex;flex-direction:column;gap:4px;min-width:0}
+.em-term.em-result{border-color:var(--accent);
+background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.em-sym{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:16px;font-weight:650}
+.em-tt{font-weight:620}
+.em-list{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.em-sub{font-size:11.5px;margin-top:4px}
+@media (max-width:900px){.em-eq{grid-template-columns:1fr}.em-op{font-size:18px}}
 .em-inputs{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));margin-bottom:10px}
 .em-band{border:1px dashed var(--line);border-radius:9px;padding:10px;margin-top:10px}
 .em-band.em-live{border:1px solid var(--green);
@@ -13512,60 +13539,67 @@ function valuationLane(){
   （服务侧暂不改，证据读者严格拒绝，见宪章 132）。</p>`;
 }
 
-// The edge area's map (user ruling, 2026-09-17).  One picture of how the
-// eight sections relate: the inputs, the path production actually buys on,
-// the three shadow candidates for that path's one table, and the referees
-// that read truth.  Every node is a button onto its section.  Statuses are
-// read from LANES so the map and the strips cannot disagree.
+// The edge area's map (user rulings, 2026-09-17: "把前端显式按照这个逻辑改一下",
+// then "我说的是 l4 的逻辑").  Drawn as L4's own formula,
+//   logit b = logit m + w·(logit p − logit m) + c(m),
+// one box per term, each listing the sections that measure or serve that
+// term; then the verdict the formula is judged on and the direction it
+// falls without evidence.  Every section node jumps to its section, and its
+// status is read from LANES so the map and the strips cannot disagree.
 function edgeMap(){
   const st=(name)=>(LANES[name]||{}).status||"audit";
-  const node=(name,label,what,extra)=>{
+  const node=(name,label,what)=>{
     const s=st(name);
-    return `<button type="button" class="em-node" data-lane="${s}" data-goto-name="${h(name)}"${
-      extra?` data-kind="${extra}"`:""}>
+    return `<button type="button" class="em-node" data-lane="${s}" data-goto-name="${h(name)}">
       <span class="em-h"><b>${h(label)}</b><span class="pill ${LANE_TONE[s]||""}">${h(LANE_WORD[s]||s)}</span></span>
       <span class="em-w">${what}</span></button>`;
   };
-  const plain=(label,what)=>`<div class="em-node em-plain"><span class="em-h"><b>${h(label)}</b></span><span class="em-w">${what}</span></div>`;
-  const arrow=`<span class="em-arrow" aria-hidden="true">→</span>`;
+  const term=(sym,title,meaning,body,cls)=>`<div class="em-term${cls?" "+cls:""}">
+      <div class="em-sym">${sym}</div>
+      <div class="em-tt">${title}</div>
+      <div class="em-w">${meaning}</div>
+      ${body?`<div class="em-list">${body}</div>`:""}</div>`;
+  const op=(t)=>`<div class="em-op" aria-hidden="true">${t}</div>`;
   return `<div class="card emap">
-    <div class="em-q">这一页只回答一个问题：<b>模型说 p，市场说 m，真值该信几成？</b></div>
-    <div class="em-inputs">
-      ${plain("模型概率 p","模型页产出")}
-      ${plain("市场价 m","盘口中价，本身也是一份预报")}
-      ${plain("真值","结算后才知道，只给裁判用")}
-    </div>
-    <div class="em-band em-live">
-      <div class="em-cap">实盘路径：从 p 到下单，实际在跑的只有这一条</div>
-      <div class="em-flow">
-        ${node("双向收敛系数","④ 双向收敛","进闸前抬高 p，只记账")}
-        ${arrow}
-        ${node("有效边际 λ 表","② 有效边际 λ 表","λ(价格 ÷ 声称) × p 过门槛就买")}
-        ${arrow}
-        ${plain("选窗 → 定注 → 实盘","后面三页")}
-      </div>
-      <div class="em-ev">${node("声称边际体温计","② 体温计","λ 打折后实际兑现多少 → λ 的证据")}<span class="muted">↑ 为 λ 表提供证据</span></div>
+    <div class="em-q">这一页只回答一个问题：<b>模型说 p，市场说 m，真值该信几成？</b>
+      答案的形式就是 L4 的公式，页上每个区块都在量或在用其中一项。</div>
+    <div class="em-formula mono">logit b = logit m + w · (logit p − logit m) + c(m)</div>
+    <div class="em-eq">
+      ${term("m","市场先验","盘口中价，本身就是一份预报；先信它",
+        node("真值落位","真值落位","真值跟价格走，还是跟模型走"))}
+      ${op("+")}
+      ${term("w · (p − m)","分歧兑现几成","模型与市场的差里，历史上真兑现的份额；w = 0 就是全信市场",
+        node("L4 后验层（影子）","L4 后验层","w：对数几率里拟合，按提前量分档")
+        + `<div class="em-sub muted">它的两个特例（概率空间、没有 c(m)）</div>`
+        + node("β 车道（影子）","β 车道","m + β(p − m)")
+        + node("统一估值车道","统一估值车道","(1 − β)m + βp")
+        + `<div class="em-sub muted">实盘此刻用来代替 w 的</div>`
+        + node("有效边际 λ 表","有效边际 λ 表","不信市场，直接 λ(价格 ÷ 声称) × p")
+        + node("声称边际体温计","体温计","λ 打折后实际兑现多少 → λ 的证据")
+        + `<div class="em-sub muted">进来之前先改 p 的</div>`
+        + node("双向收敛系数","双向收敛系数","模型往上、市场往下时把 p 抬高"))}
+      ${op("+")}
+      ${term("c(m)","市场自校正","市场自己系统性偏多少（γ、α）；不读模型",
+        node("L4 后验层（影子）","L4 后验层","γ、α：只有 L4 在量"))}
+      ${op("=")}
+      ${term("b","信念","扣掉点差和手续费后，抽样下界过门槛才买","","em-result")}
     </div>
     <div class="em-two">
+      <div class="em-band em-audit">
+        <div class="em-cap">验收：这个公式赢没赢市场（到底有没有 edge）</div>
+        ${node("宪章 EV 恒等式","宪章 EV 恒等式","k = Cov/Var 低于 1 ⇔ w 大于 0")}
+        ${node("L4 后验层（影子）","L4 前瞻技能分 S","log b − log m 的按日下界大于 0 才算赢")}
+      </div>
       <div class="em-band em-shadow">
-        <div class="em-cap">③ 候选：想替代 λ 表，答同一个问题，只记录不买</div>
-        ${node("L4 后验层（影子）","L4 后验层","logit m + w·分歧 + 市场自校正","outer")}
-        <div class="em-inner"><span class="muted">包含 ↓</span>
-          ${node("β 车道（影子）","β 车道","m + β(p − m)")}
-          ${node("统一估值车道","统一估值车道","(1 − β)m + βp")}
+        <div class="em-cap">没证据时往哪倒</div>
+        <div class="em-key">
+          <div><b>L4、β、估值：</b>w = 0、c = 0 → b = m → 不买。</div>
+          <div><b>实盘 λ 表：</b>沿用 09-01 手拟常数 → 继续买。</div>
+          <div class="muted">例：09-16 ZUUU P0 22–24°C，模型 72%、市场 33%、卖价 40。λ 打六折成 43% 高于 40，买；L4 没证据，b = 33%，不买。真值 26°C，没中。</div>
         </div>
       </div>
-      <div class="em-band em-audit">
-        <div class="em-cap">① 裁判：读真值，判断到底有没有 edge</div>
-        ${node("宪章 EV 恒等式","宪章 EV 恒等式","模型的错里有没有市场没有的部分")}
-        ${node("真值落位","真值落位","真值跟价格走还是跟模型走")}
-      </div>
     </div>
-    <div class="em-key">
-      <div><b>λ 表与三个候选的根本区别：没证据时往哪倒。</b>λ 从「信模型」出发，没证据就沿用常数继续买；三个候选从「信市场」出发，没证据就不买。</div>
-      <div class="muted">例：09-16 ZUUU P0 22–24°C，模型 72%、市场 33%、卖价 40。λ 打六折成 43% 高于 40，买；三个候选都信 33%，不买。真值 26°C，没中。</div>
-      <div class="muted">阅读顺序：① 裁判先看有没有 edge → ② 看实盘现在按什么买 → ③ 看 L4 替代者的进度（β、估值两条可跳过）。点任一方框跳到对应区块。</div>
-    </div>
+    <div class="em-key muted" style="margin-top:10px">点任一方框跳到对应区块。下面按「验收 → 实盘在用 → L4 与特例 → 进来前的修正」排列。</div>
   </div>`;
 }
 
@@ -14422,9 +14456,11 @@ function h5Readiness(){
   // Two answers: has the fleet turned over to the 5-day tables, and are the
   // corrections they serve closer to truth than the 15-day ones would have
   // been.  The accuracy verdict reads the clustered sign test the collector
-  // draws its line on -- direction from z, not from the mean: the mean and
-  // the vote can point opposite ways, and on 2026-09-17 the section wrote
-  // "H5 显著更准" over a test that said H5 lost on 494 station-days of 883.
+  // draws its line on -- direction from z, not from the mean, since the
+  // mean and the vote can point opposite ways.  (The 2026-09-17 reading
+  // that had H5 losing 494 of 883 station-days was the collector correcting
+  // the wrong way round; corrected as the server does, H5 is closer on
+  // 545 of 885.)
   const H = D.h5_readiness || {}; const days = H.days || [];
   const A = D.h5_bias_accuracy || {};
   if(!days.length && !A.station_days) return "";
@@ -14464,10 +14500,26 @@ function h5Readiness(){
        已有 ${ready.length} 个事件日可以打分${ready.length ? `（${h(ready[0])} 至 ${h(ready[ready.length-1])}）` : ""}。`
     : `<b>还在换代：</b>最近事件日 ${h(latest.event_date)} 只有 ${(100*latest.share).toFixed(0)}% 的决策由 H5 订正表服务，
        可打分的事件日 ${ready.length} 个。`;
+  // H15 beside H5 on the same station-days (user ruling, 2026-09-17: 前端
+  // 增加 h15 的对比): the corrected error each would have left, and how many
+  // station-days each came out closer on.  Ties count for neither.
+  const deg = v => v == null ? "—" : Number(v).toFixed(3) + "°C";
+  const decided = (A.h5_better || 0) + (A.h5_worse || 0);
+  const share = k => decided ? ` <span class="muted">${(100*k/decided).toFixed(0)}%</span>` : "";
+  const closer = (mine, theirs) => mine > theirs ? "up" : "";
+  const vs = A.station_days ? `<table style="margin-top:8px;font-size:13.5px"><thead><tr>
+      <th></th><th>H15（15 天半衰期，换代前）</th><th>H5（5 天半衰期，现役）</th></tr></thead><tbody>
+    <tr><td>订正后平均绝对误差</td>
+      <td class="mono ${A.mae_h15_c!=null&&A.mae_h5_c!=null&&A.mae_h15_c<A.mae_h5_c?"up":""}">${deg(A.mae_h15_c)}</td>
+      <td class="mono ${A.mae_h15_c!=null&&A.mae_h5_c!=null&&A.mae_h5_c<A.mae_h15_c?"up":""}">${deg(A.mae_h5_c)}</td></tr>
+    <tr><td>离真值更近的站日</td>
+      <td class="mono ${closer(A.h5_worse, A.h5_better)}">${A.h5_worse}${share(A.h5_worse)}</td>
+      <td class="mono ${closer(A.h5_better, A.h5_worse)}">${A.h5_better}${share(A.h5_better)}</td></tr>
+    </tbody></table>` : "";
   return `<h2 id="h5">偏差半衰期 H5：换代进度与订正准度 ${rollPill} ${accPill}</h2>
   <p class="sub">偏差层的半衰期 2026-08-27 从 15 天改为 5 天（H5）。</p>
   <div class="card" style="font-size:14.5px;line-height:1.7">
-    ${A.station_days ? `<div>${accPill} ${accLine}</div>` : ""}
+    ${A.station_days ? `<div>${accPill} ${accLine}</div>${vs}` : ""}
     ${latest ? `<div style="margin-top:6px">${rollPill} ${rollLine}</div>` : ""}
   </div>
   <div class="muted" style="margin-top:6px">准度＝同一批已结算站日、同一批原始预报，分别用 H5 和 H15
@@ -16489,24 +16541,24 @@ const GROUPS = [
   // other two); and the extra lift applied to p before any of them.  The
   // map at the head of the area draws the same relations and jumps to each.
   {id:"edge", label:"边际", short:"边际", tone:"#79c0ff",
-   note:"边际层：模型说 p、市场说 m，真值该信几成——① 裁判（有没有 edge）→ ② 上线（实盘按它买）→ ③ 候选（影子，想替代上线那张表）→ ④ 额外修正（影子）",
+   note:"边际层：按 L4 的公式 logit b = logit m + w·(logit p − logit m) + c(m) 读——① 验收（有没有 edge）→ ② 实盘此刻用什么代替 w → ③ L4 与它的特例（影子）→ ④ 进来前先改 p（影子）",
    intro: edgeMap,
    sections:[
-     {sub:"① 裁判：到底有没有 edge", status:"audit",
-      note:"读真值，不参与决策。先看这里：模型的错里有没有市场没有的部分"},
+     {sub:"① 验收：这个公式赢没赢市场（到底有没有 edge）", status:"audit",
+      note:"读真值，不参与决策。k 低于 1 ⇔ w 大于 0；真值跟价格走说明该信 m"},
      [charterEv,"宪章 EV 恒等式"],
      [truthLanding,"真值落位"],
-     {sub:"② 上线：实盘此刻按它决定买不买、买多少", status:"live",
-      note:"λ 表按「价格 ÷ 声称」分档打折；体温计是它的证据，不是规则"},
+     {sub:"② 实盘此刻用来代替 w 的：λ 表", status:"live",
+      note:"不从市场出发，按「价格 ÷ 声称」分档直接给 p 打折；没证据时沿用常数继续买。体温计是它的证据，不是规则"},
      [effectiveEdgeLambda,"有效边际 λ 表"],
      [edgeBandHealth,"声称边际体温计"],
-     {sub:"③ 候选（影子）：同一个问题的三个替代版本，只记录不买", status:"shadow",
-      note:"都从「信市场」出发，没证据就不买；L4 包含后两条——取概率空间、去掉市场自校正就退化成 β 车道"},
+     {sub:"③ L4 与它的两个特例（影子，只记录不买）", status:"shadow",
+      note:"L4 量 w 与 c(m)；β 车道和估值车道是 L4 取概率空间、去掉 c(m) 的特例。三条都从 b = m 出发，没证据就不买"},
      [posteriorLane,"L4 后验层（影子）"],
      [betaShadow,"β 车道（影子）"],
      [valuationLane,"统一估值车道"],
-     {sub:"④ 额外修正（影子）：在进入上面之前先改 p", status:"shadow",
-      note:"模型往上、市场往下时把声称抬高；只记账"},
+     {sub:"④ 进来前先改 p（影子）", status:"shadow",
+      note:"模型往上、市场往下时把 p 抬高，再交给上面；只记账"},
      [convergenceClaim,"双向收敛系数"]]},
   // 覆盖 · 价格 · EV is the whole seat in one line (what it covered, cost
   // and was worth), 篮子命中率 splits it by width, and the market-lean gate
@@ -16592,23 +16644,23 @@ const LANES = {
   "band 表": {layer:"概率层", status:"live",
     role:"单系统校准与融合之后，服务概率按离中心距离兑现多少 → 按档修正尾形残差（市场不进）"},
   // --- edge: what our probability is worth against the market ---
-  "宪章 EV 恒等式": {layer:"边际层 · ① 裁判", status:"audit",
-    role:"edge = 市场的错 − 模型的错 = Var(e_q) − Cov(e_p,e_q)；k = Cov/Var 低于 1 才有 edge"},
-  "真值落位": {layer:"边际层 · ① 裁判", status:"audit",
-    role:"真值落在市场价格 × 模型概率的哪一格 → 谁更能预判真值"},
-  "有效边际 λ 表": {layer:"边际层 · ② 上线", status:"live",
-    role:"按「价格 ÷ 声称」分档打折 → 闸和定注读的都是 λ(a)·声称；没证据时沿用常数继续买"},
+  "宪章 EV 恒等式": {layer:"边际层 · ① 验收", status:"audit",
+    role:"edge = 市场的错 − 模型的错 = Var(e_q) − Cov(e_p,e_q)；k = Cov/Var 低于 1 ⇔ L4 的 w 大于 0"},
+  "真值落位": {layer:"边际层 · ① 验收", status:"audit",
+    role:"真值落在市场价格 × 模型概率的哪一格 → 跟价格走说明该信 m"},
+  "有效边际 λ 表": {layer:"边际层 · ② 实盘代替 w", status:"live",
+    role:"按「价格 ÷ 声称」分档给 p 打折 → 闸和定注读的都是 λ(a)·声称；没证据时沿用常数继续买"},
   "声称边际体温计": {layer:"边际层 · ② λ 的证据", status:"audit",
     role:"自认便宜多少时真兑现多少 → λ 的证据，不是 λ 本身"},
-  "L4 后验层（影子）": {layer:"边际层 · ③ 候选", status:"shadow",
-    role:"对数几率里先信市场，再看分歧兑现几成 w、市场自己偏多少 γ → 包含 β 车道与估值车道；没证据时 b = m 不买"},
-  "β 车道（影子）": {layer:"边际层 · ③ 候选", status:"shadow",
-    role:"分歧兑现几成（斜率 β）→ L4 的特例：概率空间、无市场自校正"},
+  "L4 后验层（影子）": {layer:"边际层 · ③ L4", status:"shadow",
+    role:"logit b = logit m + w·(logit p − logit m) + c(m)：量 w 与市场自校正 c(m)；没证据时 b = m 不买"},
+  "β 车道（影子）": {layer:"边际层 · ③ L4 的特例", status:"shadow",
+    role:"m + β(p − m)：L4 取概率空间、去掉 c(m)"},
   // PM_VALUATION_MODE defaults to shadow (valuation_v1) and nothing sets it.
-  "统一估值车道": {layer:"边际层 · ③ 候选", status:"shadow",
-    role:"市场与模型线性混合（权重 β）→ L4 的特例：概率空间、无市场自校正"},
-  "双向收敛系数": {layer:"边际层 · ④ 额外修正", status:"shadow",
-    role:"模型往上、市场往下、还没走到一起 → 进闸之前把声称抬三成（只记账）"},
+  "统一估值车道": {layer:"边际层 · ③ L4 的特例", status:"shadow",
+    role:"(1 − β)m + βp：L4 取概率空间、去掉 c(m)"},
+  "双向收敛系数": {layer:"边际层 · ④ 进来前先改 p", status:"shadow",
+    role:"模型往上、市场往下、还没走到一起 → 把 p 抬三成再交给上面（只记账）"},
   // --- select: which buckets to seat, and whether seating them paid ---
   "市场方向闸": {layer:"选窗层", status:"shadow",
     role:"只看市场往哪边歪 → 不许逆着它开窗（09-05 上线、09-12 退回影子）"},
@@ -16661,22 +16713,6 @@ const sec = (fn, name, id) => {
     lane ? laneStrip(name) : ""}${body}</section>`;
 };
 
-// Where each area sits on the chain (user ruling, 2026-09-17: the page
-// follows one logic).  The strip rides under every area title with the
-// current step lit; a step is a button that opens its area, and 实盘 --
-// which lives above the tabs -- goes back to the page head.
-const PIPELINE = [
-  {tab:"model", word:"模型", q:"我们的概率 p 准不准"},
-  {tab:"edge", word:"边际", q:"p 对着市场价 m 该信几成"},
-  {tab:"select", word:"选窗", q:"据此挑哪几个桶"},
-  {tab:"sizing", word:"定注", q:"最后实际拿着什么"},
-  {tab:"", word:"实盘", q:"真交到交易所的单和钱"},
-];
-const pipeStrip = (current) => `<div class="pipe" role="list">${
-  PIPELINE.map((s, i) => `${i ? `<span class="pipe-arrow" aria-hidden="true">→</span>` : ""}<button
-    type="button" role="listitem" class="pipe-step" data-pipe-tab="${s.tab}"${
-    s.tab === current ? ` aria-current="step"` : ""} title="${s.q}"><b>${
-    i + 1} ${s.word}</b><span>${s.q}</span></button>`).join("")}</div>`;
 // A sub-heading inside an area: not a section, so it carries no jump chip
 // and no guard -- it names the kind of thing the sections under it are.
 const subHtml = (item) => `<div class="subgroup" data-lane="${
@@ -16687,7 +16723,6 @@ const subHtml = (item) => `<div class="subgroup" data-lane="${
 const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}"
   style="--tone:${g.tone}">
   <div class="grouptitle">${g.label}<span class="muted">${g.note}</span></div>
-  ${pipeStrip(g.id)}
   ${g.intro ? safe(g.intro, `${g.label}逻辑图`) : ""}
   ${g.sections.map((item, i) => Array.isArray(item)
     ? sec(item[0], item[1], `sec-${g.id}-${i}`)
@@ -16888,17 +16923,8 @@ document.getElementById("app").innerHTML =
     if(!button) return;
     goTo(document.getElementById(button.dataset.goto));
   });
-  // The chain strip under each area title and the edge map's nodes: a step
-  // opens its area (实盘 goes to the page head), a node lands on its section.
+  // The edge map's nodes land on their sections.
   document.addEventListener("click", (ev) => {
-    const step = ev.target.closest("button[data-pipe-tab]");
-    if(step){
-      const tab = step.dataset.pipeTab;
-      if(!tab){ window.scrollTo(0, 0); return; }
-      const target = nav.querySelector(`button[data-tab="${tab}"]`);
-      if(target) target.click();
-      return;
-    }
     const node = ev.target.closest("[data-goto-name]");
     if(!node) return;
     const name = node.dataset.gotoName;
