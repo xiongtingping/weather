@@ -178,3 +178,30 @@ def test_the_previous_version_window_is_read_off_the_declarations(monkeypatch) -
     # A first version has nothing to compare with.
     monkeypatch.setattr(sa, "STAGE_VERSION_EFFECTIVE_FROM", {"P0": {"p0_v6": "2026-09-18T09:18:16Z"}})
     assert cd._previous_version_window(sqlite3.connect(":memory:"), "P0") is None
+
+
+def test_the_publication_table_follows_the_upstream_lamps() -> None:
+    """User, 2026-09-18: 四大模型、区域模型、TAF 的发布时间放在顶部看板."""
+
+    page = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
+    assert "function publishTimes()" in page
+    assert "rendered[1] + published" in page
+
+
+def test_a_regional_lane_states_its_rhythm_and_publication_delay(monkeypatch) -> None:
+    monkeypatch.setattr(cd, "_now", lambda: NOW)
+    runs = [  # newest first: hourly issue, landing ~2h after
+        {"run_utc": "2026-09-18T09:00:00Z", "capture_utc": "2026-09-18T11:00:00Z",
+         "stations": 11, "run_age_hours": 2.0, "capture_age_hours": 0.0},
+        {"run_utc": "2026-09-18T08:00:00Z", "capture_utc": "2026-09-18T10:10:00Z",
+         "stations": 11, "run_age_hours": 3.0, "capture_age_hours": 0.8333},
+        {"run_utc": "2026-09-18T07:00:00Z", "capture_utc": "2026-09-18T09:00:00Z",
+         "stations": 10, "run_age_hours": 4.0, "capture_age_hours": 2.0},
+    ]
+    out = cd._run_rhythm(runs)
+    assert out["cycle_hours"] == 1.0
+    assert abs(out["publish_lag_hours"] - 2.0) < 1e-9
+    assert out["latest_run_capture_utc"] == "2026-09-18T11:00:00Z"
+    assert out["latest_run_stations"] == 11
+    assert abs(out["due_in_hours"] - 1.0) < 1e-9     # 1h rhythm + 2h delay − 2h old
+    assert cd._run_rhythm([])["cycle_hours"] is None
