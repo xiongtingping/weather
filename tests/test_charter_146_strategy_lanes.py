@@ -19,6 +19,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
 
 from bayes_basket_target import order_submission as sub  # noqa: E402
 from bayes_basket_target import strategy_lanes as lanes  # noqa: E402
@@ -200,13 +202,18 @@ def test_the_daemon_skips_paused_lanes_and_runs_the_tiebreak(tmp_path, monkeypat
     result = daemon.run_target_production_cycle(Worker())
     assert result["certain_win_recycle"] == {"state": "lane_paused", "lane": "certain_win_recycle"}
     assert result["mis_bought_leg_exit"] == {"state": "lane_paused", "lane": "mis_bought_leg_exit"}
+    # Head and tail (user ruling 2026-09-18 "把优先级提高"): the lane runs
+    # before the cycle on the previous cycle's facts and after it on this
+    # cycle's, both on the writer connection.
+    assert result["tiebreak_lane_head"]["schema"] == "tiebreak_lane_receipt_v1"
     assert result["tiebreak_lane"]["schema"] == "tiebreak_lane_receipt_v1"
-    assert ran == [(True, True)]
+    assert ran == [(True, True), (True, True)]
     # Flip the tiebreak switch: the lane is skipped and says so.
     monkeypatch.setenv(lanes.ENV_VAR, str(_lanes_file(tmp_path, {"tiebreak": {"enabled": False}}, "off.json")))
     result = daemon.run_target_production_cycle(Worker())
     assert result["tiebreak_lane"] == {"state": "lane_paused", "lane": "tiebreak"}
-    assert len(ran) == 1
+    assert "tiebreak_lane_head" not in result
+    assert len(ran) == 2
 
 
 # ---------------------------------------------------------------------------

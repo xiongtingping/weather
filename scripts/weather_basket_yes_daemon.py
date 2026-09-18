@@ -3229,6 +3229,36 @@ def run_target_production_cycle(
 
     started_at_utc = utc_now()
     started_monotonic = time.monotonic()
+    # 「秤砣线」at the HEAD of the cycle too (user ruling 2026-09-18 "把优先级
+    # 提高"): the lane's retries and any first decision the previous cycle
+    # wrote after its tail run are judged now, on the previous cycle's facts,
+    # instead of waiting the ten to thirty minutes this cycle takes.  Same
+    # writer connection (autocommit), same lane switch, reported under its
+    # own key; the tail run below stays.  A failure here is a receipt, and
+    # never stops the cycle that follows.
+    head_receipt: dict[str, Any] | None = None
+    head_connection = getattr(worker, "commit_conn", None)
+    if (
+        PRODUCTION_EXECUTION_MODE == "production_live"
+        and head_connection is not None
+        and lane_enabled(LANE_TIEBREAK)
+    ):
+        try:
+            from bayes_basket_target.exit_orders import (
+                default_transport as _head_transport,
+            )
+            from bayes_basket_target.tiebreak_lane import (
+                execute_tiebreak_entries as _head_execute,
+            )
+            head_receipt = _head_execute(
+                head_connection,
+                getattr(worker, "canonical_source_conn", None),
+                transport=_head_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+            )
+        except Exception as exc:
+            head_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     try:
         result = worker.run()
     except sqlite3.OperationalError as exc:
@@ -3400,6 +3430,7 @@ def run_target_production_cycle(
         "target_cycle_runtime": runtime,
         **({"certain_win_recycle": recycle_receipt} if recycle_receipt else {}),
         **({"mis_bought_leg_exit": exit_receipt} if exit_receipt else {}),
+        **({"tiebreak_lane_head": head_receipt} if head_receipt else {}),
         **({"tiebreak_lane": tiebreak_receipt} if tiebreak_receipt else {}),
     }
 
