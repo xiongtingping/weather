@@ -1,7 +1,9 @@
 """The 0.998 recycle lane (operator ruling 2026-08-31; repaired 2026-09-17
-under "打通0.998卖单"): a won leg is sold at 0.998 once its day has closed on
-a settled truth, through the shared exit sender, inside the minutes before
-the venue closes the market.
+under "打通0.998卖单"; widened 2026-09-18 under 「直接挂单卖出啊，和收盘没关系
+吧」): a held leg the market bids at 0.998 is sold into that bid whenever it
+is, and a won leg still held once its day has closed on a settled truth is
+sold at 0.998 in the minutes before the venue closes the market -- both
+through the shared exit sender.
 """
 
 from __future__ import annotations
@@ -170,7 +172,7 @@ def test_the_label_names_the_winner_when_written_and_the_ladder_rule_agrees() ->
 
 def test_the_holdings_key_is_filled_by_bucket_and_the_name_the_lane_read_for_a_month_still_reads() -> None:
     conn, canonical = _store()
-    assert lane.RULE_VERSION == "certain_win_recycle_settled_label_v2"
+    assert lane.RULE_VERSION == "certain_win_recycle_bid_or_settled_v3"
     _inventory(conn, {"25°C": 7.0}, observed_at="2026-09-16T15:45:00Z", key="filled_shares_by_bucket")
     assert [(p["bucket"], p["shares"]) for p in _plans(conn, canonical)] == [("25°C", 7.0)]
     _inventory(conn, {"25°C": 8.0}, observed_at="2026-09-16T15:50:00Z")
@@ -282,3 +284,140 @@ def test_the_daemon_runs_the_lane_live_on_the_shared_sell_transport() -> None:
     assert "default_transport as _sell_transport" in source[hook - 1200:hook]
     assert "transport=_sell_transport" in source[hook:hook + 400]
     assert '"certain_win_recycle": recycle_receipt' in source
+
+
+# --- the bid path (2026-09-18: 「直接挂单卖出啊，和收盘没关系吧」) -------------
+
+OPEN_DAY = "2026-09-16T09:30:00.000Z"  # 17:30 in Chengdu: the day is still open
+
+
+def _book(conn, *, observed_at="2026-09-16T09:25:00.000Z", bids=None, tick=0.001, min_size=5.0, sequence=1):
+    """One committed station-day book; ``bids`` maps bucket -> [(price, shares)]."""
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS basket_official_ws_snapshot(snapshot_id TEXT, station_id TEXT,"
+        " event_date TEXT, settlement_timezone TEXT, sequence INTEGER, observed_at TEXT,"
+        " buckets_json TEXT, state TEXT)"
+    )
+    bids = {"25°C": [(0.999, 400.0), (0.998, 50.0), (0.99, 9.0)], "26°C": [(0.001, 30.0)]} if bids is None else bids
+    buckets = [
+        {"bucket": bucket, "token_id": TOKENS[bucket], "price_tick_size": tick, "min_order_size": min_size,
+         "bid_levels": [{"price": p, "shares": s} for p, s in levels]}
+        for bucket, levels in bids.items()
+    ]
+    conn.execute(
+        "INSERT INTO basket_official_ws_snapshot VALUES(?,?,?,?,?,?,?,?)",
+        (f"snap_{observed_at}_{sequence}", ST, ED, TZ, sequence, observed_at, json.dumps(buckets), "COMMITTED"),
+    )
+
+
+def test_a_leg_the_market_bids_at_0998_is_sold_into_the_bid_before_the_day_closes() -> None:
+    conn, canonical = _store()
+    _book(conn)
+    plans = _plans(conn, canonical, now=OPEN_DAY)
+    assert [(p["bucket"], p["trigger"], p["shares"], p["limit_price"], p["token_id"], p["best_bid"]) for p in plans] == [
+        ("25°C", lane.TRIGGER_BID, 6.0, 0.998, "t25", 0.999),
+    ]
+    assert plans[0]["depth_at_price"] == 450.0 and plans[0]["settlement_timezone"] == TZ
+    # 26°C is bid at 0.001: the market has not said it won, nothing is sold.
+
+
+def test_the_bid_path_needs_the_price_a_fresh_book_and_the_depth() -> None:
+    # Bid under the price: held, not sold.
+    conn, canonical = _store()
+    _book(conn, bids={"25°C": [(0.997, 500.0)]})
+    assert _plans(conn, canonical, now=OPEN_DAY) == []
+    # A book older than fifteen minutes is not a price anyone will pay.
+    conn2, canonical2 = _store()
+    _book(conn2, observed_at="2026-09-16T09:10:00.000Z")
+    assert _plans(conn2, canonical2, now=OPEN_DAY) == []
+    # A book written after "now" is not read.
+    assert _plans(conn2, canonical2, now="2026-09-16T09:05:00.000Z") == []
+    # Depth at the price under the venue minimum: nothing; above it, sized to the depth.
+    conn3, canonical3 = _store()
+    _book(conn3, bids={"25°C": [(0.999, 4.0), (0.99, 500.0)]})
+    assert _plans(conn3, canonical3, now=OPEN_DAY) == []
+    conn4, canonical4 = _store()
+    _book(conn4, bids={"25°C": [(0.999, 5.5)]})
+    assert [p["shares"] for p in _plans(conn4, canonical4, now=OPEN_DAY)] == [5.5]
+    # A whole-cent holding is offered whole (12.46 * 100 is 1245.999... in binary).
+    conn5, canonical5 = _store()
+    _inventory(conn5, {"25°C": 12.46}, observed_at="2026-09-16T15:45:00Z")
+    _book(conn5)
+    assert [p["shares"] for p in _plans(conn5, canonical5, now=OPEN_DAY)] == [12.46]
+
+
+def test_the_bid_path_sends_a_short_gtd_and_the_remainder_is_offered_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn, canonical = _store()
+    _book(conn, bids={"25°C": [(0.999, 5.0)]})
+    monkeypatch.setattr(exit_orders, "live_intent_armed", lambda: True)
+    monkeypatch.setattr(lane, "wall_clock_utc", lambda: "2026-09-16T09:30:10.000Z")
+    monkeypatch.setattr(exit_orders, "wall_clock_utc", lambda: "2026-09-16T09:30:10.000Z")
+    sent: list[dict] = []
+
+    def transport(path, payload):
+        sent.append(dict(payload))
+        return {"ok": True, "orderID": f"0x{len(sent)}", "status": "matched", "size_matched": payload["size"],
+                "exchange_response": {"takingAmount": round(payload["size"] * 0.999, 6)}}
+
+    receipt = lane.execute_certain_win_recycles(conn, canonical, transport=transport, now_utc=OPEN_DAY, live_submit_authorized=True)
+    assert receipt["planned"] == 1 and receipt["planned_into_bid"] == 1 and receipt["submitted"] == 1
+    assert sent[0]["order_type"] == "GTD" and sent[0]["post_only"] is False
+    assert sent[0]["side"] == "SELL" and sent[0]["price"] == 0.998 and sent[0]["size"] == 5.0
+    assert sent[0]["expiration"] == 1789551010 + lane.GTD_HORIZON_SECONDS  # 09:30:10Z + 300 s
+    intent = json.loads(conn.execute(
+        "SELECT intent_json FROM basket_target_order_intents WHERE order_intent_id LIKE 'recycle998_%'"
+    ).fetchone()[0])
+    assert intent["execution_candidate"] == "EXIT_GTD_LIMIT" and intent["plan"]["trigger"] == lane.TRIGGER_BID
+    # The order filled and closed: nothing of this lane is left open to hold the day's quotes.
+    assert conn.execute(
+        "SELECT state FROM basket_target_order_intents WHERE order_intent_id LIKE 'recycle998_%'"
+    ).fetchall() == [("filled",)]
+    # The inventory has not netted the sale yet: 1 of 6 left, under the minimum -- left to settle.
+    _book(conn, observed_at="2026-09-16T09:35:00.000Z", bids={"25°C": [(0.999, 500.0)]}, sequence=2)
+    assert _plans(conn, canonical, now="2026-09-16T09:36:00.000Z") == []
+    # Bought 6 more (12 held, 5 sold and not yet netted): 7 offered.
+    _inventory(conn, {"25°C": 12.0, "26°C": 5.0}, observed_at="2026-09-16T15:40:00Z")
+    assert [p["shares"] for p in _plans(conn, canonical, now="2026-09-16T09:36:00.000Z")] == [7.0]
+
+
+def test_a_sale_the_inventory_has_netted_is_not_taken_off_twice(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn, canonical = _store()
+    _book(conn, bids={"25°C": [(0.999, 5.0)]})
+    monkeypatch.setattr(exit_orders, "live_intent_armed", lambda: True)
+    monkeypatch.setattr(exit_orders, "wall_clock_utc", lambda: "2026-09-16T09:30:10.000Z")
+    lane.execute_certain_win_recycles(
+        conn, canonical, now_utc=OPEN_DAY, live_submit_authorized=True,
+        transport=lambda path, payload: {"ok": True, "orderID": "0xa", "status": "matched",
+                                         "size_matched": payload["size"]},
+    )
+    sold_id = conn.execute(
+        "SELECT order_intent_id FROM basket_target_order_intents WHERE order_intent_id LIKE 'recycle998_%'"
+    ).fetchone()[0]
+    # The inventory caught up: 11 held after the 5 sold, and its lineage names the sale.
+    conn.execute(
+        "INSERT INTO basket_confirmed_inventory_snapshot VALUES(?,?,?,?,?,?,?,?,?,?)",
+        ("inv_late", ST, ED, "v2", "2026-09-16T15:40:00Z", 1,
+         json.dumps({"filled_by_bucket": {"25°C": 11.0}, "token_ids_by_bucket": TOKENS,
+                     "lineage": [{"order_intent_id": sold_id, "order_action": "SELL", "filled_size": 5.0}]}),
+         SHA, "COMMITTED", "2026-09-16T15:40:00Z"),
+    )
+    _book(conn, observed_at="2026-09-16T09:35:00.000Z", bids={"25°C": [(0.999, 500.0)]}, sequence=2)
+    assert [p["shares"] for p in _plans(conn, canonical, now="2026-09-16T09:36:00.000Z")] == [11.0]
+
+
+def test_bid_attempts_do_not_spend_the_settled_paths_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn, canonical = _store()
+    monkeypatch.setattr(exit_orders, "live_intent_armed", lambda: True)
+    monkeypatch.setattr(exit_orders, "wall_clock_utc", lambda: "2026-09-16T09:30:10.000Z")
+    refuse = lambda path, payload: {"ok": False, "error": "book_moved"}
+    for minute in range(lane.MAX_BID_ATTEMPTS_PER_LEG + 2):
+        now = f"2026-09-16T09:{30 + minute:02d}:00.000Z"
+        _book(conn, observed_at=f"2026-09-16T09:{29 + minute:02d}:00.000Z", sequence=minute + 1)
+        lane.execute_certain_win_recycles(conn, canonical, transport=refuse, now_utc=now, live_submit_authorized=True)
+    assert conn.execute(
+        "SELECT COUNT(*) FROM basket_target_order_intents WHERE order_intent_id LIKE 'recycle998_%'"
+    ).fetchone()[0] == lane.MAX_BID_ATTEMPTS_PER_LEG
+    # After the close, with no fresh book, the settled path still has all of its own.
+    plans = _plans(conn, canonical)
+    assert [(p["bucket"], p["trigger"]) for p in plans] == [("25°C", lane.TRIGGER_SETTLED)]

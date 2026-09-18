@@ -68,12 +68,15 @@ def test_the_env_override_points_at_a_copy(tmp_path, monkeypatch) -> None:
 
 
 def test_the_served_file_pauses_the_three_and_runs_the_tiebreak() -> None:
-    """The operator file as committed: the ruling itself."""
+    """The operator file as committed: the ruling itself.  The 0.998
+    recycle came back on 2026-09-18 (「0.998回收卖出没有生效」, then
+    「继续，打开车道」): it sells what has already won, it is not a
+    strategy that takes a new position."""
 
     served = lanes.load_strategy_lanes(lanes.DEFAULT_PATH)
     assert served["source"] == "file"
     assert served["lanes"]["basket"]["enabled"] is False
-    assert served["lanes"]["certain_win_recycle"]["enabled"] is False
+    assert served["lanes"]["certain_win_recycle"]["enabled"] is True
     assert served["lanes"]["mis_bought_leg_exit"]["enabled"] is False
     assert served["lanes"]["tiebreak"]["enabled"] is True
     # The stake is the operator's dial (the board moved it 5 -> 6 within an

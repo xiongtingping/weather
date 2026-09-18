@@ -1,6 +1,6 @@
 {
   "schema": "basket_strategy_lanes_v1",
-  "updated_at_utc": "2026-09-18T02:52:32Z",
+  "updated_at_utc": "2026-09-18T08:50:01Z",
   "rationale": "User ruling 2026-09-18: put the tiebreak lane (秤砣线) live and pause every other strategy -- closed, not deleted. A paused lane still compiles, records its decisions and writes the evidence the ledger and the fits read; only its sends are held (basket BUYs end failed with strategy_lane_paused:basket on their event; the two sell lanes are skipped by the daemon). Read fresh before every send. Missing file = every lane enabled; unreadable file = every lane paused. Charter 146.",
   "lanes": {
     "basket": {
@@ -9,9 +9,10 @@
       "note": "Every BUY the basket compile mints: seat, top-up, charter 143 completion, charter 145 TAF entry."
     },
     "certain_win_recycle": {
-      "enabled": false,
+      "enabled": true,
       "paused_at_utc": "2026-09-18T00:00:00Z",
-      "note": "Charter 100: the 0.998 sell of a won position. Won positions settle at 1.000 on their own while paused."
+      "note": "Charter 100: the 0.998 sell of a held leg. Since 2026-09-18 (user ruling 「直接挂单卖出啊，和收盘没关系吧」) a leg the market bids at >=0.998 is sold into that bid whenever it is (GTD 5 min, sized to the standing depth); a won leg still held after its day closes on the settled truth rests at 0.998 (GTC). Reopened 2026-09-18 08:50Z (「继续，打开车道」).",
+      "enabled_at_utc": "2026-09-18T08:50:01Z"
     },
     "mis_bought_leg_exit": {
       "enabled": false,

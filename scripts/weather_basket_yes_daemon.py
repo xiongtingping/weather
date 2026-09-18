@@ -3371,9 +3371,10 @@ def run_target_production_cycle(
             "live_submit_authorized": False,
             "orders_submitted": 0,
         }
-    # The 0.998 recycle lane (operator ruling 2026-08-31): a position whose
-    # settlement day has closed on a high inside a held bucket is sold at
-    # 0.998 rather than waiting for settlement, and the freed capital
+    # The 0.998 recycle lane (operator ruling 2026-08-31, widened 2026-09-18):
+    # a held leg the market bids at 0.998 is sold into that bid whether or
+    # not its day has closed, and a won leg still held after the close is
+    # offered at 0.998 rather than waiting for settlement; the freed capital
     # re-enters the budget.  Runs after the main cycle on the same writer
     # connection, and a failure here is reported on the receipt rather than
     # raised -- a take-profit convenience must not be able to stop the lane
