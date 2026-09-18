@@ -832,6 +832,46 @@ def plan_tiebreak_entries(
     return {"evaluations": evaluations, "plans": plans, "settings": cfg, "rule_version": rule_version, "retries": retries}
 
 
+def _sync_sent_rows(conn: sqlite3.Connection, *, rule_version: str, floor: str) -> int:
+    """Bring a row that sent an order into line with what the ledger later
+    learned about that order.  A send answered ambiguously (the gateway's
+    proxy timed out: OPKC 2026-09-18 06:04Z, ``UNKNOWN_POST``) is a refusal
+    on the row until the reconciliation lane asks the exchange: a fill of
+    any size makes the row a success; a resolution that nothing was placed
+    makes it a ``send:`` refusal again -- retryable on a newer book -- even
+    if a retry pass had meanwhile marked it attempted."""
+
+    changed = 0
+    rows = conn.execute(
+        f"SELECT e.station_id, e.event_date, e.stage, e.refusal, e.order_intent_id, i.state,"
+        f" COALESCE(r.state, ''), COALESCE(r.filled_size, 0)"
+        f" FROM {EVALUATION_TABLE} e"
+        " JOIN basket_target_order_intents i ON i.order_intent_id=e.order_intent_id"
+        " LEFT JOIN basket_target_order_reconciliations r ON r.order_intent_id=e.order_intent_id"
+        " WHERE e.rule_version=? AND e.event_date>=? AND e.order_intent_id IS NOT NULL",
+        (rule_version, floor),
+    ).fetchall()
+    for station, day, stage, refusal, intent_id, intent_state, recon_state, filled in rows:
+        filled = float(filled or 0.0)
+        new_refusal: str | None
+        if filled > 0.0:
+            new_refusal = None
+        elif str(recon_state) in {"resolved_not_placed", "resolved_cancelled"} or str(intent_state) in {"failed", "cancelled"}:
+            new_refusal = (
+                str(refusal) if str(refusal or "").startswith(SEND_REFUSAL_PREFIX)
+                else f"send:{recon_state or intent_state}"
+            )
+        else:
+            continue  # pending or unknown: nothing learned yet
+        if new_refusal != refusal:
+            conn.execute(
+                f"UPDATE {EVALUATION_TABLE} SET refusal=? WHERE station_id=? AND event_date=? AND stage=? AND rule_version=?",
+                (new_refusal, station, day, stage, rule_version),
+            )
+            changed += 1
+    return changed
+
+
 def _retry_operational_refusals(
     target_conn: sqlite3.Connection,
     canonical_conn: sqlite3.Connection | None,
@@ -855,6 +895,7 @@ def _retry_operational_refusals(
     floor = (now - timedelta(days=DEFAULT_LOOKBACK_DAYS)).date().isoformat()
     max_sends = int(cfg.get("max_sends_per_station_day") or DEFAULT_MAX_SENDS_PER_STATION_DAY)
     book_fresh = float(cfg.get("retry_book_fresh_seconds") or DEFAULT_RETRY_BOOK_FRESH_SECONDS)
+    _sync_sent_rows(target_conn, rule_version=rule_version, floor=floor)
     rows = target_conn.execute(
         f"SELECT station_id, event_date, stage, refusal, retry_of_refusal, COALESCE(retry_count, 0), plan_json, retry_snapshot_id"
         f" FROM {EVALUATION_TABLE}"
@@ -894,7 +935,11 @@ def _retry_operational_refusals(
             entry["refusal_after"] = None if plan else reason
             out.append(entry)
         if (key["station_id"], key["event_date"]) in attempted_today or station_day_attempted(target_conn, key["station_id"], key["event_date"]):
-            _note("station_day_already_attempted"); continue
+            # A position, or an order the exchange has not yet answered for:
+            # nothing to send, and nothing to write on the row -- when the
+            # reconciliation resolves, ``_sync_sent_rows`` says what it was.
+            entry["waiting_for_open_order"] = True
+            out.append(entry); continue
         if station_day_sends(target_conn, key["station_id"], key["event_date"]) >= max_sends:
             _note(f"station_day_send_cap:{max_sends}"); continue
         fact = _latest_fact(target_conn, key["station_id"], key["event_date"], key["stage"])

@@ -666,3 +666,63 @@ def test_rule_refusals_and_stale_latest_decisions_are_not_retried(store) -> None
                                         live_submit_authorized=True,
                                         settings={"stake_usdc": 6.0, "retry_operational_refusals": False}, admission=ADMIT)
     assert off["retried"] == 0
+
+
+def test_an_ambiguous_send_waits_for_the_reconciliation_and_follows_it(store) -> None:
+    """OPKC 2026-09-18 06:04Z: the gateway's proxy timed out, the order may or
+    may not have reached the exchange.  The row says ``send:UNKNOWN_POST``;
+    while the reconciliation is unknown the retry pass waits and writes
+    nothing; a fill the reconciliation lane finds makes the row a success,
+    and "never placed" makes it retryable on a newer book."""
+
+    from bayes_basket_target.execution_reconciliation import record_order_event  # noqa: PLC0415
+
+    _seed(store)
+    sent: list = []
+
+    def ambiguous(path, payload):
+        sent.append(payload)
+        return {"ok": False, "reconcile_required": True, "error": "clob_proxy_submit_failed:curl: (28) timeout"}
+
+    first = lane.execute_tiebreak_entries(store, transport=ambiguous, now_utc=NOW, live_submit_authorized=True,
+                                          settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert first["submitted"] == 1 and first["filled"] == 0
+    intent_id = sent[0]["order_intent_id"]
+    row = store.execute(f"SELECT refusal, order_intent_id FROM {lane.EVALUATION_TABLE}").fetchone()
+    assert row[0].startswith("send:UNKNOWN_POST") and row[1] == intent_id
+    # Unknown at the exchange: a newer book changes nothing, the row is untouched.
+    _newer_snapshot(store, observed_at="2026-09-18T12:09:00.000Z", snapshot_id="snap_amb1")
+    waiting = lane.execute_tiebreak_entries(store, transport=ambiguous, now_utc=NOW, live_submit_authorized=True,
+                                            settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert waiting["retry_planned"] == 0 and len(sent) == 1
+    assert waiting["retries"][0].get("waiting_for_open_order") is True
+    assert store.execute(f"SELECT refusal, COALESCE(retry_count,0) FROM {lane.EVALUATION_TABLE}").fetchone() == (row[0], 0)
+    # The reconciliation lane finds it never reached the exchange: retryable again, and retried.
+    record_order_event(store, order_intent_id=intent_id, event={
+        "event_type": "SUBMIT_REFUSED", "exchange_order_id": "", "observed_at": "2026-09-18T12:09:30.000Z",
+        "matched_size": 0.0, "matched_notional_usdc": 0.0, "event_payload": {"reason": "lookup_not_found"},
+    })
+    retried = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW, live_submit_authorized=True,
+                                            settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert retried["retry_planned"] == 1 and len(sent) == 2
+    assert store.execute(f"SELECT refusal FROM {lane.EVALUATION_TABLE}").fetchone()[0] is None
+
+
+def test_a_fill_the_reconciliation_finds_later_makes_the_row_a_success(store) -> None:
+    from bayes_basket_target.execution_reconciliation import record_order_event  # noqa: PLC0415
+
+    _seed(store)
+    sent: list = []
+    lane.execute_tiebreak_entries(store, transport=lambda p, payload: (sent.append(payload) or {"ok": False, "reconcile_required": True, "error": "timeout"}),
+                                  now_utc=NOW, live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+    intent_id = sent[0]["order_intent_id"]
+    record_order_event(store, order_intent_id=intent_id, event={
+        "event_type": "FILL", "exchange_order_id": "0xlate", "observed_at": "2026-09-18T12:09:30.000Z",
+        "matched_size": float(sent[0]["size"]), "matched_notional_usdc": float(sent[0]["size"]) * float(sent[0]["price"]),
+        "event_payload": {},
+    })
+    _newer_snapshot(store, observed_at="2026-09-18T12:09:40.000Z", snapshot_id="snap_late")
+    after = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW, live_submit_authorized=True,
+                                          settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert after["retry_planned"] == 0 and len(sent) == 1
+    assert store.execute(f"SELECT refusal FROM {lane.EVALUATION_TABLE}").fetchone()[0] is None
