@@ -3186,6 +3186,31 @@ def production_cycle_history_row(
             if name != "cycle_total" and isinstance(value, (int, float))
         },
         "top_spans_ms": dict(top_spans),
+        # Charter 148 diagnostics.  ``stages_ms`` is written with sorted
+        # keys, so the order the stages ran in was lost and a reader summing
+        # it summed an alphabet; the sequence keeps it.  And a span's total
+        # alone cannot say whether 595s was one slow call or forty ordinary
+        # ones -- the mid-loop quote refresh restates a whole event day each
+        # time a station's lease lapses, and the per-cycle count is exactly
+        # the number the 2026-09-18 spikes could not be attributed without.
+        "stage_sequence": [
+            str(name)
+            for name in timings
+            if name not in ("cycle_total", "unattributed")
+            and isinstance(timings.get(name), (int, float))
+        ],
+        "top_span_detail": (
+            {
+                str(name): {
+                    "count": int(spans[name].get("count") or 0),
+                    "max_ms": round(float(spans[name].get("max_ms") or 0.0), 1),
+                    "slowest": str(spans[name].get("slowest") or "")[:80],
+                }
+                for name, _total in top_spans
+                if isinstance(spans.get(name), Mapping)
+            }
+            if isinstance(spans, Mapping) else {}
+        ),
         "waited_sec": (
             wait.get("waited_sec") if isinstance(wait, Mapping) else None
         ),

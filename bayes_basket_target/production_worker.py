@@ -783,6 +783,9 @@ STAGE_TIER: dict[str, int] = {
     # and the envelope table is append-only: a report identified after that
     # compile is one this cycle can never carry.
     "live_observation_identity": STAGE_TIER_R0_DECISION,
+    # Charter 148: reports that landed during the previous cycle are turned
+    # into P1 at the head of this one, ahead of the NWP arrival stages.
+    "early_p1": STAGE_TIER_R0_DECISION,
     "probability_p0": STAGE_TIER_R0_DECISION,
     "probability_p0m": STAGE_TIER_R0_DECISION,
     "probability_p1": STAGE_TIER_R0_DECISION,
@@ -3486,6 +3489,68 @@ def _live_observation_watermark(
         int(substitute or 0),
         datetime.now(timezone.utc).date().isoformat(),
     )
+
+
+# Charter 148 (2026-09-18, operator ruling "改"): a report's P1 is written at
+# the head of the cycle after it lands instead of behind the NWP arrival
+# stages.  Measured before the change over 1,370 reports (09-17 12Z..09-18):
+# report committed -> first P1 carrying it, median 7.7 min, p90 19.6, of
+# which 2.1 min at the median (5.7 at p90) was the next cycle's own stages
+# ahead of P1 -- inbox ingest, the P0 replay compile, the OOS scan and the
+# OOS evaluation.  P1 reads observations strictly as of the cycle clock and
+# roots on the newest committed P0-M, so it needs neither of those to run
+# first; only a root that this cycle itself rebuilds does, and those scopes
+# get their P1 again right after P0-M, as before.  ``PM_EARLY_P1=0``
+# restores the single P1 pass inside the chain.
+EARLY_P1_ENABLED = (
+    os.environ.get("PM_EARLY_P1", "1").strip().lower()
+    not in {"0", "off", "false", "no", ""}
+)
+
+
+def _merge_resident_p1_receipts(
+    early: Mapping[str, Any],
+    late: Mapping[str, Any] | None,
+    *,
+    late_scopes: Sequence[tuple[str, str]],
+) -> dict[str, Any]:
+    """One P1 receipt for a cycle that ran P1 twice.
+
+    The downstream reads -- the fail-closed check, the correction-review
+    wakeup, the status card -- see one pass's shape, so the two passes are
+    folded into it: receipts and blockers concatenate, and the state is the
+    same three-way rule the materializer applies to one pass.
+    """
+
+    receipts = list(early.get("receipts") or [])
+    blockers = list(early.get("blockers") or [])
+    if isinstance(late, Mapping):
+        receipts.extend(late.get("receipts") or [])
+        blockers.extend(late.get("blockers") or [])
+    merged = dict(early)
+    merged.update({
+        "state": (
+            "PARTIAL_FAIL_CLOSED"
+            if blockers and receipts
+            else "BLOCKED_FAIL_CLOSED"
+            if blockers
+            else "COMMITTED"
+        ),
+        "updated_scope_count": sum(
+            1 for item in receipts if item.get("state") == "COMMITTED"
+        ),
+        "p1_update_count": sum(
+            int(item.get("p1_update_count") or 0) for item in receipts
+        ),
+        "receipts": receipts,
+        "blockers": blockers,
+        "writes_target_ssot": any(
+            int(item.get("p1_update_count") or 0) > 0 for item in receipts
+        ),
+        "early_pass": True,
+        "late_pass_scopes": [f"{station}|{day}" for station, day in late_scopes],
+    })
+    return merged
 
 
 def _native_forward_packet_is_stale(
@@ -12773,6 +12838,7 @@ class TargetProductionWorker:
         as_of_utc: str,
         freshness_seconds: int = 3600,
         stage_clock_utc: str | None = None,
+        only_scopes: "set[tuple[str, str]] | None" = None,
     ) -> dict[str, Any]:
         """Append resident official new-high P1 through the unique compiler.
 
@@ -12852,6 +12918,17 @@ class TargetProductionWorker:
                 )
             ):
                 grouped.setdefault((station, day), []).append(dict(row))
+        # Charter 148: the chain's second pass, in a cycle whose head already
+        # ran P1 over every scope, is only for the scopes this cycle rebuilt
+        # a root for.
+        if only_scopes is not None:
+            wanted = {
+                (str(station).strip().upper(), str(day).strip())
+                for station, day in only_scopes
+            }
+            grouped = {
+                key: value for key, value in grouped.items() if key in wanted
+            }
         # Keyed by (station, day), so this counts station-days.  Capping it at
         # the station count made the whole P1 pass fail the moment a second
         # event day was open.
@@ -15031,16 +15108,38 @@ class TargetProductionWorker:
         # them owns it was unknown.  Mark each: the stages run in a fixed
         # order and never overlap, so the three spans sum to what the single
         # ``probability_chain`` mark used to report.
+        early = getattr(self, "_early_p1_this_cycle", None)
+        early_ran = isinstance(early, Mapping) and early.get("ran") is True
+        rowid_mark = self._envelope_rowid_ceiling() if early_ran else None
         p0 = self.materialize_resident_p0(as_of_utc=as_of_utc)
         self._mark("probability_p0")
         p0m = self._materialize_resident_p0m(as_of_utc=as_of_utc)
         self._mark("probability_p0m")
-        p1 = self._materialize_resident_p1(
-            as_of_utc=as_of_utc,
-            stage_clock_utc=(
-                p0m.get("stage_clock_utc") if isinstance(p0m, Mapping) else None
-            ),
+        stage_clock = (
+            p0m.get("stage_clock_utc") if isinstance(p0m, Mapping) else None
         )
+        if not early_ran:
+            p1 = self._materialize_resident_p1(
+                as_of_utc=as_of_utc,
+                stage_clock_utc=stage_clock,
+            )
+        else:
+            # The head of the cycle already ran P1 over every scope on the
+            # roots committed before it.  What it could not see is a root
+            # this chain has just rebuilt; those scopes re-root here, exactly
+            # as the single pass would have, and nothing else is read twice.
+            rerooted = self._scopes_rooted_after(rowid_mark)
+            late = (
+                self._materialize_resident_p1(
+                    as_of_utc=as_of_utc,
+                    stage_clock_utc=stage_clock,
+                    only_scopes=set(rerooted),
+                )
+                if rerooted else None
+            )
+            p1 = _merge_resident_p1_receipts(
+                early["p1"], late, late_scopes=rerooted
+            )
         self._mark("probability_p1")
         blocked_stages = [
             stage
@@ -15063,6 +15162,106 @@ class TargetProductionWorker:
             "places_orders": False,
             "live_submit_authorized": False,
             "orders_submitted": 0,
+        }
+
+    def _envelope_rowid_ceiling(self) -> int:
+        """The envelope table's newest rowid; append-only, so a watermark."""
+
+        return int(self.commit_conn.execute(
+            "SELECT COALESCE(MAX(rowid),0) FROM basket_probability_envelope"
+        ).fetchone()[0])
+
+    def _scopes_rooted_after(self, after_rowid: int | None) -> list[tuple[str, str]]:
+        """Station-days that gained a committed P0 or P0-M past ``after_rowid``.
+
+        A rowid range seek; ``stage`` and ``state`` are filtered here rather
+        than in SQL for the reason ``_fresh_committed_envelope_scopes`` gives.
+        """
+
+        if after_rowid is None:
+            return []
+        scopes: set[tuple[str, str]] = set()
+        for station_id, event_date, stage, state in self.commit_conn.execute(
+            "SELECT station_id,event_date,stage,state"
+            " FROM basket_probability_envelope WHERE rowid>?",
+            (int(after_rowid),),
+        ):
+            if state == "COMMITTED" and stage in ("P0", "P0-M"):
+                scopes.add((
+                    str(station_id or "").strip().upper(),
+                    str(event_date or "").strip(),
+                ))
+        return sorted(scope for scope in scopes if all(scope))
+
+    def _materialize_early_p1(
+        self,
+        *,
+        as_of_utc: str,
+        report_watermark: tuple[int, int, str] | None,
+    ) -> dict[str, Any]:
+        """Charter 148: P1 at the head of the cycle, for reports it has not seen.
+
+        Runs only when the archive holds a report newer than the last cycle
+        whose P1 covered its clock, and only when the report's identity pass
+        has staged its contract -- a P1 written ahead of that carries no
+        truth-revision hash and is refused by the atomic-fact gate until a
+        newer one does.  Anything short of a clean pass falls back to the
+        single P1 inside the chain, which is the behaviour before this stage.
+        """
+
+        boundary = {
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+        }
+        if not EARLY_P1_ENABLED:
+            return {"state": "DISABLED", "ran": False, **boundary}
+        if report_watermark is None:
+            return {"state": "SKIPPED_WATERMARK_UNREADABLE", "ran": False, **boundary}
+        if getattr(self, "_p1_covered_watermark", None) == report_watermark:
+            return {"state": "SKIPPED_NO_UNCOVERED_REPORTS", "ran": False, **boundary}
+        started = time.perf_counter()
+        try:
+            identity = self._identify_live_observations()
+            if str(identity.get("state") or "") not in {
+                "STAGED", "SKIPPED_NO_NEW_REPORTS",
+            }:
+                return {
+                    "state": "SKIPPED_IDENTITY_NOT_STAGED",
+                    "ran": False,
+                    "identity_state": identity.get("state"),
+                    "duration_sec": round(time.perf_counter() - started, 3),
+                    **boundary,
+                }
+            p1 = self._materialize_resident_p1(as_of_utc=as_of_utc)
+        except Exception as exc:  # noqa: BLE001 -- the chain's pass is the fallback
+            return {
+                "state": "FAILED",
+                "ran": False,
+                "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
+                "duration_sec": round(time.perf_counter() - started, 3),
+                **boundary,
+            }
+        if str(p1.get("state") or "") not in {
+            "COMMITTED", "PARTIAL_FAIL_CLOSED", "BLOCKED_FAIL_CLOSED",
+        }:
+            return {
+                "state": "SKIPPED_P1_NOT_ATTEMPTED",
+                "ran": False,
+                "p1_state": p1.get("state"),
+                "duration_sec": round(time.perf_counter() - started, 3),
+                **boundary,
+            }
+        return {
+            "state": "RAN",
+            "ran": True,
+            "identity_state": identity.get("state"),
+            "p1_state": p1.get("state"),
+            "p1_update_count": p1.get("p1_update_count"),
+            "p1": p1,
+            "duration_sec": round(time.perf_counter() - started, 3),
+            **boundary,
         }
 
     def _fresh_committed_envelope_scopes(
@@ -17192,6 +17391,13 @@ class TargetProductionWorker:
                 "live_submit_authorized": False,
             }
         self._mark("cash_phase_flush")
+        # Charter 148: read before the clock, so a report committed in
+        # between is inside this cycle's as-of read and at worst makes
+        # the next cycle's head pass run once more -- never the reverse.
+        self._early_p1_this_cycle = None
+        cycle_report_watermark = _live_observation_watermark(
+            getattr(self, "canonical_source_conn", None)
+        )
         now = utc_now()
         market_ingress: dict[str, Any] | None = None
         resident_p0_ingress: dict[str, Any] | None = None
@@ -17228,6 +17434,11 @@ class TargetProductionWorker:
                     "places_orders": False,
                 }
             self._mark("registry_ingress")
+            self._early_p1_this_cycle = self._materialize_early_p1(
+                as_of_utc=now,
+                report_watermark=cycle_report_watermark,
+            )
+            self._mark("early_p1")
             native_inbox_path = (
                 self.nwp_runtime_root
                 / "native_ensemble_forward_inbox.json"
@@ -17837,6 +18048,20 @@ class TargetProductionWorker:
             resident_p0_ingress = resident_probability_chain["p0"]
             resident_p0m_ingress = resident_probability_chain["p0m"]
             resident_p1_ingress = resident_probability_chain["p1"]
+            # Charter 148: this cycle's P1 covered every report committed by
+            # its clock; the next head pass runs only for later ones.  A
+            # wholly blocked pass covers nothing and is not recorded.
+            if (
+                cycle_report_watermark is not None
+                and str(resident_p1_ingress.get("state") or "").upper()
+                != "BLOCKED_FAIL_CLOSED"
+            ):
+                self._p1_covered_watermark = cycle_report_watermark
+            resident_probability_chain["early_p1"] = {
+                key: value
+                for key, value in (self._early_p1_this_cycle or {}).items()
+                if key != "p1"
+            }
             # A correction/revision halt belongs to one station-day.  It must
             # remain fail-closed for that scope, but must not suppress healthy
             # stations from reaching their own WS/decision path.  Only a
