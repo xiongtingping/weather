@@ -63,7 +63,13 @@ TIEBREAK_DEFAULT_SETTINGS: dict[str, Any] = {
     "enabled": True,
     # 20 USDC in the reading; 5 USDC by user ruling 2026-09-18 ("单笔金额改为5u").
     "stake_usdc": 5.0,
+    # v2 (user ruling 2026-09-18, "升级到v2"): the model's mode bucket priced
+    # 0.40-0.60 by the market's normalised mid, whether or not the market's
+    # own mode is that bucket.  v1 (``adjacent_tie_v1``) required the two
+    # modes to differ by one rung; it is the 148-station-day subset of v2.
+    "rule": "model_mode_midband_v2",
     "min_market_share_on_model_mode": 0.40,
+    "max_market_share_on_model_mode": 0.60,
     "first_decision_fresh_seconds": 3600.0,
 }
 

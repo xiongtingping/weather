@@ -136,25 +136,52 @@ def _fill_transport(sent: list):
 # The rule.
 
 
-def test_the_rule_fires_only_on_an_adjacent_near_tie() -> None:
+def test_v1_fires_only_on_an_adjacent_near_tie() -> None:
     m = {"27°C": 0.50, "28°C": 0.42, "29°C": 0.08}
     p = {"27°C": 0.35, "28°C": 0.45, "29°C": 0.20}
-    fired = lane.evaluate_rule(p, ORDS, m, min_market_share=0.40)
-    assert fired["fired"] is True
+    V1 = dict(min_market_share=0.40, rule=lane.RULE_V1)
+    fired = lane.evaluate_rule(p, ORDS, m, **V1)
+    assert fired["fired"] is True and fired["rule"] == "tiebreak_adjacent_mode_market_share_v1"
     assert (fired["model_mode"], fired["market_mode"], fired["mode_distance"]) == ("28°C", "27°C", 1)
     assert fired["market_share_on_model_mode"] == pytest.approx(0.42)
     # Modes agree: nothing to break.
-    agree = lane.evaluate_rule({"27°C": 0.6, "28°C": 0.3, "29°C": 0.1}, ORDS, m, min_market_share=0.40)
+    agree = lane.evaluate_rule({"27°C": 0.6, "28°C": 0.3, "29°C": 0.1}, ORDS, m, **V1)
     assert agree["fired"] is False and agree["reason"] == "modes_agree"
     # Two rungs apart is not a tie the market is having.
-    far = lane.evaluate_rule({"27°C": 0.2, "28°C": 0.3, "29°C": 0.5}, ORDS, m, min_market_share=0.40)
+    far = lane.evaluate_rule({"27°C": 0.2, "28°C": 0.3, "29°C": 0.5}, ORDS, m, **V1)
     assert far["fired"] is False and far["reason"].startswith("modes_not_adjacent")
     # The market must actually be torn: 0.39 on the model's bucket is not.
-    torn = lane.evaluate_rule(p, ORDS, {"27°C": 0.53, "28°C": 0.39, "29°C": 0.08}, min_market_share=0.40)
+    torn = lane.evaluate_rule(p, ORDS, {"27°C": 0.53, "28°C": 0.39, "29°C": 0.08}, **V1)
     assert torn["fired"] is False and torn["reason"] == "market_share_below_threshold"
     # Renormalised over the buckets in common, as the reading was.
-    partial = lane.evaluate_rule(p, ORDS, {"27°C": 0.25, "28°C": 0.21}, min_market_share=0.40)
+    partial = lane.evaluate_rule(p, ORDS, {"27°C": 0.25, "28°C": 0.21}, **V1)
     assert partial["fired"] is True and partial["market_share_on_model_mode"] == pytest.approx(0.21 / 0.46)
+
+
+def test_v2_fires_on_the_model_mode_inside_the_market_mid_band() -> None:
+    """v2 (user ruling 2026-09-18 升级到v2): the model's mode bucket priced
+    0.40-0.60 by the market, agreeing or not; v1's tie is a subset."""
+
+    V2 = dict(min_market_share=0.40, max_market_share=0.60)
+    p = {"27°C": 0.35, "28°C": 0.45, "29°C": 0.20}
+    # Disagreeing modes, market 0.42 on the model's bucket: fires (v1's case).
+    tie = lane.evaluate_rule(p, ORDS, {"27°C": 0.50, "28°C": 0.42, "29°C": 0.08}, **V2)
+    assert tie["fired"] is True and tie["rule"] == "tiebreak_model_mode_market_midband_v2"
+    assert lane.evaluate_rule(p, ORDS, {"27°C": 0.50, "28°C": 0.42, "29°C": 0.08}, min_market_share=0.40)["rule"] == tie["rule"], "v2 is the default"
+    # Agreeing modes, market 0.55 on the shared bucket: fires under v2, not v1.
+    agree = lane.evaluate_rule({"27°C": 0.6, "28°C": 0.3, "29°C": 0.1}, ORDS, {"27°C": 0.55, "28°C": 0.35, "29°C": 0.10}, **V2)
+    assert agree["fired"] is True and agree["model_mode"] == agree["market_mode"] == "27°C"
+    assert lane.evaluate_rule({"27°C": 0.6, "28°C": 0.3, "29°C": 0.1}, ORDS, {"27°C": 0.55, "28°C": 0.35, "29°C": 0.10}, min_market_share=0.40, rule=lane.RULE_V1)["fired"] is False
+    # Two rungs apart no longer matters: only the market's price on the model's bucket does.
+    far = lane.evaluate_rule({"27°C": 0.2, "28°C": 0.3, "29°C": 0.5}, ORDS, {"27°C": 0.45, "28°C": 0.10, "29°C": 0.45}, **V2)
+    assert far["fired"] is True and far["mode_distance"] == 2
+    # Below the floor and at or above the ceiling both refuse, by name.
+    low = lane.evaluate_rule(p, ORDS, {"27°C": 0.53, "28°C": 0.39, "29°C": 0.08}, **V2)
+    assert low["fired"] is False and low["reason"] == "market_share_below_threshold"
+    high = lane.evaluate_rule({"27°C": 0.6, "28°C": 0.3, "29°C": 0.1}, ORDS, {"27°C": 0.62, "28°C": 0.30, "29°C": 0.08}, **V2)
+    assert high["fired"] is False and high["reason"] == "market_share_above_ceiling"
+    with pytest.raises(ValueError):
+        lane.evaluate_rule(p, ORDS, {"27°C": 0.5, "28°C": 0.4, "29°C": 0.1}, min_market_share=0.4, rule="no_such_rule")
 
 
 def test_the_walk_spends_at_most_the_stake_and_prices_the_deepest_level() -> None:
@@ -266,13 +293,38 @@ def test_a_stale_first_decision_is_scored_not_bought(store) -> None:
 
 
 def test_a_decision_that_does_not_fire_is_scored_with_its_reason(store) -> None:
-    _seed(store, probabilities={"27°C": 0.6, "28°C": 0.3, "29°C": 0.1})
+    # The model's mode is 29°C, which the market prices at 0.08: below the band.
+    _seed(store, probabilities={"27°C": 0.2, "28°C": 0.3, "29°C": 0.5})
     receipt = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
                                             live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
     assert receipt["evaluated"] == 1 and receipt["fired"] == 0
+    assert receipt["refusals"] == ["rule_not_met:market_share_below_threshold"]
+    assert receipt["rule"] == "tiebreak_model_mode_market_midband_v2"
+    row = store.execute(f"SELECT model_mode, market_mode, fired, rule_version FROM {lane.EVALUATION_TABLE}").fetchone()
+    assert row == ("29°C", "27°C", 0, "tiebreak_model_mode_market_midband_v2")
+
+
+def test_the_lane_file_selects_v1_and_the_row_says_which_rule_scored_it(store) -> None:
+    """A stage scored under v1 keeps v1's version on its row; v2 rows sit
+    beside it (user ruling: v1's forward sample is not overwritten)."""
+
+    _seed(store, probabilities={"27°C": 0.6, "28°C": 0.3, "29°C": 0.1})
+    receipt = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
+                                            live_submit_authorized=True,
+                                            settings={"stake_usdc": 20.0, "rule": "adjacent_tie_v1"}, admission=ADMIT)
+    assert receipt["rule"] == "tiebreak_adjacent_mode_market_share_v1"
     assert receipt["refusals"] == ["rule_not_met:modes_agree"]
-    row = store.execute(f"SELECT model_mode, market_mode, fired FROM {lane.EVALUATION_TABLE}").fetchone()
-    assert row == ("27°C", "27°C", 0)
+    assert store.execute(f"SELECT rule_version FROM {lane.EVALUATION_TABLE}").fetchone()[0] == "tiebreak_adjacent_mode_market_share_v1"
+    # The same envelope under v2 (a later stage) fires and is recorded as v2.
+    _seed(store, stage="P0-M", fact_id="f2", decided="2026-09-18T12:05:00.000Z", probabilities={"27°C": 0.6, "28°C": 0.3, "29°C": 0.1})
+    sent: list = []
+    second = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW,
+                                           live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert second["fired"] == 1 and second["submitted"] == 1 and sent[0][1]["token_id"] == "t27"
+    versions = sorted(r[0] for r in store.execute(f"SELECT rule_version FROM {lane.EVALUATION_TABLE}"))
+    assert versions == ["tiebreak_adjacent_mode_market_share_v1", "tiebreak_model_mode_market_midband_v2"]
+    plan_rule = store.execute("SELECT json_extract(intent_json, '$.rule') FROM basket_target_order_intents").fetchone()[0]
+    assert plan_rule == "tiebreak_model_mode_market_midband_v2"
 
 
 def test_the_gates_a_fired_decision_must_still_pass(store) -> None:

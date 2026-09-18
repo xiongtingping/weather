@@ -68,7 +68,34 @@ LANE = LANE_TIEBREAK
 LANE_TITLE = "秤砣线"
 STRATEGY_ID = "bayes_basket_target_v1"
 SCHEMA = "tiebreak_lane_plan_v1"
-RULE_VERSION = "tiebreak_adjacent_mode_market_share_v1"
+# Two rules, selected by the lane file's ``rule`` (charter 146):
+#   v1 ``adjacent_tie_v1`` -- model mode one rung from the market mode, and
+#      the market's normalised mid on the model's bucket >= min share;
+#   v2 ``model_mode_midband_v2`` (user ruling 2026-09-18 "升级到v2") -- the
+#      model's mode bucket priced inside [min, max) by the market's
+#      normalised mid, whether or not the market's own mode is that bucket.
+# Measured on every snapshot 08-15..09-17 (39,849 facts), one buy per
+# station-day at the ask: v2 754 station-days +5.7% [-0.2, +10.9] (halves
+# +5.5/+5.7), first decisions only 488 +7.9% [+1.8, +13.7]; the same band
+# without the model's mode on the bucket -7.2% [-12.3, -2.4].  v1 is the
+# 148-station-day subset of v2 (+9.8% [-2.7, +22.9]).
+RULE_V1 = "adjacent_tie_v1"
+RULE_V2 = "model_mode_midband_v2"
+RULE_VERSIONS = {
+    RULE_V1: "tiebreak_adjacent_mode_market_share_v1",
+    RULE_V2: "tiebreak_model_mode_market_midband_v2",
+}
+DEFAULT_RULE = RULE_V2
+RULE_VERSION = RULE_VERSIONS[DEFAULT_RULE]
+
+
+def rule_version_for(rule: Any) -> str:
+    """The evaluation table's ``rule_version`` string for a lane-file rule name."""
+
+    name = str(rule or DEFAULT_RULE).strip()
+    if name not in RULE_VERSIONS:
+        raise ValueError(f"tiebreak_rule_unknown:{name}")
+    return RULE_VERSIONS[name]
 EXECUTION_CANDIDATE = "TAKER_FOK"
 EVALUATION_TABLE = "tiebreak_lane_evaluation"
 DEFAULT_LOOKBACK_DAYS = 3
@@ -142,21 +169,30 @@ def evaluate_rule(
     market_vector: Mapping[str, Any],
     *,
     min_market_share: float,
+    max_market_share: float | None = None,
+    rule: str = DEFAULT_RULE,
 ) -> dict[str, Any]:
-    """The four conditions on one decision's envelope and market vector.
+    """The conditions on one decision's envelope and market vector.
 
     Both vectors are renormalised over the buckets they share, as the
     reading was; the market's share on the model's mode is read after
-    that.  Returns the reading and, when it does not fire, why.
+    that.  ``rule`` picks v1 (adjacent modes, floor only) or v2 (the
+    model's mode inside the market's mid band).  Returns the reading and,
+    when it does not fire, why.
     """
 
     ords = {str(b): int(o) for b, o in (ordinals or {}).items()}
     p = {str(b): float(v) for b, v in (probabilities or {}).items() if str(b) in ords and float(v) >= 0.0}
     m = {str(b): float(v) for b, v in (market_vector or {}).items() if str(b) in ords and float(v) >= 0.0}
     common = sorted(set(p) & set(m), key=lambda b: ords[b])
+    rule_name = str(rule or DEFAULT_RULE)
     reading: dict[str, Any] = {
-        "rule": RULE_VERSION,
+        "rule": rule_version_for(rule_name),
+        "rule_name": rule_name,
         "min_market_share_on_model_mode": float(min_market_share),
+        "max_market_share_on_model_mode": (
+            None if max_market_share is None else float(max_market_share)
+        ),
         "buckets_in_common": len(common),
         "fired": False,
         "reason": "",
@@ -184,14 +220,18 @@ def evaluate_rule(
         "model_share_on_model_mode": pn[model_mode],
         "model_share_on_market_mode": pn[market_mode],
     })
-    if model_mode == market_mode:
-        reading["reason"] = "modes_agree"
-        return reading
-    if distance != 1:
-        reading["reason"] = f"modes_not_adjacent:{distance}"
-        return reading
+    if rule_name == RULE_V1:
+        if model_mode == market_mode:
+            reading["reason"] = "modes_agree"
+            return reading
+        if distance != 1:
+            reading["reason"] = f"modes_not_adjacent:{distance}"
+            return reading
     if mn[model_mode] < float(min_market_share) - 1e-12:
         reading["reason"] = "market_share_below_threshold"
+        return reading
+    if rule_name == RULE_V2 and max_market_share is not None and mn[model_mode] >= float(max_market_share) - 1e-12:
+        reading["reason"] = "market_share_above_ceiling"
         return reading
     reading["fired"] = True
     return reading
@@ -358,12 +398,13 @@ def station_day_attempted(conn: sqlite3.Connection, station_id: str, event_date:
 
 def _record(conn: sqlite3.Connection, key: Mapping[str, Any], fact: Mapping[str, Any] | None,
             reading: Mapping[str, Any], *, fired: bool, refusal: str | None,
-            order_intent_id: str | None, plan: Mapping[str, Any] | None, now_utc: str) -> dict[str, Any]:
+            order_intent_id: str | None, plan: Mapping[str, Any] | None, now_utc: str,
+            rule_version: str = RULE_VERSION) -> dict[str, Any]:
     body = {
         "station_id": key["station_id"], "event_date": key["event_date"], "stage": key["stage"],
         "fact_id": (fact or {}).get("fact_id", ""), "decision_at_utc": key["decision_at_utc"],
         "envelope_id": (fact or {}).get("envelope_id", ""), "snapshot_id": (fact or {}).get("snapshot_id", ""),
-        "rule_version": RULE_VERSION, "reading": dict(reading), "fired": bool(fired),
+        "rule_version": rule_version, "reading": dict(reading), "fired": bool(fired),
         "refusal": refusal, "order_intent_id": order_intent_id, "plan": dict(plan) if plan else None,
     }
     sha = content_sha256(body)
@@ -376,7 +417,7 @@ def _record(conn: sqlite3.Connection, key: Mapping[str, Any], fact: Mapping[str,
         (
             f"tiebreak_eval_{sha[:32]}", body["station_id"], body["event_date"], body["stage"],
             body["fact_id"], body["decision_at_utc"], body["envelope_id"], body["snapshot_id"],
-            RULE_VERSION, reading.get("model_mode"), reading.get("market_mode"), reading.get("mode_distance"),
+            rule_version, reading.get("model_mode"), reading.get("market_mode"), reading.get("mode_distance"),
             reading.get("market_share_on_model_mode"), reading.get("model_share_on_model_mode"),
             reading.get("market_mode_share"), reading.get("model_mode_share"),
             1 if fired else 0, refusal, order_intent_id,
@@ -410,6 +451,10 @@ def plan_tiebreak_entries(
     cfg = {**TIEBREAK_DEFAULT_SETTINGS, **dict(settings or lane_settings(LANE))}
     stake = float(cfg.get("stake_usdc") or TIEBREAK_DEFAULT_SETTINGS["stake_usdc"])
     min_share = float(cfg.get("min_market_share_on_model_mode") or TIEBREAK_DEFAULT_SETTINGS["min_market_share_on_model_mode"])
+    rule_name = str(cfg.get("rule") or DEFAULT_RULE)
+    rule_version = rule_version_for(rule_name)
+    max_share_raw = cfg.get("max_market_share_on_model_mode")
+    max_share = None if max_share_raw is None else float(max_share_raw)
     fresh_seconds = float(cfg.get("first_decision_fresh_seconds") or TIEBREAK_DEFAULT_SETTINGS["first_decision_fresh_seconds"])
     gate = admission or (lambda station, conn: live_station_admission(station, conn=conn))
     now = _utc(now_utc)
@@ -425,60 +470,63 @@ def plan_tiebreak_entries(
         fact = _fact(target_conn, key)
         if fact is None:
             evaluations.append(_record(target_conn, key, None, {}, fired=False, refusal="fact_missing",
-                                       order_intent_id=None, plan=None, now_utc=now_utc))
+                                       order_intent_id=None, plan=None, now_utc=now_utc, rule_version=rule_version))
             continue
         age = (now - _utc(fact["decision_at_utc"])).total_seconds()
         if age > fresh_seconds:
             evaluations.append(_record(target_conn, key, fact, {"age_seconds": round(age, 1)}, fired=False,
-                                       refusal="first_decision_stale", order_intent_id=None, plan=None, now_utc=now_utc))
+                                       refusal="first_decision_stale", order_intent_id=None, plan=None, now_utc=now_utc, rule_version=rule_version))
             continue
         envelope = _envelope(target_conn, fact["envelope_id"])
         snapshot = _snapshot(target_conn, fact["snapshot_id"])
         if envelope is None or snapshot is None:
             evaluations.append(_record(target_conn, key, fact, {}, fired=False,
-                                       refusal="envelope_or_snapshot_missing", order_intent_id=None, plan=None, now_utc=now_utc))
+                                       refusal="envelope_or_snapshot_missing", order_intent_id=None, plan=None, now_utc=now_utc, rule_version=rule_version))
             continue
         market = market_reference_v1(snapshot["buckets"])
         if market.get("state") != "complete":
             evaluations.append(_record(target_conn, key, fact, {"market_state": market.get("state"), "market_reason": market.get("reason")},
                                        fired=False, refusal=f"market_incomplete:{market.get('reason') or market.get('state')}",
-                                       order_intent_id=None, plan=None, now_utc=now_utc))
+                                       order_intent_id=None, plan=None, now_utc=now_utc, rule_version=rule_version))
             continue
-        reading = evaluate_rule(envelope["probabilities"], envelope["ordinals"], market["vector"], min_market_share=min_share)
+        reading = evaluate_rule(
+            envelope["probabilities"], envelope["ordinals"], market["vector"],
+            min_market_share=min_share, max_market_share=max_share, rule=rule_name,
+        )
         if not reading["fired"]:
             evaluations.append(_record(target_conn, key, fact, reading, fired=False,
-                                       refusal=f"rule_not_met:{reading['reason']}", order_intent_id=None, plan=None, now_utc=now_utc))
+                                       refusal=f"rule_not_met:{reading['reason']}", order_intent_id=None, plan=None, now_utc=now_utc, rule_version=rule_version))
             continue
         refusal = _planning_refusal(target_conn, key, fact, gate=gate, now_utc=now_utc)
         if refusal:
             evaluations.append(_record(target_conn, key, fact, reading, fired=True, refusal=refusal,
-                                       order_intent_id=None, plan=None, now_utc=now_utc))
+                                       order_intent_id=None, plan=None, now_utc=now_utc, rule_version=rule_version))
             continue
         bucket = str(reading["model_mode"])
         registry = _registry_rows(target_conn, canonical_conn, station_id=key["station_id"], event_date=key["event_date"])
         market_row = registry.get(bucket)
         if market_row is None or not market_row.get("yes_token"):
             evaluations.append(_record(target_conn, key, fact, reading, fired=True, refusal="registry_token_missing",
-                                       order_intent_id=None, plan=None, now_utc=now_utc))
+                                       order_intent_id=None, plan=None, now_utc=now_utc, rule_version=rule_version))
             continue
         if not bool(market_row.get("accepting_orders")):
             evaluations.append(_record(target_conn, key, fact, reading, fired=True, refusal="market_not_accepting_orders",
-                                       order_intent_id=None, plan=None, now_utc=now_utc))
+                                       order_intent_id=None, plan=None, now_utc=now_utc, rule_version=rule_version))
             continue
         book_row = next((r for r in snapshot["buckets"] if str(r.get("bucket")) == bucket), None)
         min_shares = float(market_row.get("min_size") or DEFAULT_MIN_ORDER_SHARES)
         walk = walk_ask_book((book_row or {}).get("ask_levels") or (), stake, min_shares=min_shares) if book_row and book_row.get("ask_available", True) else None
         if walk is None:
             evaluations.append(_record(target_conn, key, fact, reading, fired=True, refusal="ask_book_too_thin",
-                                       order_intent_id=None, plan=None, now_utc=now_utc))
+                                       order_intent_id=None, plan=None, now_utc=now_utc, rule_version=rule_version))
             continue
         cash_refusal = _cash_refusal(target_conn, now_utc=now_utc, needed=walk["walked_cost_usdc"])
         if cash_refusal:
             evaluations.append(_record(target_conn, key, fact, reading, fired=True, refusal=cash_refusal,
-                                       order_intent_id=None, plan=None, now_utc=now_utc))
+                                       order_intent_id=None, plan=None, now_utc=now_utc, rule_version=rule_version))
             continue
         plan = {
-            "schema": SCHEMA, "rule": RULE_VERSION, "lane": LANE, "title": LANE_TITLE,
+            "schema": SCHEMA, "rule": rule_version, "rule_name": rule_name, "lane": LANE, "title": LANE_TITLE,
             "station_id": key["station_id"], "event_date": key["event_date"], "stage": key["stage"],
             "settlement_timezone": fact["settlement_timezone"], "fact_id": fact["fact_id"],
             "decision_at_utc": fact["decision_at_utc"], "envelope_id": fact["envelope_id"],
@@ -492,10 +540,10 @@ def plan_tiebreak_entries(
         }
         plan["order_intent_id"] = f"tiebreak_{content_sha256({'plan': plan})[:32]}"
         evaluation = _record(target_conn, key, fact, reading, fired=True, refusal=None,
-                             order_intent_id=plan["order_intent_id"], plan=plan, now_utc=now_utc)
+                             order_intent_id=plan["order_intent_id"], plan=plan, now_utc=now_utc, rule_version=rule_version)
         evaluations.append(evaluation)
         plans.append(plan)
-    return {"evaluations": evaluations, "plans": plans, "settings": cfg}
+    return {"evaluations": evaluations, "plans": plans, "settings": cfg, "rule_version": rule_version}
 
 
 def _planning_refusal(conn: sqlite3.Connection, key: Mapping[str, Any], fact: Mapping[str, Any], *,
@@ -584,8 +632,8 @@ def execute_tiebreak_entries(
             receipts.append({"order_intent_id": intent_id, "state": "already_minted"})
             continue
         details = {
-            "schema": "tiebreak_lane_decision_v1", "lane": LANE, "title": LANE_TITLE, "rule": RULE_VERSION,
-            "decision_signature": {"stage": plan["stage"], "lane": LANE, "rule": RULE_VERSION},
+            "schema": "tiebreak_lane_decision_v1", "lane": LANE, "title": LANE_TITLE, "rule": plan["rule"],
+            "decision_signature": {"stage": plan["stage"], "lane": LANE, "rule": plan["rule"]},
             "forward_evidence_binding": {
                 "decision_at_utc": now_utc,
                 "probability_decision_at_utc": plan["envelope_decision_at_utc"],
@@ -603,7 +651,7 @@ def execute_tiebreak_entries(
             token_id=plan["token_id"], price=plan["limit_price"], shares=plan["shares"],
             execution_candidate=EXECUTION_CANDIDATE, fok_price_cap=plan["limit_price"],
             tick_size=(float(plan["tick_size"]) if plan.get("tick_size") is not None else None),
-            intent_body={"schema": SCHEMA, "rule": RULE_VERSION, "strategy_id": STRATEGY_ID,
+            intent_body={"schema": SCHEMA, "rule": plan["rule"], "strategy_id": STRATEGY_ID,
                          "order_type": "FOK", "post_only": False, "plan": plan},
             transport=transport, live_submit_authorized=live_submit_authorized,
             decision_details=details,
@@ -621,7 +669,7 @@ def execute_tiebreak_entries(
         "schema": "tiebreak_lane_receipt_v1",
         "lane": LANE,
         "title": LANE_TITLE,
-        "rule": RULE_VERSION,
+        "rule": planned["rule_version"],
         "settings": planned["settings"],
         "evaluated": len(planned["evaluations"]),
         "fired": sum(1 for e in planned["evaluations"] if e["fired"]),
@@ -634,10 +682,15 @@ def execute_tiebreak_entries(
 
 
 __all__ = [
+    "DEFAULT_RULE",
     "EVALUATION_TABLE",
     "LANE",
     "LANE_TITLE",
+    "RULE_V1",
+    "RULE_V2",
     "RULE_VERSION",
+    "RULE_VERSIONS",
+    "rule_version_for",
     "ensure_lane_schema",
     "evaluate_rule",
     "execute_tiebreak_entries",

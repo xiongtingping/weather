@@ -74,8 +74,14 @@ def test_the_served_file_pauses_the_three_and_runs_the_tiebreak() -> None:
     assert served["lanes"]["certain_win_recycle"]["enabled"] is False
     assert served["lanes"]["mis_bought_leg_exit"]["enabled"] is False
     assert served["lanes"]["tiebreak"]["enabled"] is True
-    assert served["lanes"]["tiebreak"]["stake_usdc"] == 5.0
+    # The stake is the operator's dial (the board moved it 5 -> 6 within an
+    # hour of going live); a test pins the bounds and the rule, not the
+    # number the operator last clicked.
+    low, high = lanes.TIEBREAK_STAKE_BOUNDS
+    assert low <= float(served["lanes"]["tiebreak"]["stake_usdc"]) <= high
+    assert served["lanes"]["tiebreak"]["rule"] == "model_mode_midband_v2"
     assert served["lanes"]["tiebreak"]["min_market_share_on_model_mode"] == 0.40
+    assert served["lanes"]["tiebreak"]["max_market_share_on_model_mode"] == 0.60
 
 
 # ---------------------------------------------------------------------------

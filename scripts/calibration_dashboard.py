@@ -8195,6 +8195,13 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             "first_decision_fresh_seconds": tiebreak.get(
                 "first_decision_fresh_seconds"
             ),
+            # v2 (user ruling 2026-09-18): the rule the file selects and the
+            # band's ceiling; v1 rows stay in the table under their own
+            # rule_version.
+            "rule": tiebreak.get("rule"),
+            "max_market_share_on_model_mode": tiebreak.get(
+                "max_market_share_on_model_mode"
+            ),
             "source": lanes.get("source"),
             "updated_at_utc": lanes.get("updated_at_utc"),
         },
@@ -8239,6 +8246,17 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
                 " ORDER BY evaluated_at_utc DESC LIMIT 40"
             )
         ]
+        by_rule = [
+            {"rule_version": str(r[0] or ""), "evaluated": int(r[1]), "fired": int(r[2] or 0),
+             "sent": int(r[3] or 0), "first_at_utc": r[4], "last_at_utc": r[5]}
+            for r in conn.execute(
+                "SELECT rule_version, COUNT(*), SUM(fired),"
+                " SUM(CASE WHEN fired=1 AND refusal IS NULL THEN 1 ELSE 0 END),"
+                " MIN(evaluated_at_utc), MAX(evaluated_at_utc)"
+                " FROM tiebreak_lane_evaluation GROUP BY rule_version"
+                " ORDER BY MIN(evaluated_at_utc)"
+            )
+        ]
         by_day = [
             {"event_date": r[0], "evaluated": int(r[1]), "fired": int(r[2] or 0),
              "sent": int(r[3] or 0)}
@@ -8253,7 +8271,7 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             "available": True, "total": int(total or 0), "fired": int(fired or 0),
             "event_days": int(days or 0), "first_at_utc": first_at,
             "last_at_utc": last_at, "refusals": refusals,
-            "fired_rows": fired_rows, "by_day": by_day,
+            "fired_rows": fired_rows, "by_day": by_day, "by_rule": by_rule,
         }
     book = live_book.build(conn)
     settled = book.get("settled") or {}
@@ -16382,12 +16400,14 @@ function tiebreakLane(){
       <b>秤砣线</b>
       <span class="pill ${S.enabled?"green":"red"}">${S.enabled?"运行中":"已关闭"}</span>
       <span>每笔 <b class="mono">${usd(S.stake_usdc)}</b>（顶部「秤砣每笔」旋钮可调）</span>
-      <span class="muted">市场给模型桶 ≥ ${n3(S.min_market_share_on_model_mode)}，首决策 ${S.first_decision_fresh_seconds==null?"—":Math.round(S.first_decision_fresh_seconds/60)} 分钟内</span>
+      <span class="muted">规则 <b class="mono">${h(S.rule||"model_mode_midband_v2")}</b>：模型众数桶且市场给它 ${n3(S.min_market_share_on_model_mode)}–${S.max_market_share_on_model_mode==null?"∞":n3(S.max_market_share_on_model_mode)}${(S.rule||"")==="adjacent_tie_v1"?"（且两众数相邻不同）":""}，首决策 ${S.first_decision_fresh_seconds==null?"—":Math.round(S.first_decision_fresh_seconds/60)} 分钟内</span>
       <span style="flex:1"></span>
       ${laneWord("basket","篮子买单")} ${laneWord("certain_win_recycle","0.998 回收")} ${laneWord("mis_bought_leg_exit","144 卖回")}
     </div>
-    <div class="muted" style="margin-top:6px">规则：每个阶段的首个决策，模型众数桶与市场众数桶相邻、市场归一化中价给模型桶不低于门槛，就按卖一梯走到预算所及的最深一档 FOK 买模型桶，一个站日只买一次。读数依据：2,255 首决策 / 33 日里唯一模型胜市场的格（n=42，+17.8% 于 20U/笔，日聚类 90% [−7.3%, +41.8%]）——假设，不是结论。</div></div>`;
-  const evalTiles=E.available?`<div class="grid g3" style="margin-top:8px">
+    <div class="muted" style="margin-top:6px">v2 规则：每个阶段的首个决策，模型众数桶被市场归一化中价定在 0.40–0.60 之间，就按卖一梯走到预算所及的最深一档 FOK 买这桶，一个站日只买一次。读数依据（全部快照 08-15→09-17，一站日一次按卖一）：754 站日 +5.7% [−0.2, +10.9]，前后半 +5.5/+5.7，仅首决策 488 站日 +7.9% [+1.8, +13.7]；同价带不看模型 −3.2%，模型众数在别处 −7.2%。v1（两众数相邻不同、市场 ≥0.40）是其 148 站日子集，行按 rule_version 分开记——仍是假设，不是结论。</div></div>`;
+  const byRule=(E.by_rule||[]).map(r=>`<span class="pill ${/v2$/.test(r.rule_version)?"green":"amber"}" title="${h(r.first_at_utc||"")} → ${h(r.last_at_utc||"")}">${h(r.rule_version.replace("tiebreak_",""))}：评估 ${r.evaluated} · 触发 ${r.fired} · 发单 ${r.sent}</span>`).join(" ");
+  const ruleLine=byRule?`<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><span class="muted">按规则版本：</span>${byRule}</div>`:"";
+  const evalTiles=E.available?ruleLine+`<div class="grid g3" style="margin-top:8px">
     ${tile("评估过的阶段首决策",E.total,`${E.event_days} 个事件日 · 最近 ${h((E.last_at_utc||"").slice(0,16).replace("T"," "))}Z`)}
     ${tile("触发（四条件成立）",E.fired,`${E.total?pc(E.fired/E.total):"—"} 的首决策`)}
     ${tile("发单 / 成交 / 已结算",`${R.sent==null?"—":R.sent} / ${R.filled==null?"—":R.filled} / ${R.settled==null?"—":R.settled}`,`在途 ${R.open==null?"—":R.open}`)}
