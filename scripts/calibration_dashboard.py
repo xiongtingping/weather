@@ -2025,6 +2025,108 @@ FOUR_LAYER_FEATURE_WORDS = {
 }
 
 
+def _four_layer_breakdown(
+    receipt: Mapping[str, Any],
+    *,
+    shadow_json: Any,
+    excluded_text: Any,
+    probabilities_json: Any,
+    ordinals_json: Any,
+    raw_artifact: Mapping[str, Any],
+) -> dict[str, Any]:
+    """One served step, layer by layer, in the order the chain runs them.
+
+    Read, not rebuilt: each layer's decision comes off the serving receipt,
+    and the feature row off the shadow document, which production builds from
+    the same inputs as the served chain.  The phase layer's logit is split
+    into its terms so a reader can see what moved it; the split is checked
+    against production's own ``phase_rise_probability`` on the same row and
+    the check travels with it, so a decomposition that disagrees with what
+    was served says so instead of being believed.
+    """
+
+    from bayes_basket_target import metar_four_layer as mfl  # noqa: PLC0415
+    from bayes_basket_target.contracts import ContractError  # noqa: PLC0415
+
+    out: dict[str, Any] = {}
+    try:
+        served = {str(k): float(v) for k, v in json.loads(probabilities_json or "{}").items()}
+        ordinals = {str(k): int(v) for k, v in json.loads(ordinals_json or "{}").items()}
+    except (TypeError, ValueError):
+        served, ordinals = {}, {}
+    phase = receipt.get("phase") or {}
+    high_bucket = str(phase.get("running_high_bucket") or "")
+    excluded = [b for b in str(excluded_text or "").split(",") if b and b != "NONE"]
+    out["fact"] = {"running_high_bucket": high_bucket,
+                   "zeroed_buckets": len(excluded)}
+    reanchor = receipt.get("reanchor") or {}
+    out["reanchor"] = {"state": reanchor.get("state"),
+                       "shift_c": reanchor.get("shift_c")}
+    ratios = ((receipt.get("remaining_warming") or {})
+              .get("likelihood_ratio_by_bucket") or {})
+    floor = ordinals.get(high_bucket)
+    out["remaining_warming"] = {
+        "state": (receipt.get("remaining_warming") or {}).get("state"),
+        "above_high": [
+            {"bucket": b, "ratio": float(r)}
+            for b, r in sorted(ratios.items(), key=lambda kv: ordinals.get(kv[0], 0))
+            if floor is not None and ordinals.get(b, -1) > floor
+        ],
+    }
+    features: dict[str, Any] = {}
+    try:
+        features = dict((json.loads(shadow_json) if shadow_json else {}).get("features") or {})
+    except (TypeError, ValueError):
+        features = {}
+    decomposition: dict[str, Any] = {}
+    block = (raw_artifact or {}).get("phase") or {}
+    if features and block and features.get("remaining_hours") is not None:
+        try:
+            index = mfl._hours_bin(float(features["remaining_hours"]), block["hours_edges"])
+            intercept = float(block["bin_intercepts"][index])
+            fallbacks = (raw_artifact or {}).get("feature_fallbacks") or {}
+            terms = []
+            for name, weight in (block.get("coefficients") or {}).items():
+                value = features.get(name)
+                used_fallback = value is None
+                if used_fallback:
+                    value = fallbacks.get(name, 0.0)
+                terms.append({
+                    "feature": name,
+                    "label": FOUR_LAYER_FEATURE_WORDS.get(name, name),
+                    "value": float(value), "coefficient": float(weight),
+                    "contribution": float(weight) * float(value),
+                    "fallback": used_fallback,
+                })
+            terms.sort(key=lambda t: -abs(t["contribution"]))
+            eta = intercept + sum(t["contribution"] for t in terms)
+            recomputed = mfl.phase_rise_probability(features, raw_artifact)
+            decomposition = {
+                "hours_left": float(features["remaining_hours"]),
+                "bin": [block["hours_edges"][index], block["hours_edges"][index + 1]],
+                "intercept": intercept, "terms": terms, "eta": eta,
+                "probability": 1.0 / (1.0 + math.exp(-max(-30.0, min(30.0, eta)))),
+                "production_probability": recomputed,
+                "matches_receipt": (
+                    phase.get("rise_probability") is not None
+                    and abs(float(phase["rise_probability"]) - recomputed) < 1e-9
+                ),
+            }
+        except (KeyError, IndexError, TypeError, ValueError, ContractError):
+            decomposition = {}
+    out["phase"] = {"state": phase.get("state"),
+                    "rise_probability": phase.get("rise_probability"),
+                    "decomposition": decomposition}
+    if served and floor is not None:
+        mode = max(served, key=lambda b: (served[b], -ordinals.get(b, 0)))
+        out["served"] = {
+            "mode": mode, "mode_p": served[mode],
+            "mass_above_high": sum(v for b, v in served.items() if ordinals.get(b, -1) > floor),
+            "mass_at_high": served.get(high_bucket),
+        }
+    return out
+
+
 def collect_four_layer_chain(conn: sqlite3.Connection) -> dict[str, Any]:
     """P1's four-layer chain, stated outright: switches, the fitted file, and
     what it did on each station's newest P1.
@@ -2052,8 +2154,10 @@ def collect_four_layer_chain(conn: sqlite3.Connection) -> dict[str, Any]:
     except Exception:  # noqa: BLE001
         return {"available": False}
     artifact: dict[str, Any] = {}
+    raw_artifact: dict[str, Any] = {}
     try:
         raw = json.loads(path.read_text())
+        raw_artifact = raw
         mtime = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
 
         def _coefficients(block: Mapping[str, Any] | None) -> list[dict[str, Any]]:
@@ -2066,7 +2170,17 @@ def collect_four_layer_chain(conn: sqlite3.Connection) -> dict[str, Any]:
                 )
             ]
 
+        phase_block = raw.get("phase") or {}
+        edges = list(phase_block.get("hours_edges") or [])
         artifact = {
+            # The phase layer's clock term: one intercept per bin of hours
+            # left to local midnight, before any feature is added.
+            "phase_bins": [
+                {"hours_from": edges[i], "hours_to": edges[i + 1],
+                 "intercept": value}
+                for i, value in enumerate(phase_block.get("bin_intercepts") or [])
+                if i + 1 < len(edges)
+            ],
             "sha": str(raw.get("content_sha256") or "")[:12],
             "fitted_at_utc": raw.get("fitted_at_utc"),
             "file_written_utc": mtime.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -2103,7 +2217,10 @@ def collect_four_layer_chain(conn: sqlite3.Connection) -> dict[str, Any]:
             " json_extract(lineage_json,'$.p1_four_layer_serving_json'),"
             " json_extract(lineage_json,'$.metar_trajectory_running_high_c'),"
             " json_extract(lineage_json,'$.metar_ceiling_json'),"
-            " json_extract(lineage_json,'$.regional_path_prior_json')"
+            " json_extract(lineage_json,'$.regional_path_prior_json'),"
+            " json_extract(lineage_json,'$.p1_shadow_four_layer_json'),"
+            " json_extract(lineage_json,'$.observed_hard_excluded_buckets'),"
+            " probabilities_json, bucket_ordinals_json"
             " FROM basket_probability_envelope WHERE station_id=? AND stage='P1'"
             " AND state='COMMITTED' AND decision_at_utc=? LIMIT 1",
             (station, decided),
@@ -2149,6 +2266,11 @@ def collect_four_layer_chain(conn: sqlite3.Connection) -> dict[str, Any]:
             "regional_system_id": system or None,
             "regional_headroom_c": four.get("regional_headroom_c"),
             "regional_live_gap_c": four.get("regional_live_gap_c"),
+            "layers": _four_layer_breakdown(
+                four, shadow_json=row[6], excluded_text=row[7],
+                probabilities_json=row[8], ordinals_json=row[9],
+                raw_artifact=raw_artifact,
+            ) if four else None,
         })
     stations.sort(key=lambda e: e["station_id"])
     out["stations"] = stations
@@ -19946,7 +20068,7 @@ function fourLayerBoard(){
   const rows = (F.stations || []).map(e => { const [t, w] = stateWord[e.state] || ["", e.state];
     return `<tr><td class="mono"><b>${h(e.station_id)}</b></td><td class="mono">${h(e.local)}</td>
     <td><span class="pill ${t}">${w}</span>${e.refused ? ` <span class="muted">${h(e.refused)}</span>` : ""}</td>
-    <td class="mono">${e.running_high_c ?? "—"}°C</td>
+    <td class="mono">${e.running_high_c == null ? "—" : Number(e.running_high_c).toFixed(1)}°C</td>
     <td class="mono">${e.rise_probability == null ? "—" : pctS(e.rise_probability, 1)}</td>
     <td class="mono">${h(e.regional_system_id === "POOLED_FALLBACK" ? "队均值兜底" : (e.regional_system_id || "—"))}</td>
     <td class="mono">${n2(e.regional_headroom_c)}</td><td class="mono">${n2(e.regional_live_gap_c)}</td></tr>`; }).join("");
@@ -19973,7 +20095,53 @@ function fourLayerBoard(){
       <div class="scroll"><table><thead><tr><th>特征</th><th>代码名</th><th>系数</th></tr></thead><tbody>${coef(A.continuation)}</tbody></table></div></div></div>
   <details class="note" open><summary>各站最新一步 P1（${(F.stations || []).length} 站）</summary>
     <div class="scroll" style="max-height:420px"><table><thead><tr><th>站</th><th>当地时间</th><th>谁在说话</th><th>已报最高</th>
-      <th>还会再升</th><th>区域模型</th><th>剩余升温 °C</th><th>此刻误差 °C</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
+      <th>还会再升</th><th>区域模型</th><th>剩余升温 °C</th><th>此刻误差 °C</th></tr></thead><tbody>${rows}</tbody></table></div></details>
+  ${fourLayerAnatomy(F)}`;
+}
+
+// The four layers, stated one by one (user, 2026-09-19: "四层链分别是什么，不要
+// 黑箱" / "前端显式").  In the order the chain runs them, then every station's
+// newest served step taken apart layer by layer -- each number off the serving
+// receipt or the shadow's feature row, the phase logit split into its terms
+// and checked against production's own function.
+function fourLayerAnatomy(F){
+  const A = F.artifact || {};
+  const sg = (v, d = 2) => v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(Number(v)).toFixed(d);
+  const pc = v => v == null ? "—" : (100 * v).toFixed(1) + "%";
+  const explain = `<div class="scroll"><table><thead><tr><th>执行顺序</th><th>层</th><th>回答的问题</th><th>用的证据</th><th>怎么改分布</th><th>生产里</th></tr></thead><tbody>
+    <tr><td class="mono">1</td><td><b>平移层</b><br><span class="muted mono">reanchor</span></td><td>模型今天整体偏冷还是偏暖</td>
+      <td>今天已到的几份 METAR 对 P0 曲线的偏差</td><td>整条 P0 分布沿温度轴挪几度</td><td><span class="pill">关</span> 挪 0°C</td></tr>
+    <tr><td class="mono">2</td><td><b>剩余升温层</b><br><span class="muted mono">remaining_warming</span></td><td>如果还会升，升到哪一格</td>
+      <td>11 个特征（时钟、最新报文的状态、P0 曲线、区域模型）</td><td>已报最高<b>以上</b>每个桶乘一个似然比（0.25–4 倍），只改形状、不改上方总量；已报最高及以下乘 1</td><td><span class="pill green">开</span></td></tr>
+    <tr><td class="mono">3</td><td><b>事实层</b><br><span class="muted mono">fact</span></td><td>今天最高能不能低于已报最高</td>
+      <td>已报最高（观测）</td><td>低于已报最高的桶清零；全链<b>唯一</b>有权写 0 的层</td><td><span class="pill green">开</span></td></tr>
+    <tr><td class="mono">4</td><td><b>相位层</b><br><span class="muted mono">phase</span></td><td>从现在起还会不会再升</td>
+      <td>剩余小时（分档截距）+ 6 个特征</td><td>把已报最高<b>以上</b>的总质量设成「再升概率」，上下两侧各自内部的形状不动</td><td><span class="pill green">开</span></td></tr>
+    </tbody></table></div>
+    <div class="muted" style="margin-top:4px">合起来：P1(桶) ∝ 相位分割（ 事实掩码(桶) × 平移后的 P0(桶) × 剩余升温似然比(桶) ）。再升概率 = 1 ÷ (1 + e^−η)，η = 截距(剩余小时档) + Σ 系数 × 特征；缺的特征按训练期全队均值补。</div>`;
+  const bins = (A.phase_bins || []).map(b => `<td class="mono">${b.hours_to > 1e8 ? "≥" + b.hours_from : b.hours_from + "–" + b.hours_to}h<br><b>${sg(b.intercept)}</b><br><span class="muted">${pc(1 / (1 + Math.exp(-b.intercept)))}</span></td>`).join("");
+  const binTable = bins ? `<div style="margin-top:10px"><b>相位层的时钟项</b> <span class="muted">（按距当地零点剩余小时分档的截距；下面一行是只看时钟、其他特征都为 0 时的再升概率）</span>
+    <div class="scroll"><table><tbody><tr>${bins}</tr></tbody></table></div></div>` : "";
+  const stations = (F.stations || []).filter(e => e.layers).map(e => {
+    const L = e.layers, P = (L.phase || {}), Dm = P.decomposition || {}, RW = L.remaining_warming || {}, O = L.served || {};
+    const terms = (Dm.terms || []).map(t => `<tr><td>${h(t.label)}${t.fallback ? ' <span class="muted">（缺，按队均值）</span>' : ""}</td>
+      <td class="mono">${Number(t.value).toFixed(2)}</td><td class="mono">× ${sg(t.coefficient, 3)}</td><td class="mono"><b>= ${sg(t.contribution, 3)}</b></td></tr>`).join("");
+    const lr = (RW.above_high || []).map(r => `<span class="pill ${r.ratio > 1.05 ? "green" : r.ratio < 0.95 ? "red" : ""}">${h(r.bucket)} ×${Number(r.ratio).toFixed(2)}</span>`).join(" ");
+    return `<details class="stn"><summary><b class="mono">${h(e.station_id)}</b> <span class="muted">${h(e.local)}</span>
+        · 再升 <b>${pc(e.rise_probability)}</b> · 众数 ${h(O.mode || "—")}（${pc(O.mode_p)}）</summary>
+      <div class="grid g2" style="margin:6px 0">
+        <div class="card"><div class="muted">1 平移层</div><div>${h(L.reanchor && L.reanchor.state === "DISABLED" ? "关，挪 0°C" : (L.reanchor || {}).state)}</div></div>
+        <div class="card"><div class="muted">2 剩余升温层（已报最高以上各桶乘的似然比）</div><div>${lr || '<span class="muted">已报最高以上没有桶</span>'}</div></div>
+        <div class="card"><div class="muted">3 事实层</div><div>已报最高 ${e.running_high_c == null ? "—" : Number(e.running_high_c).toFixed(1)}°C，所在桶 <b>${h((L.fact || {}).running_high_bucket || "—")}</b>；以下的桶清零</div></div>
+        <div class="card"><div class="muted">4 相位层 → 输出</div><div>再升概率 <b>${pc(P.rise_probability)}</b> → 已报最高以上总质量 ${pc(O.mass_above_high)}，已报最高所在桶 ${pc(O.mass_at_high)}</div></div></div>
+      ${Dm.terms ? `<div class="muted">相位层怎么算出 ${pc(P.rise_probability)}：剩余 ${Number(Dm.hours_left).toFixed(1)} 小时，落在 ${Dm.bin[0]}–${Dm.bin[1] > 1e8 ? "∞" : Dm.bin[1]}h 档，截距 <b>${sg(Dm.intercept, 3)}</b>；
+        η = ${sg(Dm.eta, 3)} → ${pc(Dm.probability)} ${Dm.matches_receipt ? '<span class="pill green">与生产回执一致</span>' : '<span class="pill red">与回执不一致</span>'}</div>
+      <div class="scroll"><table><thead><tr><th>特征</th><th>当时的值</th><th>系数</th><th>对 η 的贡献</th></tr></thead><tbody>${terms}</tbody></table></div>` : ""}
+    </details>`;
+  }).join("");
+  return `<h3 style="margin-top:16px">四层分别是什么</h3>${explain}${binTable}
+    <details class="note" style="margin-top:10px"><summary>逐站逐层拆解：各站最新一步 P1 是怎么一层层算出来的（${(F.stations || []).filter(e => e.layers).length} 站）</summary>
+      <div class="stns">${stations}</div></details>`;
 }
 
 function p1PathSkill(){

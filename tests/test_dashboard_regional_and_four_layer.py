@@ -128,3 +128,42 @@ def test_the_path_skill_reads_heads_and_leads(tmp_path) -> None:
     assert day["median_lead_hours"] == pytest.approx(2.5), "locked 03:30Z, reached 06:00Z"
     assert day["predicted_share"] == 1.0
 
+
+
+def test_the_phase_logit_is_taken_apart_and_checked_against_production() -> None:
+    """User, 2026-09-19: "四层链分别是什么，不要黑箱".  The board splits the
+    phase layer's logit into intercept and terms, and must agree with the
+    production function on the same row -- or say it does not."""
+
+    from bayes_basket_target import metar_four_layer as mfl
+
+    artifact = {
+        "phase": {"hours_edges": [0.0, 10.0, 1e9], "bin_intercepts": [0.5, -1.0],
+                  "coefficients": {"cloud_cover_fraction": -1.0,
+                                   "regional_headroom_c": 0.5}},
+        "feature_fallbacks": {"regional_headroom_c": -0.6},
+    }
+    features = {"remaining_hours": 12.0, "cloud_cover_fraction": 0.5,
+                "regional_headroom_c": None}
+    rise = mfl.phase_rise_probability(features, artifact)
+    receipt = {
+        "phase": {"rise_probability": rise, "running_high_bucket": "31"},
+        "reanchor": {"state": "DISABLED", "shift_c": 0.0},
+        "remaining_warming": {"state": "APPLIED", "likelihood_ratio_by_bucket":
+                              {"30": 1.0, "31": 1.0, "32": 2.0, "33": 0.25}},
+    }
+    out = C._four_layer_breakdown(
+        receipt, shadow_json=json.dumps({"features": features}),
+        excluded_text="30", probabilities_json=json.dumps({"30": 0, "31": .4, "32": .5, "33": .1}),
+        ordinals_json=json.dumps({"30": 0, "31": 1, "32": 2, "33": 3}),
+        raw_artifact=artifact,
+    )
+    phase = out["phase"]["decomposition"]
+    assert phase["intercept"] == -1.0, "twelve hours left reads the 10h-and-over bin"
+    headroom = next(t for t in phase["terms"] if t["feature"] == "regional_headroom_c")
+    assert headroom["fallback"] is True and headroom["contribution"] == pytest.approx(-0.3)
+    assert phase["eta"] == pytest.approx(-1.0 - 0.5 - 0.3)
+    assert phase["matches_receipt"] is True
+    assert [r["bucket"] for r in out["remaining_warming"]["above_high"]] == ["32", "33"]
+    assert out["fact"]["zeroed_buckets"] == 1
+    assert out["served"]["mass_above_high"] == pytest.approx(0.6)
