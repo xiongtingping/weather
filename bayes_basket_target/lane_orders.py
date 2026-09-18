@@ -66,8 +66,17 @@ def _insert_decision_row(
         "decision_sha256,decision_scope_key,created_at)"
         " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
+            # ``prepared``, as the basket writes its own: the decision row is
+            # the plan and is append-only; the order's life is on the intent
+            # and the cycle.  Written ``submitted`` it would hold the
+            # station-day's market ingress shut for good
+            # (``target_auto_trade_decisions_not_quiescent``, 2026-09-18).
+            # ``will_order`` 0 too: the no-live order-state ingress refuses a
+            # scope with a live-authorised decision on file
+            # (``target_auto_trade_decisions_live_order_authorized``); the
+            # basket never writes 1 either -- live authority is on the intent.
             decision_id, cycle_id, plan_id, station_id, event_date,
-            settlement_timezone, "basket", "submitted", 1, None, "[]",
+            settlement_timezone, "basket", "prepared", 0, None, "[]",
             json.dumps(body, ensure_ascii=False, sort_keys=True),
             content_sha256(body), None, created_at,
         ),
@@ -173,7 +182,7 @@ def send_lane_buy(
             "event_payload": {"idempotency_key": intent_id, "reason": str(exc), "source": lane},
         })
         entry.update({"state": receipt.get("state"), "reason": str(exc), "exchange_post_started": False})
-        _close_cycle(conn, cycle_id)
+        _close_cycle(conn, cycle_id, decision_id)
         return entry
     gate = can_submit_next_order(
         conn, bucket=bucket, token_id=token_id, exclude_order_intent_id=intent_id, same_cycle_id=cycle_id,
@@ -193,7 +202,7 @@ def send_lane_buy(
         })
         entry.update({"state": receipt.get("state"), "reason": reason, "exchange_post_started": False,
                       "payload_sha256": content_sha256(payload)})
-        _close_cycle(conn, cycle_id)
+        _close_cycle(conn, cycle_id, decision_id)
         return entry
     response = transport(PLACE_ORDER_PATH, payload)
     order_type = str(payload.get("order_type") or "")
@@ -209,7 +218,7 @@ def send_lane_buy(
         })
         entry.update({"state": receipt.get("state"), "event_type": outcome["event_type"],
                       "reason": outcome["reason"], "exchange_post_started": False})
-        _close_cycle(conn, cycle_id)
+        _close_cycle(conn, cycle_id, decision_id)
         return entry
     fill = outcome.get("fill") or {}
     matched_size, matched_notional = fill_quantities(
@@ -245,13 +254,14 @@ def send_lane_buy(
     entry.update({"state": receipt.get("state"), "event_type": outcome["event_type"],
                   "matched_size": matched_size, "matched_notional_usdc": matched_notional,
                   "exchange_post_started": True, **({"fok_short_fill": fok_short} if fok_short else {})})
-    _close_cycle(conn, cycle_id)
+    _close_cycle(conn, cycle_id, decision_id)
     return entry
 
 
-def _close_cycle(conn: sqlite3.Connection, cycle_id: str) -> None:
+def _close_cycle(conn: sqlite3.Connection, cycle_id: str, decision_id: str | None = None) -> None:
     """See ``exit_orders._close_cycle``: one order, answered, nothing further
-    to do -- ``settled``, so the station-day's quotes keep refreshing."""
+    to do -- ``settled``, so the station-day's quotes keep refreshing.  The
+    decision row is append-only and is written ``prepared`` to begin with."""
 
     conn.execute(
         "UPDATE basket_target_execution_cycles SET state='settled', updated_at=? WHERE cycle_id=?",

@@ -232,7 +232,9 @@ def test_it_buys_the_model_bucket_fok_at_the_walked_ask_and_records_everything(s
         "SELECT strategy_lane, decided_state, will_order, details_json FROM auto_trade_decisions WHERE decision_id=?",
         (intent[0],),
     ).fetchone()
-    assert decision[:3] == ("basket", "submitted", 1)
+    # Quiescent from birth, as the basket's own rows are: prepared, will_order 0
+    # (the order-state ingress refuses a scope with a live-authorised decision).
+    assert decision[:3] == ("basket", "prepared", 0)
     details = json.loads(decision[3])
     assert details["decision_signature"]["stage"] == "P1"
     assert details["forward_evidence_binding"]["probability_artifact_sha256"] == _envelope_sha("f1")
@@ -738,6 +740,8 @@ def test_a_send_leaves_its_cycle_settled_so_the_days_quotes_keep_refreshing(stor
     lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW, live_submit_authorized=True,
                                   settings={"stake_usdc": 20.0}, admission=ADMIT)
     assert store.execute("SELECT state FROM basket_target_execution_cycles WHERE cycle_id LIKE 'tiebreak_cycle_%'").fetchall() == [("settled",)]
+    # The decision row is append-only and quiescent from birth: ``prepared``.
+    assert store.execute("SELECT decided_state FROM auto_trade_decisions WHERE decision_id LIKE 'tiebreak_decision_%'").fetchall() == [("prepared",)]
     # A refused send too.
     _seed(store, fact_id="f2", event_date="2026-09-20")
     lane.execute_tiebreak_entries(store, transport=lambda p, payload: {"ok": False, "error": "refused"}, now_utc=NOW,
