@@ -245,8 +245,9 @@ def test_production_and_the_ledger_read_one_layer() -> None:
     assert '"regional_path_prior": (' in source, "the layer is a rule of the book"
     materialization = (root / "bayes_basket_target" / "materialization.py").read_text(encoding="utf-8")
     assert "apply_regional_path_prior(" in materialization
-    # v10 (charter 134) moved the version for a root change, not this layer.
-    assert 'posterior_version: str = "p1_metar_trajectory_target_v10"' in materialization
+    # v10 (charter 134) and v11 (charter 149) moved the version for root
+    # changes, not this layer.
+    assert 'posterior_version: str = "p1_metar_trajectory_target_v11"' in materialization
     assert (
         "if ceiling is not None and not regional_spoke and not four_layer_spoke:"
         in materialization

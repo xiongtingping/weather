@@ -127,7 +127,13 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # subset for (88% of replayed updates), so the width, band and lambda lanes
 # must not keep training on contest-era cells; the start is declared at the
 # deploy in ``serving_arithmetic.STAGE_VERSION_EFFECTIVE_FROM``.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v5"
+# v6: charter 149, a member is calibrated under its own run's hour lead
+# rather than the packet's.  A split rider's centre moves by the gap between
+# its own fit and the wrong lead's (dry run over the 127 live packets on
+# 2026-09-18: 79 centres moved, median 0.03C, max 0.64C; provisional members
+# 25 -> 0), so every lane fitted on served claims starts again on the
+# corrected output; the start is declared at the deploy.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v6"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -2448,6 +2454,9 @@ def compile_native_ensemble_p0(
     family_by_system: dict[str, str] = {}
     provisional_uncalibrated_system_ids: list[str] = []
     provisional_parameter_sources: dict[str, dict[str, Any]] = {}
+    # Charter 149: the hour lead each system's calibration was read under
+    # (None for a member served on its peers' parameters).
+    system_calibration_lead_by_system: dict[str, str | None] = {}
     system_spread_factor: dict[str, float] = {}
     deferred_provisional: list[tuple[str, Any, str]] = []
     for system_id in system_ids:
@@ -2506,103 +2515,150 @@ def compile_native_ensemble_p0(
             raise ContractError(
                 "FAIL_CLOSED_NO_P0:native_system_cycle_lineage_missing"
             )
-        system_activation = conn.execute(
-            "SELECT activation_id,artifact_id,content_sha256,generation,"
-            "run_cycle_by_system_json,run_cycle_by_system_sha256 "
-            "FROM calibration_native_ensemble_activation "
-            "WHERE artifact_kind="
-            "'NATIVE_ENSEMBLE_SYSTEM_CALIBRATION' "
-            "AND station_id=? AND ensemble_system_id_or_star=? "
-            "AND season_bin=? AND lead_bucket=? AND run_cycle=? "
-            "AND available_system_set_hash_or_star='*' "
-            "AND run_cycle_by_system_json=? "
-            "AND run_cycle_by_system_sha256=? "
-            "AND authority_scope='PRODUCTION_NO_LIVE_ONLY' "
-            "AND valid_from_utc<=? AND valid_until_utc>? "
-            "ORDER BY generation DESC LIMIT 2",
-            (
-                station_id,
-                system_id,
-                season_bin,
-                training_lead_bucket,
-                system_run_cycle,
-                _json({system_id: system_run_cycle}),
-                content_sha256({system_id: system_run_cycle}),
-                decision_at_utc,
-                decision_at_utc,
-            ),
-        ).fetchall()
-        if (
-            not system_activation
-            or (
-                len(system_activation) > 1
-                and int(system_activation[0][3])
-                == int(system_activation[1][3])
-            )
-        ):
-            if official_snapshot:
-                # Provisional member: certified into the combination before
-                # its own per-system calibration exists (the ruling: enter
-                # P0 now at the certified weight, keep accumulating samples,
-                # calibration follows when the OOS window fills).  Serving is
-                # deferred to a second pass below because the parameters it
-                # borrows are the station's certified peers', and those are
-                # only complete once every certified system has loaded its
-                # own.  Republisher packets keep the hard failure: their
+        # Charter 149 (user ruling 2026-09-18, "应该从根上修正，再修下游"):
+        # a member is calibrated by the fit of its OWN run -- its own cycle
+        # at its own hour lead -- not by the packet's.  The packet has one
+        # ``training_lead_bucket`` because the cross weights are fitted per
+        # lead, but a system riding another lead (``hour_bucket_split_riders``)
+        # was fitted by the trainer under its own lead: OOS keys every system
+        # artifact by (system, season, the run's own hour bucket, cycle), and
+        # the cross cohorts group systems by that same bucket.  Asking under
+        # the packet's lead instead handed a member the fit of a different
+        # run.  ZUUU is the specimen: a 12Z run is 4h or 28h from Chengdu's
+        # midnight and never 12-24h, so in every h12_24 packet ICON and ECCC
+        # (12Z, h24_48) found nothing under (h12_24, 12Z) and borrowed their
+        # 00Z h12_24 fit (+1.32C / +0.76C) while their own 12Z h24_48 fit
+        # (+0.86C / +1.14C) sat unread.  Measured 09-12..09-18 over 9,817 P0
+        # envelopes: 989 system-serves took that borrow and 4,603 were
+        # silently certified under the wrong lead's same-cycle fit, 30% of
+        # the fleet's envelopes between them.
+        #
+        # Order, each step tried only when the one before finds nothing: the
+        # own lead's exact fit (certified); the own lead's fit at another
+        # cycle (charter 101's borrow, now at the lead the member actually
+        # has); the packet lead's exact fit (the old key, kept as the last
+        # certified fallback because 147 serves have no own-lead fit at all
+        # and the peer path below zeroes bias under three peers); the packet
+        # lead's other-cycle borrow; the peers.  A system on the packet's
+        # lead asks one lead, exactly as before.
+        system_lead_bucket = (
+            hour_bucket_by_system.get(system_id) or training_lead_bucket
+        )
+        calibration_leads = (
+            (system_lead_bucket, training_lead_bucket)
+            if system_lead_bucket != training_lead_bucket
+            else (training_lead_bucket,)
+        )
+        system_activation: list[Any] = []
+        borrowed_own: dict[str, Any] | None = None
+        for calibration_lead in calibration_leads:
+            exact_rows = conn.execute(
+                "SELECT activation_id,artifact_id,content_sha256,generation,"
+                "run_cycle_by_system_json,run_cycle_by_system_sha256 "
+                "FROM calibration_native_ensemble_activation "
+                "WHERE artifact_kind="
+                "'NATIVE_ENSEMBLE_SYSTEM_CALIBRATION' "
+                "AND station_id=? AND ensemble_system_id_or_star=? "
+                "AND season_bin=? AND lead_bucket=? AND run_cycle=? "
+                "AND available_system_set_hash_or_star='*' "
+                "AND run_cycle_by_system_json=? "
+                "AND run_cycle_by_system_sha256=? "
+                "AND authority_scope='PRODUCTION_NO_LIVE_ONLY' "
+                "AND valid_from_utc<=? AND valid_until_utc>? "
+                "ORDER BY generation DESC LIMIT 2",
+                (
+                    station_id,
+                    system_id,
+                    season_bin,
+                    calibration_lead,
+                    system_run_cycle,
+                    _json({system_id: system_run_cycle}),
+                    content_sha256({system_id: system_run_cycle}),
+                    decision_at_utc,
+                    decision_at_utc,
+                ),
+            ).fetchall()
+            if exact_rows and not (
+                len(exact_rows) > 1
+                and int(exact_rows[0][3]) == int(exact_rows[1][3])
+            ):
+                system_activation = exact_rows
+                system_calibration_lead_by_system[system_id] = (
+                    calibration_lead
+                )
+                break
+            if not official_snapshot:
+                # Republisher packets keep the hard failure below: their
                 # members only enter with a strict proof.
-                # Charter 101: ask this system for its own fit at another
-                # run cycle before asking its peers for theirs.  Same
-                # station, same season, same lead bucket -- only the cycle
-                # differs, and that difference was measured at 0.198C median
-                # against the 0.7-1.2C the peer path's zero costs.  Highest
-                # generation, valid at this decision, and it borrows
-                # parameters only: the member stays uncertified, keeps its
-                # provisional weight, and its own cycle's fit replaces this
-                # the moment the training lane produces one.
-                borrowed_own: dict[str, Any] | None = None
-                if CROSS_CYCLE_PARAMETER_BORROW == "on":
-                    own_row = conn.execute(
-                        "SELECT a.run_cycle, f.bias_parameters_json,"
-                        " f.spread_parameters_json, f.content_sha256"
-                        " FROM calibration_native_ensemble_activation a"
-                        " JOIN calibration_native_ensemble_system_artifact f"
-                        "   ON f.system_artifact_id = a.artifact_id"
-                        "  AND f.ensemble_system_id = a.ensemble_system_id_or_star"
-                        " WHERE a.artifact_kind="
-                        "'NATIVE_ENSEMBLE_SYSTEM_CALIBRATION'"
-                        "   AND a.station_id=? AND a.ensemble_system_id_or_star=?"
-                        "   AND a.season_bin=? AND a.lead_bucket=?"
-                        "   AND a.run_cycle<>?"
-                        "   AND a.available_system_set_hash_or_star='*'"
-                        "   AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY'"
-                        "   AND a.valid_from_utc<=? AND a.valid_until_utc>?"
-                        "   AND f.valid_from_utc<=? AND f.valid_until_utc>?"
-                        " ORDER BY a.generation DESC, a.valid_from_utc DESC"
-                        " LIMIT 1",
-                        (
-                            station_id,
-                            system_id,
-                            season_bin,
-                            training_lead_bucket,
-                            system_run_cycle,
-                            decision_at_utc,
-                            decision_at_utc,
-                            decision_at_utc,
-                            decision_at_utc,
-                        ),
-                    ).fetchone()
-                    if own_row is not None:
-                        try:
-                            borrowed_own = {
-                                "from_run_cycle": str(own_row[0]),
-                                "bias_parameters": json.loads(str(own_row[1])),
-                                "spread_parameters": json.loads(
-                                    str(own_row[2])
-                                ),
-                                "artifact_sha256": str(own_row[3]),
-                            }
-                        except (ValueError, TypeError):
-                            borrowed_own = None
+                break
+            # Provisional member: certified into the combination before its
+            # own per-system calibration exists (the ruling: enter P0 now at
+            # the certified weight, keep accumulating samples, calibration
+            # follows when the OOS window fills).  Serving is deferred to a
+            # second pass below because the parameters it borrows are the
+            # station's certified peers', and those are only complete once
+            # every certified system has loaded its own.
+            # Charter 101: ask this system for its own fit at another run
+            # cycle before asking its peers for theirs.  Same station, same
+            # season, same lead bucket -- only the cycle differs, and that
+            # difference was measured at 0.198C median against the 0.7-1.2C
+            # the peer path's zero costs.  Highest generation, valid at this
+            # decision, and it borrows parameters only: the member stays
+            # uncertified, keeps its provisional weight, and its own cycle's
+            # fit replaces this the moment the training lane produces one.
+            if CROSS_CYCLE_PARAMETER_BORROW == "on":
+                own_row = conn.execute(
+                    "SELECT a.run_cycle, f.bias_parameters_json,"
+                    " f.spread_parameters_json, f.content_sha256"
+                    " FROM calibration_native_ensemble_activation a"
+                    " JOIN calibration_native_ensemble_system_artifact f"
+                    "   ON f.system_artifact_id = a.artifact_id"
+                    "  AND f.ensemble_system_id = a.ensemble_system_id_or_star"
+                    " WHERE a.artifact_kind="
+                    "'NATIVE_ENSEMBLE_SYSTEM_CALIBRATION'"
+                    "   AND a.station_id=? AND a.ensemble_system_id_or_star=?"
+                    "   AND a.season_bin=? AND a.lead_bucket=?"
+                    "   AND a.run_cycle<>?"
+                    "   AND a.available_system_set_hash_or_star='*'"
+                    "   AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY'"
+                    "   AND a.valid_from_utc<=? AND a.valid_until_utc>?"
+                    "   AND f.valid_from_utc<=? AND f.valid_until_utc>?"
+                    " ORDER BY a.generation DESC, a.valid_from_utc DESC"
+                    " LIMIT 1",
+                    (
+                        station_id,
+                        system_id,
+                        season_bin,
+                        calibration_lead,
+                        system_run_cycle,
+                        decision_at_utc,
+                        decision_at_utc,
+                        decision_at_utc,
+                        decision_at_utc,
+                    ),
+                ).fetchone()
+                if own_row is not None:
+                    try:
+                        borrowed_own = {
+                            "from_run_cycle": str(own_row[0]),
+                            "from_lead_bucket": calibration_lead,
+                            "bias_parameters": json.loads(str(own_row[1])),
+                            "spread_parameters": json.loads(
+                                str(own_row[2])
+                            ),
+                            "artifact_sha256": str(own_row[3]),
+                        }
+                    except (ValueError, TypeError):
+                        borrowed_own = None
+                    if borrowed_own is not None:
+                        break
+        if not system_activation:
+            if official_snapshot:
+                system_calibration_lead_by_system[system_id] = (
+                    borrowed_own["from_lead_bucket"]
+                    if borrowed_own is not None
+                    else None
+                )
                 deferred_provisional.append(
                     (system_id, members, system_run_cycle, borrowed_own)
                 )
@@ -2864,14 +2920,22 @@ def compile_native_ensemble_p0(
         )
         system_bias_c[system_id] = provisional_bias_c
         system_spread_factor[system_id] = provisional_spread_factor
-        provisional_marker = content_sha256({
+        marker_identity: dict[str, Any] = {
             "provisional_uncalibrated_system": system_id,
             "station_id": station_id,
             "lead_bucket": training_lead_bucket,
             "run_cycle": system_run_cycle,
             "borrowed_bias_c": provisional_bias_c,
             "borrowed_spread_factor": provisional_spread_factor,
-        })
+        }
+        borrowed_lead = (
+            borrowed_own.get("from_lead_bucket") if borrowed_own else None
+        )
+        if borrowed_lead and borrowed_lead != training_lead_bucket:
+            # Charter 149: a borrow read under the member's own lead names
+            # it; a borrow under the packet lead keeps its old identity.
+            marker_identity["calibration_lead_bucket"] = borrowed_lead
+        provisional_marker = content_sha256(marker_identity)
         system_artifact_shas[system_id] = provisional_marker
         system_activation_shas[system_id] = provisional_marker
         provisional_uncalibrated_system_ids.append(system_id)
@@ -2883,6 +2947,7 @@ def compile_native_ensemble_p0(
             "borrowed_from_run_cycle": (
                 borrowed_own["from_run_cycle"] if borrowed_own else None
             ),
+            "borrowed_from_lead_bucket": borrowed_lead,
             "borrowed_artifact_sha256": (
                 borrowed_own["artifact_sha256"] if borrowed_own else None
             ),
@@ -3362,6 +3427,9 @@ def compile_native_ensemble_p0(
         "provisional_uncalibrated_system_ids": sorted(
             provisional_uncalibrated_system_ids
         ),
+        "system_calibration_lead_by_system": dict(
+            system_calibration_lead_by_system
+        ),
         "family_weights": weight_receipt["family_weights"],
         "observed_ensemble_system_ids": observed_system_ids,
         "excluded_observed_system_ids": excluded_observed_system_ids,
@@ -3615,6 +3683,9 @@ def compile_native_ensemble_p0(
         "neighbour_direction_json": _json(neighbour_direction_receipt),
         "hour_lead_bucket_by_system_json": _json(hour_bucket_by_system),
         "hour_bucket_split_riders_json": _json(hour_bucket_split_riders),
+        "system_calibration_lead_by_system_json": _json(
+            system_calibration_lead_by_system
+        ),
         "activation_cycle_riders_json": _json(activation_cycle_riders),
         "family_weight_caps_json": _json(family_caps),
         "family_weights_json": _json(
@@ -3885,6 +3956,9 @@ def compile_native_ensemble_p0(
         "neighbour_direction_json": _json(neighbour_direction_receipt),
         "hour_lead_bucket_by_system_json": _json(hour_bucket_by_system),
         "hour_bucket_split_riders_json": _json(hour_bucket_split_riders),
+        "system_calibration_lead_by_system_json": _json(
+            system_calibration_lead_by_system
+        ),
         "activation_cycle_riders_json": _json(activation_cycle_riders),
         "family_weight_caps_json": _json(family_caps),
         "system_member_set_shas_json": _json({

@@ -243,22 +243,30 @@ def _closure(entries: Sequence[tuple[str, str]]) -> list[tuple[str, str]]:
 # pools mint their pair views (restart 05:52:12Z) -- and the watchdog rightly
 # lit for both.  Nothing had been fitted on the 42 minutes in between, so the
 # move cost no lane anything.  P1 declares its root's moment.
+#
+# v6 (P0, P0-M) and P1 v11: charter 149, a member is calibrated under its own
+# run's hour lead instead of the packet's.  Declared at the restart that
+# deployed it; nothing serves during a restart, so no v5 cell falls after it.
 STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
     "P0": {
         "calibrated_native_cross_ensemble_p0_v3": "2026-09-06T04:18:00Z",
         "calibrated_native_cross_ensemble_p0_v4": "2026-09-10T15:27:09Z",
         "calibrated_native_cross_ensemble_p0_v5": "2026-09-14T05:52:13Z",
+        "calibrated_native_cross_ensemble_p0_v6": "2026-09-18T09:17:10Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
         "p0m_taf_observed_v4": "2026-09-10T15:27:11Z",
         "p0m_taf_observed_v5": "2026-09-14T05:52:13Z",
+        "p0m_taf_observed_v6": "2026-09-18T09:17:10Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
-    # declares the root's moment rather than its own first envelope.
+    # declares the root's moment rather than its own first envelope; v11
+    # (charter 149) is the second.
     "P1": {
         "p1_metar_trajectory_target_v10": "2026-09-14T05:52:13Z",
+        "p1_metar_trajectory_target_v11": "2026-09-18T09:17:10Z",
     },
 }
 

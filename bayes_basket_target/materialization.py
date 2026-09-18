@@ -1164,7 +1164,9 @@ def materialize_p0m_observed(
     # note); same moment, same declared start.
     # v5: charter 134 changed the P0 root this stage is built on (see the
     # P0 v5 note); same deploy, same declared start.
-    posterior_version: str = "p0m_taf_observed_v5",
+    # v6: charter 149 moved the P0 root's per-member calibration key (see
+    # the P0 v6 note); same deploy, same declared start.
+    posterior_version: str = "p0m_taf_observed_v6",
     observed_hard_excluded_buckets: Sequence[str] = (),
     observed_running_high_c: float | None = None,
     band_table: tuple[
@@ -1526,7 +1528,11 @@ def materialize_p1(
     # roots are systematically wider and steadier, so P1 cells served on
     # contest roots must not train the P1 width and band lanes; the start is
     # declared at the same instant P0 and P0-M v5 declare.
-    posterior_version: str = "p1_metar_trajectory_target_v10",
+    # v11 (2026-09-18, charter 149): again the root, not P1.  P0 now
+    # calibrates a split rider under its own run's lead, which moves the
+    # root's centre wherever a member rides another lead; P1 composes on
+    # that shape, so it declares the instant P0 v6 declares.
+    posterior_version: str = "p1_metar_trajectory_target_v11",
     ceiling_artifact: Mapping[str, Any] | None = None,
     # Charter 99: {"remaining_peak_c", "cell", "lineage"} for the freshest
     # admissible regional run, or None.  Handed in by the caller for the

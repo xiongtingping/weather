@@ -164,12 +164,15 @@ def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
     import inspect
 
     assert sa.version_effective_from("P0", POSTERIOR_VERSION) == (
-        "2026-09-14T05:52:13Z"
+        "2026-09-18T09:17:10Z"
     )
     p0m = inspect.signature(
         materialize_p0m_observed
     ).parameters["posterior_version"].default
-    assert sa.version_effective_from("P0-M", p0m) == "2026-09-14T05:52:13Z"
+    assert sa.version_effective_from("P0-M", p0m) == "2026-09-18T09:17:10Z"
+    assert sa.version_effective_from(
+        "P0", "calibrated_native_cross_ensemble_p0_v5"
+    ) == "2026-09-14T05:52:13Z"
     assert sa.version_effective_from(
         "P0", "calibrated_native_cross_ensemble_p0_v4"
     ) == "2026-09-10T15:27:09Z"
@@ -185,6 +188,7 @@ def test_p1_declares_only_the_bump_its_root_caused() -> None:
 
     v10 was caused upstream: charter 134 changed the P0 root P1 composes on,
     so it declares the root's moment, the instant P0 and P0-M v5 declare.
+    v11 is the second such bump (charter 149) and declares P0 v6's moment.
     """
 
     from bayes_basket_target.materialization import materialize_p1
@@ -194,9 +198,15 @@ def test_p1_declares_only_the_bump_its_root_caused() -> None:
     p1 = inspect.signature(
         materialize_p1
     ).parameters["posterior_version"].default
-    assert p1 == "p1_metar_trajectory_target_v10"
+    assert p1 == "p1_metar_trajectory_target_v11"
     assert sa.version_effective_from("P1", p1) == sa.version_effective_from(
         "P0", POSTERIOR_VERSION
+    )
+    # v10 was charter 134's root bump and keeps its own declaration.
+    assert sa.version_effective_from(
+        "P1", "p1_metar_trajectory_target_v10"
+    ) == sa.version_effective_from(
+        "P0", "calibrated_native_cross_ensemble_p0_v5"
     )
     assert sa.version_effective_from("P1", "p1_metar_trajectory_target_v9") is None
 
