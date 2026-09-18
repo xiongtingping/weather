@@ -58,7 +58,10 @@ CENTER_WIDTH_STAGES = ("P0", "P0-M", "P1")
 # journalled anyway -- the measurement is worth having, and the day the
 # pinning is built the evidence is already there -- but it is not activated,
 # because an active row is a claim that something is being served.
-CENTER_WIDTH_SERVED_STAGES = ("P0", "P0-M", "P1")
+# Charter 150 (2026-09-19): P0 only.  P0-M and P1 are one likelihood update
+# each on P0's calibrated root and carry no centre/width correction of their
+# own; the refit retires whatever they still had and fits nothing for them.
+CENTER_WIDTH_SERVED_STAGES = ("P0",)
 # P0 joined once the pin existed.  Its distribution is compiled against an
 # OOS-gated artifact, so the correction had to become part of the gated math
 # rather than something hung after it: the holdout below scores it, the
@@ -3405,6 +3408,15 @@ def refit_all_center_width(
         tuple(stages) if stages
         else stage_order_by_staleness(conn, CENTER_WIDTH_STAGES)
     )
+    retired = [stage for stage in wanted if stage not in CENTER_WIDTH_SERVED_STAGES]
+    wanted = tuple(stage for stage in wanted if stage in CENTER_WIDTH_SERVED_STAGES)
+    for stage in retired:
+        results[stage] = {"stage": stage, "served_stage": False}
+        if commit:
+            try:
+                results[stage]["commit"] = retire_center_width(conn, stage=stage)
+            except Exception as exc:  # noqa: BLE001
+                results[stage]["error"] = f"{type(exc).__name__}: {exc}"
     with _round_memo():
         _refit_stages(conn, wanted, results, commit, min_decision_at_utc)
     return results

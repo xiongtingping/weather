@@ -22,44 +22,28 @@ from .contracts import (
     timestamp_lt,
     timestamp_lte,
 )
-from .center_width_calibration import (
-    apply_center_width_calibration,
-    bucket_centers_from_intervals,
-)
-from .center_width_store import EDGE_WIDTH_C, serve_taf_cell
-from .band_reliability_store import (
-    BAND_AXIS_CENTRE_DISTANCE,
-    BAND_AXIS_CLAIM,
-)
-from .cross_consensus import apply_band_reliability
+from .center_width_calibration import bucket_centers_from_intervals
+from .center_width_store import EDGE_WIDTH_C
 from .et_history import assert_event_day_started
-from .metar_four_layer import (
-    SERVE_ENABLED as FOUR_LAYER_SERVE_ENABLED,
-    compile_four_layer_posterior,
-)
-
-#: What the receipt says when no regional run reached this step and the
-#: feature was filled in from the fleet mean.
-POOLED_REGIONAL_FALLBACK = "POOLED_FALLBACK"
-from .regional_path_prior import (
-    apply_regional_path_prior,
-)
-from .metar_ceiling import (
-    apply_ceiling as apply_metar_ceiling,
-    current_gap_c as ceiling_current_gap_c,
-    latest_temperature_c as ceiling_latest_temperature_c,
+from .p1_observation_likelihood import (
+    LIKELIHOOD_MODE as OBSERVATION_LIKELIHOOD_MODE,
+    LINEAGE_KEY as OBSERVATION_LIKELIHOOD_LINEAGE_KEY,
+    compile_observation_likelihood,
+    silent_receipt as observation_silent_receipt,
 )
 from .settlement_time import settlement_day_window
 from .ssot import production_ssot_schema_status
 from .resource_bounds import assert_connection_target_capacity
-from .four_layer_shadow import SHADOW_LINEAGE_KEYS
+from .taf_likelihood import (
+    LIKELIHOOD_MODE as TAF_LIKELIHOOD_MODE,
+    LINEAGE_KEY as TAF_LIKELIHOOD_LINEAGE_KEY,
+    compile_taf_likelihood,
+)
 from .metar_trajectory import (
     METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
     METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
     METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION,
-    P1_SOFT_LR_SUSPENDED_LIKELIHOOD_MODE,
     SOFT_LIKELIHOOD_POLICY_SUSPENDED,
-    SOFT_PATH_SOURCE_LANES,
     MetarTrajectoryLikelihoodArtifact,
     MetarTrajectoryObservation,
     MetarTrajectoryUpdateProof,
@@ -700,6 +684,51 @@ def _lineage(
     return values
 
 
+def _stage_anchor(
+    probabilities: Mapping[str, float],
+    *,
+    bucket_ordinals: Mapping[str, int],
+    centers_c: Mapping[str, Any],
+    upper_bounds_c: Mapping[str, Any],
+    excluded: set[str],
+) -> tuple[str, float] | None:
+    """The served distribution's probability-weighted centre and its bucket.
+
+    P1's stage anchor (user ruling 2026-08-15: the posterior's weighted
+    centre).  It used to be read off the trajectory proof's own posterior,
+    which is an evidence record no consumer serves -- under the four-layer
+    chain the anchor and the served vector were two different distributions.
+    Charter 150 computes it here, on the vector actually served.  An
+    open-ended edge bucket contributes its declared centre; an excluded bucket
+    can never be the anchor.
+    """
+
+    ordered = sorted(bucket_ordinals, key=lambda key: (bucket_ordinals[key], key))
+    try:
+        centers = {bucket: float(centers_c[bucket]) for bucket in ordered}
+        uppers = {
+            bucket: (
+                math.inf if upper_bounds_c.get(bucket) is None
+                else float(upper_bounds_c[bucket])
+            )
+            for bucket in ordered
+        }
+    except (KeyError, TypeError, ValueError):
+        return None
+    mass = sum(float(probabilities[bucket]) for bucket in ordered)
+    if mass <= 0.0:
+        return None
+    center_c = sum(
+        float(probabilities[bucket]) * centers[bucket] for bucket in ordered
+    ) / mass
+    bucket = next(
+        (key for key in ordered if center_c < uppers[key]), ordered[-1]
+    )
+    if bucket in excluded:
+        bucket = next((key for key in ordered if key not in excluded), bucket)
+    return bucket, center_c
+
+
 def _posterior(
     predecessor: ProbabilityEnvelope,
     *,
@@ -712,17 +741,21 @@ def _posterior(
     decision_at_utc: str,
     fresh_until_utc: str,
     bridge_sha256: str,
-    band_table: tuple[
-        Sequence[tuple[tuple[float, float], float]], str
-    ] | None = None,
-    center_width: tuple[float, float, str] | None = None,
-    center_width_floor_rungs: float = 0.0,
-    center_width_tiers: Mapping[str, Any] | None = None,
-    station_width: tuple[Mapping[str, float], str] | None = None,
-    ceiling: Mapping[str, Any] | None = None,
-    regional_prior: Mapping[str, Any] | None = None,
-    four_layer_serving: Mapping[str, Any] | None = None,
+    anchor_geometry: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> ProbabilityEnvelope:
+    """One Bayesian update of a calibrated root: prior x likelihood x mask.
+
+    Charter 150 (2026-09-19): P0 is the only stage with post-hoc calibration.
+    P0-M and P1 each multiply their root by one likelihood -- TAF's, and the
+    reports' joint one -- under the observation hard bound, and stop.  The
+    centre/width scalars, the band table, the clock ceiling, the regional path
+    prior and the four-layer chain that used to run here after the
+    multiplication all re-shaped an already-updated distribution; each of them
+    is either a likelihood now or gone.  The zero floor stays: it is not a
+    correction of the model, it is the rule that only an observation may write
+    an exact zero.
+    """
+
     if predecessor.stage not in {"P0", "P0-M", "P1"}:
         raise ContractError("probability_predecessor_stage_invalid")
     if not timestamp_lt(predecessor.decision_at_utc, decision_at_utc):
@@ -750,304 +783,9 @@ def _posterior(
         raise ContractError("probability_posterior_empty_after_hard_bound")
     probabilities = {bucket: value / total for bucket, value in unnormalized.items()}
     lineage = dict(lineage)
-    # Geometry before claim.  This moves the distribution along the
-    # temperature axis; the band table below rescales the claim that
-    # distribution produces, and its factors were measured on served claims,
-    # so it has to see the final one.  Applying them the other way round
-    # would band the pre-shift claim and then move it out from under the
-    # band that was chosen for it.
-    # The station's own width scale composes with the stage scalars; either
-    # may be present without the other, and identity for this station leaves
-    # the posterior byte-identical.
-    station_scale = 1.0
-    station_width_sha: str | None = None
-    if station_width is not None:
-        station_scale = float(
-            station_width[0].get(predecessor.station_id, 1.0)
-        )
-        station_width_sha = (
-            str(station_width[1]) if station_scale != 1.0 else None
-        )
-    if (
-        center_width is not None
-        or station_scale != 1.0
-        or center_width_floor_rungs
-        or center_width_tiers
-    ):
-        shift_c, width_lambda, center_width_sha = (
-            center_width
-            if center_width is not None
-            else (0.0, 1.0, "")
-        )
-        centers = _bucket_centers_c(
-            lineage, bucket_ordinals=predecessor.bucket_ordinals
-        )
-        if centers is None:
-            # A root that publishes no bucket geometry cannot be corrected on
-            # a temperature axis it does not define.  That is the pre-store
-            # behaviour and stays available rather than failing the commit.
-            lineage["center_width_json"] = json.dumps(
-                {
-                    "schema": "center_width_receipt_v1",
-                    "state": "SKIPPED_NO_BUCKET_GEOMETRY",
-                    "center_width_sha256": str(center_width_sha),
-                },
-                sort_keys=True,
-            )
-        else:
-            ordered_keys, key_centers_c = centers
-            probabilities, center_receipt = apply_center_width_calibration(
-                probabilities,
-                delta_c=shift_c,
-                width_lambda=width_lambda,
-                station_width_scale=station_scale,
-                # The floor the pinned pair was fitted under, carried on the
-                # same row and therefore on the same sha.
-                sigma_floor_rungs=center_width_floor_rungs,
-                width_tier_lambdas=(
-                    (center_width_tiers or {}).get("lambdas") or None
-                ),
-                width_tier_boundaries=(
-                    (center_width_tiers or {}).get("boundaries_rungs") or None
-                ),
-                ordered_keys=ordered_keys,
-                key_centers_c=key_centers_c,
-                excluded_buckets=sorted(excluded),
-            )
-            center_receipt["center_width_sha256"] = str(center_width_sha)
-            if station_width_sha is not None:
-                center_receipt["station_width_sha256"] = station_width_sha
-            lineage["center_width_json"] = json.dumps(
-                center_receipt, sort_keys=True
-            )
-    # Outermost, as at P0 since 2026-08-23 -- before that P0 ran this layer
-    # ahead of its centre/width scalars, so the two stages disagreed and this
-    # comment was wrong about it.  This stage's own band table corrects the
-    # claim the likelihood step actually produced.  P0's correction already
-    # rode in through the root, so what is measured -- and corrected -- here
-    # is only the residual this stage's own multiplication leaves.  Absent
-    # or all-identity table means the distribution and its content hash stay
-    # byte-identical to the pre-store behaviour.
-    if band_table is not None:
-        band_factors, band_sha, band_axis = (
-            band_table if len(band_table) == 3
-            else (band_table[0], band_table[1], BAND_AXIS_CLAIM)
-        )
-        # Charter 105: the lookup follows the TABLE's axis.  A distance-fitted
-        # table read through the claim lookup is the one way this change could
-        # reach an artifact it was never gated against, so a table whose axis
-        # this lane cannot key -- no bucket geometry to order the rungs by --
-        # is SKIPPED rather than applied through the wrong one.
-        band_ordinals = (
-            dict(predecessor.bucket_ordinals)
-            if band_axis == BAND_AXIS_CENTRE_DISTANCE
-            else None
-        )
-        if band_axis == BAND_AXIS_CENTRE_DISTANCE and not band_ordinals:
-            lineage["band_reliability_json"] = json.dumps(
-                {
-                    "schema": "band_reliability_receipt_v1",
-                    "state": "SKIPPED_NO_BUCKET_ORDINALS",
-                    "axis": band_axis,
-                    "band_table_sha256": str(band_sha),
-                },
-                sort_keys=True,
-            )
-        else:
-            probabilities, band_receipt = apply_band_reliability(
-                probabilities, factors=band_factors, ordinals=band_ordinals,
-            )
-            band_receipt["band_table_sha256"] = str(band_sha)
-            lineage["band_reliability_json"] = json.dumps(
-                band_receipt, sort_keys=True
-            )
-    # The clock, last of all.  Every layer above rescales a claim about which
-    # bucket settles; this one answers a different question -- whether the day
-    # has any room left above the high it has already reached -- and it must
-    # be outermost because anything applied after it puts back the mass it
-    # just took.  It ran inside the trajectory proof from 2026-08-23, and the
-    # proof's posterior is an evidence record no consumer serves, so until
-    # 2026-08-24 the layer never reached a served distribution at all: on the
-    # 45 station-days of 2026-08-23 the proof held a median of 0.000 above the
-    # running high and the committed envelope held 0.350.
-    #
-    # The artifact arrives from the caller for the same reason the band table
-    # does: a replay must be able to rebuild this exact envelope, and a layer
-    # that reads its own fitted file would rebuild a different one as soon as
-    # the file was refitted.
-    # Charter 99 (user ruling, 2026-09-06): a regional run issued during the
-    # local day answers both halves of the ceiling's question -- how much
-    # mass belongs above the bucket already holding the high, and how far
-    # above -- from today's curve rather than a pooled rate and a dawn
-    # shape.  It therefore stands in the ceiling's place when it speaks, and
-    # the ceiling serves untouched whenever it does not.
-    # Charter 95 step two, served (operator ruling 2026-09-07 "别影子了,直接上线").
-    # The chain answers the ceiling's question -- how much mass belongs above
-    # the bucket already holding the day's high, and how the buckets above it
-    # are shaped -- from a regression over the clock, the reports and the
-    # regional curve, instead of from a rate per hours-left bin.  It therefore
-    # stands in the ceiling's place, and the ceiling and the regional path
-    # prior serve untouched whenever it cannot speak.
-    #
-    # The translation is off.  It corrects the model's level, and production
-    # already corrects that twice above -- the centre/width scalars and the
-    # band table -- so serving it here would ship a third correction nobody
-    # measured against the two that are already there.  ``-reanchor`` is also
-    # the arm that measured best: 0.644 hit and -0.900 nat over 18096
-    # walk-forward samples against production's 0.632 and -0.962.
-    four_layer_spoke = False
-    if (
-        FOUR_LAYER_SERVE_ENABLED
-        and four_layer_serving is not None
-        and ceiling is not None
-    ):
-        # Guarded, and the guard is the point.  A layer that may raise at this
-        # position is a layer that can stop a P1 from compiling, and a P1 that
-        # does not compile is an order chain with no head.  The shadow has
-        # carried this protection since it shipped; a layer that graduated to
-        # serving does not get to drop it.  On any refusal the chain simply
-        # does not speak and the ceiling serves, which is the pre-promotion
-        # path, and the receipt says which refusal it was.
-        chain: dict[str, float] | None = None
-        chain_receipts: dict[str, Any] = {}
-        chain_refused = ""
-        try:
-            chain, chain_receipts = compile_four_layer_posterior(
-                root_probabilities=probabilities,
-                bucket_ordinals=predecessor.bucket_ordinals,
-                bucket_centers_c=four_layer_serving["bucket_centers_c"],
-                bucket_intervals_c=four_layer_serving["bucket_intervals_c"],
-                hard_excluded_buckets=sorted(excluded),
-                running_high_c=float(four_layer_serving["running_high_c"]),
-                running_high_bucket=str(ceiling["running_high_bucket"]),
-                features=four_layer_serving["features"],
-                hazard_artifact=four_layer_serving["hazard_artifact"],
-                reanchor_artifact=None,
-                bias_recent_c=four_layer_serving["bias_recent_c"],
-                bias_report_count=int(four_layer_serving["bias_report_count"]),
-                reanchor_enabled=False,
-            )
-        except Exception as exc:  # noqa: BLE001 - see above
-            # Broad on purpose.  The first draft caught four named exception
-            # types and a malformed artifact raised a fifth (IndexError, off
-            # an empty intercept vector), which is precisely the shape of
-            # failure that must not reach the compile.  At this position the
-            # question is not which error it was but whether the day still
-            # gets a P1, and the answer has to be yes for every error.
-            chain_refused = f"{type(exc).__name__}:{exc}"[:120]
-        residual = sum(chain.values()) if chain else 0.0
-        if chain and math.isfinite(residual) and residual > 0.0:
-            probabilities = {
-                bucket: value / residual for bucket, value in chain.items()
-            }
-            four_layer_spoke = True
-        lineage["p1_four_layer_serving_json"] = json.dumps(
-            {
-                "schema": "p1_four_layer_serving_receipt_v1",
-                "applied": "true" if four_layer_spoke else "false",
-                "reanchor_enabled": "false",
-                # Charter 99's rule, applied to this layer: a borrow is not
-                # forbidden, it is declared.  Without these three a served
-                # step cannot be told from one where no regional run reached
-                # and the fleet mean filled the feature in -- and the only way
-                # to find out afterwards would be to recompute the feature,
-                # which is an audit reimplementing the rule it audits.
-                "regional_system_id": str(
-                    four_layer_serving.get("regional_system_id")
-                    or POOLED_REGIONAL_FALLBACK
-                ),
-                **{
-                    name: (
-                        "NONE" if value is None else f"{float(value):.4f}"
-                    )
-                    for name, value in (
-                        (key, four_layer_serving["features"].get(key))
-                        for key in (
-                            "regional_headroom_c", "regional_live_gap_c"
-                        )
-                    )
-                },
-                **({"refused": chain_refused} if chain_refused else {}),
-                **{
-                    str(key): value
-                    for key, value in dict(chain_receipts).items()
-                },
-            },
-            sort_keys=True,
-        )
-    regional_spoke = False
-    if (
-        not four_layer_spoke
-        and regional_prior is not None
-        and ceiling is not None
-    ):
-        regional_probabilities, regional_receipt = apply_regional_path_prior(
-            probabilities,
-            ordinals=predecessor.bucket_ordinals,
-            upper_bounds_c=regional_prior["upper_bounds_c"],
-            running_high_bucket=str(ceiling["running_high_bucket"]),
-            running_high_c=float(regional_prior["running_high_c"]),
-            remaining_peak_c=float(regional_prior["remaining_peak_c"]),
-            cell=regional_prior["cell"],
-            lineage=regional_prior.get("lineage"),
-        )
-        if regional_receipt.get("regional_path_prior_applied") == "true":
-            regional_probabilities = {
-                bucket: (0.0 if bucket in excluded else value)
-                for bucket, value in regional_probabilities.items()
-            }
-            residual = sum(regional_probabilities.values())
-            if not math.isfinite(residual) or residual <= 0.0:
-                raise ContractError(
-                    "probability_posterior_empty_after_regional_prior"
-                )
-            probabilities = {
-                bucket: value / residual
-                for bucket, value in regional_probabilities.items()
-            }
-            regional_spoke = True
-        regional_receipt = dict(regional_receipt)
-        regional_receipt["schema"] = "regional_path_prior_receipt_v1"
-        lineage["regional_path_prior_json"] = json.dumps(
-            regional_receipt, sort_keys=True
-        )
-    if ceiling is not None and not regional_spoke and not four_layer_spoke:
-        ceiling_probabilities, ceiling_receipt = apply_metar_ceiling(
-            probabilities,
-            ordinals=predecessor.bucket_ordinals,
-            running_high_bucket=str(ceiling["running_high_bucket"]),
-            event_date=predecessor.event_date,
-            settlement_timezone=predecessor.settlement_timezone,
-            as_of_utc=decision_at_utc,
-            artifact=ceiling.get("artifact"),
-            # v2 (2026-09-06): how far the newest formal report sits below
-            # the running high; None serves the hour marginal.
-            current_gap_c=ceiling.get("current_gap_c"),
-        )
-        # A rate may not revive what an observation killed, and it may not be
-        # the thing that empties the support either.
-        ceiling_probabilities = {
-            bucket: (0.0 if bucket in excluded else value)
-            for bucket, value in ceiling_probabilities.items()
-        }
-        residual = sum(ceiling_probabilities.values())
-        if not math.isfinite(residual) or residual <= 0.0:
-            raise ContractError("probability_posterior_empty_after_ceiling")
-        probabilities = {
-            bucket: value / residual
-            for bucket, value in ceiling_probabilities.items()
-        }
-        ceiling_receipt = dict(ceiling_receipt)
-        ceiling_receipt["schema"] = "metar_ceiling_receipt_v1"
-        ceiling_receipt["metar_ceiling_artifact_sha256"] = str(
-            ceiling.get("artifact_sha256") or ""
-        )
-        lineage["metar_ceiling_json"] = json.dumps(
-            ceiling_receipt, sort_keys=True
-        )
-    # Last of all, after even the ceiling: no layer above may manufacture
-    # an absolute zero.  A zero claim is a structural statement -- the
-    # settlement rules make the bucket impossible -- and only the
+    # Last of all: no likelihood may manufacture an absolute zero.  A zero
+    # claim is a structural statement -- the settlement rules make the bucket
+    # impossible -- and only the
     # observation hard bound has the authority to say it; everywhere else
     # a zero is a truncated tail wearing certainty's clothes.  Ruling
     # case: LFPB 2026-08-19 P1 served exactly 0.0 on "29°C or higher" at
@@ -1084,6 +822,17 @@ def _posterior(
             "epsilon": PROBABILITY_MODEL_ZERO_FLOOR,
             "floored_buckets": floored,
         }, sort_keys=True)
+    if anchor_geometry is not None:
+        anchor = _stage_anchor(
+            probabilities,
+            bucket_ordinals=predecessor.bucket_ordinals,
+            centers_c=anchor_geometry["centers_c"],
+            upper_bounds_c=anchor_geometry["upper_bounds_c"],
+            excluded=excluded,
+        )
+        if anchor is not None:
+            lineage["model_center_bucket"] = anchor[0]
+            lineage["model_center_c"] = f"{anchor[1]:.12g}"
     identity = {
         "schema": MATERIALIZATION_SCHEMA,
         "stage": stage,
@@ -1115,34 +864,6 @@ def _posterior(
     })
 
 
-def _serve_taf_cell_for_root(
-    center_width: tuple[float, float, str] | None,
-    taf_cells: Mapping[str, Sequence[float]] | None,
-    *,
-    root: ProbabilityEnvelope,
-    tx_c: float | None,
-) -> tuple[tuple[float, float, str] | None, str | None]:
-    """The charter-57 cell for a P0-M decision, read off its root."""
-
-    if center_width is None or not taf_cells:
-        return center_width, None
-    raw_center = root.lineage.get("model_center_c")
-    try:
-        root_center = (
-            None if raw_center in (None, "", "NONE") else float(raw_center)
-        )
-    except (TypeError, ValueError):
-        root_center = None
-    axis = _bucket_centers_c(root.lineage, bucket_ordinals=root.bucket_ordinals)
-    return serve_taf_cell(
-        center_width,
-        taf_cells,
-        tx_c=None if tx_c is None else float(tx_c),
-        root_center_c=root_center,
-        key_centers_c=None if axis is None else axis[1],
-    )
-
-
 def materialize_p0m_observed(
     predecessor: ProbabilityEnvelope | Mapping[str, Any],
     *,
@@ -1166,40 +887,24 @@ def materialize_p0m_observed(
     # P0 v5 note); same deploy, same declared start.
     # v6: charter 149 moved the P0 root's per-member calibration key (see
     # the P0 v6 note); same deploy, same declared start.
-    posterior_version: str = "p0m_taf_observed_v6",
+    # v7 (charter 150, 2026-09-19): P0-M is P0 times the TAF likelihood under
+    # the observed-high mask, and nothing else -- the centre/width scalars,
+    # the TAF cells and the band table no longer run on this stage.
+    posterior_version: str = "p0m_taf_likelihood_v7",
     observed_hard_excluded_buckets: Sequence[str] = (),
     observed_running_high_c: float | None = None,
-    band_table: tuple[
-        Sequence[tuple[tuple[float, float], float]], str
-    ] | None = None,
-    center_width: tuple[float, float, str] | None = None,
-    center_width_floor_rungs: float = 0.0,
-    center_width_tiers: Mapping[str, Any] | None = None,
-    center_width_taf_cells: Mapping[str, Sequence[float]] | None = None,
-    station_width: tuple[Mapping[str, float], str] | None = None,
+    taf_likelihood_artifact: Mapping[str, Any] | None = None,
 ) -> ProbabilityEnvelope:
-    """Seat P0-M on a TAF that arrived without a calibrated correction.
+    """Seat P0-M: P0 times the TAF's likelihood, and the TAF's arrival as a moment.
 
-    The stage does two separable things.  It corrects the distribution using
-    a fitted TAF artifact -- and it marks a second moment at which the book
-    can be entered, hours after listing, once the airport's own forecast is
-    out.  Only the first needs the artifact, and requiring it for both is
-    why P0-M has three station-days of history: the artifact covers RKPK and
-    ZGSZ, while the inbox carries 256 captures across 44 stations, so 42
-    stations' TAF arrives and is discarded.
-
-    Here the likelihood is identity.  That is not a correction dressed as
-    one: it states exactly what is known -- the forecast landed, and nothing
-    calibrated exists to revise the distribution with -- so the probabilities
-    are P0's, unchanged, and the lineage says so under
-    ``taf_revision_state``.  What the stage contributes is the decision
-    moment itself, which the entry walk then prices against whatever book
-    exists at that hour.
-
-    The observed TX is recorded but deliberately not used as an anchor: the
-    calibrated path moves the centre only after the physical confirmation
-    step, and moving it here on a raw TAF number would be the caller-authored
-    likelihood the calibrated path exists to forbid.
+    Charter 150 (user ruling 2026-09-19): the TAF is evidence about the day's
+    maximum and enters only as a likelihood of each bucket
+    (``taf_likelihood.compile_taf_likelihood``) -- it never moves the root's
+    centre or width, and this stage carries no band table.  Until the
+    likelihood's own walk-forward gate admits it, the likelihood is identity
+    and the lineage says which of its silent states held; the probabilities
+    are then P0's, and what the stage contributes is the decision moment the
+    entry walk prices against whatever book exists at that hour.
     """
 
     previous = (
@@ -1216,6 +921,22 @@ def materialize_p0m_observed(
         raise ContractError("p0m_predecessor_stage_invalid")
     if root.stage != "P0":
         raise ContractError("p0m_root_stage_invalid")
+    raw_center = root.lineage.get("model_center_c")
+    try:
+        root_center = (
+            None if raw_center in (None, "", "NONE") else float(raw_center)
+        )
+    except (TypeError, ValueError):
+        root_center = None
+    axis = _bucket_centers_c(root.lineage, bucket_ordinals=root.bucket_ordinals)
+    likelihoods, taf_receipt = compile_taf_likelihood(
+        taf_likelihood_artifact,
+        station_id=root.station_id,
+        tx_c=None if taf_tx_c is None else float(taf_tx_c),
+        root_center_c=root_center,
+        bucket_centers_c=None if axis is None else dict(zip(*axis)),
+        buckets=root.probabilities,
+    )
     values = _lineage(
         "P0-M",
         {
@@ -1227,8 +948,12 @@ def materialize_p0m_observed(
                 "forecast_source_object_sha256", forecast_source_object_sha256
             ),
             # The whole point of this row, stated where a reader looks.
-            "taf_revision_state": "OBSERVED_NO_CALIBRATED_ARTIFACT",
-            "taf_likelihood_mode": "IDENTITY_NO_ARTIFACT",
+            "taf_revision_state": str(taf_receipt["state"]),
+            "taf_likelihood_mode": (
+                TAF_LIKELIHOOD_MODE if taf_receipt["state"] == "APPLIED"
+                else str(taf_receipt["state"])
+            ),
+            TAF_LIKELIHOOD_LINEAGE_KEY: json.dumps(taf_receipt, sort_keys=True),
             "taf_observed_tx_c": (
                 "NONE" if taf_tx_c is None else f"{float(taf_tx_c):.17g}"
             ),
@@ -1251,25 +976,23 @@ def materialize_p0m_observed(
     values["p0_root_checkpoint_id"] = root.checkpoint_id
     values["p0_root_content_sha256"] = root.content_sha256
     values["p0_root_posterior_sha256"] = root.posterior_sha256
-    values["revision_mode"] = "observed_without_artifact"
-    # Charter 57: how far the day's TAF sits from the root's centre, in rungs
-    # of the root's own ladder, picks which fitted cell of the active table
-    # serves this decision, and the cell's shift is served along the TAF's
-    # direction.  The rule is the store's own (``serve_taf_cell``), so the
-    # fit and the serve classify a day identically; the table sha is
-    # unchanged because the cells are part of the pinned version, and the
-    # lineage records which cell the day belonged to.  A cell not yet
-    # admitted serves the pooled scalars, which is also every day until the
-    # first cell earns its way in.
-    center_width, cell_name = _serve_taf_cell_for_root(
-        center_width, center_width_taf_cells, root=root, tx_c=taf_tx_c,
-    )
-    if cell_name is not None:
-        values["center_width_taf_cell"] = cell_name
+    values["revision_mode"] = "taf_likelihood"
+    # When the likelihood speaks the stage's anchor is its own served
+    # vector's weighted centre, as at P1; while it is identity the root's
+    # anchor is inherited unchanged and the envelope is P0's shape exactly.
+    anchor_geometry = None
+    if taf_receipt["state"] == "APPLIED" and axis is not None:
+        intervals = json.loads(str(root.lineage.get("bucket_intervals_c_json")))
+        anchor_geometry = {
+            "centers_c": dict(zip(*axis)),
+            "upper_bounds_c": {
+                str(bucket): bounds[1] for bucket, bounds in intervals.items()
+            },
+        }
     return _posterior(
         root,
         stage="P0-M",
-        likelihoods={bucket: 1.0 for bucket in root.probabilities},
+        likelihoods=likelihoods,
         hard_excluded_buckets=tuple(observed_hard_excluded_buckets),
         lineage=values,
         checkpoint_id=checkpoint_id,
@@ -1277,11 +1000,7 @@ def materialize_p0m_observed(
         decision_at_utc=_timestamp("decision_at_utc", decision_at_utc),
         fresh_until_utc=_timestamp("fresh_until_utc", fresh_until_utc),
         bridge_sha256=bridge_sha256,
-        band_table=band_table,
-        center_width=center_width,
-        center_width_floor_rungs=center_width_floor_rungs,
-        center_width_tiers=center_width_tiers,
-        station_width=station_width,
+        anchor_geometry=anchor_geometry,
     )
 
 
@@ -1299,14 +1018,6 @@ def materialize_p0m(
     # arithmetic, same as the observed path.
     posterior_version: str = "p0m_taf_target_v2",
     revision: bool = False,
-    band_table: tuple[
-        Sequence[tuple[tuple[float, float], float]], str
-    ] | None = None,
-    center_width: tuple[float, float, str] | None = None,
-    center_width_floor_rungs: float = 0.0,
-    center_width_tiers: Mapping[str, Any] | None = None,
-    center_width_taf_cells: Mapping[str, Sequence[float]] | None = None,
-    station_width: tuple[Mapping[str, float], str] | None = None,
     observed_hard_excluded_buckets: Sequence[str] = (),
     observed_running_high_c: float | None = None,
 ) -> ProbabilityEnvelope:
@@ -1403,14 +1114,6 @@ def materialize_p0m(
             f"{proof.physically_confirmed_center_c:.12g}"
         )
     _sha("forecast_source_object_sha256", values["forecast_source_object_sha256"])
-    # Charter 57, same selection as the observed path: the proof's own TX
-    # against the root centre picks the fitted cell.
-    center_width, cell_name = _serve_taf_cell_for_root(
-        center_width, center_width_taf_cells, root=root,
-        tx_c=float(proof.taf_tx_c),
-    )
-    if cell_name is not None:
-        values["center_width_taf_cell"] = cell_name
     # Charter 61: the observed-high fact, recorded and applied exactly as
     # on the observed path.
     values["observed_running_high_c"] = (
@@ -1435,11 +1138,6 @@ def materialize_p0m(
         decision_at_utc=_timestamp("decision_at_utc", decision_at_utc),
         fresh_until_utc=_timestamp("fresh_until_utc", fresh_until_utc),
         bridge_sha256=bridge_sha256,
-        band_table=band_table,
-        center_width=center_width,
-        center_width_floor_rungs=center_width_floor_rungs,
-        center_width_tiers=center_width_tiers,
-        station_width=station_width,
     )
 
 
@@ -1532,24 +1230,18 @@ def materialize_p1(
     # calibrates a split rider under its own run's lead, which moves the
     # root's centre wherever a member rides another lead; P1 composes on
     # that shape, so it declares the instant P0 v6 declares.
-    posterior_version: str = "p1_metar_trajectory_target_v11",
-    ceiling_artifact: Mapping[str, Any] | None = None,
-    # Charter 99: {"remaining_peak_c", "cell", "lineage"} for the freshest
-    # admissible regional run, or None.  Handed in by the caller for the
-    # same reason the ceiling artifact is: a replay must rebuild this
-    # envelope, and a layer that read its own store would rebuild another.
-    regional_prior: Mapping[str, Any] | None = None,
-    # Charter 95 step two, served: the feature row, the hazard artifact and
-    # the geometry the chain reads, handed in for the reason every fitted
-    # table is -- a replay must rebuild this exact envelope.
-    four_layer_serving: Mapping[str, Any] | None = None,
-    band_table: tuple[
-        Sequence[tuple[tuple[float, float], float]], str
-    ] | None = None,
-    center_width: tuple[float, float, str] | None = None,
-    center_width_floor_rungs: float = 0.0,
-    center_width_tiers: Mapping[str, Any] | None = None,
-    station_width: tuple[Mapping[str, float], str] | None = None,
+    # v12 (2026-09-19, charter 150): P1 is the root times one joint
+    # observation likelihood under the hard bound, and nothing else.  The
+    # four-layer chain, the regional path prior, the clock ceiling, the
+    # centre/width scalars and the band table no longer run on this stage;
+    # the stage anchor is read off the served vector instead of the proof's.
+    posterior_version: str = "p1_joint_likelihood_v12",
+    # {"features": ..., "artifact": ..., "regional_system_id": ...}: the
+    # step's observation-side feature vector and the fitted likelihood,
+    # handed in for the reason every fitted table is -- a replay must rebuild
+    # this exact envelope.  None means no artifact reached the compile, and
+    # the stage then serves the root under the hard bound and says so.
+    observation_likelihood: Mapping[str, Any] | None = None,
     # The head this envelope recomputes, when it is a state refresh rather
     # than a step the day's high advanced on.  A refresh re-runs the whole
     # chain on the current clock over the complete visible prefix, so unlike
@@ -1557,12 +1249,6 @@ def materialize_p1(
     # that the closing observation may be the same report the head already
     # closed on, which is the declared exception to consume-once.
     state_refresh_of_checkpoint_id: str | None = None,
-    # What the four layers would have served, carried beside what was served.
-    # Never multiplied into the distribution; the keys are lineage and the
-    # ledger scores them.  Absent means the caller was handed no artifacts,
-    # and the lineage is then byte-identical to what it was before this
-    # existed.
-    four_layer_shadow: Mapping[str, str] | None = None,
 ) -> ProbabilityEnvelope:
     """Recompute P1 from one immutable P0/P0-M root and full METAR prefix.
 
@@ -1694,16 +1380,6 @@ def materialize_p1(
             "p1_canonical_observation_identity_ambiguous"
         )
     last_observation = last_matches[0]
-    # The ceiling's second axis (v2, 2026-09-06): the newest formal report
-    # against the running high.  Formal lanes only, as the running high is.
-    latest_formal_temperature_c = ceiling_latest_temperature_c(
-        (item.event.observed_at_utc, item.temperature_c)
-        for item in normalized_observations
-        if item.event.source_lane not in SOFT_PATH_SOURCE_LANES
-    )
-    ceiling_gap_c = ceiling_current_gap_c(
-        proof.running_high_c, latest_formal_temperature_c
-    )
     surviving_buckets = [
         bucket
         for bucket in root.probabilities
@@ -1715,6 +1391,72 @@ def materialize_p1(
         surviving_buckets,
         key=lambda bucket: (root.bucket_ordinals[bucket], bucket),
     )
+    likelihoods = _likelihoods(
+        root.probabilities,
+        proof.likelihood_ratio_by_bucket,
+        name="observation_likelihood",
+    )
+    # Charter 150: one likelihood per decision.  The suspended soft ratio is
+    # identity by policy, so the joint likelihood takes its place; a proof
+    # that still carries an active soft ratio keeps it and the joint one
+    # stays silent -- two likelihoods of the same reports multiplied together
+    # is the double count this stage was rebuilt to stop.
+    soft_identity = all(
+        abs(float(value) - 1.0) <= 1e-12 for value in likelihoods.values()
+    )
+    bundle = dict(observation_likelihood or {})
+    artifact = bundle.get("artifact")
+    if not artifact:
+        joint_receipt = observation_silent_receipt("SILENT_NO_ARTIFACT")
+    elif not soft_identity:
+        joint_receipt = observation_silent_receipt(
+            "SILENT_SOFT_LIKELIHOOD_ACTIVE",
+            artifact_sha256=str(artifact.get("content_sha256") or ""),
+        )
+    elif bundle.get("features") is None:
+        joint_receipt = observation_silent_receipt(
+            "SILENT_NO_FEATURES",
+            artifact_sha256=str(artifact.get("content_sha256") or ""),
+        )
+    elif not proof.prefix_is_current:
+        # A replayed step whose running high the day has since beaten: its
+        # prefix states a stale high, and a likelihood read against it would
+        # take mass off buckets the later reports have already reached.
+        joint_receipt = observation_silent_receipt(
+            "SILENT_PREFIX_NOT_CURRENT",
+            artifact_sha256=str(artifact.get("content_sha256") or ""),
+        )
+    else:
+        try:
+            joint, joint_receipt = compile_observation_likelihood(
+                bundle["features"],
+                artifact,
+                bucket_ordinals=root.bucket_ordinals,
+                bucket_centers_c={
+                    str(bucket): float(value)
+                    for bucket, value in bucket_centers_c.items()
+                },
+                running_high_c=float(proof.running_high_c),
+                running_high_bucket=reported_high_bucket,
+                hard_excluded_buckets=proof.hard_excluded_buckets,
+            )
+            likelihoods = joint
+        except Exception as exc:  # noqa: BLE001 - a P1 must still compile
+            # Broad on purpose, as the chain's guard was: at this position the
+            # question is not which error it was but whether the day still
+            # gets a P1, and the answer is yes -- the root under the hard
+            # bound, with the refusal named.
+            joint_receipt = observation_silent_receipt(
+                "REFUSED",
+                reason=f"{type(exc).__name__}:{exc}",
+                artifact_sha256=str(artifact.get("content_sha256") or ""),
+            )
+    joint_receipt = {
+        **joint_receipt,
+        "regional_system_id": str(
+            bundle.get("regional_system_id") or "NONE"
+        ),
+    }
     values = _lineage(
         "P1",
         {
@@ -1779,10 +1521,6 @@ def materialize_p1(
             "metar_trajectory_running_high_c": (
                 f"{proof.running_high_c:.17g}"
             ),
-            "metar_trajectory_latest_formal_temperature_c": (
-                "NONE" if latest_formal_temperature_c is None
-                else f"{float(latest_formal_temperature_c):.17g}"
-            ),
             "reported_high_c": f"{proof.running_high_c:.17g}",
             "reported_high_bucket": reported_high_bucket,
             "reported_high_ordinal": str(
@@ -1808,9 +1546,10 @@ def materialize_p1(
             ),
             "observation_likelihood_mode": (
                 # Under suspension the artifact's method is lineage, not the
-                # update: whatever was fitted, the served P1 is the hard
-                # exclusion and the clock ceiling, and the mode says so.
-                P1_SOFT_LR_SUSPENDED_LIKELIHOOD_MODE
+                # update: the served P1 is the root under the hard bound
+                # times the joint observation likelihood (charter 150), and
+                # the receipt beside this key says whether it spoke.
+                OBSERVATION_LIKELIHOOD_MODE
                 if proof.soft_likelihood_policy
                 == SOFT_LIKELIHOOD_POLICY_SUSPENDED
                 else "PHYSICAL_ABSOLUTE_TMAX_SOFT_LR_PLUS_HARD_EXCLUSION_V5"
@@ -1834,10 +1573,9 @@ def materialize_p1(
             "metar_trajectory_proof_sha256",
         ),
     )
-    for shadow_key in SHADOW_LINEAGE_KEYS:
-        shadow_value = (four_layer_shadow or {}).get(shadow_key)
-        if shadow_value:
-            values[shadow_key] = str(shadow_value)
+    values[OBSERVATION_LIKELIHOOD_LINEAGE_KEY] = json.dumps(
+        joint_receipt, sort_keys=True
+    )
     if state_refresh_of_checkpoint_id:
         values["p1_state_refresh_of_checkpoint_id"] = str(
             state_refresh_of_checkpoint_id
@@ -1856,11 +1594,7 @@ def materialize_p1(
     return _posterior(
         root,
         stage="P1",
-        likelihoods=_likelihoods(
-            root.probabilities,
-            proof.likelihood_ratio_by_bucket,
-            name="observation_likelihood",
-        ),
+        likelihoods=likelihoods,
         hard_excluded_buckets=proof.hard_excluded_buckets,
         lineage=values,
         checkpoint_id=checkpoint_id,
@@ -1868,44 +1602,10 @@ def materialize_p1(
         decision_at_utc=_timestamp("decision_at_utc", decision_at_utc),
         fresh_until_utc=_timestamp("fresh_until_utc", fresh_until_utc),
         bridge_sha256=bridge_sha256,
-        band_table=band_table,
-        center_width=center_width,
-        center_width_floor_rungs=center_width_floor_rungs,
-        center_width_tiers=center_width_tiers,
-        station_width=station_width,
-        # The proof already decided both of the ceiling's preconditions: which
-        # bucket the day's high sits in, and whether this step's high is the
-        # current one.  Reading them off the proof keeps the served
-        # distribution and the evidence record answering the same question.
-        ceiling=(
-            None
-            if ceiling_artifact is None
-            else {
-                "running_high_bucket": reported_high_bucket,
-                "artifact": ceiling_artifact,
-                "artifact_sha256": content_sha256(dict(ceiling_artifact)),
-                "current_gap_c": ceiling_gap_c,
-            }
-            if proof.prefix_is_current
-            else None
-        ),
-        regional_prior=(
-            None
-            if regional_prior is None or not proof.prefix_is_current
-            else {
-                **dict(regional_prior),
-                "running_high_c": float(proof.running_high_c),
-                "upper_bounds_c": dict(bucket_upper_bounds_c),
-            }
-        ),
-        four_layer_serving=(
-            None
-            if four_layer_serving is None or not proof.prefix_is_current
-            else {
-                **dict(four_layer_serving),
-                "running_high_c": float(proof.running_high_c),
-            }
-        ),
+        anchor_geometry={
+            "centers_c": bucket_centers_c,
+            "upper_bounds_c": bucket_upper_bounds_c,
+        },
     )
 
 

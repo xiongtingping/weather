@@ -405,9 +405,9 @@ def test_serving_and_the_ledger_both_read_the_floor() -> None:
     # The holdout that gates the artifact scores it under the same floor.
     oos = source("bayes_basket_target/native_ensemble_oos.py")
     assert "sigma_floor_rungs=center_width_floor," in oos
-    # The other two stages reach it through materialization.
+    # Charter 150: P0-M and P1 carry no centre/width layer at all.
     materialization = source("bayes_basket_target/materialization.py")
-    assert "sigma_floor_rungs=center_width_floor_rungs," in materialization
+    assert "center_width_floor_rungs" not in materialization
     # And the ledger applies the floor its replay table recorded.
     ledger = source("scripts/paper_trading_ledger.py")
     assert 'entry.get("sigma_floor_rungs")' in ledger

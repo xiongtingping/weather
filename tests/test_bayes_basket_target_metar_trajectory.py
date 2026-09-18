@@ -470,13 +470,17 @@ def _ceiling_payload() -> dict:
     }
 
 
-def test_ceiling_speaks_only_where_the_prefix_high_is_current(
+def test_the_proof_carries_no_clock_ceiling(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # The ceiling's rate pairs "hours the day has left now" with "the high
-    # the day holds now"; it is fitted on burst-final beliefs only.  On a
-    # replayed step whose high the day has already beaten, today's clock
-    # must not cut above the stale high.
+    """Charter 150: the ceiling is retired from the proof as from the envelope.
+
+    It used to cut the mass above the running high to its fitted rate here
+    whenever the prefix's high was current.  With the switch on and an
+    artifact that would say 5%, the proof now leaves the root's own split
+    under the hard bound, current prefix or not.
+    """
+
     from bayes_basket_target import metar_ceiling
 
     monkeypatch.setattr(metar_ceiling, "CEILING_ENABLED", True)
@@ -492,15 +496,7 @@ def test_ceiling_speaks_only_where_the_prefix_high_is_current(
         observations, artifact=_physical_tmax_artifact(),
         prefix_is_current=False,
     )
-
-    def mass_above_running_high(proof: MetarTrajectoryUpdateProof) -> float:
-        return (
-            proof.posterior_probabilities["36C"]
-            + proof.posterior_probabilities["37C"]
-        )
-
-    assert abs(mass_above_running_high(current) - 0.05) < 1e-9
-    assert mass_above_running_high(stale) > 0.05 * 2
+    assert current.posterior_probabilities == stale.posterior_probabilities
 
 
 def test_physical_tmax_artifact_rejects_model_coupled_coefficients() -> None:

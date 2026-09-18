@@ -26,11 +26,6 @@ from .contracts import (
     timestamp_lt,
 )
 from .event_contracts import CanonicalObservationEvent
-from .metar_ceiling import (
-    apply_ceiling as apply_metar_ceiling,
-    current_gap_c as ceiling_current_gap_c,
-    latest_temperature_c as ceiling_latest_temperature_c,
-)
 from .metar_path_state import (
     HOURLY_CURVE_PATH_MODEL_COEFFICIENT_KEYS,
     PATH_MODEL_COEFFICIENT_KEYS,
@@ -231,6 +226,12 @@ SOFT_LIKELIHOOD_POLICY = SOFT_LIKELIHOOD_POLICY_SUSPENDED
 SOFT_LIKELIHOOD_SUSPENDED_REASON = "SOFT_LIKELIHOOD_SUSPENDED_BY_RULING"
 # The served lineage's name for a P1 compiled under suspension: the
 # observation hard bound and the clock ceiling are the whole update.
+# Charter 150: literals, not imports -- ``p1_observation_likelihood`` sits
+# above this module in the import order.  Pinned equal by
+# tests/test_charter_150_p1_joint_likelihood.py.
+P1_JOINT_LIKELIHOOD_MODE = "P1_PRIOR_X_JOINT_OBSERVATION_LIKELIHOOD_V1"
+P1_JOINT_LIKELIHOOD_LINEAGE_KEY = "p1_observation_likelihood_json"
+P1_JOINT_LIKELIHOOD_RECEIPT_SCHEMA = "p1_observation_likelihood_receipt_v1"
 P1_SOFT_LR_SUSPENDED_LIKELIHOOD_MODE = (
     "HARD_EXCLUSION_PLUS_CLOCK_CEILING_SOFT_LR_SUSPENDED_V6"
 )
@@ -1958,54 +1959,10 @@ def compile_metar_trajectory_update_proof(
     if total <= 0.0:
         raise ContractError("metar_trajectory_posterior_zero_mass")
     posterior = {bucket: weighted[bucket] / total for bucket in ordered_buckets}
-    # The lower cut has run and its renormalisation has just scaled every
-    # survivor up, the far tail included.  This is where the clock gets to
-    # answer, because it is the only place both the running high and the
-    # decision time are known.  Off by default: with the layer disabled the
-    # posterior below is the same object it always was.
-    running_high_bucket = min(
-        (bucket for bucket in ordered_buckets if bucket not in excluded),
-        key=lambda bucket: (root.bucket_ordinals[bucket], bucket),
-        default=None,
-    )
-    if running_high_bucket is not None and prefix_is_current:
-        # The note the layer returns is deliberately not carried into lineage:
-        # it depends on a fitted file, and a replay against a later fit would
-        # then rebuild a different envelope than the one that was committed.
-        # Whether it spoke is recoverable without it -- the mass above the
-        # running high equals the artifact's rate for that hour when it did.
-        # The ceiling stays on the decision clock: its rate pairs "the hours
-        # the day has left now" with "the high the day holds now", and
-        # ``prefix_is_current`` is what guarantees the second half.
-        posterior, _ = apply_metar_ceiling(
-            posterior,
-            ordinals=root.bucket_ordinals,
-            running_high_bucket=running_high_bucket,
-            event_date=root.event_date,
-            settlement_timezone=root.settlement_timezone,
-            as_of_utc=as_of_utc,
-            # v2 (2026-09-06): the newest formal report against the running
-            # high, the same pairing the served envelope computes.
-            current_gap_c=ceiling_current_gap_c(
-                running_high,
-                ceiling_latest_temperature_c(
-                    (item.event.observed_at_utc, item.temperature_c)
-                    for item in ordered
-                    if item.event.source_lane not in SOFT_PATH_SOURCE_LANES
-                ),
-            ),
-        )
-        # A rate must never resurrect a bucket the observation killed.
-        posterior = {
-            bucket: (0.0 if bucket in excluded else posterior[bucket])
-            for bucket in ordered_buckets
-        }
-        residual = sum(posterior.values())
-        if residual <= 0.0:
-            raise ContractError("metar_trajectory_posterior_zero_mass")
-        posterior = {
-            bucket: value / residual for bucket, value in posterior.items()
-        }
+    # Charter 150 (2026-09-19): the clock ceiling that ran here is retired.
+    # The day's remaining rise is the joint observation likelihood's question
+    # now, answered once in the served envelope (``materialize_p1``); this
+    # proof is the hard bound and its evidence record, nothing more.
     if any(posterior[bucket] != 0.0 for bucket in excluded):
         raise ContractError("metar_trajectory_hard_exclusion_revived")
     center = min(
@@ -2172,12 +2129,13 @@ def validate_metar_trajectory_update_proof(
 def assert_p1_execution_evidence(lineage: Mapping[str, Any]) -> None:
     """Refuse a P1 that does not carry the evidence its mode claims.
 
-    Two regimes.  Under the 2026-09-02 suspension the soft likelihood is
-    silent by policy and the evidence is the observation hard bound plus
-    whichever of P1's three outermost claimants -- four-layer chain,
-    regional path prior, clock ceiling -- answered for the step.  Under the
-    earlier modes the evidence is a resolved, promoted artifact applied at a
-    strength in (0, 1] with a content-addressed proof.
+    Three regimes.  Since charter 150 (2026-09-19) the evidence is the
+    observation hard bound plus the joint observation likelihood's receipt
+    saying it spoke.  Under the 2026-09-02 suspension (P1 v11 and earlier)
+    it was the hard bound plus whichever of P1's three outermost claimants
+    -- four-layer chain, regional path prior, clock ceiling -- answered for
+    the step.  Under the earlier modes the evidence is a resolved, promoted
+    artifact applied at a strength in (0, 1] with a content-addressed proof.
 
     Charter 119 (user ruling, 2026-09-08: "挂上 P1 下单路径").  Until then
     the only call site was ``target_stage_zero_execution_anchor_from_cycle``
@@ -2226,7 +2184,39 @@ def assert_p1_execution_evidence(lineage: Mapping[str, Any]) -> None:
         trajectory_lineage.get("metar_trajectory_soft_likelihood_policy")
         or ""
     ).strip()
-    if likelihood_mode == P1_SOFT_LR_SUSPENDED_LIKELIHOOD_MODE:
+    if likelihood_mode == P1_JOINT_LIKELIHOOD_MODE:
+        # Charter 150 (2026-09-19): P1 is the root times one joint
+        # observation likelihood under the hard bound.  The evidence is that
+        # bound (its fact keys are required above, its proof is
+        # content-addressed here) and the likelihood's own receipt saying it
+        # spoke.  A step it was silent on -- no artifact reached the compile,
+        # no features, a refusal -- served the root under the hard bound
+        # alone, which is not the strategy this stage trades on.
+        try:
+            receipt = json.loads(
+                str(trajectory_lineage.get(P1_JOINT_LIKELIHOOD_LINEAGE_KEY) or "")
+            )
+        except (TypeError, ValueError):
+            receipt = None
+        spoke = (
+            isinstance(receipt, dict)
+            and receipt.get("schema") == P1_JOINT_LIKELIHOOD_RECEIPT_SCHEMA
+            and receipt.get("state") == "APPLIED"
+        )
+        if (
+            soft_policy != SOFT_LIKELIHOOD_POLICY_SUSPENDED
+            or applied_strength != 0.0
+            or len(proof_sha) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in proof_sha
+            )
+            or not spoke
+        ):
+            raise ContractError("p1_execution_evidence_missing")
+    elif likelihood_mode == P1_SOFT_LR_SUSPENDED_LIKELIHOOD_MODE:
+        # The v11-and-earlier regime, kept for envelopes written before
+        # charter 150 that the ledger and the in-flight heads still carry.
         # Under the 2026-09-02 ruling the soft likelihood is silent by
         # policy, so "P1 carries its evidence" means the two things that
         # measured as the whole of P1's skill reached the served

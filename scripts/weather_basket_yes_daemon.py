@@ -335,6 +335,13 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     # content-addressed and admission-gated, so an early or doubled run
     # commits nothing new.
     ("calibration_refit", "scripts/calibration_refit_sweep.sh", 86_400.0, 900.0),
+    # Charter 150 (2026-09-19): the two stage likelihoods -- P1's joint
+    # observation likelihood (with its per-hours-bin tempering and incumbent
+    # veto) and P0-M's TAF likelihood (with its walk-forward serve gate) --
+    # refitted daily on a rolling 45-day sample window.  Reads both
+    # databases read-only and writes three files; the serving loaders follow
+    # the files by modification time.  ~4 minutes measured.
+    ("p1_likelihood_refit", "scripts/p1_likelihood_refit_sweep.sh", 86_400.0, 900.0),
     # Capital that only ever leaves the pool.  A prepared cycle holds its
     # reservation until a newer decision on the same station-day supersedes
     # it, and a day whose settlement window has closed can never compile one
@@ -555,6 +562,9 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     "settled_day_cycle_close": "ssot",
     "correction_review_auto_clear": "archive",
     "forward_packet_retention": "none",
+    # Reads the SSOT and the archive ``mode=ro``; writes the samples DB and
+    # two JSON artifacts under data/runtime, none of them a shared database.
+    "p1_likelihood_refit": "none",
     # Reads the SSOT ``mode=ro`` and writes only JSON config files, so it
     # holds no database lock and can overlap anything.
     "auto_station_exclusions": "none",

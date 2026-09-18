@@ -247,7 +247,7 @@ def test_every_feature_caller_hands_in_the_calibration() -> None:
         return found
 
     compiler = keywords(
-        ROOT / "bayes_basket_target" / "p1_compiler.py", "_four_layer_inputs_for_step")
+        ROOT / "bayes_basket_target" / "p1_compiler.py", "_observation_features_for_step")
     builder = keywords(
         ROOT / "scripts" / "build_metar_phase_hazard_samples.py", "build_station_day")
     assert {"station_id", "calibration"} <= compiler
@@ -330,18 +330,16 @@ def test_the_residual_table_is_fitted_on_the_input_production_serves() -> None:
     assert F.anchored([sample], FITTED)[0]["error_c"] == pytest.approx(34.0 - 36.2)
 
 
-def test_production_and_the_ledger_price_the_same_curve() -> None:
-    if str(ROOT / "scripts") not in sys.path:
-        sys.path.insert(0, str(ROOT / "scripts"))
-    import paper_trading_ledger as L  # noqa: PLC0415
+def test_production_hands_the_calibration_to_the_feature_builder() -> None:
+    """Charter 150: the ledger reads the envelope, so the only reader of the
+    calibration on the serving side is the P1 feature builder, handed the
+    artifact by the worker."""
 
-    assert L.regional_point_debias is D
-    source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    assert "debias=%s" in source
-    assert "debias_artifact=regional_point_debias.replay_curve(event_date)" in source
     worker = (ROOT / "bayes_basket_target" / "production_worker.py").read_text(
         encoding="utf-8")
     assert "load_regional_point_debias_artifact()" in worker
+    ledger = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
+    assert "regional_point_debias" not in ledger
 
 
 def test_the_daily_refit_keeps_the_calibration_current() -> None:

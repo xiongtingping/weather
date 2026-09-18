@@ -148,9 +148,13 @@ def build_stage_evidence_root(
         # forecast revision, from which source object, what TX it read,
         # and which P0 root it left unchanged.  All six are present on every
         # observed row ever written.
-        if str(lineage.get("revision_mode") or "").strip() == (
-            "observed_without_artifact"
-        ):
+        #
+        # Charter 150 renamed that route ``taf_likelihood``: the stage is P0
+        # times the TAF's likelihood (identity until its gate admits it), and
+        # it records the same six things plus the likelihood's receipt.
+        if str(lineage.get("revision_mode") or "").strip() in {
+            "observed_without_artifact", "taf_likelihood",
+        }:
             fields = (
                 "forecast_revision_id",
                 "forecast_source_object_sha256",

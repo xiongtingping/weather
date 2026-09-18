@@ -1085,176 +1085,21 @@ def test_peripheral_model_reliability_lineage_survives_p0m_and_p1() -> None:
     assert json.loads(p1.lineage[key]) == reliability
 
 
-def test_ceiling_stays_silent_on_replayed_steps_behind_the_current_high(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # A rebase replays the whole prefix chain in one compile.  The ceiling is
-    # fitted on burst-final beliefs -- the step whose high the day still
-    # holds -- so the walk must let it speak there and only there; on the
-    # step behind it, today's clock would cut above a high the later
-    # observation has already beaten.
-    from bayes_basket_target import metar_ceiling
+def test_without_a_likelihood_artifact_p1_is_the_root_under_the_hard_bound() -> None:
+    """Charter 150: no artifact, no likelihood -- and the receipt says so.
 
-    monkeypatch.setattr(metar_ceiling, "CEILING_ENABLED", True)
-    monkeypatch.setattr(
-        metar_ceiling,
-        "load_artifact",
-        lambda path=None: {
-            "schema": "bayes_basket_target_metar_ceiling_v1",
-            "trained_through": "2026-07-01",
-            "bins": {
-                "0": {
-                    "hours_from": 0.0,
-                    "hours_to": 10.0,
-                    "p_still_rose": 0.05,
-                },
-            },
-        },
-    )
-    root = _p0m_root(_envelope())
-    registry = [
-        {
-            "station_id": root.station_id,
-            "event_date": root.event_date,
-            "settlement_timezone": root.settlement_timezone,
-            "settlement_unit": "C",
-            "outcome": bucket,
-            "registry_json": json.dumps({"upper": upper}),
-        }
-        for bucket, upper in (("37", 37), ("38", 38), ("39", None))
-    ]
-
-    def observation(suffix: str, at: str, temperature_c: float) -> dict:
-        return {
-            "observation_id": f"obs-{suffix}",
-            "station_id": root.station_id,
-            "event_date_local": root.event_date,
-            "settlement_timezone": root.settlement_timezone,
-            "reported_temperature_c": temperature_c,
-            "valid_at_utc": at,
-            "canonical_committed_at_utc": at,
-            "raw_sha256": suffix * 64,
-            "source_lane": "AWC",
-            "report_type": "METAR",
-            "evidence_role": "FORMAL",
-            "qc_status": "ACCEPTED",
-            "correction_suspected": False,
-        }
-
-    packets = compile_station_p1_packets(
-        predecessor=root,
-        observations=[
-            observation("a", "2026-07-23T19:00:00Z", 36.5),
-            observation("c", "2026-07-23T20:00:00Z", 37.5),
-        ],
-        registry_rows=registry,
-        compilation_at_utc="2026-07-23T20:00:00Z",
-    )
-    assert len(packets) == 2
-    stale = packets[0]["trajectory_proof"]["posterior_probabilities"]
-    final = packets[1]["trajectory_proof"]["posterior_probabilities"]
-    # Both steps sit under ten hours from local settlement, so the ceiling
-    # would speak on either -- only the attestation separates them.
-    assert stale["38"] + stale["39"] == pytest.approx(0.8)
-    assert final["39"] == pytest.approx(0.05, abs=1e-9)
-
-
-def test_the_ceiling_reaches_the_served_envelope_not_only_the_proof(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The 2026-08-24 defect: the clock only ever spoke inside the evidence.
-
-    ``apply_ceiling`` ran inside the trajectory proof, whose posterior no
-    consumer serves, while the committed envelope was rebuilt from root x
-    likelihood x hard mask and never saw it.  Measured on 2026-08-23, the
-    proof held a median of 0.000 above the running high and the envelope held
-    0.350 on 44 of 45 station-days.  Pinned here on the served distribution.
+    The clock ceiling that used to be tested here is retired; the joint
+    observation likelihood's own tests are in
+    tests/test_charter_150_p1_joint_likelihood.py.
     """
-
-    from bayes_basket_target import metar_ceiling
-
-    monkeypatch.setattr(metar_ceiling, "CEILING_ENABLED", True)
-    artifact = {
-        "schema": "bayes_basket_target_metar_ceiling_v1",
-        "trained_through": "2026-07-01",
-        "bins": {
-            "0": {"hours_from": 0.0, "hours_to": 24.0, "p_still_rose": 0.05},
-        },
-    }
-    # Inside the ten-hour window the layer is allowed to speak in: local
-    # midnight for this event date is 04:00Z the next day, so 23:30Z leaves
-    # four and a half hours of the settlement day.
-    late = "2026-07-23T23:30:00Z"
-    root = _p0m_root(_envelope())
-    without = _trajectory_packet(root, temperature_c=37.0, decision_at_utc=late)
-    packets = compile_station_p1_packets(
-        predecessor=root,
-        observations=[{
-            "observation_id": "obs-1",
-            "station_id": root.station_id,
-            "event_date_local": root.event_date,
-            "settlement_timezone": root.settlement_timezone,
-            "reported_temperature_c": 37.0,
-            "valid_at_utc": late,
-            "canonical_committed_at_utc": late,
-            "raw_sha256": "a" * 64,
-            "source_lane": "AWC",
-            "report_type": "METAR",
-            "evidence_role": "FORMAL",
-            "qc_status": "ACCEPTED",
-            "correction_suspected": False,
-        }],
-        registry_rows=[
-            {
-                "station_id": root.station_id,
-                "event_date": root.event_date,
-                "settlement_timezone": root.settlement_timezone,
-                "settlement_unit": "C",
-                "outcome": bucket,
-                "registry_json": json.dumps({"upper": upper}),
-            }
-            for bucket, upper in (("37", 37), ("38", 38), ("39", None))
-        ],
-        compilation_at_utc=late,
-        ceiling_artifact=artifact,
-    )
-    served = packets[0]["expected_envelope"]["probabilities"]
-    bare = without["expected_envelope"]["probabilities"]
-    ordinals = packets[0]["expected_envelope"]["bucket_ordinals"]
-    floor = min(
-        (b for b, v in bare.items() if v > 0.0),
-        key=lambda b: ordinals[b],
-    )
-
-    def above(dist):
-        return sum(
-            v for b, v in dist.items() if ordinals[b] > ordinals[floor]
-        )
-
-    # Without the artifact the served shape keeps whatever the model left
-    # above the day's high; with it, that share becomes the fitted rate.
-    assert above(bare) == pytest.approx(0.8)
-    assert above(served) == pytest.approx(0.05, abs=1e-9)
-    assert served[floor] == pytest.approx(0.95, abs=1e-9)
-    # The shape inside each side is untouched -- this layer moves one split.
-    assert served["38"] / served["39"] == pytest.approx(
-        bare["38"] / bare["39"]
-    )
-    receipt = json.loads(
-        packets[0]["expected_envelope"]["lineage"]["metar_ceiling_json"]
-    )
-    assert receipt["metar_ceiling_applied"] == "true"
-    assert receipt["metar_ceiling_artifact_sha256"]
-
-
-def test_without_a_ceiling_artifact_the_envelope_is_byte_identical() -> None:
-    """Passing nothing leaves every hash where it was."""
 
     root = _p0m_root(_envelope())
     left = _trajectory_packet(root, temperature_c=37.0)["expected_envelope"]
     right = _trajectory_packet(root, temperature_c=37.0)["expected_envelope"]
     assert left == right
     assert "metar_ceiling_json" not in left["lineage"]
+    receipt = json.loads(left["lineage"]["p1_observation_likelihood_json"])
+    assert receipt["state"] == "SILENT_NO_ARTIFACT"
 
 
 def test_p1_consumes_canonical_event_once_and_applies_hard_support() -> None:

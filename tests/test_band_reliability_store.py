@@ -202,7 +202,8 @@ def test_one_failing_stage_does_not_cost_the_other_stages(monkeypatch) -> None:
     Reproduces 2026-08-20: P0's ``BEGIN IMMEDIATE`` lost the race to the
     resident, the exception unwound the whole loop, and P0-M and P1 were
     never fitted -- not even journalled.  Their evidence had nothing to do
-    with P0's lock.
+    with P0's lock.  Since charter 150 the other two stages are only retired,
+    and that step must survive P0's failure the same way.
     """
 
     conn = sqlite3.connect(":memory:")
@@ -226,14 +227,13 @@ def test_one_failing_stage_does_not_cost_the_other_stages(monkeypatch) -> None:
     assert set(report) == set(BAND_STAGES)
     assert "database is locked" in report["P0"]["error"]
     assert load_band_table(conn, stage="P0") is None
+    # Charter 150: P0-M and P1 serve no band table; the refit only retires
+    # whatever they still had, and P0's lost lock must not cost them that.
     for stage in ("P0-M", "P1"):
         entry = report[stage]
         assert "error" not in entry, entry["error"]
-        assert entry["commit"]["state"] == "ACTIVATED"
-        assert entry["accumulating"] is True
-        assert load_band_table(conn, stage=stage)[1] == (
-            entry["fitted_table_sha256"]
-        )
+        assert entry["served_stage"] is False
+        assert entry["commit"]["state"] == "UNCHANGED"
     # P0's fit was made even though its activation was not: the journal
     # records it as such rather than losing the day.  The rollback inside
     # the isolation frees the lock the fake persist left held, so the
@@ -246,11 +246,7 @@ def test_one_failing_stage_does_not_cost_the_other_stages(monkeypatch) -> None:
             " FROM calibration_band_reliability_fit_journal"
         )
     }
-    assert journalled == {
-        ("P0", "FIT_NOT_ACTIVATED"),
-        ("P0-M", "ACCUMULATING"),
-        ("P1", "ACCUMULATING"),
-    }
+    assert journalled == {("P0", "FIT_NOT_ACTIVATED")}
     assert "fit_id" in report["P0"]
     assert "journal_error" not in report["P0"]
 

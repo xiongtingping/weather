@@ -171,23 +171,21 @@ class EvidenceWindowTest(unittest.TestCase):
 
 
 class RefitAllStagesTest(unittest.TestCase):
-    def test_every_stage_is_fitted_and_every_stage_is_served(self) -> None:
-        """P0 joined once its correction became part of the gated math.
+    def test_only_p0_is_fitted_and_served(self) -> None:
+        """Charter 150: P0 is the only stage with a centre/width correction.
 
-        Before the pin it was fitted for evidence only: hanging a scalar
-        after an OOS-gated artifact would serve math the gate never scored.
-        Now the holdout scores it and the artifact records which version,
-        so the stage is served like the other two.
+        P0-M and P1 are one likelihood update each on P0's calibrated root;
+        the pass reports them as not served and fits nothing for them.
         """
 
         conn = _connection()
         stages = refit_all_center_width(conn, commit=False)
         self.assertEqual(sorted(stages), sorted(CENTER_WIDTH_STAGES))
-        for stage in CENTER_WIDTH_STAGES:
-            self.assertTrue(stages[stage]["served_stage"])
-        self.assertEqual(
-            sorted(CENTER_WIDTH_SERVED_STAGES), sorted(CENTER_WIDTH_STAGES)
-        )
+        self.assertTrue(stages["P0"]["served_stage"])
+        for stage in ("P0-M", "P1"):
+            self.assertFalse(stages[stage]["served_stage"])
+            self.assertNotIn("delta_c", stages[stage])
+        self.assertEqual(CENTER_WIDTH_SERVED_STAGES, ("P0",))
 
     def test_report_only_activates_nothing(self) -> None:
         conn = _connection()
@@ -203,10 +201,10 @@ class RefitAllStagesTest(unittest.TestCase):
         self.assertEqual(stages["P0"]["outcome"], "ACCUMULATING")
         self.assertIsNone(load_center_width(conn, stage="P0"))
 
-    def test_a_starved_served_stage_stays_identity(self) -> None:
+    def test_a_retired_stage_is_retired_not_fitted(self) -> None:
         conn = _connection()
         stages = refit_all_center_width(conn, commit=True)
-        self.assertEqual(stages["P1"]["outcome"], "ACCUMULATING")
+        self.assertIn(stages["P1"]["commit"]["state"], {"RETIRED", "UNCHANGED"})
         self.assertIsNone(load_center_width(conn, stage="P1"))
 
 
@@ -325,8 +323,6 @@ class StageIsolationTest(unittest.TestCase):
             return real_scalar(inner, stage=stage, **kwargs)
 
         def station_boom(inner, *, stage, **kwargs):
-            if stage == "P0-M":
-                raise sqlite3.OperationalError("database is locked")
             return real_station(inner, stage=stage, **kwargs)
 
         with mock.patch.object(store, "fit_center_width", scalar_boom), \
@@ -340,21 +336,20 @@ class StageIsolationTest(unittest.TestCase):
         self.assertEqual(
             report["P0"]["station_width"]["outcome"], "ACCUMULATING"
         )
-        # P0-M: the station lane died alone; the scalar lane landed.
-        self.assertEqual(report["P0-M"]["outcome"], "ACCUMULATING")
-        self.assertIn(
-            "database is locked", report["P0-M"]["station_width"]["error"]
-        )
-        # P1: untouched by either failure, fitted and journalled.
-        self.assertEqual(report["P1"]["outcome"], "ACCUMULATING")
-        self.assertIn("fit_id", report["P1"])
+        # P0-M and P1 (charter 150): retired, not fitted, and P0's lost
+        # lock does not cost them the retirement.
+        for stage in ("P0-M", "P1"):
+            self.assertNotIn("error", report[stage])
+            self.assertFalse(report[stage]["served_stage"])
         journalled = {
             row[0]
             for row in conn.execute(
                 "SELECT stage FROM calibration_center_width_fit_journal"
             )
         }
-        self.assertEqual(journalled, {"P0-M", "P1"})
+        # P0's scalar lane lost its lock before journalling, and the two
+        # retired stages fit nothing to journal.
+        self.assertEqual(journalled, set())
 
     def test_the_cli_reports_part_success_as_failure(self) -> None:
         """Exit code carries the verdict; the landed lanes stay reported."""
@@ -570,7 +565,8 @@ def test_round_memo_asks_each_loading_question_once_per_stage(
     finally:
         conn.close()
 
-    assert calls == {"anchor": 3, "truth": 1, "cells": 3}
+    # Charter 150: one fitted stage (P0) since P0-M and P1 carry no table.
+    assert calls == {"anchor": 1, "truth": 1, "cells": 1}
 
 
 def test_round_memo_keeps_different_caller_bounds_apart() -> None:
@@ -708,12 +704,14 @@ def test_explicit_stage_list_keeps_the_order_the_caller_gave() -> None:
             "INSERT INTO calibration_center_width_fit_journal VALUES(?,?)",
             ("P1", "2026-08-20T00:00:00Z"),
         )
-        store.refit_all_center_width(conn, commit=False, stages=("P0-M", "P0"))
+        store.refit_all_center_width(conn, commit=False, stages=("P0", "P0-M"))
     finally:
         store._refit_stages = original
         conn.close()
 
-    assert seen == ["P0-M", "P0"]
+    # Charter 150: a named stage that serves no table is retired, not fitted,
+    # so only P0 reaches the fit -- in the caller's order.
+    assert seen == ["P0"]
 
 
 def _anchor_fixture() -> sqlite3.Connection:

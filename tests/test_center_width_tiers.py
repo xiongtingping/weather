@@ -168,23 +168,15 @@ def test_every_serving_face_carries_the_tiers() -> None:
 
     root = Path(__file__).resolve().parents[1]
     read = lambda rel: (root / rel).read_text(encoding="utf-8")
-    mat = read("bayes_basket_target/materialization.py")
-    assert mat.count("center_width_tiers: Mapping[str, Any] | None = None,") == 4
-    assert mat.count("center_width_tiers=center_width_tiers,") == 3
-    assert '(center_width_tiers or {}).get("lambdas") or None' in mat
-    assert "or center_width_tiers\n" in mat
-    p1 = read("bayes_basket_target/p1_compiler.py")
-    assert "center_width_tiers: Mapping[str, Any] | None = None," in p1
-    assert "center_width_tiers=center_width_tiers," in p1
-    worker = read("bayes_basket_target/production_worker.py")
-    # P1's compile, and P0-M's one table read a pass.  Charter 133
-    # (2026-09-13) took the calibrated TAF operator offline, so the observed
-    # operator is the only P0-M face and the pass is spread into it once.
-    assert worker.count("load_center_width_tiers(") == 2
-    assert '"center_width_tiers": load_center_width_tiers(' in worker
-    assert worker.count("**p0m_serving_tables,") == 1
-    ingress = read("bayes_basket_target/canonical_ingress.py")
-    assert 'center_width_tiers=load_center_width_tiers(conn, stage="P1"),' in ingress
+    # Charter 150 (2026-09-19): only P0 serves the pair, so P0's faces are
+    # the only ones left; P0-M and P1 must not read the tiers at all.
+    for rel in (
+        "bayes_basket_target/materialization.py",
+        "bayes_basket_target/p1_compiler.py",
+        "bayes_basket_target/production_worker.py",
+        "bayes_basket_target/canonical_ingress.py",
+    ):
+        assert "center_width_tiers" not in read(rel), rel
     p0 = read("bayes_basket_target/native_ensemble_p0.py")
     assert 'width_tiers = load_center_width_tiers(' in p0
     assert '(width_tiers or {}).get("lambdas") or None' in p0

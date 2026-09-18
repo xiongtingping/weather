@@ -73,18 +73,26 @@ def test_the_section_reads_the_lane_p1_reads(tmp_path, monkeypatch) -> None:
     )
 
 
-def test_every_chain_feature_has_a_reader_facing_name() -> None:
-    names = set(H.FULL_FEATURES) | set(H.PHASE_FEATURES) | set(H.REGIONAL_FEATURES)
-    assert names <= set(C.FOUR_LAYER_FEATURE_WORDS), (
-        names - set(C.FOUR_LAYER_FEATURE_WORDS)
+def test_every_likelihood_feature_has_a_reader_facing_name() -> None:
+    from bayes_basket_target import p1_observation_likelihood as OL
+
+    names = set(OL.FULL_FEATURES) | set(OL.PHASE_FEATURES)
+    assert names <= set(C.P1_LIKELIHOOD_FEATURE_WORDS), (
+        names - set(C.P1_LIKELIHOOD_FEATURE_WORDS)
     )
 
 
-def test_the_chain_has_its_own_container() -> None:
+def test_the_joint_likelihood_has_its_own_container() -> None:
+    """Charter 150: the four-layer container became the joint likelihood's,
+    and P0-M's TAF likelihood got a board of its own."""
+
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
-    assert '[fourLayerBoard,"P1 四层链"]' in source
+    assert '[p1JointBoard,"P1 联合似然"]' in source
     assert '[p1PathSkill,"P1 温度路径命中率"]' in source
-    assert '"four_layer_chain": four_layer_chain,' in source
+    assert '[p0mTafBoard,"P0-M TAF 似然"]' in source
+    assert '"p1_joint_likelihood": p1_joint_likelihood,' in source
+    assert '"p0m_taf_likelihood": p0m_taf_likelihood,' in source
+    assert "fourLayerBoard" not in source
 
 
 def test_the_path_skill_reads_heads_and_leads(tmp_path) -> None:
@@ -130,10 +138,11 @@ def test_the_path_skill_reads_heads_and_leads(tmp_path) -> None:
 
 
 
-def test_the_phase_logit_is_taken_apart_and_checked_against_production() -> None:
-    """User, 2026-09-19: "四层链分别是什么，不要黑箱".  The board splits the
-    phase layer's logit into intercept and terms, and must agree with the
-    production function on the same row -- or say it does not."""
+def test_a_served_step_is_taken_apart_prior_times_g_and_checked() -> None:
+    """User, 2026-09-19: "四层链分别是什么，不要黑箱" -- carried over to the
+    joint likelihood: each bucket's prior, g, g**alpha and served value, and
+    the rise probability's logit split into terms and checked against
+    production's own function on the receipt's feature row."""
 
     from bayes_basket_target import metar_four_layer as mfl
 
@@ -147,23 +156,24 @@ def test_the_phase_logit_is_taken_apart_and_checked_against_production() -> None
                 "regional_headroom_c": None}
     rise = mfl.phase_rise_probability(features, artifact)
     receipt = {
-        "phase": {"rise_probability": rise, "running_high_bucket": "31"},
-        "reanchor": {"state": "DISABLED", "shift_c": 0.0},
-        "remaining_warming": {"state": "APPLIED", "likelihood_ratio_by_bucket":
-                              {"30": 1.0, "31": 1.0, "32": 2.0, "33": 0.25}},
+        "state": "APPLIED", "rise_probability": rise, "alpha": 0.5,
+        "running_high_bucket": "31", "features": features,
+        "evidence_by_bucket": {"30": 0.8, "31": 0.8, "32": 0.15, "33": 0.05},
     }
-    out = C._four_layer_breakdown(
-        receipt, shadow_json=json.dumps({"features": features}),
-        excluded_text="30", probabilities_json=json.dumps({"30": 0, "31": .4, "32": .5, "33": .1}),
+    out = C._p1_likelihood_breakdown(
+        receipt,
+        root_probabilities_json=json.dumps({"30": .1, "31": .3, "32": .4, "33": .2}),
+        probabilities_json=json.dumps({"30": 0, "31": .5, "32": .4, "33": .1}),
         ordinals_json=json.dumps({"30": 0, "31": 1, "32": 2, "33": 3}),
         raw_artifact=artifact,
     )
-    phase = out["phase"]["decomposition"]
+    phase = out["decomposition"]
     assert phase["intercept"] == -1.0, "twelve hours left reads the 10h-and-over bin"
     headroom = next(t for t in phase["terms"] if t["feature"] == "regional_headroom_c")
     assert headroom["fallback"] is True and headroom["contribution"] == pytest.approx(-0.3)
     assert phase["eta"] == pytest.approx(-1.0 - 0.5 - 0.3)
     assert phase["matches_receipt"] is True
-    assert [r["bucket"] for r in out["remaining_warming"]["above_high"]] == ["32", "33"]
-    assert out["fact"]["zeroed_buckets"] == 1
-    assert out["served"]["mass_above_high"] == pytest.approx(0.6)
+    by_bucket = {row["bucket"]: row for row in out["buckets"]}
+    assert by_bucket["32"]["g_alpha"] == pytest.approx(0.15 ** 0.5)
+    assert by_bucket["31"]["at_or_below_high"] is True
+    assert by_bucket["32"]["at_or_below_high"] is False

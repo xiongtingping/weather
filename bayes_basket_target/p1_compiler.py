@@ -14,13 +14,9 @@ from .contracts import (
     ProbabilityEnvelope,
     content_sha256,
 )
-from .four_layer_shadow import compile_p1_four_layer_shadow
-from .metar_four_layer import feature_row
 from .materialization import materialize_p1
-from .regional_path_prior import (
-    regional_features_at,
-    resolve_serving_input as resolve_regional_serving_input,
-)
+from .p1_observation_likelihood import feature_vector
+from .regional_path_prior import regional_features_at
 from .metar_four_layer import (
     curve_points,
     curve_shape_realized,
@@ -355,108 +351,7 @@ def p1_trajectory_mode(
     return "PROMOTED_PRE_CURVE"
 
 
-def _four_layer_shadow_for_step(
-    *,
-    root: ProbabilityEnvelope,
-    proof: Any,
-    trajectory_prefix: Sequence[Any],
-    bucket_centers_c: Mapping[str, float],
-    decision_at_utc: str,
-    reported_high_bucket: str,
-    artifacts: Mapping[str, Any],
-    inputs: Mapping[str, Any] | None,
-) -> dict[str, str]:
-    """Build one step's shadow, or nothing, never an exception.
-
-    The path state is recompiled here rather than threaded out of the proof
-    compiler: the shadow is optional and the proof's is not, and a parameter
-    added to that signature for a measurement lane is a parameter every
-    caller of it inherits.  The cost is one extra parse of a prefix already
-    parsed, paid only where a caller supplied artifacts.
-    """
-
-    if inputs is None:
-        return {}
-    try:
-        return compile_p1_four_layer_shadow(
-            root_probabilities=root.probabilities,
-            bucket_ordinals=root.bucket_ordinals,
-            bucket_centers_c=bucket_centers_c,
-            bucket_intervals_c=inputs["bucket_intervals_c"],
-            hard_excluded_buckets=proof.hard_excluded_buckets,
-            running_high_c=proof.running_high_c,
-            running_high_bucket=reported_high_bucket,
-            remaining_hours=inputs["remaining_hours"],
-            path_state=inputs["path_state"],
-            warming_so_far_c=inputs["warming_so_far_c"],
-            curve_shape_realized=inputs["curve_shape_realized"],
-            regional_headroom_c=inputs["regional_headroom_c"],
-            regional_live_gap_c=inputs["regional_live_gap_c"],
-            bias_recent_c=inputs["bias_recent_c"],
-            bias_report_count=inputs["bias_report_count"],
-            hazard_artifact=artifacts.get("hazard"),
-            # No intervals, no translation: the reanchor document is skipped
-            # rather than fabricated from a geometry the root did not state.
-            reanchor_artifact=(
-                artifacts.get("reanchor")
-                if inputs["bucket_intervals_c"] else None
-            ),
-        )
-    except Exception:  # noqa: BLE001 - a measurement lane may never stop a P1
-        return {}
-
-
-def _four_layer_serving_bundle(
-    *,
-    bucket_centers_c: Mapping[str, float],
-    artifacts: Mapping[str, Any],
-    inputs: Mapping[str, Any] | None,
-) -> dict[str, Any] | None:
-    """What ``materialize_p1`` needs to run the chain at the ceiling's point.
-
-    Built from the same inputs the shadow reads, so the served chain and the
-    recorded one cannot be fed different features.  ``None`` whenever the step
-    cannot supply them -- no hazard artifact, an incomplete path state, a root
-    that publishes no geometry -- and the ceiling then serves exactly as it
-    did before the chain existed.
-    """
-
-    if not artifacts.get("hazard"):
-        return None
-    if inputs is None or not inputs["bucket_intervals_c"]:
-        return None
-    state = inputs["path_state"]
-    try:
-        features = feature_row(
-            remaining_hours=inputs["remaining_hours"],
-            drawdown_from_high_c=state.drawdown_from_high_c,
-            momentum_c_per_hour=state.momentum_c_per_hour,
-            cloud_cover_fraction=state.cloud_cover_fraction,
-            precipitation_present=state.precipitation_present,
-            dewpoint_depression_c=state.dewpoint_depression_c,
-            wind_speed_mps=state.wind_speed_mps,
-            warming_so_far_c=inputs["warming_so_far_c"],
-            curve_shape_realized=inputs["curve_shape_realized"],
-            regional_headroom_c=inputs["regional_headroom_c"],
-            regional_live_gap_c=inputs["regional_live_gap_c"],
-        )
-    except ContractError:
-        return None
-    return {
-        "features": features,
-        "hazard_artifact": artifacts.get("hazard"),
-        "bucket_intervals_c": inputs["bucket_intervals_c"],
-        "bucket_centers_c": dict(bucket_centers_c),
-        "bias_recent_c": inputs["bias_recent_c"],
-        "bias_report_count": inputs["bias_report_count"],
-        # Carried for the receipt, not for the model: the chain reads the two
-        # values out of ``features``, and this says which lane they came from
-        # so a served step can be told apart from one the fleet mean filled in.
-        "regional_system_id": inputs["regional_system_id"],
-    }
-
-
-def _four_layer_inputs_for_step(
+def _observation_features_for_step(
     *,
     root: ProbabilityEnvelope,
     proof: Any,
@@ -466,19 +361,19 @@ def _four_layer_inputs_for_step(
     regional_runs: Sequence[Mapping[str, Any]] | None = None,
     regional_calibration: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """Everything the four layers read, or ``None`` when the step cannot supply it.
+    """The joint likelihood's feature vector for one step (charter 150).
 
-    One builder for the shadow and for serving.  The two used to be the same
-    function only because the shadow was the only consumer; now that the chain
-    can reach the served distribution, a second copy of this would be a second
-    definition of the features -- which is the fault ``feature_row`` exists to
-    prevent, one level up.
+    Same function names, same rows, same pairings as the sample builder
+    (``scripts/build_metar_phase_hazard_samples.py``), so a feature cannot
+    disagree between the fit and the serve.  A path state the prefix is too
+    thin to complete leaves its six features ``None`` -- read at the fleet
+    mean -- while the clock, the curve shape and the two innovations still
+    speak; the step then gets a clock-led likelihood rather than silence, and
+    nothing needs to stand behind it.  ``None`` only when even the clock
+    cannot be read.
     """
 
     try:
-        intervals = json.loads(
-            str(root.lineage.get("bucket_intervals_c_json") or "{}")
-        )
         decision = _parse_utc(decision_at_utc)
         day_end = _parse_utc(
             settlement_day_window(
@@ -486,18 +381,15 @@ def _four_layer_inputs_for_step(
             )["target_day_end_utc"]
         )
         # ``trajectory_prefix`` holds canonicalised observation objects, not
-        # the raw mappings the caller passed in.  Reading them as mappings
-        # returned nothing at all, and because a shadow swallows its own
-        # failures the only symptom was a lineage key that never appeared.
+        # the raw mappings the caller passed in.
         rows = [
             {
                 "observation_id": row.event.observation_id,
                 "observed_at_utc": row.event.observed_at_utc,
                 "temperature_c": float(row.temperature_c),
                 "raw_text": str(row.raw_text or ""),
-                # Same reason as in the proof compiler: the slope series is
-                # measured on the formal lane, the rest of the state on the
-                # whole prefix.
+                # The slope series is measured on the formal lane, the rest of
+                # the state on the whole prefix -- as in the proof compiler.
                 "source_lane": str(row.event.source_lane or ""),
             }
             for row in trajectory_prefix
@@ -505,59 +397,64 @@ def _four_layer_inputs_for_step(
         points = curve_points(
             root.lineage.get("conditional_future_temperature_curve_json")
         )
-        path_state = compile_conditional_metar_path_state(
-            rows,
-            as_of_utc=decision_at_utc,
-            settlement_timezone=root.settlement_timezone,
-            root_probabilities=root.probabilities,
-            bucket_centers_c=bucket_centers_c,
-        )
-        if not path_state.complete:
-            return None
+        try:
+            path_state = compile_conditional_metar_path_state(
+                rows,
+                as_of_utc=decision_at_utc,
+                settlement_timezone=root.settlement_timezone,
+                root_probabilities=root.probabilities,
+                bucket_centers_c=bucket_centers_c,
+            )
+        except ContractError:
+            path_state = None
+        if path_state is not None and not path_state.complete:
+            path_state = None
         observed = [
             (_parse_utc(row["observed_at_utc"]), float(row["temperature_c"]))
             for row in rows
             if row["observed_at_utc"]
         ]
-        bias, bias_count = recent_curve_bias(
-            points, observed, as_of=decision
+        bias, _count = recent_curve_bias(points, observed, as_of=decision)
+        regional = regional_features_at(
+            regional_runs or (),
+            as_of_utc=decision_at_utc,
+            running_high_c=proof.running_high_c,
+            latest_observed_c=observed[-1][1] if observed else None,
+            # The 2026-09-18 calibration arm (off by measurement): handed in
+            # like every other fitted table so a replay rebuilds this step
+            # whichever way the switch stands.
+            station_id=root.station_id,
+            calibration=regional_calibration,
         )
-        return {
-            "bucket_intervals_c": intervals,
-            "remaining_hours": max(
+
+        def _state(name: str) -> Any:
+            return None if path_state is None else getattr(path_state, name)
+
+        features = feature_vector(
+            remaining_hours=max(
                 0.0, (day_end - decision).total_seconds() / 3600.0
             ),
-            "path_state": path_state,
-            "warming_so_far_c": (
+            drawdown_from_high_c=_state("drawdown_from_high_c"),
+            momentum_c_per_hour=_state("momentum_c_per_hour"),
+            cloud_cover_fraction=_state("cloud_cover_fraction"),
+            precipitation_present=_state("precipitation_present"),
+            dewpoint_depression_c=_state("dewpoint_depression_c"),
+            wind_speed_mps=_state("wind_speed_mps"),
+            warming_so_far_c=(
                 float(proof.running_high_c) - observed[0][1]
-                if observed else 0.0
+                if observed else None
             ),
-            "curve_shape_realized": curve_shape_realized(points, decision),
-            # Charter 95 step two.  Same function the sample builder calls, on
-            # the same rows, so a feature cannot disagree between the fit and
-            # the shadow that is trying to earn its way in on that fit.
-            **{
-                key: value
-                for key, value in regional_features_at(
-                    regional_runs or (),
-                    as_of_utc=decision_at_utc,
-                    running_high_c=proof.running_high_c,
-                    latest_observed_c=observed[-1][1] if observed else None,
-                    # The 2026-09-18 calibration arm (off by measurement):
-                    # handed in like every other fitted table so a replay
-                    # rebuilds this step whichever way the switch stands.
-                    station_id=root.station_id,
-                    calibration=regional_calibration,
-                ).items()
-                if key in (
-                    "regional_headroom_c", "regional_live_gap_c",
-                    "regional_system_id",
-                )
-            },
-            "bias_recent_c": bias,
-            "bias_report_count": bias_count,
+            curve_shape_realized=curve_shape_realized(points, decision),
+            root_bias_recent_c=bias,
+            regional_headroom_c=regional.get("regional_headroom_c"),
+            regional_live_gap_c=regional.get("regional_live_gap_c"),
+        )
+        return {
+            "features": features,
+            "path_state_complete": path_state is not None,
+            "regional_system_id": regional.get("regional_system_id"),
         }
-    except Exception:  # noqa: BLE001 - neither lane may stop a compile
+    except Exception:  # noqa: BLE001 - a feature lane may never stop a compile
         return None
 
 
@@ -580,30 +477,19 @@ def compile_station_p1_packets(
         ] | None
     ) = None,
     maturity_bin: str = "D0",
-    band_table: tuple[
-        Sequence[tuple[tuple[float, float], float]], str
-    ] | None = None,
-    center_width: tuple[float, float, str] | None = None,
-    center_width_floor_rungs: float = 0.0,
-    center_width_tiers: Mapping[str, Any] | None = None,
-    station_width: tuple[Mapping[str, float], str] | None = None,
-    ceiling_artifact: Mapping[str, Any] | None = None,
-    # Charter 99: the lane's runs for this station-day, read once by the
-    # caller, plus the fitted artifact.  Each prefix resolves its own run on
-    # its own decision clock, so a replay rebuilds every envelope exactly.
+    # The regional lane's runs for this station-day, read once by the
+    # caller.  Charter 150: they reach P1 only as covariates of the joint
+    # likelihood -- each prefix reads the freshest run its own clock could
+    # have seen, so a replay rebuilds every envelope exactly.
     regional_runs: Sequence[Mapping[str, Any]] | None = None,
-    regional_artifact: Mapping[str, Any] | None = None,
     # The regional lanes' bias calibration (2026-09-18, global form), read
-    # by two switched-off arms: the regression's headroom and the path
-    # prior's remaining peak.  Handed in
-    # for the same reason as every other fitted table -- a layer that opens
-    # its own file rebuilds a different envelope the moment the file is
-    # refitted.
+    # by a switched-off arm of the headroom feature.  Handed in for the
+    # same reason as every other fitted table.
     regional_debias_artifact: Mapping[str, Any] | None = None,
     soft_likelihood_policy: str | None = None,
-    # {"hazard": ..., "reanchor": ...}.  Absent means no shadow is recorded
-    # and the lineage is exactly what it was before the four layers existed.
-    four_layer_artifacts: Mapping[str, Any] | None = None,
+    # Charter 150: the fitted joint observation likelihood.  Absent means
+    # every step serves the root under the hard bound and says so.
+    observation_likelihood_artifact: Mapping[str, Any] | None = None,
     # Where a refused state refresh is named.  The refusal is swallowed so
     # the walk's own packets stand; without a channel out, a scope whose
     # refresh fails every cycle looks exactly like one with nothing to
@@ -623,11 +509,9 @@ def compile_station_p1_packets(
     ``reported_high_advanced`` stays honest on both, so neither opens a
     trading window by itself.
 
-    The two post-hoc correction layers are passed in rather than loaded here:
+    The joint likelihood's artifact is passed in rather than loaded here:
     this module takes no connection by design, and the compiled packet is the
-    envelope the worker commits verbatim.  Passing None leaves the posterior
-    byte-identical, which is what every caller that has not been given a
-    table gets.
+    envelope the worker commits verbatim.
 
     ``trajectory_artifact_by_local_time_bucket`` exists because one prefix
     spans more than one local-time bucket and an artifact is fitted for
@@ -763,11 +647,11 @@ def compile_station_p1_packets(
         except (TypeError, ValueError, json.JSONDecodeError):
             curve_point_times_utc = None
     # The day's running high over the whole visible prefix, so each step can
-    # say whether its own high is still the current one.  The cooling-side
-    # ceiling is fitted only on the belief a sweep actually leaves standing --
-    # the step whose high the day still holds -- and it must stay silent on
-    # the replayed steps behind it, where today's clock would cut above a
-    # high the day has already beaten.  Same eligibility filters as the walk;
+    # say whether its own high is still the current one.  The joint
+    # observation likelihood speaks only on the step whose high the day still
+    # holds, and stays silent on the replayed steps behind it, where it would
+    # take mass off buckets the later reports have already reached.  Same
+    # eligibility filters as the walk;
     # an unparsable temperature is left for the walk to raise on.
     # A correction is no longer skipped (operator ruling 2026-09-03, "discard
     # becomes replace").  It reaches here only as the survivor of its slot --
@@ -1160,8 +1044,6 @@ def compile_station_p1_packets(
             )
             excluded = list(proof.hard_excluded_buckets)
             reported_value = reported_hard_lower_in_unit(running_high_c, unit)
-            reported_high_bucket = proof.center_bucket
-            reported_high_ordinal = root.bucket_ordinals[reported_high_bucket]
             bound_identity = {
                 "schema": "bayes_basket_target_compiled_hard_bound_v2",
                 "observation_id": observation_id,
@@ -1175,20 +1057,9 @@ def compile_station_p1_packets(
             }
             hard_bound_id = "hardbound-" + proof.content_sha256[:32]
             fresh_until = decision + timedelta(seconds=int(freshness_seconds))
-            # The shadow, when the caller supplied artifacts for it.  It is
-            # computed from the same prefix, root and instant as the proof above
-            # and multiplied into nothing; the ledger scores it out of lineage.
-            # Its own failures are swallowed inside the shadow compiler, so a
-            # measurement lane can never be the reason a P1 does not compile.
-            #
-            # Built once per step and handed to both consumers.  Building it in
-            # each of them re-parsed the prefix a second time, and the production
-            # cycle went from under ten minutes to fifteen and forty seconds --
-            # past its own 720s overdue alarm -- on 2026-09-07, the first cycle
-            # after the chain started serving beside the shadow.  The path state
-            # is the expensive part and neither lane needs its own copy.
-            four_layer_inputs = (
-                _four_layer_inputs_for_step(
+            observation_likelihood = None
+            if observation_likelihood_artifact:
+                step_features = _observation_features_for_step(
                     root=root,
                     proof=proof,
                     trajectory_prefix=trajectory_prefix,
@@ -1196,21 +1067,14 @@ def compile_station_p1_packets(
                     decision_at_utc=decision_text,
                     regional_runs=regional_runs,
                     regional_calibration=regional_debias_artifact,
-                )
-                if four_layer_artifacts else None
-            )
-            four_layer_shadow: dict[str, str] = {}
-            if four_layer_artifacts:
-                four_layer_shadow = _four_layer_shadow_for_step(
-                    root=root,
-                    proof=proof,
-                    trajectory_prefix=trajectory_prefix,
-                    bucket_centers_c=bucket_centers_c,
-                    decision_at_utc=decision_text,
-                    reported_high_bucket=reported_high_bucket,
-                    artifacts=four_layer_artifacts,
-                    inputs=four_layer_inputs,
-                )
+                ) or {}
+                observation_likelihood = {
+                    "features": step_features.get("features"),
+                    "regional_system_id": step_features.get(
+                        "regional_system_id"
+                    ),
+                    "artifact": observation_likelihood_artifact,
+                }
             envelope = materialize_p1(
                 previous,
                 prediction_root=root,
@@ -1232,39 +1096,7 @@ def compile_station_p1_packets(
                 truth_observation_revision_content_sha256=(
                     truth_revision_sha_by_observation.get(observation_id) or None
                 ),
-                band_table=band_table,
-                center_width=center_width,
-                center_width_floor_rungs=center_width_floor_rungs,
-                center_width_tiers=center_width_tiers,
-                station_width=station_width,
-                ceiling_artifact=ceiling_artifact,
-                regional_prior=(
-                    None
-                    if not regional_runs
-                    else resolve_regional_serving_input(
-                        regional_runs,
-                        station_id=root.station_id,
-                        event_date=root.event_date,
-                        as_of_utc=decision_text,
-                        settlement_timezone=root.settlement_timezone,
-                        artifact=regional_artifact,
-                        debias_artifact=regional_debias_artifact,
-                    )
-                ),
-                # Charter 95 step two, served: the chain stands in the ceiling's
-                # place when it can speak, and the ceiling serves untouched when
-                # it cannot.  Built here because only the compiler holds the
-                # prefix, the root and the lane's runs at once.
-                four_layer_serving=(
-                    None
-                    if not four_layer_artifacts
-                    else _four_layer_serving_bundle(
-                        bucket_centers_c=bucket_centers_c,
-                        artifacts=four_layer_artifacts,
-                        inputs=four_layer_inputs,
-                    )
-                ),
-                four_layer_shadow=four_layer_shadow,
+                observation_likelihood=observation_likelihood,
             )
             packets.append({
                 "observation_id": observation_id,
@@ -1285,6 +1117,7 @@ def compile_station_p1_packets(
                 "bucket_centers_c": bucket_centers_c,
                 "bucket_upper_bounds_c": bucket_upper_bounds_c,
                 "reported_high_advanced": high_advanced,
+                "observation_likelihood": observation_likelihood,
                 "state_refresh_of_checkpoint_id": (
                     previous.checkpoint_id if is_state_refresh else ""
                 ),
@@ -1532,6 +1365,7 @@ def materialization_packet(
         "reported_high_advanced": packet.get(
             "reported_high_advanced"
         ),
+        "observation_likelihood": packet.get("observation_likelihood"),
         # Projected explicitly.  This dict is the whole input to the strict
         # materializer, so anything omitted here is silently absent from the
         # rebuilt envelope -- and without this key the envelope compiles but

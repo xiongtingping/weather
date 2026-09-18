@@ -56,17 +56,6 @@ from .atomic_ledger import (
     reset_writer_lock_profile,
     writer_lock_profile,
 )
-from .band_reliability_store import (
-    load_band_table,
-    load_band_table_with_axis,
-)
-from .center_width_store import (
-    load_center_width,
-    load_center_width_cells,
-    load_center_width_floor,
-    load_center_width_tiers,
-    load_station_width,
-)
 from .contracts import (
     MIN_USABLE_FRESHNESS_SECONDS,
     PROBABILITY_MAX_STALE_SECONDS,
@@ -123,15 +112,14 @@ from .market_materialization import insert_market_evidence_bundle, build_confirm
 from .market_ingress import materialize_official_ws_evidence_cache
 from .materialization import materialize_p0m_observed
 from .probability_bridge import materialize_probability_bridge
-from .four_layer_shadow import (
-    load_shadow_artifacts as load_four_layer_shadow_artifacts,
+from .p1_observation_likelihood import (
+    load_artifact as load_p1_observation_likelihood_artifact,
 )
-from .metar_ceiling import load_artifact as load_metar_ceiling_artifact
+from .taf_likelihood import load_artifact as load_taf_likelihood_artifact
 from .regional_point_debias import (
     load_artifact as load_regional_point_debias_artifact,
 )
 from .regional_path_prior import (
-    load_artifact as load_regional_path_prior_artifact,
     load_runs_for_station_day as load_regional_runs_for_station_day,
 )
 from .metar_trajectory import (
@@ -13159,23 +13147,6 @@ class TargetProductionWorker:
                     state_refresh_refusals_out=refresh_refusals,
                     predecessor=predecessor,
                     prediction_root=prediction_root,
-                    # The compiled packet is committed verbatim, so the
-                    # correction layers have to reach this call -- wiring them
-                    # into the single-event ingress path only left the
-                    # resident's own P1 uncorrected.
-                    band_table=load_band_table_with_axis(self.commit_conn, stage="P1"),
-                    center_width=load_center_width(
-                        self.commit_conn, stage="P1"
-                    ),
-                    center_width_floor_rungs=load_center_width_floor(
-                        self.commit_conn, stage="P1"
-                    ),
-                    center_width_tiers=load_center_width_tiers(
-                        self.commit_conn, stage="P1"
-                    ),
-                    station_width=load_station_width(
-                        self.commit_conn, stage="P1"
-                    ),
                     observations=observations,
                     registry_rows=registry_rows,
                     compilation_at_utc=as_of_utc,
@@ -13199,28 +13170,24 @@ class TargetProductionWorker:
                     trajectory_artifact_by_local_time_bucket=(
                         trajectory_artifact_by_bucket or None
                     ),
-                    # Handed in like the band table so a replay rebuilds the
-                    # same envelope; the module's own env switch still decides
-                    # whether the layer speaks at all.
-                    ceiling_artifact=load_metar_ceiling_artifact(),
-                    # Charter 99: the regional lane's runs for this
-                    # station-day, read once here; the compiler resolves
-                    # which one each prefix may read on its own clock.
+                    # The regional lane's runs for this station-day, read
+                    # once here; each prefix reads the freshest run its own
+                    # clock could have seen, as a covariate of the joint
+                    # likelihood (charter 150) and nothing else.
                     regional_runs=load_regional_runs_for_station_day(
                         self.commit_conn if self.commit_conn is not None else self.conn,
                         station_id=str(predecessor.station_id),
                         event_date=str(predecessor.event_date),
                         as_of_utc=as_of_utc,
                     ),
-                    regional_artifact=load_regional_path_prior_artifact(),
                     regional_debias_artifact=(
                         load_regional_point_debias_artifact()
                     ),
-                    # Measured beside what is served and multiplied into
-                    # nothing.  Empty until the shadow is switched on, and
-                    # empty is the lineage this compiled before it existed.
-                    four_layer_artifacts=(
-                        load_four_layer_shadow_artifacts() or None
+                    # Charter 150: P1 = root x hard bound x g(d | s)**alpha.
+                    # Handed in so a replay rebuilds the same envelope; the
+                    # loader follows the daily refit by modification time.
+                    observation_likelihood_artifact=(
+                        load_p1_observation_likelihood_artifact()
                     ),
                     maturity_bin=maturity_bin,
                 )
@@ -14392,26 +14359,12 @@ class TargetProductionWorker:
                 ]
                 if p0m_serving_tables is None:
                     # Read once a pass, not once a revision: the rebuild runs
-                    # for every scope whose root moved, and nothing in this
-                    # lane writes the tables it reads.
+                    # for every scope whose root moved.  Charter 150: P0-M is
+                    # P0 times the TAF likelihood and carries no post-hoc
+                    # table of its own.
                     p0m_serving_tables = {
-                        "band_table": load_band_table_with_axis(
-                            self.commit_conn, stage="P0-M"
-                        ),
-                        "center_width": load_center_width(
-                            self.commit_conn, stage="P0-M"
-                        ),
-                        "center_width_floor_rungs": load_center_width_floor(
-                            self.commit_conn, stage="P0-M"
-                        ),
-                        "center_width_tiers": load_center_width_tiers(
-                            self.commit_conn, stage="P0-M"
-                        ),
-                        "center_width_taf_cells": load_center_width_cells(
-                            self.commit_conn, stage="P0-M"
-                        ),
-                        "station_width": load_station_width(
-                            self.commit_conn, stage="P0-M"
+                        "taf_likelihood_artifact": (
+                            load_taf_likelihood_artifact()
                         ),
                     }
                 observed_pending: list[tuple[ProbabilityEnvelope, str]] = []

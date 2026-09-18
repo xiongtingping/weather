@@ -20,17 +20,10 @@ fi
 export WEATHER_SERVICE_DOMAIN=user
 export PM_TARGET_EXECUTION_MODE=production_live
 export PM_TARGET_PRODUCTION_WRITER=1
-# The cooling-side ceiling: after the peak the day cannot warm, and
-# nothing else in the chain says so.  Serving refuses any event date at
-# or before the artifact's trained_through, so this is inert until the
-# curve has been fitted past it.
-export PM_METAR_CEILING=1
-# 10 hours left is about 14:00 local.  Widened to 14 by the 2026-09-06
-# ruling and reverted on 2026-09-07 by measurement: in the 10-14h band the
-# widening admitted, the ceiling cost 0.136 nat and made 72.3% of 4,232
-# prefixes worse with no reduction in catastrophic misses.  The module
-# default says the same; this export only pins it.
-export PM_METAR_CEILING_MAX_HOURS_LEFT=10.0
+# The cooling-side ceiling's two exports (PM_METAR_CEILING and its window)
+# left with the ceiling itself (charter 150, 2026-09-19): P1's remaining
+# rise is its joint observation likelihood's question, and nothing in the
+# serving path calls the ceiling any more.
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 PY="$ROOT/.venv/bin/python"
 if [ ! -x "$PY" ]; then

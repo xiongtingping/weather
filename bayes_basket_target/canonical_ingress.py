@@ -51,16 +51,6 @@ from .asos_substitute_observation_contract import (
     FACT_TYPE as SUBSTITUTE_OBSERVATION_FACT_TYPE,
     CanonicalSubstituteObservationContract,
 )
-from .band_reliability_store import (
-    load_band_table,
-    load_band_table_with_axis,
-)
-from .center_width_store import (
-    load_center_width,
-    load_center_width_floor,
-    load_center_width_tiers,
-    load_station_width,
-)
 from .contracts import (
     MAX_REPORT_TRANSMISSION_LEAD_SECONDS,
     ContractError,
@@ -365,17 +355,10 @@ def materialize_p1_from_canonical_observation(
         )
     result = materialize_p1(
         envelope,
-        # P1's own residual table -- P0's correction already rode in through
-        # the root, and an identity table (which is what P1 serves until its
-        # evidence clears the hurdles) leaves the posterior byte-identical.
-        band_table=load_band_table_with_axis(conn, stage="P1"),
-        # The temperature-axis correction, fitted and gated the same way.
-        # None until its own forward window admits one, which leaves the
-        # posterior byte-identical.
-        center_width=load_center_width(conn, stage="P1"),
-        center_width_floor_rungs=load_center_width_floor(conn, stage="P1"),
-        center_width_tiers=load_center_width_tiers(conn, stage="P1"),
-        station_width=load_station_width(conn, stage="P1"),
+        # Charter 150: P1 carries no post-hoc table.  This single-event path
+        # holds no report prefix to build the joint likelihood's features
+        # from, so it serves the root under the hard bound and its receipt
+        # says so.
         prediction_root=prediction_root,
         trajectory_artifact=trajectory_artifact,
         trajectory_proof=trajectory_proof,

@@ -255,12 +255,12 @@ def test_edge_bucket_centres_use_the_fitted_convention() -> None:
     assert centers == [28.5, 30.0, 31.0, 32.0, 33.5]
 
 
-def test_serving_layer_is_wired_ahead_of_the_band_table() -> None:
-    """Geometry before claim.
-
-    The band factors were measured on served claims, so the band layer has
-    to see the final one; moving the distribution after banding would band
-    a claim and then slide it out from under the band chosen for it.
+def test_only_p0_serves_the_layer_and_materialization_applies_none() -> None:
+    """Charter 150 (2026-09-19): P0 is the only stage with a centre/width
+    correction, and it applies it inside its own compile (``served_shape``,
+    geometry before claim).  P0-M and P1 are one likelihood update each on
+    P0's root, so the materializer carries neither the call nor the band
+    table the ordering rule used to guard.
     """
 
     from pathlib import Path
@@ -270,17 +270,5 @@ def test_serving_layer_is_wired_ahead_of_the_band_table() -> None:
         / "bayes_basket_target"
         / "materialization.py"
     ).read_text(encoding="utf-8")
-    # The condition widened when the per-station width scale joined the
-    # layer, again when the next-day fleet regime shift did, and again when
-    # the width floor did: any one of the four may be present without the
-    # others, and each on its own is enough to move the distribution before
-    # the band table sees the claim.  Anchored on the call rather than on the
-    # condition's text, which has now been reflowed twice for the same
-    # reason and says nothing about ordering when it is.
-    centre_at = source.index(
-        "probabilities, center_receipt = apply_center_width_calibration("
-    )
-    band_at = source.index("if band_table is not None:", centre_at)
-    assert centre_at < band_at
-    # And the hard bound is handed to it, not left for the caller to forget.
-    assert "excluded_buckets=sorted(excluded)," in source
+    assert "apply_center_width_calibration(" not in source
+    assert "band_table" not in source

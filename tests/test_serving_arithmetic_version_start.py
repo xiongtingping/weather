@@ -116,7 +116,9 @@ def test_every_stage_hashes_the_lanes_that_decide_its_tables() -> None:
         ("bayes_basket_target.band_reliability_store",
          "fit_band_reliability_table"),
     }
-    for stage in STAGES:
+    # Charter 150: P1 applies no table; P0-M applies none of its own but is
+    # built on P0's root, whose tables it therefore moves with.
+    for stage in ("P0", "P0-M"):
         members = set(sa.closure(stage) or [])
         assert wanted <= members, stage
         # And the search inside them, not just the entry: the grid is where
@@ -169,7 +171,14 @@ def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
     p0m = inspect.signature(
         materialize_p0m_observed
     ).parameters["posterior_version"].default
-    assert sa.version_effective_from("P0-M", p0m) == "2026-09-18T09:18:16Z"
+    # Charter 150's v7 is this stage's own change and first appears the day
+    # it serves, so its start is inferred rather than declared; v6 keeps the
+    # declaration of the P0 bump it followed.
+    assert p0m == "p0m_taf_likelihood_v7"
+    assert sa.version_effective_from("P0-M", p0m) is None
+    assert sa.version_effective_from(
+        "P0-M", "p0m_taf_observed_v6"
+    ) == "2026-09-18T09:18:16Z"
     assert sa.version_effective_from(
         "P0", "calibrated_native_cross_ensemble_p0_v5"
     ) == "2026-09-14T05:52:13Z"
@@ -189,6 +198,7 @@ def test_p1_declares_only_the_bump_its_root_caused() -> None:
     v10 was caused upstream: charter 134 changed the P0 root P1 composes on,
     so it declares the root's moment, the instant P0 and P0-M v5 declare.
     v11 is the second such bump (charter 149) and declares P0 v6's moment.
+    v12 (charter 150) is P1's own again.
     """
 
     from bayes_basket_target.materialization import materialize_p1
@@ -198,10 +208,12 @@ def test_p1_declares_only_the_bump_its_root_caused() -> None:
     p1 = inspect.signature(
         materialize_p1
     ).parameters["posterior_version"].default
-    assert p1 == "p1_metar_trajectory_target_v11"
-    assert sa.version_effective_from("P1", p1) == sa.version_effective_from(
-        "P0", POSTERIOR_VERSION
-    )
+    # v12 (charter 150) is P1's own change: undeclared, inferred.
+    assert p1 == "p1_joint_likelihood_v12"
+    assert sa.version_effective_from("P1", p1) is None
+    assert sa.version_effective_from(
+        "P1", "p1_metar_trajectory_target_v11"
+    ) == sa.version_effective_from("P0", POSTERIOR_VERSION)
     # v10 was charter 134's root bump and keeps its own declaration.
     assert sa.version_effective_from(
         "P1", "p1_metar_trajectory_target_v10"

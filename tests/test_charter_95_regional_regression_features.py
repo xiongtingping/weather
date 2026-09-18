@@ -148,42 +148,21 @@ def test_the_shipped_artifact_declares_the_features_it_was_fitted_with() -> None
     assert payload["feature_fallbacks"]["regional_headroom_c"] != 0.0
 
 
-def test_the_shadow_computes_the_features_from_the_same_function() -> None:
-    """A feature computed twice is a feature that will disagree."""
+def test_the_joint_likelihood_computes_the_features_from_the_same_function() -> None:
+    """A feature computed twice is a feature that will disagree.
+
+    Charter 150: the four-layer shadow is gone; the serving feature builder
+    is ``p1_compiler._observation_features_for_step`` and the sample builder
+    calls the same ``regional_features_at``."""
 
     compiler = (ROOT / "bayes_basket_target" / "p1_compiler.py").read_text(
         encoding="utf-8")
     assert "regional_features_at(" in compiler
     assert "regional_runs=regional_runs," in compiler
-    shadow = (ROOT / "bayes_basket_target" / "four_layer_shadow.py").read_text(
-        encoding="utf-8")
-    assert "regional_headroom_c=regional_headroom_c," in shadow
+    assert not (ROOT / "bayes_basket_target" / "four_layer_shadow.py").exists()
     builder = (ROOT / "scripts" / "build_metar_phase_hazard_samples.py").read_text(
         encoding="utf-8")
     assert "regional_features_at(" in builder, (
-        "the sample builder and the shadow must call one definition"
+        "the sample builder and the serving builder must call one definition"
     )
 
-
-def test_the_shadow_records_and_still_moves_no_probability() -> None:
-    """On since 2026-09-07, and on is not the same as promoted.
-
-    The chain now writes two lineage keys on every P1 it can compile, which is
-    how thirty event days of evidence get made; it still multiplies into
-    nothing, and the served distribution is what it was.  Promoting it to the
-    distribution anyone trades is a separate ruling.
-    """
-
-    from bayes_basket_target import four_layer_shadow as S  # noqa: PLC0415
-
-    assert S.SHADOW_ENABLED is True
-    assert set(S.load_shadow_artifacts()) == {"hazard", "reanchor"}, (
-        "a shadow swallows its own failures, so an artifact that will not "
-        "load shows up only as a key that never appears"
-    )
-    materialization = (
-        ROOT / "bayes_basket_target" / "materialization.py"
-    ).read_text(encoding="utf-8")
-    assert "p1_shadow" not in materialization, (
-        "the shadow reaches the lineage, never the distribution"
-    )

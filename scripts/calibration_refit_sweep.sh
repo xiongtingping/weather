@@ -102,11 +102,13 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] center_width refit"
 # the fallback for the hours between a deploy and the first envelope that
 # carries the new version.  Delete them once that transition is not in living
 # memory; the pairing is pinned by tests/test_serving_arithmetic_version_start.
+#
+# Charter 150 (2026-09-19): only P0 carries a centre/width correction.  The
+# refit retires whatever P0-M and P1 still had and fits nothing for them, so
+# the flag below names P0 alone.
 "$PY" scripts/refit_center_width.py --commit --summary \
   --since "2026-08-27T09:20:00Z" \
-  --since-stage "P0=2026-09-18T09:18:16Z" \
-  --since-stage "P0-M=2026-09-18T09:18:16Z" \
-  --since-stage "P1=2026-09-18T09:18:16Z" || RC=$?
+  --since-stage "P0=2026-09-18T09:18:16Z" || RC=$?
 
 
 # Whether any stage owes the version bump the width lanes above key their

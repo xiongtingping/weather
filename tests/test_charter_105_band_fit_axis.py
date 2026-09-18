@@ -246,13 +246,12 @@ def test_every_serving_lane_reads_the_tables_axis_not_its_own_preference():
         assert served == direct, axis
         assert receipt is not None
 
+    # Charter 150: P0-M and P1 serve no band table, so materialization has
+    # no apply site left to hold to this rule.
     materialization = (
         ROOT / "bayes_basket_target" / "materialization.py"
     ).read_text(encoding="utf-8")
-    assert "== BAND_AXIS_CENTRE_DISTANCE" in materialization
-    # The production serving path skips rather than guessing when it has a
-    # distance table and no ordering to key it by.
-    assert "SKIPPED_NO_BUCKET_ORDINALS" in materialization
+    assert "apply_band_reliability" not in materialization
 
 
 def test_the_nightly_refit_keeps_each_stage_on_its_own_axis():
@@ -508,33 +507,32 @@ def test_the_axis_decision_is_per_stage_because_the_evidence_is():
         )
     report = refit_all_stages(
         conn, bootstrap_samples=1, commit=False,
-        axis={"P1": BAND_AXIS_CENTRE_DISTANCE},
+        axis={"P0": BAND_AXIS_CENTRE_DISTANCE},
     )
-    assert report["P1"]["axis"] == BAND_AXIS_CENTRE_DISTANCE
-    # The two the caller did not name keep the axis they SERVE, rather than
-    # falling back to the shipped one -- the default that would have quietly
-    # reverted P0 on the next nightly sweep.
-    assert report["P0"]["axis"] == BAND_AXIS_CLAIM
-    assert report["P0-M"]["axis"] == BAND_AXIS_CLAIM
+    assert report["P0"]["axis"] == BAND_AXIS_CENTRE_DISTANCE
+    # Charter 150: P0-M and P1 are not fitted at all, whatever is named.
+    assert report["P0-M"]["served_stage"] is False
+    assert report["P1"]["served_stage"] is False
     persist_and_activate_band_table(
         conn, stage="P0",
         factors=[(cell, 1.0) for cell in BAND_DISTANCE_CELLS],
         evidence={"schema": "test"}, serving_day_count=1,
         axis=BAND_AXIS_CENTRE_DISTANCE,
     )
+    # The stage the caller did not name keeps the axis it SERVES, rather
+    # than falling back to the shipped one -- the default that would have
+    # quietly reverted P0 on the next nightly sweep.
     unnamed = refit_all_stages(
         conn, bootstrap_samples=1, commit=False,
         axis={"P1": BAND_AXIS_CENTRE_DISTANCE},
     )
     assert unnamed["P0"]["axis"] == BAND_AXIS_CENTRE_DISTANCE
-    # A bare string still means every stage: the old contract is intact.
+    # A bare string still means every fitted stage.
     everywhere = refit_all_stages(
         conn, bootstrap_samples=1, commit=False,
-        axis=BAND_AXIS_CENTRE_DISTANCE,
+        axis=BAND_AXIS_CLAIM,
     )
-    assert {e["axis"] for e in everywhere.values()} == {
-        BAND_AXIS_CENTRE_DISTANCE
-    }
+    assert everywhere["P0"]["axis"] == BAND_AXIS_CLAIM
 
 
 def test_the_replay_lane_is_not_coupled_to_whichever_stage_moved_first():

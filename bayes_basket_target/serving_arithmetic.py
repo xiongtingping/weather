@@ -72,7 +72,10 @@ STAGE_SOURCES: Mapping[str, Sequence[tuple[str, str]]] = {
     "P0-M": (
         # ``materialize_p0m`` (the calibrated TAF operator) left this list
         # 2026-09-13 when that branch went offline (charter 133): P0-M
-        # serves only the observed operator.
+        # serves only the observed operator.  Since charter 150 that operator
+        # is P0 times the TAF likelihood, whose arithmetic the closure
+        # reaches through the call; the entries below it are P0's root,
+        # which this stage moves with -- P0-M applies no table of its own.
         ("bayes_basket_target.materialization", "materialize_p0m_observed"),
         ("bayes_basket_target.native_ensemble_oos", "build_native_ensemble_oos"),
         ("bayes_basket_target.native_ensemble_oos", "_fit_parameters"),
@@ -83,19 +86,19 @@ STAGE_SOURCES: Mapping[str, Sequence[tuple[str, str]]] = {
         ("bayes_basket_target.band_reliability_store",
          "fit_band_reliability_table"),
     ),
+    # Charter 150: the root under the hard bound times one joint observation
+    # likelihood.  ``materialize_p1`` reaches the likelihood's arithmetic
+    # through its call; the step's features are computed in the compiler and
+    # named here because they reach serving through the packet, not a call.
+    # The ceiling, the centre/width scalars and the band table left with the
+    # layers they served.
     "P1": (
         ("bayes_basket_target.materialization", "materialize_p1"),
         ("bayes_basket_target.metar_trajectory",
          "compile_metar_trajectory_update_proof"),
-        ("bayes_basket_target.metar_ceiling", "apply_ceiling"),
+        ("bayes_basket_target.p1_compiler", "_observation_features_for_step"),
         ("bayes_basket_target.p1_compiler", "_bucket_geometry_c"),
         ("bayes_basket_target.p1_compiler", "_hard_exclusion_threshold_c"),
-        ("bayes_basket_target.center_width_calibration",
-         "apply_center_width_calibration"),
-        ("bayes_basket_target.center_width_store", "fit_center_width"),
-        ("bayes_basket_target.center_width_store", "fit_station_width"),
-        ("bayes_basket_target.band_reliability_store",
-         "fit_band_reliability_table"),
     ),
 }
 

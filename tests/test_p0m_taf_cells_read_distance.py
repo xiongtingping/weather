@@ -20,9 +20,6 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target import center_width_store as store  # noqa: E402
 from bayes_basket_target.contracts import ProbabilityEnvelope  # noqa: E402
-from bayes_basket_target.materialization import (  # noqa: E402
-    _serve_taf_cell_for_root,
-)
 
 POOLED = (0.05, 0.9, "p" * 64)
 KEYS = ["26", "27", "28", "29", "30", "31", "32"]
@@ -69,36 +66,6 @@ def test_a_cell_not_yet_admitted_serves_the_pooled_pair_and_still_names_the_day(
     assert store.serve_taf_cell(
         POOLED, None, tx_c=25.0, root_center_c=29.4, key_centers_c=CENTRES,
     ) == (POOLED, None)
-
-
-def test_the_serve_reads_the_roots_own_centre_and_ladder() -> None:
-    intervals = {key: [float(key) - 0.5, float(key) + 0.5] for key in KEYS}
-    intervals[KEYS[0]] = [None, 26.5]
-    intervals[KEYS[-1]] = [31.5, None]
-    root = ProbabilityEnvelope.from_mapping({
-        "stage": "P0",
-        "checkpoint_id": "p0-root",
-        "station_id": "ZUCK",
-        "event_date": "2026-09-12",
-        "settlement_timezone": "Asia/Shanghai",
-        "decision_at_utc": "2026-09-11T20:00:00Z",
-        "fresh_until_utc": "2026-09-12T02:00:00Z",
-        "bucket_ordinals": {key: index for index, key in enumerate(KEYS)},
-        "probabilities": {key: 1 / len(KEYS) for key in KEYS},
-        "posterior_version": "cell-test",
-        "posterior_sha256": "a" * 64,
-        "bridge_sha256": "b" * 64,
-        "lineage": {
-            "settlement_timezone": "Asia/Shanghai",
-            "model_center_c": "29.4",
-            "bucket_intervals_c_json": json.dumps(intervals),
-        },
-    })
-    served, name = _serve_taf_cell_for_root(
-        POOLED, {"far": (0.05, 0.4, 1.1)}, root=root, tx_c=25.0,
-    )
-    assert name == "far"
-    assert served == (-0.35, 1.1, POOLED[2])
 
 
 def _cell(settled: str, tx: float | None, day: str = "2026-09-10") -> dict:

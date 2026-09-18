@@ -231,7 +231,12 @@ def test_an_old_run_is_not_todays_curve() -> None:
     ) is None
 
 
-def test_production_and_the_ledger_read_one_layer() -> None:
+def test_the_layer_is_retired_from_production_and_the_ledger() -> None:
+    """Charter 150 (2026-09-19): the regional curves reach P1 only as
+    covariates of the joint observation likelihood.  The path prior no
+    longer stands at P1's outermost point, and the ledger no longer replays
+    it -- both judges read what the envelope served."""
+
     import sys
     from pathlib import Path
 
@@ -240,23 +245,13 @@ def test_production_and_the_ledger_read_one_layer() -> None:
         sys.path.insert(0, str(root / "scripts"))
     import paper_trading_ledger as L  # noqa: PLC0415
 
-    assert L.regional_path_prior is R
+    assert not hasattr(L, "regional_path_prior")
     source = (root / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    assert '"regional_path_prior": (' in source, "the layer is a rule of the book"
-    materialization = (root / "bayes_basket_target" / "materialization.py").read_text(encoding="utf-8")
-    assert "apply_regional_path_prior(" in materialization
-    # v10 (charter 134) and v11 (charter 149) moved the version for root
-    # changes, not this layer.
-    assert 'posterior_version: str = "p1_metar_trajectory_target_v11"' in materialization
-    assert (
-        "if ceiling is not None and not regional_spoke and not four_layer_spoke:"
-        in materialization
-    ), (
-        "the curve stands in the ceiling's place, it does not double-correct."
-        "  Charter 95 step two (2026-09-07) put a third claimant at the same "
-        "point -- the four-layer chain -- and the same rule holds for all "
-        "three: exactly one of them speaks, and the ceiling is the fallback."
-    )
+    assert '"regional_path_prior": (' not in source
+    for module in ("materialization.py", "p1_compiler.py", "production_worker.py"):
+        text = (root / "bayes_basket_target" / module).read_text(encoding="utf-8")
+        assert "apply_regional_path_prior(" not in text, module
+        assert "resolve_regional_serving_input(" not in text, module
 
 
 def test_the_defaults_are_the_arms_the_measurement_chose() -> None:

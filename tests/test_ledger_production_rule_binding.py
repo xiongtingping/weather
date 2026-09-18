@@ -471,8 +471,7 @@ LEDGER_ONLY = {
     "REQUIRE_QUOTED_BOOK": "research arm, promotion-gated",
     # Layers the ledger re-applies from a leak-free replay table because
     # production's live artifact would be reading its own training set.
-    "PAPER_LEDGER_CEILING": "replay curve substitution, tested idempotent",
-    "PAPER_LEDGER_CENTER_WIDTH": "same, off by default",
+    "PAPER_LEDGER_CENTER_WIDTH": "replay table substitution (P0 only), off by default",
     "PAPER_LEDGER_CENTER_WIDTH_STAGES": "same",
 }
 
@@ -1142,7 +1141,9 @@ def test_the_walk_carries_the_belief_the_solver_judged_on() -> None:
         encoding="utf-8"
     )
     assert L.REPLAY_LAYERS_APPLIED == (L.JUDGE == "ledger")
-    assert 'if stage == "P1" and REPLAY_LAYERS_APPLIED:' in source
+    # Charter 150: the P1 ceiling replay is retired with the ceiling; only
+    # P0's centre/width replay remains, and only under the ledger judge.
+    assert "_ceiling_corrected" not in source
     assert "        if REPLAY_LAYERS_APPLIED:\n            cw_p = " in source
     assert '"off:judge_reads_envelope"' in source
     # The lookback walks every stage.

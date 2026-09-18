@@ -55,10 +55,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from bayes_basket_target import metar_ceiling  # noqa: E402
-from bayes_basket_target import regional_path_prior  # noqa: E402
-from bayes_basket_target import regional_point_debias  # noqa: E402
-from bayes_basket_target import metar_four_layer  # noqa: E402
+from bayes_basket_target import p1_observation_likelihood  # noqa: E402
+from bayes_basket_target import taf_likelihood  # noqa: E402
 from bayes_basket_target.center_width_calibration import (  # noqa: E402
     apply_center_width_calibration,
     bucket_centers_from_intervals,
@@ -1253,7 +1251,10 @@ for _name, _value in (
 
 _CW_RAW = os.environ.get("PAPER_LEDGER_CENTER_WIDTH", "0").strip()
 PAPER_LEDGER_CENTER_WIDTH = _CW_RAW not in {"0", "false", "FALSE", "no", ""}
-PAPER_LEDGER_CENTER_WIDTH_STAGES = (
+# Charter 150: only P0 carries a centre/width correction, so only P0 can be
+# replayed with one -- a P0-M or P1 named here is ignored rather than handed
+# a layer production no longer applies to it.
+PAPER_LEDGER_CENTER_WIDTH_STAGES = frozenset({"P0"}) & (
     frozenset({"P0", "P0-M", "P1"})
     if _CW_RAW in {"1", "true", "TRUE", "yes", "all"}
     else frozenset(
@@ -1343,11 +1344,6 @@ if "P0" not in LEDGER_STAGES:
     # Only P0 opens; without it every later stage is a leg on a chain that was
     # never opened, which is the three-book accounting this ledger left behind.
     raise SystemExit("PAPER_LEDGER_STAGES must include P0")
-
-PAPER_LEDGER_CEILING = (
-    os.environ.get("PAPER_LEDGER_METAR_CEILING", "1").strip()
-    not in {"0", "false", "FALSE", "no"}
-)
 
 MAKER_RESTING_VALUE_LAMBDA = float(
     os.environ.get("PAPER_LEDGER_MAKER_VALUE_LAMBDA", "") or "0.53"
@@ -2703,68 +2699,17 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     "maker_shoulder_lambda": MAKER_RESTING_SHOULDER_LAMBDA,
     "maker_belief_gate": MAKER_RESTING_BELIEF_GATE,
     "maker_belief_source": "bridge_history_observation_stage_precedence_at_reprice",
-    # Production applies the cooling-side ceiling inside P1 as of 2026-08-23.
-    # A row priced against the raw posterior describes a red line the live
-    # engine no longer draws, so it cannot share a fingerprint with these.
-    # Charter 99 (2026-09-06): the regional curve stands in the ceiling's
-    # place when it speaks.  A book priced with it may not share a
-    # fingerprint with one priced without.
-    # Charter 99 (2026-09-07): admission is per system and by measurement,
-    # so the admitted set belongs in the label.  A book priced with the
-    # layer serving every lane and one priced with it serving only the MSM
-    # are different rules, and before this they shared a fingerprint.
-    # Charter 95 (2026-09-07): the curve is debiased before it is fused, so
-    # the correction's rule, strength and admitted set ride in the same
-    # label.  A book priced on a debiased curve is not the book priced on
-    # the raw one, and the two must not share a fingerprint.
-    "regional_path_prior": (
-        "%s:w=%g:sys=%s:debias=%s" % (
-            regional_path_prior.RULE_VERSION, regional_path_prior.WEIGHT,
-            "+".join(sorted(regional_path_prior.SERVING_SYSTEMS)) or "none",
-            (
-                "%s:x=%g:%s" % (
-                    regional_point_debias.RULE_VERSION,
-                    regional_point_debias.SCALE,
-                    "+".join(sorted(regional_point_debias.DEBIAS_SYSTEMS)) or "none",
-                )
-                if regional_point_debias.ENABLED else "off"
-            ),
-        )
-        if regional_path_prior.ENABLED and REPLAY_LAYERS_APPLIED
-        # Under the production judge the ledger scores the envelope production
-        # committed, which already carries this layer; the replay does not
-        # apply it a second time and does not claim it as its own rule.  The
-        # ceiling's entry above says the same thing in the same words.
-        else "off:judge_reads_envelope" if regional_path_prior.ENABLED
-        else "off"
+    # Charter 150 (2026-09-19): P1 is the root times one joint observation
+    # likelihood and P0-M is P0 times the TAF likelihood; the ceiling, the
+    # regional path prior and the four-layer chain that this label used to
+    # carry one entry each for are retired from production, and the ledger's
+    # own replay of the ceiling with them.  Both judges now read what the
+    # envelope served.  The likelihood rules ride here so a book priced on
+    # the new stages does not share a fingerprint with one priced on the old.
+    "p1_observation_likelihood": (
+        f"{p1_observation_likelihood.RULE}:judge_reads_envelope"
     ),
-    # Charter 95 step two (2026-09-07): the four-layer chain now stands in the
-    # ceiling's place at P1's outermost point, so a book priced with it may
-    # not share a fingerprint with one priced by the clock rate.  As with the
-    # ceiling and the curve, under the production judge the ledger scores the
-    # envelope production committed, which already carries this layer.
-    "p1_four_layer_serving": (
-        "regression_phase_remaining_no_reanchor_v1"
-        if metar_four_layer.SERVE_ENABLED and REPLAY_LAYERS_APPLIED
-        else "off:judge_reads_envelope" if metar_four_layer.SERVE_ENABLED
-        else "off"
-    ),
-    "metar_ceiling": (
-        # The window the ceiling may speak in rides in the label: a book
-        # priced with the ceiling from 10:00 local (14h left, 2026-09-06)
-        # is not the book priced with it from 14:00 (10h), and the two must
-        # not share a fingerprint.
-        # v2 (2026-09-06): the rate also reads how far the newest formal
-        # report sits below the running high; the axis version rides here.
-        "replay_table_oos_by_event_date:max_hours_left=%g:%s"
-        % (
-            metar_ceiling.CEILING_MAX_HOURS_LEFT,
-            metar_ceiling.CEILING_GAP_DIMENSION_VERSION,
-        )
-        if PAPER_LEDGER_CEILING and REPLAY_LAYERS_APPLIED
-        else "off:judge_reads_envelope" if PAPER_LEDGER_CEILING
-        else "off"
-    ),
+    "p0m_taf_likelihood": f"{taf_likelihood.RULE}:judge_reads_envelope",
     # The lane name carries the width floor unconditionally.  A book priced
     # on floored posteriors is not the book priced on unfloored ones, and
     # two books that disagree about that must not share a fingerprint.
@@ -4604,21 +4549,6 @@ def _stage_entry_candidates(
         served_identity = probability_vector_identity_v1({
             str(row[0]): float(row[4]) for row in buckets
         })
-        if stage == "P1" and REPLAY_LAYERS_APPLIED:
-            ceiling_p = _ceiling_corrected(
-                conn,
-                {str(row[0]): float(row[4]) for row in buckets},
-                stage=stage,
-                envelope_json=envelope_json,
-                station_id=str(station_id),
-                event_date=str(event_date),
-                as_of_utc=str(decided),
-            )
-            buckets = [
-                (row[0], row[1], row[2], row[3],
-                 ceiling_p.get(str(row[0]), row[4]))
-                for row in buckets
-            ]
         if REPLAY_LAYERS_APPLIED:
             cw_p = _center_width_corrected(
                 {str(row[0]): float(row[4]) for row in buckets},
@@ -7167,147 +7097,6 @@ def _center_width_corrected(
     return corrected
 
 
-# Formal reports per station-day, for the ceiling's gap axis (v2, 2026-09-06):
-# the same archive series production's P1 chain consumes, read once per
-# station-day and kept for the pass.
-_FORMAL_OBSERVATION_POINTS: dict[tuple[str, str], list[tuple[str, float]]] = {}
-
-
-def _formal_observation_points(
-    station_id: str, event_date: str, zone_name: str
-) -> list[tuple[str, float]]:
-    """(valid_at, temperature) of the day's formal METAR/SPECI reports."""
-
-    key = (str(station_id), str(event_date))
-    cached = _FORMAL_OBSERVATION_POINTS.get(key)
-    if cached is not None:
-        return cached
-    points: list[tuple[str, float]] = []
-    try:
-        start = datetime.fromisoformat(str(event_date)).replace(
-            tzinfo=ZoneInfo(str(zone_name))
-        )
-        end = start + timedelta(days=1)
-        stamp = "%Y-%m-%dT%H:%M:%S.000Z"
-        observations = sqlite3.connect(
-            f"file:{OBSERVATION_DB}?mode=ro", uri=True, timeout=30.0
-        )
-        rows = observations.execute(
-            "SELECT valid_at, reported_temperature_c"
-            " FROM reported_trajectory_observations"
-            " WHERE station_id=? AND reported_temperature_c IS NOT NULL"
-            " AND report_type IN ('METAR','SPECI')"
-            " AND valid_at>=? AND valid_at<? ORDER BY valid_at",
-            (
-                str(station_id),
-                start.astimezone(timezone.utc).strftime(stamp),
-                end.astimezone(timezone.utc).strftime(stamp),
-            ),
-        ).fetchall()
-        observations.close()
-        points = [(str(valid_at), float(temperature)) for valid_at, temperature in rows]
-    except (sqlite3.Error, ValueError, KeyError, TypeError):
-        points = []
-    _FORMAL_OBSERVATION_POINTS[key] = points
-    return points
-
-
-def _ceiling_corrected(
-    conn,
-    probabilities: dict[str, float],
-    *,
-    stage: str,
-    envelope_json: Any,
-    station_id: str,
-    event_date: str,
-    as_of_utc: str,
-) -> dict[str, float]:
-    """The belief production would have held, ceiling included.
-
-    Only P1 carries a running high, so only P1 can be corrected; P0 and P0-M
-    are returned untouched, which is also what production does with them.
-    """
-
-    if not PAPER_LEDGER_CEILING or stage != "P1" or not probabilities:
-        return probabilities
-    try:
-        envelope = (
-            envelope_json if isinstance(envelope_json, dict)
-            else json.loads(envelope_json or "{}")
-        )
-    except (TypeError, ValueError):
-        return probabilities
-    lineage = envelope.get("lineage") or {}
-    running = lineage.get("metar_trajectory_running_high_c")
-    ordinals = envelope.get("bucket_ordinals") or {}
-    intervals_raw = lineage.get("bucket_intervals_c_json")
-    if running in (None, "") or not ordinals or not intervals_raw:
-        return probabilities
-    try:
-        intervals = json.loads(intervals_raw)
-        running_c = float(running)
-    except (TypeError, ValueError):
-        return probabilities
-    running_bucket = None
-    for bucket, bounds in intervals.items():
-        low, high = bounds[0], bounds[1]
-        if (low is None or running_c >= float(low)) and (
-            high is None or running_c < float(high)
-        ):
-            running_bucket = bucket
-            break
-    if running_bucket is None:
-        return probabilities
-    curve = metar_ceiling.replay_curve(event_date)
-    if curve is None:
-        return probabilities
-    zone = _settlement_timezone(conn, station_id, event_date)
-    if not zone:
-        return probabilities
-    # Charter 99: the regional curve answers both halves of the ceiling's
-    # question from today's run, and stands in its place when it speaks.
-    # The replay reads the as-of table, fitted only on earlier days.
-    regional = regional_path_prior.build_serving_input(
-        conn, station_id=station_id, event_date=event_date,
-        as_of_utc=as_of_utc, settlement_timezone=zone,
-        artifact=regional_path_prior.replay_curve(event_date),
-        # Charter 95: the same as-of discipline as the residual table --
-        # the offsets a morning could have known, not today's.
-        debias_artifact=regional_point_debias.replay_curve(event_date),
-    ) if regional_path_prior.ENABLED else None
-    if regional is not None:
-        upper_bounds = {
-            bucket: (None if bounds[1] is None else float(bounds[1]))
-            for bucket, bounds in intervals.items()
-        }
-        blended, note = regional_path_prior.apply_regional_path_prior(
-            probabilities, ordinals=ordinals, upper_bounds_c=upper_bounds,
-            running_high_bucket=running_bucket, running_high_c=running_c,
-            remaining_peak_c=float(regional["remaining_peak_c"]),
-            cell=regional["cell"], lineage=regional.get("lineage"),
-        )
-        if note.get("regional_path_prior_applied") == "true":
-            return blended
-    # v2: the newest formal report at this decision clock, against the
-    # running high -- the same pairing production computes from its prefix.
-    latest_formal = metar_ceiling.latest_temperature_c(
-        _formal_observation_points(station_id, event_date, zone),
-        as_of_utc=as_of_utc,
-    )
-    corrected, _ = metar_ceiling.apply_ceiling(
-        probabilities,
-        ordinals=ordinals,
-        running_high_bucket=running_bucket,
-        event_date=event_date,
-        settlement_timezone=zone,
-        as_of_utc=as_of_utc,
-        artifact=curve,
-        enabled=True,
-        current_gap_c=metar_ceiling.current_gap_c(running_c, latest_formal),
-    )
-    return corrected
-
-
 class _BeliefTimeline:
     """Our own freshest probabilities for one station-day, as of a moment.
 
@@ -7394,16 +7183,8 @@ class _BeliefTimeline:
                 stored=str(newest[3]) if newest[3] else None,
             )
             fresh = {str(bucket): float(p) for bucket, p in rows}
-            fresh = _ceiling_corrected(
-                self._conn,
-                fresh,
-                stage=str(newest[2] or ""),
-                envelope_json=envelope,
-                station_id=self._station_id,
-                event_date=self._event_date,
-                as_of_utc=str(newest[0]),
-            )
-            # Geometry before claim, exactly as production composes it.
+            # Charter 150: the P1 envelope is the whole belief; the ceiling
+            # this used to replay on top of it is retired in production too.
             fresh = _center_width_corrected(
                 fresh,
                 stage=str(newest[2] or ""),

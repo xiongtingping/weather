@@ -72,6 +72,12 @@ from typing import Any
 from .contracts import ContractError, content_sha256
 
 BAND_STAGES = ("P0", "P0-M", "P1")
+# Charter 150 (2026-09-19): only P0 serves a band table.  P0-M and P1 are
+# one likelihood update each on a calibrated root and carry no post-hoc
+# correction; the refit retires whatever table they still had active and
+# fits nothing for them.  ``BAND_STAGES`` stays the vocabulary so the
+# journal and the retired rows keep reading.
+BAND_SERVED_STAGES = ("P0",)
 # Five-percent cells capped at 50% (user ruling, 2026-08-25, charter 60):
 # the fitting partition itself, not just the page that renders it, runs on
 # the same 5% grid as the section-six audit table, with everything claimed
@@ -2030,6 +2036,14 @@ def refit_all_stages(
     for stage in BAND_STAGES:
         entry: dict[str, Any] = {"stage": stage}
         results[stage] = entry
+        if stage not in BAND_SERVED_STAGES:
+            entry["served_stage"] = False
+            if commit:
+                try:
+                    entry["commit"] = retire_band_table(conn, stage=stage)
+                except Exception as exc:  # noqa: BLE001
+                    entry["error"] = f"{type(exc).__name__}: {exc}"
+            continue
         try:
             if isinstance(axis, Mapping):
                 requested = axis.get(stage)

@@ -1375,11 +1375,14 @@ def _compile_target_plan(
                                 "metar_trajectory_soft_likelihood_policy"
                             ) or ""
                         ),
-                        # Which of the three outermost claimants left a
-                        # receipt at all.  A refusal that names only itself
-                        # sends the next reader to re-derive this by hand.
+                        # Which likelihood receipts the envelope carries at
+                        # all (charter 150's, and for v11-and-earlier heads
+                        # the three retired outermost claimants).  A refusal
+                        # that names only itself sends the next reader to
+                        # re-derive this by hand.
                         "receipts_present": sorted(
                             key for key in (
+                                "p1_observation_likelihood_json",
                                 "p1_four_layer_serving_json",
                                 "regional_path_prior_json",
                                 "metar_ceiling_json",
