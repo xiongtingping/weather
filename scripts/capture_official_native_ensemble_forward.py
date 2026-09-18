@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sqlite3
 import subprocess
 import sys
@@ -106,6 +107,28 @@ def _parse_utc_timestamp(value: object) -> datetime | None:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         return None
     return parsed.astimezone(timezone.utc)
+
+
+# Charter 148: the per-lead archive name the worker hands each rung,
+# ``{family}_{event_date}_d{lead}.json``.  One family's runs for one event
+# date sit in up to three of these, one per lead the ladder has read it at.
+_LEAD_ARCHIVE_NAME = re.compile(
+    r"^(?P<stem>.+_\d{4}-\d{2}-\d{2})_d(?P<lead>[0-2])\.json$"
+)
+
+
+def _other_lead_archive_paths(path: Path) -> list[Path]:
+    """The same family's archives for the same event date at the other leads."""
+
+    match = _LEAD_ARCHIVE_NAME.match(path.name)
+    if match is None:
+        return []
+    lead = int(match["lead"])
+    return [
+        path.with_name(f"{match['stem']}_d{other}.json")
+        for other in (0, 1, 2)
+        if other != lead
+    ]
 
 
 def _load_retained_archive(
@@ -611,6 +634,59 @@ def capture_official_native_forward(
     reused_ecmwf = ecmwf is not None
     reused_eccc = eccc is not None
     reused_icon = icon is not None
+    # Charter 148 (2026-09-18).  A family that cannot serve this rung holds
+    # "the run it already has" -- but it looked for that run only in this
+    # lead's own file, and on the first same-day rung of an event date that
+    # file does not exist yet for the family still uploading.  ECMWF's 00Z
+    # lands about seven hours after init, GEFS's about four and ICON's about
+    # three and a half, so from ~04Z every d0 pass banked GEFS (and ICON),
+    # found no d0 ECMWF to hold, died on the required-family check, and the
+    # ladder walked down to the d1 rung that re-served yesterday's 18Z GEFS.
+    # 2026-09-18: GEFS 00Z sat banked at 04:13Z while P0 kept serving 18Z
+    # until the whole 00Z set landed together around 08:30Z.  The run the
+    # family is actually serving lives in another lead's file for the same
+    # event date, so it is held from there -- read in place, never copied
+    # into this lead's file and never re-ingested as this lead's history.
+    # Only when this lead brought something of its own: a pass in which
+    # every family would be held from another lead is the pass the ladder
+    # already walks past, and it still fails as before.
+    held_from_other_lead: dict[str, Path] = {}
+    own_lead_families: set[str] = {
+        name
+        for name, value in (
+            ("NOAA_GEFS_PDS_S3", gefs),
+            ("ECMWF_OPEN_DATA_S3", ecmwf),
+            ("ECCC_DD_WEATHER", eccc),
+            ("DWD_OPENDATA_ICON_EPS", icon),
+        )
+        if value is not None
+    }
+
+    def _hold_from_other_lead(
+        family: str,
+        path: Path,
+        *,
+        expected_schema: str,
+    ) -> dict[str, Any] | None:
+        best: tuple[datetime, dict[str, Any], Path] | None = None
+        for other in _other_lead_archive_paths(path):
+            candidate = _load_retained_archive(
+                other,
+                event_date=event_date,
+                station_ids=requested_station_ids,
+                expected_schema=expected_schema,
+            )
+            if candidate is None:
+                continue
+            run = _parse_utc_timestamp(candidate.get("run_init_utc"))
+            if run is None:
+                continue
+            if best is None or run > best[0]:
+                best = (run, candidate, other)
+        if best is None:
+            return None
+        held_from_other_lead[family] = best[2]
+        return best[1]
     # A rung is a question asked of four publishers who neither serve the same
     # cycles nor finish uploading at the same hour.  Measured against a
     # completed day (2026-08-15): ECMWF 0p25 ENS and DWD ICON-EPS answer all
@@ -638,16 +714,24 @@ def capture_official_native_forward(
     ) -> dict[str, Any] | None:
         try:
             assert_process_memory_budget()
-            return capture()
+            captured = capture()
+            own_lead_families.add(family)
+            return captured
         except Exception as exc:  # noqa: BLE001 - held, not lost
             family_capture_errors[family] = f"{type(exc).__name__}:{exc}"[:200]
             # Any run it holds, not the one this rung wanted: the point is to
             # keep serving the freshest run this family actually has.
-            return _load_retained_archive(
+            held = _load_retained_archive(
                 path,
                 event_date=event_date,
                 station_ids=requested_station_ids,
                 expected_schema=expected_schema,
+            )
+            if held is not None:
+                own_lead_families.add(family)
+                return held
+            return _hold_from_other_lead(
+                family, path, expected_schema=expected_schema
             )
 
     if gefs is None:
@@ -674,7 +758,11 @@ def capture_official_native_forward(
     # banked family is what the retry reuses (``_load_retained_archive``
     # above), so a long pass now converges across attempts instead of
     # repeating itself.
-    if gefs is not None and not reused_gefs:
+    if (
+        gefs is not None
+        and not reused_gefs
+        and "NOAA_GEFS_PDS_S3" not in held_from_other_lead
+    ):
         write_bounded_json_if_changed(gefs_path, gefs)
     if ecmwf is None:
         ecmwf = _advance_or_hold(
@@ -692,7 +780,11 @@ def capture_official_native_forward(
                 run_cycle_hour=run_cycle_hour,
             ),
         )
-    if ecmwf is not None and not reused_ecmwf:
+    if (
+        ecmwf is not None
+        and not reused_ecmwf
+        and "ECMWF_OPEN_DATA_S3" not in held_from_other_lead
+    ):
         write_bounded_json_if_changed(ecmwf_path, ecmwf)
     # Holding is only a fallback for a family that has something to hold.  With
     # nothing on disk there is no ensemble to build, and failing here is what
@@ -756,7 +848,7 @@ def capture_official_native_forward(
                 run_cycle_hour=ECCC_RUN_CYCLE_HOUR_BY_LEAD[int(lead_days)],
             ),
         )
-        if eccc is not None:
+        if eccc is not None and "ECCC_DD_WEATHER" not in held_from_other_lead:
             write_bounded_json_if_changed(
                 eccc_output.expanduser().resolve(), eccc
             )
@@ -778,6 +870,7 @@ def capture_official_native_forward(
                 timeout_seconds=ICON_OBJECT_TIMEOUT_SECONDS,
                 lead_days=int(lead_days),
             )
+            own_lead_families.add("DWD_OPENDATA_ICON_EPS")
         except Exception as exc:  # noqa: BLE001 - one optional family
             # ICON is the one family with no backfill: DWD keeps only the
             # newest run, so a lane that is down now is down forever for this
@@ -795,22 +888,64 @@ def capture_official_native_forward(
             # nothing anywhere said why.  It is also the worker's cue to ask
             # again before DWD overwrites the run.
             family_capture_errors["DWD_OPENDATA_ICON_EPS"] = icon_capture_error
+            # Charter 148: held like the other three -- this lead's own file
+            # first, then the run it is serving from another lead's -- rather
+            # than dropped from the packet, which took the ensemble's
+            # heaviest member out of P0 for as long as DWD was slow.
+            icon_schema = "dwd_icon_eps_official_historical_multistation_members_v1"
+            icon = _load_retained_archive(
+                icon_output.expanduser().resolve(),
+                event_date=event_date,
+                station_ids=requested_station_ids,
+                expected_schema=icon_schema,
+            )
+            if icon is not None:
+                own_lead_families.add("DWD_OPENDATA_ICON_EPS")
+            else:
+                icon = _hold_from_other_lead(
+                    "DWD_OPENDATA_ICON_EPS",
+                    icon_output.expanduser().resolve(),
+                    expected_schema=icon_schema,
+                )
+    if held_from_other_lead and not own_lead_families:
+        # Nothing at this lead is this lead's own: the pass would restate
+        # another lead's packet under this rung's name.  Fail as the
+        # required-family check always did, so the ladder walks down exactly
+        # as before.
+        raise ContractError(
+            "official_native_forward_required_family_unavailable:"
+            "nothing_new_at_this_lead:"
+            + ",".join(sorted(held_from_other_lead))
+        )
     assert_process_memory_budget()
     inbox_path = inbox_output.expanduser().resolve()
-    wrote_gefs = write_bounded_json_if_changed(gefs_path, gefs)
-    wrote_ecmwf = write_bounded_json_if_changed(ecmwf_path, ecmwf)
+    # Charter 148: a family held from another lead's file stays in that file.
+    wrote_gefs = (
+        write_bounded_json_if_changed(gefs_path, gefs)
+        if "NOAA_GEFS_PDS_S3" not in held_from_other_lead
+        else False
+    )
+    wrote_ecmwf = (
+        write_bounded_json_if_changed(ecmwf_path, ecmwf)
+        if "ECMWF_OPEN_DATA_S3" not in held_from_other_lead
+        else False
+    )
     wrote_eccc = (
         write_bounded_json_if_changed(
             eccc_output.expanduser().resolve(), eccc
         )
-        if eccc_output is not None and eccc is not None
+        if eccc_output is not None
+        and eccc is not None
+        and "ECCC_DD_WEATHER" not in held_from_other_lead
         else False
     )
     wrote_icon = (
         write_bounded_json_if_changed(
             icon_output.expanduser().resolve(), icon
         )
-        if icon_output is not None and icon is not None
+        if icon_output is not None
+        and icon is not None
+        and "DWD_OPENDATA_ICON_EPS" not in held_from_other_lead
         else False
     )
     # Charter 95 (re-ruled 2026-09-06): the regional models are P1 evidence,
@@ -840,8 +975,8 @@ def capture_official_native_forward(
     command = [
         sys.executable,
         str(ROOT / "scripts" / "build_official_native_forward_inbox.py"),
-        "--archive", str(gefs_path),
-        "--archive", str(ecmwf_path),
+        "--archive", str(held_from_other_lead.get("NOAA_GEFS_PDS_S3", gefs_path)),
+        "--archive", str(held_from_other_lead.get("ECMWF_OPEN_DATA_S3", ecmwf_path)),
         "--market-registry", str(registry_path.expanduser().resolve()),
         "--output", str(inbox_path),
     ]
@@ -850,7 +985,9 @@ def capture_official_native_forward(
     # An actively captured ECCC archive is preferred over a supplied one; both
     # carry the same GEPS native 00Z lineage, so the builder treats them alike.
     resolved_eccc = (
-        eccc_output.expanduser().resolve()
+        held_from_other_lead.get(
+            "ECCC_DD_WEATHER", eccc_output.expanduser().resolve()
+        )
         if eccc_output is not None and eccc is not None
         else (
             eccc_geps_archive.expanduser().resolve(strict=True)
@@ -863,7 +1000,9 @@ def capture_official_native_forward(
         for station_id in eccc_station_ids or ():
             command.extend(["--eccc-station-id", str(station_id)])
     if icon_output is not None and icon is not None:
-        command.extend(["--archive", str(icon_output.expanduser().resolve())])
+        command.extend(["--archive", str(held_from_other_lead.get(
+            "DWD_OPENDATA_ICON_EPS", icon_output.expanduser().resolve()
+        ))])
     completed = subprocess.run(
         command,
         check=True,
@@ -912,6 +1051,12 @@ def capture_official_native_forward(
         "family_held_on_earlier_run": dict(
             sorted(family_capture_errors.items())
         ),
+        # Charter 148: families this rung could not advance and held at the
+        # run another lead's archive for the same event date is serving.
+        "family_held_from_other_lead": {
+            family: path.name
+            for family, path in sorted(held_from_other_lead.items())
+        },
         "run_init_utc_by_family": {
             "NOAA_GEFS_PDS_S3": str(gefs.get("run_init_utc") or ""),
             "ECMWF_OPEN_DATA_S3": str(ecmwf.get("run_init_utc") or ""),
