@@ -160,3 +160,21 @@ def test_the_radiation_shift_is_read_off_each_newest_p0(monkeypatch) -> None:
     assert rows["2026-09-19"]["served_mean_c"] == 24.3
     day = next(d for d in out["summary"] if d["event_date"] == "2026-09-19")
     assert day["coldest"] == ["ZUUU", -0.87] and day["big_cooling"] == 1
+
+
+def test_the_previous_version_window_is_read_off_the_declarations(monkeypatch) -> None:
+    """The comparison moves by itself on the next bump."""
+
+    from bayes_basket_target import center_width_store, serving_arithmetic as sa
+
+    monkeypatch.setattr(sa, "STAGE_VERSION_EFFECTIVE_FROM", {"P0": {
+        "p0_v5": "2026-09-14T05:52:13Z", "p0_v6": "2026-09-18T09:18:16Z",
+    }})
+    monkeypatch.setattr(center_width_store, "served_arithmetic_anchor",
+                        lambda conn, stage, known_floor=None: "2026-09-18T09:18:16Z")
+    window = cd._previous_version_window(sqlite3.connect(":memory:"), "P0")
+    assert window == {"version": "p0_v5", "since": "2026-09-14T05:52:13Z",
+                      "until": "2026-09-18T09:18:16Z", "current_version": "p0_v6"}
+    # A first version has nothing to compare with.
+    monkeypatch.setattr(sa, "STAGE_VERSION_EFFECTIVE_FROM", {"P0": {"p0_v6": "2026-09-18T09:18:16Z"}})
+    assert cd._previous_version_window(sqlite3.connect(":memory:"), "P0") is None

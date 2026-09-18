@@ -1398,6 +1398,615 @@ def collect_synoptic_cooling(conn: sqlite3.Connection) -> dict[str, Any]:
     return {"summary": summary, "rows": rows}
 
 
+SINGLE_SYSTEM_LEADS = ("h00_12", "h12_24", "h24_48", "h48_plus")
+
+
+def collect_single_system_width(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Each model's own width calibration (单系统宽度校准).
+
+    Every single-system fit carries ``spread_parameters``: the members' own
+    mean spread over the training days, the residual sigma the calibrated
+    member cloud is scaled to, and the factor between them
+    (``spread_factor`` = residual sigma / member spread).  A factor of 1.7
+    says the model's members disagree 1.0C where its errors run 1.7C -- the
+    ensemble is over-confident and its cloud is spread 1.7 times.  Read off
+    the fit each (station, system, lead, cycle) serves now: the newest valid
+    activation, whose season is the one the station is in.
+    """
+
+    now = _now().strftime("%Y-%m-%dT%H:%M:%SZ")
+    families = {system_id: label for system_id, label, _t, _b in MEMBER_FAMILIES}
+    latest: dict[tuple[str, str, str, str], tuple] = {}
+    try:
+        cursor = conn.execute(
+            "SELECT a.station_id, a.ensemble_system_id_or_star, a.lead_bucket,"
+            " a.run_cycle, a.season_bin, a.generation, a.valid_from_utc,"
+            " f.spread_parameters_json, f.bias_parameters_json"
+            " FROM calibration_native_ensemble_activation a"
+            " JOIN calibration_native_ensemble_system_artifact f"
+            "   ON f.system_artifact_id=a.artifact_id"
+            "  AND f.ensemble_system_id=a.ensemble_system_id_or_star"
+            " WHERE a.artifact_kind='NATIVE_ENSEMBLE_SYSTEM_CALIBRATION'"
+            " AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY'"
+            " AND a.valid_from_utc<=? AND a.valid_until_utc>?",
+            (now, now),
+        )
+        for row in cursor:
+            system = str(row[1])
+            lead = str(row[2])
+            if system not in families or lead not in SINGLE_SYSTEM_LEADS:
+                continue
+            key = (str(row[0]), system, lead, str(row[3]))
+            rank = (str(row[6]), int(row[5] or 0))
+            if key not in latest or rank > latest[key][0]:
+                latest[key] = (rank, row)
+    except sqlite3.Error:
+        return {"available": False}
+    rows: list[dict[str, Any]] = []
+    for (station, system, lead, cycle), (_rank, row) in latest.items():
+        try:
+            spread = json.loads(row[7] or "{}")
+            bias = json.loads(row[8] or "{}")
+        except (TypeError, ValueError):
+            continue
+        factor = spread.get("spread_factor")
+        if factor is None:
+            continue
+        rows.append({
+            "station_id": station, "system_id": system,
+            "label": families[system], "lead": lead, "cycle": cycle,
+            "season": str(row[4] or ""),
+            "spread_factor": float(factor),
+            "member_spread_c": spread.get("train_mean_spread_c"),
+            "residual_sigma_c": spread.get("train_residual_sigma_c"),
+            "rmse_c": spread.get("train_rmse_c"),
+            "bias_c": bias.get("bias_c"),
+        })
+
+    def _quantile(values: list[float], q: float) -> float | None:
+        if not values:
+            return None
+        ordered = sorted(values)
+        return ordered[min(len(ordered) - 1, int(q * (len(ordered) - 1) + 0.5))]
+
+    summary = []
+    for system_id, label in families.items():
+        for lead in SINGLE_SYSTEM_LEADS:
+            group = [r for r in rows if r["system_id"] == system_id and r["lead"] == lead]
+            if not group:
+                continue
+            factors = [r["spread_factor"] for r in group]
+            pick = lambda key: [float(r[key]) for r in group if r.get(key) is not None]  # noqa: E731
+            summary.append({
+                "label": label, "system_id": system_id, "lead": lead,
+                "fits": len(group),
+                "stations": len({r["station_id"] for r in group}),
+                "factor_p10": _quantile(factors, 0.1),
+                "factor_median": _quantile(factors, 0.5),
+                "factor_p90": _quantile(factors, 0.9),
+                "over_confident_share": sum(1 for f in factors if f > 1.05) / len(factors),
+                "member_spread_c": _quantile(pick("member_spread_c"), 0.5),
+                "residual_sigma_c": _quantile(pick("residual_sigma_c"), 0.5),
+                "rmse_c": _quantile(pick("rmse_c"), 0.5),
+            })
+    rows.sort(key=lambda r: (r["label"], r["lead"], -r["spread_factor"]))
+    return {"available": bool(rows), "summary": summary, "rows": rows}
+
+
+def collect_consensus_bridge(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The consensus bridge (共识桥) on each station's newest P0 per open day.
+
+    When the calibrated system centres sit far apart, the linear pool is
+    bimodal where the truth usually lands between them, so a consensus
+    component is blended in: nothing under a 1.5C gap, full weight 0.4 by
+    2.0C (``cross_consensus.CONSENSUS_BRIDGE_*``).  Read off the receipt
+    each envelope carries, never recomputed.
+    """
+
+    try:
+        from bayes_basket_target import cross_consensus as cc  # noqa: PLC0415
+        rule = {
+            "gap_start_c": cc.CONSENSUS_BRIDGE_GAP_START_C,
+            "gap_full_c": cc.CONSENSUS_BRIDGE_GAP_FULL_C,
+            "lambda_max": cc.CONSENSUS_BRIDGE_LAMBDA_MAX,
+        }
+    except (ImportError, AttributeError):
+        rule = {}
+    today = _now().date()
+    rows: list[dict[str, Any]] = []
+    for offset in range(0, 3):
+        day = (today + timedelta(days=offset)).isoformat()
+        for station, decided in conn.execute(
+            "SELECT station_id, MAX(decision_at_utc)"
+            " FROM basket_probability_envelope"
+            " WHERE state='COMMITTED' AND event_date=? AND stage='P0'"
+            " GROUP BY station_id",
+            (day,),
+        ).fetchall():
+            found = conn.execute(
+                "SELECT json_extract(lineage_json,'$.consensus_bridge_json'),"
+                " json_extract(lineage_json,'$.native_calibrated_system_centers_c_json'),"
+                " json_extract(lineage_json,'$.model_center_c')"
+                " FROM basket_probability_envelope"
+                " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+                " AND decision_at_utc=? AND stage='P0' LIMIT 1",
+                (station, day, decided),
+            ).fetchone()
+            if found is None:
+                continue
+            try:
+                bridge = json.loads(found[0] or "{}") or {}
+                centres = json.loads(found[1] or "{}") or {}
+            except (TypeError, ValueError):
+                bridge, centres = {}, {}
+            if not bridge:
+                continue
+            values = [float(v) for v in centres.values()]
+            rows.append({
+                "station_id": str(station), "event_date": day,
+                "gap_c": bridge.get("center_gap_c"),
+                "lambda": bridge.get("lambda"),
+                "consensus_center_c": bridge.get("consensus_center_c"),
+                "model_center_c": found[2],
+                "centres": {k.split("_")[0]: round(float(v), 2) for k, v in centres.items()},
+                "centre_range_c": (max(values) - min(values)) if values else None,
+            })
+    summary = []
+    for day in sorted({r["event_date"] for r in rows}):
+        group = [r for r in rows if r["event_date"] == day and r["gap_c"] is not None]
+        gaps = sorted(float(r["gap_c"]) for r in group)
+        summary.append({
+            "event_date": day,
+            "stations": len(group),
+            "opened": sum(1 for r in group if (r["lambda"] or 0) > 0),
+            "gap_median_c": gaps[len(gaps) // 2] if gaps else None,
+            "gap_max_c": gaps[-1] if gaps else None,
+            "near_threshold": sum(
+                1 for g in gaps if rule and g >= rule["gap_start_c"] - 0.3
+            ),
+        })
+    rows.sort(key=lambda r: (r["event_date"], -(r["gap_c"] or 0)))
+    return {"available": bool(rows), "rule": rule, "summary": summary, "rows": rows}
+
+
+TAF_INBOX_PATH = ROOT / "data" / "bayes_basket_target_taf_revision_inbox.json"
+TAF_FRESH_HOURS = 6.5
+TAF_STALE_HOURS = 9.0
+METAR_FRESH_MINUTES = 75.0
+METAR_STALE_MINUTES = 150.0
+
+
+def _served_shape(probabilities: Mapping[str, Any], lineage: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Mean and mode of a served vector on its own bucket intervals."""
+
+    try:
+        intervals = json.loads(str(lineage.get("bucket_intervals_c_json") or "{}"))
+    except (TypeError, ValueError):
+        return None
+    total = sum(float(v) for v in probabilities.values())
+    if not intervals or total <= 0:
+        return None
+
+    def centre(key: str) -> float | None:
+        bounds = intervals.get(key)
+        if not bounds:
+            return None
+        lo, hi = bounds
+        if lo is None and hi is None:
+            return None
+        if lo is None:
+            return float(hi) - 0.5
+        if hi is None:
+            return float(lo) + 0.5
+        return (float(lo) + float(hi)) / 2.0
+
+    mean = 0.0
+    for key, value in probabilities.items():
+        c = centre(str(key))
+        if c is None:
+            return None
+        mean += c * float(value) / total
+    mode = max(probabilities, key=lambda k: float(probabilities[k]))
+    return {"mean_c": round(mean, 2), "mode": str(mode),
+            "mode_p": round(float(probabilities[mode]) / total, 3)}
+
+
+def _latest_envelope(conn, station: str, day: str, stage: str):
+    row = conn.execute(
+        "SELECT decision_at_utc, probabilities_json, lineage_json"
+        " FROM basket_probability_envelope"
+        " WHERE station_id=? AND event_date=? AND state='COMMITTED' AND stage=?"
+        " ORDER BY decision_at_utc DESC LIMIT 1",
+        (station, day, stage),
+    ).fetchone()
+    if row is None:
+        return None
+    try:
+        probabilities = json.loads(row[1] or "{}")
+        lineage = json.loads(row[2] or "{}")
+    except (TypeError, ValueError):
+        return None
+    return {"decided_at_utc": str(row[0]), "probabilities": probabilities,
+            "lineage": lineage, "shape": _served_shape(probabilities, lineage)}
+
+
+def _station_zone(conn: sqlite3.Connection, station: str) -> str | None:
+    try:
+        row = conn.execute(
+            "SELECT settlement_timezone FROM calibration_station_market_timezone_binding"
+            " WHERE station_id=? LIMIT 1", (station,),
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    return str(row[0]) if row and row[0] else None
+
+
+def collect_taf_board(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Each station's newest three TAFs, taken apart, read for temperature,
+    with what the TAF layer did to P0-M and how fresh the feed is.
+
+    User, 2026-09-18: 每个站点只展示最新的 3 条（特殊报文重点强调）；每一个报文
+    要带总结分析，对于温度的影响；显示最新更新时间、是否陈旧.  The raw text
+    is the resident TAF inbox's own capture; the effect is the newest P0-M
+    against the newest P0 for the day the TX falls on, off their envelopes.
+    """
+
+    try:
+        import report_explain as rex  # noqa: PLC0415
+        inbox = json.loads(TAF_INBOX_PATH.read_text(encoding="utf-8"))
+    except (ImportError, OSError, ValueError):
+        return {"available": False}
+    by_station: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+    for capture in inbox.get("captures") or []:
+        revision = capture.get("forecast_revision") or {}
+        station = str(revision.get("station_id") or "")
+        raw = str(capture.get("raw_taf") or "").strip()
+        if not station or not raw:
+            continue
+        key = str(capture.get("raw_taf_sha256") or raw)
+        entry = by_station[station].get(key)
+        if entry is not None:
+            entry["event_dates"].add(str(revision.get("event_date") or ""))
+        if entry is None or str(revision.get("event_date")) > entry["event_date"]:
+            by_station[station][key] = {
+                "event_dates": (entry or {}).get("event_dates", set()) | {str(revision.get("event_date") or "")},
+                "raw": raw,
+                "issued_at_utc": str(revision.get("issued_at_utc") or ""),
+                "received_at_utc": str(capture.get("local_received_at_utc") or ""),
+                "provider_available_at_utc": str(capture.get("provider_available_at_utc") or ""),
+                "valid_from_utc": str(revision.get("valid_from_utc") or ""),
+                "valid_until_utc": str(revision.get("valid_until_utc") or ""),
+                "event_date": str(revision.get("event_date") or ""),
+                "native_kind": str(capture.get("native_revision_kind") or revision.get("revision_kind") or "TAF"),
+            }
+    now = _now()
+    stations = []
+    for station in sorted(by_station):
+        reports = sorted(by_station[station].values(), key=lambda r: r["issued_at_utc"], reverse=True)[:3]
+        if not reports:
+            continue
+        newest = reports[0]
+        effect = None
+        try:
+            tz_name = None
+            envelope = _latest_envelope(conn, station, newest["event_date"], "P0-M")
+            base = _latest_envelope(conn, station, newest["event_date"], "P0")
+            if envelope is not None:
+                lineage = envelope["lineage"]
+                tz_name = str(lineage.get("settlement_timezone") or "") or None
+                shape = envelope["shape"] or {}
+                base_shape = (base or {}).get("shape") or {}
+                effect = {
+                    "event_date": newest["event_date"],
+                    "p0m_decided_at_utc": envelope["decided_at_utc"],
+                    "p0m_mean_c": shape.get("mean_c"), "p0m_mode": shape.get("mode"),
+                    "p0_mean_c": base_shape.get("mean_c"), "p0_mode": base_shape.get("mode"),
+                    "shift_c": (round(shape["mean_c"] - base_shape["mean_c"], 2)
+                                if shape.get("mean_c") is not None and base_shape.get("mean_c") is not None else None),
+                    "likelihood_mode": str(lineage.get("taf_likelihood_mode") or ""),
+                    "revision_state": str(lineage.get("taf_revision_state") or ""),
+                    "observed_tx_c": lineage.get("taf_observed_tx_c"),
+                    "hard_exclusion": str(lineage.get("taf_hard_exclusion") or ""),
+                }
+        except sqlite3.Error:
+            effect = None
+        # Each report is read against the model's mean for its own day,
+        # before the TAF: the newest P0 (P0-M has already taken the TAF in,
+        # so reading the TAF against it is circular), else the newest P0-M.
+        # One station's three TAFs often straddle two days, and yesterday's
+        # TX against tomorrow's mean reads as a signal that is not there.
+        comparators: dict[str, tuple[float | None, str]] = {}
+
+        def comparator(day: str) -> tuple[float | None, str]:
+            if day not in comparators:
+                found: tuple[float | None, str] = (None, "")
+                for stage in ("P0", "P0-M"):
+                    try:
+                        served = _latest_envelope(conn, station, day, stage)
+                    except sqlite3.Error:
+                        served = None
+                    mean = ((served or {}).get("shape") or {}).get("mean_c")
+                    if mean is not None:
+                        found = (mean, f"{day[5:]} 的 {stage} 均值")
+                        break
+                comparators[day] = found
+            return comparators[day]
+
+        zone_name = tz_name or _station_zone(conn, station)
+
+        def tx_day(parsed: Mapping[str, Any], report: Mapping[str, Any]) -> str:
+            """The local day the TX falls on.  One TAF is filed under every
+            day it covers; the one to read it against is where its TX is."""
+
+            fallback = report["event_date"]
+            at = parsed.get("tx_day_hour")
+            if not at or not zone_name:
+                return fallback
+            try:
+                from zoneinfo import ZoneInfo  # noqa: PLC0415
+                issued = datetime.fromisoformat(report["issued_at_utc"].replace("Z", "+00:00"))
+                year, month = issued.year, issued.month
+                if at[0] < issued.day:          # TX on the next month's first days
+                    year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+                stamp = datetime(year, month, at[0], tzinfo=timezone.utc) + timedelta(hours=at[1])
+                local = stamp.astimezone(ZoneInfo(zone_name)).strftime("%Y-%m-%d")
+            except (ValueError, KeyError, OSError):
+                return fallback
+            return local if local in report["event_dates"] else fallback
+
+        rows = []
+        for report in reports:
+            parsed = rex.explain_taf(report["raw"])
+            day = tx_day(parsed, report)
+            model_mean, model_label = comparator(day)
+            rows.append({
+                **{k: report[k] for k in ("raw", "issued_at_utc", "received_at_utc",
+                                          "valid_from_utc", "valid_until_utc")},
+                "event_date": day,
+                "kind": parsed["kind"],
+                "special": parsed["kind"] != "TAF",
+                "tokens": parsed["tokens"],
+                "tx_c": parsed["tx_c"], "tx_at": parsed["tx_at"],
+                "compared_with": model_label or None,
+                "reading": rex.taf_temperature_reading(
+                    parsed, model_mean, model_label=model_label or "模型均值"),
+            })
+        age = _age_hours(newest["issued_at_utc"])
+        lag_min = None
+        try:
+            lag_min = round((
+                datetime.fromisoformat(newest["received_at_utc"].replace("Z", "+00:00"))
+                - datetime.fromisoformat(newest["provider_available_at_utc"].replace("Z", "+00:00"))
+            ).total_seconds() / 60.0, 1)
+        except ValueError:
+            lag_min = None
+        freshness = ("fresh" if age is not None and age <= TAF_FRESH_HOURS
+                     else "late" if age is not None and age <= TAF_STALE_HOURS else "stale")
+        stations.append({
+            "station_id": station, "timezone": tz_name,
+            "latest_issued_at_utc": newest["issued_at_utc"],
+            "age_hours": age, "freshness": freshness, "capture_lag_minutes": lag_min,
+            "reports": rows, "effect": effect,
+        })
+    order = {"stale": 0, "late": 1, "fresh": 2}
+    stations.sort(key=lambda s: (order[s["freshness"]], not any(r["special"] for r in s["reports"]), s["station_id"]))
+    return {
+        "available": bool(stations), "stations": stations,
+        "fresh_hours": TAF_FRESH_HOURS, "stale_hours": TAF_STALE_HOURS,
+        "counts": dict(Counter(s["freshness"] for s in stations)),
+        "special_stations": sum(1 for s in stations if any(r["special"] for r in s["reports"])),
+        "generated_at_utc": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+
+def collect_metar_board(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Each station's newest three METARs, read for temperature, with the
+    P1 temperature path (still rising? how far to the peak?) and what the
+    METAR layer did to P1 against P0-M, and how fresh the reports are."""
+
+    try:
+        import report_explain as rex  # noqa: PLC0415
+        from zoneinfo import ZoneInfo  # noqa: PLC0415
+        archive = sqlite3.connect(
+            f"file:{ROOT / 'data' / 'archive.db'}?mode=ro", uri=True, timeout=10
+        )
+    except (ImportError, sqlite3.Error):
+        return {"available": False}
+    floor = (_now() - timedelta(hours=18)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    latest_p1 = conn.execute(
+        "SELECT station_id, MAX(decision_at_utc) FROM basket_probability_envelope"
+        " WHERE state='COMMITTED' AND stage='P1' AND decision_at_utc>=?"
+        " GROUP BY station_id",
+        (floor,),
+    ).fetchall()
+    stations = []
+    for station, decided in latest_p1:
+        row = conn.execute(
+            "SELECT event_date, probabilities_json, lineage_json FROM basket_probability_envelope"
+            " WHERE station_id=? AND stage='P1' AND state='COMMITTED' AND decision_at_utc=? LIMIT 1",
+            (station, decided),
+        ).fetchone()
+        if row is None:
+            continue
+        day = str(row[0])
+        try:
+            probabilities = json.loads(row[1] or "{}")
+            lineage = json.loads(row[2] or "{}")
+        except (TypeError, ValueError):
+            continue
+        shape = _served_shape(probabilities, lineage) or {}
+        base = _latest_envelope(conn, str(station), day, "P0-M") or {}
+        base_shape = base.get("shape") or {}
+        try:
+            four = json.loads(str(lineage.get("p1_four_layer_serving_json") or "{}"))
+        except ValueError:
+            four = {}
+        phase = four.get("phase") or {}
+        warming = four.get("remaining_warming") or {}
+        running_high = lineage.get("metar_trajectory_running_high_c")
+        if running_high in (None, "NONE"):
+            running_high = lineage.get("observed_running_high_c")
+        try:
+            running_high = None if running_high in (None, "NONE") else float(running_high)
+        except (TypeError, ValueError):
+            running_high = None
+        tz_name = str(lineage.get("settlement_timezone") or "UTC")
+        try:
+            zone = ZoneInfo(tz_name)
+        except Exception:  # noqa: BLE001
+            zone = timezone.utc
+        reports = archive.execute(
+            "SELECT valid_at, raw_text, reported_temperature_c, report_type,"
+            " correction_suspected, source_lane FROM reported_trajectory_observations"
+            " WHERE station_id=? AND raw_text IS NOT NULL AND raw_text<>''"
+            " ORDER BY valid_at DESC LIMIT 3",
+            (station,),
+        ).fetchall()
+        if not reports:
+            continue
+        temps = [float(r[2]) for r in reports if r[2] is not None]
+        rows = []
+        for index, report in enumerate(reports):
+            parsed = rex.explain_metar(str(report[1]))
+            try:
+                local = datetime.fromisoformat(str(report[0]).replace("Z", "+00:00")).astimezone(zone)
+                local_hour = local.hour + local.minute / 60.0
+                local_text = local.strftime("%m-%d %H:%M")
+                same_day = local.strftime("%Y-%m-%d") == day
+            except ValueError:
+                local_hour, local_text, same_day = None, "", False
+            # The running high and the peak belong to the P1's own local day;
+            # a report from another day is read on its own.
+            rows.append({
+                "valid_at_utc": str(report[0]), "local": local_text,
+                "raw": str(report[1]), "kind": parsed["kind"],
+                "special": parsed["kind"] != "METAR" or bool(report[4]),
+                "correction_suspected": bool(report[4]), "lane": str(report[5] or ""),
+                "tokens": parsed["tokens"], "temp_c": parsed["temp_c"],
+                "reading": rex.metar_temperature_reading(
+                    parsed, running_high_c=running_high if same_day else None,
+                    forecast_peak_c=shape.get("mean_c") if same_day else None,
+                    previous_temps=temps[index + 1:index + 2],
+                    local_hour=local_hour,
+                ),
+            })
+        age_min = None
+        try:
+            age_min = round((_now() - datetime.fromisoformat(str(reports[0][0]).replace("Z", "+00:00"))).total_seconds() / 60.0, 1)
+        except ValueError:
+            pass
+        freshness = ("fresh" if age_min is not None and age_min <= METAR_FRESH_MINUTES
+                     else "late" if age_min is not None and age_min <= METAR_STALE_MINUTES else "stale")
+        stations.append({
+            "station_id": str(station), "event_date": day, "timezone": tz_name,
+            "p1_decided_at_utc": str(decided),
+            "latest_valid_at_utc": str(reports[0][0]), "age_minutes": age_min,
+            "freshness": freshness, "reports": rows,
+            "path": {
+                "running_high_c": running_high,
+                "running_high_bucket": phase.get("running_high_bucket"),
+                "rise_probability": phase.get("rise_probability"),
+                "remaining_warming": {k: v for k, v in warming.items() if not str(k).endswith("sha256")},
+                "p1_mean_c": shape.get("mean_c"), "p1_mode": shape.get("mode"),
+                "p1_mode_p": shape.get("mode_p"),
+                "four_layer_applied": four.get("applied"),
+                "regional_system_id": four.get("regional_system_id"),
+                "regional_headroom_c": four.get("regional_headroom_c"),
+            },
+            "effect": {
+                "p0m_mean_c": base_shape.get("mean_c"), "p0m_mode": base_shape.get("mode"),
+                "shift_c": (round(shape["mean_c"] - base_shape["mean_c"], 2)
+                            if shape.get("mean_c") is not None and base_shape.get("mean_c") is not None else None),
+                "hard_excluded": str(lineage.get("observed_hard_excluded_buckets") or "NONE"),
+            },
+        })
+    archive.close()
+    order = {"stale": 0, "late": 1, "fresh": 2}
+    stations.sort(key=lambda s: (order[s["freshness"]], not any(r["special"] for r in s["reports"]), s["station_id"]))
+    return {
+        "available": bool(stations), "stations": stations,
+        "fresh_minutes": METAR_FRESH_MINUTES, "stale_minutes": METAR_STALE_MINUTES,
+        "counts": dict(Counter(s["freshness"] for s in stations)),
+    }
+
+
+def collect_regional_usage(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Whether the regional models are used, where, and at what weight.
+
+    P0 does not seat them (charter 99 moved them to P1's path); in P1 they
+    enter through the regional path prior (on/off, weight, admitted systems)
+    and as the four-layer chain's regional feature.  Switches are read off
+    the modules at render; usage is counted off each station's newest P1.
+    """
+
+    out: dict[str, Any] = {"available": True}
+    try:
+        from bayes_basket_target import regional_path_prior as rpp  # noqa: PLC0415
+        out["path_prior"] = {
+            "enabled": bool(rpp.ENABLED), "weight": float(rpp.WEIGHT),
+            "systems": sorted(rpp.SERVING_SYSTEMS),
+            "max_run_age_hours": float(rpp.MAX_RUN_AGE_HOURS),
+        }
+    except Exception:  # noqa: BLE001
+        out["path_prior"] = None
+    try:
+        from bayes_basket_target import regional_point_debias as rpd  # noqa: PLC0415
+        out["arms"] = {
+            "point_debias": bool(getattr(rpd, "ENABLED", False)),
+            "feature_calibration": bool(getattr(rpd, "FEATURE_CALIBRATION", False)),
+            "feature_calibration_systems": sorted(getattr(rpd, "CALIBRATED_SYSTEMS", ()) or ()),
+        }
+    except Exception:  # noqa: BLE001
+        out["arms"] = {}
+    try:
+        from bayes_basket_target.official_native_forward_packet import (  # noqa: PLC0415
+            is_fusion_excluded_point_system,
+        )
+        out["p0_fusion_excluded"] = {
+            system: bool(is_fusion_excluded_point_system(system))
+            for system in ("JMA_MSM_POINT", "NCEP_HRRR_POINT", "NCEP_NBM_POINT",
+                           "DWD_ICON_EU_POINT", "CMA_GRAPES_GLOBAL_POINT")
+        }
+    except Exception:  # noqa: BLE001
+        out["p0_fusion_excluded"] = {}
+    floor = (_now() - timedelta(hours=18)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    feature = Counter()
+    prior = Counter()
+    stations = 0
+    for station, decided in conn.execute(
+        "SELECT station_id, MAX(decision_at_utc) FROM basket_probability_envelope"
+        " WHERE state='COMMITTED' AND stage='P1' AND decision_at_utc>=? GROUP BY station_id",
+        (floor,),
+    ).fetchall():
+        row = conn.execute(
+            "SELECT json_extract(lineage_json,'$.p1_four_layer_serving_json'),"
+            " json_extract(lineage_json,'$.regional_path_prior_json')"
+            " FROM basket_probability_envelope WHERE station_id=? AND stage='P1'"
+            " AND state='COMMITTED' AND decision_at_utc=? LIMIT 1",
+            (station, decided),
+        ).fetchone()
+        if row is None:
+            continue
+        stations += 1
+        try:
+            four = json.loads(row[0] or "{}")
+        except ValueError:
+            four = {}
+        feature[str(four.get("regional_system_id") or "NONE")] += 1
+        try:
+            receipt = json.loads(row[1]) if row[1] else None
+        except ValueError:
+            receipt = None
+        if receipt:
+            prior[str(receipt.get("state") or receipt.get("system_id") or "RECEIPT")] += 1
+        else:
+            prior["NO_RECEIPT"] += 1
+    out["p1_stations"] = stations
+    out["p1_feature_systems"] = dict(feature)
+    out["p1_path_prior_states"] = dict(prior)
+    return out
+
+
 def collect_correction_and_weights(conn: sqlite3.Connection) -> dict[str, Any]:
     """The two per-station tables P0 serves from."""
 
@@ -6120,7 +6729,11 @@ def _center_landing_group(
     return out
 
 
-def collect_center_landing(conn: sqlite3.Connection) -> dict[str, Any]:
+def collect_center_landing(
+    conn: sqlite3.Connection,
+    *,
+    windows: Mapping[str, Mapping[str, str]] | None = None,
+) -> dict[str, Any]:
     """Truth minus the served mean, in rungs, by how wide the day claimed to be.
 
     Read off the centre/width layer's own serving cells (one decision per
@@ -6162,8 +6775,17 @@ def collect_center_landing(conn: sqlite3.Connection) -> dict[str, Any]:
     )
     stages_out: list[dict[str, Any]] = []
     for stage in ("P0", "P0-M", "P1"):
+        # ``windows`` replays an earlier version's span for comparison (user,
+        # 2026-09-18: 显示，做对比): [since, until) of that version's cells.
+        window = (windows or {}).get(stage) if windows is not None else None
+        if windows is not None and not window:
+            continue
+        until = str(window["until"]) if window else None
         try:
-            floor = _evidence_floor(conn, stage=stage, caller_bound=None)
+            floor = (
+                str(window["since"]) if window
+                else _evidence_floor(conn, stage=stage, caller_bound=None)
+            )
             by_day = serving_cells_by_day(
                 conn, truth, stage=stage, min_decision_at_utc=floor,
             )
@@ -6172,6 +6794,8 @@ def collect_center_landing(conn: sqlite3.Connection) -> dict[str, Any]:
         landings: list[dict[str, Any]] = []
         for day in sorted(by_day):
             for cell in by_day[day]:
+                if until and str(cell.get("decision_at_utc") or "") >= until:
+                    continue
                 probabilities = cell["probabilities"]
                 keys = cell["ordered_keys"]
                 centers = cell["key_centers_c"]
@@ -6292,11 +6916,35 @@ def collect_center_landing(conn: sqlite3.Connection) -> dict[str, Any]:
             ),
             key=lambda entry: -abs(entry["bias_rungs"]),
         )[:10]
+        daily_rows: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in landings:
+            daily_rows[row["event_date"]].append(row)
+        daily = []
+        for day_key in sorted(daily_rows):
+            group = daily_rows[day_key]
+            seated = [row for row in group if row["seat_claim"] is not None]
+            daily.append({
+                "event_date": day_key,
+                "cells": len(group),
+                "bias_rungs": sum(row["error"] for row in group) / len(group),
+                "sigma_rungs": sum(row["sigma"] for row in group) / len(group),
+                "seat_cells": len(seated),
+                "seat_claim": (
+                    sum(row["seat_claim"] for row in seated) / len(seated)
+                    if seated else None
+                ),
+                "seat_cover": (
+                    sum(row["seat_hit"] for row in seated) / len(seated)
+                    if seated else None
+                ),
+            })
         stages_out.append({
             "stage": stage,
             "meaning": CENTER_LANDING_STAGE_MEANING.get(stage, ""),
             "cells": len(landings),
             "days": len(by_day),
+            "daily": daily,
+            "until": until,
             "since": (floor or "")[:10],
             "unseated_cells": sum(
                 1 for row in landings if row["seat_claim"] is None
@@ -6592,6 +7240,96 @@ def _reliability_decomposition(
     }
 
 
+def _previous_version_window(
+    conn: sqlite3.Connection, stage: str
+) -> dict[str, str] | None:
+    """The span the version before the served one ran: [its start, now's).
+
+    Both ends are the bumps' own declarations
+    (``serving_arithmetic.STAGE_VERSION_EFFECTIVE_FROM``), so the comparison
+    moves by itself on the next bump.  None when the served version declares
+    no start or nothing before it declared one.
+    """
+
+    try:
+        from bayes_basket_target import serving_arithmetic as sa  # noqa: PLC0415
+        from bayes_basket_target.center_width_store import (  # noqa: PLC0415
+            served_arithmetic_anchor,
+        )
+        anchor = served_arithmetic_anchor(conn, stage=stage)
+    except Exception:  # noqa: BLE001 -- a comparison must not blank the page
+        return None
+    declared = sorted(
+        (str(at), str(version))
+        for version, at in (sa.STAGE_VERSION_EFFECTIVE_FROM.get(stage) or {}).items()
+    )
+    current = next((v for at, v in declared if at == str(anchor)), None)
+    earlier = [(at, v) for at, v in declared if anchor and at < str(anchor)]
+    if not anchor or not current or not earlier:
+        return None
+    since, version = earlier[-1]
+    return {
+        "version": version, "since": since, "until": str(anchor),
+        "current_version": current,
+    }
+
+
+def _previous_version_windows(conn: sqlite3.Connection) -> dict[str, dict[str, str]]:
+    return {
+        stage: window for stage in ("P0", "P0-M", "P1")
+        if (window := _previous_version_window(conn, stage))
+    }
+
+
+MODEL_ACCURACY_TREND_DAYS = 21
+
+
+def _version_marks() -> list[dict[str, str]]:
+    """Every declared version start, for the trend lines' markers."""
+
+    try:
+        from bayes_basket_target import serving_arithmetic as sa  # noqa: PLC0415
+    except ImportError:
+        return []
+    return [
+        {"stage": stage, "version": version, "at": at,
+         "label": "v" + version.rsplit("_v", 1)[-1] if "_v" in version else version}
+        for stage in ("P0", "P0-M", "P1")
+        for version, at in sorted(
+            (sa.STAGE_VERSION_EFFECTIVE_FROM.get(stage) or {}).items(),
+            key=lambda item: item[1],
+        )
+    ]
+
+
+def collect_model_accuracy_trend(
+    conn: sqlite3.Connection, *, since: str
+) -> dict[str, Any]:
+    """The accuracy board's trend lines: the scorecard's and the centre
+    landing's own readings, per event day, over the last three weeks and
+    across every version boundary (marked, never cut)."""
+
+    until = "9999-12-31T00:00:00Z"
+    card = collect_calibration_scorecard(
+        conn, window_override={"since": since, "until": until,
+                               "version": "trend"},
+    )
+    landing = collect_center_landing(
+        conn, windows={stage: {"since": since, "until": until}
+                       for stage in ("P0", "P0-M", "P1")},
+    )
+    return {
+        "since": since,
+        "days": MODEL_ACCURACY_TREND_DAYS,
+        "forecast_daily": card.get("daily") or [],
+        "landing_daily": {
+            st["stage"]: st.get("daily") or []
+            for st in (landing.get("stages") or [])
+        },
+        "version_marks": _version_marks(),
+    }
+
+
 def _scorecard_window(conn: sqlite3.Connection) -> dict[str, Any]:
     """Where the scored sample starts: P0's serving-arithmetic anchor.
 
@@ -6629,7 +7367,11 @@ def _parse_utc(stamp: str) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-def collect_calibration_scorecard(conn: sqlite3.Connection) -> dict[str, Any]:
+def collect_calibration_scorecard(
+    conn: sqlite3.Connection,
+    *,
+    window_override: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
     """Six layers of calibration quality, each reduced to one verdict.
 
     The scores already existed in pieces across the page; what was missing
@@ -6662,7 +7404,17 @@ def collect_calibration_scorecard(conn: sqlite3.Connection) -> dict[str, Any]:
     if not truth:
         return {"available": False}
 
-    window = _scorecard_window(conn)
+    # ``window_override`` scores an earlier version's span, [since, until),
+    # beside the current one (user, 2026-09-18: 显示，做对比).
+    window = (
+        {"anchor": str(window_override["since"]), "anchor_state": "previous_version",
+         "until": str(window_override["until"]),
+         "version": window_override.get("version")}
+        if window_override else _scorecard_window(conn)
+    )
+    until_at = (
+        _parse_utc(str(window_override["until"])) if window_override else None
+    )
     anchor_at = _parse_utc(window["anchor"]) if window["anchor"] else None
     if window["anchor"] and anchor_at is None:
         window = {"anchor": None, "anchor_state": "unparseable"}
@@ -6698,6 +7450,8 @@ def collect_calibration_scorecard(conn: sqlite3.Connection) -> dict[str, Any]:
         if anchor_at is not None:
             decided_at = _parse_utc(str(decided))
             if decided_at is None or decided_at < anchor_at:
+                continue
+            if until_at is not None and decided_at >= until_at:
                 continue
         try:
             probability = json.loads(probabilities_json)
@@ -6978,10 +7732,39 @@ def collect_calibration_scorecard(conn: sqlite3.Connection) -> dict[str, Any]:
                 f"攒证据 {len(event_days)}/{SCORECARD_MIN_EVENT_DAYS} 个事件日："
                 "服务算术锚之后的已结算样本还不够下结论，下面的数字只作参考"
             )
+    # Per event day, for the accuracy board's trend lines (user, 2026-09-18:
+    # 把模型准不准、中心、宽度等集中到一个看板…能直观的看各项指标及趋势).  The
+    # same weighted rows as every lamp above; nothing re-scored.
+    by_day_rows: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in scored:
+        by_day_rows[row["event_date"]].append(row)
+    daily = []
+    for day in sorted(by_day_rows):
+        group = by_day_rows[day]
+        daily.append({
+            "event_date": day,
+            "station_days": len({row["station"] for row in group}),
+            "bias_c": _mean(group, "error_c"),
+            "mae_c": _mean(group, "abs_error_c"),
+            "bias_rungs": _mean(group, "error"),
+            "crps_skill": _skill(group, "crps"),
+            "spread_skill": _width_ratio(group),
+            "width_c": (_mean(group, "variance_c") or 0.0) ** 0.5,
+        })
+    metrics = {
+        "bias_rungs": bias, "bias_c": bias_c, "mae_rungs": mae, "mae_c": mae_c,
+        "rmse_c": rmse_c, "crps_skill": crps_skill, "brier_skill": brier_skill,
+        "pit_deviation": pit_deviation, "ece": ece,
+        "conditional_gap": conditional_gap, "width_c": width_c,
+        "spread_skill": spread_skill, "station_days": len(station_days),
+        "event_days": len(event_days),
+    }
     return {
         "available": True,
         "overall": _worst([layer["health"] for layer in layers]),
         "layers": layers,
+        "metrics": metrics,
+        "daily": daily,
         "rows": rows,
         "pit_bins": pit_bins,
         "fusion_pairs": fusion["pairs"],
@@ -11254,6 +12037,13 @@ SECTION_CACHE_TTL_SEC = {
     "beta_shadow": 1800,
     "truth_landing": 150 * 60,
     "scorecard": 180 * 60,
+    # The previous version's span is closed, so its readings move only as
+    # its last event days settle; the trend reads three weeks of both
+    # tables (~30s).  Offset from every other lifetime so no two expire on
+    # one render.
+    "scorecard_previous": 183 * 60,
+    "center_landing_previous": 258 * 60,
+    "model_accuracy_trend": 262 * 60,
     "h5_readiness": 195 * 60,
     "skill": 210 * 60,
     # Refits the fleet's bias under each half-life (~5 min); the verdict
@@ -11477,8 +12267,36 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     member_admission = _cached_section(
         "member_admission", collect_member_admission, conn, members
     )
+    previous_windows = _previous_version_windows(conn)
+    previous_salt = json.dumps(previous_windows, sort_keys=True)
+    center_landing_previous = _cached_section(
+        "center_landing_previous", collect_center_landing, conn,
+        windows=previous_windows, _salt=previous_salt,
+    ) if previous_windows else {}
+    trend_since = (
+        _now() - timedelta(days=MODEL_ACCURACY_TREND_DAYS)
+    ).strftime("%Y-%m-%dT00:00:00Z")
+    model_accuracy_trend = _cached_section(
+        "model_accuracy_trend", collect_model_accuracy_trend, conn,
+        since=trend_since, _salt=trend_since,
+    )
+    scorecard_previous = _cached_section(
+        "scorecard_previous", collect_calibration_scorecard, conn,
+        window_override=previous_windows.get("P0"), _salt=previous_salt,
+    ) if previous_windows.get("P0") else {"available": False}
     synoptic_cooling = _cached_section(
         "synoptic_cooling", collect_synoptic_cooling, conn
+    )
+    single_system_width = _cached_section(
+        "single_system_width", collect_single_system_width, conn
+    )
+    consensus_bridge = _cached_section(
+        "consensus_bridge", collect_consensus_bridge, conn
+    )
+    taf_board = _cached_section("taf_board", collect_taf_board, conn)
+    metar_board = _cached_section("metar_board", collect_metar_board, conn)
+    regional_usage = _cached_section(
+        "regional_usage", collect_regional_usage, conn
     )
     tables = _cached_section(
         "correction_and_weights", collect_correction_and_weights, conn
@@ -11671,6 +12489,11 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "members": members,
         "member_admission": member_admission,
         "synoptic_cooling": synoptic_cooling,
+        "single_system_width": single_system_width,
+        "consensus_bridge": consensus_bridge,
+        "taf_board": taf_board,
+        "metar_board": metar_board,
+        "regional_usage": regional_usage,
         "tables": tables,
         "truth_landing": truth_landing,
         "band_residual_audit": (band_audit := _cached_section(
@@ -11697,6 +12520,12 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "center_width": center_width,
         "center_landing": center_landing,
         "scorecard": scorecard,
+        # The version before the served one, over its own span, for the
+        # side-by-side (user, 2026-09-18: 显示，做对比).
+        "previous_version_windows": previous_windows,
+        "center_landing_previous": center_landing_previous,
+        "scorecard_previous": scorecard_previous,
+        "model_accuracy_trend": model_accuracy_trend,
         "h5_readiness": _cached_section(
             "h5_readiness", collect_h5_readiness, conn
         ),
@@ -11764,7 +12593,7 @@ HTML_TEMPLATE = r"""<!doctype html><!--render-start:__RENDER_STARTED__--><!--pay
 :root{--bg:#0f1115;--card:#171a21;--line:#262b36;--soft:rgba(38,43,54,.6);
 --text:#e6e9ef;--muted:#9aa4b8;--green:#3fb950;--amber:#d29922;--red:#f85149;
 --accent:#58a6ff;--up:#7ee787;--down:#e3b341;--violet:#d2a8ff;
---th-claim:#3987e5;--th-price:#d95926;
+--th-claim:#3987e5;--th-price:#d95926;--series-3:#199e70;
 --pill-green-bg:rgba(63,185,80,.14);--pill-green-fg:#7ee787;
 --pill-amber-bg:rgba(210,153,34,.16);--pill-amber-fg:#e3b341;
 --pill-red-bg:rgba(248,81,73,.15);--pill-red-fg:#ff7b72;
@@ -11783,7 +12612,7 @@ color-scheme:dark}
 --soft:rgba(140,149,165,.28);--text:#1c2029;--muted:#5b6472;--green:#1a7f37;
 --amber:#9a6700;--red:#cf222e;--accent:#0969da;--up:#1a7f37;--down:#9a6700;
 --violet:#8250df;
---th-claim:#2a78d6;--th-price:#eb6834;
+--th-claim:#2a78d6;--th-price:#eb6834;--series-3:#1baf7a;
 --pill-green-bg:rgba(26,127,55,.11);--pill-green-fg:#116329;
 --pill-amber-bg:rgba(154,103,0,.13);--pill-amber-fg:#7d4e00;
 --pill-red-bg:rgba(207,34,46,.10);--pill-red-fg:#a40e26;
@@ -11791,6 +12620,35 @@ color-scheme:dark}
 --why-bg:rgba(9,105,218,.06);--why-fg:#2b3648;--bar-bg:#e6e9ef;
 --shadow:0 1px 2px rgba(27,31,36,.06);color-scheme:light}
 *{box-sizing:border-box}
+.box{border:1px solid var(--line);border-left:4px solid var(--box);border-radius:12px;
+  padding:10px 14px 6px;margin:18px 0;background:color-mix(in srgb,var(--box) 5%,var(--card) 95%)}
+.box-t{font-weight:700;font-size:16px;color:var(--text);display:flex;align-items:center;gap:8px}
+.box-t::before{content:"";width:10px;height:10px;border-radius:3px;background:var(--box)}
+.box-k{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;border:1px solid var(--box);color:var(--text)}
+.box-n{font-size:12.5px;margin:3px 0 4px}
+.box > .sec{margin-top:10px}
+.kpis .kpi{padding:10px 12px}.kpi-l{font-weight:600;display:flex;gap:6px;align-items:center}
+.kpi-v{font-size:24px;font-weight:700;margin:4px 0 2px;font-variant-numeric:tabular-nums}
+.kpi-q{font-size:11.5px}.kpi-p{font-size:12px;margin-top:4px}
+.vstrip{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.trend{padding:8px 10px}.trend-t{font-weight:600}.trend-s{font-size:11px}
+.trend svg{display:block;margin-top:4px}
+.trend-ax{font-size:10px;fill:var(--muted)}.trend-lb{font-size:10.5px;fill:var(--text)}
+.trend-tip{position:fixed;z-index:50;background:var(--card);border:1px solid var(--line);
+  border-radius:8px;padding:6px 9px;font-size:12px;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,.25)}
+.trend-tip-h{color:var(--muted);margin-bottom:3px}
+.trend-key{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.ssw-bar{display:inline-block;position:relative;width:80px;height:6px;border-radius:3px;background:var(--bar-bg);vertical-align:middle}
+.ssw-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--th-claim)}
+.ssw-bar b{position:absolute;top:-3px;bottom:-3px;width:1px;background:var(--muted)}
+.stns .stn{border:1px solid var(--line);border-radius:10px;padding:6px 10px;margin:6px 0;background:var(--card)}
+.stn summary{cursor:pointer;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.rep{border-top:1px dashed var(--line);padding:6px 0}
+.rep-special{border-left:3px solid var(--red);padding-left:8px}
+.rep-h{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.rep-raw{font-size:12px;margin:4px 0;word-break:break-word}
+.rep-read{margin:2px 0 4px 18px;padding:0;font-size:12.5px}
+table.tok td:first-child{white-space:nowrap;padding-right:14px}
 body{margin:0;background:var(--bg);color:var(--text);
 font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
 .wrap{max-width:1180px;margin:0 auto;padding:28px 20px 72px}
@@ -16097,8 +16955,6 @@ function centerWidth(){
   把时钟清零。当天 P0 四小时内换了三代指纹，P1 自 08-23 起<b>从未</b>持有过一代
   满 8 天。每张卡片底部的"证据时钟"就是这件事的读数：它不满 8 天，这一层就永远
   按原样服务。</div>
-  ${(()=>{ try { return radiationShift(); } catch(err){
-      return `<div class="card muted">辐射降温项渲染出错：${h(String(err))}</div>`; } })()}
   <div class="grid g3" style="margin-top:12px">${cards}</div>`;
 }
 
@@ -16159,7 +17015,11 @@ function radiationShift(){
 function centreLanding(){
   const L = D.center_landing || {};
   const stages = (L.stages || []).filter(st => st.cells);
-  if(!stages.length) return "";
+  if(!stages.length){
+    const prev = typeof landingPrevious === "function" ? landingPrevious() : "";
+    return prev ? `<h2>真值落在离服务均值多远：检验服务分布盖不盖得住真值</h2>
+      <p class="sub">本版还没有已结算的格子；下面是上一版的读数。</p>${prev}` : "";
+  }
   const MIN_DAYS = 8;
   const CENTRE = 0.2, HONEST = 0.05;
   // One stage's accounts, pooled over its width tiers -- they partition its
@@ -16257,7 +17117,7 @@ function centreLanding(){
     <div class="muted" style="font-size:11.5px;margin-top:6px">单位是桶：摄氏市场一桶 1°C、华氏 2°F。
       宽度按服务分布自称的宽度切；形状是宪章 131 的三态读数（${
       h(String((L.seat_rule || {}).skew_threshold_sigma ?? 0.35))}σ）。席位窗＝裁定形状里最宽的窗；
-      无席位的格子只进偏差列。</div></details>`;
+      无席位的格子只进偏差列。</div></details>${typeof landingPrevious === "function" ? landingPrevious() : ""}`;
 
   return `<h2>真值落在离服务均值多远：检验服务分布盖不盖得住真值</h2>
   <div class="card tl-verdict-card"><b>结论：</b>${centreLine}<br>${coverLine}${
@@ -17876,7 +18736,8 @@ const VERDICT_WORD = {green:"良好", amber:"注意", red:"有问题", muted:"�
 function scorecard(){
   const S = D.scorecard || {};
   if(!S.available) return `<h2>模型校准总检：检查概率模型六层是否各自达标</h2>
-    <p class="sub">还没有已结算的预测可以评分。</p>`;
+    <p class="sub">本版还没有已结算的预测可以评分（版本切换后从零攒起，旧数据没删，见下方上一版）。</p>
+    ${typeof scorecardPrevious === "function" ? scorecardPrevious() : ""}`;
   const cards = (S.layers||[]).map(L => `<div class="card">
     <div style="display:flex;align-items:center;gap:8px">
       <span class="dot ${L.health}"></span><b>${h(L.name)}</b>
@@ -18010,7 +18871,8 @@ function scorecard(){
     （中位差 ${fusionPct(fusionSummary.approximate_median_distance)}、
     最大 ${fusionPct(fusionSummary.approximate_max_distance)}）：
     兜底分支生产读的是闸门那次拟合的误差与天数，存档只留了服务拟合那一份。` : ""}
-    相关高但距离小＝模型在重复犯错，权重照规则分，不代表算错。</div>` : ""}`;
+    相关高但距离小＝模型在重复犯错，权重照规则分，不代表算错。</div>` : ""}
+  ${typeof scorecardPrevious === "function" ? scorecardPrevious() : ""}`;
 }
 
 function servingWeights(){
@@ -18084,6 +18946,526 @@ function servingWeights(){
 
 
 
+// ===== Model accuracy board, single-system / fusion / distribution boxes,
+// ===== regional, TAF and METAR layers (user, 2026-09-18: 把模型准不准、中心、
+// ===== 宽度等集中到一个看板…按照不同色块容器区分不同的内容；并优化排序和显示).
+
+// One small line chart per metric.  Categorical slots 1-3 are the page's own
+// --th-claim / --th-price / --series-3, validated against both surfaces
+// (dataviz validate_palette: dark all pass, light aqua 2.82:1 -> every line
+// carries its name and value at its end, and the table view below holds
+// every value).  One axis, a solid hairline reference, version starts
+// marked, and a crosshair tooltip on hover.
+const TREND_COLORS = ["var(--th-claim)", "var(--th-price)", "var(--series-3)"];
+function trendChart(cfg){
+  const W = 380, H = 176, L = 42, R = 76, T = 24, B = 24;
+  const dates = cfg.dates || [];
+  const n = dates.length;
+  const title = `<div class="trend-t">${h(cfg.title)}</div>${
+    cfg.sub ? `<div class="muted trend-s">${h(cfg.sub)}</div>` : ""}`;
+  const vals = (cfg.series || []).flatMap(s => s.values)
+    .filter(v => v != null && isFinite(v));
+  if(!n || !vals.length) return `<div class="card trend">${title}
+    <div class="muted" style="padding:18px 0">还没有可画的数据。</div></div>`;
+  if(cfg.ref) vals.push(cfg.ref.y);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if(hi - lo < 1e-9){ lo -= 1; hi += 1; }
+  const pad = (hi - lo) * 0.14; lo -= pad; hi += pad;
+  const fmt = cfg.fmt || (v => Number(v).toFixed(2));
+  const x = i => L + (n === 1 ? (W - L - R) / 2 : i * (W - L - R) / (n - 1));
+  const y = v => T + (hi - v) * (H - T - B) / (hi - lo);
+  const ticks = [lo + (hi - lo) * 0.12, (lo + hi) / 2, hi - (hi - lo) * 0.12];
+  const grid = ticks.map(t => `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}"
+      stroke="var(--line)" stroke-width="1"/>
+    <text x="${L - 6}" y="${y(t) + 3.5}" text-anchor="end" class="trend-ax">${h(fmt(t))}</text>`).join("");
+  const ref = cfg.ref ? `<line x1="${L}" x2="${W - R}" y1="${y(cfg.ref.y)}" y2="${y(cfg.ref.y)}"
+      stroke="var(--muted)" stroke-width="1"/>
+    <text x="${W - R + 4}" y="${y(cfg.ref.y) + 3.5}" class="trend-ax">${h(cfg.ref.label || "")}</text>` : "";
+  const marks = (cfg.marks || []).map(mk => {
+    const i = dates.findIndex(d => d >= mk.date);
+    if(i < 0 || mk.date < dates[0]) return "";
+    const xm = x(i) - (n > 1 && dates[i] > mk.date ? (W - L - R) / (n - 1) / 2 : 0);
+    return `<line x1="${xm}" x2="${xm}" y1="${T - 6}" y2="${H - B}" stroke="var(--muted)"
+        stroke-width="1" opacity=".55"/>
+      <text x="${xm + 3}" y="${T - 9}" class="trend-ax">${h(mk.label)}</text>`;
+  }).join("");
+  const ends = [];
+  const lines = (cfg.series || []).map((s, si) => {
+    const color = TREND_COLORS[si % TREND_COLORS.length];
+    let d = "", pen = false, last = null;
+    s.values.forEach((v, i) => {
+      if(v == null || !isFinite(v)){ pen = false; return; }
+      d += (pen ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1) + " ";
+      pen = true; last = i;
+    });
+    if(last == null) return "";
+    ends.push({si, color, name: s.name, v: s.values[last], xe: x(last), ye: y(s.values[last])});
+    return `<path d="${d}" fill="none" stroke="${color}" stroke-width="2"
+        stroke-linejoin="round" stroke-linecap="round"/>`;
+  }).join("");
+  // End labels: sorted by height, nudged apart by 12px, each tied to its
+  // line's end by a leader so a nudge never detaches a label from its line.
+  ends.sort((a, b) => a.ye - b.ye);
+  let floor = -1e9;
+  const endMarks = ends.map(e => {
+    const ly = Math.max(e.ye, floor + 12); floor = ly;
+    return `<circle cx="${e.xe}" cy="${e.ye}" r="3.5" fill="${e.color}"
+        stroke="var(--card)" stroke-width="2"/>
+      <line x1="${e.xe + 4}" x2="${W - R + 6}" y1="${e.ye}" y2="${ly}" stroke="var(--line)" stroke-width="1"/>
+      <line x1="${W - R + 8}" x2="${W - R + 16}" y1="${ly}" y2="${ly}" stroke="${e.color}" stroke-width="2"/>
+      <text x="${W - R + 19}" y="${ly + 3.5}" class="trend-lb">${h(e.name)} ${h(fmt(e.v))}</text>`;
+  }).join("");
+  const labels = [0, Math.floor((n - 1) / 2), n - 1]
+    .filter((v, i, a) => a.indexOf(v) === i)
+    .map(i => `<text x="${x(i)}" y="${H - 7}" text-anchor="middle" class="trend-ax">${h(String(dates[i]).slice(5))}</text>`).join("");
+  const payload = attr(JSON.stringify({
+    xs: dates.map((_, i) => +x(i).toFixed(1)), dates,
+    series: (cfg.series || []).map((s, si) => ({name: s.name, color: si,
+      values: s.values.map(v => v == null || !isFinite(v) ? null : fmt(v))})),
+  }));
+  return `<div class="card trend">${title}
+    <svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${attr(cfg.title)}">
+      ${grid}${ref}${marks}${lines}${endMarks}${labels}
+      <line class="trend-cross" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--muted)"
+        stroke-width="1" visibility="hidden"/>
+      <rect class="trend-hit" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}"
+        fill="transparent" data-trend="${payload}"/>
+    </svg></div>`;
+}
+// One tooltip for every chart, delegated, built with textContent.
+(function trendHover(){
+  const start = () => {
+    if(window.__trendHover) return; window.__trendHover = true;
+    const tip = document.createElement("div");
+    tip.className = "trend-tip"; tip.hidden = true;
+    document.body.appendChild(tip);
+    const hide = () => {
+      tip.hidden = true;
+      document.querySelectorAll(".trend-cross").forEach(l => l.setAttribute("visibility", "hidden"));
+    };
+    document.addEventListener("pointermove", ev => {
+      const hit = ev.target && ev.target.closest ? ev.target.closest(".trend-hit") : null;
+      if(!hit){ hide(); return; }
+      let data; try { data = JSON.parse(hit.dataset.trend); } catch(e){ return; }
+      const svg = hit.ownerSVGElement;
+      const pt = svg.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY;
+      const loc = pt.matrixTransform(svg.getScreenCTM().inverse());
+      let best = 0, gap = 1e9;
+      data.xs.forEach((xx, i) => { const d = Math.abs(xx - loc.x); if(d < gap){ gap = d; best = i; } });
+      const cross = svg.querySelector(".trend-cross");
+      cross.setAttribute("x1", data.xs[best]); cross.setAttribute("x2", data.xs[best]);
+      cross.setAttribute("visibility", "visible");
+      tip.textContent = "";
+      const head = document.createElement("div");
+      head.className = "trend-tip-h"; head.textContent = data.dates[best];
+      tip.appendChild(head);
+      data.series.forEach(s => {
+        const row = document.createElement("div");
+        const key = document.createElement("span");
+        key.className = "trend-key"; key.style.background = TREND_COLORS[s.color % TREND_COLORS.length];
+        const val = document.createElement("b");
+        val.textContent = s.values[best] == null ? "—" : s.values[best];
+        row.appendChild(key); row.appendChild(val);
+        row.appendChild(document.createTextNode(" " + s.name));
+        tip.appendChild(row);
+      });
+      tip.hidden = false;
+      tip.style.left = Math.min(ev.clientX + 14, window.innerWidth - 200) + "px";
+      tip.style.top = (ev.clientY + 14) + "px";
+    });
+    document.addEventListener("pointerleave", hide);
+  };
+  if(document.body) start(); else document.addEventListener("DOMContentLoaded", start);
+})();
+
+const vShort = v => v ? "v" + String(v).split("_v").pop() : "—";
+const whenZ = t => t ? String(t).slice(5, 16).replace("T", " ") + "Z" : "—";
+const signedC = v => v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(2) + "°C";
+const pctS = (v, d = 0) => v == null ? "—" : (100 * v).toFixed(d) + "%";
+
+// The P0 seat window's claim and cover, pooled over the landing's tiers --
+// the same weighting centreLanding reads.
+function landingCover(CL, stage){
+  const st = ((CL || {}).stages || []).find(s => s.stage === stage);
+  if(!st) return null;
+  let c = 0, v = 0, n = 0, b = 0, bn = 0;
+  (st.rows || []).forEach(r => {
+    const k = r.seat_cells || 0;
+    if(r.seat_claim != null && k){ c += r.seat_claim * k; v += r.seat_cover * k; n += k; }
+    if(r.bias_rungs != null && r.cells){ b += r.bias_rungs * r.cells; bn += r.cells; }
+  });
+  return n ? {claim: c / n, cover: v / n, cells: st.cells, days: st.days,
+              bias: bn ? b / bn : null} : null;
+}
+
+function modelAccuracyBoard(){
+  const S = D.scorecard || {}, P = D.scorecard_previous || {};
+  const T = D.model_accuracy_trend || {}, W = (D.previous_version_windows || {}).P0 || null;
+  const m = S.metrics || {}, pm = P.metrics || {};
+  const health = k => ((S.layers || []).find(l => l.key === k) || {}).health || "muted";
+  // A version a few hours old has one or two settled cells; a percentage
+  // off them reads as a verdict, so below the floor the tile says so.
+  const COVER_MIN_CELLS = 30;
+  const covRaw = landingCover(D.center_landing, "P0");
+  const covNow = covRaw && covRaw.cells >= COVER_MIN_CELLS ? covRaw : null;
+  const covPrev = landingCover(D.center_landing_previous, "P0");
+  const tiles = [
+    {label: "中心偏差", q: "真值 − 预测，越接近 0 越好", cur: m.bias_c, prev: pm.bias_c,
+     fmt: signedC, ideal: 0, health: health("point")},
+    {label: "平均误差", q: "越小越准", cur: m.mae_c, prev: pm.mae_c,
+     fmt: v => v == null ? "—" : v.toFixed(2) + "°C", better: "lower", health: health("point")},
+    {label: "CRPS 比平分布好", q: "概率整体准不准，越高越好", cur: m.crps_skill, prev: pm.crps_skill,
+     fmt: v => pctS(v), better: "higher", health: health("probability")},
+    {label: "宽度 ÷ 实际误差", q: "1 最好；>1 太宽，<1 太窄", cur: m.spread_skill, prev: pm.spread_skill,
+     fmt: v => v == null ? "—" : v.toFixed(2), ideal: 1, health: health("sharpness")},
+    {label: "校准：最差分箱偏离", q: "说 70% 是不是真 70%，越小越好", cur: m.conditional_gap, prev: pm.conditional_gap,
+     fmt: v => pctS(v, 1), better: "lower", health: health("calibration")},
+    {label: "席位窗覆盖（P0）", q: "实际盖住 − 声称，接近 0 最诚实",
+     cur: covNow ? covNow.cover - covNow.claim : null, prev: covPrev ? covPrev.cover - covPrev.claim : null,
+     fmt: v => v == null ? "—" : (v > 0 ? "+" : "") + (100 * v).toFixed(0) + " 点", ideal: 0,
+     extra: covNow ? `声称 ${pctS(covNow.claim)} · 实际 ${pctS(covNow.cover)}` : "",
+     empty: covRaw && !covNow ? `本版只结算了 ${covRaw.cells} 格，满 ${COVER_MIN_CELLS} 格再读` : "",
+     health: covNow ? (Math.abs(covNow.cover - covNow.claim) <= 0.05 ? "green" : "amber") : "muted"},
+  ];
+  const verdictOf = t => {
+    if(t.cur == null || t.prev == null) return ["", ""];
+    const score = v => t.ideal != null ? -Math.abs(v - t.ideal) : (t.better === "lower" ? -v : v);
+    const d = score(t.cur) - score(t.prev);
+    if(Math.abs(d) < 1e-6) return ["", "持平"];
+    return d > 0 ? ["up", "比上一版好"] : ["down", "比上一版差"];
+  };
+  const kpis = tiles.map(t => {
+    const [cls, word] = verdictOf(t);
+    const accumulating = S.accumulating && t.cur != null;
+    return `<div class="card kpi">
+      <div class="kpi-l"><span class="dot ${t.cur == null ? "muted" : t.health}"></span>${h(t.label)}</div>
+      <div class="kpi-v">${t.cur == null ? `<span class="muted" style="font-size:15px">${h(t.empty || "本版还没有已结算样本")}</span>` : h(t.fmt(t.cur))}</div>
+      <div class="muted kpi-q">${h(t.q)}${t.extra ? " · " + h(t.extra) : ""}</div>
+      <div class="kpi-p">上一版 ${vShort(W && W.version)}：<b>${h(t.fmt(t.prev))}</b>${
+        word ? ` · <span class="${cls}">${word}</span>` : ""}${
+        accumulating ? ` · <span class="muted">本版样本少</span>` : ""}</div></div>`;
+  }).join("");
+  // A day still settling (the newest, often one or two stations in) is not
+  // a point: 09-18 at 14:40Z was one station-day against ~45, and drew the
+  // centre bias to +1.76°C and CRPS skill to −31% off that one station.
+  // The floor is half the window's median sample, and never below 10
+  // station-days / 30 cells; a dropped day is named under the charts.
+  const median = xs => { const a = xs.filter(v => v > 0).sort((p, q) => p - q);
+    return a.length ? a[Math.floor(a.length / 2)] : 0; };
+  const F_all = T.forecast_daily || [];
+  const fFloor = Math.max(10, 0.5 * median(F_all.map(r => r.station_days || 0)));
+  const F = F_all.filter(r => (r.station_days || 0) >= fFloor);
+  const dates = F.map(r => r.event_date);
+  const LD_all = T.landing_daily || {};
+  // Thin days come in two kinds: the newest, still settling; and the
+  // window's first few, which the decision-time cut catches only partly.
+  const LD = {}, thinLand = [];
+  let thinHead = 0;
+  Object.entries(LD_all).forEach(([st, rows]) => {
+    const floor = Math.max(30, 0.5 * median(rows.map(r => r.cells || 0)));
+    LD[st] = rows.filter(r => (r.cells || 0) >= floor);
+    const lastFull = LD[st].length ? LD[st][LD[st].length - 1].event_date : "";
+    rows.filter(r => (r.cells || 0) < floor).forEach(r => {
+      if(r.event_date > lastFull) thinLand.push(`${st} ${String(r.event_date).slice(5)}（${r.cells} 格）`);
+      else thinHead += 1;
+    });
+  });
+  const lastF = F.length ? F[F.length - 1].event_date : "";
+  const thinF = F_all.filter(r => (r.station_days || 0) < fFloor && r.event_date > lastF)
+    .map(r => `${String(r.event_date).slice(5)}（${r.station_days} 个站日）`);
+  thinHead += F_all.filter(r => (r.station_days || 0) < fFloor && r.event_date <= lastF).length;
+  const landDates = [...new Set(Object.values(LD).flat().map(r => r.event_date))].sort();
+  const marks = (T.version_marks || []).filter(mk => mk.stage === "P0")
+    .map(mk => ({date: String(mk.at).slice(0, 10), label: mk.label}));
+  const col = (rows, dts, key) => dts.map(d => { const r = rows.find(x => x.event_date === d); return r && r[key] != null ? r[key] : null; });
+  const charts = [
+    trendChart({title: "中心偏差（°C）", sub: "P0 前瞻预测，真值 − 预测，按事件日；负＝预测偏暖",
+      dates, series: [{name: "P0", values: col(F, dates, "bias_c")}], ref: {y: 0, label: "0"},
+      marks, fmt: v => (v > 0 ? "+" : "") + Number(v).toFixed(2)}),
+    trendChart({title: "平均误差（°C）", sub: "越低越准", dates,
+      series: [{name: "P0", values: col(F, dates, "mae_c")}], marks, fmt: v => Number(v).toFixed(2)}),
+    trendChart({title: "宽度 ÷ 实际误差", sub: "1 最好：>1 分布太宽，<1 太窄", dates,
+      series: [{name: "P0", values: col(F, dates, "spread_skill")}], ref: {y: 1, label: "1"},
+      marks, fmt: v => Number(v).toFixed(2)}),
+    trendChart({title: "CRPS 比平分布好", sub: "越高越准", dates,
+      series: [{name: "P0", values: col(F, dates, "crps_skill")}], marks, fmt: v => (100 * v).toFixed(0) + "%"}),
+    trendChart({title: "真值离服务均值（桶）", sub: "分阶段；负＝真值比服务均值冷", dates: landDates,
+      series: ["P0", "P0-M", "P1"].filter(s => (LD[s] || []).length)
+        .map(s => ({name: s, values: col(LD[s], landDates, "bias_rungs")})),
+      ref: {y: 0, label: "0"}, marks, fmt: v => (v > 0 ? "+" : "") + Number(v).toFixed(2)}),
+    trendChart({title: "席位窗覆盖（P0）", sub: "声称会盖住的概率 vs 实际盖住的比例", dates: landDates,
+      series: [{name: "声称", values: col(LD.P0 || [], landDates, "seat_claim")},
+               {name: "实际", values: col(LD.P0 || [], landDates, "seat_cover")}],
+      marks, fmt: v => (100 * v).toFixed(0) + "%"}),
+  ].join("");
+  const allDates = [...new Set(F_all.map(r => r.event_date)
+    .concat(Object.values(LD_all).flat().map(r => r.event_date)))];
+  const tableRows = allDates.sort().reverse().map(d => {
+    const f = F_all.find(r => r.event_date === d) || {};
+    const lg = s => ((LD_all[s] || []).find(r => r.event_date === d) || {});
+    const n2 = v => v == null ? "—" : Number(v).toFixed(2);
+    const settling = !dates.includes(d) && !landDates.includes(d);
+    return `<tr${settling ? ' class="muted"' : ""}><td class="mono">${h(d)}${settling ? " 结算中" : ""}</td><td class="mono">${f.station_days ?? "—"}</td>
+      <td class="mono">${n2(f.bias_c)}</td><td class="mono">${n2(f.mae_c)}</td>
+      <td class="mono">${f.crps_skill == null ? "—" : pctS(f.crps_skill)}</td><td class="mono">${n2(f.spread_skill)}</td>
+      <td class="mono">${n2(lg("P0").bias_rungs)}</td><td class="mono">${n2(lg("P0-M").bias_rungs)}</td>
+      <td class="mono">${n2(lg("P1").bias_rungs)}</td>
+      <td class="mono">${pctS(lg("P0").seat_claim)} / ${pctS(lg("P0").seat_cover)}</td></tr>`;
+  }).join("");
+  return `<h2>模型准不准 · 总览：中心、宽度、概率一张看</h2>
+  <div class="card vstrip">
+    <span class="pill violet">本版 ${vShort(W && W.current_version)}</span>
+    <span>${whenZ(W && W.until)} 起 · ${S.event_day_count || 0} 个事件日${S.accumulating ? `（攒证据中，满 ${S.min_event_days || 8} 天出结论）` : ""}</span>
+    <span class="pill">上一版 ${vShort(W && W.version)}</span>
+    <span class="muted">${whenZ(W && W.since)} → ${whenZ(W && W.until)} · ${P.event_day_count || 0} 个事件日</span>
+  </div>
+  <div class="grid g3 kpis">${kpis}</div>
+  <div class="grid g3" style="margin-top:12px">${charts}</div>
+  <p class="sub" style="margin-top:6px">走势按事件日画最近 ${T.days || 21} 天，跨版本不截断；竖线是每次升版的起点（v3…v6）。
+    上排四张读 P0 的前瞻预测（总检同一份样本），下排两张读服务出去的分布（真值离均值同一份样本）。${
+    thinF.length || thinLand.length ? `<br><b>还在结算中的日子不画</b>（只结算了一两个站，会把线拽走）：${
+      h(thinF.concat(thinLand).join("、"))}；样本到平时一半后自动画上。` : ""}${
+    thinHead ? `窗口开头 ${thinHead} 个日子只截到一部分决策，同样不画。` : ""}</p>
+  <details class="note"><summary>表格视图：逐事件日的全部读数</summary>
+    <div class="scroll" style="max-height:360px"><table><thead><tr><th>事件日</th><th>站日</th>
+      <th>中心偏差 °C</th><th>平均误差 °C</th><th>CRPS 技能</th><th>宽度÷误差</th>
+      <th>离均值 P0（桶）</th><th>P0-M</th><th>P1</th><th>P0 覆盖 声称/实际</th></tr></thead>
+      <tbody>${tableRows}</tbody></table></div></details>`;
+}
+
+// The version before the served one, layer by layer (user, 2026-09-18: 显示，做对比).
+function scorecardPrevious(){
+  const P = D.scorecard_previous || {}, W = (D.previous_version_windows || {}).P0 || null;
+  if(!P.available) return "";
+  const rows = (P.layers || []).map(L => `<tr><td><span class="dot ${L.health}"></span> ${h(L.name)}</td>
+    <td>${h(L.verdict)}</td><td class="muted">${h(L.detail)}</td></tr>`).join("");
+  return `<details class="note" open><summary>上一版 ${vShort(W && W.version)} 的六层读数（${whenZ(W && W.since)} → ${whenZ(W && W.until)} · ${P.event_day_count} 个事件日 · ${(P.station_day_count || 0).toLocaleString()} 个站日）</summary>
+    <div class="scroll"><table><thead><tr><th>层</th><th>结论</th><th>读数</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
+}
+
+function landingPrevious(){
+  const W = D.previous_version_windows || {};
+  const stages = ["P0", "P0-M", "P1"];
+  const rows = stages.map(s => {
+    const a = landingCover(D.center_landing_previous, s), b = landingCover(D.center_landing, s);
+    if(!a && !b) return "";
+    const cell = x => x ? `${x.bias == null ? "—" : (x.bias > 0 ? "+" : "") + x.bias.toFixed(2) + " 桶"} · 声称 ${pctS(x.claim)} / 实际 ${pctS(x.cover)} · ${x.cells} 格 ${x.days} 天` : "—";
+    return `<tr><td><b>${s}</b></td><td>${cell(a)}</td><td>${cell(b)}</td></tr>`;
+  }).join("");
+  if(!rows) return "";
+  const w = W.P0 || {};
+  return `<details class="note" open><summary>上一版对照：${vShort(w.version)}（${whenZ(w.since)} → ${whenZ(w.until)}）对 本版 ${vShort(w.current_version)}</summary>
+    <div class="scroll"><table><thead><tr><th>阶段</th><th>上一版：中心 · 覆盖 · 样本</th><th>本版</th></tr></thead>
+    <tbody>${rows}</tbody></table></div></details>`;
+}
+
+function tablesCorrection(){
+  const t = D.tables; if(!t) return "";
+  return `<h2>单系统订正表：每个模型在每个站、每个提前量上偏多少度</h2>
+  <p class="sub">四家模型各自的「系统偏差」表：例如 ICON 在成都 12–24 小时档惯常报冷 1.3°C，
+    服务时就把它的成员整体抬 1.3°C。每天用最新的已结算日重算、自动换代；这里看的是这张表有没有按时更新。</p>
+  <div class="grid g3"><div class="card"><div class="muted">偏差订正表</div>
+    <div class="big">${t.correction.stations} 站</div>
+    <div class="muted">${t.correction.activations.toLocaleString()} 次激活 · 最近更新 ${hours(t.correction.age_hours)}</div></div></div>`;
+}
+function tablesWeights(){
+  const t = D.tables; if(!t) return "";
+  return `<h2>融合权重表：四家模型合在一起时各占多少</h2>
+  <p class="sub">订正完的四家按权重合成一条分布：历史上在这个站、这个提前量更准的那家分到更多。
+    权重要过样本外检验才换代，所以可能比订正表落后几天。</p>
+  <div class="grid g3"><div class="card"><div class="muted">融合权重表</div>
+    <div class="big">${t.weights.stations} 站</div>
+    <div class="muted">${t.weights.activations.toLocaleString()} 次激活 · 最近更新 ${hours(t.weights.age_hours)}</div></div>
+    <div class="card"><div class="muted">权重落后订正的格子</div>
+      <div class="big ${t.weight_lag_scopes ? "down" : ""}">${t.weight_lag_scopes}</div>
+      <div class="muted">落后 3 天以上的站×提前量组合；持续过不了检验就停在旧版本</div></div></div>`;
+}
+
+function singleSystemWidth(){
+  const S = D.single_system_width || {};
+  if(!S.available) return "";
+  const leadWord = {h00_12: "0–12h", h12_24: "12–24h", h24_48: "24–48h", h48_plus: "48h+"};
+  const n2 = v => v == null ? "—" : Number(v).toFixed(2);
+  const bar = f => {
+    const x = Math.max(0, Math.min(3, f || 0)) / 3 * 100;
+    return `<span class="ssw-bar"><i style="width:${x.toFixed(0)}%"></i><b style="left:${(100 / 3).toFixed(1)}%"></b></span>`;
+  };
+  const rows = (S.summary || []).map(r => `<tr>
+    <td><b>${h(r.label)}</b></td><td class="mono">${h(leadWord[r.lead] || r.lead)}</td>
+    <td class="mono">${r.stations}</td>
+    <td class="mono">${n2(r.member_spread_c)}°C</td>
+    <td class="mono">${bar(r.factor_median)} <b>${n2(r.factor_median)}×</b> <span class="muted">[${n2(r.factor_p10)}, ${n2(r.factor_p90)}]</span></td>
+    <td class="mono">${n2(r.residual_sigma_c)}°C</td><td class="mono">${n2(r.rmse_c)}°C</td>
+    <td class="mono">${pctS(r.over_confident_share)}</td></tr>`).join("");
+  const detail = (S.rows || []).map(r => `<tr><td class="mono">${h(r.station_id)}</td><td>${h(r.label)}</td>
+    <td class="mono">${h(leadWord[r.lead] || r.lead)} · ${h(r.cycle)}</td><td class="mono">${h(r.season)}</td>
+    <td class="mono">${n2(r.member_spread_c)}</td><td class="mono"><b>${n2(r.spread_factor)}×</b></td>
+    <td class="mono">${n2(r.residual_sigma_c)}</td><td class="mono">${n2(r.rmse_c)}</td>
+    <td class="mono">${r.bias_c == null ? "—" : (r.bias_c > 0 ? "+" : "") + n2(r.bias_c)}</td></tr>`).join("");
+  return `<h2>单系统宽度校准：每家模型的成员分歧要撒开多少，才配得上它的真实误差</h2>
+  <p class="sub">每家集合预报的成员之间有分歧（成员分歧），但历史上它的真实误差往往比这个分歧大。
+    放大倍数 = 真实误差 ÷ 成员分歧：<b>大于 1</b> 说明这家模型「太自信」，服务时把它的成员往两边撒开这么多倍；
+    小于 1 则收拢。例：ICON 在成都 12–24 小时档，成员分歧 1.00°C、真实误差 1.74°C → 撒开 1.74 倍。</p>
+  <div class="scroll"><table><thead><tr><th>模型</th><th>提前量</th><th>站</th><th>成员分歧（中位）</th>
+    <th>放大倍数（中位 [p10, p90]，竖线＝1）</th><th>校准后宽度</th><th>训练 RMSE</th><th>需要撒开的占比</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>
+  <details class="note"><summary>逐站明细（${(S.rows || []).length} 份在用的单系统宽度件）</summary>
+    <div class="scroll" style="max-height:380px"><table><thead><tr><th>站</th><th>模型</th><th>提前量·起报</th><th>季节</th>
+      <th>成员分歧</th><th>放大倍数</th><th>校准后宽度</th><th>RMSE</th><th>偏差订正</th></tr></thead>
+      <tbody>${detail}</tbody></table></div></details>`;
+}
+
+function consensusBridgeSection(){
+  const B = D.consensus_bridge || {};
+  if(!B.available) return "";
+  const R = B.rule || {};
+  const n2 = v => v == null ? "—" : Number(v).toFixed(2);
+  const days = (B.summary || []).map(d => `<div class="card"><div class="muted">${h(d.event_date)}</div>
+    <div class="big">${d.opened}/${d.stations} 站开桥</div>
+    <div class="muted">中心差中位 ${n2(d.gap_median_c)}°C · 最大 ${n2(d.gap_max_c)}°C · 离门槛不到 0.3°C 的 ${d.near_threshold} 站</div></div>`).join("");
+  const rows = (B.rows || []).filter(r => (r.gap_c || 0) >= 1.0).map(r => `<tr>
+    <td class="mono">${h(r.event_date.slice(5))}</td><td class="mono">${h(r.station_id)}</td>
+    <td class="mono">${Object.entries(r.centres || {}).map(([k, v]) => h(k) + " " + v).join(" · ")}</td>
+    <td class="mono"><b>${n2(r.gap_c)}</b></td>
+    <td class="mono ${(r.lambda || 0) > 0 ? "up" : "muted"}">${(r.lambda || 0) > 0 ? "开 " + n2(r.lambda) : "不开"}</td>
+    <td class="mono">${n2(r.consensus_center_c)}</td></tr>`).join("");
+  return `<h2>共识桥：几家模型的中心分得太开时，往中间补一块</h2>
+  <p class="sub">四家模型校准后的中心如果相差很大，直接按权重相加会得到两个峰，而真值往往落在中间。
+    规则：中心差 ≤ ${R.gap_start_c ?? 1.5}°C 不动；到 ${R.gap_full_c ?? 2.0}°C 时补满，最多掺入 ${pctS(R.lambda_max ?? 0.4)} 的「共识」成分。
+    每站读自最新一期 P0 的回执，不在这里重算。</p>
+  <div class="grid g3">${days}</div>
+  <details class="note" open><summary>中心差 ≥ 1.0°C 的站（按差距排序）</summary>
+    <div class="scroll" style="max-height:340px"><table><thead><tr><th>日</th><th>站</th><th>各家校准后中心</th>
+      <th>中心差 °C</th><th>共识桥</th><th>共识中心</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
+}
+
+function radiationSection(){
+  const body = radiationShift();
+  if(!body) return "";
+  return `<h2>辐射降温项：按预报的日照多少，把整条分布往冷或往暖推</h2>${body}`;
+}
+
+function regionalBoard(){
+  const R = D.regional || {}, U = D.regional_usage || {};
+  const PP = U.path_prior || {}, A = U.arms || {};
+  const onoff = v => `<span class="pill ${v ? "green" : ""}">${v ? "开" : "关"}</span>`;
+  const lanes = (R.lanes || []).map(l => `<tr><td><b>${h(l.label)}</b></td><td>${h(l.region)}</td>
+    <td class="mono">${l.station_count || 0}/${l.roster_count || 0}</td>
+    <td class="mono">${(l.row_count || 0).toLocaleString()}</td>
+    <td class="mono">${hours(l.last_capture_age_hours)}</td>
+    <td class="mono">${U.p0_fusion_excluded && U.p0_fusion_excluded[l.system_id] ? "不入" : "可入"}</td>
+    <td class="mono">${(U.p1_feature_systems || {})[l.system_id] || 0} 站</td>
+    <td class="mono">${(PP.systems || []).includes(l.system_id) ? `准入 · 权重 ${PP.weight}` : "不准入"}</td></tr>`).join("");
+  const bySystem = {};
+  (R.verdicts || []).forEach(v => { const k = v.system_label || v.system_id; bySystem[k] = bySystem[k] || [0, 0]; bySystem[k][1] += 1; if(v.passes_all_three) bySystem[k][0] += 1; });
+  const verdicts = Object.entries(bySystem).map(([k, [p, n]]) => `<span class="pill ${p ? "green" : ""}">${h(k)}：${p}/${n} 站过三道门</span>`).join(" ");
+  const ready = (R.readiness || []).map(r => `<span class="pill ${r.state === "OOS_READY" ? "green" : "amber"}">${h(r.ensemble_system_id)}：${h(r.state)}</span>`).join(" ");
+  const feats = Object.entries(U.p1_feature_systems || {}).sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `${h(k === "POOLED_FALLBACK" ? "队列均值兜底" : k)} ${v}`).join(" · ");
+  return `<h2>区域模型：采集、够不够格、用没用上、权重多少</h2>
+  <p class="sub">区域模型（JMA、HRRR、NBM、ICON-EU、CMA）是单点、高分辨率的确定性预报。
+    <b>它们不进 P0 的融合</b>（第 99 条起归 P1），只在 P1 里以两种方式出现：一是作为「区域路径先验」直接给分布塑形；
+    二是作为 P1 四层链的一个特征（离区域模型预报的最高还差多少）。</p>
+  <div class="card" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+    <b>开关</b> 区域路径先验 ${onoff(PP.enabled)} <span class="muted">权重 ${PP.weight ?? "—"} · 准入 ${h((PP.systems || []).join("、") || "—")} · 最旧 ${PP.max_run_age_hours ?? "—"} 小时</span>
+    · 特征校准 ${onoff(A.feature_calibration)} · 点预报去偏 ${onoff(A.point_debias)}
+    <span style="flex:1"></span><span class="muted">过去 18 小时 ${U.p1_stations || 0} 站的 P1：路径先验回执 ${
+      Object.entries(U.p1_path_prior_states || {}).map(([k, v]) => (k === "NO_RECEIPT" ? "没用上" : h(k)) + " " + v).join(" · ")}</span></div>
+  <div class="scroll" style="margin-top:10px"><table><thead><tr><th>区域模型</th><th>区域</th><th>站（有数/名册）</th><th>行数</th>
+    <th>最近采集</th><th>P0 融合</th><th>P1 特征在用</th><th>P1 路径先验</th></tr></thead><tbody>${lanes}</tbody></table></div>
+  <div style="margin-top:8px"><span class="muted">P1 四层链的区域特征来源：</span>${feats || "—"}</div>
+  <div style="margin-top:6px"><span class="muted">样本外逐站三道门（CRPS/Brier/NLL 都赢现任）：</span>${verdicts || "—"}</div>
+  <div style="margin-top:6px"><span class="muted">样本外准备度：</span>${ready || "—"}</div>`;
+}
+
+const FRESH_WORD = {fresh: ["green", "新鲜"], late: ["amber", "偏晚"], stale: ["red", "陈旧"]};
+const tokensTable = toks => `<div class="scroll"><table class="tok"><tbody>${
+  (toks || []).map(t => `<tr><td class="mono">${h(t.token)}</td><td>${h(t.meaning)}</td></tr>`).join("")}</tbody></table></div>`;
+
+function tafBoard(){
+  const T = D.taf_board || {};
+  if(!T.available) return `<h2>TAF 层（P0-M）</h2><div class="card muted">TAF 读数这一轮没有生成。</div>`;
+  const counts = T.counts || {};
+  const stations = (T.stations || []).map(s => {
+    const [tone, word] = FRESH_WORD[s.freshness] || ["", s.freshness];
+    const E = s.effect || {};
+    const special = (s.reports || []).some(r => r.special);
+    const newest = (s.reports || [])[0] || {};
+    const effect = E.event_date ? `对 ${h(E.event_date.slice(5))} 的 P0-M：${
+      E.likelihood_mode === "IDENTITY_NO_ARTIFACT" ? "<b>不改</b>（TAF 似然没有校准件，恒等）" : h(E.likelihood_mode)} ·
+      P0-M 均值 ${E.p0m_mean_c ?? "—"}°C、众数 ${h(E.p0m_mode || "—")}，对 P0 ${E.shift_c == null ? "—" : (E.shift_c > 0 ? "+" : "") + E.shift_c.toFixed(2) + "°C"}` : "没有对应的 P0-M";
+    const reports = (s.reports || []).map((r, i) => `<div class="rep ${r.special ? "rep-special" : ""}">
+      <div class="rep-h"><span class="pill ${r.special ? "red" : ""}">${h(r.kind)}</span>
+        <span class="mono">签发 ${whenZ(r.issued_at_utc)}</span> <span class="muted">有效 ${whenZ(r.valid_from_utc)} → ${whenZ(r.valid_until_utc)}</span>
+        ${i === 0 ? `<span class="pill">最新</span>` : ""}</div>
+      <div class="mono rep-raw">${h(r.raw)}</div>
+      <ul class="rep-read">${(r.reading || []).map(x => `<li>${h(x)}</li>`).join("")}</ul>
+      <details><summary class="muted">逐段拆解</summary>${tokensTable(r.tokens)}</details></div>`).join("");
+    return `<details class="stn" ${s.freshness !== "fresh" || special ? "open" : ""}>
+      <summary><b class="mono">${h(s.station_id)}</b> <span class="pill ${tone}">${word}</span>
+        <span class="muted">最新签发 ${whenZ(s.latest_issued_at_utc)} · ${s.age_hours == null ? "—" : s.age_hours.toFixed(1) + " 小时前"}${
+          s.capture_lag_minutes == null ? "" : " · 采集延迟 " + s.capture_lag_minutes + " 分钟"}</span>
+        ${special ? `<span class="pill red">含修订/更正报</span>` : ""}
+        <span>TX ${newest.tx_c ?? "—"}°C</span></summary>
+      <div class="muted" style="margin:6px 0">${effect}</div>${reports}</details>`;
+  }).join("");
+  return `<h2>TAF 层（P0-M）：各站最新 3 份机场预报，拆开讲、读温度、看对 P0-M 改了多少</h2>
+  <p class="sub">TAF 是机场预报员发布的航站预报，每 6 小时一份，天气变了会发修订报（AMD）或更正报（COR）——这两种<b>标红置顶</b>。
+    新鲜度按签发时间：${T.fresh_hours} 小时内新鲜，${T.stale_hours} 小时以上陈旧。
+    读数里的「偏暖/偏冷」是对照模型当前均值和云、雨、风的固定规则，不是另一个模型。</p>
+  <div class="card" style="display:flex;gap:10px;flex-wrap:wrap">
+    <span class="pill green">新鲜 ${counts.fresh || 0}</span><span class="pill amber">偏晚 ${counts.late || 0}</span>
+    <span class="pill red">陈旧 ${counts.stale || 0}</span><span class="pill red">含修订/更正报 ${T.special_stations || 0} 站</span></div>
+  <div class="stns">${stations}</div>`;
+}
+
+function metarBoard(){
+  const M = D.metar_board || {};
+  if(!M.available) return `<h2>METAR 层（P1）</h2><div class="card muted">METAR 读数这一轮没有生成。</div>`;
+  const counts = M.counts || {};
+  const n2 = v => v == null ? "—" : Number(v).toFixed(2);
+  const stations = (M.stations || []).map(s => {
+    const [tone, word] = FRESH_WORD[s.freshness] || ["", s.freshness];
+    const P = s.path || {}, E = s.effect || {};
+    const special = (s.reports || []).some(r => r.special);
+    const now = (s.reports || [])[0] || {};
+    const warm = ((P.remaining_warming || {}).likelihood_ratio_by_bucket) || null;
+    const path = `<div class="grid g3" style="margin:6px 0">
+      <div class="card"><div class="muted">今天已到最高</div><div class="big">${P.running_high_c ?? "—"}°C</div>
+        <div class="muted">现在 ${now.temp_c ?? "—"}°C · 当地 ${h(now.local || "")}</div></div>
+      <div class="card"><div class="muted">还会不会再升</div><div class="big">${P.rise_probability == null ? "—" : pctS(P.rise_probability, 1)}</div>
+        <div class="muted">P1 认为今天最高再超过已到最高的概率</div></div>
+      <div class="card"><div class="muted">P1 预测今天最高</div><div class="big">${n2(P.p1_mean_c)}°C</div>
+        <div class="muted">众数 ${h(P.p1_mode || "—")}（${P.p1_mode_p == null ? "—" : pctS(P.p1_mode_p)}）· 对 P0-M ${E.shift_c == null ? "—" : (E.shift_c > 0 ? "+" : "") + E.shift_c.toFixed(2) + "°C"}</div></div></div>
+      ${warm ? `<div class="muted">剩余升温的似然比（>1 的桶被抬高）：${Object.entries(warm).filter(([k, v]) => Math.abs(v - 1) > 0.05)
+        .map(([k, v]) => h(k) + " " + Number(v).toFixed(2)).join(" · ") || "全部≈1"}</div>` : ""}
+      <div class="muted">区域特征：${h(P.regional_system_id === "POOLED_FALLBACK" ? "队列均值兜底" : (P.regional_system_id || "—"))}${
+        P.regional_headroom_c && P.regional_headroom_c !== "NONE" ? "，离区域模型预报最高 " + h(P.regional_headroom_c) + "°C" : ""} · 观测硬排除 ${h(E.hard_excluded || "NONE")}</div>`;
+    const reports = (s.reports || []).map((r, i) => `<div class="rep ${r.special ? "rep-special" : ""}">
+      <div class="rep-h"><span class="pill ${r.special ? "red" : ""}">${h(r.kind)}${r.correction_suspected ? " · 疑似更正" : ""}</span>
+        <span class="mono">${whenZ(r.valid_at_utc)}（当地 ${h(r.local)}）</span>${i === 0 ? `<span class="pill">最新</span>` : ""}</div>
+      <div class="mono rep-raw">${h(r.raw)}</div>
+      <ul class="rep-read">${(r.reading || []).map(x => `<li>${h(x)}</li>`).join("")}</ul>
+      <details><summary class="muted">逐段拆解</summary>${tokensTable(r.tokens)}</details></div>`).join("");
+    return `<details class="stn" ${s.freshness !== "fresh" || special ? "open" : ""}>
+      <summary><b class="mono">${h(s.station_id)}</b> <span class="pill ${tone}">${word}</span>
+        <span class="muted">最新观测 ${whenZ(s.latest_valid_at_utc)} · ${s.age_minutes == null ? "—" : Math.round(s.age_minutes) + " 分钟前"}</span>
+        ${special ? `<span class="pill red">含特殊/更正报</span>` : ""}
+        <span>现在 ${now.temp_c ?? "—"}°C · 已到最高 ${P.running_high_c ?? "—"}°C · P1 预测最高 ${n2(P.p1_mean_c)}°C</span></summary>
+      <div class="muted" style="margin:6px 0">事件日 ${h(s.event_date)} · P1 ${whenZ(s.p1_decided_at_utc)}</div>
+      ${path}${reports}</details>`;
+  }).join("");
+  return `<h2>METAR 层（P1）：各站最新 3 份实况，温度走到哪了、还会不会升、对 P1 改了多少</h2>
+  <p class="sub">METAR 是机场每小时的实况观测；天气突变时加发特殊报（SPECI），更正报带 COR——这两种<b>标红置顶</b>。
+    新鲜度按观测时间：${M.fresh_minutes} 分钟内新鲜，${M.stale_minutes} 分钟以上陈旧。
+    「温度路径预测」读自各站最新一期 P1：今天已到的最高、再升的概率、预测的最高；「对 P0-M」是 P1 把当天均值挪了多少。</p>
+  <div class="card" style="display:flex;gap:10px;flex-wrap:wrap">
+    <span class="pill green">新鲜 ${counts.fresh || 0}</span><span class="pill amber">偏晚 ${counts.late || 0}</span>
+    <span class="pill red">陈旧 ${counts.stale || 0}</span></div>
+  <div class="stns">${stations}</div>`;
+}
+
+
 // Sections of one kind stand together, and only one kind is on screen at a
 // time (user ruling, 2026-08-21).  Twenty sections in a single column is a
 // page nobody scrolls to the end of, and the order they were written in
@@ -18094,92 +19476,90 @@ function servingWeights(){
 // The section numbers follow this grouping rather than the old order.  A
 // number that no longer matches its neighbours is a worse handle than a
 // renumbered one, because it only reads as an accident.
+// Containers inside each area, coloured by what KIND of thing they hold, the
+// same colour on every page (user rulings, 2026-09-18: 做单系统/融合层/分布层的
+// 大容器…按照不同色块容器区分不同的内容；不只是模型页，其他区域也是，按照容器来，
+// 同一类可以一个颜色).  Four kinds: 读数 (readings and referees, nothing
+// decides on them), 在用 (the production chain), 后段 (what the stages after
+// P0 read in -- TAF, METAR, regional models), 影子 (computed and journalled,
+// changes nothing).
+const BOX_KIND = {
+  audit:  {tone:"#d2a8ff", word:"读数"},
+  live:   {tone:"#79c0ff", word:"在用"},
+  stage:  {tone:"#f0883e", word:"后段"},
+  shadow: {tone:"#8b949e", word:"影子"},
+};
 const GROUPS = [
-  // Grouped by what the reader is asking, not by the order the sections
-  // were built in (user ruling, 2026-08-29).  The other two questions -- is
-  // the data arriving, is the machine running -- left the tab bar on
-  // 2026-09-11: they are answered by the head's lamps, and an answer read
-  // on arrival does not belong behind a tab.  Each group carries a colour
-  // so the tab bar and the group titles agree without matching text.
-  //
   // One area per layer, in the order of the chain (user rulings,
-  // 2026-09-16: "固化减仓不应该放在形状里", then "band表应该放在模型里,
-  // 再次按照层级归类整理").  The layer is where the rule actually runs, not
-  // the word the section happens to use: band 表 is called a claim table
-  // but it is applied inside the probability serving chain, after
-  // 中心/宽度, fitted on served probability against settled truth with no
-  // market in it -- so it is the model's last step, not a claim discount.
-  // Everything that prices our probability against the market -- the EV
-  // identity, truth landing on the price × probability grid, λ, β, the
-  // valuation lane, the thermometer that is λ's evidence, the convergence
-  // lift -- is one layer, 边际层 (the E of the P/M/E/S/Z/X layering).
-  //   模型 概率层 → 边际 边际层 → 选窗 选窗层 → 定注 定注层
-  // The book, the live switch and the refusal count stay above the tabs:
-  // they are read on arrival, whatever layer is being studied.
-  //
-  // Inside an area the summary comes first and the detail follows it (user
-  // rulings, 2026-09-17: 总分逻辑; 四大模型的权重、离散度要前移).  The model
-  // area opens on 模型校准总检, then walks the serving chain from upstream
-  // down: the four models' own inputs (correction, weights, spread, hit
-  // rate), the two steps that shape the served distribution (centre/width,
-  // band table), the checks of that served distribution (OOS, where truth
-  // lands against its mean), and last the half-life roll-out.
+  // 2026-09-16), and inside the model area one container per layer of the
+  // probability chain (2026-09-18): the overview first, then P0's three
+  // layers from upstream down, then what P0-M and P1 read in.
   {id:"model", label:"模型", short:"模型", tone:"#d2a8ff",
-   note:"概率层：先看总检，再沿链条从上游到下游——四大模型（订正、权重、离散度、命中率）→ 服务分布（中心/宽度、band 表）→ 检验（OOS、真值离均值）→ 换代（H5 半衰期）",
-   sections:[[scorecard,"模型校准总检"],
-     // the four models, as they come in
-     [tables,"偏差订正与权重"],[servingWeights,"四大模型权重"],
-     [dispersion,"模型离散度"],[hitRate,"模型命中率"],
-     // the served distribution
-     [centerWidth,"中心/宽度"],[bandTable,"band 表"],
-     // checks of what was served
-     [oosScores,"OOS 打分"],[centreLanding,"真值离均值多远"],
-     // roll-out
-     [h5Readiness,"H5 半衰期"]]},
+   note:"概率层：先看总览，再沿链条从上游到下游——单系统 → 融合层 → 分布层（P0）→ TAF 层（P0-M）→ METAR 层与区域模型（P1）",
+   sections:[
+     {box:"总览：模型准不准", kind:"audit",
+      note:"中心、宽度、概率、校准、覆盖一屏看完：本版对上一版，21 天走势；再下面是六层总检",
+      sections:[[modelAccuracyBoard,"模型准不准 · 总览"],[scorecard,"模型校准总检"]]},
+     {box:"① 单系统：每家模型各自校准", kind:"live",
+      note:"四家集合预报各自订正偏差、各自调宽度；命中率看订正有没有用，H5 看订正用多长的记忆",
+      sections:[[tablesCorrection,"单系统订正表"],[singleSystemWidth,"单系统宽度校准"],
+        [hitRate,"模型命中率"],[h5Readiness,"H5 半衰期"]]},
+     {box:"② 融合层：四家怎么合成一条", kind:"live",
+      note:"按权重合成；权重看在用的配比和权重表是否按时换代，离散度看几家分歧多大",
+      sections:[[servingWeights,"四大模型权重"],[tablesWeights,"融合权重表"],[dispersion,"模型离散度"]]},
+     {box:"③ 分布层：合成后的分布再塑形、再检验", kind:"live",
+      note:"共识桥 → 辐射降温项 → 中心/宽度两标量 → band 表，然后用样本外和真值检验服务出去的分布",
+      sections:[[consensusBridgeSection,"共识桥"],[radiationSection,"辐射降温项"],[centerWidth,"中心/宽度"],
+        [bandTable,"band 表"],[oosScores,"OOS 打分"],[centreLanding,"真值离均值多远"]]},
+     {box:"④ TAF 层（P0-M）", kind:"stage",
+      note:"机场预报员的 TAF：最新 3 份拆解、对温度的读数、对 P0-M 的实际影响、新鲜度",
+      sections:[[tafBoard,"TAF 层"]]},
+     {box:"⑤ METAR 层（P1）", kind:"stage",
+      note:"机场实况 METAR：最新 3 份拆解、温度路径预测、对 P1 的实际影响、新鲜度",
+      sections:[[metarBoard,"METAR 层"]]},
+     {box:"⑥ 区域模型（P1 的输入）", kind:"stage",
+      note:"高分辨率单点预报：采集、样本外门槛、用没用上、权重",
+      sections:[[regionalBoard,"区域模型"]]}]},
   // The edge area answers one question -- the model says p, the market says
-  // m, how much of the gap should be believed -- and its eight sections are
-  // four different kinds of thing (user ruling, 2026-09-17: "把前端显式按照
-  // 这个逻辑改一下").  Filed under explicit sub-headings, in reading order:
-  // the referees that read truth and say whether there is an edge at all;
-  // the one table production buys on, with its evidence; the three
-  // candidates that answer the same question in shadow (L4 contains the
-  // other two); and the extra lift applied to p before any of them.  The
-  // map at the head of the area draws the same relations and jumps to each.
+  // m, how much of the gap should be believed (user ruling, 2026-09-17).
+  // Its four sub-headings are containers now, coloured by kind.
   {id:"edge", label:"边际", short:"边际", tone:"#79c0ff",
    note:"边际层：按 L4 的公式 logit b = logit m + w·(logit p − logit m) + c(m) 读——① 验收（有没有 edge）→ ② 实盘此刻用什么代替 w → ③ L4 与它的特例（影子）→ ④ 进来前先改 p（影子）",
    intro: edgeMap,
    sections:[
-     {sub:"① 验收：这个公式赢没赢市场（到底有没有 edge）", status:"audit",
-      note:"读真值，不参与决策。EV 恒等式量的是概率层服务出来的 p（已含 band，不含 λ、L4 等读价格的层）有没有市场没有的信息；L4 自己赢没赢看 L4 小节的前瞻技能分"},
-     [charterEv,"宪章 EV 恒等式"],
-     [truthLanding,"真值落位"],
-     {sub:"② 实盘此刻用来代替 w 的：λ 表", status:"live",
-      note:"不从市场出发，按「价格 ÷ 声称」分档直接给 p 打折；没证据时沿用常数继续买。体温计是它的证据，不是规则"},
-     [effectiveEdgeLambda,"有效边际 λ 表"],
-     [edgeBandHealth,"声称边际体温计"],
-     {sub:"③ L4 与它的两个特例（影子，只记录不买）", status:"shadow",
-      note:"L4 量 w 与 c(m)；β 车道和估值车道是 L4 取概率空间、去掉 c(m) 的特例。三条都从 b = m 出发，没证据就不买"},
-     [posteriorLane,"L4 后验层（影子）"],
-     [betaShadow,"β 车道（影子）"],
-     [valuationLane,"统一估值车道"],
-     {sub:"④ 进来前先改 p（影子）", status:"shadow",
-      note:"模型往上、市场往下时把 p 抬高，再交给上面；只记账"},
-     [convergenceClaim,"双向收敛系数"]]},
-  // 覆盖 · 价格 · EV is the whole seat in one line (what it covered, cost
-  // and was worth), 篮子命中率 splits it by width, and the market-lean gate
-  // -- a rule in shadow -- follows the readings of what actually seated.
+     {box:"① 验收：这个公式赢没赢市场（到底有没有 edge）", kind:"audit",
+      note:"读真值，不参与决策。EV 恒等式量的是概率层服务出来的 p（已含 band，不含 λ、L4 等读价格的层）有没有市场没有的信息；L4 自己赢没赢看 L4 小节的前瞻技能分",
+      sections:[[charterEv,"宪章 EV 恒等式"],[truthLanding,"真值落位"]]},
+     {box:"② 实盘此刻用来代替 w 的：λ 表", kind:"live",
+      note:"不从市场出发，按「价格 ÷ 声称」分档直接给 p 打折；没证据时沿用常数继续买。体温计是它的证据，不是规则",
+      sections:[[effectiveEdgeLambda,"有效边际 λ 表"],[edgeBandHealth,"声称边际体温计"]]},
+     {box:"③ L4 与它的两个特例（影子，只记录不买）", kind:"shadow",
+      note:"L4 量 w 与 c(m)；β 车道和估值车道是 L4 取概率空间、去掉 c(m) 的特例。三条都从 b = m 出发，没证据就不买",
+      sections:[[posteriorLane,"L4 后验层（影子）"],[betaShadow,"β 车道（影子）"],[valuationLane,"统一估值车道"]]},
+     {box:"④ 进来前先改 p（影子）", kind:"shadow",
+      note:"模型往上、市场往下时把 p 抬高，再交给上面；只记账",
+      sections:[[convergenceClaim,"双向收敛系数"]]}]},
   {id:"select", label:"选窗", short:"选窗", tone:"#e3b341",
    note:"选窗层：挑哪几个桶、挑得值不值——覆盖与 EV（总）、篮子命中率、市场方向闸（影子）",
-   sections:[[coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"],
-     [marketLeanGate,"市场方向闸"]]},
+   sections:[
+     {box:"读数：挑得值不值", kind:"audit",
+      note:"覆盖 · 价格 · EV 是整个席位一行说完，篮子命中率按宽度拆开",
+      sections:[[coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"]]},
+     {box:"影子规则", kind:"shadow", note:"只记账，不改选窗",
+      sections:[[marketLeanGate,"市场方向闸"]]}]},
   {id:"sizing", label:"定注", short:"定注", tone:"#56d4dd",
    note:"定注层：最后真正拿着什么——分布与持仓分家",
-   sections:[[windowDivergence,"分布与持仓分家"]]},
+   sections:[
+     {box:"读数：分布指向的和实际持有的", kind:"audit", note:"",
+      sections:[[windowDivergence,"分布与持仓分家"]]}]},
 ];
+// Every section an area holds, through its containers.
+const groupSections = g => g.sections.flatMap(item =>
+  Array.isArray(item) ? [item] : (item.box ? item.sections.filter(Array.isArray) : []));
 const tabs = `<nav class="tabs" id="tabs" aria-label="区域">${
   GROUPS.map(g => `<button type="button" data-tab="${g.id}"
     style="--tone:${g.tone}" title="${g.label}（${
-    g.sections.filter(Array.isArray).length} 个区块）· ${
+    groupSections(g).length} 个区块）· ${
     g.note}">${g.short}</button>`).join("")
 }<button type="button" class="all" data-tab="all"
   title="所有区域叠在一页">全部</button></nav>`;
@@ -18226,6 +19606,24 @@ const tabs = `<nav class="tabs" id="tabs" aria-label="区域">${
 // nobody has classified must not be given a green light by omission.
 const LANES = {
   // --- model: where the probability itself comes from ---
+  "模型准不准 · 总览": {layer:"概率层 · 读数", status:"audit",
+    role:"中心、宽度、概率、校准、覆盖：本版对上一版、21 天走势"},
+  "单系统订正表": {layer:"概率层 · 单系统", status:"live",
+    role:"每家模型在每站每提前量偏多少度 → 服务时先把成员整体挪回来"},
+  "单系统宽度校准": {layer:"概率层 · 单系统", status:"live",
+    role:"成员分歧 × 放大倍数 = 真实误差 → 每家模型各自撒开或收拢"},
+  "融合权重表": {layer:"概率层 · 融合", status:"live",
+    role:"四家各占多少；过样本外检验才换代"},
+  "共识桥": {layer:"概率层 · 分布", status:"live",
+    role:"中心差 >1.5°C 时往中间补一块共识成分，2.0°C 补满 0.4"},
+  "辐射降温项": {layer:"概率层 · 分布", status:"live",
+    role:"按预报日照把整条分布往冷/暖推：标准分 × 每单位系数 × σ"},
+  "TAF 层": {layer:"P0-M · TAF", status:"live",
+    role:"最新 3 份 TAF 拆解与温度读数；TAF 似然现无校准件，对 P0-M 恒等"},
+  "METAR 层": {layer:"P1 · METAR", status:"live",
+    role:"最新 3 份 METAR 拆解、温度路径预测、对 P1 的实际影响"},
+  "区域模型": {layer:"P1 · 区域模型", status:"live",
+    role:"不进 P0 融合；P1 里作路径先验（准入名单与权重）和四层链特征"},
   "偏差订正与权重": {layer:"概率层", status:"live",
     role:"每站每提前量订正多少、四个模型各占多少 → 中心从这里来"},
   "四大模型权重": {layer:"概率层", status:"live",
@@ -18323,13 +19721,22 @@ const subHtml = (item) => `<div class="subgroup" data-lane="${
   item.status ? ` <span class="pill ${LANE_TONE[item.status] || ""}">${
   h(LANE_WORD[item.status] || item.status)}</span>` : ""}</div>${
   item.note ? `<div class="subgroup-n muted">${h(item.note)}</div>` : ""}</div>`;
+// A container: its kind's colour on the border and title, a word for the
+// kind, the note, then its sections under their usual guards.
+const boxHtml = (g, item, i) => {
+  const kind = BOX_KIND[item.kind] || BOX_KIND.audit;
+  return `<div class="box" style="--box:${kind.tone}" data-kind="${item.kind || ""}">
+    <div class="box-t">${h(item.box)} <span class="box-k">${kind.word}</span></div>
+    ${item.note ? `<div class="box-n muted">${h(item.note)}</div>` : ""}
+    ${item.sections.map((sub, j) => sec(sub[0], sub[1], `sec-${g.id}-${i}-${j}`)).join("")}</div>`;
+};
 const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}"
   style="--tone:${g.tone}">
   <div class="grouptitle">${g.label}<span class="muted">${g.note}</span></div>
   ${g.intro ? safe(g.intro, `${g.label}逻辑图`) : ""}
   ${g.sections.map((item, i) => Array.isArray(item)
     ? sec(item[0], item[1], `sec-${g.id}-${i}`)
-    : subHtml(item)).join("")}</section>`).join("");
+    : item.box ? boxHtml(g, item, i) : subHtml(item)).join("")}</section>`).join("");
 
 // The bar is the first thing on the page (user ruling, 2026-09-09).  It was
 // already sticky, but sitting under the banner and the live-readiness
