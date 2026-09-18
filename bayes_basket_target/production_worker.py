@@ -139,6 +139,7 @@ from .metar_trajectory import (
     METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
     MetarTrajectoryLikelihoodArtifact,
 )
+from .metar_path_state import admissible_p1_source_lanes
 from .observed_high_floor import (
     dead_buckets_for_running_high,
     dead_buckets_for_upper_bounds,
@@ -12998,12 +12999,9 @@ class TargetProductionWorker:
                 # slots -- same sensor, same slots, admitted by the adapter
                 # at write time -- so the observation set is a subset of
                 # that trio, never a second registry lane.
-                admitted_observation_lanes = {expected_source_lane}
-                if expected_source_lane == "awc":
-                    admitted_observation_lanes |= {
-                        "asos_1min",
-                        "madis_hfmetar",
-                    }
+                admitted_observation_lanes = set(
+                    admissible_p1_source_lanes(expected_source_lane)
+                )
                 if not source_lanes:
                     raise ContractError(
                         "resident_p1_source_lane_ambiguous"

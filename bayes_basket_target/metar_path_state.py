@@ -27,6 +27,30 @@ PHYSICAL_STATE_SCHEMA = "bayes_basket_metar_physical_state_v1"
 # imported back -- so the slope series below and the hard-rights rule one
 # level up read the same list instead of two copies of it.
 SOFT_PATH_SOURCE_LANES = frozenset({"asos_1min", "madis_hfmetar"})
+
+
+def admissible_p1_source_lanes(registry_lane: str) -> frozenset[str]:
+    """The lanes a station-day's P1 may carry, given its registry lane.
+
+    The registry binds each formal station to one lane.  An AWC station-day
+    also carries the intra-hour ASOS carriers above -- same sensor, same
+    slots (2026-08-28/29 rulings) -- and a P1 refreshed on one of them names
+    that lane: ``MADIS_HFMETAR`` with ``report_type=ASOS_HF``.  An AMSC
+    station-day admits only itself.
+
+    One definition for every gate that asks.  Until 2026-09-18 the P1
+    writer, the SSOT loader and the worker each spelled this set out and the
+    runtime optimizer's own gate never learnt it: every time a US station's
+    newest P1 was a carrier refresh, the loader passed it and the runtime
+    refused the whole scope ``probability_p1_source_lane_mismatch`` until
+    the next METAR P1 superseded it (7 of 10 US station-days in the
+    10:52Z cycle).
+    """
+
+    lane = str(registry_lane or "").strip().lower()
+    return frozenset({lane}) | (
+        SOFT_PATH_SOURCE_LANES if lane == "awc" else frozenset()
+    )
 MAX_RAW_METAR_BYTES = 16_384
 # How long one report's physical vector speaks for the rows after it.  The
 # sky does not change carrier to carrier, and a report that omits a group

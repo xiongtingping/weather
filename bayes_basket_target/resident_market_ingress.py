@@ -51,6 +51,20 @@ def _timestamp(value: str) -> str:
         raise ContractError("resident_market_observed_at_invalid") from exc
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ContractError("resident_market_observed_at_timezone_required")
+    # A UTC stamp is kept exactly as the quote carries it, because the quote
+    # row beside it stores that string verbatim (``market_ingress._timestamp``
+    # validates and returns the text).  Re-rendered through ``isoformat()``
+    # the inventory and order-state rows of a bundle read ``.089000Z`` next
+    # to a quote row at ``.089Z``.  Same instant, but the loader orders each
+    # table by the string, and ``'.089000Z' < '.089Z'``: when P0
+    # preselection and this ingress both wrote a station-day at one instant,
+    # the quote table's newest row was this ingress's and the inventory
+    # table's newest was preselection's, and
+    # ``load_production_market_snapshot`` refused the scope
+    # ``production_inventory_version_drift`` (2026-09-18 10:56Z: EDDM 09-19,
+    # WSSS 09-20, KBKF 09-19, MPMG 09-19).  Only another offset is rendered.
+    if text.endswith("Z") and parsed.utcoffset().total_seconds() == 0:
+        return text
     return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 

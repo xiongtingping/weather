@@ -40,6 +40,7 @@ from .metar_trajectory import (
     SOFT_LIKELIHOOD_POLICY_SUSPENDED,
     assert_p1_execution_evidence,
 )
+from .metar_path_state import admissible_p1_source_lanes
 from .contracts import (
     POLICY_MATURITY_BINS,
     CalibrationActivation,
@@ -633,11 +634,7 @@ def load_materialized_probability_envelopes(
             # frozen METAR slots.  The substitute lanes are the same sensor
             # on the same slots; a retired AMSC lane still blocks the scope
             # exactly as before.
-            allowed_p1_lanes = (
-                {expected_lane, "asos_1min", "madis_hfmetar"}
-                if expected_lane == "awc"
-                else {expected_lane}
-            )
+            allowed_p1_lanes = admissible_p1_source_lanes(expected_lane)
             if any(
                 str(envelope.lineage.get("source_lane") or "")
                 .strip()

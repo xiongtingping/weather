@@ -70,6 +70,7 @@ from .settlement_time import (
 from .regime_artifact import RegimeArtifact, resolve_regime_artifact
 from .regime_materialization import evaluate_regime_gate
 from .metar_trajectory import assert_p1_execution_evidence
+from .metar_path_state import admissible_p1_source_lanes
 from .observed_high_floor import (
     dead_buckets_for_running_high,
     running_high_from_market_snapshot,
@@ -704,7 +705,7 @@ def _assert_current_p1_source_lane(
     if lane not in {"amsc", "awc"}:
         raise ContractError("probability_expected_source_lane_invalid")
     supplied = str(envelope.lineage.get("source_lane") or "").strip().lower()
-    if supplied != lane:
+    if supplied not in admissible_p1_source_lanes(lane):
         raise ContractError("probability_p1_source_lane_mismatch")
     if (
         str(envelope.lineage.get("prediction_root_stage") or "")
