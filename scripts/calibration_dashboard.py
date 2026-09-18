@@ -16451,7 +16451,7 @@ function tiebreakLane(){
       <span>每笔 <b class="mono">${usd(S.stake_usdc)}</b>（顶部「秤砣每笔」旋钮可调）</span>
       <span class="muted">规则 <b class="mono">${h(S.rule||"model_mode_midband_spread_v2_1")}</b>：模型众数桶且市场给它 ${n3(S.min_market_share_on_model_mode)}–${S.max_market_share_on_model_mode==null?"∞":n3(S.max_market_share_on_model_mode)}${(S.rule||"")==="adjacent_tie_v1"?"（且两众数相邻不同）":""}${/v2_1$/.test(S.rule||"")?`，该桶点差 ≤ ${S.max_spread_on_model_mode==null?"—":Math.round(S.max_spread_on_model_mode*100)} 分`:""}，首决策 ${S.first_decision_fresh_seconds==null?"—":Math.round(S.first_decision_fresh_seconds/60)} 分钟内</span>
       <span style="flex:1"></span>
-      ${laneWord("basket","篮子买单")} ${laneWord("certain_win_recycle","0.998 回收")} ${laneWord("mis_bought_leg_exit","144 卖回")}
+      ${laneWord("basket","篮子买单")} ${laneWord("certain_win_recycle","0.99 回收")} ${laneWord("mis_bought_leg_exit","144 卖回")}
     </div>
     <div class="muted" style="margin-top:6px">v2.1 规则：每个阶段的首个决策，模型众数桶被市场归一化中价定在 0.40–0.60 之间、且该桶两边有报价点差不超过 3 分，就按卖一梯走到预算所及的最深一档 FOK 买这桶，一个站日只买一次（点差 >3 分或单边的桶回测 −3.4%，≤3 分 +8~9%）。读数依据（全部快照 08-15→09-17，一站日一次按卖一）：754 站日 +5.7% [−0.2, +10.9]，前后半 +5.5/+5.7，仅首决策 488 站日 +7.9% [+1.8, +13.7]；同价带不看模型 −3.2%，模型众数在别处 −7.2%。v1（两众数相邻不同、市场 ≥0.40）是其 148 站日子集，行按 rule_version 分开记——仍是假设，不是结论。</div></div>`;
   const byRule=(E.by_rule||[]).map(r=>`<span class="pill ${/v2$/.test(r.rule_version)?"green":"amber"}" title="${h(r.first_at_utc||"")} → ${h(r.last_at_utc||"")}">${h(r.rule_version.replace("tiebreak_",""))}：评估 ${r.evaluated} · 触发 ${r.fired} · 发单 ${r.sent}</span>`).join(" ");

@@ -1,60 +1,47 @@
-"""Sell a won position at 0.998 instead of waiting for settlement.
+"""Keep a 0.99 sell resting on every held leg.
 
-Operator ruling 2026-08-31: 确定赢的仓位提前 0.2% 折价回笼资金再周转 -- a
-position that has already won pays 1.000 at settlement, hours or days from
-now; a resting sell at 0.998 pays 0.2% less, now, and the freed capital
-re-enters the budget the same cycle.  The 0.2% is the price of not waiting,
-and it also covers the residual risk that a truth revision moves the high by
-a fraction of a degree.
+Operator ruling 2026-08-31: 确定赢的仓位提前折价回笼资金再周转 -- a position
+that has won pays 1.000 at settlement, hours or days later; a sell a little
+under that pays now, and the freed capital re-enters the budget.
 
-"Won" is measured, not judged: the station's local settlement day is closed,
-and the settled truth landed inside a bucket this book holds.  Mid-day highs
-do not qualify no matter how safe they look: an afternoon record can leave
-the bucket, a closed day cannot.
+What the lane does has been ruled three times since, all on 2026-09-18:
+「直接挂单卖出啊，和收盘没关系吧」 (the close is not the condition),
+「一直挂」 (the sell rests from the moment the leg is held, not only once the
+market bids for it), and 「改为0.99」 (the price).  So: every held leg of a
+market still taking orders carries a GTC limit sell at 0.99 for the shares
+not already offered or sold, not post-only.  A leg the market already bids
+at 0.99 or more fills at once, at the bid (0.999 on a won bucket); a leg it
+does not rests at 0.99 until a buyer takes it or the venue closes the
+market.  A leg that loses never meets a buyer at 0.99, and one sold at 0.99
+that later loses was sold at 0.99 -- the price bounds both sides.
 
-This is a charter exception granted by the same ruling: the basket doctrine
-forbids selling the M/A/F buckets, and this lane sells whichever bucket won.
-The exception is bounded by the price: only at 0.998 (the "only after close"
-of 2026-08-31 was dropped on 2026-09-18, below).  The limit is the bound, not post-only: in the minutes
-between the day closing and the venue closing the market the bid already
-stands at 0.999 (ZGGG 2026-09-16: 2,553 shares bid at 0.999 with the day
-still open), so a post-only 0.998 would be refused for crossing, while a
-plain limit at 0.998 fills against that bid and pays 0.1% instead of 0.2%.
+Why 0.99 and not 0.998: the venue prices a token between 0.04 and 0.96 on a
+0.01 tick (measured 2026-09-18: 665 of 671 mid-priced book rows), where the
+highest sell it accepts is 0.99; 0.998 exists only once the bucket is priced
+past 0.96.  A sell that must rest from the moment the leg is held has to be
+a price the venue takes at every price the leg can have.
 
-Rewritten 2026-09-17 (user ruling: "打通0.998卖单").  From its first day the
-lane had never placed an order, for three reasons stacked: it read the
-inventory's holdings under ``filled_shares_by_bucket`` while every snapshot
-writes ``filled_by_bucket``, so it never saw a position; the target
-registry keeps only a few days of markets, so a day closed longer than that
-had no token to sell; and its executor wrote the intent row and nothing
-else -- no event, no reconciliation -- so a fill would never have reached
-the inventory.  It now reads the holdings the snapshot writes, takes the won
-bucket from the settlement label when one is written, else places the
-settled truth on the station-day's ladder by the settler's rule, finds the
-token and the
-tick in the newest registry row (target or canonical), else the token from
-the inventory's own token map, and sends through ``exit_orders.send_exit_sell``
-like the other exit lane.
+Two gates had to let a resting recycle sell through, and do only for it
+(RESTING_RECYCLE_SELL_PREFIX):
 
-The window is short and measured: the truth lane labels the day 1-5 minutes
-after it ends, the venue stops accepting orders 18-75 minutes after (37
-station-days, 2026-09-14..16), so the lane has two or three cycles.  On
-2026-09-16 the label came 63 minutes late for the Chinese stations and the
-window was missed outright; the lane cannot fix that, only report it.
+* the order-state quiescence predicates (order_state_producer), which
+  refuse a station-day a zero-pending order snapshot -- and so stop its
+  quotes renewing -- while any of its orders is open.  A resting sell of a
+  held leg spends no cash and reserves nothing a decision reads; held all
+  day it would have frozen every held station-day's quotes (RKSI
+  2026-09-18, a charter 144 sell, froze RKSI's for a day);
+* the same-bucket sequential gate (can_submit_next_order), which holds a
+  token shut while another order on it is open: a plainly resting recycle
+  sell no longer blocks a buy (the tiebreak lane's, a basket top-up) or the
+  next recycle sell on that token.  One whose state is unknown still does.
 
-Widened 2026-09-18 (user ruling: 「直接挂单卖出啊，和收盘没关系吧」): the
-close is not the condition, the price is.  A held leg the market already
-bids at the recycle price is sold into that bid whether or not its day has
-closed -- measured over 09-10..17, all 11 held legs that went on to win were
-bid at >= 0.998 before their day ended (median 6.5 h before), and none of
-the 50 that lost ever was.  A sale at 0.998 of a bucket that later loses is
-0.998 received for a token that pays nothing, so the price bounds the risk
-from both sides.  That sell is a GTD of a few minutes sized to the standing
-depth, not an order left resting all day: a resting order keeps its
-station-day's order state non-quiescent, and the market evidence pass then
-stops renewing that day's quotes (RKSI 2026-09-18, a charter 144 sell).  The
-close-and-truth path stays as the fallback for a leg the bid path did not
-sell, resting (GTC) because a closed day's quotes serve nothing any more.
+History: from 08-31 to 09-17 the lane never placed an order (it read the
+holdings under a key no snapshot wrote, lost the token when the target
+registry pruned the market, and wrote no event or reconciliation); repaired
+09-17, it was then paused by charter 146 with the other lanes until
+「继续，打开车道」 reopened it 09-18 08:50Z.  The intent prefix keeps the
+lane's first name, recycle998, so its decisions and every reader of them
+keep one key.
 """
 
 from __future__ import annotations
@@ -66,38 +53,34 @@ from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from .candidate_window_evidence import _settled_bucket
 from .contracts import content_sha256
-from .exit_orders import send_exit_sell, wall_clock_utc
-from .settlement_time import settlement_day_state
+from .exit_orders import send_exit_sell
 
-RECYCLE_PRICE = 0.998
+RECYCLE_PRICE = 0.99
 STRATEGY_ID = "bayes_basket_target_v1"
 INTENT_PREFIX = "recycle998"
 SCHEMA = "certain_win_recycle_plan_v1"
-RULE_VERSION = "certain_win_recycle_bid_or_settled_v3"
+RULE_VERSION = "certain_win_recycle_resting_099_v4"
 DEFAULT_MIN_ORDER_SHARES = 5.0
 DEFAULT_TICK_SIZE = 0.01
-# A day closed longer ago than this has settled on the venue or is about to;
-# the tokens redeem at 1.000 and there is nothing to recycle.
-MAX_DAYS_SINCE_CLOSE = 7.0
-# Attempts per leg, per trigger.  The settled path retries a refusal over
-# the minutes before the venue closes the market; the bid path over the
-# hours a won bucket is bid at the recycle price before its day ends.
-MAX_ATTEMPTS_PER_LEG = 3
-MAX_BID_ATTEMPTS_PER_LEG = 6
-# The two triggers (user ruling 2026-09-18, 「直接挂单卖出啊，和收盘没关系吧」).
-TRIGGER_BID = "bid_at_recycle_price"
-TRIGGER_SETTLED = "settled_truth_after_close"
-# A bid older than this is not a price anyone will pay (the charter 144
-# exit's bound): the book is renewed about every seven minutes a station.
-MAX_BID_AGE_SECONDS = 900.0
-# The bid path's order lives this long: it meets the standing bid at once,
-# and if the book moved under it the venue retires it minutes later instead
-# of it resting all day -- a resting order holds its station-day's order
-# state non-quiescent, which stops that day's quotes from renewing (RKSI
-# 2026-09-18, a charter 144 sell).  The venue's floor on a GTD is 180 s.
-GTD_HORIZON_SECONDS = 300
+# A market takes orders until a few hours after its day ends (18-300 min,
+# measured 2026-09-14..16), and a day ends at most about a day and a half
+# after its date in UTC; older station-days hold nothing left to sell.
+MAX_EVENT_AGE_DAYS = 3.0
+# Sends the venue refused, per leg, before the lane leaves it to settle; and
+# every send of the leg, so a sell the venue keeps retiring is not re-posted
+# every cycle for the life of the market.
+MAX_FAILED_SENDS_PER_LEG = 6
+MAX_SENDS_PER_LEG = 12
+# Sends per cycle.  Each goes through the gateway on the writer's turn (the
+# charter 144 batch took ~15 s an order); the first pass after this rule
+# offers every held leg at once, so it is spread over cycles, the legs the
+# market bids highest first.
+MAX_SENDS_PER_CYCLE = 8
+# A book older than this gives no bid to order the sends by.
+MAX_BOOK_AGE_SECONDS = 3600.0
+# The venue's refusal when the account does not hold the shares.
+BALANCE_REFUSAL_MARK = "not enough balance"
 
 
 def _has_table(conn: sqlite3.Connection, name: str) -> bool:
@@ -168,7 +151,7 @@ def _registry_rows(
 
 
 def recycle_price(tick_size: Any) -> float:
-    """0.998 on a 0.001 tick; the highest tick under it otherwise (0.99)."""
+    """0.99 on the venue's 0.01 and 0.001 ticks alike; floored to a coarser one."""
 
     try:
         tick = float(tick_size)
@@ -194,12 +177,14 @@ def _floor_cents(shares: float) -> float:
 
 def _latest_book(
     conn: sqlite3.Connection, *, station_id: str, event_date: str, now_utc: str,
-) -> dict[str, Any] | None:
-    """The station-day's newest committed book, if young enough to sell on:
-    per bucket the bid ladder (price desc), token, tick and minimum size."""
+) -> dict[str, Any]:
+    """The station-day's newest committed book at or before now_utc: its
+    settlement timezone (any age), and per bucket the best bid and the tick
+    when the book is young enough to order the sends by."""
 
+    out: dict[str, Any] = {"settlement_timezone": "", "legs": {}}
     if not _has_table(conn, "basket_official_ws_snapshot"):
-        return None
+        return out
     row = conn.execute(
         "SELECT observed_at, buckets_json, settlement_timezone FROM basket_official_ws_snapshot"
         " WHERE station_id=? AND event_date=? AND state='COMMITTED' AND observed_at<=?"
@@ -207,283 +192,98 @@ def _latest_book(
         (station_id, event_date, now_utc),
     ).fetchone()
     if row is None:
-        return None
+        return out
+    out["settlement_timezone"] = str(row[2] or "")
     try:
         age = (_utc(now_utc) - _utc(str(row[0]))).total_seconds()
         buckets = json.loads(row[1] or "[]") or []
     except (TypeError, ValueError):
-        return None
-    if age < 0.0 or age > MAX_BID_AGE_SECONDS:
-        return None
-    legs: dict[str, dict[str, Any]] = {}
+        return out
+    if age < 0.0 or age > MAX_BOOK_AGE_SECONDS:
+        return out
     for item in buckets:
-        if not isinstance(item, Mapping) or not item.get("token_id"):
+        if not isinstance(item, Mapping):
             continue
-        bids: list[tuple[float, float]] = []
+        best_bid = 0.0
         for level in item.get("bid_levels") or ():
             try:
-                price, shares = float(level["price"]), float(level["shares"])
+                best_bid = max(best_bid, float(level["price"]))
             except (KeyError, TypeError, ValueError):
                 continue
-            if price > 0.0 and shares > 0.0:
-                bids.append((price, shares))
-        bids.sort(key=lambda level: -level[0])
-        legs[str(item.get("bucket"))] = {
-            "token_id": str(item["token_id"]),
-            "bids": bids,
+        out["legs"][str(item.get("bucket"))] = {
+            "best_bid": best_bid,
             "tick_size": item.get("price_tick_size"),
             "min_size": item.get("min_order_size"),
+            "token_id": str(item.get("token_id") or ""),
         }
-    return {
-        "observed_at": str(row[0]),
-        "age_seconds": round(age, 3),
-        "settlement_timezone": str(row[2] or ""),
-        "legs": legs,
-    }
+    return out
+
+
+def _settlement_timezone(
+    canonical_conn: sqlite3.Connection | None, *, station_id: str, event_date: str, book_timezone: str,
+) -> str:
+    if book_timezone or canonical_conn is None:
+        return book_timezone
+    if not _has_table(canonical_conn, "reported_trajectory_canonical_station_day_bounds"):
+        return ""
+    bound = canonical_conn.execute(
+        "SELECT settlement_timezone FROM reported_trajectory_canonical_station_day_bounds"
+        " WHERE station_id=? AND event_date=?",
+        (station_id, event_date),
+    ).fetchone()
+    return str((bound or [""])[0] or "")
 
 
 def _own_sells(
     conn: sqlite3.Connection, *, station_id: str, event_date: str, bucket: str, counted: set[str],
 ) -> dict[str, Any]:
-    """This lane's sells on the leg: whether one is still open, the shares
-    sold that the inventory has not netted yet, and the attempts per trigger."""
+    """This lane's sells on the leg: the shares still offered by its open
+    orders, the shares it sold that the inventory has not netted yet, and
+    how many of its sends the venue refused and how many it made."""
 
-    open_order = False
+    offered = 0.0
     sold_unseen = 0.0
-    attempts = {TRIGGER_BID: 0, TRIGGER_SETTLED: 0}
-    for intent_id, intent_state, intent_json, reconciliation_state, filled in conn.execute(
-        "SELECT i.order_intent_id, i.state, i.intent_json, COALESCE(r.state, ''), COALESCE(r.filled_size, 0)"
+    failed = 0
+    sends = 0
+    no_balance = False
+    for intent_id, intent_state, requested, reconciliation_state, filled, refusal in conn.execute(
+        "SELECT i.order_intent_id, i.state, i.requested_size, COALESCE(r.state, ''), COALESCE(r.filled_size, 0),"
+        " (SELECT e.event_json FROM basket_target_order_events e WHERE e.order_intent_id=i.order_intent_id"
+        "   AND e.event_type='SUBMIT_REFUSED' ORDER BY e.rowid DESC LIMIT 1)"
         " FROM basket_target_order_intents i"
         " LEFT JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id"
         " WHERE i.order_action='SELL' AND i.bucket=? AND i.decision_id=?",
         (bucket, f"{INTENT_PREFIX}_decision_{station_id}_{event_date}"),
     ):
+        sends += 1
+        if refusal and BALANCE_REFUSAL_MARK in str(refusal):
+            no_balance = True
+        filled = float(filled or 0.0)
         if str(intent_state) in {"prepared", "submitting", "submitted", "reconcile_required"} and not str(
             reconciliation_state
         ).startswith("resolved_"):
-            open_order = True
+            # Still at the venue, or not known not to be: all of it that has
+            # not filled is offered.
+            offered += max(0.0, float(requested or 0.0) - filled)
+        if str(intent_state) == "failed":
+            failed += 1
+        # The inventory already nets every sale it has seen (SELL fills count
+        # negative); only this lane's fills missing from its lineage are
+        # taken off again.  Taking every sale off twice left a partly sold
+        # leg reading zero once the inventory caught up.
         if str(intent_id) not in counted:
-            sold_unseen += float(filled or 0.0)
-        try:
-            trigger = str(((json.loads(intent_json or "{}") or {}).get("plan") or {}).get("trigger") or "")
-        except (TypeError, ValueError):
-            trigger = ""
-        attempts[TRIGGER_BID if trigger == TRIGGER_BID else TRIGGER_SETTLED] += 1
-    return {"open": open_order, "sold_unseen": sold_unseen, "attempts": attempts}
+            sold_unseen += filled
+    return {"offered": offered, "sold_unseen": sold_unseen, "failed": failed, "sends": sends,
+            "no_balance": no_balance}
 
 
-def _intent_id(*, station_id: str, event_date: str, bucket: str, token_id: str, trigger: str, now_utc: str) -> str:
+def _intent_id(*, station_id: str, event_date: str, bucket: str, token_id: str, now_utc: str) -> str:
     minute = _utc(now_utc).replace(second=0, microsecond=0)
     return INTENT_PREFIX + "_" + content_sha256({
-        "schema": SCHEMA, "station_id": station_id, "event_date": event_date,
-        "bucket": bucket, "token_id": token_id, "trigger": trigger,
+        "schema": SCHEMA, "rule": RULE_VERSION, "station_id": station_id, "event_date": event_date,
+        "bucket": bucket, "token_id": token_id,
         "minute": minute.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
     })[:40]
-
-
-def _bid_plan(
-    *, station_id: str, event_date: str, bucket: str, leg: Mapping[str, Any], book: Mapping[str, Any],
-    remaining: float, sold_unseen: float, now_utc: str,
-) -> dict[str, Any] | None:
-    """A sell into the standing bid, when the market already pays the
-    recycle price for this bucket -- whether or not its day has closed.
-
-    Measured 2026-09-18 over 09-10..17: all 11 held legs that went on to win
-    were bid at >= 0.998 before their day ended, a median 6.5 h before it
-    (ZUCK the latest, 0.38 h); none of the 50 held legs that lost ever was.
-    The bid is the market saying the bucket has won; waiting for the day to
-    close and the truth to land spent those hours holding capital, and on
-    09-16 missed the venue's close outright.  Sized to the depth standing at
-    or above the price, so the order meets the bid whole rather than resting
-    its remainder."""
-
-    if not book.get("settlement_timezone"):
-        return None
-    tick = leg.get("tick_size") or DEFAULT_TICK_SIZE
-    price = recycle_price(tick)
-    depth = sum(shares for level_price, shares in leg["bids"] if level_price >= price - 1e-9)
-    if depth <= 0.0:
-        return None
-    try:
-        min_size = float(leg.get("min_size") or DEFAULT_MIN_ORDER_SHARES)
-    except (TypeError, ValueError):
-        min_size = DEFAULT_MIN_ORDER_SHARES
-    size = _floor_cents(min(remaining, depth))
-    if size + 1e-9 < max(min_size, 1e-6):
-        return None
-    try:
-        tick_size = float(tick)
-    except (TypeError, ValueError):
-        tick_size = DEFAULT_TICK_SIZE
-    return {
-        "schema": SCHEMA,
-        "rule": RULE_VERSION,
-        "trigger": TRIGGER_BID,
-        "order_intent_id": _intent_id(
-            station_id=station_id, event_date=event_date, bucket=bucket,
-            token_id=str(leg["token_id"]), trigger=TRIGGER_BID, now_utc=now_utc,
-        ),
-        "station_id": station_id,
-        "event_date": event_date,
-        "settlement_timezone": str(book["settlement_timezone"]),
-        "bucket": bucket,
-        "token_id": str(leg["token_id"]),
-        "shares": size,
-        "limit_price": price,
-        "tick_size": tick_size,
-        "best_bid": leg["bids"][0][0],
-        "depth_at_price": round(depth, 6),
-        "book_observed_at": str(book["observed_at"]),
-        "book_age_seconds": book["age_seconds"],
-        "sold_before_shares": round(sold_unseen, 6),
-    }
-
-
-def _settled_win(
-    target_conn: sqlite3.Connection,
-    canonical_conn: sqlite3.Connection | None,
-    *,
-    station_id: str,
-    event_date: str,
-    now_utc: str,
-) -> dict[str, Any] | None:
-    """The bucket the station-day's closed day settled in, or None while the
-    day is open, the truth has not landed, or it closed over a week ago."""
-
-    # Charter 100: the settled truth, never the trajectory lane's running
-    # bound.  The label table names the bucket outright but is written
-    # 25-235 minutes after the truth (measured 2026-09-16), later than
-    # the venue closes the market; so the truth row is placed on the
-    # station-day's ladder by the settler's own rule when no label has
-    # been written yet -- the same computation the label lane runs.
-    label = None
-    if _has_table(target_conn, "basket_station_day_settlement_label"):
-        label = target_conn.execute(
-            "SELECT settled_bucket FROM basket_station_day_settlement_label"
-            " WHERE station_id=? AND event_date=?"
-            " ORDER BY truth_revision_no DESC LIMIT 1",
-            (station_id, event_date),
-        ).fetchone()
-    truth = target_conn.execute(
-        "SELECT t.official_tmax_c, t.settlement_timezone, t.observation_ids_json"
-        " FROM calibration_station_daily_high_truth AS t"
-        " WHERE t.station_id=? AND t.local_date=? AND t.source_lane='AWC'"
-        " AND t.qc_status='ACCEPTED'"
-        " AND t.authority_scope IN"
-        " ('FORMAL_NATIVE_ELIGIBLE','NO_LIVE_REPLAY_CANDIDATE')"
-        " ORDER BY t.revision_no DESC LIMIT 1",
-        (station_id, event_date),
-    ).fetchone()
-    if truth is None or truth[0] is None:
-        return None
-    high_c = float(truth[0])
-    timezone_name = str(truth[1] or "")
-    if not timezone_name and canonical_conn is not None:
-        bound = canonical_conn.execute(
-            "SELECT settlement_timezone"
-            " FROM reported_trajectory_canonical_station_day_bounds"
-            " WHERE station_id=? AND event_date=?",
-            (station_id, event_date),
-        ).fetchone()
-        timezone_name = str((bound or [""])[0] or "")
-    if not timezone_name:
-        return None
-    try:
-        day = settlement_day_state(
-            event_date, as_of_utc=now_utc, settlement_timezone=timezone_name,
-        )
-    except Exception:  # noqa: BLE001
-        return None
-    if day["state"] != "closed":
-        return None
-    if (_utc(now_utc) - _utc(day["target_day_end_utc"])).total_seconds() > MAX_DAYS_SINCE_CLOSE * 86400.0:
-        return None
-    won: str | None = str(label[0]) if label and label[0] else None
-    won_by = "settlement_label"
-    if won is None and _has_table(target_conn, "basket_probability_bridge_history"):
-        head = target_conn.execute(
-            "SELECT history_id FROM basket_probability_bridge_history"
-            " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-            " ORDER BY decision_at_utc DESC LIMIT 1",
-            (station_id, event_date),
-        ).fetchone()
-        if head:
-            ladder = target_conn.execute(
-                "SELECT bucket, ordinal, lower_c, upper_c"
-                " FROM basket_probability_bridge_bucket_probability"
-                " WHERE history_id=? ORDER BY ordinal",
-                (head[0],),
-            ).fetchall()
-            won = _settled_bucket(ladder, high_c) if ladder else None
-            won_by = "truth_on_ladder"
-    if won is None:
-        return None
-    return {
-        "won": won, "won_by": won_by, "high_c": high_c,
-        "settlement_timezone": timezone_name,
-        "truth_observation_ids_json": str(truth[2] or ""),
-    }
-
-
-def _settled_plan(
-    target_conn: sqlite3.Connection,
-    canonical_conn: sqlite3.Connection | None,
-    *,
-    inventory: Mapping[str, Any],
-    station_id: str,
-    event_date: str,
-    bucket: str,
-    settled: Mapping[str, Any],
-    remaining: float,
-    sold_unseen: float,
-    now_utc: str,
-) -> dict[str, Any] | None:
-    """A resting sell of a leg its closed day settled in, for whatever the
-    bid path did not sell before the close.  Resting costs nothing here: a
-    closed day's quotes are not renewed for anything any more."""
-
-    # Only now the registry, and only the won bucket: it is the one read
-    # here whose cost grows with every refresh the day was ever given.
-    registry = _registry_rows(
-        target_conn, canonical_conn, station_id=station_id, event_date=event_date, outcome=bucket,
-    )
-    row = registry.get(bucket) or {}
-    token_id = row.get("yes_token") or str(
-        (inventory.get("token_ids_by_bucket") or {}).get(bucket) or ""
-    )
-    if not token_id:
-        return None
-    if row.get("accepting_orders") is not None and int(row["accepting_orders"] or 0) != 1:
-        # The venue has closed the market: the tokens redeem, nothing sells.
-        return None
-    try:
-        min_size = float(row.get("min_size") or DEFAULT_MIN_ORDER_SHARES)
-    except (TypeError, ValueError):
-        min_size = DEFAULT_MIN_ORDER_SHARES
-    if remaining + 1e-9 < max(min_size, 1e-6):
-        return None
-    tick = row.get("tick_size") or DEFAULT_TICK_SIZE
-    return {
-        "schema": SCHEMA,
-        "rule": RULE_VERSION,
-        "trigger": TRIGGER_SETTLED,
-        "order_intent_id": _intent_id(
-            station_id=station_id, event_date=event_date, bucket=bucket,
-            token_id=str(token_id), trigger=TRIGGER_SETTLED, now_utc=now_utc,
-        ),
-        "station_id": station_id,
-        "event_date": event_date,
-        "settlement_timezone": str(settled["settlement_timezone"]),
-        "bucket": bucket,
-        "token_id": str(token_id),
-        "shares": remaining,
-        "limit_price": recycle_price(tick),
-        "tick_size": float(tick) if isinstance(tick, (int, float)) else DEFAULT_TICK_SIZE,
-        "observed_max_c": settled["high_c"],
-        "won_by": settled["won_by"],
-        "sold_before_shares": round(sold_unseen, 6),
-        "truth_observation_ids_json": settled["truth_observation_ids_json"],
-    }
 
 
 def plan_certain_win_recycles(
@@ -492,26 +292,22 @@ def plan_certain_win_recycles(
     *,
     now_utc: str,
 ) -> list[dict[str, Any]]:
-    """Every held bucket whose day has closed on a settled truth inside it.
+    """The 0.99 sells to place: for every held leg of a market still taking
+    orders, the shares no open sell of this lane already offers and the
+    inventory has not seen sold, when that is at least the venue minimum.
 
-    Reads only; returns the sells the executor should place, each with the
-    reasons a leg was or was not one under ``readings`` of the executor's
-    receipt.  A sell already open on the leg, or shares this lane already
-    sold, are read off its own intents.
+    Reads only.  Ordered by the leg's best bid, highest first, so the sends
+    a cycle can make go to the legs closest to paying.
     """
 
     plans: list[dict[str, Any]] = []
     # The newest complete inventory of each station-day, off the covering
     # index (see the 2026-09-09/14 measurements in git history: a bare
-    # column beside MAX() re-read every row).  Only the station-days that
-    # can still have closed inside MAX_DAYS_SINCE_CLOSE (a day ends at most
-    # about a day and a half after its date, UTC), and CROSS JOIN so the
-    # planner seeks each newest row from g instead of scanning every
-    # complete snapshot to meet g (measured 2026-09-18: 1,952 station-days,
-    # 3.6 s -> 495 station-days, 0.07-0.3 s, the same rows).
-    oldest_date = (
-        _utc(now_utc) - timedelta(days=MAX_DAYS_SINCE_CLOSE + 2.0)
-    ).date().isoformat()
+    # column beside MAX() re-read every row), only for the days whose
+    # markets can still take orders, and CROSS JOIN so each newest row is
+    # one seek from g rather than a scan of every complete snapshot to meet
+    # g (measured 2026-09-18: 1,952 station-days, 3.6 s -> 0.07-0.3 s).
+    oldest_date = (_utc(now_utc) - timedelta(days=MAX_EVENT_AGE_DAYS)).date().isoformat()
     inventories = target_conn.execute(
         "SELECT s.station_id, s.event_date, s.inventory_json, s.observed_at,"
         "       MAX(s.rowid)"
@@ -531,7 +327,7 @@ def plan_certain_win_recycles(
             inventory = json.loads(inventory_json or "{}")
         except ValueError:
             continue
-        # The snapshot writes ``filled_by_bucket``; ``filled_shares_by_bucket``
+        # The snapshot writes filled_by_bucket; filled_shares_by_bucket
         # was the name this lane read for its whole first month, and no
         # snapshot ever carried it.
         held = {
@@ -545,55 +341,81 @@ def plan_certain_win_recycles(
         }
         if not held:
             continue
-        # The inventory already nets every sale it has seen (SELL fills count
-        # negative); only this lane's fills it has not seen yet are taken off
-        # again, by intent id against its lineage.  Taking every sale off
-        # twice left a partly sold leg reading zero once the inventory caught
-        # up, and its remainder was never offered again.
         counted = {
             str(item.get("order_intent_id") or "")
             for item in inventory.get("lineage") or ()
             if isinstance(item, Mapping)
         }
         book = _latest_book(target_conn, station_id=station_id, event_date=event_date, now_utc=now_utc)
-        settled: dict[str, Any] | None = None
-        settled_read = False
+        timezone_name = ""
         for bucket in sorted(held):
             own = _own_sells(
                 target_conn, station_id=station_id, event_date=event_date, bucket=bucket, counted=counted,
             )
-            if own["open"]:
+            if own["failed"] >= MAX_FAILED_SENDS_PER_LEG or own["sends"] >= MAX_SENDS_PER_LEG:
                 continue
-            remaining = _floor_cents(held[bucket] - own["sold_unseen"])
-            if remaining <= 0.0:
+            if own["no_balance"]:
+                # The venue holds none of what the ledger says is held: the
+                # position is the ledger's error, not a sale to retry (RKPK
+                # 27C 2026-09-18: 34 shares on the books, 0 in the account).
                 continue
-            leg = (book or {}).get("legs", {}).get(bucket)
-            if leg is not None and own["attempts"][TRIGGER_BID] < MAX_BID_ATTEMPTS_PER_LEG:
-                plan = _bid_plan(
-                    station_id=station_id, event_date=event_date, bucket=bucket, leg=leg, book=book,
-                    remaining=remaining, sold_unseen=own["sold_unseen"], now_utc=now_utc,
-                )
-                if plan is not None:
-                    plans.append(plan)
-                    continue
-            if not settled_read:
-                settled = _settled_win(target_conn, canonical_conn, station_id=station_id,
-                                       event_date=event_date, now_utc=now_utc)
-                settled_read = True
-            if settled is None or settled["won"] != bucket:
+            uncovered = _floor_cents(held[bucket] - own["sold_unseen"] - own["offered"])
+            if uncovered <= 0.0:
                 continue
-            if own["attempts"][TRIGGER_SETTLED] >= MAX_ATTEMPTS_PER_LEG:
-                # The venue closes the market 18-75 minutes after the day ends
-                # (measured 2026-09-14..16); a send it refused is retried on the
-                # next cycles, not every cycle for a week.
-                continue
-            plan = _settled_plan(
-                target_conn, canonical_conn, inventory=inventory, station_id=station_id,
-                event_date=event_date, bucket=bucket, settled=settled, remaining=remaining,
-                sold_unseen=own["sold_unseen"], now_utc=now_utc,
+            leg = book["legs"].get(bucket) or {}
+            registry = _registry_rows(
+                target_conn, canonical_conn, station_id=station_id, event_date=event_date, outcome=bucket,
             )
-            if plan is not None:
-                plans.append(plan)
+            row = registry.get(bucket) or {}
+            if row.get("accepting_orders") is not None and int(row["accepting_orders"] or 0) != 1:
+                # The venue has closed the market: the tokens redeem, nothing sells.
+                continue
+            token_id = row.get("yes_token") or leg.get("token_id") or str(
+                (inventory.get("token_ids_by_bucket") or {}).get(bucket) or ""
+            )
+            if not token_id:
+                continue
+            try:
+                min_size = float(row.get("min_size") or leg.get("min_size") or DEFAULT_MIN_ORDER_SHARES)
+            except (TypeError, ValueError):
+                min_size = DEFAULT_MIN_ORDER_SHARES
+            if uncovered + 1e-9 < max(min_size, 1e-6):
+                continue
+            if not timezone_name:
+                timezone_name = _settlement_timezone(
+                    canonical_conn, station_id=station_id, event_date=event_date,
+                    book_timezone=book["settlement_timezone"],
+                )
+            if not timezone_name:
+                continue
+            # The book's tick is the venue's current one (the registry's can
+            # lag a switch to 0.001); 0.99 is on both.
+            tick = leg.get("tick_size") or row.get("tick_size") or DEFAULT_TICK_SIZE
+            try:
+                tick_size = float(tick)
+            except (TypeError, ValueError):
+                tick_size = DEFAULT_TICK_SIZE
+            plans.append({
+                "schema": SCHEMA,
+                "rule": RULE_VERSION,
+                "order_intent_id": _intent_id(
+                    station_id=station_id, event_date=event_date, bucket=bucket,
+                    token_id=str(token_id), now_utc=now_utc,
+                ),
+                "station_id": station_id,
+                "event_date": event_date,
+                "settlement_timezone": timezone_name,
+                "bucket": bucket,
+                "token_id": str(token_id),
+                "shares": uncovered,
+                "limit_price": recycle_price(tick_size),
+                "tick_size": tick_size,
+                "best_bid": float(leg.get("best_bid") or 0.0),
+                "held_shares": round(held[bucket], 6),
+                "offered_before_shares": round(own["offered"], 6),
+                "sold_before_shares": round(own["sold_unseen"], 6),
+            })
+    plans.sort(key=lambda plan: (-plan["best_bid"], plan["station_id"], plan["event_date"], plan["bucket"]))
     return plans
 
 
@@ -604,38 +426,33 @@ def execute_certain_win_recycles(
     transport: Callable[[str, Mapping[str, Any]], Mapping[str, Any]],
     now_utc: str,
     live_submit_authorized: bool,
+    max_sends: int = MAX_SENDS_PER_CYCLE,
 ) -> dict[str, Any]:
-    """Mint the intents, send the sells, record what came back -- through
-    the same sender and ledger path every other order uses.  A sell into the
-    bid is a GTD that expires minutes after it is sent; a sell after the
-    close rests (GTC) until the venue closes the market."""
+    """Mint the intents, place the resting sells, record what came back --
+    through the same sender and ledger path every other order uses."""
 
     plans = plan_certain_win_recycles(target_conn, canonical_conn, now_utc=now_utc)
     receipts: list[dict[str, Any]] = []
     submitted = 0
+    sent = 0
     for plan in plans:
+        if sent >= int(max_sends):
+            break
         intent_id = plan["order_intent_id"]
         if target_conn.execute(
             "SELECT 1 FROM basket_target_order_intents WHERE order_intent_id=?", (intent_id,)
         ).fetchone():
             receipts.append({"order_intent_id": intent_id, "state": "already_minted"})
             continue
-        into_bid = plan.get("trigger") == TRIGGER_BID
-        # The expiry counts from the moment this order is sent (the charter
-        # 144 exit's lesson: one stamp per batch ran into the venue's floor).
-        expiration = (
-            int(_utc(wall_clock_utc()).timestamp()) + GTD_HORIZON_SECONDS if into_bid else None
-        )
+        sent += 1
         entry = send_exit_sell(
             target_conn, lane=INTENT_PREFIX, intent_id=intent_id,
             station_id=plan["station_id"], event_date=plan["event_date"],
             settlement_timezone=plan["settlement_timezone"], bucket=plan["bucket"],
             token_id=plan["token_id"], price=plan["limit_price"], shares=plan["shares"],
-            order_type="GTD" if into_bid else "GTC", post_only=False, tick_size=plan["tick_size"],
-            expiration=expiration,
+            order_type="GTC", post_only=False, tick_size=plan["tick_size"],
             intent_body={"schema": SCHEMA, "rule": RULE_VERSION, "strategy_id": STRATEGY_ID,
-                         "execution_candidate": "EXIT_GTD_LIMIT" if into_bid else "EXIT_GTC_LIMIT",
-                         "plan": plan},
+                         "execution_candidate": "EXIT_GTC_LIMIT", "plan": plan},
             transport=transport, live_submit_authorized=live_submit_authorized,
         )
         if entry.get("exchange_post_started"):
@@ -645,7 +462,8 @@ def execute_certain_win_recycles(
         "schema": "certain_win_recycle_receipt_v1",
         "rule": RULE_VERSION,
         "planned": len(plans),
-        "planned_into_bid": sum(1 for plan in plans if plan.get("trigger") == TRIGGER_BID),
+        "sent": sent,
+        "deferred_to_next_cycle": max(0, len(plans) - sent),
         "submitted": submitted,
         "receipts": receipts,
     }
@@ -654,8 +472,6 @@ def execute_certain_win_recycles(
 __all__ = [
     "RECYCLE_PRICE",
     "RULE_VERSION",
-    "TRIGGER_BID",
-    "TRIGGER_SETTLED",
     "recycle_price",
     "plan_certain_win_recycles",
     "execute_certain_win_recycles",

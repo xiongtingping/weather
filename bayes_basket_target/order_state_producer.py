@@ -20,6 +20,7 @@ from .contracts import ContractError, content_sha256
 from .et_history import assert_event_day_started, event_day_window
 from .activation import assert_target_database_owner, load_activation
 from .market_registry import load_active_registry_rows, load_started_registry_rows
+from .execution_reconciliation import RESTING_RECYCLE_SELL_PREFIX
 
 
 SCHEMA = "bayes_basket_target_order_state_producer_v1"
@@ -175,6 +176,19 @@ def _registry_scopes(
 # The claim is unchanged: a scope may not be called zero-pending while it
 # holds a pending order.  What changes is that the question is asked about
 # the scope being produced.
+# Charter 100 (2026-09-18, 「一直挂」 / 「改为0.99」): a recycle 0.99 sell the
+# venue acknowledged and holds rests on every held leg for as long as the
+# market trades.  It spends no cash and reserves nothing the pending
+# snapshot stands for, so it does not hold its station-day non-quiescent --
+# held all day it would have frozen every held station-day's quotes, as one
+# resting charter 144 sell froze RKSI's on 2026-09-18.  Only that plain
+# resting shape; a recycle sell whose state is unknown still blocks.  An
+# intent literal, not a bound parameter: the predicates' parameters are the
+# states and the scope.
+_RESTING_RECYCLE_SELL = (
+    f"substr(i.order_intent_id,1,{len(RESTING_RECYCLE_SELL_PREFIX)})='{RESTING_RECYCLE_SELL_PREFIX}'"
+    " AND i.order_action='SELL' AND i.state='submitted'"
+)
 _SCOPE_PREDICATES = {
     "basket_target_execution_cycles": (
         "SELECT 1 FROM basket_target_execution_cycles c"
@@ -190,14 +204,20 @@ _SCOPE_PREDICATES = {
         "SELECT 1 FROM basket_target_order_intents i"
         " LEFT JOIN basket_target_execution_cycles c ON c.cycle_id=i.cycle_id"
         " WHERE i.state IN ({states})"
+        " AND NOT (" + _RESTING_RECYCLE_SELL + " AND EXISTS("
+        "SELECT 1 FROM basket_target_order_reconciliations rr"
+        " WHERE rr.order_intent_id=i.order_intent_id AND rr.state='pending'))"
         " AND (?='' OR c.station_id IS NULL OR c.station_id=?)"
         " AND (?='' OR c.event_date IS NULL OR c.event_date=?) LIMIT 1"
     ),
+    # ``i.order_intent_id IS NOT NULL`` first: a reconciliation whose intent
+    # cannot be found stays a blocker, whatever its id looks like.
     "basket_target_order_reconciliations": (
         "SELECT 1 FROM basket_target_order_reconciliations r"
         " LEFT JOIN basket_target_order_intents i ON i.order_intent_id=r.order_intent_id"
         " LEFT JOIN basket_target_execution_cycles c ON c.cycle_id=i.cycle_id"
         " WHERE r.state IN ({states})"
+        " AND NOT (i.order_intent_id IS NOT NULL AND " + _RESTING_RECYCLE_SELL + " AND r.state='pending')"
         " AND (?='' OR c.station_id IS NULL OR c.station_id=?)"
         " AND (?='' OR c.event_date IS NULL OR c.event_date=?) LIMIT 1"
     ),

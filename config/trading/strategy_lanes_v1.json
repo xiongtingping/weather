@@ -11,7 +11,7 @@
     "certain_win_recycle": {
       "enabled": true,
       "paused_at_utc": "2026-09-18T00:00:00Z",
-      "note": "Charter 100: the 0.998 sell of a held leg. Since 2026-09-18 (user ruling 「直接挂单卖出啊，和收盘没关系吧」) a leg the market bids at >=0.998 is sold into that bid whenever it is (GTD 5 min, sized to the standing depth); a won leg still held after its day closes on the settled truth rests at 0.998 (GTC). Reopened 2026-09-18 08:50Z (「继续，打开车道」).",
+      "note": "Charter 100: a resting GTC limit sell at 0.99 on every held leg of a market still trading, for the shares not already offered or sold, not post-only; a standing bid at or above 0.99 fills it at once (user rulings 2026-09-18: 「直接挂单卖出啊，和收盘没关系吧」「一直挂」「改为0.99」). A resting recycle sell neither freezes its station-day's quotes nor shuts its token to the next order. At most 8 sends a cycle, highest bid first. Reopened 2026-09-18 08:50Z (「继续，打开车道」).",
       "enabled_at_utc": "2026-09-18T08:50:01Z"
     },
     "mis_bought_leg_exit": {

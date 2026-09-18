@@ -38,6 +38,15 @@ EPS = 1e-9
 # reconciliation, and the reconciler re-applied the same matched order as
 # a second fill -- 9.98 shares on the ledger for 4.99 bought.
 VENUE_SHARE_QUANTUM = 0.01
+# Charter 100 (2026-09-18, 「一直挂」 / 「改为0.99」): the recycle lane keeps a
+# 0.99 sell resting on every held leg for as long as the market trades.  Such
+# a sell spends no cash and holds nothing a decision reads, so while it plainly
+# rests (acknowledged, reconciliation pending) it neither shuts its token to
+# the next order (``can_submit_next_order``) nor holds its station-day
+# non-quiescent (``order_state_producer``).  One whose state is unknown still
+# does both.  The prefix is the lane's intent prefix (``recycle998``, its
+# first name) and nothing else carries it.
+RESTING_RECYCLE_SELL_PREFIX = "recycle998_"
 
 
 def fill_is_complete(filled_size: float, requested_size: float) -> bool:
@@ -558,6 +567,18 @@ def resolve_cancelled_after_partial_fill(
     return {"schema": SCHEMA, "state": "cancelled", "reconciliation_state": "resolved_partial", "order_intent_id": intent_id, "filled_size": filled, "places_orders": False, "calls_order_gateway": False}
 
 
+def _plainly_resting_recycle_sell(row: Any) -> bool:
+    """A recycle 0.99 sell the venue acknowledged and is holding: intent
+    ``submitted``, reconciliation ``pending``.  Anything less settled is not."""
+
+    return (
+        str(row[0]).startswith(RESTING_RECYCLE_SELL_PREFIX)
+        and str(row[4] or "").upper() == "SELL"
+        and str(row[1]) == "submitted"
+        and row[2] is not None and str(row[2]) == "pending"
+    )
+
+
 def can_submit_next_order(
     conn: sqlite3.Connection,
     *,
@@ -584,7 +605,7 @@ def can_submit_next_order(
     exclude = str(exclude_order_intent_id or "").strip()
     sibling_cycle = str(same_cycle_id or "").strip()
     rows = conn.execute(
-        "SELECT i.order_intent_id,i.state,r.state,i.cycle_id FROM basket_target_order_intents i LEFT JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id WHERE i.bucket=? AND i.token_id=? AND i.order_intent_id<>?",
+        "SELECT i.order_intent_id,i.state,r.state,i.cycle_id,i.order_action FROM basket_target_order_intents i LEFT JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id WHERE i.bucket=? AND i.token_id=? AND i.order_intent_id<>?",
         (bucket_value, token, exclude),
     ).fetchall()
     # A missing reconciliation row means the intent never reached the
@@ -611,6 +632,8 @@ def can_submit_next_order(
             str(row[1]) in {"prepared", "submitting", "submitted", "reconcile_required"}
             and not (sibling_cycle and str(row[3]) == sibling_cycle)
         )
+        # A recycle 0.99 sell at rest shuts nothing (charter 100, 2026-09-18).
+        if not _plainly_resting_recycle_sell(row)
     ]
     return {"schema": SCHEMA, "allowed": not blockers, "blockers": blockers, "reason": "same_bucket_unknown_or_pending" if blockers else "no_same_bucket_pending", "places_orders": False, "calls_order_gateway": False}
 

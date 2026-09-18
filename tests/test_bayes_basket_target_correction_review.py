@@ -606,7 +606,10 @@ def test_the_halt_write_back_is_in_the_appender() -> None:
         Path(__file__).resolve().parents[1]
         / "bayes_basket_target" / "certain_win_recycle.py"
     ).read_text(encoding="utf-8")
-    assert "calibration_station_daily_high_truth" in recycler
+    # Since 2026-09-18 (「一直挂」 / 「改为0.99」) the recycler judges no
+    # winner at all -- every held leg is offered at 0.99 -- so it reads no
+    # truth; what stays pinned is that it never reads the running bound for
+    # anything but the timezone.
     assert "reported_trajectory_canonical_station_day_bounds" in recycler, (
         "the bound is still read, but only for the timezone fallback"
     )

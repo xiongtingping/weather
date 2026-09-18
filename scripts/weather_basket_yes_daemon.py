@@ -3371,11 +3371,10 @@ def run_target_production_cycle(
             "live_submit_authorized": False,
             "orders_submitted": 0,
         }
-    # The 0.998 recycle lane (operator ruling 2026-08-31, widened 2026-09-18):
-    # a held leg the market bids at 0.998 is sold into that bid whether or
-    # not its day has closed, and a won leg still held after the close is
-    # offered at 0.998 rather than waiting for settlement; the freed capital
-    # re-enters the budget.  Runs after the main cycle on the same writer
+    # The recycle lane (operator ruling 2026-08-31; ruled again 2026-09-18:
+    # 「一直挂」, 「改为0.99」): every held leg of a market still trading
+    # carries a resting 0.99 sell, which a standing bid at or above it fills
+    # at once; the freed capital re-enters the budget.  Runs after the main cycle on the same writer
     # connection, and a failure here is reported on the receipt rather than
     # raised -- a take-profit convenience must not be able to stop the lane
     # that produces the positions it profits from.
