@@ -23,7 +23,11 @@ from collections.abc import Mapping
 from typing import Any
 
 from .contracts import content_sha256
-from .execution_reconciliation import can_submit_next_order, record_order_event
+from .execution_reconciliation import (
+    VENUE_SHARE_QUANTUM,
+    can_submit_next_order,
+    record_order_event,
+)
 from .exit_orders import Transport, wall_clock_utc
 from .order_submission import (
     BASKET_STRATEGY_ID,
@@ -211,24 +215,46 @@ def send_lane_buy(
     matched_size, matched_notional = fill_quantities(
         fill, event_type=outcome["event_type"], order_action="BUY", limit_price=float(price),
     )
+    fok_short = None
+    if (
+        order_type == "FOK" and outcome["event_type"] == "FILL"
+        and 0.0 < matched_size < float(shares) - VENUE_SHARE_QUANTUM - 1e-9
+    ):
+        # A fill-or-kill the venue matched IS the whole order: nothing of it
+        # rests.  The venue's matched size can sit under the size we sent
+        # (EDDM 2026-09-19: 9.5 of 9.67 at the limit -- the venue's own
+        # rounding and fee), and read as a partial fill it left the intent
+        # at ``reconcile_required`` and the station-day's quotes frozen.
+        # The request is restated as what the venue executed, with the size
+        # sent kept on the event, so the ledger closes it as filled.
+        fok_short = {"requested_size_at_send": float(shares), "requested_notional_at_send": notional}
+        conn.execute(
+            "UPDATE basket_target_order_intents SET requested_size=?, requested_notional_usdc=?"
+            " WHERE order_intent_id=?",
+            (float(matched_size), round(float(matched_notional), 6), intent_id),
+        )
     receipt = record_order_event(conn, order_intent_id=intent_id, event={
         "event_type": outcome["event_type"],
         "exchange_order_id": str(fill.get("exchange_order_id") or response.get("exchange_order_id") or ""),
         "observed_at": observed, "matched_size": matched_size, "matched_notional_usdc": matched_notional,
         "event_payload": {"idempotency_key": intent_id, "payload_sha256": content_sha256(payload),
                           "reason": outcome["reason"], "source": str(response.get("source") or ""),
-                          "exchange_status": str(fill.get("status") or "")},
+                          "exchange_status": str(fill.get("status") or ""),
+                          **({"fok_short_fill": fok_short} if fok_short else {})},
     })
     entry.update({"state": receipt.get("state"), "event_type": outcome["event_type"],
                   "matched_size": matched_size, "matched_notional_usdc": matched_notional,
-                  "exchange_post_started": True})
+                  "exchange_post_started": True, **({"fok_short_fill": fok_short} if fok_short else {})})
     _close_cycle(conn, cycle_id)
     return entry
 
 
 def _close_cycle(conn: sqlite3.Connection, cycle_id: str) -> None:
+    """See ``exit_orders._close_cycle``: one order, answered, nothing further
+    to do -- ``settled``, so the station-day's quotes keep refreshing."""
+
     conn.execute(
-        "UPDATE basket_target_execution_cycles SET state='submitted', updated_at=? WHERE cycle_id=?",
+        "UPDATE basket_target_execution_cycles SET state='settled', updated_at=? WHERE cycle_id=?",
         (wall_clock_utc(), cycle_id),
     )
 

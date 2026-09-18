@@ -209,8 +209,17 @@ def lane_sold_and_open(
 
 
 def _close_cycle(conn: sqlite3.Connection, cycle_id: str) -> None:
+    """A lane cycle is one order, and once that order has been answered the
+    cycle has nothing further to do: ``settled`` is the table's one
+    quiescent terminal state.  Left at ``submitted`` (as this did until
+    2026-09-18) the row holds the station-day's market ingress shut for the
+    rest of the day: charter 144's 2026-09-17 12:33Z exits froze the quotes
+    of nine station-days, and every decision on them died on
+    ``production_quote_expired``.  A pending order still holds the scope
+    through the intent and reconciliation predicates; the cycle need not."""
+
     conn.execute(
-        "UPDATE basket_target_execution_cycles SET state='submitted', updated_at=? WHERE cycle_id=?",
+        "UPDATE basket_target_execution_cycles SET state='settled', updated_at=? WHERE cycle_id=?",
         (wall_clock_utc(), cycle_id),
     )
 

@@ -200,7 +200,9 @@ def test_the_sell_is_a_gtd_at_the_bid_recorded_like_any_order_and_never_sold_twi
     holdings = ledger_holdings_by_token(conn, station_id=ST, event_date=ED)["holdings"]
     assert "t27" not in holdings or holdings["t27"]["shares"] < 0.01
     assert holdings["t25"]["shares"] == pytest.approx(17.0)
-    assert conn.execute("SELECT state FROM basket_target_execution_cycles WHERE cycle_id LIKE 'misbuyexit_%'").fetchall() == [("submitted",), ("submitted",)]
+    # One order each, answered: the cycle is settled, so the station-day's
+    # market ingress is not held shut by it (2026-09-18).
+    assert conn.execute("SELECT state FROM basket_target_execution_cycles WHERE cycle_id LIKE 'misbuyexit_%'").fetchall() == [("settled",), ("settled",)]
     # Next cycle: 27C is sold (below the minimum remainder), 25C's sell is still open.
     again = lane.plan_mis_bought_leg_exits(conn, now_utc="2026-09-17T12:20:00.000Z", claim_reader=_claim(None), bid_reader=bids)
     assert again["plans"] == []

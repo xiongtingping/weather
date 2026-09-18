@@ -726,3 +726,75 @@ def test_a_fill_the_reconciliation_finds_later_makes_the_row_a_success(store) ->
                                           settings={"stake_usdc": 20.0}, admission=ADMIT)
     assert after["retry_planned"] == 0 and len(sent) == 1
     assert store.execute(f"SELECT refusal FROM {lane.EVALUATION_TABLE}").fetchone()[0] is None
+
+
+def test_a_send_leaves_its_cycle_settled_so_the_days_quotes_keep_refreshing(store) -> None:
+    """The market ingress refuses to refresh a station-day while an execution
+    cycle sits at submitting/submitted (2026-09-18: RJTT, WMKK, OPKC, EDDM
+    and nine charter-144 station-days froze this way).  A lane cycle is one
+    answered order: settled."""
+
+    _seed(store)
+    lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW, live_submit_authorized=True,
+                                  settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert store.execute("SELECT state FROM basket_target_execution_cycles WHERE cycle_id LIKE 'tiebreak_cycle_%'").fetchall() == [("settled",)]
+    # A refused send too.
+    _seed(store, fact_id="f2", event_date="2026-09-20")
+    lane.execute_tiebreak_entries(store, transport=lambda p, payload: {"ok": False, "error": "refused"}, now_utc=NOW,
+                                  live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert set(r[0] for r in store.execute("SELECT state FROM basket_target_execution_cycles WHERE cycle_id LIKE 'tiebreak_cycle_%'")) == {"settled"}
+
+
+def test_a_fok_matched_under_the_size_sent_is_closed_as_filled(store) -> None:
+    """EDDM 2026-09-19: sent 9.67 at 0.62, the venue matched 9.5.  A FOK the
+    venue matched is the whole order; the request is restated as the venue's
+    size and the ledger closes it filled, never ``reconcile_required``."""
+
+    _seed(store)
+    sent: list = []
+
+    def short_fill(path, payload):
+        sent.append(payload)
+        matched = round(payload["size"] * 0.982, 2)
+        return {"ok": True, "accepted": True, "exchange_order_id": "0xshort", "status": "matched",
+                "shares_matched": matched, "exchange": {"size_matched": matched, "makingAmount": matched * payload["price"]}}
+
+    receipt = lane.execute_tiebreak_entries(store, transport=short_fill, now_utc=NOW, live_submit_authorized=True,
+                                            settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert receipt["filled"] == 1
+    row = store.execute(
+        "SELECT i.state, i.requested_size, r.state, r.filled_size FROM basket_target_order_intents i"
+        " JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id"
+    ).fetchone()
+    assert row[0] == "filled" and row[2] == "resolved_filled" and row[1] == pytest.approx(row[3])
+    assert row[3] == pytest.approx(round(sent[0]["size"] * 0.982, 2))
+    ev = store.execute("SELECT event_json FROM basket_target_order_events").fetchone()[0]
+    assert "fok_short_fill" in ev and "requested_size_at_send" in ev
+    assert store.execute(f"SELECT refusal FROM {lane.EVALUATION_TABLE}").fetchone()[0] is None
+
+
+def test_stuck_lane_cycles_and_partial_foks_left_by_earlier_code_are_repaired(store) -> None:
+    from bayes_basket_target.execution_reconciliation import record_order_event  # noqa: PLC0415
+
+    # A charter-144 exit cycle left at submitted with its one intent terminal.
+    _insert(store, "basket_target_execution_cycles", {"cycle_id": "misbuyexit_cycle_x", "plan_id": "mbx_p", "station_id": ST, "event_date": ED, "settlement_timezone": TZ, "strategy_lane": "basket", "requested_reserve_usdc": 0.0, "state": "submitted", "created_at": DECIDED, "updated_at": DECIDED})
+    _insert(store, "basket_target_order_intents", {"order_intent_id": "mbx_i", "decision_id": "d_x", "cycle_id": "misbuyexit_cycle_x", "bucket": "27°C", "token_id": "t27", "side": "YES", "order_action": "SELL", "limit_price": 0.3, "requested_size": 5.0, "requested_notional_usdc": 1.5, "state": "filled", "live_submit_authorized": 1, "idempotency_key": "mbx_i", "intent_json": "{}", "created_at": DECIDED})
+    # A tiebreak FOK recorded as a partial fill by the earlier sender.
+    _insert(store, "basket_target_execution_cycles", {"cycle_id": "tiebreak_cycle_y", "plan_id": "tb_p", "station_id": ST, "event_date": ED, "settlement_timezone": TZ, "strategy_lane": "basket", "requested_reserve_usdc": 0.0, "state": "submitted", "created_at": DECIDED, "updated_at": DECIDED})
+    _insert(store, "basket_target_order_intents", {"order_intent_id": "tb_i", "decision_id": f"tiebreak_decision_{ST}_{ED}", "cycle_id": "tiebreak_cycle_y", "bucket": "28°C", "token_id": "t28", "side": "YES", "order_action": "BUY", "limit_price": 0.62, "requested_size": 9.67, "requested_notional_usdc": 5.9954, "state": "submitted", "live_submit_authorized": 1, "idempotency_key": "tb_i", "intent_json": json.dumps({"order_type": "FOK", "execution_candidate": "TAKER_FOK"}), "created_at": DECIDED})
+    record_order_event(store, order_intent_id="tb_i", event={"event_type": "FILL", "exchange_order_id": "0xe", "observed_at": DECIDED, "matched_size": 9.5, "matched_notional_usdc": 5.89, "event_payload": {}})
+    assert store.execute("SELECT state FROM basket_target_order_intents WHERE order_intent_id='tb_i'").fetchone()[0] == "reconcile_required"
+    # A still-open basket cycle is not touched.
+    _insert(store, "basket_target_execution_cycles", {"cycle_id": "basket_cycle_z", "plan_id": "bk_p", "station_id": ST, "event_date": ED, "settlement_timezone": TZ, "strategy_lane": "basket", "requested_reserve_usdc": 1.0, "state": "submitted", "created_at": DECIDED, "updated_at": DECIDED})
+    assert lane.settle_stuck_lane_cycles(store) == 1
+    assert lane.repair_fok_short_fills(store) == 1
+    assert lane.settle_stuck_lane_cycles(store) == 1, "the tiebreak cycle settles once its intent is filled"
+    states = dict(store.execute("SELECT cycle_id, state FROM basket_target_execution_cycles").fetchall())
+    assert states["misbuyexit_cycle_x"] == "settled" and states["tiebreak_cycle_y"] == "settled" and states["basket_cycle_z"] == "submitted"
+    row = store.execute("SELECT i.state, i.requested_size, r.state, r.filled_size FROM basket_target_order_intents i JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id WHERE i.order_intent_id='tb_i'").fetchone()
+    assert row == ("filled", 9.5, "resolved_filled", 9.5)
+    # And the pass itself reports what it repaired.
+    _seed(store, fact_id="f3", event_date="2026-09-20")
+    receipt = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW, live_submit_authorized=True,
+                                            settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert receipt["repairs"] == {"cycles_settled": 0, "fok_short_fills_closed": 0}

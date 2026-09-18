@@ -688,6 +688,86 @@ def _record(conn: sqlite3.Connection, key: Mapping[str, Any], fact: Mapping[str,
 # Planning.
 
 
+LANE_CYCLE_PREFIXES: tuple[str, ...] = ("tiebreak_cycle_", "misbuyexit_cycle_", "recycle998_cycle_")
+TERMINAL_INTENT_STATES = frozenset({"filled", "failed", "cancelled"})
+
+
+def settle_stuck_lane_cycles(conn: sqlite3.Connection) -> int:
+    """Move lane cycles left at ``submitting``/``submitted`` to ``settled``
+    once every intent on them is terminal.
+
+    Until 2026-09-18 every lane sender closed its cycle to ``submitted`` and
+    nothing ever moved it again, and the market ingress refuses to refresh a
+    station-day's quotes while such a cycle exists
+    (``target_basket_target_execution_cycles_not_quiescent``): charter 144's
+    2026-09-17 12:33Z exits froze nine station-days' quotes for a day, and
+    this lane's own sends froze RJTT, WMKK, OPKC and EDDM.  The senders now
+    close to ``settled``; this repairs what they left behind, and runs at
+    the head of every pass so a stray row can never hold a day shut again.
+    """
+
+    like = " OR ".join("c.cycle_id LIKE ?" for _ in LANE_CYCLE_PREFIXES)
+    rows = conn.execute(
+        f"SELECT c.cycle_id FROM basket_target_execution_cycles c"
+        f" WHERE c.state IN ('submitting','submitted') AND ({like})"
+        " AND NOT EXISTS (SELECT 1 FROM basket_target_order_intents i"
+        "   WHERE i.cycle_id=c.cycle_id AND i.state NOT IN ('filled','failed','cancelled'))",
+        tuple(f"{prefix}%" for prefix in LANE_CYCLE_PREFIXES),
+    ).fetchall()
+    now = _z(datetime.now(timezone.utc))
+    for (cycle_id,) in rows:
+        conn.execute(
+            "UPDATE basket_target_execution_cycles SET state='settled', updated_at=? WHERE cycle_id=?",
+            (now, str(cycle_id)),
+        )
+    return len(rows)
+
+
+def repair_fok_short_fills(conn: sqlite3.Connection) -> int:
+    """Close this lane's fill-or-kill orders the ledger holds as partial.
+
+    A FOK the venue matched is the whole order; its matched size can sit
+    under the size sent (EDDM 2026-09-19: 9.5 of 9.67).  The sender now
+    restates the request as the venue's size before recording the fill; a
+    row recorded before that reads ``reconcile_required``/``pending`` with
+    shares filled, holds the station-day's quotes shut, and is closed here
+    the same way: the request restated, and the fill re-recorded as
+    authoritative.
+    """
+
+    from .execution_reconciliation import record_order_event  # noqa: PLC0415
+
+    rows = conn.execute(
+        "SELECT i.order_intent_id, i.requested_size, r.filled_size, r.filled_notional_usdc,"
+        " r.exchange_order_id"
+        " FROM basket_target_order_intents i"
+        " JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id"
+        " WHERE i.decision_id LIKE 'tiebreak_decision_%' AND i.state='reconcile_required'"
+        "   AND r.state='pending' AND COALESCE(r.filled_size,0) > 0"
+        "   AND json_extract(i.intent_json, '$.order_type') = 'FOK'",
+    ).fetchall()
+    repaired = 0
+    now = _z(datetime.now(timezone.utc))
+    for intent_id, requested, filled, notional, exchange_order_id in rows:
+        filled = float(filled or 0.0)
+        conn.execute(
+            "UPDATE basket_target_order_intents SET requested_size=?, requested_notional_usdc=?"
+            " WHERE order_intent_id=?",
+            (filled, round(float(notional or 0.0), 6), str(intent_id)),
+        )
+        # The ledger sums fills across events, so the closing event carries
+        # no new shares: with the request restated, the shares already on
+        # the reconciliation cover it and the state resolves as filled.
+        record_order_event(conn, order_intent_id=str(intent_id), event={
+            "event_type": "LATE_FILL", "exchange_order_id": str(exchange_order_id or ""),
+            "observed_at": now, "matched_size": 0.0, "matched_notional_usdc": 0.0,
+            "event_payload": {"reason": "fok_short_fill_closed", "requested_size_at_send": float(requested or 0.0),
+                              "source": LANE},
+        })
+        repaired += 1
+    return repaired
+
+
 def plan_tiebreak_entries(
     target_conn: sqlite3.Connection,
     canonical_conn: sqlite3.Connection | None = None,
@@ -704,6 +784,10 @@ def plan_tiebreak_entries(
     """
 
     ensure_lane_schema(target_conn)
+    repairs = {
+        "cycles_settled": settle_stuck_lane_cycles(target_conn),
+        "fok_short_fills_closed": repair_fok_short_fills(target_conn),
+    }
     cfg = {**TIEBREAK_DEFAULT_SETTINGS, **dict(settings or lane_settings(LANE))}
     stake = float(cfg.get("stake_usdc") or TIEBREAK_DEFAULT_SETTINGS["stake_usdc"])
     min_share = float(cfg.get("min_market_share_on_model_mode") or TIEBREAK_DEFAULT_SETTINGS["min_market_share_on_model_mode"])
@@ -829,7 +913,7 @@ def plan_tiebreak_entries(
             skip_keys={(e["station_id"], e["event_date"], e["stage"]) for e in evaluations},
         )
         plans.extend(r["plan"] for r in retries if r.get("plan"))
-    return {"evaluations": evaluations, "plans": plans, "settings": cfg, "rule_version": rule_version, "retries": retries}
+    return {"evaluations": evaluations, "plans": plans, "settings": cfg, "rule_version": rule_version, "retries": retries, "repairs": repairs}
 
 
 def _sync_sent_rows(conn: sqlite3.Connection, *, rule_version: str, floor: str) -> int:
@@ -1161,6 +1245,7 @@ def execute_tiebreak_entries(
         "submitted": submitted,
         "filled": filled,
         "refusals": sorted({str(e["refusal"]) for e in planned["evaluations"] if e.get("refusal")}),
+        "repairs": planned.get("repairs") or {},
         "retried": len(planned.get("retries") or []),
         "retry_planned": sum(1 for r in (planned.get("retries") or []) if r.get("plan")),
         "retries": [
@@ -1182,6 +1267,8 @@ __all__ = [
     "station_day_sends",
     "book_features",
     "is_retryable_refusal",
+    "repair_fok_short_fills",
+    "settle_stuck_lane_cycles",
     "market_move_features",
     "EVALUATION_TABLE",
     "LANE",
