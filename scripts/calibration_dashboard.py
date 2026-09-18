@@ -2007,6 +2007,156 @@ def collect_regional_usage(conn: sqlite3.Connection) -> dict[str, Any]:
     return out
 
 
+# The chain's features in the reader's words.  Keys are the fitter's own
+# names (scripts/fit_metar_phase_hazard_artifact.py), so an added feature
+# shows up under its code name until somebody writes it down here.
+FOUR_LAYER_FEATURE_WORDS = {
+    "drawdown_from_high_c": "距今天最高回落（°C）",
+    "momentum_c_per_hour": "最近升温速度（°C/小时）",
+    "cloud_cover_fraction": "云量",
+    "precipitation_present": "有降水",
+    "dewpoint_depression_c": "露点差（°C）",
+    "wind_speed_mps": "风速（米/秒）",
+    "warming_so_far_c": "今天已升温（°C）",
+    "curve_shape_realized": "P0 曲线已走完的比例",
+    "remaining_hours": "距当地零点剩余小时",
+    "regional_headroom_c": "区域模型：剩余时段最高 − 已报最高（°C）",
+    "regional_live_gap_c": "区域模型：此刻实测 − 模型此刻（°C）",
+}
+
+
+def collect_four_layer_chain(conn: sqlite3.Connection) -> dict[str, Any]:
+    """P1's four-layer chain, stated outright: switches, the fitted file, and
+    what it did on each station's newest P1.
+
+    The chain has served at P1's outermost point since 2026-09-07 (hard bound
+    -> the chain -> the regional path prior -> the clock ceiling, exactly one
+    of the last three speaking), and until now the page showed it only as a
+    line inside each METAR card.  Everything here is read -- the switches off
+    the modules, the coefficients off the file production loads, the outcome
+    off each envelope's own receipt -- and nothing is recomputed.
+    """
+
+    out: dict[str, Any] = {"available": True}
+    try:
+        from bayes_basket_target import metar_four_layer as mfl  # noqa: PLC0415
+        from bayes_basket_target import four_layer_shadow as fls  # noqa: PLC0415
+        out["switches"] = {
+            "serving": bool(mfl.SERVE_ENABLED),
+            "artifacts_loaded": bool(fls.SHADOW_ENABLED),
+            # materialize_p1 serves the chain with the translation off by
+            # construction (2026-09-07); stated, not a switch.
+            "reanchor": False,
+        }
+        path = fls.HAZARD_ARTIFACT_PATH
+    except Exception:  # noqa: BLE001
+        return {"available": False}
+    artifact: dict[str, Any] = {}
+    try:
+        raw = json.loads(path.read_text())
+        mtime = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
+
+        def _coefficients(block: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+            return [
+                {"feature": name, "label": FOUR_LAYER_FEATURE_WORDS.get(name, name),
+                 "coefficient": value}
+                for name, value in sorted(
+                    ((block or {}).get("coefficients") or {}).items(),
+                    key=lambda kv: -abs(float(kv[1])),
+                )
+            ]
+
+        artifact = {
+            "sha": str(raw.get("content_sha256") or "")[:12],
+            "fitted_at_utc": raw.get("fitted_at_utc"),
+            "file_written_utc": mtime.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "age_days": round((_now() - mtime).total_seconds() / 86400.0, 1),
+            "trained_from": raw.get("trained_from"),
+            "trained_through": raw.get("trained_through"),
+            "sample_n": raw.get("sample_n"),
+            "riser_sample_n": raw.get("riser_sample_n"),
+            "station_n": raw.get("station_n"),
+            "station_day_n": raw.get("station_day_n"),
+            "regional_features": bool(raw.get("regional_features")),
+            "phase": _coefficients(raw.get("phase")),
+            "continuation": _coefficients(raw.get("continuation_full")),
+            "fallbacks": {
+                name: (raw.get("feature_fallbacks") or {}).get(name)
+                for name in ("regional_headroom_c", "regional_live_gap_c")
+            },
+        }
+    except (OSError, ValueError, TypeError):
+        artifact = {}
+    out["artifact"] = artifact
+    floor = (_now() - timedelta(hours=18)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    stations = []
+    outcome = Counter()
+    sources = Counter()
+    for station, decided in conn.execute(
+        "SELECT station_id, MAX(decision_at_utc) FROM basket_probability_envelope"
+        " WHERE state='COMMITTED' AND stage='P1' AND decision_at_utc>=?"
+        " GROUP BY station_id",
+        (floor,),
+    ).fetchall():
+        row = conn.execute(
+            "SELECT event_date, settlement_timezone,"
+            " json_extract(lineage_json,'$.p1_four_layer_serving_json'),"
+            " json_extract(lineage_json,'$.metar_trajectory_running_high_c'),"
+            " json_extract(lineage_json,'$.metar_ceiling_json'),"
+            " json_extract(lineage_json,'$.regional_path_prior_json')"
+            " FROM basket_probability_envelope WHERE station_id=? AND stage='P1'"
+            " AND state='COMMITTED' AND decision_at_utc=? LIMIT 1",
+            (station, decided),
+        ).fetchone()
+        if row is None:
+            continue
+        try:
+            four = json.loads(row[2] or "{}")
+        except ValueError:
+            four = {}
+        phase = four.get("phase") or {}
+        if not four:
+            # No receipt: the chain was not handed a serving bundle on this
+            # step, so whichever of the path prior and the ceiling spoke did.
+            try:
+                prior = json.loads(row[5]) if row[5] else {}
+            except ValueError:
+                prior = {}
+            state = (
+                "PATH_PRIOR" if str(prior.get("regional_path_prior_applied")) == "true"
+                else "CEILING_OR_NONE"
+            )
+        elif four.get("applied") == "true":
+            state = "APPLIED"
+        else:
+            state = "REFUSED"
+        outcome[state] += 1
+        system = str(four.get("regional_system_id") or "") if four else ""
+        if four:
+            sources[system or "NONE"] += 1
+        try:
+            local = datetime.fromisoformat(str(decided).replace("Z", "+00:00")).astimezone(
+                ZoneInfo(str(row[1] or "UTC"))
+            ).strftime("%m-%d %H:%M")
+        except Exception:  # noqa: BLE001
+            local = ""
+        stations.append({
+            "station_id": str(station), "event_date": str(row[0]),
+            "decided_at_utc": str(decided), "local": local, "state": state,
+            "refused": four.get("refused"),
+            "running_high_c": row[3],
+            "rise_probability": phase.get("rise_probability"),
+            "regional_system_id": system or None,
+            "regional_headroom_c": four.get("regional_headroom_c"),
+            "regional_live_gap_c": four.get("regional_live_gap_c"),
+        })
+    stations.sort(key=lambda e: e["station_id"])
+    out["stations"] = stations
+    out["outcome"] = dict(outcome)
+    out["regional_sources"] = dict(sources)
+    return out
+
+
 def collect_correction_and_weights(conn: sqlite3.Connection) -> dict[str, Any]:
     """The two per-station tables P0 serves from."""
 
@@ -11812,7 +11962,14 @@ REGIONAL_SWEEP_JSON = (
     ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
     / "regional_hires_historical_oos.json"
 )
-# The four regional point systems and how each one's archive behaves.
+# The path prior's admission gate, as last asked
+# (``scripts/measure_regional_serving_value.py --out``): one verdict per
+# system, read here and never recomputed.
+REGIONAL_ADMISSION_GATE_JSON = (
+    ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
+    / "regional_admission_gate.json"
+)
+# The regional point systems and how each one's archive behaves.
 # ``backfillable`` decides how a stale lane reads: the NOAA buckets and
 # the RISH mirror keep history, so a stale lane there is a delay; the DWD
 # directory keeps only the newest run of each cycle, so a stale lane
@@ -11830,6 +11987,11 @@ REGIONAL_LANES = {
     "DWD_ICON_EU_POINT": {
         "label": "ICON-EU 7km", "region": "欧洲",
         "transport": "DWD opendata·全域场", "backfillable": False},
+    # The aggregator serves only the run it currently holds, so like the DWD
+    # lane a missed cycle is gone, not late.
+    "CMA_GRAPES_GLOBAL_POINT": {
+        "label": "CMA GRAPES 全球", "region": "中国",
+        "transport": "Open-Meteo 聚合·只留当前一轮", "backfillable": False},
 }
 _SWEEP_MODEL_TO_SYSTEM = {
     "jma_msm": "JMA_MSM_POINT",
@@ -11852,6 +12014,7 @@ def _capture_rosters() -> dict[str, set[str]]:
     from bayes_basket_target import noaa_conus_archive
     from bayes_basket_target import dwd_icon_eu_point_archive
     from bayes_basket_target import jma_msm_archive  # noqa: F401
+    from bayes_basket_target import cma_grapes_point_archive
 
     rosters = {
         "NCEP_HRRR_POINT": {
@@ -11867,6 +12030,9 @@ def _capture_rosters() -> dict[str, set[str]]:
             s[0] for s in getattr(
                 jma_msm_archive, "CAPTURE_STATIONS", ()
             )
+        },
+        "CMA_GRAPES_GLOBAL_POINT": {
+            s[0] for s in cma_grapes_point_archive.CAPTURE_STATIONS
         },
     }
     return rosters
@@ -11885,23 +12051,36 @@ def collect_regional_lanes(conn: sqlite3.Connection) -> dict[str, Any]:
     lanes = []
     rosters = _capture_rosters()
     captured_stations: dict[str, set[str]] = {}
+    # The lane P1 actually reads (charter 95 revised 2026-09-06: every run,
+    # curve kept hour by hour).  This section used to count the P0 member
+    # archive, which the lanes stopped feeding when they moved to P1 -- so
+    # CMA, which only ever wrote here, could not appear at all, and the
+    # others showed the corpus of a role they no longer have.
+    per_station: dict[str, list[dict[str, Any]]] = {}
+    for system_id, station, last_run, last_query, runs in conn.execute(
+        "SELECT ensemble_system_id, station_id, MAX(run_init_utc),"
+        " MAX(archive_query_at_utc), COUNT(DISTINCT run_init_utc)"
+        " FROM calibration_regional_point_run"
+        " GROUP BY ensemble_system_id, station_id"
+    ).fetchall():
+        per_station.setdefault(str(system_id), []).append({
+            "station_id": str(station), "last_run_init": last_run,
+            "run_age_hours": _age_hours(last_run),
+            "last_capture_age_hours": _age_hours(last_query),
+            "runs": runs,
+        })
     for system_id, meta in REGIONAL_LANES.items():
         row = conn.execute(
             "SELECT COUNT(*), COUNT(DISTINCT station_id),"
             " COUNT(DISTINCT station_id || '|' || target_local_date),"
-            " MAX(archive_query_at_utc), MAX(native_run_init_utc)"
-            " FROM calibration_native_ensemble_historical_member_run"
+            " MAX(archive_query_at_utc), MAX(run_init_utc)"
+            " FROM calibration_regional_point_run"
             " WHERE ensemble_system_id=?",
             (system_id,),
         ).fetchone()
         rows, stations, station_days, last_query, last_run = row
         captured_stations[system_id] = {
-            str(r[0]) for r in conn.execute(
-                "SELECT DISTINCT station_id"
-                " FROM calibration_native_ensemble_historical_member_run"
-                " WHERE ensemble_system_id=?",
-                (system_id,),
-            )
+            entry["station_id"] for entry in per_station.get(system_id, [])
         }
         age = _age_hours(last_query)
         # A lane is judged by whether the hourly sweep is still landing
@@ -11934,6 +12113,7 @@ def collect_regional_lanes(conn: sqlite3.Connection) -> dict[str, Any]:
             "station_days": station_days,
             "last_capture_age_hours": age,
             "last_run_init": last_run,
+            "run_age_hours": _age_hours(last_run),
             "health": health, "note": note,
         })
 
@@ -12000,7 +12180,65 @@ def collect_regional_lanes(conn: sqlite3.Connection) -> dict[str, Any]:
             -(v["candidate_exact"] or 0.0),
         )
     )
-    return {"lanes": lanes, "readiness": readiness, "verdicts": verdicts}
+
+    # The bias calibration (2026-09-18, global form): the station scope's
+    # fitted shift per lane, read off the served artifact.  Fitted daily,
+    # served nowhere -- both switches are off by measurement.
+    calibration: dict[str, Any] = {}
+    try:
+        from bayes_basket_target import regional_point_debias as rpd  # noqa: PLC0415
+        artifact = rpd.load_artifact() or {}
+        calibration = {
+            "trained_through": artifact.get("trained_through"),
+            "rule": artifact.get("rule_version"),
+            "feature_arm": bool(rpd.FEATURE_CALIBRATION),
+            "path_prior_arm": bool(rpd.ENABLED),
+            "stations": {
+                system: {
+                    station: {
+                        "bias_c": (scope.get("station") or {}).get("bias_c"),
+                        "train_days": (scope.get("station") or {}).get("train_days"),
+                        "cycle_scopes": len(scope.get("cycles") or {}),
+                    }
+                    for station, scope in (entry.get("stations") or {}).items()
+                }
+                for system, entry in (artifact.get("systems") or {}).items()
+            },
+        }
+    except Exception:  # noqa: BLE001 - a missing fit is a blank, not a crash
+        calibration = {}
+    admission: dict[str, Any] = {}
+    if REGIONAL_ADMISSION_GATE_JSON.is_file():
+        try:
+            admission = json.loads(REGIONAL_ADMISSION_GATE_JSON.read_text())
+        except (ValueError, OSError):
+            admission = {}
+    try:
+        from bayes_basket_target import regional_path_prior as rpp  # noqa: PLC0415
+        max_age = float(rpp.MAX_RUN_AGE_HOURS)
+    except Exception:  # noqa: BLE001
+        max_age = 12.0
+    for system_id, entries in per_station.items():
+        fits = (calibration.get("stations") or {}).get(system_id) or {}
+        for entry in entries:
+            fit = fits.get(entry["station_id"]) or {}
+            entry["calibration_bias_c"] = fit.get("bias_c")
+            entry["calibration_train_days"] = fit.get("train_days")
+            entry["in_roster"] = entry["station_id"] in rosters.get(system_id, set())
+            age = entry.get("run_age_hours")
+            # Whether a decision now could read this run at all: the P1
+            # feature and the path prior both refuse a run older than this.
+            entry["usable_now"] = age is not None and age <= max_age
+        entries.sort(key=lambda e: e["station_id"])
+    return {
+        "lanes": lanes, "readiness": readiness, "verdicts": verdicts,
+        "stations": {
+            system: per_station.get(system, []) for system in REGIONAL_LANES
+        },
+        "max_run_age_hours": max_age,
+        "calibration": calibration,
+        "admission": admission,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -12298,6 +12536,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     regional_usage = _cached_section(
         "regional_usage", collect_regional_usage, conn
     )
+    four_layer_chain = _cached_section(
+        "four_layer_chain", collect_four_layer_chain, conn
+    )
     tables = _cached_section(
         "correction_and_weights", collect_correction_and_weights, conn
     )
@@ -12494,6 +12735,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "taf_board": taf_board,
         "metar_board": metar_board,
         "regional_usage": regional_usage,
+        "four_layer_chain": four_layer_chain,
         "tables": tables,
         "truth_landing": truth_landing,
         "band_residual_audit": (band_audit := _cached_section(
@@ -19345,36 +19587,113 @@ function radiationSection(){
   return `<h2>辐射降温项：按预报的日照多少，把整条分布往冷或往暖推</h2>${body}`;
 }
 
+function fourLayerBoard(){
+  const F = D.four_layer_chain || {};
+  if(!F.available) return `<h2>P1 四层链</h2><div class="card muted">四层链读数这一轮没有生成。</div>`;
+  const S = F.switches || {}, A = F.artifact || {}, O = F.outcome || {};
+  const onoff = v => `<span class="pill ${v ? "green" : ""}">${v ? "开" : "关"}</span>`;
+  const n3 = v => v == null ? "—" : Number(v).toFixed(3);
+  const n2 = v => v == null || v === "NONE" ? "—" : Number(v).toFixed(2);
+  const ageTone = A.age_days == null ? "" : A.age_days > 14 ? "red" : A.age_days > 7 ? "amber" : "green";
+  const coef = rows => (rows || []).map(r => `<tr><td>${h(r.label)}</td><td class="mono muted">${h(r.feature)}</td>
+    <td class="mono ${r.coefficient > 0 ? "up" : "down"}"><b>${(r.coefficient > 0 ? "+" : "") + Number(r.coefficient).toFixed(3)}</b></td></tr>`).join("");
+  const stateWord = {APPLIED:["green","四层链说话"], REFUSED:["red","四层链拒绝，退回下一顺位"],
+    PATH_PRIOR:["amber","路径先验说话"], CEILING_OR_NONE:["", "天花板或不修正"]};
+  const outcome = Object.entries(O).map(([k, v]) => { const [t, w] = stateWord[k] || ["", k];
+    return `<span class="pill ${t}">${w} ${v}</span>`; }).join(" ");
+  const src = Object.entries(F.regional_sources || {}).sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `${h(k === "POOLED_FALLBACK" ? "队均值兜底（没有可用区域 run）" : k)} ${v}`).join(" · ");
+  const rows = (F.stations || []).map(e => { const [t, w] = stateWord[e.state] || ["", e.state];
+    return `<tr><td class="mono"><b>${h(e.station_id)}</b></td><td class="mono">${h(e.local)}</td>
+    <td><span class="pill ${t}">${w}</span>${e.refused ? ` <span class="muted">${h(e.refused)}</span>` : ""}</td>
+    <td class="mono">${e.running_high_c ?? "—"}°C</td>
+    <td class="mono">${e.rise_probability == null ? "—" : pctS(e.rise_probability, 1)}</td>
+    <td class="mono">${h(e.regional_system_id === "POOLED_FALLBACK" ? "队均值兜底" : (e.regional_system_id || "—"))}</td>
+    <td class="mono">${n2(e.regional_headroom_c)}</td><td class="mono">${n2(e.regional_live_gap_c)}</td></tr>`; }).join("");
+  return `<h2>P1 四层链：今天还会不会升、会升到哪</h2>
+  <p class="sub">P1 的最外层合成点。顺序是：观测硬下界（已报最高以下清零）→ <b>四层链</b> → 区域路径先验 → 时钟天花板，
+    后三个里<b>只有一个说话</b>：四层链能说话就用它，它不说话才轮到路径先验，再不行才是天花板。
+    四层链是一条回归：第一层按"还会不会再升"给已报最高以上的桶定总质量（相位层），第二层按"会升到哪"给这些桶分质量（剩余升温层）；
+    特征是时钟、最新几份 METAR 的状态和区域模型曲线。平移层（按模型水平整体挪）不上线。</p>
+  <div class="card" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+    <b>开关</b> 四层链服务 ${onoff(S.serving)} · 拟合件加载 ${onoff(S.artifacts_loaded)} · 平移层 ${onoff(S.reanchor)}
+    <span style="flex:1"></span><span class="muted">过去 18 小时各站最新一步 P1：</span>${outcome || "—"}</div>
+  <div class="grid g3" style="margin-top:10px">
+    <div class="card"><div class="muted">拟合件</div><div class="big mono">${h(A.sha || "—")}</div>
+      <div class="muted">拟合于 ${whenZ(A.fitted_at_utc)} · <span class="pill ${ageTone}">${A.age_days ?? "—"} 天前</span></div></div>
+    <div class="card"><div class="muted">训练窗</div><div class="big">${h(A.trained_from || "—")} → ${h(A.trained_through || "—")}</div>
+      <div class="muted">${(A.sample_n || 0).toLocaleString()} 个样本（其中升温 ${(A.riser_sample_n || 0).toLocaleString()}）· ${A.station_day_n ?? "—"} 站日 · ${A.station_n ?? "—"} 站</div></div>
+    <div class="card"><div class="muted">区域特征</div><div class="big">${A.regional_features ? "在回归里" : "不在"}</div>
+      <div class="muted">没有可用区域 run 时按队均值兜底：剩余升温 ${n2((A.fallbacks || {}).regional_headroom_c)}°C · 此刻误差 ${n2((A.fallbacks || {}).regional_live_gap_c)}°C</div></div></div>
+  <div style="margin-top:6px"><span class="muted">四层链此刻读的区域模型：</span>${src || "—"}</div>
+  <div class="grid g2" style="margin-top:10px">
+    <div><b>相位层系数</b> <span class="muted">（对数几率，正＝更可能再升）</span>
+      <div class="scroll"><table><thead><tr><th>特征</th><th>代码名</th><th>系数</th></tr></thead><tbody>${coef(A.phase)}</tbody></table></div></div>
+    <div><b>剩余升温层系数</b> <span class="muted">（正＝升得更多）</span>
+      <div class="scroll"><table><thead><tr><th>特征</th><th>代码名</th><th>系数</th></tr></thead><tbody>${coef(A.continuation)}</tbody></table></div></div></div>
+  <details class="note" open><summary>各站最新一步 P1（${(F.stations || []).length} 站）</summary>
+    <div class="scroll" style="max-height:420px"><table><thead><tr><th>站</th><th>当地时间</th><th>谁在说话</th><th>已报最高</th>
+      <th>还会再升</th><th>区域模型</th><th>剩余升温 °C</th><th>此刻误差 °C</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
+}
+
 function regionalBoard(){
   const R = D.regional || {}, U = D.regional_usage || {};
   const PP = U.path_prior || {}, A = U.arms || {};
+  const G = R.admission || {}, GS = G.systems || {};
   const onoff = v => `<span class="pill ${v ? "green" : ""}">${v ? "开" : "关"}</span>`;
+  const n2 = v => v == null ? "—" : Number(v).toFixed(2);
+  const sgn = v => v == null ? "—" : (v > 0 ? "+" : "") + Number(v).toFixed(2);
+  const gateWord = {ADMIT:["green","准入"], REFUSE_STRADDLES_ZERO:["","区间跨零·不准入"],
+    REFUSE_WORSE:["red","显著更差·不准入"], NO_COMPARABLE_PREFIX:["","没有可比前缀"]};
+  const gateCell = sid => { const g = GS[sid]; if(!g) return "未测";
+    const [t, w] = gateWord[g.verdict] || ["", g.verdict];
+    return `<span class="pill ${t}">${w}</span> <span class="mono muted">${sgn(g.clustered_delta)} [${sgn(g.ci_low)}, ${sgn(g.ci_high)}] · ${g.station_days ?? 0} 站日</span>`; };
   const lanes = (R.lanes || []).map(l => `<tr><td><b>${h(l.label)}</b></td><td>${h(l.region)}</td>
     <td class="mono">${l.station_count || 0}/${l.roster_count || 0}</td>
     <td class="mono">${(l.row_count || 0).toLocaleString()}</td>
-    <td class="mono">${hours(l.last_capture_age_hours)}</td>
+    <td class="mono"><span class="pill ${l.health}">${hours(l.last_capture_age_hours)}</span>${l.note ? ` <span class="muted">${h(l.note)}</span>` : ""}</td>
+    <td class="mono">${hours(l.run_age_hours)}</td>
     <td class="mono">${U.p0_fusion_excluded && U.p0_fusion_excluded[l.system_id] ? "不入" : "可入"}</td>
     <td class="mono">${(U.p1_feature_systems || {})[l.system_id] || 0} 站</td>
-    <td class="mono">${(PP.systems || []).includes(l.system_id) ? `准入 · 权重 ${PP.weight}` : "不准入"}</td></tr>`).join("");
+    <td class="mono">${(PP.systems || []).includes(l.system_id) ? `准入 · 权重 ${PP.weight}` : "不准入"}</td>
+    <td>${gateCell(l.system_id)}</td></tr>`).join("");
+  const labels = Object.fromEntries((R.lanes || []).map(l => [l.system_id, l.label]));
+  const maxAge = R.max_run_age_hours ?? 12;
+  const stationRows = Object.entries(R.stations || {}).flatMap(([sid, list]) => (list || []).map(e => `<tr>
+    <td>${h(labels[sid] || sid)}</td><td class="mono"><b>${h(e.station_id)}</b></td>
+    <td class="mono">${whenZ(e.last_run_init)}</td>
+    <td class="mono"><span class="pill ${e.usable_now ? "green" : "amber"}">${hours(e.run_age_hours)}</span></td>
+    <td class="mono">${hours(e.last_capture_age_hours)}</td><td class="mono">${e.runs ?? "—"}</td>
+    <td class="mono">${sgn(e.calibration_bias_c)}${e.calibration_train_days ? ` <span class="muted">(${e.calibration_train_days} 天)</span>` : ""}</td>
+    <td class="mono">${GS[sid] && GS[sid].by_station && GS[sid].by_station[e.station_id] ? sgn(GS[sid].by_station[e.station_id].delta) + ` <span class="muted">(n=${GS[sid].by_station[e.station_id].n})</span>` : "—"}</td></tr>`)).join("");
   const bySystem = {};
   (R.verdicts || []).forEach(v => { const k = v.system_label || v.system_id; bySystem[k] = bySystem[k] || [0, 0]; bySystem[k][1] += 1; if(v.passes_all_three) bySystem[k][0] += 1; });
   const verdicts = Object.entries(bySystem).map(([k, [p, n]]) => `<span class="pill ${p ? "green" : ""}">${h(k)}：${p}/${n} 站过三道门</span>`).join(" ");
   const ready = (R.readiness || []).map(r => `<span class="pill ${r.state === "OOS_READY" ? "green" : "amber"}">${h(r.ensemble_system_id)}：${h(r.state)}</span>`).join(" ");
   const feats = Object.entries(U.p1_feature_systems || {}).sort((a, b) => b[1] - a[1])
     .map(([k, v]) => `${h(k === "POOLED_FALLBACK" ? "队列均值兜底" : k)} ${v}`).join(" · ");
+  const C = R.calibration || {};
   return `<h2>区域模型：采集、够不够格、用没用上、权重多少</h2>
-  <p class="sub">区域模型（JMA、HRRR、NBM、ICON-EU、CMA）是单点、高分辨率的确定性预报。
-    <b>它们不进 P0 的融合</b>（第 99 条起归 P1），只在 P1 里以两种方式出现：一是作为「区域路径先验」直接给分布塑形；
-    二是作为 P1 四层链的一个特征（离区域模型预报的最高还差多少）。</p>
+  <p class="sub">区域模型（JMA MSM、HRRR、NBM、ICON-EU、CMA GRAPES）是单点、高分辨率的确定性预报。
+    <b>它们不进 P0 的融合</b>（第 99 条起归 P1），只在 P1 里以两种方式出现：一是作为 P1 四层链的特征（离区域模型预报的最高还差多少），
+    所有采到的区域模型都能进；二是作为「区域路径先验」直接给分布塑形，只有准入名单上的系统能进，且只在四层链不说话时才轮到它。
+    两条路都只读起报不超过 ${maxAge} 小时的 run。</p>
   <div class="card" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
     <b>开关</b> 区域路径先验 ${onoff(PP.enabled)} <span class="muted">权重 ${PP.weight ?? "—"} · 准入 ${h((PP.systems || []).join("、") || "—")} · 最旧 ${PP.max_run_age_hours ?? "—"} 小时</span>
     · 特征校准 ${onoff(A.feature_calibration)} · 点预报去偏 ${onoff(A.point_debias)}
     <span style="flex:1"></span><span class="muted">过去 18 小时 ${U.p1_stations || 0} 站的 P1：路径先验回执 ${
       Object.entries(U.p1_path_prior_states || {}).map(([k, v]) => (k === "NO_RECEIPT" ? "没用上" : h(k)) + " " + v).join(" · ")}</span></div>
   <div class="scroll" style="margin-top:10px"><table><thead><tr><th>区域模型</th><th>区域</th><th>站（有数/名册）</th><th>行数</th>
-    <th>最近采集</th><th>P0 融合</th><th>P1 特征在用</th><th>P1 路径先验</th></tr></thead><tbody>${lanes}</tbody></table></div>
+    <th>最近采集</th><th>最新 run 距今</th><th>P0 融合</th><th>P1 特征在用</th><th>P1 路径先验</th><th>准入复测（Δ对数损失，负＝更好）</th></tr></thead><tbody>${lanes}</tbody></table></div>
   <div style="margin-top:8px"><span class="muted">P1 四层链的区域特征来源：</span>${feats || "—"}</div>
-  <div style="margin-top:6px"><span class="muted">样本外逐站三道门（CRPS/Brier/NLL 都赢现任）：</span>${verdicts || "—"}</div>
+  <div style="margin-top:6px"><span class="muted">准入复测：</span>${G.measured_at_utc ? `${whenZ(G.measured_at_utc)} · 窗口 ${h((G.window || {}).from)}..${h((G.window || {}).through)} ·
+    规则：路径先验在「四层链不说话、天花板报 TOO_EARLY」的前缀上加与不加比，按站日聚类的 95% 区间整体在零以下才准入` : "还没有复测记录"}</div>
+  <div style="margin-top:6px"><span class="muted">偏差校准（全球形式，每日重拟，两个服务开关都关）：</span>训练截至 ${h(C.trained_through || "—")}</div>
+  <details class="note" open><summary>逐站：最新 run、能不能用、偏差校准、准入复测</summary>
+    <div class="scroll" style="max-height:420px"><table><thead><tr><th>区域模型</th><th>站</th><th>最新 run 起报</th>
+      <th>距今（≤${maxAge}h 可用）</th><th>最近采集</th><th>run 数</th><th>偏差校准（正＝模型偏冷）</th><th>准入复测 逐站 Δ</th></tr></thead>
+      <tbody>${stationRows}</tbody></table></div></details>
+  <div style="margin-top:6px"><span class="muted">样本外逐站三道门（08-28 扫描，CRPS/Brier/NLL 都赢现任；CMA 未参加）：</span>${verdicts || "—"}</div>
   <div style="margin-top:6px"><span class="muted">样本外准备度：</span>${ready || "—"}</div>`;
 }
 
@@ -19517,8 +19836,11 @@ const GROUPS = [
      {box:"⑤ METAR 层（P1）", kind:"stage",
       note:"机场实况 METAR：最新 3 份拆解、温度路径预测、对 P1 的实际影响、新鲜度",
       sections:[[metarBoard,"METAR 层"]]},
-     {box:"⑥ 区域模型（P1 的输入）", kind:"stage",
-      note:"高分辨率单点预报：采集、样本外门槛、用没用上、权重",
+     {box:"⑥ P1 四层链（P1 的最外层合成点）", kind:"live",
+      note:"还会不会升、会升到哪：开关、拟合件新旧、系数、各站最新一步谁在说话、读的是哪个区域模型",
+      sections:[[fourLayerBoard,"P1 四层链"]]},
+     {box:"⑦ 区域模型（P1 的输入）", kind:"stage",
+      note:"高分辨率单点预报：采集、逐站最新 run、偏差校准、准入复测、用没用上、权重",
       sections:[[regionalBoard,"区域模型"]]}]},
   // The edge area answers one question -- the model says p, the market says
   // m, how much of the gap should be believed (user ruling, 2026-09-17).
@@ -19622,8 +19944,10 @@ const LANES = {
     role:"最新 3 份 TAF 拆解与温度读数；TAF 似然现无校准件，对 P0-M 恒等"},
   "METAR 层": {layer:"P1 · METAR", status:"live",
     role:"最新 3 份 METAR 拆解、温度路径预测、对 P1 的实际影响"},
+  "P1 四层链": {layer:"P1 · 最外层合成点", status:"live",
+    role:"相位层定再升的总质量、剩余升温层定往哪升；它说话时路径先验和天花板都不说话"},
   "区域模型": {layer:"P1 · 区域模型", status:"live",
-    role:"不进 P0 融合；P1 里作路径先验（准入名单与权重）和四层链特征"},
+    role:"不进 P0 融合；P1 里作四层链特征（全部）和路径先验（准入名单，复测见表）"},
   "偏差订正与权重": {layer:"概率层", status:"live",
     role:"每站每提前量订正多少、四个模型各占多少 → 中心从这里来"},
   "四大模型权重": {layer:"概率层", status:"live",

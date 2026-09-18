@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import bisect
+from datetime import datetime, timezone
 import collections
 import json
 import math
@@ -101,6 +102,11 @@ def main() -> int:
         "--live-gap", action="store_true",
         help="add charter 95's live-gap arm: the served configuration plus "
              "today's own model error, everything else held fixed",
+    )
+    parser.add_argument(
+        "--out", type=Path, default=None,
+        help="also write the per-system verdicts as JSON (the board reads "
+             "data/runtime/bayes_basket_target_nwp/regional_admission_gate.json)",
     )
     parser.add_argument(
         "--other-side-replay-table", type=Path, default=None,
@@ -181,7 +187,11 @@ def main() -> int:
         "SELECT station_id,event_date,decision_at_utc,probabilities_json,"
         " bucket_ordinals_json,lineage_json,settlement_timezone"
         " FROM basket_probability_envelope"
-        " WHERE stage='P1' AND event_date BETWEEN ? AND ?",
+        " WHERE stage='P1' AND event_date BETWEEN ? AND ?"
+        # A prefilter, not the test: the receipt is parsed and checked below.
+        # Without it every P1 lineage in the window is JSON-parsed to find the
+        # few thousand that qualify.
+        " AND lineage_json LIKE '%TOO_EARLY%'",
         (args.start, args.through)))
 
     for station, day, at, pj, oj, lj, zone in prefixes:
@@ -340,13 +350,23 @@ def main() -> int:
     if not acc:
         print("  没有可比前缀：该区间内没有站日同时具备车道 run、结算真值与 TOO_EARLY 回执。")
         return 1
+    report: dict[str, dict] = {}
     for system in systems:
         arms = acc.get(system)
         if not arms or not arms.get("none", {}).get("n"):
             print(f"  {system}: 无可比前缀 "
                   f"{ {k.split(':',1)[1]: v for k, v in seen.items() if k.startswith(system)} }")
+            report[system] = {"n": 0, "verdict": "NO_COMPARABLE_PREFIX"}
             continue
         n = arms["none"]["n"]
+        entry = report.setdefault(system, {"n": n})
+        for arm in ("none", "layer"):
+            a = arms.get(arm) or {}
+            if a.get("n"):
+                entry[arm] = {
+                    "logloss": a["logloss"] / n, "brier": a["brier"] / n,
+                    "hit": a["hit"] / n, "within1": a["within1"] / n,
+                }
         print(f"  {system}  n={n}")
         print(f"    {'臂':8s} {'对数损失':>9s} {'Brier':>8s} {'命中':>7s} {'±1桶':>7s}")
         served_label = "去偏后融合" if D.ENABLED else "生偏融合"
@@ -362,6 +382,8 @@ def main() -> int:
         hit_delta = 100 * (arms["layer"]["hit"] - arms["none"]["hit"]) / n
         verdict = "有增益，可接" if (delta < 0 and hit_delta > 0) else "无增益，不可接"
         print(f"    Δ对数损失 {delta:+.4f} nat · Δ命中 {hit_delta:+.1f} 点 → {verdict}")
+        entry["delta_logloss"] = delta
+        entry["delta_hit_points"] = hit_delta
         pairs = paired.get(system) or []
         if pairs:
             by_day = collections.defaultdict(list)
@@ -379,11 +401,25 @@ def main() -> int:
                 for _ in range(4000)
             )
             p_worse = sum(1 for b in boot if b > 0) / len(boot)
+            entry.update({
+                "station_days": len(days), "clustered_delta": centre_est,
+                "ci_low": lo, "ci_high": hi, "bootstrap_low": boot[100],
+                "bootstrap_high": boot[3900], "p_worse": p_worse,
+                # The admission rule the list was set by (2026-09-07): the
+                # clustered interval must sit below zero.
+                "verdict": ("ADMIT" if hi < 0 else "REFUSE_WORSE" if lo > 0
+                            else "REFUSE_STRADDLES_ZERO"),
+            })
             print(f"    按站日聚类（{len(days)} 个站日）：站日均值差 {centre_est:+.4f}"
                   f" · 95% 区间 [{lo:+.4f}, {hi:+.4f}] → {verdict2}")
             print(f"    自助法（重抽站日 4000 次）区间 [{boot[100]:+.4f}, {boot[3900]:+.4f}]"
                   f" · P(接入后更差)={p_worse:.3f}")
         stations_here = sorted(k[1] for k in by_station if k[0] == system)
+        entry["by_station"] = {
+            st: {"delta": statistics.mean(by_station[(system, st)]),
+                 "n": len(by_station[(system, st)])}
+            for st in stations_here
+        }
         if len(stations_here) > 1:
             print(f"    逐站 Δ对数损失（负＝更好）：", end="")
             print("  ".join(
@@ -441,11 +477,31 @@ def main() -> int:
             cand = [x for x, _ in pts]
             inc = [y for _, y in pts]
             better = 100 * sum(1 for a, b in pts if abs(a) < abs(b)) / len(pts)
+            entry["point_mae_c"] = sum(map(abs, cand)) / len(cand)
+            entry["point_bias_c"] = statistics.mean(cand)
+            entry["incumbent_mae_c"] = sum(map(abs, inc)) / len(inc)
             print(f"    点预报 MAE：本系统 {sum(map(abs, cand))/len(cand):.3f}°C"
                   f"（偏差 {statistics.mean(cand):+.3f}）"
                   f" · 在任后验均值 {sum(map(abs, inc))/len(inc):.3f}°C"
                   f" · 更准的比例 {better:.1f}%")
         print()
+    if args.out:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps({
+            "schema": "regional_admission_gate_v1",
+            "measured_at_utc": datetime.now(timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"),
+            "window": {"from": args.start, "through": args.through},
+            "residual_table_covered": [
+                (R.load_replay_table() or {}).get("covered_from"),
+                (R.load_replay_table() or {}).get("covered_through"),
+            ],
+            "weight": args.weight if args.weight is not None else R.WEIGHT,
+            "rule": "clustered 95% interval of the per-station-day log-loss "
+                    "difference below zero admits",
+            "admitted_now": sorted(R.SERVING_SYSTEMS),
+            "systems": report,
+        }, ensure_ascii=False, indent=1, sort_keys=True), encoding="utf-8")
     return 0
 
 

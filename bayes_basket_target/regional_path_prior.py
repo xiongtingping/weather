@@ -134,6 +134,24 @@ POOLED_FIT_SYSTEM_ID = "POOLED_CROSS_SYSTEM"
 #: the East Asian stations, where P1's own point error is 1.395C against
 #: 0.798C at the US stations.
 #:
+#: Re-measured 2026-09-19 (user: "重新测试准入名单") over 2026-08-24..
+#: 09-17, every event date on a residual table refitted on strictly earlier
+#: days, CMA and ICON-EU scored for the first time.  Since the four-layer
+#: chain took the ceiling's place (2026-09-07) this layer speaks only where
+#: the chain does not and the ceiling reads TOO_EARLY -- which is exactly
+#: the gate's window, 4,163 prefixes of it after 09-07 -- so the question
+#: is still the one production would face.  Clustered by station-day:
+#:
+#:   JMA_MSM_POINT      -0.498 nat, 62 sd, 95% -0.754..-0.241   admitted
+#:   CMA_GRAPES_GLOBAL  -0.106,     64 sd, -0.336..+0.124  hit -4.2 points
+#:   DWD_ICON_EU        -0.075,     85 sd, -0.205..+0.055
+#:   NCEP_NBM           -0.017,    140 sd, -0.064..+0.030
+#:   NCEP_HRRR          +0.046,    120 sd, -0.015..+0.108  P(worse) 0.92
+#:
+#: The list stands.  Verdicts ride in regional_admission_gate.json, which
+#: the board reads; ``scripts/measure_regional_serving_value.py --out`` is
+#: how the gate is asked again.
+#:
 #: This list also settles a design fault the pooled measurement hid:
 #: ``resolve_serving_input`` takes the freshest admissible run, and hourly
 #: HRRR won that race against the three-hourly systems almost every time
