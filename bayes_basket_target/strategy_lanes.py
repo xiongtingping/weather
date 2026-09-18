@@ -67,9 +67,12 @@ TIEBREAK_DEFAULT_SETTINGS: dict[str, Any] = {
     # 0.40-0.60 by the market's normalised mid, whether or not the market's
     # own mode is that bucket.  v1 (``adjacent_tie_v1``) required the two
     # modes to differ by one rung; it is the 148-station-day subset of v2.
-    "rule": "model_mode_midband_v2",
+    # v2.1 (user ruling 2026-09-18 "升级到v2.1,并记录特征"): v2, and the
+    # model's bucket must be quoted both sides at most 3 cents wide.
+    "rule": "model_mode_midband_spread_v2_1",
     "min_market_share_on_model_mode": 0.40,
     "max_market_share_on_model_mode": 0.60,
+    "max_spread_on_model_mode": 0.031,
     "first_decision_fresh_seconds": 3600.0,
 }
 

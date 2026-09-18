@@ -8202,6 +8202,8 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             "max_market_share_on_model_mode": tiebreak.get(
                 "max_market_share_on_model_mode"
             ),
+            # v2.1: the model bucket's spread ceiling.
+            "max_spread_on_model_mode": tiebreak.get("max_spread_on_model_mode"),
             "source": lanes.get("source"),
             "updated_at_utc": lanes.get("updated_at_utc"),
         },
@@ -8288,6 +8290,7 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
         hit = (landed[0] == leg["bucket"]) if (landed and filled > 0) else None
         payout = filled if hit else (0.0 if hit is False else None)
         trades.append({
+            "order_intent_id": leg.get("order_intent_id"),
             "station_id": leg["station_id"], "event_date": leg["event_date"],
             "stage": leg.get("stage"), "bucket": leg["bucket"],
             "limit_price": leg.get("limit_price"),
@@ -8342,6 +8345,52 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             "first": (sum(first) / len(first)) if first else None,
             "second": (sum(second) / len(second)) if second else None,
         }
+    # v2.1 (user ruling 2026-09-18): the recorded feature, split the way the
+    # reading was -- the market's move on the model's bucket since the
+    # station-day's previous decision -- and, per bin, what the lane's own
+    # trades realised.  Recorded, never gated on; this is where the forward
+    # sample says whether the momentum split holds.
+    feature_split: list[dict[str, Any]] = []
+    if has_eval and any(
+        row[1] == "market_move_on_model_mode"
+        for row in conn.execute("PRAGMA table_info(tiebreak_lane_evaluation)")
+    ):
+        by_intent = {t["order_intent_id"]: t for t in trades if t.get("order_intent_id")}
+        bins = [
+            ("靠拢 ≥3 点", lambda v: v >= 0.03),
+            ("靠拢 0–3 点", lambda v: 0.0 <= v < 0.03),
+            ("没动或远离", lambda v: v < 0.0),
+        ]
+        rows_feat = conn.execute(
+            "SELECT market_move_on_model_mode, fired, refusal, order_intent_id, spread_on_model_mode"
+            " FROM tiebreak_lane_evaluation WHERE market_move_on_model_mode IS NOT NULL"
+        ).fetchall()
+        for label, test in bins:
+            sel = [r for r in rows_feat if test(float(r[0]))]
+            fired_n = sum(1 for r in sel if r[1])
+            sent_n = sum(1 for r in sel if r[1] and r[2] is None)
+            settled_t = [by_intent[r[3]] for r in sel if r[3] in by_intent and by_intent[r[3]].get("hit") is not None]
+            hits = sum(1 for t in settled_t if t["hit"])
+            shares_t = sum(t["filled_size"] for t in settled_t)
+            stake_t = sum(t["filled_notional_usdc"] for t in settled_t)
+            feature_split.append({
+                "bin": label, "evaluated": len(sel), "fired": fired_n, "sent": sent_n,
+                "settled": len(settled_t), "hits": hits,
+                "hit_rate": (hits / len(settled_t)) if settled_t else None,
+                "avg_ask": (stake_t / shares_t) if shares_t > 0 else None,
+                "realised_minus_ask": (
+                    (hits / len(settled_t)) - (stake_t / shares_t)
+                    if settled_t and shares_t > 0 else None
+                ),
+            })
+        feature_split.append({
+            "bin": "无上一决策（不可比）", "evaluated": int(conn.execute(
+                "SELECT COUNT(*) FROM tiebreak_lane_evaluation"
+                " WHERE market_move_on_model_mode IS NULL AND rule_version LIKE '%v2_1'"
+            ).fetchone()[0]), "fired": None, "sent": None, "settled": None, "hits": None,
+            "hit_rate": None, "avg_ask": None, "realised_minus_ask": None,
+        })
+    out["feature_split"] = feature_split
     out["trades"] = {
         "available": True,
         "sent": len(trades), "filled": len(filled_rows),
@@ -16400,11 +16449,11 @@ function tiebreakLane(){
       <b>秤砣线</b>
       <span class="pill ${S.enabled?"green":"red"}">${S.enabled?"运行中":"已关闭"}</span>
       <span>每笔 <b class="mono">${usd(S.stake_usdc)}</b>（顶部「秤砣每笔」旋钮可调）</span>
-      <span class="muted">规则 <b class="mono">${h(S.rule||"model_mode_midband_v2")}</b>：模型众数桶且市场给它 ${n3(S.min_market_share_on_model_mode)}–${S.max_market_share_on_model_mode==null?"∞":n3(S.max_market_share_on_model_mode)}${(S.rule||"")==="adjacent_tie_v1"?"（且两众数相邻不同）":""}，首决策 ${S.first_decision_fresh_seconds==null?"—":Math.round(S.first_decision_fresh_seconds/60)} 分钟内</span>
+      <span class="muted">规则 <b class="mono">${h(S.rule||"model_mode_midband_spread_v2_1")}</b>：模型众数桶且市场给它 ${n3(S.min_market_share_on_model_mode)}–${S.max_market_share_on_model_mode==null?"∞":n3(S.max_market_share_on_model_mode)}${(S.rule||"")==="adjacent_tie_v1"?"（且两众数相邻不同）":""}${/v2_1$/.test(S.rule||"")?`，该桶点差 ≤ ${S.max_spread_on_model_mode==null?"—":Math.round(S.max_spread_on_model_mode*100)} 分`:""}，首决策 ${S.first_decision_fresh_seconds==null?"—":Math.round(S.first_decision_fresh_seconds/60)} 分钟内</span>
       <span style="flex:1"></span>
       ${laneWord("basket","篮子买单")} ${laneWord("certain_win_recycle","0.998 回收")} ${laneWord("mis_bought_leg_exit","144 卖回")}
     </div>
-    <div class="muted" style="margin-top:6px">v2 规则：每个阶段的首个决策，模型众数桶被市场归一化中价定在 0.40–0.60 之间，就按卖一梯走到预算所及的最深一档 FOK 买这桶，一个站日只买一次。读数依据（全部快照 08-15→09-17，一站日一次按卖一）：754 站日 +5.7% [−0.2, +10.9]，前后半 +5.5/+5.7，仅首决策 488 站日 +7.9% [+1.8, +13.7]；同价带不看模型 −3.2%，模型众数在别处 −7.2%。v1（两众数相邻不同、市场 ≥0.40）是其 148 站日子集，行按 rule_version 分开记——仍是假设，不是结论。</div></div>`;
+    <div class="muted" style="margin-top:6px">v2.1 规则：每个阶段的首个决策，模型众数桶被市场归一化中价定在 0.40–0.60 之间、且该桶两边有报价点差不超过 3 分，就按卖一梯走到预算所及的最深一档 FOK 买这桶，一个站日只买一次（点差 >3 分或单边的桶回测 −3.4%，≤3 分 +8~9%）。读数依据（全部快照 08-15→09-17，一站日一次按卖一）：754 站日 +5.7% [−0.2, +10.9]，前后半 +5.5/+5.7，仅首决策 488 站日 +7.9% [+1.8, +13.7]；同价带不看模型 −3.2%，模型众数在别处 −7.2%。v1（两众数相邻不同、市场 ≥0.40）是其 148 站日子集，行按 rule_version 分开记——仍是假设，不是结论。</div></div>`;
   const byRule=(E.by_rule||[]).map(r=>`<span class="pill ${/v2$/.test(r.rule_version)?"green":"amber"}" title="${h(r.first_at_utc||"")} → ${h(r.last_at_utc||"")}">${h(r.rule_version.replace("tiebreak_",""))}：评估 ${r.evaluated} · 触发 ${r.fired} · 发单 ${r.sent}</span>`).join(" ");
   const ruleLine=byRule?`<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><span class="muted">按规则版本：</span>${byRule}</div>`:"";
   const evalTiles=E.available?ruleLine+`<div class="grid g3" style="margin-top:8px">
@@ -16427,6 +16476,10 @@ function tiebreakLane(){
   const refTable=E.available&&refusals?`<details style="margin-top:8px"><summary>为什么没买（评估结果分布，${E.total} 条）</summary>
     <table><thead><tr><th>结果 / 未发单原因</th><th>条数</th><th>其中触发</th></tr></thead><tbody>${refusals}</tbody></table>
     <div class="muted">rule_not_met:* 是四条件不成立；first_decision_stale 是上线时已过时的首决策；station_* / account_* / ask_book_* / market_* 是触发后被各闸挡下；空白（sent）是已发单。</div></details>`:"";
+  const feat=(T.feature_split||[]).map(f=>`<tr><td>${h(f.bin)}</td><td class="mono">${f.evaluated}</td><td class="mono">${f.fired==null?"—":f.fired}</td><td class="mono">${f.sent==null?"—":f.sent}</td><td class="mono">${f.settled==null?"—":f.settled}</td><td class="mono">${f.hit_rate==null?"—":pc(f.hit_rate)}</td><td class="mono">${f.avg_ask==null?"—":n3(f.avg_ask)}</td><td class="mono">${f.realised_minus_ask==null?"—":sp(f.realised_minus_ask)}</td></tr>`).join("");
+  const featTable=feat?`<details open style="margin-top:8px"><summary>特征（只记不交易）：市场自上一决策向模型桶靠拢多少，分档看本线成交的实现</summary>
+    <table><thead><tr><th>靠拢量</th><th>评估</th><th>触发</th><th>发单</th><th>已结算</th><th>命中率</th><th>均卖一</th><th>实现−卖一</th></tr></thead><tbody>${feat}</tbody></table>
+    <div class="muted">回测（全部快照，一站日一次）：靠拢 ≥3 点 +11.2% [+4.9, +17.4]，0–3 点 +2.8%，没动或远离 ≈0。前向样本站住了再考虑当规则（v3）。</div></details>`:"";
   const rows=(R.rows||[]).map(t=>`<tr>
     <td>${h(t.station_id)}</td><td class="mono">${h(t.event_date)}</td><td>${h(t.stage||"")}</td><td>${h(t.bucket)}</td>
     <td class="mono">${n3(t.limit_price)}</td><td class="mono">${t.requested_size==null?"—":(+t.requested_size).toFixed(2)}</td>
@@ -16441,7 +16494,7 @@ function tiebreakLane(){
     <td class="mono">${r.refusal?h(r.refusal):"<span class='pill green'>已发单</span>"}</td><td class="mono">${h((r.evaluated_at_utc||"").slice(5,16).replace("T"," "))}</td></tr>`).join("");
   const firedTable=E.available?`<details style="margin-top:8px"><summary>触发过的首决策（${(E.fired_rows||[]).length} 条，含被闸挡下的）</summary>
     ${firedRows?`<table><thead><tr><th>站</th><th>事件日</th><th>阶段</th><th>模型桶 ← 市场桶</th><th>市场给模型桶</th><th>模型自报</th><th>结果</th><th>评估于</th></tr></thead><tbody>${firedRows}</tbody></table>`:`<div class="muted">还没有触发过。</div>`}</details>`:"";
-  return settings+evalTiles+money+refTable+tradeTable+firedTable;
+  return settings+evalTiles+money+featTable+refTable+tradeTable+firedTable;
 }
 
 function moneyBoard(){

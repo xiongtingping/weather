@@ -79,13 +79,31 @@ SCHEMA = "tiebreak_lane_plan_v1"
 # +5.5/+5.7), first decisions only 488 +7.9% [+1.8, +13.7]; the same band
 # without the model's mode on the bucket -7.2% [-12.3, -2.4].  v1 is the
 # 148-station-day subset of v2 (+9.8% [-2.7, +22.9]).
+#   v2.1 ``model_mode_midband_spread_v2_1`` (user ruling 2026-09-18 "升级到
+#      v2.1,并记录特征") -- v2, and the model's bucket must be quoted on both
+#      sides with a spread at most ``max_spread_on_model_mode`` (3 cents).
+#      Measured on every snapshot, one buy per station-day at the ask: v2 by
+#      spread <=1c +9.4% [+0.9,+17.8], 1-3c +8.3% [+3.5,+13.6], >3c or one
+#      sided -3.4% [-15.6,+7.2]; at first decisions v2.1 376 station-days
+#      +10.2% [+3.0,+16.9] (halves +13.4/+8.9).
+#
+# Recorded but not traded on (the same ruling): the market's move on the
+# model's bucket since the station-day's previous decision, the model's
+# previous mode, the gap, the book's spread and depth.  The move split the
+# v2 cell +11.2% [+4.9,+17.4] (converging >= 3 points, 392 station-days)
+# against ~0 for still or diverging, survived the era split, threshold
+# 2-5 points, leave-one-station-out and a self-impact check, but weakened to
+# +5.2% against a >=45-minute-older reference, so it accrues as a feature
+# until the forward sample settles it.
 RULE_V1 = "adjacent_tie_v1"
 RULE_V2 = "model_mode_midband_v2"
+RULE_V21 = "model_mode_midband_spread_v2_1"
 RULE_VERSIONS = {
     RULE_V1: "tiebreak_adjacent_mode_market_share_v1",
     RULE_V2: "tiebreak_model_mode_market_midband_v2",
+    RULE_V21: "tiebreak_model_mode_market_midband_spread_v2_1",
 }
-DEFAULT_RULE = RULE_V2
+DEFAULT_RULE = RULE_V21
 RULE_VERSION = RULE_VERSIONS[DEFAULT_RULE]
 
 
@@ -137,12 +155,32 @@ EVALUATION_INDEX_DDL = (
 )
 
 
+#: Recorded per evaluation since v2.1 (charter 146): the book on the model's
+#: bucket and the market's move since the station-day's previous decision.
+#: Added to a store that predates them; a v1/v2 row reads NULL.
+FEATURE_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("best_ask_on_model_mode", "REAL"),
+    ("best_bid_on_model_mode", "REAL"),
+    ("spread_on_model_mode", "REAL"),
+    ("ask_depth_shares", "REAL"),
+    ("market_move_on_model_mode", "REAL"),
+    ("prev_decision_at_utc", "TEXT"),
+    ("prev_gap_minutes", "REAL"),
+    ("prev_model_mode", "TEXT"),
+    ("prev_market_share_on_model_mode", "REAL"),
+)
+
+
 def ensure_lane_schema(conn: sqlite3.Connection) -> None:
     """Statement by statement, never ``executescript``: the resident calls
     this inside the writer's transaction."""
 
     conn.execute(EVALUATION_DDL)
     conn.execute(EVALUATION_INDEX_DDL)
+    present = {row[1] for row in conn.execute(f"PRAGMA table_info({EVALUATION_TABLE})")}
+    for name, ctype in FEATURE_COLUMNS:
+        if name not in present:
+            conn.execute(f"ALTER TABLE {EVALUATION_TABLE} ADD COLUMN {name} {ctype}")
 
 
 def _has_table(conn: sqlite3.Connection, name: str) -> bool:
@@ -171,14 +209,18 @@ def evaluate_rule(
     min_market_share: float,
     max_market_share: float | None = None,
     rule: str = DEFAULT_RULE,
+    spread: float | None = None,
+    max_spread: float | None = None,
 ) -> dict[str, Any]:
     """The conditions on one decision's envelope and market vector.
 
     Both vectors are renormalised over the buckets they share, as the
     reading was; the market's share on the model's mode is read after
-    that.  ``rule`` picks v1 (adjacent modes, floor only) or v2 (the
-    model's mode inside the market's mid band).  Returns the reading and,
-    when it does not fire, why.
+    that.  ``rule`` picks v1 (adjacent modes, floor only), v2 (the model's
+    mode inside the market's mid band) or v2.1 (v2, and the model's bucket
+    quoted both sides with ``spread`` at most ``max_spread``; ``spread``
+    None means one-sided or unquoted and refuses).  Returns the reading
+    and, when it does not fire, why.
     """
 
     ords = {str(b): int(o) for b, o in (ordinals or {}).items()}
@@ -193,6 +235,8 @@ def evaluate_rule(
         "max_market_share_on_model_mode": (
             None if max_market_share is None else float(max_market_share)
         ),
+        "max_spread_on_model_mode": None if max_spread is None else float(max_spread),
+        "spread_on_model_mode": None if spread is None else float(spread),
         "buckets_in_common": len(common),
         "fired": False,
         "reason": "",
@@ -230,11 +274,104 @@ def evaluate_rule(
     if mn[model_mode] < float(min_market_share) - 1e-12:
         reading["reason"] = "market_share_below_threshold"
         return reading
-    if rule_name == RULE_V2 and max_market_share is not None and mn[model_mode] >= float(max_market_share) - 1e-12:
+    if rule_name in (RULE_V2, RULE_V21) and max_market_share is not None and mn[model_mode] >= float(max_market_share) - 1e-12:
         reading["reason"] = "market_share_above_ceiling"
         return reading
+    if rule_name == RULE_V21:
+        if spread is None:
+            reading["reason"] = "spread_unquoted"
+            return reading
+        if max_spread is not None and float(spread) > float(max_spread) + 1e-12:
+            reading["reason"] = "spread_too_wide"
+            return reading
     reading["fired"] = True
     return reading
+
+
+def book_features(book_row: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The model bucket's own book: best ask and its size, best bid, spread.
+    ``spread`` is None unless both sides quote."""
+
+    out: dict[str, Any] = {"best_ask": None, "best_bid": None, "spread": None, "ask_depth_shares": None}
+    if not book_row:
+        return out
+    asks = []
+    for level in book_row.get("ask_levels") or ():
+        try:
+            price = float(level.get("price")); size = float(level.get("shares") or 0.0)
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if size > 0 and math.isfinite(price) and 0.0 < price < 1.0:
+            asks.append((price, size))
+    bids = []
+    for level in book_row.get("bid_levels") or ():
+        try:
+            price = float(level.get("price")); size = float(level.get("shares") or 0.0)
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if size > 0 and math.isfinite(price) and 0.0 < price < 1.0:
+            bids.append(price)
+    if asks and book_row.get("ask_available", True):
+        asks.sort(); out["best_ask"] = asks[0][0]; out["ask_depth_shares"] = asks[0][1]
+    if bids:
+        out["best_bid"] = max(bids)
+    if out["best_ask"] is not None and out["best_bid"] is not None:
+        out["spread"] = round(out["best_ask"] - out["best_bid"], 6)
+    return out
+
+
+def market_move_features(
+    conn: sqlite3.Connection,
+    key: Mapping[str, Any],
+    fact: Mapping[str, Any],
+    ordinals: Mapping[str, Any],
+    model_mode: str,
+    market_share_now: float | None,
+) -> dict[str, Any]:
+    """How the market moved on the model's bucket since the station-day's
+    previous decision (any stage), and what the model's mode was then.
+    Recorded, never gated on.  Every field None when there is no earlier
+    decision or its snapshot cannot be read."""
+
+    out: dict[str, Any] = {
+        "market_move_on_model_mode": None, "prev_decision_at_utc": None,
+        "prev_gap_minutes": None, "prev_model_mode": None,
+        "prev_market_share_on_model_mode": None,
+    }
+    try:
+        row = conn.execute(
+            "SELECT decision_at_utc, ws_snapshot_id, probability_envelope_id"
+            " FROM basket_policy_training_fact"
+            " WHERE station_id=? AND event_date=? AND decision_at_utc<?"
+            " ORDER BY decision_at_utc DESC LIMIT 1",
+            (key["station_id"], key["event_date"], fact["decision_at_utc"]),
+        ).fetchone()
+        if row is None:
+            return out
+        prev_at, prev_snapshot_id, prev_envelope_id = str(row[0]), str(row[1]), str(row[2])
+        out["prev_decision_at_utc"] = prev_at
+        out["prev_gap_minutes"] = round((_utc(fact["decision_at_utc"]) - _utc(prev_at)).total_seconds() / 60.0, 1)
+        prev_env = _envelope(conn, prev_envelope_id)
+        if prev_env and prev_env.get("probabilities"):
+            probs = {str(b): float(v) for b, v in prev_env["probabilities"].items()}
+            out["prev_model_mode"] = max(probs, key=lambda b: probs[b])
+        prev_snap = _snapshot(conn, prev_snapshot_id)
+        if prev_snap is None:
+            return out
+        prev_market = market_reference_v1(prev_snap["buckets"])
+        if prev_market.get("state") != "complete":
+            return out
+        vector = {str(b): float(v) for b, v in prev_market["vector"].items() if str(b) in ordinals}
+        total = sum(vector.values())
+        if total <= 0.0 or str(model_mode) not in vector:
+            return out
+        prev_share = vector[str(model_mode)] / total
+        out["prev_market_share_on_model_mode"] = prev_share
+        if market_share_now is not None:
+            out["market_move_on_model_mode"] = round(float(market_share_now) - prev_share, 6)
+    except (sqlite3.Error, TypeError, ValueError):
+        return out
+    return out
 
 
 def walk_ask_book(
@@ -400,6 +537,7 @@ def _record(conn: sqlite3.Connection, key: Mapping[str, Any], fact: Mapping[str,
             reading: Mapping[str, Any], *, fired: bool, refusal: str | None,
             order_intent_id: str | None, plan: Mapping[str, Any] | None, now_utc: str,
             rule_version: str = RULE_VERSION) -> dict[str, Any]:
+    features = dict(reading.get("features") or {})
     body = {
         "station_id": key["station_id"], "event_date": key["event_date"], "stage": key["stage"],
         "fact_id": (fact or {}).get("fact_id", ""), "decision_at_utc": key["decision_at_utc"],
@@ -408,12 +546,14 @@ def _record(conn: sqlite3.Connection, key: Mapping[str, Any], fact: Mapping[str,
         "refusal": refusal, "order_intent_id": order_intent_id, "plan": dict(plan) if plan else None,
     }
     sha = content_sha256(body)
+    feature_names = [name for name, _t in FEATURE_COLUMNS]
     conn.execute(
         f"INSERT OR IGNORE INTO {EVALUATION_TABLE}(evaluation_id,station_id,event_date,stage,fact_id,"
         "decision_at_utc,envelope_id,snapshot_id,rule_version,model_mode,market_mode,mode_distance,"
         "market_share_on_model_mode,model_share_on_model_mode,market_mode_share,model_mode_share,"
-        "fired,refusal,order_intent_id,plan_json,evaluated_at_utc,content_sha256)"
-        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "fired,refusal,order_intent_id,plan_json,evaluated_at_utc,content_sha256,"
+        + ",".join(feature_names) + ")"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?," + ",".join("?" for _ in feature_names) + ")",
         (
             f"tiebreak_eval_{sha[:32]}", body["station_id"], body["event_date"], body["stage"],
             body["fact_id"], body["decision_at_utc"], body["envelope_id"], body["snapshot_id"],
@@ -423,6 +563,7 @@ def _record(conn: sqlite3.Connection, key: Mapping[str, Any], fact: Mapping[str,
             1 if fired else 0, refusal, order_intent_id,
             json.dumps(plan, ensure_ascii=False, sort_keys=True) if plan else None,
             now_utc, sha,
+            *[features.get(name) for name in feature_names],
         ),
     )
     return {**body, "content_sha256": sha}
@@ -455,6 +596,8 @@ def plan_tiebreak_entries(
     rule_version = rule_version_for(rule_name)
     max_share_raw = cfg.get("max_market_share_on_model_mode")
     max_share = None if max_share_raw is None else float(max_share_raw)
+    max_spread_raw = cfg.get("max_spread_on_model_mode")
+    max_spread = None if max_spread_raw is None else float(max_spread_raw)
     fresh_seconds = float(cfg.get("first_decision_fresh_seconds") or TIEBREAK_DEFAULT_SETTINGS["first_decision_fresh_seconds"])
     gate = admission or (lambda station, conn: live_station_admission(station, conn=conn))
     now = _utc(now_utc)
@@ -489,10 +632,26 @@ def plan_tiebreak_entries(
                                        fired=False, refusal=f"market_incomplete:{market.get('reason') or market.get('state')}",
                                        order_intent_id=None, plan=None, now_utc=now_utc, rule_version=rule_version))
             continue
+        # The model's mode is read once here so the book and the move can be
+        # attached to every row, fired or not, before the rule is asked.
+        pre = evaluate_rule(
+            envelope["probabilities"], envelope["ordinals"], market["vector"],
+            min_market_share=min_share, max_market_share=max_share, rule=RULE_V2,
+        )
+        model_mode = pre.get("model_mode")
+        book = book_features(next((r for r in snapshot["buckets"] if str(r.get("bucket")) == str(model_mode)), None)) if model_mode else book_features(None)
         reading = evaluate_rule(
             envelope["probabilities"], envelope["ordinals"], market["vector"],
             min_market_share=min_share, max_market_share=max_share, rule=rule_name,
+            spread=book["spread"], max_spread=max_spread,
         )
+        features = {
+            "best_ask_on_model_mode": book["best_ask"], "best_bid_on_model_mode": book["best_bid"],
+            "spread_on_model_mode": book["spread"], "ask_depth_shares": book["ask_depth_shares"],
+            **(market_move_features(target_conn, key, fact, envelope["ordinals"], str(model_mode), reading.get("market_share_on_model_mode"))
+               if model_mode else {name: None for name, _t in FEATURE_COLUMNS[4:]}),
+        }
+        reading = {**reading, "features": features}
         if not reading["fired"]:
             evaluations.append(_record(target_conn, key, fact, reading, fired=False,
                                        refusal=f"rule_not_met:{reading['reason']}", order_intent_id=None, plan=None, now_utc=now_utc, rule_version=rule_version))
@@ -683,6 +842,10 @@ def execute_tiebreak_entries(
 
 __all__ = [
     "DEFAULT_RULE",
+    "FEATURE_COLUMNS",
+    "RULE_V21",
+    "book_features",
+    "market_move_features",
     "EVALUATION_TABLE",
     "LANE",
     "LANE_TITLE",

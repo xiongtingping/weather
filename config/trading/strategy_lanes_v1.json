@@ -1,6 +1,6 @@
 {
   "schema": "basket_strategy_lanes_v1",
-  "updated_at_utc": "2026-09-18T01:03:18Z",
+  "updated_at_utc": "2026-09-18T01:53:57Z",
   "rationale": "User ruling 2026-09-18: put the tiebreak lane (秤砣线) live and pause every other strategy -- closed, not deleted. A paused lane still compiles, records its decisions and writes the evidence the ledger and the fits read; only its sends are held (basket BUYs end failed with strategy_lane_paused:basket on their event; the two sell lanes are skipped by the daemon). Read fresh before every send. Missing file = every lane enabled; unreadable file = every lane paused. Charter 146.",
   "lanes": {
     "basket": {
@@ -23,9 +23,10 @@
       "stake_usdc": 6.0,
       "min_market_share_on_model_mode": 0.4,
       "first_decision_fresh_seconds": 3600.0,
-      "note": "秤砣线 v2 (charter 146, user ruling 2026-09-18 升级到v2): at a stage's first decision, the model's mode bucket priced 0.40-0.60 by the market's normalised mid -> buy that bucket, stake_usdc FOK at the walked ask, once per station-day. v1 (adjacent_tie_v1: modes one rung apart, market >= 0.40 on the model's bucket) is selectable by rule.",
-      "rule": "model_mode_midband_v2",
-      "max_market_share_on_model_mode": 0.6
+      "note": "秤砣线 v2.1 (charter 146, user ruling 2026-09-18 升级到v2.1,并记录特征): at a stage's first decision, the model's mode bucket priced 0.40-0.60 by the market's normalised mid AND quoted both sides at most 3 cents wide -> buy that bucket, stake_usdc FOK at the walked ask, once per station-day. Features (market move since the previous decision, spread, depth) are recorded on every evaluation row, not traded on. v2 / v1 selectable by rule.",
+      "rule": "model_mode_midband_spread_v2_1",
+      "max_market_share_on_model_mode": 0.6,
+      "max_spread_on_model_mode": 0.031
     }
   }
 }

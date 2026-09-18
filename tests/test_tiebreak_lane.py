@@ -62,14 +62,16 @@ def _insert(conn: sqlite3.Connection, table: str, values: dict) -> None:
     )
 
 
-def _book(asks_28=((0.46, 30.0), (0.47, 100.0))) -> list[dict]:
-    """A near-tie ladder: the market leans 27°C over 28°C, 84% on the two."""
+def _book(asks_28=((0.46, 30.0), (0.47, 100.0)), bid_28=0.44) -> list[dict]:
+    """A near-tie ladder: the market leans 27°C over 28°C, 84% on the two;
+    28°C is quoted 0.44/0.46, a two-cent spread (v2.1 admits up to three)."""
 
     def row(bucket, ask, bid, asks=None):
         levels = [{"price": p, "shares": s} for p, s in (asks or ((ask, 200.0),))]
-        return {"bucket": bucket, "ask_levels": levels, "bid_levels": [{"price": bid, "shares": 200.0}],
+        return {"bucket": bucket, "ask_levels": levels,
+                "bid_levels": ([{"price": bid, "shares": 200.0}] if bid is not None else []),
                 "ask_available": True}
-    return [row("27°C", 0.50, 0.48), row("28°C", 0.46, 0.42, asks_28), row("29°C", 0.09, 0.07)]
+    return [row("27°C", 0.50, 0.48), row("28°C", 0.46, bid_28, asks_28), row("29°C", 0.09, 0.07)]
 
 
 @pytest.fixture
@@ -87,16 +89,16 @@ def _envelope_sha(fact_id: str) -> str:
     return (fact_id * 64)[:64]
 
 
-def _seed(conn, *, stage="P1", probabilities=None, book=None, decided=DECIDED, fact_id="f1", accepting=1):
+def _seed(conn, *, stage="P1", probabilities=None, book=None, decided=DECIDED, fact_id="f1", accepting=1, event_date=ED):
     probabilities = probabilities or {"27°C": 0.35, "28°C": 0.45, "29°C": 0.20}
     _insert(conn, "basket_probability_envelope", {
-        "envelope_id": f"env_{fact_id}", "stage": stage, "checkpoint_id": f"cp_{fact_id}", "station_id": ST, "event_date": ED,
+        "envelope_id": f"env_{fact_id}", "stage": stage, "checkpoint_id": f"cp_{fact_id}", "station_id": ST, "event_date": event_date,
         "settlement_timezone": TZ, "decision_at_utc": decided, "fresh_until_utc": "2026-09-18T13:00:00Z",
         "bucket_ordinals_json": json.dumps(ORDS), "probabilities_json": json.dumps(probabilities),
         "content_sha256": _envelope_sha(fact_id), "state": "COMMITTED", "created_at": decided, "lineage_json": "{}",
     })
     _insert(conn, "basket_official_ws_snapshot", {
-        "snapshot_id": f"snap_{fact_id}", "market_id": "m", "station_id": ST, "event_date": ED,
+        "snapshot_id": f"snap_{fact_id}", "market_id": "m", "station_id": ST, "event_date": event_date,
         "settlement_timezone": TZ, "sequence": 1, "observed_at": decided, "quote_version": "v",
         "quote_observed_at": decided, "quote_expires_at": "2026-09-18T13:00:00Z",
         "quote_source": "OFFICIAL_CLOB_WS", "remaining_budget_usdc": 100.0,
@@ -104,7 +106,7 @@ def _seed(conn, *, stage="P1", probabilities=None, book=None, decided=DECIDED, f
         "created_at": decided,
     })
     _insert(conn, "basket_policy_training_fact", {
-        "fact_id": fact_id, "station_id": ST, "event_date": ED, "settlement_timezone": TZ,
+        "fact_id": fact_id, "station_id": ST, "event_date": event_date, "settlement_timezone": TZ,
         "decision_at_utc": decided, "decision_scope_key": f"scope_{fact_id}", "captured_at_utc": decided,
         "source_sequence": 1, "quote_observed_at": decided, "quote_expires_at": "2026-09-18T13:00:00Z",
         "stage": stage, "probability_envelope_id": f"env_{fact_id}", "ws_snapshot_id": f"snap_{fact_id}",
@@ -115,7 +117,7 @@ def _seed(conn, *, stage="P1", probabilities=None, book=None, decided=DECIDED, f
     _insert(conn, "basket_target_market_registry_snapshot", {"snapshot_sha256": registry_sha, "source_scope": "shared_live_registry_export_only"})
     for bucket, token in TOKENS.items():
         _insert(conn, "basket_target_market_registry", {
-            "snapshot_sha256": registry_sha, "slug": f"{ST}-{bucket}", "event_date": ED,
+            "snapshot_sha256": registry_sha, "slug": f"{ST}-{bucket}", "event_date": event_date,
             "outcome": bucket, "city_slug": "shanghai", "station_id": ST, "settlement_timezone": TZ,
             "yes_token": token, "market_active": 1, "market_accepting_orders": accepting,
             "registry_json": json.dumps({"order_price_min_tick_size": 0.01, "order_min_size": 5.0}),
@@ -162,12 +164,15 @@ def test_v2_fires_on_the_model_mode_inside_the_market_mid_band() -> None:
     """v2 (user ruling 2026-09-18 升级到v2): the model's mode bucket priced
     0.40-0.60 by the market, agreeing or not; v1's tie is a subset."""
 
-    V2 = dict(min_market_share=0.40, max_market_share=0.60)
+    V2 = dict(min_market_share=0.40, max_market_share=0.60, rule=lane.RULE_V2)
     p = {"27°C": 0.35, "28°C": 0.45, "29°C": 0.20}
     # Disagreeing modes, market 0.42 on the model's bucket: fires (v1's case).
     tie = lane.evaluate_rule(p, ORDS, {"27°C": 0.50, "28°C": 0.42, "29°C": 0.08}, **V2)
     assert tie["fired"] is True and tie["rule"] == "tiebreak_model_mode_market_midband_v2"
-    assert lane.evaluate_rule(p, ORDS, {"27°C": 0.50, "28°C": 0.42, "29°C": 0.08}, min_market_share=0.40)["rule"] == tie["rule"], "v2 is the default"
+    default = lane.evaluate_rule(p, ORDS, {"27°C": 0.50, "28°C": 0.42, "29°C": 0.08}, min_market_share=0.40, spread=0.02, max_spread=0.031)
+    assert default["rule"] == "tiebreak_model_mode_market_midband_spread_v2_1" and default["fired"] is True, "v2.1 is the default"
+    assert lane.evaluate_rule(p, ORDS, {"27°C": 0.50, "28°C": 0.42, "29°C": 0.08}, min_market_share=0.40, spread=0.05, max_spread=0.031)["reason"] == "spread_too_wide"
+    assert lane.evaluate_rule(p, ORDS, {"27°C": 0.50, "28°C": 0.42, "29°C": 0.08}, min_market_share=0.40, spread=None, max_spread=0.031)["reason"] == "spread_unquoted"
     # Agreeing modes, market 0.55 on the shared bucket: fires under v2, not v1.
     agree = lane.evaluate_rule({"27°C": 0.6, "28°C": 0.3, "29°C": 0.1}, ORDS, {"27°C": 0.55, "28°C": 0.35, "29°C": 0.10}, **V2)
     assert agree["fired"] is True and agree["model_mode"] == agree["market_mode"] == "27°C"
@@ -234,10 +239,17 @@ def test_it_buys_the_model_bucket_fok_at_the_walked_ask_and_records_everything(s
     evaluation = store.execute(
         f"SELECT fired, refusal, order_intent_id, market_share_on_model_mode FROM {lane.EVALUATION_TABLE}"
     ).fetchone()
-    # The market's share is read off the normalised MIDS (28°C mid 0.44 of a
-    # 1.01 ladder), never the bid or the ask alone.
+    # The market's share is read off the normalised MIDS (28°C mid 0.45 of a
+    # 1.02 ladder), never the bid or the ask alone.
     assert evaluation[0] == 1 and evaluation[1] is None and evaluation[2] == intent[7]
-    assert evaluation[3] == pytest.approx(0.44 / 1.01)
+    assert evaluation[3] == pytest.approx(0.45 / 1.02)
+    # v2.1 (charter 146): the row carries the model bucket's book.
+    book = store.execute(
+        f"SELECT best_ask_on_model_mode, best_bid_on_model_mode, spread_on_model_mode, ask_depth_shares,"
+        f" rule_version FROM {lane.EVALUATION_TABLE}"
+    ).fetchone()
+    assert book[0] == 0.46 and book[1] == 0.44 and book[2] == pytest.approx(0.02) and book[3] == 30.0
+    assert book[4] == "tiebreak_model_mode_market_midband_spread_v2_1"
     reconciled = store.execute(
         "SELECT filled_size FROM basket_target_order_reconciliations WHERE order_intent_id=?",
         (evaluation[2],),
@@ -299,9 +311,96 @@ def test_a_decision_that_does_not_fire_is_scored_with_its_reason(store) -> None:
                                             live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
     assert receipt["evaluated"] == 1 and receipt["fired"] == 0
     assert receipt["refusals"] == ["rule_not_met:market_share_below_threshold"]
-    assert receipt["rule"] == "tiebreak_model_mode_market_midband_v2"
+    assert receipt["rule"] == "tiebreak_model_mode_market_midband_spread_v2_1"
     row = store.execute(f"SELECT model_mode, market_mode, fired, rule_version FROM {lane.EVALUATION_TABLE}").fetchone()
-    assert row == ("29°C", "27°C", 0, "tiebreak_model_mode_market_midband_v2")
+    assert row == ("29°C", "27°C", 0, "tiebreak_model_mode_market_midband_spread_v2_1")
+
+
+def test_v2_1_refuses_a_wide_or_one_sided_book_on_the_model_bucket(store) -> None:
+    """v2.1 (user ruling 2026-09-18): the model's bucket must be quoted both
+    sides at most three cents wide; the reason is on the row, and v2 is
+    still one setting away."""
+
+    _seed(store, book=_book(bid_28=0.40))          # 0.40 / 0.46: six cents
+    wide = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
+                                         live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert wide["fired"] == 0 and wide["refusals"] == ["rule_not_met:spread_too_wide"]
+    assert wide["rule"] == "tiebreak_model_mode_market_midband_spread_v2_1"
+    row = store.execute(f"SELECT spread_on_model_mode, fired FROM {lane.EVALUATION_TABLE}").fetchone()
+    assert row[0] == pytest.approx(0.06) and row[1] == 0
+    # The same book under v2 fires: the spread is v2.1's condition alone.
+    store.execute(f"DELETE FROM {lane.EVALUATION_TABLE}")
+    v2 = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
+                                       live_submit_authorized=True,
+                                       settings={"stake_usdc": 20.0, "rule": "model_mode_midband_v2"}, admission=ADMIT)
+    assert v2["fired"] == 1 and v2["submitted"] == 1
+    # One-sided: no bid on the model's bucket (another station-day, so the
+    # first buy above does not shadow it).
+    store.execute(f"DELETE FROM {lane.EVALUATION_TABLE}")
+    _seed(store, stage="P0-M", fact_id="f2", decided="2026-09-18T12:05:00.000Z", book=_book(bid_28=None), event_date="2026-09-20")
+    one_sided = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
+                                              live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+    # A bucket priced 0.46 with no bid is refused before the rule is asked --
+    # the market vector itself is incomplete on a one-sided ask above the
+    # tail cap -- and the rule would refuse it as unquoted if it got there.
+    reason = store.execute(
+        f"SELECT refusal FROM {lane.EVALUATION_TABLE} WHERE event_date='2026-09-20'"
+    ).fetchone()[0]
+    assert reason in {"market_incomplete:one_sided_ask:28°C", "rule_not_met:spread_unquoted"}
+    assert store.execute("SELECT COUNT(*) FROM basket_target_order_intents WHERE decision_id LIKE '%2026-09-20'").fetchone()[0] == 0
+    # A wider ceiling in the lane file admits a six-cent book on a third station-day.
+    store.execute(f"DELETE FROM {lane.EVALUATION_TABLE}")
+    _seed(store, stage="P1", fact_id="f3", decided="2026-09-18T12:06:00.000Z", book=_book(bid_28=0.40), event_date="2026-09-21")
+    sent: list = []
+    loose = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW,
+                                          live_submit_authorized=True,
+                                          settings={"stake_usdc": 20.0, "max_spread_on_model_mode": 0.10}, admission=ADMIT)
+    assert loose["submitted"] == 1 and sent[0][1]["token_id"] == "t28"
+    assert store.execute(
+        f"SELECT fired, refusal FROM {lane.EVALUATION_TABLE} WHERE event_date='2026-09-21'"
+    ).fetchone() == (1, None)
+
+
+def test_the_market_move_since_the_previous_decision_is_recorded_not_gated(store) -> None:
+    """The feature the ruling asked to record: the market's share on the
+    model's bucket now minus at the station-day's previous decision (any
+    stage), the model's mode then, and the gap.  None without a previous
+    decision.  It never changes what fires."""
+
+    # A lone first decision: no previous decision on the station-day.
+    _seed(store)
+    lone = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
+                                         live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert lone["fired"] == 1
+    row = store.execute(
+        f"SELECT market_move_on_model_mode, prev_decision_at_utc, prev_gap_minutes, prev_model_mode"
+        f" FROM {lane.EVALUATION_TABLE}"
+    ).fetchone()
+    assert row == (None, None, None, None)
+    # An earlier P0 decision on the same station-day, 100 minutes before
+    # (stale for its own evaluation), with 28°C quoted lower (0.38/0.40) and
+    # the model then leaning 27°C: the P0-M first decision reads the move.
+    store.execute(f"DELETE FROM {lane.EVALUATION_TABLE}")
+    D2 = "2026-09-20"
+    _seed(store, stage="P0", fact_id="f0", decided="2026-09-18T10:30:00.000Z", event_date=D2,
+          probabilities={"27°C": 0.6, "28°C": 0.3, "29°C": 0.1}, book=_book(asks_28=((0.40, 100.0),), bid_28=0.38))
+    _seed(store, stage="P0-M", fact_id="f2", decided="2026-09-18T12:05:00.000Z", event_date=D2)
+    receipt = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
+                                            live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+    rows = {r[0]: r for r in store.execute(
+        f"SELECT stage, fired, refusal, market_move_on_model_mode, prev_decision_at_utc, prev_gap_minutes,"
+        f" prev_model_mode, prev_market_share_on_model_mode FROM {lane.EVALUATION_TABLE} WHERE event_date=?", (D2,)
+    )}
+    assert rows["P0"][2] == "first_decision_stale"
+    p0m = rows["P0-M"]
+    assert p0m[1] == 1 and p0m[2] is None
+    # 28°C mid now 0.45 of 1.02; then 0.39 of 0.96: the market moved toward the model's bucket.
+    assert p0m[4] == "2026-09-18T10:30:00.000Z" and p0m[5] == pytest.approx(95.0)
+    assert p0m[6] == "27°C" and p0m[7] == pytest.approx(0.39 / 0.96)
+    assert p0m[3] == pytest.approx(0.45 / 1.02 - 0.39 / 0.96, abs=1e-6)
+    # And the move changes nothing about firing: it is a feature.  (The first
+    # station-day is re-scored too and refused as already attempted.)
+    assert receipt["submitted"] == 1
 
 
 def test_the_lane_file_selects_v1_and_the_row_says_which_rule_scored_it(store) -> None:
@@ -322,9 +421,9 @@ def test_the_lane_file_selects_v1_and_the_row_says_which_rule_scored_it(store) -
                                            live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
     assert second["fired"] == 1 and second["submitted"] == 1 and sent[0][1]["token_id"] == "t27"
     versions = sorted(r[0] for r in store.execute(f"SELECT rule_version FROM {lane.EVALUATION_TABLE}"))
-    assert versions == ["tiebreak_adjacent_mode_market_share_v1", "tiebreak_model_mode_market_midband_v2"]
+    assert versions == ["tiebreak_adjacent_mode_market_share_v1", "tiebreak_model_mode_market_midband_spread_v2_1"]
     plan_rule = store.execute("SELECT json_extract(intent_json, '$.rule') FROM basket_target_order_intents").fetchone()[0]
-    assert plan_rule == "tiebreak_model_mode_market_midband_v2"
+    assert plan_rule == "tiebreak_model_mode_market_midband_spread_v2_1"
 
 
 def test_the_gates_a_fired_decision_must_still_pass(store) -> None:
