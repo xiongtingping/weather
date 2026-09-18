@@ -941,8 +941,18 @@ def _sync_sent_rows(conn: sqlite3.Connection, *, rule_version: str, floor: str) 
         if filled > 0.0:
             new_refusal = None
         elif str(recon_state) in {"resolved_not_placed", "resolved_cancelled"} or str(intent_state) in {"failed", "cancelled"}:
+            current = str(refusal or "")
+            if current.startswith("retry_"):
+                # Re-judged on a later book after this order was resolved as
+                # not placed: that judgement is the row's reason, and the
+                # order it still points at was folded in when the row became
+                # retryable.  Rewriting it from the dead order every pass
+                # (RJTT/OPKC 2026-09-18 07:55Z: ``retry_rule_not_met`` read
+                # ``send:resolved_not_placed`` again a cycle later) reported
+                # the order as the reason when the market was.
+                continue
             new_refusal = (
-                str(refusal) if str(refusal or "").startswith(SEND_REFUSAL_PREFIX)
+                current if current.startswith(SEND_REFUSAL_PREFIX)
                 else f"send:{recon_state or intent_state}"
             )
         else:

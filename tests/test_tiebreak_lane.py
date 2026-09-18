@@ -710,6 +710,40 @@ def test_an_ambiguous_send_waits_for_the_reconciliation_and_follows_it(store) ->
     assert store.execute(f"SELECT refusal FROM {lane.EVALUATION_TABLE}").fetchone()[0] is None
 
 
+def test_a_row_re_judged_after_its_send_failed_keeps_the_later_judgement(store) -> None:
+    """RJTT/OPKC 2026-09-18 07:55Z: a row whose killed send had been re-judged
+    ``retry_rule_not_met`` on a newer book read ``send:resolved_not_placed``
+    again one cycle later -- the sent-row sync rewrote it from the dead order
+    on every pass, and the board named the order as the reason when the
+    market was.  The later judgement stands until a newer book is judged."""
+
+    _seed(store)
+    sent: list = []
+
+    def killed(path, payload):
+        sent.append(payload)
+        return {"ok": True, "accepted": True, "exchange_order_id": "0xkill", "status": "live"}
+
+    lane.execute_tiebreak_entries(store, transport=killed, now_utc=NOW, live_submit_authorized=True,
+                                  settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert store.execute(f"SELECT refusal FROM {lane.EVALUATION_TABLE}").fetchone()[0].startswith("send:")
+    _newer_snapshot(store, observed_at="2026-09-18T12:09:30.000Z", snapshot_id="snap_out",
+                    book=[{"bucket": "27°C", "ask_levels": [{"price": 0.20, "shares": 200.0}], "bid_levels": [{"price": 0.18, "shares": 200.0}], "ask_available": True},
+                          {"bucket": "28°C", "ask_levels": [{"price": 0.75, "shares": 200.0}], "bid_levels": [{"price": 0.73, "shares": 200.0}], "ask_available": True},
+                          {"bucket": "29°C", "ask_levels": [{"price": 0.05, "shares": 200.0}], "bid_levels": [{"price": 0.04, "shares": 200.0}], "ask_available": True}])
+    judged = lane.execute_tiebreak_entries(store, transport=killed, now_utc=NOW, live_submit_authorized=True,
+                                           settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert judged["retries"][0]["refusal_after"] == "retry_rule_not_met:market_share_above_ceiling"
+    assert store.execute(f"SELECT refusal FROM {lane.EVALUATION_TABLE}").fetchone()[0] == "retry_rule_not_met:market_share_above_ceiling"
+    # No newer book: the next pass judges nothing, and the row keeps its reason.
+    again = lane.execute_tiebreak_entries(store, transport=killed, now_utc=NOW, live_submit_authorized=True,
+                                          settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert again["retry_planned"] == 0 and len(sent) == 1
+    assert store.execute(f"SELECT refusal, order_intent_id FROM {lane.EVALUATION_TABLE}").fetchone() == (
+        "retry_rule_not_met:market_share_above_ceiling", sent[0]["order_intent_id"],
+    )
+
+
 def test_a_fill_the_reconciliation_finds_later_makes_the_row_a_success(store) -> None:
     from bayes_basket_target.execution_reconciliation import record_order_event  # noqa: PLC0415
 
