@@ -339,6 +339,108 @@ def load_legs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return legs
 
 
+def load_exit_sells(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Every live SELL that filled: charter 100's recycle and charter 144's
+    exit, both sent through ``exit_orders.send_exit_sell``.
+
+    Neither lane writes a decision row, so ``load_legs`` -- which reaches a
+    station-day through its decision -- never saw them: a leg sold at 0.99
+    before its day closed was still counted as held to settlement, and a leg
+    sold back at the bid was counted as held to zero (user: 「没有计算主动卖出
+    的吗？」, 2026-09-18).  The station-day is the sell's own cycle row.
+    """
+
+    needed = (
+        "basket_target_order_intents",
+        "basket_target_order_reconciliations",
+        "basket_target_execution_cycles",
+    )
+    if not all(table_exists(conn, name) for name in needed):
+        return []
+    columns = {
+        str(row[1]) for row in conn.execute(
+            "PRAGMA table_info(basket_target_order_intents)"
+        )
+    }
+    if "order_action" not in columns:
+        return []
+    rows = conn.execute(
+        "SELECT i.order_intent_id, c.station_id, c.event_date, i.bucket,"
+        " r.filled_size, r.filled_notional_usdc, i.created_at"
+        " FROM basket_target_order_intents i"
+        " JOIN basket_target_order_reconciliations r"
+        "   ON r.order_intent_id=i.order_intent_id"
+        " JOIN basket_target_execution_cycles c ON c.cycle_id=i.cycle_id"
+        " WHERE i.order_action='SELL' AND i.live_submit_authorized=1"
+        "   AND r.filled_size>0"
+        " ORDER BY i.created_at, i.order_intent_id"
+    ).fetchall()
+    return [
+        {
+            "order_intent_id": str(intent),
+            "station_id": str(station),
+            "event_date": str(day),
+            "bucket": str(bucket),
+            "sold_size": float(size or 0.0),
+            "proceeds_usdc": float(proceeds or 0.0),
+            "created_at": str(created or ""),
+        }
+        for intent, station, day, bucket, size, proceeds, created in rows
+    ]
+
+
+def allocate_sells(
+    legs: list[dict[str, Any]], sells: list[dict[str, Any]],
+) -> dict[tuple[str, str, str], dict[str, tuple[float, float]]]:
+    """Each sale of a bucket, shared out over the stages that held it.
+
+    Keyed ``(station, day, stage) -> {bucket: (shares sold, proceeds)}``.  A
+    sale does not say which stage's shares it sold; it is split in proportion
+    to what each stage held of that bucket, at the sale's own average price,
+    and never beyond what the stages held (a sale of shares the book never
+    bought -- they were bought outside this system -- is not this book's).
+    """
+
+    held: dict[tuple[str, str, str], dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
+    for leg in legs:
+        if leg["filled_size"] > 0:
+            held[(leg["station_id"], leg["event_date"], leg["bucket"])][
+                leg["stage"]
+            ] += leg["filled_size"]
+    sold: dict[tuple[str, str, str], list[float]] = defaultdict(lambda: [0.0, 0.0])
+    for sale in sells:
+        slot = sold[(sale["station_id"], sale["event_date"], sale["bucket"])]
+        slot[0] += sale["sold_size"]
+        slot[1] += sale["proceeds_usdc"]
+    out: dict[tuple[str, str, str], dict[str, tuple[float, float]]] = defaultdict(dict)
+    for (station, day, bucket), (shares, proceeds) in sold.items():
+        stages = held.get((station, day, bucket)) or {}
+        total = sum(stages.values())
+        if total <= 0.0 or shares <= 0.0:
+            continue
+        take = min(shares, total)
+        price = proceeds / shares
+        for stage, stage_shares in stages.items():
+            part = take * stage_shares / total
+            prior = out[(station, day, stage)].get(bucket, (0.0, 0.0))
+            out[(station, day, stage)][bucket] = (prior[0] + part, prior[1] + part * price)
+    return dict(out)
+
+
+def _payout(
+    held_shares: Mapping[str, float],
+    sold: Mapping[str, tuple[float, float]],
+    truth: str,
+) -> float:
+    """What a stage's basket paid: the truth bucket's shares still held at
+    settlement, plus whatever its sales took in before it."""
+
+    kept = held_shares.get(truth, 0.0) - (sold.get(truth) or (0.0, 0.0))[0]
+    return max(0.0, kept) + sum(proceeds for _shares, proceeds in sold.values())
+
+
 def basket_belief(
     legs: Iterable[Mapping[str, Any]], *, strict: bool = True
 ) -> Mapping[str, float] | None:
@@ -488,6 +590,7 @@ def station_days(book: Mapping[str, Any]) -> list[dict[str, Any]]:
         stages: dict[str, Any] = {}
         stake = 0.0
         payout = 0.0
+        proceeds = 0.0
         held: set[str] = set()
         posted: set[str] = set()
         # A leg whose decision named no stage still spent money on this
@@ -502,8 +605,10 @@ def station_days(book: Mapping[str, Any]) -> list[dict[str, Any]]:
             stake += summary["stake_usdc"]
             held |= set(summary["held_buckets"])
             posted |= set(summary["intended_buckets"])
+            sold = (book.get("sold_by_stage") or {}).get((station, day, stage)) or {}
+            proceeds += sum(p for _shares, p in sold.values())
             if truth is not None:
-                payout += summary["held_shares"].get(truth, 0.0)
+                payout += _payout(summary["held_shares"], sold, truth)
         filled = sum(1 for leg in day_legs if leg["filled_size"] > 0)
         out.append({
             "station_id": station,
@@ -515,6 +620,8 @@ def station_days(book: Mapping[str, Any]) -> list[dict[str, Any]]:
             "filled_legs": filled,
             "staked_usdc": stake,
             "payout_usdc": payout if truth is not None else None,
+            # Taken in by sales already, settled or not.
+            "sell_proceeds_usdc": proceeds,
             "pnl_usdc": (payout - stake) if truth is not None and filled else None,
             "held_hit": (truth in held) if truth is not None and filled else None,
             "basket_hit": (truth in posted) if truth is not None else None,
@@ -526,6 +633,7 @@ def settlement_rows(
     legs: list[dict[str, Any]],
     settled: dict[tuple[str, str], tuple[str, str]],
     truth_c: dict[tuple[str, str], float] | None = None,
+    sold_by_stage: Mapping[tuple[str, str, str], Mapping[str, tuple[float, float]]] | None = None,
 ) -> list[dict[str, Any]]:
     """One row per settled (station, day, stage) that filled anything.
 
@@ -549,7 +657,8 @@ def settlement_rows(
             continue
         truth, source = landed
         stake = summary["stake_usdc"]
-        payout = summary["held_shares"].get(truth, 0.0)
+        sold = (sold_by_stage or {}).get((station, day, stage)) or {}
+        payout = _payout(summary["held_shares"], sold, truth)
         tmax_c = (truth_c or {}).get((station, day))
         centre = summary["center_c"]
         out.append({
@@ -563,6 +672,8 @@ def settlement_rows(
             "stake_usdc": stake,
             "payout_usdc": payout,
             "pnl_usdc": payout - stake,
+            "sold_shares": sum(shares for shares, _proceeds in sold.values()),
+            "sell_proceeds_usdc": sum(proceeds for _shares, proceeds in sold.values()),
             "claimed_win_probability": summary["claimed_win_probability"],
             "basket_all_in_cost": summary["basket_all_in_cost"],
             "claimed_ev_usdc": summary["claimed_ev_usdc"],
@@ -722,6 +833,44 @@ def station_quality(
     }
 
 
+def pending_sales(book: Mapping[str, Any]) -> dict[str, Any]:
+    """Sales on station-days not settled yet: what they took in, what the
+    shares they sold had cost, and the difference -- realised at the sale,
+    entered in the settled book when the day settles.
+
+    The cost of a sold share is its stage's average fill price for that
+    bucket; the settlement rows carry the same sale at settlement.
+    """
+
+    settled = book.get("settled") or {}
+    cost: dict[tuple[str, str, str, str], list[float]] = defaultdict(lambda: [0.0, 0.0])
+    for leg in book.get("legs") or []:
+        if leg["filled_size"] > 0:
+            slot = cost[(leg["station_id"], leg["event_date"], leg["stage"], leg["bucket"])]
+            slot[0] += leg["filled_size"]
+            slot[1] += leg["filled_notional_usdc"]
+    proceeds = 0.0
+    basis = 0.0
+    shares = 0.0
+    station_days: set[tuple[str, str]] = set()
+    for (station, day, stage), sold in (book.get("sold_by_stage") or {}).items():
+        if (station, day) in settled:
+            continue
+        for bucket, (sold_shares, sold_proceeds) in sold.items():
+            filled, paid = cost.get((station, day, stage, bucket), (0.0, 0.0))
+            proceeds += sold_proceeds
+            shares += sold_shares
+            basis += sold_shares * (paid / filled if filled > 0 else 0.0)
+            station_days.add((station, day))
+    return {
+        "station_days": len(station_days),
+        "sold_shares": shares,
+        "proceeds_usdc": proceeds,
+        "cost_usdc": basis,
+        "realised_pnl_usdc": proceeds - basis,
+    }
+
+
 def group_legs(
     legs: list[dict[str, Any]],
 ) -> dict[tuple[str, str, str], list[dict[str, Any]]]:
@@ -766,10 +915,17 @@ def build(conn: sqlite3.Connection) -> dict[str, Any]:
         key: float(truth[key].tmax_c)
         for key in settled if truth and key in truth
     }
+    try:
+        sells = load_exit_sells(conn)
+    except sqlite3.Error:
+        sells = []
+    sold_by_stage = allocate_sells(legs, sells)
     book = {
         "legs": legs,
+        "exit_sells": sells,
+        "sold_by_stage": sold_by_stage,
         "settled": settled,
-        "settlements": settlement_rows(legs, settled, truth_c),
+        "settlements": settlement_rows(legs, settled, truth_c, sold_by_stage),
     }
     _BUILD_CACHE.clear()
     _BUILD_CACHE[key] = {"connection": conn, "book": book}

@@ -412,3 +412,87 @@ def test_station_quality_reads_claim_per_basket_and_truth_per_day():
     assert kaaa["flags"]["persistence"] is False
     # A station that never settled a live basket is absent, not zero.
     assert "KBBB" not in quality["stations"]
+
+
+def _with_sells(conn) -> None:
+    """The columns and table the exit lanes' sells are read through."""
+
+    conn.execute(
+        "ALTER TABLE basket_target_order_intents"
+        " ADD COLUMN order_action TEXT NOT NULL DEFAULT 'BUY'"
+    )
+    conn.execute(
+        "CREATE TABLE basket_target_execution_cycles("
+        " cycle_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT)"
+    )
+
+
+def _sell(conn, intent, station, day, bucket, *, filled, proceeds):
+    """A sale by an exit lane: its own cycle row, no decision row."""
+
+    conn.execute(
+        "INSERT INTO basket_target_execution_cycles VALUES (?,?,?)",
+        (f"cy_{intent}", station, day),
+    )
+    conn.execute(
+        "INSERT INTO basket_target_order_intents"
+        "(order_intent_id, decision_id, cycle_id, bucket, limit_price, requested_size,"
+        " requested_notional_usdc, state, live_submit_authorized, created_at, order_action)"
+        " VALUES (?,?,?,?,0.99,?,?, 'filled', 1, '2026-09-10T09:00:00Z', 'SELL')",
+        (intent, f"recycle998_decision_{station}_{day}", f"cy_{intent}", bucket, filled, filled * 0.99),
+    )
+    conn.execute(
+        "INSERT INTO basket_target_order_reconciliations VALUES (?, 'resolved_filled', ?, ?)",
+        (intent, filled, proceeds),
+    )
+
+
+def test_a_sale_is_realised_when_made_and_counted_in_the_settlement():
+    """User, 2026-09-18: 「没有计算主动卖出的吗？」.  The exit lanes write
+    no decision row, so the book never saw their sales: a leg sold at 0.99
+    was counted as held to settlement, one sold back at the bid as held to
+    zero."""
+
+    conn = _store()
+    _with_sells(conn)
+    _decision(conn, "d1", "KMIA", "2026-09-10")
+    _envelope(conn, "KMIA", "2026-09-10", {"80-81°F": 0.6, "82-83°F": 0.3})
+    _leg(conn, "i1", "d1", "80-81°F", filled=10.0, filled_notional=3.0)
+    _leg(conn, "i2", "d1", "82-83°F", filled=10.0, filled_notional=2.0)
+    _sell(conn, "recycle998_a", "KMIA", "2026-09-10", "80-81°F", filled=10.0, proceeds=9.9)
+
+    book = live_book.build(conn)
+    assert book["settlements"] == []
+    pending = live_book.pending_sales(book)
+    assert pending["proceeds_usdc"] == pytest.approx(9.9)
+    assert pending["cost_usdc"] == pytest.approx(3.0)
+    assert pending["realised_pnl_usdc"] == pytest.approx(6.9)
+    assert pending["station_days"] == 1
+
+    _settle(conn, "KMIA", "2026-09-10", "80-81°F")
+    book = live_book.build(conn)
+    (row,) = book["settlements"]
+    # The won shares were sold at 0.99, not held to 1.00: 9.9 in, 5.0 staked.
+    assert row["pnl_usdc"] == pytest.approx(9.9 - 5.0)
+    assert row["sold_shares"] == pytest.approx(10.0)
+    assert row["hit"] == 1
+    assert live_book.pending_sales(book)["proceeds_usdc"] == 0.0
+    (day,) = live_book.station_days(book)
+    assert day["pnl_usdc"] == pytest.approx(9.9 - 5.0)
+    assert day["sell_proceeds_usdc"] == pytest.approx(9.9)
+
+
+def test_a_sale_is_shared_over_the_stages_that_held_the_bucket_and_never_beyond():
+    conn = _store()
+    _with_sells(conn)
+    _decision(conn, "d0", "KMIA", "2026-09-10", stage="P0")
+    _decision(conn, "d1", "KMIA", "2026-09-10", stage="P1")
+    _envelope(conn, "KMIA", "2026-09-10", {"80-81°F": 0.6}, stage="P0")
+    _envelope(conn, "KMIA", "2026-09-10", {"80-81°F": 0.7}, stage="P1", name="e2")
+    _leg(conn, "i0", "d0", "80-81°F", filled=6.0, filled_notional=1.8)
+    _leg(conn, "i1", "d1", "80-81°F", filled=2.0, filled_notional=1.0)
+    # Twelve sold, eight held by the book: the other four were never its.
+    _sell(conn, "recycle998_a", "KMIA", "2026-09-10", "80-81°F", filled=12.0, proceeds=12.0)
+    sold = live_book.build(conn)["sold_by_stage"]
+    assert sold[("KMIA", "2026-09-10", "P0")]["80-81°F"] == pytest.approx((6.0, 6.0))
+    assert sold[("KMIA", "2026-09-10", "P1")]["80-81°F"] == pytest.approx((2.0, 2.0))

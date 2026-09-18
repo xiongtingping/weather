@@ -8370,6 +8370,9 @@ def collect_live_money(conn: sqlite3.Connection) -> dict[str, Any]:
         "capital_source": runtime_path.name,
         "settled_rows": len(rows),
         "pending_legs": pending_legs,
+        # Sales on days not settled yet (charter 100 recycle, charter 144
+        # exit): realised at the sale, in the settled book from settlement.
+        "pending_sales": live_book.pending_sales(book),
         "economics": economics,
         "risk": risk,
         "bar_split": _live_bar_sides(rows, {
@@ -15212,6 +15215,11 @@ function moneyDataBoard(){
     <span class="muted" title="一笔＝一个站日的一个阶段里成交过的腿；本金＝预算旋钮当前值，账户没有历史余额记录，预算更大的日子会被读成更高的回报率">本金 ${
       M.capital_usdc==null ? "—" : num(M.capital_usdc,0)+" U"}（预算旋钮）${
       M.pending_legs ? ` · 待结算 ${M.pending_legs} 腿不计` : ""}</span>
+    ${(M.pending_sales||{}).sold_shares > 0 ? `<span class="pb-kv"
+      title="还没结算的站日上主动卖出（0.99 回收、144 卖回）的股：卖出时就已实现；站日结算后并入上面的总账"><span class="muted">未结算日已卖出</span>
+      <b>${num(M.pending_sales.proceeds_usdc)} U</b>
+      <span class="muted">成本 ${num(M.pending_sales.cost_usdc)} U · ${M.pending_sales.station_days} 站日</span>
+      <b class="${text(M.pending_sales.realised_pnl_usdc)}">${usd(M.pending_sales.realised_pnl_usdc)}</b></span>` : ""}
   </div>`;
 
   // ---- 对比
