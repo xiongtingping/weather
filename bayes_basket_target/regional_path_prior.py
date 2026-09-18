@@ -34,6 +34,7 @@ from zoneinfo import ZoneInfo
 from .contracts import ContractError
 from .regional_live_gap import FORM as LIVE_GAP_FORM
 from .regional_point_debias import (
+    DEBIAS_SYSTEMS,
     apply_remaining_peak_debias,
     resolve_correction as resolve_debias_correction,
 )
@@ -479,6 +480,9 @@ def regional_features_at(
     running_high_c: Any,
     latest_observed_c: Any,
     systems: "frozenset[str] | set[str] | None" = None,
+    station_id: str | None = None,
+    calibration: Mapping[str, Any] | None = None,
+    calibrate: bool | None = None,
 ) -> dict[str, Any]:
     """Charter 95's two regional features for the temperature path's regression.
 
@@ -504,14 +508,34 @@ def regional_features_at(
     lane may inform the regression, because being evidence in a fit is not the
     same authority as replacing the ceiling.  ``system_id`` comes back so a
     later fit can split on it rather than rebuild the samples.
+
+    Calibrated (the 2026-09-18 ruling's arm, off by measurement -- see
+    ``regional_point_debias.FEATURE_CALIBRATION``): the remaining peak is
+    raised by the run's own fitted bias while it is still the curve's
+    maximum, and the headroom is read off that.  ``calibrate`` defaults to
+    the module switch; ``calibration`` is the artifact the caller's clock
+    may read -- production's latest fit, or the replay table's entry for the
+    event date.  A run with no fitted scope is read raw, as is every run
+    once its peak is behind the clock.  ``regional_calibration_bias_c`` says
+    what was added, ``None`` when nothing was.
     """
+
+    from .regional_point_debias import (  # noqa: PLC0415
+        FEATURE_CALIBRATION, resolve_correction,
+    )
 
     absent = {
         "regional_headroom_c": None,
         "regional_live_gap_c": None,
         "regional_system_id": None,
         "regional_run_init_utc": None,
+        "regional_calibration_bias_c": None,
+        "regional_calibration_source": None,
     }
+    calibrating = (
+        (FEATURE_CALIBRATION if calibrate is None else bool(calibrate))
+        and bool(calibration) and bool(station_id)
+    )
     try:
         as_of = datetime.fromisoformat(str(as_of_utc).replace("Z", "+00:00"))
         high = float(running_high_c)
@@ -533,12 +557,32 @@ def regional_features_at(
         age_hours = (as_of - run_init).total_seconds() / 3600.0
         if age_hours < 0.0 or age_hours > MAX_RUN_AGE_HOURS:
             continue
-        peak, width = remaining_peak_from_curve(
-            row["hourly_c"], as_of_utc=as_of_utc
-        )
+        curve = row["hourly_c"]
+        correction: Mapping[str, Any] | None = None
+        peak, width = remaining_peak_from_curve(curve, as_of_utc=as_of_utc)
         if peak is None or width == 0:
             continue
-        now_c = curve_value_at(row["hourly_c"], as_of_utc=as_of_utc)
+        now_c = curve_value_at(curve, as_of_utc=as_of_utc)
+        if calibrating:
+            try:
+                curve_peak = max(float(v) for v in dict(curve).values())
+            except (TypeError, ValueError):
+                curve_peak = None
+            if curve_peak is not None and float(peak) >= curve_peak - 1e-9:
+                correction = resolve_correction(
+                    calibration,
+                    system_id=str(row.get("ensemble_system_id") or ""),
+                    station_id=str(station_id),
+                    run_init_utc=str(row["run_init_utc"]),
+                    lead_hours_to_local_day_start=float(
+                        row.get("lead_hours_to_local_day_start") or 0.0
+                    ),
+                    forecast_level_c=float(
+                        row.get("forecast_tmax_c") or curve_peak
+                    ),
+                )
+                if correction is not None:
+                    peak = float(peak) + float(correction["bias_c"])
         try:
             observed = float(latest_observed_c)
         except (TypeError, ValueError):
@@ -551,6 +595,14 @@ def regional_features_at(
             ),
             "regional_system_id": str(row["ensemble_system_id"]),
             "regional_run_init_utc": str(row["run_init_utc"]),
+            "regional_calibration_bias_c": (
+                None if correction is None else float(correction["bias_c"])
+            ),
+            "regional_calibration_source": (
+                None if correction is None
+                else f"{correction['source']}:{correction['scope']}"
+                f":{correction['train_days']}d"
+            ),
         }
     return absent
 
@@ -661,9 +713,14 @@ def resolve_serving_input(
             continue
         correction = resolve_debias_correction(
             debias_artifact, system_id=str(row["ensemble_system_id"]),
-            station_id=station_id,
-            run_age_hours=(as_of - run_init).total_seconds() / 3600.0,
-            systems=debias_systems,
+            station_id=station_id, run_init_utc=str(row["run_init_utc"]),
+            lead_hours_to_local_day_start=float(
+                row.get("lead_hours_to_local_day_start") or 0.0
+            ),
+            forecast_level_c=curve_peak,
+            # The arm's own admission list; the regression's calibration
+            # covers every lane, this switched-off arm does not.
+            systems=DEBIAS_SYSTEMS if debias_systems is None else debias_systems,
         )
         raw_peak = float(peak)
         peak, debias_note = apply_remaining_peak_debias(

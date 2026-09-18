@@ -40,8 +40,9 @@ from bayes_basket_target.regional_path_prior import (  # noqa: E402
     MAX_RUN_AGE_HOURS, SCHEMA, hours_bin,
 )
 from bayes_basket_target.regional_point_debias import (  # noqa: E402
-    ENABLED as DEBIAS_ENABLED,
-    apply_remaining_peak_debias, resolve_correction as resolve_debias,
+    DEBIAS_SYSTEMS, ENABLED as DEBIAS_ENABLED,
+    apply_remaining_peak_debias, fit_calibration,
+    resolve_correction as resolve_debias,
 )
 import fit_regional_point_debias as debias_fit  # noqa: E402
 
@@ -136,7 +137,10 @@ def collect(target_db: Path, archive_db: Path) -> list[dict]:
                 "hours_left": (close - when).total_seconds() / 3600.0,
                 "raw_peak_c": max(remaining), "curve_peak_c": float(curve_peak),
                 "running_c": float(running), "actual_c": actual,
-                "run_age_hours": age,
+                "run_age_hours": age, "run_init_utc": run_init_utc,
+                "lead_hours_to_local_day_start": (
+                    (day_start - run_init).total_seconds() / 3600.0
+                ),
             })
     return samples
 
@@ -159,7 +163,12 @@ def anchored(samples: list[dict], debias_artifact: dict | None) -> list[dict]:
             correction=resolve_debias(
                 debias_artifact, system_id=str(sample["system_id"]),
                 station_id=str(sample["station_id"]),
-                run_age_hours=float(sample["run_age_hours"]),
+                run_init_utc=str(sample["run_init_utc"]),
+                lead_hours_to_local_day_start=float(
+                    sample["lead_hours_to_local_day_start"]
+                ),
+                forecast_level_c=float(sample["curve_peak_c"]),
+                systems=DEBIAS_SYSTEMS,
             ),
             enabled=True,
         )
@@ -265,12 +274,25 @@ def main() -> int:
         samples = [s for s in samples if s["event_date"] <= args.through]
     if not samples:
         raise SystemExit("no samples")
-    # The debias the serving side will have applied, fitted on the same rows.
-    debias_samples = debias_fit.collect(args.db, args.archive)
+    # The debias the serving side will have applied, fitted on the same rows
+    # and on the same clock: the calibration a decision on a date may read is
+    # the one fitted strictly before it.
+    debias_on = not (args.no_debias or not DEBIAS_ENABLED)
+    debias_runs, debias_truth = (
+        debias_fit.collect(args.db) if debias_on else ([], {})
+    )
     if args.through:
-        debias_samples = [
-            s for s in debias_samples if s["event_date"] <= args.through
-        ]
+        debias_truth = {
+            key: value for key, value in debias_truth.items()
+            if key[1] <= args.through
+        }
+
+    def _debias_before(date: str) -> dict | None:
+        if not debias_on:
+            return None
+        fitted = fit_calibration(debias_runs, debias_truth, before_date=date)
+        return fitted if fitted["systems"] else None
+
     args.out.parent.mkdir(parents=True, exist_ok=True)
     if args.replay_table:
         dates = sorted({s["event_date"] for s in samples})
@@ -279,16 +301,7 @@ def main() -> int:
             earlier = [s for s in samples if s["event_date"] < date]
             if len(earlier) < MIN_CELL_SAMPLES:
                 continue
-            earlier_debias = [
-                s for s in debias_samples if s["event_date"] < date
-            ]
-            as_of_debias = (
-                None if (args.no_debias or not DEBIAS_ENABLED) else
-                debias_fit.fit(earlier_debias)
-                if len(earlier_debias) >= debias_fit.MIN_POOL_SAMPLES
-                else None
-            )
-            table[date] = fit(anchored(earlier, as_of_debias))
+            table[date] = fit(anchored(earlier, _debias_before(date)))
         payload = {
             "schema": SCHEMA + "_replay", "dates": table,
             "covered_from": min(table) if table else None,
@@ -297,11 +310,12 @@ def main() -> int:
         args.out.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
         print(f"{args.out}\n  {len(table)} 个事件日各一条只用更早日期拟合的表")
         return 0
+    latest = max(s["event_date"] for s in samples)
     artifact = fit(anchored(
         samples,
-        None if (args.no_debias or not DEBIAS_ENABLED) else
-        debias_fit.fit(debias_samples)
-        if len(debias_samples) >= debias_fit.MIN_POOL_SAMPLES else None,
+        _debias_before(
+            (datetime.fromisoformat(latest) + timedelta(days=1)).date().isoformat()
+        ),
     ))
     args.out.write_text(json.dumps(artifact, indent=2, sort_keys=True), encoding="utf-8")
     print(f"{args.out}")

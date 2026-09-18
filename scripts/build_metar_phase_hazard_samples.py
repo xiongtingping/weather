@@ -91,6 +91,11 @@ from bayes_basket_target.regional_path_prior import (  # noqa: E402
     load_runs_for_station_day as load_regional_runs,
     regional_features_at,
 )
+from bayes_basket_target.regional_point_debias import (  # noqa: E402
+    FEATURE_CALIBRATION,
+    RULE_VERSION as REGIONAL_CALIBRATION_RULE,
+    replay_curve as regional_calibration_replay,
+)
 from bayes_basket_target.settlement_time import (  # noqa: E402
     settlement_day_window,
 )
@@ -133,6 +138,11 @@ CREATE TABLE IF NOT EXISTS metar_phase_hazard_sample (
   regional_headroom_c REAL,
   regional_live_gap_c REAL,
   regional_system_id TEXT,
+  -- The shift the regional curve was calibrated by before the two features
+  -- were read off it, and the scope it came from (2026-09-18).  NULL on a
+  -- raw build and wherever no lane reached.
+  regional_calibration_bias_c REAL,
+  regional_calibration_source TEXT,
   soft_lr_json TEXT,
   soft_lr_state TEXT NOT NULL DEFAULT '',
   root_bias_recent_c REAL,
@@ -172,7 +182,9 @@ CREATE TABLE IF NOT EXISTS metar_phase_hazard_build (
   window_through TEXT NOT NULL,
   station_day_count INTEGER NOT NULL,
   sample_count INTEGER NOT NULL,
-  source_lane TEXT NOT NULL
+  source_lane TEXT NOT NULL,
+  -- "on:<rule>" or "off": which curve the regional features were read off.
+  regional_calibration TEXT NOT NULL DEFAULT ''
 );
 """
 
@@ -592,8 +604,15 @@ def build_station_day(
     settlement_timezone: str,
     truth_tmax_c: float,
     source_lane: str,
+    regional_calibrate: bool | None = None,
 ) -> tuple[list[dict[str, Any]], list[tuple[str, str]]]:
-    """Every sample of one settled station-day, plus its exclusions."""
+    """Every sample of one settled station-day, plus its exclusions.
+
+    ``regional_calibrate`` follows the serving switch unless a caller names
+    it (the walk-forward builds both arms).  The calibration read is the
+    replay table's entry for this event date -- fitted on strictly earlier
+    days -- so a sample never carries an offset its morning could not know.
+    """
 
     window = settlement_day_window(event_date, settlement_timezone)
     # Charter 95 step two.  Read once per station-day and resolved per
@@ -605,6 +624,7 @@ def build_station_day(
         target, station_id=station_id, event_date=event_date,
         as_of_utc="2100-01-01T00:00:00Z",
     )
+    regional_calibration = regional_calibration_replay(event_date)
     observations = load_day_observations(
         archive,
         station_id=station_id,
@@ -801,6 +821,9 @@ def build_station_day(
                 regional_runs, as_of_utc=_iso(instant),
                 running_high_c=running_high,
                 latest_observed_c=prefix[-1]["temperature_c"],
+                station_id=station_id,
+                calibration=regional_calibration,
+                calibrate=regional_calibrate,
             ),
             "root_bias_recent_c": bias_recent_c,
             "root_bias_report_count": bias_report_count,
@@ -840,6 +863,12 @@ def main() -> int:
     parser.add_argument("--source-lane", default="awc")
     parser.add_argument("--station", action="append", default=None)
     parser.add_argument("--built-at-utc", default=None)
+    parser.add_argument(
+        "--regional-calibration", choices=("on", "off"),
+        default="on" if FEATURE_CALIBRATION else "off",
+        help="read the regional features off the calibrated curve (the "
+             "serving default) or the raw one -- the walk-forward builds both",
+    )
     args = parser.parse_args()
 
     target = sqlite3.connect(f"file:{args.target_db}?mode=ro", uri=True)
@@ -874,6 +903,7 @@ def main() -> int:
                 settlement_timezone=timezones[station_id],
                 truth_tmax_c=truth[(station_id, event_date)],
                 source_lane=args.source_lane,
+                regional_calibrate=args.regional_calibration == "on",
             )
         except Exception as exc:  # noqa: BLE001 - recorded, never silent
             out.execute(
@@ -901,6 +931,7 @@ def main() -> int:
                 "dewpoint_depression_c,wind_speed_mps,warming_so_far_c,"
                 "curve_shape_realized,curve_complete,"
                 "regional_headroom_c,regional_live_gap_c,regional_system_id,"
+                "regional_calibration_bias_c,regional_calibration_source,"
                 "soft_lr_json,soft_lr_state,"
                 "root_bias_recent_c,"
                 "root_bias_report_count,root_center_c,root_checkpoint_id,"
@@ -914,7 +945,8 @@ def main() -> int:
                 ":precipitation_present,:dewpoint_depression_c,"
                 ":wind_speed_mps,:warming_so_far_c,:curve_shape_realized,"
                 ":curve_complete,:regional_headroom_c,:regional_live_gap_c,"
-                ":regional_system_id,:soft_lr_json,:soft_lr_state,"
+                ":regional_system_id,:regional_calibration_bias_c,"
+                ":regional_calibration_source,:soft_lr_json,:soft_lr_state,"
                 ":root_bias_recent_c,"
                 ":root_bias_report_count,:root_center_c,"
                 ":root_checkpoint_id,:running_high_c,:truth_tmax_c,"
@@ -927,9 +959,11 @@ def main() -> int:
         out.commit()
     built_at = args.built_at_utc or _iso(datetime.now(timezone.utc))
     out.execute(
-        "INSERT INTO metar_phase_hazard_build VALUES(?,?,?,?,?,?,?)",
+        "INSERT INTO metar_phase_hazard_build VALUES(?,?,?,?,?,?,?,?)",
         (SCHEMA, built_at, args.window_from, args.window_through,
-         built_days, total_samples, args.source_lane),
+         built_days, total_samples, args.source_lane,
+         f"on:{REGIONAL_CALIBRATION_RULE}"
+         if args.regional_calibration == "on" else "off"),
     )
     out.commit()
     print(json.dumps({

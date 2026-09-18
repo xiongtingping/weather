@@ -464,6 +464,7 @@ def _four_layer_inputs_for_step(
     bucket_centers_c: Mapping[str, float],
     decision_at_utc: str,
     regional_runs: Sequence[Mapping[str, Any]] | None = None,
+    regional_calibration: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Everything the four layers read, or ``None`` when the step cannot supply it.
 
@@ -542,6 +543,11 @@ def _four_layer_inputs_for_step(
                     as_of_utc=decision_at_utc,
                     running_high_c=proof.running_high_c,
                     latest_observed_c=observed[-1][1] if observed else None,
+                    # The 2026-09-18 calibration arm (off by measurement):
+                    # handed in like every other fitted table so a replay
+                    # rebuilds this step whichever way the switch stands.
+                    station_id=root.station_id,
+                    calibration=regional_calibration,
                 ).items()
                 if key in (
                     "regional_headroom_c", "regional_live_gap_c",
@@ -587,10 +593,12 @@ def compile_station_p1_packets(
     # its own decision clock, so a replay rebuilds every envelope exactly.
     regional_runs: Sequence[Mapping[str, Any]] | None = None,
     regional_artifact: Mapping[str, Any] | None = None,
-    # Charter 95: the single-system correction applied to the curve before
-    # the fusion reads it.  Handed in for the same reason as every other
-    # fitted table -- a layer that opens its own file rebuilds a different
-    # envelope the moment the file is refitted.
+    # The regional lanes' bias calibration (2026-09-18, global form), read
+    # by two switched-off arms: the regression's headroom and the path
+    # prior's remaining peak.  Handed in
+    # for the same reason as every other fitted table -- a layer that opens
+    # its own file rebuilds a different envelope the moment the file is
+    # refitted.
     regional_debias_artifact: Mapping[str, Any] | None = None,
     soft_likelihood_policy: str | None = None,
     # {"hazard": ..., "reanchor": ...}.  Absent means no shadow is recorded
@@ -1187,6 +1195,7 @@ def compile_station_p1_packets(
                     bucket_centers_c=bucket_centers_c,
                     decision_at_utc=decision_text,
                     regional_runs=regional_runs,
+                    regional_calibration=regional_debias_artifact,
                 )
                 if four_layer_artifacts else None
             )

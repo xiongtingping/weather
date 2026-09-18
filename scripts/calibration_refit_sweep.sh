@@ -216,6 +216,18 @@ for POSTERIOR_STAGE in P0 P0-M P1; do
     || echo "posterior refit $POSTERIOR_STAGE failed; the served row stands" >&2
 done
 
+# The regional models' bias calibration (user ruling 2026-09-18, "和全球模型
+# 方式一样"): every regional lane, CMA included, refitted daily in the global
+# layer's own form -- the production artifact on every settled day and the
+# per-event-date replay table beside it.  It writes two JSON files and no
+# database, reading the SSOT mode=ro, ~3s.  Both serving arms are off by
+# measurement (regional_point_debias.ENABLED / FEATURE_CALIBRATION); the fit
+# is kept current so the gate can be asked again as the lanes accumulate.
+# Never fatal: a failed fit leaves yesterday's files.
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] regional point calibration refit"
+"$PY" scripts/fit_regional_point_debias.py --quiet \
+  || echo "regional calibration refit failed; yesterday's fit stands" >&2
+
 # The delta-v2 policy re-pin moved to its own lane on 2026-09-17
 # (scripts/delta_v2_authority_sweep.sh), beside the weekly fill refit whose
 # batches it pins and the renewals that keep both from ending.

@@ -1,272 +1,183 @@
 #!/usr/bin/env python3
-"""Fit charter 95's single-system correction: how cold each regional lane runs.
+"""Fit the regional models' bias calibration, the way the global models' is fitted.
 
-At a decision instant the fusion is handed the curve's remaining-segment peak.
-This fits the offset that statement carries, per system and per station, from
-settled days: for every regional run, at every formal observation instant after
-it, the residual is the day's settled maximum minus the curve's remaining peak
--- kept only where that peak is still the curve's own maximum, because past it
-the remaining segment describes cooling and the gap is mechanical rather than a
-bias (see ``regional_point_debias`` for the two readings that settled this).
+User ruling 2026-09-18 ("把所有区域模型也做偏差校准（和全球模型方式一样）").
+Every regional run whose peak window is complete is one case: the station's
+settled daily high against the run's forecast maximum.  Scopes, weights,
+terciles and the residual sigma are the global layer's own
+(``native_ensemble_oos._fit_parameters``); see
+``bayes_basket_target.regional_point_debias`` for the form and the holdout
+reading that chose it.
 
-The station offset is shrunk toward its own lane's pooled offset by
-``n / (n + SHRINK_K)``, so a station with three days of history is corrected
-mostly by what its lane does everywhere and a station with three weeks is
-corrected by itself.  Lead-hour cells -- charter 95's planned axis -- are
-fitted and written beside the station offsets; the measurement put the signal
-in the station, so serving reads the station unless
-``PM_REGIONAL_POINT_DEBIAS_AXIS=station_lead`` says otherwise.
+Two products, both written by one run so they can never describe different
+fits:
 
-``--replay-table`` emits one artifact per event date fitted only on strictly
-earlier dates, the discipline the ceiling and the path prior replay use.
+* the production artifact -- every settled day, the calibration production
+  serves today (a day being served has not settled, so it is never in it);
+* the replay table -- for every event date, the calibration fitted only on
+  strictly earlier days.  The sample builder the temperature path's
+  regression is fitted on, the walk-forward that gates it, and the ledger's
+  replay all read this, so no replayed decision sees an offset its morning
+  could not have known.
+
+Daily in ``calibration_refit_sweep.sh``.  Content is deterministic given the
+lane, the truth and ``--before``, so a rerun on unchanged evidence the same day
+rewrites the same bytes.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
-import statistics
 import sys
-from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+import tempfile
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from bayes_basket_target.regional_path_prior import (  # noqa: E402
-    MAX_RUN_AGE_HOURS,
-)
 from bayes_basket_target.regional_point_debias import (  # noqa: E402
-    LEAD_EDGES, MIN_POOL_SAMPLES, RULE_VERSION, SCHEMA, SHRINK_K,
-    lead_bin, shrunk,
+    DEFAULT_ARTIFACT, DEFAULT_REPLAY_TABLE, MIN_TRAIN_DAYS, RULE_VERSION,
+    SCHEMA, fit_calibration,
 )
 
-FORMAL = ("METAR", "SPECI")
-#: A lead cell needs this many before it is written as servable.
-MIN_LEAD_CELL_SAMPLES = 30
+TRUTH_SQL = (
+    "SELECT t.station_id,t.local_date,t.official_tmax_c "
+    "FROM calibration_station_daily_high_truth AS t "
+    "WHERE t.source_lane='AWC' AND t.qc_status='ACCEPTED' "
+    "AND t.authority_scope IN "
+    "('FORMAL_NATIVE_ELIGIBLE','NO_LIVE_REPLAY_CANDIDATE') "
+    "AND t.revision_no=("
+    "  SELECT MAX(t2.revision_no) FROM calibration_station_daily_high_truth AS t2 "
+    "  WHERE t2.station_id=t.station_id AND t2.local_date=t.local_date "
+    "  AND t2.source_lane='AWC' AND t2.qc_status='ACCEPTED')"
+)
+RUNS_SQL = (
+    "SELECT ensemble_system_id, station_id, target_local_date, run_init_utc,"
+    " run_cycle_hour, lead_hours_to_local_day_start, forecast_tmax_c,"
+    " remaining_peak_complete, extraction_version"
+    " FROM calibration_regional_point_run"
+)
 
 
-def _parse(stamp: str) -> datetime:
-    return datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+def collect(db: Path) -> tuple[list[dict], dict[tuple[str, str], float]]:
+    """The lane's runs and the calibration lane's settled highs.
 
+    The calibration lane's truth, for the reason charter 99 records: the
+    trajectory lane's station-day bounds row is wrong on 87 station-days and
+    a fit trained on it learns that days do not warm.
+    """
 
-def collect(target_db: Path, archive_db: Path) -> list[dict]:
-    target = sqlite3.connect(f"file:{target_db}?mode=ro", uri=True, timeout=120.0)
-    archive = sqlite3.connect(f"file:{archive_db}?mode=ro", uri=True, timeout=120.0)
-    # The calibration lane's settled high, for the reason charter 99 records:
-    # the trajectory lane's station-day bounds row is wrong on 87 station-days
-    # and a fit trained on it learns that days do not warm.
-    truth = {
-        (str(r[0]), str(r[1])): float(r[2])
-        for r in target.execute(
-            "SELECT t.station_id,t.local_date,t.official_tmax_c "
-            "FROM calibration_station_daily_high_truth AS t "
-            "WHERE t.source_lane='AWC' AND t.qc_status='ACCEPTED' "
-            "AND t.authority_scope IN "
-            "('FORMAL_NATIVE_ELIGIBLE','NO_LIVE_REPLAY_CANDIDATE') "
-            "AND t.revision_no=("
-            "  SELECT MAX(t2.revision_no) FROM calibration_station_daily_high_truth AS t2 "
-            "  WHERE t2.station_id=t.station_id AND t2.local_date=t.local_date "
-            "  AND t2.source_lane='AWC' AND t2.qc_status='ACCEPTED')"
-        )
-    }
-    formal: dict[str, list[tuple[datetime, float]]] = defaultdict(list)
-    for row in archive.execute(
-        "SELECT station_id,valid_at,reported_temperature_c"
-        " FROM reported_trajectory_observations"
-        " WHERE reported_temperature_c IS NOT NULL AND report_type IN (?,?)",
-        FORMAL,
-    ):
-        try:
-            formal[str(row[0])].append((_parse(row[1]), float(row[2])))
-        except (TypeError, ValueError):
-            continue
-    for points in formal.values():
-        points.sort()
-    samples: list[dict] = []
-    for row in target.execute(
-        "SELECT ensemble_system_id,station_id,target_local_date,"
-        "settlement_timezone,run_init_utc,hourly_c_json"
-        " FROM calibration_regional_point_run ORDER BY target_local_date"
-    ):
-        system_id, station, day, zone_name, run_init_utc, curve_json = (
-            str(row[0]), str(row[1]), str(row[2]), str(row[3]), str(row[4]), str(row[5])
-        )
-        if (station, day) not in truth:
-            continue
-        try:
-            zone = ZoneInfo(zone_name)
-            curve = {_parse(k): float(v) for k, v in json.loads(curve_json).items()}
-            run_init = _parse(run_init_utc)
-        except (ValueError, KeyError, TypeError):
-            continue
-        if not curve:
-            continue
-        curve_peak = max(curve.values())
-        day_start = datetime.combine(
-            datetime.fromisoformat(day).date(), datetime.min.time(), tzinfo=zone
-        ).astimezone(timezone.utc)
-        close = day_start + timedelta(days=1)
-        actual = truth[(station, day)]
-        for when, _value in [
-            p for p in formal.get(station, []) if day_start <= p[0] < close
-        ]:
-            if when <= run_init:
-                continue
-            age = (when - run_init).total_seconds() / 3600.0
-            if age > MAX_RUN_AGE_HOURS:
-                continue
-            remaining = [v for stamp, v in curve.items() if stamp > when]
-            if not remaining:
-                continue
-            peak = max(remaining)
-            if peak < curve_peak - 1e-9:
-                # The curve's own maximum is behind this instant: what is left
-                # is a cooling statement, and the gap to the day's settled high
-                # is arithmetic, not error.  Pooled, this half reads +3.9C.
-                continue
-            samples.append({
-                "system_id": system_id, "station_id": station, "event_date": day,
-                "run_age_hours": age, "error_c": actual - peak,
-            })
-    return samples
-
-
-def _scope(samples: list[dict]) -> dict:
-    """One system's pooled offset, its stations' shrunk offsets, its cells."""
-
-    errors = [s["error_c"] for s in samples]
-    pooled = statistics.mean(errors)
-    per_station: dict[str, list[dict]] = defaultdict(list)
-    per_lead: dict[int, list[float]] = defaultdict(list)
-    for sample in samples:
-        per_station[sample["station_id"]].append(sample)
-        per_lead[lead_bin(sample["run_age_hours"])].append(sample["error_c"])
-    stations = {}
-    for station, rows in sorted(per_station.items()):
-        values = [r["error_c"] for r in rows]
-        cells: dict[str, dict] = {}
-        by_lead: dict[int, list[float]] = defaultdict(list)
-        for row in rows:
-            by_lead[lead_bin(row["run_age_hours"])].append(row["error_c"])
-        for index, cell_values in sorted(by_lead.items()):
-            if len(cell_values) < MIN_LEAD_CELL_SAMPLES:
-                continue
-            cells[str(index)] = {
-                "hours_from": LEAD_EDGES[index],
-                "hours_to": LEAD_EDGES[index + 1],
-                "bias_c": shrunk(cell_values, pooled),
-                "own_bias_c": statistics.mean(cell_values),
-                "sample_n": len(cell_values),
-            }
-        stations[station] = {
-            "bias_c": shrunk(values, pooled),
-            "own_bias_c": statistics.mean(values),
-            "sample_n": len(values),
-            "lead_cells": cells,
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=120.0)
+    try:
+        truth = {
+            (str(r[0]).upper(), str(r[1])): float(r[2])
+            for r in conn.execute(TRUTH_SQL)
         }
-    served = [
-        s["error_c"] - stations[s["station_id"]]["bias_c"] for s in samples
-    ]
-    return {
-        "sample_n": len(samples),
-        "station_n": len(per_station),
-        "station_day_n": len({(s["station_id"], s["event_date"]) for s in samples}),
-        "trained_from": min(s["event_date"] for s in samples),
-        "trained_through": max(s["event_date"] for s in samples),
-        "pooled_bias_c": pooled,
-        "pooled_sigma_c": statistics.pstdev(errors) if len(errors) > 1 else 0.0,
-        # In-fit, so not a gate -- the gate is the as-of holdout in the
-        # module docstring.  Written because a refit that stops helping
-        # here has stopped helping anywhere.
-        "raw_mae_c": sum(map(abs, errors)) / len(errors),
-        "debiased_mae_c": sum(map(abs, served)) / len(served),
-        "stations": stations,
-        "lead_cells": {
-            str(index): {
-                "hours_from": LEAD_EDGES[index],
-                "hours_to": LEAD_EDGES[index + 1],
-                "bias_c": statistics.mean(values),
-                "sample_n": len(values),
-            }
-            for index, values in sorted(per_lead.items())
-        },
-    }
+        columns = (
+            "ensemble_system_id", "station_id", "target_local_date",
+            "run_init_utc", "run_cycle_hour", "lead_hours_to_local_day_start",
+            "forecast_tmax_c", "remaining_peak_complete", "extraction_version",
+        )
+        runs = [dict(zip(columns, row)) for row in conn.execute(RUNS_SQL)]
+    finally:
+        conn.close()
+    return runs, truth
 
 
-def fit(samples: list[dict]) -> dict:
-    by_system: dict[str, list[dict]] = defaultdict(list)
-    for sample in samples:
-        by_system[str(sample["system_id"])].append(sample)
+def _write(path: Path, payload: dict) -> None:
+    """Atomic: production reads this file on every compile."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(payload, indent=1, sort_keys=True)
+    handle, temporary = tempfile.mkstemp(
+        prefix=path.name + ".", dir=str(path.parent)
+    )
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            stream.write(text)
+        # mkstemp makes the file owner-only; the artifacts beside this one
+        # are world-readable and the retention scan reads every JSON here.
+        os.chmod(temporary, 0o644)
+        os.replace(temporary, path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+
+
+def replay_table(
+    runs: list[dict], truth: dict[tuple[str, str], float], *, through: str,
+) -> dict:
+    """One calibration per event date, each fitted on strictly earlier days."""
+
+    days = sorted({str(run["target_local_date"]) for run in runs})
+    if not days:
+        return {"schema": SCHEMA + "_replay", "dates": {}}
+    start = date.fromisoformat(days[0]) + timedelta(days=MIN_TRAIN_DAYS)
+    end = date.fromisoformat(through)
+    table: dict[str, dict] = {}
+    cursor = start
+    while cursor <= end:
+        fitted = fit_calibration(runs, truth, before_date=cursor.isoformat())
+        if fitted["systems"]:
+            table[cursor.isoformat()] = {"systems": fitted["systems"]}
+        cursor += timedelta(days=1)
     return {
-        "schema": SCHEMA,
+        "schema": SCHEMA + "_replay",
         "rule_version": RULE_VERSION,
-        "lead_edges": list(LEAD_EDGES),
-        "shrink_k": SHRINK_K,
-        "minimum_pool_samples": MIN_POOL_SAMPLES,
-        "systems": {
-            system: _scope(rows)
-            for system, rows in sorted(by_system.items())
-            if len(rows) >= MIN_POOL_SAMPLES
-        },
+        "dates": table,
+        "covered_from": min(table) if table else None,
+        "covered_through": max(table) if table else None,
     }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--db", type=Path, default=ROOT / "data" / "bayes_basket_target_ssot.db")
-    parser.add_argument("--archive", type=Path, default=ROOT / "data" / "archive.db")
-    parser.add_argument("--through", type=str, default=None)
-    parser.add_argument("--replay-table", action="store_true")
     parser.add_argument(
-        "--out", type=Path,
-        default=ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
-        / "regional_point_debias_artifact.json",
+        "--db", type=Path, default=ROOT / "data" / "bayes_basket_target_ssot.db"
     )
+    parser.add_argument("--out", type=Path, default=DEFAULT_ARTIFACT)
+    parser.add_argument("--replay-out", type=Path, default=DEFAULT_REPLAY_TABLE)
+    parser.add_argument(
+        "--before", type=str, default=None,
+        help="fit as a decision on this date would (default: tomorrow UTC, "
+             "i.e. every settled day)",
+    )
+    parser.add_argument("--no-replay", action="store_true")
+    parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
-    samples = collect(args.db, args.archive)
-    if args.through:
-        samples = [s for s in samples if s["event_date"] <= args.through]
-    if not samples:
-        raise SystemExit("no samples")
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    if args.replay_table:
-        table = {}
-        for date in sorted({s["event_date"] for s in samples}):
-            earlier = [s for s in samples if s["event_date"] < date]
-            if len(earlier) < MIN_POOL_SAMPLES:
-                continue
-            fitted = fit(earlier)
-            if fitted["systems"]:
-                table[date] = fitted
-        payload = {
-            "schema": SCHEMA + "_replay", "dates": table,
-            "covered_from": min(table) if table else None,
-            "covered_through": max(table) if table else None,
-        }
-        args.out.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-        print(f"{args.out}\n  {len(table)} 个事件日各一条只用更早日期拟合的表")
+
+    runs, truth = collect(args.db)
+    if not runs:
+        raise SystemExit("no regional runs")
+    today = datetime.now(timezone.utc).date()
+    before = args.before or (today + timedelta(days=1)).isoformat()
+    artifact = fit_calibration(runs, truth, before_date=before)
+    _write(args.out, artifact)
+    if not args.no_replay:
+        table = replay_table(runs, truth, through=before)
+        _write(args.replay_out, table)
+    print(f"{args.out}  （训练截至 {artifact['trained_through']}，规则 {RULE_VERSION}）")
+    if not args.no_replay:
+        print(
+            f"{args.replay_out}  {len(table['dates'])} 个事件日各一条只用更早日期拟合的表"
+            f"（{table.get('covered_from')}..{table.get('covered_through')}）"
+        )
+    if args.quiet:
         return 0
-    artifact = fit(samples)
-    artifact["trained_through"] = max(s["event_date"] for s in samples)
-    args.out.write_text(json.dumps(artifact, indent=2, sort_keys=True), encoding="utf-8")
-    print(f"{args.out}")
-    print("  逐站去偏（正＝该系统偏冷，服务时加回去）：")
+    print("  逐站偏差（正＝该模型偏冷，服务时加回去；站级 = 全部 run 按日汇成一例）：")
     for system, scope in sorted(artifact["systems"].items()):
-        print(
-            f"\n    {system}  样本 {scope['sample_n']} · {scope['station_day_n']} 站日 · "
-            f"{scope['station_n']} 站 · {scope['trained_from']}..{scope['trained_through']}"
-        )
-        print(
-            f"      池化偏冷 {scope['pooled_bias_c']:+.2f}°C · σ {scope['pooled_sigma_c']:.2f}"
-            f" · 拟合内 MAE {scope['raw_mae_c']:.2f} → {scope['debiased_mae_c']:.2f}"
-        )
-        for station, cell in sorted(scope["stations"].items()):
+        stations = scope["stations"]
+        print(f"\n    {system}  {len(stations)} 站")
+        for station, fitted in sorted(stations.items()):
+            base = fitted["station"]
             print(
-                f"      {station}  n={cell['sample_n']:5d}  站自身 {cell['own_bias_c']:+5.2f}"
-                f"  → 收缩后 {cell['bias_c']:+5.2f}°C"
+                f"      {station}  {base['train_days']:3d} 天  偏差 {base['bias_c']:+5.2f}°C"
+                f"  残差σ {base['train_residual_sigma_c']:.2f}"
+                f"  拟合内原始 MAE {base['raw_mae_c']:.2f}"
+                f"  起报×提前量格 {len(fitted['cycles'])} 个"
             )
     return 0
 
