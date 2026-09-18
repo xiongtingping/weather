@@ -74,6 +74,9 @@ TIEBREAK_DEFAULT_SETTINGS: dict[str, Any] = {
     "max_market_share_on_model_mode": 0.60,
     "max_spread_on_model_mode": 0.031,
     "first_decision_fresh_seconds": 3600.0,
+    # User ruling 2026-09-18 "加重试": a fired decision refused for cash or a
+    # stale account read is re-asked on later cycles' latest decision.
+    "retry_operational_refusals": True,
 }
 
 #: The per-trade stake is a board dial (charter 146); the server refuses a

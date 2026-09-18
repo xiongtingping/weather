@@ -171,6 +171,29 @@ FEATURE_COLUMNS: tuple[tuple[str, str], ...] = (
 )
 
 
+#: A fired evaluation refused for an OPERATIONAL reason -- no cash, a stale
+#: account read -- is retried on later cycles (user ruling 2026-09-18 "加重试",
+#: after RJTT 2026-09-18 P1 fired at 02:11Z into a 1.70 USDC balance): the
+#: rule is re-asked on the station-day-stage's LATEST decision, and only a
+#: decision that still fires, on a book still inside the rule, is bought.
+#: Rule refusals (band, spread, modes) and market refusals (no token, thin
+#: ask, closed day, barred station) are never retried: those are the
+#: reading, not the plumbing.  The row keeps the first refusal in
+#: ``retry_of_refusal`` and the latest in ``refusal``.
+RETRYABLE_REFUSAL_PREFIXES: tuple[str, ...] = ("insufficient_cash:", "account_equity_stale")
+RETRY_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("retry_of_refusal", "TEXT"),
+    ("retry_count", "INTEGER"),
+    ("retried_at_utc", "TEXT"),
+    ("retry_fact_id", "TEXT"),
+)
+
+
+def is_retryable_refusal(refusal: Any) -> bool:
+    text = str(refusal or "")
+    return any(text.startswith(prefix) for prefix in RETRYABLE_REFUSAL_PREFIXES)
+
+
 def ensure_lane_schema(conn: sqlite3.Connection) -> None:
     """Statement by statement, never ``executescript``: the resident calls
     this inside the writer's transaction."""
@@ -178,7 +201,7 @@ def ensure_lane_schema(conn: sqlite3.Connection) -> None:
     conn.execute(EVALUATION_DDL)
     conn.execute(EVALUATION_INDEX_DDL)
     present = {row[1] for row in conn.execute(f"PRAGMA table_info({EVALUATION_TABLE})")}
-    for name, ctype in FEATURE_COLUMNS:
+    for name, ctype in FEATURE_COLUMNS + RETRY_COLUMNS:
         if name not in present:
             conn.execute(f"ALTER TABLE {EVALUATION_TABLE} ADD COLUMN {name} {ctype}")
 
@@ -481,6 +504,22 @@ def _fact(conn: sqlite3.Connection, key: Mapping[str, Any]) -> dict[str, Any] | 
     }
 
 
+def _latest_fact(conn: sqlite3.Connection, station_id: str, event_date: str, stage: str) -> dict[str, Any] | None:
+    row = conn.execute(
+        "SELECT fact_id, settlement_timezone, probability_envelope_id, ws_snapshot_id, decision_at_utc"
+        " FROM basket_policy_training_fact"
+        " WHERE station_id=? AND event_date=? AND stage=?"
+        " ORDER BY decision_at_utc DESC, created_at_utc DESC LIMIT 1",
+        (station_id, event_date, stage),
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "fact_id": str(row[0]), "settlement_timezone": str(row[1]),
+        "envelope_id": str(row[2]), "snapshot_id": str(row[3]), "decision_at_utc": str(row[4]),
+    }
+
+
 def _envelope(conn: sqlite3.Connection, envelope_id: str) -> dict[str, Any] | None:
     row = conn.execute(
         "SELECT probabilities_json, bucket_ordinals_json, content_sha256, decision_at_utc, state, stage"
@@ -702,7 +741,130 @@ def plan_tiebreak_entries(
                              order_intent_id=plan["order_intent_id"], plan=plan, now_utc=now_utc, rule_version=rule_version)
         evaluations.append(evaluation)
         plans.append(plan)
-    return {"evaluations": evaluations, "plans": plans, "settings": cfg, "rule_version": rule_version}
+    retries: list[dict[str, Any]] = []
+    if cfg.get("retry_operational_refusals", True) is True:
+        retries = _retry_operational_refusals(
+            target_conn, canonical_conn, now_utc=now_utc, cfg=cfg, gate=gate,
+            rule_name=rule_name, rule_version=rule_version, min_share=min_share,
+            max_share=max_share, max_spread=max_spread, stake=stake, fresh_seconds=fresh_seconds,
+            attempted_today={(pl["station_id"], pl["event_date"]) for pl in plans},
+            # A row scored in this very pass is not retried in it: the retry
+            # is for a LATER cycle's decision, never the same book twice.
+            skip_keys={(e["station_id"], e["event_date"], e["stage"]) for e in evaluations},
+        )
+        plans.extend(r["plan"] for r in retries if r.get("plan"))
+    return {"evaluations": evaluations, "plans": plans, "settings": cfg, "rule_version": rule_version, "retries": retries}
+
+
+def _retry_operational_refusals(
+    target_conn: sqlite3.Connection,
+    canonical_conn: sqlite3.Connection | None,
+    *,
+    now_utc: str,
+    cfg: Mapping[str, Any],
+    gate: Admission,
+    rule_name: str,
+    rule_version: str,
+    min_share: float,
+    max_share: float | None,
+    max_spread: float | None,
+    stake: float,
+    fresh_seconds: float,
+    attempted_today: set[tuple[str, str]],
+    skip_keys: set[tuple[str, str, str]] = frozenset(),
+) -> list[dict[str, Any]]:
+    """Re-ask the rule for fired rows refused operationally, on the latest decision."""
+
+    now = _utc(now_utc)
+    floor = (now - timedelta(days=DEFAULT_LOOKBACK_DAYS)).date().isoformat()
+    rows = target_conn.execute(
+        f"SELECT station_id, event_date, stage, refusal, retry_of_refusal, COALESCE(retry_count, 0)"
+        f" FROM {EVALUATION_TABLE}"
+        " WHERE fired=1 AND order_intent_id IS NULL AND refusal IS NOT NULL"
+        "   AND rule_version=? AND event_date>=?",
+        (rule_version, floor),
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for station, day, stage, refusal, first_refusal, count in rows:
+        if not is_retryable_refusal(refusal) or (str(station), str(day), str(stage)) in skip_keys:
+            continue
+        key = {"station_id": str(station), "event_date": str(day), "stage": str(stage)}
+        entry: dict[str, Any] = {**key, "refusal_before": str(refusal), "retry_count": int(count) + 1}
+        original = str(first_refusal or refusal)
+        def _note(reason: str, *, plan: Mapping[str, Any] | None = None, fact_id: str | None = None) -> None:
+            target_conn.execute(
+                f"UPDATE {EVALUATION_TABLE} SET refusal=?, retry_of_refusal=?, retry_count=?, retried_at_utc=?,"
+                " retry_fact_id=COALESCE(?, retry_fact_id), order_intent_id=COALESCE(?, order_intent_id),"
+                " plan_json=COALESCE(?, plan_json)"
+                " WHERE station_id=? AND event_date=? AND stage=? AND rule_version=?",
+                (reason if plan is None else None, original, int(count) + 1, now_utc, fact_id,
+                 plan["order_intent_id"] if plan else None,
+                 json.dumps(plan, ensure_ascii=False, sort_keys=True) if plan else None,
+                 key["station_id"], key["event_date"], key["stage"], rule_version),
+            )
+            entry["refusal_after"] = None if plan else reason
+            out.append(entry)
+        if (key["station_id"], key["event_date"]) in attempted_today or station_day_attempted(target_conn, key["station_id"], key["event_date"]):
+            _note("station_day_already_attempted"); continue
+        fact = _latest_fact(target_conn, key["station_id"], key["event_date"], key["stage"])
+        if fact is None:
+            _note(str(refusal)); continue
+        age = (now - _utc(fact["decision_at_utc"])).total_seconds()
+        if age > fresh_seconds:
+            # Nothing fresh to re-judge on yet; keep the refusal, try next cycle.
+            entry["waiting_for_fresh_decision"] = True; entry["latest_decision_age_seconds"] = round(age, 1)
+            out.append(entry); continue
+        envelope = _envelope(target_conn, fact["envelope_id"]); snapshot = _snapshot(target_conn, fact["snapshot_id"])
+        if envelope is None or snapshot is None:
+            _note(str(refusal)); continue
+        market = market_reference_v1(snapshot["buckets"])
+        if market.get("state") != "complete":
+            _note(f"retry_market_incomplete:{market.get('reason') or market.get('state')}"); continue
+        pre = evaluate_rule(envelope["probabilities"], envelope["ordinals"], market["vector"],
+                            min_market_share=min_share, max_market_share=max_share, rule=RULE_V2)
+        model_mode = pre.get("model_mode")
+        book = book_features(next((r for r in snapshot["buckets"] if str(r.get("bucket")) == str(model_mode)), None)) if model_mode else book_features(None)
+        reading = evaluate_rule(envelope["probabilities"], envelope["ordinals"], market["vector"],
+                                min_market_share=min_share, max_market_share=max_share, rule=rule_name,
+                                spread=book["spread"], max_spread=max_spread)
+        if not reading["fired"]:
+            _note(f"retry_rule_not_met:{reading['reason']}"); continue
+        refusal_now = _planning_refusal(target_conn, key, fact, gate=gate, now_utc=now_utc)
+        if refusal_now:
+            _note(refusal_now); continue
+        bucket = str(reading["model_mode"])
+        registry = _registry_rows(target_conn, canonical_conn, station_id=key["station_id"], event_date=key["event_date"])
+        market_row = registry.get(bucket)
+        if market_row is None or not market_row.get("yes_token"):
+            _note("registry_token_missing"); continue
+        if not bool(market_row.get("accepting_orders")):
+            _note("market_not_accepting_orders"); continue
+        book_row = next((r for r in snapshot["buckets"] if str(r.get("bucket")) == bucket), None)
+        min_shares = float(market_row.get("min_size") or DEFAULT_MIN_ORDER_SHARES)
+        walk = walk_ask_book((book_row or {}).get("ask_levels") or (), stake, min_shares=min_shares) if book_row and book_row.get("ask_available", True) else None
+        if walk is None:
+            _note("ask_book_too_thin"); continue
+        cash_refusal = _cash_refusal(target_conn, now_utc=now_utc, needed=walk["walked_cost_usdc"])
+        if cash_refusal:
+            _note(cash_refusal); continue
+        plan = {
+            "schema": SCHEMA, "rule": rule_version, "rule_name": rule_name, "lane": LANE, "title": LANE_TITLE,
+            "station_id": key["station_id"], "event_date": key["event_date"], "stage": key["stage"],
+            "settlement_timezone": fact["settlement_timezone"], "fact_id": fact["fact_id"],
+            "decision_at_utc": fact["decision_at_utc"], "envelope_id": fact["envelope_id"],
+            "envelope_sha256": envelope["content_sha256"], "envelope_decision_at_utc": envelope["decision_at_utc"],
+            "snapshot_id": fact["snapshot_id"], "snapshot_observed_at": snapshot["observed_at"],
+            "bucket": bucket, "token_id": str(market_row["yes_token"]),
+            "tick_size": market_row.get("tick_size"), "min_size": market_row.get("min_size"),
+            "stake_usdc": stake, "shares": walk["shares"], "limit_price": walk["limit_price"],
+            "walked_cost_usdc": walk["walked_cost_usdc"], "best_ask": walk["best_ask"],
+            "levels_touched": walk["levels_touched"], "reading": {**reading, "book": book},
+            "retry_of_refusal": original, "retry_count": int(count) + 1,
+        }
+        plan["order_intent_id"] = f"tiebreak_{content_sha256({'plan': plan})[:32]}"
+        entry["plan"] = plan
+        _note("", plan=plan, fact_id=fact["fact_id"])
+    return out
 
 
 def _planning_refusal(conn: sqlite3.Connection, key: Mapping[str, Any], fact: Mapping[str, Any], *,
@@ -836,6 +998,12 @@ def execute_tiebreak_entries(
         "submitted": submitted,
         "filled": filled,
         "refusals": sorted({str(e["refusal"]) for e in planned["evaluations"] if e.get("refusal")}),
+        "retried": len(planned.get("retries") or []),
+        "retry_planned": sum(1 for r in (planned.get("retries") or []) if r.get("plan")),
+        "retries": [
+            {k: v for k, v in r.items() if k != "plan"} | ({"order_intent_id": r["plan"]["order_intent_id"]} if r.get("plan") else {})
+            for r in (planned.get("retries") or [])
+        ],
         "receipts": receipts,
     }
 
@@ -844,7 +1012,9 @@ __all__ = [
     "DEFAULT_RULE",
     "FEATURE_COLUMNS",
     "RULE_V21",
+    "RETRYABLE_REFUSAL_PREFIXES",
     "book_features",
+    "is_retryable_refusal",
     "market_move_features",
     "EVALUATION_TABLE",
     "LANE",

@@ -510,3 +510,97 @@ def test_a_lowered_arming_flag_holds_the_send(store, tmp_path, monkeypatch) -> N
     assert sent == [] and receipt["submitted"] == 0
     assert receipt["receipts"][0]["reason"] == "live_intent_disarmed"
     assert store.execute("SELECT state FROM basket_target_order_intents").fetchone()[0] == "failed"
+
+
+def test_a_cash_refusal_is_retried_on_the_latest_decision_once_cash_is_there(store) -> None:
+    """User ruling 2026-09-18 "加重试": RJTT 2026-09-18 P1 fired at 02:11Z and
+    was refused on a 1.70 USDC balance; the deposit landed minutes later.
+    A fired row refused for cash (or a stale read) is re-asked on the
+    station-day-stage's latest decision and bought if the rule still holds
+    there; rule refusals are never retried."""
+
+    from bayes_basket_target.account_equity import ensure_account_equity_table  # noqa: PLC0415
+
+    _seed(store)
+    ensure_account_equity_table(store)
+    _insert(store, "basket_target_account_equity", {
+        "equity_id": "e_poor", "observed_at_utc": "2026-09-18T12:09:00Z", "cash_usdc": 1.7,
+        "positions_value_usdc": 70.0, "equity_usdc": 71.7, "resting_buy_usdc": 0.0, "created_at_utc": NOW,
+        "content_sha256": "f" * 64,
+    })
+    poor = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
+                                         live_submit_authorized=True, settings={"stake_usdc": 6.0}, admission=ADMIT)
+    assert poor["fired"] == 1 and poor["submitted"] == 0 and poor["refusals"][0].startswith("insufficient_cash:1.70")
+    assert poor["retried"] == 0
+    # Same cycle again, still poor: the row is retried and refused again, counted.
+    again = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
+                                          live_submit_authorized=True, settings={"stake_usdc": 6.0}, admission=ADMIT)
+    assert again["retried"] == 1 and again["retry_planned"] == 0
+    assert again["retries"][0]["refusal_after"].startswith("insufficient_cash:")
+    row = store.execute(f"SELECT refusal, retry_of_refusal, retry_count, order_intent_id FROM {lane.EVALUATION_TABLE}").fetchone()
+    assert row[0].startswith("insufficient_cash:") and row[1].startswith("insufficient_cash:1.70") and row[2] == 1 and row[3] is None
+    # The deposit lands, and a later decision of the same stage is written.
+    _insert(store, "basket_target_account_equity", {
+        "equity_id": "e_rich", "observed_at_utc": "2026-09-18T12:12:00Z", "cash_usdc": 100.13,
+        "positions_value_usdc": 120.0, "equity_usdc": 220.13, "resting_buy_usdc": 0.0, "created_at_utc": NOW,
+        "content_sha256": "0" * 64,
+    })
+    _seed(store, stage="P1", fact_id="f9", decided="2026-09-18T12:08:00.000Z")
+    sent: list = []
+    later = "2026-09-18T12:14:00.000Z"
+    retried = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=later,
+                                            live_submit_authorized=True, settings={"stake_usdc": 6.0}, admission=ADMIT)
+    assert retried["evaluated"] == 0, "the first decision is not re-scored"
+    assert retried["retried"] == 1 and retried["retry_planned"] == 1 and retried["submitted"] == 1
+    (path, payload), = sent
+    assert payload["token_id"] == "t28" and payload["order_type"] == "FOK" and payload["size"] * payload["price"] <= 6.0 + 1e-6
+    row = store.execute(
+        f"SELECT refusal, retry_of_refusal, retry_count, order_intent_id, retry_fact_id, fact_id FROM {lane.EVALUATION_TABLE}"
+    ).fetchone()
+    assert row[0] is None and row[1].startswith("insufficient_cash:1.70") and row[2] == 2
+    assert row[3] == payload["order_intent_id"] and row[4] == "f9" and row[5] == "f1", "the row keeps its first decision and names the retry's"
+    plan = json.loads(store.execute("SELECT plan_json FROM basket_target_order_intents").fetchone()[0] if False else store.execute(f"SELECT plan_json FROM {lane.EVALUATION_TABLE}").fetchone()[0])
+    assert plan["retry_of_refusal"].startswith("insufficient_cash:") and plan["fact_id"] == "f9"
+    # Once bought, nothing retries it again.
+    third = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=later,
+                                          live_submit_authorized=True, settings={"stake_usdc": 6.0}, admission=ADMIT)
+    assert third["retried"] == 0 and len(sent) == 1
+
+
+def test_rule_refusals_and_stale_latest_decisions_are_not_retried(store) -> None:
+    from bayes_basket_target.account_equity import ensure_account_equity_table  # noqa: PLC0415
+
+    # A rule refusal (market share above the ceiling) is never retried.
+    _seed(store, book=[{"bucket": "27°C", "ask_levels": [{"price": 0.20, "shares": 200.0}], "bid_levels": [{"price": 0.18, "shares": 200.0}], "ask_available": True},
+                       {"bucket": "28°C", "ask_levels": [{"price": 0.75, "shares": 200.0}], "bid_levels": [{"price": 0.73, "shares": 200.0}], "ask_available": True},
+                       {"bucket": "29°C", "ask_levels": [{"price": 0.05, "shares": 200.0}], "bid_levels": [{"price": 0.04, "shares": 200.0}], "ask_available": True}])
+    first = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
+                                          live_submit_authorized=True, settings={"stake_usdc": 6.0}, admission=ADMIT)
+    assert first["fired"] == 0 and first["refusals"] == ["rule_not_met:market_share_above_ceiling"]
+    again = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
+                                          live_submit_authorized=True, settings={"stake_usdc": 6.0}, admission=ADMIT)
+    assert again["retried"] == 0
+    # A cash refusal whose latest decision is stale waits, unchanged.
+    D2 = "2026-09-20"
+    ensure_account_equity_table(store)
+    _insert(store, "basket_target_account_equity", {
+        "equity_id": "e_poor2", "observed_at_utc": "2026-09-18T12:09:00Z", "cash_usdc": 1.0,
+        "positions_value_usdc": 70.0, "equity_usdc": 71.0, "resting_buy_usdc": 0.0, "created_at_utc": NOW,
+        "content_sha256": "e" * 64,
+    })
+    _seed(store, fact_id="f2", event_date=D2)
+    poor = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
+                                         live_submit_authorized=True, settings={"stake_usdc": 6.0}, admission=ADMIT)
+    assert poor["fired"] == 1 and poor["submitted"] == 0
+    much_later = "2026-09-18T14:00:00.000Z"
+    waiting = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=much_later,
+                                            live_submit_authorized=True, settings={"stake_usdc": 6.0}, admission=ADMIT)
+    assert waiting["retried"] == 1 and waiting["retry_planned"] == 0
+    assert waiting["retries"][0].get("waiting_for_fresh_decision") is True
+    row = store.execute(f"SELECT refusal, retry_count, order_intent_id FROM {lane.EVALUATION_TABLE} WHERE event_date=?", (D2,)).fetchone()
+    assert row[0].startswith("insufficient_cash:") and (row[1] or 0) == 0 and row[2] is None
+    # The switch in the lane file turns retries off.
+    off = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
+                                        live_submit_authorized=True,
+                                        settings={"stake_usdc": 6.0, "retry_operational_refusals": False}, admission=ADMIT)
+    assert off["retried"] == 0
