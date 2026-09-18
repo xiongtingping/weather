@@ -396,11 +396,18 @@ def test_only_credible_fills_bankroll_the_book() -> None:
     if not rows:
         return
 
-    # Charter 141: the per-scope sizing share is the ledger's own constant
-    # (6.5% since 2026-09-17), not a number restated here.
+    # Charter 141: two numbers, and this is the second.  The 6.5% sizing
+    # share (``MAX_STAKE_FRACTION_PER_SCOPE``) bounds what sizing may TARGET;
+    # what may actually go out -- a rung lifted to the venue's lot, a
+    # completion back to the held level -- is bounded by the station-day
+    # ceiling (``STATION_DAY_HARD_FRACTION``, 10%).  A chain's total stake is
+    # what went out, so the ceiling is the invariant: FACT 2026-09-17 staked
+    # 7.7% of its opening equity, over the sizing share and inside the
+    # ceiling, exactly the "max(6.5%, the basket's minimum ticket) <= 10%"
+    # the charter wrote down.  Both are the ledger's own constants.
     import paper_trading_ledger as _ledger  # noqa: PLC0415
 
-    initial, cap, floor = 1000.0, float(_ledger.MAX_STAKE_FRACTION_PER_SCOPE), 0.01
+    initial, cap, floor = 1000.0, float(_ledger.STATION_DAY_HARD_FRACTION), 0.01
     equity = initial
     by_day: dict[str, list] = defaultdict(list)
     for event_date, station_id, stake, pnl, cost, current in rows:

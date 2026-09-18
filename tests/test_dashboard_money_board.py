@@ -102,7 +102,11 @@ def _panes(html: str) -> list[tuple[str, str, bool]]:
 def test_one_live_category_with_the_data_board_over_the_orders():
     html = _render(LIVE)
 
-    assert _panes(html) == [("live", "orders", False), ("live", "book", True)]
+    # Charter 146 (6cf2a530) gave the tiebreak lane the third pane.
+    assert _panes(html) == [
+        ("live", "orders", False), ("live", "book", True),
+        ("live", "tiebreak", True),
+    ]
     assert 'data-daytabs="money-paper"' not in html
     for label in ("实盘", "实盘 · 数据看板与站明细", "实盘意向簿"):
         assert label in html
