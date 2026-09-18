@@ -102,6 +102,9 @@ _FILLED = frozenset({"matched", "filled"})
 # is the whole reason to send GTD.
 _EXPIRED = frozenset({"expired"})
 _RESTING = frozenset({"live", "open", "delayed", "unmatched", ""})
+#: Order types the venue holds until filled or until their own horizon.  A
+#: fill-or-kill is answered at the send and never rests.
+_RESTING_ORDER_TYPES = frozenset({"GTD", "GTC"})
 
 
 def _iso(value: Any) -> datetime:
@@ -263,7 +266,20 @@ def load_resting_maker_intents(
             intent = json.loads(row[9] or "{}")
         except (TypeError, ValueError):
             intent = {}
-        if intent.get("post_only") is not True:
+        post_only = intent.get("post_only") is True
+        order_type = str(intent.get("order_type") or "").strip().upper()
+        order_action = str(row[10] or "BUY").strip().upper()
+        # A post-only rung rests by construction.  An order that is not
+        # post-only rests too when the book does not take it at once and it
+        # carries a horizon the venue enforces -- charter 144's exit sells
+        # (GTD, five minutes), charter 100's 0.998 recycle sells (GTC) -- and
+        # the venue ends it on its own clock, telling nobody.  Until
+        # 2026-09-18 only post-only intents were admitted here, so an exit
+        # sell the venue had expired stayed ``submitted``/``pending`` in the
+        # ledger for good and held its station-day's quotes shut through the
+        # quiescence predicates (RKSI 2026-09-18: posted 09-17 12:33Z, gone
+        # from the venue by 12:38Z, still open a day later).
+        if not post_only and order_type not in _RESTING_ORDER_TYPES:
             continue
         posted = conn.execute(
             "SELECT MAX(observed_at) FROM basket_target_order_events"
@@ -280,8 +296,14 @@ def load_resting_maker_intents(
             "requested_size": float(row[6]),
             "idempotency_key": str(row[7]),
             "posted_at_utc": str((posted[0] if posted else None) or row[8]),
-            "order_action": str(row[10] or "BUY"),
+            "order_action": order_action,
             "intent_state": str(row[11]),
+            "post_only": post_only,
+            "order_type": order_type,
+            # Only a post-only BUY is a rung of charter 94's ladder; the
+            # reprice and cancel rules below are for rungs.  Everything else
+            # admitted here is synced and left to its own horizon.
+            "ladder_rung": post_only and order_action == "BUY",
             "exchange_order_id": str(row[12]),
             "filled_size": float(row[13] or 0.0),
             "filled_notional_usdc": float(row[14] or 0.0),
@@ -482,10 +504,16 @@ def sync_resting_intent(
 
 
 def recorded_fills_for_token(conn: sqlite3.Connection, token_id: str) -> float:
-    """Every share this ledger has already booked on one token."""
+    """The position this ledger has already booked on one token: shares
+    bought less shares sold.  Summed over both sides (as this did until
+    2026-09-18) a sold share read as a bought one, so a token with an exit
+    sell booked on it held less than the ledger claimed, and every departed
+    buy asked about after that was answered ``unfilled``."""
 
     row = conn.execute(
-        "SELECT COALESCE(SUM(r.filled_size), 0) FROM basket_target_order_intents i"
+        "SELECT COALESCE(SUM(CASE WHEN UPPER(COALESCE(i.order_action,'BUY'))='SELL'"
+        "   THEN -r.filled_size ELSE r.filled_size END), 0)"
+        " FROM basket_target_order_intents i"
         " JOIN basket_target_order_reconciliations r"
         "   ON r.order_intent_id = i.order_intent_id"
         " WHERE i.token_id = ?",
@@ -566,14 +594,24 @@ def reconcile_departed_intent(
 
     held = float(position.get("shares") or 0.0)
     recorded = recorded_fills_for_token(conn, token)
-    claimed_this_pass = float(seen.get(token, 0.0))
-    unattributed = max(0.0, held - recorded - claimed_this_pass)
+    side = str(intent.get("order_action") or "BUY").strip().upper()
+    seen_key = token if side == "BUY" else f"{token}:SELL"
+    claimed_this_pass = float(seen.get(seen_key, 0.0))
+    # A departed buy may claim what the account holds beyond the ledger's net
+    # position; a departed sell may claim what the ledger's net position holds
+    # beyond the account -- the shares that left.  Same evidence, read from
+    # the side the order was on.
+    if side == "SELL":
+        unattributed = max(0.0, recorded - held - claimed_this_pass)
+    else:
+        unattributed = max(0.0, held - recorded - claimed_this_pass)
     requested = float(intent["requested_size"])
     prior = float(intent["filled_size"])
     owed = max(0.0, requested - prior)
     take = min(unattributed, owed)
     price = float(intent["limit_price"])
     out.update({
+        "order_action": side,
         "held_shares": held,
         "recorded_shares": recorded,
         "claimed_earlier_this_pass": claimed_this_pass,
@@ -624,7 +662,7 @@ def reconcile_departed_intent(
                 filled_notional_usdc=float(intent["filled_notional_usdc"]) + take * price,
                 resolved_at_utc=as_of_utc,
             )
-    seen[token] = claimed_this_pass + take
+    seen[seen_key] = claimed_this_pass + take
     return {
         **out,
         "state": "departed_filled" if fill_is_complete(cumulative, requested)
@@ -672,6 +710,10 @@ def reprice_resting_rungs(
         # market it is waiting for.
         "synced_expired": 0,
         "kept": 0,
+        # Orders admitted for syncing that are not rungs of the ladder (an
+        # exit sell, any order that is not post-only): kept as they stand
+        # and ended by the venue at their own horizon.  Also in ``kept``.
+        "kept_not_ladder": 0,
         "departed_filled": 0,
         "departed_partial": 0,
         "departed_unfilled": 0,
@@ -779,6 +821,15 @@ def reprice_resting_rungs(
         if synced["state"] not in {"resting", "resting_partial"}:
             entry["verdict"] = {"action": "keep", "reason": synced.get("reason", synced["state"])}
             receipt["kept"] += 1
+            receipt["rungs"].append(entry)
+            continue
+        if not intent.get("ladder_rung", True):
+            # Synced above; not a rung, so none of the ladder's rules apply.
+            # Its horizon is the venue's to enforce, and the next pass reads
+            # what the venue did.
+            entry["verdict"] = {"action": "keep", "reason": "not_a_ladder_rung"}
+            receipt["kept"] += 1
+            receipt["kept_not_ladder"] += 1
             receipt["rungs"].append(entry)
             continue
         scope = (intent["station_id"], intent["event_date"])
