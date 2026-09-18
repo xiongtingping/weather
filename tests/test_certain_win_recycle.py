@@ -362,3 +362,47 @@ def test_the_daemon_runs_the_lane_live_on_the_shared_sell_transport() -> None:
     assert "default_transport as _sell_transport" in source[hook - 1200:hook]
     assert "transport=_sell_transport" in source[hook:hook + 400]
     assert '"certain_win_recycle": recycle_receipt' in source
+
+
+def test_each_sell_is_sized_to_what_the_account_holds_outside_the_ledgers_knowledge(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The account is traded by hand too (2026-09-18: all eleven ledger-venue
+    differences since 09-01 were trades no lane made -- RKPK 27C's 34 shares,
+    bought by the ladder on 09-16, were sold by hand at 0.999 at 08:51Z)."""
+
+    monkeypatch.setattr(lane, "_ACCOUNT_SHORT", {})
+    _armed(monkeypatch)
+    # The ledger holds 12; the account 7 of them: 7 offered.
+    conn, canonical = _store(holdings={"25°C": 12.0})
+    sent: list = []
+    receipt = lane.execute_certain_win_recycles(
+        conn, canonical, now_utc=NOW, live_submit_authorized=True,
+        position_reader=lambda token: {"ok": True, "shares": 7.0},
+        transport=lambda path, payload: (sent.append(payload["size"]), _resting(path, payload))[1],
+    )
+    assert sent == [7.0] and receipt["submitted"] == 1
+    plan = json.loads(conn.execute(
+        "SELECT intent_json FROM basket_target_order_intents WHERE order_intent_id LIKE 'recycle998_%'"
+    ).fetchone()[0])["plan"]
+    assert plan["ledger_shares"] == 12.0 and plan["capped_by_account_shares"] == 7.0
+    # The account holds none: nothing is sent, and the leg is not asked again for a while.
+    conn2, canonical2 = _store(holdings={"25°C": 6.0})
+    reads: list = []
+    calls: list = []
+    for minute in range(2):
+        receipt = lane.execute_certain_win_recycles(
+            conn2, canonical2, now_utc=f"2026-09-16T09:{30 + minute:02d}:00.000Z", live_submit_authorized=True,
+            position_reader=lambda token: (reads.append(token), {"ok": True, "shares": 0.0})[1],
+            transport=lambda path, payload: calls.append(payload),
+        )
+        assert receipt["sent"] == 0 and receipt["receipts"][0]["state"] == "skipped"
+    assert calls == [] and reads == ["t25"]
+    # A position read that fails leaves the venue to check the balance itself.
+    monkeypatch.setattr(lane, "_ACCOUNT_SHORT", {})
+    conn3, canonical3 = _store(holdings={"25°C": 6.0})
+    sent3: list = []
+    lane.execute_certain_win_recycles(
+        conn3, canonical3, now_utc=NOW, live_submit_authorized=True,
+        position_reader=lambda token: {"ok": False, "error": "gateway_transport:TimeoutError"},
+        transport=lambda path, payload: (sent3.append(payload["size"]), _resting(path, payload))[1],
+    )
+    assert sent3 == [6.0]

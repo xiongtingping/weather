@@ -49,12 +49,13 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
+import time
 from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .contracts import content_sha256
-from .exit_orders import send_exit_sell
+from .exit_orders import default_position_reader, send_exit_sell
 
 RECYCLE_PRICE = 0.99
 STRATEGY_ID = "bayes_basket_target_v1"
@@ -81,6 +82,15 @@ MAX_SENDS_PER_CYCLE = 8
 MAX_BOOK_AGE_SECONDS = 3600.0
 # The venue's refusal when the account does not hold the shares.
 BALANCE_REFUSAL_MARK = "not enough balance"
+# The account is traded outside this system too (measured 2026-09-18: every
+# one of eleven ledger-versus-venue differences since 09-01 was a trade no
+# lane of this system made -- winners sold by hand at 0.999, Chengdu bought
+# and sold by hand).  The ledger cannot see those, so each sell is sized to
+# what the account holds beyond this lane's own resting offers, read from
+# the venue just before it is sent; a leg the account holds too little of is
+# not asked again for this long.
+ACCOUNT_SHORT_RECHECK_SECONDS = 1200.0
+_ACCOUNT_SHORT: dict[str, float] = {}
 
 
 def _has_table(conn: sqlite3.Connection, name: str) -> bool:
@@ -355,9 +365,10 @@ def plan_certain_win_recycles(
             if own["failed"] >= MAX_FAILED_SENDS_PER_LEG or own["sends"] >= MAX_SENDS_PER_LEG:
                 continue
             if own["no_balance"]:
-                # The venue holds none of what the ledger says is held: the
-                # position is the ledger's error, not a sale to retry (RKPK
-                # 27C 2026-09-18: 34 shares on the books, 0 in the account).
+                # The venue refused a sale for want of shares: they left the
+                # account outside this system (RKPK 27C 2026-09-18: bought
+                # 34 at 0.03 on 09-16, sold by hand at 0.999 at 08:51Z, so
+                # the ledger's 34 were not there to sell at 09:27Z).
                 continue
             uncovered = _floor_cents(held[bucket] - own["sold_unseen"] - own["offered"])
             if uncovered <= 0.0:
@@ -410,6 +421,7 @@ def plan_certain_win_recycles(
                 "shares": uncovered,
                 "limit_price": recycle_price(tick_size),
                 "tick_size": tick_size,
+                "min_size": min_size,
                 "best_bid": float(leg.get("best_bid") or 0.0),
                 "held_shares": round(held[bucket], 6),
                 "offered_before_shares": round(own["offered"], 6),
@@ -427,11 +439,13 @@ def execute_certain_win_recycles(
     now_utc: str,
     live_submit_authorized: bool,
     max_sends: int = MAX_SENDS_PER_CYCLE,
+    position_reader: Callable[[str], Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Mint the intents, place the resting sells, record what came back --
     through the same sender and ledger path every other order uses."""
 
     plans = plan_certain_win_recycles(target_conn, canonical_conn, now_utc=now_utc)
+    read_position = position_reader or default_position_reader
     receipts: list[dict[str, Any]] = []
     submitted = 0
     sent = 0
@@ -444,6 +458,26 @@ def execute_certain_win_recycles(
         ).fetchone():
             receipts.append({"order_intent_id": intent_id, "state": "already_minted"})
             continue
+        token = plan["token_id"]
+        if time.monotonic() - _ACCOUNT_SHORT.get(token, -1e18) < ACCOUNT_SHORT_RECHECK_SECONDS:
+            receipts.append({"order_intent_id": intent_id, "state": "skipped",
+                             "reason": "account_held_less_than_the_ledger_recently"})
+            continue
+        try:
+            position = read_position(token)
+        except Exception as exc:  # noqa: BLE001 -- the venue still checks the balance itself
+            position = {"ok": False, "error": f"{type(exc).__name__}:{exc}"[:120]}
+        if isinstance(position, Mapping) and position.get("ok") is True:
+            available = _floor_cents(float(position.get("shares") or 0.0) - plan["offered_before_shares"])
+            if available + 1e-9 < max(plan["min_size"], 1e-6):
+                _ACCOUNT_SHORT[token] = time.monotonic()
+                receipts.append({"order_intent_id": intent_id, "state": "skipped",
+                                 "reason": "account_holds_less_than_the_ledger",
+                                 "account_shares": position.get("shares"), "ledger_shares": plan["shares"]})
+                continue
+            if available + 1e-9 < plan["shares"]:
+                plan = {**plan, "shares": available, "ledger_shares": plan["shares"],
+                        "capped_by_account_shares": position.get("shares")}
         sent += 1
         entry = send_exit_sell(
             target_conn, lane=INTENT_PREFIX, intent_id=intent_id,

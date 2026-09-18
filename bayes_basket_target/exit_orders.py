@@ -31,6 +31,8 @@ from .order_submission import (
 # signs; four of the first eleven live sells timed out at the basket lanes'
 # 15s (2026-09-17 12:33Z).
 TRANSPORT_TIMEOUT_SECONDS = 45.0
+# A position read is a read; the recycle lane makes at most a handful a cycle.
+POSITION_TIMEOUT_SECONDS = 10.0
 
 Transport = Callable[[str, Mapping[str, Any]], Mapping[str, Any]]
 
@@ -55,6 +57,23 @@ def default_transport(path: str, payload: Mapping[str, Any]) -> Mapping[str, Any
     if path != PLACE_ORDER_PATH:
         raise ValueError("exit_transport_unknown_path")
     return ClobOrderServiceClient(timeout_seconds=TRANSPORT_TIMEOUT_SECONDS).place_order(payload)
+
+
+def default_position_reader(token_id: str) -> Mapping[str, Any]:
+    """The account's own holding of a token, from the same gateway
+    (``/lookup-position``): ``{"ok": True, "shares": ...}`` or not ok."""
+
+    import sys  # noqa: PLC0415
+    from pathlib import Path as _Path  # noqa: PLC0415
+
+    root = str(_Path(__file__).resolve().parents[1])
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    from clob_order_service_client import ClobOrderServiceClient  # noqa: PLC0415
+
+    return ClobOrderServiceClient(timeout_seconds=POSITION_TIMEOUT_SECONDS).lookup_position(
+        {"token_id": str(token_id)}
+    )
 
 
 def send_exit_sell(
