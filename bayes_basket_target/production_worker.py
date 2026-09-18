@@ -8239,6 +8239,14 @@ class TargetProductionWorker:
         which is how the first live half-baskets could not be completed
         (2026-09-05).  Only cycles that filled something: an inert cycle is
         the supersession path's.
+
+        "Filled something" is read off the reconciliation ledger, not the
+        intent's end state: a rung that filled in part and was then
+        cancelled (charter 94's ordinary ending) is ``cancelled`` over a
+        ``resolved_partial`` that holds the shares.  Read as not-filled
+        until 2026-09-18, it left KLGA and ZUCK 2026-09-18 standing
+        ``prepared`` all day, every decision refused
+        ``prepared_supersession_execution_fact_present``.
         """
 
         receipt: dict[str, Any] = {
@@ -8268,8 +8276,10 @@ class TargetProductionWorker:
                 "       SELECT 1 FROM basket_target_order_intents i"
                 "       JOIN basket_target_order_reconciliations r"
                 "         ON r.order_intent_id=i.order_intent_id"
-                "       WHERE i.cycle_id=c.cycle_id AND i.state='filled'"
-                "         AND r.state IN ('resolved_filled','resolved_partial'))"
+                "       WHERE i.cycle_id=c.cycle_id"
+                "         AND ((i.state='filled'"
+                "           AND r.state IN ('resolved_filled','resolved_partial'))"
+                "          OR (r.state='resolved_partial' AND r.filled_size>0)))"
                 "     OR NOT EXISTS ("
                 "       SELECT 1 FROM basket_target_order_intents i"
                 "       LEFT JOIN basket_target_order_reconciliations r"

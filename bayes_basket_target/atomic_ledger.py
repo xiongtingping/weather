@@ -4176,7 +4176,8 @@ def settle_live_cycle_after_terminal_intents(
         if str(row[0]) != "prepared":
             raise AtomicLedgerError("live_cycle_settle_state_invalid")
         intents = conn.execute(
-            "SELECT i.order_intent_id,i.state,r.state,r.filled_notional_usdc"
+            "SELECT i.order_intent_id,i.state,r.state,r.filled_notional_usdc,"
+            " COALESCE(r.filled_size,0)"
             " FROM basket_target_order_intents i"
             " LEFT JOIN basket_target_order_reconciliations r"
             "   ON r.order_intent_id=i.order_intent_id"
@@ -4188,7 +4189,7 @@ def settle_live_cycle_after_terminal_intents(
         consumed = 0.0
         filled_intents: list[str] = []
         refused_intents: list[str] = []
-        for intent_id, intent_state, recon_state, notional in intents:
+        for intent_id, intent_state, recon_state, notional, filled_size in intents:
             if str(intent_state) not in LIVE_TERMINAL_INTENT_STATES:
                 raise AtomicLedgerError(
                     "live_cycle_settle_intent_not_terminal:" + str(intent_id)
@@ -4202,6 +4203,22 @@ def settle_live_cycle_after_terminal_intents(
                     raise AtomicLedgerError(
                         "live_cycle_settle_fill_unreconciled:" + str(intent_id)
                     )
+                consumed += float(notional or 0.0)
+                filled_intents.append(str(intent_id))
+            elif (
+                str(recon_state or "") == "resolved_partial"
+                and float(filled_size or 0.0) > 0.0
+            ):
+                # Filled in part and then cancelled -- charter 94's ordinary
+                # resting-rung ending, which ``resolve_cancelled_after_partial_fill``
+                # records as intent ``cancelled`` over ``resolved_partial``.
+                # The shares are owned.  Counted as neither filled nor
+                # refused (until 2026-09-18), such a leg made a cycle whose
+                # only fill it was unsettleable, and supersession rightly
+                # refused to retire a cycle that had traded: KLGA 09-18
+                # (4.99 of 78-79F, 09-17 04:22Z) and ZUCK 09-18 (1.78) each
+                # refused every later decision on the day
+                # ``prepared_supersession_execution_fact_present``.
                 consumed += float(notional or 0.0)
                 filled_intents.append(str(intent_id))
             elif str(recon_state or "") in {"resolved_not_placed", "resolved_cancelled"}:

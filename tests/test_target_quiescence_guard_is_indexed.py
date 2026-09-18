@@ -208,7 +208,9 @@ def _settle_live_cycles_sql() -> str:
     start = body.index("SELECT c.cycle_id, c.station_id, c.event_date")
     match = re.search(
         r"rows = self\.commit_conn\.execute\(\s*(.*?)\n\s*\)\.fetchall\(\)",
-        body[start - 200:start + 3000],
+        # Wide enough for the call site's own comments; the match is
+        # non-greedy, so it still stops at this query's ``.fetchall()``.
+        body[start - 200:start + 6000],
         re.S,
     )
     assert match, "the settlement query moved; this test has to follow it"
