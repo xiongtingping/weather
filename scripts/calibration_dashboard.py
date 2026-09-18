@@ -1131,6 +1131,273 @@ def collect_members(
     return rows
 
 
+ADMISSION_OPEN_DECISION_HOURS = 12.0
+ADMISSION_UNSEATED_GRACE_HOURS = 1.0
+
+
+def collect_member_admission(
+    conn: sqlite3.Connection,
+    members: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Per family and open event day: the run P0 actually serves (入围).
+
+    The family lamps say what was CAPTURED -- the newest run in the member
+    table, whatever day it was fetched for.  That is not what a decision
+    reads.  2026-09-18: ICON's 00Z run landed at 09:49Z for 09-18 and the
+    lamp read fresh, while every P0 for 09-19 kept serving ICON's 09-17 12Z
+    run all day, because the 09-19 fetch of the 00Z run failed on a cut
+    transfer.  Read off each station's newest committed P0 per event day:
+    which run of each family it seats (weight > 0), on how many stations,
+    against the newest run captured for that day and the family's newest run
+    overall.
+
+    Lit only for days at D+1 or nearer, the same floor the packet-coverage
+    lamp uses: a D+2 day legitimately runs on older cycles for most of the
+    day.  Amber for a run captured for the day an hour ago and still not
+    seated, or for a day served an OLDER run than a nearer day is -- the
+    run the nearer day got covers this one too, so this day's own fetch of
+    it failed or never ran (the 09-18 ICON case: 09-18 on 00Z, 09-19 still
+    on the day before's 12Z).  Comparing against the family's newest run
+    instead would light every evening, when a 12Z run lands for D+2 only by
+    contract.  Red when fewer than half the day's stations seat the family.
+    """
+
+    now = _now()
+    today = now.date()
+    decided_floor = (
+        now - timedelta(hours=ADMISSION_OPEN_DECISION_HOURS)
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    near_floor = (today + timedelta(days=1)).isoformat()
+    by_family = {
+        system_id: (label, transport)
+        for system_id, label, transport, _b in MEMBER_FAMILIES
+    }
+    member_by_system = {
+        str(m.get("system_id")): m for m in members or []
+        if isinstance(m, Mapping)
+    }
+    days: dict[str, dict[str, Any]] = {}
+    for offset in range(0, 4):
+        day = (today + timedelta(days=offset)).isoformat()
+        latest = conn.execute(
+            "SELECT station_id, MAX(decision_at_utc)"
+            " FROM basket_probability_envelope"
+            " WHERE state='COMMITTED' AND event_date=? AND stage='P0'"
+            " GROUP BY station_id",
+            (day,),
+        ).fetchall()
+        if not latest or max(str(r[1]) for r in latest) < decided_floor:
+            continue
+        seated: dict[str, Counter] = {s: Counter() for s in by_family}
+        for station, decided in latest:
+            row = conn.execute(
+                "SELECT json_extract(lineage_json,'$.run_init_utc_by_system_json'),"
+                " json_extract(lineage_json,'$.system_weights_json')"
+                " FROM basket_probability_envelope"
+                " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+                " AND decision_at_utc=? AND stage='P0' LIMIT 1",
+                (station, day, decided),
+            ).fetchone()
+            if row is None:
+                continue
+            try:
+                runs = json.loads(row[0] or "{}")
+                weights = json.loads(row[1] or "{}")
+            except (TypeError, ValueError):
+                continue
+            for system_id in by_family:
+                if float(weights.get(system_id) or 0.0) > 0.0 and runs.get(system_id):
+                    seated[system_id][str(runs[system_id])] += 1
+        days[day] = {"stations": len(latest), "seated": seated}
+    families = []
+    for system_id, (label, transport) in by_family.items():
+        member = member_by_system.get(system_id, {})
+        newest = member.get("latest_run_utc")
+        rows = []
+        worst = "green"
+        worst_note = ""
+        nearer_newest: str | None = None
+        for day, info in sorted(days.items()):
+            counts: Counter = info["seated"][system_id]
+            served, served_n = (counts.most_common(1)[0] if counts else (None, 0))
+            captured = conn.execute(
+                "SELECT MAX(native_run_init_utc)"
+                " FROM calibration_native_ensemble_historical_member_run"
+                " WHERE ensemble_system_id=? AND transport_provider_id=?"
+                " AND qc_status='ACCEPTED' AND target_local_date=?",
+                (system_id, transport, day),
+            ).fetchone()[0]
+            captured_at = None
+            if captured:
+                captured_at = conn.execute(
+                    "SELECT MIN(archive_query_at_utc)"
+                    " FROM calibration_native_ensemble_historical_member_run"
+                    " WHERE ensemble_system_id=? AND transport_provider_id=?"
+                    " AND qc_status='ACCEPTED' AND target_local_date=?"
+                    " AND native_run_init_utc=?",
+                    (system_id, transport, day, captured),
+                ).fetchone()[0]
+            seated_n = sum(counts.values())
+            flag, health, note = "ok", "green", ""
+            behind_h = None
+            if served and newest:
+                try:
+                    behind_h = (
+                        datetime.fromisoformat(str(newest).replace("Z", "+00:00"))
+                        - datetime.fromisoformat(str(served).replace("Z", "+00:00"))
+                    ).total_seconds() / 3600.0
+                except ValueError:
+                    behind_h = None
+            captured_age = _age_hours(captured_at)
+            near = day <= near_floor
+            if info["stations"] and seated_n * 2 < info["stations"]:
+                flag = "absent"
+                health = "red" if near else "green"
+                note = f"{seated_n}/{info['stations']} 站的 P0 里有这家"
+            elif captured and served and captured > served and (
+                captured_age is None
+                or captured_age >= ADMISSION_UNSEATED_GRACE_HOURS
+            ):
+                flag = "captured_not_seated"
+                health = "amber" if near else "green"
+                note = "这一天已采到更新的一轮，P0 还没用上"
+            elif served and nearer_newest and served < nearer_newest:
+                flag = "day_behind"
+                health = "amber" if near else "green"
+                note = (f"比更近的一天用的轮次旧（那边已是 {nearer_newest[5:13]}Z）"
+                        + ("，这一天没采到新一轮" if captured == served else ""))
+            rows.append({
+                "event_date": day,
+                "stations": info["stations"],
+                "stations_seated": seated_n,
+                "served_run_utc": served,
+                "served_run_stations": served_n,
+                "other_runs": {
+                    run: n for run, n in counts.items() if run != served
+                },
+                "served_run_age_hours": _age_hours(served),
+                "captured_run_utc": captured,
+                "captured_at_utc": captured_at,
+                "newest_run_utc": newest,
+                "behind_newest_hours": behind_h,
+                "flag": flag,
+                "health": health,
+                "note": note,
+            })
+            if served and (nearer_newest is None or served > nearer_newest):
+                nearer_newest = served
+            rank = {"green": 0, "amber": 1, "red": 2}
+            if rank[health] > rank[worst]:
+                worst, worst_note = health, f"{day[5:]} {note}"
+        focus = next(
+            (r for r in rows if r["health"] == worst and worst != "green"),
+            next((r for r in rows if r["event_date"] == near_floor), rows[0] if rows else None),
+        )
+        families.append({
+            "label": label,
+            "system_id": system_id,
+            "health": worst,
+            "note": worst_note,
+            "focus_event_date": focus["event_date"] if focus else None,
+            "days": rows,
+        })
+    return {
+        "open_event_dates": sorted(days),
+        "near_floor": near_floor,
+        "families": families,
+    }
+
+
+def collect_synoptic_cooling(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The radiation shift (辐射降温项) each station's newest P0 served.
+
+    The one centre move P0 makes before the centre/width scalars: the day's
+    forecast shortwave radiation, standardised against the station's own
+    history, times a per-lead coefficient (``RADIATION_SHIFT_SIGMA_BY_LEAD``:
+    0.35 at h12_24, 0.15 elsewhere), times the served sigma, clamped to
+    1.5C.  Read off the receipt each envelope carries
+    (``synoptic_cooling_json``), never recomputed.  User, 2026-09-18:
+    前端合适的地方增加辐射降温项的数据 -- ZUUU 09-19 moved from -0.87C to
+    -0.37C that afternoon with no change in the weather, only in the lead
+    the packet was served under.
+    """
+
+    today = _now().date()
+    rows: list[dict[str, Any]] = []
+    summary: list[dict[str, Any]] = []
+    for offset in range(0, 3):
+        day = (today + timedelta(days=offset)).isoformat()
+        latest = conn.execute(
+            "SELECT station_id, MAX(decision_at_utc)"
+            " FROM basket_probability_envelope"
+            " WHERE state='COMMITTED' AND event_date=? AND stage='P0'"
+            " GROUP BY station_id",
+            (day,),
+        ).fetchall()
+        day_rows: list[dict[str, Any]] = []
+        for station, decided in latest:
+            found = conn.execute(
+                "SELECT json_extract(lineage_json,'$.synoptic_cooling_json'),"
+                " json_extract(lineage_json,'$.model_center_c'),"
+                " json_extract(lineage_json,'$.training_lead_bucket'),"
+                " json_extract(lineage_json,'$.center_width_json')"
+                " FROM basket_probability_envelope"
+                " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+                " AND decision_at_utc=? AND stage='P0' LIMIT 1",
+                (station, day, decided),
+            ).fetchone()
+            if found is None:
+                continue
+            try:
+                receipt = json.loads(found[0] or "{}") or {}
+                width = json.loads(found[3] or "{}") or {}
+            except (TypeError, ValueError):
+                receipt, width = {}, {}
+            shift = receipt.get("shift_c")
+            day_rows.append({
+                "station_id": str(station),
+                "event_date": day,
+                "decided_at_utc": str(decided),
+                "lead": str(found[2] or ""),
+                "state": str(receipt.get("state") or "NONE"),
+                "method": str(receipt.get("method_tag") or ""),
+                "shift_c": None if shift is None else round(float(shift), 3),
+                "shift_sigma": receipt.get("shift_sigma"),
+                "per_unit": receipt.get("shift_sigma_per_unit"),
+                "standardised": receipt.get("standardised"),
+                "radiation_sum": receipt.get("radiation_sum"),
+                "samples": receipt.get("sample_count"),
+                "model_center_c": (
+                    None if found[1] is None else round(float(found[1]), 2)
+                ),
+                "served_mean_c": (
+                    None if width.get("distribution_mean_c") is None
+                    else round(float(width["distribution_mean_c"]), 2)
+                ),
+            })
+        if not day_rows:
+            continue
+        shifts = [r for r in day_rows if r["shift_c"] is not None]
+        coldest = min(shifts, key=lambda r: r["shift_c"]) if shifts else None
+        warmest = max(shifts, key=lambda r: r["shift_c"]) if shifts else None
+        summary.append({
+            "event_date": day,
+            "stations": len(day_rows),
+            "resolved": len(shifts),
+            "mean_shift_c": (
+                round(sum(r["shift_c"] for r in shifts) / len(shifts), 3)
+                if shifts else None
+            ),
+            "big_cooling": sum(1 for r in shifts if r["shift_c"] <= -0.5),
+            "big_warming": sum(1 for r in shifts if r["shift_c"] >= 0.5),
+            "coldest": coldest and [coldest["station_id"], coldest["shift_c"]],
+            "warmest": warmest and [warmest["station_id"], warmest["shift_c"]],
+            "leads": dict(Counter(r["lead"] for r in day_rows)),
+        })
+        rows.extend(day_rows)
+    return {"summary": summary, "rows": rows}
+
+
 def collect_correction_and_weights(conn: sqlite3.Connection) -> dict[str, Any]:
     """The two per-station tables P0 serves from."""
 
@@ -4333,6 +4600,33 @@ def _live_basket_plan_state(
     return state
 
 
+_LANE_DECISION_RE = re.compile(
+    r"^(?P<lane>[a-z0-9]+)_decision_(?P<station>[A-Z0-9]{3,5})_"
+    r"(?P<day>\d{4}-\d{2}-\d{2})"
+)
+
+
+def _intent_lane(decision_id: str) -> str:
+    """The lane that minted an intent: ``basket`` for a plain decision id,
+    else the prefix a side lane writes (recycle998, misbuyexit, tiebreak)."""
+
+    match = _LANE_DECISION_RE.match(decision_id)
+    return match.group("lane") if match else "basket"
+
+
+def _lane_station_day(
+    decision_id: str, station: Any, day: Any
+) -> tuple[str | None, str | None]:
+    """The decision row's station-day, else the one the lane's id names."""
+
+    if station and day:
+        return station, day
+    match = _LANE_DECISION_RE.match(decision_id)
+    if not match:
+        return station, day
+    return station or match.group("station"), day or match.group("day")
+
+
 def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
     """The order book: how many, worth how much, and what came back.
 
@@ -4375,13 +4669,26 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
     # cannot contain a fill cannot show whether a basket won, which is
     # what the reader opens it for.
     try:
+        has_recon = _table_exists(conn, "basket_target_order_reconciliations")
+        # An intents table from before the sell lanes has no direction
+        # column; every row on it is a buy.
+        has_action = "order_action" in {
+            str(info[1]) for info in conn.execute(
+                "PRAGMA table_info(basket_target_order_intents)"
+            )
+        }
         rows = conn.execute(
             "SELECT i.order_intent_id, i.decision_id, i.bucket, i.side,"
             " i.limit_price, i.requested_size, i.requested_notional_usdc,"
             " i.state, i.created_at, d.station_id, d.event_date,"
-            " i.target_execution_hard_deadline_at"
+            " i.target_execution_hard_deadline_at,"
+            + (" i.order_action," if has_action else " 'BUY',")
+            + (" COALESCE(r.filled_size,0), COALESCE(r.filled_notional_usdc,0)"
+               if has_recon else " 0, 0") +
             " FROM basket_target_order_intents i"
             " LEFT JOIN auto_trade_decisions d ON d.decision_id=i.decision_id"
+            + (" LEFT JOIN basket_target_order_reconciliations r"
+               "   ON r.order_intent_id=i.order_intent_id" if has_recon else "") +
             " WHERE i.live_submit_authorized=1 AND ("
             "   i.order_intent_id IN ("
             "     SELECT order_intent_id FROM basket_target_order_intents"
@@ -4390,11 +4697,25 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
             "   OR i.decision_id IN ("
             "     SELECT decision_id FROM basket_target_order_intents"
             "     WHERE live_submit_authorized=1 AND state='filled')"
+            # Every sell: a resting 0.99 recycle sell can stand for days and
+            # the newest-200 window would drop it while it still rests.
+            + ("   OR i.order_action='SELL'" if has_action else "") +
             " )"
             " ORDER BY i.created_at DESC"
         ).fetchall()
     except sqlite3.Error:
         return out
+    # The sell lanes (0.99 recycle, charter 144 sell-back) mint their own
+    # decision id, ``<lane>_decision_<STATION>_<YYYY-MM-DD>``, with no row in
+    # ``auto_trade_decisions`` -- so the join above left their station and
+    # day empty and the station-day listing had nowhere to draw them
+    # (user, 2026-09-18: 挂单卖出不显示).  The id names both.
+    rows = [
+        tuple(row[:9])
+        + _lane_station_day(str(row[1]), row[9], row[10])
+        + tuple(row[11:])
+        for row in rows
+    ]
     # The count of intents, not the count of rows this listing kept.  It
     # used to be ``len(rows)``, so the tile read "200 笔" for as long as
     # there were at least two hundred -- a number that describes the LIMIT
@@ -4454,6 +4775,11 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
         out["rows"].append({
             "order_intent_id": str(row[0]), "decision_id": str(row[1]),
             "bucket": str(row[2]), "side": str(row[3]),
+            # BUY or SELL; ``side`` is the token's (YES), not the direction.
+            "order_action": str(row[12] or "BUY"),
+            "lane": _intent_lane(str(row[1])),
+            "filled_size": float(row[13] or 0.0),
+            "filled_notional_usdc": float(row[14] or 0.0),
             "limit_price": row[4], "requested_size": row[5],
             "requested_notional_usdc": row[6], "state": str(row[7]),
             "created_at": str(row[8]),
@@ -11145,6 +11471,12 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     _SECTION_CACHE_LOG.clear()
     cadence = _cached_section("run_cadence", collect_run_cadence, conn)
     members = _cached_section("members", collect_members, conn, cadence)
+    member_admission = _cached_section(
+        "member_admission", collect_member_admission, conn, members
+    )
+    synoptic_cooling = _cached_section(
+        "synoptic_cooling", collect_synoptic_cooling, conn
+    )
     tables = _cached_section(
         "correction_and_weights", collect_correction_and_weights, conn
     )
@@ -11334,6 +11666,8 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "daily": live_days["daily"],
         "live_roster": live_days["roster"],
         "members": members,
+        "member_admission": member_admission,
+        "synoptic_cooling": synoptic_cooling,
         "tables": tables,
         "truth_landing": truth_landing,
         "band_residual_audit": (band_audit := _cached_section(
@@ -12223,7 +12557,7 @@ function head(){
       ["机器 · 在不在转：常驻、周期、授权，然后是数据从头到尾的每一环"
         + "（上面停了，下面迟早跟着停）、库容量、维护车道、真值物化",
         () => O.machine.concat(healthLamps())],
-      ["上游 · 喂进来的东西到没到：四家全球模型、三条区域采集道、区域赛道、"
+      ["上游 · 喂进来的东西到没到：四家全球模型（采集与入围）、三条区域采集道、区域赛道、"
         + "缺口检查，以及决策真正读到的那份包里有几家",
         () => upstreamLamps().concat(O.upstream)],
       ["选桶 · 挑得准不准：建仓率、声称兑现、各宽度篮子的选中命中",
@@ -12544,16 +12878,42 @@ const lampRowSafe = (fn, caption) => {
 
 function upstreamLamps(){
   const L = [];
+  // 入围 beside 采集 (user, 2026-09-18: "前端只显示了采集，没有显示入围").
+  // The capture lamp is the newest run landed for ANY day; the admission
+  // lamp is the run each open day's P0 actually seats.  On 09-18 ICON's
+  // capture lamp read fresh all afternoon while 09-19 kept serving the day
+  // before's 12Z run.
+  const admission = {};
+  ((D.member_admission || {}).families || []).forEach(f => {
+    admission[f.system_id] = f;
+  });
   (D.members || []).forEach(m => {
     // Late by a whole cycle is late enough to say out loud; publication
     // times wander by hours below that.
     const late = m.overdue_hours != null && m.cycle_hours != null
       && m.overdue_hours > m.cycle_hours;
-    L.push(lamp(m.health, m.label,
+    L.push(lamp(m.health, `${m.label} 采集`,
       `${runLabel(m.latest_run_utc)} · ${hours(m.latest_capture_age_hours)}落库`,
       `${m.stations} 站 · 存档 ${m.training_days} 天 · 被选进融合 ${m.seats_won} 次`
       + (late ? ` · 下一轮已晚 ${hours(m.overdue_hours).replace("前", "")}` : "")
-      + (m.backfillable ? "" : " · 不留历史，当天没抓到就永久缺失")));
+      + (m.backfillable ? "" : " · 不留历史，当天没抓到就永久缺失")
+      + " · 这是采集：最新一轮落库，不等于已进 P0"));
+    const f = admission[m.system_id];
+    const days = (f && f.days) || [];
+    const focus = days.find(d => d.event_date === f.focus_event_date) || days[0];
+    if(!focus){ return; }
+    L.push(lamp(f.health, `${m.label} 入围`,
+      `${h(focus.event_date.slice(5))} ${
+        focus.served_run_utc ? runLabel(focus.served_run_utc) : "不在包里"} · ${
+        focus.stations_seated}/${focus.stations} 站`,
+      days.map(d => `${d.event_date.slice(5)}：${
+          d.served_run_utc ? runLabel(d.served_run_utc) : "不在包里"}（${
+          d.stations_seated}/${d.stations} 站）· 这一天采到 ${
+          d.captured_run_utc ? runLabel(d.captured_run_utc) : "—"}${
+          d.note ? " · " + d.note : ""}`).join("\n")
+      + "\n入围 = 各站最新一期 P0 实际用上（权重>0）的那一轮。"
+      + "只给 D+1 及更近的日子点灯：远一天用得比近一天旧、或这一天已采到却没用上 → 黄；"
+      + "不到一半的站有这家 → 红"));
   });
   ((D.regional || {}).lanes || []).forEach(l => L.push(lamp(l.health, l.label,
     `${l.station_count || 0}/${l.roster_count || 0} 站 · ${
@@ -15729,7 +16089,55 @@ function centerWidth(){
   把时钟清零。当天 P0 四小时内换了三代指纹，P1 自 08-23 起<b>从未</b>持有过一代
   满 8 天。每张卡片底部的"证据时钟"就是这件事的读数：它不满 8 天，这一层就永远
   按原样服务。</div>
+  ${(()=>{ try { return radiationShift(); } catch(err){
+      return `<div class="card muted">辐射降温项渲染出错：${h(String(err))}</div>`; } })()}
   <div class="grid g3" style="margin-top:12px">${cards}</div>`;
+}
+
+// The radiation shift (辐射降温项), the one centre move P0 makes before the two
+// scalars above (user, 2026-09-18: 前端合适的地方增加辐射降温项的数据).  Read off
+// each station's newest P0 receipt; nothing is recomputed here.
+function radiationShift(){
+  const R = D.synoptic_cooling || {};
+  const S = R.summary || [];
+  if(!S.length) return "";
+  const f2 = v => v==null ? "—" : ((v>0?"+":"")+Number(v).toFixed(2));
+  const leadWord = {h00_12:"0–12h", h12_24:"12–24h", h24_48:"24–48h", h48_plus:"48h+"};
+  const days = S.map(d=>`<div class="mono" style="font-size:12px;margin:2px 0">
+    <b>${h(d.event_date.slice(5))}</b>：${d.resolved}/${d.stations} 站生效 ·
+    平均 <b class="${(d.mean_shift_c||0)<0?"down":"up"}">${f2(d.mean_shift_c)}°C</b> ·
+    往冷推 ≥0.5°C ${d.big_cooling} 站 · 往暖推 ≥0.5°C ${d.big_warming} 站 ·
+    最冷 ${d.coldest?h(d.coldest[0])+" "+f2(d.coldest[1]):"—"} ·
+    最暖 ${d.warmest?h(d.warmest[0])+" "+f2(d.warmest[1]):"—"} ·
+    <span class="muted">提前量 ${Object.entries(d.leads||{}).map(([k,v])=>(leadWord[k]||k)+" "+v+" 站").join("，")}</span></div>`).join("");
+  const rows = (R.rows||[]).slice().sort((a,b)=>
+    String(a.event_date).localeCompare(String(b.event_date))
+    || Math.abs(b.shift_c||0)-Math.abs(a.shift_c||0));
+  const body = rows.map(r=>`<tr>
+    <td class="mono">${h(String(r.event_date).slice(5))}</td>
+    <td class="mono">${h(r.station_id)}</td>
+    <td class="mono">${h(leadWord[r.lead]||r.lead||"—")}</td>
+    <td class="mono">${r.radiation_sum==null?"—":Number(r.radiation_sum).toFixed(2)}</td>
+    <td class="mono">${r.standardised==null?"—":f2(r.standardised)}</td>
+    <td class="mono">${r.per_unit==null?"—":Number(r.per_unit).toFixed(2)}</td>
+    <td class="mono ${(r.shift_c||0)<0?"down":(r.shift_c||0)>0?"up":""}"><b>${f2(r.shift_c)}</b></td>
+    <td class="mono">${r.model_center_c==null?"—":Number(r.model_center_c).toFixed(2)}</td>
+    <td class="mono">${r.served_mean_c==null?"—":Number(r.served_mean_c).toFixed(2)}</td>
+    <td class="mono muted" title="${h(r.method||"")}">${h(r.state)}${r.samples?" · "+r.samples+" 天":""}</td></tr>`).join("");
+  return `<div class="card" style="margin-top:12px">
+    <b>辐射降温项（中心/宽度之前的那一次平移）</b>
+    <div class="muted" style="margin:4px 0 8px;font-size:12px">
+      融出来的分布先按当天<b>预报的短波辐射</b>平移一次：比这个站自己的历史同期少（阴、雨），整条分布往冷推；多（晴），往暖推。
+      平移 = 辐射标准分 × 每单位系数（<b>12–24h 档 0.35，其余 0.15</b>）× 服务宽度 σ，封顶 ±1.5°C。
+      系数按提前量分档，所以同一站同一天换了提前量档，平移会跳——例：ZUUU 09-19 在 12–24h 档是 −0.87°C，
+      GEFS 06Z 进来、整期换成 0–12h 档后是 −0.37°C，天气本身没变。每站读自最新一期 P0 的回执，不在这里重算。</div>
+    ${days}
+    <details style="margin-top:8px"><summary class="muted">逐站明细（${rows.length} 行，按日期、平移绝对值排序）</summary>
+      <div class="scroll" style="max-height:420px"><table><thead><tr>
+        <th>日</th><th>站</th><th>提前量</th><th>预报辐射</th><th>标准分</th><th>系数/单位</th>
+        <th>平移 °C</th><th>平移前中心</th><th>服务均值</th><th>状态 · 历史</th></tr></thead>
+        <tbody>${body}</tbody></table></div></details>
+  </div>`;
 }
 
 // Does the served distribution cover the day?  Scored against the truth,
@@ -16037,7 +16445,23 @@ function liveOrderCard(L){
     return `<span class="pill ${tone}" style="font-size:10px"
       title="${h(label[1])} · ${h(detail)}">${h(label[0])}${read?"":"*"}</span>`;
   };
+  // A sell leg (0.99 recycle, charter 144 sell-back) is drawn as a sell:
+  // 卖 before the price, and its own words for its states -- a resting GTC
+  // sell is 挂着, not the … a buy rung waiting on a fill wears.
+  const LANE_WORD = {recycle998:"0.99 回收", misbuyexit:"144 卖回", tiebreak:"秤砣线", basket:"篮子"};
+  const sellChip = (r)=>{
+    const st = String(r.state||"");
+    const sold = Number(r.filled_size||0);
+    const mark = st==="filled" ? `✓卖出 ${shares(sold||r.requested_size)}`
+      : st==="failed" ? "✗" : st==="cancelled" ? "—撤" : "挂着";
+    const cls = st==="filled" ? "up" : (st==="failed"||st==="cancelled") ? "muted" : "";
+    const why = (st==="failed"||st==="cancelled") ? short(r.reason) : "";
+    return `<span class="mono ${cls}" style="display:inline-block;padding:1px 6px;margin:1px 3px 1px 0;border:1px dashed var(--amber,#c90);border-radius:5px;font-size:11.5px;white-space:nowrap"
+      title="卖单 · ${h(LANE_WORD[r.lane]||r.lane||"")} · ${h(r.bucket)} · ${h(r.order_intent_id)} · ${h(st)}${r.reason?" · "+h(r.reason):""} · ${h(r.created_at)}${sold?" · 成交 "+shares(sold)+" 份 / "+Number(r.filled_notional_usdc||0).toFixed(2)+" U":""}">卖 ${h(r.bucket)} ${r.limit_price}×${shares(r.requested_size)} <b>${mark}</b>${why?" <span class='muted'>"+h(why)+"</span>":""}</span>`;
+  };
+  const isSell = (g)=> g.legs.length>0 && g.legs.every(l=>String(l.order_action||"BUY")==="SELL");
   const legChip = (r, truth, center)=>{
+    if(String(r.order_action||"BUY")==="SELL") return sellChip(r);
     const st = String(r.state||"");
     const hit = truth && String(r.bucket)===truth;
     const cls = st==="filled" ? (truth ? (hit?"up":"down") : "") : "muted";
@@ -16098,7 +16522,15 @@ function liveOrderCard(L){
       String(a.station_id).localeCompare(String(b.station_id))
       || String(a.latest).localeCompare(String(b.latest)));
     const hidden = all.filter(barred);
-    const gs = all.filter(g=>!barred(g));
+    const gsAll = all.filter(g=>!barred(g));
+    const gs = gsAll.filter(g=>!isSell(g));
+    const sellsOf = new Map();
+    for (const g of gsAll.filter(isSell)){
+      const key = g.station_id || "?";
+      if(!sellsOf.has(key)) sellsOf.set(key, []);
+      sellsOf.get(key).push(g);
+    }
+    let proceeds=0, soldN=0, restingN=0;
     const daySettled = gs.length>0 && gs.every(g=>truthOf(g));
     const folded = daySettled || (day < today);
     const stations = [];
@@ -16108,17 +16540,38 @@ function liveOrderCard(L){
       if(!byStation.has(key)){ byStation.set(key, []); stations.push(key); }
       byStation.get(key).push(g);
     }
+    // A station whose only line today is a sell (its basket fell outside
+    // the listing) still gets its line.
+    for (const key of sellsOf.keys()){
+      if(!byStation.has(key)){ byStation.set(key, []); stations.push(key); }
+    }
     let legsN=0, filledN=0, cost=0, payout=0, hitN=0, settledN=0;
     const stationLines = stations.map(station=>{
       const baskets = byStation.get(station);
-      const truth = baskets.map(truthOf).find(Boolean) || "";
-      let sLegs=0, sFilled=0, sCost=0, sPay=0;
+      const sells = sellsOf.get(station) || [];
+      const truth = baskets.concat(sells).map(truthOf).find(Boolean) || "";
+      let sLegs=0, sFilled=0, sCost=0, sPay=0, sProceeds=0, sSold=0, sResting=0;
       for (const g of baskets){
         const gFilled = g.legs.filter(l=>l.state==="filled");
         sLegs += g.legs.length; sFilled += gFilled.length;
         sCost += gFilled.reduce((a,l)=>a+(l.requested_notional_usdc||0),0);
         if(truth) sPay += gFilled.reduce((a,l)=>a+(String(l.bucket)===truth?(l.requested_size||0):0),0);
       }
+      // Sold shares no longer pay at settlement; what they sold for is
+      // money in.  A sell's own fill is the reconciliation's, not its ask.
+      const sellLegs = sells.flatMap(g=>g.legs);
+      for (const l of sellLegs){
+        const st = String(l.state||"");
+        const sold = Number(l.filled_size||0) || (st==="filled" ? Number(l.requested_size||0) : 0);
+        if(sold>0){
+          sSold += 1;
+          sProceeds += Number(l.filled_notional_usdc||0) || sold*Number(l.limit_price||0);
+          if(truth && String(l.bucket)===truth) sPay -= sold;
+        }
+        if(st!=="filled" && st!=="failed" && st!=="cancelled") sResting += 1;
+      }
+      sPay += sProceeds;
+      proceeds += sProceeds; soldN += sSold; restingN += sResting;
       legsN += sLegs; filledN += sFilled; cost += sCost; payout += sPay;
       const covered = !!truth && baskets.some(g=>g.legs.some(l=>String(l.bucket)===truth));
       const src = baskets.map(truthSrc).find(Boolean)==="truth_lane"
@@ -16134,13 +16587,15 @@ function liveOrderCard(L){
       // disarmed basket 未命中 (2026-09-13: six stations, nothing filled, five
       // windows holding the truth).  Words beside colours (user ruling,
       // 2026-09-11): a colour says these lines differ, not what any of them is.
-      const verdict = !truth
+      const verdict = !baskets.length
+        ? ["amber", "只有卖单", "这个站日的买入篮子不在本列表的窗口里，只列出卖单"]
+        : !truth
         ? ["amber", "未结算", "这个站日的真值还没到"]
         : covered
           ? ["green", "命中", "篮子挂出的桶里有结算桶 " + truth + src]
           : ["red", "未命中", "篮子挂出的桶里没有结算桶 " + truth + src];
-      if(truth){ settledN += 1; if(covered) hitN += 1; }
-      const fill = !truth ? ""
+      if(truth && baskets.length){ settledN += 1; if(covered) hitN += 1; }
+      const fill = (!truth || !baskets.length) ? ""
         : `<span class="pill ${!sFilled ? "" : sPay>0 ? "green" : "red"}" style="font-size:10px"
             title="${!sFilled ? "一条腿都没成交" : sPay>0 ? "成交的腿里有结算桶" : "成交的腿都不在结算桶"}">${
             !sFilled ? "未成交" : sPay>0 ? "持仓命中" : "持仓未中"}</span>`;
@@ -16148,7 +16603,7 @@ function liveOrderCard(L){
         ? `<span class="muted mono" style="font-size:11px">投入 ${sCost.toFixed(2)} U</span>`
         : (sFilled
             ? `<span class="mono ${sPay-sCost>=0?"up":"down"}" style="font-size:11px">${(sPay-sCost>=0?"+":"")+(sPay-sCost).toFixed(2)} U</span>
-               <span class="muted mono" style="font-size:11px">投入 ${sCost.toFixed(2)} · 赔付 ${sPay.toFixed(2)}</span>`
+               <span class="muted mono" style="font-size:11px">投入 ${sCost.toFixed(2)} · 赔付 ${(sPay-sProceeds).toFixed(2)}${sProceeds?" · 卖出回款 "+sProceeds.toFixed(2):""}</span>`
             : "")
           + `<span class="muted mono" style="font-size:11px">落在 ${h(truth)}</span>`;
 
@@ -16189,15 +16644,25 @@ function liveOrderCard(L){
         <b class="mono pill ${verdict[0]}" title="${h(verdict[2])} · ${
           h(baskets.map(g=>g.decision_id).join("、"))}">${stationLink(station, day)} ${verdict[1]}</b>${fill}
         <span class="muted" style="font-size:11px">${baskets.length>1 ? baskets.length+" 篮 · " : ""}${
-          sLegs} 腿 · ${sFilled} 成交</span>`;
+          sLegs} 腿 · ${sFilled} 成交${sellLegs.length ? ` · 卖单 ${sellLegs.length}（挂着 ${sResting} · 卖出 ${sSold}）` : ""}</span>`;
       const row = `display:flex;flex-wrap:wrap;align-items:center;gap:6px`;
-      if(lines.length === 1) return `<div style="${row};padding:5px 0;border-top:1px dashed var(--line,#eee)">
+      // The sells, one line per lane, under the baskets they sell from.
+      const byLane = new Map();
+      for (const l of sellLegs){
+        const k = l.lane || "?";
+        if(!byLane.has(k)) byLane.set(k, []);
+        byLane.get(k).push(l);
+      }
+      const sellLines = [...byLane.entries()].map(([lane, legs])=>`<div style="${row};margin:3px 0 0 18px">
+          <span class="pill amber" style="font-size:10px" title="卖出车道挂在交易所的卖单：GTC 限价 0.99 的回收单会一直挂到有人按这个价接，宪章 144 卖回单按买一价卖出">挂单卖出 · ${h(LANE_WORD[lane]||lane)}</span>
+          <span>${rungSorted(legs, l=>l.bucket).map(l=>sellChip(l)).join("")}</span></div>`).join("");
+      if(lines.length === 1 && !sellLines) return `<div style="${row};padding:5px 0;border-top:1px dashed var(--line,#eee)">
         ${head}${legsOf(lines[0])}${money}</div>`;
       return `<div style="padding:5px 0;border-top:1px dashed var(--line,#eee)">
-        <div style="${row}">${head}${money}</div>
-        ${lines.map(items=>`<div style="${row};margin:3px 0 0 18px">
+        <div style="${row}">${head}${lines.length===1 ? legsOf(lines[0]) : ""}${money}</div>
+        ${lines.length===1 ? "" : lines.map(items=>`<div style="${row};margin:3px 0 0 18px">
           <span class="muted mono" style="font-size:11px">${h(clock(items[items.length-1].latest))}</span>
-          ${legsOf(items)}</div>`).join("")}</div>`;
+          ${legsOf(items)}</div>`).join("")}${sellLines}</div>`;
     }).join("");
     const pnl = daySettled ? payout - cost : null;
     const barredNote = hidden.length
@@ -16205,7 +16670,8 @@ function liveOrderCard(L){
           >禁入 ${hidden.length} 篮未列</span>`
       : "";
     const head = `${h(day)} · ${stations.length} 站 · ${gs.length} 篮${
-        settledN ? ` · 篮子命中 ${hitN}/${settledN} 站` : ""} · ${legsN} 腿 · ${filledN} 成交 · 投入 ${cost.toFixed(2)} U` + (pnl==null
+        settledN ? ` · 篮子命中 ${hitN}/${settledN} 站` : ""} · ${legsN} 腿 · ${filledN} 成交 · 投入 ${cost.toFixed(2)} U`
+      + (restingN||soldN ? ` · 卖单 挂着 ${restingN} · 卖出 ${soldN}${proceeds?"（回款 "+proceeds.toFixed(2)+" U）":""}` : "") + (pnl==null
         ? ` · <span class="muted">未结算</span>`
         : ` · <span class="${pnl>=0?"up":"down"}">${(pnl>=0?"+":"")+pnl.toFixed(2)} U</span> · 已结算`)
       + barredNote;
