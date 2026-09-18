@@ -21,6 +21,12 @@ The bare column beside MAX() is fetched from the table whenever the running
 maximum moves, which in index order is every row: 366,818 fetches for 1,771
 station-days, minutes on a cold cache.  The read now finds the newest instant
 on the covering index and fetches only the rows it names.
+
+2026-09-18: still 3.6 s a cycle -- the join met g by scanning every complete
+snapshot (484,069 rows) against an automatic index, and g was every
+station-day since July (1,952) where the lane can only act on the last nine
+days.  The read now has an event-date floor and a CROSS JOIN, so each newest
+row is one seek on all four index columns: 495 station-days, 0.07-0.3 s.
 """
 
 from __future__ import annotations
@@ -38,9 +44,9 @@ READ = (
     "       MAX(s.rowid)"
     " FROM (SELECT station_id, event_date, MAX(observed_at) AS newest"
     "       FROM basket_confirmed_inventory_snapshot"
-    "       WHERE complete=1"
+    "       WHERE complete=1 AND event_date>=?"
     "       GROUP BY station_id, event_date) g"
-    " JOIN basket_confirmed_inventory_snapshot s"
+    " CROSS JOIN basket_confirmed_inventory_snapshot s"
     "   ON s.complete=1 AND s.station_id=g.station_id"
     "  AND s.event_date=g.event_date AND s.observed_at=g.newest"
     " GROUP BY s.station_id, s.event_date"
@@ -55,7 +61,7 @@ def _conn() -> sqlite3.Connection:
 
 def _plan(conn: sqlite3.Connection, sql: str) -> str:
     return "\n".join(str(row[-1]) for row in conn.execute(
-        "EXPLAIN QUERY PLAN " + sql
+        "EXPLAIN QUERY PLAN " + sql, ("2026-09-01",)
     ))
 
 
@@ -88,6 +94,15 @@ def test_the_newest_instant_is_found_on_the_covering_index():
     plan = _plan(_conn(), READ)
     assert (
         "USING COVERING INDEX basket_confirmed_inventory_snapshot_recycle_idx"
+        in plan
+    ), plan
+
+
+def test_each_newest_row_is_one_seek_not_a_scan_to_meet_g():
+    plan = _plan(_conn(), READ)
+    assert (
+        "SEARCH s USING INDEX basket_confirmed_inventory_snapshot_recycle_idx"
+        " (complete=? AND station_id=? AND event_date=? AND observed_at=?)"
         in plan
     ), plan
 
@@ -154,8 +169,11 @@ def test_the_index_finds_the_newest_row_of_each_station_day():
             _row("inv_1", "2026-09-09T06:00:00Z", '{"pick": "oldest"}'),
         ],
     )
-    rows = conn.execute(READ).fetchall()
+    rows = conn.execute(READ, ("2026-09-01",)).fetchall()
     assert len(rows) == 1, rows
+    assert conn.execute(READ, ("2026-09-10",)).fetchall() == [], (
+        "a station-day older than the floor is not read"
+    )
     row = rows[0]
     assert row[3] == "2026-09-09T18:00:00Z", row
     assert row[2] == '{"pick": "newest"}', "the payload must be the newest row's"
@@ -167,6 +185,70 @@ def test_the_index_finds_the_newest_row_of_each_station_day():
         + ",".join("?" for _ in columns) + ")",
         _row("inv_4", "2026-09-09T18:00:00Z", '{"pick": "tied-later"}'),
     )
-    rows = conn.execute(READ).fetchall()
+    rows = conn.execute(READ, ("2026-09-01",)).fetchall()
     assert len(rows) == 1, rows
     assert rows[0][2] == '{"pick": "tied-later"}', rows
+
+
+def test_a_one_bucket_registry_read_takes_that_buckets_newest_refresh_off_the_index():
+    """2026-09-18: the planner read every refresh of every held
+    station-day's registry (RJTT 2026-09-17: 3,201 rows) before knowing
+    whether the day had closed on a held bucket.  It now reads one row: the
+    won bucket's newest, walking the station-day index backwards."""
+
+    from bayes_basket_target.certain_win_recycle import _registry_rows
+    from bayes_basket_target.market_registry import apply_target_market_registry_schema
+
+    conn = _conn()
+    apply_target_market_registry_schema(conn)
+    # The rows only need to exist for the read; the snapshot header they
+    # reference is not what is under test.
+    conn.execute("PRAGMA foreign_keys=OFF")
+    columns = [row[1] for row in conn.execute(
+        "PRAGMA table_info(basket_target_market_registry)"
+    )]
+
+    def _insert(outcome: str, refreshed: str, accepting: int, tick: str) -> None:
+        values = {
+            name: (
+                "RJTT" if name == "station_id"
+                else "2026-09-17" if name == "event_date"
+                else outcome if name == "outcome"
+                else f"tok_{outcome}" if name == "yes_token"
+                else accepting if name == "market_accepting_orders"
+                else refreshed if name == "refreshed_at"
+                else '{"order_price_min_tick_size": "%s"}' % tick if name == "registry_json"
+                else f"{outcome}_{refreshed}" if name == "snapshot_sha256"
+                else 1 if name in ("source_eligible", "market_active")
+                else "awc" if name == "source_lane"
+                else "x" * 64 if name == "rules_sha256"
+                else name
+            )
+            for name in columns
+        }
+        conn.execute(
+            "INSERT INTO basket_target_market_registry(" + ",".join(columns)
+            + ") VALUES(" + ",".join("?" for _ in columns) + ")",
+            tuple(values[name] for name in columns),
+        )
+
+    _insert("25°C", "2026-09-17T08:00:00Z", 1, "0.01")
+    _insert("26°C", "2026-09-17T08:00:00Z", 1, "0.01")
+    _insert("25°C", "2026-09-17T15:30:00Z", 0, "0.001")
+    _insert("26°C", "2026-09-17T15:30:00Z", 0, "0.001")
+
+    narrow = _registry_rows(conn, None, station_id="RJTT", event_date="2026-09-17", outcome="25°C")
+    wide = _registry_rows(conn, None, station_id="RJTT", event_date="2026-09-17")
+    assert list(narrow) == ["25°C"]
+    assert narrow["25°C"] == wide["25°C"]
+    assert narrow["25°C"]["refreshed_at"] == "2026-09-17T15:30:00Z"
+    assert narrow["25°C"]["accepting_orders"] == 0
+
+    plan = "\n".join(str(row[-1]) for row in conn.execute(
+        "EXPLAIN QUERY PLAN SELECT outcome, yes_token, registry_json,"
+        " market_accepting_orders, refreshed_at FROM basket_target_market_registry"
+        " WHERE station_id=? AND event_date=? AND outcome=? ORDER BY rowid DESC LIMIT 1",
+        ("RJTT", "2026-09-17", "25°C"),
+    ))
+    assert "basket_target_market_registry_scope_idx" in plan, plan
+    assert "TEMP B-TREE" not in plan, plan

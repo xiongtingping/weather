@@ -49,7 +49,7 @@ import json
 import math
 import sqlite3
 from collections.abc import Callable, Mapping
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .candidate_window_evidence import _settled_bucket
@@ -82,12 +82,26 @@ def _registry_rows(
     *,
     station_id: str,
     event_date: str,
+    outcome: str | None = None,
 ) -> dict[str, dict[str, Any]]:
     """The market rows for a station-day by outcome: the target registry's
-    (a few days deep), then the canonical registry's (kept since July)."""
+    (a few days deep), then the canonical registry's (kept since July).
+
+    ``outcome`` narrows the read to that bucket's newest row.  The target
+    registry keeps every refresh (RJTT 2026-09-17: 3,201 rows, 4.3 MB of
+    registry JSON) and is append-only, so its newest rowid is its newest
+    refresh (3,146 station-day-outcomes since 2026-09-10, no exception) and
+    the station-day index walked backwards finds it in one row; the canonical
+    registry holds one row per outcome.  Measured 2026-09-18: the recycle
+    planner took 20-40 s a cycle reading every held station-day's full
+    history."""
 
     rows: dict[str, dict[str, Any]] = {}
     newest: dict[str, str] = {}
+    narrow = "" if outcome is None else " AND outcome=? ORDER BY rowid DESC LIMIT 1"
+    params: tuple[str, ...] = (
+        (station_id, event_date) if outcome is None else (station_id, event_date, str(outcome))
+    )
     for conn, table in (
         (target_conn, "basket_target_market_registry"),
         (canonical_conn, "reported_trajectory_market_registry"),
@@ -96,12 +110,12 @@ def _registry_rows(
             continue
         if not _has_table(conn, table):
             continue
-        for outcome, yes_token, registry_json, accepting, refreshed_at in conn.execute(
+        for outcome_name, yes_token, registry_json, accepting, refreshed_at in conn.execute(
             f"SELECT outcome, yes_token, registry_json, market_accepting_orders, refreshed_at"
-            f" FROM {table} WHERE station_id=? AND event_date=?",
-            (station_id, event_date),
+            f" FROM {table} WHERE station_id=? AND event_date=?{narrow}",
+            params,
         ):
-            key = str(outcome)
+            key = str(outcome_name)
             # The newest refresh wins wherever it lives: the target registry
             # is refreshed while the day trades, the canonical one is what
             # recorded the venue closing the market afterwards.
@@ -157,18 +171,27 @@ def plan_certain_win_recycles(
     plans: list[dict[str, Any]] = []
     # The newest complete inventory of each station-day, off the covering
     # index (see the 2026-09-09/14 measurements in git history: a bare
-    # column beside MAX() re-read every row).
+    # column beside MAX() re-read every row).  Only the station-days that
+    # can still have closed inside MAX_DAYS_SINCE_CLOSE (a day ends at most
+    # about a day and a half after its date, UTC), and CROSS JOIN so the
+    # planner seeks each newest row from g instead of scanning every
+    # complete snapshot to meet g (measured 2026-09-18: 1,952 station-days,
+    # 3.6 s -> 495 station-days, 0.07-0.3 s, the same rows).
+    oldest_date = (
+        _utc(now_utc) - timedelta(days=MAX_DAYS_SINCE_CLOSE + 2.0)
+    ).date().isoformat()
     inventories = target_conn.execute(
         "SELECT s.station_id, s.event_date, s.inventory_json, s.observed_at,"
         "       MAX(s.rowid)"
         " FROM (SELECT station_id, event_date, MAX(observed_at) AS newest"
         "       FROM basket_confirmed_inventory_snapshot"
-        "       WHERE complete=1"
+        "       WHERE complete=1 AND event_date>=?"
         "       GROUP BY station_id, event_date) g"
-        " JOIN basket_confirmed_inventory_snapshot s"
+        " CROSS JOIN basket_confirmed_inventory_snapshot s"
         "   ON s.complete=1 AND s.station_id=g.station_id"
         "  AND s.event_date=g.event_date AND s.observed_at=g.newest"
-        " GROUP BY s.station_id, s.event_date"
+        " GROUP BY s.station_id, s.event_date",
+        (oldest_date,),
     ).fetchall()
     for station_id, event_date, inventory_json, _observed_at, _row in inventories:
         station_id, event_date = str(station_id), str(event_date)
@@ -217,9 +240,6 @@ def plan_certain_win_recycles(
         if truth is None or truth[0] is None:
             continue
         high_c = float(truth[0])
-        registry = _registry_rows(
-            target_conn, canonical_conn, station_id=station_id, event_date=event_date,
-        )
         timezone_name = str(truth[1] or "")
         if not timezone_name and canonical_conn is not None:
             bound = canonical_conn.execute(
@@ -261,6 +281,11 @@ def plan_certain_win_recycles(
                 won_by = "truth_on_ladder"
         if won is None or won not in held:
             continue
+        # Only now the registry, and only the won bucket: it is the one read
+        # here whose cost grows with every refresh the day was ever given.
+        registry = _registry_rows(
+            target_conn, canonical_conn, station_id=station_id, event_date=event_date, outcome=won,
+        )
         row = registry.get(won) or {}
         token_id = row.get("yes_token") or str(
             (inventory.get("token_ids_by_bucket") or {}).get(won) or ""

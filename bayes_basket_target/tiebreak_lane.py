@@ -861,7 +861,7 @@ def plan_tiebreak_entries(
                                        order_intent_id=None, plan=None, now_utc=now_utc, rule_version=rule_version))
             continue
         bucket = str(reading["model_mode"])
-        registry = _registry_rows(target_conn, canonical_conn, station_id=key["station_id"], event_date=key["event_date"])
+        registry = _registry_rows(target_conn, canonical_conn, station_id=key["station_id"], event_date=key["event_date"], outcome=bucket)
         market_row = registry.get(bucket)
         if market_row is None or not market_row.get("yes_token"):
             evaluations.append(_record(target_conn, key, fact, reading, fired=True, refusal="registry_token_missing",
@@ -1078,7 +1078,7 @@ def _retry_operational_refusals(
         if refusal_now:
             _note(refusal_now, snapshot_id=examined_snapshot_id); continue
         bucket = str(reading["model_mode"])
-        registry = _registry_rows(target_conn, canonical_conn, station_id=key["station_id"], event_date=key["event_date"])
+        registry = _registry_rows(target_conn, canonical_conn, station_id=key["station_id"], event_date=key["event_date"], outcome=bucket)
         market_row = registry.get(bucket)
         if market_row is None or not market_row.get("yes_token"):
             _note("registry_token_missing", snapshot_id=examined_snapshot_id); continue
