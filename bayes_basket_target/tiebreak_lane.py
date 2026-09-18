@@ -181,17 +181,57 @@ FEATURE_COLUMNS: tuple[tuple[str, str], ...] = (
 #: reading, not the plumbing.  The row keeps the first refusal in
 #: ``retry_of_refusal`` and the latest in ``refusal``.
 RETRYABLE_REFUSAL_PREFIXES: tuple[str, ...] = ("insufficient_cash:", "account_equity_stale")
+#: A send that never got a position -- the venue killed the FOK because the
+#: book had moved since the snapshot it was priced on (RJTT 2026-09-18:
+#: priced at 02:13Z's book, sent 02:47Z, "couldn't be fully filled") -- is
+#: retried only once a NEWER committed snapshot of that station-day exists,
+#: re-judged and re-walked on it, and at most ``max_sends_per_station_day``
+#: sends go out for one station-day.  A filled or open order ends it.
+SEND_REFUSAL_PREFIX = "send:"
+DEFAULT_MAX_SENDS_PER_STATION_DAY = 3
+#: A retry is priced on the newest committed book, and only if that book is
+#: this young: a FOK walked on a 45-minute-old ladder is a FOK the venue
+#: kills (RJTT 2026-09-18 02:47Z).  The first decision's own window stays
+#: at ``first_decision_fresh_seconds``.
+DEFAULT_RETRY_BOOK_FRESH_SECONDS = 900.0
 RETRY_COLUMNS: tuple[tuple[str, str], ...] = (
     ("retry_of_refusal", "TEXT"),
     ("retry_count", "INTEGER"),
     ("retried_at_utc", "TEXT"),
     ("retry_fact_id", "TEXT"),
+    ("retry_snapshot_id", "TEXT"),
+)
+
+
+#: Refusals that end a fired station-day-stage for good: the ruling, the
+#: cap, the closed day, or a position already held.  Every other refusal of
+#: a FIRED evaluation is a book or a balance that may change: cash and a
+#: stale read retry on any fresh book, the rest only on a book newer than
+#: the one last examined.
+TERMINAL_REFUSAL_PREFIXES: tuple[str, ...] = (
+    "station_day_already_attempted",
+    "station_day_send_cap:",
+    "settlement_day_closed",
+    "settlement_day_unknown:",
+    "station_not_admitted:",
+    "station_admission_unreadable:",
+    "registry_token_missing",
 )
 
 
 def is_retryable_refusal(refusal: Any) -> bool:
     text = str(refusal or "")
-    return any(text.startswith(prefix) for prefix in RETRYABLE_REFUSAL_PREFIXES)
+    if not text:
+        return False
+    return not any(text.startswith(prefix) for prefix in TERMINAL_REFUSAL_PREFIXES)
+
+
+def retry_needs_newer_book(refusal: Any) -> bool:
+    """Cash and a stale account read retry on any fresh book; every other
+    refusal was the book's own verdict and waits for a newer one."""
+
+    text = str(refusal or "")
+    return not any(text.startswith(prefix) for prefix in RETRYABLE_REFUSAL_PREFIXES)
 
 
 def ensure_lane_schema(conn: sqlite3.Connection) -> None:
@@ -520,6 +560,23 @@ def _latest_fact(conn: sqlite3.Connection, station_id: str, event_date: str, sta
     }
 
 
+def _latest_snapshot(conn: sqlite3.Connection, station_id: str, event_date: str) -> dict[str, Any] | None:
+    """The newest committed book of the station-day, whichever cycle wrote it."""
+
+    row = conn.execute(
+        "SELECT snapshot_id, observed_at FROM basket_official_ws_snapshot"
+        " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+        " ORDER BY observed_at DESC, sequence DESC LIMIT 1",
+        (station_id, event_date),
+    ).fetchone()
+    if row is None:
+        return None
+    snap = _snapshot(conn, str(row[0]))
+    if snap is None:
+        return None
+    return {"snapshot_id": str(row[0]), **snap}
+
+
 def _envelope(conn: sqlite3.Connection, envelope_id: str) -> dict[str, Any] | None:
     row = conn.execute(
         "SELECT probabilities_json, bucket_ordinals_json, content_sha256, decision_at_utc, state, stage"
@@ -564,12 +621,31 @@ def _evaluated(conn: sqlite3.Connection, *, since_event_date: str) -> set[tuple[
 
 
 def station_day_attempted(conn: sqlite3.Connection, station_id: str, event_date: str) -> bool:
-    """One attempt per station-day: any intent this lane minted for it."""
+    """One POSITION per station-day: an intent of this lane that filled, or
+    is still open.  A send the venue refused or killed with nothing filled
+    does not count -- it left no position and no order -- so the station-day
+    may be sent again on a newer book, up to ``max_sends_per_station_day``
+    (``station_day_sends``)."""
 
-    return conn.execute(
-        "SELECT 1 FROM basket_target_order_intents WHERE decision_id=? LIMIT 1",
+    rows = conn.execute(
+        "SELECT i.state, COALESCE(r.filled_size, 0) FROM basket_target_order_intents i"
+        " LEFT JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id"
+        " WHERE i.decision_id=?",
         (lane_decision_id(LANE, station_id, event_date),),
-    ).fetchone() is not None
+    ).fetchall()
+    for state, filled in rows:
+        if float(filled or 0.0) > 0.0 or str(state) in {"prepared", "submitting", "submitted", "reconcile_required", "filled"}:
+            return True
+    return False
+
+
+def station_day_sends(conn: sqlite3.Connection, station_id: str, event_date: str) -> int:
+    """How many intents this lane has minted for the station-day, filled or not."""
+
+    return int(conn.execute(
+        "SELECT COUNT(*) FROM basket_target_order_intents WHERE decision_id=?",
+        (lane_decision_id(LANE, station_id, event_date),),
+    ).fetchone()[0])
 
 
 def _record(conn: sqlite3.Connection, key: Mapping[str, Any], fact: Mapping[str, Any] | None,
@@ -777,27 +853,40 @@ def _retry_operational_refusals(
 
     now = _utc(now_utc)
     floor = (now - timedelta(days=DEFAULT_LOOKBACK_DAYS)).date().isoformat()
+    max_sends = int(cfg.get("max_sends_per_station_day") or DEFAULT_MAX_SENDS_PER_STATION_DAY)
+    book_fresh = float(cfg.get("retry_book_fresh_seconds") or DEFAULT_RETRY_BOOK_FRESH_SECONDS)
     rows = target_conn.execute(
-        f"SELECT station_id, event_date, stage, refusal, retry_of_refusal, COALESCE(retry_count, 0)"
+        f"SELECT station_id, event_date, stage, refusal, retry_of_refusal, COALESCE(retry_count, 0), plan_json, retry_snapshot_id"
         f" FROM {EVALUATION_TABLE}"
-        " WHERE fired=1 AND order_intent_id IS NULL AND refusal IS NOT NULL"
+        " WHERE fired=1 AND refusal IS NOT NULL"
         "   AND rule_version=? AND event_date>=?",
         (rule_version, floor),
     ).fetchall()
     out: list[dict[str, Any]] = []
-    for station, day, stage, refusal, first_refusal, count in rows:
+    for station, day, stage, refusal, first_refusal, count, last_plan_json, last_snapshot_id in rows:
         if not is_retryable_refusal(refusal) or (str(station), str(day), str(stage)) in skip_keys:
             continue
+        try:
+            last_plan = json.loads(last_plan_json) if last_plan_json else {}
+        except ValueError:
+            last_plan = {}
+        # The last book this row was judged on: the last plan's, or the last
+        # retry's, whichever is newer.
+        last_book_at = str((last_plan or {}).get("snapshot_observed_at") or "")
+        if last_snapshot_id:
+            examined = _snapshot(target_conn, str(last_snapshot_id))
+            if examined and str(examined.get("observed_at") or "") > last_book_at:
+                last_book_at = str(examined["observed_at"])
         key = {"station_id": str(station), "event_date": str(day), "stage": str(stage)}
         entry: dict[str, Any] = {**key, "refusal_before": str(refusal), "retry_count": int(count) + 1}
         original = str(first_refusal or refusal)
-        def _note(reason: str, *, plan: Mapping[str, Any] | None = None, fact_id: str | None = None) -> None:
+        def _note(reason: str, *, plan: Mapping[str, Any] | None = None, fact_id: str | None = None, snapshot_id: str | None = None) -> None:
             target_conn.execute(
                 f"UPDATE {EVALUATION_TABLE} SET refusal=?, retry_of_refusal=?, retry_count=?, retried_at_utc=?,"
-                " retry_fact_id=COALESCE(?, retry_fact_id), order_intent_id=COALESCE(?, order_intent_id),"
-                " plan_json=COALESCE(?, plan_json)"
+                " retry_fact_id=COALESCE(?, retry_fact_id), retry_snapshot_id=COALESCE(?, retry_snapshot_id),"
+                " order_intent_id=COALESCE(?, order_intent_id), plan_json=COALESCE(?, plan_json)"
                 " WHERE station_id=? AND event_date=? AND stage=? AND rule_version=?",
-                (reason if plan is None else None, original, int(count) + 1, now_utc, fact_id,
+                (reason if plan is None else None, original, int(count) + 1, now_utc, fact_id, snapshot_id,
                  plan["order_intent_id"] if plan else None,
                  json.dumps(plan, ensure_ascii=False, sort_keys=True) if plan else None,
                  key["station_id"], key["event_date"], key["stage"], rule_version),
@@ -806,6 +895,8 @@ def _retry_operational_refusals(
             out.append(entry)
         if (key["station_id"], key["event_date"]) in attempted_today or station_day_attempted(target_conn, key["station_id"], key["event_date"]):
             _note("station_day_already_attempted"); continue
+        if station_day_sends(target_conn, key["station_id"], key["event_date"]) >= max_sends:
+            _note(f"station_day_send_cap:{max_sends}"); continue
         fact = _latest_fact(target_conn, key["station_id"], key["event_date"], key["stage"])
         if fact is None:
             _note(str(refusal)); continue
@@ -814,9 +905,24 @@ def _retry_operational_refusals(
             # Nothing fresh to re-judge on yet; keep the refusal, try next cycle.
             entry["waiting_for_fresh_decision"] = True; entry["latest_decision_age_seconds"] = round(age, 1)
             out.append(entry); continue
-        envelope = _envelope(target_conn, fact["envelope_id"]); snapshot = _snapshot(target_conn, fact["snapshot_id"])
-        if envelope is None or snapshot is None:
+        envelope = _envelope(target_conn, fact["envelope_id"])
+        # The market side is the NEWEST committed book of the station-day,
+        # not the decision's own snapshot: a retry priced on a book the
+        # venue has already moved past is a FOK the venue kills.
+        snapshot = _latest_snapshot(target_conn, key["station_id"], key["event_date"]) or (
+            {"snapshot_id": fact["snapshot_id"], **(_snapshot(target_conn, fact["snapshot_id"]) or {})}
+        )
+        if envelope is None or not snapshot.get("buckets"):
             _note(str(refusal)); continue
+        book_age = (now - _utc(snapshot["observed_at"])).total_seconds()
+        if book_age > book_fresh:
+            entry["waiting_for_fresh_book"] = True; entry["latest_book_age_seconds"] = round(book_age, 1)
+            out.append(entry); continue
+        if retry_needs_newer_book(refusal) and last_book_at and str(snapshot["observed_at"]) <= last_book_at:
+            # The same book that was already judged or refused: wait for a newer one.
+            entry["waiting_for_newer_book"] = True; entry["last_book_observed_at"] = last_book_at
+            out.append(entry); continue
+        examined_snapshot_id = snapshot["snapshot_id"]
         market = market_reference_v1(snapshot["buckets"])
         if market.get("state") != "complete":
             _note(f"retry_market_incomplete:{market.get('reason') or market.get('state')}"); continue
@@ -828,32 +934,32 @@ def _retry_operational_refusals(
                                 min_market_share=min_share, max_market_share=max_share, rule=rule_name,
                                 spread=book["spread"], max_spread=max_spread)
         if not reading["fired"]:
-            _note(f"retry_rule_not_met:{reading['reason']}"); continue
-        refusal_now = _planning_refusal(target_conn, key, fact, gate=gate, now_utc=now_utc)
+            _note(f"retry_rule_not_met:{reading['reason']}", snapshot_id=examined_snapshot_id); continue
+        refusal_now = _planning_refusal(target_conn, key, fact, gate=gate, now_utc=now_utc, max_sends=max_sends)
         if refusal_now:
-            _note(refusal_now); continue
+            _note(refusal_now, snapshot_id=examined_snapshot_id); continue
         bucket = str(reading["model_mode"])
         registry = _registry_rows(target_conn, canonical_conn, station_id=key["station_id"], event_date=key["event_date"])
         market_row = registry.get(bucket)
         if market_row is None or not market_row.get("yes_token"):
-            _note("registry_token_missing"); continue
+            _note("registry_token_missing", snapshot_id=examined_snapshot_id); continue
         if not bool(market_row.get("accepting_orders")):
-            _note("market_not_accepting_orders"); continue
+            _note("market_not_accepting_orders", snapshot_id=examined_snapshot_id); continue
         book_row = next((r for r in snapshot["buckets"] if str(r.get("bucket")) == bucket), None)
         min_shares = float(market_row.get("min_size") or DEFAULT_MIN_ORDER_SHARES)
         walk = walk_ask_book((book_row or {}).get("ask_levels") or (), stake, min_shares=min_shares) if book_row and book_row.get("ask_available", True) else None
         if walk is None:
-            _note("ask_book_too_thin"); continue
+            _note("ask_book_too_thin", snapshot_id=examined_snapshot_id); continue
         cash_refusal = _cash_refusal(target_conn, now_utc=now_utc, needed=walk["walked_cost_usdc"])
         if cash_refusal:
-            _note(cash_refusal); continue
+            _note(cash_refusal, snapshot_id=examined_snapshot_id); continue
         plan = {
             "schema": SCHEMA, "rule": rule_version, "rule_name": rule_name, "lane": LANE, "title": LANE_TITLE,
             "station_id": key["station_id"], "event_date": key["event_date"], "stage": key["stage"],
             "settlement_timezone": fact["settlement_timezone"], "fact_id": fact["fact_id"],
             "decision_at_utc": fact["decision_at_utc"], "envelope_id": fact["envelope_id"],
             "envelope_sha256": envelope["content_sha256"], "envelope_decision_at_utc": envelope["decision_at_utc"],
-            "snapshot_id": fact["snapshot_id"], "snapshot_observed_at": snapshot["observed_at"],
+            "snapshot_id": snapshot["snapshot_id"], "snapshot_observed_at": snapshot["observed_at"],
             "bucket": bucket, "token_id": str(market_row["yes_token"]),
             "tick_size": market_row.get("tick_size"), "min_size": market_row.get("min_size"),
             "stake_usdc": stake, "shares": walk["shares"], "limit_price": walk["limit_price"],
@@ -863,14 +969,16 @@ def _retry_operational_refusals(
         }
         plan["order_intent_id"] = f"tiebreak_{content_sha256({'plan': plan})[:32]}"
         entry["plan"] = plan
-        _note("", plan=plan, fact_id=fact["fact_id"])
+        _note("", plan=plan, fact_id=fact["fact_id"], snapshot_id=snapshot["snapshot_id"])
     return out
 
 
 def _planning_refusal(conn: sqlite3.Connection, key: Mapping[str, Any], fact: Mapping[str, Any], *,
-                      gate: Admission, now_utc: str) -> str | None:
+                      gate: Admission, now_utc: str, max_sends: int = DEFAULT_MAX_SENDS_PER_STATION_DAY) -> str | None:
     if station_day_attempted(conn, key["station_id"], key["event_date"]):
         return "station_day_already_attempted"
+    if station_day_sends(conn, key["station_id"], key["event_date"]) >= int(max_sends):
+        return f"station_day_send_cap:{int(max_sends)}"
     try:
         verdict = gate(key["station_id"], conn)
     except Exception as exc:  # noqa: BLE001 -- an unreadable gate admits nothing
@@ -981,9 +1089,19 @@ def execute_tiebreak_entries(
             submitted += 1
         if float(entry.get("matched_size") or 0.0) > 0.0:
             filled += 1
+        # The row's refusal after the send: None only when shares filled.  A
+        # FOK the venue accepted and killed left no position either, and is
+        # retried on a newer book exactly like a refused one.
+        matched = float(entry.get("matched_size") or 0.0)
+        if matched > 0.0:
+            after = None
+        elif entry.get("exchange_post_started"):
+            after = f"send:{entry.get('event_type') or 'killed'}:{entry.get('reason') or ''}".rstrip(":")
+        else:
+            after = f"send:{entry.get('reason') or entry.get('state')}"
         target_conn.execute(
             f"UPDATE {EVALUATION_TABLE} SET refusal=? WHERE order_intent_id=?",
-            (None if entry.get("exchange_post_started") else f"send:{entry.get('reason') or entry.get('state')}", intent_id),
+            (after, intent_id),
         )
         receipts.append(entry)
     return {
@@ -1013,6 +1131,10 @@ __all__ = [
     "FEATURE_COLUMNS",
     "RULE_V21",
     "RETRYABLE_REFUSAL_PREFIXES",
+    "SEND_REFUSAL_PREFIX",
+    "TERMINAL_REFUSAL_PREFIXES",
+    "retry_needs_newer_book",
+    "station_day_sends",
     "book_features",
     "is_retryable_refusal",
     "market_move_features",

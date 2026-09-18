@@ -1,6 +1,6 @@
 {
   "schema": "basket_strategy_lanes_v1",
-  "updated_at_utc": "2026-09-18T02:27:46Z",
+  "updated_at_utc": "2026-09-18T02:52:32Z",
   "rationale": "User ruling 2026-09-18: put the tiebreak lane (秤砣线) live and pause every other strategy -- closed, not deleted. A paused lane still compiles, records its decisions and writes the evidence the ledger and the fits read; only its sends are held (basket BUYs end failed with strategy_lane_paused:basket on their event; the two sell lanes are skipped by the daemon). Read fresh before every send. Missing file = every lane enabled; unreadable file = every lane paused. Charter 146.",
   "lanes": {
     "basket": {
@@ -27,7 +27,9 @@
       "rule": "model_mode_midband_spread_v2_1",
       "max_market_share_on_model_mode": 0.6,
       "max_spread_on_model_mode": 0.031,
-      "retry_operational_refusals": true
+      "retry_operational_refusals": true,
+      "max_sends_per_station_day": 3,
+      "retry_book_fresh_seconds": 900.0
     }
   }
 }

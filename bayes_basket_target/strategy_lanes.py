@@ -77,6 +77,11 @@ TIEBREAK_DEFAULT_SETTINGS: dict[str, Any] = {
     # User ruling 2026-09-18 "加重试": a fired decision refused for cash or a
     # stale account read is re-asked on later cycles' latest decision.
     "retry_operational_refusals": True,
+    # A refused or killed send is re-sent on a newer book, at most this many
+    # sends per station-day; a fill or an open order ends it.
+    "max_sends_per_station_day": 3,
+    # A retry is priced only on a book at most this old (seconds).
+    "retry_book_fresh_seconds": 900.0,
 }
 
 #: The per-trade stake is a board dial (charter 146); the server refuses a

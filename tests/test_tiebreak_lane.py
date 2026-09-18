@@ -481,7 +481,26 @@ def test_charter_141_cash_is_read_when_the_account_table_exists(store) -> None:
     assert poor["refusals"] and poor["refusals"][0].startswith("insufficient_cash:5.00<")
 
 
-def test_a_killed_fok_is_recorded_and_not_retried(store) -> None:
+def _newer_snapshot(conn, *, observed_at: str, snapshot_id: str, book=None, event_date=ED) -> None:
+    """A fresher committed book of the station-day, written by a later cycle
+    without a new decision (the market ingress runs every cycle)."""
+
+    _insert(conn, "basket_official_ws_snapshot", {
+        "snapshot_id": snapshot_id, "market_id": "m", "station_id": ST, "event_date": event_date,
+        "settlement_timezone": TZ, "sequence": 9, "observed_at": observed_at, "quote_version": "v",
+        "quote_observed_at": observed_at, "quote_expires_at": "2026-09-18T14:00:00Z",
+        "quote_source": "OFFICIAL_CLOB_WS", "remaining_budget_usdc": 100.0,
+        "buckets_json": json.dumps(book if book is not None else _book()), "state": "COMMITTED",
+        "created_at": observed_at,
+    })
+
+
+def test_a_killed_fok_is_retried_only_on_a_newer_book_and_capped(store) -> None:
+    """RJTT 2026-09-18 (user ruling "加重试"): a FOK priced on a book the venue
+    has moved past is killed; the lane re-sends only once a newer committed
+    book exists, re-judged and re-walked on it, and at most
+    max_sends_per_station_day times.  A fill ends it."""
+
     _seed(store)
     sent: list = []
 
@@ -494,9 +513,52 @@ def test_a_killed_fok_is_recorded_and_not_retried(store) -> None:
     assert receipt["submitted"] == 1 and receipt["filled"] == 0
     state = store.execute("SELECT state FROM basket_target_order_intents").fetchone()[0]
     assert state in {"cancelled", "failed"}
+    row = store.execute(f"SELECT refusal, order_intent_id FROM {lane.EVALUATION_TABLE}").fetchone()
+    assert row[0].startswith("send:") and row[1] == sent[0]["order_intent_id"], "a killed FOK is not a success"
+    # Same book: nothing to re-send on.
     again = lane.execute_tiebreak_entries(store, transport=killed, now_utc=NOW, live_submit_authorized=True,
                                           settings={"stake_usdc": 20.0}, admission=ADMIT)
-    assert again["planned"] == 0 and len(sent) == 1
+    assert again["retry_planned"] == 0 and len(sent) == 1
+    assert again["retries"][0].get("waiting_for_newer_book") is True
+    # A newer book, still inside the rule: re-sent, priced on it.
+    _newer_snapshot(store, observed_at="2026-09-18T12:09:00.000Z", snapshot_id="snap_new1",
+                    book=_book(asks_28=((0.47, 100.0),), bid_28=0.45))
+    second = lane.execute_tiebreak_entries(store, transport=killed, now_utc=NOW, live_submit_authorized=True,
+                                           settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert second["retry_planned"] == 1 and len(sent) == 2 and sent[1]["price"] == 0.47
+    # Waiting for a newer book is not a retry; the count moves only when one is made.
+    assert store.execute(f"SELECT retry_snapshot_id, retry_count FROM {lane.EVALUATION_TABLE}").fetchone() == ("snap_new1", 1)
+    # A newer book that has left the band is not bought.
+    _newer_snapshot(store, observed_at="2026-09-18T12:09:30.000Z", snapshot_id="snap_new2",
+                    book=[{"bucket": "27°C", "ask_levels": [{"price": 0.20, "shares": 200.0}], "bid_levels": [{"price": 0.18, "shares": 200.0}], "ask_available": True},
+                          {"bucket": "28°C", "ask_levels": [{"price": 0.75, "shares": 200.0}], "bid_levels": [{"price": 0.73, "shares": 200.0}], "ask_available": True},
+                          {"bucket": "29°C", "ask_levels": [{"price": 0.05, "shares": 200.0}], "bid_levels": [{"price": 0.04, "shares": 200.0}], "ask_available": True}])
+    third = lane.execute_tiebreak_entries(store, transport=killed, now_utc=NOW, live_submit_authorized=True,
+                                          settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert third["retry_planned"] == 0 and len(sent) == 2
+    assert third["retries"][0]["refusal_after"] == "retry_rule_not_met:market_share_above_ceiling"
+    # Back inside the band on a newer book: the third and last send.
+    _newer_snapshot(store, observed_at="2026-09-18T12:10:00.000Z", snapshot_id="snap_new3")
+    fourth = lane.execute_tiebreak_entries(store, transport=killed, now_utc=NOW, live_submit_authorized=True,
+                                           settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert fourth["retry_planned"] == 1 and len(sent) == 3
+    _newer_snapshot(store, observed_at="2026-09-18T12:11:00.000Z", snapshot_id="snap_new4")
+    fifth = lane.execute_tiebreak_entries(store, transport=killed, now_utc=NOW, live_submit_authorized=True,
+                                          settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert fifth["retry_planned"] == 0 and len(sent) == 3
+    assert fifth["retries"][0]["refusal_after"] == "station_day_send_cap:3"
+
+
+def test_a_fill_ends_the_station_day_for_good(store) -> None:
+    _seed(store)
+    sent: list = []
+    lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW, live_submit_authorized=True,
+                                  settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert len(sent) == 1
+    _newer_snapshot(store, observed_at="2026-09-18T12:09:00.000Z", snapshot_id="snap_after_fill")
+    again = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW, live_submit_authorized=True,
+                                          settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert again["retried"] == 0 and len(sent) == 1
 
 
 def test_a_lowered_arming_flag_holds_the_send(store, tmp_path, monkeypatch) -> None:
