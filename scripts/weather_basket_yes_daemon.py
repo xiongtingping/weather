@@ -1075,6 +1075,28 @@ def hosted_sweep_clock_entry(
     return entry
 
 
+def hosted_sweep_boot_outcome(entry: Any) -> dict[str, Any]:
+    """The last run's outcome, as the boot seed must read it from the clocks.
+
+    The seed used to rebuild it as ``{"state": "ok", ...}`` whatever the
+    file said, so a restart turned a ``write_blocked`` pass's five-minute
+    retry back into a whole interval from its attempt.  Measured 2026-09-18:
+    capture_cma_grapes_forward was blocked at 00:43Z, the resident restarted
+    at 01:03Z and three more times before 02:46Z, and each boot seeded the
+    lane at attempt + 3h -- so the 18Z GRAPES cycle, on a transport that
+    serves only the run it currently holds, sat uncaptured for five hours
+    while every other lane moved.  The persisted state is read verbatim;
+    ``failed`` and ``timeout_killed`` still wait their full interval.
+    """
+
+    if not isinstance(entry, Mapping):
+        return {}
+    return {
+        "state": str(entry.get("last_state") or "ok"),
+        "continue": entry.get("continue_requested"),
+    }
+
+
 def hosted_sweep_interval_after(
     result: "Mapping[str, Any]", interval_sec: float
 ) -> float:
@@ -4947,13 +4969,7 @@ def main() -> int:
                     if isinstance(_sweep_clocks.get(name), dict) else None
                 ),
                 interval_sec=hosted_sweep_interval_after(
-                    {
-                        "state": "ok",
-                        "continue": (_sweep_clocks.get(name) or {}).get(
-                            "continue_requested"
-                        ),
-                    }
-                    if isinstance(_sweep_clocks.get(name), dict) else {},
+                    hosted_sweep_boot_outcome(_sweep_clocks.get(name)),
                     interval_sec,
                 ),
                 stagger_sec=60.0 + 90.0 * index,

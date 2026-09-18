@@ -129,6 +129,35 @@ def test_a_restart_mid_repair_keeps_the_short_delay(daemon) -> None:
     assert plain > 100_000.0 + 10_000.0
 
 
+def test_a_restart_after_a_blocked_write_keeps_the_short_retry(daemon) -> None:
+    """2026-09-18: CMA blocked at 00:43Z, restarted at 01:03Z, seeded at +3h."""
+
+    blocked = {
+        "attempted_at_utc": "2026-09-18T00:43:42Z",
+        "completed_at_utc": "2026-09-17T21:29:27Z",
+        "last_state": daemon.HOSTED_SWEEP_WRITE_BLOCKED_STATE,
+        "continue_requested": False,
+    }
+    due = daemon.seed_hosted_sweep_clock(
+        now_mono=100_000.0,
+        now_wall_utc="2026-09-18T01:03:34Z",
+        completed_at_utc=blocked["completed_at_utc"],
+        attempted_at_utc=blocked["attempted_at_utc"],
+        interval_sec=daemon.hosted_sweep_interval_after(
+            daemon.hosted_sweep_boot_outcome(blocked), 10800.0
+        ),
+        stagger_sec=60.0,
+    )
+    assert due <= 100_000.0 + 60.0
+    # A failure still waits its whole interval: only the blocked state and a
+    # continuation request earn the short delay.
+    failed = dict(blocked, last_state="failed")
+    assert daemon.hosted_sweep_interval_after(
+        daemon.hosted_sweep_boot_outcome(failed), 10800.0
+    ) == 10800.0
+    assert daemon.hosted_sweep_boot_outcome(None) == {}
+
+
 def test_completion_and_boot_both_read_the_run_outcome(daemon) -> None:
     source = (ROOT / "scripts" / "weather_basket_yes_daemon.py").read_text(
         encoding="utf-8"
