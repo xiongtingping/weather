@@ -214,6 +214,12 @@ def test_cold_archived_grid_body_is_re_downloaded_instead_of_failing_closed(
         raise ContractError("stopped_after_download_was_reached")
 
     monkeypatch.setattr(icon_eps_members, "_curl_grid_download", _fake_download)
+    # The free-space guard reads the real disk; below its 2.25 GiB floor
+    # (2026-09-18: the full suite ran with ~2 GiB free) it refuses before
+    # the download this test is about.  The guard is not under test here.
+    monkeypatch.setattr(
+        icon_eps_members, "_free_bytes", lambda _path: 1 << 50
+    )
 
     with pytest.raises(ContractError, match="stopped_after_download_was_reached"):
         icon_eps_members.capture_official_grid(
