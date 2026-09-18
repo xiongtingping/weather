@@ -13296,6 +13296,7 @@ white-space:nowrap;font-variant-numeric:tabular-nums}
 .lampdeck{margin-top:9px;padding-top:9px;border-top:1px solid var(--line)}
 .lampdeck + .lampdeck{margin-top:9px}
 .lampcap{display:block;color:var(--muted);font-size:11.5px;margin-bottom:5px}
+.pubt-wrap{overflow-x:auto}
 .pubt{width:100%;border-collapse:collapse;font-size:12.5px}
 .pubt th{font-weight:600;color:var(--muted);font-size:11.5px;text-align:left;padding:3px 8px;border-bottom:1px solid var(--line)}
 .pubt td{padding:3px 8px;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:baseline}
@@ -14511,7 +14512,7 @@ function publishTimes(){
   if(!rows.length) return "";
   return `<div class="lampdeck"><span class="lampcap">发布时间 · 各家最新一轮什么时候起报、什么时候到货、下一轮预计何时到
     （到货 = 首次落库，即本系统的「可用时刻」；源站发布早于或等于它。时间为 UTC，悬停看本地时间与最近几轮）</span>
-    <div class="scroll"><table class="pubt"><thead><tr><th>来源</th><th>最新一轮</th><th>到货</th>
+    <div class="pubt-wrap"><table class="pubt"><thead><tr><th>来源</th><th>最新一轮</th><th>到货</th>
       <th>起报→到货</th><th>下一轮</th><th>说明</th></tr></thead><tbody>${rows.join("")}</tbody></table></div></div>`;
 }
 
