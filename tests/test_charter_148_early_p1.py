@@ -250,3 +250,20 @@ def test_the_real_p1_pass_restricts_to_the_scopes_it_is_handed(monkeypatch) -> N
     read.clear()
     none = worker._materialize_resident_p1(as_of_utc=CLOCK, only_scopes=set())
     assert read == [] and none["scope_count"] == 0
+
+
+@pytest.mark.parametrize("head_state", ["RAN", "SKIPPED_NO_UNCOVERED_REPORTS"])
+def test_the_chain_does_not_repeat_identity_after_a_covering_head_pass(monkeypatch, head_state: str) -> None:
+    worker = _worker()
+    worker._early_p1_this_cycle = {"state": head_state, "ran": head_state == "RAN"}
+    monkeypatch.setattr(worker, "_identify_live_observations", lambda: pytest.fail("identity repeated"))
+    out = worker._identify_live_observations_for_chain()
+    assert out["state"] == "SKIPPED_HEAD_PASS_COVERED" and out["head_pass_state"] == head_state
+
+
+@pytest.mark.parametrize("head_state", ["DISABLED", "SKIPPED_WATERMARK_UNREADABLE", "SKIPPED_IDENTITY_NOT_STAGED", "FAILED", "SKIPPED_P1_NOT_ATTEMPTED", ""])
+def test_the_chain_runs_identity_when_the_head_pass_fell_back(monkeypatch, head_state: str) -> None:
+    worker = _worker()
+    worker._early_p1_this_cycle = {"state": head_state, "ran": False} if head_state else None
+    monkeypatch.setattr(worker, "_identify_live_observations", lambda: {"state": "STAGED"})
+    assert worker._identify_live_observations_for_chain() == {"state": "STAGED"}

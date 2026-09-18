@@ -15193,6 +15193,33 @@ class TargetProductionWorker:
                 ))
         return sorted(scope for scope in scopes if all(scope))
 
+    def _identify_live_observations_for_chain(self) -> dict[str, Any]:
+        """The identity pass at the chain's position, only when it can matter.
+
+        The chain's P1 reads reports strictly as of the cycle clock.  When
+        the head pass ran, it identified every one of them already; when it
+        found no uncovered report, none needs it.  A report that landed since
+        belongs to the next cycle, whose head pass identifies it -- running
+        the pass here as well only doubled a 33-77s fixed cost per cycle
+        (measured on the first cycle after charter 148 went live).  Any other
+        head-pass outcome is the fallback to the old single pass, and there
+        the identity pass runs here exactly as it always did.
+        """
+
+        head = getattr(self, "_early_p1_this_cycle", None)
+        head_state = str((head or {}).get("state") or "")
+        if head_state in ("RAN", "SKIPPED_NO_UNCOVERED_REPORTS"):
+            return {
+                "state": "SKIPPED_HEAD_PASS_COVERED",
+                "head_pass_state": head_state,
+                "duration_sec": 0.0,
+                "calls_order_gateway": False,
+                "places_orders": False,
+                "live_submit_authorized": False,
+                "orders_submitted": 0,
+            }
+        return self._identify_live_observations()
+
     def _materialize_early_p1(
         self,
         *,
@@ -18040,7 +18067,9 @@ class TargetProductionWorker:
             # report identified after that compile is one this cycle's P1
             # could not carry -- permanently, the envelope table being
             # append-only.
-            live_observation_identity = self._identify_live_observations()
+            live_observation_identity = (
+                self._identify_live_observations_for_chain()
+            )
             self._mark("live_observation_identity")
             resident_probability_chain = self._materialize_resident_probability_chain(
                 as_of_utc=now,
