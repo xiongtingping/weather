@@ -31,6 +31,7 @@ import struct
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
+from time import sleep as _sleep
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
@@ -271,7 +272,7 @@ def _single_field(library: ctypes.CDLL, raw: bytes) -> list[float]:
         library.codes_handle_delete(handle)
 
 
-def _fetch(client: httpx.Client, url: str) -> bytes:
+def _fetch_once(client: httpx.Client, url: str) -> bytes:
     with client.stream("GET", url) as response:
         if response.status_code != 200:
             raise ContractError("icon_eps_archive_object_unavailable")
@@ -283,6 +284,39 @@ def _fetch(client: httpx.Client, url: str) -> bytes:
                 raise ContractError("icon_eps_archive_object_too_large")
             chunks.append(chunk)
     return b"".join(chunks)
+
+
+# DWD's open-data server drops transfers mid-body often enough to lose whole
+# runs.  2026-09-18: the 00Z run for the next day failed from its publication
+# (~03:30Z) past 10:53Z with "peer closed connection without sending complete
+# message body (received 21364407 bytes, expected 36253836)".  One capture
+# pulls fifteen ~36 MB objects in parallel and a single cut transfer failed the
+# whole family, so every P0 for that day went out on ICON's run of the day
+# before; the per-date retry thirty minutes later re-downloaded all fifteen and
+# met the same odds.  The objects are immutable, so a transport failure is
+# retried on the same object in place.  A status the server did answer (404:
+# not published yet) is not a transport failure and still fails at once.
+FETCH_TRANSPORT_ATTEMPTS = 3
+FETCH_TRANSPORT_BACKOFF_SEC = (2.0, 5.0)
+
+
+def _fetch(
+    client: httpx.Client,
+    url: str,
+    *,
+    attempts: int = FETCH_TRANSPORT_ATTEMPTS,
+    sleep: Any = _sleep,
+) -> bytes:
+    for attempt in range(max(1, int(attempts))):
+        try:
+            return _fetch_once(client, url)
+        except httpx.TransportError:
+            if attempt + 1 >= max(1, int(attempts)):
+                raise
+            sleep(FETCH_TRANSPORT_BACKOFF_SEC[
+                min(attempt, len(FETCH_TRANSPORT_BACKOFF_SEC) - 1)
+            ])
+    raise AssertionError("unreachable")
 
 
 def _grid_index(
