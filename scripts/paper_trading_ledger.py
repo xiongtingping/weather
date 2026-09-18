@@ -4126,8 +4126,9 @@ def _purge_below_floor(conn: sqlite3.Connection) -> int:
         "DELETE FROM paper_trade_refusal WHERE event_date<?",
         (LEDGER_EVENT_DATE_FLOOR,),
     )
-    if dropped:
-        conn.commit()
+    # Unconditionally: a DELETE that matched nothing has still opened a write
+    # transaction and taken the file's write lock (see ``backfill``).
+    conn.commit()
     return dropped
 
 
@@ -4254,8 +4255,9 @@ def _drop_superseded_positions(
         (SELECTION_RULE_SHA256, earliest, through_date),
     )
     dropped_refusals = int(refusals.rowcount or 0)
-    if dropped or dropped_refusals:
-        conn.commit()
+    # Unconditionally, as in ``_purge_below_floor``: zero rows deleted is
+    # still a write transaction holding the lock.
+    conn.commit()
     return dropped, dropped_refusals
 
 
@@ -9186,6 +9188,17 @@ def backfill(
     by_day: dict[str, list[str]] = defaultdict(list)
     for station_id, event_date in scopes:
         by_day[str(event_date)].append(str(station_id))
+    # The walk is reads only and its writes wait for the burst at the end --
+    # true only if nothing above left a transaction open.  Two DELETEs above
+    # committed only when they had removed a row, and a DELETE that matches
+    # nothing still takes the write lock, so on a steady-state pass the lock
+    # was held for the whole walk.  Measured 2026-09-18: 243s straight
+    # (17:00:16-17:04:19Z, the full lease), and capture_noaa_conus_forward's
+    # NBM commit waited out its 120s busy_timeout behind the 15:33:54Z pass
+    # and ended write_blocked -- the captures commit beside the ledger by
+    # design (WRITER_TURN_EXEMPT_SWEEPS) on the premise that its writes are
+    # short.
+    conn.commit()
     for event_date in sorted(by_day):
         day_pnl = 0.0
         if counts.get("stopped_for_time"):

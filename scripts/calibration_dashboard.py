@@ -3095,16 +3095,22 @@ def collect_hosted_sweeps(conn: sqlite3.Connection) -> dict[str, Any]:
             None if since_completed is None or interval <= 0
             else since_completed / interval
         )
+        state = str(clock.get("last_state") or "")
         # Attempted much more recently than completed: the lane is getting
         # its turn and failing to finish it.  Half an interval of slack, so
         # a lane that merely started its current round does not read as
-        # stuck.
+        # stuck.  Never a ``write_blocked`` pass: that lane is the one held
+        # out -- another writer kept the lock past its busy_timeout -- and it
+        # is due again in five minutes, so "stuck, holding the write domain"
+        # says the opposite of what happened.  On 2026-09-18 one NBM commit
+        # blocked behind the paper ledger read "卡住：轮到就失败" for the hour
+        # to the next render, while the 15:48Z retry had already completed.
         stuck = (
-            since_attempted is not None
+            state != "write_blocked"
+            and since_attempted is not None
             and since_completed is not None
             and since_completed - since_attempted > interval * 0.5
         )
-        state = str(clock.get("last_state") or "")
         health = "green"
         note = ""
         # Judged on the number the page PRINTS, not on the one behind it.
@@ -14559,7 +14565,9 @@ function healthLamps(){
         // stuck holds the exclusive write domain and blocks everyone behind
         // it, starved only needs a generation that lives long enough.
         ? bad.map(l => `${l.name} 落后 ${(l.overdue_intervals || 0).toFixed(1)}`
-            + ` 个回合（${l.stuck ? "卡住，占着写域" : "没轮到"}）`).join("；")
+            + ` 个回合（${l.stuck ? "卡住，占着写域"
+              : l.last_state === "write_blocked" ? "写锁被别人占着，5 分钟后重试"
+              : "没轮到"}）`).join("；")
         : "每条车道都在自己的间隔内跑过"));
   } else {
     L.push(lamp("amber", "维护车道", "读不出", H.reason || ""));

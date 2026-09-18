@@ -342,3 +342,51 @@ def test_a_lane_that_ran_past_the_writer_lease_says_so(board, tmp_path, monkeypa
     fine = next(row for row in fresh["lanes"] if row["name"] == "slow_daily")
     assert fine["lease_overrun_sec"] == 0.0
     assert "租约" not in fine["note"]
+
+
+def test_a_write_blocked_capture_is_not_stuck(tmp_path, monkeypatch):
+    """The lane that was held out is not the lane holding the domain.
+
+    2026-09-18: capture_noaa_conus_forward completed at 14:21Z, its 15:30Z
+    pass had its NBM commit blocked behind the paper ledger's write lock,
+    and the page said "卡住：轮到就失败" -- stuck, holding the write domain --
+    for the hour to the next render.  A write_blocked pass is due again in
+    five minutes; that one completed at 15:52Z.
+    """
+
+    from datetime import datetime, timezone
+
+    now = datetime(2026, 9, 18, 15, 47, tzinfo=timezone.utc)
+    monkeypatch.setattr(C, "_now", lambda: now)
+    monkeypatch.setattr(
+        C, "_hosted_sweep_contracts",
+        lambda: ([{"name": "capture_noaa_conus_forward",
+                   "script": "capture_noaa_conus_forward_sweep.sh",
+                   "interval_sec": HOUR, "timeout_sec": 1800.0,
+                   "domain": "ssot"}], ""),
+    )
+    path = tmp_path / "hosted_sweep_clocks.json"
+    path.write_text(json.dumps({"capture_noaa_conus_forward": _clock(
+        now, completed_h=1.43, attempted_h=0.16, state="write_blocked"
+    )}), encoding="utf-8")
+    monkeypatch.setattr(C, "HOSTED_SWEEP_CLOCKS", path)
+    monkeypatch.setattr(C, "STATUS_JSON", tmp_path / "absent.json")
+
+    lane = _lane(
+        C.collect_hosted_sweeps(sqlite3.connect(":memory:")),
+        "capture_noaa_conus_forward",
+    )
+    assert lane["stuck"] is False
+    # Still not ok -- the pass stored nothing -- and the state is named.
+    assert lane["health"] == "red"
+    assert "write_blocked" in lane["note"]
+
+    # The same ages under a state that does take the turn and fail it.
+    path.write_text(json.dumps({"capture_noaa_conus_forward": _clock(
+        now, completed_h=1.43, attempted_h=0.16, state="timeout_killed"
+    )}), encoding="utf-8")
+    lane = _lane(
+        C.collect_hosted_sweeps(sqlite3.connect(":memory:")),
+        "capture_noaa_conus_forward",
+    )
+    assert lane["stuck"] is True
