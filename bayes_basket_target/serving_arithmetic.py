@@ -247,18 +247,22 @@ def _closure(entries: Sequence[tuple[str, str]]) -> list[tuple[str, str]]:
 # v6 (P0, P0-M) and P1 v11: charter 149, a member is calibrated under its own
 # run's hour lead instead of the packet's.  Declared at the restart that
 # deployed it; nothing serves during a restart, so no v5 cell falls after it.
+# First typed 09:17:10Z, moved to 09:18:16Z because the fingerprint's first
+# sighting is the resident's start (09:18:15.552Z) and the watchdog rightly
+# lit for the minute between; no envelope of any version fell in it, and the
+# first v6 cell is 09:18:21.8Z.
 STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
     "P0": {
         "calibrated_native_cross_ensemble_p0_v3": "2026-09-06T04:18:00Z",
         "calibrated_native_cross_ensemble_p0_v4": "2026-09-10T15:27:09Z",
         "calibrated_native_cross_ensemble_p0_v5": "2026-09-14T05:52:13Z",
-        "calibrated_native_cross_ensemble_p0_v6": "2026-09-18T09:17:10Z",
+        "calibrated_native_cross_ensemble_p0_v6": "2026-09-18T09:18:16Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
         "p0m_taf_observed_v4": "2026-09-10T15:27:11Z",
         "p0m_taf_observed_v5": "2026-09-14T05:52:13Z",
-        "p0m_taf_observed_v6": "2026-09-18T09:17:10Z",
+        "p0m_taf_observed_v6": "2026-09-18T09:18:16Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
@@ -266,7 +270,7 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
     # (charter 149) is the second.
     "P1": {
         "p1_metar_trajectory_target_v10": "2026-09-14T05:52:13Z",
-        "p1_metar_trajectory_target_v11": "2026-09-18T09:17:10Z",
+        "p1_metar_trajectory_target_v11": "2026-09-18T09:18:16Z",
     },
 }
 
