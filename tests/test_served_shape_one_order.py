@@ -31,6 +31,7 @@ from bayes_basket_target.center_width_calibration import (  # noqa: E402
 from bayes_basket_target.center_width_store import (  # noqa: E402
     persist_and_activate_center_width,
 )
+from bayes_basket_target import cross_consensus
 from bayes_basket_target.cross_consensus import (  # noqa: E402
     apply_band_reliability,
     apply_neighbour_direction_tilt,
@@ -112,14 +113,18 @@ def test_a_skipped_layer_is_left_out_and_nothing_else_moves() -> None:
         )
 
 
-def test_the_holdout_leans_around_the_models_centre_not_the_shifted_mean() -> None:
+def test_the_holdout_leans_around_the_models_centre_not_the_shifted_mean(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Serving anchors the neighbour tilt on the weighted calibrated centres.
 
     A radiation shift of -2C moves the histogram's mean two buckets colder
     and leaves the models' centre where it was; the gate and the contest used
-    to lean around the moved mean.
+    to lean around the moved mean.  The tilt is retired (charter 147), so
+    this pins the research arm: the anchor rule still holds when it is on.
     """
 
+    monkeypatch.setattr(cross_consensus, "NEIGHBOUR_DIRECTION_MODE", "on")
     grid = [str(value) for value in range(18, 27)]
     base = {key: 0.0 for key in grid}
     base.update({"21": 0.2, "22": 0.6, "23": 0.2})

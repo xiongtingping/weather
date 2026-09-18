@@ -24,6 +24,7 @@ the gate actually measured; the rollout follows artifact regeneration.
 from __future__ import annotations
 
 import math
+import os
 
 from typing import Any, Mapping, Sequence
 
@@ -304,7 +305,40 @@ def synoptic_cooling_index(
 
 
 NEIGHBOUR_DIRECTION_METHOD_TAG = "neighbour_direction_v1"
-# The served distribution is symmetric about its centre and the truth is not,
+# RETIRED 2026-09-18 (charter 147, operator ruling: "去掉并下线，不删代码，这是
+# 人为加的硬指标").  What the table below describes is a hand-fitted constant
+# stamped into code on 2026-08-15 and never refitted: it patches the served
+# histogram after the fact, on residuals of our own output, anchored on
+# whichever bucket the calibrated centre happens to fall in.  Re-measured on
+# 2026-09-18 over 1,479 served P0 vectors (485 station-days, 11 days, day
+# bootstrap): worth 0.85% of RPS fleet-wide, all of it from h12_24 and the
+# 45-degree band, indistinguishable from zero in the other three bands; its
+# +2 factor was fitted when that offset over-claimed (0.89) and the offset now
+# under-claims by half (realised/claimed 1.49 [1.13, 1.90]); the bucket anchor
+# is a step (25.51 -> anchor 26, 25.49 -> anchor 25) that 20% of served
+# vectors sit within 0.1C of.  Its mean push is +0.04C against the +1C bias
+# calibration -- this is not where a day's warmth comes from.
+#
+# ``off`` (the default) makes ``apply_neighbour_direction_tilt`` identity on
+# every path -- serving, the OOS gate and its ablation arm alike -- and a new
+# artifact no longer carries the method tag, so the served math stays the
+# gated math.  ``on`` is the research arm that restores the table verbatim.
+# The asymmetry it patched is real at the source (truth minus calibrated
+# centre: median +0.1C, skew -0.37 [-0.73, +0.03], lead-dependent) and
+# belongs in the member calibration as a third fitted moment beside bias and
+# spread, applied on the temperature axis before bucketing; that is the rule
+# this constant was standing in for.
+NEIGHBOUR_DIRECTION_MODE = (
+    os.environ.get("PM_NEIGHBOUR_DIRECTION", "").strip().lower() or "off"
+)
+if NEIGHBOUR_DIRECTION_MODE not in {"off", "on"}:
+    raise RuntimeError(
+        f"unknown neighbour direction mode: {NEIGHBOUR_DIRECTION_MODE}"
+    )
+NEIGHBOUR_DIRECTION_RETIRED_STATE = "RETIRED_CHARTER_147"
+# Charter 43 (2026-08-14/15), retired by charter 147 above; kept as the
+# research arm's record.  The served distribution is symmetric about its
+# centre and the truth is not,
 # and how far it leans depends on where the station sits.  Every number here
 # is measured in-pipeline -- this ensemble, this inflation, this truth lane --
 # because the factors describe our own distribution's defect rather than the
@@ -379,6 +413,32 @@ def neighbour_direction_band(latitude: float | None) -> str:
     return "lat_45_plus"
 
 
+def neighbour_direction_serves(artifact_combination_method: str) -> bool:
+    """Whether P0 runs the tilt function for this artifact at all.
+
+    Retired: always, so every envelope carries the retirement receipt and a
+    replay can see which rule shaped it.  Research arm: only artifacts whose
+    holdout was scored with the tag, exactly as before.
+    """
+
+    if NEIGHBOUR_DIRECTION_MODE == "off":
+        return True
+    return NEIGHBOUR_DIRECTION_METHOD_TAG in str(artifact_combination_method)
+
+
+def neighbour_direction_method_tag_suffix() -> str:
+    """What the OOS gate appends to an artifact's combination method.
+
+    Empty while retired: the holdout scored an untilted blend, and an artifact
+    that said otherwise would serve the tilt the day the research arm came
+    back on, on a certificate that never priced it.
+    """
+
+    if NEIGHBOUR_DIRECTION_MODE == "off":
+        return ""
+    return "::" + NEIGHBOUR_DIRECTION_METHOD_TAG
+
+
 def apply_neighbour_direction_tilt(
     probability: "Mapping[str, float]",
     *,
@@ -386,10 +446,29 @@ def apply_neighbour_direction_tilt(
     center_bucket: str,
     latitude: float | None,
 ) -> tuple[dict[str, float], dict[str, Any]]:
-    """Lean the buckets around the centre by the station's latitude band."""
+    """Lean the buckets around the centre by the station's latitude band.
+
+    Identity while retired (charter 147): the vector comes back renormalised
+    and untouched, with a receipt that says so, whatever the artifact's tag,
+    the station's band or the centre bucket.
+    """
 
     if not probability:
         raise ValueError("neighbour_direction_probability_empty")
+    if NEIGHBOUR_DIRECTION_MODE == "off":
+        total = sum(float(v) for v in probability.values())
+        if total <= 0:
+            raise ValueError("neighbour_direction_probability_empty")
+        return {str(k): float(v) / total for k, v in probability.items()}, {
+            "schema": "neighbour_direction_receipt_v1",
+            "method_tag": NEIGHBOUR_DIRECTION_METHOD_TAG,
+            "state": NEIGHBOUR_DIRECTION_RETIRED_STATE,
+            "mode": NEIGHBOUR_DIRECTION_MODE,
+            "band": neighbour_direction_band(latitude),
+            "latitude": None if latitude is None else float(latitude),
+            "center_bucket": str(center_bucket),
+            "applied_factors": {},
+        }
     if center_bucket not in ordinals:
         return {str(k): float(v) for k, v in probability.items()}, {
             "schema": "neighbour_direction_receipt_v1",

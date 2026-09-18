@@ -44,13 +44,13 @@ from .cross_consensus import (
     BAND_RELIABILITY_METHOD_TAG,
     CONSENSUS_BRIDGE_METHOD_TAG,
     CONDITIONAL_SKEW_METHOD_TAG,
-    NEIGHBOUR_DIRECTION_METHOD_TAG,
     RADIATION_SHIFT_METHOD_TAG,
     pinned_radiation_shift_sigma,
     SYNOPTIC_COOLING_METHOD_TAG,
     SYNOPTIC_COOLING_SHIFT_SIGMA,
     apply_conditional_tail_skew,
     apply_neighbour_direction_tilt,
+    neighbour_direction_serves,
     forecast_radiation_shift_sigma,
     synoptic_cooling_index,
     bridged_cross_probability,
@@ -3057,7 +3057,10 @@ def compile_native_ensemble_p0(
     # not -- offsets one and two here, beyond that there -- so the order is
     # fixed only so the three never read each other's residue.
     neighbour_direction_receipt = None
-    if NEIGHBOUR_DIRECTION_METHOD_TAG in artifact_combination_method:
+    # Charter 147: retired, the function is identity and runs for every
+    # artifact so the envelope records the retirement; the research arm keys
+    # on the artifact's tag as before.
+    if neighbour_direction_serves(artifact_combination_method):
         # The tilt is a property of where the station is, so it is served by
         # latitude band.  An unresolvable registry scope serves the neutral
         # band rather than guessing.

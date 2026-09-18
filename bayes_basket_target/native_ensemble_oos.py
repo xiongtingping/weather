@@ -41,11 +41,11 @@ from .cross_consensus import (
     BAND_RELIABILITY_METHOD_TAG,
     CONSENSUS_BRIDGE_METHOD_TAG,
     CONDITIONAL_SKEW_METHOD_TAG,
-    NEIGHBOUR_DIRECTION_METHOD_TAG,
     SYNOPTIC_COOLING_METHOD_TAG,
     SYNOPTIC_COOLING_SHIFT_SIGMA,
     apply_conditional_tail_skew,
     apply_neighbour_direction_tilt,
+    neighbour_direction_method_tag_suffix,
     RADIATION_SHIFT_SIGMA,
     forecast_radiation_shift_sigma,
     radiation_shift_sigma_for_lead,
@@ -6530,7 +6530,9 @@ def persist_native_ensemble_oos(
                     # above scored the conditionally skewed blend with this
                     # day's own signals, so the artifact says so and P0 keys
                     # the serving transform on this tag.
-                    + "::" + NEIGHBOUR_DIRECTION_METHOD_TAG
+                    # Charter 147: empty while the tilt is retired, so the
+                    # certificate says what the holdout actually scored.
+                    + neighbour_direction_method_tag_suffix()
                     + "::" + SYNOPTIC_COOLING_METHOD_TAG
                     # Pin the coefficient the holdout above was scored under.
                     # Absent on artifacts built before this existed, which are
