@@ -2157,6 +2157,178 @@ def collect_four_layer_chain(conn: sqlite3.Connection) -> dict[str, Any]:
     return out
 
 
+# P1's temperature-path skill (user, 2026-09-19: "前端增加显示 p1 的温度路径的
+# 预测命中率及趋势数据看板还有预测的提前时间量（最高温）").  Local hours at which
+# the standing P1 is read, and how many settled event days the trend spans.
+P1_PATH_STANDING_HOURS = (8, 10, 12, 14, 16)
+P1_PATH_SKILL_DAYS = 21
+
+
+def _p1_bucket_of(intervals: Mapping[str, Any], value: float) -> str | None:
+    for bucket, bounds in intervals.items():
+        low, high = bounds[0], bounds[1]
+        if (low is None or value >= float(low)) and (high is None or value < float(high)):
+            return str(bucket)
+    return None
+
+
+def collect_p1_path_skill(conn: sqlite3.Connection) -> dict[str, Any]:
+    """How often P1's mode bucket is the day's settled high, and how early.
+
+    Read off committed P1 heads -- the last envelope at each decision second,
+    so a walk's replayed steps do not vote -- against the calibration lane's
+    settled high, per station-day:
+
+    * **standing hit**: the mode of the last head at or before each local
+      hour in ``P1_PATH_STANDING_HOURS`` equals the settled bucket (and the
+      same within one bucket);
+    * **lock time**: the first head after which every later head's mode is
+      the settled bucket -- the moment P1 committed to the right answer and
+      stayed;
+    * **peak time**: the first head whose reported running high is already
+      in the settled bucket -- the moment the thermometer got there;
+    * **lead** = peak time − lock time.  Positive is a prediction; zero or
+      negative is P1 agreeing with a thermometer that had already arrived.
+      A day whose last head is wrong has no lock and counts as missed.
+
+    Nothing is recomputed from production's rules: the modes, the ladder and
+    the running high are the envelopes' own.
+    """
+
+    from zoneinfo import ZoneInfo  # noqa: PLC0415
+
+    latest = conn.execute(
+        "SELECT MAX(local_date) FROM calibration_station_daily_high_truth"
+        " WHERE source_lane='AWC' AND qc_status='ACCEPTED'"
+    ).fetchone()[0]
+    if not latest:
+        return {"available": False}
+    since = (date.fromisoformat(str(latest)) - timedelta(days=P1_PATH_SKILL_DAYS - 1)).isoformat()
+    truth: dict[tuple[str, str], float] = {}
+    for station, day, value, _rev in conn.execute(
+        "SELECT station_id, local_date, official_tmax_c, revision_no"
+        " FROM calibration_station_daily_high_truth"
+        " WHERE source_lane='AWC' AND qc_status='ACCEPTED' AND local_date BETWEEN ? AND ?"
+        " ORDER BY revision_no",
+        (since, str(latest)),
+    ):
+        truth[(str(station), str(day))] = float(value)
+    heads: dict[tuple[str, str], dict[str, tuple]] = defaultdict(dict)
+    zones: dict[tuple[str, str], str] = {}
+    first_rowid: dict[tuple[str, str], int] = {}
+    for rowid, station, day, decided, probs, ords, running, zone in conn.execute(
+        "SELECT rowid, station_id, event_date, decision_at_utc, probabilities_json,"
+        " bucket_ordinals_json, json_extract(lineage_json,'$.metar_trajectory_running_high_c'),"
+        " settlement_timezone FROM basket_probability_envelope"
+        " WHERE state='COMMITTED' AND stage='P1' AND event_date BETWEEN ? AND ?",
+        (since, str(latest)),
+    ):
+        key = (str(station), str(day))
+        if key not in truth:
+            continue
+        second = str(decided)[:19]
+        held = heads[key].get(second)
+        if held is None or str(decided) > held[0]:
+            heads[key][second] = (str(decided), probs, ords, running)
+        zones[key] = str(zone or "UTC")
+        first_rowid.setdefault(key, rowid)
+    days: list[dict[str, Any]] = []
+    for key, by_second in heads.items():
+        try:
+            intervals = json.loads(conn.execute(
+                "SELECT json_extract(lineage_json,'$.bucket_intervals_c_json')"
+                " FROM basket_probability_envelope WHERE rowid=?",
+                (first_rowid[key],),
+            ).fetchone()[0] or "{}")
+            zone = ZoneInfo(zones[key])
+        except Exception:  # noqa: BLE001 - one broken day is one blank row
+            continue
+        truth_bucket = _p1_bucket_of(intervals, truth[key])
+        if truth_bucket is None:
+            continue
+        seq = []
+        for decided, probs, ords, running in sorted(by_second.values()):
+            try:
+                p = {str(k): float(v) for k, v in json.loads(probs).items()}
+                o = {str(k): int(v) for k, v in json.loads(ords).items()}
+                when = datetime.fromisoformat(decided.replace("Z", "+00:00"))
+            except (TypeError, ValueError):
+                continue
+            if not p or truth_bucket not in o:
+                continue
+            mode = max(p, key=lambda b: (p[b], -o.get(b, 0)))
+            try:
+                high_bucket = (_p1_bucket_of(intervals, float(running))
+                               if running not in (None, "", "NONE") else None)
+            except (TypeError, ValueError):
+                high_bucket = None
+            seq.append({"when": when, "local": when.astimezone(zone), "mode": mode,
+                        "off": abs(o.get(mode, 0) - o[truth_bucket]),
+                        "reached": high_bucket == truth_bucket})
+        if not seq:
+            continue
+        standing = {}
+        for hour in P1_PATH_STANDING_HOURS:
+            cutoff = datetime.combine(
+                date.fromisoformat(key[1]), datetime.min.time(), tzinfo=zone
+            ) + timedelta(hours=hour)
+            before = [e for e in seq if e["local"] <= cutoff]
+            standing[str(hour)] = (
+                None if not before else [before[-1]["off"] == 0, before[-1]["off"] <= 1]
+            )
+        lock = None
+        for index in range(len(seq) - 1, -1, -1):
+            if seq[index]["off"] != 0:
+                break
+            lock = seq[index]
+        peak = next((e for e in seq if e["reached"]), None)
+        lead = (
+            (peak["when"] - lock["when"]).total_seconds() / 3600.0
+            if lock is not None and peak is not None else None
+        )
+        days.append({
+            "station_id": key[0], "event_date": key[1], "standing": standing,
+            "locked": lock is not None,
+            "lock_local": lock["local"].strftime("%H:%M") if lock else None,
+            "peak_local": peak["local"].strftime("%H:%M") if peak else None,
+            "lead_hours": None if lead is None else round(lead, 2),
+            "decisions": len(seq),
+        })
+
+    def summarise(rows: list[dict[str, Any]]) -> dict[str, Any]:
+        out: dict[str, Any] = {"station_days": len(rows)}
+        for hour in P1_PATH_STANDING_HOURS:
+            read = [r["standing"][str(hour)] for r in rows if r["standing"].get(str(hour))]
+            out[f"hit_{hour}"] = (sum(1 for r in read if r[0]) / len(read)) if read else None
+            out[f"within1_{hour}"] = (sum(1 for r in read if r[1]) / len(read)) if read else None
+            out[f"n_{hour}"] = len(read)
+        leads = [r["lead_hours"] for r in rows if r["lead_hours"] is not None]
+        out["locked_share"] = (sum(1 for r in rows if r["locked"]) / len(rows)) if rows else None
+        out["median_lead_hours"] = statistics.median(leads) if leads else None
+        out["lead_ge_1h_share"] = (sum(1 for v in leads if v >= 1.0) / len(rows)) if rows else None
+        out["lead_ge_3h_share"] = (sum(1 for v in leads if v >= 3.0) / len(rows)) if rows else None
+        out["predicted_share"] = (sum(1 for v in leads if v > 0.0) / len(rows)) if rows else None
+        return out
+
+    by_day: dict[str, list] = defaultdict(list)
+    by_station: dict[str, list] = defaultdict(list)
+    for row in days:
+        by_day[row["event_date"]].append(row)
+        by_station[row["station_id"]].append(row)
+    return {
+        "available": bool(days),
+        "since": since, "through": str(latest),
+        "standing_hours": list(P1_PATH_STANDING_HOURS),
+        "overall": summarise(days),
+        "daily": [{"event_date": d, **summarise(rows)} for d, rows in sorted(by_day.items())],
+        "stations": sorted(
+            ({"station_id": st, **summarise(rows)} for st, rows in by_station.items()),
+            key=lambda r: r["station_id"],
+        ),
+        "version_marks": [m for m in _version_marks() if m["stage"] == "P1"],
+    }
+
+
 def collect_correction_and_weights(conn: sqlite3.Connection) -> dict[str, Any]:
     """The two per-station tables P0 serves from."""
 
@@ -12311,6 +12483,9 @@ SECTION_CACHE_TTL_SEC = {
     # 45GB store); every row is a settled station-day, so the reading moves
     # once a day when the truth lands.
     "charter_ev": 300 * 60,
+    # Every settled P1 head over three weeks (~80k rows, one lineage key
+    # each); the reading moves once a day when the truth lands.
+    "p1_path_skill": 243 * 60,
     # The per-table growth walk counts rows over a day on ten tables, two
     # of which have no index on their time column.  The gauge above it is
     # read from status.json every build and is never cached; only the
@@ -12539,6 +12714,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     four_layer_chain = _cached_section(
         "four_layer_chain", collect_four_layer_chain, conn
     )
+    p1_path_skill = _cached_section(
+        "p1_path_skill", collect_p1_path_skill, conn
+    )
     tables = _cached_section(
         "correction_and_weights", collect_correction_and_weights, conn
     )
@@ -12736,6 +12914,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "metar_board": metar_board,
         "regional_usage": regional_usage,
         "four_layer_chain": four_layer_chain,
+        "p1_path_skill": p1_path_skill,
         "tables": tables,
         "truth_landing": truth_landing,
         "band_residual_audit": (band_audit := _cached_section(
@@ -12909,6 +13088,7 @@ a.mkt:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .grid{display:grid;gap:8px}
 .g4{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
 .g3{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.g5{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 /* .g2 was written at two call sites and never defined here, so both fell
    back to bare `.grid` -- one column, every cell stacked, and the right
    two thirds of the card blank (user report, 2026-08-31).  Same auto-fit
@@ -19636,6 +19816,50 @@ function fourLayerBoard(){
       <th>还会再升</th><th>区域模型</th><th>剩余升温 °C</th><th>此刻误差 °C</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
 }
 
+function p1PathSkill(){
+  const Q = D.p1_path_skill || {};
+  if(!Q.available) return `<h2>P1 温度路径：命中率与提前量</h2><div class="card muted">这一轮没有生成。</div>`;
+  const O = Q.overall || {}, hrs = Q.standing_hours || [];
+  const p1 = v => v == null ? "—" : (100 * v).toFixed(1) + "%";
+  const hr = v => v == null ? "—" : (v > 0 ? "+" : "") + Number(v).toFixed(1) + " 小时";
+  const standCards = hrs.map(hh => `<div class="card"><div class="muted">当地 ${hh}:00 站立</div>
+    <div class="big">${p1(O["hit_" + hh])}</div><div class="muted">±1 桶 ${p1(O["within1_" + hh])} · ${O["n_" + hh] || 0} 站日</div></div>`).join("");
+  const daily = Q.daily || [];
+  const dates = daily.map(d => d.event_date);
+  const marks = (Q.version_marks || []).map(m => ({date: String(m.at).slice(0, 10), label: "P1 " + m.label}));
+  const pct = v => (100 * v).toFixed(0) + "%";
+  const hitChart = trendChart({title: "众数桶命中率（按事件日）", sub: "当天最后一份 ≤ 该时刻的 P1，众数桶 = 结算桶",
+    dates, fmt: pct, marks,
+    series: [10, 14, 16].map(hh => ({name: hh + ":00", values: daily.map(d => d["hit_" + hh])}))});
+  const leadChart = trendChart({title: "提前锁定的站日占比", sub: "在温度计到达结算桶之前就锁定且不再变的站日",
+    dates, fmt: pct, marks,
+    series: [{name: "提前>0", values: daily.map(d => d.predicted_share)},
+             {name: "提前≥1h", values: daily.map(d => d.lead_ge_1h_share)},
+             {name: "提前≥3h", values: daily.map(d => d.lead_ge_3h_share)}]});
+  const medChart = trendChart({title: "提前量中位数（小时）", sub: "到达时刻 − 锁定时刻；0 = 跟着温度计走",
+    dates, fmt: v => Number(v).toFixed(1), marks, ref: {y: 0, label: "0"},
+    series: [{name: "中位", values: daily.map(d => d.median_lead_hours)}]});
+  const rows = (Q.stations || []).map(r => `<tr><td class="mono"><b>${h(r.station_id)}</b></td><td class="mono">${r.station_days}</td>
+    ${hrs.map(hh => `<td class="mono">${p1(r["hit_" + hh])}</td>`).join("")}
+    <td class="mono">${p1(r.within1_14)}</td><td class="mono">${p1(r.predicted_share)}</td>
+    <td class="mono">${p1(r.lead_ge_1h_share)}</td><td class="mono">${hr(r.median_lead_hours)}</td></tr>`).join("");
+  return `<h2>P1 温度路径：命中率、趋势、提前多久猜中最高温</h2>
+  <p class="sub">读已结算的 ${h(Q.since)}..${h(Q.through)}（${O.station_days || 0} 个站日），只读每个决策秒的最后一份 P1（回放的中间步不计票）。
+    <b>命中</b>：该时刻 P1 的众数桶就是当天结算桶。<b>锁定</b>：从这一刻起之后每一份 P1 的众数桶都等于结算桶。
+    <b>到达</b>：已报最高第一次进入结算桶。<b>提前量 = 到达 − 锁定</b>：为正才是预测，≤0 是 P1 跟着已经到了的温度计确认。</p>
+  <div class="grid g5">${standCards}</div>
+  <div class="grid g4" style="margin-top:10px">
+    <div class="card"><div class="muted">提前锁定（提前量 > 0）</div><div class="big">${p1(O.predicted_share)}</div><div class="muted">的站日在温度计到达前就锁定了</div></div>
+    <div class="card"><div class="muted">提前 ≥1 小时 / ≥3 小时</div><div class="big">${p1(O.lead_ge_1h_share)}</div><div class="muted">≥3 小时 ${p1(O.lead_ge_3h_share)}</div></div>
+    <div class="card"><div class="muted">提前量中位数</div><div class="big">${hr(O.median_lead_hours)}</div><div class="muted">所有锁定的站日</div></div>
+    <div class="card"><div class="muted">收盘前最终锁定</div><div class="big">${p1(O.locked_share)}</div><div class="muted">最后一份 P1 的众数桶是结算桶</div></div></div>
+  <div class="grid g3" style="margin-top:10px">${hitChart}${leadChart}${medChart}</div>
+  <details class="note"><summary>逐站（${(Q.stations || []).length} 站）</summary>
+    <div class="scroll" style="max-height:420px"><table><thead><tr><th>站</th><th>站日</th>
+      ${hrs.map(hh => `<th>${hh}:00 命中</th>`).join("")}<th>14:00 ±1</th><th>提前锁定</th><th>提前≥1h</th><th>提前量中位</th></tr></thead>
+      <tbody>${rows}</tbody></table></div></details>`;
+}
+
 function regionalBoard(){
   const R = D.regional || {}, U = D.regional_usage || {};
   const PP = U.path_prior || {}, A = U.arms || {};
@@ -19837,8 +20061,8 @@ const GROUPS = [
       note:"机场实况 METAR：最新 3 份拆解、温度路径预测、对 P1 的实际影响、新鲜度",
       sections:[[metarBoard,"METAR 层"]]},
      {box:"⑥ P1 四层链（P1 的最外层合成点）", kind:"live",
-      note:"还会不会升、会升到哪：开关、拟合件新旧、系数、各站最新一步谁在说话、读的是哪个区域模型",
-      sections:[[fourLayerBoard,"P1 四层链"]]},
+      note:"还会不会升、会升到哪：开关、拟合件新旧、系数、各站最新一步谁在说话、读的是哪个区域模型；下面是它服务出去的 P1 猜中最高温的命中率、趋势和提前量",
+      sections:[[fourLayerBoard,"P1 四层链"],[p1PathSkill,"P1 温度路径命中率"]]},
      {box:"⑦ 区域模型（P1 的输入）", kind:"stage",
       note:"高分辨率单点预报：采集、逐站最新 run、偏差校准、准入复测、用没用上、权重",
       sections:[[regionalBoard,"区域模型"]]}]},
@@ -19944,6 +20168,8 @@ const LANES = {
     role:"最新 3 份 TAF 拆解与温度读数；TAF 似然现无校准件，对 P0-M 恒等"},
   "METAR 层": {layer:"P1 · METAR", status:"live",
     role:"最新 3 份 METAR 拆解、温度路径预测、对 P1 的实际影响"},
+  "P1 温度路径命中率": {layer:"P1 · 读数", status:"audit",
+    role:"各时刻众数桶命中结算桶的比例、按事件日的趋势、锁定正确桶比温度计到达早多少"},
   "P1 四层链": {layer:"P1 · 最外层合成点", status:"live",
     role:"相位层定再升的总质量、剩余升温层定往哪升；它说话时路径先验和天花板都不说话"},
   "区域模型": {layer:"P1 · 区域模型", status:"live",

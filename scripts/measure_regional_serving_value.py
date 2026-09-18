@@ -109,6 +109,11 @@ def main() -> int:
              "data/runtime/bayes_basket_target_nwp/regional_admission_gate.json)",
     )
     parser.add_argument(
+        "--dump-rows", type=Path, default=None,
+        help="write one JSON line per scored prefix (anchor, sigma, truth, "
+             "incumbent centre and spread, both arms' scores) for diagnosis",
+    )
+    parser.add_argument(
         "--other-side-replay-table", type=Path, default=None,
         help="path prior replay table fitted with charter 95's debias set the "
              "other way; supplying it adds that arm, each arm scored against "
@@ -183,6 +188,7 @@ def main() -> int:
     paired = collections.defaultdict(list)
     by_station = collections.defaultdict(list)
 
+    dump = open(args.dump_rows, "w", encoding="utf-8") if args.dump_rows else None
     prefixes = list(conn.execute(
         "SELECT station_id,event_date,decision_at_utc,probabilities_json,"
         " bucket_ordinals_json,lineage_json,settlement_timezone"
@@ -343,7 +349,28 @@ def main() -> int:
             if "other" in arms:
                 paired[f"{system}::other"].append(
                     (key, scored["layer"] - scored["other"]))
+            if dump is not None:
+                incumbent_sd = math.sqrt(max(0.0, sum(
+                    p * (centre(intervals, b, running_c) - incumbent_mean) ** 2
+                    for b, p in served.items())))
+                dump.write(json.dumps({
+                    "system": system, "station": station, "day": day,
+                    "at": str(at), "hours_left": resolved.get("hours_left"),
+                    "running_c": running_c,
+                    "remaining_peak_c": float(resolved["remaining_peak_c"]),
+                    "cell_bias_c": float(resolved["cell"]["bias_c"]),
+                    "sigma_c": float(resolved["cell"]["sigma_c"]),
+                    "cell_source": resolved["cell"].get("source"),
+                    "truth_c": actual, "incumbent_mean_c": incumbent_mean,
+                    "incumbent_sd_c": incumbent_sd,
+                    "run_init_utc": (resolved.get("lineage") or {}).get(
+                        "regional_path_prior_run_init_utc"),
+                    "logloss_none": scored["none"],
+                    "logloss_layer": scored["layer"],
+                }) + "\n")
 
+    if dump is not None:
+        dump.close()
     print(f"区域系统的服务价值 · {args.start}..{args.through} · "
           f"窗口＝天花板报 TOO_EARLY 的 P1 前缀（无任何重建）")
     print(f"权重＝{args.weight if args.weight is not None else R.WEIGHT}\n")
