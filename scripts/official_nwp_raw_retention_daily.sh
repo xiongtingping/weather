@@ -34,8 +34,14 @@ AUDITS_RETENTION_DAYS="${PM_OUTPUT_AUDITS_RETENTION_DAYS:-14}"
 # ecmwf_pf50 and gefs qualify; icon/DWD deliberately does not (its receipts
 # carry a bare opendata URL and DWD keeps roughly 24h, so a discarded ICON body
 # is gone for good).  Set BUDGET_ROOT empty to turn the lane off.
+#
+# 7 GiB, down from 12 on 2026-09-18.  The disk ran out three times in ten days
+# (2.0 GiB free on 09-09, 12 on 09-16, 1.1 on 09-18) and each rescue was this
+# lane lowered to 7 GiB by hand, then undone by the next 05:20 run growing the
+# store back to 12.  7 GiB fits at every one of those passes, and what it drops
+# is re-obtainable by construction, so the hand-lowered value is the standing one.
 BUDGET_ROOT="${PM_OFFICIAL_NWP_NATIVE_RETENTION_BUDGET_ROOT-$ROOT/data/runtime/official_nwp_sources}"
-BUDGET_BYTES="${PM_OFFICIAL_NWP_NATIVE_RETENTION_BUDGET_BYTES:-12884901888}"
+BUDGET_BYTES="${PM_OFFICIAL_NWP_NATIVE_RETENTION_BUDGET_BYTES:-7516192768}"
 BUDGET_STORES="${PM_OFFICIAL_NWP_NATIVE_RETENTION_BUDGET_STORES:-ecmwf_pf50/raw gefs/raw}"
 
 # Runs first, not after: a raw body only becomes reclaimable below once no

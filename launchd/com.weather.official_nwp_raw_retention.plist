@@ -45,7 +45,7 @@
     <key>PM_OFFICIAL_NWP_NATIVE_RETENTION_BUDGET_ROOT</key>
     <string>/Users/xiong/weather/data/runtime/official_nwp_sources</string>
     <key>PM_OFFICIAL_NWP_NATIVE_RETENTION_BUDGET_BYTES</key>
-    <string>12884901888</string>
+    <string>7516192768</string>
     <key>PM_OFFICIAL_NWP_NATIVE_RETENTION_BUDGET_STORES</key>
     <string>ecmwf_pf50/raw gefs/raw</string>
     <!-- Left at 0 deliberately.  A reference document this user cannot read
