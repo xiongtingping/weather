@@ -387,29 +387,42 @@ def retire_table(conn, db: Path, spec, *, apply: bool, export_dir: Path, protect
     return stats
 
 
-def restore(db: Path, export_dir: Path, tables: list[str] | None) -> None:
+def restore(db: Path, export_dir: Path, tables: list[str] | None, *,
+            pause_factor: float = 1.0, batch_bytes_limit: int = BATCH_BYTES) -> None:
+    """Put exported rows back, yielding the write lock the way the retirement did."""
     conn = sqlite3.connect(db, timeout=60, isolation_level=None)
+    conn.execute("PRAGMA journal_size_limit=67108864")
     for path in sorted(export_dir.glob("*.jsonl.gz")):
         table = path.name[: -len(".jsonl.gz")]
         if tables and table not in tables:
             continue
         restored = 0
         with gzip.open(path, "rt", encoding="utf-8") as fh:
-            batch = []
+            batch: list = []
+            size = 0
             for line in fh:
                 doc = json.loads(line)
                 row = {k: _decode(v) for k, v in doc["row"].items()}
                 batch.append((doc["rowid"], row))
-                if len(batch) >= 2000:
-                    restored += _insert(conn, table, batch)
-                    batch = []
-            restored += _insert(conn, table, batch)
-        print(f"restored {table}: {restored} rows")
+                size += len(line)
+                if size >= batch_bytes_limit or len(batch) >= BATCH_ROWS:
+                    _wait_for_wal(db)
+                    held = _insert(conn, table, batch)
+                    restored += len(batch)
+                    batch, size = [], 0
+                    time.sleep(max(PAUSE_SEC, held * pause_factor))
+                    if restored % 50000 < BATCH_ROWS:
+                        print(f"  {table}: {restored} rows", file=sys.stderr, flush=True)
+            if batch:
+                _insert(conn, table, batch)
+                restored += len(batch)
+        print(f"restored {table}: {restored} rows (duplicates in the export are ignored)", flush=True)
 
 
-def _insert(conn, table: str, batch) -> int:
+def _insert(conn, table: str, batch) -> float:
+    """Insert one batch; return how long it held the write lock."""
     if not batch:
-        return 0
+        return 0.0
     cols = list(batch[0][1])
     sql = (
         f'INSERT OR IGNORE INTO "{table}" (rowid,{",".join(chr(34) + c + chr(34) for c in cols)})'
@@ -426,6 +439,7 @@ def _insert(conn, table: str, batch) -> int:
         if "BEFORE INSERT" in " ".join(str(text).upper().split())
     ]
     conn.execute("BEGIN IMMEDIATE")
+    started = time.monotonic()
     try:
         for name, _text in guards:
             conn.execute(f'DROP TRIGGER "{name}"')
@@ -436,7 +450,7 @@ def _insert(conn, table: str, batch) -> int:
     except BaseException:
         conn.execute("ROLLBACK")
         raise
-    return len(batch)
+    return time.monotonic() - started
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -454,7 +468,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     db = args.db.resolve()
     if args.restore:
-        restore(db, args.export_dir, args.tables)
+        restore(db, args.export_dir, args.tables,
+                pause_factor=args.pause_factor, batch_bytes_limit=args.batch_bytes)
         return 0
     args.export_dir.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db, timeout=60, isolation_level=None)
