@@ -28,6 +28,20 @@ TAF's arrival as a decision moment.
 
 The artifact arrives from the caller for the reason every fitted table does:
 a replay has to rebuild the exact envelope that was served.
+
+Charter 158 (user ruling 2026-09-19, 「taf是人工在模型基础上加了一些看不见的
+信息」→「上线」): the one line stays, but how hard it pulls depends on whether
+the forecaster's own weather explains why the TAF disagrees with P0.  The
+disagreement is TX against P0's served mean; a warm TAF under clear, dry skies
+or a cold TAF with rain or overcast is REASONED, a cold TAF with neither is
+UNREASONED_COLD, any other disagreement of 1C or more is OTHER, and the rest
+(or a TAF without its weather) is SMALL.  Each group's exponent is multiplied
+by its own lambda, ``L ** lambda``: 1 is the line as fitted, 0 is silence.
+The lambdas are fitted daily and serve only while the refit's walk-forward
+says tempering beats lambda = 1 on days it did not see; otherwise every group
+reads 1 and P0-M is exactly charter 150's.  Measured on settled days: truth
+realised 55-57% of a reasoned disagreement against 17% of an unreasoned cold
+one.
 """
 from __future__ import annotations
 
@@ -63,6 +77,26 @@ GATE_IDENTITY = "IDENTITY"
 GATE_RULING = GATE_SERVE
 GATE_RULING_ID = "charter_151_user_ruling_2026_09_19"
 
+# Charter 158: per-group tempering of the one line.  The group reads the
+# TAF's own weather over the day's heating window (the capture's
+# ``cloud_cover_fraction`` / ``precipitation_probability``).  Charter 151's
+# ruling opens the line's gate, never this one: tempering serves only on its
+# own walk-forward.
+TEMPERING_KEY = "reason_tempering"
+TEMPERING_RULE = "taf_reason_tempering_v1"
+GROUP_REASONED = "REASONED"
+GROUP_UNREASONED_COLD = "UNREASONED_COLD"
+GROUP_OTHER = "OTHER"
+GROUP_SMALL = "SMALL"
+TEMPERING_GROUPS = (
+    GROUP_REASONED, GROUP_UNREASONED_COLD, GROUP_OTHER, GROUP_SMALL
+)
+DISAGREEMENT_MIN_C = 1.0
+CLEAR_CLOUD_MAX = 0.4
+WET_PRECIP_MIN = 0.3
+OVERCAST_CLOUD_ABOVE = 0.6
+MAX_TEMPERING_LAMBDA = 3.0
+
 
 def station_parameters(
     artifact: Mapping[str, Any], station_id: str
@@ -80,6 +114,72 @@ def station_parameters(
     return a, b, max(tau, MIN_TAU_C), source
 
 
+def disagreement_group(
+    x_served_c: float | None,
+    cloud_cover: float | None,
+    precip_prob: float | None,
+) -> str:
+    """Which way the TAF disagrees with P0's served mean, and whether its weather says why."""
+
+    if x_served_c is None or cloud_cover is None or precip_prob is None:
+        return GROUP_SMALL
+    x = float(x_served_c)
+    if not math.isfinite(x) or abs(x) < DISAGREEMENT_MIN_C:
+        return GROUP_SMALL
+    cloud, precip = float(cloud_cover), float(precip_prob)
+    if x > 0.0 and cloud <= CLEAR_CLOUD_MAX and precip < WET_PRECIP_MIN:
+        return GROUP_REASONED
+    if x < 0.0 and (precip >= WET_PRECIP_MIN or cloud > OVERCAST_CLOUD_ABOVE):
+        return GROUP_REASONED
+    if x < 0.0:
+        return GROUP_UNREASONED_COLD
+    return GROUP_OTHER
+
+
+def tempering_lambda(artifact: Mapping[str, Any] | None, group: str) -> float:
+    """The group's lambda while tempering serves; 1 (the line as fitted) otherwise."""
+
+    block = (artifact or {}).get(TEMPERING_KEY)
+    if not isinstance(block, Mapping) or block.get("state") != GATE_SERVE:
+        return 1.0
+    table = block.get("lambda_by_group")
+    if not isinstance(table, Mapping):
+        raise ContractError("taf_tempering_table_invalid")
+    raw = table.get(str(group), 1.0)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ContractError("taf_tempering_lambda_invalid") from exc
+    if not math.isfinite(value) or not 0.0 <= value <= MAX_TEMPERING_LAMBDA:
+        raise ContractError("taf_tempering_lambda_invalid")
+    return value
+
+
+def exponent_by_bucket(
+    artifact: Mapping[str, Any],
+    *,
+    station_id: str,
+    tx_c: float,
+    root_center_c: float,
+    bucket_centers_c: Mapping[str, float],
+) -> tuple[dict[str, float], tuple[float, float, float, str]]:
+    """The untempered exponent (x - a - b*y)^2 / (2 tau^2) per bucket.
+
+    The fitter reads this same function to score lambdas, so what it picks is
+    what serves.
+    """
+
+    a, b, tau, source = station_parameters(artifact, station_id)
+    x = float(tx_c) - float(root_center_c)
+    return {
+        str(bucket): (
+            (x - a - b * (float(center) - float(root_center_c))) ** 2
+            / (2.0 * tau * tau)
+        )
+        for bucket, center in bucket_centers_c.items()
+    }, (a, b, tau, source)
+
+
 def compile_taf_likelihood(
     artifact: Mapping[str, Any] | None,
     *,
@@ -88,8 +188,15 @@ def compile_taf_likelihood(
     root_center_c: float | None,
     bucket_centers_c: Mapping[str, float] | None,
     buckets: Any,
+    root_mean_c: float | None = None,
+    taf_cloud_cover: float | None = None,
+    taf_precip_prob: float | None = None,
 ) -> tuple[dict[str, float], dict[str, Any]]:
-    """The likelihood per bucket and its receipt; identity whenever it cannot speak."""
+    """The likelihood per bucket and its receipt; identity whenever it cannot speak.
+
+    ``root_mean_c`` is P0's served mean (the disagreement charter 158 groups
+    on); with the TAF's cloud and precipitation it picks the group's lambda.
+    """
 
     identity = {str(bucket): 1.0 for bucket in buckets}
 
@@ -116,24 +223,45 @@ def compile_taf_likelihood(
         return _silent("IDENTITY_NO_ROOT_GEOMETRY")
     if set(bucket_centers_c) != set(identity):
         return _silent("IDENTITY_NO_ROOT_GEOMETRY")
-    a, b, tau, source = station_parameters(artifact, station_id)
+    exponents, (a, b, tau, source) = exponent_by_bucket(
+        artifact, station_id=station_id, tx_c=float(tx_c),
+        root_center_c=float(root_center_c), bucket_centers_c=bucket_centers_c,
+    )
     x = float(tx_c) - float(root_center_c)
+    x_served = (
+        None if root_mean_c is None else float(tx_c) - float(root_mean_c)
+    )
+    group = disagreement_group(x_served, taf_cloud_cover, taf_precip_prob)
+    lam = tempering_lambda(artifact, group)
     likelihoods = {
-        str(bucket): math.exp(
-            -((x - a - b * (float(center) - float(root_center_c))) ** 2)
-            / (2.0 * tau * tau)
-        )
-        for bucket, center in bucket_centers_c.items()
+        bucket: math.exp(-lam * value) for bucket, value in exponents.items()
     }
     if max(likelihoods.values()) <= 1e-300:
         return _silent("IDENTITY_UNDERFLOW")
     _, receipt = _silent("APPLIED")
+    tempering_block = (artifact or {}).get(TEMPERING_KEY)
     receipt.update({
         "parameters_source": source,
         "a": a,
         "b": b,
         "tau": tau,
         "x_c": x,
+        "tempering": {
+            "rule": TEMPERING_RULE,
+            "state": (
+                str(tempering_block.get("state") or "")
+                if isinstance(tempering_block, Mapping) else "ABSENT"
+            ),
+            "group": group,
+            "lambda": lam,
+            "x_served_c": x_served,
+            "cloud_cover": (
+                None if taf_cloud_cover is None else float(taf_cloud_cover)
+            ),
+            "precip_prob": (
+                None if taf_precip_prob is None else float(taf_precip_prob)
+            ),
+        },
         "likelihood_by_bucket": {
             bucket: round(value, 6) for bucket, value in sorted(likelihoods.items())
         },
@@ -195,6 +323,16 @@ def apply_gate_ruling(
 
 __all__ = [
     "ARTIFACT_PATH",
+    "GROUP_OTHER",
+    "GROUP_REASONED",
+    "GROUP_SMALL",
+    "GROUP_UNREASONED_COLD",
+    "TEMPERING_GROUPS",
+    "TEMPERING_KEY",
+    "TEMPERING_RULE",
+    "disagreement_group",
+    "exponent_by_bucket",
+    "tempering_lambda",
     "GATE_IDENTITY",
     "GATE_SERVE",
     "LIKELIHOOD_MODE",

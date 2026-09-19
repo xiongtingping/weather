@@ -890,10 +890,17 @@ def materialize_p0m_observed(
     # v7 (charter 150, 2026-09-19): P0-M is P0 times the TAF likelihood under
     # the observed-high mask, and nothing else -- the centre/width scalars,
     # the TAF cells and the band table no longer run on this stage.
-    posterior_version: str = "p0m_taf_likelihood_v7",
+    # v8 (charter 158, 2026-09-19): the likelihood's pull is tempered by
+    # whether the TAF's own weather explains its disagreement with P0's
+    # served mean (``taf_likelihood.disagreement_group``).
+    posterior_version: str = "p0m_taf_likelihood_v8",
     observed_hard_excluded_buckets: Sequence[str] = (),
     observed_running_high_c: float | None = None,
     taf_likelihood_artifact: Mapping[str, Any] | None = None,
+    # The same capture's weather over the heating window, which charter 158
+    # groups the disagreement on.  None groups as SMALL (lambda of that group).
+    taf_cloud_cover: float | None = None,
+    taf_precip_prob: float | None = None,
 ) -> ProbabilityEnvelope:
     """Seat P0-M: P0 times the TAF's likelihood, and the TAF's arrival as a moment.
 
@@ -929,6 +936,15 @@ def materialize_p0m_observed(
     except (TypeError, ValueError):
         root_center = None
     axis = _bucket_centers_c(root.lineage, bucket_ordinals=root.bucket_ordinals)
+    root_mean = None
+    if axis is not None:
+        weights = [
+            (float(root.probabilities.get(bucket, 0.0)), float(center))
+            for bucket, center in zip(*axis)
+        ]
+        mass = sum(w for w, _ in weights)
+        if mass > 0.0:
+            root_mean = sum(w * c for w, c in weights) / mass
     likelihoods, taf_receipt = compile_taf_likelihood(
         taf_likelihood_artifact,
         station_id=root.station_id,
@@ -936,6 +952,9 @@ def materialize_p0m_observed(
         root_center_c=root_center,
         bucket_centers_c=None if axis is None else dict(zip(*axis)),
         buckets=root.probabilities,
+        root_mean_c=root_mean,
+        taf_cloud_cover=taf_cloud_cover,
+        taf_precip_prob=taf_precip_prob,
     )
     values = _lineage(
         "P0-M",
@@ -1240,7 +1259,10 @@ def materialize_p1(
     # the steps at 10h moved 23C from 0.33 to 0.84 within minutes on ZUUU.
     # v14 (2026-09-19, charter 157): rung one's clock and alpha read the
     # hours left shifted by the station's own peak hour.
-    posterior_version: str = "p1_joint_likelihood_v14",
+    # v15 (2026-09-19, charter 158): the root, not P1 -- every P1 composes on
+    # a P0-M, whose TAF likelihood is now tempered by the TAF's reason; it
+    # declares the instant P0-M v8 declares, as v10/v11 did for P0.
+    posterior_version: str = "p1_joint_likelihood_v15",
     # {"features": ..., "artifact": ..., "regional_system_id": ...}: the
     # step's observation-side feature vector and the fitted likelihood,
     # handed in for the reason every fitted table is -- a replay must rebuild

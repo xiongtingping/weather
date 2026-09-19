@@ -171,12 +171,17 @@ def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
     p0m = inspect.signature(
         materialize_p0m_observed
     ).parameters["posterior_version"].default
-    # Charter 150's v7 is this stage's own change, so it declares its own
-    # first decision -- the value the inference returned, written down
-    # because inferring it scans the stage's whole history; v6 keeps the
-    # declaration of the P0 bump it followed.
-    assert p0m == "p0m_taf_likelihood_v7"
-    assert sa.version_effective_from("P0-M", p0m) == "2026-09-18T19:10:09Z"
+    # Charter 158's v8 is declared at the restart that deployed it, after
+    # the tempered artifact was written.  Charter 150's v7 was this stage's
+    # own change and declared its own first decision -- the value the
+    # inference returned, written down because inferring it scans the
+    # stage's whole history; v6 keeps the declaration of the P0 bump it
+    # followed.
+    assert p0m == "p0m_taf_likelihood_v8"
+    assert sa.version_effective_from("P0-M", p0m) == "2026-09-19T10:15:00Z"
+    assert sa.version_effective_from(
+        "P0-M", "p0m_taf_likelihood_v7"
+    ) == "2026-09-18T19:10:09Z"
     assert sa.version_effective_from(
         "P0-M", "p0m_taf_observed_v6"
     ) == "2026-09-18T09:18:16Z"
@@ -210,11 +215,18 @@ def test_p1_declares_only_the_bump_its_root_caused() -> None:
     p1 = inspect.signature(
         materialize_p1
     ).parameters["posterior_version"].default
-    # v14 (charter 157) and v13 (charter 156) are P1's own changes, each
-    # declared at the restart that deployed it -- after the resident's start,
-    # so no older envelope falls in the newer version's window.
-    assert p1 == "p1_joint_likelihood_v14"
-    assert sa.version_effective_from("P1", p1) == "2026-09-19T09:05:00Z"
+    # v15 (charter 158) is the third root bump: P0-M's TAF likelihood is
+    # tempered and every P1 composes on a P0-M, so it declares P0-M v8's
+    # moment.  v14 (charter 157) and v13 (charter 156) are P1's own changes,
+    # each declared at the restart that deployed it -- after the resident's
+    # start, so no older envelope falls in the newer version's window.
+    assert p1 == "p1_joint_likelihood_v15"
+    assert sa.version_effective_from("P1", p1) == sa.version_effective_from(
+        "P0-M", "p0m_taf_likelihood_v8"
+    )
+    assert sa.version_effective_from(
+        "P1", "p1_joint_likelihood_v14"
+    ) == "2026-09-19T09:05:00Z"
     # v13 (charter 156) keeps the moment its restart declared.
     assert sa.version_effective_from("P1", "p1_joint_likelihood_v13") == "2026-09-19T07:27:00Z"
     # v12 (charter 150): its first decision, verbatim.  A string bound, so

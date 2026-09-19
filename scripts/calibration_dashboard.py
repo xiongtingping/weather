@@ -2420,6 +2420,8 @@ def collect_station_bayes(conn: sqlite3.Connection) -> dict[str, Any]:
                 "root_center_c": taf_receipt.get("root_center_c"),
                 "x_c": taf_receipt.get("x_c"), "b": taf_receipt.get("b"),
                 "tau": taf_receipt.get("tau"),
+                # Charter 158: the disagreement group and the pull it served at.
+                "tempering": taf_receipt.get("tempering"),
             } if p0m is not None else None,
             "metar": {
                 "state": receipt.get("state") or "PRE_CHARTER_150",
@@ -2474,6 +2476,13 @@ def collect_p0m_taf_likelihood(conn: sqlite3.Connection) -> dict[str, Any]:
         raw, mtime = {}, None
     out["artifact"] = {
         "gate": raw.get("gate") or {},
+        # Charter 158: per-group pull, served only under its own walk-forward.
+        "tempering": {
+            key: value
+            for key, value in (raw.get("reason_tempering") or {}).items()
+            if key in ("rule", "state", "lambda_by_group",
+                       "group_weight_station_days", "tafs", "walk_forward")
+        },
         "pool": raw.get("pool") or {},
         "station_n": len(raw.get("stations") or {}),
         "shrink_k": raw.get("shrink_k"),
@@ -2517,6 +2526,7 @@ def collect_p0m_taf_likelihood(conn: sqlite3.Connection) -> dict[str, Any]:
             "state": state, "tx_c": row[3],
             "root_center_c": receipt.get("root_center_c"),
             "x_c": receipt.get("x_c"), "b": receipt.get("b"), "tau": receipt.get("tau"),
+            "tempering": receipt.get("tempering"),
         })
     stations.sort(key=lambda e: e["station_id"])
     out["stations"] = stations
@@ -20259,7 +20269,7 @@ function stationBayesBoard(){
           <div class="muted">众数 ${h((S.p0 || {}).mode || "—")}（${pc((S.p0 || {}).mode_p)}）· ${whenZ(e.p0_decided_at_utc)}</div></div>
         ${hasP0m ? `<div class="by-step"><div class="t">② × TAF 似然 → P0-M</div>
           <div class="v">${c2(S.p0m.mean_c)}</div>
-          <div class="muted">TAF TX ${T && T.tx_c && T.tx_c !== "NONE" ? c1(T.tx_c) : "—"}${T && T.x_c != null ? "（比 P0 中心 " + (T.x_c > 0 ? "+" : "") + Number(T.x_c).toFixed(1) + "°C）" : ""} · ${h(tafWord[(T || {}).state] || (T || {}).state || "—")}${T && T.b != null ? " · b " + Number(T.b).toFixed(2) + " τ " + Number(T.tau).toFixed(2) : ""}</div>
+          <div class="muted">TAF TX ${T && T.tx_c && T.tx_c !== "NONE" ? c1(T.tx_c) : "—"}${T && T.x_c != null ? "（比 P0 中心 " + (T.x_c > 0 ? "+" : "") + Number(T.x_c).toFixed(1) + "°C）" : ""} · ${h(tafWord[(T || {}).state] || (T || {}).state || "—")}${T && T.b != null ? " · b " + Number(T.b).toFixed(2) + " τ " + Number(T.tau).toFixed(2) : ""}${T && T.tempering ? " · " + h({REASONED:"有天气理由", UNREASONED_COLD:"没理由的往冷改", OTHER:"其他分歧", SMALL:"小分歧"}[T.tempering.group] || T.tempering.group) + " λ " + Number(T.tempering.lambda).toFixed(2) : ""}</div>
           <div>${gain(G.p0m_fact, "观测下界")} ${gain(G.taf, "TAF")}</div></div>` :
           `<div class="by-step"><div class="t">② P0-M</div><div class="muted">这一步的根是 P0（还没有 TAF 落座）</div></div>`}
         <div class="by-step"><div class="t">③ × 硬下界 × METAR 联合似然 g<sup>α</sup> → P1</div>
@@ -20372,6 +20382,21 @@ function p0mTafBoard(){
       <div class="muted">a ${sg(P.a)}°C · ${P.n ?? "—"} 站日 · 其中 ${A.station_n ?? 0} 站有自己的收缩线</div></div>
     <div class="card"><div class="muted">众数命中（走查）</div><div class="big mono">${G.mode_hit_root == null ? "—" : (100 * G.mode_hit_root).toFixed(1) + "%"} → ${G.mode_hit_taf == null ? "—" : (100 * G.mode_hit_taf).toFixed(1) + "%"}</div>
       <div class="muted">P0 → P0 × TAF 似然 · 训练 ${h(A.trained_from || "—")}..${h(A.trained_through || "—")} · ${A.age_days ?? "—"} 天前拟合</div></div></div>
+  ${(() => {
+    const R = A.tempering || {}, L = R.lambda_by_group || {}, WF = R.walk_forward || {}, GW = R.group_weight_station_days || {};
+    if(!R.state) return `<div class="card muted" style="margin-top:8px">按理由调力度（第 158 条）：拟合件里还没有这一块，四组都按力度 1（即第 150 条原样）。</div>`;
+    const name = {REASONED:"有天气理由的分歧", UNREASONED_COLD:"没理由的往冷改", OTHER:"其他分歧", SMALL:"小分歧/无天气"};
+    const served = R.state === "SERVE";
+    const byGroup = WF.gain_by_group_nat || {};
+    const rows = ["UNREASONED_COLD", "REASONED", "OTHER", "SMALL"].map(g => `<tr><td>${name[g]}</td>
+      <td class="mono">${L[g] == null ? "1" : Number(L[g]).toFixed(2)}${served ? "" : "（未服务，按 1）"}</td>
+      <td class="mono">${GW[g] == null ? "—" : Math.round(GW[g])}</td>
+      <td class="mono">${byGroup[g] == null ? "—" : sg(byGroup[g])}</td></tr>`).join("");
+    return `<div class="card" style="margin-top:8px"><div class="muted">按理由调力度（第 158 条）：TAF 比 P0 均值低 ≥1°C 却既不报降水（<30%）也不报阴天（云量 ≤0.6）时，它的似然只用 λ 次方
+      <span class="pill ${served ? "green" : ""}">${served ? "服务中" : "未开（四组都按 1）"}</span></div>
+      <div class="muted">逐日走查对「不调」${sg(WF.by_day_mean_gain_vs_lambda_one_nat, 4)} nat [${sg(WF.ci_low, 4)}, ${sg(WF.ci_high, 4)}] · ${WF.days ?? "—"} 天 · ${R.tafs ?? "—"} 份 TAF；走查点估计 >0 才服务</div>
+      <table class="by-tab"><thead><tr><th>组</th><th>λ</th><th>站日</th><th>走查增益/站日</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  })()}
   <div style="margin-top:8px"><span class="muted">过去 36 小时各站最新 P0-M：</span>${outcome || "—"} <span class="muted">· 每站的 TAF 读数与逐桶变化在「站点贝叶斯更新」里</span></div>`;
 }
 

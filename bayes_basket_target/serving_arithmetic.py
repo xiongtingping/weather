@@ -288,6 +288,11 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p0m_taf_observed_v5": "2026-09-14T05:52:13Z",
         "p0m_taf_observed_v6": "2026-09-18T09:18:16Z",
         "p0m_taf_likelihood_v7": "2026-09-18T19:10:09Z",
+        # Charter 158: declared ahead of the restart that deploys it and
+        # after the tempered artifact is written, as P1 v14 was -- between
+        # the restart and the write the stage serves v7's numbers under the
+        # v8 label, and those envelopes are not evidence.
+        "p0m_taf_likelihood_v8": "2026-09-19T10:15:00Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
@@ -307,6 +312,9 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p1_joint_likelihood_v13": "2026-09-19T07:27:00Z",
         # Charter 157: declared the same way as v13, ahead of the restart.
         "p1_joint_likelihood_v14": "2026-09-19T09:05:00Z",
+        # Charter 158: the third root bump (every P1 composes on a P0-M) --
+        # the instant P0-M v8 declares.
+        "p1_joint_likelihood_v15": "2026-09-19T10:15:00Z",
     },
 }
 

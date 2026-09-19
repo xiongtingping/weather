@@ -14447,12 +14447,14 @@ class TargetProductionWorker:
                     for item in scope_captures
                 }
 
-                def _tx_of(capture: Mapping[str, Any]) -> float | None:
+                def _taf_field(
+                    capture: Mapping[str, Any], name: str
+                ) -> float | None:
                     fields = capture.get("taf_fields")
                     if not isinstance(fields, Mapping):
                         return None
                     try:
-                        value = float(fields["tx_c"])
+                        value = float(fields[name])
                     except (KeyError, TypeError, ValueError):
                         return None
                     return value if math.isfinite(value) else None
@@ -14534,7 +14536,15 @@ class TargetProductionWorker:
                         forecast_source_object_sha256=(
                             revision.source_object_sha256
                         ),
-                        taf_tx_c=_tx_of(capture),
+                        taf_tx_c=_taf_field(capture, "tx_c"),
+                        # Charter 158: the same bulletin's weather says
+                        # whether its disagreement with P0 has a reason.
+                        taf_cloud_cover=_taf_field(
+                            capture, "cloud_cover_fraction"
+                        ),
+                        taf_precip_prob=_taf_field(
+                            capture, "precipitation_probability"
+                        ),
                         decision_at_utc=decision_at,
                         fresh_until_utc=window_until,
                         bridge_sha256=root.bridge_sha256,
