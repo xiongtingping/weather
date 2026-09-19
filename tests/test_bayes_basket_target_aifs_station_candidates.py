@@ -246,8 +246,20 @@ def _fixture(
 
 
 def test_aifs_single_45_station_candidate_is_complete_and_never_promoted(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch,
 ) -> None:
+    # The build's memory guard reads the whole process's RSS, and in a full
+    # pytest run that is every earlier test's residue: past 4 GiB this test
+    # failed on what the suite had allocated, and passed on its own.  Count
+    # only what happens from here on, which is what the guard is for.
+    from bayes_basket_target import resource_bounds
+
+    real_rss = resource_bounds._process_rss_bytes
+    baseline = real_rss()
+    monkeypatch.setattr(
+        resource_bounds, "_process_rss_bytes",
+        lambda: max(0, real_rss() - baseline),
+    )
     capture_path, decoder, fixture = _fixture(tmp_path)
 
     evidence = build_candidate_evidence(capture_path, decoder=decoder, workers=1)
