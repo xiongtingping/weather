@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import json
 import sqlite3
 from typing import Any, Mapping, Sequence
 
@@ -348,7 +349,6 @@ def attach_truth_observation_revisions(
     if not wanted:
         return [dict(row) for row in rows]
     by_observation: dict[str, tuple[int, str]] = {}
-    placeholders = ",".join("?" for _ in sorted(wanted))
     station = str(station_id).strip().upper()
     # The station range is an accelerator, not a filter.  Every predicate
     # that decided the row set before is still below it; this only tells
@@ -369,26 +369,41 @@ def attach_truth_observation_revisions(
     # begins with this one (none exist -- ICAO ids are four characters),
     # which is exactly why the station equality below is kept: the seek is
     # allowed to be generous, the predicate is not.
-    scope_low = f"{station}|"
-    scope_high = station + chr(ord("|") + 1)
+    #
+    # The station range stopped being enough as the table grew: 49,702
+    # revision facts by 2026-09-19, ~1,100 a station, each read through
+    # json_extract -- 20s of the early P1 pass across 46 station-days.  Both
+    # key formats continue with the observation id (station|observation|
+    # revision|...; verified on all 49,717 rows that day), so each wanted
+    # report is its own range seek of one or two keys.  CROSS JOIN keeps the
+    # wanted list outer -- left to itself the planner scanned the fact type.
+    # The json predicates stay: the seek may be generous, the filter is not.
     try:
         # Two identity lanes, one join: AWC reports carry PR12 truth
         # revisions, scheduled ASOS substitutes carry their own parallel
         # identity facts.  Both are keyed the same way and both scope_keys
         # open with the station id, so the same range seek serves each.
         found = conn.execute(
-            "SELECT json_extract(fact_json,'$.observation_id'),"
-            "  json_extract(fact_json,'$.revision_no'),"
-            "  json_extract(fact_json,'$.canonical_committed_at_utc'),"
-            "  content_sha256 "
-            "FROM canonical_ssot_fact "
-            "WHERE fact_type IN ("
-            "  'truth_observation_revision','substitute_observation_revision'"
-            ") "
-            "  AND scope_key >= ? AND scope_key < ? "
-            "  AND json_extract(fact_json,'$.station_id')=? "
-            f"  AND json_extract(fact_json,'$.observation_id') IN ({placeholders})",
-            (scope_low, scope_high, station, *sorted(wanted)),
+            "WITH wanted(observation_id) AS (SELECT value FROM json_each(?)) "
+            "SELECT json_extract(c.fact_json,'$.observation_id'),"
+            "  json_extract(c.fact_json,'$.revision_no'),"
+            "  json_extract(c.fact_json,'$.canonical_committed_at_utc'),"
+            "  c.content_sha256 "
+            "FROM wanted w CROSS JOIN canonical_ssot_fact c "
+            "  ON c.fact_type IN ("
+            "    'truth_observation_revision','substitute_observation_revision'"
+            "  ) "
+            "  AND c.scope_key >= ? || w.observation_id || '|' "
+            "  AND c.scope_key < ? || w.observation_id || ? "
+            "WHERE json_extract(c.fact_json,'$.station_id')=? "
+            "  AND json_extract(c.fact_json,'$.observation_id')=w.observation_id",
+            (
+                json.dumps(sorted(wanted)),
+                f"{station}|",
+                f"{station}|",
+                chr(ord("|") + 1),
+                station,
+            ),
         ).fetchall()
     except sqlite3.Error as exc:
         raise ContractError(

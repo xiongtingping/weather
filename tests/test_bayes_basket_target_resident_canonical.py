@@ -429,3 +429,52 @@ def test_revision_lookup_uses_the_scope_key_index() -> None:
     ).fetchall()
     detail = " ".join(str(row[-1]) for row in plan)
     assert "scope_key>" in detail.replace(" ", ""), detail
+
+
+def test_revision_lookup_seeks_each_wanted_report_and_keeps_its_answers() -> None:
+    """Per-report seeks (2026-09-19): 49,702 revision facts had made the
+    station range ~1,100 json_extract calls a station-day, 20s of early P1.
+
+    The plan is read off the statement the function actually runs, not a
+    copy of it.  A report id that prefixes another stays out of its range,
+    and the answers are the station-range ones: newest revision at or
+    before the clock, other stations and later revisions invisible.
+    """
+
+    from bayes_basket_target.resident_canonical import (
+        attach_truth_observation_revisions,
+    )
+    conn = sqlite3.connect(":memory:")
+    conn.create_function("canonical_ingress_authorized", 0, lambda: 1)
+    apply_target_ssot_schema(conn)
+    for station, obs, rev, committed, sha in (
+        ("KLA", "rtobs_a", 1, "2026-08-23T17:44:00.000Z", "a"),
+        ("KLA", "rtobs_a", 2, "2026-08-23T19:00:00.000Z", "e"),
+        ("KLA", "rtobs_a", 3, "2026-08-24T09:00:00.000Z", "c"),   # after the clock
+        ("KLA", "rtobs_ab", 1, "2026-08-23T17:44:00.000Z", "f"),  # id prefixed by rtobs_a
+        ("KLAX", "rtobs_a", 9, "2026-08-23T17:44:00.000Z", "b"),  # station prefixed by KLA
+        ("KLA", "rtobs_z", 1, "2026-08-23T17:44:00.000Z", "9"),   # not asked for
+    ):
+        _revision_fact(conn, station=station, observation_id=obs, revision_no=rev,
+                       committed_at=committed, sha=sha * 64)
+    conn.commit()
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
+    got = attach_truth_observation_revisions(
+        conn,
+        [{"observation_id": "rtobs_a"}, {"observation_id": "rtobs_ab"},
+         {"observation_id": "rtobs_missing"}],
+        station_id="KLA",
+        as_of_utc="2026-08-23T20:00:00Z",
+    )
+    conn.set_trace_callback(None)
+    assert [row.get("truth_observation_revision_content_sha256") for row in got] == [
+        "e" * 64, "f" * 64, None,
+    ]
+    lookup = [s for s in statements if "canonical_ssot_fact" in s]
+    assert len(lookup) == 1
+    plan = " | ".join(
+        str(row[-1]) for row in conn.execute("EXPLAIN QUERY PLAN " + lookup[0])
+    )
+    assert plan.index("json_each") < plan.index("canonical_ssot_fact"), plan
+    assert "scope_key>" in plan.replace(" ", ""), plan
