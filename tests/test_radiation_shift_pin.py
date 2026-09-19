@@ -32,15 +32,12 @@ class PerLeadCoefficientTest(unittest.TestCase):
     paying the two that lose to help the one that wins.
     """
 
-    def test_charter_160_retired_the_h12_24_raise(self) -> None:
-        """0.35 at h12_24 replayed 5% worse than 0.15 on its own decisions
-        (RPS -0.032 [-0.051, -0.013]); every lead is fitted at 0.15 again."""
-
-        for lead in ("h00_12", "h12_24", "h24_48", "h48_plus"):
+    def test_only_the_lead_that_earned_it_is_raised(self) -> None:
+        self.assertEqual(radiation_shift_sigma_for_lead("h12_24"), 0.35)
+        for lead in ("h00_12", "h24_48", "h48_plus"):
             self.assertEqual(
                 radiation_shift_sigma_for_lead(lead), RADIATION_SHIFT_SIGMA
             )
-        self.assertEqual(RADIATION_SHIFT_SIGMA, 0.15)
 
     def test_an_unknown_lead_gets_the_unearned_default(self) -> None:
         """A lead nobody has measured is not a lead to experiment on."""
@@ -134,25 +131,14 @@ class PinTest(unittest.TestCase):
             "candidate['radiation_shift_sigma']", source
         )
 
-    def test_the_server_reads_the_pin_only_for_clearness_scored_artifacts(
-        self,
-    ) -> None:
-        """Charter 160: a pin scored on the retired absolute form describes
-        arithmetic nobody serves, so it is served the fleet value until the
-        rotation re-scores it; a clearness-scored artifact gets its own pin."""
+    def test_the_server_reads_the_pin_and_not_the_constant(self) -> None:
+        from pathlib import Path
 
-        from bayes_basket_target.cross_consensus import (
-            RADIATION_CLEARNESS_METHOD_TAG,
-            served_radiation_shift_sigma,
-        )
-
-        legacy = "x::synoptic_cooling_shift_v1::radiation_shift_sigma=0.35::y"
-        self.assertEqual(served_radiation_shift_sigma(legacy), RADIATION_SHIFT_SIGMA)
-        scored = (
-            "x::synoptic_cooling_shift_v1::radiation_shift_sigma=0.2::"
-            + RADIATION_CLEARNESS_METHOD_TAG + "::y"
-        )
-        self.assertEqual(served_radiation_shift_sigma(scored), 0.2)
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "bayes_basket_target" / "native_ensemble_p0.py"
+        ).read_text()
+        self.assertIn("pinned_radiation_shift_sigma", source)
 
 
 if __name__ == "__main__":

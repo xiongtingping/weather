@@ -26,7 +26,6 @@ from __future__ import annotations
 import math
 import os
 
-from datetime import date
 from typing import Any, Mapping, Sequence
 
 CONSENSUS_BRIDGE_METHOD_TAG = "consensus_bridge_v1"
@@ -163,13 +162,7 @@ RADIATION_SHIFT_METHOD_TAG = "forecast_radiation_shift_v1"
 # days, and removing the single strongest station takes it from p=0.02 to
 # p=0.11.  Wired at the user's decision with that stated.  The review test is
 # significance that survives dropping any one station.
-#
-# Charter 160 (2026-09-19, user ruling 「上线」): retired.  Replayed on every
-# decision served at 0.35 (9,315 decisions, 765 station-days), 0.15 scores
-# RPS -0.032 [-0.051, -0.013] -- about 5% better -- and 0.35 multiplied the
-# seasonal part of the old standardisation by 2.3.  Every lead is fitted and
-# served at ``RADIATION_SHIFT_SIGMA`` again.
-RADIATION_SHIFT_SIGMA_BY_LEAD: dict[str, float] = {}
+RADIATION_SHIFT_SIGMA_BY_LEAD = {"h12_24": 0.35}
 
 
 def radiation_shift_sigma_for_lead(lead_bucket: str | None) -> float:
@@ -262,144 +255,6 @@ def forecast_radiation_shift_sigma(
         "shift_sigma": float(shift_sigma_per_unit) * standardised,
         "shift_sigma_per_unit": float(shift_sigma_per_unit),
     }
-
-
-# Charter 160 (2026-09-19): the radiation is standardised as a clearness index
-# (Kt), the day's forecast radiation over what the top of the atmosphere
-# receives at this latitude on this date, against the station's own Kt history
-# before the event day.  The absolute standardisation above compared a
-# September day with a history that runs through July, so the sun's own
-# seasonal descent read as cloud: 9 of every 10 units of September's negative
-# z were astronomy (fleet z -0.44 absolute, -0.05 as Kt), and that part
-# carries no information -- regressed on the truth residual it takes +0.04
-# [-0.10, +0.16] against +0.21 [+0.13, +0.28] for the de-seasoned part.
-# Replayed bit-exactly over 946 first decisions (45 stations, 23 event days):
-# RPS -3.8e-3 [-9.7, +1.7] overall, -7.4e-3 [-16.6, +1.8] from 09-07; the one
-# arm better than the incumbent on every cut, including the bias-refusal days
-# where a trailing 30/45-day window was significantly worse.  Dividing by the
-# top of the atmosphere rather than by a clear-sky surface value differs by an
-# atmospheric transmission of about 0.75, which the per-station
-# standardisation cancels.  The incumbent's z is kept beside it on every
-# receipt as the shadow arm (``legacy_v1``) so it can be re-scored.
-RADIATION_CLEARNESS_METHOD_TAG = "forecast_radiation_clearness_v2"
-SOLAR_CONSTANT_MJ_PER_M2_MIN = 0.0820  # FAO-56 eq. 21
-
-
-def extraterrestrial_radiation_mj(
-    latitude_deg: float | None, local_date: str | None
-) -> float | None:
-    """Daily top-of-atmosphere shortwave radiation, MJ/m^2 (FAO-56 eq. 21)."""
-
-    try:
-        phi = math.radians(float(latitude_deg))
-        day = date.fromisoformat(str(local_date)[:10])
-    except (TypeError, ValueError):
-        return None
-    if not math.isfinite(phi):
-        return None
-    doy = day.timetuple().tm_yday
-    dr = 1.0 + 0.033 * math.cos(2.0 * math.pi * doy / 365.0)
-    decl = 0.409 * math.sin(2.0 * math.pi * doy / 365.0 - 1.39)
-    ws = math.acos(max(-1.0, min(1.0, -math.tan(phi) * math.tan(decl))))
-    value = (24.0 * 60.0 / math.pi) * SOLAR_CONSTANT_MJ_PER_M2_MIN * dr * (
-        ws * math.sin(phi) * math.sin(decl)
-        + math.cos(phi) * math.cos(decl) * math.sin(ws)
-    )
-    return value if value > 0.0 and math.isfinite(value) else None
-
-
-def clearness_index(
-    radiation_sum: float | None,
-    latitude_deg: float | None,
-    local_date: str | None,
-) -> float | None:
-    """Forecast radiation as a fraction of the top of the atmosphere's."""
-
-    if radiation_sum is None:
-        return None
-    top = extraterrestrial_radiation_mj(latitude_deg, local_date)
-    if top is None:
-        return None
-    value = float(radiation_sum) / top
-    return value if math.isfinite(value) else None
-
-
-def served_radiation_shift_sigma(combination_method: str) -> float:
-    """The coefficient P0 serves an artifact at.
-
-    Charter 160 changed the arithmetic the coefficient multiplies, so an
-    artifact scored before it was scored on a z no one serves any more; its
-    pin (0.35 at h12_24) describes that retired arithmetic.  Until the OOS
-    rotation re-scores it, it is served the fleet value.  An artifact whose
-    holdout scored the clearness form says so in its method and is served its
-    own pin, which is the pin's original contract.
-    """
-
-    method = str(combination_method or "")
-    if RADIATION_CLEARNESS_METHOD_TAG in method.split("::"):
-        return pinned_radiation_shift_sigma(method)
-    return RADIATION_SHIFT_SIGMA
-
-
-def forecast_clearness_shift_sigma(
-    *,
-    radiation_sum: float | None,
-    event_date: str,
-    latitude_deg: float | None,
-    station_history: "Sequence[tuple[str, float]]",
-    shift_sigma_per_unit: float = RADIATION_SHIFT_SIGMA,
-) -> tuple[float | None, dict[str, Any]]:
-    """Charter 160: the radiation shift on the clearness index.
-
-    ``station_history`` is ``(local_date, radiation_sum)`` rows; only days
-    strictly before the event day count (the old reader also took the
-    forward-captured rows for the days after it).  Returns the shift in
-    ensemble sigmas and a receipt, or ``(None, receipt)`` when the day, its
-    latitude or thirty days of history is missing -- the caller decides the
-    fallback.
-    """
-
-    base = {
-        "schema": "forecast_radiation_receipt_v1",
-        "method_tag": RADIATION_CLEARNESS_METHOD_TAG,
-    }
-    if radiation_sum is None:
-        return None, {**base, "state": "NO_FORECAST_RADIATION"}
-    top = extraterrestrial_radiation_mj(latitude_deg, event_date)
-    if top is None:
-        return None, {**base, "state": "NO_LATITUDE"}
-    today = float(radiation_sum) / top
-    values = []
-    for local_date, value in station_history:
-        if str(local_date)[:10] >= str(event_date)[:10] or value is None:
-            continue
-        kt = clearness_index(value, latitude_deg, local_date)
-        if kt is not None:
-            values.append(kt)
-    if len(values) < RADIATION_MIN_HISTORY_SAMPLES:
-        return None, {
-            **base, "state": "HISTORY_TOO_THIN", "sample_count": len(values),
-        }
-    mean = sum(values) / len(values)
-    deviation = math.sqrt(sum((v - mean) ** 2 for v in values) / len(values))
-    if deviation <= 0.0:
-        return None, {**base, "state": "HISTORY_DEGENERATE"}
-    standardised = (today - mean) / deviation
-    return float(shift_sigma_per_unit) * standardised, {
-        **base,
-        "state": "RESOLVED",
-        "radiation_sum": float(radiation_sum),
-        "extraterrestrial_mj": top,
-        "clearness_index": today,
-        "history_clearness_mean": mean,
-        "history_clearness_sd": deviation,
-        "standardised": standardised,
-        "sample_count": len(values),
-        "shift_sigma": float(shift_sigma_per_unit) * standardised,
-        "shift_sigma_per_unit": float(shift_sigma_per_unit),
-    }
-
-
 SYNOPTIC_COOLING_NORMALISATION = {
     # field: (fleet mean, fleet standard deviation) over 2,121 TAF captures
     "cloud_cover_fraction": (0.3557, 0.3102),

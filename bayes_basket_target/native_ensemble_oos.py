@@ -46,9 +46,7 @@ from .cross_consensus import (
     apply_conditional_tail_skew,
     apply_neighbour_direction_tilt,
     neighbour_direction_method_tag_suffix,
-    RADIATION_CLEARNESS_METHOD_TAG,
     RADIATION_SHIFT_SIGMA,
-    forecast_clearness_shift_sigma,
     forecast_radiation_shift_sigma,
     radiation_shift_sigma_for_lead,
     synoptic_cooling_index,
@@ -1624,30 +1622,15 @@ def _holdout_conditioning_signals(
         # Explicit rather than defaulted: this is the coefficient the
         # artifact will pin and serving will read back, and a default here
         # would let the two drift the moment the constant moves.
-        # Charter 160: scored on the clearness index over the station's days
-        # before this one, falling back to the absolute form exactly where
-        # serving does (no latitude, or under thirty days of history).
-        shift_sigma, _radiation_receipt = forecast_clearness_shift_sigma(
+        shift_sigma, _radiation_receipt = forecast_radiation_shift_sigma(
             shift_sigma_per_unit=radiation_shift_sigma,
             radiation_sum=radiation_by_day.get(key),
-            event_date=key,
-            latitude_deg=station_latitude,
             station_history=[
-                (other, value)
+                value
                 for other, value in radiation_by_day.items()
-                if other < key
+                if other != key
             ],
         )
-        if shift_sigma is None:
-            shift_sigma, _radiation_receipt = forecast_radiation_shift_sigma(
-                shift_sigma_per_unit=radiation_shift_sigma,
-                radiation_sum=radiation_by_day.get(key),
-                station_history=[
-                    value
-                    for other, value in radiation_by_day.items()
-                    if other != key
-                ],
-            )
         if shift_sigma is None and cooling is not None:
             shift_sigma = -SYNOPTIC_COOLING_SHIFT_SIGMA * cooling
         if headroom is None and taf_gap is None and shift_sigma is None:
@@ -6556,9 +6539,6 @@ def persist_native_ensemble_oos(
                     # served the legacy value and so keep their own math.
                     + "::radiation_shift_sigma="
                     + f"{float(candidate['radiation_shift_sigma']):g}"
-                    # Charter 160: the holdout scored the clearness form, so
-                    # serving may read this artifact's own pin back.
-                    + "::" + RADIATION_CLEARNESS_METHOD_TAG
                     # The tag rides only with a table: it keys the serving
                     # transform, and a bare one used to mean the pre-store
                     # bootstrap constants (2026-09-15: that is how a vetoed

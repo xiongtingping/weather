@@ -141,7 +141,8 @@ def _bucket_geometry_c(
     *,
     unit: str,
     upper_by_bucket: Mapping[str, float | None],
-) -> tuple[dict[str, float], dict[str, float]]:
+) -> tuple[dict[str, float], dict[str, float | None]]:
+    """Each bucket's centre and upper edge in C; an open top's edge is None."""
     centers_lineage = envelope.lineage.get("bucket_centers_c_json")
     intervals_lineage = envelope.lineage.get("bucket_intervals_c_json")
     # The intervals alone are enough, and requiring the centres alongside them
@@ -177,7 +178,7 @@ def _bucket_geometry_c(
                 1.0 if unit == "C" else 10.0 / 9.0
             )
             centers = {}
-            uppers = {}
+            uppers: dict[str, float | None] = {}
             for bucket, bounds in intervals.items():
                 low = None if bounds[0] is None else float(bounds[0])
                 high = None if bounds[1] is None else float(bounds[1])
@@ -192,9 +193,14 @@ def _bucket_geometry_c(
                         "p1_probability_bucket_geometry_invalid"
                     )
                 centers[bucket] = stated.get(bucket, center)
-                uppers[bucket] = (
-                    high if high is not None else centers[bucket] + step / 2.0
-                )
+                # An open top has no upper edge: no report can rule it out.
+                # It used to get ``centre + step / 2``, so a day that climbed
+                # a rung past the top bucket's floor excluded every bucket
+                # and P1 refused with ``hard_bound_exhausts_support`` (review
+                # 2026-09-19: 20 station-days, VILK 09-16 among them) -- the
+                # P0/P0-M floor (``observed_high_floor``) always read it as
+                # unbounded.  None is the convention the anchor already reads.
+                uppers[bucket] = high
         except (TypeError, ValueError, KeyError, json.JSONDecodeError) as exc:
             raise ContractError("p1_probability_bucket_geometry_invalid") from exc
         if set(centers) == set(envelope.probabilities) == set(uppers):
@@ -226,7 +232,7 @@ def _bucket_geometry_c(
         default=(1.0 if unit == "C" else 10.0 / 9.0),
     )
     centers: dict[str, float] = {}
-    uppers: dict[str, float] = {}
+    uppers: dict[str, float | None] = {}
     previous_upper: float | None = None
     for bucket in ordered:
         raw_upper = upper_by_bucket[bucket]
@@ -240,6 +246,11 @@ def _bucket_geometry_c(
                 raise ContractError("p1_registry_bucket_geometry_missing")
             center = previous_upper + step
             effective_upper = center + step / 2.0
+            # The open top again: unbounded for the hard bound.
+            centers[bucket] = center
+            uppers[bucket] = None
+            previous_upper = effective_upper
+            continue
         elif previous_upper is None:
             center = upper - step / 2.0
             effective_upper = upper

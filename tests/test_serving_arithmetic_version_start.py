@@ -35,10 +35,6 @@ from bayes_basket_target.center_width_store import (  # noqa: E402
 STAGES = ("P0", "P0-M", "P1")
 
 
-# Charter 160: the instant P0 v7, P0-M v9 and P1 v16 declare.
-CHARTER_160_START = "2026-09-19T15:02:00Z"
-
-
 def _served(version: str) -> sqlite3.Connection:
     """One committed decision per stage, all carrying ``version``."""
 
@@ -169,13 +165,9 @@ def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
     from bayes_basket_target.native_ensemble_p0 import POSTERIOR_VERSION
     import inspect
 
-    # Charter 160 (P0 v7) is declared at the restart that deployed it; v6
-    # keeps charter 149's moment.
-    assert POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v7"
-    assert sa.version_effective_from("P0", POSTERIOR_VERSION) == CHARTER_160_START
-    assert sa.version_effective_from(
-        "P0", "calibrated_native_cross_ensemble_p0_v6"
-    ) == "2026-09-18T09:18:16Z"
+    assert sa.version_effective_from("P0", POSTERIOR_VERSION) == (
+        "2026-09-18T09:18:16Z"
+    )
     p0m = inspect.signature(
         materialize_p0m_observed
     ).parameters["posterior_version"].default
@@ -185,12 +177,8 @@ def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
     # inference returned, written down because inferring it scans the
     # stage's whole history; v6 keeps the declaration of the P0 bump it
     # followed.
-    # Charter 160's v9 is a root bump at P0 v7's moment; v8 keeps its own.
-    assert p0m == "p0m_taf_likelihood_v9"
-    assert sa.version_effective_from("P0-M", p0m) == CHARTER_160_START
-    assert sa.version_effective_from(
-        "P0-M", "p0m_taf_likelihood_v8"
-    ) == "2026-09-19T10:15:00Z"
+    assert p0m == "p0m_taf_likelihood_v8"
+    assert sa.version_effective_from("P0-M", p0m) == "2026-09-19T10:15:00Z"
     assert sa.version_effective_from(
         "P0-M", "p0m_taf_likelihood_v7"
     ) == "2026-09-18T19:10:09Z"
@@ -232,13 +220,10 @@ def test_p1_declares_only_the_bump_its_root_caused() -> None:
     # moment.  v14 (charter 157) and v13 (charter 156) are P1's own changes,
     # each declared at the restart that deployed it -- after the resident's
     # start, so no older envelope falls in the newer version's window.
-    # v16 (charter 160) is the fourth root bump, at P0 v7's moment; v15
-    # keeps P0-M v8's.
-    assert p1 == "p1_joint_likelihood_v16"
-    assert sa.version_effective_from("P1", p1) == CHARTER_160_START
-    assert sa.version_effective_from(
-        "P1", "p1_joint_likelihood_v15"
-    ) == sa.version_effective_from("P0-M", "p0m_taf_likelihood_v8")
+    assert p1 == "p1_joint_likelihood_v15"
+    assert sa.version_effective_from("P1", p1) == sa.version_effective_from(
+        "P0-M", "p0m_taf_likelihood_v8"
+    )
     assert sa.version_effective_from(
         "P1", "p1_joint_likelihood_v14"
     ) == "2026-09-19T09:05:00Z"
@@ -253,7 +238,7 @@ def test_p1_declares_only_the_bump_its_root_caused() -> None:
     assert sa.version_effective_from("P1", p1) > first_v12_decision
     assert sa.version_effective_from(
         "P1", "p1_metar_trajectory_target_v11"
-    ) == sa.version_effective_from("P0", "calibrated_native_cross_ensemble_p0_v6")
+    ) == sa.version_effective_from("P0", POSTERIOR_VERSION)
     # v10 was charter 134's root bump and keeps its own declaration.
     assert sa.version_effective_from(
         "P1", "p1_metar_trajectory_target_v10"

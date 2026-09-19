@@ -92,7 +92,10 @@ def test_intervals_alone_are_enough_to_use_the_exact_geometry() -> None:
     # Centres are the interval midpoints, and the open-ended top bucket takes
     # the ladder's own rung rather than a hardcoded half degree.
     assert centers["66-67°F"] == pytest.approx((18.61111111111111 + 19.72222222222222) / 2)
-    assert uppers["78°F or higher"] == pytest.approx(25.27777777777778 + 10.0 / 9.0)
+    assert centers["78°F or higher"] == pytest.approx(25.27777777777778 + 5.0 / 9.0)
+    # ...but no upper edge: no report can rule an open top out (review
+    # 2026-09-19 -- a finite stand-in exhausted the support).
+    assert uppers["78°F or higher"] is None
 
 
 def test_ksfo_20260820_dead_bucket_is_excluded() -> None:

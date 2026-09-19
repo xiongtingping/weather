@@ -268,7 +268,7 @@ _EPS = 1e-12
 
 def hard_bound_excluded_buckets(
     ordered_buckets: Sequence[str],
-    upper_bounds: Mapping[str, float],
+    upper_bounds: Mapping[str, float | None],
     running_high_c: float,
 ) -> tuple[str, ...]:
     """Buckets the observed running high has already ruled out.
@@ -283,7 +283,9 @@ def hard_bound_excluded_buckets(
 
     return tuple(
         bucket for bucket in ordered_buckets
-        if upper_bounds[bucket] <= running_high_c + _EPS
+        # None is an open top: no report can rule it out.
+        if upper_bounds[bucket] is not None
+        and upper_bounds[bucket] <= running_high_c + _EPS
     )
 _MAX_TRANSMISSION_LEAD = timedelta(
     seconds=MAX_REPORT_TRANSMISSION_LEAD_SECONDS
@@ -1687,13 +1689,20 @@ def compile_metar_trajectory_update_proof(
         str(bucket): _finite("metar_trajectory_bucket_center_c", value)
         for bucket, value in bucket_centers_c.items()
     }
-    upper_bounds = {
-        str(bucket): _finite("metar_trajectory_bucket_upper_bound_c", value)
-        for bucket, value in bucket_upper_bounds_c.items()
-    }
     ordered_buckets = sorted(
         root.probabilities, key=lambda bucket: root.bucket_ordinals[bucket]
     )
+    # Only the top bucket may be open (None): its edge is unbounded, never a
+    # finite stand-in -- one rung past its floor used to exclude it with
+    # everything below and exhaust the support (review 2026-09-19).
+    upper_bounds = {
+        str(bucket): (
+            math.inf
+            if value is None and str(bucket) == ordered_buckets[-1]
+            else _finite("metar_trajectory_bucket_upper_bound_c", value)
+        )
+        for bucket, value in bucket_upper_bounds_c.items()
+    }
     if (
         any(
             centers[left] >= centers[right]

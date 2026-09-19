@@ -359,7 +359,9 @@ def bucket_ordinal_for_temperature(view: "RootView", temperature_c: float) -> in
     ordinals = view.envelope.bucket_ordinals
     ordered = sorted(view.probabilities, key=lambda name: ordinals[name])
     for bucket in ordered:
-        if float(temperature_c) <= float(view.uppers[bucket]) + 1e-9:
+        upper = view.uppers[bucket]
+        # None is the open top, which holds everything above its floor.
+        if upper is None or float(temperature_c) <= float(upper) + 1e-9:
             return int(ordinals[bucket])
     return int(ordinals[ordered[-1]])
 

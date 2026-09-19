@@ -12,7 +12,7 @@ import math
 import sqlite3
 import time
 from datetime import datetime
-from typing import Any, Mapping, Sequence
+from typing import Any, Collection, Mapping, Sequence
 
 from .atomic_ledger import ledger_span, note_ledger_span
 from .contracts import (
@@ -729,6 +729,39 @@ def _stage_anchor(
     return bucket, center_c
 
 
+def floor_probabilities(
+    probabilities: Mapping[str, float], excluded: Collection[str] = ()
+) -> tuple[dict[str, float], list[str]]:
+    """The served zero floor: every non-excluded bucket at least the floor.
+
+    Lifts each non-excluded bucket below ``PROBABILITY_MODEL_ZERO_FLOOR`` to
+    it and renormalises; an excluded bucket keeps its (zero) value.  Returns
+    the vector and the lifted buckets -- the vector unchanged when none is.
+    Serving calls this in ``_posterior``; a fitter scoring what is served calls
+    it too rather than restating it (review 2026-09-19: P1's alpha was scored
+    without it, -20.72 nat where serving scores -6.91).
+    """
+
+    floored = sorted(
+        bucket for bucket, value in probabilities.items()
+        if bucket not in excluded and value < PROBABILITY_MODEL_ZERO_FLOOR
+    )
+    if not floored:
+        return dict(probabilities), []
+    lifted = {
+        bucket: (
+            value if bucket in excluded
+            else max(value, PROBABILITY_MODEL_ZERO_FLOOR)
+        )
+        for bucket, value in probabilities.items()
+    }
+    lifted_total = sum(lifted.values())
+    return {
+        bucket: value / lifted_total
+        for bucket, value in lifted.items()
+    }, floored
+
+
 def _posterior(
     predecessor: ProbabilityEnvelope,
     *,
@@ -800,23 +833,8 @@ def _posterior(
     # or above the floor everywhere is returned byte-identical, so
     # unaffected station-days keep their content hashes, and fits read
     # served claims on both sides of this change -- no serve/train split.
-    floored = sorted(
-        bucket for bucket, value in probabilities.items()
-        if bucket not in excluded and value < PROBABILITY_MODEL_ZERO_FLOOR
-    )
+    probabilities, floored = floor_probabilities(probabilities, excluded)
     if floored:
-        lifted = {
-            bucket: (
-                value if bucket in excluded
-                else max(value, PROBABILITY_MODEL_ZERO_FLOOR)
-            )
-            for bucket, value in probabilities.items()
-        }
-        lifted_total = sum(lifted.values())
-        probabilities = {
-            bucket: value / lifted_total
-            for bucket, value in lifted.items()
-        }
         lineage["probability_floor_json"] = json.dumps({
             "schema": "probability_model_zero_floor_v1",
             "epsilon": PROBABILITY_MODEL_ZERO_FLOOR,
@@ -893,7 +911,7 @@ def materialize_p0m_observed(
     # v8 (charter 158, 2026-09-19): the likelihood's pull is tempered by
     # whether the TAF's own weather explains its disagreement with P0's
     # served mean (``taf_likelihood.disagreement_group``).
-    posterior_version: str = "p0m_taf_likelihood_v9",
+    posterior_version: str = "p0m_taf_likelihood_v8",
     observed_hard_excluded_buckets: Sequence[str] = (),
     observed_running_high_c: float | None = None,
     taf_likelihood_artifact: Mapping[str, Any] | None = None,
@@ -1262,7 +1280,7 @@ def materialize_p1(
     # v15 (2026-09-19, charter 158): the root, not P1 -- every P1 composes on
     # a P0-M, whose TAF likelihood is now tempered by the TAF's reason; it
     # declares the instant P0-M v8 declares, as v10/v11 did for P0.
-    posterior_version: str = "p1_joint_likelihood_v16",
+    posterior_version: str = "p1_joint_likelihood_v15",
     # {"features": ..., "artifact": ..., "regional_system_id": ...}: the
     # step's observation-side feature vector and the fitted likelihood,
     # handed in for the reason every fitted table is -- a replay must rebuild
@@ -1993,6 +2011,7 @@ def insert_probability_envelope(
 
 __all__ = [
     "MATERIALIZATION_SCHEMA",
+    "floor_probabilities",
     "insert_probability_envelope",
     "materialize_p0m",
     "materialize_p1",
