@@ -778,8 +778,7 @@ STAGE_TIER: dict[str, int] = {
     "early_p1": STAGE_TIER_R0_DECISION,
     # The fast lane: a new TAF becomes P0-M before anything else in the cycle.
     "early_p0m": STAGE_TIER_R0_DECISION,
-    # ... and again at three points inside it, when something new landed.
-    "fast_lane_after_p0_replay": STAGE_TIER_R0_DECISION,
+    # ... and again at two points after the chain, when something new landed.
     "fast_lane_after_forward_p0": STAGE_TIER_R0_DECISION,
     "fast_lane_before_decisions": STAGE_TIER_R0_DECISION,
     "probability_p0": STAGE_TIER_R0_DECISION,
@@ -3518,9 +3517,12 @@ EARLY_P0M_ENABLED = (
 # Checkpoints between the cycle's long stages (user, 2026-09-19: 「极限压低信息
 # 到来到bayes概率更新的延迟」).  The head pass waits for the next cycle, and a
 # cycle is ~200s; a report or TAF that lands during one waited up to that long.
-# At three points inside the cycle the same two passes run again when their
-# watermark moved: after the P0 replay compile, after the forward P0 loop, and
-# right before the decision loop, so decisions price the freshest update.
+# After the chain -- after the forward P0 loop and right before the decision
+# loop -- the two passes run again for what landed since, and only for it:
+# P1 for the stations with new reports and the scopes a new P0-M re-rooted,
+# P0-M only once the chain has settled the roots (before it, a P0-M pass is
+# the chain's own re-root work done twice: measured on the first deploy, a
+# checkpoint right after the P0 replay compile took 340s of a 1250s cycle).
 # Nothing new costs one file hash and one indexed read.  ``PM_FAST_LANE_
 # CHECKPOINTS=0`` keeps only the head pass.
 FAST_LANE_CHECKPOINTS_ENABLED = (
@@ -3545,6 +3547,43 @@ def _later_report_watermark(
     if candidate is None:
         return current
     return candidate if (candidate[0], candidate[1]) >= (current[0], current[1]) else current
+
+
+def _stations_with_reports_after(
+    conn: sqlite3.Connection | None, covered: tuple[int, int, str] | None,
+) -> set[str] | None:
+    """Stations with an AWC report or a substitute fill past ``covered``.
+
+    The same two row families ``_live_observation_watermark`` counts.  None
+    when it cannot be answered, and the caller then runs the full pass.
+    """
+
+    if conn is None or covered is None:
+        return None
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT station_id FROM reported_trajectory_observations"
+            " WHERE (source_lane='awc' AND rowid>?)"
+            " OR (observation_id >= 'asos_p1_' AND observation_id < 'asos_p1`'"
+            " AND rowid>?)",
+            (int(covered[0] or 0), int(covered[1] or 0)),
+        ).fetchall()
+    except (sqlite3.Error, AttributeError, TypeError, ValueError):
+        return None
+    return {str(row[0]).strip().upper() for row in rows if row[0]}
+
+
+def _scopes_for_stations(stations: set[str], *, as_of_utc: str) -> set[tuple[str, str]]:
+    """Every event date a P1 could be open for, around this clock, per station.
+
+    The P1 pass keeps only the open ones, so a superset is safe."""
+
+    try:
+        today = datetime.fromisoformat(str(as_of_utc).replace("Z", "+00:00")).date()
+    except ValueError:
+        today = datetime.now(timezone.utc).date()
+    days = [(today + timedelta(days=offset)).isoformat() for offset in (-1, 0, 1)]
+    return {(station, day) for station in stations for day in days}
 
 
 def _covered_report_watermark(
@@ -15321,35 +15360,38 @@ class TargetProductionWorker:
             "ran": True,
             "p0m_state": state,
             "new_envelopes": after > before,
+            "rowid_before": before,
             "duration_sec": round(time.perf_counter() - started, 3),
             **boundary,
         }
 
     def _fast_lane_checkpoint(self, label: str) -> dict[str, Any] | None:
-        """Run the head passes again, mid-cycle, for whatever landed since.
+        """Update, mid-cycle, only what landed since the last pass covered it.
 
-        P0-M when the TAF inbox moved past what a P0-M pass covered; P1 when
-        the report watermark moved past what a P1 pass covered, or when the
-        P0-M just committed (P1 re-roots on it).  Returns None, having marked
-        nothing, when neither moved.  Never raises -- both passes catch their
-        own failures and the chain and the next head remain the fallback.
+        P0-M when the TAF inbox content moved -- once the chain has settled
+        the roots, so the pass has only the new bulletins to seat.  P1 for
+        the stations with a report past the covered watermark and for the
+        scopes a new P0-M re-rooted.  Returns None, having marked nothing,
+        when neither moved.  Never raises: both passes catch their own
+        failures, and the chain and the next head remain the fallback.
         """
 
         if not FAST_LANE_CHECKPOINTS_ENABLED:
             return None
+        chain_ran = bool(getattr(self, "_probability_chain_ran", False))
         taf_mark = _taf_inbox_watermark(getattr(self, "taf_inbox_path", None))
-        report_mark = _live_observation_watermark(
-            getattr(self, "canonical_source_conn", None)
-        )
+        archive = getattr(self, "canonical_source_conn", None)
+        report_mark = _live_observation_watermark(archive)
+        covered = getattr(self, "_p1_covered_watermark", None)
         new_taf = (
-            taf_mark is not None
+            chain_ran
+            and taf_mark is not None
             and taf_mark != getattr(self, "_p0m_covered_taf_watermark", None)
         )
-        covered = getattr(self, "_p1_covered_watermark", None)
         new_reports = (
             report_mark is not None
-            and _later_report_watermark(covered, report_mark) != covered
             and report_mark != covered
+            and _later_report_watermark(covered, report_mark) != covered
         )
         if not new_taf and not new_reports:
             return None
@@ -15358,13 +15400,22 @@ class TargetProductionWorker:
             self._materialize_early_p0m(as_of_utc=clock, taf_watermark=taf_mark)
             if new_taf else None
         )
-        forced = bool((p0m or {}).get("new_envelopes"))
-        p1 = None
-        if new_reports or forced:
-            p1 = self._materialize_early_p1(
-                as_of_utc=clock, report_watermark=report_mark, force=forced,
+        scopes: set[tuple[str, str]] | None = set()
+        if new_reports:
+            stations = _stations_with_reports_after(archive, covered)
+            scopes = (
+                None if stations is None
+                else _scopes_for_stations(stations, as_of_utc=clock)
             )
-            if p1.get("ran"):
+        if scopes is not None and (p0m or {}).get("new_envelopes"):
+            scopes |= set(self._scopes_rooted_after(p0m.get("rowid_before")))
+        p1 = None
+        if scopes is None or scopes:
+            p1 = self._materialize_early_p1(
+                as_of_utc=clock, report_watermark=report_mark, force=True,
+                only_scopes=scopes,
+            )
+            if p1.get("ran") and new_reports:
                 p1_state = str(((p1.get("p1") or {}).get("state")) or "").upper()
                 if p1_state != "BLOCKED_FAIL_CLOSED":
                     self._p1_covered_watermark = _later_report_watermark(
@@ -15373,13 +15424,10 @@ class TargetProductionWorker:
                     self._early_p1_watermark = _later_report_watermark(
                         getattr(self, "_early_p1_watermark", None), report_mark
                     )
-                # Before the chain this pass is the cycle's head P1 now: the
-                # chain re-roots only what it rebuilds after it.
-                if not getattr(self, "_probability_chain_ran", False):
-                    self._early_p1_this_cycle = p1
         receipt = {
             "label": label,
             "at_utc": clock,
+            "scopes": None if scopes is None else len(scopes),
             "p0m": {k: v for k, v in (p0m or {}).items() if k != "p0m"} or None,
             "p1": {k: v for k, v in (p1 or {}).items() if k != "p1"} or None,
         }
@@ -15397,6 +15445,7 @@ class TargetProductionWorker:
         as_of_utc: str,
         report_watermark: tuple[int, int, str] | None,
         force: bool = False,
+        only_scopes: "set[tuple[str, str]] | None" = None,
     ) -> dict[str, Any]:
         """Charter 148: P1 at the head of the cycle, for reports it has not seen.
 
@@ -15435,7 +15484,13 @@ class TargetProductionWorker:
                     "duration_sec": round(time.perf_counter() - started, 3),
                     **boundary,
                 }
-            p1 = self._materialize_resident_p1(as_of_utc=as_of_utc)
+            p1 = (
+                self._materialize_resident_p1(as_of_utc=as_of_utc)
+                if only_scopes is None
+                else self._materialize_resident_p1(
+                    as_of_utc=as_of_utc, only_scopes=set(only_scopes),
+                )
+            )
         except Exception as exc:  # noqa: BLE001 -- the chain's pass is the fallback
             return {
                 "state": "FAILED",
@@ -17952,7 +18007,6 @@ class TargetProductionWorker:
                     "active_activation_p0_replay"
                 ] = active_activation_p0_replay
                 self._mark("native_p0_replay_compile")
-                self._fast_lane_checkpoint("after_p0_replay")
                 now_mono = time.monotonic()
                 last_oos_scan = getattr(
                     self,
