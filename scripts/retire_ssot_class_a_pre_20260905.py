@@ -249,7 +249,8 @@ def _wait_for_wal(db: Path) -> None:
         waited += 5
 
 
-def retire_table(conn, db: Path, spec, *, apply: bool, export_dir: Path, protect_cache: dict, log) -> dict:
+def retire_table(conn, db: Path, spec, *, apply: bool, export_dir: Path, protect_cache: dict, log,
+                 pause_factor: float = 1.0, batch_bytes_limit: int = BATCH_BYTES) -> dict:
     table, column, protections, day_guard = spec
     if not _table_exists(conn, table):
         return {"table": table, "state": "missing"}
@@ -349,7 +350,7 @@ def retire_table(conn, db: Path, spec, *, apply: bool, export_dir: Path, protect
                 }) + "\n")
                 mf.flush()
                 os.fsync(mf.fileno())
-            time.sleep(max(PAUSE_SEC, held))
+            time.sleep(max(PAUSE_SEC, held * pause_factor))
         stats["deleted_rows"] += len(ids)
         stats["deleted_payload_bytes"] += len(payload)
         stats["batches"] += 1
@@ -379,7 +380,7 @@ def retire_table(conn, db: Path, spec, *, apply: bool, export_dir: Path, protect
             width = sum(len(v) if isinstance(v, (str, bytes)) else 8 for v in values)
             batch.append(r)
             batch_bytes += width
-            if batch_bytes >= BATCH_BYTES or len(batch) >= BATCH_ROWS:
+            if batch_bytes >= batch_bytes_limit or len(batch) >= BATCH_ROWS:
                 flush()
     flush()
     stats["state"] = "applied" if apply else "planned"
@@ -445,6 +446,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--restore", action="store_true")
     parser.add_argument("--tables", nargs="*")
+    # Measured 2026-09-19: at factor 1 the envelope pass saturated the disk
+    # (~107 MB/s, 9.4k IOPS) and one production cycle ran 11 minutes against
+    # a usual 5-9.  Factor 3 yields three times each hold.
+    parser.add_argument("--pause-factor", type=float, default=1.0)
+    parser.add_argument("--batch-bytes", type=int, default=BATCH_BYTES)
     args = parser.parse_args(argv)
     db = args.db.resolve()
     if args.restore:
@@ -475,7 +481,8 @@ def main(argv: list[str] | None = None) -> int:
     for spec in specs:
         started = time.monotonic()
         res = retire_table(conn, db, spec, apply=args.apply,
-                           export_dir=args.export_dir, protect_cache=cache, log=log)
+                           export_dir=args.export_dir, protect_cache=cache, log=log,
+                           pause_factor=args.pause_factor, batch_bytes_limit=args.batch_bytes)
         res["elapsed_sec"] = round(time.monotonic() - started, 1)
         results.append(res)
         log(json.dumps(res))
