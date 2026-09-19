@@ -314,7 +314,17 @@ MAX_JSON_NODES = 500_000
 # five ask levels, forward-only, halving the table that is 72% of the burn
 # -- and it is a ruling because the table is append-only with a dozen
 # readers.  Until it is taken, this constant comes back every few days.
-MAX_TARGET_DB_BYTES = 57344 * MIB
+#
+# Raised 56 -> 60 GiB on 2026-09-19, on the user's instruction, together with
+# the ruling that retires the class-A rows written before 2026-09-05 (P0
+# preselection plans, probability envelopes, update proofs, regime artifacts,
+# decisions, inventory/order-state snapshots, the v16 fact copy).  At the
+# raise the file was 55.0 GiB with 0.99 GiB left and burning 3-4 GiB a day,
+# about six hours from a fail-closed store.  The retirement puts ~17 GiB of
+# pages on the freelist, which the file reuses before it grows again, so the
+# four GiB added here are headroom for the retirement to land, not a new
+# rate of disk spend.
+MAX_TARGET_DB_BYTES = 61440 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.
