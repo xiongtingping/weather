@@ -44,8 +44,9 @@ gain.  Two stations are the exception and are the reason to capture rather
 than to decline: Chongqing debiases to 0.515C and Shanghai to 0.472C, both
 basin and coastal sites of exactly the kind a 25 km cell smooths away.
 
-Capture is not admission.  Nothing here reaches a served distribution
-until scripts/measure_regional_serving_value.py says it should.
+Capture only.  Since charter 150 the lane's rows reach P1 as covariates of
+the joint observation likelihood (``regional_features``), like every other
+regional lane's.
 """
 
 from __future__ import annotations

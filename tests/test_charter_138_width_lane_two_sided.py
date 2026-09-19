@@ -40,7 +40,6 @@ from bayes_basket_target.center_width_store import (
     ensure_center_width_schema,
     fit_center_width,
     load_center_width,
-    load_center_width_cells,
     load_center_width_floor,
     persist_and_activate_center_width,
     refit_all_center_width,
@@ -383,32 +382,28 @@ def test_a_missing_pin_still_fails_closed() -> None:
         load_center_width(conn, stage="P0", table_sha256="f" * 64)
 
 
-def test_a_retired_pin_also_stops_the_floor_and_the_cells() -> None:
+def test_a_retired_pin_also_stops_the_floor() -> None:
     """Retirement retires the row's whole arithmetic.  A pin reading identity
-    for the pair while still serving that row's floor or TAF cells would be
-    serving a composition nobody ever scored."""
+    for the pair while still serving that row's floor would be serving a
+    composition nobody ever scored.  (The TAF cells that used to ride on a
+    P0-M row retired with P0-M's centre/width layer, charter 150.)"""
 
     conn = sqlite3.connect(":memory:")
     ensure_center_width_schema(conn)
     sha = persist_and_activate_center_width(
-        conn, stage="P0-M", delta_c=0.0, width_lambda=0.9,
+        conn, stage="P0", delta_c=0.0, width_lambda=0.9,
         evidence={}, serving_day_count=8, sigma_floor_rungs=1.44,
-        taf_cells={"far": [0.0, 0.3, 0.8]},
         fitted_at_utc="2026-06-30T00:00:00Z",
     )["center_width_sha256"]
     assert load_center_width_floor(
-        conn, stage="P0-M", table_sha256=sha
+        conn, stage="P0", table_sha256=sha
     ) == pytest.approx(1.44)
-    assert load_center_width_cells(conn, stage="P0-M", table_sha256=sha)
     retire_center_width(
-        conn, stage="P0-M", retired_at_utc="2026-07-05T00:00:00Z"
+        conn, stage="P0", retired_at_utc="2026-07-05T00:00:00Z"
     )
     assert load_center_width_floor(
-        conn, stage="P0-M", table_sha256=sha
+        conn, stage="P0", table_sha256=sha
     ) == 0.0
-    assert load_center_width_cells(
-        conn, stage="P0-M", table_sha256=sha
-    ) is None
 
 
 def test_the_as_of_resolver_stops_replaying_a_retired_pair() -> None:

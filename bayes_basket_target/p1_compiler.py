@@ -16,7 +16,7 @@ from .contracts import (
 )
 from .materialization import materialize_p1
 from .p1_observation_likelihood import feature_vector
-from .regional_path_prior import regional_features_at
+from .regional_features import regional_features_at
 from .metar_four_layer import (
     curve_points,
     curve_shape_realized,

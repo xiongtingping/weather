@@ -24,7 +24,7 @@ is simply the earlier one with its first hours cut off, because
 labels are fiction outright -- 2026-09-13T18Z was written by the pass of
 2026-09-15T07:54Z, a stamp 38 hours older than the forecast under it.
 
-That is not cosmetic.  ``regional_path_prior`` refuses a row whose
+That is not cosmetic.  ``regional_features`` refuses a row whose
 ``as_of - run_init`` exceeds ``MAX_RUN_AGE_HOURS``, so the fresh forecast
 wearing the stale label reads as too old to serve, while ``runs_for`` orders
 by run_init and hands out the freshest LABEL -- the twin truncated hardest.

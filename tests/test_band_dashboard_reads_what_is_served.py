@@ -209,14 +209,17 @@ def test_a_held_table_says_it_is_held_and_shows_the_fit_that_set_it(
 
 
 def test_an_accumulating_identity_table_with_no_measured_fit_is_unchanged() -> None:
-    """P0-M after its axis move: identity, never measured on this axis."""
+    """A table after an axis move: identity, never measured on this axis.
+
+    (P0-M was the live case; since charter 150 only P0 renders a band card.)
+    """
 
     conn = sqlite3.connect(":memory:")
     band_store.ensure_band_table_schema(conn)
     identity = [[cell, 1.0] for cell, _f in HELD_FACTORS]
     sha = band_store.band_table_sha256(
         [((c[0], c[1]), 1.0) for c, _f in HELD_FACTORS],
-        stage="P0-M", axis=DISTANCE,
+        stage="P0", axis=DISTANCE,
     )
     evidence = _accumulating_evidence()
     evidence["basis"] = {k: "accumulating_evidence" for k in evidence["basis"]}
@@ -225,10 +228,10 @@ def test_an_accumulating_identity_table_with_no_measured_fit_is_unchanged() -> N
         " (band_table_sha256, stage, factors_json, evidence_json,"
         "  fitted_at_utc, serving_day_count, activated, activated_at_utc, axis)"
         " VALUES (?,?,?,?,?,?,1,?,?)",
-        (sha, "P0-M", json.dumps(identity), json.dumps(evidence),
+        (sha, "P0", json.dumps(identity), json.dumps(evidence),
          "2026-09-11T00:15:40Z", 1, "2026-09-11T00:15:40Z", DISTANCE),
     )
-    (stage,) = [s for s in C.collect_band_stages(conn) if s["stage"] == "P0-M"]
+    (stage,) = [s for s in C.collect_band_stages(conn) if s["stage"] == "P0"]
     assert stage["held_from"] is None
     assert stage["state"] == "攒证据 1/10 天"
     html = _render_stages([stage])

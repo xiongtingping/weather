@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Build the fleet-pooled sample set the four-layer temperature path is fitted on.
+"""Build the fleet-pooled sample set P1's joint observation likelihood is fitted on.
+
+Charter 150 (2026-09-19): the rows are read by
+``scripts/fit_p1_observation_likelihood.py`` and rebuilt daily over a rolling
+window by the ``p1_likelihood_refit`` lane.  The table keeps its historical
+name.
 
 One sample per official report, not one per local-time bucket per day.  The
 layer this replaces was fitted on a single anchor report per six-hour bucket
@@ -14,9 +19,9 @@ stations is order 80,000 rows rather than 25.
 What each row records: the state of the day at one instant, and how much
 warming was still to come.  ``delta_c`` is the target -- the settled maximum
 minus the running high at that instant, quantised to whole degrees -- and it
-is the same quantity the ceiling artifact models as a single binary
-(``delta_c >= 1``), which is why the phase layer's first hazard rung has to
-reproduce the ceiling's own bins as a nested check.
+is what the likelihood's rungs are fitted on: rung one asks whether the day
+crosses into another bucket at all (``crossed_bucket``), the rungs above it
+how far.
 
 Strict as-of, three ways.  The prefix carries only reports whose canonical
 receipt was already visible at the sample instant; the sample instant itself is
@@ -41,7 +46,7 @@ that had already seen the day's peak and looked wonderful.
 
     python3 scripts/build_metar_phase_hazard_samples.py \
         --from 2026-08-10 --through 2026-09-01 \
-        --out data/runtime/bayes_basket_target_nwp/metar_phase_hazard_samples.db
+        --out data/runtime/bayes_basket_target_nwp/p1_observation_samples.db
 """
 from __future__ import annotations
 
@@ -78,16 +83,7 @@ from bayes_basket_target.metar_path_state import (  # noqa: E402
     compile_conditional_metar_path_state,
 )
 from bayes_basket_target.p1_compiler import _bucket_geometry_c  # noqa: E402
-from bayes_basket_target.metar_trajectory import (  # noqa: E402
-    MetarTrajectoryLikelihoodArtifact,
-    SOFT_LIKELIHOOD_POLICY_ACTIVE,
-    compile_metar_trajectory_update_proof,
-)
-from bayes_basket_target.probability_evidence_store import (  # noqa: E402
-    local_time_bucket_for_hour,
-    resolve_metar_trajectory_artifact_row,
-)
-from bayes_basket_target.regional_path_prior import (  # noqa: E402
+from bayes_basket_target.regional_features import (  # noqa: E402
     load_runs_for_station_day as load_regional_runs,
     regional_features_at,
 )
@@ -143,8 +139,6 @@ CREATE TABLE IF NOT EXISTS metar_phase_hazard_sample (
   -- raw build and wherever no lane reached.
   regional_calibration_bias_c REAL,
   regional_calibration_source TEXT,
-  soft_lr_json TEXT,
-  soft_lr_state TEXT NOT NULL DEFAULT '',
   root_bias_recent_c REAL,
   root_bias_report_count INTEGER NOT NULL,
   root_center_c REAL,
@@ -258,17 +252,10 @@ def load_day_observations(
             "temperature_c": float(row[3]),
             "raw_text": str(row[4] or ""),
             "report_type": str(row[5] or ""),
-            # For the suspended soft layer's counterfactual only.  The proof
-            # compiler never reads it -- measured: raw_sha256, qc_state,
-            # report_type, received_at_utc and supersedes_observation_id are
-            # touched zero times in its body -- but the canonical observation
-            # contract requires the field, so it is carried rather than
-            # invented.
-            "raw_sha256": str(row[6] or ""),
         }
         for row in archive.execute(
             "SELECT observation_id, valid_at, canonical_committed_at,"
-            " reported_temperature_c, raw_text, report_type, raw_sha256"
+            " reported_temperature_c, raw_text, report_type"
             " FROM reported_trajectory_observations"
             " WHERE station_id=? AND valid_at>=? AND valid_at<?"
             " AND source_lane=? AND correction_suspected=0"
@@ -395,9 +382,8 @@ class RootView:
     __slots__ = (
         "checkpoint_id", "probabilities", "centers", "curve", "curve_points",
         "center_c", "curve_root_checkpoint_id", "curve_root_probability_sha",
-        # The soft-likelihood counterfactual compiles a real proof against
-        # this root, so it needs the envelope, the upper bounds it quantises
-        # with, and the lineage its artifact scope key is built from.
+        # The envelope's ordinals place the settled maximum and the running
+        # high on the root's own ladder (``crossed_bucket``).
         "envelope", "uppers",
     )
 
@@ -471,130 +457,6 @@ class RootView:
         return curve_shape_realized(self.curve_points, instant)
 
 
-def _canonical_observation(
-    row: Mapping[str, Any], *, sequence: int, station_id: str,
-    event_date: str, settlement_timezone: str, source_lane: str,
-) -> dict[str, Any]:
-    """One archive row in the shape the trajectory contract requires.
-
-    The contract asks for five fields the proof compiler never reads --
-    measured on its body: ``qc_state``, ``supersedes_observation_id``,
-    ``received_at_utc``, ``raw_sha256`` and ``report_type`` are touched zero
-    times, and ``sequence`` and ``observation_id`` only reach a receipt hash
-    and an id list.  What the physics reads is the temperature and two clocks:
-    ``observed_at_utc`` and ``canonical_committed_at_utc``, which decide the
-    evidence clock, the artifact fold and the leakage check.  All of those come
-    from the archive unchanged.
-
-    So the counterfactual reproduces the ratios exactly and does not reproduce
-    the proof's identity hash, because ``sequence`` here is the row's position
-    in the day rather than the canonical event's own.  That is the honest
-    boundary of this reconstruction: the vectors are production's, the identity
-    is not, and only the vectors are being measured.
-    """
-
-    return {
-        "event": {
-            "observation_id": str(row["observation_id"]),
-            "station_id": station_id,
-            "event_date": event_date,
-            "settlement_timezone": settlement_timezone,
-            "source_lane": source_lane,
-            "report_type": (str(row.get("report_type") or "METAR")).upper(),
-            "sequence": int(sequence),
-            "observed_at_utc": str(row["valid_at"]),
-            "received_at_utc": str(row["valid_at"]),
-            "raw_sha256": str(row.get("raw_sha256") or ""),
-            "qc_state": "ACCEPTED",
-            "supersedes_observation_id": None,
-        },
-        "canonical_committed_at_utc": str(row["canonical_committed_at"]),
-        "temperature_c": float(row["temperature_c"]),
-        "raw_text": str(row.get("raw_text") or ""),
-    }
-
-
-def _soft_likelihood_ratio(
-    *,
-    target: sqlite3.Connection,
-    view: "RootView",
-    prefix: Sequence[Mapping[str, Any]],
-    instant: datetime,
-    station_id: str,
-    event_date: str,
-    settlement_timezone: str,
-    source_lane: str,
-    cache: dict[str, Any],
-) -> tuple[dict[str, float] | None, str]:
-    """What the suspended soft layer would have multiplied in, at this instant.
-
-    The counterfactual is the production proof compiler with
-    ``soft_likelihood_policy`` moved and nothing else: same artifact resolver
-    (promoted, else the candidate the 2026-08-18 ruling admits), same prefix,
-    same root.  Under suspension the compiler sets the strength to zero and
-    takes the identity branch, so the ratios are never computed and a contract
-    gate forbids a suspended proof from carrying them -- which is why this has
-    to be a second compile rather than a field lifted out of the served proof.
-
-    ``None`` with a state saying why whenever production could not have served
-    it either.
-    """
-
-    zone = ZoneInfo(settlement_timezone)
-    bucket = local_time_bucket_for_hour(instant.astimezone(zone).hour)
-    if bucket not in cache:
-        lineage = view.envelope.lineage
-        try:
-            row = resolve_metar_trajectory_artifact_row(
-                target,
-                station_id=station_id,
-                source_lane=source_lane,
-                season_bin=str(lineage.get("season_bin") or ""),
-                local_time_bucket=bucket,
-                maturity_bin="D0",
-                settlement_definition=str(
-                    lineage.get("settlement_definition") or ""
-                ),
-                as_of_utc=_iso(instant),
-            )
-        except (ContractError, sqlite3.Error):
-            row = None
-        cache[bucket] = (
-            None if row is None
-            else MetarTrajectoryLikelihoodArtifact.from_mapping(row["artifact"])
-        )
-    artifact = cache[bucket]
-    if artifact is None:
-        return None, "NO_ARTIFACT"
-    observations = [
-        _canonical_observation(
-            row, sequence=index + 1, station_id=station_id,
-            event_date=event_date, settlement_timezone=settlement_timezone,
-            source_lane=source_lane,
-        )
-        for index, row in enumerate(prefix)
-    ]
-    try:
-        proof = compile_metar_trajectory_update_proof(
-            view.envelope,
-            observations=observations,
-            artifact=artifact,
-            bucket_centers_c=view.centers,
-            bucket_upper_bounds_c=view.uppers,
-            maturity_bin="D0",
-            as_of_utc=_iso(instant),
-            soft_likelihood_policy=SOFT_LIKELIHOOD_POLICY_ACTIVE,
-        )
-    except (ContractError, KeyError, TypeError, ValueError) as exc:
-        return None, f"REFUSED:{type(exc).__name__}:{exc}"[:80]
-    ratios = {
-        str(k): float(v) for k, v in proof.likelihood_ratio_by_bucket.items()
-    }
-    if not ratios or float(proof.applied_strength) <= 0.0:
-        return None, "IDENTITY"
-    return ratios, f"ACTIVE:{float(proof.applied_strength):.4f}"
-
-
 def build_station_day(
     *,
     target: sqlite3.Connection,
@@ -619,7 +481,6 @@ def build_station_day(
     # instant, the way the serving side does it: one query, and every sample
     # still picks the freshest run its own clock could have seen.  Empty for
     # the fleet's majority, which has no regional lane at all.
-    soft_artifacts: dict[str, Any] = {}
     regional_runs = load_regional_runs(
         target, station_id=station_id, event_date=event_date,
         as_of_utc="2100-01-01T00:00:00Z",
@@ -782,17 +643,7 @@ def build_station_day(
             ],
             as_of=instant,
         )
-        soft_lr, soft_state = _soft_likelihood_ratio(
-            target=target, view=view, prefix=prefix, instant=instant,
-            station_id=station_id, event_date=event_date,
-            settlement_timezone=settlement_timezone, source_lane=source_lane,
-            cache=soft_artifacts,
-        )
         samples.append({
-            "soft_lr_json": None if soft_lr is None else json.dumps(
-                soft_lr, sort_keys=True
-            ),
-            "soft_lr_state": soft_state,
             "station_id": station_id,
             "event_date": event_date,
             "settlement_timezone": settlement_timezone,
@@ -932,7 +783,6 @@ def main() -> int:
                 "curve_shape_realized,curve_complete,"
                 "regional_headroom_c,regional_live_gap_c,regional_system_id,"
                 "regional_calibration_bias_c,regional_calibration_source,"
-                "soft_lr_json,soft_lr_state,"
                 "root_bias_recent_c,"
                 "root_bias_report_count,root_center_c,root_checkpoint_id,"
                 "running_high_c,truth_tmax_c,delta_c,crossed_bucket,"
@@ -946,7 +796,7 @@ def main() -> int:
                 ":wind_speed_mps,:warming_so_far_c,:curve_shape_realized,"
                 ":curve_complete,:regional_headroom_c,:regional_live_gap_c,"
                 ":regional_system_id,:regional_calibration_bias_c,"
-                ":regional_calibration_source,:soft_lr_json,:soft_lr_state,"
+                ":regional_calibration_source,"
                 ":root_bias_recent_c,"
                 ":root_bias_report_count,:root_center_c,"
                 ":root_checkpoint_id,:running_high_c,:truth_tmax_c,"

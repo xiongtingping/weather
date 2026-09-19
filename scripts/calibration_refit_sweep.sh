@@ -222,9 +222,9 @@ done
 # 方式一样"): every regional lane, CMA included, refitted daily in the global
 # layer's own form -- the production artifact on every settled day and the
 # per-event-date replay table beside it.  It writes two JSON files and no
-# database, reading the SSOT mode=ro, ~3s.  Both serving arms are off by
-# measurement (regional_point_debias.ENABLED / FEATURE_CALIBRATION); the fit
-# is kept current so the gate can be asked again as the lanes accumulate.
+# database, reading the SSOT mode=ro, ~3s.  The serving arm is off by
+# measurement (regional_point_debias.FEATURE_CALIBRATION); the fit is kept
+# current so it can be re-measured against P1's joint likelihood.
 # Never fatal: a failed fit leaves yesterday's files.
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] regional point calibration refit"
 "$PY" scripts/fit_regional_point_debias.py --quiet \

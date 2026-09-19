@@ -7,11 +7,11 @@ at 120E, which reaches Shanghai and Qingdao and nothing further inland.
 This lane is the first regional coverage Beijing, Guangzhou, Shenzhen,
 Wuhan, Chongqing and Chengdu have had.
 
-P1 only, and capture only.  The rows land in the regional point lane beside
-MSM, HRRR, NBM and ICON-EU; whether any of them reaches a served
-distribution is decided by scripts/measure_regional_serving_value.py and
-recorded in regional_path_prior.SERVING_SYSTEMS, which today admits the MSM
-alone.  Nothing in this script changes what P1 serves.
+P1 only.  The rows land in the regional point lane beside MSM, HRRR, NBM and
+ICON-EU, and since charter 150 reach P1 the way every lane's do: as the two
+covariates of the joint observation likelihood
+(``bayes_basket_target.regional_features``).  Nothing in this script changes
+how P1 computes.
 
 One row per station-day per pass, not one per cadence slot.  Until
 2026-09-16 the shared planner enumerated the cadence the way it does for the

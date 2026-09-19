@@ -260,11 +260,13 @@ def test_a_distance_table_renders_one_row_per_rung(conn) -> None:
 
 
 def test_a_claim_table_still_renders_the_five_percent_grid(conn) -> None:
-    """The fix must not cost the claim stages their display grid: the cells
-    are wider than the rows, and a row says which cell owns it."""
+    """The fix must not cost a claim-axis table its display grid: the cells
+    are wider than the rows, and a row says which cell owns it.  (The claim
+    table in the fixture is P1's; since charter 150 only P0 renders a band
+    card, so it is shown under P0's name.)"""
 
     stages = C.collect_band_stages(conn)
-    html = _render([_stage(stages, "P1")])
+    html = _render([dict(_stage(stages, "P1"), stage="P0")])
     labels = _row_labels(html)
     assert labels[0] == "0–5%"
     assert labels[-1] == "≥50%"
@@ -274,13 +276,14 @@ def test_a_claim_table_still_renders_the_five_percent_grid(conn) -> None:
 
 
 def test_the_section_names_the_axis_each_stage_is_on(conn) -> None:
-    """Three cards that no longer share a partition have to say so, or the
-    reader compares a distance rung with a probability band by eye."""
+    """A card has to say which partition it is on, or the reader compares a
+    distance rung with a probability band by eye.  Since charter 150 only P0
+    serves a band table, so only P0 is named."""
 
     stages = C.collect_band_stages(conn)
     html = _render(stages)
     assert "P0＝离峰距离" in html
-    assert "P1＝声称概率" in html
+    assert "P1＝" not in html and "P0-M＝" not in html
     # The residual audit below used to be pinned to the claim ruler, and the
     # section said so by telling the reader the two tables could not be
     # compared row by row.  User ruling 2026-09-09 moved the audit onto each

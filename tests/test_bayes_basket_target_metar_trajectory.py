@@ -460,33 +460,18 @@ def test_conditioner_runs_on_the_prefix_evidence_clock() -> None:
     )
 
 
-def _ceiling_payload() -> dict:
-    return {
-        "schema": "bayes_basket_target_metar_ceiling_v1",
-        "trained_through": "2026-07-01",
-        "bins": {
-            "0": {"hours_from": 0.0, "hours_to": 10.0, "p_still_rose": 0.05},
-        },
-    }
-
-
-def test_the_proof_carries_no_clock_ceiling(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_the_proof_carries_no_clock_ceiling() -> None:
     """Charter 150: the ceiling is retired from the proof as from the envelope.
 
     It used to cut the mass above the running high to its fitted rate here
-    whenever the prefix's high was current.  With the switch on and an
-    artifact that would say 5%, the proof now leaves the root's own split
-    under the hard bound, current prefix or not.
+    whenever the prefix's high was current.  Now the proof is the hard bound
+    and its evidence record: a current prefix and a stale one leave the same
+    split, and the module no longer reaches for a ceiling at all.
     """
 
-    from bayes_basket_target import metar_ceiling
+    import bayes_basket_target.metar_trajectory as MT
 
-    monkeypatch.setattr(metar_ceiling, "CEILING_ENABLED", True)
-    monkeypatch.setattr(
-        metar_ceiling, "load_artifact", lambda path=None: _ceiling_payload()
-    )
+    assert not hasattr(MT, "apply_metar_ceiling")
     observations = _hourly_curve_observations()
     current = _compile(
         observations, artifact=_physical_tmax_artifact(),

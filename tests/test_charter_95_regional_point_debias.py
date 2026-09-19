@@ -5,10 +5,12 @@ Three things are load bearing here.  The fit IS the global layer's -- the
 same fitting function, the same resolver, the same window, half-life,
 terciles and minimum -- so the two cannot drift.  Every regional lane is
 fitted, CMA included, every day.  And, by the global layer's own rule that a
-calibration serves only once it beats the incumbent out of sample, both
-places a regional curve could be corrected in P1 stay switched off: each was
-measured, and each read worse, because P1 compares the curve against the
-day's own observations and they have already absorbed the offset.
+calibration serves only once it beats the incumbent out of sample, the place
+a regional curve could be corrected in P1 -- the joint likelihood's headroom
+covariate -- stays switched off: it was measured and read worse, because P1
+compares the curve against the day's own observations and they have already
+absorbed the offset.  (The path-prior arm left with the path prior,
+charter 150.)
 """
 from __future__ import annotations
 
@@ -21,7 +23,7 @@ from pathlib import Path
 import pytest
 
 from bayes_basket_target import native_ensemble_oos as O
-from bayes_basket_target import regional_path_prior as R
+from bayes_basket_target import regional_features as R
 from bayes_basket_target import regional_point_debias as D
 from bayes_basket_target import regional_point_lane as LANE
 
@@ -214,21 +216,18 @@ def test_the_regression_arm_off_is_the_raw_feature_byte_for_byte() -> None:
     assert raw["regional_calibration_bias_c"] is None
 
 
-def test_both_arms_are_off_and_the_readings_ride_with_the_switches() -> None:
+def test_the_feature_arm_is_off_and_its_reading_rides_with_the_switch() -> None:
     """The global layer's rule: a calibration serves once it beats the incumbent.
 
-    Path prior, 2026-09-07: debiasing before ``max(peak, running_high)``
-    cost +0.212 nat.  Regression, 2026-09-18: raising the remaining peak
-    before the headroom is read cost 0.0080 nat on the rows a regional run
-    reaches (95% -0.014..-0.002), 0.046 where the shift is 1.5C or more.
+    Regression, 2026-09-18: raising the remaining peak before the headroom is
+    read cost 0.0080 nat on the rows a regional run reaches (95%
+    -0.014..-0.002), 0.046 where the shift is 1.5C or more.
     """
 
-    assert D.ENABLED is False
     assert D.FEATURE_CALIBRATION is False
-    assert D.SCALE == 1.0
+    assert not hasattr(D, "apply_remaining_peak_debias"), "the path-prior arm is gone"
     source = (ROOT / "bayes_basket_target" / "regional_point_debias.py").read_text(
         encoding="utf-8")
-    assert "+0.212 nat" in source
     assert "-0.0080 [-0.014,-0.002]" in source
 
 
@@ -260,74 +259,6 @@ def test_every_feature_caller_hands_in_the_calibration() -> None:
         "a sample reads the calibration its own morning could have known"
     )
     assert B.FEATURE_CALIBRATION is D.FEATURE_CALIBRATION
-
-
-def test_the_path_prior_arm_stops_where_the_curve_stops_claiming_warming() -> None:
-    correction = {"bias_c": 1.87, "source": "station", "scope": "station",
-                  "train_days": 20, "fit_system_id": "JMA_MSM_POINT"}
-    ahead, note = D.apply_remaining_peak_debias(
-        33.2, curve_peak_c=33.2, correction=correction, enabled=True)
-    assert ahead == pytest.approx(35.07)
-    assert note["regional_point_debias_applied"] == "true"
-    behind, note = D.apply_remaining_peak_debias(
-        31.0, curve_peak_c=33.2, correction=correction, enabled=True)
-    assert behind == pytest.approx(31.0)
-    assert note["regional_point_debias_skip_reason"] == "PEAK_BEHIND"
-    missing, note = D.apply_remaining_peak_debias(
-        33.2, curve_peak_c=33.2, correction=None, enabled=True)
-    assert note["regional_point_debias_skip_reason"] == "NO_FITTED_OFFSET"
-
-
-PATH_ARTIFACT = {
-    "schema": R.SCHEMA,
-    "cells": {str(i): {"hours_from": 0.0, "hours_to": 1e9, "bias_c": 0.0,
-                       "sigma_c": 0.9, "sample_n": 200, "backed_off": False}
-              for i in range(10)},
-    "stations": {}, "systems": {},
-}
-
-
-def test_the_path_prior_arm_reaches_the_fusion_through_the_one_seam() -> None:
-    kwargs = dict(
-        station_id="RCSS", event_date="2026-09-11",
-        settlement_timezone="Asia/Taipei", artifact=PATH_ARTIFACT,
-        systems={"JMA_MSM_POINT"}, debias_artifact=FITTED,
-    )
-    on = R.resolve_serving_input(
-        [CURVE_RUN], as_of_utc="2026-09-11T04:30:00Z", debias_enabled=True, **kwargs)
-    assert on["remaining_peak_c"] == pytest.approx(36.2)
-    assert on["lineage"]["regional_path_prior_remaining_peak_raw_c"] == "33.2000"
-    assert on["lineage"]["regional_point_debias_source"] == "cycle_lead"
-    off = R.resolve_serving_input(
-        [CURVE_RUN], as_of_utc="2026-09-11T04:30:00Z", debias_enabled=False, **kwargs)
-    assert off["remaining_peak_c"] == pytest.approx(33.2)
-    assert not [k for k in off["lineage"] if k.startswith("regional_point_debias")], (
-        "a switched-off layer leaves the lineage it produced before it existed"
-    )
-    hrrr_run = dict(CURVE_RUN, ensemble_system_id="NCEP_HRRR_POINT")
-    hrrr = R.resolve_serving_input(
-        [hrrr_run], as_of_utc="2026-09-11T04:30:00Z", debias_enabled=True,
-        **{**kwargs, "systems": {"NCEP_HRRR_POINT"}})
-    assert hrrr["lineage"]["regional_point_debias_skip_reason"] == "NO_FITTED_OFFSET", (
-        "the path prior arm keeps its own admission list"
-    )
-
-
-def test_the_residual_table_is_fitted_on_the_input_production_serves() -> None:
-    if str(ROOT / "scripts") not in sys.path:
-        sys.path.insert(0, str(ROOT / "scripts"))
-    import fit_regional_path_prior as F  # noqa: PLC0415
-
-    assert F.DEBIAS_ENABLED is D.ENABLED
-    sample = {
-        "system_id": "JMA_MSM_POINT", "station_id": "RCSS",
-        "event_date": "2026-09-11", "hours_left": 7.0, "raw_peak_c": 33.2,
-        "curve_peak_c": 33.2, "running_c": 30.0, "actual_c": 34.0,
-        "run_age_hours": 4.5, "run_init_utc": "2026-09-11T00:00:00Z",
-        "lead_hours_to_local_day_start": -8.0,
-    }
-    assert F.anchored([sample], None)[0]["error_c"] == pytest.approx(0.8)
-    assert F.anchored([sample], FITTED)[0]["error_c"] == pytest.approx(34.0 - 36.2)
 
 
 def test_production_hands_the_calibration_to_the_feature_builder() -> None:

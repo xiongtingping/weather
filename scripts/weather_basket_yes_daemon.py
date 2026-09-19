@@ -503,8 +503,8 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     # stops far to their west, and MSM's domain begins at 120E.  The
     # transport serves only the run it currently holds, so a missed cycle
     # is gone, and an idle pass is a handful of indexed reads with no fetch
-    # at all.  Capture only: regional_path_prior.SERVING_SYSTEMS decides
-    # what actually serves.
+    # at all.  Capture only: the rows reach P1 as covariates of the joint
+    # observation likelihood (charter 150), like every regional lane's.
     #
     # Half its own cadence, not equal to it (2026-09-16).  At 21600s a
     # six-hourly product got exactly one attempt per cycle, so one missed

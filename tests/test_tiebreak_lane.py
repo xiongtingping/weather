@@ -460,7 +460,11 @@ def test_a_thin_ask_book_and_a_closed_market_are_refused(store) -> None:
     assert closed["refusals"] == ["market_not_accepting_orders"]
 
 
-def test_charter_141_cash_is_read_when_the_account_table_exists(store) -> None:
+def test_charter_141_cash_is_read_when_the_account_table_exists(store, monkeypatch) -> None:
+    # The lane re-reads the account once before refusing a stale row.  That
+    # re-read is a live capture; here it must find nothing, or the refusal
+    # this test pins depends on whatever an earlier test left reachable.
+    monkeypatch.setattr(lane, "capture_account_equity", lambda *a, **k: None)
     _seed(store)
     ensure_account_equity_table(store)
     # A stale read is a refusal, never a guess.

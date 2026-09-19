@@ -20,7 +20,6 @@ if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
 import calibration_dashboard as C  # noqa: E402
-import fit_metar_phase_hazard_artifact as H  # noqa: E402
 from bayes_basket_target import regional_point_lane as LANE  # noqa: E402
 
 
@@ -53,11 +52,6 @@ def _lane_db(tmp_path: Path) -> sqlite3.Connection:
 
 def test_the_section_reads_the_lane_p1_reads(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(C, "_now", lambda: C.datetime(2026, 9, 18, 16, 0, tzinfo=C.timezone.utc))
-    gate = tmp_path / "gate.json"
-    gate.write_text(json.dumps({"measured_at_utc": "2026-09-18T16:25:01Z", "systems": {
-        "CMA_GRAPES_GLOBAL_POINT": {"verdict": "REFUSE_STRADDLES_ZERO",
-                                    "by_station": {"ZUUU": {"delta": -0.25, "n": 66}}}}}))
-    monkeypatch.setattr(C, "REGIONAL_ADMISSION_GATE_JSON", gate)
     monkeypatch.setattr(C, "STATUS_JSON", tmp_path / "absent.json")
     monkeypatch.setattr(C, "REGIONAL_SWEEP_JSON", tmp_path / "absent_sweep.json")
     out = C.collect_regional_lanes(_lane_db(tmp_path))
@@ -68,9 +62,7 @@ def test_the_section_reads_the_lane_p1_reads(tmp_path, monkeypatch) -> None:
     assert zuuu["station_id"] == "ZUUU" and zuuu["runs"] == 2
     assert zuuu["run_age_hours"] == pytest.approx(10.0)
     assert zuuu["usable_now"] is True, "ten hours is inside the twelve-hour limit"
-    assert out["admission"]["systems"]["CMA_GRAPES_GLOBAL_POINT"]["verdict"] == (
-        "REFUSE_STRADDLES_ZERO"
-    )
+    assert "admission" not in out, "the path prior's gate retired with it (charter 150)"
 
 
 def test_every_likelihood_feature_has_a_reader_facing_name() -> None:

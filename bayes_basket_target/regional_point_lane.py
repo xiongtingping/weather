@@ -380,9 +380,9 @@ def _candidate_runs(
         # overlap and differing only in where the truncation starts -- and
         # some labels were pure fiction, 2026-09-13T18Z written by the pass
         # of 2026-09-15T07:54Z, a stamp 38 hours older than the forecast it
-        # carried.  ``regional_path_prior`` refuses a row whose
+        # carried.  ``regional_features`` refuses a row whose
         # ``as_of - run_init`` exceeds ``MAX_RUN_AGE_HOURS``, so a fresh
-        # forecast wearing a stale label reads as too old to serve, and the
+        # forecast wearing a stale label reads as too old to use, and the
         # surviving twin is the one truncated hardest.
         #
         # ``derived_run_init`` is the archive module's own answer and was

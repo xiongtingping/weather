@@ -40,16 +40,17 @@ strictly earlier days, every complete run P1 could read at <= 12h lead):
 
 *Where it serves: nowhere yet, by measurement.*  The global layer's rule is
 that a fitted calibration serves only once it has beaten the incumbent out
-of sample, and on the ruling day it did not.  Both places a regional curve
-reaches P1 compare it against today's own observations -- the path prior
-anchors on ``max(remaining_peak, running_high)``, the regression's headroom
-is ``remaining_peak - running_high`` -- so a lane that runs cold has already
-been caught by the day's reports, and a historical shift on top corrects the
-same offset twice.  Global members are calibrated before any observation of
-the day exists; P1 is the stage where one always does.  The readings are at
-``ENABLED`` (the path prior) and ``FEATURE_CALIBRATION`` (the regression).
-The fit is kept current every day regardless, so the gate can be asked
-again as the lanes accumulate: ``scripts/measure_regional_feature_calibration.py``.
+of sample, and on the ruling day it did not.  The place a regional curve
+reaches P1 -- the joint observation likelihood's headroom covariate,
+``remaining_peak - running_high`` (charter 150) -- compares it against
+today's own observations, so a lane that runs cold has already been caught
+by the day's reports, and a historical shift on top corrects the same offset
+twice.  Global members are calibrated before any observation of the day
+exists; P1 is the stage where one always does.  The arm is
+``FEATURE_CALIBRATION``; the fit is kept current every day regardless, so it
+can be re-measured against the joint likelihood as the lanes accumulate.
+(The path-prior arm this module also carried until 2026-09-19 left with the
+path prior itself.)
 
 *CMA's cycle labels.*  Rows the CMA lane wrote before 2026-09-16
 (``...derived_cycle_v1``) carry a cycle stamp that may be fiction while their
@@ -80,54 +81,6 @@ DEFAULT_REPLAY_TABLE = (
     / "regional_point_debias_replay_table.json"
 )
 
-#: The path-prior arm: debias the remaining peak before the
-#: ``max(peak, running_high)`` fusion.  Built, fitted, wired -- and measured
-#: not to serve.  On the strict as-of holdout the MSM's remaining-peak MAE
-#: falls 2.00 -> 1.50C (-25%), but on the TOO_EARLY window where the layer
-#: actually speaks, debiasing the MSM's curve costs +0.212 nat against fusing
-#: it raw (95% CI +0.024 to +0.400 over 46 station-days), argmax 61.8% ->
-#: 57.9%, monotone in the strength of the correction at every blend weight
-#: tried:
-#:
-#:     去偏强度        0.0     0.25     0.5     0.75     1.0
-#:     w=0.50       1.060    1.125   1.210    1.284   1.346   nat
-#:     w=0.30       1.198      --    1.328      --    1.419
-#:     w=0.15       1.359      --    1.458      --    1.516
-#:
-#: The fusion downstream already carries a debias, and a better one: it
-#: anchors on ``max(remaining_peak, running_high)``, so a cold curve is caught
-#: by what the station has already reported, and the anchor comes out at
-#: -0.10C with MAE 0.621.  Adding a correction in front of that max lifts an
-#: anchor that was already right: +0.554C, MAE 0.825.  The whole lower tail
-#: of the normal collapses onto the bucket holding the running high, so a
-#: slightly cold anchor costs almost nothing while a warm one pays log loss
-#: for every bucket the day never reaches.
-#:
-#: That reading was taken on the first fit (flat station offsets); the global
-#: form of 2026-09-18 serves the regression instead, where no such anchor
-#: exists.  ``PM_REGIONAL_POINT_DEBIAS=on`` is still the arm for the fusion.
-ENABLED = (
-    os.environ.get("PM_REGIONAL_POINT_DEBIAS", "off").strip().lower()
-    not in {"0", "off", "false", "no"}
-)
-
-#: Which systems the path-prior arm may debias.  HRRR was held out of that
-#: arm by ruling (2026-09-07) on a reading of the first fit: its offsets were
-#: per station and of opposite sign (KSFO +2.74C, KHOU -1.68C), and shrinking
-#: them toward the lane's pool -- the first fit's form -- destroyed the gain.
-#: The global form does not pool across stations at all, which is why the
-#: regression's calibration (``CALIBRATED_SYSTEMS``) covers HRRR.  This list
-#: governs only the switched-off arm.
-DEBIAS_SYSTEMS = frozenset(
-    part for part in (
-        os.environ.get(
-            "PM_REGIONAL_POINT_DEBIAS_SYSTEMS",
-            "JMA_MSM_POINT NCEP_NBM_POINT DWD_ICON_EU_POINT"
-            " CMA_GRAPES_GLOBAL_POINT",
-        ).replace(",", " ").split()
-    ) if part
-)
-
 #: The regression's arm: raise the regional curve's remaining peak by its
 #: fitted bias before the headroom feature is read off it -- only while that
 #: peak is still the curve's own maximum, the stretch the day-maximum residual
@@ -155,7 +108,9 @@ DEBIAS_SYSTEMS = frozenset(
 #: about the feature, for the reason the path prior's reading gave: by midday
 #: the running high already sits above a cold curve, so ``peak - high`` has
 #: absorbed today's share of the offset, and adding the historical offset
-#: counts it again.  ``PM_REGIONAL_FEATURE_CALIBRATION=on`` is the arm; the
+#: counts it again.  (Measured against the four-layer chain the joint
+#: likelihood replaced; re-measure against it before switching on.)
+#: ``PM_REGIONAL_FEATURE_CALIBRATION=on`` is the arm; the
 #: sample builder reads the same switch, so the regression the arm is scored
 #: with is fitted on the features it serves.
 FEATURE_CALIBRATION = (
@@ -174,9 +129,6 @@ CALIBRATED_SYSTEMS = frozenset(
         ).replace(",", " ").split()
     ) if part
 )
-
-#: How much of the fitted offset the path-prior arm serves.
-SCALE = float(os.environ.get("PM_REGIONAL_POINT_DEBIAS_SCALE", "1.0") or 1.0)
 
 #: Hours from run init to the local day's start, the global lead vocabulary
 #: extended below zero: a run issued during the local day is ``intraday``.
@@ -408,9 +360,6 @@ def resolve_correction(
     run's own forecast level, through the resolver P0 serves by.
 
     ``systems`` is the admission list; ``None`` means every regional lane.
-    The path-prior arm passes its own list, and a gate scoring a system not
-    yet admitted passes that system, for the reason
-    ``regional_path_prior.resolve_serving_input`` takes one.
     """
 
     from .native_ensemble_oos import _resolved_bias_c  # noqa: PLC0415
@@ -452,58 +401,11 @@ def resolve_correction(
     }
 
 
-def apply_remaining_peak_debias(
-    remaining_peak_c: float,
-    *,
-    curve_peak_c: float,
-    correction: Mapping[str, Any] | None,
-    enabled: bool | None = None,
-) -> tuple[float, dict[str, str]]:
-    """The path-prior arm: the corrected remaining peak, and a receipt.
-
-    Returns the peak untouched whenever the arm declines: switched off, no
-    fitted offset for this system and station, or a decision instant already
-    past the curve's own maximum -- where the remaining segment is a statement
-    about cooling, and the fusion's ``max`` with the running high is already
-    the anchor.
-    """
-
-    raw = float(remaining_peak_c)
-    note: dict[str, str] = {
-        "regional_point_debias_applied": "false",
-        "regional_point_debias_rule": RULE_VERSION,
-    }
-    if not (ENABLED if enabled is None else enabled):
-        note["regional_point_debias_skip_reason"] = "DISABLED"
-        return raw, note
-    if correction is None:
-        note["regional_point_debias_skip_reason"] = "NO_FITTED_OFFSET"
-        return raw, note
-    if raw < float(curve_peak_c) - 1e-9:
-        note["regional_point_debias_skip_reason"] = "PEAK_BEHIND"
-        return raw, note
-    bias = float(correction["bias_c"]) * SCALE
-    note = {
-        "regional_point_debias_applied": "true",
-        "regional_point_debias_rule": RULE_VERSION,
-        "regional_point_debias_bias_c": f"{bias:+.4f}",
-        "regional_point_debias_scale": f"{SCALE:.3f}",
-        "regional_point_debias_source": str(correction.get("source") or ""),
-        "regional_point_debias_scope": str(correction.get("scope") or ""),
-        "regional_point_debias_train_days": str(correction.get("train_days") or 0),
-        "regional_point_debias_fit_system_id": str(
-            correction.get("fit_system_id") or ""
-        ),
-        "regional_point_debias_raw_peak_c": f"{raw:.4f}",
-    }
-    return raw + bias, note
-
 
 __all__ = [
-    "CALIBRATED_SYSTEMS", "DEBIAS_SYSTEMS", "ENABLED", "FEATURE_CALIBRATION",
+    "CALIBRATED_SYSTEMS", "FEATURE_CALIBRATION",
     "LEAD_BUCKETS", "MAX_CORRECTION_C", "MIN_TRAIN_DAYS", "RULE_VERSION",
-    "SCALE", "SCHEMA", "UNRELIABLE_CYCLE_EXTRACTIONS", "WINDOW_DAYS",
-    "apply_remaining_peak_debias", "cycle_scope_key",
-    "fit_calibration", "lead_bucket", "load_artifact", "load_replay_table",
-    "replay_curve", "resolve_correction",
+    "SCHEMA", "UNRELIABLE_CYCLE_EXTRACTIONS", "WINDOW_DAYS",
+    "cycle_scope_key", "fit_calibration", "lead_bucket", "load_artifact",
+    "load_replay_table", "replay_curve", "resolve_correction",
 ]

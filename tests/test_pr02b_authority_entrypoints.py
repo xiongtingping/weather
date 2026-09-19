@@ -137,9 +137,6 @@ def test_only_three_user_domain_services_and_targetctl_remain() -> None:
         # template changes.  A file watch, not a clock, and a reader like the
         # render -- no resident has a turn to host it in.
         "com.weather.dashboard_reinflate.plist",
-        # The regional admission check asks whether a lane has come due,
-        # which is not on the decision cycle's critical path.
-        "com.weather.regional_admission_due_check.plist",
     ]
     # The board's write path.  Not a production owner -- it places nothing
     # and holds no state -- but the LIVE switch is drawn disabled while it is

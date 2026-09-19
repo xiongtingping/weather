@@ -1,39 +1,22 @@
-"""Charter 95 step two: the regional curve joins the temperature path's regression.
+"""The regional curve's two features, read once for fit and serve.
 
-Step one -- correct the curve, then blend it into the finished distribution --
-was measured twice on 2026-09-07 and refused twice, because the fusion it fed
-already anchors on ``max(remaining_peak, running_high)`` and that max is a
-better debias than any fitted constant.  Step two puts the curve where there is
-no such anchor to duplicate: inside the regression, as two features among the
-clock and the reports, so the fit decides what the curve is worth instead of a
-weight set by hand outside it.
-
-Measured on the walk-forward gate, every day fitted only on strictly earlier
-days, over 2948 samples a regional run actually reaches:
-
-    arm             hit    +-1     log     Brier   centre MAE
-    hard+clock     0.687  0.938  -0.811   0.392    0.577      (production today)
-    four_layer     0.715  0.937  -0.731   0.363    0.513
-    covered        0.697  0.901  -0.791   0.364    0.537      (same rows, no features)
-    +regional      0.726  0.935  -0.747   0.342    0.477      (same rows, features)
-    +regional_full 0.721  0.946  -0.699   0.345    0.477      (whole fleet, features)
-
-``covered`` against ``+regional`` is the clean ablation -- one training set,
-one difference -- and every metric improves.  ``+regional_full`` is what ships:
-restricting the fit to covered rows costs more on the pre-peak subset than the
-features gain there, so the features go in and the training set stays whole.
+Charter 95 step two put the regional curve inside the temperature path's
+regression as two features instead of blending it into the finished
+distribution (measured 2026-09-07: every metric improved on the clean
+ablation).  Charter 150 (2026-09-19) kept exactly that shape and moved it:
+the two features are covariates of P1's joint observation likelihood, the
+only place the regional lanes reach P1.
 """
 from __future__ import annotations
 
 import inspect
-import json
 import sys
 from pathlib import Path
 
 import pytest
 
-from bayes_basket_target import regional_path_prior as R
-from bayes_basket_target.metar_four_layer import feature_row
+from bayes_basket_target import p1_observation_likelihood as OL
+from bayes_basket_target import regional_features as R
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN = {
@@ -89,61 +72,35 @@ def test_absent_is_none_and_never_zero() -> None:
     assert got["regional_live_gap_c"] is None
 
 
-def test_the_feature_row_makes_a_caller_say_none_rather_than_forget() -> None:
-    signature = inspect.signature(feature_row)
+def test_the_feature_vector_makes_a_caller_say_none_rather_than_forget() -> None:
+    signature = inspect.signature(OL.feature_vector)
     for name in ("regional_headroom_c", "regional_live_gap_c"):
         assert name in signature.parameters
         assert signature.parameters[name].default is inspect.Parameter.empty, (
             "a default is how a feature goes quietly missing on one side"
         )
-    row = feature_row(
+    row = OL.feature_vector(
         remaining_hours=6.0, drawdown_from_high_c=0.0, momentum_c_per_hour=0.2,
         cloud_cover_fraction=0.3, precipitation_present=False,
         dewpoint_depression_c=8.0, wind_speed_mps=3.0, warming_so_far_c=4.0,
-        curve_shape_realized=0.6, regional_headroom_c=2.5,
-        regional_live_gap_c=None,
+        curve_shape_realized=0.6, root_bias_recent_c=None,
+        regional_headroom_c=2.5, regional_live_gap_c=None,
     )
     assert row["regional_headroom_c"] == 2.5
     assert row["regional_live_gap_c"] is None
 
 
-def test_the_fitter_separates_the_features_from_the_training_set() -> None:
-    if str(ROOT / "scripts") not in sys.path:
-        sys.path.insert(0, str(ROOT / "scripts"))
-    import fit_metar_phase_hazard_artifact as F  # noqa: PLC0415
-
-    assert F.REGIONAL_FEATURES == (
-        "regional_headroom_c", "regional_live_gap_c")
-    source = (ROOT / "scripts" / "fit_metar_phase_hazard_artifact.py").read_text(
-        encoding="utf-8")
-    assert "if args.covered_only:" in source, (
-        "--regional must not imply --covered-only: the ablation and the "
-        "shipping fit are different runs"
-    )
-
-
-def test_the_walk_forward_gate_scores_the_ablation_and_the_shipping_arm() -> None:
-    if str(ROOT / "scripts") not in sys.path:
-        sys.path.insert(0, str(ROOT / "scripts"))
-    import evaluate_metar_four_layer_walk_forward as W  # noqa: PLC0415
-
-    assert W.REGIONAL_ARMS == ("covered", "+regional", "+regional_full")
-    assert "regional_headroom_c" in inspect.getsource(W.regional_artifacts)
+def test_both_features_are_covariates_of_the_joint_likelihood() -> None:
+    assert "regional_headroom_c" in OL.PHASE_FEATURES
+    assert {"regional_headroom_c", "regional_live_gap_c"} <= set(OL.FULL_FEATURES)
 
 
 def test_the_shipped_artifact_declares_the_features_it_was_fitted_with() -> None:
-    path = (ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
-            / "metar_phase_hazard_artifact.json")
-    if not path.exists():
-        pytest.skip("hazard artifact not fitted here")
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload = OL.load_artifact()
+    if payload is None:
+        pytest.skip("joint likelihood not fitted here")
     assert "regional_headroom_c" in payload["phase_features"]
-    assert "regional_headroom_c" in payload["full_features"]
-    assert payload["covered_only"] is False, "the fit keeps the whole fleet"
-    coefficient = payload["phase"]["coefficients"]["regional_headroom_c"]
-    assert coefficient > 0.2, (
-        "a degree the model still claims should raise the odds the day rises"
-    )
+    assert "regional_live_gap_c" in payload["full_features"]
     # Absent rows fall back to the fleet mean, not to zero.
     assert payload["feature_fallbacks"]["regional_headroom_c"] != 0.0
 

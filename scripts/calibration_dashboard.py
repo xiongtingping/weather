@@ -1945,7 +1945,6 @@ def collect_regional_usage(conn: sqlite3.Connection) -> dict[str, Any]:
     try:
         from bayes_basket_target import regional_point_debias as rpd  # noqa: PLC0415
         out["arms"] = {
-            "point_debias": bool(getattr(rpd, "ENABLED", False)),
             "feature_calibration": bool(getattr(rpd, "FEATURE_CALIBRATION", False)),
             "feature_calibration_systems": sorted(getattr(rpd, "CALIBRATED_SYSTEMS", ()) or ()),
         }
@@ -6698,97 +6697,8 @@ def collect_center_width(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 int(last[4]) if last else (int(active[3]) if active else 0)
             ),
             **_evidence_clock(conn, stage),
-            **_taf_cell_reading(conn, stage),
         })
     return rows
-
-
-TAF_CELL_LABELS = {
-    "same": "TAF 与中心同档",
-    "adjacent": "差 1 档",
-    "far": "差 2 档及以上",
-    "none": "TAF 不带 TX",
-}
-
-
-def _taf_cell_reading(conn: sqlite3.Connection, stage: str) -> dict[str, Any]:
-    """Where each TAF width cell stands, for the stage that serves them.
-
-    The census comes from the newest fit journal row -- the activated table
-    row is only rewritten when the served numbers change, and every cell
-    still accumulating changes nothing -- and what serves comes from the
-    activated row.  A census written under a retired cell rule is not
-    shown as this rule's progress: the direction cells counted different
-    days.
-    """
-
-    try:
-        from bayes_basket_target.center_width_store import (
-            MIN_QUALIFYING_CELLS,
-            MIN_QUALIFYING_DAYS,
-            TAF_CELL_NAMES,
-            TAF_CELL_RULE,
-            TAF_CELL_STAGES,
-        )
-    except ImportError:
-        return {}
-    if stage not in TAF_CELL_STAGES:
-        return {}
-    census: dict[str, Any] = {}
-    fitted_at = None
-    try:
-        row = conn.execute(
-            "SELECT evidence_json, fitted_at_utc"
-            " FROM calibration_center_width_fit_journal"
-            " WHERE stage=? ORDER BY fitted_at_utc DESC LIMIT 1",
-            (stage,),
-        ).fetchone()
-        if row and row[0]:
-            census = json.loads(row[0]).get("taf_cells") or {}
-            fitted_at = row[1]
-    except (sqlite3.OperationalError, ValueError, TypeError, AttributeError):
-        census = {}
-    served: dict[str, Any] = {}
-    try:
-        row = conn.execute(
-            "SELECT taf_cells_json FROM calibration_center_width_table"
-            " WHERE activated=1 AND stage=?",
-            (stage,),
-        ).fetchone()
-        if row and row[0]:
-            served = json.loads(row[0])
-    except (sqlite3.OperationalError, ValueError, TypeError):
-        served = {}
-    cells = []
-    for name in TAF_CELL_NAMES:
-        entry = census.get(name) if isinstance(census, dict) else None
-        entry = entry if isinstance(entry, dict) and entry.get("rule") == TAF_CELL_RULE else {}
-        cell = served.get(name) if isinstance(served, dict) else None
-        cells.append({
-            "name": name,
-            "label": TAF_CELL_LABELS.get(name, name),
-            "day_count": entry.get("day_count"),
-            "cell_count": entry.get("cell_count"),
-            "state": entry.get("state"),
-            "forward_nll_gain": entry.get("forward_nll_gain_vs_pooled"),
-            "candidate_taf_delta_c": entry.get("candidate_taf_delta_c"),
-            "candidate_width_lambda": entry.get("candidate_width_lambda"),
-            # (anchor shift, shift along the TAF, width) when served
-            "served": (
-                [float(value) for value in cell]
-                if isinstance(cell, list) and len(cell) == 3 else None
-            ),
-        })
-    return {
-        "taf_cells": {
-            "rule": TAF_CELL_RULE,
-            "measured": any(cell["state"] for cell in cells),
-            "fitted_at_utc": fitted_at,
-            "min_days": MIN_QUALIFYING_DAYS,
-            "min_cells": MIN_QUALIFYING_CELLS,
-            "cells": cells,
-        }
-    }
 
 
 def _refit_countdown(serving_days: int) -> dict[str, Any]:
@@ -12268,13 +12178,6 @@ REGIONAL_SWEEP_JSON = (
     ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
     / "regional_hires_historical_oos.json"
 )
-# The path prior's admission gate, as last asked
-# (``scripts/measure_regional_serving_value.py --out``): one verdict per
-# system, read here and never recomputed.
-REGIONAL_ADMISSION_GATE_JSON = (
-    ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
-    / "regional_admission_gate.json"
-)
 # The regional point systems and how each one's archive behaves.
 # ``backfillable`` decides how a stale lane reads: the NOAA buckets and
 # the RISH mirror keep history, so a stale lane there is a delay; the DWD
@@ -12547,7 +12450,7 @@ def collect_regional_lanes(conn: sqlite3.Connection) -> dict[str, Any]:
 
     # The bias calibration (2026-09-18, global form): the station scope's
     # fitted shift per lane, read off the served artifact.  Fitted daily,
-    # served nowhere -- both switches are off by measurement.
+    # served nowhere -- the feature arm is off by measurement.
     calibration: dict[str, Any] = {}
     try:
         from bayes_basket_target import regional_point_debias as rpd  # noqa: PLC0415
@@ -12556,7 +12459,6 @@ def collect_regional_lanes(conn: sqlite3.Connection) -> dict[str, Any]:
             "trained_through": artifact.get("trained_through"),
             "rule": artifact.get("rule_version"),
             "feature_arm": bool(rpd.FEATURE_CALIBRATION),
-            "path_prior_arm": bool(rpd.ENABLED),
             "stations": {
                 system: {
                     station: {
@@ -12571,17 +12473,9 @@ def collect_regional_lanes(conn: sqlite3.Connection) -> dict[str, Any]:
         }
     except Exception:  # noqa: BLE001 - a missing fit is a blank, not a crash
         calibration = {}
-    admission: dict[str, Any] = {}
-    if REGIONAL_ADMISSION_GATE_JSON.is_file():
-        try:
-            admission = json.loads(REGIONAL_ADMISSION_GATE_JSON.read_text())
-        except (ValueError, OSError):
-            admission = {}
-    try:
-        from bayes_basket_target import regional_path_prior as rpp  # noqa: PLC0415
-        max_age = float(rpp.MAX_RUN_AGE_HOURS)
-    except Exception:  # noqa: BLE001
-        max_age = 12.0
+    from bayes_basket_target.regional_features import (  # noqa: PLC0415
+        MAX_RUN_AGE_HOURS as max_age,
+    )
     for system_id, entries in per_station.items():
         fits = (calibration.get("stations") or {}).get(system_id) or {}
         for entry in entries:
@@ -12591,7 +12485,7 @@ def collect_regional_lanes(conn: sqlite3.Connection) -> dict[str, Any]:
             entry["in_roster"] = entry["station_id"] in rosters.get(system_id, set())
             age = entry.get("run_age_hours")
             # Whether a decision now could read this run at all: the P1
-            # feature and the path prior both refuse a run older than this.
+            # covariates refuse a run older than this.
             entry["usable_now"] = age is not None and age <= max_age
         entries.sort(key=lambda e: e["station_id"])
     return {
@@ -12601,7 +12495,6 @@ def collect_regional_lanes(conn: sqlite3.Connection) -> dict[str, Any]:
         },
         "max_run_age_hours": max_age,
         "calibration": calibration,
-        "admission": admission,
     }
 
 
@@ -17570,51 +17463,6 @@ function centerWidth(){
         "。日期按每天攒一天算，是<b>最早</b>——格子不够的日子不算，" +
         "而服务版本一动，进度整条清零重来（见下方证据时钟）。"}</div></div>`;
   };
-  // Charter 57's cells (user ruling, 2026-09-13: 看板加 TAF 格).  The two
-  // numbers above serve every P0-M day; a cell replaces them on the days
-  // the TAF sits that far from the model centre, once it clears the same
-  // hurdles, with its shift turned toward the forecaster.
-  const tafCells = r => {
-    const t = r.taf_cells;
-    if(!t) return "";
-    const stateText = {ACCUMULATING: "攒证据中", ADMITTED: "前瞻胜出",
-      REFUSED_FORWARD: "前瞻没赢"};
-    const lines = (t.cells || []).map(c => {
-      const served = c.served;
-      const pill = served ? `<span class="pill green">服务中</span>`
-        : c.state ? `<span class="pill ${c.state === "REFUSED_FORWARD"
-            ? "green" : "amber"}">${h(stateText[c.state] || c.state)}</span>`
-        : `<span class="pill amber">未读</span>`;
-      const count = (v, need, unit) => v == null ? "—" :
-        `<b>${v.toLocaleString()}</b>/${need}${unit}`;
-      const detail = served
-        ? `δ ${served[0] >= 0 ? "+" : ""}${served[0].toFixed(2)} ` +
-          `± ${served[1].toFixed(2)}（朝 TAF） · λ ${served[2].toFixed(3)}`
-        : c.forward_nll_gain == null ? ""
-        : `候选 δ ±${Math.abs(c.candidate_taf_delta_c).toFixed(2)} · ` +
-          `λ ${c.candidate_width_lambda.toFixed(3)} · 收益 ` +
-          c.forward_nll_gain.toFixed(4);
-      return `<tr style="white-space:nowrap"><td>${h(c.label)}</td>
-        <td style="text-align:right">${count(c.day_count, t.min_days, " 天")}</td>
-        <td style="text-align:right">${count(c.cell_count, t.min_cells, " 格")}</td>
-        <td>${pill}</td></tr>${detail ? `<tr><td colspan="4" class="muted"
-        style="font-size:11px;padding-top:0">${detail}</td></tr>` : ""}`;
-    }).join("");
-    return `<div style="margin-top:12px;border-top:1px solid
-      rgba(128,128,128,.25);padding-top:8px">
-      <b>TAF 格</b> <span class="muted" style="font-size:11.5px">按 TAF 最高温离
-      模型中心几档分；某格准入后，那类日子改用该格自己的一对数，位移朝 TAF 那一侧。
-      没准入就照用上面两个数。</span>
-      ${t.measured ? `<div style="overflow-x:auto"><table
-        style="margin-top:6px;font-size:12px"><thead><tr><th>格</th><th>天</th>
-        <th>格子</th><th>状态</th></tr></thead><tbody>${lines}</tbody></table></div>
-      <div class="muted" style="font-size:11.5px">每格要 ${t.min_days} 天且
-        ${t.min_cells} 个格子、并在前瞻上赢过上面那对数才准入；上面两个数攒够之前，
-        格只计数不评分。</div>`
-      : `<div class="muted" style="font-size:11.5px;margin-top:4px">
-        距离档规则还没跑过一次拟合，下一轮拟合后出第一份计数。</div>`}
-    </div>`;
-  };
   const cards = rows.map(r => `<div class="card">
     <div style="display:flex;align-items:center;gap:8px">
       <span class="dot ${r.health}"></span><b>${h(r.stage)}</b>
@@ -17642,7 +17490,6 @@ function centerWidth(){
       这两个数不是缺数据，是这一层<b>此刻真正在服务的值</b>：没有生效行时
       运行时原样放行分布（δ=0、λ=1），分布一点没被动过。</div>` : ""}
     ${countdown(r)}
-    ${tafCells(r)}
     <div class="muted" style="margin-top:10px">
       证据 ${r.serving_days} 天${r.min_qualifying_days
         ? " / 需 " + r.min_qualifying_days + " 天" : ""}${r.serving_cells ?
@@ -20228,23 +20075,16 @@ function p1PathSkill(){
 function regionalBoard(){
   const R = D.regional || {}, U = D.regional_usage || {};
   const A = U.arms || {};
-  const G = R.admission || {}, GS = G.systems || {};
   const onoff = v => `<span class="pill ${v ? "green" : ""}">${v ? "开" : "关"}</span>`;
   const n2 = v => v == null ? "—" : Number(v).toFixed(2);
   const sgn = v => v == null ? "—" : (v > 0 ? "+" : "") + Number(v).toFixed(2);
-  const gateWord = {ADMIT:["green","准入"], REFUSE_STRADDLES_ZERO:["","区间跨零·不准入"],
-    REFUSE_WORSE:["red","显著更差·不准入"], NO_COMPARABLE_PREFIX:["","没有可比前缀"]};
-  const gateCell = sid => { const g = GS[sid]; if(!g) return "未测";
-    const [t, w] = gateWord[g.verdict] || ["", g.verdict];
-    return `<span class="pill ${t}">${w}</span> <span class="mono muted">${sgn(g.clustered_delta)} [${sgn(g.ci_low)}, ${sgn(g.ci_high)}] · ${g.station_days ?? 0} 站日</span>`; };
   const lanes = (R.lanes || []).map(l => `<tr><td><b>${h(l.label)}</b></td><td>${h(l.region)}</td>
     <td class="mono">${l.station_count || 0}/${l.roster_count || 0}</td>
     <td class="mono">${(l.row_count || 0).toLocaleString()}</td>
     <td class="mono"><span class="pill ${l.health}">${hours(l.last_capture_age_hours)}</span>${l.note ? ` <span class="muted">${h(l.note)}</span>` : ""}</td>
     <td class="mono">${hours(l.run_age_hours)}</td>
     <td class="mono">${U.p0_fusion_excluded && U.p0_fusion_excluded[l.system_id] ? "不入" : "可入"}</td>
-    <td class="mono">${(U.p1_feature_systems || {})[l.system_id] || 0} 站</td>
-    <td>${gateCell(l.system_id)}</td></tr>`).join("");
+    <td class="mono">${(U.p1_feature_systems || {})[l.system_id] || 0} 站</td></tr>`).join("");
   const labels = Object.fromEntries((R.lanes || []).map(l => [l.system_id, l.label]));
   const maxAge = R.max_run_age_hours ?? 12;
   const stationRows = Object.entries(R.stations || {}).flatMap(([sid, list]) => (list || []).map(e => `<tr>
@@ -20252,8 +20092,7 @@ function regionalBoard(){
     <td class="mono">${whenZ(e.last_run_init)}</td>
     <td class="mono"><span class="pill ${e.usable_now ? "green" : "amber"}">${hours(e.run_age_hours)}</span></td>
     <td class="mono">${hours(e.last_capture_age_hours)}</td><td class="mono">${e.runs ?? "—"}</td>
-    <td class="mono">${sgn(e.calibration_bias_c)}${e.calibration_train_days ? ` <span class="muted">(${e.calibration_train_days} 天)</span>` : ""}</td>
-    <td class="mono">${GS[sid] && GS[sid].by_station && GS[sid].by_station[e.station_id] ? sgn(GS[sid].by_station[e.station_id].delta) + ` <span class="muted">(n=${GS[sid].by_station[e.station_id].n})</span>` : "—"}</td></tr>`)).join("");
+    <td class="mono">${sgn(e.calibration_bias_c)}${e.calibration_train_days ? ` <span class="muted">(${e.calibration_train_days} 天)</span>` : ""}</td></tr>`)).join("");
   const bySystem = {};
   (R.verdicts || []).forEach(v => { const k = v.system_label || v.system_id; bySystem[k] = bySystem[k] || [0, 0]; bySystem[k][1] += 1; if(v.passes_all_three) bySystem[k][0] += 1; });
   const verdicts = Object.entries(bySystem).map(([k, [p, n]]) => `<span class="pill ${p ? "green" : ""}">${h(k)}：${p}/${n} 站过三道门</span>`).join(" ");
@@ -20265,20 +20104,19 @@ function regionalBoard(){
   <p class="sub">区域模型（JMA MSM、HRRR、NBM、ICON-EU、CMA GRAPES）是单点、高分辨率的<b>确定性</b>预报（单条曲线，不是成员分布）。
     <b>它们不进 P0 的融合</b>（第 99 条起归 P1）。第 150 条（2026-09-19）起在 P1 里<b>只作联合似然的协变量</b>：
     「剩余时段预报最高 − 已报最高」和「此刻实测 − 模型此刻」，所有采到的区域模型都能进，只读起报不超过 ${maxAge} 小时的 run；
-    曾经直接给分布塑形的「区域路径先验」<b>已退役</b>（下面的准入复测是退役前的记录）。</p>
+    曾经直接给分布塑形的「区域路径先验」<b>已退役，代码已删除</b>。</p>
   <div class="card" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
     <b>开关</b> 区域路径先验 <span class="pill">已退役（第 150 条）</span>
     · 特征校准 ${onoff(A.feature_calibration)}
     <span style="flex:1"></span><span class="muted">过去 18 小时 ${U.p1_stations || 0} 站的 P1：联合似然回执 ${
       Object.entries(U.p1_path_prior_states || {}).map(([k, v]) => h(k) + " " + v).join(" · ")}</span></div>
   <div class="scroll" style="margin-top:10px"><table><thead><tr><th>区域模型</th><th>区域</th><th>站（有数/名册）</th><th>行数</th>
-    <th>最近采集</th><th>最新 run 距今</th><th>P0 融合</th><th>P1 协变量在用</th><th>路径先验准入复测（已退役，Δ对数损失）</th></tr></thead><tbody>${lanes}</tbody></table></div>
+    <th>最近采集</th><th>最新 run 距今</th><th>P0 融合</th><th>P1 协变量在用</th></tr></thead><tbody>${lanes}</tbody></table></div>
   <div style="margin-top:8px"><span class="muted">P1 联合似然的区域协变量来源：</span>${feats || "—"}</div>
-  <div style="margin-top:6px"><span class="muted">路径先验准入复测（退役前）：</span>${G.measured_at_utc ? `${whenZ(G.measured_at_utc)} · 窗口 ${h((G.window || {}).from)}..${h((G.window || {}).through)}` : "没有记录"}</div>
-  <div style="margin-top:6px"><span class="muted">偏差校准（全球形式，每日重拟，两个服务开关都关）：</span>训练截至 ${h(C.trained_through || "—")}</div>
-  <details class="note" open><summary>逐站：最新 run、能不能用、偏差校准、准入复测</summary>
+  <div style="margin-top:6px"><span class="muted">偏差校准（全球形式，每日重拟，特征校准开关关着）：</span>训练截至 ${h(C.trained_through || "—")}</div>
+  <details class="note" open><summary>逐站：最新 run、能不能用、偏差校准</summary>
     <div class="scroll" style="max-height:420px"><table><thead><tr><th>区域模型</th><th>站</th><th>最新 run 起报</th>
-      <th>距今（≤${maxAge}h 可用）</th><th>最近采集</th><th>run 数</th><th>偏差校准（正＝模型偏冷）</th><th>准入复测 逐站 Δ</th></tr></thead>
+      <th>距今（≤${maxAge}h 可用）</th><th>最近采集</th><th>run 数</th><th>偏差校准（正＝模型偏冷）</th></tr></thead>
       <tbody>${stationRows}</tbody></table></div></details>
   <div style="margin-top:6px"><span class="muted">样本外逐站三道门（08-28 扫描，CRPS/Brier/NLL 都赢现任；CMA 未参加）：</span>${verdicts || "—"}</div>
   <div style="margin-top:6px"><span class="muted">样本外准备度：</span>${ready || "—"}</div>`;

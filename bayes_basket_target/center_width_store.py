@@ -148,31 +148,6 @@ CENTER_WIDTH_VETO_MIN_CELLS = 60
 # them, and serving must use the same number or the correction lands
 # somewhere the measurement never looked.
 EDGE_WIDTH_C = 2.0
-# The TAF-conditional lane (user ruling, 2026-08-25, charter 57), keyed on
-# how FAR the forecaster's TX sits from the model centre, in rungs of the
-# station's own ladder (user ruling, 2026-09-13).  The first version keyed on
-# direction, and direction is the wrong axis: measured 2026-09-13 on 397
-# bias-clean P0 decisions at TAF arrival, the TX bucket settles 1.5x as often
-# as P0 prices it one rung out and 2.3x as often two or more rungs out, with
-# the warm and cold sides reading the same at each distance (+1: 22%->33%
-# warm, 21%->30% cold; >=2: 9.7%->26% warm, 9.7%->21% cold), while P0's own
-# mode +-1 core prices 58% and settles 43% on the far days.  A direction cell
-# averaged near and far days together and split each distance in two, so no
-# cell ever reached the layer's hurdles.
-#
-# Direction is not discarded: it is the sign the cell's shift is served
-# along.  A cell's delta is fitted and served as ``sign(TX - centre) * delta``
-# -- a far cell that learns "move half a degree toward the forecaster" moves
-# a cold day colder and a warm day warmer -- and its lambda is unsigned.
-# ``none`` is the stations whose TAF carries no TX, a regime of its own.
-# Only P0-M serves these cells, so only P0-M fits them.
-TAF_CELL_NAMES = ("same", "adjacent", "far", "none")
-TAF_CELL_RULE = "taf_gap_rungs_signed_shift_v2"
-TAF_CELL_STAGES = ("P0-M",)
-# |TX - centre| / rung below this is the centre's own bucket; below the
-# second it is the neighbouring rung; beyond it, two or more rungs out.
-TAF_ADJACENT_RUNGS = 0.5
-TAF_FAR_RUNGS = 1.5
 # The width floor, in rungs of the station's own vocabulary (charter 53(b):
 # a rule counted in rungs is synonymous across units and is not converted).
 # 1.44 is where the measurement puts the break -- below it the served claim's
@@ -219,149 +194,6 @@ WINDOW_TERM_WEIGHT = float(
 if not WINDOW_TERM_WEIGHT >= 0.0:
     raise RuntimeError(f"invalid centre-width window term weight: {WINDOW_TERM_WEIGHT}")
 MAX_BUCKET_NLL_REGRESSION = 0.002
-
-
-def taf_cell_for_gap(
-    gap_c: float | None, rung_c: float | None
-) -> tuple[str | None, int]:
-    """``(cell, sign)`` for a TAF-vs-centre gap on a ladder of ``rung_c``.
-
-    One definition shared by the fit and the serve: a threshold that
-    drifted between them would train one regime and serve another.  A gap
-    of None is a TAF with no TX -- the ``none`` cell.  A ladder whose rung
-    cannot be read classifies as nothing (cell None), which serves the pooled
-    pair: guessing a distance would put the day in a cell it was never
-    measured in.  ``sign`` is the direction the cell's shift is served along.
-    """
-
-    if gap_c is None:
-        return "none", 0
-    try:
-        rung = float(rung_c) if rung_c is not None else 0.0
-        gap = float(gap_c)
-    except (TypeError, ValueError):
-        return None, 0
-    if not (math.isfinite(gap) and math.isfinite(rung) and rung > 0.0):
-        return None, 0
-    sign = 1 if gap > 0.0 else (-1 if gap < 0.0 else 0)
-    distance = abs(gap) / rung
-    if distance < TAF_ADJACENT_RUNGS:
-        return "same", sign
-    if distance < TAF_FAR_RUNGS:
-        return "adjacent", sign
-    return "far", sign
-
-
-def serve_taf_cell(
-    center_width: tuple[float, float, str] | None,
-    taf_cells: Mapping[str, Sequence[float]] | None,
-    *,
-    tx_c: float | None,
-    root_center_c: float | None,
-    key_centers_c: Sequence[float] | None,
-) -> tuple[tuple[float, float, str] | None, str | None]:
-    """The width pair a P0-M decision serves, and the cell that chose it.
-
-    A stored cell is ``(anchor_delta_c, taf_delta_c, width_lambda)``: the
-    shift the pooled incumbent carried when the cell was fitted, the cell's
-    own shift along the TAF's direction, and the absolute lambda.  A cell
-    that is not admitted -- or a day this rule cannot classify -- leaves the
-    pooled pair serving.  The name is returned whenever the day was
-    classified, so the lineage says which cell a day belonged to even while
-    that cell is still accumulating.
-    """
-
-    if center_width is None or not taf_cells:
-        return center_width, None
-    try:
-        rung = (
-            bucket_rung_width_c([float(value) for value in key_centers_c])
-            if key_centers_c is not None and len(key_centers_c) >= 2
-            else None
-        )
-    except (TypeError, ValueError):
-        rung = None
-    if tx_c is not None and root_center_c is None:
-        return center_width, None
-    gap = None if tx_c is None else float(tx_c) - float(root_center_c)
-    name, sign = taf_cell_for_gap(gap, rung)
-    if name is None:
-        return center_width, None
-    cell = taf_cells.get(name)
-    if cell is None or len(cell) != 3:
-        return center_width, name
-    delta = float(cell[0]) + sign * float(cell[1])
-    delta = max(-MAX_ABS_SHIFT_C, min(MAX_ABS_SHIFT_C, delta))
-    return (round(delta, 4), float(cell[2]), center_width[2]), name
-
-
-def _annotate_taf_cells(
-    conn: sqlite3.Connection, cells: Sequence[Mapping[str, Any]]
-) -> None:
-    """Stamp each cell with the TAF cell and sign its decision served under.
-
-    The TX is the one the served row itself recorded (``taf_observed_tx_c``,
-    "NONE" when the revision carried no TX), so the fit classifies each day
-    exactly the way serving did.  A row that recorded no TX field at all
-    falls back to the latest TX-carrying revision both issued and received by
-    the decision -- knowable, not merely issued.
-    """
-
-    cache: dict[tuple[str, str, str], float | None] = {}
-    for cell in cells:
-        center = cell.get("model_center_c")
-        recorded = cell.get("taf_observed_tx_c")
-        if recorded is not None:
-            try:
-                tx = None if recorded in ("", "NONE") else float(recorded)
-            except (TypeError, ValueError):
-                tx = None
-        else:
-            decided = str(cell.get("decision_at_utc") or "")
-            key = (str(cell["station_id"]), str(cell["event_date"]), decided)
-            if key not in cache:
-                row = conn.execute(
-                    "SELECT tx_c FROM calibration_forward_taf_capture"
-                    " WHERE station_id=? AND event_date=? AND tx_available=1"
-                    " AND issued_at_utc<=? AND received_at_utc<=?"
-                    " ORDER BY issued_at_utc DESC LIMIT 1",
-                    (*key, decided),
-                ).fetchone()
-                cache[key] = (
-                    None if row is None or row[0] is None else float(row[0])
-                )
-            tx = cache[key]
-        try:
-            rung = bucket_rung_width_c(
-                [float(value) for value in cell["key_centers_c"]]
-            )
-        except (KeyError, TypeError, ValueError):
-            rung = None
-        if tx is not None and center in (None, "", "NONE"):
-            name, sign = None, 0
-        else:
-            name, sign = taf_cell_for_gap(
-                None if tx is None else tx - float(center), rung
-            )
-        cell["taf_cell"] = name  # type: ignore[index]
-        cell["taf_sign"] = sign  # type: ignore[index]
-
-
-def _taf_cell_census(
-    cells: Sequence[Mapping[str, Any]],
-) -> dict[str, dict[str, Any]]:
-    """Days and cells per TAF cell, for a fit that is not scoring them yet."""
-
-    census: dict[str, dict[str, Any]] = {}
-    for name in TAF_CELL_NAMES:
-        group = [cell for cell in cells if cell.get("taf_cell") == name]
-        census[name] = {
-            "rule": TAF_CELL_RULE,
-            "day_count": len({cell["event_date"] for cell in group}),
-            "cell_count": len(group),
-            "state": "ACCUMULATING",
-        }
-    return census
 
 
 _TABLE_DDL = (
@@ -586,7 +418,6 @@ def _check_stage(stage: str) -> str:
 
 def center_width_sha256(
     *, stage: str, delta_c: float, width_lambda: float,
-    taf_cells: Mapping[str, Sequence[float]] | None = None,
     sigma_floor_rungs: float = 0.0,
     width_tiers: Mapping[str, Any] | None = None,
 ) -> str:
@@ -596,16 +427,9 @@ def center_width_sha256(
         "delta_c": round(float(delta_c), 6),
         "width_lambda": round(float(width_lambda), 6),
     }
-    # Conditional so a table with no cells keeps its historical digest --
+    # Conditional so a table without a floor keeps its historical digest --
     # the pinned-version contract must keep resolving rows written before
-    # the lane existed.
-    if taf_cells:
-        payload["taf_cell_rule"] = TAF_CELL_RULE
-        payload["taf_cells"] = {
-            str(name): [round(float(value), 6) for value in cell]
-            for name, cell in sorted(taf_cells.items())
-        }
-    # Conditional for the same reason, and it is the floor that makes the
+    # the floor existed -- and it is the floor that makes the
     # scalars mean what they mean: 0.725 under a floor is a different
     # arithmetic from 0.725 without one, and an artifact pinning the digest
     # must be served the pair it was scored with.
@@ -825,60 +649,6 @@ def load_center_width_tiers(
         "boundaries_rungs": [float(b) for b in tiers.get("boundaries_rungs") or WIDTH_TIER_BOUNDARIES_RUNGS],
         "lambdas": [float(v) for v in tiers["lambdas"]],
     }
-
-
-def load_center_width_cells(
-    conn: sqlite3.Connection,
-    *,
-    stage: str,
-    table_sha256: str | None = None,
-    as_of_utc: str | None = None,
-) -> dict[str, tuple[float, float, float]] | None:
-    """The active (or pinned) table's TAF-conditional cells, if any.
-
-    Same resolution and fail-closed rules as ``load_center_width``; None
-    means the table serves pooled-only, which is every table written
-    before the lane existed and every fit whose cells are still
-    accumulating.
-    """
-
-    stage_id = _check_stage(stage)
-    if table_sha256 is not None and _pinned_center_width_retired(
-        conn, table_sha256=table_sha256, as_of_utc=as_of_utc
-    ):
-        return None
-    try:
-        if table_sha256 is None:
-            row = conn.execute(
-                "SELECT taf_cells_json"
-                " FROM calibration_center_width_table"
-                " WHERE activated=1 AND stage=?",
-                (stage_id,),
-            ).fetchone()
-        else:
-            row = conn.execute(
-                "SELECT taf_cells_json"
-                " FROM calibration_center_width_table"
-                " WHERE center_width_sha256=?",
-                (str(table_sha256),),
-            ).fetchone()
-    except sqlite3.OperationalError:
-        return None
-    if row is None or not row[0]:
-        return None
-    try:
-        cells = json.loads(str(row[0]))
-    except (TypeError, ValueError):
-        return None
-    # Three numbers per cell under the distance rule.  A two-number cell is
-    # the retired direction rule's -- none was ever admitted, and reading one
-    # as a distance cell would serve it on days it was never measured on.
-    return {
-        str(name): tuple(float(value) for value in cell)
-        for name, cell in cells.items()
-        if isinstance(cell, Sequence) and not isinstance(cell, str)
-        and len(cell) == 3
-    } or None
 
 
 STATION_WIDTH_METHOD_TAG = "station_width_scale_v2"
@@ -2108,20 +1878,15 @@ def _mean_nll(
     delta_c: float,
     width_lambda: float,
     sigma_floor_rungs: float = 0.0,
-    taf_signed: bool = False,
 ) -> float:
-    """Mean bucket NLL; ``taf_signed`` serves the shift along each cell's
-    TAF direction, exactly as ``serve_taf_cell`` will."""
+    """Mean bucket NLL over the cells."""
 
     if not cells:
         return 0.0
     return sum(
         _cell_nll(
             cell,
-            delta_c=(
-                delta_c * int(cell.get("taf_sign") or 0)
-                if taf_signed else delta_c
-            ),
+            delta_c=delta_c,
             width_lambda=width_lambda,
             sigma_floor_rungs=sigma_floor_rungs,
         )
@@ -2158,7 +1923,6 @@ def _search(
     cells: Sequence[Mapping[str, Any]],
     *,
     sigma_floor_rungs: float = 0.0,
-    taf_signed: bool = False,
 ) -> tuple[float, float, float]:
     """The grid's best pair, optionally searched under a width floor.
 
@@ -2180,7 +1944,6 @@ def _search(
                 delta_c=delta,
                 width_lambda=lam,
                 sigma_floor_rungs=sigma_floor_rungs,
-                taf_signed=taf_signed,
             )
             if best is None or value < best[2]:
                 best = (delta, lam, value)
@@ -2866,12 +2629,6 @@ def fit_center_width(
             }
     if accumulating:
         evidence["basis"] = "ACCUMULATING"
-        # The cells are only scored once the pooled pair is, but how far each
-        # has to go is readable now -- without it the page could only show a
-        # census from whichever fit last got past this gate.
-        if stage_id in TAF_CELL_STAGES:
-            _annotate_taf_cells(conn, cells)
-            evidence["taf_cells"] = _taf_cell_census(cells)
         evidence["sigma_floor"] = {
             "schema": "center_width_sigma_floor_lane_v1",
             "sigma_floor_rungs": SIGMA_FLOOR_RUNGS,
@@ -3069,55 +2826,6 @@ def fit_center_width(
     # without the floor and then served under one would be a scalar chosen
     # against arithmetic it never saw.
     served_floor = candidate_floor if admitted else base_floor
-    taf_cells: dict[str, list[float]] = {}
-    taf_evidence: dict[str, Any] = {}
-    if stage_id in TAF_CELL_STAGES:
-        _annotate_taf_cells(conn, cells)
-    for name in TAF_CELL_NAMES if stage_id in TAF_CELL_STAGES else ():
-        group_train = [c for c in train if c.get("taf_cell") == name]
-        group_forward = [c for c in forward if c.get("taf_cell") == name]
-        group_days = {
-            c["event_date"] for c in group_train + group_forward
-        }
-        entry: dict[str, Any] = {
-            "rule": TAF_CELL_RULE,
-            "day_count": len(group_days),
-            "cell_count": len(group_train) + len(group_forward),
-            "train_cell_count": len(group_train),
-            "forward_cell_count": len(group_forward),
-        }
-        taf_evidence[name] = entry
-        if (
-            len(group_days) < MIN_QUALIFYING_DAYS
-            or len(group_train) + len(group_forward) < MIN_QUALIFYING_CELLS
-            or not group_train or not group_forward
-        ):
-            entry["state"] = "ACCUMULATING"
-            continue
-        cell_delta, cell_lambda, _ = _search(
-            group_train, sigma_floor_rungs=served_floor, taf_signed=True,
-        )
-        pooled_nll = _mean_nll(
-            group_forward, delta_c=served_delta, width_lambda=served_lambda,
-            sigma_floor_rungs=served_floor,
-        )
-        cell_nll = _mean_nll(
-            group_forward, delta_c=cell_delta, width_lambda=cell_lambda,
-            sigma_floor_rungs=served_floor, taf_signed=True,
-        )
-        cell_gain = pooled_nll - cell_nll
-        entry.update({
-            "candidate_taf_delta_c": cell_delta,
-            "candidate_width_lambda": cell_lambda,
-            "forward_nll_gain_vs_pooled": cell_gain,
-        })
-        if cell_gain > MIN_FORWARD_NLL_GAIN:
-            entry["state"] = "ADMITTED"
-            taf_cells[name] = [cell_delta, cell_lambda]
-        else:
-            entry["state"] = "REFUSED_FORWARD"
-    if taf_evidence:
-        evidence["taf_cells"] = taf_evidence
     # Leaving residual space.  Everything above measured a correction on top
     # of what is served; everything below stores a pair the server applies to
     # the uncorrected distribution, so the two are composed exactly here and
@@ -3131,18 +2839,6 @@ def fit_center_width(
         "absolute_delta_c": absolute_delta,
         "absolute_width_lambda": absolute_lambda,
     })
-    # A cell's shift has a sign only at serve time, so it cannot be composed
-    # into one absolute delta here: the cell stores the incumbent's shift it
-    # was measured on top of, its own shift along the TAF, and the composed
-    # (unsigned) width -- ``serve_taf_cell`` adds the signed part.
-    taf_cells = {
-        name: [
-            float(base[0]),
-            float(pair[0]),
-            _compose_absolute(base, (0.0, pair[1]))[1],
-        ]
-        for name, pair in taf_cells.items()
-    }
     return {
         "stage": stage_id,
         "delta_c": absolute_delta if admitted else base[0],
@@ -3169,7 +2865,6 @@ def fit_center_width(
         "vetoed": False,
         "serving_day_count": len(days),
         "serving_cell_count": len(cells),
-        "taf_cells": taf_cells,
         "evidence": evidence,
     }
 
@@ -3183,7 +2878,6 @@ def persist_and_activate_center_width(
     evidence: Mapping[str, Any],
     serving_day_count: int,
     fitted_at_utc: str | None = None,
-    taf_cells: Mapping[str, Sequence[float]] | None = None,
     sigma_floor_rungs: float = 0.0,
     width_tiers: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -3191,7 +2885,7 @@ def persist_and_activate_center_width(
     ensure_center_width_schema(conn)
     digest = center_width_sha256(
         stage=stage_id, delta_c=delta_c, width_lambda=width_lambda,
-        taf_cells=taf_cells, sigma_floor_rungs=sigma_floor_rungs,
+        sigma_floor_rungs=sigma_floor_rungs,
         width_tiers=width_tiers,
     )
     tiers_json = (
@@ -3210,16 +2904,9 @@ def persist_and_activate_center_width(
     now = fitted_at_utc or datetime.now(timezone.utc).isoformat().replace(
         "+00:00", "Z"
     )
-    cells_json = (
-        json.dumps(
-            {
-                str(name): [float(value) for value in cell]
-                for name, cell in sorted(taf_cells.items())
-            },
-            ensure_ascii=False, sort_keys=True,
-        )
-        if taf_cells else None
-    )
+    # The TAF-cell lane (charter 57) retired with P0-M's centre/width layer
+    # (charter 150); the column stays for the rows written before.
+    cells_json = None
     # Explicit acquisition rather than the implicit transaction the first
     # INSERT would open: the retry budget is the point, not the isolation.
     _begin_immediate(conn)
@@ -3326,14 +3013,12 @@ def journal_center_width_fit(
     stage_id = _check_stage(stage)
     ensure_center_width_schema(conn)
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    # The activated row hashes the TAF cells and the width floor too, so a
-    # journal digest that omits either can never match the row it is
-    # evidence for.
+    # The activated row hashes the width floor and tiers too, so a journal
+    # digest that omits either can never match the row it is evidence for.
     digest = center_width_sha256(
         stage=stage_id,
         delta_c=fitted["delta_c"],
         width_lambda=fitted["width_lambda"],
-        taf_cells=fitted.get("taf_cells") or None,
         sigma_floor_rungs=float(fitted.get("sigma_floor_rungs") or 0.0),
         width_tiers=fitted.get("width_tiers") or None,
     )
@@ -3513,13 +3198,6 @@ def _refit_stages(
                 "serving_day_count": fitted["serving_day_count"],
                 "serving_cell_count": fitted["serving_cell_count"],
                 "min_decision_at_utc": min_decision_at_utc,
-                "taf_cells": fitted.get("taf_cells") or {},
-                "taf_cell_states": {
-                    name: str(detail.get("state") or "")
-                    for name, detail in (
-                        fitted["evidence"].get("taf_cells") or {}
-                    ).items()
-                },
                 # The floor rides on the report so the daily run shows it
                 # admitted, refused or accumulating without anyone reading
                 # the journal's evidence blob by hand.
@@ -3549,7 +3227,6 @@ def _refit_stages(
                         width_lambda=fitted["width_lambda"],
                         evidence=fitted["evidence"],
                         serving_day_count=fitted["serving_day_count"],
-                        taf_cells=fitted.get("taf_cells") or None,
                         sigma_floor_rungs=float(
                             fitted.get("sigma_floor_rungs") or 0.0
                         ),

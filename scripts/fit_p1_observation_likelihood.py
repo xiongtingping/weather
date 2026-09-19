@@ -6,10 +6,9 @@ Charter 150 (user ruling 2026-09-19).  One artifact, refitted daily:
 1. **g** -- the ordered hazard chain over the bucket increment above the
    running high, rung one (does the day cross into another bucket) on the
    clock bins plus ``p1_observation_likelihood.PHASE_FEATURES``, rungs two and
-   up on ``FULL_FEATURES``.  Same estimator as the four-layer fit
-   (``fit_metar_phase_hazard_artifact.fit_phase_rung`` / ``fit_continuation``),
-   different covariates: the innovations against the root curve and the
-   regional run join the state.
+   up on ``FULL_FEATURES``.  The estimator (below) is the ordered hazard chain
+   the retired four-layer fit used, moved here whole; the covariates differ:
+   the innovations against the root curve and the regional run join the state.
 
 2. **alpha** per remaining-hours bin (>=10h, 6-10h, <6h), chosen on a held-out
    day split: g is refitted on the earlier 70% of days and every alpha on the
@@ -43,6 +42,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+import numpy as np
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -55,14 +56,386 @@ from bayes_basket_target.materialization import (  # noqa: E402
 from bayes_basket_target.metar_trajectory import (  # noqa: E402
     hard_bound_excluded_buckets,
 )
-import scripts.fit_metar_phase_hazard_artifact as hazard_fit  # noqa: E402
-from scripts.evaluate_metar_four_layer_walk_forward import RootCache  # noqa: E402
+from bayes_basket_target.contracts import ProbabilityEnvelope  # noqa: E402
+from bayes_basket_target.materialization import (  # noqa: E402
+    rehydrate_lineage_documents,
+)
+from bayes_basket_target.p1_compiler import _bucket_geometry_c  # noqa: E402
 
 ALPHA_GRID = tuple(round(0.125 * step, 3) for step in range(25))
 HOLDOUT_SHARE = 0.30
 MIN_SAMPLES = 2000
 MIN_DAYS = 10
 DEFAULT_MARGIN = 0.01
+
+
+# -- the estimator ----------------------------------------------------------
+#
+# The ordered hazard chain, moved here from the retired four-layer fitter
+# (charter 150) unchanged: L2-regularised logistic regression by Newton
+# steps, weighted so each station-day counts once however often its station
+# files; rung one on binned hours-left intercepts, isotonically projected so
+# the rate rises with the hours the day still has; rungs two and up as one
+# shared covariate vector with a per-rung intercept (proportional odds).
+
+HOURS_EDGES = (0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 13.0, 16.0,
+               20.0, 24.0, 1e9)
+MAX_RUNG = 12
+# Below this a rung has not seen enough survivors to be fitted; it inherits
+# the last fitted rung's conditional rate.
+MIN_RUNG_SAMPLES = 200.0
+L2 = 1.0
+NEWTON_STEPS = 40
+NEWTON_TOLERANCE = 1e-9
+
+
+def hours_bin(hours: float) -> int:
+    for index in range(len(HOURS_EDGES) - 1):
+        if HOURS_EDGES[index] <= hours < HOURS_EDGES[index + 1]:
+            return index
+    return len(HOURS_EDGES) - 2
+
+
+def fit_logistic(
+    design: np.ndarray,
+    outcome: np.ndarray,
+    weight: np.ndarray,
+    *,
+    l2: float = L2,
+    penalise: np.ndarray | None = None,
+) -> np.ndarray:
+    """Weighted L2-logistic by Newton steps; the ridge never touches intercepts.
+
+    Penalising an intercept would shrink the base rate toward a half, which is
+    the one number here that is not a nuisance parameter: at one hour left the
+    honest rate is two in a thousand.
+    """
+
+    columns = design.shape[1]
+    beta = np.zeros(columns)
+    ridge = np.ones(columns) * l2 if penalise is None else penalise * l2
+    for _ in range(NEWTON_STEPS):
+        eta = np.clip(design @ beta, -30.0, 30.0)
+        mu = 1.0 / (1.0 + np.exp(-eta))
+        gradient = design.T @ (weight * (outcome - mu)) - ridge * beta
+        variance = weight * mu * (1.0 - mu) + 1e-12
+        hessian = (design * variance[:, None]).T @ design + np.diag(ridge)
+        # A singular Hessian is a design problem -- an all-zero dummy column
+        # from an empty bin is the way it arrives here -- and returning the
+        # zero vector for it would publish an artifact that says every rate
+        # is one half while reporting success.  The first version of this
+        # file did exactly that, and the only sign was a column of 0.500
+        # where the ceiling artifact publishes 0.002.
+        try:
+            step = np.linalg.solve(hessian, gradient)
+        except np.linalg.LinAlgError as exc:
+            raise SystemExit(
+                "metar_phase_hazard_design_singular: "
+                "a column carries no weight"
+            ) from exc
+        beta = beta + step
+        if float(np.max(np.abs(step))) < NEWTON_TOLERANCE:
+            break
+    return beta
+
+
+def isotonic_increasing(
+    values: Sequence[float], weights: Sequence[float]
+) -> list[float]:
+    """Pool adjacent violators so the sequence never falls.
+
+    The bins run from least hours left to most, so the constraint is that the
+    modelled rate rises with the hours the day still has: a morning cannot be
+    less likely to warm than the evening that follows it.  Written the other
+    way round -- decreasing in bin index, which reads correctly in English as
+    "the rate falls as the day runs out" -- the projection pools every bin
+    into one block and publishes a single rate for the whole clock.  That is
+    what the first fit did, and the sign of the error was a flat column of
+    0.648 where the ceiling artifact publishes 0.002 to 0.929.
+
+    Blocks carry their own span so the projection lands back on the original
+    positions rather than on a weight-proportional guess at them.
+    """
+
+    blocks: list[list[float]] = []
+    for value, weight in zip(values, weights):
+        blocks.append([float(value), max(float(weight), 1e-9), 1.0])
+        while len(blocks) > 1 and blocks[-2][0] > blocks[-1][0] + 1e-12:
+            value_b, weight_b, span_b = blocks.pop()
+            value_a, weight_a, span_a = blocks.pop()
+            total = weight_a + weight_b
+            blocks.append([
+                (value_a * weight_a + value_b * weight_b) / total,
+                total,
+                span_a + span_b,
+            ])
+    projected: list[float] = []
+    for value, _weight, span in blocks:
+        projected.extend([value] * int(round(span)))
+    return projected[: len(values)]
+
+
+def feature_matrix(
+    samples: Sequence[Mapping[str, Any]],
+    names: Sequence[str],
+    *,
+    fallbacks: Mapping[str, float],
+) -> np.ndarray:
+    """Design columns, with a missing feature filled at its fleet mean.
+
+    A None only ever arrives from the curve shape, which is absent whenever
+    the root carried no curve or the curve had run out.  Filling it at the
+    fleet mean makes the row say "nothing known about the shape here" rather
+    than "the shape is zero", which would read as a day that has not started.
+    """
+
+    return np.array(
+        [
+            [
+                float(
+                    sample[name]
+                    if sample.get(name) is not None
+                    else fallbacks[name]
+                )
+                for name in names
+            ]
+            for sample in samples
+        ],
+        dtype=float,
+    )
+
+
+def fleet_means(
+    samples: Sequence[Mapping[str, Any]], names: Sequence[str]
+) -> dict[str, float]:
+    means: dict[str, float] = {}
+    for name in names:
+        values = [
+            float(sample[name])
+            for sample in samples
+            if sample.get(name) is not None
+        ]
+        means[name] = sum(values) / len(values) if values else 0.0
+    return means
+
+
+def phase_outcome(sample: Mapping[str, Any]) -> float:
+    """Did the day settle above the bucket the running high is in.
+
+    That is the quantity rung one's rate stands for in the likelihood --
+    ``1 - rise`` on the running high's own bucket, ``rise`` spread above it --
+    so it is the quantity the rung is fitted on.  ``delta_c >= 1`` was the old stand-in: it rounds
+    ``truth - running_high`` to whole Celsius degrees and so answers a
+    question about a 1C ladder no market runs on.  Rows built before the
+    sample set carried the crossing fall back to it, so an older sample
+    database still fits rather than failing on a missing column.
+    """
+
+    crossed = sample.get("crossed_bucket")
+    if crossed is not None:
+        return 1.0 if int(crossed) else 0.0
+    return 1.0 if int(sample["delta_c"]) >= 1 else 0.0
+
+
+def fit_phase_rung(
+    samples: Sequence[Mapping[str, Any]], fallbacks: Mapping[str, float],
+    names: Sequence[str],
+) -> dict[str, Any]:
+    """Rung one: will the day cross into another bucket from here."""
+
+    raw_bins = np.array(
+        [hours_bin(float(sample["remaining_hours"])) for sample in samples]
+    )
+    # Only bins the fleet actually occupies get a column.  A local day is
+    # twenty-four hours, so the ceiling's open-ended last bin is empty here
+    # by construction, and an all-zero dummy column makes the Newton step
+    # singular.  Unoccupied bins inherit their nearest fitted neighbour
+    # below, which is the same answer with the arithmetic left standing.
+    occupied = sorted({int(value) for value in raw_bins})
+    column_of = {bin_index: column for column, bin_index in enumerate(occupied)}
+    bins = np.array([column_of[int(value)] for value in raw_bins])
+    bin_count = len(occupied)
+    dummies = np.zeros((len(samples), bin_count))
+    dummies[np.arange(len(samples)), bins] = 1.0
+    covariates = feature_matrix(samples, names, fallbacks=fallbacks)
+    design = np.hstack([dummies, covariates])
+    outcome = np.array([phase_outcome(sample) for sample in samples])
+    weight = np.array([float(sample["station_day_weight"]) for sample in samples])
+    penalise = np.concatenate([
+        np.zeros(bin_count), np.ones(len(names))
+    ])
+    beta = fit_logistic(design, outcome, weight, penalise=penalise)
+    fitted_weight = [
+        float(weight[bins == column].sum()) for column in range(bin_count)
+    ]
+    projected = isotonic_increasing(list(beta[:bin_count]), fitted_weight)
+    # Back onto the full edge list: an unoccupied bin takes the nearest
+    # occupied one below it, or the first occupied one if it sits before them
+    # all.  The serving side indexes by edge, so the published vector has to
+    # be the full length whatever the fleet happened to occupy.
+    full_intercepts: list[float] = []
+    full_weight: list[float] = []
+    for index in range(len(HOURS_EDGES) - 1):
+        if index in column_of:
+            column = column_of[index]
+            full_intercepts.append(float(projected[column]))
+            full_weight.append(fitted_weight[column])
+        else:
+            full_intercepts.append(
+                full_intercepts[-1] if full_intercepts
+                else float(projected[0])
+            )
+            full_weight.append(0.0)
+    return {
+        "hours_edges": list(HOURS_EDGES),
+        "occupied_bins": occupied,
+        "bin_intercepts": full_intercepts,
+        "bin_intercepts_fitted": [float(value) for value in projected],
+        "bin_weight": full_weight,
+        "coefficients": {
+            name: float(value)
+            for name, value in zip(names, beta[bin_count:])
+        },
+        "sample_n": len(samples),
+        "positive_rate": float(
+            (weight * outcome).sum() / max(weight.sum(), 1e-12)
+        ),
+    }
+
+
+def fit_continuation(
+    samples: Sequence[Mapping[str, Any]],
+    names: Sequence[str],
+    fallbacks: Mapping[str, float],
+) -> dict[str, Any]:
+    """Rungs two and up: given the day will rise, how far.
+
+    One shared covariate vector with a per-rung intercept -- the proportional
+    odds form.  Fitting each rung its own slopes would spend the sample on
+    twelve nearly identical shapes and leave the tail rungs on a handful of
+    rows apiece.
+    """
+
+    # Only rungs the window actually reaches get a column.  A fit window with
+    # no twelve-degree afternoon in it leaves that rung's dummy all zero, the
+    # Newton step singular, and -- before the solve was made to raise -- the
+    # whole vector zero.  The rungs above the last fitted one inherit its
+    # conditional rate, which is the flattest honest continuation rather than
+    # a coefficient read off three rows.
+    reached: dict[int, float] = {}
+    for sample in samples:
+        for rung in range(2, MAX_RUNG + 1):
+            if int(sample["delta_c"]) >= rung - 1:
+                reached[rung] = reached.get(rung, 0.0) + 1.0
+    minimum = MIN_RUNG_SAMPLES
+    rungs = [rung for rung in range(2, MAX_RUNG + 1) if reached.get(rung, 0.0) >= minimum]
+    if not rungs:
+        rungs = [rung for rung in range(2, MAX_RUNG + 1) if reached.get(rung, 0.0) > 0.0]
+    if not rungs:
+        raise SystemExit("no continuation rows; widen the window")
+    highest = max(rungs)
+    rows: list[np.ndarray] = []
+    outcomes: list[float] = []
+    weights: list[float] = []
+    rung_index: list[int] = []
+    covariates = feature_matrix(samples, names, fallbacks=fallbacks)
+    for position, sample in enumerate(samples):
+        delta = int(sample["delta_c"])
+        for offset, rung in enumerate(rungs):
+            if delta < rung - 1:
+                break
+            rows.append(covariates[position])
+            # Above the highest fitted rung the outcome is folded into that
+            # rung: a row that ran past it still says the day kept rising, so
+            # dropping it would bias the tail toward stopping.
+            outcomes.append(1.0 if delta >= rung else 0.0)
+            weights.append(float(sample["station_day_weight"]))
+            rung_index.append(offset)
+    if not rows:
+        raise SystemExit("no continuation rows; widen the window")
+    dummies = np.zeros((len(rows), len(rungs)))
+    dummies[np.arange(len(rows)), np.array(rung_index)] = 1.0
+    design = np.hstack([dummies, np.array(rows)])
+    outcome = np.array(outcomes)
+    weight = np.array(weights)
+    penalise = np.concatenate([np.zeros(len(rungs)), np.ones(len(names))])
+    rung_weight = [
+        float(weight[np.array(rung_index) == offset].sum())
+        for offset in range(len(rungs))
+    ]
+    beta = fit_logistic(design, outcome, weight, penalise=penalise)
+    return {
+        "rungs": rungs,
+        "highest_fitted_rung": highest,
+        "max_rung": MAX_RUNG,
+        "rung_intercepts": [float(value) for value in beta[: len(rungs)]],
+        "rung_weight": rung_weight,
+        "rung_reached_rows": {str(k): v for k, v in sorted(reached.items())},
+        "minimum_rung_rows": MIN_RUNG_SAMPLES,
+        "coefficients": {
+            name: float(value)
+            for name, value in zip(names, beta[len(rungs):])
+        },
+        "row_n": len(rows),
+    }
+
+
+class RootCache:
+    """Root geometry by checkpoint, parsed once per evaluation."""
+
+    def __init__(self, target: sqlite3.Connection) -> None:
+        self._target = target
+        self._cache: dict[str, dict[str, Any]] = {}
+
+    def get(self, checkpoint_id: str) -> dict[str, Any] | None:
+        if checkpoint_id in self._cache:
+            return self._cache[checkpoint_id]
+        row = self._target.execute(
+            "SELECT stage, checkpoint_id, station_id, event_date,"
+            " settlement_timezone, decision_at_utc, fresh_until_utc,"
+            " bucket_ordinals_json, probabilities_json, posterior_version,"
+            " posterior_sha256, bridge_sha256, lineage_json"
+            " FROM basket_probability_envelope WHERE checkpoint_id=? LIMIT 1",
+            (checkpoint_id,),
+        ).fetchone()
+        if row is None:
+            self._cache[checkpoint_id] = None
+            return None
+        lineage = rehydrate_lineage_documents(
+            self._target, json.loads(row[12] or "{}")
+        )
+        try:
+            envelope = ProbabilityEnvelope.from_mapping({
+                "stage": row[0], "checkpoint_id": row[1], "station_id": row[2],
+                "event_date": row[3], "settlement_timezone": row[4],
+                "decision_at_utc": row[5], "fresh_until_utc": row[6],
+                "bucket_ordinals": json.loads(row[7]),
+                "probabilities": json.loads(row[8]),
+                "posterior_version": row[9], "posterior_sha256": row[10],
+                "bridge_sha256": row[11], "lineage": lineage,
+            })
+            centers, uppers = _bucket_geometry_c(
+                envelope, unit="C", upper_by_bucket={}
+            )
+            intervals = json.loads(
+                str(lineage.get("bucket_intervals_c_json") or "{}")
+            )
+        except (ContractError, TypeError, ValueError, KeyError):
+            self._cache[checkpoint_id] = None
+            return None
+        if not intervals:
+            self._cache[checkpoint_id] = None
+            return None
+        view = {
+            "probabilities": dict(envelope.probabilities),
+            "ordinals": dict(envelope.bucket_ordinals),
+            "centers": centers,
+            "uppers": uppers,
+            "intervals": intervals,
+            "intervals_json": str(lineage.get("bucket_intervals_c_json")),
+        }
+        self._cache[checkpoint_id] = view
+        return view
 
 
 def _iso(value: datetime) -> str:
@@ -89,7 +462,7 @@ def features_of(sample: Mapping[str, Any]) -> dict[str, float | None]:
 def fit_g(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """g on these samples; the body the artifact publishes, alpha excluded."""
 
-    fallbacks = hazard_fit.fleet_means(samples, OL.FULL_FEATURES)
+    fallbacks = fleet_means(samples, OL.FULL_FEATURES)
     risers = [sample for sample in samples if int(sample["delta_c"]) >= 1]
     return {
         "schema": OL.SCHEMA,
@@ -97,8 +470,8 @@ def fit_g(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "feature_fallbacks": fallbacks,
         "phase_features": list(OL.PHASE_FEATURES),
         "full_features": list(OL.FULL_FEATURES),
-        "phase": hazard_fit.fit_phase_rung(samples, fallbacks, OL.PHASE_FEATURES),
-        "continuation_full": hazard_fit.fit_continuation(
+        "phase": fit_phase_rung(samples, fallbacks, OL.PHASE_FEATURES),
+        "continuation_full": fit_continuation(
             risers, OL.FULL_FEATURES, fallbacks
         ),
         "trained_from": min(str(s["event_date"]) for s in samples),

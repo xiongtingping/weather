@@ -1,10 +1,9 @@
-"""The hazard chain the phase and remaining-warming layers are fitted as.
+"""The estimator behind P1's joint observation likelihood, and its alpha choice.
 
-Two of these pin bugs this fit actually shipped with before it was read
-against the artifact it has to reproduce.  Both were silent: one published a
-flat rate for the whole clock, the other published one half for every bin and
-reported success.  A fit that fails loudly costs an afternoon; a fit that
-fails quietly costs whatever the book does next.
+The ordered hazard chain moved here from the retired four-layer fitter
+(charter 150).  Two of these pin bugs that chain actually shipped with, both
+silent: one published a flat rate for the whole clock, the other published
+one half for every bin and reported success.
 """
 from __future__ import annotations
 
@@ -19,16 +18,19 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.fit_metar_phase_hazard_artifact import (  # noqa: E402
-    FULL_FEATURES,
-    PHASE_FEATURES,
-    fit_continuation,
+from bayes_basket_target import p1_observation_likelihood as OL  # noqa: E402
+from scripts.fit_p1_observation_likelihood import (  # noqa: E402
+    ALPHA_GRID,
+    _log_score,
     fit_logistic,
     fit_phase_rung,
     fleet_means,
     hours_bin,
     isotonic_increasing,
 )
+
+FULL_FEATURES = OL.FULL_FEATURES
+PHASE_FEATURES = OL.PHASE_FEATURES
 
 
 def _sample(
@@ -55,6 +57,9 @@ def _sample(
         "wind_speed_mps": 3.0,
         "warming_so_far_c": 4.0,
         "curve_shape_realized": shape,
+        "root_bias_recent_c": 0.0,
+        "regional_headroom_c": None,
+        "regional_live_gap_c": None,
         "delta_c": delta_c,
         "station_day_weight": weight,
     }
@@ -111,7 +116,7 @@ def test_the_phase_rung_recovers_a_rate_it_was_shown() -> None:
     for _ in range(45):
         samples.append(_sample(remaining_hours=7.0, delta_c=0))
     fallbacks = fleet_means(samples, FULL_FEATURES)
-    fitted = fit_phase_rung(samples, fallbacks)
+    fitted = fit_phase_rung(samples, fallbacks, PHASE_FEATURES)
     shift = sum(
         fitted["coefficients"][name] * fallbacks[name]
         for name in fitted["coefficients"]
@@ -128,50 +133,18 @@ def test_the_phase_rung_recovers_a_rate_it_was_shown() -> None:
     assert fitted["bin_intercepts"] == sorted(fitted["bin_intercepts"])
 
 
-def test_the_phase_rung_reads_no_model_quantity() -> None:
-    """Rung one is model-free by contract, so the curve cannot reach it.
+def test_the_alpha_grid_reaches_zero_and_an_alpha_of_zero_is_the_root() -> None:
+    """Zero is on the grid, so the refit can always choose to say nothing,
+    and at zero the tempered likelihood is exactly the root under the mask."""
 
-    Two sample sets identical but for the model's shape must fit the same
-    rung: if the shape ever leaks into this layer, the split it drives would
-    carry the root's own belief and the ceiling's replacement would stop
-    being an independent statement about the clock.
-    """
-
-    base = [
-        _sample(remaining_hours=hours, delta_c=delta, shape=0.2)
-        for hours, delta in ((1.0, 0), (9.0, 1), (12.0, 4)) * 40
-    ]
-    shifted = [dict(row, curve_shape_realized=0.95) for row in base]
-    left = fit_phase_rung(base, fleet_means(base, FULL_FEATURES))
-    right = fit_phase_rung(shifted, fleet_means(shifted, FULL_FEATURES))
-    assert left["coefficients"] == right["coefficients"]
-    assert left["bin_intercepts"] == right["bin_intercepts"]
-    assert "curve_shape_realized" not in left["coefficients"]
-
-
-def test_the_two_continuation_fits_differ_only_by_the_extra_evidence() -> None:
-    """The likelihood ratio is an increment, so its denominator is a subset.
-
-    The phase-only twin carries exactly the covariates rung one is allowed;
-    the full fit adds the physical state and the model's shape.  A denominator
-    fitted flat instead would price the clock twice -- once in the ratio and
-    once in the split applied over it.
-    """
-
-    samples = [
-        _sample(
-            remaining_hours=6.0 + (index % 7),
-            delta_c=1 + (index % 5),
-            shape=0.1 * (index % 10),
-            cloud=0.1 * (index % 9),
-        )
-        for index in range(400)
-    ]
-    fallbacks = fleet_means(samples, FULL_FEATURES)
-    full = fit_continuation(samples, FULL_FEATURES, fallbacks)
-    phase_only = fit_continuation(samples, PHASE_FEATURES, fallbacks)
-    assert set(phase_only["coefficients"]) < set(full["coefficients"])
-    assert set(phase_only["coefficients"]) == set(PHASE_FEATURES)
-    assert "curve_shape_realized" in full["coefficients"]
-    assert full["row_n"] == phase_only["row_n"]
-    assert full["rungs"] == phase_only["rungs"]
+    assert ALPHA_GRID[0] == 0.0
+    prior = {"a": 0.2, "b": 0.5, "c": 0.3}
+    evidence = {"a": 0.9, "b": 0.1, "c": 0.01}
+    assert _log_score(prior, evidence, {"a"}, "b", 0.0) == pytest.approx(
+        _log_score(prior, None, {"a"}, "b", 1.0)
+    )
+    # And a likelihood that points away from the truth costs more the more
+    # it is believed.
+    assert _log_score(prior, evidence, set(), "c", 2.0) < _log_score(
+        prior, evidence, set(), "c", 0.5
+    )

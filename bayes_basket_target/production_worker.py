@@ -119,7 +119,7 @@ from .taf_likelihood import load_artifact as load_taf_likelihood_artifact
 from .regional_point_debias import (
     load_artifact as load_regional_point_debias_artifact,
 )
-from .regional_path_prior import (
+from .regional_features import (
     load_runs_for_station_day as load_regional_runs_for_station_day,
 )
 from .metar_trajectory import (
