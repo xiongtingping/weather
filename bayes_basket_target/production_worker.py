@@ -778,6 +778,10 @@ STAGE_TIER: dict[str, int] = {
     "early_p1": STAGE_TIER_R0_DECISION,
     # The fast lane: a new TAF becomes P0-M before anything else in the cycle.
     "early_p0m": STAGE_TIER_R0_DECISION,
+    # ... and again at three points inside it, when something new landed.
+    "fast_lane_after_p0_replay": STAGE_TIER_R0_DECISION,
+    "fast_lane_after_forward_p0": STAGE_TIER_R0_DECISION,
+    "fast_lane_before_decisions": STAGE_TIER_R0_DECISION,
     "probability_p0": STAGE_TIER_R0_DECISION,
     "probability_p0m": STAGE_TIER_R0_DECISION,
     "probability_p1": STAGE_TIER_R0_DECISION,
@@ -3509,6 +3513,38 @@ EARLY_P0M_ENABLED = (
     os.environ.get("PM_EARLY_P0M", "1").strip().lower()
     not in {"0", "off", "false", "no", ""}
 )
+
+
+# Checkpoints between the cycle's long stages (user, 2026-09-19: 「极限压低信息
+# 到来到bayes概率更新的延迟」).  The head pass waits for the next cycle, and a
+# cycle is ~200s; a report or TAF that lands during one waited up to that long.
+# At three points inside the cycle the same two passes run again when their
+# watermark moved: after the P0 replay compile, after the forward P0 loop, and
+# right before the decision loop, so decisions price the freshest update.
+# Nothing new costs one file hash and one indexed read.  ``PM_FAST_LANE_
+# CHECKPOINTS=0`` keeps only the head pass.
+FAST_LANE_CHECKPOINTS_ENABLED = (
+    os.environ.get("PM_FAST_LANE_CHECKPOINTS", "1").strip().lower()
+    not in {"0", "off", "false", "no", ""}
+)
+
+
+def _later_report_watermark(
+    current: tuple[int, int, str] | None,
+    candidate: tuple[int, int, str] | None,
+) -> tuple[int, int, str] | None:
+    """The later of two report watermarks, by their archive rowids.
+
+    A covered mark only ever moves forward: a pass that covered more than a
+    later bookkeeping step knows about must not be undone by it (a mark set
+    too early re-runs P1 once, harmlessly; a mark set too late skips reports).
+    """
+
+    if current is None:
+        return candidate
+    if candidate is None:
+        return current
+    return candidate if (candidate[0], candidate[1]) >= (current[0], current[1]) else current
 
 
 def _covered_report_watermark(
@@ -15289,6 +15325,72 @@ class TargetProductionWorker:
             **boundary,
         }
 
+    def _fast_lane_checkpoint(self, label: str) -> dict[str, Any] | None:
+        """Run the head passes again, mid-cycle, for whatever landed since.
+
+        P0-M when the TAF inbox moved past what a P0-M pass covered; P1 when
+        the report watermark moved past what a P1 pass covered, or when the
+        P0-M just committed (P1 re-roots on it).  Returns None, having marked
+        nothing, when neither moved.  Never raises -- both passes catch their
+        own failures and the chain and the next head remain the fallback.
+        """
+
+        if not FAST_LANE_CHECKPOINTS_ENABLED:
+            return None
+        taf_mark = _taf_inbox_watermark(getattr(self, "taf_inbox_path", None))
+        report_mark = _live_observation_watermark(
+            getattr(self, "canonical_source_conn", None)
+        )
+        new_taf = (
+            taf_mark is not None
+            and taf_mark != getattr(self, "_p0m_covered_taf_watermark", None)
+        )
+        covered = getattr(self, "_p1_covered_watermark", None)
+        new_reports = (
+            report_mark is not None
+            and _later_report_watermark(covered, report_mark) != covered
+            and report_mark != covered
+        )
+        if not new_taf and not new_reports:
+            return None
+        clock = utc_now()
+        p0m = (
+            self._materialize_early_p0m(as_of_utc=clock, taf_watermark=taf_mark)
+            if new_taf else None
+        )
+        forced = bool((p0m or {}).get("new_envelopes"))
+        p1 = None
+        if new_reports or forced:
+            p1 = self._materialize_early_p1(
+                as_of_utc=clock, report_watermark=report_mark, force=forced,
+            )
+            if p1.get("ran"):
+                p1_state = str(((p1.get("p1") or {}).get("state")) or "").upper()
+                if p1_state != "BLOCKED_FAIL_CLOSED":
+                    self._p1_covered_watermark = _later_report_watermark(
+                        getattr(self, "_p1_covered_watermark", None), report_mark
+                    )
+                    self._early_p1_watermark = _later_report_watermark(
+                        getattr(self, "_early_p1_watermark", None), report_mark
+                    )
+                # Before the chain this pass is the cycle's head P1 now: the
+                # chain re-roots only what it rebuilds after it.
+                if not getattr(self, "_probability_chain_ran", False):
+                    self._early_p1_this_cycle = p1
+        receipt = {
+            "label": label,
+            "at_utc": clock,
+            "p0m": {k: v for k, v in (p0m or {}).items() if k != "p0m"} or None,
+            "p1": {k: v for k, v in (p1 or {}).items() if k != "p1"} or None,
+        }
+        receipts = getattr(self, "_fast_lane_receipts", None)
+        if not isinstance(receipts, list):
+            receipts = []
+            self._fast_lane_receipts = receipts
+        receipts.append(receipt)
+        self._mark(f"fast_lane_{label}")
+        return receipt
+
     def _materialize_early_p1(
         self,
         *,
@@ -17398,6 +17500,8 @@ class TargetProductionWorker:
         # reconcile from running.
         self._early_p1_this_cycle = None
         self._early_p0m_this_cycle = None
+        self._fast_lane_receipts = []
+        self._probability_chain_ran = False
         early_report_watermark = _live_observation_watermark(
             getattr(self, "canonical_source_conn", None)
         )
@@ -17848,6 +17952,7 @@ class TargetProductionWorker:
                     "active_activation_p0_replay"
                 ] = active_activation_p0_replay
                 self._mark("native_p0_replay_compile")
+                self._fast_lane_checkpoint("after_p0_replay")
                 now_mono = time.monotonic()
                 last_oos_scan = getattr(
                     self,
@@ -18168,6 +18273,7 @@ class TargetProductionWorker:
             resident_probability_chain = self._materialize_resident_probability_chain(
                 as_of_utc=now,
             )
+            self._probability_chain_ran = True
             resident_p0_ingress = resident_probability_chain["p0"]
             resident_p0m_ingress = resident_probability_chain["p0m"]
             resident_p1_ingress = resident_probability_chain["p1"]
@@ -18187,7 +18293,9 @@ class TargetProductionWorker:
                 and str(resident_p1_ingress.get("state") or "").upper()
                 != "BLOCKED_FAIL_CLOSED"
             ):
-                self._p1_covered_watermark = covered_mark
+                self._p1_covered_watermark = _later_report_watermark(
+                    getattr(self, "_p1_covered_watermark", None), covered_mark
+                )
             resident_probability_chain["early_p0m"] = dict(
                 self._early_p0m_this_cycle or {}
             )
@@ -18397,6 +18505,7 @@ class TargetProductionWorker:
                         "reservations_written": 0,
                     })
             self._mark("forward_p0_loop")
+            self._fast_lane_checkpoint("after_forward_p0")
             self._refresh_account_equity()
             # Charter 48: a listed day's scope belongs in the merged manifest
             # the ingress reads.  The publisher already subscribes it and
@@ -18690,6 +18799,8 @@ class TargetProductionWorker:
                 lead_listing_scopes=lead_listing_scopes,
             )
             self._mark("committed_scope_sweep")
+            # Decisions price the freshest update there is.
+            self._fast_lane_checkpoint("before_decisions")
             if not rows:
                 # Preliminary future scopes have their own zero-execution
                 # decision chain above.  A current-scope blocker must never

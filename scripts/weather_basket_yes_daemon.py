@@ -239,6 +239,16 @@ TARGET_TAF_POLL_INTERVAL_SEC = 60.0
 # round.  A wide round on a good day, a short one on a bad day, and the writer
 # turn stays bounded either way.
 TARGET_TAF_ROUND_BUDGET_SEC = 90.0
+# The fast TAF round (user, 2026-09-19: 「极限压低信息到来到bayes概率更新的延迟」).
+# The rotation above runs inside the prefetch lane, which takes its writer
+# turn behind a ~200s production cycle -- so a bulletin AWC published during a
+# cycle waited for the cycle to end before anyone asked.  The fast round needs
+# no writer turn (it reads the SSOT ``mode=ro`` and writes only the inbox
+# file), so it runs on its own thread every twenty seconds: one bulk request
+# asks who holds something newer, and only those stations are captured.
+FAST_TAF_ROUND_INTERVAL_SEC = 20.0
+# The inbox is rewritten whole by both rounds; one writer at a time.
+_TAF_INBOX_LOCK = threading.Lock()
 TARGET_NWP_POLL_INTERVAL_SEC = 600.0
 
 # How long a writer lane stands down after finishing, before its own gate can
@@ -2780,6 +2790,8 @@ def run_target_forecast_refresh_cycle(
                         str(item.get("settlement_timezone") or ""),
                     ),
                 )
+                # The fast round works off this catalogue between rotations.
+                setattr(worker, "_taf_catalog_cache", list(catalog))
                 rotation_path = Path(
                     getattr(
                         worker,
@@ -2923,13 +2935,14 @@ def run_target_forecast_refresh_cycle(
                             "state": "failed_isolated",
                             "reason": failure["reason"],
                         })
-                inbox = (
-                    refresh_forward_taf_inbox(
-                        captures=captures,
-                        inbox_path=worker.taf_inbox_path,
-                    )
-                    if captures else None
-                )
+                if captures:
+                    with _TAF_INBOX_LOCK:
+                        inbox = refresh_forward_taf_inbox(
+                            captures=captures,
+                            inbox_path=worker.taf_inbox_path,
+                        )
+                else:
+                    inbox = None
                 rotation = build_taf_rotation_state(
                     catalog=catalog,
                     selected=attempted,
@@ -3080,6 +3093,87 @@ def run_target_forecast_refresh_cycle(
         "live_submit_authorized": False,
         "orders_submitted": 0,
     }
+
+
+def run_fast_taf_round(worker: Any, *, ssot_path: Path) -> dict[str, Any]:
+    """Capture only what AWC holds newer than we do; no writer turn needed.
+
+    Reads the catalogue the rotation round last built (``_taf_catalog_cache``
+    on the same worker) and the SSOT ``mode=ro`` for what we hold, sends one
+    bulk request, captures the stations it names -- each with its own
+    request and receipt, as the rotation does -- and appends them to the
+    inbox under the lock both rounds share.  An issue time is forced once
+    (the rotation's probe and this round share the record).  Never raises.
+    """
+
+    started = time.perf_counter()
+    receipt: dict[str, Any] = {
+        "schema": "bayes_basket_target_fast_taf_round_v1",
+        "started_at_utc": utc_now(),
+        "calls_order_gateway": False,
+        "places_orders": False,
+    }
+    catalog = list(getattr(worker, "_taf_catalog_cache", None) or [])
+    if not catalog:
+        receipt["state"] = "no_catalog_yet"
+        return receipt
+    forced = getattr(worker, "_taf_bulk_forced", None)
+    if not isinstance(forced, dict):
+        forced = {}
+        setattr(worker, "_taf_bulk_forced", forced)
+    try:
+        conn = sqlite3.connect(f"file:{ssot_path}?mode=ro", uri=True, timeout=5.0)
+        try:
+            issued = taf_rotation_latest_issued_at(conn)
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        receipt.update({"state": "ssot_unreadable", "reason": f"{type(exc).__name__}:{exc}"[:160]})
+        return receipt
+    held: dict[str, str] = {}
+    for scope_prefix, issued_at in (issued or {}).items():
+        station = str(scope_prefix).split("|", 1)[0].upper()
+        if str(issued_at) > held.get(station, ""):
+            held[station] = str(issued_at)
+    newer, probe = awc_newer_taf_stations(
+        [scope.get("station_id") for scope in catalog],
+        held_issued_at=held,
+        already_forced=forced,
+    )
+    receipt["bulk_probe"] = probe
+    if not newer:
+        receipt.update({"state": "nothing_new",
+                        "duration_sec": round(time.perf_counter() - started, 3)})
+        return receipt
+    forced.update(newer)          # claimed before capture: one attempt per issue
+    captures: list[dict[str, Any]] = []
+    failures: list[dict[str, str]] = []
+    responses: dict[str, object] = {}
+    for scope in catalog:
+        station = str(scope.get("station_id") or "").upper()
+        if station not in newer:
+            continue
+        try:
+            captures.append(capture_forward_awc_taf(
+                station_id=station,
+                event_date=str(scope["event_date"]),
+                settlement_timezone=str(scope["settlement_timezone"]),
+                response_cache=responses,
+            ))
+        except Exception as exc:  # noqa: BLE001 -- one scope's failure is a line
+            failures.append({"station_id": station, "event_date": str(scope.get("event_date")),
+                             "reason": f"{type(exc).__name__}:{exc}"[:160]})
+    if captures:
+        with _TAF_INBOX_LOCK:
+            refresh_forward_taf_inbox(captures=captures, inbox_path=worker.taf_inbox_path)
+    receipt.update({
+        "state": "captured" if captures else "nothing_captured",
+        "stations": sorted(newer),
+        "capture_count": len(captures),
+        "failures": failures[:8],
+        "duration_sec": round(time.perf_counter() - started, 3),
+    })
+    return receipt
 
 
 def resident_nwp_in_flight_receipt(
@@ -4885,6 +4979,13 @@ def main() -> int:
             max_workers=1,
             thread_name_prefix="reported-trajectory-market-registry",
         )
+        # The fast TAF round: network and one file, no writer turn.
+        fast_taf_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="reported-trajectory-taf-fast",
+        )
+        fast_taf_future: Any = None
+        next_fast_taf = 0.0
         argmax_executor = ThreadPoolExecutor(
             max_workers=1,
             thread_name_prefix="reported-trajectory-asos-argmax",
@@ -5701,6 +5802,20 @@ def main() -> int:
                     argmax_entry_worker.run
                 )
                 next_argmax_entry = time.monotonic() + argmax_entry_interval_sec
+            if storage_ok and now_mono >= next_fast_taf and (
+                fast_taf_future is None or fast_taf_future.done()
+            ):
+                if fast_taf_future is not None:
+                    try:
+                        state["forward_taf_fast"] = fast_taf_future.result()
+                    except Exception as exc:  # noqa: BLE001 -- published, never raised
+                        state["forward_taf_fast"] = {
+                            "state": "failed", "reason": f"{type(exc).__name__}:{exc}"[:160],
+                        }
+                fast_taf_future = fast_taf_executor.submit(
+                    run_fast_taf_round, forecast_worker, ssot_path=DEFAULT_TARGET_DB,
+                )
+                next_fast_taf = time.monotonic() + FAST_TAF_ROUND_INTERVAL_SEC
             if storage_ok and "awc" in lane_workers and now_mono >= next_source.get("awc", now_mono) and "awc" not in lane_futures:
                 lane_futures["awc"] = executor.submit(lane_workers["awc"].poll)
                 next_source["awc"] = time.monotonic() + awc_poll_interval(config, datetime.now(timezone.utc))
@@ -5982,6 +6097,7 @@ def main() -> int:
         for executor_name in (
             "executor",
             "forecast_executor",
+            "fast_taf_executor",
             "registry_executor",
             "argmax_executor",
             "sweep_executor",
