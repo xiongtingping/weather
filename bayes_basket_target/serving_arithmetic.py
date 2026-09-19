@@ -254,6 +254,20 @@ def _closure(entries: Sequence[tuple[str, str]]) -> list[tuple[str, str]]:
 # sighting is the resident's start (09:18:15.552Z) and the watchdog rightly
 # lit for the minute between; no envelope of any version fell in it, and the
 # first v6 cell is 09:18:21.8Z.
+#
+# P0-M v7 and P1 v12: charter 150, each stage's own change, so the moment is
+# not a root's but the version's own first decision -- declared, verbatim, as
+# the value the inference returns, so no reader's bound moves by a row.  It
+# is declared only because inferring it costs: the MIN walks every older row
+# of the stage, 62.2s for P1 on 2026-09-19, paid by each of the six refit
+# lanes that read the anchor and by the board, and it grows ~5k rows a day.
+# The 2026-09-18T20:15Z calibration_refit ran 744s against a 900s timeout,
+# every P1 step 60-80s slower than the day before.  Verbatim matters: the
+# first v12 decision is stamped 19:10:09.000001Z, and as a string that sorts
+# BELOW 19:10:09Z.  Both precede the resident's start (19:12:48.636Z)
+# because the decision clock is the data's, not the process's.  The watchdog
+# reads the same either way: P1's fingerprint is acknowledged and P0-M's is
+# pending its refits, which a declaration does not change.
 STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
     "P0": {
         "calibrated_native_cross_ensemble_p0_v3": "2026-09-06T04:18:00Z",
@@ -266,14 +280,18 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p0m_taf_observed_v4": "2026-09-10T15:27:11Z",
         "p0m_taf_observed_v5": "2026-09-14T05:52:13Z",
         "p0m_taf_observed_v6": "2026-09-18T09:18:16Z",
+        "p0m_taf_likelihood_v7": "2026-09-18T19:10:09Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
     # declares the root's moment rather than its own first envelope; v11
-    # (charter 149) is the second.
+    # (charter 149) is the second.  v12 (charter 150) is its own change and
+    # declares its own first decision -- the inferred value, written down so
+    # it is not re-derived by a scan (see above).
     "P1": {
         "p1_metar_trajectory_target_v10": "2026-09-14T05:52:13Z",
         "p1_metar_trajectory_target_v11": "2026-09-18T09:18:16Z",
+        "p1_joint_likelihood_v12": "2026-09-18T19:10:09.000001Z",
     },
 }
 

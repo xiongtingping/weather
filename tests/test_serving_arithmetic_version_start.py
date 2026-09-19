@@ -171,11 +171,12 @@ def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
     p0m = inspect.signature(
         materialize_p0m_observed
     ).parameters["posterior_version"].default
-    # Charter 150's v7 is this stage's own change and first appears the day
-    # it serves, so its start is inferred rather than declared; v6 keeps the
+    # Charter 150's v7 is this stage's own change, so it declares its own
+    # first decision -- the value the inference returned, written down
+    # because inferring it scans the stage's whole history; v6 keeps the
     # declaration of the P0 bump it followed.
     assert p0m == "p0m_taf_likelihood_v7"
-    assert sa.version_effective_from("P0-M", p0m) is None
+    assert sa.version_effective_from("P0-M", p0m) == "2026-09-18T19:10:09Z"
     assert sa.version_effective_from(
         "P0-M", "p0m_taf_observed_v6"
     ) == "2026-09-18T09:18:16Z"
@@ -198,7 +199,8 @@ def test_p1_declares_only_the_bump_its_root_caused() -> None:
     v10 was caused upstream: charter 134 changed the P0 root P1 composes on,
     so it declares the root's moment, the instant P0 and P0-M v5 declare.
     v11 is the second such bump (charter 149) and declares P0 v6's moment.
-    v12 (charter 150) is P1's own again.
+    v12 (charter 150) is P1's own again, and declares its own first decision
+    verbatim: inferring it walked every older P1 row, 62s per reader.
     """
 
     from bayes_basket_target.materialization import materialize_p1
@@ -208,9 +210,13 @@ def test_p1_declares_only_the_bump_its_root_caused() -> None:
     p1 = inspect.signature(
         materialize_p1
     ).parameters["posterior_version"].default
-    # v12 (charter 150) is P1's own change: undeclared, inferred.
+    # v12 (charter 150) is P1's own change: its first decision, verbatim.
+    # A string bound, so the fraction matters -- rounded to 19:10:09Z it
+    # would sort above the first v12 row and drop it.
     assert p1 == "p1_joint_likelihood_v12"
-    assert sa.version_effective_from("P1", p1) is None
+    first_v12_decision = "2026-09-18T19:10:09.000001Z"
+    assert sa.version_effective_from("P1", p1) == first_v12_decision
+    assert "2026-09-18T19:10:09Z" > first_v12_decision
     assert sa.version_effective_from(
         "P1", "p1_metar_trajectory_target_v11"
     ) == sa.version_effective_from("P0", POSTERIOR_VERSION)
