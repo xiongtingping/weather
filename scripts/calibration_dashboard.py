@@ -2227,7 +2227,9 @@ def collect_p0m_taf_likelihood(conn: sqlite3.Connection) -> dict[str, Any]:
     out: dict[str, Any] = {"available": True}
     try:
         from bayes_basket_target import taf_likelihood as TL  # noqa: PLC0415
-        raw = json.loads(TL.ARTIFACT_PATH.read_text())
+        # As it serves: charter 151's ruling stamped over the measured gate
+        # (which stays beside it as ``measured_state``).
+        raw = TL.apply_gate_ruling(json.loads(TL.ARTIFACT_PATH.read_text()))
         mtime = datetime.fromtimestamp(TL.ARTIFACT_PATH.stat().st_mtime, timezone.utc)
     except Exception:  # noqa: BLE001
         raw, mtime = {}, None
@@ -20166,7 +20168,8 @@ function p0mTafBoard(){
     b 是「TAF 看得到今天偏离模型的几成」，τ 是它的散布；每站按 K=${A.shrink_k ?? 15} 个站日向全队收缩。
     <b>服务闸</b>：逐日走查（只用更早的日子拟合），按日聚类的 95% 区间下沿大于 0 才开；没开时 P0-M 就是 P0，只标记 TAF 到达的决策时刻。</p>
   <div class="grid g3">
-    <div class="card"><div class="muted">服务闸</div><div class="big"><span class="pill ${G.state === "SERVE" ? "green" : ""}">${G.state === "SERVE" ? "开" : "未开（恒等）"}</span></div>
+    <div class="card"><div class="muted">服务闸</div><div class="big"><span class="pill ${G.state === "SERVE" ? (G.ruling ? "amber" : "green") : ""}">${G.state === "SERVE" ? (G.ruling ? "开（裁决）" : "开") : "未开（恒等）"}</span></div>${
+        G.ruling ? `<div class="muted">宪章 151 用户裁决打开；走查本身${G.measured_state === "SERVE" ? "也已过" : "还没过"}（实测 ${h(G.measured_state || "—")}）</div>` : ""}
       <div class="muted">逐日增益 ${sg(G.by_day_mean_gain_nat)} nat [${sg(G.ci_low)}, ${sg(G.ci_high)}] · ${G.days ?? "—"} 天 · ${G.station_days ?? "—"} 站日</div></div>
     <div class="card"><div class="muted">全队这条线</div><div class="big mono">b ${n3(P.b)} · τ ${n3(P.tau)}°C</div>
       <div class="muted">a ${sg(P.a)}°C · ${P.n ?? "—"} 站日 · 其中 ${A.station_n ?? 0} 站有自己的收缩线</div></div>

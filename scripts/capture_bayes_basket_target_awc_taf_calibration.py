@@ -341,6 +341,7 @@ def _taf_row(
     require_tx: bool = True,
     decision_anchor: datetime | None = None,
     require_features: bool = True,
+    pre_issue_tolerance_sec: float = 0.0,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     candidates = [
         row for row in rows
@@ -365,8 +366,17 @@ def _taf_row(
         except (TypeError, ValueError, OverflowError):
             continue
         if candidate_available < candidate_issue:
-            saw_issue_after_available = True
-            continue
+            # A bulletin filed a few minutes ahead of its nominal time (KBKF
+            # 181730Z sat in AWC's database from 17:28:13Z) is not a stale
+            # dbPopTime from the revision before -- that one is hours older.
+            # Callers that allow it (the forward capture) take the ISSUE time
+            # as the availability, the later and so conservative of the two.
+            # The historical parser keeps the strict order (tolerance 0).
+            lead = (candidate_issue - candidate_available).total_seconds()
+            if lead > float(pre_issue_tolerance_sec):
+                saw_issue_after_available = True
+                continue
+            candidate_available = candidate_issue
         if candidate_available >= end:
             continue
         if decision_anchor is not None and candidate_available > decision_anchor:

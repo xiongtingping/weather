@@ -34,6 +34,10 @@ INBOX_SCHEMA = "bayes_basket_target_taf_revision_inbox_v1"
 # the old 256-slot global window held roughly 17 hours across 86 scopes, so
 # every chain root scrolled out within its own event day.
 MAX_INBOX_CAPTURES = 2048
+# How far ahead of its nominal issue time a bulletin may reach AWC and still
+# be captured (see ``_taf_row``).  Measured case KBKF 2026-09-18: 1m47s, and
+# the strict order refused that bulletin on every round for seven hours.
+PRE_ISSUE_TOLERANCE_SEC = 900.0
 
 
 def capture_forward_awc_taf(
@@ -93,6 +97,7 @@ def capture_forward_awc_taf(
             event_date=event_date,
             timezone_name=settlement_timezone,
             require_tx=False,
+            pre_issue_tolerance_sec=PRE_ISSUE_TOLERANCE_SEC,
         )
     except ContractError as exc:
         # ``_taf_row`` is also the historical replay parser, where this
@@ -170,6 +175,69 @@ def capture_forward_awc_taf(
         },
     }
     return {**identity, "content_sha256": content_sha256(identity)}
+
+
+def awc_newer_taf_stations(
+    station_ids,
+    *,
+    held_issued_at: dict[str, str],
+    already_forced: dict[str, str] | None = None,
+    timeout_sec: int = 12,
+    fetch=None,
+) -> tuple[dict[str, str], dict[str, object]]:
+    """Which stations AWC holds a bulletin for that is newer than ours.
+
+    User, 2026-09-19 (「taf更新了，没有抓取吗？要提高轮询抓取，快速反应」): the
+    rotation asks one station per request and reaches a station outside its
+    priority classes only when the lap comes round -- LTAC's 22:40Z bulletin
+    sat at AWC for over an hour.  One request for every station answers the
+    only question that matters each round: who has something new.  Returns
+    ``{station: newest AWC issue time}`` for those stations, skipping any
+    issue time already forced once (a bulletin that covers no open scope --
+    EGLC's three-hour evening TAF -- would otherwise be asked for every
+    round), and a small receipt.  Never raises: a failed probe leaves the
+    rotation exactly as it was.
+    """
+
+    stations = sorted({str(s).strip().upper() for s in station_ids if str(s).strip()})
+    receipt: dict[str, object] = {"stations": len(stations)}
+    if not stations:
+        return {}, receipt
+    url = TAF_ENDPOINT + "?" + urllib.parse.urlencode({
+        "ids": ",".join(stations),
+        "format": "json",
+    })
+    try:
+        rows, _sha, response_bytes = (fetch or _fetch_json)(url, timeout_sec=timeout_sec)
+    except Exception as exc:  # noqa: BLE001 -- the rotation proceeds without it
+        receipt["state"] = f"probe_failed:{type(exc).__name__}"
+        return {}, receipt
+    newest: dict[str, datetime] = {}
+    for row in rows or []:
+        station = str((row or {}).get("icaoId") or "").strip().upper()
+        try:
+            issued = _parse_utc((row or {}).get("issueTime"))
+        except (TypeError, ValueError, OverflowError, ContractError):
+            continue
+        if station in stations and (station not in newest or issued > newest[station]):
+            newest[station] = issued
+    forced = dict(already_forced or {})
+    newer: dict[str, str] = {}
+    for station, issued in newest.items():
+        held = held_issued_at.get(station)
+        try:
+            held_at = _parse_utc(held) if held else None
+        except (TypeError, ValueError, OverflowError, ContractError):
+            held_at = None
+        if held_at is not None and issued <= held_at:
+            continue
+        stamp = _iso(issued)
+        if forced.get(station) == stamp:
+            continue
+        newer[station] = stamp
+    receipt.update({"state": "ok", "response_bytes": response_bytes,
+                    "awc_stations": len(newest), "newer": sorted(newer)})
+    return newer, receipt
 
 
 def refresh_forward_taf_inbox(

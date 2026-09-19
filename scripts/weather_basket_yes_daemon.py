@@ -152,6 +152,7 @@ from bayes_basket_target.taf_rotation_state import (
     select_scopes as select_taf_rotation_scopes,
 )
 from scripts.capture_bayes_basket_target_awc_taf_revision import (
+    awc_newer_taf_stations,
     capture_forward_awc_taf,
     refresh_forward_taf_inbox,
 )
@@ -2784,6 +2785,38 @@ def run_target_forecast_refresh_cycle(
                         issuance_cadence_sec=rotation_cadence,
                     )
                 )
+                # A new bulletin leads the round (user, 2026-09-19:
+                # 「taf更新了，没有抓取吗？要提高轮询抓取，快速反应」).  One
+                # request asks AWC who holds something newer than we do; those
+                # stations' scopes go first, captured the usual way (their own
+                # request, their own receipt).  The rotation above still fills
+                # the rest.  Measured: LTAC's 22:40Z bulletin sat at AWC for
+                # over an hour waiting for the lap.
+                bulk_forced = getattr(worker, "_taf_bulk_forced", None)
+                if not isinstance(bulk_forced, dict):
+                    bulk_forced = {}
+                    setattr(worker, "_taf_bulk_forced", bulk_forced)
+                held_by_station: dict[str, str] = {}
+                for scope_prefix, issued_at in (rotation_issued or {}).items():
+                    station_key = str(scope_prefix).split("|", 1)[0].upper()
+                    if str(issued_at) > held_by_station.get(station_key, ""):
+                        held_by_station[station_key] = str(issued_at)
+                bulk_newer, bulk_receipt = awc_newer_taf_stations(
+                    [scope.get("station_id") for scope in catalog],
+                    held_issued_at=held_by_station,
+                    already_forced=bulk_forced,
+                )
+                if bulk_newer:
+                    lead = [
+                        scope for scope in catalog
+                        if str(scope.get("station_id") or "").upper() in bulk_newer
+                    ]
+                    lead_keys = {taf_rotation_scope_key(scope) for scope in lead}
+                    selected = lead + [
+                        scope for scope in selected
+                        if taf_rotation_scope_key(scope) not in lead_keys
+                    ]
+                    bulk_forced.update(bulk_newer)
                 captures: list[dict[str, Any]] = []
                 capture_failures: list[dict[str, str]] = []
                 outcomes: list[dict[str, str]] = []
@@ -2906,6 +2939,8 @@ def run_target_forecast_refresh_cycle(
                     # table only learns of this round's bulletins at the next
                     # production ingest, so a receipt read off them alone
                     # reported the round's own catches as still missing.
+                    # The one-request probe that let new bulletins lead.
+                    "bulk_probe": bulk_receipt,
                     "capture_freshness": _taf_capture_freshness(
                         catalog,
                         newest_capture_at=_fold_round_captures(
