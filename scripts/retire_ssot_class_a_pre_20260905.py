@@ -70,9 +70,14 @@ CUTOFF = "2026-09-05"
 # these tables, and the margin keeps a late-written row from being missed.
 SCAN_BOUND = "2026-09-07"
 
-BATCH_BYTES = 32 * 1024 * 1024
-BATCH_ROWS = 5000
-PAUSE_SEC = 0.3
+# A batch holds the one SSOT write lock the resident and its sweeps share.
+# Measured on the first tables: 5,000 update proofs held it 4.5s against a
+# 0.3s pause, which left the resident's sweeps the gaps.  Batches are now
+# small enough to hold it about a second, and the pause is at least as long
+# as the hold, so this run never owns more than half the lock's time.
+BATCH_BYTES = 8 * 1024 * 1024
+BATCH_ROWS = 1500
+PAUSE_SEC = 0.5
 MAX_WAL_BYTES = 256 * 1024 * 1024
 MIN_FREE_DISK_BYTES = 5 * 1024 ** 3
 
@@ -344,7 +349,7 @@ def retire_table(conn, db: Path, spec, *, apply: bool, export_dir: Path, protect
                 }) + "\n")
                 mf.flush()
                 os.fsync(mf.fileno())
-            time.sleep(PAUSE_SEC)
+            time.sleep(max(PAUSE_SEC, held))
         stats["deleted_rows"] += len(ids)
         stats["deleted_payload_bytes"] += len(payload)
         stats["batches"] += 1
