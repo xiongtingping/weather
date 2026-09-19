@@ -13,13 +13,13 @@ covariates of the joint observation likelihood
 (``bayes_basket_target.regional_features``).  Nothing in this script changes
 how P1 computes.
 
-One row per station-day per pass, not one per cadence slot.  Until
-2026-09-16 the shared planner enumerated the cadence the way it does for the
-run-addressable products, and this lane answered every label with the same
-current forecast: two stored copies per fetch, one of them wearing a stamp
-that could be a day and a half older than the data.  Rows written that way
-carry extraction_version ...derived_cycle_v1; what this lane writes now
-carries v2.
+Named runs (v3, 2026-09-19).  The lane used to read the aggregator's current
+forecast and derive the cycle from the clock; every such row turned out to
+hold the run six hours older than its label.  It now asks the single-run
+endpoint for each cycle by name, so the row's label is its run, and a pass
+every twenty minutes catches a cycle within twenty of the aggregator having
+it.  A pass whose newest wanted cycle is not out yet costs one request and
+takes no write lock.
 
 Forward only: see bayes_basket_target/cma_grapes_point_archive.py for why a
 backfilled row could not honestly state when it became knowable.
@@ -47,13 +47,9 @@ from bayes_basket_target.pass_deadline import (  # noqa: E402
 
 DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 STATIONS = CAPTURE_STATIONS
-# One cycle, because only one is obtainable.  The aggregator serves the
-# forecast it currently holds and publishes no run stamp, so
-# ``_candidate_runs`` plans the single cycle in force at this clock; a cap
-# above one could only be filled by storing that one fetch under a second
-# label, which is what it used to do.  One pass is eight requests, one per
-# station, and an already-stored cycle costs none.
-P1_MAX_RUNS_PER_PASS = 1
+# Two cycles a pass: normally the newest one, and room for the one before
+# when a pass has been missed.  Eight requests per cycle, one per station.
+P1_MAX_RUNS_PER_PASS = 2
 # Seconds of writer occupancy this lane's P1 pass may spend.  The resident
 # admits one writer at a time, so a capture that runs to its subprocess
 # timeout is a production cycle that cannot start for that long.  The run
@@ -76,8 +72,29 @@ def main() -> int:
         # write, so a locked file is answered here rather than after eight
         # station fetches this pass could not store.
         from bayes_basket_target.regional_point_lane import (  # noqa: PLC0415
-            capture_p1, prepare,
+            capture_p1, plan_p1, prepare,
         )
+        from bayes_basket_target.cma_grapes_point_archive import (  # noqa: PLC0415
+            run_published,
+        )
+        # Before any write: is there a cycle to take?  The planner only
+        # reads, and one request answers whether the newest wanted cycle is
+        # out.  A pass with nothing new costs that one request and never
+        # takes the write lock, which is what makes a twenty-minute cadence
+        # cheap for the production cycle that shares the lock.
+        try:
+            plan = plan_p1(conn, product="CMA", now=now, stations=STATIONS,
+                           max_runs=int(args.max_runs))
+        except sqlite3.Error:
+            plan = None
+        if plan is not None:
+            if not plan:
+                print("P1 CMA: 没有待取的轮次")
+                return 0
+            newest = plan[0]["run_init"]
+            if len(plan) == 1 and not run_published(newest):
+                print(f"P1 CMA: {newest:%Y-%m-%dT%HZ} 尚未发布")
+                return 0
         try:
             prepare(conn)
         except sqlite_busy.WriteBlocked as exc:

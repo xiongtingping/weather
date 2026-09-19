@@ -2,10 +2,9 @@
 # Capture CMA GRAPES Global point curves for the eight mainland Chinese
 # stations, which had no regional coverage at all before this lane.
 #
-# Twice per cycle against a six-hourly product: the transport serves only
-# the run it currently holds, so a cycle missed is a cycle gone, and one
-# attempt per cycle left no second chance.  A pass whose cycle is already
-# stored makes no request at all.
+# Twice per cycle against a six-hourly product, and at once whenever the
+# probe (probe_cma_named_runs) sees a new cycle published.  Cycles are asked
+# for by name; a pass with nothing new costs one request and no write lock.
 #
 # Writes the SSOT, so it takes the sweep lock like the other writers.
 

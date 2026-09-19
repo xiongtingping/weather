@@ -15,6 +15,7 @@ import json
 import sqlite3
 import time
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
@@ -67,21 +68,16 @@ TRANSPORTS = {
 }
 EXTRACTION_VERSIONS = {
     "MSM": "jma_msm_surface_nearest_cell_v1",
-    # "derived_cycle" is the contract, not a caveat: the aggregator serving
-    # this product publishes no run stamp, so the row's cycle label is
-    # inferred from the product's own cadence.  What the replay actually
-    # filters on -- knowable_at_utc -- is the fetch clock and is exact.
-    #
-    # v2 (2026-09-16) is where the implementation caught up with that
-    # sentence.  "Inferred from the cadence" is singular -- one cycle is in
-    # force at a time -- but the planner enumerated the cadence and stored
-    # the one current forecast under every unstored label, so a v1 row's
-    # cycle stamp may be pure fiction while its curve and its
-    # knowable_at_utc are sound.  The version is bumped rather than the old
-    # rows deleted: they hold real forecasts honestly stamped with when
-    # they became knowable, and only the label is wrong.  Anything that
-    # counts runs, or reads run age, must tell the two apart.
-    "CMA": "cma_grapes_global_open_meteo_derived_cycle_v2",
+    # v3 (2026-09-19): named runs.  v1/v2 read the aggregator's current
+    # forecast and DERIVED the cycle from the clock; checked against its
+    # single-run endpoint, every v2 row was the run six hours older than its
+    # label, and 52 of 360 consecutive labels repeated the row before.  The
+    # lane now asks for a cycle by name, so the label is the run.  v1/v2
+    # rows are kept -- their curves and knowable_at_utc are sound -- except
+    # where a v3 row lands on the same key: that row is superseded (see
+    # ``write_run``), because its label names a run whose data it does not
+    # hold.
+    "CMA": "cma_grapes_global_open_meteo_single_run_v3",
     "HRRR": "ncep_hrrr_surface_nearest_cell_v1",
     "NBM": "ncep_nbm_core_nearest_cell_v1",
     "ICON_EU": "dwd_icon_eu_surface_nearest_cell_v1",
@@ -96,8 +92,19 @@ RUN_CYCLE_HOURS = {
 }
 # How long after its nominal hour a run is normally on the archive.
 PUBLICATION_LAG_HOURS = {
-    "MSM": 3.0, "HRRR": 1.5, "NBM": 2.0, "ICON_EU": 4.0, "CMA": 4.0,
+    "MSM": 3.0, "HRRR": 1.5, "NBM": 2.0, "ICON_EU": 4.0, "CMA": 6.0,
 }
+# Extraction versions whose run label was derived from the clock rather than
+# read from the transport (CMA v1/v2): a named-run row on the same key
+# supersedes them.
+DERIVED_LABEL_VERSIONS = frozenset({
+    "cma_grapes_global_open_meteo_derived_cycle_v1",
+    "cma_grapes_global_open_meteo_derived_cycle_v2",
+})
+SUPERSEDED_AUDIT = (
+    Path(__file__).resolve().parents[1]
+    / "data" / "runtime" / "regional_point_superseded_rows.jsonl"
+)
 # The local afternoon window the P1 question is about.
 PEAK_LOCAL_HOURS = tuple(range(11, 19))
 # A live sweep fetches runs issued within the last day or so; a fetch further
@@ -247,11 +254,19 @@ def remaining_peak_complete(
 def stored_run_inits(
     conn: sqlite3.Connection, *, system_id: str, station_id: str, event_date: str
 ) -> set[str]:
+    """Runs stored for the station-day under a label that IS the run.
+
+    A clock-derived label (CMA v1/v2) does not count as holding its run: it
+    holds another run's data, so the named run is still wanted, and
+    ``write_run`` supersedes the derived row when it lands.
+    """
+
+    marks = ",".join("?" for _ in DERIVED_LABEL_VERSIONS)
     return {
         str(row[0]) for row in conn.execute(
             f"SELECT run_init_utc FROM {TABLE} WHERE ensemble_system_id=? "
-            "AND station_id=? AND target_local_date=?",
-            (system_id, station_id, event_date),
+            f"AND station_id=? AND target_local_date=? AND extraction_version NOT IN ({marks})",
+            (system_id, station_id, event_date, *sorted(DERIVED_LABEL_VERSIONS)),
         )
     }
 
@@ -293,6 +308,11 @@ def write_run(
         "extraction_version": EXTRACTION_VERSIONS[product],
     }
     digest = content_sha256(identity)
+    _supersede_derived_label(
+        conn, system_id=system_id, station_id=str(station_id).upper(),
+        event_date=event_date.isoformat(), run_init=_iso(run_init),
+        extraction_version=EXTRACTION_VERSIONS[product],
+    )
     with sqlite_busy.blocked_when_busy():
         cursor = conn.execute(
             f"INSERT OR IGNORE INTO {TABLE}("
@@ -315,6 +335,47 @@ def write_run(
             ),
         )
     return int(cursor.rowcount or 0) > 0
+
+
+def _supersede_derived_label(
+    conn: sqlite3.Connection, *, system_id: str, station_id: str,
+    event_date: str, run_init: str, extraction_version: str,
+) -> None:
+    """Clear a clock-derived row off the key a named-run row is about to take.
+
+    A derived label (CMA v1/v2) names a run the row's data is not -- checked
+    2026-09-19, it held the run six hours older -- so the key is wanted by
+    the row that really is that run.  The removed row is appended to
+    ``SUPERSEDED_AUDIT`` whole first, so nothing is lost; a named-run row is
+    never superseded.
+    """
+
+    if extraction_version in DERIVED_LABEL_VERSIONS:
+        return
+    marks = ",".join("?" for _ in DERIVED_LABEL_VERSIONS)
+    rows = conn.execute(
+        f"SELECT * FROM {TABLE} WHERE ensemble_system_id=? AND station_id=?"
+        f" AND target_local_date=? AND run_init_utc=? AND extraction_version IN ({marks})",
+        (system_id, station_id, event_date, run_init, *sorted(DERIVED_LABEL_VERSIONS)),
+    ).fetchall()
+    if not rows:
+        return
+    names = [d[0] for d in conn.execute(f"SELECT * FROM {TABLE} LIMIT 0").description]
+    SUPERSEDED_AUDIT.parent.mkdir(parents=True, exist_ok=True)
+    with SUPERSEDED_AUDIT.open("a", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps({
+                "superseded_at_utc": _iso(datetime.now(timezone.utc)),
+                "reason": "derived_label_replaced_by_named_run",
+                "replaced_by_extraction_version": extraction_version,
+                "row": dict(zip(names, row)),
+            }, sort_keys=True) + "\n")
+    with sqlite_busy.blocked_when_busy():
+        conn.execute(
+            f"DELETE FROM {TABLE} WHERE ensemble_system_id=? AND station_id=?"
+            f" AND target_local_date=? AND run_init_utc=? AND extraction_version IN ({marks})",
+            (system_id, station_id, event_date, run_init, *sorted(DERIVED_LABEL_VERSIONS)),
+        )
 
 
 def runs_for(
@@ -366,36 +427,16 @@ def _candidate_runs(
     day_start = datetime.combine(event_date, datetime.min.time(), tzinfo=zone).astimezone(timezone.utc)
     day_end = day_start + timedelta(days=1)
     latest = now - timedelta(hours=PUBLICATION_LAG_HOURS[product])
-    if product == "CMA":
-        # This product's archive is not addressable by run.  The aggregator
-        # publishes no run stamp and serves whatever forecast it currently
-        # holds, so ``run_init_utc`` is derived from the cadence -- and
-        # exactly ONE cycle is in force at ``now``.
-        #
-        # Enumerating the cadence the way the run-addressable products need
-        # planned every unstored cycle in the window, fetched the same
-        # current forecast once per label, and stored a copy under each.
-        # Measured 2026-09-16 over five days: every pass wrote exactly two
-        # labels off one fetch, identical hour by hour where their windows
-        # overlap and differing only in where the truncation starts -- and
-        # some labels were pure fiction, 2026-09-13T18Z written by the pass
-        # of 2026-09-15T07:54Z, a stamp 38 hours older than the forecast it
-        # carried.  ``regional_features`` refuses a row whose
-        # ``as_of - run_init`` exceeds ``MAX_RUN_AGE_HOURS``, so a fresh
-        # forecast wearing a stale label reads as too old to use, and the
-        # surviving twin is the one truncated hardest.
-        #
-        # ``derived_run_init`` is the archive module's own answer and was
-        # exported for this; what it lacked was a caller.
-        from .cma_grapes_point_archive import derived_run_init  # noqa: PLC0415
-
-        run = derived_run_init(now)
-        return [run] if day_start - timedelta(days=1) <= run < day_end else []
     runs: list[datetime] = []
     first = (day_start - timedelta(days=1)).replace(minute=0, second=0, microsecond=0)
+    # CMA's transport is a rate-limited aggregator and only the last day's
+    # cycles can still serve P1 (``regional_features`` admits twelve hours),
+    # so older cycles are not asked for.
+    oldest = now - timedelta(hours=24) if product == "CMA" else first
     stamp = first
     while stamp < day_end:
-        if stamp.hour in RUN_CYCLE_HOURS[product] and stamp >= day_start - timedelta(days=1) and stamp <= latest:
+        if (stamp.hour in RUN_CYCLE_HOURS[product] and stamp >= day_start - timedelta(days=1)
+                and oldest <= stamp <= latest):
             runs.append(stamp)
         stamp += timedelta(hours=1)
     return runs
@@ -608,21 +649,29 @@ def capture_p1(
                     }
             elif product == "CMA":
                 from .cma_grapes_point_archive import (  # noqa: PLC0415
-                    fetch_day_maximum as cma_fetch, source_url as cma_source_url,
+                    RunNotPublished, fetch_day_maximum as cma_fetch,
+                    source_url as cma_source_url,
                 )
                 results = {}
                 for target in item["targets"]:
-                    captured = cma_fetch(
-                        run_init=run_init, event_date=target["event_date"],
-                        utc_offset_hours=int(target["utc_offset_hours"]),
-                        latitude=float(target["latitude"]),
-                        longitude=float(target["longitude"]),
-                    )
+                    try:
+                        captured = cma_fetch(
+                            run_init=run_init, event_date=target["event_date"],
+                            utc_offset_hours=int(target["utc_offset_hours"]),
+                            latitude=float(target["latitude"]),
+                            longitude=float(target["longitude"]),
+                        )
+                    except RunNotPublished:
+                        # The cycle is not out: one request says so for all
+                        # eight stations, and the run is reported unpublished.
+                        results = {}
+                        break
                     results[(str(target["station_id"]), target["event_date"].isoformat())] = {
                         "hourly_c": captured["hourly_c"],
                         "hours_wanted": len(captured["hours_wanted"]),
                         "source_url": cma_source_url(
-                            float(target["latitude"]), float(target["longitude"])
+                            float(target["latitude"]), float(target["longitude"]),
+                            run_init,
                         ),
                     }
             elif product == "ICON_EU":

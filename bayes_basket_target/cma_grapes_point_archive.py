@@ -18,15 +18,20 @@ single envelope.
 The honest limits of this lane, stated here because they decide what the
 row may claim:
 
-  * The aggregator does not publish the model run stamp.  ``run_init_utc``
-    is therefore DERIVED -- the most recent cycle on this product's own
-    published cadence whose publication lag has elapsed -- and the
-    extraction version says so.  Nothing downstream reads it except run-age
-    filtering and de-duplication; the as-of replay filters on
-    ``knowable_at_utc``, which a forward pass stamps with its own clock and
-    which is therefore exact.
+  * Runs are addressed by name (2026-09-19, v3).  Until then the lane read
+    the aggregator's "current" forecast, which carries no run stamp, and
+    DERIVED the cycle from the clock (four hours of assumed lag).  Checked
+    2026-09-19 against the aggregator's single-run endpoint, which does
+    address runs: every v2 row was the run six hours older than its label
+    (labelled 06Z = the 00Z run, 12Z = 06Z, 18Z = 12Z), and 52 of 360
+    consecutive labels repeated the previous row outright -- the
+    aggregator holds CMA ten to eleven hours after init, not four.  So P1
+    read a curve six hours staler than it believed, and the twelve-hour
+    admissibility cut was measured against the wrong origin.  The lane
+    now asks the single-run endpoint for a named cycle; a cycle not yet
+    published answers so, and costs one request.
 
-  * For that reason there is NO backfill.  The historical archive is
+  * There is still NO backfill.  The historical archive is
     reachable and its accuracy is ordinary rather than suspicious -- 1.197C
     MAE against settled truth over 208 station-days, cold by 0.645C -- but
     its series is not resolved by run, so a backfilled row cannot honestly
@@ -51,6 +56,7 @@ regional lane's.
 
 from __future__ import annotations
 
+import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
@@ -64,8 +70,12 @@ SYSTEM_ID = "CMA_GRAPES_GLOBAL_POINT"
 # ensembles that do serve P0 are ECMWF, GEFS, ICON and GEM.
 FAMILY_ID = "CMA_GRAPES"
 PROVIDER_ID = "CMA"
-_BASE = "https://api.open-meteo.com/v1/forecast"
+_BASE = "https://single-runs-api.open-meteo.com/v1/forecast"
 _MODEL = "cma_grapes_global"
+
+
+class RunNotPublished(ContractError):
+    """The aggregator does not hold this cycle yet."""
 
 # The roster this lane opens at: the mainland Chinese stations, which had no
 # regional coverage of any kind.  Shanghai and Qingdao also fall inside MSM's
@@ -84,11 +94,12 @@ CAPTURE_STATIONS = (
 )
 
 #: Cycles CMA GRAPES Global issues, and how long after its nominal hour the
-#: aggregator has it.  Four hours is measured slack, not a published figure:
-#: the aggregator republishes on its own schedule and a shorter lag would
-#: name a cycle that is not there yet.
+#: lane first asks for one.  Measured 2026-09-19 (single-run endpoint): the
+#: aggregator holds a CMA cycle ten to eleven hours after init.  Asking from
+#: six hours costs one "not published" answer per pass until it lands, which
+#: is what lets a pass every twenty minutes catch a cycle within twenty.
 RUN_CYCLE_HOURS = (0, 6, 12, 18)
-PUBLICATION_LAG_HOURS = 4.0
+PUBLICATION_LAG_HOURS = 6.0
 MAX_FORECAST_HOUR = 78
 
 _TIMEOUT = httpx.Timeout(60.0, connect=15.0)
@@ -110,24 +121,6 @@ def close_client() -> None:
         _client_instance = None
 
 
-def derived_run_init(now: datetime) -> datetime:
-    """The cycle in force at ``now`` on this product's own cadence.
-
-    Derived, not read: the aggregator publishes no run stamp.  A row's
-    honesty rests on ``knowable_at_utc``, which the writer stamps with the
-    fetch clock; this only labels the row and keeps one row per cycle.
-    """
-
-    stamp = now.astimezone(timezone.utc) - timedelta(hours=PUBLICATION_LAG_HOURS)
-    for hour in sorted(RUN_CYCLE_HOURS, reverse=True):
-        if stamp.hour >= hour:
-            return stamp.replace(hour=hour, minute=0, second=0, microsecond=0)
-    previous = stamp - timedelta(days=1)
-    return previous.replace(
-        hour=max(RUN_CYCLE_HOURS), minute=0, second=0, microsecond=0
-    )
-
-
 def local_day_hours(
     *, run_init: datetime, event_date: date, utc_offset_hours: int
 ) -> list[int]:
@@ -144,30 +137,53 @@ def local_day_hours(
     return hours
 
 
-def source_url(latitude: float, longitude: float) -> str:
+def _run_param(run_init: datetime) -> str:
+    return run_init.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M")
+
+
+def source_url(latitude: float, longitude: float, run_init: datetime) -> str:
     return (
         f"{_BASE}?latitude={latitude}&longitude={longitude}"
-        f"&hourly=temperature_2m&models={_MODEL}&timezone=UTC"
+        f"&hourly=temperature_2m&models={_MODEL}&run={_run_param(run_init)}"
+        f"&forecast_hours={MAX_FORECAST_HOUR + 1}&timezone=UTC"
     )
 
 
-def _hourly_series(latitude: float, longitude: float) -> dict[datetime, float]:
-    """Every hour the aggregator currently holds for this point."""
+def _hourly_series(
+    latitude: float, longitude: float, run_init: datetime,
+    forecast_hours: int = MAX_FORECAST_HOUR + 1,
+) -> dict[datetime, float]:
+    """This named run's hours for this point; ``RunNotPublished`` if absent.
+
+    The endpoint caps concurrent requests and answers "Too many concurrent
+    requests" rather than queueing, so that answer is waited out and
+    retried; the lane only ever asks one request at a time.
+    """
 
     params = {
         "latitude": float(latitude), "longitude": float(longitude),
         "hourly": "temperature_2m", "models": _MODEL,
-        "forecast_days": 4, "past_days": 1, "timezone": "UTC",
+        "run": _run_param(run_init), "forecast_hours": int(forecast_hours),
+        "timezone": "UTC",
     }
     last: Exception | None = None
-    for _ in range(_ATTEMPTS):
+    for attempt in range(_ATTEMPTS):
         try:
             response = _client().get(_BASE, params=params)
+            try:
+                payload = response.json()
+            except ValueError:
+                payload = {}
+            reason = str((payload or {}).get("reason") or "")
+            if "not available" in reason:
+                raise RunNotPublished("cma_grapes_run_not_published")
+            if "Too many concurrent" in reason:
+                time.sleep(2.0 * (attempt + 1))
+                raise ContractError("cma_grapes_point_rate_limited")
             if response.status_code != 200:
                 raise ContractError(
                     f"cma_grapes_point_http_{response.status_code}"
                 )
-            payload = response.json()
             hourly = payload.get("hourly") or {}
             stamps = hourly.get("time") or []
             values = hourly.get("temperature_2m") or []
@@ -183,9 +199,22 @@ def _hourly_series(latitude: float, longitude: float) -> dict[datetime, float]:
             if not series:
                 raise ContractError("cma_grapes_point_series_empty")
             return series
+        except RunNotPublished:
+            raise
         except Exception as exc:  # noqa: BLE001 -- retried, then surfaced
             last = exc
     raise last if last is not None else ContractError("cma_grapes_point_unreachable")
+
+
+def run_published(run_init: datetime) -> bool:
+    """One cheap request: does the aggregator hold this cycle yet?"""
+
+    _station, latitude, longitude, _zone = CAPTURE_STATIONS[0]
+    try:
+        _hourly_series(latitude, longitude, run_init, forecast_hours=1)
+    except RunNotPublished:
+        return False
+    return True
 
 
 def fetch_day_maximum(
@@ -206,7 +235,7 @@ def fetch_day_maximum(
     )
     if not wanted:
         return {"hourly_c": {}, "hours_wanted": []}
-    series = _hourly_series(latitude, longitude)
+    series = _hourly_series(latitude, longitude, run_init)
     hourly_c = {}
     for hour in wanted:
         value = series.get(run_init + timedelta(hours=hour))
@@ -217,7 +246,7 @@ def fetch_day_maximum(
 
 __all__ = [
     "CAPTURE_STATIONS", "FAMILY_ID", "MAX_FORECAST_HOUR", "PROVIDER_ID",
-    "PUBLICATION_LAG_HOURS", "RUN_CYCLE_HOURS", "SYSTEM_ID",
-    "TRANSPORT_PROVIDER_ID", "close_client", "derived_run_init",
-    "fetch_day_maximum", "local_day_hours", "source_url",
+    "PUBLICATION_LAG_HOURS", "RUN_CYCLE_HOURS", "RunNotPublished", "SYSTEM_ID",
+    "TRANSPORT_PROVIDER_ID", "close_client", "fetch_day_maximum",
+    "local_day_hours", "run_published", "source_url",
 ]

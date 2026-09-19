@@ -500,11 +500,12 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     ),
     # CMA GRAPES Global for the eight mainland Chinese stations, which had
     # no regional coverage of any kind: HRRR and the NBM are CONUS, ICON-EU
-    # stops far to their west, and MSM's domain begins at 120E.  The
-    # transport serves only the run it currently holds, so a missed cycle
-    # is gone, and an idle pass is a handful of indexed reads with no fetch
-    # at all.  Capture only: the rows reach P1 as covariates of the joint
-    # observation likelihood (charter 150), like every regional lane's.
+    # stops far to their west, and MSM's domain begins at 120E.  Since
+    # 2026-09-19 the lane asks for cycles by name (the aggregator's
+    # single-run endpoint keeps the recent ones), so a missed pass is made
+    # up by the next one within the day.  Capture only: the rows reach P1
+    # as covariates of the joint observation likelihood (charter 150), like
+    # every regional lane's.
     #
     # Half its own cadence, not equal to it (2026-09-16).  At 21600s a
     # six-hourly product got exactly one attempt per cycle, so one missed
@@ -515,14 +516,25 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     # over five days the lane fired every 7 to 19.5 hours against a
     # 6-hour contract, and 2026-09-15 lost a cycle outright.  Halving buys
     # a second attempt inside each cycle window AND reaches any given rank
-    # twice as fast.  The empty pass is genuinely cheap here: with
-    # ``_candidate_runs`` down to the one cycle in force, an already-stored
-    # cycle is refused by ``plan_p1`` before a single request is made.
+    # twice as fast.  The empty pass is genuinely cheap here: a stored
+    # cycle is refused by ``plan_p1`` before any request, and an unpublished
+    # one costs a single request and no write lock.
     (
         "capture_cma_grapes_forward",
         "scripts/capture_cma_grapes_forward_sweep.sh",
         10800.0,
         900.0,
+    ),
+    # The CMA capture's doorbell (2026-09-19).  One request, SSOT read-only,
+    # no write domain: is the newest cycle the lane wants out yet?  When it
+    # is, ``honour_cma_probe`` makes the capture due at once instead of up
+    # to three hours later, so the SSOT queue pays for the four cycles a day
+    # that exist and not for the asking.
+    (
+        "probe_cma_named_runs",
+        "scripts/probe_cma_named_runs_sweep.sh",
+        1200.0,
+        120.0,
     ),
     # ICON-EU deterministic, run-scoped: one whole-domain download serves
     # seven European stations and two event days.  Hourly against a
@@ -578,6 +590,8 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     "capture_noaa_conus_forward": "ssot",
     "capture_dwd_icon_eu_forward": "ssot",
     "capture_cma_grapes_forward": "ssot",
+    # Reads the SSOT ``mode=ro`` and writes one small JSON file.
+    "probe_cma_named_runs": "none",
     # Writes station_registry.py and the two SSOT identity rows.
     "station_onboarding": "ssot",
     "market_registry_retention": "ssot",
@@ -740,6 +754,41 @@ def seed_hosted_sweep_clock(
     if overdue >= 0:
         return max(now_mono - overdue, now_mono - 86_400.0) + 60.0
     return now_mono - overdue
+
+
+CMA_NAMED_RUN_PROBE_PATH = ROOT / "data" / "runtime" / "cma_named_run_probe.json"
+
+
+def honour_cma_probe(
+    next_due: "dict[str, float]",
+    *,
+    now_mono: float,
+    honoured: "dict[str, str]",
+    path: Path = CMA_NAMED_RUN_PROBE_PATH,
+) -> str | None:
+    """Make the CMA capture due now when its probe saw a new cycle published.
+
+    Once per cycle: ``honoured`` remembers the cycle already acted on, so a
+    capture that is refused or fails is retried on its own interval rather
+    than on every loop.  Returns the cycle it acted on, else None.
+    """
+
+    try:
+        state = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    run = str((state or {}).get("newest_wanted_run_utc") or "")
+    if not run or not (state or {}).get("published"):
+        return None
+    if honoured.get("capture_cma_grapes_forward") == run:
+        return None
+    if "capture_cma_grapes_forward" not in next_due:
+        return None
+    next_due["capture_cma_grapes_forward"] = min(
+        next_due["capture_cma_grapes_forward"], now_mono
+    )
+    honoured["capture_cma_grapes_forward"] = run
+    return run
 
 
 def due_hosted_sweeps(
@@ -5026,6 +5075,7 @@ def main() -> int:
                 _sweep_clocks = {}
         except (OSError, ValueError):
             _sweep_clocks = {}
+        cma_probe_honoured: dict[str, str] = {}
         next_hosted_sweep = {
             name: seed_hosted_sweep_clock(
                 now_mono=now_mono,
@@ -5765,6 +5815,12 @@ def main() -> int:
                 #
                 # The rest of the rule is untouched -- list order still breaks
                 # ties, and admission is still by write domain.
+                # A CMA cycle the probe saw published makes its capture due
+                # now rather than at the end of the capture's interval.
+                honour_cma_probe(
+                    next_hosted_sweep, now_mono=now_mono,
+                    honoured=cma_probe_honoured,
+                )
                 due = due_hosted_sweeps(
                     now_mono=now_mono,
                     next_due=next_hosted_sweep,

@@ -63,25 +63,20 @@ def test_the_lane_is_registered_and_reaches_p1_as_a_covariate() -> None:
     assert features["regional_headroom_c"] == pytest.approx(3.5)
 
 
-def test_the_derived_cycle_is_the_one_already_published() -> None:
-    """No run stamp reaches us, so the cycle is derived from the cadence."""
+def test_a_cycle_is_asked_for_by_name() -> None:
+    """The label is the run (v3): the request names it."""
 
-    # 09:30Z, four hours after the 06Z cycle: that is the newest one out.
-    assert CMA.derived_run_init(
-        datetime(2026, 9, 7, 10, 30, tzinfo=timezone.utc)
-    ) == datetime(2026, 9, 7, 6, 0, tzinfo=timezone.utc)
-    # 03:00Z is inside the 00Z cycle's publication lag, so the run in force
-    # is the previous day's last one, not a cycle that is not there yet.
-    assert CMA.derived_run_init(
-        datetime(2026, 9, 7, 3, 0, tzinfo=timezone.utc)
-    ) == datetime(2026, 9, 6, 18, 0, tzinfo=timezone.utc)
+    run = datetime(2026, 9, 18, 12, 0, tzinfo=timezone.utc)
+    url = CMA.source_url(30.576, 103.95, run)
+    assert "run=2026-09-18T12:00" in url and "single-runs-api" in url
+    assert LANE.EXTRACTION_VERSIONS["CMA"].endswith("single_run_v3")
 
 
 def test_backfill_is_refused_rather_than_guessed() -> None:
     """A row that cannot say when it became knowable is not written.
 
-    The archive is reachable and its accuracy is ordinary, but its series
-    is not resolved by run.  Stamping such a row early leaks the afternoon
+    Runs are addressed by name now, but when a past run first became
+    available is still unknown.  Stamping such a row early leaks the afternoon
     into the morning; stamping it late enough to be safe makes it useless
     for the same-day question.  So the lane refuses instead of choosing.
     """
