@@ -9,10 +9,11 @@ root's centre ``c0`` and the root's bucket probabilities.  The likelihood is
 
 with each station's line shrunk toward the pool by ``K = 15`` station-days.
 
-The gate is walk-forward: each event day is scored with parameters fitted on
-strictly earlier days only, as ``root`` against ``root x L`` (both under the
-production zero floor), and the per-day mean log-score gains are
-bootstrapped by day.  The artifact is marked SERVE only when the lower end of
+The gate is walk-forward and strictly as-of (``AsOf``): each case is scored
+with parameters fitted only on station-days whose truth had been committed
+when that case's P0-M was decided, each at the truth revision standing then,
+as ``root`` against ``root x L`` (both under the production zero floor), and
+the per-day mean log-score gains are bootstrapped by event day.  The artifact is marked SERVE only when the lower end of
 that interval is above zero; otherwise it is written with gate IDENTITY and
 P0-M stays P0 -- the numbers are kept so the board can show how close it is.
 
@@ -24,8 +25,9 @@ station-day.  A tempered group's lambda is the grid value with the best
 weighted log score under the fitted line (``TEMPERED_GROUPS`` -- today only
 the unreasoned cold TAF; every other group, and one under ``MIN_GROUP_WEIGHT``
 station-days, keeps 1).  The tempering serves only when a walk-forward over the same
-cases -- line and lambdas fitted on strictly earlier days -- beats lambda = 1
-on average; otherwise it is written with state IDENTITY and every group reads 1.
+cases -- line and lambdas fitted, as above, on what was knowable when each TAF
+arrived -- beats lambda = 1 on average; otherwise it is written with state
+IDENTITY and every group reads 1.
 
     python3 scripts/fit_taf_likelihood.py --through 2026-09-18
 """
@@ -39,6 +41,7 @@ import random
 import sqlite3
 import statistics
 import sys
+from bisect import bisect_right
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -74,71 +77,139 @@ def _iso(value: datetime) -> str:
     return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def load_truth(conn: sqlite3.Connection) -> dict[tuple[str, str], float]:
-    return {
-        (str(row[0]), str(row[1])): float(row[2])
-        for row in conn.execute(
-            "SELECT t.station_id, t.local_date, t.official_tmax_c"
-            " FROM calibration_station_daily_high_truth t"
-            " WHERE t.source_lane='AWC' AND t.qc_status='ACCEPTED'"
-            " AND t.revision_no=(SELECT MAX(revision_no)"
-            "  FROM calibration_station_daily_high_truth t2"
-            "  WHERE t2.station_id=t.station_id AND t2.local_date=t.local_date"
-            "  AND t2.source_lane='AWC' AND t2.qc_status='ACCEPTED')"
+def _epoch(text: Any) -> float:
+    """An ISO instant as seconds -- compared as numbers, never as strings.
+
+    ``...:09Z`` sorts above ``...:09.000001Z`` as text, so a string compare
+    of two clocks with and without fractions reads the later one as earlier.
+    """
+
+    return datetime.fromisoformat(str(text).replace("Z", "+00:00")).timestamp()
+
+
+# Review 2026-09-19 (P1): training for a prediction made at T reads only the
+# station-days whose truth had been committed by T, at the revision standing
+# at T.  The walk-forward used to cut on ``event_date < test day``, which let
+# yesterday's (and, for a first P0-M two days out, the day before's) truth
+# train a decision taken before those days had closed -- 142 of the 147
+# scored cases on 2026-09-19.
+TRAINING_CUT = "strict_as_of_truth_commit_v1"
+
+
+def load_truth_revisions(
+    conn: sqlite3.Connection,
+) -> dict[tuple[str, str], list[tuple[float, int, float]]]:
+    """``(station, day) -> [(committed_at, revision, tmax_c), ...]`` by revision.
+
+    The commit is when the truth lane wrote that revision -- the moment it
+    became knowable (``label_knowability``); the last entry is today's truth.
+    """
+
+    out: dict[tuple[str, str], list[tuple[float, int, float]]] = defaultdict(list)
+    for station, day, revision, tmax, committed in conn.execute(
+        "SELECT station_id, local_date, revision_no, official_tmax_c,"
+        " canonical_committed_at_utc"
+        " FROM calibration_station_daily_high_truth"
+        " WHERE source_lane='AWC' AND qc_status='ACCEPTED'"
+        " AND official_tmax_c IS NOT NULL AND canonical_committed_at_utc IS NOT NULL"
+    ):
+        out[(str(station), str(day))].append(
+            (_epoch(committed), int(revision), float(tmax))
         )
-    }
+    return {key: sorted(rows, key=lambda r: r[1]) for key, rows in out.items()}
+
+
+def _revision_labels(
+    revisions: Sequence[tuple[float, int, float]],
+    *,
+    lineage: Mapping[str, Any],
+    ordinals: Mapping[str, int],
+) -> list[tuple[float, int, float, str]] | None:
+    """Each truth revision as ``(committed_at, revision, tmax_c, bucket)``."""
+
+    labels = []
+    for committed, revision, tmax in revisions:
+        bucket = _anchor_bucket_for_temperature(
+            tmax, root_lineage=lineage, bucket_ordinals=ordinals
+        )
+        if bucket is None:
+            return None
+        labels.append((committed, revision, tmax, bucket))
+    return labels
+
+
+def as_of_label(
+    case: Mapping[str, Any], at: float
+) -> tuple[float, int, float, str] | None:
+    """The truth revision standing at ``at``: the highest one committed by then."""
+
+    standing = [label for label in case["truth_revisions"] if label[0] <= at]
+    return max(standing, key=lambda label: label[1]) if standing else None
 
 
 def load_cases(
     conn: sqlite3.Connection, *, since: str, through: str
 ) -> list[dict[str, Any]]:
-    """The first P0-M with a TX per settled station-day, on its P0 root."""
+    """The first P0-M with a TX per settled station-day, on its P0 root.
 
-    truth = load_truth(conn)
-    first: dict[tuple[str, str], tuple[str, float, float, str]] = {}
-    for station, day, at, tx, centre, root_id in conn.execute(
+    ``c0`` is the root's centre, read off the root row -- the number serving
+    subtracts (``materialize_p0m_observed`` reads ``p0_root``).  The P0-M
+    row's own ``model_center_c`` is its served anchor once the likelihood
+    applies, so reading it there fed each TAF's pull back into the next fit
+    (review 2026-09-19: a 38C root read as 38.18C).
+    """
+
+    truth = load_truth_revisions(conn)
+    first: dict[tuple[str, str], tuple[float, str, float, str]] = {}
+    for station, day, at, tx, root_id in conn.execute(
         "SELECT station_id, event_date, decision_at_utc,"
         " json_extract(lineage_json,'$.taf_observed_tx_c'),"
-        " json_extract(lineage_json,'$.model_center_c'),"
         " json_extract(lineage_json,'$.p0_root_checkpoint_id')"
         " FROM basket_probability_envelope"
         " WHERE stage='P0-M' AND state='COMMITTED'"
         " AND event_date>=? AND event_date<=?",
         (since, through),
     ):
-        if tx in (None, "", "NONE") or centre in (None, "", "NONE") or not root_id:
+        if tx in (None, "", "NONE") or not root_id:
             continue
         key = (str(station), str(day))
         if key not in truth:
             continue
-        if key not in first or str(at) < first[key][0]:
-            first[key] = (str(at), float(tx), float(centre), str(root_id))
+        moment = _epoch(at)
+        if key not in first or moment < first[key][0]:
+            first[key] = (moment, str(at), float(tx), str(root_id))
     cases: list[dict[str, Any]] = []
-    for (station, day), (_at, tx, centre, root_id) in sorted(first.items()):
+    for (station, day), (moment, at, tx, root_id) in sorted(first.items()):
         row = conn.execute(
             "SELECT probabilities_json, bucket_ordinals_json,"
-            " json_extract(lineage_json,'$.bucket_intervals_c_json')"
+            " json_extract(lineage_json,'$.bucket_intervals_c_json'),"
+            " json_extract(lineage_json,'$.model_center_c')"
             " FROM basket_probability_envelope WHERE checkpoint_id=? LIMIT 1",
             (root_id,),
         ).fetchone()
-        if row is None or not row[2]:
+        if row is None or not row[2] or row[3] in (None, "", "NONE"):
             continue
         probabilities = {str(k): float(v) for k, v in json.loads(row[0]).items()}
         ordinals = {str(k): int(v) for k, v in json.loads(row[1]).items()}
         lineage = {"bucket_intervals_c_json": row[2]}
         axis = _bucket_centers_c(lineage, bucket_ordinals=ordinals)
-        truth_bucket = _anchor_bucket_for_temperature(
-            truth[(station, day)], root_lineage=lineage, bucket_ordinals=ordinals
+        labels = _revision_labels(
+            truth[(station, day)], lineage=lineage, ordinals=ordinals
         )
-        if axis is None or truth_bucket is None:
+        if axis is None or not labels:
             continue
         cases.append({
             "station_id": station,
             "event_date": day,
+            "decided_at": moment,
+            "decided_at_utc": at,
             "tx_c": tx,
-            "c0": centre,
-            "truth_c": truth[(station, day)],
-            "truth_bucket": truth_bucket,
+            "c0": float(row[3]),
+            # Scored against today's truth; trained on the revision standing
+            # at the moment of the prediction being scored (``as_of_label``).
+            "truth_c": labels[-1][2],
+            "truth_bucket": labels[-1][3],
+            "truth_revisions": labels,
             "probabilities": probabilities,
             "centers": dict(zip(axis[0], axis[1])),
         })
@@ -150,9 +221,9 @@ def load_tempering_cases(
 ) -> list[dict[str, Any]]:
     """Every forward TAF with a TX and its weather, on the P0 current when it arrived."""
 
-    truth = load_truth(conn)
+    truth = load_truth_revisions(conn)
     seen: set[tuple[str, str, str, float]] = set()
-    raw: list[tuple[str, str, str, float, float, float]] = []
+    raw: list[tuple[str, str, float, str, float, float, float]] = []
     for station, day, issued, available, received, tx, cloud, precip in conn.execute(
         "SELECT station_id, event_date, issued_at_utc, provider_available_at_utc,"
         " received_at_utc, tx_c, cloud_cover_fraction, precipitation_probability"
@@ -164,18 +235,19 @@ def load_tempering_cases(
         if (key[0], key[1]) not in truth or key in seen:
             continue
         seen.add(key)
+        when = str(available or received or issued)
         raw.append((
-            key[0], key[1], str(available or received or issued), float(tx),
+            key[0], key[1], _epoch(when), when, float(tx),
             float(cloud), float(precip),
         ))
-    roots: dict[tuple[str, str], list[tuple[str, str]]] = {}
+    roots: dict[tuple[str, str], list[tuple[float, str]]] = {}
     geometry: dict[str, dict[str, Any] | None] = {}
     cases: list[dict[str, Any]] = []
-    for station, day, when, tx, cloud, precip in sorted(raw):
+    for station, day, moment, when, tx, cloud, precip in sorted(raw):
         scope = (station, day)
         if scope not in roots:
             roots[scope] = sorted(
-                (str(at), str(cid)) for at, cid in conn.execute(
+                (_epoch(at), str(cid)) for at, cid in conn.execute(
                     "SELECT decision_at_utc, checkpoint_id"
                     " FROM basket_probability_envelope"
                     " WHERE station_id=? AND event_date=? AND stage='P0'"
@@ -183,7 +255,7 @@ def load_tempering_cases(
                     scope,
                 )
             )
-        current = [cid for at, cid in roots[scope] if at <= when]
+        current = [cid for at, cid in roots[scope] if at <= moment]
         if not current:
             continue
         cid = current[-1]
@@ -203,11 +275,11 @@ def load_tempering_cases(
                 ordinals = {str(k): int(v) for k, v in json.loads(row[2]).items()}
                 lineage = {"bucket_intervals_c_json": row[3]}
                 axis = _bucket_centers_c(lineage, bucket_ordinals=ordinals)
-                truth_bucket = _anchor_bucket_for_temperature(
-                    truth[scope], root_lineage=lineage, bucket_ordinals=ordinals
+                labels = _revision_labels(
+                    truth[scope], lineage=lineage, ordinals=ordinals
                 )
                 mass = sum(probabilities.get(b, 0.0) for b in axis[0]) if axis else 0.0
-                if axis is not None and truth_bucket is not None and mass > 0.0:
+                if axis is not None and labels and mass > 0.0:
                     centers = dict(zip(axis[0], axis[1]))
                     geometry[cid] = {
                         "c0": float(row[0]),
@@ -216,7 +288,9 @@ def load_tempering_cases(
                         "root_mean_c": sum(
                             probabilities.get(b, 0.0) * c for b, c in centers.items()
                         ) / mass,
-                        "truth_bucket": truth_bucket,
+                        "truth_c": labels[-1][2],
+                        "truth_bucket": labels[-1][3],
+                        "truth_revisions": labels,
                     }
         shape = geometry[cid]
         if shape is None:
@@ -224,6 +298,8 @@ def load_tempering_cases(
         cases.append({
             "station_id": station,
             "event_date": day,
+            "decided_at": moment,
+            "decided_at_utc": when,
             "tx_c": tx,
             "cloud_cover": cloud,
             "precip_prob": precip,
@@ -236,6 +312,42 @@ def load_tempering_cases(
     for case in cases:
         case["weight"] = 1.0 / per_day[(case["station_id"], case["event_date"])]
     return cases
+
+
+class AsOf:
+    """What a fit standing at a moment could read.
+
+    A case trains a prediction made at ``at`` only when its own decision was
+    taken and a truth revision for its station-day had been committed by
+    ``at``; it trains on that standing revision.  The set changes only when a
+    revision commits (or a decision lands after its own day's truth, which
+    ``walk_forward`` counts and never scores), so fits are cached on
+    ``key(at)``.
+    """
+
+    def __init__(self, cases: Sequence[Mapping[str, Any]]) -> None:
+        self.cases = list(cases)
+        self._commits = sorted({
+            label[0] for case in self.cases for label in case["truth_revisions"]
+        })
+        self._late = sorted({
+            case["decided_at"] for case in self.cases
+            if case["decided_at"] > min(l[0] for l in case["truth_revisions"])
+        })
+
+    def key(self, at: float) -> tuple[int, int]:
+        return bisect_right(self._commits, at), bisect_right(self._late, at)
+
+    def training(self, at: float) -> list[dict[str, Any]]:
+        rows = []
+        for case in self.cases:
+            if case["decided_at"] > at:
+                continue
+            label = as_of_label(case, at)
+            if label is None:
+                continue
+            rows.append({**case, "truth_c": label[2], "truth_bucket": label[3]})
+        return rows
 
 
 def _line(xs: Sequence[float], ys: Sequence[float]) -> tuple[float, float, float]:
@@ -356,38 +468,49 @@ def walk_forward_tempering(
     line_cases: Sequence[Mapping[str, Any]],
     tempering_cases: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
-    """Tempered against lambda = 1, each day on a line and lambdas from earlier days only."""
+    """Tempered against lambda = 1, each TAF on a line and lambdas it could have had.
 
-    by_day: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
-    for case in tempering_cases:
-        by_day[case["event_date"]].append(case)
-    gains_by_day: dict[str, float] = {}
+    Strict as-of (``AsOf``): the line and the lambdas scoring a TAF are fitted
+    on the station-days whose truth had been committed when that TAF arrived.
+    Gains are still pooled by event day, weighted 1/n within a station-day.
+    """
+
+    line_as_of, tempering_as_of = AsOf(line_cases), AsOf(tempering_cases)
+    fits: dict[tuple, tuple[dict[str, Any], dict[str, float]] | None] = {}
+    sums: dict[str, list[float]] = defaultdict(lambda: [0.0, 0.0])
     by_group: dict[str, list[float]] = defaultdict(lambda: [0.0, 0.0])
-    for day in sorted(by_day):
-        train_lines = [c for c in line_cases if c["event_date"] < day]
-        if len({c["event_date"] for c in train_lines}) < MIN_TRAIN_DAYS:
+    after_truth = 0
+    for case in sorted(tempering_cases, key=lambda c: c["decided_at"]):
+        at = case["decided_at"]
+        if as_of_label(case, at) is not None:
+            after_truth += 1
             continue
-        line = {"schema": TL.SCHEMA, "gate": {"state": TL.GATE_SERVE},
-                **fit(train_lines)}
-        lambdas, _ = fit_tempering(
-            line, [c for c in tempering_cases if c["event_date"] < day]
-        )
-        num = den = 0.0
-        for case, exponents in _scored(line, by_day[day]):
-            tempered = _tempered_gain(case, exponents, lambdas[case["group"]])
-            plain = _tempered_gain(case, exponents, 1.0)
-            if tempered is None or plain is None:
-                continue
-            num += case["weight"] * (tempered - plain)
-            den += case["weight"]
-            by_group[case["group"]][0] += case["weight"] * (tempered - plain)
-            by_group[case["group"]][1] += case["weight"]
-        if den > 0.0:
-            gains_by_day[day] = num / den
+        key = (line_as_of.key(at), tempering_as_of.key(at))
+        if key not in fits:
+            train_lines = line_as_of.training(at)
+            if len({c["event_date"] for c in train_lines}) < MIN_TRAIN_DAYS:
+                fits[key] = None
+            else:
+                line = {"schema": TL.SCHEMA, "gate": {"state": TL.GATE_SERVE},
+                        **fit(train_lines)}
+                fits[key] = (line, fit_tempering(line, tempering_as_of.training(at))[0])
+        if fits[key] is None:
+            continue
+        line, lambdas = fits[key]
+        exponents = _scored(line, [case])[0][1]
+        tempered = _tempered_gain(case, exponents, lambdas[case["group"]])
+        plain = _tempered_gain(case, exponents, 1.0)
+        if tempered is None or plain is None:
+            continue
+        sums[case["event_date"]][0] += case["weight"] * (tempered - plain)
+        sums[case["event_date"]][1] += case["weight"]
+        by_group[case["group"]][0] += case["weight"] * (tempered - plain)
+        by_group[case["group"]][1] += case["weight"]
+    gains_by_day = {day: v[0] / v[1] for day, v in sums.items() if v[1] > 0.0}
     means = list(gains_by_day.values())
     if len(means) < 5:
         return {"state": TL.GATE_IDENTITY, "reason": "too_few_days",
-                "days": len(means)}
+                "days": len(means), "training_cut": TRAINING_CUT}
     rng = random.Random(20260919)
     boot = sorted(
         statistics.mean(rng.choice(means) for _ in means)
@@ -408,55 +531,69 @@ def walk_forward_tempering(
             g: (v[0] / v[1] if v[1] > 0 else None) for g, v in by_group.items()
         },
         "station_days_by_group": {g: v[1] for g, v in by_group.items()},
+        "training_cut": TRAINING_CUT,
+        "fits": sum(1 for value in fits.values() if value is not None),
+        "tafs_after_own_truth_unscored": after_truth,
     }
 
 
 def walk_forward(cases: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    by_day: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
-    for case in cases:
-        by_day[case["event_date"]].append(case)
-    days = sorted(by_day)
+    """The line against the root, each case on a fit it could have had (``AsOf``)."""
+
+    as_of = AsOf(cases)
+    fits: dict[tuple, dict[str, Any] | None] = {}
     gains_by_day: dict[str, list[float]] = {}
     hits = {"root": 0, "taf": 0}
     scored = 0
-    for index, day in enumerate(days):
-        train = [c for d in days[:index] for c in by_day[d]]
-        if len({c["event_date"] for c in train}) < MIN_TRAIN_DAYS:
+    after_truth = 0
+    for case in sorted(cases, key=lambda c: c["decided_at"]):
+        at = case["decided_at"]
+        if as_of_label(case, at) is not None:
+            after_truth += 1
             continue
-        params = fit(train)
-        artifact = {"schema": TL.SCHEMA, "gate": {"state": TL.GATE_SERVE}, **params}
-        for case in by_day[day]:
-            likelihood, receipt = TL.compile_taf_likelihood(
-                artifact, station_id=case["station_id"], tx_c=case["tx_c"],
-                root_center_c=case["c0"], bucket_centers_c=case["centers"],
-                buckets=case["probabilities"],
+        key = as_of.key(at)
+        if key not in fits:
+            train = as_of.training(at)
+            fits[key] = (
+                {"schema": TL.SCHEMA, "gate": {"state": TL.GATE_SERVE}, **fit(train)}
+                if len({c["event_date"] for c in train}) >= MIN_TRAIN_DAYS else None
             )
-            if receipt["state"] != "APPLIED":
-                continue
-            weighted = {
-                b: p * likelihood[b] for b, p in case["probabilities"].items()
-            }
-            total = sum(weighted.values())
-            if total <= 0.0:
-                continue
-            posterior = {b: v / total for b, v in weighted.items()}
-            gain = (
-                _floored_log(posterior, case["truth_bucket"])
-                - _floored_log(case["probabilities"], case["truth_bucket"])
-            )
-            gains_by_day.setdefault(day, []).append(gain)
-            scored += 1
-            hits["root"] += int(
-                max(case["probabilities"], key=case["probabilities"].get)
-                == case["truth_bucket"]
-            )
-            hits["taf"] += int(
-                max(posterior, key=posterior.get) == case["truth_bucket"]
-            )
+        artifact = fits[key]
+        if artifact is None:
+            continue
+        day = case["event_date"]
+        likelihood, receipt = TL.compile_taf_likelihood(
+            artifact, station_id=case["station_id"], tx_c=case["tx_c"],
+            root_center_c=case["c0"], bucket_centers_c=case["centers"],
+            buckets=case["probabilities"],
+        )
+        if receipt["state"] != "APPLIED":
+            continue
+        weighted = {
+            b: p * likelihood[b] for b, p in case["probabilities"].items()
+        }
+        total = sum(weighted.values())
+        if total <= 0.0:
+            continue
+        posterior = {b: v / total for b, v in weighted.items()}
+        gain = (
+            _floored_log(posterior, case["truth_bucket"])
+            - _floored_log(case["probabilities"], case["truth_bucket"])
+        )
+        gains_by_day.setdefault(day, []).append(gain)
+        scored += 1
+        hits["root"] += int(
+            max(case["probabilities"], key=case["probabilities"].get)
+            == case["truth_bucket"]
+        )
+        hits["taf"] += int(
+            max(posterior, key=posterior.get) == case["truth_bucket"]
+        )
     means = [statistics.mean(values) for values in gains_by_day.values()]
     if len(means) < 5:
         return {"state": TL.GATE_IDENTITY, "reason": "too_few_days",
-                "days": len(means), "station_days": scored}
+                "days": len(means), "station_days": scored,
+                "training_cut": TRAINING_CUT}
     rng = random.Random(20260919)
     boot = sorted(
         statistics.mean(rng.choice(means) for _ in means)
@@ -473,6 +610,9 @@ def walk_forward(cases: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "station_days": scored,
         "mode_hit_root": hits["root"] / max(scored, 1),
         "mode_hit_taf": hits["taf"] / max(scored, 1),
+        "training_cut": TRAINING_CUT,
+        "fits": sum(1 for value in fits.values() if value is not None),
+        "decided_after_own_truth_unscored": after_truth,
     }
 
 

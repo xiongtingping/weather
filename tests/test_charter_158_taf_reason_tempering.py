@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import math
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -169,8 +170,15 @@ def _case(day: int, station: str, tx: float, truth_bucket: str, cloud: float, pr
     probabilities = {b: math.exp(-((c - 24.0) ** 2) / 2.0) for b, c in centres.items()}
     total = sum(probabilities.values())
     probabilities = {b: v / total for b, v in probabilities.items()}
+    # The TAF lands the afternoon before the day; the truth commits the
+    # morning after it (the walk-forward is strictly as-of these moments).
+    midnight = datetime(2026, 9, day, tzinfo=timezone.utc)
+    decided = (midnight - timedelta(hours=12)).timestamp()
+    committed = (midnight + timedelta(days=1, hours=2)).timestamp()
     return {
         "station_id": station, "event_date": f"2026-09-{day:02d}", "tx_c": tx,
+        "decided_at": decided,
+        "truth_revisions": [(committed, 0, float(truth_bucket), truth_bucket)],
         "c0": 24.0, "centers": centres, "probabilities": probabilities,
         "root_mean_c": 24.0, "truth_bucket": truth_bucket, "truth_c": float(truth_bucket),
         "cloud_cover": cloud, "precip_prob": precip,

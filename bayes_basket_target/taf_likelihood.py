@@ -96,6 +96,10 @@ CLEAR_CLOUD_MAX = 0.4
 WET_PRECIP_MIN = 0.3
 OVERCAST_CLOUD_ABOVE = 0.6
 MAX_TEMPERING_LAMBDA = 3.0
+# Beyond this best-bucket exponent (likelihood below e^-100) the served
+# likelihood is divided by its best bucket so it cannot underflow; see
+# ``compile_taf_likelihood``.
+RESCALE_ABOVE_EXPONENT = 100.0
 
 
 def station_parameters(
@@ -233,12 +237,30 @@ def compile_taf_likelihood(
     )
     group = disagreement_group(x_served, taf_cloud_cover, taf_precip_prob)
     lam = tempering_lambda(artifact, group)
+    if not all(math.isfinite(value) for value in exponents.values()):
+        return _silent("IDENTITY_NON_FINITE")
+    # A likelihood is defined up to a constant, and P0-M normalises after
+    # multiplying, so dividing every bucket by the best one changes nothing
+    # served -- except that it cannot underflow.  It used to: past an exponent
+    # of ~690 every bucket read 0 and the stage returned the identity, so a
+    # TAF far enough from P0 was silently discarded while one a little closer
+    # pulled the posterior to the edge (review 2026-09-19; the fitter's score
+    # already shifted).  Rescaled only where the best bucket's exponent passes
+    # ``RESCALE_ABOVE_EXPONENT``: every likelihood served before this change
+    # had a best exponent of at most 1.83, so their bits -- and every P0-M
+    # content hash -- are unchanged, and the receipt says when it rescaled.
+    best = lam * min(exponents.values())
+    shift = best if best > RESCALE_ABOVE_EXPONENT else 0.0
     likelihoods = {
-        bucket: math.exp(-lam * value) for bucket, value in exponents.items()
+        bucket: (
+            math.exp(-lam * value) if shift == 0.0
+            else math.exp(-(lam * value - shift))
+        )
+        for bucket, value in exponents.items()
     }
-    if max(likelihoods.values()) <= 1e-300:
-        return _silent("IDENTITY_UNDERFLOW")
     _, receipt = _silent("APPLIED")
+    if shift:
+        receipt["likelihood_rescaled_by_exponent"] = shift
     tempering_block = (artifact or {}).get(TEMPERING_KEY)
     receipt.update({
         "parameters_source": source,
