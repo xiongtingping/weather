@@ -408,11 +408,13 @@ def restore(db: Path, export_dir: Path, tables: list[str] | None, *,
                 if size >= batch_bytes_limit or len(batch) >= BATCH_ROWS:
                     _wait_for_wal(db)
                     held = _insert(conn, table, batch)
+                    before = restored
                     restored += len(batch)
                     batch, size = [], 0
                     time.sleep(max(PAUSE_SEC, held * pause_factor))
-                    if restored % 50000 < BATCH_ROWS:
-                        print(f"  {table}: {restored} rows", file=sys.stderr, flush=True)
+                    if restored // 10000 != before // 10000:
+                        print(f"  {table}: {restored} rows, last hold {held:.2f}s",
+                              file=sys.stderr, flush=True)
             if batch:
                 _insert(conn, table, batch)
                 restored += len(batch)
