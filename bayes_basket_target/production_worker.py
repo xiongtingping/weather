@@ -775,6 +775,8 @@ STAGE_TIER: dict[str, int] = {
     # Charter 148: reports that landed during the previous cycle are turned
     # into P1 at the head of this one, ahead of the NWP arrival stages.
     "early_p1": STAGE_TIER_R0_DECISION,
+    # The fast lane: a new TAF becomes P0-M before anything else in the cycle.
+    "early_p0m": STAGE_TIER_R0_DECISION,
     "probability_p0": STAGE_TIER_R0_DECISION,
     "probability_p0m": STAGE_TIER_R0_DECISION,
     "probability_p1": STAGE_TIER_R0_DECISION,
@@ -3495,6 +3497,45 @@ EARLY_P1_ENABLED = (
     os.environ.get("PM_EARLY_P1", "1").strip().lower()
     not in {"0", "off", "false", "no", ""}
 )
+# The fast lane (user, 2026-09-19: 「把taf和metar的抓取入库和bayes更新优先级提高
+# 最高」).  A TAF the capture round landed is turned into P0-M at the very head
+# of the next cycle -- before the intent reconcile and the NWP stages, which
+# measured 49s and ~100s of the ~150s a new TAF used to wait inside the cycle
+# -- and a P0-M that changed forces the head P1 so P1 re-roots on it at once.
+# The chain's own P0-M pass still runs for roots the cycle rebuilds.
+# ``PM_EARLY_P0M=0`` restores the single P0-M pass inside the chain.
+EARLY_P0M_ENABLED = (
+    os.environ.get("PM_EARLY_P0M", "1").strip().lower()
+    not in {"0", "off", "false", "no", ""}
+)
+
+
+def _covered_report_watermark(
+    *,
+    early_p1_ran: bool,
+    early_watermark: tuple[int, int, str] | None,
+    cycle_watermark: tuple[int, int, str] | None,
+) -> tuple[int, int, str] | None:
+    """The report watermark this cycle's P1 covered.
+
+    The head P1 runs before the intent reconcile and reads its own
+    watermark; a report landed after that read was seen by no P1 this cycle
+    when the head pass ran (the chain then re-roots only rebuilt scopes), so
+    only the head's read is covered.  Without a head pass the chain's full P1
+    covers the cycle's read.
+    """
+
+    return early_watermark if early_p1_ran else cycle_watermark
+
+
+def _taf_inbox_watermark(path: Any) -> tuple[int, int] | None:
+    """``(mtime_ns, size)`` of the TAF inbox: what moves when a round lands one."""
+
+    try:
+        stat = Path(path).stat()
+    except (OSError, TypeError):
+        return None
+    return (int(stat.st_mtime_ns), int(stat.st_size))
 
 
 def _merge_resident_p1_receipts(
@@ -15074,7 +15115,14 @@ class TargetProductionWorker:
         rowid_mark = self._envelope_rowid_ceiling() if early_ran else None
         p0 = self.materialize_resident_p0(as_of_utc=as_of_utc)
         self._mark("probability_p0")
+        taf_mark = _taf_inbox_watermark(getattr(self, "taf_inbox_path", None))
         p0m = self._materialize_resident_p0m(as_of_utc=as_of_utc)
+        if (
+            taf_mark is not None
+            and str((p0m or {}).get("state") or "").upper() != "BLOCKED_FAIL_CLOSED"
+        ):
+            # The next head pass runs only for a TAF landed after this read.
+            self._p0m_covered_taf_watermark = taf_mark
         self._mark("probability_p0m")
         stage_clock = (
             p0m.get("stage_clock_utc") if isinstance(p0m, Mapping) else None
@@ -15181,11 +15229,64 @@ class TargetProductionWorker:
             }
         return self._identify_live_observations()
 
+    def _materialize_early_p0m(
+        self,
+        *,
+        as_of_utc: str,
+        taf_watermark: tuple[int, int] | None,
+    ) -> dict[str, Any]:
+        """The fast lane: P0-M at the head of the cycle, for TAFs it has not seen.
+
+        Runs only when the TAF inbox moved since the last P0-M pass covered it,
+        on the roots already committed.  Never raises: anything short of a
+        clean pass leaves the chain's own P0-M to do it, as before.
+        ``new_envelopes`` says whether it committed anything, which is what
+        forces the head P1 to re-root on it.
+        """
+
+        boundary = {
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+        }
+        if not EARLY_P0M_ENABLED:
+            return {"state": "DISABLED", "ran": False, **boundary}
+        if taf_watermark is None:
+            return {"state": "SKIPPED_INBOX_UNREADABLE", "ran": False, **boundary}
+        if getattr(self, "_p0m_covered_taf_watermark", None) == taf_watermark:
+            return {"state": "SKIPPED_NO_NEW_TAF", "ran": False, **boundary}
+        started = time.perf_counter()
+        try:
+            before = self._envelope_rowid_ceiling()
+            p0m = self._materialize_resident_p0m(as_of_utc=as_of_utc)
+            after = self._envelope_rowid_ceiling()
+        except Exception as exc:  # noqa: BLE001 -- the chain's pass is the fallback
+            return {
+                "state": "FAILED",
+                "ran": False,
+                "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
+                "duration_sec": round(time.perf_counter() - started, 3),
+                **boundary,
+            }
+        state = str((p0m or {}).get("state") or "")
+        if state.upper() != "BLOCKED_FAIL_CLOSED":
+            self._p0m_covered_taf_watermark = taf_watermark
+        return {
+            "state": "RAN",
+            "ran": True,
+            "p0m_state": state,
+            "new_envelopes": after > before,
+            "duration_sec": round(time.perf_counter() - started, 3),
+            **boundary,
+        }
+
     def _materialize_early_p1(
         self,
         *,
         as_of_utc: str,
         report_watermark: tuple[int, int, str] | None,
+        force: bool = False,
     ) -> dict[str, Any]:
         """Charter 148: P1 at the head of the cycle, for reports it has not seen.
 
@@ -15205,9 +15306,11 @@ class TargetProductionWorker:
         }
         if not EARLY_P1_ENABLED:
             return {"state": "DISABLED", "ran": False, **boundary}
-        if report_watermark is None:
+        if report_watermark is None and not force:
             return {"state": "SKIPPED_WATERMARK_UNREADABLE", "ran": False, **boundary}
-        if getattr(self, "_p1_covered_watermark", None) == report_watermark:
+        # ``force``: the head P0-M just committed, so P1 re-roots on it now
+        # rather than at the end of the chain.
+        if not force and getattr(self, "_p1_covered_watermark", None) == report_watermark:
             return {"state": "SKIPPED_NO_UNCOVERED_REPORTS", "ran": False, **boundary}
         started = time.perf_counter()
         try:
@@ -17277,6 +17380,34 @@ class TargetProductionWorker:
             return _blocked(f"target_activation_invalid:{type(exc).__name__}:{exc}")
         self._record_quote_lease_seconds(activation)
         self._mark("activation")
+        # The fast lane, first of all (user, 2026-09-19: 「把taf和metar的抓取
+        # 入库和bayes更新优先级提高最高」).  New TAFs become P0-M and new
+        # reports become P1 before the intent reconcile below, which measured
+        # a 49s median and delayed both for no dependency: neither stage reads
+        # an intent, and the reconcile still runs before anything is priced
+        # or ordered.  Both read their watermark before their clock (charter
+        # 148's rule) and neither can raise, so nothing here can keep the
+        # reconcile from running.
+        self._early_p1_this_cycle = None
+        self._early_p0m_this_cycle = None
+        early_report_watermark = _live_observation_watermark(
+            getattr(self, "canonical_source_conn", None)
+        )
+        early_taf_watermark = _taf_inbox_watermark(
+            getattr(self, "taf_inbox_path", None)
+        )
+        early_now = utc_now()
+        self._early_p0m_this_cycle = self._materialize_early_p0m(
+            as_of_utc=early_now, taf_watermark=early_taf_watermark,
+        )
+        self._mark("early_p0m")
+        self._early_p1_this_cycle = self._materialize_early_p1(
+            as_of_utc=early_now,
+            report_watermark=early_report_watermark,
+            force=bool((self._early_p0m_this_cycle or {}).get("new_envelopes")),
+        )
+        self._early_p1_watermark = early_report_watermark
+        self._mark("early_p1")
         # Close intents the exchange has already answered about, before the
         # cycle spends anything on anything else.
         #
@@ -17382,7 +17513,6 @@ class TargetProductionWorker:
         # Charter 148: read before the clock, so a report committed in
         # between is inside this cycle's as-of read and at worst makes
         # the next cycle's head pass run once more -- never the reverse.
-        self._early_p1_this_cycle = None
         cycle_report_watermark = _live_observation_watermark(
             getattr(self, "canonical_source_conn", None)
         )
@@ -17422,11 +17552,6 @@ class TargetProductionWorker:
                     "places_orders": False,
                 }
             self._mark("registry_ingress")
-            self._early_p1_this_cycle = self._materialize_early_p1(
-                as_of_utc=now,
-                report_watermark=cycle_report_watermark,
-            )
-            self._mark("early_p1")
             native_inbox_path = (
                 self.nwp_runtime_root
                 / "native_ensemble_forward_inbox.json"
@@ -18041,12 +18166,23 @@ class TargetProductionWorker:
             # Charter 148: this cycle's P1 covered every report committed by
             # its clock; the next head pass runs only for later ones.  A
             # wholly blocked pass covers nothing and is not recorded.
+            # When the head P1 ran, it ran before the reconcile and read its
+            # own watermark; reports that landed in between were seen by no P1
+            # this cycle, so only that earlier read is covered.
+            covered_mark = _covered_report_watermark(
+                early_p1_ran=bool((self._early_p1_this_cycle or {}).get("ran")),
+                early_watermark=getattr(self, "_early_p1_watermark", None),
+                cycle_watermark=cycle_report_watermark,
+            )
             if (
-                cycle_report_watermark is not None
+                covered_mark is not None
                 and str(resident_p1_ingress.get("state") or "").upper()
                 != "BLOCKED_FAIL_CLOSED"
             ):
-                self._p1_covered_watermark = cycle_report_watermark
+                self._p1_covered_watermark = covered_mark
+            resident_probability_chain["early_p0m"] = dict(
+                self._early_p0m_this_cycle or {}
+            )
             resident_probability_chain["early_p1"] = {
                 key: value
                 for key, value in (self._early_p1_this_cycle or {}).items()
