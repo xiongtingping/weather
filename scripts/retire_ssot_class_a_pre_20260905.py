@@ -418,7 +418,7 @@ def restore(db: Path, export_dir: Path, tables: list[str] | None, *,
                 size += len(line)
                 if size >= batch_bytes_limit or len(batch) >= BATCH_ROWS:
                     _wait_for_wal(db, conn)
-                    held = _insert(conn, table, batch)
+                    held = _insert_retrying(conn, table, batch)
                     before = restored
                     restored += len(batch)
                     batch, size = [], 0
@@ -430,6 +430,26 @@ def restore(db: Path, export_dir: Path, tables: list[str] | None, *,
                 _insert(conn, table, batch)
                 restored += len(batch)
         print(f"restored {table}: {restored} rows (duplicates in the export are ignored)", flush=True)
+
+
+def _insert_retrying(conn, table: str, batch, attempts: int = 20) -> float:
+    """``_insert``, waiting out a resident restart that holds the lock past the timeout.
+
+    Measured 2026-09-19 16:57Z: a restart's start-up held the write lock for
+    more than the 60s connection timeout, and the restore died on its next
+    BEGIN IMMEDIATE.  Nothing had been written, so waiting and retrying is
+    exactly the same batch.
+    """
+    for attempt in range(attempts):
+        try:
+            return _insert(conn, table, batch)
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc) or attempt == attempts - 1:
+                raise
+            print(f"  {table}: write lock busy ({exc}); retrying in 30s",
+                  file=sys.stderr, flush=True)
+            time.sleep(30)
+    raise AssertionError("unreachable")
 
 
 def _insert(conn, table: str, batch) -> float:
