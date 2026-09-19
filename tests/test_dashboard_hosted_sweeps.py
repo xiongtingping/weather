@@ -381,7 +381,8 @@ def test_a_write_blocked_capture_is_not_stuck(tmp_path, monkeypatch):
     assert lane["health"] == "red"
     assert "write_blocked" in lane["note"]
 
-    # The same ages under a state that does take the turn and fail it.
+    # The same ages under a state that does take the turn and fail it: one
+    # failed turn, which is not yet "fails every turn" (see the next test).
     path.write_text(json.dumps({"capture_noaa_conus_forward": _clock(
         now, completed_h=1.43, attempted_h=0.16, state="timeout_killed"
     )}), encoding="utf-8")
@@ -389,4 +390,47 @@ def test_a_write_blocked_capture_is_not_stuck(tmp_path, monkeypatch):
         C.collect_hosted_sweeps(sqlite3.connect(":memory:")),
         "capture_noaa_conus_forward",
     )
-    assert lane["stuck"] is True
+    assert lane["stuck"] is False
+    assert lane["health"] == "red"
+
+
+def test_one_failed_turn_is_red_but_not_stuck(tmp_path, monkeypatch):
+    """"卡住：轮到就失败" claims a pattern, and one failure is not one.
+
+    A failed pass waits a whole interval, so a single failure at the due
+    time puts the attempt an interval past the completion -- which half an
+    interval of slack read as stuck.  calibration_refit, 2026-09-18T20:28Z:
+    completed 09-17T19:50Z, one failed turn (a summary KeyError, fixed),
+    and the page said "fails every turn" for the day until its next one.
+    """
+
+    from datetime import datetime, timezone
+
+    now = datetime(2026, 9, 19, 5, 36, tzinfo=timezone.utc)
+    monkeypatch.setattr(C, "_now", lambda: now)
+    monkeypatch.setattr(
+        C, "_hosted_sweep_contracts",
+        lambda: ([{"name": "calibration_refit",
+                   "script": "calibration_refit_sweep.sh",
+                   "interval_sec": 24 * HOUR, "timeout_sec": 900.0,
+                   "domain": "ssot"}], ""),
+    )
+    path = tmp_path / "hosted_sweep_clocks.json"
+    monkeypatch.setattr(C, "HOSTED_SWEEP_CLOCKS", path)
+    monkeypatch.setattr(C, "STATUS_JSON", tmp_path / "absent.json")
+
+    def read(completed_h: float, attempted_h: float) -> dict:
+        path.write_text(json.dumps({"calibration_refit": _clock(
+            now, completed_h=completed_h, attempted_h=attempted_h,
+            state="failed",
+        )}), encoding="utf-8")
+        return _lane(
+            C.collect_hosted_sweeps(sqlite3.connect(":memory:")),
+            "calibration_refit",
+        )
+
+    once = read(33.8, 9.1)  # the 2026-09-18 pair, read at 09-19T05:36Z
+    assert once["stuck"] is False
+    assert once["health"] == "red" and "failed" in once["note"]
+    # A second failed turn a day later is the pattern the word names.
+    assert read(57.8, 9.1)["stuck"] is True

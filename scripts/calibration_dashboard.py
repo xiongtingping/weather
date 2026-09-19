@@ -3317,9 +3317,15 @@ def collect_hosted_sweeps(conn: sqlite3.Connection) -> dict[str, Any]:
         )
         state = str(clock.get("last_state") or "")
         # Attempted much more recently than completed: the lane is getting
-        # its turn and failing to finish it.  Half an interval of slack, so
-        # a lane that merely started its current round does not read as
-        # stuck.  Never a ``write_blocked`` pass: that lane is the one held
+        # its turns and failing them -- more than one.  A failed pass waits
+        # a whole interval, so ONE failure at the due time already puts the
+        # attempt an interval past the completion; half an interval of slack
+        # read that single failure as "卡住：轮到就失败" (calibration_refit,
+        # 2026-09-18T20:28Z, a summary KeyError already fixed, labelled stuck
+        # for the day until its next turn).  A second failed turn lands near
+        # two intervals, so the line is drawn between them, at one and a
+        # half.  The single failure still reads red, by its own state.
+        # Never a ``write_blocked`` pass: that lane is the one held
         # out -- another writer kept the lock past its busy_timeout -- and it
         # is due again in five minutes, so "stuck, holding the write domain"
         # says the opposite of what happened.  On 2026-09-18 one NBM commit
@@ -3329,7 +3335,7 @@ def collect_hosted_sweeps(conn: sqlite3.Connection) -> dict[str, Any]:
             state != "write_blocked"
             and since_attempted is not None
             and since_completed is not None
-            and since_completed - since_attempted > interval * 0.5
+            and since_completed - since_attempted > interval * 1.5
         )
         health = "green"
         note = ""
