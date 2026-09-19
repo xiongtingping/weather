@@ -12,6 +12,7 @@ fail closed，等待人工/对账流程结束。
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -3528,14 +3529,21 @@ def _covered_report_watermark(
     return early_watermark if early_p1_ran else cycle_watermark
 
 
-def _taf_inbox_watermark(path: Any) -> tuple[int, int] | None:
-    """``(mtime_ns, size)`` of the TAF inbox: what moves when a round lands one."""
+def _taf_inbox_watermark(path: Any) -> tuple[int, str] | None:
+    """``(size, sha256)`` of the TAF inbox's bytes: what moves when a round
+    lands a bulletin.
+
+    Content, not modification time: every capture round rewrites the file
+    (``refresh_forward_taf_inbox`` ends in an unconditional write), so an
+    mtime watermark would move on rounds that landed nothing and run the
+    head P0-M -- ~7s -- for no new TAF.  A few MB hash in milliseconds.
+    """
 
     try:
-        stat = Path(path).stat()
+        data = Path(path).read_bytes()
     except (OSError, TypeError):
         return None
-    return (int(stat.st_mtime_ns), int(stat.st_size))
+    return (len(data), hashlib.sha256(data).hexdigest())
 
 
 def _merge_resident_p1_receipts(
@@ -15233,7 +15241,7 @@ class TargetProductionWorker:
         self,
         *,
         as_of_utc: str,
-        taf_watermark: tuple[int, int] | None,
+        taf_watermark: tuple[int, str] | None,
     ) -> dict[str, Any]:
         """The fast lane: P0-M at the head of the cycle, for TAFs it has not seen.
 
