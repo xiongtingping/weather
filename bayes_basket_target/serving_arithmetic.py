@@ -255,6 +255,10 @@ def _closure(entries: Sequence[tuple[str, str]]) -> list[tuple[str, str]]:
 # lit for the minute between; no envelope of any version fell in it, and the
 # first v6 cell is 09:18:21.8Z.
 #
+# P1 v13: charter 156, alpha as a curve and the rise clock read between bin
+# midpoints.  P1's own change, declared at the restart that deploys it (see
+# the entry) rather than inferred, for the same 62s the v12 note explains.
+#
 # P0-M v7 and P1 v12: charter 150, each stage's own change, so the moment is
 # not a root's but the version's own first decision -- declared, verbatim, as
 # the value the inference returns, so no reader's bound moves by a row.  It
@@ -292,6 +296,12 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p1_metar_trajectory_target_v10": "2026-09-14T05:52:13Z",
         "p1_metar_trajectory_target_v11": "2026-09-18T09:18:16Z",
         "p1_joint_likelihood_v12": "2026-09-18T19:10:09.000001Z",
+        # Charter 156: declared a few minutes past the commit and ahead of the
+        # restart that deploys it, so the fingerprint's first sighting (the
+        # resident's start) is never later than the version's start, and no
+        # v12 envelope falls inside v13's window.  The v13 envelopes between
+        # the start and this instant are simply not evidence yet.
+        "p1_joint_likelihood_v13": "2026-09-19T07:27:00Z",
     },
 }
 

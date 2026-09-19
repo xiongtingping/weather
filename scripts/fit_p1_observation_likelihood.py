@@ -48,6 +48,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target import metar_four_layer as M4  # noqa: E402
 from bayes_basket_target import p1_observation_likelihood as OL  # noqa: E402
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.materialization import (  # noqa: E402
@@ -470,7 +471,13 @@ def fit_g(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "feature_fallbacks": fallbacks,
         "phase_features": list(OL.PHASE_FEATURES),
         "full_features": list(OL.FULL_FEATURES),
-        "phase": fit_phase_rung(samples, fallbacks, OL.PHASE_FEATURES),
+        # Charter 156: the fitted intercepts are served read between their
+        # bins' midpoints, so the held-out scoring below reads them the same
+        # way the resident will.
+        "phase": {
+            **fit_phase_rung(samples, fallbacks, OL.PHASE_FEATURES),
+            "clock": M4.CLOCK_MIDPOINT_LINEAR,
+        },
         "continuation_full": fit_continuation(
             risers, OL.FULL_FEATURES, fallbacks
         ),
@@ -630,6 +637,124 @@ def score_split(
     return report
 
 
+# -- charter 156: alpha as a curve in the hours left ------------------------
+#
+# Chosen on the held-out rows by coordinate descent over ALPHA_GRID, one knot
+# at a time (OL.ALPHA_KNOTS_HOURS), three passes.  The score the veto reads is
+# cross-fitted: the curve is chosen on alternate held-out days and scored on
+# the others, then swapped, because a curve with eleven knots chosen and
+# scored on the same days would win by memorising them.  The published curve
+# is then chosen on every held-out day.
+ALPHA_CURVE_PASSES = 3
+
+
+def alpha_arrays(
+    rows: Sequence[Mapping[str, Any]], candidate: Mapping[str, Any]
+) -> dict[str, np.ndarray] | None:
+    """Per scorable row: masked prior, evidence, truth, hours, weight, day."""
+
+    priors, evidences, truths, hours, weights, days = [], [], [], [], [], []
+    for row in rows:
+        prior = row["view"]["probabilities"]
+        if _log_score(prior, None, row["excluded"], row["truth"], 1.0) is None:
+            continue
+        evidence = evidence_of(row, candidate)
+        buckets = sorted(prior)
+        p = np.array([0.0 if b in row["excluded"] else float(prior[b]) for b in buckets])
+        e = np.array([max(0.0, float(evidence[b])) for b in buckets])
+        # The same rows ``score_split`` keeps: none a grid alpha empties.
+        if any(float((p * np.power(e, a)).sum()) <= 1e-12 for a in ALPHA_GRID):
+            continue
+        priors.append(p)
+        evidences.append(e)
+        truths.append(buckets.index(row["truth"]))
+        hours.append(float(row["sample"]["remaining_hours"]))
+        weights.append(float(row["sample"]["station_day_weight"]))
+        days.append(str(row["sample"]["event_date"]))
+    if not priors:
+        return None
+    width = max(len(p) for p in priors)
+    prior_m = np.zeros((len(priors), width))
+    evidence_m = np.ones((len(priors), width))
+    for index, (p, e) in enumerate(zip(priors, evidences)):
+        prior_m[index, : len(p)] = p
+        evidence_m[index, : len(e)] = e
+    return {
+        "prior": prior_m, "evidence": evidence_m, "truth": np.array(truths),
+        "hours": np.array(hours), "weight": np.array(weights),
+        "day": np.array(days),
+    }
+
+
+def _row_scores(arrays: Mapping[str, np.ndarray], alpha: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    prior = arrays["prior"][mask]
+    weighted = prior * np.power(arrays["evidence"][mask], alpha[:, None])
+    truth = arrays["truth"][mask]
+    return np.log(np.maximum(
+        weighted[np.arange(len(truth)), truth] / weighted.sum(axis=1), 1e-9
+    ))
+
+
+def fit_alpha_curve(arrays: Mapping[str, np.ndarray], mask: np.ndarray) -> list[float]:
+    knots = np.array(OL.ALPHA_KNOTS_HOURS)
+    values = np.ones(len(knots))
+    hours = arrays["hours"][mask]
+    weight = arrays["weight"][mask]
+
+    def total(candidate: np.ndarray) -> float:
+        alpha = np.interp(hours, knots, candidate)
+        return float((weight * _row_scores(arrays, alpha, mask)).sum())
+
+    current = total(values)
+    for _ in range(ALPHA_CURVE_PASSES):
+        for index in range(len(knots)):
+            best_value, best_score = values[index], current
+            for grid_alpha in ALPHA_GRID:
+                trial = values.copy()
+                trial[index] = grid_alpha
+                score = total(trial)
+                if score > best_score + 1e-12:
+                    best_value, best_score = grid_alpha, score
+            values[index] = best_value
+            current = best_score
+    return [float(value) for value in values]
+
+
+def score_alpha_curve(arrays: Mapping[str, np.ndarray]) -> dict[str, Any]:
+    """Cross-fitted score of the curve, and the curve chosen on every day."""
+
+    knots = np.array(OL.ALPHA_KNOTS_HOURS)
+    held_days = sorted(set(arrays["day"].tolist()))
+    fold = np.isin(arrays["day"], held_days[0::2])
+    honest = np.zeros(len(arrays["truth"]))
+    folds = {}
+    everything = np.ones(len(arrays["truth"]), dtype=bool)
+    for fit_mask, score_mask, tag in ((fold, ~fold, "even_to_odd"), (~fold, fold, "odd_to_even")):
+        if not fit_mask.any() or not score_mask.any():
+            continue
+        values = fit_alpha_curve(arrays, fit_mask)
+        folds[tag] = values
+        alpha = np.interp(arrays["hours"], knots, values)
+        honest[score_mask] = _row_scores(arrays, alpha, everything)[score_mask]
+    chosen = fit_alpha_curve(arrays, everything)
+    weight = arrays["weight"]
+    root = np.log(np.maximum(
+        arrays["prior"][np.arange(len(arrays["truth"])), arrays["truth"]]
+        / arrays["prior"].sum(axis=1), 1e-9,
+    ))
+    in_sample = _row_scores(arrays, np.interp(arrays["hours"], knots, chosen), everything)
+    total_weight = max(float(weight.sum()), 1e-12)
+    return {
+        "knots_hours": [float(k) for k in knots],
+        "values": chosen,
+        "fold_values": folds,
+        "rows": int(len(arrays["truth"])),
+        "root_nat": float((weight * root).sum()) / total_weight,
+        "cross_fitted_nat": float((weight * honest).sum()) / total_weight,
+        "in_sample_nat": float((weight * in_sample).sum()) / total_weight,
+    }
+
+
 def load_samples(path: Path, *, since: str | None, through: str) -> list[dict[str, Any]]:
     conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
@@ -687,7 +812,17 @@ def main() -> int:
     split = score_split(
         rows, split_g, incumbent if incumbent_scorable else None
     )
+    arrays = alpha_arrays(rows, split_g)
     target.close()
+    if arrays is None:
+        print(json.dumps({"state": "REFUSED_NO_SCORABLE_ROWS"}))
+        return 3
+    curve = score_alpha_curve(arrays)
+    # The veto reads what will serve: the curve, scored on days it was not
+    # chosen on.  The three steps stay published beside it (and in-sample,
+    # as before) for code that predates the curve and for the record.
+    split["candidate_nat_three_bins_in_sample"] = split["candidate_nat"]
+    split["candidate_nat"] = curve["cross_fitted_nat"]
     veto: list[str] = []
     if split["candidate_nat"] - split["root_nat"] < args.margin:
         veto.append(
@@ -702,12 +837,15 @@ def main() -> int:
     body = fit_g(samples)
     body["alpha_by_bin"] = split["alpha_by_bin"]
     body["alpha_edges_hours"] = list(OL.ALPHA_EDGES_HOURS)
+    body["alpha_knots_hours"] = curve["knots_hours"]
+    body["alpha_knot_values"] = curve["values"]
     body["alpha_grid"] = list(ALPHA_GRID)
     body["holdout"] = {
         "from": cut,
         "through": days[-1],
         "scored_rows": len(rows),
         **{key: value for key, value in split.items() if key != "alpha_by_bin"},
+        "alpha_curve": {key: value for key, value in curve.items() if key != "knots_hours"},
         "incumbent_scored": bool(incumbent_scorable),
         "margin": args.margin,
         "veto": veto,
@@ -727,6 +865,7 @@ def main() -> int:
         "trained_through": body["trained_through"],
         "sample_n": body["sample_n"],
         "alpha_by_bin": body["alpha_by_bin"],
+        "alpha_curve": [round(v, 3) for v in body["alpha_knot_values"]],
         "holdout_from": cut,
         "root_nat": round(split["root_nat"], 4),
         "candidate_nat": round(split["candidate_nat"], 4),

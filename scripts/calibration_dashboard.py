@@ -2101,6 +2101,12 @@ def collect_p1_joint_likelihood(conn: sqlite3.Connection) -> dict[str, Any]:
             "station_day_n": raw_artifact.get("station_day_n"),
             "alpha_by_bin": raw_artifact.get("alpha_by_bin"),
             "alpha_edges_hours": raw_artifact.get("alpha_edges_hours"),
+            # Charter 156: what serves when present -- the steps above stay
+            # in the file for older code and are not what the resident reads.
+            "alpha_knots_hours": raw_artifact.get("alpha_knots_hours"),
+            "alpha_knot_values": raw_artifact.get("alpha_knot_values"),
+            "clock_mode": (raw_artifact.get("phase") or {}).get("clock") or "bins",
+            "alpha_curve_holdout": (raw_artifact.get("holdout") or {}).get("alpha_curve"),
             "holdout": {
                 key: holdout.get(key)
                 for key in ("from", "through", "scored_rows", "root_nat",
@@ -20289,7 +20295,11 @@ function p1JointBoard(){
   const outcome = Object.entries(O).map(([k, v]) => { const [t, w] = stateWord[k] || ["", k];
     return `<span class="pill ${t}">${w} ${v}</span>`; }).join(" ");
   const alphas = A.alpha_by_bin || [], edges = A.alpha_edges_hours || [10, 6];
-  const alphaCells = alphas.length === 3 ? `≥${edges[0]}h <b>${alphas[0]}</b> · ${edges[1]}–${edges[0]}h <b>${alphas[1]}</b> · <${edges[1]}h <b>${alphas[2]}</b>` : "—";
+  const knotsH = A.alpha_knots_hours || [], knotsV = A.alpha_knot_values || [];
+  const alphaCells = knotsH.length && knotsH.length === knotsV.length
+    ? `随剩余小时折线变化（第 156 条）：` + knotsH.map((k, i) => `${k}h <b>${Number(knotsV[i]).toFixed(3).replace(/0+$/, "").replace(/\.$/, "")}</b>`).join(" · ")
+      + ` <span class="muted">· 再升时钟：${A.clock_mode === "midpoint_linear" ? "档中点间线性" : "分档"}</span>`
+    : alphas.length === 3 ? `≥${edges[0]}h <b>${alphas[0]}</b> · ${edges[1]}–${edges[0]}h <b>${alphas[1]}</b> · <${edges[1]}h <b>${alphas[2]}</b>` : "—";
   const veto = (HO.veto || []).length ? `<span class="pill red">否决：${h(HO.veto.join("；"))}</span>` : `<span class="pill green">通过</span>`;
   const hoBins = (HO.bins || []).map(b => `<tr><td class="mono">${["≥" + edges[0] + "h", edges[1] + "–" + edges[0] + "h", "<" + edges[1] + "h"][b.bin] || b.bin}</td>
     <td class="mono">${(b.n || 0).toLocaleString()}</td><td class="mono">${b.alpha}</td>
@@ -20300,7 +20310,7 @@ function p1JointBoard(){
     根是 P0-M（没有 TAF 时是 P0）——校准只在 P0 做一次；P1 不再有中心/宽度、band 表、时钟天花板、区域路径先验、四层链。
     g 是一条联合观测似然：「从已报最高再跨进上一个桶」的概率（再升）乘「升几格」的分布，特征只来自观测一侧——时钟、最新报文的状态、P0 曲线的<b>形状</b>、
     以及两个<b>新息</b>（实测对 P0 曲线的偏差、区域模型剩余预报最高与已报最高之差）。区域模型只在这里当协变量。
-    α 按剩余小时分三档，在留出日上选，用来给「根和观测重叠的那部分信息」定价；每日重拟，留出日上不赢根就否决、现任不动。</p>
+    α 随剩余小时平滑变化（第 156 条起；此前分三档），在留出日上选、交叉验证打分，用来给「根和观测重叠的那部分信息」定价；每日重拟，留出日上不赢根就否决、现任不动。</p>
   <div class="card" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
     <b>α</b> ${alphaCells} <span style="flex:1"></span><span class="muted">过去 18 小时各站最新一步 P1：</span>${outcome || "—"}</div>
   <div class="grid g3" style="margin-top:10px">

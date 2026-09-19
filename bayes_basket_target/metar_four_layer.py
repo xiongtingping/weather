@@ -172,6 +172,40 @@ def _linear(
     return total
 
 
+# Charter 156 (2026-09-19): the fitted bin intercepts are read as points at
+# their bins' midpoints and joined by straight lines, so the rate stops
+# jumping at a bin edge.  The fit is unchanged; only the reading between
+# midpoints is.  ZUUU 2026-09-19 at the 10h edge: 0.797 -> 0.379 in one step
+# under the bins, 0.65 -> 0.55 across the same half hour read this way.  An
+# artifact that does not say ``clock`` keeps its steps.
+CLOCK_MIDPOINT_LINEAR = "midpoint_linear"
+# The open last bin has no midpoint; its value is read one hour past its
+# lower edge, which is past any local day's hours.
+_OPEN_BIN_READ_AT = 1.0
+
+
+def _midpoint_linear(
+    hours: float, edges: Sequence[float], intercepts: Sequence[float]
+) -> float:
+    points: list[tuple[float, float]] = []
+    for index, value in enumerate(intercepts):
+        if index + 1 >= len(edges):
+            break
+        low, high = float(edges[index]), float(edges[index + 1])
+        middle = (
+            (low + high) / 2.0 if high < 1e8 else low + _OPEN_BIN_READ_AT
+        )
+        points.append((middle, float(value)))
+    if not points:
+        raise ContractError("metar_four_layer_phase_intercepts_missing")
+    if hours <= points[0][0]:
+        return points[0][1]
+    for (x0, y0), (x1, y1) in zip(points, points[1:]):
+        if hours <= x1:
+            return y0 + (hours - x0) / (x1 - x0) * (y1 - y0)
+    return points[-1][1]
+
+
 def phase_rise_probability(
     features: Mapping[str, float | None], artifact: Mapping[str, Any]
 ) -> float:
@@ -181,10 +215,12 @@ def phase_rise_probability(
     phase = artifact["phase"]
     edges = phase["hours_edges"]
     intercepts = phase["bin_intercepts"]
-    index = _hours_bin(
-        _finite("remaining_hours", features["remaining_hours"]), edges
-    )
-    eta = float(intercepts[index]) + _linear(
+    hours = _finite("remaining_hours", features["remaining_hours"])
+    if phase.get("clock") == CLOCK_MIDPOINT_LINEAR:
+        intercept = _midpoint_linear(hours, edges, intercepts)
+    else:
+        intercept = float(intercepts[_hours_bin(hours, edges)])
+    eta = intercept + _linear(
         features, phase["coefficients"], artifact["feature_fallbacks"]
     )
     return 1.0 / (1.0 + math.exp(-max(-30.0, min(30.0, eta))))

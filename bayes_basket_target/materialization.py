@@ -1235,7 +1235,10 @@ def materialize_p1(
     # four-layer chain, the regional path prior, the clock ceiling, the
     # centre/width scalars and the band table no longer run on this stage;
     # the stage anchor is read off the served vector instead of the proof's.
-    posterior_version: str = "p1_joint_likelihood_v12",
+    # v13 (2026-09-19, charter 156): the same update, with alpha a curve in
+    # the hours left and the rise rung's clock read between bin midpoints --
+    # the steps at 10h moved 23C from 0.33 to 0.84 within minutes on ZUUU.
+    posterior_version: str = "p1_joint_likelihood_v13",
     # {"features": ..., "artifact": ..., "regional_system_id": ...}: the
     # step's observation-side feature vector and the fitted likelihood,
     # handed in for the reason every fitted table is -- a replay must rebuild

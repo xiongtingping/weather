@@ -210,13 +210,18 @@ def test_p1_declares_only_the_bump_its_root_caused() -> None:
     p1 = inspect.signature(
         materialize_p1
     ).parameters["posterior_version"].default
-    # v12 (charter 150) is P1's own change: its first decision, verbatim.
-    # A string bound, so the fraction matters -- rounded to 19:10:09Z it
-    # would sort above the first v12 row and drop it.
-    assert p1 == "p1_joint_likelihood_v12"
+    # v13 (charter 156) is P1's own change, declared at the restart that
+    # deployed it -- after the resident's start, so no v12 envelope falls in
+    # its window.
+    assert p1 == "p1_joint_likelihood_v13"
+    assert sa.version_effective_from("P1", p1) == "2026-09-19T07:27:00Z"
+    # v12 (charter 150): its first decision, verbatim.  A string bound, so
+    # the fraction matters -- rounded to 19:10:09Z it would sort above the
+    # first v12 row and drop it.
     first_v12_decision = "2026-09-18T19:10:09.000001Z"
-    assert sa.version_effective_from("P1", p1) == first_v12_decision
+    assert sa.version_effective_from("P1", "p1_joint_likelihood_v12") == first_v12_decision
     assert "2026-09-18T19:10:09Z" > first_v12_decision
+    assert sa.version_effective_from("P1", p1) > first_v12_decision
     assert sa.version_effective_from(
         "P1", "p1_metar_trajectory_target_v11"
     ) == sa.version_effective_from("P0", POSTERIOR_VERSION)

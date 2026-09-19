@@ -107,7 +107,17 @@ STATE_FEATURES = (
     "wind_speed_mps",
 )
 # Remaining-hours edges for the tempering, descending: [>=10h, 6-10h, <6h].
+# Still fitted and published beside the curve below, so an artifact without
+# a curve -- and code that predates it -- serves exactly what it did.
 ALPHA_EDGES_HOURS = (10.0, 6.0)
+# Charter 156 (2026-09-19, 「平滑时钟」→「上线」): alpha is a piecewise-linear
+# curve in the hours left, not three steps.  Three steps put a cliff at 10h:
+# on ZUUU 2026-09-19 the same reports read 0.25 at 10.05h and 1.375 at 9.92h,
+# and 23C went from 0.33 to 0.84 in the minutes between.  Cross-fitted on the
+# held-out days, the curve beat the steps by +0.0045 nat [+0.0007, +0.0077]
+# (+0.0038 [+0.0009, +0.0063] on the other split), most of it within two
+# hours of the old edge.  The knots are where the curve may bend.
+ALPHA_KNOTS_HOURS = (0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 17.0, 20.0, 26.0)
 # A bucket whose centre sits within this of the running high is the running
 # high's own outcome: the day does not settle a whole rung above it.
 _NO_RISE_WITHIN_C = 0.5
@@ -203,7 +213,46 @@ def alpha_bin(remaining_hours: float) -> int:
     return len(ALPHA_EDGES_HOURS)
 
 
+def _piecewise_linear(x: float, xs: Sequence[float], ys: Sequence[float]) -> float:
+    """Linear between knots, flat beyond the ends."""
+
+    if x <= xs[0]:
+        return float(ys[0])
+    for index in range(1, len(xs)):
+        if x <= xs[index]:
+            left, right = float(xs[index - 1]), float(xs[index])
+            weight = (x - left) / (right - left)
+            return float(ys[index - 1]) + weight * (float(ys[index]) - float(ys[index - 1]))
+    return float(ys[-1])
+
+
+def alpha_curve(artifact: Mapping[str, Any]) -> tuple[list[float], list[float]] | None:
+    """The artifact's alpha knots, validated, or None when it publishes steps."""
+
+    knots = artifact.get("alpha_knots_hours")
+    values = artifact.get("alpha_knot_values")
+    if knots is None and values is None:
+        return None
+    try:
+        xs = [float(value) for value in knots]
+        ys = [float(value) for value in values]
+    except (TypeError, ValueError) as exc:
+        raise ContractError("p1_observation_likelihood_alpha_curve_invalid") from exc
+    if (
+        len(xs) < 2 or len(xs) != len(ys)
+        or any(not math.isfinite(v) for v in xs + ys)
+        or any(b <= a for a, b in zip(xs, xs[1:]))
+        or any(v < 0.0 for v in ys)
+    ):
+        raise ContractError("p1_observation_likelihood_alpha_curve_invalid")
+    return xs, ys
+
+
 def alpha_for(remaining_hours: float, artifact: Mapping[str, Any]) -> float:
+    hours = float(remaining_hours)
+    curve = alpha_curve(artifact)
+    if curve is not None:
+        return _piecewise_linear(hours, *curve)
     values = [float(value) for value in artifact["alpha_by_bin"]]
     if len(values) != len(ALPHA_EDGES_HOURS) + 1:
         raise ContractError("p1_observation_likelihood_alpha_bins_invalid")
@@ -299,6 +348,8 @@ def compile_observation_likelihood(
         "trained_through": str(artifact.get("trained_through") or ""),
         "alpha": alpha,
         "alpha_bin": alpha_bin(hours),
+        "alpha_mode": "curve" if alpha_curve(artifact) is not None else "bins",
+        "clock_mode": str((artifact.get("phase") or {}).get("clock") or "bins"),
         "rise_probability": rise,
         "running_high_c": float(running_high_c),
         "running_high_bucket": str(running_high_bucket),
