@@ -911,7 +911,7 @@ def materialize_p0m_observed(
     # v8 (charter 158, 2026-09-19): the likelihood's pull is tempered by
     # whether the TAF's own weather explains its disagreement with P0's
     # served mean (``taf_likelihood.disagreement_group``).
-    posterior_version: str = "p0m_taf_likelihood_v8",
+    posterior_version: str = "p0m_taf_likelihood_v9",
     observed_hard_excluded_buckets: Sequence[str] = (),
     observed_running_high_c: float | None = None,
     taf_likelihood_artifact: Mapping[str, Any] | None = None,
@@ -1280,7 +1280,7 @@ def materialize_p1(
     # v15 (2026-09-19, charter 158): the root, not P1 -- every P1 composes on
     # a P0-M, whose TAF likelihood is now tempered by the TAF's reason; it
     # declares the instant P0-M v8 declares, as v10/v11 did for P0.
-    posterior_version: str = "p1_joint_likelihood_v15",
+    posterior_version: str = "p1_joint_likelihood_v16",
     # {"features": ..., "artifact": ..., "regional_system_id": ...}: the
     # step's observation-side feature vector and the fitted likelihood,
     # handed in for the reason every fitted table is -- a replay must rebuild

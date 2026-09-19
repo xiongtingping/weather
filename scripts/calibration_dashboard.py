@@ -1314,11 +1314,13 @@ def collect_member_admission(
 def collect_synoptic_cooling(conn: sqlite3.Connection) -> dict[str, Any]:
     """The radiation shift (辐射降温项) each station's newest P0 served.
 
-    The one centre move P0 makes before the centre/width scalars: the day's
-    forecast shortwave radiation, standardised against the station's own
-    history, times a per-lead coefficient (``RADIATION_SHIFT_SIGMA_BY_LEAD``:
-    0.35 at h12_24, 0.15 elsewhere), times the served sigma, clamped to
-    1.5C.  Read off the receipt each envelope carries
+    The one centre move P0 makes before the centre/width scalars.  Since
+    charter 160 (2026-09-19) the day's forecast shortwave radiation is read
+    as a clearness index Kt (over the top-of-atmosphere radiation for the
+    station's latitude and date), standardised against the station's own Kt
+    before the event day, times 0.15 at every lead, times the served sigma.
+    The retired absolute standardisation rides on the receipt as the shadow
+    arm (``legacy_v1``) and is shown beside it.  Read off the receipt each envelope carries
     (``synoptic_cooling_json``), never recomputed.  User, 2026-09-18:
     前端合适的地方增加辐射降温项的数据 -- ZUUU 09-19 moved from -0.87C to
     -0.37C that afternoon with no change in the weather, only in the lead
@@ -1370,6 +1372,12 @@ def collect_synoptic_cooling(conn: sqlite3.Connection) -> dict[str, Any]:
                 "standardised": receipt.get("standardised"),
                 "radiation_sum": receipt.get("radiation_sum"),
                 "samples": receipt.get("sample_count"),
+                # Charter 160: the clearness index and the shadow arm.
+                "clearness_index": receipt.get("clearness_index"),
+                "clearness_mean": receipt.get("history_clearness_mean"),
+                "extraterrestrial_mj": receipt.get("extraterrestrial_mj"),
+                "legacy_standardised": (receipt.get("legacy_v1") or {}).get("standardised"),
+                "legacy_shift_c": (receipt.get("legacy_v1") or {}).get("shift_c"),
                 "model_center_c": (
                     None if found[1] is None else round(float(found[1]), 2)
                 ),
@@ -2241,6 +2249,31 @@ def _envelope_row(conn: sqlite3.Connection, checkpoint_id: str | None):
     ).fetchone()
 
 
+def _p0_radiation_brief(p0_row) -> dict[str, Any] | None:
+    """The P0 radiation shift's receipt, reduced to what a station card shows."""
+
+    if not p0_row:
+        return None
+    try:
+        lineage = json.loads(p0_row[3] or "{}")
+        receipt = json.loads(str(lineage.get("synoptic_cooling_json") or "{}"))
+    except (TypeError, ValueError):
+        return None
+    if not receipt:
+        return None
+    legacy = receipt.get("legacy_v1") or {}
+    return {
+        "state": receipt.get("state"), "method": receipt.get("method_tag"),
+        "radiation_sum": receipt.get("radiation_sum"),
+        "clearness_index": receipt.get("clearness_index"),
+        "clearness_mean": receipt.get("history_clearness_mean"),
+        "standardised": receipt.get("standardised"),
+        "shift_c": receipt.get("shift_c"),
+        "legacy_standardised": legacy.get("standardised"),
+        "legacy_shift_c": legacy.get("shift_c"),
+    }
+
+
 def _bucket_axis(lineage: Mapping[str, Any], ordinals: Mapping[str, Any]) -> list[dict[str, Any]]:
     try:
         intervals = json.loads(str(lineage.get("bucket_intervals_c_json") or "{}"))
@@ -2454,6 +2487,8 @@ def _station_bayes_card(
         "p1_version": p1_version, "root_stage": root_row[0],
         "p0_decided_at_utc": p0_row[1] if p0_row else None,
         "p0m_decided_at_utc": root_row[1] if p0m is not None else None,
+        # Charter 160: the radiation shift P0 made, read off its receipt.
+        "p0_radiation": _p0_radiation_brief(p0_row),
         "shapes": {
             "p0": _vector_shape(p0, axis),
             "p0m": None if p0m is None else _vector_shape(p0m, axis),
@@ -17941,24 +17976,29 @@ function radiationShift(){
     <td class="mono">${h(r.station_id)}</td>
     <td class="mono">${h(leadWord[r.lead]||r.lead||"—")}</td>
     <td class="mono">${r.radiation_sum==null?"—":Number(r.radiation_sum).toFixed(2)}</td>
+    <td class="mono">${r.extraterrestrial_mj==null?"—":Number(r.extraterrestrial_mj).toFixed(1)}</td>
+    <td class="mono"><b>${r.clearness_index==null?"—":Number(r.clearness_index).toFixed(2)}</b></td>
+    <td class="mono">${r.clearness_mean==null?"—":Number(r.clearness_mean).toFixed(2)}</td>
     <td class="mono">${r.standardised==null?"—":f2(r.standardised)}</td>
     <td class="mono">${r.per_unit==null?"—":Number(r.per_unit).toFixed(2)}</td>
     <td class="mono ${(r.shift_c||0)<0?"down":(r.shift_c||0)>0?"up":""}"><b>${f2(r.shift_c)}</b></td>
     <td class="mono">${r.model_center_c==null?"—":Number(r.model_center_c).toFixed(2)}</td>
     <td class="mono">${r.served_mean_c==null?"—":Number(r.served_mean_c).toFixed(2)}</td>
+    <td class="mono muted">${r.legacy_standardised==null?"—":f2(r.legacy_standardised)} / ${r.legacy_shift_c==null?"—":f2(r.legacy_shift_c)}</td>
     <td class="mono muted" title="${h(r.method||"")}">${h(r.state)}${r.samples?" · "+r.samples+" 天":""}</td></tr>`).join("");
   return `<div class="card" style="margin-top:12px">
     <b>辐射降温项（中心/宽度之前的那一次平移）</b>
     <div class="muted" style="margin:4px 0 8px;font-size:12px">
-      融出来的分布先按当天<b>预报的短波辐射</b>平移一次：比这个站自己的历史同期少（阴、雨），整条分布往冷推；多（晴），往暖推。
-      平移 = 辐射标准分 × 每单位系数（<b>12–24h 档 0.35，其余 0.15</b>）× 服务宽度 σ，封顶 ±1.5°C。
-      系数按提前量分档，所以同一站同一天换了提前量档，平移会跳——例：ZUUU 09-19 在 12–24h 档是 −0.87°C，
-      GEFS 06Z 进来、整期换成 0–12h 档后是 −0.37°C，天气本身没变。每站读自最新一期 P0 的回执，不在这里重算。</div>
+      融出来的分布先按当天<b>预报的短波辐射</b>平移一次：透光比这个站平常少（阴、雨），整条分布往冷推；多（晴），往暖推。
+      <b>宪章 160（09-19 起）</b>：先把辐射换成<b>晴朗度指数 Kt</b>＝预报辐射 ÷ 当天该纬度的大气顶辐射（天文上限，只随纬度和日期变），
+      再对本站事件日之前的 Kt 历史标准化——季节（太阳高度、昼长）被除掉，只剩云和天气。平移 = Kt 标准分 × 0.15（所有提前量）× 服务宽度 σ。
+      旧法直接拿辐射绝对量和 4 月以来的平均比，9 月天天被判「偏暗」（全队 9 月 z −0.44，其中约九成是季节）；旧法标准分/平移留作影子列，便于复测。
+      例：ZUUU 09-20 预报 10.6 MJ/m²，大气顶 32.2，Kt 0.33 对本站平均 0.45 → 标准分 −0.82、平移约 −0.23°C（旧法 −1.17、−0.33°C）。每站读自最新一期 P0 的回执，不在这里重算。</div>
     ${days}
     <details style="margin-top:8px"><summary class="muted">逐站明细（${rows.length} 行，按日期、平移绝对值排序）</summary>
       <div class="scroll" style="max-height:420px"><table><thead><tr>
-        <th>日</th><th>站</th><th>提前量</th><th>预报辐射</th><th>标准分</th><th>系数/单位</th>
-        <th>平移 °C</th><th>平移前中心</th><th>服务均值</th><th>状态 · 历史</th></tr></thead>
+        <th>日</th><th>站</th><th>提前量</th><th>预报辐射</th><th>大气顶</th><th>晴朗度指数 Kt</th><th>本站 Kt 均值</th><th>Kt 标准分</th><th>系数/单位</th>
+        <th>平移 °C</th><th>平移前中心</th><th>服务均值</th><th>旧法标准分/平移（影子）</th><th>状态 · 历史</th></tr></thead>
         <tbody>${body}</tbody></table></div></details>
   </div>`;
 }
@@ -20389,7 +20429,10 @@ function stationBayesBoard(){
       <div class="by-chain">
         <div class="by-step"><div class="t">① 先验 P0（四家全球集合，已校准）</div>
           <div class="v">${c2((S.p0 || {}).mean_c)}</div>
-          <div class="muted">众数 ${h((S.p0 || {}).mode || "—")}（${pc((S.p0 || {}).mode_p)}）· ${whenZ(e.p0_decided_at_utc)}</div></div>
+          <div class="muted">众数 ${h((S.p0 || {}).mode || "—")}（${pc((S.p0 || {}).mode_p)}）· ${whenZ(e.p0_decided_at_utc)}</div>
+          ${(()=>{const R=e.p0_radiation||{}; if(R.clearness_index==null && R.shift_c==null) return "";
+            const sg=v=>v==null?"—":((v>0?"+":"")+Number(v).toFixed(2));
+            return `<div class="muted">辐射 ${R.radiation_sum==null?"—":Number(R.radiation_sum).toFixed(1)} MJ/m² · 晴朗度指数 Kt ${R.clearness_index==null?"—":Number(R.clearness_index).toFixed(2)}（本站平均 ${R.clearness_mean==null?"—":Number(R.clearness_mean).toFixed(2)}）· 标准分 ${sg(R.standardised)} → 平移 ${sg(R.shift_c)}°C${R.legacy_shift_c==null?"":` <span title="宪章 160 前的旧法：辐射绝对量对 4 月以来平均">（旧法 ${sg(R.legacy_shift_c)}）</span>`}</div>`;})()}</div>
         ${hasP0m ? `<div class="by-step"><div class="t">② × TAF 似然 → P0-M</div>
           <div class="v">${c2(S.p0m.mean_c)}</div>
           <div class="muted">TAF TX ${T && T.tx_c && T.tx_c !== "NONE" ? c1(T.tx_c) : "—"}${T && T.x_c != null ? "（比 P0 中心 " + (T.x_c > 0 ? "+" : "") + Number(T.x_c).toFixed(1) + "°C）" : ""} · ${h(tafWord[(T || {}).state] || (T || {}).state || "—")}${T && T.b != null ? " · b " + Number(T.b).toFixed(2) + " τ " + Number(T.tau).toFixed(2) : ""}${T && T.tempering ? " · " + h({REASONED:"有天气理由", UNREASONED_COLD:"没理由的往冷改", OTHER:"其他分歧", SMALL:"小分歧"}[T.tempering.group] || T.tempering.group) + " λ " + Number(T.tempering.lambda).toFixed(2) : ""}</div>
@@ -20795,7 +20838,7 @@ const LANES = {
   "共识桥": {layer:"概率层 · 分布", status:"live",
     role:"中心差 >1.5°C 时往中间补一块共识成分，2.0°C 补满 0.4"},
   "辐射降温项": {layer:"概率层 · 分布", status:"live",
-    role:"按预报日照把整条分布往冷/暖推：标准分 × 每单位系数 × σ"},
+    role:"按预报日照把整条分布往冷/暖推：晴朗度指数 Kt 的本站标准分 × 0.15 × σ（宪章 160）"},
   "站点贝叶斯更新": {layer:"P0-M · P1 · 按站", status:"live",
     role:"每站 P0 → P0-M → P1 逐桶变化与信息增益；实况特征、逐步时间线；报文解析折叠"},
   "P0-M TAF 似然": {layer:"P0-M · 唯一的更新", status:"live",

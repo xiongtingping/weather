@@ -46,6 +46,8 @@ from .cross_consensus import (
     CONDITIONAL_SKEW_METHOD_TAG,
     RADIATION_SHIFT_METHOD_TAG,
     pinned_radiation_shift_sigma,
+    served_radiation_shift_sigma,
+    forecast_clearness_shift_sigma,
     SYNOPTIC_COOLING_METHOD_TAG,
     SYNOPTIC_COOLING_SHIFT_SIGMA,
     apply_conditional_tail_skew,
@@ -133,7 +135,12 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # 2026-09-18: 79 centres moved, median 0.03C, max 0.64C; provisional members
 # 25 -> 0), so every lane fitted on served claims starts again on the
 # corrected output; the start is declared at the deploy.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v6"
+# v7: charter 160, the radiation shift standardises the clearness index (the
+# forecast over the top of the atmosphere's) against the station's own days
+# before the event, and every lead serves 0.15 (h12_24's 0.35 retired).  The
+# fleet's September centre moves warm by about 0.09C; the start is declared at
+# the deploy.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v7"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -633,6 +640,30 @@ def _forecast_radiation_sum(
     except sqlite3.Error:
         return None
     return float(row[0]) if row and row[0] is not None else None
+
+
+def _forecast_radiation_history_dated(
+    conn: sqlite3.Connection, *, station_id: str, event_date: str
+) -> list[tuple[str, float]]:
+    """Charter 160: the station's own radiation days before the event day.
+
+    Dated, because each day is turned into a clearness index against its own
+    date's top-of-atmosphere radiation; strictly earlier, because the rows for
+    the days after the event are forward forecasts that were never history.
+    """
+
+    try:
+        rows = conn.execute(
+            "SELECT local_date, shortwave_radiation_sum "
+            "FROM calibration_station_forecast_physics "
+            "WHERE station_id=? AND local_date<? AND reference_only=1 "
+            "AND shortwave_radiation_sum IS NOT NULL "
+            "ORDER BY local_date DESC LIMIT ?",
+            (station_id, event_date, FORECAST_PHYSICS_HISTORY_DAYS),
+        ).fetchall()
+    except sqlite3.Error:
+        return []
+    return [(str(row[0]), float(row[1])) for row in rows]
 
 
 def _forecast_radiation_history(
@@ -3074,19 +3105,61 @@ def compile_native_ensemble_p0(
         # and adding the TAF index on top of it gains nothing.  The
         # forecaster's fields are the fallback for a day whose radiation
         # capture is missing or whose station history is still too thin.
-        shift_sigma, synoptic_cooling_receipt = (
-            forecast_radiation_shift_sigma(
-                shift_sigma_per_unit=pinned_radiation_shift_sigma(
-                    artifact_combination_method
-                ),
-                radiation_sum=_forecast_radiation_sum(
-                    conn, station_id=station_id, event_date=event_date
-                ),
+        # Charter 160: the clearness index leads.  The absolute form it
+        # replaced is still computed, exactly as it was served (its own
+        # history reader and the artifact's pin), and recorded beside it as
+        # the shadow arm; it serves only when the clearness form cannot (no
+        # latitude, or under thirty days of history), before the TAF fields.
+        radiation_sum = _forecast_radiation_sum(
+            conn, station_id=station_id, event_date=event_date
+        )
+        legacy_shift_sigma, legacy_receipt = forecast_radiation_shift_sigma(
+            shift_sigma_per_unit=pinned_radiation_shift_sigma(
+                artifact_combination_method
+            ),
+            radiation_sum=radiation_sum,
+            station_history=_forecast_radiation_history(
+                conn, station_id=station_id, event_date=event_date
+            ),
+        )
+        try:
+            radiation_latitude = float(
+                station_coordinates(station_id)["latitude"]
+            )
+        except Exception:  # noqa: BLE001 -- no latitude falls back below
+            radiation_latitude = None
+        served_sigma_per_unit = served_radiation_shift_sigma(
+            artifact_combination_method
+        )
+        shift_sigma, synoptic_cooling_receipt = forecast_clearness_shift_sigma(
+            radiation_sum=radiation_sum,
+            event_date=event_date,
+            latitude_deg=radiation_latitude,
+            station_history=_forecast_radiation_history_dated(
+                conn, station_id=station_id, event_date=event_date
+            ),
+            shift_sigma_per_unit=served_sigma_per_unit,
+        )
+        if shift_sigma is None and legacy_shift_sigma is not None:
+            clearness_state = synoptic_cooling_receipt.get("state")
+            shift_sigma, synoptic_cooling_receipt = forecast_radiation_shift_sigma(
+                shift_sigma_per_unit=served_sigma_per_unit,
+                radiation_sum=radiation_sum,
                 station_history=_forecast_radiation_history(
                     conn, station_id=station_id, event_date=event_date
                 ),
             )
+            synoptic_cooling_receipt["clearness_state"] = clearness_state
+        synoptic_cooling_receipt["artifact_pinned_sigma"] = (
+            pinned_radiation_shift_sigma(artifact_combination_method)
         )
+        synoptic_cooling_receipt["legacy_v1"] = {
+            "state": legacy_receipt.get("state"),
+            "standardised": legacy_receipt.get("standardised"),
+            "shift_sigma": legacy_shift_sigma,
+            "shift_sigma_per_unit": legacy_receipt.get("shift_sigma_per_unit"),
+            "sample_count": legacy_receipt.get("sample_count"),
+        }
         if shift_sigma is None and taf_witness is not None:
             cooling_index, synoptic_cooling_receipt = synoptic_cooling_index(
                 cloud_cover_fraction=taf_witness.get("cloud_cover_fraction"),
@@ -3116,6 +3189,9 @@ def compile_native_ensemble_p0(
                     intervals=intervals_raw,
                 )
             synoptic_cooling_receipt["shift_c"] = synoptic_cooling_shift_c
+            legacy = synoptic_cooling_receipt.get("legacy_v1")
+            if isinstance(legacy, dict) and legacy.get("shift_sigma") is not None:
+                legacy["shift_c"] = float(legacy["shift_sigma"]) * member_spread_c
     # Shape after position: the radiation shift above moves the centre, this
     # leans the buckets around wherever it landed, and the tail layer below
     # conditions what is further out.  Each touches a region the others do
