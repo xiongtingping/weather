@@ -170,6 +170,7 @@ def export_awc_ingress_evidence_v4(
     station_ids: Sequence[str] = (),
     as_of_utc: str,
     since_valid_at_utc: str = "",
+    skip_day_scopes: Mapping[tuple[str, str], str] | None = None,
 ) -> dict[str, Any]:
     """Freeze exact AWC observation, poll, origin, halt and review evidence.
 
@@ -191,6 +192,18 @@ def export_awc_ingress_evidence_v4(
     ordinal into a fact whose scope key does not carry it, so a day exported
     from its tail hands the same scope different content and canonical
     ingress refuses it -- for the entire round, not just for the day.
+
+    ``skip_day_scopes`` names the station-days canonical SSOT has already
+    closed, each with the settlement zone it was closed under.  Their reports
+    are located from the key columns alone and never hashed: the caller drops
+    a closed day whole anyway, and on 2026-09-19 those days were 7,309 of the
+    8,386 rows read and ~15 of the pass's 19 seconds.  They still count
+    everywhere a report's mere presence counts -- the station's DATA_MISSING
+    gap, a day's place in the window, its truncation -- so every open day's
+    rows, and the packet the caller seals, are what the full read produced.
+    The one narrowing: a closed day's report is no longer re-verified each
+    pass, so a corrupt row there raises no extraction gap.  Its facts are
+    committed and append-only; the gap could never have changed them.
     """
 
     source = Path(source_db).expanduser().resolve(strict=True)
@@ -220,6 +233,10 @@ def export_awc_ingress_evidence_v4(
             raise ContractError(f"pr12_station_timezone_invalid:{station}") from exc
 
     placeholders = ",".join("?" for _ in selected)
+    skip = {
+        (str(station).strip().upper(), str(event_date)): str(zone)
+        for (station, event_date), zone in (skip_day_scopes or {}).items()
+    }
     sql = f"""
         SELECT o.*,p.source_lane AS poll_source_lane,
                p.station_ids_json AS poll_station_ids_json,
@@ -245,9 +262,22 @@ def export_awc_ingress_evidence_v4(
          WHERE o.source_lane='awc' AND o.station_id IN ({placeholders})
            AND o.canonical_committed_at<=?
            AND o.valid_at>=?
+           {{rowid_filter}}
          ORDER BY o.station_id,o.valid_at,o.report_type,o.observation_id
          LIMIT ?
     """
+    # Only the key columns: which day a report falls in is all a closed day
+    # needs, and the joined poll payload is most of every row's bytes.
+    key_sql = f"""
+        SELECT o.rowid,o.station_id,o.valid_at
+          FROM reported_trajectory_observations o
+         WHERE o.source_lane='awc' AND o.station_id IN ({placeholders})
+           AND o.canonical_committed_at<=?
+           AND o.valid_at>=?
+         ORDER BY o.station_id,o.valid_at,o.report_type,o.observation_id
+         LIMIT ?
+    """
+    skipped_rows: list[dict[str, str]] = []
     with sqlite3.connect(f"file:{source}?mode=ro", uri=True, timeout=60.0) as conn:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA query_only=ON")
@@ -271,12 +301,57 @@ def export_awc_ingress_evidence_v4(
             if str(since_valid_at_utc or "").strip()
             else ""
         )
-        rows = [
-            dict(row)
-            for row in conn.execute(
-                sql, (*selected, _stamp(as_of), since_bound, MAX_ROWS + 1)
-            )
-        ]
+        bind = (*selected, _stamp(as_of), since_bound)
+        if skip:
+            keys = conn.execute(key_sql, (*bind, MAX_ROWS + 1)).fetchall()
+            if len(keys) > MAX_ROWS:
+                raise ContractError("pr12_source_row_limit_exceeded")
+            open_rowids: list[int] = []
+            for rowid, station_raw, valid_raw in keys:
+                station = str(station_raw or "").upper()
+                try:
+                    valid_at = _utc(valid_raw, "valid_at")
+                except ContractError:
+                    # Unreadable here is unreadable in the full pass too; it
+                    # goes there to be recorded as the gap it is.
+                    open_rowids.append(int(rowid))
+                    continue
+                key = (
+                    station,
+                    valid_at.astimezone(ZoneInfo(timezone_map[station]))
+                    .date().isoformat(),
+                )
+                closed_zone = skip.get(key)
+                if closed_zone is None:
+                    open_rowids.append(int(rowid))
+                    continue
+                if closed_zone != timezone_map[station]:
+                    raise ContractError(
+                        f"pr12_existing_day_timezone_conflict:{key[0]}:{key[1]}"
+                    )
+                skipped_rows.append({
+                    "station_id": station,
+                    "event_date": key[1],
+                    "settlement_timezone": timezone_map[station],
+                    "observed_at_utc": _stamp(valid_at),
+                })
+            rows = [
+                dict(row)
+                for row in conn.execute(
+                    sql.replace(
+                        "{rowid_filter}",
+                        "AND o.rowid IN (SELECT value FROM json_each(?))",
+                    ),
+                    (*bind, json.dumps(open_rowids), MAX_ROWS + 1),
+                )
+            ]
+        else:
+            rows = [
+                dict(row)
+                for row in conn.execute(
+                    sql.replace("{rowid_filter}", ""), (*bind, MAX_ROWS + 1)
+                )
+            ]
         if len(rows) > MAX_ROWS:
             raise ContractError("pr12_source_row_limit_exceeded")
         halts = [
@@ -301,6 +376,8 @@ def export_awc_ingress_evidence_v4(
 
     evidence_rows: list[dict[str, Any]] = []
     extraction_gaps: list[dict[str, Any]] = []
+    # A poll's payload rides every report it carried; hash it once.
+    poll_payload_sha: dict[str, str] = {}
     for raw in rows:
         observation_id = str(raw.get("observation_id") or "")
         station = str(raw.get("station_id") or "").upper()
@@ -321,8 +398,11 @@ def export_awc_ingress_evidence_v4(
                 and fetch_started <= first_seen <= fetch_completed <= committed_at
             ):
                 raise ContractError("pr12_observation_timestamp_order_invalid")
-            poll_payload = json.loads(str(raw.get("poll_json") or ""))
-            poll_object_sha = content_sha256(poll_payload)
+            poll_text = str(raw.get("poll_json") or "")
+            poll_object_sha = poll_payload_sha.get(poll_text)
+            if poll_object_sha is None:
+                poll_object_sha = content_sha256(json.loads(poll_text))
+                poll_payload_sha[poll_text] = poll_object_sha
             source_receipt_sha = _source_poll_receipt(raw, expected_lane="awc")
             origin_json = json.loads(str(raw.get("origin_json") or ""))
             if not isinstance(origin_json, Mapping):
@@ -489,6 +569,8 @@ def export_awc_ingress_evidence_v4(
     # a refusal and not a repair: how far back to read is the caller's
     # decision, and days older than that belong to the historical lane.
     truncated_day_scopes: list[dict[str, str]] = []
+    in_window: set[tuple[str, str]] = set()
+    truncated: dict[tuple[str, str], datetime] = {}
     if since_bound:
         since_instant = _utc(since_valid_at_utc, "since_valid_at_utc")
         read_instant = since_instant - WHOLE_DAY_READ_MARGIN
@@ -499,9 +581,8 @@ def export_awc_ingress_evidence_v4(
         # the 2026-08-26 recovery it would have discarded 18 station-days of
         # 2026-08-22 that nothing had ever identified, permanently, because a
         # day only gets older and no later round reaches back for it.
-        in_window: set[tuple[str, str]] = set()
         day_start: dict[tuple[str, str], datetime] = {}
-        for row in evidence_rows:
+        for row in (*evidence_rows, *skipped_rows):
             key = (str(row["station_id"]), str(row["event_date"]))
             if key not in day_start:
                 day_start[key] = datetime.combine(
@@ -537,7 +618,19 @@ def export_awc_ingress_evidence_v4(
             for station, event_date in sorted(truncated)
         ]
 
-    observed_stations = {str(row["station_id"]) for row in evidence_rows}
+    # What the full read would have kept of the closed days, for the caller's
+    # exclusion count: the same window and truncation rule the open days get.
+    skipped_kept = [
+        row for row in skipped_rows
+        if not since_bound
+        or (
+            (row["station_id"], row["event_date"]) in in_window
+            and (row["station_id"], row["event_date"]) not in truncated
+        )
+    ]
+    observed_stations = {
+        str(row["station_id"]) for row in (*evidence_rows, *skipped_kept)
+    }
     for station in selected:
         if station not in observed_stations:
             extraction_gaps.append(
@@ -574,6 +667,14 @@ def export_awc_ingress_evidence_v4(
         "source_read_only": True,
         "source_query_only": True,
     }
+    if skip:
+        identity["read_skipped_day_scopes"] = {
+            "day_scope_count": len(
+                {(row["station_id"], row["event_date"]) for row in skipped_kept}
+            ),
+            "evidence_row_count": len(skipped_kept),
+            "rows_located_by_key_only": len(skipped_rows),
+        }
     return {**identity, "receipt_sha256": content_sha256(identity)}
 
 

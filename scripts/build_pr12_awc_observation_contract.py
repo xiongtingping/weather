@@ -99,19 +99,48 @@ def _attach_stored_revision_facts(
     days = {str(row.get("event_date") or "") for row in evidence.get("rows", [])}
     stored: list[dict[str, object]] = []
     if stations and days:
+        # Narrow on the scope key before touching a fact body.  The key is
+        # station|observation|revision|observed_at|committed_at|projection
+        # (CanonicalAWCObservationRevisionFact.scope_key) and lives in the
+        # (fact_type, scope_key) index, so this reads the index, not 50k
+        # bodies through json_extract (4.1s of a 19s pass, 2026-09-19).  A
+        # local day starts at most 14h before its UTC date, so a fact observed
+        # before the day ahead of the earliest day asked for is none of them.
+        # A key that does not parse is fetched and judged on its body.
+        try:
+            floor = (
+                min(date.fromisoformat(day) for day in days) - timedelta(days=1)
+            ).isoformat()
+        except ValueError:
+            floor = ""
+        sha = str(projection_sha)
         with sqlite3.connect(f"file:{target_db}?mode=ro", uri=True) as conn:
             conn.execute("PRAGMA query_only=ON")
+            wanted: list[int] = []
+            for rowid, scope_key in conn.execute(
+                "SELECT rowid,scope_key FROM canonical_ssot_fact "
+                "WHERE fact_type='truth_observation_revision'"
+            ):
+                parts = str(scope_key).split("|")
+                if len(parts) == 6 and (
+                    parts[5] != sha
+                    or parts[0].upper() not in stations
+                    or (floor and parts[3][:10] < floor)
+                ):
+                    continue
+                wanted.append(int(rowid))
             rows = conn.execute(
                 "SELECT fact_json FROM canonical_ssot_fact "
-                "WHERE fact_type='truth_observation_revision' "
-                "  AND json_extract(fact_json,"
-                "'$.authority_scope_projection_content_sha256')=?",
-                (str(projection_sha),),
+                "WHERE rowid IN (SELECT value FROM json_each(?)) "
+                "ORDER BY scope_key",
+                (json.dumps(wanted),),
             ).fetchall()
         for (raw_json,) in rows:
             raw = json.loads(str(raw_json))
             if (
-                str(raw.get("station_id") or "").upper() in stations
+                str(raw.get("authority_scope_projection_content_sha256") or "")
+                == sha
+                and str(raw.get("station_id") or "").upper() in stations
                 and str(raw.get("event_date") or "") in days
             ):
                 stored.append(raw)
@@ -147,22 +176,10 @@ def _materialized_event_dates(target_db: Path) -> list[str]:
     return sorted({str(value) for (value,) in rows if value})
 
 
-def _exclude_materialized_day_scopes(
-    target_db: Path, evidence: dict[str, object], projection_sha: str
-) -> dict[str, object]:
-    """Do not rebuild an append-only station-day already in canonical SSOT.
-
-    "Already" means under the authority this pass is building against, not
-    under any authority ever.  The 2026-08-26 doctrine amendment moved the
-    settlement day from a fleet-wide Eastern one to the one each station's
-    market listing declares, which minted a new projection and therefore a new
-    generation of facts. Days closed under the old Eastern authority are
-    history: they keep their rows, they do not block the new generation from
-    building the same calendar day over the window the market actually
-    settles, and comparing the two generations' zones is meaningless -- they
-    are answers to different questions. Their scope keys carry the projection
-    hash, so the two generations cannot collide.
-    """
+def _materialized_day_scopes(
+    target_db: Path, projection_sha: str
+) -> dict[tuple[str, str], str]:
+    """Station-days closed under this authority, each with its closing zone."""
 
     existing: dict[tuple[str, str], str] = {}
     with sqlite3.connect(f"file:{target_db}?mode=ro", uri=True) as conn:
@@ -182,9 +199,44 @@ def _exclude_materialized_day_scopes(
         if prior is not None and prior != zone:
             raise ContractError(f"pr12_existing_day_timezone_ambiguous:{key[0]}:{key[1]}")
         existing[key] = zone
+    return existing
+
+
+def _exclude_materialized_day_scopes(
+    target_db: Path,
+    evidence: dict[str, object],
+    projection_sha: str,
+    *,
+    existing: Mapping[tuple[str, str], str] | None = None,
+) -> dict[str, object]:
+    """Do not rebuild an append-only station-day already in canonical SSOT.
+
+    "Already" means under the authority this pass is building against, not
+    under any authority ever.  The 2026-08-26 doctrine amendment moved the
+    settlement day from a fleet-wide Eastern one to the one each station's
+    market listing declares, which minted a new projection and therefore a new
+    generation of facts. Days closed under the old Eastern authority are
+    history: they keep their rows, they do not block the new generation from
+    building the same calendar day over the window the market actually
+    settles, and comparing the two generations' zones is meaningless -- they
+    are answers to different questions. Their scope keys carry the projection
+    hash, so the two generations cannot collide.
+
+    The exporter may already have left these days out at read
+    (``skip_day_scopes``); what it skipped arrives as a count and joins the
+    rows dropped here, so the sealed packet is the one the full read made.
+    """
+
+    if existing is None:
+        existing = _materialized_day_scopes(target_db, projection_sha)
 
     value = dict(evidence)
-    excluded = 0
+    skipped_at_read = value.pop("read_skipped_day_scopes", None)
+    excluded = (
+        int(skipped_at_read.get("evidence_row_count") or 0)
+        if isinstance(skipped_at_read, Mapping)
+        else 0
+    )
     kept_rows = []
     for raw in value.get("rows", []):
         key = (str(raw.get("station_id") or "").upper(), str(raw.get("event_date") or ""))
@@ -355,15 +407,20 @@ def main() -> int:
         since_valid_at = (
             _parse_as_of_date(args.as_of_utc) - timedelta(days=args.window_days)
         ).isoformat() + "T00:00:00.000Z"
+    # Closed days are located by key and never hashed (2026-09-19: 87% of
+    # the rows read, ~15s of a 19s pass); the packet is unchanged.
+    materialized = _materialized_day_scopes(target, projection["content_sha256"])
     evidence = export_awc_ingress_evidence_v4(
         args.archive_database,
         station_registry=registry,
         authority_scope_projection=projection,
         as_of_utc=args.as_of_utc,
         since_valid_at_utc=since_valid_at,
+        skip_day_scopes=materialized,
     )
+    skipped_at_read = dict(evidence.get("read_skipped_day_scopes") or {})
     evidence = _exclude_materialized_day_scopes(
-        target, evidence, projection["content_sha256"]
+        target, evidence, projection["content_sha256"], existing=materialized
     )
     evidence = _attach_stored_revision_facts(
         target, evidence, projection["content_sha256"]
@@ -404,6 +461,9 @@ def main() -> int:
             )
         ),
         "evidence_receipt_sha256": evidence["receipt_sha256"],
+        "closed_day_rows_located_by_key_only": skipped_at_read.get(
+            "rows_located_by_key_only", 0
+        ),
         "contract_content_sha256": contract["content_sha256"],
         "builder_receipt_sha256": receipt["receipt_sha256"],
         "writes_database": False,
