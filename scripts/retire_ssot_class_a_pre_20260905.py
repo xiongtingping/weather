@@ -13,7 +13,6 @@ names) and neither the paper ledger nor the scorecards read them before
 2026-09-14.  Measured 2026-09-19 by rowid sampling:
 
   basket_p0_preselection_plan          4.03 GiB of payload before the cutoff
-  basket_probability_envelope          6.92
   basket_probability_update_proof      0.75
   auto_trade_decisions                 0.74
   basket_regime_artifact               0.50
@@ -107,14 +106,11 @@ CYCLE_REFERENCES = (
 #  station-day guard)
 TABLES = (
     ("basket_p0_preselection_plan", "decision_at_utc", (), "live"),
-    (
-        "basket_probability_envelope", "decision_at_utc",
-        (("envelope_id", (
-            ("basket_policy_training_fact", "probability_envelope_id"),
-            ("tiebreak_lane_evaluation", "envelope_id"),
-        )),),
-        "live",
-    ),
+    # basket_probability_envelope was retired here on 2026-09-19 and restored
+    # in full the same day: scripts/fit_taf_likelihood.py (P0-M likelihood,
+    # event_date >= 2026-08-16), the P1 sample builder's 45-day window and
+    # calibration_refit's band replay all read its history daily, and a
+    # dozen other readers select it by event-date range.  It is not class A.
     ("basket_probability_update_proof", "decision_at_utc", (), "live"),
     ("basket_regime_artifact", "created_at", (), "live"),
     (

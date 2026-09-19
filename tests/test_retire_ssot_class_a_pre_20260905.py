@@ -68,9 +68,29 @@ def store(tmp_path: Path) -> Path:
     return path
 
 
+# The mechanics are exercised on an envelope-shaped table; the envelope
+# itself is not class A (see test_envelope_is_never_retired).
+ENVELOPE_SHAPED_SPEC = (
+    "basket_probability_envelope", "decision_at_utc",
+    (("envelope_id", (
+        ("basket_policy_training_fact", "probability_envelope_id"),
+    )),),
+    "live",
+)
+
+
 def _only_envelopes(monkeypatch) -> None:
-    spec = next(s for s in retire.TABLES if s[0] == "basket_probability_envelope")
-    monkeypatch.setattr(retire, "TABLES", (spec,))
+    monkeypatch.setattr(retire, "TABLES", (ENVELOPE_SHAPED_SPEC,))
+
+
+def test_envelope_is_never_retired() -> None:
+    """Retired and restored on 2026-09-19: the daily refits read its history.
+
+    fit_taf_likelihood reads P0/P0-M envelopes from 2026-08-16, the P1 sample
+    builder a 45-day window of them, and calibration_refit replays every
+    settled candidate window against its envelope.
+    """
+    assert "basket_probability_envelope" not in {spec[0] for spec in retire.TABLES}
 
 
 def test_dry_run_changes_nothing(store: Path, tmp_path: Path, monkeypatch) -> None:
