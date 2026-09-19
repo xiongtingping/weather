@@ -281,6 +281,11 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "calibrated_native_cross_ensemble_p0_v4": "2026-09-10T15:27:09Z",
         "calibrated_native_cross_ensemble_p0_v5": "2026-09-14T05:52:13Z",
         "calibrated_native_cross_ensemble_p0_v6": "2026-09-18T09:18:16Z",
+        # Charter 160: the radiation shift on the clearness index, every lead
+        # at 0.15.  Declared past the commit and ahead of the restart that
+        # deploys it, as P1 v13 was; the v7 envelopes between the resident's
+        # start and this instant are not evidence yet.
+        "calibrated_native_cross_ensemble_p0_v7": "2026-09-19T15:02:00Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
@@ -293,6 +298,9 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # the restart and the write the stage serves v7's numbers under the
         # v8 label, and those envelopes are not evidence.
         "p0m_taf_likelihood_v8": "2026-09-19T10:15:00Z",
+        # Charter 160: a root bump -- P0-M is P0 times the TAF likelihood, and
+        # P0 moved -- at the instant P0 v7 declares.
+        "p0m_taf_likelihood_v9": "2026-09-19T15:02:00Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
@@ -315,6 +323,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # Charter 158: the third root bump (every P1 composes on a P0-M) --
         # the instant P0-M v8 declares.
         "p1_joint_likelihood_v15": "2026-09-19T10:15:00Z",
+        # Charter 160: the fourth root bump, at the instant P0 v7 declares.
+        "p1_joint_likelihood_v16": "2026-09-19T15:02:00Z",
     },
 }
 
