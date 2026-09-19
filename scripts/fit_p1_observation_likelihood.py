@@ -36,9 +36,11 @@ import json
 import math
 import os
 import sqlite3
+import statistics
 import sys
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -49,6 +51,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target import metar_four_layer as M4  # noqa: E402
+from bayes_basket_target.metar_precision import official_temperature_c  # noqa: E402
 from bayes_basket_target import p1_observation_likelihood as OL  # noqa: E402
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.materialization import (  # noqa: E402
@@ -460,12 +463,128 @@ def features_of(sample: Mapping[str, Any]) -> dict[str, float | None]:
     )
 
 
-def fit_g(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+# -- charter 157: each station's clock is shifted by its own peak hour --------
+#
+# The peak hour is the local hour at which the day's maximum was first
+# reached, from the archive's AWC reports (tenths from the remark group where
+# the report carries one), the median over the window, shrunk toward the
+# fleet median with ``STATION_PEAK_SHRINK_K`` days of prior weight.  The
+# held-out scoring reads a table built only from days before the holdout; the
+# published table reads the latest window.
+STATION_PEAK_WINDOW_DAYS = 45
+STATION_PEAK_SHRINK_K = 10.0
+STATION_PEAK_MIN_REPORTS = 16
+
+
+def station_peak_offsets(
+    archive_db: Path,
+    *,
+    zones: Mapping[str, str],
+    before_date: str,
+    window_days: int = STATION_PEAK_WINDOW_DAYS,
+    shrink_k: float = STATION_PEAK_SHRINK_K,
+) -> tuple[dict[str, float], dict[str, Any]]:
+    """Station peak offsets in hours from the local days in [before - window, before)."""
+
+    first_day = (date.fromisoformat(before_date) - timedelta(days=window_days)).isoformat()
+    meta: dict[str, Any] = {
+        "schema": "p1_station_clock_offsets_v1",
+        "window_from": first_day,
+        "window_before": before_date,
+        "shrink_k": shrink_k,
+    }
+    days: dict[tuple[str, str], list[tuple[datetime, float]]] = defaultdict(list)
+    try:
+        conn = sqlite3.connect(f"file:{archive_db}?mode=ro", uri=True, timeout=60.0)
+        try:
+            for station, valid, raw, whole in conn.execute(
+                "SELECT station_id, valid_at, raw_text, reported_temperature_c"
+                " FROM reported_trajectory_observations"
+                " WHERE source_lane='awc' AND valid_at>=? AND valid_at<?",
+                (
+                    (date.fromisoformat(first_day) - timedelta(days=1)).isoformat(),
+                    (date.fromisoformat(before_date) + timedelta(days=1)).isoformat(),
+                ),
+            ):
+                zone = zones.get(str(station))
+                if zone is None:
+                    continue
+                local = datetime.fromisoformat(str(valid).replace("Z", "+00:00")).astimezone(ZoneInfo(zone))
+                day = local.date().isoformat()
+                if not first_day <= day < before_date:
+                    continue
+                try:
+                    value, _ = official_temperature_c(str(raw), whole_degree_c=float(whole))
+                except (TypeError, ValueError, ContractError):
+                    value = float(whole)
+                days[(str(station), day)].append((local, float(value)))
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        meta["state"] = f"UNAVAILABLE:{type(exc).__name__}"
+        return {}, meta
+    peaks: dict[str, list[float]] = defaultdict(list)
+    for (station, _day), points in days.items():
+        if len(points) < STATION_PEAK_MIN_REPORTS:
+            continue
+        top = max(value for _, value in points)
+        first = min(when for when, value in points if value == top)
+        peaks[station].append(first.hour + first.minute / 60.0)
+    everything = [hour for hours in peaks.values() for hour in hours]
+    if not everything:
+        meta["state"] = "NO_DAYS"
+        return {}, meta
+    fleet = statistics.median(everything)
+    offsets = {}
+    for station in sorted(zones):
+        hours = peaks.get(station, [])
+        middle = statistics.median(hours) if hours else fleet
+        shrunk = (len(hours) * middle + shrink_k * fleet) / (len(hours) + shrink_k)
+        offsets[station] = round(
+            max(-OL.MAX_STATION_CLOCK_OFFSET_H, min(OL.MAX_STATION_CLOCK_OFFSET_H, shrunk - fleet)), 4
+        )
+    meta.update({
+        "state": "OK",
+        "fleet_peak_local_h": fleet,
+        "station_days": len(everything),
+        "days_by_station": {station: len(hours) for station, hours in sorted(peaks.items())},
+    })
+    return offsets, meta
+
+
+def fit_g(
+    samples: Sequence[Mapping[str, Any]],
+    *,
+    station_clock_offsets: Mapping[str, float] | None = None,
+    station_clock_meta: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     """g on these samples; the body the artifact publishes, alpha excluded."""
 
     fallbacks = fleet_means(samples, OL.FULL_FEATURES)
     risers = [sample for sample in samples if int(sample["delta_c"]) >= 1]
+    offsets = dict(station_clock_offsets or {})
+    # Rung one learns on the station's own clock; the continuation keeps the
+    # true hours left, as the measurement did.
+    phase_samples = [
+        {
+            **sample,
+            "remaining_hours": max(
+                0.0,
+                float(sample["remaining_hours"])
+                + float(offsets.get(str(sample["station_id"]), 0.0)),
+            ),
+        }
+        for sample in samples
+    ] if offsets else samples
+    clock_fields: dict[str, Any] = (
+        {
+            OL.STATION_CLOCK_OFFSET_KEY: offsets,
+            "station_clock": dict(station_clock_meta or {}),
+        }
+        if offsets else {}
+    )
     return {
+        **clock_fields,
         "schema": OL.SCHEMA,
         "rule": OL.RULE,
         "feature_fallbacks": fallbacks,
@@ -475,7 +594,7 @@ def fit_g(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         # bins' midpoints, so the held-out scoring below reads them the same
         # way the resident will.
         "phase": {
-            **fit_phase_rung(samples, fallbacks, OL.PHASE_FEATURES),
+            **fit_phase_rung(phase_samples, fallbacks, OL.PHASE_FEATURES),
             "clock": M4.CLOCK_MIDPOINT_LINEAR,
         },
         "continuation_full": fit_continuation(
@@ -551,6 +670,7 @@ def _log_score(
 def evidence_of(row: Mapping[str, Any], artifact: Mapping[str, Any]) -> dict[str, float]:
     evidence, _ = OL.evidence_by_bucket(
         features_of(row["sample"]), artifact,
+        station_id=str(row["sample"]["station_id"]),
         bucket_ordinals=row["view"]["ordinals"],
         bucket_centers_c=row["view"]["centers"],
         running_high_c=row["high"],
@@ -588,7 +708,13 @@ def score_split(
             incumbent_score = _log_score(
                 prior, evidence_of(row, incumbent), row["excluded"],
                 row["truth"],
-                OL.alpha_for(float(row["sample"]["remaining_hours"]), incumbent),
+                OL.alpha_for(
+                    OL.clock_hours(
+                        float(row["sample"]["remaining_hours"]), incumbent,
+                        str(row["sample"]["station_id"]),
+                    ),
+                    incumbent,
+                ),
             )
             if incumbent_score is None:
                 continue
@@ -668,7 +794,11 @@ def alpha_arrays(
         priors.append(p)
         evidences.append(e)
         truths.append(buckets.index(row["truth"]))
-        hours.append(float(row["sample"]["remaining_hours"]))
+        # The alpha curve reads the station's clock, as serving does.
+        hours.append(OL.clock_hours(
+            float(row["sample"]["remaining_hours"]), candidate,
+            str(row["sample"]["station_id"]),
+        ))
         weights.append(float(row["sample"]["station_day_weight"]))
         days.append(str(row["sample"]["event_date"]))
     if not priors:
@@ -784,6 +914,7 @@ def main() -> int:
     parser.add_argument("--out", default=str(OL.ARTIFACT_PATH))
     parser.add_argument("--margin", type=float, default=DEFAULT_MARGIN)
     parser.add_argument("--fitted-at-utc", default=None)
+    parser.add_argument("--archive-db", default=str(ROOT / "data" / "archive.db"))
     parser.add_argument(
         "--force", action="store_true",
         help="write even when the veto refuses (first deployment only)",
@@ -801,7 +932,22 @@ def main() -> int:
     held = [s for s in samples if str(s["event_date"]) >= cut]
     target = sqlite3.connect(f"file:{args.target_db}?mode=ro", uri=True)
     rows = scorable_rows(held, RootCache(target))
-    split_g = fit_g(train)
+    zones = {
+        str(sample["station_id"]): str(sample["settlement_timezone"])
+        for sample in samples
+    }
+    # The held-out split is scored with offsets known before it began; the
+    # published body carries the latest window.
+    split_offsets, split_meta = station_peak_offsets(
+        Path(args.archive_db), zones=zones, before_date=cut,
+    )
+    full_offsets, full_meta = station_peak_offsets(
+        Path(args.archive_db), zones=zones,
+        before_date=(date.fromisoformat(days[-1]) + timedelta(days=1)).isoformat(),
+    )
+    split_g = fit_g(
+        train, station_clock_offsets=split_offsets, station_clock_meta=split_meta,
+    )
     split_g["alpha_by_bin"] = [1.0] * (len(OL.ALPHA_EDGES_HOURS) + 1)
     out_path = Path(args.out)
     incumbent = OL.load_artifact(out_path)
@@ -834,7 +980,9 @@ def main() -> int:
         veto.append(
             f"worse_than_incumbent:{split['candidate_nat'] - split['incumbent_nat']:+.4f}"
         )
-    body = fit_g(samples)
+    body = fit_g(
+        samples, station_clock_offsets=full_offsets, station_clock_meta=full_meta,
+    )
     body["alpha_by_bin"] = split["alpha_by_bin"]
     body["alpha_edges_hours"] = list(OL.ALPHA_EDGES_HOURS)
     body["alpha_knots_hours"] = curve["knots_hours"]
@@ -846,6 +994,11 @@ def main() -> int:
         "scored_rows": len(rows),
         **{key: value for key, value in split.items() if key != "alpha_by_bin"},
         "alpha_curve": {key: value for key, value in curve.items() if key != "knots_hours"},
+        # Charter 157: the offsets the held-out split was scored with.
+        "station_clock_split": {
+            key: split_meta.get(key)
+            for key in ("state", "window_from", "window_before", "fleet_peak_local_h", "station_days")
+        },
         "incumbent_scored": bool(incumbent_scorable),
         "margin": args.margin,
         "veto": veto,

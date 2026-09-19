@@ -183,7 +183,7 @@ def test_no_retired_layer_speaks_on_p1() -> None:
     assert not [key for key in RETIRED_P1_KEYS if key in lineage]
     assert lineage["observation_likelihood_mode"] == OL.LIKELIHOOD_MODE
     assert packets[-1]["expected_envelope"]["posterior_version"] == (
-        "p1_joint_likelihood_v13"
+        "p1_joint_likelihood_v14"
     )
 
 

@@ -118,6 +118,17 @@ ALPHA_EDGES_HOURS = (10.0, 6.0)
 # (+0.0038 [+0.0009, +0.0063] on the other split), most of it within two
 # hours of the old edge.  The knots are where the curve may bend.
 ALPHA_KNOTS_HOURS = (0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 17.0, 20.0, 26.0)
+# Charter 157 (2026-09-19, 「测站点峰时」→「上线」): the clock rung one and alpha
+# read is the hours left plus the station's own peak offset -- its historical
+# peak hour minus the fleet's, from the last 45 days of reports.  RPLL peaks
+# 2.4h before the fleet, so its 15:00 is the fleet's 17:25; LEMD peaks 2.4h
+# after, so its 15:00 is the fleet's 12:35.  Cross-fitted on the held-out
+# days: +0.0082 [+0.0023, +0.0141] (+0.0105 [+0.0048, +0.0162] on the other
+# split) over v13, +0.03 nat on the eight most-shifted stations.  The
+# continuation keeps the true hours left: how far a rise runs was not
+# shifted in the measurement.  An artifact without the table shifts nothing.
+STATION_CLOCK_OFFSET_KEY = "station_clock_offset_h"
+MAX_STATION_CLOCK_OFFSET_H = 6.0
 # A bucket whose centre sits within this of the running high is the running
 # high's own outcome: the day does not settle a whole rung above it.
 _NO_RISE_WITHIN_C = 0.5
@@ -213,6 +224,34 @@ def alpha_bin(remaining_hours: float) -> int:
     return len(ALPHA_EDGES_HOURS)
 
 
+def station_clock_offset(artifact: Mapping[str, Any], station_id: str | None) -> float:
+    """The station's peak offset in hours, or 0 when the artifact has none."""
+
+    table = artifact.get(STATION_CLOCK_OFFSET_KEY)
+    if not table or not station_id:
+        return 0.0
+    if not isinstance(table, Mapping):
+        raise ContractError("p1_observation_likelihood_station_clock_invalid")
+    raw = table.get(str(station_id).strip().upper())
+    if raw is None:
+        return 0.0
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ContractError("p1_observation_likelihood_station_clock_invalid") from exc
+    if not math.isfinite(value) or abs(value) > MAX_STATION_CLOCK_OFFSET_H:
+        raise ContractError("p1_observation_likelihood_station_clock_invalid")
+    return value
+
+
+def clock_hours(
+    remaining_hours: float, artifact: Mapping[str, Any], station_id: str | None
+) -> float:
+    """The hours rung one and alpha read: hours left shifted by the station's peak."""
+
+    return max(0.0, float(remaining_hours) + station_clock_offset(artifact, station_id))
+
+
 def _piecewise_linear(x: float, xs: Sequence[float], ys: Sequence[float]) -> float:
     """Linear between knots, flat beyond the ends."""
 
@@ -270,10 +309,12 @@ def evidence_by_bucket(
     bucket_centers_c: Mapping[str, float],
     running_high_c: float,
     running_high_bucket: str,
+    station_id: str | None = None,
 ) -> tuple[dict[str, float], float]:
     """``g(d_k | s_t)`` per bucket, untempered, and the rise probability."""
 
-    rise = phase_rise_probability(features, artifact)
+    clock = clock_hours(features["remaining_hours"], artifact, station_id)
+    rise = phase_rise_probability({**features, "remaining_hours": clock}, artifact)
     continuation = _continuation_distribution(
         features, artifact["continuation_full"], artifact["feature_fallbacks"]
     )
@@ -300,6 +341,7 @@ def compile_observation_likelihood(
     running_high_c: float,
     running_high_bucket: str,
     hard_excluded_buckets: Sequence[str] = (),
+    station_id: str | None = None,
 ) -> tuple[dict[str, float], dict[str, Any]]:
     """The tempered joint likelihood per bucket and its receipt.
 
@@ -326,8 +368,9 @@ def compile_observation_likelihood(
         bucket_centers_c=bucket_centers_c,
         running_high_c=running_high_c,
         running_high_bucket=running_high_bucket,
+        station_id=station_id,
     )
-    hours = float(features["remaining_hours"])
+    hours = clock_hours(features["remaining_hours"], artifact, station_id)
     alpha = alpha_for(hours, artifact)
     likelihoods = {
         bucket: max(0.0, value) ** alpha for bucket, value in evidence.items()
@@ -350,6 +393,8 @@ def compile_observation_likelihood(
         "alpha_bin": alpha_bin(hours),
         "alpha_mode": "curve" if alpha_curve(artifact) is not None else "bins",
         "clock_mode": str((artifact.get("phase") or {}).get("clock") or "bins"),
+        "station_clock_offset_h": station_clock_offset(artifact, station_id),
+        "clock_hours": round(hours, 4),
         "rise_probability": rise,
         "running_high_c": float(running_high_c),
         "running_high_bucket": str(running_high_bucket),

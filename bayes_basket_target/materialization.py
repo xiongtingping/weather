@@ -1238,7 +1238,9 @@ def materialize_p1(
     # v13 (2026-09-19, charter 156): the same update, with alpha a curve in
     # the hours left and the rise rung's clock read between bin midpoints --
     # the steps at 10h moved 23C from 0.33 to 0.84 within minutes on ZUUU.
-    posterior_version: str = "p1_joint_likelihood_v13",
+    # v14 (2026-09-19, charter 157): rung one's clock and alpha read the
+    # hours left shifted by the station's own peak hour.
+    posterior_version: str = "p1_joint_likelihood_v14",
     # {"features": ..., "artifact": ..., "regional_system_id": ...}: the
     # step's observation-side feature vector and the fitted likelihood,
     # handed in for the reason every fitted table is -- a replay must rebuild
@@ -1442,6 +1444,8 @@ def materialize_p1(
                 running_high_c=float(proof.running_high_c),
                 running_high_bucket=reported_high_bucket,
                 hard_excluded_buckets=proof.hard_excluded_buckets,
+                # Charter 157: the station's peak offset shifts the clock.
+                station_id=root.station_id,
             )
             likelihoods = joint
         except Exception as exc:  # noqa: BLE001 - a P1 must still compile

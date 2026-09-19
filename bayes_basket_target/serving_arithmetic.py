@@ -255,6 +255,9 @@ def _closure(entries: Sequence[tuple[str, str]]) -> list[tuple[str, str]]:
 # lit for the minute between; no envelope of any version fell in it, and the
 # first v6 cell is 09:18:21.8Z.
 #
+# P1 v14: charter 157, each station's clock shifted by its own peak hour;
+# declared at the restart that deploys it, like v13.
+#
 # P1 v13: charter 156, alpha as a curve and the rise clock read between bin
 # midpoints.  P1's own change, declared at the restart that deploys it (see
 # the entry) rather than inferred, for the same 62s the v12 note explains.
@@ -302,6 +305,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # v12 envelope falls inside v13's window.  The v13 envelopes between
         # the start and this instant are simply not evidence yet.
         "p1_joint_likelihood_v13": "2026-09-19T07:27:00Z",
+        # Charter 157: declared the same way as v13, ahead of the restart.
+        "p1_joint_likelihood_v14": "2026-09-19T09:05:00Z",
     },
 }
 

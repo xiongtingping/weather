@@ -206,6 +206,20 @@ def _midpoint_linear(
     return points[-1][1]
 
 
+def phase_clock_intercept(hours: float, phase: Mapping[str, Any]) -> float:
+    """The clock's term of rung one at ``hours``, read the way serving reads it.
+
+    One function for serving and for anything that takes a served step apart
+    (the board's decomposition), so the two cannot read the clock differently.
+    """
+
+    edges = phase["hours_edges"]
+    intercepts = phase["bin_intercepts"]
+    if phase.get("clock") == CLOCK_MIDPOINT_LINEAR:
+        return _midpoint_linear(float(hours), edges, intercepts)
+    return float(intercepts[_hours_bin(float(hours), edges)])
+
+
 def phase_rise_probability(
     features: Mapping[str, float | None], artifact: Mapping[str, Any]
 ) -> float:
@@ -216,10 +230,7 @@ def phase_rise_probability(
     edges = phase["hours_edges"]
     intercepts = phase["bin_intercepts"]
     hours = _finite("remaining_hours", features["remaining_hours"])
-    if phase.get("clock") == CLOCK_MIDPOINT_LINEAR:
-        intercept = _midpoint_linear(hours, edges, intercepts)
-    else:
-        intercept = float(intercepts[_hours_bin(hours, edges)])
+    intercept = phase_clock_intercept(hours, phase)
     eta = intercept + _linear(
         features, phase["coefficients"], artifact["feature_fallbacks"]
     )

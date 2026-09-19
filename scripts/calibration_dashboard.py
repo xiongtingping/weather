@@ -2012,8 +2012,17 @@ def _p1_likelihood_breakdown(
     block = (raw_artifact or {}).get("phase") or {}
     if features and block and features.get("remaining_hours") is not None:
         try:
-            index = mfl._hours_bin(float(features["remaining_hours"]), block["hours_edges"])
-            intercept = float(block["bin_intercepts"][index])
+            # The clock the step was served on: hours left shifted by the
+            # station's peak offset (charter 157), read between bin midpoints
+            # when the artifact says so (charter 156) -- the served reading,
+            # through the same function, not the bin's own intercept.
+            clock = float(
+                receipt.get("clock_hours")
+                if receipt.get("clock_hours") is not None
+                else features["remaining_hours"]
+            )
+            index = mfl._hours_bin(clock, block["hours_edges"])
+            intercept = mfl.phase_clock_intercept(clock, block)
             fallbacks = (raw_artifact or {}).get("feature_fallbacks") or {}
             terms = []
             for name, weight in (block.get("coefficients") or {}).items():
@@ -2030,9 +2039,13 @@ def _p1_likelihood_breakdown(
                 })
             terms.sort(key=lambda t: -abs(t["contribution"]))
             eta = intercept + sum(t["contribution"] for t in terms)
-            recomputed = mfl.phase_rise_probability(features, raw_artifact)
+            recomputed = mfl.phase_rise_probability(
+                {**features, "remaining_hours": clock}, raw_artifact
+            )
             decomposition = {
                 "hours_left": float(features["remaining_hours"]),
+                "clock_hours": clock,
+                "station_clock_offset_h": receipt.get("station_clock_offset_h"),
                 "bin": [block["hours_edges"][index], block["hours_edges"][index + 1]],
                 "intercept": intercept, "terms": terms, "eta": eta,
                 "probability": 1.0 / (1.0 + math.exp(-max(-30.0, min(30.0, eta)))),
@@ -2106,6 +2119,9 @@ def collect_p1_joint_likelihood(conn: sqlite3.Connection) -> dict[str, Any]:
             "alpha_knots_hours": raw_artifact.get("alpha_knots_hours"),
             "alpha_knot_values": raw_artifact.get("alpha_knot_values"),
             "clock_mode": (raw_artifact.get("phase") or {}).get("clock") or "bins",
+            # Charter 157: each station's clock shift, hours.
+            "station_clock_offset_h": raw_artifact.get("station_clock_offset_h"),
+            "station_clock": raw_artifact.get("station_clock"),
             "alpha_curve_holdout": (raw_artifact.get("holdout") or {}).get("alpha_curve"),
             "holdout": {
                 key: holdout.get(key)
@@ -20299,6 +20315,9 @@ function p1JointBoard(){
   const alphaCells = knotsH.length && knotsH.length === knotsV.length
     ? `随剩余小时折线变化（第 156 条）：` + knotsH.map((k, i) => `${k}h <b>${Number(knotsV[i]).toFixed(3).replace(/0+$/, "").replace(/\.$/, "")}</b>`).join(" · ")
       + ` <span class="muted">· 再升时钟：${A.clock_mode === "midpoint_linear" ? "档中点间线性" : "分档"}</span>`
+      + (() => { const o = Object.entries(A.station_clock_offset_h || {}); if (!o.length) return "";
+          const v = o.map(([, x]) => Number(x)); const early = o.filter(([, x]) => x <= -1).map(([k]) => k), late = o.filter(([, x]) => x >= 1).map(([k]) => k);
+          return ` <span class="muted">· 按站峰时平移（第 157 条）：${o.length} 站，${Math.min(...v).toFixed(1)}～+${Math.max(...v).toFixed(1)} 小时；早到峰 ${h(early.join("、") || "—")}，晚到峰 ${h(late.join("、") || "—")}</span>`; })()
     : alphas.length === 3 ? `≥${edges[0]}h <b>${alphas[0]}</b> · ${edges[1]}–${edges[0]}h <b>${alphas[1]}</b> · <${edges[1]}h <b>${alphas[2]}</b>` : "—";
   const veto = (HO.veto || []).length ? `<span class="pill red">否决：${h(HO.veto.join("；"))}</span>` : `<span class="pill green">通过</span>`;
   const hoBins = (HO.bins || []).map(b => `<tr><td class="mono">${["≥" + edges[0] + "h", edges[1] + "–" + edges[0] + "h", "<" + edges[1] + "h"][b.bin] || b.bin}</td>
