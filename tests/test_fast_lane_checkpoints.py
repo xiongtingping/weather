@@ -1,7 +1,7 @@
 """Mid-cycle fast-lane checkpoints (user, 2026-09-19: 「极限压低信息到来到bayes概率更新的延迟」).
 
-After the chain -- after the forward P0 loop and before the decision loop --
-the head passes run again for what landed since, and only for it: P1 for the
+Right before the decision loop the head passes run again for what landed
+since, and only for it: P1 for the
 stations with new reports and the scopes a new P0-M re-rooted; P0-M only once
 the chain has settled the roots.  (A checkpoint right after the P0 replay
 compile did the chain's re-root work twice: 340s of a 1250s cycle.)
@@ -44,7 +44,7 @@ def test_nothing_new_costs_nothing(monkeypatch, tmp_path) -> None:
     worker = _worker(tmp_path)
     monkeypatch.setattr(worker, "_materialize_early_p0m", lambda **k: pytest.fail("no P0-M"))
     monkeypatch.setattr(worker, "_materialize_early_p1", lambda **k: pytest.fail("no P1"))
-    assert worker._fast_lane_checkpoint("after_forward_p0") is None
+    assert worker._fast_lane_checkpoint("before_decisions") is None
     assert worker._stage_timings_ms == {}
 
 
@@ -72,7 +72,7 @@ def test_a_new_taf_after_the_chain_reroots_only_what_it_wrote(monkeypatch, tmp_p
     seen = {}
     monkeypatch.setattr(worker, "_materialize_early_p1",
                         lambda **k: seen.update(k) or {"ran": True, "p1": {"state": "COMMITTED"}})
-    worker._fast_lane_checkpoint("after_forward_p0")
+    worker._fast_lane_checkpoint("before_decisions")
     assert seen["only_scopes"] == {("LTAC", "2026-09-19")} and seen["force"] is True
     # No new report: the covered report mark stays where it was.
     assert worker._p1_covered_watermark == MARK
@@ -82,7 +82,7 @@ def test_before_the_chain_a_new_taf_is_left_to_the_chain(monkeypatch, tmp_path) 
     worker = _worker(tmp_path, chain_ran=False)
     worker._p0m_covered_taf_watermark = ("old",)
     monkeypatch.setattr(worker, "_materialize_early_p0m", lambda **k: pytest.fail("the chain re-roots"))
-    assert worker._fast_lane_checkpoint("after_forward_p0") is None
+    assert worker._fast_lane_checkpoint("before_decisions") is None
 
 
 def test_unknown_stations_fall_back_to_the_full_pass(monkeypatch, tmp_path) -> None:
@@ -136,10 +136,18 @@ def test_the_checkpoints_sit_after_the_chain_with_a_tier() -> None:
         and node.func.attr == "_fast_lane_checkpoint" and node.args
         and isinstance(node.args[0], ast.Constant)
     )
-    assert [label for _l, label in labels] == ["after_forward_p0", "before_decisions"]
+    assert [label for _l, label in labels] == ["before_decisions"]
     chain_line = min(node.lineno for node in ast.walk(tree)
                      if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
                      and node.func.attr == "_materialize_resident_probability_chain")
     assert all(line > chain_line for line, _ in labels)
     for _l, label in labels:
         assert pw.STAGE_TIER[f"fast_lane_{label}"] == pw.STAGE_TIER_R0_DECISION
+
+
+def test_the_p1_scope_check_is_a_per_pair_indexed_read() -> None:
+    """The full-table DISTINCT (4.2s on every P1 pass) is gone."""
+
+    source = Path(pw.__file__).read_text()
+    assert "SELECT DISTINCT station_id,event_date \"\n                \"FROM basket_probability_envelope" not in source
+    assert "WHERE station_id=? AND event_date=? AND state='COMMITTED' " in source

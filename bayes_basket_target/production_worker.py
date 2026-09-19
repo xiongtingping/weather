@@ -778,8 +778,7 @@ STAGE_TIER: dict[str, int] = {
     "early_p1": STAGE_TIER_R0_DECISION,
     # The fast lane: a new TAF becomes P0-M before anything else in the cycle.
     "early_p0m": STAGE_TIER_R0_DECISION,
-    # ... and again at two points after the chain, when something new landed.
-    "fast_lane_after_forward_p0": STAGE_TIER_R0_DECISION,
+    # ... and again right before the decision loop, when something new landed.
     "fast_lane_before_decisions": STAGE_TIER_R0_DECISION,
     "probability_p0": STAGE_TIER_R0_DECISION,
     "probability_p0m": STAGE_TIER_R0_DECISION,
@@ -3517,12 +3516,15 @@ EARLY_P0M_ENABLED = (
 # Checkpoints between the cycle's long stages (user, 2026-09-19: 「极限压低信息
 # 到来到bayes概率更新的延迟」).  The head pass waits for the next cycle, and a
 # cycle is ~200s; a report or TAF that lands during one waited up to that long.
-# After the chain -- after the forward P0 loop and right before the decision
-# loop -- the two passes run again for what landed since, and only for it:
+# Right before the decision loop the two passes run again for what landed
+# since, and only for it -- so decisions price the freshest update:
 # P1 for the stations with new reports and the scopes a new P0-M re-rooted,
 # P0-M only once the chain has settled the roots (before it, a P0-M pass is
 # the chain's own re-root work done twice: measured on the first deploy, a
 # checkpoint right after the P0 replay compile took 340s of a 1250s cycle).
+# One checkpoint, not more: each pass that has a new report pays the report
+# identity pass (~20s, a subprocess) before its P1, and two checkpoints
+# stretched the cycle from ~200s to 230-265s, slowing every other stage.
 # Nothing new costs one file hash and one indexed read.  ``PM_FAST_LANE_
 # CHECKPOINTS=0`` keeps only the head pass.
 FAST_LANE_CHECKPOINTS_ENABLED = (
@@ -13005,21 +13007,26 @@ class TargetProductionWorker:
                 self.commit_conn,
                 as_of_utc=as_of_utc,
             )
-        probability_scopes = {
-            (
-                str(row[0] or "").strip().upper(),
-                str(row[1] or "").strip(),
+        # Which started scopes hold a committed P0/P0-M/P1 by this clock.
+        # Asked pair by pair on the (station, day, state, decision) index:
+        # the DISTINCT over the whole table this replaces read ~484k rows,
+        # 4.2s, on every P1 pass -- head, chain and fast-lane checkpoint
+        # alike (2026-09-19).  Only membership was ever read from it.
+        probability_scopes: set[tuple[str, str]] = set()
+        for row in rows:
+            pair = (
+                str(row.get("station_id") or "").strip().upper(),
+                str(row.get("event_date") or "").strip(),
             )
-            for row in self.commit_conn.execute(
-                "SELECT DISTINCT station_id,event_date "
-                "FROM basket_probability_envelope "
-                "WHERE state='COMMITTED' AND decision_at_utc<=? "
-                "AND stage IN ('P0','P0-M','P1')",
-                (as_of_utc,),
-            ).fetchall()
-            if str(row[0] or "").strip()
-            and str(row[1] or "").strip()
-        }
+            if not pair[0] or not pair[1] or pair in probability_scopes:
+                continue
+            if self.commit_conn.execute(
+                "SELECT 1 FROM basket_probability_envelope "
+                "WHERE station_id=? AND event_date=? AND state='COMMITTED' "
+                "AND decision_at_utc<=? AND stage IN ('P0','P0-M','P1') LIMIT 1",
+                (pair[0], pair[1], as_of_utc),
+            ).fetchone():
+                probability_scopes.add(pair)
         grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
         for row in rows:
             station = str(
@@ -18559,7 +18566,6 @@ class TargetProductionWorker:
                         "reservations_written": 0,
                     })
             self._mark("forward_p0_loop")
-            self._fast_lane_checkpoint("after_forward_p0")
             self._refresh_account_equity()
             # Charter 48: a listed day's scope belongs in the merged manifest
             # the ingress reads.  The publisher already subscribes it and

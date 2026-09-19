@@ -135,7 +135,41 @@ def _canonical_identity(row: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+_POLL_RECEIPT_MEMO: dict[tuple[Any, ...], str] = {}
+_POLL_RECEIPT_MEMO_LIMIT = 50_000
+
+
 def _source_poll_receipt(raw: Mapping[str, Any], *, expected_lane: str) -> str:
+    """The poll's receipt hash, once per distinct poll row in a process.
+
+    A pure function of the poll fields below, and the same poll arrives once
+    per report it carried: 5,590 reports against 2,829 polls in a three-day
+    window (2026-09-19), each paying a canonical-JSON hash of the whole
+    provider payload.  The memo is keyed on every field the receipt reads
+    (the two JSON columns by digest), so a changed row is a new key.
+    """
+
+    key = (
+        expected_lane,
+        raw.get("source_poll_id"), raw.get("poll_source_lane"),
+        raw.get("poll_request_started_at"), raw.get("poll_response_started_at"),
+        raw.get("poll_response_completed_at"), raw.get("poll_response_status"),
+        raw.get("poll_duration_ms"), raw.get("poll_report_count"),
+        raw.get("poll_new_report_count"), raw.get("poll_error_code"),
+        hashlib.sha256(str(raw.get("poll_station_ids_json") or "").encode()).hexdigest(),
+        hashlib.sha256(str(raw.get("poll_json") or "").encode()).hexdigest(),
+    )
+    cached = _POLL_RECEIPT_MEMO.get(key)
+    if cached is not None:
+        return cached
+    receipt = _source_poll_receipt_uncached(raw, expected_lane=expected_lane)
+    if len(_POLL_RECEIPT_MEMO) >= _POLL_RECEIPT_MEMO_LIMIT:
+        _POLL_RECEIPT_MEMO.clear()
+    _POLL_RECEIPT_MEMO[key] = receipt
+    return receipt
+
+
+def _source_poll_receipt_uncached(raw: Mapping[str, Any], *, expected_lane: str) -> str:
     try:
         station_ids = json.loads(str(raw.get("poll_station_ids_json") or ""))
         poll_json = json.loads(str(raw.get("poll_json") or ""))
