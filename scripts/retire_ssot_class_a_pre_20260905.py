@@ -240,13 +240,24 @@ def _wal_bytes(db: Path) -> int:
     return wal.stat().st_size if wal.exists() else 0
 
 
-def _wait_for_wal(db: Path) -> None:
+def _wait_for_wal(db: Path, conn: sqlite3.Connection | None = None) -> None:
+    """Hold off while the WAL is large, helping the checkpoint along.
+
+    The resident's own writes keep the WAL near its 512 MiB guard only if
+    nobody checkpoints; a passive checkpoint from here copies frames without
+    blocking anyone, and the WAL resets at the resident's next write.
+    """
     waited = 0.0
     while _wal_bytes(db) > MAX_WAL_BYTES:
-        if waited > 300:
-            raise SystemExit(f"WAL stayed above {MAX_WAL_BYTES} bytes for 300s; stopping")
-        time.sleep(5)
-        waited += 5
+        if waited > 1800:
+            raise SystemExit(f"WAL stayed above {MAX_WAL_BYTES} bytes for 1800s; stopping")
+        if conn is not None:
+            try:
+                conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+            except sqlite3.Error:
+                pass
+        time.sleep(10)
+        waited += 10
 
 
 def retire_table(conn, db: Path, spec, *, apply: bool, export_dir: Path, protect_cache: dict, log,
@@ -303,7 +314,7 @@ def retire_table(conn, db: Path, spec, *, apply: bool, export_dir: Path, protect
         if apply:
             if _free_disk(export_dir) < MIN_FREE_DISK_BYTES:
                 raise SystemExit("free disk below 5 GiB; stopping before the next batch")
-            _wait_for_wal(db)
+            _wait_for_wal(db, conn)
             with open(export_path, "ab") as raw:
                 with gzip.GzipFile(fileobj=raw, mode="wb", compresslevel=6) as gz:
                     gz.write(payload)
@@ -406,7 +417,7 @@ def restore(db: Path, export_dir: Path, tables: list[str] | None, *,
                 batch.append((doc["rowid"], row))
                 size += len(line)
                 if size >= batch_bytes_limit or len(batch) >= BATCH_ROWS:
-                    _wait_for_wal(db)
+                    _wait_for_wal(db, conn)
                     held = _insert(conn, table, batch)
                     before = restored
                     restored += len(batch)
