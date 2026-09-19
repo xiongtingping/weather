@@ -303,8 +303,12 @@ def retire_table(conn, db: Path, spec, *, apply: bool, export_dir: Path, protect
                     gz.write(payload)
                 raw.flush()
                 os.fsync(raw.fileno())
-            started = time.monotonic()
+            queued = time.monotonic()
             conn.execute("BEGIN IMMEDIATE")
+            # Held time starts once the lock is ours; the wait before it is
+            # the resident's own write, not this batch's.
+            started = time.monotonic()
+            stats["max_wait_sec"] = max(stats.get("max_wait_sec", 0.0), started - queued)
             try:
                 for name, _sql in triggers:
                     conn.execute(f'DROP TRIGGER "{name}"')
