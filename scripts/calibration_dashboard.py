@@ -2270,192 +2270,299 @@ def _vector_shape(vector: Mapping[str, float], axis: Sequence[Mapping[str, Any]]
             "mode_p": None if mode is None else round(float(vector[mode]) / mass, 4)}
 
 
+# Which event days get a card (user, 2026-09-19: 「前端bayes只有19日的，增加20日
+# （当天和提前一天的），历史数据自动下沉折叠」).  Per station, by its own local
+# calendar when the section is built: the day it is observing (P1, or its
+# root before the first report), the day ahead (P0, and P0-M once a TAF
+# reaches it), and the settled days before it, which the page sinks to the
+# bottom folded.  Roles rather than dates group the cards: a station past
+# the date line is a day ahead of the rest and belongs with its own today.
+STATION_BAYES_HISTORY_DAYS = 2
+STATION_BAYES_ROLE_OFFSETS: tuple[tuple[str, int], ...] = (
+    ("today", 0),
+    ("ahead", 1),
+    *(("history", -k) for k in range(1, STATION_BAYES_HISTORY_DAYS + 1)),
+)
+
+
+def _station_bayes_card(
+    conn: sqlite3.Connection,
+    station: str,
+    event_date: str,
+    likelihood_artifact: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """One station-day's chain, bucket by bucket.
+
+    From the day's newest P1 back through its root to P0.  Before the day's
+    first P1 -- the day ahead, or today before the first report -- from the
+    day's newest P0-M (P0 while no TAF has reached the day) back to P0, with
+    the P1 half left empty rather than guessed.
+    """
+
+    p1_at = conn.execute(
+        "SELECT MAX(decision_at_utc) FROM basket_probability_envelope"
+        " WHERE station_id=? AND event_date=? AND state='COMMITTED' AND stage='P1'",
+        (station, event_date),
+    ).fetchone()[0]
+    p1: dict[str, float] | None = None
+    receipt: dict[str, Any] = {}
+    p1_version = None
+    if p1_at is not None:
+        head = conn.execute(
+            "SELECT settlement_timezone, probabilities_json,"
+            " bucket_ordinals_json, lineage_json, posterior_version"
+            " FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
+            " AND stage='P1' AND state='COMMITTED' AND decision_at_utc=? LIMIT 1",
+            (station, event_date, p1_at),
+        ).fetchone()
+        if head is None:
+            return None
+        try:
+            p1 = {str(k): float(v) for k, v in json.loads(head[1]).items()}
+            ordinals = json.loads(head[2])
+            lineage = json.loads(head[3] or "{}")
+            receipt = json.loads(str(lineage.get("p1_observation_likelihood_json") or "{}"))
+        except (TypeError, ValueError):
+            return None
+        root_row = _envelope_row(conn, lineage.get("prediction_root_checkpoint_id"))
+        if root_row is None:
+            return None
+        decided, timezone_name, p1_version = p1_at, head[0], head[4]
+        probabilities_json, ordinals_json = head[1], head[2]
+    else:
+        latest = conn.execute(
+            "SELECT stage, decision_at_utc FROM basket_probability_envelope"
+            " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+            " AND stage IN ('P0','P0-M')"
+            # One cycle writes P0-M a millisecond after its P0; on a tie the
+            # later stage is the day's word.
+            " ORDER BY decision_at_utc DESC, stage DESC LIMIT 1",
+            (station, event_date),
+        ).fetchone()
+        if latest is None:
+            return None
+        row = conn.execute(
+            "SELECT stage, decision_at_utc, probabilities_json, lineage_json,"
+            " posterior_version, settlement_timezone, bucket_ordinals_json"
+            " FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
+            " AND stage=? AND state='COMMITTED' AND decision_at_utc=? LIMIT 1",
+            (station, event_date, latest[0], latest[1]),
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            ordinals = json.loads(row[6])
+            lineage = json.loads(row[3] or "{}")
+        except (TypeError, ValueError):
+            return None
+        root_row = row[:5]
+        decided, timezone_name = latest[1], row[5]
+        probabilities_json = ordinals_json = None
+    axis = _bucket_axis(lineage, ordinals)
+    root = {str(k): float(v) for k, v in json.loads(root_row[2]).items()}
+    root_lineage = json.loads(root_row[3] or "{}")
+    p0m = root if root_row[0] == "P0-M" else None
+    p0_row = (
+        _envelope_row(conn, root_lineage.get("p0_root_checkpoint_id"))
+        if root_row[0] == "P0-M" else root_row
+    )
+    p0 = {str(k): float(v) for k, v in json.loads(p0_row[2]).items()} if p0_row else root
+    taf_receipt: dict[str, Any] = {}
+    if p0m is not None:
+        try:
+            taf_receipt = json.loads(str(root_lineage.get("p0m_taf_likelihood_json") or "{}"))
+        except ValueError:
+            taf_receipt = {}
+    excluded = {
+        b for b in str(lineage.get("hard_excluded_buckets") or "").split(",")
+        if b and b != "NONE"
+    } if p1 is not None else set()
+    p0m_excluded = {
+        b for b in str(root_lineage.get("observed_hard_excluded_buckets") or "").split(",")
+        if b and b != "NONE"
+    } if p0m is not None else set()
+    p0_kept = sum(v for b, v in p0.items() if b not in p0m_excluded)
+    p0_masked = (
+        {b: (0.0 if b in p0m_excluded else v / p0_kept) for b, v in p0.items()}
+        if p0_kept > 0 else p0
+    )
+    kept = sum(v for b, v in root.items() if b not in excluded)
+    masked = {b: (0.0 if b in excluded else v / kept) for b, v in root.items()} if kept > 0 else root
+    evidence = {str(k): float(v) for k, v in (receipt.get("evidence_by_bucket") or {}).items()}
+    alpha = receipt.get("alpha")
+    buckets = []
+    for row in axis:
+        b = row["bucket"]
+        g = evidence.get(b)
+        buckets.append({
+            "bucket": b,
+            "p0": p0.get(b),
+            "l_taf": (taf_receipt.get("likelihood_by_bucket") or {}).get(b),
+            "p0m": None if p0m is None else p0m.get(b),
+            "excluded": b in excluded,
+            "g_alpha": (None if g is None or alpha is None else max(g, 0.0) ** float(alpha)),
+            "p1": None if p1 is None else p1.get(b),
+        })
+    # The day's P1 steps: how the belief moved report by report.
+    steps = []
+    previous: dict[str, float] | None = None
+    # The newest 48 steps, the receipt and the high pulled out in SQL:
+    # a P1 lineage is tens of kilobytes and a replayed day has hundreds.
+    rows = conn.execute(
+        "SELECT decision_at_utc, probabilities_json,"
+        " json_extract(lineage_json,'$.p1_observation_likelihood_json'),"
+        " json_extract(lineage_json,'$.metar_trajectory_running_high_c')"
+        " FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
+        # ``+stage``: keep the planner on the (station, event_date) index;
+        # on the (station, stage) one it walks every P1 the station has.
+        " AND +stage='P1' AND state='COMMITTED'"
+        " ORDER BY decision_at_utc DESC LIMIT 49",
+        (station, event_date),
+    ).fetchall()[::-1] if p1 is not None else []
+    for at, probs_json, receipt_json, step_high in rows:
+        try:
+            vector = {str(k): float(v) for k, v in json.loads(probs_json).items()}
+            step_receipt = json.loads(str(receipt_json or "{}"))
+        except (TypeError, ValueError):
+            continue
+        shape = _vector_shape(vector, axis)
+        try:
+            local = datetime.fromisoformat(str(at).replace("Z", "+00:00")).astimezone(
+                ZoneInfo(str(timezone_name or "UTC"))).strftime("%H:%M")
+        except Exception:  # noqa: BLE001
+            local = ""
+        steps.append({
+            "decided_at_utc": str(at), "local": local,
+            "running_high_c": step_high,
+            "state": step_receipt.get("state") or "PRE_CHARTER_150",
+            "rise_probability": step_receipt.get("rise_probability"),
+            "alpha": step_receipt.get("alpha"),
+            "mean_c": shape["mean_c"], "mode": shape["mode"], "mode_p": shape["mode_p"],
+            "gain_bits": None if previous is None else _kl_bits(vector, previous),
+        })
+        previous = vector
+    try:
+        local_now = datetime.fromisoformat(str(decided).replace("Z", "+00:00")).astimezone(
+            ZoneInfo(str(timezone_name or "UTC"))).strftime("%m-%d %H:%M")
+    except Exception:  # noqa: BLE001
+        local_now = ""
+    return {
+        "station_id": str(station), "event_date": str(event_date),
+        "decided_at_utc": str(decided), "local": local_now,
+        # The newest stage the day has: P1, or the root it will sit on.
+        "head_stage": "P1" if p1 is not None else root_row[0],
+        "p1_version": p1_version, "root_stage": root_row[0],
+        "p0_decided_at_utc": p0_row[1] if p0_row else None,
+        "p0m_decided_at_utc": root_row[1] if p0m is not None else None,
+        "shapes": {
+            "p0": _vector_shape(p0, axis),
+            "p0m": None if p0m is None else _vector_shape(p0m, axis),
+            "p1": None if p1 is None else _vector_shape(p1, axis),
+        },
+        "gain_bits": {
+            "p0m_fact": (
+                None if p0m is None or p0_kept <= 0
+                else max(0.0, -math.log(p0_kept, 2))
+            ),
+            "taf": None if p0m is None else _kl_bits(p0m, p0_masked),
+            "p0m_total": None if p0m is None else _kl_bits(p0m, p0),
+            "fact": None if p1 is None or kept <= 0 else max(0.0, -math.log(kept, 2)),
+            "likelihood": None if p1 is None else _kl_bits(p1, masked),
+            "p1_total": None if p1 is None else _kl_bits(p1, root),
+        },
+        "taf": {
+            "state": taf_receipt.get("state") or root_lineage.get("taf_revision_state"),
+            "tx_c": root_lineage.get("taf_observed_tx_c"),
+            "root_center_c": taf_receipt.get("root_center_c"),
+            "x_c": taf_receipt.get("x_c"), "b": taf_receipt.get("b"),
+            "tau": taf_receipt.get("tau"),
+            # Charter 158: the disagreement group and the pull it served at.
+            "tempering": taf_receipt.get("tempering"),
+        } if p0m is not None else None,
+        "metar": {
+            "state": receipt.get("state") or "PRE_CHARTER_150",
+            "running_high_c": receipt.get("running_high_c", lineage.get("metar_trajectory_running_high_c")),
+            "running_high_bucket": receipt.get("running_high_bucket"),
+            "rise_probability": receipt.get("rise_probability"),
+            "alpha": alpha,
+            "features": receipt.get("features") or {},
+            "fleet_mean_features": receipt.get("fleet_mean_features") or [],
+            "regional_system_id": receipt.get("regional_system_id"),
+            "excluded": sorted(excluded, key=lambda b: int(ordinals.get(b, 0))),
+        } if p1 is not None else None,
+        "buckets": buckets,
+        # The rise rung's logit split into its terms and checked against
+        # production's own function on the receipt's features.
+        "rise_terms": (
+            _p1_likelihood_breakdown(
+                receipt, root_probabilities_json=None,
+                probabilities_json=probabilities_json, ordinals_json=ordinals_json,
+                raw_artifact=likelihood_artifact,
+            ).get("decomposition")
+            if p1 is not None and receipt.get("state") == "APPLIED" and likelihood_artifact
+            else None
+        ),
+        "rise_terms_same_artifact": (
+            p1 is not None
+            and str(receipt.get("artifact_sha256") or "")
+            == str(likelihood_artifact.get("content_sha256") or "")
+        ),
+        "steps": steps[1:] if len(steps) > 48 else steps,
+    }
+
+
 def collect_station_bayes(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Each station's newest P1 taken back through P0-M to P0, bucket by bucket."""
+    """Each station's chain on the day it observes, the day ahead, and the
+    settled days before (``STATION_BAYES_ROLE_OFFSETS``), bucket by bucket."""
 
     try:
         from bayes_basket_target import p1_observation_likelihood as OL  # noqa: PLC0415
         likelihood_artifact = OL.load_artifact() or {}
     except Exception:  # noqa: BLE001
         likelihood_artifact = {}
-    floor = (_now() - timedelta(hours=18)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = _now()
+    utc_today = now.date()
     stations: list[dict[str, Any]] = []
-    for station, decided in conn.execute(
-        "SELECT station_id, MAX(decision_at_utc) FROM basket_probability_envelope"
-        " WHERE state='COMMITTED' AND stage='P1' AND decision_at_utc>=?"
-        " GROUP BY station_id", (floor,),
+    missing_ahead: list[str] = []
+    # The roster: every station with a committed envelope around today, on
+    # the (state, event_date) index -- a few thousand index entries.
+    for station, timezone_name in conn.execute(
+        "SELECT station_id, MAX(settlement_timezone) FROM basket_probability_envelope"
+        " WHERE state='COMMITTED' AND event_date BETWEEN ? AND ?"
+        " GROUP BY station_id",
+        ((utc_today - timedelta(days=1)).isoformat(),
+         (utc_today + timedelta(days=1)).isoformat()),
     ).fetchall():
-        head = conn.execute(
-            "SELECT event_date, settlement_timezone, probabilities_json,"
-            " bucket_ordinals_json, lineage_json, posterior_version"
-            " FROM basket_probability_envelope WHERE station_id=? AND stage='P1'"
-            " AND state='COMMITTED' AND decision_at_utc=? LIMIT 1",
-            (station, decided),
-        ).fetchone()
-        if head is None:
-            continue
         try:
-            p1 = {str(k): float(v) for k, v in json.loads(head[2]).items()}
-            ordinals = json.loads(head[3])
-            lineage = json.loads(head[4] or "{}")
-            receipt = json.loads(str(lineage.get("p1_observation_likelihood_json") or "{}"))
-        except (TypeError, ValueError):
-            continue
-        axis = _bucket_axis(lineage, ordinals)
-        root_row = _envelope_row(conn, lineage.get("prediction_root_checkpoint_id"))
-        if root_row is None:
-            continue
-        root = {str(k): float(v) for k, v in json.loads(root_row[2]).items()}
-        root_lineage = json.loads(root_row[3] or "{}")
-        p0m = root if root_row[0] == "P0-M" else None
-        p0_row = (
-            _envelope_row(conn, root_lineage.get("p0_root_checkpoint_id"))
-            if root_row[0] == "P0-M" else root_row
-        )
-        p0 = {str(k): float(v) for k, v in json.loads(p0_row[2]).items()} if p0_row else root
-        taf_receipt: dict[str, Any] = {}
-        if p0m is not None:
-            try:
-                taf_receipt = json.loads(str(root_lineage.get("p0m_taf_likelihood_json") or "{}"))
-            except ValueError:
-                taf_receipt = {}
-        excluded = {
-            b for b in str(lineage.get("hard_excluded_buckets") or "").split(",")
-            if b and b != "NONE"
-        }
-        p0m_excluded = {
-            b for b in str(root_lineage.get("observed_hard_excluded_buckets") or "").split(",")
-            if b and b != "NONE"
-        } if p0m is not None else set()
-        p0_kept = sum(v for b, v in p0.items() if b not in p0m_excluded)
-        p0_masked = (
-            {b: (0.0 if b in p0m_excluded else v / p0_kept) for b, v in p0.items()}
-            if p0_kept > 0 else p0
-        )
-        kept = sum(v for b, v in root.items() if b not in excluded)
-        masked = {b: (0.0 if b in excluded else v / kept) for b, v in root.items()} if kept > 0 else root
-        evidence = {str(k): float(v) for k, v in (receipt.get("evidence_by_bucket") or {}).items()}
-        alpha = receipt.get("alpha")
-        buckets = []
-        for row in axis:
-            b = row["bucket"]
-            g = evidence.get(b)
-            buckets.append({
-                "bucket": b,
-                "p0": p0.get(b),
-                "l_taf": (taf_receipt.get("likelihood_by_bucket") or {}).get(b),
-                "p0m": None if p0m is None else p0m.get(b),
-                "excluded": b in excluded,
-                "g_alpha": (None if g is None or alpha is None else max(g, 0.0) ** float(alpha)),
-                "p1": p1.get(b),
-            })
-        # Today's P1 steps: how the belief moved report by report.
-        steps = []
-        previous: dict[str, float] | None = None
-        # The newest 48 steps, the receipt and the high pulled out in SQL:
-        # a P1 lineage is tens of kilobytes and a replayed day has hundreds.
-        rows = conn.execute(
-            "SELECT decision_at_utc, probabilities_json,"
-            " json_extract(lineage_json,'$.p1_observation_likelihood_json'),"
-            " json_extract(lineage_json,'$.metar_trajectory_running_high_c')"
-            " FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
-            # ``+stage``: keep the planner on the (station, event_date) index;
-            # on the (station, stage) one it walks every P1 the station has.
-            " AND +stage='P1' AND state='COMMITTED'"
-            " ORDER BY decision_at_utc DESC LIMIT 49",
-            (station, head[0]),
-        ).fetchall()[::-1]
-        for at, probs_json, receipt_json, step_high in rows:
-            try:
-                vector = {str(k): float(v) for k, v in json.loads(probs_json).items()}
-                step_receipt = json.loads(str(receipt_json or "{}"))
-            except (TypeError, ValueError):
-                continue
-            shape = _vector_shape(vector, axis)
-            try:
-                local = datetime.fromisoformat(str(at).replace("Z", "+00:00")).astimezone(
-                    ZoneInfo(str(head[1] or "UTC"))).strftime("%H:%M")
-            except Exception:  # noqa: BLE001
-                local = ""
-            steps.append({
-                "decided_at_utc": str(at), "local": local,
-                "running_high_c": step_high,
-                "state": step_receipt.get("state") or "PRE_CHARTER_150",
-                "rise_probability": step_receipt.get("rise_probability"),
-                "alpha": step_receipt.get("alpha"),
-                "mean_c": shape["mean_c"], "mode": shape["mode"], "mode_p": shape["mode_p"],
-                "gain_bits": None if previous is None else _kl_bits(vector, previous),
-            })
-            previous = vector
-        try:
-            local_now = datetime.fromisoformat(str(decided).replace("Z", "+00:00")).astimezone(
-                ZoneInfo(str(head[1] or "UTC"))).strftime("%m-%d %H:%M")
+            local_today = now.astimezone(ZoneInfo(str(timezone_name or "UTC"))).date()
         except Exception:  # noqa: BLE001
-            local_now = ""
-        stations.append({
-            "station_id": str(station), "event_date": str(head[0]),
-            "decided_at_utc": str(decided), "local": local_now,
-            "p1_version": head[5], "root_stage": root_row[0],
-            "p0_decided_at_utc": p0_row[1] if p0_row else None,
-            "p0m_decided_at_utc": root_row[1] if p0m is not None else None,
-            "shapes": {
-                "p0": _vector_shape(p0, axis),
-                "p0m": None if p0m is None else _vector_shape(p0m, axis),
-                "p1": _vector_shape(p1, axis),
-            },
-            "gain_bits": {
-                "p0m_fact": (
-                    None if p0m is None or p0_kept <= 0
-                    else max(0.0, -math.log(p0_kept, 2))
-                ),
-                "taf": None if p0m is None else _kl_bits(p0m, p0_masked),
-                "p0m_total": None if p0m is None else _kl_bits(p0m, p0),
-                "fact": None if kept <= 0 else max(0.0, -math.log(kept, 2)),
-                "likelihood": _kl_bits(p1, masked),
-                "p1_total": _kl_bits(p1, root),
-            },
-            "taf": {
-                "state": taf_receipt.get("state") or root_lineage.get("taf_revision_state"),
-                "tx_c": root_lineage.get("taf_observed_tx_c"),
-                "root_center_c": taf_receipt.get("root_center_c"),
-                "x_c": taf_receipt.get("x_c"), "b": taf_receipt.get("b"),
-                "tau": taf_receipt.get("tau"),
-                # Charter 158: the disagreement group and the pull it served at.
-                "tempering": taf_receipt.get("tempering"),
-            } if p0m is not None else None,
-            "metar": {
-                "state": receipt.get("state") or "PRE_CHARTER_150",
-                "running_high_c": receipt.get("running_high_c", lineage.get("metar_trajectory_running_high_c")),
-                "running_high_bucket": receipt.get("running_high_bucket"),
-                "rise_probability": receipt.get("rise_probability"),
-                "alpha": alpha,
-                "features": receipt.get("features") or {},
-                "fleet_mean_features": receipt.get("fleet_mean_features") or [],
-                "regional_system_id": receipt.get("regional_system_id"),
-                "excluded": sorted(excluded, key=lambda b: int(ordinals.get(b, 0))),
-            },
-            "buckets": buckets,
-            # The rise rung's logit split into its terms and checked against
-            # production's own function on the receipt's features.
-            "rise_terms": (
-                _p1_likelihood_breakdown(
-                    receipt, root_probabilities_json=None,
-                    probabilities_json=head[2], ordinals_json=head[3],
-                    raw_artifact=likelihood_artifact,
-                ).get("decomposition")
-                if receipt.get("state") == "APPLIED" and likelihood_artifact else None
-            ),
-            "rise_terms_same_artifact": (
-                str(receipt.get("artifact_sha256") or "")
-                == str(likelihood_artifact.get("content_sha256") or "")
-            ),
-            "steps": steps[1:] if len(steps) > 48 else steps,
-        })
-    stations.sort(key=lambda e: e["station_id"])
-    gains = [e["gain_bits"]["p1_total"] for e in stations if e["gain_bits"]["p1_total"] is not None]
+            local_today = utc_today
+        for role, offset in STATION_BAYES_ROLE_OFFSETS:
+            event_date = (local_today + timedelta(days=offset)).isoformat()
+            card = _station_bayes_card(conn, str(station), event_date, likelihood_artifact)
+            if card is None:
+                if role == "ahead":
+                    missing_ahead.append(str(station))
+                continue
+            card["role"] = role
+            stations.append(card)
+    rank = {role: i for i, (role, _) in enumerate(STATION_BAYES_ROLE_OFFSETS)}
+    stations.sort(key=lambda e: (
+        rank[e["role"]],
+        # Settled days newest first; the two live roles by station alone.
+        -date.fromisoformat(e["event_date"]).toordinal() if e["role"] == "history" else 0,
+        e["station_id"],
+    ))
+    gains = [
+        e["gain_bits"]["p1_total"] for e in stations
+        if e["role"] == "today" and e["gain_bits"]["p1_total"] is not None
+    ]
     return {
         "available": bool(stations),
         "stations": stations,
+        "built_at_utc": now.isoformat().replace("+00:00", "Z"),
+        "history_days": STATION_BAYES_HISTORY_DAYS,
+        "missing_ahead": sorted(missing_ahead),
         "median_p1_gain_bits": median(gains) if gains else None,
         "feature_words": P1_LIKELIHOOD_FEATURE_WORDS,
     }
@@ -13431,6 +13538,10 @@ color-scheme:dark}
 .by-x{color:var(--muted);text-decoration:line-through}
 .by-feat{display:inline-block;margin:2px 6px 2px 0;padding:1px 7px;border:1px solid var(--line);border-radius:6px;font-size:12px}
 .by-feat.fb{opacity:.55}
+h3.by-group{font-size:15px;margin:18px 0 4px;display:flex;flex-wrap:wrap;align-items:baseline;gap:8px}
+h3.by-group .muted{font-weight:400;font-size:12.5px}
+details.by-hist>summary{cursor:pointer}
+details.by-hist>summary>h3.by-group{display:inline-flex}
 table.tok td:first-child{white-space:nowrap;padding-right:14px}
 body{margin:0;background:var(--bg);color:var(--text);
 font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
@@ -20195,11 +20306,14 @@ function radiationSection(){
 
 // The station view of the chain (user, 2026-09-19: 「前端的p0m、p1、metar、taf改为
 // 站的bayes更新视角，直观展示概率变化和信息增益、数据变化等」「报文解析默认折叠」).
-// One card per station: P0 -> x TAF likelihood -> P0-M -> x hard bound x joint
-// METAR likelihood -> P1, bucket by bucket, with the information each step
-// added (KL of posterior against prior, in bits), the evidence it read, and
-// how the belief moved report by report today.  The raw reports sit folded
-// at the bottom.
+// One card per station-day: P0 -> x TAF likelihood -> P0-M -> x hard bound x
+// joint METAR likelihood -> P1, bucket by bucket, with the information each
+// step added (KL of posterior against prior, in bits), the evidence it read,
+// and how the belief moved report by report.  The raw reports sit folded at
+// the bottom.  Three groups by each station's own calendar (user, same day:
+// 「增加20日（当天和提前一天的），历史数据自动下沉折叠」): the day it observes,
+// the day ahead (no P1 yet -- the card stops at P0-M, or P0 before a TAF
+// reaches the day), and the settled days, folded at the bottom.
 function stationBayesBoard(){
   const B = D.station_bayes || {};
   if(!B.available) return `<h2>站点贝叶斯更新</h2><div class="card muted">这一轮没有生成。</div>`;
@@ -20224,6 +20338,8 @@ function stationBayesBoard(){
     IDENTITY_NO_ARTIFACT:"没有拟合件（恒等）", IDENTITY_NO_ROOT_GEOMETRY:"根没有桶几何（恒等）"};
   const metWord = {APPLIED:"联合似然说话", SILENT_PREFIX_NOT_CURRENT:"回放步（不说话）", SILENT_NO_ARTIFACT:"没有拟合件",
     SILENT_NO_FEATURES:"特征读不出", REFUSED:"拒绝", PRE_CHARTER_150:"旧版 P1"};
+  const noP1Word = {today:"今天还没有 P1（当地第一份 METAR 后开始）", ahead:"P1 还没开始（事件日当地第一份 METAR 后才有）",
+    history:"这一天没有 P1"};
   const reportList = (list, kind) => (list || []).map((r, i) => `<div class="rep ${r.special ? "rep-special" : ""}">
       <div class="rep-h"><span class="pill ${r.special ? "red" : ""}">${h(r.kind)}${r.correction_suspected ? " · 疑似更正" : ""}</span>
         <span class="mono">${kind === "TAF" ? "签发 " + whenZ(r.issued_at_utc) : whenZ(r.valid_at_utc) + (r.local ? "（当地 " + h(r.local) + "）" : "")}</span>
@@ -20231,20 +20347,27 @@ function stationBayesBoard(){
       <div class="mono rep-raw">${h(r.raw)}</div>
       <ul class="rep-read">${(r.reading || []).map(x => `<li>${h(x)}</li>`).join("")}</ul>
       <details><summary class="muted">逐段拆解</summary>${tokensTable(r.tokens)}</details></div>`).join("");
-  const cards = (B.stations || []).map(e => {
+  const card = e => {
     const S = e.shapes || {}, G = e.gain_bits || {}, T = e.taf, Mt = e.metar || {};
-    const taf = tafBy[e.station_id], met = metBy[e.station_id];
+    // The latest reports belong to the day being observed; a TAF also reaches
+    // the day ahead.  A settled day's card carries neither -- they are today's.
+    const taf = e.role === "history" ? null : tafBy[e.station_id];
+    const met = e.role === "today" ? metBy[e.station_id] : null;
     const nowT = met && (met.reports || [])[0];
-    const hasP0m = !!S.p0m;
+    const hasP0m = !!S.p0m, hasP1 = !!S.p1;
+    const last = S.p1 || S.p0m || S.p0 || {};
+    const dayWord = e.role === "today" ? "今天" : "这一天";
     const moved = (a, b) => a && b && a.mode !== b.mode ? `<b>${h(a.mode)}→${h(b.mode)}</b>` : h((b || a || {}).mode || "—");
+    const chain = [["P0", S.p0], ["P0-M", S.p0m], ["P1", S.p1]].filter(([, s]) => s)
+      .map(([w, s], i, all) => `${w} ${i === all.length - 1 ? "<b>" + c2(s.mean_c) + "</b>" : c2(s.mean_c)}`).join(" → ");
     const rows = (e.buckets || []).map(b => `<tr>
       <td class="mono"><b>${h(b.bucket)}</b></td>
       <td>${cell(b.p0, "var(--muted)")}</td>
       ${hasP0m ? `<td class="mono">${b.l_taf == null ? "1" : Number(b.l_taf).toFixed(3)}</td><td>${cell(b.p0m, "var(--th-claim)")}</td><td class="mono">${delta(b.p0, b.p0m)}</td>` : ""}
-      <td class="mono">${b.excluded ? `<span class="by-x">已排除</span>` : "✓"}</td>
+      ${hasP1 ? `<td class="mono">${b.excluded ? `<span class="by-x">已排除</span>` : "✓"}</td>
       <td class="mono">${b.g_alpha == null ? "—" : Number(b.g_alpha).toFixed(3)}</td>
       <td>${cell(b.p1, "var(--accent)")}</td>
-      <td class="mono">${delta(hasP0m ? b.p0m : b.p0, b.p1)}</td></tr>`).join("");
+      <td class="mono">${delta(hasP0m ? b.p0m : b.p0, b.p1)}</td>` : ""}</tr>`).join("");
     const feats = Object.entries(Mt.features || {}).map(([k, v]) => {
       const fb = (Mt.fleet_mean_features || []).includes(k);
       return `<span class="by-feat ${fb ? "fb" : ""}" title="${h(k)}">${h(W[k] || k)} <b>${v == null ? "缺→队均值" : Number(v).toFixed(2)}</b></span>`;
@@ -20256,11 +20379,11 @@ function stationBayesBoard(){
       <td>${st.gain_bits == null ? "—" : `<div class="cell"><div class="by-bar"><i style="width:${Math.min(100, 50 * st.gain_bits).toFixed(0)}%;background:var(--accent)"></i></div><span class="mono">${bits(st.gain_bits)}</span></div>`}</td>
       <td class="muted">${h(metWord[st.state] || st.state)}</td></tr>`).join("");
     return `<details class="stn">
-      <summary><b class="mono">${h(e.station_id)}</b> <span class="muted">当地 ${h(e.local)} · ${h(e.event_date.slice(5))}</span>
-        <span class="mono">P0 ${c2((S.p0 || {}).mean_c)}${hasP0m ? " → P0-M " + c2(S.p0m.mean_c) : ""} → P1 <b>${c2((S.p1 || {}).mean_c)}</b></span>
-        <span>众数 ${moved(S.p0, S.p1)}（${pc((S.p1 || {}).mode_p)}）</span>
-        ${hasP0m ? gain(G.p0m_total, "P0-M") : ""} ${gain(G.p1_total, "P1")}
-        <span class="muted">已报最高 ${c1(Mt.running_high_c)} · 再升 ${pc(Mt.rise_probability)}</span>
+      <summary><b class="mono">${h(e.station_id)}</b> <span class="pill">${h(e.event_date.slice(5))}</span> <span class="muted">更新于当地 ${h(e.local)}</span>
+        <span class="mono">${chain}</span>
+        <span>众数 ${moved(S.p0, last)}（${pc(last.mode_p)}）</span>
+        ${hasP0m ? gain(G.p0m_total, "P0-M") : ""} ${hasP1 ? gain(G.p1_total, "P1") : ""}
+        <span class="muted">${hasP1 ? `已报最高 ${c1(Mt.running_high_c)} · 再升 ${pc(Mt.rise_probability)}` : noP1Word[e.role] || noP1Word.history}</span>
         ${met ? `<span class="pill ${(FRESH_WORD[met.freshness] || [""])[0]}">METAR ${(FRESH_WORD[met.freshness] || ["", met.freshness])[1]}</span>` : ""}
         ${taf ? `<span class="pill ${(FRESH_WORD[taf.freshness] || [""])[0]}">TAF ${(FRESH_WORD[taf.freshness] || ["", taf.freshness])[1]}</span>` : ""}</summary>
       <div class="by-chain">
@@ -20271,37 +20394,60 @@ function stationBayesBoard(){
           <div class="v">${c2(S.p0m.mean_c)}</div>
           <div class="muted">TAF TX ${T && T.tx_c && T.tx_c !== "NONE" ? c1(T.tx_c) : "—"}${T && T.x_c != null ? "（比 P0 中心 " + (T.x_c > 0 ? "+" : "") + Number(T.x_c).toFixed(1) + "°C）" : ""} · ${h(tafWord[(T || {}).state] || (T || {}).state || "—")}${T && T.b != null ? " · b " + Number(T.b).toFixed(2) + " τ " + Number(T.tau).toFixed(2) : ""}${T && T.tempering ? " · " + h({REASONED:"有天气理由", UNREASONED_COLD:"没理由的往冷改", OTHER:"其他分歧", SMALL:"小分歧"}[T.tempering.group] || T.tempering.group) + " λ " + Number(T.tempering.lambda).toFixed(2) : ""}</div>
           <div>${gain(G.p0m_fact, "观测下界")} ${gain(G.taf, "TAF")}</div></div>` :
-          `<div class="by-step"><div class="t">② P0-M</div><div class="muted">这一步的根是 P0（还没有 TAF 落座）</div></div>`}
-        <div class="by-step"><div class="t">③ × 硬下界 × METAR 联合似然 g<sup>α</sup> → P1</div>
-          <div class="v">${c2((S.p1 || {}).mean_c)}</div>
+          `<div class="by-step"><div class="t">② P0-M</div><div class="muted">${hasP1 ? "这一步的根是 P0（还没有 TAF 落座）" : "还没有 P0-M（TAF 还没覆盖到这一天）"}</div></div>`}
+        ${hasP1 ? `<div class="by-step"><div class="t">③ × 硬下界 × METAR 联合似然 g<sup>α</sup> → P1</div>
+          <div class="v">${c2(S.p1.mean_c)}</div>
           <div class="muted">已报最高 ${c1(Mt.running_high_c)}（${h(Mt.running_high_bucket || "—")}）${nowT ? " · 此刻 " + (nowT.temp_c ?? "—") + "°C" : ""} · 再升 ${pc(Mt.rise_probability)} · α ${Mt.alpha ?? "—"} · ${h(metWord[Mt.state] || Mt.state)}</div>
-          <div>${gain(G.fact, "硬下界")} ${gain(G.likelihood, "实况似然")}</div></div>
+          <div>${gain(G.fact, "硬下界")} ${gain(G.likelihood, "实况似然")}</div></div>` :
+          `<div class="by-step"><div class="t">③ × 硬下界 × METAR 联合似然 → P1</div><div class="muted">${noP1Word[e.role] || noP1Word.history}</div></div>`}
       </div>
       <div class="scroll" style="max-height:none"><table class="by-tab"><thead><tr><th>桶</th><th>P0</th>
-        ${hasP0m ? `<th>TAF 似然</th><th>P0-M</th><th>Δ点</th>` : ""}<th>硬下界</th><th>g<sup>α</sup></th><th>P1</th><th>Δ点</th></tr></thead><tbody>${rows}</tbody></table></div>
-      <div style="margin:6px 0"><span class="muted">这一步读到的实况特征（灰色＝缺，按全队均值）：</span>${feats || "—"}${
-        Mt.regional_system_id && Mt.regional_system_id !== "NONE" ? ` <span class="by-feat">区域模型 <b>${h(Mt.regional_system_id)}</b></span>` : ""}</div>
+        ${hasP0m ? `<th>TAF 似然</th><th>P0-M</th><th>Δ点</th>` : ""}${hasP1 ? `<th>硬下界</th><th>g<sup>α</sup></th><th>P1</th><th>Δ点</th>` : ""}</tr></thead><tbody>${rows}</tbody></table></div>
+      ${hasP1 ? `<div style="margin:6px 0"><span class="muted">这一步读到的实况特征（灰色＝缺，按全队均值）：</span>${feats || "—"}${
+        Mt.regional_system_id && Mt.regional_system_id !== "NONE" ? ` <span class="by-feat">区域模型 <b>${h(Mt.regional_system_id)}</b></span>` : ""}</div>` : ""}
       ${e.rise_terms && e.rise_terms.terms ? `<details><summary><b>「再升」${pc(Mt.rise_probability)} 是怎么算出来的</b> <span class="muted">（剩余 ${Number(e.rise_terms.hours_left).toFixed(1)} 小时档截距 ${Number(e.rise_terms.intercept).toFixed(2)} + Σ 系数×特征 = η ${Number(e.rise_terms.eta).toFixed(2)}；${e.rise_terms.matches_receipt ? "与生产回执一致" : e.rise_terms_same_artifact ? "与回执不一致" : "拟合件已日更换代，按现任件复算"}）</span></summary>
         <table class="by-tab"><thead><tr><th>特征</th><th>当时的值</th><th>系数</th><th>对 η 的贡献</th></tr></thead><tbody>${e.rise_terms.terms.map(t => `<tr><td>${h(t.label)}${t.fallback ? ' <span class="muted">（缺，按队均值）</span>' : ""}</td><td class="mono">${Number(t.value).toFixed(2)}</td><td class="mono">${Number(t.coefficient).toFixed(3)}</td><td class="mono ${t.contribution > 0 ? "up" : "down"}">${(t.contribution > 0 ? "+" : "") + Number(t.contribution).toFixed(3)}</td></tr>`).join("")}</tbody></table></details>` : ""}
-      <details><summary><b>今天的逐步更新</b> <span class="muted">（每份报文一步：已报最高、再升、均值、众数，以及这一步相对上一步的信息增益）</span></summary>
+      ${hasP1 ? `<details><summary><b>${dayWord}的逐步更新</b> <span class="muted">（每份报文一步：已报最高、再升、均值、众数，以及这一步相对上一步的信息增益）</span></summary>
         <div class="scroll" style="max-height:360px"><table class="by-tab"><thead><tr><th>当地</th><th>已报最高</th><th>再升</th><th>α</th><th>均值</th><th>众数</th><th>本步增益</th><th>似然</th></tr></thead>
-        <tbody>${steps}</tbody></table></div></details>
-      <details><summary><b>报文解析</b> <span class="muted">（最新 METAR ${((met || {}).reports || []).length} 份 · TAF ${((taf || {}).reports || []).length} 份，默认折叠）</span></summary>
+        <tbody>${steps}</tbody></table></div></details>` : ""}
+      ${met || taf ? `<details><summary><b>报文解析</b> <span class="muted">（${met ? "最新 METAR " + (met.reports || []).length + " 份 · " : ""}TAF ${((taf || {}).reports || []).length} 份，默认折叠）</span></summary>
         ${met ? `<div class="muted" style="margin-top:4px">METAR · 最新观测 ${whenZ(met.latest_valid_at_utc)} · ${met.age_minutes == null ? "—" : Math.round(met.age_minutes) + " 分钟前"}</div>${reportList(met.reports, "METAR")}` : ""}
         ${taf ? `<div class="muted" style="margin-top:6px">TAF · 最新签发 ${whenZ(taf.latest_issued_at_utc)} · ${taf.age_hours == null ? "—" : taf.age_hours.toFixed(1) + " 小时前"}${taf.capture_lag_minutes == null ? "" : " · 采集延迟 " + taf.capture_lag_minutes + " 分钟"}</div>${reportList(taf.reports, "TAF")}` : ""}
-      </details>
+      </details>` : ""}
     </details>`;
-  }).join("");
+  };
+  // A payload built before the roles existed held each station's newest P1
+  // only -- today's -- so an unmarked card reads as today.
+  const all = (B.stations || []).map(e => e.role ? e : {...e, role: "today", head_stage: e.head_stage || "P1"});
+  const byRole = role => all.filter(e => e.role === role);
+  const today = byRole("today"), ahead = byRole("ahead"), hist = byRole("history");
+  const count = (list, key) => { const c = {}; list.forEach(e => c[e[key]] = (c[e[key]] || 0) + 1); return c; };
+  const dates = (list, newestFirst) => { const c = count(list, "event_date"), keys = Object.keys(c).sort();
+    return (newestFirst ? keys.reverse() : keys).map(d => `${d.slice(5)} ${c[d]} 站`).join(" · "); };
+  const stages = list => { const c = count(list, "head_stage");
+    return ["P1", "P0-M", "P0"].filter(k => c[k]).map(k => `${k} ${c[k]}`).join(" · "); };
+  const missing = B.missing_ahead || [];
+  const histDates = Object.keys(count(hist, "event_date")).sort().reverse();
+  const group = (title, list, note) => `<h3 class="by-group">${title} <span class="muted">${dates(list) || "—"}${list.length ? " · 最新一步 " + stages(list) : ""}${note || ""}</span></h3>
+    <div class="stns">${list.map(card).join("") || `<div class="card muted">没有。</div>`}</div>`;
   const tafC = ((D.taf_board || {}).counts) || {}, metC = ((D.metar_board || {}).counts) || {};
   return `<h2>站点贝叶斯更新：P0 → P0-M → P1，每一步读到了什么、改了多少</h2>
-  <p class="sub">每站一张卡，按第 150 条的链路读：<b>先验 P0</b>（校准只在这里做一次）→ 乘 <b>TAF 似然</b> 得 P0-M → 乘 <b>硬下界</b>（已报最高以下清零）和一条 <b>METAR 联合似然 g<sup>α</sup></b> 得 P1。
+  <p class="sub">每站每个事件日一张卡，按第 150 条的链路读：<b>先验 P0</b>（校准只在这里做一次）→ 乘 <b>TAF 似然</b> 得 P0-M → 乘 <b>硬下界</b>（已报最高以下清零）和一条 <b>METAR 联合似然 g<sup>α</sup></b> 得 P1。
     表里逐桶给出每一步前后的概率和变化（Δ点＝百分点）；<b>信息增益</b>＝后验相对先验的 KL 散度，单位 bit——0 表示这一步没改变看法，1 bit 大约相当于把一半的可能性排除掉。
-    P1 的增益正好拆成「硬下界」和「实况似然」两份。卡片展开后可看这一步读到的实况特征和今天每份报文带来的逐步变化；报文原文与逐段拆解折叠在最下面。</p>
+    P1 的增益正好拆成「硬下界」和「实况似然」两份。卡片展开后可看这一步读到的实况特征和逐份报文带来的逐步变化；报文原文与逐段拆解折叠在最下面。
+    <b>分组按各站自己的当地日期</b>（本节生成于 ${whenZ(B.built_at_utc)}）：当天＝正在观测的这一天；提前一天＝明天，还没有 P1，卡片停在 P0-M（TAF 还没覆盖到时停在 P0）；
+    过了当地午夜，当天的卡自动下沉到最下面折叠的「历史」里（保留 ${B.history_days ?? 2} 天）。</p>
   <div class="card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-    <span>${(B.stations || []).length} 站有当天 P1</span> · <span>P1 相对根的信息增益中位 <b>${bits(B.median_p1_gain_bits)}</b> bit</span>
+    <span>${today.filter(e => e.head_stage === "P1").length} 站有当天 P1</span> · <span>P1 相对根的信息增益中位 <b>${bits(B.median_p1_gain_bits)}</b> bit</span>
+    · <span>${ahead.length} 站有明天的先验</span>
     <span style="flex:1"></span><span class="muted">METAR</span><span class="pill green">新鲜 ${metC.fresh || 0}</span><span class="pill amber">偏晚 ${metC.late || 0}</span><span class="pill red">陈旧 ${metC.stale || 0}</span>
     <span class="muted">TAF</span><span class="pill green">新鲜 ${tafC.fresh || 0}</span><span class="pill amber">偏晚 ${tafC.late || 0}</span><span class="pill red">陈旧 ${tafC.stale || 0}</span></div>
-  <div class="stns">${cards}</div>`;
+  ${group("当天：正在观测的这一天", today)}
+  ${group("提前一天：明天", ahead, missing.length ? ` · 还没有明天的 P0：${h(missing.join("、"))}` : "")}
+  <details class="by-hist"><summary><h3 class="by-group">历史：已结束的站日 <span class="muted">${hist.length ? dates(hist, true) : "—"} · 默认折叠，点开看</span></h3></summary>
+    ${histDates.map(d => { const list = hist.filter(e => e.event_date === d);
+      return `<div class="muted" style="margin:10px 0 2px"><b>${h(d)}</b> · ${list.length} 站</div><div class="stns">${list.map(card).join("")}</div>`; }).join("") || `<div class="card muted">没有。</div>`}
+  </details>`;
 }
 
 function p1JointBoard(){

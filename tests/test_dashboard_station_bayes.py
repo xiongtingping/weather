@@ -113,3 +113,66 @@ def test_the_page_is_one_station_view_with_the_reports_folded() -> None:
     # Folded by default: the report section is a <details> with no ``open``.
     assert "<details><summary><b>报文解析</b>" in body
     assert '<details open><summary><b>报文解析</b>' not in body
+
+
+def test_cards_cover_today_the_day_ahead_and_the_settled_days(tmp_path, monkeypatch) -> None:
+    """User, 2026-09-19: 「增加20日（当天和提前一天的），历史数据自动下沉折叠」.
+
+    Each station by its own local calendar: the day it observes, the day
+    ahead (no P1 yet -- the card stops at P0-M, or P0), and settled days.
+    """
+
+    conn = _db(tmp_path)
+
+    def put(cid, stage, station, day, tz, at, probs, lineage):
+        conn.execute(
+            "INSERT INTO basket_probability_envelope VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (cid, stage, station, day, tz, at, json.dumps(probs), ORDINALS,
+             json.dumps({"bucket_intervals_c_json": INTERVALS, **lineage}), "v", "COMMITTED"),
+        )
+
+    flat = {"20": 0.2, "21": 0.5, "22": 0.3}
+    # ZUUU's day ahead: P0 and P0-M in one cycle, stamped the same second.
+    put("p0-19", "P0", "ZUUU", "2026-09-19", "Asia/Shanghai", "2026-09-18T06:00:00Z", flat, {})
+    put("p0m-19", "P0-M", "ZUUU", "2026-09-19", "Asia/Shanghai", "2026-09-18T06:00:00Z", flat, {
+        "p0_root_checkpoint_id": "p0-19", "observed_hard_excluded_buckets": "NONE",
+        "p0m_taf_likelihood_json": json.dumps({"state": "IDENTITY_NO_TX"}),
+    })
+    # ZUUU's settled day before.
+    put("p0-17", "P0", "ZUUU", "2026-09-17", "Asia/Shanghai", "2026-09-16T20:00:00Z", flat, {})
+    put("p1-17", "P1", "ZUUU", "2026-09-17", "Asia/Shanghai", "2026-09-17T08:00:00Z",
+        {"20": 0.0, "21": 1.0, "22": 0.0},
+        {"prediction_root_checkpoint_id": "p0-17", "hard_excluded_buckets": "20"})
+    # A station with only today's prior and nothing for tomorrow yet.
+    put("nz-p0", "P0", "NZWN", "2026-09-18", "Pacific/Auckland", "2026-09-18T05:00:00Z", flat, {})
+    conn.commit()
+    monkeypatch.setattr(C, "_now", lambda: C.datetime(2026, 9, 18, 7, 0, tzinfo=C.timezone.utc))
+    out = C.collect_station_bayes(conn)
+    order = [(e["role"], e["station_id"], e["event_date"], e["head_stage"]) for e in out["stations"]]
+    assert order == [
+        ("today", "NZWN", "2026-09-18", "P0"),
+        ("today", "ZUUU", "2026-09-18", "P1"),
+        ("ahead", "ZUUU", "2026-09-19", "P0-M"),
+        ("history", "ZUUU", "2026-09-17", "P1"),
+    ]
+    assert out["missing_ahead"] == ["NZWN"]
+    ahead = out["stations"][2]
+    # No P1 yet: the P1 half is empty, not guessed.
+    assert ahead["shapes"]["p1"] is None and ahead["metar"] is None and ahead["steps"] == []
+    assert ahead["gain_bits"]["p1_total"] is None
+    assert ahead["gain_bits"]["p0m_total"] == pytest.approx(0.0, abs=1e-9)
+    assert all(row["p1"] is None for row in ahead["buckets"])
+    assert out["stations"][0]["shapes"]["p0m"] is None
+    assert out["stations"][3]["root_stage"] == "P0"
+    # The fleet median reads today's P1s only.
+    assert out["median_p1_gain_bits"] == pytest.approx(out["stations"][1]["gain_bits"]["p1_total"])
+
+
+def test_the_settled_days_sink_to_the_bottom_folded() -> None:
+    source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    start = source.index("function stationBayesBoard(){")
+    body = source[start:source.index("function p1JointBoard(){", start)]
+    today, ahead = body.index('group("当天'), body.index('group("提前一天')
+    history = body.index('<details class="by-hist">')
+    assert today < ahead < history, "today, then the day ahead, then history last"
+    assert '<details class="by-hist" open' not in body, "history is folded by default"
