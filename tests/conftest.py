@@ -43,6 +43,18 @@ def _map_the_fixture_station_season(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _no_taf_raw_archive_from_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Captures archive every TAF they see (「存原文」, 2026-09-19).
+
+    A stand-in fetch would append its made-up bulletins to the real archive
+    the next TAF test reads.  A test of the archive itself points the
+    directory at its own ``tmp_path``.
+    """
+
+    monkeypatch.setenv("PM_TAF_RAW_ARCHIVE_DIR", "off")
+
+
+@pytest.fixture(autouse=True)
 def _no_forward_physics_capture_from_tests(monkeypatch: pytest.MonkeyPatch) -> None:
     """The resident's forecast refresh cycle starts a real forward capture.
 

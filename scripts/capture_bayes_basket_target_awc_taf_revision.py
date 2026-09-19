@@ -17,6 +17,7 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.resource_bounds import write_bounded_json  # noqa: E402
+from bayes_basket_target.taf_raw_archive import archive_rows  # noqa: E402
 from scripts.capture_bayes_basket_target_awc_taf_calibration import (  # noqa: E402
     TAF_ENDPOINT,
     _event_window,
@@ -82,6 +83,11 @@ def capture_forward_awc_taf(
                 response_cache[url] = exc
             raise
         received_at = datetime.now(timezone.utc)
+        # 「存原文」: the whole bulletin, once, whatever the parse below says.
+        archive_rows(
+            rows, received_at=received_at, source_url=url,
+            response_sha256=response_sha,
+        )
         if response_cache is not None:
             response_cache[url] = (
                 rows, response_sha, response_bytes, received_at
@@ -212,6 +218,12 @@ def awc_newer_taf_stations(
     except Exception as exc:  # noqa: BLE001 -- the rotation proceeds without it
         receipt["state"] = f"probe_failed:{type(exc).__name__}"
         return {}, receipt
+    # 「存原文」: this one request returns every station's current bulletin,
+    # so the archive sees each new TAF on the round it appears.
+    receipt["archived"] = archive_rows(
+        rows, received_at=datetime.now(timezone.utc), source_url=url,
+        response_sha256=_sha,
+    )
     newest: dict[str, datetime] = {}
     for row in rows or []:
         station = str((row or {}).get("icaoId") or "").strip().upper()
