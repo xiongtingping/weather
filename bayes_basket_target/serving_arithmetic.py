@@ -325,6 +325,10 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p1_joint_likelihood_v15": "2026-09-19T10:15:00Z",
         # Charter 160: the fourth root bump, at the instant P0 v7 declares.
         "p1_joint_likelihood_v16": "2026-09-19T15:02:00Z",
+        # Charter 161: P1's own change (the directly fitted update), declared
+        # ahead of the restart that deploys it and after the artifact carrying
+        # the block is written, as v14 was.
+        "p1_joint_likelihood_v17": "2026-09-19T17:20:00Z",
     },
 }
 

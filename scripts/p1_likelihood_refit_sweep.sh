@@ -7,7 +7,9 @@
 #   2. refit P1's joint observation likelihood g(d | s) and its per-hours-bin
 #      tempering alpha, behind the fitter's own veto (the refit must beat the
 #      root under the hard bound, and must not lose to the incumbent, on a
-#      held-out day split -- a vetoed refit leaves the served file alone);
+#      held-out day split -- a vetoed refit leaves the served file alone),
+#      and, in the same file, charter 161's directly fitted update behind its
+#      own forward gate (it serves in g**alpha's place while that gate holds);
 #   3. refit P0-M's TAF likelihood and its walk-forward serve gate.
 #
 # Reads the SSOT and the archive read-only and writes three files, so it

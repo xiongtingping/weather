@@ -2423,6 +2423,9 @@ def _station_bayes_card(
     masked = {b: (0.0 if b in excluded else v / kept) for b, v in root.items()} if kept > 0 else root
     evidence = {str(k): float(v) for k, v in (receipt.get("evidence_by_bucket") or {}).items()}
     alpha = receipt.get("alpha")
+    # Charter 161: a direct update carries its own multiplier per bucket.
+    direct = receipt.get("update") == "DIRECT_LOG_UPDATE_V1"
+    multiplier = receipt.get("likelihood_by_bucket") or {}
     buckets = []
     for row in axis:
         b = row["bucket"]
@@ -2433,7 +2436,10 @@ def _station_bayes_card(
             "l_taf": (taf_receipt.get("likelihood_by_bucket") or {}).get(b),
             "p0m": None if p0m is None else p0m.get(b),
             "excluded": b in excluded,
-            "g_alpha": (None if g is None or alpha is None else max(g, 0.0) ** float(alpha)),
+            "g_alpha": (
+                multiplier.get(b) if direct
+                else None if g is None or alpha is None else max(g, 0.0) ** float(alpha)
+            ),
             "p1": None if p1 is None else p1.get(b),
         })
     # The day's P1 steps: how the belief moved report by report.
@@ -2520,6 +2526,8 @@ def _station_bayes_card(
             "running_high_bucket": receipt.get("running_high_bucket"),
             "rise_probability": receipt.get("rise_probability"),
             "alpha": alpha,
+            "update": receipt.get("update") or "G_ALPHA",
+            "lambda": receipt.get("lambda"),
             "features": receipt.get("features") or {},
             "fleet_mean_features": receipt.get("fleet_mean_features") or [],
             "regional_system_id": receipt.get("regional_system_id"),
@@ -2535,6 +2543,8 @@ def _station_bayes_card(
                 raw_artifact=likelihood_artifact,
             ).get("decomposition")
             if p1 is not None and receipt.get("state") == "APPLIED" and likelihood_artifact
+            # g's rise rung is not what a direct update served (charter 161).
+            and receipt.get("update") != "DIRECT_LOG_UPDATE_V1"
             else None
         ),
         "rise_terms_same_artifact": (
@@ -20438,14 +20448,14 @@ function stationBayesBoard(){
           <div class="muted">TAF TX ${T && T.tx_c && T.tx_c !== "NONE" ? c1(T.tx_c) : "—"}${T && T.x_c != null ? "（比 P0 中心 " + (T.x_c > 0 ? "+" : "") + Number(T.x_c).toFixed(1) + "°C）" : ""} · ${h(tafWord[(T || {}).state] || (T || {}).state || "—")}${T && T.b != null ? " · b " + Number(T.b).toFixed(2) + " τ " + Number(T.tau).toFixed(2) : ""}${T && T.tempering ? " · " + h({REASONED:"有天气理由", UNREASONED_COLD:"没理由的往冷改", OTHER:"其他分歧", SMALL:"小分歧"}[T.tempering.group] || T.tempering.group) + " λ " + Number(T.tempering.lambda).toFixed(2) : ""}</div>
           <div>${gain(G.p0m_fact, "观测下界")} ${gain(G.taf, "TAF")}</div></div>` :
           `<div class="by-step"><div class="t">② P0-M</div><div class="muted">${hasP1 ? "这一步的根是 P0（还没有 TAF 落座）" : "还没有 P0-M（TAF 还没覆盖到这一天）"}</div></div>`}
-        ${hasP1 ? `<div class="by-step"><div class="t">③ × 硬下界 × METAR 联合似然 g<sup>α</sup> → P1</div>
+        ${hasP1 ? `<div class="by-step"><div class="t">③ × 硬下界 × ${Mt.update === "DIRECT_LOG_UPDATE_V1" ? "METAR 直接更新 e<sup>f</sup>（宪章161）" : "METAR 联合似然 g<sup>α</sup>"} → P1</div>
           <div class="v">${c2(S.p1.mean_c)}</div>
-          <div class="muted">已报最高 ${c1(Mt.running_high_c)}（${h(Mt.running_high_bucket || "—")}）${nowT ? " · 此刻 " + (nowT.temp_c ?? "—") + "°C" : ""} · 再升 ${pc(Mt.rise_probability)} · α ${Mt.alpha ?? "—"} · ${h(metWord[Mt.state] || Mt.state)}</div>
+          <div class="muted">已报最高 ${c1(Mt.running_high_c)}（${h(Mt.running_high_bucket || "—")}）${nowT ? " · 此刻 " + (nowT.temp_c ?? "—") + "°C" : ""} · 再升 ${pc(Mt.rise_probability)} · ${Mt.update === "DIRECT_LOG_UPDATE_V1" ? "直接更新 λ " + (Mt.lambda ?? "—") : "α " + (Mt.alpha ?? "—")} · ${h(metWord[Mt.state] || Mt.state)}</div>
           <div>${gain(G.fact, "硬下界")} ${gain(G.likelihood, "实况似然")}</div></div>` :
           `<div class="by-step"><div class="t">③ × 硬下界 × METAR 联合似然 → P1</div><div class="muted">${noP1Word[e.role] || noP1Word.history}</div></div>`}
       </div>
       <div class="scroll" style="max-height:none"><table class="by-tab"><thead><tr><th>桶</th><th>P0</th>
-        ${hasP0m ? `<th>TAF 似然</th><th>P0-M</th><th>Δ点</th>` : ""}${hasP1 ? `<th>硬下界</th><th>g<sup>α</sup></th><th>P1</th><th>Δ点</th>` : ""}</tr></thead><tbody>${rows}</tbody></table></div>
+        ${hasP0m ? `<th>TAF 似然</th><th>P0-M</th><th>Δ点</th>` : ""}${hasP1 ? `<th>硬下界</th><th>${Mt.update === "DIRECT_LOG_UPDATE_V1" ? "e<sup>f</sup>" : "g<sup>α</sup>"}</th><th>P1</th><th>Δ点</th>` : ""}</tr></thead><tbody>${rows}</tbody></table></div>
       ${hasP1 ? `<div style="margin:6px 0"><span class="muted">这一步读到的实况特征（灰色＝缺，按全队均值）：</span>${feats || "—"}${
         Mt.regional_system_id && Mt.regional_system_id !== "NONE" ? ` <span class="by-feat">区域模型 <b>${h(Mt.regional_system_id)}</b></span>` : ""}</div>` : ""}
       ${e.rise_terms && e.rise_terms.terms ? `<details><summary><b>「再升」${pc(Mt.rise_probability)} 是怎么算出来的</b> <span class="muted">（剩余 ${Number(e.rise_terms.hours_left).toFixed(1)} 小时档截距 ${Number(e.rise_terms.intercept).toFixed(2)} + Σ 系数×特征 = η ${Number(e.rise_terms.eta).toFixed(2)}；${e.rise_terms.matches_receipt ? "与生产回执一致" : e.rise_terms_same_artifact ? "与回执不一致" : "拟合件已日更换代，按现任件复算"}）</span></summary>

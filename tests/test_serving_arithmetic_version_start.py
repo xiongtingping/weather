@@ -233,9 +233,11 @@ def test_p1_declares_only_the_bump_its_root_caused() -> None:
     # each declared at the restart that deployed it -- after the resident's
     # start, so no older envelope falls in the newer version's window.
     # v16 (charter 160) is the fourth root bump, at P0 v7's moment; v15
-    # keeps P0-M v8's.
-    assert p1 == "p1_joint_likelihood_v16"
-    assert sa.version_effective_from("P1", p1) == CHARTER_160_START
+    # keeps P0-M v8's.  v17 (charter 161) is P1's own change, declared ahead
+    # of its restart like v14.
+    assert p1 == "p1_joint_likelihood_v17"
+    assert sa.version_effective_from("P1", p1) == "2026-09-19T17:20:00Z"
+    assert sa.version_effective_from("P1", "p1_joint_likelihood_v16") == CHARTER_160_START
     assert sa.version_effective_from(
         "P1", "p1_joint_likelihood_v15"
     ) == sa.version_effective_from("P0-M", "p0m_taf_likelihood_v8")

@@ -25,6 +25,10 @@ from .contracts import (
 from .center_width_calibration import bucket_centers_from_intervals
 from .center_width_store import EDGE_WIDTH_C
 from .et_history import assert_event_day_started
+from .p1_direct_update import (
+    compile_direct_update,
+    serving_block as direct_update_serving_block,
+)
 from .p1_observation_likelihood import (
     LIKELIHOOD_MODE as OBSERVATION_LIKELIHOOD_MODE,
     LINEAGE_KEY as OBSERVATION_LIKELIHOOD_LINEAGE_KEY,
@@ -1280,7 +1284,11 @@ def materialize_p1(
     # v15 (2026-09-19, charter 158): the root, not P1 -- every P1 composes on
     # a P0-M, whose TAF likelihood is now tempered by the TAF's reason; it
     # declares the instant P0-M v8 declares, as v10/v11 did for P0.
-    posterior_version: str = "p1_joint_likelihood_v16",
+    # v16 (2026-09-19, charter 160): the root again (P0 v7, P0-M v9).
+    # v17 (2026-09-20, charter 161): while the artifact's ``direct_update``
+    # block serves, the observation update is exp f fitted directly on the
+    # final P1 (``p1_direct_update``) instead of g**alpha.
+    posterior_version: str = "p1_joint_likelihood_v17",
     # {"features": ..., "artifact": ..., "regional_system_id": ...}: the
     # step's observation-side feature vector and the fitted likelihood,
     # handed in for the reason every fitted table is -- a replay must rebuild
@@ -1473,20 +1481,38 @@ def materialize_p1(
         )
     else:
         try:
-            joint, joint_receipt = compile_observation_likelihood(
-                bundle["features"],
-                artifact,
-                bucket_ordinals=root.bucket_ordinals,
-                bucket_centers_c={
-                    str(bucket): float(value)
-                    for bucket, value in bucket_centers_c.items()
-                },
-                running_high_c=float(proof.running_high_c),
-                running_high_bucket=reported_high_bucket,
-                hard_excluded_buckets=proof.hard_excluded_buckets,
-                # Charter 157: the station's peak offset shifts the clock.
-                station_id=root.station_id,
-            )
+            if direct_update_serving_block(artifact) is not None:
+                # Charter 161: the update fitted on the final P1 itself.
+                joint, joint_receipt = compile_direct_update(
+                    bundle["features"],
+                    artifact,
+                    root_probabilities=root.probabilities,
+                    bucket_ordinals=root.bucket_ordinals,
+                    bucket_centers_c={
+                        str(bucket): float(value)
+                        for bucket, value in bucket_centers_c.items()
+                    },
+                    bucket_upper_bounds_c=bucket_upper_bounds_c,
+                    running_high_c=float(proof.running_high_c),
+                    running_high_bucket=reported_high_bucket,
+                    hard_excluded_buckets=proof.hard_excluded_buckets,
+                    station_id=root.station_id,
+                )
+            else:
+                joint, joint_receipt = compile_observation_likelihood(
+                    bundle["features"],
+                    artifact,
+                    bucket_ordinals=root.bucket_ordinals,
+                    bucket_centers_c={
+                        str(bucket): float(value)
+                        for bucket, value in bucket_centers_c.items()
+                    },
+                    running_high_c=float(proof.running_high_c),
+                    running_high_bucket=reported_high_bucket,
+                    hard_excluded_buckets=proof.hard_excluded_buckets,
+                    # Charter 157: the station's peak offset shifts the clock.
+                    station_id=root.station_id,
+                )
             likelihoods = joint
         except Exception as exc:  # noqa: BLE001 - a P1 must still compile
             # Broad on purpose, as the chain's guard was: at this position the

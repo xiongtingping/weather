@@ -28,6 +28,11 @@ Charter 150 (user ruling 2026-09-19).  One artifact, refitted daily:
    more than the margin.  A vetoed refit leaves the served file untouched
    and says why.
 
+4. **direct update** (charter 161) -- the ``direct_update`` block: the
+   update exp f fitted directly on the final P1 (``p1_direct_update``), with
+   its own forward, as-of gate against the root and against g**alpha on the
+   same held-out rows.  While it says SERVE, it serves in g**alpha's place.
+
 The written g is refitted on every day in the window; alpha is the split's.
 
     python3 scripts/fit_p1_observation_likelihood.py \\
@@ -40,6 +45,7 @@ import argparse
 import json
 import math
 import os
+import random
 import sqlite3
 import statistics
 import sys
@@ -58,6 +64,7 @@ if str(ROOT) not in sys.path:
 from bayes_basket_target import metar_four_layer as M4  # noqa: E402
 from bayes_basket_target.metar_precision import official_temperature_c  # noqa: E402
 from bayes_basket_target import p1_observation_likelihood as OL  # noqa: E402
+from bayes_basket_target import p1_direct_update as DU  # noqa: E402
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.materialization import (  # noqa: E402
     _anchor_bucket_for_temperature,
@@ -875,8 +882,8 @@ def alpha_arrays(
     """
 
     priors, evidences, lives, truths, hours, weights, days = [], [], [], [], [], [], []
-    as_ofs, knowns, incumbents = [], [], []
-    for row in rows:
+    as_ofs, knowns, incumbents, kept = [], [], [], []
+    for position, row in enumerate(rows):
         prior = row["view"]["probabilities"]
         if _log_score(prior, None, row["excluded"], row["truth"], 1.0) is None:
             continue
@@ -887,6 +894,7 @@ def alpha_arrays(
         # The same rows ``score_split`` keeps: none a grid alpha empties.
         if any(float((p * np.power(e, a)).sum()) <= 1e-12 for a in ALPHA_GRID):
             continue
+        kept.append(position)
         priors.append(p)
         evidences.append(e)
         lives.append(np.array([b not in row["excluded"] for b in buckets]))
@@ -928,7 +936,7 @@ def alpha_arrays(
         "truth": np.array(truths), "hours": np.array(hours),
         "weight": np.array(weights), "day": np.array(days),
         "as_of": np.array(as_ofs), "known_at": np.array(knowns),
-        "incumbent": np.array(incumbents),
+        "incumbent": np.array(incumbents), "row_index": np.array(kept),
     }
 
 
@@ -1009,10 +1017,20 @@ def score_alpha_curve(arrays: Mapping[str, np.ndarray]) -> dict[str, Any]:
     incumbent_comparable = bool(
         scored.any() and not np.isnan(arrays["incumbent"][scored]).any()
     )
+    by_day = {
+        day: (
+            float((weight[m] * forward[m]).sum() / weight[m].sum()),
+            float((weight[m] * root[m]).sum() / weight[m].sum()),
+        )
+        for day in forward_values
+        for m in [arrays["day"] == day]
+    }
     return {
         "knots_hours": [float(k) for k in knots],
         "values": chosen,
         "forward_values_by_day": forward_values,
+        "forward_nat_by_day": {day: v[0] for day, v in by_day.items()},
+        "forward_root_nat_by_day": {day: v[1] for day, v in by_day.items()},
         "rows": count,
         "forward_rows": int(scored.sum()),
         "forward_days": len(forward_values),
@@ -1031,6 +1049,300 @@ def score_alpha_curve(arrays: Mapping[str, np.ndarray]) -> dict[str, Any]:
         ),
         "root_nat": float((weight * root).sum()) / total_weight,
         "in_sample_nat": float((weight * in_sample).sum()) / total_weight,
+    }
+
+
+# -- charter 161: the update fitted directly on the final P1 -----------------
+#
+# P1(k) ~ root(k) M(k) exp f(k), f read by ``p1_direct_update``.  The design
+# below is built from that module's own functions (bucket bases, root
+# features); only x is assembled in numpy, and a test holds it equal to the
+# served ``state_vector`` row by row.  Ridge toward f = 0 (the root); lambda
+# chosen on the last ``DIRECT_INNER_DAYS`` training days.  Its gate is its
+# own forward walk over the held-out days, strictly as-of, beside alpha's.
+DIRECT_LAMBDAS = (0.3, 1.0, 3.0)
+DIRECT_INNER_DAYS = 3
+DIRECT_MAX_ITER = 400
+
+
+def direct_design(
+    rows: Sequence[Mapping[str, Any]], clock_artifact: Mapping[str, Any]
+) -> dict[str, np.ndarray]:
+    """Per row: masked prior, live, truth, the three bucket bases, raw state, clocks."""
+
+    width = max(len(row["view"]["ordinals"]) for row in rows)
+    count = len(rows)
+    prior = np.zeros((count, width)); live = np.zeros((count, width), dtype=bool)
+    rise = np.zeros((count, width)); slope = np.zeros((count, width))
+    top = np.zeros((count, width)); truth = np.zeros(count, dtype=int)
+    raw = np.full((count, len(DU.STATE_COLUMNS)), np.nan)
+    hours = np.zeros(count); weight = np.zeros(count)
+    day = np.empty(count, dtype=object); as_of = np.zeros(count); known = np.zeros(count)
+    for i, row in enumerate(rows):
+        view = row["view"]; ordinals = view["ordinals"]
+        order = sorted(ordinals, key=lambda b: (ordinals[b], b))
+        bases = DU.bucket_bases(
+            bucket_ordinals=ordinals, bucket_centers_c=view["centers"],
+            bucket_upper_bounds_c=view["uppers"], running_high_c=row["high"],
+            running_high_bucket=row["running"], hard_excluded_buckets=sorted(row["excluded"]),
+        )
+        for j, bucket in enumerate(order):
+            rung, r, s, o = bases[bucket]
+            if rung < 0:
+                continue
+            live[i, j] = True
+            prior[i, j] = float(view["probabilities"][bucket])
+            rise[i, j], slope[i, j], top[i, j] = r, s, o
+        truth[i] = order.index(row["truth"])
+        sample = row["sample"]
+        features = features_of(sample)
+        mass = float((prior[i] * live[i]).sum())
+        if mass > 0.0:
+            root = DU.root_features(
+                view["probabilities"], bases,
+                bucket_centers_c=view["centers"], running_high_c=row["high"],
+            )
+            raw[i] = [
+                np.nan if features.get(name) is None else float(features[name])
+                for name in DU.FEATURES
+            ] + [root[name] for name in DU.ROOT_FEATURES]
+        hours[i] = OL.clock_hours(
+            float(sample["remaining_hours"]), clock_artifact, str(sample["station_id"])
+        )
+        weight[i] = float(sample["station_day_weight"]); day[i] = str(sample["event_date"])
+        as_of[i] = float(sample["as_of_epoch"]); known[i] = float(sample["truth_known_epoch"])
+    return {
+        "prior": prior, "live": live, "rise": rise, "slope": slope, "top": top,
+        "truth": truth, "raw": raw, "hours": hours, "weight": weight, "day": day,
+        "as_of": as_of, "known_at": known,
+        "usable": (prior * live).sum(1) > 1e-12,
+    }
+
+
+def direct_scaling(design: Mapping[str, np.ndarray], idx: np.ndarray) -> dict[str, Any]:
+    """Fallbacks, means and scales of the state on the training rows ``idx``."""
+
+    raw = design["raw"][idx]
+    fallbacks = {
+        name: float(np.nanmean(raw[:, k])) if np.isfinite(raw[:, k]).any() else 0.0
+        for k, name in enumerate(DU.FEATURES)
+    }
+    filled = _direct_filled(raw, fallbacks)
+    return {
+        "fallbacks": fallbacks,
+        "mean": [float(v) for v in filled.mean(0)],
+        "scale": [float(v) for v in filled.std(0) + 1e-9],
+    }
+
+
+def _direct_filled(raw: np.ndarray, fallbacks: Mapping[str, float]) -> np.ndarray:
+    filled = raw.copy()
+    for k, name in enumerate(DU.FEATURES):
+        filled[np.isnan(filled[:, k]), k] = fallbacks[name]
+    return filled
+
+
+def direct_x(design: Mapping[str, np.ndarray], idx: np.ndarray, scaling: Mapping[str, Any]) -> np.ndarray:
+    """x for rows ``idx`` -- ``DU.state_vector`` in numpy (a test holds them equal)."""
+
+    standard = (
+        _direct_filled(design["raw"][idx], scaling["fallbacks"]) - np.array(scaling["mean"])
+    ) / np.array(scaling["scale"])
+    hours = design["hours"][idx]
+    knots = np.array(DU.KNOTS_HOURS)
+    hats = np.stack(
+        [np.interp(hours, knots, np.eye(len(knots))[k]) for k in range(len(knots))], 1
+    )
+    late = (hours < DU.LATE_BELOW_HOURS)[:, None]
+    mid = ((hours >= DU.LATE_BELOW_HOURS) & (hours < DU.MID_BELOW_HOURS))[:, None]
+    return np.hstack([np.ones((len(idx), 1)), hats, standard, late * standard, mid * standard])
+
+
+def _direct_parts(theta: np.ndarray, width: int) -> tuple[np.ndarray, np.ndarray, float, float]:
+    return theta[:width], theta[width:2 * width], float(theta[-2]), float(theta[-1])
+
+
+def _direct_f(design, idx, x, theta) -> np.ndarray:
+    t_rise, t_slope, t_sq, t_top = _direct_parts(theta, x.shape[1])
+    slope = design["slope"][idx]
+    return (
+        design["rise"][idx] * (x @ t_rise)[:, None] + slope * (x @ t_slope)[:, None]
+        + slope * slope * t_sq + design["top"][idx] * t_top
+    )
+
+
+def _direct_posterior(design, idx, x, theta) -> np.ndarray:
+    live = design["live"][idx]
+    z = np.where(
+        live,
+        np.log(np.where(live, np.maximum(design["prior"][idx], 1e-300), 1.0))
+        + _direct_f(design, idx, x, theta),
+        -np.inf,
+    )
+    z = z - z.max(1, keepdims=True)
+    p = np.where(live, np.exp(z), 0.0)
+    return p / p.sum(1, keepdims=True)
+
+
+def _direct_loss(theta, design, idx, x, lam):
+    p = _direct_posterior(design, idx, x, theta)
+    rows = np.arange(len(idx)); truth = design["truth"][idx]; w = design["weight"][idx]
+    loss = -(w * np.log(np.maximum(p[rows, truth], 1e-300))).sum() + 0.5 * lam * (theta ** 2).sum()
+    g = p.copy(); g[rows, truth] -= 1.0; g *= w[:, None]
+    slope = design["slope"][idx]
+    grad = np.concatenate([
+        x.T @ (g * design["rise"][idx]).sum(1),
+        x.T @ (g * slope).sum(1),
+        [(g * slope * slope).sum(), (g * design["top"][idx]).sum()],
+    ])
+    return loss, grad + lam * theta
+
+
+def direct_fit(design, idx, scaling, lam, start=None) -> np.ndarray:
+    x = direct_x(design, idx, scaling)
+    theta0 = np.zeros(2 * x.shape[1] + 2) if start is None else start
+    from scipy.optimize import minimize  # noqa: PLC0415 - only the refit needs it
+
+    result = minimize(
+        _direct_loss, theta0, args=(design, idx, x, lam), jac=True,
+        method="L-BFGS-B", options={"maxiter": DIRECT_MAX_ITER},
+    )
+    return result.x
+
+
+def direct_scores(design, idx, scaling, theta) -> np.ndarray:
+    """Served log scores (zero floor as ``_row_scores``) of rows ``idx``."""
+
+    p = _direct_posterior(design, idx, direct_x(design, idx, scaling), theta)
+    live = design["live"][idx]
+    under = (live & (p < PROBABILITY_MODEL_ZERO_FLOOR)).any(axis=1)
+    lifted = np.where(live, np.maximum(p, PROBABILITY_MODEL_ZERO_FLOOR), 0.0)
+    served = np.where(under[:, None], lifted / lifted.sum(axis=1, keepdims=True), p)
+    return np.log(served[np.arange(len(idx)), design["truth"][idx]])
+
+
+def direct_choose(design, idx, start=None) -> tuple[float, dict[str, Any], np.ndarray]:
+    """``(lambda, scaling, theta)`` on rows ``idx``, lambda by its last days."""
+
+    days = sorted(set(design["day"][idx].tolist()))
+    tail = set(days[-DIRECT_INNER_DAYS:])
+    in_tail = np.isin(design["day"][idx], list(tail))
+    val = idx[in_tail]
+    inner = idx[~in_tail]
+    best = DIRECT_LAMBDAS[-1]
+    if len(val) and len(inner):
+        inner = inner[design["known_at"][inner] <= design["as_of"][val].min()]
+    if len(val) and len(inner):
+        scaling = direct_scaling(design, inner)
+        best_score, theta = -np.inf, start
+        for lam in DIRECT_LAMBDAS:
+            theta = direct_fit(design, inner, scaling, lam, start=theta)
+            w = design["weight"][val]
+            score = float((w * direct_scores(design, val, scaling, theta)).sum() / w.sum())
+            if score > best_score:
+                best, best_score = lam, score
+    scaling = direct_scaling(design, idx)
+    return best, scaling, direct_fit(design, idx, scaling, best, start=start)
+
+
+def fit_direct_block(
+    samples: Sequence[Mapping[str, Any]],
+    roots: RootCache,
+    *,
+    split_g: Mapping[str, Any],
+    body: Mapping[str, Any],
+    arrays: Mapping[str, np.ndarray],
+    held_rows: Sequence[Mapping[str, Any]],
+    curve: Mapping[str, Any],
+    margin: float,
+) -> dict[str, Any]:
+    """The ``direct_update`` block: final fit, and its forward walk as the gate.
+
+    The walk scores the same held-out rows, on the same days, as alpha's
+    forward walk: each day on a fit to every row whose truth was committed
+    before the day's first report.  SERVE when it beats the root by
+    ``margin`` and is not worse than g**alpha by more than ``margin``.
+    """
+
+    everything = scorable_rows(samples, roots)
+    design = direct_design(everything, split_g)
+    usable = np.where(design["usable"])[0]
+    held_keys = {
+        (held_rows[i]["sample"]["station_id"], held_rows[i]["sample"]["as_of_utc"])
+        for i in arrays["row_index"].tolist()
+    }
+    position = {
+        (row["sample"]["station_id"], row["sample"]["as_of_utc"]): i
+        for i, row in enumerate(everything)
+    }
+    scored_by_day: dict[str, tuple[float, float]] = {}
+    lambdas: dict[str, float] = {}
+    theta = None
+    for day in sorted(curve["forward_nat_by_day"]):
+        rows_d = np.array(sorted(
+            position[key] for key in held_keys
+            if key in position and str(everything[position[key]]["sample"]["event_date"]) == day
+        ))
+        rows_d = rows_d[design["usable"][rows_d]]
+        start = float(design["as_of"][rows_d].min())
+        train = usable[design["known_at"][usable] <= start]
+        lam, scaling, theta = direct_choose(design, train, start=theta)
+        w = design["weight"][rows_d]
+        scored_by_day[day] = (
+            float((w * direct_scores(design, rows_d, scaling, theta)).sum() / w.sum()),
+            curve["forward_nat_by_day"][day],
+        )
+        lambdas[day] = lam
+    gains_root = [scored_by_day[d][0] - curve["forward_root_nat_by_day"][d] for d in scored_by_day]
+    gains_alpha = [scored_by_day[d][0] - scored_by_day[d][1] for d in scored_by_day]
+    state = "IDENTITY"
+    reason = "no_forward_days"
+    if gains_root:
+        mean_root = statistics.mean(gains_root); mean_alpha = statistics.mean(gains_alpha)
+        state = (
+            DU.GATE_SERVE if mean_root >= margin and mean_alpha >= -margin else "IDENTITY"
+        )
+        reason = "" if state == DU.GATE_SERVE else (
+            f"vs_root:{mean_root:+.4f}" if mean_root < margin else f"vs_alpha:{mean_alpha:+.4f}"
+        )
+    rng = random.Random(20260920)
+    boot = sorted(
+        statistics.mean(rng.choice(gains_alpha) for _ in gains_alpha)
+        for _ in range(4000)
+    ) if gains_alpha else []
+    # The served block: every settled row, the served clock (the body's).
+    final_design = direct_design(everything, body)
+    final_rows = np.where(final_design["usable"])[0]
+    lam, scaling, theta = direct_choose(final_design, final_rows, start=theta)
+    width = len(DU.x_layout())
+    return {
+        "schema": DU.SCHEMA,
+        "rule": DU.RULE,
+        "state": state,
+        "veto": reason,
+        "lambda": lam,
+        "x_layout": DU.x_layout(),
+        "theta_rise": [float(v) for v in theta[:width]],
+        "theta_slope": [float(v) for v in theta[width:2 * width]],
+        "theta_slope_sq": float(theta[-2]),
+        "theta_open_top": float(theta[-1]),
+        "fallbacks": scaling["fallbacks"],
+        "mean": scaling["mean"],
+        "scale": scaling["scale"],
+        "trained_from": min(str(s["event_date"]) for s in samples),
+        "trained_through": max(str(s["event_date"]) for s in samples),
+        "rows": int(len(final_rows)),
+        "walk_forward": {
+            "training_cut": "strict_as_of_truth_commit_v1",
+            "days": len(scored_by_day),
+            "direct_nat_by_day": {d: v[0] for d, v in scored_by_day.items()},
+            "alpha_nat_by_day": {d: v[1] for d, v in scored_by_day.items()},
+            "lambda_by_day": lambdas,
+            "gain_vs_root_nat": statistics.mean(gains_root) if gains_root else None,
+            "gain_vs_alpha_nat": statistics.mean(gains_alpha) if gains_alpha else None,
+            "gain_vs_alpha_ci": [boot[100], boot[3899]] if boot else None,
+            "margin": margin,
+        },
     }
 
 
@@ -1187,8 +1499,8 @@ def main() -> int:
     arrays = alpha_arrays(
         rows, split_g, incumbent if incumbent_scorable else None
     )
-    target.close()
     if arrays is None:
+        target.close()
         print(json.dumps({"state": "REFUSED_NO_SCORABLE_ROWS"}))
         return 3
     curve = score_alpha_curve(arrays)
@@ -1205,6 +1517,7 @@ def main() -> int:
         split["incumbent_nat"] = curve["forward_incumbent_nat"]
     veto: list[str] = []
     if curve["forward_nat"] is None:
+        target.close()
         print(json.dumps({"state": "REFUSED_NO_FORWARD_DAYS",
                           "held_days": len(set(arrays["day"].tolist()))}))
         return 3
@@ -1221,6 +1534,12 @@ def main() -> int:
     body = fit_g(
         samples, station_clock_offsets=full_offsets, station_clock_meta=full_meta,
     )
+    # Charter 161: the directly fitted update, behind its own forward gate.
+    body[DU.BLOCK_KEY] = fit_direct_block(
+        samples, roots, split_g=split_g, body=body, arrays=arrays,
+        held_rows=rows, curve=curve, margin=args.margin,
+    )
+    target.close()
     body["alpha_by_bin"] = split["alpha_by_bin"]
     body["alpha_edges_hours"] = list(OL.ALPHA_EDGES_HOURS)
     body["alpha_knots_hours"] = curve["knots_hours"]
@@ -1269,6 +1588,12 @@ def main() -> int:
         "sample_n": body["sample_n"],
         "alpha_by_bin": body["alpha_by_bin"],
         "alpha_curve": [round(v, 3) for v in body["alpha_knot_values"]],
+        "direct_update": {
+            key: body[DU.BLOCK_KEY].get(key) for key in ("state", "veto", "lambda", "rows")
+        } | {
+            key: body[DU.BLOCK_KEY]["walk_forward"].get(key)
+            for key in ("days", "gain_vs_root_nat", "gain_vs_alpha_nat", "gain_vs_alpha_ci")
+        },
         "holdout_from": cut,
         "root_nat": round(split["root_nat"], 4),
         "candidate_nat": round(split["candidate_nat"], 4),
