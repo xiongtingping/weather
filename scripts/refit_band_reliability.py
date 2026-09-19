@@ -30,6 +30,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.band_reliability_store import (  # noqa: E402
+    BAND_SERVED_STAGES,
     BAND_STAGES,
     DEFAULT_INTERVAL_ALPHA,
     MIN_QUALIFYING_DAYS,
@@ -165,6 +166,14 @@ def main() -> int:
                 error = entry["error"]
                 print(f"SUMMARY {stage}: 本次未拟合 [FAILED] {error}")
                 continue
+            state = (entry.get("commit") or {}).get("state", "REPORT_ONLY")
+            if stage not in BAND_SERVED_STAGES:
+                # Charter 150: retired, not fitted, so the entry carries no
+                # fit to summarise.  Read as one on 2026-09-18T20:16Z, the
+                # KeyError failed the whole calibration_refit sweep after
+                # every table had already been written.
+                print(f"SUMMARY {stage}: 宪章150起不服务，不拟合 [{state}]")
+                continue
             served = " ".join(
                 f"{band[0]:.2f}-{band[1]:.2f}x{factor:.3f}"
                 for band, factor in entry["fitted_factors"]
@@ -179,7 +188,6 @@ def main() -> int:
                 detail = f"{days} 天证据，生效 {served}"
             else:
                 detail = f"{days} 天证据，尚无档位够格，全档恒等"
-            state = (entry.get("commit") or {}).get("state", "REPORT_ONLY")
             print(f"SUMMARY {stage}: {detail} [{state}]")
     return 1 if failed else 0
 

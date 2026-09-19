@@ -369,15 +369,13 @@ class StageIsolationTest(unittest.TestCase):
             seed.commit()
             seed.close()
 
+            # The shapes charter 150 returns: P0 is the one stage fitted;
+            # the other two are retired and carry no fit at all, which the
+            # summary read as one on 2026-09-18T20:16Z and died on.
             def broken(conn, *, commit, min_decision_at_utc=None):
                 return {
                     "P0": {
                         "stage": "P0",
-                        "error": "OperationalError: database is locked",
-                        "station_width": {},
-                    },
-                    "P1": {
-                        "stage": "P1",
                         "outcome": "ACCUMULATING",
                         "served_stage": True,
                         "accumulating": True,
@@ -387,6 +385,16 @@ class StageIsolationTest(unittest.TestCase):
                         "forward_nll_gain": 0.0,
                         "serving_day_count": 0,
                         "station_width": {},
+                    },
+                    "P0-M": {
+                        "stage": "P0-M",
+                        "served_stage": False,
+                        "commit": {"state": "RETIRED"},
+                    },
+                    "P1": {
+                        "stage": "P1",
+                        "served_stage": False,
+                        "error": "OperationalError: database is locked",
                     },
                 }
 
@@ -402,9 +410,10 @@ class StageIsolationTest(unittest.TestCase):
 
         self.assertEqual(code, 1)
         text = out.getvalue()
-        self.assertIn('"failed_stages": ["P0"]', text)
-        self.assertIn("SUMMARY P0: FAILED", text)
-        self.assertIn("SUMMARY P1: ACCUMULATING", text)
+        self.assertIn('"failed_stages": ["P1"]', text)
+        self.assertIn("SUMMARY P1: FAILED", text)
+        self.assertIn("SUMMARY P0: ACCUMULATING", text)
+        self.assertIn("SUMMARY P0-M: 宪章150起不服务，不拟合 [RETIRED]", text)
 
 
 class BlockSamplingTest(unittest.TestCase):

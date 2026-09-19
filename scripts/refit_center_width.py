@@ -40,6 +40,7 @@ if str(ROOT) not in sys.path:
 from bayes_basket_target import serving_arithmetic
 from bayes_basket_target.center_width_store import served_arithmetic_anchor
 from bayes_basket_target.center_width_store import (  # noqa: E402
+    CENTER_WIDTH_SERVED_STAGES,
     MIN_QUALIFYING_DAYS,
     refit_all_center_width,
     stage_order_by_staleness,
@@ -200,13 +201,16 @@ def main() -> int:
                     f"每站宽度失败 {station_error}"
                 )
                 continue
+            if stage not in CENTER_WIDTH_SERVED_STAGES:
+                # Charter 150: retired, not fitted -- the entry has no fit
+                # to summarise.  Read as one on 2026-09-18T20:16Z, the
+                # KeyError failed the whole calibration_refit sweep after
+                # the P0 fit and the P1 retirement had both committed.
+                state = (entry.get("commit") or {}).get("state", "REPORT_ONLY")
+                print(f"SUMMARY {stage}: 宪章150起不服务，不拟合 [{state}]")
+                continue
             days = entry["serving_day_count"]
-            if not entry["served_stage"]:
-                detail = (
-                    f"未接入服务，仅存证据（δ={entry['delta_c']:+.3f} "
-                    f"λ={entry['width_lambda']:.3f}）"
-                )
-            elif entry["accumulating"]:
+            if entry["accumulating"]:
                 detail = (
                     f"攒证据中 {days}/{MIN_QUALIFYING_DAYS} 天，维持恒等"
                 )
