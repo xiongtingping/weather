@@ -323,13 +323,40 @@ def evidence_by_bucket(
     high = float(running_high_c)
     evidence: dict[str, float] = {}
     for bucket, ordinal in bucket_ordinals.items():
-        increment = float(bucket_centers_c[bucket]) - high
-        if int(ordinal) <= floor or increment <= _NO_RISE_WITHIN_C:
+        increment = rise_increment_c(
+            ordinal, floor, bucket_centers_c[bucket], high
+        )
+        if increment is None:
             evidence[str(bucket)] = 1.0 - rise
         else:
-            rung = min(rungs, key=lambda value: abs(value - increment))
+            rung = nearest_rung(increment, rungs)
             evidence[str(bucket)] = rise * float(continuation.get(rung, 0.0))
     return evidence, rise
+
+
+def rise_increment_c(
+    ordinal: int, running_high_ordinal: int, center_c: float, running_high_c: float
+) -> float | None:
+    """How far above the running high a bucket on g's rise branch sits; None off it.
+
+    A bucket reads ``1 - rise`` at or below the running high's bucket, or
+    within ``_NO_RISE_WITHIN_C`` of the running high; above that it reads
+    ``rise`` times the continuation at ``nearest_rung``.  The fitter labels
+    each settled day with these same two functions, so the two halves of g
+    are fitted on the event and the rung serving reads them as (review
+    2026-09-19).
+    """
+
+    increment = float(center_c) - float(running_high_c)
+    if int(ordinal) <= int(running_high_ordinal) or increment <= _NO_RISE_WITHIN_C:
+        return None
+    return increment
+
+
+def nearest_rung(increment: float, rungs: Sequence[int]) -> int:
+    """The rung a rise of ``increment`` degrees reads; a tie takes the lower."""
+
+    return min(sorted(rungs), key=lambda value: abs(value - increment))
 
 
 def compile_observation_likelihood(
@@ -470,5 +497,7 @@ __all__ = [
     "evidence_by_bucket",
     "feature_vector",
     "load_artifact",
+    "nearest_rung",
+    "rise_increment_c",
     "silent_receipt",
 ]

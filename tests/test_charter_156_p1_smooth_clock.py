@@ -129,9 +129,17 @@ def _synthetic_arrays(seed: int = 7) -> dict:
             evidence[i, truth[i]] = 0.9          # informative late in the day
         else:
             evidence[i, rng.integers(0, 3)] = 0.9  # noise early
-    days = np.array([f"2026-09-{1 + (i % 10):02d}" for i in range(rows)])
+    day_index = np.array([i % 10 for i in range(rows)])
+    days = np.array([f"2026-09-{1 + d:02d}" for d in day_index])
+    # A report at (24 - hours) into its day; the truth commits two hours
+    # after the day ends.
+    day_start = 1788220800.0 + 86400.0 * day_index        # 2026-09-01T00:00Z
     return {"prior": prior, "evidence": evidence, "truth": truth, "hours": hours,
-            "weight": np.ones(rows), "day": days}
+            "weight": np.ones(rows), "day": days,
+            "live": np.ones((rows, 3), dtype=bool),
+            "as_of": day_start + 3600.0 * (24.0 - hours),
+            "known_at": day_start + 86400.0 + 7200.0,
+            "incumbent": np.full(rows, np.nan)}
 
 
 def test_the_refit_curve_trusts_the_reports_late_and_not_early() -> None:
@@ -143,10 +151,13 @@ def test_the_refit_curve_trusts_the_reports_late_and_not_early() -> None:
     early = np.interp(18.0, knots, values)
     assert late > 1.0 and early < 0.5
     report = fitter.score_alpha_curve(arrays)
-    # Honest (cross-fitted) never beats the curve scored on its own days.
-    assert report["cross_fitted_nat"] <= report["in_sample_nat"] + 1e-12
-    assert report["cross_fitted_nat"] > report["root_nat"]
-    assert set(report["fold_values"]) == {"even_to_odd", "odd_to_even"}
+    # Walked forward: a day is scored only once four earlier days' truth is
+    # in (days 1-4 train day 6's curve; day 5's truth lands after day 6 starts).
+    assert sorted(report["forward_values_by_day"]) == [
+        f"2026-09-{d:02d}" for d in range(6, 11)
+    ]
+    assert report["forward_nat"] > report["forward_root_nat"]
+    assert report["forward_incumbent_nat"] is None
 
 
 def test_the_refit_publishes_the_midpoint_clock() -> None:

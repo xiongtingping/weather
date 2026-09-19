@@ -10,18 +10,23 @@ Charter 150 (user ruling 2026-09-19).  One artifact, refitted daily:
    the retired four-layer fit used, moved here whole; the covariates differ:
    the innovations against the root curve and the regional run join the state.
 
-2. **alpha** per remaining-hours bin (>=10h, 6-10h, <6h), chosen on a held-out
-   day split: g is refitted on the earlier 70% of days and every alpha on the
-   grid is scored as ``root x mask x g**alpha`` on the later 30% against the
-   settled bucket, bin by bin.  The root is the P0/P0-M envelope the sample
-   was compiled on, read out of the store by checkpoint.
+2. **alpha** as a curve in the hours left (charter 156), chosen on a
+   held-out day split: g is refitted on the earlier 70% of days -- only those
+   whose truth had been committed before the held-out window's first report
+   -- and the curve is scored as ``root x mask x g**alpha`` under the served
+   zero floor on the later 30% against the settled bucket.  The root is the
+   P0/P0-M envelope the sample was compiled on, read out of the store by
+   checkpoint.  Every sample is labelled the way the served g reads its
+   settled bucket (``serving_label``) before either half of g is fitted.
 
-3. **veto** -- the candidate is written only if, on that same held-out
-   split, the tempered likelihood beats the root under the hard bound alone
-   by at least ``--margin`` nat per sample, and (when the incumbent's own
-   training window ends before the held-out days, so it can be scored out of
-   sample) it is not worse than the incumbent by more than the margin.  A
-   vetoed refit leaves the served file untouched and says why.
+3. **veto** -- the candidate is written only if, walked forward over the
+   held-out days (each scored on a curve chosen from rows whose truth was
+   committed before that day began), the tempered likelihood beats the root
+   under the hard bound alone by at least ``--margin`` nat per sample, and
+   (when the incumbent's own training window ends before the held-out days,
+   so it can be scored out of sample) it is not worse than the incumbent by
+   more than the margin.  A vetoed refit leaves the served file untouched
+   and says why.
 
 The written g is refitted on every day in the window; alpha is the split's.
 
@@ -56,6 +61,8 @@ from bayes_basket_target import p1_observation_likelihood as OL  # noqa: E402
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.materialization import (  # noqa: E402
     _anchor_bucket_for_temperature,
+    floor_probabilities,
+    PROBABILITY_MODEL_ZERO_FLOOR,
 )
 from bayes_basket_target.metar_trajectory import (  # noqa: E402
     hard_bound_excluded_buckets,
@@ -235,10 +242,71 @@ def phase_outcome(sample: Mapping[str, Any]) -> float:
     database still fits rather than failing on a missing column.
     """
 
+    served = sample.get("serving_rise")
+    if served is not None:
+        return 1.0 if int(served) else 0.0
     crossed = sample.get("crossed_bucket")
     if crossed is not None:
         return 1.0 if int(crossed) else 0.0
     return 1.0 if int(sample["delta_c"]) >= 1 else 0.0
+
+
+def rise_of(sample: Mapping[str, Any]) -> tuple[int, bool] | None:
+    """``(rung, censored)`` for a day that rose as g reads it; None otherwise.
+
+    Labelled rows (``serving_label``) carry the served rise event and rung,
+    and a settled open top is right-censored at its rung.  An unlabelled
+    row falls back to the rounded warming, as the samples were first built.
+    """
+
+    served = sample.get("serving_rise")
+    if served is not None:
+        if not int(served):
+            return None
+        return int(sample["serving_rung"]), bool(sample["serving_censored"])
+    delta = int(sample["delta_c"])
+    return (delta, False) if delta >= 1 else None
+
+
+def serving_label(
+    sample: Mapping[str, Any], view: Mapping[str, Any]
+) -> dict[str, Any] | None:
+    """How the served g reads this sample's settled bucket.
+
+    Review 2026-09-19 (finding four): rung one was fitted on "crossed a
+    market bucket" and the continuation on "rounded warming >= 1C", so 163
+    crossed days were left out of the second half and 255 uncrossed ones
+    put in -- on F ladders and open tails above all.  Both halves now read
+    the settled bucket the way ``evidence_by_bucket`` serves it: the running
+    high's bucket is the lowest one the hard bound leaves (as
+    ``materialize_p1`` picks it), the settled bucket is on the rise branch
+    per ``OL.rise_increment_c``, and its rung is ``OL.nearest_rung``.  A
+    settled open top is right-censored at its rung: the day rose at least
+    that far, and how much further the ladder cannot say.
+    """
+
+    high = float(sample["running_high_c"])
+    ordinals = view["ordinals"]
+    ordered = sorted(ordinals, key=lambda bucket: (ordinals[bucket], bucket))
+    excluded = set(hard_bound_excluded_buckets(ordered, view["uppers"], high))
+    survivors = [bucket for bucket in ordered if bucket not in excluded]
+    truth = _anchor_bucket_for_temperature(
+        float(sample["truth_tmax_c"]),
+        root_lineage={"bucket_intervals_c_json": view["intervals_json"]},
+        bucket_ordinals=ordinals,
+    )
+    if not survivors or truth is None or truth in excluded:
+        return None
+    increment = OL.rise_increment_c(
+        ordinals[truth], ordinals[survivors[0]], view["centers"][truth], high
+    )
+    if increment is None:
+        return {"serving_rise": 0, "serving_rung": None, "serving_censored": False}
+    return {
+        "serving_rise": 1,
+        "serving_rung": OL.nearest_rung(increment, range(1, MAX_RUNG + 1)),
+        "serving_censored": view["intervals"][truth][1] is None,
+    }
 
 
 def fit_phase_rung(
@@ -326,10 +394,16 @@ def fit_continuation(
     # whole vector zero.  The rungs above the last fitted one inherit its
     # conditional rate, which is the flattest honest continuation rather than
     # a coefficient read off three rows.
+    rises = [rise_of(sample) for sample in samples]
     reached: dict[int, float] = {}
-    for sample in samples:
+    for rise in rises:
+        if rise is None:
+            continue
+        delta, censored = rise
         for rung in range(2, MAX_RUNG + 1):
-            if int(sample["delta_c"]) >= rung - 1:
+            # A censored day says "at least delta": it answers every rung up
+            # to delta (it went on) and none past it.
+            if (rung <= delta) if censored else (delta >= rung - 1):
                 reached[rung] = reached.get(rung, 0.0) + 1.0
     minimum = MIN_RUNG_SAMPLES
     rungs = [rung for rung in range(2, MAX_RUNG + 1) if reached.get(rung, 0.0) >= minimum]
@@ -344,9 +418,11 @@ def fit_continuation(
     rung_index: list[int] = []
     covariates = feature_matrix(samples, names, fallbacks=fallbacks)
     for position, sample in enumerate(samples):
-        delta = int(sample["delta_c"])
+        if rises[position] is None:
+            continue
+        delta, censored = rises[position]
         for offset, rung in enumerate(rungs):
-            if delta < rung - 1:
+            if delta < rung - 1 or (censored and rung > delta):
                 break
             rows.append(covariates[position])
             # Above the highest fitted rung the outcome is folded into that
@@ -561,7 +637,7 @@ def fit_g(
     """g on these samples; the body the artifact publishes, alpha excluded."""
 
     fallbacks = fleet_means(samples, OL.FULL_FEATURES)
-    risers = [sample for sample in samples if int(sample["delta_c"]) >= 1]
+    risers = [sample for sample in samples if rise_of(sample) is not None]
     offsets = dict(station_clock_offsets or {})
     # Rung one learns on the station's own clock; the continuation keeps the
     # true hours left, as the measurement did.
@@ -621,7 +697,9 @@ def scorable_rows(
         if view is None:
             continue
         high = float(sample["running_high_c"])
-        ordered = sorted(view["ordinals"], key=lambda b: view["ordinals"][b])
+        ordered = sorted(
+            view["ordinals"], key=lambda b: (view["ordinals"][b], b)
+        )
         excluded = set(
             hard_bound_excluded_buckets(ordered, view["uppers"], high)
         )
@@ -630,9 +708,9 @@ def scorable_rows(
             float(sample["truth_tmax_c"]), root_lineage=lineage,
             bucket_ordinals=view["ordinals"],
         )
-        running = _anchor_bucket_for_temperature(
-            high, root_lineage=lineage, bucket_ordinals=view["ordinals"],
-        )
+        # The running high's bucket as ``materialize_p1`` reads it: the
+        # lowest one the hard bound leaves.
+        running = next((b for b in ordered if b not in excluded), None)
         if truth is None or running is None or truth in excluded:
             continue
         rows.append({
@@ -664,7 +742,13 @@ def _log_score(
     total = sum(weighted.values())
     if total <= 1e-12:
         return None
-    return math.log(max(weighted.get(truth, 0.0) / total, 1e-9))
+    # Scored as served: under the zero floor ``_posterior`` applies (review
+    # 2026-09-19 -- scored without it, alpha was chosen for a distribution
+    # nobody serves: -20.72 nat on a case serving scores -6.91).
+    served, _ = floor_probabilities(
+        {bucket: value / total for bucket, value in weighted.items()}, excluded
+    )
+    return math.log(served[truth])
 
 
 def evidence_of(row: Mapping[str, Any], artifact: Mapping[str, Any]) -> dict[str, float]:
@@ -767,19 +851,31 @@ def score_split(
 #
 # Chosen on the held-out rows by coordinate descent over ALPHA_GRID, one knot
 # at a time (OL.ALPHA_KNOTS_HOURS), three passes.  The score the veto reads is
-# cross-fitted: the curve is chosen on alternate held-out days and scored on
-# the others, then swapped, because a curve with eleven knots chosen and
-# scored on the same days would win by memorising them.  The published curve
-# is then chosen on every held-out day.
+# walked forward and strictly as-of (review 2026-09-19, finding three): each
+# held-out day is scored on a curve chosen only on rows whose settled truth
+# had been committed before that day's first report.  It used to be cross-
+# fitted on alternate days -- the 6th and 8th scoring the 5th and 7th --
+# which is a date-grouped cross-validation, not something the resident could
+# have done on the morning in question.  The published curve is then chosen
+# on every held-out day.
 ALPHA_CURVE_PASSES = 3
+# Held-out days a forward curve needs behind it before it scores a day.
+ALPHA_FORWARD_MIN_DAYS = 4
 
 
 def alpha_arrays(
-    rows: Sequence[Mapping[str, Any]], candidate: Mapping[str, Any]
+    rows: Sequence[Mapping[str, Any]],
+    candidate: Mapping[str, Any],
+    incumbent: Mapping[str, Any] | None = None,
 ) -> dict[str, np.ndarray] | None:
-    """Per scorable row: masked prior, evidence, truth, hours, weight, day."""
+    """Per scorable row: masked prior, evidence, live buckets, truth, clocks.
 
-    priors, evidences, truths, hours, weights, days = [], [], [], [], [], []
+    ``live`` marks the buckets the served floor lifts (real, not excluded);
+    ``incumbent`` is that artifact's own served log score, NaN without one.
+    """
+
+    priors, evidences, lives, truths, hours, weights, days = [], [], [], [], [], [], []
+    as_ofs, knowns, incumbents = [], [], []
     for row in rows:
         prior = row["view"]["probabilities"]
         if _log_score(prior, None, row["excluded"], row["truth"], 1.0) is None:
@@ -793,6 +889,7 @@ def alpha_arrays(
             continue
         priors.append(p)
         evidences.append(e)
+        lives.append(np.array([b not in row["excluded"] for b in buckets]))
         truths.append(buckets.index(row["truth"]))
         # The alpha curve reads the station's clock, as serving does.
         hours.append(OL.clock_hours(
@@ -801,28 +898,59 @@ def alpha_arrays(
         ))
         weights.append(float(row["sample"]["station_day_weight"]))
         days.append(str(row["sample"]["event_date"]))
+        as_ofs.append(float(row["sample"]["as_of_epoch"]))
+        knowns.append(float(row["sample"]["truth_known_epoch"]))
+        incumbent_score = None
+        if incumbent is not None:
+            incumbent_score = _log_score(
+                prior, evidence_of(row, incumbent), row["excluded"], row["truth"],
+                OL.alpha_for(
+                    OL.clock_hours(
+                        float(row["sample"]["remaining_hours"]), incumbent,
+                        str(row["sample"]["station_id"]),
+                    ),
+                    incumbent,
+                ),
+            )
+        incumbents.append(np.nan if incumbent_score is None else incumbent_score)
     if not priors:
         return None
     width = max(len(p) for p in priors)
     prior_m = np.zeros((len(priors), width))
     evidence_m = np.ones((len(priors), width))
-    for index, (p, e) in enumerate(zip(priors, evidences)):
+    live_m = np.zeros((len(priors), width), dtype=bool)
+    for index, (p, e, live) in enumerate(zip(priors, evidences, lives)):
         prior_m[index, : len(p)] = p
         evidence_m[index, : len(e)] = e
+        live_m[index, : len(live)] = live
     return {
-        "prior": prior_m, "evidence": evidence_m, "truth": np.array(truths),
-        "hours": np.array(hours), "weight": np.array(weights),
-        "day": np.array(days),
+        "prior": prior_m, "evidence": evidence_m, "live": live_m,
+        "truth": np.array(truths), "hours": np.array(hours),
+        "weight": np.array(weights), "day": np.array(days),
+        "as_of": np.array(as_ofs), "known_at": np.array(knowns),
+        "incumbent": np.array(incumbents),
     }
 
 
 def _row_scores(arrays: Mapping[str, np.ndarray], alpha: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """Served log scores of the masked rows at ``alpha`` (one per row).
+
+    The zero floor is ``floor_probabilities`` row by row -- lift every live
+    bucket under the floor and renormalise, only where one is under it --
+    and ``test_fit_p1_observation_likelihood`` holds the two equal.
+    """
+
     prior = arrays["prior"][mask]
+    live = arrays["live"][mask]
     weighted = prior * np.power(arrays["evidence"][mask], alpha[:, None])
+    posterior = weighted / weighted.sum(axis=1, keepdims=True)
+    under = (live & (posterior < PROBABILITY_MODEL_ZERO_FLOOR)).any(axis=1)
+    lifted = np.where(live, np.maximum(posterior, PROBABILITY_MODEL_ZERO_FLOOR), 0.0)
+    served = np.where(
+        under[:, None], lifted / lifted.sum(axis=1, keepdims=True), posterior
+    )
     truth = arrays["truth"][mask]
-    return np.log(np.maximum(
-        weighted[np.arange(len(truth)), truth] / weighted.sum(axis=1), 1e-9
-    ))
+    return np.log(served[np.arange(len(truth)), truth])
 
 
 def fit_alpha_curve(arrays: Mapping[str, np.ndarray], mask: np.ndarray) -> list[float]:
@@ -851,38 +979,132 @@ def fit_alpha_curve(arrays: Mapping[str, np.ndarray], mask: np.ndarray) -> list[
 
 
 def score_alpha_curve(arrays: Mapping[str, np.ndarray]) -> dict[str, Any]:
-    """Cross-fitted score of the curve, and the curve chosen on every day."""
+    """Forward, as-of score of the curve, and the curve chosen on every day."""
 
     knots = np.array(OL.ALPHA_KNOTS_HOURS)
-    held_days = sorted(set(arrays["day"].tolist()))
-    fold = np.isin(arrays["day"], held_days[0::2])
-    honest = np.zeros(len(arrays["truth"]))
-    folds = {}
-    everything = np.ones(len(arrays["truth"]), dtype=bool)
-    for fit_mask, score_mask, tag in ((fold, ~fold, "even_to_odd"), (~fold, fold, "odd_to_even")):
-        if not fit_mask.any() or not score_mask.any():
+    count = len(arrays["truth"])
+    everything = np.ones(count, dtype=bool)
+    forward = np.full(count, np.nan)
+    forward_values: dict[str, list[float]] = {}
+    for day in sorted(set(arrays["day"].tolist())):
+        rows = arrays["day"] == day
+        # What the resident could have fitted on that morning: rows whose
+        # truth had been committed before the day's first report.
+        train = arrays["known_at"] <= float(arrays["as_of"][rows].min())
+        if len(set(arrays["day"][train].tolist())) < ALPHA_FORWARD_MIN_DAYS:
             continue
-        values = fit_alpha_curve(arrays, fit_mask)
-        folds[tag] = values
-        alpha = np.interp(arrays["hours"], knots, values)
-        honest[score_mask] = _row_scores(arrays, alpha, everything)[score_mask]
-    chosen = fit_alpha_curve(arrays, everything)
+        values = fit_alpha_curve(arrays, train)
+        forward_values[day] = values
+        forward[rows] = _row_scores(
+            arrays, np.interp(arrays["hours"][rows], knots, values), rows
+        )
+    scored = ~np.isnan(forward)
     weight = arrays["weight"]
-    root = np.log(np.maximum(
-        arrays["prior"][np.arange(len(arrays["truth"])), arrays["truth"]]
-        / arrays["prior"].sum(axis=1), 1e-9,
-    ))
+    root = _row_scores(arrays, np.zeros(count), everything)
+    chosen = fit_alpha_curve(arrays, everything)
     in_sample = _row_scores(arrays, np.interp(arrays["hours"], knots, chosen), everything)
     total_weight = max(float(weight.sum()), 1e-12)
+    scored_weight = max(float(weight[scored].sum()), 1e-12)
+    # The incumbent is compared only where it scored every forward row.
+    incumbent_comparable = bool(
+        scored.any() and not np.isnan(arrays["incumbent"][scored]).any()
+    )
     return {
         "knots_hours": [float(k) for k in knots],
         "values": chosen,
-        "fold_values": folds,
-        "rows": int(len(arrays["truth"])),
+        "forward_values_by_day": forward_values,
+        "rows": count,
+        "forward_rows": int(scored.sum()),
+        "forward_days": len(forward_values),
+        "forward_min_train_days": ALPHA_FORWARD_MIN_DAYS,
+        "forward_nat": (
+            float((weight[scored] * forward[scored]).sum()) / scored_weight
+            if scored.any() else None
+        ),
+        "forward_root_nat": (
+            float((weight[scored] * root[scored]).sum()) / scored_weight
+            if scored.any() else None
+        ),
+        "forward_incumbent_nat": (
+            float((weight[scored] * arrays["incumbent"][scored]).sum()) / scored_weight
+            if incumbent_comparable else None
+        ),
         "root_nat": float((weight * root).sum()) / total_weight,
-        "cross_fitted_nat": float((weight * honest).sum()) / total_weight,
         "in_sample_nat": float((weight * in_sample).sum()) / total_weight,
     }
+
+
+def _epoch(text: Any) -> float:
+    return datetime.fromisoformat(str(text).replace("Z", "+00:00")).timestamp()
+
+
+def load_truth_known_at(target: sqlite3.Connection) -> dict[tuple[str, str], float]:
+    """When each station-day's settled truth became knowable (epoch seconds).
+
+    The latest commit among its accepted revisions -- the builder labels a
+    day with its latest revision, so that revision's commit is the moment
+    the label existed (``label_knowability``).
+    """
+
+    return {
+        (str(station), str(day)): _epoch(committed)
+        for station, day, committed in target.execute(
+            "SELECT station_id, local_date, MAX(canonical_committed_at_utc)"
+            " FROM calibration_station_daily_high_truth"
+            " WHERE qc_status='ACCEPTED' AND canonical_committed_at_utc IS NOT NULL"
+            " GROUP BY station_id, local_date"
+        )
+    }
+
+
+def label_samples(
+    samples: Sequence[Mapping[str, Any]],
+    roots: RootCache,
+    known_at: Mapping[tuple[str, str], float],
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Each sample with its served label (``serving_label``) and its two clocks."""
+
+    labelled: list[dict[str, Any]] = []
+    dropped: dict[str, int] = defaultdict(int)
+    for sample in samples:
+        known = known_at.get((str(sample["station_id"]), str(sample["event_date"])))
+        if known is None:
+            dropped["truth_commit_unknown"] += 1
+            continue
+        view = roots.get(str(sample["root_checkpoint_id"]))
+        if view is None:
+            dropped["root_missing"] += 1
+            continue
+        label = serving_label(sample, view)
+        if label is None:
+            dropped["settled_bucket_unplaced"] += 1
+            continue
+        labelled.append({
+            **sample, **label,
+            "truth_known_epoch": known,
+            "as_of_epoch": _epoch(sample["as_of_utc"]),
+        })
+    return labelled, dict(dropped)
+
+
+def split_as_of(
+    samples: Sequence[Mapping[str, Any]], days: Sequence[str]
+) -> tuple[str, list[Mapping[str, Any]], list[Mapping[str, Any]], float]:
+    """``(cut, train, held, held_start)``: the later 30% of days held out.
+
+    Strict as-of: the split's g trains only on days before the cut whose truth
+    had been committed before the held-out window's first report -- the day
+    before the cut, and across time zones often the one before that, had not.
+    """
+
+    cut = days[int(len(days) * (1.0 - HOLDOUT_SHARE))]
+    held = [s for s in samples if str(s["event_date"]) >= cut]
+    held_start = min(float(s["as_of_epoch"]) for s in held)
+    train = [
+        s for s in samples
+        if str(s["event_date"]) < cut and float(s["truth_known_epoch"]) <= held_start
+    ]
+    return cut, train, held, held_start
 
 
 def load_samples(path: Path, *, since: str | None, through: str) -> list[dict[str, Any]]:
@@ -921,17 +1143,21 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    samples = load_samples(Path(args.samples), since=args.since, through=args.through)
+    raw_samples = load_samples(
+        Path(args.samples), since=args.since, through=args.through
+    )
+    target = sqlite3.connect(f"file:{args.target_db}?mode=ro", uri=True)
+    roots = RootCache(target)
+    samples, unlabelled = label_samples(
+        raw_samples, roots, load_truth_known_at(target)
+    )
     days = sorted({str(sample["event_date"]) for sample in samples})
     if len(samples) < MIN_SAMPLES or len(days) < MIN_DAYS:
         print(json.dumps({"state": "REFUSED_THIN", "samples": len(samples),
-                          "days": len(days)}))
+                          "days": len(days), "unlabelled": unlabelled}))
         return 3
-    cut = days[int(len(days) * (1.0 - HOLDOUT_SHARE))]
-    train = [s for s in samples if str(s["event_date"]) < cut]
-    held = [s for s in samples if str(s["event_date"]) >= cut]
-    target = sqlite3.connect(f"file:{args.target_db}?mode=ro", uri=True)
-    rows = scorable_rows(held, RootCache(target))
+    cut, train, held, held_start = split_as_of(samples, days)
+    rows = scorable_rows(held, roots)
     zones = {
         str(sample["station_id"]): str(sample["settlement_timezone"])
         for sample in samples
@@ -958,23 +1184,35 @@ def main() -> int:
     split = score_split(
         rows, split_g, incumbent if incumbent_scorable else None
     )
-    arrays = alpha_arrays(rows, split_g)
+    arrays = alpha_arrays(
+        rows, split_g, incumbent if incumbent_scorable else None
+    )
     target.close()
     if arrays is None:
         print(json.dumps({"state": "REFUSED_NO_SCORABLE_ROWS"}))
         return 3
     curve = score_alpha_curve(arrays)
-    # The veto reads what will serve: the curve, scored on days it was not
-    # chosen on.  The three steps stay published beside it (and in-sample,
-    # as before) for code that predates the curve and for the record.
+    # The veto reads what will serve, as the resident could have known it:
+    # the curve walked forward over the held-out days, and the root and the
+    # incumbent on exactly the rows it scored.  The three steps stay
+    # published beside it (in-sample, all held rows) for the record.
     split["candidate_nat_three_bins_in_sample"] = split["candidate_nat"]
-    split["candidate_nat"] = curve["cross_fitted_nat"]
+    split["root_nat_all_held_rows"] = split["root_nat"]
+    split["candidate_nat"] = curve["forward_nat"]
+    split["root_nat"] = curve["forward_root_nat"]
+    if incumbent_scorable:
+        split["incumbent_nat_all_held_rows"] = split.get("incumbent_nat")
+        split["incumbent_nat"] = curve["forward_incumbent_nat"]
     veto: list[str] = []
+    if curve["forward_nat"] is None:
+        print(json.dumps({"state": "REFUSED_NO_FORWARD_DAYS",
+                          "held_days": len(set(arrays["day"].tolist()))}))
+        return 3
     if split["candidate_nat"] - split["root_nat"] < args.margin:
         veto.append(
             f"does_not_beat_root_by_margin:{split['candidate_nat'] - split['root_nat']:+.4f}"
         )
-    if incumbent_scorable and (
+    if incumbent_scorable and split["incumbent_nat"] is not None and (
         split["candidate_nat"] < split["incumbent_nat"] - args.margin
     ):
         veto.append(
@@ -992,6 +1230,18 @@ def main() -> int:
         "from": cut,
         "through": days[-1],
         "scored_rows": len(rows),
+        "training_cut": "strict_as_of_truth_commit_v1",
+        "split_g_truth_known_by": _iso(datetime.fromtimestamp(held_start, timezone.utc)),
+        "split_g_train_samples": len(train),
+        "labels": {
+            "rule": "served_rise_rung_censored_open_top_v1",
+            "samples": len(samples),
+            "unlabelled": unlabelled,
+            "rise_rate": sum(int(s["serving_rise"]) for s in samples) / len(samples),
+            "censored_open_top": sum(
+                1 for s in samples if s["serving_rise"] and s["serving_censored"]
+            ),
+        },
         **{key: value for key, value in split.items() if key != "alpha_by_bin"},
         "alpha_curve": {key: value for key, value in curve.items() if key != "knots_hours"},
         # Charter 157: the offsets the held-out split was scored with.
