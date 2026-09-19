@@ -574,12 +574,19 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
 #   archive    - writes data/archive.db only (SSOT connection is mode=ro)
 #   none       - touches no database at all (packet retention is gzip files on
 #                disk, deliberately: the SSOT sits near its size ceiling)
+#   paper_ledger - writes data/paper_ledger.db only; the SSOT is opened
+#                ``mode=ro`` and the paper file attached (2026-09-19, 「移出」).
+#                No writer lane writes that file, so it excludes nothing.
 # A name missing from this map is treated as an SSOT writer, so a sweep added
 # without a decision here loses throughput rather than the invariant.
 HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     "maker_shadow_probe": "ssot",
     "pr12_awc_observation": "ssot",
-    "paper_trading_ledger": "ssot",
+    # Its four tables left the SSOT for their own file on 2026-09-19: the
+    # pass is almost all reading (7,419 production cycles re-walked per
+    # pass) and it held the SSOT writer for its whole lease regardless --
+    # 62 production cycles waited on it, 4.25 hours of the prior 28.9.
+    "paper_trading_ledger": "paper_ledger",
     "settlement_truth": "ssot",
     "calibration_refit": "ssot",
     "settled_day_cycle_close": "ssot",
@@ -1061,7 +1068,6 @@ WRITER_LEASE_SEC = 240.0
 # the writer (WRITER_TURN_EXEMPT_SWEEPS), and neither is a sweep whose
 # domain excludes no writer lane.
 HOSTED_SWEEP_LEASE_CONTRACT: dict[str, tuple[str, float]] = {
-    "paper_trading_ledger": ("sliced", WRITER_LEASE_SEC),
     "maker_shadow_probe": ("sliced", WRITER_LEASE_SEC),
     "settlement_truth": ("sliced", WRITER_LEASE_SEC),
     "settled_day_cycle_close": ("sliced", WRITER_LEASE_SEC),

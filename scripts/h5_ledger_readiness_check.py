@@ -58,6 +58,8 @@ def main() -> int:
         return 0
     retention = _retention_start()
     conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=60.0)
+    from paper_ledger_reader import attach_paper_ledger  # noqa: PLC0415
+    attach_paper_ledger(conn)
     conn.execute("PRAGMA query_only=ON")
     report: dict[str, object] = {
         "retention_started_utc": retention,

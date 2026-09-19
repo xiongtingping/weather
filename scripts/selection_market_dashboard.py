@@ -105,6 +105,9 @@ STATION_LABELS = {
 def _connect(db: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=60.0)
     conn.execute("PRAGMA busy_timeout=60000")
+    # The paper book this page reads lives beside the SSOT (2026-09-19).
+    from paper_ledger_reader import attach_paper_ledger  # noqa: PLC0415
+    attach_paper_ledger(conn)
     return conn
 
 

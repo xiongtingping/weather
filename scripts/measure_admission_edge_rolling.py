@@ -299,6 +299,8 @@ def main() -> int:
     conn = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=60.0)
     try:
         conn.execute("PRAGMA busy_timeout=60000")
+        from paper_ledger_reader import attach_paper_ledger  # noqa: PLC0415
+        attach_paper_ledger(conn)
         conn.execute("PRAGMA query_only=ON")
         report = measure(
             conn, since=args.since, min_cell_n=args.min_cell_n,

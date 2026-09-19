@@ -58,7 +58,7 @@ def test_every_sweep_declares_a_write_domain(daemon) -> None:
     listed = {name for name, _, _, _ in daemon.HOSTED_SWEEPS}
     assert declared == listed
     assert set(daemon.HOSTED_SWEEP_WRITE_DOMAIN.values()) <= {
-        "ssot", "archive", "none",
+        "ssot", "archive", "none", "paper_ledger",
     }
 
 
@@ -70,7 +70,7 @@ def test_an_undeclared_sweep_is_assumed_to_write_the_ssot(daemon) -> None:
 
 def test_two_ssot_writers_never_start_together(daemon) -> None:
     admitted = daemon.admissible_hosted_sweeps(
-        _due("maker_shadow_probe", "paper_trading_ledger", module=daemon),
+        _due("maker_shadow_probe", "settlement_truth", module=daemon),
         running_names=[],
     )
     assert [item[2] for item in admitted] == ["maker_shadow_probe"]
@@ -100,7 +100,7 @@ def test_a_running_sweep_reserves_its_database(daemon) -> None:
             "correction_review_auto_clear",  # archive -- free
             module=daemon,
         ),
-        running_names=["paper_trading_ledger"],
+        running_names=["settlement_truth"],
     )
     assert [item[2] for item in admitted] == ["correction_review_auto_clear"]
 
@@ -157,7 +157,7 @@ def test_a_generator_of_running_names_is_not_consumed_twice(daemon) -> None:
     # rather than reading as empty on the second use.
     admitted = daemon.admissible_hosted_sweeps(
         _due("maker_shadow_probe", module=daemon),
-        running_names=(name for name in ["paper_trading_ledger"]),
+        running_names=(name for name in ["settlement_truth"]),
     )
     assert admitted == []
 

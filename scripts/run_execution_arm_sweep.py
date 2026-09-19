@@ -149,6 +149,8 @@ def _rebuild(db: Path, env: dict[str, str], through: str | None) -> None:
 
 def _read(db: Path) -> dict[str, float]:
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    from paper_ledger_reader import attach_paper_ledger  # noqa: PLC0415
+    attach_paper_ledger(conn)
     row = conn.execute(
         "SELECT COUNT(*), COALESCE(SUM(s.stake_usdc),0),"
         " COALESCE(SUM(s.pnl_usdc),0), COALESCE(SUM(s.hit),0),"

@@ -82,6 +82,8 @@ LEAD_BANDS = (
 def _connect(db: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=60.0)
     conn.row_factory = sqlite3.Row
+    from paper_ledger_reader import attach_paper_ledger  # noqa: PLC0415
+    attach_paper_ledger(conn)
     return conn
 
 

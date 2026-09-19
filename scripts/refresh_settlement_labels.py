@@ -47,6 +47,8 @@ def main() -> int:
             conn.close()
         return 0
     conn = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=120.0)
+    from paper_ledger_reader import attach_paper_ledger  # noqa: PLC0415
+    attach_paper_ledger(conn)
     try:
         rows, counts = standing_labels(
             conn, floor_event_date=args.floor, only_unlabelled=False,

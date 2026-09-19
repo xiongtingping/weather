@@ -154,6 +154,9 @@ def _odds_from_mean_cost(costs: list[float]) -> float | None:
 def _connect(db: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=60.0)
     conn.execute("PRAGMA busy_timeout=60000")
+    # The paper book's sections read data/paper_ledger.db (2026-09-19).
+    from paper_ledger_reader import attach_paper_ledger  # noqa: PLC0415
+    attach_paper_ledger(conn)
     return conn
 
 
@@ -14047,7 +14050,7 @@ const SWEEP_LABEL = {
   station_onboarding:"新站接入", market_registry_retention:"挂牌目录保留",
   ledger_alignment_guard:"账本对齐守卫", delta_v2_authority:"执行授权续期",
 };
-const SWEEP_DOMAIN = {ssot:"写 SSOT", archive:"写归档库", none:"不写库"};
+const SWEEP_DOMAIN = {ssot:"写 SSOT", archive:"写归档库", none:"不写库", paper_ledger:"写纸面账本库"};
 function sweepDur(sec){
   if(sec == null || !isFinite(sec)) return "—";
   if(sec < 90) return Math.round(sec) + " 秒";

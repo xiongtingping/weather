@@ -281,6 +281,8 @@ def main():
                     help="pair each seat with the chain's previous acted seat instead of a horizon")
     args = ap.parse_args()
     conn = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
+    from paper_ledger_reader import attach_paper_ledger  # noqa: PLC0415
+    attach_paper_ledger(conn)
     conn.execute("PRAGMA query_only=1")
     dump = {}
     horizons = [0.0] if args.chain else [float(h) for h in args.horizons.split(",")]

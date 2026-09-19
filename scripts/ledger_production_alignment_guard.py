@@ -194,6 +194,9 @@ def main() -> int:
     args = parser.parse_args()
 
     conn = sqlite3.connect(str(args.db), timeout=30.0)
+    # The paper book it compares against left the SSOT (2026-09-19).
+    from paper_ledger_reader import attach_paper_ledger  # noqa: PLC0415
+    attach_paper_ledger(conn)
     # The resident owns the single write domain and fail-closes P0/P1 for a
     # whole cycle rather than stall behind a maintenance writer, so this one
     # waits for its turn instead of taking it: the insert is a single small

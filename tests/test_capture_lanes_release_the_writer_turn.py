@@ -163,17 +163,17 @@ def test_an_exempt_capture_still_writes_the_ssot_and_never_starts_beside_an_ssot
         assert daemon.hosted_sweep_write_domain(name) == "ssot"
     due = [
         (5.0, 0, "capture_noaa_conus_forward", "a.sh", 1800.0),
-        (4.0, 1, "paper_trading_ledger", "b.sh", 1800.0),
+        (4.0, 1, "settlement_truth", "b.sh", 1800.0),
     ]
     admitted = daemon.admissible_hosted_sweeps(due, running_names=[])
     assert [item[2] for item in admitted] == ["capture_noaa_conus_forward"]
-    # And the other way round: a more overdue ledger keeps the capture out.
+    # And the other way round: a more overdue SSOT sweep keeps the capture out.
     due = [
-        (5.0, 0, "paper_trading_ledger", "b.sh", 1800.0),
+        (5.0, 0, "settlement_truth", "b.sh", 1800.0),
         (4.0, 1, "capture_noaa_conus_forward", "a.sh", 1800.0),
     ]
     admitted = daemon.admissible_hosted_sweeps(due, running_names=[])
-    assert [item[2] for item in admitted] == ["paper_trading_ledger"]
+    assert [item[2] for item in admitted] == ["settlement_truth"]
 
 
 def test_a_running_capture_holds_the_other_captures_not_the_ssot_queue(daemon):
@@ -193,7 +193,7 @@ def test_a_running_capture_holds_the_other_captures_not_the_ssot_queue(daemon):
 def test_no_capture_starts_while_a_long_transaction_ssot_sweep_runs(daemon):
     due = [(9.0, 0, "capture_dwd_icon_eu_forward", "d.sh", 1800.0)]
     assert daemon.admissible_hosted_sweeps(
-        due, running_names=["paper_trading_ledger"],
+        due, running_names=["settlement_truth"],
     ) == []
 
 
@@ -202,7 +202,7 @@ def test_a_running_capture_no_longer_holds_production_out(daemon):
 
 
 def test_a_long_transaction_ssot_sweep_still_holds_production_out(daemon):
-    assert daemon.writer_excluding_sweeps(["paper_trading_ledger"]) == ["paper_trading_ledger"]
+    assert daemon.writer_excluding_sweeps(["settlement_truth"]) == ["settlement_truth"]
 
 
 def test_a_capture_finishing_is_not_the_sweeps_lane_being_served(daemon):

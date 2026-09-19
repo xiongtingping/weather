@@ -120,7 +120,9 @@ def _latest_settled_event_date(conn: sqlite3.Connection) -> str | None:
 def _candidate_source_exists(conn: sqlite3.Connection) -> bool:
     try:
         return conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE name=? AND type IN ('table','view')",
+            # Every schema: the ledger arm's paper table lives in the
+            # attached paper_ledger file since 2026-09-19.
+            "SELECT 1 FROM pragma_table_list WHERE name=? AND type IN ('table','view')",
             (CANDIDATE_SOURCE,),
         ).fetchone() is not None
     except sqlite3.Error:

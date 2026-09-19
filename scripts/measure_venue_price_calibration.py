@@ -332,6 +332,8 @@ def main() -> int:
     args = parser.parse_args()
 
     conn = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
+    from paper_ledger_reader import attach_paper_ledger  # noqa: PLC0415
+    attach_paper_ledger(conn)
     conn.execute("PRAGMA query_only=1")
 
     book = measure_book(conn, args.since, args.until, args.snapshots_per_day)

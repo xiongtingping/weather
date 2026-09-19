@@ -42,6 +42,7 @@ import json
 import time
 import math
 import os
+import re
 import sqlite3
 import sys
 from collections import defaultdict
@@ -56,6 +57,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target import p1_observation_likelihood  # noqa: E402
+from bayes_basket_target import paper_ledger_store  # noqa: E402
 from bayes_basket_target import taf_likelihood  # noqa: E402
 from bayes_basket_target.center_width_calibration import (  # noqa: E402
     apply_center_width_calibration,
@@ -337,6 +339,8 @@ from bayes_basket_target.center_width_calibration import (  # noqa: E402
 )
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
+# The production book's own file (see ``_connect``).
+PAPER_LEDGER_DB = paper_ledger_store.PAPER_LEDGER_DB
 STAGES = ("P0", "P0-M", "P1")
 INITIAL_CAPITAL_USDC = float(
     os.environ.get("PAPER_LEDGER_INITIAL_CAPITAL", "") or 1000.0
@@ -3352,6 +3356,15 @@ CREATE TABLE IF NOT EXISTS paper_trade_settlement (
 
 
 def _connect(db: Path, *, writable: bool) -> sqlite3.Connection:
+    # The production book lives in its own file (2026-09-19, 「移出」): the
+    # SSOT opens read-only as ``main`` and the paper file is attached, so this
+    # pass never takes the SSOT's write lock and needs no writer turn.  Any
+    # other database -- a replay, an arm, a fixture -- keeps its paper
+    # tables in itself, exactly as before.
+    if db.resolve() == DEFAULT_DB.resolve():
+        return paper_ledger_store.open_ledger_connection(
+            writable=writable, ssot_path=db, ledger_path=PAPER_LEDGER_DB,
+        )
     if writable:
         conn = sqlite3.connect(str(db), timeout=60.0)
     else:
@@ -3370,9 +3383,34 @@ def _connect(db: Path, *, writable: bool) -> sqlite3.Connection:
     return conn
 
 
+_DDL_HEAD = re.compile(
+    r"^(\s*CREATE\s+(?:UNIQUE\s+)?(?:TABLE|INDEX)\s+(?:IF\s+NOT\s+EXISTS\s+)?)"
+)
+
+
+def _in_ledger(conn: sqlite3.Connection, statement: str) -> str:
+    """A CREATE statement aimed at the schema the paper tables live in.
+
+    Everything else about these tables reads unqualified -- an attached
+    file's tables resolve by name -- but an unqualified CREATE lands in
+    ``main``, and with the split layout ``main`` is the read-only SSOT.
+    """
+
+    prefix = paper_ledger_store.schema_prefix(conn)
+    if not prefix:
+        return statement
+    return _DDL_HEAD.sub(lambda m: m.group(1) + prefix, statement, count=1)
+
+
+def _paper_master(conn: sqlite3.Connection) -> str:
+    """The schema table that lists the paper tables on this connection."""
+
+    return paper_ledger_store.schema_prefix(conn) + "sqlite_master"
+
+
 def _position_scope_unique_present(conn: sqlite3.Connection) -> bool:
     row = conn.execute(
-        "SELECT sql FROM sqlite_master WHERE type='table'"
+        f"SELECT sql FROM {_paper_master(conn)} WHERE type='table'"
         " AND name='paper_trade_position'"
     ).fetchone()
     return bool(row) and "UNIQUE(station_id, event_date, stage)" in str(row[0])
@@ -3393,7 +3431,7 @@ def _rebuild_position_without_scope_unique(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE paper_trade_position RENAME TO paper_trade_position_old"
         )
-        conn.execute(_POSITION_DDL)
+        conn.execute(_in_ledger(conn, _POSITION_DDL))
         old_columns = [
             (str(row[1]), str(row[2]), row[3], row[4])
             for row in conn.execute(
@@ -3493,7 +3531,7 @@ def reset_paper_tables(conn: sqlite3.Connection) -> int:
     dropped = 0
     for table in PAPER_TRADE_TABLES:
         if conn.execute(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
+            f"SELECT COUNT(*) FROM {_paper_master(conn)} WHERE type='table'"
             " AND name=?",
             (table,),
         ).fetchone()[0]:
@@ -3512,11 +3550,11 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
     comes back uniformly coded rather than half-translated.
     """
 
-    conn.execute(_POSITION_DDL)
+    conn.execute(_in_ledger(conn, _POSITION_DDL))
     if _position_scope_unique_present(conn):
         _rebuild_position_without_scope_unique(conn)
-    conn.execute(_SETTLEMENT_DDL)
-    conn.execute(_CANDIDATE_WINDOW_DDL)
+    conn.execute(_in_ledger(conn, _SETTLEMENT_DDL))
+    conn.execute(_in_ledger(conn, _CANDIDATE_WINDOW_DDL))
     # ``CREATE TABLE IF NOT EXISTS`` will not widen an existing table, and
     # every row already in one predates the band lineage columns.  They stay
     # NULL rather than being guessed: a row whose band vintage is unknown is
@@ -3548,23 +3586,26 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
                 "ALTER TABLE paper_trade_candidate_window"
                 f" ADD COLUMN {_name} REAL"
             )
-    conn.execute(
+    conn.execute(_in_ledger(
+        conn,
         "CREATE INDEX IF NOT EXISTS idx_candidate_window_scope"
         " ON paper_trade_candidate_window(stage, event_date)"
-    )
+    ))
     # The fit reads (stage, axis, event_date); without this it reads the
     # whole table and filters in Python, which is what made the first
     # lambda refit take ten minutes.
-    conn.execute(
+    conn.execute(_in_ledger(
+        conn,
         "CREATE INDEX IF NOT EXISTS idx_candidate_window_axis"
         " ON paper_trade_candidate_window(stage, band_axis, event_date)"
-    )
-    conn.execute(
+    ))
+    conn.execute(_in_ledger(
+        conn,
         "CREATE INDEX IF NOT EXISTS idx_candidate_window_claim_vintage"
         " ON paper_trade_candidate_window("
         "  stage, band_axis, claim_transform_sha256, event_date)"
-    )
-    conn.execute(_REFUSAL_DDL)
+    ))
+    conn.execute(_in_ledger(conn, _REFUSAL_DDL))
     # Before the reason rebuild below, because that rebuild copies this
     # column by name.
     _refusal_cols = {
@@ -3590,7 +3631,7 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
     # the vocabulary are the one thing still dropped: they cannot pass
     # the new CHECK and re-deriving them is the caller's job.
     row = conn.execute(
-        "SELECT sql FROM sqlite_master WHERE type='table'"
+        f"SELECT sql FROM {_paper_master(conn)} WHERE type='table'"
         " AND name='paper_trade_refusal'"
     ).fetchone()
     live = str((row or [""])[0] or "")
@@ -3602,7 +3643,7 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
                 "ALTER TABLE paper_trade_refusal"
                 " RENAME TO paper_trade_refusal_old"
             )
-            conn.execute(_REFUSAL_DDL)
+            conn.execute(_in_ledger(conn, _REFUSAL_DDL))
             conn.execute(
                 "INSERT INTO paper_trade_refusal ("
                 " station_id, event_date, stage, reason, detail,"
@@ -12199,7 +12240,11 @@ def main() -> int:
                 " pass --backfill or --rebuild too"
             )
     if args.backfill or args.rebuild:
-        conn = _connect(database, writable=True)
+        try:
+            conn = _connect(database, writable=True)
+        except paper_ledger_store.PaperLedgerNotMigrated as exc:
+            print(f"paper ledger not moved out of the SSOT yet: {exc}")
+            return 2
         if args.reset_paper_tables:
             print(
                 "reset %d paper_trade_* tables in %s"

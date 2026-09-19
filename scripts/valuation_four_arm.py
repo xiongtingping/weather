@@ -517,6 +517,8 @@ def main() -> int:
     cutoff = str(args.as_of or "9999-12-31T00:00:00Z")
     read = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=180.0)
     read.execute("PRAGMA busy_timeout=180000")
+    from paper_ledger_reader import attach_paper_ledger  # noqa: PLC0415
+    attach_paper_ledger(read)
     stages = sorted(V.STAGE_SCOPES) if args.stage == "all" else [args.stage]
     results = []
     try:

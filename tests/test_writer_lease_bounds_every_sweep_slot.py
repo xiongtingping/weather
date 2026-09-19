@@ -69,7 +69,7 @@ def test_the_clock_entry_records_duration_and_overrun_for_a_writer_holder() -> N
     entry = daemon.hosted_sweep_clock_entry(
         {"completed_at_utc": "2026-09-15T01:00:00Z"},
         {"state": "ok", "duration_sec": 400.0, "continue": True},
-        name="paper_trading_ledger", now_utc="2026-09-15T02:00:00Z",
+        name="settlement_truth", now_utc="2026-09-15T02:00:00Z",
         lease_sec=240.0,
     )
     assert entry["completed_at_utc"] == "2026-09-15T02:00:00Z"
@@ -83,7 +83,7 @@ def test_a_failed_run_keeps_the_completion_stamp_and_records_no_continuation() -
     entry = daemon.hosted_sweep_clock_entry(
         {"completed_at_utc": "2026-09-15T01:00:00Z"},
         {"state": "timeout_killed", "duration_sec": 1800.0, "continue": True},
-        name="paper_trading_ledger", now_utc="2026-09-15T02:00:00Z",
+        name="settlement_truth", now_utc="2026-09-15T02:00:00Z",
     )
     assert entry["completed_at_utc"] == "2026-09-15T01:00:00Z"
     assert entry["last_state"] == "timeout_killed"

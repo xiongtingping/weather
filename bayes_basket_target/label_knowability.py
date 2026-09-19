@@ -33,7 +33,8 @@ SOURCE_LEDGER_WRITE = "ledger_settlement_write"
 def _has_table(conn: sqlite3.Connection, name: str) -> bool:
     try:
         return conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+            # Every schema (the paper ledger is an attached file since 2026-09-19).
+            "SELECT 1 FROM pragma_table_list WHERE type='table' AND name=?", (name,)
         ).fetchone() is not None
     except sqlite3.Error:
         return False

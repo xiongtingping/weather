@@ -231,6 +231,9 @@ def settlement_counts(conn: sqlite3.Connection | None = None) -> dict[str, int]:
     if handle is None:
         return {}
     try:
+        # The paper book left the SSOT for its own file (2026-09-19).
+        from .paper_ledger_store import attach_paper_ledger  # noqa: PLC0415
+        attach_paper_ledger(handle)
         return {
             str(row[0]).strip().upper(): int(row[1])
             for row in handle.execute(

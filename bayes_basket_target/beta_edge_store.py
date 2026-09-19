@@ -184,7 +184,8 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 def _has_table(conn: sqlite3.Connection, name: str) -> bool:
     return conn.execute(
         # Views count: the candidate source is one (charter 140).
-        "SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name=?",
+        # Every schema (the paper ledger is an attached file since 2026-09-19).
+        "SELECT 1 FROM pragma_table_list WHERE type IN ('table','view') AND name=?",
         (name,),
     ).fetchone() is not None
 

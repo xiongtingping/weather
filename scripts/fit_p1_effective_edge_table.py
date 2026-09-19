@@ -73,6 +73,8 @@ def main() -> int:
 
     conn = sqlite3.connect(f"file:{args.settlements}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
+    from paper_ledger_reader import attach_paper_ledger  # noqa: PLC0415
+    attach_paper_ledger(conn)
     rows = [
         dict(row)
         for row in conn.execute(

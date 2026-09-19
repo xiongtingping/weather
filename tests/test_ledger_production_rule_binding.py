@@ -414,6 +414,7 @@ LEDGER_ONLY = {
     "GATE_REFUSAL_REASON": "same",
     "STAGES": "replay bookkeeping",
     "DEFAULT_DB": "path",
+    "PAPER_LEDGER_DB": "path",
     "OBSERVATION_DB": "path",
     "ROOT": "path",
     # Research arms.  Each is off by default; turning one on is a measurement

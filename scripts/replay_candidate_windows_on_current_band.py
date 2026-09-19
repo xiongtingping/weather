@@ -160,6 +160,8 @@ def main() -> int:
         else sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=180.0)
     )
     conn.execute("PRAGMA busy_timeout=180000")
+    from paper_ledger_reader import attach_paper_ledger  # noqa: PLC0415
+    attach_paper_ledger(conn)
     if str(args.stage) == "all":
         reports = []
         worst = 0
