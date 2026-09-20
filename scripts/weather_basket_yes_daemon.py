@@ -116,6 +116,7 @@ from bayes_basket_target.settlement_time import settlement_day_window
 from bayes_basket_target.strategy_lanes import (
     LANE_CERTAIN_WIN_RECYCLE,
     LANE_MIS_BOUGHT_LEG_EXIT,
+    LANE_P1_TAIL,
     LANE_TIEBREAK,
     lane_enabled,
 )
@@ -3500,6 +3501,33 @@ def run_target_production_cycle(
             )
         except Exception as exc:
             head_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+    # Charter 166: the tail lane at the head too, for the P1 the previous
+    # cycle's last checkpoint wrote.  Its own freshness window (five minutes,
+    # the edge's own half-life) decides whether that envelope is still worth
+    # acting on; running it here only means the question is asked as early as
+    # it can be.  A failure is a receipt, never a stop.
+    p1_tail_head_receipt: dict[str, Any] | None = None
+    if (
+        PRODUCTION_EXECUTION_MODE == "production_live"
+        and head_connection is not None
+        and lane_enabled(LANE_P1_TAIL)
+    ):
+        try:
+            from bayes_basket_target.exit_orders import (
+                default_transport as _tail_head_transport,
+            )
+            from bayes_basket_target.p1_tail_lane import (
+                execute_p1_tail_entries as _tail_head_execute,
+            )
+            p1_tail_head_receipt = _tail_head_execute(
+                head_connection,
+                getattr(worker, "canonical_source_conn", None),
+                transport=_tail_head_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+            )
+        except Exception as exc:
+            p1_tail_head_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     try:
         result = worker.run()
     except sqlite3.OperationalError as exc:
@@ -3664,6 +3692,28 @@ def run_target_production_cycle(
                 "ok": False,
                 "error": f"{type(exc).__name__}:{exc}",
             }
+    # Charter 166: the tail lane, where P1 is freshest -- the decision loop's
+    # own checkpoints (charter 165) have just written it.
+    p1_tail_receipt: dict[str, Any] | None = None
+    if PRODUCTION_EXECUTION_MODE == "production_live" and not lane_enabled(
+        LANE_P1_TAIL
+    ):
+        p1_tail_receipt = {"state": "lane_paused", "lane": LANE_P1_TAIL}
+    elif PRODUCTION_EXECUTION_MODE == "production_live":
+        try:
+            from bayes_basket_target.exit_orders import (
+                default_transport as _tail_transport,
+            )
+            from bayes_basket_target.p1_tail_lane import execute_p1_tail_entries
+            p1_tail_receipt = execute_p1_tail_entries(
+                connection,
+                canonical,
+                transport=_tail_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+            )
+        except Exception as exc:
+            p1_tail_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     return {
         **result,
         "post_cycle_resource_guard": {
@@ -3675,6 +3725,8 @@ def run_target_production_cycle(
         **({"mis_bought_leg_exit": exit_receipt} if exit_receipt else {}),
         **({"tiebreak_lane_head": head_receipt} if head_receipt else {}),
         **({"tiebreak_lane": tiebreak_receipt} if tiebreak_receipt else {}),
+        **({"p1_tail_lane_head": p1_tail_head_receipt} if p1_tail_head_receipt else {}),
+        **({"p1_tail_lane": p1_tail_receipt} if p1_tail_receipt else {}),
     }
 
 

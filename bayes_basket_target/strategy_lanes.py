@@ -48,11 +48,13 @@ LANE_BASKET = "basket"
 LANE_CERTAIN_WIN_RECYCLE = "certain_win_recycle"
 LANE_MIS_BOUGHT_LEG_EXIT = "mis_bought_leg_exit"
 LANE_TIEBREAK = "tiebreak"
+LANE_P1_TAIL = "p1_tail"
 KNOWN_LANES: tuple[str, ...] = (
     LANE_BASKET,
     LANE_CERTAIN_WIN_RECYCLE,
     LANE_MIS_BOUGHT_LEG_EXIT,
     LANE_TIEBREAK,
+    LANE_P1_TAIL,
 )
 
 #: The tiebreak lane's measured settings (33 event days to 2026-09-17, 42
@@ -96,6 +98,39 @@ TIEBREAK_DEFAULT_SETTINGS: dict[str, Any] = {
     "venue_disabled_cooldown_seconds": 3600.0,
 }
 
+#: The P1 tail lane's settings (charter 166, user ruling 2026-09-20 「上线尾段
+#: 车道 p1_tail 策略」).  The belief is the market's own mid ladder under the
+#: hard observed bound times the served P1 observation likelihood; the lane
+#: crosses at the ask when that belief clears the ask by ``hurdle``.
+#:
+#: Measured 2026-09-20 over 09-05..09-19 (9,436 reports, 648 station-days):
+#: in the 6-10h remaining bin, +0.166/$ at the report plus two minutes and
+#: 8c, 13 of 15 days positive; +0.138 at t+5; +0.077 at t+8 with a lower
+#: bound through zero.  Outside the bin it is negative (>=10h: -0.033) or
+#: absent (<6h: eight buys in fifteen days).  See ``p1_tail_lane`` for what
+#: that measurement does and does not support.
+P1_TAIL_DEFAULT_SETTINGS: dict[str, Any] = {
+    # Live small: the bin was chosen after seeing the result and only two of
+    # the fifteen days are days no selection saw.
+    "enabled": True,
+    "stake_usdc": 5.0,
+    "rule": "market_prior_x_p1_likelihood_taker_v1",
+    # 5c / 8c / 12c measured +0.129 / +0.166 / +0.195 per dollar at t+2 with
+    # 12 / 13 / 14 of 15 days positive.  Eight is where the lower bound
+    # cleared zero on every delay this lane will trade at.
+    "hurdle": 0.08,
+    # The bin, read off the envelope's own likelihood receipt.
+    "min_remaining_hours": 6.0,
+    "max_remaining_hours": 10.0,
+    # The edge keeps 83% of itself at five minutes and its lower bound
+    # crosses zero by eight, so an envelope older than this is not a slower
+    # trade -- it is a different one.
+    "envelope_fresh_seconds": 300.0,
+    "book_fresh_seconds": 900.0,
+    # One bucket is bought once ever; this bounds the whole station-day.
+    "max_sends_per_station_day": 2,
+}
+
 #: The per-trade stake is a board dial (charter 146); the server refuses a
 #: value outside this range, and the lane reads whatever the file says.
 TIEBREAK_STAKE_BOUNDS = (1.0, 100.0)
@@ -106,6 +141,7 @@ DEFAULT_LANES: dict[str, dict[str, Any]] = {
     LANE_CERTAIN_WIN_RECYCLE: {"enabled": True},
     LANE_MIS_BOUGHT_LEG_EXIT: {"enabled": True},
     LANE_TIEBREAK: dict(TIEBREAK_DEFAULT_SETTINGS),
+    LANE_P1_TAIL: dict(P1_TAIL_DEFAULT_SETTINGS),
 }
 
 
@@ -210,7 +246,9 @@ __all__ = [
     "LANE_BASKET",
     "LANE_CERTAIN_WIN_RECYCLE",
     "LANE_MIS_BOUGHT_LEG_EXIT",
+    "LANE_P1_TAIL",
     "LANE_TIEBREAK",
+    "P1_TAIL_DEFAULT_SETTINGS",
     "SCHEMA",
     "TIEBREAK_DEFAULT_SETTINGS",
     "config_path",

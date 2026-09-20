@@ -231,3 +231,44 @@ def test_the_re_armed_checkpoints_sit_at_the_heavy_stage_boundaries_with_a_tier(
         and isinstance(node.args[0], ast.Constant)
     ]
     assert direct == ["before_decisions"]
+
+
+def test_a_costly_pass_buys_its_own_quiet(monkeypatch, tmp_path) -> None:
+    """Charter 165's duty cycle: never re-arm more often than the last pass
+    took.  Six checkpoints cost 403s of a 1366s cycle on the first deploy."""
+
+    worker = _worker(tmp_path)
+    clock = [1000.0]
+    monkeypatch.setattr(pw.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(pw, "FAST_LANE_CHECKPOINT_MIN_INTERVAL_SEC", 45.0)
+    calls: list[str] = []
+    monkeypatch.setattr(
+        worker, "_fast_lane_checkpoint",
+        lambda label, mark=True: calls.append(label) or {"label": label},
+    )
+    # A pass that cost four minutes is not re-armed forty-five seconds later.
+    worker._last_fast_lane_checkpoint_mono = 1000.0
+    worker._last_fast_lane_checkpoint_cost_sec = 240.0
+    clock[0] = 1100.0
+    assert worker._fast_lane_checkpoint_if_due("after_regime") is None
+    clock[0] = 1241.0
+    assert worker._fast_lane_checkpoint_if_due("after_regime") is not None
+    # A cheap pass is governed by the interval, as before.
+    worker._last_fast_lane_checkpoint_mono = clock[0]
+    worker._last_fast_lane_checkpoint_cost_sec = 2.0
+    clock[0] += 46.0
+    assert worker._fast_lane_checkpoint_if_due("after_regime") is not None
+    assert calls == ["after_regime", "after_regime"]
+
+
+def test_the_checkpoint_stamps_what_it_cost(monkeypatch, tmp_path) -> None:
+    worker = _worker(tmp_path)
+    _env.mark = (12, 0, "2026-09-19")
+    monkeypatch.setattr(pw, "_stations_with_reports_after", lambda conn, covered: {"ZUUU"})
+    monkeypatch.setattr(worker, "_materialize_early_p0m", lambda **k: None)
+    monkeypatch.setattr(worker, "_materialize_early_p1",
+                        lambda **k: {"ran": True, "p1": {"state": "COMMITTED"}})
+    ticks = iter([100.0, 137.5, 137.5, 137.5, 137.5])
+    monkeypatch.setattr(pw.time, "perf_counter", lambda: next(ticks))
+    worker._fast_lane_checkpoint("after_regime")
+    assert worker._last_fast_lane_checkpoint_cost_sec == pytest.approx(37.5)

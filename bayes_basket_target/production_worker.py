@@ -3549,6 +3549,20 @@ FAST_LANE_CHECKPOINTS_ENABLED = (
 FAST_LANE_CHECKPOINT_MIN_INTERVAL_SEC = float(
     os.environ.get("PM_FAST_LANE_CHECKPOINT_INTERVAL_SEC", "").strip() or 45.0
 )
+#: ... and never more often than the last pass took.  Measured on the first
+#: cycle that ran the re-armed checkpoints (2026-09-20T12:09:53Z): six of
+#: them cost 403s of a 1366s cycle, one of them 242s on its own, against a
+#: charter-165 acceptance of "no more than one extra batch of P1 (30-50s)".
+#: A pass that costs 30 to 240 seconds cannot be re-armed every 45: the
+#: interval has to scale with what the work actually costs, or the cycle
+#: becomes mostly checkpoints and every OTHER stage -- including the
+#: decision loop the freshness was for -- arrives later than before.
+#:
+#: So the wait is ``max(interval, how long the last pass took)``, measured
+#: from when that pass ENDED.  At worst the lane spends half the wall clock
+#: on checkpoints; when a pass is cheap, the interval governs and the P1
+#: still lands within a minute of its report.
+FAST_LANE_CHECKPOINT_DUTY_CYCLE = True
 
 
 def _later_report_watermark(
@@ -15416,10 +15430,13 @@ class TargetProductionWorker:
         if not FAST_LANE_CHECKPOINTS_ENABLED:
             return None
         started = time.perf_counter()
-        # Charter 165: the re-armed checkpoints read this; a pass that found
-        # nothing still counts as a check, so the watermark read runs at most
-        # once per interval.
+        # Charter 165: the re-armed checkpoints read these two.  A pass that
+        # found nothing still counts as a check -- the watermark read is the
+        # cost being rationed -- and the clock is stamped again on the way
+        # out, so the next wait starts from when this pass ENDED and knows
+        # what it cost.
         self._last_fast_lane_checkpoint_mono = time.monotonic()
+        self._last_fast_lane_checkpoint_cost_sec = 0.0
         chain_ran = bool(getattr(self, "_probability_chain_ran", False))
         taf_mark = _taf_inbox_watermark(getattr(self, "taf_inbox_path", None))
         archive = getattr(self, "canonical_source_conn", None)
@@ -15478,6 +15495,8 @@ class TargetProductionWorker:
             receipts = []
             self._fast_lane_receipts = receipts
         receipts.append(receipt)
+        self._last_fast_lane_checkpoint_cost_sec = time.perf_counter() - started
+        self._last_fast_lane_checkpoint_mono = time.monotonic()
         if mark:
             self._mark(f"fast_lane_{label}")
         else:
@@ -15507,10 +15526,15 @@ class TargetProductionWorker:
         if not FAST_LANE_CHECKPOINTS_ENABLED:
             return None
         last = getattr(self, "_last_fast_lane_checkpoint_mono", None)
-        if last is not None and (
-            time.monotonic() - float(last) < FAST_LANE_CHECKPOINT_MIN_INTERVAL_SEC
-        ):
-            return None
+        if last is not None:
+            wait = FAST_LANE_CHECKPOINT_MIN_INTERVAL_SEC
+            if FAST_LANE_CHECKPOINT_DUTY_CYCLE:
+                wait = max(
+                    wait,
+                    float(getattr(self, "_last_fast_lane_checkpoint_cost_sec", 0.0)),
+                )
+            if time.monotonic() - float(last) < wait:
+                return None
         return self._fast_lane_checkpoint(label, mark=mark)
 
     def _materialize_early_p1(
@@ -17650,6 +17674,7 @@ class TargetProductionWorker:
         self._early_p1_watermark = early_report_watermark
         self._mark("early_p1")
         self._last_fast_lane_checkpoint_mono = time.monotonic()
+        self._last_fast_lane_checkpoint_cost_sec = 0.0
         # Close intents the exchange has already answered about, before the
         # cycle spends anything on anything else.
         #
