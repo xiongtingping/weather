@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import time
 import subprocess
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -170,6 +171,27 @@ def parse_cycle(text: str, *, stations: Sequence[str] | None = None) -> list[dic
     return rows
 
 
+# One cycle file is 1.3-1.6 MB and every station in a round wants the same
+# three.  Asked per station that is 135 downloads a round, which is how the
+# TAF ingress took 694 seconds on 2026-09-20; the file itself only changes
+# once an hour, so a round shares one copy.
+_CYCLE_CACHE: dict[str, tuple[float, bytes]] = {}
+CYCLE_CACHE_TTL_SEC = 240.0
+
+
+def _cached_get(url: str, *, timeout_sec: int) -> bytes:
+    now = time.monotonic()
+    hit = _CYCLE_CACHE.get(url)
+    if hit is not None and now - hit[0] < CYCLE_CACHE_TTL_SEC:
+        return hit[1]
+    payload = _get(url, timeout_sec=timeout_sec)
+    for key, (stamp, _value) in list(_CYCLE_CACHE.items()):
+        if now - stamp >= CYCLE_CACHE_TTL_SEC:
+            _CYCLE_CACHE.pop(key, None)
+    _CYCLE_CACHE[url] = (now, payload)
+    return payload
+
+
 def _get(url: str, *, timeout_sec: int) -> bytes:
     request = urllib.request.Request(
         url, headers={"User-Agent": USER_AGENT, "Accept": "text/plain"}
@@ -220,7 +242,7 @@ def fetch_taf_rows(
     if not station:
         raise ValueError("tgftp_taf_station_required")
     now = reference or datetime.now(timezone.utc)
-    fetch = getter or (lambda url: _get(url, timeout_sec=timeout_sec))
+    fetch = getter or (lambda url: _cached_get(url, timeout_sec=timeout_sec))
     rows: dict[tuple[str, str], dict[str, Any]] = {}
     digest = hashlib.sha256()
     total = 0

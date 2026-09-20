@@ -115,6 +115,60 @@ class CycleSelectionTest(unittest.TestCase):
         )
         self.assertEqual(len(rows), 1)
 
+    def test_a_round_downloads_each_cycle_file_once_for_the_whole_fleet(self) -> None:
+        """One cycle file is 1.3-1.6 MB and every station wants the same
+        three.  Asked per station that was 135 downloads a round, which is
+        how the TAF ingress took 694 seconds on 2026-09-20."""
+
+        calls = []
+        original = tgftp._get
+        tgftp._CYCLE_CACHE.clear()
+
+        def fake_get(url, *, timeout_sec):
+            calls.append(url)
+            return CYCLE_00Z.encode()
+
+        tgftp._get = fake_get
+        try:
+            for station in ("ZUUU", "KJFK", "EDDM"):
+                tgftp.fetch_taf_rows(
+                    station, cycles=3,
+                    reference=datetime(2026, 9, 20, 2, 40, tzinfo=timezone.utc),
+                )
+        finally:
+            tgftp._get = original
+            tgftp._CYCLE_CACHE.clear()
+        self.assertEqual(len(calls), 3, calls)
+
+    def test_a_stale_copy_is_refetched(self) -> None:
+        calls = []
+        original = tgftp._get
+        tgftp._CYCLE_CACHE.clear()
+
+        def fake_get(url, *, timeout_sec):
+            calls.append(url)
+            return CYCLE_00Z.encode()
+
+        tgftp._get = fake_get
+        try:
+            tgftp.fetch_taf_rows(
+                "ZUUU", cycles=1,
+                reference=datetime(2026, 9, 20, 2, 40, tzinfo=timezone.utc),
+            )
+            # Age every copy past the window the round shares.
+            tgftp._CYCLE_CACHE.update({
+                url: (stamp - tgftp.CYCLE_CACHE_TTL_SEC - 1.0, payload)
+                for url, (stamp, payload) in tgftp._CYCLE_CACHE.items()
+            })
+            tgftp.fetch_taf_rows(
+                "ZUUU", cycles=1,
+                reference=datetime(2026, 9, 20, 2, 40, tzinfo=timezone.utc),
+            )
+        finally:
+            tgftp._get = original
+            tgftp._CYCLE_CACHE.clear()
+        self.assertEqual(len(calls), 2, calls)
+
     def test_every_cycle_failing_is_a_failed_fetch(self) -> None:
         def getter(url):
             raise RuntimeError("tgftp_taf_curl_exit_60")
