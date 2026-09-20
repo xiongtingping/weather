@@ -110,3 +110,47 @@ def test_the_two_silent_readers_call_the_guard() -> None:
             and node.module == "bayes_basket_target.offloaded_paths"
         ]
         assert imported, f"{name} does not import the guard"
+
+def test_a_containment_check_must_not_resolve_only_one_side(tmp_path: Path) -> None:
+    """The failure the first migration actually produced, and the reason the
+    audit's exclusion is no longer ``.resolve()``d.
+
+    ``data/research`` is a symlink now.  Resolving the exclusion root while
+    globbing unresolved paths made ``root in path.parents`` false for every
+    file, so the resource audit counted the raw arrivals it exists to leave
+    out.  Both sides have to be spelled the same way.
+    """
+
+    volume = tmp_path / "volume"
+    (volume / "arrivals" / "deep").mkdir(parents=True)
+    target = volume / "arrivals" / "deep" / "f.json"
+    target.write_text("{}", encoding="utf-8")
+    link = tmp_path / "research"
+    link.symlink_to(volume)
+
+    globbed = next(link.glob("arrivals/**/*.json"))
+    resolved_root = (link / "arrivals").resolve()
+    plain_root = link / "arrivals"
+    # One side resolved: the check silently stops matching.
+    assert resolved_root not in globbed.parents
+    # Both sides in the same spelling: it matches, symlink or not.
+    assert plain_root in globbed.parents
+
+
+def test_the_document_authority_path_must_stay_inside_the_repository() -> None:
+    """``data/reports`` came back from the volume for this.
+
+    It carries a doctrine markdown that the document-authority audit resolves
+    and then requires to be under the repository root.  A symlink resolves
+    outside it, so the audit raised ``document_authority_path_outside_repository``
+    -- loudly, but the directory simply cannot live off-volume.  The migration
+    test 「no reference inside the package」 did not catch it, because the
+    reader is a script; what made it a hard dependency was the containment
+    check, not the reader.
+    """
+
+    reports = ROOT / "data" / "reports"
+    assert reports.is_dir() and not reports.is_symlink(), (
+        "data/reports must stay on the internal disk: the document authority"
+        " audit requires its doctrine markdown to resolve inside the repository"
+    )

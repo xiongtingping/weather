@@ -73,7 +73,12 @@ def _reference_files(root: Path) -> list[Path]:
     return sorted(path for path in files if path.is_file())
 
 
-RAW_ROOT_EXCLUSION = (ROOT / "data" / "research" / "bayes_basket_target" / "model_arrivals").resolve()
+# NOT resolved.  The paths it is compared against come out of
+# ``research_root.glob(...)`` unresolved, and ``data/research`` is a symlink
+# to the external volume (charter 167): resolving one side and not the other
+# made this exclusion match nothing, so the audit counted the very raw files
+# it exists to leave out.  Both sides stay in the repository's own spelling.
+RAW_ROOT_EXCLUSION = ROOT / "data" / "research" / "bayes_basket_target" / "model_arrivals"
 
 
 def _inside(path: Path, root: Path) -> bool:

@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import pickle
 import sqlite3
 import threading
@@ -461,6 +462,83 @@ def _bucket_sort_key(row: Mapping[str, Any]) -> tuple[float, float, str]:
     return low, high, str(row.get("outcome") or "")
 
 
+#: How many price levels of each side are stored verbatim before the rest are
+#: folded into one.  Charter 168 (user ruling 2026-09-20 「盘口截断（只对新写
+#: 入）」): the store was 55 GiB on a volume with nineteen free, and
+#: ``buckets_json`` was the largest single column -- 22 KiB a snapshot,
+#: 593,012 snapshots.  Measured over the 400 most recent snapshots (7,157
+#: bucket sides): the median side carries 16 levels and the deepest 108, and
+#: 59.2% carry more than five.
+#:
+#: The tail is FOLDED, not dropped.  Plain truncation would have been 0.4 GiB
+#: cheaper across the table and wrong: the sizing layer reads
+#: ``sum(level.shares)`` as the liquidity available at a price
+#: (``delta_v2_runtime._maker_resting_band``, live for P0-M), and five levels
+#: hold a median 23.8% of a side's depth -- 0.9% at the tenth percentile.  One
+#: folded level carrying the remaining shares at their share-weighted price
+#: keeps that sum exact: 7,183 of 7,183 sides reproduced it to the float.
+#:
+#: What the fold does change is a walk PAST the fifth level, which now meets
+#: one averaged rung instead of the true ladder.  Production does not go
+#: there: the largest order this system has ever sent is 50 shares (median
+#: 9.6), and 97.8% of bucket sides hold 50 or more in their first five levels.
+#:
+#: ``PM_WS_DEPTH_HEAD_LEVELS=0`` stores every level, as before.
+DEPTH_HEAD_LEVELS = 5
+DEPTH_HEAD_LEVELS_ENV = "PM_WS_DEPTH_HEAD_LEVELS"
+
+
+def depth_head_levels() -> int:
+    """How many levels to keep verbatim; 0 disables folding entirely."""
+
+    raw = os.environ.get(DEPTH_HEAD_LEVELS_ENV, "").strip()
+    if not raw:
+        return DEPTH_HEAD_LEVELS
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return DEPTH_HEAD_LEVELS
+
+
+def fold_depth_tail(
+    levels: Sequence[Mapping[str, float]], *, head: int | None = None, ascending: bool,
+) -> list[dict[str, float]]:
+    """Keep the first ``head`` levels and fold the rest into one.
+
+    The folded level carries the tail's total shares at the tail's
+    share-weighted price, and nothing else: a level is two keys here and
+    stays two, because the kernel's own parser reads exactly those and a
+    third would be a shape change for every reader to absorb.
+
+    Returns the input unchanged when folding is off, when there is nothing to
+    gain (a tail of one), or -- the fail-safe -- when the result would not be
+    strictly monotone, which is the invariant ``contracts`` enforces on the
+    way back in.  ``ascending`` says which side this is.
+    """
+
+    keep = depth_head_levels() if head is None else int(head)
+    rows = [dict(level) for level in levels or ()]
+    if keep <= 0 or len(rows) <= keep + 1:
+        return rows
+    tail = rows[keep:]
+    shares = sum(float(level.get("shares") or 0.0) for level in tail)
+    if shares <= 0.0:
+        return rows
+    price = sum(
+        float(level.get("price") or 0.0) * float(level.get("shares") or 0.0)
+        for level in tail
+    ) / shares
+    folded = rows[:keep] + [{"price": price, "shares": shares}]
+    prices = [float(level["price"]) for level in folded]
+    ordered = (
+        all(b > a for a, b in zip(prices, prices[1:])) if ascending
+        else all(b < a for a, b in zip(prices, prices[1:]))
+    )
+    if not ordered or not 0.0 < price <= 1.0:
+        return rows
+    return folded
+
+
 def _ask_levels(
     quote: Mapping[str, Any],
     *,
@@ -857,6 +935,12 @@ def _scope_quote_values(
             if raw_best_ask not in (None, ""):
                 raise ContractError("official_ws_best_ask_without_depth")
             best_ask = None
+        # Charter 168: the tail of each side is folded into one level here --
+        # AFTER the tick size has been derived from the real ladder above,
+        # because a share-weighted price is not tick aligned and deriving the
+        # tick from it would put a wrong tick on the bucket.
+        ask_levels = fold_depth_tail(ask_levels, ascending=True)
+        bid_levels = fold_depth_tail(bid_levels, ascending=False)
         bucket_values.append({
             "bucket": str(row["outcome"]),
             "ordinal": ordinal,
