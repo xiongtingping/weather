@@ -19672,9 +19672,18 @@ function tiebreakLane(){
     <div class="muted">挂单这版从 2026-09-20 起重新计；上面三条验收灯把两版合在一起算，真正的判据读这张表里挂单那一行。</div></details>`:"";
   const gapTxt=g=>g==null?"—":(g>=120?`${(g/60).toFixed(1)} 小时`:`${Math.round(g)} 分钟`);
   const mixTxt=m=>{const k=Object.keys(m||{});return k.length?k.map(x=>`${h(x)} ${m[x]}`).join(" / "):"—";};
+  // A bin's realised-minus-paid is a measurement only once it has enough
+  // settled trades to take more than a handful of values.  At n=3 it can be
+  // exactly one of four numbers (-50.8, -17.5, +15.9, +49.2 points at a 0.51
+  // price): printed as "-0.175" it reads like an effect when it is "1 中 2
+  // 空".  Under MIN_SETTLED the cell says the count instead, and the
+  // population column beside it is what the bin is actually read on.
+  const MIN_SETTLED=10;
+  const thinTxt=f=>`<span class="muted">${f.hits==null?"—":f.hits}/${f.settled} 中<br><span style="font-size:.85em">太少，读右边人口列</span></span>`;
   const featCells=f=>`<td class="mono">${gapTxt(f.median_gap_minutes)}</td><td class="mono">${mixTxt(f.stage_mix)}</td>`
     +`<td class="mono">${f.evaluated}</td><td class="mono">${f.sent==null?"—":f.sent}</td>`
-    +`<td class="mono">${f.settled==null?"—":f.settled}</td><td class="mono">${f.realised_minus_ask==null?"—":sp(f.realised_minus_ask)}</td>`
+    +`<td class="mono">${f.settled==null?"—":f.settled}</td>`
+    +`<td class="mono">${f.realised_minus_ask==null?"—":(f.settled<MIN_SETTLED?thinTxt(f):sp(f.realised_minus_ask))}</td>`
     +`<td class="mono">${f.population==null?"—":f.population}</td><td class="mono">${f.population_hit_rate==null?"—":pc(f.population_hit_rate)}</td>`
     +`<td class="mono">${f.population_avg_price==null?"—":n3(f.population_avg_price)}</td>`
     +`<td class="mono">${f.population_realised_minus_price==null?"—":sp(f.population_realised_minus_price)}</td>`;
@@ -19685,7 +19694,8 @@ function tiebreakLane(){
   const featTable=feat?`<details open style="margin-top:8px"><summary>特征（只记不交易）：市场自上一决策向模型桶靠拢多少，分档看本线成交的实现</summary>
     <table><thead>${featHead}</thead><tbody>${feat}</tbody></table>
     ${featStage?`<div class="muted"><b>这张表的分档轴和阶段是缠在一起的，先看下面那张。</b>本线只评每个阶段的第一次决策，所以「上一决策」必然是上一个阶段的那次——2026-09-20 全部 207 条带特征的行里，106 条 P1←P0-M、99 条 P0-M←P0、2 条 P1←P0，没有一条是同阶段内的。两种过渡差一个数量级：P0-M 行离参照点中位 47 分钟、只有 10.1% 落进「≥3 点」；P1 行中位 739 分钟、55.6% 落进去。于是「靠拢 ≥3 点」这一档，头一层意思其实是「这是一条 P1 行」。</div>
-    <div class="muted">「人口」列是全部评估行（触发与否都算）里站日已结算的那些，问的是模型众数桶有没有落、市场当时给它什么价——只记不交易的特征本来就该在全量人口上读，成交那几笔太少。</div>`:`<div class="muted">参照间隔、阶段构成与人口三组列要等下一次整库渲染才有值。</div>`}</details>`:"";
+    <div class="muted">「人口」列是全部评估行（触发与否都算）里站日已结算的那些，问的是模型众数桶有没有落、市场当时给它什么价——只记不交易的特征本来就该在全量人口上读，成交那几笔太少。</div>
+    <div class="muted"><b>已结算不足 10 笔的格，「成交 实现−实付」不显示数字，只报「几中几」。</b>三笔的格子只能取四个值（0.51 的价位上是 −50.8 / −17.5 / +15.9 / +49.2 点），中间什么都没有——那不是一个测量值，是硬币的结果。举例：2026-09-20 看板上「没动或远离」读 −17.5 点（3 笔中 1 笔），而同一个档在 388 站日的历史重放里是 <b>+6.6 点、ROI +10.9%</b>，比其余档还略好；若真实命中率就是那 57.8%，三笔里只中 0 或 1 笔的概率有 38%。把这一档排除掉，整体 ROI 从 +7.9% 掉到 +7.5%。</div>`:`<div class="muted">参照间隔、阶段构成与人口三组列要等下一次整库渲染才有值。</div>`}</details>`:"";
   const featStageTable=featStage?`<details open style="margin-top:8px"><summary>同一分档，把阶段过渡固定住（参照间隔可比了才是在量动量）</summary>
     <table><thead><tr><th>到哪个阶段</th><th>本阶段动量中位</th><th>其中最终没中的中位</th>${featHead.slice(4)}</thead><tbody>${featStage}</tbody></table>
     <div class="muted"><b>「+3 点」不是中性零点。</b>两次决策之间市场的挂牌阶梯会收窄，于是任何一个桶的归一化份额都会机械地涨——在模型众数桶<b>最终没中</b>的那些行上，动量平均也有 +3.1 点（P1 +4.0、P0-M +0.6）。所以同一条「≥3 点」，在 P0-M 是「高于漂移」、在 P1 是「低于漂移」，这也是它在两个阶段里符号相反的原因。要当规则就得把门槛钉在「本阶段最终没中的那些行的中位」上方，那才是「比阶梯自己收窄得更多」。</div>
