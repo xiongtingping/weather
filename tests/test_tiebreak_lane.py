@@ -478,6 +478,50 @@ def test_the_market_move_since_the_previous_decision_is_recorded_not_gated(store
     assert receipt["submitted"] == 1
 
 
+def test_the_reference_point_is_always_the_previous_stage_never_the_same_one(store) -> None:
+    """What the recorded move is measured against.
+
+    The lane only ever scores a stage's FIRST decision, so the decision
+    before it cannot belong to that stage -- it is the last decision of an
+    earlier one.  Seed a P0 and then TWO P0-M decisions: the scored row is
+    the earlier P0-M, and its reference is the P0, not its own stage's
+    later decision, and not any same-stage row.  This is why the pooled
+    momentum bin is confounded with the stage schedule (2026-09-20: all 207
+    live rows carrying the feature cross a stage boundary, P0-M rows a
+    median 47 minutes and P1 rows a median 739 minutes), and why the board
+    also splits the feature with the transition held fixed.
+    """
+
+    day = "2026-09-20"
+    _seed(store, stage="P0", fact_id="r0", decided="2026-09-18T09:00:00.000Z", event_date=day,
+          probabilities={"27°C": 0.6, "28°C": 0.3, "29°C": 0.1},
+          book=_book(asks_28=((0.40, 100.0),), bid_28=0.38))
+    _seed(store, stage="P0-M", fact_id="r1", decided="2026-09-18T12:02:00.000Z", event_date=day)
+    _seed(store, stage="P0-M", fact_id="r2", decided="2026-09-18T12:06:00.000Z", event_date=day)
+    lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
+                                  live_submit_authorized=True, settings={"stake_usdc": 20.0},
+                                  admission=ADMIT)
+    scored = {
+        r[0]: r for r in store.execute(
+            f"SELECT stage, fact_id, decision_at_utc, prev_decision_at_utc, prev_gap_minutes"
+            f" FROM {lane.EVALUATION_TABLE} WHERE event_date=?", (day,),
+        )
+    }
+    # One row per stage, and the P0-M row is the stage's FIRST decision.
+    assert scored["P0-M"][1] == "r1" and scored["P0-M"][2] == "2026-09-18T12:02:00.000Z"
+    # Its reference is the P0 -- not the later same-stage decision, and not itself.
+    assert scored["P0-M"][3] == "2026-09-18T09:00:00.000Z"
+    assert scored["P0-M"][4] == pytest.approx(182.0)
+    same_stage = {r[0] for r in store.execute(
+        f"SELECT f.stage FROM {lane.EVALUATION_TABLE} e"
+        f" JOIN basket_policy_training_fact f"
+        f"  ON f.station_id=e.station_id AND f.event_date=e.event_date"
+        f"  AND f.decision_at_utc=e.prev_decision_at_utc"
+        f" WHERE e.prev_decision_at_utc IS NOT NULL AND f.stage=e.stage",
+    )}
+    assert same_stage == set()
+
+
 def test_the_lane_file_selects_v1_and_the_row_says_which_rule_scored_it(store) -> None:
     """A stage scored under v1 keeps v1's version on its row; v2 rows sit
     beside it (user ruling: v1's forward sample is not overwritten)."""

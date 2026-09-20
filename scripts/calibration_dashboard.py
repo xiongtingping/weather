@@ -10814,7 +10814,25 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     # station-day's previous decision -- and, per bin, what the lane's own
     # trades realised.  Recorded, never gated on; this is where the forward
     # sample says whether the momentum split holds.
+    #
+    # The reference point is NOT a market clock, it is the stage schedule.
+    # The lane only ever scores a stage's FIRST decision, so the decision
+    # before it necessarily belongs to the PREVIOUS stage: 2026-09-20, all
+    # 207 rows carrying the feature split 106 P1<-P0-M, 99 P0-M<-P0, 2
+    # P1<-P0, and none within a stage.  The two transitions are an order of
+    # magnitude apart -- P0-M rows sit a median 47 minutes from their
+    # reference and put 10.1% of themselves in the >=3 point bin, P1 rows
+    # sit a median 739 minutes out and put 55.6% there -- so the pooled bin
+    # "converged >= 3 points" reads, to first order, "this is a P1 row".
+    # ``feature_split_by_stage`` therefore holds the transition fixed, and
+    # every bin carries its own reference gap so the confound is on the
+    # board rather than in a note.  ``population`` scores the model's mode
+    # bucket against the market's price on it over EVERY evaluation row of
+    # a settled station-day, fired or not: the docstring's promise is that
+    # the forward sample is the whole population, and 113 rows say
+    # something nine trades cannot.
     feature_split: list[dict[str, Any]] = []
+    feature_split_by_stage: list[dict[str, Any]] = []
     if has_eval and any(
         row[1] == "market_move_on_model_mode"
         for row in conn.execute("PRAGMA table_info(tiebreak_lane_evaluation)")
@@ -10825,19 +10843,50 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             ("靠拢 0–3 点", lambda v: 0.0 <= v < 0.03),
             ("没动或远离", lambda v: v < 0.0),
         ]
-        rows_feat = conn.execute(
-            "SELECT market_move_on_model_mode, fired, refusal, order_intent_id, spread_on_model_mode"
-            " FROM tiebreak_lane_evaluation WHERE market_move_on_model_mode IS NOT NULL"
-        ).fetchall()
-        for label, test in bins:
-            sel = [r for r in rows_feat if test(float(r[0]))]
-            fired_n = sum(1 for r in sel if r[1])
-            sent_n = sum(1 for r in sel if r[1] and r[2] is None)
-            settled_t = [by_intent[r[3]] for r in sel if r[3] in by_intent and by_intent[r[3]].get("hit") is not None]
+        rows_feat = [
+            {
+                "move": float(r[0]), "fired": r[1], "refusal": r[2],
+                "intent": r[3], "spread": r[4], "stage": str(r[5] or ""),
+                "gap": (float(r[6]) if r[6] is not None else None),
+                "station_id": str(r[7]), "event_date": str(r[8]),
+                "model_mode": (str(r[9]) if r[9] is not None else None),
+                "price": (float(r[10]) if r[10] is not None else None),
+            }
+            for r in conn.execute(
+                "SELECT market_move_on_model_mode, fired, refusal, order_intent_id,"
+                " spread_on_model_mode, stage, prev_gap_minutes, station_id, event_date,"
+                " model_mode, market_share_on_model_mode"
+                " FROM tiebreak_lane_evaluation WHERE market_move_on_model_mode IS NOT NULL"
+            )
+        ]
+        # The population's own verdict: did the model's mode bucket land, and
+        # what was the market charging for it.  Settled buckets come from the
+        # book's own resolver (truth lane fallback included), never restated.
+        pop_settled = _live_settled_buckets(
+            conn, {(r["station_id"], r["event_date"]) for r in rows_feat},
+        )
+        for row in rows_feat:
+            landed = pop_settled.get((row["station_id"], row["event_date"]))
+            row["pop_hit"] = (
+                int(landed[0] == row["model_mode"])
+                if landed and row["model_mode"] is not None else None
+            )
+
+        def _bin_stats(sel: list[dict[str, Any]], label: str) -> dict[str, Any]:
+            fired_n = sum(1 for r in sel if r["fired"])
+            sent_n = sum(1 for r in sel if r["fired"] and r["refusal"] is None)
+            settled_t = [
+                by_intent[r["intent"]] for r in sel
+                if r["intent"] in by_intent and by_intent[r["intent"]].get("hit") is not None
+            ]
             hits = sum(1 for t in settled_t if t["hit"])
             shares_t = sum(t["filled_size"] for t in settled_t)
             stake_t = sum(t["filled_notional_usdc"] for t in settled_t)
-            feature_split.append({
+            gaps = sorted(r["gap"] for r in sel if r["gap"] is not None)
+            pop = [r for r in sel if r["pop_hit"] is not None and r["price"] is not None]
+            pop_rate = (sum(r["pop_hit"] for r in pop) / len(pop)) if pop else None
+            pop_price = (sum(r["price"] for r in pop) / len(pop)) if pop else None
+            return {
                 "bin": label, "evaluated": len(sel), "fired": fired_n, "sent": sent_n,
                 "settled": len(settled_t), "hits": hits,
                 "hit_rate": (hits / len(settled_t)) if settled_t else None,
@@ -10846,14 +10895,69 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
                     (hits / len(settled_t)) - (stake_t / shares_t)
                     if settled_t and shares_t > 0 else None
                 ),
-            })
+                "median_gap_minutes": (gaps[len(gaps) // 2] if gaps else None),
+                "stage_mix": {
+                    stage: sum(1 for r in sel if r["stage"] == stage)
+                    for stage in sorted({r["stage"] for r in sel})
+                },
+                "population": len(pop), "population_hits": (
+                    sum(r["pop_hit"] for r in pop) if pop else 0
+                ),
+                "population_hit_rate": pop_rate,
+                "population_avg_price": pop_price,
+                "population_realised_minus_price": (
+                    pop_rate - pop_price if pop_rate is not None and pop_price is not None
+                    else None
+                ),
+            }
+
+        for label, test in bins:
+            feature_split.append(
+                _bin_stats([r for r in rows_feat if test(r["move"])], label),
+            )
         feature_split.append({
             "bin": "无上一决策（不可比）", "evaluated": int(conn.execute(
                 "SELECT COUNT(*) FROM tiebreak_lane_evaluation"
                 " WHERE market_move_on_model_mode IS NULL AND rule_version LIKE '%v2_1'"
             ).fetchone()[0]), "fired": None, "sent": None, "settled": None, "hits": None,
             "hit_rate": None, "avg_ask": None, "realised_minus_ask": None,
+            "median_gap_minutes": None, "stage_mix": {}, "population": 0,
+            "population_hits": None, "population_hit_rate": None,
+            "population_avg_price": None, "population_realised_minus_price": None,
         })
+        # The same bins with the stage transition held fixed.  A stage is
+        # named by where it arrives, because where it came from is fixed:
+        # the previous decision is always the previous stage's.
+        for stage in sorted({r["stage"] for r in rows_feat if r["stage"]}):
+            in_stage = [r for r in rows_feat if r["stage"] == stage]
+            # The stage's own drift.  The recorded move is not centred on
+            # zero: between two stages the market's quoted ladder narrows,
+            # so the normalised share on ANY bucket tends to rise.
+            # 2026-09-20, over the rows whose station-day has settled, the
+            # move averages +3.1 points on the rows where the model's mode
+            # bucket LOST (+4.0 on P1, +0.6 on P0-M) -- a fixed "+3 points"
+            # therefore reads as "above drift" on P0-M and "below drift" on
+            # P1, which is how the same bin comes out the opposite sign in
+            # the two.  The neutral point is the stage's own median, and the
+            # losers' median is where a threshold would have to sit to mean
+            # "converged more than the ladder did by itself".
+            moves = sorted(r["move"] for r in in_stage)
+            losers = sorted(
+                r["move"] for r in in_stage
+                if r["pop_hit"] is not None and r["pop_hit"] == 0
+            )
+            neutral = moves[len(moves) // 2] if moves else None
+            loser_neutral = losers[len(losers) // 2] if losers else None
+            for label, test in bins:
+                sel = [r for r in in_stage if test(r["move"])]
+                if not sel:
+                    continue
+                stats = _bin_stats(sel, label)
+                stats["stage"] = stage
+                stats["stage_median_move"] = neutral
+                stats["stage_loser_median_move"] = loser_neutral
+                stats["stage_losers"] = len(losers)
+                feature_split_by_stage.append(stats)
     # The same three numbers per rule version, so the 09-25 review reads the
     # resting rule on its own sample (charter 163).
     by_version: list[dict[str, Any]] = []
@@ -10879,6 +10983,7 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
         })
     out["by_rule_version"] = by_version
     out["feature_split"] = feature_split
+    out["feature_split_by_stage"] = feature_split_by_stage
     out["trades"] = {
         "available": True,
         "sent": len(trades), "filled": len(filled_rows),
@@ -19555,7 +19660,7 @@ function tiebreakLane(){
     ${cond(A.lower_bound_positive,"① 实现−实付均价 日聚类下界 > 0")}
     ${cond(A.halves_same_sign,"② 前后半段同号"+(R.halves&&R.halves.first!=null?`（${sp(R.halves.first)} / ${sp(R.halves.second)}）`:""))}
     ${cond((A.event_days||0)>=(A.event_days_needed||30),`③ 事件日 ${A.event_days||0} / ${A.event_days_needed||30}`)}
-    <span class="muted">三条同时满足才算过；不过则关掉本线、恢复其余车道（同一文件）。首次复核 09-25。</span>
+    <span class="muted">三条同时满足才算过；不过则关掉本线、恢复其余车道（同一文件）。首次复核 09-25。注意：09-20 前是吃卖一、09-20 起是挂买一+1，这三条把两版混在一起算，按上面的「按规则版本」分开读。</span>
   </div>`:"";
   const refusals=(E.refusals||[]).map(r=>`<tr><td class="mono">${h(r.refusal)}</td><td class="mono">${r.count}</td><td class="mono">${r.fired}</td></tr>`).join("");
   const refTable=E.available&&refusals?`<details style="margin-top:8px"><summary>为什么没买（评估结果分布，${E.total} 条）</summary>
@@ -19565,10 +19670,26 @@ function tiebreakLane(){
   const versTable=vers?`<details open style="margin-top:8px"><summary>按下单方式分开算（宪章 163：吃卖一的 v2.1 与挂买一+1 的 v2.2 是两个策略，不混算）</summary>
     <table><thead><tr><th>规则版本</th><th>成交</th><th>已结算</th><th>事件日</th><th>投入</th><th>盈亏</th><th>命中率</th><th>实付均价</th><th>实现−实付均价</th></tr></thead><tbody>${vers}</tbody></table>
     <div class="muted">挂单这版从 2026-09-20 起重新计；上面三条验收灯把两版合在一起算，真正的判据读这张表里挂单那一行。</div></details>`:"";
-  const feat=(T.feature_split||[]).map(f=>`<tr><td>${h(f.bin)}</td><td class="mono">${f.evaluated}</td><td class="mono">${f.fired==null?"—":f.fired}</td><td class="mono">${f.sent==null?"—":f.sent}</td><td class="mono">${f.settled==null?"—":f.settled}</td><td class="mono">${f.hit_rate==null?"—":pc(f.hit_rate)}</td><td class="mono">${f.avg_ask==null?"—":n3(f.avg_ask)}</td><td class="mono">${f.realised_minus_ask==null?"—":sp(f.realised_minus_ask)}</td></tr>`).join("");
+  const gapTxt=g=>g==null?"—":(g>=120?`${(g/60).toFixed(1)} 小时`:`${Math.round(g)} 分钟`);
+  const mixTxt=m=>{const k=Object.keys(m||{});return k.length?k.map(x=>`${h(x)} ${m[x]}`).join(" / "):"—";};
+  const featCells=f=>`<td class="mono">${gapTxt(f.median_gap_minutes)}</td><td class="mono">${mixTxt(f.stage_mix)}</td>`
+    +`<td class="mono">${f.evaluated}</td><td class="mono">${f.sent==null?"—":f.sent}</td>`
+    +`<td class="mono">${f.settled==null?"—":f.settled}</td><td class="mono">${f.realised_minus_ask==null?"—":sp(f.realised_minus_ask)}</td>`
+    +`<td class="mono">${f.population==null?"—":f.population}</td><td class="mono">${f.population_hit_rate==null?"—":pc(f.population_hit_rate)}</td>`
+    +`<td class="mono">${f.population_avg_price==null?"—":n3(f.population_avg_price)}</td>`
+    +`<td class="mono">${f.population_realised_minus_price==null?"—":sp(f.population_realised_minus_price)}</td>`;
+  const featHead=`<tr><th>靠拢量</th><th>参照间隔中位</th><th>阶段构成</th><th>评估</th><th>发单</th><th>已结算成交</th><th>成交 实现−实付</th><th>人口 n</th><th>人口命中率</th><th>市场均价</th><th>人口 实现−价</th></tr>`;
+  const feat=(T.feature_split||[]).map(f=>`<tr><td>${h(f.bin)}</td>${featCells(f)}</tr>`).join("");
+  const ptTxt=v=>v==null?"—":`${(v*100>=0?"+":"")}${(v*100).toFixed(1)} 点`;
+  const featStage=(T.feature_split_by_stage||[]).map(f=>`<tr><td>${h(f.stage)}</td><td>${h(f.bin)}</td><td class="mono">${ptTxt(f.stage_median_move)}</td><td class="mono">${ptTxt(f.stage_loser_median_move)}</td>${featCells(f)}</tr>`).join("");
   const featTable=feat?`<details open style="margin-top:8px"><summary>特征（只记不交易）：市场自上一决策向模型桶靠拢多少，分档看本线成交的实现</summary>
-    <table><thead><tr><th>靠拢量</th><th>评估</th><th>触发</th><th>发单</th><th>已结算</th><th>命中率</th><th>实付均价</th><th>实现−实付均价</th></tr></thead><tbody>${feat}</tbody></table>
-    <div class="muted">回测（全部快照，一站日一次）：靠拢 ≥3 点 +11.2% [+4.9, +17.4]，0–3 点 +2.8%，没动或远离 ≈0。前向样本站住了再考虑当规则（v3）。</div></details>`:"";
+    <table><thead>${featHead}</thead><tbody>${feat}</tbody></table>
+    ${featStage?`<div class="muted"><b>这张表的分档轴和阶段是缠在一起的，先看下面那张。</b>本线只评每个阶段的第一次决策，所以「上一决策」必然是上一个阶段的那次——2026-09-20 全部 207 条带特征的行里，106 条 P1←P0-M、99 条 P0-M←P0、2 条 P1←P0，没有一条是同阶段内的。两种过渡差一个数量级：P0-M 行离参照点中位 47 分钟、只有 10.1% 落进「≥3 点」；P1 行中位 739 分钟、55.6% 落进去。于是「靠拢 ≥3 点」这一档，头一层意思其实是「这是一条 P1 行」。</div>
+    <div class="muted">「人口」列是全部评估行（触发与否都算）里站日已结算的那些，问的是模型众数桶有没有落、市场当时给它什么价——只记不交易的特征本来就该在全量人口上读，成交那几笔太少。</div>`:`<div class="muted">参照间隔、阶段构成与人口三组列要等下一次整库渲染才有值。</div>`}</details>`:"";
+  const featStageTable=featStage?`<details open style="margin-top:8px"><summary>同一分档，把阶段过渡固定住（参照间隔可比了才是在量动量）</summary>
+    <table><thead><tr><th>到哪个阶段</th><th>本阶段动量中位</th><th>其中最终没中的中位</th>${featHead.slice(4)}</thead><tbody>${featStage}</tbody></table>
+    <div class="muted"><b>「+3 点」不是中性零点。</b>两次决策之间市场的挂牌阶梯会收窄，于是任何一个桶的归一化份额都会机械地涨——在模型众数桶<b>最终没中</b>的那些行上，动量平均也有 +3.1 点（P1 +4.0、P0-M +0.6）。所以同一条「≥3 点」，在 P0-M 是「高于漂移」、在 P1 是「低于漂移」，这也是它在两个阶段里符号相反的原因。要当规则就得把门槛钉在「本阶段最终没中的那些行的中位」上方，那才是「比阶梯自己收窄得更多」。</div>
+    <div class="muted">回测（全部快照，一站日一次）：靠拢 ≥3 点 +11.2% [+4.9, +17.4]，0–3 点 +2.8%，没动或远离 ≈0；但那次的参照点短得多，同一份回测把参照点拉到 ≥45 分钟就掉到 +5.2%，而线上 76.8% 的行参照点都 ≥45 分钟、P1 行全部 ≥666 分钟——线上记的天生就是那个弱化版。前向样本站住了再考虑当规则（v3），站不住就换轴（按小时的靠拢速率，或两种过渡各自一套阈值）。</div></details>`:"";
   const rows=(R.rows||[]).map(t=>`<tr>
     <td>${h(t.station_id)}</td><td class="mono">${h(t.event_date)}</td><td>${h(t.stage||"")}</td><td>${h(t.bucket)}</td>
     <td class="mono">${n3(t.limit_price)}</td><td class="mono">${t.requested_size==null?"—":(+t.requested_size).toFixed(2)}</td>
@@ -19583,7 +19704,7 @@ function tiebreakLane(){
     <td class="mono">${r.refusal?h(r.refusal):"<span class='pill green'>已发单</span>"}</td><td class="mono">${h((r.evaluated_at_utc||"").slice(5,16).replace("T"," "))}</td></tr>`).join("");
   const firedTable=E.available?`<details style="margin-top:8px"><summary>触发过的首决策（${(E.fired_rows||[]).length} 条，含被闸挡下的）</summary>
     ${firedRows?`<table><thead><tr><th>站</th><th>事件日</th><th>阶段</th><th>模型桶 ← 市场桶</th><th>市场给模型桶</th><th>模型自报</th><th>结果</th><th>评估于</th></tr></thead><tbody>${firedRows}</tbody></table>`:`<div class="muted">还没有触发过。</div>`}</details>`:"";
-  return settings+evalTiles+money+versTable+featTable+refTable+tradeTable+firedTable;
+  return settings+evalTiles+money+versTable+featTable+featStageTable+refTable+tradeTable+firedTable;
 }
 
 function moneyBoard(){
