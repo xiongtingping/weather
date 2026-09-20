@@ -289,9 +289,19 @@ def taker_take(
     affordable = float(stake_usdc) / price
     depth = book["ask_depth_shares"]
     if depth is not None:
-        # A FOK the top level cannot fill is a FOK the venue kills; taking
-        # the size that IS there keeps the trade at the price measured.
-        affordable = min(affordable, float(depth))
+        # A FOK the top level cannot fill is a FOK the venue kills, and the
+        # book we price on is always a little older than the send.  KMIA
+        # 2026-09-20 88-89F: the snapshot showed exactly 8 shares at 0.59,
+        # the plan asked for all 8, and by the time it arrived -- the book
+        # was already 171 seconds old -- someone had taken part of it, so
+        # the whole order died rather than part of it filling.  Leave room
+        # for that: whichever of the fraction and the whole share is
+        # smaller, so a thin level gives up a share and a deep one gives up
+        # a fifth.
+        usable = min(
+            float(depth) * DEPTH_HEADROOM_FRACTION, float(depth) - 1.0
+        )
+        affordable = min(affordable, max(usable, 0.0))
     shares = _sendable_shares(price, affordable)
     if shares is None or shares < float(min_shares):
         thin = depth is not None and float(depth) < float(stake_usdc) / price
@@ -319,6 +329,8 @@ def taker_take(
 #: of 4.9968, and four decimals where two are allowed.
 SEND_COST_DECIMALS = 2
 SEND_SHARE_DECIMALS = 4
+#: How much of the top level a take may ask for.  See ``taker_take``.
+DEPTH_HEADROOM_FRACTION = 0.8
 
 
 def _sendable_shares(price: float, affordable: float) -> float | None:
@@ -705,6 +717,7 @@ def plan_p1_tail_entries(
     hurdle = dial("hurdle")
     fresh_seconds = dial("envelope_fresh_seconds")
     book_fresh = dial("book_fresh_seconds")
+    send_book_fresh = dial("send_book_fresh_seconds")
     max_sends = int(dial("max_sends_per_station_day"))
     gate = admission or (lambda station, conn: live_station_admission(station, conn=conn))
     now = _utc(now_utc)
@@ -752,6 +765,14 @@ def plan_p1_tail_entries(
         if book_age > book_fresh:
             refuse(f"book_stale:{book_age:.0f}s", snapshot=snapshot)
             continue
+        # Reading a three-minute-old book is fine; SENDING against one is
+        # not.  ``book_fresh_seconds`` is the bound on what may still be
+        # scored -- the evaluation row is the evidence a later fit reads --
+        # and this is the much shorter bound on what may be bought.  Both
+        # sends so far were priced on a book 171 and 328 seconds old while
+        # the envelope was 24 and 35: the belief was current and the ladder
+        # was not.
+        send_book_stale = book_age > send_book_fresh
         market = market_reference_v1(snapshot["buckets"])
         if market.get("state") != "complete":
             refuse(
@@ -794,6 +815,11 @@ def plan_p1_tail_entries(
             refuse(
                 f"open_order:{open_order['lane'] or 'unknown'}:{open_order['state']}",
                 reading, snapshot, features,
+            )
+            continue
+        if send_book_stale:
+            refuse(
+                f"send_book_stale:{book_age:.0f}s", reading, snapshot, features
             )
             continue
         refusal = _planning_refusal(

@@ -33,6 +33,10 @@ from bayes_basket_target.ssot import apply_production_ssot_schema  # noqa: E402
 ST, ED, TZ = "ZSPD", "2026-09-19", "Asia/Shanghai"
 NOW = "2026-09-19T04:00:00.000Z"
 DECIDED = "2026-09-19T03:58:00.000Z"
+#: The book a send may be priced on is much younger than the belief
+#: (charter 166, 2026-09-21): the envelope may be five minutes old, the
+#: ladder sixty seconds.
+OBSERVED = "2026-09-19T03:59:40.000Z"
 BUCKETS = ("26°C", "27°C", "28°C", "29°C")
 TOKENS = {b: f"t{i}" for i, b in enumerate(BUCKETS)}
 SHA = "b" * 64
@@ -103,6 +107,7 @@ def _seed(
     state: str = "APPLIED",
     decided: str = DECIDED,
     book: list[dict] | None = None,
+    observed: str = OBSERVED,
     envelope_id: str = "env1",
     accepting: int = 1,
     likelihood: dict | None = None,
@@ -133,7 +138,7 @@ def _seed(
     _insert(conn, "basket_official_ws_snapshot", {
         "snapshot_id": f"snap_{envelope_id}", "market_id": "m", "station_id": ST,
         "event_date": ED, "settlement_timezone": TZ, "sequence": 1,
-        "observed_at": decided, "quote_version": "v", "quote_observed_at": decided,
+        "observed_at": observed, "quote_version": "v", "quote_observed_at": observed,
         "quote_expires_at": "2026-09-19T05:00:00Z", "quote_source": "OFFICIAL_CLOB_WS",
         "remaining_budget_usdc": 100.0,
         "buckets_json": json.dumps(book if book is not None else _book()),
@@ -245,7 +250,8 @@ def test_both_venue_amounts_land_on_the_grid(price) -> None:
 def test_a_thin_top_level_is_taken_at_its_own_size_or_refused() -> None:
     thin = {"bucket": "28°C", "ask_available": True,
             "ask_levels": [{"price": 0.30, "shares": 9.0}], "bid_levels": []}
-    assert lane.taker_take(thin, 5.0, tick_size=0.01, min_shares=5.0)["shares"] == 9.0
+    # Nine shares on the level, one left behind (charter 166, 2026-09-21).
+    assert lane.taker_take(thin, 5.0, tick_size=0.01, min_shares=5.0)["shares"] == 7.0
     too_thin = {"bucket": "28°C", "ask_available": True,
                 "ask_levels": [{"price": 0.30, "shares": 2.0}], "bid_levels": []}
     assert lane.taker_take(
@@ -541,3 +547,56 @@ def test_a_paused_lane_or_a_no_live_mode_costs_nothing(monkeypatch) -> None:
 
     monkeypatch.setattr(strategy_lanes, "lane_enabled", lambda name, path=None: False)
     assert worker._p1_tail_after_p1("early_p1") is None
+
+
+# ---------------------------------------------------------------------------
+# Charter 166 (2026-09-21): what the venue taught, in two sends.
+
+
+def test_a_take_never_asks_for_the_whole_top_level() -> None:
+    """KMIA 2026-09-20 88-89°F: the snapshot showed exactly 8 shares, the
+    plan asked for all 8, and the FOK was killed -- the book was 171
+    seconds old and part of the level had gone."""
+
+    row = {"bucket": "x", "ask_available": True,
+           "ask_levels": [{"price": 0.59, "shares": 8.0}], "bid_levels": []}
+    take = lane.taker_take(row, 5.0, tick_size=0.01, min_shares=1.0)
+    assert take["shares"] < 8.0 and take["refusal"] is None
+    # A deep level gives up a fifth, a thin one a whole share.
+    deep = lane.taker_take(
+        {**row, "ask_levels": [{"price": 0.59, "shares": 40.0}]},
+        5.0, tick_size=0.01, min_shares=1.0,
+    )
+    assert deep["shares"] == pytest.approx(8.0)   # the stake binds, not depth
+    thin = lane.taker_take(
+        {**row, "ask_levels": [{"price": 0.59, "shares": 5.5}]},
+        5.0, tick_size=0.01, min_shares=1.0,
+    )
+    assert thin["shares"] == pytest.approx(4.0)
+
+
+def test_a_stale_book_is_scored_but_never_bought(store) -> None:
+    """The belief was 24 seconds old and the ladder 171.  One of those is
+    allowed to be old."""
+
+    _seed(store)
+    planned = _plan(store, settings={
+        **P1_TAIL_DEFAULT_SETTINGS, "send_book_fresh_seconds": 1.0,
+    })
+    assert planned["plans"] == []
+    [row] = planned["evaluations"]
+    assert row["refusal"].startswith("send_book_stale:")
+    # The reading is still on the row: the evidence a later fit reads does
+    # not depend on whether the order could be sent.
+    stored = store.execute(
+        f"SELECT best_gap, fired FROM {lane.EVALUATION_TABLE}"
+    ).fetchone()
+    assert stored[0] is not None and stored[1] == 0
+
+
+def test_the_two_book_bounds_are_separate_dials() -> None:
+    from bayes_basket_target import strategy_lanes  # noqa: PLC0415
+
+    served = strategy_lanes.lane_settings(strategy_lanes.LANE_P1_TAIL)
+    assert served["send_book_fresh_seconds"] <= 60.0
+    assert served["book_fresh_seconds"] > served["send_book_fresh_seconds"]
