@@ -1863,12 +1863,23 @@ def collect_cycle_time(conn: sqlite3.Connection) -> dict[str, Any]:
 def _report_to_probability_latency(conn: sqlite3.Connection) -> dict[str, Any]:
     """How long a report waits before the stage that reads it moves.
 
-    METAR -> P1 off the envelope's own ``canonical_observation_committed_at``,
-    taking each observation's FIRST P1 so a replayed prefix and a later state
-    refresh do not count as the same report waiting twice.  TAF -> P0-M by
-    pairing each capture with the first P0-M on that station-day after it,
-    which is what "the TAF reached a P0-M" means when the envelope does not
-    name the issuance.
+    **Both ends are read on ``created_at``, the real commit clock.**
+    ``decision_at_utc`` is not one: P0-M stamps the instant of the evidence
+    it lays down (the as-of rule -- "laying new evidence on the model that
+    was current when the evidence arrived"), and P1 stamps the cycle's own
+    start, shared by every step of a replayed prefix.  Measured on the wrong
+    clock on 2026-09-20 this lane reported TAF -> P0-M at 25.6 minutes when
+    it is 2.5: pairing on ``decision_at_utc > received_at`` skipped the very
+    P0-M that seated the TAF -- its decision clock IS the TAF's instant, so
+    it is not strictly after it -- and landed on the next cycle's work.
+
+    METAR -> P1: each observation's FIRST commit that names it, so a
+    replayed prefix and a later state refresh do not count one report
+    waiting twice.  TAF -> P0-M: the first P0-M committed after the capture
+    landed, which is what "the TAF reached a P0-M" means when the envelope
+    does not name the issuance.  Checked 2026-09-20 against the exact
+    pairing (the P0-M whose decision clock equals the capture's instant,
+    which all 49 captures in the window had): 2.47 against 2.56 minutes.
     """
 
     now = _now()
@@ -1882,7 +1893,7 @@ def _report_to_probability_latency(conn: sqlite3.Connection) -> dict[str, Any]:
     try:
         for committed, first in conn.execute(
             "SELECT json_extract(lineage_json,'$.canonical_observation_committed_at'),"
-            " MIN(decision_at_utc) FROM basket_probability_envelope"
+            " MIN(created_at) FROM basket_probability_envelope"
             f" WHERE state='COMMITTED' AND event_date IN ({marks})"
             "   AND decision_at_utc>=? AND stage='P1'"
             " GROUP BY json_extract(lineage_json,'$.canonical_observation_sha256')",
@@ -1919,9 +1930,9 @@ def _report_to_probability_latency(conn: sqlite3.Connection) -> dict[str, Any]:
     for station, day, received in captures:
         try:
             row = conn.execute(
-                "SELECT MIN(decision_at_utc) FROM basket_probability_envelope"
+                "SELECT MIN(created_at) FROM basket_probability_envelope"
                 " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-                "   AND stage='P0-M' AND decision_at_utc>?",
+                "   AND stage='P0-M' AND created_at>?",
                 (str(station), str(day), str(received)),
             ).fetchone()
         except sqlite3.Error:
@@ -14930,8 +14941,10 @@ function cycleHealth(){
     <div class="scroll" style="max-height:320px"><table class="by-tab"><thead><tr><th>阶段</th><th>代码名</th><th>中位</th><th>最长</th><th>出现轮次</th></tr></thead>
     <tbody>${stages}</tbody></table></div>
     <div class="muted" style="margin-top:6px">读的是 <span class="mono">data/runtime/production_cycle_history.jsonl</span>，
-      常驻每轮自己写的一行；「实况入库 → P1」是每份观测在包络上标的落库时刻到<b>第一份</b>读到它的 P1（回放步与状态刷新不重复计），
-      「TAF 入库 → P0-M」是每份带 TX 的 TAF 收到后这一站日的<b>下一份</b> P0-M。窗口 ${L.window_hours || "—"} 小时。</div></details>
+      常驻每轮自己写的一行；「实况入库 → P1」是每份观测在包络上标的落库时刻，到<b>第一份</b>写下它的 P1（回放步与状态刷新不重复计），
+      「TAF 入库 → P0-M」是每份带 TX 的 TAF 收到后，这一站日<b>第一份提交</b>的 P0-M。窗口 ${L.window_hours || "—"} 小时。
+      两头都按 <span class="mono">created_at</span>（真实提交钟）算——<b>不是</b> <span class="mono">decision_at_utc</span>：
+      P0-M 的决策钟标的是它所依据的那份证据的时刻（as-of 规则），P1 的标的是整轮周期的起点，都不是"这一份是什么时候写下来的"。</div></details>
   </div>`;
 }
 
