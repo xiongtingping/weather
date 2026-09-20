@@ -190,6 +190,31 @@ HYPOTHESES: tuple[dict[str, Any], ...] = (
         "control": lambda r: r["stage"] == "P1" and not _converging(r),
     },
     {
+        "hypothesis_id": "band_top_slice_is_priced_out_v1",
+        "title": "价带顶档：归一化中价 0.55–0.60 那一刀是不是买贵了",
+        "registered_at_utc": "2026-09-20",
+        "prediction": "ROI(0.40–0.55) - ROI(>=0.55) > 0",
+        # Found while asking why 2026-09-19's five P0-M trades lost three:
+        # two of the three were bought at 0.61 and 0.62.  The band's ceiling
+        # is applied to the market's NORMALISED mid while the money leaves at
+        # the raw ask, which sits a median 3.0 cents higher -- so "normalised
+        # 0.55-0.60" is paid at 0.58-0.62, and a 54% event bought at 0.60
+        # needs 60% to break even.  Registered, NOT acted on: the contrast is
+        # +17.2 points where this module's own measurement puts a searched
+        # cell's chance threshold at +15.3 for one cell fixed in advance and
+        # +24.0 at the 95th percentile, so the sample that suggested it does
+        # not clear its own bar.  The forward window decides.
+        "at_registration": "+17.2 点, p=0.690 (0.40-0.55 +7.1% n=391 / >=0.55"
+                            " -10.1% n=59, 顶档前后半 -11.0%/-9.8%, 27 事件日)",
+        "pool": "firings",
+        "treatment": lambda r: (
+            r.get("market_share") is not None and float(r["market_share"]) < 0.55
+        ),
+        "control": lambda r: (
+            r.get("market_share") is not None and float(r["market_share"]) >= 0.55
+        ),
+    },
+    {
         "hypothesis_id": "stage_gradient_unconditional_v1",
         "title": "阶段梯度（去掉名额选择）：每个触发行都算，P1 是否高于 P0",
         "registered_at_utc": "2026-09-20",
