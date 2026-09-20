@@ -4,8 +4,11 @@ What it buys.  The market's own ladder, read as a probability vector at the
 first decision of a stage, sometimes cannot choose between two adjacent
 buckets: its mode holds 41-56% and the bucket beside it 40-47%, the two
 together 84-98% of its mass.  When the model's mode is that second bucket,
-the lane buys the model's bucket at the ask, 20 USDC, fill-or-kill, once
-per station-day.  Nowhere else does the model's mode beat the market's --
+the lane BIDS for the model's bucket: one resting post-only rung at the
+best bid plus one tick, the stake's worth of shares, once per station-day
+(charter 163, user ruling 2026-09-20 "秤砣线从吃单改为post only，挂best买
+一+1"; from 09-18 to then it crossed at the walked ask).  Nowhere else does
+the model's mode beat the market's --
 its hit rate elsewhere is the market's own price on it (2,255 first
 decisions, 33 event days to 2026-09-17: 0.04→0.035, 0.155→0.181,
 0.253→0.286, 0.341→0.342) -- but here, on a market that is a coin toss,
@@ -22,7 +25,7 @@ so the lane sees exactly what the decision saw:
 1. model mode bucket ≠ market mode bucket;
 2. the two are one rung apart;
 3. the market's normalised mid on the model's mode bucket ≥ 0.40;
-4. buy the model's mode bucket.
+4. bid for the model's mode bucket.
 
 What it is not.  Forty-two trades is a hypothesis with a lower bound under
 zero; the ruling puts it live to accumulate the thirty event days the
@@ -31,9 +34,13 @@ every stage is scored into ``tiebreak_lane_evaluation`` whether or not it
 fires, and a fired one records why it did not send, so the forward sample
 is the whole population and not the trades.
 
-One attempt per station-day, at the first stage whose first decision fires;
-a killed FOK is not retried on a later cycle, because a later cycle is a
-later book and a different rule.  The first decision must be young
+One attempt per station-day, at the first stage whose first decision fires.
+A rung the venue is holding ends the station-day while it stands; a rung
+that ended without filling -- its own GTD horizon ran out, or the resting
+lifecycle cancelled it when the bid ran away (charters 94/110/135, which
+judge this rung exactly as they judge a basket leg's) -- is re-judged on a
+later cycle's own book, at most ``max_sends_per_station_day`` times.  The
+first decision must be young
 (``first_decision_fresh_seconds``): at lane start every open station-day
 already has a first decision hours old, and buying on a stale book is not
 the reading either.
@@ -58,6 +65,7 @@ from .account_equity import (
 from .basket_kernel.valuation_v1 import market_reference_v1
 from .certain_win_recycle import _registry_rows
 from .contracts import content_sha256
+from .delta_v2_runtime import bid_anchored_ladder
 from .exit_orders import Transport
 from .lane_orders import lane_decision_id, send_lane_buy
 from .live_station_scope import admission as live_station_admission
@@ -95,15 +103,32 @@ SCHEMA = "tiebreak_lane_plan_v1"
 # 2-5 points, leave-one-station-out and a self-impact check, but weakened to
 # +5.2% against a >=45-minute-older reference, so it accrues as a feature
 # until the forward sample settles it.
+#   v2.2 ``model_mode_midband_spread_maker_v2_2`` (charter 163, user ruling
+#      2026-09-20 "秤砣线从吃单改为post only，挂best买一+1") -- the SAME four
+#      conditions as v2.1: the predicate below is shared, not restated.  What
+#      differs is the order: a resting post-only rung at the best bid plus one
+#      tick instead of a fill-or-kill walked up the asks.  It carries its own
+#      rule version because the price paid and the population that fills are
+#      both different -- pooled with the v2.1 rows, charter 146's acceptance
+#      ("realised minus the price paid", first review 09-25) would be the mean
+#      of two strategies.  Every reading quoted above was taken at the ask and
+#      says nothing about this one; the forward sample starts over.
 RULE_V1 = "adjacent_tie_v1"
 RULE_V2 = "model_mode_midband_v2"
 RULE_V21 = "model_mode_midband_spread_v2_1"
+RULE_V22 = "model_mode_midband_spread_maker_v2_2"
 RULE_VERSIONS = {
     RULE_V1: "tiebreak_adjacent_mode_market_share_v1",
     RULE_V2: "tiebreak_model_mode_market_midband_v2",
     RULE_V21: "tiebreak_model_mode_market_midband_spread_v2_1",
+    RULE_V22: "tiebreak_model_mode_market_midband_spread_maker_v2_2",
 }
-DEFAULT_RULE = RULE_V21
+#: The rules the band ceiling applies to, and the rules that also bound the
+#: model bucket's spread.  v2.2 is v2.1's predicate under another name, so it
+#: belongs to both: one predicate, selected by membership rather than copied.
+BAND_RULES = frozenset({RULE_V2, RULE_V21, RULE_V22})
+SPREAD_RULES = frozenset({RULE_V21, RULE_V22})
+DEFAULT_RULE = RULE_V22
 RULE_VERSION = RULE_VERSIONS[DEFAULT_RULE]
 
 
@@ -114,7 +139,10 @@ def rule_version_for(rule: Any) -> str:
     if name not in RULE_VERSIONS:
         raise ValueError(f"tiebreak_rule_unknown:{name}")
     return RULE_VERSIONS[name]
-EXECUTION_CANDIDATE = "TAKER_FOK"
+#: Charter 163: this lane rests, it does not cross.  MAKER is the family
+#: ``execution_order_binding_v1`` binds to GTD + post-only + a signed expiry,
+#: so the intent, the payload and the resting lifecycle all read one table.
+EXECUTION_CANDIDATE = "MAKER"
 EVALUATION_TABLE = "tiebreak_lane_evaluation"
 DEFAULT_LOOKBACK_DAYS = 3
 DEFAULT_MIN_ORDER_SHARES = 5.0
@@ -280,10 +308,12 @@ def evaluate_rule(
     Both vectors are renormalised over the buckets they share, as the
     reading was; the market's share on the model's mode is read after
     that.  ``rule`` picks v1 (adjacent modes, floor only), v2 (the model's
-    mode inside the market's mid band) or v2.1 (v2, and the model's bucket
-    quoted both sides with ``spread`` at most ``max_spread``; ``spread``
-    None means one-sided or unquoted and refuses).  Returns the reading
-    and, when it does not fire, why.
+    mode inside the market's mid band) or v2.1/v2.2 (v2, and the model's
+    bucket quoted both sides with ``spread`` at most ``max_spread``;
+    ``spread`` None means one-sided or unquoted and refuses).  v2.2 is
+    v2.1's predicate -- the two differ in how the order is placed, which is
+    not a question for this function.  Returns the reading and, when it
+    does not fire, why.
     """
 
     ords = {str(b): int(o) for b, o in (ordinals or {}).items()}
@@ -337,10 +367,10 @@ def evaluate_rule(
     if mn[model_mode] < float(min_market_share) - 1e-12:
         reading["reason"] = "market_share_below_threshold"
         return reading
-    if rule_name in (RULE_V2, RULE_V21) and max_market_share is not None and mn[model_mode] >= float(max_market_share) - 1e-12:
+    if rule_name in BAND_RULES and max_market_share is not None and mn[model_mode] >= float(max_market_share) - 1e-12:
         reading["reason"] = "market_share_above_ceiling"
         return reading
-    if rule_name == RULE_V21:
+    if rule_name in SPREAD_RULES:
         if spread is None:
             reading["reason"] = "spread_unquoted"
             return reading
@@ -437,70 +467,87 @@ def market_move_features(
     return out
 
 
-def walk_ask_book(
-    levels: Iterable[Any],
+def maker_rung(
+    book_row: Mapping[str, Any] | None,
     stake_usdc: float,
     *,
+    tick_size: Any,
     min_shares: float = DEFAULT_MIN_ORDER_SHARES,
-) -> dict[str, Any] | None:
-    """How many shares ``stake_usdc`` buys walking the asks from the best.
+) -> dict[str, Any]:
+    """The one resting rung this lane posts, and what the stake buys at it.
 
-    Returns the size, the price of the deepest level touched (the FOK's limit
-    and its cap) and what the walk costs, or ``None`` when the book cannot
-    fill the venue minimum inside the stake.  The last level is taken only as
-    far as the stake reaches; the size is floored to the venue's precision so
-    the walk never costs more than the stake.
+    Charter 163: the best bid plus one tick, clamped under the ask (a rung on
+    the ask is a take and post-only refuses it).  The price comes from
+    production's own ladder -- ``bid_anchored_ladder``, charters 94 and 110 --
+    rather than from a second copy of the arithmetic, because the resting
+    lifecycle judges a standing rung against that same ladder: a rung priced
+    any other way would read as off its anchor and be cancelled on the next
+    pass.  Under a research override of the anchor offsets the innermost rung
+    is taken, which is the one the ruling names.
+
+    The size is what ``stake_usdc`` buys AT that price, floored to the venue's
+    share precision, so the rung never costs more than the stake.  Returns
+    ``refusal`` set, and nothing else, when no rung can be priced (no bid, no
+    tick, or the book's only legal rung is at zero) or when the stake cannot
+    reach the venue's minimum size there.
     """
 
-    parsed: list[tuple[float, float]] = []
-    for level in levels or ():
-        try:
-            price = float(level.get("price") if isinstance(level, Mapping) else level[0])
-            shares = float((level.get("shares") if isinstance(level, Mapping) else level[1]) or 0.0)
-        except (TypeError, ValueError, IndexError, AttributeError):
-            continue
-        if math.isfinite(price) and 0.0 < price < 1.0 and shares > 0.0:
-            parsed.append((price, shares))
-    if not parsed:
-        return None
-    parsed.sort()
-    remaining = float(stake_usdc)
-    size = 0.0
-    cost = 0.0
-    limit = parsed[0][0]
-    for price, shares in parsed:
-        if remaining <= 1e-9:
-            break
-        take = min(shares, remaining / price)
-        size += take
-        cost += take * price
-        remaining -= take * price
-        limit = price
-    # The FOK is sent at the deepest level touched, and the exchange may fill
-    # every share there if the shallower levels are gone by the time it
-    # lands.  So the size is capped at what the stake buys AT THE LIMIT: the
-    # worst case costs the stake, the walked case costs less, and a moved
-    # book can never spend more than the twenty dollars the ruling named.
-    size = min(size, float(stake_usdc) / limit)
-    size = math.floor(size * (10 ** SHARE_PRECISION)) / (10 ** SHARE_PRECISION)
-    if size < float(min_shares) or size <= 0.0:
-        return None
-    # Repriced at the walked levels for the floored size, never above the stake.
-    cost = 0.0
-    left = size
-    for price, shares in parsed:
-        if left <= 1e-12:
-            break
-        take = min(shares, left)
-        cost += take * price
-        left -= take
+    book = book_features(book_row)
+    bid, ask = book["best_bid"], book["best_ask"]
+    try:
+        tick = float(tick_size)
+    except (TypeError, ValueError):
+        tick = float("nan")
+    if bid is None or ask is None or not math.isfinite(tick) or tick <= 0.0:
+        return {"refusal": "maker_anchor_unavailable"}
+    rungs = bid_anchored_ladder(bid=float(bid), ask=float(ask), tick=tick)
+    if not rungs:
+        return {"refusal": "maker_anchor_unavailable"}
+    price = float(rungs[-1])
+    if not 0.0 < price < 1.0:
+        return {"refusal": "maker_anchor_unavailable"}
+    scale = 10 ** SHARE_PRECISION
+    shares = math.floor((float(stake_usdc) / price) * scale) / scale
+    if shares <= 0.0 or shares < float(min_shares):
+        return {"refusal": f"order_below_venue_minimum:{shares:.2f}<{float(min_shares):.2f}"}
     return {
-        "shares": size,
-        "limit_price": float(limit),
-        "walked_cost_usdc": round(cost, 6),
-        "levels_touched": sum(1 for price, _s in parsed if price <= limit),
-        "best_ask": parsed[0][0],
+        "refusal": None,
+        "shares": shares,
+        "limit_price": price,
+        "cost_usdc": round(shares * price, 6),
+        "best_bid": float(bid),
+        "best_ask": float(ask),
+        "tick_size": tick,
+        # How far over the bid the rung actually stands: one tick, or less
+        # when the post-only ceiling clamped it on a one-tick spread.
+        "offset_ticks": round((price - float(bid)) / tick, 4),
+        "clamped_to_post_only_ceiling": price + 1e-12 < float(bid) + tick,
     }
+
+
+def resting_order_fields(
+    *, now_utc: str, limit_price: float, belief_fresh_until_utc: Any
+) -> dict[str, Any]:
+    """The venue fields a MAKER intent is minted with: type, flag, expiry.
+
+    Production's own (``production.venue_order_fields``), not a second copy:
+    the expiry is signed into the order, so a lane that computed its own
+    would be signing a different order than the binding says this family
+    sends.  Charter 127 (二) sets the horizon -- the rung lives as long as the
+    belief that authorized it (``fresh_until_utc``: the run cycle for P0 and
+    P0-M, the observation window for P1), never under the venue's own
+    three-minute floor.  Imported at the call so importing this lane does not
+    drag the whole compile in.
+    """
+
+    from .production import venue_order_fields  # noqa: PLC0415
+
+    return venue_order_fields(
+        EXECUTION_CANDIDATE,
+        created_at_utc=now_utc,
+        limit_price=float(limit_price),
+        belief_fresh_until_utc=belief_fresh_until_utc,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -579,7 +626,8 @@ def _latest_snapshot(conn: sqlite3.Connection, station_id: str, event_date: str)
 
 def _envelope(conn: sqlite3.Connection, envelope_id: str) -> dict[str, Any] | None:
     row = conn.execute(
-        "SELECT probabilities_json, bucket_ordinals_json, content_sha256, decision_at_utc, state, stage"
+        "SELECT probabilities_json, bucket_ordinals_json, content_sha256, decision_at_utc, state, stage,"
+        " fresh_until_utc"
         " FROM basket_probability_envelope WHERE envelope_id=?",
         (envelope_id,),
     ).fetchone()
@@ -593,6 +641,8 @@ def _envelope(conn: sqlite3.Connection, envelope_id: str) -> dict[str, Any] | No
     return {
         "probabilities": probabilities, "ordinals": ordinals, "content_sha256": str(row[2]),
         "decision_at_utc": str(row[3]), "state": str(row[4]), "stage": str(row[5]),
+        # Charter 127 (二): the rung's GTD horizon is the belief's own end.
+        "fresh_until_utc": str(row[6]) if row[6] else None,
     }
 
 
@@ -873,28 +923,34 @@ def plan_tiebreak_entries(
             continue
         book_row = next((r for r in snapshot["buckets"] if str(r.get("bucket")) == bucket), None)
         min_shares = float(market_row.get("min_size") or DEFAULT_MIN_ORDER_SHARES)
-        walk = walk_ask_book((book_row or {}).get("ask_levels") or (), stake, min_shares=min_shares) if book_row and book_row.get("ask_available", True) else None
-        if walk is None:
-            evaluations.append(_record(target_conn, key, fact, reading, fired=True, refusal="ask_book_too_thin",
+        rung = maker_rung(book_row, stake, tick_size=market_row.get("tick_size"), min_shares=min_shares)
+        if rung["refusal"]:
+            evaluations.append(_record(target_conn, key, fact, reading, fired=True, refusal=rung["refusal"],
                                        order_intent_id=None, plan=None, now_utc=now_utc, rule_version=rule_version))
             continue
-        cash_refusal = _cash_refusal(target_conn, now_utc=now_utc, needed=walk["walked_cost_usdc"])
+        cash_refusal = _cash_refusal(target_conn, now_utc=now_utc, needed=rung["cost_usdc"])
         if cash_refusal:
             evaluations.append(_record(target_conn, key, fact, reading, fired=True, refusal=cash_refusal,
                                        order_intent_id=None, plan=None, now_utc=now_utc, rule_version=rule_version))
             continue
+        venue = resting_order_fields(now_utc=now_utc, limit_price=rung["limit_price"],
+                                     belief_fresh_until_utc=envelope.get("fresh_until_utc"))
         plan = {
             "schema": SCHEMA, "rule": rule_version, "rule_name": rule_name, "lane": LANE, "title": LANE_TITLE,
             "station_id": key["station_id"], "event_date": key["event_date"], "stage": key["stage"],
             "settlement_timezone": fact["settlement_timezone"], "fact_id": fact["fact_id"],
             "decision_at_utc": fact["decision_at_utc"], "envelope_id": fact["envelope_id"],
             "envelope_sha256": envelope["content_sha256"], "envelope_decision_at_utc": envelope["decision_at_utc"],
+            "envelope_fresh_until_utc": envelope.get("fresh_until_utc"),
             "snapshot_id": fact["snapshot_id"], "snapshot_observed_at": snapshot["observed_at"],
             "bucket": bucket, "token_id": str(market_row["yes_token"]),
-            "tick_size": market_row.get("tick_size"), "min_size": market_row.get("min_size"),
-            "stake_usdc": stake, "shares": walk["shares"], "limit_price": walk["limit_price"],
-            "walked_cost_usdc": walk["walked_cost_usdc"], "best_ask": walk["best_ask"],
-            "levels_touched": walk["levels_touched"], "reading": reading,
+            "tick_size": rung["tick_size"], "min_size": market_row.get("min_size"),
+            "execution_candidate": EXECUTION_CANDIDATE,
+            "stake_usdc": stake, "shares": rung["shares"], "limit_price": rung["limit_price"],
+            "cost_usdc": rung["cost_usdc"], "best_bid": rung["best_bid"], "best_ask": rung["best_ask"],
+            "offset_ticks": rung["offset_ticks"],
+            "clamped_to_post_only_ceiling": rung["clamped_to_post_only_ceiling"],
+            **venue, "reading": reading,
         }
         plan["order_intent_id"] = f"tiebreak_{content_sha256({'plan': plan})[:32]}"
         evaluation = _record(target_conn, key, fact, reading, fired=True, refusal=None,
@@ -916,7 +972,7 @@ def plan_tiebreak_entries(
     return {"evaluations": evaluations, "plans": plans, "settings": cfg, "rule_version": rule_version, "retries": retries, "repairs": repairs}
 
 
-def _sync_sent_rows(conn: sqlite3.Connection, *, rule_version: str, floor: str) -> int:
+def _sync_sent_rows(conn: sqlite3.Connection, *, floor: str) -> int:
     """Bring a row that sent an order into line with what the ledger later
     learned about that order.  A send answered ambiguously (the gateway's
     proxy timed out: OPKC 2026-09-18 06:04Z, ``UNKNOWN_POST``) is a refusal
@@ -926,14 +982,18 @@ def _sync_sent_rows(conn: sqlite3.Connection, *, rule_version: str, floor: str) 
     if a retry pass had meanwhile marked it attempted."""
 
     changed = 0
+    # Every row of this lane's own table that sent an order, whatever rule
+    # version scored it: following an order to its end is not a judgement
+    # about the rule, and a version change (v2.1 to charter 163's v2.2) must
+    # not leave the orders the older rule sent unreconciled on the board.
     rows = conn.execute(
         f"SELECT e.station_id, e.event_date, e.stage, e.refusal, e.order_intent_id, i.state,"
         f" COALESCE(r.state, ''), COALESCE(r.filled_size, 0)"
         f" FROM {EVALUATION_TABLE} e"
         " JOIN basket_target_order_intents i ON i.order_intent_id=e.order_intent_id"
         " LEFT JOIN basket_target_order_reconciliations r ON r.order_intent_id=e.order_intent_id"
-        " WHERE e.rule_version=? AND e.event_date>=? AND e.order_intent_id IS NOT NULL",
-        (rule_version, floor),
+        " WHERE e.event_date>=? AND e.order_intent_id IS NOT NULL",
+        (floor,),
     ).fetchall()
     for station, day, stage, refusal, intent_id, intent_state, recon_state, filled in rows:
         filled = float(filled or 0.0)
@@ -959,8 +1019,8 @@ def _sync_sent_rows(conn: sqlite3.Connection, *, rule_version: str, floor: str) 
             continue  # pending or unknown: nothing learned yet
         if new_refusal != refusal:
             conn.execute(
-                f"UPDATE {EVALUATION_TABLE} SET refusal=? WHERE station_id=? AND event_date=? AND stage=? AND rule_version=?",
-                (new_refusal, station, day, stage, rule_version),
+                f"UPDATE {EVALUATION_TABLE} SET refusal=? WHERE order_intent_id=?",
+                (new_refusal, str(intent_id)),
             )
             changed += 1
     return changed
@@ -989,7 +1049,7 @@ def _retry_operational_refusals(
     floor = (now - timedelta(days=DEFAULT_LOOKBACK_DAYS)).date().isoformat()
     max_sends = int(cfg.get("max_sends_per_station_day") or DEFAULT_MAX_SENDS_PER_STATION_DAY)
     book_fresh = float(cfg.get("retry_book_fresh_seconds") or DEFAULT_RETRY_BOOK_FRESH_SECONDS)
-    _sync_sent_rows(target_conn, rule_version=rule_version, floor=floor)
+    _sync_sent_rows(target_conn, floor=floor)
     rows = target_conn.execute(
         f"SELECT station_id, event_date, stage, refusal, retry_of_refusal, COALESCE(retry_count, 0), plan_json, retry_snapshot_id"
         f" FROM {EVALUATION_TABLE}"
@@ -1086,24 +1146,30 @@ def _retry_operational_refusals(
             _note("market_not_accepting_orders", snapshot_id=examined_snapshot_id); continue
         book_row = next((r for r in snapshot["buckets"] if str(r.get("bucket")) == bucket), None)
         min_shares = float(market_row.get("min_size") or DEFAULT_MIN_ORDER_SHARES)
-        walk = walk_ask_book((book_row or {}).get("ask_levels") or (), stake, min_shares=min_shares) if book_row and book_row.get("ask_available", True) else None
-        if walk is None:
-            _note("ask_book_too_thin", snapshot_id=examined_snapshot_id); continue
-        cash_refusal = _cash_refusal(target_conn, now_utc=now_utc, needed=walk["walked_cost_usdc"])
+        rung = maker_rung(book_row, stake, tick_size=market_row.get("tick_size"), min_shares=min_shares)
+        if rung["refusal"]:
+            _note(rung["refusal"], snapshot_id=examined_snapshot_id); continue
+        cash_refusal = _cash_refusal(target_conn, now_utc=now_utc, needed=rung["cost_usdc"])
         if cash_refusal:
             _note(cash_refusal, snapshot_id=examined_snapshot_id); continue
+        venue = resting_order_fields(now_utc=now_utc, limit_price=rung["limit_price"],
+                                     belief_fresh_until_utc=envelope.get("fresh_until_utc"))
         plan = {
             "schema": SCHEMA, "rule": rule_version, "rule_name": rule_name, "lane": LANE, "title": LANE_TITLE,
             "station_id": key["station_id"], "event_date": key["event_date"], "stage": key["stage"],
             "settlement_timezone": fact["settlement_timezone"], "fact_id": fact["fact_id"],
             "decision_at_utc": fact["decision_at_utc"], "envelope_id": fact["envelope_id"],
             "envelope_sha256": envelope["content_sha256"], "envelope_decision_at_utc": envelope["decision_at_utc"],
+            "envelope_fresh_until_utc": envelope.get("fresh_until_utc"),
             "snapshot_id": snapshot["snapshot_id"], "snapshot_observed_at": snapshot["observed_at"],
             "bucket": bucket, "token_id": str(market_row["yes_token"]),
-            "tick_size": market_row.get("tick_size"), "min_size": market_row.get("min_size"),
-            "stake_usdc": stake, "shares": walk["shares"], "limit_price": walk["limit_price"],
-            "walked_cost_usdc": walk["walked_cost_usdc"], "best_ask": walk["best_ask"],
-            "levels_touched": walk["levels_touched"], "reading": {**reading, "book": book},
+            "tick_size": rung["tick_size"], "min_size": market_row.get("min_size"),
+            "execution_candidate": EXECUTION_CANDIDATE,
+            "stake_usdc": stake, "shares": rung["shares"], "limit_price": rung["limit_price"],
+            "cost_usdc": rung["cost_usdc"], "best_bid": rung["best_bid"], "best_ask": rung["best_ask"],
+            "offset_ticks": rung["offset_ticks"],
+            "clamped_to_post_only_ceiling": rung["clamped_to_post_only_ceiling"],
+            **venue, "reading": {**reading, "book": book},
             "retry_of_refusal": original, "retry_count": int(count) + 1,
         }
         plan["order_intent_id"] = f"tiebreak_{content_sha256({'plan': plan})[:32]}"
@@ -1217,10 +1283,12 @@ def execute_tiebreak_entries(
             station_id=plan["station_id"], event_date=plan["event_date"],
             settlement_timezone=plan["settlement_timezone"], bucket=plan["bucket"],
             token_id=plan["token_id"], price=plan["limit_price"], shares=plan["shares"],
-            execution_candidate=EXECUTION_CANDIDATE, fok_price_cap=plan["limit_price"],
+            execution_candidate=EXECUTION_CANDIDATE,
+            expiration=int(plan["expiration"]),
             tick_size=(float(plan["tick_size"]) if plan.get("tick_size") is not None else None),
             intent_body={"schema": SCHEMA, "rule": plan["rule"], "strategy_id": STRATEGY_ID,
-                         "order_type": "FOK", "post_only": False, "plan": plan},
+                         "order_type": plan["order_type"], "post_only": plan["post_only"],
+                         "expiration_basis": plan.get("expiration_basis"), "plan": plan},
             transport=transport, live_submit_authorized=live_submit_authorized,
             decision_details=details,
         )
@@ -1228,16 +1296,24 @@ def execute_tiebreak_entries(
             submitted += 1
         if float(entry.get("matched_size") or 0.0) > 0.0:
             filled += 1
-        # The row's refusal after the send: None only when shares filled.  A
-        # FOK the venue accepted and killed left no position either, and is
-        # retried on a newer book exactly like a refused one.
+        # The row's refusal after the send.  Charter 163: a post-only rung the
+        # exchange took is RESTING, not refused -- it is the order this lane
+        # meant to place, and calling it a refusal would both misreport it on
+        # the board and feed it to the retry pass.  ``_sync_sent_rows`` follows
+        # it from there: a fill leaves the row a success, an expiry or a cancel
+        # turns it into a ``send:`` refusal a later cycle may retry on its own
+        # book.  An ambiguous post (UNKNOWN_POST) stays a refusal until the
+        # reconciliation lane asks the exchange, as it always has.
         matched = float(entry.get("matched_size") or 0.0)
+        event_type = str(entry.get("event_type") or "")
         if matched > 0.0:
             after = None
-        elif entry.get("exchange_post_started"):
-            after = f"send:{entry.get('event_type') or 'killed'}:{entry.get('reason') or ''}".rstrip(":")
-        else:
+        elif not entry.get("exchange_post_started"):
             after = f"send:{entry.get('reason') or entry.get('state')}"
+        elif event_type == "POST_ACK":
+            after = None
+        else:
+            after = f"send:{event_type or 'killed'}:{entry.get('reason') or ''}".rstrip(":")
         target_conn.execute(
             f"UPDATE {EVALUATION_TABLE} SET refusal=? WHERE order_intent_id=?",
             (after, intent_id),
@@ -1270,6 +1346,10 @@ __all__ = [
     "DEFAULT_RULE",
     "FEATURE_COLUMNS",
     "RULE_V21",
+    "RULE_V22",
+    "BAND_RULES",
+    "SPREAD_RULES",
+    "EXECUTION_CANDIDATE",
     "RETRYABLE_REFUSAL_PREFIXES",
     "SEND_REFUSAL_PREFIX",
     "TERMINAL_REFUSAL_PREFIXES",
@@ -1294,5 +1374,6 @@ __all__ = [
     "plan_tiebreak_entries",
     "stage_first_decisions",
     "station_day_attempted",
-    "walk_ask_book",
+    "maker_rung",
+    "resting_order_fields",
 ]

@@ -3629,10 +3629,12 @@ def run_target_production_cycle(
                 "ok": False,
                 "error": f"{type(exc).__name__}:{exc}",
             }
-    # 「秤砣线」-- the tiebreak lane (charter 146, user ruling 2026-09-18):
-    # at a stage's first decision, when the market is a coin toss between
-    # two adjacent buckets and the model's mode is the second one, buy the
-    # model's bucket, 20 USDC FOK at the ask, once per station-day.  Runs
+    # 「秤砣线」-- the tiebreak lane (charter 146, user ruling 2026-09-18;
+    # charter 163, user ruling 2026-09-20): at a stage's first decision, when
+    # the market is a coin toss between two adjacent buckets and the model's
+    # mode is the second one, bid for the model's bucket -- one resting
+    # post-only rung at the best bid plus one tick, the stake's worth of
+    # shares, once per station-day (it crossed at the ask until 09-20).  Runs
     # after the main cycle on the same writer connection; reads the fact
     # rows that cycle wrote, so it sees exactly what the decision saw.  A
     # failure is reported on the receipt rather than raised, as the two

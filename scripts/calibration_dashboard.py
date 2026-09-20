@@ -10064,8 +10064,13 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     settled bucket exactly as every other live leg is.
 
     The acceptance the charter names is printed as three conditions, not a
-    verdict: realised minus ask with a day-clustered lower bound above zero,
-    both halves the same sign, and at least thirty event days.
+    verdict: realised minus the price actually paid, with a day-clustered
+    lower bound above zero, both halves the same sign, and at least thirty
+    event days.  ``ask_paid`` keeps its name and is what it always was --
+    the filled notional over the filled shares -- but since charter 163 the
+    lane rests at bid+1t rather than crossing, so the rows before and after
+    2026-09-20 are priced on different sides of the book and are told apart
+    by ``rule_version`` (…_spread_v2_1 against …_spread_maker_v2_2).
     """
 
     lanes = _load_strategy_lanes()
@@ -10161,6 +10166,19 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             "last_at_utc": last_at, "refusals": refusals,
             "fired_rows": fired_rows, "by_day": by_day, "by_rule": by_rule,
         }
+    # Which rule version scored each order.  Charter 163: the ask-crossing
+    # rows (…_spread_v2_1) and the resting rows (…_spread_maker_v2_2) are two
+    # strategies priced on two sides of the book, and an edge averaged over
+    # both is a number about neither.
+    version_by_intent: dict[str, str] = {}
+    if has_eval:
+        version_by_intent = {
+            str(r[0]): str(r[1])
+            for r in conn.execute(
+                "SELECT order_intent_id, rule_version FROM tiebreak_lane_evaluation"
+                " WHERE order_intent_id IS NOT NULL"
+            )
+        }
     book = live_book.build(conn)
     settled = book.get("settled") or {}
     legs = [
@@ -10189,6 +10207,7 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             "settled_bucket": landed[0] if landed else None,
             "hit": hit, "payout_usdc": payout,
             "pnl_usdc": (payout - notional) if payout is not None else None,
+            "rule_version": version_by_intent.get(str(leg.get("order_intent_id") or "")),
         })
     trades.sort(key=lambda t: (t["event_date"], t["station_id"]), reverse=True)
     filled_rows = [t for t in trades if t["filled_size"] > 0]
@@ -10276,6 +10295,30 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             ).fetchone()[0]), "fired": None, "sent": None, "settled": None, "hits": None,
             "hit_rate": None, "avg_ask": None, "realised_minus_ask": None,
         })
+    # The same three numbers per rule version, so the 09-25 review reads the
+    # resting rule on its own sample (charter 163).
+    by_version: list[dict[str, Any]] = []
+    for version in sorted({str(t.get("rule_version") or "") for t in filled_rows}):
+        rows_v = [t for t in filled_rows if str(t.get("rule_version") or "") == version]
+        settled_v = [t for t in rows_v if t["hit"] is not None]
+        shares_v = sum(t["filled_size"] for t in settled_v)
+        stake_v = sum(t["filled_notional_usdc"] for t in settled_v)
+        hits_v = sum(1 for t in settled_v if t["hit"])
+        by_version.append({
+            "rule_version": version or "(未评分)",
+            "resting": version.endswith("_maker_v2_2"),
+            "filled": len(rows_v), "settled": len(settled_v), "hits": hits_v,
+            "event_days": len({t["event_date"] for t in settled_v}),
+            "stake_usdc": stake_v,
+            "payout_usdc": sum(t["payout_usdc"] or 0.0 for t in settled_v),
+            "hit_rate": (hits_v / len(settled_v)) if settled_v else None,
+            "avg_price": (stake_v / shares_v) if shares_v > 0 else None,
+            "realised_minus_price": (
+                (hits_v / len(settled_v)) - (stake_v / shares_v)
+                if settled_v and shares_v > 0 else None
+            ),
+        })
+    out["by_rule_version"] = by_version
     out["feature_split"] = feature_split
     out["trades"] = {
         "available": True,
@@ -18796,7 +18839,7 @@ function tiebreakLane(){
       <span style="flex:1"></span>
       ${laneWord("basket","篮子买单")} ${laneWord("certain_win_recycle","0.99 回收")} ${laneWord("mis_bought_leg_exit","144 卖回")}
     </div>
-    <div class="muted" style="margin-top:6px">v2.1 规则：每个阶段的首个决策，模型众数桶被市场归一化中价定在 0.40–0.60 之间、且该桶两边有报价点差不超过 3 分，就按卖一梯走到预算所及的最深一档 FOK 买这桶，一个站日只买一次（点差 >3 分或单边的桶回测 −3.4%，≤3 分 +8~9%）。读数依据（全部快照 08-15→09-17，一站日一次按卖一）：754 站日 +5.7% [−0.2, +10.9]，前后半 +5.5/+5.7，仅首决策 488 站日 +7.9% [+1.8, +13.7]；同价带不看模型 −3.2%，模型众数在别处 −7.2%。v1（两众数相邻不同、市场 ≥0.40）是其 148 站日子集，行按 rule_version 分开记——仍是假设，不是结论。</div></div>`;
+    <div class="muted" style="margin-top:6px">v2.1 规则：每个阶段的首个决策，模型众数桶被市场归一化中价定在 0.40–0.60 之间、且该桶两边有报价点差不超过 3 分，就在这桶按 best 买一+1 挂一张 post-only GTD 单（点差只有一跳时贴到卖一下一跳），挂满每笔预算的股数，一个站日只挂一次（点差 >3 分或单边的桶回测 −3.4%，≤3 分 +8~9%）。v2.2（宪章 163，2026-09-20 裁决「秤砣线从吃单改为post only，挂best买一+1」）＝同样四条件，只把吃卖一改为挂买一+1；两版按 rule_version 分开记，不混算。下面的读数全部是<b>按卖一吃</b>算出来的，对挂单这版不成立——挂单要么不成交，要么在市场朝反方向走时才成交，前向样本从 09-20 重新开始。读数依据（全部快照 08-15→09-17，一站日一次按卖一）：754 站日 +5.7% [−0.2, +10.9]，前后半 +5.5/+5.7，仅首决策 488 站日 +7.9% [+1.8, +13.7]；同价带不看模型 −3.2%，模型众数在别处 −7.2%。v1（两众数相邻不同、市场 ≥0.40）是其 148 站日子集，行按 rule_version 分开记——仍是假设，不是结论。</div></div>`;
   const byRule=(E.by_rule||[]).map(r=>`<span class="pill ${/v2$/.test(r.rule_version)?"green":"amber"}" title="${h(r.first_at_utc||"")} → ${h(r.last_at_utc||"")}">${h(r.rule_version.replace("tiebreak_",""))}：评估 ${r.evaluated} · 触发 ${r.fired} · 发单 ${r.sent}</span>`).join(" ");
   const ruleLine=byRule?`<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><span class="muted">按规则版本：</span>${byRule}</div>`:"";
   const evalTiles=E.available?ruleLine+`<div class="grid g3" style="margin-top:8px">
@@ -18807,10 +18850,10 @@ function tiebreakLane(){
   const money=R.available?`<div class="grid g3" style="margin-top:8px">
     ${tile("投入 → 赔付",`${usd(R.stake_usdc)} → ${usd(R.payout_usdc)}`,`已结算 ${R.settled} 笔`)}
     ${tile("盈亏 / ROI",`${usd(R.pnl_usdc)} / ${pc(R.roi)}`,`命中 ${R.hits==null?"—":R.hits}${R.settled?` / ${R.settled}`:""}`)}
-    ${tile("实现 − 付出的卖一",`${sp(R.realised_minus_ask)}`,`命中率 ${pc(R.hit_rate)} 对 均价 ${n3(R.avg_ask)}${R.realised_minus_ask_ci90?` · 90% [${sp(R.realised_minus_ask_ci90[0])}, ${sp(R.realised_minus_ask_ci90[1])}]`:" · 样本不足 5 笔或 3 日，无区间"}`)}
+    ${tile("实现 − 实付均价",`${sp(R.realised_minus_ask)}`,`命中率 ${pc(R.hit_rate)} 对 均价 ${n3(R.avg_ask)}${R.realised_minus_ask_ci90?` · 90% [${sp(R.realised_minus_ask_ci90[0])}, ${sp(R.realised_minus_ask_ci90[1])}]`:" · 样本不足 5 笔或 3 日，无区间"}`)}
   </div>
   <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-    ${cond(A.lower_bound_positive,"① 实现−卖一 日聚类下界 > 0")}
+    ${cond(A.lower_bound_positive,"① 实现−实付均价 日聚类下界 > 0")}
     ${cond(A.halves_same_sign,"② 前后半段同号"+(R.halves&&R.halves.first!=null?`（${sp(R.halves.first)} / ${sp(R.halves.second)}）`:""))}
     ${cond((A.event_days||0)>=(A.event_days_needed||30),`③ 事件日 ${A.event_days||0} / ${A.event_days_needed||30}`)}
     <span class="muted">三条同时满足才算过；不过则关掉本线、恢复其余车道（同一文件）。首次复核 09-25。</span>
@@ -18818,10 +18861,14 @@ function tiebreakLane(){
   const refusals=(E.refusals||[]).map(r=>`<tr><td class="mono">${h(r.refusal)}</td><td class="mono">${r.count}</td><td class="mono">${r.fired}</td></tr>`).join("");
   const refTable=E.available&&refusals?`<details style="margin-top:8px"><summary>为什么没买（评估结果分布，${E.total} 条）</summary>
     <table><thead><tr><th>结果 / 未发单原因</th><th>条数</th><th>其中触发</th></tr></thead><tbody>${refusals}</tbody></table>
-    <div class="muted">rule_not_met:* 是四条件不成立；first_decision_stale 是上线时已过时的首决策；station_* / account_* / ask_book_* / market_* 是触发后被各闸挡下；空白（sent）是已发单。</div></details>`:"";
+    <div class="muted">rule_not_met:* 是四条件不成立；first_decision_stale 是上线时已过时的首决策；station_* / account_* / market_* 是触发后被各闸挡下；maker_anchor_unavailable 是这桶没有买一或没有 tick、挂不出单；order_below_venue_minimum 是每笔预算在挂单价上买不够交易所最小股数；send:* 是单子没成交就结束了（GTD 到期或被撤），会在更新的盘口上重判重挂。空白（sent）是已发单——挂单还在场上也记空白。</div></details>`:"";
+  const vers=(T.by_rule_version||[]).map(v=>`<tr><td class="mono">${h(v.rule_version.replace("tiebreak_",""))}${v.resting?' <span class="pill green">挂单</span>':' <span class="pill amber">吃单</span>'}</td><td class="mono">${v.filled}</td><td class="mono">${v.settled}</td><td class="mono">${v.event_days}</td><td class="mono">${usd(v.stake_usdc)}</td><td class="mono">${usd((v.payout_usdc||0)-(v.stake_usdc||0))}</td><td class="mono">${v.hit_rate==null?"—":pc(v.hit_rate)}</td><td class="mono">${v.avg_price==null?"—":n3(v.avg_price)}</td><td class="mono">${v.realised_minus_price==null?"—":sp(v.realised_minus_price)}</td></tr>`).join("");
+  const versTable=vers?`<details open style="margin-top:8px"><summary>按下单方式分开算（宪章 163：吃卖一的 v2.1 与挂买一+1 的 v2.2 是两个策略，不混算）</summary>
+    <table><thead><tr><th>规则版本</th><th>成交</th><th>已结算</th><th>事件日</th><th>投入</th><th>盈亏</th><th>命中率</th><th>实付均价</th><th>实现−实付均价</th></tr></thead><tbody>${vers}</tbody></table>
+    <div class="muted">挂单这版从 2026-09-20 起重新计；上面三条验收灯把两版合在一起算，真正的判据读这张表里挂单那一行。</div></details>`:"";
   const feat=(T.feature_split||[]).map(f=>`<tr><td>${h(f.bin)}</td><td class="mono">${f.evaluated}</td><td class="mono">${f.fired==null?"—":f.fired}</td><td class="mono">${f.sent==null?"—":f.sent}</td><td class="mono">${f.settled==null?"—":f.settled}</td><td class="mono">${f.hit_rate==null?"—":pc(f.hit_rate)}</td><td class="mono">${f.avg_ask==null?"—":n3(f.avg_ask)}</td><td class="mono">${f.realised_minus_ask==null?"—":sp(f.realised_minus_ask)}</td></tr>`).join("");
   const featTable=feat?`<details open style="margin-top:8px"><summary>特征（只记不交易）：市场自上一决策向模型桶靠拢多少，分档看本线成交的实现</summary>
-    <table><thead><tr><th>靠拢量</th><th>评估</th><th>触发</th><th>发单</th><th>已结算</th><th>命中率</th><th>均卖一</th><th>实现−卖一</th></tr></thead><tbody>${feat}</tbody></table>
+    <table><thead><tr><th>靠拢量</th><th>评估</th><th>触发</th><th>发单</th><th>已结算</th><th>命中率</th><th>实付均价</th><th>实现−实付均价</th></tr></thead><tbody>${feat}</tbody></table>
     <div class="muted">回测（全部快照，一站日一次）：靠拢 ≥3 点 +11.2% [+4.9, +17.4]，0–3 点 +2.8%，没动或远离 ≈0。前向样本站住了再考虑当规则（v3）。</div></details>`:"";
   const rows=(R.rows||[]).map(t=>`<tr>
     <td>${h(t.station_id)}</td><td class="mono">${h(t.event_date)}</td><td>${h(t.stage||"")}</td><td>${h(t.bucket)}</td>
@@ -18837,7 +18884,7 @@ function tiebreakLane(){
     <td class="mono">${r.refusal?h(r.refusal):"<span class='pill green'>已发单</span>"}</td><td class="mono">${h((r.evaluated_at_utc||"").slice(5,16).replace("T"," "))}</td></tr>`).join("");
   const firedTable=E.available?`<details style="margin-top:8px"><summary>触发过的首决策（${(E.fired_rows||[]).length} 条，含被闸挡下的）</summary>
     ${firedRows?`<table><thead><tr><th>站</th><th>事件日</th><th>阶段</th><th>模型桶 ← 市场桶</th><th>市场给模型桶</th><th>模型自报</th><th>结果</th><th>评估于</th></tr></thead><tbody>${firedRows}</tbody></table>`:`<div class="muted">还没有触发过。</div>`}</details>`:"";
-  return settings+evalTiles+money+featTable+refTable+tradeTable+firedTable;
+  return settings+evalTiles+money+versTable+featTable+refTable+tradeTable+firedTable;
 }
 
 function moneyBoard(){

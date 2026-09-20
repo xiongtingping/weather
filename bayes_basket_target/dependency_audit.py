@@ -41,6 +41,10 @@ NON_MARKET_NETWORK_MODULES = frozenset(
         "bayes_basket_target/historical_awc_replay.py",
         "bayes_basket_target/icon_eps_native_arrival_index.py",
         "bayes_basket_target/jma_msm_archive.py",
+        # Charter 162 (2026-09-20): the second door for METAR and TAF when
+        # every aviationweather.gov channel fails on one expired certificate.
+        # tgftp.nws.noaa.gov serves reports, not quotes.
+        "bayes_basket_target/noaa_tgftp_taf.py",
         "bayes_basket_target/noaa_conus_archive.py",
         "bayes_basket_target/republisher_native_forward_probe.py",
         "bayes_basket_target/republisher_no_live_p0_contract.py",

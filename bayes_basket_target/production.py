@@ -168,6 +168,13 @@ def _venue_order_fields(
         fields["fok_price_cap"] = float(limit_price)
     return fields
 
+
+#: The same four fields for a lane that mints its own intents outside this
+#: compile (charter 163's tiebreak rung).  A second copy of the GTD
+#: arithmetic is how the compile and the send come to sign different orders,
+#: so the side lanes read this one.
+venue_order_fields = _venue_order_fields
+
 # Charter 94 (一)(二): each leg posts one order per rung of the bid-anchored
 # ladder, as many rungs as the gap holds whole venue lots for, each an equal
 # share of the gap.  Ruled 2026-09-06 and generated in the optimizer since,

@@ -84,7 +84,11 @@ def test_the_served_file_pauses_the_three_and_runs_the_tiebreak() -> None:
     # number the operator last clicked.
     low, high = lanes.TIEBREAK_STAKE_BOUNDS
     assert low <= float(served["lanes"]["tiebreak"]["stake_usdc"]) <= high
-    assert served["lanes"]["tiebreak"]["rule"] == "model_mode_midband_spread_v2_1"
+    # Charter 163 (user ruling 2026-09-20 "秤砣线从吃单改为post only，挂best
+    # 买一+1"): v2.1's four conditions posted as a resting rung.  The version
+    # is separate so the ask-crossing rows and the bid+1t rows are never
+    # averaged into one acceptance reading.
+    assert served["lanes"]["tiebreak"]["rule"] == "model_mode_midband_spread_maker_v2_2"
     assert served["lanes"]["tiebreak"]["max_spread_on_model_mode"] == 0.031
     assert served["lanes"]["tiebreak"]["min_market_share_on_model_mode"] == 0.40
     assert served["lanes"]["tiebreak"]["max_market_share_on_model_mode"] == 0.60

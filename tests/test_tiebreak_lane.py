@@ -1,11 +1,14 @@
-"""「秤砣线」-- the tiebreak lane (charter 146, user ruling 2026-09-18).
+"""「秤砣线」-- the tiebreak lane (charters 146 and 163).
 
 At a stage's first decision, when the market's normalised mid puts at least
 0.40 on the model's mode bucket and that bucket is one rung from the
-market's own mode, the lane buys the model's bucket: 20 USDC, FOK at the
-walked ask, once per station-day, through the shared buy sender, with a
-decision row the live book can count it under.  Every first decision is
-scored into ``tiebreak_lane_evaluation`` whether or not it fires.
+market's own mode, the lane BIDS for the model's bucket: one resting
+post-only GTD rung at the best bid plus one tick, the stake's worth of
+shares, once per station-day, through the shared buy sender, with a
+decision row the live book can count it under (charter 163, user ruling
+2026-09-20 "秤砣线从吃单改为post only，挂best买一+1"; it crossed at the
+walked ask from 09-18 to then).  Every first decision is scored into
+``tiebreak_lane_evaluation`` whether or not it fires.
 """
 
 from __future__ import annotations
@@ -125,6 +128,28 @@ def _seed(conn, *, stage="P1", probabilities=None, book=None, decided=DECIDED, f
         })
 
 
+def _resting_transport(sent: list):
+    """The venue takes the post-only rung and holds it: POST_ACK, no match."""
+
+    def transport(path, payload):
+        sent.append((path, payload))
+        return {"ok": True, "accepted": True, "exchange_order_id": "0xrest", "status": "live"}
+    return transport
+
+
+def _expire(conn, intent_id: str, *, at: str) -> None:
+    """What the resting lifecycle writes when a rung's GTD horizon runs out
+    or it is cancelled off its anchor: the order existed and stopped
+    existing without filling."""
+
+    from bayes_basket_target.execution_reconciliation import record_order_event  # noqa: PLC0415
+
+    record_order_event(conn, order_intent_id=intent_id, event={
+        "event_type": "EXPIRED", "exchange_order_id": "0xrest", "observed_at": at,
+        "matched_size": 0.0, "matched_notional_usdc": 0.0, "event_payload": {"reason": "gtd_expired"},
+    })
+
+
 def _fill_transport(sent: list):
     def transport(path, payload):
         sent.append((path, payload))
@@ -170,7 +195,13 @@ def test_v2_fires_on_the_model_mode_inside_the_market_mid_band() -> None:
     tie = lane.evaluate_rule(p, ORDS, {"27°C": 0.50, "28°C": 0.42, "29°C": 0.08}, **V2)
     assert tie["fired"] is True and tie["rule"] == "tiebreak_model_mode_market_midband_v2"
     default = lane.evaluate_rule(p, ORDS, {"27°C": 0.50, "28°C": 0.42, "29°C": 0.08}, min_market_share=0.40, spread=0.02, max_spread=0.031)
-    assert default["rule"] == "tiebreak_model_mode_market_midband_spread_v2_1" and default["fired"] is True, "v2.1 is the default"
+    assert default["rule"] == "tiebreak_model_mode_market_midband_spread_maker_v2_2" and default["fired"] is True, "v2.2 is the default"
+    # v2.2 is v2.1's predicate: the same book, the same verdict, every field
+    # but the version identical.  What charter 163 changed is the order.
+    v21 = lane.evaluate_rule(p, ORDS, {"27°C": 0.50, "28°C": 0.42, "29°C": 0.08},
+                             min_market_share=0.40, rule=lane.RULE_V21, spread=0.02, max_spread=0.031)
+    assert {k: v for k, v in v21.items() if k not in ("rule", "rule_name")} == {
+        k: v for k, v in default.items() if k not in ("rule", "rule_name")}
     assert lane.evaluate_rule(p, ORDS, {"27°C": 0.50, "28°C": 0.42, "29°C": 0.08}, min_market_share=0.40, spread=0.05, max_spread=0.031)["reason"] == "spread_too_wide"
     assert lane.evaluate_rule(p, ORDS, {"27°C": 0.50, "28°C": 0.42, "29°C": 0.08}, min_market_share=0.40, spread=None, max_spread=0.031)["reason"] == "spread_unquoted"
     # Agreeing modes, market 0.55 on the shared bucket: fires under v2, not v1.
@@ -189,25 +220,59 @@ def test_v2_fires_on_the_model_mode_inside_the_market_mid_band() -> None:
         lane.evaluate_rule(p, ORDS, {"27°C": 0.5, "28°C": 0.4, "29°C": 0.1}, min_market_share=0.4, rule="no_such_rule")
 
 
-def test_the_walk_spends_at_most_the_stake_and_prices_the_deepest_level() -> None:
-    walk = lane.walk_ask_book([{"price": 0.47, "shares": 100.0}, {"price": 0.46, "shares": 30.0}], 20.0)
-    assert walk["best_ask"] == 0.46 and walk["limit_price"] == 0.47 and walk["levels_touched"] == 2
-    # Capped at what the stake buys at the limit: 20 / 0.47, floored to a cent of a share.
-    assert walk["walked_cost_usdc"] <= 20.0 and walk["shares"] == pytest.approx(42.55)
-    assert walk["shares"] * walk["limit_price"] <= 20.0
-    # One level deep enough: limit is the best ask.
-    one = lane.walk_ask_book([{"price": 0.46, "shares": 100.0}], 20.0)
-    assert one["limit_price"] == 0.46 and one["shares"] == pytest.approx(43.47)
-    # Too thin for the venue minimum: no plan.
-    assert lane.walk_ask_book([{"price": 0.46, "shares": 3.0}], 20.0) is None
-    assert lane.walk_ask_book([], 20.0) is None
+def test_the_rung_stands_one_tick_over_the_bid_and_spends_at_most_the_stake() -> None:
+    """Charter 163: bid+1t, clamped under the ask, and never more than the
+    stake.  The price is production's own ladder, so the resting lifecycle
+    reads this rung as standing on its anchor rather than off it."""
+
+    row = _book()[1]  # 28C quoted 0.44 / 0.46
+    rung = lane.maker_rung(row, 20.0, tick_size=0.01, min_shares=5.0)
+    assert rung["refusal"] is None
+    assert rung["limit_price"] == 0.45 and rung["best_bid"] == 0.44 and rung["best_ask"] == 0.46
+    assert rung["offset_ticks"] == 1.0 and rung["clamped_to_post_only_ceiling"] is False
+    assert rung["shares"] == pytest.approx(44.44) and rung["cost_usdc"] <= 20.0
+    # A one-tick spread: bid+1t IS the ask, so post-only clamps the rung to
+    # the highest price it may rest at -- the bid itself, first in the queue.
+    tight = lane.maker_rung(
+        {"bucket": "x", "ask_levels": [{"price": 0.45, "shares": 200.0}],
+         "bid_levels": [{"price": 0.44, "shares": 200.0}], "ask_available": True},
+        20.0, tick_size=0.01, min_shares=5.0)
+    assert tight["limit_price"] == 0.44 and tight["clamped_to_post_only_ceiling"] is True
+    # No bid is no anchor; no tick is no grid.  Neither is a rung.
+    assert lane.maker_rung(
+        {"bucket": "x", "ask_levels": [{"price": 0.45, "shares": 200.0}], "bid_levels": [],
+         "ask_available": True}, 20.0, tick_size=0.01)["refusal"] == "maker_anchor_unavailable"
+    assert lane.maker_rung(_book()[1], 20.0, tick_size=None)["refusal"] == "maker_anchor_unavailable"
+    assert lane.maker_rung(None, 20.0, tick_size=0.01)["refusal"] == "maker_anchor_unavailable"
+    # A stake too small to reach the venue's minimum size at that price.
+    assert lane.maker_rung(_book()[1], 1.0, tick_size=0.01, min_shares=5.0)["refusal"].startswith(
+        "order_below_venue_minimum:")
+
+
+def test_the_gtd_horizon_is_the_belief_that_authorized_the_rung() -> None:
+    """Charter 127 (二), read through production's own field builder: the
+    rung lives as long as the belief, never under the venue's floor."""
+
+    belief = lane.resting_order_fields(
+        now_utc="2026-09-18T12:10:00Z", limit_price=0.45,
+        belief_fresh_until_utc="2026-09-18T13:00:00Z")
+    assert belief["order_type"] == "GTD" and belief["post_only"] is True
+    assert belief["expiration_basis"] == "belief_fresh_until"
+    assert belief["expiration"] == int(
+        __import__("datetime").datetime.fromisoformat("2026-09-18T13:00:00+00:00").timestamp())
+    # A belief expiring inside the venue's three-minute floor is lifted to it.
+    floored = lane.resting_order_fields(
+        now_utc="2026-09-18T12:10:00Z", limit_price=0.45,
+        belief_fresh_until_utc="2026-09-18T12:11:00Z")
+    assert floored["expiration_basis"] == "venue_minimum_horizon"
+    assert floored["expiration"] > belief["expiration"] - 3600
 
 
 # ---------------------------------------------------------------------------
 # End to end.
 
 
-def test_it_buys_the_model_bucket_fok_at_the_walked_ask_and_records_everything(store) -> None:
+def test_it_bids_for_the_model_bucket_post_only_at_bid_plus_one_tick(store) -> None:
     _seed(store)
     sent: list = []
     receipt = lane.execute_tiebreak_entries(
@@ -219,15 +284,23 @@ def test_it_buys_the_model_bucket_fok_at_the_walked_ask_and_records_everything(s
     (path, payload), = sent
     assert path == sub.PLACE_ORDER_PATH
     assert payload["token_id"] == "t28" and payload["side"] == "BUY"
-    assert payload["order_type"] == "FOK" and payload["post_only"] is False
-    assert payload["price"] == 0.47 and payload["fok_price_cap"] == 0.47
-    assert payload["size"] * payload["price"] <= 20.0 + 1e-6 and payload["size"] >= 40.0
+    # Charter 163: a resting post-only GTD rung, never a crossing order, and
+    # never a price cap (that field belongs to the take this lane stopped
+    # sending).  28C is quoted 0.44 / 0.46, so the rung stands at 0.45.
+    assert payload["order_type"] == "GTD" and payload["post_only"] is True
+    assert payload["price"] == 0.45 and "fok_price_cap" not in payload
+    assert payload["expiration"] > 0
+    assert payload["size"] * payload["price"] <= 20.0 + 1e-6 and payload["size"] >= 44.0
     intent = store.execute(
         "SELECT decision_id, bucket, order_action, limit_price, requested_size, state, live_submit_authorized,"
         " order_intent_id FROM basket_target_order_intents"
     ).fetchone()
     assert intent[0] == f"tiebreak_decision_{ST}_{ED}" and intent[1] == "28°C" and intent[2] == "BUY"
-    assert intent[3] == 0.47 and intent[5] == "filled" and intent[6] == 1
+    assert intent[3] == 0.45 and intent[5] == "filled" and intent[6] == 1
+    body = json.loads(store.execute(
+        "SELECT intent_json FROM basket_target_order_intents").fetchone()[0])
+    assert body["execution_candidate"] == "MAKER" and body["post_only"] is True
+    assert body["order_type"] == "GTD" and body["expiration_basis"] == "belief_fresh_until"
     decision = store.execute(
         "SELECT strategy_lane, decided_state, will_order, details_json FROM auto_trade_decisions WHERE decision_id=?",
         (intent[0],),
@@ -251,7 +324,7 @@ def test_it_buys_the_model_bucket_fok_at_the_walked_ask_and_records_everything(s
         f" rule_version FROM {lane.EVALUATION_TABLE}"
     ).fetchone()
     assert book[0] == 0.46 and book[1] == 0.44 and book[2] == pytest.approx(0.02) and book[3] == 30.0
-    assert book[4] == "tiebreak_model_mode_market_midband_spread_v2_1"
+    assert book[4] == "tiebreak_model_mode_market_midband_spread_maker_v2_2"
     reconciled = store.execute(
         "SELECT filled_size FROM basket_target_order_reconciliations WHERE order_intent_id=?",
         (evaluation[2],),
@@ -271,7 +344,7 @@ def test_the_live_book_counts_the_leg_under_its_decision_with_the_claim(store) -
     assert len(legs) == 1
     leg = legs[0]
     assert (leg["station_id"], leg["event_date"], leg["stage"], leg["bucket"]) == (ST, ED, "P1", "28°C")
-    assert leg["filled_size"] > 40.0 and leg["claimed_probability"] == pytest.approx(0.45)
+    assert leg["filled_size"] > 44.0 and leg["claimed_probability"] == pytest.approx(0.45)
 
 
 def test_one_attempt_per_station_day_and_once_per_stage(store) -> None:
@@ -313,9 +386,9 @@ def test_a_decision_that_does_not_fire_is_scored_with_its_reason(store) -> None:
                                             live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
     assert receipt["evaluated"] == 1 and receipt["fired"] == 0
     assert receipt["refusals"] == ["rule_not_met:market_share_below_threshold"]
-    assert receipt["rule"] == "tiebreak_model_mode_market_midband_spread_v2_1"
+    assert receipt["rule"] == "tiebreak_model_mode_market_midband_spread_maker_v2_2"
     row = store.execute(f"SELECT model_mode, market_mode, fired, rule_version FROM {lane.EVALUATION_TABLE}").fetchone()
-    assert row == ("29°C", "27°C", 0, "tiebreak_model_mode_market_midband_spread_v2_1")
+    assert row == ("29°C", "27°C", 0, "tiebreak_model_mode_market_midband_spread_maker_v2_2")
 
 
 def test_v2_1_refuses_a_wide_or_one_sided_book_on_the_model_bucket(store) -> None:
@@ -327,7 +400,7 @@ def test_v2_1_refuses_a_wide_or_one_sided_book_on_the_model_bucket(store) -> Non
     wide = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
                                          live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
     assert wide["fired"] == 0 and wide["refusals"] == ["rule_not_met:spread_too_wide"]
-    assert wide["rule"] == "tiebreak_model_mode_market_midband_spread_v2_1"
+    assert wide["rule"] == "tiebreak_model_mode_market_midband_spread_maker_v2_2"
     row = store.execute(f"SELECT spread_on_model_mode, fired FROM {lane.EVALUATION_TABLE}").fetchone()
     assert row[0] == pytest.approx(0.06) and row[1] == 0
     # The same book under v2 fires: the spread is v2.1's condition alone.
@@ -423,9 +496,9 @@ def test_the_lane_file_selects_v1_and_the_row_says_which_rule_scored_it(store) -
                                            live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
     assert second["fired"] == 1 and second["submitted"] == 1 and sent[0][1]["token_id"] == "t27"
     versions = sorted(r[0] for r in store.execute(f"SELECT rule_version FROM {lane.EVALUATION_TABLE}"))
-    assert versions == ["tiebreak_adjacent_mode_market_share_v1", "tiebreak_model_mode_market_midband_spread_v2_1"]
+    assert versions == ["tiebreak_adjacent_mode_market_share_v1", "tiebreak_model_mode_market_midband_spread_maker_v2_2"]
     plan_rule = store.execute("SELECT json_extract(intent_json, '$.rule') FROM basket_target_order_intents").fetchone()[0]
-    assert plan_rule == "tiebreak_model_mode_market_midband_spread_v2_1"
+    assert plan_rule == "tiebreak_model_mode_market_midband_spread_maker_v2_2"
 
 
 def test_the_gates_a_fired_decision_must_still_pass(store) -> None:
@@ -439,11 +512,18 @@ def test_the_gates_a_fired_decision_must_still_pass(store) -> None:
     assert barred["refusals"] == ["station_not_admitted:live_station_barred"]
 
 
-def test_a_thin_ask_book_and_a_closed_market_are_refused(store) -> None:
-    _seed(store, book=_book(asks_28=((0.46, 3.0),)))
+def test_an_unpriceable_rung_and_a_closed_market_are_refused(store) -> None:
+    # No tick on the registry row: there is no grid to place a rung on.  (A
+    # missing BID cannot reach here -- v2.1/v2.2 refuse an unquoted side at
+    # the rule, before any order is priced.)
+    _seed(store)
+    store.execute(
+        "UPDATE basket_target_market_registry SET registry_json=?",
+        (json.dumps({"order_min_size": 5.0}),),
+    )
     thin = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
                                          live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
-    assert thin["refusals"] == ["ask_book_too_thin"]
+    assert thin["refusals"] == ["maker_anchor_unavailable"]
     store.execute(f"DELETE FROM {lane.EVALUATION_TABLE}")
     store.execute("DELETE FROM basket_target_market_registry")
     _insert(store, "basket_target_market_registry_snapshot", {"snapshot_sha256": "1" * 64, "source_scope": "shared_live_registry_export_only"})
@@ -501,58 +581,90 @@ def _newer_snapshot(conn, *, observed_at: str, snapshot_id: str, book=None, even
     })
 
 
-def test_a_killed_fok_is_retried_only_on_a_newer_book_and_capped(store) -> None:
-    """RJTT 2026-09-18 (user ruling "加重试"): a FOK priced on a book the venue
-    has moved past is killed; the lane re-sends only once a newer committed
-    book exists, re-judged and re-walked on it, and at most
-    max_sends_per_station_day times.  A fill ends it."""
+def test_a_rung_that_ended_without_filling_is_retried_on_a_newer_book_and_capped(store) -> None:
+    """Charter 163 in place of the killed FOK (user ruling 2026-09-18 "加重试").
+
+    A rung the venue is HOLDING ends the station-day while it stands -- it is
+    the order this lane meant to place, not a refusal, and nothing doubles it.
+    Once it has ended without filling (its own GTD horizon, or the resting
+    lifecycle cancelling it off its anchor) the lane re-judges on a NEWER
+    committed book, re-posts at the anchor that stands there, and does so at
+    most ``max_sends_per_station_day`` times."""
 
     _seed(store)
     sent: list = []
-
-    def killed(path, payload):
-        sent.append(payload)
-        return {"ok": True, "accepted": True, "exchange_order_id": "0xkill", "status": "live"}
-
-    receipt = lane.execute_tiebreak_entries(store, transport=killed, now_utc=NOW, live_submit_authorized=True,
-                                            settings={"stake_usdc": 20.0}, admission=ADMIT)
+    receipt = lane.execute_tiebreak_entries(store, transport=_resting_transport(sent), now_utc=NOW,
+                                            live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
     assert receipt["submitted"] == 1 and receipt["filled"] == 0
-    state = store.execute("SELECT state FROM basket_target_order_intents").fetchone()[0]
-    assert state in {"cancelled", "failed"}
-    row = store.execute(f"SELECT refusal, order_intent_id FROM {lane.EVALUATION_TABLE}").fetchone()
-    assert row[0].startswith("send:") and row[1] == sent[0]["order_intent_id"], "a killed FOK is not a success"
-    # Same book: nothing to re-send on.
-    again = lane.execute_tiebreak_entries(store, transport=killed, now_utc=NOW, live_submit_authorized=True,
-                                          settings={"stake_usdc": 20.0}, admission=ADMIT)
-    assert again["retry_planned"] == 0 and len(sent) == 1
-    assert again["retries"][0].get("waiting_for_newer_book") is True
-    # A newer book, still inside the rule: re-sent, priced on it.
+    first_id, state = store.execute(
+        "SELECT order_intent_id, state FROM basket_target_order_intents").fetchone()
+    assert state == "submitted", "a post-only rung the venue took is resting, not answered"
+    assert store.execute(f"SELECT refusal, order_intent_id FROM {lane.EVALUATION_TABLE}").fetchone() == (
+        None, first_id), "a resting rung is not a refusal"
+    # Nothing is re-asked while it stands: the row is not a refusal at all.
+    standing = lane.execute_tiebreak_entries(store, transport=_resting_transport(sent), now_utc=NOW,
+                                             live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert standing["retried"] == 0 and len(sent) == 1
+    # The venue's clock runs out.  Now the row is a ``send:`` refusal again,
+    # and it waits for a book newer than the one the dead rung was priced on.
+    _expire(store, first_id, at="2026-09-18T12:08:30.000Z")
+    ended = lane.execute_tiebreak_entries(store, transport=_resting_transport(sent), now_utc=NOW,
+                                          live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert ended["retry_planned"] == 0 and len(sent) == 1
+    assert ended["retries"][0].get("waiting_for_newer_book") is True
+    assert store.execute(f"SELECT refusal FROM {lane.EVALUATION_TABLE}").fetchone()[0] == "send:resolved_cancelled"
+    # A newer book, still inside the rule: re-posted at ITS anchor (0.45/0.47
+    # quotes a rung at 0.46), not at the price the dead rung stood on.
     _newer_snapshot(store, observed_at="2026-09-18T12:09:00.000Z", snapshot_id="snap_new1",
                     book=_book(asks_28=((0.47, 100.0),), bid_28=0.45))
-    second = lane.execute_tiebreak_entries(store, transport=killed, now_utc=NOW, live_submit_authorized=True,
-                                           settings={"stake_usdc": 20.0}, admission=ADMIT)
-    assert second["retry_planned"] == 1 and len(sent) == 2 and sent[1]["price"] == 0.47
+    second = lane.execute_tiebreak_entries(store, transport=_resting_transport(sent), now_utc=NOW,
+                                           live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert second["retry_planned"] == 1 and len(sent) == 2 and sent[1][1]["price"] == 0.46
     # Waiting for a newer book is not a retry; the count moves only when one is made.
     assert store.execute(f"SELECT retry_snapshot_id, retry_count FROM {lane.EVALUATION_TABLE}").fetchone() == ("snap_new1", 1)
+    second_id = store.execute(
+        "SELECT order_intent_id FROM basket_target_order_intents ORDER BY created_at DESC LIMIT 1").fetchone()[0]
+    _expire(store, second_id, at="2026-09-18T12:09:20.000Z")
     # A newer book that has left the band is not bought.
     _newer_snapshot(store, observed_at="2026-09-18T12:09:30.000Z", snapshot_id="snap_new2",
                     book=[{"bucket": "27°C", "ask_levels": [{"price": 0.20, "shares": 200.0}], "bid_levels": [{"price": 0.18, "shares": 200.0}], "ask_available": True},
                           {"bucket": "28°C", "ask_levels": [{"price": 0.75, "shares": 200.0}], "bid_levels": [{"price": 0.73, "shares": 200.0}], "ask_available": True},
                           {"bucket": "29°C", "ask_levels": [{"price": 0.05, "shares": 200.0}], "bid_levels": [{"price": 0.04, "shares": 200.0}], "ask_available": True}])
-    third = lane.execute_tiebreak_entries(store, transport=killed, now_utc=NOW, live_submit_authorized=True,
-                                          settings={"stake_usdc": 20.0}, admission=ADMIT)
+    third = lane.execute_tiebreak_entries(store, transport=_resting_transport(sent), now_utc=NOW,
+                                          live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
     assert third["retry_planned"] == 0 and len(sent) == 2
     assert third["retries"][0]["refusal_after"] == "retry_rule_not_met:market_share_above_ceiling"
     # Back inside the band on a newer book: the third and last send.
     _newer_snapshot(store, observed_at="2026-09-18T12:10:00.000Z", snapshot_id="snap_new3")
-    fourth = lane.execute_tiebreak_entries(store, transport=killed, now_utc=NOW, live_submit_authorized=True,
-                                           settings={"stake_usdc": 20.0}, admission=ADMIT)
+    fourth = lane.execute_tiebreak_entries(store, transport=_resting_transport(sent), now_utc=NOW,
+                                           live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
     assert fourth["retry_planned"] == 1 and len(sent) == 3
+    third_id = store.execute(
+        "SELECT order_intent_id FROM basket_target_order_intents ORDER BY created_at DESC LIMIT 1").fetchone()[0]
+    _expire(store, third_id, at="2026-09-18T12:10:20.000Z")
     _newer_snapshot(store, observed_at="2026-09-18T12:11:00.000Z", snapshot_id="snap_new4")
-    fifth = lane.execute_tiebreak_entries(store, transport=killed, now_utc=NOW, live_submit_authorized=True,
-                                          settings={"stake_usdc": 20.0}, admission=ADMIT)
+    fifth = lane.execute_tiebreak_entries(store, transport=_resting_transport(sent), now_utc=NOW,
+                                          live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
     assert fifth["retry_planned"] == 0 and len(sent) == 3
     assert fifth["retries"][0]["refusal_after"] == "station_day_send_cap:3"
+
+
+def test_a_standing_rung_holds_the_station_day_even_on_a_newer_book(store) -> None:
+    """Charter 163: while the venue holds the rung there is a live order on
+    that token, so the station-day is spent -- a later stage's first decision
+    fires and is refused, and a newer book buys nothing."""
+
+    _seed(store)
+    sent: list = []
+    lane.execute_tiebreak_entries(store, transport=_resting_transport(sent), now_utc=NOW,
+                                  live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert len(sent) == 1
+    _newer_snapshot(store, observed_at="2026-09-18T12:09:00.000Z", snapshot_id="snap_standing")
+    _seed(store, stage="P0-M", fact_id="f9", decided="2026-09-18T12:09:00.000Z")
+    later = lane.execute_tiebreak_entries(store, transport=_resting_transport(sent), now_utc=NOW,
+                                          live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert later["fired"] == 1 and later["planned"] == 0 and len(sent) == 1
+    assert later["refusals"] == ["station_day_already_attempted"]
 
 
 def test_a_fill_ends_the_station_day_for_good(store) -> None:
@@ -621,7 +733,8 @@ def test_a_cash_refusal_is_retried_on_the_latest_decision_once_cash_is_there(sto
     assert retried["evaluated"] == 0, "the first decision is not re-scored"
     assert retried["retried"] == 1 and retried["retry_planned"] == 1 and retried["submitted"] == 1
     (path, payload), = sent
-    assert payload["token_id"] == "t28" and payload["order_type"] == "FOK" and payload["size"] * payload["price"] <= 6.0 + 1e-6
+    assert payload["token_id"] == "t28" and payload["order_type"] == "GTD" and payload["post_only"] is True
+    assert payload["size"] * payload["price"] <= 6.0 + 1e-6
     row = store.execute(
         f"SELECT refusal, retry_of_refusal, retry_count, order_intent_id, retry_fact_id, fact_id FROM {lane.EVALUATION_TABLE}"
     ).fetchone()
@@ -715,7 +828,7 @@ def test_an_ambiguous_send_waits_for_the_reconciliation_and_follows_it(store) ->
 
 
 def test_a_row_re_judged_after_its_send_failed_keeps_the_later_judgement(store) -> None:
-    """RJTT/OPKC 2026-09-18 07:55Z: a row whose killed send had been re-judged
+    """RJTT/OPKC 2026-09-18 07:55Z: a row whose dead send had been re-judged
     ``retry_rule_not_met`` on a newer book read ``send:resolved_not_placed``
     again one cycle later -- the sent-row sync rewrote it from the dead order
     on every pass, and the board named the order as the reason when the
@@ -723,28 +836,24 @@ def test_a_row_re_judged_after_its_send_failed_keeps_the_later_judgement(store) 
 
     _seed(store)
     sent: list = []
-
-    def killed(path, payload):
-        sent.append(payload)
-        return {"ok": True, "accepted": True, "exchange_order_id": "0xkill", "status": "live"}
-
-    lane.execute_tiebreak_entries(store, transport=killed, now_utc=NOW, live_submit_authorized=True,
-                                  settings={"stake_usdc": 20.0}, admission=ADMIT)
-    assert store.execute(f"SELECT refusal FROM {lane.EVALUATION_TABLE}").fetchone()[0].startswith("send:")
+    lane.execute_tiebreak_entries(store, transport=_resting_transport(sent), now_utc=NOW,
+                                  live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+    intent_id = store.execute("SELECT order_intent_id FROM basket_target_order_intents").fetchone()[0]
+    _expire(store, intent_id, at="2026-09-18T12:09:00.000Z")
     _newer_snapshot(store, observed_at="2026-09-18T12:09:30.000Z", snapshot_id="snap_out",
                     book=[{"bucket": "27°C", "ask_levels": [{"price": 0.20, "shares": 200.0}], "bid_levels": [{"price": 0.18, "shares": 200.0}], "ask_available": True},
                           {"bucket": "28°C", "ask_levels": [{"price": 0.75, "shares": 200.0}], "bid_levels": [{"price": 0.73, "shares": 200.0}], "ask_available": True},
                           {"bucket": "29°C", "ask_levels": [{"price": 0.05, "shares": 200.0}], "bid_levels": [{"price": 0.04, "shares": 200.0}], "ask_available": True}])
-    judged = lane.execute_tiebreak_entries(store, transport=killed, now_utc=NOW, live_submit_authorized=True,
-                                           settings={"stake_usdc": 20.0}, admission=ADMIT)
+    judged = lane.execute_tiebreak_entries(store, transport=_resting_transport(sent), now_utc=NOW,
+                                           live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
     assert judged["retries"][0]["refusal_after"] == "retry_rule_not_met:market_share_above_ceiling"
     assert store.execute(f"SELECT refusal FROM {lane.EVALUATION_TABLE}").fetchone()[0] == "retry_rule_not_met:market_share_above_ceiling"
     # No newer book: the next pass judges nothing, and the row keeps its reason.
-    again = lane.execute_tiebreak_entries(store, transport=killed, now_utc=NOW, live_submit_authorized=True,
-                                          settings={"stake_usdc": 20.0}, admission=ADMIT)
+    again = lane.execute_tiebreak_entries(store, transport=_resting_transport(sent), now_utc=NOW,
+                                          live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
     assert again["retry_planned"] == 0 and len(sent) == 1
     assert store.execute(f"SELECT refusal, order_intent_id FROM {lane.EVALUATION_TABLE}").fetchone() == (
-        "retry_rule_not_met:market_share_above_ceiling", sent[0]["order_intent_id"],
+        "retry_rule_not_met:market_share_above_ceiling", sent[0][1]["order_intent_id"],
     )
 
 
@@ -790,7 +899,16 @@ def test_a_send_leaves_its_cycle_settled_so_the_days_quotes_keep_refreshing(stor
 def test_a_fok_matched_under_the_size_sent_is_closed_as_filled(store) -> None:
     """EDDM 2026-09-19: sent 9.67 at 0.62, the venue matched 9.5.  A FOK the
     venue matched is the whole order; the request is restated as the venue's
-    size and the ledger closes it filled, never ``reconcile_required``."""
+    size and the ledger closes it filled, never ``reconcile_required``.
+
+    The tiebreak lane stopped crossing at charter 163 and this branch has no
+    caller in production today; it is kept on the shared sender, and pinned
+    here, because it is a ledger-correctness rule about the FOK family rather
+    than about one lane -- the next lane to ask for a take must not have to
+    rediscover it.  Driven through ``send_lane_buy`` directly for that
+    reason."""
+
+    from bayes_basket_target.lane_orders import send_lane_buy  # noqa: PLC0415
 
     _seed(store)
     sent: list = []
@@ -801,9 +919,15 @@ def test_a_fok_matched_under_the_size_sent_is_closed_as_filled(store) -> None:
         return {"ok": True, "accepted": True, "exchange_order_id": "0xshort", "status": "matched",
                 "shares_matched": matched, "exchange": {"size_matched": matched, "makingAmount": matched * payload["price"]}}
 
-    receipt = lane.execute_tiebreak_entries(store, transport=short_fill, now_utc=NOW, live_submit_authorized=True,
-                                            settings={"stake_usdc": 20.0}, admission=ADMIT)
-    assert receipt["filled"] == 1
+    entry = send_lane_buy(
+        store, lane="tiebreak", intent_id="fok_short_i", station_id=ST, event_date=ED,
+        settlement_timezone=TZ, bucket="28°C", token_id="t28", price=0.62, shares=9.67,
+        execution_candidate="TAKER_FOK", fok_price_cap=0.62,
+        intent_body={"schema": "x", "rule": "r", "order_type": "FOK", "post_only": False},
+        transport=short_fill, live_submit_authorized=True,
+        decision_details={"schema": "x"},
+    )
+    assert entry["matched_size"] == pytest.approx(round(9.67 * 0.982, 2))
     row = store.execute(
         "SELECT i.state, i.requested_size, r.state, r.filled_size FROM basket_target_order_intents i"
         " JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id"
@@ -812,7 +936,6 @@ def test_a_fok_matched_under_the_size_sent_is_closed_as_filled(store) -> None:
     assert row[3] == pytest.approx(round(sent[0]["size"] * 0.982, 2))
     ev = store.execute("SELECT event_json FROM basket_target_order_events").fetchone()[0]
     assert "fok_short_fill" in ev and "requested_size_at_send" in ev
-    assert store.execute(f"SELECT refusal FROM {lane.EVALUATION_TABLE}").fetchone()[0] is None
 
 
 def test_stuck_lane_cycles_and_partial_foks_left_by_earlier_code_are_repaired(store) -> None:

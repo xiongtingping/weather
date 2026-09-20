@@ -58,7 +58,8 @@ KNOWN_LANES: tuple[str, ...] = (
 #: The tiebreak lane's measured settings (33 event days to 2026-09-17, 42
 #: station-day-stages): the market's normalised mid on the model's mode
 #: bucket at or above 0.40, one adjacent-bucket disagreement, 20 USDC a
-#: trade at the ask.  See ``tiebreak_lane`` for the reading.
+#: trade at the ask.  See ``tiebreak_lane`` for the reading -- and note that
+#: the reading was taken at the ask, while charter 163 now bids at bid+1t.
 TIEBREAK_DEFAULT_SETTINGS: dict[str, Any] = {
     "enabled": True,
     # 20 USDC in the reading; 5 USDC by user ruling 2026-09-18 ("单笔金额改为5u").
@@ -69,7 +70,10 @@ TIEBREAK_DEFAULT_SETTINGS: dict[str, Any] = {
     # modes to differ by one rung; it is the 148-station-day subset of v2.
     # v2.1 (user ruling 2026-09-18 "升级到v2.1,并记录特征"): v2, and the
     # model's bucket must be quoted both sides at most 3 cents wide.
-    "rule": "model_mode_midband_spread_v2_1",
+    # v2.2 (charter 163, user ruling 2026-09-20 "秤砣线从吃单改为post only，挂
+    # best买一+1"): v2.1's four conditions, posted as a resting post-only rung
+    # at the best bid plus one tick instead of crossed at the walked ask.
+    "rule": "model_mode_midband_spread_maker_v2_2",
     "min_market_share_on_model_mode": 0.40,
     "max_market_share_on_model_mode": 0.60,
     "max_spread_on_model_mode": 0.031,
