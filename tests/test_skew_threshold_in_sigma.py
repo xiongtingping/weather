@@ -7,9 +7,9 @@ read as a lean on a narrow day and as nothing on a wide one.
 """
 from __future__ import annotations
 
-import importlib
 import math
 import os
+import subprocess
 import sys
 from pathlib import Path
 from unittest import mock
@@ -97,10 +97,20 @@ def test_the_threshold_is_a_kwarg_in_sigma_and_the_old_unit_is_refused() -> None
 def test_the_runtime_refuses_the_retired_bucket_unit_variable() -> None:
     from bayes_basket_target import delta_v2_runtime
 
-    with mock.patch.dict(os.environ, {"DELTA_V2_SKEW_GAP_THRESHOLD": "0.5"}):
-        with pytest.raises(RuntimeError, match="SIGMA"):
-            importlib.reload(delta_v2_runtime)
-    importlib.reload(delta_v2_runtime)
+    # A fresh interpreter, not ``importlib.reload``.  The variable is read at
+    # import, so the refusal has to be proved at import -- and a reload
+    # re-executes the module in place, leaving every module that already
+    # holds one of its functions pointing at the old object while later
+    # imports get the new one.  That split is what makes the charter-110
+    # binding test ("one ladder, both books") fail on nothing but test order.
+    root = Path(__file__).resolve().parents[1]
+    probe = subprocess.run(
+        [sys.executable, "-c", "from bayes_basket_target import delta_v2_runtime"],
+        env={**os.environ, "DELTA_V2_SKEW_GAP_THRESHOLD": "0.5"},
+        cwd=str(root), capture_output=True, text=True, check=False,
+    )
+    assert probe.returncode != 0
+    assert "SIGMA" in probe.stderr
     assert delta_v2_runtime.SKEW_GAP_THRESHOLD_SIGMA == 0.35
 
 

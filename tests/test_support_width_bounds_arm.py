@@ -8,8 +8,8 @@ does, and the environment no longer moves them.
 from __future__ import annotations
 
 import ast
-import importlib
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -25,17 +25,27 @@ def test_the_bounds_are_the_rulings_and_the_environment_cannot_move_them() -> No
     assert (runtime.SEAT_MIN_BUCKETS, runtime.SEAT_MAX_BUCKETS) == (2, 3)
     assert runtime.support_width_bounds_v1() == (2, 3)
     assert runtime.CHAIN_MAX_BUCKETS == 4
-    previous = {k: os.environ.get(k) for k in ("PM_SUPPORT_WIDTH_MIN", "PM_SUPPORT_WIDTH_MAX")}
-    os.environ.update({"PM_SUPPORT_WIDTH_MIN": "1", "PM_SUPPORT_WIDTH_MAX": "6"})
-    try:
-        assert importlib.reload(runtime).support_width_bounds_v1() == (2, 3)
-    finally:
-        for key, value in previous.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
-        importlib.reload(runtime)
+    # The retired knobs are read at import, so proving they no longer move
+    # anything means importing with them set -- in a FRESH interpreter, not
+    # by reloading this one.  ``importlib.reload`` re-executes the module in
+    # place: every module that already did ``from .delta_v2_runtime import
+    # bid_anchored_ladder`` keeps the old function object while anything
+    # imported afterwards gets the new one, and the charter-110 binding test
+    # ("production and the ledger read ONE ladder") then fails on identity
+    # depending only on which tests ran first.
+    probe = subprocess.run(
+        [
+            sys.executable, "-c",
+            "from bayes_basket_target import delta_v2_runtime as r;"
+            "print(r.support_width_bounds_v1());"
+            "assert not hasattr(r, 'SUPPORT_WIDTH_MIN_OVERRIDE');"
+            "assert not hasattr(r, 'OPENING_FALLBACK_MIN_BUCKETS')",
+        ],
+        env={**os.environ, "PM_SUPPORT_WIDTH_MIN": "1", "PM_SUPPORT_WIDTH_MAX": "6"},
+        cwd=str(ROOT), capture_output=True, text=True, check=False,
+    )
+    assert probe.returncode == 0, probe.stderr
+    assert probe.stdout.strip() == "(2, 3)"
     assert not hasattr(runtime, "SUPPORT_WIDTH_MIN_OVERRIDE")
     assert not hasattr(runtime, "OPENING_FALLBACK_MIN_BUCKETS")
 
