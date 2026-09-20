@@ -286,23 +286,80 @@ def taker_take(
         out["refusal"] = "no_ask"
         return out
     price = float(book["best_ask"])
-    scale = float(10 ** SHARE_PRECISION)
-    shares = math.floor((float(stake_usdc) / price) * scale) / scale
-    if shares < float(min_shares):
-        out["refusal"] = f"below_min_size:{shares:.2f}<{float(min_shares):.2f}"
-        return out
+    affordable = float(stake_usdc) / price
     depth = book["ask_depth_shares"]
-    if depth is not None and float(depth) < shares:
+    if depth is not None:
         # A FOK the top level cannot fill is a FOK the venue kills; taking
         # the size that IS there keeps the trade at the price measured.
-        shares = math.floor(float(depth) * scale) / scale
-        if shares < float(min_shares):
-            out["refusal"] = f"thin_ask:{float(depth):.2f}"
-            return out
+        affordable = min(affordable, float(depth))
+    shares = _sendable_shares(price, affordable)
+    if shares is None or shares < float(min_shares):
+        thin = depth is not None and float(depth) < float(stake_usdc) / price
+        out["refusal"] = (
+            f"thin_ask:{float(depth):.2f}" if thin
+            else f"below_min_size:{(shares or 0.0):.2f}<{float(min_shares):.2f}"
+        )
+        return out
     out["limit_price"] = price
     out["shares"] = shares
     out["cost_usdc"] = round(price * shares, 6)
     return out
+
+
+#: What the venue will accept on a market BUY, learned the way these things
+#: are learned -- from a refusal.  SAEZ 2026-09-20 25C, 2026-09-21T17:45Z:
+#:
+#:   send:invalid amounts, the market buy orders maker amount supports a max
+#:   accuracy of 2 decimals, taker amount a max of 4 decimals
+#:
+#: The maker amount of a BUY is the USDC paid (price x shares) and the taker
+#: amount is the shares received.  Flooring shares to two decimals -- which is
+#: what every other lane does, and is right for a resting MAKER order whose
+#: amounts the venue derives differently -- gave 6.94 shares at 0.72, a cost
+#: of 4.9968, and four decimals where two are allowed.
+SEND_COST_DECIMALS = 2
+SEND_SHARE_DECIMALS = 4
+
+
+def _sendable_shares(price: float, affordable: float) -> float | None:
+    """The largest share count at ``price`` the venue will take.
+
+    Both amounts have to land on the venue's grid at once: the cost on two
+    decimals, the shares on four.  Whole shares satisfy the cost side for
+    any whole-cent price, which is every price this book quotes, so the
+    search starts there and only walks down if a finer tick ever makes the
+    first candidate illegal.  Returns None when nothing at or below
+    ``affordable`` is legal.
+    """
+
+    def legal(candidate: float) -> bool:
+        if candidate <= 0.0:
+            return False
+        cost = candidate * price
+        return (
+            abs(cost * 10 ** SEND_COST_DECIMALS
+                - round(cost * 10 ** SEND_COST_DECIMALS)) < 1e-6
+            and abs(candidate * 10 ** SEND_SHARE_DECIMALS
+                    - round(candidate * 10 ** SEND_SHARE_DECIMALS)) < 1e-6
+        )
+
+    whole = float(math.floor(affordable + 1e-9))
+    for step in range(0, 100):
+        candidate = whole - step
+        if candidate <= 0.0:
+            break
+        if legal(candidate):
+            return candidate
+    # A tick finer than a cent: walk the share grid down instead.
+    grid = 10 ** SEND_SHARE_DECIMALS
+    start = math.floor(affordable * grid + 1e-6)
+    for offset in range(0, 10000):
+        candidate = (start - offset) / grid
+        if candidate <= 0.0:
+            break
+        if legal(candidate):
+            return candidate
+    return None
 
 
 # ---------------------------------------------------------------------------

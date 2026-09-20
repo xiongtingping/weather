@@ -220,8 +220,26 @@ def test_the_take_is_priced_at_the_ask_not_walked() -> None:
            "bid_levels": [{"price": 0.28, "shares": 50.0}]}
     take = lane.taker_take(row, 5.0, tick_size=0.01, min_shares=5.0)
     assert take["limit_price"] == 0.30 and take["refusal"] is None
-    assert take["shares"] == pytest.approx(16.66)
-    assert take["cost_usdc"] == pytest.approx(0.30 * 16.66)
+    assert take["shares"] == pytest.approx(16.0)
+    assert take["cost_usdc"] == pytest.approx(4.80)
+
+
+@pytest.mark.parametrize("price", [0.01, 0.07, 0.13, 0.29, 0.30, 0.46, 0.72, 0.83, 0.99])
+def test_both_venue_amounts_land_on_the_grid(price) -> None:
+    """The refusal that taught this: SAEZ 2026-09-20 25°C, 6.94 shares at
+    0.72 -> a cost of 4.9968, and the venue takes two decimals of cost and
+    four of shares."""
+
+    row = {"bucket": "x", "ask_available": True,
+           "ask_levels": [{"price": price, "shares": 5000.0}], "bid_levels": []}
+    take = lane.taker_take(row, 5.0, tick_size=0.01, min_shares=1.0)
+    assert take["refusal"] is None, take
+    cost, shares = take["cost_usdc"], take["shares"]
+    assert cost == pytest.approx(round(cost, 2), abs=1e-9), (price, cost)
+    assert shares == pytest.approx(round(shares, 4), abs=1e-9), (price, shares)
+    assert cost <= 5.0 + 1e-9
+    # ... and it does not give away more than one share of the stake.
+    assert cost > 5.0 - price - 1e-9
 
 
 def test_a_thin_top_level_is_taken_at_its_own_size_or_refused() -> None:
