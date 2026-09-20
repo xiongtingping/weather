@@ -4345,10 +4345,21 @@ def run_once(
     poll["source_lane"] = "awc"
     poll["transport"] = str(poll.get("transport") or "official_awc")
     poll["fallback_reasons"] = {}
+    # Charter 162: name the door the reports actually came through, so a
+    # TGFTP poll is not filed under the AWC relay that was unreachable.
+    provider_id = (
+        "global_noaa_tgftp_relay"
+        if poll["transport"].startswith("official_noaa_tgftp_")
+        else "global_noaa_awc_relay"
+    )
     poll["provider_states"] = [{
-        "provider_id": "global_noaa_awc_relay",
+        "provider_id": provider_id,
         "stations": sorted(stations),
-        "state": "awc_global_primary",
+        "state": (
+            "noaa_tgftp_fallback"
+            if provider_id == "global_noaa_tgftp_relay"
+            else "awc_global_primary"
+        ),
         "report_count": len(poll.get("reports") or []),
         "transport": poll["transport"],
     }]

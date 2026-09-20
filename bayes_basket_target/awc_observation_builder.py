@@ -23,6 +23,7 @@ from .awc_observation_contract import (
     AWC_ORIGIN_AUTHORITIES,
     AWC_ORIGIN_SOURCE_IDS,
     AWC_ORIGIN_URL,
+    official_origin_lineage_ok,
     CONTRACT_SCHEMA,
     COVERAGE_RECEIPT_SCHEMA,
     RAW_OBJECT_KIND,
@@ -457,11 +458,12 @@ def export_awc_ingress_evidence_v4(
                     raise ContractError(
                         "pr12_lineage_missing_official_source_registry"
                     ) from binding_exc
-            origin_ok = (
-                origin_identity["origin_source_id"] in AWC_ORIGIN_SOURCE_IDS
-                and origin_identity["origin_url"] == AWC_ORIGIN_URL
-                and str(origin_identity["origin_transport"]).startswith("official_awc_")
-                and origin_identity["origin_authority"] in AWC_ORIGIN_AUTHORITIES
+            # Charter 162: AWC or TGFTP, both NOAA's own doors on the lane.
+            origin_ok = official_origin_lineage_ok(
+                origin_source_id=origin_identity["origin_source_id"],
+                origin_url=origin_identity["origin_url"],
+                origin_transport=origin_identity["origin_transport"],
+                origin_authority=origin_identity["origin_authority"],
             )
             zone = ZoneInfo(timezone_map[station])
             report_type = str(raw.get("report_type") or "").upper()

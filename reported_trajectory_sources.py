@@ -25,6 +25,20 @@ ROOT = Path(__file__).resolve().parent
 AMSC_ENDPOINT = "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort"
 AWC_ENDPOINT = "https://aviationweather.gov/api/data/metar"
 AWC_CACHE_ENDPOINT = "https://aviationweather.gov/data/cache/metars.cache.csv.gz"
+# Charter 162 (2026-09-20): the same NOAA reports off a second host, for the
+# hours AWC itself is unreachable -- its TLS certificate expired at
+# 2026-09-19T23:59:59Z and every AWC transport above failed on it at once,
+# which froze the fleet's running highs and the truth lane with no second
+# door.  TGFTP publishes one file per clock hour holding the latest report
+# from every station, so one bounded request serves all forty-five.
+NOAA_TGFTP_CYCLE_ENDPOINT = (
+    "https://tgftp.nws.noaa.gov/data/observations/metar/cycles/{cycle:02d}Z.TXT"
+)
+NOAA_TGFTP_ORIGIN_SOURCE_ID = "global_noaa_tgftp_relay"
+NOAA_TGFTP_ORIGIN_AUTHORITY = "NOAA/NWS TGFTP worldwide METAR cycle relay"
+NOAA_TGFTP_ORIGIN_URL = "https://tgftp.nws.noaa.gov/data/observations/metar/"
+NOAA_TGFTP_TRANSPORT = "official_noaa_tgftp_metar_cycle"
+NOAA_TGFTP_MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 AMSC_INTERMEDIATE_CA = (
     ROOT / "config" / "certs" / "globalsign-rsa-ov-ssl-ca-2018.pem"
 )
@@ -482,6 +496,126 @@ def _awc_one(stations: Sequence[str], *, hours: float, timeout: float) -> dict[s
     }
 
 
+def _tgftp_cycle_reports(
+    stations: "set[str]", *, cycle_hour: int, timeout: float
+) -> list[dict[str, str]]:
+    """One cycle file, filtered to the stations asked for.
+
+    Each report is two lines: an issue stamp (``YYYY/MM/DD HH:MM``) and the
+    bulletin body, which -- unlike AWC's raw API -- carries no ``METAR``
+    keyword.  The keyword is what every reader downstream types the report
+    by, so a body that lacks it is a routine METAR and is spelled as one.
+    """
+
+    url = NOAA_TGFTP_CYCLE_ENDPOINT.format(cycle=int(cycle_hour) % 24)
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "weather-reported-trajectory-no/1.0",
+            "Accept": "text/plain",
+        },
+    )
+    direct_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with direct_opener.open(request, timeout=max(2.0, float(timeout))) as response:
+            text = _read_bounded_response(
+                response, limit=NOAA_TGFTP_MAX_RESPONSE_BYTES
+            )
+    except Exception:
+        text = _curl_official_get(
+            url,
+            timeout=max(timeout, 8.0),
+            max_response_bytes=NOAA_TGFTP_MAX_RESPONSE_BYTES,
+            accept="text/plain",
+            bypass_proxy_host="tgftp.nws.noaa.gov",
+        ).decode("utf-8", "replace")
+    reports: list[dict[str, str]] = []
+    issued_at = ""
+    for line in text.splitlines():
+        body = line.strip()
+        if not body:
+            continue
+        stamp = re.fullmatch(r"(\d{4})/(\d{2})/(\d{2}) (\d{2}):(\d{2})", body)
+        if stamp:
+            issued_at = (
+                f"{stamp.group(1)}-{stamp.group(2)}-{stamp.group(3)}"
+                f"T{stamp.group(4)}:{stamp.group(5)}:00Z"
+            )
+            continue
+        parts = body.split()
+        if not parts:
+            continue
+        keyword = parts[0].upper()
+        if keyword in {"METAR", "SPECI"}:
+            raw_text = body
+            station = parts[2] if len(parts) > 2 and parts[1] in {"COR", "AMD"} else (
+                parts[1] if len(parts) > 1 else ""
+            )
+        else:
+            raw_text = "METAR " + body
+            station = keyword
+        if station not in stations:
+            continue
+        reports.append(
+            {
+                "station_id": station,
+                "raw_text": raw_text,
+                "source_report_time": issued_at,
+                "origin_source_id": NOAA_TGFTP_ORIGIN_SOURCE_ID,
+                "origin_authority": NOAA_TGFTP_ORIGIN_AUTHORITY,
+                "origin_url": NOAA_TGFTP_ORIGIN_URL,
+                "origin_transport": NOAA_TGFTP_TRANSPORT,
+                "origin_fallback_used": True,
+            }
+        )
+    return reports
+
+
+def fetch_noaa_tgftp_temperature_reports(
+    station_ids: Sequence[str],
+    *,
+    timeout: float = 8.0,
+    cycles: int = 2,
+    reference: datetime | None = None,
+) -> dict[str, Any]:
+    """The latest report per station from the newest ``cycles`` hour files.
+
+    Two cycles by default: the hour just started holds only what has already
+    landed in it, so the one before it is what covers a station that reports
+    on the half hour.  Later cycles win on duplicates.
+    """
+
+    stations = sorted({str(value).strip().upper() for value in station_ids if str(value).strip()})
+    if not stations:
+        raise RuntimeError("noaa_tgftp_no_stations")
+    now = reference or datetime.now(timezone.utc)
+    station_set = set(stations)
+    response_started_at = utc_now()
+    latest: dict[tuple[str, str], dict[str, str]] = {}
+    errors: list[str] = []
+    ordered = [now - timedelta(hours=offset) for offset in range(max(1, int(cycles)) - 1, -1, -1)]
+    for moment in ordered:
+        try:
+            for report in _tgftp_cycle_reports(
+                station_set, cycle_hour=moment.hour, timeout=timeout
+            ):
+                latest[(report["station_id"], report["raw_text"])] = report
+        except Exception as exc:  # one missing cycle is not a failed poll
+            errors.append(f"tgftp_cycle_{moment.hour:02d}:{type(exc).__name__}")
+    if not latest:
+        raise RuntimeError("noaa_tgftp_no_reports:" + ",".join(errors))
+    return {
+        "source_lane": "awc",
+        "station_ids": stations,
+        "response_started_at": response_started_at,
+        "status": 200 if not errors else 206,
+        "reports": sorted(latest.values(), key=lambda row: (row["station_id"], row["raw_text"])),
+        "station_errors": sorted(set(errors)),
+        "taf_requested": False,
+        "transport": NOAA_TGFTP_TRANSPORT,
+    }
+
+
 def fetch_awc_temperature_reports(
     station_ids: Sequence[str], *, hours: float, timeout: float = 6.0, batch_size: int = 10, max_workers: int = 6,
     date_anchor: str | None = None,
@@ -646,7 +780,19 @@ def fetch_awc_temperature_reports(
             except Exception as exc:
                 errors.append(f"{','.join(batch)}:{type(exc).__name__}")
     if not rows:
-        raise RuntimeError("awc_all_transports_failed:" + raw_api_error + "," + cache_error + "," + ",".join(errors))
+        # Charter 162: every AWC door is shut at once only when AWC itself is
+        # down (its certificate expired on 2026-09-19).  The same NOAA reports
+        # are on TGFTP; the reports carry their true origin so nothing has to
+        # pretend they came from AWC.
+        reason = "awc_all_transports_failed:" + raw_api_error + "," + cache_error + "," + ",".join(errors)
+        try:
+            fallback = fetch_noaa_tgftp_temperature_reports(stations, timeout=timeout)
+        except Exception as tgftp_exc:
+            raise RuntimeError(reason + ",tgftp:" + type(tgftp_exc).__name__) from tgftp_exc
+        for report in fallback["reports"]:
+            report["origin_fallback_reason"] = reason[:200]
+        fallback["station_errors"] = sorted({*fallback.get("station_errors", []), reason[:200]})
+        return fallback
     return {
         "source_lane": "awc",
         "station_ids": stations,

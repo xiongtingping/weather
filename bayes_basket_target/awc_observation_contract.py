@@ -31,6 +31,40 @@ AWC_ORIGIN_AUTHORITIES = frozenset(
     }
 )
 AWC_ORIGIN_URL = "https://aviationweather.gov/data/api/"
+# Charter 162 (2026-09-20): the lane is the station's -- NOAA's worldwide
+# METAR relay -- and AWC is one door into it.  When AWC's own certificate
+# expired every AWC transport failed together and the fleet stopped reading
+# reports at all, so TGFTP (the same NOAA reports, published per clock hour)
+# is admitted beside it.  The report body is unchanged; only who handed it
+# over differs, which is what the origin row is for.
+NOAA_TGFTP_ORIGIN_SOURCE_ID = "global_noaa_tgftp_relay"
+NOAA_TGFTP_ORIGIN_AUTHORITY = "NOAA/NWS TGFTP worldwide METAR cycle relay"
+NOAA_TGFTP_ORIGIN_URL = "https://tgftp.nws.noaa.gov/data/observations/metar/"
+OFFICIAL_ORIGIN_SOURCE_IDS = frozenset(
+    {*AWC_ORIGIN_SOURCE_IDS, NOAA_TGFTP_ORIGIN_SOURCE_ID}
+)
+OFFICIAL_ORIGIN_AUTHORITIES = frozenset(
+    {*AWC_ORIGIN_AUTHORITIES, NOAA_TGFTP_ORIGIN_AUTHORITY}
+)
+OFFICIAL_ORIGIN_URLS = frozenset({AWC_ORIGIN_URL, NOAA_TGFTP_ORIGIN_URL})
+OFFICIAL_ORIGIN_TRANSPORT_PREFIXES = ("official_awc_", "official_noaa_tgftp_")
+
+
+def official_origin_lineage_ok(
+    *,
+    origin_source_id: Any,
+    origin_url: Any,
+    origin_transport: Any,
+    origin_authority: Any,
+) -> bool:
+    """Is this origin one of the official NOAA doors the lane admits?"""
+
+    return (
+        str(origin_source_id or "") in OFFICIAL_ORIGIN_SOURCE_IDS
+        and str(origin_url or "") in OFFICIAL_ORIGIN_URLS
+        and str(origin_transport or "").startswith(OFFICIAL_ORIGIN_TRANSPORT_PREFIXES)
+        and str(origin_authority or "") in OFFICIAL_ORIGIN_AUTHORITIES
+    )
 
 
 def _text(value: Any, label: str) -> str:
@@ -155,14 +189,11 @@ class CanonicalAWCObservationRevisionFact:
             and value["origin_committed_at_utc"] <= value["canonical_committed_at_utc"]
         ):
             raise ContractError("awc_observation_revision_timestamp_order_invalid")
-        if (
-            value["origin_source_id"] not in AWC_ORIGIN_SOURCE_IDS
-            or value["origin_url"] != AWC_ORIGIN_URL
-            or not _text(value["origin_transport"], "origin_transport").startswith(
-                "official_awc_"
-            )
-            or _text(value["origin_authority"], "origin_authority")
-            not in AWC_ORIGIN_AUTHORITIES
+        if not official_origin_lineage_ok(
+            origin_source_id=value["origin_source_id"],
+            origin_url=value["origin_url"],
+            origin_transport=_text(value["origin_transport"], "origin_transport"),
+            origin_authority=_text(value["origin_authority"], "origin_authority"),
         ):
             raise ContractError("awc_observation_revision_origin_lineage_invalid")
         # The station's own settlement zone, from the sealed projection this
@@ -579,7 +610,11 @@ class CanonicalAWCObservationContract:
 
 
 __all__ = [
-    "AUTHORITY_SCOPE", "AWC_ORIGIN_AUTHORITIES", "AWC_ORIGIN_SOURCE_IDS", "AWC_ORIGIN_URL", "CONTRACT_SCHEMA", "SETTLEMENT_TIMEZONE",
+    "AUTHORITY_SCOPE", "AWC_ORIGIN_AUTHORITIES", "AWC_ORIGIN_SOURCE_IDS", "AWC_ORIGIN_URL",
+    "NOAA_TGFTP_ORIGIN_AUTHORITY", "NOAA_TGFTP_ORIGIN_SOURCE_ID", "NOAA_TGFTP_ORIGIN_URL",
+    "OFFICIAL_ORIGIN_AUTHORITIES", "OFFICIAL_ORIGIN_SOURCE_IDS", "OFFICIAL_ORIGIN_URLS",
+    "OFFICIAL_ORIGIN_TRANSPORT_PREFIXES", "official_origin_lineage_ok",
+    "CONTRACT_SCHEMA", "SETTLEMENT_TIMEZONE",
     "COVERAGE_RECEIPT_SCHEMA",
     "RAW_OBJECT_KIND", "CanonicalAWCObservationContract",
     "CanonicalAWCObservationDayBoundsFact", "CanonicalAWCObservationRevisionFact",
