@@ -321,24 +321,42 @@ def ingest_forward_taf_inbox(
             if tx_raw is None
             else _finite("forward_taf_tx_c", tx_raw)
         )
-        cloud = _finite(
-            "forward_taf_cloud_cover_fraction",
-            fields.get("cloud_cover_fraction"),
-        )
-        precip = _finite(
-            "forward_taf_precipitation_probability",
-            fields.get("precipitation_probability"),
-        )
-        wind = _finite(
-            "forward_taf_wind_speed_mps",
-            fields.get("wind_speed_mps"),
-        )
-        if (
-            not 0.0 <= cloud <= 1.0
-            or not 0.0 <= precip <= 1.0
-            or wind < 0.0
-        ):
-            raise ContractError("forward_taf_fields_invalid")
+        # A capture whose decoded weather is missing or out of range is local
+        # to one provider receipt, exactly like the timestamp corruption
+        # above, and is rejected the same way.  Raising instead stopped the
+        # whole pass: charter 162's TGFTP door carries the bulletin text and
+        # no decoded segments, so its captures have no cloud/precip/wind, and
+        # on 2026-09-20 a handful of them fail-closed the entire probability
+        # chain for every station for two hours.  The affected scope simply
+        # has no committed TAF fact and therefore still fails closed for
+        # P0-M, which is the intended meaning of "no weather beside the TX".
+        try:
+            cloud = _finite(
+                "forward_taf_cloud_cover_fraction",
+                fields.get("cloud_cover_fraction"),
+            )
+            precip = _finite(
+                "forward_taf_precipitation_probability",
+                fields.get("precipitation_probability"),
+            )
+            wind = _finite(
+                "forward_taf_wind_speed_mps",
+                fields.get("wind_speed_mps"),
+            )
+            fields_ok = (
+                0.0 <= cloud <= 1.0 and 0.0 <= precip <= 1.0 and wind >= 0.0
+            )
+        except ContractError:
+            fields_ok = False
+        if not fields_ok:
+            rejected_timestamp_captures.append({
+                "station_id": station,
+                "event_date": event_date,
+                "revision_id": revision_id,
+                "source_capture_sha256": source_capture_sha,
+                "reason": "forward_taf_fields_invalid",
+            })
+            continue
         identity = {
             "station_id": station,
             "event_date": event_date,

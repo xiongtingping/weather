@@ -335,3 +335,29 @@ class TemperingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WeatherlessCaptureIsRejectedNotFatalTest(unittest.TestCase):
+    """A capture with no decoded weather costs its own scope, not the fleet.
+
+    2026-09-20: TGFTP captures carry the bulletin and no decoded segments, so
+    their cloud/precipitation/wind are absent.  The forward-TAF ingest raised
+    on the first one it met, which fail-closed the whole probability chain --
+    every station's P0, P0-M and P1, and the market ingress with them -- for
+    two hours.  Timestamp corruption in the same loop was already local to
+    the capture that carried it; missing weather now is too.
+    """
+
+    def test_the_ingest_rejects_the_capture_and_keeps_going(self) -> None:
+        import inspect
+
+        from bayes_basket_target import native_ensemble_training_facts as facts
+
+        source = inspect.getsource(facts.ingest_forward_taf_captures) if hasattr(
+            facts, "ingest_forward_taf_captures"
+        ) else inspect.getsource(facts)
+        body = source[source.index("forward_taf_cloud_cover_fraction"):]
+        head = body[: body.index("identity = {")]
+        self.assertIn("forward_taf_fields_invalid", head)
+        self.assertIn("rejected_timestamp_captures.append", head)
+        self.assertNotIn('raise ContractError("forward_taf_fields_invalid")', head)
