@@ -39,6 +39,16 @@ NOAA_TGFTP_ORIGIN_AUTHORITY = "NOAA/NWS TGFTP worldwide METAR cycle relay"
 NOAA_TGFTP_ORIGIN_URL = "https://tgftp.nws.noaa.gov/data/observations/metar/"
 NOAA_TGFTP_TRANSPORT = "official_noaa_tgftp_metar_cycle"
 NOAA_TGFTP_MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+# The second door reaches the network, and a test that makes AWC fail is
+# testing that failure, not what TGFTP answers today; the suite shuts it
+# (tests/conftest.py) and production leaves it open.
+TGFTP_FALLBACK_ENV = "PM_TGFTP_FALLBACK"
+
+
+def tgftp_fallback_enabled() -> bool:
+    return str(os.environ.get(TGFTP_FALLBACK_ENV, "on")).strip().lower() not in {
+        "off", "0", "false", "no",
+    }
 AMSC_INTERMEDIATE_CA = (
     ROOT / "config" / "certs" / "globalsign-rsa-ov-ssl-ca-2018.pem"
 )
@@ -785,6 +795,8 @@ def fetch_awc_temperature_reports(
         # are on TGFTP; the reports carry their true origin so nothing has to
         # pretend they came from AWC.
         reason = "awc_all_transports_failed:" + raw_api_error + "," + cache_error + "," + ",".join(errors)
+        if not tgftp_fallback_enabled():
+            raise RuntimeError(reason)
         try:
             fallback = fetch_noaa_tgftp_temperature_reports(stations, timeout=timeout)
         except Exception as tgftp_exc:

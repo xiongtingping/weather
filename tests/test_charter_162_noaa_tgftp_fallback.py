@@ -10,6 +10,7 @@ clock hour on a host with its own certificate.
 
 from __future__ import annotations
 
+import os
 import sys
 import unittest
 from datetime import datetime, timezone
@@ -125,6 +126,33 @@ class FallbackTest(unittest.TestCase):
         self.assertEqual(poll["taf_requested"], False)
         self.assertEqual(len(poll["reports"]), 1)
 
+    def test_the_switch_shuts_the_second_door(self) -> None:
+        """The suite runs with it shut, so a test that makes AWC fail
+        measures that failure and reaches no network."""
+
+        original_open = sources.urllib.request.build_opener
+        original_curl = sources._curl_official_get
+
+        class DeadOpener:
+            def open(self, *args, **kwargs):
+                raise RuntimeError("certificate has expired")
+
+        def refuse(url, **kwargs):
+            if "tgftp" in url:
+                raise AssertionError("tgftp must not be asked while the switch is off")
+            raise RuntimeError("official_curl_exit_60")
+
+        sources.urllib.request.build_opener = lambda *a, **k: DeadOpener()
+        sources._curl_official_get = refuse
+        os.environ[sources.TGFTP_FALLBACK_ENV] = "off"
+        try:
+            with self.assertRaises(RuntimeError):
+                sources.fetch_awc_temperature_reports(["ZUUU"], hours=1.0, timeout=1.0)
+        finally:
+            os.environ.pop(sources.TGFTP_FALLBACK_ENV, None)
+            sources.urllib.request.build_opener = original_open
+            sources._curl_official_get = original_curl
+
     def test_the_awc_fetch_falls_back_and_says_why(self) -> None:
         """The reason the doors shut rides on every report, so an audit can
         tell a TGFTP report from an AWC one and know what happened."""
@@ -143,9 +171,11 @@ class FallbackTest(unittest.TestCase):
 
         sources._curl_official_get = fake_curl
         sources.urllib.request.build_opener = lambda *a, **k: DeadOpener()
+        os.environ[sources.TGFTP_FALLBACK_ENV] = "on"
         try:
             poll = sources.fetch_awc_temperature_reports(["ZUUU"], hours=1.0, timeout=1.0)
         finally:
+            os.environ.pop(sources.TGFTP_FALLBACK_ENV, None)
             sources._curl_official_get = original_curl
             sources.urllib.request.build_opener = original_open
         self.assertEqual(poll["transport"], sources.NOAA_TGFTP_TRANSPORT)

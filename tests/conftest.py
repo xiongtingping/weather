@@ -52,6 +52,9 @@ def _no_taf_raw_archive_from_tests(monkeypatch: pytest.MonkeyPatch) -> None:
     """
 
     monkeypatch.setenv("PM_TAF_RAW_ARCHIVE_DIR", "off")
+    # Charter 162: the TGFTP fallback reaches the network; a test that makes
+    # AWC fail is testing that failure, not what TGFTP answers today.
+    monkeypatch.setenv("PM_TGFTP_FALLBACK", "off")
 
 
 @pytest.fixture(autouse=True)

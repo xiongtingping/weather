@@ -17,6 +17,7 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.resource_bounds import write_bounded_json  # noqa: E402
+from bayes_basket_target import noaa_tgftp_taf as tgftp_taf  # noqa: E402
 from bayes_basket_target.taf_raw_archive import archive_rows  # noqa: E402
 from scripts.capture_bayes_basket_target_awc_taf_calibration import (  # noqa: E402
     TAF_ENDPOINT,
@@ -70,6 +71,7 @@ def capture_forward_awc_taf(
         "ids": station,
         "format": "json",
     })
+    source_url = url
     cached = None if response_cache is None else response_cache.get(url)
     if isinstance(cached, BaseException):
         raise cached
@@ -78,22 +80,46 @@ def capture_forward_awc_taf(
             rows, response_sha, response_bytes = _fetch_json(
                 url, timeout_sec=timeout_sec
             )
-        except Exception as exc:
-            if response_cache is not None:
-                response_cache[url] = exc
-            raise
+        except Exception as awc_exc:
+            # Charter 162: AWC's own certificate expired on 2026-09-19 and
+            # this fetch failed with it for every station at once.  TGFTP
+            # carries the same bulletins; its rows say so, and the capture
+            # below records that door rather than AWC's.
+            if not tgftp_taf.fallback_enabled():
+                if response_cache is not None:
+                    response_cache[url] = awc_exc
+                raise
+            try:
+                rows, tgftp_url, response_sha, response_bytes = (
+                    tgftp_taf.fetch_taf_rows(station, timeout_sec=timeout_sec)
+                )
+            except Exception:
+                if response_cache is not None:
+                    response_cache[url] = awc_exc
+                raise awc_exc
+            # The cache is keyed on the request this round would repeat --
+            # the AWC url -- so the station's other days reuse this answer
+            # instead of asking TGFTP again for each of them.
+            source_url = tgftp_url
         received_at = datetime.now(timezone.utc)
         # 「存原文」: the whole bulletin, once, whatever the parse below says.
         archive_rows(
-            rows, received_at=received_at, source_url=url,
+            rows, received_at=received_at, source_url=source_url,
             response_sha256=response_sha,
         )
         if response_cache is not None:
             response_cache[url] = (
-                rows, response_sha, response_bytes, received_at
+                rows, response_sha, response_bytes, received_at, source_url
             )
     else:
-        rows, response_sha, response_bytes, received_at = cached  # type: ignore[misc]
+        rows, response_sha, response_bytes, received_at, source_url = (  # type: ignore[misc]
+            (*cached, url)[:5] if len(cached) == 4 else cached  # type: ignore[arg-type]
+        )
+    # Charter 162: a TGFTP bulletin carries no decoded segments, so the cloud,
+    # precipitation and wind fields cannot be resolved from it.  Charter 158
+    # already has a meaning for a TAF with no weather beside it (the SMALL
+    # group, full strength), and the TX group is read from the text either way.
+    from_tgftp = any(tgftp_taf.is_tgftp_row(row) for row in rows)
     try:
         taf, raw = _taf_row(
             rows,
@@ -103,6 +129,7 @@ def capture_forward_awc_taf(
             event_date=event_date,
             timezone_name=settlement_timezone,
             require_tx=False,
+            require_features=not from_tgftp,
             pre_issue_tolerance_sec=PRE_ISSUE_TOLERANCE_SEC,
         )
     except ContractError as exc:
@@ -151,11 +178,15 @@ def capture_forward_awc_taf(
         "schema": FORWARD_SCHEMA,
         "source_class": "official_forward_native_receipt",
         "evidence_role": "observational_candidate_not_oos",
-        "provider": "NOAA Aviation Weather Center",
+        "provider": (
+            tgftp_taf.PROVIDER
+            if tgftp_taf.is_tgftp_row(raw)
+            else "NOAA Aviation Weather Center"
+        ),
         "station_id": station,
         "event_date": event_date,
         "settlement_timezone": settlement_timezone,
-        "source_url": url,
+        "source_url": source_url,
         "response_sha256": response_sha,
         "response_bytes": response_bytes,
         "provider_available_at_utc": _iso(provider_available_at),
