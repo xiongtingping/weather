@@ -320,10 +320,13 @@ def test_a_cheap_live_bucket_is_planned_as_a_take(store) -> None:
     planned = _plan(store)
     [plan] = planned["plans"]
     # 27°C is the rung: the report has already printed it, so the likelihood
-    # leaves it whole while the market still prices it at 0.46.
-    assert plan["bucket"] == "27°C" and plan["limit_price"] == 0.46
+    # leaves it whole while the market still prices it at 0.46 -- and the
+    # limit is authorised one tick above that (charter 166, 2026-09-21).
+    assert plan["bucket"] == "27°C"
+    assert plan["best_ask"] == 0.46 and plan["limit_price"] == pytest.approx(0.47)
+    assert plan["walked_gap"] == pytest.approx(plan["belief"] - 0.47, abs=1e-6)
     assert plan["order_type"] == "FOK" and plan["post_only"] is False
-    assert plan["fok_price_cap"] == 0.46
+    assert plan["fok_price_cap"] == pytest.approx(0.47)
     assert plan["remaining_hours"] == 7.5
     assert plan["gap"] >= 0.08
     assert plan["order_intent_id"].startswith("p1tail_")
@@ -333,6 +336,8 @@ def test_a_cheap_live_bucket_is_planned_as_a_take(store) -> None:
         (plan["order_intent_id"],),
     ).fetchone()
     assert row[0] == "27°C" and row[1] == 1 and row[2] is None
+    # The ROW still records the ask the reading was taken at, so it stays
+    # comparable to the measurement; the walk lives on the plan.
     assert row[3] == pytest.approx(0.46) and row[5] == pytest.approx(plan["gap"])
     assert row[6] == pytest.approx(7.5)
 
@@ -600,3 +605,40 @@ def test_the_two_book_bounds_are_separate_dials() -> None:
     served = strategy_lanes.lane_settings(strategy_lanes.LANE_P1_TAIL)
     assert served["send_book_fresh_seconds"] <= 60.0
     assert served["book_fresh_seconds"] > served["send_book_fresh_seconds"]
+
+
+def test_the_walk_is_paid_for_by_a_stricter_hurdle(store) -> None:
+    """The reading is on the ask; the SEND has to clear the price it may
+    actually pay.  Three live FOKs died on a top level too thin to fill."""
+
+    _seed(store)
+    # Belief on 27°C is ~0.70 against an ask of 0.46: a gap of 0.24 on the
+    # ask and 0.23 one tick up.  A hurdle between the two fires on the ask
+    # and refuses on the walk.
+    planned = _plan(store, settings={**P1_TAIL_DEFAULT_SETTINGS, "hurdle": 0.235})
+    assert planned["plans"] == []
+    refusals = [e["refusal"] for e in planned["evaluations"] if e["bucket"] == "27°C"]
+    assert refusals and refusals[0].startswith("hurdle_after_walk:")
+
+
+def test_the_size_is_the_depth_up_to_the_authorised_limit() -> None:
+    """KLGA 2026-09-20 68-69°F: 7.68 shares at 0.72 and 12.56 at 0.73.  Held
+    to the ask the take asks for 6 of 7.68 and dies; one tick up it is 6 of
+    20.24."""
+
+    row = {"bucket": "x", "ask_available": True, "bid_levels": [],
+           "ask_levels": [{"price": 0.72, "shares": 7.68},
+                          {"price": 0.73, "shares": 12.56},
+                          {"price": 0.74, "shares": 149.41}]}
+    held = lane.taker_take(row, 5.0, tick_size=0.01, min_shares=1.0, walk_ticks=0)
+    walked = lane.taker_take(row, 5.0, tick_size=0.01, min_shares=1.0, walk_ticks=1)
+    assert held["walked_depth_shares"] == pytest.approx(7.68)
+    assert walked["walked_depth_shares"] == pytest.approx(20.24)
+    assert walked["limit_price"] == pytest.approx(0.73)
+    assert walked["cost_usdc"] <= 5.0 + 1e-9
+    # A walk that would price the take at or above a dollar is not taken.
+    top = {"bucket": "x", "ask_available": True, "bid_levels": [],
+           "ask_levels": [{"price": 0.99, "shares": 50.0}]}
+    assert lane.taker_take(
+        top, 5.0, tick_size=0.01, min_shares=1.0, walk_ticks=1
+    )["limit_price"] == pytest.approx(0.99)

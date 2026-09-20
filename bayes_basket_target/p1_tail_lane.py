@@ -264,17 +264,31 @@ def taker_take(
     *,
     tick_size: Any,
     min_shares: float,
+    walk_ticks: int = 0,
 ) -> dict[str, Any]:
-    """What ``stake_usdc`` buys at the best ask, or why it cannot be bought.
+    """What ``stake_usdc`` buys, and the worst price it is authorised to pay.
 
-    The limit is the ask itself, not a walk: a FOK priced above the top of
-    book authorises paying the second level too, and this lane's whole claim
-    is about the price it measured.
+    The limit was the best ask and nothing above it, on the reasoning that a
+    FOK priced higher authorises paying the second level and the lane's claim
+    is about the price it measured.  On this book that reasoning does not
+    survive its own numbers: over 283 ask levels sampled 2026-09-20T19:00Z+,
+    the top level's median depth is 10 shares and its p25 is 5.7, so a 5 USDC
+    take needs more than the whole top level most of the time -- 35% of the
+    time at 0.72, 61% at 0.50, 75% at 0.30.  Three live sends, three kills,
+    the last of them with the book 19 seconds old and 1.68 shares of headroom
+    left on a 7.68-share level (KLGA 2026-09-20 68-69F).
+
+    So the limit may walk ``walk_ticks`` above the best ask and the size is
+    the depth up to it.  The caller pays for that by testing its hurdle
+    against the WALKED price, not the best ask: what the lane authorises and
+    what it claims an edge over are then the same number.  One tick carried
+    every sampled level at 0.72 and 91% at 0.50.
     """
 
     out: dict[str, Any] = {
         "limit_price": None, "shares": None, "cost_usdc": None,
         "best_ask": None, "best_bid": None, "ask_depth_shares": None,
+        "walked_depth_shares": None, "walk_ticks": int(walk_ticks),
         "tick_size": (float(tick_size) if tick_size not in (None, "") else None),
         "refusal": None,
     }
@@ -285,9 +299,30 @@ def taker_take(
     if book["best_ask"] is None:
         out["refusal"] = "no_ask"
         return out
-    price = float(book["best_ask"])
+    best = float(book["best_ask"])
+    tick = out["tick_size"]
+    price = best
+    if int(walk_ticks) > 0 and tick:
+        price = round(best + int(walk_ticks) * float(tick), 6)
+        if price >= 1.0:
+            price = best
+    out["limit_price_authorised"] = price
     affordable = float(stake_usdc) / price
+    # Every level at or under the authorised limit is fillable, so the size
+    # is measured against all of them, not the top one alone.
     depth = book["ask_depth_shares"]
+    if price > best + 1e-9:
+        levels = []
+        for level in (book_row or {}).get("ask_levels") or ():
+            try:
+                lp = float(level.get("price")); ls = float(level.get("shares") or 0.0)
+            except (TypeError, ValueError, AttributeError):
+                continue
+            if ls > 0 and lp <= price + 1e-9:
+                levels.append(ls)
+        if levels:
+            depth = sum(levels)
+    out["walked_depth_shares"] = depth
     if depth is not None:
         # A FOK the top level cannot fill is a FOK the venue kills, and the
         # book we price on is always a little older than the send.  KMIA
@@ -719,6 +754,7 @@ def plan_p1_tail_entries(
     book_fresh = dial("book_fresh_seconds")
     send_book_fresh = dial("send_book_fresh_seconds")
     max_sends = int(dial("max_sends_per_station_day"))
+    walk_ticks = int(dial("walk_ticks"))
     gate = admission or (lambda station, conn: live_station_admission(station, conn=conn))
     now = _utc(now_utc)
     done = _evaluated_buckets(
@@ -870,9 +906,21 @@ def plan_p1_tail_entries(
                 book_row, stake,
                 tick_size=market_row.get("tick_size"),
                 min_shares=float(market_row.get("min_size") or DEFAULT_MIN_ORDER_SHARES),
+                walk_ticks=walk_ticks,
             )
             if take["refusal"]:
                 bucket_refuse(take["refusal"])
+                continue
+            # The hurdle is tested against the price this order AUTHORISES,
+            # not the one it was read at.  The reading stays on the ask so
+            # the row is comparable to the measurement; the send has to clear
+            # the worst price it may pay, which is the stricter test.
+            walked_gap = round(
+                float((reading.get("belief") or {}).get(bucket, 0.0))
+                - float(take["limit_price"]), 6
+            )
+            if walked_gap < hurdle:
+                bucket_refuse(f"hurdle_after_walk:{walked_gap:+.3f}<{hurdle:.2f}")
                 continue
             cash_refusal = _cash_refusal(
                 target_conn, now_utc=now_utc, needed=float(take["cost_usdc"])
@@ -906,6 +954,8 @@ def plan_p1_tail_entries(
                 "cost_usdc": take["cost_usdc"],
                 "best_bid": take["best_bid"], "best_ask": take["best_ask"],
                 "ask_depth_shares": take["ask_depth_shares"],
+                "walked_depth_shares": take["walked_depth_shares"],
+                "walk_ticks": take["walk_ticks"], "walked_gap": walked_gap,
                 "market_mid": (reading.get("prior") or {}).get(bucket),
                 "likelihood": candidate["likelihood"].get(bucket),
                 "belief": (reading.get("belief") or {}).get(bucket),
