@@ -151,3 +151,83 @@ def test_the_p1_scope_check_is_a_per_pair_indexed_read() -> None:
     source = Path(pw.__file__).read_text()
     assert "SELECT DISTINCT station_id,event_date \"\n                \"FROM basket_probability_envelope" not in source
     assert "WHERE station_id=? AND event_date=? AND state='COMMITTED' " in source
+
+
+# --- Charter 165: the checkpoint re-armed between the heavy stages ----------
+
+
+def test_the_re_armed_checkpoint_runs_at_most_once_per_interval(monkeypatch, tmp_path) -> None:
+    """Charter 165: a check every interval, not every stage."""
+
+    worker = _worker(tmp_path)
+    calls: list[tuple[str, bool]] = []
+    monkeypatch.setattr(
+        worker, "_fast_lane_checkpoint",
+        lambda label, mark=True: calls.append((label, mark)) or {"label": label},
+    )
+    clock = [1000.0]
+    monkeypatch.setattr(pw.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(pw, "FAST_LANE_CHECKPOINT_MIN_INTERVAL_SEC", 45.0)
+    worker._last_fast_lane_checkpoint_mono = 1000.0
+    assert worker._fast_lane_checkpoint_if_due("after_regime") is None
+    clock[0] = 1044.0
+    assert worker._fast_lane_checkpoint_if_due("after_regime") is None
+    clock[0] = 1045.0
+    assert worker._fast_lane_checkpoint_if_due("after_regime") == {"label": "after_regime"}
+    assert calls == [("after_regime", True)]
+    # No stamp yet (first check of a process): it runs.
+    del worker._last_fast_lane_checkpoint_mono
+    assert worker._fast_lane_checkpoint_if_due("in_decision_loop", mark=False) == {
+        "label": "in_decision_loop"
+    }
+    assert calls[-1] == ("in_decision_loop", False)
+
+
+def test_a_check_that_found_nothing_still_stamps_the_clock(monkeypatch, tmp_path) -> None:
+    """The watermark read is the cost being rationed, so it counts."""
+
+    worker = _worker(tmp_path)
+    monkeypatch.setattr(pw.time, "monotonic", lambda: 777.0)
+    monkeypatch.setattr(worker, "_materialize_early_p1", lambda **k: pytest.fail("no P1"))
+    assert worker._fast_lane_checkpoint("after_regime") is None
+    assert worker._last_fast_lane_checkpoint_mono == 777.0
+
+
+def test_inside_the_decision_loop_the_pass_is_a_span_not_a_mark(monkeypatch, tmp_path) -> None:
+    worker = _worker(tmp_path)
+    _env.mark = (12, 0, "2026-09-19")
+    monkeypatch.setattr(pw, "_stations_with_reports_after", lambda conn, covered: {"ZUUU"})
+    monkeypatch.setattr(worker, "_materialize_early_p0m", lambda **k: pytest.fail("TAF did not move"))
+    monkeypatch.setattr(worker, "_materialize_early_p1",
+                        lambda **k: {"ran": True, "p1": {"state": "COMMITTED"}})
+    spans: list[tuple[str, float]] = []
+    monkeypatch.setattr(worker, "_add_span", lambda name, ms, **k: spans.append((name, ms)), raising=False)
+    receipt = worker._fast_lane_checkpoint("in_decision_loop", mark=False)
+    assert receipt["label"] == "in_decision_loop"
+    assert "fast_lane_in_decision_loop" not in worker._stage_timings_ms
+    assert [name for name, _ms in spans] == ["fast_lane_in_decision_loop"]
+    assert worker._p1_covered_watermark == (12, 0, "2026-09-19")
+
+
+def test_the_re_armed_checkpoints_sit_at_the_heavy_stage_boundaries_with_a_tier() -> None:
+    tree = ast.parse(Path(pw.__file__).read_text())
+    labels = sorted(
+        node.args[0].value for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "_fast_lane_checkpoint_if_due" and node.args
+        and isinstance(node.args[0], ast.Constant)
+    )
+    assert labels == sorted([
+        "after_native_p0_replay_compile", "after_native_ensemble_oos", "after_regime",
+        "after_forward_p0_loop", "after_market_ingress", "in_decision_loop",
+    ])
+    for label in labels:
+        assert pw.STAGE_TIER[f"fast_lane_{label}"] == pw.STAGE_TIER_R0_DECISION
+    # The direct call before decisions is untouched (charter 154 fix 2).
+    direct = [
+        node.args[0].value for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "_fast_lane_checkpoint" and node.args
+        and isinstance(node.args[0], ast.Constant)
+    ]
+    assert direct == ["before_decisions"]

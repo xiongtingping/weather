@@ -780,6 +780,14 @@ STAGE_TIER: dict[str, int] = {
     "early_p0m": STAGE_TIER_R0_DECISION,
     # ... and again right before the decision loop, when something new landed.
     "fast_lane_before_decisions": STAGE_TIER_R0_DECISION,
+    # Charter 165: the same checkpoint re-armed at the heavy stage
+    # boundaries (and, as a span, inside the decision loop).
+    "fast_lane_after_native_p0_replay_compile": STAGE_TIER_R0_DECISION,
+    "fast_lane_after_native_ensemble_oos": STAGE_TIER_R0_DECISION,
+    "fast_lane_after_regime": STAGE_TIER_R0_DECISION,
+    "fast_lane_after_forward_p0_loop": STAGE_TIER_R0_DECISION,
+    "fast_lane_after_market_ingress": STAGE_TIER_R0_DECISION,
+    "fast_lane_in_decision_loop": STAGE_TIER_R0_DECISION,
     "probability_p0": STAGE_TIER_R0_DECISION,
     "probability_p0m": STAGE_TIER_R0_DECISION,
     "probability_p1": STAGE_TIER_R0_DECISION,
@@ -3530,6 +3538,16 @@ EARLY_P0M_ENABLED = (
 FAST_LANE_CHECKPOINTS_ENABLED = (
     os.environ.get("PM_FAST_LANE_CHECKPOINTS", "1").strip().lower()
     not in {"0", "off", "false", "no", ""}
+)
+# Charter 165 (2026-09-20): between the head and the pre-decision checkpoint
+# a report waits through stages of 60-150s -- measured 2026-09-18..20 on 1,736
+# reports, commit-to-P1 ran a 3.1 minute median with two P1 opportunities per
+# ~6 minute cycle.  ``_fast_lane_checkpoint_if_due`` re-arms the checkpoint at
+# the heavy stage boundaries and inside the decision loop, at most once per
+# this many seconds.  Each check is a watermark read; the pass itself runs
+# only for the stations with reports past the covered mark.
+FAST_LANE_CHECKPOINT_MIN_INTERVAL_SEC = float(
+    os.environ.get("PM_FAST_LANE_CHECKPOINT_INTERVAL_SEC", "").strip() or 45.0
 )
 
 
@@ -15382,7 +15400,9 @@ class TargetProductionWorker:
             **boundary,
         }
 
-    def _fast_lane_checkpoint(self, label: str) -> dict[str, Any] | None:
+    def _fast_lane_checkpoint(
+        self, label: str, *, mark: bool = True
+    ) -> dict[str, Any] | None:
         """Update, mid-cycle, only what landed since the last pass covered it.
 
         P0-M when the TAF inbox content moved -- once the chain has settled
@@ -15395,6 +15415,11 @@ class TargetProductionWorker:
 
         if not FAST_LANE_CHECKPOINTS_ENABLED:
             return None
+        started = time.perf_counter()
+        # Charter 165: the re-armed checkpoints read this; a pass that found
+        # nothing still counts as a check, so the watermark read runs at most
+        # once per interval.
+        self._last_fast_lane_checkpoint_mono = time.monotonic()
         chain_ran = bool(getattr(self, "_probability_chain_ran", False))
         taf_mark = _taf_inbox_watermark(getattr(self, "taf_inbox_path", None))
         archive = getattr(self, "canonical_source_conn", None)
@@ -15453,8 +15478,40 @@ class TargetProductionWorker:
             receipts = []
             self._fast_lane_receipts = receipts
         receipts.append(receipt)
-        self._mark(f"fast_lane_{label}")
+        if mark:
+            self._mark(f"fast_lane_{label}")
+        else:
+            # Inside the decision loop: a mark would split that stage's
+            # timing, so the pass is recorded as a span and the loop's own
+            # time keeps it (it happened inside the loop).
+            self._add_span(
+                f"fast_lane_{label}", (time.perf_counter() - started) * 1000.0
+            )
         return receipt
+
+    def _fast_lane_checkpoint_if_due(
+        self, label: str, *, mark: bool = True
+    ) -> dict[str, Any] | None:
+        """Charter 165: the checkpoint again, wherever the cycle has time.
+
+        Called at the heavy stage boundaries and before each decision-loop
+        scope; runs the checkpoint at most once per
+        ``FAST_LANE_CHECKPOINT_MIN_INTERVAL_SEC``, so a report that landed
+        during a two-minute stage gets its P1 within the interval instead
+        of at the next head.  Everything else is the checkpoint's own rule
+        (charter 154): P1 only for the stations with reports past the
+        covered mark, P0-M only once the chain has settled the roots, never
+        raises.  Before the chain that means P1 alone.
+        """
+
+        if not FAST_LANE_CHECKPOINTS_ENABLED:
+            return None
+        last = getattr(self, "_last_fast_lane_checkpoint_mono", None)
+        if last is not None and (
+            time.monotonic() - float(last) < FAST_LANE_CHECKPOINT_MIN_INTERVAL_SEC
+        ):
+            return None
+        return self._fast_lane_checkpoint(label, mark=mark)
 
     def _materialize_early_p1(
         self,
@@ -17592,6 +17649,7 @@ class TargetProductionWorker:
         )
         self._early_p1_watermark = early_report_watermark
         self._mark("early_p1")
+        self._last_fast_lane_checkpoint_mono = time.monotonic()
         # Close intents the exchange has already answered about, before the
         # cycle spends anything on anything else.
         #
@@ -18024,6 +18082,7 @@ class TargetProductionWorker:
                     "active_activation_p0_replay"
                 ] = active_activation_p0_replay
                 self._mark("native_p0_replay_compile")
+                self._fast_lane_checkpoint_if_due("after_native_p0_replay_compile")
                 now_mono = time.monotonic()
                 last_oos_scan = getattr(
                     self,
@@ -18332,6 +18391,7 @@ class TargetProductionWorker:
                     "live_submit_authorized": False,
                 }
             self._mark("native_ensemble_oos")
+            self._fast_lane_checkpoint_if_due("after_native_ensemble_oos")
             # Before the chain, because the chain is the consumer: P1 resolves
             # each observation's truth-revision hash at compile time, and a
             # report identified after that compile is one this cycle's P1
@@ -18409,6 +18469,7 @@ class TargetProductionWorker:
                 self._correction_auto_clear_last_mono = None
             regime_ingress = self._materialize_regime_ssot(as_of_utc=now)
             self._mark("regime")
+            self._fast_lane_checkpoint_if_due("after_regime")
             if self._maintenance_admits("truth_increment"):
                 _truth_started = time.perf_counter()
                 truth_materialization = self._materialize_truth_increment(
@@ -18576,6 +18637,7 @@ class TargetProductionWorker:
                         "reservations_written": 0,
                     })
             self._mark("forward_p0_loop")
+            self._fast_lane_checkpoint_if_due("after_forward_p0_loop")
             self._refresh_account_equity()
             # Charter 48: a listed day's scope belongs in the merged manifest
             # the ingress reads.  The publisher already subscribes it and
@@ -18798,6 +18860,7 @@ class TargetProductionWorker:
             # false cross-generation drift.
             now = utc_now()
             self._mark("market_ingress")
+            self._fast_lane_checkpoint_if_due("after_market_ingress")
             post_fill_recompute = self._consume_post_fill_recompute_requests(
                 activation=activation,
                 scope_config=scope,
@@ -18987,6 +19050,9 @@ class TargetProductionWorker:
                     # reached keep last cycle's decisions; the next cycle
                     # serves them first because nothing was written.
                     break
+                # Charter 165: a report that landed while earlier scopes were
+                # priced becomes P1 before this one is, inside the interval.
+                self._fast_lane_checkpoint_if_due("in_decision_loop", mark=False)
                 station = str(station_id)
                 day = str(event_date)
                 if (station, day) in recomputed_scopes:
