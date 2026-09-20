@@ -217,6 +217,24 @@ RETRYABLE_REFUSAL_PREFIXES: tuple[str, ...] = ("insufficient_cash:", "account_eq
 #: sends go out for one station-day.  A filled or open order ends it.
 SEND_REFUSAL_PREFIX = "send:"
 DEFAULT_MAX_SENDS_PER_STATION_DAY = 3
+#: What the venue says when the market is shut.  There is no code on that
+#: reply -- ``classify_submission_response`` hands the gateway's own ``error``
+#: string through -- so this is matched as a case-insensitive substring, and a
+#: sentence that stops matching costs the lane nothing but the special
+#: handling: the send falls back to an ordinary ``send:`` refusal.
+VENUE_DISABLED_MARKERS: tuple[str, ...] = ("trading is disabled",)
+#: The same test in SQL, over ``basket_target_order_events``.  ``x.`` is the
+#: events alias; ``latest_venue_disabled_send_at`` rebinds it.
+_VENUE_DISABLED_SQL = "(" + " OR ".join(
+    "LOWER(COALESCE(json_extract(x.event_json,'$.reason'),'')) LIKE "
+    + "'%" + marker.replace("'", "''").lower() + "%'"
+    for marker in VENUE_DISABLED_MARKERS
+) + ")"
+#: A shut market is not a book the lane was refused on, so it neither spends
+#: the station-day's send budget nor is re-asked a minute later.  Its own
+#: budget, spaced by its own cooldown (user ruling 2026-09-20 "改").
+DEFAULT_MAX_VENUE_DISABLED_SENDS = 6
+DEFAULT_VENUE_DISABLED_COOLDOWN_SECONDS = 3600.0
 #: A retry is priced on the newest committed book, and only if that book is
 #: this young: a FOK walked on a 45-minute-old ladder is a FOK the venue
 #: kills (RJTT 2026-09-18 02:47Z).  The first decision's own window stays
@@ -239,6 +257,7 @@ RETRY_COLUMNS: tuple[tuple[str, str], ...] = (
 TERMINAL_REFUSAL_PREFIXES: tuple[str, ...] = (
     "station_day_already_attempted",
     "station_day_send_cap:",
+    "venue_disabled_cap:",
     "settlement_day_closed",
     "settlement_day_unknown:",
     "station_not_admitted:",
@@ -690,12 +709,66 @@ def station_day_attempted(conn: sqlite3.Connection, station_id: str, event_date:
 
 
 def station_day_sends(conn: sqlite3.Connection, station_id: str, event_date: str) -> int:
-    """How many intents this lane has minted for the station-day, filled or not."""
+    """How many intents this lane has minted for the station-day against its
+    ``max_sends_per_station_day`` budget, filled or not.
+
+    A send the VENUE turned away because the market was not trading is not
+    one of them (user ruling 2026-09-20 "改").  That budget exists to stop a
+    station-day being re-judged and re-sent on book after book; a reply of
+    "trading is disabled" is not a judgement on the book at all, it is the
+    venue saying the market is shut, and a market that is shut at 17:37Z is
+    usually open later the same day.  Counted, it spent NZWN 2026-09-21 and
+    MMMX 2026-09-20 in six and thirteen minutes on 2026-09-19 -- three sends
+    each, all three refused with that one sentence, and the station-day over
+    before the market opened.  Those attempts have their own budget and
+    their own spacing (``venue_disabled_sends``,
+    ``venue_disabled_cooldown_seconds``).
+    """
+
+    return station_day_sends_total(conn, station_id, event_date) - venue_disabled_sends(
+        conn, station_id, event_date,
+    )
+
+
+def station_day_sends_total(conn: sqlite3.Connection, station_id: str, event_date: str) -> int:
+    """Every intent this lane has minted for the station-day, whatever became of it."""
 
     return int(conn.execute(
         "SELECT COUNT(*) FROM basket_target_order_intents WHERE decision_id=?",
         (lane_decision_id(LANE, station_id, event_date),),
     ).fetchone()[0])
+
+
+def venue_disabled_sends(conn: sqlite3.Connection, station_id: str, event_date: str) -> int:
+    """Sends of this station-day the venue turned away as a shut market.
+
+    Read off the order's own refusal event rather than the evaluation row:
+    the row keeps one refusal and these are several, and the event is what
+    the venue actually said.
+    """
+
+    return int(conn.execute(
+        "SELECT COUNT(*) FROM basket_target_order_intents i"
+        " WHERE i.decision_id=? AND EXISTS ("
+        "   SELECT 1 FROM basket_target_order_events x"
+        "   WHERE x.order_intent_id=i.order_intent_id"
+        f"     AND {_VENUE_DISABLED_SQL})",
+        (lane_decision_id(LANE, station_id, event_date),),
+    ).fetchone()[0])
+
+
+def latest_venue_disabled_send_at(
+    conn: sqlite3.Connection, station_id: str, event_date: str,
+) -> str | None:
+    """When the venue last said the market was shut for this station-day."""
+
+    row = conn.execute(
+        "SELECT MAX(e.observed_at) FROM basket_target_order_intents i"
+        " JOIN basket_target_order_events e ON e.order_intent_id=i.order_intent_id"
+        f" WHERE i.decision_id=? AND {_VENUE_DISABLED_SQL.replace('x.', 'e.')}",
+        (lane_decision_id(LANE, station_id, event_date),),
+    ).fetchone()
+    return str(row[0]) if row and row[0] else None
 
 
 def _record(conn: sqlite3.Connection, key: Mapping[str, Any], fact: Mapping[str, Any] | None,
@@ -905,7 +978,16 @@ def plan_tiebreak_entries(
             evaluations.append(_record(target_conn, key, fact, reading, fired=False,
                                        refusal=f"rule_not_met:{reading['reason']}", order_intent_id=None, plan=None, now_utc=now_utc, rule_version=rule_version))
             continue
-        refusal = _planning_refusal(target_conn, key, fact, gate=gate, now_utc=now_utc)
+        refusal = _planning_refusal(
+            target_conn, key, fact, gate=gate, now_utc=now_utc,
+            max_sends=int(cfg.get("max_sends_per_station_day") or DEFAULT_MAX_SENDS_PER_STATION_DAY),
+            max_venue_disabled_sends=int(
+                cfg.get("max_venue_disabled_sends_per_station_day") or DEFAULT_MAX_VENUE_DISABLED_SENDS
+            ),
+            venue_disabled_cooldown_seconds=float(
+                cfg.get("venue_disabled_cooldown_seconds") or DEFAULT_VENUE_DISABLED_COOLDOWN_SECONDS
+            ),
+        )
         if refusal:
             evaluations.append(_record(target_conn, key, fact, reading, fired=True, refusal=refusal,
                                        order_intent_id=None, plan=None, now_utc=now_utc, rule_version=rule_version))
@@ -1002,6 +1084,15 @@ def _sync_sent_rows(conn: sqlite3.Connection, *, floor: str) -> int:
             new_refusal = None
         elif str(recon_state) in {"resolved_not_placed", "resolved_cancelled"} or str(intent_state) in {"failed", "cancelled"}:
             current = str(refusal or "")
+            if current and not is_retryable_refusal(current):
+                # The row already has its final verdict -- the send cap, a
+                # closed day, a barred station.  Rewriting it from the dead
+                # order makes it retryable again, the retry pass writes the
+                # verdict back, and the two trade the row every cycle
+                # forever: NZWN 2026-09-21 and MMMX 2026-09-20 sat in that
+                # loop from 2026-09-19 to 2026-09-20 and reached
+                # ``retry_count`` 233 and 205 without a single new send.
+                continue
             if current.startswith("retry_"):
                 # Re-judged on a later book after this order was resolved as
                 # not placed: that judgement is the row's reason, and the
@@ -1049,6 +1140,10 @@ def _retry_operational_refusals(
     floor = (now - timedelta(days=DEFAULT_LOOKBACK_DAYS)).date().isoformat()
     max_sends = int(cfg.get("max_sends_per_station_day") or DEFAULT_MAX_SENDS_PER_STATION_DAY)
     book_fresh = float(cfg.get("retry_book_fresh_seconds") or DEFAULT_RETRY_BOOK_FRESH_SECONDS)
+    max_shut = int(cfg.get("max_venue_disabled_sends_per_station_day") or DEFAULT_MAX_VENUE_DISABLED_SENDS)
+    shut_cooldown = float(
+        cfg.get("venue_disabled_cooldown_seconds") or DEFAULT_VENUE_DISABLED_COOLDOWN_SECONDS
+    )
     _sync_sent_rows(target_conn, floor=floor)
     rows = target_conn.execute(
         f"SELECT station_id, event_date, stage, refusal, retry_of_refusal, COALESCE(retry_count, 0), plan_json, retry_snapshot_id"
@@ -1096,6 +1191,24 @@ def _retry_operational_refusals(
             out.append(entry); continue
         if station_day_sends(target_conn, key["station_id"], key["event_date"]) >= max_sends:
             _note(f"station_day_send_cap:{max_sends}"); continue
+        shut = venue_disabled_sends(target_conn, key["station_id"], key["event_date"])
+        if shut:
+            # The venue said the market was shut.  That is not a verdict on
+            # the book, so it did not spend the send budget -- but it is also
+            # not a reason to ask again a minute later.  Its own budget, and
+            # an hour between tries.
+            if shut >= max_shut:
+                _note(f"venue_disabled_cap:{max_shut}"); continue
+            last_shut = latest_venue_disabled_send_at(target_conn, key["station_id"], key["event_date"])
+            if last_shut:
+                waited = (now - _utc(last_shut)).total_seconds()
+                if waited < shut_cooldown:
+                    # No write: the row keeps the refusal it has, and the
+                    # cooldown is not a judgement to record every cycle.
+                    entry["waiting_for_venue"] = True
+                    entry["venue_disabled_sends"] = shut
+                    entry["venue_cooldown_remaining_seconds"] = round(shut_cooldown - waited, 1)
+                    out.append(entry); continue
         fact = _latest_fact(target_conn, key["station_id"], key["event_date"], key["stage"])
         if fact is None:
             _note(str(refusal)); continue
@@ -1134,7 +1247,10 @@ def _retry_operational_refusals(
                                 spread=book["spread"], max_spread=max_spread)
         if not reading["fired"]:
             _note(f"retry_rule_not_met:{reading['reason']}", snapshot_id=examined_snapshot_id); continue
-        refusal_now = _planning_refusal(target_conn, key, fact, gate=gate, now_utc=now_utc, max_sends=max_sends)
+        refusal_now = _planning_refusal(
+            target_conn, key, fact, gate=gate, now_utc=now_utc, max_sends=max_sends,
+            max_venue_disabled_sends=max_shut, venue_disabled_cooldown_seconds=shut_cooldown,
+        )
         if refusal_now:
             _note(refusal_now, snapshot_id=examined_snapshot_id); continue
         bucket = str(reading["model_mode"])
@@ -1179,11 +1295,23 @@ def _retry_operational_refusals(
 
 
 def _planning_refusal(conn: sqlite3.Connection, key: Mapping[str, Any], fact: Mapping[str, Any], *,
-                      gate: Admission, now_utc: str, max_sends: int = DEFAULT_MAX_SENDS_PER_STATION_DAY) -> str | None:
+                      gate: Admission, now_utc: str, max_sends: int = DEFAULT_MAX_SENDS_PER_STATION_DAY,
+                      max_venue_disabled_sends: int = DEFAULT_MAX_VENUE_DISABLED_SENDS,
+                      venue_disabled_cooldown_seconds: float = DEFAULT_VENUE_DISABLED_COOLDOWN_SECONDS,
+                      ) -> str | None:
     if station_day_attempted(conn, key["station_id"], key["event_date"]):
         return "station_day_already_attempted"
     if station_day_sends(conn, key["station_id"], key["event_date"]) >= int(max_sends):
         return f"station_day_send_cap:{int(max_sends)}"
+    shut = venue_disabled_sends(conn, key["station_id"], key["event_date"])
+    if shut >= int(max_venue_disabled_sends):
+        return f"venue_disabled_cap:{int(max_venue_disabled_sends)}"
+    if shut:
+        last_shut = latest_venue_disabled_send_at(conn, key["station_id"], key["event_date"])
+        if last_shut and (_utc(now_utc) - _utc(last_shut)).total_seconds() < float(
+            venue_disabled_cooldown_seconds
+        ):
+            return "venue_disabled_cooldown"
     try:
         verdict = gate(key["station_id"], conn)
     except Exception as exc:  # noqa: BLE001 -- an unreadable gate admits nothing
@@ -1355,6 +1483,10 @@ __all__ = [
     "TERMINAL_REFUSAL_PREFIXES",
     "retry_needs_newer_book",
     "station_day_sends",
+    "station_day_sends_total",
+    "venue_disabled_sends",
+    "latest_venue_disabled_send_at",
+    "VENUE_DISABLED_MARKERS",
     "book_features",
     "is_retryable_refusal",
     "repair_fok_short_fills",

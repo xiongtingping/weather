@@ -871,6 +871,95 @@ def test_an_ambiguous_send_waits_for_the_reconciliation_and_follows_it(store) ->
     assert store.execute(f"SELECT refusal FROM {lane.EVALUATION_TABLE}").fetchone()[0] is None
 
 
+def _shut_transport(sent: list):
+    """The venue turns the order away because the market is not trading.
+    The gateway hands its own sentence through untouched."""
+
+    def transport(path, payload):
+        sent.append((path, payload))
+        return {"ok": False, "error": "trading is disabled"}
+    return transport
+
+
+def test_a_shut_market_neither_spends_the_send_budget_nor_is_asked_again_at_once(store, monkeypatch) -> None:
+    """User ruling 2026-09-20 「改」.
+
+    NZWN 2026-09-21 and MMMX 2026-09-20 on 2026-09-19: three sends each, all
+    three refused with "trading is disabled", the whole station-day budget
+    gone in six and thirteen minutes, and the market opened later with the
+    lane already out of tries.  A shut market is the venue's own state, not a
+    verdict on the book: it has its own budget and an hour between tries.
+    """
+
+    # The sender stamps its events on the wall clock and this suite runs on a
+    # fixed one: the cooldown compares the two, so they have to be one clock.
+    from bayes_basket_target import lane_orders  # noqa: PLC0415
+
+    clock = {"now": "2026-09-18T12:09:00.000Z"}
+    monkeypatch.setattr(lane_orders, "wall_clock_utc", lambda: clock["now"])
+    _seed(store)
+    sent: list = []
+    lane.execute_tiebreak_entries(store, transport=_shut_transport(sent), now_utc=NOW,
+                                  live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert len(sent) == 1
+    key = (ST, ED)
+    assert lane.venue_disabled_sends(store, *key) == 1
+    # It did not spend the ordinary budget: three refusals like this leave it whole.
+    assert lane.station_day_sends(store, *key) == 0
+    assert lane.station_day_sends_total(store, *key) == 1
+    # And it is not asked again inside the cooldown, on any book.
+    _newer_snapshot(store, observed_at="2026-09-18T12:09:30.000Z", snapshot_id="snap_soon")
+    soon = lane.execute_tiebreak_entries(store, transport=_shut_transport(sent), now_utc=NOW,
+                                         live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert len(sent) == 1
+    assert soon["retries"][0].get("waiting_for_venue") is True
+    assert soon["retries"][0]["venue_disabled_sends"] == 1
+    # The cooldown is not a judgement: it is not written onto the row every cycle.
+    assert store.execute(f"SELECT COALESCE(retry_count,0) FROM {lane.EVALUATION_TABLE}").fetchone()[0] == 0
+    # An hour later the same station-day is tried again.
+    later = "2026-09-18T13:20:00.000Z"
+    clock["now"] = later
+    _seed(store, fact_id="f_late", decided="2026-09-18T13:15:00.000Z")
+    _newer_snapshot(store, observed_at="2026-09-18T13:19:00.000Z", snapshot_id="snap_hour")
+    lane.execute_tiebreak_entries(store, transport=_shut_transport(sent), now_utc=later,
+                                  live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert len(sent) == 2 and lane.venue_disabled_sends(store, *key) == 2
+
+
+def test_a_capped_station_day_settles_instead_of_being_rewritten_every_cycle(store) -> None:
+    """The ping-pong behind NZWN's ``retry_count`` 233 and MMMX's 205.
+
+    The retry pass writes the terminal ``station_day_send_cap:``; the
+    sent-row sync then rewrote it from the dead order back to a retryable
+    ``send:resolved_not_placed``, the retry pass wrote the cap again, and the
+    two traded the row every cycle for a day without a single new send.  A
+    verdict that ends the station-day stands.
+    """
+
+    _seed(store)
+    sent: list = []
+    lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW,
+                                  live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+    intent_id = store.execute("SELECT order_intent_id FROM basket_target_order_intents").fetchone()[0]
+    store.execute(
+        f"UPDATE {lane.EVALUATION_TABLE} SET refusal='station_day_send_cap:3' WHERE order_intent_id=?",
+        (intent_id,),
+    )
+    store.execute("UPDATE basket_target_order_intents SET state='failed' WHERE order_intent_id=?", (intent_id,))
+    store.execute(
+        "UPDATE basket_target_order_reconciliations SET state='resolved_not_placed', filled_size=0,"
+        " filled_notional_usdc=0 WHERE order_intent_id=?",
+        (intent_id,),
+    )
+    before = store.execute(f"SELECT refusal, COALESCE(retry_count,0) FROM {lane.EVALUATION_TABLE}").fetchone()
+    assert before == ("station_day_send_cap:3", 0)
+    for _ in range(3):
+        lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW,
+                                      live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+    assert store.execute(f"SELECT refusal, COALESCE(retry_count,0) FROM {lane.EVALUATION_TABLE}").fetchone() == before
+    assert len(sent) == 1
+
+
 def test_a_row_re_judged_after_its_send_failed_keeps_the_later_judgement(store) -> None:
     """RJTT/OPKC 2026-09-18 07:55Z: a row whose dead send had been re-judged
     ``retry_rule_not_met`` on a newer book read ``send:resolved_not_placed``

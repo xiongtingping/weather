@@ -86,6 +86,14 @@ TIEBREAK_DEFAULT_SETTINGS: dict[str, Any] = {
     "max_sends_per_station_day": 3,
     # A retry is priced only on a book at most this old (seconds).
     "retry_book_fresh_seconds": 900.0,
+    # User ruling 2026-09-20 "改": a send the VENUE turned away because the
+    # market was not trading ("trading is disabled") is not a verdict on the
+    # book.  It spends none of the budget above -- counted, it ended NZWN
+    # 2026-09-21 and MMMX 2026-09-20 in six and thirteen minutes on
+    # 2026-09-19, three sends each, before those markets opened -- and has
+    # its own budget and an hour between tries instead.
+    "max_venue_disabled_sends_per_station_day": 6,
+    "venue_disabled_cooldown_seconds": 3600.0,
 }
 
 #: The per-trade stake is a board dial (charter 146); the server refuses a

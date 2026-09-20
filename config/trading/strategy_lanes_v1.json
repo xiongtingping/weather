@@ -1,6 +1,6 @@
 {
   "schema": "basket_strategy_lanes_v1",
-  "updated_at_utc": "2026-09-20T00:00:00Z",
+  "updated_at_utc": "2026-09-20T10:00:00Z",
   "rationale": "User ruling 2026-09-18: put the tiebreak lane (秤砣线) live and pause every other strategy -- closed, not deleted. A paused lane still compiles, records its decisions and writes the evidence the ledger and the fits read; only its sends are held (basket BUYs end failed with strategy_lane_paused:basket on their event; the two sell lanes are skipped by the daemon). Read fresh before every send. Missing file = every lane enabled; unreadable file = every lane paused. Charters 146 and 163.",
   "lanes": {
     "basket": {
@@ -24,13 +24,15 @@
       "stake_usdc": 6.0,
       "min_market_share_on_model_mode": 0.4,
       "first_decision_fresh_seconds": 3600.0,
-      "note": "秤砣线 v2.2 (charter 163, user ruling 2026-09-20 「秤砣线从吃单改为post only，挂best买一+1」): at a stage's first decision, the model's mode bucket priced 0.40-0.60 by the market's normalised mid AND quoted both sides at most 3 cents wide -> rest one post-only GTD rung on that bucket at the best bid plus one tick (clamped under the ask), stake_usdc' worth of shares, once per station-day.  The same four conditions as v2.1, which crossed at the walked ask from 2026-09-18 to 2026-09-20; the rule version is separate so the two are not averaged together.  Features (market move since the previous decision, spread, depth) are recorded on every evaluation row, not traded on.  v2.1 / v2 / v1 selectable by rule.",
+      "note": "秤砣线 v2.2 (charter 163, user ruling 2026-09-20 「秤砣线从吃单改为post only，挂best买一+1」): at a stage's first decision, the model's mode bucket priced 0.40-0.60 by the market's normalised mid AND quoted both sides at most 3 cents wide -> rest one post-only GTD rung on that bucket at the best bid plus one tick (clamped under the ask), stake_usdc' worth of shares, once per station-day.  The same four conditions as v2.1, which crossed at the walked ask from 2026-09-18 to 2026-09-20; the rule version is separate so the two are not averaged together.  Features (market move since the previous decision, spread, depth) are recorded on every evaluation row, not traded on.  v2.1 / v2 / v1 selectable by rule.  A send the VENUE turned away because the market was not trading (\"trading is disabled\") spends none of max_sends_per_station_day: it is the venue's own state, not a verdict on the book, and a market shut at 17:37Z is usually open later the same day.  Counted, it ended NZWN 2026-09-21 and MMMX 2026-09-20 in six and thirteen minutes on 2026-09-19.  Those attempts have their own budget and an hour between tries (user ruling 2026-09-20 「改」).",
       "rule": "model_mode_midband_spread_maker_v2_2",
       "max_market_share_on_model_mode": 0.6,
       "max_spread_on_model_mode": 0.031,
       "retry_operational_refusals": true,
       "max_sends_per_station_day": 3,
-      "retry_book_fresh_seconds": 900.0
+      "retry_book_fresh_seconds": 900.0,
+      "max_venue_disabled_sends_per_station_day": 6,
+      "venue_disabled_cooldown_seconds": 3600.0
     }
   }
 }
