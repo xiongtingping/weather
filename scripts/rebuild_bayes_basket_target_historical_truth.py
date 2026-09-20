@@ -58,6 +58,7 @@ from bayes_basket_target.source_policy import (  # noqa: E402
     AWC_HOUR_REFERENCE_FOR_AMSC,
     reference_only_reason,
 )
+from bayes_basket_target.offloaded_paths import assert_present  # noqa: E402
 from official_nwp_https_transport import official_nwp_proxy_url  # noqa: E402
 from scripts.capture_amsc_historical_backfill import _curl_tls_verified_payload  # noqa: E402
 from scripts.fetch_zuuu_metar_taf import ENDPOINT as AMSC_ENDPOINT, token_candidates  # noqa: E402
@@ -760,6 +761,7 @@ def _load_existing_amsc(
     result: list[dict[str, Any]] = []
     reference_result: list[dict[str, Any]] = []
     for root, require_explicit_amsc_lane in roots:
+        assert_present(root, what=str(root))  # external volume
         if not root.exists():
             continue
         for path in root.rglob("*.json.gz"):
@@ -845,6 +847,7 @@ def _load_existing_awc(
 
     root = ROOT / "data/research/bayes_basket_target/historical_truth_raw/objects"
     result: list[dict[str, Any]] = []
+    assert_present(root, what=str(root))  # external volume
     if not root.exists():
         return result
     for path in root.rglob("*.json.gz"):

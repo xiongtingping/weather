@@ -29,6 +29,7 @@ from bayes_basket_target.resource_bounds import (  # noqa: E402
     write_bounded_json,
 )
 from bayes_basket_target.database import DEFAULT_TARGET_DB  # noqa: E402
+from bayes_basket_target.offloaded_paths import assert_present  # noqa: E402
 
 
 SCHEMA = "bayes_basket_target_resource_audit_v1"
@@ -58,6 +59,11 @@ def _reference_files(root: Path) -> list[Path]:
             if any(part.startswith("bayes_basket_target") for part in path.parts)
         )
         research_root = project_root / "data" / "research" / "bayes_basket_target"
+        # ``data/research`` lives on the external volume.  Unplugged, its
+        # glob returns [] and this audit would report the store as smaller
+        # than it is -- the one reading that must never be quietly wrong,
+        # because it is what says whether the disk is filling.
+        assert_present(research_root.parent, what="data/research")
         files.update(research_root.glob("**/*.json"))
         files = receipt_files | {
             path
