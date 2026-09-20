@@ -304,3 +304,29 @@ def test_the_receipt_says_which_update_served(tmp_path, monkeypatch) -> None:
     assert by_station["ZUUU"]["update"] == "DIRECT_LOG_UPDATE_V1"
     assert by_station["ZSPD"]["update"] == "G_ALPHA"
 
+def test_charter_157s_station_clock_is_not_folded_into_the_fallback() -> None:
+    """Charter 161 narrowed 156/157, it did not retire them.
+
+    The alpha knots are the direct update's own clock hats
+    (``p1_direct_update.KNOTS_HOURS is p1_observation_likelihood
+    .ALPHA_KNOTS_HOURS``) and charter 157's per-station peak shift moves its
+    clock too, so only the alpha VALUES belong under "the fallback".  Putting
+    the shift inside that fold would hide a rule that is running.
+    """
+
+    from bayes_basket_target import p1_direct_update as DU
+    from bayes_basket_target import p1_observation_likelihood as OL
+
+    assert tuple(DU.KNOTS_HOURS) == tuple(float(k) for k in OL.ALPHA_KNOTS_HOURS), (
+        "the knots are shared; if they part, the section has to say so"
+    )
+    source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    start = source.index("function p1JointBoard(){")
+    body = source[start:source.index("function p0mTafBoard(){", start)]
+    clock = body.index("${clockNote}")
+    fallback = body.index("<b>第 150 条：g<sup>α</sup></b>")
+    assert clock < fallback, "the shared clock reads above the fallback fold"
+    assert "${alphaCells}" in body and body.index("${alphaCells}") > fallback, (
+        "and the alpha values read inside it"
+    )
+

@@ -21047,13 +21047,20 @@ function p1JointBoard(){
     return `<span class="pill ${t}">${w} ${v} 站</span>`; }).join(" ");
   const alphas = A.alpha_by_bin || [], edges = A.alpha_edges_hours || [10, 6];
   const knotsH = A.alpha_knots_hours || [], knotsV = A.alpha_knot_values || [];
+  // Only the alpha VALUES belong to charter 150.  The knots themselves are
+  // charter 161's clock hats (``p1_direct_update.KNOTS_HOURS`` is
+  // ``OL.ALPHA_KNOTS_HOURS``), and charter 157's per-station peak shift
+  // moves the direct update's clock too -- 161 narrowed 156/157 rather than
+  // retiring them, so folding them under "the fallback" would hide a rule
+  // that is running.
   const alphaCells = knotsH.length && knotsH.length === knotsV.length
     ? `随剩余小时折线变化（第 156 条）：` + knotsH.map((k, i) => `${k}h <b>${Number(knotsV[i]).toFixed(3).replace(/0+$/, "").replace(/\.$/, "")}</b>`).join(" · ")
-      + ` <span class="muted">· 再升时钟：${A.clock_mode === "midpoint_linear" ? "档中点间线性" : "分档"}</span>`
-      + (() => { const o = Object.entries(A.station_clock_offset_h || {}); if (!o.length) return "";
-          const v = o.map(([, x]) => Number(x)); const early = o.filter(([, x]) => x <= -1).map(([k]) => k), late = o.filter(([, x]) => x >= 1).map(([k]) => k);
-          return ` <span class="muted">· 按站峰时平移（第 157 条）：${o.length} 站，${Math.min(...v).toFixed(1)}～+${Math.max(...v).toFixed(1)} 小时；早到峰 ${h(early.join("、") || "—")}，晚到峰 ${h(late.join("、") || "—")}</span>`; })()
     : alphas.length === 3 ? `≥${edges[0]}h <b>${alphas[0]}</b> · ${edges[1]}–${edges[0]}h <b>${alphas[1]}</b> · <${edges[1]}h <b>${alphas[2]}</b>` : "—";
+  const clockNote = `<span class="muted">节点 ${knotsH.length ? knotsH.map(k => k + "h").join(" · ") : "—"}
+    · 再升时钟：${A.clock_mode === "midpoint_linear" ? "档中点间线性（第 156 条）" : "分档"}</span>`
+    + (() => { const o = Object.entries(A.station_clock_offset_h || {}); if (!o.length) return "";
+        const v = o.map(([, x]) => Number(x)); const early = o.filter(([, x]) => x <= -1).map(([k]) => k), late = o.filter(([, x]) => x >= 1).map(([k]) => k);
+        return `<div class="muted">按站峰时平移（第 157 条）：${o.length} 站，${Math.min(...v).toFixed(1)}～+${Math.max(...v).toFixed(1)} 小时；早到峰 ${h(early.join("、") || "—")}，晚到峰 ${h(late.join("、") || "—")}</div>`; })();
   const veto = (HO.veto || []).length ? `<span class="pill red">否决：${h(HO.veto.join("；"))}</span>` : `<span class="pill green">通过</span>`;
   const hoBins = (HO.bins || []).map(b => `<tr><td class="mono">${["≥" + edges[0] + "h", edges[1] + "–" + edges[0] + "h", "<" + edges[1] + "h"][b.bin] || b.bin}</td>
     <td class="mono">${(b.n || 0).toLocaleString()}</td><td class="mono">${b.alpha}</td>
@@ -21106,7 +21113,7 @@ function p1JointBoard(){
       <div class="muted">${(U.rows || 0).toLocaleString()} 行（一行＝一个桶在一步上）· 岭系数 λ ${n3(U.lambda)}（把 f 往 0＝往根收）</div></div></div>`;
   const directTerms = (stale || !U.present) ? "" : `
   <div class="grid g2" style="margin-top:10px">
-    ${termTable("时钟与截距", group("clock"), "（剩余小时的折线基点，与 α 同一批节点）")}
+    ${termTable("时钟与截距", group("clock"), "（剩余小时的折线基点；节点与站点平移见下）")}
     ${termTable("观测与根的特征", group("base"), "（都已按训练集标准化）")}</div>
   <details class="note" style="margin-top:8px"><summary>同一批特征在一天末尾的另一套系数（${group("late").length + group("mid").length} 项）
     <span class="muted">——报文的斜率在收盘前不一样，这是 g<sup>α</sup> 里由 α(h) 扛的那部分</span></summary>
@@ -21115,7 +21122,9 @@ function p1JointBoard(){
       ${termTable("剩余 6–10 小时", group("mid"))}</div></details>
   <div class="card" style="margin-top:8px"><span class="muted">另外两项不乘特征：</span>
     每多升一格的二次项 θ <b class="mono">${n3(U.theta_slope_sq)}</b> ·
-    升到开口顶桶 θ <b class="mono">${n3(U.theta_open_top)}</b></div>`;
+    升到开口顶桶 θ <b class="mono">${n3(U.theta_open_top)}</b></div>
+  <div class="card" style="margin-top:8px"><div class="muted">时钟（第 156/157 条被第 161 条收窄：节点与按站平移照旧作用在 e<sup>f</sup> 的时钟特征上，只有 α 的取值退到回退里）</div>
+    ${clockNote}</div>`;
 
   return `<h2>P1 的观测更新：根 × 硬下界 × 一次乘法（第 161 条在服务，第 150 条是回退）</h2>
   <p class="sub"><b>第 161 条（2026-09-20，用户裁决「上线b2」）</b>：<b>P1(桶) ∝ 根(桶) × 1[桶 ≥ 已报最高所在桶] × e<sup>f(桶)</sup></b>，
@@ -21146,7 +21155,8 @@ function p1JointBoard(){
       g 是一条联合观测似然：「从已报最高再跨进上一个桶」的概率（再升）乘「升几格」的分布，特征只来自观测一侧——时钟、最新报文的状态、P0 曲线的<b>形状</b>、
       以及两个<b>新息</b>（实测对 P0 曲线的偏差、区域模型剩余预报最高与已报最高之差）。
       α 随剩余小时平滑变化（第 156 条起；此前分三档），在留出日上选、交叉验证打分，用来给「根和观测重叠的那部分信息」定价。</p>
-    <div class="card" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><b>α</b> ${alphaCells}</div>
+    <div class="card" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><b>α</b> ${alphaCells}
+      <span class="muted">（只有这些取值是回退专用；节点与按站平移在上面，第 161 条也在用）</span></div>
     <div class="card" style="margin-top:8px"><div class="muted">留出日（${h(HO.from || "—")} 起，${(HO.scored_rows || 0).toLocaleString()} 行）</div>
       <div class="big mono">${n3(HO.root_nat)} → ${n3(HO.candidate_nat)}</div>
       <div class="muted">只用硬下界的根 → 根 × g<sup>α</sup>（对数得分，越大越好）${HO.incumbent_scored ? " · 现任 " + n3(HO.incumbent_nat) : ""} · ${veto}</div></div>
