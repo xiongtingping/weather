@@ -456,3 +456,70 @@ def test_stuck_cycles_of_this_lane_are_settled_with_the_others() -> None:
     from bayes_basket_target import tiebreak_lane  # noqa: PLC0415
 
     assert "p1_tail_cycle_" in tiebreak_lane.LANE_CYCLE_PREFIXES
+
+
+# ---------------------------------------------------------------------------
+# Charter 166 (2026-09-21): the lane looks where P1 is written.
+
+
+def test_the_lane_runs_at_every_moment_p1_is_written() -> None:
+    """Run from the daemon alone the lane looked twice a cycle, and a cycle
+    is five to ten minutes: 80% of its first 56 evaluations were refused
+    ``envelope_stale`` against a five-minute window.  The three places P1
+    is committed each call it."""
+
+    import ast  # noqa: PLC0415
+
+    import bayes_basket_target.production_worker as pw  # noqa: PLC0415
+
+    tree = ast.parse(Path(pw.__file__).read_text())
+    reasons = sorted(
+        node.args[0].value for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "_p1_tail_after_p1" and node.args
+        and isinstance(node.args[0], ast.Constant)
+    )
+    assert reasons == ["early_p1", "probability_chain"]
+    # ... and the checkpoint's, which names the label it ran under.
+    templated = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "_p1_tail_after_p1" and node.args
+        and isinstance(node.args[0], ast.JoinedStr)
+    ]
+    assert len(templated) == 1
+    for stage in ("p1_tail_after_early_p1", "p1_tail_after_chain"):
+        assert pw.STAGE_TIER[stage] == pw.STAGE_TIER_R0_DECISION
+
+
+def test_a_lane_failure_is_a_receipt_and_never_stops_the_cycle(monkeypatch) -> None:
+    import bayes_basket_target.production_worker as pw  # noqa: PLC0415
+
+    worker = object.__new__(pw.TargetProductionWorker)
+    worker.commit_conn = object()
+    worker._stage_timings_ms = {}
+    monkeypatch.setattr(pw, "PRODUCTION_EXECUTION_MODE", "production_live")
+    monkeypatch.setattr(pw.TargetProductionWorker, "_add_span",
+                        lambda self, name, ms, label="": None, raising=False)
+    monkeypatch.setattr(lane, "execute_p1_tail_entries",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("venue down")))
+    receipt = worker._p1_tail_after_p1("checkpoint:after_regime")
+    assert receipt["ok"] is False and "venue down" in receipt["error"]
+    assert receipt["reason"] == "checkpoint:after_regime"
+    assert worker._p1_tail_receipts == [receipt]
+
+
+def test_a_paused_lane_or_a_no_live_mode_costs_nothing(monkeypatch) -> None:
+    import bayes_basket_target.production_worker as pw  # noqa: PLC0415
+
+    worker = object.__new__(pw.TargetProductionWorker)
+    worker.commit_conn = object()
+    monkeypatch.setattr(lane, "execute_p1_tail_entries",
+                        lambda *a, **k: pytest.fail("the lane must not run"))
+    monkeypatch.setattr(pw, "PRODUCTION_EXECUTION_MODE", "production_no_live")
+    assert worker._p1_tail_after_p1("early_p1") is None
+    monkeypatch.setattr(pw, "PRODUCTION_EXECUTION_MODE", "production_live")
+    from bayes_basket_target import strategy_lanes  # noqa: PLC0415
+
+    monkeypatch.setattr(strategy_lanes, "lane_enabled", lambda name, path=None: False)
+    assert worker._p1_tail_after_p1("early_p1") is None

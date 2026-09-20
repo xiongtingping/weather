@@ -788,6 +788,9 @@ STAGE_TIER: dict[str, int] = {
     "fast_lane_after_forward_p0_loop": STAGE_TIER_R0_DECISION,
     "fast_lane_after_market_ingress": STAGE_TIER_R0_DECISION,
     "fast_lane_in_decision_loop": STAGE_TIER_R0_DECISION,
+    # Charter 166: the tail lane, run where P1 is written.
+    "p1_tail_after_early_p1": STAGE_TIER_R0_DECISION,
+    "p1_tail_after_chain": STAGE_TIER_R0_DECISION,
     "probability_p0": STAGE_TIER_R0_DECISION,
     "probability_p0m": STAGE_TIER_R0_DECISION,
     "probability_p1": STAGE_TIER_R0_DECISION,
@@ -15282,6 +15285,13 @@ class TargetProductionWorker:
                 early["p1"], late, late_scopes=rerooted
             )
         self._mark("probability_p1")
+        # Charter 166: the third place P1 is written, and the last one before
+        # the decision loop prices anything.
+        if str((p1 or {}).get("state") or "").upper() in {
+            "COMMITTED", "PARTIAL_FAIL_CLOSED",
+        }:
+            self._p1_tail_after_p1("probability_chain")
+            self._mark("p1_tail_after_chain")
         blocked_stages = [
             stage
             for stage, receipt in (("P0", p0), ("P0-M", p0m), ("P1", p1))
@@ -15414,6 +15424,61 @@ class TargetProductionWorker:
             **boundary,
         }
 
+    def _p1_tail_after_p1(self, reason: str) -> dict[str, Any] | None:
+        """Charter 166 (2026-09-21 ruling 「把车道挂到 P1 刚写完那一刻」).
+
+        The tail lane's edge keeps 83% of itself five minutes after the
+        report and its lower bound crosses zero by eight, so the lane has a
+        five-minute window to act in.  Run from the daemon alone it only
+        looked twice a cycle -- the head and the tail -- and a cycle is five
+        to ten minutes: measured over the first 56 evaluations, the median
+        envelope was 552 seconds old and 80% were refused ``envelope_stale``.
+        Worse than the lost trades, the 20% that DID land were the ones the
+        cycle happened to line up with, which is a selected sample and would
+        have made the 09-27 review unreadable.
+
+        So the lane looks where P1 is written: here, right after a pass that
+        committed envelopes.  The daemon's head and tail runs stay as the
+        fallback -- every write is idempotent on the evaluation row's unique
+        key and the intent id, so a second look costs a query and sends
+        nothing twice.
+
+        Never raises: the cycle is not the lane's to stop.
+        """
+
+        if PRODUCTION_EXECUTION_MODE != "production_live":
+            return None
+        connection = getattr(self, "commit_conn", None)
+        if connection is None:
+            return None
+        started = time.perf_counter()
+        try:
+            from .exit_orders import default_transport  # noqa: PLC0415
+            from .p1_tail_lane import execute_p1_tail_entries  # noqa: PLC0415
+            from .strategy_lanes import LANE_P1_TAIL, lane_enabled  # noqa: PLC0415
+
+            if not lane_enabled(LANE_P1_TAIL):
+                return None
+            receipt = execute_p1_tail_entries(
+                connection,
+                getattr(self, "canonical_source_conn", None),
+                transport=default_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+            )
+        except Exception as exc:  # noqa: BLE001 -- a lane failure is a receipt
+            receipt = {"ok": False, "error": f"{type(exc).__name__}:{str(exc)[:200]}"}
+        receipt = {**receipt, "reason": reason}
+        receipts = getattr(self, "_p1_tail_receipts", None)
+        if not isinstance(receipts, list):
+            receipts = []
+            self._p1_tail_receipts = receipts
+        receipts.append(receipt)
+        self._add_span(
+            "p1_tail_after_p1", (time.perf_counter() - started) * 1000.0, label=reason
+        )
+        return receipt
+
     def _fast_lane_checkpoint(
         self, label: str, *, mark: bool = True
     ) -> dict[str, Any] | None:
@@ -15483,6 +15548,10 @@ class TargetProductionWorker:
                     self._early_p1_watermark = _later_report_watermark(
                         getattr(self, "_early_p1_watermark", None), report_mark
                     )
+        # Charter 166: P1 has just moved, so the tail lane looks now rather
+        # than at the end of the cycle.
+        if (p1 or {}).get("ran") is True:
+            self._p1_tail_after_p1(f"checkpoint:{label}")
         receipt = {
             "label": label,
             "at_utc": clock,
@@ -17654,6 +17723,7 @@ class TargetProductionWorker:
         self._early_p1_this_cycle = None
         self._early_p0m_this_cycle = None
         self._fast_lane_receipts = []
+        self._p1_tail_receipts = []
         self._probability_chain_ran = False
         early_report_watermark = _live_observation_watermark(
             getattr(self, "canonical_source_conn", None)
@@ -17675,6 +17745,11 @@ class TargetProductionWorker:
         self._mark("early_p1")
         self._last_fast_lane_checkpoint_mono = time.monotonic()
         self._last_fast_lane_checkpoint_cost_sec = 0.0
+        # Charter 166: and again here -- the head pass is where the reports
+        # that landed during the previous cycle become P1.
+        if (self._early_p1_this_cycle or {}).get("ran") is True:
+            self._p1_tail_after_p1("early_p1")
+            self._mark("p1_tail_after_early_p1")
         # Close intents the exchange has already answered about, before the
         # cycle spends anything on anything else.
         #
@@ -18460,6 +18535,18 @@ class TargetProductionWorker:
                 for key, value in (self._early_p1_this_cycle or {}).items()
                 if key != "p1"
             }
+            # Charter 166: what the tail lane did at each of the moments P1
+            # moved, so a cycle's receipt says whether the lane was late.
+            tail_receipts = getattr(self, "_p1_tail_receipts", None) or []
+            if tail_receipts:
+                resident_probability_chain["p1_tail_lane_passes"] = [
+                    {
+                        key: value
+                        for key, value in receipt.items()
+                        if key not in {"receipts", "settings"}
+                    }
+                    for receipt in tail_receipts
+                ]
             # A correction/revision halt belongs to one station-day.  It must
             # remain fail-closed for that scope, but must not suppress healthy
             # stations from reaching their own WS/decision path.  Only a
