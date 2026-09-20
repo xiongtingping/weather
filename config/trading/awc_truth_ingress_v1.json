@@ -1,7 +1,9 @@
 {
   "schema": "reported_trajectory_awc_ingress_config_v1",
   "strategy_id": "awc_canonical_truth_ingress_v1",
-  "production_source_allowlist": ["awc"],
+  "production_source_allowlist": [
+    "awc"
+  ],
   "source_policy": {
     "asos_1min": {
       "enabled": true,
@@ -59,7 +61,11 @@
     "market_registry_gamma_max_pages": 4,
     "market_registry_refresh_sec": 300,
     "market_registry_retry_sec": 30,
-    "market_date_horizon_days": 2
+    "market_date_horizon_days": 2,
+    "awc_fast_lane": "on",
+    "awc_fast_us_window_sec": 5,
+    "awc_fast_fleet_window_sec": 15,
+    "awc_fast_cold_sec": 60
   },
   "settlement_timezones": {
     "amsterdam": "Europe/Amsterdam",
@@ -113,7 +119,11 @@
     "wuhan": "Asia/Shanghai"
   },
   "guards": {
-    "canonical_observation_priority": ["asos_1min", "madis_hfmetar", "awc"],
+    "canonical_observation_priority": [
+      "asos_1min",
+      "madis_hfmetar",
+      "awc"
+    ],
     "cross_source_value_mixing_forbidden": true,
     "asos_must_not_be_labeled_metar": true,
     "official_rules_station_required": true,

@@ -26,27 +26,45 @@ if str(ROOT / "scripts") not in sys.path:
 
 import calibration_dashboard as C  # noqa: E402
 
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from weather_basket_yes_schema import apply_weather_basket_yes_schema  # noqa: E402
+
 
 def _archive(tmp_path: Path, rows: list[tuple]) -> None:
+    """Production DDL, not a hand-written subset of it.
+
+    The hand-written version carried six of the fifteen columns, so the day
+    the board started reading ``first_seen_at`` (charter 167) these tests went
+    red on a missing column rather than on anything they were testing.  A row
+    may name its own arrival stamp; without one it arrived when it committed,
+    which is what the older cases assume.
+    """
+
     db = sqlite3.connect(tmp_path / "archive.db")
-    db.execute(
-        "CREATE TABLE reported_trajectory_observations (observation_id TEXT,"
-        " source_lane TEXT, station_id TEXT, report_type TEXT, valid_at TEXT,"
-        " canonical_committed_at TEXT)"
-    )
-    db.execute(
-        "CREATE TABLE reported_trajectory_observation_origins (observation_id TEXT,"
-        " source_lane TEXT, station_id TEXT, origin_source_id TEXT,"
-        " origin_transport TEXT, fallback_used INTEGER, fallback_reason TEXT)"
-    )
-    for oid, station, valid, committed, origin in rows:
+    apply_weather_basket_yes_schema(db)
+    for row in rows:
+        oid, station, valid, committed, origin = row[:5]
+        first_seen = row[5] if len(row) > 5 else committed
         db.execute(
-            "INSERT INTO reported_trajectory_observations VALUES (?,?,?,?,?,?)",
-            (oid, "awc", station, "METAR", valid, committed),
+            "INSERT INTO reported_trajectory_observations(observation_id,source_lane,"
+            "station_id,report_type,valid_at,reported_temperature_c,raw_sha256,raw_text,"
+            "first_seen_at,parsed_at,canonical_committed_at,fetch_started_at,"
+            "fetch_completed_at,source_poll_id,correction_suspected)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (oid, "awc", station, "METAR", valid, 20, oid.ljust(64, "0"),
+             f"METAR {station}", first_seen, committed, committed, valid, first_seen,
+             f"poll-{oid}", 0),
         )
         db.execute(
-            "INSERT INTO reported_trajectory_observation_origins VALUES (?,?,?,?,?,?,?)",
-            (oid, "awc", station, origin, "t", 0, ""),
+            "INSERT INTO reported_trajectory_observation_origins(observation_id,"
+            "source_lane,station_id,origin_source_id,origin_country_code,"
+            "origin_authority,origin_url,origin_transport,direct_country_official,"
+            "fallback_used,fallback_reason,preferred_origin_source_id,"
+            "preferred_origin_authority,official_source_registry_sha256,origin_json,"
+            "committed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (oid, "awc", station, origin, "US", "NOAA", "https://example.invalid",
+             "t", 0, 0, "", origin, "NOAA", "0" * 64, "{}", committed),
         )
     db.commit()
     db.close()

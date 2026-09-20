@@ -1645,7 +1645,7 @@ def collect_observation_intake(conn: sqlite3.Connection) -> dict[str, Any]:
             row = archive.execute(
                 "SELECT o.observation_id, o.valid_at, o.canonical_committed_at,"
                 " o.report_type, g.origin_source_id, g.origin_transport,"
-                " g.fallback_used, g.fallback_reason"
+                " g.fallback_used, g.fallback_reason, o.first_seen_at"
                 " FROM reported_trajectory_observations o"
                 " LEFT JOIN reported_trajectory_observation_origins g"
                 "   ON g.observation_id=o.observation_id"
@@ -1676,6 +1676,14 @@ def collect_observation_intake(conn: sqlite3.Connection) -> dict[str, Any]:
             # Observed -> in our store.  Most of this is the publisher's own
             # delay, which is why it is stated rather than alarmed on.
             "landing_minutes": landed,
+            # Charter 170: observed -> the stamp on the report when we first
+            # held it, which is the number the fast lane can move.  The
+            # committed stamp above adds the ingress transaction to it, and
+            # reading only that one hid which of the two a change touched.
+            "arrival_minutes": _age_minutes(
+                _parse_utc_or_none(row[8]) or now, row[1]
+            ),
+            "first_seen_at_utc": str(row[8] or ""),
         })
     # Which doors carried the fleet over the window, not just at this
     # instant: AWC came back this morning, and a lamp that only reads the
@@ -1718,8 +1726,58 @@ def collect_observation_intake(conn: sqlite3.Connection) -> dict[str, Any]:
     else:
         health, note = "green", f"{len(stations)} 站都在 {METAR_FRESH_MINUTES:.0f} 分钟内"
     landings = [e["landing_minutes"] for e in stations if e.get("landing_minutes") is not None]
+    arrivals = [
+        e["arrival_minutes"] for e in stations if e.get("arrival_minutes") is not None
+    ]
+    # Charter 170: the fast lane publishes its own clock and the schedule it
+    # learned, and the board reads it off the resident's status rather than
+    # re-deriving it -- the lane's window is what it actually polled on, not
+    # what this process would compute now.
+    fast_lane: dict[str, Any] = {"available": False}
+    try:
+        status = json.loads(STATUS_JSON.read_text())
+        lane = status.get("awc_fast_lane")
+        if isinstance(lane, Mapping):
+            schedule = lane.get("arrival_schedule")
+            schedule = schedule if isinstance(schedule, Mapping) else {}
+            us_minutes = set(schedule.get("us_minutes") or ())
+            hot_minutes = set(schedule.get("hot_minutes") or ())
+            unscheduled = set(schedule.get("unscheduled_stations") or ())
+            for entry in stations:
+                station_id = str(entry.get("station_id") or "")
+                own = schedule.get("stations", {}).get(station_id)
+                entry["arrival_minutes_learned"] = list(own) if own else None
+                entry["fast_lane_tier"] = (
+                    "无惯例" if station_id in unscheduled
+                    else "US 五秒" if own and set(own) & us_minutes
+                    else "队列十五秒" if own and set(own) & hot_minutes
+                    else None
+                )
+            fast_lane = {
+                "available": True,
+                "state": str(lane.get("state") or ""),
+                "window": str(lane.get("window") or ""),
+                "interval_sec": lane.get("interval_sec"),
+                "rounds": lane.get("rounds"),
+                "new_observation_count": lane.get("new_observation_count"),
+                "errors": lane.get("errors"),
+                "last_error": str(lane.get("last_error") or ""),
+                "last_round_at": str(lane.get("last_round_at") or ""),
+                "round_duration_sec": lane.get("round_duration_sec"),
+                "schedule_available": bool(schedule.get("available")),
+                "scheduled_station_count": schedule.get("scheduled_station_count"),
+                "hot_minute_count": len(hot_minutes),
+                "us_minute_count": len(us_minutes),
+                "us_minutes": sorted(us_minutes),
+                "unscheduled_stations": sorted(unscheduled),
+                "learned_at_utc": str(schedule.get("learned_at_utc") or ""),
+            }
+    except (OSError, ValueError):
+        fast_lane = {"available": False}
     return {
         "available": True,
+        "fast_lane": fast_lane,
+        "median_arrival_minutes": median(arrivals) if arrivals else None,
         "stations": stations,
         "doors": dict(doors),
         "recent_doors": dict(recent), "recent_hours": LATENCY_WINDOW_HOURS,
@@ -1890,20 +1948,65 @@ def _report_to_probability_latency(conn: sqlite3.Connection) -> dict[str, Any]:
     marks = ",".join("?" for _ in days)
     out: dict[str, Any] = {"window_hours": LATENCY_WINDOW_HOURS, "since_utc": since}
     metar: list[float] = []
+    # Charter 170: the same pairing, split at the stamp on the report itself.
+    # ``canonical_observation_committed_at`` is the ingress transaction; the
+    # report was in our hands at ``first_seen_at``, and it was taken at
+    # ``valid_at``.  Reading only the committed end measured the cycle and
+    # called it the chain, so a change to the fetch clock -- which is the
+    # whole of charter 170 -- could not show up here at all.
+    observed_to_arrival: list[float] = []
+    arrival_to_p1: list[float] = []
+    observed_to_p1: list[float] = []
     try:
-        for committed, first in conn.execute(
+        pairs = conn.execute(
             "SELECT json_extract(lineage_json,'$.canonical_observation_committed_at'),"
-            " MIN(created_at) FROM basket_probability_envelope"
+            " MIN(created_at),"
+            " json_extract(lineage_json,'$.canonical_observation_event_id')"
+            " FROM basket_probability_envelope"
             f" WHERE state='COMMITTED' AND event_date IN ({marks})"
             "   AND decision_at_utc>=? AND stage='P1'"
             " GROUP BY json_extract(lineage_json,'$.canonical_observation_sha256')",
             (*days, since),
-        ):
-            gap = _minutes_between(committed, first)
-            if gap is not None and 0.0 <= gap <= 240.0:
-                metar.append(gap)
+        ).fetchall()
     except sqlite3.Error:
-        metar = []
+        pairs = []
+    for committed, first, _event_id in pairs:
+        gap = _minutes_between(committed, first)
+        if gap is not None and 0.0 <= gap <= 240.0:
+            metar.append(gap)
+    if pairs:
+        try:
+            archive = sqlite3.connect(
+                f"file:{ROOT / 'data' / 'archive.db'}?mode=ro", uri=True, timeout=10
+            )
+        except sqlite3.Error:
+            archive = None
+        if archive is not None:
+            try:
+                for _committed, served_at, event_id in pairs:
+                    if not event_id:
+                        continue
+                    # Primary-key lookup, one per distinct observation.
+                    row = archive.execute(
+                        "SELECT valid_at, first_seen_at"
+                        " FROM reported_trajectory_observations WHERE observation_id=?",
+                        (str(event_id),),
+                    ).fetchone()
+                    if row is None:
+                        continue
+                    taken, held = str(row[0] or ""), str(row[1] or "")
+                    for bucket, start, end in (
+                        (observed_to_arrival, taken, held),
+                        (arrival_to_p1, held, served_at),
+                        (observed_to_p1, taken, served_at),
+                    ):
+                        gap = _minutes_between(start, end)
+                        if gap is not None and 0.0 <= gap <= 240.0:
+                            bucket.append(gap)
+            except sqlite3.Error:
+                pass
+            finally:
+                archive.close()
     taf: list[float] = []
     # Only the TAFs that can move a P0-M.  A capture with no TX leaves the
     # likelihood identity, so nothing has to run promptly for it and its
@@ -1940,7 +2043,14 @@ def _report_to_probability_latency(conn: sqlite3.Connection) -> dict[str, Any]:
         gap = _minutes_between(received, row[0] if row else None)
         if gap is not None and 0.0 <= gap <= 240.0:
             taf.append(gap)
-    for name, values in (("metar_to_p1", metar), ("taf_to_p0m", taf)):
+    for name, values in (
+        ("metar_to_p1", metar),
+        ("taf_to_p0m", taf),
+        # Charter 170's three segments of the same chain.
+        ("observed_to_arrival", observed_to_arrival),
+        ("arrival_to_p1", arrival_to_p1),
+        ("observed_to_p1", observed_to_p1),
+    ):
         if not values:
             out[name] = None
             continue
@@ -4295,11 +4405,19 @@ SSOT_GROWTH_TABLES: tuple[tuple[str, str], ...] = (
     ("basket_confirmed_inventory_snapshot", "observed_at"),
     ("basket_order_state_snapshot", "observed_at"),
     ("basket_probability_update_proof", "created_at_utc"),
-    ("maker_shadow_order", "placed_at_utc"),
     ("basket_probability_bridge_history", "decision_at_utc"),
     ("basket_regime_artifact", "created_at_utc"),
-    ("maker_shadow_settlement", "settled_at_utc"),
+    # 2026-09-21: the full inventory of all 149 tables put this one second
+    # by bytes and it was not on this list -- 8.09 GiB in 114,088 rows, 76
+    # KiB each, and only three weeks deep, so roughly 368 MiB a day.  A list
+    # meant to say which handful is burning the headroom has to carry it.
+    ("basket_p0_preselection_plan", "created_at"),
+    ("basket_policy_training_fact", "decision_at_utc"),
 )
+#: ``maker_shadow_order`` and ``maker_shadow_settlement`` left this list when
+#: they left the store (charter 169).  They are still written every three
+#: hours, but to ``data/maker_shadow.db``: they burn no SSOT headroom now,
+#: and naming them here would report someone else's growth as this store's.
 #: Tables the retention lanes delete from again.  Their write rate is churn,
 #: not growth, and reporting it beside the append-only tables is how a lane
 #: that is doing its job reads as the problem: the market registry writes
@@ -15285,6 +15403,8 @@ function cycleHealth(){
     <div class="card"><div class="muted">周期总长（最近 ${K.n || 0} 轮）</div>
       <div class="big mono"><span class="pill ${tone}">${sec(K.median_sec)}</span></div>
       <div class="muted">p90 ${sec(K.p90_sec)} · 最长 <span class="pill ${worstTone}">${sec(K.max_sec)}</span> · 上一轮 ${sec(K.last_sec)}</div></div>
+    ${lat("观测时刻 → 报文到手", L.observed_to_arrival, "上游发布 + 我们的轮询")}
+    ${lat("报文到手 → P1", L.arrival_to_p1, "第 170 条量的就是这一段")}
     ${lat("实况入库 → P1", L.metar_to_p1)}
     ${lat("TAF 入库 → P0-M", L.taf_to_p0m,
       L.taf_captures_without_tx ? `另有 ${L.taf_captures_without_tx} 份不带 TX（动不了 P0-M，不计）` : "")}
@@ -15297,7 +15417,10 @@ function cycleHealth(){
     <div class="scroll" style="max-height:320px"><table class="by-tab"><thead><tr><th>阶段</th><th>代码名</th><th>中位</th><th>最长</th><th>出现轮次</th></tr></thead>
     <tbody>${stages}</tbody></table></div>
     <div class="muted" style="margin-top:6px">读的是 <span class="mono">data/runtime/production_cycle_history.jsonl</span>，
-      常驻每轮自己写的一行；「实况入库 → P1」是每份观测在包络上标的落库时刻，到<b>第一份</b>写下它的 P1（回放步与状态刷新不重复计），
+      常驻每轮自己写的一行；第 170 条把这条链拆成了三段：「观测时刻 → 报文到手」读观测行上的
+      <span class="mono">first_seen_at</span>，是上游发布加我们轮询的那一段（快车道能动的只有这一段里我们自己的部分）；
+      「报文到手 → P1」是同一份报文从握在手里到第一份写下它的 P1；两段之间的 ingress 事务实测不到一秒。
+      「实况入库 → P1」是每份观测在包络上标的落库时刻，到<b>第一份</b>写下它的 P1（回放步与状态刷新不重复计），
       「TAF 入库 → P0-M」是每份带 TX 的 TAF 收到后，这一站日<b>第一份提交</b>的 P0-M。窗口 ${L.window_hours || "—"} 小时。
       两头都按 <span class="mono">created_at</span>（真实提交钟）算——<b>不是</b> <span class="mono">decision_at_utc</span>：
       P0-M 的决策钟标的是它所依据的那份证据的时刻（as-of 规则），P1 的标的是整轮周期的起点，都不是"这一份是什么时候写下来的"。</div></details>
@@ -15657,7 +15780,42 @@ function overviewLamps(){
       + "第 162 条：AWC 的四条通道全失败后才走 NOAA TGFTP，AWC 一恢复自动回去，"
       + "车道仍记 awc（车道是站在名册里的归属，不是传输）。"
       + (OB.median_landing_minutes == null ? ""
-        : `　观测时刻到落库中位 ${OB.median_landing_minutes} 分钟，大头是发布方自己的延迟。`));
+        : `　观测时刻到落库中位 ${OB.median_landing_minutes} 分钟，大头是发布方自己的延迟。`)
+      + (OB.median_arrival_minutes == null ? ""
+        : `　其中观测到报文到手中位 ${OB.median_arrival_minutes} 分钟（第 170 条量的就是这一段）。`));
+    // Charter 170: the fast lane's own lamp.  The one above reads how old the
+    // newest report is; this one reads whether the thing that fetches it is
+    // running, and on whose schedule.  They fail separately -- a stopped fast
+    // lane still leaves the slow lane serving, just a minute later.
+    const FL = OB.fast_lane || {};
+    if(FL.available){
+      const tiers = (OB.stations || []).reduce((acc, s) => {
+        if(s.fast_lane_tier) acc[s.fast_lane_tier] = (acc[s.fast_lane_tier] || 0) + 1;
+        return acc;
+      }, {});
+      const tierText = Object.entries(tiers).map(([k, v]) => `${k} ${v} 站`).join(" · ");
+      const lamp = FL.state !== "running" ? "red"
+        : (!FL.schedule_available || (FL.errors || 0) > 0) ? "amber" : "green";
+      push("upstream", lamp, "报文快车道",
+        FL.state !== "running" ? (FL.state || "未启动")
+          : `${FL.window === "us_hot" ? "US 窗口" : FL.window === "fleet_hot"
+              ? "全队窗口" : "冷窗口"} ${FL.interval_sec == null ? "—" : FL.interval_sec + "s"}`,
+        `${tierText || "档位未读到"}`
+          + (FL.rounds == null ? "" : ` · 已跑 ${FL.rounds} 轮，入库 ${FL.new_observation_count || 0} 份`)
+          + (FL.last_error ? ` · 最近报错 ${FL.last_error}` : ""),
+        "第 170 条：METAR 抓取有自己的线程和自己的时钟，不再排主循环的班"
+        + "（实测主循环一圈中位 58.6 秒，把 94 秒到手延迟里的约 29 秒花在等班上）。"
+        + "轮询节奏不是固定值，是从每个站自己的报文到达分钟学出来的："
+        + (FL.schedule_available
+            ? `${FL.scheduled_station_count} 站有稳定惯例，热窗口 ${FL.hot_minute_count} 分钟，`
+              + `其中 US 名册的 ${FL.us_minute_count} 分钟（${(FL.us_minutes || []).map(m =>
+                  ":" + String(m).padStart(2, "0")).join(" ")}）按最短间隔跑。`
+            : "这一轮没学出可用的惯例，退回实测的三段兜底窗口。")
+        + ((FL.unscheduled_stations || []).length
+            ? `　${FL.unscheduled_stations.join("、")} 全小时都在发报，不进热窗口，由冷窗口和慢车道兜。`
+            : "")
+        + "　慢车道没动：它保留完整的结算回溯深度，以及随它一起跑的 MADIS 与 ASOS 抓取。");
+    }
   }
   push("upstream", W.native_inbox_health||"muted",
     "包里有几家",

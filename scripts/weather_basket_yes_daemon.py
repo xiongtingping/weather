@@ -581,7 +581,13 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
 # A name missing from this map is treated as an SSOT writer, so a sweep added
 # without a decision here loses throughput rather than the invariant.
 HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
-    "maker_shadow_probe": "ssot",
+    # Its two tables left the SSOT for their own file on 2026-09-21 (charter
+    # 169): 5.26M intents and 1.33M settlements, 1.34 GiB, none of it on the
+    # decision path -- production reads the FITTED artifact, never these
+    # rows.  Writing them made the probe an SSOT writer and cost production
+    # an exclusive turn every three hours for a book nothing downstream
+    # waits on.
+    "maker_shadow_probe": "maker_shadow",
     "pr12_awc_observation": "ssot",
     # Its four tables left the SSOT for their own file on 2026-09-19: the
     # pass is almost all reading (7,419 production cycles re-walked per
@@ -1069,7 +1075,6 @@ WRITER_LEASE_SEC = 240.0
 # the writer (WRITER_TURN_EXEMPT_SWEEPS), and neither is a sweep whose
 # domain excludes no writer lane.
 HOSTED_SWEEP_LEASE_CONTRACT: dict[str, tuple[str, float]] = {
-    "maker_shadow_probe": ("sliced", WRITER_LEASE_SEC),
     "settlement_truth": ("sliced", WRITER_LEASE_SEC),
     "settled_day_cycle_close": ("sliced", WRITER_LEASE_SEC),
     "pr12_awc_observation": ("one_shot", 120.0),
@@ -4125,14 +4130,28 @@ def awc_settlement_lookback_hours(
 
 
 def awc_poll_interval(config: dict[str, Any], now: datetime) -> float:
-    """Burst at :00/:30 while network calls remain provider-rate-gated."""
+    """Charter 170: ask again on the arrival windows, not on a release clock.
+
+    The burst used to be a 90-second window after :00 and after :30, on the
+    premise that those are when reports are released.  Measured over seven
+    days of fleet arrivals, that pair of windows covers 11% of what lands:
+    the international roster observes at :00/:30 but arrives :03-:07 and
+    :33-:37, and the contiguous-US roster observes :51-:58 and arrives
+    :52-:59 -- neither peak is inside the old window.  So the burst now
+    follows ``awc_fast_lane_plan``, the same three windows the fast lane
+    keeps.
+
+    This lane remains bounded by the main loop's turn (measured median 58.6s)
+    whatever it returns here; charter 170's fast lane is what actually reaches
+    the network on these windows.  Aligning the number keeps the slow lane's
+    fallback honest rather than pointed at the wrong minutes.
+    """
 
     policy = config.get("poll_policy", {})
-    phase = (now.minute % 30) * 60 + now.second + now.microsecond / 1_000_000
-    burst_window = float(policy.get("awc_release_burst_window_sec", 90.0))
-    if phase <= burst_window:
-        return max(0.1, float(policy.get("awc_release_burst_retry_sec", 0.25)))
-    return max(0.5, float(policy.get("awc_background_poll_sec", 2.0)))
+    window, _ = awc_fast_lane_plan(now, policy)
+    if window == "cold":
+        return max(0.5, float(policy.get("awc_background_poll_sec", 2.0)))
+    return max(0.1, float(policy.get("awc_release_burst_retry_sec", 0.25)))
 
 
 def poll_asos_priority_source(
@@ -4522,6 +4541,455 @@ def run_once_isolated(db_path: Path, config: dict[str, Any], lane: str) -> dict[
         return run_once(conn, config, ReportedTrajectoryAwcIngress(conn, config=config), lane)
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Charter 170: the METAR fast lane (user ruling 2026-09-20).
+#
+# The AWC fetch used to reach the network only when the main loop came round
+# to it.  Measured 2026-09-18..20 over 4,318 polls in
+# ``reported_trajectory_source_polls``: the median interval was 58.6s
+# although ``awc_poll_interval`` asks for 2.0s -- a lane future is cleared
+# and resubmitted once per turn of that loop, so one turn is the ceiling and
+# the configured 2.0s (and its 0.25s burst) never got to mean anything.  One
+# batched request costs 0.13s at the median, so nearly all of that 58.6s was
+# waiting for a turn, not talking to NOAA.  Against a 94s median
+# observed->stored latency, the wait was about 29s of it.
+#
+# So the fetch gets its own thread and its own clock, and the clock follows
+# the observing conventions rather than a flat interval.  Measured over seven
+# days of fleet arrivals (12,807 reports, ``first_seen_at`` by minute):
+#
+#   observed :51-:58, arrives :52-:59  the contiguous-US ASOS roster --
+#                                      KLGA/KORD :51, KATL :52, KSFO :56,
+#                                      KBKF :58, and :53 for KMIA KLAX KSEA
+#                                      KDAL KHOU KAUS
+#   observed :00/:30, arrives :03-:07  most of the international roster
+#                        and :33-:37  (this is the "six-seven minutes after
+#                                      the hour" of the 2026-08-29 ruling)
+#   observed :20/:50, arrives :22-:26  EDDM EFHK EGLC LIMC LLBG LTAC LTFM
+#                        and :52-:56
+#
+# Only 113 of those 12,807 reports (0.9%) landed in :09-:18 or :39-:48, so
+# those two stretches stay cold and the slow lane covers them.
+#
+# One request carries the whole roster, so there is nothing to gain by asking
+# for the US stations alone: splitting them out would be a second round trip,
+# not a shorter one.  What their convention buys is the tightest interval of
+# the three windows, over the ten minutes their reports actually land.
+# The windows below are the fallback, used until the roster's own arrivals
+# have been read.  They are the three conventions above, expressed as minutes
+# of the hour, and they are what a cold start or an empty archive gets.
+FAST_LANE_US_WINDOW = (50, 59)
+FAST_LANE_FLEET_WINDOWS = ((0, 8), (19, 27), (29, 38))
+# Learned windows are refreshed on this period; a station's filing convention
+# is a published schedule, not something that moves within a day.
+FAST_LANE_LEARN_REFRESH_SEC = 3600.0
+FAST_LANE_LEARN_DAYS = 7
+# How much of each station's arrivals the learned minute set must cover.  The
+# tail past this is the late/corrected filings, and chasing it would turn the
+# window into the whole hour.
+FAST_LANE_LEARN_COVERAGE = 0.95
+# A station filing hourly lands on three to six minutes once widened, and a
+# half-hourly one on six to twelve.  Past this it has no schedule to speak of
+# -- KBKF spread over 31 minutes of the hour in the 2026-09-20 reading -- and
+# one such station would otherwise drag the whole fleet's window open.  Those
+# stations are simply not what the hot windows are for; the cold interval and
+# the slow lane still carry them.
+FAST_LANE_LEARN_MAX_STATION_MINUTES = 14
+# And if even the disciplined stations add up to more than this, the reading
+# says nothing useful and the fallback windows stand.  Forty-eight scheduled
+# stations across four conventions covered 49 minutes of the hour in the
+# 2026-09-20 reading, which is simply what a fleet this spread out looks like
+# -- the ceiling is here to catch a degenerate read, not to hold the window
+# to some prior idea of how wide it should be.
+FAST_LANE_LEARN_MAX_HOT_MINUTES = 56
+# The US roster gets the tightest interval, so its minute set is read at a
+# tighter coverage too: the 0.95 tail picks up KATL's and KORD's occasional
+# :24-:26 filings, and there is no reason to hold the whole fleet at the
+# five-second interval for a station's off-schedule minority.
+FAST_LANE_LEARN_US_COVERAGE = 0.90
+
+
+def learn_awc_arrival_minutes(
+    conn: sqlite3.Connection,
+    stations: Sequence[str],
+    *,
+    days: int = FAST_LANE_LEARN_DAYS,
+    coverage: float = FAST_LANE_LEARN_COVERAGE,
+) -> dict[str, Any]:
+    """Charter 170: the minutes each station's reports actually land on.
+
+    Every station files on its own published schedule and the fleet holds at
+    least four of them (:51-:58 for the contiguous-US ASOS roster, :00/:30,
+    :20/:50, and :00 alone), so a hand-written window is a guess that goes
+    stale the moment a station is added or moves its filing time.  This reads
+    the schedule back off ``first_seen_at`` -- arrival, not observation, so
+    the publisher's own delay is already inside the number and no delay has
+    to be assumed.
+
+    One index seek per station on
+    ``idx_reported_trajectory_observations_station_time``; a week of one
+    station's METARs is a few hundred rows.
+    """
+
+    floor = (
+        datetime.now(timezone.utc) - timedelta(days=int(days))
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    per_station: dict[str, list[int]] = {}
+    us_station_minutes: dict[str, list[int]] = {}
+    for station in sorted({str(s).strip().upper() for s in stations if str(s).strip()}):
+        try:
+            rows = conn.execute(
+                "SELECT CAST(substr(first_seen_at,15,2) AS INTEGER) AS minute,"
+                " COUNT(*) FROM reported_trajectory_observations"
+                " WHERE source_lane='awc' AND report_type='METAR'"
+                "   AND station_id=? AND valid_at>=?"
+                " GROUP BY minute ORDER BY COUNT(*) DESC",
+                (station, floor),
+            ).fetchall()
+        except sqlite3.Error:
+            continue
+        total = sum(int(count) for _, count in rows)
+        if total < 24:  # fewer than a day of hourly filings says nothing yet
+            continue
+        def _cover(target: float) -> list[int]:
+            kept: list[int] = []
+            running = 0
+            for minute, count in rows:
+                kept.append(int(minute))
+                running += int(count)
+                if running >= target * total:
+                    break
+            # One minute either side: a report that usually lands on :54 lands
+            # on :53 or :55 often enough, and the cost of a spare minute is one
+            # extra request in that minute.
+            return sorted({(m + off) % 60 for m in kept for off in (-1, 0, 1)})
+
+        per_station[station] = _cover(coverage)
+        if icao_to_iem_station(station) is not None:
+            us_station_minutes[station] = _cover(FAST_LANE_LEARN_US_COVERAGE)
+    if not per_station:
+        return {"available": False, "stations": {}, "hot_minutes": [], "us_minutes": []}
+    hot: set[int] = set()
+    us: set[int] = set()
+    unscheduled = sorted(
+        station for station, minutes in per_station.items()
+        if len(minutes) > FAST_LANE_LEARN_MAX_STATION_MINUTES
+    )
+    for station, minutes in per_station.items():
+        if station in set(unscheduled):
+            continue
+        hot.update(minutes)
+        # The contiguous-US ASOS roster is the one that files in the last ten
+        # minutes of the hour; it gets the tightest interval because the user
+        # named it (ruling 2026-09-20), and ``icao_to_iem_station`` is already
+        # the roster test the MADIS and ASOS lanes use.
+        if station in us_station_minutes:
+            us.update(us_station_minutes[station])
+    if not hot or len(hot) > FAST_LANE_LEARN_MAX_HOT_MINUTES:
+        return {
+            "available": False,
+            "reason": "learned_window_too_wide" if hot else "no_scheduled_station",
+            "learned_minute_count": len(hot),
+            "stations": {k: v for k, v in sorted(per_station.items())},
+            "unscheduled_stations": unscheduled,
+            "hot_minutes": [],
+            "us_minutes": [],
+        }
+    return {
+        "available": True,
+        "learned_at_utc": utc_now(),
+        "days": int(days),
+        "coverage": float(coverage),
+        "station_count": len(per_station),
+        "scheduled_station_count": len(per_station) - len(unscheduled),
+        "stations": {k: v for k, v in sorted(per_station.items())},
+        # Named, not hidden: a station that files on no schedule is covered by
+        # the cold interval and the slow lane, and the board should say which
+        # ones those are rather than let them look like they are being chased.
+        "unscheduled_stations": unscheduled,
+        "hot_minutes": sorted(hot),
+        "us_minutes": sorted(us),
+    }
+# Two hours is the slow lane's own floor.  The fast lane never carries the
+# settlement-depth lookback (up to 30h): that walk is what the slow lane's
+# turn is for, and a fast round asking for it would trade the latency it just
+# won for a response thirty times the size.
+FAST_LANE_LOOKBACK_HOURS = 2.0
+
+
+def awc_fast_lane_plan(
+    now_utc: datetime,
+    policy: Mapping[str, Any],
+    learned: Mapping[str, Any] | None = None,
+) -> tuple[str, float]:
+    """Charter 170: which arrival window we are in, and how soon to look again.
+
+    ``learned`` is ``learn_awc_arrival_minutes``' reading of the roster's own
+    filing schedules.  Without it -- a cold start, an empty archive, or the
+    slow lane, which has no connection to hand here -- the three fallback
+    windows stand.
+    """
+
+    minute = int(now_utc.minute)
+    us_sec = max(1.0, float(policy.get("awc_fast_us_window_sec", 5.0)))
+    fleet_sec = max(1.0, float(policy.get("awc_fast_fleet_window_sec", 15.0)))
+    cold_sec = max(5.0, float(policy.get("awc_fast_cold_sec", 60.0)))
+    if learned and learned.get("available"):
+        if minute in set(learned.get("us_minutes") or ()):
+            return "us_hot", us_sec
+        if minute in set(learned.get("hot_minutes") or ()):
+            return "fleet_hot", fleet_sec
+        return "cold", cold_sec
+    low, high = FAST_LANE_US_WINDOW
+    if low <= minute <= high:
+        return "us_hot", us_sec
+    for low, high in FAST_LANE_FLEET_WINDOWS:
+        if low <= minute <= high:
+            return "fleet_hot", fleet_sec
+    return "cold", cold_sec
+
+
+def run_awc_fast_round(
+    conn: sqlite3.Connection,
+    config: dict[str, Any],
+    ingress: ReportedTrajectoryAwcIngress,
+    stations: list[str],
+    *,
+    window: str,
+    hours: float = FAST_LANE_LOOKBACK_HOURS,
+) -> dict[str, Any]:
+    """Charter 170: the AWC fetch and its ingress, and nothing else.
+
+    No MADIS, no ASOS, no soft-carrier materialization, no settlement-depth
+    lookback -- those keep the slow lane's turn.  Ingress rows are
+    ``INSERT OR IGNORE`` keyed on the raw hash, so a report both lanes see is
+    written once, by whichever got there first.
+    """
+
+    if not stations:
+        return {"ok": True, "state": "no_active_stations", "fast_lane": True}
+    if "awc" not in set(config.get("production_source_allowlist") or []):
+        raise ValueError("production_source_lane_not_allowlisted")
+    request_started_at = utc_now()
+    poll = dict(fetch_awc_temperature_reports(stations, hours=hours, timeout=8.0))
+    poll["source_lane"] = "awc"
+    poll["transport"] = str(poll.get("transport") or "official_awc")
+    poll["fallback_reasons"] = {}
+    # Charter 162: name the door the reports actually came through, exactly as
+    # the slow lane does, so the dashboard lamp reads one vocabulary.
+    provider_id = (
+        "global_noaa_tgftp_relay"
+        if poll["transport"].startswith("official_noaa_tgftp_")
+        else "global_noaa_awc_relay"
+    )
+    poll["provider_states"] = [{
+        "provider_id": provider_id,
+        "stations": sorted(stations),
+        "state": (
+            "noaa_tgftp_fallback"
+            if provider_id == "global_noaa_tgftp_relay"
+            else "awc_global_primary"
+        ),
+        "report_count": len(poll.get("reports") or []),
+        "transport": poll["transport"],
+    }]
+    poll["router_duration_ms"] = None
+    response_completed_at = utc_now()
+    result = ingress.process_source_poll(
+        poll,
+        request_started_at=request_started_at,
+        response_completed_at=response_completed_at,
+    )
+    new_count = int(result.get("new_observation_count") or 0)
+    # The selector only has something new to decide when a report actually
+    # landed.  At five seconds a round through the US window, re-running it on
+    # every empty round would spend the whole latency win on bookkeeping.
+    selected = 0
+    if new_count:
+        selector = AsosOneMinuteIngress(conn)
+        placeholders = ",".join("?" for _ in stations)
+        scopes: dict[tuple[str, str], None] = {}
+        for station_id, event_date in conn.execute(
+            f"""SELECT DISTINCT station_id,event_date
+                  FROM reported_trajectory_market_registry
+                 WHERE source_lane='awc' AND source_eligible=1
+                   AND market_active=1 AND market_accepting_orders=1
+                   AND station_id IN ({placeholders})""",
+            stations,
+        ):
+            scopes[(str(station_id), str(event_date))] = None
+        for station_id, event_date in scopes:
+            selector.select_canonical_bound(
+                station_id=station_id,
+                event_date=event_date,
+                as_of_utc=response_completed_at,
+            )
+            selected += 1
+        if selected:
+            conn.commit()
+    return {
+        "ok": True,
+        "fast_lane": True,
+        "window": window,
+        "lookback_hours": hours,
+        "station_count": len(stations),
+        "report_count": len(poll.get("reports") or []),
+        "new_observation_count": new_count,
+        "canonical_scopes_reselected": selected,
+        "transport": poll["transport"],
+        "provider_id": provider_id,
+        "completed_at": response_completed_at,
+    }
+
+
+class AwcFastLaneWorker:
+    """Charter 170: the AWC fetch on its own thread, off the main loop's turn.
+
+    Its own connection, because the slow lane's connection belongs to the main
+    loop's thread and SQLite connections are not shared across threads.  The
+    thread never touches the order gateway and never writes outside the
+    observation tables the ingress already owns.
+    """
+
+    def __init__(self, db_path: Path, config: dict[str, Any]) -> None:
+        self.db_path = db_path
+        self.config = config
+        self.conn: sqlite3.Connection | None = None
+        self.ingress: ReportedTrajectoryAwcIngress | None = None
+        self.stations: list[str] = []
+        self.next_station_refresh = 0.0
+        self.learned: dict[str, Any] = {"available": False}
+        self.next_learn_refresh = 0.0
+        self.stop_event = threading.Event()
+        self.thread: threading.Thread | None = None
+        self.lock = threading.Lock()
+        self.state: dict[str, Any] = {
+            "schema": "awc_metar_fast_lane_v1",
+            "charter": 170,
+            "state": "not_started",
+            "rounds": 0,
+            "new_observation_count": 0,
+            "errors": 0,
+        }
+
+    def snapshot(self) -> dict[str, Any]:
+        with self.lock:
+            return dict(self.state)
+
+    def take_wake_signal(self) -> bool:
+        """True once after a round that landed a new observation.
+
+        The slow lane wakes the entry side lane in-line when its poll returns
+        new rows.  This lane is on another thread, so it leaves a flag and the
+        main loop picks it up on its next turn -- still bounded by that turn,
+        but it no longer also waits out the entry lane's own interval.
+        """
+
+        with self.lock:
+            pending = bool(self.state.get("wake_pending"))
+            if pending:
+                self.state["wake_pending"] = False
+            return pending
+
+    def _publish(self, **fields: Any) -> None:
+        with self.lock:
+            self.state.update(fields)
+
+    def start(self) -> None:
+        if self.thread is not None:
+            return
+        self.thread = threading.Thread(
+            target=self._run, name="reported-trajectory-awc-fast", daemon=True
+        )
+        self._publish(state="starting", started_at=utc_now())
+        self.thread.start()
+
+    def stop(self, *, timeout: float = 10.0) -> None:
+        self.stop_event.set()
+        if self.thread is not None:
+            self.thread.join(timeout=timeout)
+            self.thread = None
+        if self.conn is not None:
+            try:
+                self.conn.close()
+            finally:
+                self.conn = None
+        self._publish(state="stopped", stopped_at=utc_now())
+
+    def _ensure_conn(self) -> None:
+        if self.conn is None:
+            self.conn = _open_runtime(self.db_path)
+            self.ingress = ReportedTrajectoryAwcIngress(self.conn, config=self.config)
+            self.stations = []
+            self.next_station_refresh = 0.0
+
+    def _run(self) -> None:
+        policy = self.config.get("poll_policy") or {}
+        consecutive_errors = 0
+        self._publish(state="running")
+        while not self.stop_event.is_set():
+            window, interval = awc_fast_lane_plan(
+                datetime.now(timezone.utc), policy, self.learned
+            )
+            started = time.monotonic()
+            try:
+                self._ensure_conn()
+                assert self.conn is not None and self.ingress is not None
+                if started >= self.next_station_refresh or not self.stations:
+                    self.stations = active_stations(self.conn, "awc")
+                    self.next_station_refresh = started + 60.0
+                if started >= self.next_learn_refresh and self.stations:
+                    self.learned = learn_awc_arrival_minutes(self.conn, self.stations)
+                    self.next_learn_refresh = started + FAST_LANE_LEARN_REFRESH_SEC
+                    self._publish(arrival_schedule=self.learned)
+                    # Re-plan immediately: the first round of a restart would
+                    # otherwise spend its interval on the fallback window.
+                    window, interval = awc_fast_lane_plan(
+                        datetime.now(timezone.utc), policy, self.learned
+                    )
+                result = run_awc_fast_round(
+                    self.conn, self.config, self.ingress, self.stations, window=window,
+                )
+                consecutive_errors = 0
+                with self.lock:
+                    self.state["state"] = "running"
+                    self.state["rounds"] = int(self.state.get("rounds") or 0) + 1
+                    self.state["new_observation_count"] = int(
+                        self.state.get("new_observation_count") or 0
+                    ) + int(result.get("new_observation_count") or 0)
+                    self.state["window"] = window
+                    self.state["interval_sec"] = interval
+                    self.state["last_round"] = result
+                    self.state["last_round_at"] = utc_now()
+                    self.state["round_duration_sec"] = round(
+                        time.monotonic() - started, 3
+                    )
+                    if int(result.get("new_observation_count") or 0) > 0:
+                        self.state["wake_pending"] = True
+                        self.state["last_new_rows_at"] = utc_now()
+            except Exception as exc:  # noqa: BLE001 -- published, never raised
+                consecutive_errors += 1
+                with self.lock:
+                    self.state["errors"] = int(self.state.get("errors") or 0) + 1
+                    self.state["last_error"] = f"{type(exc).__name__}:{exc}"[:200]
+                    self.state["last_error_at"] = utc_now()
+                    self.state["state"] = "degraded"
+                # A SQLite I/O error leaves the connection unusable; the slow
+                # lane rebuilds its own on the same failure (``reopen``).
+                if isinstance(exc, sqlite3.Error) and self.conn is not None:
+                    try:
+                        self.conn.close()
+                    except Exception:  # noqa: BLE001
+                        pass
+                    self.conn = None
+                    self.ingress = None
+                # Back off on a run of failures so a dead upstream is not
+                # hammered at five-second intervals.
+                interval = min(120.0, interval * min(8, consecutive_errors + 1))
+            self.stop_event.wait(max(0.5, interval - (time.monotonic() - started)))
+        self._publish(state="stopped")
 
 
 class LaneWorker:
@@ -5079,6 +5547,17 @@ def main() -> int:
             thread_name_prefix="reported-trajectory-asos-argmax-entry",
         )
         lane_workers = {lane: LaneWorker(args.db, config, lane) for lane in enabled_lanes}
+        # Charter 170: the METAR fetch off this loop's turn entirely.  The slow
+        # lane keeps its turn, its settlement-depth lookback, and the MADIS and
+        # ASOS polls that ride with it.
+        awc_fast_worker = (
+            AwcFastLaneWorker(args.db, config)
+            if "awc" in enabled_lanes
+            and str(
+                (config.get("poll_policy") or {}).get("awc_fast_lane", "on")
+            ).strip().lower() not in {"off", "0", "false", "no"}
+            else None
+        )
         registry_worker = RegistryRefreshWorker(args.db, config)
         argmax_worker = AsosArgmaxWindowWorker(args.db)
         argmax_entry_worker = AsosArgmaxEntryWorker(args.db)
@@ -5284,8 +5763,21 @@ def main() -> int:
             "ok": False,
             "state": "storage_probe_not_run_fail_closed",
         }
+        # Charter 170: start the METAR fast lane before the first turn of the
+        # loop, because the whole point is that its clock is not this one.
+        if awc_fast_worker is not None:
+            awc_fast_worker.start()
+            state["awc_fast_lane"] = awc_fast_worker.snapshot()
         while not stopping:
             now_mono = time.monotonic()
+            if awc_fast_worker is not None:
+                state["awc_fast_lane"] = awc_fast_worker.snapshot()
+                # A report the fast lane landed may be the station-day high
+                # that authorizes an entry.  The slow lane wakes the entry side
+                # lane in-line for exactly this; the fast lane leaves a flag
+                # and it is honoured here.
+                if awc_fast_worker.take_wake_signal():
+                    next_argmax_entry = min(next_argmax_entry, time.monotonic())
             if now_mono >= next_storage_probe:
                 try:
                     storage_guard = archive_storage_guard(args.db)
@@ -6180,6 +6672,16 @@ def main() -> int:
                     wait=True,
                     cancel_futures=False,
                 )
+        # Charter 170: stop the fast lane's thread before its connection is
+        # torn down with everything else.  Discovered defensively like the
+        # rest of this block, because the failure that brought us here may
+        # have happened before it was constructed.
+        fast_lane = locals().get("awc_fast_worker")
+        if fast_lane is not None:
+            try:
+                fast_lane.stop()
+            except Exception:  # noqa: BLE001 -- shutdown is best effort
+                pass
         for worker_group_name in ("lane_workers",):
             worker_group = locals().get(worker_group_name)
             if isinstance(worker_group, Mapping):
