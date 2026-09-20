@@ -2323,6 +2323,7 @@ def _station_bayes_card(
     station: str,
     event_date: str,
     likelihood_artifact: Mapping[str, Any],
+    truth_c: float | None = None,
 ) -> dict[str, Any] | None:
     """One station-day's chain, bucket by bucket.
 
@@ -2392,6 +2393,10 @@ def _station_bayes_card(
         decided, timezone_name = latest[1], row[5]
         probabilities_json = ordinals_json = None
     axis = _bucket_axis(lineage, ordinals)
+    try:
+        intervals_c = json.loads(str(lineage.get("bucket_intervals_c_json") or "{}"))
+    except ValueError:
+        intervals_c = {}
     root = {str(k): float(v) for k, v in json.loads(root_row[2]).items()}
     root_lineage = json.loads(root_row[3] or "{}")
     p0m = root if root_row[0] == "P0-M" else None
@@ -2432,6 +2437,10 @@ def _station_bayes_card(
         g = evidence.get(b)
         buckets.append({
             "bucket": b,
+            # The rung's midpoint in °C: the page draws the day on a
+            # temperature axis, and a Fahrenheit ladder's labels ("78-79°F")
+            # cannot be turned back into one by reading them.
+            "centre_c": row["centre_c"],
             "p0": p0.get(b),
             "l_taf": (taf_receipt.get("likelihood_by_bucket") or {}).get(b),
             "p0m": None if p0m is None else p0m.get(b),
@@ -2455,9 +2464,19 @@ def _station_bayes_card(
         # ``+stage``: keep the planner on the (station, event_date) index;
         # on the (station, stage) one it walks every P1 the station has.
         " AND +stage='P1' AND state='COMMITTED'"
-        " ORDER BY decision_at_utc DESC LIMIT 49",
+        " ORDER BY decision_at_utc DESC LIMIT 320",
         (station, event_date),
     ).fetchall()[::-1] if p1 is not None else []
+    # A decision second replays the day's whole prefix, so one instant can
+    # hold five envelopes walking the running high from 13°C up to 18°C.
+    # Only the last of a second was ever served; the rest are the replay,
+    # and drawing them put vertical spikes down to the morning across the
+    # afternoon.  The same rule collect_p1_path_skill applies to its heads.
+    by_second: dict[str, tuple] = {}
+    for row in rows:
+        by_second[str(row[0])[:19]] = row
+    replayed = len(rows) - len(by_second)
+    rows = list(by_second.values())[-49:]
     for at, probs_json, receipt_json, step_high in rows:
         try:
             vector = {str(k): float(v) for k, v in json.loads(probs_json).items()}
@@ -2470,9 +2489,27 @@ def _station_bayes_card(
                 ZoneInfo(str(timezone_name or "UTC"))).strftime("%H:%M")
         except Exception:  # noqa: BLE001
             local = ""
+        # What the thermometer and the regional model said at this step, on
+        # the same °C axis as the high, so the day draws as one picture:
+        # the reading now is the high less its drawdown, and the regional
+        # model's remaining forecast high is the high plus its headroom --
+        # the two covariates the likelihood read, put back into degrees.
+        step_features = step_receipt.get("features") or {}
+        high_c = _as_float(step_high)
+        drawdown = _as_float(step_features.get("drawdown_from_high_c"))
+        headroom = _as_float(step_features.get("regional_headroom_c"))
         steps.append({
             "decided_at_utc": str(at), "local": local,
             "running_high_c": step_high,
+            "observed_c": (
+                None if high_c is None or drawdown is None
+                else round(high_c - drawdown, 2)
+            ),
+            "regional_high_c": (
+                None if high_c is None or headroom is None
+                else round(high_c + headroom, 2)
+            ),
+            "remaining_hours": _as_float(step_features.get("remaining_hours")),
             "state": step_receipt.get("state") or "PRE_CHARTER_150",
             "rise_probability": step_receipt.get("rise_probability"),
             "alpha": step_receipt.get("alpha"),
@@ -2491,6 +2528,12 @@ def _station_bayes_card(
         # The newest stage the day has: P1, or the root it will sit on.
         "head_stage": "P1" if p1 is not None else root_row[0],
         "p1_version": p1_version, "root_stage": root_row[0],
+        # The day's answer, once it has one: the standing revision of the
+        # settled high and the rung it lands on, on this day's own ladder.
+        "settled": None if truth_c is None else {
+            "tmax_c": round(float(truth_c), 2),
+            "bucket": _p1_bucket_of(intervals_c, float(truth_c)),
+        },
         "p0_decided_at_utc": p0_row[1] if p0_row else None,
         "p0m_decided_at_utc": root_row[1] if p0m is not None else None,
         # Charter 160: the radiation shift P0 made, read off its receipt.
@@ -2553,6 +2596,9 @@ def _station_bayes_card(
             == str(likelihood_artifact.get("content_sha256") or "")
         ),
         "steps": steps[1:] if len(steps) > 48 else steps,
+        # How many envelopes on this day were a decision second's replay of
+        # its own prefix rather than a step the board shows.
+        "replayed_steps": replayed,
     }
 
 
@@ -2569,6 +2615,26 @@ def collect_station_bayes(conn: sqlite3.Connection) -> dict[str, Any]:
     utc_today = now.date()
     stations: list[dict[str, Any]] = []
     missing_ahead: list[str] = []
+    # The standing revision of each settled high in the window the cards
+    # cover (charter 44: the highest revision_no wins), so a settled card
+    # can say whether the chain ended on the right rung.  Bounded to those
+    # dates -- the lane holds every station's every day since April.
+    truth: dict[tuple[str, str], float] = {}
+    lo = (utc_today - timedelta(days=STATION_BAYES_HISTORY_DAYS + 1)).isoformat()
+    hi = (utc_today + timedelta(days=1)).isoformat()
+    try:
+        for station, day, value in conn.execute(
+            "SELECT station_id, local_date, official_tmax_c"
+            " FROM calibration_station_daily_high_truth t"
+            " WHERE local_date BETWEEN ? AND ? AND qc_status='ACCEPTED'"
+            "   AND revision_no = (SELECT MAX(revision_no)"
+            "     FROM calibration_station_daily_high_truth x"
+            "     WHERE x.station_id=t.station_id AND x.local_date=t.local_date)",
+            (lo, hi),
+        ):
+            truth[(str(station), str(day))] = float(value)
+    except sqlite3.Error:
+        truth = {}
     # The roster: every station with a committed envelope around today, on
     # the (state, event_date) index -- a few thousand index entries.
     for station, timezone_name in conn.execute(
@@ -2584,7 +2650,10 @@ def collect_station_bayes(conn: sqlite3.Connection) -> dict[str, Any]:
             local_today = utc_today
         for role, offset in STATION_BAYES_ROLE_OFFSETS:
             event_date = (local_today + timedelta(days=offset)).isoformat()
-            card = _station_bayes_card(conn, str(station), event_date, likelihood_artifact)
+            card = _station_bayes_card(
+                conn, str(station), event_date, likelihood_artifact,
+                truth_c=truth.get((str(station), event_date)),
+            )
             if card is None:
                 if role == "ahead":
                     missing_ahead.append(str(station))
@@ -2691,6 +2760,15 @@ def collect_p0m_taf_likelihood(conn: sqlite3.Connection) -> dict[str, Any]:
 # the standing P1 is read, and how many settled event days the trend spans.
 P1_PATH_STANDING_HOURS = (8, 10, 12, 14, 16)
 P1_PATH_SKILL_DAYS = 21
+
+
+def _as_float(value: Any) -> float | None:
+    """A receipt's number, or None when it is absent or not one."""
+
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
 
 
 def _p1_bucket_of(intervals: Mapping[str, Any], value: float) -> str | None:
@@ -13606,17 +13684,11 @@ color-scheme:dark}
 .ssw-bar{display:inline-block;position:relative;width:80px;height:6px;border-radius:3px;background:var(--bar-bg);vertical-align:middle}
 .ssw-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--th-claim)}
 .ssw-bar b{position:absolute;top:-3px;bottom:-3px;width:1px;background:var(--muted)}
-.stns .stn{border:1px solid var(--line);border-radius:10px;padding:6px 10px;margin:6px 0;background:var(--card)}
-.stn summary{cursor:pointer;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .rep{border-top:1px dashed var(--line);padding:6px 0}
 .rep-special{border-left:3px solid var(--red);padding-left:8px}
 .rep-h{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .rep-raw{font-size:12px;margin:4px 0;word-break:break-word}
 .rep-read{margin:2px 0 4px 18px;padding:0;font-size:12.5px}
-.by-chain{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px;margin:8px 0}
-.by-step{border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:var(--bg)}
-.by-step .t{font-size:11.5px;color:var(--muted)}
-.by-step .v{font-size:17px;font-weight:650}
 .by-gain{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11.5px;background:var(--bar-bg)}
 .by-gain.hot{background:var(--pill-green-bg);color:var(--green)}
 .by-tab td{padding:3px 6px;white-space:nowrap}
@@ -13626,10 +13698,43 @@ color-scheme:dark}
 .by-x{color:var(--muted);text-decoration:line-through}
 .by-feat{display:inline-block;margin:2px 6px 2px 0;padding:1px 7px;border:1px solid var(--line);border-radius:6px;font-size:12px}
 .by-feat.fb{opacity:.55}
-h3.by-group{font-size:15px;margin:18px 0 4px;display:flex;flex-wrap:wrap;align-items:baseline;gap:8px}
-h3.by-group .muted{font-weight:400;font-size:12.5px}
-details.by-hist>summary{cursor:pointer}
-details.by-hist>summary>h3.by-group{display:inline-flex}
+/* 站点 × 日期: one row per station-day, the chain across its columns. */
+.sb-ctl{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:10px 0 6px}
+.sb-ctl input[type=search]{background:var(--bg);color:var(--text);border:1px solid var(--line);
+border-radius:7px;padding:3px 8px;font:inherit;font-size:12.5px;min-width:150px}
+.sb-ctl label{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer}
+.sb-legend{display:inline-flex;gap:12px;align-items:center}
+.sb-legend span{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted)}
+.sb-legend i{width:13px;height:4px;border-radius:2px;display:inline-block}
+table.sbt{width:100%;border-collapse:collapse;font-size:12.5px}
+table.sbt th{position:sticky;top:0;z-index:2;background:var(--card);text-align:left;
+padding:4px 7px;white-space:nowrap;border-bottom:1px solid var(--line)}
+table.sbt thead tr:first-child th{color:var(--muted);font-weight:600;
+border-bottom:1px solid var(--soft)}
+table.sbt thead tr:nth-child(2) th{top:29px}
+table.sbt td{padding:5px 7px;vertical-align:top;border-top:1px solid var(--line);
+white-space:nowrap}
+/* The station stays put while the chain scrolls under it. */
+table.sbt .sb-key{position:sticky;left:0;z-index:1;background:var(--card);
+box-shadow:1px 0 var(--line)}
+table.sbt th.sb-key{z-index:3}
+tbody.sb-row>tr.sb-head:hover>td.sb-key,
+tbody.sb-row[data-open="1"]>tr.sb-head>td.sb-key{
+background:color-mix(in srgb,var(--why-bg) 100%,var(--card))}
+table.sbt .pill{padding:0 5px;font-size:10.5px}
+tbody.sb-row>tr.sb-head{cursor:pointer}
+tbody.sb-row>tr.sb-head:hover>td{background:var(--why-bg)}
+tbody.sb-row[data-open="1"]>tr.sb-head>td{background:var(--why-bg)}
+tbody.sb-row[data-open="1"]>tr.sb-head>td:first-child{box-shadow:inset 2px 0 var(--accent)}
+tbody.sb-row>tr.sb-det>td{background:var(--soft);white-space:normal}
+.sb-main{font-weight:650;line-height:1.25}
+.sb-sub{color:var(--muted);font-size:11.5px;line-height:1.3}
+.sb-dist{display:block}
+.sb-det-in{padding:8px 2px 14px}
+.sb-chart{max-width:min(100%,940px);height:auto;display:block}
+.sb-chart .sb-ax{fill:var(--muted);font-size:9.5px}
+.sb-chart .sb-lg{fill:var(--muted);font-size:10px}
+tr.sb-truth>td{background:var(--pill-red-bg)}
 table.tok td:first-child{white-space:nowrap;padding-right:14px}
 body{margin:0;background:var(--bg);color:var(--text);
 font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
@@ -20401,28 +20506,212 @@ function radiationSection(){
   return `<h2>辐射降温项：按预报的日照多少，把整条分布往冷或往暖推</h2>${body}`;
 }
 
-// The station view of the chain (user, 2026-09-19: 「前端的p0m、p1、metar、taf改为
-// 站的bayes更新视角，直观展示概率变化和信息增益、数据变化等」「报文解析默认折叠」).
-// One card per station-day: P0 -> x TAF likelihood -> P0-M -> x hard bound x
-// joint METAR likelihood -> P1, bucket by bucket, with the information each
-// step added (KL of posterior against prior, in bits), the evidence it read,
-// and how the belief moved report by report.  The raw reports sit folded at
-// the bottom.  Three groups by each station's own calendar (user, same day:
-// 「增加20日（当天和提前一天的），历史数据自动下沉折叠」): the day it observes,
-// the day ahead (no P1 yet -- the card stops at P0-M, or P0 before a TAF
-// reaches the day), and the settled days, folded at the bottom.
+// The station view of the chain (user, 2026-09-19: 「前端的p0m、p1、metar、taf
+// 改为站的bayes更新视角，直观展示概率变化和信息增益、数据变化等」「报文解析默认
+// 折叠」; 2026-09-20: 「以日期、站点为视角，串联在一起」「表格形式」).
+// 站点 × 日期: one table, the whole chain, read left to right (user,
+// 2026-09-20: 「把taf、区域模型、metar等站点贝叶斯更新重新设计到一起，直观展示
+// 变化，信息不要分散，以日期、站点为视角，串联在一起」「表格形式」).
+//
+// Until here the day's story was spread over four sections a scroll apart:
+// the per-station cards, the TAF likelihood, the joint METAR likelihood and
+// the regional models -- so answering "what happened to ZUUU on the 19th"
+// meant finding the station in four different lists, three of which were
+// keyed by system or by fleet rather than by station-day.  One row per
+// station-day now carries all of it, in the order the chain runs:
+//
+//   站日 → ① 先验 P0 → ② TAF 似然 → P0-M → ③ 实况 METAR + 区域模型 → ④ P1 → 结算
+//
+// The 变化 column draws the three distributions on one bucket axis, so the
+// change is seen before it is read.  Opening a row draws the day itself on
+// a temperature axis -- the thermometer, the regional model's remaining
+// high, P1's centre, and the flat references the day was judged against --
+// and then the bucket-by-bucket arithmetic under it.
+//
+// The fleet-level fitting of the two likelihoods, the regional lanes' own
+// capture health and P1's three-week hit rate stay in their own sections:
+// they are one reading each for the whole fleet, not a property of a
+// station-day.  What each row needs of them -- the state word, the covariate
+// values, the run age, this station's own hit rate -- is joined onto it.
+const SB_TONES = {p0:"var(--muted)", p0m:"var(--th-claim)", p1:"var(--accent)"};
+const SB_TAF_WORD = {APPLIED:"似然说话", IDENTITY_GATE_CLOSED:"闸未开·恒等",
+  IDENTITY_NO_TX:"不带 TX·恒等", IDENTITY_NO_ARTIFACT:"无拟合件·恒等",
+  IDENTITY_NO_ROOT_GEOMETRY:"根无桶几何·恒等", OBSERVED_NO_CALIBRATED_ARTIFACT:"旧版·恒等",
+  PRE_CHARTER_150:"旧版 P0-M"};
+const SB_MET_WORD = {APPLIED:"似然说话", SILENT_PREFIX_NOT_CURRENT:"回放步·不说话",
+  SILENT_NO_ARTIFACT:"无拟合件", SILENT_NO_FEATURES:"特征读不出", REFUSED:"拒绝",
+  SILENT_SOFT_LIKELIHOOD_ACTIVE:"旧软似然", PRE_CHARTER_150:"旧版 P1"};
+const SB_TEMPER_WORD = {REASONED:"有天气理由", UNREASONED_COLD:"没理由的往冷改",
+  OTHER:"其他分歧", SMALL:"小分歧"};
+const SB_ROLE_WORD = {today:"当天", ahead:"明天", history:"已结算"};
+const SB_NO_P1_WORD = {today:"今天还没有 P1（当地第一份 METAR 后开始）",
+  ahead:"P1 还没开始（事件日当地第一份 METAR 后才有）", history:"这一天没有 P1"};
+const SB_SERIES = [
+  {key:"running_high_c", name:"已报最高", tone:"var(--up)", w:2.2, step:true},
+  {key:"observed_c", name:"此刻实测", tone:"var(--muted)", w:1.2},
+  {key:"regional_high_c", name:"区域模型剩余最高", tone:"var(--violet)", w:1.5, dash:"4 3"},
+  {key:"mean_c", name:"P1 均值", tone:"var(--accent)", w:2},
+];
+
+// The three distributions on one bucket axis, one row each, drawn as a heat
+// strip rather than bars: at 140 by 39 pixels a bar chart of twenty rungs
+// is noise, while three rows of cells shaded by their own row's peak read
+// at a glance -- P0 a smear over five rungs, P1 one black square.  What
+// changed is the number of dark cells, which is exactly the question the
+// column is here to answer.  The mode carries a tick under it and the
+// settled rung, once the day has one, is outlined through all three rows.
+function sbDistStrip(e){
+  const bs = e.buckets || [];
+  if(!bs.length) return "";
+  const rows = [["p0", SB_TONES.p0, "P0"], ["p0m", SB_TONES.p0m, "P0-M"], ["p1", SB_TONES.p1, "P1"]]
+    .filter(([k]) => bs.some(b => b[k] != null));
+  if(!rows.length) return "";
+  const W = 140, RH = 13, H = rows.length * RH;
+  const bw = W / bs.length;
+  const body = rows.map(([k, tone], r) => {
+    let peak = 0;
+    bs.forEach(b => { if(b[k] != null && b[k] > peak) peak = b[k]; });
+    if(!(peak > 0)) return "";
+    const y = r * RH;
+    return bs.map((b, i) => {
+      const v = b[k];
+      if(v == null || v <= 0) return "";
+      // ^0.65 so a 3% tail is still visible next to a 99% spike without
+      // making the two look alike.
+      const a = Math.pow(v / peak, 0.65);
+      const tick = v === peak ? `<rect x="${(i * bw + bw / 2 - 0.7).toFixed(2)}" y="${
+        (y + RH - 2.2).toFixed(2)}" width="1.4" height="1.6" fill="${tone}"/>` : "";
+      return `<rect x="${(i * bw).toFixed(2)}" y="${(y + 0.6).toFixed(2)}" width="${
+        Math.max(1, bw - 0.6).toFixed(2)}" height="${(RH - 3).toFixed(2)}" fill="${tone}"
+        opacity="${a.toFixed(3)}"/>${tick}`;
+    }).join("");
+  }).join("");
+  const ti = bs.findIndex(b => b.bucket === (e.settled || {}).bucket);
+  const mark = ti < 0 ? "" : `<rect x="${(ti * bw).toFixed(2)}" y="0.5" width="${
+    Math.max(1.4, bw - 0.6).toFixed(2)}" height="${(H - 1).toFixed(2)}" fill="none"
+    stroke="var(--red)" stroke-width="1"/>`;
+  const lo = bs[0].bucket, hi = bs[bs.length - 1].bucket;
+  const peakOf = k => { const b = bs.filter(x => x[k] != null).sort((x, y) => y[k] - x[k])[0];
+    return b ? h(b.bucket) + " " + (100 * b[k]).toFixed(0) + "%" : "—"; };
+  return `<svg class="sb-dist" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img"
+    aria-label="P0、P0-M、P1 三条分布，从 ${h(lo)} 到 ${h(hi)}"><title>桶轴 ${h(lo)} → ${h(hi)}
+上：P0 众数 ${peakOf("p0")}${rows.length > 1 ? "\n中：P0-M 众数 " + peakOf("p0m") : ""}${
+    rows.length > 2 ? "\n下：P1 众数 " + peakOf("p1") : ""}
+每行按自己的峰值着色；红框＝结算桶</title>${body}${mark}</svg>`;
+}
+
+// The day on a temperature axis: what the thermometer had reported, what it
+// read at that moment, where the regional model said the day could still
+// get to, and where P1's centre sat -- every one of them a number the
+// likelihood actually read, put back into degrees.  The flat references are
+// what the day was judged against: P0's centre, P0-M's after the TAF, the
+// TAF's own TX, and the settled high once it is known.  The ribbon under
+// the axis is the mode rung at each step, its opacity the mass on it, so
+// the moment P1 locked is visible without reading a table.
+function sbDayChart(e){
+  const S = e.shapes || {};
+  const steps = (e.steps || []).filter(s => s.state !== "SILENT_PREFIX_NOT_CURRENT");
+  if(steps.length < 2) return "";
+  let prev = -1, wrap = 0;
+  const xs = steps.map(s => {
+    const m = /^(\d{2}):(\d{2})$/.exec(s.local || "");
+    if(!m) return null;
+    let v = (+m[1]) * 60 + (+m[2]);
+    if(prev >= 0 && v < prev) wrap += 1440;
+    prev = v;
+    return v + wrap;
+  });
+  const known = xs.filter(v => v != null);
+  if(known.length < 2) return "";
+  const num = v => { const n = Number(v); return v == null || v === "" || !isFinite(n) ? null : n; };
+  const x0 = Math.min(...known), span = Math.max(30, Math.max(...known) - x0);
+  const series = SB_SERIES.map(s => ({...s,
+    pts: steps.map((r, i) => [xs[i], num(r[s.key])]).filter(p => p[0] != null && p[1] != null)}))
+    .filter(s => s.pts.length > 1);
+  if(!series.length) return "";
+  const refs = [["P0 中心", num((S.p0 || {}).mean_c), SB_TONES.p0, "3 3"],
+    ["P0-M 中心", num((S.p0m || {}).mean_c), SB_TONES.p0m, "3 3"],
+    ["TAF TX", num((e.taf || {}).tx_c), "var(--th-price)", "6 3"],
+    ["结算真值", num((e.settled || {}).tmax_c), "var(--red)", "2 2"]].filter(r => r[1] != null);
+  const values = series.flatMap(s => s.pts.map(p => p[1])).concat(refs.map(r => r[1]));
+  let lo = Math.min(...values), hi = Math.max(...values);
+  if(hi - lo < 2){ const mid = (hi + lo) / 2; lo = mid - 1; hi = mid + 1; }
+  const pad = (hi - lo) * 0.10;
+  lo -= pad; hi += pad;
+  const W = 680, H = 208, L = 42, R = 118, T = 12, Bm = 52;
+  const px = v => L + (W - L - R) * (v - x0) / span;
+  const py = v => T + (H - T - Bm) * (1 - (v - lo) / (hi - lo));
+  const axisY = H - Bm;
+  const path = s => {
+    if(!s.step) return `M ${s.pts.map(p => px(p[0]).toFixed(1) + " " + py(p[1]).toFixed(1)).join(" L ")}`;
+    let d = "";
+    s.pts.forEach((p, i) => {
+      const X = px(p[0]).toFixed(1), Y = py(p[1]).toFixed(1);
+      d += i === 0 ? `M ${X} ${Y}` : ` L ${X} ${py(s.pts[i - 1][1]).toFixed(1)} L ${X} ${Y}`;
+    });
+    return d;
+  };
+  // Grid: whole degrees while the window is small, then 2 / 2.5 / 5 / 10.
+  const rough = (hi - lo) / 6;
+  const stepC = [0.5, 1, 2, 2.5, 5, 10, 20].find(v => v >= rough) || 20;
+  const ticksY = [];
+  for(let v = Math.ceil(lo / stepC) * stepC; v <= hi; v += stepC) ticksY.push(v);
+  const hourStep = span > 600 ? 180 : span > 300 ? 120 : 60;
+  const ticksX = [];
+  for(let v = Math.ceil(x0 / hourStep) * hourStep; v <= x0 + span; v += hourStep) ticksX.push(v);
+  const clock = v => String(Math.floor((v % 1440) / 60)).padStart(2, "0") + ":"
+    + String(Math.round(v % 60)).padStart(2, "0");
+  const settled = (e.settled || {}).bucket;
+  const ribbon = steps.map((s, i) => {
+    if(xs[i] == null || s.mode == null) return "";
+    const nx = xs[i + 1] == null ? x0 + span : xs[i + 1];
+    const tone = settled == null ? "var(--accent)" : s.mode === settled ? "var(--green)" : "var(--red)";
+    return `<rect x="${px(xs[i]).toFixed(1)}" y="${(axisY + 22).toFixed(1)}" width="${
+      Math.max(0.6, px(nx) - px(xs[i])).toFixed(1)}" height="6" fill="${tone}"
+      opacity="${(0.15 + 0.85 * Math.min(1, s.mode_p || 0)).toFixed(2)}"><title>${
+      h(s.local)} 众数 ${h(s.mode)}（${(100 * (s.mode_p || 0)).toFixed(1)}%）</title></rect>`;
+  }).join("");
+  const legend = series.map(s => [s.name, s.tone, s.dash || ""])
+    .concat(refs.map(r => [r[0] + (r[1] == null ? "" : " " + r[1].toFixed(1)), r[2], r[3]]))
+    .map(([name, tone, dash], i) => `<g transform="translate(${W - R + 6},${T + 4 + i * 15})">
+      <line x1="0" y1="0" x2="16" y2="0" stroke="${tone}" stroke-width="2"${
+        dash ? ` stroke-dasharray="${dash}"` : ""}/>
+      <text x="21" y="3.5" class="sb-lg">${h(name)}</text></g>`).join("");
+  return `<svg class="sb-chart" viewBox="0 0 ${W} ${H}" role="img"
+    aria-label="${h(e.station_id)} ${h(e.event_date)} 当地一天的温度路径">
+    ${ticksY.map(v => `<line x1="${L}" y1="${py(v).toFixed(1)}" x2="${W - R}" y2="${py(v).toFixed(1)}"
+      stroke="var(--line)" stroke-width="1"/><text x="${L - 5}" y="${(py(v) + 3.5).toFixed(1)}"
+      class="sb-ax" text-anchor="end">${v.toFixed(stepC < 1 ? 1 : 0)}°</text>`).join("")}
+    ${ticksX.map(v => `<line x1="${px(v).toFixed(1)}" y1="${T}" x2="${px(v).toFixed(1)}" y2="${axisY}"
+      stroke="var(--line)" stroke-width="1"/><text x="${px(v).toFixed(1)}" y="${axisY + 14}"
+      class="sb-ax" text-anchor="middle">${clock(v)}</text>`).join("")}
+    ${refs.map(r => `<line x1="${L}" y1="${py(r[1]).toFixed(1)}" x2="${W - R}" y2="${py(r[1]).toFixed(1)}"
+      stroke="${r[2]}" stroke-width="1.4" stroke-dasharray="${r[3]}" opacity=".9"/>`).join("")}
+    ${series.map(s => `<path d="${path(s)}" fill="none" stroke="${s.tone}" stroke-width="${s.w}"${
+      s.dash ? ` stroke-dasharray="${s.dash}"` : ""} stroke-linejoin="round"/>`).join("")}
+    <text x="${L - 5}" y="${axisY + 27}" class="sb-ax" text-anchor="end">众数桶</text>${ribbon}
+    <text x="${L}" y="${H - 4}" class="sb-ax">${
+      settled == null ? "颜色深浅＝众数桶上的概率" : "绿＝众数桶就是结算桶，红＝不是；深浅＝众数桶上的概率"}</text>
+    ${legend}</svg>`;
+}
+
 function stationBayesBoard(){
   const B = D.station_bayes || {};
-  if(!B.available) return `<h2>站点贝叶斯更新</h2><div class="card muted">这一轮没有生成。</div>`;
+  if(!B.available) return `<h2>站点 × 日期</h2><div class="card muted">这一轮没有生成。</div>`;
   const W = B.feature_words || {};
-  const tafBy = {}, metBy = {};
+  const tafBy = {}, metBy = {}, pathBy = {}, regBy = {}, regLabel = {};
   ((D.taf_board || {}).stations || []).forEach(s => tafBy[s.station_id] = s);
   ((D.metar_board || {}).stations || []).forEach(s => metBy[s.station_id] = s);
+  ((D.p1_path_skill || {}).stations || []).forEach(s => pathBy[s.station_id] = s);
+  ((D.regional || {}).lanes || []).forEach(l => regLabel[l.system_id] = l.label);
+  Object.entries((D.regional || {}).stations || {}).forEach(([sys, list]) =>
+    (list || []).forEach(r => regBy[sys + "|" + r.station_id] = r));
   const pc = v => v == null ? "—" : (100 * v).toFixed(1) + "%";
   const bits = v => v == null ? "—" : v < 0.005 ? "≈0" : v.toFixed(2);
-  const gain = (v, word) => `<span class="by-gain ${v != null && v >= 0.1 ? "hot" : ""}">${word} ${bits(v)} bit</span>`;
   const c1 = v => v == null ? "—" : Number(v).toFixed(1) + "°C";
   const c2 = v => v == null ? "—" : Number(v).toFixed(2) + "°C";
+  const sg = (v, d) => v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(Number(v)).toFixed(d == null ? 1 : d);
+  const gain = v => `<span class="by-gain ${v != null && v >= 0.1 ? "hot" : ""}">${bits(v)} bit</span>`;
   const delta = (a, b) => {
     if(a == null || b == null) return "";
     const d = 100 * (b - a);
@@ -20431,12 +20720,9 @@ function stationBayesBoard(){
   };
   const cell = (p, tone) => p == null ? "—" :
     `<div class="cell"><div class="by-bar"><i style="width:${Math.min(100, 100 * p).toFixed(1)}%;background:${tone}"></i></div><span class="mono">${pc(p)}</span></div>`;
-  const tafWord = {APPLIED:"TAF 似然说话", IDENTITY_GATE_CLOSED:"闸未开（恒等）", IDENTITY_NO_TX:"TAF 不带 TX（恒等）",
-    IDENTITY_NO_ARTIFACT:"没有拟合件（恒等）", IDENTITY_NO_ROOT_GEOMETRY:"根没有桶几何（恒等）"};
-  const metWord = {APPLIED:"联合似然说话", SILENT_PREFIX_NOT_CURRENT:"回放步（不说话）", SILENT_NO_ARTIFACT:"没有拟合件",
-    SILENT_NO_FEATURES:"特征读不出", REFUSED:"拒绝", PRE_CHARTER_150:"旧版 P1"};
-  const noP1Word = {today:"今天还没有 P1（当地第一份 METAR 后开始）", ahead:"P1 还没开始（事件日当地第一份 METAR 后才有）",
-    history:"这一天没有 P1"};
+  const shape = (s, tone) => !s ? `<span class="muted">—</span>` :
+    `<div class="sb-main mono">${c2(s.mean_c)}</div><div class="sb-sub">众数 <b style="color:${
+      tone}">${h(s.mode || "—")}</b> ${pc(s.mode_p)}</div>`;
   const reportList = (list, kind) => (list || []).map((r, i) => `<div class="rep ${r.special ? "rep-special" : ""}">
       <div class="rep-h"><span class="pill ${r.special ? "red" : ""}">${h(r.kind)}${r.correction_suspected ? " · 疑似更正" : ""}</span>
         <span class="mono">${kind === "TAF" ? "签发 " + whenZ(r.issued_at_utc) : whenZ(r.valid_at_utc) + (r.local ? "（当地 " + h(r.local) + "）" : "")}</span>
@@ -20444,110 +20730,170 @@ function stationBayesBoard(){
       <div class="mono rep-raw">${h(r.raw)}</div>
       <ul class="rep-read">${(r.reading || []).map(x => `<li>${h(x)}</li>`).join("")}</ul>
       <details><summary class="muted">逐段拆解</summary>${tokensTable(r.tokens)}</details></div>`).join("");
-  const card = e => {
-    const S = e.shapes || {}, G = e.gain_bits || {}, T = e.taf, Mt = e.metar || {};
-    // The latest reports belong to the day being observed; a TAF also reaches
-    // the day ahead.  A settled day's card carries neither -- they are today's.
-    const taf = e.role === "history" ? null : tafBy[e.station_id];
-    const met = e.role === "today" ? metBy[e.station_id] : null;
-    const nowT = met && (met.reports || [])[0];
+
+  const row = (e, rank) => {
+    const S = e.shapes || {}, G = e.gain_bits || {}, T = e.taf || {}, Mt = e.metar || {};
     const hasP0m = !!S.p0m, hasP1 = !!S.p1;
-    const last = S.p1 || S.p0m || S.p0 || {};
-    const dayWord = e.role === "today" ? "今天" : "这一天";
-    const moved = (a, b) => a && b && a.mode !== b.mode ? `<b>${h(a.mode)}→${h(b.mode)}</b>` : h((b || a || {}).mode || "—");
-    const chain = [["P0", S.p0], ["P0-M", S.p0m], ["P1", S.p1]].filter(([, s]) => s)
-      .map(([w, s], i, all) => `${w} ${i === all.length - 1 ? "<b>" + c2(s.mean_c) + "</b>" : c2(s.mean_c)}`).join(" → ");
-    const rows = (e.buckets || []).map(b => `<tr>
-      <td class="mono"><b>${h(b.bucket)}</b></td>
-      <td>${cell(b.p0, "var(--muted)")}</td>
-      ${hasP0m ? `<td class="mono">${b.l_taf == null ? "1" : Number(b.l_taf).toFixed(3)}</td><td>${cell(b.p0m, "var(--th-claim)")}</td><td class="mono">${delta(b.p0, b.p0m)}</td>` : ""}
+    const F = Mt.features || {};
+    // Reports belong to the day they speak about: a TAF issued this morning
+    // reaches tomorrow too, and yesterday's card must not wear today's.
+    const tafS = tafBy[e.station_id], metS = metBy[e.station_id];
+    const tafR = ((tafS || {}).reports || []).filter(r => r.event_date === e.event_date);
+    const metR = (metS && metS.event_date === e.event_date) ? (metS.reports || []) : [];
+    const nowT = metR[0];
+    const sys = Mt.regional_system_id && Mt.regional_system_id !== "NONE" ? Mt.regional_system_id : null;
+    const reg = sys ? regBy[sys + "|" + e.station_id] : null;
+    const skill = pathBy[e.station_id];
+    const settled = e.settled;
+    const hit = settled && settled.bucket && S.p1 ? settled.bucket === S.p1.mode : null;
+    // Off by one rung, on this day's own ladder.  Both rungs have to BE on
+    // it: a findIndex miss is -1, and -1 next to rung 0 would read as a
+    // near miss when the truth was never a rung the day was priced against.
+    const rungOf = b => (e.buckets || []).findIndex(row => row.bucket === b);
+    const within = (() => {
+      if(!(settled && settled.bucket && S.p1)) return null;
+      const a = rungOf(settled.bucket), b = rungOf(S.p1.mode);
+      return a < 0 || b < 0 ? null : Math.abs(a - b) <= 1;
+    })();
+    const rows = (e.buckets || []).map(b => `<tr${b.bucket === (settled || {}).bucket ? ` class="sb-truth"` : ""}>
+      <td class="mono"><b>${h(b.bucket)}</b>${b.bucket === (settled || {}).bucket ? ` <span class="pill red">真值</span>` : ""}</td>
+      <td>${cell(b.p0, SB_TONES.p0)}</td>
+      ${hasP0m ? `<td class="mono">${b.l_taf == null ? "1" : Number(b.l_taf).toFixed(3)}</td><td>${cell(b.p0m, SB_TONES.p0m)}</td><td class="mono">${delta(b.p0, b.p0m)}</td>` : ""}
       ${hasP1 ? `<td class="mono">${b.excluded ? `<span class="by-x">已排除</span>` : "✓"}</td>
       <td class="mono">${b.g_alpha == null ? "—" : Number(b.g_alpha).toFixed(3)}</td>
-      <td>${cell(b.p1, "var(--accent)")}</td>
+      <td>${cell(b.p1, SB_TONES.p1)}</td>
       <td class="mono">${delta(hasP0m ? b.p0m : b.p0, b.p1)}</td>` : ""}</tr>`).join("");
-    const feats = Object.entries(Mt.features || {}).map(([k, v]) => {
+    const feats = Object.entries(F).map(([k, v]) => {
       const fb = (Mt.fleet_mean_features || []).includes(k);
       return `<span class="by-feat ${fb ? "fb" : ""}" title="${h(k)}">${h(W[k] || k)} <b>${v == null ? "缺→队均值" : Number(v).toFixed(2)}</b></span>`;
     }).join("");
     const steps = (e.steps || []).slice().reverse().map(st => `<tr>
       <td class="mono">${h(st.local)}</td><td class="mono">${st.running_high_c == null ? "—" : c1(st.running_high_c)}</td>
-      <td class="mono">${pc(st.rise_probability)}</td><td class="mono">${st.alpha ?? "—"}</td>
+      <td class="mono">${st.observed_c == null ? "—" : c1(st.observed_c)}</td>
+      <td class="mono">${st.regional_high_c == null ? "—" : c1(st.regional_high_c)}</td>
+      <td class="mono">${pc(st.rise_probability)}</td>
       <td class="mono">${c2(st.mean_c)}</td><td class="mono">${h(st.mode || "—")} ${st.mode_p == null ? "" : "(" + pc(st.mode_p) + ")"}</td>
       <td>${st.gain_bits == null ? "—" : `<div class="cell"><div class="by-bar"><i style="width:${Math.min(100, 50 * st.gain_bits).toFixed(0)}%;background:var(--accent)"></i></div><span class="mono">${bits(st.gain_bits)}</span></div>`}</td>
-      <td class="muted">${h(metWord[st.state] || st.state)}</td></tr>`).join("");
-    return `<details class="stn">
-      <summary><b class="mono">${h(e.station_id)}</b> <span class="pill">${h(e.event_date.slice(5))}</span> <span class="muted">更新于当地 ${h(e.local)}</span>
-        <span class="mono">${chain}</span>
-        <span>众数 ${moved(S.p0, last)}（${pc(last.mode_p)}）</span>
-        ${hasP0m ? gain(G.p0m_total, "P0-M") : ""} ${hasP1 ? gain(G.p1_total, "P1") : ""}
-        <span class="muted">${hasP1 ? `已报最高 ${c1(Mt.running_high_c)} · 再升 ${pc(Mt.rise_probability)}` : noP1Word[e.role] || noP1Word.history}</span>
-        ${met ? `<span class="pill ${(FRESH_WORD[met.freshness] || [""])[0]}">METAR ${(FRESH_WORD[met.freshness] || ["", met.freshness])[1]}</span>` : ""}
-        ${taf ? `<span class="pill ${(FRESH_WORD[taf.freshness] || [""])[0]}">TAF ${(FRESH_WORD[taf.freshness] || ["", taf.freshness])[1]}</span>` : ""}</summary>
-      <div class="by-chain">
-        <div class="by-step"><div class="t">① 先验 P0（四家全球集合，已校准）</div>
-          <div class="v">${c2((S.p0 || {}).mean_c)}</div>
-          <div class="muted">众数 ${h((S.p0 || {}).mode || "—")}（${pc((S.p0 || {}).mode_p)}）· ${whenZ(e.p0_decided_at_utc)}</div>
-          ${(()=>{const R=e.p0_radiation||{}; if(R.clearness_index==null && R.shift_c==null) return "";
-            const sg=v=>v==null?"—":((v>0?"+":"")+Number(v).toFixed(2));
-            return `<div class="muted">辐射 ${R.radiation_sum==null?"—":Number(R.radiation_sum).toFixed(1)} MJ/m² · 晴朗度指数 Kt ${R.clearness_index==null?"—":Number(R.clearness_index).toFixed(2)}（本站平均 ${R.clearness_mean==null?"—":Number(R.clearness_mean).toFixed(2)}）· 标准分 ${sg(R.standardised)} → 平移 ${sg(R.shift_c)}°C${R.legacy_shift_c==null?"":` <span title="宪章 160 前的旧法：辐射绝对量对 4 月以来平均">（旧法 ${sg(R.legacy_shift_c)}）</span>`}</div>`;})()}</div>
-        ${hasP0m ? `<div class="by-step"><div class="t">② × TAF 似然 → P0-M</div>
-          <div class="v">${c2(S.p0m.mean_c)}</div>
-          <div class="muted">TAF TX ${T && T.tx_c && T.tx_c !== "NONE" ? c1(T.tx_c) : "—"}${T && T.x_c != null ? "（比 P0 中心 " + (T.x_c > 0 ? "+" : "") + Number(T.x_c).toFixed(1) + "°C）" : ""} · ${h(tafWord[(T || {}).state] || (T || {}).state || "—")}${T && T.b != null ? " · b " + Number(T.b).toFixed(2) + " τ " + Number(T.tau).toFixed(2) : ""}${T && T.tempering ? " · " + h({REASONED:"有天气理由", UNREASONED_COLD:"没理由的往冷改", OTHER:"其他分歧", SMALL:"小分歧"}[T.tempering.group] || T.tempering.group) + " λ " + Number(T.tempering.lambda).toFixed(2) : ""}</div>
-          <div>${gain(G.p0m_fact, "观测下界")} ${gain(G.taf, "TAF")}</div></div>` :
-          `<div class="by-step"><div class="t">② P0-M</div><div class="muted">${hasP1 ? "这一步的根是 P0（还没有 TAF 落座）" : "还没有 P0-M（TAF 还没覆盖到这一天）"}</div></div>`}
-        ${hasP1 ? `<div class="by-step"><div class="t">③ × 硬下界 × ${Mt.update === "DIRECT_LOG_UPDATE_V1" ? "METAR 直接更新 e<sup>f</sup>（宪章161）" : "METAR 联合似然 g<sup>α</sup>"} → P1</div>
-          <div class="v">${c2(S.p1.mean_c)}</div>
-          <div class="muted">已报最高 ${c1(Mt.running_high_c)}（${h(Mt.running_high_bucket || "—")}）${nowT ? " · 此刻 " + (nowT.temp_c ?? "—") + "°C" : ""} · 再升 ${pc(Mt.rise_probability)} · ${Mt.update === "DIRECT_LOG_UPDATE_V1" ? "直接更新 λ " + (Mt.lambda ?? "—") : "α " + (Mt.alpha ?? "—")} · ${h(metWord[Mt.state] || Mt.state)}</div>
-          <div>${gain(G.fact, "硬下界")} ${gain(G.likelihood, "实况似然")}</div></div>` :
-          `<div class="by-step"><div class="t">③ × 硬下界 × METAR 联合似然 → P1</div><div class="muted">${noP1Word[e.role] || noP1Word.history}</div></div>`}
-      </div>
-      <div class="scroll" style="max-height:none"><table class="by-tab"><thead><tr><th>桶</th><th>P0</th>
+      <td class="muted">${h(SB_MET_WORD[st.state] || st.state)}</td></tr>`).join("");
+    const R = e.p0_radiation || {};
+    const radiation = R.clearness_index == null && R.shift_c == null ? "" :
+      `<div class="sb-sub">辐射 Kt ${R.clearness_index == null ? "—" : Number(R.clearness_index).toFixed(2)} → ${sg(R.shift_c, 2)}°C</div>`;
+    const tafCell = !hasP0m
+      ? `<span class="muted">${hasP1 ? "根是 P0（没有 TAF）" : "TAF 还没覆盖到这一天"}</span>`
+      : `<div class="sb-main mono">${T.tx_c && T.tx_c !== "NONE" ? c1(T.tx_c) : "无 TX"}</div>
+         <div class="sb-sub" title="TAF 的 TX 比 P0 自己的中心高/低多少">${
+           T.x_c == null ? "" : "比 P0 " + sg(T.x_c) + "°C · "}${h(SB_TAF_WORD[T.state] || T.state || "—")}</div>
+         ${T.b == null ? "" : `<div class="sb-sub">b ${Number(T.b).toFixed(2)} τ ${Number(T.tau).toFixed(2)}${
+           T.tempering ? " · " + h(SB_TEMPER_WORD[T.tempering.group] || T.tempering.group) + " λ " + Number(T.tempering.lambda).toFixed(2) : ""}</div>`}
+         ${tafR.length ? `<div class="sb-sub">${tafR.length} 份${
+           tafS && tafS.freshness ? ` <span class="pill ${(FRESH_WORD[tafS.freshness] || [""])[0]}">${
+             (FRESH_WORD[tafS.freshness] || ["", tafS.freshness])[1]}</span>` : ""}</div>` : ""}`;
+    const liveCell = !hasP1
+      ? `<span class="muted">${SB_NO_P1_WORD[e.role] || SB_NO_P1_WORD.history}</span>`
+      : `<div class="sb-main mono">已报 ${c1(Mt.running_high_c)}</div>
+         <div class="sb-sub">此刻 ${nowT && nowT.temp_c != null ? nowT.temp_c + "°C" : (e.steps || []).length && e.steps[e.steps.length - 1].observed_c != null ? c1(e.steps[e.steps.length - 1].observed_c) : "—"} · 再升 <b>${pc(Mt.rise_probability)}</b></div>
+         <div class="sb-sub">${h(SB_MET_WORD[Mt.state] || Mt.state)} · ${
+           Mt.update === "DIRECT_LOG_UPDATE_V1" ? "λ " + (Mt.lambda == null ? "—" : Mt.lambda) : "α " + (Mt.alpha == null ? "—" : Mt.alpha)}${
+           metS && metS.freshness ? ` <span class="pill ${(FRESH_WORD[metS.freshness] || [""])[0]}">${
+             (FRESH_WORD[metS.freshness] || ["", metS.freshness])[1]}</span>` : ""}</div>`;
+    const regCell = !hasP1 ? `<span class="muted">—</span>` : !sys
+      ? `<span class="muted">这一步没有区域模型</span>`
+      : `<div class="sb-main">${h(regLabel[sys] || sys)}</div>
+         <div class="sb-sub" title="剩余时段预报最高 − 已报最高">余量 ${F.regional_headroom_c == null ? "—" : sg(F.regional_headroom_c)}°C</div>
+         <div class="sb-sub" title="此刻实测 − 模型此刻；run 起报距今；这一站的偏差订正">差 ${
+           F.regional_live_gap_c == null ? "—" : sg(F.regional_live_gap_c)}°C${
+           reg && reg.run_age_hours != null ? " · run " + Number(reg.run_age_hours).toFixed(1) + "h" : ""}${
+           reg && reg.calibration_bias_c != null ? " · 订正 " + sg(reg.calibration_bias_c, 2) : ""}</div>`;
+    const settleCell = settled
+      ? `<div class="sb-main mono">${c1(settled.tmax_c)}</div>
+         <div class="sb-sub">${h(settled.bucket || "—")} ${hit == null ? "" : hit
+           ? `<span class="pill green">P1 中</span>` : within
+           ? `<span class="pill amber">差一格</span>` : `<span class="pill red">没中</span>`}</div>`
+      : `<span class="muted">${e.role === "ahead" ? "还没到这一天" : "未结算"}</span>`;
+    const detail = `<div class="sb-det-in">
+      ${sbDayChart(e) || `<div class="muted">这一天还不够画出路径（少于两步 P1）。</div>`}
+      <div class="scroll" style="max-height:none;margin-top:8px"><table class="by-tab"><thead><tr><th>桶</th><th>P0</th>
         ${hasP0m ? `<th>TAF 似然</th><th>P0-M</th><th>Δ点</th>` : ""}${hasP1 ? `<th>硬下界</th><th>${Mt.update === "DIRECT_LOG_UPDATE_V1" ? "e<sup>f</sup>" : "g<sup>α</sup>"}</th><th>P1</th><th>Δ点</th>` : ""}</tr></thead><tbody>${rows}</tbody></table></div>
-      ${hasP1 ? `<div style="margin:6px 0"><span class="muted">这一步读到的实况特征（灰色＝缺，按全队均值）：</span>${feats || "—"}${
-        Mt.regional_system_id && Mt.regional_system_id !== "NONE" ? ` <span class="by-feat">区域模型 <b>${h(Mt.regional_system_id)}</b></span>` : ""}</div>` : ""}
+      ${hasP1 ? `<div style="margin:8px 0"><span class="muted">这一步读到的实况特征（灰色＝缺，按全队均值）：</span>${feats || "—"}</div>` : ""}
+      ${skill ? `<div class="sb-sub">本站近 ${skill.station_days} 个已结算站日：14:00 众数命中 <b>${pc(skill.hit_14)}</b>（±1 桶 ${pc(skill.within1_14)}）· 16:00 ${pc(skill.hit_16)} · 提前锁定 ${pc(skill.predicted_share)} · 提前量中位 ${skill.median_lead_hours == null ? "—" : Number(skill.median_lead_hours).toFixed(1)} 小时</div>` : ""}
       ${e.rise_terms && e.rise_terms.terms ? `<details><summary><b>「再升」${pc(Mt.rise_probability)} 是怎么算出来的</b> <span class="muted">（剩余 ${Number(e.rise_terms.hours_left).toFixed(1)} 小时档截距 ${Number(e.rise_terms.intercept).toFixed(2)} + Σ 系数×特征 = η ${Number(e.rise_terms.eta).toFixed(2)}；${e.rise_terms.matches_receipt ? "与生产回执一致" : e.rise_terms_same_artifact ? "与回执不一致" : "拟合件已日更换代，按现任件复算"}）</span></summary>
         <table class="by-tab"><thead><tr><th>特征</th><th>当时的值</th><th>系数</th><th>对 η 的贡献</th></tr></thead><tbody>${e.rise_terms.terms.map(t => `<tr><td>${h(t.label)}${t.fallback ? ' <span class="muted">（缺，按队均值）</span>' : ""}</td><td class="mono">${Number(t.value).toFixed(2)}</td><td class="mono">${Number(t.coefficient).toFixed(3)}</td><td class="mono ${t.contribution > 0 ? "up" : "down"}">${(t.contribution > 0 ? "+" : "") + Number(t.contribution).toFixed(3)}</td></tr>`).join("")}</tbody></table></details>` : ""}
-      ${hasP1 ? `<details><summary><b>${dayWord}的逐步更新</b> <span class="muted">（每份报文一步：已报最高、再升、均值、众数，以及这一步相对上一步的信息增益）</span></summary>
-        <div class="scroll" style="max-height:360px"><table class="by-tab"><thead><tr><th>当地</th><th>已报最高</th><th>再升</th><th>α</th><th>均值</th><th>众数</th><th>本步增益</th><th>似然</th></tr></thead>
+      ${hasP1 ? `<details><summary><b>逐份报文的每一步</b> <span class="muted">（已报最高、此刻实测、区域模型剩余最高、再升、均值、众数，以及这一步相对上一步的信息增益；一个决策秒只留服务出去的那一步${
+        e.replayed_steps ? "，这一天另有 " + e.replayed_steps + " 条是同一秒对自己前缀的回放" : ""}）</span></summary>
+        <div class="scroll" style="max-height:360px"><table class="by-tab"><thead><tr><th>当地</th><th>已报最高</th><th>此刻实测</th><th>区域剩余最高</th><th>再升</th><th>均值</th><th>众数</th><th>本步增益</th><th>似然</th></tr></thead>
         <tbody>${steps}</tbody></table></div></details>` : ""}
-      ${met || taf ? `<details><summary><b>报文解析</b> <span class="muted">（${met ? "最新 METAR " + (met.reports || []).length + " 份 · " : ""}TAF ${((taf || {}).reports || []).length} 份，默认折叠）</span></summary>
-        ${met ? `<div class="muted" style="margin-top:4px">METAR · 最新观测 ${whenZ(met.latest_valid_at_utc)} · ${met.age_minutes == null ? "—" : Math.round(met.age_minutes) + " 分钟前"}</div>${reportList(met.reports, "METAR")}` : ""}
-        ${taf ? `<div class="muted" style="margin-top:6px">TAF · 最新签发 ${whenZ(taf.latest_issued_at_utc)} · ${taf.age_hours == null ? "—" : taf.age_hours.toFixed(1) + " 小时前"}${taf.capture_lag_minutes == null ? "" : " · 采集延迟 " + taf.capture_lag_minutes + " 分钟"}</div>${reportList(taf.reports, "TAF")}` : ""}
+      ${metR.length || tafR.length ? `<details><summary><b>报文解析</b> <span class="muted">（${metR.length ? "METAR " + metR.length + " 份 · " : ""}TAF ${tafR.length} 份，默认折叠）</span></summary>
+        ${metR.length ? `<div class="muted" style="margin-top:4px">METAR · 最新观测 ${whenZ(metS.latest_valid_at_utc)} · ${metS.age_minutes == null ? "—" : Math.round(metS.age_minutes) + " 分钟前"}</div>${reportList(metR, "METAR")}` : ""}
+        ${tafR.length ? `<div class="muted" style="margin-top:6px">TAF · 最新签发 ${whenZ(tafS.latest_issued_at_utc)} · ${tafS.age_hours == null ? "—" : tafS.age_hours.toFixed(1) + " 小时前"}${tafS.capture_lag_minutes == null ? "" : " · 采集延迟 " + tafS.capture_lag_minutes + " 分钟"}</div>${reportList(tafR, "TAF")}` : ""}
       </details>` : ""}
-    </details>`;
+    </div>`;
+    const moved = (from, to) => from && to && from.mode !== to.mode
+      ? ` <b>${h(from.mode)}→${h(to.mode)}</b>` : "";
+    return `<tbody class="sb-row" data-station="${h(e.station_id)}" data-date="${h(e.event_date)}"
+      data-role="${h(e.role)}" data-rank="${rank}">
+      <tr class="sb-head">
+        <td class="sb-key"><div class="sb-main mono">${h(e.station_id)}</div>
+          <div class="sb-sub">${h(e.event_date.slice(5))} · ${h(SB_ROLE_WORD[e.role] || e.role)}</div>
+          <div class="sb-sub">当地 ${h(e.local || "—")} · ${h(e.head_stage)}</div></td>
+        <td>${sbDistStrip(e)}</td>
+        <td>${shape(S.p0, SB_TONES.p0)}${radiation}</td>
+        <td>${tafCell}</td>
+        <td>${shape(S.p0m, SB_TONES.p0m)}${hasP0m ? `<div class="sb-sub"><span class="by-gain${
+          G.p0m_total != null && G.p0m_total >= 0.1 ? " hot" : ""}" title="观测下界 ${bits(G.p0m_fact)} bit + TAF ${
+          bits(G.taf)} bit">${bits(G.p0m_total)} bit</span>${moved(S.p0, S.p0m)}</div>` : ""}</td>
+        <td>${liveCell}</td>
+        <td>${regCell}</td>
+        <td>${shape(S.p1, SB_TONES.p1)}${hasP1 ? `<div class="sb-sub"><span class="by-gain${
+          G.p1_total != null && G.p1_total >= 0.1 ? " hot" : ""}" title="硬下界 ${bits(G.fact)} bit + 实况似然 ${
+          bits(G.likelihood)} bit">${bits(G.p1_total)} bit</span>${moved(S.p0m || S.p0, S.p1)}</div>` : ""}</td>
+        <td>${settleCell}</td>
+      </tr>
+      <tr class="sb-det" hidden><td colspan="9">${detail}</td></tr></tbody>`;
   };
+
   // A payload built before the roles existed held each station's newest P1
   // only -- today's -- so an unmarked card reads as today.
   const all = (B.stations || []).map(e => e.role ? e : {...e, role: "today", head_stage: e.head_stage || "P1"});
-  const byRole = role => all.filter(e => e.role === role);
-  const today = byRole("today"), ahead = byRole("ahead"), hist = byRole("history");
-  const count = (list, key) => { const c = {}; list.forEach(e => c[e[key]] = (c[e[key]] || 0) + 1); return c; };
-  const dates = (list, newestFirst) => { const c = count(list, "event_date"), keys = Object.keys(c).sort();
-    return (newestFirst ? keys.reverse() : keys).map(d => `${d.slice(5)} ${c[d]} 站`).join(" · "); };
-  const stages = list => { const c = count(list, "head_stage");
-    return ["P1", "P0-M", "P0"].filter(k => c[k]).map(k => `${k} ${c[k]}`).join(" · "); };
-  const missing = B.missing_ahead || [];
-  const histDates = Object.keys(count(hist, "event_date")).sort().reverse();
-  const group = (title, list, note) => `<h3 class="by-group">${title} <span class="muted">${dates(list) || "—"}${list.length ? " · 最新一步 " + stages(list) : ""}${note || ""}</span></h3>
-    <div class="stns">${list.map(card).join("") || `<div class="card muted">没有。</div>`}</div>`;
+  const dates = [...new Set(all.map(e => e.event_date))].sort().reverse();
+  const count = key => all.filter(e => e.role === key).length;
+  const todayP1 = all.filter(e => e.role === "today" && e.head_stage === "P1").length;
   const tafC = ((D.taf_board || {}).counts) || {}, metC = ((D.metar_board || {}).counts) || {};
-  return `<h2>站点贝叶斯更新：P0 → P0-M → P1，每一步读到了什么、改了多少</h2>
-  <p class="sub">每站每个事件日一张卡，按第 150 条的链路读：<b>先验 P0</b>（校准只在这里做一次）→ 乘 <b>TAF 似然</b> 得 P0-M → 乘 <b>硬下界</b>（已报最高以下清零）和一条 <b>METAR 联合似然 g<sup>α</sup></b> 得 P1。
-    表里逐桶给出每一步前后的概率和变化（Δ点＝百分点）；<b>信息增益</b>＝后验相对先验的 KL 散度，单位 bit——0 表示这一步没改变看法，1 bit 大约相当于把一半的可能性排除掉。
-    P1 的增益正好拆成「硬下界」和「实况似然」两份。卡片展开后可看这一步读到的实况特征和逐份报文带来的逐步变化；报文原文与逐段拆解折叠在最下面。
-    <b>分组按各站自己的当地日期</b>（本节生成于 ${whenZ(B.built_at_utc)}）：当天＝正在观测的这一天；提前一天＝明天，还没有 P1，卡片停在 P0-M（TAF 还没覆盖到时停在 P0）；
-    过了当地午夜，当天的卡自动下沉到最下面折叠的「历史」里（保留 ${B.history_days ?? 2} 天）。</p>
+  const missing = B.missing_ahead || [];
+  const chips = [["today", "当天 " + count("today")], ["ahead", "明天 " + count("ahead")],
+    ["history", "已结算 " + count("history")], ["all", "全部 " + all.length]]
+    .map(([k, w], i) => `<button type="button" data-sbt-day="${k}"${i === 0 ? ` data-active="1"` : ""}>${w}</button>`).join("")
+    + dates.map(d => `<button type="button" data-sbt-day="${h(d)}">${h(d.slice(5))}</button>`).join("");
+  return `<h2>站点 × 日期：一行一个站日，P0 → TAF → P0-M → 实况/区域 → P1 一条链读到底</h2>
+  <p class="sub">每个<b>站日</b>一行，从左到右就是第 150 条的链路：<b>先验 P0</b>（校准只在这里做一次）→ 乘 <b>TAF 似然</b> 得 P0-M
+    → 乘 <b>硬下界</b>（已报最高以下清零）和一条 <b>METAR 联合似然</b>（区域模型在这里只当协变量）得 P1 → 对上当天的<b>结算真值</b>。
+    「变化」列把三条分布画在同一根桶轴上（上→下 P0 / P0-M / P1，同一峰高，红框＝结算桶），不用读数就能看出这一天被改成了什么样。
+    <b>信息增益</b>＝后验相对先验的 KL 散度，单位 bit：0 表示这一步没改变看法，1 bit 大约相当于把一半的可能性排除掉。
+    点任意一行展开：先是这一天画在温度轴上的路径（温度计、区域模型说的剩余最高、P1 中心、P0/P0-M/TAF/真值的水平参考，下面一条众数带看它什么时候锁定），
+    然后是逐桶的算术、读到的实况特征、本站近三周的命中率、逐份报文的每一步，报文原文与逐段拆解折叠在最下面。
+    <b>日期按各站自己的当地日历</b>（本节生成于 ${whenZ(B.built_at_utc)}）：当天＝正在观测的这一天；明天还没有 P1，行停在 P0-M（TAF 还没覆盖到时停在 P0）；
+    过了当地午夜自动落到「已结算」（保留 ${B.history_days ?? 2} 天）。</p>
   <div class="card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-    <span>${today.filter(e => e.head_stage === "P1").length} 站有当天 P1</span> · <span>P1 相对根的信息增益中位 <b>${bits(B.median_p1_gain_bits)}</b> bit</span>
-    · <span>${ahead.length} 站有明天的先验</span>
+    <span>${todayP1} 站有当天 P1</span> · <span>P1 相对根的信息增益中位 <b>${bits(B.median_p1_gain_bits)}</b> bit</span>
+    · <span>${count("ahead")} 站有明天的先验${missing.length ? `<span class="muted">（还没有明天 P0：${h(missing.join("、"))}）</span>` : ""}</span>
     <span style="flex:1"></span><span class="muted">METAR</span><span class="pill green">新鲜 ${metC.fresh || 0}</span><span class="pill amber">偏晚 ${metC.late || 0}</span><span class="pill red">陈旧 ${metC.stale || 0}</span>
     <span class="muted">TAF</span><span class="pill green">新鲜 ${tafC.fresh || 0}</span><span class="pill amber">偏晚 ${tafC.late || 0}</span><span class="pill red">陈旧 ${tafC.stale || 0}</span></div>
-  ${group("当天：正在观测的这一天", today)}
-  ${group("提前一天：明天", ahead, missing.length ? ` · 还没有明天的 P0：${h(missing.join("、"))}` : "")}
-  <details class="by-hist"><summary><h3 class="by-group">历史：已结束的站日 <span class="muted">${hist.length ? dates(hist, true) : "—"} · 默认折叠，点开看</span></h3></summary>
-    ${histDates.map(d => { const list = hist.filter(e => e.event_date === d);
-      return `<div class="muted" style="margin:10px 0 2px"><b>${h(d)}</b> · ${list.length} 站</div><div class="stns">${list.map(card).join("")}</div>`; }).join("") || `<div class="card muted">没有。</div>`}
-  </details>`;
+  <div class="sb-wrap" data-sbt>
+    <div class="sb-ctl"><nav class="daytabs">${chips}</nav>
+      <input type="search" data-sbt-q placeholder="筛选站点，如 ZUUU" aria-label="筛选站点">
+      <label class="muted"><input type="checkbox" data-sbt-chain> 按站串联（同一站的几天排在一起）</label>
+      <span class="muted"><b data-sbt-count>0</b> 行</span>
+      <span class="sb-legend"><span><i style="background:${SB_TONES.p0}"></i>P0</span><span><i style="background:${SB_TONES.p0m}"></i>P0-M</span><span><i style="background:${SB_TONES.p1}"></i>P1</span></span></div>
+    <div class="scroll" style="max-height:none"><table class="sbt" data-grouped="1">
+      <thead>
+        <tr><th rowspan="2" class="sb-key">站 · 日期</th><th rowspan="2">变化<div class="sb-sub">P0 / P0-M / P1</div></th>
+          <th>① 先验</th><th colspan="2">② TAF 似然</th><th colspan="2">③ 实况 × 区域模型</th>
+          <th>④ 服务</th><th rowspan="2">结算</th></tr>
+        <tr><th>P0</th><th>TAF</th><th>P0-M<div class="sb-sub">增益</div></th><th>METAR</th><th>区域模型</th>
+          <th>P1<div class="sb-sub">增益</div></th></tr>
+      </thead>
+      ${all.map((e, i) => row(e, i)).join("")}
+    </table></div>
+  </div>`;
 }
 
 function p1JointBoard(){
@@ -20603,7 +20949,7 @@ function p1JointBoard(){
       <div class="scroll"><table><thead><tr><th>特征</th><th>代码名</th><th>系数</th></tr></thead><tbody>${coef(A.phase)}</tbody></table></div></div>
     <div><b>「升几格」系数</b> <span class="muted">（正＝升得更多）</span>
       <div class="scroll"><table><thead><tr><th>特征</th><th>代码名</th><th>系数</th></tr></thead><tbody>${coef(A.continuation)}</tbody></table></div></div></div>
-  <div class="muted" style="margin-top:8px">每站最新一步的逐桶拆解（先验 × g<sup>α</sup> → 服务）在上面的「站点贝叶斯更新」里。</div>`;
+  <div class="muted" style="margin-top:8px">每站最新一步的逐桶拆解（先验 × g<sup>α</sup> → 服务）在上面的「站点 × 日期」表里（点开一行）。</div>`;
 }
 
 function p0mTafBoard(){
@@ -20643,7 +20989,7 @@ function p0mTafBoard(){
       <div class="muted">逐日走查对「不调」${sg(WF.by_day_mean_gain_vs_lambda_one_nat, 4)} nat [${sg(WF.ci_low, 4)}, ${sg(WF.ci_high, 4)}] · ${WF.days ?? "—"} 天 · ${R.tafs ?? "—"} 份 TAF；走查点估计 >0 才服务</div>
       <table class="by-tab"><thead><tr><th>组</th><th>λ</th><th>站日</th><th>走查增益/站日</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   })()}
-  <div style="margin-top:8px"><span class="muted">过去 36 小时各站最新 P0-M：</span>${outcome || "—"} <span class="muted">· 每站的 TAF 读数与逐桶变化在「站点贝叶斯更新」里</span></div>`;
+  <div style="margin-top:8px"><span class="muted">过去 36 小时各站最新 P0-M：</span>${outcome || "—"} <span class="muted">· 每站的 TAF 读数与逐桶变化在上面的「站点 × 日期」表里</span></div>`;
 }
 
 function p1PathSkill(){
@@ -20789,15 +21135,13 @@ const GROUPS = [
       note:"共识桥 → 辐射降温项 → 中心/宽度两标量 → band 表，然后用样本外和真值检验服务出去的分布",
       sections:[[consensusBridgeSection,"共识桥"],[radiationSection,"辐射降温项"],[centerWidth,"中心/宽度"],
         [bandTable,"band 表"],[oosScores,"OOS 打分"],[centreLanding,"真值离均值多远"]]},
-     {box:"④ 站点贝叶斯更新：P0 → P0-M → P1", kind:"stage",
-      note:"按站看链路：先验 P0 → × TAF 似然 → P0-M → × 硬下界 × METAR 联合似然 → P1；逐桶概率变化、每一步的信息增益、读到的实况特征、今天逐份报文的变化；报文原文与拆解默认折叠",
-      sections:[[stationBayesBoard,"站点贝叶斯更新"]]},
-     {box:"⑤ 两条似然本身：TAF 似然 · METAR 联合似然", kind:"live",
-      note:"全队层面的拟合件：TAF 似然的服务闸与那条线；联合似然的 α 分档、留出日读数与否决、系数；再下面是服务出去的 P1 猜中最高温的命中率、趋势和提前量",
-      sections:[[p0mTafBoard,"P0-M TAF 似然"],[p1JointBoard,"P1 联合似然"],[p1PathSkill,"P1 温度路径命中率"]]},
-     {box:"⑥ 区域模型（P1 的输入）", kind:"stage",
-      note:"高分辨率单点预报：采集、逐站最新 run、偏差校准；第 150 条起只作 P1 联合似然的协变量（路径先验已退役）",
-      sections:[[regionalBoard,"区域模型"]]}]},
+     {box:"④ 站点 × 日期：P0 → TAF → P0-M → 实况/区域 → P1", kind:"stage",
+      note:"一行一个站日，从左到右就是链路本身：TAF、METAR、区域模型都按它服务的那一天落在这一行上；「变化」列把三条分布画在同一根桶轴上，点开一行看这一天画在温度轴上的路径、逐桶算术、逐份报文",
+      sections:[[stationBayesBoard,"站点 × 日期"]]},
+     {box:"⑤ 上面那张表背后的三条规则（全队层）", kind:"live",
+      note:"表里每一行读到的状态词和协变量，来自这三份全队拟合件：TAF 似然的服务闸与那条线、联合似然的 α 与留出日读数、区域模型的采集与逐站 run；最后一节是服务出去的 P1 猜中最高温的命中率与提前量",
+      sections:[[p0mTafBoard,"P0-M TAF 似然"],[p1JointBoard,"P1 联合似然"],
+        [regionalBoard,"区域模型"],[p1PathSkill,"P1 温度路径命中率"]]}]},
   // The edge area answers one question -- the model says p, the market says
   // m, how much of the gap should be believed (user ruling, 2026-09-17).
   // Its four sub-headings are containers now, coloured by kind.
@@ -20896,8 +21240,8 @@ const LANES = {
     role:"中心差 >1.5°C 时往中间补一块共识成分，2.0°C 补满 0.4"},
   "辐射降温项": {layer:"概率层 · 分布", status:"live",
     role:"按预报日照把整条分布往冷/暖推：晴朗度指数 Kt 的本站标准分 × 0.15 × σ（宪章 160）"},
-  "站点贝叶斯更新": {layer:"P0-M · P1 · 按站", status:"live",
-    role:"每站 P0 → P0-M → P1 逐桶变化与信息增益；实况特征、逐步时间线；报文解析折叠"},
+  "站点 × 日期": {layer:"P0-M · P1 · 按站日", status:"live",
+    role:"一行一个站日：P0 → TAF 似然 → P0-M → 硬下界 × METAR 联合似然（区域模型作协变量）→ P1 → 结算真值；三条分布画在一根桶轴上，点开看当天的温度路径与逐桶算术"},
   "P0-M TAF 似然": {layer:"P0-M · 唯一的更新", status:"live",
     role:"P0 × N(TX−c₀; a+b·(桶−c₀), τ)；服务闸未开时恒等，只标记 TAF 到达的决策时刻"},
 
@@ -21271,6 +21615,62 @@ document.querySelectorAll("[data-daytabs]").forEach(card => {
     }catch(e){}
   }
 });
+// 站点 × 日期: the date chips, the station filter, and opening a row.
+// One row per station-day is 180 rows, which is a list nobody scans, so the
+// board opens on today and the rest are one chip away.  Each row is its own
+// tbody -- the summary row and the detail row under it -- so reordering the
+// table by station keeps the two together, and the table opts out of the
+// column sorter (data-grouped) for the same reason.
+document.querySelectorAll("[data-sbt]").forEach(root => {
+  const table = root.querySelector("table.sbt");
+  if(!table) return;
+  const bodies = [...table.querySelectorAll("tbody.sb-row")];
+  const nav = root.querySelector(".daytabs");
+  const query = root.querySelector("[data-sbt-q]");
+  const chain = root.querySelector("[data-sbt-chain]");
+  let day = "today";
+  const apply = () => {
+    const text = ((query && query.value) || "").trim().toUpperCase();
+    let shown = 0;
+    bodies.forEach(b => {
+      const onDay = day === "all" || b.dataset.role === day || b.dataset.date === day;
+      const onText = !text || b.dataset.station.toUpperCase().indexOf(text) >= 0;
+      b.hidden = !(onDay && onText);
+      if(!b.hidden) shown++;
+    });
+    root.querySelectorAll("[data-sbt-count]").forEach(el => el.textContent = shown);
+  };
+  if(nav) nav.addEventListener("click", ev => {
+    const button = ev.target.closest("button[data-sbt-day]");
+    if(!button) return;
+    day = button.dataset.sbtDay;
+    nav.querySelectorAll("button[data-sbt-day]").forEach(
+      b => b.dataset.active = b === button ? "1" : "");
+    apply();
+  });
+  if(query) query.addEventListener("input", apply);
+  if(chain) chain.addEventListener("change", () => {
+    bodies.slice().sort((a, b) => chain.checked
+      ? (a.dataset.station.localeCompare(b.dataset.station)
+         || b.dataset.date.localeCompare(a.dataset.date))
+      : (Number(a.dataset.rank) - Number(b.dataset.rank))
+    ).forEach(b => table.appendChild(b));
+  });
+  table.addEventListener("click", ev => {
+    // A click inside the detail -- a fold, a link, the report tables -- is
+    // not a click on the row it belongs to.
+    if(ev.target.closest("tr.sb-det")) return;
+    const head = ev.target.closest("tr.sb-head");
+    if(!head) return;
+    const body = head.parentElement;
+    const open = body.dataset.open === "1";
+    body.dataset.open = open ? "" : "1";
+    const detail = body.querySelector("tr.sb-det");
+    if(detail) detail.hidden = open;
+  });
+  apply();
+});
+
 // A link to something behind an unchosen tab opens that tab first, so the
 // browser's own jump lands on it instead of on a hidden element.
 document.addEventListener("click", (ev) => {
