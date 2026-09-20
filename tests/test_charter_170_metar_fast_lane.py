@@ -223,6 +223,33 @@ class TestFastRoundIsolation:
             )
 
 
+class TestUpstreamBackoff:
+    """A round slower than its own interval must not close the gap to zero.
+
+    Measured 2026-09-20: AWC went from a 0.13s median request to 10-18s, and
+    the original wait -- ``max(0.5, interval - elapsed)`` -- would have gone
+    to its half-second floor and polled a struggling service with no gap.
+    """
+
+    @staticmethod
+    def _wait_for(interval: float, elapsed: float) -> float:
+        return max(interval * 0.5, interval - elapsed)
+
+    def test_healthy_upstream_keeps_the_asked_for_pace(self):
+        # 5s window, a 0.13s request: the next round is ~5s later.
+        assert self._wait_for(5.0, 0.13) == pytest.approx(4.87)
+
+    def test_an_overrunning_round_backs_off_to_half_the_interval(self):
+        # 15s window, a 22s request: half-speed, not back-to-back.
+        assert self._wait_for(15.0, 22.0) == pytest.approx(7.5)
+        assert self._wait_for(5.0, 18.0) == pytest.approx(2.5)
+
+    def test_the_floor_is_never_below_half_the_interval(self):
+        for interval in (5.0, 15.0, 60.0):
+            for elapsed in (0.0, interval, interval * 10):
+                assert self._wait_for(interval, elapsed) >= interval * 0.5
+
+
 class TestWakeSignal:
     def test_signal_is_raised_once_per_batch_of_new_rows(self):
         worker = daemon.AwcFastLaneWorker(Path(":memory:"), {})

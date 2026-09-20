@@ -1764,6 +1764,9 @@ def collect_observation_intake(conn: sqlite3.Connection) -> dict[str, Any]:
                 "last_error": str(lane.get("last_error") or ""),
                 "last_round_at": str(lane.get("last_round_at") or ""),
                 "round_duration_sec": lane.get("round_duration_sec"),
+                "upstream_slower_than_interval": bool(
+                    lane.get("upstream_slower_than_interval")
+                ),
                 "schedule_available": bool(schedule.get("available")),
                 "scheduled_station_count": schedule.get("scheduled_station_count"),
                 "hot_minute_count": len(hot_minutes),
@@ -15795,13 +15798,16 @@ function overviewLamps(){
       }, {});
       const tierText = Object.entries(tiers).map(([k, v]) => `${k} ${v} 站`).join(" · ");
       const lamp = FL.state !== "running" ? "red"
-        : (!FL.schedule_available || (FL.errors || 0) > 0) ? "amber" : "green";
+        : (!FL.schedule_available || (FL.errors || 0) > 0
+           || FL.upstream_slower_than_interval) ? "amber" : "green";
       push("upstream", lamp, "报文快车道",
         FL.state !== "running" ? (FL.state || "未启动")
           : `${FL.window === "us_hot" ? "US 窗口" : FL.window === "fleet_hot"
               ? "全队窗口" : "冷窗口"} ${FL.interval_sec == null ? "—" : FL.interval_sec + "s"}`,
         `${tierText || "档位未读到"}`
           + (FL.rounds == null ? "" : ` · 已跑 ${FL.rounds} 轮，入库 ${FL.new_observation_count || 0} 份`)
+          + (FL.upstream_slower_than_interval
+              ? ` · 上游比间隔还慢（单轮 ${FL.round_duration_sec}s），已退到半速` : "")
           + (FL.last_error ? ` · 最近报错 ${FL.last_error}` : ""),
         "第 170 条：METAR 抓取有自己的线程和自己的时钟，不再排主循环的班"
         + "（实测主循环一圈中位 58.6 秒，把 94 秒到手延迟里的约 29 秒花在等班上）。"

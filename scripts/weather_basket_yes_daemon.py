@@ -4966,6 +4966,12 @@ class AwcFastLaneWorker:
                     self.state["round_duration_sec"] = round(
                         time.monotonic() - started, 3
                     )
+                    # A round slower than its interval is an upstream
+                    # statement, not a lane fault; the lamp says so rather
+                    # than reading green on a lane that cannot keep its pace.
+                    self.state["upstream_slower_than_interval"] = (
+                        time.monotonic() - started
+                    ) > interval
                     if int(result.get("new_observation_count") or 0) > 0:
                         self.state["wake_pending"] = True
                         self.state["last_new_rows_at"] = utc_now()
@@ -4988,7 +4994,17 @@ class AwcFastLaneWorker:
                 # Back off on a run of failures so a dead upstream is not
                 # hammered at five-second intervals.
                 interval = min(120.0, interval * min(8, consecutive_errors + 1))
-            self.stop_event.wait(max(0.5, interval - (time.monotonic() - started)))
+            # Never less than half the interval, even when the round overran
+            # it.  A round that takes longer than its own interval means the
+            # upstream is slower than the pace we asked for -- AWC sat at 10
+            # to 18 seconds a request on 2026-09-20 against a median of 0.13
+            # -- and subtracting the overrun would leave the old floor of
+            # half a second, i.e. hammering a service that is already
+            # struggling with no gap at all.  Backing off to half the
+            # interval keeps the pace honest when upstream is healthy and
+            # halves it when it is not.
+            elapsed = time.monotonic() - started
+            self.stop_event.wait(max(interval * 0.5, interval - elapsed))
         self._publish(state="stopped")
 
 
