@@ -1971,7 +1971,34 @@ P1_LIKELIHOOD_FEATURE_WORDS = {
     "root_bias_recent_c": "近 3 小时实测 − P0 曲线（°C）",
     "regional_headroom_c": "区域模型：剩余时段最高 − 已报最高（°C）",
     "regional_live_gap_c": "区域模型：此刻实测 − 模型此刻（°C）",
+    # Charter 161's two root features: the update is fitted on the final P1,
+    # so what the root already believes about the rise is a covariate --
+    # that is how the fit learns not to count the overlap twice.
+    "root_rise_mass": "根压在「高于已报桶」上的质量",
+    "root_mean_minus_high_c": "根均值 − 已报最高（°C）",
 }
+
+
+# Charter 161's design matrix names, read into words.  The clock enters as
+# hat functions at the alpha knots, and the whole state block repeats inside
+# the last six hours and inside six to ten -- the reports' slopes differ at
+# the end of the day, which is what g**alpha(h) used to carry.
+def _p1_direct_term_word(name: str) -> tuple[str, str]:
+    """``x`` column -> (group, label)."""
+
+    text = str(name)
+    if text == "intercept":
+        return "clock", "截距"
+    if text.startswith("clock_hat_"):
+        return "clock", f"时钟 {text[len('clock_hat_'):]}"
+    for prefix, group, word in (
+        ("late_x_", "late", "剩余 <6h ×"),
+        ("mid_x_", "mid", "剩余 6–10h ×"),
+    ):
+        if text.startswith(prefix):
+            base = text[len(prefix):]
+            return group, f"{word} {P1_LIKELIHOOD_FEATURE_WORDS.get(base, base)}"
+    return "base", P1_LIKELIHOOD_FEATURE_WORDS.get(text, text)
 
 
 def _p1_likelihood_breakdown(
@@ -2070,6 +2097,71 @@ def _p1_likelihood_breakdown(
     return {"buckets": rows, "decomposition": decomposition}
 
 
+def _p1_direct_update_brief(raw_artifact: Mapping[str, Any]) -> dict[str, Any]:
+    """Charter 161's block, read: its gate, its walk-forward, its terms.
+
+    ``serving`` is ``p1_direct_update.serving_block`` -- the same call
+    ``materialize_p1`` makes -- so the page says "serving" exactly when
+    production would serve it, including when the block is malformed and
+    the contract refuses it.
+    """
+
+    block = raw_artifact.get("direct_update")
+    if not isinstance(block, Mapping) or not block:
+        return {"present": False}
+    try:
+        from bayes_basket_target import p1_direct_update as DU  # noqa: PLC0415
+        serving = DU.serving_block(raw_artifact) is not None
+        refused = ""
+    except Exception as exc:  # noqa: BLE001 - a refused block is a reading
+        serving, refused = False, type(exc).__name__
+    walk = block.get("walk_forward") or {}
+    alpha_by_day = walk.get("alpha_nat_by_day") or {}
+    direct_by_day = walk.get("direct_nat_by_day") or {}
+    lambda_by_day = walk.get("lambda_by_day") or {}
+    layout = list(block.get("x_layout") or [])
+    rise = list(block.get("theta_rise") or [])
+    slope = list(block.get("theta_slope") or [])
+    terms = []
+    for index, name in enumerate(layout):
+        group, label = _p1_direct_term_word(name)
+        terms.append({
+            "feature": str(name), "label": label, "group": group,
+            "theta_rise": rise[index] if index < len(rise) else None,
+            "theta_slope": slope[index] if index < len(slope) else None,
+        })
+    return {
+        "present": True,
+        "state": block.get("state"),
+        "serving": serving,
+        "refused": refused,
+        "rule": block.get("rule"),
+        "lambda": block.get("lambda"),
+        "rows": block.get("rows"),
+        "trained_from": block.get("trained_from"),
+        "trained_through": block.get("trained_through"),
+        "veto": str(block.get("veto") or ""),
+        "theta_slope_sq": block.get("theta_slope_sq"),
+        "theta_open_top": block.get("theta_open_top"),
+        "terms": terms,
+        "walk_forward": {
+            "days": walk.get("days"),
+            "margin": walk.get("margin"),
+            "training_cut": walk.get("training_cut"),
+            "gain_vs_alpha_nat": walk.get("gain_vs_alpha_nat"),
+            "gain_vs_alpha_ci": list(walk.get("gain_vs_alpha_ci") or []),
+            "gain_vs_root_nat": walk.get("gain_vs_root_nat"),
+            "by_day": [
+                {"event_date": day,
+                 "alpha_nat": alpha_by_day.get(day),
+                 "direct_nat": direct_by_day.get(day),
+                 "lambda": lambda_by_day.get(day)}
+                for day in sorted(set(alpha_by_day) | set(direct_by_day))
+            ],
+        },
+    }
+
+
 def collect_p1_joint_likelihood(conn: sqlite3.Connection) -> dict[str, Any]:
     """P1 as one update, stated outright (charter 150, 2026-09-19).
 
@@ -2139,13 +2231,20 @@ def collect_p1_joint_likelihood(conn: sqlite3.Connection) -> dict[str, Any]:
             },
             "phase": _coefficients(raw_artifact.get("phase")),
             "continuation": _coefficients(raw_artifact.get("continuation_full")),
+            # Charter 161 (2026-09-20): the update fitted directly on the
+            # final P1.  Whether it serves is asked of production's own gate
+            # rather than read off the state string -- a board that decides
+            # for itself what is serving is a board that can disagree with
+            # the thing it is describing.
+            "direct_update": _p1_direct_update_brief(raw_artifact),
         }
     except (OSError, ValueError, TypeError):
         artifact = {}
     out["artifact"] = artifact
     floor = (_now() - timedelta(hours=18)).strftime("%Y-%m-%dT%H:%M:%SZ")
     stations = []
-    outcome = Counter()
+    outcome: Counter = Counter()
+    served: Counter = Counter()
     for station, decided in conn.execute(
         "SELECT station_id, MAX(decision_at_utc) FROM basket_probability_envelope"
         " WHERE state='COMMITTED' AND stage='P1' AND decision_at_utc>=?"
@@ -2170,6 +2269,11 @@ def collect_p1_joint_likelihood(conn: sqlite3.Connection) -> dict[str, Any]:
             receipt = {}
         state = str(receipt.get("state") or "PRE_CHARTER_150")
         outcome[state] += 1
+        # Which of the two updates the envelope actually carries.  A charter
+        # 161 head and a charter 150 head both say APPLIED, so the state
+        # alone cannot tell the page which rule served.
+        update = str(receipt.get("update") or ("G_ALPHA" if receipt else "NONE"))
+        served[update] += 1
         try:
             local = datetime.fromisoformat(str(decided).replace("Z", "+00:00")).astimezone(
                 ZoneInfo(str(row[1] or "UTC"))
@@ -2184,13 +2288,16 @@ def collect_p1_joint_likelihood(conn: sqlite3.Connection) -> dict[str, Any]:
             "running_high_c": receipt.get("running_high_c"),
             "running_high_bucket": receipt.get("running_high_bucket"),
             "rise_probability": receipt.get("rise_probability"),
+            "rise_probability_basis": receipt.get("rise_probability_basis"),
             "alpha": receipt.get("alpha"),
+            "update": update, "lambda": receipt.get("lambda"),
             "fleet_mean_features": receipt.get("fleet_mean_features") or [],
             "regional_system_id": receipt.get("regional_system_id"),
         })
     stations.sort(key=lambda e: e["station_id"])
     out["stations"] = stations
     out["outcome"] = dict(outcome)
+    out["served_update"] = dict(served)
     return out
 
 
@@ -14966,7 +15073,7 @@ function publishTimes(){
   }
   const R = (D.regional || {}).lanes || [];
   if(R.length){
-    rows.push(grp("区域模型", "P1 的输入：联合似然的协变量（第 150 条）"));
+    rows.push(grp("区域模型", "P1 的输入：观测更新的协变量（第 150/161 条）"));
     R.forEach(l => rows.push(row(l.health, l.label, runLabel(l.last_run_init),
       (l.runs_recent || []).map(r => `${runLabel(r.run_utc)} 到货 ${utc(r.capture_utc)}（${r.stations} 站）`).join("\n"),
       l.latest_run_capture_utc, lagOf(l.last_run_init, l.latest_run_capture_utc),
@@ -20865,7 +20972,7 @@ function stationBayesBoard(){
     + dates.map(d => `<button type="button" data-sbt-day="${h(d)}">${h(d.slice(5))}</button>`).join("");
   return `<h2>站点 × 日期：一行一个站日，P0 → TAF → P0-M → 实况/区域 → P1 一条链读到底</h2>
   <p class="sub">每个<b>站日</b>一行，从左到右就是第 150 条的链路：<b>先验 P0</b>（校准只在这里做一次）→ 乘 <b>TAF 似然</b> 得 P0-M
-    → 乘 <b>硬下界</b>（已报最高以下清零）和一条 <b>METAR 联合似然</b>（区域模型在这里只当协变量）得 P1 → 对上当天的<b>结算真值</b>。
+    → 乘 <b>硬下界</b>（已报最高以下清零）和一次 <b>METAR 观测更新</b>（第 161 条的 e<sup>f</sup>，闸不开时回退到第 150 条的 g<sup>α</sup>；区域模型在这里只当协变量）得 P1 → 对上当天的<b>结算真值</b>。
     「变化」列把三条分布画在同一根桶轴上（上→下 P0 / P0-M / P1，同一峰高，红框＝结算桶），不用读数就能看出这一天被改成了什么样。
     <b>信息增益</b>＝后验相对先验的 KL 散度，单位 bit：0 表示这一步没改变看法，1 bit 大约相当于把一半的可能性排除掉。
     点任意一行展开：先是这一天画在温度轴上的路径（温度计、区域模型说的剩余最高、P1 中心、P0/P0-M/TAF/真值的水平参考，下面一条众数带看它什么时候锁定），
@@ -20896,11 +21003,34 @@ function stationBayesBoard(){
   </div>`;
 }
 
+// P1's one observation update.  Two rules have held this slot: charter 150's
+// g**alpha (2026-09-19) and charter 161's exp f fitted directly on the final
+// P1 (2026-09-20, user ruling 「上线b2」).  The section leads with whichever
+// one production is actually serving -- asked of ``p1_direct_update
+// .serving_block``, the same call ``materialize_p1`` makes -- and keeps the
+// other as what it now is: the fallback the stage drops to when the block's
+// own gate is not SERVE.  Until 2026-09-20 the section described g**alpha as
+// the rule with no mention of 161, which is the board telling a reader that a
+// retired arithmetic is live.
+const P1_UPDATE_WORD = {
+  DIRECT_LOG_UPDATE_V1: ["green", "宪章 161 直接更新 e<sup>f</sup>"],
+  G_ALPHA: ["amber", "宪章 150 g<sup>α</sup>（回退）"],
+  NONE: ["red", "没有回执"],
+};
+
 function p1JointBoard(){
   const F = D.p1_joint_likelihood || {};
-  if(!F.available) return `<h2>P1 联合似然</h2><div class="card muted">P1 联合似然读数这一轮没有生成。</div>`;
+  if(!F.available) return `<h2>P1 的观测更新</h2><div class="card muted">这一轮没有生成。</div>`;
   const A = F.artifact || {}, O = F.outcome || {}, HO = A.holdout || {};
+  // A payload built before charter 161 carries no block at all, which is a
+  // different thing from a payload whose artifact has none: the first is
+  // this section waiting for the next full render, the second is production
+  // having nothing to serve.  Saying the second when it is the first would
+  // report an outage that is not happening.
+  const stale = A.direct_update === undefined;
+  const U = A.direct_update || {}, WF = U.walk_forward || {};
   const n3 = v => v == null ? "—" : Number(v).toFixed(3);
+  const n4 = v => v == null ? "—" : Number(v).toFixed(4);
   const pc = v => v == null ? "—" : (100 * v).toFixed(1) + "%";
   const sg = (v, d = 2) => v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(Number(v)).toFixed(d);
   const ageTone = A.age_days == null ? "" : A.age_days > 3 ? "red" : A.age_days > 1.5 ? "amber" : "green";
@@ -20912,6 +21042,9 @@ function p1JointBoard(){
     PRE_CHARTER_150:["amber","旧版 P1（v11 及以前）"]};
   const outcome = Object.entries(O).map(([k, v]) => { const [t, w] = stateWord[k] || ["", k];
     return `<span class="pill ${t}">${w} ${v}</span>`; }).join(" ");
+  const served = Object.entries(F.served_update || {}).map(([k, v]) => {
+    const [t, w] = P1_UPDATE_WORD[k] || ["", k];
+    return `<span class="pill ${t}">${w} ${v} 站</span>`; }).join(" ");
   const alphas = A.alpha_by_bin || [], edges = A.alpha_edges_hours || [10, 6];
   const knotsH = A.alpha_knots_hours || [], knotsV = A.alpha_knot_values || [];
   const alphaCells = knotsH.length && knotsH.length === knotsV.length
@@ -20926,30 +21059,109 @@ function p1JointBoard(){
     <td class="mono">${(b.n || 0).toLocaleString()}</td><td class="mono">${b.alpha}</td>
     <td class="mono">${n3(b.root_nat)}</td><td class="mono"><b>${n3(b.candidate_nat)}</b></td>
     <td class="mono">${b.root_nat == null ? "—" : sg(b.candidate_nat - b.root_nat, 3)}</td></tr>`).join("");
-  return `<h2>P1 联合似然：先验 × 一条观测似然，一次更新</h2>
-  <p class="sub">第 150 条（2026-09-19）：<b>P1(桶) ∝ 根(桶) × 1[桶 ≥ 已报最高所在桶] × g(桶|此刻观测)<sup>α</sup></b>。
-    根是 P0-M（没有 TAF 时是 P0）——校准只在 P0 做一次；P1 不再有中心/宽度、band 表、时钟天花板、区域路径先验、四层链。
-    g 是一条联合观测似然：「从已报最高再跨进上一个桶」的概率（再升）乘「升几格」的分布，特征只来自观测一侧——时钟、最新报文的状态、P0 曲线的<b>形状</b>、
-    以及两个<b>新息</b>（实测对 P0 曲线的偏差、区域模型剩余预报最高与已报最高之差）。区域模型只在这里当协变量。
-    α 随剩余小时平滑变化（第 156 条起；此前分三档），在留出日上选、交叉验证打分，用来给「根和观测重叠的那部分信息」定价；每日重拟，留出日上不赢根就否决、现任不动。</p>
-  <div class="card" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-    <b>α</b> ${alphaCells} <span style="flex:1"></span><span class="muted">过去 18 小时各站最新一步 P1：</span>${outcome || "—"}</div>
-  <div class="grid g3" style="margin-top:10px">
-    <div class="card"><div class="muted">拟合件</div><div class="big mono">${h(A.sha || "—")}</div>
-      <div class="muted">拟合于 ${whenZ(A.fitted_at_utc)} · <span class="pill ${ageTone}">${A.age_days ?? "—"} 天前</span></div></div>
-    <div class="card"><div class="muted">训练窗</div><div class="big">${h(A.trained_from || "—")} → ${h(A.trained_through || "—")}</div>
-      <div class="muted">${(A.sample_n || 0).toLocaleString()} 个样本（其中升温 ${(A.riser_sample_n || 0).toLocaleString()}）· ${A.station_day_n ?? "—"} 站日</div></div>
-    <div class="card"><div class="muted">留出日（${h(HO.from || "—")} 起，${(HO.scored_rows || 0).toLocaleString()} 行）</div>
-      <div class="big mono">${n3(HO.root_nat)} → ${n3(HO.candidate_nat)}</div>
-      <div class="muted">只用硬下界的根 → 根 × g<sup>α</sup>（对数得分，越大越好）${HO.incumbent_scored ? " · 现任 " + n3(HO.incumbent_nat) : ""} · ${veto}</div></div></div>
-  <div style="margin-top:8px"><b>各档留出读数</b>
-    <div class="scroll"><table><thead><tr><th>剩余小时</th><th>行</th><th>α</th><th>根</th><th>根 × g<sup>α</sup></th><th>增益（nat）</th></tr></thead><tbody>${hoBins}</tbody></table></div></div>
+
+  // --- charter 161: the block, its gate, its walk-forward, its terms ---
+  const days = WF.by_day || [];
+  // Two half-width charts: a trendChart drawn across the whole section
+  // stretches its series labels off the right edge.
+  const wfChart = days.length > 1 ? trendChart({
+    title: "逐日走查：两条规则的对数得分", sub: "严格 as-of，只用更早的日子拟合；越大越好",
+    dates: days.map(d => d.event_date), fmt: v => Number(v).toFixed(3),
+    series: [{name: "161 e^f", values: days.map(d => d.direct_nat)},
+             {name: "150 g^α", values: days.map(d => d.alpha_nat)}]}) : "";
+  const gainChart = days.length > 1 ? trendChart({
+    title: "每天赢 g^α 多少", sub: "161 − 150，单位 nat；0 以上才算赢",
+    dates: days.map(d => d.event_date), fmt: v => (v > 0 ? "+" : "") + Number(v).toFixed(3),
+    ref: {y: 0, label: "0"},
+    series: [{name: "差额", values: days.map(d =>
+      d.direct_nat == null || d.alpha_nat == null ? null : d.direct_nat - d.alpha_nat)}]}) : "";
+  const ci = WF.gain_vs_alpha_ci || [];
+  const termRows = list => list.map(t => `<tr><td>${h(t.label)}</td>
+    <td class="mono ${t.theta_rise > 0 ? "up" : "down"}">${t.theta_rise == null ? "—" : (t.theta_rise > 0 ? "+" : "−") + Math.abs(t.theta_rise).toFixed(3)}</td>
+    <td class="mono ${t.theta_slope > 0 ? "up" : "down"}">${t.theta_slope == null ? "—" : (t.theta_slope > 0 ? "+" : "−") + Math.abs(t.theta_slope).toFixed(3)}</td></tr>`).join("");
+  const group = key => (U.terms || []).filter(t => t.group === key);
+  const termTable = (title, list, note) => !list.length ? "" : `<div><b>${title}</b>${
+    note ? ` <span class="muted">${note}</span>` : ""}
+    <div class="scroll" style="max-height:320px"><table><thead><tr><th>项</th><th>θ<sub>再升</sub></th><th>θ<sub>每格</sub></th></tr></thead>
+    <tbody>${termRows(list)}</tbody></table></div></div>`;
+  const gateTone = U.serving ? "green" : U.present ? "amber" : "red";
+  const gateWord = U.serving ? "服务中" : !U.present ? "拟合件里没有这一块"
+    : U.refused ? "合约拒绝（" + h(U.refused) + "）" : "未开（回退到 g^α）";
+  const directHead = stale
+    ? `<div class="card"><span class="pill amber">这一轮的读数还没带上第 161 条</span>
+       <div class="muted">本节的数据是上一次整库渲染留下的，早于第 161 条上线；下一次整库渲染后这里会填上。
+       每站实际服务的规则以上面的「站点 × 日期」表为准。</div></div>`
+    : !U.present
+    ? `<div class="card"><span class="pill red">拟合件里还没有第 161 条的块</span>
+       <div class="muted">P1 此刻走的是下面第 150 条的 g<sup>α</sup>。</div></div>`
+    : `<div class="grid g3">
+    <div class="card"><div class="muted">第 161 条的闸</div>
+      <div class="big"><span class="pill ${gateTone}">${gateWord}</span></div>
+      <div class="muted">逐日走查对「只用硬下界的根」要赢 ≥ ${n3(WF.margin)} nat，且对 g<sup>α</sup> 不能输超过这个数${
+        U.veto ? ` · <span class="pill red">未过：${h(U.veto)}</span>` : ""}</div></div>
+    <div class="card"><div class="muted">走查读数（${WF.days ?? "—"} 天，${h(WF.training_cut || "")}）</div>
+      <div class="big mono">${sg(WF.gain_vs_alpha_nat, 4)} nat</div>
+      <div class="muted">对 g<sup>α</sup>${ci.length === 2 ? ` [${sg(ci[0], 4)}, ${sg(ci[1], 4)}]` : ""} · 对根 <b>${sg(WF.gain_vs_root_nat, 3)}</b> nat</div></div>
+    <div class="card"><div class="muted">训练窗</div><div class="big">${h(U.trained_from || "—")} → ${h(U.trained_through || "—")}</div>
+      <div class="muted">${(U.rows || 0).toLocaleString()} 行（一行＝一个桶在一步上）· 岭系数 λ ${n3(U.lambda)}（把 f 往 0＝往根收）</div></div></div>`;
+  const directTerms = (stale || !U.present) ? "" : `
   <div class="grid g2" style="margin-top:10px">
-    <div><b>「再升」一级系数</b> <span class="muted">（对数几率，正＝更可能再升一个桶）</span>
-      <div class="scroll"><table><thead><tr><th>特征</th><th>代码名</th><th>系数</th></tr></thead><tbody>${coef(A.phase)}</tbody></table></div></div>
-    <div><b>「升几格」系数</b> <span class="muted">（正＝升得更多）</span>
-      <div class="scroll"><table><thead><tr><th>特征</th><th>代码名</th><th>系数</th></tr></thead><tbody>${coef(A.continuation)}</tbody></table></div></div></div>
-  <div class="muted" style="margin-top:8px">每站最新一步的逐桶拆解（先验 × g<sup>α</sup> → 服务）在上面的「站点 × 日期」表里（点开一行）。</div>`;
+    ${termTable("时钟与截距", group("clock"), "（剩余小时的折线基点，与 α 同一批节点）")}
+    ${termTable("观测与根的特征", group("base"), "（都已按训练集标准化）")}</div>
+  <details class="note" style="margin-top:8px"><summary>同一批特征在一天末尾的另一套系数（${group("late").length + group("mid").length} 项）
+    <span class="muted">——报文的斜率在收盘前不一样，这是 g<sup>α</sup> 里由 α(h) 扛的那部分</span></summary>
+    <div class="grid g2" style="margin-top:8px">
+      ${termTable("剩余 &lt;6 小时", group("late"))}
+      ${termTable("剩余 6–10 小时", group("mid"))}</div></details>
+  <div class="card" style="margin-top:8px"><span class="muted">另外两项不乘特征：</span>
+    每多升一格的二次项 θ <b class="mono">${n3(U.theta_slope_sq)}</b> ·
+    升到开口顶桶 θ <b class="mono">${n3(U.theta_open_top)}</b></div>`;
+
+  return `<h2>P1 的观测更新：根 × 硬下界 × 一次乘法（第 161 条在服务，第 150 条是回退）</h2>
+  <p class="sub"><b>第 161 条（2026-09-20，用户裁决「上线b2」）</b>：<b>P1(桶) ∝ 根(桶) × 1[桶 ≥ 已报最高所在桶] × e<sup>f(桶)</sup></b>，
+    f 本身就是被学的东西——报文相对根给每个桶加多少对数概率，直接在<b>最终 P1</b> 的对数得分上拟合（带一个把 f 往 0、也就是往根收的岭）。
+    桶按 g 的那套读法描述：<b>再升</b>＝1[比已报最高的桶更高]，<b>每格</b>＝再高几格，另有开口顶一项；根自己对「还会不会升」的看法作为特征进去，
+    所以重叠的那部分不会被算两遍。第 150 条的 g<sup>α</sup> 把根乘上一个<b>预测分布</b>而不是似然，等于把训练基频再数一遍，一个逐小时的 α 拿不回来：
+    09-19 复核实测服务出去的 P1 过度自信（校准斜率 0.86，声称 0.57 兑现 0.50、0.80 兑现 0.72）。
+    <b>根</b>是 P0-M（没有 TAF 时是 P0）——校准只在 P0 做一次；P1 没有中心/宽度、band 表、时钟天花板、区域路径先验、四层链。区域模型只在这里当协变量。</p>
+  <div class="card" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+    <b>过去 18 小时各站最新一步实际服务的规则：</b>${served || `<span class="muted">这一轮的读数还没带上（等下一次整库渲染）</span>`}
+    <span style="flex:1"></span><span class="muted">回执状态：</span>${outcome || "—"}</div>
+  <div class="grid g3" style="margin-top:10px">
+    <div class="card"><div class="muted">拟合件（两条规则同一个文件）</div><div class="big mono">${h(A.sha || "—")}</div>
+      <div class="muted">拟合于 ${whenZ(A.fitted_at_utc)} · <span class="pill ${ageTone}">${A.age_days ?? "—"} 天前</span></div></div>
+    <div class="card"><div class="muted">g<sup>α</sup> 的训练窗（回退那一版）</div><div class="big">${h(A.trained_from || "—")} → ${h(A.trained_through || "—")}</div>
+      <div class="muted">${(A.sample_n || 0).toLocaleString()} 个样本（其中升温 ${(A.riser_sample_n || 0).toLocaleString()}）· ${A.station_day_n ?? "—"} 站日</div></div>
+    <div class="card"><div class="muted">每日重拟</div><div class="big">${
+      stale ? "—" : U.serving ? "161 在服务" : "150 在服务"}</div>
+      <div class="muted">两块都逐日重拟；各自在自己的走查上不赢就不服务，现任不动</div></div></div>
+  <h3 style="margin:16px 0 4px">第 161 条：直接更新 e<sup>f</sup></h3>
+  ${directHead}
+  ${wfChart ? `<div class="grid g2" style="margin-top:10px">${wfChart}${gainChart}</div>` : ""}
+  ${directTerms}
+  <details class="note" style="margin-top:14px"${U.serving || stale ? "" : " open"}><summary><b>第 150 条：g<sup>α</sup></b>
+    <span class="muted">——${stale ? "第 161 条的闸这一轮读不到" : U.serving
+      ? "现在只是回退：第 161 条的闸不开时 P1 才走这一条" : "现在在服务"}。下面是它的 α、留出日读数与系数</span></summary>
+    <p class="sub" style="margin-top:6px"><b>P1(桶) ∝ 根(桶) × 1[桶 ≥ 已报最高所在桶] × g(桶|此刻观测)<sup>α</sup></b>。
+      g 是一条联合观测似然：「从已报最高再跨进上一个桶」的概率（再升）乘「升几格」的分布，特征只来自观测一侧——时钟、最新报文的状态、P0 曲线的<b>形状</b>、
+      以及两个<b>新息</b>（实测对 P0 曲线的偏差、区域模型剩余预报最高与已报最高之差）。
+      α 随剩余小时平滑变化（第 156 条起；此前分三档），在留出日上选、交叉验证打分，用来给「根和观测重叠的那部分信息」定价。</p>
+    <div class="card" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><b>α</b> ${alphaCells}</div>
+    <div class="card" style="margin-top:8px"><div class="muted">留出日（${h(HO.from || "—")} 起，${(HO.scored_rows || 0).toLocaleString()} 行）</div>
+      <div class="big mono">${n3(HO.root_nat)} → ${n3(HO.candidate_nat)}</div>
+      <div class="muted">只用硬下界的根 → 根 × g<sup>α</sup>（对数得分，越大越好）${HO.incumbent_scored ? " · 现任 " + n3(HO.incumbent_nat) : ""} · ${veto}</div></div>
+    <div style="margin-top:8px"><b>各档留出读数</b>
+      <div class="scroll"><table><thead><tr><th>剩余小时</th><th>行</th><th>α</th><th>根</th><th>根 × g<sup>α</sup></th><th>增益（nat）</th></tr></thead><tbody>${hoBins}</tbody></table></div></div>
+    <div class="grid g2" style="margin-top:10px">
+      <div><b>「再升」一级系数</b> <span class="muted">（对数几率，正＝更可能再升一个桶）</span>
+        <div class="scroll"><table><thead><tr><th>特征</th><th>代码名</th><th>系数</th></tr></thead><tbody>${coef(A.phase)}</tbody></table></div></div>
+      <div><b>「升几格」系数</b> <span class="muted">（正＝升得更多）</span>
+        <div class="scroll"><table><thead><tr><th>特征</th><th>代码名</th><th>系数</th></tr></thead><tbody>${coef(A.continuation)}</tbody></table></div></div></div>
+  </details>
+  <div class="muted" style="margin-top:8px">每站最新一步的逐桶拆解（根 × 硬下界 × ${
+    stale || U.serving ? "e<sup>f</sup>" : "g<sup>α</sup>"} → 服务）在上面的「站点 × 日期」表里（点开一行）。
+    看板上那个「再升 %」在第 161 条下是<b>从后验反推</b>的（回执 <span class="mono">rise_probability_basis: posterior_before_floor</span>），
+    不是第 150 条那个再升模型算出来的。</div>`;
 }
 
 function p0mTafBoard(){
@@ -21066,17 +21278,17 @@ function regionalBoard(){
   const C = R.calibration || {};
   return `<h2>区域模型：采集、够不够格、用没用上、权重多少</h2>
   <p class="sub">区域模型（JMA MSM、HRRR、NBM、ICON-EU、CMA GRAPES）是单点、高分辨率的<b>确定性</b>预报（单条曲线，不是成员分布）。
-    <b>它们不进 P0 的融合</b>（第 99 条起归 P1）。第 150 条（2026-09-19）起在 P1 里<b>只作联合似然的协变量</b>：
+    <b>它们不进 P0 的融合</b>（第 99 条起归 P1）。第 150 条（2026-09-19）起在 P1 里<b>只作那一次观测更新的协变量</b>（第 161 条换成 e<sup>f</sup> 之后照旧）：
     「剩余时段预报最高 − 已报最高」和「此刻实测 − 模型此刻」，所有采到的区域模型都能进，只读起报不超过 ${maxAge} 小时的 run；
     曾经直接给分布塑形的「区域路径先验」<b>已退役，代码已删除</b>。</p>
   <div class="card" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
     <b>开关</b> 区域路径先验 <span class="pill">已退役（第 150 条）</span>
     · 特征校准 ${onoff(A.feature_calibration)}
-    <span style="flex:1"></span><span class="muted">过去 18 小时 ${U.p1_stations || 0} 站的 P1：联合似然回执 ${
+    <span style="flex:1"></span><span class="muted">过去 18 小时 ${U.p1_stations || 0} 站的 P1：观测更新回执 ${
       Object.entries(U.p1_path_prior_states || {}).map(([k, v]) => h(k) + " " + v).join(" · ")}</span></div>
   <div class="scroll" style="margin-top:10px"><table><thead><tr><th>区域模型</th><th>区域</th><th>站（有数/名册）</th><th>行数</th>
     <th>最近采集</th><th>最新 run 距今</th><th>P0 融合</th><th>P1 协变量在用</th></tr></thead><tbody>${lanes}</tbody></table></div>
-  <div style="margin-top:8px"><span class="muted">P1 联合似然的区域协变量来源：</span>${feats || "—"}</div>
+  <div style="margin-top:8px"><span class="muted">P1 观测更新的区域协变量来源：</span>${feats || "—"}</div>
   <div style="margin-top:6px"><span class="muted">偏差校准（全球形式，每日重拟，特征校准开关关着）：</span>训练截至 ${h(C.trained_through || "—")}</div>
   <details class="note" open><summary>逐站：最新 run、能不能用、偏差校准</summary>
     <div class="scroll" style="max-height:420px"><table><thead><tr><th>区域模型</th><th>站</th><th>最新 run 起报</th>
@@ -21139,8 +21351,8 @@ const GROUPS = [
       note:"一行一个站日，从左到右就是链路本身：TAF、METAR、区域模型都按它服务的那一天落在这一行上；「变化」列把三条分布画在同一根桶轴上，点开一行看这一天画在温度轴上的路径、逐桶算术、逐份报文",
       sections:[[stationBayesBoard,"站点 × 日期"]]},
      {box:"⑤ 上面那张表背后的三条规则（全队层）", kind:"live",
-      note:"表里每一行读到的状态词和协变量，来自这三份全队拟合件：TAF 似然的服务闸与那条线、联合似然的 α 与留出日读数、区域模型的采集与逐站 run；最后一节是服务出去的 P1 猜中最高温的命中率与提前量",
-      sections:[[p0mTafBoard,"P0-M TAF 似然"],[p1JointBoard,"P1 联合似然"],
+      note:"表里每一行读到的状态词和协变量，来自这三份全队拟合件：TAF 似然的服务闸与那条线、P1 观测更新（第 161 条 e^f 在服务、第 150 条 g^α 退为回退）的闸与走查、区域模型的采集与逐站 run；最后一节是服务出去的 P1 猜中最高温的命中率与提前量",
+      sections:[[p0mTafBoard,"P0-M TAF 似然"],[p1JointBoard,"P1 观测更新"],
         [regionalBoard,"区域模型"],[p1PathSkill,"P1 温度路径命中率"]]}]},
   // The edge area answers one question -- the model says p, the market says
   // m, how much of the gap should be believed (user ruling, 2026-09-17).
@@ -21241,16 +21453,16 @@ const LANES = {
   "辐射降温项": {layer:"概率层 · 分布", status:"live",
     role:"按预报日照把整条分布往冷/暖推：晴朗度指数 Kt 的本站标准分 × 0.15 × σ（宪章 160）"},
   "站点 × 日期": {layer:"P0-M · P1 · 按站日", status:"live",
-    role:"一行一个站日：P0 → TAF 似然 → P0-M → 硬下界 × METAR 联合似然（区域模型作协变量）→ P1 → 结算真值；三条分布画在一根桶轴上，点开看当天的温度路径与逐桶算术"},
+    role:"一行一个站日：P0 → TAF 似然 → P0-M → 硬下界 × METAR 观测更新（第 161 条 e^f；区域模型作协变量）→ P1 → 结算真值；三条分布画在一根桶轴上，点开看当天的温度路径与逐桶算术"},
   "P0-M TAF 似然": {layer:"P0-M · 唯一的更新", status:"live",
     role:"P0 × N(TX−c₀; a+b·(桶−c₀), τ)；服务闸未开时恒等，只标记 TAF 到达的决策时刻"},
 
   "P1 温度路径命中率": {layer:"P1 · 读数", status:"audit",
     role:"各时刻众数桶命中结算桶的比例、按事件日的趋势、锁定正确桶比温度计到达早多少"},
-  "P1 联合似然": {layer:"P1 · 唯一的更新", status:"live",
-    role:"根 × 硬下界 × g^α：再升的概率 × 升几格，一次乘进根；没有中心/宽度、band、天花板、路径先验"},
+  "P1 观测更新": {layer:"P1 · 唯一的更新", status:"live",
+    role:"根 × 硬下界 × e^f（第 161 条，直接在最终 P1 上拟合）；第 150 条的 g^α 退为回退。没有中心/宽度、band、天花板、路径先验、四层链"},
   "区域模型": {layer:"P1 · 区域模型", status:"live",
-    role:"不进 P0 融合；P1 里只作联合似然的协变量（剩余预报最高 − 已报最高、此刻误差）"},
+    role:"不进 P0 融合；P1 里只作那一次观测更新的协变量（剩余预报最高 − 已报最高、此刻误差）"},
   "偏差订正与权重": {layer:"概率层", status:"live",
     role:"每站每提前量订正多少、四个模型各占多少 → 中心从这里来"},
   "四大模型权重": {layer:"概率层", status:"live",

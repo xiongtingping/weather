@@ -74,12 +74,14 @@ def test_every_likelihood_feature_has_a_reader_facing_name() -> None:
     )
 
 
-def test_the_joint_likelihood_has_its_own_container() -> None:
+def test_the_observation_update_has_its_own_container() -> None:
     """Charter 150: the four-layer container became the joint likelihood's,
-    and P0-M's TAF likelihood got a board of its own."""
+    and P0-M's TAF likelihood got a board of its own.  Charter 161
+    (2026-09-20) replaced g**alpha with the update fitted on the final P1,
+    so the section is named for the slot rather than for one of its rules."""
 
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
-    assert '[p1JointBoard,"P1 联合似然"]' in source
+    assert '[p1JointBoard,"P1 观测更新"]' in source
     assert '[p1PathSkill,"P1 温度路径命中率"]' in source
     assert '[p0mTafBoard,"P0-M TAF 似然"]' in source
     assert '"p1_joint_likelihood": p1_joint_likelihood,' in source
@@ -169,3 +171,136 @@ def test_a_served_step_is_taken_apart_prior_times_g_and_checked() -> None:
     assert by_bucket["32"]["g_alpha"] == pytest.approx(0.15 ** 0.5)
     assert by_bucket["31"]["at_or_below_high"] is True
     assert by_bucket["32"]["at_or_below_high"] is False
+
+def _direct_update_block(state: str = "SERVE") -> dict:
+    """A well-formed charter 161 block, laid out by production's own x_layout
+    so the fixture cannot drift from the thing it stands in for."""
+
+    from bayes_basket_target import p1_direct_update as DU
+
+    width = len(DU.x_layout())
+    return {
+        "schema": DU.SCHEMA, "rule": DU.RULE, "state": state, "veto": "",
+        "lambda": 0.5, "rows": 100,
+        "x_layout": DU.x_layout(),
+        "theta_rise": [0.1] * width, "theta_slope": [-0.2] * width,
+        "theta_slope_sq": -0.05, "theta_open_top": -0.4,
+        "mean": [0.0] * len(DU.STATE_COLUMNS),
+        "scale": [1.0] * len(DU.STATE_COLUMNS),
+        "fallbacks": {},
+        "trained_from": "2026-08-06", "trained_through": "2026-09-19",
+        "walk_forward": {
+            "days": 2, "margin": 0.01, "training_cut": "strict_as_of_truth_commit_v1",
+            "gain_vs_alpha_nat": 0.0127, "gain_vs_alpha_ci": [0.0009, 0.0232],
+            "gain_vs_root_nat": 0.337,
+            "direct_nat_by_day": {"2026-09-18": -0.80, "2026-09-19": -0.77},
+            "alpha_nat_by_day": {"2026-09-18": -0.81, "2026-09-19": -0.79},
+            "lambda_by_day": {"2026-09-18": 0.3, "2026-09-19": 0.3},
+        },
+    }
+
+
+def test_the_board_asks_production_whether_charter_161_serves() -> None:
+    """The page must not have its own opinion about which rule is live.
+
+    Charter 161's block and charter 150's g**alpha ride in one artifact and
+    a head under either says APPLIED, so a board that read the state string
+    itself could say "161 serving" about a block production refuses.  The
+    brief calls ``p1_direct_update.serving_block`` -- the same call
+    ``materialize_p1`` makes.
+    """
+
+    serving = C._p1_direct_update_brief({"direct_update": _direct_update_block()})
+    assert serving["present"] is True and serving["serving"] is True
+    assert serving["walk_forward"]["gain_vs_alpha_nat"] == 0.0127
+    assert [row["event_date"] for row in serving["walk_forward"]["by_day"]] == [
+        "2026-09-18", "2026-09-19"
+    ]
+
+    off = C._p1_direct_update_brief({"direct_update": _direct_update_block("IDENTITY")})
+    assert off["serving"] is False, "a gate that is not SERVE is not serving"
+
+    # A block that claims SERVE but cannot be served: production raises, so
+    # the page says refused rather than repeating the claim.
+    broken = _direct_update_block()
+    broken["theta_rise"] = broken["theta_rise"][:-1]
+    refused = C._p1_direct_update_brief({"direct_update": broken})
+    assert refused["serving"] is False and refused["refused"], refused
+    assert refused["state"] == "SERVE", "and still reports what the block claims"
+
+    assert C._p1_direct_update_brief({})["present"] is False
+
+
+def test_every_charter_161_term_has_a_reader_facing_name() -> None:
+    from bayes_basket_target import p1_direct_update as DU
+
+    brief = C._p1_direct_update_brief({"direct_update": _direct_update_block()})
+    terms = brief["terms"]
+    assert len(terms) == len(DU.x_layout())
+    assert {row["group"] for row in terms} == {"clock", "base", "late", "mid"}
+    by_name = {row["feature"]: row["label"] for row in terms}
+    assert by_name["intercept"] == "截距"
+    assert by_name["clock_hat_6h"] == "时钟 6h"
+    # A state column and its two end-of-day repeats read as the same feature.
+    word = C.P1_LIKELIHOOD_FEATURE_WORDS["drawdown_from_high_c"]
+    assert by_name["drawdown_from_high_c"] == word
+    assert by_name["late_x_drawdown_from_high_c"] == f"剩余 <6h × {word}"
+    assert by_name["mid_x_drawdown_from_high_c"] == f"剩余 6–10h × {word}"
+    # No column falls through to its code name.
+    assert not [
+        row for row in terms if row["label"] == row["feature"]
+    ], "a term with no word is a term nobody can read"
+
+
+def test_the_section_leads_with_what_is_serving_and_keeps_g_alpha_as_fallback() -> None:
+    """User, 2026-09-20: 「P1 联合似然」补 161.
+
+    Until then the section described g**alpha as the rule with no mention of
+    charter 161, which is the board telling a reader that a retired
+    arithmetic is live.
+    """
+
+    source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    start = source.index("function p1JointBoard(){")
+    body = source[start:source.index("function p0mTafBoard(){", start)]
+    assert "A.direct_update" in body, "the section reads charter 161's block"
+    assert "F.served_update" in body, "and which rule each station actually served"
+    lead = body.index("第 161 条：直接更新")
+    fallback = body.index("<b>第 150 条：g<sup>α</sup></b>")
+    assert lead < fallback, "161 leads, 150 is the fallback under it"
+    # g**alpha's own readings are kept, folded, not deleted.
+    assert body.index("各档留出读数") > fallback
+    assert '<details class="note" style="margin-top:14px"' in body[fallback - 200:fallback]
+
+
+def test_the_receipt_says_which_update_served(tmp_path, monkeypatch) -> None:
+    """A charter 161 head and a charter 150 head both say APPLIED; only the
+    receipt's ``update`` tells them apart, so the board counts that."""
+
+    conn = sqlite3.connect(tmp_path / "env.db")
+    conn.execute(
+        "CREATE TABLE basket_probability_envelope (checkpoint_id TEXT, stage TEXT,"
+        " station_id TEXT, event_date TEXT, settlement_timezone TEXT,"
+        " decision_at_utc TEXT, probabilities_json TEXT, bucket_ordinals_json TEXT,"
+        " lineage_json TEXT, posterior_version TEXT, state TEXT)"
+    )
+    for station, receipt in (
+        ("ZUUU", {"state": "APPLIED", "update": "DIRECT_LOG_UPDATE_V1", "lambda": 1.0}),
+        ("ZSPD", {"state": "APPLIED", "alpha": 0.5}),
+    ):
+        conn.execute(
+            "INSERT INTO basket_probability_envelope VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            ("c-" + station, "P1", station, "2026-09-20", "Asia/Shanghai",
+             "2026-09-20T02:00:00Z", json.dumps({"20": 1.0}), json.dumps({"20": 0}),
+             json.dumps({"p1_observation_likelihood_json": json.dumps(receipt)}),
+             "p1_joint_likelihood_v17", "COMMITTED"),
+        )
+    conn.commit()
+    monkeypatch.setattr(C, "_now", lambda: C.datetime(2026, 9, 20, 3, 0, tzinfo=C.timezone.utc))
+    out = C.collect_p1_joint_likelihood(conn)
+    assert out["outcome"] == {"APPLIED": 2}, "both heads say APPLIED"
+    assert out["served_update"] == {"DIRECT_LOG_UPDATE_V1": 1, "G_ALPHA": 1}
+    by_station = {row["station_id"]: row for row in out["stations"]}
+    assert by_station["ZUUU"]["update"] == "DIRECT_LOG_UPDATE_V1"
+    assert by_station["ZSPD"]["update"] == "G_ALPHA"
+
