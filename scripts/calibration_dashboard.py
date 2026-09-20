@@ -10611,6 +10611,66 @@ def collect_live_days(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+
+def _tiebreak_registered_hypotheses(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Charter 164's shadow readings: what each registered hypothesis says
+    over the whole replay, and over the event days since it was registered.
+
+    The forward window is the one that decides.  A hypothesis measured on
+    the sample that suggested it is not evidence -- with 122 candidate cells
+    a shuffled label finds a both-halves-confirmed cell every single time,
+    and the weaker side of that random cell reaches +24.0% ROI -- so the
+    board prints the registration reading as context and the forward reading
+    as the answer.
+    """
+
+    out: dict[str, Any] = {"available": False, "rows": [], "as_of_date": None}
+    try:
+        from bayes_basket_target.tiebreak_cell_shadow import (  # noqa: PLC0415
+            HYPOTHESIS_TABLE, REPLAY_TABLE, SHADOW_SCHEMA, attach_shadow,
+        )
+    except Exception:  # noqa: BLE001
+        return out
+    if not attach_shadow(conn):
+        return out
+    try:
+        as_of = conn.execute(
+            f"SELECT MAX(as_of_date) FROM {SHADOW_SCHEMA}.{HYPOTHESIS_TABLE}"
+        ).fetchone()[0]
+        if not as_of:
+            return out
+        rows = conn.execute(
+            "SELECT hypothesis_id,title,prediction,at_registration,registered_at_utc,"
+            " reading_window,n_treatment,n_control,event_days,roi_treatment,roi_control,"
+            " contrast,ci_lo,ci_hi,p_at_or_below_zero,p_permutation"
+            f" FROM {SHADOW_SCHEMA}.{HYPOTHESIS_TABLE} WHERE as_of_date=?"
+            " ORDER BY hypothesis_id, reading_window DESC",
+            (str(as_of),),
+        ).fetchall()
+        replay = conn.execute(
+            f"SELECT COUNT(*), COUNT(DISTINCT station_id||event_date),"
+            f" COUNT(DISTINCT event_date), MAX(refreshed_at_utc)"
+            f" FROM {SHADOW_SCHEMA}.{REPLAY_TABLE}"
+        ).fetchone()
+    except sqlite3.Error:
+        return out
+    out.update({
+        "available": True, "as_of_date": str(as_of),
+        "replayed": int(replay[0] or 0), "station_days": int(replay[1] or 0),
+        "event_days": int(replay[2] or 0), "refreshed_at_utc": replay[3],
+        "rows": [
+            {"hypothesis_id": r[0], "title": r[1], "prediction": r[2],
+             "at_registration": r[3], "registered_at_utc": r[4],
+             "reading_window": r[5], "n_treatment": r[6], "n_control": r[7],
+             "event_days": r[8], "roi_treatment": r[9], "roi_control": r[10],
+             "contrast": r[11], "ci_lo": r[12], "ci_hi": r[13],
+             "p_at_or_below_zero": r[14], "p_permutation": r[15]}
+            for r in rows
+        ],
+    })
+    return out
+
+
 def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     """「秤砣线」-- the tiebreak lane's own statistics (charter 146).
 
@@ -10984,6 +11044,11 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     out["by_rule_version"] = by_version
     out["feature_split"] = feature_split
     out["feature_split_by_stage"] = feature_split_by_stage
+    # Charter 164: the registered hypotheses, read off the replay's own file.
+    # Nine trades decide nothing and never will; the replay is 388
+    # station-days over 37 event days and grows daily.  Absent file, absent
+    # section -- the daily job builds it.
+    out["registered_hypotheses"] = _tiebreak_registered_hypotheses(conn)
     out["trades"] = {
         "available": True,
         "sent": len(trades), "filled": len(filled_rows),
@@ -19714,7 +19779,27 @@ function tiebreakLane(){
     <td class="mono">${r.refusal?h(r.refusal):"<span class='pill green'>已发单</span>"}</td><td class="mono">${h((r.evaluated_at_utc||"").slice(5,16).replace("T"," "))}</td></tr>`).join("");
   const firedTable=E.available?`<details style="margin-top:8px"><summary>触发过的首决策（${(E.fired_rows||[]).length} 条，含被闸挡下的）</summary>
     ${firedRows?`<table><thead><tr><th>站</th><th>事件日</th><th>阶段</th><th>模型桶 ← 市场桶</th><th>市场给模型桶</th><th>模型自报</th><th>结果</th><th>评估于</th></tr></thead><tbody>${firedRows}</tbody></table>`:`<div class="muted">还没有触发过。</div>`}</details>`:"";
-  return settings+evalTiles+money+versTable+featTable+featStageTable+refTable+tradeTable+firedTable;
+  const H=T.registered_hypotheses||{};
+  const hp=v=>v==null?"—":`${(v*100>=0?"+":"")}${(v*100).toFixed(1)}%`;
+  const hrows=(H.rows||[]).map(r=>{
+    const fwd=r.reading_window==="forward";
+    const span=r.ci_lo==null?(fwd?"<span class='muted'>还没有前向事件日</span>":"事件日太少")
+      :`[${hp(r.ci_lo)}, ${hp(r.ci_hi)}]`;
+    return `<tr${fwd?' style="opacity:.95"':' class="muted"'}>
+      <td>${fwd?h(r.title):"<span style='padding-left:12px'>↳ 登记当天的全史读数（已花掉）</span>"}</td>
+      <td class="mono">${fwd?"前向":"全史"}</td>
+      <td class="mono">${r.n_treatment}${r.n_control?" / "+r.n_control:""}</td>
+      <td class="mono">${r.event_days}</td>
+      <td class="mono">${hp(r.contrast)}</td><td class="mono">${span}</td>
+      <td class="mono">${r.p_at_or_below_zero==null?"—":(+r.p_at_or_below_zero).toFixed(2)}</td>
+      <td class="mono">${r.p_permutation==null?"—":(+r.p_permutation).toFixed(2)}</td></tr>`;
+  }).join("");
+  const hypTable=H.available?`<details open style="margin-top:8px"><summary>宪章 164 · 事前登记的假设（重放 ${H.station_days} 个站日 / ${H.event_days} 个事件日，截至 ${h(H.as_of_date||"")}）</summary>
+    <table><thead><tr><th>假设</th><th>窗口</th><th>处理 n / 对照 n</th><th>事件日</th><th>差 或 ROI</th><th>90% 区间</th><th>P(≤0)</th><th>重排 p</th></tr></thead><tbody>${hrows}</tbody></table>
+    <div class="muted"><b>只看「前向」那一行。</b>「全史」是这些假设当初被写出来的那份数据——一个数不能既提出假设又确认假设。登记于 ${h((H.rows||[])[0]?.registered_at_utc||"")}，登记当天的读数写在代码里的 <span class="mono">at_registration</span>。</div>
+    <div class="muted">门槛为什么要这么严：在这份重放上搜 122 个候选格，把中/空在同一事件日内随机重排，<b>100% 能找出「前后半都确认」的格</b>，而且那个随机格较弱一侧的 95 分位是 <b>+24.0%</b> ROI——比数据里真有的还漂亮。事前登记一个假设的门槛是 +15.3%，搜五个是 +17.5%，搜二十个是 +20.6%。所以这张表只增不改，新假设只能往后加。</div>
+    <div class="muted">两个 p 不一样：<span class="mono">P(≤0)</span> 是按事件日自助，问「这一臂赚不赚钱」——profitable 格子的任何子集都会继承一部分；<span class="mono">重排 p</span> 把中/空在同一事件日内打乱，问「分到哪一臂要不要紧」，那才是关于这个切分的。两者分歧时读重排。</div></details>`:"";
+  return settings+evalTiles+money+versTable+hypTable+featTable+featStageTable+refTable+tradeTable+firedTable;
 }
 
 function moneyBoard(){

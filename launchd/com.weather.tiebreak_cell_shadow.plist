@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.weather.tiebreak_cell_shadow</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>/Users/xiong/weather/scripts/tiebreak_cell_shadow_sweep.sh</string>
+	</array>
+	<key>RunAtLoad</key>
+	<false/>
+	<key>StandardErrorPath</key>
+	<string>/Users/xiong/weather/data/logs/tiebreak_cell_shadow.err.log</string>
+	<key>StandardOutPath</key>
+	<string>/Users/xiong/weather/data/logs/tiebreak_cell_shadow.out.log</string>
+	<key>StartCalendarInterval</key>
+	<array>
+		<dict>
+			<key>Hour</key>
+			<integer>8</integer>
+			<key>Minute</key>
+			<integer>10</integer>
+		</dict>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/xiong/weather</string>
+</dict>
+</plist>

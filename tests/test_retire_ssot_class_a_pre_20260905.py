@@ -101,10 +101,22 @@ def test_dry_run_changes_nothing(store: Path, tmp_path: Path, monkeypatch) -> No
     assert not list((tmp_path / "x").glob("*.jsonl.gz"))
 
 
+def _plenty_of_disk(monkeypatch) -> None:
+    """The export's own guard reads the HOST's free disk (it refuses to start
+    a batch under 5 GiB, so a retirement never fills the volume it is
+    exporting to).  A test that inherits it passes or fails on whatever the
+    machine happens to have free -- 2026-09-20 it had 3.2 GiB and these two
+    went red on a machine issue, not a code one.  The guard has its own
+    test; these measure the retirement."""
+
+    monkeypatch.setattr(retire, "_free_disk", lambda _path: retire.MIN_FREE_DISK_BYTES * 2)
+
+
 def test_apply_retires_only_unguarded_rows_and_keeps_the_trigger(
     store: Path, tmp_path: Path, monkeypatch
 ) -> None:
     _only_envelopes(monkeypatch)
+    _plenty_of_disk(monkeypatch)
     retire.main(["--db", str(store), "--export-dir", str(tmp_path / "x"), "--apply"])
     conn = sqlite3.connect(store)
     left = {r[0] for r in conn.execute("SELECT envelope_id FROM basket_probability_envelope")}
@@ -118,6 +130,7 @@ def test_apply_retires_only_unguarded_rows_and_keeps_the_trigger(
 
 def test_restore_puts_rows_back_verbatim(store: Path, tmp_path: Path, monkeypatch) -> None:
     _only_envelopes(monkeypatch)
+    _plenty_of_disk(monkeypatch)
     before = sqlite3.connect(store).execute(
         "SELECT rowid,* FROM basket_probability_envelope ORDER BY rowid"
     ).fetchall()

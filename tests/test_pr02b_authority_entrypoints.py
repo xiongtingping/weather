@@ -104,8 +104,8 @@ def test_only_three_user_domain_services_and_targetctl_remain() -> None:
     # The guard this test exists for is the installer's own list: it manages
     # three user-domain services and no more.  The repository's launchd
     # directory has grown past that, and the growth is accounted for --
-    # four of the seven extras were folded into the resident daemon's
-    # hosted sweeps on 2026-08-24 and are installed disabled, and three run
+    # four of the eight extras were folded into the resident daemon's
+    # hosted sweeps on 2026-08-24 and are installed disabled, and four run
     # on their own clocks for reasons recorded below.  Pinning the
     # directory to the known set keeps a new one from arriving unnoticed
     # without pretending the four superseded definitions are not on disk.
@@ -137,6 +137,13 @@ def test_only_three_user_domain_services_and_targetctl_remain() -> None:
         # template changes.  A file watch, not a clock, and a reader like the
         # render -- no resident has a turn to host it in.
         "com.weather.dashboard_reinflate.plist",
+        # 2026-09-20 (charter 164): replays the tiebreak rule over history and
+        # scores the registered hypotheses, once a day at 08:10Z when the
+        # previous day's truth has landed for the whole fleet.  A reader of
+        # the store and a writer only of its own file, so it belongs behind
+        # no writer lane; and a daily pass has no place in a resident whose
+        # turn is eight minutes long.
+        "com.weather.tiebreak_cell_shadow.plist",
     ]
     # The board's write path.  Not a production owner -- it places nothing
     # and holds no state -- but the LIVE switch is drawn disabled while it is
