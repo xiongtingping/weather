@@ -1585,6 +1585,369 @@ TAF_FRESH_HOURS = 6.5
 TAF_STALE_HOURS = 9.0
 METAR_FRESH_MINUTES = 75.0
 METAR_STALE_MINUTES = 150.0
+# How far back the report-to-probability latency reads (charters 153/154).
+LATENCY_WINDOW_HOURS = 12
+
+
+# Which of NOAA's two doors the fleet's live observations came through, and
+# how fresh they are (charter 162, 2026-09-20).
+#
+# aviationweather.gov's own certificate expired at 2026-09-19T23:59:59Z and
+# all four AWC channels validate it, so they failed in the same second: the
+# fleet's observation intake stopped, P1's reported high froze eight hours
+# back, and nothing on this page said so.  The METAR freshness counts live
+# inside the station-day table, one tab away, and TAF capture health only
+# raises an alert chip when it is already not green.  So: a standing lamp,
+# in the upstream row, that reads the door as well as the clock.
+#
+# The lane stays ``awc`` when TGFTP serves (charter 162: the lane is the
+# station's roster binding, not the transport), so the door has to be read
+# off the origin row rather than the lane.
+OBSERVATION_DOORS = {
+    "global_noaa_awc_relay": "AWC",
+    "global_noaa_tgftp_relay": "NOAA TGFTP",
+    "noaa_madis_hfmetar": "MADIS 高频",
+    "noaa_asos_1min": "ASOS 一分钟",
+}
+
+
+def collect_observation_intake(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Each station's newest observation: which door, how old, how long it
+    took to land."""
+
+    try:
+        archive = sqlite3.connect(
+            f"file:{ROOT / 'data' / 'archive.db'}?mode=ro", uri=True, timeout=10
+        )
+    except sqlite3.Error:
+        return {"available": False}
+    now = _now()
+    floor = (now - timedelta(hours=18)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        roster = [
+            str(row[0]) for row in conn.execute(
+                "SELECT DISTINCT station_id FROM basket_probability_envelope"
+                " WHERE state='COMMITTED' AND stage='P1' AND decision_at_utc>=?",
+                (floor,),
+            )
+        ]
+    except sqlite3.Error:
+        roster = []
+    if not roster:
+        return {"available": False}
+    stations: list[dict[str, Any]] = []
+    doors: Counter = Counter()
+    for station in sorted(roster):
+        try:
+            # One seek per station on
+            # ``idx_reported_trajectory_observations_station_time``; the
+            # origin is a primary-key lookup off the row it returns.
+            row = archive.execute(
+                "SELECT o.observation_id, o.valid_at, o.canonical_committed_at,"
+                " o.report_type, g.origin_source_id, g.origin_transport,"
+                " g.fallback_used, g.fallback_reason"
+                " FROM reported_trajectory_observations o"
+                " LEFT JOIN reported_trajectory_observation_origins g"
+                "   ON g.observation_id=o.observation_id"
+                " WHERE o.source_lane='awc' AND o.station_id=?"
+                " ORDER BY o.valid_at DESC LIMIT 1",
+                (station,),
+            ).fetchone()
+        except sqlite3.Error:
+            row = None
+        if row is None:
+            stations.append({"station_id": station, "door": None, "age_minutes": None})
+            doors["没有观测"] += 1
+            continue
+        age = _age_minutes(now, row[1])
+        landed = _age_minutes(_parse_utc_or_none(row[2]) or now, row[1])
+        source = str(row[4] or "")
+        door = OBSERVATION_DOORS.get(source, source or "未知")
+        doors[door] += 1
+        stations.append({
+            "station_id": station,
+            "valid_at_utc": str(row[1]), "committed_at_utc": str(row[2] or ""),
+            "report_type": str(row[3] or ""),
+            "door": door, "origin_source_id": source,
+            "origin_transport": str(row[5] or ""),
+            "fallback_used": bool(row[6]) if row[6] is not None else None,
+            "fallback_reason": str(row[7] or ""),
+            "age_minutes": age,
+            # Observed -> in our store.  Most of this is the publisher's own
+            # delay, which is why it is stated rather than alarmed on.
+            "landing_minutes": landed,
+        })
+    # Which doors carried the fleet over the window, not just at this
+    # instant: AWC came back this morning, and a lamp that only reads the
+    # newest report would show no trace of the eight hours TGFTP carried.
+    recent: Counter = Counter()
+    window = (now - timedelta(hours=LATENCY_WINDOW_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for station in sorted(roster):
+        try:
+            for (source,) in archive.execute(
+                "SELECT g.origin_source_id"
+                " FROM reported_trajectory_observations o"
+                " LEFT JOIN reported_trajectory_observation_origins g"
+                "   ON g.observation_id=o.observation_id"
+                " WHERE o.source_lane='awc' AND o.station_id=? AND o.valid_at>=?",
+                (station, window),
+            ):
+                recent[OBSERVATION_DOORS.get(str(source or ""), str(source or "") or "未知")] += 1
+        except sqlite3.Error:
+            break
+    archive.close()
+    ages = [e["age_minutes"] for e in stations if e["age_minutes"] is not None]
+    stale = [e for e in stations if (e["age_minutes"] or 0) > METAR_STALE_MINUTES]
+    late = [
+        e for e in stations
+        if METAR_FRESH_MINUTES < (e["age_minutes"] or 0) <= METAR_STALE_MINUTES
+    ]
+    fallback = [e for e in stations if e["door"] and e["door"] != "AWC"
+                and e["door"] != "MADIS 高频" and e["door"] != "ASOS 一分钟"]
+    if not ages:
+        health, note = "red", "一站都没有观测"
+    elif len(stale) * 3 >= len(stations):
+        health = "red"
+        note = f"{len(stale)}/{len(stations)} 站的最新观测超过 {METAR_STALE_MINUTES:.0f} 分钟"
+    elif stale or fallback:
+        health = "amber"
+        note = "；".join(filter(None, [
+            f"{len(stale)} 站陈旧" if stale else "",
+            f"{len(fallback)} 站走的是备用门" if fallback else "",
+        ]))
+    else:
+        health, note = "green", f"{len(stations)} 站都在 {METAR_FRESH_MINUTES:.0f} 分钟内"
+    landings = [e["landing_minutes"] for e in stations if e.get("landing_minutes") is not None]
+    return {
+        "available": True,
+        "stations": stations,
+        "doors": dict(doors),
+        "recent_doors": dict(recent), "recent_hours": LATENCY_WINDOW_HOURS,
+        "health": health, "note": note,
+        "fleet": len(stations),
+        "fresh_minutes": METAR_FRESH_MINUTES, "stale_minutes": METAR_STALE_MINUTES,
+        "oldest_minutes": max(ages) if ages else None,
+        "median_minutes": median(ages) if ages else None,
+        "late": len(late), "stale": len(stale), "fallback": len(fallback),
+        "median_landing_minutes": median(landings) if landings else None,
+        "measured_at_utc": now.isoformat().replace("+00:00", "Z"),
+    }
+
+
+def _parse_utc_or_none(value: Any) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _age_minutes(now: datetime, stamp: Any) -> float | None:
+    when = _parse_utc_or_none(stamp)
+    if when is None:
+        return None
+    return round((now - when).total_seconds() / 60.0, 1)
+
+
+# Where a production cycle's time goes, and how long a report waits before
+# the probability moves (charters 153/154, 2026-09-19).
+#
+# The resident journals every cycle to
+# ``data/runtime/production_cycle_history.jsonl`` -- total, per-stage
+# milliseconds, the longest spans inside them, and what it waited on -- and
+# nothing read it.  The page carried one number, "生产周期 N 秒", red only
+# past an hour, so the 1,678-second cycle on 2026-09-20 (early_p0m alone
+# 729s, ``p0m_taf_fact_ingress`` 694s of it) read as green.
+#
+# And the two numbers charters 153 and 154 exist to move -- how long a TAF
+# waits for a P0-M and an observation for a P1 -- were nowhere.  Both are
+# read off what production already wrote: the P1 envelope names the instant
+# its closing observation was committed, and the TAF capture row names when
+# it was received.
+CYCLE_HISTORY_PATH = ROOT / "data" / "runtime" / "production_cycle_history.jsonl"
+CYCLE_HISTORY_READ = 60
+CYCLE_STAGE_WORDS = {
+    "early_p0m": "早 P0-M（快车道）",
+    "early_p1": "早 P1（快车道）",
+    "fast_lane_before_decisions": "快车道检查点",
+    "intent_reconcile": "意图对账",
+    "decision_loop": "决策循环",
+    "forward_p0_loop": "前瞻 P0",
+    "native_p0_replay_compile": "P0 重放编译",
+    "native_ensemble_oos": "样本外评估",
+    "probability_p0m": "P0-M 链内",
+    "probability_p1": "P1 链内",
+    "settlement_lane": "结算车道",
+    "maintenance_lane": "维护车道",
+    "regime": "环境快照",
+    "oos_candidate_scan": "样本外候选扫描",
+}
+
+
+def collect_cycle_time(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The resident's own cycle journal, and report-to-probability latency."""
+
+    out: dict[str, Any] = {"available": False}
+    rows: list[dict[str, Any]] = []
+    try:
+        lines = CYCLE_HISTORY_PATH.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        lines = []
+    for line in lines[-CYCLE_HISTORY_READ:]:
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except ValueError:
+            continue
+    if rows:
+        out["available"] = True
+        totals = [float(r.get("cycle_total_ms") or 0.0) / 1000.0 for r in rows]
+        ordered = sorted(totals)
+        # Each stage's share of the cycles it appeared in, so a stage that
+        # runs every other cycle is not averaged away by the ones it skips.
+        by_stage: dict[str, list[float]] = defaultdict(list)
+        for row in rows:
+            for stage, ms in (row.get("stages_ms") or {}).items():
+                by_stage[str(stage)].append(float(ms) / 1000.0)
+        stages = sorted(
+            ({"stage": stage,
+              "label": CYCLE_STAGE_WORDS.get(stage, stage),
+              "cycles": len(values),
+              "median_sec": round(median(values), 1),
+              "max_sec": round(max(values), 1)}
+             for stage, values in by_stage.items()),
+            key=lambda e: -e["median_sec"],
+        )[:12]
+        worst = max(rows, key=lambda r: float(r.get("cycle_total_ms") or 0.0))
+        waits: Counter = Counter()
+        for row in rows:
+            for lane in (row.get("wait_blocked_by") or []):
+                waits[str(lane)] += 1
+        out["cycles"] = {
+            "n": len(rows),
+            "from_utc": rows[0].get("completed_at_utc"),
+            "through_utc": rows[-1].get("completed_at_utc"),
+            "median_sec": round(median(totals), 1),
+            "p90_sec": round(ordered[min(len(ordered) - 1, int(0.9 * len(ordered)))], 1),
+            "max_sec": round(max(totals), 1),
+            "last_sec": round(totals[-1], 1),
+            "last_state": rows[-1].get("state"),
+            "partial": sum(1 for r in rows if str(r.get("state") or "").endswith("partial")),
+            "waited_median_sec": round(
+                median([float(r.get("waited_sec") or 0.0) for r in rows]), 1),
+            "wait_blocked_by": dict(waits),
+            "series": [
+                {"at": r.get("completed_at_utc"),
+                 "sec": round(float(r.get("cycle_total_ms") or 0.0) / 1000.0, 1)}
+                for r in rows
+            ],
+        }
+        out["stages"] = stages
+        out["worst"] = {
+            "at": worst.get("completed_at_utc"),
+            "sec": round(float(worst.get("cycle_total_ms") or 0.0) / 1000.0, 1),
+            "state": worst.get("state"),
+            "spans": sorted(
+                ({"span": str(k), "sec": round(float(v) / 1000.0, 1)}
+                 for k, v in (worst.get("top_spans_ms") or {}).items()),
+                key=lambda e: -e["sec"],
+            )[:6],
+        }
+    out["latency"] = _report_to_probability_latency(conn)
+    if out["latency"]:
+        out["available"] = True
+    return out
+
+
+def _report_to_probability_latency(conn: sqlite3.Connection) -> dict[str, Any]:
+    """How long a report waits before the stage that reads it moves.
+
+    METAR -> P1 off the envelope's own ``canonical_observation_committed_at``,
+    taking each observation's FIRST P1 so a replayed prefix and a later state
+    refresh do not count as the same report waiting twice.  TAF -> P0-M by
+    pairing each capture with the first P0-M on that station-day after it,
+    which is what "the TAF reached a P0-M" means when the envelope does not
+    name the issuance.
+    """
+
+    now = _now()
+    since = (now - timedelta(hours=LATENCY_WINDOW_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    days = [
+        (now.date() + timedelta(days=offset)).isoformat() for offset in (-1, 0, 1)
+    ]
+    marks = ",".join("?" for _ in days)
+    out: dict[str, Any] = {"window_hours": LATENCY_WINDOW_HOURS, "since_utc": since}
+    metar: list[float] = []
+    try:
+        for committed, first in conn.execute(
+            "SELECT json_extract(lineage_json,'$.canonical_observation_committed_at'),"
+            " MIN(decision_at_utc) FROM basket_probability_envelope"
+            f" WHERE state='COMMITTED' AND event_date IN ({marks})"
+            "   AND decision_at_utc>=? AND stage='P1'"
+            " GROUP BY json_extract(lineage_json,'$.canonical_observation_sha256')",
+            (*days, since),
+        ):
+            gap = _minutes_between(committed, first)
+            if gap is not None and 0.0 <= gap <= 240.0:
+                metar.append(gap)
+    except sqlite3.Error:
+        metar = []
+    taf: list[float] = []
+    # Only the TAFs that can move a P0-M.  A capture with no TX leaves the
+    # likelihood identity, so nothing has to run promptly for it and its
+    # wait is not a latency anybody is cutting -- measured 2026-09-20, the
+    # no-TX captures sit at 86 minutes against 19 for the ones with a TX,
+    # and pooling the two reports a delay that is mostly "nothing needed
+    # doing".  One AWC fetch writes a row per event date it covers, and
+    # both of those are real station-days, so both are paired.
+    try:
+        captures = conn.execute(
+            "SELECT station_id, event_date, received_at_utc"
+            " FROM calibration_forward_taf_capture"
+            " WHERE received_at_utc>=? AND tx_available=1",
+            (since,),
+        ).fetchall()
+        no_tx = conn.execute(
+            "SELECT COUNT(*) FROM calibration_forward_taf_capture"
+            " WHERE received_at_utc>=? AND tx_available=0",
+            (since,),
+        ).fetchone()[0]
+    except sqlite3.Error:
+        captures, no_tx = [], 0
+    out["taf_captures_without_tx"] = no_tx
+    for station, day, received in captures:
+        try:
+            row = conn.execute(
+                "SELECT MIN(decision_at_utc) FROM basket_probability_envelope"
+                " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+                "   AND stage='P0-M' AND decision_at_utc>?",
+                (str(station), str(day), str(received)),
+            ).fetchone()
+        except sqlite3.Error:
+            continue
+        gap = _minutes_between(received, row[0] if row else None)
+        if gap is not None and 0.0 <= gap <= 240.0:
+            taf.append(gap)
+    for name, values in (("metar_to_p1", metar), ("taf_to_p0m", taf)):
+        if not values:
+            out[name] = None
+            continue
+        ordered = sorted(values)
+        out[name] = {
+            "n": len(values),
+            "median_min": round(median(values), 1),
+            "p90_min": round(ordered[min(len(ordered) - 1, int(0.9 * len(ordered)))], 1),
+            "max_min": round(max(values), 1),
+        }
+    return out
+
+
+def _minutes_between(start: Any, end: Any) -> float | None:
+    first, second = _parse_utc_or_none(start), _parse_utc_or_none(end)
+    if first is None or second is None:
+        return None
+    return round((second - first).total_seconds() / 60.0, 2)
 
 
 def _served_shape(probabilities: Mapping[str, Any], lineage: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -13429,6 +13792,13 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     )
     taf_board = _cached_section("taf_board", collect_taf_board, conn)
     metar_board = _cached_section("metar_board", collect_metar_board, conn)
+    # Charter 162's two doors, and charters 153/154's cycle journal: both
+    # read every render -- a freshness lamp that can be an hour stale is a
+    # lamp that says green through an outage.
+    observation_intake = _cached_section(
+        "observation_intake", collect_observation_intake, conn
+    )
+    cycle_time = _cached_section("cycle_time", collect_cycle_time, conn)
     regional_usage = _cached_section(
         "regional_usage", collect_regional_usage, conn
     )
@@ -13639,6 +14009,8 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "consensus_bridge": consensus_bridge,
         "taf_board": taf_board,
         "metar_board": metar_board,
+        "observation_intake": observation_intake,
+        "cycle_time": cycle_time,
         "regional_usage": regional_usage,
         "p1_joint_likelihood": p1_joint_likelihood,
         "p0m_taf_likelihood": p0m_taf_likelihood,
@@ -14500,6 +14872,69 @@ function sweepDur(sec){
   if(sec < 5400) return Math.round(sec / 60) + " 分钟";
   return (sec / 3600).toFixed(1) + " 小时";
 }
+// Where the production cycle's time goes, and how long a report waits
+// before the probability moves (charters 153/154, panel added 2026-09-20).
+//
+// It rides under the machine lamp row, beside 维护车道健康度, because it
+// answers the same question that row asks -- is the machine turning -- with
+// the two numbers the lamp cannot carry: which stage ate the cycle, and how
+// long a TAF or an observation sat before the stage that reads it ran.
+//
+// The lamp above says "生产周期 N 秒" and only reddens past an hour, so the
+// 1,678-second cycle on 2026-09-20 (early_p0m 729s, of which
+// p0m_taf_fact_ingress 694s) read as green with nothing to click.
+function cycleHealth(){
+  const C = D.cycle_time || {};
+  const cap = `<span class="lampcap">生产周期去向与报文延迟 · 常驻自己记的每轮分段`
+    + `（第 153/154 条把 TAF 与实况提到了周期最前面，这里是它们实际等了多久）</span>`;
+  if(!C.available) return "";
+  const K = C.cycles || {}, L = C.latency || {}, W = C.worst || {};
+  const sec = v => v == null ? "—" : v >= 600 ? (v / 60).toFixed(1) + " 分" : Math.round(v) + " 秒";
+  const mins = v => v == null ? "—" : v < 1 ? (60 * v).toFixed(0) + " 秒" : v.toFixed(1) + " 分";
+  const tone = K.median_sec == null ? "" : K.median_sec > 600 ? "red" : K.median_sec > 300 ? "amber" : "green";
+  const worstTone = K.max_sec == null ? "" : K.max_sec > 900 ? "red" : K.max_sec > 600 ? "amber" : "";
+  const lat = (name, box, note) => {
+    if(!box) return `<div class="card"><div class="muted">${name}</div><div class="big">—</div>
+      <div class="muted">这一窗口没有可配对的样本</div></div>`;
+    const t = box.median_min > 15 ? "red" : box.median_min > 8 ? "amber" : "green";
+    return `<div class="card"><div class="muted">${name}</div>
+      <div class="big mono"><span class="pill ${t}">${mins(box.median_min)}</span></div>
+      <div class="muted">中位 · p90 ${mins(box.p90_min)} · 最长 ${mins(box.max_min)} · ${box.n} 份${
+        note ? " · " + note : ""}</div></div>`;
+  };
+  const stages = (C.stages || []).map(s => {
+    const share = K.median_sec ? Math.min(100, 100 * s.median_sec / K.median_sec) : 0;
+    return `<tr><td>${h(s.label)}</td>
+      <td class="mono muted">${h(s.stage)}</td>
+      <td><div class="cell"><div class="by-bar"><i style="width:${share.toFixed(0)}%;background:var(--accent)"></i></div><span class="mono">${sec(s.median_sec)}</span></div></td>
+      <td class="mono">${sec(s.max_sec)}</td><td class="mono">${s.cycles}</td></tr>`;
+  }).join("");
+  const spans = (W.spans || []).map(s => `<span class="by-feat"><b>${h(s.span)}</b> ${sec(s.sec)}</span>`).join("");
+  const lanes = Object.entries(K.wait_blocked_by || {}).sort((a, b) => b[1] - a[1]);
+  const waits = lanes.slice(0, 3).map(([k, v]) => `${h(k.replace(/^sweep:|^writer_turn:/, ""))} ${v}`)
+    .join(" · ") + (lanes.length > 3 ? ` <span class="muted">等 ${lanes.length} 条</span>` : "");
+  return `<div class="lampdeck">${cap}
+  <div class="grid g4">
+    <div class="card"><div class="muted">周期总长（最近 ${K.n || 0} 轮）</div>
+      <div class="big mono"><span class="pill ${tone}">${sec(K.median_sec)}</span></div>
+      <div class="muted">p90 ${sec(K.p90_sec)} · 最长 <span class="pill ${worstTone}">${sec(K.max_sec)}</span> · 上一轮 ${sec(K.last_sec)}</div></div>
+    ${lat("实况入库 → P1", L.metar_to_p1)}
+    ${lat("TAF 入库 → P0-M", L.taf_to_p0m,
+      L.taf_captures_without_tx ? `另有 ${L.taf_captures_without_tx} 份不带 TX（动不了 P0-M，不计）` : "")}
+    <div class="card"><div class="muted">这一轮等写库</div>
+      <div class="big mono">${sec(K.waited_median_sec)}</div>
+      <div class="muted">${K.partial ? K.partial + "/" + K.n + " 轮部分提交 · " : ""}${waits || "没排过队"}</div></div></div>
+  <details class="note" style="margin-top:8px"><summary>时间都花在哪（最近 ${K.n || 0} 轮，按各自出现过的轮次取中位）
+    <span class="muted">· 最长的一轮 ${h(String(W.at || "").slice(11, 19))}Z 用了 ${sec(W.sec)}</span></summary>
+    ${spans ? `<div style="margin:6px 0"><span class="muted">那一轮里最长的几段：</span>${spans}</div>` : ""}
+    <div class="scroll" style="max-height:320px"><table class="by-tab"><thead><tr><th>阶段</th><th>代码名</th><th>中位</th><th>最长</th><th>出现轮次</th></tr></thead>
+    <tbody>${stages}</tbody></table></div>
+    <div class="muted" style="margin-top:6px">读的是 <span class="mono">data/runtime/production_cycle_history.jsonl</span>，
+      常驻每轮自己写的一行；「实况入库 → P1」是每份观测在包络上标的落库时刻到<b>第一份</b>读到它的 P1（回放步与状态刷新不重复计），
+      「TAF 入库 → P0-M」是每份带 TX 的 TAF 收到后这一站日的<b>下一份</b> P0-M。窗口 ${L.window_hours || "—"} 小时。</div></details>
+  </div>`;
+}
+
 function sweepHealth(){
   const H = D.hosted_sweeps || {};
   const cap = `<span class="lampcap">维护车道健康度 · 最不健康的三条：离上次完成过了几个<b>自己的</b>回合`
@@ -14636,6 +15071,15 @@ function head(){
           + `<div class="muted">渲染出错：${h(String(err))}</div></div>`;
       }
     })();
+    // Charters 153/154: the cycle's own breakdown and the report latency,
+    // under the lamp row that asks whether the machine is turning.
+    const cycle = (() => {
+      try { return cycleHealth(); }
+      catch (err) {
+        return `<div class="lampdeck"><span class="lampcap">生产周期去向</span>`
+          + `<div class="muted">渲染出错：${h(String(err))}</div></div>`;
+      }
+    })();
     // 发布时间 right under the upstream lamps: the same question -- did the
     // data arrive -- asked with the clock instead of a colour.
     const published = (() => {
@@ -14645,7 +15089,7 @@ function head(){
           + `<div class="muted">渲染出错：${h(String(err))}</div></div>`;
       }
     })();
-    return O.banner + rendered[0] + sweeps + rendered[1] + published
+    return O.banner + rendered[0] + cycle + sweeps + rendered[1] + published
       + rendered.slice(2).join("");
   })()}
   ${renderStamp()}${chips ? `<div style="display:flex;gap:8px;flex-wrap:wrap;
@@ -14816,6 +15260,36 @@ function overviewLamps(){
   const COV=(W.native_inbox_coverage||[]);
   const near=COV[0];
   const held=(W.native_inbox_held_families||[]);
+  // Charter 162: which of NOAA's two doors the fleet's observations came
+  // through, and how old the oldest one is.  Until 2026-09-20 the only
+  // sign that the intake had stopped was a freshness count inside the
+  // station-day table, one tab away -- and when aviationweather.gov's
+  // certificate expired at 23:59:59Z the whole fleet went quiet with
+  // nothing on this page saying so.
+  const OB = D.observation_intake || {};
+  if(OB.available){
+    const door = Object.entries(OB.doors || {}).sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => `${k} ${v}`).join(" · ");
+    const over = Object.entries(OB.recent_doors || {}).sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => `${k} ${v}`).join(" · ");
+    // The door rides in the VALUE, not only the tooltip, whenever it is
+    // not the normal one: a fallback that carries the fleet silently is the
+    // thing this lamp was added for.
+    const fell = Object.entries(OB.doors || {}).filter(([k]) => k !== "AWC");
+    push("upstream", OB.health || "muted",
+      "实况入库",
+      (OB.oldest_minutes == null ? "—" : `最旧 ${Math.round(OB.oldest_minutes)} 分钟`)
+        + (fell.length ? " · " + fell.map(([k, v]) => `${k} ${v} 站`).join(" · ") : ""),
+      `${door}${over && Object.keys(OB.recent_doors || {}).length > 1
+        ? ` · 近 ${OB.recent_hours}h：${over}` : ""}`,
+      "每站最新一份实况的年龄，以及它走的是哪一道门。"
+      + `绿＝全队都在 ${OB.fresh_minutes} 分钟内；`
+      + `黄＝有站陈旧（>${OB.stale_minutes} 分钟）或有站在走备用门；红＝三分之一以上的站陈旧。`
+      + "第 162 条：AWC 的四条通道全失败后才走 NOAA TGFTP，AWC 一恢复自动回去，"
+      + "车道仍记 awc（车道是站在名册里的归属，不是传输）。"
+      + (OB.median_landing_minutes == null ? ""
+        : `　观测时刻到落库中位 ${OB.median_landing_minutes} 分钟，大头是发布方自己的延迟。`));
+  }
   push("upstream", W.native_inbox_health||"muted",
     "包里有几家",
     near?`${near.family_count}/${near.expected_family_count}`:"—",
