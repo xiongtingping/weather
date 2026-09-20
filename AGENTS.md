@@ -88,6 +88,9 @@
 - **归属只能按文件足迹判。** 全仓共用同一个 git author（`xiongtingping`），`git log --author` 分不出人；用 `git show --stat <sha>` 看改了哪些文件。今天有一次把第三方的提交认成对方的，据此提出的改号请求整个落错人。**"正在跟我说话的人"不等于"拥有那些提交的人"。**
 - **立宪章条款前先占号。** `grep -o "^[0-9]\+\. " docs/constitution/SYSTEM_CHARTER.md | sort -n | uniq -c` 查重号，**然后立刻只提交编号占位那一行**，再去写正文。并行会话之间没有别的占号机制——今天 96 与 97 各撞了一次，都是因为两边都写完整条才提交，谁也没看见对方。撞号后**不要跨会话去重写别人的引用**（那是本仓吃过亏的坑），改号由拥有那些提交的会话各自执行，或由熊先生统一裁。
 - **别人的未提交文件不要碰。** 动手前 `git status --porcelain` 看一眼目标文件在不在别人手里；在，就把发现发消息过去，不要自己改。
+- **共用一个 `.git/index`，所以会出现"活文件被暂存删除"的假象。** 2026-09-20/21 两个会话各自在会话起始的 `git status` 快照里看到同一个形态：`D  <文件>` 与 `?? <同一文件>` 并存（暂存区少了这个条目、盘上文件还在且未跟踪）——一个是 `bayes_basket_target/p1_tail_lane.py`（宪章 166 的 P1 尾段线，`p1_tail.enabled=true` 正在实盘跑），另一个是 `tests/test_dashboard_observation_intake_and_cycle.py`。同批还撞见 `scripts/calibration_dashboard.py` 的**暂存 blob 落后于 HEAD**（`git diff --cached` 显示把 d6f64e4f 整个回退掉），以及三个 0 字节、无进程持有的 `.git/index.lock`（14:54 / 19:22 / 20:33）。**两个文件最后都完好**（跟踪中、与 HEAD 逐字一致），没有任何删除进过提交，但排查花掉了两个会话各一轮。
+  - **不可追溯**：git 不记 index 的操作日志，reflog 只记 HEAD 移动，所以事后无法定位是哪条命令写的。仓库脚本与全局 hook 都不碰 index（已 grep 确认），来源只能是会话自己的 git 命令。
+  - **规矩**：① 任何需要临时暂存区的操作（`read-tree` / `write-tree` / `update-index` / `git rm --cached`）**必须先设 `GIT_INDEX_FILE=$(mktemp)`**，绝不写共享的 `.git/index`；② 不要在共享树上跑 `git reset`（mixed 会按目标树重写整个 index，比目标树新的文件全部变成"暂存删除"）；③ 提交一律路径限定（`git commit --only <路径>`，新文件先 `git add <该文件>`），别用 `git add -A`；④ 看到别人的文件是 `D  `＋`?? ` 时**不要"帮忙"恢复**——先 `git ls-files <文件>` 与 `git diff HEAD -- <文件>` 确认盘上与 HEAD 是否一致，再发消息问，绝不 `git checkout` 或 `git add` 别人的条目；⑤ 0 字节、`lsof` 空、无 git 进程、超过十分钟没动的 `.git/index.lock` 可以删，其余情况等。
 
 ## 常用运行（本地）
 - 一次性用户域迁移：`bash scripts/migrate_weather_basket_yes_to_user_domain.sh --confirm-user-domain-production-no-live`
