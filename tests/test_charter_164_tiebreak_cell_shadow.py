@@ -204,3 +204,77 @@ def test_the_shadow_never_writes_to_the_store_it_reads(tmp_path) -> None:
         )
     finally:
         conn.close()
+
+
+def test_every_hypothesis_declares_a_known_population() -> None:
+    """The pool is part of the hypothesis (2026-09-20 second pass).  A stage
+    contrast read on the slot grain and the same one read over every firing
+    row are different questions, so the entry has to say which it asked."""
+
+    for spec in shadow.HYPOTHESES:
+        assert str(spec.get("pool") or "grain") in shadow.POOLS
+
+
+def test_a_stage_contrast_on_the_slot_grain_carries_the_selection() -> None:
+    """The slot reaches P1 only when nothing earlier fired.  So on a
+    station-day where P0 fires too, the grain has no P1 row at all -- the two
+    arms of a grain-pooled stage contrast are disjoint populations, and the
+    unconditional version has to be read on the firing rows."""
+
+    rows = [
+        # Three station-days where P0 fires first and P1 fires later as well:
+        # the grain keeps only the P0 row.
+        *[r for i in range(3) for r in (
+            _row(f"A{i:03d}", "2026-09-10", "P0", hit=0, ask=0.5,
+                 decided="2026-09-10T01:00:00.000Z"),
+            _row(f"A{i:03d}", "2026-09-10", "P1", hit=1, ask=0.5,
+                 decided="2026-09-10T09:00:00.000Z"),
+        )],
+        # Three where only P1 fires.
+        *[_row(f"B{i:03d}", "2026-09-11", "P1", hit=1, ask=0.5) for i in range(3)],
+        *[_row(f"C{i:03d}", "2026-09-12", "P0", hit=0, ask=0.5) for i in range(3)],
+    ]
+    pools = shadow.pools_of(rows)
+    assert len(pools["firings"]) == 12 and len(pools["grain"]) == 9
+    assert [r["stage"] for r in pools["grain"]].count("P1") == 3
+    assert [r["stage"] for r in pools["firings"]].count("P1") == 6
+    got = {(r["hypothesis_id"], r["reading_window"]): r for r in shadow.hypothesis_readings(rows)}
+    grain = got[("stage_gradient_v1", "all")]
+    every = got[("stage_gradient_unconditional_v1", "all")]
+    assert grain["n_treatment"] == 3 and every["n_treatment"] == 6
+    assert grain["n_control"] == every["n_control"] == 6
+    # Exactly one row of a station-day is the slot, and it is the earliest.
+    slots = [r for r in pools["firings"] if r["is_slot"]]
+    assert len(slots) == 9
+    assert all(r["stage"] == "P0" for r in slots if r["station_id"].startswith("A"))
+
+
+def test_the_contested_pool_pairs_the_slot_against_the_p1_it_passed_over() -> None:
+    """Buying at P1 instead is only a choice on the station-days where both
+    fired.  Those pair on the same weather; a day where only P1 fired is not
+    evidence about the slot and stays out."""
+
+    rows = [
+        _row("AAAA", "2026-09-10", "P0-M", hit=0, ask=0.5,
+             decided="2026-09-10T05:00:00.000Z"),
+        _row("AAAA", "2026-09-10", "P1", hit=1, ask=0.5,
+             decided="2026-09-10T09:00:00.000Z"),
+        # P1 alone: no choice to price.
+        _row("BBBB", "2026-09-10", "P1", hit=1, ask=0.5),
+        # Two earlier stages and no P1: also no choice to price.
+        _row("CCCC", "2026-09-10", "P0", hit=1, ask=0.5,
+             decided="2026-09-10T01:00:00.000Z"),
+        _row("CCCC", "2026-09-10", "P0-M", hit=1, ask=0.5,
+             decided="2026-09-10T05:00:00.000Z"),
+    ]
+    pool = shadow.pools_of(rows)["contested_p1"]
+    assert {(r["station_id"], r["stage"]) for r in pool} == {("AAAA", "P0-M"), ("AAAA", "P1")}
+    spec = next(
+        s for s in shadow.HYPOTHESES if s["hypothesis_id"] == "slot_to_p1_contested_v1"
+    )
+    treatment = [r for r in pool if spec["treatment"](r)]
+    control = [r for r in pool if spec["control"](r)]
+    assert [r["stage"] for r in treatment] == ["P1"]
+    assert [r["stage"] for r in control] == ["P0-M"]
+    # The arms never share a row: the slot of a contested day is never its P1.
+    assert not {id(r) for r in treatment} & {id(r) for r in control}

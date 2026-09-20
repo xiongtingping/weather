@@ -28,7 +28,12 @@ the whole reason this file exists: a hypothesis written down BEFORE it is
 measured is worth about ten points of ROI against one found by looking.
 
 ``HYPOTHESES`` is therefore append-only and each entry carries the day it
-was registered.  Every refresh reports two readings: the whole replay, and
+was registered, and the POPULATION it is read on (``pool``): the slot the
+lane buys, every firing row, or the station-days where the choice between
+two stages actually exists.  A stage contrast read on the slot grain is
+mostly the selection -- the slot reaches P1 only when nothing earlier
+fired -- so the pool is part of the hypothesis, not an implementation
+detail.  Every refresh reports two readings: the whole replay, and
 the FORWARD-only slice -- event days after registration -- which is the one
 that decides.  The full-history number is context, and is already spent.
 """
@@ -85,6 +90,52 @@ def _converging(row: Mapping[str, Any]) -> bool:
     return move is not None and float(move) * 100.0 >= 3.0
 
 
+#: The population a hypothesis is read on (charter 164, 2026-09-20 second
+#: pass).  The lane buys one station-day at a time, so the default is the
+#: slot grain -- but a contrast between two STAGES cannot be read there.
+#: "The slot went to P1" means, by construction, that neither P0 nor P0-M
+#: fired that station-day: the arms are disjoint populations and the contrast
+#: carries that selection as well as the stage.  Measured 2026-09-20: on the
+#: grain P0 +3.9% / P0-M +7.9% / P1 +15.3%, over every firing row the same
+#: three read +3.9% / +3.6% / +7.5%.  The gradient is mostly the selection.
+#:   ``grain``        -- the earliest firing stage of each station-day: what
+#:                       the lane actually buys, and the only pool a POLICY
+#:                       question belongs in;
+#:   ``firings``      -- every (station, day, stage) the rule fires on: the
+#:                       unconditional stage question;
+#:   ``contested_p1`` -- the station-days where P1 fired AND an earlier stage
+#:                       fired, so the row the lane took and the P1 row it
+#:                       passed over sit on the SAME weather.  Paired, which
+#:                       is the only way to price the slot going later.
+POOLS = ("grain", "firings", "contested_p1")
+
+
+def pools_of(rows: Sequence[Mapping[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """The three populations, each row carrying ``is_slot`` and
+    ``stage_count`` so a hypothesis can name the row the slot went to."""
+
+    by_day: dict[tuple[str, str], list[Mapping[str, Any]]] = defaultdict(list)
+    for row in rows:
+        if row.get("best_ask") is None:
+            continue
+        by_day[(str(row["station_id"]), str(row["event_date"]))].append(row)
+    firings: list[dict[str, Any]] = []
+    grain: list[dict[str, Any]] = []
+    contested: list[dict[str, Any]] = []
+    for key in sorted(by_day):
+        day = sorted(by_day[key], key=lambda r: str(r["decision_at_utc"]))
+        marked = [
+            dict(row, is_slot=(index == 0), stage_count=len(day))
+            for index, row in enumerate(day)
+        ]
+        firings.extend(marked)
+        grain.append(marked[0])
+        stages = {str(row["stage"]) for row in marked}
+        if len(marked) > 1 and "P1" in stages and stages - {"P1"}:
+            contested.extend(marked)
+    return {"grain": grain, "firings": firings, "contested_p1": contested}
+
+
 #: Each hypothesis is a CONTRAST between two arms of the replay, a direction
 #: predicted in advance, and the day it was written down.  ``arms`` returns
 #: (treatment, control); a control of None means "is this arm's ROI above
@@ -107,6 +158,12 @@ HYPOTHESES: tuple[dict[str, Any], ...] = (
         "title": "阶段梯度：离结算越近越赚（P1 高于 P0）",
         "registered_at_utc": "2026-09-20",
         "prediction": "ROI(P1) - ROI(P0) > 0",
+        # Read on the GRAIN, which makes it a question about the slot and
+        # not about the stage: the P1 arm is the station-days where nothing
+        # earlier fired.  ``stage_gradient_unconditional_v1`` below asks the
+        # stage question on every firing row, and ``slot_to_p1_contested_v1``
+        # asks the policy question paired.  All three stay: this one is what
+        # was written down first and its forward reading is not retracted.
         # 2026-09-20: P0 +3.9%, P0-M +7.9%, P1 +15.3% -- monotone, and the
         # same shape the 2026-09-17 reading found independently (the model's
         # information share over the market rises from 0.16 to 0.32 inside
@@ -131,6 +188,38 @@ HYPOTHESES: tuple[dict[str, Any], ...] = (
         "at_registration": "+25.9 点, p=0.320",
         "treatment": lambda r: r["stage"] == "P1" and _converging(r),
         "control": lambda r: r["stage"] == "P1" and not _converging(r),
+    },
+    {
+        "hypothesis_id": "stage_gradient_unconditional_v1",
+        "title": "阶段梯度（去掉名额选择）：每个触发行都算，P1 是否高于 P0",
+        "registered_at_utc": "2026-09-20",
+        "prediction": "ROI(P1) - ROI(P0) > 0",
+        # The same question as stage_gradient_v1 without the slot's selection
+        # in it.  Registered 2026-09-20 because the user asked whether the
+        # lane should open at P0 and P0-M at all, and the grain cannot answer
+        # it: the grain's +11.4 points
+        # (p=0.109) become +3.6 [-14.1%, +22.9%], p=0.273, over every firing row.
+        "at_registration": "+3.6 点 [-14.1%,+22.9%], p=0.273 (P0 +3.9% n=169 /"
+                            " P0-M +3.6% n=153 / P1 +7.5% n=128, 37 事件日)",
+        "pool": "firings",
+        "treatment": lambda r: r["stage"] == "P1",
+        "control": lambda r: r["stage"] == "P0",
+    },
+    {
+        "hypothesis_id": "slot_to_p1_contested_v1",
+        "title": "名额让给 P1 值不值：同站日 P1 与更早阶段都触发时，P1 那条对名额实际拿到的那条",
+        "registered_at_utc": "2026-09-20",
+        "prediction": "ROI(P1) - ROI(名额拿到的那条) > 0",
+        # The policy question, paired on the same weather: these are the only
+        # station-days where "buy at P1 instead" is even a choice.  A positive
+        # forward reading is what would justify holding the slot back for P1;
+        # 2026-09-20 it reads the
+        # other way, which is why the lane keeps opening at P0-M.
+        "at_registration": "-16.6 点 [-43.3%,+11.6%], p=0.801 (名额拿到的 +5.7% /"
+                            " 同站日 P1 -10.9%, 38 对 / 23 事件日) -- 与预测反向",
+        "pool": "contested_p1",
+        "treatment": lambda r: r["stage"] == "P1",
+        "control": lambda r: bool(r.get("is_slot")) and r["stage"] != "P1",
     },
 )
 
@@ -503,13 +592,14 @@ def hypothesis_readings(
     hypothesis and confirm it.
     """
 
-    grain = one_per_station_day(rows)
+    pools = pools_of(rows)
     out: list[dict[str, Any]] = []
     for spec in hypotheses:
         registered = str(spec["registered_at_utc"])[:10]
+        population = pools[str(spec.get("pool") or "grain")]
         for window, pool in (
-            ("all", grain),
-            ("forward", [r for r in grain if str(r["event_date"]) > registered]),
+            ("all", population),
+            ("forward", [r for r in population if str(r["event_date"]) > registered]),
         ):
             treat = [r for r in pool if spec["treatment"](r)]
             ctrl = [r for r in pool if spec["control"](r)] if spec["control"] else []
@@ -613,8 +703,8 @@ def refresh(
 
 __all__ = [
     "DEFAULT_FLOOR_EVENT_DATE", "HYPOTHESES", "HYPOTHESIS_TABLE", "REPLAY_TABLE",
-    "SHADOW_DB", "SHADOW_SCHEMA", "attach_shadow", "day_clustered_interval",
+    "POOLS", "SHADOW_DB", "SHADOW_SCHEMA", "attach_shadow", "day_clustered_interval",
     "ensure_shadow_schema", "hypothesis_readings", "one_per_station_day",
-    "permutation_p",
+    "permutation_p", "pools_of",
     "open_shadow_connection", "refresh", "replay_cell", "settled_buckets", "utc_now",
 ]
