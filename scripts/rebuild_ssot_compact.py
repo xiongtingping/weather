@@ -699,6 +699,7 @@ def _fold_check(src: sqlite3.Connection, dst: sqlite3.Connection, sample: int = 
     out = {"sampled": 0, "shares_conserved": True, "max_depth_before": 0,
            "max_depth_after": 0, "worst_share_delta": 0.0, "rows_folded": 0,
            "buckets_parsed": 0, "kernel_new_rejections": 0, "kernel_repaired": 0,
+           "kernel_preexisting_untouched": 0, "max_depth_after_ticked": 0,
            "kernel_rejection_examples": []}
     try:
         # The newest rows are the ones production folded at write (and the
@@ -737,11 +738,26 @@ def _fold_check(src: sqlite3.Connection, dst: sqlite3.Connection, sample: int = 
             # only for an off-grid rung must now parse.
             err_a, err_b = _kernel(entry_a), _kernel(entry_b)
             out["buckets_parsed"] += 1
-            if err_b is not None and (err_b != err_a or err_b == "bucket_price_tick_mismatch"):
+            # A bucket with no usable tick is outside the transform by design
+            # (the fold will not guess a grid); the earliest snapshots
+            # (07-28, before ``price_tick_size`` was stored) quote a 0.001
+            # ladder the kernel's 0.01 default already refused.  Those must
+            # come back refused for the SAME reason -- proof they were not
+            # touched -- and are counted, not failed.  A bucket WITH a tick
+            # that is still off grid is exactly the defect being repaired.
+            try:
+                ticked = float(entry_a.get("price_tick_size") or 0.0) > 0.0
+            except (AttributeError, TypeError, ValueError):
+                ticked = False
+            if err_b is not None and (
+                err_b != err_a or (ticked and err_b == "bucket_price_tick_mismatch")
+            ):
                 out["kernel_new_rejections"] += 1
                 if len(out["kernel_rejection_examples"]) < 5:
                     out["kernel_rejection_examples"].append([rowid, err_a, err_b])
-            elif err_a == "bucket_price_tick_mismatch" and err_b is None:
+            elif err_b is not None:
+                out["kernel_preexisting_untouched"] += 1
+            elif err_a == "bucket_price_tick_mismatch":
                 out["kernel_repaired"] += 1
             for side in ("ask_levels", "bid_levels"):
                 la = entry_a.get(side) or []
@@ -750,6 +766,11 @@ def _fold_check(src: sqlite3.Connection, dst: sqlite3.Connection, sample: int = 
                     continue
                 out["max_depth_before"] = max(out["max_depth_before"], len(la))
                 out["max_depth_after"] = max(out["max_depth_after"], len(lb))
+                try:
+                    if float(entry_a.get("price_tick_size") or 0.0) > 0.0:
+                        out["max_depth_after_ticked"] = max(out["max_depth_after_ticked"], len(lb))
+                except (AttributeError, TypeError, ValueError):
+                    pass
                 if len(lb) != len(la):
                     folded_here = True
                 sa = sum(float(x.get("shares") or 0.0) for x in la)
@@ -870,7 +891,7 @@ def verify(
             and receipt["fold"]["sampled"] > 0
             and receipt["fold"]["kernel_new_rejections"] == 0
             and receipt["fold"]["buckets_parsed"] > 0
-            and receipt["fold"]["max_depth_after"] <= 6
+            and receipt["fold"]["max_depth_after_ticked"] <= 6
         )
         receipt["state"] = "VERIFIED" if receipt["ok"] else "FAILED"
         receipt["verify_seconds"] = round(time.time() - t0, 1)
@@ -907,8 +928,15 @@ def main() -> int:
     if args.target is None:
         parser.error("--target is required")
     expected = json.loads(args.expect.read_text()) if args.expect else None
-    if expected is not None and expected.get("source_bytes") != args.source.stat().st_size:
-        parser.error("the fingerprint was taken from a file of a different size")
+    if expected is not None:
+        # The fingerprint must describe the data's ORIGIN.  A staging file is
+        # a different size by construction; its lineage is the source it was
+        # staged from, which the ``.staged.json`` beside it records.
+        staged_note = args.source.with_name(args.source.name + ".staged.json")
+        origin_bytes = (json.loads(staged_note.read_text()).get("source_bytes")
+                        if staged_note.exists() else args.source.stat().st_size)
+        if expected.get("source_bytes") != origin_bytes:
+            parser.error("the fingerprint was taken from a file of a different size")
     if args.stage:
         out["stage"] = stage(source=args.source, staging=args.target, force=args.force,
                              budget_seconds=args.budget_seconds)

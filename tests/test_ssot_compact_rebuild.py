@@ -64,6 +64,13 @@ def _source(path: Path) -> None:
         c.execute("INSERT INTO basket_official_ws_snapshot VALUES(?,?,?)",
                   (f"s{i}", json.dumps([_bucket(asks, bids)], sort_keys=True), f"t{i:05d}"))
     c.execute("DELETE FROM basket_official_ws_snapshot WHERE rowid % 7 = 0")
+    # the earliest shape (07-28): no price_tick_size stored, a 0.001 ladder
+    # the kernel's 0.01 default refuses -- outside the transform by design
+    early = {k: v for k, v in _bucket(
+        [{"price": round(0.001 * (i + 1), 3), "shares": 4.0} for i in range(40)], []).items()
+        if k != "price_tick_size"}
+    c.execute("INSERT INTO basket_official_ws_snapshot VALUES(?,?,?)",
+              ("early", json.dumps([early], sort_keys=True), "t99999"))
     for i in range(300):
         c.execute("INSERT INTO basket_p0_preselection_plan VALUES(?,?)", (f"p{i}", json.dumps({"x": i})))
     for i in range(30000):
@@ -114,7 +121,7 @@ def test_two_passes_resume_and_prove_the_copy(tmp_path: Path, monkeypatch) -> No
     assert stage_runs > 2 and build_runs > 2          # both passes really resumed
 
     # The fold happened once, in the staging pass; assembly copied it verbatim.
-    assert staged["folded_snapshots"] == fingerprint["counts"]["basket_official_ws_snapshot"]
+    assert staged["folded_snapshots"] == fingerprint["counts"]["basket_official_ws_snapshot"] - 1
     assert built["source_staged"] is True
     assert built["folded_snapshots"] == 0
 
@@ -122,7 +129,13 @@ def test_two_passes_resume_and_prove_the_copy(tmp_path: Path, monkeypatch) -> No
     assert proof["state"] == "VERIFIED", proof
     assert proof["fold"]["kernel_new_rejections"] == 0
     assert proof["fold"]["kernel_repaired"] > 0      # the off-grid rows now parse
-    assert proof["fold"]["max_depth_after"] == 6
+    assert proof["fold"]["max_depth_after_ticked"] == 6
+    assert proof["fold"]["max_depth_after"] == 40               # the tickless one, untouched
+    assert proof["fold"]["kernel_preexisting_untouched"] == 1
+    early_after = sqlite3.connect(target).execute(
+        "SELECT buckets_json FROM basket_official_ws_snapshot WHERE snapshot_id='early'").fetchone()[0]
+    assert early_after == sqlite3.connect(source).execute(
+        "SELECT buckets_json FROM basket_official_ws_snapshot WHERE snapshot_id='early'").fetchone()[0]
 
     out = sqlite3.connect(target)
     # rowids kept, gaps and all; staging bookkeeping did not leak into the store
