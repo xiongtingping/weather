@@ -94,12 +94,14 @@ RESTING_REPRICE_FAR_TICKS = float(
 # the proxy to the exchange) each, ~1.3s, fifteen resting orders asked one
 # after another: 19.9-20.0s every cycle (2026-09-21), the largest single span
 # after charter 179.  Only the asking overlaps; every answer is still acted
-# on one rung at a time, in the pass's order.  Charter 187 (user,
-# 2026-09-21: 「调并发」): fifteen, one round trip for the book's usual
-# fifteen resting orders -- six left three (5-9s a pass).  Fifteen GETs a
-# pass is far inside the exchange's rate limit.
+# on one rung at a time, in the pass's order.  Six.  Charter 187 raised it
+# to fifteen (user: 「调并发」) and it was put back the same hour: at six the
+# pass ran 7-13s on each of 22 cycles (12:02-12:44Z), at fifteen three of
+# eight passes ran 30s, 83s and 103s -- concurrent GETs came back empty,
+# read as "unknown", and each sent its rung down the sequential departed-
+# order reconcile (enumeration + position), 75s in one pass.
 RESTING_LOOKUP_CONCURRENCY = int(
-    os.environ.get("PM_RESTING_LOOKUP_CONCURRENCY", "") or 15
+    os.environ.get("PM_RESTING_LOOKUP_CONCURRENCY", "") or 6
 )
 if RESTING_LOOKUP_CONCURRENCY < 1:
     raise ValueError(

@@ -194,8 +194,8 @@ def test_lookups_are_in_flight_together_up_to_the_bound() -> None:
 
 
 def test_production_passes_the_bound() -> None:
-    # charter 187: raised from six (charter 180)
-    assert lane.RESTING_LOOKUP_CONCURRENCY == 15
+    # charter 187 raised it to fifteen and put it back to six
+    assert lane.RESTING_LOOKUP_CONCURRENCY == 6
 
 
 # --- the ledger fill rows ----------------------------------------------------------
