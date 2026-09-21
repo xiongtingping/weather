@@ -24,11 +24,12 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
-import random
 import statistics
 import sys
 from collections import defaultdict
 from pathlib import Path
+
+import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -52,18 +53,26 @@ def load(arm: str) -> dict[tuple[str, str, str], dict]:
 
 
 def bootstrap(pairs: list[dict], value, *, draws: int = 2000, seed: int = 13):
-    by_date = defaultdict(list)
+    """Mean and 95% interval, resampling whole event dates.
+
+    Per-date sums and counts, so a draw is a weighted sum over dates rather
+    than a rebuilt list of every pair -- the same estimator, 10^4 times
+    cheaper at fleet scale.
+    """
+
+    sums: dict[str, float] = defaultdict(float)
+    counts: dict[str, int] = defaultdict(int)
     for pair in pairs:
-        by_date[pair["event_date"]].append(pair)
-    dates = sorted(by_date)
-    point = statistics.fmean(value(p) for p in pairs)
-    rng = random.Random(seed)
-    means = []
-    for _ in range(draws):
-        sample = [p for d in rng.choices(dates, k=len(dates)) for p in by_date[d]]
-        means.append(statistics.fmean(value(p) for p in sample))
-    means.sort()
-    return point, means[int(0.025 * draws)], means[int(0.975 * draws)]
+        sums[pair["event_date"]] += value(pair)
+        counts[pair["event_date"]] += 1
+    dates = sorted(sums)
+    s = np.array([sums[d] for d in dates])
+    n = np.array([counts[d] for d in dates], dtype=float)
+    point = float(s.sum() / n.sum())
+    rng = np.random.default_rng(seed)
+    picks = rng.integers(0, len(dates), size=(draws, len(dates)))
+    means = np.sort(s[picks].sum(axis=1) / n[picks].sum(axis=1))
+    return point, float(means[int(0.025 * draws)]), float(means[int(0.975 * draws)])
 
 
 def station_day_means(pairs: list[dict]) -> list[dict]:
@@ -85,10 +94,11 @@ def main() -> int:
     parser.add_argument("--kappa", type=float, default=STABLE_POOL_KAPPA)
     parser.add_argument("--baseline-arm", default="baseline")
     parser.add_argument("--with-arm", default="with_aifs")
+    parser.add_argument("--first-event-date", default="")
     args = parser.parse_args()
     scheme = f"C{args.kappa:g}"
     base, with_ = load(args.baseline_arm), load(args.with_arm)
-    shared = sorted(set(base) & set(with_))
+    shared = sorted(k for k in set(base) & set(with_) if k[1] >= args.first_event_date)
     pairs = []
     seated = 0
     aifs_weight = []
@@ -101,22 +111,40 @@ def main() -> int:
             for i, metric in enumerate(METRICS):
                 pair[f"base_{view}_{metric}"] = float(b[view][i])
                 pair[f"with_{view}_{metric}"] = float(w[view][i])
-        if AIFS in with_[key].get("pool", ()):
+        pair["seated"] = AIFS in with_[key].get("pool", ())
+        if pair["seated"]:
             seated += 1
             aifs_weight.append(float(w.get("w", {}).get(AIFS, 0.0)))
         pairs.append(pair)
+    # Where AIFS did not sit, the with_aifs arm served the baseline pool, so
+    # its scores must equal the baseline's to the digit.  Anything else means
+    # the pairing slipped or the view changed more than one member.
+    unseated_drift = max(
+        (abs(p[f"with_{v}_{m}"] - p[f"base_{v}_{m}"])
+         for p in pairs if not p["seated"] for v in ("served", "noband", "raw") for m in METRICS),
+        default=0.0,
+    )
     report = {
         "scheme": scheme,
         "records": {"baseline": len(base), "with_aifs": len(with_), "paired": len(pairs)},
         "unpaired_baseline": len(set(base) - set(with_)),
         "unpaired_with_aifs": len(set(with_) - set(base)),
         "aifs_seated_updates": seated,
+        "max_abs_delta_where_aifs_not_seated": unseated_drift,
         "aifs_weight_mean": round(statistics.fmean(aifs_weight), 4) if aifs_weight else None,
         "event_dates": len({p["event_date"] for p in pairs}),
         "stations": len({p["station"] for p in pairs}),
         "results": {},
     }
-    for weighting, rows in (("per_update", pairs), ("per_station_day", station_day_means(pairs))):
+    seated_pairs = [p for p in pairs if p["seated"]]
+    for weighting, rows in (
+        ("per_update", pairs),
+        ("per_station_day", station_day_means(pairs)),
+        ("per_update_where_seated", seated_pairs),
+        ("per_station_day_where_seated", station_day_means(seated_pairs)),
+    ):
+        if not rows:
+            continue
         block = {}
         for view in ("served", "noband", "raw"):
             for metric in METRICS:
