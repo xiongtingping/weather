@@ -1,0 +1,135 @@
+"""Charter 176: the native P0 compile's two slow reads get the index they need.
+
+One compile ran ~311 statements, 89% of its time SQL, and two statements
+were 75% of that: a scope's settlement timezone DISTINCTed off ~880 wide
+registry rows through table lookups (75ms), and the activations valid now
+for one (station, season, lead) found by reading every activation the scope
+ever had, because run_cycle sat between the lead bucket and the validity
+window in the only index (72ms).  Both are pinned here by plan, on a fresh
+store built from the production DDL -- the live store has no sqlite_stat
+tables, so the planner there reads the same schema this does.
+"""
+
+import importlib.util
+import sqlite3
+from pathlib import Path
+
+from bayes_basket_target.market_registry import apply_target_market_registry_schema
+from bayes_basket_target.ssot import apply_production_ssot_schema, declared_index_names
+
+ROOT = Path(__file__).resolve().parents[1]
+REGISTRY_TZ = "basket_target_market_registry_scope_tz_idx"
+WINDOW = "calibration_native_activation_window_idx"
+
+TIMEZONE_READS = {
+    # native_ensemble_p0 (the compile)
+    "compile": "SELECT DISTINCT settlement_timezone FROM basket_target_market_registry"
+               " WHERE station_id=? AND event_date=? AND settlement_timezone<>''",
+    # delta_v2_settlement_label, forward_observation_store,
+    # forward_training_validation, native_ensemble_training_facts
+    "scope": "SELECT DISTINCT settlement_timezone FROM basket_target_market_registry"
+             " WHERE station_id=? AND event_date=?",
+}
+LEAD_BUCKET = (
+    "SELECT r.ensemble_system_ids_json,a.run_cycle_by_system_json "
+    "FROM calibration_native_ensemble_activation a "
+    "JOIN calibration_cross_native_ensemble_artifact r "
+    "ON r.cross_ensemble_artifact_id=a.artifact_id "
+    "WHERE a.artifact_kind='CROSS_NATIVE_ENSEMBLE' "
+    "AND a.station_id=? AND a.season_bin=? AND a.lead_bucket=? "
+    "AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY' "
+    "AND a.valid_from_utc<=? AND a.valid_until_utc>? "
+    "ORDER BY a.generation DESC,a.activation_id LIMIT 256"
+)
+
+
+def _store(tmp_path: Path) -> sqlite3.Connection:
+    conn = sqlite3.connect(tmp_path / "ssot.db")
+    apply_production_ssot_schema(conn)
+    apply_target_market_registry_schema(conn)
+    return conn
+
+
+def _plan(conn, sql):
+    return " | ".join(
+        str(row[3]) for row in conn.execute("EXPLAIN QUERY PLAN " + sql, ("x",) * sql.count("?"))
+    )
+
+
+def test_both_indexes_are_declared_where_the_resident_reads_its_schema() -> None:
+    declared = declared_index_names()
+    assert declared[WINDOW] == "calibration_native_ensemble_activation"
+
+
+def test_every_scope_timezone_read_is_answered_from_the_index_alone(tmp_path) -> None:
+    conn = _store(tmp_path)
+    for name, sql in TIMEZONE_READS.items():
+        plan = _plan(conn, sql)
+        assert f"COVERING INDEX {REGISTRY_TZ}" in plan, (name, plan)
+
+
+def test_the_lead_bucket_read_seeks_the_validity_window(tmp_path) -> None:
+    conn = _store(tmp_path)
+    plan = _plan(conn, LEAD_BUCKET)
+    assert WINDOW in plan, plan
+    assert "valid_until_utc>?" in plan, plan
+
+
+def test_the_compile_still_asks_exactly_these_questions() -> None:
+    # If the compile's SQL moves, the plans above stop proving anything.
+    source = (ROOT / "bayes_basket_target" / "native_ensemble_p0.py").read_text(encoding="utf-8")
+    flat = " ".join(source.split())
+    assert "AND a.valid_from_utc<=? AND a.valid_until_utc>? " in flat
+    assert "WHERE station_id=? AND event_date=? " in flat
+
+
+def _migration():
+    spec = importlib.util.spec_from_file_location(
+        "replay_compile_indexes",
+        ROOT / "scripts" / "apply_bayes_basket_target_replay_compile_indexes.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _store_without_the_new_indexes(tmp_path: Path) -> Path:
+    path = tmp_path / "live.db"
+    conn = sqlite3.connect(path)
+    apply_production_ssot_schema(conn)
+    apply_target_market_registry_schema(conn)
+    conn.execute(f"DROP INDEX {REGISTRY_TZ}")
+    conn.execute(f"DROP INDEX {WINDOW}")
+    # Rows only need to exist for the index counts; the snapshot parent
+    # rows the foreign key names are beside the point here.
+    conn.execute("PRAGMA foreign_keys=OFF")
+    columns = [row[1] for row in conn.execute("PRAGMA table_info(basket_target_market_registry)")]
+    for i in range(30):
+        row = {c: f"v{i}" for c in columns}
+        row.update(station_id=f"S{i % 3}", event_date=f"2026-09-2{i % 2}",
+                   settlement_timezone="" if i == 7 else "Asia/Shanghai",
+                   snapshot_sha256=f"{i:064x}", source_lane="awc", source_eligible=1,
+                   market_active=1, market_accepting_orders=1, settlement_unit="C",
+                   rules_sha256="r" * 64, slug=f"slug-{i}")
+        conn.execute(
+            f"INSERT INTO basket_target_market_registry({','.join(columns)})"
+            f" VALUES({','.join('?' for _ in columns)})",
+            tuple(row[c] for c in columns),
+        )
+    conn.commit()
+    conn.close()
+    return path
+
+
+def test_the_migration_adds_both_and_proves_them_against_their_tables(tmp_path) -> None:
+    path = _store_without_the_new_indexes(tmp_path)
+    receipt = _migration().migrate(db_path=path, confirmed_writer_stopped=False)
+    assert receipt["state"] == "migrated"
+    assert receipt["indexes_created"] == sorted([REGISTRY_TZ, WINDOW])
+    by_name = {item["index"]: item for item in receipt["index_verification"]}
+    # 3 stations x 2 days = 6 scopes, each with one non-blank timezone.
+    assert by_name[REGISTRY_TZ]["rows"] == 6
+    assert all(item["planner_used_index"] for item in receipt["index_verification"])
+    again = _migration().migrate(db_path=path, confirmed_writer_stopped=False)
+    assert again["indexes_created"] == []
+    assert sorted(again["indexes_already_present"]) == sorted([REGISTRY_TZ, WINDOW])

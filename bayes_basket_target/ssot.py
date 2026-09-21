@@ -1065,6 +1065,14 @@ CREATE INDEX IF NOT EXISTS calibration_forward_taf_capture_scope_idx ON calibrat
 CREATE INDEX IF NOT EXISTS calibration_historical_taf_capture_scope_idx ON calibration_historical_taf_capture(station_id,event_date,provider_available_at_utc);
 CREATE INDEX IF NOT EXISTS calibration_historical_taf_correction_quarantine_scope_idx ON calibration_historical_taf_correction_quarantine(station_id,event_date,settlement_timezone);
 CREATE INDEX IF NOT EXISTS calibration_native_activation_asof_idx ON calibration_native_ensemble_activation(station_id,artifact_kind,season_bin,lead_bucket,run_cycle,valid_from_utc,valid_until_utc,generation);
+-- The native P0 compile asks which activations of one (station, season,
+-- lead bucket) are valid at the decision instant.  The asof index above puts
+-- run_cycle between the lead bucket and the validity window and the compile
+-- does not know the run cycle, so the window was never seekable: every
+-- activation the scope ever had (1,264 for CYYZ h24_48, almost all expired)
+-- was read and filtered, 72ms a call warm (2026-09-21), 36% of the compile's
+-- SQL time.  Ending on valid_until_utc makes "still valid" a range seek.
+CREATE INDEX IF NOT EXISTS calibration_native_activation_window_idx ON calibration_native_ensemble_activation(station_id,artifact_kind,season_bin,lead_bucket,valid_until_utc);
 CREATE INDEX IF NOT EXISTS calibration_station_source_authority_latest_idx ON calibration_station_source_authority(station_id,activated_at_utc,authority_id);
 CREATE INDEX IF NOT EXISTS basket_policy_activation_asof_idx ON basket_policy_activation(station_id,stage,season_bin,maturity_bin,liquidity_bin,strategy_version,valid_from_utc,valid_until_utc,generation);
 

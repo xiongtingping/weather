@@ -94,6 +94,18 @@ CREATE INDEX IF NOT EXISTS basket_target_market_registry_latest_idx
 CREATE INDEX IF NOT EXISTS basket_target_market_registry_scope_idx
   ON {TABLE}(station_id,event_date);
 
+-- Seven readers ask one scope's settlement timezone -- the native P0
+-- compile, the label and truth materializers, the forward training fact
+-- validator, the observation store, the training-fact builder -- and each
+-- DISTINCTs it off every snapshot row the scope has.  The registry appends a
+-- row per scope every refresh, so a scope carries ~880 of them by its event
+-- day, each ~1.6KB wide with its registry_json, and the scope index above
+-- makes every one a table lookup: 75ms a call warm, measured 2026-09-21, 37%
+-- of the native P0 compile's SQL time, once per packet per cycle.  With the
+-- timezone in the index the read never touches the table.
+CREATE INDEX IF NOT EXISTS basket_target_market_registry_scope_tz_idx
+  ON {TABLE}(station_id,event_date,settlement_timezone);
+
 -- The truth-increment probe asks the other question this table gets: which
 -- ELIGIBLE station-days since a date have no accepted truth row yet.  Both
 -- of its predicates were unseekable against the indexes above -- scope-first
