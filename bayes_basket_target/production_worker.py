@@ -224,6 +224,7 @@ from .account_equity import (
     budget_capped_equity,
     capture_account_equity,
     ensure_account_equity_table,
+    ensure_positions_prefetch,
     load_account_equity,
     table_present as account_equity_table_present,
 )
@@ -7908,6 +7909,21 @@ class TargetProductionWorker:
 
         if self.commit_conn is None:
             return {"state": "not_attempted", "reason": "no_writer"}
+        # Charter 184: the positions read runs on a background thread in the
+        # live resident only -- the one process whose environment says so --
+        # and the capture takes its number when it is no older than a
+        # capture interval.  Until the first background read lands, and
+        # whenever one fails, the capture reads in line as before.
+        if (
+            str(os.environ.get("PM_TARGET_EXECUTION_MODE", "") or "").strip()
+            == "production_live"
+            and str(os.environ.get("PM_ACCOUNT_POSITIONS_PREFETCH", "1")).strip()
+            not in {"0", "false", "off"}
+        ):
+            try:
+                ensure_positions_prefetch()
+            except Exception:  # noqa: BLE001 -- the in-line read is the fallback
+                pass
         if not getattr(self, "_account_equity_table_ensured", False):
             # Created before the first read succeeds, so a store whose first
             # read fails reads as stale (production refuses) rather than as

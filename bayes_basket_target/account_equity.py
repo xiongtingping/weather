@@ -33,6 +33,8 @@ import json
 import math
 import os
 import sqlite3
+import threading
+import time
 from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -77,6 +79,16 @@ ACCOUNT_EQUITY_CAPTURE_INTERVAL_SECONDS = float(
 # The gateway refreshes its collateral cache continuously; a cached balance
 # older than this is the gateway's outage, not a balance.
 GATEWAY_CASH_MAX_AGE_SECONDS = 300.0
+# Charter 184 (user, 2026-09-21: 「挪后台」): the positions read -- one data
+# API round trip through the proxy, 7-12s of a cycle at 11:45-11:51Z -- is
+# taken on a background thread and handed to the capture.  A read no older
+# than the capture interval is what the capture already used: it reads at
+# most once a minute, so its positions number was up to a minute old when
+# sizing read it.  Anything older is read in line, as before.
+POSITIONS_PREFETCH_INTERVAL_SECONDS = float(
+    os.environ.get("PM_ACCOUNT_POSITIONS_PREFETCH_SEC", "") or 45.0
+)
+POSITIONS_PREFETCH_MAX_AGE_SECONDS = ACCOUNT_EQUITY_CAPTURE_INTERVAL_SECONDS
 DEFAULT_GATEWAY_URL = os.environ.get(
     "PM_CLOB_ORDER_SERVICE_URL", "http://127.0.0.1:8765"
 )
@@ -167,6 +179,100 @@ def read_positions_value(
     return value
 
 
+class _PositionsPrefetch:
+    """One background reader of ``read_positions_value`` per process."""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.key: tuple[str, str] | None = None
+        self.value: float | None = None
+        self.fetched_monotonic: float | None = None
+        self.fetched_at_utc: str = ""
+        self.error: str = ""
+        self.thread: threading.Thread | None = None
+        self.stop = threading.Event()
+
+    def ensure(
+        self, *, user: str, data_api_host: str, interval: float,
+        reader: Callable[..., float] | None = None,
+    ) -> bool:
+        key = (str(user).strip(), str(data_api_host))
+        if not key[0]:
+            return False
+        with self.lock:
+            if self.thread is not None and self.thread.is_alive() and self.key == key:
+                return True
+            self.key = key
+            self.value = None
+            self.fetched_monotonic = None
+            self.stop = threading.Event()
+            stop = self.stop
+            self.thread = threading.Thread(
+                target=self._loop,
+                args=(key, max(5.0, float(interval)), stop, reader or read_positions_value),
+                name="account_positions_prefetch",
+                daemon=True,
+            )
+            self.thread.start()
+        return True
+
+    def _loop(self, key, interval, stop, reader) -> None:
+        while not stop.is_set():
+            try:
+                value = float(reader(user=key[0], data_api_host=key[1]))
+                if not math.isfinite(value) or value < 0.0:
+                    raise ContractError("account_equity_positions_value_invalid")
+                with self.lock:
+                    if self.key == key:
+                        self.value = value
+                        self.fetched_monotonic = time.monotonic()
+                        self.fetched_at_utc = _z(datetime.now(timezone.utc))
+                        self.error = ""
+            except Exception as exc:  # noqa: BLE001 -- a failed read keeps the last one
+                with self.lock:
+                    self.error = f"{type(exc).__name__}:{exc}"[:200]
+            stop.wait(interval)
+
+    def fresh(
+        self, *, user: str, data_api_host: str, max_age: float,
+    ) -> tuple[float, str] | None:
+        key = (str(user).strip(), str(data_api_host))
+        with self.lock:
+            if (
+                self.key != key
+                or self.value is None
+                or self.fetched_monotonic is None
+                or time.monotonic() - self.fetched_monotonic > float(max_age)
+            ):
+                return None
+            return self.value, self.fetched_at_utc
+
+    def shutdown(self) -> None:
+        with self.lock:
+            self.stop.set()
+            self.thread = None
+            self.key = None
+            self.value = None
+            self.fetched_monotonic = None
+
+
+_POSITIONS_PREFETCH = _PositionsPrefetch()
+
+
+def ensure_positions_prefetch(
+    *, user: str | None = None, data_api_host: str = DEFAULT_DATA_API_HOST,
+    interval: float = POSITIONS_PREFETCH_INTERVAL_SECONDS,
+    reader: Callable[..., float] | None = None,
+) -> bool:
+    """Start the background positions reader (idempotent); False without a
+    funder address."""
+
+    return _POSITIONS_PREFETCH.ensure(
+        user=user if user is not None else funder_address(),
+        data_api_host=data_api_host, interval=interval, reader=reader,
+    )
+
+
 def resting_buy_notional_usdc(conn: sqlite3.Connection) -> float:
     """What this ledger's live buys still have resting on the exchange."""
 
@@ -221,10 +327,23 @@ def capture_account_equity(
         cash, cash_observed = (cash_reader or read_gateway_cash)(
             gateway_url=gateway_url, as_of_utc=as_of_utc,
         )
-        positions = float((positions_reader or read_positions_value)(
-            user=user if user is not None else funder_address(),
-            data_api_host=data_api_host,
-        ))
+        positions_user = user if user is not None else funder_address()
+        prefetched = (
+            _POSITIONS_PREFETCH.fresh(
+                user=positions_user, data_api_host=data_api_host,
+                max_age=POSITIONS_PREFETCH_MAX_AGE_SECONDS,
+            )
+            if positions_reader is None
+            else None
+        )
+        if prefetched is not None:
+            positions, positions_observed = prefetched
+        else:
+            positions = float((positions_reader or read_positions_value)(
+                user=positions_user,
+                data_api_host=data_api_host,
+            ))
+            positions_observed = as_of_utc
         resting = resting_buy_notional_usdc(conn)
     except (ContractError, URLError, OSError, ValueError, KeyError) as exc:
         receipt.update({
@@ -251,6 +370,10 @@ def capture_account_equity(
             "cash": "clob_order_service./health.collateral_balance_usdc",
             "positions": "data_api./value",
             "resting": "basket_target_order_reconciliations(pending,unknown)",
+            # Charter 184: when the positions number was read -- the
+            # capture's own clock for an in-line read, the background
+            # reader's for a prefetched one.
+            "positions_observed_at_utc": positions_observed,
         },
     }
     sha = content_sha256(identity)
