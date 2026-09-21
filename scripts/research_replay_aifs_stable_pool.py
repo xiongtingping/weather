@@ -90,6 +90,8 @@ def main() -> int:
     parser.add_argument("--cutoff-utc", default="2026-09-21T00:00:00Z")
     parser.add_argument("--budget-seconds", type=float, default=540.0)
     parser.add_argument("--stations", nargs="*", default=None)
+    parser.add_argument("--out-name", default="",
+                        help="output directory name (default: the arm), e.g. for an interim window")
     parser.add_argument(
         "--research-db", type=Path, default=RESEARCH_DB,
         help="a snapshot of the research database, while the backfill still writes it",
@@ -101,7 +103,7 @@ def main() -> int:
     replay.CUTOFF_UTC = args.cutoff_utc
     if args.arm == "with_aifs":
         oos.OFFICIAL_ARCHIVE_SCOPE_CONTRACTS[AIFS] = aifs_scope_contract()
-    out = OUT / args.arm
+    out = OUT / (args.out_name or args.arm)
     out.mkdir(parents=True, exist_ok=True)
     conn = connect(args.arm, args.research_db)
     stations = args.stations or sorted({

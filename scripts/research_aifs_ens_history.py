@@ -187,17 +187,27 @@ def day_instants(*, run_init: datetime, target: str, zone: str) -> list[int] | N
 _CLIENTS = threading.local()
 
 
+# The local HTTP proxy answered 503 for minutes at a time on 2026-09-21 and
+# took whole runs with it.  GCS is reachable without it (the machine-wide
+# tunnel still carries the traffic, same exit address, same throughput), so
+# the proxy is bypassed unless asked for.
+USE_ENV_PROXY = False
+
+
 def _client() -> httpx.Client:
     client = getattr(_CLIENTS, "client", None)
     if client is None:
-        client = httpx.Client(timeout=60.0, follow_redirects=True)
+        client = httpx.Client(timeout=60.0, follow_redirects=True, trust_env=USE_ENV_PROXY)
         _CLIENTS.client = client
     return client
 
 
 def _get(url: str, *, headers: dict[str, str] | None = None) -> bytes:
     last: Exception | None = None
-    for attempt in range(5):
+    # Eight attempts over about two minutes: the local proxy answers 503 in
+    # bursts (2026-09-21, five straight refusals on one message), and a run
+    # lost to one message costs its whole ~400 MB again.
+    for attempt in range(10):
         try:
             response = _client().get(url, headers=headers)
             response.raise_for_status()
@@ -207,7 +217,7 @@ def _get(url: str, *, headers: dict[str, str] | None = None) -> bytes:
             status = getattr(getattr(exc, "response", None), "status_code", None)
             if status == 404:
                 break
-            time.sleep(min(1.0 * (2 ** attempt), 16.0))
+            time.sleep(min(1.0 * (2 ** attempt), 60.0))
     raise RuntimeError(f"aifs_fetch_failed:{url}:{type(last).__name__}:{last}")
 
 
@@ -512,9 +522,13 @@ def main() -> int:
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--max-seconds", type=float, default=540.0)
     parser.add_argument("--max-runs", type=int, default=0)
+    parser.add_argument("--env-proxy", action="store_true",
+                        help="route through the HTTP(S)_PROXY environment (bypassed by default)")
     parser.add_argument("--run", action="append", default=[],
                         help="only these run inits (e.g. 2026-08-20T00:00:00Z)")
     args = parser.parse_args()
+    global USE_ENV_PROXY
+    USE_ENV_PROXY = bool(args.env_proxy)
 
     deadline = time.monotonic() + float(args.max_seconds)
     conn = open_research_db(args.db)

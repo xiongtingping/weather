@@ -101,10 +101,21 @@ def main() -> int:
     shared = sorted(k for k in set(base) & set(with_) if k[1] >= args.first_event_date)
     pairs = []
     seated = 0
+    table_mismatch = 0
     aifs_weight = []
     for key in shared:
         b, w = base[key]["schemes"].get(scheme), with_[key]["schemes"].get(scheme)
         if not b or not w:
+            continue
+        # The replay memoises gate tables per hour on the first update to
+        # reach that hour, so two arms whose first update in an hour differs
+        # can straddle a table activation and serve different tables to the
+        # same update.  That is the harness, not the member; such pairs are
+        # counted and left out.
+        if (base[key].get("band_sha"), base[key].get("cw_sha")) != (
+            with_[key].get("band_sha"), with_[key].get("cw_sha")
+        ):
+            table_mismatch += 1
             continue
         pair = {"station": key[0], "event_date": key[1], "at": key[2], "lead": base[key]["lead"]}
         for view in ("served", "noband", "raw"):
@@ -130,6 +141,7 @@ def main() -> int:
         "unpaired_baseline": len(set(base) - set(with_)),
         "unpaired_with_aifs": len(set(with_) - set(base)),
         "aifs_seated_updates": seated,
+        "excluded_gate_table_mismatch": table_mismatch,
         "max_abs_delta_where_aifs_not_seated": unseated_drift,
         "aifs_weight_mean": round(statistics.fmean(aifs_weight), 4) if aifs_weight else None,
         "event_dates": len({p["event_date"] for p in pairs}),
