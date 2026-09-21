@@ -126,9 +126,22 @@ P1_TAIL_DEFAULT_SETTINGS: dict[str, Any] = {
     # crosses zero by eight, so an envelope older than this is not a slower
     # trade -- it is a different one.
     "envelope_fresh_seconds": 300.0,
+    # What may still be SCORED (the evaluation row is evidence) ...
     "book_fresh_seconds": 900.0,
+    # ... and what may be BOUGHT.  A FOK is priced on the snapshot and
+    # arrives later; both of the lane's first sends were priced on a book
+    # 171 and 328 seconds old, and the second died because the level it
+    # measured had been taken.
+    "send_book_fresh_seconds": 60.0,
     # One bucket is bought once ever; this bounds the whole station-day.
     "max_sends_per_station_day": 2,
+    # How far above the best ask a take may be authorised, in ticks.  The
+    # top ask level's median depth on this book is 10 shares and its p25 is
+    # 5.7, so a 5 USDC take is bigger than the whole top level most of the
+    # time and a FOK held to the ask is killed: three live sends, three
+    # kills.  One tick carried every sampled level at 0.72 and 91% at 0.50.
+    # The lane pays for it by testing the hurdle against the WALKED price.
+    "walk_ticks": 1,
 }
 
 #: The per-trade stake is a board dial (charter 146); the server refuses a

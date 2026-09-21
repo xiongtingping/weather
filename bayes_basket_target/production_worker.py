@@ -787,6 +787,15 @@ STAGE_TIER: dict[str, int] = {
     "fast_lane_after_regime": STAGE_TIER_R0_DECISION,
     "fast_lane_after_forward_p0_loop": STAGE_TIER_R0_DECISION,
     "fast_lane_after_market_ingress": STAGE_TIER_R0_DECISION,
+    # Charter 165's in-loop checkpoint is RETIRED (2026-09-21).  Measured on
+    # the 14:43:01Z cycle: five in-loop passes cost 560s of a 1767s cycle,
+    # one of them 264s on its own, and the decision loop's own quote
+    # refreshes went from 12 (86s) to 31 (573s) in the same step -- a pass
+    # that takes minutes INSIDE the loop expires the quote lease the loop is
+    # holding, so the next scope re-reads the book, which lengthens the loop,
+    # which expires more leases.  The five checkpoints at the stage
+    # BOUNDARIES have no such coupling and stay.  The label is kept so an
+    # older cycle's receipt still reads.
     "fast_lane_in_decision_loop": STAGE_TIER_R0_DECISION,
     # Charter 166: the tail lane, run where P1 is written.
     "p1_tail_after_early_p1": STAGE_TIER_R0_DECISION,
@@ -19162,9 +19171,6 @@ class TargetProductionWorker:
                     # reached keep last cycle's decisions; the next cycle
                     # serves them first because nothing was written.
                     break
-                # Charter 165: a report that landed while earlier scopes were
-                # priced becomes P1 before this one is, inside the interval.
-                self._fast_lane_checkpoint_if_due("in_decision_loop", mark=False)
                 station = str(station_id)
                 day = str(event_date)
                 if (station, day) in recomputed_scopes:
