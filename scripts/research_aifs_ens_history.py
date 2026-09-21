@@ -517,11 +517,36 @@ def main() -> int:
     args = parser.parse_args()
 
     deadline = time.monotonic() + float(args.max_seconds)
-    plan = load_plan(args.start, args.end)
+    conn = open_research_db(args.db)
+    # The plan is one grouped scan of the SSOT's largest table -- minutes at
+    # normal priority, tens of minutes under an I/O policy that yields to
+    # production -- and it cannot change for a closed window, so it is read
+    # once and kept beside the rows it plans.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS research_aifs_plan("
+        " window TEXT, run_init_utc TEXT, station_id TEXT, target_local_date TEXT,"
+        " pf50_arrival_utc TEXT, PRIMARY KEY(window, run_init_utc, station_id, target_local_date))"
+    )
+    window = f"{args.start}..{args.end}"
+    cached = conn.execute(
+        "SELECT run_init_utc,station_id,target_local_date,pf50_arrival_utc "
+        "FROM research_aifs_plan WHERE window=?", (window,),
+    ).fetchall()
+    if cached:
+        plan: dict[str, dict[tuple[str, str], str]] = defaultdict(dict)
+        for run, station, target, arrival in cached:
+            plan[run][(station, target)] = arrival
+        plan = dict(plan)
+    else:
+        plan = load_plan(args.start, args.end)
+        with conn:
+            conn.executemany(
+                "INSERT OR IGNORE INTO research_aifs_plan VALUES(?,?,?,?,?)",
+                [(window, run, st, d, arr) for run, pairs in plan.items() for (st, d), arr in pairs.items()],
+            )
     timezones = load_timezones()
     stations = sorted(coordinate_registry_manifest()["station_ids"])
     index = StationIndex(stations)
-    conn = open_research_db(args.db)
     done = {row[0] for row in conn.execute("SELECT run_init_utc FROM research_aifs_runs")}
     # Runs captured before the samples table existed have rows but no
     # samples; they are fetched again (rows are INSERT OR IGNORE, so the
