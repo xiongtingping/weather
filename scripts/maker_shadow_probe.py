@@ -53,6 +53,13 @@ from bayes_basket_target.probability_bridge import (  # noqa: E402
     history_envelope_payload,
 )
 
+from bayes_basket_target.maker_shadow_store import (  # noqa: E402
+    attach_maker_shadow,
+    main_shadow_tables,
+    open_shadow_connection,
+    schema_prefix,
+)
+
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 # The rules a resting order could follow, priced off the book as it stands
 # when the intent is written.  ``ask`` is not a maker order at all -- it is
@@ -141,7 +148,7 @@ OPENING_PLACEMENT_INTERVAL_MINUTES = 5
 OPENING_LEAD_HOURS = 12.0
 
 _ORDER_DDL = """
-CREATE TABLE IF NOT EXISTS maker_shadow_order (
+CREATE TABLE IF NOT EXISTS {prefix}maker_shadow_order (
   order_id TEXT PRIMARY KEY,
   station_id TEXT NOT NULL,
   event_date TEXT NOT NULL,
@@ -178,7 +185,7 @@ CREATE TABLE IF NOT EXISTS maker_shadow_order (
 )
 """
 _SETTLEMENT_DDL = """
-CREATE TABLE IF NOT EXISTS maker_shadow_settlement (
+CREATE TABLE IF NOT EXISTS {prefix}maker_shadow_settlement (
   order_id TEXT PRIMARY KEY
     REFERENCES maker_shadow_order(order_id),
   station_id TEXT NOT NULL,
@@ -191,9 +198,9 @@ CREATE TABLE IF NOT EXISTS maker_shadow_settlement (
 )
 """
 _INDEXES = (
-    "CREATE INDEX IF NOT EXISTS idx_maker_shadow_open"
+    "CREATE INDEX IF NOT EXISTS {prefix}idx_maker_shadow_open"
     " ON maker_shadow_order(state, expires_at_utc)",
-    "CREATE INDEX IF NOT EXISTS idx_maker_shadow_scope"
+    "CREATE INDEX IF NOT EXISTS {prefix}idx_maker_shadow_scope"
     " ON maker_shadow_order(station_id, event_date)",
 )
 
@@ -211,9 +218,19 @@ def _parse(text: str) -> datetime:
 
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
-    conn.execute(_ORDER_DDL)
-    conn.execute(_SETTLEMENT_DDL)
-    for statement in _INDEXES:
+    """Create the two tables wherever this connection's book lives.
+
+    The schema has to be named.  After the move (charter 169) ``main`` is
+    the SSOT opened read-only and the book is the attached
+    ``maker_shadow``; an unqualified CREATE would land in ``main`` and fail.
+    Before the move, and in a fixture that owns its tables, the prefix is
+    empty and these are the statements they always were.
+    """
+
+    prefix = schema_prefix(conn)
+    conn.execute(_ORDER_DDL.format(prefix=prefix))
+    conn.execute(_SETTLEMENT_DDL.format(prefix=prefix))
+    for statement in (item.format(prefix=prefix) for item in _INDEXES):
         conn.execute(statement)
     columns = {
         str(row[1])
@@ -966,6 +983,25 @@ def claim_cap_reading(conn: sqlite3.Connection) -> str:
     return line
 
 
+def _open_writable(database: Path) -> sqlite3.Connection:
+    """The book, writable, on either side of the move.
+
+    While the SSOT still holds the two tables this is the SSOT itself, as it
+    always was.  Once they have moved (charter 169) the SSOT opens read-only
+    and ``data/maker_shadow.db`` is attached, so a probe pass no longer takes
+    the SSOT's write lock and no longer costs production a writer turn.
+    """
+
+    probe = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=60.0)
+    try:
+        still_in_ssot = bool(main_shadow_tables(probe))
+    finally:
+        probe.close()
+    if still_in_ssot:
+        return sqlite3.connect(str(database), timeout=60.0)
+    return open_shadow_connection(writable=True, ssot_path=database)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
@@ -975,9 +1011,11 @@ def main() -> int:
     if args.report:
         conn = sqlite3.connect(f"file:{database}?mode=ro", uri=True,
                                timeout=60.0)
+        conn.execute("PRAGMA busy_timeout=60000")
+        attach_maker_shadow(conn, ssot_path=database)
         print(json.dumps(report(conn), ensure_ascii=False, sort_keys=True))
         return 0
-    conn = sqlite3.connect(str(database), timeout=60.0)
+    conn = _open_writable(database)
     conn.execute("PRAGMA busy_timeout=60000")
     # Never checkpoint from here: this database's WAL sits far past the
     # autocheckpoint threshold, and folding it while the resident writes is

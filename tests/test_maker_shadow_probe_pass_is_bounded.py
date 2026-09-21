@@ -426,12 +426,20 @@ def test_every_write_in_the_pass_goes_through_the_chunked_flush() -> None:
     assert sites == ["_flush"], sites
 
 
-def test_the_lane_still_declares_itself_sliced_against_the_lease() -> None:
-    """The contract this pass kept breaking, so a change to it is loud.
+def test_the_lane_no_longer_costs_production_a_writer_turn() -> None:
+    """What replaced the ``sliced`` lease, and why a change to it is loud.
 
-    ``sliced`` is a promise the lane reads the lease and stops inside it.
-    If this lane is ever redeclared ``one_shot``, the interval rule beside
-    it applies and the bound has to be argued for, not inherited.
+    This lane used to declare ``("sliced", WRITER_LEASE_SEC)``: it wrote its
+    two tables inside the SSOT, SQLite's write lock is the whole file, so
+    every pass took an exclusive writer turn and production waited it out --
+    for a book nothing on the decision path reads.  Charter 169 moved the
+    tables to ``data/maker_shadow.db``, which is the paper ledger's shape
+    (charter 155) and the reason that lane carries no lease either.
+
+    So the assertion inverts: the lane declares its OWN domain and holds no
+    lease.  If it is ever declared ``ssot`` again -- by a new table, or by a
+    revert -- it is back to costing production a turn every three hours, and
+    the lease contract has to come back with it.
     """
 
     import importlib.util
@@ -443,13 +451,14 @@ def test_the_lane_still_declares_itself_sliced_against_the_lease() -> None:
     daemon = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(daemon)
 
-    kind, bound = daemon.HOSTED_SWEEP_LEASE_CONTRACT["maker_shadow_probe"]
-    assert kind == "sliced"
-    assert bound == daemon.WRITER_LEASE_SEC
-    # And it is not writer-turn exempt, which is why the overrun is expensive:
-    # every second past the lease is a second production cannot start.
-    assert "maker_shadow_probe" not in daemon.WRITER_TURN_EXEMPT_SWEEPS
-    assert daemon.hosted_sweep_write_domain("maker_shadow_probe") == "ssot"
+    assert daemon.hosted_sweep_write_domain("maker_shadow_probe") == "maker_shadow"
+    assert "maker_shadow_probe" not in daemon.HOSTED_SWEEP_LEASE_CONTRACT
+    # The same shape the paper ledger has carried since it moved.
+    assert daemon.hosted_sweep_write_domain("paper_trading_ledger") == "paper_ledger"
+    assert "paper_trading_ledger" not in daemon.HOSTED_SWEEP_LEASE_CONTRACT
+    # Still bounded, just not by the writer lease: the sweep's own timeout.
+    timeouts = {name: timeout for name, _script, _interval, timeout in daemon.HOSTED_SWEEPS}
+    assert timeouts["maker_shadow_probe"] > 0.0
 
 
 # ---------------------------------------------------------------------------

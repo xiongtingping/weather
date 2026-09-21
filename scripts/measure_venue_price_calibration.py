@@ -38,6 +38,8 @@ import argparse
 import json
 import sqlite3
 import sys
+
+from bayes_basket_target.maker_shadow_store import attach_maker_shadow  # noqa: E402
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -332,6 +334,7 @@ def main() -> int:
     args = parser.parse_args()
 
     conn = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
+    attach_maker_shadow(conn, ssot_path=args.db)
     from paper_ledger_reader import attach_paper_ledger  # noqa: PLC0415
     attach_paper_ledger(conn)
     conn.execute("PRAGMA query_only=1")

@@ -58,7 +58,11 @@ def test_every_sweep_declares_a_write_domain(daemon) -> None:
     listed = {name for name, _, _, _ in daemon.HOSTED_SWEEPS}
     assert declared == listed
     assert set(daemon.HOSTED_SWEEP_WRITE_DOMAIN.values()) <= {
-        "ssot", "archive", "none", "paper_ledger",
+        # A domain is a file the sweeps of that name serialise against.
+        # ``paper_ledger`` (charter 155) and ``maker_shadow`` (charter 169)
+        # are books that left the SSOT: each is its own file, so a sweep
+        # writing one excludes no SSOT writer and costs production no turn.
+        "ssot", "archive", "none", "paper_ledger", "maker_shadow",
     }
 
 
@@ -70,16 +74,16 @@ def test_an_undeclared_sweep_is_assumed_to_write_the_ssot(daemon) -> None:
 
 def test_two_ssot_writers_never_start_together(daemon) -> None:
     admitted = daemon.admissible_hosted_sweeps(
-        _due("maker_shadow_probe", "settlement_truth", module=daemon),
+        _due("pr12_awc_observation", "settlement_truth", module=daemon),
         running_names=[],
     )
-    assert [item[2] for item in admitted] == ["maker_shadow_probe"]
+    assert [item[2] for item in admitted] == ["pr12_awc_observation"]
 
 
 def test_disjoint_domains_run_together(daemon) -> None:
     admitted = daemon.admissible_hosted_sweeps(
         _due(
-            "maker_shadow_probe",            # ssot
+            "pr12_awc_observation",            # ssot
             "correction_review_auto_clear",  # archive
             "forward_packet_retention",      # no database
             module=daemon,
@@ -87,7 +91,7 @@ def test_disjoint_domains_run_together(daemon) -> None:
         running_names=[],
     )
     assert [item[2] for item in admitted] == [
-        "maker_shadow_probe",
+        "pr12_awc_observation",
         "correction_review_auto_clear",
         "forward_packet_retention",
     ]
@@ -96,7 +100,7 @@ def test_disjoint_domains_run_together(daemon) -> None:
 def test_a_running_sweep_reserves_its_database(daemon) -> None:
     admitted = daemon.admissible_hosted_sweeps(
         _due(
-            "maker_shadow_probe",            # ssot -- taken
+            "pr12_awc_observation",            # ssot -- taken
             "correction_review_auto_clear",  # archive -- free
             module=daemon,
         ),
@@ -109,7 +113,7 @@ def test_most_overdue_still_wins_its_domain(daemon) -> None:
     # Ordering is unchanged: the ledger is listed earlier but the probe is
     # more overdue here, so the probe takes the SSOT slot.
     admitted = daemon.admissible_hosted_sweeps(
-        _due("settlement_truth", "maker_shadow_probe", module=daemon),
+        _due("settlement_truth", "pr12_awc_observation", module=daemon),
         running_names=[],
     )
     assert [item[2] for item in admitted] == ["settlement_truth"]
@@ -122,17 +126,17 @@ def test_ties_fall_back_to_list_order(daemon) -> None:
     }
     tied = [
         (300.0, index_of[name], name, "s.sh", 900.0)
-        for name in ("settlement_truth", "maker_shadow_probe")
+        for name in ("settlement_truth", "pr12_awc_observation")
     ]
     admitted = daemon.admissible_hosted_sweeps(tied, running_names=[])
-    # maker_shadow_probe sits at index 0, so it wins an equal overdue.
-    assert [item[2] for item in admitted] == ["maker_shadow_probe"]
+    # pr12_awc_observation sits at index 0, so it wins an equal overdue.
+    assert [item[2] for item in admitted] == ["pr12_awc_observation"]
 
 
 def test_total_concurrency_is_capped(daemon) -> None:
     admitted = daemon.admissible_hosted_sweeps(
         _due(
-            "maker_shadow_probe",
+            "pr12_awc_observation",
             "correction_review_auto_clear",
             "forward_packet_retention",
             module=daemon,
@@ -156,7 +160,7 @@ def test_a_generator_of_running_names_is_not_consumed_twice(daemon) -> None:
     # The scheduler passes a live dict view; a generator must behave the same
     # rather than reading as empty on the second use.
     admitted = daemon.admissible_hosted_sweeps(
-        _due("maker_shadow_probe", module=daemon),
+        _due("pr12_awc_observation", module=daemon),
         running_names=(name for name in ["settlement_truth"]),
     )
     assert admitted == []
@@ -283,10 +287,10 @@ def test_a_member_not_yet_due_is_not_in_the_queue(daemon) -> None:
         now_mono=now,
         next_due={
             "pr12_awc_observation": now + 1.0,
-            "maker_shadow_probe": now - 1.0,
+            "pr12_awc_observation": now - 1.0,
         },
     )
-    assert [item[2] for item in due] == ["maker_shadow_probe"]
+    assert [item[2] for item in due] == ["pr12_awc_observation"]
 
 
 def test_a_running_member_is_skipped(daemon) -> None:
@@ -295,11 +299,11 @@ def test_a_running_member_is_skipped(daemon) -> None:
         now_mono=now,
         next_due={
             "pr12_awc_observation": now - 3600.0,
-            "maker_shadow_probe": now - 3600.0,
+            "settlement_truth": now - 3600.0,
         },
         skip_names=["pr12_awc_observation"],
     )
-    assert [item[2] for item in due] == ["maker_shadow_probe"]
+    assert [item[2] for item in due] == ["settlement_truth"]
 
 
 #: The cycle time this table is sized against.  Comfortably above the 340s

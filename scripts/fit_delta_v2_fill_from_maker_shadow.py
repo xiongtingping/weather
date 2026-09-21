@@ -73,6 +73,7 @@ from bayes_basket_target.delta_v2_authority_clock import (  # noqa: E402
     utc_text,
     write_fill_batch,
 )
+from bayes_basket_target.maker_shadow_store import attach_maker_shadow  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 SCHEMA = "delta_basket_score_v2_fill_distribution_artifact_v1"
@@ -472,6 +473,7 @@ def _remint_policy(db: Path, *, now: datetime) -> int:
     """
 
     conn = sqlite3.connect(str(db), timeout=60.0)
+    attach_maker_shadow(conn, ssot_path=db)
     conn.execute("PRAGMA busy_timeout=60000")
     conn.row_factory = sqlite3.Row
     stamp = now.isoformat(timespec="seconds").replace("+00:00", "Z")
@@ -632,6 +634,7 @@ def main() -> int:
     args = parser.parse_args()
     database = args.db.expanduser().resolve(strict=True)
     conn = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=60.0)
+    attach_maker_shadow(conn, ssot_path=database)
     now = datetime.now(timezone.utc)
     if args.if_older_than_days is not None:
         newest = newest_fill_batch_start(conn, now=now)

@@ -46,6 +46,8 @@ import hashlib
 import json
 import sqlite3
 import sys
+
+from bayes_basket_target.maker_shadow_store import attach_maker_shadow  # noqa: E402
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -81,6 +83,7 @@ LEAD_BANDS = (
 
 def _connect(db: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=60.0)
+    attach_maker_shadow(conn, ssot_path=db)
     conn.row_factory = sqlite3.Row
     from paper_ledger_reader import attach_paper_ledger  # noqa: PLC0415
     attach_paper_ledger(conn)
