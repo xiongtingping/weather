@@ -38,6 +38,9 @@ DEFAULT_PLISTS=(
 # squarely inside that window.  A lane has one scheduler.
 OPTIONAL_PLISTS=(
   com.weather.live_control.plist
+  # The board's static server on 8791; same history as the live control
+  # server (a session preview that died with its session, 2026-09-21).
+  com.weather.dashboard_static.plist
 )
 SUPPORTED_PLISTS=("${DEFAULT_PLISTS[@]}" "${OPTIONAL_PLISTS[@]}")
 PLISTS=("${DEFAULT_PLISTS[@]}")

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.weather.dashboard_static</string>
+  <!-- The board is read at http://127.0.0.1:8791/cal_dashboard.html, a
+       plain static server over tmp/.  dashboard_render writes the page and
+       dashboard_reinflate redraws it, but neither serves it.
+
+       It was never a resident.  It ran as the "dashboard-static" preview
+       entry in .claude/launch.json, which lives exactly as long as the
+       session that started it.  On 2026-09-21 that session went away while
+       the SSOT was being rebuilt, nothing listened on 8791, and the board
+       was simply gone though every page file on disk was intact.  The same
+       thing happened to the LIVE switch on 8788 (com.weather.live_control).
+
+       KeepAlive, not an interval: it holds no state, so a restart costs
+       nothing.  The preview entry now attaches to this server by url. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/xiong/weather/.venv/bin/python</string>
+    <string>-m</string>
+    <string>http.server</string>
+    <string>8791</string>
+    <string>--directory</string>
+    <string>/Users/xiong/weather/tmp</string>
+    <string>--bind</string>
+    <string>127.0.0.1</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/xiong/weather</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+    <key>HOME</key>
+    <string>/Users/xiong</string>
+    <key>USER</key>
+    <string>xiong</string>
+    <key>LOGNAME</key>
+    <string>xiong</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/xiong/weather/data/logs/dashboard_static.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/xiong/weather/data/logs/dashboard_static.err.log</string>
+</dict>
+</plist>
