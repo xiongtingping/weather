@@ -1247,9 +1247,14 @@ ICON_TRANSPORT_PROVIDER_ID = "DWD_OPENDATA_ICON_EPS"
 ICON_RUN_PUBLICATION_LAG_SEC = 4 * 3600.0
 # Charter 192: the follow-run lane's bounds.  Half a pass's ICON connections,
 # so a follow capture beside a pass's own ICON fetch stays under DWD's ~24
-# connection ceiling; and a wall clock of half an hour for up to six runs.
+# connection ceiling.  The wall clock is sized on the lane's first capture
+# (2026-09-21 15:09Z: ICON D 12Z, 29 stations, 244MB in about eight minutes,
+# ~0.5MB/s at eight connections): a job asked for three new runs after a
+# restart pulls up to ~1GB, so half an hour could kill it mid-way.  A killed
+# job loses nothing -- each run is written when fetched and the next job
+# ingests what it finds retained -- but it wastes the fetch in flight.
 FOLLOW_ICON_DOWNLOAD_WORKERS = 8
-FOLLOW_RUN_CAPTURE_DEADLINE_SEC = 1800.0
+FOLLOW_RUN_CAPTURE_DEADLINE_SEC = 3600.0
 # Capture threads finish concurrently; the follow lane's pool and queue are
 # created and read under one lock.
 _FOLLOW_LANE_LOCK = threading.Lock()
