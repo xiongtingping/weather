@@ -26,9 +26,9 @@ What this module owns, and why each piece is shaped the way it is:
 * **Never older.**  The run the pass already chose (captured, reused or held)
   is always a candidate and a followed run must be strictly newer, so no
   station can end up on an older run than before.
-* **ICON's 6-hourly cycles wait for a ruling.**  06Z/18Z are captured and
-  trained, but seated only under ``PM_FOLLOW_SECONDARY_CYCLES`` (see
-  ``SECONDARY_SERVING_ENV``).
+* **ICON's 6-hourly cycles are seated like the others** (user ruling
+  2026-09-21/22), on the same certificate; ``PM_FOLLOW_SECONDARY_CYCLES=off``
+  holds them back (see ``SECONDARY_SERVING_ENV``).
 
 The minimum fit size is measured, not assumed: walked forward with
 production's own fit/apply/score functions over 08-15..09-20, ECMWF's and
@@ -93,13 +93,15 @@ FOLLOW_RUN_MIN_EFFECTIVE_CASES = 8.5
 # Kill switch, read by the worker: "off" restores the pre-charter capture and
 # packet byte for byte.
 FOLLOW_ENV = "PM_FOLLOW_NEW_RUNS"
-# ICON's 06Z/18Z runs are captured and trained like the others, but seating
-# one waits on a ruling (default off).  Their t_2m is 6-hourly, and every
-# other seated family seals a 3-hourly curve: the P0 root curve is the
-# intersection of the seated families' valid times, so one 6-hour member
-# halves the curve P1's path features read (4 points a day instead of 8) and
-# on a late same-day pass leaves fewer than the 4 it needs, dropping it.  The
-# d1 06Z slot also measured no gain on the proxies (ECMWF -1.1%, GEFS +2.7%).
+# ICON's 06Z/18Z runs are seated on the same certificate as every other
+# follow run (user ruling 2026-09-21/22, "ICON 的 06Z/18Z 允许上座"; default on).
+# What that knowingly accepts: their t_2m is 6-hourly while every other seated
+# family seals a 3-hourly curve, and the P0 root curve is the intersection of
+# the seated families' valid times, so a seated 6-hour member halves the curve
+# P1's path features read (4 points a day instead of 8) and on a late same-day
+# pass can leave fewer than the 4 it needs, dropping it; the d1 06Z slot also
+# measured no gain on the proxies (ECMWF -1.1%, GEFS +2.7%).  "off" holds the
+# two cycles back while still capturing and training them.
 SECONDARY_SERVING_ENV = "PM_FOLLOW_SECONDARY_CYCLES"
 # Hours after init before a follow capture is worth asking for.  Measured on
 # the open-data listing 2026-09-21: ICON 06Z objects landed 08:41-08:48Z and
@@ -135,8 +137,8 @@ def follow_serving_allowed(family: str, cycle_hour: int) -> bool:
 
     if family == ICON_FAMILY and int(cycle_hour) in ICON_SECONDARY_CYCLE_HOURS:
         return (
-            os.environ.get(SECONDARY_SERVING_ENV, "off").strip().lower()
-            in {"1", "on", "true", "yes"}
+            os.environ.get(SECONDARY_SERVING_ENV, "on").strip().lower()
+            not in {"0", "off", "false", "no"}
         )
     return True
 

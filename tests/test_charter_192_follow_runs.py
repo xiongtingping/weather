@@ -506,7 +506,6 @@ def test_a_certified_follow_run_serves_only_the_stations_it_is_certified_for(mon
 
 
 def test_a_follow_run_older_than_the_pass_run_is_never_taken(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv(follow_run.SECONDARY_SERVING_ENV, "on")
     registry_path, commands = _setup_pass(monkeypatch, tmp_path)
     monkeypatch.setattr(
         capture, "capture_icon_eps_station_days",
@@ -746,25 +745,37 @@ def test_the_kill_switch_turns_the_follow_lane_off(monkeypatch) -> None:
     assert not follow_run.follow_enabled()
 
 
-def test_icon_six_hour_runs_are_banked_but_not_seated_until_ruled(monkeypatch, tmp_path) -> None:
+def test_icon_six_hour_runs_are_seated_by_default_and_can_be_held_back(monkeypatch, tmp_path) -> None:
+    # User ruling 2026-09-21/22: ICON 06Z/18Z may be seated -- on the same
+    # certificate as every other follow run.
+    monkeypatch.delenv(follow_run.SECONDARY_SERVING_ENV, raising=False)
     registry_path, commands = _setup_pass(monkeypatch, tmp_path)
+    baseline = _pass(tmp_path, registry_path)                      # commands[0]
     icon_18 = _follow_file(tmp_path, f"icon_{DAY}_d1_18z.json", "2026-07-31T18:00:00Z", _station_ids())
     icon_12 = _follow_file(tmp_path, f"icon_{DAY}_d1_12z.json", "2026-07-31T12:00:00Z", _station_ids())
-    monkeypatch.delenv(follow_run.SECONDARY_SERVING_ENV, raising=False)
+    _follow_file(tmp_path, f"icon_{DAY}_d1_06z.json", "2026-07-31T06:00:00Z", _station_ids())
+    assert follow_run.follow_serving_allowed(follow_run.ICON_FAMILY, 6)
+    assert follow_run.follow_serving_allowed(follow_run.ICON_FAMILY, 18)
+    # default on, nothing certified: byte-identical to the pass without follow
+    uncertified = _pass(tmp_path, registry_path, follow_new_runs=True,
+                        follow_serving_ready=lambda **_kw: False)  # commands[1]
+    assert _builder(commands[1:2]) == _builder(commands[0:1])
+    assert {k: v for k, v in uncertified.items() if k != "captured_at_utc"} == {
+        k: v for k, v in baseline.items() if k != "captured_at_utc"
+    }
+    # certified: the 6-hourly 18Z is the newest and is seated
     receipt = _pass(tmp_path, registry_path, follow_new_runs=True,
-                    follow_serving_ready=lambda **_kw: True)
-    # certified 18Z is passed over; the certified 12Z beneath it is taken
-    assert set(receipt["follow_serving"][follow_run.ICON_FAMILY].values()) == {"2026-07-31T12:00:00Z"}
-    assert str(icon_18) not in _builder(commands)
-    monkeypatch.setenv(follow_run.SECONDARY_SERVING_ENV, "on")
-    receipt = _pass(tmp_path, registry_path, follow_new_runs=True,
-                    follow_serving_ready=lambda **_kw: True)
+                    follow_serving_ready=lambda **_kw: True)       # commands[2]
     assert set(receipt["follow_serving"][follow_run.ICON_FAMILY].values()) == {"2026-07-31T18:00:00Z"}
-    assert str(icon_12) not in _builder(commands[1:])
-    # ECCC's 12Z and ICON's 12Z are never held back by that switch
-    assert follow_run.follow_serving_allowed(follow_run.ECCC_FAMILY, 12)
-    monkeypatch.delenv(follow_run.SECONDARY_SERVING_ENV, raising=False)
+    assert str(icon_12) not in _builder(commands[2:3])
+    # "off" holds the 6-hour cycles back; the certified 12Z beneath is taken
+    monkeypatch.setenv(follow_run.SECONDARY_SERVING_ENV, "off")
+    receipt = _pass(tmp_path, registry_path, follow_new_runs=True,
+                    follow_serving_ready=lambda **_kw: True)       # commands[3]
+    assert set(receipt["follow_serving"][follow_run.ICON_FAMILY].values()) == {"2026-07-31T12:00:00Z"}
+    assert str(icon_18) not in _builder(commands[3:4])
     assert follow_run.follow_serving_allowed(follow_run.ICON_FAMILY, 12)
+    assert follow_run.follow_serving_allowed(follow_run.ECCC_FAMILY, 12)
     assert not follow_run.follow_serving_allowed(follow_run.ICON_FAMILY, 6)
 
 
