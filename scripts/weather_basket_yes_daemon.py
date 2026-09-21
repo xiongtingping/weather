@@ -3332,6 +3332,40 @@ def _canonical_live_taf_registry_rows(source_db: Path) -> list[dict[str, Any]]:
 # the 443->620s spread is itself worth watching, and it is watched by the
 # stage timings the receipt publishes, not by this bound.
 PRODUCTION_CYCLE_OVERDUE_SEC = 720.0
+# Where an overdue cycle's thread stacks are written, and how often.  The
+# statement probe names the SQL a wedged thread is inside, and that is not
+# always the question: on 2026-09-21 three processes in a row (00:27Z,
+# 01:23Z and 04:40Z starts) never closed a cycle, and the probe showed only
+# the PRAGMA each cycle thread opened its connection with -- the thread was
+# running ten short statements a second, none of them slow, so no statement
+# was ever the answer.  py-spy needs root on this host and the logs are
+# truncated on restart, so the one reader that can see Python frames is this
+# process itself.  Only once a cycle is overdue, and at most every thirty
+# seconds: a healthy cycle has nothing to name.
+PRODUCTION_OVERDUE_STACKS_PATH = (
+    ROOT / "data" / "runtime" / "production_overdue_stacks.json"
+)
+PRODUCTION_OVERDUE_STACKS_EVERY_SEC = 30.0
+
+
+def _thread_stacks_snapshot(*, max_frames: int = 30) -> dict[str, Any]:
+    """Every live thread's innermost Python frames, read in-process."""
+
+    import traceback  # noqa: PLC0415 -- only on the overdue path
+
+    names = {thread.ident: thread.name for thread in threading.enumerate()}
+    threads = []
+    for ident, frame in sys._current_frames().items():
+        frames = traceback.extract_stack(frame)[-max_frames:]
+        threads.append({
+            "thread_ident": ident,
+            "thread_name": names.get(ident, ""),
+            "frames": [
+                f"{Path(item.filename).name}:{item.lineno} {item.name}"
+                for item in frames
+            ],
+        })
+    return {"schema": "production_overdue_stacks_v1", "threads": threads}
 # Where the stage timings of recent cycles outlive the next cycle.  The status
 # file keeps one production receipt, so a slow cycle's breakdown is gone the
 # moment the next one finishes: on 2026-09-15 the board showed a 1330s cycle
@@ -5642,6 +5676,8 @@ def main() -> int:
         # Initialised beside the future so the in-flight publisher below can
         # read them on the very first pass.
         production_submitted_mono: float = time.monotonic()
+        # When an overdue cycle last had its thread stacks written.
+        overdue_stacks_written_mono: float = 0.0
         production_submitted_at: str = ""
         # The wait BEFORE a cycle, which nothing measured until 2026-09-09.
         # Stage timings answer "where did the 533 seconds go"; they cannot
@@ -6114,6 +6150,28 @@ def main() -> int:
                         state["production_inflight"]["statement_probe"] = {
                             "error": f"{type(exc).__name__}:{exc}",
                         }
+                    if (
+                        time.monotonic() - overdue_stacks_written_mono
+                        >= PRODUCTION_OVERDUE_STACKS_EVERY_SEC
+                    ):
+                        overdue_stacks_written_mono = time.monotonic()
+                        try:
+                            stacks = _thread_stacks_snapshot()
+                            stacks["captured_at_utc"] = utc_now()
+                            stacks["cycle_submitted_at_utc"] = (
+                                production_submitted_at
+                            )
+                            stacks["elapsed_sec"] = state[
+                                "production_inflight"
+                            ]["elapsed_sec"]
+                            _atomic_json(PRODUCTION_OVERDUE_STACKS_PATH, stacks)
+                            state["production_inflight"]["stacks_path"] = str(
+                                PRODUCTION_OVERDUE_STACKS_PATH
+                            )
+                        except Exception as exc:  # diagnosis must not stop a cycle
+                            state["production_inflight"]["stacks_error"] = (
+                                f"{type(exc).__name__}:{exc}"[:160]
+                            )
             elif production_future is None:
                 state.pop("production_inflight", None)
                 # Not running is not the same as nothing to report.  A cycle
