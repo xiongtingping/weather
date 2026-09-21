@@ -102,11 +102,12 @@ def _decision_semantic_projection(
     target_solution = plan.get("target_solution")
     if not isinstance(target_solution, Mapping):
         target_solution = {}
-    # Charter 171: the compile stored this object twice, verbatim, at both
-    # levels -- 4,353 bytes a row across 119,596 rows.  The inner copy is
-    # dropped going forward and stripped from stored rows by the compact
-    # rebuild, so read the inner one when it is there (every row written
-    # before the change) and the outer one when it is not.  Measured over
+    # Charter 171: the compile stores this object twice, verbatim, at both
+    # levels -- 4,353 bytes a row across 119,596 rows.  The compact rebuild
+    # of 09-21 stripped the inner copy from the rows stored before it; the
+    # writer still stores both (changing it waits on the runtime readers of
+    # ``delta_plan["delta_v2_audit"]``), so read the inner one when it is
+    # there and the outer one when it is not.  Measured over
     # 1,204 rows spanning the whole table: 1,184 carried both and none of
     # them differed, 20 carried only the outer, and none carried only the
     # inner -- which is what makes dropping it lossless.
