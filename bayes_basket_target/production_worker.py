@@ -1432,6 +1432,118 @@ LIVE_OBSERVATION_IDENTITY_DEADLINE_SEC = 240.0
 # Charter 186: how old the resting lane's "still resting" reading of an
 # order may be for the unresolved-intent lane to leave that order to it.
 RESTING_LANE_HANDOFF_MAX_AGE_SEC = 600.0
+# Charter 189 (user, 2026-09-21: 「乙」): the native-ensemble OOS pass runs in
+# its own process.  It is measurement -- "isolated_from_probability_and_
+# execution" says its own receipt -- and it was 12.6s median, 17% of every
+# cycle (12:04-12:44Z): ~12s of reads and Python to score one station, then
+# a short write.  In a separate process the reads and the Python overlap the
+# cycle instead of lengthening it (a thread would share the GIL, which on
+# this machine multiplies every fetch the cycle makes), and only the write
+# meets the cycle, at SQLite's lock.  The one step that writes what serving
+# reads -- replaying P0 for a station whose activation just passed -- stays
+# in the cycle: the worker hands the station over in a small file and the
+# cycle replays it at the place it always did.
+MAINTENANCE_WORKER_HEARTBEAT_PATH = (
+    ROOT / "data" / "runtime" / "maintenance_worker_heartbeat.json"
+)
+MAINTENANCE_OOS_HANDOFF_PATH = (
+    ROOT / "data" / "runtime" / "maintenance_oos_handoff.json"
+)
+# A heartbeat older than this is a worker that is not there, and the cycle
+# runs the pass itself, exactly as before -- the lane cannot starve.
+MAINTENANCE_WORKER_STALE_SEC = float(
+    os.environ.get("PM_MAINTENANCE_WORKER_STALE_SEC", "") or 300.0
+)
+# On a fresh cycle process, how far back a handed-off activation is still
+# replayed: a worker may have handed one over while the cycle restarted.
+MAINTENANCE_HANDOFF_RESTART_WINDOW_SEC = 1800.0
+MAINTENANCE_HANDOFF_KEEP = 200
+
+
+def maintenance_worker_alive(
+    *,
+    path: Path | None = None,
+    lane: str = "native_ensemble_oos",
+    now_epoch: float | None = None,
+) -> dict[str, Any]:
+    """Charter 189: is a maintenance worker serving ``lane`` right now?
+
+    Alive means a heartbeat no older than MAINTENANCE_WORKER_STALE_SEC, from
+    a pid that still exists, naming the lane.  Anything unreadable is not
+    alive, and the cycle serves the lane itself.
+    """
+
+    heartbeat_path = Path(path or MAINTENANCE_WORKER_HEARTBEAT_PATH)
+    try:
+        beat = json.loads(heartbeat_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"alive": False, "reason": "no_heartbeat"}
+    if not isinstance(beat, Mapping):
+        return {"alive": False, "reason": "heartbeat_invalid"}
+    now = time.time() if now_epoch is None else float(now_epoch)
+    try:
+        age = now - float(beat.get("updated_epoch") or 0.0)
+        pid = int(beat.get("pid") or 0)
+    except (TypeError, ValueError):
+        return {"alive": False, "reason": "heartbeat_invalid"}
+    if lane not in (beat.get("lanes") or ()):
+        return {"alive": False, "reason": "lane_not_served"}
+    if age > MAINTENANCE_WORKER_STALE_SEC or age < -60.0:
+        return {"alive": False, "reason": "heartbeat_stale", "age_sec": round(age, 1)}
+    if pid <= 0:
+        return {"alive": False, "reason": "heartbeat_invalid"}
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return {"alive": False, "reason": "worker_gone", "pid": pid}
+    except PermissionError:
+        pass  # exists, owned elsewhere
+    return {
+        "alive": True,
+        "pid": pid,
+        "age_sec": round(age, 1),
+        "last_state": str(beat.get("last_state") or ""),
+        "last_station": str(beat.get("last_station") or ""),
+    }
+
+
+def _read_oos_handoff(path: Path | None = None) -> list[dict[str, Any]]:
+    try:
+        entries = json.loads(
+            Path(path or MAINTENANCE_OOS_HANDOFF_PATH).read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return []
+    return [entry for entry in entries if isinstance(entry, dict)] if isinstance(entries, list) else []
+
+
+def append_oos_handoff(
+    entry: Mapping[str, Any], *, path: Path | None = None,
+) -> dict[str, Any]:
+    """Charter 189: hand one passed station to the cycle (atomic replace).
+
+    Only the maintenance worker writes this file, one step at a time, so a
+    read-modify-replace is enough; the cycle only reads it.
+    """
+
+    target = Path(path or MAINTENANCE_OOS_HANDOFF_PATH)
+    entries = _read_oos_handoff(target)
+    seq = max((int(item.get("seq") or 0) for item in entries), default=0) + 1
+    record = {**dict(entry), "seq": seq}
+    entries = (entries + [record])[-MAINTENANCE_HANDOFF_KEEP:]
+    target.parent.mkdir(parents=True, exist_ok=True)
+    handle, temporary = tempfile.mkstemp(dir=str(target.parent), prefix=".oos_handoff.")
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            json.dump(entries, stream, ensure_ascii=False, sort_keys=True)
+        os.replace(temporary, target)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+    return record
 # Charter 181: how long a run of station-subset identity passes may go before
 # a full one.  A station's facts are a function of its own archive rows, and
 # a subset pass re-derives exactly the stations whose rows moved -- the full
@@ -8846,6 +8958,282 @@ class TargetProductionWorker:
             "committed" if receipt["settled"] else "blocked_fail_closed"
         )
         return receipt
+
+    def _replay_oos_activation_p0(
+        self,
+        *,
+        oos_station: str,
+        valid_native_packets: Sequence[Mapping[str, Any]],
+        now: str,
+        oos_report: Mapping[str, Any] | None = None,
+        passed: bool | None = None,
+    ) -> dict[str, Any]:
+        """Replay P0 for a station whose cross activation just passed OOS.
+
+        Charter 189: lifted out of the cycle's OOS stage unchanged so the
+        same replay serves both the stage's own OOS pass and an activation
+        the maintenance worker persisted and handed off.  The replay writes
+        forward predictions and the P0 inbox the cycle reads, so it stays in
+        the production process either way.
+        """
+
+        if passed is None:
+            passed = any(
+                row.get("state") == "PRODUCTION_NO_LIVE_OOS_PASS"
+                for row in (oos_report or {}).get("cross_candidates") or ()
+            )
+        activation_replay_compiled = []
+        activation_replay_failures = []
+        if passed:
+            replay_packets = sorted(
+                (
+                    packet
+                    for packet in valid_native_packets
+                    if str(
+                        packet.get("station_id") or ""
+                    ).strip().upper()
+                    == oos_station
+                ),
+                key=lambda packet: str(
+                    packet.get("event_date") or ""
+                ),
+                reverse=True,
+            )[:MAX_RESIDENT_NWP_SCOPES_PER_CYCLE]
+            for replay_packet in replay_packets:
+                try:
+                    if replay_packet.get("schema") != OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA:
+                        raise ContractError(
+                            "republisher_no_live_selection_not_forward_p0_authority"
+                        )
+                    compiled = (
+                        _compile_native_ensemble_p0_runtime(
+                            self.commit_conn,
+                            forward_packet=replay_packet,
+                            decision_at_utc=now,
+                            native_oos_snapshot=self.native_oos_snapshot,
+                        )
+                    )
+                except Exception as exc:
+                    activation_replay_failures.append({
+                        "station_id": oos_station,
+                        "event_date": str(
+                            replay_packet.get(
+                                "event_date"
+                            )
+                            or ""
+                        ),
+                        "reason": (
+                            f"{type(exc).__name__}:{exc}"
+                        ),
+                    })
+                else:
+                    compiled[
+                        "forward_prediction_persistence"
+                    ] = (
+                        persist_native_ensemble_forward_prediction(
+                            self.commit_conn,
+                            compiled,
+                        )
+                    )
+                    activation_replay_compiled.append(
+                        compiled
+                    )
+        activation_replay = (
+            _upsert_native_p0_inbox(
+                self.p0_inbox_path,
+                compiled_packets=(
+                    activation_replay_compiled
+                ),
+                generated_at_utc=now,
+            )
+            if activation_replay_compiled
+            else {
+                "state": "NO_COMPILED_P0",
+                "accepted_count": 0,
+                "packet_count": 0,
+                "wrote": False,
+                "calls_order_gateway": False,
+                "orders_submitted": 0,
+                "live_submit_authorized": False,
+            }
+        )
+        activation_replay["failures"] = (
+            activation_replay_failures
+        )
+        return activation_replay
+
+    def run_maintenance_oos_step(self, *, now_utc: str | None = None) -> dict[str, Any]:
+        """Charter 189: one native-ensemble OOS pass, for the maintenance worker.
+
+        The cycle's own pass, lifted whole: the same station choice (a
+        station whose truth moved, stalest artifact first, else the
+        rotation), the same build and the same persist.  What the cycle
+        also chose by -- stations whose native rows arrived in its own
+        ingest -- the worker has no ingest to read; it sweeps the fleet
+        every few minutes instead of every hour or two, which covers them.
+        A station with a passing candidate is handed to the cycle for its
+        P0 replay.  Never raises: a failure is the receipt.
+        """
+
+        boundary = {
+            "isolated_from_probability_and_execution": True,
+            "calls_order_gateway": False,
+            "orders_submitted": 0,
+            "live_submit_authorized": False,
+        }
+        conn = self.commit_conn
+        if conn is None:
+            return {"state": "not_attempted", "reason": "no_writer", **boundary}
+        now = now_utc or utc_now()
+        try:
+            stations = _candidate_ensemble_station_ids(
+                conn, limit=MAX_FORWARD_P0_STATIONS,
+            )
+            if not stations:
+                return {"state": "no_candidate_stations", **boundary}
+            signatures = _native_ensemble_truth_signatures(conn)
+            previous = dict(getattr(
+                self, "_native_ensemble_oos_truth_signature_by_station", {},
+            ))
+            changed = [
+                station for station, signature in sorted(signatures.items())
+                if previous.get(station) != signature
+            ]
+            if changed:
+                vintage = _native_ensemble_artifact_vintage_by_station(conn)
+                station = min(changed, key=lambda item: (vintage.get(item, ""), item))
+                choice = "truth_moved_stalest_first"
+            else:
+                cursor = int(getattr(
+                    self, "_native_ensemble_oos_station_cursor", 0,
+                )) % len(stations)
+                station = stations[cursor]
+                self._native_ensemble_oos_station_cursor = (cursor + 1) % len(stations)
+                choice = "rotation"
+            if station in signatures:
+                previous[station] = signatures[station]
+            self._native_ensemble_oos_truth_signature_by_station = previous
+            report = build_native_ensemble_oos(
+                conn,
+                station_id=station,
+                as_of_utc=now,
+                min_train_days=FORWARD_ACCUMULATION_MIN_TRAIN_DAYS,
+                min_holdout_days=FORWARD_ACCUMULATION_MIN_HOLDOUT_DAYS,
+            )
+            # The write lock is taken before the persist reads anything:
+            # in its own process this pass is a second writer, and a
+            # deferred transaction that read first could not upgrade past a
+            # cycle commit (SQLITE_BUSY_SNAPSHOT, which no busy handler
+            # waits out).  Held for the persist only; the build above ran
+            # outside any write.
+            with _writer_transaction(
+                conn, savepoint="native_ensemble_oos_maintenance",
+            ):
+                persist = persist_native_ensemble_oos(
+                    conn, report, activated_at_utc=now,
+                )
+        except Exception as exc:  # noqa: BLE001 -- measurement, never fatal
+            return {
+                "state": "blocked_fail_closed",
+                "reason": f"{type(exc).__name__}:{exc}"[:300],
+                **boundary,
+            }
+        passed = any(
+            row.get("state") == "PRODUCTION_NO_LIVE_OOS_PASS"
+            for row in report["cross_candidates"]
+        )
+        handoff = None
+        if passed:
+            handoff = append_oos_handoff({
+                "station_id": station,
+                "activated_at_utc": now,
+                "report_content_sha256": report["content_sha256"],
+            })
+        return {
+            "schema": report["schema"],
+            "state": (
+                "OOS_READY" if report["cross_candidates"]
+                else "ACCUMULATING_STRICT_OOS"
+            ),
+            "station_id": station,
+            "station_choice": choice,
+            "changed_truth_station_count": len(changed),
+            "registered_system_count": report["registered_system_count"],
+            "formal_p0_eligible": report["formal_p0_eligible"],
+            "cross_candidate_states": [
+                {
+                    "season_bin": row["season_bin"],
+                    "lead_bucket": row["lead_bucket"],
+                    "run_cycle": row["run_cycle"],
+                    "state": row["state"],
+                }
+                for row in report["cross_candidates"]
+            ],
+            "persist": persist,
+            "handed_off": handoff,
+            "report_content_sha256": report["content_sha256"],
+            **boundary,
+        }
+
+    def _delegated_oos_handoff(
+        self,
+        *,
+        valid_native_packets: Sequence[Mapping[str, Any]],
+        now: str,
+        delegate: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Charter 189: the cycle's half of a delegated OOS pass.
+
+        Replay P0 for every station the maintenance worker has handed over
+        since the last cycle -- the replay the cycle's own pass made right
+        after a passing persist.  A fresh cycle process looks back
+        MAINTENANCE_HANDOFF_RESTART_WINDOW_SEC so a hand-over made while it
+        restarted is not lost; replaying one twice writes what it wrote.
+        """
+
+        entries = _read_oos_handoff()
+        seen = getattr(self, "_oos_handoff_seen_seq", None)
+        if seen is None:
+            horizon = (
+                datetime.now(timezone.utc)
+                - timedelta(seconds=MAINTENANCE_HANDOFF_RESTART_WINDOW_SEC)
+            ).isoformat().replace("+00:00", "Z")
+            seen = max(
+                (
+                    int(entry.get("seq") or 0) for entry in entries
+                    if str(entry.get("activated_at_utc") or "") < horizon
+                ),
+                default=0,
+            )
+        fresh = [entry for entry in entries if int(entry.get("seq") or 0) > seen]
+        replays: list[dict[str, Any]] = []
+        for station in sorted({str(entry.get("station_id") or "") for entry in fresh} - {""}):
+            try:
+                replay = self._replay_oos_activation_p0(
+                    oos_station=station,
+                    valid_native_packets=valid_native_packets,
+                    now=now,
+                    passed=True,
+                )
+            except Exception as exc:  # noqa: BLE001 -- one station's problem
+                replay = {
+                    "state": "blocked_fail_closed",
+                    "reason": f"{type(exc).__name__}:{exc}"[:200],
+                }
+            replays.append({"station_id": station, "activation_p0_replay": replay})
+        self._oos_handoff_seen_seq = max(
+            [seen] + [int(entry.get("seq") or 0) for entry in entries]
+        )
+        return {
+            "state": "delegated_to_maintenance_worker",
+            "maintenance_worker": dict(delegate),
+            "handoff_count": len(fresh),
+            "handoff_replays": replays,
+            "isolated_from_probability_and_execution": True,
+            "calls_order_gateway": False,
+            "orders_submitted": 0,
+            "live_submit_authorized": False,
+        }
 
     def _reprice_resting_rungs(
         self,
@@ -18792,16 +19180,28 @@ class TargetProductionWorker:
                     "_last_native_ensemble_oos_scan_monotonic",
                     None,
                 )
-                new_oos_stations = sorted({
+                # Charter 189: a live maintenance worker owns the OOS pass;
+                # this cycle only replays what it handed over (below), and
+                # skips the candidate scan the pass alone needs.
+                oos_delegate = (
+                    maintenance_worker_alive()
+                    if str(os.environ.get("PM_MAINTENANCE_WORKER", "1")).strip()
+                    not in {"0", "false", "off"}
+                    else {"alive": False, "reason": "disabled"}
+                )
+                oos_delegated = bool(oos_delegate.get("alive"))
+                new_oos_stations = [] if oos_delegated else sorted({
                     str(receipt["station_id"])
                     for receipt in native_receipts
                     if sum(receipt["counts"].values()) > 0
                 })
-                all_oos_stations = _candidate_ensemble_station_ids(
-                    self.commit_conn,
-                    limit=MAX_FORWARD_P0_STATIONS,
+                all_oos_stations = [] if oos_delegated else (
+                    _candidate_ensemble_station_ids(
+                        self.commit_conn,
+                        limit=MAX_FORWARD_P0_STATIONS,
+                    )
                 )
-                truth_signatures = (
+                truth_signatures = {} if oos_delegated else (
                     _native_ensemble_truth_signatures(
                         self.commit_conn,
                     )
@@ -18837,17 +19237,26 @@ class TargetProductionWorker:
                 # and the sweep took 70.8s out of every decision.  It is
                 # measurement -- the receipt says so itself -- so it is due
                 # when the budget can carry it, or when it has been starved.
-                oos_admitted = self._maintenance_admits("native_ensemble_oos")
-                oos_due = oos_admitted and (
-                    bool(new_oos_stations)
-                    or last_oos_scan is None
-                    or now_mono - float(last_oos_scan)
-                    >= NATIVE_ENSEMBLE_OOS_SCAN_MIN_INTERVAL_SEC
-                )
-                if not oos_admitted:
-                    native_ensemble_oos_ingress = self._maintenance_deferred(
-                        "native_ensemble_oos"
+                if oos_delegated:
+                    oos_admitted = False
+                    oos_due = False
+                    native_ensemble_oos_ingress = self._delegated_oos_handoff(
+                        valid_native_packets=valid_native_packets,
+                        now=now,
+                        delegate=oos_delegate,
                     )
+                else:
+                    oos_admitted = self._maintenance_admits("native_ensemble_oos")
+                    oos_due = oos_admitted and (
+                        bool(new_oos_stations)
+                        or last_oos_scan is None
+                        or now_mono - float(last_oos_scan)
+                        >= NATIVE_ENSEMBLE_OOS_SCAN_MIN_INTERVAL_SEC
+                    )
+                    if not oos_admitted:
+                        native_ensemble_oos_ingress = self._maintenance_deferred(
+                            "native_ensemble_oos"
+                        )
                 _oos_started = time.perf_counter()
                 if oos_due and all_oos_stations:
                     if new_oos_stations:
@@ -18929,87 +19338,11 @@ class TargetProductionWorker:
                             "live_submit_authorized": False,
                         }
                     else:
-                        activation_replay_compiled = []
-                        activation_replay_failures = []
-                        if any(
-                            row.get("state")
-                            == "PRODUCTION_NO_LIVE_OOS_PASS"
-                            for row in oos_report["cross_candidates"]
-                        ):
-                            replay_packets = sorted(
-                                (
-                                    packet
-                                    for packet in valid_native_packets
-                                    if str(
-                                        packet.get("station_id") or ""
-                                    ).strip().upper()
-                                    == oos_station
-                                ),
-                                key=lambda packet: str(
-                                    packet.get("event_date") or ""
-                                ),
-                                reverse=True,
-                            )[:MAX_RESIDENT_NWP_SCOPES_PER_CYCLE]
-                            for replay_packet in replay_packets:
-                                try:
-                                    if replay_packet.get("schema") != OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA:
-                                        raise ContractError(
-                                            "republisher_no_live_selection_not_forward_p0_authority"
-                                        )
-                                    compiled = (
-                                        _compile_native_ensemble_p0_runtime(
-                                            self.commit_conn,
-                                            forward_packet=replay_packet,
-                                            decision_at_utc=now,
-                                            native_oos_snapshot=self.native_oos_snapshot,
-                                        )
-                                    )
-                                except Exception as exc:
-                                    activation_replay_failures.append({
-                                        "station_id": oos_station,
-                                        "event_date": str(
-                                            replay_packet.get(
-                                                "event_date"
-                                            )
-                                            or ""
-                                        ),
-                                        "reason": (
-                                            f"{type(exc).__name__}:{exc}"
-                                        ),
-                                    })
-                                else:
-                                    compiled[
-                                        "forward_prediction_persistence"
-                                    ] = (
-                                        persist_native_ensemble_forward_prediction(
-                                            self.commit_conn,
-                                            compiled,
-                                        )
-                                    )
-                                    activation_replay_compiled.append(
-                                        compiled
-                                    )
-                        activation_replay = (
-                            _upsert_native_p0_inbox(
-                                self.p0_inbox_path,
-                                compiled_packets=(
-                                    activation_replay_compiled
-                                ),
-                                generated_at_utc=now,
-                            )
-                            if activation_replay_compiled
-                            else {
-                                "state": "NO_COMPILED_P0",
-                                "accepted_count": 0,
-                                "packet_count": 0,
-                                "wrote": False,
-                                "calls_order_gateway": False,
-                                "orders_submitted": 0,
-                                "live_submit_authorized": False,
-                            }
-                        )
-                        activation_replay["failures"] = (
-                            activation_replay_failures
+                        activation_replay = self._replay_oos_activation_p0(
+                            oos_station=oos_station,
+                            valid_native_packets=valid_native_packets,
+                            now=now,
+                            oos_report=oos_report,
                         )
                         native_ensemble_oos_ingress = {
                             "schema": oos_report["schema"],

@@ -922,6 +922,104 @@ _HOSTED_SWEEP_PROCESSES: "set[subprocess.Popen[str]]" = set()
 _HOSTED_SWEEP_PROCESS_LOCK = threading.Lock()
 
 
+# Charter 189 (user, 2026-09-21: 「乙」): the native-ensemble OOS pass runs in
+# a separate maintenance worker, which this resident starts and keeps
+# running.  See scripts/weather_maintenance_worker.py; the cycle takes the
+# lane back whenever the worker's heartbeat does not claim it.
+MAINTENANCE_WORKER_SCRIPT = ROOT / "scripts" / "weather_maintenance_worker.py"
+MAINTENANCE_WORKER_LOG = ROOT / "data" / "logs" / "maintenance_worker.log"
+MAINTENANCE_WORKER_RESTART_BACKOFF_SEC = 60.0
+MAINTENANCE_WORKER_LOG_MAX_BYTES = 5 * 1024 * 1024
+
+
+class MaintenanceWorkerSupervisor:
+    """Start the maintenance worker, restart it after a backoff, stop it."""
+
+    def __init__(
+        self,
+        *,
+        archive_db: Path,
+        script: Path = MAINTENANCE_WORKER_SCRIPT,
+        log_path: Path = MAINTENANCE_WORKER_LOG,
+        python: str = sys.executable,
+        popen: Any = subprocess.Popen,
+        clock: Any = time.monotonic,
+        enabled: bool | None = None,
+    ) -> None:
+        self.archive_db = Path(archive_db)
+        self.script = Path(script)
+        self.log_path = Path(log_path)
+        self.python = python
+        self.popen = popen
+        self.clock = clock
+        self.enabled = (
+            str(os.environ.get("PM_MAINTENANCE_WORKER", "1")).strip()
+            not in {"0", "false", "off"}
+            if enabled is None else bool(enabled)
+        )
+        self.proc: Any = None
+        self.next_start = 0.0
+        self.starts = 0
+        self.last_exit: int | None = None
+
+    def tick(self) -> dict[str, Any]:
+        if not self.enabled:
+            return {"state": "disabled"}
+        if self.proc is not None:
+            code = self.proc.poll()
+            if code is None:
+                return {"state": "running", "pid": self.proc.pid, "starts": self.starts}
+            self.last_exit = int(code)
+            self.proc = None
+            self.next_start = self.clock() + MAINTENANCE_WORKER_RESTART_BACKOFF_SEC
+        if self.clock() < self.next_start:
+            return {
+                "state": "backing_off", "starts": self.starts,
+                "last_exit": self.last_exit,
+            }
+        try:
+            self.log_path.parent.mkdir(parents=True, exist_ok=True)
+            if (
+                self.log_path.exists()
+                and self.log_path.stat().st_size > MAINTENANCE_WORKER_LOG_MAX_BYTES
+            ):
+                self.log_path.write_bytes(b"")
+            log = open(self.log_path, "ab")
+            try:
+                self.proc = self.popen(
+                    [
+                        self.python, str(self.script),
+                        "--parent-pid", str(os.getpid()),
+                        "--archive-db", str(self.archive_db),
+                    ],
+                    cwd=str(ROOT),
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    stdin=subprocess.DEVNULL,
+                )
+            finally:
+                log.close()
+        except Exception as exc:  # noqa: BLE001 -- the cycle keeps the lane
+            self.proc = None
+            self.next_start = self.clock() + MAINTENANCE_WORKER_RESTART_BACKOFF_SEC
+            return {"state": "start_failed", "reason": f"{type(exc).__name__}:{exc}"[:200]}
+        self.starts += 1
+        return {"state": "started", "pid": self.proc.pid, "starts": self.starts}
+
+    def stop(self, timeout: float = 15.0) -> None:
+        proc, self.proc = self.proc, None
+        if proc is None or proc.poll() is not None:
+            return
+        try:
+            proc.terminate()
+            proc.wait(timeout=timeout)
+        except Exception:  # noqa: BLE001 -- shutdown is best effort
+            try:
+                proc.kill()
+            except Exception:  # noqa: BLE001
+                pass
+
+
 def _terminate_inflight_hosted_sweeps() -> list[int]:
     """End every running sweep so none of them outlives this process."""
 
@@ -5857,8 +5955,21 @@ def main() -> int:
         if awc_fast_worker is not None:
             awc_fast_worker.start()
             state["awc_fast_lane"] = awc_fast_worker.snapshot()
+        maintenance_supervisor = (
+            MaintenanceWorkerSupervisor(archive_db=Path(args.db))
+            if production_worker.commit_error is None
+            and getattr(production_worker, "commit_conn", None) is not None
+            else None
+        )
+        next_maintenance_tick = 0.0
         while not stopping:
             now_mono = time.monotonic()
+            if (
+                maintenance_supervisor is not None
+                and now_mono >= next_maintenance_tick
+            ):
+                state["maintenance_worker"] = maintenance_supervisor.tick()
+                next_maintenance_tick = now_mono + 5.0
             if awc_fast_worker is not None:
                 state["awc_fast_lane"] = awc_fast_worker.snapshot()
                 # A report the fast lane landed may be the station-day high
@@ -6768,6 +6879,14 @@ def main() -> int:
         # hold this exit open for the rest of the sweep's timeout, which is
         # how a restart leaves one orphaned on the write lock.
         _terminate_inflight_hosted_sweeps()
+        # Charter 189: the maintenance worker goes with its resident (it
+        # would also notice the parent is gone, a step later).
+        supervisor = locals().get("maintenance_supervisor")
+        if supervisor is not None:
+            try:
+                supervisor.stop()
+            except Exception:  # noqa: BLE001 -- shutdown is best effort
+                pass
         for executor_name in (
             "executor",
             "forecast_executor",
