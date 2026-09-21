@@ -157,3 +157,47 @@ def test_admission_refuses_a_station_without_exactly_one_timezone(
     assert (
         "settlement_timezone_not_unique" in result["blockers"]
     ) is (not admissible)
+
+
+def test_onboarding_refuses_a_fleet_the_pr12_projection_does_not_carry(
+    tmp_path, monkeypatch,
+):
+    """The projection is a precondition of the move, not a follow-up.
+
+    The pr12 sweep validates its sealed projection against the live fleet
+    every round.  2026-08-31 and 2026-09-21 both wrote the registry first;
+    the first stopped the sweep and every P1 atomic write behind it, the
+    second was reverted within the hour, before the resident loaded it.
+    """
+
+    import json
+
+    import scripts.onboard_station as onboard
+
+    fleet = list(coordinate_registry_manifest()["station_ids"])
+    projection = tmp_path / "projection.json"
+    projection.write_text(
+        json.dumps({"rows": [{"station_id": s} for s in fleet]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(onboard, "_pr12_projection_path", lambda: projection)
+
+    assert onboard._sealed_fleet_blockers(fleet) == []
+    refused = onboard._sealed_fleet_blockers(fleet + ["LTFM"])
+    assert [b["state"] for b in refused] == ["SEALED_AT_ANOTHER_FLEET"]
+    assert refused[0]["missing_from_projection"] == ["LTFM"]
+
+    monkeypatch.setattr(onboard, "_pr12_projection_path", lambda: None)
+    assert [b["state"] for b in onboard._sealed_fleet_blockers(fleet)] == [
+        "PIN_UNREADABLE"
+    ]
+
+
+def test_the_projection_pin_is_the_one_the_sweep_reads():
+    import scripts.onboard_station as onboard
+
+    path = onboard._pr12_projection_path()
+    assert path is not None and path.exists(), path
+    assert onboard._sealed_fleet_blockers(
+        coordinate_registry_manifest()["station_ids"]
+    ) == []

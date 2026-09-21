@@ -53,6 +53,16 @@ ARCHIVE_DB = ROOT / "data" / "archive.db"
 REGISTRY_SOURCE = ROOT / "bayes_basket_target" / "station_registry.py"
 SEASON_MAP_BUILDER = ROOT / "scripts" / "build_station_season_map.py"
 AUDIT = ROOT / "scripts" / "audit_new_market_station_admission.py"
+# The pr12 sweep pins the sealed authority projection it reads every round;
+# the pin in the script is what production uses, so the guard reads it there.
+PR12_SWEEP = ROOT / "scripts" / "pr12_awc_observation_sweep.sh"
+PR12_REMINT = (
+    "write calibration_station_source_authority rows for the new stations "
+    "(scripts/migrate_calibration_station_global_awc_authority.py), re-mint "
+    "with scripts/build_pr12_authority_scope_projection.py --database <SSOT>, "
+    "repoint PROJECTION in scripts/pr12_awc_observation_sweep.sh, and move "
+    "the fleet in the same quiet window"
+)
 
 
 def discover() -> list[dict[str, object]]:
@@ -354,11 +364,16 @@ def _write_registry(new_rows, snapshot_sha256: str) -> list[str]:
     fleet -- ``fleet.expected_station_count`` reads its length.  Guards
     that compare against the count follow automatically; the manifests that
     WRITE the count into content-addressed bytes do not, and every artifact
-    pinned to one of them unbinds here.  Nothing on the serving path reads
-    those manifests (checked 2026-09-07 by walking the import graph from
-    the daemon, the production worker, the materializer and the P0
-    compiler: none of the six writers is reachable), so what this costs is
-    offline rebuilds and the fixtures that construct a fleet-sized manifest.
+    pinned to one of them unbinds here.
+
+    One of them is read in production every round, which the import-graph
+    walk of 2026-09-07 could not see because the reader is a hosted sweep,
+    not the daemon's own imports: the pr12 sweep validates its sealed
+    projection against the live fleet, and a mismatch stops the truth
+    revisions P1's atomic writes require.  ``auto`` therefore refuses to get
+    here until that projection already carries the new fleet
+    (``_sealed_fleet_blockers``); 2026-08-31 and 2026-09-21 both moved the
+    fleet without it.
     """
 
     source = REGISTRY_SOURCE.read_text()
@@ -381,6 +396,66 @@ def _write_registry(new_rows, snapshot_sha256: str) -> list[str]:
     )
     REGISTRY_SOURCE.write_text(source)
     return sorted(new_rows)
+
+
+def _pr12_projection_path() -> Path | None:
+    """The projection the pr12 sweep reads: its own pin, not a glob."""
+
+    try:
+        lines = PR12_SWEEP.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        if line.startswith('PROJECTION="$ROOT/') and line.endswith('"'):
+            return ROOT / line[len('PROJECTION="$ROOT/'):-1]
+    return None
+
+
+def _sealed_fleet_blockers(prospective) -> list[dict[str, object]]:
+    """Sealed artifacts production checks against the fleet, if the move breaks them.
+
+    The pr12 authority projection is sealed at a fleet and its validator
+    compares its rows to ``expected_station_count()``.  Moving the registry
+    first is how 2026-08-31 and 2026-09-21 both lost the pr12 observation
+    sweep; an artifact that has to be re-minted before the move is a
+    precondition of the move, not a follow-up to it.
+    """
+
+    fleet = {str(value).strip().upper() for value in prospective}
+    path = _pr12_projection_path()
+    if path is None or not path.exists():
+        return [{
+            "artifact": "pr12_authority_scope_projection",
+            "state": "PIN_UNREADABLE",
+            "path": str(path),
+        }]
+    try:
+        rows = json.loads(path.read_text(encoding="utf-8")).get("rows") or []
+    except (OSError, ValueError, AttributeError):
+        rows = None
+    if not isinstance(rows, list):
+        return [{
+            "artifact": "pr12_authority_scope_projection",
+            "state": "PROJECTION_UNREADABLE",
+            "path": str(path),
+        }]
+    sealed = {
+        str((row or {}).get("station_id") or "").strip().upper()
+        for row in rows
+        if isinstance(row, dict)
+    }
+    if sealed == fleet:
+        return []
+    return [{
+        "artifact": "pr12_authority_scope_projection",
+        "state": "SEALED_AT_ANOTHER_FLEET",
+        "path": str(path.relative_to(ROOT) if path.is_relative_to(ROOT) else path),
+        "sealed_station_count": len(sealed),
+        "prospective_fleet_size": len(fleet),
+        "missing_from_projection": sorted(fleet - sealed),
+        "absent_from_fleet": sorted(sealed - fleet),
+        "remint": PR12_REMINT,
+    }]
 
 
 def _run(script: Path, *args: str) -> tuple[int, str]:
@@ -459,6 +534,19 @@ def auto(*, commit: bool) -> dict[str, object]:
         # source correction or a source error, and both want a person.
         report["registry_drift"] = drifted
         report["note"] = "existing coordinates disagree with stationinfo; not patching"
+        return report
+    sealed = _sealed_fleet_blockers(known | set(ready))
+    if sealed:
+        # The dry run says the same thing: "would add" is only true once the
+        # artifacts production validates against the fleet carry it.
+        report["fleet_change_refused"] = sealed
+        report["would_add_after_remint"] = {
+            s: list(coordinates_by_station[s]) for s in ready
+        }
+        report["note"] = (
+            "the move would unbind a sealed artifact production validates "
+            "against the fleet; not patching"
+        )
         return report
     if not commit:
         report["note"] = "dry run; pass --commit to write"
