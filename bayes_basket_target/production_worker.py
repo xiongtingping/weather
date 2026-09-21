@@ -5629,7 +5629,11 @@ class TargetProductionWorker:
         rungs = [
             (int(lead), cycle)
             for lead, cycle, _run_init in run_ladder
-            if int(lead) in follow_run.FOLLOW_LEADS
+            if any(
+                follow_run.follow_cycle_for_rung(family, int(lead), cycle)
+                is not None
+                for family in follow_run.FOLLOW_FAMILIES
+            )
         ]
         if not rungs:
             return "NO_FOLLOW_RUNG"

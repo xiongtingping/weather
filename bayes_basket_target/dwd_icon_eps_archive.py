@@ -88,15 +88,27 @@ DEFAULT_LEAD_DAYS = 2
 # hourly rather than 6-hourly.
 RUN_CYCLE_HOUR_BY_LEAD = {2: 12, 1: 0, 0: 0}
 ARCHIVE_LEAD_BUCKET = f"d{DEFAULT_LEAD_DAYS}"
-# Charter 192 (2026-09-21, user ruling "全球模型的 run 全采，按起报时刻滚动用，
-# 谁新用谁"): every cycle DWD publishes is captured at d1 and d0, on top of --
-# never instead of -- the lead's own cycle above.  The mapping above stays the
-# run each lead is captured and served from by default; the other cycles are
-# extra captures under their own extraction identity, trained in their own
-# (hour bucket x cycle) scope, and served only once that scope has its own
-# certified fit (``bayes_basket_target.follow_run``).  d2 is unchanged.
+# Charter 192 (2026-09-21, user rulings "全球模型的 run 全采，按起报时刻滚动用，
+# 谁新用谁" and, the same evening, "当天、明天、后天都谁新用谁"): every cycle DWD
+# publishes is captured at every lead, on top of -- never instead of -- the
+# lead's own cycle above.  The mapping above stays the run each lead is
+# captured and served from by default, and its identity and history are
+# untouched; the other cycles are extra captures under their own extraction
+# identity, trained in their own (hour bucket x cycle) scope, and served only
+# once that scope has its own certified fit (``bayes_basket_target.follow_run``).
 SUPPORTED_RUN_CYCLE_HOURS = (0, 6, 12, 18)
-ARCHIVE_RUN_CYCLE_HOURS_BY_LEAD = {2: (12,), 1: (0, 6, 12, 18), 0: (0, 6, 12, 18)}
+ARCHIVE_RUN_CYCLE_HOURS_BY_LEAD = {
+    2: (0, 6, 12, 18),
+    1: (0, 6, 12, 18),
+    0: (0, 6, 12, 18),
+}
+# The primary cycles' 3-hour steps stop at +72h (DWD lists 000-048 hourly,
+# 051-072 three-hourly, then 078, 084, ... six-hourly), so a follow run read
+# on the 3-hour grid can only seal a local day that ends by +72h; a d2 00Z run
+# does not reach the far-western stations that way and leaves them out.  The
+# secondary cycles' 6-hour steps run to +120h.
+PRIMARY_CYCLE_MAX_STEP_HOURS = 72
+SECONDARY_CYCLE_MAX_STEP_HOURS = 120
 # DWD's secondary cycles carry ``t_2m`` 6-hourly only (verified on the open-data
 # listing 2026-09-21: 06Z and 18Z list steps 000, 006, ... 120 and nothing
 # between).  They are read on that grid rather than not at all, under an
@@ -504,13 +516,23 @@ def follow_forecast_hours(
     step = lead_step_hours(run_start.hour)
     target = date.fromisoformat(event_date)
     zone = ZoneInfo(settlement_timezone)
-    hours = [
+    horizon = (
+        PRIMARY_CYCLE_MAX_STEP_HOURS
+        if step == LEAD_STEP_HOURS
+        else SECONDARY_CYCLE_MAX_STEP_HOURS
+    )
+    in_day = [
         forecast_hour
-        for forecast_hour in range(0, 121, step)
+        for forecast_hour in range(0, 241, step)
         if (run_start + timedelta(hours=forecast_hour)).astimezone(
             zone
         ).date() == target
     ]
+    if not in_day or max(in_day) > horizon:
+        # Part of the local day lies past the steps this grid is published
+        # at; a shortened day would read as a different measurement.
+        return None
+    hours = in_day
     same_day = _same_local_day_run(
         event_date=event_date,
         settlement_timezone=settlement_timezone,

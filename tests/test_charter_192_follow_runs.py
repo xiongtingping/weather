@@ -1,8 +1,8 @@
-"""Charter 192: ICON and ECCC follow their newest run at d1/d0, only added.
+"""Charter 192: ICON and ECCC follow their newest run at every lead, only added.
 
-User ruling 2026-09-21: every global run is captured and the newest one that
-covers the target day is used; nothing may go older than it is today; D+2 is
-unchanged.  The constraints this file pins:
+User rulings 2026-09-21: every global run is captured and the newest one that
+covers the target day is used, for D+0, D+1 and D+2 alike; nothing may go
+older than it is today.  The constraints this file pins:
 
 * the 00Z d1/d0 and 12Z d2 identities -- and so their ~30 days of history --
   are byte-identical, and the OOS reader admits every old row exactly as
@@ -67,9 +67,12 @@ def test_the_lead_own_cycle_identity_is_byte_identical() -> None:
 def test_followed_cycles_carry_their_own_identity_and_grid() -> None:
     names = {
         (lead, hour): icon.extraction_version_for_lead(lead, hour)
-        for lead in (0, 1)
+        for lead in (0, 1, 2)
         for hour in (0, 6, 12, 18)
     }
+    # the one retired 18Z d2 day keeps its own, different, name
+    assert "dwd_icon_global_eps_18z_d2_station_tmax_v1" not in names.values()
+    assert names[(2, 0)] == "dwd_icon_global_eps_00z_d2_station_tmax_3h_v3"
     assert len(set(names.values())) == len(names)
     assert names[(1, 12)] == "dwd_icon_global_eps_12z_d1_station_tmax_3h_v3"
     assert names[(1, 18)] == "dwd_icon_global_eps_18z_d1_station_tmax_6h_v1"
@@ -156,11 +159,16 @@ def test_follow_cycles_do_not_move_the_scheduler_readiness(monkeypatch) -> None:
         (follow_run.ICON_FAMILY, 1, 6, 6),
         (follow_run.ICON_FAMILY, 1, None, None),
         (follow_run.ICON_FAMILY, 0, 12, 12),
-        (follow_run.ICON_FAMILY, 2, 18, None),  # D+2 untouched
+        # D+2: the lead's own 12Z is the pass's; 00/06Z before it, 18Z after
+        (follow_run.ICON_FAMILY, 2, 0, 0),
+        (follow_run.ICON_FAMILY, 2, 6, 6),
+        (follow_run.ICON_FAMILY, 2, 12, None),
+        (follow_run.ICON_FAMILY, 2, None, 18),  # the ladder's d2 default rung
         (follow_run.ECCC_FAMILY, 1, 18, 12),    # no 18Z: the newest it has
         (follow_run.ECCC_FAMILY, 1, 6, None),
         (follow_run.ECCC_FAMILY, 0, 12, 12),
-        (follow_run.ECCC_FAMILY, 2, 12, None),
+        (follow_run.ECCC_FAMILY, 2, 6, 0),
+        (follow_run.ECCC_FAMILY, 2, 18, None),  # its newest by 18Z is its own 12Z
     ],
 )
 def test_a_rung_reaches_the_newest_published_cycle_at_or_before_it(
@@ -672,7 +680,9 @@ def test_the_worker_queues_one_follow_capture_per_date_off_the_pass(monkeypatch,
     enqueue = worker.TargetProductionWorker._enqueue_follow_run_capture
     assert enqueue(host, **kwargs) == "QUEUED"
     assert enqueue(host, **kwargs) == "ALREADY_QUEUED"
-    assert enqueue(host, **{**kwargs, "run_ladder": [(2, None, _t("2026-09-21", 18))]}) == "NO_FOLLOW_RUNG"
+    # a rung every family already reads at its own cycle queues nothing
+    assert enqueue(host, **{**kwargs, "event_date": "2026-09-24",
+                            "run_ladder": [(1, None, _t("2026-09-23", 0))]}) == "NO_FOLLOW_RUNG"
     release.set()
     future = host._official_native_follow_inflight["2026-09-23"]
     assert future.result(5)["state"] == "COMMITTED_NO_LIVE"
@@ -680,7 +690,7 @@ def test_the_worker_queues_one_follow_capture_per_date_off_the_pass(monkeypatch,
     command = commands[0]
     assert "--follow-capture-only" in command and "--commit" in command
     assert command[command.index("--icon-download-workers") + 1] == str(worker.FOLLOW_ICON_DOWNLOAD_WORKERS)
-    assert [command[i + 1] for i, p in enumerate(command) if p == "--follow-rung"] == ["1:18", "1:12", "1:6", "1:default"]
+    assert [command[i + 1] for i, p in enumerate(command) if p == "--follow-rung"] == ["1:18", "1:12", "1:6"]
     # the lane is the capture script's, with nothing of the pass's own
     assert "--gefs-output" not in command and "--inbox-output" not in command
 
@@ -712,3 +722,54 @@ def test_icon_six_hour_runs_are_banked_but_not_seated_until_ruled(monkeypatch, t
     monkeypatch.delenv(follow_run.SECONDARY_SERVING_ENV, raising=False)
     assert follow_run.follow_serving_allowed(follow_run.ICON_FAMILY, 12)
     assert not follow_run.follow_serving_allowed(follow_run.ICON_FAMILY, 6)
+
+
+def test_a_d2_follow_run_reads_only_steps_its_grid_is_published_at() -> None:
+    # ICON's primary cycles are 3-hourly only to +72h: a D-2 00Z run cannot
+    # seal New York's day on that grid and leaves it out ...
+    assert icon.follow_forecast_hours(
+        event_date="2026-09-23",
+        settlement_timezone="America/New_York",
+        run_init_utc=_t("2026-09-21", 0),
+    ) is None
+    # ... but covers Chengdu's whole day
+    assert icon.follow_forecast_hours(
+        event_date="2026-09-23",
+        settlement_timezone="Asia/Shanghai",
+        run_init_utc=_t("2026-09-21", 0),
+    ) == [42, 45, 48, 51, 54, 57, 60, 63]
+    # the 6-hourly cycles run to +120h
+    assert icon.follow_forecast_hours(
+        event_date="2026-09-23",
+        settlement_timezone="America/Los_Angeles",
+        run_init_utc=_t("2026-09-21", 6),
+    ) == [54, 60, 66, 72]
+
+
+def test_a_d2_packet_without_icon_takes_a_certified_earlier_run(monkeypatch, tmp_path) -> None:
+    # Before D-2 12Z publishes the pass has no ICON at all for D+2; a
+    # certified D-2 00Z follow run is newer than nothing.
+    registry_path, commands = _setup_pass(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        capture, "capture_icon_eps_station_days",
+        lambda **_kw: (_ for _ in ()).throw(RuntimeError("HTTPStatusError:404")),
+    )
+    icon_00 = _follow_file(tmp_path, f"icon_{DAY}_d2_00z.json", "2026-07-30T00:00:00Z", _station_ids())
+    receipt = capture.capture_official_native_forward(
+        registry_path=registry_path,
+        event_date=DAY,
+        gefs_output=tmp_path / f"gefs_{DAY}_d2.json",
+        ecmwf_output=tmp_path / f"ecmwf_{DAY}_d2.json",
+        eccc_output=tmp_path / f"eccc_{DAY}_d2.json",
+        icon_output=tmp_path / f"icon_{DAY}_d2.json",
+        inbox_output=tmp_path / "inbox.json",
+        timeout_seconds=30.0,
+        lead_days=2,
+        run_cycle_hour=0,
+        follow_new_runs=True,
+        follow_serving_ready=lambda **kw: kw["family"] == follow_run.ICON_FAMILY,
+    )
+    assert "DWD_ICON_EPS" not in receipt["run_init_utc_by_family"]
+    assert set(receipt["follow_serving"][follow_run.ICON_FAMILY].values()) == {"2026-07-30T00:00:00Z"}
+    builder = _builder(commands)
+    assert builder[builder.index("--follow-archive") + 1] == str(icon_00)

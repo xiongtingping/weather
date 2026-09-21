@@ -1,10 +1,12 @@
-"""Charter 192: ICON and ECCC follow their newest published run at d1 and d0.
+"""Charter 192: ICON and ECCC follow their newest published run, every lead.
 
-User ruling 2026-09-21: "全球模型的 run 全采，按起报时刻滚动用，谁新用谁（只要覆盖
-得到目标日）；新轮次没发布前不倒退；后天（D+2）不动".  ECMWF and GEFS already walk
-a six-hourly ladder; ICON and ECCC read one contracted cycle per lead (00Z at
-d1 and d0), so a D+1 packet sat on the day's 00Z ICON/ECCC run for up to a
-day while ICON issued three newer runs and ECCC one.
+User rulings 2026-09-21: "全球模型的 run 全采，按起报时刻滚动用，谁新用谁（只要覆盖
+得到目标日）；新轮次没发布前不倒退", revised the same evening to "当天、明天、
+后天都谁新用谁".  ECMWF and GEFS already walk a six-hourly ladder; ICON and ECCC
+read one contracted cycle per lead (00Z at d1 and d0, 12Z at d2), so a D+1
+packet sat on the day's 00Z ICON/ECCC run for up to a day while ICON issued
+three newer runs and ECCC one, and a D+2 packet had no ICON/ECCC at all from
+its listing (~05Z D-2) until D-2 12Z landed.
 
 What this module owns, and why each piece is shaped the way it is:
 
@@ -68,8 +70,11 @@ from .station_season import station_season_bin
 ICON_FAMILY = "DWD_OPENDATA_ICON_EPS"
 ECCC_FAMILY = "ECCC_DD_WEATHER"
 FOLLOW_FAMILIES = (ICON_FAMILY, ECCC_FAMILY)
-# d2 is unchanged by the ruling: ICON and ECCC keep reading D-2 12Z there.
-FOLLOW_LEADS = (0, 1)
+# Every lead the ladder serves (user ruling the same evening: "当天、明天、后天
+# 都谁新用谁").  At d2 the lead's own run stays D-2 12Z; the D-2 00Z/06Z runs
+# are what can seat ICON/ECCC in a D+2 packet from its listing (~05Z D-2)
+# instead of from ~15-17Z, and 18Z follows 12Z.
+FOLLOW_LEADS = (0, 1, 2)
 FOLLOW_RUN_MIN_FIT_CASES = 10
 # Kill switch, read by the worker: "off" restores the pre-charter capture and
 # packet byte for byte.
@@ -147,24 +152,29 @@ def follow_cycle_hours(family: str, lead_days: int) -> tuple[int, ...]:
 def follow_cycle_for_rung(
     family: str, lead_days: int, rung_cycle_hour: int | None
 ) -> int | None:
-    """The newest followed cycle a ladder rung reaches for this family.
+    """The followed cycle a ladder rung reaches for this family, or None.
 
-    The rung names the ECMWF/GEFS cycle; a family follows the newest of its
-    own published cycles at or before it.  ECCC publishes no 06Z or 18Z, so
-    an 18Z rung asks it for 12Z; a rung at or before the lead's own cycle
-    asks nothing, because that run is already the pass's own.
+    The rung names the ECMWF/GEFS cycle; a family reads the newest of its own
+    published cycles at or before it.  ECCC publishes no 06Z or 18Z, so an
+    18Z rung reaches its 12Z.  When that newest cycle is the lead's own, the
+    pass already reads it and there is nothing to follow.
     """
 
     lead = int(lead_days)
+    if lead not in FOLLOW_LEADS:
+        return None
     rung = (
         _RUNG_DEFAULT_CYCLE.get(lead, 0)
         if rung_cycle_hour is None
         else int(rung_cycle_hour)
     )
-    eligible = [
-        hour for hour in follow_cycle_hours(family, lead) if hour <= rung
+    published = [
+        int(hour) for hour in _ARCHIVE_CYCLES[family][lead] if int(hour) <= rung
     ]
-    return max(eligible) if eligible else None
+    if not published:
+        return None
+    newest = max(published)
+    return None if newest == int(_DEFAULT_CYCLE[family][lead]) else newest
 
 
 def follow_run_init(

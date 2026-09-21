@@ -474,8 +474,8 @@ OFFICIAL_ARCHIVE_SCOPE_CONTRACTS = {
         "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
         "leads": _lead_contracts(
             supported_lead_days=_ICON_LEADS,
-            # Charter 192: every cycle DWD publishes at d1/d0, the lead's own
-            # cycle unchanged among them.  The identity now names the cycle,
+            # Charter 192: every cycle DWD publishes at every lead, the lead's
+            # own cycle unchanged among them.  The identity now names the cycle,
             # and for the lead's own cycle it is byte-identical to the
             # lead-only string it replaced, so no trained row changes scope.
             cycle_hour_by_lead=_ICON_ARCHIVE_CYCLES_BY_LEAD,

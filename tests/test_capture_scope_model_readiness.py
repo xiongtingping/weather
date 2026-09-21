@@ -100,6 +100,9 @@ def test_runs_come_from_the_archive_contracts_not_a_fixed_cycle() -> None:
         # A lead contracts a list of cycles (ECCC reads 00Z and 12Z at d2);
         # the schedule names the latest, its conservative readiness bound.
         cycles = [contract] if isinstance(contract, dict) else list(contract)
+        # Charter 192: cycles contracted only to follow the newest run do not
+        # decide when a lead is on the store.
+        cycles = [entry for entry in cycles if not entry.get("serving_follow")]
         assert run.strftime("%HZ") == max(
             (entry["run_cycle"] for entry in cycles),
             key=lambda cycle: int(cycle[:-1]),
