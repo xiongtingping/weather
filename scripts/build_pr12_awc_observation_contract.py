@@ -219,8 +219,17 @@ def _exclude_materialized_day_scopes(
     history: they keep their rows, they do not block the new generation from
     building the same calendar day over the window the market actually
     settles, and comparing the two generations' zones is meaningless -- they
-    are answers to different questions. Their scope keys carry the projection
-    hash, so the two generations cannot collide.
+    are answers to different questions.
+
+    Only the revision facts' scope keys carry the projection hash.  A
+    day-bounds key is (station, date, zone, bounds_version), so the two
+    generations collide wherever the zone did not change -- on 2026-08-26
+    that was only the Eastern stations; on a re-mint that keeps every zone
+    (a fleet move) it is every day closed under the old projection inside
+    the window.  What keeps that from stalling the lane is not this function
+    but ``_conflicting_day_scopes``: the probe build finds those days, they
+    are quarantined for the round, and everything else ships.  Their old
+    generation stays on file and is what settlement reads.
 
     The exporter may already have left these days out at read
     (``skip_day_scopes``); what it skipped arrives as a count and joins the
