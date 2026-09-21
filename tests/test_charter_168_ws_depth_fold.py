@@ -251,3 +251,27 @@ def test_the_rebuild_repairs_rungs_the_first_cut_stored_off_grid() -> None:
 
     aligned = json.dumps([_bucket(head_a + [{"price": 0.36, "shares": 90.0}], head_b)], sort_keys=True)
     assert module._fold_payload(aligned) is aligned
+
+
+def test_the_p0_lane_folds_after_its_own_tick_derivation() -> None:
+    """The second writer of ``basket_official_ws_snapshot`` (09-21): the P0
+    preselection assembles its ladders itself.  Both sides folded, with the
+    derived tick, after the derivation -- asserted on the source, because a
+    third writer would slip past any fixture."""
+
+    import ast
+
+    source = (ROOT / "bayes_basket_target" / "p0_preselection.py").read_text(encoding="utf-8")
+    func = next(
+        node for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.FunctionDef) and node.name == "_market_snapshot"
+    )
+    calls = [n for n in ast.walk(func) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)]
+    folds = [n for n in calls if n.func.id == "fold_depth_tail"]
+    derive = [n for n in calls if n.func.id == "derive_official_ws_price_tick_size"]
+    assert len(folds) == 2 and derive
+    assert min(n.lineno for n in folds) > max(n.lineno for n in derive)
+    for call in folds:
+        tick = [kw for kw in call.keywords if kw.arg == "tick"]
+        assert tick and isinstance(tick[0].value, ast.Name) and tick[0].value.id == "price_tick_size"
+    assert {ast.unparse(n.args[0]) for n in folds} == {"ask_levels", "bid_levels"}

@@ -466,6 +466,45 @@ def test_p0_preselection_derives_subcent_official_book_tick() -> None:
     ]
 
 
+def test_p0_preselection_folds_a_deep_book_the_kernel_still_accepts() -> None:
+    """Charter 168's second writer.  This lane's ladders are written to
+    ``basket_official_ws_snapshot`` too; a deep book comes out as five
+    verbatim levels plus one rung on the tick grid, with every share kept,
+    and the kernel parses it."""
+
+    from bayes_basket_target.basket_kernel.contracts import BucketObservation
+
+    envelope, registry_rows, quotes, manifest = _ws_inputs(
+        observed_at="2026-07-23T12:00:10Z"
+    )
+    envelope.decision_at_utc = "2026-07-23T12:00:09Z"
+    asks = [{"price": round(0.40 + 0.01 * i, 2), "size": 3 + 7 * i} for i in range(20)]
+    bids = [{"price": round(0.39 - 0.01 * i, 2), "size": 5 + 3 * i} for i in range(12)]
+    quotes["yes-38"] = {"book_observed_at": "2026-07-23T12:00:10Z", "asks": asks, "bids": bids}
+    manifest["quotes_by_token"] = quotes
+    manifest["snapshot_sha256"] = content_sha256({
+        key: value for key, value in manifest.items() if key != "snapshot_sha256"
+    })
+
+    market = _market_snapshot(
+        envelope=envelope,
+        registry_rows=registry_rows,
+        quotes=quotes,
+        manifest=manifest,
+        evaluation_at_utc="2026-07-23T12:01:00Z",
+    )
+
+    bucket = market["buckets"][0]
+    tick = bucket["price_tick_size"]
+    for side, raw in (("ask_levels", asks), ("bid_levels", bids)):
+        levels = bucket[side]
+        assert len(levels) == 6
+        assert levels[:5] == [{"price": x["price"], "shares": float(x["size"])} for x in raw[:5]]
+        assert sum(x["shares"] for x in levels) == pytest.approx(sum(x["size"] for x in raw))
+        assert abs(levels[-1]["price"] / tick - round(levels[-1]["price"] / tick)) <= 1e-7
+    BucketObservation.from_mapping({**bucket, "probability": 0.0})
+
+
 def test_p0_preselection_uses_no_live_planning_budget_without_authority() -> None:
     envelope, registry_rows, quotes, manifest = _ws_inputs(
         observed_at="2026-07-23T12:00:10Z"

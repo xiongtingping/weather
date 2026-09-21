@@ -18,6 +18,7 @@ from .cash_phase_authority import (
 from .contracts import ContractError, content_sha256
 from .market_ingress import (
     derive_official_ws_price_tick_size,
+    fold_depth_tail,
     load_official_ws_quotes,
 )
 from .market_registry import load_market_registry_snapshot
@@ -608,6 +609,14 @@ def _market_snapshot(
                 registry_tick=_forward_tick_size(registry_row),
             )
         )
+        # Charter 168, the second writer (2026-09-21).  This lane assembles
+        # its own ladders from the stream and ``production_worker`` writes
+        # them to ``basket_official_ws_snapshot`` -- the ingress fold never
+        # reached them: 18% of new snapshot rows, 34% of the column's bytes.
+        # Same fold, same place as the ingress: after the tick has been
+        # derived from the real ladder, with that tick, outward.
+        ask_levels = fold_depth_tail(ask_levels, ascending=True, tick=price_tick_size)
+        bid_levels = fold_depth_tail(bid_levels, ascending=False, tick=price_tick_size)
         observed = str(quote.get("book_observed_at") or quote.get("created_at") or "")
         quote_observed_at = _utc(
             observed,
