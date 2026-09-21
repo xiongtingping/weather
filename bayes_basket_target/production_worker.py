@@ -1429,6 +1429,9 @@ HISTORICAL_TAF_CAPTURE_DEADLINE_SEC = 3600.0
 # canonically identified before giving up on this round.  The pass measures
 # 22.8 seconds end to end; this is a stall bound, not a budget.
 LIVE_OBSERVATION_IDENTITY_DEADLINE_SEC = 240.0
+# Charter 186: how old the resting lane's "still resting" reading of an
+# order may be for the unresolved-intent lane to leave that order to it.
+RESTING_LANE_HANDOFF_MAX_AGE_SEC = 600.0
 # Charter 181: how long a run of station-subset identity passes may go before
 # a full one.  A station's facts are a function of its own archive rows, and
 # a subset pass re-derives exactly the stations whose rows moved -- the full
@@ -8901,6 +8904,18 @@ class TargetProductionWorker:
             lookup_concurrency=RESTING_LOOKUP_CONCURRENCY,
         )
         self._resting_reprice_cursor = int(receipt.get("next_start_index") or 0)
+        # Charter 186: which orders the resting lane has just read, by their
+        # own exchange order id, as still resting.  The unresolved-intent
+        # lane leaves those to it (see ``_reconcile_unresolved_intents``).
+        now_mono = time.monotonic()
+        self._resting_lane_live = {
+            str(entry.get("order_intent_id") or ""): now_mono
+            for entry in receipt.get("rungs") or ()
+            if isinstance(entry, Mapping)
+            and str((entry.get("sync") or {}).get("state") or "")
+            in {"resting", "resting_partial"}
+            and entry.get("order_intent_id")
+        }
         _publish_resting_reprice_receipt(receipt, as_of_utc=as_of_utc)
         return receipt
 
@@ -9144,6 +9159,30 @@ class TargetProductionWorker:
             receipt["reason"] = f"{type(exc).__name__}:{exc}"
             return receipt
         if not rows:
+            return receipt
+        # Charter 186: a partly filled order still resting on the exchange is
+        # ``reconcile_required`` by the ledger's rule (a partial fill), and
+        # the resting lane loads exactly those and reads each by its own
+        # exchange order id every pass -- the authoritative answer the point
+        # lookup here can only approximate.  Asking again here (the point
+        # lookup, the open-order enumeration, the position) was 9-15s a
+        # cycle for one KHOU GTD rung resting until its expiry (2026-09-21
+        # 11:42Z-16:39Z).  So an intent the resting lane read as resting in
+        # its last pass, within the handoff bound, is its alone; one it did
+        # not reach, could not read, or saw end comes back here next cycle.
+        live = getattr(self, "_resting_lane_live", None) or {}
+        now_mono = time.monotonic()
+        owned = {
+            str(intent_id)
+            for intent_id, seen in live.items()
+            if now_mono - float(seen) <= RESTING_LANE_HANDOFF_MAX_AGE_SEC
+        }
+        receipt["resting_lane_owned"] = sorted(
+            str(row[0]) for row in rows if str(row[0]) in owned
+        )
+        rows = [row for row in rows if str(row[0]) not in owned]
+        if not rows:
+            receipt["state"] = "resting_lane_owned"
             return receipt
         try:
             from clob_order_service_client import (  # noqa: PLC0415

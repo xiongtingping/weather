@@ -283,129 +283,138 @@ def preflight_republisher_fallback_activation(
         "WHERE a.artifact_kind='CROSS_NATIVE_ENSEMBLE' "
         "AND a.station_id=? AND a.season_bin=? AND a.lead_bucket=? "
         "AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY' "
-        "AND a.valid_from_utc<=? AND a.valid_until_utc>? "
+        "AND a.valid_from_utc<=? AND +a.valid_until_utc>? "
         "ORDER BY a.generation DESC,a.activation_id LIMIT 256",
         (station_id, season_bin, lead_bucket, decision_at_utc, decision_at_utc),
-    ).fetchall()
-    for row in activation_rows:
-        try:
-            selected_ids_raw = json.loads(str(row[8]))
-        except (TypeError, ValueError, json.JSONDecodeError) as exc:
-            raise ContractError(
-                "republisher_activation_selected_systems_invalid"
-            ) from exc
-        if not isinstance(selected_ids_raw, list):
-            raise ContractError("republisher_activation_selected_systems_invalid")
-        selected_ids = sorted(str(value) for value in selected_ids_raw)
-        bound_system_ids = {
-            REPUBLISHER_MODEL_SYSTEM_IDS[model_id]
-            for model_id in pointer_rows
-            if model_id in REPUBLISHER_MODEL_SYSTEM_IDS
-        }
-        if not bound_system_ids.issubset(set(selected_ids)):
-            continue
-        if not set(selected_ids).issubset(observed_systems):
-            continue
-        if str(row[5]) != AGGREGATOR_RUN_CYCLE:
-            continue
-        cycle_mapping = _json_mapping(
-            row[14], code="republisher_activation_cycle_mapping_invalid"
-        )
-        if set(cycle_mapping) != set(selected_ids) or any(
-            value != AGGREGATOR_RUN_CYCLE for value in cycle_mapping.values()
-        ):
-            continue
-        if str(row[11]) != str(station_row[0]):
-            continue
-        selected_hash = content_sha256(selected_ids)
-        if str(row[4]) != selected_hash:
-            continue
-        evaluation_rows = conn.execute(
-            "SELECT evaluation_id,oos_state,selection_evidence_sha256,"
-            "min_train_days,min_holdout_days,threshold_profile,evaluated_at_utc "
-            "FROM calibration_cross_native_ensemble_oos_evaluation "
-            "WHERE station_id=? AND season_bin=? AND lead_bucket=? "
-            "AND run_cycle=? AND run_cycle_by_system_json=? "
-            "AND run_cycle_by_system_sha256=? AND settlement_definition=? "
-            "AND ensemble_system_ids_json=? AND available_system_set_hash=? "
-            "AND evaluated_at_utc<=? ORDER BY evaluated_at_utc DESC,evaluation_id DESC LIMIT 2",
-            (
-                station_id,
-                season_bin,
-                lead_bucket,
-                row[5],
-                row[14],
-                row[15],
-                row[11],
-                json.dumps(selected_ids, separators=(",", ":")),
-                row[4],
-                decision_at_utc,
-            ),
-        ).fetchall()
-        if not evaluation_rows:
-            continue
-        evaluation = evaluation_rows[0]
-        if (
-            len(evaluation_rows) > 1
-            and str(evaluation_rows[0][6]) == str(evaluation_rows[1][6])
-        ):
-            continue
-        if (
-            str(evaluation[1]) != "PRODUCTION_NO_LIVE_OOS_PASS"
-            or str(evaluation[2]) != str(row[12])
-            or int(evaluation[3]) < MIN_TRAIN_DAYS
-            or int(evaluation[4]) < MIN_HOLDOUT_DAYS
-            or "BOOTSTRAP" in str(evaluation[5] or "").upper()
-        ):
-            continue
-        system_receipts: dict[str, Any] = {}
-        try:
-            for system_id in selected_ids:
-                system_receipts[system_id] = _strict_system_artifact(
-                    conn,
-                    station_id=station_id,
-                    season_bin=season_bin,
-                    lead_bucket=lead_bucket,
-                    system_id=system_id,
-                    run_cycle=AGGREGATOR_RUN_CYCLE,
-                    decision_at_utc=decision_at_utc,
-                    pointer_row=(
-                        pointer_rows.get(REPUBLISHER_SYSTEM_MODEL_IDS.get(system_id, ""))
-                    ),
-                )
-        except ContractError:
-            continue
-        receipt_identity = {
-            "schema": SCHEMA,
-            "authority_mode": AUTHORITY_MODE,
-            "transport_provider_id": TRANSPORT_PROVIDER_ID,
-            "source_role": SOURCE_ROLE,
-            "native_unavailable": True,
-            "native_arrival_index_eligible": False,
-            "native_formal_p0_eligible": False,
-            "p1_eligible": False,
-            "formal_live_authority": False,
-            "station_id": station_id,
-            "event_date": event_date,
-            "season_bin": season_bin,
-            "lead_bucket": lead_bucket,
-            "pointer_content_sha256": activation.content_sha256,
-            "pointer_binding_ids": sorted(
-                str(row.get("binding_id") or "") for row in pointer_rows.values()
-            ),
-            "cross_activation_id": str(row[0]),
-            "cross_artifact_id": str(row[1]),
-            "cross_activation_content_sha256": str(row[2]),
-            "cross_artifact_content_sha256": str(row[13]),
-            "selection_evidence_sha256": str(row[12]),
-            "oos_evaluation_id": str(evaluation[0]),
-            "selected_system_ids": selected_ids,
-            "system_receipts": system_receipts,
-        }
-        return {
-            **receipt_identity,
-            "content_sha256": content_sha256(receipt_identity),
-        }
+    )
+    # Charter 186: the charter-185 generation index hands these over in the
+    # ORDER BY (``+a.valid_until_utc`` leaves it the planner's choice), and
+    # the walk reads them as they come and returns at the first that holds
+    # -- the same read as ``_activated_lead_bucket`` (129 calls, 3-6s a
+    # cycle read every valid activation and sorted it).  Same rows, same
+    # order; the cursor is closed however the walk ends.
+    try:
+        for row in activation_rows:
+            try:
+                selected_ids_raw = json.loads(str(row[8]))
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise ContractError(
+                    "republisher_activation_selected_systems_invalid"
+                ) from exc
+            if not isinstance(selected_ids_raw, list):
+                raise ContractError("republisher_activation_selected_systems_invalid")
+            selected_ids = sorted(str(value) for value in selected_ids_raw)
+            bound_system_ids = {
+                REPUBLISHER_MODEL_SYSTEM_IDS[model_id]
+                for model_id in pointer_rows
+                if model_id in REPUBLISHER_MODEL_SYSTEM_IDS
+            }
+            if not bound_system_ids.issubset(set(selected_ids)):
+                continue
+            if not set(selected_ids).issubset(observed_systems):
+                continue
+            if str(row[5]) != AGGREGATOR_RUN_CYCLE:
+                continue
+            cycle_mapping = _json_mapping(
+                row[14], code="republisher_activation_cycle_mapping_invalid"
+            )
+            if set(cycle_mapping) != set(selected_ids) or any(
+                value != AGGREGATOR_RUN_CYCLE for value in cycle_mapping.values()
+            ):
+                continue
+            if str(row[11]) != str(station_row[0]):
+                continue
+            selected_hash = content_sha256(selected_ids)
+            if str(row[4]) != selected_hash:
+                continue
+            evaluation_rows = conn.execute(
+                "SELECT evaluation_id,oos_state,selection_evidence_sha256,"
+                "min_train_days,min_holdout_days,threshold_profile,evaluated_at_utc "
+                "FROM calibration_cross_native_ensemble_oos_evaluation "
+                "WHERE station_id=? AND season_bin=? AND lead_bucket=? "
+                "AND run_cycle=? AND run_cycle_by_system_json=? "
+                "AND run_cycle_by_system_sha256=? AND settlement_definition=? "
+                "AND ensemble_system_ids_json=? AND available_system_set_hash=? "
+                "AND evaluated_at_utc<=? ORDER BY evaluated_at_utc DESC,evaluation_id DESC LIMIT 2",
+                (
+                    station_id,
+                    season_bin,
+                    lead_bucket,
+                    row[5],
+                    row[14],
+                    row[15],
+                    row[11],
+                    json.dumps(selected_ids, separators=(",", ":")),
+                    row[4],
+                    decision_at_utc,
+                ),
+            ).fetchall()
+            if not evaluation_rows:
+                continue
+            evaluation = evaluation_rows[0]
+            if (
+                len(evaluation_rows) > 1
+                and str(evaluation_rows[0][6]) == str(evaluation_rows[1][6])
+            ):
+                continue
+            if (
+                str(evaluation[1]) != "PRODUCTION_NO_LIVE_OOS_PASS"
+                or str(evaluation[2]) != str(row[12])
+                or int(evaluation[3]) < MIN_TRAIN_DAYS
+                or int(evaluation[4]) < MIN_HOLDOUT_DAYS
+                or "BOOTSTRAP" in str(evaluation[5] or "").upper()
+            ):
+                continue
+            system_receipts: dict[str, Any] = {}
+            try:
+                for system_id in selected_ids:
+                    system_receipts[system_id] = _strict_system_artifact(
+                        conn,
+                        station_id=station_id,
+                        season_bin=season_bin,
+                        lead_bucket=lead_bucket,
+                        system_id=system_id,
+                        run_cycle=AGGREGATOR_RUN_CYCLE,
+                        decision_at_utc=decision_at_utc,
+                        pointer_row=(
+                            pointer_rows.get(REPUBLISHER_SYSTEM_MODEL_IDS.get(system_id, ""))
+                        ),
+                    )
+            except ContractError:
+                continue
+            receipt_identity = {
+                "schema": SCHEMA,
+                "authority_mode": AUTHORITY_MODE,
+                "transport_provider_id": TRANSPORT_PROVIDER_ID,
+                "source_role": SOURCE_ROLE,
+                "native_unavailable": True,
+                "native_arrival_index_eligible": False,
+                "native_formal_p0_eligible": False,
+                "p1_eligible": False,
+                "formal_live_authority": False,
+                "station_id": station_id,
+                "event_date": event_date,
+                "season_bin": season_bin,
+                "lead_bucket": lead_bucket,
+                "pointer_content_sha256": activation.content_sha256,
+                "pointer_binding_ids": sorted(
+                    str(row.get("binding_id") or "") for row in pointer_rows.values()
+                ),
+                "cross_activation_id": str(row[0]),
+                "cross_artifact_id": str(row[1]),
+                "cross_activation_content_sha256": str(row[2]),
+                "cross_artifact_content_sha256": str(row[13]),
+                "selection_evidence_sha256": str(row[12]),
+                "oos_evaluation_id": str(evaluation[0]),
+                "selected_system_ids": selected_ids,
+                "system_receipts": system_receipts,
+            }
+            return {
+                **receipt_identity,
+                "content_sha256": content_sha256(receipt_identity),
+            }
+    finally:
+        activation_rows.close()
     raise ContractError("republisher_activation_exact_cross_activation_missing")
 
 
