@@ -235,6 +235,14 @@ def contracted_run_inits(
             if isinstance(lead, Sequence) and not isinstance(lead, (str, bytes))
             else []
         )
+        # Charter 192: cycles captured only to follow the newest run are
+        # admitted for training but are not what makes a lead "on the store":
+        # counting DWD's 18Z here would hold every d1/d0 scope unready until
+        # the next morning.
+        entries = [
+            entry for entry in entries
+            if entry.get("serving_follow") is not True
+        ]
         if not entries:
             continue
         cycles: list[int] = []

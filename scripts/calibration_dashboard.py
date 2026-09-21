@@ -16070,7 +16070,7 @@ function publishTimes(){
   const rows = [];
   const M = D.members || [];
   if(M.length){
-    rows.push(grp("四大全球集合", "P0 的成员；DWD、ECCC 只采 00Z/12Z，且 12Z 只给 D+2，D+1 和当天用 00Z（采集契约 RUN_CYCLE_HOUR_BY_LEAD）"));
+    rows.push(grp("四大全球集合", "P0 的成员；DWD 四轮、ECCC 两轮都采：D+2 读 D-2 12Z，D+1 和当天默认读 00Z，更新的一轮须有自己 (档×轮次) 的成熟校准件才替上（宪章 192）"));
     M.forEach(m => {
       const newest = (m.runs_recent || []).find(r => r.run_utc === m.latest_run_utc) || {};
       rows.push(row(m.health, m.label, runLabel(m.latest_run_utc),

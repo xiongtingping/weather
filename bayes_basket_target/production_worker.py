@@ -178,6 +178,7 @@ from .market_registry import (
     registry_scope_timezone_triples,
     registry_scope_timezone_lanes,
 )
+from . import follow_run
 from .official_nwp_capture_scheduler import (
     MAX_DISCOVERED_SCOPES,
     MAX_RUN_AGE_DAYS,
@@ -1244,6 +1245,14 @@ ICON_TRANSPORT_PROVIDER_ID = "DWD_OPENDATA_ICON_EPS"
 # clears the last lead a local day needs.  Before that an ICON hold is the run
 # not being out yet, which the rotation's next lap picks up.
 ICON_RUN_PUBLICATION_LAG_SEC = 4 * 3600.0
+# Charter 192: the follow-run lane's bounds.  Half a pass's ICON connections,
+# so a follow capture beside a pass's own ICON fetch stays under DWD's ~24
+# connection ceiling; and a wall clock of half an hour for up to six runs.
+FOLLOW_ICON_DOWNLOAD_WORKERS = 8
+FOLLOW_RUN_CAPTURE_DEADLINE_SEC = 1800.0
+# Capture threads finish concurrently; the follow lane's pool and queue are
+# created and read under one lock.
+_FOLLOW_LANE_LOCK = threading.Lock()
 ECMWF_GCS_REPLICA_BASE_URL = "https://storage.googleapis.com/ecmwf-open-data"
 
 # Hard wall-clock ceiling on one capture, enforced by killing the child.  The
@@ -5367,6 +5376,12 @@ class TargetProductionWorker:
             # commits, and this makes the other three behave like it.
             "--commit",
         ]
+        # Charter 192: a station may take ICON's/ECCC's newer retained run
+        # once that run's own fit is certified.  With nothing certified the
+        # packets are the ones this pass always built.
+        follow_new_runs = follow_run.follow_enabled()
+        if follow_new_runs:
+            base_command.append("--follow-new-runs")
         horizon = _utc_date(as_of_utc) - timedelta(days=1)
         republisher_inbox = (
             self.nwp_runtime_root / "native_ensemble_forward_inbox.json"
@@ -5551,6 +5566,18 @@ class TargetProductionWorker:
                     "state": "MERGE_FAILED",
                     "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
                 }
+            if follow_new_runs:
+                # Charter 192: bank the newer ICON/ECCC runs this ladder
+                # reaches, after the pass's packets are merged and on a lane
+                # of their own, so the download never delays the ECMWF/GEFS
+                # run the pass was for.
+                self._enqueue_follow_run_capture(
+                    event_date=event_date,
+                    run_ladder=run_ladder,
+                    registry_path=registry_path,
+                    capture_root=capture_root,
+                    env=capture_env,
+                )
             return {
                 "state": "CAPTURED",
                 "inbox_packet_count": merged["packet_count"],
@@ -5580,6 +5607,115 @@ class TargetProductionWorker:
             "live_submit_authorized": False,
             "orders_submitted": 0,
         }
+
+    def _enqueue_follow_run_capture(
+        self,
+        *,
+        event_date: str,
+        run_ladder: Sequence[tuple[int, int | None, datetime]],
+        registry_path: Path,
+        capture_root: Path,
+        env: Mapping[str, str],
+    ) -> str:
+        """Charter 192: queue the follow-run capture for one event date.
+
+        One worker, one date at a time: a follow capture pulls up to ~0.5GiB
+        of ICON through DWD's open-data server, whose connection ceiling sits
+        near 24 (16 per pass already), so follow captures never stack and
+        each asks with half a pass's connections.  A date already queued is
+        not queued twice; its job reads every rung it was given.
+        """
+
+        rungs = [
+            (int(lead), cycle)
+            for lead, cycle, _run_init in run_ladder
+            if int(lead) in follow_run.FOLLOW_LEADS
+        ]
+        if not rungs:
+            return "NO_FOLLOW_RUNG"
+        with _FOLLOW_LANE_LOCK:
+            pool = getattr(self, "_official_native_follow_pool", None)
+            if pool is None:
+                pool = ThreadPoolExecutor(
+                    max_workers=1,
+                    thread_name_prefix="official-native-follow",
+                )
+                self._official_native_follow_pool = pool
+            queued: dict[str, Any] = getattr(
+                self, "_official_native_follow_inflight", None
+            ) or {}
+            self._official_native_follow_inflight = queued
+            for key in [key for key, fut in queued.items() if fut.done()]:
+                queued.pop(key, None)
+            if event_date in queued:
+                return "ALREADY_QUEUED"
+            command = [
+                sys.executable,
+                str(
+                    ROOT / "scripts"
+                    / "capture_official_native_ensemble_forward.py"
+                ),
+                "--follow-capture-only",
+                "--event-date", event_date,
+                "--market-registry", str(registry_path),
+                "--capture-root", str(capture_root),
+                "--timeout-seconds", str(OFFICIAL_NATIVE_CAPTURE_TIMEOUT_SEC),
+                "--icon-download-workers", str(FOLLOW_ICON_DOWNLOAD_WORKERS),
+                "--commit",
+            ]
+            for lead, cycle in rungs:
+                command += [
+                    "--follow-rung",
+                    f"{lead}:{'default' if cycle is None else cycle}",
+                ]
+            follow_env = dict(env)
+
+            def _run_follow() -> dict[str, Any]:
+                try:
+                    completed = subprocess.run(
+                        command,
+                        cwd=str(ROOT),
+                        capture_output=True,
+                        text=True,
+                        timeout=FOLLOW_RUN_CAPTURE_DEADLINE_SEC,
+                        env=follow_env,
+                    )
+                except subprocess.TimeoutExpired:
+                    return {"state": "DEADLINE_EXCEEDED"}
+                except Exception as exc:  # noqa: BLE001 - never the pass's
+                    return {
+                        "state": "FAILED",
+                        "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
+                    }
+                try:
+                    receipt = json.loads(completed.stdout or "{}")
+                except (TypeError, ValueError):
+                    receipt = {}
+                outcome = {
+                    "state": (
+                        str(receipt.get("state") or "")
+                        if completed.returncode == 0
+                        else "FAILED"
+                    ),
+                    "returncode": completed.returncode,
+                    "receipt": receipt if isinstance(receipt, Mapping) else {},
+                    "stderr_tail": (completed.stderr or "").strip()[-200:],
+                }
+                # The newest outcome per date, for whoever asks what the
+                # follow lane last did (the futures are reaped on the next
+                # queue).
+                with _FOLLOW_LANE_LOCK:
+                    last = getattr(
+                        self, "_official_native_follow_last_result_by_date", None
+                    )
+                    if last is None:
+                        last = {}
+                        self._official_native_follow_last_result_by_date = last
+                    last[event_date] = outcome
+                return outcome
+
+            queued[event_date] = pool.submit(_run_follow)
+        return "QUEUED"
 
     def _metar_trajectory_training_due(
         self, *, station_id: str
@@ -20804,6 +20940,13 @@ class TargetProductionWorker:
             # would otherwise be merged on the next start.
             pool.shutdown(wait=True, cancel_futures=True)
             self._official_native_capture_pool = None
+        follow_pool = getattr(self, "_official_native_follow_pool", None)
+        if follow_pool is not None:
+            # Charter 192: queued follow captures are dropped, not waited on.
+            # The next pass queues them again, and a running one writes its
+            # archive atomically and ingests in one transaction.
+            follow_pool.shutdown(wait=False, cancel_futures=True)
+            self._official_native_follow_pool = None
         if self.conn is not None:
             self.conn.close()
             self.conn = None

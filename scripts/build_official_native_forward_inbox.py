@@ -223,6 +223,26 @@ def main() -> int:
             "systems, absent stations keep the set they had."
         ),
     )
+    parser.add_argument(
+        "--follow-archive",
+        type=Path,
+        action="append",
+        default=[],
+        help=(
+            "Charter 192: a retained ICON or ECCC follow archive (a newer run "
+            "than the family's archive above).  Read only for the stations "
+            "--follow-assignment names."
+        ),
+    )
+    parser.add_argument(
+        "--follow-assignment",
+        action="append",
+        default=[],
+        help=(
+            "STATION=PATH: this station takes the family's run from that "
+            "follow archive instead of the family's archive above."
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if (
@@ -473,15 +493,62 @@ def main() -> int:
             ].items()
         }
 
+    # Charter 192: per-station follow runs.  A follow archive replaces its
+    # family's archive for the stations assigned to it and nowhere else, so a
+    # build given none is exactly the build it was.
+    follow_by_path: dict[Path, Mapping[str, object]] = {}
+    for path in args.follow_archive:
+        resolved = path.expanduser().resolve(strict=True)
+        raw = load_bounded_json(resolved)
+        if not isinstance(raw, Mapping):
+            raise RuntimeError("official_native_forward_follow_archive_invalid")
+        schema = str(raw.get("schema") or "")
+        if schema not in {
+            ECCC_GEPS_MULTISTATION_SCHEMA,
+            DWD_ICON_EPS_MULTISTATION_SCHEMA,
+        } or str(raw.get("independence_family_id") or "") != (
+            _ARCHIVE_FAMILY_BY_SCHEMA[schema]
+        ) or str(raw.get("event_date") or "") != base_event_date:
+            raise RuntimeError("official_native_forward_follow_archive_invalid")
+        follow_by_path[resolved] = dict(raw)
+    follow_by_station: dict[str, dict[str, Mapping[str, object]]] = {}
+    for assignment in args.follow_assignment:
+        station_text, _sep, path_text = str(assignment).partition("=")
+        station_key = station_text.strip().upper()
+        archive = follow_by_path.get(
+            Path(path_text).expanduser().resolve()
+        )
+        if (
+            not station_key
+            or archive is None
+            or station_key not in _archive_station_ids(archive)
+        ):
+            raise RuntimeError(
+                "official_native_forward_follow_assignment_invalid:"
+                + str(assignment)
+            )
+        schema = str(archive.get("schema") or "")
+        if schema in follow_by_station.get(station_key, {}):
+            raise RuntimeError(
+                "official_native_forward_follow_assignment_duplicate:"
+                + str(assignment)
+            )
+        follow_by_station.setdefault(station_key, {})[schema] = archive
+
     def _station_archives(station: str) -> list:
         archives = list(base_archives)
-        if eccc_archive is not None and station in (
+        follows = follow_by_station.get(station, {})
+        if ECCC_GEPS_MULTISTATION_SCHEMA in follows:
+            archives.append(follows[ECCC_GEPS_MULTISTATION_SCHEMA])
+        elif eccc_archive is not None and station in (
             requested_eccc_stations
             if requested_eccc_stations
             else _archive_station_ids(eccc_archive)
         ):
             archives.append(eccc_archive)
-        if icon_archive is not None and station in _archive_station_ids(
+        if DWD_ICON_EPS_MULTISTATION_SCHEMA in follows:
+            archives.append(follows[DWD_ICON_EPS_MULTISTATION_SCHEMA])
+        elif icon_archive is not None and station in _archive_station_ids(
             icon_archive
         ):
             archives.append(icon_archive)

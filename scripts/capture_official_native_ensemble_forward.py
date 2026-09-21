@@ -44,13 +44,16 @@ from bayes_basket_target.noaa_gefs_archive import (  # noqa: E402
 from bayes_basket_target.eccc_geps_archive import (  # noqa: E402
     RUN_CYCLE_HOUR_BY_LEAD as ECCC_RUN_CYCLE_HOUR_BY_LEAD,
     capture_geps_station_days,
+    follow_forecast_hours as eccc_follow_forecast_hours,
     ingest_geps_station_days,
 )
 from bayes_basket_target.dwd_icon_eps_archive import (  # noqa: E402
     RUN_CYCLE_HOUR_BY_LEAD as ICON_RUN_CYCLE_HOUR_BY_LEAD,
     capture_icon_eps_station_days,
+    follow_forecast_hours as icon_follow_forecast_hours,
     ingest_icon_eps_station_days,
 )
+from bayes_basket_target import follow_run  # noqa: E402
 from bayes_basket_target.future_temperature_curve import (  # noqa: E402
     MIN_CURVE_POINTS,
     MIN_SAME_DAY_CURVE_POINTS,
@@ -525,6 +528,13 @@ def capture_official_native_forward(
     # states which lead this pass is for.  Two is the historical default.
     lead_days: int = 2,
     run_cycle_hour: int | None = None,
+    # Charter 192.  ``follow_new_runs`` lets a station take ICON's or ECCC's
+    # newer run from a retained follow archive when ``follow_serving_ready``
+    # (family=, station_id=, event_date=, settlement_timezone=, run_init=)
+    # says that run has its own certified fit.  Off, the pass is exactly the
+    # pass it was; on with nothing certified, it builds the same packets.
+    follow_new_runs: bool = False,
+    follow_serving_ready: Callable[..., bool] | None = None,
 ) -> dict[str, Any]:
     """Capture and materialize a formally admissible official-native inbox."""
 
@@ -972,6 +982,83 @@ def capture_official_native_forward(
         if regional_point["archives_by_station"]
         else False
     )
+    # Charter 192: per station, ICON's and ECCC's newest certified follow run,
+    # strictly newer than the run this pass already chose for the family.
+    follow_assignments: dict[str, dict[str, tuple[Path, str]]] = {}
+    if follow_new_runs and follow_serving_ready is not None:
+        timezone_by_station = {
+            str(scope["station_id"]): str(scope["settlement_timezone"])
+            for scope in scopes
+        }
+        for family, output, base in (
+            (follow_run.ICON_FAMILY, icon_output, icon),
+            (follow_run.ECCC_FAMILY, eccc_output, eccc),
+        ):
+            if output is None:
+                continue
+            retained_follows = []
+            for follow_init, follow_path in follow_run.follow_archive_paths(
+                output.expanduser().resolve().parent, family, event_date
+            ):
+                if not follow_run.follow_serving_allowed(
+                    family, follow_init.hour
+                ):
+                    continue
+                follow_archive = follow_run.load_follow_archive(
+                    follow_path,
+                    family=family,
+                    event_date=event_date,
+                    run_init=follow_init,
+                )
+                if follow_archive is not None:
+                    retained_follows.append((
+                        follow_init,
+                        follow_path,
+                        follow_run.archive_station_ids(follow_archive),
+                    ))
+            if not retained_follows:
+                continue
+            base_run = (
+                _parse_utc_timestamp(base.get("run_init_utc"))
+                if isinstance(base, dict)
+                else None
+            )
+            base_stations = (
+                follow_run.archive_station_ids(base)
+                if isinstance(base, dict)
+                else set()
+            )
+            for station in requested_station_ids:
+                candidates = [
+                    (follow_init, follow_path)
+                    for follow_init, follow_path, covered in retained_follows
+                    if station in covered
+                ]
+                chosen = follow_run.choose_station_run(
+                    base_run_init=(
+                        base_run if station in base_stations else None
+                    ),
+                    candidates=candidates,
+                    ready=lambda follow_init, _path, family=family, station=station: bool(
+                        follow_serving_ready(
+                            family=family,
+                            station_id=station,
+                            event_date=event_date,
+                            settlement_timezone=timezone_by_station[station],
+                            run_init=follow_init,
+                        )
+                    ),
+                )
+                if chosen is not None:
+                    chosen_init = next(
+                        follow_init
+                        for follow_init, follow_path in candidates
+                        if follow_path == chosen
+                    )
+                    follow_assignments.setdefault(family, {})[station] = (
+                        chosen,
+                        chosen_init.isoformat().replace("+00:00", "Z"),
+                    )
     command = [
         sys.executable,
         str(ROOT / "scripts" / "build_official_native_forward_inbox.py"),
@@ -1003,6 +1090,16 @@ def capture_official_native_forward(
         command.extend(["--archive", str(held_from_other_lead.get(
             "DWD_OPENDATA_ICON_EPS", icon_output.expanduser().resolve()
         ))])
+    follow_paths_used = sorted({
+        str(path)
+        for by_station in follow_assignments.values()
+        for path, _run in by_station.values()
+    })
+    for path_text in follow_paths_used:
+        command.extend(["--follow-archive", path_text])
+    for family in sorted(follow_assignments):
+        for station, (path, _run) in sorted(follow_assignments[family].items()):
+            command.extend(["--follow-assignment", f"{station}={path}"])
     completed = subprocess.run(
         command,
         check=True,
@@ -1076,6 +1173,17 @@ def capture_official_native_forward(
                 "error": icon_capture_error,
             }
         } if icon_output is not None else {}),
+        # Charter 192: stations serving a family's followed run instead of
+        # the run this pass chose for it, with that run's init.
+        **({
+            "follow_serving": {
+                family: {
+                    station: run
+                    for station, (_path, run) in sorted(by_station.items())
+                }
+                for family, by_station in sorted(follow_assignments.items())
+            }
+        } if follow_assignments else {}),
         "inbox_path": str(inbox_path),
         "inbox_content_sha256": str(inbox["content_sha256"]),
         "inbox_packet_count": len(inbox["packets"]),
@@ -1085,6 +1193,146 @@ def capture_official_native_forward(
         "orders_submitted": 0,
         "live_submit_authorized": False,
     }
+
+
+def capture_follow_runs(
+    *,
+    registry_path: Path,
+    event_date: str,
+    rungs: Sequence[tuple[int, int | None]],
+    capture_root: Path,
+    timeout_seconds: float,
+    as_of_utc: str | None = None,
+    icon_download_workers: int | None = None,
+) -> dict[str, Any]:
+    """Charter 192: bank ICON's and ECCC's newer runs for training, off the pass.
+
+    Runs after the pass that served the rung, never inside it: a follow
+    download is ~0.2-0.5GiB of ICON and holding the pass for it would delay
+    the ECMWF/GEFS run that pass exists to deliver.  Each (lead, cycle) a rung
+    reaches is fetched once into its own follow file -- a run already on disk
+    is left alone -- for every station the run can cover, so a same-day run
+    that reaches only the western stations still banks those.  Nothing here
+    decides serving; the next pass does, per station, on the certificate.
+    """
+
+    if not MIN_TIMEOUT_SECONDS <= float(timeout_seconds) <= MAX_TIMEOUT_SECONDS:
+        raise ContractError("official_native_forward_timeout_invalid")
+    registry = load_market_registry_snapshot(
+        registry_path.expanduser().resolve(strict=True)
+    )
+    scopes = build_station_scopes(
+        registry, event_date=event_date, skip_unlisted_stations=True
+    )
+    capture_at = as_of_utc or _utc_now()
+    now = _parse_utc_timestamp(capture_at)
+    if now is None:
+        raise ContractError("official_native_follow_as_of_invalid")
+    root = capture_root.expanduser().resolve()
+    outcomes: list[dict[str, Any]] = []
+    archive_paths: list[str] = []
+    seen: set[tuple[str, int, int]] = set()
+    for family in follow_run.FOLLOW_FAMILIES:
+        for lead_days, rung_cycle in rungs:
+            cycle = follow_run.follow_cycle_for_rung(
+                family, int(lead_days), rung_cycle
+            )
+            if cycle is None or (family, int(lead_days), cycle) in seen:
+                continue
+            seen.add((family, int(lead_days), cycle))
+            run_init = follow_run.follow_run_init(
+                event_date, int(lead_days), cycle
+            )
+            path = follow_run.follow_archive_path(
+                root, family, event_date, int(lead_days), cycle
+            )
+            outcome: dict[str, Any] = {
+                "family": family,
+                "lead_days": int(lead_days),
+                "run_init_utc": run_init.isoformat().replace("+00:00", "Z"),
+                "path": path.name,
+            }
+            outcomes.append(outcome)
+            if follow_run.load_follow_archive(
+                path, family=family, event_date=event_date, run_init=run_init
+            ) is not None:
+                outcome["state"] = "RETAINED"
+                archive_paths.append(str(path))
+                continue
+            if not follow_run.follow_publication_due(
+                family, run_init, as_of=now
+            ):
+                outcome["state"] = "NOT_DUE"
+                continue
+            seal = (
+                icon_follow_forecast_hours
+                if family == follow_run.ICON_FAMILY
+                else eccc_follow_forecast_hours
+            )
+            covered = [
+                scope for scope in scopes
+                if seal(
+                    event_date=event_date,
+                    settlement_timezone=str(scope["settlement_timezone"]),
+                    run_init_utc=run_init,
+                ) is not None
+            ]
+            if not covered:
+                outcome["state"] = "NO_COVERABLE_STATION"
+                continue
+            try:
+                assert_process_memory_budget()
+                if family == follow_run.ICON_FAMILY:
+                    archive = capture_icon_eps_station_days(
+                        event_date=event_date,
+                        station_scopes=covered,
+                        archive_query_at_utc=capture_at,
+                        timeout_seconds=ICON_OBJECT_TIMEOUT_SECONDS,
+                        lead_days=int(lead_days),
+                        run_cycle_hour=cycle,
+                        download_workers=icon_download_workers,
+                    )
+                else:
+                    archive = capture_geps_station_days(
+                        event_date=event_date,
+                        station_scopes=covered,
+                        archive_query_at_utc=capture_at,
+                        timeout_seconds=float(timeout_seconds),
+                        lead_days=int(lead_days),
+                        run_cycle_hour=cycle,
+                    )
+            except Exception as exc:  # noqa: BLE001 - one run, retried later
+                outcome["state"] = "FAILED"
+                outcome["error"] = f"{type(exc).__name__}:{exc}"[:200]
+                continue
+            write_bounded_json_if_changed(path, archive)
+            archive_paths.append(str(path))
+            outcome["state"] = "CAPTURED"
+            outcome["station_count"] = len(covered)
+            outcome["total_response_bytes"] = int(
+                archive.get("total_response_bytes") or 0
+            )
+    return {
+        "schema": "official_native_follow_run_capture_v1",
+        "state": "COMMITTED_NO_LIVE",
+        "event_date": event_date,
+        "captured_at_utc": capture_at,
+        "outcomes": outcomes,
+        "archive_paths": sorted(set(archive_paths)),
+        "production_no_live": True,
+        "calls_order_gateway": False,
+        "orders_submitted": 0,
+        "live_submit_authorized": False,
+    }
+
+
+def _parse_follow_rung(value: str) -> tuple[int, int | None]:
+    lead_text, _sep, cycle_text = str(value).partition(":")
+    lead = int(lead_text)
+    cycle = None if cycle_text in {"", "default", "none"} else int(cycle_text)
+    if lead not in (0, 1, 2) or cycle not in (None, 0, 6, 12, 18):
+        raise argparse.ArgumentTypeError(f"follow rung invalid: {value}")
+    return lead, cycle
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1167,7 +1415,52 @@ def main(argv: Sequence[str] | None = None) -> int:
             "remain ECMWF+GEFS pair packets."
         ),
     )
+    parser.add_argument(
+        "--follow-new-runs",
+        action="store_true",
+        help=(
+            "Charter 192: let each station take ICON's or ECCC's newer "
+            "retained follow run when that run's own (hour bucket x cycle) "
+            "fit is certified; otherwise the station keeps the pass's run."
+        ),
+    )
+    parser.add_argument(
+        "--follow-capture-only",
+        action="store_true",
+        help=(
+            "Charter 192: only bank ICON's and ECCC's follow runs for the "
+            "given rungs (training archive; no inbox is built)."
+        ),
+    )
+    parser.add_argument(
+        "--follow-rung",
+        action="append",
+        default=[],
+        type=_parse_follow_rung,
+        help="LEAD:CYCLE (CYCLE 'default' for the lead's own), repeatable.",
+    )
+    parser.add_argument(
+        "--capture-root",
+        type=Path,
+        help="Directory holding the per-lead and follow archives.",
+    )
+    parser.add_argument(
+        "--icon-download-workers",
+        type=int,
+        default=None,
+        help="Follow captures only: ICON's parallel object fetches.",
+    )
     args = parser.parse_args(argv)
+    if args.follow_capture_only:
+        return _follow_capture_main(args)
+    readiness = None
+    if args.follow_new_runs:
+        try:
+            readiness = follow_run.readiness_from_database(
+                args.db, as_of_utc=_utc_now()
+            )
+        except Exception:  # noqa: BLE001 - no certificate reader, no follow
+            readiness = None
     try:
         result = capture_official_native_forward(
             registry_path=args.market_registry,
@@ -1184,6 +1477,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             lead_days=args.lead_days,
             run_cycle_hour=args.run_cycle_hour,
             eccc_station_ids=args.eccc_station_id,
+            follow_new_runs=bool(args.follow_new_runs),
+            follow_serving_ready=readiness,
         )
     except (ContractError, OSError, RuntimeError, subprocess.SubprocessError, ValueError) as exc:
         print(json.dumps({
@@ -1196,6 +1491,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "live_submit_authorized": False,
         }, ensure_ascii=False, sort_keys=True))
         return 2
+    finally:
+        if readiness is not None:
+            readiness.close()
     if args.commit:
         # The capture stays DB-free; the written archives are re-read and
         # ingested here so the training history advances with every capture
@@ -1263,6 +1561,93 @@ def main(argv: Sequence[str] | None = None) -> int:
             # Named on every capture, empty when nothing was refused, so a
             # reader never has to infer the difference between "ingested" and
             # "could not ingest" from a missing key.
+            "historical_ingress_blocked_reason": ingress_blocked,
+            "historical_ingress_state": (
+                "BLOCKED_FAIL_CLOSED" if ingress_blocked else "COMMITTED"
+            ),
+        }
+    print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+    return 0
+
+
+def _follow_capture_main(args: argparse.Namespace) -> int:
+    """``--follow-capture-only``: bank the follow runs, then ingest them."""
+
+    if args.capture_root is None or not args.follow_rung:
+        print(json.dumps({
+            "schema": "official_native_follow_run_capture_v1",
+            "state": "BLOCKED_FAIL_CLOSED",
+            "reason": "follow_capture_arguments_missing",
+        }, sort_keys=True))
+        return 2
+    try:
+        result = capture_follow_runs(
+            registry_path=args.market_registry,
+            event_date=str(args.event_date),
+            rungs=list(args.follow_rung),
+            capture_root=args.capture_root,
+            timeout_seconds=float(args.timeout_seconds),
+            icon_download_workers=args.icon_download_workers,
+        )
+    except (ContractError, OSError, RuntimeError, ValueError) as exc:
+        print(json.dumps({
+            "schema": "official_native_follow_run_capture_v1",
+            "state": "BLOCKED_FAIL_CLOSED",
+            "reason": f"{type(exc).__name__}:{exc}"[:300],
+            "production_no_live": True,
+            "calls_order_gateway": False,
+            "orders_submitted": 0,
+            "live_submit_authorized": False,
+        }, ensure_ascii=False, sort_keys=True))
+        return 2
+    if args.commit and result["archive_paths"]:
+        # The same frozen-fact replay the pass uses: a follow run already
+        # ingested is verified, not repeated, and a refusal is reported
+        # without undoing the capture.
+        ingest_by_schema = {
+            follow_run.archive_schema(follow_run.ICON_FAMILY): (
+                ingest_icon_eps_station_days
+            ),
+            follow_run.archive_schema(follow_run.ECCC_FAMILY): (
+                ingest_geps_station_days
+            ),
+        }
+        ingress: dict[str, Any] = {}
+        ingress_blocked = ""
+        try:
+            database = args.db.expanduser().resolve(strict=True)
+            with sqlite3.connect(database, timeout=60.0) as conn:
+                conn.execute("PRAGMA busy_timeout=60000")
+                assert_connection_target_capacity(
+                    conn, recover_oversized_wal=True
+                )
+                for path_text in result["archive_paths"]:
+                    archive = load_bounded_json(Path(path_text))
+                    ingest = ingest_by_schema.get(str(archive.get("schema")))
+                    if (
+                        ingest is None
+                        or archive.get("event_date") != str(args.event_date)
+                    ):
+                        continue
+                    conn.execute("BEGIN IMMEDIATE")
+                    try:
+                        outcome = ingest(conn, archive)
+                        conn.commit()
+                    except Exception:
+                        conn.rollback()
+                        raise
+                    ingress[Path(path_text).name] = {
+                        "state": outcome["state"],
+                        "station_count": outcome["station_count"],
+                        "member_run_wrote_count": outcome[
+                            "member_run_wrote_count"
+                        ],
+                    }
+        except Exception as exc:  # noqa: BLE001 - reported, not swallowed
+            ingress_blocked = f"{type(exc).__name__}:{exc}"[:200]
+        result = {
+            **result,
+            "historical_ingress": ingress,
             "historical_ingress_blocked_reason": ingress_blocked,
             "historical_ingress_state": (
                 "BLOCKED_FAIL_CLOSED" if ingress_blocked else "COMMITTED"

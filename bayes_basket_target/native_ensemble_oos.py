@@ -78,6 +78,7 @@ from .served_shape import (
     model_center_c as served_model_center_c,
 )
 from .dwd_icon_eps_archive import (
+    ARCHIVE_RUN_CYCLE_HOURS_BY_LEAD as _ICON_ARCHIVE_CYCLES_BY_LEAD,
     RUN_CYCLE_HOUR_BY_LEAD as _ICON_CYCLE_BY_LEAD,
     SUPPORTED_LEAD_DAYS as _ICON_LEADS,
     extraction_version_for_lead as _icon_extraction_version,
@@ -368,6 +369,7 @@ def _lead_contracts(
     supported_lead_days,
     cycle_hour_by_lead,
     extraction_version_for_lead,
+    follow_cycle_hours_by_lead=None,
 ) -> dict[str, list[dict[str, str]]]:
     """One lead's cycles and extraction identities, taken from its collector.
 
@@ -392,11 +394,24 @@ def _lead_contracts(
         cycle_hours = cycle_hour_by_lead[lead]
         if isinstance(cycle_hours, int):
             cycle_hours = (cycle_hours,)
+        # Charter 192: a cycle captured only to follow the newest run is
+        # admitted for training like any other, and flagged so the capture
+        # scheduler's readiness -- which reads the latest contracted cycle as
+        # "the lead is on the store" -- keeps asking what it asked before.
+        follow_hours = {
+            int(hour)
+            for hour in (follow_cycle_hours_by_lead or {}).get(lead, ())
+        }
         contracts[f"d{lead}"] = [
             {
                 "run_cycle": f"{int(cycle_hour):02d}Z",
                 "extraction_version": extraction_version_for_lead(
                     lead, cycle_hour
+                ),
+                **(
+                    {"serving_follow": True}
+                    if int(cycle_hour) in follow_hours
+                    else {}
                 ),
             }
             for cycle_hour in cycle_hours
@@ -459,14 +474,20 @@ OFFICIAL_ARCHIVE_SCOPE_CONTRACTS = {
         "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
         "leads": _lead_contracts(
             supported_lead_days=_ICON_LEADS,
-            cycle_hour_by_lead=_ICON_CYCLE_BY_LEAD,
-            # ICON's identity is a function of the lead alone -- one cycle per
-            # lead, spelled out by the collector -- so the cycle argument is
-            # accepted and dropped rather than the signature being widened
-            # where there is nothing to vary.
-            extraction_version_for_lead=(
-                lambda lead, _cycle_hour: _icon_extraction_version(lead)
-            ),
+            # Charter 192: every cycle DWD publishes at d1/d0, the lead's own
+            # cycle unchanged among them.  The identity now names the cycle,
+            # and for the lead's own cycle it is byte-identical to the
+            # lead-only string it replaced, so no trained row changes scope.
+            cycle_hour_by_lead=_ICON_ARCHIVE_CYCLES_BY_LEAD,
+            extraction_version_for_lead=_icon_extraction_version,
+            follow_cycle_hours_by_lead={
+                lead: tuple(
+                    hour
+                    for hour in _ICON_ARCHIVE_CYCLES_BY_LEAD[lead]
+                    if hour != _ICON_CYCLE_BY_LEAD[lead]
+                )
+                for lead in _ICON_LEADS
+            },
         ),
     },
 }

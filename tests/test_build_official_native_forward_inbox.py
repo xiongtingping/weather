@@ -437,3 +437,118 @@ def test_explicit_eccc_option_rejects_non_eccc_archive(tmp_path: Path) -> None:
     assert "official_native_forward_eccc_archive_schema_invalid" in (
         result.stderr + result.stdout
     )
+
+
+def _rerun(
+    path: Path, source: Path, *, run_init: str, run_cycle: str, queried_at: str
+) -> Path:
+    """A copy of ``source`` drawn from another run, re-addressed."""
+
+    archive = json.loads(source.read_text(encoding="utf-8"))
+    captures = []
+    for capture in archive["captures"]:
+        identity = {
+            key: value for key, value in capture.items()
+            if key != "content_sha256"
+        }
+        identity["run_cycle"] = run_cycle
+        captures.append({**identity, "content_sha256": content_sha256(identity)})
+    identity = {
+        key: value for key, value in archive.items()
+        if key != "content_sha256"
+    }
+    identity.update({
+        "run_init_utc": run_init,
+        "run_cycle": run_cycle,
+        "archive_query_at_utc": queried_at,
+        "captures": captures,
+    })
+    path.write_text(
+        json.dumps({**identity, "content_sha256": content_sha256(identity)}),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_charter_192_a_follow_archive_serves_only_its_assigned_station(
+    tmp_path: Path,
+) -> None:
+    stations = ("ZUUU", "CYYZ")
+    archives = _base_archives(tmp_path, station_ids=stations)
+    intervals = {"29°C or below": [None, 29.5], "30°C or higher": [29.5, None]}
+    icon_base = _archive(
+        tmp_path / "icon.json",
+        schema=DWD_ICON_EPS_MULTISTATION_SCHEMA,
+        system_id="DWD_ICON_GLOBAL_EPS",
+        family_id="DWD_ICON_EPS",
+        intervals=intervals,
+        station_ids=stations,
+    )
+    follow = _rerun(
+        tmp_path / "icon_follow.json",
+        icon_base,
+        run_init="2026-07-31T12:00:00Z",
+        run_cycle="12Z",
+        queried_at="2026-07-31T15:30:00Z",
+    )
+    output = tmp_path / "inbox.json"
+    command = [sys.executable, str(SCRIPT)]
+    for archive in [*archives, icon_base]:
+        command += ["--archive", str(archive)]
+    for station in stations:
+        command += ["--station-id", station]
+    base_run = subprocess.run(
+        [*command, "--output", str(output)],
+        cwd=ROOT, check=False, capture_output=True, text=True,
+    )
+    assert base_run.returncode == 0, base_run.stderr
+    before = json.loads(output.read_text(encoding="utf-8"))
+    followed = subprocess.run(
+        [
+            *command,
+            "--follow-archive", str(follow),
+            "--follow-assignment", f"ZUUU={follow}",
+            "--output", str(output),
+        ],
+        cwd=ROOT, check=False, capture_output=True, text=True,
+    )
+    assert followed.returncode == 0, followed.stderr
+    after = json.loads(output.read_text(encoding="utf-8"))
+    by_station = {
+        packet["station_id"]: packet for packet in after["packets"]
+    }
+    assert by_station["ZUUU"]["run_cycle_by_system"]["DWD_ICON_GLOBAL_EPS"] == "12Z"
+    assert by_station["CYYZ"]["run_cycle_by_system"]["DWD_ICON_GLOBAL_EPS"] == "18Z"
+    # the station nobody assigned is byte-identical to the build without it
+    assert by_station["CYYZ"] == {
+        packet["station_id"]: packet for packet in before["packets"]
+    }["CYYZ"]
+
+
+def test_charter_192_an_assignment_to_a_station_the_archive_lacks_fails(
+    tmp_path: Path,
+) -> None:
+    archives = _base_archives(tmp_path, station_ids=("ZUUU", "CYYZ"))
+    intervals = {"29°C or below": [None, 29.5], "30°C or higher": [29.5, None]}
+    follow = _archive(
+        tmp_path / "icon_follow.json",
+        schema=DWD_ICON_EPS_MULTISTATION_SCHEMA,
+        system_id="DWD_ICON_GLOBAL_EPS",
+        family_id="DWD_ICON_EPS",
+        intervals=intervals,
+        station_ids=("ZUUU",),
+    )
+    output = tmp_path / "inbox.json"
+    command = [sys.executable, str(SCRIPT)]
+    for archive in archives:
+        command += ["--archive", str(archive)]
+    command += [
+        "--follow-archive", str(follow),
+        "--follow-assignment", f"CYYZ={follow}",
+        "--output", str(output),
+    ]
+    result = subprocess.run(
+        command, cwd=ROOT, check=False, capture_output=True, text=True
+    )
+    assert result.returncode != 0
+    assert "follow_assignment_invalid" in result.stderr

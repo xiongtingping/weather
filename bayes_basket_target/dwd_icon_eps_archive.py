@@ -88,9 +88,43 @@ DEFAULT_LEAD_DAYS = 2
 # hourly rather than 6-hourly.
 RUN_CYCLE_HOUR_BY_LEAD = {2: 12, 1: 0, 0: 0}
 ARCHIVE_LEAD_BUCKET = f"d{DEFAULT_LEAD_DAYS}"
+# Charter 192 (2026-09-21, user ruling "全球模型的 run 全采，按起报时刻滚动用，
+# 谁新用谁"): every cycle DWD publishes is captured at d1 and d0, on top of --
+# never instead of -- the lead's own cycle above.  The mapping above stays the
+# run each lead is captured and served from by default; the other cycles are
+# extra captures under their own extraction identity, trained in their own
+# (hour bucket x cycle) scope, and served only once that scope has its own
+# certified fit (``bayes_basket_target.follow_run``).  d2 is unchanged.
+SUPPORTED_RUN_CYCLE_HOURS = (0, 6, 12, 18)
+ARCHIVE_RUN_CYCLE_HOURS_BY_LEAD = {2: (12,), 1: (0, 6, 12, 18), 0: (0, 6, 12, 18)}
+# DWD's secondary cycles carry ``t_2m`` 6-hourly only (verified on the open-data
+# listing 2026-09-21: 06Z and 18Z list steps 000, 006, ... 120 and nothing
+# between).  They are read on that grid rather than not at all, under an
+# extraction identity of their own: the 6-hour grid's peak miss (0.70C mean,
+# 0.32C within-station spread, measured on the 00Z/12Z runs) is a different
+# measurement convention from the 3-hour one, and the OOS scope key keeps the
+# two from ever training together.
+SECONDARY_CYCLE_STEP_HOURS = 6
+SECONDARY_CYCLE_HOURS = (6, 18)
+# The primary cycles' grid; ``LEAD_STEP_HOURS`` below says why it is 3h.
+PRIMARY_CYCLE_STEP_HOURS = 3
 
 
-def extraction_version_for_lead(lead_days: int) -> str:
+def lead_step_hours(cycle_hour: int) -> int:
+    """The sampling grid a cycle can be read on."""
+
+    if int(cycle_hour) not in SUPPORTED_RUN_CYCLE_HOURS:
+        raise ContractError("icon_eps_archive_run_cycle_unsupported")
+    return (
+        SECONDARY_CYCLE_STEP_HOURS
+        if int(cycle_hour) in SECONDARY_CYCLE_HOURS
+        else PRIMARY_CYCLE_STEP_HOURS
+    )
+
+
+def extraction_version_for_lead(
+    lead_days: int, cycle_hour: int | None = None
+) -> str:
     """Extraction identity is specific to the lead *and* to its cycle.
 
     A d1 row read the same way as a d2 row is still different evidence, drawn
@@ -102,12 +136,22 @@ def extraction_version_for_lead(lead_days: int) -> str:
     the lead.  A capture drawn from 00Z but labelled ``12z`` would be
     undetectable downstream: the label and the contract would agree with each
     other while both disagreed with the object that was downloaded.
+
+    ``cycle_hour`` omitted is the lead's own cycle, and every string that
+    existed before charter 192 is reproduced byte for byte -- the 00Z d1/d0
+    and 12Z d2 histories keep their identity and nothing already trained is
+    orphaned.  A secondary cycle names its 6-hour grid.
     """
 
-    cycle_hour = RUN_CYCLE_HOUR_BY_LEAD[int(lead_days)]
+    lead = int(lead_days)
+    cycle = (
+        RUN_CYCLE_HOUR_BY_LEAD[lead] if cycle_hour is None else int(cycle_hour)
+    )
+    if lead_step_hours(cycle) == SECONDARY_CYCLE_STEP_HOURS:
+        return f"dwd_icon_global_eps_{cycle:02d}z_d{lead}_station_tmax_6h_v1"
     return (
-        f"dwd_icon_global_eps_{cycle_hour:02d}z_"
-        f"d{int(lead_days)}_station_tmax_3h_v3"
+        f"dwd_icon_global_eps_{cycle:02d}z_"
+        f"d{lead}_station_tmax_3h_v3"
     )
 
 
@@ -131,7 +175,7 @@ EXPECTED_MEMBER_COUNT = 40
 # 3h rather than 1h: it puts ICON on the same footing as the other three, while
 # 1h would triple the download to ~1.5GiB and push a resident capture against
 # its deadline for a further 0.15C.
-LEAD_STEP_HOURS = 3
+LEAD_STEP_HOURS = PRIMARY_CYCLE_STEP_HOURS
 # A 24-hour local day lands exactly 8 points on a 3-hour grid; a DST transition
 # day is 23 or 25 hours long and yields 7 or 9.
 MIN_LOCAL_DAY_HOURS = 7
@@ -418,6 +462,74 @@ def _forecast_hours(
     return hours
 
 
+def _same_local_day_run(
+    *, event_date: str, settlement_timezone: str, run_init_utc: datetime
+) -> bool:
+    """A run issued on the event's UTC date or after its local day began.
+
+    The same test the capture's coverability filter applies: such a run cannot
+    describe the hours before it, so it is held to the same-day floor.
+    """
+
+    target = date.fromisoformat(event_date)
+    run_start = run_init_utc.astimezone(timezone.utc)
+    day_start = datetime.combine(
+        target, time(0), tzinfo=ZoneInfo(settlement_timezone)
+    ).astimezone(timezone.utc)
+    return run_start.date() == target or run_start >= day_start
+
+
+def follow_forecast_hours(
+    *,
+    event_date: str,
+    settlement_timezone: str,
+    run_init_utc: datetime,
+) -> list[int] | None:
+    """Charter 192: the steps a followed run seals for one station, or None.
+
+    Non-raising, so a follow capture can leave out the stations its run cannot
+    cover instead of failing whole -- the capture is all-or-nothing across its
+    stations, and a same-day 12Z or 18Z run structurally reaches only the
+    western part of the network.  None means "keep the run this station
+    already has", which is what the station would be serving anyway.
+
+    The primary cycles keep ``_forecast_hours``'s bar exactly.  The secondary
+    cycles are read on their 6-hour grid: a run that precedes the local day
+    must seal the whole of it (four points; a DST day may give three or five
+    and the curve seal wants four), and one issued inside the day seals what
+    is left of it with the same-day curve floor.
+    """
+
+    run_start = run_init_utc.astimezone(timezone.utc)
+    step = lead_step_hours(run_start.hour)
+    target = date.fromisoformat(event_date)
+    zone = ZoneInfo(settlement_timezone)
+    hours = [
+        forecast_hour
+        for forecast_hour in range(0, 121, step)
+        if (run_start + timedelta(hours=forecast_hour)).astimezone(
+            zone
+        ).date() == target
+    ]
+    same_day = _same_local_day_run(
+        event_date=event_date,
+        settlement_timezone=settlement_timezone,
+        run_init_utc=run_start,
+    )
+    if step == LEAD_STEP_HOURS:
+        utc_same_day = run_start.date() == target
+        minimum = (
+            MIN_SAME_DAY_CURVE_POINTS if utc_same_day else MIN_LOCAL_DAY_HOURS
+        )
+        maximum = MAX_LOCAL_DAY_HOURS
+    else:
+        minimum = MIN_SAME_DAY_CURVE_POINTS if same_day else MIN_CURVE_POINTS
+        maximum = 24 // step + 1
+    if not minimum <= len(hours) <= maximum:
+        return None
+    return hours
+
+
 def capture_icon_eps_station_days(
     *,
     event_date: str,
@@ -426,16 +538,32 @@ def capture_icon_eps_station_days(
     timeout_seconds: float = 45.0,
     grid_cache_dir: Path | None = None,
     lead_days: int = DEFAULT_LEAD_DAYS,
+    run_cycle_hour: int | None = None,
+    download_workers: int | None = None,
 ) -> dict[str, Any]:
-    """Capture one official ICON EPS cohort at the requested lead."""
+    """Capture one official ICON EPS cohort at the requested lead.
+
+    ``run_cycle_hour`` omitted (or equal to the lead's own cycle) is the
+    capture as it always was.  Any other published cycle is a charter 192
+    follow capture: its own extraction identity, its own sampling grid, and a
+    station set the caller has already restricted to what the run can cover.
+    """
 
     if lead_days not in SUPPORTED_LEAD_DAYS:
         raise ContractError("icon_eps_archive_lead_days_invalid")
+    cycle_hour = (
+        RUN_CYCLE_HOUR_BY_LEAD[lead_days]
+        if run_cycle_hour is None
+        else int(run_cycle_hour)
+    )
+    if cycle_hour not in ARCHIVE_RUN_CYCLE_HOURS_BY_LEAD[lead_days]:
+        raise ContractError("icon_eps_archive_run_cycle_unsupported")
+    follow = cycle_hour != RUN_CYCLE_HOUR_BY_LEAD[lead_days]
 
     target = date.fromisoformat(event_date)
     run_init = datetime.combine(
         target - timedelta(days=lead_days),
-        time(hour=RUN_CYCLE_HOUR_BY_LEAD[lead_days]),
+        time(hour=cycle_hour),
         tzinfo=timezone.utc,
     )
     query_at = datetime.fromisoformat(
@@ -457,15 +585,29 @@ def capture_icon_eps_station_days(
         registry_rows = raw_scope.get("registry_rows")
         if not isinstance(registry_rows, list) or not registry_rows:
             raise ContractError("icon_eps_archive_registry_rows_required")
+        if follow:
+            hours = follow_forecast_hours(
+                event_date=event_date,
+                settlement_timezone=timezone_name,
+                run_init_utc=run_init,
+            )
+            if hours is None:
+                # The caller filters with the same function; a station that
+                # reaches here uncovered is a caller defect, not a short run.
+                raise ContractError(
+                    "icon_eps_archive_local_day_grid_incomplete"
+                )
+        else:
+            hours = _forecast_hours(
+                event_date=event_date,
+                settlement_timezone=timezone_name,
+                run_init_utc=run_init,
+            )
         scopes[station_id] = {
             "station_id": station_id,
             "settlement_timezone": timezone_name,
             "registry_rows": registry_rows,
-            "hours": _forecast_hours(
-                event_date=event_date,
-                settlement_timezone=timezone_name,
-                run_init_utc=run_init,
-            ),
+            "hours": hours,
         }
 
     run_day = run_init.strftime("%Y%m%d")
@@ -508,7 +650,13 @@ def capture_icon_eps_station_days(
             return forecast_hour, _fetch(client, url)
 
         with ThreadPoolExecutor(
-            max_workers=MAX_DOWNLOAD_WORKERS,
+            # Charter 192: a follow capture may ask with fewer connections,
+            # so it can share DWD's ceiling with a pass's own ICON fetch.
+            max_workers=(
+                MAX_DOWNLOAD_WORKERS
+                if download_workers is None
+                else max(1, min(int(download_workers), MAX_DOWNLOAD_WORKERS))
+            ),
             thread_name_prefix="icon-eps-download",
         ) as executor:
             for forecast_hour, compressed in executor.map(load, union_hours):
@@ -595,6 +743,20 @@ def capture_icon_eps_station_days(
                 if (
                     target - run_init.astimezone(timezone.utc).date()
                 ).days == 0
+                # Charter 192: a 6-hour follow read inside the local day
+                # seals the remainder at the same-day floor, the bar
+                # ``follow_forecast_hours`` admitted it on.
+                or (
+                    follow
+                    and lead_step_hours(cycle_hour) != LEAD_STEP_HOURS
+                    and _same_local_day_run(
+                        event_date=event_date,
+                        settlement_timezone=str(
+                            scope["settlement_timezone"]
+                        ),
+                        run_init_utc=run_init,
+                    )
+                )
                 else MIN_CURVE_POINTS
             ),
             payload={
@@ -679,7 +841,9 @@ def capture_icon_eps_station_days(
             "field_receipt_set_sha256": object_receipt_sha,
             "archive_query_at_utc": archive_query_at_utc,
             "source_prefix": f"{BASE_URL}/{cycle}/t_2m/",
-            "extraction_version": extraction_version_for_lead(lead_days),
+            "extraction_version": extraction_version_for_lead(
+                lead_days, cycle_hour
+            ),
             "grid_point_index": grid[station_id],
         }
         captures.append({
@@ -716,7 +880,9 @@ def capture_icon_eps_station_days(
         "training_only": True,
         "holdout_eligible": False,
         "single_download_per_global_field": True,
-        "extraction_version": extraction_version_for_lead(lead_days),
+        "extraction_version": extraction_version_for_lead(
+            lead_days, cycle_hour
+        ),
         "source_prefix": f"{BASE_URL}/{cycle}/t_2m/",
         "source_class": "OFFICIAL_NATIVE_ARCHIVE",
         "captures": captures,
@@ -757,7 +923,11 @@ def ingest_icon_eps_station_day(
             error_code="icon_eps_archive_lead_days_invalid",
         )
     )
-    capture_extraction_version = extraction_version_for_lead(capture_lead_days)
+    # Charter 192: the cycle the capture came from, too -- a 12Z d1 follow
+    # stamped with the lead's 00Z identity would train inside the 00Z scope.
+    capture_extraction_version = extraction_version_for_lead(
+        capture_lead_days, int(capture_run_cycle[:2])
+    )
     identity = {
         key: value
         for key, value in capture.items()
@@ -915,6 +1085,7 @@ def ingest_icon_eps_station_days(
 
 __all__ = [
     "ARCHIVE_LEAD_BUCKET",
+    "ARCHIVE_RUN_CYCLE_HOURS_BY_LEAD",
     "EXPECTED_MEMBER_COUNT",
     "EXTRACTION_VERSION",
     "INDEPENDENCE_FAMILY_ID",
@@ -922,7 +1093,10 @@ __all__ = [
     "RUN_CYCLE",
     "SCHEMA",
     "SYSTEM_ID",
+    "SUPPORTED_RUN_CYCLE_HOURS",
     "capture_icon_eps_station_days",
+    "follow_forecast_hours",
     "ingest_icon_eps_station_day",
     "ingest_icon_eps_station_days",
+    "lead_step_hours",
 ]

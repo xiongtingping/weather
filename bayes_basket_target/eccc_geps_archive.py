@@ -226,6 +226,36 @@ def _forecast_hours(
     return result
 
 
+def follow_forecast_hours(
+    *,
+    event_date: str,
+    settlement_timezone: str,
+    run_init_utc: datetime,
+) -> list[int] | None:
+    """Charter 192: the steps a followed 12Z run seals for one station, or None.
+
+    The capture above raises for the whole batch when one station falls
+    short, and so does the curve seal behind it (three points on the event's
+    UTC date, four otherwise).  A follow capture asks per station first and
+    leaves out the ones its run cannot cover; those keep the run they have.
+    """
+
+    try:
+        hours = _forecast_hours(
+            event_date=event_date,
+            settlement_timezone=settlement_timezone,
+            run_init_utc=run_init_utc,
+        )
+    except ContractError:
+        return None
+    same_day = (
+        date.fromisoformat(event_date)
+        - run_init_utc.astimezone(timezone.utc).date()
+    ).days == 0
+    floor = MIN_SAME_DAY_CURVE_POINTS if same_day else MIN_CURVE_POINTS
+    return hours if len(hours) >= floor else None
+
+
 def _object_url(
     *,
     run_init: datetime,
