@@ -848,11 +848,20 @@ def _same_day_climatology_headroom(
     # reference capture is missing degrades to the in-season window instead of
     # losing the signal.
     try:
+        # Charter 178: ask the calendar index for the window's days only.
+        # The whole record was read -- ~3,300 rows a station for the ~135 the
+        # window keeps, 228 times a cycle (43.3s in the first ledger-measured
+        # cycle) -- and filtered here.  The index is on
+        # (station_id, substr(local_date, 6)), which is exactly the MM-DD the
+        # window is keyed on; the filter below stays, so the rows kept are the
+        # same rows.  (No date carries two reference rows, so order is moot.)
+        calendar_days = sorted(window)
         for local_date, high_c in conn.execute(
             "SELECT local_date,daily_high_c "
             "FROM calibration_station_same_day_climatology "
-            "WHERE station_id=? AND reference_only=1",
-            (station_id,),
+            "WHERE station_id=? AND reference_only=1 "
+            f"AND substr(local_date, 6) IN ({','.join('?' for _ in calendar_days)})",
+            (station_id, *calendar_days),
         ):
             key = str(local_date)
             if key == str(event_date) or key[5:] not in window:

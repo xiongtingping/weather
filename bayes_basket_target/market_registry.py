@@ -11,6 +11,7 @@ table name; that compatibility path is intentionally limited to SQLite's
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import sqlite3
@@ -696,8 +697,38 @@ def load_active_registry_rows(
     station_id: str = "",
     event_date: str = "",
 ) -> list[dict[str, Any]]:
-    """Read eligible target-local rows; allow only in-memory test fixtures."""
+    """Read eligible target-local rows; allow only in-memory test fixtures.
 
+    Charter 178: remembered per scope until the table could have changed
+    them.  Every probability-envelope load resolves its scope's formal lane
+    through here -- 3,817 calls in the first ledger-measured cycle, each one a
+    table listing, a newest-snapshot search, the scope's rows and a JSON parse
+    per row -- and the answer moves only when a snapshot is ingested or the
+    oldest is retired.  Callers get their own copies.
+    """
+    memo_key = _triples_memo_key(conn)
+    if memo_key is not None:
+        hit = _ACTIVE_ROWS_MEMO.get((memo_key[0], station_id, event_date))
+        if hit is not None and hit[0] == memo_key[1]:
+            return copy.deepcopy(hit[1])
+    result = _load_active_registry_rows_uncached(
+        conn, station_id=station_id, event_date=event_date
+    )
+    if memo_key is not None:
+        _scope_memo_put(
+            _ACTIVE_ROWS_MEMO,
+            (memo_key[0], station_id, event_date),
+            (memo_key[1], copy.deepcopy(result)),
+        )
+    return result
+
+
+def _load_active_registry_rows_uncached(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str = "",
+    event_date: str = "",
+) -> list[dict[str, Any]]:
     tables = {
         str(row[0]) for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
     }
@@ -871,6 +902,22 @@ def registry_scope_timezone_triples(
     """
 
     if _index_present(conn, SCOPE_TIMEZONE_INDEX):
+        # Charter 178: the answer is remembered until the table could have
+        # changed it.  Charter 177's index scan is 55ms with its pages warm,
+        # but the first cycle measured with the statement ledger (2026-09-21
+        # 08:54Z, the machine deep in swap) ran it 6 times for 64.3s -- the
+        # pages had been evicted between calls, and the per-snapshot union it
+        # replaced kept its answers in process memory, which is what survives
+        # a page-cache purge.  The triples change only when a snapshot is
+        # ingested (the snapshot table's newest rowid moves, and so does the
+        # registry's) or when retention drops the oldest snapshot's rows
+        # (retention goes oldest first and whole, so the registry's lowest
+        # rowid moves).  Each of the three is one seek at a B-tree end.
+        key = _triples_memo_key(conn)
+        if key is not None:
+            hit = _SCOPE_TIMEZONE_TRIPLES_MEMO.get(key[0])
+            if hit is not None and hit[0] == key[1]:
+                return set(hit[1])
         # Charter 177: with the timezone in an index the whole-table DISTINCT
         # never touches the table.  Measured 2026-09-21 on the live store:
         # 226ms cold and 55ms warm for 283 triples, against 9,671ms cold and
@@ -880,14 +927,84 @@ def registry_scope_timezone_triples(
         # BY because the planner, left to itself, answers a whole-table read
         # of this table from the scope index and walks every row's page: the
         # eligible-scope sibling of this statement took 20s that way.
-        return {
+        answer = {
             tuple(row)
             for row in conn.execute(
                 "SELECT DISTINCT station_id,event_date,settlement_timezone "
                 f"FROM {TABLE} INDEXED BY {SCOPE_TIMEZONE_INDEX}"
             )
         }
+        if key is not None:
+            _SCOPE_TIMEZONE_TRIPLES_MEMO[key[0]] = (key[1], frozenset(answer))
+        return answer
     return _union_over_snapshots(conn, _SCOPE_TIMEZONE_QUESTION)  # type: ignore[return-value]
+
+
+# (database file) -> (table fingerprint, triples).  Only named databases.
+_SCOPE_TIMEZONE_TRIPLES_MEMO: dict[str, tuple[tuple[Any, ...], frozenset]] = {}
+
+
+def _triples_memo_key(
+    conn: sqlite3.Connection,
+) -> tuple[str, tuple[Any, ...]] | None:
+    """(database, fingerprint of what can change this table), or None.
+
+    Charter 178.  Everything read from this table changes only when a snapshot
+    is ingested (the snapshot table's newest rowid moves, and the registry's)
+    or when retention drops the oldest snapshot's rows (oldest first and whole,
+    so the registry's lowest rowid moves).  None for an unnamed database or a
+    store without both tables: callers then read the table as before."""
+    try:
+        database = str(conn.execute("PRAGMA database_list").fetchone()[2] or "")
+        if not database:
+            return None
+        snapshot_top = conn.execute(
+            f"SELECT MAX(rowid) FROM {SNAPSHOT_TABLE}"
+        ).fetchone()[0]
+        # Two statements, not one: SQLite's min/max shortcut applies to a
+        # lone MIN or MAX, and asked for both at once it scans the table.
+        low = conn.execute(f"SELECT MIN(rowid) FROM {TABLE}").fetchone()[0]
+        high = conn.execute(f"SELECT MAX(rowid) FROM {TABLE}").fetchone()[0]
+    except (sqlite3.Error, TypeError, IndexError):
+        return None
+    return database, (snapshot_top, low, high)
+
+
+# (database, station, event_date) -> (fingerprint, rows), charter 178.
+_ACTIVE_ROWS_MEMO: dict[tuple[str, str, str], tuple[tuple[Any, ...], list]] = {}
+_SCOPE_LANES_MEMO: dict[tuple[str, str, str], tuple[tuple[Any, ...], list]] = {}
+_SCOPE_MEMO_MAX_KEYS = 4000
+
+
+def _scope_memo_put(memo: dict, key: tuple, value: tuple) -> None:
+    if len(memo) >= _SCOPE_MEMO_MAX_KEYS:
+        memo.clear()
+    memo[key] = value
+
+
+def registry_scope_timezone_lanes(
+    conn: sqlite3.Connection, *, station_id: str, event_date: str
+) -> list[tuple[str, str, str, str]]:
+    """``SELECT DISTINCT station_id,event_date,settlement_timezone,source_lane``
+    for one scope, remembered until the table could have changed it.
+
+    The observed-running-high read asks this once per decision compile: 145
+    times in the first ledger-measured cycle (2026-09-21 08:54Z) for 36.3s,
+    each one a walk over the scope's ~880 wide snapshot rows.
+    """
+    question = (
+        "SELECT DISTINCT station_id,event_date,settlement_timezone,source_lane"
+        f" FROM {TABLE} WHERE station_id=? AND event_date=?"
+    )
+    key = _triples_memo_key(conn)
+    if key is not None:
+        hit = _SCOPE_LANES_MEMO.get((key[0], station_id, event_date))
+        if hit is not None and hit[0] == key[1]:
+            return list(hit[1])
+    rows = [tuple(row) for row in conn.execute(question, (station_id, event_date)).fetchall()]
+    if key is not None:
+        _scope_memo_put(_SCOPE_LANES_MEMO, (key[0], station_id, event_date), (key[1], list(rows)))
+    return rows
 
 
 def _index_present(conn: sqlite3.Connection, name: str) -> bool:

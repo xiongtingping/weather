@@ -90,11 +90,48 @@ def _iso(value: datetime) -> str:
     ).replace("+00:00", "Z")
 
 
+# Charter 178: (database) -> (table fingerprint, parsed artifacts).
+_STATION_ARTIFACTS_MEMO: dict[str, tuple[tuple[Any, ...], dict[str, dict[str, Any]]]] = {}
+
+
 def _station_artifacts(
     conn: sqlite3.Connection,
 ) -> dict[str, dict[str, Any]]:
-    """Latest usable trajectory artifact per station, by bucket preference."""
+    """Latest usable trajectory artifact per station, by bucket preference.
 
+    Charter 178: remembered until the artifact table changes.  Every call read
+    and parsed all 9,349 trajectory artifacts -- 26.9MB of JSON, 0.96s warm --
+    three times a cycle (60.8s in the first ledger-measured cycle, deep in
+    swap) to keep one per station.  The table is written by the refit and
+    by nothing else between cycles, so its rowid ends are the fingerprint.
+    The planner only reads the artifacts, so the parsed objects are shared.
+    """
+
+    try:
+        database = str(conn.execute("PRAGMA database_list").fetchone()[2] or "")
+        fingerprint = (
+            conn.execute(
+                "SELECT MIN(rowid) FROM basket_probability_evidence_artifact"
+            ).fetchone()[0],
+            conn.execute(
+                "SELECT MAX(rowid) FROM basket_probability_evidence_artifact"
+            ).fetchone()[0],
+        )
+    except (sqlite3.Error, TypeError, IndexError):
+        database, fingerprint = "", ()
+    if database:
+        hit = _STATION_ARTIFACTS_MEMO.get(database)
+        if hit is not None and hit[0] == fingerprint:
+            return dict(hit[1])
+    parsed = _station_artifacts_uncached(conn)
+    if database:
+        _STATION_ARTIFACTS_MEMO[database] = (fingerprint, dict(parsed))
+    return parsed
+
+
+def _station_artifacts_uncached(
+    conn: sqlite3.Connection,
+) -> dict[str, dict[str, Any]]:
     best: dict[str, tuple[int, str, dict[str, Any]]] = {}
     for station_id, scope_key, trained, artifact_json in conn.execute(
         "SELECT station_id,scope_key,trained_through_utc,artifact_json "

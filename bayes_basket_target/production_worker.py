@@ -171,6 +171,7 @@ from .market_registry import (
     load_started_registry_rows,
     registry_eligible_scopes,
     registry_scope_timezone_triples,
+    registry_scope_timezone_lanes,
 )
 from .official_nwp_capture_scheduler import (
     MAX_DISCOVERED_SCOPES,
@@ -13715,6 +13716,9 @@ class TargetProductionWorker:
         every cycle, including the ones where no forecast moved.
         """
 
+        # Charter 178: remembered per scope until the registry could have
+        # changed it -- one call per decision compile walked the scope's ~880
+        # snapshot rows (145 calls, 36.3s in the first ledger-measured cycle).
         registry_rows = [
             {
                 "station_id": str(row[0]),
@@ -13722,13 +13726,11 @@ class TargetProductionWorker:
                 "settlement_timezone": str(row[2]),
                 "source_lane": str(row[3] or ""),
             }
-            for row in self.commit_conn.execute(
-                "SELECT DISTINCT station_id,event_date,"
-                " settlement_timezone,source_lane"
-                " FROM basket_target_market_registry"
-                " WHERE station_id=? AND event_date=?",
-                (station_id, event_date),
-            ).fetchall()
+            for row in registry_scope_timezone_lanes(
+                self.commit_conn,
+                station_id=station_id,
+                event_date=event_date,
+            )
         ]
         if not registry_rows:
             return None

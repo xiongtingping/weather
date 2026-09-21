@@ -10,7 +10,9 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
+import threading
 import time
+from collections import OrderedDict
 from datetime import datetime
 from typing import Any, Collection, Mapping, Sequence
 
@@ -1707,6 +1709,66 @@ DEHYDRATED_LINEAGE_KEYS: tuple[str, ...] = (
 #: A dehydrated value.  Real documents are JSON objects or arrays, so they
 #: begin with ``{`` or ``[`` and can never collide with this.
 LINEAGE_DOCUMENT_REF_PREFIX = "@ref/"
+
+# Charter 178: lineage document bodies, remembered by (database, sha).
+#
+# A body is content-addressed -- its key IS its hash -- so a body read once
+# from a database is the body every later reference to that hash in that
+# database resolves to.  It was nevertheless read back from the store on
+# every envelope load: the first cycle measured with the statement ledger
+# (2026-09-21 08:54Z) ran this lookup 33,075 times for 175.8s, the costliest
+# statement of the cycle, and the 1,500 most recent envelopes reference 820
+# distinct bodies 4,439 times (19.0MB read for 3.3MB of distinct content).
+# Keyed on the database file as well as the hash, so one store's missing
+# body still fails closed however many other stores hold it; an in-memory or
+# unnamed database is never remembered.  Bounded by bytes, least recently
+# used out.
+_LINEAGE_DOCUMENT_CACHE: "OrderedDict[tuple[str, str], str]" = OrderedDict()
+_LINEAGE_DOCUMENT_CACHE_BYTES = 0
+_LINEAGE_DOCUMENT_CACHE_MAX_BYTES = 32 * 1024 * 1024
+_LINEAGE_DOCUMENT_CACHE_LOCK = threading.Lock()
+
+
+def _lineage_document_database(conn: sqlite3.Connection) -> str:
+    """The file this connection's main database lives in ('' if none)."""
+    known = getattr(conn, "_lineage_document_database", None)
+    if isinstance(known, str):
+        return known
+    try:
+        database = str(conn.execute("PRAGMA database_list").fetchone()[2] or "")
+    except (sqlite3.Error, TypeError, IndexError):
+        database = ""
+    try:
+        conn._lineage_document_database = database  # type: ignore[attr-defined]
+    except (AttributeError, TypeError):
+        pass  # a plain sqlite3.Connection takes no attributes; ask again next time
+    return database
+
+
+def _remember_lineage_documents(database: str, bodies: Mapping[str, str]) -> None:
+    global _LINEAGE_DOCUMENT_CACHE_BYTES
+    with _LINEAGE_DOCUMENT_CACHE_LOCK:
+        for digest, body in bodies.items():
+            key = (database, digest)
+            if key in _LINEAGE_DOCUMENT_CACHE:
+                _LINEAGE_DOCUMENT_CACHE.move_to_end(key)
+                continue
+            _LINEAGE_DOCUMENT_CACHE[key] = body
+            _LINEAGE_DOCUMENT_CACHE_BYTES += len(body)
+        while (
+            _LINEAGE_DOCUMENT_CACHE_BYTES > _LINEAGE_DOCUMENT_CACHE_MAX_BYTES
+            and _LINEAGE_DOCUMENT_CACHE
+        ):
+            _old_key, old_body = _LINEAGE_DOCUMENT_CACHE.popitem(last=False)
+            _LINEAGE_DOCUMENT_CACHE_BYTES -= len(old_body)
+
+
+def forget_lineage_documents() -> None:
+    """Drop every remembered body (tests, or a store swapped underneath)."""
+    global _LINEAGE_DOCUMENT_CACHE_BYTES
+    with _LINEAGE_DOCUMENT_CACHE_LOCK:
+        _LINEAGE_DOCUMENT_CACHE.clear()
+        _LINEAGE_DOCUMENT_CACHE_BYTES = 0
 LINEAGE_DOCUMENT_DDL = (
     "CREATE TABLE IF NOT EXISTS basket_probability_lineage_document("
     "  document_sha256 TEXT PRIMARY KEY"
@@ -1821,21 +1883,36 @@ def rehydrate_lineage_documents(
     }
     if not refs:
         return dict(lineage)
-    try:
-        placeholders = ",".join("?" for _ in refs)
-        stored = {
-            str(row[0]): str(row[1])
-            for row in conn.execute(
-                "SELECT document_sha256,document"
-                "  FROM basket_probability_lineage_document"
-                f" WHERE document_sha256 IN ({placeholders})",
-                tuple(sorted(set(refs.values()))),
-            )
-        }
-    except sqlite3.Error as exc:
-        raise ContractError(
-            "probability_lineage_document_store_unavailable"
-        ) from exc
+    database = _lineage_document_database(conn)
+    wanted = sorted(set(refs.values()))
+    stored: dict[str, str] = {}
+    if database:
+        with _LINEAGE_DOCUMENT_CACHE_LOCK:
+            for digest in wanted:
+                body = _LINEAGE_DOCUMENT_CACHE.get((database, digest))
+                if body is not None:
+                    _LINEAGE_DOCUMENT_CACHE.move_to_end((database, digest))
+                    stored[digest] = body
+    missing = [digest for digest in wanted if digest not in stored]
+    if missing:
+        try:
+            placeholders = ",".join("?" for _ in missing)
+            fetched = {
+                str(row[0]): str(row[1])
+                for row in conn.execute(
+                    "SELECT document_sha256,document"
+                    "  FROM basket_probability_lineage_document"
+                    f" WHERE document_sha256 IN ({placeholders})",
+                    tuple(missing),
+                )
+            }
+        except sqlite3.Error as exc:
+            raise ContractError(
+                "probability_lineage_document_store_unavailable"
+            ) from exc
+        if database and fetched:
+            _remember_lineage_documents(database, fetched)
+        stored.update(fetched)
     resolved = dict(lineage)
     for key, digest in refs.items():
         body = stored.get(digest)
