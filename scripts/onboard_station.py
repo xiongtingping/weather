@@ -247,16 +247,20 @@ def rebaseline() -> dict[str, object]:
                 "constant"
             ),
         },
-        # Re-measured when the fleet actually moved (45 -> 47, LTFM and
-        # UUWW): the fixtures had been converted to the registry since, and
-        # the 185 fleet-sensitive test files turned 5 tests red -- four
-        # literals and the lane map missing the two stations -- all fixed
-        # in the same change.
+        # Re-measured 2026-09-21 at 47 (LTFM, UUWW): the fixtures had been
+        # converted to the registry since, and the 185 fleet-sensitive test
+        # files turned only 5 tests red -- four literals, now derived, and
+        # the lane map.  The move was still reverted the same hour: the
+        # sealed pr12 authority projection is 45 rows, its validator reads
+        # the fleet, and a mismatch kills the pr12 observation sweep and
+        # with it every P1 atomic write (the 2026-08-31 outage).  Test debt
+        # is no longer the blocker; the projection re-mint is.
         "measured_test_debt_at_the_move": {
             "as_of": "2026-09-21",
             "fleet": 47,
             "fleet_sensitive_test_files": 185,
             "new_test_failures": 5,
+            "reverted_because": "pr12_authority_projection_45station_scope_required",
         },
         "evidence_still_required_per_station": [
             "arrival corpus across the model families",
