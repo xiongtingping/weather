@@ -15634,13 +15634,13 @@ class TargetProductionWorker:
 
         Called once at the head of ``run``.  Everything here is a per-cycle
         memo or counter: the checkpoint budget spent, whether its skip was
-        already noted, and the portfolio quota computed for this cycle's
-        forward scopes.
+        already noted, and the portfolio book read for this cycle's forward
+        scopes.
         """
 
         self._fast_lane_cycle_spent_sec = 0.0
         self._fast_lane_budget_skip_noted = False
-        self._portfolio_quota_cycle_memo = None
+        self._portfolio_book_cycle_memo = None
 
     def _fast_lane_checkpoint_if_due(
         self, label: str, *, mark: bool = True
@@ -16173,49 +16173,6 @@ class TargetProductionWorker:
         fallback_budget_usdc: float,
         as_of_utc: str,
     ) -> dict[str, float]:
-        """The cycle's per-station quota, computed once per cycle.
-
-        The forward loop asks for it once per scope -- 61 times a cycle at
-        the 2026-09-19 median -- and every answer was recomputed from the
-        same bankroll and the same ledger: 10.5s of a 202s cycle, 54.7s at
-        the worst, and 61 inventory snapshots persisted where one would do
-        (10,929 and 17,171 rows on 09-20 and 09-19 in a table of 239k).  The
-        inputs that vary across those calls are the clock, which is only
-        stamped into the receipt, and the station list, which is the key
-        here.  Edges are read from each station's newest plan as of the
-        first ask; the plans this same loop writes later in the cycle did
-        not move a quota that had already been handed out, and now they
-        visibly do not.
-        """
-
-        key = (
-            tuple(sorted(str(item).strip().upper() for item in stations)),
-            round(float(fallback_budget_usdc), 6),
-        )
-        memo = getattr(self, "_portfolio_quota_cycle_memo", None)
-        if isinstance(memo, dict) and memo.get("key") == key:
-            memo["reused"] = int(memo.get("reused", 0)) + 1
-            return dict(memo["quota"])
-        quota = self._portfolio_quota_uncached(
-            stations=stations,
-            fallback_budget_usdc=fallback_budget_usdc,
-            as_of_utc=as_of_utc,
-        )
-        self._portfolio_quota_cycle_memo = {
-            "key": key,
-            "quota": dict(quota),
-            "computed_at_utc": as_of_utc,
-            "reused": 0,
-        }
-        return dict(quota)
-
-    def _portfolio_quota_uncached(
-        self,
-        *,
-        stations: Sequence[str],
-        fallback_budget_usdc: float,
-        as_of_utc: str,
-    ) -> dict[str, float]:
         """Per-station quota from the one bankroll, or the old flat budget.
 
         Each station's edge and curve spread are measured from its own most
@@ -16225,27 +16182,25 @@ class TargetProductionWorker:
         budget, so introducing the allocator cannot silently stop a station
         that has never traded from trying.
 
+        The book half of this -- what the account holds, whether a Tier-1
+        bound is breached, the bankroll, the clip grid -- does not depend on
+        which station is asking, and the forward loop asks once per scope
+        with that scope's single station: 61 times a cycle at the 2026-09-19
+        median, 10.5s of a 202s cycle (54.7s at the worst), and one persisted
+        inventory snapshot per ask (10,929 and 17,171 rows on 09-20 and
+        09-19).  So the book is read once per cycle (``_portfolio_book_for_
+        cycle``) and the station half -- its edge and the allocation over the
+        stations asked about -- is computed per call exactly as before.  The
+        book is as of the first ask in the cycle; the forward loop places no
+        orders, so nothing it could hold changes between its asks.
+
         Failure is not fatal here: the receipt is evidence, not authority,
         and a book that cannot be split still plans at the configured budget.
         """
 
         try:
-            blocks_by_station, blocks_sha = load_regional_blocks()
-            policy, _policy_sha = load_portfolio_capital_policy()
-            # What the book already holds decides whether it may hold more.
-            # A breached Tier-1 bound stops new baskets and leaves open ones
-            # to settle; closing them would realize the loss it is reacting
-            # to, at whatever price the book happens to show.
-            inventory = build_portfolio_inventory(
-                self.commit_conn,
-                as_of_utc=as_of_utc,
-                blocks_by_station=blocks_by_station,
-                policy=policy,
-                budget_usdc=_resolve_target_remaining_budget(),
-            )
-            persist_portfolio_inventory(
-                self.commit_conn, inventory, created_at_utc=as_of_utc
-            )
+            book = self._portfolio_book_for_cycle(as_of_utc=as_of_utc)
+            inventory = book["inventory"]
             self._portfolio_inventory_last = {
                 "open_notional_usdc": inventory["open_notional_usdc"],
                 "portfolio_hhi": inventory["portfolio_hhi"],
@@ -16263,21 +16218,16 @@ class TargetProductionWorker:
             # Charter 141: the bankroll is the real account the inventory
             # just read (budget-capped), never the pool counter.
             bankroll = float(inventory["bankroll_usdc"])
-            clip_row = self.conn.execute(
-                "SELECT artifact_json FROM basket_delta_v2_policy_artifact "
-                "ORDER BY rowid DESC LIMIT 1"
-            ).fetchone()
-            minimum_clip = min(
-                json.loads(str(clip_row[0]))["cash_clip_grid"]
-            ) if clip_row else 0.0
+            policy = book["policy"]
             edges = self._station_edge_evidence(
-                stations=stations, minimum_clip_usdc=float(minimum_clip)
+                stations=stations,
+                minimum_clip_usdc=float(book["minimum_clip_usdc"]),
             )
             if not edges or bankroll <= 0.0:
                 return {}
             allocation = allocate_portfolio_quota(
                 station_edges=edges,
-                blocks_by_station=blocks_by_station,
+                blocks_by_station=book["blocks_by_station"],
                 bankroll_usdc=bankroll,
                 risk_fraction=float(policy["portfolio_risk_fraction"]),
                 station_cap_fraction=float(policy["station_cap_fraction"]),
@@ -16286,7 +16236,7 @@ class TargetProductionWorker:
                 self.commit_conn,
                 allocation,
                 as_of_utc=as_of_utc,
-                blocks_content_sha256=blocks_sha,
+                blocks_content_sha256=book["blocks_sha"],
                 created_at_utc=as_of_utc,
             )
             self._portfolio_allocation_last = {
@@ -16308,6 +16258,52 @@ class TargetProductionWorker:
                 "fallback_budget_usdc": float(fallback_budget_usdc),
             }
             return {}
+
+    def _portfolio_book_for_cycle(self, *, as_of_utc: str) -> dict[str, Any]:
+        """The station-independent half of the quota, read once per cycle.
+
+        A failure is not remembered: the next ask in the same cycle reads the
+        book again, which is what every ask did before.
+        """
+
+        memo = getattr(self, "_portfolio_book_cycle_memo", None)
+        if isinstance(memo, dict):
+            memo["reused"] = int(memo.get("reused", 0)) + 1
+            return memo
+        blocks_by_station, blocks_sha = load_regional_blocks()
+        policy, _policy_sha = load_portfolio_capital_policy()
+        # What the book already holds decides whether it may hold more.
+        # A breached Tier-1 bound stops new baskets and leaves open ones
+        # to settle; closing them would realize the loss it is reacting
+        # to, at whatever price the book happens to show.
+        inventory = build_portfolio_inventory(
+            self.commit_conn,
+            as_of_utc=as_of_utc,
+            blocks_by_station=blocks_by_station,
+            policy=policy,
+            budget_usdc=_resolve_target_remaining_budget(),
+        )
+        persist_portfolio_inventory(
+            self.commit_conn, inventory, created_at_utc=as_of_utc
+        )
+        clip_row = self.conn.execute(
+            "SELECT artifact_json FROM basket_delta_v2_policy_artifact "
+            "ORDER BY rowid DESC LIMIT 1"
+        ).fetchone()
+        minimum_clip = min(
+            json.loads(str(clip_row[0]))["cash_clip_grid"]
+        ) if clip_row else 0.0
+        memo = {
+            "blocks_by_station": blocks_by_station,
+            "blocks_sha": blocks_sha,
+            "policy": policy,
+            "inventory": inventory,
+            "minimum_clip_usdc": float(minimum_clip),
+            "read_at_utc": as_of_utc,
+            "reused": 0,
+        }
+        self._portfolio_book_cycle_memo = memo
+        return memo
 
     def _station_edge_evidence(
         self,
