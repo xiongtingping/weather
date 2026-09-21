@@ -189,11 +189,28 @@ def radiation_shift_sigma_for_lead(lead_bucket: str | None) -> float:
 # centre rather than by interval, which differs exactly on the edge buckets a
 # large shift pushes hardest into.  The 1.5C shift clamp binds at 0.35 too,
 # so part of that optimum was the clamp and not the coefficient.
-RADIATION_SHIFT_SIGMA = 0.15
+#
+# Charter 173 (2026-09-21, user ruling 「批准」): 0.15 -> 0.07.  0.15 was chosen
+# on radiation read from a table rewritten until each day's own evening, at a
+# width the holdout under-stated by 1.77x (charter 172).  Refitted on the
+# radiation each P0 was actually served, in the clearness form, at the served
+# width -- 1,533 station-days, 37 event days, 45 stations, day-block
+# bootstrap -- the coefficient is 0.073 [0.016, 0.121]; by mean squared
+# residual 0.15 scores 1.9077, worse than no shift at all (1.9055), and
+# 0.06-0.09 score lowest (1.887).  Only artifacts minted after this pin it:
+# every artifact already out keeps serving its own pin (see
+# ``served_radiation_shift_sigma``), so no served number moves until the
+# rotation replaces it.
+RADIATION_SHIFT_SIGMA = 0.07
 # What artifacts built before the coefficient was pinned were scored with.
-# Equal to the current value today; kept separate because the point of the
-# pin is that the two are free to differ.
+# Kept separate because the point of the pin is that the two are free to
+# differ -- as they now do.
 LEGACY_RADIATION_SHIFT_SIGMA = 0.15
+# What an artifact without the clearness tag is served at.  It used to be
+# "the fleet value", which was 0.15; charter 173 moved the fleet value, and
+# these artifacts' certificates are older than both rulings, so they keep the
+# number they were served at yesterday rather than follow the constant.
+UNTAGGED_SERVED_RADIATION_SHIFT_SIGMA = 0.15
 RADIATION_MIN_HISTORY_SAMPLES = 30
 
 
@@ -361,15 +378,16 @@ def served_radiation_shift_sigma(combination_method: str) -> float:
     Charter 160 changed the arithmetic the coefficient multiplies, so an
     artifact scored before it was scored on a z no one serves any more; its
     pin (0.35 at h12_24) describes that retired arithmetic.  Until the OOS
-    rotation re-scores it, it is served the fleet value.  An artifact whose
-    holdout scored the clearness form says so in its method and is served its
-    own pin, which is the pin's original contract.
+    rotation re-scores it, it is served 0.15 (the fleet value when it was
+    last served; charter 173 moved the fleet value without moving it).  An
+    artifact whose holdout scored the clearness form says so in its method
+    and is served its own pin, which is the pin's original contract.
     """
 
     method = str(combination_method or "")
     if RADIATION_CLEARNESS_METHOD_TAG in method.split("::"):
         return pinned_radiation_shift_sigma(method)
-    return RADIATION_SHIFT_SIGMA
+    return UNTAGGED_SERVED_RADIATION_SHIFT_SIGMA
 
 
 def forecast_clearness_shift_sigma(

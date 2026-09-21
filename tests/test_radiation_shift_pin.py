@@ -34,13 +34,19 @@ class PerLeadCoefficientTest(unittest.TestCase):
 
     def test_charter_160_retired_the_h12_24_raise(self) -> None:
         """0.35 at h12_24 replayed 5% worse than 0.15 on its own decisions
-        (RPS -0.032 [-0.051, -0.013]); every lead is fitted at 0.15 again."""
+        (RPS -0.032 [-0.051, -0.013]); every lead is fitted at one value."""
 
         for lead in ("h00_12", "h12_24", "h24_48", "h48_plus"):
             self.assertEqual(
                 radiation_shift_sigma_for_lead(lead), RADIATION_SHIFT_SIGMA
             )
-        self.assertEqual(RADIATION_SHIFT_SIGMA, 0.15)
+
+    def test_charter_173_fits_new_artifacts_at_0_07(self) -> None:
+        """Refitted on as-of radiation at the served width: 0.073 [0.016,
+        0.121], with 0.15 scoring worse than no shift (user ruling 「批准」)."""
+
+        self.assertEqual(RADIATION_SHIFT_SIGMA, 0.07)
+        self.assertEqual(LEGACY_RADIATION_SHIFT_SIGMA, 0.15)
 
     def test_an_unknown_lead_gets_the_unearned_default(self) -> None:
         """A lead nobody has measured is not a lead to experiment on."""
@@ -147,7 +153,17 @@ class PinTest(unittest.TestCase):
         )
 
         legacy = "x::synoptic_cooling_shift_v1::radiation_shift_sigma=0.35::y"
-        self.assertEqual(served_radiation_shift_sigma(legacy), RADIATION_SHIFT_SIGMA)
+        # Charter 173 moved the fleet constant, not these: an untagged
+        # artifact keeps the 0.15 it was served at before the ruling.
+        self.assertEqual(served_radiation_shift_sigma(legacy), 0.15)
+        self.assertNotEqual(served_radiation_shift_sigma(legacy), RADIATION_SHIFT_SIGMA)
+        # A clearness artifact minted before charter 173 keeps its own 0.15.
+        self.assertEqual(
+            served_radiation_shift_sigma(
+                "x::radiation_shift_sigma=0.15::" + RADIATION_CLEARNESS_METHOD_TAG
+            ),
+            0.15,
+        )
         scored = (
             "x::synoptic_cooling_shift_v1::radiation_shift_sigma=0.2::"
             + RADIATION_CLEARNESS_METHOD_TAG + "::y"
