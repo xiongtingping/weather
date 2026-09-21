@@ -1995,8 +1995,18 @@ def _native_ensemble_artifact_vintage_by_station(
     of every dated vintage: never-fitted is the hungriest state there is.
     """
 
+    # Charter 183: the table is append-only by trigger, so the answer moves
+    # only when a row is added -- which moves its newest rowid.  The group-by
+    # walked all ~82k artifact rows every cycle (1.4s warm, 2-7s in cycle).
     try:
-        return {
+        top = conn.execute(
+            "SELECT MAX(rowid) FROM calibration_native_ensemble_system_artifact"
+        ).fetchone()[0]
+        database = _connection_database_name(conn)
+        cached = _ARTIFACT_VINTAGE_MEMO.get(database) if database else None
+        if cached is not None and cached[0] == top:
+            return dict(cached[1])
+        vintage = {
             str(row[0]): str(row[1] or "")
             for row in conn.execute(
                 "SELECT station_id, MAX(valid_from_utc)"
@@ -2006,6 +2016,27 @@ def _native_ensemble_artifact_vintage_by_station(
         }
     except sqlite3.OperationalError:
         return {}
+    if database:
+        _ARTIFACT_VINTAGE_MEMO[database] = (top, dict(vintage))
+    return vintage
+
+
+# database -> (newest system-artifact rowid, vintage by station), charter 183.
+_ARTIFACT_VINTAGE_MEMO: dict[str, tuple[Any, dict[str, str]]] = {}
+
+
+def _connection_database_name(conn: sqlite3.Connection) -> str:
+    """The file behind the connection's main database ('' if none)."""
+
+    known = getattr(conn, "_worker_database_name", None)
+    if isinstance(known, str):
+        return known
+    database = str(conn.execute("PRAGMA database_list").fetchone()[2] or "")
+    try:
+        conn._worker_database_name = database  # type: ignore[attr-defined]
+    except (AttributeError, TypeError):
+        pass
+    return database
 
 
 def _candidate_ensemble_scopes_without_truth(
@@ -10172,6 +10203,26 @@ class TargetProductionWorker:
             )
             header_params: tuple[Any, ...] = (probe_rowid,)
         else:
+            # Charter 183: start past the rows an earlier empty scan already
+            # read.  ``auto_trade_decisions`` is append-only by trigger, so
+            # a row that did not match the ELIGIBLE filter never will; the
+            # store cursor only moves on a written observation, so without
+            # this every pass re-read every decision since the last ELIGIBLE
+            # one, details_json and all (2 passes, 16.4s at 11:40Z).  A
+            # cursor that has moved back (a rebuilt store) drops the mark.
+            scanned = getattr(self, "_forward_flush_scanned", None)
+            if (
+                isinstance(scanned, tuple)
+                and not hasattr(self, "_forward_flush_source_cursor_override")
+                and scanned[0] == str(store_path)
+                and source_cursor >= int(scanned[1])
+            ):
+                scan_after = max(source_cursor, int(scanned[2]))
+            else:
+                scan_after = source_cursor
+            scan_ceiling = int(self.commit_conn.execute(
+                "SELECT COALESCE(MAX(rowid),0) FROM auto_trade_decisions"
+            ).fetchone()[0])
             header_sql = (
                 "SELECT d.rowid,d.decision_id,d.decision_sha256,"
                 "length(CAST(d.reason_codes_json AS BLOB)),"
@@ -10191,7 +10242,7 @@ class TargetProductionWorker:
                 "'%\"forward_observation_status\":\"ELIGIBLE\"%' "
                 "ORDER BY d.rowid LIMIT ?"
             )
-            header_params = (source_cursor, scan_limit + 1)
+            header_params = (scan_after, scan_limit + 1)
         header_rows = self.commit_conn.execute(
             header_sql,
             header_params,
@@ -10202,6 +10253,12 @@ class TargetProductionWorker:
             else len(header_rows) > MAX_FORWARD_DECISIONS_PER_PASS
         )
         header_rows = header_rows[:scan_limit]
+        if not header_rows and probe_rowid is None:
+            # Charter 183: nothing up to the ceiling read before the scan is
+            # ELIGIBLE, and nothing below it can become so.
+            self._forward_flush_scanned = (
+                str(store_path), source_cursor, scan_ceiling,
+            )
         if not header_rows:
             return {
                 "state": "already_current",
