@@ -5640,7 +5640,16 @@ class TargetProductionWorker:
                 for family in follow_run.FOLLOW_FAMILIES
             )
         ]
-        if not rungs:
+        # Charter 193 amendment: a run followed per event date (ECMWF D-3 18Z)
+        # is asked for until its file is on disk, whatever the rungs.
+        event_run_missing = any(
+            not follow_run.follow_archive_path(
+                capture_root, family, event_date, lead, hour
+            ).is_file()
+            for family in follow_run.EVENT_RUN_FAMILIES
+            for lead, hour in follow_run.event_follow_runs(family)
+        )
+        if not rungs and not event_run_missing:
             return "NO_FOLLOW_RUNG"
         with _FOLLOW_LANE_LOCK:
             pool = getattr(self, "_official_native_follow_pool", None)

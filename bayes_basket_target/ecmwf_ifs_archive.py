@@ -77,6 +77,22 @@ RUN_CYCLE_HOUR_BY_LEAD = {2: 18, 1: 0, 0: 0}
 # that cannot cover a station's local day.
 SUPPORTED_RUN_CYCLE_HOURS = (0, 6, 12, 18)
 ARCHIVE_LEAD_BUCKET = f"d{DEFAULT_LEAD_DAYS}"
+# Charter 193 amendment (2026-09-21, user ruling "A 维持现状 / C 先用 ECMWF 前一天
+# 18Z"): a D+2 day lists about D-2 05Z, when the newest ECMWF run that covers it
+# is D-3 18Z -- D-2 00Z is complete on the replica only around 08:10Z.  That
+# run is captured for training on the follow lane (``follow_run``) at a lead
+# the ladder never asks for, under its own identity; it is not a ladder lead,
+# so ``SUPPORTED_LEAD_DAYS`` -- which the OOS contract and every lead loop read
+# -- stays as it is and only capture and ingest accept it.
+FOLLOW_ONLY_LEAD_CYCLES = {3: (18,)}
+CAPTURE_LEAD_DAYS = tuple(sorted({*SUPPORTED_LEAD_DAYS, *FOLLOW_ONLY_LEAD_CYCLES}))
+
+
+def _capture_lead_allowed(lead_days: int, cycle_hour: int) -> bool:
+    lead = int(lead_days)
+    if lead in SUPPORTED_LEAD_DAYS:
+        return True
+    return int(cycle_hour) in FOLLOW_ONLY_LEAD_CYCLES.get(lead, ())
 
 
 def resolve_run_cycle_hour(
@@ -440,6 +456,36 @@ def _period_end_steps(
     return result
 
 
+def follow_period_end_steps(
+    *,
+    event_date: str,
+    settlement_timezone: str,
+    run_init_utc: datetime,
+) -> list[int] | None:
+    """Charter 193: the steps a follow run seals for one station, or None.
+
+    ``_period_end_steps`` raises for the whole batch; a follow capture asks per
+    station first and leaves out the ones the run cannot seal (D-3 18Z reaches
+    +72h, so the far west is left out), plus those the curve seal would refuse.
+    """
+
+    try:
+        steps = _period_end_steps(
+            event_date=event_date,
+            settlement_timezone=settlement_timezone,
+            run_init_utc=run_init_utc,
+        )
+    except ContractError:
+        return None
+    same_day = _run_after_local_day_start(
+        event_date=event_date,
+        settlement_timezone=settlement_timezone,
+        run_init_utc=run_init_utc,
+    )
+    floor = MIN_SAME_DAY_CURVE_POINTS if same_day else MIN_CURVE_POINTS
+    return steps if len(steps) >= floor else None
+
+
 def _object_urls(
     *,
     run_init: datetime,
@@ -688,7 +734,7 @@ def _lead_bucket_for_run(*, event_date: str, run_init: datetime) -> str:
     delta = (
         date.fromisoformat(event_date) - run_init.astimezone(timezone.utc).date()
     ).days
-    if delta not in SUPPORTED_LEAD_DAYS:
+    if not _capture_lead_allowed(delta, run_init.astimezone(timezone.utc).hour):
         raise ContractError("ecmwf_archive_lead_days_invalid")
     return f"d{delta}"
 
@@ -872,10 +918,14 @@ def capture_ecmwf_station_days(
 ) -> dict[str, Any]:
     if BASE_URL not in ALLOWED_TRANSPORT_BASE_URLS:
         raise ContractError("ecmwf_archive_transport_base_url_invalid")
-    if lead_days not in SUPPORTED_LEAD_DAYS:
+    if lead_days not in CAPTURE_LEAD_DAYS or (
+        lead_days not in SUPPORTED_LEAD_DAYS and run_cycle_hour is None
+    ):
         raise ContractError("ecmwf_archive_lead_days_invalid")
     lead_bucket = f"d{lead_days}"
     cycle_hour = resolve_run_cycle_hour(lead_days, run_cycle_hour)
+    if not _capture_lead_allowed(lead_days, cycle_hour):
+        raise ContractError("ecmwf_archive_lead_days_invalid")
     target = date.fromisoformat(event_date)
     run_init = datetime.combine(
         target - timedelta(days=lead_days),
@@ -1265,11 +1315,13 @@ def ingest_ecmwf_station_day(
     capture_lead_days, capture_lead_bucket, capture_run_init, capture_run_cycle = (
         capture_lead_and_run(
             capture,
-            supported_lead_days=SUPPORTED_LEAD_DAYS,
+            supported_lead_days=CAPTURE_LEAD_DAYS,
             default_lead_days=DEFAULT_LEAD_DAYS,
             error_code="ecmwf_archive_lead_days_invalid",
         )
     )
+    if not _capture_lead_allowed(capture_lead_days, capture_run_init.hour):
+        raise ContractError("ecmwf_archive_lead_days_invalid")
     # Rebuilt from the run the capture carries rather than the lead's default
     # cycle, so a non-default cycle is not rejected for disagreeing with
     # itself; the lead/run agreement was already enforced above.

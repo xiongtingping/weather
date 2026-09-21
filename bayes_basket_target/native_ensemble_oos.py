@@ -89,6 +89,7 @@ from .eccc_geps_archive import (
     extraction_version_for_lead as _geps_extraction_version,
 )
 from .ecmwf_ifs_archive import (
+    FOLLOW_ONLY_LEAD_CYCLES as _IFS_FOLLOW_ONLY_LEAD_CYCLES,
     RUN_CYCLE_HOUR_BY_LEAD as _IFS_CYCLE_BY_LEAD,
     SUPPORTED_RUN_CYCLE_HOURS as _IFS_SUPPORTED_CYCLES,
     SUPPORTED_LEAD_DAYS as _IFS_LEADS,
@@ -444,15 +445,26 @@ OFFICIAL_ARCHIVE_SCOPE_CONTRACTS = {
     },
     "ECMWF_IFS_ENS_OPEN_PF50": {
         "transport_provider_id": "ECMWF_OPEN_DATA_S3",
-        "leads": _lead_contracts(
-            supported_lead_days=_IFS_LEADS,
-            cycle_hour_by_lead=_every_supported_cycle(
+        "leads": {
+            **_lead_contracts(
                 supported_lead_days=_IFS_LEADS,
-                supported_cycle_hours=_IFS_SUPPORTED_CYCLES,
-                default_by_lead=_IFS_CYCLE_BY_LEAD,
+                cycle_hour_by_lead=_every_supported_cycle(
+                    supported_lead_days=_IFS_LEADS,
+                    supported_cycle_hours=_IFS_SUPPORTED_CYCLES,
+                    default_by_lead=_IFS_CYCLE_BY_LEAD,
+                ),
+                extraction_version_for_lead=_ifs_extraction_version,
             ),
-            extraction_version_for_lead=_ifs_extraction_version,
-        ),
+            # Charter 193 amendment: D-3 18Z for a D+2 day, captured on the
+            # follow lane only -- flagged so the scheduler, which reads only
+            # its own leads, is told nothing new either way.
+            **_lead_contracts(
+                supported_lead_days=tuple(_IFS_FOLLOW_ONLY_LEAD_CYCLES),
+                cycle_hour_by_lead=_IFS_FOLLOW_ONLY_LEAD_CYCLES,
+                extraction_version_for_lead=_ifs_extraction_version,
+                follow_cycle_hours_by_lead=_IFS_FOLLOW_ONLY_LEAD_CYCLES,
+            ),
+        },
     },
     "ECCC_GEM_GLOBAL_ENS": {
         "transport_provider_id": "ECCC_DD_WEATHER",

@@ -31,6 +31,7 @@ from bayes_basket_target import follow_run
 from bayes_basket_target import native_ensemble_oos as oos
 from bayes_basket_target import official_nwp_capture_scheduler as scheduler
 from bayes_basket_target.contracts import content_sha256
+from bayes_basket_target.native_archive_lead import capture_lead_bucket
 from bayes_basket_target.ssot import apply_production_ssot_schema
 from scripts import capture_official_native_ensemble_forward as capture
 from tests.test_capture_official_native_ensemble_forward import (
@@ -544,8 +545,18 @@ def test_the_follow_lane_banks_each_due_run_once_and_only_where_it_covers(monkey
         calls.append(("eccc", kw["lead_days"], kw["run_cycle_hour"], len(kw["station_scopes"])))
         raise RuntimeError("HTTPStatusError:404")
 
+    def fake_ecmwf(**kw):
+        calls.append(("ecmwf", kw["lead_days"], kw["run_cycle_hour"], len(kw["station_scopes"])))
+        run = follow_run.follow_run_init(DAY, kw["lead_days"], kw["run_cycle_hour"])
+        identity = {"schema": follow_run.archive_schema(follow_run.ECMWF_FAMILY), "event_date": DAY,
+                    "run_init_utc": run.isoformat().replace("+00:00", "Z"),
+                    "training_only": True, "holdout_eligible": False,
+                    "captures": [{"station_id": s["station_id"]} for s in kw["station_scopes"]]}
+        return {**identity, "content_sha256": content_sha256(identity)}
+
     monkeypatch.setattr(capture, "capture_icon_eps_station_days", fake_icon)
     monkeypatch.setattr(capture, "capture_geps_station_days", fake_eccc)
+    monkeypatch.setattr(capture, "capture_ecmwf_station_days", fake_ecmwf)
     written: list[str] = []
     real_write = capture.write_bounded_json_if_changed
     monkeypatch.setattr(capture, "write_bounded_json_if_changed",
@@ -566,7 +577,13 @@ def test_the_follow_lane_banks_each_due_run_once_and_only_where_it_covers(monkey
     assert states[(follow_run.ECCC_FAMILY, 1, "2026-07-31T12:00:00Z")] == "FAILED"
     # ECCC's 18Z rung and 12Z rung are the same 12Z run: asked once
     assert [c for c in calls if c[0] == "eccc"] == [("eccc", 1, 12, len(rows))]
-    assert sorted(written) == [f"icon_{DAY}_d1_12z.json", f"icon_{DAY}_d1_18z.json"]
+    # charter 193 amendment: ECMWF's D-3 18Z is banked whatever the rungs,
+    # for the stations +72h reaches (Chengdu's day, not New York's)
+    assert states[(follow_run.ECMWF_FAMILY, 3, "2026-07-29T18:00:00Z")] == "CAPTURED"
+    assert [c for c in calls if c[0] == "ecmwf"] == [("ecmwf", 3, 18, (len(rows) + 1) // 2)]
+    assert sorted(written) == [
+        f"ecmwf_{DAY}_d3_18z.json", f"icon_{DAY}_d1_12z.json", f"icon_{DAY}_d1_18z.json",
+    ]
     # a second lap finds them on disk and downloads nothing
     calls.clear()
     again = capture.capture_follow_runs(
@@ -574,8 +591,9 @@ def test_the_follow_lane_banks_each_due_run_once_and_only_where_it_covers(monkey
         capture_root=tmp_path, timeout_seconds=30.0,
         as_of_utc="2026-08-01T05:30:00Z", icon_download_workers=8,
     )
-    assert [c for c in calls if c[0] == "icon"] == []
+    assert [c for c in calls if c[0] in {"icon", "ecmwf"}] == []
     assert {o["state"] for o in again["outcomes"] if o["family"] == follow_run.ICON_FAMILY and o["lead_days"] == 1} == {"RETAINED"}
+    assert {o["state"] for o in again["outcomes"] if o["family"] == follow_run.ECMWF_FAMILY} == {"RETAINED"}
 
 
 def test_a_same_day_follow_run_is_banked_for_the_stations_it_can_cover(monkeypatch, tmp_path) -> None:
@@ -592,6 +610,7 @@ def test_a_same_day_follow_run_is_banked_for_the_stations_it_can_cover(monkeypat
 
     monkeypatch.setattr(capture, "capture_icon_eps_station_days", fake_icon)
     monkeypatch.setattr(capture, "capture_geps_station_days", lambda **_kw: (_ for _ in ()).throw(RuntimeError("stop")))
+    monkeypatch.setattr(capture, "capture_ecmwf_station_days", lambda **_kw: (_ for _ in ()).throw(RuntimeError("stop")))
     registry_path = tmp_path / "registry.json"
     registry_path.write_text("{}", encoding="utf-8")
     capture.capture_follow_runs(
@@ -723,13 +742,20 @@ def test_the_worker_queues_one_follow_capture_per_date_off_the_pass(monkeypatch,
     enqueue = worker.TargetProductionWorker._enqueue_follow_run_capture
     assert enqueue(host, **kwargs) == "QUEUED"
     assert enqueue(host, **kwargs) == "ALREADY_QUEUED"
-    # a rung every family already reads at its own cycle queues nothing
+    # a rung every family already reads at its own cycle queues nothing once
+    # the per-event-date runs (ECMWF D-3 18Z) are on disk ...
+    (tmp_path / "ecmwf_2026-09-24_d3_18z.json").write_text("{}")
     assert enqueue(host, **{**kwargs, "event_date": "2026-09-24",
                             "run_ladder": [(1, None, _t("2026-09-23", 0))]}) == "NO_FOLLOW_RUNG"
+    # ... and still queues for a date whose D-3 18Z is missing
+    assert enqueue(host, **{**kwargs, "event_date": "2026-09-25",
+                            "run_ladder": [(1, None, _t("2026-09-24", 0))]}) == "QUEUED"
     release.set()
     future = host._official_native_follow_inflight["2026-09-23"]
     assert future.result(5)["state"] == "COMMITTED_NO_LIVE"
     host._official_native_follow_pool.shutdown(wait=True)
+    rungless = next(c for c in commands if "2026-09-25" in c)
+    assert "--follow-rung" not in rungless
     command = commands[0]
     assert "--follow-capture-only" in command and "--commit" in command
     assert command[command.index("--icon-download-workers") + 1] == str(worker.FOLLOW_ICON_DOWNLOAD_WORKERS)
@@ -828,3 +854,87 @@ def test_a_d2_packet_without_icon_takes_a_certified_earlier_run(monkeypatch, tmp
     assert set(receipt["follow_serving"][follow_run.ICON_FAMILY].values()) == {"2026-07-30T00:00:00Z"}
     builder = _builder(commands)
     assert builder[builder.index("--follow-archive") + 1] == str(icon_00)
+
+
+# --------------------------------------------------------------------------
+# Charter 193 amendment: ECMWF D-3 18Z for a D+2 day, banked for training.
+# --------------------------------------------------------------------------
+def test_ecmwf_d3_18z_has_its_own_identity_and_admission() -> None:
+    from bayes_basket_target import ecmwf_ifs_archive as ecmwf
+
+    assert ecmwf.extraction_version_for_lead(3, 18) == (
+        "ecmwf_open_data_ifs_0p25_enfo_pf50_mx2t3_18z_d3_v1"
+    )
+    assert ecmwf.SUPPORTED_LEAD_DAYS == (0, 1, 2)   # the ladder's leads are untouched
+    admitted = lambda version, cycle="18Z": oos._historical_transport_scope_allowed(  # noqa: E731
+        system_id="ECMWF_IFS_ENS_OPEN_PF50",
+        transport_provider_id="ECMWF_OPEN_DATA_S3",
+        lead_bucket="h24_48",
+        run_cycle=cycle,
+        extraction_version=version,
+    )
+    assert admitted("ecmwf_open_data_ifs_0p25_enfo_pf50_mx2t3_18z_d3_v1")
+    assert not admitted("ecmwf_open_data_ifs_0p25_enfo_pf50_mx2t3_12z_d3_v1", "12Z")
+    # every existing ECMWF identity is admitted exactly as before
+    assert admitted("ecmwf_open_data_ifs_0p25_enfo_pf50_mx2t3_18z_d2_v1")
+    assert oos.OFFICIAL_ARCHIVE_SCOPE_CONTRACTS["ECMWF_IFS_ENS_OPEN_PF50"]["leads"]["d3"] == [{
+        "run_cycle": "18Z",
+        "extraction_version": "ecmwf_open_data_ifs_0p25_enfo_pf50_mx2t3_18z_d3_v1",
+        "serving_follow": True,
+    }]
+    assert scheduler.contracted_run_inits("2026-09-24", lead_days=2)[
+        "ECMWF_IFS_ENS_OPEN_PF50"
+    ] == datetime(2026, 9, 22, 18, tzinfo=UTC)
+
+
+def test_ecmwf_accepts_lead_three_only_at_18z() -> None:
+    from bayes_basket_target import ecmwf_ifs_archive as ecmwf
+    from bayes_basket_target.contracts import ContractError
+
+    for cycle in (None, 0, 12):
+        with pytest.raises(ContractError, match="ecmwf_archive_lead_days_invalid"):
+            ecmwf.capture_ecmwf_station_days(
+                event_date="2026-09-24", station_scopes=[],
+                archive_query_at_utc="2026-09-22T06:00:00Z",
+                lead_days=3, run_cycle_hour=cycle,
+            )
+    assert ecmwf._lead_bucket_for_run(
+        event_date="2026-09-24", run_init=_t("2026-09-21", 18)
+    ) == "d3"
+    with pytest.raises(ContractError):
+        ecmwf._lead_bucket_for_run(
+            event_date="2026-09-24", run_init=_t("2026-09-21", 12)
+        )
+
+
+def test_ecmwf_d3_18z_covers_what_plus_72h_reaches() -> None:
+    from bayes_basket_target import ecmwf_ifs_archive as ecmwf
+
+    run = _t("2026-09-21", 18)
+    seal = lambda tz: ecmwf.follow_period_end_steps(  # noqa: E731
+        event_date="2026-09-24", settlement_timezone=tz, run_init_utc=run
+    )
+    assert len(seal("Asia/Shanghai")) == 8
+    assert len(seal("Europe/Berlin")) == 7
+    assert seal("America/New_York") is None
+    # Chengdu: 46h to its local midnight -- its own (h24_48, 18Z) scope,
+    # which D-2 18Z (22h, h12_24) never reaches
+    assert capture_lead_bucket(
+        event_date="2026-09-24", settlement_timezone="Asia/Shanghai", run_init=run
+    ) == "h24_48"
+    assert capture_lead_bucket(
+        event_date="2026-09-24", settlement_timezone="Asia/Shanghai",
+        run_init=_t("2026-09-22", 18),
+    ) == "h12_24"
+
+
+def test_a_banked_ecmwf_d3_run_does_not_change_the_pass(monkeypatch, tmp_path) -> None:
+    # Seating it (holding it as ECMWF's run before D-2 00Z lands) waits for
+    # its certificate and for the capture pass change that reads it; until
+    # then the pass is the pass it was, certified or not.
+    registry_path, commands = _setup_pass(monkeypatch, tmp_path)
+    _pass(tmp_path, registry_path)
+    _follow_file(tmp_path, f"ecmwf_{DAY}_d3_18z.json", "2026-07-29T18:00:00Z",
+                 _station_ids(), schema=follow_run.archive_schema(follow_run.ECMWF_FAMILY))
+    _pass(tmp_path, registry_path, follow_new_runs=True, follow_serving_ready=lambda **_kw: True)
+    assert _builder(commands[:1]) == _builder(commands[1:])

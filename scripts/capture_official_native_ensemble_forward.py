@@ -30,6 +30,7 @@ from bayes_basket_target.contracts import ContractError, content_sha256  # noqa:
 from bayes_basket_target.database import DEFAULT_TARGET_DB  # noqa: E402
 from bayes_basket_target.ecmwf_ifs_archive import (  # noqa: E402
     capture_ecmwf_station_days,
+    follow_period_end_steps as ecmwf_follow_period_end_steps,
     ingest_ecmwf_station_days,
     resolve_run_cycle_hour as ecmwf_resolve_run_cycle_hour,
 )
@@ -1231,87 +1232,100 @@ def capture_follow_runs(
     root = capture_root.expanduser().resolve()
     outcomes: list[dict[str, Any]] = []
     archive_paths: list[str] = []
-    seen: set[tuple[str, int, int]] = set()
+    # The runs this job reaches: each rung's newest followed cycle per family,
+    # then the runs a family follows per event date whatever the rung
+    # (charter 193 amendment: ECMWF D-3 18Z for a D+2 day).
+    targets: list[tuple[str, int, int]] = []
     for family in follow_run.FOLLOW_FAMILIES:
         for lead_days, rung_cycle in rungs:
             cycle = follow_run.follow_cycle_for_rung(
                 family, int(lead_days), rung_cycle
             )
-            if cycle is None or (family, int(lead_days), cycle) in seen:
-                continue
-            seen.add((family, int(lead_days), cycle))
-            run_init = follow_run.follow_run_init(
-                event_date, int(lead_days), cycle
-            )
-            path = follow_run.follow_archive_path(
-                root, family, event_date, int(lead_days), cycle
-            )
-            outcome: dict[str, Any] = {
-                "family": family,
-                "lead_days": int(lead_days),
-                "run_init_utc": run_init.isoformat().replace("+00:00", "Z"),
-                "path": path.name,
-            }
-            outcomes.append(outcome)
-            if follow_run.load_follow_archive(
-                path, family=family, event_date=event_date, run_init=run_init
-            ) is not None:
-                outcome["state"] = "RETAINED"
-                archive_paths.append(str(path))
-                continue
-            if not follow_run.follow_publication_due(
-                family, run_init, as_of=now
-            ):
-                outcome["state"] = "NOT_DUE"
-                continue
-            seal = (
-                icon_follow_forecast_hours
-                if family == follow_run.ICON_FAMILY
-                else eccc_follow_forecast_hours
-            )
-            covered = [
-                scope for scope in scopes
-                if seal(
-                    event_date=event_date,
-                    settlement_timezone=str(scope["settlement_timezone"]),
-                    run_init_utc=run_init,
-                ) is not None
-            ]
-            if not covered:
-                outcome["state"] = "NO_COVERABLE_STATION"
-                continue
-            try:
-                assert_process_memory_budget()
-                if family == follow_run.ICON_FAMILY:
-                    archive = capture_icon_eps_station_days(
-                        event_date=event_date,
-                        station_scopes=covered,
-                        archive_query_at_utc=capture_at,
-                        timeout_seconds=ICON_OBJECT_TIMEOUT_SECONDS,
-                        lead_days=int(lead_days),
-                        run_cycle_hour=cycle,
-                        download_workers=icon_download_workers,
-                    )
-                else:
-                    archive = capture_geps_station_days(
-                        event_date=event_date,
-                        station_scopes=covered,
-                        archive_query_at_utc=capture_at,
-                        timeout_seconds=float(timeout_seconds),
-                        lead_days=int(lead_days),
-                        run_cycle_hour=cycle,
-                    )
-            except Exception as exc:  # noqa: BLE001 - one run, retried later
-                outcome["state"] = "FAILED"
-                outcome["error"] = f"{type(exc).__name__}:{exc}"[:200]
-                continue
-            write_bounded_json_if_changed(path, archive)
+            if cycle is not None and (family, int(lead_days), cycle) not in targets:
+                targets.append((family, int(lead_days), cycle))
+    for family in follow_run.EVENT_RUN_FAMILIES:
+        for lead_days, cycle in follow_run.event_follow_runs(family):
+            if (family, int(lead_days), int(cycle)) not in targets:
+                targets.append((family, int(lead_days), int(cycle)))
+    seals = {
+        follow_run.ICON_FAMILY: icon_follow_forecast_hours,
+        follow_run.ECCC_FAMILY: eccc_follow_forecast_hours,
+        follow_run.ECMWF_FAMILY: ecmwf_follow_period_end_steps,
+    }
+    for family, lead_days, cycle in targets:
+        run_init = follow_run.follow_run_init(event_date, lead_days, cycle)
+        path = follow_run.follow_archive_path(
+            root, family, event_date, lead_days, cycle
+        )
+        outcome: dict[str, Any] = {
+            "family": family,
+            "lead_days": lead_days,
+            "run_init_utc": run_init.isoformat().replace("+00:00", "Z"),
+            "path": path.name,
+        }
+        outcomes.append(outcome)
+        if follow_run.load_follow_archive(
+            path, family=family, event_date=event_date, run_init=run_init
+        ) is not None:
+            outcome["state"] = "RETAINED"
             archive_paths.append(str(path))
-            outcome["state"] = "CAPTURED"
-            outcome["station_count"] = len(covered)
-            outcome["total_response_bytes"] = int(
-                archive.get("total_response_bytes") or 0
-            )
+            continue
+        if not follow_run.follow_publication_due(family, run_init, as_of=now):
+            outcome["state"] = "NOT_DUE"
+            continue
+        seal = seals[family]
+        covered = [
+            scope for scope in scopes
+            if seal(
+                event_date=event_date,
+                settlement_timezone=str(scope["settlement_timezone"]),
+                run_init_utc=run_init,
+            ) is not None
+        ]
+        if not covered:
+            outcome["state"] = "NO_COVERABLE_STATION"
+            continue
+        try:
+            assert_process_memory_budget()
+            if family == follow_run.ICON_FAMILY:
+                archive = capture_icon_eps_station_days(
+                    event_date=event_date,
+                    station_scopes=covered,
+                    archive_query_at_utc=capture_at,
+                    timeout_seconds=ICON_OBJECT_TIMEOUT_SECONDS,
+                    lead_days=lead_days,
+                    run_cycle_hour=cycle,
+                    download_workers=icon_download_workers,
+                )
+            elif family == follow_run.ECMWF_FAMILY:
+                archive = capture_ecmwf_station_days(
+                    event_date=event_date,
+                    station_scopes=covered,
+                    archive_query_at_utc=capture_at,
+                    timeout_seconds=float(timeout_seconds),
+                    lead_days=lead_days,
+                    run_cycle_hour=cycle,
+                )
+            else:
+                archive = capture_geps_station_days(
+                    event_date=event_date,
+                    station_scopes=covered,
+                    archive_query_at_utc=capture_at,
+                    timeout_seconds=float(timeout_seconds),
+                    lead_days=lead_days,
+                    run_cycle_hour=cycle,
+                )
+        except Exception as exc:  # noqa: BLE001 - one run, retried later
+            outcome["state"] = "FAILED"
+            outcome["error"] = f"{type(exc).__name__}:{exc}"[:200]
+            continue
+        write_bounded_json_if_changed(path, archive)
+        archive_paths.append(str(path))
+        outcome["state"] = "CAPTURED"
+        outcome["station_count"] = len(covered)
+        outcome["total_response_bytes"] = int(
+            archive.get("total_response_bytes") or 0
+        )
     return {
         "schema": "official_native_follow_run_capture_v1",
         "state": "COMMITTED_NO_LIVE",
@@ -1573,7 +1587,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _follow_capture_main(args: argparse.Namespace) -> int:
     """``--follow-capture-only``: bank the follow runs, then ingest them."""
 
-    if args.capture_root is None or not args.follow_rung:
+    # No rung is fine: the runs followed per event date are still asked for.
+    if args.capture_root is None:
         print(json.dumps({
             "schema": "official_native_follow_run_capture_v1",
             "state": "BLOCKED_FAIL_CLOSED",
@@ -1610,6 +1625,9 @@ def _follow_capture_main(args: argparse.Namespace) -> int:
             ),
             follow_run.archive_schema(follow_run.ECCC_FAMILY): (
                 ingest_geps_station_days
+            ),
+            follow_run.archive_schema(follow_run.ECMWF_FAMILY): (
+                ingest_ecmwf_station_days
             ),
         }
         ingress: dict[str, Any] = {}

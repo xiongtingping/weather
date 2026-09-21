@@ -56,6 +56,11 @@ from .dwd_icon_eps_archive import (
     SECONDARY_CYCLE_HOURS as ICON_SECONDARY_CYCLE_HOURS,
     SYSTEM_ID as ICON_SYSTEM_ID,
 )
+from .ecmwf_ifs_archive import (
+    FOLLOW_ONLY_LEAD_CYCLES as ECMWF_FOLLOW_ONLY_LEAD_CYCLES,
+    MULTISTATION_SCHEMA as ECMWF_MULTISTATION_SCHEMA,
+    SYSTEM_ID as ECMWF_SYSTEM_ID,
+)
 from .eccc_geps_archive import (
     ARCHIVE_RUN_CYCLE_HOURS_BY_LEAD as ECCC_ARCHIVE_CYCLES_BY_LEAD,
     MULTISTATION_SCHEMA as ECCC_MULTISTATION_SCHEMA,
@@ -77,7 +82,23 @@ from .station_season import station_season_bin
 
 ICON_FAMILY = "DWD_OPENDATA_ICON_EPS"
 ECCC_FAMILY = "ECCC_DD_WEATHER"
+ECMWF_FAMILY = "ECMWF_OPEN_DATA_S3"
 FOLLOW_FAMILIES = (ICON_FAMILY, ECCC_FAMILY)
+# Charter 193 amendment (2026-09-21, user ruling "A 维持现状 / C 先用 ECMWF 前一天
+# 18Z"): runs a family follows per event date rather than per ladder rung.
+# ECMWF walks the ladder itself; the one run it does not reach is D-3 18Z for
+# a D+2 day -- the newest ECMWF run covering that day at its listing (~05Z
+# D-2), while D-2 00Z is complete on the replica only around 08:10Z.  It is
+# banked here for training in its own scope; seating it waits for its own
+# certificate like every follow run.
+EVENT_RUN_FAMILIES = (ECMWF_FAMILY,)
+_EVENT_RUNS = {
+    ECMWF_FAMILY: tuple(
+        (int(lead), int(hour))
+        for lead, hours in sorted(ECMWF_FOLLOW_ONLY_LEAD_CYCLES.items())
+        for hour in hours
+    ),
+}
 # Every lead the ladder serves (user ruling the same evening: "当天、明天、后天
 # 都谁新用谁").  At d2 the lead's own run stays D-2 12Z; the D-2 00Z/06Z runs
 # are what can seat ICON/ECCC in a D+2 packet from its listing (~05Z D-2)
@@ -107,17 +128,33 @@ SECONDARY_SERVING_ENV = "PM_FOLLOW_SECONDARY_CYCLES"
 # the open-data listing 2026-09-21: ICON 06Z objects landed 08:41-08:48Z and
 # 12Z ones 14:42-14:49Z (about 2h45m); ECCC's 12Z uploads around 17:10Z.  An
 # early ask costs a round of 404s, nothing more.
-FOLLOW_PUBLICATION_LAG_HOURS = {ICON_FAMILY: 2.5, ECCC_FAMILY: 5.0}
+# ECMWF's margin is the scheduler's (``D2_PUBLICATION_MARGIN_HOURS``); its 18Z
+# is on the replica well inside it.
+FOLLOW_PUBLICATION_LAG_HOURS = {
+    ICON_FAMILY: 2.5,
+    ECCC_FAMILY: 5.0,
+    ECMWF_FAMILY: 8.0,
+}
 
-_PREFIX = {ICON_FAMILY: "icon", ECCC_FAMILY: "eccc"}
-_SYSTEM = {ICON_FAMILY: ICON_SYSTEM_ID, ECCC_FAMILY: ECCC_SYSTEM_ID}
+_PREFIX = {ICON_FAMILY: "icon", ECCC_FAMILY: "eccc", ECMWF_FAMILY: "ecmwf"}
+_SYSTEM = {
+    ICON_FAMILY: ICON_SYSTEM_ID,
+    ECCC_FAMILY: ECCC_SYSTEM_ID,
+    ECMWF_FAMILY: ECMWF_SYSTEM_ID,
+}
 _SCHEMA = {
     ICON_FAMILY: ICON_MULTISTATION_SCHEMA,
     ECCC_FAMILY: ECCC_MULTISTATION_SCHEMA,
+    ECMWF_FAMILY: ECMWF_MULTISTATION_SCHEMA,
 }
 _ARCHIVE_CYCLES = {
     ICON_FAMILY: ICON_ARCHIVE_CYCLES_BY_LEAD,
     ECCC_FAMILY: ECCC_ARCHIVE_CYCLES_BY_LEAD,
+    # Only the follow-only lead: nothing else of ECMWF's is followed here.
+    ECMWF_FAMILY: {
+        int(lead): tuple(int(hour) for hour in hours)
+        for lead, hours in ECMWF_FOLLOW_ONLY_LEAD_CYCLES.items()
+    },
 }
 _DEFAULT_CYCLE = {ICON_FAMILY: ICON_CYCLE_BY_LEAD, ECCC_FAMILY: ECCC_CYCLE_BY_LEAD}
 # The ECMWF/GEFS ladder's own reading of a rung that names no cycle
@@ -151,10 +188,20 @@ def archive_schema(family: str) -> str:
     return _SCHEMA[family]
 
 
+def event_follow_runs(family: str) -> tuple[tuple[int, int], ...]:
+    """The (lead, cycle) runs a family follows per event date, off the ladder."""
+
+    return _EVENT_RUNS.get(family, ())
+
+
 def follow_cycle_hours(family: str, lead_days: int) -> tuple[int, ...]:
     """The cycles a family is followed at on this lead, beyond its own."""
 
     lead = int(lead_days)
+    if family in _EVENT_RUNS:
+        return tuple(
+            hour for run_lead, hour in _EVENT_RUNS[family] if run_lead == lead
+        )
     if lead not in FOLLOW_LEADS:
         return ()
     default = _DEFAULT_CYCLE[family][lead]
@@ -177,7 +224,7 @@ def follow_cycle_for_rung(
     """
 
     lead = int(lead_days)
-    if lead not in FOLLOW_LEADS:
+    if lead not in FOLLOW_LEADS or family in _EVENT_RUNS:
         return None
     rung = (
         _RUNG_DEFAULT_CYCLE.get(lead, 0)
@@ -217,12 +264,17 @@ def follow_archive_paths(
 ) -> list[tuple[datetime, Path]]:
     """Every follow file the event date may have, newest run first."""
 
+    leads = (
+        sorted({lead for lead, _hour in _EVENT_RUNS[family]})
+        if family in _EVENT_RUNS
+        else FOLLOW_LEADS
+    )
     out = [
         (
             follow_run_init(event_date, lead, hour),
             follow_archive_path(root, family, event_date, lead, hour),
         )
-        for lead in FOLLOW_LEADS
+        for lead in leads
         for hour in follow_cycle_hours(family, lead)
     ]
     out.sort(key=lambda item: item[0], reverse=True)
@@ -307,6 +359,10 @@ def scope_trained_by_longer_lead(
         )
     except Exception:  # noqa: BLE001 - unkeyable: treat as not ours to seat
         return True
+    if family in _EVENT_RUNS:
+        # A follow-only lead is longer than every lead the ladder reads, and
+        # its own scope is the only one it can reach at its cycle.
+        return False
     for longer in range(lead + 1, max(_ARCHIVE_CYCLES[family]) + 1):
         if run.hour not in _ARCHIVE_CYCLES[family].get(longer, ()):
             continue
@@ -518,6 +574,8 @@ def archive_station_ids(archive: Mapping[str, Any]) -> set[str]:
 
 __all__ = [
     "ECCC_FAMILY",
+    "ECMWF_FAMILY",
+    "EVENT_RUN_FAMILIES",
     "FOLLOW_ENV",
     "FOLLOW_FAMILIES",
     "FOLLOW_LEADS",
@@ -527,6 +585,7 @@ __all__ = [
     "archive_schema",
     "archive_station_ids",
     "choose_station_run",
+    "event_follow_runs",
     "follow_archive_path",
     "follow_archive_paths",
     "follow_cycle_for_rung",
