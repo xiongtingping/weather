@@ -20,6 +20,7 @@ from bayes_basket_target.ssot import apply_production_ssot_schema, declared_inde
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY_TZ = "basket_target_market_registry_scope_tz_idx"
 WINDOW = "calibration_native_activation_window_idx"
+SCOPE_LANE = "basket_target_market_registry_scope_lane_idx"  # charter 179
 
 TIMEZONE_READS = {
     # native_ensemble_p0 (the compile)
@@ -100,6 +101,7 @@ def _store_without_the_new_indexes(tmp_path: Path) -> Path:
     apply_target_market_registry_schema(conn)
     conn.execute(f"DROP INDEX {REGISTRY_TZ}")
     conn.execute(f"DROP INDEX {WINDOW}")
+    conn.execute(f"DROP INDEX {SCOPE_LANE}")
     # Rows only need to exist for the index counts; the snapshot parent
     # rows the foreign key names are beside the point here.
     conn.execute("PRAGMA foreign_keys=OFF")
@@ -125,11 +127,15 @@ def test_the_migration_adds_both_and_proves_them_against_their_tables(tmp_path) 
     path = _store_without_the_new_indexes(tmp_path)
     receipt = _migration().migrate(db_path=path, confirmed_writer_stopped=False)
     assert receipt["state"] == "migrated"
-    assert receipt["indexes_created"] == sorted([REGISTRY_TZ, WINDOW])
+    assert receipt["indexes_created"] == sorted([REGISTRY_TZ, WINDOW, SCOPE_LANE])
     by_name = {item["index"]: item for item in receipt["index_verification"]}
     # 3 stations x 2 days = 6 scopes, each with one non-blank timezone.
     assert by_name[REGISTRY_TZ]["rows"] == 6
+    # ... and the blank timezone (row 7) is one more (scope, tz, lane).
+    assert by_name[SCOPE_LANE]["rows"] == 7
     assert all(item["planner_used_index"] for item in receipt["index_verification"])
     again = _migration().migrate(db_path=path, confirmed_writer_stopped=False)
     assert again["indexes_created"] == []
-    assert sorted(again["indexes_already_present"]) == sorted([REGISTRY_TZ, WINDOW])
+    assert sorted(again["indexes_already_present"]) == sorted(
+        [REGISTRY_TZ, WINDOW, SCOPE_LANE]
+    )

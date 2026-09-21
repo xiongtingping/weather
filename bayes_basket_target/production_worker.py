@@ -15175,9 +15175,11 @@ class TargetProductionWorker:
                             "resident_p0_scope_content_conflict"
                         )
                     continue
+                # Charter 179: ``+stage`` -- see probability_bridge's
+                # restatement read; the recency index has no event_date.
                 existing = self.commit_conn.execute(
                     "SELECT checkpoint_id,content_sha256 FROM basket_probability_envelope "
-                    "WHERE station_id=? AND event_date=? AND stage='P0' "
+                    "WHERE station_id=? AND event_date=? AND +stage='P0' "
                     "AND state='COMMITTED' ORDER BY decision_at_utc DESC "
                     "LIMIT 1",
                     (envelope.station_id, envelope.event_date),

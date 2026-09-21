@@ -1538,14 +1538,33 @@ def _holdout_conditioning_signals(
     truth_rows: dict[str, tuple[int, float]] = {}
     # Multi-year reference climatology first, settled truth overriding it for
     # the days it covers -- the same precedence the serving path uses.
+    # Charter 179: only the calendar days some holdout day's +-7-day window
+    # can read (the one use below), through the calendar index on
+    # (station_id, substr(local_date, 6)) -- the whole ten-year record was
+    # read per call (228 calls, 9.8s in the 10:04Z cycle).  Ordered as the
+    # primary-key read was, so a later row for a date still wins.
+    calendar_days: set[str] = set()
+    for day in holdout_days:
+        try:
+            event_day = date.fromisoformat(str(day))
+        except ValueError:
+            continue
+        calendar_days.update(
+            (event_day + timedelta(days=offset)).isoformat()[5:]
+            for offset in range(-7, 8)
+        )
     try:
-        for local_date, high_c in conn.execute(
-            "SELECT local_date,daily_high_c "
-            "FROM calibration_station_same_day_climatology "
-            "WHERE station_id=? AND reference_only=1",
-            (station_id,),
-        ):
-            truth_rows[str(local_date)] = (-1, float(high_c))
+        if calendar_days:
+            wanted = sorted(calendar_days)
+            for local_date, high_c in conn.execute(
+                "SELECT local_date,daily_high_c "
+                "FROM calibration_station_same_day_climatology "
+                "WHERE station_id=? AND reference_only=1 "
+                f"AND substr(local_date, 6) IN ({','.join('?' for _ in wanted)}) "
+                "ORDER BY local_date,source_id",
+                (station_id, *wanted),
+            ):
+                truth_rows[str(local_date)] = (-1, float(high_c))
     except sqlite3.Error:
         truth_rows = {}
     try:

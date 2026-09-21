@@ -107,6 +107,16 @@ CREATE INDEX IF NOT EXISTS basket_target_market_registry_scope_idx
 CREATE INDEX IF NOT EXISTS basket_target_market_registry_scope_tz_idx
   ON {TABLE}(station_id,event_date,settlement_timezone);
 
+-- Charter 179: the observed-high read asks the same scope question with the
+-- source lane as well (``registry_scope_timezone_lanes``).  Charter 178
+-- remembers its answer until the registry changes, but every snapshot
+-- appends rows to every live scope, so each refresh re-asks all of them
+-- through ~880 table lookups apiece: 122-135 calls, 12.6-20.9s in the cycle
+-- after each snapshot (2026-09-21).  With the lane in the index too the
+-- re-ask never touches the table.
+CREATE INDEX IF NOT EXISTS basket_target_market_registry_scope_lane_idx
+  ON {TABLE}(station_id,event_date,settlement_timezone,source_lane);
+
 -- The truth-increment probe asks the other question this table gets: which
 -- ELIGIBLE station-days since a date have no accepted truth row yet.  Both
 -- of its predicates were unseekable against the indexes above -- scope-first

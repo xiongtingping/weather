@@ -1769,6 +1769,92 @@ def forget_lineage_documents() -> None:
     with _LINEAGE_DOCUMENT_CACHE_LOCK:
         _LINEAGE_DOCUMENT_CACHE.clear()
         _LINEAGE_DOCUMENT_CACHE_BYTES = 0
+
+
+# Charter 179: the P1 consume-once keys of a station-day, remembered per row.
+#
+# Every P1 insert read every committed P1 of its station-day with its lineage
+# JSON (~7.5KB each, in overflow pages; 166 rows by the end of VILK 09-20)
+# and parsed each one for four fields -- 259 inserts, 84.0s in the 09:43Z
+# cycle, inside the write lock.  The table is append-only by trigger, and a
+# row's (checkpoint_id, content_sha256) fixes its lineage -- the content hash
+# covers the full lineage -- so the four fields parsed from a row once are
+# the fields that row has for good.  Which rows exist is still asked every
+# time, from the unique index alone (it carries both columns), so a rolled-
+# back insert drops out and a reused rowid cannot pass for another row; only
+# the lineage of a row not seen before is read.
+_P1_CONSUME_KEYS: "OrderedDict[tuple[str, str, str], dict[tuple[str, str], tuple[Any, Any, str, str]]]" = OrderedDict()
+_P1_CONSUME_KEYS_MAX_DAYS = 1000
+_P1_CONSUME_KEYS_LOCK = threading.Lock()
+
+
+def _p1_consume_key(lineage_json: Any) -> tuple[Any, Any, str, str]:
+    lineage = json.loads(str(lineage_json))
+    return (
+        lineage.get("canonical_observation_event_id"),
+        lineage.get("p0_root_checkpoint_id"),
+        str(lineage.get("prediction_root_checkpoint_id") or ""),
+        str(lineage.get("prediction_root_content_sha256") or "").lower(),
+    )
+
+
+def _prior_p1_consume_keys(
+    conn: sqlite3.Connection, *, station_id: str, event_date: str
+) -> list[tuple[tuple[Any, Any, str, str], str]]:
+    """(consume-once key, content_sha256) of every P1 of the station-day.
+
+    In the order the unfiltered read returns the rows: the same WHERE over
+    the same unique index.
+    """
+
+    present = conn.execute(
+        "SELECT rowid,checkpoint_id,content_sha256 "
+        "FROM basket_probability_envelope "
+        "WHERE station_id=? AND event_date=? AND stage='P1'",
+        (station_id, event_date),
+    ).fetchall()
+    database = _lineage_document_database(conn)
+    scope = (database, str(station_id), str(event_date))
+    known: dict[tuple[str, str], tuple[Any, Any, str, str]] = {}
+    if database:
+        with _P1_CONSUME_KEYS_LOCK:
+            known = dict(_P1_CONSUME_KEYS.get(scope) or {})
+    unseen = [
+        int(rowid)
+        for rowid, checkpoint_id, content in present
+        if (str(checkpoint_id), str(content)) not in known
+    ]
+    for start in range(0, len(unseen), 500):
+        chunk = unseen[start:start + 500]
+        for checkpoint_id, content, lineage_json in conn.execute(
+            "SELECT checkpoint_id,content_sha256,lineage_json "
+            "FROM basket_probability_envelope WHERE rowid IN ("
+            + ",".join("?" for _ in chunk)
+            + ")",
+            chunk,
+        ):
+            known[(str(checkpoint_id), str(content))] = _p1_consume_key(
+                lineage_json
+            )
+    rows = [
+        (known[(str(checkpoint_id), str(content))], str(content))
+        for _rowid, checkpoint_id, content in present
+    ]
+    if database:
+        with _P1_CONSUME_KEYS_LOCK:
+            _P1_CONSUME_KEYS[scope] = known
+            _P1_CONSUME_KEYS.move_to_end(scope)
+            while len(_P1_CONSUME_KEYS) > _P1_CONSUME_KEYS_MAX_DAYS:
+                _P1_CONSUME_KEYS.popitem(last=False)
+    return rows
+
+
+def forget_p1_consume_keys() -> None:
+    """Drop every remembered consume-once key (tests)."""
+    with _P1_CONSUME_KEYS_LOCK:
+        _P1_CONSUME_KEYS.clear()
+
+
 LINEAGE_DOCUMENT_DDL = (
     "CREATE TABLE IF NOT EXISTS basket_probability_lineage_document("
     "  document_sha256 TEXT PRIMARY KEY"
@@ -2011,13 +2097,23 @@ def insert_probability_envelope(
         # every P1 insert -- and the JSON lives in overflow pages, so this is
         # a table lookup and a json.loads per prior envelope.  Timed so the
         # consume-once check can be told apart from the write it guards.
+        # Charter 179: the keys are remembered per row; only rows not seen
+        # before have their lineage read (see _prior_p1_consume_keys).
         with ledger_span("env_p1_lineage_scan"):
-            prior_p1_rows = conn.execute(
-                "SELECT lineage_json,content_sha256 FROM basket_probability_envelope WHERE station_id=? AND event_date=? AND stage='P1'",
-                (envelope.station_id, envelope.event_date),
-            ).fetchall()
-        for row in prior_p1_rows:
-            old_lineage = json.loads(str(row[0]))
+            prior_p1_rows = _prior_p1_consume_keys(
+                conn,
+                station_id=envelope.station_id,
+                event_date=envelope.event_date,
+            )
+        new_key = (
+            event_id,
+            envelope.lineage.get("p0_root_checkpoint_id"),
+            str(envelope.lineage.get("prediction_root_checkpoint_id") or ""),
+            str(
+                envelope.lineage.get("prediction_root_content_sha256") or ""
+            ).lower(),
+        )
+        for old_key, old_content in prior_p1_rows:
             # Consume-once is a statement about one branch, so the key has to
             # be the branch the compiler itself works on: prediction root as
             # well as P0 root.  Keyed on the P0 root alone it also caught the
@@ -2031,22 +2127,8 @@ def insert_probability_envelope(
             # 08-20 sit on a superseded prediction root the same way.  Within
             # one branch nothing changes -- the same evidence still may not
             # produce two different answers.
-            if (
-                old_lineage.get("canonical_observation_event_id") == event_id
-                and old_lineage.get("p0_root_checkpoint_id")
-                == envelope.lineage.get("p0_root_checkpoint_id")
-                and str(old_lineage.get("prediction_root_checkpoint_id") or "")
-                == str(
-                    envelope.lineage.get("prediction_root_checkpoint_id") or ""
-                )
-                and str(
-                    old_lineage.get("prediction_root_content_sha256") or ""
-                ).lower()
-                == str(
-                    envelope.lineage.get("prediction_root_content_sha256") or ""
-                ).lower()
-            ):
-                if str(row[1]) == envelope.content_sha256:
+            if old_key == new_key:
+                if old_content == envelope.content_sha256:
                     return {"schema": MATERIALIZATION_SCHEMA, "state": "ALREADY_COMMITTED", "wrote": False, "envelope_id": envelope.checkpoint_id}
                 if envelope.lineage.get(
                     "reaffirmation_of_checkpoint_id"

@@ -20,14 +20,19 @@ healthy cycle, the largest single stage:
   ``calibration_native_activation_window_idx`` ends on valid_until_utc, so
   "still valid" is a range seek.
 
-Both are declared in the schema DDL verbatim; the resident never applies
+Charter 179 adds a third, on the same table: the observed-high read asks
+the scope's timezone *and source lane*, and every snapshot re-asks it for
+every live scope (122-135 calls, 12.6-20.9s in the cycle after each
+snapshot).  ``basket_target_market_registry_scope_lane_idx`` covers it.
+
+All are declared in the schema DDL verbatim; the resident never applies
 schema, so this is how they reach the live store.  Verified the way the
 recycle-index migration verifies: each index is read through and its count
 compared with the same count taken off the table with unary ``+``
 suppressing it; a mismatch rolls the transaction back.
 
 The writer must be stopped: this takes BEGIN IMMEDIATE and builds indexes
-over ~536k and ~168k rows.
+over ~536k and ~168k rows.  Rerunning it creates only what is missing.
 """
 from __future__ import annotations
 
@@ -52,9 +57,9 @@ DEFAULT_DB = (ROOT / "data" / "bayes_basket_target_ssot.db").resolve()
 SERVICE_LABEL = f"gui/{os.getuid()}/com.weather.weather_basket_yes"
 MIN_FREE_BYTES = 1024 * 1024 * 1024
 
-# Verbatim from bayes_basket_target/ssot.py.  One spelling, copied rather
+# Verbatim from the schema DDL (ssot.py, market_registry.py).  One spelling, copied rather
 # than imported, because the DDL there is one script and this migration is
-# entitled to exactly two statements out of it.
+# entitled to exactly these statements out of it.
 STATEMENTS = (
     (
         "basket_target_market_registry_scope_tz_idx",
@@ -69,6 +74,13 @@ STATEMENTS = (
         " calibration_native_activation_window_idx"
         " ON calibration_native_ensemble_activation"
         "(station_id,artifact_kind,season_bin,lead_bucket,valid_until_utc)",
+    ),
+    (
+        "basket_target_market_registry_scope_lane_idx",
+        "CREATE INDEX IF NOT EXISTS"
+        " basket_target_market_registry_scope_lane_idx"
+        " ON basket_target_market_registry"
+        "(station_id,event_date,settlement_timezone,source_lane)",
     ),
 )
 
@@ -109,6 +121,18 @@ _INDEX_AGREEMENT_CHECKS = (
         "SELECT COUNT(*) FROM calibration_native_ensemble_activation"
         " WHERE +station_id>='' AND +artifact_kind='CROSS_NATIVE_ENSEMBLE'"
         " AND +valid_until_utc>'2026-09-21T00:00:00Z'",
+    ),
+    (
+        "basket_target_market_registry_scope_lane_idx",
+        "SELECT COUNT(*) FROM ("
+        " SELECT DISTINCT station_id, event_date, settlement_timezone, source_lane"
+        " FROM basket_target_market_registry"
+        " INDEXED BY basket_target_market_registry_scope_lane_idx"
+        " WHERE station_id>='')",
+        "SELECT COUNT(*) FROM ("
+        " SELECT DISTINCT station_id, event_date, settlement_timezone, source_lane"
+        " FROM basket_target_market_registry"
+        " WHERE +station_id>='')",
     ),
 )
 

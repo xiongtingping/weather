@@ -710,11 +710,18 @@ def _restated_p0_checkpoint(
             (envelope.checkpoint_id,),
         ).fetchone() is not None:
             return None
+        # Charter 179: ``+stage`` keeps the planner off
+        # ``station_stage_recency_idx``, which has no event_date -- it walked
+        # the station's P0s newest-first across every event day (ZUUU: 3,099
+        # rows, 511ms for 09-23; 125 calls, 26.7s a cycle) to find this
+        # day's.  ``asof_idx`` starts (station_id, event_date, state): 0.4ms,
+        # same row.  Committed P0s never share a decision instant, so the
+        # order has no ties to resolve differently.
         row = conn.execute(
             "SELECT checkpoint_id,probabilities_json,bucket_ordinals_json,"
             "       fresh_until_utc,posterior_version,bridge_sha256"
             "  FROM basket_probability_envelope"
-            " WHERE station_id=? AND event_date=? AND stage='P0'"
+            " WHERE station_id=? AND event_date=? AND +stage='P0'"
             "   AND state='COMMITTED'"
             " ORDER BY decision_at_utc DESC, envelope_id DESC LIMIT 1",
             (envelope.station_id, envelope.event_date),
