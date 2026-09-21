@@ -102,7 +102,26 @@ def _decision_semantic_projection(
     target_solution = plan.get("target_solution")
     if not isinstance(target_solution, Mapping):
         target_solution = {}
+    # Charter 171: the compile stored this object twice, verbatim, at both
+    # levels -- 4,353 bytes a row across 119,596 rows.  The inner copy is
+    # dropped going forward and stripped from stored rows by the compact
+    # rebuild, so read the inner one when it is there (every row written
+    # before the change) and the outer one when it is not.  Measured over
+    # 1,204 rows spanning the whole table: 1,184 carried both and none of
+    # them differed, 20 carried only the outer, and none carried only the
+    # inner -- which is what makes dropping it lossless.
     delta_audit = plan.get("delta_v2_audit")
+    if not isinstance(delta_audit, Mapping) and plan:
+        # ``and plan``, not a bare fallback.  This projection is what
+        # ``plan_sha256`` hashes, and a re-commit of the same preselection_id
+        # compares that hash and raises ``p0_preselection_content_conflict``
+        # when it moved -- so the projection of every already-stored row has
+        # to come out byte for byte the same.  A BLOCKED compile carries
+        # ``plan = {}`` and has always projected an empty audit here; falling
+        # back for it would change those rows' hash.  A ready plan with the
+        # inner copy stripped has its other keys, so ``plan`` is truthy and
+        # the outer copy is read instead.
+        delta_audit = compiled.get("delta_v2_audit")
     if not isinstance(delta_audit, Mapping):
         delta_audit = {}
     return {

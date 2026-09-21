@@ -47,6 +47,23 @@ DEFAULT_SSOT = ROOT / "data" / "bayes_basket_target_ssot.db"
 #: The one column rewritten on the way through, and how.
 FOLD_TABLE = "basket_official_ws_snapshot"
 FOLD_COLUMN = "buckets_json"
+#: The second rewrite: ``basket_p0_preselection_plan`` stores the same
+#: ``delta_v2_audit`` object twice in every row -- once at
+#: ``compiled_plan.delta_v2_audit`` and once at ``compiled_plan.plan
+#: .delta_v2_audit`` -- because ``runtime`` copies the outer one up out of the
+#: inner one and then stores the inner plan as well.  4,353 bytes a row across
+#: 119,596 rows, about 0.46 GiB, byte-identical in 300 of 300 sampled rows.
+#: The inner copy is dropped here and the reader
+#: (``p0_preselection._decision_semantic_projection``) falls back to the outer
+#: one; measured over 1,204 rows spanning the table, 1,184 carried both with
+#: none differing, 20 carried only the outer, and NONE carried only the inner,
+#: which is what makes this lossless.  ``plan_sha256`` hashes the projection,
+#: not this column, and 1,507 stored rows reproduce their stored hash under
+#: the changed reader.  New rows are still written with both: stopping that
+#: means separating the in-memory plan from the stored one, which is a change
+#: of its own and not one to bundle into a rebuild.
+DEDUPE_TABLE = "basket_p0_preselection_plan"
+DEDUPE_COLUMN = "plan_json"
 #: Rows per transaction on the target.  Large enough that the commit cost
 #: disappears, small enough that the target's WAL never holds a whole table.
 BATCH = 2000
@@ -144,7 +161,48 @@ def _fold_payload(raw: str | None) -> str | None:
                 changed = True
     if not changed:
         return raw
+    # DEFAULT separators: that is what this column is stored with (verified
+    # against a stored row, which reproduces byte for byte this way and is
+    # 604 bytes shorter under compact ones).  Matching the writer keeps a
+    # rebuilt row indistinguishable from one the ingress wrote.
     return json.dumps(buckets, ensure_ascii=False, sort_keys=True)
+
+
+def _dedupe_payload(raw: str | None) -> str | None:
+    """Drop the inner ``delta_v2_audit`` when it is the outer one verbatim.
+
+    Only when both are present AND identical: a row whose two copies differed
+    would be one this rewrite does not understand, and it comes back
+    untouched.  So does anything that does not parse.
+    """
+
+    if not raw:
+        return raw
+    try:
+        document = json.loads(raw)
+    except (TypeError, ValueError):
+        return raw
+    compiled = document.get("compiled_plan") if isinstance(document, dict) else None
+    if not isinstance(compiled, dict):
+        return raw
+    plan = compiled.get("plan")
+    if not isinstance(plan, dict) or "delta_v2_audit" not in plan:
+        return raw
+    outer = compiled.get("delta_v2_audit")
+    if not isinstance(outer, dict):
+        return raw
+    canon = lambda o: json.dumps(o, sort_keys=True, ensure_ascii=False, default=str)
+    if canon(outer) != canon(plan["delta_v2_audit"]):
+        return raw
+    del plan["delta_v2_audit"]
+    # Compact separators, because that is what this column is stored with.
+    # ``buckets_json`` beside it uses the DEFAULT ones, and re-serialising
+    # either in the other's form rewrites every row for nothing: measured on
+    # a stored row, plan_json is 76,333 bytes compact and 79,323 with the
+    # default separators, so the wrong choice here gave back two thirds of
+    # what the dedupe saved.
+    return json.dumps(document, ensure_ascii=False, sort_keys=True,
+                      separators=(",", ":"))
 
 
 def build(*, source: Path, target: Path, force: bool = False) -> dict[str, object]:
@@ -199,12 +257,16 @@ def build(*, source: Path, target: Path, force: bool = False) -> dict[str, objec
 
             copied: dict[str, int] = {}
             folded_rows = 0
+            deduped_rows = 0
             for name in tables:
                 cols = _columns(conn, "main", name)
                 listed = ",".join(f'"{c}"' for c in cols)
                 marks = ",".join("?" for _ in cols)
                 fold_at = cols.index(FOLD_COLUMN) if (
                     name == FOLD_TABLE and FOLD_COLUMN in cols
+                ) else None
+                dedupe_at = cols.index(DEDUPE_COLUMN) if (
+                    name == DEDUPE_TABLE and DEDUPE_COLUMN in cols
                 ) else None
                 cursor = conn.execute(f'SELECT {listed} FROM main."{name}" ORDER BY rowid')
                 written = 0
@@ -222,6 +284,16 @@ def build(*, source: Path, target: Path, force: bool = False) -> dict[str, objec
                             values[fold_at] = folded
                             rebuilt.append(values)
                         chunk = rebuilt
+                    elif dedupe_at is not None:
+                        rebuilt = []
+                        for row in chunk:
+                            values = list(row)
+                            trimmed = _dedupe_payload(values[dedupe_at])
+                            if trimmed is not values[dedupe_at]:
+                                deduped_rows += 1
+                            values[dedupe_at] = trimmed
+                            rebuilt.append(values)
+                        chunk = rebuilt
                     out.executemany(f'INSERT INTO "{name}"({listed}) VALUES({marks})', chunk)
                     out.commit()
                     written += len(chunk)
@@ -229,6 +301,7 @@ def build(*, source: Path, target: Path, force: bool = False) -> dict[str, objec
                 print(f"  {name:56} {written:>10,}  {time.time()-t0:>6.0f}s", flush=True)
             receipt["copied_rows"] = sum(copied.values())
             receipt["folded_snapshots"] = folded_rows
+            receipt["deduped_preselections"] = deduped_rows
 
             mismatched = {n: (counts[n], copied.get(n, -1)) for n in tables if counts[n] != copied.get(n)}
             if mismatched:
