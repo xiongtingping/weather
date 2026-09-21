@@ -189,10 +189,13 @@ def test_lookups_are_in_flight_together_up_to_the_bound() -> None:
     assert serial.max_in_flight == 1
     _r, _s, overlap = _run(12, {}, concurrency=6, delay=0.05)
     assert 1 < overlap.max_in_flight <= 6
+    _r, _s, wide = _run(15, {}, concurrency=15, delay=0.05)
+    assert 6 < wide.max_in_flight <= 14  # the first is the probe, asked alone
 
 
 def test_production_passes_the_bound() -> None:
-    assert lane.RESTING_LOOKUP_CONCURRENCY == 6
+    # charter 187: raised from six (charter 180)
+    assert lane.RESTING_LOOKUP_CONCURRENCY == 15
 
 
 # --- the ledger fill rows ----------------------------------------------------------
