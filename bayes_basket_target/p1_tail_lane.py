@@ -67,17 +67,26 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import sqlite3
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 from .basket_kernel.valuation_v1 import market_reference_v1
 from .certain_win_recycle import _registry_rows
 from .contracts import content_sha256
+from .database import resolve_target_ws_manifest
 from .exit_orders import Transport
 from .lane_orders import send_lane_buy
 from .live_station_scope import admission as live_station_admission
+from .market_ingress import (
+    _load_registry,
+    _scope_quote_values,
+    load_official_ws_quotes_payload,
+)
+from .resource_bounds import load_bounded_json
 from .settlement_time import settlement_day_state
 from .strategy_lanes import LANE_P1_TAIL, P1_TAIL_DEFAULT_SETTINGS, lane_settings
 from .tiebreak_lane import (
@@ -511,6 +520,95 @@ def _latest_snapshot(
     }
 
 
+#: A ladder read off the publisher's manifest rather than the snapshot table.
+#: The prefix is how an evaluation row and a decision's evidence binding say
+#: which of the two the lane priced on -- there is no snapshot row behind it.
+LIVE_BOOK_PREFIX = "wslive_"
+
+
+def _ws_manifest_root(path: Path | str | None) -> Mapping[str, Any] | None:
+    """The WS publisher's multi-scope manifest, or None when unreadable.
+
+    The same target-owned file production's market ingress reads (never the
+    protected resident manifest -- ``resolve_target_ws_manifest`` refuses
+    it), resolved the way the worker resolves it.  Only the nested scope the
+    lane asks for is verified; see ``live_ws_snapshot``.
+    """
+
+    try:
+        resolved = resolve_target_ws_manifest(
+            path or os.environ.get("PM_TARGET_MARKET_MANIFEST") or None
+        )
+        root = load_bounded_json(resolved)
+    except Exception:  # noqa: BLE001 -- no manifest is no live book, not a failure
+        return None
+    if not isinstance(root, Mapping) or root.get("state") != "connected":
+        return None
+    return root
+
+
+def live_ws_snapshot(
+    target_conn: sqlite3.Connection,
+    root: Mapping[str, Any] | None,
+    *,
+    station_id: str,
+    event_date: str,
+    now_utc: str,
+) -> dict[str, Any] | None:
+    """This station-day's ladder as the WS publisher holds it now, or None.
+
+    The committed snapshot is written in batches, once per cycle for a
+    station: measured 2026-09-20T18:12Z..09-21T07:40Z over 183 evaluations,
+    the snapshot the lane read was a median 331 seconds old and 9 of 183
+    (5%) were inside the 60-second send bound -- so 48 of the 50 envelopes
+    that cleared the hurdle were refused ``send_book_stale`` and the lane sent
+    nothing after its last fix.  The publisher's manifest carries every
+    scope's books as the stream delivers them (median 27 s, max 34 s at
+    07:49Z the same day).
+
+    Built with the ingress's own two functions -- the nested manifest's
+    verification and ``_scope_quote_values`` over the started-day registry
+    rows -- so the rows are the rows a committed snapshot would have stored,
+    depth fold included; ``observed_at`` is the OLDEST bucket's book time,
+    as in the snapshot.  Any refusal on the way (scope absent, hash, a
+    token missing, crossed book) is None: the caller falls back to the
+    committed snapshot and its own bounds.
+    """
+
+    if not isinstance(root, Mapping):
+        return None
+    key = f"{station_id}|{event_date}"
+    nested = (root.get("scope_manifests") or {}).get(key)
+    if (
+        not isinstance(nested, Mapping)
+        or str(nested.get("scope_key") or "") != key
+        or str(nested.get("target_local_date") or "") != event_date
+    ):
+        return None
+    try:
+        verified, quotes = load_official_ws_quotes_payload(nested)
+        rows = _load_registry(
+            target_conn, station_id=station_id, event_date=event_date,
+            as_of_utc=now_utc,
+        ).get(key)
+        if not rows:
+            return None
+        buckets, observed_at = _scope_quote_values(rows, quotes, verified)
+    except Exception:  # noqa: BLE001 -- see the docstring
+        return None
+    return {
+        "snapshot_id": LIVE_BOOK_PREFIX + content_sha256({
+            "schema": "p1_tail_live_ws_book_v1",
+            "station_id": station_id,
+            "event_date": event_date,
+            "buckets": buckets,
+        })[:40],
+        "buckets": buckets,
+        "observed_at": observed_at,
+        "book_source": "ws_publisher_manifest",
+    }
+
+
 def _evaluated_buckets(
     conn: sqlite3.Connection, *, since_event_date: str
 ) -> set[tuple[str, str, str]]:
@@ -726,6 +824,7 @@ def plan_p1_tail_entries(
     now_utc: str,
     settings: Mapping[str, Any] | None = None,
     admission: Admission | None = None,
+    ws_manifest_path: Path | str | None = None,
 ) -> dict[str, Any]:
     """Score every unscored tail envelope; plan a take for the buckets that fire."""
 
@@ -755,6 +854,18 @@ def plan_p1_tail_entries(
     send_book_fresh = dial("send_book_fresh_seconds")
     max_sends = int(dial("max_sends_per_station_day"))
     walk_ticks = int(dial("walk_ticks"))
+    # Absent reads as on; only an explicit false turns the live book off.
+    live_book = cfg.get("live_ws_book")
+    live_book = True if live_book is None else bool(live_book)
+    manifest: dict[str, Any] = {}
+
+    def manifest_root() -> Mapping[str, Any] | None:
+        """Read once per pass, and only when some envelope needs it."""
+
+        if "root" not in manifest:
+            manifest["root"] = _ws_manifest_root(ws_manifest_path)
+        return manifest["root"]
+
     gate = admission or (lambda station, conn: live_station_admission(station, conn=conn))
     now = _utc(now_utc)
     done = _evaluated_buckets(
@@ -794,10 +905,29 @@ def plan_p1_tail_entries(
         snapshot = _latest_snapshot(
             target_conn, candidate["station_id"], candidate["event_date"]
         )
-        if snapshot is None:
+        book_age = (
+            None if snapshot is None
+            else (now - _utc(snapshot["observed_at"])).total_seconds()
+        )
+        # The committed snapshot is a cycle's batch, a median 331 seconds
+        # old when the lane reads it; the publisher holds the same ladder
+        # seconds old.  Score AND price on the newer one, so the belief's
+        # prior and the ask it is tested against are the same book -- which
+        # is also how the edge was measured (the market at the report plus
+        # k minutes, bought at that market's ask).
+        if live_book and (book_age is None or book_age > send_book_fresh):
+            live = live_ws_snapshot(
+                target_conn, manifest_root(),
+                station_id=candidate["station_id"],
+                event_date=candidate["event_date"], now_utc=now_utc,
+            )
+            if live is not None:
+                live_age = (now - _utc(live["observed_at"])).total_seconds()
+                if book_age is None or live_age < book_age:
+                    snapshot, book_age = live, live_age
+        if snapshot is None or book_age is None:
             refuse("snapshot_missing")
             continue
-        book_age = (now - _utc(snapshot["observed_at"])).total_seconds()
         if book_age > book_fresh:
             refuse(f"book_stale:{book_age:.0f}s", snapshot=snapshot)
             continue
@@ -944,6 +1074,8 @@ def plan_p1_tail_entries(
                 "rise_probability": candidate.get("rise_probability"),
                 "snapshot_id": snapshot["snapshot_id"],
                 "snapshot_observed_at": snapshot["observed_at"],
+                "book_source": snapshot.get("book_source") or "committed_snapshot",
+                "book_age_seconds": round(float(book_age), 1),
                 "bucket": bucket,
                 "token_id": str(market_row["yes_token"]),
                 "tick_size": take["tick_size"], "min_size": market_row.get("min_size"),
@@ -995,12 +1127,14 @@ def execute_p1_tail_entries(
     live_submit_authorized: bool,
     settings: Mapping[str, Any] | None = None,
     admission: Admission | None = None,
+    ws_manifest_path: Path | str | None = None,
 ) -> dict[str, Any]:
     """Score, plan, send -- through the shared buy sender and the one ledger."""
 
     planned = plan_p1_tail_entries(
         target_conn, canonical_conn, now_utc=now_utc,
         settings=settings, admission=admission,
+        ws_manifest_path=ws_manifest_path,
     )
     receipts: list[dict[str, Any]] = []
     submitted = 0
@@ -1082,6 +1216,7 @@ __all__ = [
     "EVALUATION_TABLE",
     "EXECUTION_CANDIDATE",
     "LANE",
+    "LIVE_BOOK_PREFIX",
     "LANE_TITLE",
     "RULE_VERSION",
     "RULE_VERSIONS",
@@ -1090,6 +1225,7 @@ __all__ = [
     "evaluate_rule",
     "execute_p1_tail_entries",
     "held_buckets",
+    "live_ws_snapshot",
     "open_order_on_station_day",
     "plan_p1_tail_entries",
     "rule_version_for",

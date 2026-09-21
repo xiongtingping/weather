@@ -1,6 +1,6 @@
 {
   "schema": "basket_strategy_lanes_v1",
-  "updated_at_utc": "2026-09-21T07:50:00Z",
+  "updated_at_utc": "2026-09-21T08:15:00Z",
   "rationale": "User ruling 2026-09-18: put the tiebreak lane (秤砣线) live and pause every other strategy -- closed, not deleted. A paused lane still compiles, records its decisions and writes the evidence the ledger and the fits read; only its sends are held (basket BUYs end failed with strategy_lane_paused:basket on their event; the two sell lanes are skipped by the daemon). Read fresh before every send. Missing file = every lane enabled; unreadable file = every lane paused. Charters 146, 163, 166 and 175.",
   "lanes": {
     "basket": {
@@ -46,9 +46,10 @@
       "book_fresh_seconds": 900.0,
       "max_sends_per_station_day": 2,
       "enabled_at_utc": "2026-09-20T11:40:00Z",
-      "note": "P1 尾段线 v1 (charter 166, user ruling 2026-09-20 「上线尾段车道 p1_tail 策略」): on a P1 envelope whose own likelihood receipt puts the report 6 to 10 hours from this station's settlement clock, the belief is the market's normalised mid ladder masked by the hard observed bound and multiplied by that envelope's served observation likelihood; where that belief clears the best ask by 8 cents the lane crosses FOK for stake_usdc' worth, one bucket once ever, at most max_sends_per_station_day a day. Measured 2026-09-20 over 09-05..09-19: +0.166 per dollar at the report plus two minutes, +0.138 at five, +0.077 at eight with a lower bound through zero; outside the bin negative or absent. The bin was chosen after seeing the result and only 09-18/19 are days no selection saw, so the lane ships at 5 USDC and keeps every evaluation. A take is priced on the newest snapshot and arrives later, so book_fresh_seconds bounds what may be SCORED and send_book_fresh_seconds (60s) what may be BOUGHT, and a take never asks for the whole top level. The limit may walk walk_ticks above the best ask (the top level is too thin to fill a 5 USDC take most of the time), and the hurdle is then tested against that walked price rather than the ask. Conflicts with the tiebreak lane: never the same bucket, never queued behind a resting BUY of any lane, separate evaluation table and intent prefix.",
+      "note": "P1 尾段线 v1 (charter 166, user ruling 2026-09-20 「上线尾段车道 p1_tail 策略」): on a P1 envelope whose own likelihood receipt puts the report 6 to 10 hours from this station's settlement clock, the belief is the market's normalised mid ladder masked by the hard observed bound and multiplied by that envelope's served observation likelihood; where that belief clears the best ask by 8 cents the lane crosses FOK for stake_usdc' worth, one bucket once ever, at most max_sends_per_station_day a day. Measured 2026-09-20 over 09-05..09-19: +0.166 per dollar at the report plus two minutes, +0.138 at five, +0.077 at eight with a lower bound through zero; outside the bin negative or absent. The bin was chosen after seeing the result and only 09-18/19 are days no selection saw, so the lane ships at 5 USDC and keeps every evaluation. A take is priced on the newest snapshot and arrives later, so book_fresh_seconds bounds what may be SCORED and send_book_fresh_seconds (60s) what may be BOUGHT, and a take never asks for the whole top level. The limit may walk walk_ticks above the best ask (the top level is too thin to fill a 5 USDC take most of the time), and the hurdle is then tested against that walked price rather than the ask. Conflicts with the tiebreak lane: never the same bucket, never queued behind a resting BUY of any lane, separate evaluation table and intent prefix. The committed snapshot is a cycle's batch (a median 331s old when the lane read it, 48 of 50 fired envelopes refused send_book_stale), so when it is older than send_book_fresh_seconds the lane scores and prices on the WS publisher's own manifest for that station-day, seconds old; live_ws_book false turns that off (2026-09-21, 「为什么P1 尾段线没有发单」).",
       "send_book_fresh_seconds": 60.0,
-      "walk_ticks": 1
+      "walk_ticks": 1,
+      "live_ws_book": true
     }
   }
 }

@@ -97,6 +97,9 @@ def store(tmp_path, monkeypatch) -> sqlite3.Connection:
     armed.write_text(json.dumps({"live_enabled": True}), encoding="utf-8")
     monkeypatch.setattr(sub, "LIVE_INTENT_PATH", armed)
     monkeypatch.setattr(lane, "settle_stuck_lane_cycles", lambda conn: 0)
+    # The live-book read defaults to the publisher's real manifest; a test
+    # that wants one writes its own (``_live_manifest``).
+    monkeypatch.setenv("PM_TARGET_MARKET_MANIFEST", str(tmp_path / "no_manifest.json"))
     return conn
 
 
@@ -642,3 +645,122 @@ def test_the_size_is_the_depth_up_to_the_authorised_limit() -> None:
     assert lane.taker_take(
         top, 5.0, tick_size=0.01, min_shares=1.0, walk_ticks=1
     )["limit_price"] == pytest.approx(0.99)
+
+
+# ---------------------------------------------------------------------------
+# The live book (2026-09-21): the committed snapshot is a cycle's batch, a
+# median 331 s old when the lane read it; 48 of 50 fired envelopes died on
+# the 60-second send bound.  The publisher holds the same ladder seconds old.
+
+
+def _live_manifest(tmp_path: Path, *, observed: str, ask_28: float = 0.30) -> Path:
+    from bayes_basket_target.market_ingress import _canonical  # noqa: PLC0415
+    import hashlib  # noqa: PLC0415
+
+    ladder = {"26°C": (0.05, 0.03), "27°C": (0.46, 0.44),
+              "28°C": (ask_28, round(ask_28 - 0.02, 2)), "29°C": (0.10, 0.08)}
+    quotes = {
+        TOKENS[b]: {
+            "token_id": TOKENS[b], "side": "YES",
+            "asks": [{"price": a, "size": 200.0}], "bids": [{"price": d, "size": 200.0}],
+            "best_ask": a, "best_bid": d, "book_observed_at": observed,
+        }
+        for b, (a, d) in ladder.items()
+    }
+    core = {
+        "schema": "clob_ws_latest_quote_snapshot_v1",
+        "source": "official_polymarket_clob_websocket",
+        "evidence_only": True, "authorizes_order": False, "state": "connected",
+        "active_shards": [0], "expected_shards": 1, "quote_storage": "inline_v1",
+        "quotes_by_token": quotes, "scope_key": f"{ST}|{ED}",
+        "target_local_date": ED, "unmaterialized_tokens": [],
+    }
+    nested = {**core, "snapshot_sha256": hashlib.sha256(_canonical(core)).hexdigest()}
+    path = tmp_path / "publisher_manifest.json"
+    path.write_text(json.dumps({
+        "schema": "bayes_basket_target_resident_multi_scope_ws_manifest_v1",
+        "state": "connected", "scope_manifests": {f"{ST}|{ED}": nested},
+    }), encoding="utf-8")
+    return path
+
+
+STALE = "2026-09-19T03:50:00.000Z"   # ten minutes before NOW
+LIVE = "2026-09-19T03:59:50.000Z"    # ten seconds before NOW
+
+
+def test_a_stale_snapshot_is_replaced_by_the_publishers_live_book(store, tmp_path) -> None:
+    _seed(store, observed=STALE)
+    planned = _plan(store, ws_manifest_path=_live_manifest(tmp_path, observed=LIVE))
+    assert planned["plans"], planned["evaluations"]
+    plan = planned["plans"][0]
+    assert plan["snapshot_id"].startswith(lane.LIVE_BOOK_PREFIX)
+    assert plan["book_source"] == "ws_publisher_manifest"
+    assert plan["book_age_seconds"] == pytest.approx(10.0)
+    stored = store.execute(
+        f"SELECT snapshot_id, snapshot_observed_at FROM {lane.EVALUATION_TABLE}"
+        " WHERE order_intent_id IS NOT NULL"
+    ).fetchone()
+    assert stored[0].startswith(lane.LIVE_BOOK_PREFIX) and stored[1].startswith(LIVE[:19])
+
+
+def test_the_live_book_is_what_the_belief_is_scored_on(store, tmp_path) -> None:
+    """Prior and ask come from ONE book: a stale snapshot showing 28°C cheap
+    does not fire when the live ladder has already repriced it."""
+
+    _seed(store, observed=STALE, book=_book(ask_28=0.30))
+    planned = _plan(
+        store, ws_manifest_path=_live_manifest(tmp_path, observed=LIVE, ask_28=0.60),
+    )
+    fired = {p["bucket"] for p in planned["plans"]}
+    assert "28°C" not in fired
+    assert planned["evaluations"]
+    assert all(
+        e["snapshot_id"].startswith(lane.LIVE_BOOK_PREFIX) for e in planned["evaluations"]
+    )
+
+
+def test_no_publisher_manifest_keeps_the_send_bound(store) -> None:
+    _seed(store, observed=STALE)
+    planned = _plan(store)
+    assert planned["plans"] == []
+    [row] = planned["evaluations"]
+    assert row["refusal"].startswith("send_book_stale:")
+    assert not row["snapshot_id"].startswith(lane.LIVE_BOOK_PREFIX)
+
+
+def test_a_live_book_older_than_the_bound_is_still_not_bought(store, tmp_path) -> None:
+    _seed(store, observed=STALE)
+    planned = _plan(
+        store, ws_manifest_path=_live_manifest(tmp_path, observed="2026-09-19T03:58:00.000Z"),
+    )
+    assert planned["plans"] == []
+    [row] = planned["evaluations"]
+    assert row["refusal"] == "send_book_stale:120s"
+
+
+def test_the_live_book_can_be_switched_off(store, tmp_path) -> None:
+    _seed(store, observed=STALE)
+    planned = _plan(
+        store, ws_manifest_path=_live_manifest(tmp_path, observed=LIVE),
+        settings={**P1_TAIL_DEFAULT_SETTINGS, "live_ws_book": False},
+    )
+    assert planned["plans"] == []
+    assert planned["evaluations"][0]["refusal"].startswith("send_book_stale:")
+
+
+def test_a_fresh_snapshot_never_reads_the_manifest(store, tmp_path, monkeypatch) -> None:
+    _seed(store)   # OBSERVED is 20 s old: inside the send bound
+    monkeypatch.setattr(
+        lane, "_ws_manifest_root",
+        lambda path: (_ for _ in ()).throw(AssertionError("manifest read")),
+    )
+    planned = _plan(store, ws_manifest_path=tmp_path / "unused.json")
+    assert planned["plans"]
+    assert planned["plans"][0]["book_source"] == "committed_snapshot"
+
+
+def test_the_worker_hands_the_lane_its_own_manifest() -> None:
+    source = (ROOT / "bayes_basket_target" / "production_worker.py").read_text(encoding="utf-8")
+    start = source.index("def _p1_tail_after_p1")
+    body = source[start:source.index("\n    def ", start + 10)]
+    assert 'ws_manifest_path=getattr(self, "market_manifest_path", None)' in body

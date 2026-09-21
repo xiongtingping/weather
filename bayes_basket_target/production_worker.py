@@ -15494,6 +15494,7 @@ class TargetProductionWorker:
                 transport=default_transport,
                 now_utc=utc_now(),
                 live_submit_authorized=True,
+                ws_manifest_path=getattr(self, "market_manifest_path", None),
             )
         except Exception as exc:  # noqa: BLE001 -- a lane failure is a receipt
             receipt = {"ok": False, "error": f"{type(exc).__name__}:{str(exc)[:200]}"}
