@@ -3458,6 +3458,12 @@ def production_cycle_history_row(
             for row in (result.get("statement_ledger_top") or [])[:15]
             if isinstance(row, Mapping)
         ],
+        # Charter 180: where the Python time went, sampled all cycle long.
+        "py_top": (
+            dict(result.get("python_sample_top") or {})
+            if isinstance(result.get("python_sample_top"), Mapping)
+            else None
+        ),
         "waited_sec": (
             wait.get("waited_sec") if isinstance(wait, Mapping) else None
         ),

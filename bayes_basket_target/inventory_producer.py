@@ -308,7 +308,18 @@ def _ledger_fill_rows(
             (table,),
         ).fetchone() is None:
             return []
-    where = ["r.state IN (?,?)", "r.filled_size>?"]
+    # Charter 180: ``+r.state`` keeps the planner off the reconciliation
+    # state index, which read every filled reconciliation the book has ever
+    # had (282 on 2026-09-21) and joined each to its cycle before the scope
+    # could filter -- once per scope per quote refresh, 713 calls and 21.8s
+    # in the 10:39Z cycle.  Given a station the read now starts from the
+    # cycle's (station_id, event_date) index; same rows, same order (65
+    # scopes, median 1.54 -> 0.40ms).  Without one that index cannot seek,
+    # and the state filter stays the narrowing it was.
+    where = [
+        "+r.state IN (?,?)" if station_id else "r.state IN (?,?)",
+        "r.filled_size>?",
+    ]
     params: list[Any] = [*_LEDGER_FILL_STATES, EPS]
     if station_id:
         where.append("c.station_id=?")

@@ -165,6 +165,11 @@ from .runtime_config import (
     DEFAULT_TARGET_NO_LIVE_RUNTIME_CONFIG,
     load_target_no_live_runtime_config,
 )
+from .cycle_stack_sampler import (
+    CycleStackSampler,
+    sampler_enabled,
+    summarize_samples,
+)
 from .market_registry import (
     export_shared_live_registry,
     ingest_target_market_registry,
@@ -8651,6 +8656,7 @@ class TargetProductionWorker:
                 ClobOrderServiceClient,
             )
             from .resting_ladder_lifecycle import (  # noqa: PLC0415
+                RESTING_LOOKUP_CONCURRENCY,
                 reprice_resting_rungs,
             )
 
@@ -8674,6 +8680,8 @@ class TargetProductionWorker:
             # Charter 174: a pass the gateway breaker cut short says where
             # the next one starts, so no rung is asked first every time.
             start_index=int(getattr(self, "_resting_reprice_cursor", 0) or 0),
+            # Charter 180: the lookups overlap; the pass does not.
+            lookup_concurrency=RESTING_LOOKUP_CONCURRENCY,
         )
         self._resting_reprice_cursor = int(receipt.get("next_start_index") or 0)
         _publish_resting_reprice_receipt(receipt, as_of_utc=as_of_utc)
@@ -17818,6 +17826,11 @@ class TargetProductionWorker:
             timings = {}
             self._stage_timings_ms = timings
         timings[stage] = round((now - previous) * 1000.0, 1)
+        # Charter 180: when each stage ended, so the cycle's stack samples
+        # can be told which stage they fell in.
+        mark_log = getattr(self, "_stage_mark_log", None)
+        if isinstance(mark_log, list):
+            mark_log.append((stage, now))
 
     def _add_span(
         self, name: str, elapsed_ms: float, *, label: str = ""
@@ -17933,12 +17946,22 @@ class TargetProductionWorker:
         self._p0m_replay_blocked_next = set()
         self._begin_cycle_scratch()
         begin_statement_ledger()
+        # Charter 180: the Python-side counterpart of the statement ledger.
+        self._stage_mark_log = []
+        sampler = (
+            CycleStackSampler(threading.get_ident()).start()
+            if sampler_enabled()
+            else None
+        )
+        samples = None
         started = time.perf_counter()
         reset_writer_lock_profile()
         reset_ledger_spans()
         try:
             result = self._run_stages()
         finally:
+            if sampler is not None:
+                samples = sampler.stop()
             total_ms = round((time.perf_counter() - started) * 1000.0, 1)
             # Marks tile a timeline, so what they do not name is arithmetic,
             # not a mystery -- but only if someone does the arithmetic.  For
@@ -17964,6 +17987,12 @@ class TargetProductionWorker:
             )
             result.setdefault("writer_lock_profile", writer_lock_profile())
             result.setdefault("statement_ledger_top", statement_ledger_top(15))
+            if sampler is not None and samples is not None:
+                result.setdefault("python_sample_top", summarize_samples(
+                    samples,
+                    marks=list(self._stage_mark_log),
+                    interval_sec=sampler.interval_sec,
+                ))
             if self.stop_requested:
                 result["cycle_interrupted"] = True
         return result

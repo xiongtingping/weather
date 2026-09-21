@@ -23,6 +23,7 @@ import json
 import math
 import os
 import sqlite3
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
 
@@ -88,6 +89,20 @@ RESTING_REPRICE_DWELL_SECONDS = float(
 RESTING_REPRICE_FAR_TICKS = float(
     os.environ.get("PM_RESTING_REPRICE_FAR_TICKS", "") or 3.0
 )
+# Charter 180: how many exchange lookups a production pass keeps in flight.
+# The lookups are the pass's wall clock -- one gateway round trip (through
+# the proxy to the exchange) each, ~1.3s, fifteen resting orders asked one
+# after another: 19.9-20.0s every cycle (2026-09-21), the largest single span
+# after charter 179.  Only the asking overlaps; every answer is still acted
+# on one rung at a time, in the pass's order.  Six keeps a pass of fifteen
+# to three round trips without leaning on the exchange's rate limit.
+RESTING_LOOKUP_CONCURRENCY = int(
+    os.environ.get("PM_RESTING_LOOKUP_CONCURRENCY", "") or 6
+)
+if RESTING_LOOKUP_CONCURRENCY < 1:
+    raise ValueError(
+        f"resting lookup concurrency must be >= 1: {RESTING_LOOKUP_CONCURRENCY}"
+    )
 EPS = 1e-9
 _CANCELLED = frozenset({"cancelled", "canceled"})
 _FILLED = frozenset({"matched", "filled"})
@@ -695,6 +710,7 @@ def reprice_resting_rungs(
     dead_bucket_loader: DeadBucketLoader | None = None,
     stale_book_seconds: float | None = None,
     start_index: int = 0,
+    lookup_concurrency: int = 1,
 ) -> dict[str, Any]:
     """One pass over every resting rung: sync it, then keep or cancel it.
 
@@ -709,6 +725,15 @@ def reprice_resting_rungs(
     the scope's observed-dead buckets and the running high that killed them
     (charter 135 (二)).  Absent, no rung is cancelled for that reason -- the
     caller that owns the observation connection supplies it.
+
+    ``lookup_concurrency`` (charter 180): above 1, once the pass's first
+    lookup has come back without tripping the breaker, the remaining rungs'
+    lookups are asked at once, that many in flight, and each answer is taken
+    up when the pass reaches its rung.  The pass itself -- sync, verdict,
+    cancel, breaker -- still runs one rung at a time in the same order, so
+    it writes the receipt the one-at-a-time pass writes.  The lookup is the
+    only work handed to another thread: it touches the client, never the
+    connection.  At 1 each rung is asked when the pass reaches it.
     """
 
     write = write or (lambda: contextlib.nullcontext())
@@ -771,6 +796,15 @@ def reprice_resting_rungs(
     ordered = intents[start:] + intents[:start]
     book_cache: dict[tuple[str, str], Mapping[str, Mapping[str, float]]] = {}
     dead_cache: dict[tuple[str, str], tuple[tuple[str, ...], float | None]] = {}
+    concurrency = max(1, int(lookup_concurrency or 1))
+    receipt["lookup_concurrency"] = concurrency
+    prefetched: dict[int, Future] = {}
+    pool: ThreadPoolExecutor | None = None
+
+    def ask(intent: Mapping[str, Any]) -> Any:
+        return client.lookup_exchange_order({
+            "order_id": intent["exchange_order_id"],
+        })
     # Shares this pass has already handed to a departed order, per token, so
     # two orders on one token cannot both claim the same position.
     attributed: dict[str, float] = {}
@@ -795,215 +829,235 @@ def reprice_resting_rungs(
         receipt["deferred_reason"] = reason[:160]
         receipt["next_start_index"] = (start + position + 1) % len(intents)
 
-    for position, intent in enumerate(ordered):
-        intent_id = intent["order_intent_id"]
-        entry: dict[str, Any] = {
-            "order_intent_id": intent_id,
-            "station_id": intent["station_id"],
-            "event_date": intent["event_date"],
-            "bucket": intent["bucket"],
-            "limit_price": intent["limit_price"],
-        }
-        try:
-            view = _exchange_view(client.lookup_exchange_order({
-                "order_id": intent["exchange_order_id"],
-            }))
-            synced = sync_resting_intent(
-                conn, intent=intent, view=view, as_of_utc=as_of_utc, write=write,
-            )
-        except Exception as exc:  # noqa: BLE001 -- one rung's problem
-            receipt["failures"].append({
+    try:
+        for position, intent in enumerate(ordered):
+            if position == 1 and concurrency > 1 and pool is None:
+                # The first lookup came back without tripping the breaker
+                # (a trip breaks out of the loop before this line): the
+                # gateway is answering, so the rest are asked now.
+                pool = ThreadPoolExecutor(
+                    max_workers=concurrency,
+                    thread_name_prefix="resting_lookup",
+                )
+                for later, later_intent in enumerate(ordered[1:], start=1):
+                    prefetched[later] = pool.submit(ask, later_intent)
+            intent_id = intent["order_intent_id"]
+            entry: dict[str, Any] = {
                 "order_intent_id": intent_id,
-                "reason": f"{type(exc).__name__}:{exc}"[:160],
-            })
-            continue
-        entry["exchange_status"] = view["status"]
-        entry["sync"] = synced
-        if synced["state"] == "unknown" and _gateway_unreachable(
-            synced.get("reason")
-        ):
-            defer_rest(position, entry, str(synced.get("reason") or ""))
-            break
-        if synced["state"] == "filled":
-            receipt["synced_filled"] += 1
-            receipt["rungs"].append(entry)
-            continue
-        if synced["state"] in {"cancelled", "expired"}:
-            # An expiry ends the rung exactly as a cancel does, and is
-            # counted apart from it: the two answer different questions
-            # about the lane, one about our own decisions and one about
-            # whether the horizon is set where the fills are.
-            receipt[
-                "synced_expired" if synced["state"] == "expired"
-                else "synced_cancelled"
-            ] += 1
-            receipt["rungs"].append(entry)
-            continue
-        if synced["state"] == "resting_partial":
-            receipt["synced_partial"] += 1
-        if synced["state"] == "unknown":
-            # The venue will not answer a point query about this order.
-            # Charter 110: do not read that as "still resting" -- ask what IS
-            # live, and ask what the account actually holds.
+                "station_id": intent["station_id"],
+                "event_date": intent["event_date"],
+                "bucket": intent["bucket"],
+                "limit_price": intent["limit_price"],
+            }
             try:
-                departed = reconcile_departed_intent(
-                    conn, intent=intent, client=client,
-                    as_of_utc=as_of_utc, write=write, attributed=attributed,
+                answer = (
+                    prefetched.pop(position).result()
+                    if position in prefetched
+                    else ask(intent)
+                )
+                view = _exchange_view(answer)
+                synced = sync_resting_intent(
+                    conn, intent=intent, view=view, as_of_utc=as_of_utc, write=write,
                 )
             except Exception as exc:  # noqa: BLE001 -- one rung's problem
                 receipt["failures"].append({
                     "order_intent_id": intent_id,
-                    "reason": f"departed_reconcile:{type(exc).__name__}:{exc}"[:160],
+                    "reason": f"{type(exc).__name__}:{exc}"[:160],
                 })
-                if _gateway_unreachable(str(exc)):
-                    defer_rest(position, entry, f"departed_reconcile:{exc}")
-                    break
-                departed = {"state": "unknown", "reason": "reconcile_raised"}
-            entry["departed"] = departed
-            if departed["state"] == "departed_filled":
-                receipt["departed_filled"] += 1
-                receipt["departed_shares"] += float(departed.get("increment") or 0.0)
-            elif departed["state"] == "departed_partial":
-                receipt["departed_partial"] += 1
-                receipt["departed_shares"] += float(departed.get("increment") or 0.0)
-            elif departed["state"] == "departed_unfilled":
-                receipt["departed_unfilled"] += 1
-            if departed["state"].startswith("departed"):
-                entry["verdict"] = {
-                    "action": "resolved", "reason": departed["reason"],
-                }
+                continue
+            entry["exchange_status"] = view["status"]
+            entry["sync"] = synced
+            if synced["state"] == "unknown" and _gateway_unreachable(
+                synced.get("reason")
+            ):
+                defer_rest(position, entry, str(synced.get("reason") or ""))
+                break
+            if synced["state"] == "filled":
+                receipt["synced_filled"] += 1
                 receipt["rungs"].append(entry)
                 continue
-        if synced["state"] not in {"resting", "resting_partial"}:
-            entry["verdict"] = {"action": "keep", "reason": synced.get("reason", synced["state"])}
-            receipt["kept"] += 1
-            receipt["rungs"].append(entry)
-            continue
-        if not intent.get("ladder_rung", True):
-            # Synced above; not a rung, so none of the ladder's rules apply.
-            # Its horizon is the venue's to enforce, and the next pass reads
-            # what the venue did.
-            entry["verdict"] = {"action": "keep", "reason": "not_a_ladder_rung"}
-            receipt["kept"] += 1
-            receipt["kept_not_ladder"] += 1
-            receipt["rungs"].append(entry)
-            continue
-        scope = (intent["station_id"], intent["event_date"])
-        # Charter 135 (二): the day's thermometer first, the book second.  A
-        # dead bucket needs no book to be cancelled -- a missing or stale
-        # book is exactly when a rung on it should not be left standing.
-        if dead_bucket_loader is not None and scope not in dead_cache:
-            try:
-                dead, running_high = dead_bucket_loader(
-                    conn, station_id=scope[0], event_date=scope[1],
-                    as_of_utc=as_of_utc,
-                )
-                dead_cache[scope] = (
-                    tuple(str(bucket) for bucket in dead),
-                    None if running_high is None else float(running_high),
-                )
-            except Exception as exc:  # noqa: BLE001 -- the book rule still runs
-                receipt["failures"].append({
-                    "order_intent_id": intent_id,
-                    "reason": f"dead_bucket_read:{type(exc).__name__}:{exc}"[:160],
-                })
-                dead_cache[scope] = ((), None)
-        dead_buckets, running_high = dead_cache.get(scope, ((), None))
-        if (
-            str(intent.get("order_action") or "BUY").upper() == "BUY"
-            and intent["bucket"] in dead_buckets
-        ):
-            verdict = {
-                "rule": DEAD_BUCKET_CANCEL_RULE_VERSION,
-                "action": "cancel",
-                "reason": "bucket_dead_by_observed_high",
-                "observed_running_high_c": running_high,
-                "limit_price": intent["limit_price"],
-            }
-            cancel_rule = DEAD_BUCKET_CANCEL_RULE_VERSION
-            receipt["cancel_requested_dead_bucket"] += 1
-        else:
-            if scope not in book_cache:
-                book_cache[scope] = books(conn, station_id=scope[0], event_date=scope[1])
-            book = book_cache[scope].get(intent["bucket"])
-            age = book_age_seconds(book, as_of_utc=as_of_utc)
-            stale_bound = float(receipt["stale_book_seconds"])
-            if age is not None and age > stale_bound:
-                # Charter 135 (三): nothing to price this rung against.  Ahead
-                # of the book rule, which cannot answer without a book, and
-                # without a dwell -- the bound already is the patience.
-                verdict = {
-                    "rule": STALE_BOOK_CANCEL_RULE_VERSION,
-                    "action": "cancel",
-                    "reason": "book_missing" if math.isinf(age) else "book_stale",
-                    "book_age_seconds": None if math.isinf(age) else round(age, 3),
-                    "stale_book_seconds": stale_bound,
-                    "limit_price": intent["limit_price"],
-                }
-                cancel_rule = STALE_BOOK_CANCEL_RULE_VERSION
-                receipt["cancel_requested_stale_book"] += 1
-            elif not book:
-                # Only reachable for a book that carries no clock (an injected
-                # reader); a missing book from the store is cancelled above.
-                entry["verdict"] = {"action": "keep", "reason": "no_book"}
+            if synced["state"] in {"cancelled", "expired"}:
+                # An expiry ends the rung exactly as a cancel does, and is
+                # counted apart from it: the two answer different questions
+                # about the lane, one about our own decisions and one about
+                # whether the horizon is set where the fills are.
+                receipt[
+                    "synced_expired" if synced["state"] == "expired"
+                    else "synced_cancelled"
+                ] += 1
+                receipt["rungs"].append(entry)
+                continue
+            if synced["state"] == "resting_partial":
+                receipt["synced_partial"] += 1
+            if synced["state"] == "unknown":
+                # The venue will not answer a point query about this order.
+                # Charter 110: do not read that as "still resting" -- ask what IS
+                # live, and ask what the account actually holds.
+                try:
+                    departed = reconcile_departed_intent(
+                        conn, intent=intent, client=client,
+                        as_of_utc=as_of_utc, write=write, attributed=attributed,
+                    )
+                except Exception as exc:  # noqa: BLE001 -- one rung's problem
+                    receipt["failures"].append({
+                        "order_intent_id": intent_id,
+                        "reason": f"departed_reconcile:{type(exc).__name__}:{exc}"[:160],
+                    })
+                    if _gateway_unreachable(str(exc)):
+                        defer_rest(position, entry, f"departed_reconcile:{exc}")
+                        break
+                    departed = {"state": "unknown", "reason": "reconcile_raised"}
+                entry["departed"] = departed
+                if departed["state"] == "departed_filled":
+                    receipt["departed_filled"] += 1
+                    receipt["departed_shares"] += float(departed.get("increment") or 0.0)
+                elif departed["state"] == "departed_partial":
+                    receipt["departed_partial"] += 1
+                    receipt["departed_shares"] += float(departed.get("increment") or 0.0)
+                elif departed["state"] == "departed_unfilled":
+                    receipt["departed_unfilled"] += 1
+                if departed["state"].startswith("departed"):
+                    entry["verdict"] = {
+                        "action": "resolved", "reason": departed["reason"],
+                    }
+                    receipt["rungs"].append(entry)
+                    continue
+            if synced["state"] not in {"resting", "resting_partial"}:
+                entry["verdict"] = {"action": "keep", "reason": synced.get("reason", synced["state"])}
                 receipt["kept"] += 1
                 receipt["rungs"].append(entry)
                 continue
-            else:
-                verdict = resting_rung_verdict(
-                    limit_price=intent["limit_price"],
-                    bid=book["bid"], ask=book["ask"], tick=book["tick"],
-                    posted_at_utc=intent["posted_at_utc"], as_of_utc=as_of_utc,
-                    dwell_seconds=dwell_seconds, far_ticks=far_ticks,
-                )
-                if age is not None:
-                    verdict["book_age_seconds"] = round(age, 3)
-                cancel_rule = RESTING_REPRICE_RULE_VERSION
-        entry["verdict"] = verdict
-        if verdict["action"] != "cancel":
-            receipt["kept"] += 1
-            receipt["rungs"].append(entry)
-            continue
-        receipt["cancel_requested"] += 1
-        try:
-            cancel = client.cancel_order({
-                "order_id": intent["exchange_order_id"],
-                "idempotency_key": f"{intent['idempotency_key']}:cancel:{cancel_rule}",
-            })
-            entry["cancel"] = {
-                "ok": cancel.get("ok") is True,
-                "error": str(cancel.get("error") or ""),
-            }
-            if cancel.get("ok") is not True:
-                receipt["failures"].append({
-                    "order_intent_id": intent_id,
-                    "reason": "cancel_not_ok:" + str(cancel.get("error") or "")[:120],
-                })
+            if not intent.get("ladder_rung", True):
+                # Synced above; not a rung, so none of the ladder's rules apply.
+                # Its horizon is the venue's to enforce, and the next pass reads
+                # what the venue did.
+                entry["verdict"] = {"action": "keep", "reason": "not_a_ladder_rung"}
+                receipt["kept"] += 1
+                receipt["kept_not_ladder"] += 1
                 receipt["rungs"].append(entry)
                 continue
-            confirm = _exchange_view(client.lookup_exchange_order({
-                "order_id": intent["exchange_order_id"],
-            }))
-            entry["confirm_status"] = confirm["status"]
-            after = sync_resting_intent(
-                conn, intent=intent, view=confirm, as_of_utc=as_of_utc, write=write,
-            )
-            entry["after_cancel"] = after
-            if after["state"] == "cancelled":
-                receipt["cancel_confirmed"] += 1
-            elif after["state"] == "expired":
-                # The cancel and the expiry raced and the clock won.  The
-                # rung is gone either way; recording which one ended it is
-                # what keeps the horizon measurable.
-                receipt["synced_expired"] += 1
-            elif after["state"] == "filled":
-                receipt["synced_filled"] += 1
-        except Exception as exc:  # noqa: BLE001 -- next pass looks again
-            receipt["failures"].append({
-                "order_intent_id": intent_id,
-                "reason": f"{type(exc).__name__}:{exc}"[:160],
-            })
-        receipt["rungs"].append(entry)
+            scope = (intent["station_id"], intent["event_date"])
+            # Charter 135 (二): the day's thermometer first, the book second.  A
+            # dead bucket needs no book to be cancelled -- a missing or stale
+            # book is exactly when a rung on it should not be left standing.
+            if dead_bucket_loader is not None and scope not in dead_cache:
+                try:
+                    dead, running_high = dead_bucket_loader(
+                        conn, station_id=scope[0], event_date=scope[1],
+                        as_of_utc=as_of_utc,
+                    )
+                    dead_cache[scope] = (
+                        tuple(str(bucket) for bucket in dead),
+                        None if running_high is None else float(running_high),
+                    )
+                except Exception as exc:  # noqa: BLE001 -- the book rule still runs
+                    receipt["failures"].append({
+                        "order_intent_id": intent_id,
+                        "reason": f"dead_bucket_read:{type(exc).__name__}:{exc}"[:160],
+                    })
+                    dead_cache[scope] = ((), None)
+            dead_buckets, running_high = dead_cache.get(scope, ((), None))
+            if (
+                str(intent.get("order_action") or "BUY").upper() == "BUY"
+                and intent["bucket"] in dead_buckets
+            ):
+                verdict = {
+                    "rule": DEAD_BUCKET_CANCEL_RULE_VERSION,
+                    "action": "cancel",
+                    "reason": "bucket_dead_by_observed_high",
+                    "observed_running_high_c": running_high,
+                    "limit_price": intent["limit_price"],
+                }
+                cancel_rule = DEAD_BUCKET_CANCEL_RULE_VERSION
+                receipt["cancel_requested_dead_bucket"] += 1
+            else:
+                if scope not in book_cache:
+                    book_cache[scope] = books(conn, station_id=scope[0], event_date=scope[1])
+                book = book_cache[scope].get(intent["bucket"])
+                age = book_age_seconds(book, as_of_utc=as_of_utc)
+                stale_bound = float(receipt["stale_book_seconds"])
+                if age is not None and age > stale_bound:
+                    # Charter 135 (三): nothing to price this rung against.  Ahead
+                    # of the book rule, which cannot answer without a book, and
+                    # without a dwell -- the bound already is the patience.
+                    verdict = {
+                        "rule": STALE_BOOK_CANCEL_RULE_VERSION,
+                        "action": "cancel",
+                        "reason": "book_missing" if math.isinf(age) else "book_stale",
+                        "book_age_seconds": None if math.isinf(age) else round(age, 3),
+                        "stale_book_seconds": stale_bound,
+                        "limit_price": intent["limit_price"],
+                    }
+                    cancel_rule = STALE_BOOK_CANCEL_RULE_VERSION
+                    receipt["cancel_requested_stale_book"] += 1
+                elif not book:
+                    # Only reachable for a book that carries no clock (an injected
+                    # reader); a missing book from the store is cancelled above.
+                    entry["verdict"] = {"action": "keep", "reason": "no_book"}
+                    receipt["kept"] += 1
+                    receipt["rungs"].append(entry)
+                    continue
+                else:
+                    verdict = resting_rung_verdict(
+                        limit_price=intent["limit_price"],
+                        bid=book["bid"], ask=book["ask"], tick=book["tick"],
+                        posted_at_utc=intent["posted_at_utc"], as_of_utc=as_of_utc,
+                        dwell_seconds=dwell_seconds, far_ticks=far_ticks,
+                    )
+                    if age is not None:
+                        verdict["book_age_seconds"] = round(age, 3)
+                    cancel_rule = RESTING_REPRICE_RULE_VERSION
+            entry["verdict"] = verdict
+            if verdict["action"] != "cancel":
+                receipt["kept"] += 1
+                receipt["rungs"].append(entry)
+                continue
+            receipt["cancel_requested"] += 1
+            try:
+                cancel = client.cancel_order({
+                    "order_id": intent["exchange_order_id"],
+                    "idempotency_key": f"{intent['idempotency_key']}:cancel:{cancel_rule}",
+                })
+                entry["cancel"] = {
+                    "ok": cancel.get("ok") is True,
+                    "error": str(cancel.get("error") or ""),
+                }
+                if cancel.get("ok") is not True:
+                    receipt["failures"].append({
+                        "order_intent_id": intent_id,
+                        "reason": "cancel_not_ok:" + str(cancel.get("error") or "")[:120],
+                    })
+                    receipt["rungs"].append(entry)
+                    continue
+                confirm = _exchange_view(client.lookup_exchange_order({
+                    "order_id": intent["exchange_order_id"],
+                }))
+                entry["confirm_status"] = confirm["status"]
+                after = sync_resting_intent(
+                    conn, intent=intent, view=confirm, as_of_utc=as_of_utc, write=write,
+                )
+                entry["after_cancel"] = after
+                if after["state"] == "cancelled":
+                    receipt["cancel_confirmed"] += 1
+                elif after["state"] == "expired":
+                    # The cancel and the expiry raced and the clock won.  The
+                    # rung is gone either way; recording which one ended it is
+                    # what keeps the horizon measurable.
+                    receipt["synced_expired"] += 1
+                elif after["state"] == "filled":
+                    receipt["synced_filled"] += 1
+            except Exception as exc:  # noqa: BLE001 -- next pass looks again
+                receipt["failures"].append({
+                    "order_intent_id": intent_id,
+                    "reason": f"{type(exc).__name__}:{exc}"[:160],
+                })
+            receipt["rungs"].append(entry)
+    finally:
+        if pool is not None:
+            # Answers nobody will read (the breaker stopped the pass)
+            # are abandoned: queued lookups are dropped, running ones
+            # finish on their own threads and touch only the client.
+            pool.shutdown(wait=False, cancel_futures=True)
     receipt["deferred_count"] = len(receipt["deferred"])
     receipt["state"] = (
         "committed"
@@ -1019,6 +1073,7 @@ def reprice_resting_rungs(
 __all__ = [
     "DEAD_BUCKET_CANCEL_RULE_VERSION",
     "RESTING_BOOK_STALE_SECONDS",
+    "RESTING_LOOKUP_CONCURRENCY",
     "RESTING_REPRICE_DWELL_SECONDS",
     "STALE_BOOK_CANCEL_RULE_VERSION",
     "book_age_seconds",
