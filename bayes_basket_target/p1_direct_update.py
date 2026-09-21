@@ -39,6 +39,14 @@ The parameters ride in the P1 observation-likelihood artifact under
 ``direct_update``, so a packet that carries the artifact rebuilds the
 envelope exactly.  They serve only while the block's own state is SERVE;
 otherwise P1 is charter 150's g**alpha as before.
+
+The two clock regimes were steps (schema v1), and a step in x is a step in
+the served P1: measured 2026-09-21 on the real states within half an hour of
+10h, moving only the clock across it moved the belief by a median 8.3
+points (26 at most), every time toward more rise above the edge, with no
+report in between.  Schema v2 carries ``clock_gate``: the same two regimes,
+each edge a linear ramp of half-width w, so f is continuous in the clock.
+A v1 block (no gate) is read exactly as it always was.
 """
 from __future__ import annotations
 
@@ -49,9 +57,18 @@ from . import p1_observation_likelihood as OL
 from .contracts import ContractError
 
 BLOCK_KEY = "direct_update"
+# The continuous-clock candidate's key in its own file
+# (``fit_p1_observation_likelihood.py --candidate-out``), walked forward on the
+# served block's days.  Serving never reads it; switching is a refit that
+# publishes a v2 block under ``BLOCK_KEY``.
+CANDIDATE_BLOCK_KEY = "direct_update_candidate"
 SCHEMA = "p1_direct_log_update_v1"
+SCHEMA_V2 = "p1_direct_log_update_v2"
 RULE = "p1_root_x_mask_x_exp_direct_log_update_v1"
+RULE_V2 = "p1_root_x_mask_x_exp_direct_log_update_v2"
 UPDATE = "DIRECT_LOG_UPDATE_V1"
+GATE_SHADOW = "SHADOW"
+CLOCK_GATE_SHAPE = "linear_ramp_v1"
 GATE_SERVE = "SERVE"
 FEATURES: tuple[str, ...] = tuple(
     name for name in OL.FULL_FEATURES if name != "remaining_hours"
@@ -61,7 +78,45 @@ STATE_COLUMNS: tuple[str, ...] = FEATURES + ROOT_FEATURES
 KNOTS_HOURS: tuple[float, ...] = tuple(float(k) for k in OL.ALPHA_KNOTS_HOURS)
 LATE_BELOW_HOURS = 6.0
 MID_BELOW_HOURS = 10.0
+# Ramps wider than this would overlap between the two edges.
+MAX_GATE_HALF_WIDTH_HOURS = (MID_BELOW_HOURS - LATE_BELOW_HOURS) / 2.0
 MAX_RUNG = 12
+
+
+def gate_half_width(block: Mapping[str, Any]) -> float:
+    """The block's ramp half-width in hours; 0.0 (the v1 steps) without a gate."""
+
+    gate = block.get("clock_gate")
+    if gate is None:
+        return 0.0
+    if not isinstance(gate, Mapping) or gate.get("shape") != CLOCK_GATE_SHAPE:
+        raise ContractError("p1_direct_update_clock_gate_invalid")
+    width = float(gate.get("half_width_hours"))
+    if not (0.0 < width <= MAX_GATE_HALF_WIDTH_HOURS):
+        raise ContractError("p1_direct_update_clock_gate_invalid")
+    return width
+
+
+def clock_gates(clock_hours: float, half_width_hours: float = 0.0) -> tuple[float, float]:
+    """``(late, mid)``: how much of each regime's block the clock switches on.
+
+    Half-width 0 is v1: late = 1[h < 6], mid = 1[6 <= h < 10].  Otherwise
+    each edge becomes a ramp over [edge - w, edge + w], and at every clock
+    late + mid is what the step would have been away from the edges.
+    """
+
+    hours = float(clock_hours)
+    width = float(half_width_hours)
+    if width <= 0.0:
+        late = 1.0 if hours < LATE_BELOW_HOURS else 0.0
+        mid = 1.0 if LATE_BELOW_HOURS <= hours < MID_BELOW_HOURS else 0.0
+        return late, mid
+
+    def below(edge: float) -> float:
+        return min(1.0, max(0.0, (edge + width - hours) / (2.0 * width)))
+
+    below_late = below(LATE_BELOW_HOURS)
+    return below_late, below(MID_BELOW_HOURS) - below_late
 
 
 def x_layout() -> list[str]:
@@ -164,8 +219,7 @@ def state_vector(
         )
         for k in range(len(KNOTS_HOURS))
     ]
-    late = 1.0 if clock_hours < LATE_BELOW_HOURS else 0.0
-    mid = 1.0 if LATE_BELOW_HOURS <= clock_hours < MID_BELOW_HOURS else 0.0
+    late, mid = clock_gates(clock_hours, gate_half_width(block))
     return (
         [1.0] + hats + standard
         + [late * value for value in standard]
@@ -199,8 +253,34 @@ def serving_block(artifact: Mapping[str, Any] | None) -> Mapping[str, Any] | Non
     block = (artifact or {}).get(BLOCK_KEY)
     if not isinstance(block, Mapping) or block.get("state") != GATE_SERVE:
         return None
-    if block.get("schema") != SCHEMA:
+    validate_block(block)
+    return block
+
+
+def block_rule(block: Mapping[str, Any]) -> str:
+    """The receipt's rule: v2 names the continuous clock."""
+
+    return RULE_V2 if block.get("schema") == SCHEMA_V2 else RULE
+
+
+def validate_block(block: Mapping[str, Any]) -> None:
+    """Raise ContractError unless the block is a well-formed v1 or v2 block.
+
+    v1 must carry no gate (a gate it did not fit under would change what it
+    serves); v2 must carry a valid one.
+    """
+
+    schema = block.get("schema")
+    if schema == SCHEMA:
+        if "clock_gate" in block:
+            raise ContractError("p1_direct_update_clock_gate_invalid")
+    elif schema == SCHEMA_V2:
+        # A null gate would read as the v1 steps; v2 must carry a real one.
+        if not isinstance(block.get("clock_gate"), Mapping):
+            raise ContractError("p1_direct_update_clock_gate_invalid")
+    else:
         raise ContractError("p1_direct_update_schema_invalid")
+    gate_half_width(block)
     width = len(x_layout())
     if (
         list(block.get("x_layout") or []) != x_layout()
@@ -218,7 +298,6 @@ def serving_block(artifact: Mapping[str, Any] | None) -> Mapping[str, Any] | Non
     )
     if not all(math.isfinite(float(value)) for value in numbers):
         raise ContractError("p1_direct_update_block_invalid")
-    return block
 
 
 def compile_direct_update(
@@ -271,12 +350,13 @@ def compile_direct_update(
         raise ContractError("p1_direct_update_zero_on_support")
     receipt = {
         "schema": OL.RECEIPT_SCHEMA,
-        "rule": RULE,
+        "rule": block_rule(block),
         "update": UPDATE,
         "state": "APPLIED",
         "artifact_sha256": str(artifact.get("content_sha256") or ""),
         "trained_through": str(block.get("trained_through") or ""),
         "lambda": block.get("lambda"),
+        **({"clock_gate": dict(block["clock_gate"])} if "clock_gate" in block else {}),
         "station_clock_offset_h": OL.station_clock_offset(artifact, station_id),
         "clock_hours": round(hours, 4),
         "running_high_c": float(running_high_c),
@@ -311,6 +391,8 @@ def compile_direct_update(
 
 __all__ = [
     "BLOCK_KEY",
+    "CANDIDATE_BLOCK_KEY",
+    "CLOCK_GATE_SHAPE",
     "FEATURES",
     "GATE_SERVE",
     "ROOT_FEATURES",

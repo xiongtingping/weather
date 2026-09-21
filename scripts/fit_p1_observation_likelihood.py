@@ -1119,8 +1119,14 @@ def direct_design(
     }
 
 
-def direct_scaling(design: Mapping[str, np.ndarray], idx: np.ndarray) -> dict[str, Any]:
-    """Fallbacks, means and scales of the state on the training rows ``idx``."""
+def direct_scaling(
+    design: Mapping[str, np.ndarray], idx: np.ndarray, gate: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
+    """Fallbacks, means and scales of the state on the training rows ``idx``.
+
+    ``gate`` (a v2 ``clock_gate``) rides in the scaling because x is built
+    from it, exactly as ``DU.state_vector`` reads it from the block.
+    """
 
     raw = design["raw"][idx]
     fallbacks = {
@@ -1132,6 +1138,7 @@ def direct_scaling(design: Mapping[str, np.ndarray], idx: np.ndarray) -> dict[st
         "fallbacks": fallbacks,
         "mean": [float(v) for v in filled.mean(0)],
         "scale": [float(v) for v in filled.std(0) + 1e-9],
+        **({"clock_gate": dict(gate)} if gate else {}),
     }
 
 
@@ -1153,9 +1160,23 @@ def direct_x(design: Mapping[str, np.ndarray], idx: np.ndarray, scaling: Mapping
     hats = np.stack(
         [np.interp(hours, knots, np.eye(len(knots))[k]) for k in range(len(knots))], 1
     )
-    late = (hours < DU.LATE_BELOW_HOURS)[:, None]
-    mid = ((hours >= DU.LATE_BELOW_HOURS) & (hours < DU.MID_BELOW_HOURS))[:, None]
-    return np.hstack([np.ones((len(idx), 1)), hats, standard, late * standard, mid * standard])
+    late, mid = clock_gates_np(hours, DU.gate_half_width(scaling))
+    return np.hstack([
+        np.ones((len(idx), 1)), hats, standard,
+        late[:, None] * standard, mid[:, None] * standard,
+    ])
+
+
+def clock_gates_np(hours: np.ndarray, width: float) -> tuple[np.ndarray, np.ndarray]:
+    """``DU.clock_gates`` over an array (a test holds them equal)."""
+
+    if width <= 0.0:
+        late = (hours < DU.LATE_BELOW_HOURS).astype(float)
+        mid = ((hours >= DU.LATE_BELOW_HOURS) & (hours < DU.MID_BELOW_HOURS)).astype(float)
+        return late, mid
+    below_late = np.clip((DU.LATE_BELOW_HOURS + width - hours) / (2.0 * width), 0.0, 1.0)
+    below_mid = np.clip((DU.MID_BELOW_HOURS + width - hours) / (2.0 * width), 0.0, 1.0)
+    return below_late, below_mid - below_late
 
 
 def _direct_parts(theta: np.ndarray, width: int) -> tuple[np.ndarray, np.ndarray, float, float]:
@@ -1221,9 +1242,18 @@ def direct_scores(design, idx, scaling, theta) -> np.ndarray:
     return np.log(served[np.arange(len(idx)), design["truth"][idx]])
 
 
-def direct_choose(design, idx, start=None) -> tuple[float, dict[str, Any], np.ndarray]:
-    """``(lambda, scaling, theta)`` on rows ``idx``, lambda by its last days."""
+def direct_choose(
+    design, idx, start=None, *, gate=None, fixed_lambda=None
+) -> tuple[float, dict[str, Any], np.ndarray]:
+    """``(lambda, scaling, theta)`` on rows ``idx``, lambda by its last days.
 
+    ``fixed_lambda`` skips the search (the candidate borrows the served
+    block's choice for the same day, so its walk costs one fit per day).
+    """
+
+    if fixed_lambda is not None:
+        scaling = direct_scaling(design, idx, gate)
+        return fixed_lambda, scaling, direct_fit(design, idx, scaling, fixed_lambda, start=start)
     days = sorted(set(design["day"][idx].tolist()))
     tail = set(days[-DIRECT_INNER_DAYS:])
     in_tail = np.isin(design["day"][idx], list(tail))
@@ -1233,7 +1263,7 @@ def direct_choose(design, idx, start=None) -> tuple[float, dict[str, Any], np.nd
     if len(val) and len(inner):
         inner = inner[design["known_at"][inner] <= design["as_of"][val].min()]
     if len(val) and len(inner):
-        scaling = direct_scaling(design, inner)
+        scaling = direct_scaling(design, inner, gate)
         best_score, theta = -np.inf, start
         for lam in DIRECT_LAMBDAS:
             theta = direct_fit(design, inner, scaling, lam, start=theta)
@@ -1241,8 +1271,18 @@ def direct_choose(design, idx, start=None) -> tuple[float, dict[str, Any], np.nd
             score = float((w * direct_scores(design, val, scaling, theta)).sum() / w.sum())
             if score > best_score:
                 best, best_score = lam, score
-    scaling = direct_scaling(design, idx)
+    scaling = direct_scaling(design, idx, gate)
     return best, scaling, direct_fit(design, idx, scaling, best, start=start)
+
+
+# The candidate clock gate (schema v2).  One hour either side of each edge:
+# the smallest ramp that removes the step while leaving the regimes where the
+# v1 fit put them.  Fitted only when asked (``--candidate-out``), after the
+# served file is written, into its own file; never served from here.
+CANDIDATE_CLOCK_GATE = {"shape": DU.CLOCK_GATE_SHAPE, "half_width_hours": 1.0}
+CANDIDATE_SCHEMA = "p1_direct_update_candidate_v1"
+# The ramps sit on [5, 7] and [9, 11]; the rest is where v1 and v2 agree.
+CANDIDATE_CLOCK_BINS_HOURS = (0.0, 5.0, 7.0, 9.0, 11.0, 14.0, float("inf"))
 
 
 def fit_direct_block(
@@ -1255,13 +1295,17 @@ def fit_direct_block(
     held_rows: Sequence[Mapping[str, Any]],
     curve: Mapping[str, Any],
     margin: float,
-) -> dict[str, Any]:
+    keep_walk: bool = False,
+) -> dict[str, Any] | tuple[dict[str, Any], dict[str, Any]]:
     """The ``direct_update`` block: final fit, and its forward walk as the gate.
 
     The walk scores the same held-out rows, on the same days, as alpha's
     forward walk: each day on a fit to every row whose truth was committed
     before the day's first report.  SERVE when it beats the root by
     ``margin`` and is not worse than g**alpha by more than ``margin``.
+
+    ``keep_walk`` also returns what ``fit_direct_candidate`` needs to walk a
+    candidate on exactly the same rows, days and lambdas.
     """
 
     everything = scorable_rows(samples, roots)
@@ -1277,6 +1321,7 @@ def fit_direct_block(
     }
     scored_by_day: dict[str, tuple[float, float]] = {}
     lambdas: dict[str, float] = {}
+    walk_days: list[tuple[str, np.ndarray, np.ndarray, float, np.ndarray]] = []
     theta = None
     for day in sorted(curve["forward_nat_by_day"]):
         rows_d = np.array(sorted(
@@ -1293,33 +1338,140 @@ def fit_direct_block(
             curve["forward_nat_by_day"][day],
         )
         lambdas[day] = lam
+        if keep_walk:
+            walk_days.append((day, train, rows_d, lam, theta.copy()))
     gains_root = [scored_by_day[d][0] - curve["forward_root_nat_by_day"][d] for d in scored_by_day]
     gains_alpha = [scored_by_day[d][0] - scored_by_day[d][1] for d in scored_by_day]
-    state = "IDENTITY"
-    reason = "no_forward_days"
-    if gains_root:
-        mean_root = statistics.mean(gains_root); mean_alpha = statistics.mean(gains_alpha)
-        state = (
-            DU.GATE_SERVE if mean_root >= margin and mean_alpha >= -margin else "IDENTITY"
-        )
-        reason = "" if state == DU.GATE_SERVE else (
-            f"vs_root:{mean_root:+.4f}" if mean_root < margin else f"vs_alpha:{mean_alpha:+.4f}"
-        )
-    rng = random.Random(20260920)
-    boot = sorted(
-        statistics.mean(rng.choice(gains_alpha) for _ in gains_alpha)
-        for _ in range(4000)
-    ) if gains_alpha else []
+    state, reason = _direct_gate(gains_root, gains_alpha, margin)
+    boot = _bootstrap_mean(gains_alpha)
     # The served block: every settled row, the served clock (the body's).
     final_design = direct_design(everything, body)
     final_rows = np.where(final_design["usable"])[0]
     lam, scaling, theta = direct_choose(final_design, final_rows, start=theta)
+    served = _direct_block_record(
+        samples, final_rows, lam, scaling, theta, state=state, veto=reason,
+        walk_forward={
+            "training_cut": "strict_as_of_truth_commit_v1",
+            "days": len(scored_by_day),
+            "direct_nat_by_day": {d: v[0] for d, v in scored_by_day.items()},
+            "alpha_nat_by_day": {d: v[1] for d, v in scored_by_day.items()},
+            "lambda_by_day": lambdas,
+            "gain_vs_root_nat": statistics.mean(gains_root) if gains_root else None,
+            "gain_vs_alpha_nat": statistics.mean(gains_alpha) if gains_alpha else None,
+            "gain_vs_alpha_ci": [boot[100], boot[3899]] if boot else None,
+            "margin": margin,
+        },
+    )
+    if not keep_walk:
+        return served
+    return served, {
+        "samples": samples, "design": design, "walk_days": walk_days,
+        "scored_by_day": scored_by_day, "curve": curve, "margin": margin,
+        "final_design": final_design, "final_rows": final_rows,
+        "final_lambda": lam, "final_theta": theta,
+    }
+
+
+def fit_direct_candidate(walk: Mapping[str, Any], gate: Mapping[str, Any]) -> dict[str, Any]:
+    """The v2 candidate, walked on the served walk's rows, days and lambdas.
+
+    Each day warm starts from the served theta of that day and fits once at
+    the served lambda, so the two differ only in the clock gate.  State
+    SHADOW; the record says whether it would pass the served block's gate
+    and how it scored against the served block day by day.
+    """
+
+    design = walk["design"]; curve = walk["curve"]; served = walk["scored_by_day"]
+    margin = walk["margin"]
+    candidate_by_day: dict[str, float] = {}
+    edges = CANDIDATE_CLOCK_BINS_HOURS
+    by_bin = [[0.0, 0.0, 0.0, 0] for _ in range(len(edges) - 1)]
+    for day, train, rows_d, lam, theta in walk["walk_days"]:
+        _, scaling, fitted = direct_choose(
+            design, train, start=theta, gate=gate, fixed_lambda=lam,
+        )
+        w = design["weight"][rows_d]
+        mine = direct_scores(design, rows_d, scaling, fitted)
+        candidate_by_day[day] = float((w * mine).sum() / w.sum())
+        # Where the difference lives: the served walk's own rows re-scored
+        # under its own scaling (``direct_choose`` ends on exactly this one).
+        theirs = direct_scores(design, rows_d, direct_scaling(design, train), theta)
+        position = np.searchsorted(edges, design["hours"][rows_d], side="right") - 1
+        for k in range(len(by_bin)):
+            inside = position == k
+            by_bin[k][0] += float(w[inside].sum())
+            by_bin[k][1] += float((w[inside] * theirs[inside]).sum())
+            by_bin[k][2] += float((w[inside] * mine[inside]).sum())
+            by_bin[k][3] += int(inside.sum())
+    c_root = [candidate_by_day[d] - curve["forward_root_nat_by_day"][d] for d in candidate_by_day]
+    c_alpha = [candidate_by_day[d] - served[d][1] for d in candidate_by_day]
+    c_served = [candidate_by_day[d] - served[d][0] for d in candidate_by_day]
+    would, would_reason = _direct_gate(c_root, c_alpha, margin)
+    boot = _bootstrap_mean(c_served)
+    lam = walk["final_lambda"]
+    _, scaling, theta = direct_choose(
+        walk["final_design"], walk["final_rows"], start=walk["final_theta"],
+        gate=gate, fixed_lambda=lam,
+    )
+    return _direct_block_record(
+        walk["samples"], walk["final_rows"], lam, scaling, theta,
+        state=DU.GATE_SHADOW, veto="", walk_forward={
+            "training_cut": "strict_as_of_truth_commit_v1",
+            "lambda_rule": "served_walk_lambda_by_day",
+            "days": len(candidate_by_day),
+            "direct_nat_by_day": candidate_by_day,
+            "served_nat_by_day": {d: served[d][0] for d in candidate_by_day},
+            "gain_vs_root_nat": statistics.mean(c_root) if c_root else None,
+            "gain_vs_alpha_nat": statistics.mean(c_alpha) if c_alpha else None,
+            "gain_vs_served_nat": statistics.mean(c_served) if c_served else None,
+            "gain_vs_served_ci": [boot[100], boot[3899]] if boot else None,
+            "days_better_than_served": sum(1 for v in c_served if v > 0.0),
+            "by_clock_bin": [
+                {
+                    "from_h": edges[k], "to_h": edges[k + 1], "rows": n,
+                    "served_nat": (a / wt if wt > 0.0 else None),
+                    "candidate_nat": (b / wt if wt > 0.0 else None),
+                }
+                for k, (wt, a, b, n) in enumerate(by_bin)
+            ],
+            "would_pass_served_gate": would == DU.GATE_SERVE,
+            "would_pass_reason": would_reason,
+            "margin": margin,
+        },
+    )
+
+
+def _direct_gate(
+    gains_root: Sequence[float], gains_alpha: Sequence[float], margin: float
+) -> tuple[str, str]:
+    if not gains_root:
+        return "IDENTITY", "no_forward_days"
+    mean_root = statistics.mean(gains_root); mean_alpha = statistics.mean(gains_alpha)
+    if mean_root >= margin and mean_alpha >= -margin:
+        return DU.GATE_SERVE, ""
+    return "IDENTITY", (
+        f"vs_root:{mean_root:+.4f}" if mean_root < margin else f"vs_alpha:{mean_alpha:+.4f}"
+    )
+
+
+def _bootstrap_mean(values: Sequence[float]) -> list[float]:
+    rng = random.Random(20260920)
+    return sorted(
+        statistics.mean(rng.choice(values) for _ in values) for _ in range(4000)
+    ) if values else []
+
+
+def _direct_block_record(
+    samples, final_rows, lam, scaling, theta, *, state, veto, walk_forward,
+) -> dict[str, Any]:
     width = len(DU.x_layout())
+    gate = scaling.get("clock_gate")
     return {
-        "schema": DU.SCHEMA,
-        "rule": DU.RULE,
+        "schema": DU.SCHEMA_V2 if gate else DU.SCHEMA,
+        "rule": DU.RULE_V2 if gate else DU.RULE,
+        **({"clock_gate": dict(gate)} if gate else {}),
         "state": state,
-        "veto": reason,
+        "veto": veto,
         "lambda": lam,
         "x_layout": DU.x_layout(),
         "theta_rise": [float(v) for v in theta[:width]],
@@ -1332,17 +1484,7 @@ def fit_direct_block(
         "trained_from": min(str(s["event_date"]) for s in samples),
         "trained_through": max(str(s["event_date"]) for s in samples),
         "rows": int(len(final_rows)),
-        "walk_forward": {
-            "training_cut": "strict_as_of_truth_commit_v1",
-            "days": len(scored_by_day),
-            "direct_nat_by_day": {d: v[0] for d, v in scored_by_day.items()},
-            "alpha_nat_by_day": {d: v[1] for d, v in scored_by_day.items()},
-            "lambda_by_day": lambdas,
-            "gain_vs_root_nat": statistics.mean(gains_root) if gains_root else None,
-            "gain_vs_alpha_nat": statistics.mean(gains_alpha) if gains_alpha else None,
-            "gain_vs_alpha_ci": [boot[100], boot[3899]] if boot else None,
-            "margin": margin,
-        },
+        "walk_forward": walk_forward,
     }
 
 
@@ -1450,6 +1592,10 @@ def main() -> int:
     parser.add_argument("--fitted-at-utc", default=None)
     parser.add_argument("--archive-db", default=str(ROOT / "data" / "archive.db"))
     parser.add_argument(
+        "--candidate-out", default=None,
+        help="also fit the continuous-clock candidate into this file (never served)",
+    )
+    parser.add_argument(
         "--force", action="store_true",
         help="write even when the veto refuses (first deployment only)",
     )
@@ -1535,10 +1681,15 @@ def main() -> int:
         samples, station_clock_offsets=full_offsets, station_clock_meta=full_meta,
     )
     # Charter 161: the directly fitted update, behind its own forward gate.
-    body[DU.BLOCK_KEY] = fit_direct_block(
+    walk = None
+    direct = fit_direct_block(
         samples, roots, split_g=split_g, body=body, arrays=arrays,
         held_rows=rows, curve=curve, margin=args.margin,
+        keep_walk=bool(args.candidate_out),
     )
+    if args.candidate_out:
+        direct, walk = direct
+    body[DU.BLOCK_KEY] = direct
     target.close()
     body["alpha_by_bin"] = split["alpha_by_bin"]
     body["alpha_edges_hours"] = list(OL.ALPHA_EDGES_HOURS)
@@ -1604,6 +1755,35 @@ def main() -> int:
         "veto": veto,
         "out": str(out_path),
     }, ensure_ascii=False))
+    # The continuous-clock candidate (2026-09-21 review: the v1 step at 10h),
+    # only when asked and only after the served file is safely written, into
+    # a file of its own that nothing serves.
+    if walk is not None:
+        candidate = fit_direct_candidate(walk, CANDIDATE_CLOCK_GATE)
+        record = {
+            "schema": CANDIDATE_SCHEMA,
+            "served_artifact_sha256": body["content_sha256"],
+            "served_artifact_written": written,
+            "fitted_at_utc": body["fitted_at_utc"],
+            DU.CANDIDATE_BLOCK_KEY: candidate,
+        }
+        record["content_sha256"] = content_sha256(record)
+        candidate_path = Path(args.candidate_out)
+        candidate_path.parent.mkdir(parents=True, exist_ok=True)
+        staging = candidate_path.with_suffix(candidate_path.suffix + ".new")
+        staging.write_text(json.dumps(record, indent=2, sort_keys=True))
+        os.replace(staging, candidate_path)
+        print(json.dumps({
+            "schema": CANDIDATE_SCHEMA,
+            "out": str(candidate_path),
+            **{
+                key: candidate["walk_forward"].get(key)
+                for key in (
+                    "days", "gain_vs_served_nat", "gain_vs_served_ci",
+                    "days_better_than_served", "would_pass_served_gate",
+                )
+            },
+        }, ensure_ascii=False))
     # A veto is the lane working, not failing: the served file stands.
     return 0
 
