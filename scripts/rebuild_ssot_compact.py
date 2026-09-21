@@ -76,6 +76,9 @@ DEFAULT_BUDGET_SECONDS = 420.0
 #: Chunks are resized to take about this long each.
 CHUNK_TARGET_SECONDS = 10.0
 FINGERPRINT_SCHEMA = "ssot_compact_source_fingerprint_v1"
+#: What a staging file carries besides the rows (see ``stage``).
+STAGE_SCHEMA_TABLE = "__rebuild_schema"
+STAGE_SEQUENCE_TABLE = "__rebuild_sequence"
 #: Tables whose digest is compared row for row after the copy.  Every table's
 #: COUNT is checked; a full digest of 24.3M rows would double the build, so
 #: the ones production cannot be wrong about are named here.
@@ -119,10 +122,15 @@ def _objects(conn: sqlite3.Connection) -> dict[str, list[tuple[str, str]]]:
     """Every schema object, split by kind and kept in creation-safe order."""
 
     out: dict[str, list[tuple[str, str]]] = {"table": [], "index": [], "trigger": [], "view": []}
-    for kind, name, sql in conn.execute(
+    staged = conn.execute(
+        "SELECT 1 FROM main.sqlite_master WHERE type='table' AND name=?", (STAGE_SCHEMA_TABLE,),
+    ).fetchone()
+    query = (
+        f'SELECT type,name,sql FROM main."{STAGE_SCHEMA_TABLE}" ORDER BY position' if staged else
         "SELECT type,name,sql FROM main.sqlite_master"
         " WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY rowid"
-    ):
+    )
+    for kind, name, sql in conn.execute(query):
         if str(kind) in out:
             out[str(kind)].append((str(name), str(sql)))
     return out
@@ -289,6 +297,211 @@ def fingerprint(source: Path) -> dict[str, object]:
     }
 
 
+def _copy_rows(
+    conn: sqlite3.Connection, tables: list[str], state: dict, *,
+    deadline: float, t0: float, transform: bool, on_table,
+) -> str | None:
+    """Copy every table from ``main`` to ``out`` in rowid order, resumably.
+
+    Each table's progress is ``MAX(rowid)`` on the target, committed a chunk
+    at a time.  Returns the table it stopped in when the budget ran out, or
+    None when everything is across.  ``transform`` applies the fold and the
+    dedupe; a staged source has had them applied already.
+    """
+
+    for name in tables:
+        cols = _columns(conn, "main", name)
+        listed = ",".join(f'"{c}"' for c in cols)
+        marks = ",".join("?" for _ in cols)
+        fold_at = cols.index(FOLD_COLUMN) if (
+            transform and name == FOLD_TABLE and FOLD_COLUMN in cols) else None
+        dedupe_at = cols.index(DEDUPE_COLUMN) if (
+            transform and name == DEDUPE_TABLE and DEDUPE_COLUMN in cols) else None
+        transformed = fold_at is not None or dedupe_at is not None
+        src_max = conn.execute(f'SELECT MAX(rowid) FROM main."{name}"').fetchone()[0]
+        if src_max is None:
+            continue
+        rows_per_chunk = 2000 if transformed else 20000
+        copied_here = 0
+        while True:
+            last = conn.execute(f'SELECT MAX(rowid) FROM out."{name}"').fetchone()[0]
+            if last is not None and last >= src_max:
+                break
+            if time.time() >= deadline:
+                return name
+            where = "" if last is None else "WHERE rowid>? "
+            args: tuple = () if last is None else (last,)
+            began = time.time()
+            if not transformed:
+                cur = conn.execute(
+                    f'INSERT INTO out."{name}"(rowid,{listed})'
+                    f' SELECT rowid,{listed} FROM main."{name}" {where}ORDER BY rowid LIMIT ?',
+                    args + (rows_per_chunk,),
+                )
+                moved = cur.rowcount
+            else:
+                rows = conn.execute(
+                    f'SELECT rowid,{listed} FROM main."{name}" {where}ORDER BY rowid LIMIT ?',
+                    args + (rows_per_chunk,),
+                ).fetchall()
+                rebuilt = []
+                for row in rows:
+                    values = list(row)
+                    at = (fold_at if fold_at is not None else dedupe_at) + 1   # +1: rowid leads
+                    changed = (_fold_payload if fold_at is not None else _dedupe_payload)(values[at])
+                    if changed is not values[at]:
+                        state["folded_snapshots" if fold_at is not None else "deduped_preselections"] += 1
+                    values[at] = changed
+                    rebuilt.append(values)
+                conn.executemany(
+                    f'INSERT INTO out."{name}"(rowid,{listed}) VALUES(?,{marks})', rebuilt,
+                )
+                moved = len(rebuilt)
+            conn.commit()
+            copied_here += moved
+            took = max(time.time() - began, 1e-3)
+            ceiling = 5000 if transformed else 500000
+            rows_per_chunk = int(min(ceiling, max(500, rows_per_chunk * CHUNK_TARGET_SECONDS / took)))
+        if copied_here:
+            on_table()
+            print(f"  {name:56} +{copied_here:>10,}  {time.time()-t0:>6.0f}s", flush=True)
+    return None
+
+
+def _is_staged(conn: sqlite3.Connection) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM main.sqlite_master WHERE type='table' AND name=?", (STAGE_SCHEMA_TABLE,),
+    ).fetchone() is not None
+
+
+def _source_sequence(conn: sqlite3.Connection) -> list[tuple[str, int]]:
+    if _is_staged(conn):
+        return [tuple(r) for r in conn.execute(f'SELECT name, seq FROM main."{STAGE_SEQUENCE_TABLE}"')]
+    if conn.execute("SELECT 1 FROM main.sqlite_master WHERE name='sqlite_sequence'").fetchone():
+        return [tuple(r) for r in conn.execute("SELECT name, seq FROM main.sqlite_sequence")]
+    return []
+
+
+def stage(
+    *, source: Path, staging: Path, force: bool = False,
+    budget_seconds: float = DEFAULT_BUDGET_SECONDS,
+) -> dict[str, object]:
+    """Pass one of two: the source's rows, transformed, onto the slow volume.
+
+    Why two passes.  The internal disk holds the source or the rebuilt store,
+    never both, and the other volume is a USB spinning disk that manages ~83
+    random I/Os a second.  Read the source off it and the tables that grew
+    interleaved with everything else (42.7k rows a minute for the inventory
+    snapshots) cost hours; write the target to it and every TEXT PRIMARY KEY
+    is an index updated at a random page per row.  So the rows go across
+    twice, sequentially both times: here from the internal source into
+    staging tables that have columns and nothing else -- no types, no keys,
+    no indexes -- so every insert is an append; then ``build`` reads each
+    staged table front to back (it was written in one run, so it lies in one
+    run) and assembles the real schema on the internal disk.
+
+    The staging file carries the source's schema (``__rebuild_schema``) and
+    AUTOINCREMENT counters (``__rebuild_sequence``) so ``build`` can take it
+    as its source unchanged.
+    """
+
+    receipt: dict[str, object] = {
+        "schema": SCHEMA, "started_at_utc": _utc(), "pass": "stage",
+        "source": str(source), "staging": str(staging), "state": "STARTED",
+    }
+    running = _residents_running()
+    if running and not force:
+        receipt["state"] = "REFUSED_RESIDENT_RUNNING"
+        receipt["running"] = running
+        return receipt
+    sidecar = _sidecar(staging)
+    if staging.exists() and not sidecar.exists():
+        receipt["state"] = "REFUSED_TARGET_EXISTS"
+        return receipt
+    t0 = time.time()
+    deadline = t0 + float(budget_seconds)
+    source_bytes = source.stat().st_size
+    src = _open_source(source)
+    try:
+        if _is_staged(src):
+            receipt["state"] = "REFUSED_SOURCE_IS_STAGING"
+            return receipt
+        page_size = int(src.execute("PRAGMA page_size").fetchone()[0])
+        ordered = [
+            (str(k), str(n), str(q)) for k, n, q in src.execute(
+                "SELECT type,name,sql FROM main.sqlite_master"
+                " WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY rowid"
+            )
+        ]
+        tables = [n for k, n, _q in ordered if k == "table"]
+        columns = {n: _columns(src, "main", n) for n in tables}
+        sequence = _source_sequence(src)
+    finally:
+        src.close()
+
+    if sidecar.exists():
+        state = json.loads(sidecar.read_text())
+        if state.get("source") != str(source) or state.get("source_bytes") != source_bytes:
+            receipt["state"] = "REFUSED_SOURCE_CHANGED"
+            return receipt
+    else:
+        staging.parent.mkdir(parents=True, exist_ok=True)
+        st = sqlite3.connect(str(staging), timeout=300.0)
+        try:
+            st.execute(f"PRAGMA page_size={page_size}")
+            st.execute(f'CREATE TABLE "{STAGE_SCHEMA_TABLE}"'
+                       "(position INTEGER PRIMARY KEY, type TEXT, name TEXT, sql TEXT)")
+            st.executemany(f'INSERT INTO "{STAGE_SCHEMA_TABLE}"(type,name,sql) VALUES(?,?,?)', ordered)
+            st.execute(f'CREATE TABLE "{STAGE_SEQUENCE_TABLE}"(name TEXT, seq INTEGER)')
+            st.executemany(f'INSERT INTO "{STAGE_SEQUENCE_TABLE}"(name,seq) VALUES(?,?)', sequence)
+            # Columns and nothing else.  No declared type means no affinity,
+            # so each value is stored exactly as the source stored it; the
+            # real affinity is applied again, idempotently, on assembly.
+            for name in tables:
+                st.execute(f'CREATE TABLE "{name}"(' + ",".join(f'"{c}"' for c in columns[name]) + ")")
+            st.commit()
+        finally:
+            st.close()
+        state = {
+            "source": str(source), "source_bytes": source_bytes,
+            "started_at_utc": receipt["started_at_utc"], "runs": 0,
+            "folded_snapshots": 0, "deduped_preselections": 0,
+        }
+    state["runs"] = int(state.get("runs", 0)) + 1
+
+    def _save() -> None:
+        sidecar.write_text(json.dumps(state, ensure_ascii=False, indent=2))
+
+    _save()
+    conn = _open_source(source)
+    try:
+        conn.execute("PRAGMA main.cache_size=-262144")         # 256 MiB of the fast side
+        conn.execute("ATTACH DATABASE ? AS out", (str(staging),))
+        conn.execute("PRAGMA out.journal_mode=TRUNCATE")
+        conn.execute("PRAGMA out.synchronous=OFF")
+        conn.execute("PRAGMA out.cache_size=-65536")           # appends need little
+        stopped = _copy_rows(conn, tables, state, deadline=deadline, t0=t0,
+                             transform=True, on_table=_save)
+    finally:
+        conn.close()
+    receipt["runs"] = state["runs"]
+    receipt["run_seconds"] = round(time.time() - t0, 1)
+    receipt["staging_bytes"] = staging.stat().st_size
+    receipt["folded_snapshots"] = state["folded_snapshots"]
+    receipt["deduped_preselections"] = state["deduped_preselections"]
+    if stopped is not None:
+        _save()
+        receipt["state"] = "PARTIAL"
+        receipt["stopped_at"] = stopped
+        return receipt
+    state["staged_at_utc"] = _utc()
+    (staging.with_name(staging.name + ".staged.json")).write_text(
+        json.dumps(state, ensure_ascii=False, indent=2))
+    sidecar.unlink()
+    receipt["state"] = "STAGED"
+    return receipt
+
+
 def build(
     *, source: Path, target: Path, force: bool = False,
     budget_seconds: float = DEFAULT_BUDGET_SECONDS,
@@ -328,6 +541,8 @@ def build(
     try:
         objects = _objects(src)
         page_size = int(src.execute("PRAGMA page_size").fetchone()[0])
+        staged = _is_staged(src)
+        sequence = _source_sequence(src)
     finally:
         src.close()
     tables = [name for name, _sql in objects["table"]]
@@ -383,63 +598,14 @@ def build(
     try:
         conn.execute("PRAGMA main.cache_size=-65536")          # 64 MiB: read once, in order
         conn.execute("ATTACH DATABASE ? AS out", (str(target),))
+        receipt["source_staged"] = staged
         conn.execute("PRAGMA out.journal_mode=TRUNCATE")       # a kill mid-chunk rolls back
         conn.execute("PRAGMA out.synchronous=OFF")             # a failed build is deleted
         conn.execute("PRAGMA out.cache_size=-1048576")         # 1 GiB
-        for name in tables:
-            cols = _columns(conn, "main", name)
-            listed = ",".join(f'"{c}"' for c in cols)
-            marks = ",".join("?" for _ in cols)
-            fold_at = cols.index(FOLD_COLUMN) if (name == FOLD_TABLE and FOLD_COLUMN in cols) else None
-            dedupe_at = cols.index(DEDUPE_COLUMN) if (name == DEDUPE_TABLE and DEDUPE_COLUMN in cols) else None
-            transformed = fold_at is not None or dedupe_at is not None
-            src_max = conn.execute(f'SELECT MAX(rowid) FROM main."{name}"').fetchone()[0]
-            if src_max is None:
-                continue
-            rows_per_chunk = 2000 if transformed else 20000
-            copied_here = 0
-            while True:
-                last = conn.execute(f'SELECT MAX(rowid) FROM out."{name}"').fetchone()[0]
-                if last is not None and last >= src_max:
-                    break
-                if time.time() >= deadline:
-                    return _partial(name)
-                where = "" if last is None else "WHERE rowid>? "
-                args: tuple = () if last is None else (last,)
-                began = time.time()
-                if not transformed:
-                    cur = conn.execute(
-                        f'INSERT INTO out."{name}"(rowid,{listed})'
-                        f' SELECT rowid,{listed} FROM main."{name}" {where}ORDER BY rowid LIMIT ?',
-                        args + (rows_per_chunk,),
-                    )
-                    moved = cur.rowcount
-                else:
-                    rows = conn.execute(
-                        f'SELECT rowid,{listed} FROM main."{name}" {where}ORDER BY rowid LIMIT ?',
-                        args + (rows_per_chunk,),
-                    ).fetchall()
-                    rebuilt = []
-                    for row in rows:
-                        values = list(row)
-                        at = (fold_at if fold_at is not None else dedupe_at) + 1   # +1: rowid leads
-                        changed = (_fold_payload if fold_at is not None else _dedupe_payload)(values[at])
-                        if changed is not values[at]:
-                            state["folded_snapshots" if fold_at is not None else "deduped_preselections"] += 1
-                        values[at] = changed
-                        rebuilt.append(values)
-                    conn.executemany(
-                        f'INSERT INTO out."{name}"(rowid,{listed}) VALUES(?,{marks})', rebuilt,
-                    )
-                    moved = len(rebuilt)
-                conn.commit()
-                copied_here += moved
-                took = max(time.time() - began, 1e-3)
-                ceiling = 5000 if transformed else 500000
-                rows_per_chunk = int(min(ceiling, max(500, rows_per_chunk * CHUNK_TARGET_SECONDS / took)))
-            if copied_here:
-                _save()
-                print(f"  {name:56} +{copied_here:>10,}  {time.time()-t0:>6.0f}s", flush=True)
+        stopped = _copy_rows(conn, tables, state, deadline=deadline, t0=t0,
+                             transform=not staged, on_table=_save)
+        if stopped is not None:
+            return _partial(stopped)
 
         # Every table is across.  Counts, against the fingerprint when there
         # is one (it was taken where counting is cheap), else the source.
@@ -462,11 +628,7 @@ def build(
             # AUTOINCREMENT remembers the largest id ever handed out, not the
             # largest still present; copying rows only teaches the target the
             # latter, and the next insert would reissue a deleted row's id.
-            has_sequence = conn.execute(
-                "SELECT 1 FROM main.sqlite_master WHERE name='sqlite_sequence'"
-            ).fetchone()
-            for seq_name, seq in (conn.execute("SELECT name, seq FROM main.sqlite_sequence").fetchall()
-                                  if has_sequence else []):
+            for seq_name, seq in sequence:
                 cur = conn.execute(
                     "UPDATE out.sqlite_sequence SET seq=MAX(seq, ?) WHERE name=?", (seq, seq_name),
                 )
@@ -725,6 +887,8 @@ def main() -> int:
                         help="write the source's counts/digests here and stop")
     parser.add_argument("--expect", type=Path,
                         help="a fingerprint to compare against instead of re-reading the source")
+    parser.add_argument("--stage", action="store_true",
+                        help="pass one: source rows, transformed, into a key-less staging file at --target")
     parser.add_argument("--build", action="store_true")
     parser.add_argument("--verify", action="store_true")
     parser.add_argument("--budget-seconds", type=float, default=DEFAULT_BUDGET_SECONDS)
@@ -745,6 +909,11 @@ def main() -> int:
     expected = json.loads(args.expect.read_text()) if args.expect else None
     if expected is not None and expected.get("source_bytes") != args.source.stat().st_size:
         parser.error("the fingerprint was taken from a file of a different size")
+    if args.stage:
+        out["stage"] = stage(source=args.source, staging=args.target, force=args.force,
+                             budget_seconds=args.budget_seconds)
+        print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
+        return 0 if out["stage"].get("state") in {"STAGED", "PARTIAL"} else 1
     if args.build:
         out["build"] = build(source=args.source, target=args.target, force=args.force,
                              budget_seconds=args.budget_seconds, expected=expected)
