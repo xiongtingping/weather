@@ -1494,6 +1494,62 @@ def utc_now() -> str:
 # is about to enter SQLite anyway.
 _STATEMENT_PROBE: dict[int, dict[str, Any]] = {}
 _STATEMENT_PROBE_SQL_CHARS = 400
+# Charter 177: per-thread statement ledger.  The probe already sees every
+# statement a thread runs; it now also keeps, per statement text, how many
+# times it ran and how long its execute and its fetches took, so a cycle can
+# say which SQL it spent its time in instead of leaving that to sampled
+# stacks -- on 2026-09-21 three stack samples in a row landed on queries that
+# turned out to cost 1-2ms, while the two that cost 75ms and 72ms per call
+# were found only by profiling one stage offline.  Bounded: past this many
+# distinct texts the rest are pooled under one key.
+_STATEMENT_LEDGER_MAX_KEYS = 2000
+_STATEMENT_LEDGER_KEY_CHARS = 240
+_STATEMENT_LEDGER_OTHER = "<other statements>"
+
+
+def _ledger_key(sql: str) -> str:
+    return " ".join(str(sql).split())[:_STATEMENT_LEDGER_KEY_CHARS]
+
+
+def _ledger_charge(slot: dict[str, Any], key: str, *, execute_ns: int = 0,
+                   fetch_ns: int = 0, count: int = 0) -> None:
+    ledger = slot.get("ledger")
+    if ledger is None:
+        return
+    entry = ledger.get(key)
+    if entry is None:
+        if len(ledger) >= _STATEMENT_LEDGER_MAX_KEYS:
+            key = _STATEMENT_LEDGER_OTHER
+            entry = ledger.get(key)
+        if entry is None:
+            entry = [0, 0, 0]
+            ledger[key] = entry
+    entry[0] += count
+    entry[1] += execute_ns
+    entry[2] += fetch_ns
+
+
+def begin_statement_ledger() -> None:
+    """Start (or restart) this thread's statement ledger."""
+    _probe_slot()["ledger"] = {}
+
+
+def statement_ledger_top(limit: int = 15) -> list[dict[str, Any]]:
+    """This thread's ledger, costliest statement texts first."""
+    ledger = _probe_slot().get("ledger") or {}
+    rows = sorted(
+        ledger.items(), key=lambda item: -(item[1][1] + item[1][2])
+    )[: max(0, int(limit))]
+    return [
+        {
+            "sql": key,
+            "count": int(entry[0]),
+            "total_ms": round((entry[1] + entry[2]) / 1_000_000.0, 1),
+            "execute_ms": round(entry[1] / 1_000_000.0, 1),
+            "fetch_ms": round(entry[2] / 1_000_000.0, 1),
+        }
+        for key, entry in rows
+    ]
 
 
 def _probe_slot() -> dict[str, Any]:
@@ -1560,8 +1616,11 @@ class _ProbedCursor(sqlite3.Cursor):
     def execute(self, sql, parameters=(), /):  # type: ignore[override]
         slot = _probe_slot()
         slot["sql"] = sql[:_STATEMENT_PROBE_SQL_CHARS]
-        slot["started_ns"] = time.perf_counter_ns()
+        started_ns = time.perf_counter_ns()
+        slot["started_ns"] = started_ns
         slot["statement_count"] += 1
+        if slot.get("ledger") is not None:
+            self._ledger_key = _ledger_key(sql)
         try:
             return super().execute(sql, parameters)
         except sqlite3.Error as exc:
@@ -1582,6 +1641,11 @@ class _ProbedCursor(sqlite3.Cursor):
             # last statement already blanked here.  A query that returns
             # instantly and is then dragged row by row is exactly the shape
             # this codebase keeps finding, so it has to be nameable too.
+            if slot.get("ledger") is not None:
+                _ledger_charge(
+                    slot, getattr(self, "_ledger_key", _ledger_key(sql)),
+                    count=1, execute_ns=time.perf_counter_ns() - started_ns,
+                )
             slot["sql"] = None
             slot["started_ns"] = None
             slot["drain_sql"] = sql[:_STATEMENT_PROBE_SQL_CHARS]
@@ -1593,17 +1657,30 @@ class _ProbedCursor(sqlite3.Cursor):
         if slot.get("drain_started_ns") is not None:
             slot["drain_rows"] = int(slot.get("drain_rows") or 0) + rows
 
+    def _charge_fetch(self, started_ns: int) -> None:
+        key = getattr(self, "_ledger_key", None)
+        if key is None:
+            return
+        slot = _probe_slot()
+        if slot.get("ledger") is not None:
+            _ledger_charge(slot, key, fetch_ns=time.perf_counter_ns() - started_ns)
+
     def __next__(self):  # type: ignore[override]
+        started_ns = time.perf_counter_ns()
         try:
             row = super().__next__()
         except StopIteration:
+            self._charge_fetch(started_ns)
             _clear_drain()
             raise
+        self._charge_fetch(started_ns)
         self._drained(1)
         return row
 
     def fetchone(self):  # type: ignore[override]
+        started_ns = time.perf_counter_ns()
         row = super().fetchone()
+        self._charge_fetch(started_ns)
         if row is None:
             _clear_drain()
         else:
@@ -1611,14 +1688,18 @@ class _ProbedCursor(sqlite3.Cursor):
         return row
 
     def fetchmany(self, size=None):  # type: ignore[override]
+        started_ns = time.perf_counter_ns()
         rows = super().fetchmany() if size is None else super().fetchmany(size)
+        self._charge_fetch(started_ns)
         self._drained(len(rows))
         if not rows:
             _clear_drain()
         return rows
 
     def fetchall(self):  # type: ignore[override]
+        started_ns = time.perf_counter_ns()
         rows = super().fetchall()
+        self._charge_fetch(started_ns)
         self._drained(len(rows))
         _clear_drain()
         return rows
@@ -17847,6 +17928,7 @@ class TargetProductionWorker:
         )
         self._p0m_replay_blocked_next = set()
         self._begin_cycle_scratch()
+        begin_statement_ledger()
         started = time.perf_counter()
         reset_writer_lock_profile()
         reset_ledger_spans()
@@ -17877,6 +17959,7 @@ class TargetProductionWorker:
                 "maintenance_lane", self._maintenance_lane_report()
             )
             result.setdefault("writer_lock_profile", writer_lock_profile())
+            result.setdefault("statement_ledger_top", statement_ledger_top(15))
             if self.stop_requested:
                 result["cycle_interrupted"] = True
         return result

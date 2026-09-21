@@ -800,6 +800,10 @@ _ELIGIBLE_SCOPE_QUESTION = (
 )
 
 
+#: The covering index a scope-timezone question is answered from (charter 176).
+SCOPE_TIMEZONE_INDEX = "basket_target_market_registry_scope_tz_idx"
+
+
 def _union_over_snapshots(
     conn: sqlite3.Connection, question: str
 ) -> set[tuple[Any, ...]]:
@@ -866,7 +870,36 @@ def registry_scope_timezone_triples(
     seek afterwards, and one whose rows are gone stops contributing.
     """
 
+    if _index_present(conn, SCOPE_TIMEZONE_INDEX):
+        # Charter 177: with the timezone in an index the whole-table DISTINCT
+        # never touches the table.  Measured 2026-09-21 on the live store:
+        # 226ms cold and 55ms warm for 283 triples, against 9,671ms cold and
+        # 135ms warm for the union over 2,572 snapshots -- and the cold cost
+        # was paid by three callers on every restart.  The same answer by
+        # definition (the union was built to equal this statement).  INDEXED
+        # BY because the planner, left to itself, answers a whole-table read
+        # of this table from the scope index and walks every row's page: the
+        # eligible-scope sibling of this statement took 20s that way.
+        return {
+            tuple(row)
+            for row in conn.execute(
+                "SELECT DISTINCT station_id,event_date,settlement_timezone "
+                f"FROM {TABLE} INDEXED BY {SCOPE_TIMEZONE_INDEX}"
+            )
+        }
     return _union_over_snapshots(conn, _SCOPE_TIMEZONE_QUESTION)  # type: ignore[return-value]
+
+
+def _index_present(conn: sqlite3.Connection, name: str) -> bool:
+    """Whether ``name`` exists in this database (a store not yet migrated
+    falls back to the path that does not need it)."""
+    try:
+        return conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
+            (name,),
+        ).fetchone() is not None
+    except sqlite3.Error:
+        return False
 
 
 def registry_eligible_scopes(conn: sqlite3.Connection) -> set[tuple[Any, Any]]:

@@ -122,7 +122,14 @@ def test_the_planner_no_longer_issues_the_whole_table_distinct(tmp_path) -> None
     mpf.plan_metar_physical_member_runs(conn, archive_conn=archive, as_of_utc="2026-09-14T08:00:00Z")
     conn.set_trace_callback(None)
     registry_reads = [sql for sql in statements if "basket_target_market_registry" in sql]
-    assert any("FROM basket_target_market_registry_snapshot" in sql for sql in registry_reads), registry_reads
+    # Charter 177: the production schema now carries the timezone index, and
+    # through it the whole-table DISTINCT never touches the table.  What this
+    # test forbids is the DISTINCT that walks every row's page -- one that is
+    # neither per snapshot nor pinned to the covering index.
+    assert registry_reads, registry_reads
     assert not any(
-        "DISTINCT" in sql and "snapshot_sha256=?" not in sql for sql in registry_reads
+        "DISTINCT" in sql
+        and "snapshot_sha256=?" not in sql
+        and f"INDEXED BY {mr.SCOPE_TIMEZONE_INDEX}" not in sql
+        for sql in registry_reads
     ), registry_reads

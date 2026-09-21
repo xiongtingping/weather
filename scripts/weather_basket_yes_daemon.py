@@ -3445,6 +3445,19 @@ def production_cycle_history_row(
             }
             if isinstance(spans, Mapping) else {}
         ),
+        # Charter 177: the SQL the cycle thread spent its time in, costliest
+        # first (execute + fetch per statement text).  The spans say which
+        # stage was slow; this says which statement inside it.
+        "sql_top": [
+            {
+                "sql": str(row.get("sql") or "")[:240],
+                "count": int(row.get("count") or 0),
+                "total_ms": round(float(row.get("total_ms") or 0.0), 1),
+                "fetch_ms": round(float(row.get("fetch_ms") or 0.0), 1),
+            }
+            for row in (result.get("statement_ledger_top") or [])[:15]
+            if isinstance(row, Mapping)
+        ],
         "waited_sec": (
             wait.get("waited_sec") if isinstance(wait, Mapping) else None
         ),
