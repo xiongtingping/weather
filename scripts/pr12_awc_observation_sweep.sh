@@ -36,7 +36,16 @@ fi
 
 NOW="$("$PY" -c "from datetime import datetime,timezone;print(datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00','Z'))")"
 
+# Charter 181: the production cycle names the stations whose rows moved
+# since its last staged pass (PR12_STATIONS, comma-separated) and says when
+# the substitute lane has nothing new (PR12_SKIP_ASOS_SUBSTITUTE=1).  Unset,
+# this is the full pass the hosted sweep has always run.
+STATION_ARGS=()
+if [ -n "${PR12_STATIONS:-}" ]; then
+  STATION_ARGS=(--stations "$PR12_STATIONS")
+fi
 "$PY" "$ROOT/scripts/build_pr12_awc_observation_contract.py" \
+  ${STATION_ARGS[@]+"${STATION_ARGS[@]}"} \
   --archive-database "$ROOT/data/archive.db" \
   --target-database "$ROOT/data/bayes_basket_target_ssot.db" \
   --as-of-utc "$NOW" \
@@ -56,11 +65,13 @@ NOW="$("$PY" -c "from datetime import datetime,timezone;print(datetime.now(timez
 # ASOS slot fill needs its parallel identity fact before the atomic chain
 # can root on it, exactly as an AWC report needs its PR12 revision.  On a
 # healthy AWC day the window is empty and this is a no-op receipt.
+if [ "${PR12_SKIP_ASOS_SUBSTITUTE:-0}" != "1" ]; then
 "$PY" "$ROOT/scripts/stage_asos_substitute_observation_facts.py" \
   --archive-database "$ROOT/data/archive.db" \
   --target-database "$ROOT/data/bayes_basket_target_ssot.db" \
   --window-days 3 \
   --receipt "$AUDIT/asos_substitute_observation_stage_latest.json" \
   --apply
+fi
 
-echo "$(date '+%F %T') [pr12] staged as_of=$NOW"
+echo "$(date '+%F %T') [pr12] staged as_of=$NOW stations=${PR12_STATIONS:-all}"

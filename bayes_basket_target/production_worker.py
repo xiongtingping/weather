@@ -1428,6 +1428,23 @@ HISTORICAL_TAF_CAPTURE_DEADLINE_SEC = 3600.0
 # canonically identified before giving up on this round.  The pass measures
 # 22.8 seconds end to end; this is a stall bound, not a budget.
 LIVE_OBSERVATION_IDENTITY_DEADLINE_SEC = 240.0
+# Charter 181: how long a run of station-subset identity passes may go before
+# a full one.  A station's facts are a function of its own archive rows, and
+# a subset pass re-derives exactly the stations whose rows moved -- the full
+# pass is the net under whatever that misses (a projection or registry
+# change, a pass the hosted sweep's single-instance guard turned away).
+LIVE_OBSERVATION_IDENTITY_FULL_PASS_SEC = float(
+    os.environ.get("PM_LIVE_OBSERVATION_IDENTITY_FULL_PASS_SEC", "") or 600.0
+)
+# Every archive table the identity export reads by station, with the lane
+# filter the export applies where the table has a lane.  Origins land in the
+# same transaction as their report; halts and reviews land on their own.
+_IDENTITY_STATION_TABLES: tuple[tuple[str, str], ...] = (
+    ("reported_trajectory_observations", " AND source_lane='awc'"),
+    ("reported_trajectory_observation_origins", " AND source_lane='awc'"),
+    ("reported_trajectory_station_halts", ""),
+    ("reported_trajectory_station_halt_reviews", ""),
+)
 HISTORICAL_TAF_DECISION_ANCHOR_HOURS = (1, 7, 13, 19)
 # Two days back, not one: the settlement day has to be closed in the station's
 # own timezone before its truth can be read, and the capture refuses an open
@@ -3590,6 +3607,65 @@ def _live_observation_watermark(
         int(substitute or 0),
         datetime.now(timezone.utc).date().isoformat(),
     )
+
+
+def _identity_table_rowids(
+    conn: sqlite3.Connection | None,
+) -> dict[str, int] | None:
+    """Charter 181: the newest rowid of each table the identity export reads.
+
+    A table the archive does not carry is recorded as 0 and contributes no
+    stations; an archive that cannot be asked is None, and the pass is full.
+    """
+
+    if conn is None:
+        return None
+    rowids: dict[str, int] = {}
+    try:
+        for table, _lane in _IDENTITY_STATION_TABLES:
+            present = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                (table,),
+            ).fetchone()
+            rowids[table] = (
+                int(conn.execute(f"SELECT COALESCE(MAX(rowid),0) FROM {table}").fetchone()[0])
+                if present is not None
+                else 0
+            )
+    except (sqlite3.Error, AttributeError, TypeError, ValueError):
+        return None
+    return rowids
+
+
+def _identity_changed_stations(
+    conn: sqlite3.Connection | None,
+    *,
+    since: Mapping[str, int],
+    until: Mapping[str, int],
+) -> set[str] | None:
+    """Stations with a row past ``since`` and at or before ``until``, in any
+    table the identity export reads.  None when any table cannot be asked."""
+
+    if conn is None:
+        return None
+    stations: set[str] = set()
+    try:
+        for table, lane in _IDENTITY_STATION_TABLES:
+            low = int(since.get(table, 0))
+            high = int(until.get(table, 0))
+            if high <= low:
+                continue
+            for (station,) in conn.execute(
+                f"SELECT DISTINCT station_id FROM {table}"
+                f" WHERE rowid>? AND rowid<=?{lane}",
+                (low, high),
+            ):
+                text = str(station or "").strip().upper()
+                if text:
+                    stations.add(text)
+    except (sqlite3.Error, AttributeError, TypeError, ValueError):
+        return None
+    return stations
 
 
 # Charter 148 (2026-09-18, operator ruling "改"): a report's P1 is written at
@@ -6146,6 +6222,32 @@ class TargetProductionWorker:
                 "watermark": list(watermark),
             }
         started = time.monotonic()
+        started_utc = utc_now()
+        # Charter 181: which stations this pass has to re-derive.  Read
+        # before the pass, so a row landing while it runs is past the
+        # snapshot and named by the next one.
+        source_conn = getattr(self, "canonical_source_conn", None)
+        rowids = _identity_table_rowids(source_conn)
+        try:
+            # Called through the class: this pass reports and never raises,
+            # and the scope is only an economy -- anything unexpected in it
+            # is a full pass, not an exception in front of P1.
+            stations, full_reason, skip_substitute = (
+                TargetProductionWorker._identity_pass_scope(
+                    self, watermark=watermark, rowids=rowids, conn=source_conn,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 -- see above
+            stations, full_reason, skip_substitute = (
+                None, f"scope_failed:{type(exc).__name__}", False,
+            )
+        env = None
+        if stations is not None:
+            env = {
+                **os.environ,
+                "PR12_STATIONS": ",".join(stations),
+                "PR12_SKIP_ASOS_SUBSTITUTE": "1" if skip_substitute else "0",
+            }
         try:
             completed = subprocess.run(
                 ["/bin/bash", str(script)],
@@ -6153,7 +6255,21 @@ class TargetProductionWorker:
                 capture_output=True,
                 text=True,
                 timeout=LIVE_OBSERVATION_IDENTITY_DEADLINE_SEC,
+                env=env,
             )
+            if stations is not None and completed.returncode != 0:
+                # A subset the builder or the stage refused (a station
+                # outside the projection, a contract with nothing left to
+                # stage) is answered by the full pass, now.
+                full_reason = "subset_pass_failed"
+                stations = None
+                completed = subprocess.run(
+                    ["/bin/bash", str(script)],
+                    cwd=str(ROOT),
+                    capture_output=True,
+                    text=True,
+                    timeout=LIVE_OBSERVATION_IDENTITY_DEADLINE_SEC,
+                )
         except subprocess.TimeoutExpired:
             return {
                 "state": "DEADLINE_EXCEEDED",
@@ -6176,6 +6292,10 @@ class TargetProductionWorker:
             "returncode": completed.returncode,
             "duration_sec": round(time.monotonic() - started, 3),
             "stderr": (completed.stderr or "").strip()[-200:],
+            "scope": "full" if stations is None else "stations",
+            "stations": list(stations or ()),
+            "full_pass_reason": full_reason if stations is None else "",
+            "substitute_skipped": bool(stations is not None and skip_substitute),
             **boundary,
         }
         # What was actually written, from the stage receipt rather than from
@@ -6205,7 +6325,57 @@ class TargetProductionWorker:
             # later day, is what makes the next one due.
             self._live_observation_identity_watermark = watermark
             self._live_observation_identity_last = dict(receipt)
+            # Charter 181: the subset bookkeeping moves only on a stage this
+            # pass itself wrote.  A start the single-instance guard refused
+            # also exits zero, and the hosted sweep it deferred to may have
+            # read the archive before these rows: keeping the old snapshot
+            # names them again next time.
+            if str(receipt.get("staged_at_utc") or "") >= started_utc:
+                self._live_observation_identity_rowids = rowids
+                if stations is None:
+                    self._live_observation_identity_full_mono = started
         return receipt
+
+    def _identity_pass_scope(
+        self,
+        *,
+        watermark: tuple[int, int, str] | None,
+        rowids: Mapping[str, int] | None,
+        conn: sqlite3.Connection | None,
+    ) -> tuple[list[str] | None, str, bool]:
+        """Charter 181: ``(stations or None for a full pass, why full, skip
+        the substitute stage)``.
+
+        A subset needs a snapshot from a pass this process staged, the same
+        UTC day as that pass (the window's start moves once a day), a full
+        pass within ``LIVE_OBSERVATION_IDENTITY_FULL_PASS_SEC``, and at least
+        one station whose AWC rows moved.  Anything else is a full pass --
+        including a watermark that moved only on the substitute lane, which
+        the AWC export has nothing to say about.
+        """
+
+        previous_rowids = getattr(self, "_live_observation_identity_rowids", None)
+        previous_watermark = getattr(
+            self, "_live_observation_identity_watermark", None
+        )
+        last_full = getattr(self, "_live_observation_identity_full_mono", None)
+        if watermark is None or rowids is None:
+            return None, "archive_unreadable", False
+        if not isinstance(previous_rowids, Mapping) or last_full is None:
+            return None, "no_staged_snapshot", False
+        if not previous_watermark or previous_watermark[2] != watermark[2]:
+            return None, "utc_day_changed", False
+        if time.monotonic() - float(last_full) >= LIVE_OBSERVATION_IDENTITY_FULL_PASS_SEC:
+            return None, "periodic_full_pass", False
+        changed = _identity_changed_stations(
+            conn, since=previous_rowids, until=rowids,
+        )
+        if changed is None:
+            return None, "changed_stations_unreadable", False
+        if not changed:
+            return None, "no_awc_station_moved", False
+        skip_substitute = int(watermark[1]) == int(previous_watermark[1])
+        return sorted(changed), "", skip_substitute
 
 
     def _capture_historical_taf_daily(

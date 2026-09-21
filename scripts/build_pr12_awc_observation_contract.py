@@ -387,7 +387,22 @@ def main() -> int:
         help="export station-days holding a report this many days back;"
         " 0 exports the whole archive",
     )
+    # Charter 181: the production cycle runs this pass whenever a report
+    # lands and names the stations whose rows moved since the last pass it
+    # staged.  A station's facts are a function of its own rows only --
+    # measured 2026-09-21, the contract built for 3 and for 8 stations was
+    # byte for byte the full contract's facts for those stations -- so the
+    # other stations' facts, already staged, are not re-derived.  Empty or
+    # absent: every station, as before.
+    parser.add_argument(
+        "--stations",
+        default="",
+        help="comma-separated station ids to export; empty exports all",
+    )
     args = parser.parse_args()
+    stations = tuple(
+        sorted({part.strip().upper() for part in args.stations.split(",") if part.strip()})
+    )
     target = args.target_database.expanduser().resolve(strict=True)
     registry = _station_registry(target)
     projection = validate_pr12_authority_scope_projection(
@@ -423,6 +438,7 @@ def main() -> int:
         args.archive_database,
         station_registry=registry,
         authority_scope_projection=projection,
+        station_ids=stations,
         as_of_utc=args.as_of_utc,
         since_valid_at_utc=since_valid_at,
         skip_day_scopes=materialized,
@@ -458,6 +474,7 @@ def main() -> int:
         )
     summary = {
         "state": receipt["state"],
+        "stations": list(stations) or "all",
         "evidence_rows": len(evidence["rows"]),
         "extraction_gaps": len(evidence["extraction_gaps"]),
         "revision_facts": len(contract["revision_facts"]),

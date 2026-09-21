@@ -267,10 +267,15 @@ def test_samples_fall_in_the_first_stage_marked_after_them() -> None:
     summary = sampler.summarize_samples(
         samples, marks=[("second", 3.5), ("first", 2.5)], interval_sec=0.5,
     )
-    assert summary["by_stage"]["first"]["sec"] == 1.0
-    assert summary["by_stage"]["second"]["repo_self_top"] == [["a.py:g:9", 0.5]]
-    assert summary["by_stage"]["after_last_mark"]["repo_self_top"] == [["<outside repo>", 0.5]]
-    assert dict(map(tuple, summary["repo_cum_top"]))["a.py:main:1"] == 1.5
+    # Charter 181: each sample stands for the time since the one before it
+    # (the first for one interval), at most MAX_SAMPLE_WEIGHT_SEC.
+    assert summary["by_stage"]["first"]["sec"] == 1.5
+    assert summary["by_stage"]["second"]["repo_self_top"] == [["a.py:g:9", 1.0]]
+    assert summary["by_stage"]["after_last_mark"]["repo_self_top"] == [
+        ["<outside repo>", sampler.MAX_SAMPLE_WEIGHT_SEC]
+    ]
+    assert dict(map(tuple, summary["repo_cum_top"]))["a.py:main:1"] == 2.5
+    assert summary["sampled_sec"] == 4.5
 
 
 def test_marks_are_logged_and_the_history_keeps_the_python_top() -> None:

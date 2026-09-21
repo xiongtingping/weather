@@ -44,6 +44,11 @@ _PROBE_FILE = str(ROOT / "bayes_basket_target" / "production_worker.py")
 DEFAULT_INTERVAL_SEC = 0.05
 #: Enough for a 40-minute cycle at the default interval.
 MAX_SAMPLES = 50_000
+#: Charter 181: a sample stands for the wall time since the one before it,
+#: at most this much.  Under load the sampler wakes late (2026-09-21 11:04Z:
+#: 2,982 samples, 149s at the nominal interval, of a 302s cycle), and the
+#: stack it finds is the one that kept it waiting.
+MAX_SAMPLE_WEIGHT_SEC = 2.0
 _MAX_DEPTH = 80
 
 
@@ -154,28 +159,35 @@ def summarize_samples(
     by_stage: dict[str, Counter] = {}
     stage_totals = Counter()
     ordered_marks = sorted(marks, key=lambda item: item[1])
+    previous: float | None = None
+    total = 0.0
     for stamp, leaf_key, repo_key, repo_keys in samples:
-        leaf[leaf_key] += 1
-        repo_self[repo_key or "<outside repo>"] += 1
+        weight = seconds if previous is None else min(
+            max(stamp - previous, 0.0), MAX_SAMPLE_WEIGHT_SEC
+        )
+        previous = stamp
+        total += weight
+        leaf[leaf_key] += weight
+        repo_self[repo_key or "<outside repo>"] += weight
         for key in set(repo_keys):
-            repo_cum[key] += 1
+            repo_cum[key] += weight
         stage = _stage_of(stamp, ordered_marks)
-        stage_totals[stage] += 1
-        by_stage.setdefault(stage, Counter())[repo_key or "<outside repo>"] += 1
+        stage_totals[stage] += weight
+        by_stage.setdefault(stage, Counter())[repo_key or "<outside repo>"] += weight
 
     def rows(counter: Counter, limit: int) -> list[list[Any]]:
-        return [[key, round(count * seconds, 2)] for key, count in counter.most_common(limit)]
+        return [[key, round(value, 2)] for key, value in counter.most_common(limit)]
 
     return {
         "interval_ms": round(seconds * 1000.0, 1),
         "samples": len(samples),
-        "sampled_sec": round(len(samples) * seconds, 1),
+        "sampled_sec": round(total, 1),
         "leaf_top": rows(leaf, top),
         "repo_self_top": rows(repo_self, top),
         "repo_cum_top": rows(repo_cum, top),
         "by_stage": {
             stage: {
-                "sec": round(count * seconds, 1),
+                "sec": round(count, 1),
                 "repo_self_top": rows(by_stage[stage], stage_top),
             }
             for stage, count in stage_totals.most_common(stages)
