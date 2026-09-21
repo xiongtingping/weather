@@ -18,6 +18,9 @@ from bayes_basket_target.pr12_authority_scope_projection import (  # noqa: E402
 )
 from bayes_basket_target.contracts import ContractError  # noqa: E402
 from bayes_basket_target.resource_bounds import write_bounded_json_if_changed  # noqa: E402
+from bayes_basket_target.station_registry import (  # noqa: E402
+    coordinate_registry_manifest,
+)
 from bayes_basket_target.station_source_authority import (  # noqa: E402
     resolve_global_awc_source_authority,
 )
@@ -34,12 +37,25 @@ def main() -> int:
     with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as conn:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA query_only=ON")
+        # The projection is over the fleet -- its validator compares its rows
+        # to the coordinate registry -- and calibration_station_registry is
+        # not the fleet: onboarding writes a station's row before the station
+        # is admitted (LLBG, LTFM and UUWW have had rows since 2026-08-28), and
+        # the table is append-only.  Minting from the whole table would build
+        # a projection the validator refuses, at any fleet size.
+        fleet = set(coordinate_registry_manifest()["station_ids"])
         registry = {
             str(row["station_id"]): dict(row) for row in conn.execute(
                 "SELECT station_id,settlement_definition,content_sha256 "
                 "FROM calibration_station_registry ORDER BY station_id"
             )
+            if str(row["station_id"]).upper() in fleet
         }
+        if set(registry) != fleet:
+            raise ContractError(
+                "pr12_authority_projection_registry_rows_missing:"
+                + ",".join(sorted(fleet - set(registry)))
+            )
         authorities = {
             station: dict(resolve_global_awc_source_authority(conn, station_id=station))
             for station in sorted(registry)
