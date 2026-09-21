@@ -84,6 +84,87 @@ INDEX = (
     f"ON {TABLE}(station_id, local_date)"
 )
 
+# The table above keeps one row per station-day and every forward capture
+# replaces it, so a day's row is rewritten until the evening of the day
+# itself.  Measured 2026-09-21: 1,616 of the 1,745 past forward rows were last
+# written between 18:00 and 24:00 local on their own event day.  A holdout
+# that reads it scores a same-day radiation against a P0 that was served a
+# forecast one to two days ahead -- and the forecast that was served is gone.
+#
+# The version table keeps every distinct content with the moment it was first
+# captured, append-only, so a sample can resolve "the latest version captured
+# at or before my cutoff".  A version holds from its captured_at until the
+# next version of the same key.  ``capture_mode='historical'`` versions come
+# from the stitched short-lead historical-forecast API and are captured after
+# the day; they are never an as-of forecast.  The table above is unchanged and
+# still what serving reads.
+VERSION_TABLE = f"{TABLE}_version"
+COLUMNS = (
+    "station_id,local_date,source_id,shortwave_radiation_sum,"
+    "windspeed_10m_max,cloudcover_mean,precipitation_sum,"
+    "latitude,longitude,settlement_timezone,capture_mode,"
+    "captured_at_utc,reference_only,content_sha256"
+)
+VERSION_SCHEMA = f"""
+CREATE TABLE IF NOT EXISTS {VERSION_TABLE} (
+    station_id TEXT NOT NULL,
+    local_date TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    shortwave_radiation_sum REAL,
+    windspeed_10m_max REAL,
+    cloudcover_mean REAL,
+    precipitation_sum REAL,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    settlement_timezone TEXT NOT NULL,
+    capture_mode TEXT NOT NULL,
+    captured_at_utc TEXT NOT NULL,
+    reference_only INTEGER NOT NULL CHECK (reference_only = 1),
+    content_sha256 TEXT NOT NULL,
+    PRIMARY KEY (station_id, local_date, source_id, captured_at_utc)
+)
+"""
+VERSION_TRIGGERS = tuple(
+    f"CREATE TRIGGER IF NOT EXISTS {VERSION_TABLE}_no_{verb.lower()} "
+    f"BEFORE {verb} ON {VERSION_TABLE} BEGIN "
+    f"SELECT RAISE(ABORT, '{VERSION_TABLE}_append_only'); END"
+    for verb in ("UPDATE", "DELETE")
+)
+# Copy the current row into the versions unless the latest version of its
+# key already carries the same content (a capture that changed nothing is not
+# a new version; A -> B -> A is three).
+VERSION_COPY = f"""
+INSERT OR IGNORE INTO {VERSION_TABLE} ({COLUMNS})
+SELECT {COLUMNS} FROM {TABLE} m
+WHERE {{where}} AND NOT EXISTS (
+    SELECT 1 FROM {VERSION_TABLE} v
+    WHERE v.station_id=m.station_id AND v.local_date=m.local_date
+      AND v.source_id=m.source_id AND v.content_sha256=m.content_sha256
+      AND v.captured_at_utc=(
+          SELECT MAX(w.captured_at_utc) FROM {VERSION_TABLE} w
+          WHERE w.station_id=m.station_id AND w.local_date=m.local_date
+            AND w.source_id=m.source_id
+      )
+)
+"""
+
+
+def ensure_schema(conn: sqlite3.Connection) -> int:
+    """Both tables, and every current row recorded as a version.
+
+    The seed is idempotent: a row whose content is already the latest
+    version is skipped.  Returns the number of versions it added.
+    """
+
+    conn.execute(SCHEMA)
+    conn.execute(INDEX)
+    conn.execute(VERSION_SCHEMA)
+    for trigger in VERSION_TRIGGERS:
+        conn.execute(trigger)
+    added = conn.execute(VERSION_COPY.format(where="1=1")).rowcount
+    conn.commit()
+    return int(added or 0)
+
 
 def _fetch_json(url: str, *, timeout_seconds: int) -> dict:
     """One bounded HTTPS read through the platform trust store."""
@@ -154,6 +235,7 @@ def capture_station(
     days = daily.get("time") or []
     captured_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     written = 0
+    versions = 0
     for index, local_date in enumerate(days):
         values = {
             field: (
@@ -203,8 +285,19 @@ def capture_station(
                 content_sha256(identity),
             ),
         )
+        versions += conn.execute(
+            VERSION_COPY.format(
+                where="m.station_id=? AND m.local_date=? AND m.source_id=?"
+            ),
+            (station_id, str(local_date), SOURCE_ID),
+        ).rowcount
         written += 1
-    return {"station_id": station_id, "rows": written, "days": len(days)}
+    return {
+        "station_id": station_id,
+        "rows": written,
+        "days": len(days),
+        "versions": versions,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -231,9 +324,7 @@ def main(argv: list[str] | None = None) -> int:
     # than failing the capture at SQLite's default.
     conn = sqlite3.connect(args.db, timeout=60.0)
     conn.execute("PRAGMA busy_timeout=60000")
-    conn.execute(SCHEMA)
-    conn.execute(INDEX)
-    conn.commit()
+    seeded_versions = ensure_schema(conn)
     timezones = {
         str(station_id): str(timezone_name)
         for station_id, timezone_name in conn.execute(
@@ -276,6 +367,9 @@ def main(argv: list[str] | None = None) -> int:
         if index + 1 < len(stations):
             time.sleep(REQUEST_SPACING_SECONDS)
     total = conn.execute(f"SELECT COUNT(*) FROM {TABLE}").fetchone()[0]
+    version_total = conn.execute(
+        f"SELECT COUNT(*) FROM {VERSION_TABLE}"
+    ).fetchone()[0]
     conn.close()
     print(json.dumps({
         "schema": "station_forecast_physics_capture_v1",
@@ -285,6 +379,10 @@ def main(argv: list[str] | None = None) -> int:
         "captured": sum(1 for r in receipts if r.get("state") == "CAPTURED"),
         "failed": [r for r in receipts if r.get("state") != "CAPTURED"],
         "table_rows": total,
+        "version_rows": version_total,
+        "versions_added": seeded_versions + sum(
+            int(r.get("versions") or 0) for r in receipts
+        ),
         "source_id": SOURCE_ID,
         "reference_only": True,
         "writes_truth_table": False,
