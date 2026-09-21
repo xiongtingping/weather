@@ -965,19 +965,47 @@ def _triples_memo_key(
     so the registry's lowest rowid moves).  None for an unnamed database or a
     store without both tables: callers then read the table as before."""
     try:
-        database = str(conn.execute("PRAGMA database_list").fetchone()[2] or "")
+        database = _connection_database(conn)
         if not database:
             return None
-        snapshot_top = conn.execute(
-            f"SELECT MAX(rowid) FROM {SNAPSHOT_TABLE}"
-        ).fetchone()[0]
-        # Two statements, not one: SQLite's min/max shortcut applies to a
-        # lone MIN or MAX, and asked for both at once it scans the table.
-        low = conn.execute(f"SELECT MIN(rowid) FROM {TABLE}").fetchone()[0]
-        high = conn.execute(f"SELECT MAX(rowid) FROM {TABLE}").fetchone()[0]
-    except (sqlite3.Error, TypeError, IndexError):
+        # Charter 181: one statement.  Each scalar subquery is a lone MIN or
+        # MAX, which SQLite answers from the B-tree's end -- ``SELECT
+        # MIN(rowid),MAX(rowid)`` in one select list is the form that scans
+        # the table, not this one.  The key is taken on every memoized read
+        # (thousands a cycle: 3.8s sampled at 11:04Z as three statements).
+        snapshot_top, low, high = conn.execute(
+            f"SELECT (SELECT MAX(rowid) FROM {SNAPSHOT_TABLE}),"
+            f"(SELECT MIN(rowid) FROM {TABLE}),"
+            f"(SELECT MAX(rowid) FROM {TABLE})"
+        ).fetchone()
+    except (sqlite3.Error, TypeError, IndexError, ValueError):
         return None
     return database, (snapshot_top, low, high)
+
+
+def registry_fingerprint(
+    conn: sqlite3.Connection,
+) -> tuple[str, tuple[Any, ...]] | None:
+    """(database, fingerprint) that changes whenever this table's rows can
+    have; None when there is nothing to key on.  Charter 182: for readers
+    outside this module that remember what they read from the registry."""
+
+    return _triples_memo_key(conn)
+
+
+def _connection_database(conn: sqlite3.Connection) -> str:
+    """The file behind this connection's main database ('' if none), asked
+    once per connection where the connection can remember it."""
+
+    known = getattr(conn, "_market_registry_database", None)
+    if isinstance(known, str):
+        return known
+    database = str(conn.execute("PRAGMA database_list").fetchone()[2] or "")
+    try:
+        conn._market_registry_database = database  # type: ignore[attr-defined]
+    except (AttributeError, TypeError):
+        pass  # a plain sqlite3.Connection takes no attributes
+    return database
 
 
 # (database, station, event_date) -> (fingerprint, rows), charter 178.

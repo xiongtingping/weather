@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 from dataclasses import asdict, dataclass
+from functools import cached_property
 from datetime import date, datetime, timezone, timedelta
 from typing import Any, Iterable, Mapping
 
@@ -936,8 +937,14 @@ class ProbabilityEnvelope:
             raise ContractError("probability_lineage_missing")
         return value
 
-    @property
+    @cached_property
     def content_sha256(self) -> str:
+        # Charter 182: computed once per instance.  The envelope is frozen
+        # and every field is set by ``from_mapping`` from copies, so its
+        # canonical JSON -- lineage documents and all -- cannot change after
+        # construction; hashing it on every access was the costliest leaf of
+        # the cycle (13.7s sampled at 11:30Z).  ``dataclasses.replace`` makes
+        # a new instance and hashes afresh.
         return content_sha256(self.to_dict())
 
     @property

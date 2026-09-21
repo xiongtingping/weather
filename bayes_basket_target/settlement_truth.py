@@ -188,6 +188,15 @@ def registry_scope_still_eligible(
     return int(row[0] or 0) == 1
 
 
+# Charter 182: (database, station, event_date) -> (registry fingerprint,
+# newest julianday(refreshed_at) among the scope's eligible rows, answer or
+# the ContractError it raised).  The settlement lane asks this for every
+# closed station-day every cycle -- 45 calls, 7.6s at 11:28Z -- and each call
+# sorted the scope's ~880 eligible rows to keep the newest snapshot's.
+_REGISTRY_SCOPE_MEMO: dict[tuple[str, str, str], tuple[Any, float, Any]] = {}
+_REGISTRY_SCOPE_MEMO_MAX = 4000
+
+
 def _registry_scope(
     conn: sqlite3.Connection,
     *,
@@ -195,6 +204,47 @@ def _registry_scope(
     event_date: str,
     as_of_utc: str,
 ) -> tuple[str, str, str]:
+    """The newest eligible snapshot's (timezone, lane, sha) for the scope.
+
+    Charter 182: remembered per registry fingerprint.  With the registry
+    unchanged and ``as_of_utc`` no earlier than every eligible row's
+    ``refreshed_at``, the as-of filter keeps every row, so the answer is the
+    one the unfiltered rows give -- computed once per fingerprint, the
+    ContractError included.  Any earlier clock (a replay) reads as before.
+    """
+
+    from .market_registry import registry_fingerprint  # noqa: PLC0415
+
+    fingerprint = registry_fingerprint(conn)
+    if fingerprint is not None:
+        memo_key = (fingerprint[0], str(station_id), str(event_date))
+        as_of_jd = conn.execute("SELECT julianday(?)", (as_of_utc,)).fetchone()[0]
+        cached = _REGISTRY_SCOPE_MEMO.get(memo_key)
+        if cached is None or cached[0] != fingerprint[1]:
+            rows = conn.execute(
+                "SELECT snapshot_sha256,settlement_timezone,source_lane,"
+                "refreshed_at,julianday(refreshed_at) "
+                "FROM basket_target_market_registry "
+                "WHERE station_id=? AND event_date=? AND source_eligible=1 "
+                "AND julianday(refreshed_at) IS NOT NULL "
+                "ORDER BY refreshed_at DESC,snapshot_sha256 DESC",
+                (station_id, event_date),
+            ).fetchall()
+            newest = max((float(row[4]) for row in rows), default=float("-inf"))
+            try:
+                answer: Any = _registry_scope_from_rows(
+                    [row[:4] for row in rows], event_date=event_date,
+                )
+            except ContractError as exc:
+                answer = exc
+            if len(_REGISTRY_SCOPE_MEMO) >= _REGISTRY_SCOPE_MEMO_MAX:
+                _REGISTRY_SCOPE_MEMO.clear()
+            cached = (fingerprint[1], newest, answer)
+            _REGISTRY_SCOPE_MEMO[memo_key] = cached
+        if as_of_jd is not None and float(as_of_jd) >= cached[1]:
+            if isinstance(cached[2], ContractError):
+                raise ContractError(str(cached[2]))
+            return cached[2]
     rows = conn.execute(
         "SELECT snapshot_sha256,settlement_timezone,source_lane,refreshed_at "
         "FROM basket_target_market_registry "
@@ -203,6 +253,12 @@ def _registry_scope(
         "ORDER BY refreshed_at DESC,snapshot_sha256 DESC",
         (station_id, event_date, as_of_utc),
     ).fetchall()
+    return _registry_scope_from_rows(rows, event_date=event_date)
+
+
+def _registry_scope_from_rows(
+    rows: Sequence[Any], *, event_date: str,
+) -> tuple[str, str, str]:
     if not rows:
         raise ContractError("settlement_truth_registry_scope_not_unique")
     registry_snapshot_sha = str(rows[0][0] or "").strip().lower()

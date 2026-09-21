@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
+import threading
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
@@ -65,7 +66,10 @@ from .observed_high_floor import (
     MARKET_SNAPSHOT_KEY as OBSERVED_HIGH_MARKET_SNAPSHOT_KEY,
 )
 from .market_registry import load_active_registry_rows
-from .materialization import rehydrate_lineage_documents
+from .materialization import (
+    _lineage_document_database,
+    rehydrate_lineage_documents,
+)
 from .policy import (
     GlobalBasketPriorArtifact,
     PolicyArtifact,
@@ -470,6 +474,24 @@ def load_production_artifacts(
     )
 
 
+# Charter 182: committed envelope rows whose stored content hash has been
+# checked against their rebuilt body, by (database, envelope_id, stored sha).
+# The table is append-only by trigger and lineage documents are content
+# addressed, so a row that verified once rebuilds to the same body and the
+# same hash for good.  Every load re-hashed every row of the station-day,
+# lineage and all: the loader ran 428-883 times a cycle and the hash was its
+# largest part (14.9s cumulative at 11:30Z).
+_VERIFIED_ENVELOPES: set[tuple[str, str, str]] = set()
+_VERIFIED_ENVELOPES_MAX = 500_000
+_VERIFIED_ENVELOPES_LOCK = threading.Lock()
+
+
+def forget_verified_envelopes() -> None:
+    """Drop every remembered verification (tests)."""
+    with _VERIFIED_ENVELOPES_LOCK:
+        _VERIFIED_ENVELOPES.clear()
+
+
 def load_materialized_probability_envelopes(
     conn: sqlite3.Connection,
     *,
@@ -544,6 +566,7 @@ def load_materialized_probability_envelopes(
         validated_snapshot = validated
     else:
         validated: list[ProbabilityEnvelope] = []
+        database = _lineage_document_database(conn)
         stage_clause = (
             " AND stage IN (" + ",".join("?" * len(stage_filter)) + ")"
             if stage_filter
@@ -574,8 +597,19 @@ def load_materialized_probability_envelopes(
             envelope = ProbabilityEnvelope.from_mapping(raw)
             if envelope_id != envelope.checkpoint_id:
                 raise ContractError("probability_envelope_storage_identity_mismatch")
-            if supplied_sha != envelope.content_sha256:
+            verified_key = (database, envelope_id, supplied_sha)
+            if database and verified_key in _VERIFIED_ENVELOPES:
+                # Charter 182: this row's body was hashed against its stored
+                # sha before; hand the envelope the answer so no reader
+                # downstream hashes it again either.
+                envelope.__dict__["content_sha256"] = supplied_sha
+            elif supplied_sha != envelope.content_sha256:
                 raise ContractError("probability_envelope_content_sha_mismatch")
+            elif database:
+                with _VERIFIED_ENVELOPES_LOCK:
+                    if len(_VERIFIED_ENVELOPES) >= _VERIFIED_ENVELOPES_MAX:
+                        _VERIFIED_ENVELOPES.clear()
+                    _VERIFIED_ENVELOPES.add(verified_key)
             if envelope.lineage.get("release_state") == "MATERIALIZED_UNPUBLISHED":
                 if current_pointer is None or canonical_release_root is None:
                     continue
