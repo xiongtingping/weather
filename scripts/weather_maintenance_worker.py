@@ -146,6 +146,18 @@ class MaintenanceLoop:
         self.beat("idle")
         return receipt
 
+    def rest_after(self, duration: float) -> float:
+        """How long to rest after a step that took ``duration``.
+
+        At least the interval, and at least as long as the step itself: the
+        worker shares an 8GB machine's page cache and disk with the cycle,
+        and on its first hour a step took 67s, longer than the interval, so
+        steps ran back to back (2026-09-21 13:38-13:50Z).  Resting as long
+        as it worked keeps it under half the machine's time.
+        """
+
+        return max(self.interval_sec, float(duration))
+
     def run(self, *, max_steps: int | None = None) -> None:
         try:
             while not self.stop and not self.orphaned():
@@ -153,8 +165,10 @@ class MaintenanceLoop:
                 self.step()
                 if max_steps is not None and self.steps >= max_steps:
                     break
+                rest = self.rest_after(self.clock() - started)
+                rest_started = self.clock()
                 while not self.stop and not self.orphaned():
-                    left = self.interval_sec - (self.clock() - started)
+                    left = rest - (self.clock() - rest_started)
                     if left <= 0:
                         break
                     self.sleep(min(left, HEARTBEAT_EVERY_SEC))

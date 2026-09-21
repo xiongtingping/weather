@@ -256,3 +256,10 @@ def test_the_supervisor_starts_restarts_after_backoff_and_stops(tmp_path, monkey
     assert daemon.MaintenanceWorkerSupervisor(
         archive_db=tmp_path / "a.db", enabled=False,
     ).tick()["state"] == "disabled"
+
+
+def test_the_worker_rests_at_least_as_long_as_it_worked(tmp_path) -> None:
+    script = _script()
+    loop = script.MaintenanceLoop(_StepWorker([]), heartbeat_path=tmp_path / "hb.json", interval_sec=60.0)
+    assert loop.rest_after(12.0) == 60.0
+    assert loop.rest_after(67.0) == 67.0
