@@ -1,0 +1,342 @@
+--- a/bayes_basket_target/native_ensemble_p0.py
++++ b/bayes_basket_target/native_ensemble_p0.py
+@@ -3036,13 +3036,19 @@
+     # the OOS gate measured; the plain mixture remains byte-identical for
+     # those artifacts until the resident OOS rotation regenerates them.
+     artifact_combination_method = str(artifact[8] or "")
++    # Charter 190: the axis with its open ends, read once and handed to both
++    # layers that move mass along it -- the bridge's recentering here and the
++    # centre/width layer below -- so an open edge bucket travels as a tail in
++    # both.
++    served_centers_c, open_edge_bounds_c = _served_axis(intervals_raw, ordered)
+     if CONSENSUS_BRIDGE_METHOD_TAG in artifact_combination_method:
+         probability, consensus_bridge_receipt = bridged_cross_probability(
+             system_probabilities=system_probabilities,
+             system_weights=system_weights,
+             system_centers_c=calibrated_system_centers_c,
+             ordered_keys=ordered,
+-            key_centers_c=_bucket_centers(intervals_raw, ordered),
++            key_centers_c=served_centers_c,
++            open_edge_bounds_c=open_edge_bounds_c,
+         )
+     else:
+         consensus_bridge_receipt = None
+@@ -3358,10 +3364,9 @@
+     band_layer, pinned_sha, pinned_axis = resolve_pinned_band_layer(
+         conn, artifact_combination_method, band_table_override
+     )
+-    # Charter 190: the width layer is handed the axis with its open ends, so
+-    # an open edge bucket's mass moves as a tail -- the same axis the width
+-    # fit scores its scalars on.
+-    served_centers_c, open_edge_bounds_c = _served_axis(intervals_raw, ordered)
++    # Charter 190: the width layer is handed the axis with its open ends (read
++    # above, before the bridge), so an open edge bucket's mass moves as a
++    # tail -- the same axis the width fit scores its scalars on.
+     probability, center_width_receipt, band_reliability_receipt = (
+         apply_served_table_layers(
+             probability,
+--- a/bayes_basket_target/center_width_calibration.py
++++ b/bayes_basket_target/center_width_calibration.py
+@@ -449,6 +449,75 @@
+     return landing, scale
+ 
+ 
++def move_bucket_mass(
++    moved: dict[str, float],
++    weight: float,
++    position_index: int,
++    *,
++    keys: Sequence[str],
++    centers: Sequence[float],
++    mean_c: float,
++    lam: float,
++    shift: float,
++    open_edges: tuple[float | None, float | None],
++    edges_c: Sequence[float],
++    rung_c: float,
++    adjacent_weights: tuple[float, float],
++) -> tuple[str, float | None, float] | None:
++    """Carry one bucket's mass through x -> mean + lam (x - mean) + shift.
++
++    The one transport both axis moves share (charter 190): the width layer
++    (``apply_center_width_calibration``) and the consensus bridge's
++    recentering (``cross_consensus.shift_probability``, a pure shift: lam 1).
++    An interior bucket is a point on its centre, split linearly between the
++    two centres it lands between, and anything past either end accumulates
++    in that end bucket.  A declared open end bucket is a tail
++    (``_open_edge_tail_landing``).  Adds into ``moved`` in place and returns
++    ``(side, scale, released)`` for a tail, None for a point.
++    """
++
++    open_lower, open_upper = open_edges
++    side = (
++        "lower" if open_lower is not None and position_index == 0
++        else "upper"
++        if open_upper is not None and position_index == len(keys) - 1
++        else None
++    )
++    if side is not None:
++        landing, scale = _open_edge_tail_landing(
++            weight,
++            side=side,
++            bound_c=open_lower if side == "lower" else open_upper,
++            adjacent_weight=adjacent_weights[0 if side == "lower" else 1],
++            rung_c=rung_c,
++            edges_c=edges_c,
++            mean_c=mean_c,
++            lam=lam,
++            shift=shift,
++        )
++        for bucket_index, share in enumerate(landing):
++            moved[keys[bucket_index]] += share
++        return side, scale, weight - landing[position_index]
++    origin = centers[position_index]
++    position = mean_c + (origin - mean_c) * lam + shift
++    if position <= centers[0]:
++        moved[keys[0]] += weight
++        return None
++    if position >= centers[-1]:
++        moved[keys[-1]] += weight
++        return None
++    for lower_index in range(len(centers) - 1):
++        lower = centers[lower_index]
++        upper = centers[lower_index + 1]
++        if lower <= position <= upper:
++            span = upper - lower
++            upper_share = (position - lower) / span if span > 0 else 0.0
++            moved[keys[lower_index]] += weight * (1.0 - upper_share)
++            moved[keys[lower_index + 1]] += weight * upper_share
++            break
++    return None
++
++
+ def apply_center_width_calibration(
+     probability: Mapping[str, float],
+     *,
+@@ -584,52 +653,32 @@
+     tail_released: dict[str, float] = {"lower": 0.0, "upper": 0.0}
+ 
+     moved = {key: 0.0 for key in keys}
++    adjacent_weights = (
++        float(probability.get(keys[1], 0.0)),
++        float(probability.get(keys[-2], 0.0)),
++    )
+     for key, raw in probability.items():
+         weight = float(raw)
+         if weight <= 0.0:
+             continue
+-        position_index = index[str(key)]
+-        side = (
+-            "lower" if open_lower is not None and position_index == 0
+-            else "upper"
+-            if open_upper is not None and position_index == len(keys) - 1
+-            else None
++        tail = move_bucket_mass(
++            moved,
++            weight,
++            index[str(key)],
++            keys=keys,
++            centers=centers,
++            mean_c=mean_c,
++            lam=lam,
++            shift=shift,
++            open_edges=(open_lower, open_upper),
++            edges_c=edges_c,
++            rung_c=rung_c,
++            adjacent_weights=adjacent_weights,
+         )
+-        if side is not None:
+-            adjacent = keys[1] if side == "lower" else keys[-2]
+-            landing, scale = _open_edge_tail_landing(
+-                weight,
+-                side=side,
+-                bound_c=open_lower if side == "lower" else open_upper,
+-                adjacent_weight=float(probability.get(adjacent, 0.0)),
+-                rung_c=rung_c,
+-                edges_c=edges_c,
+-                mean_c=mean_c,
+-                lam=lam,
+-                shift=shift,
+-            )
+-            for bucket_index, share in enumerate(landing):
+-                moved[keys[bucket_index]] += share
++        if tail is not None:
++            side, scale, released = tail
+             tail_scale[side] = scale
+-            tail_released[side] = weight - landing[position_index]
+-            continue
+-        origin = centers[index[str(key)]]
+-        position = mean_c + (origin - mean_c) * lam + shift
+-        if position <= centers[0]:
+-            moved[keys[0]] += weight
+-            continue
+-        if position >= centers[-1]:
+-            moved[keys[-1]] += weight
+-            continue
+-        for lower_index in range(len(centers) - 1):
+-            lower = centers[lower_index]
+-            upper = centers[lower_index + 1]
+-            if lower <= position <= upper:
+-                span = upper - lower
+-                upper_share = (position - lower) / span if span > 0 else 0.0
+-                moved[keys[lower_index]] += weight * (1.0 - upper_share)
+-                moved[keys[lower_index + 1]] += weight * upper_share
+-                break
++            tail_released[side] = released
+ 
+     excluded = {str(bucket) for bucket in excluded_buckets}
+     unknown = excluded - set(keys)
+--- a/bayes_basket_target/cross_consensus.py
++++ b/bayes_basket_target/cross_consensus.py
+@@ -29,6 +29,14 @@
+ from datetime import date
+ from typing import Any, Mapping, Sequence
+ 
++from .center_width_calibration import (
++    OPEN_EDGE_TAIL_RULE,
++    _bucket_edges_c,
++    _open_edges,
++    bucket_rung_width_c,
++    move_bucket_mass,
++)
++
+ CONSENSUS_BRIDGE_METHOD_TAG = "consensus_bridge_v1"
+ 
+ # Measured over 175 settled station-days (P0 calibration audit, 2026-08-13,
+@@ -1067,43 +1075,64 @@
+     delta_c: float,
+     ordered_keys: Sequence[str],
+     key_centers_c: Sequence[float],
++    open_edge_bounds_c: Sequence[float | None] | None = None,
++    released: dict[str, float] | None = None,
+ ) -> dict[str, float]:
+     """Move a bucket histogram by ``delta_c`` with linear mass splitting.
+ 
+     Mass leaving one bucket center lands between two adjacent centers and is
+     divided in proportion to proximity; anything pushed past either end
+-    accumulates in the edge bucket, matching how the open-ended edge buckets
+-    absorb their tails.
++    accumulates in the edge bucket.
++
++    Charter 190 (extended 2026-09-22 to this layer, user ruling "修"): a
++    declared open end bucket (``open_edge_bounds_c``, as
++    ``center_width_calibration.served_bucket_axis`` returns it) is carried as
++    a tail, not as a point on its key centre -- the same transport the width
++    layer uses (``move_bucket_mass`` with lambda 1), so a recentering that
++    moves "22°C or below" half a degree warm no longer pushes half of it into
++    23°C.  Interior buckets move bit for bit as before; an axis with no open
++    end declared (the holdout's integer grid) or an open end holding no mass
++    returns exactly what it did.  ``released``, when given, is filled with
++    how much of each open bucket's own mass the shift carried out of it.
+     """
+ 
+     keys = [str(key) for key in ordered_keys]
+     centers = [float(center) for center in key_centers_c]
+     if len(keys) != len(centers) or len(keys) < 2:
+         raise ValueError("consensus_bridge_bucket_axis_invalid")
++    open_lower, open_upper = _open_edges(open_edge_bounds_c, centers)
++    declared = open_lower is not None or open_upper is not None
++    edges_c = _bucket_edges_c(centers, open_lower, open_upper) if declared else []
++    rung_c = bucket_rung_width_c(centers) if declared else 0.0
++    adjacent_weights = (
++        float(probability.get(keys[1], 0.0)),
++        float(probability.get(keys[-2], 0.0)),
++    )
+     shifted = {key: 0.0 for key in keys}
+     for key, mass in probability.items():
+         weight = float(mass)
+         if weight <= 0.0:
+             continue
+         try:
+-            position = centers[keys.index(str(key))] + float(delta_c)
++            position_index = keys.index(str(key))
+         except ValueError:
+             raise ValueError("consensus_bridge_bucket_unknown") from None
+-        if position <= centers[0]:
+-            shifted[keys[0]] += weight
+-            continue
+-        if position >= centers[-1]:
+-            shifted[keys[-1]] += weight
+-            continue
+-        for index in range(len(centers) - 1):
+-            lower = centers[index]
+-            upper = centers[index + 1]
+-            if lower <= position <= upper:
+-                span = upper - lower
+-                upper_share = (position - lower) / span if span > 0 else 0.0
+-                shifted[keys[index]] += weight * (1.0 - upper_share)
+-                shifted[keys[index + 1]] += weight * upper_share
+-                break
++        tail = move_bucket_mass(
++            shifted,
++            weight,
++            position_index,
++            keys=keys,
++            centers=centers,
++            mean_c=0.0,
++            lam=1.0,
++            shift=float(delta_c),
++            open_edges=(open_lower, open_upper),
++            edges_c=edges_c,
++            rung_c=rung_c,
++            adjacent_weights=adjacent_weights,
++        )
++        if tail is not None and released is not None:
++            released[tail[0]] = released.get(tail[0], 0.0) + tail[2]
+     return shifted
+ 
+ 
+@@ -1114,12 +1143,18 @@
+     system_centers_c: Mapping[str, float],
+     ordered_keys: Sequence[str],
+     key_centers_c: Sequence[float],
++    open_edge_bounds_c: Sequence[float | None] | None = None,
+ ) -> tuple[dict[str, float], dict[str, Any]]:
+     """Blend the plain mixture with the recentered consensus component.
+ 
+     Returns the final probability plus a receipt stating the gap, the blend
+     weight and both components' mass on the buckets strictly between the
+     center buckets, so a lineage reader can see exactly what the bridge did.
++
++    ``open_edge_bounds_c`` (charter 190): serving's market ladder declares its
++    open ends and each system's recentering carries them as tails; the
++    holdout's integer grid declares none.  A blend of zero never shifts, so
++    it is unchanged either way.
+     """
+ 
+     keys = [str(key) for key in ordered_keys]
+@@ -1156,13 +1191,19 @@
+         return mixture, receipt
+ 
+     consensus = {key: 0.0 for key in keys}
++    released_by_system: dict[str, dict[str, float]] = {}
+     for system, weight in system_weights.items():
++        released: dict[str, float] = {}
+         recentered = shift_probability(
+             system_probabilities[system],
+             delta_c=consensus_center_c - centers[system],
+             ordered_keys=keys,
+             key_centers_c=key_centers_c,
++            open_edge_bounds_c=open_edge_bounds_c,
++            released=released,
+         )
++        if released:
++            released_by_system[str(system)] = released
+         for key in keys:
+             consensus[key] += float(weight) * recentered[key]
+     consensus_total = sum(consensus.values())
+@@ -1182,4 +1223,14 @@
+         "lambda": round(blend, 6),
+         "consensus_center_c": round(consensus_center_c, 6),
+     }
++    if open_edge_bounds_c is not None and any(
++        bound is not None for bound in open_edge_bounds_c
++    ):
++        # Charter 190: which open-edge rule the recentering ran under, and
++        # how much of each system's open buckets it carried out of them.
++        receipt["open_edge_rule"] = OPEN_EDGE_TAIL_RULE
++        receipt["open_edge_mass_released_by_system"] = {
++            system: {side: round(value, 9) for side, value in sorted(sides.items())}
++            for system, sides in sorted(released_by_system.items())
++        }
+     return blended, receipt
