@@ -10835,6 +10835,8 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             ),
             # v2.1: the model bucket's spread ceiling.
             "max_spread_on_model_mode": tiebreak.get("max_spread_on_model_mode"),
+            # v2.3 (charter 175): the ceiling is the rung's own price.
+            "max_paid_price": tiebreak.get("max_paid_price"),
             "source": lanes.get("source"),
             "updated_at_utc": lanes.get("updated_at_utc"),
         },
@@ -11150,7 +11152,8 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
         hits_v = sum(1 for t in settled_v if t["hit"])
         by_version.append({
             "rule_version": version or "(未评分)",
-            "resting": version.endswith("_maker_v2_2"),
+            # Every maker rule rests (v2.2 charter 163, v2.3 charter 175).
+            "resting": "_maker" in version,
             "filled": len(rows_v), "settled": len(settled_v), "hits": hits_v,
             "event_days": len({t["event_date"] for t in settled_v}),
             "stake_usdc": stake_v,
@@ -20126,11 +20129,11 @@ function tiebreakLane(){
       <b>秤砣线</b>
       <span class="pill ${S.enabled?"green":"red"}">${S.enabled?"运行中":"已关闭"}</span>
       <span>每笔 <b class="mono">${usd(S.stake_usdc)}</b>（顶部「秤砣每笔」旋钮可调）</span>
-      <span class="muted">规则 <b class="mono">${h(S.rule||"model_mode_midband_spread_v2_1")}</b>：模型众数桶且市场给它 ${n3(S.min_market_share_on_model_mode)}–${S.max_market_share_on_model_mode==null?"∞":n3(S.max_market_share_on_model_mode)}${(S.rule||"")==="adjacent_tie_v1"?"（且两众数相邻不同）":""}${/v2_1$/.test(S.rule||"")?`，该桶点差 ≤ ${S.max_spread_on_model_mode==null?"—":Math.round(S.max_spread_on_model_mode*100)} 分`:""}，首决策 ${S.first_decision_fresh_seconds==null?"—":Math.round(S.first_decision_fresh_seconds/60)} 分钟内</span>
+      <span class="muted">规则 <b class="mono">${h(S.rule||"model_mode_midband_spread_v2_1")}</b>：模型众数桶且市场给它 ${/paid_cap/.test(S.rule||"")?`≥ ${n3(S.min_market_share_on_model_mode)}（归一化中价）、挂单实付价 ≤ ${S.max_paid_price==null?"0.600":n3(S.max_paid_price)}`:`${n3(S.min_market_share_on_model_mode)}–${S.max_market_share_on_model_mode==null?"∞":n3(S.max_market_share_on_model_mode)}`}${(S.rule||"")==="adjacent_tie_v1"?"（且两众数相邻不同）":""}${/spread/.test(S.rule||"")?`，该桶点差 ≤ ${S.max_spread_on_model_mode==null?"—":Math.round(S.max_spread_on_model_mode*100)} 分`:""}，首决策 ${S.first_decision_fresh_seconds==null?"—":Math.round(S.first_decision_fresh_seconds/60)} 分钟内</span>
       <span style="flex:1"></span>
       ${laneWord("basket","篮子买单")} ${laneWord("certain_win_recycle","0.99 回收")} ${laneWord("mis_bought_leg_exit","144 卖回")}
     </div>
-    <div class="muted" style="margin-top:6px">v2.1 规则：每个阶段的首个决策，模型众数桶被市场归一化中价定在 0.40–0.60 之间、且该桶两边有报价点差不超过 3 分，就在这桶按 best 买一+1 挂一张 post-only GTD 单（点差只有一跳时贴到卖一下一跳），挂满每笔预算的股数，一个站日只挂一次（点差 >3 分或单边的桶回测 −3.4%，≤3 分 +8~9%）。v2.2（宪章 163，2026-09-20 裁决「秤砣线从吃单改为post only，挂best买一+1」）＝同样四条件，只把吃卖一改为挂买一+1；两版按 rule_version 分开记，不混算。下面的读数全部是<b>按卖一吃</b>算出来的，对挂单这版不成立——挂单要么不成交，要么在市场朝反方向走时才成交，前向样本从 09-20 重新开始。读数依据（全部快照 08-15→09-17，一站日一次按卖一）：754 站日 +5.7% [−0.2, +10.9]，前后半 +5.5/+5.7，仅首决策 488 站日 +7.9% [+1.8, +13.7]；同价带不看模型 −3.2%，模型众数在别处 −7.2%。v1（两众数相邻不同、市场 ≥0.40）是其 148 站日子集，行按 rule_version 分开记——仍是假设，不是结论。</div></div>`;
+    <div class="muted" style="margin-top:6px">v2.1 规则：每个阶段的首个决策，模型众数桶被市场归一化中价定在 0.40–0.60 之间、且该桶两边有报价点差不超过 3 分，就在这桶按 best 买一+1 挂一张 post-only GTD 单（点差只有一跳时贴到卖一下一跳），挂满每笔预算的股数，一个站日只挂一次（点差 >3 分或单边的桶回测 −3.4%，≤3 分 +8~9%）。v2.2（宪章 163，2026-09-20 裁决「秤砣线从吃单改为post only，挂best买一+1」）＝同样四条件，只把吃卖一改为挂买一+1；v2.3（宪章 175，2026-09-21 裁决「把价带上限改成按实付价 ≤0.60」）＝v2.2 把价带上限从归一化中价挪到挂单实付价（≤0.60），下限仍按归一化中价 ≥0.40——因为归一化中价比实付价中位低 3 分，付 0.61–0.66 的四笔 P0-M 全空；各版按 rule_version 分开记，不混算。下面的读数全部是<b>按卖一吃</b>算出来的，对挂单这版不成立——挂单要么不成交，要么在市场朝反方向走时才成交，前向样本从 09-20 重新开始。读数依据（全部快照 08-15→09-17，一站日一次按卖一）：754 站日 +5.7% [−0.2, +10.9]，前后半 +5.5/+5.7，仅首决策 488 站日 +7.9% [+1.8, +13.7]；同价带不看模型 −3.2%，模型众数在别处 −7.2%。v1（两众数相邻不同、市场 ≥0.40）是其 148 站日子集，行按 rule_version 分开记——仍是假设，不是结论。</div></div>`;
   const byRule=(E.by_rule||[]).map(r=>`<span class="pill ${/v2$/.test(r.rule_version)?"green":"amber"}" title="${h(r.first_at_utc||"")} → ${h(r.last_at_utc||"")}">${h(r.rule_version.replace("tiebreak_",""))}：评估 ${r.evaluated} · 触发 ${r.fired} · 发单 ${r.sent}</span>`).join(" ");
   const ruleLine=byRule?`<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><span class="muted">按规则版本：</span>${byRule}</div>`:"";
   const evalTiles=E.available?ruleLine+`<div class="grid g3" style="margin-top:8px">

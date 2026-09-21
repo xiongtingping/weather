@@ -75,9 +75,14 @@ TIEBREAK_DEFAULT_SETTINGS: dict[str, Any] = {
     # v2.2 (charter 163, user ruling 2026-09-20 "秤砣线从吃单改为post only，挂
     # best买一+1"): v2.1's four conditions, posted as a resting post-only rung
     # at the best bid plus one tick instead of crossed at the walked ask.
-    "rule": "model_mode_midband_spread_maker_v2_2",
+    # v2.3 (charter 175, user ruling 2026-09-21 "把价带上限改成按实付价
+    # ≤0.60"): v2.2 with the band's ceiling on the rung's own price
+    # (``max_paid_price``) instead of the normalised mid; the floor stays on
+    # the mid.  ``max_market_share_on_model_mode`` is read only by v2/v2.1/v2.2.
+    "rule": "model_mode_midband_spread_maker_paid_cap_v2_3",
     "min_market_share_on_model_mode": 0.40,
     "max_market_share_on_model_mode": 0.60,
+    "max_paid_price": 0.60,
     "max_spread_on_model_mode": 0.031,
     "first_decision_fresh_seconds": 3600.0,
     # User ruling 2026-09-18 "加重试": a fired decision refused for cash or a

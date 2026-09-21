@@ -195,13 +195,16 @@ def test_v2_fires_on_the_model_mode_inside_the_market_mid_band() -> None:
     tie = lane.evaluate_rule(p, ORDS, {"27°C": 0.50, "28°C": 0.42, "29°C": 0.08}, **V2)
     assert tie["fired"] is True and tie["rule"] == "tiebreak_model_mode_market_midband_v2"
     default = lane.evaluate_rule(p, ORDS, {"27°C": 0.50, "28°C": 0.42, "29°C": 0.08}, min_market_share=0.40, spread=0.02, max_spread=0.031)
-    assert default["rule"] == "tiebreak_model_mode_market_midband_spread_maker_v2_2" and default["fired"] is True, "v2.2 is the default"
+    assert default["rule"] == "tiebreak_model_mode_market_midband_spread_maker_paid_cap_v2_3" and default["fired"] is True, "v2.3 is the default (charter 175)"
     # v2.2 is v2.1's predicate: the same book, the same verdict, every field
     # but the version identical.  What charter 163 changed is the order.
+    v22 = lane.evaluate_rule(p, ORDS, {"27°C": 0.50, "28°C": 0.42, "29°C": 0.08},
+                             min_market_share=0.40, max_market_share=0.60, rule=lane.RULE_V22, spread=0.02, max_spread=0.031)
     v21 = lane.evaluate_rule(p, ORDS, {"27°C": 0.50, "28°C": 0.42, "29°C": 0.08},
-                             min_market_share=0.40, rule=lane.RULE_V21, spread=0.02, max_spread=0.031)
+                             min_market_share=0.40, max_market_share=0.60, rule=lane.RULE_V21, spread=0.02, max_spread=0.031)
+    assert v22["rule"] == "tiebreak_model_mode_market_midband_spread_maker_v2_2" and v22["fired"] is True
     assert {k: v for k, v in v21.items() if k not in ("rule", "rule_name")} == {
-        k: v for k, v in default.items() if k not in ("rule", "rule_name")}
+        k: v for k, v in v22.items() if k not in ("rule", "rule_name")}
     assert lane.evaluate_rule(p, ORDS, {"27°C": 0.50, "28°C": 0.42, "29°C": 0.08}, min_market_share=0.40, spread=0.05, max_spread=0.031)["reason"] == "spread_too_wide"
     assert lane.evaluate_rule(p, ORDS, {"27°C": 0.50, "28°C": 0.42, "29°C": 0.08}, min_market_share=0.40, spread=None, max_spread=0.031)["reason"] == "spread_unquoted"
     # Agreeing modes, market 0.55 on the shared bucket: fires under v2, not v1.
@@ -324,7 +327,7 @@ def test_it_bids_for_the_model_bucket_post_only_at_bid_plus_one_tick(store) -> N
         f" rule_version FROM {lane.EVALUATION_TABLE}"
     ).fetchone()
     assert book[0] == 0.46 and book[1] == 0.44 and book[2] == pytest.approx(0.02) and book[3] == 30.0
-    assert book[4] == "tiebreak_model_mode_market_midband_spread_maker_v2_2"
+    assert book[4] == "tiebreak_model_mode_market_midband_spread_maker_paid_cap_v2_3"
     reconciled = store.execute(
         "SELECT filled_size FROM basket_target_order_reconciliations WHERE order_intent_id=?",
         (evaluation[2],),
@@ -386,9 +389,9 @@ def test_a_decision_that_does_not_fire_is_scored_with_its_reason(store) -> None:
                                             live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
     assert receipt["evaluated"] == 1 and receipt["fired"] == 0
     assert receipt["refusals"] == ["rule_not_met:market_share_below_threshold"]
-    assert receipt["rule"] == "tiebreak_model_mode_market_midband_spread_maker_v2_2"
+    assert receipt["rule"] == "tiebreak_model_mode_market_midband_spread_maker_paid_cap_v2_3"
     row = store.execute(f"SELECT model_mode, market_mode, fired, rule_version FROM {lane.EVALUATION_TABLE}").fetchone()
-    assert row == ("29°C", "27°C", 0, "tiebreak_model_mode_market_midband_spread_maker_v2_2")
+    assert row == ("29°C", "27°C", 0, "tiebreak_model_mode_market_midband_spread_maker_paid_cap_v2_3")
 
 
 def test_v2_1_refuses_a_wide_or_one_sided_book_on_the_model_bucket(store) -> None:
@@ -400,7 +403,7 @@ def test_v2_1_refuses_a_wide_or_one_sided_book_on_the_model_bucket(store) -> Non
     wide = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
                                          live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
     assert wide["fired"] == 0 and wide["refusals"] == ["rule_not_met:spread_too_wide"]
-    assert wide["rule"] == "tiebreak_model_mode_market_midband_spread_maker_v2_2"
+    assert wide["rule"] == "tiebreak_model_mode_market_midband_spread_maker_paid_cap_v2_3"
     row = store.execute(f"SELECT spread_on_model_mode, fired FROM {lane.EVALUATION_TABLE}").fetchone()
     assert row[0] == pytest.approx(0.06) and row[1] == 0
     # The same book under v2 fires: the spread is v2.1's condition alone.
@@ -540,9 +543,9 @@ def test_the_lane_file_selects_v1_and_the_row_says_which_rule_scored_it(store) -
                                            live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
     assert second["fired"] == 1 and second["submitted"] == 1 and sent[0][1]["token_id"] == "t27"
     versions = sorted(r[0] for r in store.execute(f"SELECT rule_version FROM {lane.EVALUATION_TABLE}"))
-    assert versions == ["tiebreak_adjacent_mode_market_share_v1", "tiebreak_model_mode_market_midband_spread_maker_v2_2"]
+    assert versions == ["tiebreak_adjacent_mode_market_share_v1", "tiebreak_model_mode_market_midband_spread_maker_paid_cap_v2_3"]
     plan_rule = store.execute("SELECT json_extract(intent_json, '$.rule') FROM basket_target_order_intents").fetchone()[0]
-    assert plan_rule == "tiebreak_model_mode_market_midband_spread_maker_v2_2"
+    assert plan_rule == "tiebreak_model_mode_market_midband_spread_maker_paid_cap_v2_3"
 
 
 def test_the_gates_a_fired_decision_must_still_pass(store) -> None:
@@ -669,7 +672,7 @@ def test_a_rung_that_ended_without_filling_is_retried_on_a_newer_book_and_capped
     second_id = store.execute(
         "SELECT order_intent_id FROM basket_target_order_intents ORDER BY created_at DESC LIMIT 1").fetchone()[0]
     _expire(store, second_id, at="2026-09-18T12:09:20.000Z")
-    # A newer book that has left the band is not bought.
+    # A newer book that has left the band is not bought (charter 175: its rung is 0.74).
     _newer_snapshot(store, observed_at="2026-09-18T12:09:30.000Z", snapshot_id="snap_new2",
                     book=[{"bucket": "27°C", "ask_levels": [{"price": 0.20, "shares": 200.0}], "bid_levels": [{"price": 0.18, "shares": 200.0}], "ask_available": True},
                           {"bucket": "28°C", "ask_levels": [{"price": 0.75, "shares": 200.0}], "bid_levels": [{"price": 0.73, "shares": 200.0}], "ask_available": True},
@@ -677,7 +680,7 @@ def test_a_rung_that_ended_without_filling_is_retried_on_a_newer_book_and_capped
     third = lane.execute_tiebreak_entries(store, transport=_resting_transport(sent), now_utc=NOW,
                                           live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
     assert third["retry_planned"] == 0 and len(sent) == 2
-    assert third["retries"][0]["refusal_after"] == "retry_rule_not_met:market_share_above_ceiling"
+    assert third["retries"][0]["refusal_after"] == "retry_rule_not_met:paid_price_above_ceiling"
     # Back inside the band on a newer book: the third and last send.
     _newer_snapshot(store, observed_at="2026-09-18T12:10:00.000Z", snapshot_id="snap_new3")
     fourth = lane.execute_tiebreak_entries(store, transport=_resting_transport(sent), now_utc=NOW,
@@ -795,13 +798,13 @@ def test_a_cash_refusal_is_retried_on_the_latest_decision_once_cash_is_there(sto
 def test_rule_refusals_and_stale_latest_decisions_are_not_retried(store) -> None:
     from bayes_basket_target.account_equity import ensure_account_equity_table  # noqa: PLC0415
 
-    # A rule refusal (market share above the ceiling) is never retried.
+    # A rule refusal (charter 175: the rung priced above the ceiling) is never retried.
     _seed(store, book=[{"bucket": "27°C", "ask_levels": [{"price": 0.20, "shares": 200.0}], "bid_levels": [{"price": 0.18, "shares": 200.0}], "ask_available": True},
                        {"bucket": "28°C", "ask_levels": [{"price": 0.75, "shares": 200.0}], "bid_levels": [{"price": 0.73, "shares": 200.0}], "ask_available": True},
                        {"bucket": "29°C", "ask_levels": [{"price": 0.05, "shares": 200.0}], "bid_levels": [{"price": 0.04, "shares": 200.0}], "ask_available": True}])
     first = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
                                           live_submit_authorized=True, settings={"stake_usdc": 6.0}, admission=ADMIT)
-    assert first["fired"] == 0 and first["refusals"] == ["rule_not_met:market_share_above_ceiling"]
+    assert first["fired"] == 0 and first["refusals"] == ["rule_not_met:paid_price_above_ceiling"]
     again = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
                                           live_submit_authorized=True, settings={"stake_usdc": 6.0}, admission=ADMIT)
     assert again["retried"] == 0
@@ -979,14 +982,14 @@ def test_a_row_re_judged_after_its_send_failed_keeps_the_later_judgement(store) 
                           {"bucket": "29°C", "ask_levels": [{"price": 0.05, "shares": 200.0}], "bid_levels": [{"price": 0.04, "shares": 200.0}], "ask_available": True}])
     judged = lane.execute_tiebreak_entries(store, transport=_resting_transport(sent), now_utc=NOW,
                                            live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
-    assert judged["retries"][0]["refusal_after"] == "retry_rule_not_met:market_share_above_ceiling"
-    assert store.execute(f"SELECT refusal FROM {lane.EVALUATION_TABLE}").fetchone()[0] == "retry_rule_not_met:market_share_above_ceiling"
+    assert judged["retries"][0]["refusal_after"] == "retry_rule_not_met:paid_price_above_ceiling"
+    assert store.execute(f"SELECT refusal FROM {lane.EVALUATION_TABLE}").fetchone()[0] == "retry_rule_not_met:paid_price_above_ceiling"
     # No newer book: the next pass judges nothing, and the row keeps its reason.
     again = lane.execute_tiebreak_entries(store, transport=_resting_transport(sent), now_utc=NOW,
                                           live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
     assert again["retry_planned"] == 0 and len(sent) == 1
     assert store.execute(f"SELECT refusal, order_intent_id FROM {lane.EVALUATION_TABLE}").fetchone() == (
-        "retry_rule_not_met:market_share_above_ceiling", sent[0][1]["order_intent_id"],
+        "retry_rule_not_met:paid_price_above_ceiling", sent[0][1]["order_intent_id"],
     )
 
 
@@ -1096,3 +1099,81 @@ def test_stuck_lane_cycles_and_partial_foks_left_by_earlier_code_are_repaired(st
     receipt = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW, live_submit_authorized=True,
                                             settings={"stake_usdc": 20.0}, admission=ADMIT)
     assert receipt["repairs"] == {"cycles_settled": 0, "fok_short_fills_closed": 0}
+
+
+# ---------------------------------------------------------------------------
+# Charter 175: v2.3 moves the band's ceiling onto the price the rung pays.
+
+
+def _ladder(rows: dict) -> list[dict]:
+    """``{bucket: (bid, ask)}`` as a WS snapshot ladder, 200 shares a side."""
+
+    return [{"bucket": b, "ask_levels": [{"price": a, "shares": 200.0}],
+             "bid_levels": [{"price": bid, "shares": 200.0}], "ask_available": True}
+            for b, (bid, a) in rows.items()]
+
+
+#: The market's mids sum to 1.22, so 28°C's NORMALISED mid is 0.62/1.22 =
+#: 0.508 -- inside the old band -- while its rung, the best bid plus a tick,
+#: is 0.62.  This is the shape that bought EDDM/EFHK/KHOU/ZSPD at 0.61-0.66.
+PRICED_OVER = _ladder({"27°C": (0.49, 0.51), "28°C": (0.61, 0.63), "29°C": (0.09, 0.11)})
+#: The mids sum to 0.86, so 28°C's normalised mid is 0.56/0.86 = 0.651 --
+#: above the old ceiling -- while its rung is 0.56.
+PRICED_UNDER = _ladder({"27°C": (0.19, 0.21), "28°C": (0.55, 0.57), "29°C": (0.09, 0.11)})
+
+
+def test_v2_3_refuses_a_rung_priced_above_the_paid_ceiling(store) -> None:
+    """The old ceiling read 0.508 and let this through; the rung it would
+    have rested is 0.62.  Not fired -- it is the rule's own condition -- and
+    the row says why and at what price."""
+
+    _seed(store, book=PRICED_OVER)
+    sent: list = []
+    receipt = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW,
+                                            live_submit_authorized=True, settings={"stake_usdc": 20.0},
+                                            admission=ADMIT)
+    assert receipt["rule"] == "tiebreak_model_mode_market_midband_spread_maker_paid_cap_v2_3"
+    assert receipt["fired"] == 0 and sent == []
+    assert receipt["refusals"] == ["rule_not_met:paid_price_above_ceiling"]
+    fired, refusal, share, plan = store.execute(
+        f"SELECT fired, refusal, market_share_on_model_mode, plan_json FROM {lane.EVALUATION_TABLE}"
+    ).fetchone()
+    assert fired == 0 and refusal == "rule_not_met:paid_price_above_ceiling" and plan is None
+    assert share == pytest.approx(0.62 / 1.22)
+    # The same book under v2.2 fires: the change is the ceiling alone.
+    store.execute(f"DELETE FROM {lane.EVALUATION_TABLE}")
+    v22 = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW,
+                                        live_submit_authorized=True,
+                                        settings={"stake_usdc": 20.0, "rule": lane.RULE_V22}, admission=ADMIT)
+    assert v22["fired"] == 1 and sent and sent[0][1]["price"] == pytest.approx(0.62)
+
+
+def test_v2_3_has_no_ceiling_on_the_normalised_mid(store) -> None:
+    """The ceiling moved, it was not added: a bucket the normalised mid puts
+    at 0.651 rests at 0.56 and is bought.  v2.2 refused it."""
+
+    _seed(store, book=PRICED_UNDER)
+    v22 = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
+                                        live_submit_authorized=True,
+                                        settings={"stake_usdc": 20.0, "rule": lane.RULE_V22}, admission=ADMIT)
+    assert v22["refusals"] == ["rule_not_met:market_share_above_ceiling"]
+    store.execute(f"DELETE FROM {lane.EVALUATION_TABLE}")
+    sent: list = []
+    v23 = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW,
+                                        live_submit_authorized=True, settings={"stake_usdc": 20.0},
+                                        admission=ADMIT)
+    assert v23["fired"] == 1 and v23["submitted"] == 1
+    assert sent[0][1]["price"] == pytest.approx(0.56) and sent[0][1]["token_id"] == TOKENS["28°C"]
+    plan = json.loads(store.execute(f"SELECT plan_json FROM {lane.EVALUATION_TABLE}").fetchone()[0])
+    assert plan["max_paid_price"] == pytest.approx(0.60) and plan["limit_price"] <= plan["max_paid_price"]
+
+
+def test_the_paid_ceiling_is_the_lane_files_to_set() -> None:
+    """0.60 by default, read from the lane file when it says otherwise; only
+    v2.3 has one."""
+
+    assert lane.paid_price_refusal(lane.RULE_V23, 0.60, None) is None
+    assert lane.paid_price_refusal(lane.RULE_V23, 0.61, None) == "paid_price_above_ceiling"
+    assert lane.paid_price_refusal(lane.RULE_V23, 0.61, 0.62) is None
+    assert lane.paid_price_refusal(lane.RULE_V22, 0.66, 0.60) is None
+    assert lane.paid_price_refusal(lane.RULE_V21, 0.66, 0.60) is None

@@ -113,22 +113,46 @@ SCHEMA = "tiebreak_lane_plan_v1"
 #      ("realised minus the price paid", first review 09-25) would be the mean
 #      of two strategies.  Every reading quoted above was taken at the ask and
 #      says nothing about this one; the forward sample starts over.
+#   v2.3 ``model_mode_midband_spread_maker_paid_cap_v2_3`` (charter 175, user
+#      ruling 2026-09-21 「把价带上限改成按实付价 ≤0.60」) -- v2.2, with the
+#      band's CEILING moved off the market's normalised mid and onto the price
+#      the order actually pays: the resting rung's limit price must be at most
+#      ``max_paid_price`` (0.60).  The floor stays on the normalised mid
+#      (>= 0.40: the market cannot decide).  Why: the ceiling was tested on a
+#      number a median 3.0 cents under the one the money left at, so the band
+#      said "coin toss" while the lane paid 0.61-0.66 -- the four P0-M fills
+#      bought there settled 0/4 (-22.99 USDC) against 5/8 (+8.39) below 0.60.
+#      Replayed over 39 event days at the lane's grain the change blocks 16
+#      rungs priced 0.62 on average (hit 56.2%, -10.8% at the ask) and admits
+#      2 the normalised ceiling used to stop; ROI at bid+1t +9.9% -> +10.0%.
+#      The effect is small and the reason is definitional, not fitted: a rule
+#      whose premise is "0.40-0.60" should not pay above 0.60.  The price is
+#      only known once the rung is priced (the tick is the token's own), so
+#      the condition is asked there, after the operational gates, and a row
+#      that fails it is recorded ``rule_not_met:paid_price_above_ceiling``.
 RULE_V1 = "adjacent_tie_v1"
 RULE_V2 = "model_mode_midband_v2"
 RULE_V21 = "model_mode_midband_spread_v2_1"
 RULE_V22 = "model_mode_midband_spread_maker_v2_2"
+RULE_V23 = "model_mode_midband_spread_maker_paid_cap_v2_3"
 RULE_VERSIONS = {
     RULE_V1: "tiebreak_adjacent_mode_market_share_v1",
     RULE_V2: "tiebreak_model_mode_market_midband_v2",
     RULE_V21: "tiebreak_model_mode_market_midband_spread_v2_1",
     RULE_V22: "tiebreak_model_mode_market_midband_spread_maker_v2_2",
+    RULE_V23: "tiebreak_model_mode_market_midband_spread_maker_paid_cap_v2_3",
 }
-#: The rules the band ceiling applies to, and the rules that also bound the
-#: model bucket's spread.  v2.2 is v2.1's predicate under another name, so it
-#: belongs to both: one predicate, selected by membership rather than copied.
+#: The rules the normalised-mid ceiling applies to, the rules that also bound
+#: the model bucket's spread, and the rules whose ceiling is the price paid.
+#: v2.2 is v2.1's predicate under another name, so it belongs to both; v2.3
+#: keeps the spread and moves the ceiling -- one predicate, selected by
+#: membership rather than copied.
 BAND_RULES = frozenset({RULE_V2, RULE_V21, RULE_V22})
-SPREAD_RULES = frozenset({RULE_V21, RULE_V22})
-DEFAULT_RULE = RULE_V22
+SPREAD_RULES = frozenset({RULE_V21, RULE_V22, RULE_V23})
+PAID_CAP_RULES = frozenset({RULE_V23})
+DEFAULT_RULE = RULE_V23
+#: Charter 175: the most a v2.3 rung may be priced at.
+DEFAULT_MAX_PAID_PRICE = 0.60
 RULE_VERSION = RULE_VERSIONS[DEFAULT_RULE]
 
 
@@ -281,6 +305,23 @@ def retry_needs_newer_book(refusal: Any) -> bool:
     return not any(text.startswith(prefix) for prefix in RETRYABLE_REFUSAL_PREFIXES)
 
 
+def paid_price_refusal(rule: Any, limit_price: Any, max_paid_price: Any) -> str | None:
+    """Charter 175: a v2.3 rung priced above the ceiling does not meet the
+    rule.  Every other rule answers None -- their ceiling, if any, was the
+    normalised mid and was asked in ``evaluate_rule``."""
+
+    if str(rule or "") not in PAID_CAP_RULES:
+        return None
+    try:
+        price = float(limit_price)
+        cap = float(DEFAULT_MAX_PAID_PRICE if max_paid_price is None else max_paid_price)
+    except (TypeError, ValueError):
+        return "paid_price_above_ceiling"
+    if price > cap + 1e-12:
+        return "paid_price_above_ceiling"
+    return None
+
+
 def ensure_lane_schema(conn: sqlite3.Connection) -> None:
     """Statement by statement, never ``executescript``: the resident calls
     this inside the writer's transaction."""
@@ -331,7 +372,9 @@ def evaluate_rule(
     bucket quoted both sides with ``spread`` at most ``max_spread``;
     ``spread`` None means one-sided or unquoted and refuses).  v2.2 is
     v2.1's predicate -- the two differ in how the order is placed, which is
-    not a question for this function.  Returns the reading and, when it
+    not a question for this function.  v2.3 (charter 175) keeps the floor and
+    the spread and drops the normalised ceiling: its ceiling is the price the
+    rung pays, asked by ``paid_price_refusal`` once the rung is priced.  Returns the reading and, when it
     does not fire, why.
     """
 
@@ -920,6 +963,8 @@ def plan_tiebreak_entries(
     max_share = None if max_share_raw is None else float(max_share_raw)
     max_spread_raw = cfg.get("max_spread_on_model_mode")
     max_spread = None if max_spread_raw is None else float(max_spread_raw)
+    max_paid_raw = cfg.get("max_paid_price")
+    max_paid = DEFAULT_MAX_PAID_PRICE if max_paid_raw is None else float(max_paid_raw)
     fresh_seconds = float(cfg.get("first_decision_fresh_seconds") or TIEBREAK_DEFAULT_SETTINGS["first_decision_fresh_seconds"])
     gate = admission or (lambda station, conn: live_station_admission(station, conn=conn))
     now = _utc(now_utc)
@@ -1010,6 +1055,16 @@ def plan_tiebreak_entries(
             evaluations.append(_record(target_conn, key, fact, reading, fired=True, refusal=rung["refusal"],
                                        order_intent_id=None, plan=None, now_utc=now_utc, rule_version=rule_version))
             continue
+        cap_refusal = paid_price_refusal(rule_name, rung["limit_price"], max_paid)
+        if cap_refusal:
+            # Charter 175: the rule's own ceiling, asked where the price is
+            # known.  Not fired, so never retried from this row.
+            reading = {**reading, "fired": False, "reason": cap_refusal,
+                       "paid_price": rung["limit_price"], "max_paid_price": max_paid}
+            evaluations.append(_record(target_conn, key, fact, reading, fired=False,
+                                       refusal=f"rule_not_met:{cap_refusal}", order_intent_id=None,
+                                       plan=None, now_utc=now_utc, rule_version=rule_version))
+            continue
         cash_refusal = _cash_refusal(target_conn, now_utc=now_utc, needed=rung["cost_usdc"])
         if cash_refusal:
             evaluations.append(_record(target_conn, key, fact, reading, fired=True, refusal=cash_refusal,
@@ -1034,6 +1089,8 @@ def plan_tiebreak_entries(
             "clamped_to_post_only_ceiling": rung["clamped_to_post_only_ceiling"],
             **venue, "reading": reading,
         }
+        if rule_name in PAID_CAP_RULES:
+            plan["max_paid_price"] = max_paid
         plan["order_intent_id"] = f"tiebreak_{content_sha256({'plan': plan})[:32]}"
         evaluation = _record(target_conn, key, fact, reading, fired=True, refusal=None,
                              order_intent_id=plan["order_intent_id"], plan=plan, now_utc=now_utc, rule_version=rule_version)
@@ -1140,6 +1197,8 @@ def _retry_operational_refusals(
     floor = (now - timedelta(days=DEFAULT_LOOKBACK_DAYS)).date().isoformat()
     max_sends = int(cfg.get("max_sends_per_station_day") or DEFAULT_MAX_SENDS_PER_STATION_DAY)
     book_fresh = float(cfg.get("retry_book_fresh_seconds") or DEFAULT_RETRY_BOOK_FRESH_SECONDS)
+    max_paid_raw = cfg.get("max_paid_price")
+    max_paid = DEFAULT_MAX_PAID_PRICE if max_paid_raw is None else float(max_paid_raw)
     max_shut = int(cfg.get("max_venue_disabled_sends_per_station_day") or DEFAULT_MAX_VENUE_DISABLED_SENDS)
     shut_cooldown = float(
         cfg.get("venue_disabled_cooldown_seconds") or DEFAULT_VENUE_DISABLED_COOLDOWN_SECONDS
@@ -1265,6 +1324,10 @@ def _retry_operational_refusals(
         rung = maker_rung(book_row, stake, tick_size=market_row.get("tick_size"), min_shares=min_shares)
         if rung["refusal"]:
             _note(rung["refusal"], snapshot_id=examined_snapshot_id); continue
+        cap_refusal = paid_price_refusal(rule_name, rung["limit_price"], max_paid)
+        if cap_refusal:
+            # Charter 175, on the retry's own newer book: the same ceiling.
+            _note(f"retry_rule_not_met:{cap_refusal}", snapshot_id=examined_snapshot_id); continue
         cash_refusal = _cash_refusal(target_conn, now_utc=now_utc, needed=rung["cost_usdc"])
         if cash_refusal:
             _note(cash_refusal, snapshot_id=examined_snapshot_id); continue
@@ -1288,6 +1351,8 @@ def _retry_operational_refusals(
             **venue, "reading": {**reading, "book": book},
             "retry_of_refusal": original, "retry_count": int(count) + 1,
         }
+        if rule_name in PAID_CAP_RULES:
+            plan["max_paid_price"] = max_paid
         plan["order_intent_id"] = f"tiebreak_{content_sha256({'plan': plan})[:32]}"
         entry["plan"] = plan
         _note("", plan=plan, fact_id=fact["fact_id"], snapshot_id=snapshot["snapshot_id"])
@@ -1475,6 +1540,10 @@ __all__ = [
     "FEATURE_COLUMNS",
     "RULE_V21",
     "RULE_V22",
+    "RULE_V23",
+    "PAID_CAP_RULES",
+    "DEFAULT_MAX_PAID_PRICE",
+    "paid_price_refusal",
     "BAND_RULES",
     "SPREAD_RULES",
     "EXECUTION_CANDIDATE",
