@@ -10219,26 +10219,6 @@ class TargetProductionWorker:
             )
             header_params: tuple[Any, ...] = (probe_rowid,)
         else:
-            # Charter 183: start past the rows an earlier empty scan already
-            # read.  ``auto_trade_decisions`` is append-only by trigger, so
-            # a row that did not match the ELIGIBLE filter never will; the
-            # store cursor only moves on a written observation, so without
-            # this every pass re-read every decision since the last ELIGIBLE
-            # one, details_json and all (2 passes, 16.4s at 11:40Z).  A
-            # cursor that has moved back (a rebuilt store) drops the mark.
-            scanned = getattr(self, "_forward_flush_scanned", None)
-            if (
-                isinstance(scanned, tuple)
-                and not hasattr(self, "_forward_flush_source_cursor_override")
-                and scanned[0] == str(store_path)
-                and source_cursor >= int(scanned[1])
-            ):
-                scan_after = max(source_cursor, int(scanned[2]))
-            else:
-                scan_after = source_cursor
-            scan_ceiling = int(self.commit_conn.execute(
-                "SELECT COALESCE(MAX(rowid),0) FROM auto_trade_decisions"
-            ).fetchone()[0])
             header_sql = (
                 "SELECT d.rowid,d.decision_id,d.decision_sha256,"
                 "length(CAST(d.reason_codes_json AS BLOB)),"
@@ -10258,7 +10238,7 @@ class TargetProductionWorker:
                 "'%\"forward_observation_status\":\"ELIGIBLE\"%' "
                 "ORDER BY d.rowid LIMIT ?"
             )
-            header_params = (scan_after, scan_limit + 1)
+            header_params = (source_cursor, scan_limit + 1)
         header_rows = self.commit_conn.execute(
             header_sql,
             header_params,
@@ -10269,12 +10249,6 @@ class TargetProductionWorker:
             else len(header_rows) > MAX_FORWARD_DECISIONS_PER_PASS
         )
         header_rows = header_rows[:scan_limit]
-        if not header_rows and probe_rowid is None:
-            # Charter 183: nothing up to the ceiling read before the scan is
-            # ELIGIBLE, and nothing below it can become so.
-            self._forward_flush_scanned = (
-                str(store_path), source_cursor, scan_ceiling,
-            )
         if not header_rows:
             return {
                 "state": "already_current",
@@ -10867,6 +10841,24 @@ class TargetProductionWorker:
             allowed_root=store_root,
         )
         source_cursor = int(store_state.get("last_source_rowid") or 0)
+        # Charter 183: start past the rows an earlier empty scan already
+        # read.  ``auto_trade_decisions`` is append-only by trigger, so a row
+        # that did not match the ELIGIBLE filter never will; the store cursor
+        # moves only on a written observation, so without this every pass
+        # re-read every decision since the last ELIGIBLE one, details_json
+        # and all (2 passes, 16.4s at 11:40Z; 12.1s at 12:12Z).  A cursor
+        # that has moved back (a rebuilt store) or another store drops it.
+        scanned = getattr(self, "_forward_flush_scanned", None)
+        scan_after = source_cursor
+        if (
+            isinstance(scanned, tuple)
+            and scanned[0] == str(store_path)
+            and source_cursor >= int(scanned[1])
+        ):
+            scan_after = max(source_cursor, int(scanned[2]))
+        scan_ceiling = int(self.commit_conn.execute(
+            "SELECT COALESCE(MAX(rowid),0) FROM auto_trade_decisions"
+        ).fetchone()[0])
         header_rows = self.commit_conn.execute(
             "SELECT d.rowid,d.decision_id,d.decision_sha256,"
             "length(CAST(d.reason_codes_json AS BLOB)),"
@@ -10885,11 +10877,16 @@ class TargetProductionWorker:
             "WHERE d.rowid>? AND d.details_json LIKE "
             "'%\"forward_observation_status\":\"ELIGIBLE\"%' "
             "ORDER BY d.rowid LIMIT ?",
-            (source_cursor, MAX_FORWARD_DECISIONS_PER_PASS + 1),
+            (scan_after, MAX_FORWARD_DECISIONS_PER_PASS + 1),
         ).fetchall()
         more_pending = len(header_rows) > MAX_FORWARD_DECISIONS_PER_PASS
         header_rows = header_rows[:MAX_FORWARD_DECISIONS_PER_PASS]
         if not header_rows:
+            # Charter 183: nothing up to the ceiling read before the scan is
+            # ELIGIBLE, and nothing below it can become so.
+            self._forward_flush_scanned = (
+                str(store_path), source_cursor, scan_ceiling,
+            )
             return {
                 "state": "already_current",
                 "reason": "no_new_eligible_atomic_receipts",

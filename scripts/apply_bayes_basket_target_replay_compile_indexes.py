@@ -25,6 +25,12 @@ the scope's timezone *and source lane*, and every snapshot re-asks it for
 every live scope (122-135 calls, 12.6-20.9s in the cycle after each
 snapshot).  ``basket_target_market_registry_scope_lane_idx`` covers it.
 
+Charter 185 adds a fourth: the same activation read in the order it walks
+(newest generation first), so it streams and stops at the first admissible
+row instead of reading and sorting every valid activation of the scope
+(707 for RCSS DESCENT h12_24; 138 calls, 3-7s a cycle).
+``calibration_native_activation_generation_idx``.
+
 All are declared in the schema DDL verbatim; the resident never applies
 schema, so this is how they reach the live store.  Verified the way the
 recycle-index migration verifies: each index is read through and its count
@@ -82,6 +88,13 @@ STATEMENTS = (
         " ON basket_target_market_registry"
         "(station_id,event_date,settlement_timezone,source_lane)",
     ),
+    (
+        "calibration_native_activation_generation_idx",
+        "CREATE INDEX IF NOT EXISTS"
+        " calibration_native_activation_generation_idx"
+        " ON calibration_native_ensemble_activation"
+        "(station_id,artifact_kind,season_bin,lead_bucket,generation DESC,activation_id)",
+    ),
 )
 
 
@@ -133,6 +146,14 @@ _INDEX_AGREEMENT_CHECKS = (
         " SELECT DISTINCT station_id, event_date, settlement_timezone, source_lane"
         " FROM basket_target_market_registry"
         " WHERE +station_id>='')",
+    ),
+    (
+        "calibration_native_activation_generation_idx",
+        "SELECT COUNT(*) FROM calibration_native_ensemble_activation"
+        " INDEXED BY calibration_native_activation_generation_idx"
+        " WHERE station_id>='' AND artifact_kind='CROSS_NATIVE_ENSEMBLE'",
+        "SELECT COUNT(*) FROM calibration_native_ensemble_activation"
+        " WHERE +station_id>='' AND +artifact_kind='CROSS_NATIVE_ENSEMBLE'",
     ),
 )
 

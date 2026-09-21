@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REGISTRY_TZ = "basket_target_market_registry_scope_tz_idx"
 WINDOW = "calibration_native_activation_window_idx"
 SCOPE_LANE = "basket_target_market_registry_scope_lane_idx"  # charter 179
+GENERATION = "calibration_native_activation_generation_idx"  # charter 185
 
 TIMEZONE_READS = {
     # native_ensemble_p0 (the compile)
@@ -39,7 +40,7 @@ LEAD_BUCKET = (
     "WHERE a.artifact_kind='CROSS_NATIVE_ENSEMBLE' "
     "AND a.station_id=? AND a.season_bin=? AND a.lead_bucket=? "
     "AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY' "
-    "AND a.valid_from_utc<=? AND a.valid_until_utc>? "
+    "AND a.valid_from_utc<=? AND +a.valid_until_utc>? "
     "ORDER BY a.generation DESC,a.activation_id LIMIT 256"
 )
 
@@ -69,18 +70,21 @@ def test_every_scope_timezone_read_is_answered_from_the_index_alone(tmp_path) ->
         assert f"COVERING INDEX {REGISTRY_TZ}" in plan, (name, plan)
 
 
-def test_the_lead_bucket_read_seeks_the_validity_window(tmp_path) -> None:
+def test_the_lead_bucket_read_streams_in_generation_order(tmp_path) -> None:
+    # Charter 185: the window seek (charter 176) kept every still-valid
+    # activation and sorted them; the generation index hands them over in
+    # the walk's own order.
     conn = _store(tmp_path)
     plan = _plan(conn, LEAD_BUCKET)
-    assert WINDOW in plan, plan
-    assert "valid_until_utc>?" in plan, plan
+    assert GENERATION in plan, plan
+    assert "TEMP B-TREE" not in plan, plan
 
 
 def test_the_compile_still_asks_exactly_these_questions() -> None:
     # If the compile's SQL moves, the plans above stop proving anything.
     source = (ROOT / "bayes_basket_target" / "native_ensemble_p0.py").read_text(encoding="utf-8")
     flat = " ".join(source.split())
-    assert "AND a.valid_from_utc<=? AND a.valid_until_utc>? " in flat
+    assert "AND a.valid_from_utc<=? AND +a.valid_until_utc>? " in flat
     assert "WHERE station_id=? AND event_date=? " in flat
 
 
@@ -102,6 +106,7 @@ def _store_without_the_new_indexes(tmp_path: Path) -> Path:
     conn.execute(f"DROP INDEX {REGISTRY_TZ}")
     conn.execute(f"DROP INDEX {WINDOW}")
     conn.execute(f"DROP INDEX {SCOPE_LANE}")
+    conn.execute(f"DROP INDEX {GENERATION}")
     # Rows only need to exist for the index counts; the snapshot parent
     # rows the foreign key names are beside the point here.
     conn.execute("PRAGMA foreign_keys=OFF")
@@ -127,7 +132,7 @@ def test_the_migration_adds_both_and_proves_them_against_their_tables(tmp_path) 
     path = _store_without_the_new_indexes(tmp_path)
     receipt = _migration().migrate(db_path=path, confirmed_writer_stopped=False)
     assert receipt["state"] == "migrated"
-    assert receipt["indexes_created"] == sorted([REGISTRY_TZ, WINDOW, SCOPE_LANE])
+    assert receipt["indexes_created"] == sorted([REGISTRY_TZ, WINDOW, SCOPE_LANE, GENERATION])
     by_name = {item["index"]: item for item in receipt["index_verification"]}
     # 3 stations x 2 days = 6 scopes, each with one non-blank timezone.
     assert by_name[REGISTRY_TZ]["rows"] == 6
@@ -137,5 +142,5 @@ def test_the_migration_adds_both_and_proves_them_against_their_tables(tmp_path) 
     again = _migration().migrate(db_path=path, confirmed_writer_stopped=False)
     assert again["indexes_created"] == []
     assert sorted(again["indexes_already_present"]) == sorted(
-        [REGISTRY_TZ, WINDOW, SCOPE_LANE]
+        [REGISTRY_TZ, WINDOW, SCOPE_LANE, GENERATION]
     )

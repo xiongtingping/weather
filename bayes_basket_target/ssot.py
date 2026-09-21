@@ -1073,6 +1073,14 @@ CREATE INDEX IF NOT EXISTS calibration_native_activation_asof_idx ON calibration
 -- was read and filtered, 72ms a call warm (2026-09-21), 36% of the compile's
 -- SQL time.  Ending on valid_until_utc makes "still valid" a range seek.
 CREATE INDEX IF NOT EXISTS calibration_native_activation_window_idx ON calibration_native_ensemble_activation(station_id,artifact_kind,season_bin,lead_bucket,valid_until_utc);
+-- Charter 185: the same read, in the order it wants.  Now that each scope's
+-- activations are mostly still valid (RCSS DESCENT h12_24: 707 of 707 on
+-- 2026-09-21) the window seek keeps them all, and every call read and
+-- sorted every one of them to walk them newest generation first and stop at
+-- the first admissible one -- 138 calls, 3-7s a cycle.  In generation order
+-- the read streams and the walk stops after a row or two; an expired row is
+-- an old generation, so it sorts last either way.
+CREATE INDEX IF NOT EXISTS calibration_native_activation_generation_idx ON calibration_native_ensemble_activation(station_id,artifact_kind,season_bin,lead_bucket,generation DESC,activation_id);
 CREATE INDEX IF NOT EXISTS calibration_station_source_authority_latest_idx ON calibration_station_source_authority(station_id,activated_at_utc,authority_id);
 CREATE INDEX IF NOT EXISTS basket_policy_activation_asof_idx ON basket_policy_activation(station_id,stage,season_bin,maturity_bin,liquidity_bin,strategy_version,valid_from_utc,valid_until_utc,generation);
 

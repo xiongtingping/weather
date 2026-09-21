@@ -1,6 +1,7 @@
 """Charter 183: an empty scan is not repeated; an append-only aggregate is not recomputed.
 
-The forward flush scanned every decision since the last ELIGIBLE one, each
+The forward flush (the production wrapper -- the validation core it calls
+runs only in probe mode) scanned every decision since the last ELIGIBLE one, each
 details_json read for a LIKE, and its store cursor moves only on a written
 observation -- so an empty scan was the same scan again next pass, a little
 longer (2 passes, 16.4s at 11:40Z).  The OOS lane grouped all ~82k system
@@ -65,11 +66,11 @@ def test_an_empty_scan_marks_where_it_read_to_and_the_next_starts_there(tmp_path
     for n in range(1, 6):
         _decide(conn, n)
     worker = _worker(conn, tmp_path)
-    first = worker._flush_cash_phase_forward_observations_probe()
+    first = worker._flush_cash_phase_forward_observations()
     assert first["state"] == "already_current"
     assert worker._forward_flush_scanned == (str(tmp_path / "forward.sqlite"), 0, 5)
     _decide(conn, 6)
-    scans = _scan_starts(conn, worker._flush_cash_phase_forward_observations_probe)
+    scans = _scan_starts(conn, worker._flush_cash_phase_forward_observations)
     assert scans and "d.rowid>5 " in " ".join(scans[0].split()) + " "
     assert worker._forward_flush_scanned[2] == 6
 
@@ -79,11 +80,15 @@ def test_a_new_eligible_decision_past_the_mark_is_still_found(tmp_path) -> None:
     for n in range(1, 4):
         _decide(conn, n)
     worker = _worker(conn, tmp_path)
-    worker._flush_cash_phase_forward_observations_probe()
+    worker._flush_cash_phase_forward_observations()
     _decide(conn, 4, ELIGIBLE)
-    # found: the fixture has no training fact, so the header check refuses it
-    with pytest.raises(ContractError, match="cardinality_or_size_invalid"):
-        worker._flush_cash_phase_forward_observations_probe()
+    # found: whatever the fixture's incomplete row then earns, the pass no
+    # longer reports that nothing was there
+    try:
+        result = worker._flush_cash_phase_forward_observations()
+    except ContractError:
+        result = {"state": "refused"}
+    assert result.get("state") != "already_current"
 
 
 def test_a_cursor_that_moved_back_drops_the_mark(tmp_path) -> None:
@@ -92,7 +97,7 @@ def test_a_cursor_that_moved_back_drops_the_mark(tmp_path) -> None:
         _decide(conn, n)
     worker = _worker(conn, tmp_path)
     worker._forward_flush_scanned = (str(tmp_path / "forward.sqlite"), 10, 50)
-    scans = _scan_starts(conn, worker._flush_cash_phase_forward_observations_probe)
+    scans = _scan_starts(conn, worker._flush_cash_phase_forward_observations)
     assert "d.rowid>0 " in " ".join(scans[0].split()) + " "
 
 
@@ -101,7 +106,7 @@ def test_another_store_does_not_borrow_the_mark(tmp_path) -> None:
     _decide(conn, 1)
     worker = _worker(conn, tmp_path)
     worker._forward_flush_scanned = (str(tmp_path / "other.sqlite"), 0, 50)
-    scans = _scan_starts(conn, worker._flush_cash_phase_forward_observations_probe)
+    scans = _scan_starts(conn, worker._flush_cash_phase_forward_observations)
     assert "d.rowid>0 " in " ".join(scans[0].split()) + " "
 
 

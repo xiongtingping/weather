@@ -383,6 +383,11 @@ def _activated_lead_bucket(
     fresh = tuple(freshest_bucket_system_ids or ())
     first_admissible: str | None = None
     for candidate in candidates:
+        # Charter 185: ``+a.valid_until_utc`` leaves the planner the
+        # generation index, which hands the rows over in exactly this ORDER
+        # BY instead of reading every valid activation and sorting it; and
+        # the rows are walked as they come, not fetched whole, because the
+        # walk returns at the first admissible one.  Same rows, same order.
         rows = conn.execute(
             "SELECT r.ensemble_system_ids_json,a.run_cycle_by_system_json "
             "FROM calibration_native_ensemble_activation a "
@@ -391,7 +396,7 @@ def _activated_lead_bucket(
             "WHERE a.artifact_kind='CROSS_NATIVE_ENSEMBLE' "
             "AND a.station_id=? AND a.season_bin=? AND a.lead_bucket=? "
             "AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY' "
-            "AND a.valid_from_utc<=? AND a.valid_until_utc>? "
+            "AND a.valid_from_utc<=? AND +a.valid_until_utc>? "
             "ORDER BY a.generation DESC,a.activation_id LIMIT 256",
             (
                 station_id,
@@ -400,28 +405,31 @@ def _activated_lead_bucket(
                 decision_at_utc,
                 decision_at_utc,
             ),
-        ).fetchall()
-        for row in rows:
-            try:
-                selected = {str(value) for value in json.loads(str(row[0]))}
-            except (TypeError, ValueError):
-                continue
-            if not (selected and selected.issubset(observed)):
-                continue
-            if first_admissible is None:
-                first_admissible = candidate
-            if not (fresh and cycles):
-                # No cycle map: the pre-ruling rule, first admissible wins.
-                return candidate
-            try:
-                fitted = {
-                    str(key): str(value)
-                    for key, value in json.loads(str(row[1] or "{}")).items()
-                }
-            except (TypeError, ValueError, AttributeError):
-                fitted = {}
-            if _same_run_fresh_count(sorted(selected), fitted, cycles, fresh) > 0:
-                return candidate
+        )
+        try:
+            for row in rows:
+                try:
+                    selected = {str(value) for value in json.loads(str(row[0]))}
+                except (TypeError, ValueError):
+                    continue
+                if not (selected and selected.issubset(observed)):
+                    continue
+                if first_admissible is None:
+                    first_admissible = candidate
+                if not (fresh and cycles):
+                    # No cycle map: the pre-ruling rule, first admissible wins.
+                    return candidate
+                try:
+                    fitted = {
+                        str(key): str(value)
+                        for key, value in json.loads(str(row[1] or "{}")).items()
+                    }
+                except (TypeError, ValueError, AttributeError):
+                    fitted = {}
+                if _same_run_fresh_count(sorted(selected), fitted, cycles, fresh) > 0:
+                    return candidate
+        finally:
+            rows.close()
     if first_admissible is not None:
         return first_admissible
     return candidates[-1]
