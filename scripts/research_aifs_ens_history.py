@@ -43,6 +43,7 @@ import sqlite3
 import sys
 import threading
 import time
+import zlib
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta, timezone
@@ -350,6 +351,15 @@ def open_research_db(path: Path) -> sqlite3.Connection:
             "ON calibration_native_ensemble_historical_member_run"
             "(station_id,target_local_date,ensemble_system_id)"
         )
+    # The instants themselves, not only the daily highs derived from them:
+    # which estimator turns four six-hourly samples into a daily high is the
+    # production decision this data exists to inform, and an estimator can
+    # only be compared on the samples.  float32 kelvin, zlib, one blob a run.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS research_aifs_run_samples("
+        " run_init_utc TEXT PRIMARY KEY, steps_json TEXT, members_json TEXT,"
+        " stations_json TEXT, kelvin_f32_zlib BLOB)"
+    )
     conn.execute(
         "CREATE TABLE IF NOT EXISTS research_aifs_runs("
         " run_init_utc TEXT PRIMARY KEY, steps INTEGER, messages INTEGER,"
@@ -477,7 +487,16 @@ def capture_run(
         run_init=run_init, pairs=pairs, timezones=timezones,
         stations=index.stations, samples=samples, message_sha=message_sha,
     )
+    cube = np.array(
+        [[samples[(member, step)] for member in MEMBERS] for step in steps],
+        dtype=np.float32,
+    )
+    stats_blob = (
+        json.dumps(steps), json.dumps(list(MEMBERS)), json.dumps(index.stations),
+        zlib.compress(cube.tobytes(), 6),
+    )
     stats = {
+        "blob": stats_blob,
         "steps": len(steps), "messages": len(catalog), "bytes": fetched,
         "seconds": round(time.monotonic() - started, 1),
         "station_days": len(pairs) - skipped, "rows": len(rows), "skipped": skipped,
@@ -504,7 +523,12 @@ def main() -> int:
     index = StationIndex(stations)
     conn = open_research_db(args.db)
     done = {row[0] for row in conn.execute("SELECT run_init_utc FROM research_aifs_runs")}
+    # Runs captured before the samples table existed have rows but no
+    # samples; they are fetched again (rows are INSERT OR IGNORE, so the
+    # member rows stay exactly as first written) once the rest is done.
+    sampled = {row[0] for row in conn.execute("SELECT run_init_utc FROM research_aifs_run_samples")}
     wanted = [r for r in sorted(plan, reverse=True) if r not in done]
+    wanted += [r for r in sorted(plan, reverse=True) if r in done and r not in sampled]
     if args.run:
         wanted = [r for r in wanted if r in set(args.run)]
     summary = {"planned_runs": len(plan), "already_done": len(done), "this_pass": []}
@@ -517,8 +541,13 @@ def main() -> int:
             run_init=_utc(run), pairs=plan[run], timezones=timezones,
             index=index, workers=int(args.workers),
         )
+        blob = stats.pop("blob")
         with conn:
             conn.executemany(INSERT, rows)
+            conn.execute(
+                "INSERT OR REPLACE INTO research_aifs_run_samples VALUES(?,?,?,?,?)",
+                (run, *blob),
+            )
             conn.execute(
                 "INSERT OR REPLACE INTO research_aifs_runs VALUES(?,?,?,?,?,?,?,?,?)",
                 (run, stats["steps"], stats["messages"], stats["bytes"], stats["seconds"],
@@ -533,7 +562,7 @@ def main() -> int:
             f"station_days={stats['station_days']} skipped={stats['skipped']}",
             flush=True,
         )
-    remaining = len([r for r in plan if r not in done]) - len(summary["this_pass"])
+    remaining = len([r for r in plan if r not in done or r not in sampled]) - len(summary["this_pass"])
     summary["remaining_runs"] = remaining
     print(json.dumps({k: v for k, v in summary.items() if k != "this_pass"}, sort_keys=True))
     return 0
