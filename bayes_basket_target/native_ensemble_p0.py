@@ -30,6 +30,7 @@ from .band_reliability_store import (
     load_band_table_with_axis,
     pinned_band_table_sha,
 )
+from .center_width_calibration import served_bucket_axis
 from .center_width_store import (
     CENTER_WIDTH_METHOD_TAG,
     STATION_WIDTH_METHOD_TAG,
@@ -141,7 +142,12 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # before the event, and every lead serves 0.15 (h12_24's 0.35 retired).  The
 # fleet's September centre moves warm by about 0.09C; the start is declared at
 # the deploy.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v7"
+# v8: charter 190, the centre/width layer carries an open edge bucket's mass
+# as a tail instead of a point on its key centre (ZUUU 2026-09-22: "22°C or
+# below" 1.1% -> 5.9%, 23°C 13.0% -> 8.1%, the false 23 > 24 peak gone), and
+# the width fit reads the same axis serving does.  Every lane fitted on served
+# claims starts again; the start is declared in ``serving_arithmetic``.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v8"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -911,20 +917,26 @@ def _bucket_centers(
     midpoint, so it takes the point half a degree beyond its finite bound --
     the same 1C pitch as its neighbours -- which only matters as the anchor
     the consensus shift measures distances against.
+
+    The convention lives in ``center_width_calibration.served_bucket_axis``
+    (charter 190), which the width fit reads too; this is its centres.
     """
 
-    centers: list[float] = []
-    for bucket in ordered:
-        lower, upper = intervals[str(bucket)]
-        if lower is None and upper is None:
-            raise ContractError("native_ensemble_p0_bucket_interval_invalid")
-        if lower is None:
-            centers.append(float(upper) - 0.5)
-        elif upper is None:
-            centers.append(float(lower) + 0.5)
-        else:
-            centers.append((float(lower) + float(upper)) / 2.0)
-    return centers
+    return _served_axis(intervals, ordered)[0]
+
+
+def _served_axis(
+    intervals: Mapping[str, Sequence[float | None]],
+    ordered: Sequence[str],
+) -> tuple[list[float], tuple[float | None, float | None]]:
+    """``served_bucket_axis`` with this module's contract error."""
+
+    try:
+        return served_bucket_axis(intervals, ordered)
+    except ValueError as exc:
+        raise ContractError(
+            "native_ensemble_p0_bucket_interval_invalid"
+        ) from exc
 
 
 def _bucket_for_value(
@@ -3346,13 +3358,18 @@ def compile_native_ensemble_p0(
     band_layer, pinned_sha, pinned_axis = resolve_pinned_band_layer(
         conn, artifact_combination_method, band_table_override
     )
+    # Charter 190: the width layer is handed the axis with its open ends, so
+    # an open edge bucket's mass moves as a tail -- the same axis the width
+    # fit scores its scalars on.
+    served_centers_c, open_edge_bounds_c = _served_axis(intervals_raw, ordered)
     probability, center_width_receipt, band_reliability_receipt = (
         apply_served_table_layers(
             probability,
             ordered_keys=ordered,
-            key_centers_c=_bucket_centers(intervals_raw, ordered),
+            key_centers_c=served_centers_c,
             center_width=center_width_layer,
             band=band_layer,
+            open_edge_bounds_c=open_edge_bounds_c,
         )
     )
     if center_width_receipt is not None:

@@ -917,7 +917,10 @@ def materialize_p0m_observed(
     # v8 (charter 158, 2026-09-19): the likelihood's pull is tempered by
     # whether the TAF's own weather explains its disagreement with P0's
     # served mean (``taf_likelihood.disagreement_group``).
-    posterior_version: str = "p0m_taf_likelihood_v9",
+    # v9 (charter 160, 2026-09-19): the root (P0 v7).
+    # v10 (charter 190, 2026-09-21): the root (P0 v8) -- its width layer
+    # carries open edge buckets as tails; same declared start.
+    posterior_version: str = "p0m_taf_likelihood_v10",
     observed_hard_excluded_buckets: Sequence[str] = (),
     observed_running_high_c: float | None = None,
     taf_likelihood_artifact: Mapping[str, Any] | None = None,
@@ -1290,7 +1293,8 @@ def materialize_p1(
     # v17 (2026-09-20, charter 161): while the artifact's ``direct_update``
     # block serves, the observation update is exp f fitted directly on the
     # final P1 (``p1_direct_update``) instead of g**alpha.
-    posterior_version: str = "p1_joint_likelihood_v17",
+    # v18 (2026-09-21, charter 190): the root again (P0 v8, P0-M v10).
+    posterior_version: str = "p1_joint_likelihood_v18",
     # {"features": ..., "artifact": ..., "regional_system_id": ...}: the
     # step's observation-side feature vector and the fitted likelihood,
     # handed in for the reason every fitted table is -- a replay must rebuild

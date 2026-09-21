@@ -286,6 +286,15 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # deploys it, as P1 v13 was; the v7 envelopes between the resident's
         # start and this instant are not evidence yet.
         "calibrated_native_cross_ensemble_p0_v7": "2026-09-19T15:02:00Z",
+        # Charter 190: the width layer carries open edge buckets as tails and
+        # the width fit reads serving's axis.  Declared past the commit and
+        # before the restart that deploys it (the coordinator's ruling): no
+        # v8 envelope exists before the restart, so the declared moment only
+        # bounds the evidence from below.  The fingerprint's first sighting
+        # is that restart, which falls after this instant, so the watchdog
+        # lamp for all three stages lights until the new fingerprints are
+        # acknowledged (or this moment is moved to the restart, as v6 was).
+        "calibrated_native_cross_ensemble_p0_v8": "2026-09-21T15:00:00Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
@@ -301,6 +310,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # Charter 160: a root bump -- P0-M is P0 times the TAF likelihood, and
         # P0 moved -- at the instant P0 v7 declares.
         "p0m_taf_likelihood_v9": "2026-09-19T15:02:00Z",
+        # Charter 190: a root bump at the instant P0 v8 declares.
+        "p0m_taf_likelihood_v10": "2026-09-21T15:00:00Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
@@ -329,6 +340,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # ahead of the restart that deploys it and after the artifact carrying
         # the block is written, as v14 was.
         "p1_joint_likelihood_v17": "2026-09-19T17:20:00Z",
+        # Charter 190: the fifth root bump, at the instant P0 v8 declares.
+        "p1_joint_likelihood_v18": "2026-09-21T15:00:00Z",
     },
 }
 

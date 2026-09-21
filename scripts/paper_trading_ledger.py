@@ -61,9 +61,8 @@ from bayes_basket_target import paper_ledger_store  # noqa: E402
 from bayes_basket_target import taf_likelihood  # noqa: E402
 from bayes_basket_target.center_width_calibration import (  # noqa: E402
     apply_center_width_calibration,
-    bucket_centers_from_intervals,
+    served_bucket_axis,
 )
-from bayes_basket_target.center_width_store import EDGE_WIDTH_C  # noqa: E402
 from bayes_basket_target.convergence_evidence import (  # noqa: E402
     load_convergence_evidence,
 )
@@ -333,10 +332,6 @@ from bayes_basket_target.runtime import (  # noqa: E402
     snapshot_from_probability_envelope,
 )
 from bayes_basket_target.station_season import station_season_bin  # noqa: E402
-from bayes_basket_target.center_width_calibration import (  # noqa: E402
-    apply_center_width_calibration,
-    bucket_centers_from_intervals,
-)
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 # The production book's own file (see ``_connect``).
@@ -7108,9 +7103,9 @@ def _center_width_corrected(
     if set(keys) != set(intervals):
         return probabilities
     try:
-        centers = bucket_centers_from_intervals(
-            intervals, ordered_keys=keys, edge_width_c=EDGE_WIDTH_C
-        )
+        # Charter 190: serving's own axis, open ends included, so the arm
+        # moves an open edge bucket's mass as the tail production moves.
+        centers, open_edge_bounds = served_bucket_axis(intervals, keys)
     except (ValueError, KeyError):
         return probabilities
     excluded = str(lineage.get("hard_excluded_buckets") or "NONE")
@@ -7134,6 +7129,7 @@ def _center_width_corrected(
         ordered_keys=keys,
         key_centers_c=centers,
         excluded_buckets=() if excluded == "NONE" else tuple(excluded.split(",")),
+        open_edge_bounds_c=open_edge_bounds,
     )
     return corrected
 
@@ -9282,12 +9278,13 @@ def backfill(
                     if CENTER_WIDTH_OVERRIDE.get(stage):
                         delta_c, width_lambda = CENTER_WIDTH_OVERRIDE[stage]
                         ordered = [str(r[0]) for r in payload["buckets"]]
-                        centers = bucket_centers_from_intervals(
+                        # Charter 190: serving's axis and open ends.
+                        centers, open_edge_bounds = served_bucket_axis(
                             {
                                 str(r[0]): (r[2], r[3])
                                 for r in payload["buckets"]
                             },
-                            ordered_keys=ordered,
+                            ordered,
                         )
                         probabilities, _cw_receipt = (
                             apply_center_width_calibration(
@@ -9296,6 +9293,7 @@ def backfill(
                                 width_lambda=width_lambda,
                                 ordered_keys=ordered,
                                 key_centers_c=centers,
+                                open_edge_bounds_c=open_edge_bounds,
                             )
                         )
                     # Take the previous cycle's reading, then advance the

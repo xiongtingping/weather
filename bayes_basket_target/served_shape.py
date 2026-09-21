@@ -111,6 +111,7 @@ def apply_served_table_layers(
     band: BandLayer | None,
     excluded_buckets: Sequence[str] = (),
     skip: str | None = None,
+    open_edge_bounds_c: Sequence[float | None] | None = None,
 ) -> tuple[dict[str, float], dict[str, Any] | None, dict[str, Any] | None]:
     """Centre/width, then band.  Returns the vector and both receipts.
 
@@ -118,6 +119,11 @@ def apply_served_table_layers(
     its receipt comes back ``None``.  ``skip`` names one layer to leave out,
     for the gate's layer ablation, which must score the same arithmetic
     minus one layer rather than a re-derivation of it.
+
+    ``open_edge_bounds_c`` (charter 190) is the axis's open ends, as
+    ``center_width_calibration.served_bucket_axis`` returns them with the
+    centres: serving's market ladder declares them, the holdout's integer
+    grid has none and passes nothing.
     """
 
     if skip is not None and skip not in SERVED_TABLE_LAYER_ORDER:
@@ -136,6 +142,7 @@ def apply_served_table_layers(
             ordered_keys=ordered_keys,
             key_centers_c=key_centers_c,
             excluded_buckets=excluded_buckets,
+            open_edge_bounds_c=open_edge_bounds_c,
         )
     band_receipt = None
     if band is not None and skip != "band_reliability":

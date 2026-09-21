@@ -38,6 +38,77 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 CENTER_WIDTH_METHOD_TAG = "center_width_shift_scale_v1"
+# Charter 190 (user ruling 2026-09-21: 甲).  An open-ended edge bucket ("22°C
+# or below") is an event over a half-line, not a point.  Carried as a point on
+# its key centre, a lambda-0.75 contraction moved ZUUU 2026-09-22's 11.6%
+# "22°C or below" from 22.0 to 22.9 and split 91% of it into 23°C, serving
+# 23 13.0% over 24 11.3% -- a peak no member made -- and zeroed the top edge
+# outright.  Over the stable pool (8,032 P0 packets, 09-16..09-21) the
+# point rule pushed a median 83% of every open tail >=1% into its neighbour,
+# raised that neighbour over its inner neighbour in 108 packets (26
+# station-days, 17 of 45 stations) and served an open tail holding >=0.5%
+# of the input as <=1e-6 in 1,346 (16.8%); the truth landed on one of those
+# zeroed edges in 57 packets (KSEA 09-19, SBGR 09-20).  So an open bucket's
+# mass is carried as a tail: exponential, meeting its neighbour's density at
+# the shared edge (scale = tail mass x rung / neighbour mass -- charter 53:
+# an open bucket's width is not a constant), mapped point by point through
+# the same x -> mean + lambda (x - mean) + delta, and re-binned on the real
+# bucket edges.  Interior buckets keep the point-and-linear-split
+# arithmetic bit for bit.
+OPEN_EDGE_TAIL_RULE = "open_edge_exponential_tail_v1"
+# Where the served axis puts an open bucket's key centre: half a degree
+# beyond its finite bound, the offset ``native_ensemble_p0`` has always
+# served.  The key centre still sets the distribution's mean and sigma --
+# the anchor, the floor and the tier read those -- it just no longer says
+# where the tail's mass goes.
+SERVED_OPEN_EDGE_OFFSET_C = 0.5
+
+
+def served_bucket_axis(
+    intervals: Mapping[str, Sequence[float | None]],
+    ordered_keys: Sequence[str],
+) -> tuple[list[float], tuple[float | None, float | None]]:
+    """The width layer's axis: key centres, and the open edges' finite bounds.
+
+    One function for serving and for the fit (charter 190).  Until
+    2026-09-21 the fit placed an open bucket's centre a whole degree beyond
+    its bound (``center_width_store.EDGE_WIDTH_C = 2.0``) while serving
+    placed it half a degree beyond, so the scalars were chosen on a mean, a
+    sigma and a transport the served distribution never had.
+
+    Returns ``(centres, (lower_edge, upper_edge))``: ``lower_edge`` is the
+    upper bound of an open first bucket, ``upper_edge`` the lower bound of an
+    open last bucket, None where that end is closed.
+    """
+
+    keys = [str(key) for key in ordered_keys]
+    centers: list[float] = []
+    for key in keys:
+        bounds = intervals.get(key)
+        if (
+            bounds is None
+            or isinstance(bounds, (str, bytes, bytearray))
+            or len(bounds) != 2
+        ):
+            raise ValueError("center_width_intervals_malformed")
+        lower, upper = bounds
+        if lower is None and upper is None:
+            raise ValueError("center_width_intervals_unbounded")
+        if lower is None:
+            centers.append(float(upper) - SERVED_OPEN_EDGE_OFFSET_C)
+        elif upper is None:
+            centers.append(float(lower) + SERVED_OPEN_EDGE_OFFSET_C)
+        else:
+            centers.append((float(lower) + float(upper)) / 2.0)
+    if not keys:
+        return centers, (None, None)
+    first = intervals[keys[0]]
+    last = intervals[keys[-1]]
+    lower_edge = float(first[1]) if first[0] is None else None
+    upper_edge = float(last[0]) if last[1] is None else None
+    return centers, (lower_edge, upper_edge)
+
+
 # A correction this layer is not entitled to make.  Beyond these the fit is
 # describing something structural -- a broken bucket axis, a stage whose
 # centre is not what it claims -- and silently bending the distribution onto
@@ -256,6 +327,128 @@ def _axis(
     return keys, centers
 
 
+def _open_edges(
+    open_edge_bounds_c: Sequence[float | None] | None,
+    centers: Sequence[float],
+) -> tuple[float | None, float | None]:
+    """The declared open edges, checked against the axis they bound.
+
+    An open first bucket's bound must lie strictly between its key centre and
+    the next one (the served axis puts it half a degree past the centre);
+    anything else is an axis the tail cannot be placed on, and failing here
+    is better than re-binning a tail across the wrong edge.
+    """
+
+    if open_edge_bounds_c is None:
+        return None, None
+    if (
+        isinstance(open_edge_bounds_c, (str, bytes, bytearray))
+        or len(open_edge_bounds_c) != 2
+    ):
+        raise ValueError("center_width_open_edge_bounds_invalid")
+    lower, upper = open_edge_bounds_c
+    lower = None if lower is None else float(lower)
+    upper = None if upper is None else float(upper)
+    if lower is not None and not (
+        math.isfinite(lower) and centers[0] < lower < centers[1]
+    ):
+        raise ValueError("center_width_open_edge_bounds_invalid")
+    if upper is not None and not (
+        math.isfinite(upper) and centers[-2] < upper < centers[-1]
+    ):
+        raise ValueError("center_width_open_edge_bounds_invalid")
+    if (
+        len(centers) == 2
+        and lower is not None
+        and upper is not None
+        and lower != upper
+    ):
+        raise ValueError("center_width_open_edge_bounds_invalid")
+    return lower, upper
+
+
+def _bucket_edges_c(
+    centers: Sequence[float], lower: float | None, upper: float | None
+) -> list[float]:
+    """The edges between adjacent buckets, in order (one fewer than buckets).
+
+    Interior edges are the midpoints of adjacent centres, which is exact for
+    every ladder in production: interior buckets are contiguous and of one
+    width (charter 53).  A declared open edge is its own bound.
+    """
+
+    edges = [
+        (float(a) + float(b)) / 2.0 for a, b in zip(centers, centers[1:])
+    ]
+    if lower is not None:
+        edges[0] = lower
+    if upper is not None:
+        edges[-1] = upper
+    return edges
+
+
+def _open_edge_tail_landing(
+    weight: float,
+    *,
+    side: str,
+    bound_c: float,
+    adjacent_weight: float,
+    rung_c: float,
+    edges_c: Sequence[float],
+    mean_c: float,
+    lam: float,
+    shift: float,
+) -> tuple[list[float], float | None]:
+    """Where an open bucket's mass lands under x -> mean + lam (x - mean) + shift.
+
+    The tail is exponential and meets its neighbour's density at the shared
+    edge: density ``adjacent_weight / rung_c`` there, total mass ``weight``,
+    so its scale is ``weight * rung_c / adjacent_weight``.  A heavy tail over
+    a thin neighbour is long and little of it crosses; a thin tail beside a
+    heavy neighbour sits against the edge and follows it.  The mass below
+    (above) each edge after the map is the tail's mass below (above) that
+    edge's preimage, so each bucket gets the difference -- the same map every
+    interior centre is moved by, applied to a half-line instead of a point.
+
+    A neighbour with no mass gives a density of zero at the edge: the tail
+    is infinitely long and nothing crosses.  Returns the per-bucket landing
+    (buckets in axis order) and the scale, None in that case.
+    """
+
+    size = len(edges_c) + 1
+    landing = [0.0] * size
+    if adjacent_weight <= 0.0:
+        landing[0 if side == "lower" else size - 1] = weight
+        return landing, None
+    scale = weight * rung_c / adjacent_weight
+
+    def preimage(x: float) -> float:
+        return mean_c + (x - shift - mean_c) / lam
+
+    previous = 0.0
+    if side == "lower":
+        for position, edge in enumerate(edges_c):
+            source = preimage(edge)
+            cumulative = (
+                weight if source >= bound_c
+                else weight * math.exp((source - bound_c) / scale)
+            )
+            landing[position] = cumulative - previous
+            previous = cumulative
+        landing[size - 1] = weight - previous
+        return landing, scale
+    for position in range(size - 2, -1, -1):
+        source = preimage(edges_c[position])
+        cumulative = (
+            weight if source <= bound_c
+            else weight * math.exp(-(source - bound_c) / scale)
+        )
+        landing[position + 1] = cumulative - previous
+        previous = cumulative
+    landing[0] = weight - previous
+    return landing, scale
+
+
 def apply_center_width_calibration(
     probability: Mapping[str, float],
     *,
@@ -268,8 +461,23 @@ def apply_center_width_calibration(
     sigma_floor_rungs: float = 0.0,
     width_tier_lambdas: Sequence[float] | None = None,
     width_tier_boundaries: Sequence[float] | None = None,
+    open_edge_bounds_c: Sequence[float | None] | None = None,
 ) -> tuple[dict[str, float], dict[str, Any]]:
     """Shift by ``delta_c`` and scale about the mean by ``width_lambda``.
+
+    ``open_edge_bounds_c`` (charter 190) declares which end buckets are open
+    and where their finite bound is -- ``served_bucket_axis`` returns it
+    beside the centres.  A declared open bucket's mass is carried as a tail
+    (``_open_edge_tail_landing``) rather than as a point on its key centre.
+    Everything else is unchanged: the mean, sigma, floor and tier are read
+    off the key centres exactly as before, and interior buckets move as
+    before bit for bit, so an axis with no open end declared -- the holdout's
+    integer grid -- or an open end holding no mass serves what it always
+    served.  Two things do change where a tail holds mass: the served mean
+    read on key centres is no longer exactly ``mean + delta`` (a tail is not
+    a point on its centre; measured on the stable pool, median -0.004C, p10
+    -0.031, p90 +0.021), and the realised sigma ratio moves with it (median
+    0.791 -> 0.799).
 
     ``width_tier_lambdas`` (width tiers, 2026-09-05) replaces the scalar
     ``width_lambda`` with the lambda of the tier the distribution's own
@@ -366,10 +574,44 @@ def apply_center_width_calibration(
         for key, value in probability.items()
     )
 
+    open_lower, open_upper = _open_edges(open_edge_bounds_c, centers)
+    open_edges_declared = open_lower is not None or open_upper is not None
+    edges_c = (
+        _bucket_edges_c(centers, open_lower, open_upper)
+        if open_edges_declared else []
+    )
+    tail_scale: dict[str, float | None] = {"lower": None, "upper": None}
+    tail_released: dict[str, float] = {"lower": 0.0, "upper": 0.0}
+
     moved = {key: 0.0 for key in keys}
     for key, raw in probability.items():
         weight = float(raw)
         if weight <= 0.0:
+            continue
+        position_index = index[str(key)]
+        side = (
+            "lower" if open_lower is not None and position_index == 0
+            else "upper"
+            if open_upper is not None and position_index == len(keys) - 1
+            else None
+        )
+        if side is not None:
+            adjacent = keys[1] if side == "lower" else keys[-2]
+            landing, scale = _open_edge_tail_landing(
+                weight,
+                side=side,
+                bound_c=open_lower if side == "lower" else open_upper,
+                adjacent_weight=float(probability.get(adjacent, 0.0)),
+                rung_c=rung_c,
+                edges_c=edges_c,
+                mean_c=mean_c,
+                lam=lam,
+                shift=shift,
+            )
+            for bucket_index, share in enumerate(landing):
+                moved[keys[bucket_index]] += share
+            tail_scale[side] = scale
+            tail_released[side] = weight - landing[position_index]
             continue
         origin = centers[index[str(key)]]
         position = mean_c + (origin - mean_c) * lam + shift
@@ -399,6 +641,20 @@ def apply_center_width_calibration(
         for key in excluded:
             moved[key] = 0.0
     total = sum(moved.values())
+    # Charter 190: present only where an open end was declared, so a caller
+    # on a closed axis (the holdout's integer grid) keeps its receipt as is.
+    # ``open_edge_mass_released`` is how much of each open bucket's own mass
+    # the map carried out of it; the scale is None where its neighbour held
+    # nothing (an infinitely long tail, nothing crosses).
+    open_edge_receipt: dict[str, Any] = (
+        {
+            "open_edge_rule": OPEN_EDGE_TAIL_RULE,
+            "open_edge_bounds_c": [open_lower, open_upper],
+            "open_edge_tail_scale_c": dict(tail_scale),
+            "open_edge_mass_released": dict(tail_released),
+        }
+        if open_edges_declared else {}
+    )
     if total <= 0.0 or not math.isfinite(total):
         # Everything landed on ruled-out buckets.  Serve the input.
         return dict(probability), {
@@ -426,6 +682,7 @@ def apply_center_width_calibration(
                 str(key): round(float(value) / total_in, 9)
                 for key, value in probability.items()
             },
+            **open_edge_receipt,
         }
     adjusted = {key: value / total for key, value in moved.items()}
     return adjusted, {
@@ -477,6 +734,7 @@ def apply_center_width_calibration(
             str(key): round(float(value) / total_in, 9)
             for key, value in probability.items()
         },
+        **open_edge_receipt,
     }
 
 

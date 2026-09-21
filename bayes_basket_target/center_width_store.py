@@ -41,9 +41,11 @@ from .center_width_calibration import (
     MAX_SIGMA_FLOOR_LIFT,
     MAX_WIDTH_LAMBDA,
     MIN_WIDTH_LAMBDA,
+    OPEN_EDGE_TAIL_RULE,
+    SERVED_OPEN_EDGE_OFFSET_C,
     apply_center_width_calibration,
-    bucket_centers_from_intervals,
     bucket_rung_width_c,
+    served_bucket_axis,
     sigma_floor_lift_v1,
 )
 from . import serving_arithmetic
@@ -144,9 +146,13 @@ MIN_FORWARD_NLL_GAIN = 0.005
 # station lane's reasoning: a day earlier here is one fewer day served wrong.
 CENTER_WIDTH_VETO_MIN_DAYS = 3
 CENTER_WIDTH_VETO_MIN_CELLS = 60
-# Open-ended edge buckets have no far side; this is the width the fit gives
-# them, and serving must use the same number or the correction lands
-# somewhere the measurement never looked.
+# Open-ended edge buckets have no far side; this is the width
+# ``materialization`` gives them on the P0-M TAF likelihood's axis, which its
+# own artifact was fitted on.  It is no longer the width layer's convention:
+# until 2026-09-21 the fit here placed an open centre a whole degree past its
+# bound while serving placed it half a degree past, so the scalars were
+# chosen on a mean, a sigma and a transport nobody served.  Since charter 190
+# the fit reads ``served_bucket_axis`` -- the function serving calls.
 EDGE_WIDTH_C = 2.0
 # The width floor, in rungs of the station's own vocabulary (charter 53(b):
 # a rule counted in rungs is synonymous across units and is not converted).
@@ -853,7 +859,14 @@ def _center_width_forward_matrix(
 ):
     """The kernel's move written as a matrix: column j is where input bucket
     j's mass lands.  Same clipping and the same linear split, so it is the
-    transform itself rather than a model of it."""
+    transform itself rather than a model of it.
+
+    The PRE-charter-190 transform, deliberately: this solves for the input
+    of rows that recorded none, and every such row predates charter 138's
+    receipt key and so was served with open edge buckets moved as points.
+    A row served under the tail rule always records its input (the
+    recovery below refuses one that does not), so this matrix is never
+    asked to describe it.  (User ruling 2026-09-21, charter 190.)"""
 
     import numpy as np
 
@@ -971,6 +984,11 @@ def _identity_counterfactual(
     if isinstance(recorded, Mapping) and set(recorded) == set(keys):
         recovered = np.array([float(recorded[key]) for key in keys])
         basis = "recorded_input"
+    elif receipt.get("open_edge_rule"):
+        # Served under charter 190's tail rule, which the recovery matrix
+        # does not describe.  Every such receipt records its input, so this
+        # is a malformed row, not one to solve for.
+        return None, "not_recoverable"
     else:
         mean_c = receipt.get("distribution_mean_c")
         if mean_c is None:
@@ -1028,6 +1046,7 @@ def _identity_counterfactual(
             ordered_keys=keys,
             key_centers_c=cell["key_centers_c"],
             excluded_buckets=cell["excluded_buckets"],
+            open_edge_bounds_c=cell.get("open_edge_bounds_c"),
         )
     total = sum(probability.values())
     if total <= 0.0:
@@ -1414,6 +1433,7 @@ def fit_station_width(
                 ordered_keys=cell["ordered_keys"],
                 key_centers_c=cell["key_centers_c"],
                 excluded_buckets=cell["excluded_buckets"],
+                open_edge_bounds_c=cell.get("open_edge_bounds_c"),
                 station_width_scale=scale,
             )
             value = float(adjusted.get(cell["settled_bucket"], 0.0))
@@ -1803,9 +1823,9 @@ def _serving_cell(
         probabilities = _pre_band_claim(probabilities, lineage)
     keys = sorted(probabilities, key=lambda key: ordinals.get(key, 0))
     try:
-        centers = bucket_centers_from_intervals(
-            intervals, ordered_keys=keys, edge_width_c=EDGE_WIDTH_C
-        )
+        # Charter 190: the axis serving hands the layer -- key centres and
+        # the open ends -- from the one function both call.
+        centers, open_edge_bounds = served_bucket_axis(intervals, keys)
     except ValueError:
         return None
     landed = None
@@ -1842,6 +1862,7 @@ def _serving_cell(
         },
         "ordered_keys": keys,
         "key_centers_c": centers,
+        "open_edge_bounds_c": open_edge_bounds,
         "settled_bucket": landed,
         "excluded_buckets": excluded,
     }
@@ -1864,6 +1885,7 @@ def _cell_nll(
             ordered_keys=cell["ordered_keys"],
             key_centers_c=cell["key_centers_c"],
             excluded_buckets=cell["excluded_buckets"],
+            open_edge_bounds_c=cell.get("open_edge_bounds_c"),
             sigma_floor_rungs=sigma_floor_rungs,
         )
     total = sum(adjusted.values())
@@ -1993,6 +2015,7 @@ def _cell_scores(
             ordered_keys=cell["ordered_keys"],
             key_centers_c=cell["key_centers_c"],
             excluded_buckets=cell["excluded_buckets"],
+            open_edge_bounds_c=cell.get("open_edge_bounds_c"),
             sigma_floor_rungs=sigma_floor_rungs,
             width_tier_lambdas=width_tier_lambdas,
         )
@@ -2587,7 +2610,9 @@ def fit_center_width(
         "serving_cell_count": len(cells),
         "incumbent_delta_c": base[0],
         "incumbent_width_lambda": base[1],
-        "edge_width_c": EDGE_WIDTH_C,
+        # Charter 190: the axis the cells are scored on is serving's own.
+        "open_edge_rule": OPEN_EDGE_TAIL_RULE,
+        "served_open_edge_offset_c": SERVED_OPEN_EDGE_OFFSET_C,
         "min_qualifying_days": MIN_QUALIFYING_DAYS,
         "min_qualifying_cells": MIN_QUALIFYING_CELLS,
         "min_decision_at_utc": min_decision_at_utc,
