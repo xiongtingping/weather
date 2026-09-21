@@ -279,3 +279,57 @@ def test_the_checkpoint_stamps_what_it_cost(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(pw.time, "perf_counter", lambda: next(ticks))
     worker._fast_lane_checkpoint("after_regime")
     assert worker._last_fast_lane_checkpoint_cost_sec == pytest.approx(37.5)
+
+
+# --- the per-cycle budget (2026-09-21) -------------------------------------
+#
+# The duty cycle spaces the optional passes; it did not bound their sum.  On
+# the first two cycles after the 05:44Z restart they took 116s and 123s of
+# 863s and 606s.  Once a cycle has spent FAST_LANE_CHECKPOINT_CYCLE_BUDGET_SEC
+# on them, the optional passes stop; the pass before decisions does not.
+
+
+def test_the_optional_checkpoints_stop_once_the_cycle_budget_is_spent(monkeypatch, tmp_path) -> None:
+    worker = _worker(tmp_path)
+    worker._begin_cycle_scratch()
+    _env.mark = (12, 0, "2026-09-19")
+    monkeypatch.setattr(pw, "_stations_with_reports_after", lambda conn, covered: {"ZUUU"})
+    ran = []
+    monkeypatch.setattr(worker, "_materialize_early_p1",
+                        lambda **k: ran.append(1) or {"ran": True, "p1": {"state": "COMMITTED"}})
+    worker._fast_lane_cycle_spent_sec = pw.FAST_LANE_CHECKPOINT_CYCLE_BUDGET_SEC
+    assert worker._fast_lane_checkpoint_if_due("after_regime") is None
+    assert worker._fast_lane_checkpoint_if_due("after_market_ingress") is None
+    assert ran == []
+    notes = [r for r in worker._fast_lane_receipts if r.get("skipped") == "cycle_budget_spent"]
+    assert len(notes) == 1
+    assert notes[0]["label"] == "after_regime"
+    assert notes[0]["budget_sec"] == pw.FAST_LANE_CHECKPOINT_CYCLE_BUDGET_SEC
+    # The pass right before decisions is not optional and is not gated.
+    receipt = worker._fast_lane_checkpoint("before_decisions")
+    assert receipt["p1"]["ran"] is True
+    assert ran == [1]
+
+
+def test_a_pass_that_ran_is_charged_to_the_cycle_and_forgotten_by_the_next(monkeypatch, tmp_path) -> None:
+    import time as _time
+
+    worker = _worker(tmp_path)
+    worker._begin_cycle_scratch()
+    _env.mark = (12, 0, "2026-09-19")
+    monkeypatch.setattr(pw, "_stations_with_reports_after", lambda conn, covered: {"ZUUU"})
+    monkeypatch.setattr(worker, "_materialize_early_p1",
+                        lambda **k: _time.sleep(0.02) or {"ran": True, "p1": {"state": "COMMITTED"}})
+    assert worker._fast_lane_checkpoint_if_due("after_regime") is not None
+    assert worker._fast_lane_cycle_spent_sec >= 0.02
+    # Nothing new: no pass, nothing charged.
+    spent = worker._fast_lane_cycle_spent_sec
+    assert worker._fast_lane_checkpoint("before_decisions") is None
+    assert worker._fast_lane_cycle_spent_sec == spent
+    worker._begin_cycle_scratch()
+    assert worker._fast_lane_cycle_spent_sec == 0.0
+
+
+def test_the_budget_is_a_positive_number_of_seconds() -> None:
+    assert pw.FAST_LANE_CHECKPOINT_CYCLE_BUDGET_SEC > 0
+    assert pw.FAST_LANE_CHECKPOINT_CYCLE_BUDGET_SEC >= pw.FAST_LANE_CHECKPOINT_MIN_INTERVAL_SEC

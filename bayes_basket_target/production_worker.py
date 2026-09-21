@@ -3575,6 +3575,22 @@ FAST_LANE_CHECKPOINT_MIN_INTERVAL_SEC = float(
 #: on checkpoints; when a pass is cheap, the interval governs and the P1
 #: still lands within a minute of its report.
 FAST_LANE_CHECKPOINT_DUTY_CYCLE = True
+# How much of one cycle the mid-cycle checkpoints may take between them.
+#
+# The duty cycle above spaces the passes; it does not bound their sum.  On
+# the first two cycles after the 2026-09-21 05:44Z restart the passes took
+# 116s and 123s of 863s and 606s -- 70s for one pass after the regime stage
+# -- because each one that found a new report ran the identity script and P1
+# on a machine deep in swap.  In an ordinary cycle the sum is 11s (median,
+# 2026-09-19).  So the checkpoints that are optional (``_if_due``) stop once
+# the cycle has spent this much on them; the head of the cycle and the pass
+# right before decisions are not optional and are not counted against it.  A
+# report that lands after the budget is spent waits for that last pass or
+# the next head, which is the behaviour before charter 165.
+FAST_LANE_CHECKPOINT_CYCLE_BUDGET_SEC = float(
+    os.environ.get("PM_FAST_LANE_CHECKPOINT_CYCLE_BUDGET_SEC", "").strip()
+    or 90.0
+)
 
 
 def _later_report_watermark(
@@ -8573,7 +8589,11 @@ class TargetProductionWorker:
             # Charter 135 (二): the running high lives behind the canonical
             # connection this worker owns, so the loader is supplied here.
             dead_bucket_loader=self._resting_dead_buckets,
+            # Charter 174: a pass the gateway breaker cut short says where
+            # the next one starts, so no rung is asked first every time.
+            start_index=int(getattr(self, "_resting_reprice_cursor", 0) or 0),
         )
+        self._resting_reprice_cursor = int(receipt.get("next_start_index") or 0)
         _publish_resting_reprice_receipt(receipt, as_of_utc=as_of_utc)
         return receipt
 
@@ -15574,6 +15594,10 @@ class TargetProductionWorker:
             self._fast_lane_receipts = receipts
         receipts.append(receipt)
         self._last_fast_lane_checkpoint_cost_sec = time.perf_counter() - started
+        self._fast_lane_cycle_spent_sec = (
+            float(getattr(self, "_fast_lane_cycle_spent_sec", 0.0) or 0.0)
+            + self._last_fast_lane_checkpoint_cost_sec
+        )
         self._last_fast_lane_checkpoint_mono = time.monotonic()
         if mark:
             self._mark(f"fast_lane_{label}")
@@ -15585,6 +15609,38 @@ class TargetProductionWorker:
                 f"fast_lane_{label}", (time.perf_counter() - started) * 1000.0
             )
         return receipt
+
+    def _note_fast_lane_budget_skip(
+        self, label: str, *, spent_sec: float
+    ) -> None:
+        """Record, once per cycle, that the checkpoint budget is spent."""
+
+        if getattr(self, "_fast_lane_budget_skip_noted", False):
+            return
+        self._fast_lane_budget_skip_noted = True
+        receipts = getattr(self, "_fast_lane_receipts", None)
+        if not isinstance(receipts, list):
+            receipts = []
+            self._fast_lane_receipts = receipts
+        receipts.append({
+            "label": label,
+            "skipped": "cycle_budget_spent",
+            "spent_sec": round(float(spent_sec), 1),
+            "budget_sec": FAST_LANE_CHECKPOINT_CYCLE_BUDGET_SEC,
+        })
+
+    def _begin_cycle_scratch(self) -> None:
+        """Forget what one cycle may reuse but the next must not.
+
+        Called once at the head of ``run``.  Everything here is a per-cycle
+        memo or counter: the checkpoint budget spent, whether its skip was
+        already noted, and the portfolio quota computed for this cycle's
+        forward scopes.
+        """
+
+        self._fast_lane_cycle_spent_sec = 0.0
+        self._fast_lane_budget_skip_noted = False
+        self._portfolio_quota_cycle_memo = None
 
     def _fast_lane_checkpoint_if_due(
         self, label: str, *, mark: bool = True
@@ -15602,6 +15658,10 @@ class TargetProductionWorker:
         """
 
         if not FAST_LANE_CHECKPOINTS_ENABLED:
+            return None
+        spent = float(getattr(self, "_fast_lane_cycle_spent_sec", 0.0) or 0.0)
+        if spent >= FAST_LANE_CHECKPOINT_CYCLE_BUDGET_SEC:
+            self._note_fast_lane_budget_skip(label, spent_sec=spent)
             return None
         last = getattr(self, "_last_fast_lane_checkpoint_mono", None)
         if last is not None:
@@ -16107,6 +16167,49 @@ class TargetProductionWorker:
         return None
 
     def _portfolio_quota(
+        self,
+        *,
+        stations: Sequence[str],
+        fallback_budget_usdc: float,
+        as_of_utc: str,
+    ) -> dict[str, float]:
+        """The cycle's per-station quota, computed once per cycle.
+
+        The forward loop asks for it once per scope -- 61 times a cycle at
+        the 2026-09-19 median -- and every answer was recomputed from the
+        same bankroll and the same ledger: 10.5s of a 202s cycle, 54.7s at
+        the worst, and 61 inventory snapshots persisted where one would do
+        (10,929 and 17,171 rows on 09-20 and 09-19 in a table of 239k).  The
+        inputs that vary across those calls are the clock, which is only
+        stamped into the receipt, and the station list, which is the key
+        here.  Edges are read from each station's newest plan as of the
+        first ask; the plans this same loop writes later in the cycle did
+        not move a quota that had already been handed out, and now they
+        visibly do not.
+        """
+
+        key = (
+            tuple(sorted(str(item).strip().upper() for item in stations)),
+            round(float(fallback_budget_usdc), 6),
+        )
+        memo = getattr(self, "_portfolio_quota_cycle_memo", None)
+        if isinstance(memo, dict) and memo.get("key") == key:
+            memo["reused"] = int(memo.get("reused", 0)) + 1
+            return dict(memo["quota"])
+        quota = self._portfolio_quota_uncached(
+            stations=stations,
+            fallback_budget_usdc=fallback_budget_usdc,
+            as_of_utc=as_of_utc,
+        )
+        self._portfolio_quota_cycle_memo = {
+            "key": key,
+            "quota": dict(quota),
+            "computed_at_utc": as_of_utc,
+            "reused": 0,
+        }
+        return dict(quota)
+
+    def _portfolio_quota_uncached(
         self,
         *,
         stations: Sequence[str],
@@ -16957,6 +17060,89 @@ class TargetProductionWorker:
             "orders_submitted": 0,
         }
 
+    def _delta_v2_label_cursor_path(self) -> Path | None:
+        root = getattr(self, "nwp_runtime_root", None)
+        return root / "delta_v2_label_cursor.json" if isinstance(root, Path) else None
+
+    def _load_persisted_delta_v2_label_cursor(self) -> None:
+        """Seed the label cursor from the last page a previous process wrote.
+
+        The cursor lived only in memory, so every restart rescanned the
+        training facts from rowid 0: 235s on the first cycle after the
+        2026-09-21 05:44Z restart, 180s at the worst before the outage, and
+        restarts are not rare -- four that day.  The retry lane already
+        wraps to rowid 0 on its own, so resuming from the persisted page
+        skips nothing a page would not revisit anyway.
+
+        Read once per process, and only when the cursor has not been set by
+        a page this process committed.  Discarded, with a cold rescan, when
+        the file is malformed, its lanes are inconsistent, or the rowid it
+        names is past the store's newest fact -- which is what a rebuilt or
+        substituted store looks like.
+        """
+
+        if getattr(self, "_delta_v2_label_cursor_initialized", False):
+            return
+        if getattr(self, "_delta_v2_label_cursor_loaded_from_disk", False):
+            return
+        self._delta_v2_label_cursor_loaded_from_disk = True
+        path = self._delta_v2_label_cursor_path()
+        if path is None or self.commit_conn is None:
+            return
+        try:
+            raw = load_bounded_json(path)
+        except Exception:  # noqa: BLE001 -- a hint, not a fact
+            return
+        if not isinstance(raw, Mapping) or raw.get("schema") != "delta_v2_label_cursor_v2":
+            return
+        try:
+            scan = int(raw["scan_after_rowid"])
+            retry = int(raw["retry_after_rowid"])
+            lane = str(raw["next_lane"])
+        except (KeyError, TypeError, ValueError):
+            return
+        if scan < 0 or retry < 0 or retry > scan or lane not in {"retry", "new"}:
+            return
+        try:
+            newest = self.commit_conn.execute(
+                "SELECT MAX(rowid) FROM basket_policy_training_fact"
+            ).fetchone()
+        except sqlite3.Error:
+            return
+        if newest is None or newest[0] is None or scan > int(newest[0]):
+            return
+        self._delta_v2_label_fact_cursor = scan
+        self._delta_v2_label_cursor_state = {
+            "schema": "delta_v2_label_cursor_v2",
+            "scan_after_rowid": scan,
+            "retry_after_rowid": retry,
+            "next_lane": lane,
+        }
+        self._delta_v2_label_cursor_initialized = True
+
+    def _persist_delta_v2_label_cursor(self, *, as_of_utc: str) -> None:
+        """Write the committed cursor beside the maintenance turn."""
+
+        path = self._delta_v2_label_cursor_path()
+        if path is None:
+            return
+        state = dict(getattr(self, "_delta_v2_label_cursor_state", None) or {})
+        if not state:
+            return
+        try:
+            write_bounded_json_if_changed(
+                path,
+                {
+                    "schema": "delta_v2_label_cursor_v2",
+                    "scan_after_rowid": int(state.get("scan_after_rowid", 0)),
+                    "retry_after_rowid": int(state.get("retry_after_rowid", 0)),
+                    "next_lane": str(state.get("next_lane") or "retry"),
+                    "persisted_at_utc": as_of_utc,
+                },
+            )
+        except Exception:  # noqa: BLE001 -- telemetry and a restart hint
+            pass
+
     def _materialize_delta_v2_labels(
         self,
         *,
@@ -16986,6 +17172,7 @@ class TargetProductionWorker:
                 }
             self._last_delta_v2_label_scan_monotonic = now_monotonic
         assert_process_memory_budget()
+        self._load_persisted_delta_v2_label_cursor()
         source_cursor = (
             int(getattr(self, "_delta_v2_label_fact_cursor", 0))
             if bool(
@@ -17072,6 +17259,7 @@ class TargetProductionWorker:
                 self._delta_v2_label_fact_cursor = committed_cursor
                 self._delta_v2_label_cursor_state = committed_cursor_state
                 self._delta_v2_label_cursor_initialized = True
+                self._persist_delta_v2_label_cursor(as_of_utc=as_of_utc)
                 if (
                     page.get("state") == "blocked_fail_closed"
                     or int(page.get("candidate_count") or 0) == 0
@@ -17661,6 +17849,7 @@ class TargetProductionWorker:
             getattr(self, "_p0m_replay_blocked_next", frozenset())
         )
         self._p0m_replay_blocked_next = set()
+        self._begin_cycle_scratch()
         started = time.perf_counter()
         reset_writer_lock_profile()
         reset_ledger_spans()

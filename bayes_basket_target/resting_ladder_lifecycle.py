@@ -326,6 +326,16 @@ def _past_own_expiry(intent: Mapping[str, Any], as_of_utc: str) -> bool:
     return _iso(as_of_utc) >= horizon
 
 
+#: What the gateway client writes into ``error`` when the request left this
+#: process and no answer came back (``clob_order_service_client._post``).
+GATEWAY_TRANSPORT_MARK = "gateway_transport"
+
+
+def _gateway_unreachable(reason: Any) -> bool:
+    """Whether a lookup failed on transport rather than being answered."""
+    return GATEWAY_TRANSPORT_MARK in str(reason or "")
+
+
 def _exchange_view(lookup: Mapping[str, Any]) -> dict[str, Any]:
     """Status and cumulative fill off a ``/lookup-exchange-order`` reply."""
 
@@ -684,8 +694,16 @@ def reprice_resting_rungs(
     limit: int = 200,
     dead_bucket_loader: DeadBucketLoader | None = None,
     stale_book_seconds: float | None = None,
+    start_index: int = 0,
 ) -> dict[str, Any]:
     """One pass over every resting rung: sync it, then keep or cancel it.
+
+    ``start_index`` is where in the created_at order this pass begins; the
+    pass wraps round so every rung is still visited.  It exists for the
+    gateway breaker below: a pass that stopped early says where the next one
+    should start (``next_start_index``), which is the rung after the one
+    whose lookup failed, so a single order the exchange cannot answer for
+    never keeps the others from being synced.
 
     ``dead_bucket_loader(conn, station_id=, event_date=, as_of_utc=)`` returns
     the scope's observed-dead buckets and the running high that killed them
@@ -740,14 +758,44 @@ def reprice_resting_rungs(
     }
     intents = load_resting_maker_intents(conn, limit=limit)
     receipt["examined"] = len(intents)
+    # Rungs this pass did not reach because the gateway stopped answering,
+    # named so the board can see them, and where the next pass starts.
+    receipt["deferred"] = []
+    receipt["deferred_reason"] = ""
+    receipt["start_index"] = 0
+    receipt["next_start_index"] = 0
     if not intents:
         return receipt
+    start = int(start_index or 0) % len(intents)
+    receipt["start_index"] = start
+    ordered = intents[start:] + intents[:start]
     book_cache: dict[tuple[str, str], Mapping[str, Mapping[str, float]]] = {}
     dead_cache: dict[tuple[str, str], tuple[tuple[str, ...], float | None]] = {}
     # Shares this pass has already handed to a departed order, per token, so
     # two orders on one token cannot both claim the same position.
     attributed: dict[str, float] = {}
-    for intent in intents:
+
+    def defer_rest(position: int, entry: dict[str, Any], reason: str) -> None:
+        # Charter 174: the gateway breaker.  One transport failure means the
+        # gateway (or the exchange behind it) is not answering, and every
+        # remaining lookup would spend its full timeout learning the same
+        # thing: measured 2026-09-21 00:14Z and 00:27Z, eleven resting
+        # sells at roughly 35 seconds each made this pass 388 seconds of a
+        # 650-second cycle, the largest single item, in front of every
+        # decision.  So the pass stops here, the rungs it did not reach are
+        # named, and the next pass starts one past this rung -- a rung the
+        # exchange cannot answer for is visited last, not first, so it
+        # cannot starve the others.  Nothing is written for a deferred
+        # rung; it rests exactly as it did.
+        entry["verdict"] = {"action": "deferred", "reason": reason[:160]}
+        receipt["rungs"].append(entry)
+        receipt["deferred"] = [
+            str(item["order_intent_id"]) for item in ordered[position + 1:]
+        ]
+        receipt["deferred_reason"] = reason[:160]
+        receipt["next_start_index"] = (start + position + 1) % len(intents)
+
+    for position, intent in enumerate(ordered):
         intent_id = intent["order_intent_id"]
         entry: dict[str, Any] = {
             "order_intent_id": intent_id,
@@ -771,6 +819,11 @@ def reprice_resting_rungs(
             continue
         entry["exchange_status"] = view["status"]
         entry["sync"] = synced
+        if synced["state"] == "unknown" and _gateway_unreachable(
+            synced.get("reason")
+        ):
+            defer_rest(position, entry, str(synced.get("reason") or ""))
+            break
         if synced["state"] == "filled":
             receipt["synced_filled"] += 1
             receipt["rungs"].append(entry)
@@ -802,6 +855,9 @@ def reprice_resting_rungs(
                     "order_intent_id": intent_id,
                     "reason": f"departed_reconcile:{type(exc).__name__}:{exc}"[:160],
                 })
+                if _gateway_unreachable(str(exc)):
+                    defer_rest(position, entry, f"departed_reconcile:{exc}")
+                    break
                 departed = {"state": "unknown", "reason": "reconcile_raised"}
             entry["departed"] = departed
             if departed["state"] == "departed_filled":
@@ -948,6 +1004,7 @@ def reprice_resting_rungs(
                 "reason": f"{type(exc).__name__}:{exc}"[:160],
             })
         receipt["rungs"].append(entry)
+    receipt["deferred_count"] = len(receipt["deferred"])
     receipt["state"] = (
         "committed"
         if (receipt["cancel_confirmed"] or receipt["synced_filled"]
@@ -968,6 +1025,7 @@ __all__ = [
     "RESTING_REPRICE_FAR_TICKS",
     "RESTING_REPRICE_RULE_VERSION",
     "SCHEMA",
+    "GATEWAY_TRANSPORT_MARK",
     "latest_book_by_bucket",
     "load_resting_maker_intents",
     "reprice_resting_rungs",

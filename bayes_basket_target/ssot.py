@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import json
 import re
+import copy
 import sqlite3
+import threading
+from collections import OrderedDict
 
 from .canonical_ssot_schema import (
     canonical_state_at_least,
@@ -5753,8 +5756,73 @@ def missing_declared_indexes(conn: sqlite3.Connection) -> list[str]:
     )
 
 
+# The schema status, remembered per connection and per schema version.
+#
+# The status is a pure function of the schema: every read in it and in the
+# three inspections it calls is sqlite_master or a PRAGMA over a table's
+# columns and indexes, never a row of data.  It was nevertheless recomputed on
+# every call -- 43 statements a time -- and four hot loaders call it on their
+# way in: every probability-envelope load, every envelope insert, every market
+# evidence bundle and every market snapshot read.  Measured on the resident's
+# own spans (2026-09-19, 13 cycles): 50 P1 envelope loads, 42 decision
+# compiles, 61 forward scopes, 159 P0-M shadow loads and 117 P0 inserts a
+# cycle, so on the order of five hundred status checks and twenty thousand
+# schema statements per cycle whose answer could not have changed.  On the
+# 2026-09-21 stalled cycles the statement probe read exactly that: ten short
+# statements a second, none of them slow, none of them needed.
+#
+# ``PRAGMA schema_version`` is one statement and the store bumps it on every
+# DDL, so the memo is keyed on it and a migration can never be served a stale
+# answer.  The connection object itself is held in the entry, which is what
+# makes ``id(conn)`` a safe key: an id cannot be reused while the object it
+# names is alive, and sqlite3 connections cannot be weakly referenced.  A
+# bounded map, oldest out, so a test suite opening hundreds of stores does not
+# keep them all.
+_SCHEMA_STATUS_MEMO_LIMIT = 16
+_SCHEMA_STATUS_MEMO: "OrderedDict[int, tuple[sqlite3.Connection, int, dict[str, object]]]" = (
+    OrderedDict()
+)
+# The resident asks from several threads (the cycle, the forecast prefetch,
+# the fast lane); the map is small and the lock is held for a lookup only.
+_SCHEMA_STATUS_MEMO_LOCK = threading.Lock()
+
+
+def forget_schema_status(conn: sqlite3.Connection | None = None) -> None:
+    """Drop the remembered status for one connection, or for all of them."""
+    with _SCHEMA_STATUS_MEMO_LOCK:
+        if conn is None:
+            _SCHEMA_STATUS_MEMO.clear()
+        else:
+            _SCHEMA_STATUS_MEMO.pop(id(conn), None)
+
+
 def production_ssot_schema_status(conn: sqlite3.Connection) -> dict[str, object]:
-    """Read-only status used by the daemon and acceptance scripts."""
+    """Read-only status used by the daemon and acceptance scripts.
+
+    Computed once per connection and schema version; see the memo above.
+    The caller gets its own copy either way.
+    """
+    try:
+        version = int(conn.execute("PRAGMA schema_version").fetchone()[0])
+    except Exception:  # noqa: BLE001 -- a store that cannot say is inspected in full
+        return _compute_production_ssot_schema_status(conn)
+    key = id(conn)
+    with _SCHEMA_STATUS_MEMO_LOCK:
+        hit = _SCHEMA_STATUS_MEMO.get(key)
+        if hit is not None and hit[0] is conn and hit[1] == version:
+            _SCHEMA_STATUS_MEMO.move_to_end(key)
+            return copy.deepcopy(hit[2])
+    status = _compute_production_ssot_schema_status(conn)
+    with _SCHEMA_STATUS_MEMO_LOCK:
+        _SCHEMA_STATUS_MEMO[key] = (conn, version, copy.deepcopy(status))
+        _SCHEMA_STATUS_MEMO.move_to_end(key)
+        while len(_SCHEMA_STATUS_MEMO) > _SCHEMA_STATUS_MEMO_LIMIT:
+            _SCHEMA_STATUS_MEMO.popitem(last=False)
+    return status
+
+
+def _compute_production_ssot_schema_status(conn: sqlite3.Connection) -> dict[str, object]:
+    """The status, read from the schema in full (43 statements)."""
 
     rows = {
         str(row[0])
