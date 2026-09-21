@@ -453,7 +453,7 @@ def test_resident_nwp_in_flight_receipt_reuses_validated_canonical_rotation() ->
     assert receipt["completion_claimed"] is False
     assert receipt["configured_station_ids"] == list(stations)
     assert receipt["discovered_station_ids"] == list(stations)
-    assert receipt["scope_count"] == 45
+    assert receipt["scope_count"] == len(stations)
     assert receipt["selected_scope_count"] == 4
     assert receipt["candidate_prefetch_attempt_count"] == 1
     assert receipt["calls_order_gateway"] is False

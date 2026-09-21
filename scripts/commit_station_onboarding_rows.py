@@ -49,7 +49,7 @@ BINDING_VERSION = "calibration_station_market_timezone_binding_v1"
 SETTLEMENT_DEFINITION = "official_daily_tmax_c"
 
 
-def _market_timezone(station_id: str) -> tuple[str, int]:
+def market_timezone(station_id: str) -> tuple[str, int]:
     conn = sqlite3.connect(f"file:{ARCHIVE_DB}?mode=ro", uri=True, timeout=60)
     try:
         rows = conn.execute(
@@ -90,7 +90,7 @@ def main() -> int:
                 print(f"BLOCK {station}: not in the coordinate registry")
                 blocked += 1
                 continue
-            zone, count = _market_timezone(station)
+            zone, count = market_timezone(station)
             if count != 1:
                 print(
                     f"BLOCK {station}: market registry offers {count} "

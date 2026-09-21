@@ -2,7 +2,7 @@
   "schema": "open_meteo_aux_nwp_capture_config_v1",
   "state": "enabled_auxiliary_no_live_capture",
   "enabled": true,
-  "scope": "canonical_45_station",
+  "scope": "canonical_47_station",
   "selection_contract": {
     "precedence": "official_native_first",
     "fallback_when_native": [

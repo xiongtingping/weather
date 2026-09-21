@@ -5,6 +5,7 @@ import subprocess
 
 import pytest
 
+from bayes_basket_target.fleet import expected_station_count
 from scripts import run_bayes_basket_target_post_migration_no_live as runner
 
 
@@ -92,10 +93,10 @@ def _round(
     }
 
 
-def test_default_scope_is_frozen_canonical_45() -> None:
+def test_default_scope_is_the_canonical_fleet() -> None:
     scope = runner.normalize_station_scope()
     assert scope == runner.CANONICAL_STATION_IDS
-    assert len(scope) == 45
+    assert len(scope) == expected_station_count()
 
 
 def test_preflight_contract_exposes_release_and_m9_06_stage_receipt() -> None:

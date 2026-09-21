@@ -36,6 +36,12 @@ from bayes_basket_target.station_registry import (  # noqa: E402
     coordinate_registry_manifest,
 )
 
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
+# The row commit's own predicate, not a second copy of its SQL: admission is
+# only worth anything if it refuses exactly what the commit will refuse.
+from commit_station_onboarding_rows import market_timezone  # noqa: E402
+
 AWC_BASE = "https://aviationweather.gov/api/data"
 REQUEST_TIMEOUT_SECONDS = 30.0
 # A station needs enough recent METAR to establish a daily high, not merely one
@@ -112,6 +118,18 @@ def _assess(
     checks["coordinate_registered"] = station in known
     if not checks["coordinate_registered"]:
         blockers.append("coordinate_registry_missing")
+
+    # The docstring's own origin story, which this check never enforced:
+    # Zhengzhou's listings carry no timezone, so it read ADMISSIBLE here,
+    # onboarding wrote its coordinate (the registry is the fleet), and only
+    # then did the row commit refuse it -- 2026-09-21, a fleet member with no
+    # settlement day.  The row commit must run after the registry write (it
+    # refuses a station the decoder cannot place), so the refusal has to
+    # happen here, before anything is written.
+    zone, zone_count = market_timezone(station)
+    checks["settlement_timezone"] = {"zone": zone, "distinct": zone_count}
+    if zone_count != 1:
+        blockers.append("settlement_timezone_not_unique")
 
     try:
         info = _awc(client, "stationinfo", ids=station)

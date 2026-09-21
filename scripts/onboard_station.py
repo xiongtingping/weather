@@ -247,6 +247,17 @@ def rebaseline() -> dict[str, object]:
                 "constant"
             ),
         },
+        # Re-measured when the fleet actually moved (45 -> 47, LTFM and
+        # UUWW): the fixtures had been converted to the registry since, and
+        # the 185 fleet-sensitive test files turned 5 tests red -- four
+        # literals and the lane map missing the two stations -- all fixed
+        # in the same change.
+        "measured_test_debt_at_the_move": {
+            "as_of": "2026-09-21",
+            "fleet": 47,
+            "fleet_sensitive_test_files": 185,
+            "new_test_failures": 5,
+        },
         "evidence_still_required_per_station": [
             "arrival corpus across the model families",
             "settled truth history for OOS folds",

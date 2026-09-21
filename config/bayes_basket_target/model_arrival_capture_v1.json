@@ -3,9 +3,9 @@
   "state": "enabled_for_target_no_live_forward_capture",
   "enabled": true,
   "target_only": true,
-  "scope": "canonical_45_station",
+  "scope": "canonical_47_station",
   "station_source": "bayes_basket_target.station_registry",
-  "station_count": 45,
+  "station_count": 47,
   "providers": [
     "ecmwf_ifs025_official",
     "ecmwf_aifs025_official",

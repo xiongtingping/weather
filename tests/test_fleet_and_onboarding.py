@@ -41,8 +41,11 @@ def test_exact_fleet_rejects_a_right_sized_wrong_set():
 
 
 def test_exact_fleet_rejects_a_station_the_registry_does_not_carry():
+    # ZZZZ is ICAO's "no designator" placeholder: unlike a real candidate
+    # (this test used LTFM until Istanbul joined the fleet), it can never be
+    # onboarded out from under the assertion.
     stations = list(canonical_station_ids())
-    assert not is_exact_fleet(stations + ["LTFM"])
+    assert not is_exact_fleet(stations + ["ZZZZ"])
     assert not is_exact_fleet(stations[:-1])
 
 
@@ -99,3 +102,58 @@ def test_rebaseline_names_the_manifest_writers_rather_than_editing_them():
     assert report["current_fleet_size"] == expected_station_count()
     assert report["manifest_writers"]
     assert report["evidence_still_required_per_station"]
+
+
+class _AwcResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._payload
+
+
+class _AwcClient:
+    """Every AWC question answered as a healthy station would answer it."""
+
+    def get(self, url):
+        if "/stationinfo?" in url:
+            return _AwcResponse([{"lat": 34.52, "lon": 113.834}])
+        if "/metar?" in url:
+            return _AwcResponse([{}, {}, {}, {}])
+        if "/taf?" in url:
+            return _AwcResponse([{}])
+        raise AssertionError(url)
+
+
+@pytest.mark.parametrize(
+    ("offered", "admissible"),
+    [(("", 0), False), (("Asia/Shanghai", 1), True),
+     (("Asia/Shanghai", 2), False)],
+)
+def test_admission_refuses_a_station_without_exactly_one_timezone(
+    monkeypatch, offered, admissible,
+):
+    """Admission has to refuse what the row commit will refuse.
+
+    Zhengzhou's listings carry no timezone.  The audit never asked, so it
+    read ADMISSIBLE; onboarding wrote its coordinate -- the registry is the
+    fleet -- and only then did the row commit refuse it, leaving a fleet
+    member with no settlement day (2026-09-21).  The commit cannot move
+    ahead of the registry write, so admission is the last place to say no.
+    """
+
+    import scripts.audit_new_market_station_admission as audit
+
+    monkeypatch.setattr(audit, "market_timezone", lambda station: offered)
+    result = audit._assess(
+        _AwcClient(),
+        {"station_id": "ZHCC", "city_slug": "zhengzhou"},
+        known={"ZHCC"},
+    )
+    assert result["admissible"] is admissible
+    assert (
+        "settlement_timezone_not_unique" in result["blockers"]
+    ) is (not admissible)

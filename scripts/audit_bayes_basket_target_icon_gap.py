@@ -31,7 +31,10 @@ from bayes_basket_target.contracts import MODEL_IDS, model_set_hash  # noqa: E40
 from bayes_basket_target.et_history import MODEL_PROVIDERS, event_day_window  # noqa: E402
 from bayes_basket_target.model_arrival import ALLOWED_PROVIDERS  # noqa: E402
 from bayes_basket_target.resource_bounds import write_bounded_json  # noqa: E402
-from bayes_basket_target.model_arrival_capture_config import EXPECTED_SCOPE
+from bayes_basket_target.model_arrival_capture_config import (
+    EXPECTED_SCOPE,
+    EXPECTED_STATION_COUNT,
+)
 
 
 SCHEMA = "bayes_basket_target_icon_gap_audit_v1"
@@ -661,9 +664,9 @@ def build_audit(
         "target_capture_config_enabled": target_capture.get("enabled") is True,
         "target_capture_config_includes_icon": bool({str(item).strip().lower() for item in target_capture.get("providers") or []} & {"icon", "icon_global_official"}),
         "target_capture_config_station_scope": str(target_capture.get("scope") or ""),
-        "target_capture_is_45_station_scoped": (
+        "target_capture_is_fleet_scoped": (
             str(target_capture.get("scope") or "").strip().lower() == EXPECTED_SCOPE
-            and int(target_capture.get("station_count") or 0) == 45
+            and int(target_capture.get("station_count") or 0) == EXPECTED_STATION_COUNT
         ),
         "monitor_job_enabled_by_default": monitor.get("enabled_by_default") is True,
         "monitor_execute_env_key": str(monitor.get("enable_environment_key") or ""),
@@ -827,7 +830,7 @@ def build_audit(
             "finding": "旧 resident monitor 已随旧生产线退役，默认开关和当前环境门控均为关闭；它不再是 target ICON 的运行或 readiness 依赖。target-only 45站采集开关已独立打开，当前前向数据已存在；后续仅由 target-only 显式入口按新 run 增量采集。",
             "evidence": {
                 "target_capture_config_enabled": switch_state["target_capture_config_enabled"],
-                "target_capture_is_45_station_scoped": switch_state["target_capture_is_45_station_scoped"],
+                "target_capture_is_fleet_scoped": switch_state["target_capture_is_fleet_scoped"],
                 "monitor_job_enabled_by_default": switch_state["monitor_job_enabled_by_default"],
                 "monitor_execute_env_key": switch_state["monitor_execute_env_key"],
                 "monitor_execute_env_present_and_true": switch_state["monitor_execute_env_present_and_true"],
@@ -841,7 +844,7 @@ def build_audit(
             "evidence": {
                 "resident_configured_station_id": switch_state["resident_capture_config_station_scope"],
                 "target_configured_scope": switch_state["target_capture_config_station_scope"],
-                "target_capture_is_45_station_scoped": switch_state["target_capture_is_45_station_scoped"],
+                "target_capture_is_fleet_scoped": switch_state["target_capture_is_fleet_scoped"],
                 "target_icon_receipt_station_count": target_icon_coverage["station_count"],
                 "target_icon_receipt_station_day_count": target_icon_coverage["station_day_count"],
             },
@@ -874,7 +877,7 @@ def build_audit(
             "evidence": {
                 "curve_root_history_rows": roots["official_nwp_curve_sources_v2_icon"].get("history_rows", 0),
                 "curve_root_history_station_count": roots["official_nwp_curve_sources_v2_icon"].get("history_station_count", 0),
-                "target_station_count_required": 45,
+                "target_station_count_required": EXPECTED_STATION_COUNT,
             },
         },
         {

@@ -12,7 +12,7 @@
     "official_metadata": "provider_http_last_modified"
   },
   "scope": {
-    "station_count": 45,
+    "station_count": 47,
     "global_anchor_station": "ZUUU",
     "valid_time_resolution": "PT1H",
     "max_valid_times_per_run": 32

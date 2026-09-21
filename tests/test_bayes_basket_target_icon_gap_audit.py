@@ -31,7 +31,7 @@ def test_icon_is_not_removed_but_monitor_gate_is_not_default_open() -> None:
     assert switches["target_capture_config_enabled"] is True
     assert switches["target_capture_config_includes_icon"] is True
     assert switches["target_capture_config_station_scope"] == EXPECTED_SCOPE
-    assert switches["target_capture_is_45_station_scoped"] is True
+    assert switches["target_capture_is_fleet_scoped"] is True
     assert switches["resident_capture_config_station_scope"] == "ZUUU"
     assert switches["model_ids_include_icon"] is True
     assert switches["provider_allowlist_include_icon"] is True

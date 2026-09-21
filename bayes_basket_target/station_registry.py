@@ -2,7 +2,7 @@
 
 Coordinates are station metadata, not a forecast input.  The registry is a
 small, immutable projection of the official AWC ``stationinfo`` snapshot used
-by the target's 45-station arrival corpus.  A station absent from this
+by the target's arrival corpus (the fleet; see ``fleet.py``).  A station absent from this
 registry is deliberately unusable: callers must not silently decode it at the
 ZUUU coordinate or at any other guessed location.
 """
@@ -21,7 +21,7 @@ SCHEMA = "bayes_basket_target_station_coordinate_registry_v1"
 SOURCE_SCHEMA = "awc_stationinfo_v1"
 SOURCE_ID = "awc_stationinfo"
 SOURCE_URL = "https://aviationweather.gov/api/data/stationinfo"
-SOURCE_SNAPSHOT_SHA256 = "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6"
+SOURCE_SNAPSHOT_SHA256 = "ccf26e1e0f2e7c7a3a967d3c6f06145c8386c881f864efadbc42fb094a971208"
 
 # Official AWC stationinfo lat/lon values.  Keep this projection intentionally
 # small: elevation, city labels, and provider fields do not belong in the
@@ -72,6 +72,8 @@ _COORDINATES: dict[str, tuple[float, float]] = {
     "ZSQD": (36.362, 120.087),
     "ZUCK": (29.718, 106.639),
     "ZUUU": (30.576, 103.95),
+    "LTFM": (41.262, 28.74),
+    "UUWW": (55.592, 37.261),
 }
 
 

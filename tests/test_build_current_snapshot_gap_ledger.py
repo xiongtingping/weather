@@ -108,7 +108,7 @@ def test_current_ledger_separates_stale_official_from_missing_fallback_receipts(
     assert ledger["summary"]["official"] == {
         "packet_present_count": expected_station_count(),
         "fresh_count": 0,
-        "stale_count": 45,
+        "stale_count": expected_station_count(),
         "timestamp_missing_count": 0,
         "missing_count": 0,
         "retained_http_503_count": 1,
@@ -118,7 +118,7 @@ def test_current_ledger_separates_stale_official_from_missing_fallback_receipts(
         "fresh_count": 0,
         "stale_count": 0,
         "timestamp_missing_count": 36,
-        "missing_count": 9,
+        "missing_count": expected_station_count() - 36,
     }
     assert ledger["summary"]["both_currently_unavailable_count"] == expected_station_count()
     assert ledger["stations"][0]["official"]["http_503_evidence"]["state"] == "OFFICIAL_HTTP_503_RETAINED"
@@ -127,7 +127,7 @@ def test_current_ledger_separates_stale_official_from_missing_fallback_receipts(
     assert ledger["stations"][40]["fallback"]["reason"] == "FALLBACK_PACKET_MISSING"
     assert ledger["p1"]["p1_rebuild_state"] == "BLOCKED_NO_APPENDABLE_ROOT"
     assert ledger["p1"]["old_root_rebind_authorized"] is False
-    assert ledger["p1"]["appendable_queue_count"] == 180
+    assert ledger["p1"]["appendable_queue_count"] == expected_station_count() * 4
     assert all(item["old_root_rebind_authorized"] is False for item in ledger["p1"]["appendable_queue"])
     assert ledger["boundary"]["writes_p1"] is False
 
