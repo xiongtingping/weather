@@ -47,6 +47,7 @@ from .cross_consensus import (
     RADIATION_SHIFT_METHOD_TAG,
     pinned_radiation_shift_sigma,
     served_radiation_shift_sigma,
+    distribution_sigma_c,
     forecast_clearness_shift_sigma,
     SYNOPTIC_COOLING_METHOD_TAG,
     SYNOPTIC_COOLING_SHIFT_SIGMA,
@@ -751,15 +752,7 @@ def _distribution_sigma_c(
     ordered_values = list(probability.values())
     if len(ordered_values) != len(bucket_centers_c):
         raise ContractError("native_ensemble_p0_bucket_center_count_invalid")
-    mean = sum(
-        float(weight) * float(center)
-        for weight, center in zip(ordered_values, bucket_centers_c)
-    )
-    variance = sum(
-        float(weight) * (float(center) - mean) ** 2
-        for weight, center in zip(ordered_values, bucket_centers_c)
-    )
-    return math.sqrt(variance) if variance > 0.0 else 0.0
+    return distribution_sigma_c(ordered_values, bucket_centers_c)
 
 
 # A median needs three points to be a median; over two peers it is their

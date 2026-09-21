@@ -324,6 +324,37 @@ def clearness_index(
     return value if math.isfinite(value) else None
 
 
+# Charter 172 (2026-09-21): an artifact whose holdout read the radiation as it was
+# known at each day's own cutoff (the version table, not the row the table
+# holds today) and scaled the shift by the blended distribution's own spread,
+# the scale serving uses.  Serving arithmetic is unchanged by it; the tag says
+# which certificate the artifact carries.
+RADIATION_ASOF_METHOD_TAG = "radiation_asof_distribution_sigma_v1"
+
+
+def distribution_sigma_c(
+    probabilities: "Sequence[float]", centers_c: "Sequence[float]"
+) -> float:
+    """A bucketed distribution's own spread in degrees.
+
+    The one scale the radiation shift is expressed in, on the serving path
+    and in the holdout alike.  Until 2026-09-21 the holdout stood in half the
+    systems' centre range for it: measured over 153 station-days that was a
+    median 0.64C against the served 1.14C, so every certified shift was
+    scored at about 0.56 of the size it served at.
+    """
+
+    values = [float(weight) for weight in probabilities]
+    centers = [float(center) for center in centers_c]
+    if len(values) != len(centers):
+        raise ValueError("distribution_sigma_c_length_mismatch")
+    mean = sum(weight * center for weight, center in zip(values, centers))
+    variance = sum(
+        weight * (center - mean) ** 2 for weight, center in zip(values, centers)
+    )
+    return math.sqrt(variance) if variance > 0.0 else 0.0
+
+
 def served_radiation_shift_sigma(combination_method: str) -> float:
     """The coefficient P0 serves an artifact at.
 

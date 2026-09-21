@@ -35,6 +35,7 @@ from .center_width_store import (
     load_station_width,
 )
 from .contracts import ContractError, content_sha256
+from .forecast_physics_asof import resolve_radiation_as_of
 from .station_registry import station_coordinates
 from .station_season import season_bins_for_window, station_season_bin
 from .cross_consensus import (
@@ -46,8 +47,10 @@ from .cross_consensus import (
     apply_conditional_tail_skew,
     apply_neighbour_direction_tilt,
     neighbour_direction_method_tag_suffix,
+    RADIATION_ASOF_METHOD_TAG,
     RADIATION_CLEARNESS_METHOD_TAG,
     RADIATION_SHIFT_SIGMA,
+    distribution_sigma_c,
     forecast_clearness_shift_sigma,
     forecast_radiation_shift_sigma,
     radiation_shift_sigma_for_lead,
@@ -1499,17 +1502,39 @@ def _holdout_conditioning_signals(
     record, and where the airport forecaster's TX sits against that centre.
     Both are resolved here from the archives so the holdout scores the same
     transform serving will apply, day for day.
+
+    Charter 172: the radiation shift is returned in sigmas (``synoptic_cooling_shift_sigma``)
+    and scaled by the blended distribution's own spread inside
+    ``_holdout_shape_stack``, exactly as serving scales it.  The day's radiation
+    is the version known at the day's cutoff -- the latest ``decision_at_utc``
+    among the systems' predictions, when their members were in hand -- read
+    from the version table (2026-09-21: the physics table itself is rewritten
+    until each day's own evening).  A day whose radiation versions all came
+    after its cutoff gets no shift and no TAF fallback: serving would have
+    shifted it by radiation, so the holdout does not stand in another signal.
     """
 
     from .cross_consensus import apply_conditional_tail_skew  # noqa: F401
 
     centers_by_day: dict[str, list[float]] = {}
+    cutoff_by_day: dict[str, datetime] = {}
     for day_rows in predictions_by_system.values():
         for day, row in day_rows.items():
             center = row.get("calibrated_center_c")
             if center is None:
                 continue
             centers_by_day.setdefault(str(day), []).append(float(center))
+            try:
+                decided = datetime.fromisoformat(
+                    str(row.get("decision_at_utc") or "").replace("Z", "+00:00")
+                )
+            except ValueError:
+                continue
+            if decided.tzinfo is None:
+                continue
+            decided = decided.astimezone(timezone.utc)
+            if str(day) not in cutoff_by_day or decided > cutoff_by_day[str(day)]:
+                cutoff_by_day[str(day)] = decided
     truth_rows: dict[str, tuple[int, float]] = {}
     # Multi-year reference climatology first, settled truth overriding it for
     # the days it covers -- the same precedence the serving path uses.
@@ -1621,6 +1646,16 @@ def _holdout_conditioning_signals(
         if sigma > 0.0 and key in taf_by_day:
             taf_gap = (taf_by_day[key] - center) / sigma
         cooling = cooling_by_day.get(key)
+        cutoff = cutoff_by_day.get(key)
+        day_radiation, as_of_receipt = resolve_radiation_as_of(
+            conn,
+            station_id=station_id,
+            local_date=key,
+            cutoff_utc=(
+                cutoff.isoformat().replace("+00:00", "Z") if cutoff else None
+            ),
+        )
+        radiation_state = str(as_of_receipt.get("state"))
         # Explicit rather than defaulted: this is the coefficient the
         # artifact will pin and serving will read back, and a default here
         # would let the two drift the moment the constant moves.
@@ -1629,7 +1664,7 @@ def _holdout_conditioning_signals(
         # serving does (no latitude, or under thirty days of history).
         shift_sigma, _radiation_receipt = forecast_clearness_shift_sigma(
             shift_sigma_per_unit=radiation_shift_sigma,
-            radiation_sum=radiation_by_day.get(key),
+            radiation_sum=day_radiation,
             event_date=key,
             latitude_deg=station_latitude,
             station_history=[
@@ -1641,25 +1676,30 @@ def _holdout_conditioning_signals(
         if shift_sigma is None:
             shift_sigma, _radiation_receipt = forecast_radiation_shift_sigma(
                 shift_sigma_per_unit=radiation_shift_sigma,
-                radiation_sum=radiation_by_day.get(key),
+                radiation_sum=day_radiation,
                 station_history=[
                     value
                     for other, value in radiation_by_day.items()
                     if other != key
                 ],
             )
-        if shift_sigma is None and cooling is not None:
+        # The forecaster's fields stand in only where serving itself had no
+        # radiation for the day; a day whose radiation existed but was not yet
+        # known at the cutoff is left unshifted rather than re-signalled.
+        if (
+            shift_sigma is None
+            and cooling is not None
+            and radiation_state == "NO_VERSIONS"
+            and key not in radiation_by_day
+        ):
             shift_sigma = -SYNOPTIC_COOLING_SHIFT_SIGMA * cooling
         if headroom is None and taf_gap is None and shift_sigma is None:
             continue
         signals[key] = {
             "climatology_headroom_sigma": headroom,
             "taf_gap_sigma": taf_gap,
-            "synoptic_cooling_shift_c": (
-                shift_sigma * sigma
-                if shift_sigma is not None and sigma > 0.0
-                else None
-            ),
+            "synoptic_cooling_shift_sigma": shift_sigma,
+            "radiation_as_of_state": radiation_state,
         }
     return signals
 
@@ -1668,7 +1708,7 @@ def _holdout_shape_stack(
     base: Mapping[str, float],
     *,
     grid: Sequence[str],
-    cooling_shift_c: float | None,
+    cooling_shift_sigma: float | None,
     station_latitude: float | None,
     neighbour_center_c: float,
     center_width_layer: CenterWidthLayer | None,
@@ -1692,12 +1732,19 @@ def _holdout_shape_stack(
     """
 
     shaped = {str(key): float(value) for key, value in base.items()}
-    if cooling_shift_c and skip != "synoptic_cooling":
-        shaped = _shift_bucketed_probability(
-            shaped,
-            ordered_keys=grid,
-            shift_c=float(cooling_shift_c),
+    if cooling_shift_sigma and skip != "synoptic_cooling":
+        # In the blended distribution's own spread, as serving scales it
+        # (``distribution_sigma_c`` is the one function both call).
+        spread_c = distribution_sigma_c(
+            [shaped[str(key)] for key in grid],
+            [float(int(key)) for key in grid],
         )
+        if spread_c > 0.0:
+            shaped = _shift_bucketed_probability(
+                shaped,
+                ordered_keys=grid,
+                shift_c=float(cooling_shift_sigma) * spread_c,
+            )
     if skip != "neighbour_direction":
         shaped, _direction_receipt = apply_neighbour_direction_tilt(
             shaped,
@@ -1873,9 +1920,9 @@ def _select_minimum_crps_subset(
             probability = _holdout_shape_stack(
                 probability,
                 grid=ordered_keys,
-                cooling_shift_c=(
+                cooling_shift_sigma=(
                     conditioning_by_day.get(str(day)) or {}
-                ).get("synoptic_cooling_shift_c"),
+                ).get("synoptic_cooling_shift_sigma"),
                 station_latitude=station_latitude,
                 neighbour_center_c=served_model_center_c(
                     weights,
@@ -4813,7 +4860,7 @@ def build_native_ensemble_oos(
             # it -- their holdout scored it -- so the serving branch stays.
             cooling_shift = (
                 conditioning_by_day.get(str(day)) or {}
-            ).get("synoptic_cooling_shift_c")
+            ).get("synoptic_cooling_shift_sigma")
             seated_center_c = served_model_center_c(weights, day_centers)
 
             def _shaped(
@@ -4836,7 +4883,7 @@ def build_native_ensemble_oos(
                 return _holdout_shape_stack(
                     base,
                     grid=grid,
-                    cooling_shift_c=cooling_shift,
+                    cooling_shift_sigma=cooling_shift,
                     station_latitude=station_latitude,
                     neighbour_center_c=center_c,
                     center_width_layer=gate_center_width_layer,
@@ -6559,6 +6606,9 @@ def persist_native_ensemble_oos(
                     # Charter 160: the holdout scored the clearness form, so
                     # serving may read this artifact's own pin back.
                     + "::" + RADIATION_CLEARNESS_METHOD_TAG
+                    # 2026-09-21: the holdout read each day's radiation as
+                    # known at its cutoff and scaled it by the served spread.
+                    + "::" + RADIATION_ASOF_METHOD_TAG
                     # The tag rides only with a table: it keys the serving
                     # transform, and a bare one used to mean the pre-store
                     # bootstrap constants (2026-09-15: that is how a vetoed

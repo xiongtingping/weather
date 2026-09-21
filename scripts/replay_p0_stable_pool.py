@@ -174,7 +174,7 @@ def _score(probability: dict[str, float], actual: float) -> list[float]:
     return [round(metrics["crps"], 6), round(metrics["nll"], 6), round(metrics["brier"], 6), round(below, 6), round(at, 6)]
 
 
-def _blend_and_score(*, weights, day_rows, cooling_shift_c, latitude, tables, actual):
+def _blend_and_score(*, weights, day_rows, cooling_shift_sigma, latitude, tables, actual):
     systems = sorted(weights)
     grid = _grid([day_rows[s]["probability"] for s in systems])
     centers = {s: float(day_rows[s]["calibrated_center_c"]) for s in systems}
@@ -187,7 +187,7 @@ def _blend_and_score(*, weights, day_rows, cooling_shift_c, latitude, tables, ac
     )
     model_center = sum(weights[s] * centers[s] for s in systems)
     pre_tables = oos._holdout_shape_stack(
-        blended, grid=grid, cooling_shift_c=cooling_shift_c, station_latitude=latitude,
+        blended, grid=grid, cooling_shift_sigma=cooling_shift_sigma, station_latitude=latitude,
         neighbour_center_c=model_center, center_width_layer=None, band_layer=None,
     )
     served, _cw, _band = apply_served_table_layers(
@@ -290,8 +290,8 @@ def replay_station(conn: sqlite3.Connection, station: str) -> list[dict[str, Any
                 predictions_by_system={s: {event_date: day_rows[s]} for s in pool},
                 radiation_shift_sigma=sigma_per_unit,
             )
-            cooling = (signals.get(event_date) or {}).get("synoptic_cooling_shift_c")
-            common = lambda s: dict(latitude=latitude, tables=tables, actual=actual, day_rows=day_rows, cooling_shift_c=cooling)  # noqa: E731
+            cooling = (signals.get(event_date) or {}).get("synoptic_cooling_shift_sigma")
+            common = lambda s: dict(latitude=latitude, tables=tables, actual=actual, day_rows=day_rows, cooling_shift_sigma=cooling)  # noqa: E731
             record = {
                 "schema": SCHEMA, "station": station, "event_date": event_date,
                 "at": at.isoformat().replace("+00:00", "Z"),

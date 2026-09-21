@@ -129,10 +129,12 @@ def test_the_holdout_leans_around_the_models_centre_not_the_shifted_mean(
     base = {key: 0.0 for key in grid}
     base.update({"21": 0.2, "22": 0.6, "23": 0.2})
     centre_c = 22.0
+    # The shift rides in sigmas of the blend's own spread (sd 0.632C here).
+    spread_c = (0.2 * 1.0 + 0.2 * 1.0) ** 0.5
     shaped = native_ensemble_oos._holdout_shape_stack(
         base,
         grid=grid,
-        cooling_shift_c=-2.0,
+        cooling_shift_sigma=-2.0 / spread_c,
         station_latitude=50.0,
         neighbour_center_c=centre_c,
         center_width_layer=None,
@@ -148,7 +150,7 @@ def test_the_holdout_leans_around_the_models_centre_not_the_shifted_mean(
     around_mean, _ = apply_neighbour_direction_tilt(
         shifted, ordinals=ordinals, center_bucket="20", latitude=50.0
     )
-    assert shaped == pytest.approx(around_models, abs=1e-15)
+    assert shaped == pytest.approx(around_models, abs=1e-12)
     assert shaped != pytest.approx(around_mean, abs=1e-6)
     assert served_shape.model_center_c(
         {"A": 0.25, "B": 0.75}, {"A": 20.0, "B": 24.0}

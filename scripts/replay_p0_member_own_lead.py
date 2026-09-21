@@ -230,9 +230,9 @@ def replay_station(conn: sqlite3.Connection, station: str) -> list[dict[str, Any
                     predictions_by_system={s: {event_date: rows[s]} for s in pool},
                     radiation_shift_sigma=sigma_per_unit,
                 )
-                cooling = (signals.get(event_date) or {}).get("synoptic_cooling_shift_c")
+                cooling = (signals.get(event_date) or {}).get("synoptic_cooling_shift_sigma")
                 record["arms"][arm] = base._blend_and_score(
-                    weights=weights, day_rows=rows, cooling_shift_c=cooling,
+                    weights=weights, day_rows=rows, cooling_shift_sigma=cooling,
                     latitude=latitude, tables=tables, actual=actual,
                 )
                 record["arms"][arm]["centers"] = {
