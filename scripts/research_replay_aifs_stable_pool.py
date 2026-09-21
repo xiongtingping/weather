@@ -64,19 +64,21 @@ def aifs_scope_contract() -> dict:
     }
 
 
-def connect(arm: str) -> sqlite3.Connection:
+def connect(arm: str, research_db: Path = RESEARCH_DB) -> sqlite3.Connection:
     conn = sqlite3.connect(f"file:{SSOT}?mode=ro", uri=True, timeout=60)
-    conn.execute("PRAGMA query_only=1")
     if arm == "with_aifs":
         conn.execute(
             "ATTACH DATABASE ? AS aifs",
-            (f"file:{RESEARCH_DB}?mode=ro",),
+            (f"file:{research_db}?mode=ro",),
         )
         conn.execute(
             f"CREATE TEMP VIEW {MEMBER_TABLE} AS "
             f"SELECT * FROM main.{MEMBER_TABLE} "
             f"UNION ALL SELECT * FROM aifs.{MEMBER_TABLE}"
         )
+    # After the view: query_only also refuses the temp schema.  Both files
+    # are opened mode=ro, so this is the second lock, not the first.
+    conn.execute("PRAGMA query_only=1")
     return conn
 
 
@@ -88,6 +90,10 @@ def main() -> int:
     parser.add_argument("--cutoff-utc", default="2026-09-21T00:00:00Z")
     parser.add_argument("--budget-seconds", type=float, default=540.0)
     parser.add_argument("--stations", nargs="*", default=None)
+    parser.add_argument(
+        "--research-db", type=Path, default=RESEARCH_DB,
+        help="a snapshot of the research database, while the backfill still writes it",
+    )
     args = parser.parse_args()
 
     replay.FIRST_EVENT_DATE = args.first_event_date
@@ -97,7 +103,7 @@ def main() -> int:
         oos.OFFICIAL_ARCHIVE_SCOPE_CONTRACTS[AIFS] = aifs_scope_contract()
     out = OUT / args.arm
     out.mkdir(parents=True, exist_ok=True)
-    conn = connect(args.arm)
+    conn = connect(args.arm, args.research_db)
     stations = args.stations or sorted({
         str(row[0]) for row in conn.execute(
             "SELECT DISTINCT station_id FROM calibration_station_daily_high_truth "
