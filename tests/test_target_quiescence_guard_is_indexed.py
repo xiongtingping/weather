@@ -236,9 +236,15 @@ def test_live_cycle_settlement_seeks_its_intents_by_cycle(
     """
 
     steps = _plan(conn, _settle_live_cycles_sql(), ())
+    # Charter 188 drives the scan from the distinct intent cycles, a
+    # co-routine; scanning that derived table is the point, not a base scan.
+    derived = {
+        step.split()[1] for step in steps if step.startswith("CO-ROUTINE ")
+    }
     scans = [
         step for step in steps
         if step.startswith("SCAN") and "USING" not in step
+        and step.split()[1] not in derived
     ]
     assert not scans, f"settlement scans a base table: {steps}"
     assert any("basket_target_order_intents_cycle_idx" in s for s in steps), steps

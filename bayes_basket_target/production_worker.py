@@ -8747,18 +8747,21 @@ class TargetProductionWorker:
         try:
             rows = self.commit_conn.execute(
                 "SELECT c.cycle_id, c.station_id, c.event_date"
-                " FROM basket_target_execution_cycles c"
+                # Charter 188 (after 187): start from the cycles that have
+                # an intent at all -- ~1,660 of them, read off the intents'
+                # covering index -- rather than from the ~61,600 prepared
+                # cycles, nearly all the identity migration's intent-less
+                # orphans (see the last clause's note).  187 put that test
+                # first and it still read every prepared cycle's row for
+                # its id and created_at: 0.1s warm, 5.5s cold in the cycle.
+                # CROSS JOIN fixes the order; every clause below is
+                # unchanged, so the rows are the same (cycles sharing one
+                # created_at were unordered before and still are).
+                " FROM (SELECT DISTINCT cycle_id"
+                "       FROM basket_target_order_intents) x"
+                " CROSS JOIN basket_target_execution_cycles c"
+                "   ON c.cycle_id=x.cycle_id"
                 " WHERE c.state='prepared'"
-                # Charter 187: the cheapest test first.  ~61,600 prepared
-                # cycles, nearly all the identity migration's orphans with
-                # no intent at all (see the last clause's note), each paid
-                # four intent/reconciliation probes before this one ruled
-                # it out -- 0.4-0.7s warm, 45s once under load.  SQLite
-                # evaluates the correlated terms in the order written; the
-                # clause is unchanged and still below, so the rows are too.
-                "   AND EXISTS ("
-                "     SELECT 1 FROM basket_target_order_intents i"
-                "     WHERE i.cycle_id=c.cycle_id)"
                 # Filled something, or every order was refused on the
                 # ledger's own account -- both carry reconciliation facts
                 # that supersession will not retire.
