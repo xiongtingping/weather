@@ -500,34 +500,68 @@ def depth_head_levels() -> int:
         return DEPTH_HEAD_LEVELS
 
 
+def tick_outward(price: float, tick: float, *, ascending: bool) -> float:
+    """``price`` moved onto the tick grid, AWAY from the touch.
+
+    An ask side (ascending) rounds up and a bid side down: the rung only ever
+    gets worse for whoever walks to it, never better than the book was.
+    """
+
+    steps = price / tick
+    whole = math.ceil(steps - 1e-9) if ascending else math.floor(steps + 1e-9)
+    decimals = max(0, -math.floor(math.log10(tick)) + 2)
+    return round(whole * tick, decimals)
+
+
 def fold_depth_tail(
     levels: Sequence[Mapping[str, float]], *, head: int | None = None, ascending: bool,
+    tick: float | None,
 ) -> list[dict[str, float]]:
     """Keep the first ``head`` levels and fold the rest into one.
 
     The folded level carries the tail's total shares at the tail's
-    share-weighted price, and nothing else: a level is two keys here and
+    share-weighted price rounded OUTWARD onto ``tick`` (up on an ask side,
+    down on a bid side), and nothing else: a level is two keys here and
     stays two, because the kernel's own parser reads exactly those and a
     third would be a shape change for every reader to absorb.
 
+    The tick is not optional.  The kernel checks EVERY level against the
+    bucket's ``price_tick_size`` (``contracts._price_is_tick_aligned``) and
+    rejects the whole bucket on one stray rung -- ``bucket_price_tick_mismatch``
+    -- and a share-weighted price is almost never on the grid.  The first cut
+    of this function kept only monotonicity and left the price where the
+    average fell: from the first cycle after it shipped (09-20 17Z) every
+    deep same-day book was refused and P1 went from 31-55 decisions an hour
+    to 1-5.  The outward rounding keeps both invariants: the tail's average
+    lies between its first and last rungs, which are on the grid, so the
+    rounded rung does too -- still past the fifth level, still in (0, 1] --
+    and the shares, which is what sizing reads, are untouched.
+
     Returns the input unchanged when folding is off, when there is nothing to
-    gain (a tail of one), or -- the fail-safe -- when the result would not be
-    strictly monotone, which is the invariant ``contracts`` enforces on the
-    way back in.  ``ascending`` says which side this is.
+    gain (a tail of one), when there is no usable tick, or -- the fail-safe --
+    when the result would not be strictly monotone, which is the invariant
+    ``contracts`` enforces on the way back in.  ``ascending`` says which side
+    this is.
     """
 
     keep = depth_head_levels() if head is None else int(head)
     rows = [dict(level) for level in levels or ()]
     if keep <= 0 or len(rows) <= keep + 1:
         return rows
+    try:
+        grid = float(tick) if tick is not None else 0.0
+    except (TypeError, ValueError):
+        return rows
+    if not math.isfinite(grid) or grid <= 0.0:
+        return rows
     tail = rows[keep:]
     shares = sum(float(level.get("shares") or 0.0) for level in tail)
     if shares <= 0.0:
         return rows
-    price = sum(
+    price = tick_outward(sum(
         float(level.get("price") or 0.0) * float(level.get("shares") or 0.0)
         for level in tail
-    ) / shares
+    ) / shares, grid, ascending=ascending)
     folded = rows[:keep] + [{"price": price, "shares": shares}]
     prices = [float(level["price"]) for level in folded]
     ordered = (
@@ -939,8 +973,8 @@ def _scope_quote_values(
         # AFTER the tick size has been derived from the real ladder above,
         # because a share-weighted price is not tick aligned and deriving the
         # tick from it would put a wrong tick on the bucket.
-        ask_levels = fold_depth_tail(ask_levels, ascending=True)
-        bid_levels = fold_depth_tail(bid_levels, ascending=False)
+        ask_levels = fold_depth_tail(ask_levels, ascending=True, tick=price_tick_size)
+        bid_levels = fold_depth_tail(bid_levels, ascending=False, tick=price_tick_size)
         bucket_values.append({
             "bucket": str(row["outcome"]),
             "ordinal": ordinal,

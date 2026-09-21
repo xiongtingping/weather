@@ -40,7 +40,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from bayes_basket_target.market_ingress import fold_depth_tail  # noqa: E402
+from bayes_basket_target.market_ingress import (  # noqa: E402
+    depth_head_levels, fold_depth_tail, tick_outward,
+)
 
 SCHEMA = "ssot_compact_rebuild_receipt_v1"
 DEFAULT_SSOT = ROOT / "data" / "bayes_basket_target_ssot.db"
@@ -67,6 +69,13 @@ DEDUPE_COLUMN = "plan_json"
 #: Rows per transaction on the target.  Large enough that the commit cost
 #: disappears, small enough that the target's WAL never holds a whole table.
 BATCH = 2000
+#: One invocation copies for this long, commits, and hands back ``PARTIAL``;
+#: the next resumes from the target's own rowids.  Kept well under the ten
+#: minutes a foreground call is allowed.
+DEFAULT_BUDGET_SECONDS = 420.0
+#: Chunks are resized to take about this long each.
+CHUNK_TARGET_SECONDS = 10.0
+FINGERPRINT_SCHEMA = "ssot_compact_source_fingerprint_v1"
 #: Tables whose digest is compared row for row after the copy.  Every table's
 #: COUNT is checked; a full digest of 24.3M rows would double the build, so
 #: the ones production cannot be wrong about are named here.
@@ -148,17 +157,42 @@ def _fold_payload(raw: str | None) -> str | None:
     if not isinstance(buckets, list):
         return raw
     changed = False
+    keep = depth_head_levels()
     for entry in buckets:
         if not isinstance(entry, dict):
             continue
+        try:
+            tick = float(entry.get("price_tick_size") or 0.0)
+        except (TypeError, ValueError):
+            tick = 0.0
         for side, ascending in (("ask_levels", True), ("bid_levels", False)):
             levels = entry.get(side)
             if not isinstance(levels, list) or not levels:
                 continue
-            folded = fold_depth_tail(levels, ascending=ascending)
+            folded = fold_depth_tail(levels, ascending=ascending, tick=tick)
             if len(folded) != len(levels):
                 entry[side] = folded
                 changed = True
+                continue
+            # Rows the first cut of charter 168 folded at write: exactly
+            # ``keep + 1`` levels, the last one off the tick grid, which the
+            # kernel refuses the whole bucket for.  A raw ladder cannot be off
+            # its own grid -- the tick is derived from that ladder -- so an
+            # off-grid last rung here is the fold's and nothing else's.  It is
+            # moved outward exactly as the corrected fold would have placed it.
+            if tick > 0.0 and len(levels) == keep + 1 and keep > 0:
+                last = levels[-1]
+                try:
+                    price = float(last.get("price"))
+                    before = float(levels[-2].get("price"))
+                except (AttributeError, TypeError, ValueError):
+                    continue
+                if abs(price / tick - round(price / tick)) <= 1e-7:
+                    continue
+                placed = tick_outward(price, tick, ascending=ascending)
+                if (placed > before if ascending else placed < before) and 0.0 < placed <= 1.0:
+                    entry[side] = [*levels[:-1], {**last, "price": placed}]
+                    changed = True
     if not changed:
         return raw
     # DEFAULT separators: that is what this column is stored with (verified
@@ -205,8 +239,69 @@ def _dedupe_payload(raw: str | None) -> str | None:
                       separators=(",", ":"))
 
 
-def build(*, source: Path, target: Path, force: bool = False) -> dict[str, object]:
-    """Write the compact copy.  Nothing is swapped and the source is untouched."""
+def _open_source(path: Path) -> sqlite3.Connection:
+    """The store being copied, opened so that it provably cannot change.
+
+    ``immutable=1`` takes no lock and makes no ``-shm``: the copy cannot write
+    to the file it reads, and a reader that died mid-run leaves nothing behind
+    on the volume the backup lives on.
+    """
+
+    return sqlite3.connect(f"file:{path}?mode=ro&immutable=1", uri=True, timeout=300.0)
+
+
+def _sidecar(target: Path) -> Path:
+    return target.with_name(target.name + ".building.json")
+
+
+def fingerprint(source: Path) -> dict[str, object]:
+    """What the source holds, taken once where reading it is cheap.
+
+    The build reads its source off a USB spinning disk, where every extra pass
+    over 55 GiB costs the better part of an hour with production stopped.  The
+    counts and digests the build and the proof compare against are taken here,
+    from the internal copy, before it is deleted -- and ``cmp`` has already
+    shown the two files are the same bytes, so what is true of one is true of
+    the other.
+    """
+
+    conn = _open_source(source)
+    try:
+        objects = _objects(conn)
+        tables = [name for name, _sql in objects["table"]]
+        counts = {n: int(conn.execute(f'SELECT COUNT(*) FROM main."{n}"').fetchone()[0]) for n in tables}
+        max_rowid = {n: conn.execute(f'SELECT MAX(rowid) FROM main."{n}"').fetchone()[0] for n in tables}
+        digests = {
+            n: _digest(conn, "main", n, _columns(conn, "main", n))
+            for n in DIGEST_TABLES if n in counts
+        }
+        has_sequence = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='sqlite_sequence'"
+        ).fetchone()
+        sequence = dict(conn.execute("SELECT name, seq FROM sqlite_sequence")) if has_sequence else {}
+    finally:
+        conn.close()
+    return {
+        "schema": FINGERPRINT_SCHEMA, "taken_at_utc": _utc(),
+        "source": str(source), "source_bytes": source.stat().st_size,
+        "objects": {kind: sorted(n for n, _sql in listed) for kind, listed in objects.items()},
+        "counts": counts, "max_rowid": max_rowid, "digests": digests, "sequence": sequence,
+    }
+
+
+def build(
+    *, source: Path, target: Path, force: bool = False,
+    budget_seconds: float = DEFAULT_BUDGET_SECONDS,
+    expected: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """Write the compact copy, resumably.  Nothing is swapped; the source is untouched.
+
+    Progress lives in the target itself: every table is copied in rowid order
+    and committed a chunk at a time, so each table's ``MAX(rowid)`` is exactly
+    how far it got.  A run that runs out of budget, or is killed, hands back
+    ``PARTIAL`` and the next run carries on from there, losing at most the
+    chunk in flight -- which the rollback journal undoes on the next open.
+    """
 
     receipt: dict[str, object] = {
         "schema": SCHEMA, "started_at_utc": _utc(),
@@ -221,32 +316,34 @@ def build(*, source: Path, target: Path, force: bool = False) -> dict[str, objec
             " and the copy looks consistent either way; stop the residents first"
         )
         return receipt
-    if target.exists():
+    sidecar = _sidecar(target)
+    if target.exists() and not sidecar.exists():
+        # Finished, or not ours: either way there is nothing here to resume.
         receipt["state"] = "REFUSED_TARGET_EXISTS"
         return receipt
 
     t0 = time.time()
-    conn = sqlite3.connect(f"file:{source}?mode=ro", uri=True, timeout=300.0)
-    conn.execute("PRAGMA busy_timeout=300000")
+    deadline = t0 + float(budget_seconds)
+    src = _open_source(source)
     try:
-        objects = _objects(conn)
-        tables = [name for name, _sql in objects["table"]]
-        counts = {
-            name: int(conn.execute(f'SELECT COUNT(*) FROM main."{name}"').fetchone()[0])
-            for name in tables
-        }
-        receipt["tables"] = len(tables)
-        receipt["indexes"] = len(objects["index"])
-        receipt["triggers"] = len(objects["trigger"])
-        receipt["views"] = len(objects["view"])
-        receipt["source_rows"] = sum(counts.values())
+        objects = _objects(src)
+        page_size = int(src.execute("PRAGMA page_size").fetchone()[0])
+    finally:
+        src.close()
+    tables = [name for name, _sql in objects["table"]]
+    source_bytes = source.stat().st_size
 
+    if sidecar.exists():
+        state = json.loads(sidecar.read_text())
+        if state.get("source") != str(source) or state.get("source_bytes") != source_bytes:
+            receipt["state"] = "REFUSED_SOURCE_CHANGED"
+            receipt["sidecar"] = state
+            return receipt
+    else:
         target.parent.mkdir(parents=True, exist_ok=True)
         out = sqlite3.connect(str(target), timeout=300.0)
         try:
-            out.execute("PRAGMA journal_mode=OFF")     # nothing to recover: a
-            out.execute("PRAGMA synchronous=OFF")      # failed build is deleted
-            out.execute(f"PRAGMA page_size={conn.execute('PRAGMA page_size').fetchone()[0]}")
+            out.execute(f"PRAGMA page_size={page_size}")
             # Tables first, WITHOUT their indexes or triggers.  An index built
             # row by row is both slower and looser than one built once at the
             # end, and a trigger that fires during the copy would rewrite the
@@ -254,80 +351,164 @@ def build(*, source: Path, target: Path, force: bool = False) -> dict[str, objec
             for _name, sql in objects["table"]:
                 out.execute(sql)
             out.commit()
-
-            copied: dict[str, int] = {}
-            folded_rows = 0
-            deduped_rows = 0
-            for name in tables:
-                cols = _columns(conn, "main", name)
-                listed = ",".join(f'"{c}"' for c in cols)
-                marks = ",".join("?" for _ in cols)
-                fold_at = cols.index(FOLD_COLUMN) if (
-                    name == FOLD_TABLE and FOLD_COLUMN in cols
-                ) else None
-                dedupe_at = cols.index(DEDUPE_COLUMN) if (
-                    name == DEDUPE_TABLE and DEDUPE_COLUMN in cols
-                ) else None
-                cursor = conn.execute(f'SELECT {listed} FROM main."{name}" ORDER BY rowid')
-                written = 0
-                while True:
-                    chunk = cursor.fetchmany(BATCH)
-                    if not chunk:
-                        break
-                    if fold_at is not None:
-                        rebuilt = []
-                        for row in chunk:
-                            values = list(row)
-                            folded = _fold_payload(values[fold_at])
-                            if folded is not values[fold_at]:
-                                folded_rows += 1
-                            values[fold_at] = folded
-                            rebuilt.append(values)
-                        chunk = rebuilt
-                    elif dedupe_at is not None:
-                        rebuilt = []
-                        for row in chunk:
-                            values = list(row)
-                            trimmed = _dedupe_payload(values[dedupe_at])
-                            if trimmed is not values[dedupe_at]:
-                                deduped_rows += 1
-                            values[dedupe_at] = trimmed
-                            rebuilt.append(values)
-                        chunk = rebuilt
-                    out.executemany(f'INSERT INTO "{name}"({listed}) VALUES({marks})', chunk)
-                    out.commit()
-                    written += len(chunk)
-                copied[name] = written
-                print(f"  {name:56} {written:>10,}  {time.time()-t0:>6.0f}s", flush=True)
-            receipt["copied_rows"] = sum(copied.values())
-            receipt["folded_snapshots"] = folded_rows
-            receipt["deduped_preselections"] = deduped_rows
-
-            mismatched = {n: (counts[n], copied.get(n, -1)) for n in tables if counts[n] != copied.get(n)}
-            if mismatched:
-                receipt["state"] = "FAILED_ROW_COUNT"
-                receipt["mismatched"] = mismatched
-                return receipt
-
-            print(f"  building {len(objects['index'])} indexes…", flush=True)
-            for _name, sql in objects["index"]:
-                out.execute(sql)
-            out.commit()
-            for _name, sql in objects["view"]:
-                out.execute(sql)
-            # Triggers last of all: the append-only guards must not see the copy.
-            for _name, sql in objects["trigger"]:
-                out.execute(sql)
-            out.commit()
-            out.execute("PRAGMA journal_mode=WAL")
         finally:
             out.close()
-        receipt["build_seconds"] = round(time.time() - t0, 1)
-        receipt["state"] = "BUILT"
+        state = {
+            "source": str(source), "source_bytes": source_bytes,
+            "started_at_utc": receipt["started_at_utc"], "runs": 0,
+            "folded_snapshots": 0, "deduped_preselections": 0,
+        }
+    state["runs"] = int(state.get("runs", 0)) + 1
+
+    def _save() -> None:
+        sidecar.write_text(json.dumps(state, ensure_ascii=False, indent=2))
+
+    def _partial(where: str) -> dict[str, object]:
+        _save()
+        receipt["state"] = "PARTIAL"
+        receipt["stopped_at"] = where
+        receipt["run_seconds"] = round(time.time() - t0, 1)
+        receipt["target_bytes"] = target.stat().st_size
+        receipt["runs"] = state["runs"]
+        return receipt
+
+    _save()
+    # One connection: the source as ``main`` and the target attached.  The
+    # target's page cache is the one that matters -- a TEXT PRIMARY KEY is an
+    # implicit index maintained on every insert -- and it has to be set on the
+    # ATTACHED schema: an unqualified ``cache_size`` only sizes ``main``, which
+    # is how the second attempt thrashed a 2 MiB cache while believing it had
+    # 2 GiB.  Sized for an 8 GiB machine: the last attempt was OOM-killed.
+    conn = _open_source(source)
+    try:
+        conn.execute("PRAGMA main.cache_size=-65536")          # 64 MiB: read once, in order
+        conn.execute("ATTACH DATABASE ? AS out", (str(target),))
+        conn.execute("PRAGMA out.journal_mode=TRUNCATE")       # a kill mid-chunk rolls back
+        conn.execute("PRAGMA out.synchronous=OFF")             # a failed build is deleted
+        conn.execute("PRAGMA out.cache_size=-1048576")         # 1 GiB
+        for name in tables:
+            cols = _columns(conn, "main", name)
+            listed = ",".join(f'"{c}"' for c in cols)
+            marks = ",".join("?" for _ in cols)
+            fold_at = cols.index(FOLD_COLUMN) if (name == FOLD_TABLE and FOLD_COLUMN in cols) else None
+            dedupe_at = cols.index(DEDUPE_COLUMN) if (name == DEDUPE_TABLE and DEDUPE_COLUMN in cols) else None
+            transformed = fold_at is not None or dedupe_at is not None
+            src_max = conn.execute(f'SELECT MAX(rowid) FROM main."{name}"').fetchone()[0]
+            if src_max is None:
+                continue
+            rows_per_chunk = 2000 if transformed else 20000
+            copied_here = 0
+            while True:
+                last = conn.execute(f'SELECT MAX(rowid) FROM out."{name}"').fetchone()[0]
+                if last is not None and last >= src_max:
+                    break
+                if time.time() >= deadline:
+                    return _partial(name)
+                where = "" if last is None else "WHERE rowid>? "
+                args: tuple = () if last is None else (last,)
+                began = time.time()
+                if not transformed:
+                    cur = conn.execute(
+                        f'INSERT INTO out."{name}"(rowid,{listed})'
+                        f' SELECT rowid,{listed} FROM main."{name}" {where}ORDER BY rowid LIMIT ?',
+                        args + (rows_per_chunk,),
+                    )
+                    moved = cur.rowcount
+                else:
+                    rows = conn.execute(
+                        f'SELECT rowid,{listed} FROM main."{name}" {where}ORDER BY rowid LIMIT ?',
+                        args + (rows_per_chunk,),
+                    ).fetchall()
+                    rebuilt = []
+                    for row in rows:
+                        values = list(row)
+                        at = (fold_at if fold_at is not None else dedupe_at) + 1   # +1: rowid leads
+                        changed = (_fold_payload if fold_at is not None else _dedupe_payload)(values[at])
+                        if changed is not values[at]:
+                            state["folded_snapshots" if fold_at is not None else "deduped_preselections"] += 1
+                        values[at] = changed
+                        rebuilt.append(values)
+                    conn.executemany(
+                        f'INSERT INTO out."{name}"(rowid,{listed}) VALUES(?,{marks})', rebuilt,
+                    )
+                    moved = len(rebuilt)
+                conn.commit()
+                copied_here += moved
+                took = max(time.time() - began, 1e-3)
+                ceiling = 5000 if transformed else 500000
+                rows_per_chunk = int(min(ceiling, max(500, rows_per_chunk * CHUNK_TARGET_SECONDS / took)))
+            if copied_here:
+                _save()
+                print(f"  {name:56} +{copied_here:>10,}  {time.time()-t0:>6.0f}s", flush=True)
+
+        # Every table is across.  Counts, against the fingerprint when there
+        # is one (it was taken where counting is cheap), else the source.
+        if not state.get("counts_ok"):
+            want = dict((expected or {}).get("counts") or {})
+            bad = {}
+            for name in tables:
+                have = int(conn.execute(f'SELECT COUNT(*) FROM out."{name}"').fetchone()[0])
+                need = int(want[name]) if name in want else int(
+                    conn.execute(f'SELECT COUNT(*) FROM main."{name}"').fetchone()[0]
+                )
+                if have != need:
+                    bad[name] = [need, have]
+            if bad:
+                _save()
+                receipt["state"] = "FAILED_ROW_COUNT"
+                receipt["mismatched"] = bad
+                return receipt
+            state["counts_ok"] = True
+            # AUTOINCREMENT remembers the largest id ever handed out, not the
+            # largest still present; copying rows only teaches the target the
+            # latter, and the next insert would reissue a deleted row's id.
+            has_sequence = conn.execute(
+                "SELECT 1 FROM main.sqlite_master WHERE name='sqlite_sequence'"
+            ).fetchone()
+            for seq_name, seq in (conn.execute("SELECT name, seq FROM main.sqlite_sequence").fetchall()
+                                  if has_sequence else []):
+                cur = conn.execute(
+                    "UPDATE out.sqlite_sequence SET seq=MAX(seq, ?) WHERE name=?", (seq, seq_name),
+                )
+                if cur.rowcount == 0:
+                    conn.execute("INSERT INTO out.sqlite_sequence(name, seq) VALUES(?, ?)", (seq_name, seq))
+            conn.commit()
+            _save()
     finally:
         conn.close()
+
+    # Indexes, views, triggers -- on the target alone, each committed on its
+    # own so a stop between two of them resumes at the next.
+    out = sqlite3.connect(str(target), timeout=300.0)
+    try:
+        out.execute("PRAGMA journal_mode=TRUNCATE")
+        out.execute("PRAGMA synchronous=OFF")
+        out.execute("PRAGMA cache_size=-1048576")
+        present = {str(r[0]) for r in out.execute("SELECT name FROM sqlite_master")}
+        # Triggers last of all: the append-only guards must not see the copy.
+        for kind in ("index", "view", "trigger"):
+            for name, sql in objects[kind]:
+                if name in present:
+                    continue
+                if time.time() >= deadline:
+                    out.close()
+                    return _partial(f"{kind}:{name}")
+                began = time.time()
+                out.execute(sql)
+                out.commit()
+                if kind == "index" and time.time() - began > 5:
+                    print(f"  index {name:50} {time.time()-began:>6.0f}s", flush=True)
+        out.execute("PRAGMA journal_mode=WAL")
+    finally:
+        out.close()
+    receipt["folded_snapshots"] = state["folded_snapshots"]
+    receipt["deduped_preselections"] = state["deduped_preselections"]
+    receipt["runs"] = state["runs"]
+    receipt["run_seconds"] = round(time.time() - t0, 1)
+    receipt["state"] = "BUILT"
+    sidecar.unlink()
     receipt["target_bytes"] = target.stat().st_size
-    receipt["source_bytes"] = source.stat().st_size
+    receipt["source_bytes"] = source_bytes
     receipt["finished_at_utc"] = _utc()
     return receipt
 
@@ -335,12 +516,45 @@ def build(*, source: Path, target: Path, force: bool = False) -> dict[str, objec
 def _fold_check(src: sqlite3.Connection, dst: sqlite3.Connection, sample: int = 3000) -> dict:
     """Did the fold keep the depth and lose only the rungs past the head?"""
 
+    from bayes_basket_target.basket_kernel.contracts import BucketObservation, ContractError
+
+    def _kernel(entry: object) -> str | None:
+        # A stored snapshot carries the book, not a belief: ``probability`` is
+        # attached downstream, and without a stand-in every bucket stops at
+        # ``bucket_probability_must_be_finite_number`` before the ladder is
+        # read -- identically before and after, so the check would pass on
+        # nothing.  The stand-in lets the parse reach the rungs.
+        if isinstance(entry, dict) and entry.get("probability") is None:
+            entry = {**entry, "probability": 0.0}
+        try:
+            BucketObservation.from_mapping(entry)  # type: ignore[arg-type]
+        except ContractError as exc:
+            return str(exc)
+        except Exception as exc:  # noqa: BLE001
+            return f"{type(exc).__name__}:{exc}"
+        return None
+
     out = {"sampled": 0, "shares_conserved": True, "max_depth_before": 0,
-           "max_depth_after": 0, "worst_share_delta": 0.0, "rows_folded": 0}
+           "max_depth_after": 0, "worst_share_delta": 0.0, "rows_folded": 0,
+           "buckets_parsed": 0, "kernel_new_rejections": 0, "kernel_repaired": 0,
+           "kernel_rejection_examples": []}
     try:
+        # The newest rows are the ones production folded at write (and the
+        # first cut left off the grid); a stride across the whole table
+        # covers the history the rebuild folds for the first time.
         ids = [r[0] for r in src.execute(
             f'SELECT rowid FROM "{FOLD_TABLE}" ORDER BY rowid DESC LIMIT {int(sample)}'
         )]
+        lo, hi = src.execute(f'SELECT MIN(rowid), MAX(rowid) FROM "{FOLD_TABLE}"').fetchone()
+        if lo is not None:
+            step = max(1, (hi - lo) // 1000)
+            for point in range(lo, hi, step):
+                hit = src.execute(
+                    f'SELECT rowid FROM "{FOLD_TABLE}" WHERE rowid>=? ORDER BY rowid LIMIT 1', (point,)
+                ).fetchone()
+                if hit:
+                    ids.append(hit[0])
+        ids = sorted(set(ids))
     except sqlite3.Error:
         return out
     for rowid in ids:
@@ -356,6 +570,17 @@ def _fold_check(src: sqlite3.Connection, dst: sqlite3.Connection, sample: int = 
         out["sampled"] += 1
         folded_here = False
         for entry_a, entry_b in zip(before, after):
+            # The kernel is the reader that matters: a rebuilt bucket must
+            # parse wherever the stored one did, and a stored one refused
+            # only for an off-grid rung must now parse.
+            err_a, err_b = _kernel(entry_a), _kernel(entry_b)
+            out["buckets_parsed"] += 1
+            if err_b is not None and (err_b != err_a or err_b == "bucket_price_tick_mismatch"):
+                out["kernel_new_rejections"] += 1
+                if len(out["kernel_rejection_examples"]) < 5:
+                    out["kernel_rejection_examples"].append([rowid, err_a, err_b])
+            elif err_a == "bucket_price_tick_mismatch" and err_b is None:
+                out["kernel_repaired"] += 1
             for side in ("ask_levels", "bid_levels"):
                 la = entry_a.get(side) or []
                 lb = entry_b.get(side) or []
@@ -379,42 +604,79 @@ def _fold_check(src: sqlite3.Connection, dst: sqlite3.Connection, sample: int = 
     return out
 
 
-def verify(*, source: Path, target: Path) -> dict[str, object]:
+def verify(
+    *, source: Path, target: Path, expected: dict[str, object] | None = None,
+    budget_seconds: float = DEFAULT_BUDGET_SECONDS,
+) -> dict[str, object]:
     """Prove the copy before anything is swapped.
 
-    Three checks, cheapest first: SQLite's own integrity check, every table's
-    row count, and a row-for-row digest of the tables production cannot be
-    wrong about.  The folded column is compared on its DEPTH, not its bytes:
-    the fold is meant to change those bytes and to leave the shares alone.
+    SQLite's own integrity check, table by table (each verdict is kept, so a
+    run that runs out of budget resumes at the next table); the schema
+    objects; every table's row count; a row-for-row digest of the tables
+    production cannot be wrong about.  Counts and digests are compared with
+    the source ``fingerprint`` when one is given -- taken where reading is
+    cheap -- else read from the source.  The folded column is compared on its
+    DEPTH, not its bytes: the fold is meant to change those bytes and to leave
+    the shares alone.
     """
 
     receipt: dict[str, object] = {"schema": SCHEMA, "checked_at_utc": _utc()}
-    src = sqlite3.connect(f"file:{source}?mode=ro", uri=True, timeout=300.0)
+    t0 = time.time()
+    deadline = t0 + float(budget_seconds)
+    progress_path = target.with_name(target.name + ".verify.json")
+    progress = json.loads(progress_path.read_text()) if progress_path.exists() else {"integrity": {}}
+    src = _open_source(source)
     dst = sqlite3.connect(f"file:{target}?mode=ro", uri=True, timeout=300.0)
     try:
-        receipt["integrity_check"] = dst.execute("PRAGMA integrity_check").fetchone()[0]
+        dst.execute("PRAGMA cache_size=-524288")
+        src_objs = _objects(src)
+        tables = [name for name, _sql in src_objs["table"]]
+        integrity = progress["integrity"]
+        for name in tables:
+            if name in integrity:
+                continue
+            if time.time() >= deadline:
+                progress_path.write_text(json.dumps(progress, indent=2))
+                receipt["state"] = "PARTIAL"
+                receipt["integrity_checked"] = f"{len(integrity)}/{len(tables)}"
+                return receipt
+            integrity[name] = [str(r[0]) for r in dst.execute(f'PRAGMA integrity_check("{name}")')]
+            progress_path.write_text(json.dumps(progress, indent=2))
+        bad_integrity = {n: v for n, v in integrity.items() if v != ["ok"]}
+        receipt["integrity_check"] = "ok" if not bad_integrity else bad_integrity
+        receipt["integrity_tables"] = len(integrity)
         receipt["foreign_key_check"] = len(dst.execute("PRAGMA foreign_key_check").fetchall())
-        src_objs, dst_objs = _objects(src), _objects(dst)
-        receipt["objects"] = {
-            kind: [len(src_objs[kind]), len(dst_objs[kind])] for kind in src_objs
-        }
+
+        want = expected or {}
+        dst_objs = _objects(dst)
+        src_names = want.get("objects") or {k: sorted(n for n, _ in v) for k, v in src_objs.items()}
+        receipt["objects"] = {kind: [len(src_names[kind]), len(dst_objs[kind])] for kind in src_names}
         receipt["objects_match"] = all(
-            sorted(n for n, _ in src_objs[k]) == sorted(n for n, _ in dst_objs[k])
-            for k in src_objs
+            sorted(src_names[k]) == sorted(n for n, _ in dst_objs[k]) for k in src_names
         )
+        want_counts = dict(want.get("counts") or {})
         bad_counts = {}
-        for name, _sql in src_objs["table"]:
-            a = int(src.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0])
+        for name in tables:
+            a = int(want_counts[name]) if name in want_counts else int(
+                src.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0]
+            )
             b = int(dst.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0])
             if a != b:
                 bad_counts[name] = [a, b]
         receipt["row_counts_match"] = not bad_counts
+        receipt["tables_counted"] = len(tables)
         receipt["bad_counts"] = bad_counts
+        want_seq = dict(want.get("sequence") or {})
+        if not want_seq and src.execute("SELECT 1 FROM sqlite_master WHERE name='sqlite_sequence'").fetchone():
+            want_seq = dict(src.execute("SELECT name, seq FROM sqlite_sequence"))
+        have_seq = dict(dst.execute("SELECT name, seq FROM sqlite_sequence")) if want_seq else {}
+        receipt["sequence_match"] = all(have_seq.get(n) == v for n, v in want_seq.items())
         # A named table absent from the SOURCE is nothing to check; absent from
         # the target only, or different, is a failure.  ``digests_checked`` is
         # reported so a run that silently checked none is visible rather than
         # passing on an empty ``all([])``.
-        present = {name for name, _sql in src_objs["table"]}
+        want_digests = dict(want.get("digests") or {})
+        present = set(tables)
         digests = {}
         for name in DIGEST_TABLES:
             if name not in present:
@@ -422,7 +684,8 @@ def verify(*, source: Path, target: Path) -> dict[str, object]:
             cols = _columns(src, "main", name)
             if not cols:
                 continue
-            digests[name] = _digest(src, "main", name, cols) == _digest(dst, "main", name, cols)
+            source_digest = want_digests.get(name) or _digest(src, "main", name, cols)
+            digests[name] = source_digest == _digest(dst, "main", name, cols)
         receipt["digests"] = digests
         receipt["digests_checked"] = len(digests)
         receipt["digests_match"] = all(digests.values())
@@ -433,14 +696,22 @@ def verify(*, source: Path, target: Path) -> dict[str, object]:
         # Sampled: parsing 595k snapshots twice would cost more than the build.
         receipt["fold"] = _fold_check(src, dst)
         receipt["ok"] = bool(
-            receipt["integrity_check"] == "ok"
+            not bad_integrity
+            and len(integrity) == len(tables)
             and receipt["foreign_key_check"] == 0
             and receipt["objects_match"]
             and receipt["row_counts_match"]
+            and receipt["sequence_match"]
             and receipt["digests_match"]
+            and receipt["digests_checked"] > 0
             and receipt["fold"]["shares_conserved"]
+            and receipt["fold"]["sampled"] > 0
+            and receipt["fold"]["kernel_new_rejections"] == 0
+            and receipt["fold"]["buckets_parsed"] > 0
             and receipt["fold"]["max_depth_after"] <= 6
         )
+        receipt["state"] = "VERIFIED" if receipt["ok"] else "FAILED"
+        receipt["verify_seconds"] = round(time.time() - t0, 1)
     finally:
         src.close(); dst.close()
     return receipt
@@ -449,26 +720,46 @@ def verify(*, source: Path, target: Path) -> dict[str, object]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, default=DEFAULT_SSOT)
-    parser.add_argument("--target", type=Path, required=True)
+    parser.add_argument("--target", type=Path)
+    parser.add_argument("--fingerprint-out", type=Path,
+                        help="write the source's counts/digests here and stop")
+    parser.add_argument("--expect", type=Path,
+                        help="a fingerprint to compare against instead of re-reading the source")
     parser.add_argument("--build", action="store_true")
     parser.add_argument("--verify", action="store_true")
+    parser.add_argument("--budget-seconds", type=float, default=DEFAULT_BUDGET_SECONDS)
     parser.add_argument("--force", action="store_true",
                         help="build with the residents up; the copy will be behind")
     args = parser.parse_args()
     out: dict[str, object] = {}
+    if args.fingerprint_out:
+        t0 = time.time()
+        doc = fingerprint(args.source)
+        args.fingerprint_out.write_text(json.dumps(doc, ensure_ascii=False, indent=2))
+        print(json.dumps({"fingerprint": str(args.fingerprint_out), "tables": len(doc["counts"]),
+                          "rows": sum(doc["counts"].values()), "digests": len(doc["digests"]),
+                          "seconds": round(time.time() - t0, 1)}, ensure_ascii=False))
+        return 0
+    if args.target is None:
+        parser.error("--target is required")
+    expected = json.loads(args.expect.read_text()) if args.expect else None
+    if expected is not None and expected.get("source_bytes") != args.source.stat().st_size:
+        parser.error("the fingerprint was taken from a file of a different size")
     if args.build:
-        out["build"] = build(source=args.source, target=args.target, force=args.force)
+        out["build"] = build(source=args.source, target=args.target, force=args.force,
+                             budget_seconds=args.budget_seconds, expected=expected)
         if out["build"].get("state") != "BUILT":
-            print(json.dumps(out, ensure_ascii=False, indent=2))
-            return 1
+            print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
+            return 0 if out["build"].get("state") == "PARTIAL" else 1
     if args.verify:
-        out["verify"] = verify(source=args.source, target=args.target)
+        out["verify"] = verify(source=args.source, target=args.target, expected=expected,
+                               budget_seconds=args.budget_seconds)
     if not out:
         out["residents_running"] = _residents_running()
         out["source_bytes"] = args.source.stat().st_size if args.source.exists() else None
         out["target_exists"] = args.target.exists()
     print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
-    return 0 if out.get("verify", {}).get("ok", True) else 1
+    return 0 if out.get("verify", {}).get("ok", True) or out.get("verify", {}).get("state") == "PARTIAL" else 1
 
 
 if __name__ == "__main__":
