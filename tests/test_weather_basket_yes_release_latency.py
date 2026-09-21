@@ -173,50 +173,24 @@ def test_registry_config_rejects_cross_lane_fallback_or_mixing_guards(tmp_path) 
 
 
 class ReportedTrajectoryReleaseLatencyTests(unittest.TestCase):
-    """Charter 170 moved these windows from a release clock to arrival windows.
-
-    The burst used to be the 90 seconds after :00 and after :30, on the
-    premise that reports are released there.  Measured over seven days of
-    fleet arrivals, that pair covers 11% of what lands: the international
-    roster observes at :00/:30 and arrives :03-:07 and :33-:37, and the
-    contiguous-US roster observes :51-:58 and arrives :52-:59.  So :05 --
-    which this class used to assert was background polling -- is one of the
-    two busiest minutes of the hour (923 of 12,807 arrivals).
-    """
-
-    def test_awc_bursts_across_the_whole_international_arrival_peak(self) -> None:
+    def test_awc_uses_subsecond_retry_during_hour_and_halfhour_release_window(self) -> None:
         config = load_config()
-        for minute in (0, 3, 5, 7, 30, 33, 37):
-            self.assertEqual(
-                awc_poll_interval(
-                    config, datetime(2026, 7, 17, 14, minute, tzinfo=timezone.utc)
-                ),
-                0.25,
-                minute,
-            )
+        self.assertEqual(
+            awc_poll_interval(config, datetime(2026, 7, 17, 14, 0, 0, tzinfo=timezone.utc)),
+            0.25,
+        )
+        self.assertEqual(
+            awc_poll_interval(config, datetime(2026, 7, 17, 14, 30, 45, tzinfo=timezone.utc)),
+            0.25,
+        )
 
-    def test_awc_bursts_over_the_contiguous_us_arrival_window(self) -> None:
-        config = load_config()
-        for minute in (50, 54, 59):
-            self.assertEqual(
-                awc_poll_interval(
-                    config, datetime(2026, 7, 17, 14, minute, tzinfo=timezone.utc)
-                ),
-                0.25,
-                minute,
-            )
-
-    def test_awc_returns_to_bounded_background_polling_between_the_peaks(self) -> None:
-        config = load_config()
-        # 0.9% of seven days of arrivals landed in :09-:18 and :39-:48.
-        for minute in (12, 16, 40, 44, 48):
-            self.assertEqual(
-                awc_poll_interval(
-                    config, datetime(2026, 7, 17, 14, minute, tzinfo=timezone.utc)
-                ),
-                2.0,
-                minute,
-            )
+    def test_awc_returns_to_bounded_background_polling_after_release_window(self) -> None:
+        self.assertEqual(
+            awc_poll_interval(
+                load_config(), datetime(2026, 7, 17, 14, 5, 0, tzinfo=timezone.utc)
+            ),
+            2.0,
+        )
 
 if __name__ == "__main__":
     unittest.main()

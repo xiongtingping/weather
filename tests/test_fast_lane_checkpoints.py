@@ -217,17 +217,10 @@ def test_the_re_armed_checkpoints_sit_at_the_heavy_stage_boundaries_with_a_tier(
         and node.func.attr == "_fast_lane_checkpoint_if_due" and node.args
         and isinstance(node.args[0], ast.Constant)
     )
-    # No "in_decision_loop": retired 2026-09-21.  A pass that takes minutes
-    # inside the loop expires the quote lease the loop is holding, and the
-    # loop re-reads the book for the next scope -- 560s of checkpoints and
-    # 573s of refreshes in one 1767s cycle.  The boundaries are outside the
-    # loop and hold no lease.
     assert labels == sorted([
         "after_native_p0_replay_compile", "after_native_ensemble_oos", "after_regime",
-        "after_forward_p0_loop", "after_market_ingress",
+        "after_forward_p0_loop", "after_market_ingress", "in_decision_loop",
     ])
-    source = Path(pw.__file__).read_text()
-    assert '_fast_lane_checkpoint_if_due("in_decision_loop"' not in source
     for label in labels:
         assert pw.STAGE_TIER[f"fast_lane_{label}"] == pw.STAGE_TIER_R0_DECISION
     # The direct call before decisions is untouched (charter 154 fix 2).

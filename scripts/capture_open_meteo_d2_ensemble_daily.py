@@ -374,7 +374,21 @@ def main() -> int:
         proxy=_proxy(),
     ) as client:
       for station, zone in scopes:
-        coordinates = station_coordinates(station)
+        # The scope is the market registry; the model scope is the coordinate
+        # registry, and listings run ahead of it.  A station the coordinate
+        # registry does not carry is out of scope for this capture, not a
+        # reason to abandon the pass: raising here cost UKMO, WeatherNext and
+        # AI-GEFS every day from 2026-09-03 on, and forward-only members are
+        # gone once the provider's five-day window closes.
+        try:
+            coordinates = station_coordinates(station)
+        except Exception as exc:  # noqa: BLE001 - report, never abort
+            failures.append({
+                "station_id": station,
+                "model": "*",
+                "error": f"{type(exc).__name__}:{str(exc)[:120]}",
+            })
+            continue
         station_target = args.target_date or _local_target_date(zone)
         for model in sorted(TARGET_MODELS):
             try:

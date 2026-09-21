@@ -9,6 +9,7 @@ avoided, which spends the quota that is refusing us.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import time
 from pathlib import Path
@@ -84,3 +85,81 @@ def test_rate_limit_backs_off_harder_than_a_socket_error() -> None:
 
     assert rate_limited > transport
     assert rate_limited <= sweep.MAX_RETRY_SLEEP_SECONDS
+
+
+def test_a_station_outside_the_coordinate_registry_does_not_abort_the_sweep(
+    tmp_path, monkeypatch,
+) -> None:
+    """One unlisted station must cost its own rows, not the whole pass.
+
+    The scope is the market registry and the model scope is the coordinate
+    registry, so a newly listed station exists in one and not the other.
+    Raising on it killed the sweep before a single row was written, and this
+    lane is the only route UKMO, WeatherNext and AI-GEFS have -- forward-only
+    members the provider drops after about five days.
+    """
+
+    database = tmp_path / "scope.db"
+    database.write_text("", encoding="utf-8")
+
+    class _Cursor:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def fetchall(self):
+            return list(self._rows)
+
+    class _Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, sql, *args):
+            rows = []
+            if "basket_target_market_registry" in sql:
+                rows = [
+                    ("KLGA", "America/New_York"),
+                    ("LLBG", "Asia/Jerusalem"),
+                ]
+            return _Cursor(rows)
+
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(sweep.sqlite3, "connect", lambda *a, **k: _Conn())
+    monkeypatch.setattr(sweep.httpx, "Client", _Client)
+    monkeypatch.setattr(
+        sweep,
+        "_capture_station_model",
+        lambda client, **kw: {
+            "station_id": kw["station_id"],
+            "open_meteo_model": kw["model"],
+        },
+    )
+
+    output = tmp_path / "om_d2.json"
+    monkeypatch.setattr(sys, "argv", [
+        "capture_open_meteo_d2_ensemble_daily.py",
+        "--db", str(database),
+        "--output", str(output),
+        "--target-date", "2026-09-23",
+    ])
+
+    assert sweep.main() == 0
+
+    report = json.loads(output.read_text(encoding="utf-8"))
+    captured = {row["station_id"] for row in report["captures"]}
+    assert captured == {"KLGA"}
+    assert len(report["captures"]) == len(sweep.TARGET_MODELS)
+    refused = {row["station_id"]: row for row in report["failures"]}
+    assert set(refused) == {"LLBG"}
+    assert "native_station_coordinates_missing" in refused["LLBG"]["error"]
