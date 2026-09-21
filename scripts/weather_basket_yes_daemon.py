@@ -4141,10 +4141,13 @@ def awc_poll_interval(config: dict[str, Any], now: datetime) -> float:
     follows ``awc_fast_lane_plan``, the same three windows the fast lane
     keeps.
 
-    This lane remains bounded by the main loop's turn (measured median 58.6s)
-    whatever it returns here; charter 170's fast lane is what actually reaches
-    the network on these windows.  Aligning the number keeps the slow lane's
-    fallback honest rather than pointed at the wrong minutes.
+    This lane is still bounded by the main loop's turn whatever it returns
+    here; charter 170's fast lane is what reaches the network on these
+    windows.  Aligning the number keeps the slow lane's fallback pointed at
+    the right minutes rather than at :00/:30.  (How long that turn actually
+    is was never measured: the 58.6s once cited for it came from the poll
+    journal's sixty-second heartbeat, not from the loop -- see the note above
+    ``FAST_LANE_US_WINDOW``.)
     """
 
     policy = config.get("poll_policy", {})
@@ -4547,16 +4550,31 @@ def run_once_isolated(db_path: Path, config: dict[str, Any], lane: str) -> dict[
 # Charter 170: the METAR fast lane (user ruling 2026-09-20).
 #
 # The AWC fetch used to reach the network only when the main loop came round
-# to it.  Measured 2026-09-18..20 over 4,318 polls in
-# ``reported_trajectory_source_polls``: the median interval was 58.6s
-# although ``awc_poll_interval`` asks for 2.0s -- a lane future is cleared
-# and resubmitted once per turn of that loop, so one turn is the ceiling and
-# the configured 2.0s (and its 0.25s burst) never got to mean anything.  One
-# batched request costs 0.13s at the median, so nearly all of that 58.6s was
-# waiting for a turn, not talking to NOAA.  Against a 94s median
-# observed->stored latency, the wait was about 29s of it.
+# to it, and this lane was built on a reading that said that wait was most
+# of the latency.  **That reading was wrong, and the correction is recorded
+# here rather than quietly dropped** (measured 2026-09-21):
+# ``reported_trajectory_source_polls`` is not a poll log.  Its writer keeps
+# a row only when a poll brings a new report, or a station errors, or sixty
+# seconds have passed since the last row (``persist_poll`` in
+# ``reported_trajectory_awc_ingress``).  So the "median interval 58.6s" this
+# lane was justified with is that sixty-second heartbeat: 39.6% of 4,769
+# pre-lane gaps sit in 55-65s.  The slow lane was already polling at its
+# configured pace; the wait it was accused of did not exist, and the "about
+# 29s of the 94s" that followed from it is withdrawn.
 #
-# So the fetch gets its own thread and its own clock, and the clock follows
+# What the lane measurably does: 270 rounds/hour against a design of 287,
+# ingress lag p90 0.114s, zero errors over 8 hours -- and no change in the
+# observed-to-stored median (US roster 1.42 -> 1.44 min).  The latency is
+# upstream: AWC publishes a US report about 72s after its observation time
+# (KLGA's 16:51Z report was first servable at 16:52:12Z), and that is the
+# part no polling clock can reach.  The lane is kept for what it does buy --
+# a fetch that does not stop when the main loop is busy, and a window that
+# follows the roster instead of a guess -- at intervals set so it costs
+# about what the old cadence cost.  See
+# docs/research/NOAA_DOOR_LATENCY_2026-09-20.md for the door comparison that
+# closed off the other exit.
+#
+# The clock follows
 # the observing conventions rather than a flat interval.  Measured over seven
 # days of fleet arrivals (12,807 reports, ``first_seen_at`` by minute):
 #

@@ -15810,7 +15810,8 @@ function overviewLamps(){
               ? ` · 上游比间隔还慢（单轮 ${FL.round_duration_sec}s），已退到半速` : "")
           + (FL.last_error ? ` · 最近报错 ${FL.last_error}` : ""),
         "第 170 条：METAR 抓取有自己的线程和自己的时钟，不再排主循环的班"
-        + "（实测主循环一圈中位 58.6 秒，把 94 秒到手延迟里的约 29 秒花在等班上）。"
+        + "（当初立这条时引的「主循环一圈 58.6 秒」是采集日志六十秒心跳的伪象，"
+        + "已于 09-21 更正：轮询从来不是瓶颈，到手延迟的大头是上游发布）。"
         + "轮询节奏不是固定值，是从每个站自己的报文到达分钟学出来的："
         + (FL.schedule_available
             ? `${FL.scheduled_station_count} 站有稳定惯例，热窗口 ${FL.hot_minute_count} 分钟，`

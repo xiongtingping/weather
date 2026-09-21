@@ -1,10 +1,13 @@
 """Charter 170: the METAR fast lane, its learned windows, and its isolation.
 
-The lane exists because the AWC fetch used to reach the network only on the
-main loop's turn (measured median 58.6s against a configured 2.0s).  What is
-tested here is the behaviour that replaces it: a clock learned from each
-station's own filing schedule, a round that touches AWC and nothing else, and
-a wake flag the main loop can act on.
+The lane was built on a reading that turned out to be an artefact -- the
+"58.6s median poll interval" was the poll journal's sixty-second heartbeat,
+not a measurement of the fetch's pace (see the note above
+``FAST_LANE_US_WINDOW`` in the daemon).  The lane is kept for what it does
+buy, and what is tested here is that behaviour: a clock learned from each
+station's own filing schedule, a round that touches AWC and nothing else, a
+wake flag the main loop can act on, and a backoff when upstream is slower
+than the pace asked for.
 """
 
 from __future__ import annotations
