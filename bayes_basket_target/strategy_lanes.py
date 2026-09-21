@@ -124,9 +124,14 @@ P1_TAIL_DEFAULT_SETTINGS: dict[str, Any] = {
     # 12 / 13 / 14 of 15 days positive.  Eight is where the lower bound
     # cleared zero on every delay this lane will trade at.
     "hurdle": 0.08,
-    # The bin, read off the envelope's own likelihood receipt.
+    # The bin, read off the envelope's own likelihood receipt, on the hours
+    # left to the settlement clock -- the axis the edge was measured on.
+    # "clock_hours" reads the receipt's clock instead (remaining hours plus
+    # the station's peak offset, charter 157), as the lane did until
+    # 2026-09-21.  See ``p1_tail_lane.HOURS_AXIS_REMAINING``.
     "min_remaining_hours": 6.0,
     "max_remaining_hours": 10.0,
+    "hours_axis": "remaining_hours",
     # The edge keeps 83% of itself at five minutes and its lower bound
     # crosses zero by eight, so an envelope older than this is not a slower
     # trade -- it is a different one.

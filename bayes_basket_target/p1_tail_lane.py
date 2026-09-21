@@ -102,7 +102,23 @@ SCHEMA = "p1_tail_lane_plan_v1"
 RULE_V1 = "market_prior_x_p1_likelihood_taker_v1"
 RULE_VERSIONS = {RULE_V1: "p1_tail_lane_v1"}
 DEFAULT_RULE = RULE_V1
-RULE_VERSION = RULE_VERSIONS[DEFAULT_RULE]
+#: Which clock the 6-10h bin is read on (2026-09-21, 「改」).  The edge was
+#: measured on the hours left to the settlement clock; the receipt's
+#: ``clock_hours`` is those hours plus the station's peak offset (charter
+#: 157, up to 2.45 h either way), which the lane read until this change.
+#: Replayed over 09-05..09-20 on books under five minutes old, the served
+#: likelihood made +0.116/$ on remaining hours against +0.041 on the offset
+#: clock, same execution; about a fifth of the reports fall in one bin and
+#: not the other.  The axis is its own dial, not a rule name, so a running
+#: resident that predates it ignores the key instead of refusing the rule.
+HOURS_AXIS_REMAINING = "remaining_hours"
+HOURS_AXIS_CLOCK = "clock_hours"
+DEFAULT_HOURS_AXIS = HOURS_AXIS_REMAINING
+AXIS_RULE_VERSIONS = {
+    (RULE_V1, HOURS_AXIS_CLOCK): "p1_tail_lane_v1",
+    (RULE_V1, HOURS_AXIS_REMAINING): "p1_tail_lane_v2",
+}
+RULE_VERSION = AXIS_RULE_VERSIONS[(DEFAULT_RULE, DEFAULT_HOURS_AXIS)]
 
 #: The lane crosses: FOK at the ask, with the price cap the binding requires.
 EXECUTION_CANDIDATE = "TAKER_FOK"
@@ -159,6 +175,10 @@ FEATURE_COLUMNS: tuple[tuple[str, str], ...] = (
     ("open_order_bucket", "TEXT"),
     ("open_order_bucket_dead", "INTEGER"),
     ("held_buckets", "TEXT"),
+    # The receipt's own clock, beside ``remaining_hours``, on every row: the
+    # two bin axes can then be compared on one table.  Rows written before
+    # 2026-09-21 (rule version v1) carry the clock in ``remaining_hours``.
+    ("clock_hours", "REAL"),
 )
 
 
@@ -179,11 +199,14 @@ def _utc(value: str) -> datetime:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-def rule_version_for(rule: Any) -> str:
+def rule_version_for(rule: Any, hours_axis: Any = None) -> str:
     name = str(rule or DEFAULT_RULE)
     if name not in RULE_VERSIONS:
         raise ValueError(f"p1_tail_rule_unknown:{name}")
-    return RULE_VERSIONS[name]
+    axis = str(hours_axis or DEFAULT_HOURS_AXIS)
+    if (name, axis) not in AXIS_RULE_VERSIONS:
+        raise ValueError(f"p1_tail_hours_axis_unknown:{axis}")
+    return AXIS_RULE_VERSIONS[(name, axis)]
 
 
 # ---------------------------------------------------------------------------
@@ -430,13 +453,16 @@ def tail_envelopes(
     max_remaining_hours: float,
     fresh_seconds: float,
     lookback_days: int = DEFAULT_LOOKBACK_DAYS,
+    hours_axis: str = DEFAULT_HOURS_AXIS,
 ) -> list[dict[str, Any]]:
     """Every committed P1 envelope young enough to act on, newest per scope.
 
-    The remaining-hours bin is read off the envelope's own likelihood receipt
-    (``clock_hours``: hours to this station's settlement clock at the moment
-    the report was folded in), never recomputed here -- a second clock is how
-    the lane and the belief come to disagree about which bin a trade was in.
+    The bin is read off the envelope's own likelihood receipt, never
+    recomputed here: ``features.remaining_hours`` (hours to this station's
+    settlement clock when the report was folded in, the axis the edge was
+    measured on) or, on the ``clock_hours`` axis, the receipt's clock --
+    those hours plus the station's peak offset (charter 157).  A receipt
+    without the axis it is asked for is not a candidate.
     """
 
     now = _utc(now_utc)
@@ -464,9 +490,18 @@ def tail_envelopes(
             continue
         if str(receipt.get("state") or "").upper() != "APPLIED":
             continue
-        try:
-            hours = float(receipt.get("clock_hours"))
-        except (TypeError, ValueError):
+
+        def _hours(value: Any) -> float | None:
+            try:
+                out = float(value)
+            except (TypeError, ValueError):
+                return None
+            return out if math.isfinite(out) else None
+
+        clock = _hours(receipt.get("clock_hours"))
+        remaining = _hours((receipt.get("features") or {}).get("remaining_hours"))
+        hours = clock if hours_axis == HOURS_AXIS_CLOCK else remaining
+        if hours is None:
             continue
         if not (float(min_remaining_hours) <= hours < float(max_remaining_hours)):
             continue
@@ -484,7 +519,9 @@ def tail_envelopes(
             "decision_at_utc": str(row[4]),
             "envelope_sha256": str(row[6]),
             "fresh_until_utc": str(row[7]) if row[7] else None,
-            "remaining_hours": round(hours, 4),
+            "remaining_hours": None if remaining is None else round(remaining, 4),
+            "clock_hours": None if clock is None else round(clock, 4),
+            "hours_axis": hours_axis,
             "report_age_seconds": round(age, 1),
             "likelihood": {
                 str(k): float(v)
@@ -832,7 +869,8 @@ def plan_p1_tail_entries(
     repairs = {"cycles_settled": settle_stuck_lane_cycles(target_conn)}
     cfg = {**P1_TAIL_DEFAULT_SETTINGS, **dict(settings or lane_settings(LANE))}
     rule_name = str(cfg.get("rule") or DEFAULT_RULE)
-    rule_version = rule_version_for(rule_name)
+    hours_axis = str(cfg.get("hours_axis") or DEFAULT_HOURS_AXIS)
+    rule_version = rule_version_for(rule_name, hours_axis)
 
     def dial(name: str) -> float:
         """A dial the operator set, falling back only when it is ABSENT.
@@ -879,13 +917,17 @@ def plan_p1_tail_entries(
         min_remaining_hours=dial("min_remaining_hours"),
         max_remaining_hours=dial("max_remaining_hours"),
         fresh_seconds=fresh_seconds,
+        hours_axis=hours_axis,
     )
     for candidate in candidates:
         key = (candidate["station_id"], candidate["event_date"], candidate["envelope_id"])
         if key in done:
             continue
         empty = {"state": "unread", "fired": [], "belief": {}, "best_gap": None}
-        no_features = {name: None for name, _t in FEATURE_COLUMNS}
+        no_features = {
+            **{name: None for name, _t in FEATURE_COLUMNS},
+            "clock_hours": candidate.get("clock_hours"),
+        }
 
         def refuse(reason: str, reading: Mapping[str, Any] = empty,
                    snapshot: Mapping[str, Any] | None = None,
@@ -969,6 +1011,7 @@ def plan_p1_tail_entries(
                 else int(str(open_order.get("bucket")) in set(candidate["excluded"]))
             ),
             "held_buckets": ",".join(held) if held else None,
+            "clock_hours": candidate.get("clock_hours"),
         }
         if reading.get("state") != "read":
             refuse(f"reading:{reading.get('state')}", reading, snapshot, features)
@@ -1069,6 +1112,8 @@ def plan_p1_tail_entries(
                 "envelope_sha256": candidate["envelope_sha256"],
                 "envelope_decision_at_utc": candidate["decision_at_utc"],
                 "remaining_hours": candidate["remaining_hours"],
+                "clock_hours": candidate.get("clock_hours"),
+                "hours_axis": hours_axis,
                 "report_age_seconds": candidate["report_age_seconds"],
                 "running_high_c": candidate.get("running_high_c"),
                 "rise_probability": candidate.get("rise_probability"),
@@ -1214,7 +1259,11 @@ def execute_p1_tail_entries(
 
 __all__ = [
     "EVALUATION_TABLE",
+    "AXIS_RULE_VERSIONS",
+    "DEFAULT_HOURS_AXIS",
     "EXECUTION_CANDIDATE",
+    "HOURS_AXIS_CLOCK",
+    "HOURS_AXIS_REMAINING",
     "LANE",
     "LIVE_BOOK_PREFIX",
     "LANE_TITLE",

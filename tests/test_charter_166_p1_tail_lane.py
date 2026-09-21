@@ -114,11 +114,21 @@ def _seed(
     envelope_id: str = "env1",
     accepting: int = 1,
     likelihood: dict | None = None,
+    clock: float | None = None,
+    remaining: float | None | str = "same",
 ) -> None:
+    """``hours`` sets both clocks; ``clock`` / ``remaining`` pull them apart
+    (``remaining=None`` leaves the feature out of the receipt)."""
+
+    remaining_value = hours if remaining == "same" else remaining
     receipt = {
         "schema": "p1_observation_likelihood_receipt_v1",
         "state": state,
-        "clock_hours": hours,
+        "clock_hours": hours if clock is None else clock,
+        **(
+            {} if remaining_value is None
+            else {"features": {"remaining_hours": remaining_value}}
+        ),
         "lambda": 1.0,
         "rule": "p1_root_x_mask_x_exp_direct_log_update_v1",
         "running_high_c": 27.0,
@@ -764,3 +774,78 @@ def test_the_worker_hands_the_lane_its_own_manifest() -> None:
     start = source.index("def _p1_tail_after_p1")
     body = source[start:source.index("\n    def ", start + 10)]
     assert 'ws_manifest_path=getattr(self, "market_manifest_path", None)' in body
+
+
+# ---------------------------------------------------------------------------
+# The bin's clock (2026-09-21, 「改」): the edge was measured on the hours left
+# to the settlement clock; the receipt's ``clock_hours`` adds the station's
+# peak offset (charter 157).  Replayed on books under five minutes old, the
+# lane made +0.116/$ on remaining hours against +0.041 on the offset clock.
+
+
+def test_the_bin_is_read_on_remaining_hours_by_default(store) -> None:
+    # RPLL-like: peak early, clock 2.45 h under the hours left.
+    _seed(store, hours=7.0, clock=4.55)
+    [seen] = lane.tail_envelopes(
+        store, now_utc=NOW, min_remaining_hours=6.0, max_remaining_hours=10.0,
+        fresh_seconds=300.0,
+    )
+    assert (seen["remaining_hours"], seen["clock_hours"]) == (7.0, 4.55)
+    assert seen["hours_axis"] == lane.HOURS_AXIS_REMAINING
+
+
+def test_the_clock_axis_is_still_selectable_and_gives_the_old_bin(store) -> None:
+    _seed(store, hours=7.0, clock=4.55)
+    assert lane.tail_envelopes(
+        store, now_utc=NOW, min_remaining_hours=6.0, max_remaining_hours=10.0,
+        fresh_seconds=300.0, hours_axis=lane.HOURS_AXIS_CLOCK,
+    ) == []
+
+
+def test_a_clock_inside_the_bin_does_not_admit_hours_outside_it(store) -> None:
+    # LEMD-like: peak late, clock 2.45 h over the hours left.
+    _seed(store, hours=5.0, clock=7.45)
+    assert lane.tail_envelopes(
+        store, now_utc=NOW, min_remaining_hours=6.0, max_remaining_hours=10.0,
+        fresh_seconds=300.0,
+    ) == []
+
+
+def test_a_receipt_without_remaining_hours_is_not_a_candidate(store) -> None:
+    _seed(store, hours=7.0, remaining=None)
+    assert lane.tail_envelopes(
+        store, now_utc=NOW, min_remaining_hours=6.0, max_remaining_hours=10.0,
+        fresh_seconds=300.0,
+    ) == []
+
+
+def test_each_axis_is_its_own_rule_version(store) -> None:
+    assert lane.rule_version_for(lane.RULE_V1) == "p1_tail_lane_v2"
+    assert lane.rule_version_for(lane.RULE_V1, lane.HOURS_AXIS_CLOCK) == "p1_tail_lane_v1"
+    with pytest.raises(ValueError, match="p1_tail_hours_axis_unknown"):
+        lane.rule_version_for(lane.RULE_V1, "local_hour")
+    _seed(store, hours=7.0, clock=8.2)
+    planned = _plan(store)
+    assert planned["rule_version"] == "p1_tail_lane_v2"
+    assert planned["plans"][0]["hours_axis"] == lane.HOURS_AXIS_REMAINING
+    rows = store.execute(
+        f"SELECT DISTINCT rule_version, remaining_hours, clock_hours FROM {lane.EVALUATION_TABLE}"
+    ).fetchall()
+    assert rows == [("p1_tail_lane_v2", 7.0, 8.2)]
+
+
+def test_an_early_refusal_still_records_both_clocks(store) -> None:
+    _seed(store, hours=7.0, clock=8.2, decided="2026-09-19T03:40:00.000Z")
+    planned = _plan(store)
+    [row] = planned["evaluations"]
+    assert row["refusal"].startswith("envelope_stale:")
+    assert store.execute(
+        f"SELECT remaining_hours, clock_hours FROM {lane.EVALUATION_TABLE}"
+    ).fetchone() == (7.0, 8.2)
+
+
+def test_the_shipped_settings_read_remaining_hours() -> None:
+    from bayes_basket_target import strategy_lanes  # noqa: PLC0415
+
+    assert strategy_lanes.P1_TAIL_DEFAULT_SETTINGS["hours_axis"] == lane.HOURS_AXIS_REMAINING
+    assert lane.DEFAULT_HOURS_AXIS == lane.HOURS_AXIS_REMAINING
