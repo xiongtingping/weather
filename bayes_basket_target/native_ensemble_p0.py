@@ -3887,6 +3887,13 @@ def compile_native_ensemble_p0(
         "native_calibrated_system_centers_c_json": _json(
             calibrated_system_centers_c
         ),
+        # Each system's calibrated distribution, keyed like
+        # ``bucket_intervals_c_json`` -- the vectors the pooling above weighted
+        # by ``system_weights_json``.  They were only ever hashed into
+        # ``native_probability_evidence_sha256`` and dropped, so which member
+        # put mass where could be answered only by recompiling a retained
+        # packet at the decision instant.  A record: no stage reads it.
+        "native_system_probabilities_json": _json(system_probabilities),
         "peripheral_model_reliability_by_bucket_json": _json(
             peripheral_model_reliability_by_bucket
         ),
