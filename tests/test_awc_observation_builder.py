@@ -197,6 +197,52 @@ def test_a_station_that_never_publishes_on_the_hour_still_closes_its_day() -> No
     assert receipt["terminal_gaps"] == []
 
 
+@pytest.mark.parametrize(
+    "minutes_after_local_hour",
+    [(0,), (30,), (0, 30)],
+    ids=["on-the-local-hour", "on-the-utc-hour", "half-hourly"],
+)
+def test_a_half_hour_zone_counts_reports_against_its_own_local_hours(
+    minutes_after_local_hour: tuple[int, ...],
+) -> None:
+    """The hour a report falls in is a local hour, like the hours expected.
+
+    The expected slots are the day's local clock hours; the observed ones were
+    the report instants floored to the UTC hour.  The two agree in every zone
+    a whole number of hours from UTC, and never in Asia/Kolkata (UTC+5:30),
+    where a local hour opens at :30Z.  VILK reports at :00Z and :30Z; every
+    day read 24 missing and 24 extra slots, DATA_MISSING, and no day-bounds
+    fact was minted for it after 2026-08-22 though every report was on file.
+    """
+
+    zone = "Asia/Kolkata"
+    day = "2026-08-01"
+    evidence = _evidence(day=day, zone=zone)
+    rows = []
+    for hour, slot in enumerate(_slots(day, zone)):
+        for offset, minutes in enumerate(minutes_after_local_hour):
+            index = hour * len(minutes_after_local_hour) + offset
+            rows.append(
+                _row(
+                    slot + timedelta(minutes=minutes),
+                    index,
+                    day=day,
+                    zone=zone,
+                    temperature=25.0 + (hour == 12),
+                )
+            )
+    evidence["rows"] = rows
+    contract, receipt = build_awc_observation_contract(_reseal(evidence))
+
+    parsed = CanonicalAWCObservationContract.from_mapping(contract)
+    assert receipt["terminal_gaps"] == []
+    assert len(parsed.revision_facts) == len(rows)
+    assert len(parsed.day_bounds_facts) == 1
+    bounds = parsed.day_bounds_facts[0].raw
+    assert bounds["day_start_utc"] == "2026-07-31T18:30:00.000Z"
+    assert bounds["day_end_utc"] == "2026-08-01T18:30:00.000Z"
+
+
 def test_exact_legacy_awc_origin_binding_is_explicit_and_tamper_closed() -> None:
     projection = authority_projection(primary_station="KJFK")
     authority = next(

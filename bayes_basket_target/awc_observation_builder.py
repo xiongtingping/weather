@@ -973,12 +973,20 @@ def build_awc_observation_contract(
         # therefore counted against the hour it falls in.  For a station that
         # does publish at :00 this is the identity -- the hour of :00 is :00 --
         # so no coverage receipt that already exists changes value.
+        #
+        # The hour it falls in is a *local* hour, because the expected slots
+        # are local hours.  Flooring in UTC agrees with that in every zone a
+        # whole number of hours from UTC and in none other: Asia/Kolkata's
+        # hours open at :30Z, so VILK read 24 missing and 24 extra slots every
+        # day and minted no day-bounds fact after 2026-08-22 (2026-09-21).
+        zone = ZoneInfo(zone_name)
         observed_slots = sorted(
             {
                 _stamp(
-                    _utc(x["observed_at_utc"], "observed_at_utc").replace(
-                        minute=0, second=0, microsecond=0
-                    )
+                    _utc(x["observed_at_utc"], "observed_at_utc")
+                    .astimezone(zone)
+                    .replace(minute=0, second=0, microsecond=0)
+                    .astimezone(timezone.utc)
                 )
                 for x in formal
                 if x["report_type"] == "METAR"
@@ -986,7 +994,6 @@ def build_awc_observation_contract(
         )
         missing_slots = sorted(set(expected_slots) - set(observed_slots))
         extra_slots = sorted(set(observed_slots) - set(expected_slots))
-        zone = ZoneInfo(zone_name)
         day_start = datetime.combine(date.fromisoformat(event_date), datetime.min.time(), zone)
         day_end = datetime.combine(
             date.fromisoformat(event_date) + timedelta(days=1), datetime.min.time(), zone
