@@ -1923,6 +1923,11 @@ def compile_native_ensemble_p0(
         tuple[Any, list[str]]
     ] = []
     rejected_or_unproven_activation_seen = False
+    # Charter 191: the generations of one pairing share one evaluation key,
+    # so the same lookup at the same instant was asked once per generation
+    # -- 22,249 lookups for 132 packets, 20,246 of them repeats (2026-09-21).
+    # Asked once per key; the answer is the one the first ask got.
+    evaluation_rows_by_key: dict[tuple[Any, ...], list[Any]] = {}
     for row in activation_rows:
         if station_attested:
             # Resolve the attestation for this activation's own scope.  The
@@ -2032,29 +2037,33 @@ def compile_native_ensemble_p0(
             and packet_cycle_mapping[system_id]
             != fitted_cycle_mapping[system_id]
         )
-        evaluation_rows = conn.execute(
-            "SELECT oos_state,selection_evidence_sha256,evaluated_at_utc "
-            "FROM calibration_cross_native_ensemble_oos_evaluation "
-            "WHERE station_id=? AND season_bin=? AND lead_bucket=? "
-            "AND run_cycle=? AND run_cycle_by_system_json=? "
-            "AND run_cycle_by_system_sha256=? "
-            "AND settlement_definition=? "
-            "AND ensemble_system_ids_json=? "
-            "AND available_system_set_hash=? AND evaluated_at_utc<=? "
-            "ORDER BY evaluated_at_utc DESC,evaluation_id DESC LIMIT 2",
-            (
-                station_id,
-                season_bin,
-                training_lead_bucket,
-                fitted_run_cycle,
-                fitted_cycle_mapping_json,
-                fitted_cycle_mapping_sha,
-                settlement_definition,
-                _json(selected_ids),
-                str(row[5]),
-                decision_at_utc,
-            ),
-        ).fetchall()
+        evaluation_key = (
+            station_id,
+            season_bin,
+            training_lead_bucket,
+            fitted_run_cycle,
+            fitted_cycle_mapping_json,
+            fitted_cycle_mapping_sha,
+            settlement_definition,
+            _json(selected_ids),
+            str(row[5]),
+            decision_at_utc,
+        )
+        evaluation_rows = evaluation_rows_by_key.get(evaluation_key)
+        if evaluation_rows is None:
+            evaluation_rows = conn.execute(
+                "SELECT oos_state,selection_evidence_sha256,evaluated_at_utc "
+                "FROM calibration_cross_native_ensemble_oos_evaluation "
+                "WHERE station_id=? AND season_bin=? AND lead_bucket=? "
+                "AND run_cycle=? AND run_cycle_by_system_json=? "
+                "AND run_cycle_by_system_sha256=? "
+                "AND settlement_definition=? "
+                "AND ensemble_system_ids_json=? "
+                "AND available_system_set_hash=? AND evaluated_at_utc<=? "
+                "ORDER BY evaluated_at_utc DESC,evaluation_id DESC LIMIT 2",
+                evaluation_key,
+            ).fetchall()
+            evaluation_rows_by_key[evaluation_key] = evaluation_rows
         if (
             not evaluation_rows
             or (
