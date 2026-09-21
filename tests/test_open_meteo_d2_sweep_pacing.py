@@ -163,3 +163,150 @@ def test_a_station_outside_the_coordinate_registry_does_not_abort_the_sweep(
     refused = {row["station_id"]: row for row in report["failures"]}
     assert set(refused) == {"LLBG"}
     assert "native_station_coordinates_missing" in refused["LLBG"]["error"]
+
+
+def _quota_client(bodies):
+    """An httpx client whose answers come from ``bodies`` in order."""
+
+    import httpx
+
+    calls = []
+
+    def handler(request):
+        calls.append(str(request.url))
+        status, body = bodies[min(len(calls), len(bodies)) - 1]
+        return httpx.Response(status, json=body)
+
+    return httpx.Client(transport=httpx.MockTransport(handler)), calls
+
+
+def test_the_daily_allowance_is_not_retried(monkeypatch) -> None:
+    """A 429 that names the day is terminal for the pass, not a rate to wait out."""
+
+    monkeypatch.setattr(sweep, "_pace_request", lambda: None)
+    monkeypatch.setattr(sweep.time, "sleep", lambda seconds: None)
+    client, calls = _quota_client([(429, {
+        "error": True,
+        "reason": "Daily API request limit exceeded. Please try again tomorrow.",
+    })])
+
+    with pytest.raises(sweep.DailyQuotaExhausted, match="daily_quota_exhausted"):
+        sweep._fetch(client, "https://ensemble-api.open-meteo.com/v1/ensemble")
+    assert len(calls) == 1
+
+
+def test_a_per_minute_limit_is_still_retried(monkeypatch) -> None:
+    monkeypatch.setattr(sweep, "_pace_request", lambda: None)
+    monkeypatch.setattr(sweep.time, "sleep", lambda seconds: None)
+    client, calls = _quota_client([
+        (429, {"error": True, "reason": "Minutely API request limit exceeded."}),
+        (200, {"ok": True}),
+    ])
+
+    payload, _digest = sweep._fetch(
+        client, "https://ensemble-api.open-meteo.com/v1/ensemble"
+    )
+    assert json.loads(payload) == {"ok": True}
+    assert len(calls) == 2
+
+
+def _run_sweep(tmp_path, monkeypatch, capture, *, commit):
+    """Drive main() over two fleet stations with a scripted capture."""
+
+    database = tmp_path / "scope.db"
+    database.write_text("", encoding="utf-8")
+    ingested = []
+
+    class _Cursor:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def fetchall(self):
+            return list(self._rows)
+
+    class _Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, sql, *args):
+            if "basket_target_market_registry" in sql:
+                return _Cursor([
+                    ("KLGA", "America/New_York"),
+                    ("ZUUU", "Asia/Shanghai"),
+                ])
+            return _Cursor([])
+
+        def commit(self):
+            return None
+
+        def rollback(self):
+            return None
+
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(sweep.sqlite3, "connect", lambda *a, **k: _Conn())
+    monkeypatch.setattr(sweep.httpx, "Client", _Client)
+    monkeypatch.setattr(sweep, "_capture_station_model", capture)
+    monkeypatch.setattr(
+        sweep, "_ingest",
+        lambda conn, report: ingested.append(report) or {"wrote": 1},
+    )
+    output = tmp_path / "om_d2.json"
+    argv = [
+        "capture_open_meteo_d2_ensemble_daily.py",
+        "--db", str(database), "--output", str(output),
+        "--target-date", "2026-09-23",
+    ] + (["--commit"] if commit else [])
+    monkeypatch.setattr(sys, "argv", argv)
+    code = sweep.main()
+    return code, json.loads(output.read_text(encoding="utf-8")), ingested
+
+
+def test_quota_mid_pass_keeps_what_was_captured(tmp_path, monkeypatch) -> None:
+    """A d2 member not stored today is gone for good, so a partial pass lands."""
+
+    calls = []
+
+    def capture(client, **kw):
+        calls.append((kw["station_id"], kw["model"]))
+        if len(calls) > 2:
+            raise sweep.DailyQuotaExhausted(
+                "open_meteo_d2_daily_quota_exhausted:Daily API request limit exceeded."
+            )
+        return {"station_id": kw["station_id"], "open_meteo_model": kw["model"]}
+
+    code, report, ingested = _run_sweep(tmp_path, monkeypatch, capture, commit=True)
+
+    assert len(calls) == 3  # stopped at the refusal; ZUUU never asked
+    assert report["daily_quota_exhausted"] is True
+    assert report["capture_count"] == 2
+    assert len(ingested) == 1
+    assert code == 0
+
+
+def test_quota_before_any_capture_writes_the_report_and_exits_75(
+    tmp_path, monkeypatch,
+) -> None:
+    def capture(client, **kw):
+        raise sweep.DailyQuotaExhausted(
+            "open_meteo_d2_daily_quota_exhausted:Daily API request limit exceeded."
+        )
+
+    code, report, ingested = _run_sweep(tmp_path, monkeypatch, capture, commit=True)
+
+    assert code == 75
+    assert report["daily_quota_exhausted"] is True
+    assert report["capture_count"] == 0
+    assert report["failure_count"] == 1
+    assert ingested == []

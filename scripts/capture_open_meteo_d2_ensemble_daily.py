@@ -114,6 +114,34 @@ def _pace_request() -> None:
     _LAST_REQUEST_MONOTONIC = time.monotonic()
 
 
+class DailyQuotaExhausted(RuntimeError):
+    """The provider has refused this address for the rest of its day.
+
+    Open-Meteo's free tier is a per-address daily allowance, and a 429 that
+    says so is not a rate to back off from: every later call in the pass is
+    refused too.  Retrying it was what killed the pass -- four attempts per
+    request with up to thirty seconds between them turned 135 refusals into
+    more than the resident's 600-second deadline, so the capture was killed
+    before it could write a report, and nothing on disk said why (2026-09-21).
+    """
+
+
+def _daily_quota_refusal(exc: Exception) -> str | None:
+    """The provider's reason, when a 429 is the daily allowance and not a rate."""
+
+    response = getattr(exc, "response", None)
+    if getattr(response, "status_code", None) != 429:
+        return None
+    try:
+        decoded = json.loads(
+            (response.content or b"").decode("utf-8", errors="replace")
+        )
+    except Exception:
+        return None
+    reason = str((decoded or {}).get("reason") or "") if isinstance(decoded, dict) else ""
+    return reason if "daily" in reason.lower() else None
+
+
 def _retry_sleep_seconds(exc: Exception, *, attempt: int) -> float:
     """Prefer the provider's own Retry-After over a guess."""
 
@@ -153,6 +181,11 @@ def _fetch(client: httpx.Client, url: str) -> tuple[bytes, str]:
             return payload, content_sha256(payload.decode("utf-8"))
         except (httpx.HTTPError, OSError) as exc:
             last = exc
+            refusal = _daily_quota_refusal(exc)
+            if refusal:
+                raise DailyQuotaExhausted(
+                    f"open_meteo_d2_daily_quota_exhausted:{refusal[:160]}"
+                ) from exc
             if attempt + 1 < MAX_ATTEMPTS:
                 time.sleep(_retry_sleep_seconds(exc, attempt=attempt))
     # Say which limit was reached, not merely that the transport failed.
@@ -368,12 +401,15 @@ def main() -> int:
     captured_at = _utc_now()
     captures: list[dict[str, object]] = []
     failures: list[dict[str, str]] = []
+    quota_refusal: str | None = None
     with httpx.Client(
         timeout=REQUEST_TIMEOUT_SECONDS,
         follow_redirects=True,
         proxy=_proxy(),
     ) as client:
       for station, zone in scopes:
+        if quota_refusal is not None:
+            break
         # The scope is the market registry; the model scope is the coordinate
         # registry, and listings run ahead of it.  A station the coordinate
         # registry does not carry is out of scope for this capture, not a
@@ -401,6 +437,17 @@ def main() -> int:
                     model=model,
                     target_date=station_target,
                 ))
+            except DailyQuotaExhausted as exc:
+                # Stop asking: the rest of the pass would be refused the same
+                # way, and what was captured before this is still worth
+                # keeping -- a d2 member not stored today is gone for good.
+                quota_refusal = str(exc)
+                failures.append({
+                    "station_id": station,
+                    "model": model,
+                    "error": quota_refusal[:160],
+                })
+                break
             except Exception as exc:  # noqa: BLE001 - report, never abort
                 failures.append({
                     "station_id": station,
@@ -422,6 +469,7 @@ def main() -> int:
         "capture_count": len(captures),
         "failure_count": len(failures),
         "failures": failures,
+        "daily_quota_exhausted": quota_refusal is not None,
         "captures": captures,
         # This archive is republisher evidence.  It must not be promoted into
         # the official-native scope, and it never places an order.
@@ -440,7 +488,7 @@ def main() -> int:
         encoding="utf-8",
     )
     ingress = None
-    if args.commit:
+    if args.commit and captures:
         with sqlite3.connect(database, timeout=120.0) as write_conn:
             write_conn.execute("PRAGMA busy_timeout=120000")
             write_conn.execute("BEGIN IMMEDIATE")
@@ -458,9 +506,15 @@ def main() -> int:
         "models": identity["model_count"],
         "captures": identity["capture_count"],
         "failures": identity["failure_count"],
+        "daily_quota_exhausted": quota_refusal is not None,
         "output": str(output),
     }
     print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
+    # Nothing captured and nothing to capture until the allowance resets: a
+    # non-zero exit keeps the resident retrying on its own cadence, and each
+    # retry now costs one refused request instead of a killed pass.
+    if quota_refusal is not None and not captures:
+        return 75
     return 0
 
 
