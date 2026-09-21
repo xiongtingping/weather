@@ -62,6 +62,14 @@ from .eccc_geps_archive import (
     RUN_CYCLE_HOUR_BY_LEAD as ECCC_CYCLE_BY_LEAD,
     SYSTEM_ID as ECCC_SYSTEM_ID,
 )
+from .dwd_icon_eps_archive import (
+    _forecast_hours as _icon_own_cycle_hours,
+    follow_forecast_hours as _icon_follow_hours,
+)
+from .eccc_geps_archive import (
+    _forecast_hours as _eccc_own_cycle_hours,
+    follow_forecast_hours as _eccc_follow_hours,
+)
 from .native_archive_lead import capture_lead_bucket
 from .resource_bounds import load_bounded_json
 from .station_season import station_season_bin
@@ -76,6 +84,12 @@ FOLLOW_FAMILIES = (ICON_FAMILY, ECCC_FAMILY)
 # instead of from ~15-17Z, and 18Z follows 12Z.
 FOLLOW_LEADS = (0, 1, 2)
 FOLLOW_RUN_MIN_FIT_CASES = 10
+# ... and those cases have to be recent.  ``train_n_effective`` is the fit's
+# Kish size under the bias half-life (5 days): ten consecutive days give 8.7,
+# eight give 7.3.  The count alone would pass a scope revived after a gap --
+# ECCC's D-2 00Z identity was last written 2026-08-12, so its first new days
+# would sit beside twenty stale ones and read as thirty cases.
+FOLLOW_RUN_MIN_EFFECTIVE_CASES = 8.5
 # Kill switch, read by the worker: "off" restores the pre-charter capture and
 # packet byte for byte.
 FOLLOW_ENV = "PM_FOLLOW_NEW_RUNS"
@@ -229,6 +243,89 @@ def _json(value: Any) -> str:
     )
 
 
+def _run_covers(
+    family: str,
+    *,
+    event_date: str,
+    settlement_timezone: str,
+    lead_days: int,
+    run_init: datetime,
+) -> bool:
+    """Whether this family's capture of that run seals this station's day."""
+
+    if int(run_init.hour) == int(_DEFAULT_CYCLE[family][int(lead_days)]):
+        own = (
+            _icon_own_cycle_hours
+            if family == ICON_FAMILY
+            else _eccc_own_cycle_hours
+        )
+        try:
+            own(
+                event_date=event_date,
+                settlement_timezone=settlement_timezone,
+                run_init_utc=run_init,
+            )
+        except Exception:  # noqa: BLE001 - a short grid is "does not cover"
+            return False
+        return True
+    seal = _icon_follow_hours if family == ICON_FAMILY else _eccc_follow_hours
+    return seal(
+        event_date=event_date,
+        settlement_timezone=settlement_timezone,
+        run_init_utc=run_init,
+    ) is not None
+
+
+def scope_trained_by_longer_lead(
+    family: str,
+    *,
+    event_date: str,
+    settlement_timezone: str,
+    run_init: datetime,
+) -> bool:
+    """Whether this run's (hour bucket x cycle) scope trains on another run.
+
+    One station reaches the same bucket at the same cycle from two calendar
+    leads when a same-day run is issued within twelve hours after the local
+    day began: Europe's D 12Z (-10h to -14h) and D-1 12Z (+10h to +14h) are
+    both ``h00_12``.  The OOS reader keeps one case per scope and day, the
+    first captured -- the longer lead's -- so that scope's certificate
+    describes the earlier run, not a same-day run that only sees the
+    afternoon.  Such a run is banked for training like any other and is not
+    seated on a fit that was never about it.
+    """
+
+    run = run_init.astimezone(timezone.utc)
+    lead = (date.fromisoformat(str(event_date)) - run.date()).days
+    try:
+        bucket = capture_lead_bucket(
+            event_date=str(event_date),
+            settlement_timezone=str(settlement_timezone),
+            run_init=run,
+        )
+    except Exception:  # noqa: BLE001 - unkeyable: treat as not ours to seat
+        return True
+    for longer in range(lead + 1, max(_ARCHIVE_CYCLES[family]) + 1):
+        if run.hour not in _ARCHIVE_CYCLES[family].get(longer, ()):
+            continue
+        other = follow_run_init(event_date, longer, run.hour)
+        if not _run_covers(
+            family,
+            event_date=str(event_date),
+            settlement_timezone=str(settlement_timezone),
+            lead_days=longer,
+            run_init=other,
+        ):
+            continue
+        if capture_lead_bucket(
+            event_date=str(event_date),
+            settlement_timezone=str(settlement_timezone),
+            run_init=other,
+        ) == bucket:
+            return True
+    return False
+
+
 def follow_serving_ready(
     conn: sqlite3.Connection,
     *,
@@ -244,9 +341,19 @@ def follow_serving_ready(
     The same key charter 149's first step reads at compile -- station, system,
     season, the run's own hour bucket, its own cycle, the single-system cycle
     map, production authority, valid now, one top generation -- plus the fit
-    behind it resting on at least ``FOLLOW_RUN_MIN_FIT_CASES`` cases.
+    behind it resting on at least ``FOLLOW_RUN_MIN_FIT_CASES`` cases whose
+    recency-weighted size is at least ``FOLLOW_RUN_MIN_EFFECTIVE_CASES``, and
+    that scope being trained on this run rather than on a longer-lead run
+    that lands in the same bucket (``scope_trained_by_longer_lead``).
     """
 
+    if scope_trained_by_longer_lead(
+        family,
+        event_date=str(event_date),
+        settlement_timezone=str(settlement_timezone),
+        run_init=run_init,
+    ):
+        return False
     system = _SYSTEM[family]
     cycle = f"{run_init.astimezone(timezone.utc).hour:02d}Z"
     try:
@@ -289,7 +396,9 @@ def follow_serving_ready(
             return False
         artifact = conn.execute(
             "SELECT json_extract(reliability_parameters_json,"
-            "'$.fit_case_count') "
+            "'$.fit_case_count'),"
+            "json_extract(reliability_parameters_json,"
+            "'$.train_n_effective') "
             "FROM calibration_native_ensemble_system_artifact "
             "WHERE system_artifact_id=? AND ensemble_system_id=? "
             "AND lead_bucket=? AND run_cycle=? "
@@ -305,10 +414,13 @@ def follow_serving_ready(
         ).fetchone()
     except sqlite3.Error:
         return False
-    if artifact is None or artifact[0] is None:
+    if artifact is None or artifact[0] is None or artifact[1] is None:
         return False
     try:
-        return int(artifact[0]) >= FOLLOW_RUN_MIN_FIT_CASES
+        return (
+            int(artifact[0]) >= FOLLOW_RUN_MIN_FIT_CASES
+            and float(artifact[1]) >= FOLLOW_RUN_MIN_EFFECTIVE_CASES
+        )
     except (TypeError, ValueError):
         return False
 
@@ -407,6 +519,7 @@ __all__ = [
     "FOLLOW_ENV",
     "FOLLOW_FAMILIES",
     "FOLLOW_LEADS",
+    "FOLLOW_RUN_MIN_EFFECTIVE_CASES",
     "FOLLOW_RUN_MIN_FIT_CASES",
     "ICON_FAMILY",
     "archive_schema",
@@ -423,5 +536,6 @@ __all__ = [
     "follow_serving_ready",
     "load_follow_archive",
     "readiness_from_database",
+    "scope_trained_by_longer_lead",
     "system_id",
 ]

@@ -262,6 +262,7 @@ def _certify(
     cycle: str,
     fit_cases: int,
     generation: int = 1,
+    n_effective: float = 9.0,
 ) -> None:
     system = "DWD_ICON_GLOBAL_EPS"
     artifact_id = f"artifact-{station}-{lead_bucket}-{cycle}-{generation}"
@@ -280,7 +281,7 @@ def _certify(
         "'2026-09-14T00:00:00Z','2026-10-14T00:00:00Z',?)",
         (
             artifact_id, system, station, season_bin, lead_bucket, cycle,
-            json.dumps({"fit_case_count": fit_cases}),
+            json.dumps({"fit_case_count": fit_cases, "train_n_effective": n_effective}),
             "a" * 64,
             content_sha256([artifact_id, fit_cases]),
         ),
@@ -344,10 +345,53 @@ def test_a_followed_run_needs_its_own_bucket_and_cycle_certified(ssot) -> None:
     _certify(ssot, station="ZUUU", season_bin=season, lead_bucket="h00_12",
              cycle="12Z", fit_cases=follow_run.FOLLOW_RUN_MIN_FIT_CASES - 2)
     assert not _ready(ssot, run)
+    # a large count resting on stale cases (a scope revived after a gap)
+    _certify(ssot, station="ZUUU", season_bin=season, lead_bucket="h00_12",
+             cycle="12Z", fit_cases=30, n_effective=3.5, generation=2)
+    assert not _ready(ssot, run)
     _certify(ssot, station="ZUUU", season_bin=season, lead_bucket="h00_12",
              cycle="12Z", fit_cases=follow_run.FOLLOW_RUN_MIN_FIT_CASES,
-             generation=2)
+             generation=3)
     assert _ready(ssot, run)
+
+
+def test_a_same_day_run_sharing_its_scope_with_the_day_before_is_not_seated() -> None:
+    # Berlin: D-1 12Z is +10h and D 12Z is -14h to the local day, both h00_12;
+    # the scope trains on D-1 12Z, the first captured.
+    kwargs = dict(event_date="2026-09-23", settlement_timezone="Europe/Berlin")
+    assert follow_run.scope_trained_by_longer_lead(
+        follow_run.ICON_FAMILY, run_init=_t("2026-09-23", 12), **kwargs
+    )
+    assert not follow_run.scope_trained_by_longer_lead(
+        follow_run.ICON_FAMILY, run_init=_t("2026-09-22", 12), **kwargs
+    )
+    assert follow_run.scope_trained_by_longer_lead(
+        follow_run.ECCC_FAMILY, run_init=_t("2026-09-23", 12), **kwargs
+    )
+    # New York's D 12Z sits in h00_12 while D-1 12Z is h12_24: its own scope
+    assert not follow_run.scope_trained_by_longer_lead(
+        follow_run.ICON_FAMILY, run_init=_t("2026-09-23", 12),
+        event_date="2026-09-23", settlement_timezone="America/New_York",
+    )
+    # Chengdu's d1 runs never share with d2
+    for hour in (6, 12, 18):
+        assert not follow_run.scope_trained_by_longer_lead(
+            follow_run.ICON_FAMILY, run_init=_t("2026-09-22", hour),
+            event_date="2026-09-23", settlement_timezone="Asia/Shanghai",
+        )
+
+
+def test_the_certificate_refuses_a_shared_scope_even_when_it_exists(ssot) -> None:
+    from bayes_basket_target.station_season import station_season_bin
+
+    season = station_season_bin("EDDM", "2026-09-23")
+    _certify(ssot, station="EDDM", season_bin=season, lead_bucket="h00_12",
+             cycle="12Z", fit_cases=20, n_effective=10.0)
+    common = dict(family=follow_run.ICON_FAMILY, station_id="EDDM",
+                  event_date="2026-09-23", settlement_timezone="Europe/Berlin",
+                  as_of_utc="2026-09-23T16:00:00Z")
+    assert follow_run.follow_serving_ready(ssot, run_init=_t("2026-09-22", 12), **common)
+    assert not follow_run.follow_serving_ready(ssot, run_init=_t("2026-09-23", 12), **common)
 
 
 # --------------------------------------------------------------------------
