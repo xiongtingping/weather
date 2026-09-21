@@ -70,7 +70,9 @@ from bayes_basket_target.station_registry import (  # noqa: E402
 )
 
 SSOT = ROOT / "data" / "bayes_basket_target_ssot.db"
-DEFAULT_DB = ROOT / "data" / "research" / "aifs_ens_history" / "aifs_ens_members.db"
+# Internal disk, outside data/runtime (retention lanes delete by age there)
+# and outside data/research (an offloaded symlink to the external volume).
+DEFAULT_DB = ROOT / "data" / "aifs_ens_research" / "aifs_ens_members.db"
 GCS = "https://storage.googleapis.com/ecmwf-open-data"
 SYSTEM_ID = "ECMWF_AIFS_ENS_GLOBAL"
 PAIRED_SYSTEM_ID = "ECMWF_IFS_ENS_OPEN_PF50"
