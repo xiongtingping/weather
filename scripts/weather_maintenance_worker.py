@@ -39,6 +39,128 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+# The same file production_worker.MAINTENANCE_WORKER_HEARTBEAT_PATH names,
+# spelled here so the code-skew check below can answer before anything
+# heavy is imported (a test holds the two equal).
+HEARTBEAT_PATH = ROOT / "data" / "runtime" / "maintenance_worker_heartbeat.json"
+SKEW_BEAT_EVERY_SEC = 20.0
+
+
+def process_started_epoch(pid: int) -> float | None:
+    """When ``pid`` started (whole seconds), or None if it cannot be told."""
+
+    import subprocess
+
+    try:
+        text = subprocess.run(
+            ["ps", "-o", "lstart=", "-p", str(int(pid))],
+            capture_output=True, text=True, timeout=10, check=False,
+        ).stdout.strip()
+        return time.mktime(time.strptime(text, "%a %b %d %H:%M:%S %Y"))
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def code_newer_than(since_epoch: float, *, root: Path = ROOT) -> list[str]:
+    """Repo code this worker would load that changed at or after ``since``.
+
+    The resident loaded its code when it started, and serving is written
+    only by the resident; a worker spawned later loads whatever is on disk
+    now -- another session's uncommitted, possibly half-written edit
+    included (2026-09-21 14:13Z: ``native_ensemble_oos.py`` mid-edit, the
+    package not even importable for a minute).  What the worker writes (OOS
+    evaluations and activations) is append-only and gates P0, so it must be
+    written by the code the resident runs.  Whole seconds, conservatively:
+    a file touched in the resident's starting second counts as newer.
+    """
+
+    paths = sorted((root / "bayes_basket_target").rglob("*.py"))
+    paths.append(root / "scripts" / "weather_maintenance_worker.py")
+    newer: list[str] = []
+    for path in paths:
+        try:
+            if path.stat().st_mtime >= since_epoch:
+                newer.append(str(path.relative_to(root)))
+        except OSError:
+            continue
+    return newer
+
+
+def _skew_heartbeat(path: Path, payload: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle, temporary = tempfile.mkstemp(dir=str(path.parent), prefix=".maintenance_hb.")
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            json.dump(dict(payload), stream, ensure_ascii=False, sort_keys=True)
+        os.replace(temporary, path)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+
+
+def stand_down_on_code_skew(
+    parent_pid: int | None,
+    *,
+    heartbeat_path: Path = HEARTBEAT_PATH,
+    started_epoch=process_started_epoch,
+    newer_than=code_newer_than,
+    sleep=time.sleep,
+    parent_now=os.getppid,
+) -> list[str]:
+    """Claim nothing while the repo's code is newer than the resident's.
+
+    Returns [] when the code is the resident's (or there is no resident to
+    compare with), and the worker then runs.  Otherwise beats an empty lane
+    claim -- the cycle keeps the OOS pass, with its own code -- until the
+    resident is gone or this process is told to stop, and returns the files
+    that differed.  The next resident restart spawns a worker that agrees.
+    """
+
+    if parent_pid is None:
+        return []
+    since = started_epoch(parent_pid)
+    if since is None:
+        return []
+    newer = newer_than(since)
+    if not newer:
+        return []
+    stop = {"now": False}
+
+    def _stop(_signum, _frame) -> None:
+        stop["now"] = True
+
+    signal.signal(signal.SIGTERM, _stop)
+    signal.signal(signal.SIGINT, _stop)
+    while not stop["now"] and parent_now() == parent_pid:
+        _skew_heartbeat(heartbeat_path, {
+            "schema": "maintenance_worker_heartbeat_v1",
+            "pid": os.getpid(),
+            "parent_pid": parent_pid,
+            "updated_epoch": time.time(),
+            "state": "code_skew",
+            "lanes": [],
+            "newer_files": newer[:20],
+            "newer_file_count": len(newer),
+        })
+        sleep(SKEW_BEAT_EVERY_SEC)
+    return newer
+
+
+if __name__ == "__main__":
+    _parent = None
+    for _i, _arg in enumerate(sys.argv):
+        if _arg == "--parent-pid" and _i + 1 < len(sys.argv):
+            _parent = int(sys.argv[_i + 1])
+        elif _arg.startswith("--parent-pid="):
+            _parent = int(_arg.split("=", 1)[1])
+    _stood_down = stand_down_on_code_skew(_parent)
+    if _stood_down:
+        print(json.dumps({"state": "code_skew", "newer_file_count": len(_stood_down)}))
+        raise SystemExit(0)
+
 from bayes_basket_target.database import DEFAULT_TARGET_DB  # noqa: E402
 from bayes_basket_target.production_worker import (  # noqa: E402
     DEFAULT_TARGET_ACTIVATION,

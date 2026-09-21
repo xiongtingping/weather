@@ -263,3 +263,70 @@ def test_the_worker_rests_at_least_as_long_as_it_worked(tmp_path) -> None:
     loop = script.MaintenanceLoop(_StepWorker([]), heartbeat_path=tmp_path / "hb.json", interval_sec=60.0)
     assert loop.rest_after(12.0) == 60.0
     assert loop.rest_after(67.0) == 67.0
+
+
+# --- code skew: the worker runs the resident's code or claims nothing -----------------
+
+def test_the_skew_check_names_the_heartbeat_the_cycle_reads() -> None:
+    assert _script().HEARTBEAT_PATH == pw.MAINTENANCE_WORKER_HEARTBEAT_PATH
+
+
+def test_code_changed_since_the_resident_started_is_named(tmp_path) -> None:
+    script = _script()
+    (tmp_path / "bayes_basket_target" / "sub").mkdir(parents=True)
+    (tmp_path / "scripts").mkdir()
+    old = tmp_path / "bayes_basket_target" / "old.py"
+    new = tmp_path / "bayes_basket_target" / "sub" / "new.py"
+    worker = tmp_path / "scripts" / "weather_maintenance_worker.py"
+    for path in (old, new, worker):
+        path.write_text("x = 1\n")
+    os.utime(old, (1000.0, 1000.0))
+    os.utime(worker, (1000.0, 1000.0))
+    os.utime(new, (3000.0, 3000.0))
+    assert script.code_newer_than(2000.0, root=tmp_path) == ["bayes_basket_target/sub/new.py"]
+    assert script.code_newer_than(3000.0, root=tmp_path) == ["bayes_basket_target/sub/new.py"]
+    assert script.code_newer_than(3001.0, root=tmp_path) == []
+
+
+def test_a_worker_newer_than_its_resident_beats_an_empty_claim_until_the_resident_goes(tmp_path) -> None:
+    script = _script()
+    hb = tmp_path / "hb.json"
+    parents = iter([4242, 4242, 1])  # the resident goes after two beats
+    beats: list[dict] = []
+    newer = script.stand_down_on_code_skew(
+        4242,
+        heartbeat_path=hb,
+        started_epoch=lambda pid: 1000.0,
+        newer_than=lambda since: ["bayes_basket_target/native_ensemble_oos.py"],
+        sleep=lambda _s: beats.append(json.loads(hb.read_text())),
+        parent_now=lambda: next(parents),
+    )
+    assert newer == ["bayes_basket_target/native_ensemble_oos.py"]
+    assert len(beats) == 2
+    assert all(b["state"] == "code_skew" and b["lanes"] == [] for b in beats)
+    # the cycle reads that claim as nobody serving the lane, and runs it itself
+    verdict = pw.maintenance_worker_alive(path=hb)
+    assert verdict["alive"] is False and verdict["reason"] in {"lane_not_served", "worker_gone"}
+
+
+@pytest.mark.parametrize("parent,started,newer", [
+    (None, 1000.0, ["x.py"]),   # run by hand: nothing to compare with
+    (4242, None, ["x.py"]),     # the resident's start cannot be told
+    (4242, 1000.0, []),         # same code
+])
+def test_otherwise_the_worker_runs(tmp_path, parent, started, newer) -> None:
+    script = _script()
+    assert script.stand_down_on_code_skew(
+        parent,
+        heartbeat_path=tmp_path / "hb.json",
+        started_epoch=lambda pid: started,
+        newer_than=lambda since: newer,
+        sleep=lambda _s: pytest.fail("must not stand down"),
+        parent_now=lambda: parent,
+    ) == []
+    assert not (tmp_path / "hb.json").exists()
+
+
+def test_the_resident_start_is_read_from_the_process_table() -> None:
+    started = _script().process_started_epoch(os.getpid())
+    assert started is not None and started <= time.time()
