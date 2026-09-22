@@ -263,6 +263,51 @@ def stand_aside_for_production_captures(
     return waited
 
 
+PRODUCTION_STATUS_PATH = ROOT / "data" / "weather_basket_yes_status.json"
+PRODUCTION_TROUBLE_WINDOW_SECONDS = 3600.0
+
+
+def production_network_trouble(
+    status: dict,
+    *,
+    now_epoch: float,
+    window_seconds: float = PRODUCTION_TROUBLE_WINDOW_SECONDS,
+) -> list[str]:
+    """Event dates whose last production capture hit the network recently.
+
+    Read off the resident's own status (``official_native_capture_by_date``):
+    a family held on a transport failure, or a pass that failed on one,
+    inside the window.  While production is losing fetches to the network,
+    this lane's downloads are the one load that can be taken off it.
+    """
+
+    troubled: list[str] = []
+    by_date = status.get("official_native_capture_by_date")
+    if not isinstance(by_date, dict):
+        return troubled
+    for event_date, outcome in sorted(by_date.items()):
+        if not isinstance(outcome, dict):
+            continue
+        try:
+            completed = datetime.fromisoformat(
+                str(outcome.get("completed_at_utc") or "").replace("Z", "+00:00")
+            )
+        except ValueError:
+            continue
+        if completed.tzinfo is None:
+            completed = completed.replace(tzinfo=timezone.utc)
+        if now_epoch - completed.timestamp() > window_seconds:
+            continue
+        held = outcome.get("families_held_on_earlier_run") or {}
+        text = " ".join(
+            [str(outcome.get("reason") or "")]
+            + [str(value) for value in (held.values() if isinstance(held, dict) else [])]
+        )
+        if transport_failure(text) or "transport_failed" in text:
+            troubled.append(str(event_date))
+    return troubled
+
+
 def transport_failure(stderr: str) -> bool:
     text = str(stderr or "")
     return any(marker in text for marker in TRANSPORT_FAILURE_MARKERS)
@@ -516,6 +561,11 @@ def main() -> int:
         "--production-yield-max-seconds", type=float, default=900.0,
         help="before each capture, wait at most this long while a production "
              "NWP capture is running; 0 disables",
+    )
+    parser.add_argument(
+        "--respect-production-network", action="store_true",
+        help="do not start a capture while the resident's status shows a "
+             "production capture lost to the network within the last hour",
     )
     parser.add_argument(
         "--network-backoff-seconds", type=float, default=300.0,
@@ -797,6 +847,23 @@ def main() -> int:
                 ]
                 if args.coverable_only and provider == "ecmwf":
                     cmd.append("--coverable-only")
+                if args.respect_production_network:
+                    try:
+                        status = json.loads(PRODUCTION_STATUS_PATH.read_text(encoding="utf-8"))
+                    except (OSError, ValueError):
+                        status = {}
+                    troubled = production_network_trouble(
+                        status if isinstance(status, dict) else {},
+                        now_epoch=time.time(),
+                    )
+                    if troubled:
+                        record["state"] = "deferred_production_network_trouble"
+                        record["troubled_event_dates"] = troubled
+                        log(record)
+                        print(f"   production captures are losing fetches to the network "
+                              f"({', '.join(troubled)}); not starting a download", flush=True)
+                        stopped_reason = "production_network_trouble"
+                        break
                 if args.production_yield_max_seconds > 0:
                     waited = stand_aside_for_production_captures(
                         max_seconds=args.production_yield_max_seconds,
@@ -848,7 +915,9 @@ def main() -> int:
             else:
                 continue
             break
-        if stopped_reason in {"max_seconds", "network_backoff"}:
+        if stopped_reason in {
+            "max_seconds", "network_backoff", "production_network_trouble",
+        }:
             break
         removed, freed = prune_scratch_store(
             [] if args.raw_root is not None else raw_dirs.values(),

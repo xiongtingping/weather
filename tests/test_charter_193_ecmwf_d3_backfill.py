@@ -63,3 +63,26 @@ def test_the_raw_root_must_be_on_another_device(tmp_path: Path) -> None:
     # unplugged volume can never turn into raw fields on the internal disk.
     with pytest.raises(SystemExit):
         lane._external_volume_root(tmp_path / "raw")
+
+
+def test_the_lane_reads_production_network_trouble_off_the_resident_status() -> None:
+    from datetime import datetime, timezone
+
+    now = datetime(2026, 9, 22, 8, 30, tzinfo=timezone.utc).timestamp()
+    status = {"official_native_capture_by_date": {
+        "2026-09-22": {"completed_at_utc": "2026-09-22T08:06:49.934Z", "state": "CAPTURED",
+                       "families_held_on_earlier_run": {
+                           "NOAA_GEFS_PDS_S3": "ContractError:gefs_archive_transport_failed:PoolTimeout"}},
+        "2026-09-24": {"completed_at_utc": "2026-09-22T08:06:49.934Z", "state": "CAPTURED",
+                       "families_held_on_earlier_run": {
+                           "DWD_OPENDATA_ICON_EPS": "ContractError:icon_eps_archive_scope_invalid"}},
+        "2026-09-21": {"completed_at_utc": "2026-09-22T06:09:27.102Z", "state": "FAILED",
+                       "reason": "run_ladder_exhausted:capture_exit_2:ConnectError"},
+    }}
+    # a transport failure inside the hour counts; a refusal does not; an
+    # old failure has aged out
+    assert lane.production_network_trouble(status, now_epoch=now) == ["2026-09-22"]
+    assert lane.production_network_trouble(status, now_epoch=now, window_seconds=4 * 3600) == [
+        "2026-09-21", "2026-09-22",
+    ]
+    assert lane.production_network_trouble({}, now_epoch=now) == []
