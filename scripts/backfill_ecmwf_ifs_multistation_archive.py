@@ -9,7 +9,7 @@ import os
 import sqlite3
 import sys
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import date, datetime, time as dt_time, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,7 +20,9 @@ from bayes_basket_target.contracts import ContractError  # noqa: E402
 from bayes_basket_target.database import DEFAULT_TARGET_DB  # noqa: E402
 from bayes_basket_target.ecmwf_ifs_archive import (  # noqa: E402
     capture_ecmwf_station_days,
+    follow_period_end_steps,
     ingest_ecmwf_station_days,
+    resolve_run_cycle_hour,
 )
 from bayes_basket_target.market_registry import (  # noqa: E402
     load_active_registry_rows,
@@ -93,13 +95,64 @@ def _station_scopes(
     return scopes, without_coordinates
 
 
+def split_coverable(
+    scopes: list[dict[str, object]],
+    *,
+    event_date: str,
+    lead_days: int,
+    run_cycle_hour: int | None,
+) -> tuple[list[dict[str, object]], list[str]]:
+    """The scopes this run can seal a local day for, and the ones it cannot."""
+
+    run_init = datetime.combine(
+        date.fromisoformat(event_date) - timedelta(days=int(lead_days)),
+        dt_time(hour=resolve_run_cycle_hour(int(lead_days), run_cycle_hour)),
+        tzinfo=timezone.utc,
+    )
+    kept: list[dict[str, object]] = []
+    left_out: list[str] = []
+    for scope in scopes:
+        if follow_period_end_steps(
+            event_date=event_date,
+            settlement_timezone=str(scope["settlement_timezone"]),
+            run_init_utc=run_init,
+        ) is None:
+            left_out.append(str(scope["station_id"]))
+        else:
+            kept.append(scope)
+    return kept, left_out
+
+
+def coverable_station_count(
+    database: Path,
+    *,
+    event_date: str,
+    lead_days: int,
+    run_cycle_hour: int | None,
+) -> int:
+    """How many stations a ``--coverable-only`` capture of this run holds."""
+
+    with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as conn:
+        conn.execute("PRAGMA query_only=ON")
+        scopes, _without = _station_scopes(conn, selected_stations=set())
+    kept, _left_out = split_coverable(
+        scopes,
+        event_date=event_date,
+        lead_days=lead_days,
+        run_cycle_hour=run_cycle_hour,
+    )
+    return len(kept)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=DEFAULT_TARGET_DB)
     parser.add_argument("--event-date", required=True)
     # P0 follows the freshest run, so history is backfilled per lead: the same
     # event date has a d2, a d1 and a d0 capture, each from a different run.
-    parser.add_argument("--lead-days", type=int, default=2, choices=[0, 1, 2])
+    # Lead 3 exists for one run only: charter 193's D-3 18Z for a D+2 day
+    # (the collector refuses it at any other cycle).
+    parser.add_argument("--lead-days", type=int, default=2, choices=[0, 1, 2, 3])
     # The cycle defaults to the lead's own mapping (d2 18Z, d1/d0 00Z).  The
     # hour bucket a row is stamped with is per station and per run, so the
     # tradable h12_24/h24_48 scopes of the Americas only come from the 12Z
@@ -108,6 +161,17 @@ def main() -> int:
         "--run-cycle-hour", type=int, default=None, choices=[0, 6, 12, 18]
     )
     parser.add_argument("--station-id", action="append", default=[])
+    parser.add_argument(
+        "--coverable-only",
+        action="store_true",
+        help=(
+            "Keep only the stations this run can seal a local day for "
+            "(``follow_period_end_steps``) instead of failing the whole "
+            "capture on the first that it cannot -- D-3 18Z reaches +72h, "
+            "so the far west is left out.  Same filter on --input, so the "
+            "ingest checks the same station set the capture wrote."
+        ),
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--input", type=Path)
     parser.add_argument("--commit", action="store_true")
@@ -123,6 +187,16 @@ def main() -> int:
         scopes, without_coordinates = _station_scopes(
             conn, selected_stations=selected
         )
+    uncoverable: list[str] = []
+    if args.coverable_only:
+        scopes, uncoverable = split_coverable(
+            scopes,
+            event_date=args.event_date,
+            lead_days=int(args.lead_days),
+            run_cycle_hour=args.run_cycle_hour,
+        )
+        if not scopes:
+            raise RuntimeError("ecmwf_archive_no_coverable_station")
     if args.input is not None:
         archive = load_bounded_json(args.input.expanduser().resolve())
         if (
@@ -174,6 +248,7 @@ def main() -> int:
         "event_date": args.event_date,
         "station_count": archive["station_count"],
         "stations_without_coordinates": without_coordinates,
+        "stations_uncoverable": uncoverable,
         "member_count": archive["member_count"],
         "member_availability_contract": archive[
             "member_availability_contract"

@@ -223,6 +223,73 @@ def pace_after_commit(
     return pause
 
 
+# Charter 193 amendment (the D-3 18Z backfill, 2026-09-22 ruling "要"): the
+# production captures share this machine's network and proxy -- the night of
+# 2026-09-21 they lost ten hours of P0 to ConnectError/PoolTimeout -- so the
+# lane stands aside while one is running and stops on the first sign of a
+# transport failure rather than retrying into it.
+PRODUCTION_CAPTURE_PATTERN = "capture_official_native_ensemble_forward.py"
+TRANSPORT_FAILURE_MARKERS = (
+    "transport_failed", "ConnectError", "PoolTimeout", "ReadTimeout",
+    "ConnectTimeout", "RemoteProtocolError", "capture_timeout",
+)
+
+
+def production_capture_running(pattern: str = PRODUCTION_CAPTURE_PATTERN) -> bool:
+    """Whether a production NWP capture (pass or follow lane) is in flight."""
+
+    try:
+        found = subprocess.run(
+            ["pgrep", "-f", pattern], capture_output=True, text=True, check=False,
+        )
+    except OSError:
+        return False
+    return bool((found.stdout or "").strip())
+
+
+def stand_aside_for_production_captures(
+    *,
+    max_seconds: float,
+    running=production_capture_running,
+    sleep=time.sleep,
+    poll_seconds: float = LIVE_YIELD_POLL_SECONDS,
+) -> float:
+    """Wait while a production capture runs; never past ``max_seconds``."""
+
+    waited = 0.0
+    while running() and waited < max_seconds:
+        sleep(poll_seconds)
+        waited += poll_seconds
+    return waited
+
+
+def transport_failure(stderr: str) -> bool:
+    text = str(stderr or "")
+    return any(marker in text for marker in TRANSPORT_FAILURE_MARKERS)
+
+
+def _external_volume_root(path: Path) -> Path:
+    """``path`` if it is mounted on another device than the repository.
+
+    A cold root that is not mounted would otherwise be created on the internal
+    disk by ``mkdir(parents=True)`` and fill it -- the one outcome the cold
+    tier exists to prevent.
+    """
+
+    from bayes_basket_target.offloaded_paths import assert_present  # noqa: PLC0415
+
+    anchor = path
+    while not anchor.exists() and anchor != anchor.parent:
+        anchor = anchor.parent
+    assert_present(anchor, what="backfill raw root")
+    if anchor == anchor.parent or os.stat(anchor).st_dev == os.stat(ROOT).st_dev:
+        raise SystemExit(
+            f"raw root {path} is not on an external volume (mounted?); refusing "
+            "to stage raw fields on the internal disk"
+        )
+    return path
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
         "+00:00", "Z"
@@ -433,6 +500,28 @@ def main() -> int:
         help="cap on one pacing pause",
     )
     parser.add_argument("--scratch", type=Path, default=DEFAULT_SCRATCH)
+    parser.add_argument(
+        "--raw-root", type=Path, default=None,
+        help="put the raw GRIB store here instead of under --scratch; it must "
+             "be on an external volume, and raw objects there are kept (the "
+             "cold tier is an archive), not pruned by age",
+    )
+    parser.add_argument(
+        "--coverable-only", action="store_true",
+        help="capture only the stations each run can seal a local day for "
+             "(needed for lead 3: D-3 18Z reaches +72h), and count a date done "
+             "when all of those are present",
+    )
+    parser.add_argument(
+        "--production-yield-max-seconds", type=float, default=900.0,
+        help="before each capture, wait at most this long while a production "
+             "NWP capture is running; 0 disables",
+    )
+    parser.add_argument(
+        "--network-backoff-seconds", type=float, default=300.0,
+        help="after a capture fails on the network, pause this long and stop "
+             "the invocation (the next one resumes from the raw store)",
+    )
     # Reuse only ever reaches back one event date (about 40 minutes at the
     # measured pace); three hours kept ~5 GB of fields on a disk with 23 GiB
     # free.
@@ -468,7 +557,12 @@ def main() -> int:
         raise SystemExit("--to-date must not be after --from-date (walk is backwards)")
 
     scratch = args.scratch.expanduser().resolve()
-    raw_dirs = {p: scratch / f"raw_{p}" for p in providers}
+    raw_root = (
+        _external_volume_root(args.raw_root.expanduser())
+        if args.raw_root is not None
+        else scratch
+    )
+    raw_dirs = {p: raw_root / f"raw_{p}" for p in providers}
     packet_dirs = {p: scratch / "packets" / p for p in providers}
     for path in list(raw_dirs.values()) + list(packet_dirs.values()):
         path.mkdir(parents=True, exist_ok=True)
@@ -502,6 +596,22 @@ def main() -> int:
             event_date=packet.event_date, extraction_version=packet.version,
         )
 
+    thresholds: dict[tuple[str, int, int], int] = {}
+
+    def done_at(packet: Packet) -> int:
+        if not args.coverable_only or packet.provider != "ecmwf":
+            return done_threshold
+        key = (packet.event_date, packet.lead, packet.cycle)
+        if key not in thresholds:
+            from scripts.backfill_ecmwf_ifs_multistation_archive import (  # noqa: PLC0415
+                coverable_station_count,
+            )
+            thresholds[key] = coverable_station_count(
+                db, event_date=packet.event_date,
+                lead_days=packet.lead, run_cycle_hour=packet.cycle,
+            )
+        return thresholds[key]
+
     # The queue: every well-named packet in the scratch store whose rows are
     # not yet in the SSOT.  Rebuilt from disk at start, so a killed run loses
     # nothing but the capture it was in the middle of.
@@ -511,7 +621,7 @@ def main() -> int:
             packet = Packet.parse(provider, path)
             if packet is None or not packet.valid():
                 continue
-            if present(packet) >= done_threshold:
+            if present(packet) >= done_at(packet):
                 continue
             queue[path.resolve()] = packet
 
@@ -522,7 +632,7 @@ def main() -> int:
         "ingests_committed": 0, "ingests_lock_busy": 0, "ingests_failed": 0,
         "rows_written": 0, "bytes_downloaded": 0,
         "live_yield_seconds": 0.0, "live_yields": 0, "live_yield_expired": 0,
-        "pace_seconds": 0.0,
+        "pace_seconds": 0.0, "production_yield_seconds": 0.0,
     }
 
     def out_of_time() -> bool:
@@ -575,6 +685,8 @@ def main() -> int:
                 "--event-date", packet.event_date, "--lead-days", str(packet.lead),
                 "--run-cycle-hour", str(packet.cycle), "--input", str(path), "--commit",
             ]
+            if args.coverable_only and packet.provider == "ecmwf":
+                cmd.append("--coverable-only")
             stand_aside()
             started = time.monotonic()
             rc, stdout, stderr = _run(cmd, env_for(packet.provider, lock_wait), lock_wait + 600.0)
@@ -661,7 +773,7 @@ def main() -> int:
                     continue
                 before = present(packet)
                 record["stations_present_before"] = before
-                if before >= done_threshold:
+                if before >= done_at(packet):
                     stats["captures_skipped_present"] += 1
                     record["state"] = "skipped_present"
                     log(record)
@@ -683,6 +795,18 @@ def main() -> int:
                     "--event-date", event_date, "--lead-days", str(lead),
                     "--run-cycle-hour", str(cycle), "--output", str(path),
                 ]
+                if args.coverable_only and provider == "ecmwf":
+                    cmd.append("--coverable-only")
+                if args.production_yield_max_seconds > 0:
+                    waited = stand_aside_for_production_captures(
+                        max_seconds=args.production_yield_max_seconds,
+                    )
+                    if waited:
+                        stats["production_yield_seconds"] += waited
+                        log({"kind": "production_yield", "event_date": event_date,
+                             "waited_seconds": waited})
+                        print(f"   stood aside {waited:.0f}s for a production capture",
+                              flush=True)
                 started = time.monotonic()
                 rc, stdout, stderr = _run(cmd, env_for(provider, 1.0), args.capture_timeout_seconds)
                 elapsed = time.monotonic() - started
@@ -705,20 +829,30 @@ def main() -> int:
                     stats["captures_failed"] += 1
                     record.update({"state": "failed", "stderr_tail": (stderr or "")[-600:]})
                     print((stderr or "")[-600:], file=sys.stderr, flush=True)
+                    if transport_failure(stderr):
+                        record["network_backoff_seconds"] = args.network_backoff_seconds
+                        stopped_reason = "network_backoff"
                 log(record)
                 print(
                     f"{event_date} {provider:5s} l{lead} {cycle:02d}Z {record['state']:8s} "
                     f"{elapsed:6.0f}s {got/2**20:7.1f}MB rss{record['children_max_rss_mb']:.0f}MB",
                     flush=True,
                 )
+                if stopped_reason == "network_backoff":
+                    print(f"   network failure: backing off {args.network_backoff_seconds:.0f}s "
+                          "and stopping; the next run resumes from the raw store",
+                          flush=True)
+                    time.sleep(max(0.0, args.network_backoff_seconds))
+                    break
                 drain(args.ingest_lock_wait_seconds)
             else:
                 continue
             break
-        if stopped_reason == "max_seconds":
+        if stopped_reason in {"max_seconds", "network_backoff"}:
             break
         removed, freed = prune_scratch_store(
-            raw_dirs.values(), packet_dirs.values(), queue,
+            [] if args.raw_root is not None else raw_dirs.values(),
+            packet_dirs.values(), queue,
             raw_keep_hours=args.raw_keep_hours,
         )
         event_days_done += 1
@@ -736,7 +870,8 @@ def main() -> int:
     # way: measured 2026-09-14, 10.8 GB of raw objects from committed
     # captures had piled up because no invocation ever reached it.
     prune_scratch_store(
-        raw_dirs.values(), packet_dirs.values(), queue,
+        [] if args.raw_root is not None else raw_dirs.values(),
+        packet_dirs.values(), queue,
         raw_keep_hours=args.raw_keep_hours,
     )
     total = time.monotonic() - t0
