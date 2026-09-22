@@ -2675,6 +2675,23 @@ def run_target_forecast_refresh_cycle(
     next_nwp = float(
         getattr(worker, "_next_official_nwp_poll_mono", 0.0)
     )
+    # Charter 195 (二): a run the arrival probe has seen land starts its
+    # capture now, on this thread (the rotation's own), not at the next
+    # 10-minute NWP poll.
+    arrival_state: dict[str, Any] = {"state": "not_run"}
+    arrival = getattr(worker, "run_arrival_triggered_captures", None)
+    if callable(arrival) and not bool(getattr(worker, "skip_nwp_refresh", False)):
+        try:
+            arrival_state = dict(arrival(as_of_utc=utc_now()))
+        except Exception as exc:  # noqa: BLE001 -- the rotation is the fallback
+            arrival_state = {
+                "state": "failed",
+                "reason": f"{type(exc).__name__}:{exc}"[:200],
+            }
+    step_timings_ms["nwp_arrival_triggers"] = round(
+        (time.perf_counter() - step_started) * 1000.0, 1
+    )
+    step_started = time.perf_counter()
     if bool(getattr(worker, "skip_nwp_refresh", False)):
         nwp_state = {
             "state": "skipped_exact_scope_reuse",
@@ -3196,6 +3213,7 @@ def run_target_forecast_refresh_cycle(
         "schema": "reported_trajectory_forecast_prefetch_v1",
         "step_timings_ms": step_timings_ms,
         "resident_nwp_capture": nwp_state,
+        "nwp_arrival_triggers": arrival_state,
         "forecast_physics_capture": forecast_physics_state,
         "calibration_health": calibration_health_state,
         # ICON had its own receipt here while it had its own capture pass.  It

@@ -627,6 +627,41 @@ def _probe_round(
     return {**receipt, "new_rows": new_rows}
 
 
+def run_landed(
+    state: Mapping[str, Any] | None,
+    *,
+    family: str,
+    run_init: datetime,
+    event_date: str | None,
+    as_of: datetime,
+    fresh_sec: float = 600.0,
+) -> bool | None:
+    """Whether the probe has seen this run land for this day.
+
+    None when the probe cannot speak for it -- no fresh state, a day it does
+    not list, a family it does not know, or a run outside the window it asks
+    about -- so the caller keeps its own rule.
+    """
+
+    if not isinstance(state, Mapping) or event_date is None or family not in SPECS:
+        return None
+    try:
+        updated = _utc(str(state.get("updated_at_utc") or ""))
+    except ValueError:
+        return None
+    if abs((as_of - updated).total_seconds()) > fresh_sec:
+        return None
+    listed = (state.get("last_round") or {}).get("listed_dates") or ()
+    if str(event_date) not in {str(day) for day in listed}:
+        return None
+    spec = SPECS[family]
+    age_h = (as_of - run_init).total_seconds() / 3600.0
+    if int(run_init.hour) not in spec.cycles or age_h > spec.give_up_after_init_hours:
+        return None
+    key = ready_key(family, DOWNLOAD_SOURCE[family], run_init, str(event_date))
+    return key in (state.get("ready") or {})
+
+
 def newest_ready_run(
     state: Mapping[str, Any],
     *,
@@ -668,4 +703,5 @@ __all__ = [
     "probe_round",
     "ready_key",
     "registry_scope",
+    "run_landed",
 ]

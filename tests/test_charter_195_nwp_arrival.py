@@ -334,3 +334,232 @@ def test_the_daemon_round_is_off_on_the_switch(monkeypatch) -> None:
 
     monkeypatch.setenv(probe.PROBE_ENV, "off")
     assert daemon.run_nwp_arrival_probe_round() == {"state": "disabled"}
+
+
+# ------------------------------------------------- (二) arrival-driven start
+
+
+def _probe_state(*, updated="2026-09-21T13:15:00Z", listed=("2026-09-23",), ready=()):
+    rows = {}
+    for family, run, event_date in ready:
+        run_dt = datetime.fromisoformat(run.replace("Z", "+00:00"))
+        key = probe.ready_key(family, probe.DOWNLOAD_SOURCE[family], run_dt, event_date)
+        rows[key] = {
+            "family": family, "source": probe.DOWNLOAD_SOURCE[family], "acts_on_capture": True,
+            "run_init_utc": run, "event_date": event_date, "first_seen_at_utc": updated,
+        }
+    return {"schema": probe.STATE_SCHEMA, "updated_at_utc": updated,
+            "last_round": {"listed_dates": list(listed)}, "ready": rows}
+
+
+def _runs(ladder):
+    return [rung[2].strftime("%d %HZ") for rung in ladder]
+
+
+def test_the_ladder_drops_rungs_neither_required_family_has_landed() -> None:
+    as_of = "2026-09-21T13:15:00Z"
+    clock = pw._official_native_run_ladder(event_date="2026-09-23", as_of_utc=as_of)
+    assert _runs(clock) == ["21 12Z", "21 06Z", "21 00Z"]
+    state = _probe_state(ready=[(probe.GEFS_FAMILY, "2026-09-21T06:00:00Z", "2026-09-23")])
+    probed = pw._official_native_run_ladder(event_date="2026-09-23", as_of_utc=as_of, probe_state=state)
+    # 12Z: on neither server yet -> dropped.  06Z: GEFS has it -> kept (ECMWF
+    # holds).  00Z: past GEFS's window, landed long ago -> kept.
+    assert _runs(probed) == ["21 06Z", "21 00Z"]
+
+
+def test_a_probe_that_cannot_speak_leaves_the_clock_ladder() -> None:
+    as_of = "2026-09-21T13:15:00Z"
+    clock = pw._official_native_run_ladder(event_date="2026-09-23", as_of_utc=as_of)
+    stale = _probe_state(updated="2026-09-21T12:00:00Z")
+    unlisted = _probe_state(listed=("2026-09-22",))
+    for state in (stale, unlisted, {"schema": "x"}):
+        assert pw._official_native_run_ladder(
+            event_date="2026-09-23", as_of_utc=as_of, probe_state=state
+        ) == clock
+
+
+@pytest.fixture
+def capture_worker(tmp_path):
+    instance = object.__new__(pw.TargetProductionWorker)
+    instance.nwp_runtime_root = tmp_path
+    instance._official_native_capture_pool = None
+    yield instance
+    pool = getattr(instance, "_official_native_capture_pool", None)
+    if pool is not None:
+        pool.shutdown(wait=False, cancel_futures=True)
+
+
+def _capture(worker, tmp_path, **kwargs):
+    return worker._capture_official_native_packet(
+        station_id="", event_date="2026-09-23", as_of_utc="2026-09-21T13:15:00Z",
+        inbox_path=tmp_path / "inbox.json", **kwargs,
+    )
+
+
+def test_an_arrival_is_not_held_by_the_retry_floor(capture_worker, tmp_path) -> None:
+    first = _capture(capture_worker, tmp_path)
+    assert first["reason"] == "forward_market_registry_missing"
+    assert _capture(capture_worker, tmp_path)["state"] == "THROTTLED"
+    arrival = {"family": probe.ECMWF_FAMILY, "run_init_utc": "2026-09-21T06:00:00Z"}
+    assert _capture(capture_worker, tmp_path, arrival=arrival)["state"] != "THROTTLED"
+
+
+def test_a_forced_rung_is_not_retired_by_the_held_ecmwf_gefs_run(capture_worker, tmp_path) -> None:
+    ladder = pw._official_native_run_ladder(event_date="2026-09-23", as_of_utc="2026-09-21T13:15:00Z")
+    capture_worker._official_native_capture_runs = {
+        "2026-09-23": ladder[0][2].isoformat().replace("+00:00", "Z"),
+    }
+    assert _capture(capture_worker, tmp_path)["state"] == "RUN_ALREADY_CAPTURED"
+    forced = _capture(
+        capture_worker, tmp_path,
+        arrival={"family": probe.ICON_FAMILY, "run_init_utc": "2026-09-21T12:00:00Z"},
+        forced_rungs=ladder[:1],
+    )
+    assert forced["state"] != "RUN_ALREADY_CAPTURED"
+
+
+def _trigger_worker(tmp_path, monkeypatch, state):
+    worker = object.__new__(pw.TargetProductionWorker)
+    worker.nwp_runtime_root = tmp_path
+    monkeypatch.setattr(worker, "_arrival_probe_state", lambda: state)
+    calls = []
+
+    def fake_capture(**kwargs):
+        calls.append(kwargs)
+        return {"state": "SUBMITTED"}
+
+    monkeypatch.setattr(worker, "_capture_official_native_packet", fake_capture)
+    follows = []
+    monkeypatch.setattr(worker, "_enqueue_arrival_follow",
+                        lambda **k: follows.append(k) or "QUEUED")
+    return worker, calls, follows
+
+
+def test_each_landed_run_starts_its_capture_once(monkeypatch, tmp_path) -> None:
+    state = _probe_state(ready=[
+        (probe.ECMWF_FAMILY, "2026-09-21T06:00:00Z", "2026-09-23"),
+        (probe.ECMWF_FAMILY, "2026-09-21T06:00:00Z", "2026-09-22"),
+    ], listed=("2026-09-22", "2026-09-23"))
+    worker, calls, _follows = _trigger_worker(tmp_path, monkeypatch, state)
+    receipt = worker.run_arrival_triggered_captures(as_of_utc="2026-09-21T13:16:00Z")
+    assert receipt["state"] == "RAN"
+    assert sorted(call["event_date"] for call in calls) == ["2026-09-22", "2026-09-23"]
+    assert all(call["forced_rungs"] is None and call["arrival"]["family"] == probe.ECMWF_FAMILY
+               for call in calls)
+    calls.clear()
+    worker.run_arrival_triggered_captures(as_of_utc="2026-09-21T13:17:00Z")
+    assert calls == []
+
+
+def test_one_pass_per_day_per_call_and_a_busy_day_is_asked_again(monkeypatch, tmp_path) -> None:
+    state = _probe_state(ready=[
+        (probe.GEFS_FAMILY, "2026-09-21T06:00:00Z", "2026-09-23"),
+        (probe.ECMWF_FAMILY, "2026-09-21T06:00:00Z", "2026-09-23"),
+    ])
+    worker, calls, _follows = _trigger_worker(tmp_path, monkeypatch, state)
+    monkeypatch.setattr(worker, "_capture_official_native_packet",
+                        lambda **k: calls.append(k) or {"state": "IN_FLIGHT"})
+    worker.run_arrival_triggered_captures(as_of_utc="2026-09-21T13:16:00Z")
+    assert len(calls) == 1
+    worker.run_arrival_triggered_captures(as_of_utc="2026-09-21T13:17:00Z")
+    assert len(calls) == 2  # still in flight -> not marked, asked again
+
+
+def test_icon_own_cycle_rides_its_leads_newest_rung(monkeypatch, tmp_path) -> None:
+    state = _probe_state(updated="2026-09-21T03:00:00Z", listed=("2026-09-22",), ready=[
+        (probe.ICON_FAMILY, "2026-09-21T00:00:00Z", "2026-09-22"),
+    ])
+    worker, calls, follows = _trigger_worker(tmp_path, monkeypatch, state)
+    worker.run_arrival_triggered_captures(as_of_utc="2026-09-21T03:00:30Z")
+    assert follows == []
+    (call,) = calls
+    (rung,) = call["forced_rungs"]
+    # d1 of 09-22: the rung reads ICON's own 00Z of 09-21, and its ECMWF/GEFS
+    # run is the newest of that lead by the clock -- never older than held.
+    assert rung[0] == 1 and rung[2] == datetime(2026, 9, 21, 0, tzinfo=timezone.utc)
+
+
+def test_a_followed_icon_cycle_goes_to_the_follow_lane(monkeypatch, tmp_path) -> None:
+    state = _probe_state(updated="2026-09-21T15:00:00Z", listed=("2026-09-22",), ready=[
+        (probe.ICON_FAMILY, "2026-09-21T12:00:00Z", "2026-09-22"),
+    ])
+    worker, calls, follows = _trigger_worker(tmp_path, monkeypatch, state)
+    worker.run_arrival_triggered_captures(as_of_utc="2026-09-21T15:00:30Z")
+    assert calls == []
+    assert follows == [{"event_date": "2026-09-22", "lead": 1,
+                        "run_init": datetime(2026, 9, 21, 12, tzinfo=timezone.utc)}]
+    # Once its job is done the day's pass re-reads it for seating.
+    worker._official_native_follow_inflight = {}
+    worker.run_arrival_triggered_captures(as_of_utc="2026-09-21T15:01:00Z")
+    assert len(calls) == 1 and calls[0]["forced_rungs"]
+
+
+def test_a_stale_or_absent_probe_starts_nothing(monkeypatch, tmp_path) -> None:
+    state = _probe_state(updated="2026-09-21T12:00:00Z", ready=[
+        (probe.ECMWF_FAMILY, "2026-09-21T06:00:00Z", "2026-09-23"),
+    ])
+    worker, calls, _follows = _trigger_worker(tmp_path, monkeypatch, state)
+    assert worker.run_arrival_triggered_captures(as_of_utc="2026-09-21T13:16:00Z")["state"] == "PROBE_STALE"
+    monkeypatch.setattr(worker, "_arrival_probe_state", lambda: None)
+    assert worker.run_arrival_triggered_captures(as_of_utc="2026-09-21T13:16:00Z")["state"] == "NO_PROBE_STATE"
+    assert calls == []
+
+
+def test_the_trigger_switch_restores_the_clock_ladder(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(pw, "ARRIVAL_TRIGGER_ENABLED", False)
+    worker = object.__new__(pw.TargetProductionWorker)
+    worker.nwp_runtime_root = tmp_path
+    (tmp_path / probe.STATE_FILE_NAME).write_text(json.dumps(_probe_state()))
+    assert worker._arrival_probe_state() is None
+    assert worker.run_arrival_triggered_captures(as_of_utc="2026-09-21T13:16:00Z")["state"] == "DISABLED"
+
+
+def test_the_follow_lane_asks_the_probe_first() -> None:
+    from bayes_basket_target import follow_run
+
+    run = datetime(2026, 9, 21, 12, tzinfo=timezone.utc)
+    as_of = datetime(2026, 9, 21, 14, 50, tzinfo=timezone.utc)  # 2h50m: past the 2.5h lag
+    landed = _probe_state(updated="2026-09-21T14:50:00Z", listed=("2026-09-22",),
+                          ready=[(probe.ICON_FAMILY, "2026-09-21T12:00:00Z", "2026-09-22")])
+    not_yet = _probe_state(updated="2026-09-21T14:50:00Z", listed=("2026-09-22",))
+    kwargs = dict(as_of=as_of, event_date="2026-09-22")
+    assert follow_run.follow_publication_due(follow_run.ICON_FAMILY, run, probe_state=landed, **kwargs)
+    assert not follow_run.follow_publication_due(follow_run.ICON_FAMILY, run, probe_state=not_yet, **kwargs)
+    # No probe: the fixed lag, as before.
+    assert follow_run.follow_publication_due(follow_run.ICON_FAMILY, run, as_of=as_of)
+    early = datetime(2026, 9, 21, 14, 0, tzinfo=timezone.utc)
+    assert not follow_run.follow_publication_due(follow_run.ICON_FAMILY, run, as_of=early)
+
+
+def test_every_attempt_lands_in_the_attempt_log(monkeypatch, tmp_path) -> None:
+    worker = object.__new__(pw.TargetProductionWorker)
+    worker.nwp_runtime_root = tmp_path
+    monkeypatch.setattr(pw, "CAPTURE_ATTEMPT_LOG_MAX_BYTES", 40)
+    worker._log_capture_attempt({"event_date": "2026-09-23", "state": "CAPTURED"})
+    worker._log_capture_attempt({"event_date": "2026-09-23", "state": "FAILED"})
+    log = tmp_path / pw.CAPTURE_ATTEMPT_LOG_NAME
+    assert json.loads(log.read_text().splitlines()[-1])["state"] == "FAILED"
+    assert (tmp_path / (pw.CAPTURE_ATTEMPT_LOG_NAME + ".1")).is_file()
+
+
+def test_a_real_pass_logs_its_rungs(monkeypatch, capture_worker, tmp_path) -> None:
+    (tmp_path / "market_registry_forward.json").write_text("{}")
+
+    class _Done:
+        returncode = 3
+        stdout = ""
+        stderr = "Traceback ...\nContractError: official_native_forward_required_family_unavailable"
+
+    monkeypatch.setattr(pw.subprocess, "run", lambda *a, **k: _Done())
+    monkeypatch.setattr(pw.follow_run, "follow_enabled", lambda: False)
+    result = _capture(
+        capture_worker, tmp_path,
+        arrival={"family": probe.GEFS_FAMILY, "run_init_utc": "2026-09-21T06:00:00Z"},
+    )
+    assert result["state"] == "SUBMITTED"
+    assert result["trigger"] == "arrival:NOAA_GEFS_PDS_S3|2026-09-21T06:00:00Z"
+    capture_worker._official_native_capture_inflight[("2026-09-23",)].result(timeout=30)
+    (row,) = [json.loads(line) for line in (tmp_path / pw.CAPTURE_ATTEMPT_LOG_NAME).read_text().splitlines()]
+    assert row["state"] == "FAILED" and row["trigger"].startswith("arrival:")
+    assert [rung["returncode"] for rung in row["rungs"]] == [3] * len(row["rungs"]) and row["rungs"]
+    assert "required_family_unavailable" in row["rungs"][0]["stderr_tail"]

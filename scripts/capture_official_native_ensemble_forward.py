@@ -55,6 +55,7 @@ from bayes_basket_target.dwd_icon_eps_archive import (  # noqa: E402
     ingest_icon_eps_station_days,
 )
 from bayes_basket_target import follow_run  # noqa: E402
+from bayes_basket_target import nwp_arrival_probe  # noqa: E402
 from bayes_basket_target.future_temperature_curve import (  # noqa: E402
     MIN_CURVE_POINTS,
     MIN_SAME_DAY_CURVE_POINTS,
@@ -1230,6 +1231,11 @@ def capture_follow_runs(
     if now is None:
         raise ContractError("official_native_follow_as_of_invalid")
     root = capture_root.expanduser().resolve()
+    # Charter 195 (二): whether a followed run is up is the arrival probe's
+    # answer when it has one (its state sits beside the capture root).
+    probe_state = nwp_arrival_probe.load_state(
+        root.parent / nwp_arrival_probe.STATE_FILE_NAME
+    )
     outcomes: list[dict[str, Any]] = []
     archive_paths: list[str] = []
     # The runs this job reaches: each rung's newest followed cycle per family,
@@ -1270,7 +1276,13 @@ def capture_follow_runs(
             outcome["state"] = "RETAINED"
             archive_paths.append(str(path))
             continue
-        if not follow_run.follow_publication_due(family, run_init, as_of=now):
+        if not follow_run.follow_publication_due(
+            family,
+            run_init,
+            as_of=now,
+            event_date=event_date,
+            probe_state=probe_state,
+        ):
             outcome["state"] = "NOT_DUE"
             continue
         seal = seals[family]

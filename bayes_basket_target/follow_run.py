@@ -282,8 +282,31 @@ def follow_archive_paths(
 
 
 def follow_publication_due(
-    family: str, run_init: datetime, *, as_of: datetime
+    family: str,
+    run_init: datetime,
+    *,
+    as_of: datetime,
+    event_date: str | None = None,
+    probe_state: Mapping[str, Any] | None = None,
 ) -> bool:
+    """Whether the followed run is worth asking the server for.
+
+    Charter 195 (二): the arrival probe's answer when it can give one -- the
+    run has landed for this day, or has not -- and the fixed lag otherwise
+    (no fresh probe state, a day it does not list, a run outside its window).
+    """
+
+    from .nwp_arrival_probe import run_landed  # noqa: PLC0415
+
+    landed = run_landed(
+        probe_state,
+        family=family,
+        run_init=run_init,
+        event_date=event_date,
+        as_of=as_of,
+    )
+    if landed is not None:
+        return landed
     return as_of >= run_init + timedelta(
         hours=FOLLOW_PUBLICATION_LAG_HOURS[family]
     )

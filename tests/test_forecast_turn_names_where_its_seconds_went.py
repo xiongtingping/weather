@@ -65,7 +65,9 @@ def test_a_new_poll_starts_its_spans_from_zero() -> None:
 
 def test_the_turn_names_every_step_it_ran() -> None:
     receipt = daemon.run_target_forecast_refresh_cycle(_LappingWorker())
+    # Charter 195: the arrival-triggered captures start the turn, off the poll.
     assert set(receipt["step_timings_ms"]) == {
+        "nwp_arrival_triggers",
         "resident_nwp", "forward_taf", "forecast_physics", "calibration_health",
     }
     assert all(value >= 0.0 for value in receipt["step_timings_ms"].values())

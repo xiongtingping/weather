@@ -179,6 +179,7 @@ from .market_registry import (
     registry_scope_timezone_lanes,
 )
 from . import follow_run
+from . import nwp_arrival_probe
 from .official_nwp_capture_scheduler import (
     MAX_DISCOVERED_SCOPES,
     MAX_RUN_AGE_DAYS,
@@ -1259,6 +1260,29 @@ FOLLOW_RUN_CAPTURE_DEADLINE_SEC = 3600.0
 # created and read under one lock.
 _FOLLOW_LANE_LOCK = threading.Lock()
 ECMWF_GCS_REPLICA_BASE_URL = "https://storage.googleapis.com/ecmwf-open-data"
+# Charter 195 (二): captures start when the arrival probe sees a run on the
+# server (``run_arrival_triggered_captures``), off the rotation cursor and the
+# 10-minute NWP poll, and past the retry floor -- once per (family, run,
+# event date).  The ladder drops rungs the probe says have not landed.  "0"
+# restores the clock ladder and the rotation-only start exactly; the probe
+# itself keeps recording either way (``PM_NWP_ARRIVAL_PROBE``).
+ARRIVAL_TRIGGER_ENABLED = (
+    os.environ.get("PM_NWP_ARRIVAL_TRIGGER", "1").strip().lower()
+    not in {"0", "off", "false", "no", ""}
+)
+# An arrival older than this is left to the rotation: after a restart the
+# in-memory "already triggered" set is empty, and replaying three days of
+# sightings would only re-read retained archives.
+ARRIVAL_TRIGGER_WINDOW_SEC = 3 * 3600.0
+# Which of an ICON/ECCC run's leads the main pass reads as the lead's own
+# cycle (``RUN_CYCLE_HOUR_BY_LEAD`` in both archive modules); any other cycle
+# is a followed run and belongs to the follow lane (charter 192).
+_ARRIVAL_OWN_CYCLE_BY_LEAD = {0: 0, 1: 0, 2: 12}
+# Every capture attempt, rung by rung, one JSON line each; rotated to ``.1``
+# past this size.
+CAPTURE_ATTEMPT_LOG_NAME = "official_native_capture_attempts.jsonl"
+CAPTURE_ATTEMPT_LOG_MAX_BYTES = 16 * 1024 * 1024
+_CAPTURE_ATTEMPT_LOG_LOCK = threading.Lock()
 
 # Hard wall-clock ceiling on one capture, enforced by killing the child.  The
 # command's own ``--timeout-seconds`` bounds individual archive requests only;
@@ -3614,8 +3638,93 @@ def _served_run_init_utc(receipt: Mapping[str, Any]) -> str | None:
     return min(served) if served else None
 
 
+# The ladder's rungs as (lead days, cycle hour or None for the lead's
+# default), one table (charter 195): a hold rung beyond D-2 -- the charter
+# 193 amendment's ECMWF D-3 18Z, should it ever ride the ladder rather than
+# the follow lane -- is one more entry here, not a rewrite of the walk.
+OFFICIAL_NATIVE_LADDER_RUNGS: tuple[tuple[int, int | None], ...] = (
+    (0, 18),
+    (0, 12),
+    (0, 6),
+    (0, None),
+    (1, 18),
+    (1, 12),
+    (1, 6),
+    (1, None),
+    (2, None),
+    (2, 12),
+    (2, 6),
+    (2, 0),
+)
+# Bounded, but wide enough to always reach a servable rung (see below).
+OFFICIAL_NATIVE_LADDER_MAX_RUNGS = 4
+# Charter 195 (二): a probe state older than this is not read at all.
+ARRIVAL_PROBE_FRESH_SEC = 600.0
+_LADDER_REQUIRED_PROBE_FAMILIES = (
+    nwp_arrival_probe.ECMWF_FAMILY,
+    nwp_arrival_probe.GEFS_FAMILY,
+)
+
+
+def _arrival_probe_state_fresh(
+    probe_state: Mapping[str, Any] | None, *, now: datetime, event_date: str
+) -> bool:
+    """Whether this probe state may speak for this date at all."""
+
+    if not isinstance(probe_state, Mapping):
+        return False
+    try:
+        updated = datetime.fromisoformat(
+            str(probe_state.get("updated_at_utc") or "").replace("Z", "+00:00")
+        ).astimezone(timezone.utc)
+    except ValueError:
+        return False
+    if abs((now - updated).total_seconds()) > ARRIVAL_PROBE_FRESH_SEC:
+        return False
+    listed = (probe_state.get("last_round") or {}).get("listed_dates") or ()
+    return str(event_date) in {str(day) for day in listed}
+
+
+def _probe_keeps_rung(
+    probe_state: Mapping[str, Any],
+    *,
+    event_date: str,
+    run_init: datetime,
+    now: datetime,
+) -> bool:
+    """Charter 195 (二): whether a rung is worth a capture pass.
+
+    Kept when either required family has landed this run for this date,
+    or when the run is past the probe's window for a family (published long
+    ago; the probe no longer asks).  Dropped when it is inside the window
+    and landed for neither -- the blind try that used to fail and cost the
+    date its 30-minute floor.  A state that cannot speak keeps every rung.
+    """
+
+    if not _arrival_probe_state_fresh(probe_state, now=now, event_date=event_date):
+        return True
+    ready = probe_state.get("ready") or {}
+    for family in _LADDER_REQUIRED_PROBE_FAMILIES:
+        key = nwp_arrival_probe.ready_key(
+            family,
+            nwp_arrival_probe.DOWNLOAD_SOURCE[family],
+            run_init,
+            event_date,
+        )
+        if key in ready:
+            return True
+        spec = nwp_arrival_probe.SPECS[family]
+        age_h = (now - run_init).total_seconds() / 3600.0
+        if age_h > spec.give_up_after_init_hours:
+            return True
+    return False
+
+
 def _official_native_run_ladder(
-    *, event_date: str, as_of_utc: str
+    *,
+    event_date: str,
+    as_of_utc: str,
+    probe_state: Mapping[str, Any] | None = None,
 ) -> list[tuple[int, int | None, datetime]]:
     """Published runs that could serve this event date, newest first.
 
@@ -3633,6 +3742,14 @@ def _official_native_run_ladder(
 
     Resolved before any download, so the caller can ask the cheaper question
     first: whether the newest published run is one this date already holds.
+
+    Charter 195 (二): with a fresh arrival-probe state (``probe_state``),
+    "due by the clock" becomes "on the server": a rung neither required
+    family has landed for this date is dropped instead of being tried
+    blind (``_probe_keeps_rung``).  Without one -- probe off, stale, or not
+    listing this date -- the ladder is the clock ladder it always was.
+    The rungs themselves are ``OFFICIAL_NATIVE_LADDER_RUNGS``, one table, so
+    a further hold rung (a lead-3 cycle, say) is one entry there.
     """
 
     event_day = date.fromisoformat(event_date)
@@ -3671,20 +3788,7 @@ def _official_native_run_ladder(
     # buckets they already serve; coverage is never at risk on a deep rung
     # (the farthest case, a UTC-8 day end from a d2 00Z init, is 56h, inside
     # every family's horizon).
-    for rung_lead, rung_cycle in (
-        (0, 18),
-        (0, 12),
-        (0, 6),
-        (0, None),
-        (1, 18),
-        (1, 12),
-        (1, 6),
-        (1, None),
-        (2, None),
-        (2, 12),
-        (2, 6),
-        (2, 0),
-    ):
+    for rung_lead, rung_cycle in OFFICIAL_NATIVE_LADDER_RUNGS:
         cycle_hour = (
             {2: 18, 1: 0, 0: 0}[rung_lead]
             if rung_cycle is None else rung_cycle
@@ -3697,13 +3801,23 @@ def _official_native_run_ladder(
         if run_init < now_dt:
             ladder.append((rung_lead, rung_cycle, run_init))
     ladder.sort(key=lambda rung: rung[2], reverse=True)
+    if probe_state is not None:
+        ladder = [
+            rung for rung in ladder
+            if _probe_keeps_rung(
+                probe_state,
+                event_date=event_date,
+                run_init=rung[2],
+                now=now_dt,
+            )
+        ]
     # Bounded, but wide enough to always reach a servable rung.  At six-hourly
     # cycles with a ~7.5h publication delay, up to two of the newest rungs are
     # initialised but not yet published, and a same-day 06Z rung can still fail
     # coverage for the easternmost stations -- three misses ahead of the rung
     # that works.  A bound of three could spend itself entirely on those misses
     # and lock a scope out of the run it can actually have.
-    return ladder[:4]
+    return ladder[:OFFICIAL_NATIVE_LADDER_MAX_RUNGS]
 
 
 def _icon_run_published_for(event_date: str, *, as_of_utc: str) -> bool:
@@ -5090,6 +5204,230 @@ class TargetProductionWorker:
             outcomes[event_date] = str(outcome.get("state") or "")
         return outcomes
 
+    def _log_capture_attempt(self, row: Mapping[str, Any]) -> None:
+        """Charter 195 (二): one JSON line per capture attempt; never raises."""
+
+        try:
+            path = self.nwp_runtime_root / CAPTURE_ATTEMPT_LOG_NAME
+            line = json.dumps(dict(row), sort_keys=True, ensure_ascii=False, default=str)
+            with _CAPTURE_ATTEMPT_LOG_LOCK:
+                try:
+                    if path.stat().st_size > CAPTURE_ATTEMPT_LOG_MAX_BYTES:
+                        os.replace(path, path.with_name(path.name + ".1"))
+                except FileNotFoundError:
+                    pass
+                with path.open("a", encoding="utf-8") as handle:
+                    handle.write(line + "\n")
+        except Exception:  # noqa: BLE001 -- a log line is not worth a capture
+            pass
+
+    def _arrival_probe_state(self) -> Mapping[str, Any] | None:
+        """The arrival probe's state file, re-read only when it changed."""
+
+        if not ARRIVAL_TRIGGER_ENABLED:
+            return None
+        root = getattr(self, "nwp_runtime_root", None)
+        if root is None:
+            return None
+        path = Path(root) / nwp_arrival_probe.STATE_FILE_NAME
+        try:
+            stamp = path.stat().st_mtime_ns
+        except OSError:
+            return None
+        cached = getattr(self, "_arrival_probe_cache", None)
+        if isinstance(cached, tuple) and cached[0] == stamp:
+            return cached[1]
+        state = nwp_arrival_probe.load_state(path)
+        self._arrival_probe_cache = (stamp, state)
+        return state
+
+    def run_arrival_triggered_captures(self, *, as_of_utc: str) -> dict[str, Any]:
+        """Charter 195 (二): start the capture a newly landed run is for.
+
+        Called on the forecast thread (the rotation's own), every forecast
+        refresh -- not only on the 10-minute NWP poll.  For each run the probe
+        has seen complete for a listed day, once: ECMWF/GEFS start the day's
+        pass past its retry floor on the probe-filtered ladder; an ICON/ECCC
+        run the main pass reads as its lead's own cycle starts the pass on
+        that lead's rung (so held ECMWF/GEFS rungs cannot retire it); any
+        other ICON/ECCC cycle is queued on the follow lane (charter 192), and
+        once that job is done the day's pass re-reads it for seating.  One
+        submission per day per call; the rest wait for the next call.
+        """
+
+        boundary = {
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+        }
+        if not ARRIVAL_TRIGGER_ENABLED:
+            return {"state": "DISABLED", **boundary}
+        state = self._arrival_probe_state()
+        try:
+            now = datetime.fromisoformat(
+                as_of_utc.replace("Z", "+00:00")
+            ).astimezone(timezone.utc)
+            updated = datetime.fromisoformat(
+                str((state or {}).get("updated_at_utc") or "").replace("Z", "+00:00")
+            ).astimezone(timezone.utc)
+        except ValueError:
+            return {"state": "NO_PROBE_STATE", **boundary}
+        if abs((now - updated).total_seconds()) > ARRIVAL_PROBE_FRESH_SEC:
+            return {"state": "PROBE_STALE", **boundary}
+        triggered: set[str] = getattr(
+            self, "_official_native_arrival_triggered", None
+        ) or set()
+        self._official_native_arrival_triggered = triggered
+        follow_pending: dict[str, str] = getattr(
+            self, "_official_native_arrival_follow_pending", None
+        ) or {}
+        self._official_native_arrival_follow_pending = follow_pending
+        inbox_path = (
+            self.nwp_runtime_root / "official_native_ensemble_forward_inbox.json"
+        )
+        oldest_day = (now.date() - timedelta(days=1)).isoformat()
+        rows: list[tuple[str, Mapping[str, Any]]] = []
+        for key, row in (state.get("ready") or {}).items():
+            if not isinstance(row, Mapping) or not row.get("acts_on_capture"):
+                continue
+            if key in triggered or str(row.get("event_date") or "") < oldest_day:
+                continue
+            try:
+                seen = datetime.fromisoformat(
+                    str(row.get("first_seen_at_utc")).replace("Z", "+00:00")
+                ).astimezone(timezone.utc)
+            except ValueError:
+                continue
+            if (now - seen).total_seconds() > ARRIVAL_TRIGGER_WINDOW_SEC:
+                continue
+            rows.append((key, row))
+        rows.sort(key=lambda item: str(item[1].get("first_seen_at_utc")))
+        busy_days: set[str] = set()
+        outcomes: list[dict[str, Any]] = []
+        # Follow jobs that have finished: the day's pass re-reads them.
+        follow_last = getattr(
+            self, "_official_native_follow_inflight", None
+        ) or {}
+        for key, event_date in list(follow_pending.items()):
+            future = follow_last.get(event_date)
+            if future is not None and not future.done():
+                continue
+            if event_date in busy_days:
+                continue
+            ladder = _official_native_run_ladder(
+                event_date=event_date,
+                as_of_utc=as_of_utc,
+                probe_state=state,
+            )
+            result = (
+                self._capture_official_native_packet(
+                    station_id="",
+                    event_date=event_date,
+                    as_of_utc=as_of_utc,
+                    inbox_path=inbox_path,
+                    arrival=state["ready"].get(key) or {"family": "follow"},
+                    forced_rungs=ladder[:1],
+                )
+                if ladder else {"state": "SKIPPED"}
+            )
+            outcome_state = str(result.get("state") or "")
+            if outcome_state != "IN_FLIGHT" and outcome_state != (
+                "DEFERRED_CAPTURE_SLOTS_BUSY"
+            ):
+                follow_pending.pop(key, None)
+            busy_days.add(event_date)
+            outcomes.append({"key": key, "step": "reseat", "state": outcome_state})
+        for key, row in rows:
+            event_date = str(row.get("event_date"))
+            if event_date in busy_days:
+                continue
+            family = str(row.get("family") or "")
+            try:
+                run_init = datetime.fromisoformat(
+                    str(row.get("run_init_utc")).replace("Z", "+00:00")
+                ).astimezone(timezone.utc)
+            except ValueError:
+                triggered.add(key)
+                continue
+            lead = (date.fromisoformat(event_date) - run_init.date()).days
+            forced = None
+            if family in (
+                nwp_arrival_probe.ICON_FAMILY, nwp_arrival_probe.ECCC_FAMILY
+            ):
+                own = _ARRIVAL_OWN_CYCLE_BY_LEAD.get(lead)
+                if own is None or run_init.hour != own:
+                    queued = self._enqueue_arrival_follow(
+                        event_date=event_date, lead=lead, run_init=run_init
+                    )
+                    # A job already running for the day was given its rungs
+                    # before this cycle landed: ask again once it is done.
+                    if queued != "ALREADY_QUEUED":
+                        triggered.add(key)
+                    if queued == "QUEUED":
+                        follow_pending[key] = event_date
+                    busy_days.add(event_date)
+                    outcomes.append({"key": key, "step": "follow", "state": queued})
+                    continue
+                # The newest rung of that lead by the clock: it reads the
+                # lead's own ICON/ECCC cycle, and its ECMWF/GEFS run is never
+                # older than the one the lead's files hold (those came from a
+                # rung of the same lead that was due earlier), so a family that
+                # cannot serve it holds what it has -- nothing moves backwards.
+                forced = [
+                    rung
+                    for rung in _official_native_run_ladder(
+                        event_date=event_date, as_of_utc=as_of_utc
+                    )
+                    if int(rung[0]) == lead
+                ][:1]
+                if not forced:
+                    triggered.add(key)
+                    outcomes.append({"key": key, "step": "pass", "state": "NO_RUNG"})
+                    continue
+            result = self._capture_official_native_packet(
+                station_id="",
+                event_date=event_date,
+                as_of_utc=as_of_utc,
+                inbox_path=inbox_path,
+                arrival=row,
+                forced_rungs=forced,
+            )
+            outcome_state = str(result.get("state") or "")
+            if outcome_state not in {"IN_FLIGHT", "DEFERRED_CAPTURE_SLOTS_BUSY"}:
+                triggered.add(key)
+            busy_days.add(event_date)
+            outcomes.append({"key": key, "step": "pass", "state": outcome_state})
+        return {
+            "state": "RAN",
+            "candidate_count": len(rows),
+            "outcomes": outcomes[:24],
+            **boundary,
+        }
+
+    def _enqueue_arrival_follow(
+        self, *, event_date: str, lead: int, run_init: datetime
+    ) -> str:
+        """Queue the follow job for a landed ICON/ECCC cycle (charter 192)."""
+
+        if not follow_run.follow_enabled():
+            return "FOLLOW_DISABLED"
+        registry_path = self.nwp_runtime_root / "market_registry_forward.json"
+        if not registry_path.is_file():
+            return "REGISTRY_MISSING"
+        capture_root = self.nwp_runtime_root / "official_native_capture"
+        capture_root.mkdir(parents=True, exist_ok=True)
+        return self._enqueue_follow_run_capture(
+            event_date=event_date,
+            run_ladder=[(int(lead), int(run_init.hour), run_init)],
+            registry_path=registry_path,
+            capture_root=capture_root,
+            env={
+                **os.environ,
+                "ECMWF_ARCHIVE_TRANSPORT_BASE_URL": ECMWF_GCS_REPLICA_BASE_URL,
+            },
+        )
+
     def _capture_official_native_packet(
         self,
         *,
@@ -5099,6 +5437,8 @@ class TargetProductionWorker:
         inbox_path: Path,
         lead_days: int = 2,
         seated_system_ids: Sequence[str] | None = None,
+        arrival: Mapping[str, Any] | None = None,
+        forced_rungs: Sequence[tuple[int, int | None, datetime]] | None = None,
     ) -> dict[str, Any]:
         """Start a background capture for one scope; never block the caller.
 
@@ -5251,8 +5591,18 @@ class TargetProductionWorker:
         # publish on a fixed cycle, so "is there a newer run than the one this
         # date already holds" is the whole question -- if there is not, the
         # answer is to download nothing at all and wait for the next cycle.
-        run_ladder = _official_native_run_ladder(
-            event_date=event_date, as_of_utc=as_of_utc
+        # Charter 195 (二): an arrival names the run it is for; an ICON/ECCC
+        # arrival names the rung whose lead reads that run (``forced_rungs``),
+        # because the ECMWF/GEFS rungs the date already holds would retire the
+        # pass before ICON/ECCC were ever asked.
+        run_ladder = (
+            list(forced_rungs)
+            if forced_rungs
+            else _official_native_run_ladder(
+                event_date=event_date,
+                as_of_utc=as_of_utc,
+                probe_state=self._arrival_probe_state(),
+            )
         )
         if not run_ladder:
             return {
@@ -5287,6 +5637,7 @@ class TargetProductionWorker:
         if (
             captured_runs.get(event_date) == newest_run_init
             and not stale_for_day
+            and not forced_rungs
         ):
             return {
                 "state": "RUN_ALREADY_CAPTURED",
@@ -5304,7 +5655,7 @@ class TargetProductionWorker:
         # to nothing is the correct outcome: the date keeps what it has and
         # retries after its floor.
         held_run_init = captured_runs.get(event_date)
-        if held_run_init and not stale_for_day:
+        if held_run_init and not stale_for_day and not forced_rungs:
             try:
                 held = datetime.fromisoformat(
                     held_run_init.replace("Z", "+00:00")
@@ -5325,8 +5676,11 @@ class TargetProductionWorker:
                         "places_orders": False,
                     }
         last_attempt = throttle.get(scope_key)
+        # Charter 195 (二): the floor rations blind tries; an arrival is not
+        # one -- the probe has seen the run on the server -- so it goes now.
         if (
-            last_attempt is not None
+            arrival is None
+            and last_attempt is not None
             and now_mono - last_attempt < OFFICIAL_NATIVE_CAPTURE_RETRY_SEC
         ):
             return {
@@ -5425,6 +5779,12 @@ class TargetProductionWorker:
             "ECMWF_ARCHIVE_TRANSPORT_BASE_URL": ECMWF_GCS_REPLICA_BASE_URL,
         }
 
+        # Charter 195 (二): every attempt, rung by rung, lands in the capture
+        # attempt log (``_log_capture_attempt``); before it there was no way
+        # to tell a run that was not up yet from a pass that never started.
+        rung_trace: list[dict[str, Any]] = []
+        family_runs: dict[str, str] = {}
+
         def _run_capture() -> dict[str, Any]:
             captured_run_init: str | None = None
             ingress_blocked = ""
@@ -5461,6 +5821,7 @@ class TargetProductionWorker:
                     ]
                     if rung_cycle is not None:
                         attempt += ["--run-cycle-hour", str(rung_cycle)]
+                    rung_started = time.monotonic()
                     completed = subprocess.run(
                         attempt,
                         cwd=str(ROOT),
@@ -5469,6 +5830,19 @@ class TargetProductionWorker:
                         timeout=OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC,
                         env=capture_env,
                     )
+                    rung_trace.append({
+                        "lead_days": int(rung_lead),
+                        "cycle_hour": rung_cycle,
+                        "run_init_utc": rung_run_init.isoformat().replace(
+                            "+00:00", "Z"
+                        ),
+                        "returncode": completed.returncode,
+                        "seconds": round(time.monotonic() - rung_started, 1),
+                        "stderr_tail": (
+                            (completed.stderr or "").strip()[-160:]
+                            if completed.returncode != 0 else ""
+                        ),
+                    })
                     if completed.returncode == 0:
                         rung_run_init_utc = (
                             rung_run_init.isoformat().replace("+00:00", "Z")
@@ -5496,6 +5870,12 @@ class TargetProductionWorker:
                                     for name, value in held_by_family.items()
                                 }
                             served = _served_run_init_utc(receipt)
+                            by_family = receipt.get("run_init_utc_by_family")
+                            if isinstance(by_family, Mapping):
+                                family_runs.update({
+                                    str(name): str(value)
+                                    for name, value in by_family.items()
+                                })
                         else:
                             served = None
                         # What the families served, not what was asked for.
@@ -5622,12 +6002,50 @@ class TargetProductionWorker:
                 "historical_ingress_blocked_reason": ingress_blocked,
             }
 
-        future = self._official_native_capture_pool.submit(_run_capture)
+        trigger = (
+            f"arrival:{arrival.get('family')}|{arrival.get('run_init_utc')}"
+            if isinstance(arrival, Mapping) else "rotation"
+        )
+        attempt_started_utc = utc_now()
+
+        def _logged_capture() -> dict[str, Any]:
+            started = time.monotonic()
+            try:
+                outcome = _run_capture()
+            except Exception as exc:  # noqa: BLE001 -- recorded, then raised
+                outcome = {
+                    "state": "FAILED",
+                    "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
+                }
+            outcome = {
+                **outcome,
+                "run_init_utc_by_family": dict(family_runs),
+                "rung_trace": list(rung_trace),
+            }
+            self._log_capture_attempt({
+                "event_date": event_date,
+                "trigger": trigger,
+                "started_at_utc": attempt_started_utc,
+                "finished_at_utc": utc_now(),
+                "seconds": round(time.monotonic() - started, 1),
+                "state": str(outcome.get("state") or ""),
+                "reason": str(outcome.get("reason") or "")[:200],
+                "captured_run_init_utc": outcome.get("captured_run_init_utc"),
+                "run_init_utc_by_family": dict(family_runs),
+                "families_held_on_earlier_run": dict(
+                    outcome.get("families_held_on_earlier_run") or {}
+                ),
+                "rungs": list(rung_trace),
+            })
+            return outcome
+
+        future = self._official_native_capture_pool.submit(_logged_capture)
         inflight[scope_key] = future
         return {
             "state": "SUBMITTED",
             "station_id": station_id,
             "event_date": event_date,
+            "trigger": trigger,
             "in_flight": len(inflight),
             "last_completed": dict(results_by_date.get(event_date) or {}),
             "calls_order_gateway": False,
@@ -7643,7 +8061,9 @@ class TargetProductionWorker:
                     # run and its siblings ride the same pass.
                     packet_run_init = _native_packet_run_init(candidate)
                     newest_rung = _official_native_run_ladder(
-                        event_date=native_event_date, as_of_utc=as_of_utc
+                        event_date=native_event_date,
+                        as_of_utc=as_of_utc,
+                        probe_state=self._arrival_probe_state(),
                     )
                     if (
                         packet_run_init is not None
