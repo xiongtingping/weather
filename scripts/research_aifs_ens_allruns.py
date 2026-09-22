@@ -206,7 +206,14 @@ def main() -> int:
         started = time.monotonic()
         size = 0
         if missing:
-            values, shas, size = fetch_steps(run_init, missing, index, args.workers)
+            try:
+                values, shas, size = fetch_steps(run_init, missing, index, args.workers)
+            except RuntimeError as exc:
+                # One transport failure (2026-09-22, an SSL EOF past every
+                # retry) used to end the whole segment.  The run is left
+                # unrecorded, so the next segment tries it again.
+                print(f"{run}  fetch_failed {str(exc)[:160]}", flush=True)
+                continue
             with conn:
                 for step in missing:
                     cube = np.array([values[(m, step)] for m in base.MEMBERS], dtype=np.float32)
