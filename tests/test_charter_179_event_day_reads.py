@@ -240,9 +240,14 @@ def test_consume_once_on_a_file_store_still_refuses_a_second_answer(tmp_path) ->
     ]
 
 
-# --- the OOS holdout's climatology window --------------------------------------
+# --- the OOS holdout's conditioning reads ----------------------------------------
 
-def test_the_holdout_headroom_reads_only_the_windows_and_scores_the_same(tmp_path) -> None:
+def test_the_holdout_reads_no_climatology_or_truth_record_for_the_deleted_skew(tmp_path) -> None:
+    """Charter 43 amendment (2026-09-22): the holdout's same-day climatology
+    window (charter 179's calendar-index read) and the station's whole truth
+    record fed only the conditional tail skew's headroom, which is deleted.
+    The shift signal the shape stack scores is unchanged and still read."""
+
     from datetime import date, timedelta
 
     from bayes_basket_target import native_ensemble_oos as OOS
@@ -256,19 +261,14 @@ def test_the_holdout_headroom_reads_only_the_windows_and_scores_the_same(tmp_pat
         " reference_only INTEGER NOT NULL CHECK (reference_only = 1),"
         " PRIMARY KEY (station_id, local_date, source_id))"
     )
-    conn.execute(
-        "CREATE INDEX calibration_station_same_day_climatology_calendar_idx "
-        "ON calibration_station_same_day_climatology(station_id, substr(local_date, 6))"
-    )
     start = date(2016, 1, 1)
-    rows = [
-        ("ZUUU", (start + timedelta(days=i)).isoformat(),
-         20.0 + ((i * 37) % 23) * 0.5, "era5", 1)
-        for i in range(3650)
-    ]
     conn.executemany(
         "INSERT INTO calibration_station_same_day_climatology VALUES(?,?,?,?,1)",
-        [r[:4] for r in rows],
+        [
+            ("ZUUU", (start + timedelta(days=i)).isoformat(),
+             20.0 + ((i * 37) % 23) * 0.5, "era5")
+            for i in range(3650)
+        ],
     )
     conn.commit()
     predictions = _predictions({"NOAA_GEFS_05": 24.0, "ECMWF_IFS_ENS_OPEN_PF50": 26.0})
@@ -279,16 +279,10 @@ def test_the_holdout_headroom_reads_only_the_windows_and_scores_the_same(tmp_pat
     )["2026-09-19"]
     conn.set_trace_callback(None)
 
-    window = {
-        (date(2026, 9, 19) + timedelta(days=o)).isoformat()[5:] for o in range(-7, 8)
-    }
-    same_day = [high for _st, day, high, _src, _ro in rows if day[5:] in window]
-    # centre 25.0, sigma = (26 - 24) / 2
-    assert signals["climatology_headroom_sigma"] == pytest.approx(
-        (max(same_day) - 25.0) / 1.0
-    )
-    reads = [s for s in statements if "same_day_climatology" in s]
-    assert len(reads) == 1 and "substr(local_date, 6) IN (" in reads[0]
+    assert set(signals) == {"synoptic_cooling_shift_sigma", "radiation_as_of_state"}
+    assert signals["synoptic_cooling_shift_sigma"] is not None
+    assert not [s for s in statements if "same_day_climatology" in s]
+    assert not [s for s in statements if "calibration_station_daily_high_truth" in s]
 
 
 # --- the observed-high registry read ---------------------------------------------

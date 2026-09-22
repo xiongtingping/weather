@@ -41,10 +41,8 @@ from .station_season import season_bins_for_window, station_season_bin
 from .cross_consensus import (
     BAND_RELIABILITY_METHOD_TAG,
     CONSENSUS_BRIDGE_METHOD_TAG,
-    CONDITIONAL_SKEW_METHOD_TAG,
     SYNOPTIC_COOLING_METHOD_TAG,
     SYNOPTIC_COOLING_SHIFT_SIGMA,
-    apply_conditional_tail_skew,
     apply_neighbour_direction_tilt,
     neighbour_direction_method_tag_suffix,
     RADIATION_ASOF_METHOD_TAG,
@@ -1528,13 +1526,16 @@ def _holdout_conditioning_signals(
     predictions_by_system: Mapping[str, Mapping[str, Mapping[str, Any]]],
     radiation_shift_sigma: float = RADIATION_SHIFT_SIGMA,
 ) -> dict[str, dict[str, float | None]]:
-    """Per-day direction signals for the conditional tail skew.
+    """Per-day shift signal the holdout's shape stack scores.
 
-    Two signals survived measurement (see ``apply_conditional_tail_skew``):
-    where the forecast centre sits against this station's own same-calendar-day
-    record, and where the airport forecaster's TX sits against that centre.
-    Both are resolved here from the archives so the holdout scores the same
-    transform serving will apply, day for day.
+    One signal: the radiation shift, with the airport forecaster's cooling
+    index as its fallback, resolved here from the archives so the holdout
+    scores the same transform serving will apply, day for day.  The
+    conditional tail skew's two signals -- same-calendar-day climatology
+    headroom and the TAF TX gap -- were read here until 2026-09-22 and fed
+    nothing: the skew's tag left new artifacts on 2026-08-18 and the layer
+    was deleted (charter 43 amendment), so the ten-year climatology window
+    and the station's whole truth record are no longer read per call.
 
     Charter 172: the radiation shift is returned in sigmas (``synoptic_cooling_shift_sigma``)
     and scaled by the blended distribution's own spread inside
@@ -1546,8 +1547,6 @@ def _holdout_conditioning_signals(
     after its cutoff gets no shift and no TAF fallback: serving would have
     shifted it by radiation, so the holdout does not stand in another signal.
     """
-
-    from .cross_consensus import apply_conditional_tail_skew  # noqa: F401
 
     centers_by_day: dict[str, list[float]] = {}
     cutoff_by_day: dict[str, datetime] = {}
@@ -1568,51 +1567,6 @@ def _holdout_conditioning_signals(
             decided = decided.astimezone(timezone.utc)
             if str(day) not in cutoff_by_day or decided > cutoff_by_day[str(day)]:
                 cutoff_by_day[str(day)] = decided
-    truth_rows: dict[str, tuple[int, float]] = {}
-    # Multi-year reference climatology first, settled truth overriding it for
-    # the days it covers -- the same precedence the serving path uses.
-    # Charter 179: only the calendar days some holdout day's +-7-day window
-    # can read (the one use below), through the calendar index on
-    # (station_id, substr(local_date, 6)) -- the whole ten-year record was
-    # read per call (228 calls, 9.8s in the 10:04Z cycle).  Ordered as the
-    # primary-key read was, so a later row for a date still wins.
-    calendar_days: set[str] = set()
-    for day in holdout_days:
-        try:
-            event_day = date.fromisoformat(str(day))
-        except ValueError:
-            continue
-        calendar_days.update(
-            (event_day + timedelta(days=offset)).isoformat()[5:]
-            for offset in range(-7, 8)
-        )
-    try:
-        if calendar_days:
-            wanted = sorted(calendar_days)
-            for local_date, high_c in conn.execute(
-                "SELECT local_date,daily_high_c "
-                "FROM calibration_station_same_day_climatology "
-                "WHERE station_id=? AND reference_only=1 "
-                f"AND substr(local_date, 6) IN ({','.join('?' for _ in wanted)}) "
-                "ORDER BY local_date,source_id",
-                (station_id, *wanted),
-            ):
-                truth_rows[str(local_date)] = (-1, float(high_c))
-    except sqlite3.Error:
-        truth_rows = {}
-    try:
-        for local_date, tmax_c, revision_no in conn.execute(
-            "SELECT local_date,official_tmax_c,revision_no "
-            "FROM calibration_station_daily_high_truth "
-            "WHERE station_id=? AND official_tmax_c IS NOT NULL",
-            (station_id,),
-        ):
-            key = str(local_date)
-            revision = int(revision_no or 0)
-            if key not in truth_rows or revision > truth_rows[key][0]:
-                truth_rows[key] = (revision, float(tmax_c))
-    except sqlite3.Error:
-        pass
     try:
         station_latitude = float(
             station_coordinates(station_id)["latitude"]
@@ -1636,19 +1590,17 @@ def _holdout_conditioning_signals(
     except sqlite3.Error:
         radiation_by_day = {}
         radiation_history = []
-    taf_by_day: dict[str, float] = {}
+    # The forecaster's fields, for the cooling fallback below.
     cooling_by_day: dict[str, float] = {}
     try:
-        for event_date, tx_c, cloud, precip, wind in conn.execute(
-            "SELECT event_date,tx_c,cloud_cover_fraction,"
+        for event_date, cloud, precip, wind in conn.execute(
+            "SELECT event_date,cloud_cover_fraction,"
             "precipitation_probability,wind_speed_mps "
             "FROM calibration_historical_taf_capture "
             "WHERE station_id=?",
             (station_id,),
         ):
             key = str(event_date)
-            if tx_c is not None:
-                taf_by_day.setdefault(key, float(tx_c))
             if key not in cooling_by_day:
                 index, _receipt = synoptic_cooling_index(
                     cloud_cover_fraction=cloud,
@@ -1658,7 +1610,6 @@ def _holdout_conditioning_signals(
                 if index is not None:
                     cooling_by_day[key] = index
     except sqlite3.Error:
-        taf_by_day = {}
         cooling_by_day = {}
     signals: dict[str, dict[str, float | None]] = {}
     for day in holdout_days:
@@ -1666,37 +1617,6 @@ def _holdout_conditioning_signals(
         centers = centers_by_day.get(key) or []
         if not centers:
             continue
-        center = sum(centers) / len(centers)
-        # The systems' own disagreement is the only scale available here;
-        # it stands in for the served distribution's spread, and a single
-        # -system day has no scale at all.
-        spread = (
-            max(centers) - min(centers)
-            if len(centers) > 1
-            else 0.0
-        )
-        sigma = spread / 2.0 if spread > 0.0 else 0.0
-        headroom: float | None = None
-        if sigma > 0.0:
-            try:
-                event_day = date.fromisoformat(key)
-            except ValueError:
-                event_day = None
-            if event_day is not None:
-                window = {
-                    (event_day + timedelta(days=offset)).isoformat()[5:]
-                    for offset in range(-7, 8)
-                }
-                same_day = [
-                    value
-                    for other, (_revision, value) in truth_rows.items()
-                    if other != key and other[5:] in window
-                ]
-                if len(same_day) >= 8:
-                    headroom = (max(same_day) - center) / sigma
-        taf_gap: float | None = None
-        if sigma > 0.0 and key in taf_by_day:
-            taf_gap = (taf_by_day[key] - center) / sigma
         cooling = cooling_by_day.get(key)
         cutoff = cutoff_by_day.get(key)
         day_radiation, as_of_receipt = resolve_radiation_as_of(
@@ -1745,11 +1665,9 @@ def _holdout_conditioning_signals(
             and key not in radiation_by_day
         ):
             shift_sigma = -SYNOPTIC_COOLING_SHIFT_SIGMA * cooling
-        if headroom is None and taf_gap is None and shift_sigma is None:
+        if shift_sigma is None:
             continue
         signals[key] = {
-            "climatology_headroom_sigma": headroom,
-            "taf_gap_sigma": taf_gap,
             "synoptic_cooling_shift_sigma": shift_sigma,
             "radiation_as_of_state": radiation_state,
         }
@@ -1965,8 +1883,9 @@ def _select_minimum_crps_subset(
             # buckets below 5% into the 2-12% band the band table then
             # multiplies by 0.84, so two thirds of every lift was undone, and
             # each layer had been fitted with the other held still as
-            # background.  Artifacts already gated with the tag keep applying
-            # it -- their holdout scored it -- so the serving branch stays.
+            # background.  Serving kept applying it to artifacts gated with the
+            # tag until the last one's window closed (2026-09-17); the branch
+            # was deleted 2026-09-22 (charter 43 amendment).
             # Charter 105: the band lookup follows the table's own axis, and
             # the holdout scores it through the lookup production serves.
             probability = _holdout_shape_stack(
@@ -4732,10 +4651,11 @@ def build_native_ensemble_oos(
         # of the ready systems is scored on this exact holdout and the best
         # blend takes the weights.  ``weights`` from the full set above stays
         # only as the enumeration's starting vocabulary.
-        # The conditioning signals the serving transform will read, resolved
-        # per holdout day from the same sources P0 uses: this station's own
-        # same-calendar-day truth record and the TAF TX issued for that day.
-        # Scoring must see exactly what serving will see.
+        # The shift signal the serving transform will read, resolved per
+        # holdout day from the same sources P0 uses: the day's forecast
+        # radiation as known at its cutoff, and the TAF's cooling fields where
+        # serving would fall back to them.  Scoring must see exactly what
+        # serving will see.
         # Resolved once here so the value the holdout scores, the value the
         # artifact pins and the value serving reads back are one number.
         scope_radiation_sigma = radiation_shift_sigma_for_lead(lead_bucket)
@@ -4896,9 +4816,6 @@ def build_native_ensemble_oos(
                 ordered_keys=ordered_keys,
                 key_centers_c=[float(int(key)) for key in ordered_keys],
             )
-            # Serving applies the conditional tail skew under the same tag
-            # with the same per-day signals, so the gate scores exactly what
-            # will be served.
             # Only the radiation shift reads these now.  The conditional tail
             # skew was withdrawn 2026-08-18: measured against its own absence
             # over 1712 evaluations it cost 3.0% CRPS, won on 17% of scopes,
@@ -4908,8 +4825,9 @@ def build_native_ensemble_oos(
             # buckets below 5% into the 2-12% band the band table then
             # multiplies by 0.84, so two thirds of every lift was undone, and
             # each layer had been fitted with the other held still as
-            # background.  Artifacts already gated with the tag keep applying
-            # it -- their holdout scored it -- so the serving branch stays.
+            # background.  Serving kept applying it to artifacts gated with the
+            # tag until the last one's window closed (2026-09-17); the branch
+            # was deleted 2026-09-22 (charter 43 amendment).
             cooling_shift = (
                 conditioning_by_day.get(str(day)) or {}
             ).get("synoptic_cooling_shift_sigma")

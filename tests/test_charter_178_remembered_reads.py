@@ -8,6 +8,10 @@ the same-day climatology record (228 calls, 43.3s), the observed-high
 registry read (145 calls, 36.3s), and the active registry rows behind every
 envelope load (3,817 calls).  Each is either content-addressed or changes
 only when a named table changes, and each is remembered on exactly that.
+
+The same-day climatology read is gone rather than remembered: it fed only
+the conditional tail skew's headroom, deleted 2026-09-22 (charter 43
+amendment), so its test left with it.
 """
 
 from __future__ import annotations
@@ -164,51 +168,6 @@ def test_the_fingerprint_is_three_seeks_not_a_scan(tmp_path) -> None:
     ):
         plan = " | ".join(str(row[3]) for row in conn.execute("EXPLAIN QUERY PLAN " + sql))
         assert plan.startswith("SEARCH"), (sql, plan)
-
-
-# --- same-day climatology --------------------------------------------------------
-
-def test_the_climatology_read_asks_the_calendar_index_for_the_window(tmp_path) -> None:
-    conn = sqlite3.connect(str(tmp_path / "clim.db"))
-    conn.execute(
-        "CREATE TABLE calibration_station_same_day_climatology(station_id TEXT NOT NULL,"
-        " local_date TEXT NOT NULL, daily_high_c REAL NOT NULL, source_id TEXT NOT NULL,"
-        " reference_only INTEGER NOT NULL, PRIMARY KEY(station_id, local_date, source_id))"
-    )
-    conn.execute(
-        "CREATE INDEX calibration_station_same_day_climatology_calendar_idx"
-        " ON calibration_station_same_day_climatology(station_id, substr(local_date, 6))"
-    )
-    conn.execute(
-        "CREATE TABLE calibration_station_daily_high_truth(station_id TEXT, local_date TEXT,"
-        " official_tmax_c REAL, revision_no INTEGER)"
-    )
-    import datetime as dt
-    rows = []
-    for year in range(2016, 2026):
-        day = dt.date(year, 1, 1)
-        while day.year == year:
-            rows.append(("ZUUU", day.isoformat(), 20.0 + (day.timetuple().tm_yday % 17), "era5", 1))
-            day += dt.timedelta(days=1)
-    conn.executemany("INSERT INTO calibration_station_same_day_climatology VALUES(?,?,?,?,?)", rows)
-    statements = _trace(conn)
-    got = p0._same_day_climatology_headroom(
-        conn, station_id="ZUUU", event_date="2026-09-22", model_center_c=30.0, sigma_c=1.5
-    )
-    reads = [sql for sql in statements if "same_day_climatology" in sql]
-    assert reads and "substr(local_date, 6) IN" in reads[0], reads
-    plan = " | ".join(
-        str(row[3]) for row in conn.execute(
-            "EXPLAIN QUERY PLAN SELECT local_date,daily_high_c FROM calibration_station_same_day_climatology"
-            " WHERE station_id=? AND reference_only=1 AND substr(local_date, 6) IN (?,?)",
-            ("ZUUU", "09-21", "09-22"),
-        )
-    )
-    assert "calendar_idx" in plan, plan
-    # the answer is the one the whole-record read gives
-    window = {(dt.date(2026, 9, 22) + dt.timedelta(days=o)).isoformat()[5:] for o in range(-7, 8)}
-    brute = [h for (_s, d, h, _src, _r) in rows if d[5:] in window]
-    assert got is not None and brute
 
 
 # --- METAR trajectory artifacts ----------------------------------------------------

@@ -7,7 +7,7 @@ import math
 import os
 import sqlite3
 from collections.abc import Mapping, Sequence
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Any
 from zoneinfo import ZoneInfo
 
@@ -44,7 +44,6 @@ from .center_width_store import (
 from .cross_consensus import (
     BAND_RELIABILITY_METHOD_TAG,
     CONSENSUS_BRIDGE_METHOD_TAG,
-    CONDITIONAL_SKEW_METHOD_TAG,
     RADIATION_SHIFT_METHOD_TAG,
     pinned_radiation_shift_sigma,
     served_radiation_shift_sigma,
@@ -52,7 +51,6 @@ from .cross_consensus import (
     forecast_clearness_shift_sigma,
     SYNOPTIC_COOLING_METHOD_TAG,
     SYNOPTIC_COOLING_SHIFT_SIGMA,
-    apply_conditional_tail_skew,
     apply_neighbour_direction_tilt,
     neighbour_direction_serves,
     forecast_radiation_shift_sigma,
@@ -816,97 +814,6 @@ if CROSS_CYCLE_PARAMETER_BORROW not in {"on", "off"}:
         f"unknown cross cycle parameter borrow mode: "
         f"{CROSS_CYCLE_PARAMETER_BORROW}"
     )
-SAME_DAY_CLIMATOLOGY_WINDOW_DAYS = 7
-SAME_DAY_CLIMATOLOGY_MIN_SAMPLES = 8
-
-
-def _same_day_climatology_headroom(
-    conn: sqlite3.Connection,
-    *,
-    station_id: str,
-    event_date: str,
-    model_center_c: float,
-    sigma_c: float,
-) -> float | None:
-    """Headroom to this station's own same-calendar-day record, in sigmas.
-
-    The window is the calendar day plus or minus a week, at this station
-    only, across every year the truth archive holds, and the event date
-    itself is excluded -- a day cannot be its own climatology.  Only the
-    latest revision of each station-day counts (the truth table is
-    append-only with revisions, and an unfiltered read returns superseded
-    values).  Returns ``None`` when the window is too thin to speak.
-    """
-
-    if sigma_c <= EPS:
-        return None
-    try:
-        event_day = date.fromisoformat(str(event_date))
-    except ValueError:
-        return None
-    window = {
-        (
-            event_day + timedelta(days=offset)
-        ).isoformat()[5:]
-        for offset in range(
-            -SAME_DAY_CLIMATOLOGY_WINDOW_DAYS,
-            SAME_DAY_CLIMATOLOGY_WINDOW_DAYS + 1,
-        )
-    }
-    latest: dict[str, tuple[int, float]] = {}
-    # The multi-year reference record first: ten years of daily maxima at this
-    # station's coordinates make "same calendar day" a real climatology rather
-    # than this season's seven-day window.  These rows are reference
-    # covariates only -- never truth, never a probability authority -- and the
-    # settled truth below still contributes its own days, so a station whose
-    # reference capture is missing degrades to the in-season window instead of
-    # losing the signal.
-    try:
-        # Charter 178: ask the calendar index for the window's days only.
-        # The whole record was read -- ~3,300 rows a station for the ~135 the
-        # window keeps, 228 times a cycle (43.3s in the first ledger-measured
-        # cycle) -- and filtered here.  The index is on
-        # (station_id, substr(local_date, 6)), which is exactly the MM-DD the
-        # window is keyed on; the filter below stays, so the rows kept are the
-        # same rows.  (No date carries two reference rows, so order is moot.)
-        calendar_days = sorted(window)
-        for local_date, high_c in conn.execute(
-            "SELECT local_date,daily_high_c "
-            "FROM calibration_station_same_day_climatology "
-            "WHERE station_id=? AND reference_only=1 "
-            f"AND substr(local_date, 6) IN ({','.join('?' for _ in calendar_days)})",
-            (station_id, *calendar_days),
-        ):
-            key = str(local_date)
-            if key == str(event_date) or key[5:] not in window:
-                continue
-            latest[key] = (-1, float(high_c))
-    except sqlite3.Error:
-        latest = {}
-    try:
-        rows = conn.execute(
-            "SELECT local_date,official_tmax_c,revision_no "
-            "FROM calibration_station_daily_high_truth "
-            "WHERE station_id=? AND official_tmax_c IS NOT NULL",
-            (station_id,),
-        ).fetchall()
-    except sqlite3.Error:
-        rows = []
-    for local_date, tmax_c, revision_no in rows:
-        key = str(local_date)
-        if key == str(event_date) or key[5:] not in window:
-            continue
-        revision = int(revision_no or 0)
-        # Settled truth outranks the reanalysis for a day both cover: the
-        # station's own observation is the better record of that day.
-        if key not in latest or revision > latest[key][0]:
-            latest[key] = (revision, float(tmax_c))
-    if len(latest) < SAME_DAY_CLIMATOLOGY_MIN_SAMPLES:
-        return None
-    record_high = max(value for _revision, value in latest.values())
-    return (record_high - float(model_center_c)) / sigma_c
-
-
 def _bucket_centers(
     intervals: Mapping[str, Sequence[float | None]],
     ordered: Sequence[str],
@@ -3116,11 +3023,6 @@ def compile_native_ensemble_p0(
     else:
         envelope_lower_c = lower_center_c
         envelope_upper_c = upper_center_c
-    # The conditional tail skew is applied here, after the day's two
-    # measured direction signals exist: the same-day climatological headroom
-    # and the forecaster's TX against the model centre.  Keyed on the
-    # artifact's combination-method tag exactly like the bridge, so the live
-    # math never diverges from the holdout math that admitted the artifact.
     # Cloud, rain and mixing move the day in a direction the models miss, and
     # the forecaster publishes all three beside the TX.  This is a centre
     # shift, not a tail transform: the whole distribution is colder on a
@@ -3223,11 +3125,12 @@ def compile_native_ensemble_p0(
             legacy = synoptic_cooling_receipt.get("legacy_v1")
             if isinstance(legacy, dict) and legacy.get("shift_sigma") is not None:
                 legacy["shift_c"] = float(legacy["shift_sigma"]) * member_spread_c
-    # Shape after position: the radiation shift above moves the centre, this
-    # leans the buckets around wherever it landed, and the tail layer below
-    # conditions what is further out.  Each touches a region the others do
-    # not -- offsets one and two here, beyond that there -- so the order is
-    # fixed only so the three never read each other's residue.
+    # Shape after position: the radiation shift above moves the centre, and
+    # this leans the buckets around wherever it landed.
+    # The conditional tail skew that used to follow here is deleted (charter
+    # 43 amendment, 2026-09-22): new artifacts stopped carrying its tag on
+    # 2026-08-18 (d63426a7), the last tagged artifact's window closed
+    # 2026-09-17T09:11:35Z, and no packet has reached the branch since.
     neighbour_direction_receipt = None
     # Charter 147: retired, the function is identity and runs for every
     # artifact so the envelope records the retirement; the research arm keys
@@ -3252,32 +3155,6 @@ def compile_native_ensemble_p0(
                 center_bucket=model_center_bucket,
                 latitude=station_latitude,
             )
-        )
-    tail_reliability_receipt = None
-    if CONDITIONAL_SKEW_METHOD_TAG in artifact_combination_method:
-        bucket_centers_c = _bucket_centers(intervals_raw, ordered)
-        distribution_sigma = _distribution_sigma_c(
-            probability, bucket_centers_c
-        )
-        probability, tail_reliability_receipt = apply_conditional_tail_skew(
-            probability,
-            ordinals={
-                str(bucket): index
-                for index, bucket in enumerate(ordered)
-            },
-            climatology_headroom_sigma=_same_day_climatology_headroom(
-                conn,
-                station_id=station_id,
-                event_date=event_date,
-                model_center_c=model_center_c,
-                sigma_c=distribution_sigma,
-            ),
-            taf_gap_sigma=(
-                (float(taf_stage_witness["tx_c"]) - model_center_c)
-                / distribution_sigma
-                if taf_stage_witness is not None and distribution_sigma > EPS
-                else None
-            ),
         )
     # Before the band layer: this moves the distribution along the temperature
     # axis, and the band factors are measured on the claim that distribution
@@ -3893,11 +3770,6 @@ def compile_native_ensemble_p0(
         **({"consensus_bridge_json": json.dumps(
             consensus_bridge_receipt, sort_keys=True
         )} if consensus_bridge_receipt is not None else {}),
-        # What the tail-reliability lift did, or absent when the serving
-        # artifact predates it and its holdout scored the unlifted blend.
-        **({"tail_reliability_json": json.dumps(
-            tail_reliability_receipt, sort_keys=True
-        )} if tail_reliability_receipt is not None else {}),
         **({"band_reliability_json": json.dumps(
             band_reliability_receipt, sort_keys=True
         )} if band_reliability_receipt is not None else {}),
@@ -3919,6 +3791,16 @@ def compile_native_ensemble_p0(
         # ``native_probability_evidence_sha256`` and dropped, so which member
         # put mass where could be answered only by recompiling a retained
         # packet at the decision instant.  A record: no stage reads it.
+        # Read it as what went INTO the pool, not as each system's opinion:
+        # these are single-system distributions before pooling and before
+        # the width layer, and a single system's width is the scope's fitted
+        # spread factor times that day's member spread -- a day-to-day
+        # proportion measured too strong (P0 downstream audit 2026-09-22,
+        # finding 4: realised error scales with member spread to about the
+        # 0.3-0.47 power, so member-tight days serve too narrow and
+        # member-loose days too wide).  The linear pool absorbs it in the
+        # served P0; these vectors do not, so they are not the system's
+        # real coverage.
         "native_system_probabilities_json": _json(system_probabilities),
         "peripheral_model_reliability_by_bucket_json": _json(
             peripheral_model_reliability_by_bucket

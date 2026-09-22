@@ -481,22 +481,14 @@ def test_clause_43_no_weather_branch_in_the_strategy_layer() -> None:
     assert "conditional_tail_skew_v1" in clause
     assert "第 133 条补记" in clause
     assert "同日气候余量" in clause
+    # 2026-09-22 amendment: the layer is deleted outright (its last tagged
+    # artifact's window closed 2026-09-17), so its constants no longer exist
+    # to be pinned here -- the measurements live in the clause text only.
+    assert "2026-09-22 补记" in clause
+    import bayes_basket_target.cross_consensus as cross_consensus
 
-    from bayes_basket_target.cross_consensus import (
-        CLIMATOLOGY_HEADROOM_BANDS,
-        TAF_DIRECTION_COLD,
-        TAF_DIRECTION_WARM,
-    )
-
-    # Width: the band a day falls in must matter, and a day at the top of its
-    # own record must widen more than an ordinary one.
-    factors = [factor for _bound, factor in CLIMATOLOGY_HEADROOM_BANDS]
-    assert factors[0] > factors[-1]
-    # Skew: the two TAF directions must be mirror images, or the layer is
-    # scaling rather than pointing.
-    assert TAF_DIRECTION_WARM[0] > 1.0 > TAF_DIRECTION_WARM[1]
-    assert TAF_DIRECTION_COLD[1] > 1.0 > TAF_DIRECTION_COLD[0]
-    assert TAF_DIRECTION_WARM == TAF_DIRECTION_COLD[::-1]
+    assert not hasattr(cross_consensus, "apply_conditional_tail_skew")
+    assert not hasattr(cross_consensus, "CLIMATOLOGY_HEADROOM_BANDS")
 
     strategy_files = (
         "bayes_basket_target/basket_kernel/delta_v2.py",
