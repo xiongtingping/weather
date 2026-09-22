@@ -143,9 +143,10 @@ class ServingReaderTest(unittest.TestCase):
         self.assertIn("forecast_clearness_shift_sigma(", source)
         self.assertIn('"legacy_v1"', source)
         self.assertIn("served_radiation_shift_sigma(", source)
-        # v8 since charter 190 (the width layer's open edges); the clearness
-        # form is unchanged by it.
-        self.assertEqual(P0.POSTERIOR_VERSION, "calibrated_native_cross_ensemble_p0_v8")
+        # v8 since charter 190 (the width layer's open edges), v9 since
+        # charter 198 (the rung and the activation read); the clearness form
+        # is unchanged by either.
+        self.assertEqual(P0.POSTERIOR_VERSION, "calibrated_native_cross_ensemble_p0_v9")
 
 
 if __name__ == "__main__":

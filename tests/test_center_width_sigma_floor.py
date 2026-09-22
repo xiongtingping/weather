@@ -153,11 +153,18 @@ def test_the_floor_is_read_in_rungs_not_degrees() -> None:
     assert lift_f == pytest.approx(lift_c)
 
 
-def test_the_rung_is_the_smallest_gap_so_open_edges_cannot_set_it() -> None:
+def test_the_rung_is_read_between_the_end_buckets_so_open_edges_cannot_set_it() -> None:
     assert bucket_rung_width_c(CENTERS_C) == 1.0
-    # A five-bucket ladder has four gaps, two of them edges; the median of an
-    # even count lands on an edge gap and reads the rung half again too wide.
+    assert bucket_rung_width_c(CENTERS_F) == pytest.approx(RUNG_F)
+    # A five-bucket ladder has four gaps, two of them edges; read with them,
+    # the median of an even count lands on an edge gap and reads the rung
+    # half again too wide.  Charter 198: the end buckets are dropped, so the
+    # edges set nothing whichever side of the rung they fall -- on a served
+    # Fahrenheit axis they are narrower (0.5 + 5/9 C against 10/9).
     assert bucket_rung_width_c([0.0, 1.5, 2.5, 3.5, 5.0]) == 1.0
+    assert bucket_rung_width_c(
+        [0.0, 0.5 + RUNG_F / 2.0] + [0.5 + RUNG_F / 2.0 + RUNG_F * k for k in range(1, 5)]
+    ) == pytest.approx(RUNG_F)
 
 
 def test_the_lift_carries_its_own_entitlement_bound() -> None:

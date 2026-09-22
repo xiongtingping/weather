@@ -298,6 +298,14 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # three fingerprints 15:02:20.673Z (the resident's start), so the
         # declaration now sits one second past it, as v6 was moved.
         "calibrated_native_cross_ensemble_p0_v8": "2026-09-21T15:02:21Z",
+        # Charter 198: the rung read once (10/9 C on Fahrenheit ladders) and
+        # the activation read without its 256-row cut.  Declared past the
+        # push and past the batch restart that deploys it (the coordinator's
+        # instruction after v8's early declaration lit the watchdog): the
+        # fingerprints' first sighting is that restart, which falls before
+        # this instant, and the v9 envelopes between the two are simply not
+        # evidence yet.
+        "calibrated_native_cross_ensemble_p0_v9": "2026-09-22T10:30:00Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
@@ -315,6 +323,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p0m_taf_likelihood_v9": "2026-09-19T15:02:00Z",
         # Charter 190: a root bump at the instant P0 v8 declares.
         "p0m_taf_likelihood_v10": "2026-09-21T15:02:21Z",
+        # Charter 198: a root bump at the instant P0 v9 declares.
+        "p0m_taf_likelihood_v11": "2026-09-22T10:30:00Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
@@ -345,6 +355,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p1_joint_likelihood_v17": "2026-09-19T17:20:00Z",
         # Charter 190: the fifth root bump, at the instant P0 v8 declares.
         "p1_joint_likelihood_v18": "2026-09-21T15:02:21Z",
+        # Charter 198: the sixth root bump, at the instant P0 v9 declares.
+        "p1_joint_likelihood_v19": "2026-09-22T10:30:00Z",
     },
 }
 

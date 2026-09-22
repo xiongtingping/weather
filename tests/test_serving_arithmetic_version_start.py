@@ -41,6 +41,10 @@ CHARTER_160_START = "2026-09-19T15:02:00Z"
 CHARTER_190_START = sa.version_effective_from(
     "P0", "calibrated_native_cross_ensemble_p0_v8"
 )
+# Charter 198: the instant P0 v9, P0-M v11 and P1 v19 declare.
+CHARTER_198_START = sa.version_effective_from(
+    "P0", "calibrated_native_cross_ensemble_p0_v9"
+)
 
 
 def _served(version: str) -> sqlite3.Connection:
@@ -173,11 +177,16 @@ def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
     from bayes_basket_target.native_ensemble_p0 import POSTERIOR_VERSION
     import inspect
 
-    # Charter 190 (P0 v8) is declared past its commit; v7 keeps charter
-    # 160's moment and v6 charter 149's.
-    assert POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v8"
+    # Charter 198 (P0 v9) is declared past its push and the restart that
+    # deploys it; v8 keeps charter 190's moment, v7 charter 160's and v6
+    # charter 149's.
+    assert POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v9"
     assert CHARTER_190_START and CHARTER_190_START > CHARTER_160_START
-    assert sa.version_effective_from("P0", POSTERIOR_VERSION) == CHARTER_190_START
+    assert CHARTER_198_START and CHARTER_198_START > CHARTER_190_START
+    assert sa.version_effective_from("P0", POSTERIOR_VERSION) == CHARTER_198_START
+    assert sa.version_effective_from(
+        "P0", "calibrated_native_cross_ensemble_p0_v8"
+    ) == CHARTER_190_START
     assert sa.version_effective_from(
         "P0", "calibrated_native_cross_ensemble_p0_v7"
     ) == CHARTER_160_START
@@ -194,9 +203,13 @@ def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
     # stage's whole history; v6 keeps the declaration of the P0 bump it
     # followed.
     # Charter 160's v9 is a root bump at P0 v7's moment; v8 keeps its own.
-    # Charter 190's v10 is a root bump at P0 v8's moment.
-    assert p0m == "p0m_taf_likelihood_v10"
-    assert sa.version_effective_from("P0-M", p0m) == CHARTER_190_START
+    # Charter 190's v10 is a root bump at P0 v8's moment, charter 198's v11
+    # at P0 v9's.
+    assert p0m == "p0m_taf_likelihood_v11"
+    assert sa.version_effective_from("P0-M", p0m) == CHARTER_198_START
+    assert sa.version_effective_from(
+        "P0-M", "p0m_taf_likelihood_v10"
+    ) == CHARTER_190_START
     assert sa.version_effective_from(
         "P0-M", "p0m_taf_likelihood_v9"
     ) == CHARTER_160_START
@@ -247,9 +260,12 @@ def test_p1_declares_only_the_bump_its_root_caused() -> None:
     # v16 (charter 160) is the fourth root bump, at P0 v7's moment; v15
     # keeps P0-M v8's.  v17 (charter 161) is P1's own change, declared ahead
     # of its restart like v14.  v18 (charter 190) is the fifth root bump, at
-    # P0 v8's moment.
-    assert p1 == "p1_joint_likelihood_v18"
-    assert sa.version_effective_from("P1", p1) == CHARTER_190_START
+    # P0 v8's moment; v19 (charter 198) the sixth, at P0 v9's.
+    assert p1 == "p1_joint_likelihood_v19"
+    assert sa.version_effective_from("P1", p1) == CHARTER_198_START
+    assert sa.version_effective_from(
+        "P1", "p1_joint_likelihood_v18"
+    ) == CHARTER_190_START
     assert sa.version_effective_from(
         "P1", "p1_joint_likelihood_v17"
     ) == "2026-09-19T17:20:00Z"

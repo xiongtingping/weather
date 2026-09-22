@@ -198,37 +198,55 @@ WIDTH_TIER_NAMES = (
 )
 
 
-def bucket_rung_width_c(centers: Sequence[float]) -> float:
-    """The vocabulary's own rung, read off the axis it is serving.
+def ladder_rung_width_c(closed_centers_c: Sequence[float]) -> float | None:
+    """A ladder's rung, read off the centres of its closed buckets.
 
-    The smallest adjacent gap.  Every interior gap is exactly the rung, and
-    each of the two edge gaps is strictly larger: an open-ended bucket is
-    placed half of ``edge_width_c`` beyond its finite side, putting it half a
-    rung plus half that width from its neighbour, which exceeds a rung for
-    every rung narrower than ``edge_width_c`` -- 1.0 and 10/9 are the only two
-    in production.  The minimum therefore reads the rung exactly, on ladders
-    of any length.
-
-    The median was tried first and is wrong on short ladders: a five-bucket
-    market has four gaps, two of them edges, and the median of an even count
-    lands on an edge gap and reads the rung half again too wide.  The minimum
-    has no such length dependence, and its one failure direction -- a
-    pathologically narrow gap -- reads the rung too small, which makes every
-    rule counted in rungs more conservative rather than less.
+    The one reading of the rung (charter 198): the width layer's kernel and
+    the trading layer's rung-counted rules (``runtime._bucket_rung_width_c``)
+    both call this, so a Celsius ladder reads 1.0 and a Fahrenheit one 10/9
+    in both places.  The centres are sorted, the steps between neighbours
+    sorted, and the upper median taken -- the runtime's reading, unchanged.
+    ``None`` when fewer than two centres or a non-positive median step leave
+    nothing to read.
 
     Charter 53 forbids deriving this from the unit: a Fahrenheit market's rung
-    is 10/9 C, and reading it off the axis gets that right without anyone
+    is 10/9 C, and reading it off the ladder gets that right without anyone
     writing the constant down.
     """
 
-    gaps = [
-        upper - lower
-        for lower, upper in zip(centers, centers[1:])
-        if upper > lower
-    ]
-    if not gaps:
+    centers = sorted(float(center) for center in closed_centers_c)
+    if len(centers) < 2:
+        return None
+    steps = sorted(
+        upper - lower for lower, upper in zip(centers, centers[1:])
+    )
+    rung = steps[len(steps) // 2]
+    return rung if rung > 0.0 else None
+
+
+def bucket_rung_width_c(centers: Sequence[float]) -> float:
+    """The vocabulary's own rung, read off the axis it is serving.
+
+    ``centers`` is a width-layer axis: ``served_bucket_axis``'s key centres,
+    or the holdout's integer grid.  Its two end buckets are dropped and the
+    rest read by ``ladder_rung_width_c``.  On a served axis the ends are the
+    open buckets ("22C or below"), whose key centre sits
+    ``SERVED_OPEN_EDGE_OFFSET_C`` (0.5 C) past the finite bound -- not half a
+    rung on a Fahrenheit ladder -- so the edge step is 0.5 + 5/9 = 1.056 C
+    against a 10/9 C rung.  Until charter 198 this took the smallest step,
+    which read exactly that 1.056 on every Fahrenheit ladder (charter 190's
+    offset broke the "edge steps are always wider" premise the minimum rested
+    on) while the trading layer read 1.111 off the same ladder.  On a closed
+    axis the ends are ordinary buckets and dropping them loses nothing.  An
+    axis of three or fewer buckets has no interior step, so all of it is read.
+    """
+
+    values = [float(center) for center in centers]
+    interior = values[1:-1] if len(values) >= 4 else values
+    rung = ladder_rung_width_c(interior)
+    if rung is None:
         raise ValueError("center_width_bucket_axis_invalid")
-    return min(gaps)
+    return rung
 
 
 def sigma_floor_lift_v1(

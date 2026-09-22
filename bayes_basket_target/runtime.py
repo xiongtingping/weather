@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from .contracts import ContractError, ProbabilityEnvelope, content_sha256
+from .center_width_calibration import ladder_rung_width_c
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -290,15 +291,9 @@ def _bucket_rung_width_c(envelope: ProbabilityEnvelope) -> float | None:
         if not math.isfinite(center):
             raise ContractError("probability_bucket_intervals_invalid")
         centers.append(center)
-    if len(centers) < 2:
-        return None
-    centers.sort()
-    steps = sorted(
-        centers[index + 1] - centers[index]
-        for index in range(len(centers) - 1)
-    )
-    rung = steps[len(steps) // 2]
-    return rung if rung > 0.0 else None
+    # Charter 198: one reading of the rung, shared with the width layer's
+    # kernel -- the arithmetic that stood here, moved, not changed.
+    return ladder_rung_width_c(centers)
 
 
 def snapshot_from_probability_envelope(

@@ -145,7 +145,13 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # below" 1.1% -> 5.9%, 23°C 13.0% -> 8.1%, the false 23 > 24 peak gone), and
 # the width fit reads the same axis serving does.  Every lane fitted on served
 # claims starts again; the start is declared in ``serving_arithmetic``.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v8"
+# v9: charter 198 (user ruling 2026-09-22), two serving defects in one bump.
+# The width kernel reads the rung through the same function the trading
+# layer does, so a Fahrenheit ladder's open-edge tail is scaled by 10/9 C
+# instead of 1.056 C; and the activation read takes every valid activation
+# of the scope instead of the 256 highest generations, which hid seats the
+# rank would have chosen.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v9"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -392,6 +398,11 @@ def _activated_lead_bucket(
         # BY instead of reading every valid activation and sorting it; and
         # the rows are walked as they come, not fetched whole, because the
         # walk returns at the first admissible one.  Same rows, same order.
+        # Charter 198: no row cap.  The walk still stops at the first row it
+        # can answer on; "LIMIT 256" only ever changed the answer, never the
+        # cost -- a charter-88 fresh-cycle seat past the 256th generation-
+        # ordered row was invisible, while stable-pool scopes now hold up to
+        # 753 valid activations (RJTT PEAK h00_12, 2026-09-22).
         rows = conn.execute(
             "SELECT r.ensemble_system_ids_json,a.run_cycle_by_system_json "
             "FROM calibration_native_ensemble_activation a "
@@ -401,7 +412,7 @@ def _activated_lead_bucket(
             "AND a.station_id=? AND a.season_bin=? AND a.lead_bucket=? "
             "AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY' "
             "AND a.valid_from_utc<=? AND +a.valid_until_utc>? "
-            "ORDER BY a.generation DESC,a.activation_id LIMIT 256",
+            "ORDER BY a.generation DESC,a.activation_id",
             (
                 station_id,
                 season_bin,
@@ -1825,8 +1836,20 @@ def compile_native_ensemble_p0(
         "AND a.station_id=? AND a.season_bin=? AND a.lead_bucket=? "
         "AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY' "
         "AND a.valid_from_utc<=? AND a.valid_until_utc>? "
-        "ORDER BY a.generation DESC,a.activation_id LIMIT 256"
+        "ORDER BY a.generation DESC,a.activation_id"
     )
+    # Charter 198: every valid activation of the scope, not the 256 highest
+    # generations.  Generation counts re-mints of one pairing, not time, so
+    # a pool seat minted this morning for a new cycle map can carry
+    # generation 7 beside a week-old pairing's 29; with the stable pool
+    # minting every missing-member view per cycle map and serve label, a
+    # scope holds up to 753 valid activations, and the cut hid seats the rank
+    # below would have chosen -- 180 of 2,475 compiles since 2026-09-20 sat
+    # on another seat (a bucket moved by 0.026 at the median, 0.34 at most).
+    # The plan is unchanged: the window index seeks the valid rows and a
+    # temporary B-tree sorts them, so the cut never saved a read; the rows it
+    # used to drop cost only the loop below, and repeat the pairings above
+    # them, so their parse and hashes are computed once per distinct text.
     activation_parameters: tuple[Any, ...] = (
         station_id,
         season_bin,
@@ -1847,6 +1870,10 @@ def compile_native_ensemble_p0(
     # -- 22,249 lookups for 132 packets, 20,246 of them repeats (2026-09-21).
     # Asked once per key; the answer is the one the first ask got.
     evaluation_rows_by_key: dict[tuple[Any, ...], list[Any]] = {}
+    parsed_ids_by_text: dict[str, tuple[list[str], str]] = {}
+    parsed_fit_by_text: dict[
+        str, tuple[dict[str, str], str, str, str] | None
+    ] = {}
     for row in activation_rows:
         if station_attested:
             # Resolve the attestation for this activation's own scope.  The
@@ -1880,9 +1907,15 @@ def compile_native_ensemble_p0(
             )
             if pointer_mismatches:
                 continue
-        selected_ids = sorted(
-            str(value) for value in json.loads(str(row[6]))
-        )
+        ids_text = str(row[6])
+        parsed_ids = parsed_ids_by_text.get(ids_text)
+        if parsed_ids is None:
+            parsed_selected = sorted(
+                str(value) for value in json.loads(ids_text)
+            )
+            parsed_ids = (parsed_selected, content_sha256(parsed_selected))
+            parsed_ids_by_text[ids_text] = parsed_ids
+        selected_ids = list(parsed_ids[0])
         packet_cycle_mapping = {
             system_id: str(
                 official_lineage["run_cycle_by_system"].get(system_id)
@@ -1900,25 +1933,38 @@ def compile_native_ensemble_p0(
         # whose packet run differs from the fitted pairing serves as a named
         # cycle rider, and activations whose fitted map matches the packet
         # outrank those that need riders.
-        try:
-            fitted_cycle_mapping = {
-                str(key): str(value)
-                for key, value in json.loads(str(row[9] or "{}")).items()
-            }
-        except ValueError:
+        fit_text = str(row[9] or "{}")
+        if fit_text in parsed_fit_by_text:
+            parsed_fit = parsed_fit_by_text[fit_text]
+        else:
+            try:
+                parsed_mapping = {
+                    str(key): str(value)
+                    for key, value in json.loads(fit_text).items()
+                }
+            except ValueError:
+                parsed_fit = None
+            else:
+                parsed_cycles = set(parsed_mapping.values())
+                parsed_fit = (
+                    parsed_mapping,
+                    _json(parsed_mapping),
+                    content_sha256(parsed_mapping),
+                    next(iter(parsed_cycles))
+                    if len(parsed_cycles) == 1
+                    else MIXED_NATIVE_CYCLES,
+                )
+            parsed_fit_by_text[fit_text] = parsed_fit
+        if parsed_fit is None:
             continue
-        fitted_cycle_mapping_json = _json(fitted_cycle_mapping)
-        fitted_cycle_mapping_sha = content_sha256(fitted_cycle_mapping)
-        fitted_run_cycles = set(fitted_cycle_mapping.values())
-        fitted_run_cycle = (
-            next(iter(fitted_run_cycles))
-            if len(fitted_run_cycles) == 1
-            else MIXED_NATIVE_CYCLES
-        )
+        fitted_cycle_mapping = dict(parsed_fit[0])
+        fitted_cycle_mapping_json = parsed_fit[1]
+        fitted_cycle_mapping_sha = parsed_fit[2]
+        fitted_run_cycle = parsed_fit[3]
         if (
             len(selected_ids) != int(row[7])
             or len(set(selected_ids)) != len(selected_ids)
-            or str(row[5]) != content_sha256(selected_ids)
+            or str(row[5]) != parsed_ids[1]
             or not set(selected_ids).issubset(observed_set)
             or not all(packet_cycle_mapping.values())
             or sorted(fitted_cycle_mapping) != selected_ids
