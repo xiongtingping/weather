@@ -34,6 +34,7 @@ from .future_temperature_curve import (
     build_native_family_temperature_curve,
 )
 from .gefs_raw_reuse import RetainedGEFSField, load_retained_gefs_field_index
+from . import transport_breaker
 from .native_raw_object_store import (
     find_content_addressed_message,
     cached_whole_object,
@@ -168,6 +169,8 @@ def _get_bytes(
 ) -> tuple[bytes, Mapping[str, str]]:
     last_error: Exception | None = None
     for attempt in range(6):
+        # Charter 195 (四): an open transport breaker pauses here.
+        transport_breaker.guard(url)
         try:
             with client.stream(
                 "GET",
@@ -175,6 +178,7 @@ def _get_bytes(
                 headers=dict(headers or {}),
                 timeout=timeout_seconds,
             ) as response:
+                transport_breaker.note_answer()
                 response.raise_for_status()
                 length = response.headers.get("Content-Length")
                 if length and int(length) > max_bytes:
@@ -201,6 +205,8 @@ def _get_bytes(
                 and exc.response.status_code not in {429, 500, 502, 503, 504}
             ):
                 raise
+            if not isinstance(exc, httpx.HTTPStatusError):
+                transport_breaker.note_transport_error(url)
             last_error = exc
             if attempt < 5:
                 time_module.sleep(min(0.5 * (2 ** attempt), 8.0))

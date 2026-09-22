@@ -72,6 +72,23 @@ def _no_nwp_object_store_from_tests(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _no_transport_breaker_carryover_from_tests():
+    """Charter 195 (四): the capture's transport breaker is process-global.
+
+    Stand-in fetches that fail on purpose would otherwise add up across tests
+    and open it, and the next test's request would sleep 30-60s and probe the
+    real network.  Each test starts with a breaker that never opens; a test of
+    the breaker builds its own.
+    """
+
+    from bayes_basket_target import transport_breaker
+
+    transport_breaker.reset_for_tests(threshold=10**9)
+    yield
+    transport_breaker.reset_for_tests(threshold=10**9)
+
+
+@pytest.fixture(autouse=True)
 def _no_forward_physics_capture_from_tests(monkeypatch: pytest.MonkeyPatch) -> None:
     """The resident's forecast refresh cycle starts a real forward capture.
 

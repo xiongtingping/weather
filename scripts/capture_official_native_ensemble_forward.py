@@ -59,6 +59,7 @@ from bayes_basket_target import nwp_arrival_probe  # noqa: E402
 from bayes_basket_target.native_raw_object_store import (  # noqa: E402
     object_store_stats,
 )
+from bayes_basket_target import transport_breaker  # noqa: E402
 from bayes_basket_target.future_temperature_curve import (  # noqa: E402
     MIN_CURVE_POINTS,
     MIN_SAME_DAY_CURVE_POINTS,
@@ -540,8 +541,17 @@ def capture_official_native_forward(
     # pass it was; on with nothing certified, it builds the same packets.
     follow_new_runs: bool = False,
     follow_serving_ready: Callable[..., bool] | None = None,
+    # Charter 195 (四): families this pass holds on what they have without
+    # asking the network -- the recovery pass after an outage takes ECMWF and
+    # GEFS first and merges them, and ICON/ECCC follow in the next pass.
+    hold_families: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Capture and materialize a formally admissible official-native inbox."""
+
+    held_by_caller = {str(name) for name in hold_families}
+
+    def _held_by_caller() -> dict[str, Any]:
+        raise ContractError("family_held_by_caller")
 
     if not MIN_TIMEOUT_SECONDS <= float(timeout_seconds) <= MAX_TIMEOUT_SECONDS:
         raise ContractError("official_native_forward_timeout_invalid")
@@ -848,7 +858,9 @@ def capture_official_native_forward(
             expected_schema=(
                 "eccc_geps_official_historical_multistation_members_v1"
             ),
-            capture=lambda: capture_geps_station_days(
+            capture=_held_by_caller
+            if "ECCC_DD_WEATHER" in held_by_caller
+            else lambda: capture_geps_station_days(
                 event_date=event_date,
                 station_scopes=scopes,
                 archive_query_at_utc=capture_at,
@@ -871,6 +883,8 @@ def capture_official_native_forward(
     if icon_output is not None and icon is None:
         assert_process_memory_budget()
         try:
+            if "DWD_OPENDATA_ICON_EPS" in held_by_caller:
+                _held_by_caller()
             icon = capture_icon_eps_station_days(
                 event_date=event_date,
                 station_scopes=scopes,
@@ -1469,6 +1483,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="LEAD:CYCLE (CYCLE 'default' for the lead's own), repeatable.",
     )
     parser.add_argument(
+        "--hold-family",
+        action="append",
+        default=[],
+        choices=["ECCC_DD_WEATHER", "DWD_OPENDATA_ICON_EPS"],
+        help=(
+            "Charter 195: hold this family on what it has, without asking the "
+            "network (the required-first recovery pass).  Repeatable."
+        ),
+    )
+    parser.add_argument(
         "--capture-root",
         type=Path,
         help="Directory holding the per-lead and follow archives.",
@@ -1508,6 +1532,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             eccc_station_ids=args.eccc_station_id,
             follow_new_runs=bool(args.follow_new_runs),
             follow_serving_ready=readiness,
+            hold_families=tuple(args.hold_family or ()),
         )
     except (ContractError, OSError, RuntimeError, subprocess.SubprocessError, ValueError) as exc:
         print(json.dumps({
@@ -1597,7 +1622,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
     # Charter 195 (三): what the object stores answered for this pass, per
     # store -- hits and bytes not fetched, downloads and bytes fetched.
-    result = {**result, "nwp_object_store": object_store_stats()}
+    result = {
+        **result,
+        "nwp_object_store": object_store_stats(),
+        # Charter 195 (四): whether this pass waited out a transport outage.
+        "transport_breaker": transport_breaker.breaker().snapshot(),
+    }
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 0
 
@@ -1691,7 +1721,12 @@ def _follow_capture_main(args: argparse.Namespace) -> int:
         }
     # Charter 195 (三): what the object stores answered for this pass, per
     # store -- hits and bytes not fetched, downloads and bytes fetched.
-    result = {**result, "nwp_object_store": object_store_stats()}
+    result = {
+        **result,
+        "nwp_object_store": object_store_stats(),
+        # Charter 195 (四): whether this pass waited out a transport outage.
+        "transport_breaker": transport_breaker.breaker().snapshot(),
+    }
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 0
 

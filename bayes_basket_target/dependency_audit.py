@@ -50,6 +50,10 @@ NON_MARKET_NETWORK_MODULES = frozenset(
         # same NWP servers the archives above download from, to learn when a
         # run has landed.  No quote, no book, no tick.
         "bayes_basket_target/nwp_arrival_probe.py",
+        # Charter 197 (2026-09-22): one HEAD per upstream root to tell a dead
+        # tunnel from a quiet provider -- the CLOB root included, as a
+        # reachability probe only; no quote, book or tick is read over it.
+        "bayes_basket_target/supply_watch.py",
         "bayes_basket_target/republisher_native_forward_probe.py",
         "bayes_basket_target/republisher_no_live_p0_contract.py",
     }

@@ -56,6 +56,7 @@ from .ssot import native_ensemble_foundation_schema_status
 from .p0_producer import bucket_intervals_from_registry_rows
 from .station_registry import station_coordinates
 from official_nwp_https_transport import official_nwp_proxy_url
+from . import transport_breaker
 from .native_raw_object_store import cached_whole_object, evict_runs_over_cap
 
 
@@ -361,6 +362,7 @@ def _single_field(library: ctypes.CDLL, raw: bytes) -> list[float]:
 
 def _fetch_once(client: httpx.Client, url: str) -> bytes:
     with client.stream("GET", url) as response:
+        transport_breaker.note_answer()
         if response.status_code != 200:
             raise ContractError("icon_eps_archive_object_unavailable")
         chunks: list[bytes] = []
@@ -395,9 +397,12 @@ def _fetch(
     sleep: Any = _sleep,
 ) -> bytes:
     for attempt in range(max(1, int(attempts))):
+        # Charter 195 (四): an open transport breaker pauses here.
+        transport_breaker.guard(url)
         try:
             return _fetch_once(client, url)
         except httpx.TransportError:
+            transport_breaker.note_transport_error(url)
             if attempt + 1 >= max(1, int(attempts)):
                 raise
             sleep(FETCH_TRANSPORT_BACKOFF_SEC[

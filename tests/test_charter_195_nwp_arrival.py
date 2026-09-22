@@ -794,3 +794,152 @@ def test_a_run_beyond_the_ladder_goes_to_the_follow_lane(monkeypatch, tmp_path) 
     assert calls == []
     assert follows == [{"event_date": "2026-09-24", "lead": 3,
                         "run_init": datetime(2026, 9, 21, 18, tzinfo=timezone.utc)}]
+
+
+# ------------------------------------------ (四) outage is not "not published"
+
+
+from bayes_basket_target import transport_breaker as tb
+
+
+class _Clock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+def _breaker(probe_answers, **kwargs):
+    clock = _Clock()
+    answers = list(probe_answers)
+    probes = []
+
+    def probe(url):
+        probes.append(clock.now)
+        return answers.pop(0) if answers else True
+
+    breaker = tb.TransportBreaker(
+        threshold=kwargs.get("threshold", 4), pause_min_sec=30, pause_max_sec=60,
+        max_wait_sec=kwargs.get("max_wait_sec", 300), probe=probe, clock=clock, sleep=clock.sleep,
+    )
+    return breaker, clock, probes
+
+
+def test_a_blip_pauses_then_carries_on() -> None:
+    breaker, clock, probes = _breaker([True])
+    for _ in range(4):
+        breaker.note_transport_error("https://storage.googleapis.com/x")
+    breaker.guard("https://storage.googleapis.com/x")   # waits, probes once, closes
+    assert len(probes) == 1 and 1030 <= probes[0] <= 1060
+    snap = breaker.snapshot()
+    assert snap["trips"] == 1 and snap["open"] is False and snap["paused_sec"] >= 30
+    breaker.guard("https://storage.googleapis.com/x")   # closed: no wait
+    assert len(probes) == 1
+
+
+def test_an_outage_gives_up_with_the_outage_marker() -> None:
+    breaker, clock, probes = _breaker([False] * 50)
+    for _ in range(4):
+        breaker.note_transport_error("https://noaa-gefs-pds.s3.amazonaws.com/x")
+    with pytest.raises(tb.ContractError, match=r"^nwp_transport_outage:noaa-gefs-pds"):
+        breaker.guard("https://noaa-gefs-pds.s3.amazonaws.com/x")
+    assert 4 <= len(probes) <= 10
+    # Once given up, every later request fails at once rather than waiting again.
+    with pytest.raises(tb.ContractError):
+        breaker.guard("https://noaa-gefs-pds.s3.amazonaws.com/y")
+
+
+def test_an_http_answer_resets_the_count() -> None:
+    breaker, _clock, probes = _breaker([])
+    for _ in range(3):
+        breaker.note_transport_error("https://x/")
+    breaker.note_answer()           # a 404 is an answer: not the network
+    breaker.note_transport_error("https://x/")
+    breaker.guard("https://x/")
+    assert probes == [] and breaker.snapshot()["trips"] == 0
+
+
+def test_every_family_waits_at_the_breaker_and_reports_to_it(monkeypatch) -> None:
+    import httpx
+
+    from bayes_basket_target import dwd_icon_eps_archive as icon
+    from bayes_basket_target import eccc_geps_archive as eccc
+    from bayes_basket_target import ecmwf_ifs_archive as ecmwf
+    from bayes_basket_target import noaa_gefs_archive as gefs
+
+    events = []
+    monkeypatch.setattr(tb, "guard", lambda url: events.append(("guard", url)))
+    monkeypatch.setattr(tb, "note_transport_error", lambda url: events.append(("error", url)))
+    monkeypatch.setattr(tb, "note_answer", lambda: events.append(("answer", None)))
+    monkeypatch.setattr(ecmwf.time_module, "sleep", lambda s: None)
+    monkeypatch.setattr(gefs.time_module, "sleep", lambda s: None)
+    monkeypatch.setattr(eccc.time_module, "sleep", lambda s: None)
+
+    class _Boom:
+        def stream(self, *a, **k):
+            raise httpx.ConnectError("tunnel down")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(ecmwf, "_thread_http_client", lambda: _Boom())
+    with pytest.raises(Exception):
+        ecmwf._get_bytes("https://storage.googleapis.com/e", timeout_seconds=1, max_bytes=10)
+    with pytest.raises(Exception):
+        gefs._get_bytes("https://noaa-gefs-pds.s3.amazonaws.com/g", client=_Boom(), timeout_seconds=1, max_bytes=10)
+    monkeypatch.setattr(eccc.httpx, "Client", lambda **k: _Boom())
+    with pytest.raises(Exception):
+        eccc._get_bytes("https://dd.weather.gc.ca/c", timeout_seconds=1)
+    with pytest.raises(Exception):
+        icon._fetch(_Boom(), "https://opendata.dwd.de/i", attempts=2, sleep=lambda s: None)
+    for host in ("storage.googleapis.com", "noaa-gefs-pds", "dd.weather.gc.ca", "opendata.dwd.de"):
+        guards = [e for e in events if e[0] == "guard" and host in e[1]]
+        errors = [e for e in events if e[0] == "error" and host in e[1]]
+        assert guards and len(errors) == len(guards), host
+    assert not [e for e in events if e[0] == "answer"]
+
+
+def test_a_held_family_is_not_asked_for(monkeypatch, tmp_path) -> None:
+    """The required-first recovery pass holds ICON/ECCC without the network."""
+
+    from tests.test_charter_148_hold_from_other_lead import (
+        ECCC, ECMWF, GEFS, ICON, _archive, _setup,
+    )
+    import scripts.capture_official_native_ensemble_forward as capture
+
+    registry_path, _reads, _written, _commands = _setup(
+        monkeypatch, tmp_path,
+        on_disk={
+            "eccc_2026-08-01_d0.json": _archive(ECCC, "2026-07-31T00:00:00Z"),
+            "icon_2026-08-01_d0.json": _archive(ICON, "2026-07-31T00:00:00Z"),
+        },
+        fresh={
+            "capture_gefs_station_days": _archive(GEFS, "2026-08-01T00:00:00Z"),
+            "capture_ecmwf_station_days": _archive(ECMWF, "2026-08-01T00:00:00Z"),
+            "capture_geps_station_days": _archive(ECCC, "2026-08-01T00:00:00Z"),
+            "capture_icon_eps_station_days": _archive(ICON, "2026-08-01T00:00:00Z"),
+        },
+    )
+    asked = []
+    for name in ("capture_geps_station_days", "capture_icon_eps_station_days"):
+        monkeypatch.setattr(capture, name, lambda name=name, **_kw: asked.append(name))
+    day = "2026-08-01"
+    receipt = capture.capture_official_native_forward(
+        registry_path=registry_path, event_date=day,
+        gefs_output=tmp_path / f"gefs_{day}_d0.json", ecmwf_output=tmp_path / f"ecmwf_{day}_d0.json",
+        eccc_output=tmp_path / f"eccc_{day}_d0.json", icon_output=tmp_path / f"icon_{day}_d0.json",
+        inbox_output=tmp_path / "inbox.json", timeout_seconds=30.0, lead_days=0, run_cycle_hour=0,
+        hold_families=("ECCC_DD_WEATHER", "DWD_OPENDATA_ICON_EPS"),
+    )
+    assert asked == []
+    by_family = receipt["run_init_utc_by_family"]
+    assert by_family["NOAA_GEFS_PDS_S3"] == by_family["ECMWF_OPEN_DATA_S3"] == "2026-08-01T00:00:00Z"
+    assert by_family["ECCC_DD_WEATHER"] == "2026-07-31T00:00:00Z"
+    assert "family_held_by_caller" in receipt["family_held_on_earlier_run"]["DWD_OPENDATA_ICON_EPS"]

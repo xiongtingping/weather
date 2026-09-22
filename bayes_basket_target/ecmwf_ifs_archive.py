@@ -30,6 +30,7 @@ from .ecmwf_pf50_raw_reuse import (
     store_content_addressed_message,
     store_range_alias,
 )
+from . import transport_breaker
 from .native_raw_object_store import (
     cached_whole_object,
     fetch_lock,
@@ -312,6 +313,9 @@ def _get_bytes(
     last_http_error: httpx.HTTPStatusError | None = None
     for request_url in endpoint_urls:
         for attempt in range(MAX_TRANSPORT_ATTEMPTS):
+            # Charter 195 (四): wait out an open transport breaker here, so
+            # an outage pauses the capture instead of spending its retries.
+            transport_breaker.guard(request_url)
             try:
                 request_headers = {
                     "User-Agent": "weather-ecmwf-history/1",
@@ -339,8 +343,10 @@ def _get_bytes(
                                 "ecmwf_archive_response_too_large"
                             )
                         chunks.append(chunk)
+                    transport_breaker.note_answer()
                     return b"".join(chunks), dict(response.headers)
             except TRANSIENT_TRANSPORT_ERRORS as exc:
+                transport_breaker.note_transport_error(request_url)
                 last_transport_error = exc
                 # A proxy pool timeout can leave a half-open connection in
                 # httpcore.  Recreate only this worker's client; no global
@@ -355,6 +361,7 @@ def _get_bytes(
                     )
                 )
             except httpx.HTTPStatusError as exc:
+                transport_breaker.note_answer()
                 if (
                     exc.response.status_code
                     not in S3_FALLBACK_HTTP_STATUS_CODES

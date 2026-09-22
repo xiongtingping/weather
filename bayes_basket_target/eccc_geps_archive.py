@@ -41,6 +41,7 @@ from .p0_producer import bucket_intervals_from_registry_rows
 from .resource_bounds import assert_process_memory_budget
 from .ssot import native_ensemble_foundation_schema_status
 from official_nwp_https_transport import official_nwp_proxy_url
+from . import transport_breaker
 from .native_raw_object_store import cached_whole_object, evict_runs_over_cap
 
 
@@ -132,6 +133,8 @@ def _get_bytes(
 ) -> tuple[bytes, Mapping[str, str]]:
     last_error: Exception | None = None
     for attempt in range(6):
+        # Charter 195 (四): an open transport breaker pauses here.
+        transport_breaker.guard(url)
         try:
             with httpx.Client(
                 proxy=official_nwp_proxy_url() or None,
@@ -148,6 +151,7 @@ def _get_bytes(
                     headers={"User-Agent": "weather-eccc-geps-history/1"},
                     timeout=timeout_seconds,
                 ) as response:
+                    transport_breaker.note_answer()
                     response.raise_for_status()
                     length = response.headers.get("Content-Length")
                     if length and int(length) > MAX_FILE_BYTES:
@@ -175,6 +179,8 @@ def _get_bytes(
                 not in {429, 500, 502, 503, 504}
             ):
                 raise
+            if not isinstance(exc, httpx.HTTPStatusError):
+                transport_breaker.note_transport_error(url)
             last_error = exc
             if attempt < 5:
                 time_module.sleep(min(0.5 * (2**attempt), 8.0))
