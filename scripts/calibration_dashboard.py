@@ -446,6 +446,58 @@ TAF_ROTATION_STATE = (
 )
 
 
+#: Charter 197: the watch file older than this means its sweep is not running.
+SUPPLY_WATCH_STALE_SEC = 15.0 * 60.0
+
+
+def _supply_watch_alerts(
+    *, db: Path | None = None, run_inline: Any = None,
+) -> list[dict[str, Any]]:
+    """Charter 197's two readings as banner rows: egress and served P0 supply.
+
+    2026-09-21 16:04Z to 2026-09-22 08:55Z every light on this page stayed
+    green while the proxy tunnel carried nothing and, from 19:42Z, no D+1 P0
+    was fresh anywhere: the rotation advanced, the packets kept four families,
+    the cycle kept committing.  These rows measure the outage itself.
+
+    Read from the watch's own file.  When that file is missing or older than
+    fifteen minutes -- its sweep is not running (before the restart that
+    registers it, or with the resident down) -- the board runs the same pass
+    itself and says so, so the light never depends on the process whose
+    silence it may be reporting.
+    """
+
+    from bayes_basket_target import supply_watch
+
+    if db is not None and Path(db).resolve() != Path(supply_watch.DEFAULT_DB).resolve():
+        # A fixture or research database: the watch describes production
+        # only, and must never probe or write from a render of anything else.
+        return []
+    payload = supply_watch.read_previous(supply_watch.DEFAULT_OUTPUT)
+    age_hours = _age_hours(payload.get("generated_at_utc"))
+    ran_inline = False
+    if age_hours is None or age_hours * 3600.0 >= SUPPLY_WATCH_STALE_SEC:
+        try:
+            payload = (run_inline or supply_watch.run)()
+            ran_inline = True
+        except Exception as exc:  # noqa: BLE001 -- a failed pass is itself a row
+            return [{
+                "health": "amber", "label": "断供守望",
+                "note": f"守望本轮失败：{type(exc).__name__}: {str(exc)[:80]}",
+            }]
+    rows = [
+        {"health": row["health"], "label": row["label"], "note": row["note"]}
+        for row in payload.get("alerts") or []
+        if isinstance(row, Mapping) and row.get("health") in ("red", "amber")
+    ]
+    if ran_inline and age_hours is not None:
+        rows.append({
+            "health": "amber", "label": "断供守望",
+            "note": f"守望扫描 {age_hours * 60:.0f} 分钟没有跑，本轮由看板代跑",
+        })
+    return rows
+
+
 def _taf_rotation_staleness() -> dict[str, Any]:
     """When the TAF poll last completed a round, from the file that outlives it."""
 
@@ -14845,6 +14897,10 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
               )}]
             if worker.get("native_inbox_health") not in (None, "green") else []
         )
+        # Charter 197: whether the world is reachable and whether the P0 a
+        # decision reads is fresh -- the two things that failed on
+        # 2026-09-21/22 while every row above stayed green.
+        + _supply_watch_alerts(db=db)
     )
     overall = (
         "red" if any(a["health"] == "red" for a in alerts)
@@ -15732,6 +15788,7 @@ const SWEEP_LABEL = {
   capture_cma_grapes_forward:"CMA GRAPES 捕获",
   station_onboarding:"新站接入", market_registry_retention:"挂牌目录保留",
   ledger_alignment_guard:"账本对齐守卫", delta_v2_authority:"执行授权续期",
+  supply_watch:"断供守望",
 };
 const SWEEP_DOMAIN = {ssot:"写 SSOT", archive:"写归档库", none:"不写库", paper_ledger:"写纸面账本库"};
 function sweepDur(sec){

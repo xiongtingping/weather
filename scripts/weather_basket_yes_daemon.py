@@ -552,6 +552,20 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         1200.0,
         120.0,
     ),
+    # Charter 197 (2026-09-22): the supply watch.  2026-09-21 16:04Z the proxy
+    # tunnel stopped carrying traffic, every upstream failed together, and by
+    # 19:42Z no D+1 P0 was fresh anywhere -- until 08:55Z the next morning,
+    # with every light on the board green, because each one measured a lane
+    # moving and none the thing it moves arriving.  This asks both directly:
+    # one HEAD per upstream through the production proxy, and fresh served
+    # P0/P0-M per listed future date by primary key.  SSOT ``mode=ro``, one
+    # JSON out, a few seconds; five minutes so an outage is red inside ten.
+    (
+        "supply_watch",
+        "scripts/supply_watch_sweep.sh",
+        300.0,
+        120.0,
+    ),
     # ICON-EU deterministic, run-scoped: one whole-domain download serves
     # seven European stations and two event days.  Hourly against a
     # six-hourly product because the DWD archive keeps no history -- a
@@ -621,6 +635,8 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     "capture_cma_grapes_forward": "ssot",
     # Reads the SSOT ``mode=ro`` and writes one small JSON file.
     "probe_cma_named_runs": "none",
+    # Charter 197: SSOT ``mode=ro``, HEAD probes, one small JSON file.
+    "supply_watch": "none",
     # Writes station_registry.py and the two SSOT identity rows.
     "station_onboarding": "ssot",
     "market_registry_retention": "ssot",
