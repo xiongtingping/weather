@@ -86,3 +86,17 @@ def test_the_lane_reads_production_network_trouble_off_the_resident_status() -> 
         "2026-09-21", "2026-09-22",
     ]
     assert lane.production_network_trouble({}, now_epoch=now) == []
+
+
+def test_a_fresh_non_green_egress_reading_holds_the_lane(monkeypatch) -> None:
+    from bayes_basket_target import supply_watch
+
+    monkeypatch.setattr(supply_watch, "egress_send_gate",
+                        lambda **_kw: {"watch": "fresh", "egress_health": "amber"})
+    assert lane.egress_not_green() == "amber"
+    monkeypatch.setattr(supply_watch, "egress_send_gate",
+                        lambda **_kw: {"watch": "stale", "egress_health": "red"})
+    assert lane.egress_not_green() == ""
+    monkeypatch.setattr(supply_watch, "egress_send_gate",
+                        lambda **_kw: {"watch": "fresh", "egress_health": "green"})
+    assert lane.egress_not_green() == ""

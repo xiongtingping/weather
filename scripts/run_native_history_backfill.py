@@ -308,6 +308,26 @@ def production_network_trouble(
     return troubled
 
 
+def egress_not_green() -> str:
+    """The supply watch's egress reading when it is fresh and not green.
+
+    Charter 197's watch probes each upstream through the same proxy; a fresh
+    red or amber reading is a network this lane should not add load to.  A
+    stale or missing file says nothing either way and does not hold.
+    """
+
+    try:
+        from bayes_basket_target import supply_watch  # noqa: PLC0415
+
+        gate = supply_watch.egress_send_gate()
+        if gate.get("watch") != "fresh":
+            return ""
+        health = str(gate.get("egress_health") or "")
+    except Exception:  # noqa: BLE001 - an unreadable watch does not hold
+        return ""
+    return health if health in {"red", "amber"} else ""
+
+
 def transport_failure(stderr: str) -> bool:
     text = str(stderr or "")
     return any(marker in text for marker in TRANSPORT_FAILURE_MARKERS)
@@ -856,6 +876,9 @@ def main() -> int:
                         status if isinstance(status, dict) else {},
                         now_epoch=time.time(),
                     )
+                    egress = egress_not_green()
+                    if egress:
+                        troubled = [*troubled, f"egress_{egress}"]
                     if troubled:
                         record["state"] = "deferred_production_network_trouble"
                         record["troubled_event_dates"] = troubled
