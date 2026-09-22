@@ -403,6 +403,9 @@ def evaluate(
                 else "全部上游同时不可达（代理/隧道出口断，不是某家限流）"
             )
             note = f"{what}，自 {since} 起 {outage_sec / 60:.0f} 分钟"
+            if health == "red":
+                # Charter 197 amendment: what red does, said where it is read.
+                note += "；新单暂停发送，已挂单不动"
         elif state == "partial":
             health = "amber"
             labels = [t["label"] for t in egress_block.get("targets", []) if t["outcome"] == "transport_error"]
@@ -502,6 +505,11 @@ def evaluate(
         "generated_at_utc": _utc_iso(now),
         "overall": overall,
         "alerts": rows,
+        # The one reading the send gate acts on (charter 197 amendment).
+        "egress_health": next(
+            (r["health"] for r in rows if str(r["code"]).startswith("egress_")),
+            "green",
+        ),
         "egress": egress_block,
         "p0_supply": supply,
         "evidence": dict(evidence or {}),
@@ -581,6 +589,118 @@ def run(
     if output_path is not None:
         write_atomic(output_path, payload)
     return payload
+
+
+# ---------------------------------------------------------------- send gate
+#
+# Charter 197 amendment (user ruling 2026-09-22: 「网络闪断期间暂停发新单：出口
+# 红灯时不发新单，已有的单不动」).  01:26-01:31Z that morning the resident posted
+# into a tunnel that was up for five minutes out of fifteen hours: two
+# UNKNOWN_POSTs, one still reconcile_required hours later.  A NEW order is
+# held while the egress reading is red; nothing already at the venue is
+# touched -- cancels, lookups, reconciliation and expiry never read this.
+#
+# Fail-safe is OPEN.  The watch is a sweep on the resident's clock; if it is
+# not running (not yet registered, starved behind a long cycle, the file
+# gone), holding would stop all trading on the watch's silence rather than
+# on the network's.  So a missing, unreadable or stale file never holds --
+# it is reported (``watch`` on the verdict, on the send's own event, and as
+# 「守望失效」 on the board) and the send goes ahead.
+
+WATCH_PATH_ENV = "PM_SUPPLY_WATCH_PATH"
+#: A file older than this is a watch that stopped, not a reading: three
+#: passes of the 300 s sweep.
+WATCH_FRESH_SEC = 15.0 * 60.0
+EGRESS_HOLD_REASON = "egress_red_hold"
+
+
+def egress_held_sql(intent_alias: str) -> str:
+    """SQL: this intent never left because the egress was red.
+
+    Budgets that count sends (a lane's per-station-day cap, the recycle
+    lane's failed-send cap, the tail lane's one take per bucket) must not
+    be spent by an order the network held back -- the hold is not a
+    verdict on the book, and a lane that burns its one take on it has lost
+    the trade to the outage after all.  Seeks by the events' intent index.
+    """
+
+    return (
+        "EXISTS (SELECT 1 FROM basket_target_order_events held"
+        f" WHERE held.order_intent_id={intent_alias}.order_intent_id"
+        " AND held.event_type='NEVER_REACHED_EXCHANGE'"
+        f" AND json_extract(held.event_json,'$.reason')='{EGRESS_HOLD_REASON}')"
+    )
+
+
+def egress_health(payload: Mapping[str, Any]) -> str:
+    """Red/amber/green for the egress reading alone (not the P0 supply)."""
+
+    declared = payload.get("egress_health")
+    if declared in {"red", "amber", "green"}:
+        return str(declared)
+    for row in payload.get("alerts") or []:
+        if isinstance(row, Mapping) and str(row.get("code") or "").startswith("egress_"):
+            return str(row.get("health") or "green")
+    return "green"
+
+
+def egress_send_gate(
+    *, now: datetime | None = None, path: Path | str | None = None,
+) -> dict[str, Any]:
+    """May a NEW order leave the process now?  Read fresh on every call.
+
+    ``hold`` is True only on a fresh file whose egress reading is red.
+    ``watch`` is ``fresh``, ``missing``, ``unreadable``, ``stale`` or
+    ``disabled`` (``PM_SUPPLY_WATCH_PATH=off``, tests); ``watch_invalid``
+    marks the three that a person should hear about.
+    """
+
+    now = now or datetime.now(timezone.utc)
+    configured = path if path is not None else os.environ.get(WATCH_PATH_ENV)
+    if str(configured or "").strip().lower() == "off":
+        return {"hold": False, "reason": "", "watch": "disabled", "watch_invalid": False}
+    target = Path(configured) if configured else DEFAULT_OUTPUT
+    verdict: dict[str, Any] = {"hold": False, "reason": "", "watch_path": str(target)}
+    try:
+        payload = json.loads(target.read_text())
+    except FileNotFoundError:
+        return {**verdict, "watch": "missing", "watch_invalid": True}
+    except (OSError, ValueError):
+        return {**verdict, "watch": "unreadable", "watch_invalid": True}
+    generated = parse_utc(payload.get("generated_at_utc")) if isinstance(payload, Mapping) else None
+    if generated is None:
+        return {**verdict, "watch": "unreadable", "watch_invalid": True}
+    age_sec = (now - generated).total_seconds()
+    verdict["generated_at_utc"] = _utc_iso(generated)
+    verdict["age_sec"] = round(age_sec, 1)
+    if age_sec > WATCH_FRESH_SEC:
+        return {**verdict, "watch": "stale", "watch_invalid": True}
+    egress = payload.get("egress") if isinstance(payload.get("egress"), Mapping) else {}
+    health = egress_health(payload)
+    verdict.update({
+        "watch": "fresh",
+        "watch_invalid": False,
+        "egress_health": health,
+        "egress_state": egress.get("state"),
+        "egress_since_utc": egress.get("since_utc"),
+    })
+    if health == "red":
+        verdict.update({"hold": True, "reason": EGRESS_HOLD_REASON})
+    return verdict
+
+
+def send_audit(gate: Mapping[str, Any]) -> dict[str, Any]:
+    """What a send's own event carries about the gate: the hold, or an
+    invalid watch the send went ahead without.  Empty otherwise, so an
+    ordinary send's event is byte-for-byte what it was before this gate."""
+
+    if gate.get("hold") or gate.get("watch_invalid"):
+        return {"egress_gate": {
+            key: gate[key]
+            for key in ("watch", "egress_state", "egress_since_utc", "generated_at_utc", "age_sec")
+            if gate.get(key) is not None
+        }}
+    return {}
 
 
 def summary_line(payload: Mapping[str, Any]) -> str:

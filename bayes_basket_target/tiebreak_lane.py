@@ -71,6 +71,7 @@ from .lane_orders import lane_decision_id, send_lane_buy
 from .live_station_scope import admission as live_station_admission
 from .settlement_time import settlement_day_state
 from .strategy_lanes import LANE_TIEBREAK, TIEBREAK_DEFAULT_SETTINGS, lane_settings
+from .supply_watch import EGRESS_HOLD_REASON, egress_held_sql
 
 LANE = LANE_TIEBREAK
 LANE_TITLE = "秤砣线"
@@ -232,7 +233,13 @@ FEATURE_COLUMNS: tuple[tuple[str, str], ...] = (
 #: ask, closed day, barred station) are never retried: those are the
 #: reading, not the plumbing.  The row keeps the first refusal in
 #: ``retry_of_refusal`` and the latest in ``refusal``.
-RETRYABLE_REFUSAL_PREFIXES: tuple[str, ...] = ("insufficient_cash:", "account_equity_stale")
+#: Charter 197 amendment: an order the egress hold kept in is plumbing, not
+#: the book's verdict -- re-asked on any fresh book once released, and never
+#: counted against the station-day's sends (``egress_held_sends``).
+SEND_EGRESS_HOLD_REFUSAL = "send:" + EGRESS_HOLD_REASON
+RETRYABLE_REFUSAL_PREFIXES: tuple[str, ...] = (
+    "insufficient_cash:", "account_equity_stale", SEND_EGRESS_HOLD_REFUSAL,
+)
 #: A send that never got a position -- the venue killed the FOK because the
 #: book had moved since the snapshot it was priced on (RJTT 2026-09-18:
 #: priced at 02:13Z's book, sent 02:47Z, "couldn't be fully filled") -- is
@@ -768,9 +775,25 @@ def station_day_sends(conn: sqlite3.Connection, station_id: str, event_date: str
     ``venue_disabled_cooldown_seconds``).
     """
 
-    return station_day_sends_total(conn, station_id, event_date) - venue_disabled_sends(
-        conn, station_id, event_date,
+    return (
+        station_day_sends_total(conn, station_id, event_date)
+        - venue_disabled_sends(conn, station_id, event_date)
+        - egress_held_sends(conn, station_id, event_date)
     )
+
+
+def egress_held_sends(conn: sqlite3.Connection, station_id: str, event_date: str) -> int:
+    """Intents of this station-day the charter 197 egress hold kept in.
+
+    Not a send: nothing left the process.  Counted, a flicker of the tunnel
+    would spend the station-day's three sends on the network's account.
+    """
+
+    return int(conn.execute(
+        "SELECT COUNT(*) FROM basket_target_order_intents i"
+        f" WHERE i.decision_id=? AND {egress_held_sql('i')}",
+        (lane_decision_id(LANE, station_id, event_date),),
+    ).fetchone()[0])
 
 
 def station_day_sends_total(conn: sqlite3.Connection, station_id: str, event_date: str) -> int:

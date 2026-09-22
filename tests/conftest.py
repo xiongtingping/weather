@@ -72,6 +72,20 @@ def _no_nwp_object_store_from_tests(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _no_live_supply_watch_in_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Charter 197 amendment: the send gate reads the live watch file.
+
+    A test that sends would otherwise hold its orders whenever the real
+    tunnel is down, and stamp a stale-watch audit on its events whenever the
+    real sweep has not run -- the outcome of a test would be the state of
+    this machine's network.  Off in tests; a test of the gate points it at
+    its own ``tmp_path``.
+    """
+
+    monkeypatch.setenv("PM_SUPPLY_WATCH_PATH", "off")
+
+
+@pytest.fixture(autouse=True)
 def _no_transport_breaker_carryover_from_tests():
     """Charter 195 (四): the capture's transport breaker is process-global.
 

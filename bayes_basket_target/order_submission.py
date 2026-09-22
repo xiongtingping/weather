@@ -34,6 +34,7 @@ from .execution_reconciliation import (
 )
 from .live_station_scope import admission as live_station_admission
 from .strategy_lanes import LANE_BASKET, lane_enabled
+from .supply_watch import EGRESS_HOLD_REASON, egress_send_gate, send_audit
 
 
 SCHEMA = "bayes_basket_target_order_submission_v1"
@@ -568,6 +569,10 @@ def submit_prepared_intents(
     # each ending ``failed`` with the reason on its event, so the pause is
     # visible on every intent it stopped and reversible by one file.
     basket_lane_enabled = lane_enabled(LANE_BASKET)
+    # Charter 197 amendment (user ruling 2026-09-22): no new order while the
+    # egress reading is red.  Read once per pass, beside the flag; a missing
+    # or stale watch never holds and is carried on the send's own event.
+    egress_gate = egress_send_gate()
     # The station gate, resolved once per pass for the same reason the flag
     # is: a cycle trades one station, and asking per intent would let the
     # answer change halfway through one basket.
@@ -646,7 +651,17 @@ def submit_prepared_intents(
             else _station_gate() if is_buy
             else {"admitted": True, "reason": "exit_not_gated"}
         )
-        if not live_submit_authorized or not armed or not admitted["admitted"]:
+        # The last gate before the transport, and only for a send every other
+        # gate admitted: a hand on the switch keeps its own reason, and the
+        # hold names the network only where the network was the stop.
+        egress_held = bool(
+            egress_gate.get("hold")
+            and live_submit_authorized and armed and admitted["admitted"]
+        )
+        if (
+            not live_submit_authorized or not armed or not admitted["admitted"]
+            or egress_held
+        ):
             # The whole path runs except the send.  The payload hash is on the
             # receipt so a no-live run can be compared byte for byte against
             # the live one it is standing in for.
@@ -660,7 +675,8 @@ def submit_prepared_intents(
                 else "live_intent_disarmed" if not armed
                 # barred / held / still earning its way in -- three
                 # different follow-ups, so three different reasons.
-                else str(admitted["reason"])
+                else str(admitted["reason"]) if not admitted["admitted"]
+                else EGRESS_HOLD_REASON
             )
             entry: dict[str, Any] = {
                 "order_intent_id": intent_id,
@@ -692,6 +708,7 @@ def submit_prepared_intents(
                         "reason": gate_reason,
                         "source": "order_submission_gate",
                         "station_id": station,
+                        **(send_audit(egress_gate) if egress_held else {}),
                     },
                 }
                 receipt = record_order_event(
@@ -731,6 +748,7 @@ def submit_prepared_intents(
                     "reason": outcome["reason"],
                     "source": str(response.get("source") or ""),
                     "http_status": response.get("http_status"),
+                    **send_audit(egress_gate),
                 },
             }
             receipt = record_order_event(
@@ -776,6 +794,7 @@ def submit_prepared_intents(
                 "reason": outcome["reason"],
                 "source": str(response.get("source") or ""),
                 "exchange_status": str(fill.get("status") or ""),
+                **send_audit(egress_gate),
             },
         }
         receipt = record_order_event(
@@ -801,6 +820,8 @@ def submit_prepared_intents(
         "live_intent_armed": bool(armed),
         # Charter 146: the basket lane's own switch, as read for this pass.
         "strategy_lane_basket_enabled": bool(basket_lane_enabled),
+        # Charter 197 amendment: the egress gate as read for this pass.
+        "egress_gate": dict(egress_gate),
         # What this pass could actually do, not what the contract allows: a
         # receipt that says the gateway was callable while a lowered flag
         # held every send is a receipt that describes the wrong system.

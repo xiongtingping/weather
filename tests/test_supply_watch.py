@@ -369,5 +369,5 @@ def test_the_board_banner_carries_the_watch_rows_and_runs_it_when_the_sweep_is_s
     rows = dashboard._supply_watch_alerts(
         db=tmp_path / "ssot.db", run_inline=lambda: {"alerts": []},
     )
-    assert [r["label"] for r in rows] == ["断供守望"]
-    assert "由看板代跑" in rows[0]["note"]
+    assert [r["label"] for r in rows] == ["守望失效"]
+    assert "由看板代跑" in rows[0]["note"] and "不拦单" in rows[0]["note"]

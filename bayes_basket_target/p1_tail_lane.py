@@ -90,6 +90,7 @@ from .resource_bounds import load_bounded_json
 from .settlement_time import settlement_day_state
 from .strategy_lanes import LANE_P1_TAIL, P1_TAIL_DEFAULT_SETTINGS, lane_settings
 from .tiebreak_lane import (
+    SEND_EGRESS_HOLD_REFUSAL,
     _cash_refusal,
     book_features,
     settle_stuck_lane_cycles,
@@ -666,11 +667,14 @@ def station_day_bucket_attempted(
 ) -> bool:
     """Charter 166 rule 1: this lane buys a bucket once, ever."""
 
+    # Charter 197 amendment: a take the egress hold kept in never left, so
+    # it is not the bucket's one take.
     return conn.execute(
         f"SELECT 1 FROM {EVALUATION_TABLE}"
         " WHERE station_id=? AND event_date=? AND bucket=? AND order_intent_id IS NOT NULL"
+        " AND COALESCE(refusal, '')<>?"
         " LIMIT 1",
-        (station_id, event_date, bucket),
+        (station_id, event_date, bucket, SEND_EGRESS_HOLD_REFUSAL),
     ).fetchone() is not None
 
 
@@ -679,8 +683,9 @@ def station_day_sends(
 ) -> int:
     return int(conn.execute(
         f"SELECT COUNT(*) FROM {EVALUATION_TABLE}"
-        " WHERE station_id=? AND event_date=? AND order_intent_id IS NOT NULL",
-        (station_id, event_date),
+        " WHERE station_id=? AND event_date=? AND order_intent_id IS NOT NULL"
+        " AND COALESCE(refusal, '')<>?",
+        (station_id, event_date, SEND_EGRESS_HOLD_REFUSAL),
     ).fetchone()[0] or 0)
 
 

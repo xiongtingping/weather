@@ -45,6 +45,7 @@ from .exit_orders import (
 )
 from .inventory_producer import ledger_holdings_by_token
 from .order_submission import live_intent_armed
+from .supply_watch import EGRESS_HOLD_REASON, egress_send_gate
 from .production_io import load_chain_sent_shares
 from .settlement_time import settlement_day_state
 
@@ -357,7 +358,17 @@ def execute_mis_bought_leg_exits(
     planned = plan_mis_bought_leg_exits(conn, now_utc=now_utc, claim_reader=claim_reader, bid_reader=bid_reader)
     receipts: list[dict[str, Any]] = []
     submitted = 0
-    for plan in planned["plans"]:
+    # Charter 197 amendment (user ruling 2026-09-22): no new order while the
+    # egress reading is red; held before minting, each plan named on the
+    # receipt.  The lane re-plans from the book every cycle.
+    egress_gate = egress_send_gate()
+    if egress_gate.get("hold"):
+        receipts = [
+            {"order_intent_id": plan["order_intent_id"], "state": "held",
+             "reason": EGRESS_HOLD_REASON, "exchange_post_started": False}
+            for plan in planned["plans"]
+        ]
+    for plan in [] if egress_gate.get("hold") else planned["plans"]:
         intent_id = plan["order_intent_id"]
         if conn.execute(
             "SELECT 1 FROM basket_target_order_intents WHERE order_intent_id=?", (intent_id,)
@@ -388,6 +399,7 @@ def execute_mis_bought_leg_exits(
         "planned": len(planned["plans"]),
         "submitted": submitted,
         "live_intent_armed": bool(live_intent_armed()),
+        "egress_gate": dict(egress_gate),
         "receipts": receipts,
         "readings": planned["readings"],
     }

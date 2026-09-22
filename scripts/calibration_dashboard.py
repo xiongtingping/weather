@@ -482,18 +482,24 @@ def _supply_watch_alerts(
             ran_inline = True
         except Exception as exc:  # noqa: BLE001 -- a failed pass is itself a row
             return [{
-                "health": "amber", "label": "断供守望",
-                "note": f"守望本轮失败：{type(exc).__name__}: {str(exc)[:80]}",
+                "health": "amber", "label": "守望失效",
+                "note": f"守望本轮失败：{type(exc).__name__}: {str(exc)[:80]}"
+                "；发单闸按失效安全放行（不拦单）",
             }]
     rows = [
         {"health": row["health"], "label": row["label"], "note": row["note"]}
         for row in payload.get("alerts") or []
         if isinstance(row, Mapping) and row.get("health") in ("red", "amber")
     ]
-    if ran_inline and age_hours is not None:
+    if ran_inline:
+        # Charter 197 amendment: the send gate fails OPEN on a silent watch,
+        # so the silence itself has to be a light.
         rows.append({
-            "health": "amber", "label": "断供守望",
-            "note": f"守望扫描 {age_hours * 60:.0f} 分钟没有跑，本轮由看板代跑",
+            "health": "amber", "label": "守望失效",
+            "note": (
+                "守望文件缺失" if age_hours is None
+                else f"守望扫描 {age_hours * 60:.0f} 分钟没有跑"
+            ) + "：发单闸按失效安全放行（不拦单）；本轮由看板代跑",
         })
     return rows
 

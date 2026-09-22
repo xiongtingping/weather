@@ -29,6 +29,7 @@ from .execution_reconciliation import (
     record_order_event,
 )
 from .exit_orders import Transport, wall_clock_utc
+from .supply_watch import EGRESS_HOLD_REASON, egress_send_gate, send_audit
 from .order_submission import (
     BASKET_STRATEGY_ID,
     PLACE_ORDER_PATH,
@@ -188,17 +189,27 @@ def send_lane_buy(
         conn, bucket=bucket, token_id=token_id, exclude_order_intent_id=intent_id, same_cycle_id=cycle_id,
     )
     armed = live_intent_armed()
-    if gate.get("allowed") is not True or not live_submit_authorized or not armed:
+    # Charter 197 amendment (user ruling 2026-09-22): no new order while the
+    # egress reading is red -- the last gate, read fresh, for a send every
+    # other gate admitted.  A missing or stale watch never holds.
+    egress_gate = egress_send_gate()
+    egress_held = bool(
+        egress_gate.get("hold") and gate.get("allowed") is True
+        and live_submit_authorized and armed
+    )
+    if gate.get("allowed") is not True or not live_submit_authorized or not armed or egress_held:
         reason = (
             str(gate.get("reason") or "sequential_gate_blocked") if gate.get("allowed") is not True
             else "live_submit_not_authorized" if not live_submit_authorized
-            else "live_intent_disarmed"
+            else "live_intent_disarmed" if not armed
+            else EGRESS_HOLD_REASON
         )
         receipt = record_order_event(conn, order_intent_id=intent_id, event={
             "event_type": "NEVER_REACHED_EXCHANGE", "exchange_order_id": "", "observed_at": sent_at,
             "matched_size": 0.0, "matched_notional_usdc": 0.0,
             "event_payload": {"idempotency_key": intent_id, "payload_sha256": content_sha256(payload),
-                              "reason": reason, "source": lane},
+                              "reason": reason, "source": lane,
+                              **(send_audit(egress_gate) if egress_held else {})},
         })
         entry.update({"state": receipt.get("state"), "reason": reason, "exchange_post_started": False,
                       "payload_sha256": content_sha256(payload)})
@@ -214,7 +225,7 @@ def send_lane_buy(
             "matched_size": 0.0, "matched_notional_usdc": 0.0,
             "event_payload": {"idempotency_key": intent_id, "payload_sha256": content_sha256(payload),
                               "reason": outcome["reason"], "source": str(response.get("source") or ""),
-                              "http_status": response.get("http_status")},
+                              "http_status": response.get("http_status"), **send_audit(egress_gate)},
         })
         entry.update({"state": receipt.get("state"), "event_type": outcome["event_type"],
                       "reason": outcome["reason"], "exchange_post_started": False})
@@ -248,7 +259,7 @@ def send_lane_buy(
         "observed_at": observed, "matched_size": matched_size, "matched_notional_usdc": matched_notional,
         "event_payload": {"idempotency_key": intent_id, "payload_sha256": content_sha256(payload),
                           "reason": outcome["reason"], "source": str(response.get("source") or ""),
-                          "exchange_status": str(fill.get("status") or ""),
+                          "exchange_status": str(fill.get("status") or ""), **send_audit(egress_gate),
                           **({"fok_short_fill": fok_short} if fok_short else {})},
     })
     entry.update({"state": receipt.get("state"), "event_type": outcome["event_type"],

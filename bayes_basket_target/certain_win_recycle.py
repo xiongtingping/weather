@@ -56,6 +56,7 @@ from typing import Any
 
 from .contracts import content_sha256
 from .exit_orders import default_position_reader, send_exit_sell
+from .supply_watch import EGRESS_HOLD_REASON, egress_held_sql, egress_send_gate
 
 RECYCLE_PRICE = 0.99
 STRATEGY_ID = "bayes_basket_target_v1"
@@ -262,7 +263,10 @@ def _own_sells(
         "   AND e.event_type='SUBMIT_REFUSED' ORDER BY e.rowid DESC LIMIT 1)"
         " FROM basket_target_order_intents i"
         " LEFT JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id"
-        " WHERE i.order_action='SELL' AND i.bucket=? AND i.decision_id=?",
+        " WHERE i.order_action='SELL' AND i.bucket=? AND i.decision_id=?"
+        # Charter 197 amendment: a sell the egress hold kept in never left --
+        # neither a send nor a failure against the leg's caps.
+        f" AND NOT {egress_held_sql('i')}",
         (bucket, f"{INTENT_PREFIX}_decision_{station_id}_{event_date}"),
     ):
         sends += 1
@@ -447,6 +451,30 @@ def execute_certain_win_recycles(
     plans = plan_certain_win_recycles(target_conn, canonical_conn, now_utc=now_utc)
     read_position = position_reader or default_position_reader
     receipts: list[dict[str, Any]] = []
+    # Charter 197 amendment (user ruling 2026-09-22): no new order while the
+    # egress reading is red.  Held before minting: this lane re-plans every
+    # cycle from what is still unsold, so nothing is lost by waiting, and a
+    # minted-and-held intent per leg per cycle through a fifteen-hour outage
+    # would be thousands of rows saying the same thing.  Every plan it held
+    # is named on the receipt with the reason.  Resting sells are untouched.
+    egress_gate = egress_send_gate()
+    if egress_gate.get("hold"):
+        return {
+            "schema": "certain_win_recycle_receipt_v1",
+            "rule": RULE_VERSION,
+            "planned": len(plans),
+            "sent": 0,
+            "deferred_to_next_cycle": len(plans),
+            "submitted": 0,
+            "egress_gate": dict(egress_gate),
+            "receipts": [
+                {"order_intent_id": plan["order_intent_id"], "state": "held",
+                 "reason": EGRESS_HOLD_REASON, "station_id": plan["station_id"],
+                 "event_date": plan["event_date"], "bucket": plan["bucket"],
+                 "exchange_post_started": False}
+                for plan in plans
+            ],
+        }
     submitted = 0
     sent = 0
     for plan in plans:
@@ -499,6 +527,7 @@ def execute_certain_win_recycles(
         "sent": sent,
         "deferred_to_next_cycle": max(0, len(plans) - sent),
         "submitted": submitted,
+        "egress_gate": dict(egress_gate),
         "receipts": receipts,
     }
 
