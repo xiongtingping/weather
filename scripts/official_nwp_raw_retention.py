@@ -37,6 +37,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from typing import Any, Iterable, Mapping
 
 
@@ -75,6 +76,15 @@ try:
     from bayes_basket_target.resource_bounds import MAX_TARGET_RESEARCH_RAW_BYTES
 except ImportError:  # pragma: no cover - the budget lane is then explicit-only
     MAX_TARGET_RESEARCH_RAW_BYTES = 1024 * 1024 * 1024
+from bayes_basket_target.offloaded_paths import (  # noqa: E402
+    DEFAULT_COLD_TIER_MIN_FREE_BYTES,
+    OffloadedVolumeMissing,
+    OffloadedVolumeUnreadable,
+    assert_present,
+    cold_tier_status,
+    copy_to_cold_tier,
+    evicted_path,
+)
 RAW_STORE_DIR_NAME = "raw"
 # ``native_raw_object_store.store_range_alias`` writes one
 # ``<store>/ranges/<coordinate>.json`` per downloaded byte range, and that file
@@ -661,13 +671,29 @@ def build_native_reference_index(
     documents = 0
     document_bytes = 0
     scanned_roots: list[str] = []
+    unavailable_roots: list[dict[str, str]] = []
+    walk_errors: list[dict[str, str]] = []
     wanted = {value.encode("ascii") for value in candidate_hashes}
     for reference_root in reference_roots:
+        # Charter 196: a reference root on the external volume that is
+        # unplugged or TCC-denied answers is_dir()/os.walk with "nothing is
+        # here", and a missing reference makes a live body look unreferenced.
+        # Record it so the caller can narrow what it discards.
+        state = _root_unavailable(Path(reference_root).expanduser())
+        if state is not None:
+            unavailable_roots.append({"root": str(reference_root), **state})
+            continue
         root = Path(reference_root).expanduser().resolve()
         if not root.is_dir():
             continue
         scanned_roots.append(str(root))
-        for current, directories, files in os.walk(root, followlinks=False):
+        for current, directories, files in os.walk(
+            root,
+            followlinks=False,
+            onerror=lambda exc: walk_errors.append(
+                {"path": str(getattr(exc, "filename", "") or ""), "error": str(exc)}
+            ),
+        ):
             directories[:] = [
                 name for name in directories if not (Path(current) / name).is_symlink()
             ]
@@ -734,7 +760,27 @@ def build_native_reference_index(
         "unreadable_reference_documents": unreadable,
         "skipped_self_plan_documents": sorted(self_plans),
         "skipped_range_alias_dirs": sorted(skipped_range_alias_dirs),
+        "unavailable_reference_roots": unavailable_roots,
+        "reference_walk_errors": walk_errors[:200],
+        "reference_walk_error_count": len(walk_errors),
     }
+
+
+def _root_unavailable(path: Path) -> dict[str, str] | None:
+    """None when ``path`` can be read, else why not (charter 167/196).
+
+    A root that simply does not exist is not "unavailable" -- the defaults
+    name roots a fresh checkout may not have.  Only an offloaded root that is
+    unplugged, or attached but unreadable by this process, counts.
+    """
+
+    try:
+        assert_present(path, what=str(path))
+    except OffloadedVolumeUnreadable as exc:
+        return {"state": "unreadable", "reason": str(exc)[:300]}
+    except OffloadedVolumeMissing as exc:
+        return {"state": "missing", "reason": str(exc)[:300]}
+    return None
 
 
 def build_native_plan(
@@ -745,7 +791,14 @@ def build_native_plan(
     allow_unreadable_references: bool = False,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    roots = [Path(value).expanduser().resolve() for value in source_roots]
+    source_values = [Path(value).expanduser() for value in source_roots]
+    unavailable_source_roots = [
+        {"root": str(value), **state}
+        for value in source_values
+        if (state := _root_unavailable(value)) is not None
+    ]
+    blind = {row["root"] for row in unavailable_source_roots}
+    roots = [value.resolve() for value in source_values if str(value) not in blind]
     now_value = now or datetime.now(timezone.utc)
     age_cutoff = now_value.timestamp() - max(0, int(min_age_days)) * 86400.0
     stores_by_root = {root: discover_raw_stores(root) for root in roots}
@@ -853,6 +906,10 @@ def build_native_plan(
         ),
         "skipped_self_plan_documents": index["skipped_self_plan_documents"],
         "skipped_range_alias_dirs": index["skipped_range_alias_dirs"],
+        "unavailable_reference_roots": index["unavailable_reference_roots"],
+        "reference_walk_errors": index["reference_walk_errors"],
+        "reference_walk_error_count": index["reference_walk_error_count"],
+        "unavailable_source_roots": unavailable_source_roots,
         "body_hash_count": len(bodies),
         "referenced_hash_count": len(referenced),
         "unreferenced_files": unreferenced,
@@ -965,6 +1022,125 @@ def plan_budget_cold_archive(
     }
 
 
+def restrict_purge_when_blind(
+    plan: Mapping[str, Any], reobtainable_store_keys: Iterable[str]
+) -> dict[str, Any]:
+    """Narrow the unreferenced purge while any reference root could not be read.
+
+    Charter 196.  "Unreferenced" is only as good as the scan behind it: on
+    2026-09-21 the launchd pass read ``data/research`` as empty (TCC denied
+    the external volume) and still discarded 5,363 bodies as unreferenced
+    (apply record generated 2026-09-20T21:09Z).  All 5,363 were in
+    ``ecmwf_pf50/raw`` and ``gefs/raw``, whose bodies are
+    re-obtainable from S3, so nothing was lost -- but nothing in the code made
+    it so.  Now, while a reference root is blind, the purge keeps to the
+    stores the operator already names as re-obtainable for the budget lane,
+    and every other store's unreferenced bodies are withheld until a pass can
+    see all its roots.  The budget lane is unchanged: it only ever takes
+    re-obtainable bodies.
+    """
+
+    blind = list(plan.get("unavailable_reference_roots") or [])
+    if not blind and not int(plan.get("reference_walk_error_count") or 0):
+        return dict(plan)
+    wanted = {str(value).strip() for value in reobtainable_store_keys if str(value).strip()}
+    kept: list[dict[str, Any]] = []
+    withheld: list[dict[str, Any]] = []
+    for row in plan.get("unreferenced_files") or []:
+        if wanted and _store_key_selected(str(row.get("store_key") or ""), wanted):
+            kept.append(row)
+        else:
+            withheld.append(row)
+    return {
+        **plan,
+        "unreferenced_files": kept,
+        "unreferenced_count": len(kept),
+        "unreferenced_bytes": sum(int(row["size_bytes"]) for row in kept),
+        "withheld_reference_root_unavailable_files": withheld,
+        "withheld_reference_root_unavailable_count": len(withheld),
+        "withheld_reference_root_unavailable_bytes": sum(
+            int(row["size_bytes"]) for row in withheld
+        ),
+        "purge_restricted_to_reobtainable_stores": sorted(wanted),
+    }
+
+
+class _ColdTier:
+    """One pass's use of the cold tier (charter 196).
+
+    Evicted bodies are copied to ``<cold root>/evicted/<repo path>`` and
+    verified before the manifest row is written and the hot copy unlinked.
+    The first failure (volume pulled mid-pass, write error, mismatch) turns
+    the tier off for the rest of the pass, so the pass still finishes on the
+    pre-196 behaviour -- discard -- instead of stalling on a dead USB link.
+    """
+
+    def __init__(
+        self,
+        status: Mapping[str, Any] | None,
+        *,
+        max_bytes_per_sec: float = 0.0,
+        repo_root: Path = ROOT,
+    ):
+        self.status = dict(status or {"state": "disabled", "root": ""})
+        self.repo_root = Path(repo_root)
+        self.usable = self.status.get("state") == "available"
+        self.root = Path(str(self.status.get("root") or "")) if self.usable else None
+        self.max_bytes_per_sec = float(max_bytes_per_sec or 0.0)
+        self.failure = ""
+        self.moved_count = 0
+        self.moved_bytes = 0
+        self._started = time.monotonic()
+        self._paced_bytes = 0
+
+    def evict(self, path: Path, row: dict[str, Any]) -> None:
+        """Annotate a manifest row with where its body went; never unlinks."""
+
+        if not self.usable or self.root is None:
+            row["cold_tier_state"] = self.failure or str(self.status.get("state") or "disabled")
+            return
+        try:
+            result = copy_to_cold_tier(
+                path,
+                evicted_path(path, root=self.root, repo_root=self.repo_root),
+                expected_sha256=str(row.get("sha256") or "") or None,
+            )
+        except Exception as exc:  # noqa: BLE001 - any failure degrades to discard
+            self.usable = False
+            self.failure = f"move_failed:{type(exc).__name__}:{str(exc)[:200]}"
+            row["cold_tier_state"] = self.failure
+            return
+        row.update(
+            {
+                "state": "body_moved_to_cold_tier",
+                "cold_tier_state": "moved",
+                "cold_path": result["cold_path"],
+                "cold_copy_verified_sha256": result["sha256"],
+                "strict_replay_body_available": True,
+                "production_dependency": False,
+            }
+        )
+        self.moved_count += 1
+        self.moved_bytes += int(result["size_bytes"])
+        self._pace(int(result["size_bytes"]))
+
+    def _pace(self, size: int) -> None:
+        if self.max_bytes_per_sec <= 0:
+            return
+        self._paced_bytes += size
+        ahead = self._paced_bytes / self.max_bytes_per_sec - (time.monotonic() - self._started)
+        if ahead > 0:
+            time.sleep(min(ahead, 5.0))
+
+    def summary(self) -> dict[str, Any]:
+        return {
+            "cold_tier": self.status,
+            "cold_tier_failure": self.failure,
+            "moved_to_cold_tier_count": self.moved_count,
+            "moved_to_cold_tier_bytes": self.moved_bytes,
+        }
+
+
 def _tree_bytes(root: Path) -> int:
     total = 0
     for current, directories, files in os.walk(root, followlinks=False):
@@ -983,10 +1159,14 @@ def _tree_bytes(root: Path) -> int:
 
 
 def apply_budget_cold_archive(
-    plan: Mapping[str, Any], selection: Mapping[str, Any]
+    plan: Mapping[str, Any],
+    selection: Mapping[str, Any],
+    *,
+    cold_tier: "_ColdTier | Mapping[str, Any] | None" = None,
 ) -> dict[str, Any]:
     if plan.get("active_capture_processes"):
         raise RuntimeError("official_nwp_native_retention_capture_active")
+    tier = cold_tier if isinstance(cold_tier, _ColdTier) else _ColdTier(cold_tier)
     root = Path(str(selection["budget_root"]))
     recorded_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     rows: list[dict[str, Any]] = []
@@ -1022,6 +1202,9 @@ def apply_budget_cold_archive(
                 "receipt_retained_outside_store": True,
             }
         )
+        # Charter 196: a verified cold copy first, when the tier is usable;
+        # the manifest row records which of the two happened.
+        tier.evict(path, rows[-1])
     _append_archive_manifest(root, rows)
     deleted: list[dict[str, Any]] = []
     for row in rows:
@@ -1042,6 +1225,7 @@ def apply_budget_cold_archive(
         "cold_archived_bytes": sum(item["size_bytes"] for item in deleted),
         "budget_root_bytes_after": _tree_bytes(root),
         "archive_manifest_path": str(_archive_manifest_path(root)),
+        "budget_cold_tier": tier.summary(),
     }
 
 
@@ -1085,7 +1269,11 @@ def _native_manifest_root(plan: Mapping[str, Any], path: Path) -> Path:
     raise RuntimeError(f"official_nwp_native_retention_root_unresolved:{path}")
 
 
-def apply_native_unreferenced(plan: Mapping[str, Any]) -> dict[str, Any]:
+def apply_native_unreferenced(
+    plan: Mapping[str, Any],
+    *,
+    cold_tier: "_ColdTier | Mapping[str, Any] | None" = None,
+) -> dict[str, Any]:
     """Discard the planned unreferenced bodies, manifest row written first.
 
     Referenced bodies are strict replay inputs and are never candidates here,
@@ -1097,6 +1285,7 @@ def apply_native_unreferenced(plan: Mapping[str, Any]) -> dict[str, Any]:
 
     if plan.get("active_capture_processes"):
         raise RuntimeError("official_nwp_native_retention_capture_active")
+    tier = cold_tier if isinstance(cold_tier, _ColdTier) else _ColdTier(cold_tier)
     deleted: list[dict[str, Any]] = []
     seen: set[str] = set()
     by_root: dict[Path, list[dict[str, Any]]] = {}
@@ -1129,6 +1318,7 @@ def apply_native_unreferenced(plan: Mapping[str, Any]) -> dict[str, Any]:
                 "strict_replay_body_available": False,
             }
         )
+        tier.evict(path, by_root[_native_manifest_root(plan, path)][-1])
     for root, rows in by_root.items():
         _append_archive_manifest(root, rows)
     for rows in by_root.values():
@@ -1151,6 +1341,7 @@ def apply_native_unreferenced(plan: Mapping[str, Any]) -> dict[str, Any]:
         "archive_manifest_paths": sorted(
             str(_archive_manifest_path(root)) for root in by_root
         ),
+        "unreferenced_cold_tier": tier.summary(),
     }
 
 
@@ -1161,6 +1352,18 @@ def _run_native_lane(args: argparse.Namespace) -> dict[str, Any]:
         min_age_days=max(0, args.min_age_days),
         allow_unreadable_references=args.allow_unreadable_reference_documents,
     )
+    plan = restrict_purge_when_blind(plan, args.cold_archive_store or ())
+    # Charter 196: evictions move to the cold tier when it is usable.  No
+    # --cold-tier-root keeps the pre-196 discard exactly.
+    tier_status = (
+        cold_tier_status(
+            args.cold_tier_root,
+            min_free_bytes=int(float(args.cold_tier_min_free_gib) * 1024**3),
+        )
+        if args.cold_tier_root is not None
+        else {"state": "disabled", "root": ""}
+    )
+    plan = {**plan, "cold_tier": tier_status}
     if args.cold_archive_to_budget:
         if args.budget_root is None:
             return {**plan, "state": "blocked_budget_root_missing", "apply_allowed": False}
@@ -1179,14 +1382,18 @@ def _run_native_lane(args: argparse.Namespace) -> dict[str, Any]:
         return {**plan, "state": "blocked_apply_confirmation_missing", "apply_allowed": False}
     if plan.get("active_capture_processes"):
         return {**plan, "state": "blocked_capture_in_progress", "apply_allowed": False}
+    tier = _ColdTier(
+        tier_status, max_bytes_per_sec=float(args.cold_tier_max_mb_per_sec) * 1024**2
+    )
     plan = {
         **plan,
         "state": "retention_apply_started",
-        **apply_native_unreferenced(plan),
+        **apply_native_unreferenced(plan, cold_tier=tier),
     }
     selection = plan.get("budget_cold_archive")
     if selection:
-        plan = {**plan, **apply_budget_cold_archive(plan, selection)}
+        plan = {**plan, **apply_budget_cold_archive(plan, selection, cold_tier=tier)}
+    plan = {**plan, **tier.summary()}
     plan["state"] = "retention_apply_complete"
     return plan
 
@@ -1243,6 +1450,25 @@ def main() -> int:
         action="append",
         help="native lane; store path relative to its source root, e.g. "
         "icon_global_official/raw or icon_global_eps_official/grid_r03b06",
+    )
+    parser.add_argument(
+        "--cold-tier-root",
+        type=Path,
+        help="native lane (charter 196); move evicted bodies to "
+        "<root>/evicted/<repo path> after a verified copy, instead of "
+        "discarding them.  Degrades to discard when the root is unplugged, "
+        "unreadable (TCC), unwritable, on the internal disk or short of space",
+    )
+    parser.add_argument(
+        "--cold-tier-min-free-gib",
+        type=float,
+        default=DEFAULT_COLD_TIER_MIN_FREE_BYTES / 1024**3,
+    )
+    parser.add_argument(
+        "--cold-tier-max-mb-per-sec",
+        type=float,
+        default=0.0,
+        help="pace the cold-tier copies; 0 = unpaced",
     )
     parser.add_argument("--retention-days", type=int, default=DEFAULT_RETENTION_DAYS)
     parser.add_argument("--retain-latest-runs", type=int, default=DEFAULT_RETAIN_LATEST_RUNS)

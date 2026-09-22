@@ -44,6 +44,16 @@ BUDGET_ROOT="${PM_OFFICIAL_NWP_NATIVE_RETENTION_BUDGET_ROOT-$ROOT/data/runtime/o
 BUDGET_BYTES="${PM_OFFICIAL_NWP_NATIVE_RETENTION_BUDGET_BYTES:-7516192768}"
 BUDGET_STORES="${PM_OFFICIAL_NWP_NATIVE_RETENTION_BUDGET_STORES:-ecmwf_pf50/raw gefs/raw}"
 
+# Charter 196: what this pass evicts goes to the cold tier on the external
+# volume -- verified copy, then unlink -- instead of being discarded, and the
+# cold end of the capture archives and MADIS objects follows it.  The volume
+# is never a dependency: unplugged, or unreadable to this launchd job (macOS
+# removable-volume permission), both lanes fall back to what they did before
+# (discard what is re-obtainable; keep the rest hot) and say so below.
+# Set empty to turn the tier off.
+COLD_TIER_ROOT="${PM_OFFICIAL_NWP_NATIVE_RETENTION_COLD_TIER_ROOT-/Volumes/weather_data/weather_cold}"
+COLD_TIER_MAX_MB_PER_SEC="${PM_COLD_TIER_MAX_MB_PER_SEC:-60}"
+
 # Runs first, not after: a raw body only becomes reclaimable below once no
 # packet under output/audits names its hash any more, and a packet that is
 # never pruned keeps it referenced forever.  Pruning stale packets in the
@@ -94,6 +104,9 @@ if [ -n "$BUDGET_ROOT" ]; then
     COMMON+=(--cold-archive-store "$store_key")
   done
 fi
+if [ -n "$COLD_TIER_ROOT" ]; then
+  COMMON+=(--cold-tier-root "$COLD_TIER_ROOT" --cold-tier-max-mb-per-sec "$COLD_TIER_MAX_MB_PER_SEC")
+fi
 
 echo "=== official NWP native raw retention ==="
 echo "时间: $(date '+%Y-%m-%d %H:%M:%S')  min_age_days=${MIN_AGE_DAYS}"
@@ -140,6 +153,18 @@ print(f"  bodies={plan['body_hash_count']} referenced={plan['referenced_hash_cou
 print(f"  unreferenced={plan['unreferenced_count']} ({mib(plan['unreferenced_bytes'])})")
 print(f"  withheld_young={plan['withheld_young_count']} ({mib(plan['withheld_young_bytes'])})")
 print(f"  unreadable_reference_documents={plan['unreadable_reference_document_count']}")
+tier = plan.get("cold_tier") or {}
+print(f"  cold_tier: state={tier.get('state', 'disabled')} root={tier.get('root', '')}")
+for row in plan.get("unavailable_reference_roots") or []:
+    print(f"  引用根不可读({row.get('state')}): {row.get('root')}")
+if plan.get("reference_walk_error_count"):
+    print(f"  引用根遍历出错: {plan['reference_walk_error_count']} 处")
+if plan.get("withheld_reference_root_unavailable_count"):
+    print(
+        f"  引用根不可读 → 只清可重取 store，扣留"
+        f" {plan['withheld_reference_root_unavailable_count']}"
+        f" ({mib(plan['withheld_reference_root_unavailable_bytes'])})"
+    )
 for row in plan["store_rows"][:5]:
     if row["unreferenced_bytes"]:
         print(f"    {row['provider']}: {row['unreferenced_count']} / {mib(row['unreferenced_bytes'])}")
@@ -183,10 +208,33 @@ if budget:
     )
 for path in plan.get("archive_manifest_paths") or []:
     print(f"  manifest: {path}")
+tier = plan.get("cold_tier") or {}
+print(
+    f"  冷层: state={tier.get('state', 'disabled')}"
+    f" 搬入={plan.get('moved_to_cold_tier_count', 0)}"
+    f" ({int(plan.get('moved_to_cold_tier_bytes', 0)) / 1024 / 1024:.1f} MiB)"
+    + (f" 中途失败={plan['cold_tier_failure']}" if plan.get("cold_tier_failure") else "")
+)
 PYAPPLY
 
+echo "【冷层：采集归档与 MADIS 原件（宪章 196）】"
+OFFLOAD_RC=0
+if [ -n "$COLD_TIER_ROOT" ]; then
+  "$PY" "$ROOT/scripts/cold_tier_offload.py" --apply \
+    --cold-tier-root "$COLD_TIER_ROOT" \
+    --max-mb-per-sec "$COLD_TIER_MAX_MB_PER_SEC" \
+    --receipt "$AUDIT_DIR/cold_tier_offload_latest.json" || OFFLOAD_RC=$?
+  if [ "$OFFLOAD_RC" != "0" ]; then
+    echo "  告警：冷层搬迁有文件复制失败（源文件未删），见 $AUDIT_DIR/cold_tier_offload_latest.json"
+  fi
+else
+  echo "  冷层已关闭（PM_OFFICIAL_NWP_NATIVE_RETENTION_COLD_TIER_ROOT 为空）。"
+fi
+
 echo "【剩余】"
-du -sh data/runtime/official_nwp_sources data/research/bayes_basket_target/model_arrivals
+du -sh data/runtime/official_nwp_sources
+du -sh data/research/bayes_basket_target/model_arrivals 2>/dev/null \
+  || echo "  model_arrivals 在外置卷上，本作业不可读（拔盘或 launchd 无可移除宗卷权限）"
 
 # The alarm: a pass that ran, reported success and reclaimed nothing looked
 # exactly like a healthy one for thirteen days in August.  Exit non-zero when
@@ -231,5 +279,9 @@ PYHEALTH
     echo "=== 完成（带告警） ==="
     exit 1
   fi
+fi
+if [ "$OFFLOAD_RC" != "0" ]; then
+  echo "=== 完成（冷层搬迁带告警） ==="
+  exit 1
 fi
 echo "=== 完成 ==="
