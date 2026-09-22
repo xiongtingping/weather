@@ -2704,6 +2704,19 @@ def run_target_forecast_refresh_cycle(
                 "state": "failed",
                 "reason": f"{type(exc).__name__}:{exc}"[:200],
             }
+    # Charter 195 (四): days that failed on the network are re-queued the
+    # moment the egress answers -- required families first.
+    recovery_state: dict[str, Any] = {"state": "not_run"}
+    recovery = getattr(worker, "run_network_recovery_recaptures", None)
+    if callable(recovery) and not bool(getattr(worker, "skip_nwp_refresh", False)):
+        try:
+            recovery_state = dict(recovery(as_of_utc=utc_now()))
+        except Exception as exc:  # noqa: BLE001 -- the rotation is the fallback
+            recovery_state = {
+                "state": "failed",
+                "reason": f"{type(exc).__name__}:{exc}"[:200],
+            }
+    arrival_state["network_recovery"] = recovery_state
     step_timings_ms["nwp_arrival_triggers"] = round(
         (time.perf_counter() - step_started) * 1000.0, 1
     )

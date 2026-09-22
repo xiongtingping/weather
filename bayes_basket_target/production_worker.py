@@ -16,6 +16,7 @@ import hashlib
 import json
 import math
 import os
+import random
 import re
 import sqlite3
 import subprocess
@@ -1278,6 +1279,34 @@ ARRIVAL_TRIGGER_WINDOW_SEC = 3 * 3600.0
 # cycle (``RUN_CYCLE_HOUR_BY_LEAD`` in both archive modules); any other cycle
 # is a followed run and belongs to the follow lane (charter 192).
 _ARRIVAL_OWN_CYCLE_BY_LEAD = {0: 0, 1: 0, 2: 12}
+# Charter 195 (四): a pass that failed on the network is not a run that is not
+# published.  It keeps neither the ladder walk nor the 30-minute floor; the day
+# waits 60s, 120s, ... up to 10 minutes (+-20% jitter) and is re-queued at once
+# when the egress answers again (``supply_watch.json`` or a direct HEAD).
+NETWORK_BACKOFF_MIN_SEC = 60.0
+NETWORK_BACKOFF_MAX_SEC = 600.0
+NETWORK_BACKOFF_JITTER = 0.2
+# The direct egress check the recovery lane makes at most this often.
+EGRESS_RECHECK_SEC = 60.0
+EGRESS_PROBE_URLS = (
+    "https://storage.googleapis.com/ecmwf-open-data/",
+    "https://noaa-gefs-pds.s3.amazonaws.com/",
+)
+# Text a failed pass leaves (the child's stderr tail, a held family's reason)
+# that means the path, not the object: the breaker's marker, the families'
+# own transport-failure codes, and the transport error classes.
+_NETWORK_FAILURE_MARKERS = (
+    "nwp_transport_outage",
+    "_transport_failed",
+    "ConnectError", "ConnectTimeout", "PoolTimeout", "ProxyError",
+    "ReadError", "ReadTimeout", "WriteError", "WriteTimeout",
+    "RemoteProtocolError", "SSLError", "SSLEOFError",
+    "EOF occurred in violation of protocol", "URLError",
+    "Connection refused", "Connection reset",
+)
+# The families a recovery pass holds on what they have, so ECMWF and GEFS are
+# merged and compiled first; the next pass takes these.
+RECOVERY_HOLD_FAMILIES = ("ECCC_DD_WEATHER", "DWD_OPENDATA_ICON_EPS")
 # Every capture attempt, rung by rung, one JSON line each; rotated to ``.1``
 # past this size.
 CAPTURE_ATTEMPT_LOG_NAME = "official_native_capture_attempts.jsonl"
@@ -3666,6 +3695,48 @@ _LADDER_REQUIRED_PROBE_FAMILIES = (
 )
 
 
+def _capture_text_is_network(text: Any) -> bool:
+    """Charter 195 (四): whether a failure names the network, not the run."""
+
+    value = str(text or "")
+    return any(marker in value for marker in _NETWORK_FAILURE_MARKERS)
+
+
+def _probe_run_publishing(
+    probe_state: Mapping[str, Any] | None,
+    *,
+    family: str,
+    run_init: datetime,
+    event_date: str,
+    now: datetime,
+) -> bool:
+    """Charter 195 (四): the probe watches this run land and it has not yet.
+
+    True only on a positive reading -- a fresh state listing the day, the run
+    inside the probe's window for the family, and no sighting yet -- so a
+    probe that cannot speak never stops a ladder walk.
+    """
+
+    if family not in nwp_arrival_probe.SPECS:
+        return False
+    if not _arrival_probe_state_fresh(probe_state, now=now, event_date=event_date):
+        return False
+    spec = nwp_arrival_probe.SPECS[family]
+    if int(run_init.hour) not in spec.cycles:
+        return False
+    age_h = (now - run_init).total_seconds() / 3600.0
+    if not (
+        spec.earliest_after_init_hours[int(run_init.hour)]
+        <= age_h
+        <= spec.give_up_after_init_hours
+    ):
+        return False
+    key = nwp_arrival_probe.ready_key(
+        family, nwp_arrival_probe.DOWNLOAD_SOURCE[family], run_init, event_date
+    )
+    return key not in ((probe_state or {}).get("ready") or {})
+
+
 def _arrival_probe_state_fresh(
     probe_state: Mapping[str, Any] | None, *, now: datetime, event_date: str
 ) -> bool:
@@ -5410,6 +5481,194 @@ class TargetProductionWorker:
             **boundary,
         }
 
+    def _official_native_network_backoff_map(self) -> dict[str, dict[str, Any]]:
+        """Charter 195 (四): days that last failed on the network, by date."""
+
+        backoff = getattr(self, "_official_native_network_backoff", None)
+        if backoff is None:
+            backoff = {}
+            self._official_native_network_backoff = backoff
+        return backoff
+
+    def _egress_answered_since(self, since_utc: str) -> bool:
+        """Whether the upstream path has answered after ``since_utc``.
+
+        First the supply watch (charter 197) -- its egress probe says ``ok``
+        in a file written after the failure -- then, at most once a minute, a
+        HEAD of our own on the two required families' roots.  Never raises.
+        """
+
+        try:
+            since = datetime.fromisoformat(
+                str(since_utc).replace("Z", "+00:00")
+            ).astimezone(timezone.utc)
+        except ValueError:
+            return True
+        try:
+            from .supply_watch import DEFAULT_OUTPUT  # noqa: PLC0415
+
+            watch = json.loads(Path(DEFAULT_OUTPUT).read_text())
+            generated = datetime.fromisoformat(
+                str(watch.get("generated_at_utc") or "").replace("Z", "+00:00")
+            ).astimezone(timezone.utc)
+            if (
+                str((watch.get("egress") or {}).get("state") or "") == "ok"
+                and generated > since
+            ):
+                return True
+        except Exception:  # noqa: BLE001 -- the direct check below answers
+            pass
+        seen_ok = getattr(self, "_egress_answered_at", None)
+        if isinstance(seen_ok, datetime) and seen_ok > since:
+            return True
+        last_check = float(getattr(self, "_egress_checked_mono", 0.0) or 0.0)
+        if time.monotonic() - last_check < EGRESS_RECHECK_SEC:
+            return False
+        self._egress_checked_mono = time.monotonic()
+        try:
+            from official_nwp_https_transport import official_nwp_proxy_url  # noqa: PLC0415
+
+            from .supply_watch import http_head_probe  # noqa: PLC0415
+
+            proxy = official_nwp_proxy_url() or ""
+            answered = all(
+                str(http_head_probe(url, proxy, 8.0).get("outcome") or "")
+                in {"ok", "throttled"}
+                for url in EGRESS_PROBE_URLS
+            )
+        except Exception:  # noqa: BLE001 -- unknown is "not yet"
+            answered = False
+        if answered:
+            self._egress_answered_at = datetime.now(timezone.utc)
+            return self._egress_answered_at > since
+        return False
+
+    def run_network_recovery_recaptures(self, *, as_of_utc: str) -> dict[str, Any]:
+        """Charter 195 (四): once the egress answers, re-queue in order.
+
+        Days that failed on the network go first as a required-only pass
+        (ECMWF and GEFS; ICON and ECCC held on what they have, so the day is
+        merged and compiled as soon as the two required families land), in
+        the supply watch's ``recapture_priority`` order when it gives one and
+        D+1, D+0, D+2 otherwise.  Only once no required-only pass is left does
+        each day get its full pass (ICON, ECCC, the follow lane).  Runs on the
+        forecast thread, off the NWP poll.  Never raises.
+        """
+
+        boundary = {
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+        }
+        backoff = self._official_native_network_backoff_map()
+        stages: dict[str, str] = getattr(
+            self, "_official_native_recovery_stage", None
+        ) or {}
+        self._official_native_recovery_stage = stages
+        try:
+            today = datetime.fromisoformat(
+                as_of_utc.replace("Z", "+00:00")
+            ).astimezone(timezone.utc).date()
+        except ValueError:
+            return {"state": "CLOCK_INVALID", **boundary}
+        oldest = (today - timedelta(days=1)).isoformat()
+        for day in [day for day in list(backoff) + list(stages) if day < oldest]:
+            backoff.pop(day, None)
+            stages.pop(day, None)
+        for day in backoff:
+            stages.setdefault(day, "required_due")
+        if not stages:
+            return {"state": "IDLE", **boundary}
+        waiting = [day for day, stage in stages.items() if stage == "required_due"]
+        if waiting and not any(
+            self._egress_answered_since(str((backoff.get(day) or {}).get("since_utc") or ""))
+            for day in waiting
+        ):
+            return {"state": "EGRESS_DOWN", "days": sorted(waiting), **boundary}
+        priority: list[str] = []
+        try:
+            from .supply_watch import DEFAULT_OUTPUT  # noqa: PLC0415
+
+            watch = json.loads(Path(DEFAULT_OUTPUT).read_text())
+            priority = [
+                str(row.get("event_date"))
+                for row in watch.get("recapture_priority") or ()
+                if isinstance(row, Mapping)
+            ]
+        except Exception:  # noqa: BLE001 -- the default order answers
+            priority = []
+
+        def order_key(day: str) -> tuple[int, int, str]:
+            lead = (date.fromisoformat(day) - today).days
+            ranked = priority.index(day) if day in priority else len(priority)
+            return (ranked, {1: 0, 0: 1}.get(lead, 2 + abs(lead)), day)
+
+        inflight = getattr(self, "_official_native_capture_inflight", None) or {}
+        inbox_path = (
+            self.nwp_runtime_root / "official_native_ensemble_forward_inbox.json"
+        )
+        outcomes: list[dict[str, Any]] = []
+        # A finished required-only pass moves its day on -- back to waiting
+        # when it met the network again, to its full pass otherwise.
+        for day, stage in list(stages.items()):
+            if stage != "required_running":
+                continue
+            future = inflight.get((day,))
+            if future is not None and not future.done():
+                continue
+            try:
+                outcome = future.result() if future is not None else {}
+            except Exception:  # noqa: BLE001 -- the full pass answers it
+                outcome = {}
+            again = str(outcome.get("state") or "") == "NETWORK_UNAVAILABLE" or bool(
+                outcome.get("network_held_families")
+            )
+            stages[day] = "required_due" if again else "full_due"
+        required_left = [
+            day for day, stage in stages.items()
+            if stage in {"required_due", "required_running"}
+        ]
+        for day in sorted(stages, key=order_key):
+            stage = stages[day]
+            if stage == "required_due":
+                result = self._capture_official_native_packet(
+                    station_id="",
+                    event_date=day,
+                    as_of_utc=as_of_utc,
+                    inbox_path=inbox_path,
+                    arrival={"family": "recovery"},
+                    hold_families=RECOVERY_HOLD_FAMILIES,
+                )
+                state = str(result.get("state") or "")
+                if state == "SUBMITTED":
+                    stages[day] = "required_running"
+                elif state in {"RUN_ALREADY_CAPTURED", "SKIPPED"}:
+                    stages[day] = "full_due"
+                outcomes.append({"event_date": day, "step": "required", "state": state})
+            elif stage == "full_due" and not required_left:
+                ladder = _official_native_run_ladder(
+                    event_date=day,
+                    as_of_utc=as_of_utc,
+                    probe_state=self._arrival_probe_state(),
+                )
+                result = (
+                    self._capture_official_native_packet(
+                        station_id="",
+                        event_date=day,
+                        as_of_utc=as_of_utc,
+                        inbox_path=inbox_path,
+                        arrival={"family": "recovery"},
+                        forced_rungs=ladder[:1],
+                    )
+                    if ladder else {"state": "SKIPPED"}
+                )
+                state = str(result.get("state") or "")
+                if state not in {"IN_FLIGHT", "DEFERRED_CAPTURE_SLOTS_BUSY"}:
+                    stages.pop(day, None)
+                outcomes.append({"event_date": day, "step": "full", "state": state})
+        return {"state": "RAN", "outcomes": outcomes, **boundary}
+
     def _enqueue_arrival_follow(
         self, *, event_date: str, lead: int, run_init: datetime
     ) -> str:
@@ -5445,6 +5704,7 @@ class TargetProductionWorker:
         arrival: Mapping[str, Any] | None = None,
         forced_rungs: Sequence[tuple[int, int | None, datetime]] | None = None,
         listing_station: str | None = None,
+        hold_families: Sequence[str] = (),
     ) -> dict[str, Any]:
         """Start a background capture for one scope; never block the caller.
 
@@ -5550,6 +5810,29 @@ class TargetProductionWorker:
                 "completed_at_utc": as_of_utc,
                 **outcome,
             }
+            # Charter 195 (四): the network, not the run -- the day keeps
+            # neither the floor nor the walk; it backs off and is re-queued
+            # when the egress answers.
+            network_backoff = self._official_native_network_backoff_map()
+            if str(outcome.get("state") or "") == "NETWORK_UNAVAILABLE" or (
+                outcome.get("network_held_families")
+            ):
+                throttle.pop(key, None)
+                previous = network_backoff.get(key[0]) or {}
+                attempts = int(previous.get("attempts") or 0) + 1
+                delay = min(
+                    NETWORK_BACKOFF_MAX_SEC,
+                    NETWORK_BACKOFF_MIN_SEC * (2 ** (attempts - 1)),
+                ) * random.uniform(
+                    1.0 - NETWORK_BACKOFF_JITTER, 1.0 + NETWORK_BACKOFF_JITTER
+                )
+                network_backoff[key[0]] = {
+                    "attempts": attempts,
+                    "until_mono": time.monotonic() + delay,
+                    "since_utc": utc_now(),
+                }
+            elif str(outcome.get("state") or "") == "CAPTURED":
+                network_backoff.pop(key[0], None)
             if str(outcome.get("state") or "") == "CAPTURED":
                 captured_runs[key[0]] = str(
                     outcome.get("captured_run_init_utc") or ""
@@ -5593,6 +5876,24 @@ class TargetProductionWorker:
                 "calls_order_gateway": False,
                 "places_orders": False,
             }
+        # Charter 195 (四): a day that last failed on the network waits out its
+        # backoff -- unless the egress has answered since, then it goes now.
+        backoff_row = self._official_native_network_backoff_map().get(event_date)
+        if backoff_row:
+            if self._egress_answered_since(str(backoff_row.get("since_utc") or "")):
+                backoff_row["until_mono"] = 0.0
+            elif now_mono < float(backoff_row.get("until_mono") or 0.0):
+                return {
+                    "state": "NETWORK_BACKOFF",
+                    "station_id": station_id,
+                    "event_date": event_date,
+                    "retry_after_sec": round(
+                        float(backoff_row["until_mono"]) - now_mono, 1
+                    ),
+                    "attempts": int(backoff_row.get("attempts") or 0),
+                    "calls_order_gateway": False,
+                    "places_orders": False,
+                }
         # Resolve the run before deciding to spend anything.  These families
         # publish on a fixed cycle, so "is there a newer run than the one this
         # date already holds" is the whole question -- if there is not, the
@@ -5790,9 +6091,12 @@ class TargetProductionWorker:
         # Charter 192: a station may take ICON's/ECCC's newer retained run
         # once that run's own fit is certified.  With nothing certified the
         # packets are the ones this pass always built.
-        follow_new_runs = follow_run.follow_enabled()
+        follow_new_runs = follow_run.follow_enabled() and not hold_families
         if follow_new_runs:
             base_command.append("--follow-new-runs")
+        # Charter 195 (四): the required-first recovery pass.
+        for family_name in hold_families:
+            base_command += ["--hold-family", str(family_name)]
         horizon = _utc_date(as_of_utc) - timedelta(days=1)
         republisher_inbox = (
             self.nwp_runtime_root / "native_ensemble_forward_inbox.json"
@@ -5813,6 +6117,11 @@ class TargetProductionWorker:
         # to tell a run that was not up yet from a pass that never started.
         rung_trace: list[dict[str, Any]] = []
         family_runs: dict[str, str] = {}
+        # Charter 195 (四): read once for the pass; a rung whose held required
+        # family the probe sees still landing is waited for, not walked past.
+        pass_probe_state = self._arrival_probe_state()
+        network_held: list[str] = []
+        network_failure: list[str] = []
 
         def _run_capture() -> dict[str, Any]:
             captured_run_init: str | None = None
@@ -5872,6 +6181,15 @@ class TargetProductionWorker:
                             if completed.returncode != 0 else ""
                         ),
                     })
+                    if completed.returncode != 0 and _capture_text_is_network(
+                        completed.stderr
+                    ):
+                        # The network, not this rung: an older rung would meet
+                        # the same dead path.  Stop, and let the day back off.
+                        network_failure.append(
+                            (completed.stderr or "").strip()[-200:]
+                        )
+                        break
                     if completed.returncode == 0:
                         rung_run_init_utc = (
                             rung_run_init.isoformat().replace("+00:00", "Z")
@@ -5935,6 +6253,32 @@ class TargetProductionWorker:
                             run_ladder[rung_index + 1]
                             if rung_index + 1 < len(run_ladder) else None
                         )
+                        # Charter 195 (四): a required family held on the
+                        # network, or held while the probe sees this rung's run
+                        # still landing, is waited for -- the walk would only
+                        # fetch an older run the newest will replace minutes
+                        # later (09-22 07:50Z: ECMWF 00Z half on the replica,
+                        # the pass fell to 09-21 18Z).
+                        required_held = [
+                            name for name in REQUIRED_CAPTURE_FAMILIES
+                            if name in families_held
+                        ]
+                        network_held[:] = [
+                            name for name in required_held
+                            if _capture_text_is_network(families_held[name])
+                        ]
+                        still_landing = [
+                            name for name in required_held
+                            if _probe_run_publishing(
+                                pass_probe_state,
+                                family=name,
+                                run_init=rung_run_init,
+                                event_date=event_date,
+                                now=datetime.now(timezone.utc),
+                            )
+                        ]
+                        if network_held or still_landing:
+                            break
                         if (
                             candidate < rung_run_init_utc
                             and next_rung is not None
@@ -5945,6 +6289,11 @@ class TargetProductionWorker:
                         break
                 if last_success is not None:
                     completed = last_success
+                if last_success is None and network_failure:
+                    return {
+                        "state": "NETWORK_UNAVAILABLE",
+                        "reason": network_failure[-1],
+                    }
                 if completed is None or completed.returncode != 0:
                     # The tail, not the head.  A child that dies on an
                     # exception prints a traceback whose last line is the only
@@ -6010,7 +6359,7 @@ class TargetProductionWorker:
                     "state": "MERGE_FAILED",
                     "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
                 }
-            if follow_new_runs:
+            if follow_new_runs and not hold_families:
                 # Charter 192: bank the newer ICON/ECCC runs this ladder
                 # reaches, after the pass's packets are merged and on a lane
                 # of their own, so the download never delays the ECMWF/GEFS
@@ -6036,10 +6385,15 @@ class TargetProductionWorker:
                 # Served, but not archived: the runs above are merged and will
                 # be compiled, while the training history stayed where it was.
                 "historical_ingress_blocked_reason": ingress_blocked,
+                # Charter 195 (四): required families that held on the network.
+                "network_held_families": list(network_held),
+                "hold_families": list(hold_families),
             }
 
         trigger = (
-            f"arrival:{arrival.get('family')}|{arrival.get('run_init_utc')}"
+            f"recovery:{'required' if hold_families else 'full'}"
+            if isinstance(arrival, Mapping) and arrival.get("family") == "recovery"
+            else f"arrival:{arrival.get('family')}|{arrival.get('run_init_utc')}"
             if isinstance(arrival, Mapping)
             else f"listing:{listing_key[1]}" if listing_new and listing_key
             else "rotation"
@@ -6073,6 +6427,10 @@ class TargetProductionWorker:
                 "families_held_on_earlier_run": dict(
                     outcome.get("families_held_on_earlier_run") or {}
                 ),
+                "network_held_families": list(
+                    outcome.get("network_held_families") or ()
+                ),
+                "hold_families": list(hold_families),
                 "rungs": list(rung_trace),
             })
             return outcome

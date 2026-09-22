@@ -943,3 +943,231 @@ def test_a_held_family_is_not_asked_for(monkeypatch, tmp_path) -> None:
     assert by_family["NOAA_GEFS_PDS_S3"] == by_family["ECMWF_OPEN_DATA_S3"] == "2026-08-01T00:00:00Z"
     assert by_family["ECCC_DD_WEATHER"] == "2026-07-31T00:00:00Z"
     assert "family_held_by_caller" in receipt["family_held_on_earlier_run"]["DWD_OPENDATA_ICON_EPS"]
+
+
+# --------------------------- (四) worker: network backoff, no walk, recovery
+
+
+def test_network_text_is_told_from_publication_text() -> None:
+    assert pw._capture_text_is_network("ContractError: nwp_transport_outage:storage.googleapis.com:301s")
+    assert pw._capture_text_is_network("NOAA_GEFS_PDS_S3=ContractError:gefs_archive_transport_failed:ConnectError")
+    assert pw._capture_text_is_network("httpx.PoolTimeout")
+    assert not pw._capture_text_is_network("ECMWF_OPEN_DATA_S3=HTTPStatusError:Client error '404 Not Found'")
+    assert not pw._capture_text_is_network("icon_eps_archive_object_unavailable")
+
+
+class _Completed:
+    def __init__(self, returncode, stdout="", stderr=""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def _pass_worker(monkeypatch, tmp_path, runs):
+    (tmp_path / "market_registry_forward.json").write_text("{}")
+    worker = object.__new__(pw.TargetProductionWorker)
+    worker.nwp_runtime_root = tmp_path
+    worker._official_native_capture_pool = None
+    worker._official_native_capture_merge_lock = threading.Lock()
+    worker.conn = None
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return runs[min(len(calls), len(runs)) - 1]
+
+    monkeypatch.setattr(pw.subprocess, "run", fake_run)
+    monkeypatch.setattr(pw.follow_run, "follow_enabled", lambda: False)
+    monkeypatch.setattr(pw, "_merge_official_native_inbox", lambda *a, **k: {"packet_count": 0, "pruned": 0})
+    monkeypatch.setattr(pw, "_active_registry_scopes", lambda *a, **k: set())
+    monkeypatch.setattr(pw, "_fitted_lead_buckets", lambda *a, **k: {})
+    return worker, calls
+
+
+def _finish(worker, day="2026-09-23"):
+    return worker._official_native_capture_inflight[(day,)].result(timeout=30)
+
+
+def test_a_network_failure_neither_walks_the_ladder_nor_spends_the_floor(monkeypatch, tmp_path) -> None:
+    down = _Completed(2, stderr="ContractError: official_native_forward_required_family_unavailable:"
+                                 "ECMWF_OPEN_DATA_S3,NOAA_GEFS_PDS_S3:NOAA_GEFS_PDS_S3=ContractError:nwp_transport_outage:x:300s")
+    worker, calls = _pass_worker(monkeypatch, tmp_path, [down])
+    try:
+        assert _capture(worker, tmp_path)["state"] == "SUBMITTED"
+        outcome = _finish(worker)
+        assert outcome["state"] == "NETWORK_UNAVAILABLE"
+        assert len(calls) == 1                         # no walk down the ladder
+        # Reaped: the floor is released and a backoff of 60s +-20% set.
+        second = _capture(worker, tmp_path)
+        assert second["state"] == "NETWORK_BACKOFF"
+        assert 40 <= second["retry_after_sec"] <= 72
+        # The egress answered since: the day goes at once.
+        monkeypatch.setattr(worker, "_egress_answered_since", lambda since: True)
+        assert _capture(worker, tmp_path)["state"] == "SUBMITTED"
+    finally:
+        worker._official_native_capture_pool.shutdown(wait=True)
+
+
+def test_a_backoff_grows_to_ten_minutes(monkeypatch, tmp_path) -> None:
+    down = _Completed(2, stderr="nwp_transport_outage:x:300s")
+    worker, _calls = _pass_worker(monkeypatch, tmp_path, [down])
+    monkeypatch.setattr(worker, "_egress_answered_since", lambda since: False)
+    try:
+        delays = []
+        for _ in range(6):
+            backoff = worker._official_native_network_backoff_map()
+            if "2026-09-23" in backoff:
+                backoff["2026-09-23"]["until_mono"] = 0.0
+            assert _capture(worker, tmp_path)["state"] == "SUBMITTED"
+            _finish(worker)
+            delays.append(_capture(worker, tmp_path)["retry_after_sec"])
+        assert delays[0] < 80 and 470 <= delays[-1] <= 720
+    finally:
+        worker._official_native_capture_pool.shutdown(wait=True)
+
+
+def test_a_required_family_held_while_its_run_still_lands_is_waited_for(monkeypatch, tmp_path) -> None:
+    receipt = json.dumps({
+        "family_held_on_earlier_run": {"ECMWF_OPEN_DATA_S3": "HTTPStatusError:404 Not Found"},
+        # ECMWF still on 00Z, so the old walk would go on to the 06Z rung.
+        "run_init_utc_by_family": {"NOAA_GEFS_PDS_S3": "2026-09-21T12:00:00Z", "ECMWF_OPEN_DATA_S3": "2026-09-21T00:00:00Z"},
+    })
+    ok = _Completed(0, stdout=receipt)
+    worker, calls = _pass_worker(monkeypatch, tmp_path, [ok])
+    run = datetime(2026, 9, 21, 12, tzinfo=timezone.utc)
+    ladder = [(2, 12, run), (2, 6, datetime(2026, 9, 21, 6, tzinfo=timezone.utc))]
+    publishing = _probe_state(updated=datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+                              ready=[(probe.GEFS_FAMILY, "2026-09-21T12:00:00Z", "2026-09-23")])
+    monkeypatch.setattr(worker, "_arrival_probe_state", lambda: publishing)
+    monkeypatch.setattr(pw, "_probe_run_publishing", lambda state, **k: k["family"] == probe.ECMWF_FAMILY)
+    try:
+        _capture(worker, tmp_path, forced_rungs=ladder)
+        _finish(worker)
+        assert len(calls) == 1          # stayed on 12Z: no walk to 06Z
+    finally:
+        worker._official_native_capture_pool.shutdown(wait=True)
+    # Without the probe saying so, the walk is as before.
+    worker2, calls2 = _pass_worker(monkeypatch, tmp_path, [ok])
+    monkeypatch.setattr(pw, "_probe_run_publishing", lambda state, **k: False)
+    try:
+        _capture(worker2, tmp_path, forced_rungs=ladder)
+        _finish(worker2)
+        assert len(calls2) == 2
+    finally:
+        worker2._official_native_capture_pool.shutdown(wait=True)
+
+
+def test_the_publishing_reading_needs_the_probe_to_speak() -> None:
+    now = datetime(2026, 9, 21, 7, 50, tzinfo=timezone.utc)
+    run = datetime(2026, 9, 21, 0, tzinfo=timezone.utc)
+    state = _probe_state(updated="2026-09-21T07:50:00Z", listed=("2026-09-23",))
+    assert pw._probe_run_publishing(state, family=probe.ECMWF_FAMILY, run_init=run, event_date="2026-09-23", now=now)
+    landed = _probe_state(updated="2026-09-21T07:50:00Z", listed=("2026-09-23",),
+                          ready=[(probe.ECMWF_FAMILY, "2026-09-21T00:00:00Z", "2026-09-23")])
+    assert not pw._probe_run_publishing(landed, family=probe.ECMWF_FAMILY, run_init=run, event_date="2026-09-23", now=now)
+    assert not pw._probe_run_publishing(None, family=probe.ECMWF_FAMILY, run_init=run, event_date="2026-09-23", now=now)
+    stale = _probe_state(updated="2026-09-21T06:00:00Z", listed=("2026-09-23",))
+    assert not pw._probe_run_publishing(stale, family=probe.ECMWF_FAMILY, run_init=run, event_date="2026-09-23", now=now)
+
+
+def test_recovery_takes_the_required_families_first_then_the_full_passes(monkeypatch, tmp_path) -> None:
+    worker = object.__new__(pw.TargetProductionWorker)
+    worker.nwp_runtime_root = tmp_path
+    backoff = worker._official_native_network_backoff_map()
+    for day in ("2026-09-22", "2026-09-23", "2026-09-24"):
+        backoff[day] = {"attempts": 3, "until_mono": 1e12, "since_utc": "2026-09-22T07:00:00Z"}
+    answered = {"now": False}
+    monkeypatch.setattr(worker, "_egress_answered_since", lambda since: answered["now"])
+    monkeypatch.setattr(worker, "_arrival_probe_state", lambda: None)
+    submitted = []
+
+    class _Future:
+        def __init__(self):
+            self.finished = False
+
+        def done(self):
+            return self.finished
+
+        def result(self):
+            return {"state": "CAPTURED"}
+
+    futures = {}
+
+    def fake_capture(**kwargs):
+        submitted.append((kwargs["event_date"], tuple(kwargs.get("hold_families") or ()), bool(kwargs.get("forced_rungs"))))
+        future = _Future()
+        futures[kwargs["event_date"]] = future
+        worker._official_native_capture_inflight = {(d,): f for d, f in futures.items()}
+        return {"state": "SUBMITTED"}
+
+    monkeypatch.setattr(worker, "_capture_official_native_packet", fake_capture)
+    assert worker.run_network_recovery_recaptures(as_of_utc="2026-09-22T07:40:00Z")["state"] == "EGRESS_DOWN"
+    assert submitted == []
+    answered["now"] = True
+    worker.run_network_recovery_recaptures(as_of_utc="2026-09-22T07:50:00Z")
+    # D+1 first, then D+0, then D+2 -- all required-only, ICON/ECCC held.
+    assert [d for d, _h, _f in submitted] == ["2026-09-23", "2026-09-22", "2026-09-24"]
+    assert all(h == pw.RECOVERY_HOLD_FAMILIES for _d, h, _f in submitted)
+    submitted.clear()
+    futures["2026-09-23"].finished = True
+    worker.run_network_recovery_recaptures(as_of_utc="2026-09-22T07:52:00Z")
+    assert submitted == []            # no full pass while a required-only pass runs
+    for future in futures.values():
+        future.finished = True
+    monkeypatch.setattr(pw, "_official_native_run_ladder", lambda **k: [(1, None, datetime(2026, 9, 22, tzinfo=timezone.utc))])
+    worker.run_network_recovery_recaptures(as_of_utc="2026-09-22T07:55:00Z")
+    assert [(d, h, f) for d, h, f in submitted] == [
+        ("2026-09-23", (), True), ("2026-09-22", (), True), ("2026-09-24", (), True),
+    ]
+
+
+def test_the_supply_watch_priority_orders_the_recovery(monkeypatch, tmp_path) -> None:
+    from bayes_basket_target import supply_watch
+
+    watch = tmp_path / "supply_watch.json"
+    watch.write_text(json.dumps({"recapture_priority": [{"event_date": "2026-09-22"}, {"event_date": "2026-09-23"}]}))
+    monkeypatch.setattr(supply_watch, "DEFAULT_OUTPUT", watch)
+    worker = object.__new__(pw.TargetProductionWorker)
+    worker.nwp_runtime_root = tmp_path
+    for day in ("2026-09-23", "2026-09-22"):
+        worker._official_native_network_backoff_map()[day] = {"attempts": 1, "until_mono": 1e12, "since_utc": "2026-09-22T07:00:00Z"}
+    monkeypatch.setattr(worker, "_egress_answered_since", lambda since: True)
+    order = []
+    monkeypatch.setattr(worker, "_capture_official_native_packet",
+                        lambda **k: order.append(k["event_date"]) or {"state": "SUBMITTED"})
+    worker.run_network_recovery_recaptures(as_of_utc="2026-09-22T07:50:00Z")
+    assert order == ["2026-09-22", "2026-09-23"]
+
+
+def test_the_egress_reading_uses_the_supply_watch_first(monkeypatch, tmp_path) -> None:
+    from bayes_basket_target import supply_watch
+
+    watch = tmp_path / "supply_watch.json"
+    watch.write_text(json.dumps({"generated_at_utc": "2026-09-22T07:50:00Z", "egress": {"state": "ok"}}))
+    monkeypatch.setattr(supply_watch, "DEFAULT_OUTPUT", watch)
+    monkeypatch.setattr(supply_watch, "http_head_probe", lambda *a: pytest.fail("the file answered"))
+    worker = object.__new__(pw.TargetProductionWorker)
+    assert worker._egress_answered_since("2026-09-22T07:40:00Z") is True
+    # Older than the failure: ask directly, at most once a minute.
+    asked = []
+    monkeypatch.setattr(supply_watch, "http_head_probe", lambda url, proxy, t: asked.append(url) or {"outcome": "transport_error"})
+    assert worker._egress_answered_since("2026-09-22T08:00:00Z") is False
+    assert worker._egress_answered_since("2026-09-22T08:00:00Z") is False
+    assert len(asked) == 1
+
+
+def test_a_pass_that_held_a_required_family_on_the_network_backs_off_too(monkeypatch, tmp_path) -> None:
+    receipt = json.dumps({
+        "family_held_on_earlier_run": {"NOAA_GEFS_PDS_S3": "ContractError:gefs_archive_transport_failed:ConnectError"},
+        "run_init_utc_by_family": {"NOAA_GEFS_PDS_S3": "2026-09-21T00:00:00Z", "ECMWF_OPEN_DATA_S3": "2026-09-21T06:00:00Z"},
+    })
+    worker, calls = _pass_worker(monkeypatch, tmp_path, [_Completed(0, stdout=receipt)])
+    monkeypatch.setattr(worker, "_egress_answered_since", lambda since: False)
+    try:
+        _capture(worker, tmp_path)
+        outcome = _finish(worker)
+        assert outcome["state"] == "CAPTURED" and outcome["network_held_families"] == ["NOAA_GEFS_PDS_S3"]
+        assert len(calls) == 1
+        assert _capture(worker, tmp_path)["state"] == "NETWORK_BACKOFF"
+    finally:
+        worker._official_native_capture_pool.shutdown(wait=True)
