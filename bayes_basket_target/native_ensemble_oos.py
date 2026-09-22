@@ -860,6 +860,200 @@ def _cross_oos_gate(
     return gate
 
 
+# Charter 134 (七) (user ruling 2026-09-22, 「合成件（稳定池件）：让评估门稳下来」):
+# a stable-pool seat is certified on its own rolling record, not on three days.
+#
+# The pool seats a fixed set with nothing chosen on the holdout, so the same
+# key (station, season, lead, fitted cycle map, set) is re-scored every scan
+# and each scan scores its three newest shared days strictly out of sample.
+# Judged on those three days alone the verdict flipped on noise: over the
+# pool's first eight days (171,066 evaluations, 3,866 keys) 15.0% of
+# consecutive holdout windows changed verdict and 7.1% went PASS -> REJECTED,
+# and the rejected seats were not bad ones -- on the event day they would
+# have served they still beat climatology by RPS 0.67 (95% [0.45, 0.93]) and
+# NLL 0.62 nat.  A rejected seat is dark to the compile, so P0 fell back to
+# contest artifacts charter 134 no longer re-mints, and failed closed where
+# none were left (4.7% of scope-hours with all four families in hand).
+#
+# The gate now reads the key's own newest ``STABLE_POOL_GATE_WINDOW_DAYS``
+# scored days -- each day from the newest evaluation that scored it, so every
+# day is out of sample for the fit that scored it -- and applies the same
+# ``_cross_oos_gate`` to their means.  A key with only its own three days is
+# judged exactly as before.  One guard is added, because a longer window
+# must not let a seat that has just broken hide behind its older days: if
+# its own newest holdout scores CRPS more than
+# ``STABLE_POOL_GATE_BREAKAGE_MAX_RELATIVE_CRPS_LOSS`` above climatology (more
+# than twice climatology's), it is rejected whatever the window says -- the
+# one bin of the replay where forward skill over climatology vanished.
+# Measured on the same evaluations: window flips 15.0% -> 5.5%, PASS ->
+# REJECTED 7.1% -> 2.1%, dark scope-hours 4.8% -> 1.4% (all four in hand,
+# from 09-18) and 8.2% -> 3.4% (ECMWF+GEFS only); the seats admitted that the
+# three-day gate refused beat climatology on their served day by RPS 1.01
+# [0.67, 1.36] and NLL 0.83 [0.58, 1.08] (164 station-days).
+STABLE_POOL_GATE_RULE = "STABLE_POOL_ROLLING_WINDOW_GATE_V1"
+STABLE_POOL_GATE_WINDOW_DAYS = 10
+STABLE_POOL_GATE_BREAKAGE_MAX_RELATIVE_CRPS_LOSS = 1.0
+# The window reads only the pool's own record: evaluations written before
+# charter 134's first deploy scored contest-weighted blends under the same
+# key, and a row whose gate names another membership mode (a rollback) is
+# skipped for the same reason.
+STABLE_POOL_GATE_HISTORY_EPOCH_UTC = "2026-09-14T04:00:00Z"
+# How far back an evaluation, and a scored day, may be read at all.  A key
+# whose cohort stopped forming keeps no old days alive past this.
+STABLE_POOL_GATE_LOOKBACK_DAYS = 21
+
+
+def _stable_pool_gate_history(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    season_bin: str,
+    lead_bucket: str,
+    run_cycle: str,
+    run_cycle_by_system_json: str,
+    run_cycle_by_system_sha256: str,
+    settlement_definition: str,
+    system_ids: Sequence[str],
+    threshold_profile: str,
+    as_of_utc: str,
+) -> dict[str, tuple[dict[str, float], dict[str, float]]]:
+    """The key's scored days on record: event date -> (seat, climatology).
+
+    Each day is taken from the newest evaluation that scored it.  The read
+    seeks the evaluation table's scope index (station, season, lead, cycle,
+    set, evaluated_at) and pulls only the per-day scores out of the JSON.
+    """
+
+    as_of = datetime.fromisoformat(as_of_utc.replace("Z", "+00:00"))
+    lookback = (
+        as_of - timedelta(days=STABLE_POOL_GATE_LOOKBACK_DAYS)
+    ).isoformat().replace("+00:00", "Z")
+    since = max(lookback, STABLE_POOL_GATE_HISTORY_EPOCH_UTC)
+    ids = sorted(str(value) for value in system_ids)
+    rows = conn.execute(
+        "SELECT json_extract(oos_metrics_json,"
+        "'$.equal_weight_diagnostic.scheme_daily_scores'),"
+        "json_extract(oos_metrics_json,'$.gate.membership_mode') "
+        "FROM calibration_cross_native_ensemble_oos_evaluation "
+        "WHERE station_id=? AND season_bin=? AND lead_bucket=? "
+        "AND run_cycle=? AND available_system_set_hash=? "
+        "AND evaluated_at_utc>=? AND evaluated_at_utc<=? "
+        "AND run_cycle_by_system_json=? AND run_cycle_by_system_sha256=? "
+        "AND settlement_definition=? AND ensemble_system_ids_json=? "
+        "AND threshold_profile=? "
+        "ORDER BY evaluated_at_utc,evaluation_id",
+        (
+            station_id,
+            season_bin,
+            lead_bucket,
+            run_cycle,
+            content_sha256(ids),
+            since,
+            as_of_utc,
+            run_cycle_by_system_json,
+            run_cycle_by_system_sha256,
+            settlement_definition,
+            _json(ids),
+            threshold_profile,
+        ),
+    ).fetchall()
+    days: dict[str, tuple[dict[str, float], dict[str, float]]] = {}
+    for raw_scores, membership in rows:
+        if membership not in (None, P0_MEMBERSHIP_MODE_STABLE_POOL):
+            continue
+        try:
+            scores = json.loads(raw_scores) if raw_scores else []
+        except (TypeError, ValueError):
+            continue
+        for row in scores if isinstance(scores, list) else []:
+            try:
+                day = str(row["event_date"])
+                learned = {m: float(row["learned"][m]) for m in ("brier", "crps", "nll")}
+                climate = {m: float(row["climate"][m]) for m in ("brier", "crps", "nll")}
+            except (KeyError, TypeError, ValueError):
+                continue
+            if all(math.isfinite(v) for v in (*learned.values(), *climate.values())):
+                days[day] = (learned, climate)
+    return days
+
+
+def _stable_pool_window_gate(
+    *,
+    own_learned_metrics: Mapping[str, float],
+    own_climate_metrics: Mapping[str, float],
+    own_daily_scores: Sequence[Mapping[str, Any]],
+    history: Mapping[str, tuple[Mapping[str, float], Mapping[str, float]]],
+    holdout_end_date: str,
+) -> dict[str, Any]:
+    """Charter 134 (七): the pool seat's gate on its rolling window.
+
+    ``own_*`` are this evaluation's holdout: its means and its per-day
+    scores, which override any older scoring of the same day.  The returned
+    record carries the three-day verdict it replaced as ``own_holdout_gate``
+    so a review can still read the raw verdict sequence.
+    """
+
+    own_gate = _cross_oos_gate(own_learned_metrics, own_climate_metrics)
+    days: dict[str, tuple[Mapping[str, float], Mapping[str, float]]] = {
+        str(day): (learned, climate)
+        for day, (learned, climate) in history.items()
+    }
+    for row in own_daily_scores:
+        days[str(row["event_date"])] = (row["learned"], row["climate"])
+    end = str(holdout_end_date)[:10]
+    horizon = (
+        date.fromisoformat(end)
+        - timedelta(days=STABLE_POOL_GATE_LOOKBACK_DAYS)
+    ).isoformat()
+    window = sorted(
+        day for day in days if horizon < day[:10] <= end
+    )[-STABLE_POOL_GATE_WINDOW_DAYS:]
+    if not window:
+        raise ContractError("native_ensemble_oos_pool_gate_window_empty")
+    window_learned = _mean_metrics([days[day][0] for day in window])
+    window_climate = _mean_metrics([days[day][1] for day in window])
+    window_gate = _cross_oos_gate(window_learned, window_climate)
+    own_crps = float(own_learned_metrics["crps"])
+    climate_crps = float(own_climate_metrics["crps"])
+    # Against a perfect climatology any loss is unbounded; recorded as None
+    # (JSON has no infinity) and treated as a breach.
+    own_relative_crps_loss = (
+        (own_crps - climate_crps) / climate_crps
+        if climate_crps > EPS
+        else None
+    )
+    breakage = (
+        own_crps > EPS
+        if own_relative_crps_loss is None
+        else own_relative_crps_loss
+        > STABLE_POOL_GATE_BREAKAGE_MAX_RELATIVE_CRPS_LOSS
+    )
+    passed = bool(window_gate["pass"]) and not breakage
+    return {
+        **window_gate,
+        "path": (
+            "REJECTED_BREAKAGE_FLOOR" if breakage and window_gate["pass"]
+            else ("WINDOW_" + str(window_gate["path"])
+                  if window_gate["pass"] else "REJECTED")
+        ),
+        "pass": passed,
+        "rule": STABLE_POOL_GATE_RULE,
+        "membership_mode": P0_MEMBERSHIP_MODE_STABLE_POOL,
+        "window_max_days": STABLE_POOL_GATE_WINDOW_DAYS,
+        "window_day_count": len(window),
+        "window_event_dates": window,
+        "window_learned_metrics": window_learned,
+        "window_climate_metrics": window_climate,
+        "breakage_floor": {
+            "max_relative_crps_loss":
+                STABLE_POOL_GATE_BREAKAGE_MAX_RELATIVE_CRPS_LOSS,
+            "own_relative_crps_loss": own_relative_crps_loss,
+            "hit": breakage,
+        },
+        "own_holdout_gate": own_gate,
+    }
+
+
 def _mean_metrics(rows: Sequence[Mapping[str, float]]) -> dict[str, float]:
     if not rows:
         raise ContractError("native_ensemble_oos_metric_rows_missing")
@@ -5129,8 +5323,10 @@ def build_native_ensemble_oos(
         # bytes.  Injecting it there changed every re-evaluated scope's
         # selection sha, unbound the current pointers, and silenced the whole
         # envelope pipeline within one OOS scan of the next worker restart.
-        oos_gate = _cross_oos_gate(cross_metrics, climate_metrics)
-        oos_pass = bool(oos_gate["pass"])
+        oos_gate = {
+            **_cross_oos_gate(cross_metrics, climate_metrics),
+            "membership_mode": membership,
+        }
         # Activations are unique on
         # (kind, station, system, season, lead, run_cycle, set_hash,
         # generation) and the per-system cycle mapping is not part of that key.
@@ -5153,6 +5349,31 @@ def build_native_ensemble_oos(
         if candidate_activation_key in emitted_activation_keys:
             continue
         emitted_activation_keys.add(candidate_activation_key)
+        settlement_definition = next(
+            iter(cases_by_scope.values())
+        )[0]["settlement_definition"]
+        if pool_mode:
+            # Charter 134 (七): certified on the key's rolling record.
+            oos_gate = _stable_pool_window_gate(
+                own_learned_metrics=cross_metrics,
+                own_climate_metrics=climate_metrics,
+                own_daily_scores=scheme_daily_scores,
+                history=_stable_pool_gate_history(
+                    conn,
+                    station_id=station,
+                    season_bin=season_bin,
+                    lead_bucket=lead_bucket,
+                    run_cycle=run_cycle,
+                    run_cycle_by_system_json=_json(cycle_by_system),
+                    run_cycle_by_system_sha256=cycle_mapping_sha,
+                    settlement_definition=settlement_definition,
+                    system_ids=selected_system_ids,
+                    threshold_profile=threshold_profile,
+                    as_of_utc=as_of_utc,
+                ),
+                holdout_end_date=common_holdout[-1],
+            )
+        oos_pass = bool(oos_gate["pass"])
         cross_candidates.append({
             "state": (
                 "PRODUCTION_NO_LIVE_OOS_PASS"
@@ -5181,9 +5402,7 @@ def build_native_ensemble_oos(
             "radiation_shift_sigma": scope_radiation_sigma,
             "p0_exact_match_ready": True,
             "p0_exact_match_blocker": None,
-            "settlement_definition": next(
-                iter(cases_by_scope.values())
-            )[0]["settlement_definition"],
+            "settlement_definition": settlement_definition,
             "settlement_timezone": cases_by_scope[(
                 selected_system_ids[0],
                 season_bin,
