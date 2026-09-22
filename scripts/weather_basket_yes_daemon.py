@@ -120,6 +120,7 @@ from bayes_basket_target.strategy_lanes import (
     LANE_TIEBREAK,
     lane_enabled,
 )
+from bayes_basket_target import nwp_arrival_probe
 from bayes_basket_target.production_worker import (
     DEFAULT_TARGET_ACTIVATION,
     DEFAULT_TARGET_MARKET_MANIFEST,
@@ -250,6 +251,10 @@ TARGET_TAF_ROUND_BUDGET_SEC = 90.0
 FAST_TAF_ROUND_INTERVAL_SEC = 20.0
 # The inbox is rewritten whole by both rounds; one writer at a time.
 _TAF_INBOX_LOCK = threading.Lock()
+# Charter 195: when each model run is actually on the server we download from.
+# Its own thread, like the fast TAF round: HEAD requests and one small state
+# file, no writer turn and no SSOT.
+NWP_ARRIVAL_PROBE_INTERVAL_SEC = nwp_arrival_probe.PROBE_INTERVAL_SEC
 TARGET_NWP_POLL_INTERVAL_SEC = 600.0
 
 # How long a writer lane stands down after finishing, before its own gate can
@@ -3205,6 +3210,28 @@ def run_target_forecast_refresh_cycle(
     }
 
 
+def run_nwp_arrival_probe_round(
+    *, runtime_root: Path = DEFAULT_TARGET_NWP_RUNTIME_ROOT
+) -> dict[str, Any]:
+    """Charter 195: one probe round; published, never raised."""
+
+    if not nwp_arrival_probe.probe_enabled():
+        return {"state": "disabled"}
+    try:
+        receipt = nwp_arrival_probe.probe_round(runtime_root=runtime_root)
+    except Exception as exc:  # noqa: BLE001 -- a probe failure is a receipt
+        return {"state": "failed", "reason": f"{type(exc).__name__}:{exc}"[:200]}
+    return {
+        "state": "ok",
+        **{key: value for key, value in receipt.items() if key != "new_rows"},
+        "new_ready_keys": [
+            f"{row.get('family')}|{row.get('source')}|{row.get('run_init_utc')}"
+            f"|{row.get('event_date')}"
+            for row in receipt.get("new_rows") or ()
+        ],
+    }
+
+
 def run_fast_taf_round(worker: Any, *, ssot_path: Path) -> dict[str, Any]:
     """Capture only what AWC holds newer than we do; no writer turn needed.
 
@@ -5710,6 +5737,13 @@ def main() -> int:
         )
         fast_taf_future: Any = None
         next_fast_taf = 0.0
+        # Charter 195: the arrival probe, on its own thread.
+        nwp_probe_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="reported-trajectory-nwp-arrival-probe",
+        )
+        nwp_probe_future: Any = None
+        next_nwp_probe = 0.0
         argmax_executor = ThreadPoolExecutor(
             max_workers=1,
             thread_name_prefix="reported-trajectory-asos-argmax",
@@ -6601,6 +6635,20 @@ def main() -> int:
                     run_fast_taf_round, forecast_worker, ssot_path=DEFAULT_TARGET_DB,
                 )
                 next_fast_taf = time.monotonic() + FAST_TAF_ROUND_INTERVAL_SEC
+            if storage_ok and now_mono >= next_nwp_probe and (
+                nwp_probe_future is None or nwp_probe_future.done()
+            ):
+                if nwp_probe_future is not None:
+                    try:
+                        state["nwp_arrival_probe"] = nwp_probe_future.result()
+                    except Exception as exc:  # noqa: BLE001 -- published, never raised
+                        state["nwp_arrival_probe"] = {
+                            "state": "failed", "reason": f"{type(exc).__name__}:{exc}"[:160],
+                        }
+                nwp_probe_future = nwp_probe_executor.submit(
+                    run_nwp_arrival_probe_round,
+                )
+                next_nwp_probe = time.monotonic() + NWP_ARRIVAL_PROBE_INTERVAL_SEC
             if storage_ok and "awc" in lane_workers and now_mono >= next_source.get("awc", now_mono) and "awc" not in lane_futures:
                 lane_futures["awc"] = executor.submit(lane_workers["awc"].poll)
                 next_source["awc"] = time.monotonic() + awc_poll_interval(config, datetime.now(timezone.utc))
@@ -6891,6 +6939,7 @@ def main() -> int:
             "executor",
             "forecast_executor",
             "fast_taf_executor",
+            "nwp_probe_executor",
             "registry_executor",
             "argmax_executor",
             "sweep_executor",

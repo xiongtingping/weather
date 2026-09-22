@@ -46,6 +46,10 @@ NON_MARKET_NETWORK_MODULES = frozenset(
         # tgftp.nws.noaa.gov serves reports, not quotes.
         "bayes_basket_target/noaa_tgftp_taf.py",
         "bayes_basket_target/noaa_conus_archive.py",
+        # Charter 195 (2026-09-22): HEADs and one directory listing on the
+        # same NWP servers the archives above download from, to learn when a
+        # run has landed.  No quote, no book, no tick.
+        "bayes_basket_target/nwp_arrival_probe.py",
         "bayes_basket_target/republisher_native_forward_probe.py",
         "bayes_basket_target/republisher_no_live_p0_contract.py",
     }

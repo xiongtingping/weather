@@ -3915,6 +3915,29 @@ FAST_LANE_CHECKPOINT_CYCLE_BUDGET_SEC = float(
     os.environ.get("PM_FAST_LANE_CHECKPOINT_CYCLE_BUDGET_SEC", "").strip()
     or 90.0
 )
+# Charter 195 (一): a model run captured mid-cycle is compiled into P0 at the
+# next fast-lane checkpoint instead of waiting for the next cycle's replay
+# compile.  Measured 2026-09-14..21: capture finished -> P0 committed ran a
+# 5-10 minute median, almost all of it the wait for the next cycle to reach
+# ``native_p0_replay_compile``.  The checkpoint compiles only the official
+# packets whose snapshot changed since the replay compile covered the inbox,
+# then P0 -> P0-M -> P1 for the scopes they re-rooted, in the chain's order.
+# "0" restores the pre-charter behaviour exactly (the replay compile is
+# untouched either way).
+FAST_LANE_NWP_P0_ENABLED = (
+    os.environ.get("PM_FAST_LANE_NWP_P0", "1").strip().lower()
+    not in {"0", "off", "false", "no", ""}
+)
+
+
+def _official_inbox_watermark(path: Any) -> tuple[int, str] | None:
+    """``(size, sha256)`` of the official-native inbox bytes.
+
+    Content, not mtime, for ``_taf_inbox_watermark``'s reason: the capture
+    merge rewrites the file on passes that brought nothing new.
+    """
+
+    return _taf_inbox_watermark(path)
 
 
 def _later_report_watermark(
@@ -16332,6 +16355,7 @@ class TargetProductionWorker:
         *,
         as_of_utc: str,
         taf_watermark: tuple[int, str] | None,
+        force: bool = False,
     ) -> dict[str, Any]:
         """The fast lane: P0-M at the head of the cycle, for TAFs it has not seen.
 
@@ -16340,6 +16364,9 @@ class TargetProductionWorker:
         clean pass leaves the chain's own P0-M to do it, as before.
         ``new_envelopes`` says whether it committed anything, which is what
         forces the head P1 to re-root on it.
+
+        ``force`` (charter 195): a checkpoint has just committed new P0 roots,
+        so P0-M re-seats on them even though no TAF moved.
         """
 
         boundary = {
@@ -16352,7 +16379,10 @@ class TargetProductionWorker:
             return {"state": "DISABLED", "ran": False, **boundary}
         if taf_watermark is None:
             return {"state": "SKIPPED_INBOX_UNREADABLE", "ran": False, **boundary}
-        if getattr(self, "_p0m_covered_taf_watermark", None) == taf_watermark:
+        if (
+            not force
+            and getattr(self, "_p0m_covered_taf_watermark", None) == taf_watermark
+        ):
             return {"state": "SKIPPED_NO_NEW_TAF", "ran": False, **boundary}
         started = time.perf_counter()
         try:
@@ -16436,6 +16466,154 @@ class TargetProductionWorker:
         )
         return receipt
 
+    def _fast_lane_official_p0(
+        self,
+        *,
+        as_of_utc: str,
+        official_watermark: tuple[int, str] | None,
+        materialize: bool,
+    ) -> dict[str, Any]:
+        """Charter 195 (一): compile the runs a capture merged mid-cycle.
+
+        The same compile, persistence and P0-inbox upsert the cycle's replay
+        compile runs (``native_p0_replay_compile``), restricted to the official
+        packets whose snapshot differs from the one that pass (or an earlier
+        checkpoint) compiled for the scope; station, date and activation
+        scope are the replay's own.  With ``materialize`` -- the chain has run
+        this cycle -- the new packets are committed as P0 now, and the caller
+        re-seats P0-M and P1 on them.  Before the chain they only reach the P0
+        inbox, which the chain's own P0 stage then reads in order.
+
+        Never raises: the next cycle's replay compile remains the fallback.
+        """
+
+        boundary = {
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+        }
+        started = time.perf_counter()
+        compiled_shas: dict[tuple[str, str], str] = getattr(
+            self, "_p0_replay_compiled_shas", None
+        ) or {}
+        self._p0_replay_compiled_shas = compiled_shas
+        active = getattr(self, "_p0_replay_active_stations", None)
+        compiled: list[dict[str, Any]] = []
+        failures: list[dict[str, Any]] = []
+        candidates = 0
+        try:
+            packets = _load_native_forward_inbox(
+                self.nwp_runtime_root
+                / "official_native_ensemble_forward_inbox.json",
+                error_code="official_native_forward_inbox_invalid",
+            )
+            now_dt = datetime.fromisoformat(
+                as_of_utc.replace("Z", "+00:00")
+            ).astimezone(timezone.utc)
+            for packet in packets:
+                if (
+                    str(packet.get("schema") or "")
+                    != OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA
+                    or not _forward_packet_in_cycle_scope(
+                        packet,
+                        station_allowlist=tuple(
+                            getattr(self, "station_allowlist", ())
+                        ),
+                        event_date_allowlist=tuple(
+                            getattr(self, "event_date_allowlist", ())
+                        ),
+                    )
+                ):
+                    continue
+                station = str(packet.get("station_id") or "").strip().upper()
+                event_date = str(packet.get("event_date") or "")
+                snapshot = str(packet.get("snapshot_content_sha256") or "")
+                if not station or not event_date or not snapshot:
+                    continue
+                if active is not None and station not in active:
+                    continue
+                if compiled_shas.get((station, event_date)) == snapshot:
+                    continue
+                try:
+                    closes_at = datetime.fromisoformat(
+                        str(
+                            settlement_day_window(
+                                event_date,
+                                str(packet.get("settlement_timezone") or ""),
+                            )["target_day_end_utc"]
+                        ).replace("Z", "+00:00")
+                    ).astimezone(timezone.utc)
+                except Exception:
+                    continue
+                if closes_at <= now_dt:
+                    continue
+                candidates += 1
+                # Attempted, not just succeeded: a packet the compiler refuses
+                # is refused again at every checkpoint, and the next cycle's
+                # replay compile retries it anyway.
+                compiled_shas[(station, event_date)] = snapshot
+                result, reasons, _source = (
+                    _compile_native_p0_with_republisher_fallback(
+                        self.commit_conn,
+                        scope=(station, event_date),
+                        preferred_packet=packet,
+                        official_packet=packet,
+                        republisher_packet=None,
+                        decision_at_utc=as_of_utc,
+                        native_oos_snapshot=self.native_oos_snapshot,
+                    )
+                )
+                if result is None:
+                    failures.extend(reasons)
+                    continue
+                result["forward_prediction_persistence"] = (
+                    persist_native_ensemble_forward_prediction(
+                        self.commit_conn, result
+                    )
+                )
+                compiled.append(result)
+            merge = (
+                _upsert_native_p0_inbox(
+                    self.p0_inbox_path,
+                    compiled_packets=compiled,
+                    generated_at_utc=as_of_utc,
+                )
+                if compiled else None
+            )
+            before = after = None
+            p0_state = None
+            if materialize and compiled:
+                before = self._envelope_rowid_ceiling()
+                p0 = self.materialize_resident_p0(as_of_utc=as_of_utc)
+                after = self._envelope_rowid_ceiling()
+                p0_state = str((p0 or {}).get("state") or "")
+        except Exception as exc:  # noqa: BLE001 -- the replay compile is the fallback
+            return {
+                "state": "FAILED",
+                "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
+                "candidate_count": candidates,
+                "compiled_count": len(compiled),
+                "new_envelopes": False,
+                "duration_sec": round(time.perf_counter() - started, 3),
+                **boundary,
+            }
+        self._p0_covered_official_watermark = official_watermark
+        return {
+            "state": "RAN",
+            "candidate_count": candidates,
+            "compiled_count": len(compiled),
+            "failure_count": len(failures),
+            "p0_inbox_accepted": int((merge or {}).get("accepted_count") or 0),
+            "p0_state": p0_state,
+            "new_envelopes": (
+                before is not None and after is not None and after > before
+            ),
+            "rowid_before": before,
+            "duration_sec": round(time.perf_counter() - started, 3),
+            **boundary,
+        }
+
     def _fast_lane_checkpoint(
         self, label: str, *, mark: bool = True
     ) -> dict[str, Any] | None:
@@ -16474,12 +16652,39 @@ class TargetProductionWorker:
             and report_mark != covered
             and _later_report_watermark(covered, report_mark) != covered
         )
-        if not new_taf and not new_reports:
+        # Charter 195 (一): the official-native inbox moved since the replay
+        # compile covered it -- a capture merged a run mid-cycle.  Read before
+        # the clock (charter 148's order), like the two marks above.
+        nwp_covered = getattr(self, "_p0_covered_official_watermark", None)
+        nwp_mark = (
+            _official_inbox_watermark(
+                self.nwp_runtime_root
+                / "official_native_ensemble_forward_inbox.json"
+            )
+            if FAST_LANE_NWP_P0_ENABLED and nwp_covered is not None
+            else None
+        )
+        new_nwp = nwp_mark is not None and nwp_mark != nwp_covered
+        if not new_taf and not new_reports and not new_nwp:
             return None
         clock = utc_now()
+        nwp = (
+            self._fast_lane_official_p0(
+                as_of_utc=clock,
+                official_watermark=nwp_mark,
+                materialize=chain_ran,
+            )
+            if new_nwp else None
+        )
+        # A new P0 root moves every P0-M built on the old one, so P0-M runs
+        # after it whether or not a TAF landed -- once, covering both.
         p0m = (
-            self._materialize_early_p0m(as_of_utc=clock, taf_watermark=taf_mark)
-            if new_taf else None
+            self._materialize_early_p0m(
+                as_of_utc=clock,
+                taf_watermark=taf_mark,
+                force=bool((nwp or {}).get("new_envelopes")),
+            )
+            if new_taf or (nwp or {}).get("new_envelopes") else None
         )
         scopes: set[tuple[str, str]] | None = set()
         if new_reports:
@@ -16488,6 +16693,8 @@ class TargetProductionWorker:
                 None if stations is None
                 else _scopes_for_stations(stations, as_of_utc=clock)
             )
+        if scopes is not None and (nwp or {}).get("new_envelopes"):
+            scopes |= set(self._scopes_rooted_after(nwp.get("rowid_before")))
         if scopes is not None and (p0m or {}).get("new_envelopes"):
             scopes |= set(self._scopes_rooted_after(p0m.get("rowid_before")))
         p1 = None
@@ -16513,6 +16720,7 @@ class TargetProductionWorker:
             "label": label,
             "at_utc": clock,
             "scopes": None if scopes is None else len(scopes),
+            "nwp_p0": nwp,
             "p0m": {k: v for k, v in (p0m or {}).items() if k != "p0m"} or None,
             "p1": {k: v for k, v in (p1 or {}).items() if k != "p1"} or None,
         }
@@ -19065,6 +19273,10 @@ class TargetProductionWorker:
                     getattr(self, "event_date_allowlist", ())
                 )
 
+                # Charter 195 (一): what the replay compile below covers, read
+                # before the inbox itself so a merge landing in between moves
+                # the mark past it and the next checkpoint compiles it.
+                official_mark = _official_inbox_watermark(official_inbox_path)
                 raw_native_packets: list[Mapping[str, Any]] = []
                 if native_inbox_path.is_file():
                     raw_native_packets.extend(
@@ -19326,6 +19538,20 @@ class TargetProductionWorker:
                 native_ensemble_ingress[
                     "active_activation_p0_replay"
                 ] = active_activation_p0_replay
+                # Charter 195 (一): the checkpoints compile only what moved
+                # past this pass -- the snapshots it compiled, the stations it
+                # had activations for, and the inbox content it read.
+                self._p0_replay_compiled_shas = {
+                    (
+                        str(packet.get("station_id") or "").strip().upper(),
+                        str(packet.get("event_date") or ""),
+                    ): str(packet.get("snapshot_content_sha256") or "")
+                    for packet in active_replay_packets
+                    if str(packet.get("schema") or "")
+                    == OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA
+                }
+                self._p0_replay_active_stations = set(active_native_stations)
+                self._p0_covered_official_watermark = official_mark
                 self._mark("native_p0_replay_compile")
                 self._fast_lane_checkpoint_if_due("after_native_p0_replay_compile")
                 now_mono = time.monotonic()
