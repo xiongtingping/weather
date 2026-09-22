@@ -13338,6 +13338,361 @@ def _charter_ev_reading(
     return reading
 
 
+def _ladder_rps(
+    vector: Mapping[str, float], ordered_keys: Sequence[str], label: str,
+) -> float:
+    """Ranked probability score over an ordered ladder: the squared gap
+    between the cumulative claim and the cumulative outcome, summed over every
+    rung boundary.  Lower is better; it charges a miss by how many rungs away
+    the mass sat, which is what a centre error costs."""
+
+    cumulative = score = 0.0
+    hit = False
+    for key in ordered_keys[:-1]:
+        cumulative += float(vector.get(key, 0.0) or 0.0)
+        hit = hit or str(key) == str(label)
+        score += (cumulative - (1.0 if hit else 0.0)) ** 2
+    return score
+
+
+def centre_shape_row(
+    p: Mapping[str, float],
+    m: Mapping[str, float],
+    label: str,
+    *,
+    ordered_keys: Sequence[str],
+    intervals: Mapping[str, Sequence[float | None]],
+) -> dict[str, Any]:
+    """One decision's gap to the market, split into centre and shape.
+
+    The 2026-09-22 P0 downstream audit's rule (finding 1): the served vector
+    ``p`` and the market mid ``m`` are scored with RPS on the ladder; then
+    ``p`` is moved onto the market's mean with production's own width-layer
+    transform (``apply_center_width_calibration``, width lambda 1, key
+    centres from ``served_bucket_axis``, point edges as the audit ran it), the
+    shift bounded by that transform's own entitlement ``MAX_ABS_SHIFT_C``.
+    What the move removes is the centre part of the gap; what is left is the
+    shape part, which is all the distribution layers (width, band, radiation)
+    can ever answer for.
+
+    The same shift in the other direction is the control: the mean of the two
+    signs is a shift of the same size in a random direction.  A centre gain
+    that were only the mechanics of moving mass would show up there too.
+    """
+
+    from bayes_basket_target.center_width_calibration import (  # noqa: PLC0415
+        MAX_ABS_SHIFT_C,
+        apply_center_width_calibration,
+        served_bucket_axis,
+    )
+
+    keys = [str(key) for key in ordered_keys]
+    centres, _edges = served_bucket_axis(intervals, keys)
+    model_mean = sum(float(p.get(k, 0.0) or 0.0) * c for k, c in zip(keys, centres))
+    market_mean = sum(float(m.get(k, 0.0) or 0.0) * c for k, c in zip(keys, centres))
+    wanted = market_mean - model_mean
+    shift = max(-MAX_ABS_SHIFT_C, min(MAX_ABS_SHIFT_C, wanted))
+
+    def _moved(delta: float) -> dict[str, float]:
+        return apply_center_width_calibration(
+            p, delta_c=delta, width_lambda=1.0,
+            ordered_keys=keys, key_centers_c=centres,
+        )[0]
+
+    toward = _ladder_rps(_moved(shift), keys, label)
+    away = _ladder_rps(_moved(-shift), keys, label) if shift else toward
+    return {
+        "rps_model": _ladder_rps(p, keys, label),
+        "rps_market": _ladder_rps(m, keys, label),
+        "rps_at_market_mean": toward,
+        "rps_random_direction": 0.5 * (toward + away),
+        "model_minus_market_mean_c": -wanted,
+        "clamped": abs(wanted) > MAX_ABS_SHIFT_C,
+    }
+
+
+def centre_shape_reading(
+    rows: Sequence[Mapping[str, Any]], *, draws: int, seed: int,
+) -> dict[str, Any]:
+    """The split over a sample, station-days weighted equally and whole event
+    days resampled for the 95% intervals (a fleet shares its weather).
+
+    ``gap`` = RPS(model) - RPS(market), positive where the model is worse;
+    ``shape`` = what is left after the move onto the market's mean;
+    ``centre`` = ``gap - shape``; ``control`` = the random-direction shift
+    minus the served vector, positive where moving the same distance without
+    the market's direction makes it worse.
+    """
+
+    per_day: dict[tuple[str, str], int] = {}
+    for row in rows:
+        key = (str(row["station"]), str(row["date"]))
+        per_day[key] = per_day.get(key, 0) + 1
+    days: dict[str, list[float]] = {}
+    for row in rows:
+        w = 1.0 / per_day[(str(row["station"]), str(row["date"]))]
+        acc = days.setdefault(str(row["date"]), [0.0] * 6)
+        acc[0] += w
+        acc[1] += w * (row["rps_model"] - row["rps_market"])
+        acc[2] += w * (row["rps_at_market_mean"] - row["rps_market"])
+        acc[3] += w * (row["rps_random_direction"] - row["rps_model"])
+        acc[4] += w * abs(row["model_minus_market_mean_c"])
+        acc[5] += w * row["model_minus_market_mean_c"]
+    empty = {
+        "decisions": len(rows), "station_days": len(per_day), "days": len(days),
+        "gap": None, "shape": None, "centre": None, "centre_share": None,
+        "control": None, "gap_ci": None, "shape_ci": None, "centre_ci": None,
+        "centre_share_ci": None, "control_ci": None,
+        "mean_abs_distance_c": None, "mean_signed_distance_c": None,
+        "clamped_share": None,
+    }
+    if not days:
+        return empty
+
+    def _point(picked: Sequence[list[float]]) -> tuple[float, ...] | None:
+        w = sum(day[0] for day in picked)
+        if w <= 0.0:
+            return None
+        gap = sum(day[1] for day in picked) / w
+        shape = sum(day[2] for day in picked) / w
+        control = sum(day[3] for day in picked) / w
+        share = (gap - shape) / gap if gap > 0.0 else None
+        return gap, shape, gap - shape, share, control
+
+    point = _point(list(days.values()))
+    if point is None:
+        return empty
+    rng = random.Random(int(seed))
+    keys = list(days)
+    draws_out: list[tuple[float, ...]] = []
+    if len(keys) >= 2:
+        for _ in range(int(draws)):
+            got = _point([days[key] for key in rng.choices(keys, k=len(keys))])
+            if got is not None:
+                draws_out.append(got)
+
+    def _band(index: int) -> list[float] | None:
+        values = sorted(d[index] for d in draws_out if d[index] is not None)
+        if len(values) < 10:
+            return None
+        return [values[int(0.025 * (len(values) - 1))],
+                values[int(math.ceil(0.975 * (len(values) - 1)))]]
+
+    weight = sum(day[0] for day in days.values())
+    return {
+        **empty,
+        "gap": point[0], "shape": point[1], "centre": point[2],
+        "centre_share": point[3], "control": point[4],
+        "gap_ci": _band(0), "shape_ci": _band(1), "centre_ci": _band(2),
+        "centre_share_ci": _band(3), "control_ci": _band(4),
+        "mean_abs_distance_c": sum(d[4] for d in days.values()) / weight,
+        "mean_signed_distance_c": sum(d[5] for d in days.values()) / weight,
+        "clamped_share": sum(1 for row in rows if row["clamped"]) / len(rows),
+    }
+
+
+# Hours-to-settlement bands the split is read in, the audit's own.  The
+# headline is 12h and beyond: inside 12h P1 serves and the market already
+# reads the day's observations.
+CENTRE_SHAPE_TIERS = (
+    ("0-12", 0.0, 12.0), ("12-24", 12.0, 24.0), ("24-36", 24.0, 36.0),
+    ("36-48", 36.0, 48.0), ("48+", 48.0, None),
+)
+
+
+def collect_centre_shape(
+    conn: sqlite3.Connection,
+    *,
+    floor_day: str | None,
+    as_of_event_date: str | None,
+    served_anchor_utc: str | None,
+    draws: int,
+    seed: int,
+) -> dict[str, Any]:
+    """The P0 gap to the market, split into centre and shape, sampled the way
+    the 2026-09-22 audit sampled it: every settled station-day of the charter
+    EV page's window, and in each hours-to-settlement band the first committed
+    P0 envelope that has a complete market snapshot at most 30 minutes old.
+
+    Envelopes, not the valuation lane's trading decisions: P0 trades only far
+    out (inside about a day and a half the trading stage is P0-M or P1), but
+    P0 is served at every lead as the root both of them multiply, so its gap
+    at 12-24h is read here too.  Every read is a seek by station and event
+    day: the envelope list, the ladder once from the newest envelope's
+    lineage, and the snapshot at or before each candidate decision.  Labels
+    are the truth lane's (``knowable_labels``), as on the rest of the page.
+
+    Three samples at 12h and beyond -- since charter 134's stable pool (P0 v5,
+    the audit's own sample), the whole window, since the serving-arithmetic
+    anchor -- then the stable-pool sample band by band.
+    """
+
+    from bayes_basket_target.basket_kernel.valuation_v1 import (  # noqa: PLC0415
+        market_reference_v1,
+    )
+    from bayes_basket_target.center_width_calibration import (  # noqa: PLC0415
+        MAX_ABS_SHIFT_C,
+    )
+    from bayes_basket_target.label_knowability import (  # noqa: PLC0415
+        knowable_labels,
+    )
+    from bayes_basket_target.serving_arithmetic import (  # noqa: PLC0415
+        STAGE_VERSION_EFFECTIVE_FROM,
+    )
+    from bayes_basket_target.settlement_time import (  # noqa: PLC0415
+        hours_to_settlement,
+    )
+
+    def _instant(value: str) -> datetime:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+
+    def _tier(hours: float) -> str | None:
+        for name, lo, hi in CENTRE_SHAPE_TIERS:
+            if hours >= lo and (hi is None or hours < hi):
+                return name
+        return None
+
+    def _seek(sql: str, params: tuple[Any, ...], index: str) -> list[Any]:
+        try:
+            return conn.execute(
+                sql.format(hint=f" INDEXED BY {index}"), params).fetchall()
+        except sqlite3.OperationalError:
+            # A store without the index (fixtures): the same seek unhinted.
+            return conn.execute(sql.format(hint=""), params).fetchall()
+
+    env_sql = (
+        "SELECT decision_at_utc, settlement_timezone, probabilities_json,"
+        " bucket_ordinals_json FROM basket_probability_envelope{hint}"
+        " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+        " AND stage='P0' ORDER BY decision_at_utc"
+    )
+    ladder_sql = (
+        "SELECT json_extract(lineage_json,'$.bucket_intervals_c_json')"
+        " FROM basket_probability_envelope{hint}"
+        " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+        " AND stage='P0' ORDER BY decision_at_utc DESC LIMIT 1"
+    )
+    snap_sql = (
+        "SELECT observed_at, buckets_json FROM basket_official_ws_snapshot{hint}"
+        " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+        " AND observed_at<=? ORDER BY observed_at DESC, sequence DESC LIMIT 1"
+    )
+    counts = {"station_days": 0, "no_envelope": 0, "no_ladder": 0,
+              "band_unpaired": 0, "ladder_mismatch": 0, "failed": 0}
+    known = knowable_labels(conn)
+    if known and (floor_day is None or as_of_event_date is None):
+        # No window handed in (the P0 population failed): the page's window
+        # on the newest label, never the whole history.
+        from bayes_basket_target.valuation_store import WINDOW_DAYS  # noqa: PLC0415
+        as_of_event_date = as_of_event_date or max(day for _s, day in known)
+        floor_day = floor_day or (
+            date.fromisoformat(str(as_of_event_date)) - timedelta(days=int(WINDOW_DAYS))
+        ).isoformat()
+    labels = {
+        key: value for key, value in known.items()
+        if (floor_day is None or str(key[1]) > str(floor_day))
+        and (as_of_event_date is None or str(key[1]) <= str(as_of_event_date))
+    }
+    scored: list[dict[str, Any]] = []
+    for (station, day), label in sorted(labels.items()):
+        envelopes = _seek(env_sql, (station, day),
+                          "basket_probability_envelope_asof_idx")
+        if not envelopes:
+            counts["no_envelope"] += 1
+            continue
+        counts["station_days"] += 1
+        got = _seek(ladder_sql, (station, day),
+                    "basket_probability_envelope_asof_idx")
+        try:
+            intervals = json.loads(got[0][0]) if got and got[0][0] else None
+        except (TypeError, ValueError):
+            intervals = None
+        if not intervals:
+            counts["no_ladder"] += 1
+            continue
+        bands: dict[str, list[Any]] = {}
+        for decided_at, tz, probs, ordinals in envelopes:
+            try:
+                hours = hours_to_settlement(
+                    str(day), as_of_utc=str(decided_at), settlement_timezone=str(tz))
+            except (ValueError, TypeError, KeyError):
+                continue
+            tier = _tier(float(hours))
+            if tier is not None:
+                bands.setdefault(tier, []).append((decided_at, probs, ordinals))
+        for tier, candidates in bands.items():
+            picked = None
+            for decided_at, probs, ordinals in candidates[:8]:
+                snap = _seek(snap_sql, (station, day, str(decided_at)),
+                             "basket_official_ws_snapshot_asof_idx")
+                if not snap or (
+                    _instant(decided_at) - _instant(snap[0][0])
+                ).total_seconds() > 1800:
+                    continue
+                try:
+                    market = market_reference_v1(json.loads(snap[0][1] or "[]"))
+                except (TypeError, ValueError):
+                    continue
+                if market.get("state") == "complete":
+                    picked = (decided_at, probs, ordinals, market["vector"])
+                    break
+            if picked is None:
+                counts["band_unpaired"] += 1
+                continue
+            decided_at, probs, ordinals, m = picked
+            try:
+                p = {str(k): float(v) for k, v in json.loads(probs).items()}
+                order = json.loads(ordinals)
+                keys = sorted(order, key=lambda k: order[k])
+            except (TypeError, ValueError, AttributeError):
+                counts["failed"] += 1
+                continue
+            bucket = str(label["bucket"])
+            if (set(keys) != set(p) or set(keys) != set(m)
+                    or set(keys) != set(intervals) or bucket not in keys):
+                counts["ladder_mismatch"] += 1
+                continue
+            try:
+                split = centre_shape_row(
+                    p, m, bucket, ordered_keys=keys, intervals=intervals)
+            except (ValueError, TypeError, KeyError):
+                counts["failed"] += 1
+                continue
+            scored.append({"station": str(station), "date": str(day),
+                           "tier": tier, "at": str(decided_at), **split})
+    pool_from = STAGE_VERSION_EFFECTIVE_FROM.get("P0", {}).get(
+        "calibrated_native_cross_ensemble_p0_v5")
+
+    def _since(sample: list[dict[str, Any]], moment: str | None) -> list[dict[str, Any]]:
+        if not moment:
+            return []
+        edge = _instant(moment)
+        return [r for r in sample if _instant(r["at"]) >= edge]
+
+    long = [r for r in scored if r["tier"] != "0-12"]
+    pool_all = _since(scored, pool_from)
+    return {
+        "available": bool(scored),
+        "stable_pool_from_utc": pool_from,
+        "served_anchor_utc": served_anchor_utc,
+        "window": {"floor_day": floor_day, "as_of_event_date": as_of_event_date},
+        "samples": {
+            "stable_pool": centre_shape_reading(
+                _since(long, pool_from), draws=draws, seed=seed),
+            "window": centre_shape_reading(long, draws=draws, seed=seed),
+            "anchor": centre_shape_reading(
+                _since(long, served_anchor_utc), draws=draws, seed=seed),
+        },
+        "tiers": {
+            name: centre_shape_reading(
+                [r for r in pool_all if r["tier"] == name], draws=draws, seed=seed)
+            for name, _lo, _hi in CENTRE_SHAPE_TIERS
+        },
+        "population": counts,
+        "max_abs_shift_c": float(MAX_ABS_SHIFT_C),
+    }
+
+
 def collect_charter_ev(conn: sqlite3.Connection) -> dict[str, Any]:
     """Charter EV identity per stage: Var(e_q), Cov(e_p,e_q), Var - Cov, k.
 
@@ -13367,6 +13722,8 @@ def collect_charter_ev(conn: sqlite3.Connection) -> dict[str, Any]:
         return out
     scopes: list[dict[str, Any]] = []
     window: dict[str, Any] = {}
+    p0_anchor: str | None = None
+    p0_window: tuple[Any, Any] = (None, None)
     for scope in ("P0", "P0-M", "P1"):
         try:
             rows, meta = population(conn, stage_scope=scope, anchored=False)
@@ -13411,6 +13768,9 @@ def collect_charter_ev(conn: sqlite3.Connection) -> dict[str, Any]:
             if first_at.get((str(row["station"]), str(row["date"])))
             == str(row["at"])
         ]
+        if scope == "P0":
+            p0_anchor = anchor
+            p0_window = (meta.get("floor_day"), meta.get("as_of_event_date"))
         scopes.append({
             "scope": scope,
             "research": _charter_ev_reading(
@@ -13441,6 +13801,19 @@ def collect_charter_ev(conn: sqlite3.Connection) -> dict[str, Any]:
         "bootstrap_draws": int(BOOTSTRAP_DRAWS),
         "computed_at_utc": _now().isoformat().replace("+00:00", "Z"),
     })
+    # The P0 gap split into centre and shape (2026-09-22 audit, finding 1),
+    # on the P0 window read above.  Its own guard: a failure here is this
+    # reading's, not the identity's.
+    try:
+        out["centre_shape"] = collect_centre_shape(
+            conn, floor_day=p0_window[0], as_of_event_date=p0_window[1],
+            served_anchor_utc=p0_anchor,
+            draws=BOOTSTRAP_DRAWS, seed=BOOTSTRAP_SEED,
+        )
+    except Exception as exc:  # noqa: BLE001 -- a reading, not a crash
+        out["centre_shape"] = {
+            "available": False, "error": f"{type(exc).__name__}:{exc}"[:300],
+        }
     return out
 
 
@@ -14573,7 +14946,11 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
             # see; without this a change to either keeps serving the old
             # reading for the section's whole lifetime.
             _salt=_loaded_source(charter_ev_identity)
-            + _loaded_source(_charter_ev_reading),
+            + _loaded_source(_charter_ev_reading)
+            + _loaded_source(collect_centre_shape)
+            + _loaded_source(centre_shape_reading)
+            + _loaded_source(centre_shape_row)
+            + _loaded_source(_ladder_rps),
         ),
         "beta_shadow": _cached_section(
             "beta_shadow", collect_beta_shadow, conn
@@ -18094,7 +18471,8 @@ function edgeMap(){
     </div>
     <div class="em-two">
       <div class="em-band em-audit">
-        <div class="em-cap">验收：这个公式赢没赢市场（到底有没有 edge）</div>
+        <div class="em-cap">验收：输给市场多少、差在哪，这个公式赢没赢市场（到底有没有 edge）</div>
+        ${node("模型对市场差距","中心差 / 形状差","P0 输给市场的 RPS：挪到市场均值能消掉的是中心，剩下的才归分布层")}
         ${node("宪章 EV 恒等式","宪章 EV 恒等式","量服务 p 对 m（p 已含中心/宽度与 band，不含 λ 与 L4）：k 低于 1 说明 p 有市场没有的信息")}
         ${node("L4 后验层（影子）","L4 前瞻技能分 S","log b − log m 的按日下界大于 0 才算赢")}
       </div>
@@ -18200,6 +18578,83 @@ function posteriorRealisation(R){
   <div class="muted" style="margin-top:6px;font-size:11.5px">${empty
     ?`还没有可判的窗：已结算窗 ${R.windows} 个，其中当时 L4 还在累积中 ${R.accumulating} 个（服务 b = m，不给判决）、当时还没有拟合 ${R.no_fit} 个、盘口或向量不全 ${R.no_vector} 个。L4 过门槛（约 09-25）后开始出数。`
     :`已判 ${R.judged} 窗；累积中未判 ${R.accumulating}、无拟合 ${R.no_fit}、盘口或向量不全 ${R.no_vector}。${stages}`}</div></div>`;
+}
+
+// The P0 gap to the market in two readings, centre and shape (2026-09-22 P0
+// downstream audit, finding 1 and its "只需要做" item b): a change to the
+// distribution layers answers to the shape reading only.  Rides on the
+// charter EV payload (same window, same labels), so a payload drawn before
+// the field existed says so instead of reading as "no gap".
+function centreShapeGap(){
+  const E=D.charter_ev||{}, S=E.centre_shape;
+  const title=`<h2>模型对市场差距：输多少，差在中心还是形状</h2>`;
+  if(!S) return `${title}<div class="card muted">这一版数据还没有这一项，下一次整库渲染后出现。</div>`;
+  if(!S.available) return `${title}<div class="card">未采集${S.error?"："+h(S.error):""}。</div>`;
+  const sg=(v,d=3)=>v==null?"—":((v>=0?"+":"")+(+v).toFixed(d));
+  const pc=v=>v==null?"—":Math.round(v*100)+"%";
+  const ci=(c,f)=>!c||c[0]==null?"":` <span class="muted">[${f(c[0])}, ${f(c[1])}]</span>`;
+  const f3=v=>sg(v,3);
+  const cls=v=>v==null?"":(v>0?"down":"up");
+  const cells=r=>`<td class="mono">${r.station_days} / ${r.days}</td>
+      <td class="mono ${cls(r.gap)}"><b>${f3(r.gap)}</b>${ci(r.gap_ci,f3)}</td>
+      <td class="mono">${f3(r.centre)}${ci(r.centre_ci,f3)}</td>
+      <td class="mono">${f3(r.shape)}${ci(r.shape_ci,f3)}</td>
+      <td class="mono"><b>${pc(r.centre_share)}</b>${ci(r.centre_share_ci,pc)}</td>
+      <td class="mono">${f3(r.control)}${ci(r.control_ci,f3)}</td>
+      <td class="mono">${r.mean_abs_distance_c==null?"—":(+r.mean_abs_distance_c).toFixed(2)}
+        <span class="muted">（${sg(r.mean_signed_distance_c,2)}）</span></td>
+      <td class="mono">${pc(r.clamped_share)}</td>`;
+  const row=(label,r,muted)=>(!r||!r.station_days)
+    ?`<tr class="muted"><td>${label}</td><td colspan="8">尚无已结算的站日</td></tr>`
+    :`<tr class="${muted?"muted":""}"><td style="white-space:nowrap">${label}</td>${cells(r)}</tr>`;
+  const at=v=>v?String(v).slice(0,16).replace("T"," ")+"Z":"（未记录）";
+  const X=S.samples||{}, T=S.tiers||{};
+  const head=`<th>站日 / 天</th>
+      <th>差距<br><span class="muted">RPS 模型 − 市场 · 95%</span></th>
+      <th>中心差<br><span class="muted">挪到市场均值消掉的</span></th>
+      <th>形状差<br><span class="muted">挪完还剩的</span></th>
+      <th>中心占比</th>
+      <th>对照<br><span class="muted">同幅度乱方向挪 − 不挪</span></th>
+      <th>模型均值离市场均值 °C<br><span class="muted">绝对值（带符号，正＝模型偏暖）</span></th>
+      <th>挪动触 ${S.max_abs_shift_c||1.5}°C 上限</th>`;
+  const P=X.stable_pool||{};
+  const pill=!P.station_days?{tone:"amber",word:"无样本"}
+    :(P.gap_ci&&P.gap_ci[0]>0
+      ?{tone:"red",word:`输给市场 ${f3(P.gap)}，其中中心 ${pc(P.centre_share)}`}
+      :{tone:"green",word:"差距区间含 0"});
+  const tierRows=Object.entries(T).map(([k,r])=>row(`${h(k)} h`,r,k==="0-12")).join("");
+  const N=S.population||{}, W=S.window||{};
+  return `${title}
+  <p class="sub">P0 服务分布对同一时刻盘口中价，按 RPS（整梯累积概率的平方误差，离真值越多档罚越重）比谁离真值更近，
+  再把差距拆成两半：<b>中心差</b>——用生产宽度层自己的平移函数把 P0 整条分布挪到市场的均值上，差距缩掉的部分；
+  <b>形状差</b>——挪完还剩的部分（胖瘦、尾巴、偏斜）。<b>这是读数，不是拟合，也不服务任何东西。</b></p>
+  <div class="why"><b>为什么要拆：</b>共识桥、辐射降温项、中心/宽度两标量、band 表这些分布层，只能改分布的形状，
+  <b>只对形状差负责</b>；中心差出在单系统订正、NWP 输入和融合，分布层怎么调都追不回来。<br>
+  <b>怎么挪：</b><span class="mono">apply_center_width_calibration</span>（宽度 λ = 1，只平移不缩放），挪动量 = 市场均值 − 模型均值，
+  最多 ${S.max_abs_shift_c||1.5}°C（这个函数自己的上限，超过的按上限挪，最后一列是触限的比例）。<br>
+  <b>对照：</b>同样的挪动量、方向随机（两个方向各算一次取平均）。对照为正且远离 0，说明中心差靠的是市场均值的<b>方向</b>，
+  不是「挪一挪」本身的机械效果。<br>
+  <b>取样：</b>窗内每个已结算站日、每个提前量档，取第一个配得上 30 分钟内完整盘口快照的 P0 包（09-22 模型下游审查第 1 条的取样）。
+  P0 是 P0-M、P1 的根，所以 12–24h 也读，不只看 P0 自己交易的那几档。站日等权，区间按事件日自助 ${E.bootstrap_draws||200} 次。<br>
+  <b>例子（审查读数）：</b>提前 12–24h，模型中心平均离真值 0.86°C、市场 0.72°C；把 P0 挪到市场均值后，差距只剩约一成半。
+  <b>中心差出在哪一步（09-22 研究）：</b>单系统偏差订正在帮中心——不订正时 P0 差距是 +0.52，订正收掉约 78%；
+  剩下的中心差是 NWP 输入本身的逐日误差，集中在 SBGR、ZUUU、KSEA、FACT、KSFO、LTAC，四家模型在这些站都比市场差，换权重、挑家都救不回来。</div>
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:8px"><b>P0 · 提前 12h 以上</b><span style="flex:1"></span>
+      <span class="pill ${pill.tone}">${pill.word}</span></div>
+    <div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>样本</th>${head}</tr></thead>
+    <tbody>${row("稳定池（P0 v5，"+at(S.stable_pool_from_utc)+"）起",X.stable_pool,false)}${
+      row(`滚动 ${h(W.floor_day||"—")} … ${h(W.as_of_event_date||"—")}`,X.window,false)}${
+      row("服务锚 "+at(S.served_anchor_utc)+" 起",X.anchor,true)}</tbody></table></div>
+    <div class="muted" style="margin-top:6px;font-size:11.5px">裁决读第一行（审查的样本，稳定池后同一套融合）；滚动窗那行混着稳定池以前的版本；
+      锚后那行才是今天服务的 P0，会随结算自动填满。读了 ${N.station_days!=null?N.station_days:"—"} 个站日，
+      档内没配上 30 分钟内完整盘口的 ${N.band_unpaired!=null?N.band_unpaired:"—"} 档不计。</div>
+  </div>
+  <div class="card">
+    <div><b>按提前量拆开</b> <span class="muted">稳定池起的样本；0–12h 灰显：这一段服务的是 P1，市场已经读到当天的观测</span></div>
+    <div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>距结算</th>${head}</tr></thead>
+    <tbody>${tierRows}</tbody></table></div>
+  </div>`;
 }
 
 function charterEv(){
@@ -22482,7 +22937,7 @@ const GROUPS = [
       note:"按权重合成；权重看在用的配比和权重表是否按时换代，离散度看几家分歧多大",
       sections:[[servingWeights,"四大模型权重"],[tablesWeights,"融合权重表"],[dispersion,"模型离散度"]]},
      {box:"③ 分布层：合成后的分布再塑形、再检验", kind:"live",
-      note:"共识桥 → 辐射降温项 → 中心/宽度两标量 → band 表，然后用样本外和真值检验服务出去的分布",
+      note:"共识桥 → 辐射降温项 → 中心/宽度两标量 → band 表，然后用样本外和真值检验服务出去的分布；这一层只对「边际 · ① 验收 · 模型对市场差距」里的形状差负责，中心差出在 ① 单系统、② 融合和 NWP 输入",
       sections:[[consensusBridgeSection,"共识桥"],[radiationSection,"辐射降温项"],[centerWidth,"中心/宽度"],
         [bandTable,"band 表"],[oosScores,"OOS 打分"],[centreLanding,"真值离均值多远"]]},
      {box:"④ 站点 × 日期：P0 → TAF → P0-M → 实况/区域 → P1", kind:"stage",
@@ -22496,12 +22951,12 @@ const GROUPS = [
   // m, how much of the gap should be believed (user ruling, 2026-09-17).
   // Its four sub-headings are containers now, coloured by kind.
   {id:"edge", label:"边际", short:"边际", tone:"#79c0ff",
-   note:"边际层：按 L4 的公式 logit b = logit m + w·(logit p − logit m) + c(m) 读——① 验收（有没有 edge）→ ② 实盘此刻用什么代替 w → ③ L4 与它的特例（影子）→ ④ 进来前先改 p（影子）",
+   note:"边际层：按 L4 的公式 logit b = logit m + w·(logit p − logit m) + c(m) 读——① 验收（输多少、差在中心还是形状、有没有 edge）→ ② 实盘此刻用什么代替 w → ③ L4 与它的特例（影子）→ ④ 进来前先改 p（影子）",
    intro: edgeMap,
    sections:[
-     {box:"① 验收：这个公式赢没赢市场（到底有没有 edge）", kind:"audit",
-      note:"读真值，不参与决策。EV 恒等式量的是概率层服务出来的 p（已含 band，不含 λ、L4 等读价格的层）有没有市场没有的信息；L4 自己赢没赢看 L4 小节的前瞻技能分",
-      sections:[[charterEv,"宪章 EV 恒等式"],[truthLanding,"真值落位"]]},
+     {box:"① 验收：输给市场多少、差在中心还是形状，这个公式赢没赢市场（到底有没有 edge）", kind:"audit",
+      note:"读真值，不参与决策。模型对市场差距把 P0 输给市场的 RPS 拆成中心差与形状差（分布层只对形状差负责）；EV 恒等式量的是概率层服务出来的 p（已含 band，不含 λ、L4 等读价格的层）有没有市场没有的信息；L4 自己赢没赢看 L4 小节的前瞻技能分",
+      sections:[[centreShapeGap,"模型对市场差距"],[charterEv,"宪章 EV 恒等式"],[truthLanding,"真值落位"]]},
      {box:"② 实盘此刻用来代替 w 的：λ 表", kind:"live",
       note:"不从市场出发，按「价格 ÷ 声称」分档直接给 p 打折；没证据时沿用常数继续买。体温计是它的证据，不是规则",
       sections:[[effectiveEdgeLambda,"有效边际 λ 表"],[edgeBandHealth,"声称边际体温计"]]},
@@ -22622,6 +23077,8 @@ const LANES = {
   "band 表": {layer:"概率层", status:"live",
     role:"单系统校准与融合之后，P0 服务概率按离中心距离兑现多少 → 按档修正尾形残差（市场不进；第 150 条起只在 P0）"},
   // --- edge: what our probability is worth against the market ---
+  "模型对市场差距": {layer:"边际层 · ① 验收", status:"audit",
+    role:"P0 输给市场的 RPS 拆两半：把分布挪到市场均值能消掉的是中心差（单系统订正、NWP 输入、融合负责），剩下的是形状差（分布层只对它负责）"},
   "宪章 EV 恒等式": {layer:"边际层 · ① 验收", status:"audit",
     role:"edge = 市场的错 − 模型的错 = Var(e_q) − Cov(e_p,e_q)，量的是服务 p 对 m（p 已含中心/宽度与 band，不含 λ 与 L4；概率空间、整梯）；k 低于 1 才有 edge"},
   "真值落位": {layer:"边际层 · ① 验收", status:"audit",

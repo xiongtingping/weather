@@ -1,0 +1,107 @@
+{
+ "system_mse": {
+  "prod": 1.9625046639656312,
+  "E_b2": 2.957548427873331,
+  "oracle_station_mean_shift": 1.7222849110882144,
+  "global_kstar": 0.9309595092174463,
+  "shrink_global": 1.9053294645358942,
+  "shrink_per_system": 1.9011214354570103
+ },
+ "pooled_shrink_headroom_c2": 0.012625193666907902,
+ "gap_stations": {
+  "SBGR": {
+   "DWD_I": 2.14,
+   "ECCC_": 1.76,
+   "ECMWF": 2.18,
+   "NOAA_": 2.51,
+   "POOLE": 2.03,
+   "MARKET": 0.99,
+   "gap": 0.95
+  },
+  "ZUUU": {
+   "DWD_I": 2.08,
+   "ECCC_": 1.4,
+   "ECMWF": 1.53,
+   "NOAA_": 2.21,
+   "POOLE": 1.83,
+   "MARKET": 1.15,
+   "gap": 0.72
+  },
+  "KSEA": {
+   "DWD_I": 1.79,
+   "ECCC_": 2.23,
+   "ECMWF": 1.96,
+   "NOAA_": 2.05,
+   "POOLE": 1.89,
+   "MARKET": 1.04,
+   "gap": 0.65
+  },
+  "FACT": {
+   "DWD_I": 1.46,
+   "ECCC_": 0.61,
+   "ECMWF": 2.07,
+   "NOAA_": 1.2,
+   "POOLE": 1.28,
+   "MARKET": 0.6,
+   "gap": 0.64
+  },
+  "KSFO": {
+   "DWD_I": 2.08,
+   "ECCC_": 2.49,
+   "ECMWF": 1.3,
+   "NOAA_": 2.14,
+   "POOLE": 1.7,
+   "MARKET": 1.0,
+   "gap": 0.61
+  },
+  "LTAC": {
+   "DWD_I": 1.22,
+   "ECCC_": 1.19,
+   "ECMWF": 1.79,
+   "NOAA_": 1.35,
+   "POOLE": 1.39,
+   "MARKET": 0.9,
+   "gap": 0.54
+  },
+  "CYYZ": {
+   "DWD_I": 0.54,
+   "ECCC_": 1.41,
+   "ECMWF": 0.88,
+   "NOAA_": 1.17,
+   "POOLE": 0.84,
+   "MARKET": 0.52,
+   "gap": 0.34
+  },
+  "LFPB": {
+   "DWD_I": 0.98,
+   "ECCC_": 0.77,
+   "ECMWF": 0.65,
+   "NOAA_": 0.8,
+   "POOLE": 0.7,
+   "MARKET": 0.43,
+   "gap": 0.3
+  }
+ },
+ "best_system_pick_oos": {
+  "pick": 0.9680231248966924,
+  "pooled": 0.9206558699960635,
+  "n": 45
+ },
+ "smoothed_shift_minus_prod_mse": {
+  "today+prev3d": [
+   0.043289557882876084,
+   -0.004206990266640945,
+   0.09654452048075798
+  ],
+  "today+prev7d": [
+   0.07539553504556598,
+   0.0010307502338428392,
+   0.16215243857214248
+  ],
+  "expanding": [
+   0.08559939576129132,
+   0.003590410564845772,
+   0.1768069435379358
+  ]
+ }
+}
