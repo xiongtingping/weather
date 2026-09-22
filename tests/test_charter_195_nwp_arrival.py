@@ -1171,3 +1171,57 @@ def test_a_pass_that_held_a_required_family_on_the_network_backs_off_too(monkeyp
         assert _capture(worker, tmp_path)["state"] == "NETWORK_BACKOFF"
     finally:
         worker._official_native_capture_pool.shutdown(wait=True)
+
+
+def test_a_nested_fetch_lock_rides_the_stripe_already_held(tmp_path) -> None:
+    """2026-09-22 10:39Z: GEFS took its field's stripe, then the .idx's -- a
+    second flock on the same stripe file blocked its own thread forever."""
+
+    done = []
+
+    def nested():
+        for outer in range(40):
+            with store_mod.fetch_lock(tmp_path, f"field-{outer}"):
+                with store_mod.fetch_lock(tmp_path, f"field-{outer}.idx"):
+                    with store_mod.fetch_lock(tmp_path, f"field-{outer}"):
+                        pass
+        done.append(True)
+
+    threads = [threading.Thread(target=nested) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=20)
+    assert done == [True] * 4
+
+
+def test_the_gefs_field_and_idx_do_not_deadlock_across_threads(monkeypatch, tmp_path) -> None:
+    from bayes_basket_target import noaa_gefs_archive as gefs
+
+    idx = (
+        b"62:11400000:d=2026092106:RH:2 m above ground:24 hour fcst:ENS=+7\n"
+        b"63:11450212:d=2026092106:TMP:2 m above ground:24 hour fcst:ENS=+7\n"
+        b"64:11450276:d=2026092106:UGRD:10 m above ground:24 hour fcst:ENS=+7\n"
+    )
+    monkeypatch.setattr(
+        gefs, "_get_bytes",
+        lambda url, *, client, timeout_seconds, max_bytes, headers=None:
+            (idx, {}) if url.endswith(".idx") else (b"G" * 64, {"last-modified": "LM"}),
+    )
+    store = tmp_path / "gefs" / "raw"
+    results = []
+
+    def one(member):
+        for hour in range(0, 75, 3):
+            results.append(gefs._download_gefs_field(
+                client=None, run_day="20260921", cycle="06", object_member=member,
+                member_id=member, forecast_hour=hour, timeout_seconds=5.0,
+                raw_roots=(store,), raw_store=store,
+            )[0])
+
+    threads = [threading.Thread(target=one, args=(f"gep{n:02d}",)) for n in range(1, 9)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+    assert len(results) == 8 * 25

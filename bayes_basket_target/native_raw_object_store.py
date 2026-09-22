@@ -197,6 +197,7 @@ WHOLE_OBJECT_RANGE_START = 0
 WHOLE_OBJECT_RANGE_END = -1
 LOCK_STRIPES = 256
 _STATS_LOCK = threading.Lock()
+_THREAD_LOCKS = threading.local()
 _STATS: dict[str, dict[str, int]] = {}
 
 
@@ -250,6 +251,20 @@ def fetch_lock(root: Path | None, key: str) -> Iterator[None]:
     if root is None:
         yield
         return
+    # One stripe per thread at a time.  A nested ask (GEFS takes the field's
+    # stripe, then its ``.idx`` through ``cached_whole_object``) rides the
+    # stripe already held: a second ``flock`` on another descriptor of the same
+    # stripe file blocks its own thread forever, and holding two stripes lets
+    # two captures take them in opposite orders -- both happened 2026-09-22
+    # 10:39Z, three GEFS captures stuck at 0% CPU until killed.  With at most
+    # one stripe held per thread and none held while waiting, no cycle can form.
+    if getattr(_THREAD_LOCKS, "depth", 0) > 0:
+        _THREAD_LOCKS.depth += 1
+        try:
+            yield
+        finally:
+            _THREAD_LOCKS.depth -= 1
+        return
     handle = None
     try:
         directory = Path(root).expanduser().resolve() / "locks"
@@ -265,9 +280,11 @@ def fetch_lock(root: Path | None, key: str) -> Iterator[None]:
         if handle is not None:
             os.close(handle)
         handle = None
+    _THREAD_LOCKS.depth = 1
     try:
         yield
     finally:
+        _THREAD_LOCKS.depth = 0
         if handle is not None:
             try:
                 fcntl.flock(handle, fcntl.LOCK_UN)
