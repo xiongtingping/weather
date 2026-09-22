@@ -30,7 +30,9 @@ import sqlite3
 import struct
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta, timezone
+import os
 from pathlib import Path
+import re
 from time import sleep as _sleep
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
@@ -54,6 +56,7 @@ from .ssot import native_ensemble_foundation_schema_status
 from .p0_producer import bucket_intervals_from_registry_rows
 from .station_registry import station_coordinates
 from official_nwp_https_transport import official_nwp_proxy_url
+from .native_raw_object_store import cached_whole_object, evict_runs_over_cap
 
 
 SCHEMA = "dwd_icon_eps_official_historical_station_members_v1"
@@ -169,6 +172,34 @@ def extraction_version_for_lead(
 
 EXTRACTION_VERSION = extraction_version_for_lead(DEFAULT_LEAD_DAYS)
 BASE_URL = "https://opendata.dwd.de/weather/nwp/icon-eps/grib"
+# Charter 195 (三): every per-lead object goes through the provider-neutral
+# object store once (``native_raw_object_store.cached_whole_object``): D+0,
+# D+1, D+2, the follow lane and a station-set change all read the same
+# 36 MB objects of a run, and DWD keeps them only ~24h.  The store keeps the
+# newest ``OBJECT_STORE_KEEP_RUNS`` runs and at most
+# ``OBJECT_STORE_CAP_BYTES`` (inside the 7 GiB NWP raw budget); it is a
+# cache, not evidence -- the archive receipts carry each object's digest.
+# ``ICON_EPS_OBJECT_STORE=''`` turns it off.
+DEFAULT_OBJECT_STORE = Path("data/runtime/official_nwp_sources/icon_eps/raw")
+OBJECT_STORE_CAP_BYTES = 1536 * 1024 * 1024
+OBJECT_STORE_KEEP_RUNS = 2
+_OBJECT_RUN = re.compile(r"_(\d{10})_\d{3}_t_2m\.grib2\.bz2$")
+
+
+def _object_store() -> Path | None:
+    configured = os.environ.get("ICON_EPS_OBJECT_STORE")
+    if configured is not None and not configured.strip():
+        return None
+    return Path(configured or DEFAULT_OBJECT_STORE).expanduser().resolve()
+
+
+def object_run_of(object_key: str) -> str | None:
+    """The run stamp (YYYYMMDDHH) a stored ICON object belongs to."""
+
+    match = _OBJECT_RUN.search(str(object_key))
+    return match.group(1) if match else None
+
+
 ECCODES_LIBRARY = Path("/opt/homebrew/lib/libeccodes.dylib")
 EXPECTED_MEMBER_COUNT = 40
 # ICON EPS publishes ``t_2m`` hourly out to +48h -- an earlier note here claimed
@@ -663,13 +694,21 @@ def capture_icon_eps_station_days(
             cache_dir=Path(grid_cache_dir or DEFAULT_GRID_CACHE),
         )
 
+        store = _object_store()
+
         def load(forecast_hour: int) -> tuple[int, bytes]:
-            url = (
-                f"{BASE_URL}/{cycle}/t_2m/"
+            object_key = (
+                f"{cycle}/t_2m/"
                 f"icon-eps_global_icosahedral_single-level_"
                 f"{run_day}{cycle}_{forecast_hour:03d}_t_2m.grib2.bz2"
             )
-            return forecast_hour, _fetch(client, url)
+            url = f"{BASE_URL}/{object_key}"
+            data, _last_modified, _from_store = cached_whole_object(
+                object_key=object_key,
+                fetch=lambda: (_fetch(client, url), ""),
+                root=store,
+            )
+            return forecast_hour, data
 
         with ThreadPoolExecutor(
             # Charter 192: a follow capture may ask with fewer connections,
@@ -723,6 +762,13 @@ def capture_icon_eps_station_days(
                 del raw
                 assert_process_memory_budget()
 
+    if store is not None:
+        evict_runs_over_cap(
+            store,
+            cap_bytes=OBJECT_STORE_CAP_BYTES,
+            keep_newest_runs=OBJECT_STORE_KEEP_RUNS,
+            run_of=object_run_of,
+        )
     object_receipts.sort(key=lambda row: int(row["forecast_hour"]))
     object_receipt_sha = content_sha256(object_receipts)
     captures: list[dict[str, Any]] = []

@@ -13,7 +13,9 @@ import time as time_module
 from collections.abc import Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import date, datetime, time, timedelta, timezone
+import os
 from pathlib import Path
+import re
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -39,6 +41,7 @@ from .p0_producer import bucket_intervals_from_registry_rows
 from .resource_bounds import assert_process_memory_budget
 from .ssot import native_ensemble_foundation_schema_status
 from official_nwp_https_transport import official_nwp_proxy_url
+from .native_raw_object_store import cached_whole_object, evict_runs_over_cap
 
 
 SCHEMA = "eccc_geps_official_historical_station_members_v1"
@@ -274,6 +277,41 @@ def _object_url(
     return f"{BASE_URL}/{object_key}", object_key
 
 
+# Charter 195 (三): ECCC's per-lead files through the provider-neutral object
+# store, once per run, whoever asks (D+0/D+1/D+2, the follow lane, a
+# station-set change).  ``ECCC_GEPS_OBJECT_STORE=''`` turns it off.
+DEFAULT_OBJECT_STORE = Path("data/runtime/official_nwp_sources/eccc_geps/raw")
+OBJECT_STORE_CAP_BYTES = 256 * 1024 * 1024
+OBJECT_STORE_KEEP_RUNS = 2
+_OBJECT_RUN = re.compile(r"_(\d{10})_P\d{3}_allmbrs\.grib2$")
+
+
+def _object_store() -> Path | None:
+    configured = os.environ.get("ECCC_GEPS_OBJECT_STORE")
+    if configured is not None and not configured.strip():
+        return None
+    return Path(configured or DEFAULT_OBJECT_STORE).expanduser().resolve()
+
+
+def object_run_of(object_key: str) -> str | None:
+    """The run stamp (YYYYMMDDHH) a stored ECCC object belongs to."""
+
+    match = _OBJECT_RUN.search(str(object_key))
+    return match.group(1) if match else None
+
+
+def evict_object_store() -> dict[str, Any] | None:
+    store = _object_store()
+    if store is None:
+        return None
+    return evict_runs_over_cap(
+        store,
+        cap_bytes=OBJECT_STORE_CAP_BYTES,
+        keep_newest_runs=OBJECT_STORE_KEEP_RUNS,
+        run_of=object_run_of,
+    )
+
+
 def _split_grib_messages(raw: bytes) -> list[bytes]:
     messages: list[bytes] = []
     offset = 0
@@ -381,7 +419,19 @@ def _download_field(
         run_init=run_init,
         forecast_hour=forecast_hour,
     )
-    raw, headers = _get_bytes(url, timeout_seconds=timeout_seconds)
+
+    def fetch() -> tuple[bytes, str]:
+        body, response_headers = _get_bytes(url, timeout_seconds=timeout_seconds)
+        return body, str(response_headers.get("last-modified") or "")
+
+    # Charter 195 (三): through the object store once per run; the stored
+    # Last-Modified is the original response's, so the receipt is the same.
+    raw, last_modified, _from_store = cached_whole_object(
+        object_key=object_key,
+        fetch=fetch,
+        root=_object_store(),
+    )
+    headers = {"last-modified": last_modified}
     messages = _split_grib_messages(raw)
     metadata = _member_metadata(raw)
     if any(row["forecast_hour"] != forecast_hour for row in metadata):
@@ -705,6 +755,7 @@ def capture_geps_station_days(
                     )
                 )
                 submit_next()
+    evict_object_store()
     receipts.sort(key=lambda row: int(row["forecast_hour"]))
     if len(receipts) != len(union_hours):
         raise ContractError("eccc_geps_archive_receipt_set_incomplete")

@@ -56,6 +56,9 @@ from bayes_basket_target.dwd_icon_eps_archive import (  # noqa: E402
 )
 from bayes_basket_target import follow_run  # noqa: E402
 from bayes_basket_target import nwp_arrival_probe  # noqa: E402
+from bayes_basket_target.native_raw_object_store import (  # noqa: E402
+    object_store_stats,
+)
 from bayes_basket_target.future_temperature_curve import (  # noqa: E402
     MIN_CURVE_POINTS,
     MIN_SAME_DAY_CURVE_POINTS,
@@ -1592,6 +1595,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "BLOCKED_FAIL_CLOSED" if ingress_blocked else "COMMITTED"
             ),
         }
+    # Charter 195 (三): what the object stores answered for this pass, per
+    # store -- hits and bytes not fetched, downloads and bytes fetched.
+    result = {**result, "nwp_object_store": object_store_stats()}
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 0
 
@@ -1683,6 +1689,9 @@ def _follow_capture_main(args: argparse.Namespace) -> int:
                 "BLOCKED_FAIL_CLOSED" if ingress_blocked else "COMMITTED"
             ),
         }
+    # Charter 195 (三): what the object stores answered for this pass, per
+    # store -- hits and bytes not fetched, downloads and bytes fetched.
+    result = {**result, "nwp_object_store": object_store_stats()}
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 0
 

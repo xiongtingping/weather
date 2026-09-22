@@ -58,6 +58,20 @@ def _no_taf_raw_archive_from_tests(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _no_nwp_object_store_from_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Charter 195 (三): ICON/ECCC objects go through a real on-disk store.
+
+    A stand-in fetch would file its made-up bytes under a real run's object
+    key (2026-09-22: a follow test left a 39-byte "ICON 2026092218" body the
+    next production capture of that run would have been served).  Off in
+    tests; a test of the store points it at its own ``tmp_path``.
+    """
+
+    monkeypatch.setenv("ICON_EPS_OBJECT_STORE", "")
+    monkeypatch.setenv("ECCC_GEPS_OBJECT_STORE", "")
+
+
+@pytest.fixture(autouse=True)
 def _no_forward_physics_capture_from_tests(monkeypatch: pytest.MonkeyPatch) -> None:
     """The resident's forecast refresh cycle starts a real forward capture.
 

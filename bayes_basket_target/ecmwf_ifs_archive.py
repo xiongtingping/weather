@@ -30,6 +30,11 @@ from .ecmwf_pf50_raw_reuse import (
     store_content_addressed_message,
     store_range_alias,
 )
+from .native_raw_object_store import (
+    cached_whole_object,
+    fetch_lock,
+    note_store_answer,
+)
 from .future_temperature_curve import (
     MIN_CURVE_POINTS,
     MIN_SAME_DAY_CURVE_POINTS,
@@ -558,6 +563,35 @@ def _download_message(
     raw_roots: Sequence[Path] = (),
     raw_store: Path | None = None,
 ) -> tuple[bytes, dict[str, Any], bool]:
+    # Charter 195 (三): two captures of one run meet on this lock, and the
+    # second finds the first one's range in the store instead of fetching it.
+    offset = int(row["_offset"])
+    with fetch_lock(raw_store, f"{object_key}|{offset}"):
+        message, receipt, from_store = _download_message_unlocked(
+            grib_url=grib_url,
+            index_sha256=index_sha256,
+            object_key=object_key,
+            row=row,
+            timeout_seconds=timeout_seconds,
+            retained=retained,
+            raw_roots=raw_roots,
+            raw_store=raw_store,
+        )
+    note_store_answer(raw_store, hit=from_store, size=len(message))
+    return message, receipt, from_store
+
+
+def _download_message_unlocked(
+    *,
+    grib_url: str,
+    index_sha256: str,
+    object_key: str,
+    row: Mapping[str, Any],
+    timeout_seconds: float,
+    retained: RetainedMemberField | None = None,
+    raw_roots: Sequence[Path] = (),
+    raw_store: Path | None = None,
+) -> tuple[bytes, dict[str, Any], bool]:
     if retained is not None:
         local = find_content_addressed_message(
             retained.message_sha256, raw_roots
@@ -1030,10 +1064,18 @@ def capture_ecmwf_station_days(
             run_init=run_init,
             forecast_step=step,
         )
-        index_raw, _headers = _get_bytes(
-            index_url,
-            timeout_seconds=timeout_seconds,
-            max_bytes=MAX_INDEX_BYTES,
+        # Charter 195 (三): an index is an immutable object like its fields.
+        index_raw, _last_modified, _from_store = cached_whole_object(
+            object_key=object_prefix + ".index",
+            fetch=lambda: (
+                _get_bytes(
+                    index_url,
+                    timeout_seconds=timeout_seconds,
+                    max_bytes=MAX_INDEX_BYTES,
+                )[0],
+                "",
+            ),
+            root=_raw_object_dir(),
         )
         return step, grib_url, object_prefix, index_raw
 

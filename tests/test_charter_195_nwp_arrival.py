@@ -563,3 +563,234 @@ def test_a_real_pass_logs_its_rungs(monkeypatch, capture_worker, tmp_path) -> No
     assert row["state"] == "FAILED" and row["trigger"].startswith("arrival:")
     assert [rung["returncode"] for rung in row["rungs"]] == [3] * len(row["rungs"]) and row["rungs"]
     assert "required_family_unavailable" in row["rungs"][0]["stderr_tail"]
+
+
+# ------------------------------------ (三) one download per step object
+
+
+import hashlib
+import threading
+import time as _time
+
+from bayes_basket_target import native_raw_object_store as store_mod
+
+
+def _fetcher(payloads, calls, *, delay=0.0):
+    def make(key):
+        def fetch():
+            calls.append(key)
+            if delay:
+                _time.sleep(delay)
+            return payloads[key], "Mon, 21 Sep 2026 14:45:59 GMT"
+        return fetch
+    return make
+
+
+def test_a_whole_object_is_fetched_once_and_answered_from_the_store(tmp_path) -> None:
+    store_mod.object_store_stats(reset=True)
+    root = tmp_path / "icon_eps" / "raw"
+    payloads = {"12/t_2m/x_2026092112_024_t_2m.grib2.bz2": b"A" * 1000}
+    calls = []
+    make = _fetcher(payloads, calls)
+    key = next(iter(payloads))
+    first = store_mod.cached_whole_object(object_key=key, fetch=make(key), root=root)
+    second = store_mod.cached_whole_object(object_key=key, fetch=make(key), root=root)
+    assert calls == [key]
+    assert first[0] == second[0] and first[2] is False and second[2] is True
+    # The Last-Modified of the original response comes back on a hit, so a
+    # receipt built from it is the same one the download produced.
+    assert second[1] == first[1] == "Mon, 21 Sep 2026 14:45:59 GMT"
+    stats = store_mod.object_store_stats()["icon_eps"]
+    assert stats == {"hits": 1, "hit_bytes": 1000, "downloads": 1, "downloaded_bytes": 1000}
+
+
+def test_two_captures_of_one_run_download_a_shared_object_once(tmp_path) -> None:
+    root = tmp_path / "icon_eps" / "raw"
+    key = "00/t_2m/x_2026092100_030_t_2m.grib2.bz2"
+    calls = []
+    make = _fetcher({key: b"B" * 5000}, calls, delay=0.2)
+    results = []
+    threads = [
+        threading.Thread(target=lambda: results.append(
+            store_mod.cached_whole_object(object_key=key, fetch=make(key), root=root)))
+        for _ in range(3)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert calls == [key]
+    assert sorted(hit for _data, _lm, hit in results) == [False, True, True]
+
+
+def test_no_store_is_exactly_the_fetch(tmp_path) -> None:
+    calls = []
+    make = _fetcher({"k": b"C"}, calls)
+    assert store_mod.cached_whole_object(object_key="k", fetch=make("k"), root=None)[2] is False
+    assert store_mod.cached_whole_object(object_key="k", fetch=make("k"), root=None)[2] is False
+    assert calls == ["k", "k"]
+
+
+def test_a_corrupt_or_evicted_body_is_downloaded_again(tmp_path) -> None:
+    root = tmp_path / "eccc_geps" / "raw"
+    key = "20260921/WXO-DD/x_2026092100_P030_allmbrs.grib2"
+    calls = []
+    make = _fetcher({key: b"D" * 300}, calls)
+    store_mod.cached_whole_object(object_key=key, fetch=make(key), root=root)
+    body = root / (hashlib.sha256(b"D" * 300).hexdigest() + ".grib2")
+    body.write_bytes(b"not the object")
+    data, _lm, hit = store_mod.cached_whole_object(object_key=key, fetch=make(key), root=root)
+    assert hit is False and data == b"D" * 300 and len(calls) == 2
+    body.unlink()
+    assert store_mod.cached_whole_object(object_key=key, fetch=make(key), root=root)[2] is False
+
+
+def test_eviction_drops_whole_old_runs_keeps_the_newest_and_the_young(tmp_path) -> None:
+    from bayes_basket_target import dwd_icon_eps_archive as icon
+
+    root = tmp_path / "icon_eps" / "raw"
+    for run in ("2026092018", "2026092100", "2026092106", "2026092112"):
+        for step in (0, 3):
+            key = f"x/t_2m/icon-eps_global_icosahedral_single-level_{run}_{step:03d}_t_2m.grib2.bz2"
+            store_mod.cached_whole_object(
+                object_key=key, fetch=lambda run=run, step=step: (f"{run}{step}".encode() * 100, ""), root=root,
+            )
+    later = _time.time() + 3600
+    receipt = store_mod.evict_runs_over_cap(
+        root, cap_bytes=2500, keep_newest_runs=2, run_of=icon.object_run_of, now=later,
+    )
+    assert receipt["dropped_runs"] == ["2026092018", "2026092100"]
+    assert receipt["bytes_after"] <= 4 * 1200
+    left = {icon.object_run_of(json.loads(p.read_text())["object_key"]) for p in (root / "ranges").glob("*.json")}
+    assert left == {"2026092106", "2026092112"}
+    # Nothing stored in the last ten minutes is touched, whatever the cap.
+    store_mod.cached_whole_object(
+        object_key="x/t_2m/icon-eps_global_icosahedral_single-level_2026091800_000_t_2m.grib2.bz2",
+        fetch=lambda: (b"E" * 5000, ""), root=root,
+    )
+    young = store_mod.evict_runs_over_cap(root, cap_bytes=1, keep_newest_runs=0, run_of=icon.object_run_of)
+    assert "2026091800" not in young["dropped_runs"]
+
+
+def test_icon_and_eccc_objects_go_through_the_store(monkeypatch, tmp_path) -> None:
+    from bayes_basket_target import dwd_icon_eps_archive as icon
+    from bayes_basket_target import eccc_geps_archive as eccc
+
+    monkeypatch.setenv("ICON_EPS_OBJECT_STORE", str(tmp_path / "icon"))
+    monkeypatch.setenv("ECCC_GEPS_OBJECT_STORE", str(tmp_path / "eccc"))
+    assert icon._object_store() == (tmp_path / "icon").resolve()
+    assert eccc._object_store() == (tmp_path / "eccc").resolve()
+    monkeypatch.setenv("ICON_EPS_OBJECT_STORE", "")
+    assert icon._object_store() is None
+    assert icon.object_run_of("00/t_2m/icon-eps_global_icosahedral_single-level_2026092100_054_t_2m.grib2.bz2") == "2026092100"
+    assert eccc.object_run_of("20260921/WXO-DD/ensemble/geps/grib2/raw/00/030/CMC_geps-raw_TMP_TGL_2m_latlon0p5x0p5_2026092100_P030_allmbrs.grib2") == "2026092100"
+    # ECCC: the receipt's Last-Modified is the original response's either way.
+    seen = []
+    monkeypatch.setattr(eccc, "_get_bytes", lambda url, timeout_seconds: seen.append(url) or (b"GRIB", {"last-modified": "LM"}))
+    monkeypatch.setattr(eccc, "_split_grib_messages", lambda raw: [raw])
+    monkeypatch.setattr(eccc, "_member_metadata", lambda raw: [{"forecast_hour": 30}])
+    monkeypatch.setenv("ECCC_GEPS_OBJECT_STORE", str(tmp_path / "eccc"))
+    run = datetime(2026, 9, 21, 0, tzinfo=timezone.utc)
+    first = eccc._download_field(run_init=run, forecast_hour=30, timeout_seconds=5.0)
+    second = eccc._download_field(run_init=run, forecast_hour=30, timeout_seconds=5.0)
+    assert len(seen) == 1 and first[3] == second[3] and first[3]["last_modified"] == "LM"
+
+
+def test_an_ecmwf_range_and_its_index_are_fetched_once(monkeypatch, tmp_path) -> None:
+    from bayes_basket_target import ecmwf_ifs_archive as ecmwf
+
+    store = tmp_path / "ecmwf_pf50" / "raw"
+    calls = []
+
+    def fake_get(url, *, timeout_seconds, max_bytes, headers=None):
+        calls.append(url)
+        return b"M" * 64, {"last-modified": "LM"}
+
+    monkeypatch.setattr(ecmwf, "_get_bytes", fake_get)
+    row = {"_offset": 100, "_length": 64, "number": 7, "step": 24}
+    kwargs = dict(grib_url="https://x/a.grib2", index_sha256="i" * 64, object_key="a.grib2",
+                  row=row, timeout_seconds=5.0, raw_roots=(store,), raw_store=store)
+    first = ecmwf._download_message(**kwargs)
+    second = ecmwf._download_message(**kwargs)
+    assert len(calls) == 1 and first[2] is False and second[2] is True
+    assert first[1] == second[1]
+
+
+def test_a_gefs_field_and_its_idx_are_fetched_once(monkeypatch, tmp_path) -> None:
+    from bayes_basket_target import noaa_gefs_archive as gefs
+
+    store = tmp_path / "gefs" / "raw"
+    idx = (
+        b"62:11400000:d=2026092106:RH:2 m above ground:24 hour fcst:ENS=+7\n"
+        b"63:11450212:d=2026092106:TMP:2 m above ground:24 hour fcst:ENS=+7\n"
+        b"64:11450276:d=2026092106:UGRD:10 m above ground:24 hour fcst:ENS=+7\n"
+    )
+    calls = []
+
+    def fake_get(url, *, client, timeout_seconds, max_bytes, headers=None):
+        calls.append(url)
+        if url.endswith(".idx"):
+            return idx, {}
+        return b"G" * 64, {"last-modified": "LM"}
+
+    monkeypatch.setattr(gefs, "_get_bytes", fake_get)
+    kwargs = dict(client=None, run_day="20260921", cycle="06", object_member="gep07",
+                  member_id="perturbed_07", forecast_hour=24, timeout_seconds=5.0,
+                  raw_roots=(store,), raw_store=store)
+    first = gefs._download_gefs_field(**kwargs)
+    second = gefs._download_gefs_field(**kwargs)
+    assert len(calls) == 2  # one .idx, one range -- the second read fetched nothing
+    assert first[0] == second[0] and first[1] == second[1]
+
+
+def test_a_newly_listed_station_is_captured_now_once(capture_worker, tmp_path) -> None:
+    ladder = pw._official_native_run_ladder(event_date="2026-09-23", as_of_utc="2026-09-21T13:15:00Z")
+    capture_worker._official_native_capture_runs = {
+        "2026-09-23": ladder[0][2].isoformat().replace("+00:00", "Z"),
+    }
+    assert _capture(capture_worker, tmp_path)["state"] == "RUN_ALREADY_CAPTURED"
+    first = _capture(capture_worker, tmp_path, listing_station="ZUUU")
+    assert first["reason"] == "forward_market_registry_missing"  # got as far as the pass
+    # Once per (day, station): the next visit is the ordinary rotation again.
+    assert _capture(capture_worker, tmp_path, listing_station="ZUUU")["state"] == "RUN_ALREADY_CAPTURED"
+
+
+def test_the_store_answers_reach_the_attempt_log(monkeypatch, capture_worker, tmp_path) -> None:
+    (tmp_path / "market_registry_forward.json").write_text("{}")
+    receipt = {
+        "run_init_utc_by_family": {"NOAA_GEFS_PDS_S3": "2026-09-21T06:00:00Z",
+                                   "ECMWF_OPEN_DATA_S3": "2026-09-21T06:00:00Z"},
+        "nwp_object_store": {"icon_eps": {"hits": 11, "hit_bytes": 396000000, "downloads": 8,
+                                          "downloaded_bytes": 288000000}},
+    }
+
+    class _Ok:
+        returncode = 0
+        stdout = json.dumps(receipt)
+        stderr = ""
+
+    monkeypatch.setattr(pw.subprocess, "run", lambda *a, **k: _Ok())
+    monkeypatch.setattr(pw.follow_run, "follow_enabled", lambda: False)
+    monkeypatch.setattr(pw, "_merge_official_native_inbox", lambda *a, **k: {"packet_count": 0, "pruned": 0})
+    monkeypatch.setattr(pw, "_active_registry_scopes", lambda *a, **k: set())
+    monkeypatch.setattr(pw, "_fitted_lead_buckets", lambda *a, **k: {})
+    capture_worker._official_native_capture_merge_lock = threading.Lock()
+    capture_worker.conn = None
+    result = _capture(capture_worker, tmp_path, arrival={"family": probe.ECMWF_FAMILY,
+                                                          "run_init_utc": "2026-09-21T06:00:00Z"})
+    assert result["state"] == "SUBMITTED"
+    capture_worker._official_native_capture_inflight[("2026-09-23",)].result(timeout=30)
+    (row,) = [json.loads(line) for line in (tmp_path / pw.CAPTURE_ATTEMPT_LOG_NAME).read_text().splitlines()]
+    assert row["state"] == "CAPTURED"
+    assert row["rungs"][0]["object_store"]["icon_eps"]["hits"] == 11
+
+
+def test_a_run_beyond_the_ladder_goes_to_the_follow_lane(monkeypatch, tmp_path) -> None:
+    state = _probe_state(updated="2026-09-22T05:10:00Z", listed=("2026-09-24",), ready=[
+        (probe.ECMWF_FAMILY, "2026-09-21T18:00:00Z", "2026-09-24"),
+    ])
+    worker, calls, follows = _trigger_worker(tmp_path, monkeypatch, state)
+    worker.run_arrival_triggered_captures(as_of_utc="2026-09-22T05:10:30Z")
+    assert calls == []
+    assert follows == [{"event_date": "2026-09-24", "lead": 3,
+                        "run_init": datetime(2026, 9, 21, 18, tzinfo=timezone.utc)}]

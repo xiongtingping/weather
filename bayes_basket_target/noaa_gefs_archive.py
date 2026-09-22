@@ -36,7 +36,10 @@ from .future_temperature_curve import (
 from .gefs_raw_reuse import RetainedGEFSField, load_retained_gefs_field_index
 from .native_raw_object_store import (
     find_content_addressed_message,
+    cached_whole_object,
+    fetch_lock,
     find_range_addressed_message,
+    note_store_answer,
     store_content_addressed_message,
     store_range_alias,
 )
@@ -245,6 +248,46 @@ def _download_gefs_field(
     raw_roots: Sequence[Path] = (),
     raw_store: Path | None = None,
 ) -> tuple[bytes, dict[str, Any], int]:
+    """Charter 195 (三): one field through the store, under the fetch lock.
+
+    Two captures of one run meet on the lock, and the second finds the
+    first one's range (and ``.idx``) in the store instead of fetching them.
+    """
+
+    object_key = (
+        f"gefs.{run_day}/{cycle}/atmos/pgrb2ap5/"
+        f"{object_member}.t{cycle}z.pgrb2a.{GRID}.f{forecast_hour:03d}"
+    )
+    with fetch_lock(raw_store, object_key):
+        message, receipt, network = _download_gefs_field_unlocked(
+            client=client,
+            run_day=run_day,
+            cycle=cycle,
+            object_member=object_member,
+            member_id=member_id,
+            forecast_hour=forecast_hour,
+            timeout_seconds=timeout_seconds,
+            retained=retained,
+            raw_roots=raw_roots,
+            raw_store=raw_store,
+        )
+    note_store_answer(raw_store, hit=network < len(message), size=len(message))
+    return message, receipt, network
+
+
+def _download_gefs_field_unlocked(
+    *,
+    client: httpx.Client,
+    run_day: str,
+    cycle: str,
+    object_member: str,
+    member_id: str,
+    forecast_hour: int,
+    timeout_seconds: float,
+    retained: RetainedGEFSField | None = None,
+    raw_roots: Sequence[Path] = (),
+    raw_store: Path | None = None,
+) -> tuple[bytes, dict[str, Any], int]:
     filename = (
         f"{object_member}.t{cycle}z.pgrb2a."
         f"{GRID}.f{forecast_hour:03d}"
@@ -280,11 +323,19 @@ def _download_gefs_field(
             return message, dict(receipt), 0
         index_raw = b""
     else:
-        index_raw, _index_headers = _get_bytes(
-            url + ".idx",
-            client=client,
-            timeout_seconds=timeout_seconds,
-            max_bytes=MAX_INDEX_BYTES,
+        # Charter 195 (三): the .idx is an immutable object like its field.
+        index_raw, _index_last_modified, _index_from_store = cached_whole_object(
+            object_key=object_key + ".idx",
+            fetch=lambda: (
+                _get_bytes(
+                    url + ".idx",
+                    client=client,
+                    timeout_seconds=timeout_seconds,
+                    max_bytes=MAX_INDEX_BYTES,
+                )[0],
+                "",
+            ),
+            root=raw_store,
         )
         start, end, index_line = _message_range(index_raw)
         # The index is what names the range, so it is fetched either way -- but

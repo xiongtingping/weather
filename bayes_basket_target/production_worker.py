@@ -5352,10 +5352,15 @@ class TargetProductionWorker:
                 continue
             lead = (date.fromisoformat(event_date) - run_init.date()).days
             forced = None
-            if family in (
+            # A lead the ladder does not serve (the charter 193 amendment's
+            # ECMWF D-3 18Z for a D+2 day) is a follow-lane run too.
+            beyond_ladder = lead not in {
+                int(rung_lead) for rung_lead, _cycle in OFFICIAL_NATIVE_LADDER_RUNGS
+            }
+            if beyond_ladder or family in (
                 nwp_arrival_probe.ICON_FAMILY, nwp_arrival_probe.ECCC_FAMILY
             ):
-                own = _ARRIVAL_OWN_CYCLE_BY_LEAD.get(lead)
+                own = None if beyond_ladder else _ARRIVAL_OWN_CYCLE_BY_LEAD.get(lead)
                 if own is None or run_init.hour != own:
                     queued = self._enqueue_arrival_follow(
                         event_date=event_date, lead=lead, run_init=run_init
@@ -5439,6 +5444,7 @@ class TargetProductionWorker:
         seated_system_ids: Sequence[str] | None = None,
         arrival: Mapping[str, Any] | None = None,
         forced_rungs: Sequence[tuple[int, int | None, datetime]] | None = None,
+        listing_station: str | None = None,
     ) -> dict[str, Any]:
         """Start a background capture for one scope; never block the caller.
 
@@ -5634,10 +5640,25 @@ class TargetProductionWorker:
             station_id=station_id,
             seated_system_ids=seated_system_ids,
         )
+        # Charter 195 (三): a station listed after the day's pass has no packet
+        # at all.  Once per (day, station) its pass runs now, past the held-run
+        # retirement and the retry floor: the run it needs is the one the day
+        # already holds, the object store has every step of it, and re-reading
+        # costs extraction, not a download.
+        listing_seen: set[tuple[str, str]] = getattr(
+            self, "_official_native_listing_attempts", None
+        ) or set()
+        self._official_native_listing_attempts = listing_seen
+        listing_key = (
+            (event_date, str(listing_station).strip().upper())
+            if listing_station else None
+        )
+        listing_new = listing_key is not None and listing_key not in listing_seen
         if (
             captured_runs.get(event_date) == newest_run_init
             and not stale_for_day
             and not forced_rungs
+            and not listing_new
         ):
             return {
                 "state": "RUN_ALREADY_CAPTURED",
@@ -5655,7 +5676,12 @@ class TargetProductionWorker:
         # to nothing is the correct outcome: the date keeps what it has and
         # retries after its floor.
         held_run_init = captured_runs.get(event_date)
-        if held_run_init and not stale_for_day and not forced_rungs:
+        if (
+            held_run_init
+            and not stale_for_day
+            and not forced_rungs
+            and not listing_new
+        ):
             try:
                 held = datetime.fromisoformat(
                     held_run_init.replace("Z", "+00:00")
@@ -5680,6 +5706,7 @@ class TargetProductionWorker:
         # one -- the probe has seen the run on the server -- so it goes now.
         if (
             arrival is None
+            and not listing_new
             and last_attempt is not None
             and now_mono - last_attempt < OFFICIAL_NATIVE_CAPTURE_RETRY_SEC
         ):
@@ -5703,6 +5730,8 @@ class TargetProductionWorker:
                 "places_orders": False,
             }
         throttle[scope_key] = now_mono
+        if listing_new and listing_key is not None:
+            listing_seen.add(listing_key)
 
         registry_path = self.nwp_runtime_root / "market_registry_forward.json"
         if not registry_path.is_file():
@@ -5876,6 +5905,13 @@ class TargetProductionWorker:
                                     str(name): str(value)
                                     for name, value in by_family.items()
                                 })
+                            # Charter 195 (三): what the object stores saved.
+                            if rung_trace and isinstance(
+                                receipt.get("nwp_object_store"), Mapping
+                            ):
+                                rung_trace[-1]["object_store"] = dict(
+                                    receipt["nwp_object_store"]
+                                )
                         else:
                             served = None
                         # What the families served, not what was asked for.
@@ -6004,7 +6040,9 @@ class TargetProductionWorker:
 
         trigger = (
             f"arrival:{arrival.get('family')}|{arrival.get('run_init_utc')}"
-            if isinstance(arrival, Mapping) else "rotation"
+            if isinstance(arrival, Mapping)
+            else f"listing:{listing_key[1]}" if listing_new and listing_key
+            else "rotation"
         )
         attempt_started_utc = utc_now()
 
@@ -8105,6 +8143,13 @@ class TargetProductionWorker:
                 as_of_utc=as_of_utc,
                 inbox_path=official_inbox_path,
                 seated_system_ids=native_seated_system_ids,
+                # Charter 195 (三): no packet at all for this station-day --
+                # typically listed after the day's pass ran.
+                listing_station=(
+                    native_station
+                    if official_probe_reason == "official_native_packet_missing"
+                    else None
+                ),
                 # The lead is advisory now: the capture's run ladder picks the
                 # newest published run that covers the local day, so scopes
                 # that only differ in lead label share one capture.
