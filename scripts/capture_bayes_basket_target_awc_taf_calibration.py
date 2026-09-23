@@ -294,6 +294,70 @@ def _tx(value: str, *, issue_time: datetime, start: datetime, end: datetime) -> 
     return temperature, _iso(valid_at)
 
 
+# AWC's decoded TAF is a list of forecast segments.  ``fcstChange`` None (the
+# initial group), ``FM`` and ``BECMG`` are the prevailing forecast: AWC gives
+# them contiguous, non-overlapping spans (a BECMG runs from the start of its
+# change window to the next prevailing group).  ``TEMPO`` and ``PROB`` are
+# overlays on top of the prevailing forecast for their own span, and a TAF
+# only restates in them the elements that change: a ``TEMPO 2011/2013 6SM BR
+# BKN006`` says nothing about the wind, which stays as the FM group says.
+_PREVAILING_CHANGES = ("", "FM", "BECMG")
+_OVERLAY_CHANGES = ("TEMPO", "PROB")
+
+
+def _forecast_segment(
+    row: Mapping[str, Any],
+) -> tuple[datetime, datetime, bool, float | None, float | None, float | None, float] | None:
+    """(start, end, is_overlay, cloud, precipitation, wind, chance) or None.
+
+    ``cloud``/``wind``/``precipitation`` are None where the segment does not
+    restate them (an overlay inherits the prevailing value); a prevailing
+    group with no cloud layer is clear (0) and with no weather is dry (0).
+    ``chance`` is a PROB group's percentage as a fraction, 1 otherwise.
+    """
+
+    try:
+        start = _parse_utc(row.get("timeFrom"))
+        end = _parse_utc(row.get("timeTo"))
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if end <= start:
+        return None
+    change = str(row.get("fcstChange") or "").upper()
+    is_overlay = change in _OVERLAY_CHANGES
+    if not is_overlay and change not in _PREVAILING_CHANGES:
+        return None
+    covers = [
+        SKY_FRACTION.get(str(item.get("cover") or "").upper(), 0.0)
+        for item in row.get("clouds", [])
+        if isinstance(item, Mapping)
+    ]
+    cloud = max(covers) if covers else (None if is_overlay else 0.0)
+    wind_raw = row.get("wspd")
+    wind = (
+        (None if is_overlay else 0.0)
+        if wind_raw is None
+        else max(0.0, float(wind_raw) * 0.514444)
+    )
+    wx = str(row.get("wxString") or "")
+    probability_raw = row.get("probability")
+    chance = (
+        1.0 if probability_raw is None
+        else max(0.0, min(1.0, float(probability_raw) / 100.0))
+    )
+    # A PROB group's percentage is the chance of the weather it names, so it
+    # is a precipitation probability only when that weather is precipitation.
+    # Until 2026-09-23 the percentage was read on its own and a ``PROB30 ...
+    # BR`` fog group scored 0.3 of rain: 552 of the 9,051 archived captures
+    # carried such a group inside the heating window (user ruling 2026-09-23
+    # 「先修 PROB 雾段误记降」).
+    if is_overlay and not wx:
+        precipitation = None
+    else:
+        precipitation = chance if precipitation_in_weather(wx) else 0.0
+    return start, end, is_overlay, cloud, precipitation, wind, chance
+
+
 def _forecast_features(
     taf: Mapping[str, Any],
     *,
@@ -313,49 +377,68 @@ def _forecast_features(
         wall_time(TAF_PHYSICAL_PEAK_WINDOW_END_HOUR_LOCAL, 0),
         tzinfo=local,
     ).astimezone(timezone.utc)
+    prevailing = []
+    overlays = []
+    for row in taf.get("fcsts", []):
+        if not isinstance(row, Mapping):
+            continue
+        segment = _forecast_segment(row)
+        if segment is None:
+            continue
+        (overlays if segment[2] else prevailing).append(segment)
+    # The window is integrated over the instants the prevailing forecast
+    # covers, each instant read as its prevailing group with every overlay in
+    # force blended on top: an overlay's restated cloud or wind counts with
+    # its chance against the prevailing value, its precipitation adds to the
+    # prevailing (rain in the FM group does not stop because a TEMPO names
+    # fog), and an element it does not restate is inherited.  Until
+    # 2026-09-23 every segment was weighted by its own overlap with the
+    # window: a TEMPO's span was counted on top of the FM span it sits in,
+    # and an overlay that restated no cloud or wind scored 0 for both
+    # (1,861 of 9,051 archived captures for wind, 670 for cloud).
+    cuts = {peak_start, peak_end}
+    for start, end, *_ in prevailing + overlays:
+        for edge in (start, end):
+            if peak_start < edge < peak_end:
+                cuts.add(edge)
+    edges = sorted(cuts)
     weighted_cloud = 0.0
     weighted_precip = 0.0
     weighted_wind = 0.0
     total_weight = 0.0
-    for row in taf.get("fcsts", []):
-        if not isinstance(row, Mapping):
+    for left, right in zip(edges, edges[1:]):
+        weight = (right - left).total_seconds()
+        if weight <= 0.0:
             continue
-        try:
-            start = _parse_utc(row.get("timeFrom"))
-            end = _parse_utc(row.get("timeTo"))
-        except (TypeError, ValueError, OverflowError):
+        in_force = [seg for seg in prevailing if seg[0] <= left < seg[1]]
+        if not in_force:
             continue
-        overlap = max(
-            0.0,
-            (min(end, peak_end) - max(start, peak_start)).total_seconds(),
+        # The latest-starting prevailing group wins an overlap, as AWC's
+        # BECMG span (change start to next group) overlaps nothing but is
+        # ordered after the group it replaces.
+        _, _, _, base_cloud, base_precip, base_wind, _ = max(
+            in_force, key=lambda seg: seg[0]
         )
-        if overlap <= 0.0:
-            continue
-        covers = [
-            SKY_FRACTION.get(str(item.get("cover") or "").upper(), 0.0)
-            for item in row.get("clouds", [])
-            if isinstance(item, Mapping)
-        ]
-        cloud = max(covers, default=0.0)
-        wx = str(row.get("wxString") or "")
-        probability_raw = row.get("probability")
-        # A PROB group's percentage is the chance of the weather it names,
-        # so it is a precipitation probability only when that weather is
-        # precipitation.  Until 2026-09-23 the percentage was read on its
-        # own and a ``PROB30 ... BR`` fog group scored 0.3 of rain: 552 of
-        # the 9,051 archived captures carried such a group inside the
-        # heating window (user ruling 2026-09-23 「先修 PROB 雾段误记降」).
-        if not precipitation_in_weather(wx):
-            probability = 0.0
-        elif probability_raw is not None:
-            probability = max(0.0, min(1.0, float(probability_raw) / 100.0))
-        else:
-            probability = 1.0
-        wind_kt = float(row.get("wspd") or 0.0)
-        weighted_cloud += overlap * cloud
-        weighted_precip += overlap * probability
-        weighted_wind += overlap * max(0.0, wind_kt * 0.514444)
-        total_weight += overlap
+        cloud = float(base_cloud or 0.0)
+        precip = float(base_precip or 0.0)
+        wind = float(base_wind or 0.0)
+        for start, end, _, o_cloud, o_precip, o_wind, chance in overlays:
+            if not (start <= left < end):
+                continue
+            if o_cloud is not None:
+                cloud = max(
+                    cloud, chance * o_cloud + (1.0 - chance) * float(base_cloud or 0.0)
+                )
+            if o_wind is not None:
+                wind = max(
+                    wind, chance * o_wind + (1.0 - chance) * float(base_wind or 0.0)
+                )
+            if o_precip is not None:
+                precip = max(precip, o_precip)
+        weighted_cloud += weight * cloud
+        weighted_precip += weight * precip
+        weighted_wind += weight * wind
+        total_weight += weight
     if total_weight <= 0.0:
         raise ContractError("awc_taf_peak_window_features_missing")
     return (

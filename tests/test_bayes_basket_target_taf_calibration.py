@@ -1240,3 +1240,69 @@ def test_awc_prob_group_scores_precipitation_only_for_precipitation_weather() ->
     # A TEMPO shower group with no PROB is rain for its whole span.
     assert precip("-SHRA", None) == 1.0
     assert precip("NSW", None) == 0.0
+
+
+def _segment(change, hours_from, hours_to, *, wx=None, clouds=(), wspd=None, probability=None):
+    base = datetime(2026, 7, 26, 21, tzinfo=timezone.utc)  # 06:00 local Seoul
+    return {
+        "fcstChange": change,
+        "timeFrom": int((base + timedelta(hours=hours_from)).timestamp()),
+        "timeTo": int((base + timedelta(hours=hours_to)).timestamp()),
+        "wxString": wx,
+        "clouds": [{"cover": cover, "base": 3000} for cover in clouds],
+        "wspd": wspd,
+        "probability": probability,
+    }
+
+
+def _features(*segments):
+    return _forecast_features(
+        {"fcsts": list(segments)}, event_date="2026-07-27", timezone_name="Asia/Seoul"
+    )
+
+
+def test_awc_overlay_inherits_prevailing_cloud_and_wind_and_is_not_double_counted() -> None:
+    # FM covers the whole 06-15 window (9h) at SCT / 10kt; a 3h TEMPO of
+    # showers restates neither cloud nor wind.
+    cloud, precip, wind = _features(
+        _segment("FM", 0, 9, clouds=("SCT",), wspd=10),
+        _segment("TEMPO", 3, 6, wx="-SHRA"),
+    )
+    assert cloud == pytest.approx(0.375)
+    assert wind == pytest.approx(10 * 0.514444)
+    # 3 of 9 hours rain -- not 3 of 12, which the old per-segment weighting gave.
+    assert precip == pytest.approx(3 / 9)
+
+
+def test_awc_prob_overlay_blends_restated_cloud_by_its_chance() -> None:
+    cloud, precip, wind = _features(
+        _segment("FM", 0, 9, clouds=("SCT",), wspd=10),
+        _segment("PROB", 6, 9, wx="BR", clouds=("BKN",), probability=30),
+    )
+    # 6h at SCT, 3h at 0.3*BKN + 0.7*SCT; fog is not rain; wind inherited.
+    assert cloud == pytest.approx((6 * 0.375 + 3 * (0.3 * 0.75 + 0.7 * 0.375)) / 9)
+    assert precip == 0.0
+    assert wind == pytest.approx(10 * 0.514444)
+
+
+def test_awc_becmg_is_the_prevailing_forecast_from_its_change_start() -> None:
+    cloud, precip, wind = _features(
+        _segment(None, 0, 3, clouds=("FEW",), wspd=4),
+        _segment("BECMG", 3, 9, clouds=("BKN",), wspd=12, wx="-RA"),
+    )
+    assert cloud == pytest.approx((3 * 0.125 + 6 * 0.75) / 9)
+    assert precip == pytest.approx(6 / 9)
+    assert wind == pytest.approx((3 * 4 + 6 * 12) * 0.514444 / 9)
+
+
+def test_awc_overlay_precipitation_adds_to_prevailing_rain() -> None:
+    _, precip, _ = _features(
+        _segment("FM", 0, 9, wx="-RA", clouds=("OVC",), wspd=8),
+        _segment("TEMPO", 3, 6, wx="BR", clouds=("BKN",)),
+    )
+    assert precip == 1.0
+
+
+def test_awc_window_uncovered_by_any_prevailing_group_is_missing() -> None:
+    with pytest.raises(ContractError):
+        _features(_segment("TEMPO", 0, 9, wx="-SHRA"))
