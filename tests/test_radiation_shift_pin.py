@@ -140,35 +140,34 @@ class PinTest(unittest.TestCase):
             "candidate['radiation_shift_sigma']", source
         )
 
-    def test_the_server_reads_the_pin_only_for_clearness_scored_artifacts(
-        self,
-    ) -> None:
-        """Charter 160: a pin scored on the retired absolute form describes
-        arithmetic nobody serves, so it is served the fleet value until the
-        rotation re-scores it; a clearness-scored artifact gets its own pin."""
+    def test_every_artifact_is_served_the_fleet_coefficient(self) -> None:
+        """Charter 210 (user ruling 「改P0辐射系数」): the pin is recorded, not
+        served.  Certificate renewal copies an artifact's method whole, so a
+        pin-served 0.15 would have outlived the rotation on every renewed
+        scope."""
 
         from bayes_basket_target.cross_consensus import (
             RADIATION_CLEARNESS_METHOD_TAG,
             served_radiation_shift_sigma,
         )
 
-        legacy = "x::synoptic_cooling_shift_v1::radiation_shift_sigma=0.35::y"
-        # Charter 173 moved the fleet constant, not these: an untagged
-        # artifact keeps the 0.15 it was served at before the ruling.
-        self.assertEqual(served_radiation_shift_sigma(legacy), 0.15)
-        self.assertNotEqual(served_radiation_shift_sigma(legacy), RADIATION_SHIFT_SIGMA)
-        # A clearness artifact minted before charter 173 keeps its own 0.15.
+        for method in (
+            "x::synoptic_cooling_shift_v1::radiation_shift_sigma=0.35::y",
+            "x::radiation_shift_sigma=0.15::" + RADIATION_CLEARNESS_METHOD_TAG,
+            "x::synoptic_cooling_shift_v1::radiation_shift_sigma=0.2::"
+            + RADIATION_CLEARNESS_METHOD_TAG + "::y",
+            "x::radiation_shift_sigma=0.07::" + RADIATION_CLEARNESS_METHOD_TAG,
+            "",
+        ):
+            self.assertEqual(served_radiation_shift_sigma(method), RADIATION_SHIFT_SIGMA)
+        self.assertEqual(RADIATION_SHIFT_SIGMA, 0.07)
+        # The pin itself still reads back, for the receipt and the shadow arm.
         self.assertEqual(
-            served_radiation_shift_sigma(
+            pinned_radiation_shift_sigma(
                 "x::radiation_shift_sigma=0.15::" + RADIATION_CLEARNESS_METHOD_TAG
             ),
             0.15,
         )
-        scored = (
-            "x::synoptic_cooling_shift_v1::radiation_shift_sigma=0.2::"
-            + RADIATION_CLEARNESS_METHOD_TAG + "::y"
-        )
-        self.assertEqual(served_radiation_shift_sigma(scored), 0.2)
 
 
 if __name__ == "__main__":

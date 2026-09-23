@@ -321,6 +321,11 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # the v10 envelopes between the restart and this instant are not
         # evidence yet.
         "calibrated_native_cross_ensemble_p0_v10": "2026-09-23T17:00:00Z",
+        # Charter 210: every artifact served at the fleet radiation
+        # coefficient 0.07 (pins recorded, not served).  Declared past the
+        # push and past the batch restart that deploys it; the v11 envelopes
+        # between that restart and this instant are not evidence yet.
+        "calibrated_native_cross_ensemble_p0_v11": "2026-09-23T18:00:00Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
@@ -342,6 +347,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p0m_taf_likelihood_v11": "2026-09-22T12:00:00Z",
         # Charter 204: root bump at the instant P0 v10 declares.
         "p0m_taf_likelihood_v12": "2026-09-23T17:00:00Z",
+        # Charter 210: root bump at the instant P0 v11 declares.
+        "p0m_taf_likelihood_v13": "2026-09-23T18:00:00Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
@@ -382,6 +389,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p1_joint_likelihood_v20": "2026-09-23T04:15:00Z",
         # Charter 204: the seventh root bump, at the instant P0 v10 declares.
         "p1_joint_likelihood_v21": "2026-09-23T17:00:00Z",
+        # Charter 210: the eighth root bump, at the instant P0 v11 declares.
+        "p1_joint_likelihood_v22": "2026-09-23T18:00:00Z",
     },
 }
 

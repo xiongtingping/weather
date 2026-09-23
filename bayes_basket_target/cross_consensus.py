@@ -142,20 +142,23 @@ def radiation_shift_sigma_for_lead(lead_bucket: str | None) -> float:
 # width -- 1,533 station-days, 37 event days, 45 stations, day-block
 # bootstrap -- the coefficient is 0.073 [0.016, 0.121]; by mean squared
 # residual 0.15 scores 1.9077, worse than no shift at all (1.9055), and
-# 0.06-0.09 score lowest (1.887).  Only artifacts minted after this pin it:
-# every artifact already out keeps serving its own pin (see
-# ``served_radiation_shift_sigma``), so no served number moves until the
-# rotation replaces it.
+# 0.06-0.09 score lowest (1.887).  Charter 173 let every artifact already out
+# keep serving its own pin until the rotation replaced it.
+#
+# Charter 210 (2026-09-23, user ruling 「改P0辐射系数」): every artifact is
+# served at this value, whatever it pins.  The rotation had moved 98% of
+# served P0 to 0.07 by 09-23, but certificate renewal (「不过期」, same day)
+# copies an artifact row whole, so a scope that is renewed rather than
+# re-minted would have kept 0.15 for good.  Refitted through 09-23 on the same
+# as-of protocol (1,644 station-days, 40 days, 45 stations) the coefficient
+# is 0.068 [0.015, 0.118] and 0.07 has the lowest mean squared residual of
+# 0 / 0.03 / 0.05 / 0.07 / 0.09 / 0.11 / 0.15; refitting it day by day scores
+# worse than holding 0.07 (+0.015 [+0.004, +0.030]).
 RADIATION_SHIFT_SIGMA = 0.07
 # What artifacts built before the coefficient was pinned were scored with.
 # Kept separate because the point of the pin is that the two are free to
 # differ -- as they now do.
 LEGACY_RADIATION_SHIFT_SIGMA = 0.15
-# What an artifact without the clearness tag is served at.  It used to be
-# "the fleet value", which was 0.15; charter 173 moved the fleet value, and
-# these artifacts' certificates are older than both rulings, so they keep the
-# number they were served at yesterday rather than follow the constant.
-UNTAGGED_SERVED_RADIATION_SHIFT_SIGMA = 0.15
 RADIATION_MIN_HISTORY_SAMPLES = 30
 
 
@@ -318,21 +321,19 @@ def distribution_sigma_c(
 
 
 def served_radiation_shift_sigma(combination_method: str) -> float:
-    """The coefficient P0 serves an artifact at.
+    """The coefficient P0 serves an artifact at: the fleet value, always.
 
-    Charter 160 changed the arithmetic the coefficient multiplies, so an
-    artifact scored before it was scored on a z no one serves any more; its
-    pin (0.35 at h12_24) describes that retired arithmetic.  Until the OOS
-    rotation re-scores it, it is served 0.15 (the fleet value when it was
-    last served; charter 173 moved the fleet value without moving it).  An
-    artifact whose holdout scored the clearness form says so in its method
-    and is served its own pin, which is the pin's original contract.
+    Charter 210 (2026-09-23, user ruling 「改P0辐射系数」).  Until then an
+    artifact scored in the clearness form was served its own pin and an older
+    one a frozen 0.15 (charters 160 and 173), so a coefficient change reached
+    serving only as the OOS rotation re-minted each scope -- and certificate
+    renewal copies the pinned method whole, so a renewed scope never would.
+    The pin is still read (``pinned_radiation_shift_sigma``): the receipt
+    records it and the absolute-form shadow arm is computed at it.
     """
 
-    method = str(combination_method or "")
-    if RADIATION_CLEARNESS_METHOD_TAG in method.split("::"):
-        return pinned_radiation_shift_sigma(method)
-    return UNTAGGED_SERVED_RADIATION_SHIFT_SIGMA
+    del combination_method  # the pin is recorded, not served
+    return RADIATION_SHIFT_SIGMA
 
 
 def forecast_clearness_shift_sigma(

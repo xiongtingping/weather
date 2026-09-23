@@ -146,7 +146,7 @@ class ServingReaderTest(unittest.TestCase):
         # v8 since charter 190 (the width layer's open edges), v9 since
         # charter 198 (the rung and the activation read); the clearness form
         # is unchanged by either.
-        self.assertEqual(P0.POSTERIOR_VERSION, "calibrated_native_cross_ensemble_p0_v10")
+        self.assertEqual(P0.POSTERIOR_VERSION, "calibrated_native_cross_ensemble_p0_v11")
 
 
 if __name__ == "__main__":

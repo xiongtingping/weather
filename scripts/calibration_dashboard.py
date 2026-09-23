@@ -25420,7 +25420,7 @@ const LANES = {
   "共识桥": {layer:"概率层 · 分布", status:"live",
     role:(()=>{const R=((D.consensus_bridge||{}).rule)||{}; return `中心差 >${R.gap_start_c??"—"}°C 时往中间补一块共识成分，${R.gap_full_c??"—"}°C 补满 ${R.lambda_max??"—"}（读自回执）`;})()},
   "辐射降温项": {layer:"概率层 · 分布", status:"live",
-    role:(()=>{const u=[...new Set((((D.synoptic_cooling||{}).rows)||[]).map(r=>r.per_unit).filter(v=>v!=null))].sort((a,b)=>a-b); return `按预报日照把整条分布往冷/暖推：晴朗度指数 Kt 的本站标准分 × 系数 × σ（宪章 160；系数按件钉值${u.length?"，此刻在服务的钉值 "+u.join(" / "):""}）`;})()},
+    role:(()=>{const u=[...new Set((((D.synoptic_cooling||{}).rows)||[]).map(r=>r.per_unit).filter(v=>v!=null))].sort((a,b)=>a-b); return `按预报日照把整条分布往冷/暖推：晴朗度指数 Kt 的本站标准分 × 系数 × σ（宪章 160、210；系数全队统一${u.length?"，此刻服务 "+u.join(" / "):""}，件内钉值只记入回执）`;})()},
   "站点 × 日期": {layer:"P0-M · P1 · 按站日", status:"live",
     role:"一行一个站日：P0 → TAF 似然 → P0-M → 硬下界 × METAR 观测更新（第 161 条 e^f；区域模型作协变量）→ P1 → 结算真值；三条分布画在一根桶轴上，点开看当天的温度路径与逐桶算术"},
   "P0-M TAF 似然": {layer:"P0-M · 唯一的更新", status:"live",
