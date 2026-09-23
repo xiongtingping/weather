@@ -9191,6 +9191,7 @@ def collect_center_landing(
             "rows": rows,
             "states": states,
             "flat_stations": flat_stations,
+            "stations": _station_calibration_rows(landings),
             "flat_cells": len(flat),
         })
     if not stages_out:
@@ -9201,6 +9202,229 @@ def collect_center_landing(
         "seat_rule": _center_landing_rule(),
         "stages": stages_out,
     }
+
+
+#: A station ranks only once it has this many settled station-days in the
+#: window; below it the row is listed, unranked, so a station two days into
+#: the window cannot head either list on one warm afternoon.
+STATION_RANK_MIN_DAYS = 3
+
+
+def _station_calibration_rows(
+    entries: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Every station's centre and width calibration in one window, ranked.
+
+    User, 2026-09-23: 前端…按照站点维度来看：模型的中心校准排序、分布校准排序.
+    Read off the same landings the stage's tiers and daily lines are cut
+    from, so a station's row and the fleet's headline are one population.
+    A station-day counts once however many three-hour cells it served (the
+    rule ``_core_metrics`` holds): each cell's readings are averaged into
+    its station-day first, and a station's numbers are means over its
+    station-days, with the standard error taken across them.
+
+    Centre: truth minus the served mean, in rungs of the station's own
+    ladder (charter 53(b): what puts a Celsius and a Fahrenheit market in
+    one column) and in degrees.  Ranked by |bias| in rungs; a bias more
+    than two standard errors from zero is marked, not gated.  Width: the
+    served sigma over the realised error, the scorecard's 宽度 ÷ 实际误差
+    (root mean served variance over root mean square error): 1 is
+    calibrated, above it too wide, below it too narrow -- ranked by how
+    far the log ratio sits from zero.  The seat window's cover minus its
+    claim, CRPS, NLL and zero-probability hits ride along as columns, and
+    the fleet's own pooled numbers sit beside the rows so a station is
+    read against the fleet, not against zero.
+
+    Station-level bias is real but does not persist (measured 2026-09-17:
+    r=+0.26 across disjoint halves), so these are readings, not a
+    correction -- the page says so.
+    """
+
+    by_day: dict[tuple[str, str], list[Mapping[str, Any]]] = defaultdict(list)
+    for row in entries:
+        if row.get("core") and row.get("sigma") is not None:
+            by_day[(str(row["station"]), str(row["event_date"]))].append(row)
+    if not by_day:
+        return {}
+
+    def _day(cells: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+        n = len(cells)
+        seated = [c for c in cells if c.get("seat_claim") is not None]
+        return {
+            "error_rungs": sum(float(c["error"]) for c in cells) / n,
+            # ``core.error_c`` is served mean minus truth; the page reads
+            # truth minus served mean everywhere (负＝预测偏暖).
+            "error_c": -sum(float(c["core"]["error_c"]) for c in cells) / n,
+            "variance_rungs": sum(float(c["sigma"]) ** 2 for c in cells) / n,
+            "crps_c": sum(float(c["core"]["crps_c"]) for c in cells) / n,
+            "nll": sum(float(c["core"]["nll"]) for c in cells) / n,
+            "zero_hit": any(bool(c["core"]["zero_hit"]) for c in cells),
+            "seat_claim": (
+                sum(float(c["seat_claim"]) for c in seated) / len(seated)
+                if seated else None
+            ),
+            "seat_hit": (
+                sum(float(c["seat_hit"]) for c in seated) / len(seated)
+                if seated else None
+            ),
+            "cells": n,
+        }
+
+    per_station: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for (station, _event), cells in by_day.items():
+        per_station[station].append(_day(cells))
+
+    def _summary(obs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+        n = len(obs)
+        errs = [float(o["error_rungs"]) for o in obs]
+        bias = sum(errs) / n
+        sd = (
+            (sum((e - bias) ** 2 for e in errs) / (n - 1)) ** 0.5
+            if n > 1 else None
+        )
+        se = sd / n ** 0.5 if sd is not None else None
+        rmse_rungs = (sum(e * e for e in errs) / n) ** 0.5
+        sigma_rungs = (sum(float(o["variance_rungs"]) for o in obs) / n) ** 0.5
+        spread = (
+            sigma_rungs / rmse_rungs
+            if rmse_rungs > 0.0 and sigma_rungs > 0.0 else None
+        )
+        errs_c = [float(o["error_c"]) for o in obs]
+        seated = [o for o in obs if o["seat_claim"] is not None]
+        seat_claim = (
+            sum(float(o["seat_claim"]) for o in seated) / len(seated)
+            if seated else None
+        )
+        seat_cover = (
+            sum(float(o["seat_hit"]) for o in seated) / len(seated)
+            if seated else None
+        )
+        return {
+            "station_days": n,
+            "cells": sum(int(o["cells"]) for o in obs),
+            "bias_rungs": bias,
+            "se_rungs": se,
+            "significant": bool(se is not None and se > 0.0 and abs(bias) > 2.0 * se),
+            "bias_c": sum(errs_c) / n,
+            "mae_c": sum(abs(e) for e in errs_c) / n,
+            "rmse_c": (sum(e * e for e in errs_c) / n) ** 0.5,
+            "sigma_rungs": sigma_rungs,
+            "rmse_rungs": rmse_rungs,
+            "spread_ratio": spread,
+            # Relative standard error of a spread ratio over n days,
+            # 1/sqrt(2n): 35% on four station-days, 24% on nine.  The
+            # page prints it beside the ratio so 2.0 on four days is
+            # not read as a finding.
+            "spread_rel_se": (1.0 / (2.0 * n)) ** 0.5 if spread else None,
+            "seat_days": len(seated),
+            "seat_claim": seat_claim,
+            "seat_cover": seat_cover,
+            "seat_gap": (
+                seat_cover - seat_claim
+                if seat_claim is not None and seat_cover is not None else None
+            ),
+            "crps_c": sum(float(o["crps_c"]) for o in obs) / n,
+            "nll": sum(float(o["nll"]) for o in obs) / n,
+            "zero_hit_days": sum(1 for o in obs if o["zero_hit"]),
+        }
+
+    rows = []
+    for station in sorted(per_station):
+        row = _summary(per_station[station])
+        row["station"] = station
+        row["station_label"] = STATION_LABELS.get(station, "")
+        row["ranked"] = row["station_days"] >= STATION_RANK_MIN_DAYS
+        rows.append(row)
+    ranked = [r for r in rows if r["ranked"]]
+    for position, row in enumerate(sorted(
+        ranked, key=lambda r: (abs(r["bias_rungs"]), r["station"])
+    ), start=1):
+        row["centre_rank"] = position
+    widths = [r for r in ranked if r["spread_ratio"]]
+    for position, row in enumerate(sorted(
+        widths, key=lambda r: (abs(math.log(r["spread_ratio"])), r["station"])
+    ), start=1):
+        row["width_rank"] = position
+    for row in rows:
+        row.setdefault("centre_rank", None)
+        row.setdefault("width_rank", None)
+    rows.sort(key=lambda r: (
+        0 if r["centre_rank"] is not None else 1,
+        r["centre_rank"] or 0,
+        r["station"],
+    ))
+    fleet = _summary([obs for days in per_station.values() for obs in days])
+    return {
+        "min_days": STATION_RANK_MIN_DAYS,
+        "stations": len(rows),
+        "ranked": len(ranked),
+        "fleet": fleet,
+        # The scorecard's own bands, so the page grades a station's bias
+        # and width on the scale it grades the fleet.
+        "thresholds": {
+            "bias_rungs": list(SCORECARD_THRESHOLDS["bias_rungs"]),
+            "spread": list(SCORECARD_THRESHOLDS["spread_skill"]),
+        },
+        "rows": rows,
+    }
+
+
+def collect_station_markets(
+    conn: sqlite3.Connection,
+) -> dict[str, dict[str, str]]:
+    """Each station's newest listed market, ``station -> {slug, event_date}``.
+
+    For the link on a station's name wherever the page lists stations
+    rather than station-days (user, 2026-09-23: 站点增加超链接到市场盘口).
+    Read from the registry the collector reads, never rebuilt from city
+    and date (the rule ``_live_market_slugs`` holds).  The newest snapshot
+    is the current listing -- every refresh writes the whole listing under
+    one sha -- so the lookup is one seek on (snapshot, station) per station
+    and the newest event day under it: 0.03 s for 48 stations.  Walking a
+    station's own rows for its newest slug was measured at 21-29 s (8,800
+    rows a station, the slug only on the table page), and ordering the
+    registry by refresh time at 314 s; neither belongs on a render.  A
+    station not in the current listing gets no entry rather than a stale
+    or guessed one.
+    """
+
+    if not (
+        _table_exists(conn, "basket_target_market_registry")
+        and _table_exists(conn, "basket_target_market_registry_snapshot")
+    ):
+        return {}
+    out: dict[str, dict[str, str]] = {}
+    try:
+        latest = conn.execute(
+            "SELECT snapshot_sha256 FROM basket_target_market_registry_snapshot"
+            " ORDER BY ingested_at_utc DESC LIMIT 1"
+        ).fetchone()
+        if not latest:
+            return {}
+        sha = str(latest[0])
+        stations = [
+            str(row[0]) for row in conn.execute(
+                "SELECT DISTINCT station_id FROM basket_target_market_registry"
+                " WHERE snapshot_sha256=? AND station_id IS NOT NULL"
+                " AND station_id<>''",
+                (sha,),
+            )
+        ]
+        for station in stations:
+            found = conn.execute(
+                "SELECT slug, event_date FROM basket_target_market_registry"
+                " WHERE snapshot_sha256=? AND station_id=?"
+                " AND slug IS NOT NULL AND slug<>''"
+                " ORDER BY event_date DESC LIMIT 1",
+                (sha, station),
+            ).fetchone()
+            if found:
+                out[station] = {
+                    "slug": str(found[0]), "event_date": str(found[1]),
+                }
+    except sqlite3.Error:
+        return out
+    return out
 
 
 def _center_landing_rule() -> dict[str, Any]:
@@ -9233,6 +9457,7 @@ def _center_landing_salt() -> str:
     helpers = "".join(_loaded_source(helper) for helper in (
         _center_landing_seat, _center_landing_group, _core_cell,
         _core_murphy, _core_metrics, _core_daily,
+        _station_calibration_rows,
     )) + repr((CORE_RELIABILITY_EDGES, CORE_NLL_FLOOR, CORE_ROLLING_DAYS))
     return json.dumps(_center_landing_rule(), sort_keys=True) + helpers
 
@@ -9562,6 +9787,13 @@ def collect_model_accuracy_trend(
         "since": since,
         "days": MODEL_ACCURACY_TREND_DAYS,
         "forecast_daily": card.get("daily") or [],
+        # Every station ranked over the same three weeks (user,
+        # 2026-09-23): the served evidence window is four to ten days,
+        # which is two to nine station-days a station.
+        "landing_stations": {
+            st["stage"]: st.get("stations") or {}
+            for st in (landing.get("stages") or [])
+        },
         "landing_daily": {
             st["stage"]: st.get("daily") or []
             for st in (landing.get("stages") or [])
@@ -16139,6 +16371,8 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "center_landing_version": center_landing_version,
         "scorecard_previous": scorecard_previous,
         "model_accuracy_trend": model_accuracy_trend,
+        # 48 index seeks; the link on every station name.
+        "station_markets": collect_station_markets(conn),
         "fusion_candidates": collect_fusion_candidates(),
         "h5_readiness": _cached_section(
             "h5_readiness", collect_h5_readiness, conn
@@ -18216,7 +18450,7 @@ function reliabilityAudit(){
       </tr></thead><tbody>${rows}</tbody></table></div>`;
   }).join("");
   const stationRows=(A.stations||[]).map(r=>`<tr>
-      <td class="mono">${h(r.station)}${r.station_label
+      <td class="mono">${stationMarketLink(r.station)}${r.station_label
         ?` <span class="muted">${h(r.station_label)}</span>`:""}</td>
       <td class="mono muted">${r.n}</td>
       <td class="mono">${(r.claimed*100).toFixed(0)}%</td>
@@ -23255,6 +23489,97 @@ const pctS = (v, d = 0) => v == null ? "—" : (100 * v).toFixed(d) + "%";
 
 // The P0 seat window's claim and cover, pooled over the landing's tiers --
 // the same weighting centreLanding reads.
+// Every station's market, newest listing first, for the link on a station
+// name wherever the page lists stations rather than station-days (user
+// ruling, 2026-09-23: 站点增加超链接到市场盘口).  No slug, no link: a guessed
+// URL is worse than plain text.
+function stationMarketLink(station, extra){
+  const m = (D.station_markets || {})[station];
+  const name = h(station) + (extra || "");
+  return m && m.slug
+    ? `<a class="mkt" style="color:inherit" target="_blank" rel="noopener noreferrer"
+        href="https://polymarket.com/event/${encodeURIComponent(m.slug)}"
+        title="打开 ${h(station)} 最新挂牌（${h(m.event_date)}）的盘口">${name} ↗</a>`
+    : name;
+}
+
+// Every station's centre and width calibration, ranked (user, 2026-09-23:
+// 按照站点维度来看：模型的中心校准排序、分布校准排序).  The rows come off the
+// same landings 真值离均值多远 is cut from; the three weeks of the trend
+// window is the table read first, the served evidence window folds under
+// it, because four days is two to nine station-days a station.
+function stationCalibrationRank(){
+  const title = `<h2>逐站校准排序：每站的中心偏差与宽度校准各排一次名，站名可点开盘口</h2>`;
+  const T = D.model_accuracy_trend || {}, CL = D.center_landing || {};
+  const trend = T.landing_stations || {};
+  const evid = {};
+  (CL.stages || []).forEach(st => { if(st.stations && st.stations.rows) evid[st.stage] = st.stations; });
+  const STAGES = ["P0", "P0-M", "P1"];
+  const has = R => R && R.rows && R.rows.length;
+  const stages = STAGES.filter(s => has(trend[s]) || has(evid[s]));
+  if(!stages.length) return title + `<div class="card muted">这一轮的 payload 还没有逐站字段（新字段要等下一轮整库渲染，约半小时）。</div>`;
+  const n2 = v => v == null ? "—" : Number(v).toFixed(2);
+  const sgn = (v, d = 2) => v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d);
+  const pts = v => v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(100 * v).toFixed(0) + " 点";
+  const grade = (v, band, ideal) => {
+    if(v == null || !band) return "muted";
+    const d = Math.abs(v - ideal);
+    return d <= band[0] ? "green" : d <= band[1] ? "amber" : "red";
+  };
+  const widthWord = r => r == null ? "" : r > 1 ? "偏宽" : r < 1 ? "偏窄" : "";
+  const table = (R, what) => {
+    const TH = R.thresholds || {};
+    const rows = (R.rows || []).map(r => {
+      const unranked = !r.ranked;
+      const bias = r.bias_rungs;
+      return `<tr${unranked ? ' class="muted"' : ""}>
+        <td class="mono" data-sort="${r.centre_rank == null ? "" : r.centre_rank}">${r.centre_rank == null ? "—" : r.centre_rank}</td>
+        <td class="mono">${stationMarketLink(r.station)}${r.station_label ? ` <span class="muted">${h(r.station_label)}</span>` : ""}${
+          unranked ? ` <span class="muted" title="不足 ${R.min_days} 个站日，不排名">样本不足</span>` : ""}</td>
+        <td class="mono">${r.station_days}</td>
+        <td class="mono" data-sort="${bias == null ? "" : bias}"><span class="dot ${unranked ? "muted" : grade(bias, TH.bias_rungs, 0)}"></span>${sgn(bias)}${
+          r.se_rungs == null ? "" : ` <span class="muted">± ${n2(r.se_rungs)}</span>`}${
+          r.significant ? ' <b title="按 2σ 显著偏离 0">✱</b>' : ""}</td>
+        <td class="mono">${sgn(r.bias_c)}</td>
+        <td class="mono" data-sort="${r.spread_ratio == null ? "" : r.spread_ratio}"><span class="dot ${unranked ? "muted" : grade(r.spread_ratio, TH.spread, 1)}"></span>${n2(r.spread_ratio)}${
+          r.spread_ratio == null ? "" : ` <span class="muted">±${(100 * (r.spread_rel_se || 0)).toFixed(0)}% ${widthWord(r.spread_ratio)}</span>`}</td>
+        <td class="mono" data-sort="${r.width_rank == null ? "" : r.width_rank}">${r.width_rank == null ? "—" : r.width_rank}</td>
+        <td class="mono" data-sort="${r.seat_gap == null ? "" : r.seat_gap}">${pts(r.seat_gap)}${
+          r.seat_claim == null ? "" : ` <span class="muted">${(100 * r.seat_claim).toFixed(0)}→${(100 * r.seat_cover).toFixed(0)}%</span>`}</td>
+        <td class="mono">${n2(r.crps_c)}</td>
+        <td class="mono">${n2(r.nll)}</td>
+        <td class="mono">${r.zero_hit_days || 0}</td></tr>`;
+    }).join("");
+    const F = R.fleet || {};
+    return `<div class="muted" style="margin:6px 0 4px">${what} · ${R.stations} 站，${R.ranked} 站入榜（≥ ${R.min_days} 个站日）· 全队 ${F.station_days || 0} 个站日：
+      真值−均值 <b>${sgn(F.bias_rungs)} 档</b>（${sgn(F.bias_c)}°C）· 宽度÷误差 <b>${n2(F.spread_ratio)}</b> · 席位覆盖 实际−声称 <b>${pts(F.seat_gap)}</b> · CRPS <b>${n2(F.crps_c)}°C</b> · NLL <b>${n2(F.nll)}</b></div>
+      <div class="scroll" style="max-height:560px"><table><thead><tr>
+        <th title="按 |真值−均值|（档）从小到大">中心名次</th><th>站</th><th title="已结算的站日数">站日</th>
+        <th title="真值 − 服务均值，按本站桶宽计；正＝真值比模型暖（模型偏冷）">真值−均值 档 ± se</th><th>°C</th>
+        <th title="服务 σ ÷ 实际误差 RMSE（档）：1 最好，>1 太宽，<1 太窄">宽度÷误差</th><th title="按 |ln(宽度÷误差)| 从小到大">宽度名次</th>
+        <th title="席位窗实际盖住的比例 − 声称的概率">席位覆盖 实际−声称</th><th>CRPS °C</th><th>NLL</th><th title="结算桶概率为 0 的站日数">零桶</th>
+      </tr></thead><tbody>${rows}</tbody></table></div>`;
+  };
+  const nav = `<nav class="daytabs">${stages.map((s, i) => `<button type="button" data-day="${s}" data-active="${i ? "" : "1"}">${s}</button>`).join("")}</nav>`;
+  const panes = stages.map((s, i) => {
+    const main = has(trend[s]) ? trend[s] : evid[s];
+    const mainWhat = has(trend[s]) ? `近 ${T.days || 21} 天（${h(String(T.since || "").slice(0, 10))} 起，跨版本）` : `证据窗（${h((CL.stages || []).find(x => x.stage === s)?.since || "")} 起）`;
+    const fold = has(trend[s]) && has(evid[s])
+      ? `<details style="margin-top:10px"><summary class="muted">证据窗（宪章 202 锚后，${h((CL.stages || []).find(x => x.stage === s)?.since || "")} 起）的同一张表</summary>${table(evid[s], "证据窗")}</details>`
+      : "";
+    return `<div data-daypane="${s}"${i ? " hidden" : ""}>${table(main, mainWhat)}${fold}</div>`;
+  }).join("");
+  return `${title}
+  <p class="sub">读数，不订正：一行一个站，每站的中心和宽度各排一次名。<b>中心</b>＝真值 − 服务均值，按本站桶宽计（C 站 1°C 一档、F 站 2°F 一档，第 53 条），
+    正＝真值比模型暖；一个站日只算一票，再多的三小时格也只算一次；± se 是跨站日的标准误，✱ 是按 2σ 显著偏离 0。
+    <b>宽度</b>＝服务 σ ÷ 实际误差，与总览的「宽度 ÷ 实际误差」同一口径：1 最好，大于 1 太宽、小于 1 太窄；后面的 ±% 是这个比值自己的抽样误差（约 1/√(2n)，四个站日 ±35%），四天读出 2.0 不是发现。
+    灯用总检同一套阈值（中心 |偏差| ≤0.3 档绿、≤0.8 黄；宽度 |比值−1| ≤0.20 绿、≤0.45 黄）。
+    不足 ${(trend[stages[0]] || evid[stages[0]] || {}).min_days || 3} 个站日的站列出但不排名。
+    站级中心偏差存在但<b>不持续</b>（09-17 实测：前后两段相关 r=+0.26），所以这张表是读数，不是站级订正的依据。
+    点站名打开该站最新挂牌那一天的市场盘口；表头可点击排序。</p>
+  <div class="card" data-daytabs="station-rank" data-remember="1">${nav}${panes}</div>`;
+}
+
 function landingCover(CL, stage){
   const st = ((CL || {}).stages || []).find(s => s.stage === stage);
   if(!st) return null;
@@ -24335,7 +24660,7 @@ function p1PathSkill(){
   const medChart = trendChart({title: "提前量中位数（小时）", sub: "到达时刻 − 锁定时刻；0 = 跟着温度计走",
     dates, fmt: v => Number(v).toFixed(1), marks, ref: {y: 0, label: "0"},
     series: [{name: "中位", values: daily.map(d => d.median_lead_hours)}]});
-  const rows = (Q.stations || []).map(r => `<tr><td class="mono"><b>${h(r.station_id)}</b></td><td class="mono">${r.station_days}</td>
+  const rows = (Q.stations || []).map(r => `<tr><td class="mono"><b>${stationMarketLink(r.station_id)}</b></td><td class="mono">${r.station_days}</td>
     ${hrs.map(hh => `<td class="mono">${p1(r["hit_" + hh])}</td>`).join("")}
     <td class="mono">${p1(r.within1_14)}</td><td class="mono">${p1(r.predicted_share)}</td>
     <td class="mono">${p1(r.lead_ge_1h_share)}</td><td class="mono">${hr(r.median_lead_hours)}</td></tr>`).join("");
@@ -24542,8 +24867,9 @@ const GROUPS = [
    note:"概率层：先看总览，再沿链条从上游到下游——单系统 → 融合层 → 分布层（P0，校准只在这里）→ 按站的贝叶斯更新（P0-M、P1）→ 两条似然本身 → 区域模型",
    sections:[
      {box:"总览：模型准不准", kind:"audit",
-      note:"中心、宽度、概率、校准、覆盖一屏看完：本版对上一版，21 天走势；再下面是六层总检",
-      sections:[[modelAccuracyBoard,"模型准不准 · 总览"],[scorecard,"模型校准总检"]]},
+      note:"中心、宽度、概率、校准、覆盖一屏看完：本版对上一版，21 天走势；再下面是六层总检，最后按站排一次名",
+      sections:[[modelAccuracyBoard,"模型准不准 · 总览"],[scorecard,"模型校准总检"],
+        [stationCalibrationRank,"逐站校准排序"]]},
      {box:"① 单系统：每家模型各自校准", kind:"live",
       note:"四家集合预报各自订正偏差、各自调宽度；命中率看订正有没有用，H5 看订正用多长的记忆",
       sections:[[tablesCorrection,"单系统订正表"],[singleSystemWidth,"单系统宽度校准"],
@@ -24691,6 +25017,8 @@ const LANES = {
     role:"真值实际落在离服务均值几档 → 中心诚不诚实"},
   "模型校准总检": {layer:"概率层 · 读数", status:"audit",
     role:"六层各自及格没有，一屏看完"},
+  "逐站校准排序": {layer:"概率层 · 读数", status:"audit",
+    role:"每站的中心偏差（真值−均值，档）与宽度÷误差各排一次名，站名点开最新挂牌的盘口"},
   "H5 半衰期": {layer:"概率层 · 读数", status:"audit",
     role:"单系统校准的偏差半衰期：舰队换完没有、3/5/15 天哪个订正最准"},
   "band 表": {layer:"概率层", status:"live",
