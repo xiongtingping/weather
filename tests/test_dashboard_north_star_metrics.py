@@ -102,6 +102,9 @@ def test_the_page_renders_both_blocks_from_a_payload():
     assert "[fusionCandidates," in source
     # The version comparison waits for the scorecard's event-day bar.
     assert "min_event_days" in source[source.index("function northStarBlock("):]
+    # Charter 211: the verdict is the bucket panel; RMSE/CRPS are diagnostics.
+    block = source[source.index("function northStarBlock("):source.index("function fusionCandidates(")]
+    assert "PANEL_KEYS" in block and "中间诊断" in block and "三降" not in block
 
 
 def test_forward_shadow_scores_seat_and_shadow_on_the_same_days(tmp_path, monkeypatch):
@@ -151,4 +154,9 @@ def test_forward_shadow_scores_seat_and_shadow_on_the_same_days(tmp_path, monkey
     assert shadow["rmse_c"] == pytest.approx(abs(0.7 * 0.2 + 0.3 * -2.0))
     assert shadow["nll"] == pytest.approx(-math.log(0.7 * 0.8 + 0.3 * 0.3))
     assert out["better"]["rmse_c"] and out["better"]["nll"]
+    # Charter 211: the switch reads the bucket panel; RMSE/CRPS are diagnostics.
+    assert out["panel"] == ["bucket_brier", "nll", "reliability", "resolution"]
+    assert set(out["panel_better"]) == set(out["panel"])
+    assert shadow["bucket_brier"] == pytest.approx(
+        (0.7 * 0.1 + 0.3 * 0.6) ** 2 + (0.7 * 0.8 + 0.3 * 0.3 - 1.0) ** 2 + (0.1) ** 2)
     assert out["switch_ready"] is False     # two days, not twenty

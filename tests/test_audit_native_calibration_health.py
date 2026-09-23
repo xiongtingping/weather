@@ -247,20 +247,21 @@ class GateConditionRatesTest(unittest.TestCase):
         return conn
 
     def test_only_contested_candidates_are_counted(self) -> None:
-        """The channel only ever runs on a candidate that lost Brier and won
-        CRPS; anything else is decided by the strict path."""
+        """The channel runs on every candidate that lost Brier (charter 211:
+        CRPS no longer selects); a strict pass is decided elsewhere."""
 
         conn = self._conn_with([
-            (0.9, 1.1, 0.9),   # contested
+            (0.9, 1.1, 0.9),   # contested: lost Brier, wins NLL
             (0.9, 0.9, 0.9),   # strict pass, not contested
-            (1.1, 1.1, 1.1),   # loses both, not contested
+            (1.1, 1.1, 1.1),   # lost Brier and NLL: contested, rejected
         ])
         rates = gate_condition_rates(conn, since="2026-01-01T00:00:00Z")
-        self.assertEqual(rates["contested_count"], 1)
+        self.assertEqual(rates["contested_count"], 2)
+        self.assertEqual(rates["admitted_share"], 0.0)
 
     def test_each_condition_is_reported_separately(self) -> None:
-        """Reading Brier and CRPS alone made the channel look punitive; the
-        point of the breakdown is to show which one actually binds."""
+        """The point of the breakdown is to show which condition binds; the
+        CRPS share is a diagnostic (charter 211) and admits nothing."""
 
         conn = self._conn_with([
             # Brier loss inside tolerance, CRPS wins big, NLL loses.
@@ -276,7 +277,8 @@ class GateConditionRatesTest(unittest.TestCase):
 
     def test_brier_alone_blocking_is_named_as_such(self) -> None:
         conn = self._conn_with([
-            # CRPS and NLL both clear the margin; only the Brier loss is out.
+            # NLL clears the margin (CRPS too, but it no longer counts); only
+            # the Brier loss is out.
             (0.90, 1.30, 0.90),
         ])
         rates = gate_condition_rates(conn, since="2026-01-01T00:00:00Z")

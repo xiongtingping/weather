@@ -296,15 +296,14 @@ def check_bias_stability(conn: sqlite3.Connection, live: dict) -> list[dict]:
 def gate_condition_rates(
     conn: sqlite3.Connection, *, since: str
 ) -> dict:
-    """Which of the tolerance channel's three conditions is doing the work.
+    """Which of the tolerance channel's two conditions is doing the work.
 
-    A candidate that loses Brier to climatology may still pass if its Brier
-    loss is small and CRPS *and* NLL both win by a margin.  Reading only
-    Brier and CRPS makes that channel look punitive -- it rejects candidates
-    whose CRPS beats climatology by 9% over a 3% Brier loss -- and reading
-    NLL too shows why most of those rejections are right: half the rejected
-    candidates lose NLL to climatology outright, which is a distribution
-    confidently wrong where it matters, not a scoring quirk.
+    Charter 211: a candidate that loses Brier to climatology may still pass
+    if its Brier loss is small and the log score (NLL) wins by a margin.
+    CRPS is not a condition any more -- it is reported here as a diagnostic
+    share only, so a reader can still see how often the demoted score would
+    have agreed.  Contested = every candidate that lost Brier to
+    climatology, i.e. every one the channel judges.
 
     So this is a diagnostic, not an alarm, with one exception.  NLL is the
     binding condition today.  If it stops being one -- if the share blocked
@@ -326,13 +325,17 @@ def gate_condition_rates(
             climate = json.loads(str(baseline_json))
         except (TypeError, ValueError):
             continue
-        if not model.get("crps") or not climate.get("brier"):
+        if not climate.get("brier") or model.get("brier") is None:
             continue
-        if model["crps"] > climate["crps"] or model["brier"] <= climate["brier"]:
+        if model["brier"] <= climate["brier"]:
             continue
         contested.append((
             (model["brier"] - climate["brier"]) / climate["brier"],
-            (climate["crps"] - model["crps"]) / climate["crps"],
+            (
+                (climate["crps"] - model["crps"]) / climate["crps"]
+                if climate.get("crps") and model.get("crps") is not None
+                else 0.0
+            ),
             (
                 (climate["nll"] - model["nll"]) / climate["nll"]
                 if climate.get("nll") else 0.0
@@ -347,15 +350,13 @@ def gate_condition_rates(
     admitted = [
         c for c in contested
         if c[0] <= BRIER_TOLERANCE_MAX_LOSS
-        and c[1] >= BRIER_TOLERANCE_MIN_GAIN
         and c[2] >= BRIER_TOLERANCE_MIN_GAIN
     ]
-    # Blocked by Brier and nothing else: the other two conditions are met and
+    # Blocked by Brier and nothing else: the log-score condition is met and
     # only the Brier loss keeps it out.
     brier_only = [
         c for c in contested
         if c[0] > BRIER_TOLERANCE_MAX_LOSS
-        and c[1] >= BRIER_TOLERANCE_MIN_GAIN
         and c[2] >= BRIER_TOLERANCE_MIN_GAIN
     ]
     return {

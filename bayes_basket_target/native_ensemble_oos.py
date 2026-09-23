@@ -681,14 +681,25 @@ OFFICIAL_FORWARD_REQUIRED_SYSTEM_IDS = frozenset({
 EPS = 1e-12
 # Brier only scores the bucket that settled, so a candidate that is sharper
 # across the whole distribution can still lose it by a rounding-scale margin
-# while winning CRPS and NLL outright.  Requiring both of the other scoring
-# rules to improve by a real margin keeps that from becoming a way in for
-# genuinely worse candidates: over the rejected history this channel admits
-# about 6% of them, and NLL alone rejects half of what Brier-plus-CRPS would
-# have let through.  A station whose candidates keep losing all three still
-# stays rejected and keeps serving its last passing weights.
+# while winning the log score outright.  Requiring the other scoring rule
+# to improve by a real margin keeps that from becoming a way in for
+# genuinely worse candidates.  A station whose candidates keep losing both
+# still stays rejected and keeps serving its last passing weights.
+#
+# Charter 211 (user ruling 2026-09-24): the model's only objective is the
+# discrete bucket distribution P(Y=k|X); RMSE and CRPS are diagnostics, not
+# targets.  The gate therefore reads the two proper scores of that
+# distribution -- bucket Brier and the log score (NLL) -- and CRPS is still
+# computed and recorded on every evaluation but decides nothing.  Before
+# this the strict path was Brier-and-CRPS and the tolerance path demanded a
+# CRPS margin beside the NLL margin.  Re-judged read-only from the stored
+# window means of the 68,080 stable-pool evaluations since 2026-09-14
+# (docs/research/bucket_objective_20260924/measure_gate_flip.py): 481
+# REJECTED -> PASS, 393 PASS -> REJECTED; at the newest evaluation per key
+# 36 admitted and 21 withdrawn of 6,252 keys (0.9%).
 BRIER_TOLERANCE_MAX_RELATIVE_LOSS = 0.02
 BRIER_TOLERANCE_MIN_RELATIVE_GAIN = 0.05
+GATE_SCORING_RULE = "BRIER_LOGSCORE_V2"
 VALID_NATIVE_RUN_CYCLES = frozenset({
     "00Z",
     "06Z",
@@ -825,35 +836,44 @@ def _cross_oos_gate(
 ) -> dict[str, Any]:
     """Decide the gate and record which path decided it.
 
-    The strict path is unchanged: beat climatology on Brier and CRPS.  The
-    tolerance path exists because Brier can be lost by a rounding-scale
-    margin on a candidate that is better everywhere else, and it demands a
-    real margin on both remaining scoring rules in exchange.  The returned
-    record is stored with the evaluation so a later review can separate
-    tolerance admissions from strict ones without re-deriving them.
+    Charter 211: the strict path beats climatology on bucket Brier and the
+    log score (NLL).  The tolerance path exists because Brier can be lost by
+    a rounding-scale margin on a candidate that is better everywhere else,
+    and it demands a real margin on the log score in exchange.  CRPS is
+    recorded beside both paths as a diagnostic and decides neither.  The
+    returned record is stored with the evaluation so a later review can
+    separate tolerance admissions from strict ones without re-deriving them.
     """
 
     strict_pass = (
         float(cross_metrics["brier"])
         <= float(climate_metrics["brier"]) + EPS
-        and float(cross_metrics["crps"])
-        <= float(climate_metrics["crps"]) + EPS
+        and float(cross_metrics["nll"])
+        <= float(climate_metrics["nll"]) + EPS
+    )
+    climate_crps = float(climate_metrics.get("crps", 0.0))
+    crps_relative_gain = (
+        (climate_crps - float(cross_metrics.get("crps", climate_crps)))
+        / climate_crps
+        if climate_crps > EPS else None
     )
     gate: dict[str, Any] = {
         "path": "STRICT" if strict_pass else "REJECTED",
         "pass": strict_pass,
+        "scoring": GATE_SCORING_RULE,
         "brier_tolerance_max_relative_loss": (
             BRIER_TOLERANCE_MAX_RELATIVE_LOSS
         ),
         "tolerance_min_relative_gain": BRIER_TOLERANCE_MIN_RELATIVE_GAIN,
+        # Diagnostic only (charter 211): never read by the verdict.
+        "crps_relative_gain": crps_relative_gain,
     }
     if strict_pass:
         return gate
 
     climate_brier = float(climate_metrics["brier"])
-    climate_crps = float(climate_metrics["crps"])
-    climate_nll = float(climate_metrics.get("nll", 0.0))
-    if climate_brier <= EPS or climate_crps <= EPS or climate_nll <= EPS:
+    climate_nll = float(climate_metrics["nll"])
+    if climate_brier <= EPS or climate_nll <= EPS:
         # Relative margins are meaningless against a zero baseline, and a
         # perfect climatology is not something to be admitted around.
         gate["tolerance_available"] = False
@@ -862,23 +882,18 @@ def _cross_oos_gate(
     brier_relative_loss = (
         float(cross_metrics["brier"]) - climate_brier
     ) / climate_brier
-    crps_relative_gain = (
-        climate_crps - float(cross_metrics["crps"])
-    ) / climate_crps
     nll_relative_gain = (
-        climate_nll - float(cross_metrics.get("nll", climate_nll))
+        climate_nll - float(cross_metrics["nll"])
     ) / climate_nll
     tolerance_pass = (
         brier_relative_loss <= BRIER_TOLERANCE_MAX_RELATIVE_LOSS
-        and crps_relative_gain >= BRIER_TOLERANCE_MIN_RELATIVE_GAIN
         and nll_relative_gain >= BRIER_TOLERANCE_MIN_RELATIVE_GAIN
     )
     gate.update({
         "tolerance_available": True,
         "brier_relative_loss": brier_relative_loss,
-        "crps_relative_gain": crps_relative_gain,
         "nll_relative_gain": nll_relative_gain,
-        "path": "CRPS_NLL_TOLERANCE" if tolerance_pass else "REJECTED",
+        "path": "NLL_TOLERANCE" if tolerance_pass else "REJECTED",
         "pass": tolerance_pass,
     })
     return gate
@@ -905,18 +920,23 @@ def _cross_oos_gate(
 # ``_cross_oos_gate`` to their means.  A key with only its own three days is
 # judged exactly as before.  One guard is added, because a longer window
 # must not let a seat that has just broken hide behind its older days: if
-# its own newest holdout scores CRPS more than
-# ``STABLE_POOL_GATE_BREAKAGE_MAX_RELATIVE_CRPS_LOSS`` above climatology (more
-# than twice climatology's), it is rejected whatever the window says -- the
-# one bin of the replay where forward skill over climatology vanished.
+# its own newest holdout scores the log score more than
+# ``STABLE_POOL_GATE_BREAKAGE_MAX_RELATIVE_NLL_LOSS`` above climatology's,
+# it is rejected whatever the window says.  The floor was set on CRPS at
+# 1.0 (twice climatology's) -- the one bin of the replay where forward skill
+# over climatology vanished; charter 211 moved it to the log score and the
+# threshold 0.5 was chosen to keep the same ejection rate: on the 68,080
+# stable-pool evaluations since 09-14 the CRPS floor hit 439 (0.64%), an
+# NLL floor at 0.5 hits 489 (0.72%) and at 1.0 only 124 (0.18%).  The CRPS
+# reading stays on the record as a diagnostic.
 # Measured on the same evaluations: window flips 15.0% -> 5.5%, PASS ->
 # REJECTED 7.1% -> 2.1%, dark scope-hours 4.8% -> 1.4% (all four in hand,
 # from 09-18) and 8.2% -> 3.4% (ECMWF+GEFS only); the seats admitted that the
 # three-day gate refused beat climatology on their served day by RPS 1.01
 # [0.67, 1.36] and NLL 0.83 [0.58, 1.08] (164 station-days).
-STABLE_POOL_GATE_RULE = "STABLE_POOL_ROLLING_WINDOW_GATE_V1"
+STABLE_POOL_GATE_RULE = "STABLE_POOL_ROLLING_WINDOW_GATE_V2"
 STABLE_POOL_GATE_WINDOW_DAYS = 10
-STABLE_POOL_GATE_BREAKAGE_MAX_RELATIVE_CRPS_LOSS = 1.0
+STABLE_POOL_GATE_BREAKAGE_MAX_RELATIVE_NLL_LOSS = 0.5
 # The window reads only the pool's own record: evaluations written before
 # charter 134's first deploy scored contest-weighted blends under the same
 # key, and a row whose gate names another membership mode (a rollback) is
@@ -1037,20 +1057,28 @@ def _stable_pool_window_gate(
     window_learned = _mean_metrics([days[day][0] for day in window])
     window_climate = _mean_metrics([days[day][1] for day in window])
     window_gate = _cross_oos_gate(window_learned, window_climate)
-    own_crps = float(own_learned_metrics["crps"])
-    climate_crps = float(own_climate_metrics["crps"])
+    own_nll = float(own_learned_metrics["nll"])
+    climate_nll = float(own_climate_metrics["nll"])
     # Against a perfect climatology any loss is unbounded; recorded as None
     # (JSON has no infinity) and treated as a breach.
+    own_relative_nll_loss = (
+        (own_nll - climate_nll) / climate_nll
+        if climate_nll > EPS
+        else None
+    )
+    breakage = (
+        own_nll > EPS
+        if own_relative_nll_loss is None
+        else own_relative_nll_loss
+        > STABLE_POOL_GATE_BREAKAGE_MAX_RELATIVE_NLL_LOSS
+    )
+    # Diagnostic only (charter 211): the CRPS reading the floor used to read.
+    own_crps = float(own_learned_metrics.get("crps", 0.0))
+    climate_crps = float(own_climate_metrics.get("crps", 0.0))
     own_relative_crps_loss = (
         (own_crps - climate_crps) / climate_crps
         if climate_crps > EPS
         else None
-    )
-    breakage = (
-        own_crps > EPS
-        if own_relative_crps_loss is None
-        else own_relative_crps_loss
-        > STABLE_POOL_GATE_BREAKAGE_MAX_RELATIVE_CRPS_LOSS
     )
     passed = bool(window_gate["pass"]) and not breakage
     return {
@@ -1069,8 +1097,9 @@ def _stable_pool_window_gate(
         "window_learned_metrics": window_learned,
         "window_climate_metrics": window_climate,
         "breakage_floor": {
-            "max_relative_crps_loss":
-                STABLE_POOL_GATE_BREAKAGE_MAX_RELATIVE_CRPS_LOSS,
+            "max_relative_nll_loss":
+                STABLE_POOL_GATE_BREAKAGE_MAX_RELATIVE_NLL_LOSS,
+            "own_relative_nll_loss": own_relative_nll_loss,
             "own_relative_crps_loss": own_relative_crps_loss,
             "hit": breakage,
         },

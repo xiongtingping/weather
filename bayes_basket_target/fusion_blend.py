@@ -98,6 +98,13 @@ FUSION_BLEND_MODES = (
 # weights are what is served, and the forward record on days nobody has seen
 # decides the switch.  ``blend`` serves it (a served-arithmetic change: bump
 # the three stages with it); ``off`` skips the computation entirely.
+#
+# Charter 211 (2026-09-24): the switch is judged on the bucket panel --
+# bucket Brier, log score, Reliability, Resolution -- and RMSE / CRPS are
+# diagnostics beside it.  Re-judged on the historical replay
+# (docs/research/fusion_blend_historical_20260923, 2,908 station-days / 65
+# days): Brier +0.02%, log score +0.05%, Resolution -0.06%, Reliability
+# -15.6% -- three of four the wrong way, so the seat still serves.
 FUSION_BLEND_MODE = (
     os.environ.get("P0_FUSION_BLEND_MODE", FUSION_BLEND_MODE_SHADOW).strip()
     or FUSION_BLEND_MODE_SHADOW

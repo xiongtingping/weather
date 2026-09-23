@@ -5,7 +5,7 @@ re-scored every scan on its three newest shared days.  Judged on those three
 days alone the verdict flipped on noise and a rejected seat went dark to the
 compile.  The gate now reads the key's own newest ten scored days (each from
 the newest evaluation that scored it), and a seat whose own newest holdout
-scores CRPS more than twice climatology's is rejected whatever the record
+scores the log score more than half again climatology's is rejected whatever the record
 says.  These tests pin the rule, its boundaries, the guard, and the wiring
 from the evaluation table back into the build.
 """
@@ -26,7 +26,7 @@ if str(ROOT) not in sys.path:
 from bayes_basket_target import native_ensemble_oos  # noqa: E402
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.native_ensemble_oos import (  # noqa: E402
-    STABLE_POOL_GATE_BREAKAGE_MAX_RELATIVE_CRPS_LOSS,
+    STABLE_POOL_GATE_BREAKAGE_MAX_RELATIVE_NLL_LOSS,
     STABLE_POOL_GATE_LOOKBACK_DAYS,
     STABLE_POOL_GATE_RULE,
     STABLE_POOL_GATE_WINDOW_DAYS,
@@ -144,29 +144,32 @@ def test_the_newest_scoring_of_a_day_overrides_an_older_one() -> None:
 
 def test_the_breakage_floor_rejects_a_seat_that_just_broke() -> None:
     """The guard: a winning record cannot carry a seat whose newest holdout
-    scores CRPS more than twice climatology's."""
+    scores the log score more than half again climatology's (charter 211
+    moved the floor from CRPS x2 to NLL x1.5 at the same ejection rate)."""
 
     days = _days("2026-09-21", 10)
     history = {day: (dict(GOOD), dict(CLIMATE)) for day in days[:7]}
-    broken = {"brier": 0.85, "crps": 2.01, "nll": 3.0}
+    broken = {"brier": 0.85, "crps": 0.90, "nll": 3.02}
     gate = _gate(days[7:], broken, history)
 
-    # The record alone would still admit it: 7 x 0.5 + 3 x 2.01 < 10 x 1.0.
-    assert gate["window_learned_metrics"]["crps"] < CLIMATE["crps"]
+    # The record alone would still admit it: 7 x 1.5 + 3 x 3.02 < 10 x 2.0.
+    assert gate["window_learned_metrics"]["nll"] < CLIMATE["nll"]
     assert gate["pass"] is False
     assert gate["path"] == "REJECTED_BREAKAGE_FLOOR"
     assert gate["breakage_floor"]["hit"] is True
-    assert gate["breakage_floor"]["own_relative_crps_loss"] == pytest.approx(1.01)
+    assert gate["breakage_floor"]["own_relative_nll_loss"] == pytest.approx(0.51)
+    # CRPS is on the record as a diagnostic and did not decide this.
+    assert gate["breakage_floor"]["own_relative_crps_loss"] == pytest.approx(-0.1)
 
 
-def test_the_breakage_floor_boundary_is_exactly_twice_climatology() -> None:
+def test_the_breakage_floor_boundary_is_exactly_half_again_climatology() -> None:
     days = _days("2026-09-21", 10)
     history = {day: (dict(GOOD), dict(CLIMATE)) for day in days[:7]}
-    at_floor = {"brier": 0.80, "crps": 2.00, "nll": 2.0}
+    at_floor = {"brier": 0.80, "crps": 2.50, "nll": 3.0}
     gate = _gate(days[7:], at_floor, history)
 
-    assert STABLE_POOL_GATE_BREAKAGE_MAX_RELATIVE_CRPS_LOSS == 1.0
-    assert gate["breakage_floor"]["own_relative_crps_loss"] == pytest.approx(1.0)
+    assert STABLE_POOL_GATE_BREAKAGE_MAX_RELATIVE_NLL_LOSS == 0.5
+    assert gate["breakage_floor"]["own_relative_nll_loss"] == pytest.approx(0.5)
     assert gate["breakage_floor"]["hit"] is False
     assert gate["pass"] is True
 
@@ -177,7 +180,7 @@ def test_against_a_perfect_climatology_any_loss_is_a_breach() -> None:
     history = {day: (dict(GOOD), dict(CLIMATE)) for day in days[:7]}
     gate = _gate(days[7:], GOOD, history, own_climate=zero)
 
-    assert gate["breakage_floor"]["own_relative_crps_loss"] is None
+    assert gate["breakage_floor"]["own_relative_nll_loss"] is None
     assert gate["breakage_floor"]["hit"] is True
     assert gate["pass"] is False
     json.dumps(gate, allow_nan=False)
@@ -437,6 +440,8 @@ def test_charter_134_names_the_window_gate() -> None:
     assert STABLE_POOL_GATE_RULE in clause
     assert f"{STABLE_POOL_GATE_WINDOW_DAYS} 个" in clause
     assert "两倍" in clause
+    # Charter 211: the floor and the strict path read the log score.
+    assert "第 211 条" in clause and "LogScore" in clause
     assert "裁决人：用户" in clause
     # No bump of its own: it rides charter 198's (coordinator's ruling).
     assert "随第 198 条的 P0 v9 / P0-M v11 / P1 v19 一起生效" in clause
