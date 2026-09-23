@@ -18,7 +18,7 @@ import subprocess
 import sys
 from datetime import date, datetime, time as dt_time, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -138,6 +138,56 @@ def _other_lead_archive_paths(path: Path) -> list[Path]:
         for other in (0, 1, 2)
         if other != lead
     ]
+
+
+def _hold_certified_event_run(
+    family: str,
+    *,
+    root: Path,
+    event_date: str,
+    scopes: Sequence[Mapping[str, Any]],
+    ready: Callable[..., bool],
+) -> tuple[dict[str, Any], Path, datetime, list[str]] | None:
+    """Charter 193 amendment (C): a banked event run, for its certified stations.
+
+    The last thing a required family can hold: consulted only when it has no
+    run at all for this event date -- neither this lead's file nor another
+    lead's -- so whatever it returns is newer than what the station would
+    otherwise serve, which is nothing.  Newest banked run first; the first one
+    with at least one certified station wins, and only those stations are
+    returned.  ``None`` leaves the pass exactly where it was.
+    """
+
+    timezone_by_station = {
+        str(scope["station_id"]): str(scope["settlement_timezone"])
+        for scope in scopes
+    }
+    for run_init, path in follow_run.follow_archive_paths(
+        root, family, event_date
+    ):
+        if not follow_run.follow_serving_allowed(family, run_init.hour):
+            continue
+        archive = follow_run.load_follow_archive(
+            path, family=family, event_date=event_date, run_init=run_init
+        )
+        if archive is None:
+            continue
+        covered = follow_run.archive_station_ids(archive)
+        seated = [
+            station
+            for station, zone in timezone_by_station.items()
+            if station in covered
+            and bool(ready(
+                family=family,
+                station_id=station,
+                event_date=event_date,
+                settlement_timezone=zone,
+                run_init=run_init,
+            ))
+        ]
+        if seated:
+            return dict(archive), path, run_init, seated
+    return None
 
 
 def _load_retained_archive(
@@ -811,6 +861,56 @@ def capture_official_native_forward(
         and "ECMWF_OPEN_DATA_S3" not in held_from_other_lead
     ):
         write_bounded_json_if_changed(ecmwf_path, ecmwf)
+    # Charter 193 amendment, seating (user ruling 2026-09-21 "C 先用 ECMWF 前一天
+    # 18Z"; "过门后首包自动改持 D-3 18Z").  A D+2 day is listed around 05Z D-2,
+    # while ECMWF's D-2 00Z is complete on the replica only around 08:10Z; until
+    # then ECMWF had nothing to hold, the pass died on the required-family
+    # check below and the day had no P0 at all.  The follow lane banks ECMWF's
+    # D-3 18Z for the day (``follow_run.event_follow_runs``); here, when ECMWF
+    # has no run of its own for this date, it holds that banked run -- read in
+    # place like any other-lead hold, never re-ingested as this lead -- for
+    # the stations whose own (hour bucket x 18Z) fit is certified, and the
+    # packet goes out for those stations only.  Nothing else changes: a
+    # family with any run of its own never reaches this, and without a
+    # certificate the pass fails exactly as it did.
+    packet_station_ids = list(requested_station_ids)
+    ecmwf_event_run_hold: dict[str, Any] = {}
+    if (
+        ecmwf is None
+        and gefs is not None
+        and follow_new_runs
+        and follow_serving_ready is not None
+    ):
+        gefs_stations = follow_run.archive_station_ids(gefs)
+        held_event = _hold_certified_event_run(
+            follow_run.ECMWF_FAMILY,
+            root=ecmwf_path.parent,
+            event_date=event_date,
+            scopes=[
+                scope
+                for scope in scopes
+                if str(scope["station_id"]) in gefs_stations
+            ],
+            ready=follow_serving_ready,
+        )
+        if held_event is not None:
+            ecmwf, event_path, event_run, seated = held_event
+            held_from_other_lead["ECMWF_OPEN_DATA_S3"] = event_path
+            packet_station_ids = [
+                station
+                for station in requested_station_ids
+                if station in set(seated)
+            ]
+            ecmwf_event_run_hold = {
+                "archive": event_path.name,
+                "run_init_utc": event_run.isoformat().replace("+00:00", "Z"),
+                "stations": list(packet_station_ids),
+                "stations_left_out": [
+                    station
+                    for station in requested_station_ids
+                    if station not in set(seated)
+                ],
+            }
     # Holding is only a fallback for a family that has something to hold.  With
     # nothing on disk there is no ensemble to build, and failing here is what
     # keeps that distinct from a rung this publisher simply does not serve.
@@ -1047,7 +1147,7 @@ def capture_official_native_forward(
                 if isinstance(base, dict)
                 else set()
             )
-            for station in requested_station_ids:
+            for station in packet_station_ids:
                 candidates = [
                     (follow_init, follow_path)
                     for follow_init, follow_path, covered in retained_follows
@@ -1088,6 +1188,10 @@ def capture_official_native_forward(
     ]
     if regional_point["archives_by_station"]:
         command.extend(["--regional-point-archive", str(regional_point_path)])
+    # Charter 193 amendment (C): only the certified stations get a packet.
+    if ecmwf_event_run_hold:
+        for station in packet_station_ids:
+            command.extend(["--station-id", station])
     # An actively captured ECCC archive is preferred over a supplied one; both
     # carry the same GEPS native 00Z lineage, so the builder treats them alike.
     resolved_eccc = (
@@ -1129,7 +1233,7 @@ def capture_official_native_forward(
     inbox = _verify_official_inbox(
         inbox_path,
         event_date=event_date,
-        station_ids=[str(scope["station_id"]) for scope in scopes],
+        station_ids=packet_station_ids,
         require_eccc=eccc_geps_archive is not None,
     )
     return {
@@ -1137,7 +1241,7 @@ def capture_official_native_forward(
         "state": "COMMITTED_NO_LIVE",
         "event_date": event_date,
         "captured_at_utc": capture_at,
-        "station_count": len(scopes),
+        "station_count": len(packet_station_ids),
         "skipped_uncoverable_stations": skipped_uncoverable,
         "archive_paths": {
             "NOAA_GEFS_PDS_S3": str(gefs_path),
@@ -1173,6 +1277,10 @@ def capture_official_native_forward(
             family: path.name
             for family, path in sorted(held_from_other_lead.items())
         },
+        # Charter 193 amendment (C): ECMWF held on its banked D-3 18Z run,
+        # and the stations that run is certified for (the only ones built).
+        **({"ecmwf_event_run_hold": ecmwf_event_run_hold}
+           if ecmwf_event_run_hold else {}),
         "run_init_utc_by_family": {
             "NOAA_GEFS_PDS_S3": str(gefs.get("run_init_utc") or ""),
             "ECMWF_OPEN_DATA_S3": str(ecmwf.get("run_init_utc") or ""),

@@ -552,3 +552,59 @@ def test_charter_192_an_assignment_to_a_station_the_archive_lacks_fails(
     )
     assert result.returncode != 0
     assert "follow_assignment_invalid" in result.stderr
+
+
+def _relabel(path: Path, **fields: object) -> Path:
+    archive = json.loads(path.read_text(encoding="utf-8"))
+    identity = {
+        key: value for key, value in archive.items() if key != "content_sha256"
+    }
+    identity.update(fields)
+    path.write_text(
+        json.dumps({**identity, "content_sha256": content_sha256(identity)}),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_charter_193_an_ecmwf_d3_18z_archive_builds_the_certified_stations(
+    tmp_path: Path,
+) -> None:
+    # A D+2 pass holding ECMWF's banked D-3 18Z run: the archive states the
+    # calendar label "d3", covers fewer stations than GEFS, and only the
+    # stations named are built.
+    intervals = {"29°C or below": [None, 29.5], "30°C or higher": [29.5, None]}
+    gefs = _archive(
+        tmp_path / "gefs.json",
+        schema=NOAA_GEFS_MULTISTATION_SCHEMA,
+        system_id="NOAA_GEFS_05",
+        family_id="NOAA_GEFS",
+        intervals=intervals,
+        station_ids=("ZUUU", "CYYZ"),
+    )
+    ecmwf = _relabel(
+        _archive(
+            tmp_path / "ecmwf_d3_18z.json",
+            schema=ECMWF_MULTISTATION_SCHEMA,
+            system_id="ECMWF_IFS_ENS_OPEN_PF50",
+            family_id="ECMWF",
+            intervals=intervals,
+            station_ids=("ZUUU",),
+        ),
+        archive_lead_bucket="d3",
+        run_init_utc="2026-07-29T18:00:00Z",
+    )
+    result, payload = _run(tmp_path, [gefs, ecmwf], station_ids=("ZUUU",))
+    assert result.returncode == 0, result.stderr
+    (packet,) = payload["packets"]
+    assert packet["station_id"] == "ZUUU"
+    assert packet["run_init_utc_by_system"]["ECMWF_IFS_ENS_OPEN_PF50"] == (
+        "2026-07-29T18:00:00Z"
+    )
+    # the lead is derived from the run, never the stated calendar label
+    assert packet["lead_bucket_by_system"]["ECMWF_IFS_ENS_OPEN_PF50"] == "h24_48"
+    # a label nothing writes is still refused
+    _relabel(ecmwf, archive_lead_bucket="d4")
+    refused, _payload = _run(tmp_path, [gefs, ecmwf], station_ids=("ZUUU",))
+    assert refused.returncode != 0
+    assert "scope_mismatch" in refused.stderr

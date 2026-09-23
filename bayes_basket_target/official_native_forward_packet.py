@@ -336,9 +336,11 @@ def is_fusion_excluded_point_system(system_id: str) -> bool:
 # admissible only so archives captured before the switch stay readable; nothing
 # writes them any more, and the builder re-derives the lead from the run
 # whenever the archive states one, so a stated ``d`` label survives only for
-# archives with no readable run.
+# archives with no readable run.  ``d3`` is the ECMWF archive-level label of
+# the charter 193 amendment's D-3 18Z run (its captures state hour buckets like
+# every other), which a D+2 pass may hold before D-2 00Z lands.
 SUPPORTED_ARCHIVE_LEAD_BUCKETS = frozenset({
-    "h00_12", "h12_24", "h24_48", "h48_plus", "d0", "d1", "d2",
+    "h00_12", "h12_24", "h24_48", "h48_plus", "d0", "d1", "d2", "d3",
 })
 # Freshest first, for choosing the packet-level label out of a mixed-cycle
 # set.  Calendar labels sort after the hour buckets: they survive only on
@@ -352,6 +354,7 @@ _LEAD_BUCKET_FRESHNESS_ORDER = {
     "d0": 10,
     "d1": 11,
     "d2": 12,
+    "d3": 13,
 }
 VALID_RUN_CYCLES = frozenset({"00Z", "06Z", "12Z", "18Z"})
 MIXED_NATIVE_CYCLES = "MIXED_NATIVE_CYCLES"

@@ -929,12 +929,124 @@ def test_ecmwf_d3_18z_covers_what_plus_72h_reaches() -> None:
 
 
 def test_a_banked_ecmwf_d3_run_does_not_change_the_pass(monkeypatch, tmp_path) -> None:
-    # Seating it (holding it as ECMWF's run before D-2 00Z lands) waits for
-    # its certificate and for the capture pass change that reads it; until
-    # then the pass is the pass it was, certified or not.
+    # Held only when ECMWF has no run of its own for the date: a pass that
+    # captured one is the pass it was, certified or not.
     registry_path, commands = _setup_pass(monkeypatch, tmp_path)
     _pass(tmp_path, registry_path)
     _follow_file(tmp_path, f"ecmwf_{DAY}_d3_18z.json", "2026-07-29T18:00:00Z",
                  _station_ids(), schema=follow_run.archive_schema(follow_run.ECMWF_FAMILY))
     _pass(tmp_path, registry_path, follow_new_runs=True, follow_serving_ready=lambda **_kw: True)
     assert _builder(commands[:1]) == _builder(commands[1:])
+
+
+def _d2_pass(tmp_path: Path, registry_path: Path, **kwargs) -> dict[str, Any]:
+    return capture.capture_official_native_forward(
+        registry_path=registry_path,
+        event_date=DAY,
+        gefs_output=tmp_path / f"gefs_{DAY}_d2.json",
+        ecmwf_output=tmp_path / f"ecmwf_{DAY}_d2.json",
+        eccc_output=tmp_path / f"eccc_{DAY}_d2.json",
+        icon_output=tmp_path / f"icon_{DAY}_d2.json",
+        inbox_output=tmp_path / "inbox.json",
+        timeout_seconds=30.0,
+        lead_days=2,
+        run_cycle_hour=0,
+        **kwargs,
+    )
+
+
+def _ecmwf_not_landed(monkeypatch, tmp_path: Path) -> tuple[Path, list[list[str]], list]:
+    # 05Z D-2: GEFS D-2 00Z is in, ECMWF's D-2 00Z is not, and ECMWF has no
+    # run of its own for the date anywhere.
+    registry_path, commands = _setup_pass(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        capture, "capture_gefs_station_days",
+        lambda **_kw: {**_archive(GEFS, "2026-07-30T00:00:00Z"),
+                       "captures": [{"station_id": s} for s in _station_ids()]},
+    )
+    monkeypatch.setattr(
+        capture, "capture_ecmwf_station_days",
+        lambda **_kw: (_ for _ in ()).throw(RuntimeError("HTTPStatusError:404")),
+    )
+    verified: list = []
+    monkeypatch.setattr(
+        capture, "_verify_official_inbox",
+        lambda _path, **kw: verified.append(sorted(kw["station_ids"]))
+        or {"content_sha256": "0" * 64, "packets": []},
+    )
+    return registry_path, commands, verified
+
+
+def _ecmwf_d3(tmp_path: Path, stations: list[str]) -> Path:
+    return _follow_file(
+        tmp_path, f"ecmwf_{DAY}_d3_18z.json", "2026-07-29T18:00:00Z", stations,
+        schema=follow_run.archive_schema(follow_run.ECMWF_FAMILY),
+    )
+
+
+def test_a_d2_pass_without_ecmwf_holds_the_certified_d3_18z_run(monkeypatch, tmp_path) -> None:
+    registry_path, commands, verified = _ecmwf_not_landed(monkeypatch, tmp_path)
+    stations = _station_ids()
+    banked = _ecmwf_d3(tmp_path, stations[:-1])     # the run covers all but one
+    certified = set(stations[:2]) | {stations[-1]}  # the uncovered one cannot seat
+    asked: list = []
+    receipt = _d2_pass(
+        tmp_path, registry_path,
+        follow_new_runs=True,
+        follow_serving_ready=lambda **kw: asked.append(
+            (kw["family"], kw["run_init"])
+        ) or (kw["family"] == follow_run.ECMWF_FAMILY and kw["station_id"] in certified),
+    )
+    seated = sorted(stations[:2])
+    builder = _builder(commands)
+    assert builder[builder.index("--archive") + 3] == str(banked)   # ECMWF's archive
+    assert sorted(
+        builder[i + 1] for i, part in enumerate(builder) if part == "--station-id"
+    ) == seated
+    assert verified == [seated]
+    assert receipt["station_count"] == 2
+    assert receipt["family_held_from_other_lead"] == {"ECMWF_OPEN_DATA_S3": banked.name}
+    assert receipt["ecmwf_event_run_hold"]["run_init_utc"] == "2026-07-29T18:00:00Z"
+    assert sorted(receipt["ecmwf_event_run_hold"]["stations"]) == seated
+    assert "ECMWF_OPEN_DATA_S3" in receipt["family_held_on_earlier_run"]
+    assert receipt["run_init_utc_by_family"]["ECMWF_OPEN_DATA_S3"] == "2026-07-29T18:00:00Z"
+    # certificates are asked of the D-3 18Z run itself
+    assert (follow_run.ECMWF_FAMILY, datetime(2026, 7, 29, 18, tzinfo=UTC)) in asked
+
+
+def test_without_a_certificate_the_d2_pass_fails_as_it_always_did(monkeypatch, tmp_path) -> None:
+    registry_path, commands, _verified = _ecmwf_not_landed(monkeypatch, tmp_path)
+    _ecmwf_d3(tmp_path, _station_ids())
+    for kwargs in (
+        {"follow_new_runs": True, "follow_serving_ready": lambda **_kw: False},
+        {"follow_new_runs": False, "follow_serving_ready": lambda **_kw: True},
+        {},
+    ):
+        with pytest.raises(
+            capture.ContractError,
+            match="required_family_unavailable:ECMWF_OPEN_DATA_S3",
+        ):
+            _d2_pass(tmp_path, registry_path, **kwargs)
+    assert not commands
+
+
+def test_ecmwf_holding_any_run_of_its_own_never_reads_the_d3_run(monkeypatch, tmp_path) -> None:
+    # Charter 148's other-lead hold (or this lead's own file) outranks it: a
+    # D-2 run is newer than D-3 18Z, so nothing moves backwards.
+    registry_path, commands, _verified = _ecmwf_not_landed(monkeypatch, tmp_path)
+    _ecmwf_d3(tmp_path, _station_ids())
+    own = {**_archive(ECMWF, "2026-07-30T00:00:00Z"),
+           "captures": [{"station_id": s} for s in _station_ids()]}
+    monkeypatch.setattr(
+        capture, "_load_retained_archive",
+        lambda path, **_kw: own if Path(path).name == f"ecmwf_{DAY}_d2.json" else None,
+    )
+    asked: list = []
+    receipt = _d2_pass(
+        tmp_path, registry_path, follow_new_runs=True,
+        follow_serving_ready=lambda **kw: asked.append(kw["family"]) or True,
+    )
+    assert "ecmwf_event_run_hold" not in receipt
+    assert follow_run.ECMWF_FAMILY not in asked
+    assert "--station-id" not in _builder(commands)
+    assert str(tmp_path / f"ecmwf_{DAY}_d2.json") in _builder(commands)
