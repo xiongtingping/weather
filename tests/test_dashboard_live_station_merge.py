@@ -63,7 +63,10 @@ def _render(rows: list[dict]) -> str:
     payload = {"live_readiness": {
         "available": True, "execution_mode": "production_live",
         "contracts": {"live_submit_authorized": True},
+        # The station-day money and verdicts are the collector's, not the
+        # renderer's (6782e982): feed the page what production feeds it.
         "live_orders": {"intent_count": len(rows), "rows": rows, "plan_state": {},
+                        "station_days": C._live_station_day_money(rows),
                         "book": {}, "exchange": {}, "pnl": {}},
         "open_orders": {"available": True, "count": 0},
     }}
@@ -210,6 +213,7 @@ def _render_with_slugs(rows: list[dict], slugs: dict[str, str]) -> str:
         "available": True, "execution_mode": "production_live",
         "contracts": {"live_submit_authorized": True},
         "live_orders": {"intent_count": len(rows), "rows": rows, "plan_state": {},
+                        "station_days": C._live_station_day_money(rows),
                         "market_slugs": slugs, "book": {}, "exchange": {}, "pnl": {}},
         "open_orders": {"available": True, "count": 0},
     }}
