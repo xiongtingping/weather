@@ -22643,7 +22643,15 @@ const CORE_METRICS = [
 ];
 function northStarBlock(LD, landDates, col){
   const cur = D.center_landing_version || D.center_landing || {}, prev = D.center_landing_previous || {};
-  const T = D.model_accuracy_trend || {}, pooled = T.landing_core || {};
+  // The headline reads the lanes' own sample: the served landing on the
+  // evidence window (charter 202 -- P0 from the stable pool, P0-M and P1
+  // from charter 150, bumps no longer reset it).  The 21-day calendar pool
+  // mixed in the contest seats before 09-14 and read P0's top claims as
+  // 64% said / 42% happened where the current arithmetic reads 63 / 46 on
+  // a tenth of the weight (2026-09-23).  The trend lines stay calendar.
+  const T = D.model_accuracy_trend || {};
+  const pooled = {};
+  ((D.center_landing || {}).stages || []).forEach(x => { pooled[x.stage] = x.core || {}; });
   const W = D.previous_version_windows || {};
   const MIN_DAYS = (D.scorecard || {}).min_event_days || 8;
   const STAGES = ["P0", "P0-M", "P1"];
@@ -22680,7 +22688,7 @@ function northStarBlock(LD, landDates, col){
   const word = (b, up) => b > 0 ? (up ? "↑好" : "↓好") : b < 0 ? (up ? "↓差" : "↑差") : "平";
   const verdicts = present.map(s => {
     const c = coreOf(cur, s), pv = coreOf(prev, s), pl = pooled[s] || {};
-    const sample = `近 ${T.days || 21} 天 ${pl.station_days || 0} 个站日 / ${pl.event_days || 0} 个事件日${
+    const sample = `证据窗 ${pl.station_days || 0} 个站日 / ${pl.event_days || 0} 个事件日${
       pl.zero_hits ? `；真值落在概率为 0 的桶上 ${pl.zero_hits} 格，按 p=1e-6 计入 NLL` : ""}`;
     if(!judged(s)) return `<li><b>${s}</b>：${sample}。本版 ${c ? c.event_days : 0} 天、上一版 ${pv ? pv.event_days : 0} 天，
       <span class="muted">攒证据中——两边各满 ${MIN_DAYS} 个事件日才判「三降」与北极星进退</span></li>`;
@@ -22695,7 +22703,7 @@ function northStarBlock(LD, landDates, col){
       <span class="muted">（${sample}）</span></li>`;
   }).join("");
   const p0 = pooled.P0 || {};
-  const identity = p0.mean_bucket_brier != null ? `P0 近 ${T.days || 21} 天拆开看：平均单桶 Brier ${p0.mean_bucket_brier.toFixed(5)}
+  const identity = p0.mean_bucket_brier != null ? `P0 证据窗拆开看：平均单桶 Brier ${p0.mean_bucket_brier.toFixed(5)}
     ＝ REL ${p0.reliability.toFixed(5)} − RES ${p0.resolution.toFixed(5)} ＋ UNC ${p0.uncertainty.toFixed(5)} ＋ 分档修正 ${p0.binning_correction.toFixed(5)}；
     Resolution 能涨到的上限是 UNC ${p0.uncertainty.toFixed(5)}（完全分得开时）。` : "";
   const series = key => STAGES.filter(s => (LD[s] || []).some(r => r[key] != null))
@@ -22716,7 +22724,8 @@ function northStarBlock(LD, landDates, col){
       marks, fmt: v => Number(v).toFixed(2)}),
   ].join("");
   return `<h2>北极星：桶概率的 Reliability ↓ 与 Resolution ↑ · 约束：RMSE、CRPS、NLL 同时下降</h2>
-  <p class="sub">读服务出去的分布（与「真值离均值多远」同一份样本，每个站日只算一次）。大字是近 ${T.days || 21} 天合并、跨版本的读数；
+  <p class="sub">读服务出去的分布（与「真值离均值多远」同一份样本，每个站日只算一次）。大字是证据窗读数——和校准车道读的是同一批样本
+    （宪章 202：P0 自 09-14 稳定池、P0-M/P1 自 09-18 宪章 150，升版不清零）；走势图仍按近 ${T.days || 21} 天日历画；
     小字是本版对上一版，两边各满 ${MIN_DAYS} 个事件日才标好坏。
     Reliability/Resolution 按每个桶「落 / 不落」拆，每站日质量 1 均分到它的桶上，分档
     [0,1,2.5,5,10,20,…,90,100]% 与融合权重研究同一套，服务读数和研究里候选的读数在同一把尺子上。</p>
