@@ -42,6 +42,7 @@ MAX_STEP = 360
 # Steps asked for: D+2's afternoon at every roster station from a run issued
 # the day before D+1 is inside 96 hours.
 MAX_CAPTURE_STEP = 96
+FETCH_WORKERS = 4
 _TIMEOUT = httpx.Timeout(60.0, connect=15.0)
 _ATTEMPTS = 3
 _client_instance: httpx.Client | None = None
@@ -168,23 +169,18 @@ def fetch_run_for_targets(
     order = sorted(stations)
     sampled = dict(zip(order, nearest_land_points(mask, [stations[s] for s in order])))
     values: dict[tuple[str, str], dict[int, float]] = {key: {} for key in wanted}
-    for step in union:
-        message = _message(run_init, step, "2t")
-        if message is None:
-            continue
-        cache: dict[str, float] = {}
-        for key, steps in wanted.items():
-            if step not in steps:
+    # Up to FETCH_WORKERS steps in flight at once: the mirror answers a
+    # 0.55 MB range in about two seconds through the production egress, so a
+    # run's dozen steps are network-bound, not decode-bound.  Decoded in
+    # step order as they arrive, one field held per worker.
+    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+
+    with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
+        fetched = pool.map(lambda step: (step, _message(run_init, step, "2t")), union)
+        for step, message in fetched:
+            if message is None:
                 continue
-            point = sampled.get(key[0])
-            if point is None:
-                continue
-            if key[0] not in cache:
-                kelvin, _distance = nearest_point_kelvin(
-                    message, latitude=float(point["latitude"]), longitude=float(point["longitude"]),
-                )
-                cache[key[0]] = kelvin - 273.15
-            values[key][step] = cache[key[0]]
+            _decode_step(message, step, wanted, sampled, values)
     results: dict[tuple[str, str], dict[str, Any]] = {}
     for key, steps in wanted.items():
         point = sampled.get(key[0])
@@ -195,6 +191,28 @@ def fetch_run_for_targets(
             url += f"#land_cell={float(point['latitude']):.5f},{float(point['longitude']):.5f}"
         results[key] = {"hourly_c": values[key], "hours_wanted": len(steps), "source_url": url}
     return results
+
+
+def _decode_step(
+    message: bytes, step: int, wanted: Mapping[tuple[str, str], Sequence[int]],
+    sampled: Mapping[str, Mapping[str, Any] | None],
+    values: dict[tuple[str, str], dict[int, float]],
+) -> None:
+    """One step's field, decoded once per station that wants it."""
+
+    cache: dict[str, float] = {}
+    for key, steps in wanted.items():
+        if step not in steps:
+            continue
+        point = sampled.get(key[0])
+        if point is None:
+            continue
+        if key[0] not in cache:
+            kelvin, _distance = nearest_point_kelvin(
+                message, latitude=float(point["latitude"]), longitude=float(point["longitude"]),
+            )
+            cache[key[0]] = kelvin - 273.15
+        values[key][step] = cache[key[0]]
 
 
 __all__ = [

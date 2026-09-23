@@ -72,21 +72,37 @@ def test_a_cycle_is_asked_for_by_name() -> None:
     assert LANE.EXTRACTION_VERSIONS["CMA"].endswith("single_run_v3")
 
 
-def test_backfill_is_refused_rather_than_guessed() -> None:
+def test_a_backfilled_relay_row_is_stamped_late_or_refused() -> None:
     """A row that cannot say when it became knowable is not written.
 
-    Runs are addressed by name now, but when a past run first became
-    available is still unknown.  Stamping such a row early leaks the afternoon
-    into the morning; stamping it late enough to be safe makes it useless
-    for the same-day question.  So the lane refuses instead of choosing.
+    Charter 201: runs are addressed by name (charter 152), so a backfilled
+    CMA row is the run its label says; when the relay first held it is the
+    measured holding lag -- ten to eleven hours after init -- so the stamp is
+    init + 11 h, late rather than early.  Too late for the same-day P1
+    question, and useful for the day-ahead P0 feature, which is what a
+    backfill is for.  A relay with no measured lag is still refused.
     """
+
+    import sqlite3  # noqa: PLC0415
+    from datetime import timedelta  # noqa: PLC0415
 
     with pytest.raises(ContractError) as caught:
         LANE.capture_p1(
-            None, product="CMA", now=datetime.now(timezone.utc),
+            None, product="UKMO10", now=datetime.now(timezone.utc),
             stations=CMA.CAPTURE_STATIONS, backfill=True,
         )
     assert "backfill_unsupported" in str(caught.value)
+    conn = sqlite3.connect(":memory:")
+    LANE.ensure_schema(conn)
+    run = datetime(2026, 9, 1, 0, tzinfo=timezone.utc)
+    LANE.write_run(
+        conn, product="CMA", station_id="ZUUU", event_date=date(2026, 9, 2),
+        settlement_timezone="Asia/Shanghai", run_init=run, hourly_c={20: 30.0},
+        hours_wanted=1, archive_query_at=datetime(2026, 9, 23, tzinfo=timezone.utc),
+        source_url="om://cma", backfill=True,
+    )
+    knowable = conn.execute(f"SELECT knowable_at_utc FROM {LANE.TABLE}").fetchone()[0]
+    assert knowable == (run + timedelta(hours=11)).isoformat().replace("+00:00", "Z")
 
 
 def test_local_day_hours_are_the_stations_day_not_the_runs() -> None:

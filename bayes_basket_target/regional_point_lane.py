@@ -66,6 +66,13 @@ SYSTEM_IDS = {
     "IFS9KM": "ECMWF_IFS_9KM_RELAY_POINT",
     "UKMO10": "UKMO_GLOBAL_10KM_RELAY_POINT",
 }
+# Charter 201: when a backfilled row is stamped knowable, where a product's
+# holding lag is longer than its first-ask lag.  AIFS: the GCS mirror's
+# step-96 index created T+5:25..5:43 over twelve runs 09-20..22 -> 6 h.  CMA
+# (named runs, charter 152): the relay holds a cycle 10-11 h after init
+# -> 11 h, late rather than early.  The other relays have no measured lag and
+# are not backfilled.
+BACKFILL_KNOWABLE_LAG_HOURS = {"AIFS": 6.0, "CMA": 11.0}
 # Forecast-step spacing, hours (charter 201: AIFS Single's open data is six-hourly).
 STEP_HOURS = {"AIFS": 6}
 # Charter 201: which products reach the lane through the aggregator relay
@@ -424,7 +431,9 @@ def write_run(
     # fetch; a backfill must answer with the run's publication time, or every
     # row it writes reads as "not knowable until the day I repaired it".
     knowable_at = (
-        run_init + timedelta(hours=PUBLICATION_LAG_HOURS[product])
+        run_init + timedelta(hours=BACKFILL_KNOWABLE_LAG_HOURS.get(
+            product, PUBLICATION_LAG_HOURS[product]
+        ))
         if backfill else archive_query_at
     )
     identity = {
@@ -564,16 +573,18 @@ def _target_days(now: datetime, zone_name: str, offsets: Sequence[int]) -> list[
 
 def _candidate_runs(
     product: str, now: datetime, event_date: date, zone_name: str,
-    *, legacy: bool = True,
+    *, legacy: bool = True, backfill: bool = False,
 ) -> list[datetime]:
     """Every run this day takes, oldest first (both reaches)."""
 
-    return sorted(_candidate_run_tiers(product, now, event_date, zone_name, legacy=legacy))
+    return sorted(_candidate_run_tiers(
+        product, now, event_date, zone_name, legacy=legacy, backfill=backfill,
+    ))
 
 
 def _candidate_run_tiers(
     product: str, now: datetime, event_date: date, zone_name: str,
-    *, legacy: bool = True,
+    *, legacy: bool = True, backfill: bool = False,
 ) -> dict[datetime, int]:
     """Runs already on the archive by now that this day takes.
 
@@ -592,7 +603,10 @@ def _candidate_run_tiers(
     # 201's does; a capture pass works tier 0 first, so the rows P1 reads are
     # fetched and committed exactly when they were before.
     runs: dict[datetime, int] = {}
-    if legacy and product in LEGACY_PRODUCTS:
+    # A backfill reaches days of any age: the P1 lane's own reach for every
+    # day it names (as the backfill always did), and the wider reach without
+    # the "still current" window.
+    if (legacy or backfill) and product in LEGACY_PRODUCTS:
         first = (day_start - timedelta(days=1)).replace(minute=0, second=0, microsecond=0)
         # CMA's transport is a rate-limited aggregator and only the last day's
         # cycles can still serve P1 (``regional_features`` admits twelve hours),
@@ -607,7 +621,7 @@ def _candidate_run_tiers(
     first = (day_start - timedelta(hours=LOOKBACK_HOURS[product])).replace(
         minute=0, second=0, microsecond=0
     )
-    oldest = now - timedelta(
+    oldest = first if backfill else now - timedelta(
         hours=CURRENT_RUN_HOURS_BY_PRODUCT.get(product, CURRENT_RUN_HOURS)
     )
     peak_end = day_start + timedelta(hours=_PEAK_END_HOUR)
@@ -652,8 +666,19 @@ def plan_p1(
     stations: Sequence[tuple[str, float, float, str]],
     day_offsets: Sequence[int] = DAY_OFFSETS,
     max_runs: int = 4,
+    backfill: bool = False,
 ) -> list[dict[str, Any]]:
-    """Runs not yet stored, grouped by run, newest runs first, capped."""
+    """Runs not yet stored, grouped by run, newest runs first, capped.
+
+    ``backfill`` (charter 201): a pass reaching past days.  At a (system,
+    station) pair P1 reads, a backfill takes only runs issued more than
+    ``regional_features.MAX_RUN_AGE_HOURS`` before the local day starts --
+    runs no P1 prefix of that day (all inside the day) can read -- so a
+    backfill for the P0 feature never changes what P1 would have read, or
+    the samples its likelihood is refitted on.
+    """
+
+    from .regional_features import MAX_RUN_AGE_HOURS, p1_reads_pair  # noqa: PLC0415
 
     system_id = SYSTEM_IDS[product]
     by_run: dict[tuple[int, datetime], list[dict[str, Any]]] = {}
@@ -662,10 +687,15 @@ def plan_p1(
             held = stored_run_inits(conn, system_id=system_id, station_id=station, event_date=event_date.isoformat())
             tiers = _candidate_run_tiers(
                 product, now, event_date, zone_name,
-                legacy=offset in LEGACY_DAY_OFFSETS,
+                legacy=offset in LEGACY_DAY_OFFSETS, backfill=backfill,
             )
+            p1_pair = backfill and p1_reads_pair(system_id, station)
             for run, tier in tiers.items():
                 if _iso(run) in held:
+                    continue
+                if p1_pair and lead_hours_to_local_day_start(
+                    run, event_date, zone_name,
+                ) <= MAX_RUN_AGE_HOURS:
                     continue
                 by_run.setdefault((tier, run), []).append({
                     "station_id": station, "latitude": latitude, "longitude": longitude,
@@ -818,13 +848,14 @@ def capture_p1(
     that makes them fit.
     """
 
-    if backfill and product == "CMA":
-        # A backfilled row has to say when it became knowable, and this
-        # product's archive is not resolved by run: an early stamp leaks the
-        # afternoon into the morning, and a stamp late enough to be safe
-        # makes the row useless for the same-day question.  Forward only.
+    if backfill and product in RELAY_PRODUCTS and product not in BACKFILL_KNOWABLE_LAG_HOURS:
+        # A backfilled relay row must say when the relay first held it; with
+        # no measured holding lag it would have to guess, so it is refused.
         raise ContractError("regional_point_backfill_unsupported_for_product")
-    plan = plan_p1(conn, product=product, now=now, stations=stations, day_offsets=day_offsets, max_runs=max_runs)
+    plan = plan_p1(
+        conn, product=product, now=now, stations=stations, day_offsets=day_offsets,
+        max_runs=max_runs, backfill=backfill,
+    )
     written = 0
     existed = 0
     empty = 0

@@ -508,3 +508,27 @@ def test_a_six_hourly_run_that_holds_the_afternoon_step_is_peak_complete():
                 archive_query_at=run + timedelta(hours=12), source_url="gcs://aifs")
     flags = dict(conn.execute(f"SELECT run_init_utc, remaining_peak_complete FROM {L.TABLE}").fetchall())
     assert flags == {"2026-09-22T12:00:00Z": 1, "2026-09-22T18:00:00Z": 0}
+
+
+def test_a_backfill_reaches_past_days_and_never_a_run_p1_could_read():
+    conn = sqlite3.connect(":memory:")
+    L.ensure_schema(conn)
+    now = datetime(2026, 9, 23, 4, tzinfo=timezone.utc)
+    zuuu = ("ZUUU", 30.576, 103.95, "Asia/Shanghai")
+    plan = L.plan_p1(conn, product="CMA", now=now, stations=[zuuu], day_offsets=(-20,),
+                     max_runs=50, backfill=True)
+    runs = {item["run_init"] for item in plan}
+    assert runs, "a backfill reaches a day three weeks back"
+    day = date(2026, 9, 3)
+    for run in runs:
+        # ZUUU x CMA is a P1 pair: only runs issued more than 12 h before the
+        # local day starts -- no P1 prefix of that day can read them.
+        assert L.lead_hours_to_local_day_start(run, day, "Asia/Shanghai") > 12.0
+    # A pair P1 never reads is backfilled whole.
+    sbgr = ("SBGR", -23.432, -46.469, "America/Sao_Paulo")
+    aifs = L.plan_p1(conn, product="AIFS", now=now, stations=[sbgr], day_offsets=(-20,),
+                     max_runs=50, backfill=True)
+    leads = [L.lead_hours_to_local_day_start(i["run_init"], date(2026, 9, 3), "America/Sao_Paulo") for i in aifs]
+    assert min(leads) <= 12.0 < max(leads)
+    # Live passes never reach a day three weeks back.
+    assert L.plan_p1(conn, product="AIFS", now=now, stations=[sbgr], day_offsets=(-20,), max_runs=50) == []
