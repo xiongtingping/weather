@@ -41,6 +41,9 @@ OPTIONAL_PLISTS=(
   # The board's static server on 8791; same history as the live control
   # server (a session preview that died with its session, 2026-09-21).
   com.weather.dashboard_static.plist
+  # Charter 207: our settled buckets against the market's, every 3 hours.
+  # A reader outside the writer turn; it writes only two files under data/.
+  com.weather.settlement_truth_reconciliation.plist
 )
 SUPPORTED_PLISTS=("${DEFAULT_PLISTS[@]}" "${OPTIONAL_PLISTS[@]}")
 PLISTS=("${DEFAULT_PLISTS[@]}")

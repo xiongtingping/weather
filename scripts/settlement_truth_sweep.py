@@ -66,6 +66,7 @@ from bayes_basket_target.pass_deadline import (  # noqa: E402
     writer_lease_seconds,
 )
 from bayes_basket_target.settlement_truth import (  # noqa: E402
+    CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
     blocker_class,
     materialize_settled_station_truth,
     registry_scope_still_eligible,
@@ -159,6 +160,88 @@ def _backlog(
     ]
 
 
+# Charter 207: a settled day whose evidence has since grown.  The resident
+# settles a station-day the moment its window closes, and until 2026-09-23
+# nothing looked at it again -- so a report that arrived after the close (the
+# AWC outage catch-up, a late relay, an operator backfill) never reached the
+# truth: 35 settled station-days inside AWC's retention were short of their
+# afternoon, ten of them settled on a different bucket from the one the market
+# paid.  The writer already appends a revision when its evidence changes; this
+# is the pass that asks it to.
+DEFAULT_MAX_REVISION_SCOPES = 200
+
+
+def _parse_utc(value: Any) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(str(value or "").replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
+
+
+def _second(value: datetime | None) -> datetime | None:
+    # The truth row stamps whole seconds; the archive keeps milliseconds.
+    return None if value is None else value.replace(microsecond=0)
+
+
+def _grown_evidence(
+    target: sqlite3.Connection,
+    source: sqlite3.Connection,
+    since: str,
+) -> tuple[list[tuple[str, str]], int]:
+    """Accepted canonical truths the archive now holds newer reports for.
+
+    A cheap filter, not the rule: a scope it names is handed to the writer,
+    which recomputes the day from scratch and answers ``idempotent`` when
+    nothing that counts has changed.  The signal is the newest commit time of
+    the station's AWC reports inside the settled window against the newest
+    one the standing revision was built from -- a new slot and a replaced
+    report both move it.
+    """
+
+    grown: list[tuple[str, str]] = []
+    retired = 0
+    for station, day, received_at, evidence_json in target.execute(
+        "SELECT t.station_id, t.local_date, t.received_at_utc, t.observation_ids_json"
+        " FROM calibration_station_daily_high_truth t"
+        " WHERE t.qc_status='ACCEPTED' AND t.source_role=? AND t.local_date>=?"
+        "   AND t.revision_no=("
+        "     SELECT MAX(x.revision_no) FROM calibration_station_daily_high_truth x"
+        "     WHERE x.station_id=t.station_id AND x.local_date=t.local_date"
+        "       AND x.qc_status='ACCEPTED')"
+        " ORDER BY t.local_date, t.station_id",
+        (CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1, since),
+    ):
+        try:
+            window = json.loads(evidence_json).get("settlement_window") or {}
+        except (TypeError, ValueError, AttributeError):
+            continue
+        standing = _second(_parse_utc(received_at))
+        if not window.get("start_utc") or not window.get("end_utc") or standing is None:
+            continue
+        newest = source.execute(
+            "SELECT MAX(canonical_committed_at) FROM reported_trajectory_observations"
+            " WHERE station_id=? AND source_lane='awc'"
+            "   AND valid_at>=? AND valid_at<?",
+            (str(station), str(window["start_utc"]), str(window["end_utc"])),
+        ).fetchone()[0]
+        newest_at = _second(_parse_utc(newest))
+        if newest_at is None or newest_at <= standing:
+            continue
+        # The writer takes its settlement window and lineage from the market
+        # registry, which keeps about three event days; past that the day
+        # cannot be re-settled by this pass and is only counted.
+        if target.execute(
+            "SELECT 1 FROM basket_target_market_registry"
+            " WHERE station_id=? AND event_date=? AND source_eligible=1 LIMIT 1",
+            (str(station), str(day)),
+        ).fetchone() is None:
+            retired += 1
+            continue
+        grown.append((str(station), str(day)))
+    return grown, retired
+
+
 def _coverage(
     conn: sqlite3.Connection, window_start: str
 ) -> list[dict[str, Any]]:
@@ -204,6 +287,7 @@ def sweep(
     dry_run: bool,
     verbose: bool,
     budget_sec: float | None = None,
+    max_revision_scopes: int = DEFAULT_MAX_REVISION_SCOPES,
 ) -> dict[str, Any]:
     started = time.time()
     # The writer lease the resident granted: stop between scopes once it is
@@ -315,6 +399,49 @@ def sweep(
                     print(f"  committed {station} {day}")
             else:
                 target.rollback()
+        revision_outcomes: Counter[str] = Counter()
+        revised: list[dict[str, Any]] = []
+        # The re-read comes after the backlog and only on lease left over: a
+        # day with no truth at all outranks a day whose truth may be short.
+        if stopped_for_time or (deadline is not None and time.monotonic() >= deadline):
+            stopped_for_time = True
+            grown, grown_past_registry = [], 0
+        else:
+            grown, grown_past_registry = _grown_evidence(target, source, retention_start)
+        for station, day in grown[:max_revision_scopes]:
+            if deadline is not None and time.monotonic() >= deadline:
+                stopped_for_time = True
+                break
+            try:
+                result = materialize_settled_station_truth(
+                    target, source, station_id=station, event_date=day, as_of_utc=as_of,
+                )
+            except sqlite3.OperationalError as exc:
+                target.rollback()
+                if "readonly database" in str(exc):
+                    revision_outcomes["would_revise"] += 1
+                    continue
+                if "locked" in str(exc) or "busy" in str(exc):
+                    revision_outcomes["deferred_locked"] += 1
+                    continue
+                raise
+            except ContractError as exc:
+                target.rollback()
+                revision_outcomes["refused:" + _reason_of(exc)] += 1
+                continue
+            if result.get("wrote"):
+                target.commit()
+                revision_outcomes["revised"] += 1
+                revised.append({
+                    "station_id": station, "event_date": day,
+                    "revision_no": result.get("revision_no"),
+                    "official_tmax_c": result.get("official_tmax_c"),
+                })
+                if verbose:
+                    print(f"  revised {station} {day} -> r{result.get('revision_no')}")
+            else:
+                target.rollback()
+                revision_outcomes[str(result.get("state") or "unknown")] += 1
         report = {
             "schema": SCHEMA,
             "swept_at_utc": as_of,
@@ -351,6 +478,11 @@ def sweep(
                 for reason, count in refusals.most_common()
             ],
             "awc_retention_start": retention_start,
+            # Charter 207: settled days re-read because their evidence grew.
+            "revision_candidates": len(grown),
+            "revision_past_registry": grown_past_registry,
+            "revision_outcomes": dict(revision_outcomes),
+            "revised": revised,
             "elapsed_seconds": round(time.time() - started, 2),
             "budget_sec": budget_sec,
             "stopped_for_time": stopped_for_time,

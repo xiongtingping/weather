@@ -4793,6 +4793,136 @@ def poll_madis_hfmetar_source(
     }
 
 
+# Charter 207: an AWC outage used to lose every report older than the first
+# poll back could reach.  The live request asks for all 45 stations at once
+# and AWC caps a response at 400 reports, so that poll reaches about 5.5 hours
+# back whatever ``hours`` says.  Measured 2026-09-21: AWC went quiet from
+# ~15:55Z to 01:24Z, the first poll back ingested exactly 401 reports reaching
+# 19:55Z, and KORD's 16:51-19:51Z METARs (19C at 17:51Z) never arrived.  The
+# truth lane settled KORD on 17.2C = 63F; the market paid 66-67F.  Same shape
+# on 2026-09-09 (16 station-days) -- 35 settled station-days short of their
+# afternoon inside AWC's retention alone.
+#
+# So when the last poll AWC answered is older than a single capped response
+# can be trusted to reach, the stations are re-asked in groups small enough
+# that no group's answer can hit the cap, over the whole hole.  Same fetch,
+# same canonical ingress, same deduplication; a hole of ordinary length (a
+# restart, a slow minute) never triggers it.
+AWC_CATCHUP_TRIGGER = timedelta(hours=4)
+AWC_CATCHUP_MAX_HOURS = 30.0
+AWC_RESPONSE_REPORT_CAP = 400
+# Routine reports plus SPECI, per station-hour, on the densest day observed
+# (RCSS/LTAC ~3.5 at peak); a group is sized so its worst case stays under
+# the cap with room, and a group that still comes back full is split.
+AWC_CATCHUP_REPORTS_PER_STATION_HOUR = 3.5
+AWC_CATCHUP_SAFE_REPORTS = 350
+
+
+def _last_successful_awc_poll_at(conn: sqlite3.Connection) -> datetime | None:
+    row = conn.execute(
+        """SELECT response_completed_at FROM reported_trajectory_source_polls
+            WHERE source_lane='awc' AND report_count>0
+              AND COALESCE(error_code,'')=''
+            ORDER BY response_completed_at DESC LIMIT 1"""
+    ).fetchone()
+    if not row or not row[0]:
+        return None
+    try:
+        return datetime.fromisoformat(str(row[0]).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _stamp_awc_poll(poll: dict[str, Any], stations: Sequence[str]) -> dict[str, Any]:
+    poll["source_lane"] = "awc"
+    poll["transport"] = str(poll.get("transport") or "official_awc")
+    poll["fallback_reasons"] = {}
+    # Charter 162: name the door the reports actually came through, so a
+    # TGFTP poll is not filed under the AWC relay that was unreachable.
+    provider_id = (
+        "global_noaa_tgftp_relay"
+        if poll["transport"].startswith("official_noaa_tgftp_")
+        else "global_noaa_awc_relay"
+    )
+    poll["provider_states"] = [{
+        "provider_id": provider_id,
+        "stations": sorted(stations),
+        "state": (
+            "noaa_tgftp_fallback"
+            if provider_id == "global_noaa_tgftp_relay"
+            else "awc_global_primary"
+        ),
+        "report_count": len(poll.get("reports") or []),
+        "transport": poll["transport"],
+    }]
+    poll["router_duration_ms"] = None
+    return poll
+
+
+def awc_outage_catchup(
+    ingress: ReportedTrajectoryAwcIngress,
+    stations: Sequence[str],
+    *,
+    previous_success_at: datetime | None,
+    main_poll: Mapping[str, Any],
+    now: datetime | None = None,
+    fetch: Any = None,
+) -> dict[str, Any]:
+    """Re-ask AWC for a hole longer than one capped response can reach."""
+
+    now = now or datetime.now(timezone.utc)
+    if previous_success_at is None:
+        return {"state": "no_previous_poll"}
+    hole = now - previous_success_at
+    if hole <= AWC_CATCHUP_TRIGGER:
+        return {"state": "not_needed", "hole_minutes": round(hole.total_seconds() / 60.0, 1)}
+    if not main_poll.get("reports") or main_poll.get("station_errors"):
+        # AWC is still not answering cleanly; the hole is re-measured from
+        # the same previous success on the next poll.
+        return {"state": "deferred_source_unhealthy"}
+    fetch = fetch or fetch_awc_temperature_reports
+    hours = min(AWC_CATCHUP_MAX_HOURS, math.ceil(hole.total_seconds() / 3600.0) + 1.0)
+    per_group = max(1, int(AWC_CATCHUP_SAFE_REPORTS // (hours * AWC_CATCHUP_REPORTS_PER_STATION_HOUR)))
+    queue = [list(stations[index:index + per_group]) for index in range(0, len(stations), per_group)]
+    requests = new_observations = reports = 0
+    errors: list[str] = []
+    while queue:
+        group = queue.pop(0)
+        requests += 1
+        started = utc_now()
+        try:
+            answer = _stamp_awc_poll(dict(fetch(group, hours=hours, timeout=20.0)), group)
+        except Exception as exc:
+            errors.append(f"{','.join(group)}:{type(exc).__name__}")
+            continue
+        got = answer.get("reports") or []
+        if len(got) >= AWC_RESPONSE_REPORT_CAP - 1 and len(group) > 1:
+            # Full answer: the cap cut it.  Ask again in halves.
+            half = len(group) // 2
+            queue[:0] = [group[:half], group[half:]]
+            continue
+        reports += len(got)
+        try:
+            ingested = ingress.process_source_poll(
+                answer, request_started_at=started, response_completed_at=utc_now(),
+            )
+        except Exception as exc:
+            errors.append(f"{','.join(group)}:ingest:{type(exc).__name__}")
+            continue
+        new_observations += int(ingested.get("new_observation_count") or 0)
+    return {
+        "state": "caught_up" if not errors else "partial",
+        "previous_success_at": previous_success_at.isoformat(),
+        "hole_minutes": round(hole.total_seconds() / 60.0, 1),
+        "requested_hours": hours,
+        "stations_per_request": per_group,
+        "request_count": requests,
+        "report_count": reports,
+        "new_observation_count": new_observations,
+        "errors": errors,
+    }
+
+
 def run_once(
     conn: sqlite3.Connection,
     config: dict[str, Any],
@@ -4800,6 +4930,7 @@ def run_once(
     lane: str,
     *,
     stations_override: list[str] | None = None,
+    continuity: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     stations = list(stations_override) if stations_override is not None else active_stations(conn, lane)
     if not stations:
@@ -4837,35 +4968,40 @@ def run_once(
         stations,
         minimum_interval_sec=float(policy.get("asos_poll_interval_sec", 900.0)),
     )
-    poll = dict(fetch_awc_temperature_reports(stations, hours=awc_hours, timeout=8.0))
-    poll["source_lane"] = "awc"
-    poll["transport"] = str(poll.get("transport") or "official_awc")
-    poll["fallback_reasons"] = {}
-    # Charter 162: name the door the reports actually came through, so a
-    # TGFTP poll is not filed under the AWC relay that was unreachable.
-    provider_id = (
-        "global_noaa_tgftp_relay"
-        if poll["transport"].startswith("official_noaa_tgftp_")
-        else "global_noaa_awc_relay"
+    # Charter 207: when this lane last had AWC's whole answer.  The lane
+    # keeps its own clock because the METAR fast lane (charter 170) writes
+    # receipts for a few stations over a short window, and one of those
+    # landing first after an outage must not read as the hole being closed.
+    # Only a fresh lane (a restart, ``--once``) falls back to the receipts,
+    # read before this poll writes its own.
+    previous_success_at = (
+        continuity.get("main_lane_ok_at") if continuity else None
+    ) or _last_successful_awc_poll_at(conn)
+    poll = _stamp_awc_poll(
+        dict(fetch_awc_temperature_reports(stations, hours=awc_hours, timeout=8.0)),
+        stations,
     )
-    poll["provider_states"] = [{
-        "provider_id": provider_id,
-        "stations": sorted(stations),
-        "state": (
-            "noaa_tgftp_fallback"
-            if provider_id == "global_noaa_tgftp_relay"
-            else "awc_global_primary"
-        ),
-        "report_count": len(poll.get("reports") or []),
-        "transport": poll["transport"],
-    }]
-    poll["router_duration_ms"] = None
     response_completed_at = utc_now()
     result = ingress.process_source_poll(
         poll,
         request_started_at=request_started_at,
         response_completed_at=response_completed_at,
     )
+    awc_catchup = awc_outage_catchup(
+        ingress,
+        stations,
+        previous_success_at=previous_success_at,
+        main_poll=poll,
+    )
+    if (
+        continuity is not None
+        and poll.get("reports")
+        and not poll.get("station_errors")
+        and awc_catchup.get("state") in {"not_needed", "caught_up", "no_previous_poll"}
+    ):
+        # A partial catch-up leaves the clock where it was, so the next poll
+        # asks for the whole hole again rather than for what is left of it.
+        continuity["main_lane_ok_at"] = datetime.now(timezone.utc)
     # Re-run the single selector after the AWC transaction so an incomplete
     # ASOS scope deterministically falls back to the just-materialized AWC
     # bound instead of retaining a pre-AWC blocked result.
@@ -4941,6 +5077,7 @@ def run_once(
         "fallback_reasons": poll.get("fallback_reasons") or {},
         "source_deferred": bool(poll.get("source_deferred")),
         "awc_requested_hours": awc_hours,
+        "awc_outage_catchup": awc_catchup,
         "asos_priority_source": asos_priority,
         "madis_hfmetar_source": madis_priority,
         "asos_p1_slot_substitutes": asos_p1_substitutes,
@@ -5457,6 +5594,7 @@ class LaneWorker:
         self.ingress = ReportedTrajectoryAwcIngress(self.conn, config=config)
         self.stations: list[str] = []
         self.next_station_refresh = 0.0
+        self.awc_continuity: dict[str, Any] = {}
 
     def poll(self) -> dict[str, Any]:
         now = time.monotonic()
@@ -5466,6 +5604,7 @@ class LaneWorker:
         return run_once(
             self.conn, self.config, self.ingress, self.lane,
             stations_override=self.stations,
+            continuity=self.awc_continuity,
         )
 
     def close(self) -> None:

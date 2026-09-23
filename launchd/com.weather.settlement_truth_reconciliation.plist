@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.weather.settlement_truth_reconciliation</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>/Users/xiong/weather/scripts/settlement_truth_reconciliation.sh</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StartInterval</key>
+	<integer>10800</integer>
+	<key>StandardErrorPath</key>
+	<string>/Users/xiong/weather/data/logs/settlement_truth_reconciliation.err.log</string>
+	<key>StandardOutPath</key>
+	<string>/Users/xiong/weather/data/logs/settlement_truth_reconciliation.out.log</string>
+	<key>WorkingDirectory</key>
+	<string>/Users/xiong/weather</string>
+</dict>
+</plist>

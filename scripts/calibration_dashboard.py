@@ -365,6 +365,103 @@ def _settlement_source_health(status: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+#: Charter 207: our settled bucket against the one the market paid, written
+#: by ``scripts/settlement_truth_reconciliation.py`` every three hours.
+SETTLEMENT_RECONCILIATION_STATUS = (
+    ROOT / "data" / "settlement_truth_reconciliation_status.json"
+)
+SETTLEMENT_RECONCILIATION_STALE_HOURS = 8.0
+#: A market-side disagreement is news for this long; after that it is
+#: history, kept in the status file and the journal, not on the banner.
+SETTLEMENT_RECONCILIATION_RECENT_DAYS = 3
+_RECONCILIATION_WORDS = {
+    "OUR_EVIDENCE_GAP": "我们缺报",
+    "MARKET_LOWEST_BRACKET": "市场判最低档",
+    "MARKET_BELOW": "市场偏低",
+    "MARKET_ABOVE": "市场偏高",
+}
+
+
+def _settlement_reconciliation_health(
+    path: Path = SETTLEMENT_RECONCILIATION_STATUS,
+) -> dict[str, Any]:
+    """Whether the buckets we settle on are the buckets the market paid.
+
+    Red is a disagreement the evidence puts on our side -- our record of the
+    day has an afternoon hole -- because that one we can and must fix (the
+    AWC catch-up and the truth sweep's revision pass exist for it).  Amber
+    is a recent disagreement the evidence puts on the market's side (a page
+    missing hours, the no-data bracket), or a reconciliation that stopped
+    running.
+    """
+
+    try:
+        status = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {
+            "settlement_reconciliation_health": "amber",
+            "settlement_reconciliation_note": "真值对账没有回执（任务没装或没跑过）",
+        }
+    age = _age_hours(status.get("checked_at"))
+    if age is None or age > SETTLEMENT_RECONCILIATION_STALE_HOURS:
+        return {
+            "settlement_reconciliation_health": "amber",
+            "settlement_reconciliation_note": (
+                f"真值对账 {age:.0f} 小时没跑" if age is not None
+                else "真值对账回执没有时间戳"
+            ),
+        }
+    window_end = str((status.get("window") or {}).get("end") or "")
+    try:
+        recent_from = (
+            datetime.fromisoformat(window_end)
+            - timedelta(days=SETTLEMENT_RECONCILIATION_RECENT_DAYS - 1)
+        ).date().isoformat()
+    except ValueError:
+        recent_from = window_end
+    ours = [
+        row for row in status.get("disagreements") or []
+        if row.get("verdict") == "OUR_EVIDENCE_GAP"
+    ]
+    theirs = [
+        row for row in status.get("disagreements") or []
+        if row.get("verdict") != "OUR_EVIDENCE_GAP"
+        and str(row.get("event_date") or "") >= recent_from
+    ]
+
+    def line(row: Mapping[str, Any]) -> str:
+        gap = row.get("warm_window_gap") or {}
+        return (
+            f"{row.get('station_id')} {str(row.get('event_date'))[5:]}"
+            f" 我们 {row.get('our_bucket')} / 市场 {row.get('market_bucket')}"
+            + (f"（午后缺 {gap.get('gap_local')}）"
+               if row.get("verdict") == "OUR_EVIDENCE_GAP" and gap else "")
+        )
+
+    parts = []
+    for verdict in _RECONCILIATION_WORDS:
+        rows = [row for row in ours + theirs if row.get("verdict") == verdict]
+        if rows:
+            parts.append(
+                f"{_RECONCILIATION_WORDS[verdict]} {len(rows)}："
+                + "、".join(line(row) for row in rows[:6])
+                + ("…" if len(rows) > 6 else "")
+            )
+    counts = status.get("counts") or {}
+    decided = int(status.get("decided") or 0)
+    tally = f"{counts.get('AGREE', 0)}/{decided} 一致" if decided else "无已结算站日"
+    if ours:
+        health = "red"
+    elif theirs:
+        health = "amber"
+    else:
+        health = "green"
+    return {
+        "settlement_reconciliation_health": health,
+        "settlement_reconciliation_note": "；".join([tally, *parts]),
+    }
+
+
 # A capture lane that has produced NOTHING is a different failure from a
 # family that is behind, and until 2026-09-10 the page could only show the
 # second.  Measured that day: ECCC's newest run read 32.6h old and the card
@@ -16350,6 +16447,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
                 **_nwp_rotation_health(status),
                 **_official_native_family_coverage(status),
                 **_settlement_source_health(status),
+                **_settlement_reconciliation_health(),
             }
         except (ValueError, OSError):
             worker = {}
@@ -16474,6 +16572,16 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
               "label": "结算源",
               "note": worker.get("settlement_source_note") or ""}]
             if worker.get("settlement_source_health") not in (None, "green")
+            else []
+        )
+        # Charter 207: whether the buckets we settle on are the ones the
+        # market paid.  A truth short of its afternoon settled KORD 63F on a
+        # day the market paid 66-67F, and nothing compared the two.
+        + (
+            [{"health": worker["settlement_reconciliation_health"],
+              "label": "真值对账",
+              "note": worker.get("settlement_reconciliation_note") or ""}]
+            if worker.get("settlement_reconciliation_health") not in (None, "green")
             else []
         )
         # Charter 197: whether the world is reachable and whether the P0 a

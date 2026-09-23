@@ -154,6 +154,11 @@ def test_only_three_user_domain_services_and_targetctl_remain() -> None:
         # ending must not take the page down.  A reader of rendered files
         # and a writer of nothing.
         "com.weather.dashboard_static.plist",
+        # 2026-09-23 (charter 207): our settled buckets against the ones the
+        # market paid, every three hours.  Gamma over the network, the store
+        # through a read-only connection held for seconds, two files under
+        # data/ -- a reader with no place in a writer turn.
+        "com.weather.settlement_truth_reconciliation.plist",
     ]
     # The board's write path.  Not a production owner -- it places nothing
     # and holds no state -- but the LIVE switch is drawn disabled while it is

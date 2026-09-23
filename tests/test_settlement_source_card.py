@@ -89,3 +89,62 @@ def test_one_failed_refresh_is_not_an_unchecked_source_but_half_an_hour_is() -> 
     )
     assert stale["settlement_source_health"] == "amber"
     assert "40 分钟" in stale["settlement_source_note"]
+
+
+# Charter 207: the banner row for the truth reconciliation.
+
+import json as _json
+from datetime import datetime as _datetime, timezone as _timezone
+
+
+def _reconciliation(tmp_path, *, checked_at=None, disagreements=(), window_end="2026-09-22"):
+    path = tmp_path / "settlement_truth_reconciliation_status.json"
+    path.write_text(_json.dumps({
+        "checked_at": checked_at or _datetime.now(_timezone.utc).isoformat(),
+        "window": {"start": "2026-09-13", "end": window_end},
+        "counts": {"AGREE": 440, "OUR_EVIDENCE_GAP": 0},
+        "decided": 440 + len(disagreements),
+        "disagreements": list(disagreements),
+    }), encoding="utf-8")
+    return path
+
+
+def test_reconciliation_that_agrees_is_green(tmp_path) -> None:
+    health = dashboard._settlement_reconciliation_health(_reconciliation(tmp_path))
+    assert health["settlement_reconciliation_health"] == "green"
+    assert "440/440 一致" in health["settlement_reconciliation_note"]
+
+
+def test_our_afternoon_hole_is_red_and_names_it(tmp_path) -> None:
+    health = dashboard._settlement_reconciliation_health(_reconciliation(tmp_path, disagreements=[{
+        "verdict": "OUR_EVIDENCE_GAP", "station_id": "KORD", "event_date": "2026-09-14",
+        "our_bucket": "62-63°F", "market_bucket": "66-67°F",
+        "warm_window_gap": {"gap_local": "10:51-15:51"},
+    }]))
+    assert health["settlement_reconciliation_health"] == "red"
+    assert "KORD 09-14 我们 62-63°F / 市场 66-67°F（午后缺 10:51-15:51）" in health[
+        "settlement_reconciliation_note"
+    ]
+
+
+def test_market_side_disagreement_is_amber_only_while_recent(tmp_path) -> None:
+    row = {"verdict": "MARKET_BELOW", "station_id": "ZBAA", "our_bucket": "30°C",
+           "market_bucket": "28°C"}
+    recent = dashboard._settlement_reconciliation_health(
+        _reconciliation(tmp_path, disagreements=[{**row, "event_date": "2026-09-20"}])
+    )
+    assert recent["settlement_reconciliation_health"] == "amber"
+    assert "市场偏低 1" in recent["settlement_reconciliation_note"]
+    old = dashboard._settlement_reconciliation_health(
+        _reconciliation(tmp_path, disagreements=[{**row, "event_date": "2026-09-14"}])
+    )
+    assert old["settlement_reconciliation_health"] == "green"
+
+
+def test_a_reconciliation_that_stopped_running_is_amber(tmp_path) -> None:
+    stale = dashboard._settlement_reconciliation_health(
+        _reconciliation(tmp_path, checked_at="2026-09-01T00:00:00+00:00")
+    )
+    assert stale["settlement_reconciliation_health"] == "amber"
+    missing = dashboard._settlement_reconciliation_health(tmp_path / "absent.json")
+    assert missing["settlement_reconciliation_health"] == "amber"
