@@ -73,7 +73,7 @@ def load_compact(arm: str, scheme: str) -> dict[tuple[str, str, str], dict]:
     """
 
     out = {}
-    for path in sorted((paired.REPLAY / arm).glob("*.jsonl.gz")):
+    for path in sorted(paired.assert_present(paired.REPLAY / arm, what="AIFS replay arm").glob("*.jsonl.gz")):
         with gzip.open(path, "rt") as handle:
             for line in handle:
                 record = json.loads(line)

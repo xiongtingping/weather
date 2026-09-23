@@ -36,6 +36,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.stable_pool import STABLE_POOL_KAPPA  # noqa: E402
+from bayes_basket_target.offloaded_paths import assert_present  # noqa: E402
 
 REPLAY = ROOT / "data" / "aifs_ens_research" / "replay"
 AIFS = "ECMWF_AIFS_ENS_GLOBAL"
@@ -44,7 +45,9 @@ METRICS = ("crps", "nll", "brier")
 
 def load(arm: str) -> dict[tuple[str, str, str], dict]:
     out = {}
-    for path in sorted((REPLAY / arm).glob("*.jsonl.gz")):
+    # data/aifs_ens_research moved to the external volume (user, 2026-09-23);
+    # a glob on it unplugged returns [] and would report an empty comparison.
+    for path in sorted(assert_present(REPLAY / arm, what="AIFS replay arm").glob("*.jsonl.gz")):
         with gzip.open(path, "rt") as handle:
             for line in handle:
                 record = json.loads(line)
