@@ -878,6 +878,38 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_activation (
   )
 );
 
+-- A certificate renewed before its end (user ruling 2026-09-23: 「到期前端
+-- 预警，不过期」).  One row per renewed activation: the same evidence under a
+-- new window, so the board can say which scopes serve on evidence the lane
+-- has not refreshed and how old that evidence is.  Append-only.
+CREATE TABLE IF NOT EXISTS calibration_native_ensemble_certificate_renewal (
+  renewal_id TEXT PRIMARY KEY,
+  artifact_kind TEXT NOT NULL CHECK(
+    artifact_kind IN ('NATIVE_ENSEMBLE_SYSTEM_CALIBRATION','CROSS_NATIVE_ENSEMBLE')
+  ),
+  station_id TEXT NOT NULL,
+  ensemble_system_id_or_star TEXT NOT NULL,
+  season_bin TEXT NOT NULL,
+  lead_bucket TEXT NOT NULL,
+  run_cycle TEXT NOT NULL,
+  run_cycle_by_system_sha256 TEXT CHECK(
+    run_cycle_by_system_sha256 IS NULL OR
+    length(run_cycle_by_system_sha256)=64
+  ),
+  source_activation_id TEXT NOT NULL,
+  source_artifact_id TEXT NOT NULL,
+  renewed_activation_id TEXT NOT NULL,
+  renewed_artifact_id TEXT NOT NULL,
+  evidence_train_end_date TEXT NOT NULL,
+  evidence_holdout_end_date TEXT NOT NULL,
+  source_valid_until_utc TEXT NOT NULL,
+  renewed_at_utc TEXT NOT NULL,
+  renewed_valid_until_utc TEXT NOT NULL,
+  renewal_reason TEXT NOT NULL,
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  UNIQUE(renewed_activation_id)
+);
+
 CREATE TABLE IF NOT EXISTS calibration_artifact_promotion (
   promotion_decision_id TEXT PRIMARY KEY,
   artifact_kind TEXT NOT NULL CHECK(artifact_kind IN ('MODEL_CALIBRATION','MODEL_ENSEMBLE')),
@@ -1081,6 +1113,7 @@ CREATE INDEX IF NOT EXISTS calibration_native_activation_window_idx ON calibrati
 -- the read streams and the walk stops after a row or two; an expired row is
 -- an old generation, so it sorts last either way.
 CREATE INDEX IF NOT EXISTS calibration_native_activation_generation_idx ON calibration_native_ensemble_activation(station_id,artifact_kind,season_bin,lead_bucket,generation DESC,activation_id);
+CREATE INDEX IF NOT EXISTS calibration_native_certificate_renewal_scope_idx ON calibration_native_ensemble_certificate_renewal(station_id,artifact_kind,season_bin,lead_bucket,renewed_valid_until_utc);
 CREATE INDEX IF NOT EXISTS calibration_station_source_authority_latest_idx ON calibration_station_source_authority(station_id,activated_at_utc,authority_id);
 CREATE INDEX IF NOT EXISTS basket_policy_activation_asof_idx ON basket_policy_activation(station_id,stage,season_bin,maturity_bin,liquidity_bin,strategy_version,valid_from_utc,valid_until_utc,generation);
 
@@ -3192,6 +3225,7 @@ NATIVE_ENSEMBLE_FOUNDATION_TABLES = (
 NATIVE_ENSEMBLE_ADDITIVE_TABLES = (
     "calibration_historical_taf_capture",
     "calibration_historical_taf_correction_quarantine",
+    "calibration_native_ensemble_certificate_renewal",
 )
 NATIVE_ENSEMBLE_SCHEMA_TABLES = (
     *NATIVE_ENSEMBLE_FOUNDATION_TABLES,
@@ -4717,6 +4751,50 @@ PRODUCTION_TARGET_TABLES = (
     "basket_target_order_reconciliations",
     "basket_target_writer_lock_wait_telemetry",
 )
+
+
+def native_ensemble_certificate_renewal_ddl() -> str:
+    """The renewal table and its index, exactly as ``DDL`` declares them.
+
+    The resident does not apply schema at start and the migration script
+    that does cannot run on the production store, so the lane that writes
+    renewals installs these two statements itself.  Read out of ``DDL`` so
+    there is one definition, not a copy that drifts.
+    """
+
+    statements: list[str] = []
+    statement = ""
+    for line in DDL.splitlines(keepends=True):
+        statement += line
+        if not sqlite3.complete_statement(statement):
+            continue
+        sql = statement.strip()
+        statement = ""
+        if sql and "calibration_native_ensemble_certificate_renewal" in sql:
+            statements.append(sql)
+    if len(statements) != 2:
+        raise RuntimeError("native_ensemble_certificate_renewal_ddl_incomplete")
+    return "\n".join(statements) + "\n"
+
+
+def apply_native_ensemble_certificate_renewal_schema(
+    conn: sqlite3.Connection, *, commit: bool = True,
+) -> dict[str, object]:
+    """Install the certificate renewal table on a store that lacks it."""
+
+    conn.execute("SAVEPOINT native_ensemble_certificate_renewal_schema")
+    try:
+        for sql in native_ensemble_certificate_renewal_ddl().split(";\n"):
+            if sql.strip():
+                conn.execute(sql)
+        conn.execute("RELEASE SAVEPOINT native_ensemble_certificate_renewal_schema")
+    except Exception:
+        conn.execute("ROLLBACK TO SAVEPOINT native_ensemble_certificate_renewal_schema")
+        conn.execute("RELEASE SAVEPOINT native_ensemble_certificate_renewal_schema")
+        raise
+    if commit:
+        conn.commit()
+    return {"table": "calibration_native_ensemble_certificate_renewal", "applied": True}
 
 
 def apply_maker_grid_oos_authority_schema(
@@ -6935,6 +7013,8 @@ __all__ = [
     "NATIVE_ENSEMBLE_FOUNDATION_TABLES",
     "NATIVE_ENSEMBLE_SCHEMA_TABLES",
     "apply_native_ensemble_foundation_schema",
+    "apply_native_ensemble_certificate_renewal_schema",
+    "native_ensemble_certificate_renewal_ddl",
     "native_ensemble_foundation_schema_status",
     "DDL",
     "MAKER_GRID_OOS_AUTHORITY_DDL",

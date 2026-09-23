@@ -259,5 +259,12 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] maker fill model calibration"
 "$PY" scripts/calibrate_maker_fill_model.py \
   || echo "maker fill calibration failed; refits above still committed" >&2
 
+# User ruling 2026-09-23 (「到期前端预警，不过期」): a P0 certificate whose
+# scope has nothing fresher is renewed inside ten days of its end -- same
+# evidence, new window, a receipt the board warns on.  Rules in
+# bayes_basket_target/native_ensemble_certificate_clock.py.
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] native ensemble certificate renewal"
+"$PY" scripts/renew_native_ensemble_certificates.py --commit \
+  || echo "certificate renewal failed; served certificates stand to their end" >&2
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] calibration refit sweep done rc=$RC"
 exit "$RC"
