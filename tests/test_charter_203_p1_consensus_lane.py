@@ -256,13 +256,28 @@ def test_a_decision_past_the_freshness_window_is_recorded_not_traded(store) -> N
 # Firing, and the row it leaves.
 
 
-def test_consensus_in_the_band_is_planned_as_a_take_at_the_ask(store) -> None:
+def test_consensus_in_the_band_is_planned_as_a_rung_at_bid_plus_one(store) -> None:
+    """v2 (「吃单改为post only。best买一+1，挂单周期改为最短」): a post-only GTD
+    rung one tick over the best bid, signed at the venue's minimum horizon."""
+
     _seed(store)
     planned = _plan(store)
     [plan] = planned["plans"]
     assert plan["bucket"] == "27°C"
-    assert plan["best_ask"] == 0.60 and plan["limit_price"] == pytest.approx(0.61)
-    assert plan["order_type"] == "FOK" and plan["post_only"] is False
+    assert (plan["best_bid"], plan["best_ask"]) == (0.58, 0.60)
+    assert plan["limit_price"] == pytest.approx(0.59)
+    assert plan["order_type"] == "GTD" and plan["post_only"] is True
+    assert "fok_price_cap" not in plan
+    # The shortest horizon the venue takes: three minutes plus the signing
+    # margin, not the belief's own end.
+    from bayes_basket_target.production import (  # noqa: PLC0415
+        GTD_SIGNING_MARGIN_SECONDS, VENUE_GTD_MINIMUM_HORIZON_SECONDS,
+    )
+    horizon = plan["expiration"] - lane._utc(NOW).timestamp()
+    assert horizon == pytest.approx(
+        VENUE_GTD_MINIMUM_HORIZON_SECONDS + GTD_SIGNING_MARGIN_SECONDS, abs=1.0
+    )
+    assert plan["expiration_basis"] == "venue_minimum_horizon"
     assert plan["cost_usdc"] <= 5.0 + 1e-9
     assert plan["remaining_hours"] == pytest.approx(8.0)
     assert plan["order_intent_id"].startswith(lane.INTENT_PREFIX)
@@ -287,9 +302,9 @@ def test_the_band_is_half_open_on_the_best_ask(store, ask, fires) -> None:
         assert row["refusal"].startswith("rule_not_met:ask_outside_band:")
 
 
-def test_the_walked_limit_never_pays_over_the_cap(store) -> None:
+def test_the_rung_never_pays_over_the_cap(store) -> None:
     _seed(store, book=_book(ask_27=0.69))
-    planned = _plan(store, settings=_settings(max_paid_price=0.69))
+    planned = _plan(store, settings=_settings(max_paid_price=0.67))
     assert planned["plans"] == []
     [row] = planned["evaluations"]
     assert row["refusal"].startswith("paid_price_above_cap:") and row["fired"] is True
@@ -327,19 +342,39 @@ def test_a_stale_book_is_scored_but_never_bought(store) -> None:
 # A station-day may be bought several times (the user's ruling).
 
 
-def test_every_decision_that_meets_the_rule_is_a_take_same_bucket_again(store) -> None:
+def test_the_same_bucket_is_bought_once_a_second_take_needs_a_new_bucket(store) -> None:
+    """User ruling 2026-09-23 「每站日上限 2 笔，单桶上限 1 笔」."""
+
     _seed(store, fact_id="f1", decided="2026-09-19T07:35:00.000Z")
     _seed(store, fact_id="f2", decided="2026-09-19T08:00:00.000Z", sequence=2)
     planned = _plan(store, settings=_settings(fact_fresh_seconds=3600.0))
-    assert [p["bucket"] for p in planned["plans"]] == ["27°C", "27°C"]
-    assert [p["station_day_buy_index"] for p in planned["plans"]] == [1, 2]
+    assert [p["bucket"] for p in planned["plans"]] == ["27°C"]
+    refused = {e["fact_id"]: e["refusal"] for e in planned["evaluations"] if e["refusal"]}
+    assert refused["f2"] == "bucket_buy_cap:1"
+    # The four centres move to 28°C: that is a new bucket and a second take.
+    moved = {"26°C": 0.05, "27°C": 0.20, "28°C": 0.60, "29°C": 0.15}
+    book = [
+        {"bucket": "26°C", "ask_levels": [{"price": 0.06, "shares": 200.0}],
+         "bid_levels": [{"price": 0.04, "shares": 200.0}], "ask_available": True},
+        {"bucket": "27°C", "ask_levels": [{"price": 0.20, "shares": 200.0}],
+         "bid_levels": [{"price": 0.18, "shares": 200.0}], "ask_available": True},
+        {"bucket": "28°C", "ask_levels": [{"price": 0.60, "shares": 200.0}],
+         "bid_levels": [{"price": 0.58, "shares": 200.0}], "ask_available": True},
+        {"bucket": "29°C", "ask_levels": [{"price": 0.15, "shares": 200.0}],
+         "bid_levels": [{"price": 0.13, "shares": 200.0}], "ask_available": True},
+    ]
+    _seed(store, fact_id="f3", decided="2026-09-19T08:01:00.000Z", sequence=3,
+          probabilities=moved, book=book)
+    again = _plan(store, now="2026-09-19T08:02:00.000Z",
+                  settings=_settings(fact_fresh_seconds=3600.0, min_minutes_between_buys=0.0))
+    assert [(p["fact_id"], p["bucket"]) for p in again["plans"]] == [("f3", "28°C")]
 
 
 def test_the_station_day_buy_cap_bounds_the_takes(store) -> None:
     for i in range(3):
         _seed(store, fact_id=f"f{i}", decided=f"2026-09-19T07:5{i}:00.000Z", sequence=i + 1)
     planned = _plan(store, settings=_settings(
-        max_buys_per_station_day=2, min_minutes_between_buys=0.0,
+        max_buys_per_station_day=2, min_minutes_between_buys=0.0, max_buys_per_bucket=9,
     ))
     assert len(planned["plans"]) == 2
     assert any(
@@ -356,7 +391,7 @@ def test_takes_on_one_station_day_are_spaced_twenty_minutes(store) -> None:
     _seed(store, fact_id="f2", decided="2026-09-19T07:46:00.000Z", sequence=2, observed=fresh)
     _seed(store, fact_id="f3", decided="2026-09-19T08:05:00.000Z", sequence=3, observed=fresh)
     planned = _plan(store, now="2026-09-19T08:06:00.000Z",
-                    settings=_settings(fact_fresh_seconds=3600.0))
+                    settings=_settings(fact_fresh_seconds=3600.0, max_buys_per_bucket=9))
     assert [p["fact_id"] for p in planned["plans"]] == ["f1", "f3"]
     refused = {e["fact_id"]: e["refusal"] for e in planned["evaluations"] if e["refusal"]}
     assert refused["f2"].startswith("station_day_buy_spacing:1.0m<20m")
@@ -444,15 +479,131 @@ def test_the_lane_is_registered_and_shipped_on() -> None:
     from bayes_basket_target import strategy_lanes  # noqa: PLC0415
 
     assert strategy_lanes.LANE_P1_CONSENSUS in strategy_lanes.KNOWN_LANES
-    served = strategy_lanes.lane_settings(strategy_lanes.LANE_P1_CONSENSUS)
+    served = dict(strategy_lanes.P1_CONSENSUS_DEFAULT_SETTINGS)
     assert served["enabled"] is True
-    assert served["rule"] == lane.RULE_V1
+    assert served["rule"] == lane.RULE_V2
+    # The operator file names the same rule (its switch is the operator's).
+    assert strategy_lanes.lane_settings(strategy_lanes.LANE_P1_CONSENSUS)["rule"] == lane.RULE_V2
+    assert lane.EXECUTION_CANDIDATE == "MAKER"
     assert served["stake_usdc"] == 5.0
     assert (served["min_remaining_hours"], served["max_remaining_hours"]) == (6.0, 10.0)
     assert (served["min_ask"], served["max_ask"]) == (0.5, 0.7)
-    assert served["max_buys_per_station_day"] == 4
+    assert served["max_buys_per_station_day"] == 2
+    assert served["max_buys_per_bucket"] == 1
     assert served["min_minutes_between_buys"] == 20.0
     assert served["send_book_fresh_seconds"] <= 60.0
+
+
+def test_the_taker_rule_is_retired() -> None:
+    with pytest.raises(ValueError, match="p1_consensus_rule_retired"):
+        lane.rule_version_for(lane.RULE_V1)
+
+
+# ---------------------------------------------------------------------------
+# 「没成交继续挂」: the rung's fate, and the re-post.
+
+
+def _intent_row(store, plan: dict, state: str, filled: float = 0.0) -> None:
+    decision = lane_decision_id(lane.LANE, ST, ED)
+    if store.execute("SELECT 1 FROM auto_trade_decisions WHERE decision_id=?", (decision,)).fetchone() is None:
+        _insert(store, "auto_trade_decisions", {
+            "decision_id": decision, "station_id": ST, "event_date": ED,
+            "settlement_timezone": TZ, "strategy_lane": "basket",
+            "decided_state": "prepared", "will_order": 0, "created_at": DECIDED,
+        })
+    _insert(store, "basket_target_order_intents", {
+        "order_intent_id": plan["order_intent_id"], "decision_id": decision,
+        "cycle_id": f"p1_consensus_cycle_{plan['order_intent_id']}", "bucket": plan["bucket"],
+        "token_id": plan["token_id"], "side": "YES", "order_action": "BUY",
+        "limit_price": plan["limit_price"], "requested_size": plan["shares"],
+        "requested_notional_usdc": plan["cost_usdc"], "state": state,
+        "live_submit_authorized": 1, "created_at": NOW,
+        "idempotency_key": f"idem_{plan['order_intent_id']}",
+        "intent_json": json.dumps({"lane": lane.LANE}),
+    })
+    if filled:
+        _insert(store, "basket_target_order_reconciliations", {
+            "order_intent_id": plan["order_intent_id"], "filled_size": filled,
+            "state": "resolved_filled",
+        })
+
+
+def test_an_unfilled_rung_that_lapsed_is_not_a_take_and_is_reposted(store) -> None:
+    _seed(store)
+    [plan] = _plan(store)["plans"]
+    _intent_row(store, plan, "cancelled")          # the GTD lapsed, nothing filled
+    later = "2026-09-19T08:06:00.000Z"
+    # A fresh book at the later instant, still in the band.
+    _insert(store, "basket_official_ws_snapshot", {
+        "snapshot_id": "snap_later", "market_id": "m", "station_id": ST, "event_date": ED,
+        "settlement_timezone": TZ, "sequence": 9, "observed_at": "2026-09-19T08:05:40.000Z",
+        "quote_version": "v", "quote_observed_at": "2026-09-19T08:05:40.000Z",
+        "quote_expires_at": "2026-09-19T12:00:00Z", "quote_source": "OFFICIAL_CLOB_WS",
+        "remaining_budget_usdc": 100.0, "buckets_json": json.dumps(_book(ask_27=0.61)),
+        "state": "COMMITTED", "created_at": "2026-09-19T08:05:40.000Z",
+    })
+    # The sync reads the lapse: the row is no longer a take, the bucket is free.
+    lane.sync_rungs(store, floor_event_date=ED)
+    assert lane.bucket_buys(store, ST, ED, "27°C") == 0
+    assert store.execute(f"SELECT refusal FROM {lane.EVALUATION_TABLE}").fetchone()[0] == "send:cancelled"
+    again = _plan(store, now=later)
+    [repost] = again["plans"]
+    assert repost["order_intent_id"] != plan["order_intent_id"]
+    assert repost["limit_price"] == pytest.approx(0.60)   # bid 0.59 + one tick
+    row = store.execute(
+        f"SELECT order_intent_id, refusal, retry_count FROM {lane.EVALUATION_TABLE}"
+    ).fetchone()
+    assert row == (repost["order_intent_id"], None, 1)
+
+
+def test_a_filled_rung_is_a_take_and_is_never_reposted(store) -> None:
+    _seed(store)
+    [plan] = _plan(store)["plans"]
+    _intent_row(store, plan, "cancelled", filled=3.0)      # partly filled, then lapsed
+    assert lane.sync_rungs(store, floor_event_date=ED) == 0
+    assert lane.bucket_buys(store, ST, ED, "27°C") == 1
+    assert _plan(store, now="2026-09-19T08:03:00.000Z")["plans"] == []
+
+
+def test_one_rung_at_a_time(store) -> None:
+    _seed(store, fact_id="f1", decided="2026-09-19T07:59:00.000Z")
+    [plan] = _plan(store)["plans"]
+    _intent_row(store, plan, "submitted")                   # resting at the venue
+    _seed(store, fact_id="f2", decided="2026-09-19T08:01:00.000Z", sequence=2)
+    planned = _plan(store)
+    assert planned["plans"] == []
+    [row] = planned["evaluations"]
+    assert row["refusal"] == "rung_resting:27°C" and row["fired"] is True
+
+
+def test_no_repost_once_the_day_is_under_six_hours(store) -> None:
+    _seed(store, decided="2026-09-19T09:55:00.000Z", observed="2026-09-19T09:55:30.000Z")
+    [plan] = _plan(store, now="2026-09-19T09:56:00.000Z")["plans"]
+    _intent_row(store, plan, "cancelled")
+    assert _plan(store, now="2026-09-19T10:05:00.000Z")["plans"] == []
+    refusal = store.execute(f"SELECT refusal FROM {lane.EVALUATION_TABLE}").fetchone()[0]
+    assert refusal == "window_closed"
+
+
+def test_the_send_is_a_post_only_gtd_rung(store, monkeypatch) -> None:
+    _seed(store)
+    sent = {}
+
+    def fake_send(conn, **kwargs):
+        sent.update(kwargs)
+        return {"exchange_post_started": True, "event_type": "POST_ACK", "matched_size": 0.0}
+
+    monkeypatch.setattr(lane, "send_lane_buy", fake_send)
+    receipt = lane.execute_p1_consensus_entries(
+        store, None, transport=object(), now_utc=NOW, live_submit_authorized=True,
+        admission=ADMIT,
+    )
+    assert receipt["submitted"] == 1
+    assert sent["execution_candidate"] == "MAKER"
+    assert isinstance(sent["expiration"], int) and "fok_price_cap" not in sent
+    assert sent["intent_body"]["post_only"] is True
+    # A rung the venue took is resting, not refused.
+    assert store.execute(f"SELECT refusal FROM {lane.EVALUATION_TABLE}").fetchone()[0] is None
 
 
 def test_the_daemon_runs_the_lane_at_both_ends_of_the_cycle() -> None:

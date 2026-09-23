@@ -169,7 +169,10 @@ P1_TAIL_DEFAULT_SETTINGS: dict[str, Any] = {
 P1_CONSENSUS_DEFAULT_SETTINGS: dict[str, Any] = {
     "enabled": True,
     "stake_usdc": 5.0,
-    "rule": "p1_four_centre_consensus_taker_v1",
+    # v2 (user ruling 2026-09-23 「吃单改为post only。best买一+1，挂单周期改为
+    # 最短，没成交继续挂！」): a post-only GTD rung at bid+1, signed at the
+    # venue's minimum horizon, re-posted while the belief stands.  v1 crossed.
+    "rule": "p1_four_centre_consensus_maker_v2",
     # The window, on the hours left to the settlement clock at the decision
     # instant (``settlement_time.hours_to_settlement``), half-open.
     "min_remaining_hours": 6.0,
@@ -177,29 +180,30 @@ P1_CONSENSUS_DEFAULT_SETTINGS: dict[str, Any] = {
     # The band, on the consensus bucket's best ask, half-open ...
     "min_ask": 0.50,
     "max_ask": 0.70,
-    # ... and the most the walked FOK limit may authorise.
+    # ... and the most a rung may be priced at (bid+1 sits under the ask, so
+    # this binds only if the band is widened).
     "max_paid_price": 0.70,
     # Not a speed trade (+12% priced fifteen minutes late), so a decision is
     # judged up to this old -- long enough to span a slow cycle's head/tail.
     "fact_fresh_seconds": 1200.0,
-    # What may still be scored, and what may be bought (the FOK is priced on
-    # this ladder and arrives later).
+    # What may still be scored, and what a rung may be priced on.
     "book_fresh_seconds": 900.0,
     "send_book_fresh_seconds": 60.0,
     "live_ws_book": True,
-    # Every decision that meets the rule is a take, the same bucket again
-    # included; the replay's busiest station-day took four.  Killed FOKs and
-    # egress-held sends are not buys; ``max_sends`` bounds them.
-    "max_buys_per_station_day": 4,
-    "max_sends_per_station_day": 8,
+    # A rung that expired or was cancelled unfilled, or an egress-held send,
+    # is not a take.  User ruling 2026-09-23 「每站日上限 2 笔，单桶上限 1 笔」: two takes a
+    # station-day, one per bucket (this lane's own takes).
+    "max_buys_per_station_day": 2,
+    "max_buys_per_bucket": 1,
+    # Every rung posted counts, filled or not: a rung lives ~3.5 minutes and
+    # is re-posted while unfilled, so this is a bound on a runaway, not a
+    # budget (a four-hour window re-posted every ~4 minutes is ~60).
+    "max_sends_per_station_day": 120,
     # User ruling 2026-09-23 「加 20 分钟间隔」: consecutive takes on one
     # station-day at least this far apart in decision time.  The replay's sat
     # 6-91 minutes apart (most 15-40) because decisions came that slowly;
     # with cycles at ~70 s, LTAC 2026-09-23 took four in four minutes.
     "min_minutes_between_buys": 20.0,
-    # One tick above the best ask, as the tail lane learned (the top ask
-    # level is a median 10 shares deep and a 5 USDC take outgrows it).
-    "walk_ticks": 1,
 }
 
 #: The per-trade stake is a board dial (charter 146); the server refuses a

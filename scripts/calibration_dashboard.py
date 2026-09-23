@@ -11893,6 +11893,8 @@ def collect_p1_consensus_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             "max_paid_price": cfg.get("max_paid_price"),
             "fact_fresh_seconds": cfg.get("fact_fresh_seconds"),
             "max_buys_per_station_day": cfg.get("max_buys_per_station_day"),
+            "max_buys_per_bucket": cfg.get("max_buys_per_bucket"),
+            "min_minutes_between_buys": cfg.get("min_minutes_between_buys"),
             "source": lanes.get("source"),
             "updated_at_utc": lanes.get("updated_at_utc"),
         },
@@ -21290,7 +21292,7 @@ function p1ConsensusLane(){
       <span class="pill">事实新鲜窗 ${secs(S.fact_fresh_seconds)}</span>
       <span class="muted">${h(S.rule||"")}</span>
     </div>
-    <div class="muted" style="margin-top:6px">规则：每个 P1 决策，若离本站结算时钟还有 6–10 小时（当地约下午两点到六点），且<b>模型众数桶＝模型均值桶＝市场众数桶＝市场均值桶</b>（两边在共同桶上归一，均值桶取 Σ概率×序号 四舍五入的那一档），这一桶的卖一又在 ${n2(S.min_ask)}–${n2(S.max_ask)} 之间——就按卖一 FOK 吃进 ${usd(S.stake_usdc)}（限价多走一跳）。<b>每个满足条件的决策都买</b>，同一桶可以重复买，每站日最多 ${S.max_buys_per_station_day==null?"—":S.max_buys_per_station_day} 笔；与秤砣线<b>互不避让</b>（2026-09-23 裁决「照买，不避让」）。<br>
+    <div class="muted" style="margin-top:6px">规则：每个 P1 决策，若离本站结算时钟还有 6–10 小时（当地约下午两点到六点），且<b>模型众数桶＝模型均值桶＝市场众数桶＝市场均值桶</b>（两边在共同桶上归一，均值桶取 Σ概率×序号 四舍五入的那一档），这一桶的卖一又在 ${n2(S.min_ask)}–${n2(S.max_ask)} 之间——就在这一桶<b>挂买一加一跳的 post-only 单</b> ${usd(S.stake_usdc)}，有效期取交易所允许的最短（约 3.5 分钟），<b>没成交就在新盘口上重挂</b>，直到这条判断过期或离日终不足 6 小时（2026-09-23 裁决「吃单改为post only。best买一+1，挂单周期改为最短，没成交继续挂！」；此前 v1 是按卖一吃单）。每站日最多 ${S.max_buys_per_station_day==null?"—":S.max_buys_per_station_day} 笔、同一桶最多 ${S.max_buys_per_bucket==null?"—":S.max_buys_per_bucket} 笔、同站日两笔隔 ${S.min_minutes_between_buys==null?"—":S.min_minutes_between_buys} 分钟，同一时刻只挂一张；与秤砣线<b>互不避让</b>（「照买，不避让」）。<br>
     依据（2026-09-23 只读回放 07-28→09-22，按决策提交后第一份盘口、每笔 20U）：117 笔 / 90 站日 / 33 个事件日，命中 71.8%，卖一均价 0.627，ROI +15.3%（90% 区间 +4.8% 到 +25.3%）；前半 +34.8%、后半 +10.2%；09-20 以后 27 笔 +10.6%；延后 15 分钟再买仍 +12.2%——不是抢时间的交易。<br>
     <b>诚实边界</b>：这一格是切片搜出来的（四同 → 6–10 小时 → 价带 → 每次都买），最窄的祖先格经多重比较 p=0.054；真正的前向只有 3 个事件日。所以小额上线，窗口内每个决策——买没买都记——落在评估表里，前向再读。</div></div>`;
   const tiles=`<div class="grid">
@@ -21320,7 +21322,7 @@ function p1ConsensusLane(){
   const pending=E.available&&!E.total?`<div class="card muted">评估表已建立，但窗口内还没有新的 P1 决策事实可判——决策层写出事实之后才会有行。</div>`:"";
   return head+tiles+pending+
     `<div class="card"><b>触发的决策</b><div class="muted">每一行是一个 P1 决策：四个中心同桶、卖一在价带内。右边三列是送出那一刻本线在这个站日已买的笔数、账户在这个站日持有哪些桶（秤砣线的也在内）、以及挂着的买单——本线不因它们停手，只记下来。</div>${fired}</div>`+
-    `<div class="card"><b>结果分布</b><div class="muted">rule_not_met:centres_split 是四个中心不同桶；rule_not_met:ask_outside_band 是同桶但卖一不在价带；fact_stale 是事实到手时已超出新鲜窗；send_book_stale 是盘口太旧不下单；station_day_buy_cap 是本站日已买满；send:* 是 FOK 没成交。空白（sent）是已送出。</div><table class="tight"><thead><tr><th>结果</th><th>次数</th><th>其中已触发</th></tr></thead><tbody>${refusals}</tbody></table></div>`+
+    `<div class="card"><b>结果分布</b><div class="muted">rule_not_met:centres_split 是四个中心不同桶；rule_not_met:ask_outside_band 是同桶但卖一不在价带；fact_stale 是事实到手时已超出新鲜窗；send_book_stale 是盘口太旧不下单；rung_resting 是本站日已有一张挂单在场上；station_day_buy_cap / bucket_buy_cap / station_day_buy_spacing 是站日上限、单桶上限、20 分钟间隔；send:cancelled 等是挂单到期没成交（会在新盘口上重挂）；retry_* 是重挂时重判的结果；window_closed 是离日终不足 6 小时、不再重挂。空白（sent）是挂单在场上或已成交。</div><table class="tight"><thead><tr><th>结果</th><th>次数</th><th>其中已触发</th></tr></thead><tbody>${refusals}</tbody></table></div>`+
     `<div class="card"><b>按事件日</b><table class="tight"><thead><tr><th>事件日</th><th>判过</th><th>四同</th><th>触发</th><th>送出</th></tr></thead><tbody>${days}</tbody></table></div>`+
     `<div class="card"><b>成交</b>${tradeTable}</div>`;
 }

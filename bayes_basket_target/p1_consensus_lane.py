@@ -16,10 +16,16 @@ The condition, on one P1 decision (a ``basket_policy_training_fact`` row):
     ``sum(p x ordinal)`` rounded half up;
   * that bucket's best ask is in [0.50, 0.70).
 
-Then the lane crosses FOK at the ask for ``stake_usdc``.  Every decision that
-meets the condition is a take -- a station-day may be bought several times,
-the same bucket again included -- up to ``max_buys_per_station_day``, and no
-sooner than ``min_minutes_between_buys`` after the station-day's last take
+Then the lane posts one post-only GTD rung at the best bid plus one tick for
+``stake_usdc`` (v2, user ruling 2026-09-23 「吃单改为post only。best买一+1，挂单
+周期改为最短，没成交继续挂！」): signed at the venue's minimum horizon, and
+re-posted on the book that stands when it lapses unfilled, for as long as the
+decision's belief stands and the day is still six hours from its clock.  v1
+crossed FOK at the ask.  Every decision that meets the condition is a take -- a station-day may be bought more than once --
+up to ``max_buys_per_station_day`` (2) and ``max_buys_per_bucket`` (1; user
+ruling 2026-09-23 「每站日上限 2 笔，单桶上限 1 笔」: a second take has to be a
+bucket the four centres moved to), and no sooner than
+``min_minutes_between_buys`` after the station-day's last take
 (user ruling 2026-09-23 「加 20 分钟间隔」: the replay's successive takes sat
 6-91 minutes apart; live, LTAC bought four times in four minutes).
 
@@ -74,7 +80,6 @@ from .p1_tail_lane import (
     held_buckets,
     live_ws_snapshot,
     open_order_on_station_day,
-    taker_take,
 )
 from .settlement_time import hours_to_settlement, settlement_day_state
 from .strategy_lanes import (
@@ -88,6 +93,8 @@ from .tiebreak_lane import (
     _envelope,
     book_features,
     evaluate_rule as tiebreak_evaluate_rule,
+    maker_rung,
+    resting_order_fields,
     settle_stuck_lane_cycles,
 )
 
@@ -95,11 +102,29 @@ LANE = LANE_P1_CONSENSUS
 LANE_TITLE = "同心线"
 STRATEGY_ID = "bayes_basket_target_v1"
 SCHEMA = "p1_consensus_lane_plan_v1"
+#: v1 crossed FOK at the ask (2026-09-23 08:11Z..11:41Z, one station-day,
+#: LTAC, four takes).  Retired the same day by the user's ruling 「吃单改为
+#: post only。best买一+1，挂单周期改为最短，没成交继续挂！」: the name stays only
+#: so the rows it wrote still resolve; nothing sends under it.
 RULE_V1 = "p1_four_centre_consensus_taker_v1"
-RULE_VERSIONS = {RULE_V1: "p1_consensus_lane_v1"}
-DEFAULT_RULE = RULE_V1
+#: v2: the same four conditions, posted as a post-only GTD rung at the best
+#: bid plus one tick (the tiebreak lane's own ``maker_rung``), expiring at
+#: the venue's minimum horizon, and re-posted while the belief stands.
+RULE_V2 = "p1_four_centre_consensus_maker_v2"
+RULE_VERSIONS = {RULE_V1: "p1_consensus_lane_v1", RULE_V2: "p1_consensus_lane_v2"}
+RETIRED_RULES = frozenset({RULE_V1})
+DEFAULT_RULE = RULE_V2
 RULE_VERSION = RULE_VERSIONS[DEFAULT_RULE]
-EXECUTION_CANDIDATE = "TAKER_FOK"
+EXECUTION_CANDIDATE = "MAKER"
+#: Intent states that are still at (or on their way to) the venue.
+OPEN_STATES = frozenset({"prepared", "submitting", "submitted", "reconcile_required"})
+#: Row verdicts a later pass may not undo: the station-day or the bucket is
+#: spent, or the day is over.  Every other refusal on a fired row is re-asked
+#: while the belief stands -- that is the ruling's 「没成交继续挂」.
+TERMINAL_REFUSAL_PREFIXES = (
+    "bucket_buy_cap:", "station_day_buy_cap:", "station_day_send_cap:",
+    "settlement_day_closed", "window_closed",
+)
 EVALUATION_TABLE = "p1_consensus_lane_evaluation"
 INTENT_PREFIX = "p1cons_"
 DEFAULT_LOOKBACK_DAYS = 2
@@ -158,6 +183,15 @@ EVALUATION_INDEX_DDL = (
 )
 
 
+#: Added with v2: a fired row is re-posted in place (the tiebreak lane's
+#: pattern), so the row says how often and on which book.
+RETRY_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("retry_count", "INTEGER"),
+    ("retried_at_utc", "TEXT"),
+    ("retry_snapshot_id", "TEXT"),
+)
+
+
 def ensure_lane_schema(conn: sqlite3.Connection) -> None:
     """Statement by statement, never ``executescript``: the resident calls
     this inside the writer's transaction."""
@@ -165,6 +199,10 @@ def ensure_lane_schema(conn: sqlite3.Connection) -> None:
     conn.execute(EVALUATION_DDL)
     for ddl in EVALUATION_INDEX_DDL:
         conn.execute(ddl)
+    present = {row[1] for row in conn.execute(f"PRAGMA table_info({EVALUATION_TABLE})")}
+    for name, ctype in RETRY_COLUMNS:
+        if name not in present:
+            conn.execute(f"ALTER TABLE {EVALUATION_TABLE} ADD COLUMN {name} {ctype}")
 
 
 def _utc(value: str) -> datetime:
@@ -180,6 +218,8 @@ def rule_version_for(rule: Any) -> str:
     name = str(rule or DEFAULT_RULE)
     if name not in RULE_VERSIONS:
         raise ValueError(f"p1_consensus_rule_unknown:{name}")
+    if name in RETIRED_RULES:
+        raise ValueError(f"p1_consensus_rule_retired:{name}")
     return RULE_VERSIONS[name]
 
 
@@ -367,6 +407,22 @@ def last_buy_decision_at(
     return str(row[0]) if row and row[0] else None
 
 
+def bucket_buys(
+    conn: sqlite3.Connection, station_id: str, event_date: str, bucket: str
+) -> int:
+    """This lane's takes on one bucket of the station-day that are a
+    position or may still become one -- read like ``last_buy_decision_at``,
+    so a take planned earlier in the same pass counts and a killed one does
+    not."""
+
+    return int(conn.execute(
+        f"SELECT COUNT(*) FROM {EVALUATION_TABLE}"
+        " WHERE station_id=? AND event_date=? AND market_mode=?"
+        " AND order_intent_id IS NOT NULL AND refusal IS NULL",
+        (station_id, event_date, bucket),
+    ).fetchone()[0] or 0)
+
+
 def _record(
     conn: sqlite3.Connection,
     candidate: Mapping[str, Any],
@@ -444,11 +500,18 @@ def _planning_refusal(
     max_sends: int,
     planned_this_pass: int,
     min_minutes_between_buys: float = 0.0,
+    bucket: str | None = None,
+    max_buys_per_bucket: int | None = None,
 ) -> str | None:
     station = candidate["station_id"]
     day = candidate["event_date"]
     if station_day_buys(conn, station, day) + planned_this_pass >= int(max_buys):
         return f"station_day_buy_cap:{int(max_buys)}"
+    # User ruling 2026-09-23 「每站日上限 2 笔，单桶上限 1 笔」: a second take on
+    # the station-day has to be a different bucket -- the four centres moved.
+    if bucket is not None and max_buys_per_bucket is not None:
+        if bucket_buys(conn, station, day, bucket) >= int(max_buys_per_bucket):
+            return f"bucket_buy_cap:{int(max_buys_per_bucket)}"
     # User ruling 2026-09-23 「加 20 分钟间隔」: a station-day may be bought
     # several times, but not on consecutive decisions a minute apart -- the
     # replay's successive takes sat 6-91 minutes apart (most 15-40), and
@@ -479,6 +542,60 @@ def _planning_refusal(
     return None
 
 
+def open_rung(conn: sqlite3.Connection, station_id: str, event_date: str) -> dict[str, Any] | None:
+    """This lane's order on the station-day that the venue has not finished
+    with -- a rung resting, or a send not yet answered.  One at a time."""
+
+    row = conn.execute(
+        "SELECT order_intent_id, bucket, state FROM basket_target_order_intents"
+        " WHERE decision_id=? AND state IN ('prepared','submitting','submitted','reconcile_required')"
+        " ORDER BY created_at DESC LIMIT 1",
+        (lane_decision_id(LANE, station_id, event_date),),
+    ).fetchone()
+    if row is None:
+        return None
+    return {"order_intent_id": str(row[0]), "bucket": str(row[1]), "state": str(row[2])}
+
+
+def sync_rungs(conn: sqlite3.Connection, *, floor_event_date: str) -> int:
+    """Bring each row that sent a rung into line with what became of it.
+
+    A fill of any size makes the row a take (refusal NULL): it is a position
+    and counts against the caps and the spacing.  A rung that expired, was
+    cancelled or was refused with nothing filled becomes ``send:<state>`` --
+    not a take, so the caps release and the re-post pass may put it back.
+    Anything still at the venue is left alone.
+    """
+
+    changed = 0
+    rows = conn.execute(
+        f"SELECT e.order_intent_id, e.refusal, i.state, COALESCE(r.state,''),"
+        " COALESCE(r.filled_size, 0)"
+        f" FROM {EVALUATION_TABLE} e"
+        " JOIN basket_target_order_intents i ON i.order_intent_id=e.order_intent_id"
+        " LEFT JOIN basket_target_order_reconciliations r ON r.order_intent_id=e.order_intent_id"
+        " WHERE e.event_date>=? AND e.order_intent_id IS NOT NULL",
+        (floor_event_date,),
+    ).fetchall()
+    for intent_id, refusal, intent_state, recon_state, filled in rows:
+        if float(filled or 0.0) > 0.0 or str(intent_state) == "filled":
+            new_refusal = None
+        elif str(intent_state) in {"failed", "cancelled"} or str(recon_state) in {
+            "resolved_not_placed", "resolved_cancelled",
+        }:
+            current = str(refusal or "")
+            new_refusal = current if current.startswith("send:") else f"send:{recon_state or intent_state}"
+        else:
+            continue
+        if new_refusal != refusal:
+            conn.execute(
+                f"UPDATE {EVALUATION_TABLE} SET refusal=? WHERE order_intent_id=?",
+                (new_refusal, str(intent_id)),
+            )
+            changed += 1
+    return changed
+
+
 def plan_p1_consensus_entries(
     target_conn: sqlite3.Connection,
     canonical_conn: sqlite3.Connection | None = None,
@@ -488,11 +605,18 @@ def plan_p1_consensus_entries(
     admission: Admission | None = None,
     ws_manifest_path: Path | str | None = None,
 ) -> dict[str, Any]:
-    """Judge every unjudged P1 decision in the window; plan a take where the
-    four centres agree on a bucket the market still sells in the band."""
+    """Judge every unjudged P1 decision in the window, and re-ask every fired
+    one whose rung ended unfilled while its belief stands; plan a post-only
+    rung at the best bid plus one tick where the four centres agree on a
+    bucket the market still sells in the band."""
 
     ensure_lane_schema(target_conn)
-    repairs = {"cycles_settled": settle_stuck_lane_cycles(target_conn)}
+    now = _utc(now_utc)
+    floor_day = (now - timedelta(days=DEFAULT_LOOKBACK_DAYS)).date().isoformat()
+    repairs = {
+        "cycles_settled": settle_stuck_lane_cycles(target_conn),
+        "rungs_synced": sync_rungs(target_conn, floor_event_date=floor_day),
+    }
     cfg = {**P1_CONSENSUS_DEFAULT_SETTINGS, **dict(settings or lane_settings(LANE))}
     rule_name = str(cfg.get("rule") or DEFAULT_RULE)
     rule_version = rule_version_for(rule_name)
@@ -516,7 +640,8 @@ def plan_p1_consensus_entries(
     max_buys = int(dial("max_buys_per_station_day"))
     max_sends = int(dial("max_sends_per_station_day"))
     min_gap = dial("min_minutes_between_buys")
-    walk_ticks = int(dial("walk_ticks"))
+    max_per_bucket = int(dial("max_buys_per_bucket"))
+    min_hours = dial("min_remaining_hours")
     live_book = cfg.get("live_ws_book")
     live_book = True if live_book is None else bool(live_book)
     manifest: dict[str, Any] = {}
@@ -527,113 +652,92 @@ def plan_p1_consensus_entries(
         return manifest["root"]
 
     gate = admission or (lambda station, conn: live_station_admission(station, conn=conn))
-    now = _utc(now_utc)
-    done = _evaluated_facts(
-        target_conn,
-        since_event_date=(now - timedelta(days=DEFAULT_LOOKBACK_DAYS)).date().isoformat(),
-    )
-    candidates = candidate_facts(
-        target_conn, now_utc=now_utc,
-        min_remaining_hours=dial("min_remaining_hours"),
-        max_remaining_hours=dial("max_remaining_hours"),
-        fresh_seconds=fresh_seconds,
-    )
-    evaluations: list[dict[str, Any]] = []
-    plans: list[dict[str, Any]] = []
     planned_by_day: dict[tuple[str, str], int] = {}
     registries: dict[tuple[str, str], Mapping[str, Any]] = {}
-    for candidate in candidates:
-        if candidate["fact_id"] in done:
-            continue
-        done.add(candidate["fact_id"])
-        scope = (candidate["station_id"], candidate["event_date"])
-        state: dict[str, Any] = {
-            "snapshot": None, "book_age": None, "reading": {}, "book": {}, "context": {},
-        }
 
-        def refuse(reason: str, *, fired: bool = False) -> None:
-            evaluations.append(_record(
-                target_conn, candidate, snapshot=state["snapshot"], book_age=state["book_age"],
-                reading=state["reading"], book=state["book"], context=state["context"],
-                fired=fired, refusal=reason, order_intent_id=None, plan=None,
-                now_utc=now_utc, rule_version=rule_version,
-            ))
-
-        if float(candidate["fact_age_seconds"]) > fresh_seconds:
-            refuse(f"fact_stale:{candidate['fact_age_seconds']:.0f}s")
-            continue
-        envelope = _envelope(target_conn, candidate["envelope_id"])
-        if not envelope or not envelope.get("probabilities") or not envelope.get("ordinals"):
-            refuse("envelope_missing")
-            continue
-        snapshot = _latest_snapshot(target_conn, candidate["station_id"], candidate["event_date"])
-        book_age = None if snapshot is None else (now - _utc(snapshot["observed_at"])).total_seconds()
-        if live_book and (book_age is None or book_age > send_book_fresh):
+    def fresh_book(station: str, day: str) -> tuple[dict[str, Any] | None, float | None]:
+        snapshot = _latest_snapshot(target_conn, station, day)
+        age = None if snapshot is None else (now - _utc(snapshot["observed_at"])).total_seconds()
+        if live_book and (age is None or age > send_book_fresh):
             live = live_ws_snapshot(
-                target_conn, manifest_root(),
-                station_id=candidate["station_id"], event_date=candidate["event_date"],
-                now_utc=now_utc,
+                target_conn, manifest_root(), station_id=station, event_date=day, now_utc=now_utc,
             )
             if live is not None:
                 live_age = (now - _utc(live["observed_at"])).total_seconds()
-                if book_age is None or live_age < book_age:
-                    snapshot, book_age = live, live_age
-        state["snapshot"], state["book_age"] = snapshot, book_age
+                if age is None or live_age < age:
+                    snapshot, age = live, live_age
+        return snapshot, age
+
+    def judge(candidate: Mapping[str, Any], envelope: Mapping[str, Any]) -> dict[str, Any]:
+        """One decision on the book as it stands now: the reading, and either
+        a planned rung or the reason there is none.  ``fired`` is whether the
+        four conditions held; a fired judgement may still not be bought."""
+
+        scope = (candidate["station_id"], candidate["event_date"])
+        out: dict[str, Any] = {
+            "snapshot": None, "book_age": None, "reading": {}, "book": {}, "context": {},
+            "fired": False, "refusal": None, "plan": None,
+        }
+        snapshot, book_age = fresh_book(*scope)
+        out["snapshot"], out["book_age"] = snapshot, book_age
         if snapshot is None or book_age is None:
-            refuse("snapshot_missing")
-            continue
+            out["refusal"] = "snapshot_missing"
+            return out
         if book_age > book_fresh:
-            refuse(f"book_stale:{book_age:.0f}s")
-            continue
+            out["refusal"] = f"book_stale:{book_age:.0f}s"
+            return out
         market = market_reference_v1(snapshot["buckets"])
         if market.get("state") != "complete":
-            refuse(f"market_incomplete:{market.get('reason') or market.get('state')}")
-            continue
-        reading = evaluate_consensus(
-            envelope["probabilities"], envelope["ordinals"], market["vector"],
-        )
-        state["reading"] = reading
+            out["refusal"] = f"market_incomplete:{market.get('reason') or market.get('state')}"
+            return out
+        reading = evaluate_consensus(envelope["probabilities"], envelope["ordinals"], market["vector"])
+        out["reading"] = reading
         if reading.get("state") != "read":
-            refuse(f"reading:{reading.get('state')}")
-            continue
+            out["refusal"] = f"reading:{reading.get('state')}"
+            return out
         bucket = str(reading["market_mode"])
-        book_row = next(
-            (r for r in snapshot["buckets"] if str(r.get("bucket")) == bucket), None
-        )
+        book_row = next((r for r in snapshot["buckets"] if str(r.get("bucket")) == bucket), None)
         book = book_features(book_row)
-        state["book"] = book
+        out["book"] = book
         held = held_buckets(target_conn, *scope)
         open_order = open_order_on_station_day(target_conn, *scope)
-        state["context"] = {
+        out["context"] = {
             "held_buckets": ",".join(held) if held else None,
             "open_order_lane": (open_order or {}).get("lane"),
             "open_order_bucket": (open_order or {}).get("bucket"),
             "station_day_buys": station_day_buys(target_conn, *scope) + planned_by_day.get(scope, 0),
         }
         if not reading["four_same"]:
-            refuse("rule_not_met:centres_split")
-            continue
+            out["refusal"] = "rule_not_met:centres_split"
+            return out
         ask = book.get("best_ask")
         if ask is None:
-            refuse("rule_not_met:no_ask")
-            continue
+            out["refusal"] = "rule_not_met:no_ask"
+            return out
         if not (min_ask <= float(ask) < max_ask):
-            refuse(f"rule_not_met:ask_outside_band:{float(ask):.3f}")
-            continue
-        # From here the rule has fired; what follows are the reasons a fired
-        # decision may still not be bought.
+            out["refusal"] = f"rule_not_met:ask_outside_band:{float(ask):.3f}"
+            return out
+        # From here the rule has fired.
+        out["fired"] = True
         if book_age > send_book_fresh:
-            refuse(f"send_book_stale:{book_age:.0f}s", fired=True)
-            continue
+            out["refusal"] = f"send_book_stale:{book_age:.0f}s"
+            return out
+        resting = open_rung(target_conn, *scope)
+        if resting is not None:
+            # One rung at a time: it expires within minutes and the next pass
+            # re-asks on the book that stands then.
+            out["refusal"] = f"rung_resting:{resting['bucket']}"
+            return out
         refusal = _planning_refusal(
             target_conn, candidate, gate=gate, now_utc=now_utc,
             max_buys=max_buys, max_sends=max_sends,
             planned_this_pass=planned_by_day.get(scope, 0),
             min_minutes_between_buys=min_gap,
+            bucket=bucket, max_buys_per_bucket=max_per_bucket,
         )
         if refusal:
-            refuse(refusal, fired=True)
-            continue
+            out["refusal"] = refusal
+            return out
         if scope not in registries:
             registries[scope] = _registry_rows(
                 target_conn, canonical_conn,
@@ -641,56 +745,54 @@ def plan_p1_consensus_entries(
             )
         market_row = registries[scope].get(bucket)
         if market_row is None or not market_row.get("yes_token"):
-            refuse("registry_token_missing", fired=True)
-            continue
+            out["refusal"] = "registry_token_missing"
+            return out
         if not bool(market_row.get("accepting_orders")):
-            refuse("market_not_accepting_orders", fired=True)
-            continue
-        take = taker_take(
-            book_row, stake,
-            tick_size=market_row.get("tick_size"),
+            out["refusal"] = "market_not_accepting_orders"
+            return out
+        rung = maker_rung(
+            book_row, stake, tick_size=market_row.get("tick_size"),
             min_shares=float(market_row.get("min_size") or DEFAULT_MIN_ORDER_SHARES),
-            walk_ticks=walk_ticks,
         )
-        if take["refusal"]:
-            refuse(take["refusal"], fired=True)
-            continue
-        if float(take["limit_price"]) > max_paid + 1e-9:
-            refuse(f"paid_price_above_cap:{float(take['limit_price']):.3f}>{max_paid:.2f}", fired=True)
-            continue
-        cash_refusal = _cash_refusal(target_conn, now_utc=now_utc, needed=float(take["cost_usdc"]))
+        if rung["refusal"]:
+            out["refusal"] = rung["refusal"]
+            return out
+        if float(rung["limit_price"]) > max_paid + 1e-9:
+            out["refusal"] = f"paid_price_above_cap:{float(rung['limit_price']):.3f}>{max_paid:.2f}"
+            return out
+        cash_refusal = _cash_refusal(target_conn, now_utc=now_utc, needed=float(rung["cost_usdc"]))
         if cash_refusal:
-            refuse(cash_refusal, fired=True)
-            continue
+            out["refusal"] = cash_refusal
+            return out
+        # 「挂单周期改为最短」: the belief's own end is not asked -- the rung is
+        # signed at the venue's minimum horizon (three minutes plus the
+        # signing margin), and 「没成交继续挂」 re-posts it on the book that
+        # stands when it lapses.
+        venue = resting_order_fields(
+            now_utc=now_utc, limit_price=rung["limit_price"], belief_fresh_until_utc=now_utc,
+        )
         plan = {
             "schema": SCHEMA, "rule": rule_version, "rule_name": rule_name,
             "lane": LANE, "title": LANE_TITLE,
-            "station_id": candidate["station_id"],
-            "event_date": candidate["event_date"],
-            "settlement_timezone": candidate["settlement_timezone"],
-            "stage": "P1",
-            "fact_id": candidate["fact_id"],
-            "decision_at_utc": candidate["decision_at_utc"],
+            "station_id": candidate["station_id"], "event_date": candidate["event_date"],
+            "settlement_timezone": candidate["settlement_timezone"], "stage": "P1",
+            "fact_id": candidate["fact_id"], "decision_at_utc": candidate["decision_at_utc"],
             "envelope_id": candidate["envelope_id"],
             "envelope_sha256": envelope.get("content_sha256"),
-            "remaining_hours": candidate["remaining_hours"],
-            "fact_age_seconds": candidate["fact_age_seconds"],
-            "snapshot_id": snapshot["snapshot_id"],
-            "snapshot_observed_at": snapshot["observed_at"],
+            "remaining_hours": candidate.get("remaining_hours"),
+            "fact_age_seconds": candidate.get("fact_age_seconds"),
+            "snapshot_id": snapshot["snapshot_id"], "snapshot_observed_at": snapshot["observed_at"],
             "book_source": snapshot.get("book_source") or "committed_snapshot",
             "book_age_seconds": round(float(book_age), 1),
-            "bucket": bucket,
-            "token_id": str(market_row["yes_token"]),
-            "tick_size": take["tick_size"], "min_size": market_row.get("min_size"),
+            "bucket": bucket, "token_id": str(market_row["yes_token"]),
+            "tick_size": rung["tick_size"], "min_size": market_row.get("min_size"),
             "execution_candidate": EXECUTION_CANDIDATE,
-            "order_type": "FOK", "post_only": False,
-            "stake_usdc": stake, "shares": take["shares"],
-            "limit_price": take["limit_price"], "fok_price_cap": take["limit_price"],
-            "cost_usdc": take["cost_usdc"],
-            "best_bid": take["best_bid"], "best_ask": take["best_ask"],
-            "ask_depth_shares": take["ask_depth_shares"],
-            "walked_depth_shares": take["walked_depth_shares"],
-            "walk_ticks": take["walk_ticks"],
+            "stake_usdc": stake, "shares": rung["shares"], "limit_price": rung["limit_price"],
+            "cost_usdc": rung["cost_usdc"], "best_bid": rung["best_bid"], "best_ask": rung["best_ask"],
+            "offset_ticks": rung["offset_ticks"],
+            "clamped_to_post_only_ceiling": rung["clamped_to_post_only_ceiling"],
+            **venue,
+            "planned_at_utc": now_utc,
             "min_ask": min_ask, "max_ask": max_ask, "max_paid_price": max_paid,
             "centres": {
                 k: reading.get(k) for k in (
@@ -700,20 +802,144 @@ def plan_p1_consensus_entries(
             },
             "held_buckets": held,
             "open_order": open_order,
-            "station_day_buy_index": state["context"]["station_day_buys"] + 1,
+            "station_day_buy_index": out["context"]["station_day_buys"] + 1,
         }
         plan["order_intent_id"] = f"{INTENT_PREFIX}{content_sha256({'plan': plan})[:32]}"
+        out["plan"] = plan
+        return out
+
+    # --- 1. every P1 decision in the window not judged yet -----------------
+    done = _evaluated_facts(target_conn, since_event_date=floor_day)
+    candidates = candidate_facts(
+        target_conn, now_utc=now_utc,
+        min_remaining_hours=min_hours,
+        max_remaining_hours=dial("max_remaining_hours"),
+        fresh_seconds=fresh_seconds,
+    )
+    evaluations: list[dict[str, Any]] = []
+    plans: list[dict[str, Any]] = []
+    judged_now: set[str] = set()
+    for candidate in candidates:
+        if candidate["fact_id"] in done:
+            continue
+        done.add(candidate["fact_id"])
+        judged_now.add(candidate["fact_id"])
+        scope = (candidate["station_id"], candidate["event_date"])
+        if float(candidate["fact_age_seconds"]) > fresh_seconds:
+            evaluations.append(_record(
+                target_conn, candidate, snapshot=None, book_age=None, reading={}, book={},
+                context={}, fired=False, refusal=f"fact_stale:{candidate['fact_age_seconds']:.0f}s",
+                order_intent_id=None, plan=None, now_utc=now_utc, rule_version=rule_version,
+            ))
+            continue
+        envelope = _envelope(target_conn, candidate["envelope_id"])
+        if not envelope or not envelope.get("probabilities") or not envelope.get("ordinals"):
+            evaluations.append(_record(
+                target_conn, candidate, snapshot=None, book_age=None, reading={}, book={},
+                context={}, fired=False, refusal="envelope_missing", order_intent_id=None,
+                plan=None, now_utc=now_utc, rule_version=rule_version,
+            ))
+            continue
+        verdict = judge(candidate, envelope)
+        plan = verdict["plan"]
         evaluations.append(_record(
-            target_conn, candidate, snapshot=snapshot, book_age=book_age,
-            reading=reading, book=book, context=state["context"], fired=True,
-            refusal=None, order_intent_id=plan["order_intent_id"], plan=plan,
+            target_conn, candidate, snapshot=verdict["snapshot"], book_age=verdict["book_age"],
+            reading=verdict["reading"], book=verdict["book"], context=verdict["context"],
+            fired=verdict["fired"], refusal=verdict["refusal"],
+            order_intent_id=plan["order_intent_id"] if plan else None, plan=plan,
             now_utc=now_utc, rule_version=rule_version,
         ))
-        plans.append(plan)
-        planned_by_day[scope] = planned_by_day.get(scope, 0) + 1
+        if plan:
+            plans.append(plan)
+            planned_by_day[scope] = planned_by_day.get(scope, 0) + 1
+
+    # --- 2. 「没成交继续挂」: the newest fired row of each station-day whose
+    # rung ended unfilled (or was never sent for a reason a later book can
+    # change), re-asked on the book that stands now while its belief stands.
+    reposts: list[dict[str, Any]] = []
+    latest = target_conn.execute(
+        f"SELECT e.fact_id, e.station_id, e.event_date, e.settlement_timezone, e.decision_at_utc,"
+        " e.envelope_id, e.remaining_hours, e.refusal, COALESCE(e.retry_count, 0), e.fired"
+        f" FROM {EVALUATION_TABLE} e"
+        f" JOIN (SELECT station_id, event_date, MAX(decision_at_utc) AS last_at FROM {EVALUATION_TABLE}"
+        "       WHERE event_date>=? GROUP BY station_id, event_date) m"
+        " ON m.station_id=e.station_id AND m.event_date=e.event_date AND m.last_at=e.decision_at_utc",
+        (floor_day,),
+    ).fetchall()
+    for (fact_id, station, day, tz, decided, envelope_id, remaining, refusal, retries,
+         fired) in latest:
+        if fact_id in judged_now or not fired or refusal is None:
+            continue
+        if any(str(refusal).startswith(p) for p in TERMINAL_REFUSAL_PREFIXES):
+            continue
+        envelope = _envelope(target_conn, str(envelope_id))
+        if not envelope or not envelope.get("probabilities") or not envelope.get("ordinals"):
+            continue
+        # The belief stands while the envelope does (the P1 observation
+        # window), and never longer than the lane's own freshness allows.
+        stands_until = _utc(decided) + timedelta(seconds=fresh_seconds)
+        if envelope.get("fresh_until_utc"):
+            stands_until = max(stands_until, _utc(str(envelope["fresh_until_utc"])))
+        if now > stands_until:
+            continue
+        try:
+            hours_now = hours_to_settlement(str(day), as_of_utc=now_utc, settlement_timezone=str(tz))
+        except Exception:  # noqa: BLE001
+            continue
+        if hours_now < min_hours:
+            target_conn.execute(
+                f"UPDATE {EVALUATION_TABLE} SET refusal='window_closed' WHERE fact_id=?", (fact_id,),
+            )
+            continue
+        candidate = {
+            "fact_id": str(fact_id), "station_id": str(station), "event_date": str(day),
+            "settlement_timezone": str(tz), "decision_at_utc": str(decided),
+            "envelope_id": str(envelope_id), "remaining_hours": remaining,
+            "fact_age_seconds": round((now - _utc(str(decided))).total_seconds(), 1),
+        }
+        verdict = judge(candidate, envelope)
+        plan = verdict["plan"]
+        reading = verdict["reading"]
+        if plan:
+            new_refusal = None
+        else:
+            reason = str(verdict["refusal"] or "")
+            # A spent cap or a closed day is the row's final verdict; a rung
+            # still resting or a book a few seconds too old is not a new
+            # reason, just "not yet"; anything else says it was re-asked.
+            if reason.startswith(TERMINAL_REFUSAL_PREFIXES + ("rung_resting", "send_book_stale")):
+                new_refusal = reason
+            else:
+                new_refusal = f"retry_{reason}"
+        target_conn.execute(
+            f"UPDATE {EVALUATION_TABLE} SET refusal=?, order_intent_id=COALESCE(?, order_intent_id),"
+            " plan_json=COALESCE(?, plan_json), market_mode=COALESCE(?, market_mode),"
+            " best_ask=COALESCE(?, best_ask), best_bid=COALESCE(?, best_bid),"
+            " retry_count=?, retried_at_utc=?, retry_snapshot_id=?"
+            " WHERE fact_id=?",
+            (
+                new_refusal, plan["order_intent_id"] if plan else None,
+                json.dumps(plan, ensure_ascii=False, sort_keys=True) if plan else None,
+                reading.get("market_mode") if plan else None,
+                verdict["book"].get("best_ask") if plan else None,
+                verdict["book"].get("best_bid") if plan else None,
+                int(retries) + 1, now_utc,
+                (verdict["snapshot"] or {}).get("snapshot_id"), str(fact_id),
+            ),
+        )
+        reposts.append({
+            "fact_id": str(fact_id), "station_id": str(station), "event_date": str(day),
+            "refusal_before": str(refusal), "refusal_after": new_refusal,
+            "order_intent_id": plan["order_intent_id"] if plan else None,
+        })
+        if plan:
+            plans.append(plan)
+            scope = (str(station), str(day))
+            planned_by_day[scope] = planned_by_day.get(scope, 0) + 1
     return {
         "evaluations": evaluations,
         "plans": plans,
+        "reposts": reposts,
         "settings": cfg,
         "rule_version": rule_version,
         "candidates": len(candidates),
@@ -736,7 +962,7 @@ def execute_p1_consensus_entries(
     admission: Admission | None = None,
     ws_manifest_path: Path | str | None = None,
 ) -> dict[str, Any]:
-    """Judge, plan, send -- through the shared buy sender and the one ledger."""
+    """Judge, plan, post -- through the shared buy sender and the one ledger."""
 
     planned = plan_p1_consensus_entries(
         target_conn, canonical_conn, now_utc=now_utc,
@@ -773,12 +999,12 @@ def execute_p1_consensus_entries(
             settlement_timezone=plan["settlement_timezone"], bucket=plan["bucket"],
             token_id=plan["token_id"], price=plan["limit_price"], shares=plan["shares"],
             execution_candidate=EXECUTION_CANDIDATE,
-            fok_price_cap=float(plan["fok_price_cap"]),
+            expiration=int(plan["expiration"]),
             tick_size=(float(plan["tick_size"]) if plan.get("tick_size") is not None else None),
             intent_body={
                 "schema": SCHEMA, "rule": plan["rule"], "strategy_id": STRATEGY_ID,
                 "order_type": plan["order_type"], "post_only": plan["post_only"],
-                "plan": plan,
+                "expiration_basis": plan.get("expiration_basis"), "plan": plan,
             },
             transport=transport, live_submit_authorized=live_submit_authorized,
             decision_details=details,
@@ -788,18 +1014,22 @@ def execute_p1_consensus_entries(
         matched = float(entry.get("matched_size") or 0.0)
         if matched > 0.0:
             filled += 1
-        after = None if matched > 0.0 else (
-            f"send:{entry.get('reason') or entry.get('state')}"
-            if not entry.get("exchange_post_started")
-            else f"send:{entry.get('event_type') or 'killed'}:{entry.get('reason') or ''}".rstrip(":")
-        )
+        # A rung the venue took is RESTING, not refused: the row stays a take
+        # until ``sync_rungs`` learns it expired or was cancelled unfilled.
+        event_type = str(entry.get("event_type") or "")
+        if matched > 0.0 or event_type == "POST_ACK":
+            after = None
+        elif not entry.get("exchange_post_started"):
+            after = f"send:{entry.get('reason') or entry.get('state')}"
+        else:
+            after = f"send:{event_type or 'refused'}:{entry.get('reason') or ''}".rstrip(":")
         target_conn.execute(
             f"UPDATE {EVALUATION_TABLE} SET refusal=? WHERE order_intent_id=?",
             (after, intent_id),
         )
         receipts.append(entry)
     return {
-        "schema": "p1_consensus_lane_receipt_v1",
+        "schema": "p1_consensus_lane_receipt_v2",
         "lane": LANE,
         "title": LANE_TITLE,
         "rule": planned["rule_version"],
@@ -807,6 +1037,7 @@ def execute_p1_consensus_entries(
         "candidates": planned["candidates"],
         "evaluated": len(planned["evaluations"]),
         "fired": sum(1 for e in planned["evaluations"] if e["fired"]),
+        "reposted": sum(1 for r in planned.get("reposts") or [] if r.get("order_intent_id")),
         "planned": len(planned["plans"]),
         "submitted": submitted,
         "filled": filled,
@@ -830,9 +1061,12 @@ __all__ = [
     "candidate_facts",
     "ensure_lane_schema",
     "evaluate_consensus",
+    "bucket_buys",
     "execute_p1_consensus_entries",
     "last_buy_decision_at",
     "mean_bucket",
+    "open_rung",
+    "sync_rungs",
     "plan_p1_consensus_entries",
     "rule_version_for",
     "station_day_buys",
