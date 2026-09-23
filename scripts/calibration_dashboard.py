@@ -6840,6 +6840,143 @@ def _lane_station_day(
     return station or match.group("station"), day or match.group("day")
 
 
+def _live_station_day_money(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """The station-day money of the live listing, one row per station-day
+    and one per day: what the buys cost, what the settled bucket pays, what
+    the sells brought in, and the two verdict words the station line wears.
+
+    Until 2026-09-23 the browser re-derived every one of these leg by leg
+    from ``rows`` -- a second copy of the money rule beside the live book's,
+    the shape that let the 09-18 sell-leg miss be fixed on one side and not
+    the other.  The rule, once, here: a basket every leg of which the
+    station bar refused is left out (it never reached the exchange); a
+    filled buy costs what the exchange reported filling (its ask notional
+    when no reconciliation stands) and holds that many shares; the settled
+    bucket pays one USDC per held share, less the shares a sell of that
+    bucket already sold; a sell's proceeds are its fill notional (ask times
+    size when none stands); a sell neither filled, failed nor cancelled is
+    resting.  ``basket_covered`` is the basket's word (the settled bucket
+    was among the buckets asked for, filled or not, user ruling 2026-09-14);
+    ``holding_hit`` is the fills' word (something filled and the day paid
+    anything, settlement or proceeds).
+    """
+
+    BARRED = "live_station_barred"
+    groups: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        key = (str(row.get("station_id") or ""), str(row.get("event_date") or ""))
+        group = groups.setdefault(key, {"buys": {}, "sells": []})
+        if str(row.get("order_action") or "BUY") == "SELL":
+            group["sells"].append(row)
+        else:
+            group["buys"].setdefault(str(row.get("decision_id") or ""), []).append(row)
+
+    def _num(value: Any) -> float:
+        try:
+            return float(value or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    station_rows: list[dict[str, Any]] = []
+    days: dict[str, dict[str, Any]] = {}
+    for (station, day), group in sorted(groups.items()):
+        baskets = [
+            legs for legs in group["buys"].values()
+            if not (legs and all(str(l.get("reason") or "") == BARRED for l in legs))
+        ]
+        barred = len(group["buys"]) - len(baskets)
+        sells = group["sells"]
+        truth, source = "", ""
+        for leg in [l for legs in group["buys"].values() for l in legs] + sells:
+            if leg.get("settled_bucket"):
+                truth = str(leg["settled_bucket"])
+                source = str(leg.get("settled_bucket_source") or "")
+                break
+        buy_legs = filled = 0
+        cost = held = 0.0
+        asked: set[str] = set()
+        for legs in baskets:
+            for leg in legs:
+                buy_legs += 1
+                asked.add(str(leg.get("bucket")))
+                if str(leg.get("state") or "") != "filled":
+                    continue
+                filled += 1
+                size = _num(leg.get("filled_size")) or _num(leg.get("requested_size"))
+                cost += (_num(leg.get("filled_notional_usdc"))
+                         or _num(leg.get("requested_notional_usdc")))
+                if truth and str(leg.get("bucket")) == truth:
+                    held += size
+        sold_legs = resting = 0
+        proceeds = sold_of_truth = 0.0
+        for leg in sells:
+            state = str(leg.get("state") or "")
+            sold = _num(leg.get("filled_size")) or (
+                _num(leg.get("requested_size")) if state == "filled" else 0.0)
+            if sold > 0:
+                sold_legs += 1
+                proceeds += (_num(leg.get("filled_notional_usdc"))
+                             or sold * _num(leg.get("limit_price")))
+                if truth and str(leg.get("bucket")) == truth:
+                    sold_of_truth += sold
+            if state not in ("filled", "failed", "cancelled"):
+                resting += 1
+        settlement = max(held - sold_of_truth, 0.0)
+        payout = settlement + proceeds
+        day_row = days.setdefault(day, {
+            "event_date": day, "stations": 0, "baskets": 0, "barred_baskets": 0,
+            "buy_legs": 0, "filled_legs": 0, "cost_usdc": 0.0,
+            "settlement_usdc": 0.0, "sell_proceeds_usdc": 0.0, "payout_usdc": 0.0,
+            "sold_legs": 0, "resting_sells": 0,
+            "settled_stations": 0, "hit_stations": 0, "day_settled": False,
+            "pnl_usdc": None, "_unsettled": 0,
+        })
+        day_row["barred_baskets"] += barred
+        if not baskets and not sells:
+            continue
+        covered = bool(truth) and truth in asked
+        station_rows.append({
+            "station_id": station, "event_date": day,
+            "baskets": len(baskets), "barred_baskets": barred,
+            "buy_legs": buy_legs, "filled_legs": filled,
+            "cost_usdc": round(cost, 4),
+            "settled_bucket": truth, "settled_bucket_source": source,
+            "basket_covered": covered,
+            "settlement_usdc": round(settlement, 4),
+            "sell_legs": len(sells), "sold_legs": sold_legs,
+            "resting_sells": resting,
+            "sell_proceeds_usdc": round(proceeds, 4),
+            "payout_usdc": round(payout, 4),
+            "pnl_usdc": round(payout - cost, 4) if truth else None,
+            "holding_hit": filled > 0 and payout > 0,
+        })
+        day_row["stations"] += 1
+        day_row["baskets"] += len(baskets)
+        day_row["buy_legs"] += buy_legs
+        day_row["filled_legs"] += filled
+        day_row["cost_usdc"] += cost
+        day_row["settlement_usdc"] += settlement
+        day_row["sell_proceeds_usdc"] += proceeds
+        day_row["payout_usdc"] += payout
+        day_row["sold_legs"] += sold_legs
+        day_row["resting_sells"] += resting
+        if baskets:
+            if truth:
+                day_row["settled_stations"] += 1
+                day_row["hit_stations"] += int(covered)
+            else:
+                day_row["_unsettled"] += 1
+    day_rows: list[dict[str, Any]] = []
+    for day in sorted(days):
+        d = days[day]
+        d["day_settled"] = d["baskets"] > 0 and d.pop("_unsettled") == 0
+        for key in ("cost_usdc", "settlement_usdc", "sell_proceeds_usdc", "payout_usdc"):
+            d[key] = round(d[key], 4)
+        d["pnl_usdc"] = round(d["payout_usdc"] - d["cost_usdc"], 4) if d["day_settled"] else None
+        day_rows.append(d)
+    return {"rows": station_rows, "days": day_rows}
+
+
 def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
     """The order book: how many, worth how much, and what came back.
 
@@ -7018,6 +7155,7 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
     # What each basket's own plan recorded -- the centre rung and the day's
     # shape.  Keyed by decision, because the decision is the basket: a
     # station-day carries several and they share neither.
+    out["station_days"] = _live_station_day_money(out["rows"])
     out["plan_state"] = _live_basket_plan_state(conn, out["rows"])
     out["market_slugs"] = _live_market_slugs(conn, out["rows"])
     if _table_exists(conn, "basket_target_order_events"):
@@ -20799,6 +20937,12 @@ function liveOrderCard(L){
   // past day the paper settler never seated (a held station's refused
   // basket) has no settlement row and would otherwise stay open forever.
   const today = new Date().toISOString().slice(0,10);
+  // Money and verdicts per station-day are the collector's
+  // (live_orders.station_days); the browser draws them.  A payload from
+  // before that field draws the lines without money and says so.
+  const SDX = (L.live_orders||{}).station_days || null;
+  const sdMap = new Map(((SDX||{}).rows||[]).map(s=>[s.station_id+"|"+s.event_date, s]));
+  const dayMap = new Map(((SDX||{}).days||[]).map(d=>[d.event_date, d]));
   // A basket every leg of which the station bar refused never reached the
   // exchange: no fill, no cost, no payout.  Six of the ten lines on the
   // book this morning were these, and they crowded out the four that
@@ -20831,8 +20975,8 @@ function liveOrderCard(L){
       if(!sellsOf.has(key)) sellsOf.set(key, []);
       sellsOf.get(key).push(g);
     }
-    let proceeds=0, soldN=0, restingN=0;
-    const daySettled = gs.length>0 && gs.every(g=>truthOf(g));
+    const dd = dayMap.get(day) || null;
+    const daySettled = !!dd && !!dd.day_settled;
     const folded = daySettled || (day < today);
     const stations = [];
     const byStation = new Map();
@@ -20846,35 +20990,15 @@ function liveOrderCard(L){
     for (const key of sellsOf.keys()){
       if(!byStation.has(key)){ byStation.set(key, []); stations.push(key); }
     }
-    let legsN=0, filledN=0, cost=0, payout=0, hitN=0, settledN=0;
     const stationLines = stations.map(station=>{
       const baskets = byStation.get(station);
       const sells = sellsOf.get(station) || [];
-      const truth = baskets.concat(sells).map(truthOf).find(Boolean) || "";
-      let sLegs=0, sFilled=0, sCost=0, sPay=0, sProceeds=0, sSold=0, sResting=0;
-      for (const g of baskets){
-        const gFilled = g.legs.filter(l=>l.state==="filled");
-        sLegs += g.legs.length; sFilled += gFilled.length;
-        sCost += gFilled.reduce((a,l)=>a+(l.requested_notional_usdc||0),0);
-        if(truth) sPay += gFilled.reduce((a,l)=>a+(String(l.bucket)===truth?(l.requested_size||0):0),0);
-      }
-      // Sold shares no longer pay at settlement; what they sold for is
-      // money in.  A sell's own fill is the reconciliation's, not its ask.
+      const sd = sdMap.get(station+"|"+day) || null;
+      const truth = sd ? String(sd.settled_bucket||"") : (baskets.concat(sells).map(truthOf).find(Boolean) || "");
+      const sLegs=sd?sd.buy_legs:null, sFilled=sd?sd.filled_legs:null, sCost=sd?sd.cost_usdc:null,
+        sProceeds=sd?sd.sell_proceeds_usdc:null, sSold=sd?sd.sold_legs:null, sResting=sd?sd.resting_sells:null;
       const sellLegs = sells.flatMap(g=>g.legs);
-      for (const l of sellLegs){
-        const st = String(l.state||"");
-        const sold = Number(l.filled_size||0) || (st==="filled" ? Number(l.requested_size||0) : 0);
-        if(sold>0){
-          sSold += 1;
-          sProceeds += Number(l.filled_notional_usdc||0) || sold*Number(l.limit_price||0);
-          if(truth && String(l.bucket)===truth) sPay -= sold;
-        }
-        if(st!=="filled" && st!=="failed" && st!=="cancelled") sResting += 1;
-      }
-      sPay += sProceeds;
-      proceeds += sProceeds; soldN += sSold; restingN += sResting;
-      legsN += sLegs; filledN += sFilled; cost += sCost; payout += sPay;
-      const covered = !!truth && baskets.some(g=>g.legs.some(l=>String(l.bucket)===truth));
+      const covered = !!sd && !!truth && !!sd.basket_covered;
       const src = baskets.map(truthSrc).find(Boolean)==="truth_lane"
         ? "　真值取自真值车道（这个站日纸面账本没坐过，没有它的结算行），按当日自己的桶阶梯落桶"
         : "";
@@ -20884,27 +21008,26 @@ function liveOrderCard(L){
       // filled or not.  What the fills did is a second word beside it --
       // 持仓命中, 持仓未中, 未成交 -- because the two part company exactly where
       // money is lost: a window that held the truth and a rung that did not
-      // fill.  Until that morning one word did both jobs and called every
-      // disarmed basket 未命中 (2026-09-13: six stations, nothing filled, five
-      // windows holding the truth).  Words beside colours (user ruling,
-      // 2026-09-11): a colour says these lines differ, not what any of them is.
+      // fill.  Both words and every number beside them are the collector's.
       const verdict = !baskets.length
         ? ["amber", "只有卖单", "这个站日的买入篮子不在本列表的窗口里，只列出卖单"]
+        : !sd
+        ? ["amber", "待整库渲染", "站日的金额与判定由 collector 出；这份 payload 早于那个字段"]
         : !truth
         ? ["amber", "未结算", "这个站日的真值还没到"]
         : covered
           ? ["green", "命中", "篮子挂出的桶里有结算桶 " + truth + src]
           : ["red", "未命中", "篮子挂出的桶里没有结算桶 " + truth + src];
-      if(truth && baskets.length){ settledN += 1; if(covered) hitN += 1; }
-      const fill = (!truth || !baskets.length) ? ""
-        : `<span class="pill ${!sFilled ? "" : sPay>0 ? "green" : "red"}" style="font-size:10px"
-            title="${!sFilled ? "一条腿都没成交" : sPay>0 ? "成交的腿里有结算桶" : "成交的腿都不在结算桶"}">${
-            !sFilled ? "未成交" : sPay>0 ? "持仓命中" : "持仓未中"}</span>`;
-      const money = !truth
+      const fill = (!sd || !truth || !baskets.length) ? ""
+        : `<span class="pill ${!sFilled ? "" : sd.holding_hit ? "green" : "red"}" style="font-size:10px"
+            title="${!sFilled ? "一条腿都没成交" : sd.holding_hit ? "成交的腿里有结算桶或已卖出回款" : "成交的腿都不在结算桶"}">${
+            !sFilled ? "未成交" : sd.holding_hit ? "持仓命中" : "持仓未中"}</span>`;
+      const money = !sd ? ""
+        : !truth
         ? `<span class="muted mono" style="font-size:11px">投入 ${sCost.toFixed(2)} U</span>`
         : (sFilled
-            ? `<span class="mono ${sPay-sCost>=0?"up":"down"}" style="font-size:11px">${(sPay-sCost>=0?"+":"")+(sPay-sCost).toFixed(2)} U</span>
-               <span class="muted mono" style="font-size:11px">投入 ${sCost.toFixed(2)} · 赔付 ${(sPay-sProceeds).toFixed(2)}${sProceeds?" · 卖出回款 "+sProceeds.toFixed(2):""}</span>`
+            ? `<span class="mono ${sd.pnl_usdc>=0?"up":"down"}" style="font-size:11px">${(sd.pnl_usdc>=0?"+":"")+sd.pnl_usdc.toFixed(2)} U</span>
+               <span class="muted mono" style="font-size:11px">投入 ${sCost.toFixed(2)} · 赔付 ${sd.settlement_usdc.toFixed(2)}${sProceeds?" · 卖出回款 "+sProceeds.toFixed(2):""}</span>`
             : "")
           + `<span class="muted mono" style="font-size:11px">落在 ${h(truth)}</span>`;
 
@@ -20945,7 +21068,7 @@ function liveOrderCard(L){
         <b class="mono pill ${verdict[0]}" title="${h(verdict[2])} · ${
           h(baskets.map(g=>g.decision_id).join("、"))}">${stationLink(station, day)} ${verdict[1]}</b>${fill}
         <span class="muted" style="font-size:11px">${baskets.length>1 ? baskets.length+" 篮 · " : ""}${
-          sLegs} 腿 · ${sFilled} 成交${sellLegs.length ? ` · 卖单 ${sellLegs.length}（挂着 ${sResting} · 卖出 ${sSold}）` : ""}</span>`;
+          sd ? `${sLegs} 腿 · ${sFilled} 成交` : "金额待整库渲染"}${sellLegs.length ? ` · 卖单 ${sellLegs.length}（挂着 ${sResting==null?"—":sResting} · 卖出 ${sSold==null?"—":sSold}）` : ""}</span>`;
       const row = `display:flex;flex-wrap:wrap;align-items:center;gap:6px`;
       // The sells, one line per lane, under the baskets they sell from.
       const byLane = new Map();
@@ -20965,14 +21088,15 @@ function liveOrderCard(L){
           <span class="muted mono" style="font-size:11px">${h(clock(items[items.length-1].latest))}</span>
           ${legsOf(items)}</div>`).join("")}${sellLines}</div>`;
     }).join("");
-    const pnl = daySettled ? payout - cost : null;
+    const pnl = daySettled && dd.pnl_usdc != null ? dd.pnl_usdc : null;
     const barredNote = hidden.length
       ? ` · <span class="muted" title="${h(hidden.map(g=>g.station_id).join("、"))}"
           >禁入 ${hidden.length} 篮未列</span>`
       : "";
     const head = `${h(day)} · ${stations.length} 站 · ${gs.length} 篮${
-        settledN ? ` · 篮子命中 ${hitN}/${settledN} 站` : ""} · ${legsN} 腿 · ${filledN} 成交 · 投入 ${cost.toFixed(2)} U`
-      + (restingN||soldN ? ` · 卖单 挂着 ${restingN} · 卖出 ${soldN}${proceeds?"（回款 "+proceeds.toFixed(2)+" U）":""}` : "") + (pnl==null
+        dd && dd.settled_stations ? ` · 篮子命中 ${dd.hit_stations}/${dd.settled_stations} 站` : ""} · ${
+        dd ? `${dd.buy_legs} 腿 · ${dd.filled_legs} 成交 · 投入 ${dd.cost_usdc.toFixed(2)} U` : "金额待整库渲染"}`
+      + (dd && (dd.resting_sells||dd.sold_legs) ? ` · 卖单 挂着 ${dd.resting_sells} · 卖出 ${dd.sold_legs}${dd.sell_proceeds_usdc?"（回款 "+dd.sell_proceeds_usdc.toFixed(2)+" U）":""}` : "") + (pnl==null
         ? ` · <span class="muted">未结算</span>`
         : ` · <span class="${pnl>=0?"up":"down"}">${(pnl>=0?"+":"")+pnl.toFixed(2)} U</span> · 已结算`)
       + barredNote;

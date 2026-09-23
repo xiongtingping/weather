@@ -211,3 +211,41 @@ def test_a_regional_lane_states_its_rhythm_and_publication_delay(monkeypatch) ->
     assert out["latest_run_stations"] == 11
     assert abs(out["due_in_hours"] - 1.0) < 1e-9     # 1h rhythm + 2h delay − 2h old
     assert cd._run_rhythm([])["cycle_hours"] is None
+
+
+def test_station_day_money_is_the_collectors_not_the_browsers() -> None:
+    def leg(intent, decision, bucket, action, state, filled, notional, size, ask,
+            station="ZUUU", day="2026-09-18", truth="24°C", reason=""):
+        return {"order_intent_id": intent, "decision_id": decision, "bucket": bucket,
+                "order_action": action, "state": state, "filled_size": filled,
+                "filled_notional_usdc": notional, "requested_size": size,
+                "requested_notional_usdc": size * ask, "limit_price": ask,
+                "station_id": station, "event_date": day, "reason": reason,
+                "settled_bucket": truth, "settled_bucket_source": "paper_ledger",
+                "lane": cd._intent_lane(decision)}
+    rows = [
+        leg("b1", "d1", "24°C", "BUY", "filled", 15, 1.05, 15, 0.07),
+        leg("b2", "d1", "25°C", "BUY", "failed", 0, 0, 10, 0.2, reason="x"),
+        leg("s1", "recycle998_decision_ZUUU_2026-09-18", "24°C", "SELL", "filled",
+            5, 4.99, 5, 0.998),
+        leg("s2", "recycle998_decision_ZUUU_2026-09-18", "25°C", "SELL",
+            "submitted", 0, 0, 6, 0.99),
+        # A basket the station bar refused whole never reached the exchange.
+        leg("b3", "d2", "30°C", "BUY", "failed", 0, 0, 10, 0.3, station="ZBAA",
+            truth="", reason="live_station_barred"),
+    ]
+    money = cd._live_station_day_money(rows)
+    assert [r["station_id"] for r in money["rows"]] == ["ZUUU"]
+    z = money["rows"][0]
+    assert (z["buy_legs"], z["filled_legs"], z["cost_usdc"]) == (2, 1, 1.05)
+    assert z["settlement_usdc"] == 10.0  # 15 held in 24°C, 5 of them sold
+    assert (z["sell_proceeds_usdc"], z["payout_usdc"], z["pnl_usdc"]) == (4.99, 14.99, 13.94)
+    assert (z["sold_legs"], z["resting_sells"], z["sell_legs"]) == (1, 1, 2)
+    assert z["basket_covered"] and z["holding_hit"]
+    day = money["days"][0]
+    assert (day["stations"], day["baskets"], day["barred_baskets"]) == (1, 1, 1)
+    assert day["day_settled"] and day["pnl_usdc"] == 13.94
+    assert (day["settled_stations"], day["hit_stations"]) == (1, 1)
+    live = cd._collect_live_orders(_orders_conn())["station_days"]
+    assert {r["station_id"] for r in live["rows"]} == {"ZUUU"}
+    assert live["rows"][0]["sold_legs"] == 1 and live["rows"][0]["resting_sells"] == 1
