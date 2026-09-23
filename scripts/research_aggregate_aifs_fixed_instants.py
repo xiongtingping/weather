@@ -29,6 +29,7 @@ publication, and AIFS at its publication time would look days early).
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import sqlite3
 import statistics
@@ -62,6 +63,32 @@ def horizon(hours_to_start: float) -> str:
     return next(name for floor, name in HORIZONS if hours_to_start >= floor)
 
 
+def load_compact(arm: str, scheme: str) -> dict[tuple[str, str, str], dict]:
+    """``paired.load`` keeping only what this aggregation reads.
+
+    A full record is about 6.6 KB of JSON and several times that as Python
+    objects; ~70,000 of them across two arms pushed an 8 GB machine into swap
+    (2026-09-23, 48 stations took over ten minutes).  The fields kept here are
+    about 200 bytes a record.
+    """
+
+    out = {}
+    for path in sorted((paired.REPLAY / arm).glob("*.jsonl.gz")):
+        with gzip.open(path, "rt") as handle:
+            for line in handle:
+                record = json.loads(line)
+                views = record["schemes"].get(scheme)
+                out[(record["station"], record["event_date"], record["at"])] = {
+                    "band_sha": record.get("band_sha"), "cw_sha": record.get("cw_sha"),
+                    "pool": tuple(record.get("pool", ())),
+                    # Only runs the pool holds: an absent PF50 must read as
+                    # "", not "None", or AIFS stops counting as newer there.
+                    "runs": {s: r for s in (AIFS, PF50) if (r := record.get("runs", {}).get(s))},
+                    "schemes": {scheme: {v: views[v][:3] for v in VIEWS}} if views else {},
+                }
+    return out
+
+
 def by_station_day(records: dict) -> dict[tuple[str, str], tuple[list[datetime], list[dict]]]:
     grouped = defaultdict(list)
     for (station, day, at), record in records.items():
@@ -86,8 +113,8 @@ def main() -> int:
     zones = dict(ssot.execute(
         "SELECT station_id, settlement_timezone FROM calibration_station_market_timezone_binding"
     ))
-    base = by_station_day(paired.load(args.baseline_arm))
-    with_ = by_station_day(paired.load(args.with_arm))
+    base = by_station_day(load_compact(args.baseline_arm, scheme))
+    with_ = by_station_day(load_compact(args.with_arm, scheme))
     keys = sorted(
         k for k in set(base) & set(with_)
         if args.first_event_date <= k[1] <= args.last_event_date and k[0] in zones
