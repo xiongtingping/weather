@@ -116,6 +116,7 @@ from bayes_basket_target.settlement_time import settlement_day_window
 from bayes_basket_target.strategy_lanes import (
     LANE_CERTAIN_WIN_RECYCLE,
     LANE_MIS_BOUGHT_LEG_EXIT,
+    LANE_P1_CONSENSUS,
     LANE_P1_TAIL,
     LANE_TIEBREAK,
     lane_enabled,
@@ -3852,6 +3853,32 @@ def run_target_production_cycle(
             )
         except Exception as exc:
             p1_tail_head_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+    # Charter 203: the consensus lane at the head too, on the P1 decisions the
+    # previous cycle wrote after its tail run.  Not a speed trade -- its own
+    # freshness window is twenty minutes -- so the head and the tail are
+    # enough.  A failure is a receipt, never a stop.
+    p1_consensus_head_receipt: dict[str, Any] | None = None
+    if (
+        PRODUCTION_EXECUTION_MODE == "production_live"
+        and head_connection is not None
+        and lane_enabled(LANE_P1_CONSENSUS)
+    ):
+        try:
+            from bayes_basket_target.exit_orders import (
+                default_transport as _consensus_head_transport,
+            )
+            from bayes_basket_target.p1_consensus_lane import (
+                execute_p1_consensus_entries as _consensus_head_execute,
+            )
+            p1_consensus_head_receipt = _consensus_head_execute(
+                head_connection,
+                getattr(worker, "canonical_source_conn", None),
+                transport=_consensus_head_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+            )
+        except Exception as exc:
+            p1_consensus_head_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     try:
         result = worker.run()
     except sqlite3.OperationalError as exc:
@@ -4038,6 +4065,29 @@ def run_target_production_cycle(
             )
         except Exception as exc:
             p1_tail_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+    # Charter 203: the consensus lane, on the P1 decisions this cycle wrote.
+    p1_consensus_receipt: dict[str, Any] | None = None
+    if PRODUCTION_EXECUTION_MODE == "production_live" and not lane_enabled(
+        LANE_P1_CONSENSUS
+    ):
+        p1_consensus_receipt = {"state": "lane_paused", "lane": LANE_P1_CONSENSUS}
+    elif PRODUCTION_EXECUTION_MODE == "production_live":
+        try:
+            from bayes_basket_target.exit_orders import (
+                default_transport as _consensus_transport,
+            )
+            from bayes_basket_target.p1_consensus_lane import (
+                execute_p1_consensus_entries,
+            )
+            p1_consensus_receipt = execute_p1_consensus_entries(
+                connection,
+                canonical,
+                transport=_consensus_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+            )
+        except Exception as exc:
+            p1_consensus_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     return {
         **result,
         "post_cycle_resource_guard": {
@@ -4051,6 +4101,11 @@ def run_target_production_cycle(
         **({"tiebreak_lane": tiebreak_receipt} if tiebreak_receipt else {}),
         **({"p1_tail_lane_head": p1_tail_head_receipt} if p1_tail_head_receipt else {}),
         **({"p1_tail_lane": p1_tail_receipt} if p1_tail_receipt else {}),
+        **(
+            {"p1_consensus_lane_head": p1_consensus_head_receipt}
+            if p1_consensus_head_receipt else {}
+        ),
+        **({"p1_consensus_lane": p1_consensus_receipt} if p1_consensus_receipt else {}),
     }
 
 

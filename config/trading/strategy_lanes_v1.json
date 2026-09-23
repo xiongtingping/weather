@@ -1,6 +1,6 @@
 {
   "schema": "basket_strategy_lanes_v1",
-  "updated_at_utc": "2026-09-23T01:45:00Z",
+  "updated_at_utc": "2026-09-23T08:00:00Z",
   "rationale": "User ruling 2026-09-18: put the tiebreak lane (秤砣线) live and pause every other strategy -- closed, not deleted. A paused lane still compiles, records its decisions and writes the evidence the ledger and the fits read; only its sends are held (basket BUYs end failed with strategy_lane_paused:basket on their event; the two sell lanes are skipped by the daemon). Read fresh before every send. Missing file = every lane enabled; unreadable file = every lane paused. Charters 146, 163, 166 and 175.",
   "lanes": {
     "basket": {
@@ -53,6 +53,24 @@
       "hours_axis": "remaining_hours",
       "paused_at_utc": "2026-09-23T01:45:00Z",
       "pause_note": "User ruling 2026-09-23 「P1 尾段线：暂定交易先关闭」: 16 settled legs over 09-21/09-22, 5 hit, 71.26 USDC in, -43.95 (-61.7%); the seven bought under 0.50 all lost (-30.06), the nine at 0.50 or more hit 5 and still lost -13.89. Switched off at the lane file; the worker returns before calling the lane, so no new evaluations are written while it is off. Turn back on by setting enabled true."
+    },
+    "p1_consensus": {
+      "enabled": true,
+      "stake_usdc": 5.0,
+      "rule": "p1_four_centre_consensus_taker_v1",
+      "min_remaining_hours": 6.0,
+      "max_remaining_hours": 10.0,
+      "min_ask": 0.5,
+      "max_ask": 0.7,
+      "max_paid_price": 0.7,
+      "fact_fresh_seconds": 1200.0,
+      "book_fresh_seconds": 900.0,
+      "send_book_fresh_seconds": 60.0,
+      "live_ws_book": true,
+      "max_buys_per_station_day": 4,
+      "max_sends_per_station_day": 8,
+      "walk_ticks": 1,
+      "note": "P1 共识线 (charter 203, user ruling 2026-09-23 「上线，一个站日可以买多次！」 then rule A / 照买不避让 / 5U): on a P1 decision 6-10 h from the settlement clock where the model's and the market's mode and mean buckets are one bucket and its best ask is in [0.50, 0.70), cross FOK at the ask (walked one tick, paid <= 0.70), every such decision a take, at most 4 per station-day; no exclusion against the tiebreak lane either way. Replay 07-28..09-22: 117 takes, hit 71.8%, +15.3% [+4.8%, +25.3%]; 27 from 09-20 +10.6%."
     }
   }
 }

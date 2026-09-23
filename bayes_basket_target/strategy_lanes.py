@@ -49,12 +49,14 @@ LANE_CERTAIN_WIN_RECYCLE = "certain_win_recycle"
 LANE_MIS_BOUGHT_LEG_EXIT = "mis_bought_leg_exit"
 LANE_TIEBREAK = "tiebreak"
 LANE_P1_TAIL = "p1_tail"
+LANE_P1_CONSENSUS = "p1_consensus"
 KNOWN_LANES: tuple[str, ...] = (
     LANE_BASKET,
     LANE_CERTAIN_WIN_RECYCLE,
     LANE_MIS_BOUGHT_LEG_EXIT,
     LANE_TIEBREAK,
     LANE_P1_TAIL,
+    LANE_P1_CONSENSUS,
 )
 
 #: The tiebreak lane's measured settings (33 event days to 2026-09-17, 42
@@ -154,6 +156,47 @@ P1_TAIL_DEFAULT_SETTINGS: dict[str, Any] = {
     "walk_ticks": 1,
 }
 
+#: The P1 consensus lane's settings (charter 203, user ruling 2026-09-23
+#: 「上线，一个站日可以买多次！」; rule A, no yielding to the tiebreak lane,
+#: 5 USDC a take).  On a P1 decision 6-10 h from the settlement clock where
+#: the model's and the market's mode and mean buckets are one bucket and its
+#: best ask is in [0.50, 0.70), cross FOK at the ask.
+#:
+#: Measured 2026-09-23 over 07-28..09-22 on the first book after the decision
+#: was committed: 117 takes / 90 station-days, hit 71.8%, +15.3% [+4.8%,
+#: +25.3%]; the 27 from 09-20 +10.6%; priced 15 minutes later +12.2%.  See
+#: ``p1_consensus_lane`` for what that does and does not support.
+P1_CONSENSUS_DEFAULT_SETTINGS: dict[str, Any] = {
+    "enabled": True,
+    "stake_usdc": 5.0,
+    "rule": "p1_four_centre_consensus_taker_v1",
+    # The window, on the hours left to the settlement clock at the decision
+    # instant (``settlement_time.hours_to_settlement``), half-open.
+    "min_remaining_hours": 6.0,
+    "max_remaining_hours": 10.0,
+    # The band, on the consensus bucket's best ask, half-open ...
+    "min_ask": 0.50,
+    "max_ask": 0.70,
+    # ... and the most the walked FOK limit may authorise.
+    "max_paid_price": 0.70,
+    # Not a speed trade (+12% priced fifteen minutes late), so a decision is
+    # judged up to this old -- long enough to span a slow cycle's head/tail.
+    "fact_fresh_seconds": 1200.0,
+    # What may still be scored, and what may be bought (the FOK is priced on
+    # this ladder and arrives later).
+    "book_fresh_seconds": 900.0,
+    "send_book_fresh_seconds": 60.0,
+    "live_ws_book": True,
+    # Every decision that meets the rule is a take, the same bucket again
+    # included; the replay's busiest station-day took four.  Killed FOKs and
+    # egress-held sends are not buys; ``max_sends`` bounds them.
+    "max_buys_per_station_day": 4,
+    "max_sends_per_station_day": 8,
+    # One tick above the best ask, as the tail lane learned (the top ask
+    # level is a median 10 shares deep and a 5 USDC take outgrows it).
+    "walk_ticks": 1,
+}
+
 #: The per-trade stake is a board dial (charter 146); the server refuses a
 #: value outside this range, and the lane reads whatever the file says.
 TIEBREAK_STAKE_BOUNDS = (1.0, 100.0)
@@ -165,6 +208,7 @@ DEFAULT_LANES: dict[str, dict[str, Any]] = {
     LANE_MIS_BOUGHT_LEG_EXIT: {"enabled": True},
     LANE_TIEBREAK: dict(TIEBREAK_DEFAULT_SETTINGS),
     LANE_P1_TAIL: dict(P1_TAIL_DEFAULT_SETTINGS),
+    LANE_P1_CONSENSUS: dict(P1_CONSENSUS_DEFAULT_SETTINGS),
 }
 
 
@@ -269,8 +313,10 @@ __all__ = [
     "LANE_BASKET",
     "LANE_CERTAIN_WIN_RECYCLE",
     "LANE_MIS_BOUGHT_LEG_EXIT",
+    "LANE_P1_CONSENSUS",
     "LANE_P1_TAIL",
     "LANE_TIEBREAK",
+    "P1_CONSENSUS_DEFAULT_SETTINGS",
     "P1_TAIL_DEFAULT_SETTINGS",
     "SCHEMA",
     "TIEBREAK_DEFAULT_SETTINGS",
