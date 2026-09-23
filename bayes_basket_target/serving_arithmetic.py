@@ -359,6 +359,12 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p1_joint_likelihood_v18": "2026-09-21T15:02:21Z",
         # Charter 198: the sixth root bump, at the instant P0 v9 declares.
         "p1_joint_likelihood_v19": "2026-09-22T12:00:00Z",
+        # Charter 200: P1's own change (the regional features' HRRR cell is
+        # the nearest land cell; KSFO's water-cell rows are retired from every
+        # reader, the pooled likelihood's samples with them).  Declared past
+        # the push -- rounded up to the quarter hour, plus 45 minutes -- and
+        # past the coordinator's batch restart that deploys it.
+        "p1_joint_likelihood_v20": "2026-09-23T04:15:00Z",
     },
 }
 

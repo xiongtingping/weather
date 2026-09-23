@@ -1,0 +1,223 @@
+{
+ "rows": [
+  {
+   "day": "2026-09-08",
+   "run": "2026-09-07T12:00:00+00:00",
+   "truth": 30.0,
+   "water_max": 24.75,
+   "land_max": 32.04,
+   "land_point": {
+    "latitude": 37.60026112065502,
+    "longitude": -122.3904615791514,
+    "moved": true,
+    "rule": "nearest_land_cell_v1",
+    "distance_km": 3.069,
+    "water_cell_distance_km": 1.522
+   }
+  },
+  {
+   "day": "2026-09-09",
+   "run": "2026-09-08T12:00:00+00:00",
+   "truth": 33.9,
+   "water_max": 28.03,
+   "land_max": 37.04,
+   "land_point": {
+    "latitude": 37.60026112065502,
+    "longitude": -122.3904615791514,
+    "moved": true,
+    "rule": "nearest_land_cell_v1",
+    "distance_km": 3.069,
+    "water_cell_distance_km": 1.522
+   }
+  },
+  {
+   "day": "2026-09-10",
+   "run": "2026-09-09T12:00:00+00:00",
+   "truth": 28.9,
+   "water_max": 20.58,
+   "land_max": 26.56,
+   "land_point": {
+    "latitude": 37.60026112065502,
+    "longitude": -122.3904615791514,
+    "moved": true,
+    "rule": "nearest_land_cell_v1",
+    "distance_km": 3.069,
+    "water_cell_distance_km": 1.522
+   }
+  },
+  {
+   "day": "2026-09-11",
+   "run": "2026-09-10T12:00:00+00:00",
+   "truth": 22.2,
+   "water_max": 17.46,
+   "land_max": 20.19,
+   "land_point": {
+    "latitude": 37.60026112065502,
+    "longitude": -122.3904615791514,
+    "moved": true,
+    "rule": "nearest_land_cell_v1",
+    "distance_km": 3.069,
+    "water_cell_distance_km": 1.522
+   }
+  },
+  {
+   "day": "2026-09-12",
+   "run": "2026-09-11T12:00:00+00:00",
+   "truth": 21.7,
+   "water_max": 17.73,
+   "land_max": 20.41,
+   "land_point": {
+    "latitude": 37.60026112065502,
+    "longitude": -122.3904615791514,
+    "moved": true,
+    "rule": "nearest_land_cell_v1",
+    "distance_km": 3.069,
+    "water_cell_distance_km": 1.522
+   }
+  },
+  {
+   "day": "2026-09-13",
+   "run": "2026-09-12T12:00:00+00:00",
+   "truth": 21.1,
+   "water_max": 17.77,
+   "land_max": 20.59,
+   "land_point": {
+    "latitude": 37.60026112065502,
+    "longitude": -122.3904615791514,
+    "moved": true,
+    "rule": "nearest_land_cell_v1",
+    "distance_km": 3.069,
+    "water_cell_distance_km": 1.522
+   }
+  },
+  {
+   "day": "2026-09-14",
+   "run": "2026-09-13T12:00:00+00:00",
+   "truth": 23.9,
+   "water_max": 18.69,
+   "land_max": 23.23,
+   "land_point": {
+    "latitude": 37.60026112065502,
+    "longitude": -122.3904615791514,
+    "moved": true,
+    "rule": "nearest_land_cell_v1",
+    "distance_km": 3.069,
+    "water_cell_distance_km": 1.522
+   }
+  },
+  {
+   "day": "2026-09-15",
+   "run": "2026-09-14T12:00:00+00:00",
+   "truth": 22.2,
+   "water_max": 17.74,
+   "land_max": 20.73,
+   "land_point": {
+    "latitude": 37.60026112065502,
+    "longitude": -122.3904615791514,
+    "moved": true,
+    "rule": "nearest_land_cell_v1",
+    "distance_km": 3.069,
+    "water_cell_distance_km": 1.522
+   }
+  },
+  {
+   "day": "2026-09-16",
+   "run": "2026-09-15T12:00:00+00:00",
+   "truth": 18.3,
+   "water_max": 17.24,
+   "land_max": 19.8,
+   "land_point": {
+    "latitude": 37.60026112065502,
+    "longitude": -122.3904615791514,
+    "moved": true,
+    "rule": "nearest_land_cell_v1",
+    "distance_km": 3.069,
+    "water_cell_distance_km": 1.522
+   }
+  },
+  {
+   "day": "2026-09-17",
+   "run": "2026-09-16T12:00:00+00:00",
+   "truth": 21.7,
+   "water_max": 17.87,
+   "land_max": 20.75,
+   "land_point": {
+    "latitude": 37.60026112065502,
+    "longitude": -122.3904615791514,
+    "moved": true,
+    "rule": "nearest_land_cell_v1",
+    "distance_km": 3.069,
+    "water_cell_distance_km": 1.522
+   }
+  },
+  {
+   "day": "2026-09-18",
+   "run": "2026-09-17T12:00:00+00:00",
+   "truth": 20.0,
+   "water_max": 16.92,
+   "land_max": 19.24,
+   "land_point": {
+    "latitude": 37.60026112065502,
+    "longitude": -122.3904615791514,
+    "moved": true,
+    "rule": "nearest_land_cell_v1",
+    "distance_km": 3.069,
+    "water_cell_distance_km": 1.522
+   }
+  },
+  {
+   "day": "2026-09-19",
+   "run": "2026-09-18T12:00:00+00:00",
+   "truth": 19.4,
+   "water_max": 18.57,
+   "land_max": 23.71,
+   "land_point": {
+    "latitude": 37.60026112065502,
+    "longitude": -122.3904615791514,
+    "moved": true,
+    "rule": "nearest_land_cell_v1",
+    "distance_km": 3.069,
+    "water_cell_distance_km": 1.522
+   }
+  },
+  {
+   "day": "2026-09-20",
+   "run": "2026-09-19T12:00:00+00:00",
+   "truth": 17.8,
+   "water_max": 16.54,
+   "land_max": 17.91,
+   "land_point": {
+    "latitude": 37.60026112065502,
+    "longitude": -122.3904615791514,
+    "moved": true,
+    "rule": "nearest_land_cell_v1",
+    "distance_km": 3.069,
+    "water_cell_distance_km": 1.522
+   }
+  },
+  {
+   "day": "2026-09-21",
+   "run": "2026-09-20T12:00:00+00:00",
+   "truth": 20.0,
+   "water_max": 17.17,
+   "land_max": 19.17,
+   "land_point": {
+    "latitude": 37.60026112065502,
+    "longitude": -122.3904615791514,
+    "moved": true,
+    "rule": "nearest_land_cell_v1",
+    "distance_km": 3.069,
+    "water_cell_distance_km": 1.522
+   }
+  }
+ ],
+ "summary": {
+  "n": 14,
+  "water_mean_truth_minus": 3.86,
+  "water_sd": 1.97,
+  "land_mean_truth_minus": -0.02,
+  "land_sd": 1.91,
+  "water_mae": 3.86,
+  "land_mae": 1.57
+ }
+}

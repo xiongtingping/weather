@@ -78,10 +78,51 @@ EXTRACTION_VERSIONS = {
     # ``write_run``), because its label names a run whose data it does not
     # hold.
     "CMA": "cma_grapes_global_open_meteo_single_run_v3",
-    "HRRR": "ncep_hrrr_surface_nearest_cell_v1",
+    # v2 (2026-09-23, charter 200): the station is read at the nearest cell
+    # HRRR's own LAND mask calls land (``noaa_conus_archive.SAMPLING_RULE``).
+    # Every station whose nearest cell is land reads the same cell and value
+    # as v1, bit for bit; KSFO's nearest cell is San Francisco Bay and moves
+    # 3.1 km onto the peninsula.
+    "HRRR": "ncep_hrrr_surface_nearest_land_cell_v2",
     "NBM": "ncep_nbm_core_nearest_cell_v1",
     "ICON_EU": "dwd_icon_eu_surface_nearest_cell_v1",
 }
+# Charter 200: (system, station) -> extraction versions whose rows were read
+# at a water cell.  Measured on the lane's own peak-complete rows, KSFO/HRRR v1
+# read 3.75 C below settled truth (sd 1.64) where the other eleven HRRR
+# stations read -1.1..+2.0; on native bytes over 09-08..09-21 the water cell
+# read +3.86 (MAE 3.86) and the nearest land cell -0.02 (MAE 1.57).  These rows
+# are never read again (``runs_for``, the debias fit), are not counted as
+# holding their run (``stored_run_inits``), so a pass re-fetches any run still
+# inside its window, and are superseded -- audit line first -- when the
+# land-cell row for the same key lands (``write_run``).
+RETIRED_CELL_VERSIONS: Mapping[tuple[str, str], frozenset[str]] = {
+    ("NCEP_HRRR_POINT", "KSFO"): frozenset({"ncep_hrrr_surface_nearest_cell_v1"}),
+}
+# Charter 200: the evidence clock of a moved (system, station) starts again.
+# Until this instant nothing of the pair reaches a reader -- not the retired
+# rows, and not the new-cell rows either, whose offset has no settled record
+# yet -- so the station reads its other regional lane (KSFO: the NBM) or none.
+# Six days: the point-forecast minimum of five settled training days
+# (``regional_point_debias.MIN_TRAIN_DAYS``) plus the day the fifth settles
+# on, counted from the declared start of P1 v20.
+CELL_EVIDENCE_FROM_UTC: Mapping[tuple[str, str], str] = {
+    ("NCEP_HRRR_POINT", "KSFO"): "2026-09-29T04:15:00Z",
+}
+
+
+def retired_cell_row(system_id: str, station_id: str, extraction_version: str) -> bool:
+    """A row read at a cell charter 200 retired."""
+
+    retired = RETIRED_CELL_VERSIONS.get((str(system_id), str(station_id).upper()))
+    return bool(retired) and str(extraction_version) in retired
+
+
+def cell_evidence_held(system_id: str, station_id: str, as_of_utc: str) -> bool:
+    """The pair's evidence clock has not restarted yet at ``as_of_utc``."""
+
+    start = CELL_EVIDENCE_FROM_UTC.get((str(system_id), str(station_id).upper()))
+    return bool(start) and str(as_of_utc) < start
 # Every cycle the model actually issues.
 RUN_CYCLE_HOURS = {
     "MSM": tuple(range(0, 24, 3)),
@@ -261,12 +302,16 @@ def stored_run_inits(
     ``write_run`` supersedes the derived row when it lands.
     """
 
-    marks = ",".join("?" for _ in DERIVED_LABEL_VERSIONS)
+    unheld = sorted(
+        DERIVED_LABEL_VERSIONS
+        | RETIRED_CELL_VERSIONS.get((str(system_id), str(station_id).upper()), frozenset())
+    )
+    marks = ",".join("?" for _ in unheld)
     return {
         str(row[0]) for row in conn.execute(
             f"SELECT run_init_utc FROM {TABLE} WHERE ensemble_system_id=? "
             f"AND station_id=? AND target_local_date=? AND extraction_version NOT IN ({marks})",
-            (system_id, station_id, event_date, *sorted(DERIVED_LABEL_VERSIONS)),
+            (system_id, station_id, event_date, *unheld),
         )
     }
 
@@ -352,11 +397,15 @@ def _supersede_derived_label(
 
     if extraction_version in DERIVED_LABEL_VERSIONS:
         return
-    marks = ",".join("?" for _ in DERIVED_LABEL_VERSIONS)
+    retired = RETIRED_CELL_VERSIONS.get((str(system_id), str(station_id).upper()), frozenset())
+    if extraction_version in retired:
+        return
+    replaced = sorted(DERIVED_LABEL_VERSIONS | retired)
+    marks = ",".join("?" for _ in replaced)
     rows = conn.execute(
         f"SELECT * FROM {TABLE} WHERE ensemble_system_id=? AND station_id=?"
         f" AND target_local_date=? AND run_init_utc=? AND extraction_version IN ({marks})",
-        (system_id, station_id, event_date, run_init, *sorted(DERIVED_LABEL_VERSIONS)),
+        (system_id, station_id, event_date, run_init, *replaced),
     ).fetchall()
     if not rows:
         return
@@ -366,7 +415,11 @@ def _supersede_derived_label(
         for row in rows:
             handle.write(json.dumps({
                 "superseded_at_utc": _iso(datetime.now(timezone.utc)),
-                "reason": "derived_label_replaced_by_named_run",
+                "reason": (
+                    "water_cell_replaced_by_land_cell"
+                    if row[names.index("extraction_version")] in retired
+                    else "derived_label_replaced_by_named_run"
+                ),
                 "replaced_by_extraction_version": extraction_version,
                 "row": dict(zip(names, row)),
             }, sort_keys=True) + "\n")
@@ -374,7 +427,7 @@ def _supersede_derived_label(
         conn.execute(
             f"DELETE FROM {TABLE} WHERE ensemble_system_id=? AND station_id=?"
             f" AND target_local_date=? AND run_init_utc=? AND extraction_version IN ({marks})",
-            (system_id, station_id, event_date, run_init, *sorted(DERIVED_LABEL_VERSIONS)),
+            (system_id, station_id, event_date, run_init, *replaced),
         )
 
 
@@ -390,7 +443,8 @@ def runs_for(
 
     sql = (
         f"SELECT ensemble_system_id, run_init_utc, lead_hours_to_local_day_start,"
-        f" forecast_tmax_c, remaining_peak_complete, hourly_c_json, knowable_at_utc"
+        f" forecast_tmax_c, remaining_peak_complete, hourly_c_json, knowable_at_utc,"
+        f" extraction_version"
         f" FROM {TABLE} WHERE station_id=? AND target_local_date=? AND knowable_at_utc<=?"
     )
     params: list[Any] = [str(station_id).upper(), str(event_date), str(as_of_utc)]
@@ -405,6 +459,10 @@ def runs_for(
             "archive_query_at_utc": str(r[6]), "knowable_at_utc": str(r[6]),
         }
         for r in conn.execute(sql, params)
+        # Charter 200: a water-cell row is never read, and a moved pair says
+        # nothing until its evidence clock restarts.
+        if not retired_cell_row(r[0], station_id, r[7])
+        and not cell_evidence_held(r[0], station_id, as_of_utc)
     ]
 
 
@@ -504,7 +562,7 @@ def fetch_noaa_run_for_targets(
 
     from .noaa_conus_archive import (
         GridPointReader, _field_range, _range_get, decode_field, file_url,
-        local_day_hours, product_hours, run_directory_url,
+        local_day_hours, product_hours, run_directory_url, sampling_points,
     )
 
     published = set(product_hours(product, run_init))
@@ -528,27 +586,45 @@ def fetch_noaa_run_for_targets(
         message = _range_get(url, span[0], span[1])
         if message is not None:
             messages[hour] = message
+    # Charter 200: where each station is read -- its own coordinates when
+    # the product's land mask calls the nearest cell land (every station but
+    # KSFO on HRRR, and every NBM station: the NBM core has no mask), else the
+    # nearest land cell's centre; a station with no land cell in reach is not
+    # read.  One mask read per run, from a file this run already publishes.
+    if messages:
+        sampled = sampling_points(
+            product=product, run_init=run_init, forecast_hour=min(messages),
+            points=[(float(t["latitude"]), float(t["longitude"])) for t in targets],
+        )
+    else:
+        sampled = [
+            {"latitude": float(t["latitude"]), "longitude": float(t["longitude"]), "moved": False}
+            for t in targets
+        ]
+    readable = [position for position, point in enumerate(sampled) if point is not None]
     # One grid search per station per pass, not one per (station, hour):
     # see ``GridPointReader`` for the 600-second NBM decode this replaces and
     # the per-station proof against eccodes that keeps it honest.  A station
     # the reader could not prove falls through to ``decode_field`` below,
     # exactly as before, range check and all.
     reader = GridPointReader(
-        [(float(t["latitude"]), float(t["longitude"])) for t in targets]
+        [(float(sampled[p]["latitude"]), float(sampled[p]["longitude"])) for p in readable]
     )
     kelvin_by_hour = {hour: reader.kelvin(message) for hour, message in messages.items()}
     results: dict[tuple[str, str], dict[str, Any]] = {}
-    for position, target in enumerate(targets):
+    for slot, position in enumerate(readable):
+        target = targets[position]
+        point = sampled[position]
         key = (str(target["station_id"]), target["event_date"].isoformat())
         values: dict[int, float] = {}
         for hour in wanted_by_key[key]:
             message = messages.get(hour)
             if message is None:
                 continue
-            kelvin = kelvin_by_hour[hour][position]
+            kelvin = kelvin_by_hour[hour][slot]
             if kelvin is None:
                 field = decode_field(
-                    message, latitude=float(target["latitude"]), longitude=float(target["longitude"]),
+                    message, latitude=float(point["latitude"]), longitude=float(point["longitude"]),
                     run_init=run_init, forecast_hour=hour, url=file_url(product, run_init, hour),
                 )
                 values[hour] = field.value_c
@@ -556,9 +632,16 @@ def fetch_noaa_run_for_targets(
             if not 180.0 <= kelvin <= 340.0:
                 raise ContractError("noaa_conus_value_out_of_range")
             values[hour] = kelvin - 273.15
+        source_url = run_directory_url(product, run_init)
+        if point.get("moved"):
+            # The row says where it was read; a station read where it stands
+            # carries the same citation as before.
+            source_url += (
+                f"#land_cell={float(point['latitude']):.5f},{float(point['longitude']):.5f}"
+            )
         results[key] = {
             "hourly_c": values, "hours_wanted": len(wanted_by_key[key]),
-            "source_url": run_directory_url(product, run_init),
+            "source_url": source_url,
         }
     return results
 

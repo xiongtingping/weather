@@ -287,8 +287,11 @@ def test_the_bump_names_charter_198() -> None:
     ].default
     assert P0.POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v9"
     assert p0m == "p0m_taf_likelihood_v11"
-    assert p1 == "p1_joint_likelihood_v19"
+    # Charter 200 moved P1 on to v20 (its own change); v19 keeps this
+    # charter's moment.
+    assert p1 == "p1_joint_likelihood_v20"
     start = sa.version_effective_from("P0", P0.POSTERIOR_VERSION)
     assert start and start.endswith("Z") and start > "2026-09-22T00:00:00Z"
     assert sa.version_effective_from("P0-M", p0m) == start
-    assert sa.version_effective_from("P1", p1) == start
+    assert sa.version_effective_from("P1", "p1_joint_likelihood_v19") == start
+    assert sa.version_effective_from("P1", p1) > start

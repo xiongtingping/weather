@@ -1297,7 +1297,10 @@ def materialize_p1(
     # final P1 (``p1_direct_update``) instead of g**alpha.
     # v18 (2026-09-21, charter 190): the root again (P0 v8, P0-M v10).
     # v19 (2026-09-22, charter 198): the root again (P0 v9, P0-M v11).
-    posterior_version: str = "p1_joint_likelihood_v19",
+    # v20 (2026-09-23, charter 200): P1's own -- the regional features read
+    # HRRR at the nearest land cell (KSFO off the bay), the water-cell rows
+    # retired from every reader, so the pooled likelihood's samples change.
+    posterior_version: str = "p1_joint_likelihood_v20",
     # {"features": ..., "artifact": ..., "regional_system_id": ...}: the
     # step's observation-side feature vector and the fitted likelihood,
     # handed in for the reason every fitted table is -- a replay must rebuild

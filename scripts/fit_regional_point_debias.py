@@ -81,7 +81,16 @@ def collect(db: Path) -> tuple[list[dict], dict[tuple[str, str], float]]:
             "run_init_utc", "run_cycle_hour", "lead_hours_to_local_day_start",
             "forecast_tmax_c", "remaining_peak_complete", "extraction_version",
         )
-        runs = [dict(zip(columns, row)) for row in conn.execute(RUNS_SQL)]
+        # Charter 200: rows read at a water cell never train the offset of
+        # the land cell that replaced them.
+        from bayes_basket_target.regional_point_lane import retired_cell_row  # noqa: PLC0415
+
+        runs = [
+            run for run in (dict(zip(columns, row)) for row in conn.execute(RUNS_SQL))
+            if not retired_cell_row(
+                run["ensemble_system_id"], run["station_id"], run["extraction_version"]
+            )
+        ]
     finally:
         conn.close()
     return runs, truth

@@ -260,9 +260,13 @@ def test_p1_declares_only_the_bump_its_root_caused() -> None:
     # v16 (charter 160) is the fourth root bump, at P0 v7's moment; v15
     # keeps P0-M v8's.  v17 (charter 161) is P1's own change, declared ahead
     # of its restart like v14.  v18 (charter 190) is the fifth root bump, at
-    # P0 v8's moment; v19 (charter 198) the sixth, at P0 v9's.
-    assert p1 == "p1_joint_likelihood_v19"
-    assert sa.version_effective_from("P1", p1) == CHARTER_198_START
+    # P0 v8's moment; v19 (charter 198) the sixth, at P0 v9's.  v20
+    # (charter 200) is P1's own change, declared past its push and restart.
+    assert p1 == "p1_joint_likelihood_v20"
+    assert sa.version_effective_from("P1", p1) > CHARTER_198_START
+    assert sa.version_effective_from(
+        "P1", "p1_joint_likelihood_v19"
+    ) == CHARTER_198_START
     assert sa.version_effective_from(
         "P1", "p1_joint_likelihood_v18"
     ) == CHARTER_190_START

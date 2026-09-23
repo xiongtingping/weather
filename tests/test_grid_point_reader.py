@@ -195,6 +195,10 @@ def test_the_p1_fetch_falls_back_and_range_checks_what_it_takes(monkeypatch):
     monkeypatch.setattr(A, "local_day_hours", lambda **_k: [6])
     monkeypatch.setattr(A, "_field_range", lambda url: (0, 1))
     monkeypatch.setattr(A, "_range_get", lambda url, s, e: b"grib")
+    # Charter 200: both stations' nearest cells are land -- read where they stand.
+    monkeypatch.setattr(A, "sampling_points", lambda *, product, run_init, forecast_hour, points: [
+        {"latitude": lat, "longitude": lon, "moved": False} for lat, lon in points
+    ])
     slow: list[str] = []
 
     def decode_field(message, *, latitude, longitude, run_init, forecast_hour, url):

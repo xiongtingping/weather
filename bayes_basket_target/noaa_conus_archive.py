@@ -212,6 +212,12 @@ def _range_get(url: str, start: int, end: int | None) -> bytes | None:
 def _field_range(url: str) -> tuple[int, int | None] | None:
     """(start, end) byte range of the 2m temperature message, from the idx."""
 
+    return _mark_range(url, _FIELD_MARK)
+
+
+def _mark_range(url: str, mark: str) -> tuple[int, int | None] | None:
+    """(start, end) byte range of the first message whose idx line has ``mark``."""
+
     raw = _get(url + ".idx")
     if raw is None:
         return None
@@ -226,7 +232,7 @@ def _field_range(url: str) -> tuple[int, int | None] | None:
             offsets.append(int(parts[1]))
         except ValueError:
             offsets.append(-1)
-        if _FIELD_MARK in line and not line.rstrip(":").endswith(
+        if mark in line and not line.rstrip(":").endswith(
             "ens std dev"
         ):
             if hit is None:
@@ -507,6 +513,171 @@ class GridPointReader:
             ]
         finally:
             library.codes_handle_delete(handle)
+
+
+# Charter 200 (2026-09-23, user ruling 「先 3 修」): the cell a station is read
+# at is the nearest cell the model itself calls land.
+#
+# The nearest cell is not always the station's.  KSFO sits on the bay shore,
+# and HRRR's 3 km cell nearest the ASOS (37.6075 N 122.3577 W, 1.5 km) is
+# water in HRRR's own LAND:surface mask.  Its day maximum read 3.75 C below
+# settled truth (sd 1.64) on the P1 lane's peak-complete rows, against -1 to
+# +2 C at the other eleven HRRR stations, all of whose nearest cells are land;
+# the nearest land cell (37.6003 N 122.3905 W, 3.1 km) is where the airport's
+# afternoon actually happens.  Audit: docs/research/
+# station_regional_features_20260922/conus_cell_audit/.
+#
+# The rule, one for every station: take the geographically nearest cell; if
+# the product's own land mask calls it land (fraction >= LAND_FRACTION_MIN)
+# the station's own coordinates are used, unchanged -- so every station whose
+# nearest cell is land reads exactly the cell and the value it read before,
+# bit for bit.  Otherwise the station is read at the centre of the nearest
+# land cell within MAX_LAND_SEARCH_KM (ties: the lower grid index), and a
+# station with no land cell that close is not read at all -- a water value is
+# never returned as a land station's.  Reading at the chosen cell's centre
+# rather than at an index keeps every downstream read unchanged: the fast
+# reader and the eccodes search both find a cell nearest to its own centre.
+#
+# Only a product that publishes a mask in the files the lane already reads is
+# subject to it.  HRRR carries LAND:surface in every wrfsfc file (a ~50 KB
+# ranged read beside the temperature field).  The NBM core publishes no land
+# mask; its nearest cells sit 0.4-1.4 km from every roster station and read
+# truth at -0.3 to +1.7 C (KSFO +0.18), so the NBM keeps plain nearest.
+LAND_MARK = ":LAND:surface:"
+LAND_MASK_PRODUCTS = frozenset({"HRRR"})
+LAND_FRACTION_MIN = 0.5
+MAX_LAND_SEARCH_KM = 10.0
+SAMPLING_RULE = "nearest_land_cell_v1"
+_EARTH_RADIUS_KM = 6371.0
+# (grid identity, latitude, longitude) -> resolved point; the mask is static
+# for a grid, so a pass resolves each station once.
+_SAMPLING_CACHE: dict[tuple[str, float, float], dict[str, Any] | None] = {}
+
+
+def land_mask_message(
+    product: str, run_init: datetime, forecast_hour: int,
+) -> bytes | None:
+    """The product's land mask from one file of this run; None if it has none.
+
+    ``ContractError`` when the product publishes a mask and it cannot be
+    read: falling back to the plain nearest cell would put a shore station
+    back on the water without anyone knowing.
+    """
+
+    if product not in LAND_MASK_PRODUCTS:
+        return None
+    url = file_url(product, run_init, forecast_hour)
+    span = _mark_range(url, LAND_MARK)
+    message = None if span is None else _range_get(url, span[0], span[1])
+    if not message:
+        raise ContractError("noaa_conus_land_mask_unavailable")
+    return message
+
+
+def nearest_land_points(
+    land_message: bytes, points: "list[tuple[float, float]]",
+) -> "list[dict[str, Any] | None]":
+    """Each point's sampling coordinates under ``SAMPLING_RULE``.
+
+    ``{"latitude", "longitude", "moved", ...}``: ``moved`` False returns the
+    point's own coordinates (the nearest cell is land); True returns the
+    centre of the nearest land cell with its distance.  None when no land
+    cell lies within ``MAX_LAND_SEARCH_KM``.
+    """
+
+    import math  # noqa: PLC0415
+
+    import numpy as np  # noqa: PLC0415
+
+    library = _eccodes()
+    buffer = ctypes.create_string_buffer(land_message, len(land_message))
+    handle = library.codes_handle_new_from_message(
+        None, buffer, ctypes.c_size_t(len(land_message))
+    )
+    if not handle:
+        raise ContractError("noaa_conus_land_mask_unreadable")
+    try:
+        identity = GridPointReader._grid_identity(library, handle)
+        pending = [
+            (lat, lon) for lat, lon in points
+            if (identity, float(lat), float(lon)) not in _SAMPLING_CACHE
+        ]
+        if pending:
+            nx = GridPointReader._long(library, handle, b"Nx")
+            alternate = GridPointReader._long(
+                library, handle, b"alternativeRowScanning"
+            ) == 1
+            if not nx or GridPointReader._long(
+                library, handle, b"bitmapPresent"
+            ):
+                raise ContractError("noaa_conus_land_mask_layout_unsupported")
+            lat_deg = GridPointReader._array(library, handle, b"latitudes")
+            lon_deg = GridPointReader._array(library, handle, b"longitudes") % 360.0
+            stored = GridPointReader._array(library, handle, b"values")
+            # Land fraction in geographic (iterator) order.
+            order = np.arange(stored.size)
+            if alternate:
+                rows, cols = np.divmod(order, int(nx))
+                odd = rows % 2 == 1
+                order = np.where(odd, rows * int(nx) + (int(nx) - 1 - cols), order)
+            land = stored[order] >= LAND_FRACTION_MIN
+            lat_r, lon_r = np.radians(lat_deg), np.radians(lon_deg)
+            sin_lat, cos_lat = np.sin(lat_r), np.cos(lat_r)
+            for lat, lon in pending:
+                p_lat, p_lon = math.radians(float(lat)), math.radians(float(lon) % 360.0)
+                cosine = np.clip(
+                    math.sin(p_lat) * sin_lat
+                    + math.cos(p_lat) * cos_lat * np.cos(lon_r - p_lon),
+                    -1.0, 1.0,
+                )
+                nearest = int(np.argmax(cosine))
+                key = (identity, float(lat), float(lon))
+                if bool(land[nearest]):
+                    _SAMPLING_CACHE[key] = {
+                        "latitude": float(lat), "longitude": float(lon),
+                        "moved": False, "rule": SAMPLING_RULE,
+                    }
+                    continue
+                distance = _EARTH_RADIUS_KM * np.arccos(cosine)
+                candidates = np.flatnonzero(land & (distance <= MAX_LAND_SEARCH_KM))
+                if candidates.size == 0:
+                    _SAMPLING_CACHE[key] = None
+                    continue
+                # argmin returns the first minimum: ties go to the lower index.
+                best = int(candidates[int(np.argmin(distance[candidates]))])
+                cell_lon = float(lon_deg[best])
+                _SAMPLING_CACHE[key] = {
+                    "latitude": float(lat_deg[best]),
+                    "longitude": cell_lon - 360.0 if cell_lon > 180.0 else cell_lon,
+                    "moved": True, "rule": SAMPLING_RULE,
+                    "distance_km": round(float(distance[best]), 3),
+                    "water_cell_distance_km": round(float(distance[nearest]), 3),
+                }
+        return [
+            _SAMPLING_CACHE[(identity, float(lat), float(lon))]
+            for lat, lon in points
+        ]
+    finally:
+        library.codes_handle_delete(handle)
+
+
+def sampling_points(
+    *, product: str, run_init: datetime, forecast_hour: int,
+    points: "list[tuple[float, float]]",
+) -> "list[dict[str, Any] | None]":
+    """Where each point is read in this run, under ``SAMPLING_RULE``.
+
+    A product without a land mask reads every point where it stands.
+    """
+
+    message = land_mask_message(product, run_init, forecast_hour)
+    if message is None:
+        return [
+            {"latitude": float(lat), "longitude": float(lon), "moved": False,
+             "rule": "nearest_cell_no_mask"}
+            for lat, lon in points
+        ]
+    return nearest_land_points(message, points)
 
 
 def decode_field(

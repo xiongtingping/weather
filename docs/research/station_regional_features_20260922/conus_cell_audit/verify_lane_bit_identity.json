@@ -1,0 +1,159 @@
+{
+ "run": "2026-09-21T12:00:00Z",
+ "report": {
+  "CYYZ|2026-09-21": {
+   "identical": true,
+   "n": 16,
+   "max_abs_diff": 0.0,
+   "mean_diff": 0.0,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/"
+  },
+  "CYYZ|2026-09-22": {
+   "identical": true,
+   "n": 24,
+   "max_abs_diff": 0.0,
+   "mean_diff": 0.0,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/"
+  },
+  "KATL|2026-09-21": {
+   "identical": true,
+   "n": 16,
+   "max_abs_diff": 0.0,
+   "mean_diff": 0.0,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/"
+  },
+  "KATL|2026-09-22": {
+   "identical": true,
+   "n": 24,
+   "max_abs_diff": 0.0,
+   "mean_diff": 0.0,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/"
+  },
+  "KAUS|2026-09-21": {
+   "identical": true,
+   "n": 17,
+   "max_abs_diff": 0.0,
+   "mean_diff": 0.0,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/"
+  },
+  "KAUS|2026-09-22": {
+   "identical": true,
+   "n": 24,
+   "max_abs_diff": 0.0,
+   "mean_diff": 0.0,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/"
+  },
+  "KBKF|2026-09-21": {
+   "identical": true,
+   "n": 18,
+   "max_abs_diff": 0.0,
+   "mean_diff": 0.0,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/"
+  },
+  "KBKF|2026-09-22": {
+   "identical": true,
+   "n": 24,
+   "max_abs_diff": 0.0,
+   "mean_diff": 0.0,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/"
+  },
+  "KDAL|2026-09-21": {
+   "identical": true,
+   "n": 17,
+   "max_abs_diff": 0.0,
+   "mean_diff": 0.0,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/"
+  },
+  "KDAL|2026-09-22": {
+   "identical": true,
+   "n": 24,
+   "max_abs_diff": 0.0,
+   "mean_diff": 0.0,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/"
+  },
+  "KHOU|2026-09-21": {
+   "identical": true,
+   "n": 17,
+   "max_abs_diff": 0.0,
+   "mean_diff": 0.0,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/"
+  },
+  "KHOU|2026-09-22": {
+   "identical": true,
+   "n": 24,
+   "max_abs_diff": 0.0,
+   "mean_diff": 0.0,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/"
+  },
+  "KLGA|2026-09-21": {
+   "identical": true,
+   "n": 16,
+   "max_abs_diff": 0.0,
+   "mean_diff": 0.0,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/"
+  },
+  "KLGA|2026-09-22": {
+   "identical": true,
+   "n": 24,
+   "max_abs_diff": 0.0,
+   "mean_diff": 0.0,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/"
+  },
+  "KMIA|2026-09-21": {
+   "identical": true,
+   "n": 16,
+   "max_abs_diff": 0.0,
+   "mean_diff": 0.0,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/"
+  },
+  "KMIA|2026-09-22": {
+   "identical": true,
+   "n": 24,
+   "max_abs_diff": 0.0,
+   "mean_diff": 0.0,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/"
+  },
+  "KORD|2026-09-21": {
+   "identical": true,
+   "n": 17,
+   "max_abs_diff": 0.0,
+   "mean_diff": 0.0,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/"
+  },
+  "KORD|2026-09-22": {
+   "identical": true,
+   "n": 24,
+   "max_abs_diff": 0.0,
+   "mean_diff": 0.0,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/"
+  },
+  "KSEA|2026-09-21": {
+   "identical": true,
+   "n": 19,
+   "max_abs_diff": 0.0,
+   "mean_diff": 0.0,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/"
+  },
+  "KSEA|2026-09-22": {
+   "identical": true,
+   "n": 24,
+   "max_abs_diff": 0.0,
+   "mean_diff": 0.0,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/"
+  },
+  "KSFO|2026-09-21": {
+   "identical": false,
+   "n": 19,
+   "max_abs_diff": 1.812,
+   "mean_diff": 0.224,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/#land_cell=37.60026,-122.39046"
+  },
+  "KSFO|2026-09-22": {
+   "identical": false,
+   "n": 24,
+   "max_abs_diff": 2.938,
+   "mean_diff": -0.039,
+   "source_url": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.20260921/conus/#land_cell=37.60026,-122.39046"
+  }
+ }
+}

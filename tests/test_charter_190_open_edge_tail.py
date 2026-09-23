@@ -310,7 +310,8 @@ def test_the_bump_is_declared_once_for_three_stages() -> None:
     # charter-190 versions keep their shared declaration.
     assert P0.POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v9"
     assert p0m == "p0m_taf_likelihood_v11"
-    assert p1 == "p1_joint_likelihood_v19"
+    # Charter 200 moved P1 on to v20 (its own change).
+    assert p1 == "p1_joint_likelihood_v20"
     start = SA.version_effective_from(
         "P0", "calibrated_native_cross_ensemble_p0_v8"
     )
@@ -320,4 +321,5 @@ def test_the_bump_is_declared_once_for_three_stages() -> None:
     start = SA.version_effective_from("P0", P0.POSTERIOR_VERSION)
     assert start and start.endswith("Z") and "T" in start
     assert SA.version_effective_from("P0-M", p0m) == start
-    assert SA.version_effective_from("P1", p1) == start
+    assert SA.version_effective_from("P1", "p1_joint_likelihood_v19") == start
+    assert SA.version_effective_from("P1", p1) > start
