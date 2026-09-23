@@ -78,6 +78,7 @@ from bayes_basket_target.strategy_lanes import (  # noqa: E402
 # and the live fills (same ruling).  The paper selection payload they read
 # until then is no longer built here.
 import live_selection  # noqa: E402
+from dashboard_ai_models import collect_ai_models  # noqa: E402
 from selection_market_dashboard import (  # noqa: E402
     STATION_LABELS,
 )
@@ -16138,6 +16139,9 @@ SECTION_CACHE_TTL_SEC = {
     # Seven minutes off the scorecard's three hours: cached sections expire
     # on distinct clocks so the slow ones never rebuild in the same render.
     "precip_classification": 3 * 60 * 60 + 7 * 60,
+    # One stage-clock seek over a day of P0 rows plus ~1,200 lineage reads
+    # (~20 s); the products it reads change by the cycle, not the minute.
+    "ai_models": 15 * 60 + 11,
 }
 # Set by ``--no-section-cache`` so a reader who needs every number computed
 # against this instant can have it, at the price of the long build.
@@ -16368,6 +16372,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     regional_usage = _cached_section(
         "regional_usage", collect_regional_usage, conn
     )
+    ai_models = _cached_section("ai_models", collect_ai_models, conn)
     p1_joint_likelihood = _cached_section(
         "p1_joint_likelihood", collect_p1_joint_likelihood, conn
     )
@@ -16617,6 +16622,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "observation_intake": observation_intake,
         "cycle_time": cycle_time,
         "regional_usage": regional_usage,
+        "ai_models": ai_models,
         "p1_joint_likelihood": p1_joint_likelihood,
         "p0m_taf_likelihood": p0m_taf_likelihood,
         "station_bayes": station_bayes,
@@ -25014,6 +25020,93 @@ function p1PathSkill(){
       <tbody>${rows}</tbody></table></div></details>`;
 }
 
+// AI 模型 (user, 2026-09-23: 「前端增加AIGFS、AIFS相关信息」).  Three products
+// with three standings on one board, each read from where it lives: AIFS
+// ENS is a P0 member (charter 204), the deterministic feature family --
+// AIFS single point among it -- is a gated shadow (charter 201), AIGEFS is a
+// research backfill with no production reader.  Readings only.
+function aiModelsBoard(){
+  const A = D.ai_models || {};
+  if(!A.available) return `<h2>AI 模型：AIFS ENS、AIFS 单点特征、AIGEFS</h2><div class="card">未采集。</div>`;
+  const E = A.aifs_ens || {}, S = E.standing || {}, F = E.forward || {}, V = E.served || {};
+  const T = A.deterministic_family || {}, G = A.aigefs || {};
+  const n = v => v == null ? "—" : Number(v).toLocaleString();
+  const w3 = v => v == null ? "—" : Number(v).toFixed(3);
+  const short = s => String(s || "").replace("_GLOBAL_EPS", "").replace("_GLOBAL_ENS", "").replace("_OPEN_PF50", "")
+    .replace("ECMWF_IFS_ENS", "IFS").replace("ECMWF_AIFS_ENS", "AIFS").replace("NOAA_GEFS_05", "GEFS")
+    .replace("DWD_ICON", "ICON").replace("ECCC_GEM", "GEM");
+  const byDay = Object.entries(V.by_event_date || {}).map(([d, s]) => `<tr><td class="mono">${h(d)}</td>
+    <td class="mono">${s.scopes}</td><td class="mono"><span class="pill ${s.with_aifs ? "green" : ""}">${s.with_aifs}</span></td>
+    <td class="mono">${s.scopes ? (100 * s.with_aifs / s.scopes).toFixed(0) + "%" : "—"}</td></tr>`).join("");
+  const pools = (V.pools || []).slice(0, 8).map(p => `<tr><td>${p.systems.map(short).map(h).join(" + ")}</td>
+    <td class="mono">${p.systems.length}</td><td class="mono">${n(p.count)}</td>
+    <td class="mono">${p.systems.includes("ECMWF_AIFS_ENS_GLOBAL") ? "含 AIFS" : ""}</td></tr>`).join("");
+  const seated = (V.scopes || []).filter(s => s.aifs_weight != null).map(s => `<tr><td class="mono"><b>${h(s.station_id)}</b></td>
+    <td class="mono">${h(s.event_date)}</td><td class="mono">${whenZ(s.decision_at_utc)}</td>
+    <td class="mono"><b>${w3(s.aifs_weight)}</b></td>
+    <td class="mono">${Object.entries(s.weights || {}).map(([k, v]) => `${h(short(k))} ${w3(v)}`).join(" · ")}</td></tr>`).join("");
+  const fwd = Object.entries(F.stations || {}).sort().map(([sid, e]) => `<tr><td class="mono"><b>${h(sid)}</b></td>
+    <td class="mono">${h(e.event_date)}</td><td class="mono">${whenZ(e.run_init_utc)}</td>
+    <td class="mono">${h(e.run_cycle || "—")} / ${h(e.lead_bucket || "—")}</td><td class="mono">${whenZ(e.received_at_utc)}</td></tr>`).join("");
+  const rps = v => Array.isArray(v) ? `${Number(v[0]).toFixed(3)} [${Number(v[1]).toFixed(3)}, ${Number(v[2]).toFixed(3)}]` : "—";
+  const fam = (T.by_station || []).map(r => `<tr><td class="mono"><b>${h(r.station_id)}</b></td>
+    <td>${h(r.candidate_system || "—")}</td>
+    <td>${r.selected_system ? `<span class="pill green">${h(r.selected_system)}</span>` : `<span class="pill">未过闸</span>`}</td>
+    <td class="mono">${r.event_days ?? "—"}</td><td class="mono">${rps(r.d_rps)}</td><td class="mono">${h(r.verdict || "—")}</td>
+    <td class="mono">${rps(r.aifs_single)}</td></tr>`).join("");
+  const famSys = Object.entries(T.systems || {}).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${h(k)} ${v} 站`).join(" · ");
+  const R = G.runs || {}, M = G.member_rows || {};
+  return `<h2>AI 模型：AIFS ENS 入座了没、AIFS 单点特征在影子里如何、AIGEFS 回填到哪了</h2>
+  <p class="sub">三个产品三种身份，别混着读：<b>ECMWF AIFS ENS</b> 是 P0 的正式成员（第 204 条，${h(S.expected_member_count || 51)} 个成员，和 IFS 同属 ECMWF 家族）；
+    <b>AIFS 单点</b>只是「确定性特征族」六个候选之一（第 201 条），按站过样本外闸后才改中心，现在模式是 <b>${h(T.mode || "shadow")}</b>；
+    <b>NOAA AIGEFS</b> 只在研究库里回填，生产没有任何读者。</p>
+  <div class="card"><b>AIFS ENS（在用）</b>
+    <span class="pill ${S.registered ? "green" : "red"}">${S.registered ? "已登记" : "未登记"}</span>
+    <span class="pill ${(S.artifacts || {}).stations ? "green" : "amber"}">资格件 ${n((S.artifacts || {}).count)} 份 · ${n((S.artifacts || {}).stations)} 站 · ${n((S.artifacts || {}).cells)} 格</span>
+    <span class="pill">激活 ${n((S.activations || {}).count)}，最新 ${whenZ((S.activations || {}).latest_at_utc)}</span>
+    <span class="pill">历史回填 ${n((S.history || {}).rows)} 行 · ${n((S.history || {}).stations)} 站 · ${h((S.history || {}).first_date || "?")}…${h((S.history || {}).last_date || "?")}</span>
+    <div style="margin-top:6px"><span class="muted">前向 run：</span>${F.available
+      ? `收件箱 ${n(F.packets)} 包里 ${n(F.packets_with_aifs)} 包带 AIFS（${n(F.stations_with_aifs)} 站），最新起报 ${whenZ(F.latest_run_init_utc)}（${hours(F.latest_run_age_hours)}）`
+      : "收件箱不可读"}</div>
+    <div style="margin-top:6px"><span class="muted">过去 ${h(V.window_hours || 24)} 小时服务出去的 P0：</span>${n(V.p0_packets)} 包，其中 ${n(V.with_aifs)} 包坐着 AIFS；
+      按站日看最新一包：${n(V.scopes_seated)}/${n(V.scopes_seen)} 个站日坐着，权重中位 ${w3(V.aifs_weight_median)}、最高 ${w3(V.aifs_weight_max)}；
+      版本 ${Object.entries(V.versions || {}).map(([k, v]) => h(k.replace("calibrated_native_cross_ensemble_p0_", "P0 ")) + " ×" + v).join("、") || "—"}</div>
+    <p class="sub" style="margin-top:6px">白话：AIFS 只在<b>它那一天的 run 已经到手</b>的站日入座——D+1 用 00Z/06Z run，D+2 要等 18Z run，所以 D+2 那一行常常是 0，不是没入座。入座后它是五家池里的一家，权重由技能权重和家族均分各半决定（第 134 条），和 IFS 同一家族共用上限。</p>
+    <div class="scroll" style="margin-top:8px"><table><thead><tr><th>事件日</th><th>站日</th><th>坐着 AIFS</th><th>占比</th></tr></thead><tbody>${byDay || `<tr><td colspan="4" class="muted">窗口内没有 P0</td></tr>`}</tbody></table></div>
+    <details class="note"><summary>这 24 小时的池子组成（每包按坐着的系统集合数）</summary>
+      <div class="scroll"><table><thead><tr><th>系统集合</th><th>家数</th><th>包数</th><th></th></tr></thead><tbody>${pools}</tbody></table></div></details>
+    <details class="note"><summary>逐站日：最新一包里 AIFS 的权重（只列坐着的）</summary>
+      <div class="scroll" style="max-height:420px"><table><thead><tr><th>站</th><th>事件日</th><th>决策时刻</th><th>AIFS 权重</th><th>全部权重</th></tr></thead>
+        <tbody>${seated || `<tr><td colspan="5" class="muted">窗口内没有坐着 AIFS 的站日</td></tr>`}</tbody></table></div></details>
+    <details class="note"><summary>逐站：收件箱里的 AIFS run</summary>
+      <div class="scroll" style="max-height:360px"><table><thead><tr><th>站</th><th>事件日</th><th>起报</th><th>周期 / 提前量档</th><th>收到</th></tr></thead>
+        <tbody>${fwd || `<tr><td colspan="5" class="muted">没有</td></tr>`}</tbody></table></div></details>
+  </div>
+  <div class="card" style="margin-top:10px"><b>确定性特征族（影子，第 201 条）</b>
+    <span class="pill ${T.mode === "shadow" ? "" : "green"}">模式 ${h(T.mode || "—")}</span>
+    <span class="pill ${T.gate_available ? "" : "red"}">${T.gate_available ? `闸门拟合 ${whenZ(T.fitted_at_utc)}，窗 ${(T.window || []).map(h).join("…")}` : "闸门件缺失"}</span>
+    <span class="pill ${T.selected ? "green" : ""}">过闸 ${n(T.selected)}/${n(T.stations)} 站</span>
+    <span class="pill">AIFS 单点是 ${n(T.aifs_single_stations)} 站的候选</span>
+    <div style="margin-top:6px"><span class="muted">各站首选候选：</span>${famSys || "—"}</div>
+    <div style="margin-top:6px"><span class="muted">服务回执：</span>${Object.entries((T.served || {}).states || {}).map(([k, v]) => h(k) + " " + v).join(" · ") || "—"}；
+      影子若生效会把中心平均挪 ${w3((T.served || {}).mean_abs_shift_c)}°C，最多 ${w3((T.served || {}).max_abs_shift_c)}°C（上限 ${h(T.cap_c)}°C），<b>服务出去的中心一律未动</b></div>
+    <p class="sub" style="margin-top:6px">白话：每个站从六个单点模型里挑一个当中心订正的候选（AIFS 单点、HRRR、NBM、ICON-EU、MSM、CMA），要在自己站的样本外攒够 ${h(T.gate_min_event_days)} 个事件日且 RPS 区间上界小于 0 才过闸；现在一个站都没过，所以什么都没改。</p>
+    <details class="note"><summary>逐站：候选、判定、RPS 变化（负＝更好）</summary>
+      <div class="scroll" style="max-height:420px"><table><thead><tr><th>站</th><th>首选候选</th><th>过闸</th><th>事件日</th><th>ΔRPS [95%]</th><th>判定</th><th>AIFS 单点 ΔRPS</th></tr></thead>
+        <tbody>${fam || `<tr><td colspan="7" class="muted">—</td></tr>`}</tbody></table></div></details>
+  </div>
+  <div class="card" style="margin-top:10px"><b>NOAA AIGEFS（研究回填，不进生产）</b>
+    <span class="pill ${G.available ? "green" : "amber"}">${G.available ? "研究库可读" : "研究库不可读（冷盘未挂或缺文件）"}</span>
+    ${G.available ? `<span class="pill">${n(R.count)} 个 run · ${h((R.first_run_init_utc || "").slice(0, 13))}Z…${h((R.last_run_init_utc || "").slice(0, 13))}Z</span>
+    <span class="pill">${n(M.rows)} 行成员 · ${n(M.stations)} 站 · ${h(M.first_date || "?")}…${h(M.last_date || "?")}</span>
+    <span class="pill ${G.missing_runs ? "amber" : "green"}">缺 run ${n(G.missing_runs)}</span>
+    <span class="pill">最近完成 ${whenZ(R.last_finished_at_utc)}</span>` : ""}
+    ${G.plan ? `<span class="pill">计划 ${h(G.plan.from)}…${h(G.plan.to)}</span>` : ""}
+    ${G.log_updated_at_utc ? `<span class="pill">日志 ${hours(G.log_age_hours)} 前</span>` : ""}
+    <p class="sub" style="margin-top:6px">白话：AIGEFS 是 NOAA 的 AI 集合（31 个成员，每 6 小时一个 run），现在只是把 6 月以来的 run 一个个补进冷盘上的研究库，用来回放「加进 P0 会不会更准」；没有任何生产程序读它。</p>
+  </div>`;
+}
+
 function regionalBoard(){
   const R = D.regional || {}, U = D.regional_usage || {};
   const A = U.arms || {};
@@ -25213,6 +25306,9 @@ const GROUPS = [
      {box:"②′ 融合权重：宪章 199 影子运行、前向记账与研究候选", kind:"shadow",
       note:"每次 P0 编译都算融合权重并记账，服务仍为席位权重；上线前重放、前向影子对比（同批站日的 RMSE、CRPS、NLL、Reliability、Resolution）与冻结的三个研究候选",
       sections:[[fusionCandidates,"融合权重候选"]]},
+     {box:"②″ AI 模型：AIFS ENS（在用）、确定性特征族含 AIFS 单点（影子）、AIGEFS（研究）", kind:"live",
+      note:"三个身份别混着读：AIFS ENS 是第 204 条起的 P0 正式成员，只在它那天的 run 到手的站日入座；AIFS 单点只是第 201 条特征族的候选之一，过闸前不改任何中心；AIGEFS 只在研究库回填",
+      sections:[[aiModelsBoard,"AI 模型"]]},
      {box:"③ 分布层：合成后的分布再塑形、再检验", kind:"live",
       note:"共识桥 → 辐射降温项 → 中心/宽度两标量 → band 表，然后用样本外和真值检验服务出去的分布；这一层只对「边际 · ① 验收 · 模型对市场差距」里的形状差负责，中心差出在 ① 单系统、② 融合和 NWP 输入",
       sections:[[consensusBridgeSection,"共识桥"],[radiationSection,"辐射降温项"],[centerWidth,"中心/宽度"],
