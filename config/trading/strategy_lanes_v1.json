@@ -1,6 +1,6 @@
 {
   "schema": "basket_strategy_lanes_v1",
-  "updated_at_utc": "2026-09-21T09:30:00Z",
+  "updated_at_utc": "2026-09-23T01:45:00Z",
   "rationale": "User ruling 2026-09-18: put the tiebreak lane (秤砣线) live and pause every other strategy -- closed, not deleted. A paused lane still compiles, records its decisions and writes the evidence the ledger and the fits read; only its sends are held (basket BUYs end failed with strategy_lane_paused:basket on their event; the two sell lanes are skipped by the daemon). Read fresh before every send. Missing file = every lane enabled; unreadable file = every lane paused. Charters 146, 163, 166 and 175.",
   "lanes": {
     "basket": {
@@ -36,7 +36,7 @@
       "max_paid_price": 0.6
     },
     "p1_tail": {
-      "enabled": true,
+      "enabled": false,
       "stake_usdc": 5.0,
       "rule": "market_prior_x_p1_likelihood_taker_v1",
       "hurdle": 0.08,
@@ -50,7 +50,9 @@
       "send_book_fresh_seconds": 60.0,
       "walk_ticks": 1,
       "live_ws_book": true,
-      "hours_axis": "remaining_hours"
+      "hours_axis": "remaining_hours",
+      "paused_at_utc": "2026-09-23T01:45:00Z",
+      "pause_note": "User ruling 2026-09-23 「P1 尾段线：暂定交易先关闭」: 16 settled legs over 09-21/09-22, 5 hit, 71.26 USDC in, -43.95 (-61.7%); the seven bought under 0.50 all lost (-30.06), the nine at 0.50 or more hit 5 and still lost -13.89. Switched off at the lane file; the worker returns before calling the lane, so no new evaluations are written while it is off. Turn back on by setting enabled true."
     }
   }
 }
