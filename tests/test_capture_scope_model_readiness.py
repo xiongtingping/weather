@@ -94,7 +94,17 @@ def test_runs_come_from_the_archive_contracts_not_a_fixed_cycle() -> None:
     # four collectors never read.
     runs = contracted_run_inits("2026-08-09", lead_days=2)
 
-    assert set(runs) == set(OFFICIAL_ARCHIVE_SCOPE_CONTRACTS)
+    # Charter 204: a family followed at every cycle (AIFS ENS) contracts no
+    # readiness cycle, so the schedule names no run for it.
+    assert set(runs) == {
+        system_id
+        for system_id, contract in OFFICIAL_ARCHIVE_SCOPE_CONTRACTS.items()
+        if any(
+            not entry.get("serving_follow")
+            for entries in contract["leads"].values()
+            for entry in ([entries] if isinstance(entries, dict) else entries)
+        )
+    }
     for system_id, run in runs.items():
         contract = OFFICIAL_ARCHIVE_SCOPE_CONTRACTS[system_id]["leads"]["d2"]
         # A lead contracts a list of cycles (ECCC reads 00Z and 12Z at d2);

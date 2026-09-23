@@ -24,6 +24,7 @@ from bayes_basket_target.market_registry import (  # noqa: E402
 )
 from bayes_basket_target.official_native_forward_packet import (  # noqa: E402
     DWD_ICON_EPS_MULTISTATION_SCHEMA,
+    ECMWF_AIFS_ENS_MULTISTATION_SCHEMA,
     ECCC_GEPS_MULTISTATION_SCHEMA,
     ECMWF_MULTISTATION_SCHEMA,
     NOAA_GEFS_MULTISTATION_SCHEMA,
@@ -50,6 +51,16 @@ _ARCHIVE_FAMILY_BY_SCHEMA = {
     for family, schema in _ARCHIVE_SCHEMA_BY_ROLE.items()
 }
 _SUPPORTED_ARCHIVE_SCHEMAS = frozenset(_ARCHIVE_FAMILY_BY_SCHEMA)
+# Charter 204: AIFS ENS is a follow-only family -- it never comes in as a
+# base ``--archive`` (the ladder has no AIFS rung), only per station as a
+# ``--follow-archive`` that is ADDED to the station's set, since there is no
+# AIFS base archive for it to replace.  Same family as PF50: two products of
+# one piece of independent information, which the stable pool's
+# family-balanced baseline already accounts for.
+_FOLLOW_FAMILY_BY_SCHEMA = {
+    **_ARCHIVE_FAMILY_BY_SCHEMA,
+    ECMWF_AIFS_ENS_MULTISTATION_SCHEMA: "ECMWF",
+}
 
 
 def _load_archives(
@@ -506,8 +517,9 @@ def main() -> int:
         if schema not in {
             ECCC_GEPS_MULTISTATION_SCHEMA,
             DWD_ICON_EPS_MULTISTATION_SCHEMA,
+            ECMWF_AIFS_ENS_MULTISTATION_SCHEMA,
         } or str(raw.get("independence_family_id") or "") != (
-            _ARCHIVE_FAMILY_BY_SCHEMA[schema]
+            _FOLLOW_FAMILY_BY_SCHEMA[schema]
         ) or str(raw.get("event_date") or "") != base_event_date:
             raise RuntimeError("official_native_forward_follow_archive_invalid")
         follow_by_path[resolved] = dict(raw)
@@ -552,6 +564,9 @@ def main() -> int:
             icon_archive
         ):
             archives.append(icon_archive)
+        # Charter 204: added, never replacing -- there is no AIFS base.
+        if ECMWF_AIFS_ENS_MULTISTATION_SCHEMA in follows:
+            archives.append(follows[ECMWF_AIFS_ENS_MULTISTATION_SCHEMA])
         archives.extend(regional_archives_by_station.get(station, []))
         return archives
 

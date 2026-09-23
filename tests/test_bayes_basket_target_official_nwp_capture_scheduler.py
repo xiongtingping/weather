@@ -1070,9 +1070,23 @@ def test_every_contracted_lead_resolves_a_run_for_all_four_systems() -> None:
         contracted_run_inits,
     )
 
+    # Charter 204: AIFS ENS is contracted at every cycle as a follow cycle
+    # only, so the schedule names no run for it at any lead.
+    readiness_systems = {
+        system_id
+        for system_id, contract in OFFICIAL_ARCHIVE_SCOPE_CONTRACTS.items()
+        if any(
+            not entry.get("serving_follow")
+            for entries in contract["leads"].values()
+            for entry in ([entries] if isinstance(entries, dict) else entries)
+        )
+    }
+    assert readiness_systems == set(OFFICIAL_ARCHIVE_SCOPE_CONTRACTS) - {
+        "ECMWF_AIFS_ENS_GLOBAL"
+    }
     for lead_days in SUPPORTED_LEAD_DAYS:
         runs = contracted_run_inits("2026-08-12", lead_days=lead_days)
-        assert set(runs) == set(OFFICIAL_ARCHIVE_SCOPE_CONTRACTS)
+        assert set(runs) == readiness_systems
 
 
 def test_a_multi_cycle_lead_takes_the_latest_contracted_cycle() -> None:

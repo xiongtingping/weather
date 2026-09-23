@@ -35,6 +35,13 @@ ECCC_GEPS_MULTISTATION_SCHEMA = (
 DWD_ICON_EPS_MULTISTATION_SCHEMA = (
     "dwd_icon_eps_official_historical_multistation_members_v1"
 )
+# Charter 204: AIFS ENS reaches the packet only as a per-station follow
+# archive (its own newest certified run), never as a rung archive.  The
+# schema string is spelled here rather than imported so this module keeps
+# its import graph (``ecmwf_aifs_ens_archive`` asserts the two agree).
+ECMWF_AIFS_ENS_MULTISTATION_SCHEMA = (
+    "ecmwf_aifs_ens_official_historical_multistation_members_v1"
+)
 # Charter 95 (2026-09-06): the regional deterministic models' forward runs
 # reach the packet through a single-member point-archive shape, one
 # schema per system so the transport is read off the archive as for every
@@ -49,6 +56,7 @@ SUPPORTED_ARCHIVE_SCHEMAS = {
     ECMWF_MULTISTATION_SCHEMA: "ECMWF_OPEN_DATA_S3",
     ECCC_GEPS_MULTISTATION_SCHEMA: "ECCC_DD_WEATHER",
     DWD_ICON_EPS_MULTISTATION_SCHEMA: "DWD_OPENDATA_ICON_EPS",
+    ECMWF_AIFS_ENS_MULTISTATION_SCHEMA: "ECMWF_OPEN_DATA_S3",
     JMA_MSM_POINT_SCHEMA: "RISH_KYOTO_JMA_ARCHIVE",
     NCEP_HRRR_POINT_SCHEMA: "NOAA_HRRR_PDS_S3",
     NCEP_NBM_POINT_SCHEMA: "NOAA_NBM_PDS_S3",

@@ -93,6 +93,11 @@ from .ecmwf_ifs_archive import (
     SUPPORTED_LEAD_DAYS as _IFS_LEADS,
     extraction_version_for_lead as _ifs_extraction_version,
 )
+from .ecmwf_aifs_ens_archive import (
+    SUPPORTED_LEAD_DAYS as _AIFS_LEADS,
+    SUPPORTED_RUN_CYCLE_HOURS as _AIFS_SUPPORTED_CYCLES,
+    extraction_version_for_lead as _aifs_extraction_version,
+)
 from .native_archive_lead import (
     LEAD_HOUR_BUCKETS,
     LONGEST_LEAD_HOUR_BUCKET,
@@ -497,6 +502,27 @@ OFFICIAL_ARCHIVE_SCOPE_CONTRACTS = {
                     if hour != _ICON_CYCLE_BY_LEAD[lead]
                 )
                 for lead in _ICON_LEADS
+            },
+        ),
+    },
+    # Charter 204: AIFS ENS, charter L0's fifth formal P0 product.  Every
+    # cycle at every lead, and every one of them a follow cycle: the family
+    # is read on the follow lane at its own publication (init + ~6h10m,
+    # 1-1.7 h before the IFS run of the same cycle), never on the rung, so
+    # the capture scheduler's readiness -- which reads only non-follow
+    # cycles -- is told nothing and no lead waits for it.  Measured before
+    # registration (research replay, 2026-08-16..09-19, 1,574 station-days):
+    # served P0 CRPS -4.6%, 39/45 stations.
+    "ECMWF_AIFS_ENS_GLOBAL": {
+        "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+        "leads": _lead_contracts(
+            supported_lead_days=_AIFS_LEADS,
+            cycle_hour_by_lead={
+                lead: tuple(_AIFS_SUPPORTED_CYCLES) for lead in _AIFS_LEADS
+            },
+            extraction_version_for_lead=_aifs_extraction_version,
+            follow_cycle_hours_by_lead={
+                lead: tuple(_AIFS_SUPPORTED_CYCLES) for lead in _AIFS_LEADS
             },
         ),
     },

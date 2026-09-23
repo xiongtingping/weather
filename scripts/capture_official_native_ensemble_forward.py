@@ -54,6 +54,11 @@ from bayes_basket_target.dwd_icon_eps_archive import (  # noqa: E402
     follow_forecast_hours as icon_follow_forecast_hours,
     ingest_icon_eps_station_days,
 )
+from bayes_basket_target.ecmwf_aifs_ens_archive import (  # noqa: E402
+    capture_aifs_station_days,
+    day_instants as aifs_day_instants,
+    ingest_aifs_station_days,
+)
 from bayes_basket_target import follow_run  # noqa: E402
 from bayes_basket_target import nwp_arrival_probe  # noqa: E402
 from bayes_basket_target.native_raw_object_store import (  # noqa: E402
@@ -1313,6 +1318,10 @@ def capture_official_native_forward(
         for family, output, base in (
             (follow_run.ICON_FAMILY, icon_output, icon),
             (follow_run.ECCC_FAMILY, eccc_output, eccc),
+            # Charter 204: AIFS ENS has no rung archive to be newer than, so
+            # its newest certified follow run is ADDED to the station's set;
+            # its follow files sit beside ECMWF's in the capture root.
+            (follow_run.AIFS_FAMILY, ecmwf_output, None),
         ):
             if output is None:
                 continue
@@ -1601,6 +1610,7 @@ def capture_follow_runs(
         follow_run.ICON_FAMILY: icon_follow_forecast_hours,
         follow_run.ECCC_FAMILY: eccc_follow_forecast_hours,
         follow_run.ECMWF_FAMILY: ecmwf_follow_period_end_steps,
+        follow_run.AIFS_FAMILY: aifs_day_instants,
     }
     for family, lead_days, cycle in targets:
         run_init = follow_run.follow_run_init(event_date, lead_days, cycle)
@@ -1655,6 +1665,15 @@ def capture_follow_runs(
                 )
             elif family == follow_run.ECMWF_FAMILY:
                 archive = capture_ecmwf_station_days(
+                    event_date=event_date,
+                    station_scopes=covered,
+                    archive_query_at_utc=capture_at,
+                    timeout_seconds=float(timeout_seconds),
+                    lead_days=lead_days,
+                    run_cycle_hour=cycle,
+                )
+            elif family == follow_run.AIFS_FAMILY:
+                archive = capture_aifs_station_days(
                     event_date=event_date,
                     station_scopes=covered,
                     archive_query_at_utc=capture_at,
@@ -2003,6 +2022,9 @@ def _follow_capture_main(args: argparse.Namespace) -> int:
             ),
             follow_run.archive_schema(follow_run.ECMWF_FAMILY): (
                 ingest_ecmwf_station_days
+            ),
+            follow_run.archive_schema(follow_run.AIFS_FAMILY): (
+                ingest_aifs_station_days
             ),
         }
         ingress: dict[str, Any] = {}
