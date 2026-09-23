@@ -64,7 +64,14 @@ SYNOPTIC_COOLING_METHOD_TAG = "synoptic_cooling_shift_v1"
 # gains 1.35% and correlates +0.293, near-orthogonal to the TX gap (+0.069
 # between them).  That is the argument for capturing the models' own radiation
 # and wind forecasts, which this lane does not extract today.
-SYNOPTIC_COOLING_SHIFT_SIGMA = 0.15
+#
+# 2026-09-23 (user ruling 「TAF 的云、雨、风也应该像 P0 一样，不应该作为 P0 的替补，
+# metar 也是同理」): the forecaster's-fields index and its 0.15-sigma-per-unit
+# coefficient are deleted.  A source's physics is evidence at that source's
+# own stage -- the TAF's cloud and precipitation in P0-M (charter 158), the
+# METAR's in P1 -- never a stand-in inside P0.  The measurements above stay as
+# the history of why the radiation shift exists.  The stand-in had served no
+# P0 vector since 2026-08-20 (118,243 rows).
 # The models' own forecast of the day's shortwave radiation is the stronger
 # reading of the same physics, and it subsumes the forecaster's fields.
 # Measured 2026-08-14 over 5,230 station-days: forecast radiation correlates
@@ -384,68 +391,6 @@ def forecast_clearness_shift_sigma(
         "sample_count": len(values),
         "shift_sigma": float(shift_sigma_per_unit) * standardised,
         "shift_sigma_per_unit": float(shift_sigma_per_unit),
-    }
-
-
-# Fleet mean / standard deviation of the forward TAF capture fields under the
-# capture reading shipped 2026-09-23 (prevailing/overlay blending, precipitation
-# tokens read with their intensity prefix, a PROB percentage counted only for
-# precipitation): 9,035 archived captures, 2026-08-20..09-23, re-derived from
-# the raw bulletins with the shipped ``_forecast_features``.  The v1 table
-# (0.3557/0.3102, 0.0933/0.2155, 3.7880/1.4831 over 2,121 captures) described
-# the old reading, which scored an overlay's unrestated cloud and wind as 0
-# and never matched ``-SHRA``/``-TSRA``.  User ruling 2026-09-23 「改新语义」.
-# The arm this standardises has served no P0 vector since 08-20 (118,243
-# rows: the clearness or absolute radiation form always resolved), so the
-# swap moves no served fingerprint; the receipt names the table it read.
-SYNOPTIC_COOLING_NORMALISATION_VERSION = "fleet_2026-09-23_prevailing_overlay_v2"
-SYNOPTIC_COOLING_NORMALISATION = {
-    "cloud_cover_fraction": (0.4348, 0.3017),
-    "precipitation_probability": (0.1047, 0.2624),
-    "wind_speed_mps": (3.9173, 1.8097),
-}
-
-
-def synoptic_cooling_index(
-    *,
-    cloud_cover_fraction: float | None,
-    precipitation_probability: float | None,
-    wind_speed_mps: float | None,
-) -> tuple[float | None, dict[str, Any]]:
-    """Equal-weight standardised cloud/rain/wind index, or None.
-
-    All three fields are required: the index is an average of standardised
-    parts and dropping one silently reweights the other two.  A day with no
-    forecaster fields simply has no reading, which is different from a calm
-    clear one.
-    """
-
-    parts = {
-        "cloud_cover_fraction": cloud_cover_fraction,
-        "precipitation_probability": precipitation_probability,
-        "wind_speed_mps": wind_speed_mps,
-    }
-    standardised: dict[str, float] = {}
-    for field, raw in parts.items():
-        if raw is None:
-            return None, {
-                "schema": "synoptic_cooling_receipt_v1",
-                "method_tag": SYNOPTIC_COOLING_METHOD_TAG,
-                "normalisation": SYNOPTIC_COOLING_NORMALISATION_VERSION,
-                "state": "INCOMPLETE_FIELDS",
-                "missing_field": field,
-            }
-        mean, deviation = SYNOPTIC_COOLING_NORMALISATION[field]
-        standardised[field] = (float(raw) - mean) / deviation
-    index = sum(standardised.values()) / len(standardised)
-    return index, {
-        "schema": "synoptic_cooling_receipt_v1",
-        "method_tag": SYNOPTIC_COOLING_METHOD_TAG,
-        "normalisation": SYNOPTIC_COOLING_NORMALISATION_VERSION,
-        "state": "RESOLVED",
-        "index": index,
-        "standardised": standardised,
-        "shift_sigma_per_unit": SYNOPTIC_COOLING_SHIFT_SIGMA,
     }
 
 

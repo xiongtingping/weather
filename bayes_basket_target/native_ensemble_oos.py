@@ -42,7 +42,6 @@ from .cross_consensus import (
     BAND_RELIABILITY_METHOD_TAG,
     CONSENSUS_BRIDGE_METHOD_TAG,
     SYNOPTIC_COOLING_METHOD_TAG,
-    SYNOPTIC_COOLING_SHIFT_SIGMA,
     apply_neighbour_direction_tilt,
     neighbour_direction_method_tag_suffix,
     RADIATION_ASOF_METHOD_TAG,
@@ -52,7 +51,6 @@ from .cross_consensus import (
     forecast_clearness_shift_sigma,
     forecast_radiation_shift_sigma,
     radiation_shift_sigma_for_lead,
-    synoptic_cooling_index,
     bridged_cross_probability,
 )
 from .table_as_of import (
@@ -1793,8 +1791,9 @@ def _holdout_conditioning_signals(
         )
     except Exception:  # noqa: BLE001 -- unknown latitude is neutral
         station_latitude = None
-    # Radiation leads and the forecaster's fields are the fallback, the same
-    # precedence the serving path applies.
+    # Radiation only, the same precedence the serving path applies: the
+    # clearness index, then the absolute form, then no shift.  The
+    # forecaster's fields are no stand-in (charter 43, 2026-09-23).
     radiation_by_day: dict[str, float] = {}
     radiation_history: list[float] = []
     try:
@@ -1810,34 +1809,12 @@ def _holdout_conditioning_signals(
     except sqlite3.Error:
         radiation_by_day = {}
         radiation_history = []
-    # The forecaster's fields, for the cooling fallback below.
-    cooling_by_day: dict[str, float] = {}
-    try:
-        for event_date, cloud, precip, wind in conn.execute(
-            "SELECT event_date,cloud_cover_fraction,"
-            "precipitation_probability,wind_speed_mps "
-            "FROM calibration_historical_taf_capture "
-            "WHERE station_id=?",
-            (station_id,),
-        ):
-            key = str(event_date)
-            if key not in cooling_by_day:
-                index, _receipt = synoptic_cooling_index(
-                    cloud_cover_fraction=cloud,
-                    precipitation_probability=precip,
-                    wind_speed_mps=wind,
-                )
-                if index is not None:
-                    cooling_by_day[key] = index
-    except sqlite3.Error:
-        cooling_by_day = {}
     signals: dict[str, dict[str, float | None]] = {}
     for day in holdout_days:
         key = str(day)
         centers = centers_by_day.get(key) or []
         if not centers:
             continue
-        cooling = cooling_by_day.get(key)
         cutoff = cutoff_by_day.get(key)
         day_radiation, as_of_receipt = resolve_radiation_as_of(
             conn,
@@ -1875,16 +1852,8 @@ def _holdout_conditioning_signals(
                     if other != key
                 ],
             )
-        # The forecaster's fields stand in only where serving itself had no
-        # radiation for the day; a day whose radiation existed but was not yet
-        # known at the cutoff is left unshifted rather than re-signalled.
-        if (
-            shift_sigma is None
-            and cooling is not None
-            and radiation_state == "NO_VERSIONS"
-            and key not in radiation_by_day
-        ):
-            shift_sigma = -SYNOPTIC_COOLING_SHIFT_SIGMA * cooling
+        # A day with neither radiation form is left unshifted, exactly as
+        # serving leaves it.
         if shift_sigma is None:
             continue
         signals[key] = {

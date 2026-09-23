@@ -51,11 +51,9 @@ from .cross_consensus import (
     distribution_sigma_c,
     forecast_clearness_shift_sigma,
     SYNOPTIC_COOLING_METHOD_TAG,
-    SYNOPTIC_COOLING_SHIFT_SIGMA,
     apply_neighbour_direction_tilt,
     neighbour_direction_serves,
     forecast_radiation_shift_sigma,
-    synoptic_cooling_index,
     bridged_cross_probability,
 )
 from .fusion_blend import overlay_system_weights
@@ -3253,26 +3251,31 @@ def compile_native_ensemble_p0(
     else:
         envelope_lower_c = lower_center_c
         envelope_upper_c = upper_center_c
-    # Cloud, rain and mixing move the day in a direction the models miss, and
-    # the forecaster publishes all three beside the TX.  This is a centre
-    # shift, not a tail transform: the whole distribution is colder on a
-    # cloudy windy day, so it rides on the calibrated bias rather than on the
-    # tails.  Applied here, after the witness resolves, and keyed on its own
-    # method tag so the holdout that admitted the artifact scored it too.
+    # Cloud, rain and mixing move the day in a direction the models miss.
+    # This is a centre shift, not a tail transform: the whole distribution is
+    # colder on a cloudy windy day, so it rides on the calibrated bias rather
+    # than on the tails.  It is read from the models' own radiation forecast
+    # only (charter 160: the clearness index, then the absolute form).  The
+    # forecaster's cloud / precipitation / wind are no stand-in here -- user
+    # ruling 2026-09-23 「TAF 的云、雨、风也应该像 P0 一样，不应该作为 P0 的替补，
+    # metar 也是同理」: a source's physics is evidence at that source's own
+    # stage (the TAF's in P0-M, the METAR's in P1), never a substitute inside
+    # P0.  The stand-in had served no P0 vector since 08-20 (118,243 rows).
+    # Keyed on its own method tag so the holdout that admitted the artifact
+    # scored it too.
     synoptic_cooling_receipt = None
     synoptic_cooling_shift_c = 0.0
     if SYNOPTIC_COOLING_METHOD_TAG in artifact_combination_method:
         # Radiation leads: it is the same physics read from the models
         # themselves, twice as strong as the forecaster's fields, available
         # for every station-day rather than the seventeen that publish a TX,
-        # and adding the TAF index on top of it gains nothing.  The
-        # forecaster's fields are the fallback for a day whose radiation
-        # capture is missing or whose station history is still too thin.
+        # and adding the TAF index on top of it gains nothing.  A day with
+        # neither radiation form gets no shift (charter 43, 2026-09-23).
         # Charter 160: the clearness index leads.  The absolute form it
         # replaced is still computed, exactly as it was served (its own
         # history reader and the artifact's pin), and recorded beside it as
         # the shadow arm; it serves only when the clearness form cannot (no
-        # latitude, or under thirty days of history), before the TAF fields.
+        # latitude, or under thirty days of history).
         radiation_sum = _forecast_radiation_sum(
             conn, station_id=station_id, event_date=event_date
         )
@@ -3323,18 +3326,6 @@ def compile_native_ensemble_p0(
             "shift_sigma_per_unit": legacy_receipt.get("shift_sigma_per_unit"),
             "sample_count": legacy_receipt.get("sample_count"),
         }
-        if shift_sigma is None and taf_witness is not None:
-            cooling_index, synoptic_cooling_receipt = synoptic_cooling_index(
-                cloud_cover_fraction=taf_witness.get("cloud_cover_fraction"),
-                precipitation_probability=taf_witness.get(
-                    "precipitation_probability"
-                ),
-                wind_speed_mps=taf_witness.get("wind_speed_mps"),
-            )
-            if cooling_index is not None:
-                shift_sigma = (
-                    -SYNOPTIC_COOLING_SHIFT_SIGMA * float(cooling_index)
-                )
         if shift_sigma is not None:
             member_spread_c = _distribution_sigma_c(
                 probability, _bucket_centers(intervals_raw, ordered)

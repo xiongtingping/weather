@@ -1747,43 +1747,16 @@ def test_clause_43_synoptic_cooling_is_a_centre_shift_inside_p_of_t() -> None:
     assert "synoptic_cooling_shift_v1" in clause
     assert "双重计数" in clause
 
-    from bayes_basket_target.cross_consensus import (
-        SYNOPTIC_COOLING_NORMALISATION,
-        SYNOPTIC_COOLING_SHIFT_SIGMA,
-        synoptic_cooling_index,
-    )
+    # 2026-09-23 ruling: the forecaster's cloud / precipitation / wind are no
+    # stand-in for the radiation shift, and neither is the METAR's -- a
+    # source's physics is evidence at its own stage only.  The index, its
+    # normalisation table and its coefficient are gone, and the clause says so.
+    import bayes_basket_target.cross_consensus as cross_consensus
 
-    assert set(SYNOPTIC_COOLING_NORMALISATION) == {
-        "cloud_cover_fraction",
-        "precipitation_probability",
-        "wind_speed_mps",
-    }
-    assert 0.0 < SYNOPTIC_COOLING_SHIFT_SIGMA <= 0.25
-
-    # A cloudy, wet, windy day reads warm-side-negative; a clear calm one the
-    # other way.  The shift is the index times a negative coefficient, so the
-    # index itself must rise with cooling.
-    wet, _receipt = synoptic_cooling_index(
-        cloud_cover_fraction=0.9,
-        precipitation_probability=0.6,
-        wind_speed_mps=7.0,
-    )
-    dry, _receipt = synoptic_cooling_index(
-        cloud_cover_fraction=0.0,
-        precipitation_probability=0.0,
-        wind_speed_mps=2.0,
-    )
-    assert wet > 0.0 > dry
-
-    # All three fields are required: an average of standardised parts
-    # silently reweights itself when one is missing.
-    missing, receipt = synoptic_cooling_index(
-        cloud_cover_fraction=None,
-        precipitation_probability=0.0,
-        wind_speed_mps=2.0,
-    )
-    assert missing is None
-    assert receipt["state"] == "INCOMPLETE_FIELDS"
+    assert not hasattr(cross_consensus, "synoptic_cooling_index")
+    assert not hasattr(cross_consensus, "SYNOPTIC_COOLING_NORMALISATION")
+    assert not hasattr(cross_consensus, "SYNOPTIC_COOLING_SHIFT_SIGMA")
+    assert "不作 P0 替补" in clause
 
     # The strategy layer still may not read any of it (clause 43's original
     # prohibition, unchanged).
@@ -1794,7 +1767,11 @@ def test_clause_43_synoptic_cooling_is_a_centre_shift_inside_p_of_t() -> None:
         "bayes_basket_target/delta_v2_runtime.py",
     ):
         source = (root / rel).read_text(encoding="utf-8")
-        for name in SYNOPTIC_COOLING_NORMALISATION:
+        for name in (
+            "cloud_cover_fraction",
+            "precipitation_probability",
+            "wind_speed_mps",
+        ):
             assert name not in source, f"{rel} reads {name}"
 
 
