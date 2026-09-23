@@ -1250,3 +1250,44 @@ def test_both_required_families_held_on_wider_archives_build_only_this_pass(monk
     builder = _builder(commands)
     named = sorted(builder[i + 1] for i, part in enumerate(builder) if part == "--station-id")
     assert named == sorted(_station_ids()) == verified[0]
+
+
+def _pool(conn: sqlite3.Connection, *, station: str, season_bin: str, lead_bucket: str, cycles: dict, generation: int = 1) -> None:
+    conn.execute("PRAGMA foreign_keys=OFF")
+    ident = f"pool-{station}-{lead_bucket}-{sorted(cycles.items())}"
+    conn.execute(
+        "INSERT INTO calibration_native_ensemble_activation("
+        "activation_id,artifact_kind,artifact_id,station_id,"
+        "ensemble_system_id_or_star,season_bin,lead_bucket,run_cycle,"
+        "run_cycle_by_system_json,run_cycle_by_system_sha256,"
+        "settlement_definition,available_system_set_hash_or_star,generation,"
+        "valid_from_utc,valid_until_utc,activated_at_utc,authority_scope,"
+        "content_sha256) VALUES(?,'CROSS_NATIVE_ENSEMBLE',?,?,'*',?,?,"
+        "'MIXED_NATIVE_CYCLES',?,?,'official_daily_tmax_c',?,?,"
+        "'2026-09-14T00:00:00Z','2026-10-14T00:00:00Z','2026-09-14T00:00:00Z',"
+        "'PRODUCTION_NO_LIVE_ONLY',?)",
+        (
+            f"act-{ident}", ident, station, season_bin, lead_bucket,
+            follow_run._json(cycles), content_sha256(cycles), "h" * 64,
+            generation, content_sha256(["pool", ident]),
+        ),
+    )
+
+
+def test_a_six_hour_icon_run_is_seated_only_beside_weights_on_its_own_grid(ssot) -> None:
+    # Charter 193 (三): ICON 06Z's own fit is not enough; P0 will not seat it
+    # on a pool fitted with ICON at 00Z/12Z, so without a 06Z/18Z pool the
+    # station keeps ICON's 3-hourly run.
+    from bayes_basket_target.station_season import station_season_bin
+
+    season = station_season_bin("ZUUU", "2026-09-23")
+    run = _t("2026-09-22", 18)  # ZUUU: 22h before local midnight -> h12_24
+    bucket = capture_lead_bucket(event_date="2026-09-23", settlement_timezone="Asia/Shanghai", run_init=run)
+    _certify(ssot, station="ZUUU", season_bin=season, lead_bucket=bucket, cycle="18Z", fit_cases=20, n_effective=10.0)
+    assert not _ready(ssot, run)
+    _pool(ssot, station="ZUUU", season_bin=season, lead_bucket=bucket,
+          cycles={"DWD_ICON_GLOBAL_EPS": "00Z", "NOAA_GEFS_05": "18Z"})
+    assert not _ready(ssot, run)   # ICON on the 3-hour grid in every pool
+    _pool(ssot, station="ZUUU", season_bin=season, lead_bucket=bucket,
+          cycles={"DWD_ICON_GLOBAL_EPS": "06Z", "NOAA_GEFS_05": "06Z"}, generation=2)
+    assert _ready(ssot, run)

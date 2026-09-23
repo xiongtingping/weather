@@ -8,6 +8,7 @@ import os
 import sqlite3
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from typing import Callable, Any
 from zoneinfo import ZoneInfo
 
@@ -198,6 +199,99 @@ NON_RUN_LEAD_BYSTANDER_SYSTEMS = frozenset({
     "METAR_PHYSICAL_PATH_TMAX",
 })
 SAME_RUN_LEAD_BORROW_RULE = "h00_12_borrows_h12_24_same_run_v1"
+# Charter 193 (三): a system whose cycles are read on different sampling
+# grids never borrows across them.  ICON's 06Z/18Z runs publish t_2m only
+# 6-hourly, its 00Z/12Z 3-hourly (charter 192 (五)); a daily maximum read on
+# the 6-hour grid misses the afternoon step -- ZUUU's peak sits at 09Z, so a
+# 06Z run's 6-hour maximum reads about 0.6C low -- and only a fit on the same
+# grid carries that offset.  So neither a calibration borrowed from another
+# cycle nor cross weights fitted with the system at another cycle may cross
+# a grid; a member with no fit on its own grid is not seated.
+STEP_CLASS_BORROW_RULE = "no_cross_sampling_grid_borrow_v1"
+
+
+@lru_cache(maxsize=None)
+def _cycle_step_hours(system_id: str, run_cycle: str) -> int | None:
+    """The sampling grid a system's cycle is read on, or None if uniform."""
+
+    from .dwd_icon_eps_archive import (  # noqa: PLC0415 - heavy, lazy
+        SYSTEM_ID as ICON_SYSTEM_ID,
+        lead_step_hours as icon_lead_step_hours,
+    )
+
+    if str(system_id) != ICON_SYSTEM_ID:
+        return None
+    try:
+        return int(icon_lead_step_hours(int(str(run_cycle)[:2])))
+    except (ContractError, ValueError, TypeError):
+        return None
+
+
+def _same_step_cycles(system_id: str, run_cycle: str) -> tuple[str, ...] | None:
+    """Cycles read on the same grid as this one; None when the system has one grid."""
+
+    step = _cycle_step_hours(system_id, run_cycle)
+    if step is None:
+        return None
+    return tuple(
+        cycle
+        for cycle in ("00Z", "06Z", "12Z", "18Z")
+        if _cycle_step_hours(system_id, cycle) == step
+    )
+
+
+def _off_grid_systems(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    season_bin: str,
+    packet_cycle_by_system: Mapping[str, str],
+    leads_by_system: Mapping[str, Sequence[str]],
+    decision_at_utc: str,
+) -> set[str]:
+    """Members on a non-primary grid with no production fit on that grid.
+
+    Charter 193 (三): such a member could only be served on another grid's
+    parameters (another cycle's fit, or its peers'), so the cross activations
+    that would seat it are passed over.  Empty whenever no packet system reads
+    a secondary grid -- today's every packet.
+    """
+
+    missing: set[str] = set()
+    for system_id, run_cycle in sorted(packet_cycle_by_system.items()):
+        cycles = _same_step_cycles(system_id, run_cycle)
+        if cycles is None:
+            continue
+        primary = _cycle_step_hours(system_id, "00Z")
+        if _cycle_step_hours(system_id, run_cycle) == primary:
+            continue
+        leads = tuple(dict.fromkeys(leads_by_system.get(system_id) or ()))
+        if not leads:
+            missing.add(system_id)
+            continue
+        row = conn.execute(
+            "SELECT 1 FROM calibration_native_ensemble_activation "
+            "WHERE artifact_kind='NATIVE_ENSEMBLE_SYSTEM_CALIBRATION' "
+            "AND station_id=? AND ensemble_system_id_or_star=? "
+            "AND season_bin=? "
+            f"AND lead_bucket IN ({','.join('?' * len(leads))}) "
+            f"AND run_cycle IN ({','.join('?' * len(cycles))}) "
+            "AND available_system_set_hash_or_star='*' "
+            "AND authority_scope='PRODUCTION_NO_LIVE_ONLY' "
+            "AND valid_from_utc<=? AND valid_until_utc>? LIMIT 1",
+            (
+                station_id,
+                system_id,
+                season_bin,
+                *leads,
+                *cycles,
+                decision_at_utc,
+                decision_at_utc,
+            ),
+        ).fetchone()
+        if row is None:
+            missing.add(system_id)
+    return missing
 
 
 def _same_run_fresh_count(
@@ -1865,6 +1959,33 @@ def compile_native_ensemble_p0(
         activation_parameters,
     ).fetchall()
     observed_set = set(observed_system_ids)
+    # Charter 193 (三): members on a secondary sampling grid with no fit on
+    # that grid; activations seating them are passed over below.
+    off_grid_system_ids = (
+        _off_grid_systems(
+            conn,
+            station_id=station_id,
+            season_bin=season_bin,
+            packet_cycle_by_system={
+                system_id: str(cycle)
+                for system_id, cycle in official_lineage[
+                    "run_cycle_by_system"
+                ].items()
+                if cycle
+            },
+            leads_by_system={
+                system_id: (
+                    hour_bucket_by_system.get(system_id)
+                    or training_lead_bucket,
+                    training_lead_bucket,
+                )
+                for system_id in observed_system_ids
+            },
+            decision_at_utc=decision_at_utc,
+        )
+        if official_snapshot
+        else set()
+    )
     compatible_activations: list[
         tuple[Any, list[str]]
     ] = []
@@ -2006,6 +2127,15 @@ def compile_native_ensemble_p0(
             and packet_cycle_mapping[system_id]
             != fitted_cycle_mapping[system_id]
         )
+        # Charter 193 (三): weights fitted with a system on another sampling
+        # grid are not borrowed (a rider across grids), and a member with no
+        # fit on its own grid is not seated by any activation.
+        if any(
+            _cycle_step_hours(system_id, packet_cycle_mapping[system_id])
+            != _cycle_step_hours(system_id, fitted_cycle_mapping[system_id])
+            for system_id in activation_cycle_riders
+        ) or not off_grid_system_ids.isdisjoint(selected_ids):
+            continue
         evaluation_key = (
             station_id,
             season_bin,
@@ -2626,6 +2756,17 @@ def compile_native_ensemble_p0(
             # uncertified, keeps its provisional weight, and its own cycle's
             # fit replaces this the moment the training lane produces one.
             if CROSS_CYCLE_PARAMETER_BORROW == "on":
+                # Charter 193 (三): only a cycle read on the same sampling
+                # grid lends (ICON 00Z<->12Z, 06Z<->18Z); single-grid systems
+                # ask exactly as before.
+                same_grid = _same_step_cycles(system_id, system_run_cycle)
+                grid_clause = (
+                    "   AND a.run_cycle IN ("
+                    + ",".join("?" * len(same_grid))
+                    + ")"
+                    if same_grid is not None
+                    else ""
+                )
                 own_row = conn.execute(
                     "SELECT a.run_cycle, f.bias_parameters_json,"
                     " f.spread_parameters_json, f.content_sha256"
@@ -2638,7 +2779,8 @@ def compile_native_ensemble_p0(
                     "   AND a.station_id=? AND a.ensemble_system_id_or_star=?"
                     "   AND a.season_bin=? AND a.lead_bucket=?"
                     "   AND a.run_cycle<>?"
-                    "   AND a.available_system_set_hash_or_star='*'"
+                    + grid_clause
+                    + "   AND a.available_system_set_hash_or_star='*'"
                     "   AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY'"
                     "   AND a.valid_from_utc<=? AND a.valid_until_utc>?"
                     "   AND f.valid_from_utc<=? AND f.valid_until_utc>?"
@@ -2650,6 +2792,7 @@ def compile_native_ensemble_p0(
                         season_bin,
                         calibration_lead,
                         system_run_cycle,
+                        *(same_grid or ()),
                         decision_at_utc,
                         decision_at_utc,
                         decision_at_utc,

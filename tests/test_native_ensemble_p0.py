@@ -1072,3 +1072,106 @@ def test_a_native_compile_is_always_p0_and_reads_only_a_knowable_taf() -> None:
     assert json.loads(
         later_envelope["lineage"]["taf_envelope_witness_json"]
     )["forecast_revision_id"] == "taf-not-yet-received"
+
+
+# --------------------------------------------------------------------------
+# Charter 193 (三): no borrowing across sampling grids.  ICON's 06Z/18Z are
+# read on a 6-hour grid, its 00Z/12Z on a 3-hour one; a daily maximum on the
+# coarse grid runs low by what only a same-grid fit carries.  The fixture's
+# systems are single-grid, so one is given two grids here.
+# --------------------------------------------------------------------------
+def _two_grid(system_id: str, fine: tuple[str, ...]):
+    def step(system: str, cycle: str):
+        if system != system_id:
+            return None
+        return 3 if str(cycle) in fine else 6
+    return step
+
+
+def test_a_cycle_does_not_borrow_its_own_fit_from_another_sampling_grid(monkeypatch) -> None:
+    import bayes_basket_target.native_ensemble_p0 as _p0
+
+    conn = sqlite3.connect(":memory:")
+    _install_mixed_cycle_calibrations(conn)
+    packet = copy.deepcopy(_mixed_packet())
+    starved = "NOAA_GEFS_TEST"
+    donor_cycle = packet["run_cycle_by_system"]["ECMWF_AIFS_TEST"]
+    packet["run_cycle_by_system"][starved] = donor_cycle
+    packet["run_init_utc_by_system"][starved] = packet["run_init_utc_by_system"]["ECMWF_AIFS_TEST"]
+    packet["archive_query_at_utc_by_system"][starved] = packet["archive_query_at_utc_by_system"]["ECMWF_AIFS_TEST"]
+    receipt = packet["availability_evidence"]["by_system"][starved]
+    receipt["run_cycle"] = donor_cycle
+    receipt["run_init_utc"] = packet["run_init_utc_by_system"][starved]
+    receipt["archive_query_at_utc"] = packet["archive_query_at_utc_by_system"][starved]
+    for system in packet.get("systems") or []:
+        if system.get("ensemble_system_id") == starved:
+            system["run_cycle"] = donor_cycle
+            system["run_init_utc"] = packet["run_init_utc_by_system"][starved]
+    availability = packet["availability_evidence"]
+    availability["content_sha256"] = content_sha256({
+        key: value for key, value in availability.items() if key != "content_sha256"
+    })
+    packet["snapshot_content_sha256"] = content_sha256({
+        key: value for key, value in packet.items() if key != "snapshot_content_sha256"
+    })
+    # GEFS's only fit (and its pool seat) is 18Z; it is served on 00Z.
+    # 18Z on the same grid: its own 18Z fit lends, as charter 101 has it.
+    monkeypatch.setattr(_p0, "_cycle_step_hours", _two_grid(starved, fine=("00Z", "12Z", "18Z")))
+    compiled = compile_native_ensemble_p0(
+        conn, forward_packet=packet, decision_at_utc="2026-07-01T13:00:00Z",
+    )
+    sources = json.loads(
+        compiled["packet"]["native_probability_envelope"]["lineage"][
+            "provisional_parameter_sources_json"
+        ]
+    )
+    assert sources[starved]["source"] == "OWN_FIT_OTHER_RUN_CYCLE"
+    assert sources[starved]["borrowed_from_run_cycle"] == "18Z"
+    # 18Z on the other grid: neither its fit nor its pool seat lends, so the
+    # only activation is not taken -- nothing is served across grids.
+    monkeypatch.setattr(_p0, "_cycle_step_hours", _two_grid(starved, fine=("00Z", "12Z")))
+    with pytest.raises(ContractError, match="FAIL_CLOSED_NO_P0"):
+        compile_native_ensemble_p0(
+            conn, forward_packet=packet, decision_at_utc="2026-07-01T13:00:00Z",
+        )
+
+
+def test_icon_cycles_pair_by_their_sampling_grid() -> None:
+    from bayes_basket_target import native_ensemble_p0 as _p0
+
+    icon = "DWD_ICON_GLOBAL_EPS"
+    assert _p0._same_step_cycles(icon, "06Z") == ("06Z", "18Z")
+    assert _p0._same_step_cycles(icon, "18Z") == ("06Z", "18Z")
+    assert _p0._same_step_cycles(icon, "00Z") == ("00Z", "12Z")
+    assert _p0._same_step_cycles(icon, "12Z") == ("00Z", "12Z")
+    # single-grid systems are asked exactly as before
+    for system in ("ECMWF_IFS_ENS_OPEN_PF50", "NOAA_GEFS_05", "ECCC_GEM_GLOBAL_ENS"):
+        assert _p0._same_step_cycles(system, "06Z") is None
+
+
+def test_a_member_on_a_coarse_grid_is_not_seated_on_another_grids_weights(monkeypatch) -> None:
+    import bayes_basket_target.native_ensemble_p0 as _p0
+
+    conn = sqlite3.connect(":memory:")
+    _install_mixed_cycle_calibrations(conn)
+    packet = _mixed_packet()
+    broken = copy.deepcopy(packet)
+    broken["run_cycle_by_system"]["ECMWF_AIFS_TEST"] = "06Z"
+    broken["run_init_utc_by_system"]["ECMWF_AIFS_TEST"] = "2026-07-01T06:00:00Z"
+    broken["availability_evidence"]["by_system"]["ECMWF_AIFS_TEST"]["run_cycle"] = "06Z"
+    broken["availability_evidence"]["by_system"]["ECMWF_AIFS_TEST"]["run_init_utc"] = "2026-07-01T06:00:00Z"
+    broken["availability_evidence"]["content_sha256"] = content_sha256({
+        key: value for key, value in broken["availability_evidence"].items() if key != "content_sha256"
+    })
+    broken["snapshot_content_sha256"] = content_sha256({
+        key: value for key, value in broken.items() if key != "snapshot_content_sha256"
+    })
+    # Same grid: served as a named rider, as before.
+    monkeypatch.setattr(_p0, "_cycle_step_hours", _two_grid("ECMWF_AIFS_TEST", fine=("00Z", "06Z", "12Z", "18Z")))
+    out = compile_native_ensemble_p0(conn, forward_packet=broken, decision_at_utc="2026-07-01T13:00:00Z")
+    assert out["packet"]["native_probability_envelope"]["lineage"]["activation_cycle_riders_json"] == '["ECMWF_AIFS_TEST"]'
+    # 06Z on the coarse grid, fitted at 00Z on the fine one, no 6-hour fit:
+    # the only activation seats it across grids, so none is taken.
+    monkeypatch.setattr(_p0, "_cycle_step_hours", _two_grid("ECMWF_AIFS_TEST", fine=("00Z", "12Z")))
+    with pytest.raises(ContractError, match="FAIL_CLOSED_NO_P0"):
+        compile_native_ensemble_p0(conn, forward_packet=broken, decision_at_utc="2026-07-01T13:00:00Z")

@@ -498,12 +498,64 @@ def follow_serving_ready(
     if artifact is None or artifact[0] is None or artifact[1] is None:
         return False
     try:
-        return (
+        mature = (
             int(artifact[0]) >= FOLLOW_RUN_MIN_FIT_CASES
             and float(artifact[1]) >= FOLLOW_RUN_MIN_EFFECTIVE_CASES
         )
     except (TypeError, ValueError):
         return False
+    if not mature:
+        return False
+    return _same_grid_weights_exist(
+        conn,
+        family=family,
+        station_id=str(station_id),
+        season_bin=season_bin,
+        lead_bucket=lead_bucket,
+        run_hour=int(run_init.astimezone(timezone.utc).hour),
+        as_of_utc=str(as_of_utc),
+    )
+
+
+def _same_grid_weights_exist(
+    conn: sqlite3.Connection,
+    *,
+    family: str,
+    station_id: str,
+    season_bin: str,
+    lead_bucket: str,
+    run_hour: int,
+    as_of_utc: str,
+) -> bool:
+    """Charter 193 (三): a coarse-grid run needs cross weights on its own grid.
+
+    ICON's 06Z/18Z read t_2m 6-hourly.  P0 never seats a member on weights
+    fitted with it at a 3-hourly cycle (``native_ensemble_p0`` passes such
+    activations over), so seating one where no pool carries ICON at 06Z/18Z
+    would drop ICON from P0 instead of serving its 3-hourly run.  Other
+    families and ICON's 00Z/12Z are single-grid with what they replace: True.
+    """
+
+    if family != ICON_FAMILY or run_hour not in ICON_SECONDARY_CYCLE_HOURS:
+        return True
+    system = _SYSTEM[family]
+    patterns = [
+        f'%"{system}":"{int(hour):02d}Z"%' for hour in ICON_SECONDARY_CYCLE_HOURS
+    ]
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM calibration_native_ensemble_activation "
+            "WHERE artifact_kind='CROSS_NATIVE_ENSEMBLE' "
+            "AND station_id=? AND season_bin=? AND lead_bucket=? "
+            "AND authority_scope='PRODUCTION_NO_LIVE_ONLY' "
+            "AND valid_from_utc<=? AND valid_until_utc>? AND ("
+            + " OR ".join("run_cycle_by_system_json LIKE ?" for _ in patterns)
+            + ") LIMIT 1",
+            (station_id, season_bin, lead_bucket, as_of_utc, as_of_utc, *patterns),
+        ).fetchone()
+    except sqlite3.Error:
+        return False
+    return row is not None
 
 
 def readiness_from_database(
