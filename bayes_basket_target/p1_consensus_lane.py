@@ -18,7 +18,10 @@ The condition, on one P1 decision (a ``basket_policy_training_fact`` row):
 
 Then the lane crosses FOK at the ask for ``stake_usdc``.  Every decision that
 meets the condition is a take -- a station-day may be bought several times,
-the same bucket again included -- up to ``max_buys_per_station_day``.
+the same bucket again included -- up to ``max_buys_per_station_day``, and no
+sooner than ``min_minutes_between_buys`` after the station-day's last take
+(user ruling 2026-09-23 「加 20 分钟间隔」: the replay's successive takes sat
+6-91 minutes apart; live, LTAC bought four times in four minutes).
 
 Measured 2026-09-23, read-only, over every settled P1 decision 07-28..09-22
 (10,100 decisions with 4-12 h left, priced on the first committed book after
@@ -343,6 +346,27 @@ def station_day_sends(conn: sqlite3.Connection, station_id: str, event_date: str
     ).fetchone()[0] or 0)
 
 
+def last_buy_decision_at(
+    conn: sqlite3.Connection, station_id: str, event_date: str
+) -> str | None:
+    """The decision instant of this lane's latest take on the station-day
+    that is a position or may still become one.
+
+    Read off the lane's own rows: a take's row carries its intent id and no
+    refusal until the send says otherwise, so a take planned earlier in the
+    same pass counts, and one the venue killed (``send:*``) or the egress
+    hold kept in does not.
+    """
+
+    row = conn.execute(
+        f"SELECT MAX(decision_at_utc) FROM {EVALUATION_TABLE}"
+        " WHERE station_id=? AND event_date=? AND order_intent_id IS NOT NULL"
+        " AND refusal IS NULL",
+        (station_id, event_date),
+    ).fetchone()
+    return str(row[0]) if row and row[0] else None
+
+
 def _record(
     conn: sqlite3.Connection,
     candidate: Mapping[str, Any],
@@ -419,11 +443,23 @@ def _planning_refusal(
     max_buys: int,
     max_sends: int,
     planned_this_pass: int,
+    min_minutes_between_buys: float = 0.0,
 ) -> str | None:
     station = candidate["station_id"]
     day = candidate["event_date"]
     if station_day_buys(conn, station, day) + planned_this_pass >= int(max_buys):
         return f"station_day_buy_cap:{int(max_buys)}"
+    # User ruling 2026-09-23 「加 20 分钟间隔」: a station-day may be bought
+    # several times, but not on consecutive decisions a minute apart -- the
+    # replay's successive takes sat 6-91 minutes apart (most 15-40), and
+    # LTAC 2026-09-23 bought four times in four minutes at one price.
+    last = last_buy_decision_at(conn, station, day)
+    if last is not None and float(min_minutes_between_buys) > 0.0:
+        gap = (_utc(candidate["decision_at_utc"]) - _utc(last)).total_seconds() / 60.0
+        if gap < float(min_minutes_between_buys):
+            return (
+                f"station_day_buy_spacing:{gap:.1f}m<{float(min_minutes_between_buys):.0f}m"
+            )
     if station_day_sends(conn, station, day) + planned_this_pass >= int(max_sends):
         return f"station_day_send_cap:{int(max_sends)}"
     try:
@@ -479,6 +515,7 @@ def plan_p1_consensus_entries(
     send_book_fresh = dial("send_book_fresh_seconds")
     max_buys = int(dial("max_buys_per_station_day"))
     max_sends = int(dial("max_sends_per_station_day"))
+    min_gap = dial("min_minutes_between_buys")
     walk_ticks = int(dial("walk_ticks"))
     live_book = cfg.get("live_ws_book")
     live_book = True if live_book is None else bool(live_book)
@@ -592,6 +629,7 @@ def plan_p1_consensus_entries(
             target_conn, candidate, gate=gate, now_utc=now_utc,
             max_buys=max_buys, max_sends=max_sends,
             planned_this_pass=planned_by_day.get(scope, 0),
+            min_minutes_between_buys=min_gap,
         )
         if refusal:
             refuse(refusal, fired=True)
@@ -793,6 +831,7 @@ __all__ = [
     "ensure_lane_schema",
     "evaluate_consensus",
     "execute_p1_consensus_entries",
+    "last_buy_decision_at",
     "mean_bucket",
     "plan_p1_consensus_entries",
     "rule_version_for",

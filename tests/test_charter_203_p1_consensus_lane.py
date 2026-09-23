@@ -328,9 +328,9 @@ def test_a_stale_book_is_scored_but_never_bought(store) -> None:
 
 
 def test_every_decision_that_meets_the_rule_is_a_take_same_bucket_again(store) -> None:
-    _seed(store, fact_id="f1", decided="2026-09-19T07:50:00.000Z")
+    _seed(store, fact_id="f1", decided="2026-09-19T07:35:00.000Z")
     _seed(store, fact_id="f2", decided="2026-09-19T08:00:00.000Z", sequence=2)
-    planned = _plan(store)
+    planned = _plan(store, settings=_settings(fact_fresh_seconds=3600.0))
     assert [p["bucket"] for p in planned["plans"]] == ["27°C", "27°C"]
     assert [p["station_day_buy_index"] for p in planned["plans"]] == [1, 2]
 
@@ -338,11 +338,41 @@ def test_every_decision_that_meets_the_rule_is_a_take_same_bucket_again(store) -
 def test_the_station_day_buy_cap_bounds_the_takes(store) -> None:
     for i in range(3):
         _seed(store, fact_id=f"f{i}", decided=f"2026-09-19T07:5{i}:00.000Z", sequence=i + 1)
-    planned = _plan(store, settings=_settings(max_buys_per_station_day=2))
+    planned = _plan(store, settings=_settings(
+        max_buys_per_station_day=2, min_minutes_between_buys=0.0,
+    ))
     assert len(planned["plans"]) == 2
     assert any(
         str(e["refusal"]).startswith("station_day_buy_cap:2") for e in planned["evaluations"]
     )
+
+
+def test_takes_on_one_station_day_are_spaced_twenty_minutes(store) -> None:
+    """User ruling 2026-09-23 「加 20 分钟间隔」: LTAC bought four times in
+    four minutes at one price; the replay's takes sat 6-91 minutes apart."""
+
+    fresh = "2026-09-19T08:05:40.000Z"
+    _seed(store, fact_id="f1", decided="2026-09-19T07:45:00.000Z", observed=fresh)
+    _seed(store, fact_id="f2", decided="2026-09-19T07:46:00.000Z", sequence=2, observed=fresh)
+    _seed(store, fact_id="f3", decided="2026-09-19T08:05:00.000Z", sequence=3, observed=fresh)
+    planned = _plan(store, now="2026-09-19T08:06:00.000Z",
+                    settings=_settings(fact_fresh_seconds=3600.0))
+    assert [p["fact_id"] for p in planned["plans"]] == ["f1", "f3"]
+    refused = {e["fact_id"]: e["refusal"] for e in planned["evaluations"] if e["refusal"]}
+    assert refused["f2"].startswith("station_day_buy_spacing:1.0m<20m")
+
+
+def test_a_killed_take_does_not_start_the_spacing_clock(store) -> None:
+    _seed(store, fact_id="f1", decided="2026-09-19T07:59:00.000Z")
+    [first] = _plan(store, now="2026-09-19T07:59:30.000Z")["plans"]
+    # The venue killed it: the send writes a ``send:*`` refusal on the row.
+    store.execute(
+        f"UPDATE {lane.EVALUATION_TABLE} SET refusal='send:killed' WHERE order_intent_id=?",
+        (first["order_intent_id"],),
+    )
+    assert lane.last_buy_decision_at(store, ST, ED) is None
+    _seed(store, fact_id="f2", decided="2026-09-19T08:00:00.000Z", sequence=2)
+    assert len(_plan(store)["plans"]) == 1
 
 
 def _mint(store: sqlite3.Connection, intent_id: str, state: str) -> None:
@@ -421,6 +451,7 @@ def test_the_lane_is_registered_and_shipped_on() -> None:
     assert (served["min_remaining_hours"], served["max_remaining_hours"]) == (6.0, 10.0)
     assert (served["min_ask"], served["max_ask"]) == (0.5, 0.7)
     assert served["max_buys_per_station_day"] == 4
+    assert served["min_minutes_between_buys"] == 20.0
     assert served["send_book_fresh_seconds"] <= 60.0
 
 

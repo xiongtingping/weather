@@ -192,6 +192,11 @@ P1_CONSENSUS_DEFAULT_SETTINGS: dict[str, Any] = {
     # egress-held sends are not buys; ``max_sends`` bounds them.
     "max_buys_per_station_day": 4,
     "max_sends_per_station_day": 8,
+    # User ruling 2026-09-23 「加 20 分钟间隔」: consecutive takes on one
+    # station-day at least this far apart in decision time.  The replay's sat
+    # 6-91 minutes apart (most 15-40) because decisions came that slowly;
+    # with cycles at ~70 s, LTAC 2026-09-23 took four in four minutes.
+    "min_minutes_between_buys": 20.0,
     # One tick above the best ask, as the tail lane learned (the top ask
     # level is a median 10 shares deep and a 5 USDC take outgrows it).
     "walk_ticks": 1,
