@@ -53,6 +53,14 @@ def main() -> int:
         "--full-plan", action="store_true",
         help="print every planned item, not only the counts",
     )
+    parser.add_argument(
+        "--busy-timeout-sec", type=float, default=60.0,
+        help=(
+            "how long a write waits for the store's writer; the hosted sweep "
+            "runs inside the writer slot, a manual run beside production "
+            "may need longer (the first trigger install waited past 60s)"
+        ),
+    )
     args = parser.parse_args()
     database = args.db.expanduser().resolve(strict=True)
     now = (
@@ -61,13 +69,14 @@ def main() -> int:
     )
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
+    timeout = max(1.0, float(args.busy_timeout_sec))
     if args.commit:
-        conn = sqlite3.connect(str(database), timeout=60.0)
+        conn = sqlite3.connect(str(database), timeout=timeout)
     else:
         conn = sqlite3.connect(
-            f"file:{database}?mode=ro", uri=True, timeout=60.0,
+            f"file:{database}?mode=ro", uri=True, timeout=timeout,
         )
-    conn.execute("PRAGMA busy_timeout=60000")
+    conn.execute(f"PRAGMA busy_timeout={int(timeout * 1000)}")
     try:
         result = renew_expiring_certificates(
             conn,

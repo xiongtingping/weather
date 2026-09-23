@@ -4784,8 +4784,17 @@ def native_ensemble_certificate_renewal_ddl() -> str:
 def apply_native_ensemble_certificate_renewal_schema(
     conn: sqlite3.Connection, *, commit: bool = True,
 ) -> dict[str, object]:
-    """Install the certificate renewal table on a store that lacks it."""
+    """Install the certificate renewal table on a store that lacks it.
 
+    Takes the writer lock up front (``BEGIN IMMEDIATE``) when no transaction
+    is open: the production store commits several times a second, and a
+    deferred transaction that reads the schema and then asks to write it
+    gets ``SQLITE_BUSY_SNAPSHOT`` at once, past any busy timeout -- three
+    installs in a row failed that way on 2026-09-23 with 600s to wait.
+    """
+
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
     conn.execute("SAVEPOINT native_ensemble_certificate_renewal_schema")
     try:
         for sql in native_ensemble_certificate_renewal_ddl().split(";\n"):

@@ -884,6 +884,11 @@ def renew_expiring_certificates(
         apply_native_ensemble_certificate_renewal_schema,
     )
 
+    # The writer lock first, then the schema, then the rows: a deferred
+    # transaction upgraded after a read gets SQLITE_BUSY_SNAPSHOT at once on
+    # a store that commits several times a second (see the schema applier).
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
     apply_native_ensemble_certificate_renewal_schema(conn, commit=False)
     now_text = plan["now_utc"]
     until_text = plan["renewed_valid_until_utc"]
