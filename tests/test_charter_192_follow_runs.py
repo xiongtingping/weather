@@ -745,6 +745,9 @@ def test_the_worker_queues_one_follow_capture_per_date_off_the_pass(monkeypatch,
     # a rung every family already reads at its own cycle queues nothing once
     # the per-event-date runs (ECMWF D-3 18Z) are on disk ...
     (tmp_path / "ecmwf_2026-09-24_d3_18z.json").write_text("{}")
+    # ... and charter 204's AIFS ENS runs, followed per event date too
+    for lead, hour in follow_run.event_follow_runs(follow_run.AIFS_FAMILY):
+        (tmp_path / f"aifs_2026-09-24_d{lead}_{hour:02d}z.json").write_text("{}")
     assert enqueue(host, **{**kwargs, "event_date": "2026-09-24",
                             "run_ladder": [(1, None, _t("2026-09-23", 0))]}) == "NO_FOLLOW_RUNG"
     # ... and still queues for a date whose D-3 18Z is missing
