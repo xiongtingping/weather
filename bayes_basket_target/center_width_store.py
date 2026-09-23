@@ -11,6 +11,7 @@ fitted independently and applied in that order.
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import math
@@ -44,6 +45,7 @@ from .center_width_calibration import (
     OPEN_EDGE_TAIL_RULE,
     SERVED_OPEN_EDGE_OFFSET_C,
     apply_center_width_calibration,
+    center_width_adjusted_grid,
     bucket_rung_width_c,
     served_bucket_axis,
     sigma_floor_lift_v1,
@@ -839,6 +841,56 @@ def _active_center_width_activated_at(
 MAX_RECOVERY_RESIDUAL = 0.01
 # A forward map this ill-conditioned has lost the input rather than moved it.
 MAX_RECOVERY_CONDITION = 1.0e6
+
+
+def _reserved_under_current_width(
+    receipt: Mapping[str, Any] | None,
+    *,
+    keys: Sequence[str],
+    centers: Sequence[float],
+    open_edge_bounds: Any,
+    excluded: Sequence[str],
+) -> dict[str, float] | None:
+    """An old sample as today's width function would serve it (charter 202).
+
+    User ruling 2026-09-23: 「证据时钟不要清零，用旧的样本」.  A lane that
+    reads a row served under an older width function would otherwise score
+    that function, not today's: the first dry refit after the ruling vetoed
+    the incumbent pair on 2026-09-19/20 alone (+0.136 and +0.122 nat per
+    cell), rows served before charter 190 in which the transport had emptied
+    the open cold bucket the settled high then landed in -- on the two days
+    served under the tail rule the pair won (-0.058, -0.082).  So a row that
+    recorded the width layer's input is re-served here from that input, with
+    the pair it was served with, through today's function and today's axis.
+    A row served by today's code comes back as it was served.  A row with no
+    recorded input, an unapplied layer or a tier lambda keeps its served
+    vector: there is nothing exact to re-serve it from.
+    """
+
+    if not isinstance(receipt, Mapping) or str(receipt.get("state") or "") != "APPLIED":
+        return None
+    if receipt.get("width_tier_lambda") is not None:
+        return None
+    recorded = receipt.get("input_probability")
+    if not isinstance(recorded, Mapping) or set(recorded) != set(keys):
+        return None
+    try:
+        served, _ = apply_center_width_calibration(
+            {str(key): float(value) for key, value in recorded.items()},
+            delta_c=float(receipt.get("delta_c") or 0.0),
+            width_lambda=float(receipt.get("width_lambda") or 1.0),
+            ordered_keys=list(keys),
+            key_centers_c=list(centers),
+            excluded_buckets=tuple(excluded),
+            open_edge_bounds_c=open_edge_bounds,
+            sigma_floor_rungs=float(receipt.get("sigma_floor_rungs") or 0.0),
+        )
+    except (ContractError, TypeError, ValueError, KeyError):
+        return None
+    total = sum(served.values())
+    if total <= 0.0:
+        return None
+    return {str(key): float(value) / total for key, value in served.items()}
 
 
 def _receipt_of(lineage: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -1845,6 +1897,15 @@ def _serving_cell(
         for name in excluded_raw.split(",")
         if name.strip() and name != "NONE" and name in probabilities
     )
+    receipt = _receipt_of(lineage)
+    reserved = False
+    if pre_band:
+        today = _reserved_under_current_width(
+            receipt, keys=keys, centers=centers,
+            open_edge_bounds=open_edge_bounds, excluded=excluded,
+        )
+        if today is not None:
+            probabilities, reserved = today, True
     return {
         "station_id": station,
         "event_date": day,
@@ -1853,7 +1914,10 @@ def _serving_cell(
         # What this row actually had applied, from the row itself: the veto
         # scores the width this decision was served under, not the width the
         # stage is serving now (charter 138).
-        "center_width_receipt": _receipt_of(lineage),
+        "center_width_receipt": receipt,
+        # Charter 202: the old sample re-served under today's width function
+        # (see ``_reserved_under_current_width``).
+        "reserved_under_current_width": reserved,
         # What the served row itself says the forecaster's TX was -- the TAF
         # cell a day belongs to is read from here, not re-derived.
         "taf_observed_tx_c": lineage.get("taf_observed_tx_c"),
@@ -1894,6 +1958,112 @@ def _cell_nll(
     return -math.log(max(adjusted[cell["settled_bucket"]] / total, 1e-6))
 
 
+# Charter 202 follow-up (2026-09-23): the lane's grids, scored once per cell.
+# Once the evidence stopped resetting at every bump the lane held ten days of
+# cells, and scoring the pooled grid, the tier grid and every rolling-origin
+# prefix one pair at a time through the scalar transform needed hours -- the
+# daily refit is killed at 900 s.  Every pair any search here asks for is on
+# this grid, so a cell's whole row is computed once
+# (``center_width_adjusted_grid``, pinned bit for bit to the scalar function)
+# and kept for the round; the searches then add the same numbers in the same
+# order they always did -- ``sum`` where they used ``sum``, ``+=`` where they
+# used ``+=`` -- so every argmin, every NLL and every receipt is unchanged.
+def _in_memo_scope(function):
+    """Run ``function`` inside a grid memo scope (nested in the round's when
+    one is open), so a search scores each cell's grid row once however many
+    pairs it asks for.  The body and its source are the function's own."""
+
+    @functools.wraps(function)
+    def scoped(*args: Any, **kwargs: Any) -> Any:
+        with _round_memo():
+            return function(*args, **kwargs)
+
+    return scoped
+
+
+_GRID_LAMBDAS = tuple(sorted(
+    {lam for lam in LAMBDA_GRID + WIDTH_TIER_LAMBDA_GRID
+     if MIN_WIDTH_LAMBDA <= lam <= MAX_WIDTH_LAMBDA}
+))
+_GRID_PAIRS = tuple(
+    (delta, lam)
+    for delta in SHIFT_GRID_C if abs(delta) <= MAX_ABS_SHIFT_C
+    for lam in _GRID_LAMBDAS
+)
+_GRID_INDEX = {pair: position for position, pair in enumerate(_GRID_PAIRS)}
+
+
+def _grid_rows(
+    cell: Mapping[str, Any], sigma_floor_rungs: float, *, window: bool = False
+) -> tuple[Any, Any]:
+    """(bucket NLL, window NLL) of one cell at every grid pair, kept for the
+    round.  Each entry equals ``_cell_scores`` at that pair exactly.  The
+    window term is only the tier search's, so it is filled on request."""
+
+    import array
+
+    memo = _ROUND_MEMO
+    key = ("width_grid", id(cell), float(sigma_floor_rungs))
+    if memo is not None:
+        held = memo.get(key)
+        if held is not None and (held[1] is not None or not window):
+            return held[0], held[1]
+    adjusted, refused = center_width_adjusted_grid(
+        cell["probabilities"],
+        ordered_keys=cell["ordered_keys"],
+        key_centers_c=cell["key_centers_c"],
+        shifts=[pair[0] for pair in _GRID_PAIRS],
+        lambdas=[pair[1] for pair in _GRID_PAIRS],
+        excluded_buckets=cell["excluded_buckets"],
+        open_edge_bounds_c=cell.get("open_edge_bounds_c"),
+        sigma_floor_rungs=sigma_floor_rungs,
+    )
+    keys = list(cell["ordered_keys"])
+    centers = list(cell["key_centers_c"])
+    settled = keys.index(cell["settled_bucket"])
+    floor_nll = -math.log(1e-6)
+    bucket_row = array.array("d")
+    window_row = array.array("d") if window else None
+    refused_rows = refused.tolist()
+    for position, row in enumerate(adjusted.tolist()):
+        delta, lam = _GRID_PAIRS[position]
+        if refused_rows[position] or (
+            delta == 0.0 and lam == 1.0 and not sigma_floor_rungs
+        ):
+            # The scalar paths themselves: identity reads the cell as is,
+            # and a refused row is served in the caller's key order.
+            bucket, window_nll, _claim, _hit = _cell_scores(
+                cell, delta_c=delta, width_lambda=lam,
+                sigma_floor_rungs=sigma_floor_rungs,
+            )
+            bucket_row.append(bucket)
+            if window_row is not None:
+                window_row.append(window_nll)
+            continue
+        total = sum(row)
+        if total <= 0.0:
+            bucket_row.append(floor_nll)
+            if window_row is not None:
+                window_row.append(floor_nll)
+            continue
+        bucket_row.append(-math.log(max(row[settled] / total, 1e-6)))
+        if window_row is None:
+            continue
+        mean_c = sum(centers[i] * row[i] for i in range(len(keys))) / total
+        mean_index = min(
+            range(len(keys)), key=lambda i: (abs(centers[i] - mean_c), i)
+        )
+        low = max(0, mean_index - 1)
+        high = mean_index + 2
+        claim = sum(row[i] for i in range(low, min(high, len(keys)))) / total
+        hit = low <= settled < high
+        q = min(max(claim, 1e-6), 1.0 - 1e-6)
+        window_row.append(-math.log(q) if hit else -math.log(1.0 - q))
+    if memo is not None:
+        memo[key] = (bucket_row, window_row, cell)
+    return bucket_row, window_row
+
+
 def _mean_nll(
     cells: Sequence[Mapping[str, Any]],
     *,
@@ -1905,6 +2075,16 @@ def _mean_nll(
 
     if not cells:
         return 0.0
+    # Only inside a search's memo scope: a single pair asked outside one is
+    # one scalar call per cell, cheaper than a whole row nobody keeps.
+    position = (
+        _GRID_INDEX.get((delta_c, width_lambda))
+        if _ROUND_MEMO is not None else None
+    )
+    if position is not None:
+        return sum(
+            _grid_rows(cell, sigma_floor_rungs)[0][position] for cell in cells
+        ) / len(cells)
     return sum(
         _cell_nll(
             cell,
@@ -1941,6 +2121,7 @@ def _compose_absolute(
     return (round(delta, 4), round(lam, 4))
 
 
+@_in_memo_scope
 def _search(
     cells: Sequence[Mapping[str, Any]],
     *,
@@ -2074,6 +2255,7 @@ def _mean_scores(
     }
 
 
+@_in_memo_scope
 def _search_tiers(
     cells: Sequence[Mapping[str, Any]],
     *,
@@ -2107,11 +2289,17 @@ def _search_tiers(
             for lam in WIDTH_TIER_LAMBDA_GRID:
                 if not MIN_WIDTH_LAMBDA <= lam <= MAX_WIDTH_LAMBDA:
                     continue
-                scores = _mean_scores(
-                    members, delta_c=delta, width_lambda=lam,
-                    sigma_floor_rungs=sigma_floor_rungs,
-                )
-                value = scores["objective"] * len(members)
+                # ``_mean_scores``'s objective, added with its own ``+=`` in
+                # its own order, off the round's grid rows.
+                position = _GRID_INDEX[(delta, lam)]
+                bucket = window = 0.0
+                for member in members:
+                    rows = _grid_rows(member, sigma_floor_rungs, window=True)
+                    bucket += rows[0][position]
+                    window += rows[1][position]
+                count = len(members)
+                objective = (bucket + WINDOW_TERM_WEIGHT * window) / count
+                value = objective * len(members)
                 if tier_best is None or value < tier_best[1]:
                     tier_best = (lam, value)
             lambdas.append(tier_best[0])
@@ -2217,6 +2405,43 @@ def _width_tier_lane(
             else "REFUSED_FORWARD"
         ),
     }
+
+
+def evidence_anchor(
+    conn: sqlite3.Connection, *, stage: str, known_floor: str | None = None
+) -> str | None:
+    """Where the calibration lanes' evidence for this stage begins (charter 202).
+
+    User ruling 2026-09-23: 「证据时钟不要清零，用旧的样本」.  The served
+    version's own start (``served_arithmetic_anchor``) stays what the watchdog
+    and the version comparison read; the lanes read the stage's evidence
+    epoch instead (``serving_arithmetic.STAGE_EVIDENCE_EPOCH``), so a bump no
+    longer spends the days they had accumulated.  A served version that
+    declares no start, or began before the epoch, keeps the anchor it had.
+    """
+
+    try:
+        current = conn.execute(
+            "SELECT e.posterior_version"
+            " FROM basket_probability_bridge_history h"
+            " JOIN basket_probability_envelope e"
+            "   ON e.envelope_id = h.checkpoint_id"
+            " WHERE h.stage=? AND h.state='COMMITTED'"
+            " ORDER BY h.decision_at_utc DESC LIMIT 1",
+            (_check_stage(stage),),
+        ).fetchone()
+    except (sqlite3.OperationalError, TypeError, ValueError):
+        current = None
+    version = str(current[0] or "") if current is not None else ""
+    if version:
+        carried = serving_arithmetic.evidence_effective_from(
+            _check_stage(stage), version
+        )
+        if carried:
+            return carried
+    if known_floor:
+        return served_arithmetic_anchor(conn, stage=stage, known_floor=known_floor)
+    return served_arithmetic_anchor(conn, stage=stage)
 
 
 def served_arithmetic_anchor(
@@ -2376,7 +2601,8 @@ def _evidence_floor(
 
     def _resolve() -> str | None:
         floor = caller_bound
-        served = served_arithmetic_anchor(conn, stage=stage, known_floor=floor)
+        # Charter 202: the evidence epoch, not the served version's start.
+        served = evidence_anchor(conn, stage=stage, known_floor=floor)
         if served and (floor is None or str(served) > str(floor)):
             floor = served
         return floor
@@ -2416,6 +2642,7 @@ def _forward_lift_census(
     }
 
 
+@_in_memo_scope
 def _rolling_origin_admission(
     by_day: Mapping[str, Sequence[Mapping[str, Any]]],
     days: Sequence[str],

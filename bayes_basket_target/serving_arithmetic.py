@@ -377,6 +377,59 @@ def version_effective_from(stage: str, version: str) -> str | None:
     return str(value) if value else None
 
 
+# Charter 202 (user ruling 2026-09-23, 「证据时钟不要清零，用旧的样本」): a
+# version bump no longer restarts the calibration lanes' evidence.  Each bump
+# above stays the version's own start -- the watchdog, the fingerprint stamp
+# and the board's version comparison read that -- but the lanes (width, band,
+# band shadow, off-centre claim, effective-edge lambda, beta, valuation) and
+# the scorecard read their evidence from the stage's epoch below, across
+# every bump declared after it.
+#
+# Why the reset had to go: P0 served v6, v7, v8 and v9 between 2026-09-18
+# and 09-22 and none of them lived the eight settled days the width and band
+# lanes need, so neither refitted and the band layer served nothing
+# (NO_BAND_IN_SUPPORT) while P0's Reliability sat 87% in the claims above
+# one half -- said 64%, happened 42%.
+#
+# Why the epochs are where they are: each is the start of the arithmetic the
+# stage still serves in kind.  P0 from charter 134's stable pool (v5): the
+# membership rule changed there, and before it lie the contest seats and the
+# retired station width table v1 (09-06..09-10), whose rows read +0.57 nat
+# against identity and would teach the width lane to widen back what that
+# table narrowed.  P0-M and P1 from charter 150 (P0-M v7, P1 v12): each
+# became one likelihood update on its root there; the operators before it are
+# retired.  Moving an epoch is a ruling, like a bump; nothing moves it by
+# itself, and a bump that should restart evidence says so here.
+STAGE_EVIDENCE_EPOCH: Mapping[str, str] = {
+    "P0": "2026-09-14T05:52:13Z",
+    "P0-M": "2026-09-18T19:10:09Z",
+    "P1": "2026-09-18T19:10:09.000001Z",
+}
+
+
+def evidence_effective_from(stage: str, version: str) -> str | None:
+    """Where the lanes' evidence for ``version`` begins (charter 202).
+
+    The stage's evidence epoch when ``version`` began at or after it;
+    otherwise the version's own start, so a version older than the epoch
+    keeps exactly the bound it always had.  None when the version declares
+    no start, which leaves the caller to infer one as before.
+    """
+
+    declared = version_effective_from(stage, version)
+    epoch = STAGE_EVIDENCE_EPOCH.get(str(stage))
+    if not declared or not epoch:
+        return declared
+
+    def _at(value: str) -> datetime:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+    # Compared as instants: the P1 epoch carries microseconds and a string
+    # comparison would order "...09Z" after "...09.000001Z".
+    return epoch if _at(epoch) <= _at(declared) else declared
+
+
 def closure(stage: str) -> list[tuple[str, str]] | None:
     """The functions a stage's fingerprint covers, for an audit to read."""
 

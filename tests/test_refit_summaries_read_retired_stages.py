@@ -69,12 +69,13 @@ def test_centre_width_summary_names_the_retired_stages(tmp_path, monkeypatch) ->
     monkeypatch.setattr(center_width_store, "CENTER_WIDTH_SERVED_STAGES", ())
     monkeypatch.setattr(refit_center_width, "CENTER_WIDTH_SERVED_STAGES", ())
 
-    # The arguments the nightly sweep passes, per-stage clock included.
+    # The arguments the nightly sweep passes (charter 202 retired its
+    # per-stage clock), plus a per-stage bound: the flag still parses.
     code, text = _run(
         refit_center_width,
         ["refit_center_width.py", "--db", str(db), "--commit", "--summary",
          "--since", "2026-08-27T09:20:00Z",
-         "--since-stage", "P0=2026-09-18T09:18:16Z"],
+         "--since-stage", "P0=2026-09-14T05:52:13Z"],
         monkeypatch,
     )
 

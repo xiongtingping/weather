@@ -177,9 +177,9 @@ def _anchor(conn: sqlite3.Connection, stage: str) -> tuple[str | None, str]:
     ):
         return None, "absent"
     try:
-        from .center_width_store import served_arithmetic_anchor  # noqa: PLC0415
+        from .center_width_store import evidence_anchor  # noqa: PLC0415
 
-        return served_arithmetic_anchor(conn, stage=stage), "ok"
+        return evidence_anchor(conn, stage=stage), "ok"
     except Exception:  # noqa: BLE001 -- a present store that fails is a refusal
         return None, "error"
 

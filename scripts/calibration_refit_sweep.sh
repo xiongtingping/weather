@@ -104,11 +104,16 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] center_width refit"
 # memory; the pairing is pinned by tests/test_serving_arithmetic_version_start.
 #
 # Charter 150 (2026-09-19): only P0 carries a centre/width correction.  The
-# refit retires whatever P0-M and P1 still had and fits nothing for them, so
-# the flag below names P0 alone.
+# refit retires whatever P0-M and P1 still had and fits nothing for them.
+#
+# Charter 202 (user ruling 2026-09-23, 「证据时钟不要清零，用旧的样本」): the
+# per-stage clock this line used to pass (``--since-stage P0=...09-18T09:18:16Z``,
+# charter 149's resident) is gone.  The floor is the LATER of the caller's
+# bound and the stage's evidence anchor, so that flag held P0 at five settled
+# days after the ruling moved the anchor back to the stable pool; the epoch
+# now lives once, in serving_arithmetic.STAGE_EVIDENCE_EPOCH.
 "$PY" scripts/refit_center_width.py --commit --summary \
-  --since "2026-08-27T09:20:00Z" \
-  --since-stage "P0=2026-09-18T09:18:16Z" || RC=$?
+  --since "2026-08-27T09:20:00Z" || RC=$?
 
 
 # Whether any stage owes the version bump the width lanes above key their

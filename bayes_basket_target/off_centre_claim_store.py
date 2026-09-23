@@ -432,9 +432,9 @@ def fit_off_centre_claim_table(
     # claim nobody serves any more.  Short of evidence the cells hold their
     # incumbent, as they always have.
     if min_decision_at_utc is None:
-        from .center_width_store import served_arithmetic_anchor  # noqa: PLC0415
+        from .center_width_store import evidence_anchor  # noqa: PLC0415
 
-        min_decision_at_utc = served_arithmetic_anchor(conn, stage=stage)
+        min_decision_at_utc = evidence_anchor(conn, stage=stage)
     sample = serving_lane_by_station_day(
         conn, _truth(conn), stage=stage, pre_band=False,
         min_decision_at_utc=min_decision_at_utc,

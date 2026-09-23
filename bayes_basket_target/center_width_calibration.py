@@ -756,6 +756,207 @@ def apply_center_width_calibration(
     }
 
 
+def center_width_adjusted_grid(
+    probability: Mapping[str, float],
+    *,
+    ordered_keys: Sequence[str],
+    key_centers_c: Sequence[float],
+    shifts: Sequence[float],
+    lambdas: Sequence[float],
+    excluded_buckets: Sequence[str] = (),
+    station_width_scale: float = 1.0,
+    sigma_floor_rungs: float = 0.0,
+    open_edge_bounds_c: Sequence[float | None] | None = None,
+):
+    """``apply_center_width_calibration``'s adjusted vector at many pairs at once.
+
+    Row ``g`` is, bit for bit, the first element of
+    ``apply_center_width_calibration(probability, delta_c=shifts[g],
+    width_lambda=lambdas[g], ...)`` with the buckets in axis order (charter
+    202 follow-up, 2026-09-23).  The width lane scores a 33 x 29 grid, then a
+    tier grid, then refits the whole grid on every rolling-origin prefix; once
+    the evidence stopped resetting at every bump it had ten days of cells and
+    the scalar path needed hours, so the daily refit could never finish inside
+    its slot.  Nothing here is a second rule: every source bucket is walked
+    in the scalar function's order and every value is formed by the same
+    operations in the same order, vectorised only across the pairs -- which
+    is why ``math.exp`` is applied element by element rather than numpy's own
+    exponential, whose last bit is not the platform's, and why every total is
+    Python's own compensated ``sum`` row by row.  No tier lambdas: the
+    lane searches tiers one scalar lambda at a time.  Pinned against the
+    scalar function by tests/test_center_width_adjusted_grid.py.
+    """
+
+    import numpy as np
+
+    if not probability:
+        raise ValueError("center_width_probability_empty")
+    keys, centers = _axis(ordered_keys, key_centers_c)
+    if set(keys) != set(probability):
+        raise ValueError("center_width_bucket_mismatch")
+    shift = np.asarray([float(value) for value in shifts], dtype=float)
+    lam_in = np.asarray([float(value) for value in lambdas], dtype=float)
+    if shift.shape != lam_in.shape or shift.ndim != 1:
+        raise ValueError("center_width_grid_shape")
+    if not np.isfinite(shift).all() or (np.abs(shift) > MAX_ABS_SHIFT_C).any():
+        raise ValueError("center_width_shift_out_of_range")
+    if not np.isfinite(lam_in).all() or (
+        (lam_in < MIN_WIDTH_LAMBDA) | (lam_in > MAX_WIDTH_LAMBDA)
+    ).any():
+        raise ValueError("center_width_lambda_out_of_range")
+    scale = float(station_width_scale)
+    if not math.isfinite(scale) or not (
+        MIN_STATION_WIDTH_SCALE <= scale <= MAX_STATION_WIDTH_SCALE
+    ):
+        raise ValueError("center_width_station_scale_out_of_range")
+    lift, _sigma_c, rung_c = sigma_floor_lift_v1(
+        probability,
+        ordered_keys=ordered_keys,
+        key_centers_c=key_centers_c,
+        floor_rungs=sigma_floor_rungs,
+    )
+    if not math.isfinite(lift) or not (1.0 <= lift <= MAX_SIGMA_FLOOR_LIFT):
+        raise ValueError("center_width_sigma_floor_lift_out_of_range")
+    lam = np.maximum(MIN_COMPOSED_WIDTH_LAMBDA, lam_in * scale * lift)
+    index = {key: position for position, key in enumerate(keys)}
+    total_in = sum(float(value) for value in probability.values())
+    if total_in <= 0.0 or not math.isfinite(total_in):
+        raise ValueError("center_width_probability_empty")
+    mean_c = sum(
+        centers[index[str(key)]] * float(value) / total_in
+        for key, value in probability.items()
+    )
+    open_lower, open_upper = _open_edges(open_edge_bounds_c, centers)
+    open_edges_declared = open_lower is not None or open_upper is not None
+    edges_c = (
+        _bucket_edges_c(centers, open_lower, open_upper)
+        if open_edges_declared else []
+    )
+    count = len(keys)
+    pairs = shift.shape[0]
+    centers_array = np.asarray(centers, dtype=float)
+    moved = np.zeros((pairs, count))
+    for key, raw in probability.items():
+        weight = float(raw)
+        if weight <= 0.0:
+            continue
+        position_index = index[str(key)]
+        side = (
+            "lower" if open_lower is not None and position_index == 0
+            else "upper"
+            if open_upper is not None and position_index == count - 1
+            else None
+        )
+        if side is not None:
+            adjacent = keys[1] if side == "lower" else keys[-2]
+            landing = _open_edge_tail_landing_grid(
+                weight,
+                side=side,
+                bound_c=open_lower if side == "lower" else open_upper,
+                adjacent_weight=float(probability.get(adjacent, 0.0)),
+                rung_c=rung_c,
+                edges_c=edges_c,
+                mean_c=mean_c,
+                lam=lam,
+                shift=shift,
+            )
+            for bucket_index in range(count):
+                moved[:, bucket_index] += landing[:, bucket_index]
+            continue
+        origin = centers[position_index]
+        position = mean_c + (origin - mean_c) * lam + shift
+        low = position <= centers[0]
+        high = ~low & (position >= centers[-1])
+        middle = ~(low | high)
+        moved[low, 0] += weight
+        moved[high, count - 1] += weight
+        rows = np.nonzero(middle)[0]
+        if rows.size:
+            inner = position[rows]
+            lower_index = np.searchsorted(centers_array, inner, side="left") - 1
+            lower = centers_array[lower_index]
+            span = centers_array[lower_index + 1] - lower
+            upper_share = np.where(span > 0, (inner - lower) / span, 0.0)
+            moved[rows, lower_index] += weight * (1.0 - upper_share)
+            moved[rows, lower_index + 1] += weight * upper_share
+    excluded = {str(bucket) for bucket in excluded_buckets}
+    if excluded - set(keys):
+        raise ValueError("center_width_excluded_bucket_unknown")
+    for key in excluded:
+        moved[:, index[key]] = 0.0
+    # Python's ``sum`` over floats is compensated (Neumaier, 3.12+), not a
+    # left-to-right add, so the scalar total is reproduced row by row with
+    # the same ``sum`` over the same order rather than with numpy.
+    total = np.asarray([sum(row) for row in moved.tolist()], dtype=float)
+    refused = ~(total > 0.0) | ~np.isfinite(total)
+    safe_total = np.where(refused, 1.0, total)
+    adjusted = moved / safe_total[:, None]
+    if refused.any():
+        # Everything landed on ruled-out buckets: apply serves the input.
+        # Flagged, because apply returns that input in the caller's own key
+        # order and a caller summing it must follow that order to agree.
+        adjusted[refused] = np.asarray(
+            [float(probability[key]) for key in keys], dtype=float
+        )
+    return adjusted, refused
+
+
+def _open_edge_tail_landing_grid(
+    weight: float,
+    *,
+    side: str,
+    bound_c: float,
+    adjacent_weight: float,
+    rung_c: float,
+    edges_c: Sequence[float],
+    mean_c: float,
+    lam,
+    shift,
+):
+    """``_open_edge_tail_landing`` at every (lam, shift) pair; same arithmetic."""
+
+    import numpy as np
+
+    size = len(edges_c) + 1
+    pairs = shift.shape[0]
+    landing = np.zeros((pairs, size))
+    if adjacent_weight <= 0.0:
+        landing[:, 0 if side == "lower" else size - 1] = weight
+        return landing
+    scale = weight * rung_c / adjacent_weight
+
+    def _tail(past, exponent):
+        # ``math.exp`` only where the scalar path takes it: a row past the
+        # bound never evaluates the exponential there, and could overflow.
+        out = np.full(past.shape, weight, dtype=float)
+        for row in np.nonzero(~past)[0].tolist():
+            out[row] = weight * math.exp(float(exponent[row]))
+        return out
+
+    previous = np.zeros(pairs)
+    # The exponent is formed for every pair and used only where the row is
+    # not past the bound (the scalar path forms it only there); a past row's
+    # quotient may overflow and is discarded.
+    with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+        if side == "lower":
+            for position, edge in enumerate(edges_c):
+                source = mean_c + (edge - shift - mean_c) / lam
+                past = source >= bound_c
+                cumulative = _tail(past, (source - bound_c) / scale)
+                landing[:, position] = cumulative - previous
+                previous = cumulative
+            landing[:, size - 1] = weight - previous
+            return landing
+        for position in range(size - 2, -1, -1):
+            source = mean_c + (edges_c[position] - shift - mean_c) / lam
+            past = source <= bound_c
+            cumulative = _tail(past, -(source - bound_c) / scale)
+            landing[:, position + 1] = cumulative - previous
+            previous = cumulative
+        landing[:, 0] = weight - previous
+        return landing
+
+
 def bucket_centers_from_intervals(
     intervals: Mapping[str, Sequence[float | None]],
     *,

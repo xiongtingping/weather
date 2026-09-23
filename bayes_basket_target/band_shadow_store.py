@@ -740,8 +740,8 @@ def fit_band_shadow_table(
         # Imported here for the same reason the pooled lane does it:
         # center_width_store imports the band store, and a module-level
         # import from here would close the cycle.
-        from .center_width_store import served_arithmetic_anchor
-        evidence_floor = served_arithmetic_anchor(conn, stage=stage_id)
+        from .center_width_store import evidence_anchor
+        evidence_floor = evidence_anchor(conn, stage=stage_id)
     else:
         evidence_floor = str(min_decision_at_utc) or None
     # Charter 105: the pooled table is this lane's BASE, so this lane's

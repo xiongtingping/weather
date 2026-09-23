@@ -1147,7 +1147,7 @@ def fit_lambda_table(
     # anchor (the declared start of the served version, or the first
     # decision under it): the latest anchor over the scope's stages, at the
     # decision instant.  Same bound the band and centre/width lanes carry.
-    from .center_width_store import served_arithmetic_anchor  # noqa: PLC0415
+    from .center_width_store import evidence_anchor  # noqa: PLC0415
 
     # Charter 132: an anchor set after the moment a walk-forward fit stands at
     # did not exist then.  Dropped, and the rolling window is the bound.
@@ -1159,7 +1159,7 @@ def fit_lambda_table(
         ).isoformat() + "T00:00:00Z"
     anchors = [
         a for a in (
-            served_arithmetic_anchor(conn, stage=stage) for stage in stages
+            evidence_anchor(conn, stage=stage) for stage in stages
         ) if a and (_anchor_cutoff is None or str(a) <= str(_anchor_cutoff))
     ]
     min_decision_at_utc = max(anchors) if anchors else None

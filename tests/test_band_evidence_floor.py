@@ -136,7 +136,8 @@ def test_the_fit_defaults_its_bound_to_the_served_arithmetic_anchor() -> None:
     assert "min_decision_at_utc" in signature.parameters
     assert signature.parameters["min_decision_at_utc"].default is None
     source = inspect.getsource(store.fit_band_reliability_table)
-    assert "served_arithmetic_anchor" in source
+    # Charter 202: the lanes' anchor is the evidence epoch, not the version's.
+    assert "evidence_anchor" in source
     assert "min_decision_at_utc=evidence_floor" in source
 
 

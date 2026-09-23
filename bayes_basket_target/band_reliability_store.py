@@ -1646,8 +1646,8 @@ def fit_band_reliability_table(
     if min_decision_at_utc is None:
         # Imported here: center_width_store imports this module for the band
         # inverse, so a module-level import would close the cycle.
-        from .center_width_store import served_arithmetic_anchor
-        evidence_floor = served_arithmetic_anchor(conn, stage=stage_id)
+        from .center_width_store import evidence_anchor
+        evidence_floor = evidence_anchor(conn, stage=stage_id)
     else:
         evidence_floor = str(min_decision_at_utc) or None
     serving, serving_stations = serving_lane_by_day(

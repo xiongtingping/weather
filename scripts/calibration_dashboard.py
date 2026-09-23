@@ -6070,7 +6070,7 @@ def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
     )
     from bayes_basket_target.center_width_store import (
         _truth,
-        served_arithmetic_anchor,
+        evidence_anchor,
     )
 
     truth = _truth(conn)
@@ -6160,7 +6160,7 @@ def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
             # per-station claim-honesty reading the go-live gate consumes,
             # and a window that restarts at every arithmetic change would
             # leave it a handful of station-days per station.
-            anchor = served_arithmetic_anchor(conn, stage=stage)
+            anchor = evidence_anchor(conn, stage=stage)
             if anchor:
                 scored_since = serving_lane_by_station_day(
                     conn, truth, stage=stage, pre_band=True,
@@ -9287,12 +9287,12 @@ def _scorecard_window(conn: sqlite3.Connection) -> dict[str, Any]:
 
     try:
         from bayes_basket_target.center_width_store import (  # noqa: PLC0415
-            served_arithmetic_anchor,
+            evidence_anchor,
         )
     except ImportError:
         return {"anchor": None, "anchor_state": "unavailable"}
     try:
-        anchor = served_arithmetic_anchor(conn, stage="P0")
+        anchor = evidence_anchor(conn, stage="P0")
     except Exception:  # noqa: BLE001 -- a broken anchor store is a reading, not a crash
         return {"anchor": None, "anchor_state": "error"}
     if not anchor:
@@ -9671,7 +9671,7 @@ def collect_calibration_scorecard(
             layer["health"] = "muted"
             layer["verdict"] = (
                 f"攒证据 {len(event_days)}/{SCORECARD_MIN_EVENT_DAYS} 个事件日："
-                "服务算术锚之后的已结算样本还不够下结论，下面的数字只作参考"
+                "证据起点（宪章 202：跨版本不清零）之后的已结算样本还不够下结论，下面的数字只作参考"
             )
     # Per event day, for the accuracy board's trend lines (user, 2026-09-18:
     # 把模型准不准、中心、宽度等集中到一个看板…能直观的看各项指标及趋势).  The
@@ -14196,7 +14196,7 @@ def collect_charter_ev(conn: sqlite3.Connection) -> dict[str, Any]:
     out: dict[str, Any] = {"available": False}
     try:
         from bayes_basket_target.center_width_store import (  # noqa: PLC0415
-            served_arithmetic_anchor,
+            evidence_anchor,
         )
         from bayes_basket_target.valuation_store import (  # noqa: PLC0415
             BOOTSTRAP_DRAWS,
@@ -14228,7 +14228,7 @@ def collect_charter_ev(conn: sqlite3.Connection) -> dict[str, Any]:
         anchor: str | None = None
         anchor_state = "ok"
         try:
-            anchor = served_arithmetic_anchor(
+            anchor = evidence_anchor(
                 conn, stage=STAGE_SCOPES[scope][0],
             )
         except Exception:  # noqa: BLE001 -- a broken anchor store is a reading, not a crash
@@ -14902,6 +14902,10 @@ SECTION_CACHE_TTL_SEC = {
     # one render.
     "scorecard_previous": 183 * 60,
     "center_landing_previous": 258 * 60,
+    # The served version's own span, for the board's version comparison
+    # (charter 202 moved the served landing onto the evidence window).  A new
+    # version settles a day at a time, so this refreshes hourly.
+    "center_landing_version": 61 * 60,
     "model_accuracy_trend": 262 * 60,
     "h5_readiness": 195 * 60,
     "skill": 210 * 60,
@@ -15140,6 +15144,18 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "center_landing_previous", collect_center_landing, conn,
         windows=previous_windows, _salt=previous_salt + _center_landing_salt(),
     ) if previous_windows else {}
+    # Charter 202: the served landing now reads the lanes' evidence window,
+    # which spans every bump since the stage's epoch; the board's version
+    # comparison ("本版 against 上一版") keeps reading the version itself.
+    current_windows = {
+        stage: {"since": window["until"], "until": "9999-12-31T00:00:00Z"}
+        for stage, window in (previous_windows or {}).items()
+    }
+    center_landing_version = _cached_section(
+        "center_landing_version", collect_center_landing, conn,
+        windows=current_windows,
+        _salt=json.dumps(current_windows, sort_keys=True) + _center_landing_salt(),
+    ) if current_windows else {}
     trend_since = (
         _now() - timedelta(days=MODEL_ACCURACY_TREND_DAYS)
     ).strftime("%Y-%m-%dT00:00:00Z")
@@ -15423,6 +15439,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         # side-by-side (user, 2026-09-18: 显示，做对比).
         "previous_version_windows": previous_windows,
         "center_landing_previous": center_landing_previous,
+        "center_landing_version": center_landing_version,
         "scorecard_previous": scorecard_previous,
         "model_accuracy_trend": model_accuracy_trend,
         "fusion_candidates": collect_fusion_candidates(),
@@ -17439,7 +17456,7 @@ function reliabilityAudit(){
   // population reasons, not calibration ones.
   const A = D.band_residual_audit || {};
   const sinceLabel = s => s.since
-    ? `自 ${h(s.since).slice(5,16).replace("T"," ")}Z 起（服务算术锚，与上表拟合同一证据起点）`
+    ? `自 ${h(s.since).slice(5,16).replace("T"," ")}Z 起（证据起点，宪章 202 跨版本不清零，与上表拟合同一起点）`
     : "全历史";
   const stageBlocks = (A.stages||[]).map(s => {
     const rows = (s.rows||[])
@@ -17489,7 +17506,7 @@ function reliabilityAudit(){
     </tr>`).join("");
   const stationBlock=!stationRows?"":`<div style="margin-top:14px">
     <div class="muted"><b>每站 实现/声称（中心±1，三 stage 合并，全历史）</b> ·
-    与上面各档不同，这张表<b>不随服务算术锚重置</b>（按锚点切，每站只剩几个站日），
+    与上面各档不同，这张表<b>不按证据起点截断</b>（按起点切，每站只剩几个站日），
     上线就绪页的「声称诚实」门读的就是这一列 ·
     band 是全舰队池化的，这张表是「band 要不要分站」的法庭：
     带 ✱ 的站在池化修正之后仍按 2σ 显著偏离 1——
@@ -17502,7 +17519,7 @@ function reliabilityAudit(){
   if(!stageBlocks && !stationBlock) return "";
   return `<div class="card" style="margin-top:12px">
   <div class="muted"><b>③ 体检：说了多少 vs 真发生了多少</b>（band 店同一车道 ·
-  每站日首个决策 · 同 stage · <b>与上表拟合同一证据起点（服务算术锚）</b> ·
+  每站日首个决策 · 同 stage · <b>与上表拟合同一证据起点（宪章 202，跨版本不清零）</b> ·
   <b>每张表按该 stage 自己那根轴分档</b>，和上表逐行对齐 ·
   唯一差别：上表读系数前的原始声称，本表读系数后的实际服务值 ·
   <b>只计 band 真的动过的站日</b>——没动过的行不是"修完还剩多少"的证据，
@@ -22181,8 +22198,8 @@ function scorecard(){
   const W = S.window || {};
   const count = v => v == null ? "—" : v.toLocaleString();
   const windowText = W.anchor
-    ? `P0 服务算术锚 ${h(String(W.anchor).slice(5,16).replace("T"," "))}Z 起、最多回看 ${W.max_days ?? 45} 天`
-    : `近 ${W.max_days ?? 45} 天（没读到服务算术锚，样本没有按规则换代截断）`;
+    ? `P0 证据起点 ${h(String(W.anchor).slice(5,16).replace("T"," "))}Z 起（宪章 202：升版不清零）、最多回看 ${W.max_days ?? 45} 天`
+    : `近 ${W.max_days ?? 45} 天（没读到证据起点，样本没有按规则截断）`;
   return `<h2>模型校准总检：检查概率模型六层是否各自达标</h2>
   <p class="sub">${windowText}：${count(S.station_day_count)} 个已结算站日，
   ${count(S.event_day_count)} 个事件日、${count(S.station_count)} 个站，全部在样本外。
@@ -22477,7 +22494,7 @@ function modelAccuracyBoard(){
   // A version a few hours old has one or two settled cells; a percentage
   // off them reads as a verdict, so below the floor the tile says so.
   const COVER_MIN_CELLS = 30;
-  const covRaw = landingCover(D.center_landing, "P0");
+  const covRaw = landingCover(D.center_landing_version || D.center_landing, "P0");
   const covNow = covRaw && covRaw.cells >= COVER_MIN_CELLS ? covRaw : null;
   const covPrev = landingCover(D.center_landing_previous, "P0");
   const tiles = [
@@ -22586,8 +22603,10 @@ function modelAccuracyBoard(){
   }).join("");
   return `${star}<h2>模型准不准 · 总览：中心、宽度、概率一张看</h2>
   <div class="card vstrip">
-    <span class="pill violet">本版 ${vShort(W && W.current_version)}</span>
-    <span>${whenZ(W && W.until)} 起 · ${S.event_day_count || 0} 个事件日${S.accumulating ? `（攒证据中，满 ${S.min_event_days || 8} 天出结论）` : ""}</span>
+    <span class="pill violet">证据窗</span>
+    <span>${whenZ((S.window || {}).anchor)} 起（宪章 202：升版不清零）· ${S.event_day_count || 0} 个事件日${S.accumulating ? `（攒证据中，满 ${S.min_event_days || 8} 天出结论）` : ""}</span>
+    <span class="pill">本版 ${vShort(W && W.current_version)}</span>
+    <span class="muted">${whenZ(W && W.until)} 起</span>
     <span class="pill">上一版 ${vShort(W && W.version)}</span>
     <span class="muted">${whenZ(W && W.since)} → ${whenZ(W && W.until)} · ${P.event_day_count || 0} 个事件日</span>
   </div>
@@ -22623,7 +22642,7 @@ const CORE_METRICS = [
    q:"真值所在桶给了多少概率，取负对数；越低越好", fmt:v => v.toFixed(3)},
 ];
 function northStarBlock(LD, landDates, col){
-  const cur = D.center_landing || {}, prev = D.center_landing_previous || {};
+  const cur = D.center_landing_version || D.center_landing || {}, prev = D.center_landing_previous || {};
   const T = D.model_accuracy_trend || {}, pooled = T.landing_core || {};
   const W = D.previous_version_windows || {};
   const MIN_DAYS = (D.scorecard || {}).min_event_days || 8;
@@ -22803,7 +22822,7 @@ function landingPrevious(){
   const W = D.previous_version_windows || {};
   const stages = ["P0", "P0-M", "P1"];
   const rows = stages.map(s => {
-    const a = landingCover(D.center_landing_previous, s), b = landingCover(D.center_landing, s);
+    const a = landingCover(D.center_landing_previous, s), b = landingCover(D.center_landing_version || D.center_landing, s);
     if(!a && !b) return "";
     const cell = x => x ? `${x.bias == null ? "—" : (x.bias > 0 ? "+" : "") + x.bias.toFixed(2) + " 桶"} · 声称 ${pctS(x.claim)} / 实际 ${pctS(x.cover)} · ${x.cells} 格 ${x.days} 天` : "—";
     return `<tr><td><b>${s}</b></td><td>${cell(a)}</td><td>${cell(b)}</td></tr>`;
