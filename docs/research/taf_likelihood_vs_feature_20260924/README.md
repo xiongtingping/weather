@@ -54,3 +54,35 @@ REASONED (0.91 -> 0.43, 0.49 -> 0.23) while SBGR/ZBAA/RKPK gain it.
 
 Files: collect_taf_envelopes.py (sample), taf_lik_vs_feature.py (arms), results_lag{0,6}.json, out_lag{0,6}.txt;
 regional_* are the regional-model run of the same question (09-23) for comparison.
+
+## Follow-up (2026-09-24, 熊先生「测试」): should the production lambda table be lowered to the as-of table?
+
+Two yardsticks, run side by side.
+
+**This harness** (P0-envelope rows, cell = (day, tier), 17 stations equal weight; RPS and floored NLL):
+production table {1, 0.5, 1, 1} vs P0: RPS +0.009 [-0.014, +0.035], NLL -0.023 [-0.043, -0.002].
+As-of four-group table (lik_pool_temp) beats it on both: RPS -0.023 [-0.038, -0.009], NLL -0.013 [-0.024, -0.002],
+15/17 stations, both lags.  The gap sits in OTHER (warm TAF without clear/dry skies, 7% of rows: lambda 1 -> 0.5 is
+-0.10 RPS in-group) and UNREASONED_COLD (0.25 vs 0.5: -0.026 at lag 0, n.s. at lag 6); REASONED and SMALL n.s.
+Group-specific beats any single global lambda on NLL (0.25 / 0.5 / 0.75: +0.016 / +0.009 / +0.012 vs as-of).
+
+**Production's own machinery** (`fit_taf_likelihood.py`, read-only, `fitter_variants.py` / `fitter_fixed_tables.py`:
+as-of lines, TAF-arrival x current-P0 pairing, weight 1/n per station-day, log score vs lambda = 1 pooled by event
+day; 2,296 TAFs / 32 days):
+
+| table | by-day mean gain vs lambda = 1 (nat) | note |
+|---|---|---|
+| production {1, .5, 1, 1} | +0.0091 [-0.0002, +0.0219] | reproduces the artifact |
+| as-of low {.5, .25, .5, .75} | +0.0034 [-0.018, +0.028] | OTHER +0.043 by weight, REASONED -0.005 |
+| OTHER muted {1, .5, .5, 1} | +0.0082 [-0.006, +0.024] | OTHER's +0.043 by weight is a few heavy days: by-day mean does not move |
+| global 0.5 / 0.75 | +0.001 / +0.006 | |
+| low - production | -0.0057 [-0.022, +0.011] | n.s. |
+
+Letting the fitter fit all four groups (TEMPERED_GROUPS extended): it picks REASONED 1.0, OTHER 1.0, SMALL 1.25 in
+sample and walks forward at -0.004 nat [-0.019, +0.013] -> IDENTITY; the 2026-09-19 finding reproduces exactly.
+
+**Ruling material**: on production's own yardstick no table beats the current one and every gain is inside noise; the
+harness's advantage for the low table comes from weighting every P0 re-decision and from RPS on the ladder, not from
+the TAF-arrival log score the gate is written against.  A hand-set table would also be overwritten by the daily refit.
+So: leave the production table and TEMPERED_GROUPS alone.  What survives both yardsticks is only the ordering
+(tempered likelihood > untempered; likelihood > shift).

@@ -1,0 +1,114 @@
+{
+ "prod_as_is": {
+  "groups": [
+   "UNREASONED_COLD"
+  ],
+  "lambda_by_group": {
+   "REASONED": 1.0,
+   "UNREASONED_COLD": 0.5,
+   "OTHER": 1.0,
+   "SMALL": 1.0
+  },
+  "weights": {
+   "REASONED": 96.7,
+   "UNREASONED_COLD": 87.7,
+   "OTHER": 39.2,
+   "SMALL": 324.4
+  },
+  "walk_forward": {
+   "state": "SERVE",
+   "by_day_mean_gain_vs_lambda_one_nat": 0.009277781063247163,
+   "ci_low": -0.0018942035062191015,
+   "ci_high": 0.02383817690506233,
+   "days": 32,
+   "gain_by_group_nat": {
+    "UNREASONED_COLD": 0.05430506821199957,
+    "SMALL": 0.0,
+    "REASONED": 0.0,
+    "OTHER": 0.0
+   },
+   "station_days_by_group": {
+    "UNREASONED_COLD": 68.7431182121972,
+    "SMALL": 249.77478150504217,
+    "REASONED": 76.59490221512547,
+    "OTHER": 29.19632505175984
+   }
+  }
+ },
+ "plus_other": {
+  "groups": [
+   "UNREASONED_COLD",
+   "OTHER"
+  ],
+  "lambda_by_group": {
+   "REASONED": 1.0,
+   "UNREASONED_COLD": 0.5,
+   "OTHER": 1.0,
+   "SMALL": 1.0
+  },
+  "weights": {
+   "REASONED": 96.7,
+   "UNREASONED_COLD": 87.7,
+   "OTHER": 39.2,
+   "SMALL": 324.4
+  },
+  "walk_forward": {
+   "state": "SERVE",
+   "by_day_mean_gain_vs_lambda_one_nat": 0.007759494099121256,
+   "ci_low": -0.0037553302212012126,
+   "ci_high": 0.022416093068751017,
+   "days": 32,
+   "gain_by_group_nat": {
+    "UNREASONED_COLD": 0.05430506821199957,
+    "SMALL": 0.0,
+    "REASONED": 0.0,
+    "OTHER": -0.023513371672128903
+   },
+   "station_days_by_group": {
+    "UNREASONED_COLD": 68.7431182121972,
+    "SMALL": 249.77478150504217,
+    "REASONED": 76.59490221512547,
+    "OTHER": 29.19632505175984
+   }
+  }
+ },
+ "all_four": {
+  "groups": [
+   "REASONED",
+   "UNREASONED_COLD",
+   "OTHER",
+   "SMALL"
+  ],
+  "lambda_by_group": {
+   "REASONED": 1.0,
+   "UNREASONED_COLD": 0.5,
+   "OTHER": 1.0,
+   "SMALL": 1.25
+  },
+  "weights": {
+   "REASONED": 96.7,
+   "UNREASONED_COLD": 87.7,
+   "OTHER": 39.2,
+   "SMALL": 324.4
+  },
+  "walk_forward": {
+   "state": "IDENTITY",
+   "by_day_mean_gain_vs_lambda_one_nat": -0.004069629611736023,
+   "ci_low": -0.018754517432122586,
+   "ci_high": 0.012790530660261484,
+   "days": 32,
+   "gain_by_group_nat": {
+    "UNREASONED_COLD": 0.05430506821199957,
+    "SMALL": -0.018130943434272812,
+    "REASONED": 0.0014664402316234746,
+    "OTHER": -0.023513371672128903
+   },
+   "station_days_by_group": {
+    "UNREASONED_COLD": 68.7431182121972,
+    "SMALL": 249.77478150504217,
+    "REASONED": 76.59490221512547,
+    "OTHER": 29.19632505175984
+   }
+  }
+ }
+}

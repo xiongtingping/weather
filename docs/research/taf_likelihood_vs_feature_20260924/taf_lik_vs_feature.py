@@ -52,8 +52,13 @@ LAMBDAS = (0.25, 0.5, 0.75, 1.0)
 TGRID = (0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5)
 GROUPS = ("REASONED", "UNREASONED_COLD", "OTHER", "SMALL")
 ARMS = ("base", "shift_roll", "shift_raw", "shift_ab", "shift_temp", "rsA", "rsB", "lik_deb", "lik_raw", "lik_lam", "lik_pool", "lik_pool_temp",
-        "lik_naive", "mirA", "mirB", "lik_rec", "lik_rec_lam", "lik_rec_temp")
-REPORT = ("shift_roll", "shift_raw", "shift_ab", "shift_temp", "lik_deb", "lik_raw", "lik_lam", "lik_pool", "lik_pool_temp", "lik_naive", "lik_rec", "lik_rec_lam", "lik_rec_temp")
+        "lik_naive", "mirA", "mirB", "lik_rec", "lik_rec_lam", "lik_rec_temp", "lik_prod_lam", "lik_low_lam", "lik_g025", "lik_g050", "lik_g075")
+REPORT = ("shift_roll", "shift_raw", "shift_ab", "shift_temp", "lik_deb", "lik_raw", "lik_lam", "lik_pool", "lik_pool_temp", "lik_naive", "lik_rec", "lik_rec_lam", "lik_rec_temp",
+          "lik_prod_lam", "lik_low_lam", "lik_g025", "lik_g050", "lik_g075")
+# fixed tables: the production artifact's (fitted 2026-09-22) and the as-of endpoint of this walk-forward (in-sample for the CHOICE of table)
+PROD_LAMBDA = {"REASONED": 1.0, "UNREASONED_COLD": 0.5, "OTHER": 1.0, "SMALL": 1.0}
+LOW_LAMBDA = {"REASONED": 0.5, "UNREASONED_COLD": 0.25, "OTHER": 0.5, "SMALL": 0.75}
+FIXED = {"lik_prod_lam": PROD_LAMBDA, "lik_low_lam": LOW_LAMBDA, "lik_g025": {g: 0.25 for g in GROUPS}, "lik_g050": {g: 0.5 for g in GROUPS}, "lik_g075": {g: 0.75 for g in GROUPS}}
 
 
 def ts(s): return datetime.fromisoformat(s.replace("Z", "+00:00"))
@@ -290,6 +295,7 @@ for st in STATIONS:
                "lik_deb": ld, "lik_raw": lik(x["served"], o, cen, c, xr, *P["raw"]), "lik_lam": ll,
                "lik_rec": shifted(x["served"], o, cen, ed, rec), "lik_rec_lam": shifted(x["served"], o, cen, ed, recl),
                "lik_pool": lp, "lik_pool_temp": lpt,
+               **{arm: (lik(x["served"], o, cen, c, xr, *P["pool"], tbl[x["grp"]]) if P["pool"] else dict(x["served"])) for arm, tbl in FIXED.items()},
                "lik_naive": lik(x["served"], o, cen, c, d, 0.0, 1.0, P["tau_naive"]),
                "mirA": lik(x["served"], o, cen, c, a_ + s * (d - a_), a_, b_, tau), "mirB": lik(x["served"], o, cen, c, a_ - s * (d - a_), a_, b_, tau)}
         sc = {}
@@ -351,6 +357,11 @@ for st in STATIONS:
         o["h2h d_rps lik_pool_temp - shift_temp"] = boot(cellavg(sub, lambda r: r["sc"]["lik_pool_temp"]["rps"] - r["sc"]["shift_temp"]["rps"]))
         o["h2h d_nll_nz lik_pool_temp - shift_temp"] = boot(cellavg(sub, lambda r: (nll(r["sc"]["lik_pool_temp"]["pt"]) - nll(r["sc"]["shift_temp"]["pt"])) if nz(r) else None))
         o["h2h d_rps lik_rec_temp - shift_temp"] = boot(cellavg(sub, lambda r: r["sc"]["lik_rec_temp"]["rps"] - r["sc"]["shift_temp"]["rps"]))
+        for arm in FIXED:
+            o[f"h2h d_rps {arm} - lik_pool_temp"] = boot(cellavg(sub, lambda r, arm=arm: r["sc"][arm]["rps"] - r["sc"]["lik_pool_temp"]["rps"]))
+            o[f"h2h d_nll_nz {arm} - lik_pool_temp"] = boot(cellavg(sub, lambda r, arm=arm: (nll(r["sc"][arm]["pt"]) - nll(r["sc"]["lik_pool_temp"]["pt"])) if nz(r) else None))
+        o["h2h d_rps lik_low_lam - lik_prod_lam"] = boot(cellavg(sub, lambda r: r["sc"]["lik_low_lam"]["rps"] - r["sc"]["lik_prod_lam"]["rps"]))
+        o["h2h d_nll_nz lik_low_lam - lik_prod_lam"] = boot(cellavg(sub, lambda r: (nll(r["sc"]["lik_low_lam"]["pt"]) - nll(r["sc"]["lik_prod_lam"]["pt"])) if nz(r) else None))
         o["murphy"] = {arm: murphy(sub, arm) for arm in ("base", "shift_roll", "shift_ab", "shift_temp", "lik_deb", "lik_pool", "lik_pool_temp", "lik_naive", "lik_rec", "lik_rec_temp")}
         o["mtemp_last"] = sub[-1]["mtemp"]
         o["k_median"] = round(float(np.median([r["k"] for r in sub])), 3); o["kraw_median"] = round(float(np.median([r["kraw"] for r in sub])), 3)
@@ -384,6 +395,17 @@ for st in STATIONS:
     PAIRS[(st, "temp-pool")] = cellavg(rows, lambda r: r["sc"]["lik_pool_temp"]["rps"] - r["sc"]["lik_pool"]["rps"])
     PAIRS[(st, "temp-shifttemp")] = cellavg(rows, lambda r: r["sc"]["lik_pool_temp"]["rps"] - r["sc"]["shift_temp"]["rps"])
     PAIRS[(st, "rectemp-shifttemp")] = cellavg(rows, lambda r: r["sc"]["lik_rec_temp"]["rps"] - r["sc"]["shift_temp"]["rps"])
+    for arm in FIXED:
+        PAIRS[(st, arm + "|vs_temp")] = cellavg(rows, lambda r, arm=arm: r["sc"][arm]["rps"] - r["sc"]["lik_pool_temp"]["rps"])
+        PAIRS[(st, arm + "|vs_temp|nll")] = cellavg(rows, lambda r, arm=arm: (nll(r["sc"][arm]["pt"]) - nll(r["sc"]["lik_pool_temp"]["pt"])) if all(r["sc"][a_]["pt"] >= FLOOR for a_ in ARMS) else None)
+        PAIRS[(st, arm + "|nll")] = cellavg(rows, lambda r, arm=arm: (nll(r["sc"][arm]["pt"]) - nll(r["sc"]["base"]["pt"])) if all(r["sc"][a_]["pt"] >= FLOOR for a_ in ARMS) else None)
+        for g_ in GROUPS:
+            PAIRS[(st, arm + "|vs_temp|grp" + g_)] = cellavg([r for r in rows if r["grp"] == g_], lambda r, arm=arm: r["sc"][arm]["rps"] - r["sc"]["lik_pool_temp"]["rps"])
+    PAIRS[(st, "low-prod")] = cellavg(rows, lambda r: r["sc"]["lik_low_lam"]["rps"] - r["sc"]["lik_prod_lam"]["rps"])
+    PAIRS[(st, "low-prod|nll")] = cellavg(rows, lambda r: (nll(r["sc"]["lik_low_lam"]["pt"]) - nll(r["sc"]["lik_prod_lam"]["pt"])) if all(r["sc"][a_]["pt"] >= FLOOR for a_ in ARMS) else None)
+    PAIRS[(st, "temp|nll")] = cellavg(rows, lambda r: (nll(r["sc"]["lik_pool_temp"]["pt"]) - nll(r["sc"]["base"]["pt"])) if all(r["sc"][a_]["pt"] >= FLOOR for a_ in ARMS) else None)
+    for g_ in GROUPS:
+        PAIRS[(st, "low-prod|grp" + g_)] = cellavg([r for r in rows if r["grp"] == g_], lambda r: r["sc"]["lik_low_lam"]["rps"] - r["sc"]["lik_prod_lam"]["rps"])
     for tr in ("12-24", "24-36", "36-48", "48+"):
         PAIRS[(st, "temp-shifttemp|tier" + tr)] = cellavg([r for r in rows if r["tier"] == tr], lambda r: r["sc"]["lik_pool_temp"]["rps"] - r["sc"]["shift_temp"]["rps"])
     for g_ in GROUPS:
@@ -436,6 +458,18 @@ for name, sts in SETS.items():
     ACROSS[f"{name} lik_pool_temp - lik_pool"] = combined([(s_, "temp-pool") for s_ in sts])
     ACROSS[f"{name} lik_pool_temp - shift_temp"] = combined([(s_, "temp-shifttemp") for s_ in sts])
     ACROSS[f"{name} lik_rec_temp - shift_temp"] = combined([(s_, "rectemp-shifttemp") for s_ in sts])
+    for arm in FIXED:
+        ACROSS[f"{name} {arm} - lik_pool_temp"] = combined([(s_, arm + "|vs_temp") for s_ in sts])
+        ACROSS[f"{name} dNLL {arm}"] = combined([(s_, arm + "|nll") for s_ in sts])
+        ACROSS[f"{name} dNLL {arm} - lik_pool_temp"] = combined([(s_, arm + "|vs_temp|nll") for s_ in sts])
+    ACROSS[f"{name} dNLL lik_pool_temp"] = combined([(s_, "temp|nll") for s_ in sts])
+    ACROSS[f"{name} lik_low_lam - lik_prod_lam"] = combined([(s_, "low-prod") for s_ in sts])
+    ACROSS[f"{name} dNLL lik_low_lam - lik_prod_lam"] = combined([(s_, "low-prod|nll") for s_ in sts])
+    if name == "all_17":
+        for g_ in GROUPS:
+            ACROSS[f"{name} grp{g_} lik_low_lam - lik_prod_lam"] = combined([(s_, "low-prod|grp" + g_) for s_ in sts])
+            for arm in FIXED:
+                ACROSS[f"{name} grp{g_} {arm} - lik_pool_temp"] = combined([(s_, arm + "|vs_temp|grp" + g_) for s_ in sts])
     if name == "all_17":
         for tr in ("12-24", "24-36", "36-48", "48+"):
             for arm in ("shift_roll", "shift_ab", "shift_temp", "lik_pool", "lik_pool_temp", "lik_rec", "lik_rec_temp"):
