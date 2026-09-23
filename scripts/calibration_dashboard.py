@@ -15935,7 +15935,9 @@ SECTION_CACHE_TTL_SEC = {
     # 降水分类评分: one pass over the observation archive's AWC lane
     # (~25s on the 15 GB file); the pairs move once a day, when a local
     # day closes somewhere, so three hours costs the reading nothing.
-    "precip_classification": 3 * 60 * 60,
+    # Seven minutes off the scorecard's three hours: cached sections expire
+    # on distinct clocks so the slow ones never rebuild in the same render.
+    "precip_classification": 3 * 60 * 60 + 7 * 60,
 }
 # Set by ``--no-section-cache`` so a reader who needs every number computed
 # against this instant can have it, at the price of the long build.
