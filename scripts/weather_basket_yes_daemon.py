@@ -576,6 +576,17 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         10800.0,
         1800.0,
     ),
+    # Charter 199 (2026-09-23): the settled station-days the P0 fusion blend
+    # trains on and the forward shadow record is scored on.  SSOT ``mode=ro``;
+    # writes only data/fusion_blend_training.db, append-only, a few seconds a
+    # pass.  Hourly: a station-day is usable from the moment its truth is
+    # known, and an hour is well inside the day-ahead decisions that read it.
+    (
+        "fusion_blend_training",
+        "scripts/fusion_blend_training_sweep.sh",
+        3600.0,
+        900.0,
+    ),
 )
 
 
@@ -637,6 +648,9 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     "probe_cma_named_runs": "none",
     # Charter 197: SSOT ``mode=ro``, HEAD probes, one small JSON file.
     "supply_watch": "none",
+    # Charter 199: SSOT ``mode=ro``; writes data/fusion_blend_training.db
+    # only, a file no other lane writes.
+    "fusion_blend_training": "fusion_blend",
     # Writes station_registry.py and the two SSOT identity rows.
     "station_onboarding": "ssot",
     "market_registry_retention": "ssot",

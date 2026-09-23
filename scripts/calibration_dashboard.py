@@ -9134,6 +9134,8 @@ def collect_fusion_candidates() -> dict[str, Any]:
             }
     return {
         "available": True,
+        "production_regime": _fusion_production_regime(),
+        "forward_shadow": _fusion_forward_shadow(),
         "cohort": {
             "status": (frozen or {}).get("cohort_status") or pareto.get("cohort_status"),
             "sample_n": joint.get("n"), "stations": joint.get("stations"),
@@ -9153,6 +9155,119 @@ def collect_fusion_candidates() -> dict[str, Any]:
             "hurdle": economic.get("hurdle"), "budget_usdc": economic.get("budget_usdc"),
         } if economic else None,
         "power": power,
+    }
+
+
+# Charter 199's switch: the forward shadow record on days nobody has seen.
+FUSION_SWITCH_MIN_EVENT_DAYS = 20
+
+
+def _fusion_production_regime() -> dict[str, Any] | None:
+    """The pre-go-live replay under production training density (read only)."""
+
+    try:
+        data = json.loads(
+            (FUSION_STUDY_DIR / "production_regime" / "results.json").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return None
+    groups = data.get("groups") or {}
+    return {
+        key: {
+            "n": group.get("n"), "days": group.get("days"),
+            "change_pct": group.get("change_pct") or {},
+            "rmse_ci": (group.get("delta_ci95") or {}).get("rmse"),
+        }
+        for key, group in groups.items()
+    }
+
+
+def _fusion_forward_shadow() -> dict[str, Any]:
+    """Seat weights against the blend's shadow weights, same settled days.
+
+    Read off the charter-199 training file: each settled station-day's
+    day-ahead root carries both the weights it served and the ones the blend
+    recorded beside them, and the file holds that day's systems' own
+    distributions, centre errors and CRPS terms -- so the two are scored on
+    one sample with no second read of the book.  A root whose blend fell
+    back records the seat weights as its shadow, which scores a zero
+    difference, as it should.
+    """
+
+    try:
+        from bayes_basket_target import fusion_blend  # noqa: PLC0415
+        conn = sqlite3.connect(
+            f"file:{fusion_blend.FUSION_BLEND_TRAINING_DB}?mode=ro", uri=True, timeout=5
+        )
+        conn.row_factory = sqlite3.Row
+        facts = [dict(row) for row in conn.execute(
+            "SELECT * FROM fusion_blend_training_fact"
+            " WHERE fusion_blend_state<>'NONE' AND probability_source NOT LIKE 'NONE%'"
+            " ORDER BY station_id, event_date, truth_revision"
+        )]
+        conn.close()
+    except (ImportError, OSError, sqlite3.Error):
+        return {"available": False}
+    latest: dict[tuple[str, str], dict[str, Any]] = {}
+    for fact in facts:
+        latest[(fact["station_id"], fact["event_date"])] = fact
+    cells: dict[str, list[tuple[float, dict[str, Any]]]] = {"seat": [], "shadow": []}
+    sums: dict[str, dict[str, float]] = {arm: defaultdict(float) for arm in cells}
+    states: Counter = Counter()
+    for fact in latest.values():
+        try:
+            seat = json.loads(fact["seat_weights_json"])
+            shadow = json.loads(fact["shadow_weights_json"]) or seat
+            probabilities = json.loads(fact["probabilities_json"])
+            errors = json.loads(fact["center_error_json"])
+            a = json.loads(fact["crps_a_json"])
+            b = json.loads(fact["crps_b_json"])
+        except (TypeError, ValueError):
+            continue
+        keys = sorted(seat)
+        if set(keys) - set(probabilities) or set(keys) != set(shadow):
+            continue
+        states[str(fact["fusion_blend_state"])] += 1
+        hit = int(fact["truth_bucket_index"])
+        for arm, weights in (("seat", seat), ("shadow", shadow)):
+            error = sum(weights[k] * errors[k] for k in keys)
+            crps = sum(weights[k] * a[k] for k in keys) - 0.5 * sum(
+                weights[i] * weights[j] * b[i][j] for i in keys for j in keys
+            )
+            pooled = [
+                sum(weights[k] * probabilities[k][index] for k in keys)
+                for index in range(len(probabilities[keys[0]]))
+            ]
+            sums[arm]["se"] += error * error
+            sums[arm]["crps"] += crps
+            sums[arm]["nll"] += -math.log(max(pooled[hit], CORE_NLL_FLOOR))
+            cells[arm].append((1.0, {"probabilities": pooled, "hit": hit}))
+    count = len(cells["seat"])
+    days = len({day for _station, day in latest}) if count else 0
+    if not count:
+        return {"available": True, "station_days": 0, "event_days": 0,
+                "states": dict(states), "min_event_days": FUSION_SWITCH_MIN_EVENT_DAYS}
+    arms = {}
+    for arm in cells:
+        murphy = _core_murphy(cells[arm])
+        arms[arm] = {
+            "rmse_c": math.sqrt(sums[arm]["se"] / count),
+            "crps_c": sums[arm]["crps"] / count,
+            "nll": sums[arm]["nll"] / count,
+            "reliability": murphy.get("reliability"),
+            "resolution": murphy.get("resolution"),
+        }
+    better = {
+        key: (arms["shadow"][key] > arms["seat"][key]) if key == "resolution"
+        else (arms["shadow"][key] < arms["seat"][key])
+        for key in ("rmse_c", "crps_c", "nll", "reliability", "resolution")
+    }
+    event_days = len({fact["event_date"] for fact in latest.values()})
+    return {
+        "available": True, "station_days": count, "event_days": event_days,
+        "arms": arms, "better": better, "states": dict(states),
+        "min_event_days": FUSION_SWITCH_MIN_EVENT_DAYS,
+        "switch_ready": event_days >= FUSION_SWITCH_MIN_EVENT_DAYS and all(better.values()),
     }
 
 
@@ -22611,7 +22726,30 @@ function fusionCandidates(){
   const rois = withEcon.map(r => r.economic.hurdle_roi).filter(v => v != null);
   const claimed = withEcon.map(r => r.economic.hurdle_claimed_roi).filter(v => v != null);
   const kellyAllNeg = withEcon.every(r => (r.economic.kelly_quarter_log_growth ?? 0) < 0);
-  return `<h2>融合权重候选：三降约束 × 北极星 × 可兑现价值（研究读数，未上线）</h2>
+  const PR = F.production_regime || null, FS = F.forward_shadow || {};
+  const pct2 = v => v == null ? "—" : `<span class="${v < 0 ? "up" : v > 0 ? "down" : "flat"}">${v > 0 ? "+" : ""}${v.toFixed(2)}%</span>`;
+  const prRows = PR ? [["A", "研究原样本"], ["B", "同期、研究没用过"], ["C", "冻结后才结算"], ["ALL", "全体"]]
+    .filter(([k]) => PR[k]).map(([k, label]) => { const g = PR[k], c = g.change_pct || {};
+      return `<tr><td><b>${label}</b></td><td class="mono">${g.n} / ${g.days}</td><td class="mono">${pct2(c.rmse)}</td><td class="mono">${pct2(c.crps)}</td>
+        <td class="mono">${pct2(c.nll)}</td><td class="mono">${pct2(c.reliability)}</td><td class="mono">${c.resolution == null ? "—" : `<span class="${c.resolution > 0 ? "up" : "down"}">${c.resolution > 0 ? "+" : ""}${c.resolution.toFixed(2)}%</span>`}</td></tr>`; }).join("") : "";
+  const fsArms = FS.arms || null;
+  const fsCell = (k, f) => fsArms ? `${f(fsArms.seat[k])} → ${f(fsArms.shadow[k])} ${FS.better[k] ? '<span class="up">✓</span>' : '<span class="down">✗</span>'}` : "—";
+  const forward = !FS.available ? "" : `<div class="card" style="margin-top:10px"><b>前向影子记账（宪章 199，服务仍为席位权重）</b>
+    <p class="sub" style="margin:4px 0">每个已结算站日的日前 P0 同时记着它服务的席位权重和融合规则的影子权重，在同一批站日上比较。
+      切换条件（事先写定）：满 ${FS.min_event_days} 个事件日，且 RMSE、CRPS、NLL 都降、Reliability 降、Resolution 升；满足后由用户裁决切服务并同批升版。</p>
+    ${FS.station_days ? `<div class="scroll"><table><thead><tr><th>样本</th><th>RMSE °C</th><th>CRPS °C</th><th>NLL</th><th>Reliability ×10⁻³</th><th>Resolution ×10⁻³</th><th>切换</th></tr></thead>
+      <tbody><tr><td class="mono">${FS.station_days} 站日 / ${FS.event_days} 天</td>
+      <td class="mono">${fsCell("rmse_c", v => v.toFixed(3))}</td><td class="mono">${fsCell("crps_c", v => v.toFixed(3))}</td>
+      <td class="mono">${fsCell("nll", v => v.toFixed(3))}</td><td class="mono">${fsCell("reliability", v => (1000 * v).toFixed(3))}</td>
+      <td class="mono">${fsCell("resolution", v => (1000 * v).toFixed(2))}</td>
+      <td>${FS.switch_ready ? '<b class="up">条件已满足，待裁决</b>' : `<span class="muted">攒证据 ${FS.event_days}/${FS.min_event_days} 天</span>`}</td></tr></tbody></table></div>`
+      : `<p class="muted">还没有带影子回执的日前 P0 结算（上线后第一个事件日结算起开始记账）。</p>`}</div>`;
+  return `<h2>融合权重：宪章 199 已接入生产（影子运行）· 研究候选与上线前复核</h2>
+  <div class="card"><b>现状</b>：每次 P0 编译都按决策时刻可知的已结算站日计算 50:50 融合权重并写进回执（<span class="mono">fusion_blend_json</span>），
+    <b>服务仍为席位权重</b>。原因是上线前在生产训练密度下用服务函数本身重放：只在研究原样本上三降，研究没用过的站日 RMSE、CRPS 反而上升。
+    ${prRows ? `<div class="scroll" style="margin-top:6px"><table><thead><tr><th>上线前重放</th><th>站日 / 天</th><th>RMSE</th><th>CRPS</th><th>NLL</th><th>Reliability</th><th>Resolution（升为好）</th></tr></thead><tbody>${prRows}</tbody></table></div>` : ""}</div>
+  ${forward}
+  <h3 style="margin-top:14px">研究候选（冻结，同一批 515 站日）</h3>
   <p class="sub">三个候选＝「中心误差＋正则」权重与「分层 CRPS」权重按 25/50/75% 凸组合，逐站日权重已冻结（hash 见研究目录 candidates.json）。
     同一批 ${c.sample_n || "—"} 个站日、${c.stations || "—"} 站、${c.days || "—"} 个事件日（${h((c.period || []).join(" → "))}），
     分布是后处理前的单系统线性池，不是服务 P0。资格：<b>${h(c.status || "")}</b>——这批历史参与过候选设计，不是独立样本外。</p>
@@ -23481,8 +23619,8 @@ const GROUPS = [
      {box:"② 融合层：四家怎么合成一条", kind:"live",
       note:"按权重合成；权重看在用的配比和权重表是否按时换代，离散度看几家分歧多大",
       sections:[[servingWeights,"四大模型权重"],[tablesWeights,"融合权重表"],[dispersion,"模型离散度"]]},
-     {box:"②′ 融合权重候选：三降约束、北极星与可兑现价值（研究读数，不在服务）", kind:"shadow",
-      note:"冻结的三个中心/分布组合候选对现行权重：RMSE、CRPS、NLL 与桶概率 Reliability/Resolution 同一把尺子，再加真实盘口上的经济回放",
+     {box:"②′ 融合权重：宪章 199 影子运行、前向记账与研究候选", kind:"shadow",
+      note:"每次 P0 编译都算融合权重并记账，服务仍为席位权重；上线前重放、前向影子对比（同批站日的 RMSE、CRPS、NLL、Reliability、Resolution）与冻结的三个研究候选",
       sections:[[fusionCandidates,"融合权重候选"]]},
      {box:"③ 分布层：合成后的分布再塑形、再检验", kind:"live",
       note:"共识桥 → 辐射降温项 → 中心/宽度两标量 → band 表，然后用样本外和真值检验服务出去的分布；这一层只对「边际 · ① 验收 · 模型对市场差距」里的形状差负责，中心差出在 ① 单系统、② 融合和 NWP 输入",

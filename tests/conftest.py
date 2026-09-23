@@ -23,6 +23,14 @@ os.environ.setdefault(
     "PM_STRATEGY_LANES_CONFIG",
     os.path.join(os.path.dirname(__file__), "_no_strategy_lanes_config.json"),
 )
+# Charter 199: every P0 compile reads the fusion blend's training file.  A
+# compile test must not move with today's settled days, so the suite reads a
+# file that does not exist -- the receipt then records the seat weights over
+# SEAT_TRAINING_UNAVAILABLE.  A test of the blend hands in its own file.
+os.environ.setdefault(
+    "P0_FUSION_BLEND_TRAINING_DB",
+    os.path.join(os.path.dirname(__file__), "_no_fusion_blend_training.db"),
+)
 
 
 @pytest.fixture(autouse=True)

@@ -992,6 +992,10 @@ def test_a_network_failure_neither_walks_the_ladder_nor_spends_the_floor(monkeyp
     down = _Completed(2, stderr="ContractError: official_native_forward_required_family_unavailable:"
                                  "ECMWF_OPEN_DATA_S3,NOAA_GEFS_PDS_S3:NOAA_GEFS_PDS_S3=ContractError:nwp_transport_outage:x:300s")
     worker, calls = _pass_worker(monkeypatch, tmp_path, [down])
+    # The egress check reads the live supply watch and probes the network; a
+    # healthy afternoon answered "back" and turned this red.  Down until the
+    # test says otherwise.
+    monkeypatch.setattr(worker, "_egress_answered_since", lambda since: False)
     try:
         assert _capture(worker, tmp_path)["state"] == "SUBMITTED"
         outcome = _finish(worker)

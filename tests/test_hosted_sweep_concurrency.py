@@ -63,6 +63,8 @@ def test_every_sweep_declares_a_write_domain(daemon) -> None:
         # are books that left the SSOT: each is its own file, so a sweep
         # writing one excludes no SSOT writer and costs production no turn.
         "ssot", "archive", "none", "paper_ledger", "maker_shadow",
+        # Charter 199: the fusion blend's training facts, its own file.
+        "fusion_blend",
     }
 
 

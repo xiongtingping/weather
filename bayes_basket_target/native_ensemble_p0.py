@@ -57,6 +57,7 @@ from .cross_consensus import (
     synoptic_cooling_index,
     bridged_cross_probability,
 )
+from .fusion_blend import overlay_system_weights
 from .stable_pool import (
     P0_MEMBERSHIP_MODE,
     P0_MEMBERSHIP_MODE_STABLE_POOL,
@@ -2972,6 +2973,23 @@ def compile_native_ensemble_p0(
             "bias_peer_count": len(peer_biases),
             "notes": borrow_notes,
         }
+    # Charter 199: the seat's weights re-fitted as of this decision on the
+    # settled station-days knowable now -- the centre's squared error over
+    # this station and the pooled CRPS over the fleet then this station,
+    # half each (``fusion_blend``).  The seat still decides who sits.  In
+    # the served SHADOW mode the fit runs and is recorded while the seat's
+    # weights are served; every path that cannot fit serves them too, and
+    # the receipt says which path ran.
+    system_weights, fusion_blend_receipt = overlay_system_weights(
+        station_id=station_id,
+        event_date=event_date,
+        decision_at_utc=decision_at_utc,
+        timezone_name=timezone_name,
+        system_weights=system_weights,
+        family_by_system=family_by_system,
+        family_caps=family_caps,
+        lead_by_system=hour_bucket_by_system,
+    )
     weight_receipt = validate_cross_native_ensemble_weights(
         system_weights=system_weights,
         systems_by_id={
@@ -3705,6 +3723,7 @@ def compile_native_ensemble_p0(
         )),
         "system_family_ids_json": _json(family_by_system),
         "system_weights_json": _json(system_weights),
+        "fusion_blend_json": _json(fusion_blend_receipt),
         "provisional_uncalibrated_system_ids_json": _json(sorted(provisional_uncalibrated_system_ids)),
         "provisional_parameter_sources_json": _json(provisional_parameter_sources),
         "p0_membership_demotions_json": _json(p0_membership_demotions),

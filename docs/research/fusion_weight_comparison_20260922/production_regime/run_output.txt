@@ -1,0 +1,9 @@
+{"SEAT_NO_TRAINING_DAYS": 28, "APPLIED": 725, "SEAT_BLEND_VOTED_OUT_A_MEMBER": 1}
+ALL n 754 days 26 applied 0.962 move 0.034 | change% {'rmse': 0.137, 'crps': -0.05, 'nll': -0.169, 'brier': -0.276, 'reliability': -8.473, 'resolution': 2.156} | zero 0 0 | all3<0 0.349
+   ci {'rmse': [-0.00464, 0.00763], 'crps': [-0.00341, 0.00204], 'nll': [-0.00736, 0.00053], 'brier': [-0.00428, -0.00068]}
+A n 515 days 23 applied 0.95 move 0.027 | change% {'rmse': -0.372, 'crps': -0.442, 'nll': -0.304, 'brier': -0.428, 'reliability': -10.856, 'resolution': 1.328} | zero 0 0 | all3<0 0.935
+   ci {'rmse': [-0.00973, 0.00039], 'crps': [-0.00526, -0.00081], 'nll': [-0.00904, 0.00011], 'brier': [-0.00519, -0.00078]}
+B n 143 days 23 applied 0.979 move 0.039 | change% {'rmse': 1.566, 'crps': 1.016, 'nll': 0.28, 'brier': 0.089, 'reliability': -14.943, 'resolution': 1.046} | zero 0 0 | all3<0 0.009
+   ci {'rmse': [0.00354, 0.0421], 'crps': [-0.00111, 0.01823], 'nll': [-0.00432, 0.01532], 'brier': [-0.00179, 0.00431]}
+C n 96 days 3 applied 1.0 move 0.085 | change% {'rmse': 0.533, 'crps': 0.324, 'nll': -0.135, 'brier': -0.013, 'reliability': 23.238, 'resolution': 6.501} | zero 0 0 | all3<0 0.0
+   ci {'rmse': [0.00575, 0.00575], 'crps': [0.00171, 0.00171], 'nll': [-0.00182, -0.00182], 'brier': [-9e-05, -9e-05]}
