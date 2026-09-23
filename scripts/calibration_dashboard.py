@@ -29,7 +29,7 @@ import shutil
 import statistics
 import subprocess
 import tempfile
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict
 import random
 import sqlite3
@@ -8241,6 +8241,189 @@ def _center_landing_group(
     return out
 
 
+# The product's north star and its three constraints (user, 2026-09-23:
+# 前端增加 RMSE、CRPS、NLL 三个核心指标的显式并突出; 北极星指标是离散温度桶概率的
+# Reliability 和 Resolution).  Scored on the served cells the landing table
+# already reads, so there is one sample and no second scan of the book.
+#
+# The Murphy decomposition follows the fusion-weight study's convention
+# (docs/research/fusion_weight_comparison_20260922/pareto_metrics): every
+# bucket is a one-vs-rest event, a station-day carries mass one split evenly
+# over its K buckets, and the probability bins are fixed in advance.  Same
+# bins and weights, so the served numbers here and the candidate numbers in
+# the study read on one scale.  The binning correction is kept, never
+# dropped: mean bucket Brier = REL - RES + UNC + correction.
+CORE_RELIABILITY_EDGES = (
+    0.0, 0.01, 0.025, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0,
+)
+# The floor the width and band lanes' own ``_cell_nll`` scores a
+# zero-probability hit at (13.8 nats); the page counts those hits beside it.
+CORE_NLL_FLOOR = 1e-6
+CORE_ROLLING_DAYS = 7
+
+
+def _core_cell(
+    probabilities: Mapping[str, float],
+    keys: Sequence[str],
+    settled: str,
+    mean_c: float,
+    actual: float,
+    rung_c: float,
+) -> dict[str, Any]:
+    """One served cell's RMSE / CRPS / NLL inputs and its bucket vector."""
+
+    total = sum(float(probabilities[key]) for key in keys)
+    ordered = [float(probabilities[key]) / total for key in keys]
+    hit = keys.index(settled)
+    cumulative = crps_rungs = 0.0
+    for index, value in enumerate(ordered):
+        cumulative += value
+        crps_rungs += (cumulative - (1.0 if index >= hit else 0.0)) ** 2
+    p_hit = ordered[hit]
+    return {
+        "error_c": float(mean_c) - float(actual),
+        # Rung-spaced ladder: the discrete CRPS in rungs times the rung's
+        # width in degrees is the CRPS of the step CDF in degrees.
+        "crps_c": crps_rungs * float(rung_c),
+        "nll": -math.log(max(p_hit, CORE_NLL_FLOOR)),
+        "zero_hit": p_hit <= 0.0,
+        "probabilities": ordered,
+        "hit": hit,
+    }
+
+
+def _core_murphy(cells: Sequence[tuple[float, Mapping[str, Any]]]) -> dict[str, Any]:
+    """REL / RES / UNC / binning correction over weighted served cells."""
+
+    bins = len(CORE_RELIABILITY_EDGES) - 1
+    stats = [[0.0] * 5 for _ in range(bins)]  # W, P, Y, P^2, PY
+    for weight, core in cells:
+        share = weight / len(core["probabilities"])
+        for index, value in enumerate(core["probabilities"]):
+            happened = 1.0 if index == core["hit"] else 0.0
+            # [lo, hi) bins, the study's ``searchsorted(side='right') - 1``.
+            slot = min(bins - 1, max(0, bisect_right(
+                CORE_RELIABILITY_EDGES, value) - 1))
+            row = stats[slot]
+            row[0] += share
+            row[1] += share * value
+            row[2] += share * happened
+            row[3] += share * value * value
+            row[4] += share * value * happened
+    total = sum(row[0] for row in stats)
+    if total <= 0.0:
+        return {}
+    base = sum(row[2] for row in stats) / total
+    reliability = resolution = ece = 0.0
+    diagram = []
+    for index, (w, p, y, _p2, _py) in enumerate(stats):
+        if w <= 0.0:
+            continue
+        reliability += (p - y) ** 2 / w
+        resolution += w * (y / w - base) ** 2
+        ece += abs(p - y)
+        diagram.append({
+            "lo": CORE_RELIABILITY_EDGES[index],
+            "hi": CORE_RELIABILITY_EDGES[index + 1],
+            "weight": w / total, "promised": p / w, "happened": y / w,
+        })
+    reliability /= total
+    resolution /= total
+    uncertainty = base * (1.0 - base)
+    brier = (
+        sum(row[3] for row in stats) - 2.0 * sum(row[4] for row in stats)
+        + sum(row[2] for row in stats)
+    ) / total
+    return {
+        "reliability": reliability, "resolution": resolution,
+        "uncertainty": uncertainty, "mean_bucket_brier": brier,
+        "binning_correction": brier - (reliability - resolution + uncertainty),
+        "ece": ece / total, "base_rate": base, "diagram": diagram,
+    }
+
+
+def _core_metrics(entries: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Station-day-weighted north star and the three constraints.
+
+    A station-day counts once however many three-hour cells it served, the
+    same rule the fusion study and the scorecard hold.
+    """
+
+    cells = [row for row in entries if row.get("core")]
+    if not cells:
+        return {}
+    copies = Counter((row["station"], row["event_date"]) for row in cells)
+    weighted = [
+        (1.0 / copies[(row["station"], row["event_date"])], row["core"])
+        for row in cells
+    ]
+    total = sum(weight for weight, _core in weighted)
+
+    def _mean(key: str) -> float:
+        return sum(weight * float(core[key]) for weight, core in weighted) / total
+
+    out = {
+        "rmse_c": math.sqrt(sum(
+            weight * core["error_c"] ** 2 for weight, core in weighted
+        ) / total),
+        "bias_c": _mean("error_c"),
+        "crps_c": _mean("crps_c"),
+        "nll": _mean("nll"),
+        "zero_hits": sum(1 for _weight, core in weighted if core["zero_hit"]),
+        "bucket_brier": sum(
+            weight * sum(
+                (value - (1.0 if index == core["hit"] else 0.0)) ** 2
+                for index, value in enumerate(core["probabilities"])
+            )
+            for weight, core in weighted
+        ) / total,
+        "cells": len(cells),
+        "station_days": len(copies),
+        "event_days": len({day for _station, day in copies}),
+    }
+    out.update(_core_murphy(weighted))
+    return out
+
+
+def _core_daily(entries: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Per event day, plus the north star pooled over the trailing week.
+
+    A single day's REL/RES rests on ~45 station-days and swings with the
+    weather; the trailing seven days is the line to read, the day's own
+    value rides along.
+    """
+
+    by_day: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for row in entries:
+        if row.get("core"):
+            by_day[str(row["event_date"])].append(row)
+    days = sorted(by_day)
+    out = []
+    for position, day in enumerate(days):
+        own = _core_metrics(by_day[day])
+        trailing = [
+            row for earlier in days[max(0, position - CORE_ROLLING_DAYS + 1):position + 1]
+            for row in by_day[earlier]
+        ]
+        copies = Counter((row["station"], row["event_date"]) for row in trailing)
+        pooled = _core_murphy([
+            (1.0 / copies[(row["station"], row["event_date"])], row["core"])
+            for row in trailing
+        ]) if trailing else {}
+        out.append({
+            "event_date": day,
+            "station_days": own.get("station_days"),
+            "rmse_c": own.get("rmse_c"),
+            "crps_c": own.get("crps_c"),
+            "nll": own.get("nll"),
+            "reliability": own.get("reliability"),
+            "resolution": own.get("resolution"),
+            "reliability_7d": pooled.get("reliability"),
+            "resolution_7d": pooled.get("resolution"),
+        })
+    return out
+
+
 def collect_center_landing(
     conn: sqlite3.Connection,
     *,
@@ -8370,6 +8553,10 @@ def collect_center_landing(
                     "same_window": None,
                     "station": cell["station_id"],
                     "event_date": cell["event_date"],
+                    "core": _core_cell(
+                        probabilities, keys, cell["settled_bucket"],
+                        mean_c, float(actual), rung_c,
+                    ),
                 }
                 if seat is not None:
                     claim, hit = _cover(seat["seat_keys"])
@@ -8450,11 +8637,19 @@ def collect_center_landing(
                     if seated else None
                 ),
             })
+        core_by_day = {row["event_date"]: row for row in _core_daily(landings)}
+        for row in daily:
+            row.update({
+                key: value for key, value in core_by_day.get(
+                    row["event_date"], {}
+                ).items() if key != "event_date"
+            })
         stages_out.append({
             "stage": stage,
             "meaning": CENTER_LANDING_STAGE_MEANING.get(stage, ""),
             "cells": len(landings),
             "days": len(by_day),
+            "core": _core_metrics(landings),
             "daily": daily,
             "until": until,
             "since": (floor or "")[:10],
@@ -8503,9 +8698,10 @@ def _center_landing_rule() -> dict[str, Any]:
 
 
 def _center_landing_salt() -> str:
-    helpers = _loaded_source(_center_landing_seat) + _loaded_source(
-        _center_landing_group
-    )
+    helpers = "".join(_loaded_source(helper) for helper in (
+        _center_landing_seat, _center_landing_group, _core_cell,
+        _core_murphy, _core_metrics, _core_daily,
+    )) + repr((CORE_RELIABILITY_EDGES, CORE_NLL_FLOOR, CORE_ROLLING_DAYS))
     return json.dumps(_center_landing_rule(), sort_keys=True) + helpers
 
 
@@ -8838,7 +9034,125 @@ def collect_model_accuracy_trend(
             st["stage"]: st.get("daily") or []
             for st in (landing.get("stages") or [])
         },
+        # The north star and the three constraints pooled over the whole
+        # trend window, across versions: the stable headline while a fresh
+        # version has a day or two settled.
+        "landing_core": {
+            st["stage"]: st.get("core") or {}
+            for st in (landing.get("stages") or [])
+        },
         "version_marks": _version_marks(),
+    }
+
+
+FUSION_STUDY_DIR = ROOT / "docs" / "research" / "fusion_weight_comparison_20260922"
+FUSION_CANDIDATE_ARMS = (
+    ("current", "现行权重", "基线"),
+    ("blend25", "中心 25% + 分布 75%", "冻结候选"),
+    ("blend50", "中心 50% + 分布 50%", "冻结候选"),
+    ("blend75", "中心 75% + 分布 25%", "冻结候选"),
+    ("center_stack21", "中心误差 + 正则（端点）", "参照"),
+    ("crps_hier21", "分层 CRPS（端点）", "参照"),
+)
+
+
+def collect_fusion_candidates() -> dict[str, Any]:
+    """The frozen fusion-weight candidates, read from the study's own files.
+
+    Nothing is re-scored here: the three blends were frozen with hashes in
+    ``pareto_metrics/candidates.json`` and the page only lays their readings
+    side by side -- the three constraints (RMSE, CRPS, NLL), the north star
+    (bucket REL / RES), and the execution-conditioned economic replay.
+    """
+
+    def _read(*parts: str) -> Any:
+        try:
+            return json.loads(
+                FUSION_STUDY_DIR.joinpath(*parts).read_text(encoding="utf-8")
+            )
+        except (OSError, ValueError):
+            return None
+
+    joint = _read("joint_objective", "results.json")
+    pareto = _read("pareto_metrics", "results.json")
+    frozen = _read("pareto_metrics", "candidates.json")
+    economic = _read("economic_replay", "results.json")
+    if not joint or not pareto:
+        return {"available": False}
+    rows = []
+    for arm, label, role in FUSION_CANDIDATE_ARMS:
+        j = (joint.get("arms") or {}).get(arm) or {}
+        p = (pareto.get("arms") or {}).get(arm) or {}
+        e = ((economic or {}).get("arms") or {}).get(arm) or {}
+        decomposition = ((p.get("decomposition") or {}).get("primary")) or {}
+        quarter = e.get("fee0.0_kelly0.25") or {}
+        rows.append({
+            "arm": arm, "label": label, "role": role,
+            "rmse_c": j.get("rmse"), "crps_c": j.get("crps"), "nll": j.get("nll"),
+            "change_pct": j.get("change_pct") or {},
+            "delta_ci95": j.get("delta_ci95") or {},
+            "all_three_lower_share": j.get("bootstrap_all_three_lower_share"),
+            "station_all_three_lower_n": j.get("station_all_three_lower_n"),
+            "halves": {
+                half: {key: (j.get("halves") or {}).get(half, {}).get(key)
+                       for key in ("rmse", "crps", "nll")}
+                for half in ("first", "second")
+            },
+            "bucket_brier": p.get("brier"),
+            "logscore": p.get("logscore"),
+            "reliability": decomposition.get("reliability"),
+            "resolution": decomposition.get("resolution"),
+            "ece": decomposition.get("ece"),
+            "north_star_ci95": {
+                key: (p.get("delta_ci95") or {}).get(key)
+                for key in ("reliability", "resolution", "brier")
+            },
+            "economic": {
+                "logscore": e.get("logscore"),
+                "vs_market": e.get("logscore_minus_market_ask"),
+                "kelly_quarter_log_growth": (quarter.get("kelly_portfolio") or {}).get("log_growth"),
+                "kelly_quarter_delta_ci95": (quarter.get("kelly_portfolio") or {}).get("delta_ci95"),
+                "hurdle_roi": (quarter.get("hurdle_taker") or {}).get("roi"),
+                "hurdle_claimed_roi": (quarter.get("hurdle_taker") or {}).get("claimed_roi"),
+            } if e else None,
+        })
+    # Days of fresh evidence the NLL gain would need to clear two standard
+    # errors with 80% power, off the study's own day-block interval.
+    power = None
+    blend = next((row for row in rows if row["arm"] == "blend25"), None)
+    base = next((row for row in rows if row["arm"] == "current"), None)
+    interval = (blend or {}).get("delta_ci95", {}).get("nll")
+    if blend and base and interval and blend["nll"] is not None and base["nll"]:
+        effect = blend["nll"] - base["nll"]
+        se = (interval[1] - interval[0]) / 3.92
+        if effect and se > 0:
+            power = {
+                "effect_nll": effect, "se_nll": se, "days": joint.get("days"),
+                "days_needed": math.ceil(
+                    (joint.get("days") or 0) * (2.8 * se / abs(effect)) ** 2
+                ),
+            }
+    return {
+        "available": True,
+        "cohort": {
+            "status": (frozen or {}).get("cohort_status") or pareto.get("cohort_status"),
+            "sample_n": joint.get("n"), "stations": joint.get("stations"),
+            "days": joint.get("days"),
+            "period": [(pareto.get("days") or [None])[0], (pareto.get("days") or [None])[-1]],
+        },
+        "frozen_sha": {
+            arm: spec.get("weights_sha256")
+            for arm, spec in ((frozen or {}).get("candidates") or {}).items()
+        },
+        "rows": rows,
+        "economic": {
+            "status": economic.get("status"), "sample_n": economic.get("sample_n"),
+            "dates": len(economic.get("dates") or []),
+            "market_logscore": (economic.get("market") or {}).get("ask_normalised_logscore"),
+            "mean_ask_sum": (economic.get("market") or {}).get("mean_ask_sum"),
+            "hurdle": economic.get("hurdle"), "budget_usdc": economic.get("budget_usdc"),
+        } if economic else None,
+        "power": power,
     }
 
 
@@ -14687,14 +15001,14 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     previous_salt = json.dumps(previous_windows, sort_keys=True)
     center_landing_previous = _cached_section(
         "center_landing_previous", collect_center_landing, conn,
-        windows=previous_windows, _salt=previous_salt,
+        windows=previous_windows, _salt=previous_salt + _center_landing_salt(),
     ) if previous_windows else {}
     trend_since = (
         _now() - timedelta(days=MODEL_ACCURACY_TREND_DAYS)
     ).strftime("%Y-%m-%dT00:00:00Z")
     model_accuracy_trend = _cached_section(
         "model_accuracy_trend", collect_model_accuracy_trend, conn,
-        since=trend_since, _salt=trend_since,
+        since=trend_since, _salt=trend_since + _center_landing_salt(),
     )
     scorecard_previous = _cached_section(
         "scorecard_previous", collect_calibration_scorecard, conn,
@@ -14974,6 +15288,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "center_landing_previous": center_landing_previous,
         "scorecard_previous": scorecard_previous,
         "model_accuracy_trend": model_accuracy_trend,
+        "fusion_candidates": collect_fusion_candidates(),
         "h5_readiness": _cached_section(
             "h5_readiness", collect_h5_readiness, conn
         ),
@@ -15083,6 +15398,11 @@ color-scheme:dark}
 .kpi-v{font-size:24px;font-weight:700;margin:4px 0 2px;font-variant-numeric:tabular-nums}
 .kpi-q{font-size:11.5px}.kpi-p{font-size:12px;margin-top:4px}
 .vstrip{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ns-grid{gap:10px}.ns-card{padding:10px 12px}.ns-card.ns-star{border:1px solid #d2a8ff;box-shadow:inset 3px 0 0 #d2a8ff}
+.ns-h{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;margin-bottom:6px}.ns-h b{font-size:15px}
+.ns-row{display:grid;grid-template-columns:44px auto;column-gap:8px;align-items:baseline;margin:3px 0}
+.ns-st{font-weight:600;font-size:12px}.ns-v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.ns-p{grid-column:2;font-size:11.5px}.ns-verdict{margin:0;padding-left:18px}.ns-verdict li{margin:3px 0}
 .trend{padding:8px 10px}.trend-t{font-weight:600}.trend-s{font-size:11px}
 .trend svg{display:block;margin-top:4px}
 .trend-ax{font-size:10px;fill:var(--muted)}.trend-lb{font-size:10.5px;fill:var(--text)}
@@ -22092,6 +22412,7 @@ function modelAccuracyBoard(){
   const marks = (T.version_marks || []).filter(mk => mk.stage === "P0")
     .map(mk => ({date: String(mk.at).slice(0, 10), label: mk.label}));
   const col = (rows, dts, key) => dts.map(d => { const r = rows.find(x => x.event_date === d); return r && r[key] != null ? r[key] : null; });
+  const star = northStarBlock(LD, landDates, col);
   const charts = [
     trendChart({title: "中心偏差（°C）", sub: "P0 前瞻预测，真值 − 预测，按事件日；负＝预测偏暖",
       dates, series: [{name: "P0", values: col(F, dates, "bias_c")}], ref: {y: 0, label: "0"},
@@ -22126,7 +22447,7 @@ function modelAccuracyBoard(){
       <td class="mono">${n2(lg("P1").bias_rungs)}</td>
       <td class="mono">${pctS(lg("P0").seat_claim)} / ${pctS(lg("P0").seat_cover)}</td></tr>`;
   }).join("");
-  return `<h2>模型准不准 · 总览：中心、宽度、概率一张看</h2>
+  return `${star}<h2>模型准不准 · 总览：中心、宽度、概率一张看</h2>
   <div class="card vstrip">
     <span class="pill violet">本版 ${vShort(W && W.current_version)}</span>
     <span>${whenZ(W && W.until)} 起 · ${S.event_day_count || 0} 个事件日${S.accumulating ? `（攒证据中，满 ${S.min_event_days || 8} 天出结论）` : ""}</span>
@@ -22145,6 +22466,167 @@ function modelAccuracyBoard(){
       <th>中心偏差 °C</th><th>平均误差 °C</th><th>CRPS 技能</th><th>宽度÷误差</th>
       <th>离均值 P0（桶）</th><th>P0-M</th><th>P1</th><th>P0 覆盖 声称/实际</th></tr></thead>
       <tbody>${tableRows}</tbody></table></div></details>`;
+}
+
+// The product's north star and its three constraints (user, 2026-09-23):
+// Reliability and Resolution of the served bucket probabilities, with RMSE,
+// CRPS and NLL required to fall together.  Read off the served cells the
+// landing table scores (one sample, station-days weighted equally), this
+// version against the one before it, per stage.
+const CORE_METRICS = [
+  {key:"reliability", label:"Reliability 可靠性", unit:"×10⁻³", star:true, better:"lower",
+   q:"说 20% 的桶，是不是真有 20% 落进来；越低越好", fmt:v => (1000 * v).toFixed(3)},
+  {key:"resolution", label:"Resolution 分辨力", unit:"×10⁻³", star:true, better:"higher",
+   q:"概率能不能把会落和不会落的桶分开；越高越好", fmt:v => (1000 * v).toFixed(2)},
+  {key:"rmse_c", label:"RMSE", unit:"°C", better:"lower",
+   q:"服务均值离真值的均方根", fmt:v => v.toFixed(3)},
+  {key:"crps_c", label:"CRPS", unit:"°C", better:"lower",
+   q:"整条分布离真值多远（桶梯上的 CRPS）", fmt:v => v.toFixed(3)},
+  {key:"nll", label:"NLL", unit:"nat", better:"lower",
+   q:"真值所在桶给了多少概率，取负对数；越低越好", fmt:v => v.toFixed(3)},
+];
+function northStarBlock(LD, landDates, col){
+  const cur = D.center_landing || {}, prev = D.center_landing_previous || {};
+  const T = D.model_accuracy_trend || {}, pooled = T.landing_core || {};
+  const W = D.previous_version_windows || {};
+  const MIN_DAYS = (D.scorecard || {}).min_event_days || 8;
+  const STAGES = ["P0", "P0-M", "P1"];
+  const coreOf = (land, s) => (((land.stages || []).find(x => x.stage === s)) || {}).core || null;
+  const present = STAGES.filter(s => (pooled[s] && pooled[s].station_days) || coreOf(cur, s));
+  if(!present.length) return `<h2>北极星与三降约束</h2><p class="sub">服务样本还没有算出桶概率指标（新字段要等下一轮整库渲染）。</p>`;
+  const better = (m, a, b) => {
+    if(a == null || b == null) return null;
+    if(Math.abs(a - b) < 1e-12) return 0;
+    return (m.better === "lower" ? a < b : a > b) ? 1 : -1;
+  };
+  // A version comparison is judged only when both sides have MIN_DAYS
+  // settled event days -- the same bar the scorecard holds; below it the
+  // numbers show and the verdict waits.
+  const judged = s => {
+    const c = coreOf(cur, s), pv = coreOf(prev, s);
+    return !!(c && pv && c.event_days >= MIN_DAYS && pv.event_days >= MIN_DAYS);
+  };
+  const cards = CORE_METRICS.map(m => {
+    const lines = present.map(s => {
+      const pl = pooled[s] || {}, c = coreOf(cur, s), pv = coreOf(prev, s);
+      const v = pl[m.key], cv = c ? c[m.key] : null, pvv = pv ? pv[m.key] : null;
+      const b = judged(s) ? better(m, cv, pvv) : null;
+      const tag = b == null ? "" : b > 0 ? ` <span class="up">好于上一版</span>` : b < 0 ? ` <span class="down">差于上一版</span>` : ` <span class="flat">持平</span>`;
+      const ver = `本版 ${vShort((W[s] || {}).current_version)}${c ? `（${c.event_days} 天）` : ""} ${cv == null ? "—" : h(m.fmt(cv))} · 上一版 ${vShort((W[s] || {}).version)}${pv ? `（${pv.event_days} 天）` : ""} ${pvv == null ? "—" : h(m.fmt(pvv))}${tag}`;
+      return `<div class="ns-row"><span class="ns-st">${s}</span><span class="ns-v">${v == null ? "—" : h(m.fmt(v))}</span>
+        <span class="muted ns-p">${ver}</span></div>`;
+    }).join("");
+    return `<div class="card ns-card${m.star ? " ns-star" : ""}">
+      <div class="ns-h"><span class="pill${m.star ? " violet" : ""}">${m.star ? "北极星" : "三降约束"}</span>
+        <b>${h(m.label)}</b><span class="muted">${h(m.unit)} · ${m.better === "lower" ? "↓ 越低越好" : "↑ 越高越好"}</span></div>
+      ${lines}<div class="muted kpi-q">${h(m.q)}</div></div>`;
+  }).join("");
+  const word = (b, up) => b > 0 ? (up ? "↑好" : "↓好") : b < 0 ? (up ? "↓差" : "↑差") : "平";
+  const verdicts = present.map(s => {
+    const c = coreOf(cur, s), pv = coreOf(prev, s), pl = pooled[s] || {};
+    const sample = `近 ${T.days || 21} 天 ${pl.station_days || 0} 个站日 / ${pl.event_days || 0} 个事件日${
+      pl.zero_hits ? `；真值落在概率为 0 的桶上 ${pl.zero_hits} 格，按 p=1e-6 计入 NLL` : ""}`;
+    if(!judged(s)) return `<li><b>${s}</b>：${sample}。本版 ${c ? c.event_days : 0} 天、上一版 ${pv ? pv.event_days : 0} 天，
+      <span class="muted">攒证据中——两边各满 ${MIN_DAYS} 个事件日才判「三降」与北极星进退</span></li>`;
+    const m = k => CORE_METRICS.find(x => x.key === k);
+    const three = ["rmse_c", "crps_c", "nll"].map(k => better(m(k), c[k], pv[k]));
+    const stars = [better(m("reliability"), c.reliability, pv.reliability), better(m("resolution"), c.resolution, pv.resolution)];
+    const allThree = three.every(b => b > 0), bothStars = stars.every(b => b > 0);
+    return `<li><b>${s}</b> 本版对上一版：RMSE ${word(three[0])} · CRPS ${word(three[1])} · NLL ${word(three[2])}
+      → <b class="${allThree ? "up" : "down"}">${allThree ? "三降达成" : "未三降"}</b>；
+      REL ${word(stars[0])} · RES ${word(stars[1], true)}
+      → <b class="${bothStars ? "up" : "down"}">${bothStars ? "北极星两项都进步" : "北极星未同时进步"}</b>
+      <span class="muted">（${sample}）</span></li>`;
+  }).join("");
+  const p0 = pooled.P0 || {};
+  const identity = p0.mean_bucket_brier != null ? `P0 近 ${T.days || 21} 天拆开看：平均单桶 Brier ${p0.mean_bucket_brier.toFixed(5)}
+    ＝ REL ${p0.reliability.toFixed(5)} − RES ${p0.resolution.toFixed(5)} ＋ UNC ${p0.uncertainty.toFixed(5)} ＋ 分档修正 ${p0.binning_correction.toFixed(5)}；
+    Resolution 能涨到的上限是 UNC ${p0.uncertainty.toFixed(5)}（完全分得开时）。` : "";
+  const series = key => STAGES.filter(s => (LD[s] || []).some(r => r[key] != null))
+    .map(s => ({name: s, values: col(LD[s], landDates, key)}));
+  const scaled = key => series(key).map(x => ({name: x.name, values: x.values.map(v => v == null ? null : 1000 * v)}));
+  const marks = (T.version_marks || []).filter(mk => mk.stage === "P0")
+    .map(mk => ({date: String(mk.at).slice(0, 10), label: mk.label}));
+  const charts = [
+    trendChart({title: "Reliability（含当天近 7 天合并，×10⁻³）", sub: "北极星 · 越低越好", dates: landDates,
+      series: scaled("reliability_7d"), marks, fmt: v => Number(v).toFixed(2)}),
+    trendChart({title: "Resolution（含当天近 7 天合并，×10⁻³）", sub: "北极星 · 越高越好", dates: landDates,
+      series: scaled("resolution_7d"), marks, fmt: v => Number(v).toFixed(1)}),
+    trendChart({title: "RMSE（°C）", sub: "三降约束 · 按事件日", dates: landDates, series: series("rmse_c"),
+      marks, fmt: v => Number(v).toFixed(2)}),
+    trendChart({title: "CRPS（°C）", sub: "三降约束 · 按事件日", dates: landDates, series: series("crps_c"),
+      marks, fmt: v => Number(v).toFixed(2)}),
+    trendChart({title: "NLL（nat）", sub: "三降约束 · 按事件日", dates: landDates, series: series("nll"),
+      marks, fmt: v => Number(v).toFixed(2)}),
+  ].join("");
+  return `<h2>北极星：桶概率的 Reliability ↓ 与 Resolution ↑ · 约束：RMSE、CRPS、NLL 同时下降</h2>
+  <p class="sub">读服务出去的分布（与「真值离均值多远」同一份样本，每个站日只算一次）。大字是近 ${T.days || 21} 天合并、跨版本的读数；
+    小字是本版对上一版，两边各满 ${MIN_DAYS} 个事件日才标好坏。
+    Reliability/Resolution 按每个桶「落 / 不落」拆，每站日质量 1 均分到它的桶上，分档
+    [0,1,2.5,5,10,20,…,90,100]% 与融合权重研究同一套，服务读数和研究里候选的读数在同一把尺子上。</p>
+  <div class="grid g5 ns-grid">${cards}</div>
+  <div class="card" style="margin-top:10px"><ul class="ns-verdict">${verdicts}</ul>
+    ${identity ? `<div class="muted" style="font-size:12px;margin-top:4px">${identity}</div>` : ""}</div>
+  <div class="grid g3" style="margin-top:12px">${charts}</div>
+  <p class="sub" style="margin-top:6px">Reliability/Resolution 单日只有约 45 个站日、随天气晃，画的是含当天在内近 7 个事件日合并后的值；
+    结算中的日子与窗口开头截到一半的日子按下方同一规则不画。融合权重三候选在同一把尺子上的读数见「②′ 融合权重候选」。</p>`;
+}
+
+function fusionCandidates(){
+  const F = D.fusion_candidates || {};
+  if(!F.available) return "";
+  const rows = F.rows || [], c = F.cohort || {}, E = F.economic || null, P = F.power || null;
+  const base = rows.find(r => r.arm === "current") || {};
+  const pct = v => v == null ? "" : `<span class="${v < 0 ? "up" : v > 0 ? "down" : "flat"}">${v > 0 ? "+" : ""}${v.toFixed(2)}%</span>`;
+  const rel = (v, b, lowerBetter) => v == null || b == null || v === b ? "" :
+    `<span class="${(lowerBetter ? v < b : v > b) ? "up" : "down"}">${v > b ? "+" : ""}${(100 * (v / b - 1)).toFixed(1)}%</span>`;
+  const n3 = v => v == null ? "—" : v.toFixed(4);
+  const body = rows.map(r => {
+    const ch = r.change_pct || {};
+    const three = ["rmse", "crps", "nll"].every(k => ch[k] != null && ch[k] < 0);
+    const e = r.economic || {};
+    return `<tr${r.role === "参照" ? ' class="muted"' : ""}><td><b>${h(r.label)}</b><br><span class="muted">${h(r.role)}</span></td>
+      <td class="mono">${n3(r.rmse_c)} ${pct(ch.rmse)}</td><td class="mono">${n3(r.crps_c)} ${pct(ch.crps)}</td>
+      <td class="mono">${n3(r.nll)} ${pct(ch.nll)}</td>
+      <td>${r.arm === "current" ? "—" : three ? `<b class="up">三降</b>` : `<span class="down">否</span>`}</td>
+      <td class="mono">${r.reliability == null ? "—" : (1000 * r.reliability).toFixed(3)} ${rel(r.reliability, base.reliability, true)}</td>
+      <td class="mono">${r.resolution == null ? "—" : (1000 * r.resolution).toFixed(3)} ${rel(r.resolution, base.resolution, false)}</td>
+      <td class="mono">${r.bucket_brier == null ? "—" : r.bucket_brier.toFixed(4)}</td>
+      <td class="mono">${e.kelly_quarter_log_growth == null ? "—" : e.kelly_quarter_log_growth.toFixed(3)}${
+        e.kelly_quarter_delta_ci95 ? `<br><span class="muted">Δ [${e.kelly_quarter_delta_ci95.map(v => (v > 0 ? "+" : "") + v.toFixed(3)).join(", ")}]</span>` : ""}</td>
+      <td class="mono">${e.hurdle_roi == null ? "—" : pctS(e.hurdle_roi, 1)} / ${e.hurdle_claimed_roi == null ? "—" : pctS(e.hurdle_claimed_roi, 0)}</td></tr>`;
+  }).join("");
+  const blends = rows.filter(r => r.role === "冻结候选");
+  const firstHalfWorse = blends.filter(r => (r.halves || {}).first && base.halves && r.halves.first.nll > base.halves.first.nll).map(r => r.label);
+  const crossZero = blends.filter(r => ["rmse", "crps", "nll"].some(k => { const ci = (r.delta_ci95 || {})[k]; return ci && ci[0] < 0 && ci[1] > 0; })).length;
+  const threeDown = blends.filter(r => ["rmse", "crps", "nll"].every(k => ((r.change_pct || {})[k] ?? 0) < 0));
+  const starsUp = blends.filter(r => r.reliability < base.reliability && r.resolution > base.resolution);
+  const span = (xs, f) => xs.length ? (Math.min(...xs) === Math.max(...xs) ? f(xs[0]) : `${f(Math.min(...xs))}～${f(Math.max(...xs))}`) : "—";
+  const relCh = blends.map(r => 100 * (r.reliability / base.reliability - 1)).filter(isFinite);
+  const resCh = blends.map(r => 100 * (r.resolution / base.resolution - 1)).filter(isFinite);
+  const signed = v => (v > 0 ? "+" : "") + v.toFixed(1) + "%";
+  const gap = E && base.economic ? base.economic.vs_market : null;
+  const lift = blends.map(r => r.economic && base.economic ? r.economic.logscore - base.economic.logscore : null).filter(v => v != null);
+  const withEcon = rows.filter(r => r.economic);
+  const rois = withEcon.map(r => r.economic.hurdle_roi).filter(v => v != null);
+  const claimed = withEcon.map(r => r.economic.hurdle_claimed_roi).filter(v => v != null);
+  const kellyAllNeg = withEcon.every(r => (r.economic.kelly_quarter_log_growth ?? 0) < 0);
+  return `<h2>融合权重候选：三降约束 × 北极星 × 可兑现价值（研究读数，未上线）</h2>
+  <p class="sub">三个候选＝「中心误差＋正则」权重与「分层 CRPS」权重按 25/50/75% 凸组合，逐站日权重已冻结（hash 见研究目录 candidates.json）。
+    同一批 ${c.sample_n || "—"} 个站日、${c.stations || "—"} 站、${c.days || "—"} 个事件日（${h((c.period || []).join(" → "))}），
+    分布是后处理前的单系统线性池，不是服务 P0。资格：<b>${h(c.status || "")}</b>——这批历史参与过候选设计，不是独立样本外。</p>
+  <div class="scroll"><table><thead><tr><th>方案</th><th>RMSE °C</th><th>CRPS °C</th><th>NLL</th><th>三降</th>
+    <th>Reliability ×10⁻³ ↓</th><th>Resolution ×10⁻³ ↑</th><th>桶 Brier</th>
+    <th>¼ Kelly 组合 log 增长${E ? `（${E.sample_n} 站日 / ${E.dates} 天）` : ""}</th><th>门槛吃单 ROI 实现 / 自报</th></tr></thead>
+    <tbody>${body}</tbody></table></div>
+  <div class="card" style="margin-top:10px"><b>怎么读</b><ul>
+    <li>${threeDown.length}/${blends.length} 个候选在这 ${c.sample_n || "—"} 个站日上三降，${starsUp.length}/${blends.length} 个北极星两项同时往好的方向走；但 ${crossZero}/${blends.length} 个候选至少一项的日期块 95% 区间跨零${
+      firstHalfWorse.length ? `，前半窗 NLL 反而比现行差（${h(firstHalfWorse.join("、"))}）` : ""}——是「这批样本上成立」，不是「未来稳定成立」。</li>
+    <li>Reliability 变化 ${span(relCh, signed)}，Resolution 变化 ${span(resCh, signed)}：权重主要在修「说多说少」，几乎没带来新信息。服务链后面的宽度层本来就在修前者，真正能留到服务分布上的主要是 Resolution 那一小块。</li>
+    ${E ? `<li>可兑现价值（${E.sample_n} 个有真实盘口的站日、${E.dates} 个事件日，生产费用合同 fee=0）：模型比市场差 <b>${gap == null ? "—" : Math.abs(gap).toFixed(3)} nat</b>，候选只把差距缩小 ${span(lift, v => v.toFixed(3))} nat；
+      门槛吃单实现 ROI ${span(rois, v => pctS(v, 0))}（自报 ${span(claimed, v => pctS(v, 0))}，便宜的尾部桶被系统性高估）${kellyAllNeg ? "，¼ Kelly 组合全部是负增长" : ""}。换权重只能「少亏」，翻不了符号。</li>` : ""}
+    ${P ? `<li>要在全新日子上把 NLL 这么小的改善（${P.effect_nll.toFixed(4)} nat）确认出来（两个标准误、80% 把握），按本研究的日间波动约需 <b>${P.days_needed} 个事件日</b>的新数据。</li>` : ""}
+  </ul></div>`;
 }
 
 // The version before the served one, layer by layer (user, 2026-09-18: 显示，做对比).
@@ -22999,6 +23481,9 @@ const GROUPS = [
      {box:"② 融合层：四家怎么合成一条", kind:"live",
       note:"按权重合成；权重看在用的配比和权重表是否按时换代，离散度看几家分歧多大",
       sections:[[servingWeights,"四大模型权重"],[tablesWeights,"融合权重表"],[dispersion,"模型离散度"]]},
+     {box:"②′ 融合权重候选：三降约束、北极星与可兑现价值（研究读数，不在服务）", kind:"shadow",
+      note:"冻结的三个中心/分布组合候选对现行权重：RMSE、CRPS、NLL 与桶概率 Reliability/Resolution 同一把尺子，再加真实盘口上的经济回放",
+      sections:[[fusionCandidates,"融合权重候选"]]},
      {box:"③ 分布层：合成后的分布再塑形、再检验", kind:"live",
       note:"共识桥 → 辐射降温项 → 中心/宽度两标量 → band 表，然后用样本外和真值检验服务出去的分布；这一层只对「边际 · ① 验收 · 模型对市场差距」里的形状差负责，中心差出在 ① 单系统、② 融合和 NWP 输入",
       sections:[[consensusBridgeSection,"共识桥"],[radiationSection,"辐射降温项"],[centerWidth,"中心/宽度"],

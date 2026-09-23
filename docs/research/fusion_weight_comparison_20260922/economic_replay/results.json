@@ -1,0 +1,691 @@
+{
+  "arms": {
+    "blend25": {
+      "fee0.02_kelly0.25": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5344.981710191107,
+          "claimed_roi": 1.8166252869101236,
+          "cost_usdc": 2942.2587854,
+          "pnl_negative_share": 0.998,
+          "pnl_per_station_day_delta_ci95": [
+            -0.10674971052631431,
+            0.8611630448376957
+          ],
+          "pnl_usdc": -1313.4210711231653,
+          "roi": -0.4463988951755669,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": [
+            0.021731293094808354,
+            0.10481584043278962
+          ],
+          "log_growth": -0.5011005783172408,
+          "per_day": -0.03579289845123148
+        },
+        "logscore_delta_ci95": [
+          0.008785244512023062,
+          0.019749677336113367
+        ]
+      },
+      "fee0.02_kelly1.0": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5344.981710191107,
+          "claimed_roi": 1.8166252869101236,
+          "cost_usdc": 2942.2587854,
+          "pnl_negative_share": 0.998,
+          "pnl_per_station_day_delta_ci95": [
+            -0.10674971052631431,
+            0.8611630448376957
+          ],
+          "pnl_usdc": -1313.4210711231653,
+          "roi": -0.4463988951755669,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": [
+            0.11629088007547995,
+            0.48955149282292165
+          ],
+          "log_growth": -2.536800209235738,
+          "per_day": -0.18120001494540985
+        },
+        "logscore_delta_ci95": [
+          0.008785244512023062,
+          0.019749677336113367
+        ]
+      },
+      "fee0.0_kelly0.25": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5451.243879605576,
+          "claimed_roi": 1.8518957165956698,
+          "cost_usdc": 2943.60197,
+          "pnl_negative_share": 0.99775,
+          "pnl_per_station_day_delta_ci95": [
+            -0.011707251644736067,
+            0.7480841806220081
+          ],
+          "pnl_usdc": -1281.691317440519,
+          "roi": -0.43541597352597194,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": [
+            0.021731293094808354,
+            0.10481584043278962
+          ],
+          "log_growth": -0.5011005783172408,
+          "per_day": -0.03579289845123148
+        },
+        "logscore_delta_ci95": [
+          0.008785244512023062,
+          0.019749677336113367
+        ]
+      },
+      "fee0.0_kelly1.0": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5451.243879605576,
+          "claimed_roi": 1.8518957165956698,
+          "cost_usdc": 2943.60197,
+          "pnl_negative_share": 0.99775,
+          "pnl_per_station_day_delta_ci95": [
+            -0.011707251644736067,
+            0.7480841806220081
+          ],
+          "pnl_usdc": -1281.691317440519,
+          "roi": -0.43541597352597194,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": [
+            0.11629088007547995,
+            0.48955149282292165
+          ],
+          "log_growth": -2.536800209235738,
+          "per_day": -0.18120001494540985
+        },
+        "logscore_delta_ci95": [
+          0.008785244512023062,
+          0.019749677336113367
+        ]
+      },
+      "logscore": -1.4437225540440466,
+      "logscore_minus_market_ask": -0.24252955931345643,
+      "proportional_log_growth_mean": -0.3387137587952746
+    },
+    "blend50": {
+      "fee0.02_kelly0.25": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5334.812300999435,
+          "claimed_roi": 1.8132066749943148,
+          "cost_usdc": 2942.1975853999998,
+          "pnl_negative_share": 0.99775,
+          "pnl_per_station_day_delta_ci95": [
+            0.08677646578947372,
+            0.8001522033101884
+          ],
+          "pnl_usdc": -1305.2979462005646,
+          "roi": -0.44364727667435216,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": [
+            0.012483127800543335,
+            0.13646625563184442
+          ],
+          "log_growth": -0.49655196420344755,
+          "per_day": -0.035467997443103395
+        },
+        "logscore_delta_ci95": [
+          0.005155432757477626,
+          0.02015119177781386
+        ]
+      },
+      "fee0.02_kelly1.0": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5334.812300999435,
+          "claimed_roi": 1.8132066749943148,
+          "cost_usdc": 2942.1975853999998,
+          "pnl_negative_share": 0.99775,
+          "pnl_per_station_day_delta_ci95": [
+            0.08677646578947372,
+            0.8001522033101884
+          ],
+          "pnl_usdc": -1305.2979462005646,
+          "roi": -0.44364727667435216,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": [
+            0.0751335364891085,
+            0.5764528643755961
+          ],
+          "log_growth": -2.5332702173811077,
+          "per_day": -0.1809478726700791
+        },
+        "logscore_delta_ci95": [
+          0.005155432757477626,
+          0.02015119177781386
+        ]
+      },
+      "fee0.0_kelly0.25": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5441.439430129955,
+          "claimed_roi": 1.8446351021074963,
+          "cost_usdc": 2949.8730800000003,
+          "pnl_negative_share": 0.99775,
+          "pnl_per_station_day_delta_ci95": [
+            0.0562713277511971,
+            0.7561629066985639
+          ],
+          "pnl_usdc": -1278.4299142826244,
+          "roi": -0.4333847184647769,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": [
+            0.012483127800543335,
+            0.13646625563184442
+          ],
+          "log_growth": -0.49655196420344755,
+          "per_day": -0.035467997443103395
+        },
+        "logscore_delta_ci95": [
+          0.005155432757477626,
+          0.02015119177781386
+        ]
+      },
+      "fee0.0_kelly1.0": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5441.439430129955,
+          "claimed_roi": 1.8446351021074963,
+          "cost_usdc": 2949.8730800000003,
+          "pnl_negative_share": 0.99775,
+          "pnl_per_station_day_delta_ci95": [
+            0.0562713277511971,
+            0.7561629066985639
+          ],
+          "pnl_usdc": -1278.4299142826244,
+          "roi": -0.4333847184647769,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": [
+            0.0751335364891085,
+            0.5764528643755961
+          ],
+          "log_growth": -2.5332702173811077,
+          "per_day": -0.1809478726700791
+        },
+        "logscore_delta_ci95": [
+          0.005155432757477626,
+          0.02015119177781386
+        ]
+      },
+      "logscore": -1.4457231859291324,
+      "logscore_minus_market_ask": -0.24453019119854238,
+      "proportional_log_growth_mean": -0.3407143906803606
+    },
+    "blend75": {
+      "fee0.02_kelly0.25": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5332.313658330585,
+          "claimed_roi": 1.8109044655664153,
+          "cost_usdc": 2944.5582357999997,
+          "pnl_negative_share": 0.99775,
+          "pnl_per_station_day_delta_ci95": [
+            -0.38984984193258954,
+            0.756578161431266
+          ],
+          "pnl_usdc": -1365.0064083745515,
+          "roi": -0.46356916693946665,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": [
+            0.0020417430187624408,
+            0.1684589461482568
+          ],
+          "log_growth": -0.49197622415551584,
+          "per_day": -0.03514115886825113
+        },
+        "logscore_delta_ci95": [
+          0.0007568123180675936,
+          0.020821705607492892
+        ]
+      },
+      "fee0.02_kelly1.0": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5332.313658330585,
+          "claimed_roi": 1.8109044655664153,
+          "cost_usdc": 2944.5582357999997,
+          "pnl_negative_share": 0.99775,
+          "pnl_per_station_day_delta_ci95": [
+            -0.38984984193258954,
+            0.756578161431266
+          ],
+          "pnl_usdc": -1365.0064083745515,
+          "roi": -0.46356916693946665,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": [
+            0.027384922742334034,
+            0.6710250017526027
+          ],
+          "log_growth": -2.530722693319384,
+          "per_day": -0.1807659066656703
+        },
+        "logscore_delta_ci95": [
+          0.0007568123180675936,
+          0.020821705607492892
+        ]
+      },
+      "fee0.0_kelly0.25": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5439.113710868595,
+          "claimed_roi": 1.8457974051442925,
+          "cost_usdc": 2946.7555300000004,
+          "pnl_negative_share": 0.99775,
+          "pnl_per_station_day_delta_ci95": [
+            -0.3172228031280257,
+            0.8926421334586463
+          ],
+          "pnl_usdc": -1325.1069793393276,
+          "roi": -0.4496833774803597,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": [
+            0.0020417430187624408,
+            0.1684589461482568
+          ],
+          "log_growth": -0.49197622415551584,
+          "per_day": -0.03514115886825113
+        },
+        "logscore_delta_ci95": [
+          0.0007568123180675936,
+          0.020821705607492892
+        ]
+      },
+      "fee0.0_kelly1.0": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5439.113710868595,
+          "claimed_roi": 1.8457974051442925,
+          "cost_usdc": 2946.7555300000004,
+          "pnl_negative_share": 0.99775,
+          "pnl_per_station_day_delta_ci95": [
+            -0.3172228031280257,
+            0.8926421334586463
+          ],
+          "pnl_usdc": -1325.1069793393276,
+          "roi": -0.4496833774803597,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": [
+            0.027384922742334034,
+            0.6710250017526027
+          ],
+          "log_growth": -2.530722693319384,
+          "per_day": -0.1807659066656703
+        },
+        "logscore_delta_ci95": [
+          0.0007568123180675936,
+          0.020821705607492892
+        ]
+      },
+      "logscore": -1.4480424372721825,
+      "logscore_minus_market_ask": -0.24684944254159233,
+      "proportional_log_growth_mean": -0.34303364202341047
+    },
+    "center_stack21": {
+      "fee0.02_kelly0.25": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5338.100356262388,
+          "claimed_roi": 1.8104280093501253,
+          "cost_usdc": 2948.5294796,
+          "pnl_negative_share": 0.9975,
+          "pnl_per_station_day_delta_ci95": [
+            -0.16523607437752585,
+            1.6853770023114003
+          ],
+          "pnl_usdc": -1298.6568142830313,
+          "roi": -0.44044220119488453,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": [
+            -0.008099544746962863,
+            0.20026371096571466
+          ],
+          "log_growth": -0.4875343394278539,
+          "per_day": -0.03482388138770385
+        },
+        "logscore_delta_ci95": [
+          -0.004205789984263989,
+          0.0209871261085213
+        ]
+      },
+      "fee0.02_kelly1.0": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5338.100356262388,
+          "claimed_roi": 1.8104280093501253,
+          "cost_usdc": 2948.5294796,
+          "pnl_negative_share": 0.9975,
+          "pnl_per_station_day_delta_ci95": [
+            -0.16523607437752585,
+            1.6853770023114003
+          ],
+          "pnl_usdc": -1298.6568142830313,
+          "roi": -0.44044220119488453,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": [
+            -0.021859415627097253,
+            0.7579595796790939
+          ],
+          "log_growth": -2.5299796898975977,
+          "per_day": -0.18071283499268556
+        },
+        "logscore_delta_ci95": [
+          -0.004205789984263989,
+          0.0209871261085213
+        ]
+      },
+      "fee0.0_kelly0.25": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5444.932434126782,
+          "claimed_roi": 1.8463412961025678,
+          "cost_usdc": 2949.03897,
+          "pnl_negative_share": 0.99725,
+          "pnl_per_station_day_delta_ci95": [
+            -0.16843679019279845,
+            1.8558479605263143
+          ],
+          "pnl_usdc": -1256.2292453133537,
+          "roi": -0.4259791946097456,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": [
+            -0.008099544746962863,
+            0.20026371096571466
+          ],
+          "log_growth": -0.4875343394278539,
+          "per_day": -0.03482388138770385
+        },
+        "logscore_delta_ci95": [
+          -0.004205789984263989,
+          0.0209871261085213
+        ]
+      },
+      "fee0.0_kelly1.0": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5444.932434126782,
+          "claimed_roi": 1.8463412961025678,
+          "cost_usdc": 2949.03897,
+          "pnl_negative_share": 0.99725,
+          "pnl_per_station_day_delta_ci95": [
+            -0.16843679019279845,
+            1.8558479605263143
+          ],
+          "pnl_usdc": -1256.2292453133537,
+          "roi": -0.4259791946097456,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": [
+            -0.021859415627097253,
+            0.7579595796790939
+          ],
+          "log_growth": -2.5299796898975977,
+          "per_day": -0.18071283499268556
+        },
+        "logscore_delta_ci95": [
+          -0.004205789984263989,
+          0.0209871261085213
+        ]
+      },
+      "logscore": -1.4506850613790896,
+      "logscore_minus_market_ask": -0.24949206664849935,
+      "proportional_log_growth_mean": -0.34567626613031743
+    },
+    "crps_hier21": {
+      "fee0.02_kelly0.25": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5358.078115248094,
+          "claimed_roi": 1.8428172929036315,
+          "cost_usdc": 2907.5471214,
+          "pnl_negative_share": 0.997,
+          "pnl_per_station_day_delta_ci95": [
+            0.13684385657894668,
+            1.3382464736815545
+          ],
+          "pnl_usdc": -1262.863952577711,
+          "roi": -0.434339977943207,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": [
+            0.029614378012552844,
+            0.07996960578902992
+          ],
+          "log_growth": -0.5057287619634708,
+          "per_day": -0.03612348299739077
+        },
+        "logscore_delta_ci95": [
+          0.010830982357036202,
+          0.019906653477000893
+        ]
+      },
+      "fee0.02_kelly1.0": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5358.078115248094,
+          "claimed_roi": 1.8428172929036315,
+          "cost_usdc": 2907.5471214,
+          "pnl_negative_share": 0.997,
+          "pnl_per_station_day_delta_ci95": [
+            0.13684385657894668,
+            1.3382464736815545
+          ],
+          "pnl_usdc": -1262.863952577711,
+          "roi": -0.434339977943207,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": [
+            0.14719437758114645,
+            0.42333485337754223
+          ],
+          "log_growth": -2.542058453697687,
+          "per_day": -0.18157560383554908
+        },
+        "logscore_delta_ci95": [
+          0.010830982357036202,
+          0.019906653477000893
+        ]
+      },
+      "fee0.0_kelly0.25": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5464.875610619707,
+          "claimed_roi": 1.8669428898427949,
+          "cost_usdc": 2927.17878,
+          "pnl_negative_share": 0.9965,
+          "pnl_per_station_day_delta_ci95": [
+            0.06578947368421052,
+            1.2359587440191357
+          ],
+          "pnl_usdc": -1249.4226728950646,
+          "roi": -0.4268351087510495,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": [
+            0.029614378012552844,
+            0.07996960578902992
+          ],
+          "log_growth": -0.5057287619634708,
+          "per_day": -0.03612348299739077
+        },
+        "logscore_delta_ci95": [
+          0.010830982357036202,
+          0.019906653477000893
+        ]
+      },
+      "fee0.0_kelly1.0": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5464.875610619707,
+          "claimed_roi": 1.8669428898427949,
+          "cost_usdc": 2927.17878,
+          "pnl_negative_share": 0.9965,
+          "pnl_per_station_day_delta_ci95": [
+            0.06578947368421052,
+            1.2359587440191357
+          ],
+          "pnl_usdc": -1249.4226728950646,
+          "roi": -0.4268351087510495,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": [
+            0.14719437758114645,
+            0.42333485337754223
+          ],
+          "log_growth": -2.542058453697687,
+          "per_day": -0.18157560383554908
+        },
+        "logscore_delta_ci95": [
+          0.010830982357036202,
+          0.019906653477000893
+        ]
+      },
+      "logscore": -1.4420406078519403,
+      "logscore_minus_market_ask": -0.24084761312135028,
+      "proportional_log_growth_mean": -0.3370318126031684
+    },
+    "current": {
+      "fee0.02_kelly0.25": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5375.269117748116,
+          "claimed_roi": 1.8250043607927684,
+          "cost_usdc": 2945.3459033999998,
+          "pnl_negative_share": 0.998,
+          "pnl_per_station_day_delta_ci95": null,
+          "pnl_usdc": -1363.2460882616087,
+          "roi": -0.4628475340325655,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": null,
+          "log_growth": -0.5560978323243299,
+          "per_day": -0.039721273737452135
+        },
+        "logscore_delta_ci95": null
+      },
+      "fee0.02_kelly1.0": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5375.269117748116,
+          "claimed_roi": 1.8250043607927684,
+          "cost_usdc": 2945.3459033999998,
+          "pnl_negative_share": 0.998,
+          "pnl_per_station_day_delta_ci95": null,
+          "pnl_usdc": -1363.2460882616087,
+          "roi": -0.4628475340325655,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": null,
+          "log_growth": -2.804693097470449,
+          "per_day": -0.20033522124788922
+        },
+        "logscore_delta_ci95": null
+      },
+      "fee0.0_kelly0.25": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5482.224450050722,
+          "claimed_roi": 1.857940516403056,
+          "cost_usdc": 2950.69966,
+          "pnl_negative_share": 0.998,
+          "pnl_per_station_day_delta_ci95": null,
+          "pnl_usdc": -1331.4419392587008,
+          "roi": -0.45122923125923997,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": null,
+          "log_growth": -0.5560978323243299,
+          "per_day": -0.039721273737452135
+        },
+        "logscore_delta_ci95": null
+      },
+      "fee0.0_kelly1.0": {
+        "hurdle_taker": {
+          "claimed_ev_usdc": 5482.224450050722,
+          "claimed_roi": 1.857940516403056,
+          "cost_usdc": 2950.69966,
+          "pnl_negative_share": 0.998,
+          "pnl_per_station_day_delta_ci95": null,
+          "pnl_usdc": -1331.4419392587008,
+          "roi": -0.45122923125923997,
+          "traded_station_days": 152
+        },
+        "kelly_portfolio": {
+          "delta_ci95": null,
+          "log_growth": -2.804693097470449,
+          "per_day": -0.20033522124788922
+        },
+        "logscore_delta_ci95": null
+      },
+      "logscore": -1.4557830442974358,
+      "logscore_minus_market_ask": -0.25459004956684583,
+      "proportional_log_growth_mean": -0.35077424904866394
+    }
+  },
+  "budget_usdc": 20.0,
+  "dates": [
+    "2026-09-04",
+    "2026-09-05",
+    "2026-09-08",
+    "2026-09-09",
+    "2026-09-10",
+    "2026-09-11",
+    "2026-09-12",
+    "2026-09-13",
+    "2026-09-14",
+    "2026-09-15",
+    "2026-09-16",
+    "2026-09-17",
+    "2026-09-18",
+    "2026-09-19"
+  ],
+  "fees": [
+    0.0,
+    0.02
+  ],
+  "hurdle": 0.05,
+  "inputs_sha256": {
+    "docs/research/fusion_weight_comparison_20260922/economic_replay/PROTOCOL.md": "47453a1780ba2f1ac2e542c2045fc28807e0dc55a38f4227d004d3eb1b25a735",
+    "docs/research/fusion_weight_comparison_20260922/economic_replay/replay.py": "12169fe78ef3c9d9ef580fd1d906992f57406b879c9acf98f1231bd2199702e3",
+    "docs/research/fusion_weight_comparison_20260922/joint_objective/scores.json": "f7798409777552da40f9acc149ce01654a24ed1d452203b4ded8803b2181c666",
+    "docs/research/fusion_weight_comparison_20260922/pareto_metrics/execution_window_quotes.json": "209ac2d8002ea596e4a76608affcbefb37708f99c67d90c77e5b45426cecc1a5",
+    "docs/research/fusion_weight_comparison_20260922/reconstructed.json": "55826f76b6949fa1ab3d963cfb9ae6ead0aa1b795d4fe3f6ab35dfcf25c3def9"
+  },
+  "kelly_fractions": [
+    1.0,
+    0.25
+  ],
+  "market": {
+    "ask_n": 152,
+    "ask_normalised_logscore": -1.2011929947305902,
+    "mean_ask_sum": 1.1015855263157892,
+    "mid_n": 152,
+    "mid_normalised_logscore": -1.1923908364850488
+  },
+  "of_probability_cohort": 515,
+  "sample_n": 152,
+  "schema": "economic_replay_v1",
+  "skipped": {},
+  "status": "execution_conditioned_replay_pool_stage"
+}
