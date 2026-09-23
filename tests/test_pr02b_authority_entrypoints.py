@@ -128,9 +128,13 @@ def test_only_three_user_domain_services_and_targetctl_remain() -> None:
         # and a render that needs longer is SIGTERMed before it writes --
         # so it wrote nothing, refreshed no cached section, and the next
         # one started colder and was killed sooner in its own work.  A
-        # render is a reader: nothing waits on it and no deadline it can
-        # miss is worth killing it over, so it left the resident for
-        # launchd, which imposes no timeout.
+        # render is a reader: nothing waits on it, so it left the resident
+        # for launchd, which imposes no timeout.  2026-09-23 (user ruling
+        # 「加超时」): a render throttled by ``taskpolicy -b`` sat five hours
+        # in disk wait holding its read snapshot; the WAL could not reset,
+        # grew to 14.9 GB and filled the disk.  The sweep script now carries
+        # its own deadline (PM_DASHBOARD_RENDER_TIMEOUT_SEC, default 1500 s,
+        # tests/test_dashboard_render_timeout.py); the plist still has none.
         "com.weather.dashboard_render.plist",
         # 2026-09-16 (user ruling: 前端改为热更新): redraws the page with the
         # template on disk around the last render's payload whenever the

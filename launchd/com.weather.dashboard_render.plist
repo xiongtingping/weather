@@ -26,11 +26,24 @@
        render that completed reused nine of twenty-one sections and took
        678s; the ones being killed were computing all of them.
 
-       A render is a reader.  It takes no write lock, nothing waits on it,
-       and there is no deadline it can miss that killing it does not miss
-       worse.  launchd imposes no timeout, and the script's own
-       single_instance guard is what keeps a slow render from stacking:
-       a start that arrives while one is running exits 0 having skipped. -->
+       A render is a reader.  It takes no write lock and nothing waits on
+       it.  launchd imposes no timeout, and the script's own single_instance
+       guard is what keeps a slow render from stacking: a start that arrives
+       while one is running exits 0 having skipped.
+
+       2026-09-23 (user ruling: 加超时): a reader can still starve every
+       writer.  Throttled by taskpolicy -b behind a saturated disk, the
+       08:07Z render sat five hours in uninterruptible I/O wait holding its
+       read snapshot of the store; the WAL could not reset, grew from 64 MB
+       to 14.9 GB, filled the disk to 285 MiB and the fleet produced nothing
+       from 11:49Z.  The sweep script therefore carries its own deadline,
+       PM_DASHBOARD_RENDER_TIMEOUT_SEC (default 1500 s: 419 renders took a
+       median 10.8 min and at most 21.5 min on a healthy day, and five
+       minutes under this interval leaves a gap with no render holding a
+       snapshot).  The 2026-09-09 cost is accepted with eyes open: a killed
+       render keeps the previous page, and a stale page is cheaper than a
+       wedged store.  tests/test_dashboard_render_timeout.py runs the real
+       script against a stub render. -->
   <key>StartInterval</key>
   <integer>1800</integer>
   <key>RunAtLoad</key>

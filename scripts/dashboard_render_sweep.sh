@@ -18,6 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 . "$PROJECT_DIR/scripts/lib/resolve_project_python.sh"
 . "$PROJECT_DIR/scripts/lib/single_instance.sh"
+. "$PROJECT_DIR/scripts/lib/run_with_timeout.sh"
 single_instance dashboard_render
 PY="$(resolve_project_python "$PROJECT_DIR")" || {
   echo "missing project python runtime" >&2
@@ -41,7 +42,34 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] dashboard render (standalone reader)"
 # from 70-130 s to 1-2 h -- one decision round an hour, P1 facts starved.
 # ``taskpolicy -b`` puts the render in Darwin background priority: its CPU
 # AND its disk I/O are throttled whenever anyone else wants them.
-taskpolicy -b nice -n 10 "$PY" scripts/calibration_dashboard.py --html-out tmp/cal_dashboard.html
+#
+# ... which is also how a render can never finish (2026-09-23, user ruling
+# 「加超时」).  Throttled behind a saturated disk, the 08:07Z render sat five
+# hours in uninterruptible I/O wait (11 CPU-minutes in all) holding its read
+# snapshot of the store, so the WAL could not be reset: it grew from its
+# 64 MB limit to 14.9 GB, filled the disk to 285 MiB, tripped the resident's
+# storage guard, and the fleet produced nothing from 11:49Z.  A reader that
+# nothing waits on can still starve everything that writes.  So the render
+# gets a deadline: 419 renders to that morning took a median 10.8 min and at
+# most 21.5 min on a healthy day; the ones over 25 min were the starved
+# ones.  The deadline sits five minutes under the 30-minute StartInterval so
+# a run that is killed leaves a gap with no render reading, in which the
+# WAL can restart.  A killed render keeps the previous page on disk; the
+# next interval is the retry.  Exit 124 is the timeout, as run_with_timeout
+# reports it.
+RENDER_TIMEOUT_SEC="${PM_DASHBOARD_RENDER_TIMEOUT_SEC:-1500}"
+if run_with_timeout "$RENDER_TIMEOUT_SEC" "" \
+    taskpolicy -b nice -n 10 "$PY" scripts/calibration_dashboard.py --html-out tmp/cal_dashboard.html; then
+  :
+else
+  rc=$?
+  if [ "$rc" = "124" ]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] render killed after ${RENDER_TIMEOUT_SEC}s (timeout); the page keeps the previous render"
+  else
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] render failed (exit $rc)"
+  fi
+  exit "$rc"
+fi
 # A render draws with the template it imported at start, and one of these
 # takes twenty minutes to an hour and a half.  A template edit that lands
 # while it runs is therefore overwritten when it writes the page -- and the
