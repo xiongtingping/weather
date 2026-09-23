@@ -5542,10 +5542,17 @@ class TargetProductionWorker:
             beyond_ladder = lead not in {
                 int(rung_lead) for rung_lead, _cycle in OFFICIAL_NATIVE_LADDER_RUNGS
             }
-            if beyond_ladder or family in (
+            # Charter 204: every AIFS ENS run is a follow-lane run -- it has
+            # no rung of its own -- so a landed one always queues the job.
+            follow_only = family == nwp_arrival_probe.AIFS_FAMILY
+            if beyond_ladder or follow_only or family in (
                 nwp_arrival_probe.ICON_FAMILY, nwp_arrival_probe.ECCC_FAMILY
             ):
-                own = None if beyond_ladder else _ARRIVAL_OWN_CYCLE_BY_LEAD.get(lead)
+                own = (
+                    None
+                    if beyond_ladder or follow_only
+                    else _ARRIVAL_OWN_CYCLE_BY_LEAD.get(lead)
+                )
                 if own is None or run_init.hour != own:
                     queued = self._enqueue_arrival_follow(
                         event_date=event_date, lead=lead, run_init=run_init
