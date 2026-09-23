@@ -26,6 +26,12 @@ def test_a_sell_lane_id_names_its_station_day() -> None:
     assert cd._intent_lane("recycle998_decision_ZUUU_2026-09-18") == "recycle998"
     assert cd._intent_lane("misbuyexit_decision_OEJN_2026-09-18") == "misbuyexit"
     assert cd._intent_lane("decision_0a1b2c") == "basket"
+    # Underscored prefixes: read as basket until 2026-09-23.
+    assert cd._intent_lane("p1_tail_decision_KDAL_2026-09-22") == "p1_tail"
+    assert cd._intent_lane("p1_consensus_decision_LTAC_2026-09-23") == "p1_consensus"
+    assert cd._lane_station_day(
+        "p1_tail_decision_KDAL_2026-09-22", None, None
+    ) == ("KDAL", "2026-09-22")
     assert cd._lane_station_day(
         "recycle998_decision_ZUUU_2026-09-18", None, None
     ) == ("ZUUU", "2026-09-18")

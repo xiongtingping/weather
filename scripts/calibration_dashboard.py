@@ -6811,14 +6811,17 @@ def _live_basket_plan_state(
 
 
 _LANE_DECISION_RE = re.compile(
-    r"^(?P<lane>[a-z0-9]+)_decision_(?P<station>[A-Z0-9]{3,5})_"
+    r"^(?P<lane>[a-z0-9_]+?)_decision_(?P<station>[A-Z0-9]{3,5})_"
     r"(?P<day>\d{4}-\d{2}-\d{2})"
 )
 
 
 def _intent_lane(decision_id: str) -> str:
     """The lane that minted an intent: ``basket`` for a plain decision id,
-    else the prefix a side lane writes (recycle998, misbuyexit, tiebreak)."""
+    else the prefix a side lane writes (recycle998, misbuyexit, tiebreak,
+    p1_tail, p1_consensus).  The prefix may carry underscores: until
+    2026-09-23 the pattern stopped at the first one, so every P1 尾段线 and
+    同心线 order read as a basket buy while the basket lane was paused."""
 
     match = _LANE_DECISION_RE.match(decision_id)
     return match.group("lane") if match else "basket"
@@ -18555,7 +18558,7 @@ ${b.admits?"可买 ["+b.admits[0].toFixed(3)+", "+b.admits[1].toFixed(3)+")"
     const sh=sc.dq_shadow;
     if(!sh) return `<div class="muted" style="margin-top:6px">Δq 影子：尚无拟合行（下一轮 refit 起记录）。</div>`;
     const tiers=[["down","跌 ≤−"+E.dq_shadow_threshold],["steady","平"],["up","涨 ≥+"+E.dq_shadow_threshold],["no_prior","无先验"]];
-    const rows=(sh.evidence||[]).map(b=>{
+    const rows=(sh.evidence||[]).map((b,i)=>{
       const cells=tiers.map(([t])=>{
         const c=(b.tiers||{})[t]||{};
         if(!c.seats) return `<td class="mono muted">—</td>`;
@@ -18563,7 +18566,12 @@ ${b.admits?"可买 ["+b.admits[0].toFixed(3)+", "+b.admits[1].toFixed(3)+")"
         const cls=lam==null?"":(lam<b.served_lambda-0.1?"down":(lam>b.served_lambda+0.1?"up":""));
         return `<td class="mono ${cls}">${lam==null?`<span class="muted">(${c.seats}座 raw ${num(c.raw_lambda)})</span>`:`${num(lam)} <span class="muted">(${c.seats}座)</span>`}</td>`;
       }).join("");
-      const bound=b.band_upper_bound==null?"≥0.85":"<"+b.band_upper_bound;
+      // The top band is open above the last finite bound, wherever the
+      // split sits (charter 96 moved it: "≥0.85" was printed for a band
+      // that starts at 1.1).
+      const prevUp=i>0?(sh.evidence[i-1]||{}).band_upper_bound:null;
+      const bound=b.band_upper_bound!=null?"<"+b.band_upper_bound
+        :(prevUp!=null?"≥"+prevUp:"顶档");
       return `<tr><td class="mono">${bound}</td><td class="mono">${num(b.served_lambda)}</td>${cells}</tr>`;
     }).join("");
     return `<div class="muted" style="margin-top:10px">Δq 影子轴（视野 ${E.dq_shadow_horizon_hours}h，同一带按席位前市场对该窗口的移动分格；只记账不服务；拟合 ${sh.fitted_at_utc} · ${sh.seat_count} 座）</div>
@@ -20740,7 +20748,8 @@ function liveOrderCard(L){
   // A sell leg (0.99 recycle, charter 144 sell-back) is drawn as a sell:
   // 卖 before the price, and its own words for its states -- a resting GTC
   // sell is 挂着, not the … a buy rung waiting on a fill wears.
-  const LANE_WORD = {recycle998:"0.99 回收", misbuyexit:"144 卖回", tiebreak:"秤砣线", basket:"篮子"};
+  const LANE_WORD = {recycle998:"0.99 回收", misbuyexit:"144 卖回", tiebreak:"秤砣线",
+    p1_tail:"P1 尾段线", p1_consensus:"同心线", basket:"篮子"};
   const sellChip = (r)=>{
     const st = String(r.state||"");
     const sold = Number(r.filled_size||0);
@@ -21719,7 +21728,8 @@ function liveReadiness(){
           waived.has(r.station), heldSet.has(r.station), autoBar.has(r.station))]},
     ]],
     ["判定", [
-      {th:['', "过闸"], td:r=>[`class="mono ${r.score>=5?"up":(r.score>=4?"":"down")}"`, `${r.score}/5`]},
+      {th:['', "过闸"], td:r=>{ const n=Object.keys(r.gates||{}).length;
+        return [`class="mono ${r.score>=n?"up":(r.score>=n-1?"":"down")}"`, `${r.score}/${n}`]; }},
       {th:['', "未过项"], td:r=>['class="muted"',
         `${r.add_candidate?"☆建议加入 ":""}${r.release_candidate?"★建议放出 ":""}${Object.entries(r.gates).filter(([k,v])=>!v).map(([k])=>GATE[k]).join("、")||"✓"}`]},
       {fx:true, th:['title="实盘：五个维度里不行的项数，每个维度指认不同的一层"', "不行"],
@@ -23025,7 +23035,7 @@ function fusionCandidates(){
     <b>服务仍为席位权重</b>。原因是上线前在生产训练密度下用服务函数本身重放：只在研究原样本上三降，研究没用过的站日 RMSE、CRPS 反而上升。
     ${prRows ? `<div class="scroll" style="margin-top:6px"><table><thead><tr><th>上线前重放</th><th>站日 / 天</th><th>RMSE</th><th>CRPS</th><th>NLL</th><th>Reliability</th><th>Resolution（升为好）</th></tr></thead><tbody>${prRows}</tbody></table></div>` : ""}</div>
   ${forward}
-  <h3 style="margin-top:14px">研究候选（冻结，同一批 515 站日）</h3>
+  <h3 style="margin-top:14px">研究候选（冻结，同一批 ${c.sample_n == null ? "—" : c.sample_n} 站日）</h3>
   <p class="sub">三个候选＝「中心误差＋正则」权重与「分层 CRPS」权重按 25/50/75% 凸组合，逐站日权重已冻结（hash 见研究目录 candidates.json）。
     同一批 ${c.sample_n || "—"} 个站日、${c.stations || "—"} 站、${c.days || "—"} 个事件日（${h((c.period || []).join(" → "))}），
     分布是后处理前的单系统线性池，不是服务 P0。资格：<b>${h(c.status || "")}</b>——这批历史参与过候选设计，不是独立样本外。</p>
@@ -24018,8 +24028,6 @@ const LANES = {
     role:"根 × 硬下界 × e^f（第 161 条，直接在最终 P1 上拟合）；第 150 条的 g^α 退为回退。没有中心/宽度、band、天花板、路径先验、四层链"},
   "区域模型": {layer:"P1 · 区域模型", status:"live",
     role:"不进 P0 融合；P1 里只作那一次观测更新的协变量（剩余预报最高 − 已报最高、此刻误差）"},
-  "偏差订正与权重": {layer:"概率层", status:"live",
-    role:"每站每提前量订正多少、四个模型各占多少 → 中心从这里来"},
   "四大模型权重": {layer:"概率层", status:"live",
     role:"服务路径此刻在用的那份配比，不是权重表的行数统计"},
   "模型离散度": {layer:"概率层 · 读数", status:"audit",
@@ -24065,6 +24073,17 @@ const LANES = {
     role:"实盘决策入座时的覆盖、卖价与事前 EV，对这些单的实际结算"},
   "篮子命中率": {layer:"选窗层 · 读数", status:"audit",
     role:"实盘几桶的篮子实际命中多少，挂出的和买到的各算一遍"},
+  // --- live: the lanes that send, and the book they send into ---
+  "秤砣线 · 宪章 146": {layer:"实盘 · 车道", status:"live",
+    role:"阶段首个决策，模型众数桶被市场定在价带内 → 买一上方一档挂 post-only，一站日一笔"},
+  "P1 尾段线 · 宪章 166": {layer:"实盘 · 车道", status:"live",
+    role:"剩 6–10h 的 P1：市场梯子 × 观测似然，信念高出卖一过门槛才吃单（开关状态见页内「运行/暂停」）"},
+  "同心线 · 宪章 203": {layer:"实盘 · 车道", status:"live",
+    role:"剩 6–10h 的 P1 四个中心同桶、卖一在价带内 → 买一加一档 post-only 挂单，未成交重挂"},
+  "融合权重候选": {layer:"概率层 · 融合", status:"shadow",
+    role:"宪章 199：每次 P0 编译都算融合权重并记账，服务仍是席位权重；上线前重放与前向影子对比"},
+  "实盘意向簿": {layer:"实盘 · 读数", status:"audit",
+    role:"只数 live_submit_authorized=1 的意向：状态、事件日、站三个维度的笔数、名义与均价"},
   // --- sizing: from a seat to a stake, and what is actually held ---
   "分布与持仓分家": {layer:"定注层 · 读数", status:"audit",
     role:"分布说的桶和真正持有的桶差多少"},
@@ -24177,7 +24196,10 @@ function sectionCacheNote(){
   const NAME={truth_landing:"真值落点",window_divergence:"窗口分歧",
     scorecard:"校准计分卡",h5_readiness:"H5 就绪",skill:"模型技巧",
     bias_half_life:"半衰期对比",band_residual_audit:"band 残差审计",
-    center_landing:"真值离均值多远"};
+    center_landing:"真值离均值多远",center_landing_previous:"真值离均值多远（上一版）",
+    model_accuracy_trend:"模型准不准走势",p1_path_skill:"P1 温度路径",
+    ssot_capacity:"SSOT 容量",lambda_axis_realisation:"λ 轴兑现",
+    charter_ev:"宪章 EV 恒等式"};
   const reused=Object.entries(c).filter(([,v])=>v&&v.reused);
   if(!reused.length){
     const built=Object.keys(c).length;
