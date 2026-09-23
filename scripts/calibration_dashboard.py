@@ -5020,6 +5020,26 @@ def collect_delta_v2_authority(conn: sqlite3.Connection) -> dict[str, Any]:
         return {"available": False, "health": "amber", "note": f"读不出：{exc}"}
 
 
+def collect_certificate_authority(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Which P0 certificates serve on renewed evidence, and which are about to end.
+
+    Charter 206 (user ruling 2026-09-23, 「到期前端预警，不过期」): a
+    certificate whose scope has nothing fresher is renewed before its end by
+    the daily calibration_refit sweep, and this page is where its staleness
+    is said.  Read on every build (index rows over the activation and
+    receipt tables) because it feeds the banner.
+    """
+
+    from bayes_basket_target.native_ensemble_certificate_clock import (  # noqa: PLC0415
+        certificate_health,
+    )
+
+    try:
+        return certificate_health(conn, now=_now())
+    except sqlite3.Error as exc:
+        return {"available": False, "health": "amber", "note": f"读不出：{exc}"}
+
+
 def collect_ssot_capacity(conn: sqlite3.Connection) -> dict[str, Any]:
     """The store against its own ceiling, and which tables are eating it.
 
@@ -16280,6 +16300,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     delta_v2_authority = _cached_section(
         "delta_v2_authority", collect_delta_v2_authority, conn
     )
+    certificate_authority = _cached_section(
+        "certificate_authority", collect_certificate_authority, conn
+    )
     gaps = _cached_section(
         "gaps", collect_gaps, conn, members, stages, tables
     )
@@ -16405,6 +16428,15 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
               "note": delta_v2_authority.get("note") or ""}]
             if delta_v2_authority.get("health") != "green" else []
         )
+        # Charter 206: a P0 certificate never simply ends, so the thing to
+        # say is which scopes serve on renewed (unrefreshed) evidence and
+        # which the renewal lane has not reached.
+        + (
+            [{"health": certificate_authority.get("health") or "amber",
+              "label": "P0 证书有效期",
+              "note": certificate_authority.get("note") or ""}]
+            if certificate_authority.get("health") != "green" else []
+        )
         # The other supply lane, and the one whose stall has no other
         # symptom on this page: a stopped NWP rotation surfaces three layers
         # downstream as latest_stage_stale_fail_closed, which names a stage
@@ -16506,6 +16538,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "hosted_sweeps": hosted_sweeps,
         "ssot_capacity": ssot_capacity,
         "delta_v2_authority": delta_v2_authority,
+        "certificate_authority": certificate_authority,
         "gaps": gaps,
         "skill": skill,
         "truth": truth,
@@ -18168,6 +18201,16 @@ function healthLamps(){
       + " · 到期＝每个候选都解析不出成交概率或策略，全队当场停"));
   } else {
     L.push(lamp("amber", "执行授权有效期", "读不出", A.note || ""));
+  }
+  const C = D.certificate_authority || {};
+  if(C.available){
+    L.push(lamp(C.health, "P0 证书有效期",
+      `续期在服务 ${C.renewed_scope_count} 个 scope · 未续将到期 ${C.unrenewed_scope_count} 个`,
+      (C.note ? C.note + " · " : "")
+      + "宪章 206：证书不过期，到期前 10 天由日常校准扫描原样续期（同证据、新窗口、代次+1），只在该 scope 没有更新证书时才续"
+      + " · 黄＝有 scope 在用续期证书（证据没刷新）；红＝证据已 30 天没刷新，或 3 天内到期且续期车道没跑"));
+  } else {
+    L.push(lamp("amber", "P0 证书有效期", "读不出", C.note || ""));
   }
   const H = D.hosted_sweeps || {};
   if(H.available){
