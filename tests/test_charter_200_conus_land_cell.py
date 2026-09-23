@@ -340,9 +340,12 @@ def test_p1_v20_declares_its_start_and_the_moved_pair_restarts_six_days_later():
     from bayes_basket_target.materialization import materialize_p1  # noqa: PLC0415
 
     p1 = inspect.signature(materialize_p1).parameters["posterior_version"].default
-    assert p1 == "p1_joint_likelihood_v20"
-    start = sa.version_effective_from("P1", p1)
+    # Charter 204 moved P1 on to v21 (a root bump); v20 keeps this charter's
+    # moment, and the moved pair's clock is six days past it.
+    assert p1 == "p1_joint_likelihood_v21"
+    start = sa.version_effective_from("P1", "p1_joint_likelihood_v20")
     assert start and start > sa.version_effective_from("P1", "p1_joint_likelihood_v19")
+    assert sa.version_effective_from("P1", p1) > start
     clock = L.CELL_EVIDENCE_FROM_UTC[("NCEP_HRRR_POINT", "KSFO")]
     assert datetime.fromisoformat(clock.replace("Z", "+00:00")) == (
         datetime.fromisoformat(start.replace("Z", "+00:00")) + timedelta(days=6)

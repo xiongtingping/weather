@@ -308,6 +308,14 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # coordinator's request: the batch restart waits for two lanes still
         # finishing in the working tree.
         "calibrated_native_cross_ensemble_p0_v9": "2026-09-22T12:00:00Z",
+        # Charter 204: AIFS ENS seated.  Same-as-of A/B builds (2026-09-23
+        # 13:45Z, KLGA/EGLC/RJTT) keep every four-system view that survives
+        # byte-identical, but where AIFS qualifies the pool becomes the
+        # five-system one and a packet without its run serves those weights
+        # renormalised -- the four-family arithmetic moved.  Declared past
+        # the push and ahead of the coordinator's restart that deploys it;
+        # the v10 envelopes before this instant are not evidence yet.
+        "calibrated_native_cross_ensemble_p0_v10": "2026-09-23T14:30:00Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
@@ -327,6 +335,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p0m_taf_likelihood_v10": "2026-09-21T15:02:21Z",
         # Charter 198: a root bump at the instant P0 v9 declares.
         "p0m_taf_likelihood_v11": "2026-09-22T12:00:00Z",
+        # Charter 204: root bump at the instant P0 v10 declares.
+        "p0m_taf_likelihood_v12": "2026-09-23T14:30:00Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
@@ -365,6 +375,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # the push -- rounded up to the quarter hour, plus 45 minutes -- and
         # past the coordinator's batch restart that deploys it.
         "p1_joint_likelihood_v20": "2026-09-23T04:15:00Z",
+        # Charter 204: the seventh root bump, at the instant P0 v10 declares.
+        "p1_joint_likelihood_v21": "2026-09-23T14:30:00Z",
     },
 }
 

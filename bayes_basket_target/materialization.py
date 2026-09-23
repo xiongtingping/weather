@@ -922,7 +922,7 @@ def materialize_p0m_observed(
     # carries open edge buckets as tails; same declared start.
     # v11 (charter 198, 2026-09-22): the root (P0 v9) -- the Fahrenheit rung
     # and the uncut activation read; same declared start.
-    posterior_version: str = "p0m_taf_likelihood_v11",
+    posterior_version: str = "p0m_taf_likelihood_v12",
     observed_hard_excluded_buckets: Sequence[str] = (),
     observed_running_high_c: float | None = None,
     taf_likelihood_artifact: Mapping[str, Any] | None = None,
@@ -1300,7 +1300,7 @@ def materialize_p1(
     # v20 (2026-09-23, charter 200): P1's own -- the regional features read
     # HRRR at the nearest land cell (KSFO off the bay), the water-cell rows
     # retired from every reader, so the pooled likelihood's samples change.
-    posterior_version: str = "p1_joint_likelihood_v20",
+    posterior_version: str = "p1_joint_likelihood_v21",
     # {"features": ..., "artifact": ..., "regional_system_id": ...}: the
     # step's observation-side feature vector and the fitted likelihood,
     # handed in for the reason every fitted table is -- a replay must rebuild

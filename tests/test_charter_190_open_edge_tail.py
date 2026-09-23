@@ -308,18 +308,23 @@ def test_the_bump_is_declared_once_for_three_stages() -> None:
     ].default
     # Charter 198 bumped all three again (P0 v9, P0-M v11, P1 v19); the
     # charter-190 versions keep their shared declaration.
-    assert P0.POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v9"
-    assert p0m == "p0m_taf_likelihood_v11"
+    assert P0.POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v10"
+    assert p0m == "p0m_taf_likelihood_v12"
     # Charter 200 moved P1 on to v20 (its own change).
-    assert p1 == "p1_joint_likelihood_v20"
+    assert p1 == "p1_joint_likelihood_v21"
     start = SA.version_effective_from(
         "P0", "calibrated_native_cross_ensemble_p0_v8"
     )
     assert start and start.endswith("Z") and "T" in start
     assert SA.version_effective_from("P0-M", "p0m_taf_likelihood_v10") == start
     assert SA.version_effective_from("P1", "p1_joint_likelihood_v18") == start
-    start = SA.version_effective_from("P0", P0.POSTERIOR_VERSION)
+    # Charter 198's shared declaration (P0 v9, P0-M v11, P1 v19), and
+    # charter 204's after it (P0 v10, P0-M v12, P1 v21).
+    start = SA.version_effective_from("P0", "calibrated_native_cross_ensemble_p0_v9")
     assert start and start.endswith("Z") and "T" in start
-    assert SA.version_effective_from("P0-M", p0m) == start
+    assert SA.version_effective_from("P0-M", "p0m_taf_likelihood_v11") == start
     assert SA.version_effective_from("P1", "p1_joint_likelihood_v19") == start
-    assert SA.version_effective_from("P1", p1) > start
+    latest = SA.version_effective_from("P0", P0.POSTERIOR_VERSION)
+    assert latest > start
+    assert SA.version_effective_from("P0-M", p0m) == latest
+    assert SA.version_effective_from("P1", p1) == latest

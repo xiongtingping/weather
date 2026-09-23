@@ -155,7 +155,10 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # instead of 1.056 C; and the activation read takes every valid activation
 # of the scope instead of the 256 highest generations, which hid seats the
 # rank would have chosen.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v9"
+# Charter 204: AIFS ENS admitted to the stable pool.  Where it qualifies the
+# pool is the five-system one and a packet without its run serves that
+# pool's renormalised weights, so the four-family arithmetic moved too.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v10"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
