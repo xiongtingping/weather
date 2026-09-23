@@ -1,4 +1,6 @@
-"""P1 共识线: the four centres agree, in the afternoon, and the bucket is still cheap.
+"""同心线 (the P1 consensus lane): the four centres agree, in the afternoon, and the
+bucket is still cheap.  Named 2026-09-23 (user: 「新策略叫什么？取个名字」): the
+model's and the market's mode and mean -- four centres, 四心 -- on one bucket.
 
 Charter 203 (user ruling 2026-09-23: 「上线，一个站日可以买多次！」, then rule A,
 no yielding to the tiebreak lane, 5 USDC a take).
@@ -87,7 +89,7 @@ from .tiebreak_lane import (
 )
 
 LANE = LANE_P1_CONSENSUS
-LANE_TITLE = "P1 共识线"
+LANE_TITLE = "同心线"
 STRATEGY_ID = "bayes_basket_target_v1"
 SCHEMA = "p1_consensus_lane_plan_v1"
 RULE_V1 = "p1_four_centre_consensus_taker_v1"

@@ -11862,7 +11862,7 @@ def collect_p1_tail_lane(conn: sqlite3.Connection) -> dict[str, Any]:
 
 
 def collect_p1_consensus_lane(conn: sqlite3.Connection) -> dict[str, Any]:
-    """P1 共识线 -- the consensus lane's own statistics (charter 203).
+    """同心线 -- the P1 consensus lane's own statistics (charter 203).
 
     User ruling 2026-09-23 「前端增加新上的策略线的显式」.  Read from where the
     lane writes: its switch and dials from the operator file, every P1
@@ -15085,7 +15085,7 @@ SECTION_CACHE_TTL_SEC = {
     # it moves every production cycle.  Half a minute off the tiebreak
     # lane's so the two do not expire on the same render.
     "p1_tail_lane": 4 * 60 + 30,
-    # P1 共识线 (charter 203): the same shape -- one small table and the live
+    # 同心线 (charter 203): the same shape -- one small table and the live
     # book; it judges every P1 decision in the 6-10h window, so it moves every
     # production cycle.  Offset from the other two lanes'.
     "p1_consensus_lane": 5 * 60 + 15,
@@ -21182,7 +21182,7 @@ const MONEY_BOARD = [
      // Charter 203: the consensus lane's own page -- its dials, every P1
      // decision it judged in the window, the overlap with the tiebreak lane
      // it does not yield to, and its trades on their own.
-     ["p1consensus", "P1 共识线 · 宪章 203",
+     ["p1consensus", "同心线 · 宪章 203",
       () => p1ConsensusLane(),
       "sec-p1-consensus"]]},
 ];
@@ -21262,14 +21262,14 @@ function p1TailLane(){
     `<div class="card"><b>成交</b>${tradeTable}</div>`;
 }
 
-// 「P1 共识线」(charter 203): on a P1 decision 6-10h from the settlement
+// 「同心线」(charter 203, the P1 consensus lane): on a P1 decision 6-10h from the settlement
 // clock where the model's and the market's mode and mean buckets are one
 // bucket, and that bucket is sold at 0.50-0.70, cross at the ask -- on every
 // such decision.  Its own page for the same reason the other two lanes have
 // one: a rule's trades averaged with another rule's are a number about neither.
 function p1ConsensusLane(){
   const T=D.p1_consensus_lane||{};
-  if(!T.available) return `<div class="muted">P1 共识线读数这一轮没有生成。</div>`;
+  if(!T.available) return `<div class="muted">同心线读数这一轮没有生成。</div>`;
   const S=T.settings||{}, E=T.evaluations||{}, R=T.trades||{};
   const usd=v=>v==null?"—":((v<0?"−":"")+"$"+Math.abs(+v).toFixed(2));
   const pc=v=>v==null?"—":(Math.round(+v*1000)/10)+"%";
@@ -21280,7 +21280,7 @@ function p1ConsensusLane(){
     <div style="font-size:20px;font-weight:600">${val}</div>
     <div class="muted" style="font-size:12px">${sub||""}</div></div>`;
   const head=`<div class="card"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <b>P1 共识线</b>
+      <b>同心线</b> <span class="muted">（P1 四心同桶）</span>
       <span class="pill ${S.enabled?"green":"amber"}">车道：${S.enabled?"运行":"暂停"}</span>
       <span class="pill">每笔 ${usd(S.stake_usdc)}</span>
       <span class="pill">窗口 剩 ${n2(S.min_remaining_hours)}–${n2(S.max_remaining_hours)}h</span>

@@ -135,7 +135,7 @@ def test_the_page_draws_the_lane() -> None:
     result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr
     html = result.stdout
-    for text in ("P1 共识线", "每笔 $5.00", "窗口 剩 6.00–10.00h", "卖一 0.50–0.70",
+    for text in ("同心线", "每笔 $5.00", "窗口 剩 6.00–10.00h", "卖一 0.50–0.70",
                  "四中心同桶", "与秤砣线重叠", "ZSPD", "27°C", "已送出", "还没有成交"):
         assert text in html, text
 

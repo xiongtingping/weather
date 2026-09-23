@@ -1,4 +1,4 @@
-"""P1 共识线 -- the four centres agree, in the afternoon, on a bucket still cheap.
+"""同心线 (the P1 consensus lane) -- the four centres agree, in the afternoon, on a bucket still cheap.
 
 Charter 203 (user ruling 2026-09-23 「上线，一个站日可以买多次！」, rule A, no
 yielding to the tiebreak lane, 5 USDC a take).  On a P1 decision 6-10 h from

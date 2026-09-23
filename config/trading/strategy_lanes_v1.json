@@ -70,7 +70,7 @@
       "max_buys_per_station_day": 4,
       "max_sends_per_station_day": 8,
       "walk_ticks": 1,
-      "note": "P1 共识线 (charter 203, user ruling 2026-09-23 「上线，一个站日可以买多次！」 then rule A / 照买不避让 / 5U): on a P1 decision 6-10 h from the settlement clock where the model's and the market's mode and mean buckets are one bucket and its best ask is in [0.50, 0.70), cross FOK at the ask (walked one tick, paid <= 0.70), every such decision a take, at most 4 per station-day; no exclusion against the tiebreak lane either way. Replay 07-28..09-22: 117 takes, hit 71.8%, +15.3% [+4.8%, +25.3%]; 27 from 09-20 +10.6%."
+      "note": "同心线 (the P1 consensus lane, charter 203, user ruling 2026-09-23 「上线，一个站日可以买多次！」 then rule A / 照买不避让 / 5U): on a P1 decision 6-10 h from the settlement clock where the model's and the market's mode and mean buckets are one bucket and its best ask is in [0.50, 0.70), cross FOK at the ask (walked one tick, paid <= 0.70), every such decision a take, at most 4 per station-day; no exclusion against the tiebreak lane either way. Replay 07-28..09-22: 117 takes, hit 71.8%, +15.3% [+4.8%, +25.3%]; 27 from 09-20 +10.6%."
     }
   }
 }
