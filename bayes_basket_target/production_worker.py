@@ -17392,6 +17392,10 @@ class TargetProductionWorker:
             "p0m_state": state,
             "new_envelopes": after > before,
             "rowid_before": before,
+            # The latest decision this pass stamped: a P0-M rebuilt on a root
+            # minted at this clock is seated a millisecond after it, and the
+            # P1 that follows reads its root as of this, as the chain does.
+            "stage_clock_utc": (p0m or {}).get("stage_clock_utc"),
             "duration_sec": round(time.perf_counter() - started, 3),
             **boundary,
         }
@@ -17685,9 +17689,14 @@ class TargetProductionWorker:
             scopes |= set(self._scopes_rooted_after(p0m.get("rowid_before")))
         p1 = None
         if scopes is None or scopes:
+            # The P0-M this pass rebuilt on a root minted at ``clock`` sits at
+            # clock + 1 ms; read as of ``clock`` alone, P1 missed it and
+            # rooted on the bare P0 until the next pass (charter 150 (三): at
+            # a TAF station the root is P0-M).
             p1 = self._materialize_early_p1(
                 as_of_utc=clock, report_watermark=report_mark, force=True,
                 only_scopes=scopes,
+                stage_clock_utc=(p0m or {}).get("stage_clock_utc"),
             )
             if p1.get("ran") and new_reports:
                 p1_state = str(((p1.get("p1") or {}).get("state")) or "").upper()
@@ -17804,6 +17813,7 @@ class TargetProductionWorker:
         report_watermark: tuple[int, int, str] | None,
         force: bool = False,
         only_scopes: "set[tuple[str, str]] | None" = None,
+        stage_clock_utc: str | None = None,
     ) -> dict[str, Any]:
         """Charter 148: P1 at the head of the cycle, for reports it has not seen.
 
@@ -17842,13 +17852,13 @@ class TargetProductionWorker:
                     "duration_sec": round(time.perf_counter() - started, 3),
                     **boundary,
                 }
-            p1 = (
-                self._materialize_resident_p1(as_of_utc=as_of_utc)
-                if only_scopes is None
-                else self._materialize_resident_p1(
-                    as_of_utc=as_of_utc, only_scopes=set(only_scopes),
-                )
-            )
+            resident: dict[str, Any] = {"as_of_utc": as_of_utc}
+            if only_scopes is not None:
+                resident["only_scopes"] = set(only_scopes)
+            if stage_clock_utc:
+                # The stage below's own clock: its root is read as of it.
+                resident["stage_clock_utc"] = str(stage_clock_utc)
+            p1 = self._materialize_resident_p1(**resident)
         except Exception as exc:  # noqa: BLE001 -- the chain's pass is the fallback
             return {
                 "state": "FAILED",
@@ -20079,6 +20089,7 @@ class TargetProductionWorker:
             as_of_utc=early_now,
             report_watermark=early_report_watermark,
             force=bool((self._early_p0m_this_cycle or {}).get("new_envelopes")),
+            stage_clock_utc=(self._early_p0m_this_cycle or {}).get("stage_clock_utc"),
         )
         self._early_p1_watermark = early_report_watermark
         self._mark("early_p1")
