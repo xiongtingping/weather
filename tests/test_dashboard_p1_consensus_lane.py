@@ -29,6 +29,19 @@ from bayes_basket_target.ssot import apply_production_ssot_schema  # noqa: E402
 SOURCE = C.HTML_TEMPLATE
 
 
+EVIDENCE_HEAD = "// Dated readings (config/ui/board_evidence_v1.json"
+EVIDENCE_TAIL = "const evCi = "
+
+
+def _evidence_helpers() -> str:
+    """The page's evidence helpers (EV/withEv/evStamp/...): a section that
+    prints a dated reading calls them, and a section rendered alone in node
+    needs them defined the way the page defines them."""
+    start = SOURCE.index(EVIDENCE_HEAD)
+    tail = SOURCE.index(EVIDENCE_TAIL, start)
+    return SOURCE[start:SOURCE.index("\n", tail) + 1]
+
+
 def _function(name: str) -> str:
     begin = SOURCE.index(f"function {name}(")
     depth = 0
@@ -130,6 +143,7 @@ def test_the_page_draws_the_lane() -> None:
     script = (
         "const D = " + json.dumps(payload, ensure_ascii=False) + ";\n"
         "const h = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;');\n"
+        + _evidence_helpers() + "\n"
         + _function("p1ConsensusLane") + "\nconsole.log(p1ConsensusLane());\n"
     )
     result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
