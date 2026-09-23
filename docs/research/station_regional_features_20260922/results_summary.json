@@ -1,0 +1,1149 @@
+{
+ "window": "P0 envelopes 2026-08-01..09-21, clean (no bias_refused), hours to settlement >= 12; rolling k from >= 10 earlier knowable event days",
+ "across_stations": {
+  "primary_regional_4_roll": [
+   -0.053908565984608685,
+   -0.10250146337704222,
+   -0.00621594786077082,
+   0.01075
+  ],
+  "primary_regional_4_fixed": [
+   -0.061857757216403464,
+   -0.12267637820568537,
+   -0.002356395853709677,
+   0.021
+  ],
+  "primary_all_6_roll": [
+   -0.03190971550262738,
+   -0.06623138034096819,
+   0.0024606142766592357,
+   0.0355
+  ],
+  "posthoc_hrrr_only_us_roll": [
+   -0.07736615374207931,
+   -0.1301977680500371,
+   -0.027493897397365966,
+   0.00075
+  ]
+ },
+ "across_stations_lag_plus6h": {
+  "primary_regional_4_roll": [
+   -0.04982269235924932,
+   -0.09728725063528092,
+   -0.0017131696242008113,
+   0.0215
+  ],
+  "primary_regional_4_fixed": [
+   -0.05555733244888869,
+   -0.11665601928098646,
+   0.009038859874365856,
+   0.0455
+  ],
+  "primary_all_6_roll": [
+   -0.03158516290900384,
+   -0.06362720663988522,
+   0.0021606528892868784,
+   0.03225
+  ],
+  "posthoc_hrrr_only_us_roll": [
+   -0.07513664776234738,
+   -0.1286928844860171,
+   -0.021167940623762097,
+   0.0025
+  ]
+ },
+ "table": [
+  {
+   "station": "ZUUU",
+   "model": "cma_grapes_global",
+   "event_days": 34,
+   "cells": 99,
+   "envelopes": 1556,
+   "k_median": 0.25,
+   "corr_err_vs_d": [
+    0.469,
+    0.167,
+    0.702
+   ],
+   "mae_base": 1.48,
+   "mae_roll": 1.38,
+   "market_paired_days": 33,
+   "mae_market": 1.230079092335612,
+   "gap_mae_base": 0.3062959185680496,
+   "gap_mae_roll": 0.1666387748369531,
+   "rps_base": 1.087,
+   "d_rps_roll": [
+    -0.097,
+    -0.206,
+    0.008
+   ],
+   "d_rps_fixed": [
+    -0.102,
+    -0.242,
+    0.033
+   ],
+   "d_rps_roll_minus_rsign": [
+    -0.14,
+    -0.248,
+    -0.034
+   ],
+   "d_rps_roll_drop_best2": [
+    -0.064,
+    -0.166,
+    0.039
+   ],
+   "d_nll_nz_roll": [
+    -0.008,
+    -0.145,
+    0.172
+   ],
+   "gap_rps_base": 0.29607717414692225,
+   "gap_rps_roll": 0.17332024626058795,
+   "d_rps_roll_lag_plus6h": [
+    -0.104,
+    -0.22,
+    0.012
+   ]
+  },
+  {
+   "station": "ZUUU",
+   "model": "ecmwf_ifs",
+   "event_days": 34,
+   "cells": 99,
+   "envelopes": 1556,
+   "k_median": 0.0,
+   "corr_err_vs_d": [
+    0.133,
+    -0.186,
+    0.406
+   ],
+   "mae_base": 1.48,
+   "mae_roll": 1.47,
+   "market_paired_days": 33,
+   "mae_market": 1.230079092335612,
+   "gap_mae_base": 0.3062959185680496,
+   "gap_mae_roll": 0.3033785123360493,
+   "rps_base": 1.087,
+   "d_rps_roll": [
+    -0.004,
+    -0.011,
+    0.001
+   ],
+   "d_rps_fixed": [
+    0.026,
+    -0.167,
+    0.219
+   ],
+   "d_rps_roll_minus_rsign": [
+    -0.003,
+    -0.009,
+    0.001
+   ],
+   "d_rps_roll_drop_best2": [
+    0.0,
+    0.0,
+    0.001
+   ],
+   "d_nll_nz_roll": [
+    -0.003,
+    -0.01,
+    0.001
+   ],
+   "gap_rps_base": 0.29607717414692225,
+   "gap_rps_roll": 0.29292615455808446,
+   "d_rps_roll_lag_plus6h": [
+    -0.003,
+    -0.009,
+    0.001
+   ]
+  },
+  {
+   "station": "LTAC",
+   "model": "icon_eu",
+   "event_days": 33,
+   "cells": 109,
+   "envelopes": 1590,
+   "k_median": 0.72,
+   "corr_err_vs_d": [
+    0.454,
+    0.226,
+    0.647
+   ],
+   "mae_base": 0.85,
+   "mae_roll": 0.78,
+   "market_paired_days": 32,
+   "mae_market": 0.5852952681008362,
+   "gap_mae_base": 0.2880279618515824,
+   "gap_mae_roll": 0.21359279284706423,
+   "rps_base": 0.544,
+   "d_rps_roll": [
+    -0.027,
+    -0.093,
+    0.05
+   ],
+   "d_rps_fixed": [
+    -0.043,
+    -0.098,
+    0.011
+   ],
+   "d_rps_roll_minus_rsign": [
+    -0.095,
+    -0.149,
+    -0.036
+   ],
+   "d_rps_roll_drop_best2": [
+    0.0,
+    -0.062,
+    0.07
+   ],
+   "d_nll_nz_roll": [
+    0.013,
+    -0.107,
+    0.137
+   ],
+   "gap_rps_base": 0.19557918643497424,
+   "gap_rps_roll": 0.1663342799212721,
+   "d_rps_roll_lag_plus6h": [
+    -0.011,
+    -0.075,
+    0.064
+   ]
+  },
+  {
+   "station": "LTAC",
+   "model": "ecmwf_ifs",
+   "event_days": 33,
+   "cells": 109,
+   "envelopes": 1590,
+   "k_median": 0.71,
+   "corr_err_vs_d": [
+    0.108,
+    -0.435,
+    0.738
+   ],
+   "mae_base": 0.85,
+   "mae_roll": 0.82,
+   "market_paired_days": 32,
+   "mae_market": 0.5852952681008362,
+   "gap_mae_base": 0.2880279618515824,
+   "gap_mae_roll": 0.27276856191034027,
+   "rps_base": 0.544,
+   "d_rps_roll": [
+    0.023,
+    -0.089,
+    0.149
+   ],
+   "d_rps_fixed": [
+    0.002,
+    -0.091,
+    0.113
+   ],
+   "d_rps_roll_minus_rsign": [
+    -0.054,
+    -0.154,
+    0.062
+   ],
+   "d_rps_roll_drop_best2": [
+    0.064,
+    -0.035,
+    0.186
+   ],
+   "d_nll_nz_roll": [
+    0.029,
+    -0.213,
+    0.228
+   ],
+   "gap_rps_base": 0.19557918643497424,
+   "gap_rps_roll": 0.23061353880393637,
+   "d_rps_roll_lag_plus6h": [
+    0.031,
+    -0.079,
+    0.158
+   ]
+  },
+  {
+   "station": "KSEA",
+   "model": "hrrr+nbm",
+   "event_days": 34,
+   "cells": 84,
+   "envelopes": 1528,
+   "k_median": 1.0,
+   "corr_err_vs_d": [
+    0.228,
+    -0.098,
+    0.559
+   ],
+   "mae_base": 1.2,
+   "mae_roll": 1.21,
+   "market_paired_days": 34,
+   "mae_market": 0.8724969729900204,
+   "gap_mae_base": 0.34336569348818535,
+   "gap_mae_roll": 0.3515646166956835,
+   "rps_base": 0.81,
+   "d_rps_roll": [
+    -0.048,
+    -0.18,
+    0.073
+   ],
+   "d_rps_fixed": [
+    -0.056,
+    -0.139,
+    0.021
+   ],
+   "d_rps_roll_minus_rsign": [
+    -0.153,
+    -0.272,
+    -0.043
+   ],
+   "d_rps_roll_drop_best2": [
+    0.009,
+    -0.091,
+    0.106
+   ],
+   "d_nll_nz_roll": [
+    -0.114,
+    -0.29,
+    0.047
+   ],
+   "gap_rps_base": 0.2922150876374454,
+   "gap_rps_roll": 0.24293028710114317,
+   "d_rps_roll_lag_plus6h": [
+    -0.059,
+    -0.189,
+    0.061
+   ]
+  },
+  {
+   "station": "KSEA",
+   "model": "ncep_hrrr_conus",
+   "event_days": 34,
+   "cells": 84,
+   "envelopes": 1528,
+   "k_median": 0.86,
+   "corr_err_vs_d": [
+    0.336,
+    0.018,
+    0.637
+   ],
+   "mae_base": 1.2,
+   "mae_roll": 1.08,
+   "market_paired_days": 34,
+   "mae_market": 0.8724969729900204,
+   "gap_mae_base": 0.34336569348818535,
+   "gap_mae_roll": 0.2183062625193214,
+   "rps_base": 0.81,
+   "d_rps_roll": [
+    -0.08,
+    -0.21,
+    0.044
+   ],
+   "d_rps_fixed": [
+    -0.082,
+    -0.199,
+    0.027
+   ],
+   "d_rps_roll_minus_rsign": [
+    -0.19,
+    -0.312,
+    -0.072
+   ],
+   "d_rps_roll_drop_best2": [
+    -0.023,
+    -0.128,
+    0.084
+   ],
+   "d_nll_nz_roll": [
+    -0.148,
+    -0.341,
+    0.031
+   ],
+   "gap_rps_base": 0.2922150876374454,
+   "gap_rps_roll": 0.20777561923540766,
+   "d_rps_roll_lag_plus6h": [
+    -0.09,
+    -0.219,
+    0.033
+   ]
+  },
+  {
+   "station": "KSEA",
+   "model": "ncep_nbm_conus",
+   "event_days": 34,
+   "cells": 101,
+   "envelopes": 1741,
+   "k_median": 0.94,
+   "corr_err_vs_d": [
+    -0.035,
+    -0.287,
+    0.278
+   ],
+   "mae_base": 1.22,
+   "mae_roll": 1.33,
+   "market_paired_days": 34,
+   "mae_market": 0.8647032539811972,
+   "gap_mae_base": 0.3862531985373978,
+   "gap_mae_roll": 0.5084595068350417,
+   "rps_base": 0.826,
+   "d_rps_roll": [
+    0.034,
+    -0.033,
+    0.108
+   ],
+   "d_rps_fixed": [
+    0.004,
+    -0.055,
+    0.059
+   ],
+   "d_rps_roll_minus_rsign": [
+    -0.026,
+    -0.091,
+    0.042
+   ],
+   "d_rps_roll_drop_best2": [
+    0.057,
+    -0.003,
+    0.124
+   ],
+   "d_nll_nz_roll": [
+    0.041,
+    -0.059,
+    0.152
+   ],
+   "gap_rps_base": 0.3139229262751836,
+   "gap_rps_roll": 0.35099897785976597,
+   "d_rps_roll_lag_plus6h": [
+    0.03,
+    -0.038,
+    0.102
+   ]
+  },
+  {
+   "station": "KSEA",
+   "model": "ecmwf_ifs",
+   "event_days": 34,
+   "cells": 101,
+   "envelopes": 1741,
+   "k_median": 0.75,
+   "corr_err_vs_d": [
+    0.239,
+    0.004,
+    0.423
+   ],
+   "mae_base": 1.22,
+   "mae_roll": 1.33,
+   "market_paired_days": 34,
+   "mae_market": 0.8647032539811972,
+   "gap_mae_base": 0.3862531985373978,
+   "gap_mae_roll": 0.481653262835507,
+   "rps_base": 0.826,
+   "d_rps_roll": [
+    0.056,
+    -0.063,
+    0.177
+   ],
+   "d_rps_fixed": [
+    0.013,
+    -0.109,
+    0.133
+   ],
+   "d_rps_roll_minus_rsign": [
+    -0.047,
+    -0.158,
+    0.066
+   ],
+   "d_rps_roll_drop_best2": [
+    0.109,
+    0.005,
+    0.219
+   ],
+   "d_nll_nz_roll": [
+    0.165,
+    -0.001,
+    0.369
+   ],
+   "gap_rps_base": 0.3139229262751836,
+   "gap_rps_roll": 0.36671092508100156,
+   "d_rps_roll_lag_plus6h": [
+    0.054,
+    -0.037,
+    0.151
+   ]
+  },
+  {
+   "station": "KSFO",
+   "model": "hrrr+nbm",
+   "event_days": 30,
+   "cells": 74,
+   "envelopes": 1015,
+   "k_median": 0.25,
+   "corr_err_vs_d": [
+    0.581,
+    0.308,
+    0.768
+   ],
+   "mae_base": 1.35,
+   "mae_roll": 1.29,
+   "market_paired_days": 30,
+   "mae_market": 0.9244526416330895,
+   "gap_mae_base": 0.40561127693966015,
+   "gap_mae_roll": 0.35502788048357725,
+   "rps_base": 0.843,
+   "d_rps_roll": [
+    -0.043,
+    -0.116,
+    0.024
+   ],
+   "d_rps_fixed": [
+    -0.047,
+    -0.221,
+    0.125
+   ],
+   "d_rps_roll_minus_rsign": [
+    -0.054,
+    -0.119,
+    0.011
+   ],
+   "d_rps_roll_drop_best2": [
+    -0.008,
+    -0.065,
+    0.05
+   ],
+   "d_nll_nz_roll": [
+    -0.063,
+    -0.171,
+    0.039
+   ],
+   "gap_rps_base": 0.2512261675628109,
+   "gap_rps_roll": 0.20981850149988557,
+   "d_rps_roll_lag_plus6h": [
+    -0.026,
+    -0.078,
+    0.024
+   ]
+  },
+  {
+   "station": "KSFO",
+   "model": "ncep_hrrr_conus",
+   "event_days": 30,
+   "cells": 74,
+   "envelopes": 1015,
+   "k_median": 0.22,
+   "corr_err_vs_d": [
+    0.645,
+    0.401,
+    0.797
+   ],
+   "mae_base": 1.35,
+   "mae_roll": 1.2,
+   "market_paired_days": 30,
+   "mae_market": 0.9244526416330895,
+   "gap_mae_base": 0.40561127693966015,
+   "gap_mae_roll": 0.2664391428918723,
+   "rps_base": 0.843,
+   "d_rps_roll": [
+    -0.106,
+    -0.209,
+    -0.009
+   ],
+   "d_rps_fixed": [
+    -0.084,
+    -0.273,
+    0.103
+   ],
+   "d_rps_roll_minus_rsign": [
+    -0.138,
+    -0.237,
+    -0.037
+   ],
+   "d_rps_roll_drop_best2": [
+    -0.057,
+    -0.143,
+    0.021
+   ],
+   "d_nll_nz_roll": [
+    -0.129,
+    -0.288,
+    0.01
+   ],
+   "gap_rps_base": 0.2512261675628109,
+   "gap_rps_roll": 0.1495277816675299,
+   "d_rps_roll_lag_plus6h": [
+    -0.096,
+    -0.201,
+    0.001
+   ]
+  },
+  {
+   "station": "KSFO",
+   "model": "ncep_nbm_conus",
+   "event_days": 30,
+   "cells": 90,
+   "envelopes": 1195,
+   "k_median": 0.0,
+   "corr_err_vs_d": [
+    0.153,
+    -0.127,
+    0.451
+   ],
+   "mae_base": 1.49,
+   "mae_roll": 1.5,
+   "market_paired_days": 30,
+   "mae_market": 0.969595881836405,
+   "gap_mae_base": 0.4652244799889458,
+   "gap_mae_roll": 0.47175277812333394,
+   "rps_base": 0.923,
+   "d_rps_roll": [
+    0.004,
+    -0.002,
+    0.014
+   ],
+   "d_rps_fixed": [
+    0.047,
+    -0.101,
+    0.196
+   ],
+   "d_rps_roll_minus_rsign": [
+    0.004,
+    -0.002,
+    0.014
+   ],
+   "d_rps_roll_drop_best2": [
+    0.006,
+    0.0,
+    0.016
+   ],
+   "d_nll_nz_roll": [
+    0.006,
+    -0.001,
+    0.016
+   ],
+   "gap_rps_base": 0.27984825150414105,
+   "gap_rps_roll": 0.2842391368935231,
+   "d_rps_roll_lag_plus6h": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "station": "KSFO",
+   "model": "ecmwf_ifs",
+   "event_days": 30,
+   "cells": 90,
+   "envelopes": 1195,
+   "k_median": 1.0,
+   "corr_err_vs_d": [
+    0.733,
+    0.554,
+    0.843
+   ],
+   "mae_base": 1.49,
+   "mae_roll": 1.17,
+   "market_paired_days": 30,
+   "mae_market": 0.969595881836405,
+   "gap_mae_base": 0.4652244799889458,
+   "gap_mae_roll": 0.17185594835343765,
+   "rps_base": 0.923,
+   "d_rps_roll": [
+    -0.194,
+    -0.379,
+    -0.016
+   ],
+   "d_rps_fixed": [
+    -0.211,
+    -0.353,
+    -0.069
+   ],
+   "d_rps_roll_minus_rsign": [
+    -0.373,
+    -0.533,
+    -0.207
+   ],
+   "d_rps_roll_drop_best2": [
+    -0.11,
+    -0.267,
+    0.054
+   ],
+   "d_nll_nz_roll": [
+    -0.15,
+    -0.38,
+    0.084
+   ],
+   "gap_rps_base": 0.27984825150414105,
+   "gap_rps_roll": 0.11040145850283412,
+   "d_rps_roll_lag_plus6h": [
+    -0.179,
+    -0.364,
+    0.004
+   ]
+  },
+  {
+   "station": "KSFO",
+   "model": "ecmwf_ifs025",
+   "event_days": 30,
+   "cells": 90,
+   "envelopes": 1195,
+   "k_median": 0.03,
+   "corr_err_vs_d": [
+    0.5,
+    0.255,
+    0.684
+   ],
+   "mae_base": 1.49,
+   "mae_roll": 1.45,
+   "market_paired_days": 30,
+   "mae_market": 0.969595881836405,
+   "gap_mae_base": 0.4652244799889458,
+   "gap_mae_roll": 0.4263706081648069,
+   "rps_base": 0.923,
+   "d_rps_roll": [
+    -0.034,
+    -0.07,
+    0.0
+   ],
+   "d_rps_fixed": [
+    -0.05,
+    -0.203,
+    0.102
+   ],
+   "d_rps_roll_minus_rsign": [
+    -0.035,
+    -0.068,
+    -0.005
+   ],
+   "d_rps_roll_drop_best2": [
+    -0.013,
+    -0.042,
+    0.011
+   ],
+   "d_nll_nz_roll": [
+    -0.045,
+    -0.103,
+    0.007
+   ],
+   "gap_rps_base": 0.27984825150414105,
+   "gap_rps_roll": 0.2511663588597265,
+   "d_rps_roll_lag_plus6h": [
+    -0.019,
+    -0.039,
+    -0.001
+   ]
+  },
+  {
+   "station": "SBGR",
+   "model": "ecmwf_ifs",
+   "event_days": 35,
+   "cells": 110,
+   "envelopes": 1788,
+   "k_median": 0.0,
+   "corr_err_vs_d": [
+    0.012,
+    -0.289,
+    0.335
+   ],
+   "mae_base": 1.64,
+   "mae_roll": 1.65,
+   "market_paired_days": 34,
+   "mae_market": 1.2325589118277904,
+   "gap_mae_base": 0.5031670521641303,
+   "gap_mae_roll": 0.5150518711073269,
+   "rps_base": 1.177,
+   "d_rps_roll": [
+    0.012,
+    -0.012,
+    0.045
+   ],
+   "d_rps_fixed": [
+    0.028,
+    -0.075,
+    0.148
+   ],
+   "d_rps_roll_minus_rsign": [
+    0.011,
+    -0.014,
+    0.047
+   ],
+   "d_rps_roll_drop_best2": [
+    0.019,
+    -0.002,
+    0.053
+   ],
+   "d_nll_nz_roll": [
+    0.02,
+    -0.01,
+    0.066
+   ],
+   "gap_rps_base": 0.443309470973809,
+   "gap_rps_roll": 0.4554644022832166,
+   "d_rps_roll_lag_plus6h": [
+    0.002,
+    -0.01,
+    0.014
+   ]
+  },
+  {
+   "station": "SBGR",
+   "model": "ukmo_global_deterministic_10km",
+   "event_days": 35,
+   "cells": 110,
+   "envelopes": 1788,
+   "k_median": 0.02,
+   "corr_err_vs_d": [
+    0.374,
+    0.091,
+    0.596
+   ],
+   "mae_base": 1.64,
+   "mae_roll": 1.6,
+   "market_paired_days": 34,
+   "mae_market": 1.2325589118277904,
+   "gap_mae_base": 0.5031670521641303,
+   "gap_mae_roll": 0.4714601205347497,
+   "rps_base": 1.177,
+   "d_rps_roll": [
+    -0.031,
+    -0.083,
+    0.021
+   ],
+   "d_rps_fixed": [
+    -0.058,
+    -0.181,
+    0.059
+   ],
+   "d_rps_roll_minus_rsign": [
+    -0.055,
+    -0.106,
+    -0.005
+   ],
+   "d_rps_roll_drop_best2": [
+    -0.007,
+    -0.052,
+    0.038
+   ],
+   "d_nll_nz_roll": [
+    0.006,
+    -0.08,
+    0.124
+   ],
+   "gap_rps_base": 0.443309470973809,
+   "gap_rps_roll": 0.4204602184711168,
+   "d_rps_roll_lag_plus6h": [
+    -0.027,
+    -0.073,
+    0.018
+   ]
+  },
+  {
+   "station": "SBGR",
+   "model": "ecmwf_aifs025_single",
+   "event_days": 35,
+   "cells": 110,
+   "envelopes": 1788,
+   "k_median": 0.66,
+   "corr_err_vs_d": [
+    0.779,
+    0.598,
+    0.884
+   ],
+   "mae_base": 1.64,
+   "mae_roll": 1.19,
+   "market_paired_days": 34,
+   "mae_market": 1.2325589118277904,
+   "gap_mae_base": 0.5031670521641303,
+   "gap_mae_roll": 0.02697792105093466,
+   "rps_base": 1.177,
+   "d_rps_roll": [
+    -0.266,
+    -0.438,
+    -0.101
+   ],
+   "d_rps_fixed": [
+    -0.26,
+    -0.399,
+    -0.124
+   ],
+   "d_rps_roll_minus_rsign": [
+    -0.415,
+    -0.57,
+    -0.263
+   ],
+   "d_rps_roll_drop_best2": [
+    -0.187,
+    -0.33,
+    -0.043
+   ],
+   "d_nll_nz_roll": [
+    -0.188,
+    -0.334,
+    -0.033
+   ],
+   "gap_rps_base": 0.443309470973809,
+   "gap_rps_roll": 0.15409939093747538,
+   "d_rps_roll_lag_plus6h": [
+    -0.26,
+    -0.426,
+    -0.101
+   ]
+  },
+  {
+   "station": "SBGR",
+   "model": "ecmwf_aifs025_single_6h",
+   "event_days": 35,
+   "cells": 110,
+   "envelopes": 1788,
+   "k_median": 0.66,
+   "corr_err_vs_d": [
+    0.784,
+    0.614,
+    0.883
+   ],
+   "mae_base": 1.64,
+   "mae_roll": 1.17,
+   "market_paired_days": 34,
+   "mae_market": 1.2325589118277904,
+   "gap_mae_base": 0.5031670521641303,
+   "gap_mae_roll": 0.005950926873758977,
+   "rps_base": 1.177,
+   "d_rps_roll": [
+    -0.271,
+    -0.444,
+    -0.107
+   ],
+   "d_rps_fixed": [
+    -0.267,
+    -0.416,
+    -0.135
+   ],
+   "d_rps_roll_minus_rsign": [
+    -0.425,
+    -0.58,
+    -0.275
+   ],
+   "d_rps_roll_drop_best2": [
+    -0.193,
+    -0.33,
+    -0.049
+   ],
+   "d_nll_nz_roll": [
+    -0.187,
+    -0.336,
+    -0.031
+   ],
+   "gap_rps_base": 0.443309470973809,
+   "gap_rps_roll": 0.1487529280752261,
+   "d_rps_roll_lag_plus6h": [
+    -0.267,
+    -0.437,
+    -0.116
+   ]
+  },
+  {
+   "station": "FACT",
+   "model": "ecmwf_ifs",
+   "event_days": 33,
+   "cells": 110,
+   "envelopes": 1399,
+   "k_median": 0.39,
+   "corr_err_vs_d": [
+    0.181,
+    -0.147,
+    0.433
+   ],
+   "mae_base": 1.19,
+   "mae_roll": 1.22,
+   "market_paired_days": 33,
+   "mae_market": 0.9569382277491254,
+   "gap_mae_base": 0.22595203189455626,
+   "gap_mae_roll": 0.29120028635435546,
+   "rps_base": 0.95,
+   "d_rps_roll": [
+    0.012,
+    -0.058,
+    0.075
+   ],
+   "d_rps_fixed": [
+    0.05,
+    -0.058,
+    0.155
+   ],
+   "d_rps_roll_minus_rsign": [
+    -0.024,
+    -0.094,
+    0.043
+   ],
+   "d_rps_roll_drop_best2": [
+    0.04,
+    -0.018,
+    0.099
+   ],
+   "d_nll_nz_roll": [
+    0.008,
+    -0.117,
+    0.107
+   ],
+   "gap_rps_base": 0.28714150106332614,
+   "gap_rps_roll": 0.3286213472719669,
+   "d_rps_roll_lag_plus6h": [
+    0.008,
+    -0.049,
+    0.061
+   ]
+  },
+  {
+   "station": "FACT",
+   "model": "ukmo_global_deterministic_10km",
+   "event_days": 33,
+   "cells": 110,
+   "envelopes": 1399,
+   "k_median": 0.47,
+   "corr_err_vs_d": [
+    0.35,
+    0.114,
+    0.574
+   ],
+   "mae_base": 1.19,
+   "mae_roll": 1.14,
+   "market_paired_days": 33,
+   "mae_market": 0.9569382277491254,
+   "gap_mae_base": 0.22595203189455626,
+   "gap_mae_roll": 0.17477970925674624,
+   "rps_base": 0.95,
+   "d_rps_roll": [
+    -0.062,
+    -0.144,
+    0.02
+   ],
+   "d_rps_fixed": [
+    -0.073,
+    -0.161,
+    0.013
+   ],
+   "d_rps_roll_minus_rsign": [
+    -0.111,
+    -0.188,
+    -0.035
+   ],
+   "d_rps_roll_drop_best2": [
+    -0.029,
+    -0.099,
+    0.045
+   ],
+   "d_nll_nz_roll": [
+    -0.079,
+    -0.165,
+    0.008
+   ],
+   "gap_rps_base": 0.28714150106332614,
+   "gap_rps_roll": 0.22498014395368704,
+   "d_rps_roll_lag_plus6h": [
+    -0.051,
+    -0.13,
+    0.03
+   ]
+  },
+  {
+   "station": "FACT",
+   "model": "ecmwf_aifs025_single",
+   "event_days": 33,
+   "cells": 110,
+   "envelopes": 1399,
+   "k_median": 0.27,
+   "corr_err_vs_d": [
+    0.305,
+    0.027,
+    0.529
+   ],
+   "mae_base": 1.19,
+   "mae_roll": 1.13,
+   "market_paired_days": 33,
+   "mae_market": 0.9569382277491254,
+   "gap_mae_base": 0.22595203189455626,
+   "gap_mae_roll": 0.16892281977768153,
+   "rps_base": 0.95,
+   "d_rps_roll": [
+    -0.063,
+    -0.115,
+    -0.011
+   ],
+   "d_rps_fixed": [
+    -0.079,
+    -0.239,
+    0.081
+   ],
+   "d_rps_roll_minus_rsign": [
+    -0.083,
+    -0.138,
+    -0.029
+   ],
+   "d_rps_roll_drop_best2": [
+    -0.036,
+    -0.08,
+    0.007
+   ],
+   "d_nll_nz_roll": [
+    -0.072,
+    -0.129,
+    -0.016
+   ],
+   "gap_rps_base": 0.28714150106332614,
+   "gap_rps_roll": 0.219408088309206,
+   "d_rps_roll_lag_plus6h": [
+    -0.064,
+    -0.119,
+    -0.013
+   ]
+  },
+  {
+   "station": "FACT",
+   "model": "ecmwf_aifs025_single_6h",
+   "event_days": 33,
+   "cells": 110,
+   "envelopes": 1399,
+   "k_median": 0.28,
+   "corr_err_vs_d": [
+    0.305,
+    0.039,
+    0.525
+   ],
+   "mae_base": 1.19,
+   "mae_roll": 1.13,
+   "market_paired_days": 33,
+   "mae_market": 0.9569382277491254,
+   "gap_mae_base": 0.22595203189455626,
+   "gap_mae_roll": 0.1683938840710255,
+   "rps_base": 0.95,
+   "d_rps_roll": [
+    -0.063,
+    -0.118,
+    -0.009
+   ],
+   "d_rps_fixed": [
+    -0.078,
+    -0.249,
+    0.08
+   ],
+   "d_rps_roll_minus_rsign": [
+    -0.084,
+    -0.138,
+    -0.029
+   ],
+   "d_rps_roll_drop_best2": [
+    -0.036,
+    -0.08,
+    0.008
+   ],
+   "d_nll_nz_roll": [
+    -0.072,
+    -0.133,
+    -0.02
+   ],
+   "gap_rps_base": 0.28714150106332614,
+   "gap_rps_roll": 0.21897869410502158,
+   "d_rps_roll_lag_plus6h": [
+    -0.065,
+    -0.12,
+    -0.012
+   ]
+  }
+ ]
+}
