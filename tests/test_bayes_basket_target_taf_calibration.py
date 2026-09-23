@@ -19,6 +19,7 @@ from scripts import fit_bayes_basket_target_taf_revision as taf_fit_cli
 from scripts.capture_bayes_basket_target_awc_taf_calibration import (
     _event_window,
     _forecast_features,
+    precipitation_in_weather,
     _tx,
     capture,
 )
@@ -1201,3 +1202,41 @@ def test_awc_physical_features_are_joint_and_bounded() -> None:
     assert cloud == 0.75
     assert precip == 0.4
     assert 5.14 < wind < 5.15
+
+
+def test_awc_precipitation_groups_are_read_with_their_intensity_prefix() -> None:
+    for wx in ("-SHRA", "+SHRA", "-TSRA -RA", "+SHSN", "TS", "FZRA", "-SHRA BR", "TSGR"):
+        assert precipitation_in_weather(wx), wx
+    for wx in ("BR", "FG", "HZ", "NSW", "VCSH", "VCTS", "DRSN", "BLSN", "MIFG", "FZFG", ""):
+        assert not precipitation_in_weather(wx), wx
+
+
+def test_awc_prob_group_scores_precipitation_only_for_precipitation_weather() -> None:
+    start = int(datetime(2026, 7, 26, 21, tzinfo=timezone.utc).timestamp())
+    end = int(datetime(2026, 7, 27, 6, tzinfo=timezone.utc).timestamp())
+
+    def precip(wx: str, probability: int | None) -> float:
+        return _forecast_features(
+            {
+                "fcsts": [{
+                    "timeFrom": start,
+                    "timeTo": end,
+                    "wspd": 5,
+                    "probability": probability,
+                    "wxString": wx,
+                    "clouds": [],
+                }]
+            },
+            event_date="2026-07-27",
+            timezone_name="Asia/Seoul",
+        )[1]
+
+    # PROB30 fog is not a 30% chance of rain.
+    assert precip("BR", 30) == 0.0
+    assert precip("FG", 40) == 0.0
+    # PROB30 showers is a 30% chance of rain, whatever the intensity prefix.
+    assert precip("-SHRA", 30) == 0.3
+    assert precip("-TSRA", 40) == 0.4
+    # A TEMPO shower group with no PROB is rain for its whole span.
+    assert precip("-SHRA", None) == 1.0
+    assert precip("NSW", None) == 0.0

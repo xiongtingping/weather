@@ -79,7 +79,34 @@ HTTP_STATUS_ERROR_RE = re.compile(
     re.IGNORECASE,
 )
 TAF_TX_RE = re.compile(r"\bTX(M?\d{2})/(\d{2})(\d{2})Z\b")
-PRECIP_RE = re.compile(r"(?:^|\s)(?:[-+]?DZ|[-+]?RA|[-+]?SN|SG|PL|GR|GS|SH|TS)")
+# Precipitation in a TAF weather group.  A group is intensity (``-``/``+``,
+# or ``VC`` for "in the vicinity", which is not at the aerodrome), then
+# descriptors (``SH`` showers, ``TS`` thunderstorm, ``FZ`` freezing; ``MI``/
+# ``BC``/``PR`` describe fog and ``DR``/``BL`` lift snow or sand that has
+# already fallen), then the phenomena.  Precipitation is one of the nine
+# precipitation codes falling here, or a shower/thunderstorm group that names
+# no phenomenon.  Until 2026-09-23 this was a regex that only let ``-``/``+``
+# precede DZ/RA/SN, so ``-SHRA`` and ``-TSRA`` -- the two most common
+# precipitation groups in the archive (1,909 and 716 forecast segments over
+# 9,985 bulletins) -- read as no precipitation at all.
+PRECIPITATION_CODES = ("DZ", "RA", "SN", "SG", "IC", "PL", "GR", "GS", "UP")
+_NON_FALLING_DESCRIPTORS = ("MI", "BC", "PR", "DR", "BL")
+
+
+def precipitation_in_weather(wx: str) -> bool:
+    """Whether a TAF ``wxString`` forecasts precipitation at the aerodrome."""
+
+    for token in str(wx or "").split():
+        body = token.lstrip("-+")
+        if body.startswith("VC"):
+            continue
+        if body[:2] in _NON_FALLING_DESCRIPTORS:
+            continue
+        if body.startswith(("SH", "TS")):
+            return True
+        if any(code in body for code in PRECIPITATION_CODES):
+            return True
+    return False
 CORRECTION_RE = re.compile(r"\bCOR\b", re.IGNORECASE)
 SKY_FRACTION = {
     "SKC": 0.0, "CLR": 0.0, "NSC": 0.0, "NCD": 0.0,
@@ -312,10 +339,18 @@ def _forecast_features(
         cloud = max(covers, default=0.0)
         wx = str(row.get("wxString") or "")
         probability_raw = row.get("probability")
-        if probability_raw is not None:
+        # A PROB group's percentage is the chance of the weather it names,
+        # so it is a precipitation probability only when that weather is
+        # precipitation.  Until 2026-09-23 the percentage was read on its
+        # own and a ``PROB30 ... BR`` fog group scored 0.3 of rain: 552 of
+        # the 9,051 archived captures carried such a group inside the
+        # heating window (user ruling 2026-09-23 「先修 PROB 雾段误记降」).
+        if not precipitation_in_weather(wx):
+            probability = 0.0
+        elif probability_raw is not None:
             probability = max(0.0, min(1.0, float(probability_raw) / 100.0))
         else:
-            probability = 1.0 if PRECIP_RE.search(wx) else 0.0
+            probability = 1.0
         wind_kt = float(row.get("wspd") or 0.0)
         weighted_cloud += overlap * cloud
         weighted_precip += overlap * probability
