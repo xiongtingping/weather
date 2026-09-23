@@ -190,6 +190,81 @@ def _hold_certified_event_run(
     return None
 
 
+def _retained_run_init(path: Path, *, event_date: str) -> datetime | None:
+    """The run a retained per-lead archive holds for this date, or None."""
+
+    raw = path.expanduser()
+    if raw.is_symlink() or not raw.is_file():
+        return None
+    try:
+        payload = load_bounded_json(raw.resolve())
+    except Exception:  # noqa: BLE001 - unreadable is absent
+        return None
+    if (
+        not isinstance(payload, dict)
+        or str(payload.get("event_date") or "") != str(event_date)
+    ):
+        return None
+    return _parse_utc_timestamp(payload.get("run_init_utc"))
+
+
+def _write_archive_no_regress(
+    path: Path, archive: Mapping[str, Any], *, event_date: str
+) -> bool:
+    """Charter 193 (三) 不倒退: never replace a retained run with an older one.
+
+    One file holds one family's run for one event date at one lead.  A pass on
+    an older rung used to capture that older run and write it over the newer
+    one the file held -- 2026-09-23 04:01Z, right after a restart emptied the
+    worker's held-run memory, the 18Z rung for 09-24 failed (rc 2), the walk
+    fell to the 12Z rung and ``ecmwf_2026-09-24_d2.json`` went from 09-22 18Z
+    back to 09-22 12Z, which the d1 pass then held from.  Refused here, fail
+    closed: the pass keeps no packet of its own and the date keeps what it had.
+    """
+
+    held = _retained_run_init(path, event_date=event_date)
+    new = _parse_utc_timestamp(archive.get("run_init_utc"))
+    if held is not None and (new is None or new < held):
+        raise ContractError(
+            "official_native_forward_archive_would_regress:"
+            f"{path.name}:{held.isoformat().replace('+00:00', 'Z')}>"
+            f"{str(archive.get('run_init_utc') or '')}"
+        )
+    return write_bounded_json_if_changed(path, archive)
+
+
+def _retained_newer_than(
+    path: Path,
+    *,
+    event_date: str,
+    station_ids: Sequence[str],
+    expected_schema: str,
+    run_init_utc: str,
+) -> dict[str, Any] | None:
+    """A retained archive of this lead holding a run newer than the rung's.
+
+    The rung's own run is older than what the date already holds at this
+    lead, so the pass holds the newer one -- whatever its age -- instead of
+    downloading and serving the older (charter 193 (三)).  Only an archive
+    that covers every requested station counts; otherwise the capture goes
+    ahead and ``_write_archive_no_regress`` refuses to write it.
+    """
+
+    retained = _load_retained_archive(
+        path,
+        event_date=event_date,
+        station_ids=station_ids,
+        expected_schema=expected_schema,
+    )
+    if retained is None:
+        return None
+    held = _parse_utc_timestamp(retained.get("run_init_utc"))
+    wanted = _parse_utc_timestamp(run_init_utc)
+    if held is None or wanted is None or held <= wanted:
+        return None
+    return retained
+
+
 def _load_retained_archive(
     path: Path,
     *,
@@ -669,6 +744,33 @@ def capture_official_native_forward(
             ecmwf_resolve_run_cycle_hour(int(lead_days), run_cycle_hour)
         ),
     )
+    # Charter 193 (三) 不倒退: a rung older than the run this lead's file
+    # already holds (the worker walks down after a failed newest rung, and a
+    # restart empties its memory of what each date holds) serves that newer
+    # run instead of capturing its own.
+    kept_newer_retained: dict[str, str] = {}
+    if gefs is None:
+        gefs = _retained_newer_than(
+            gefs_path,
+            event_date=event_date,
+            station_ids=requested_station_ids,
+            expected_schema="noaa_gefs_official_historical_multistation_members_v2",
+            run_init_utc=caller_cycle_run,
+        )
+        if gefs is not None:
+            kept_newer_retained["NOAA_GEFS_PDS_S3"] = str(gefs["run_init_utc"])
+    if ecmwf is None:
+        ecmwf = _retained_newer_than(
+            ecmwf_path,
+            event_date=event_date,
+            station_ids=requested_station_ids,
+            expected_schema="ecmwf_ifs_open_pf50_historical_multistation_members_v1",
+            run_init_utc=_expected_run(
+                ecmwf_resolve_run_cycle_hour(int(lead_days), run_cycle_hour)
+            ),
+        )
+        if ecmwf is not None:
+            kept_newer_retained["ECMWF_OPEN_DATA_S3"] = str(ecmwf["run_init_utc"])
     # ECCC and ICON are captured actively here, not merely reused.  Leaving
     # them to a "supply an archive if you happen to have one" parameter meant
     # their history never grew: ECCC stalled at 2026-07-30 and ICON had none at
@@ -838,7 +940,7 @@ def capture_official_native_forward(
         and not reused_gefs
         and "NOAA_GEFS_PDS_S3" not in held_from_other_lead
     ):
-        write_bounded_json_if_changed(gefs_path, gefs)
+        _write_archive_no_regress(gefs_path, gefs, event_date=event_date)
     if ecmwf is None:
         ecmwf = _advance_or_hold(
             "ECMWF_OPEN_DATA_S3",
@@ -860,7 +962,7 @@ def capture_official_native_forward(
         and not reused_ecmwf
         and "ECMWF_OPEN_DATA_S3" not in held_from_other_lead
     ):
-        write_bounded_json_if_changed(ecmwf_path, ecmwf)
+        _write_archive_no_regress(ecmwf_path, ecmwf, event_date=event_date)
     # Charter 193 amendment, seating (user ruling 2026-09-21 "C 先用 ECMWF 前一天
     # 18Z"; "过门后首包自动改持 D-3 18Z").  A D+2 day is listed around 05Z D-2,
     # while ECMWF's D-2 00Z is complete on the replica only around 08:10Z; until
@@ -976,8 +1078,9 @@ def capture_official_native_forward(
             ),
         )
         if eccc is not None and "ECCC_DD_WEATHER" not in held_from_other_lead:
-            write_bounded_json_if_changed(
-                eccc_output.expanduser().resolve(), eccc
+            _write_archive_no_regress(
+                eccc_output.expanduser().resolve(), eccc,
+                event_date=event_date,
             )
     icon_capture_error = ""
     if icon_output is not None and icon is None:
@@ -1050,18 +1153,19 @@ def capture_official_native_forward(
     inbox_path = inbox_output.expanduser().resolve()
     # Charter 148: a family held from another lead's file stays in that file.
     wrote_gefs = (
-        write_bounded_json_if_changed(gefs_path, gefs)
+        _write_archive_no_regress(gefs_path, gefs, event_date=event_date)
         if "NOAA_GEFS_PDS_S3" not in held_from_other_lead
         else False
     )
     wrote_ecmwf = (
-        write_bounded_json_if_changed(ecmwf_path, ecmwf)
+        _write_archive_no_regress(ecmwf_path, ecmwf, event_date=event_date)
         if "ECMWF_OPEN_DATA_S3" not in held_from_other_lead
         else False
     )
     wrote_eccc = (
-        write_bounded_json_if_changed(
-            eccc_output.expanduser().resolve(), eccc
+        _write_archive_no_regress(
+            eccc_output.expanduser().resolve(), eccc,
+            event_date=event_date,
         )
         if eccc_output is not None
         and eccc is not None
@@ -1069,8 +1173,9 @@ def capture_official_native_forward(
         else False
     )
     wrote_icon = (
-        write_bounded_json_if_changed(
-            icon_output.expanduser().resolve(), icon
+        _write_archive_no_regress(
+            icon_output.expanduser().resolve(), icon,
+            event_date=event_date,
         )
         if icon_output is not None
         and icon is not None
@@ -1277,6 +1382,10 @@ def capture_official_native_forward(
             family: path.name
             for family, path in sorted(held_from_other_lead.items())
         },
+        # Charter 193 (三): families whose rung was older than the run this
+        # lead's file already held, and which served that newer run.
+        **({"family_kept_newer_retained": dict(sorted(kept_newer_retained.items()))}
+           if kept_newer_retained else {}),
         # Charter 193 amendment (C): ECMWF held on its banked D-3 18Z run,
         # and the stations that run is certified for (the only ones built).
         **({"ecmwf_event_run_hold": ecmwf_event_run_hold}

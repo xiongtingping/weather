@@ -950,8 +950,7 @@ def _d2_pass(tmp_path: Path, registry_path: Path, **kwargs) -> dict[str, Any]:
         inbox_output=tmp_path / "inbox.json",
         timeout_seconds=30.0,
         lead_days=2,
-        run_cycle_hour=0,
-        **kwargs,
+        **{"run_cycle_hour": 0, **kwargs},
     )
 
 
@@ -1050,3 +1049,107 @@ def test_ecmwf_holding_any_run_of_its_own_never_reads_the_d3_run(monkeypatch, tm
     assert follow_run.ECMWF_FAMILY not in asked
     assert "--station-id" not in _builder(commands)
     assert str(tmp_path / f"ecmwf_{DAY}_d2.json") in _builder(commands)
+
+
+# --------------------------------------------------------------------------
+# Charter 193 (三) 不倒退: a pass never writes or serves a run older than the
+# one the date's file already holds (2026-09-23 04:01Z regression).
+# --------------------------------------------------------------------------
+def _retained(path: Path, schema: str, run: str, stations: list[str]) -> Path:
+    identity = {
+        "schema": schema,
+        "event_date": DAY,
+        "run_init_utc": run,
+        "training_only": True,
+        "holdout_eligible": False,
+        "station_count": len(stations),
+        "captures": [{"station_id": station} for station in stations],
+    }
+    path.write_text(json.dumps({**identity, "content_sha256": content_sha256(identity)}))
+    return path
+
+
+def test_an_archive_is_never_replaced_by_an_older_run_of_the_same_date(tmp_path) -> None:
+    path = _retained(tmp_path / f"ecmwf_{DAY}_d2.json", ECMWF, "2026-07-30T18:00:00Z", ["ZUUU"])
+    before = path.read_text()
+    with pytest.raises(capture.ContractError, match="archive_would_regress"):
+        capture._write_archive_no_regress(
+            path, _archive(ECMWF, "2026-07-30T12:00:00Z"), event_date=DAY
+        )
+    assert path.read_text() == before
+    # the same run, or a newer one, is written as before
+    same = json.loads(before)
+    capture._write_archive_no_regress(path, same, event_date=DAY)
+    assert json.loads(path.read_text())["run_init_utc"] == "2026-07-30T18:00:00Z"
+    newer = {**_archive(ECMWF, "2026-07-31T00:00:00Z"), "event_date": DAY}
+    assert capture._write_archive_no_regress(path, newer, event_date=DAY) is True
+    # another date's file never blocks
+    other = _retained(tmp_path / "other.json", ECMWF, "2026-07-30T18:00:00Z", ["ZUUU"])
+    other_payload = json.loads(other.read_text())
+    other.write_text(json.dumps({**other_payload, "event_date": "2026-08-02"}))
+    assert capture._write_archive_no_regress(
+        other, _archive(ECMWF, "2026-07-30T12:00:00Z"), event_date=DAY
+    ) is True
+
+
+def _older_rung_pass(monkeypatch, tmp_path: Path, retained_stations: list[str]):
+    _install_station_registry(monkeypatch)
+    monkeypatch.setattr(capture, "load_market_registry_snapshot", lambda _p: _registry())
+    stations = _station_ids()
+    for name, schema in (("gefs", GEFS), ("ecmwf", ECMWF)):
+        _retained(tmp_path / f"{name}_{DAY}_d2.json", schema, "2026-07-30T18:00:00Z", retained_stations)
+    captured: list[str] = []
+
+    def _capture(name: str, schema: str, run: str):
+        def run_capture(**_kw):
+            captured.append(name)
+            return {**_archive(schema, run), "event_date": DAY,
+                    "captures": [{"station_id": s} for s in stations]}
+        return run_capture
+
+    monkeypatch.setattr(capture, "capture_gefs_station_days", _capture("gefs", GEFS, "2026-07-30T12:00:00Z"))
+    monkeypatch.setattr(capture, "capture_ecmwf_station_days", _capture("ecmwf", ECMWF, "2026-07-30T12:00:00Z"))
+    monkeypatch.setattr(capture, "capture_geps_station_days", _capture("eccc", ECCC, "2026-07-30T12:00:00Z"))
+    monkeypatch.setattr(capture, "capture_icon_eps_station_days", _capture("icon", ICON, "2026-07-30T12:00:00Z"))
+    written: list[str] = []
+    monkeypatch.setattr(
+        capture, "write_bounded_json_if_changed",
+        lambda path, _payload: written.append(Path(path).name) or True,
+    )
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        capture.subprocess, "run",
+        lambda command, **_kw: commands.append(list(command))
+        or subprocess.CompletedProcess(command, 0, stdout="built", stderr=""),
+    )
+    monkeypatch.setattr(capture, "_verify_official_inbox", lambda *_a, **_k: {"content_sha256": "0" * 64, "packets": []})
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text("{}", encoding="utf-8")
+    run = lambda: _d2_pass(tmp_path, registry_path, run_cycle_hour=12)  # noqa: E731
+    return run, captured, written
+
+
+def test_an_older_rung_serves_the_newer_run_the_date_already_holds(monkeypatch, tmp_path) -> None:
+    # The 09-23 04:01Z walk: the 18Z rung failed, the 12Z rung ran.  It now
+    # holds the 18Z both files already carry instead of fetching 12Z.
+    run, captured, written = _older_rung_pass(monkeypatch, tmp_path, _station_ids())
+    receipt = run()
+    assert "gefs" not in captured and "ecmwf" not in captured
+    assert receipt["run_init_utc_by_family"]["NOAA_GEFS_PDS_S3"] == "2026-07-30T18:00:00Z"
+    assert receipt["run_init_utc_by_family"]["ECMWF_OPEN_DATA_S3"] == "2026-07-30T18:00:00Z"
+    assert receipt["family_kept_newer_retained"] == {
+        "ECMWF_OPEN_DATA_S3": "2026-07-30T18:00:00Z",
+        "NOAA_GEFS_PDS_S3": "2026-07-30T18:00:00Z",
+    }
+    # nothing older reached either file
+    assert json.loads((tmp_path / f"ecmwf_{DAY}_d2.json").read_text())["run_init_utc"] == "2026-07-30T18:00:00Z"
+
+
+def test_an_older_rung_that_cannot_hold_the_newer_run_fails_closed(monkeypatch, tmp_path) -> None:
+    # The newer file misses a station this pass asks for, so the older run is
+    # captured -- and refused at the write: the date keeps what it had.
+    run, captured, written = _older_rung_pass(monkeypatch, tmp_path, _station_ids()[:1])
+    with pytest.raises(capture.ContractError, match="archive_would_regress:gefs_"):
+        run()
+    assert captured == ["gefs"]
+    assert f"gefs_{DAY}_d2.json" not in written
