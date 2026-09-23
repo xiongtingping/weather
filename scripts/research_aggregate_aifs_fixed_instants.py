@@ -95,6 +95,7 @@ def main() -> int:
     counts = Counter()
     unseated_drift = 0.0
     pairs = []
+    raw_all = []
     for station, day in keys:
         b_at, b_rec = base[(station, day)]
         w_at, w_rec = with_[(station, day)]
@@ -113,6 +114,15 @@ def main() -> int:
                 counts["hours_scheme_missing"] += 1
                 hour = hour_next
                 continue
+            # The raw view reads no gate table, so it is scored on every hour,
+            # the mismatched ones included -- the check that leaving them out
+            # of the served view did not move the answer.
+            raw_all.append({
+                "station": station, "event_date": day,
+                "lead": horizon((start - hour).total_seconds() / 3600.0),
+                **{f"base_raw_{m}": float(bs["raw"][i]) for i, m in enumerate(paired.METRICS)},
+                **{f"with_raw_{m}": float(ws["raw"][i]) for i, m in enumerate(paired.METRICS)},
+            })
             if (b.get("band_sha"), b.get("cw_sha")) != (w.get("band_sha"), w.get("cw_sha")):
                 counts["hours_gate_table_mismatch"] += 1
                 hour = hour_next
@@ -192,6 +202,20 @@ def main() -> int:
         block["stations_better_with_aifs"] = sum(1 for v in per_station.values() if statistics.fmean(v) < 0)
         block["stations"] = len(per_station)
         report["results"][name] = block
+    if raw_all:
+        day_rows = paired.station_day_means(raw_all)
+        block = {"hours": len(raw_all), "station_days": len(day_rows)}
+        for metric in paired.METRICS:
+            base_mean = statistics.fmean(r[f"base_raw_{metric}"] for r in day_rows)
+            point, low, high = paired.bootstrap(
+                day_rows, lambda r, m=metric: r[f"with_raw_{m}"] - r[f"base_raw_{m}"]
+            )
+            block[f"raw_{metric}"] = {
+                "baseline": round(base_mean, 4), "delta": round(point, 4),
+                "ci95": [round(low, 4), round(high, 4)],
+                "relative": round(point / base_mean, 4) if base_mean else None,
+            }
+        report["results"]["raw_view_every_hour_incl_table_mismatch"] = block
     print(json.dumps(report, indent=1, sort_keys=True))
     return 0
 
