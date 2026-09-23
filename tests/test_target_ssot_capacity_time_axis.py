@@ -318,3 +318,64 @@ def test_a_window_the_process_restarted_inside_yields_no_rate(
     unknown = daemon.target_ssot_capacity_guard(database)
     assert unknown["growth_window_spans_restart"] is False
     assert unknown["growth_bytes_per_day"] == pytest.approx(100_000, rel=0.05)
+
+
+def _wal(tmp_path: Path, size: int) -> None:
+    """A WAL file of the given size, sparse: st_size is all the guard reads."""
+
+    with (tmp_path / "ssot.db-wal").open("wb") as handle:
+        handle.truncate(size)
+
+
+def test_a_wal_the_truncate_is_not_landing_on_is_a_warning(
+    daemon, tmp_path: Path
+) -> None:
+    """2026-09-23: a render held its read snapshot five hours, the WAL went
+    from 64 MB to 14.9 GB, the disk filled -- and this card was green.  From
+    the daemon's own truncate trigger up, the WAL is a warning: the
+    checkpoint it attempts every interval is not landing."""
+
+    database = _database(tmp_path, 4096)
+    _wal(tmp_path, daemon.TARGET_SSOT_WARN_WAL_BYTES)
+    guard = daemon.target_ssot_capacity_guard(database)
+    assert guard["wal_bytes"] == daemon.TARGET_SSOT_WARN_WAL_BYTES
+    assert guard["warn_wal_bytes"] == daemon.TARGET_SSOT_WARN_WAL_BYTES
+    assert "target_wal_bytes_growing" in guard["warnings"]
+    assert guard["violations"] == []
+    assert guard["ok"] is True, "a warning is not an outage"
+    assert guard["state"] == "within_budget_low_headroom"
+
+
+def test_a_wal_past_the_writer_bound_is_a_violation(
+    daemon, tmp_path: Path
+) -> None:
+    """Past MAX_TARGET_WAL_BYTES any writer (re)open fails closed on the
+    truncating checkpoint it cannot take; the card says so in red."""
+
+    database = _database(tmp_path, 4096)
+    _wal(tmp_path, daemon.MAX_TARGET_WAL_BYTES + 1)
+    guard = daemon.target_ssot_capacity_guard(database)
+    assert guard["max_wal_bytes"] == daemon.MAX_TARGET_WAL_BYTES
+    assert "target_wal_bytes_exceeded" in guard["violations"]
+    assert "target_wal_bytes_growing" not in guard["warnings"]
+    assert guard["ok"] is False
+    assert guard["state"] == "blocked_fail_closed"
+
+
+def test_a_wal_under_the_trigger_is_neither(daemon, tmp_path: Path) -> None:
+    database = _database(tmp_path, 4096)
+    _wal(tmp_path, 4096)
+    guard = daemon.target_ssot_capacity_guard(database)
+    assert guard["wal_bytes"] == 4096
+    assert "target_wal_bytes_growing" not in guard["warnings"]
+    assert "target_wal_bytes_exceeded" not in guard["violations"]
+    assert guard["ok"] is True
+
+
+def test_the_warning_line_is_the_maintenance_trigger(daemon) -> None:
+    """One number: a WAL at the line the daemon truncates from, still
+    there, is the daemon saying its own truncate is not landing."""
+
+    source = (ROOT / "scripts" / "weather_basket_yes_daemon.py").read_text(encoding="utf-8")
+    assert ") >= TARGET_SSOT_WARN_WAL_BYTES" in source
+    assert "256 * 1024 * 1024\n                    and now_mono >= next_target_wal_maintenance" not in source

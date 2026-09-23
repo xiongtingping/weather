@@ -18181,13 +18181,23 @@ function healthLamps(){
     const GB = 1e9, days = S.days_to_ceiling;
     const tight = S.remaining_bytes < S.warn_remaining_bytes
       || (days != null && days <= S.warn_days_to_ceiling);
-    L.push(lamp(tight ? "red" : "green", "SSOT 容量",
+    // The WAL is disk the ceiling does not see (2026-09-23): a pinned read
+    // snapshot took it from 64 MB to 14.9 GB in five hours and this lamp
+    // stayed green.  Past the writer's bound any (re)open fails closed.
+    const walHot = (S.violations || []).includes("target_wal_bytes_exceeded");
+    const walWarm = (S.warnings || []).includes("target_wal_bytes_growing");
+    const wal = S.wal_bytes == null ? "" : `WAL ${(S.wal_bytes / GB).toFixed(2)} GB`;
+    L.push(lamp(tight || walHot ? "red" : walWarm ? "amber" : "green", "SSOT 容量",
       `剩 ${(S.remaining_bytes / GB).toFixed(1)} GB · ${
-        days == null ? "速率待测" : days.toFixed(0) + " 天"}`,
+        days == null ? "速率待测" : days.toFixed(0) + " 天"}`
+      + (walHot || walWarm ? ` · ${wal}` : ""),
       `上限 ${(S.max_database_bytes / GB).toFixed(1)} GB · 已用 ${
         (100 * S.database_bytes / S.max_database_bytes).toFixed(1)}%`
+      + (wal ? ` · ${wal}` : "")
       + (S.largest_table ? ` · 增得最快的表是 ${S.largest_table}` : "")
-      + " · 撞顶＝每个写者 fail-close，整条链路当场停"));
+      + " · 撞顶＝每个写者 fail-close，整条链路当场停"
+      + (walHot ? " · WAL 超过写者上限＝写者重开当场 fail-close；截不掉＝有读者钉着快照"
+         : walWarm ? " · WAL 超过截断线＝常驻每轮的 TRUNCATE 没落地，有读者钉着快照" : "")));
   } else {
     L.push(lamp("amber", "SSOT 容量", "读不出", S.reason || ""));
   }

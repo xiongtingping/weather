@@ -174,3 +174,31 @@ def test_the_reading_reaches_the_head_lamp():
     # since 2026-09-17: the walk is a 397s pass over the store's blobs and
     # a 45-minute TTL rebuilt it on nearly every 30-minute render.
     assert '"ssot_capacity": 6 * 60 * 60,' in page
+
+
+def test_the_wal_reaches_the_lamp(tmp_path, monkeypatch):
+    """2026-09-23: the WAL is disk the ceiling never saw.  The guard now
+    carries it; the collector must pass it through untouched and the head
+    lamp must read the guard's own verdicts rather than re-derive them."""
+
+    from datetime import datetime, timezone
+
+    monkeypatch.setattr(
+        C, "_now", lambda: datetime(2026, 9, 23, 12, 0, tzinfo=timezone.utc)
+    )
+    guard = dict(GUARD, wal_bytes=14_865_433_832, warn_wal_bytes=268_435_456,
+                 max_wal_bytes=536_870_912, state="blocked_fail_closed",
+                 violations=["target_wal_bytes_exceeded"], warnings=[])
+    status = tmp_path / "status.json"
+    status.write_text(json.dumps({"target_ssot_capacity": guard}), encoding="utf-8")
+    monkeypatch.setattr(C, "STATUS_JSON", status)
+    conn = sqlite3.connect(":memory:")
+    section = C.collect_ssot_capacity(conn)
+    assert section["wal_bytes"] == 14_865_433_832
+    assert section["violations"] == ["target_wal_bytes_exceeded"]
+    assert section["max_wal_bytes"] == 536_870_912
+
+    page = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
+    assert 'includes("target_wal_bytes_exceeded")' in page
+    assert 'includes("target_wal_bytes_growing")' in page
+    assert "S.wal_bytes" in page

@@ -673,6 +673,38 @@ def test_a_transient_resource_bound_at_writer_open_is_recoverable() -> None:
         }), code
 
 
+def test_a_store_that_becomes_ready_after_the_open_is_recoverable() -> None:
+    """A table a lane installs after the writer opened must not need a restart.
+
+    2026-09-23 (user ruling 「加」): a restart at 13:17Z loaded another
+    session's mid-edit ``ssot.py``, which listed
+    ``calibration_native_ensemble_certificate_renewal`` among the required
+    tables before the lane that creates it had run.  The lane created it
+    minutes later; the writer, opened once before the loop, published
+    ``target_writer_schema_not_ready`` for seventeen minutes while the store
+    answered ``ok`` to a direct probe, until a second restart.
+    """
+
+    payload = (
+        '{"missing_tables": ["calibration_native_ensemble_certificate_renewal"],'
+        ' "ok": false}'
+    )
+    for prefix in ("target_writer_open_failed", "target_writer_reopen_failed"):
+        assert daemon.target_result_has_recoverable_sqlite_io_error({
+            "reason": f"{prefix}:RuntimeError:target_writer_schema_not_ready:{payload}",
+        }), prefix
+    # The same refusal buried one level down is still the writer's open.
+    assert daemon.target_result_has_recoverable_sqlite_io_error({
+        "market_ingress": {
+            "reason": "target_writer_open_failed:RuntimeError:target_writer_schema_not_ready:{}",
+        },
+    })
+    # A store that is not in WAL mode is a misconfiguration, not a wait.
+    assert not daemon.target_result_has_recoverable_sqlite_io_error({
+        "reason": "target_writer_open_failed:RuntimeError:target_writer_journal_mode_not_wal:delete",
+    })
+
+
 def test_a_misconfigured_writer_target_is_not_retried_away() -> None:
     """Pointing the target lane at the shared live database is never transient.
 

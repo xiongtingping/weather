@@ -134,6 +134,7 @@ from bayes_basket_target.production_worker import (
 )
 from bayes_basket_target.resource_bounds import (
     MAX_TARGET_DB_BYTES,
+    MAX_TARGET_WAL_BYTES,
     assert_connection_target_capacity,
     load_bounded_json,
 )
@@ -224,6 +225,22 @@ TARGET_RESOURCE_REOPEN_REASONS = (
     "target_database_min_free_space_guard",
     "target_database_wal_bytes_exceeded",
     "target_database_bytes_exceeded",
+)
+# A store that was not ready when the writer opened and became ready later
+# is the same shape as a resource bound that cleared (user ruling 2026-09-23
+# 「加」).  That day a restart at 13:17Z loaded another session's mid-edit
+# ``ssot.py``, which had put ``calibration_native_ensemble_certificate_
+# renewal`` among the required tables before the lane that installs it had
+# run.  The lane created the table minutes later; the writer, opened once
+# before the loop, stayed ``target_writer_schema_not_ready`` for seventeen
+# minutes -- the store answering ``ok`` to a direct status probe the whole
+# time -- until a second restart.  Retrying costs one schema-status
+# recompute per cycle while the store stays unready, and keeps the same
+# reason on the status file, which is the right price.  A store that is not
+# in WAL mode, or that is the shared live database, is a misconfiguration
+# and is deliberately not here.
+TARGET_SCHEMA_REOPEN_REASONS = (
+    "target_writer_schema_not_ready",
 )
 TARGET_TAF_POLL_INTERVAL_SEC = 60.0
 # How long one TAF round may hold the shared writer turn.
@@ -1683,6 +1700,10 @@ WARN_ARCHIVE_WAL_BYTES = 64 * 1024 * 1024
 # enough to prune or raise the limit deliberately rather than discovering it
 # from a pipeline that has already stopped writing.
 TARGET_SSOT_WARN_REMAINING_BYTES = 1024 * 1024 * 1024
+# The WAL line the capacity card warns from, and the line the daemon's own
+# truncating checkpoint is attempted from -- one number, because a WAL at
+# or past it means that attempt is not landing (some reader holds it).
+TARGET_SSOT_WARN_WAL_BYTES = 256 * 1024 * 1024
 # The cash-phase authority window lapsed at 2026-08-23T00:00:00Z and took the
 # whole opening chain with it, silently: the resolver's own error names a
 # duplicate, the ingress reported it as a market fault, and nothing counted
@@ -1840,7 +1861,8 @@ def target_result_has_recoverable_sqlite_io_error(
         # in the cycle ever retries it.  Only the transient bounds qualify;
         # see TARGET_RESOURCE_REOPEN_REASONS.
         if "open_failed" in reason and any(
-            marker in reason for marker in TARGET_RESOURCE_REOPEN_REASONS
+            marker in reason
+            for marker in TARGET_RESOURCE_REOPEN_REASONS + TARGET_SCHEMA_REOPEN_REASONS
         ):
             return True
     return False
@@ -2160,6 +2182,19 @@ def target_ssot_capacity_guard(db_path: Path) -> dict[str, Any]:
         violations.append("target_database_bytes_exceeded")
     elif remaining < TARGET_SSOT_WARN_REMAINING_BYTES:
         warnings.append("target_database_headroom_low")
+    # The WAL is disk the ceiling above does not see (2026-09-23, user
+    # ruling 「加」): a render held its read snapshot for five hours, the WAL
+    # grew from its 64 MB limit to 14.9 GB, the disk filled to 285 MiB and
+    # the fleet stopped -- and this card read within_budget the whole way,
+    # because it measured the file the ceiling gates and nothing else.  Past
+    # ``MAX_TARGET_WAL_BYTES`` any writer (re)open fails closed on the
+    # truncating checkpoint it cannot take, so that is a violation; from the
+    # maintenance trigger up it is a warning that the truncate this daemon
+    # attempts every interval is not landing.
+    if wal_bytes > MAX_TARGET_WAL_BYTES:
+        violations.append("target_wal_bytes_exceeded")
+    elif wal_bytes >= TARGET_SSOT_WARN_WAL_BYTES:
+        warnings.append("target_wal_bytes_growing")
     growth = _target_ssot_growth(
         db_bytes,
         live_bytes=live_bytes,
@@ -2187,6 +2222,8 @@ def target_ssot_capacity_guard(db_path: Path) -> dict[str, Any]:
         "remaining_bytes": remaining,
         "warn_remaining_bytes": TARGET_SSOT_WARN_REMAINING_BYTES,
         "wal_bytes": wal_bytes,
+        "warn_wal_bytes": TARGET_SSOT_WARN_WAL_BYTES,
+        "max_wal_bytes": MAX_TARGET_WAL_BYTES,
         **growth,
         "warn_days_to_ceiling": TARGET_SSOT_WARN_DAYS_TO_CEILING,
         "violations": violations,
@@ -6291,7 +6328,7 @@ def main() -> int:
                     int(
                         (state.get("target_ssot_capacity") or {})
                         .get("wal_bytes") or 0
-                    ) >= 256 * 1024 * 1024
+                    ) >= TARGET_SSOT_WARN_WAL_BYTES
                     and now_mono >= next_target_wal_maintenance
                     and production_future is None
                     and not writer_excluding_sweeps(hosted_sweep_futures)
