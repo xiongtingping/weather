@@ -11861,6 +11861,154 @@ def collect_p1_tail_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     return out
 
 
+def collect_p1_consensus_lane(conn: sqlite3.Connection) -> dict[str, Any]:
+    """P1 共识线 -- the consensus lane's own statistics (charter 203).
+
+    User ruling 2026-09-23 「前端增加新上的策略线的显式」.  Read from where the
+    lane writes: its switch and dials from the operator file, every P1
+    decision it judged inside the 6-10 h window from
+    ``p1_consensus_lane_evaluation`` (fired or not, the four centres on the
+    row), and its trades from the live book restricted to its own decision
+    rows.
+
+    Two readings exist only here: how often the four centres agreed at all
+    (the rule's own base rate, the denominator of every "fired"), and the
+    overlap with the tiebreak lane -- the user ruled 「照买，不避让」, so the
+    page says how often this lane bought a bucket the tiebreak lane already
+    held, and how often a different one.
+    """
+
+    lanes = _load_strategy_lanes()
+    cfg = lanes["lanes"].get("p1_consensus") or {}
+    out: dict[str, Any] = {
+        "available": True,
+        "settings": {
+            "enabled": cfg.get("enabled") is True,
+            "stake_usdc": cfg.get("stake_usdc"),
+            "rule": cfg.get("rule"),
+            "min_remaining_hours": cfg.get("min_remaining_hours"),
+            "max_remaining_hours": cfg.get("max_remaining_hours"),
+            "min_ask": cfg.get("min_ask"),
+            "max_ask": cfg.get("max_ask"),
+            "max_paid_price": cfg.get("max_paid_price"),
+            "fact_fresh_seconds": cfg.get("fact_fresh_seconds"),
+            "max_buys_per_station_day": cfg.get("max_buys_per_station_day"),
+            "source": lanes.get("source"),
+            "updated_at_utc": lanes.get("updated_at_utc"),
+        },
+        "evaluations": {"available": False},
+        "trades": {"available": False},
+    }
+    table = "p1_consensus_lane_evaluation"
+    has_eval = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone() is not None
+    if has_eval:
+        total, four, fired, sent, days, first_at, last_at = conn.execute(
+            "SELECT COUNT(*), COALESCE(SUM(four_same),0), COALESCE(SUM(fired),0),"
+            " SUM(CASE WHEN order_intent_id IS NOT NULL THEN 1 ELSE 0 END),"
+            f" COUNT(DISTINCT event_date), MIN(evaluated_at_utc), MAX(evaluated_at_utc) FROM {table}"
+        ).fetchone()
+        refusals = [
+            {"refusal": str(r[0] or "sent"), "count": int(r[1]), "fired": int(r[2] or 0)}
+            for r in conn.execute(
+                f"SELECT COALESCE(refusal,''), COUNT(*), SUM(fired) FROM {table}"
+                " GROUP BY COALESCE(refusal,'') ORDER BY COUNT(*) DESC LIMIT 14"
+            )
+        ]
+        fired_rows = [
+            {
+                "station_id": r[0], "event_date": r[1], "decision_at_utc": r[2],
+                "remaining_hours": r[3], "bucket": r[4], "best_ask": r[5],
+                "best_bid": r[6], "market_share": r[7], "model_share": r[8],
+                "held_buckets": r[9], "open_order_lane": r[10],
+                "open_order_bucket": r[11], "station_day_buys": r[12],
+                "refusal": r[13], "order_intent_id": r[14], "fact_age_seconds": r[15],
+            }
+            for r in conn.execute(
+                "SELECT station_id, event_date, decision_at_utc, remaining_hours, market_mode,"
+                " best_ask, best_bid, market_share, model_share, held_buckets, open_order_lane,"
+                " open_order_bucket, station_day_buys, refusal, order_intent_id, fact_age_seconds"
+                f" FROM {table} WHERE fired=1 ORDER BY evaluated_at_utc DESC LIMIT 40"
+            )
+        ]
+        overlap_same = overlap_other = overlap_open = 0
+        for r in conn.execute(
+            f"SELECT market_mode, held_buckets, open_order_lane FROM {table}"
+            " WHERE fired=1 AND order_intent_id IS NOT NULL"
+        ):
+            held = {b for b in str(r[1] or "").split(",") if b}
+            if held and str(r[0]) in held:
+                overlap_same += 1
+            elif held:
+                overlap_other += 1
+            if r[2]:
+                overlap_open += 1
+        by_day = [
+            {"event_date": r[0], "evaluated": int(r[1]), "four_same": int(r[2] or 0),
+             "fired": int(r[3] or 0), "sent": int(r[4] or 0)}
+            for r in conn.execute(
+                "SELECT event_date, COUNT(*), SUM(four_same), SUM(fired),"
+                " SUM(CASE WHEN order_intent_id IS NOT NULL THEN 1 ELSE 0 END)"
+                f" FROM {table} GROUP BY event_date ORDER BY event_date DESC LIMIT 21"
+            )
+        ]
+        out["evaluations"] = {
+            "available": True, "total": int(total or 0), "four_same": int(four or 0),
+            "fired": int(fired or 0), "sent": int(sent or 0), "event_days": int(days or 0),
+            "first_at_utc": first_at, "last_at_utc": last_at, "refusals": refusals,
+            "fired_rows": fired_rows, "by_day": by_day,
+            "overlap_tiebreak_same_bucket": overlap_same,
+            "overlap_tiebreak_other_bucket": overlap_other,
+            "overlap_open_order": overlap_open,
+        }
+    book = live_book.build(conn)
+    settled = book.get("settled") or {}
+    trades: list[dict[str, Any]] = []
+    for leg in book.get("legs") or []:
+        if not str(leg.get("decision_id") or "").startswith("p1_consensus_decision_"):
+            continue
+        landed = settled.get((leg["station_id"], leg["event_date"]))
+        filled = float(leg.get("filled_size") or 0.0)
+        notional = float(leg.get("filled_notional_usdc") or 0.0)
+        hit = (landed[0] == leg["bucket"]) if (landed and filled > 0) else None
+        payout = filled if hit else (0.0 if hit is False else None)
+        trades.append({
+            "order_intent_id": leg.get("order_intent_id"),
+            "station_id": leg["station_id"], "event_date": leg["event_date"],
+            "bucket": leg["bucket"], "limit_price": leg.get("limit_price"),
+            "filled_size": filled, "filled_notional_usdc": notional,
+            "ask_paid": (notional / filled) if filled > 0 else None,
+            "state": leg.get("state"), "created_at": leg.get("created_at"),
+            "settled_bucket": landed[0] if landed else None,
+            "hit": hit, "payout_usdc": payout,
+            "pnl_usdc": (payout - notional) if payout is not None else None,
+        })
+    trades.sort(key=lambda t: (t["event_date"], t["station_id"], str(t["created_at"] or "")), reverse=True)
+    settled_rows = [t for t in trades if t["filled_size"] > 0 and t["hit"] is not None]
+    stake_sum = sum(t["filled_notional_usdc"] for t in settled_rows)
+    payout_sum = sum(t["payout_usdc"] or 0.0 for t in settled_rows)
+    shares = sum(t["filled_size"] for t in settled_rows)
+    hits = sum(1 for t in settled_rows if t["hit"])
+    out["trades"] = {
+        "available": True,
+        "rows": trades[:40],
+        "count": len(trades),
+        "filled": sum(1 for t in trades if t["filled_size"] > 0),
+        "open": sum(1 for t in trades if t["filled_size"] > 0 and t["hit"] is None),
+        "settled": len(settled_rows),
+        "event_days": len({t["event_date"] for t in settled_rows}),
+        "stake_usdc": stake_sum,
+        "payout_usdc": payout_sum,
+        "pnl_usdc": payout_sum - stake_sum,
+        "pnl_per_dollar": ((payout_sum - stake_sum) / stake_sum) if stake_sum > 0 else None,
+        "avg_ask": (stake_sum / shares) if shares > 0 else None,
+        "hits": hits,
+        "hit_rate": (hits / len(settled_rows)) if settled_rows else None,
+    }
+    return out
+
+
 def collect_convergence_claim(conn: sqlite3.Connection) -> dict[str, Any]:
     """Arm B (2026-09-06): the convergence claim lift, in shadow.
 
@@ -14937,6 +15085,10 @@ SECTION_CACHE_TTL_SEC = {
     # it moves every production cycle.  Half a minute off the tiebreak
     # lane's so the two do not expire on the same render.
     "p1_tail_lane": 4 * 60 + 30,
+    # P1 共识线 (charter 203): the same shape -- one small table and the live
+    # book; it judges every P1 decision in the 6-10h window, so it moves every
+    # production cycle.  Offset from the other two lanes'.
+    "p1_consensus_lane": 5 * 60 + 15,
     # Three populations of settled decisions with their books (~60s on the
     # 45GB store); every row is a settled station-day, so the reading moves
     # once a day when the truth lands.
@@ -15420,6 +15572,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         ),
         "p1_tail_lane": _cached_section(
             "p1_tail_lane", collect_p1_tail_lane, conn
+        ),
+        "p1_consensus_lane": _cached_section(
+            "p1_consensus_lane", collect_p1_consensus_lane, conn
         ),
         "stages": stages,
         "band_shadow": band_shadow,
@@ -21023,7 +21178,13 @@ const MONEY_BOARD = [
      // scored, and what the five-minute window cost it.
      ["p1tail", "P1 尾段线 · 宪章 166",
       () => p1TailLane(),
-      "sec-p1-tail"]]},
+      "sec-p1-tail"],
+     // Charter 203: the consensus lane's own page -- its dials, every P1
+     // decision it judged in the window, the overlap with the tiebreak lane
+     // it does not yield to, and its trades on their own.
+     ["p1consensus", "P1 共识线 · 宪章 203",
+      () => p1ConsensusLane(),
+      "sec-p1-consensus"]]},
 ];
 
 // Both live blocks read the live-readiness payload, which is absent when the
@@ -21098,6 +21259,69 @@ function p1TailLane(){
     `<div class="card"><b>最接近门槛但没触发的</b><div class="muted">门槛要不要动，看的是这张表，不是已经成交的那几笔。</div>${nearMiss}</div>`+
     `<div class="card"><b>拒因</b><table class="tight"><thead><tr><th>原因</th><th>次数</th><th>其中已触发</th></tr></thead><tbody>${refusals}</tbody></table></div>`+
     `<div class="card"><b>按事件日</b><table class="tight"><thead><tr><th>事件日</th><th>打分</th><th>触发</th><th>送出</th></tr></thead><tbody>${days}</tbody></table></div>`+
+    `<div class="card"><b>成交</b>${tradeTable}</div>`;
+}
+
+// 「P1 共识线」(charter 203): on a P1 decision 6-10h from the settlement
+// clock where the model's and the market's mode and mean buckets are one
+// bucket, and that bucket is sold at 0.50-0.70, cross at the ask -- on every
+// such decision.  Its own page for the same reason the other two lanes have
+// one: a rule's trades averaged with another rule's are a number about neither.
+function p1ConsensusLane(){
+  const T=D.p1_consensus_lane||{};
+  if(!T.available) return `<div class="muted">P1 共识线读数这一轮没有生成。</div>`;
+  const S=T.settings||{}, E=T.evaluations||{}, R=T.trades||{};
+  const usd=v=>v==null?"—":((v<0?"−":"")+"$"+Math.abs(+v).toFixed(2));
+  const pc=v=>v==null?"—":(Math.round(+v*1000)/10)+"%";
+  const sp=v=>v==null?"—":((v>=0?"+":"−")+Math.abs(Math.round(+v*1000)/10)+"点");
+  const n2=v=>v==null?"—":(+v).toFixed(2);
+  const secs=v=>v==null?"—":(Math.round(+v)+"s");
+  const tile=(label,val,sub)=>`<div class="card"><div class="muted">${label}</div>
+    <div style="font-size:20px;font-weight:600">${val}</div>
+    <div class="muted" style="font-size:12px">${sub||""}</div></div>`;
+  const head=`<div class="card"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <b>P1 共识线</b>
+      <span class="pill ${S.enabled?"green":"amber"}">车道：${S.enabled?"运行":"暂停"}</span>
+      <span class="pill">每笔 ${usd(S.stake_usdc)}</span>
+      <span class="pill">窗口 剩 ${n2(S.min_remaining_hours)}–${n2(S.max_remaining_hours)}h</span>
+      <span class="pill">卖一 ${n2(S.min_ask)}–${n2(S.max_ask)}</span>
+      <span class="pill">实付 ≤ ${n2(S.max_paid_price)}</span>
+      <span class="pill">每站日 ≤ ${S.max_buys_per_station_day==null?"—":S.max_buys_per_station_day} 笔</span>
+      <span class="pill">事实新鲜窗 ${secs(S.fact_fresh_seconds)}</span>
+      <span class="muted">${h(S.rule||"")}</span>
+    </div>
+    <div class="muted" style="margin-top:6px">规则：每个 P1 决策，若离本站结算时钟还有 6–10 小时（当地约下午两点到六点），且<b>模型众数桶＝模型均值桶＝市场众数桶＝市场均值桶</b>（两边在共同桶上归一，均值桶取 Σ概率×序号 四舍五入的那一档），这一桶的卖一又在 ${n2(S.min_ask)}–${n2(S.max_ask)} 之间——就按卖一 FOK 吃进 ${usd(S.stake_usdc)}（限价多走一跳）。<b>每个满足条件的决策都买</b>，同一桶可以重复买，每站日最多 ${S.max_buys_per_station_day==null?"—":S.max_buys_per_station_day} 笔；与秤砣线<b>互不避让</b>（2026-09-23 裁决「照买，不避让」）。<br>
+    依据（2026-09-23 只读回放 07-28→09-22，按决策提交后第一份盘口、每笔 20U）：117 笔 / 90 站日 / 33 个事件日，命中 71.8%，卖一均价 0.627，ROI +15.3%（90% 区间 +4.8% 到 +25.3%）；前半 +34.8%、后半 +10.2%；09-20 以后 27 笔 +10.6%；延后 15 分钟再买仍 +12.2%——不是抢时间的交易。<br>
+    <b>诚实边界</b>：这一格是切片搜出来的（四同 → 6–10 小时 → 价带 → 每次都买），最窄的祖先格经多重比较 p=0.054；真正的前向只有 3 个事件日。所以小额上线，窗口内每个决策——买没买都记——落在评估表里，前向再读。</div></div>`;
+  const tiles=`<div class="grid">
+    ${tile("窗口内判过的决策", E.available?E.total:"—", `${E.event_days||0} 个事件日 · 最近 ${h((E.last_at_utc||"").slice(5,16).replace("T"," "))}Z`)}
+    ${tile("四中心同桶", E.available?E.four_same:"—", `占 ${E.total?pc(E.four_same/E.total):"—"} · 其中价带内触发 ${E.fired||0}`)}
+    ${tile("送出 / 成交", `${E.available?E.sent:"—"} / ${R.available?R.filled:"—"}`, `在途 ${R.open||0} · 已结算 ${R.settled||0}`)}
+    ${tile("命中 / 实付均价", R.available&&R.settled?`${pc(R.hit_rate)} / ${n2(R.avg_ask)}`:"—", `命中 ${R.hits||0} / ${R.settled||0}`)}
+    ${tile("盈亏 / 每美元", R.available&&R.settled?`${usd(R.pnl_usdc)} / ${R.pnl_per_dollar==null?"—":((R.pnl_per_dollar>=0?"+":"−")+Math.abs(R.pnl_per_dollar*100).toFixed(1)+"%")}`:"—", `投入 ${usd(R.stake_usdc)} → 赔付 ${usd(R.payout_usdc)}`)}
+    ${tile("与秤砣线重叠", E.available?`${E.overlap_tiebreak_same_bucket||0} / ${E.overlap_tiebreak_other_bucket||0}`:"—", `送出时秤砣已持同桶 / 已持别的桶 · 撞挂单 ${E.overlap_open_order||0}`)}
+  </div>`;
+  const rows=(E.fired_rows||[]).map(r=>`<tr><td>${h(r.station_id)}</td><td>${h(r.event_date)}</td><td>${h((r.decision_at_utc||"").slice(11,16))}Z</td>
+      <td>${n2(r.remaining_hours)}h</td><td>${h(r.bucket||"")}</td><td>${n2(r.best_ask)}</td><td>${pc(r.market_share)}</td><td>${pc(r.model_share)}</td>
+      <td>${r.station_day_buys==null?"—":r.station_day_buys}</td><td>${h(r.held_buckets||"—")}</td><td>${r.open_order_lane?h(r.open_order_lane+":"+(r.open_order_bucket||"")):"—"}</td>
+      <td>${r.refusal?`<span class="muted">${h(r.refusal)}</span>`:"已送出"}</td></tr>`).join("");
+  const fired=rows?`<table class="tight"><thead><tr><th>站</th><th>事件日</th><th>决策</th><th>剩余</th><th>桶</th><th>卖一</th>
+      <th>市场给它</th><th>模型给它</th><th>此前本线笔数</th><th>当时持仓桶</th><th>当时挂单</th><th>结果</th></tr></thead>
+      <tbody>${rows}</tbody></table>`:`<div class="muted">还没有触发过。</div>`;
+  const refusals=(E.refusals||[]).map(r=>`<tr><td class="mono">${h(r.refusal)}</td><td>${r.count}</td><td>${r.fired}</td></tr>`).join("");
+  const days=(E.by_day||[]).map(r=>`<tr><td>${h(r.event_date)}</td><td>${r.evaluated}</td><td>${r.four_same}</td><td>${r.fired}</td><td>${r.sent}</td></tr>`).join("");
+  const trades=(R.rows||[]).map(r=>`<tr><td>${h(r.station_id)}</td><td>${h(r.event_date)}</td><td>${h(r.bucket)}</td>
+      <td>${n2(r.limit_price)}</td><td>${n2(r.filled_size)}</td><td>${n2(r.ask_paid)}</td>
+      <td>${h(r.settled_bucket||"—")}</td><td>${r.hit==null?"—":(r.hit?"中":"未中")}</td><td>${usd(r.pnl_usdc)}</td>
+      <td class="muted">${h(r.state||"")}</td></tr>`).join("");
+  const tradeTable=trades?`<table class="tight"><thead><tr><th>站</th><th>事件日</th><th>桶</th><th>限价</th>
+      <th>成交股</th><th>实付</th><th>结算桶</th><th>命中</th><th>盈亏</th><th>状态</th></tr></thead>
+      <tbody>${trades}</tbody></table>`:`<div class="muted">还没有成交。</div>`;
+  const pending=E.available&&!E.total?`<div class="card muted">评估表已建立，但窗口内还没有新的 P1 决策事实可判——决策层写出事实之后才会有行。</div>`:"";
+  return head+tiles+pending+
+    `<div class="card"><b>触发的决策</b><div class="muted">每一行是一个 P1 决策：四个中心同桶、卖一在价带内。右边三列是送出那一刻本线在这个站日已买的笔数、账户在这个站日持有哪些桶（秤砣线的也在内）、以及挂着的买单——本线不因它们停手，只记下来。</div>${fired}</div>`+
+    `<div class="card"><b>结果分布</b><div class="muted">rule_not_met:centres_split 是四个中心不同桶；rule_not_met:ask_outside_band 是同桶但卖一不在价带；fact_stale 是事实到手时已超出新鲜窗；send_book_stale 是盘口太旧不下单；station_day_buy_cap 是本站日已买满；send:* 是 FOK 没成交。空白（sent）是已送出。</div><table class="tight"><thead><tr><th>结果</th><th>次数</th><th>其中已触发</th></tr></thead><tbody>${refusals}</tbody></table></div>`+
+    `<div class="card"><b>按事件日</b><table class="tight"><thead><tr><th>事件日</th><th>判过</th><th>四同</th><th>触发</th><th>送出</th></tr></thead><tbody>${days}</tbody></table></div>`+
     `<div class="card"><b>成交</b>${tradeTable}</div>`;
 }
 

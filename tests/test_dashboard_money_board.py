@@ -108,6 +108,8 @@ def test_one_live_category_with_the_data_board_over_the_orders():
         ("live", "tiebreak", True),
         # Charter 166: the tail lane's own page, beside the tiebreak lane's.
         ("live", "p1tail", True),
+        # Charter 203: the consensus lane's own page, after the other two.
+        ("live", "p1consensus", True),
     ]
     assert 'data-daytabs="money-paper"' not in html
     for label in ("实盘", "实盘 · 数据看板与站明细", "实盘意向簿"):

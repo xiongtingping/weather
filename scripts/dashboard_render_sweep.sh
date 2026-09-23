@@ -32,7 +32,16 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] dashboard render (standalone reader)"
 # resident runs on, for a quarter of every hour, and the resident's decision
 # cycles are what the page exists to show.  A niced render yields the cores
 # to them and takes what is left.
-nice -n 10 "$PY" scripts/calibration_dashboard.py --html-out tmp/cal_dashboard.html
+#
+# ... and the DISK, which ``nice`` does not touch (2026-09-23).  On an 8 GB
+# machine with 14 GB in swap the store's file cache was down to ~740 MB, so
+# every read went to disk; the render (0.9 GB resident, 45 min to 2 h a run
+# from 01:34Z, i.e. running continuously) was 40-50% of the disk's traffic
+# (233-403 MB/s with it, 168-197 MB/s paused), and the resident's cycle went
+# from 70-130 s to 1-2 h -- one decision round an hour, P1 facts starved.
+# ``taskpolicy -b`` puts the render in Darwin background priority: its CPU
+# AND its disk I/O are throttled whenever anyone else wants them.
+taskpolicy -b nice -n 10 "$PY" scripts/calibration_dashboard.py --html-out tmp/cal_dashboard.html
 # A render draws with the template it imported at start, and one of these
 # takes twenty minutes to an hour and a half.  A template edit that lands
 # while it runs is therefore overwritten when it writes the page -- and the
