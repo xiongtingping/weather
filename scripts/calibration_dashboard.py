@@ -2439,6 +2439,397 @@ def collect_metar_board(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+
+# ---------------------------------------------------------------------------
+# 降水分类评分 (user, 2026-09-23: 「增加：降水分类评分」).
+#
+# Six scores off one 2×2 contingency table: every forecast-observation pair
+# is classed wet or dry at 1.0 mm.  The forecast is the day's precipitation
+# sum the physics table captured from Open-Meteo -- an aggregator
+# republisher, a reference covariate only, the same row the radiation term
+# reads -- resolved as-of a cut the way the radiation term resolves its own
+# value (bayes_basket_target.forecast_physics_asof).  The observation is the
+# official METAR/SPECI of the station's local day, off the archive.
+#
+# Two observation readings, kept apart and never pooled, because the report
+# carries an amount only in the United States.  An ASOS hourly METAR reports
+# the past hour's precipitation in hundredths of an inch in its remarks
+# (``P0012``; ``P0000`` is a trace; absent means none fell), and the hours add
+# up to the day, so those eleven stations get the 1.0 mm gate on both sides.
+# Everywhere else the present-weather group says whether it was raining at
+# observation time and nothing about how much, so the other thirty-four get a
+# presence reading -- wet if any report of the day carries precipitation --
+# against a forecast still gated at 1.0 mm.  A presence day and a millimetre
+# day are not the same fact, so each has its own card.
+#
+# A reading, not a rule: nothing downstream reads it.
+PRECIP_WET_THRESHOLD_MM = 1.0
+# Hours of the local day that have to carry an hourly METAR before the day
+# is paired: with fewer, an hourly amount is a lower bound and a presence
+# reading can miss a shower between two reports.
+PRECIP_COVERAGE_MIN_HOURS = 22
+# A station whose METARs carry the automated-station remark (``AO1``/``AO2``/``AO2A``)
+# on at least this share of them is read as ASOS: on such a station an
+# absent P group means zero, not unknown.
+PRECIP_ASOS_REMARK_SHARE = 0.9
+PRECIP_INCH_HUNDREDTH_MM = 0.254
+# Each lead is an as-of cut on the physics version table: the latest forward
+# capture at or before it.  The version table began keeping forward captures
+# on 2026-09-21; before that a day's row was rewritten until the evening of
+# the day, so the earlier leads fill in from that date on.
+PRECIP_LEADS = (
+    ("same_day", "当天内",
+     "当地日结束前的最后一次前向捕获（多为当天 12Z 那一轮）"),
+    ("d1", "提前 1 天", "当地日开始前的最后一次前向捕获"),
+    ("d2", "提前 2 天", "当地日开始前 24 小时之前的最后一次前向捕获"),
+    ("d3", "提前 3 天", "当地日开始前 48 小时之前的最后一次前向捕获"),
+    ("after", "事后取回",
+     "当地日结束后才取回的短提前量存档（历史预报接口，或日子过完才捕获的前向行）；"
+     "不是任何决策时刻的 as-of 值"),
+)
+_PRECIP_HOURLY_GROUP = re.compile(r"(?<![A-Z0-9])P(\d{4})(?![A-Z0-9])")
+_PRECIP_PRESENT_TOKEN = re.compile(
+    # Falling precipitation only: SH/TS/FZ are the descriptors that go with
+    # a precipitation type; BLSN and DRSN are snow lifted off the ground.
+    r"^[-+]?(?:SH|TS|FZ)?(?:DZ|RA|SN|SG|IC|PL|GR|GS|UP)+$"
+)
+_PRECIP_BODY_STOP = frozenset({"RMK", "BECMG", "TEMPO", "NOSIG"})
+# ``AO2A`` is the augmented form the military fields file (KBKF: 399 of
+# its last 400 METARs).
+_PRECIP_ASOS_REMARK = re.compile(r"(?<![A-Z0-9])AO[12]A?(?![A-Z0-9])")
+
+
+def metar_precipitation_reading(raw: str) -> dict[str, Any]:
+    """What one METAR/SPECI says about precipitation.
+
+    ``present`` reads the present-weather groups of the body -- a
+    precipitation type, optionally with intensity and a descriptor -- and
+    stops at the remarks and at the trend groups (a ``TEMPO SHRA`` is a
+    forecast, not an observation).  Vicinity (``VCSH``) and recent (``RERA``)
+    weather are not precipitation at the station at observation time and do
+    not count.  ``hourly_mm`` is the remarks' ``Pxxxx`` group -- the past
+    hour's precipitation in hundredths of an inch -- as millimetres, or None
+    when the report carries no such group.  ``asos`` is whether the remarks
+    carry the automated-station code ``AO1``/``AO2`` (or ``AO2A``).
+    """
+
+    body, _sep, remarks = str(raw or "").partition(" RMK ")
+    present = False
+    for token in body.split():
+        if token in _PRECIP_BODY_STOP:
+            break
+        if _PRECIP_PRESENT_TOKEN.fullmatch(token):
+            present = True
+            break
+    hourly = None
+    if remarks:
+        groups = _PRECIP_HOURLY_GROUP.findall(remarks)
+        if groups:
+            hourly = int(groups[-1]) * PRECIP_INCH_HUNDREDTH_MM
+    return {
+        "present": present,
+        "hourly_mm": hourly,
+        "asos": bool(remarks) and _PRECIP_ASOS_REMARK.search(remarks) is not None,
+    }
+
+
+def precip_classification_scores(
+    a: int, b: int, c: int, d: int
+) -> dict[str, float | int | None]:
+    """The six scores of a 2×2 table: ``a`` hits, ``b`` misses, ``c`` false
+    alarms, ``d`` correct negatives.  A score whose denominator is zero is
+    None rather than a number."""
+
+    def ratio(num: float, den: float) -> float | None:
+        return (num / den) if den else None
+
+    n = a + b + c + d
+    a_r = ((a + b) * (a + c) / n) if n else None
+    return {
+        "n": n,
+        "pod": ratio(a, a + b),
+        "far": ratio(c, a + c),
+        "csi": ratio(a, a + b + c),
+        "ets": ratio(a - a_r, a + b + c - a_r) if a_r is not None else None,
+        "hss": ratio(2 * (a * d - b * c), (a + b) * (b + d) + (a + c) * (c + d)),
+        "bias": ratio(a + c, a + b),
+    }
+
+
+def _precip_contingency(pairs: Sequence[tuple[bool, bool]]) -> dict[str, Any]:
+    a = b = c = d = 0
+    for forecast_wet, observed_wet in pairs:
+        if forecast_wet and observed_wet:
+            a += 1
+        elif observed_wet:
+            b += 1
+        elif forecast_wet:
+            c += 1
+        else:
+            d += 1
+    return {"a": a, "b": b, "c": c, "d": d, **precip_classification_scores(a, b, c, d)}
+
+
+def _precip_instant(value: Any) -> datetime | None:
+    text = str(value or "")
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _precip_forecast_at(
+    versions: Sequence[tuple[datetime, float, str]],
+    lead: str,
+    start: datetime,
+    end: datetime,
+) -> float | None:
+    """The forecast this lead reads for one station-day, or None when no
+    version was known by its cut."""
+
+    if lead == "after":
+        known = [v for v in versions if v[2] == "historical" or v[0] > end]
+    else:
+        cut = {
+            "same_day": end,
+            "d1": start,
+            "d2": start - timedelta(hours=24),
+            "d3": start - timedelta(hours=48),
+        }[lead]
+        known = [v for v in versions if v[2] == "forward" and v[0] <= cut]
+    if not known:
+        return None
+    return max(known, key=lambda v: (v[0], v[1]))[1]
+
+
+def collect_precip_classification(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Every closed station-day with an official report record and an
+    Open-Meteo daily precipitation forecast, paired at each lead and classed
+    wet or dry at 1.0 mm; the 2×2 table and its six scores per observation
+    reading, per lead, and per station.
+
+    Cost: one pass over the physics version table (9k rows) and one over the
+    AWC lane of the observation archive (~100k rows, ~25 s on the 15 GB
+    file).  The pairs move once a day, when a local day closes.
+    """
+
+    version_table = "calibration_station_forecast_physics_version"
+    try:
+        rows = conn.execute(
+            "SELECT station_id, local_date, precipitation_sum, capture_mode,"
+            " captured_at_utc, settlement_timezone"
+            f" FROM {version_table}"
+            " WHERE source_id='OPEN_METEO_MODEL_FORECAST'"
+            " AND precipitation_sum IS NOT NULL"
+        ).fetchall()
+    except sqlite3.Error:
+        return {"available": False, "reason": "no_forecast_physics_versions"}
+    if not rows:
+        return {"available": False, "reason": "no_forecast_physics_versions"}
+    zones: dict[str, Any] = {}
+    versions: dict[tuple[str, str], list[tuple[datetime, float, str]]] = defaultdict(list)
+    for station, day, mm, mode, captured, zone_name in rows:
+        instant = _precip_instant(captured)
+        if instant is None:
+            continue
+        station = str(station)
+        if station not in zones:
+            try:
+                zones[station] = ZoneInfo(str(zone_name))
+            except (KeyError, ValueError, OSError):
+                zones[station] = None
+        if zones[station] is None:
+            continue
+        versions[(station, str(day))].append((instant, float(mm), str(mode)))
+    if not versions:
+        return {"available": False, "reason": "no_forecast_physics_versions"}
+    try:
+        archive = sqlite3.connect(
+            f"file:{ROOT / 'data' / 'archive.db'}?mode=ro", uri=True, timeout=10
+        )
+    except sqlite3.Error:
+        return {"available": False, "reason": "no_observation_archive"}
+    first_day = min(day for _station, day in versions)
+    floor = (date.fromisoformat(first_day) - timedelta(days=1)).isoformat()
+    days: dict[tuple[str, str], dict[str, Any]] = {}
+    metar_counts: Counter[str] = Counter()
+    asos_counts: Counter[str] = Counter()
+    try:
+        cursor = archive.execute(
+            "SELECT station_id, report_type, valid_at, raw_text"
+            " FROM reported_trajectory_observations"
+            " WHERE source_lane='awc' AND valid_at>=?",
+            (floor + "T00:00:00Z",),
+        )
+        for station, report_type, valid_at, raw in cursor:
+            zone = zones.get(str(station))
+            if zone is None:
+                continue
+            instant = _precip_instant(valid_at)
+            if instant is None:
+                continue
+            local = instant.astimezone(zone)
+            key = (str(station), local.strftime("%Y-%m-%d"))
+            entry = days.get(key)
+            if entry is None:
+                entry = days[key] = {
+                    "hours": set(), "hourly_mm": {}, "present": False, "reports": 0,
+                }
+            reading = metar_precipitation_reading(raw)
+            entry["reports"] += 1
+            if reading["present"]:
+                entry["present"] = True
+            if str(report_type) != "METAR":
+                continue
+            entry["hours"].add(local.hour)
+            # Two METARs in one hour (a COR beside its original) must not add
+            # up: the hour reads the larger of what they say.
+            entry["hourly_mm"][local.hour] = max(
+                entry["hourly_mm"].get(local.hour, 0.0), reading["hourly_mm"] or 0.0
+            )
+            metar_counts[str(station)] += 1
+            if reading["asos"]:
+                asos_counts[str(station)] += 1
+    except sqlite3.Error:
+        return {"available": False, "reason": "no_observation_archive"}
+    finally:
+        archive.close()
+    asos = {
+        station for station, count in metar_counts.items()
+        if count and asos_counts[station] >= PRECIP_ASOS_REMARK_SHARE * count
+    }
+    now = _now()
+    threshold = PRECIP_WET_THRESHOLD_MM
+    lead_keys = [key for key, _label, _note in PRECIP_LEADS]
+    pairs: dict[str, dict[str, list[dict[str, Any]]]] = {
+        "mm": {k: [] for k in lead_keys}, "wx": {k: [] for k in lead_keys},
+    }
+    excluded: dict[str, dict[str, Counter[str]]] = {
+        "mm": {k: Counter() for k in lead_keys}, "wx": {k: Counter() for k in lead_keys},
+    }
+    open_days = 0
+    unpaired_days = 0
+    for (station, day), obs in days.items():
+        zone = zones[station]
+        try:
+            start = datetime.fromisoformat(day).replace(tzinfo=zone)
+        except ValueError:
+            continue
+        end = start + timedelta(days=1)
+        if end.astimezone(timezone.utc) > now:
+            open_days += 1
+            continue
+        known = versions.get((station, day))
+        if not known:
+            unpaired_days += 1
+            continue
+        covered = len(obs["hours"]) >= PRECIP_COVERAGE_MIN_HOURS
+        observed_mm = float(sum(obs["hourly_mm"].values()))
+        for lead in lead_keys:
+            forecast = _precip_forecast_at(known, lead, start, end)
+            for definition in ("mm", "wx"):
+                if forecast is None:
+                    excluded[definition][lead]["no_forecast"] += 1
+                    continue
+                if not covered:
+                    excluded[definition][lead]["coverage"] += 1
+                    continue
+                if definition == "mm" and station not in asos:
+                    excluded[definition][lead]["not_asos"] += 1
+                    continue
+                observed_wet = (
+                    observed_mm >= threshold if definition == "mm" else bool(obs["present"])
+                )
+                pairs[definition][lead].append({
+                    "station_id": station, "day": day,
+                    "forecast_mm": round(float(forecast), 2),
+                    "observed_mm": round(observed_mm, 2) if definition == "mm" else None,
+                    "observed_present": bool(obs["present"]),
+                    "forecast_wet": float(forecast) >= threshold,
+                    "observed_wet": observed_wet,
+                    "hours": len(obs["hours"]),
+                })
+
+    def summary(items: list[dict[str, Any]], lead: str, definition: str) -> dict[str, Any]:
+        table = _precip_contingency([(p["forecast_wet"], p["observed_wet"]) for p in items])
+        by_station: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for p in items:
+            by_station[p["station_id"]].append(p)
+        stations = []
+        for station in sorted(by_station):
+            own = by_station[station]
+            cell = _precip_contingency([(p["forecast_wet"], p["observed_wet"]) for p in own])
+            stations.append({
+                "station_id": station,
+                **{k: cell[k] for k in ("n", "a", "b", "c", "d", "pod", "far", "csi", "bias")},
+                "observed_wet_days": sum(1 for p in own if p["observed_wet"]),
+                "forecast_wet_days": sum(1 for p in own if p["forecast_wet"]),
+            })
+        ordered = sorted(items, key=lambda p: (p["day"], p["station_id"]), reverse=True)
+        return {
+            **table,
+            "observed_wet_share": (
+                sum(1 for p in items if p["observed_wet"]) / len(items) if items else None
+            ),
+            "forecast_wet_share": (
+                sum(1 for p in items if p["forecast_wet"]) / len(items) if items else None
+            ),
+            "first_day": ordered[-1]["day"] if ordered else None,
+            "last_day": ordered[0]["day"] if ordered else None,
+            "stations": stations,
+            "excluded": dict(excluded[definition][lead]),
+            "recent": ordered[:40] if lead == "same_day" else [],
+        }
+
+    definitions = [
+        {
+            "key": "mm",
+            "label": f"① 两侧都按 {threshold:g} mm：美国 ASOS 站，逐小时 P 组求和",
+            "note": (
+                "观测＝当地日内每份整点 METAR 备注里的 Pxxxx（过去一小时降水量，百分之一英寸）"
+                f"相加换算成毫米，≥ {threshold:g} mm 记为有雨；"
+                f"预报＝Open-Meteo 当日降水量 ≥ {threshold:g} mm。"
+                f"只有备注带 AO1/AO2/AO2A 的自动站参与（{len(asos)} 站），"
+                f"当地日要有 ≥ {PRECIP_COVERAGE_MIN_HOURS} 个整点报文。"
+            ),
+            "stations_eligible": len(asos),
+            "leads": {lead: summary(pairs["mm"][lead], lead, "mm") for lead in lead_keys},
+        },
+        {
+            "key": "wx",
+            "label": "② 观测只看有没有下：全部站，现在天气组",
+            "note": (
+                "报文不带降水量的站只能这样读：当地日内任一 METAR/SPECI 的现在天气组含降水"
+                "（DZ/RA/SN/SG/IC/PL/GR/GS/UP，含 SH/TS/FZ 描述；不算 VC 附近、RE 近时和 BL/DR 吹雪）"
+                f"就记为有雨，预报仍按 ≥ {threshold:g} mm。观测侧连毛毛雨也算，"
+                "所以这张表天然偏向漏报（b 偏大、POD 偏低），"
+                "它回答的是「模型说会下 ≥ 1 mm 的日子，站上到底有没有下」。"
+            ),
+            "stations_eligible": len({s for s in metar_counts}),
+            "leads": {lead: summary(pairs["wx"][lead], lead, "wx") for lead in lead_keys},
+        },
+    ]
+    return {
+        "available": True,
+        "threshold_mm": threshold,
+        "coverage_min_hours": PRECIP_COVERAGE_MIN_HOURS,
+        "forecast_source": "OPEN_METEO_MODEL_FORECAST",
+        "observation_lane": "awc",
+        "asos_stations": sorted(asos),
+        "stations_with_forecast": len([s for s, z in zones.items() if z is not None]),
+        "leads": [{"key": k, "label": l, "note": n} for k, l, n in PRECIP_LEADS],
+        "definitions": definitions,
+        "open_days": open_days,
+        "days_without_forecast": unpaired_days,
+        "generated_at_utc": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+
 def collect_regional_usage(conn: sqlite3.Connection) -> dict[str, Any]:
     """Whether the regional models are used, where, and how.
 
@@ -15256,6 +15647,10 @@ SECTION_CACHE_TTL_SEC = {
     # of days -- the retention ruling reads it once a day at most -- so six
     # hours costs the reading nothing and leaves four walks a day.
     "ssot_capacity": 6 * 60 * 60,
+    # 降水分类评分: one pass over the observation archive's AWC lane
+    # (~25s on the 15 GB file); the pairs move once a day, when a local
+    # day closes somewhere, so three hours costs the reading nothing.
+    "precip_classification": 3 * 60 * 60,
 }
 # Set by ``--no-section-cache`` so a reader who needs every number computed
 # against this instant can have it, at the price of the long build.
@@ -15473,6 +15868,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     )
     taf_board = _cached_section("taf_board", collect_taf_board, conn)
     metar_board = _cached_section("metar_board", collect_metar_board, conn)
+    precip_classification = _cached_section(
+        "precip_classification", collect_precip_classification, conn
+    )
     # Charter 162's two doors, and charters 153/154's cycle journal: both
     # read every render -- a freshness lamp that can be an hour stale is a
     # lamp that says green through an outage.
@@ -15694,6 +16092,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "consensus_bridge": consensus_bridge,
         "taf_board": taf_board,
         "metar_board": metar_board,
+        "precip_classification": precip_classification,
         "observation_intake": observation_intake,
         "cycle_time": cycle_time,
         "regional_usage": regional_usage,
@@ -16225,6 +16624,29 @@ font-weight:620;box-shadow:0 1px 2px rgba(0,0,0,.14)}
 /* Per-day tabs inside a card.  The same pill as the group switcher, one
    size down and not sticky: this one picks which day a card shows, it is
    not a way around the page. */
+/* 降水分类评分: the 2×2 table and the six score cards. */
+.pc-ct{width:auto;border-collapse:separate;border-spacing:4px;font-size:13px;margin:4px 0 12px}
+.pc-ct th{font-weight:500;color:var(--muted);padding:6px 10px;text-align:center;border-bottom:none}
+.pc-ct th.pc-row{text-align:left;white-space:nowrap}
+.pc-ct td{padding:10px 16px;text-align:center;border:1px solid var(--line);border-radius:8px;
+min-width:150px;border-bottom:1px solid var(--line)}
+.pc-ct td.pc-hit{background:var(--pill-green-bg);color:var(--pill-green-fg)}
+.pc-ct td.pc-miss{background:var(--pill-amber-bg);color:var(--pill-amber-fg)}
+.pc-ct td.pc-false{background:var(--pill-red-bg);color:var(--pill-red-fg)}
+.pc-ct td b{display:block;font-size:20px;font-variant-numeric:tabular-nums;color:var(--text)}
+.pc-m{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));margin:6px 0 10px}
+.pc-m .pc-k{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--card)}
+.pc-m .pc-hd{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.pc-m .pc-ab{font-size:20px;font-weight:700}
+.pc-m .pc-nm{color:var(--muted);font-size:12.5px;margin-top:2px}
+.pc-m .pc-f{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;
+border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:10px 0;background:var(--bg)}
+.pc-m .pc-v{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;margin:2px 0 6px}
+.pc-m .pc-tx{font-size:13px;line-height:1.55}
+.pc-m .pc-rg{color:var(--muted);font-size:12px;margin-top:8px}
+.pc-m .pc-rg b{color:var(--text)}
+table.pc-st{font-size:12.5px}
+table.pc-st td,table.pc-st th{padding:4px 8px}
 .daytabs{display:flex;gap:6px;flex-wrap:wrap;align-items:center;
 margin:0 0 10px}
 .daytabs button{cursor:pointer;background:var(--bg);color:var(--muted);
@@ -24005,6 +24427,106 @@ const tokensTable = toks => `<div class="scroll"><table class="tok"><tbody>${
 // decides on them), 在用 (the production chain), 后段 (what the stages after
 // P0 read in -- TAF, METAR, regional models), 影子 (computed and journalled,
 // changes nothing).
+
+// 降水分类评分 (user, 2026-09-23: 「增加：降水分类评分」).  Six scores off
+// one 2×2 table, one card per observation reading (millimetres where the
+// report carries an amount, presence elsewhere), one pane per lead.  A
+// reading, not a rule: nothing on the page or in production feeds off it.
+const PRECIP_METRICS = [
+  {key:"pod", abbr:"POD", name:"检测概率（命中率）", better:"up", formula:"a / (a + b)",
+   range:"0 – 1", perfect:"1",
+   text:"观测到有雨的日子里，模型提前说中了多少。为 1 表示一个雨日都没漏。"},
+  {key:"far", abbr:"FAR", name:"空报率", better:"down", formula:"c / (a + c)",
+   range:"0 – 1", perfect:"0",
+   text:"模型说有雨的日子里，有多少其实没下。为 0 表示每次报雨都应验。"},
+  {key:"csi", abbr:"CSI", name:"临界成功指数（威胁评分）", better:"up", formula:"a / (a + b + c)",
+   range:"0 – 1", perfect:"1",
+   text:"把命中、漏报、空报合成一个数；不计入「没雨也报没雨」的日子，所以比准确率严。"},
+  {key:"ets", abbr:"ETS", name:"公平威胁评分", better:"up",
+   formula:"(a − a<sub>r</sub>) / (a + b + c − a<sub>r</sub>)", range:"−⅓ – 1", perfect:"1",
+   text:"CSI 扣掉瞎猜也能命中的份额（a<sub>r</sub> = (a+b)(a+c) / N）。接近 0 说明和瞎猜差不多，负数比瞎猜还差。"},
+  {key:"hss", abbr:"HSS", name:"Heidke 技能评分", better:"up",
+   formula:"2(ad − bc) / [(a+b)(b+d) + (a+c)(c+d)]", range:"−∞ – 1", perfect:"1",
+   text:"相对随机预报的改进，晴天报对和雨天报对都算进去。为 0 就是和随机预报没差别。"},
+  {key:"bias", abbr:"Bias", name:"频率偏差", better:"one", formula:"(a + c) / (a + b)",
+   range:"0 – ∞", perfect:"1.0",
+   text:"模型报雨的天数 ÷ 实际雨日天数。> 1 报雨偏多（偏湿），< 1 报雨偏少（偏干）。"},
+];
+const PRECIP_BETTER = {up:["green", "↑ 越高越好"], down:["red", "↓ 越低越好"], one:["amber", "= 1.0 最好"]};
+const pcNum = (v, d = 2) => v == null || !isFinite(v) ? "—" : Number(v).toFixed(d);
+function precipContingency(s, names){
+  const cell = (cls, name, letter, v) => `<td class="${cls}">${name}（${letter}）${
+    names ? "" : `<b>${v == null ? "—" : v}</b>`}</td>`;
+  return `<table class="pc-ct" data-grouped="1"><thead><tr><th></th><th>预报有雨</th><th>预报无雨</th></tr></thead>
+    <tbody><tr><th class="pc-row">观测有雨</th>${cell("pc-hit", "命中", "a", s.a)}${cell("pc-miss", "漏报", "b", s.b)}</tr>
+    <tr><th class="pc-row">观测无雨</th>${cell("pc-false", "空报", "c", s.c)}${cell("", "正确否定", "d", s.d)}</tr></tbody></table>`;
+}
+function precipPane(lead, def, Q){
+  const s = lead.s;
+  if(!s.n) return `<div class="muted">这个提前量还没有可配对的站日${
+    Object.keys(s.excluded || {}).length ? "（" + Object.entries(s.excluded).map(([k, v]) =>
+      ({no_forecast:"这个提前量没有预报版本", coverage:"整点报文不足", not_asos:"非自动站"}[k] || k) + " " + v + " 天").join("，") + "）" : ""}。</div>`;
+  const cards = PRECIP_METRICS.map(m => {
+    const [tone, word] = PRECIP_BETTER[m.better];
+    return `<div class="pc-k"><div class="pc-hd"><div><div class="pc-ab">${m.abbr}</div>
+      <div class="pc-nm">${m.name}</div></div><span class="pill ${tone}">${word}</span></div>
+      <div class="pc-f">${m.formula}</div><div class="pc-v">${pcNum(s[m.key])}</div>
+      <div class="pc-tx">${m.text}</div>
+      <div class="pc-rg">范围：<b>${m.range}</b> &nbsp; 完美：<b>${m.perfect}</b></div></div>`;
+  }).join("");
+  const ex = Object.entries(s.excluded || {}).map(([k, v]) =>
+    ({no_forecast:"这个提前量没有预报版本", coverage:"整点报文不足", not_asos:"非自动站"}[k] || k) + " " + v + " 天");
+  const stationRows = (s.stations || []).map(r => `<tr><td><b>${h(r.station_id)}</b></td>
+    <td class="mono">${r.n}</td><td class="mono">${r.a}</td><td class="mono">${r.b}</td>
+    <td class="mono">${r.c}</td><td class="mono">${r.d}</td>
+    <td class="mono">${r.observed_wet_days}</td><td class="mono">${r.forecast_wet_days}</td>
+    <td class="mono">${pcNum(r.pod)}</td><td class="mono">${pcNum(r.far)}</td>
+    <td class="mono">${pcNum(r.csi)}</td><td class="mono">${pcNum(r.bias)}</td></tr>`).join("");
+  const recent = (s.recent || []).map(p => {
+    const cls = p.forecast_wet && p.observed_wet ? "pc-hit" : p.observed_wet ? "pc-miss" : p.forecast_wet ? "pc-false" : "";
+    const word = p.forecast_wet && p.observed_wet ? "命中" : p.observed_wet ? "漏报" : p.forecast_wet ? "空报" : "正确否定";
+    return `<tr><td>${h(p.day)}</td><td><b>${h(p.station_id)}</b></td>
+      <td class="mono">${pcNum(p.forecast_mm, 1)}</td>
+      <td class="mono">${def.key === "mm" ? pcNum(p.observed_mm, 1) : (p.observed_present ? "报了降水" : "没报")}</td>
+      <td class="${cls}" style="border-radius:6px">${word}</td><td class="mono">${p.hours}</td></tr>`;
+  }).join("");
+  return `<div class="muted" style="margin:0 0 6px">${s.n} 个站日 · ${h(s.first_day)} → ${h(s.last_day)} ·
+    观测有雨 ${pcNum(100 * s.observed_wet_share, 0)}% · 预报有雨 ${pcNum(100 * s.forecast_wet_share, 0)}%${
+    ex.length ? " · 未配对：" + ex.join("，") : ""}</div>
+    ${precipContingency(s, false)}
+    <div class="pc-m">${cards}</div>
+    <details><summary class="muted">逐站（${(s.stations || []).length} 站）</summary>
+    <table class="pc-st"><thead><tr><th>站</th><th>站日</th><th>a 命中</th><th>b 漏报</th><th>c 空报</th><th>d 正确否定</th>
+    <th>观测雨日</th><th>预报雨日</th><th>POD</th><th>FAR</th><th>CSI</th><th>Bias</th></tr></thead><tbody>${stationRows}</tbody></table></details>
+    ${recent ? `<details><summary class="muted">最近 ${(s.recent || []).length} 个站日逐日核对</summary>
+    <table class="pc-st"><thead><tr><th>当地日</th><th>站</th><th>预报 mm</th><th>${def.key === "mm" ? "观测 mm" : "观测"}</th><th>格子</th><th>整点报文数</th></tr></thead>
+    <tbody>${recent}</tbody></table></details>` : ""}`;
+}
+function precipDefCard(def, Q){
+  const leads = (Q.leads || []).map(l => ({...l, s: (def.leads || {})[l.key]})).filter(l => l.s);
+  const head = `<div class="kpi-l">${h(def.label)}</div><div class="muted" style="margin:2px 0 8px">${h(def.note)}</div>`;
+  if(!leads.length) return `<div class="card">${head}<div class="muted">还没有可配对的站日。</div></div>`;
+  let best = leads[0];
+  leads.forEach(l => { if((l.s.n || 0) > (best.s.n || 0)) best = l; });
+  const nav = `<nav class="daytabs">${leads.map(l => `<button type="button" data-day="${attr(l.key)}"
+    data-active="${l.key === best.key ? "1" : ""}" title="${attr(l.note)}">${h(l.label)}
+    <span class="muted">${l.s.n} 站日</span></button>`).join("")}</nav>`;
+  const panes = leads.map(l => `<div data-daypane="${attr(l.key)}"${l.key === best.key ? "" : " hidden"}>${
+    precipPane(l, def, Q)}</div>`).join("");
+  return `<div class="card" data-daytabs="precip-${attr(def.key)}" data-remember="1">${head}${nav}${panes}</div>`;
+}
+function precipScores(){
+  const Q = D.precip_classification || {};
+  const title = `<h2>降水分类评分：模型说的雨，站上到底下没下</h2>`;
+  if(!Q.available) return title + `<div class="card muted">这一轮没有生成（${h(Q.reason || "缺物理表版本或报文归档")}）。</div>`;
+  const intro = `<p class="sub">六项指标都来自同一张 2×2 列联表：把每一对「预报 — 观测」按 <b>${h(Q.threshold_mm)} mm</b> 的门槛分成有雨 / 无雨，
+    表里每个格子有自己的名字，下面的公式就用这些名字。预报是辐射降温项读的同一张物理表里 Open-Meteo 的逐日降水量
+    （聚合转发、只作参考协变量，${Q.stations_with_forecast} 站），观测是站点当地日内的官方 METAR/SPECI；
+    每个提前量是版本表上的一个 as-of 切点。只读数，不进 P0/P0-M/P1，不改任何权重。${
+    Q.open_days ? "还没过完的当地日 " + Q.open_days + " 个不配对。" : ""}</p>
+    <div class="card">${precipContingency({}, true)}<div class="muted">a 命中＝报了雨也下了；b 漏报＝没报雨却下了；c 空报＝报了雨没下；d 正确否定＝没报雨也没下。N = a + b + c + d。</div></div>`;
+  return title + intro + (Q.definitions || []).map(def => precipDefCard(def, Q)).join("");
+}
 const BOX_KIND = {
   audit:  {tone:"#d2a8ff", word:"读数"},
   live:   {tone:"#79c0ff", word:"在用"},
@@ -24042,7 +24564,10 @@ const GROUPS = [
      {box:"⑤ 上面那张表背后的三条规则（全队层）", kind:"live",
       note:"表里每一行读到的状态词和协变量，来自这三份全队拟合件：TAF 似然的服务闸与那条线、P1 观测更新（第 161 条 e^f 在服务、第 150 条 g^α 退为回退）的闸与走查、区域模型的采集与逐站 run；最后一节是服务出去的 P1 猜中最高温的命中率与提前量",
       sections:[[p0mTafBoard,"P0-M TAF 似然"],[p1JointBoard,"P1 观测更新"],
-        [regionalBoard,"区域模型"],[p1PathSkill,"P1 温度路径命中率"]]}]},
+        [regionalBoard,"区域模型"],[p1PathSkill,"P1 温度路径命中率"]]},
+     {box:"⑥ 物理协变量：模型说的雨，站上到底下没下", kind:"audit",
+      note:"读辐射降温项用的同一张物理表里 Open-Meteo 的逐日降水预报，对官方 METAR/SPECI 打 2×2 列联表的六项分类评分；只是读数，不进 P0/P0-M/P1，不改任何权重",
+      sections:[[precipScores,"降水分类评分"]]}]},
   // The edge area answers one question -- the model says p, the market says
   // m, how much of the gap should be believed (user ruling, 2026-09-17).
   // Its four sub-headings are containers now, coloured by kind.
