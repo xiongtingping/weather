@@ -12,6 +12,9 @@ distribution by 0.15 sigma per standardised unit gains 2.07% CRPS and 12.7%
 NLL, twice what the forecaster's TAF fields reach and over every station-day
 rather than the 17 stations that publish a TX.
 
+The same request carries ``hourly=precipitation`` since 2026-09-23, kept in
+its own append-only version table (see ``PRECIP_HOURLY_TABLE`` below).
+
 Two modes, one table.  ``historical`` reads the archived past forecasts that
 the OOS holdout needs to fit and score against; ``forward`` reads the live
 forecast for the days being traded.  Both are the same quantity -- what the
@@ -149,6 +152,158 @@ WHERE {{where}} AND NOT EXISTS (
 """
 
 
+# Hourly precipitation, same request (user, 2026-09-23: 「采集降水」, 「有信息
+# 就上，哪怕改进一点」).  The daily sum above says whether a day is wet; the
+# hour says whether the rain falls before the afternoon maximum or after it,
+# and only the former can move a daily high (measured 2026-09-23 on the
+# reports: rain before 15:00 local −0.23°C on both the model's and the
+# market's centre, rain only after the maximum −0.06°C).  One append-only
+# version table, keyed by capture instant, so a decision can resolve the
+# version it could have read; ``capture_mode='historical'`` rows come from
+# the stitched short-lead archive and are never an as-of value.  The
+# aggregates are derived in the capturer from the hourly series and carry
+# the series that made them, so a reader never re-derives them differently.
+HOURLY_FIELDS = "precipitation"
+PRECIP_HOURLY_TABLE = "calibration_station_forecast_precip_hourly_version"
+# Open-Meteo's hourly precipitation is the total of the preceding hour, so the
+# value stamped 15:00 covers 14:00–15:00: hours 0..15 are "before the peak".
+PRECIP_PEAK_HOUR = 15
+PRECIP_WET_HOUR_MM = 0.1
+PRECIP_HOURLY_COLUMNS = (
+    "station_id,local_date,source_id,captured_at_utc,capture_mode,"
+    "hourly_precip_mm_json,precip_sum_mm,precip_before_peak_mm,"
+    "precip_after_peak_mm,first_wet_hour,wet_hours,peak_hour,"
+    "latitude,longitude,settlement_timezone,reference_only,content_sha256"
+)
+PRECIP_HOURLY_SCHEMA = f"""
+CREATE TABLE IF NOT EXISTS {PRECIP_HOURLY_TABLE} (
+    station_id TEXT NOT NULL,
+    local_date TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    captured_at_utc TEXT NOT NULL,
+    capture_mode TEXT NOT NULL CHECK (capture_mode IN ('forward','historical')),
+    hourly_precip_mm_json TEXT NOT NULL,
+    precip_sum_mm REAL NOT NULL CHECK (precip_sum_mm >= 0),
+    precip_before_peak_mm REAL NOT NULL CHECK (precip_before_peak_mm >= 0),
+    precip_after_peak_mm REAL NOT NULL CHECK (precip_after_peak_mm >= 0),
+    first_wet_hour INTEGER,
+    wet_hours INTEGER NOT NULL CHECK (wet_hours >= 0),
+    peak_hour INTEGER NOT NULL,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    settlement_timezone TEXT NOT NULL,
+    reference_only INTEGER NOT NULL CHECK (reference_only = 1),
+    content_sha256 TEXT NOT NULL,
+    PRIMARY KEY (station_id, local_date, source_id, captured_at_utc)
+)
+"""
+PRECIP_HOURLY_INDEX = (
+    f"CREATE INDEX IF NOT EXISTS {PRECIP_HOURLY_TABLE}_day_idx "
+    f"ON {PRECIP_HOURLY_TABLE}(station_id, local_date, captured_at_utc)"
+)
+PRECIP_HOURLY_TRIGGERS = tuple(
+    f"CREATE TRIGGER IF NOT EXISTS {PRECIP_HOURLY_TABLE}_no_{verb.lower()} "
+    f"BEFORE {verb} ON {PRECIP_HOURLY_TABLE} BEGIN "
+    f"SELECT RAISE(ABORT, '{PRECIP_HOURLY_TABLE}_append_only'); END"
+    for verb in ("UPDATE", "DELETE")
+)
+
+
+def hourly_precipitation_days(payload: dict) -> dict[str, dict[str, float]]:
+    """The hourly series grouped by local date: ``{date: {"HH": mm}}``.
+
+    A missing value voids the whole day rather than reading as zero; a local
+    hour that occurs twice (the autumn clock change) adds up.
+    """
+
+    hourly = payload.get("hourly") or {}
+    stamps = hourly.get("time") or []
+    values = hourly.get(HOURLY_FIELDS) or []
+    days: dict[str, dict[str, float]] = {}
+    voided: set[str] = set()
+    for stamp, value in zip(stamps, values):
+        text = str(stamp)
+        if len(text) < 13:
+            continue
+        day, hour = text[:10], text[11:13]
+        if value is None:
+            voided.add(day)
+            continue
+        days.setdefault(day, {})
+        days[day][hour] = days[day].get(hour, 0.0) + float(value)
+    return {day: hours for day, hours in days.items() if day not in voided and len(hours) >= 23}
+
+
+def hourly_precipitation_aggregates(hours: dict[str, float]) -> dict:
+    """What the served term will read, derived once, here."""
+
+    ordered = sorted((int(hour), float(mm)) for hour, mm in hours.items())
+    before = sum(mm for hour, mm in ordered if hour <= PRECIP_PEAK_HOUR)
+    after = sum(mm for hour, mm in ordered if hour > PRECIP_PEAK_HOUR)
+    wet = [hour for hour, mm in ordered if mm >= PRECIP_WET_HOUR_MM]
+    return {
+        "precip_sum_mm": round(before + after, 3),
+        "precip_before_peak_mm": round(before, 3),
+        "precip_after_peak_mm": round(after, 3),
+        "first_wet_hour": wet[0] if wet else None,
+        "wet_hours": len(wet),
+        "peak_hour": PRECIP_PEAK_HOUR,
+    }
+
+
+def record_hourly_precipitation(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    payload: dict,
+    scope: dict,
+    settlement_timezone: str,
+    mode: str,
+    captured_at: str,
+) -> dict:
+    """Append one version per station-day whose hourly series changed."""
+
+    days = hourly_precipitation_days(payload)
+    versions = 0
+    for local_date, hours in sorted(days.items()):
+        series = {f"{int(hour):02d}": round(mm, 3) for hour, mm in sorted(hours.items())}
+        identity = {
+            "schema": "station_forecast_precip_hourly_v1",
+            "station_id": station_id,
+            "local_date": local_date,
+            "source_id": SOURCE_ID,
+            "hourly_precip_mm": series,
+            "latitude": float(scope["latitude"]),
+            "longitude": float(scope["longitude"]),
+            "settlement_timezone": settlement_timezone,
+        }
+        digest = content_sha256(identity)
+        latest = conn.execute(
+            f"SELECT content_sha256 FROM {PRECIP_HOURLY_TABLE}"
+            " WHERE station_id=? AND local_date=? AND source_id=?"
+            " ORDER BY captured_at_utc DESC LIMIT 1",
+            (station_id, local_date, SOURCE_ID),
+        ).fetchone()
+        if latest is not None and latest[0] == digest:
+            continue
+        aggregates = hourly_precipitation_aggregates(series)
+        conn.execute(
+            f"INSERT OR IGNORE INTO {PRECIP_HOURLY_TABLE} ({PRECIP_HOURLY_COLUMNS})"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)",
+            (
+                station_id, local_date, SOURCE_ID, captured_at, mode,
+                json.dumps(series, sort_keys=True),
+                aggregates["precip_sum_mm"], aggregates["precip_before_peak_mm"],
+                aggregates["precip_after_peak_mm"], aggregates["first_wet_hour"],
+                aggregates["wet_hours"], aggregates["peak_hour"],
+                float(scope["latitude"]), float(scope["longitude"]),
+                settlement_timezone, digest,
+            ),
+        )
+        versions += 1
+    return {"hourly_days": len(days), "hourly_versions": versions}
+
+
 def ensure_schema(conn: sqlite3.Connection) -> int:
     """Both tables, and every current row recorded as a version.
 
@@ -160,6 +315,10 @@ def ensure_schema(conn: sqlite3.Connection) -> int:
     conn.execute(INDEX)
     conn.execute(VERSION_SCHEMA)
     for trigger in VERSION_TRIGGERS:
+        conn.execute(trigger)
+    conn.execute(PRECIP_HOURLY_SCHEMA)
+    conn.execute(PRECIP_HOURLY_INDEX)
+    for trigger in PRECIP_HOURLY_TRIGGERS:
         conn.execute(trigger)
     added = conn.execute(VERSION_COPY.format(where="1=1")).rowcount
     conn.commit()
@@ -213,12 +372,18 @@ def capture_station(
     settlement_timezone: str,
     mode: str,
     timeout_seconds: int,
+    hourly_only: bool = False,
 ) -> dict:
+    """One station's capture.  ``hourly_only`` leaves the daily table alone:
+    a historical backfill of the hourly lane must not overwrite the daily
+    rows the forward captures wrote for the same dates."""
+
     scope = station_coordinates(station_id)
     query = {
         "latitude": scope["latitude"],
         "longitude": scope["longitude"],
         "daily": DAILY_FIELDS,
+        "hourly": HOURLY_FIELDS,
         "timezone": settlement_timezone,
     }
     if mode == "historical":
@@ -236,7 +401,7 @@ def capture_station(
     captured_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     written = 0
     versions = 0
-    for index, local_date in enumerate(days):
+    for index, local_date in enumerate(days if not hourly_only else []):
         values = {
             field: (
                 float(daily[field][index])
@@ -292,11 +457,21 @@ def capture_station(
             (station_id, str(local_date), SOURCE_ID),
         ).rowcount
         written += 1
+    hourly = record_hourly_precipitation(
+        conn,
+        station_id=station_id,
+        payload=payload,
+        scope=scope,
+        settlement_timezone=settlement_timezone,
+        mode=mode,
+        captured_at=captured_at,
+    )
     return {
         "station_id": station_id,
         "rows": written,
         "days": len(days),
         "versions": versions,
+        **hourly,
     }
 
 
@@ -314,6 +489,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--end-date", default=None)
     parser.add_argument("--timeout-seconds", type=int, default=45)
     parser.add_argument("--station", action="append", default=None)
+    parser.add_argument(
+        "--hourly-only", action="store_true",
+        help="write only the hourly precipitation versions (historical backfill)",
+    )
     args = parser.parse_args(argv)
 
     from bayes_basket_target.production_worker import CANONICAL_TARGET_STATIONS
@@ -354,6 +533,7 @@ def main(argv: list[str] | None = None) -> int:
                 settlement_timezone=settlement_timezone,
                 mode=args.mode,
                 timeout_seconds=args.timeout_seconds,
+                hourly_only=bool(args.hourly_only),
             )
             conn.commit()
             receipts.append({**receipt, "state": "CAPTURED"})
@@ -370,10 +550,14 @@ def main(argv: list[str] | None = None) -> int:
     version_total = conn.execute(
         f"SELECT COUNT(*) FROM {VERSION_TABLE}"
     ).fetchone()[0]
+    hourly_total = conn.execute(
+        f"SELECT COUNT(*) FROM {PRECIP_HOURLY_TABLE}"
+    ).fetchone()[0]
     conn.close()
     print(json.dumps({
         "schema": "station_forecast_physics_capture_v1",
         "mode": args.mode,
+        "hourly_only": bool(args.hourly_only),
         "window": {"start_date": start_date, "end_date": end_date},
         "station_count": len(stations),
         "captured": sum(1 for r in receipts if r.get("state") == "CAPTURED"),
@@ -382,6 +566,10 @@ def main(argv: list[str] | None = None) -> int:
         "version_rows": version_total,
         "versions_added": seeded_versions + sum(
             int(r.get("versions") or 0) for r in receipts
+        ),
+        "precip_hourly_rows": hourly_total,
+        "precip_hourly_versions_added": sum(
+            int(r.get("hourly_versions") or 0) for r in receipts
         ),
         "source_id": SOURCE_ID,
         "reference_only": True,
