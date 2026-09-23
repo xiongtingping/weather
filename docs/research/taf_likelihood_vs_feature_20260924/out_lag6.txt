@@ -1,0 +1,757 @@
+rows with TAF 10914 dropped {'no taf as-of': 20706, 'refused/short/no-axis': 27559}
+per station {'FACT': 647, 'KBKF': 518, 'LEMD': 479, 'MMMX': 569, 'RKPK': 296, 'RKSI': 774, 'RPLL': 679, 'SAEZ': 442, 'SBGR': 797, 'ZBAA': 874, 'ZGGG': 1081, 'ZGSZ': 1060, 'ZHHH': 423, 'ZSPD': 1139, 'ZSQD': 315, 'ZUCK': 462, 'ZUUU': 359}
+groups {'REASONED': 1581, 'OTHER': 739, 'SMALL': 7109, 'UNREASONED_COLD': 1485} tiers {'12-24': 8329, '24-36': 2575, '36-48': 10}
+
+FACT days=27 cells=34 k_med=0.5 kraw_med=0.458 ab=[0.007, 0.434] line=[-0.239, 0.405, 1.569] rawline=[0.072, 0.407, 1.53] pool=[0.025, 0.336, 1.435] temp={'REASONED': 0.75, 'UNREASONED_COLD': 0.5, 'OTHER': 0.75, 'SMALL': 1.0} lam={0.25: 288, 1.0: 35, 0.5: 86} grp={'REASONED': 27, 'SMALL': 192, 'UNREASONED_COLD': 171, 'OTHER': 19} age_med=2.6h
+  RPS base 0.9278 | shift_roll 0.9210 shift_raw 0.9089 shift_ab 0.9217 shift_temp 0.9021 lik_deb 0.9779 lik_raw 0.9738 lik_lam 0.9591 lik_pool 0.9639 lik_pool_temp 0.8669 lik_naive 0.9499 lik_rec 0.9189 lik_rec_lam 0.9278 lik_rec_temp 0.8941
+  shift_roll    dRPS -0.0068 [-0.1503,+0.1515] P>0 0.44 | dNLLnz -0.0270 [-0.1951,+0.1522] | dHit +0.072 | sd 1.96->2.01 pmode 0.246->0.241 hit 0.054->0.262
+  shift_raw     dRPS -0.0190 [-0.1469,+0.1267] P>0 0.38 | dNLLnz -0.0340 [-0.1887,+0.1374] | dHit +0.006 | sd 1.96->2.00 pmode 0.246->0.243 hit 0.054->0.161
+  shift_ab      dRPS -0.0062 [-0.1429,+0.1516] P>0 0.46 | dNLLnz -0.0239 [-0.1842,+0.1575] | dHit +0.014 | sd 1.96->2.00 pmode 0.246->0.243 hit 0.054->0.215
+  shift_temp    dRPS -0.0258 [-0.1243,+0.0777] P>0 0.30 | dNLLnz -0.0479 [-0.1755,+0.0729] | dHit -0.009 | sd 1.96->1.99 pmode 0.246->0.244 hit 0.054->0.100
+  lik_deb       dRPS +0.0500 [-0.1601,+0.2939] P>0 0.65 | dNLLnz -0.0332 [-0.2038,+0.1737] | dHit +0.077 | sd 1.96->1.63 pmode 0.246->0.285 hit 0.054->0.264
+  lik_raw       dRPS +0.0459 [-0.1550,+0.2795] P>0 0.64 | dNLLnz -0.0364 [-0.2042,+0.1576] | dHit +0.083 | sd 1.96->1.63 pmode 0.246->0.283 hit 0.054->0.267
+  lik_lam       dRPS +0.0313 [-0.0795,+0.1577] P>0 0.67 | dNLLnz -0.0203 [-0.1006,+0.0900] | dHit +0.072 | sd 1.96->1.83 pmode 0.246->0.265 hit 0.054->0.117
+  lik_pool      dRPS +0.0361 [-0.1541,+0.2513] P>0 0.61 | dNLLnz -0.0417 [-0.1854,+0.1176] | dHit +0.083 | sd 1.96->1.68 pmode 0.246->0.279 hit 0.054->0.267
+  lik_pool_temp dRPS -0.0609 [-0.1510,+0.0324] P>0 0.10 | dNLLnz -0.1135 [-0.1911,-0.0377] | dHit +0.103 | sd 1.96->1.77 pmode 0.246->0.270 hit 0.054->0.271
+  lik_naive     dRPS +0.0220 [-0.1876,+0.2627] P>0 0.56 | dNLLnz -0.0715 [-0.3123,+0.2031] | dHit +0.083 | sd 1.96->1.27 pmode 0.246->0.334 hit 0.054->0.267
+  lik_rec       dRPS -0.0089 [-0.1557,+0.1492] P>0 0.45 | dNLLnz -0.0336 [-0.1926,+0.1172] | dHit +0.059 | sd 1.96->1.99 pmode 0.246->0.253 hit 0.054->0.276
+  lik_rec_lam   dRPS -0.0000 [-0.0828,+0.0945] P>0 0.47 | dNLLnz -0.0254 [-0.1052,+0.0561] | dHit +0.015 | sd 1.96->1.99 pmode 0.246->0.245 hit 0.054->0.105
+  lik_rec_temp  dRPS -0.0337 [-0.1080,+0.0426] P>0 0.19 | dNLLnz -0.0501 [-0.1473,+0.0420] | dHit +0.061 | sd 1.96->1.99 pmode 0.246->0.248 hit 0.054->0.274
+  ctrl: shift-rsign [-0.08021, -0.19819, 0.04566]  lik-mirror [-0.12837, -0.31832, 0.0601]  temp-pool [-0.09699, -0.24051, 0.03047]  temp-shifttemp [-0.03516, -0.10171, 0.0344]  rectemp-shifttemp [-0.00796, -0.06615, 0.04576]  mtemp={'REASONED': 0.75, 'UNREASONED_COLD': 0.5, 'OTHER': 1.0, 'SMALL': 0.5}
+  h2h lik_pool-shift_roll dRPS [0.04287, -0.06814, 0.16968] dNLLnz [-0.01474, -0.14613, 0.10851]
+  h2h lik_pool_temp-shift_roll dRPS [-0.05412, -0.15937, 0.05149] dNLLnz [-0.08654, -0.23508, 0.0368]
+  h2h lik_raw-shift_roll dRPS [0.0527, -0.07114, 0.1985] dNLLnz [-0.00939, -0.14928, 0.13596]
+  h2h lik_rec-shift_roll dRPS [-0.00212, -0.07181, 0.05637] dNLLnz [-0.0066, -0.09967, 0.06841]
+  h2h shift_ab-shift_roll dRPS [0.00065, -0.02291, 0.0265] dNLLnz [0.00309, -0.02856, 0.04028]
+  murphy: {'base': (0.00252, 0.0066), 'shift_roll': (0.00425, 0.0143), 'shift_ab': (0.00358, 0.01287), 'shift_temp': (0.00306, 0.00827), 'lik_deb': (0.00263, 0.00748), 'lik_pool': (0.00323, 0.00796), 'lik_pool_temp': (0.00178, 0.00634), 'lik_naive': (0.00966, 0.01433), 'lik_rec': (0.00371, 0.01027), 'lik_rec_temp': (0.00341, 0.00883)}
+  tier 12-24 n_days=27 dRPS shift -0.0061 pool +0.0119 temp -0.0581 rec -0.0065 | h2h pool-shift [0.01801, -0.10401, 0.16376] temp-shift [-0.05198, -0.16424, 0.04218]
+  tier 24-36 n_days= 7 dRPS shift -0.0095 pool +0.1292 temp -0.0719 rec -0.0183 | h2h pool-shift [0.13875, -0.11471, 0.45976] temp-shift [-0.06238, -0.26481, 0.12029]
+  grp REASONED        n_days= 6 dRPS shift -0.2576 pool -0.1649 temp -0.2378 | h2h pool-shift [0.09269, -0.23524, 0.6433]
+  grp UNREASONED_COLD n_days= 6 dRPS shift +0.0786 pool +0.2478 temp -0.0180 | h2h pool-shift [0.16922, -0.22054, 0.62651]
+  grp OTHER           n_days= 2 dRPS shift +0.3712 pool +0.3208 temp +0.1339 | h2h pool-shift [-0.05039, -0.11623, 0.08129]
+  grp SMALL           n_days=19 dRPS shift -0.0426 pool -0.0523 temp -0.0583 | h2h pool-shift [-0.00968, -0.06964, 0.04897]
+
+KBKF days=27 cells=27 k_med=0.479 kraw_med=0.298 ab=[0.648, 0.497] line=[0.003, 0.362, 1.227] rawline=[-1.256, 0.361, 1.213] pool=[-0.913, 0.305, 1.211] temp={'REASONED': 0.5, 'UNREASONED_COLD': 0.25, 'OTHER': 0.5, 'SMALL': 1.0} lam={0.75: 9, 0.5: 214, 0.25: 72} grp={'UNREASONED_COLD': 156, 'REASONED': 65, 'SMALL': 73, 'OTHER': 1} age_med=3.5h
+  RPS base 0.7469 | shift_roll 0.7185 shift_raw 0.7748 shift_ab 0.7265 shift_temp 0.7614 lik_deb 0.7258 lik_raw 0.7272 lik_lam 0.7298 lik_pool 0.7545 lik_pool_temp 0.7397 lik_naive 0.7384 lik_rec 0.7400 lik_rec_lam 0.7407 lik_rec_temp 0.7443
+  shift_roll    dRPS -0.0284 [-0.1142,+0.0579] P>0 0.27 | dNLLnz -0.0621 [-0.2066,+0.0672] | dHit -0.008 | sd 1.79->1.84 pmode 0.295->0.274 hit 0.336->0.261
+  shift_raw     dRPS +0.0279 [-0.0363,+0.0899] P>0 0.80 | dNLLnz +0.0374 [-0.0441,+0.1159] | dHit -0.089 | sd 1.79->1.84 pmode 0.295->0.278 hit 0.336->0.193
+  shift_ab      dRPS -0.0204 [-0.1126,+0.0688] P>0 0.33 | dNLLnz -0.0586 [-0.2128,+0.0817] | dHit +0.001 | sd 1.79->1.84 pmode 0.295->0.275 hit 0.336->0.298
+  shift_temp    dRPS +0.0145 [-0.0210,+0.0505] P>0 0.80 | dNLLnz +0.0122 [-0.0299,+0.0566] | dHit -0.058 | sd 1.79->1.83 pmode 0.295->0.284 hit 0.336->0.200
+  lik_deb       dRPS -0.0211 [-0.1024,+0.0681] P>0 0.32 | dNLLnz -0.0261 [-0.2041,+0.1861] | dHit +0.016 | sd 1.79->1.36 pmode 0.295->0.351 hit 0.336->0.288
+  lik_raw       dRPS -0.0196 [-0.1000,+0.0600] P>0 0.31 | dNLLnz -0.0296 [-0.1960,+0.1704] | dHit -0.031 | sd 1.79->1.36 pmode 0.295->0.353 hit 0.336->0.254
+  lik_lam       dRPS -0.0170 [-0.0596,+0.0304] P>0 0.22 | dNLLnz -0.0297 [-0.1224,+0.0738] | dHit +0.015 | sd 1.79->1.53 pmode 0.295->0.325 hit 0.336->0.353
+  lik_pool      dRPS +0.0077 [-0.0498,+0.0673] P>0 0.62 | dNLLnz -0.0248 [-0.1070,+0.0597] | dHit -0.084 | sd 1.79->1.55 pmode 0.295->0.333 hit 0.336->0.166
+  lik_pool_temp dRPS -0.0072 [-0.0438,+0.0301] P>0 0.35 | dNLLnz -0.0200 [-0.0797,+0.0508] | dHit -0.024 | sd 1.79->1.67 pmode 0.295->0.314 hit 0.336->0.292
+  lik_naive     dRPS -0.0085 [-0.0957,+0.0785] P>0 0.42 | dNLLnz +0.0952 [-0.1756,+0.4522] | dHit -0.033 | sd 1.79->1.10 pmode 0.295->0.412 hit 0.336->0.220
+  lik_rec       dRPS -0.0069 [-0.0868,+0.0666] P>0 0.45 | dNLLnz -0.0337 [-0.1522,+0.0789] | dHit -0.005 | sd 1.79->1.83 pmode 0.295->0.281 hit 0.336->0.315
+  lik_rec_lam   dRPS -0.0061 [-0.0384,+0.0268] P>0 0.35 | dNLLnz -0.0285 [-0.0884,+0.0226] | dHit +0.005 | sd 1.79->1.82 pmode 0.295->0.286 hit 0.336->0.346
+  lik_rec_temp  dRPS -0.0026 [-0.0477,+0.0395] P>0 0.47 | dNLLnz -0.0190 [-0.1032,+0.0537] | dHit -0.021 | sd 1.79->1.82 pmode 0.295->0.283 hit 0.336->0.261
+  ctrl: shift-rsign [-0.05876, -0.13818, 0.01178]  lik-mirror [-0.04014, -0.11302, 0.02682]  temp-pool [-0.01489, -0.04894, 0.01754]  temp-shifttemp [-0.02171, -0.06589, 0.02409]  rectemp-shifttemp [-0.01705, -0.06164, 0.02909]  mtemp={'REASONED': 0.75, 'UNREASONED_COLD': 0.5, 'OTHER': 1.0, 'SMALL': 0.5}
+  h2h lik_pool-shift_roll dRPS [0.03603, -0.01526, 0.08907] dNLLnz [0.03738, -0.06852, 0.15232]
+  h2h lik_pool_temp-shift_roll dRPS [0.02114, -0.03534, 0.07967] dNLLnz [0.04218, -0.06656, 0.15642]
+  h2h lik_raw-shift_roll dRPS [0.00871, -0.05075, 0.07611] dNLLnz [0.03254, -0.13334, 0.21999]
+  h2h lik_rec-shift_roll dRPS [0.02147, -0.02077, 0.06713] dNLLnz [0.02845, -0.03203, 0.093]
+  h2h shift_ab-shift_roll dRPS [0.008, -0.00362, 0.02009] dNLLnz [0.00358, -0.01172, 0.01857]
+  murphy: {'base': (0.00173, 0.01008), 'shift_roll': (0.00107, 0.00985), 'shift_ab': (0.00192, 0.01183), 'shift_temp': (0.00064, 0.00746), 'lik_deb': (0.00212, 0.01308), 'lik_pool': (0.00417, 0.01199), 'lik_pool_temp': (0.0046, 0.01396), 'lik_naive': (0.00381, 0.01196), 'lik_rec': (0.00217, 0.01157), 'lik_rec_temp': (0.00109, 0.00963)}
+  tier 12-24 n_days=27 dRPS shift -0.0284 pool +0.0077 temp -0.0072 rec -0.0069 | h2h pool-shift [0.03603, -0.01278, 0.08864] temp-shift [0.02114, -0.03352, 0.07736]
+  grp REASONED        n_days= 5 dRPS shift +0.0722 pool +0.0845 temp +0.0212 | h2h pool-shift [0.01229, -0.0876, 0.11218]
+  grp UNREASONED_COLD n_days=15 dRPS shift -0.0055 pool +0.0034 temp -0.0097 | h2h pool-shift [0.00888, -0.03495, 0.04746]
+  grp OTHER           n_days= 1 dRPS shift -1.2445 pool -0.9439 temp -0.5263 | h2h pool-shift [0.30059, 0.30059, 0.30059]
+  grp SMALL           n_days=16 dRPS shift -0.0925 pool -0.0312 temp -0.0262 | h2h pool-shift [0.06128, -0.01573, 0.14484]
+
+LEMD days=26 cells=28 k_med=0.39 kraw_med=0.331 ab=[-0.15, 0.391] line=[0.026, 0.315, 0.931] rawline=[0.471, 0.296, 0.907] pool=[0.303, 0.258, 0.997] temp={'REASONED': 0.5, 'UNREASONED_COLD': 0.25, 'OTHER': 0.75, 'SMALL': 1.0} lam={1.0: 105, 0.75: 44, 0.5: 94} grp={'SMALL': 159, 'UNREASONED_COLD': 39, 'REASONED': 45} age_med=2.8h
+  RPS base 0.4688 | shift_roll 0.4591 shift_raw 0.4499 shift_ab 0.5020 shift_temp 0.4447 lik_deb 0.4684 lik_raw 0.4687 lik_lam 0.4773 lik_pool 0.4760 lik_pool_temp 0.4613 lik_naive 0.4056 lik_rec 0.4876 lik_rec_lam 0.4931 lik_rec_temp 0.4790
+  shift_roll    dRPS -0.0097 [-0.0793,+0.0793] P>0 0.38 | dNLLnz -0.0374 [-0.2476,+0.1823] | dHit +0.044 | sd 1.70->1.77 pmode 0.366->0.343 hit 0.387->0.395
+  shift_raw     dRPS -0.0189 [-0.0771,+0.0408] P>0 0.27 | dNLLnz -0.0580 [-0.2448,+0.1130] | dHit -0.005 | sd 1.70->1.75 pmode 0.366->0.338 hit 0.387->0.379
+  shift_ab      dRPS +0.0332 [-0.0239,+0.1189] P>0 0.81 | dNLLnz +0.0658 [-0.0865,+0.2574] | dHit -0.004 | sd 1.70->1.77 pmode 0.366->0.343 hit 0.387->0.387
+  shift_temp    dRPS -0.0241 [-0.0649,+0.0147] P>0 0.12 | dNLLnz -0.0768 [-0.2183,+0.0464] | dHit +0.026 | sd 1.70->1.74 pmode 0.366->0.344 hit 0.387->0.403
+  lik_deb       dRPS -0.0003 [-0.0464,+0.0687] P>0 0.46 | dNLLnz -0.0332 [-0.0933,+0.0439] | dHit +0.020 | sd 1.70->1.55 pmode 0.366->0.384 hit 0.387->0.403
+  lik_raw       dRPS -0.0001 [-0.0471,+0.0706] P>0 0.45 | dNLLnz -0.0279 [-0.0858,+0.0556] | dHit +0.025 | sd 1.70->1.53 pmode 0.366->0.386 hit 0.387->0.407
+  lik_lam       dRPS +0.0085 [-0.0320,+0.0734] P>0 0.59 | dNLLnz -0.0082 [-0.0527,+0.0658] | dHit +0.012 | sd 1.70->1.57 pmode 0.366->0.381 hit 0.387->0.399
+  lik_pool      dRPS +0.0072 [-0.0427,+0.0717] P>0 0.57 | dNLLnz -0.0408 [-0.0915,+0.0270] | dHit +0.007 | sd 1.70->1.44 pmode 0.366->0.388 hit 0.387->0.395
+  lik_pool_temp dRPS -0.0075 [-0.0353,+0.0268] P>0 0.30 | dNLLnz -0.0421 [-0.0667,-0.0160] | dHit +0.007 | sd 1.70->1.55 pmode 0.366->0.381 hit 0.387->0.395
+  lik_naive     dRPS -0.0632 [-0.1348,+0.0338] P>0 0.09 | dNLLnz -0.1553 [-0.2858,+0.0327] | dHit +0.087 | sd 1.70->0.85 pmode 0.366->0.472 hit 0.387->0.440
+  lik_rec       dRPS +0.0188 [-0.0282,+0.0952] P>0 0.68 | dNLLnz +0.0326 [-0.0911,+0.2157] | dHit +0.031 | sd 1.70->1.77 pmode 0.366->0.352 hit 0.387->0.387
+  lik_rec_lam   dRPS +0.0244 [-0.0156,+0.0962] P>0 0.72 | dNLLnz +0.0502 [-0.0523,+0.2076] | dHit +0.024 | sd 1.70->1.75 pmode 0.366->0.354 hit 0.387->0.383
+  lik_rec_temp  dRPS +0.0103 [-0.0123,+0.0368] P>0 0.78 | dNLLnz +0.0124 [-0.0481,+0.0719] | dHit +0.011 | sd 1.70->1.75 pmode 0.366->0.348 hit 0.387->0.374
+  ctrl: shift-rsign [-0.03719, -0.0893, 0.02702]  lik-mirror [-0.04202, -0.08086, -0.0058]  temp-pool [-0.01467, -0.05702, 0.01184]  temp-shifttemp [0.01666, -0.02129, 0.05832]  rectemp-shifttemp [0.03437, 0.00789, 0.063]  mtemp={'REASONED': 0.75, 'UNREASONED_COLD': 0.5, 'OTHER': 1.25, 'SMALL': 0.5}
+  h2h lik_pool-shift_roll dRPS [0.01693, -0.03513, 0.07768] dNLLnz [-0.00338, -0.17004, 0.1717]
+  h2h lik_pool_temp-shift_roll dRPS [0.00226, -0.07911, 0.07017] dNLLnz [-0.00467, -0.20774, 0.19018]
+  h2h lik_raw-shift_roll dRPS [0.00963, -0.03417, 0.05585] dNLLnz [0.0095, -0.14712, 0.17761]
+  h2h lik_rec-shift_roll dRPS [0.02851, -0.00019, 0.06047] dNLLnz [0.07001, -0.01358, 0.16715]
+  h2h shift_ab-shift_roll dRPS [0.0429, 0.0109, 0.07653] dNLLnz [0.10318, 0.03034, 0.18725]
+  murphy: {'base': (0.00301, 0.02819), 'shift_roll': (0.00499, 0.028), 'shift_ab': (0.00422, 0.02612), 'shift_temp': (0.00416, 0.02603), 'lik_deb': (0.00682, 0.03257), 'lik_pool': (0.00495, 0.03007), 'lik_pool_temp': (0.0029, 0.02733), 'lik_naive': (0.0028, 0.02968), 'lik_rec': (0.00312, 0.02533), 'lik_rec_temp': (0.00233, 0.02395)}
+  tier 12-24 n_days=26 dRPS shift +0.0044 pool +0.0127 temp -0.0054 rec +0.0256 | h2h pool-shift [0.00833, -0.04213, 0.06187] temp-shift [-0.0098, -0.08592, 0.05466]
+  tier 24-36 n_days= 2 dRPS shift -0.1934 pool -0.0647 temp -0.0343 rec -0.0703 | h2h pool-shift [0.12874, -0.00909, 0.26657] temp-shift [0.15909, 0.02267, 0.29551]
+  grp REASONED        n_days= 9 dRPS shift -0.1443 pool -0.0227 temp -0.0107 | h2h pool-shift [0.12155, 0.0147, 0.23517]
+  grp UNREASONED_COLD n_days= 2 dRPS shift +0.4788 pool +0.2650 temp +0.0025 | h2h pool-shift [-0.21387, -0.29122, -0.13651]
+  grp SMALL           n_days=19 dRPS shift +0.0168 pool -0.0084 temp -0.0069 | h2h pool-shift [-0.02525, -0.04529, -0.00487]
+
+MMMX days=25 cells=29 k_med=0.149 kraw_med=0.145 ab=[0.222, 0.07] line=[0.184, 0.118, 1.214] rawline=[0.039, 0.143, 1.196] pool=[-0.001, 0.151, 1.199] temp={'REASONED': 0.5, 'UNREASONED_COLD': 0.25, 'OTHER': 0.5, 'SMALL': 1.0} lam={0.25: 166, 0.5: 105, 0.75: 22} grp={'OTHER': 68, 'SMALL': 164, 'REASONED': 36, 'UNREASONED_COLD': 25} age_med=4.0h
+  RPS base 0.4132 | shift_roll 0.4291 shift_raw 0.4289 shift_ab 0.4284 shift_temp 0.4262 lik_deb 0.5338 lik_raw 0.5315 lik_lam 0.4412 lik_pool 0.4807 lik_pool_temp 0.4281 lik_naive 0.5196 lik_rec 0.4700 lik_rec_lam 0.4370 lik_rec_temp 0.4339
+  shift_roll    dRPS +0.0159 [-0.0031,+0.0360] P>0 0.95 | dNLLnz +0.0184 [-0.0107,+0.0465] | dHit -0.108 | sd 1.30->1.32 pmode 0.337->0.334 hit 0.529->0.427
+  shift_raw     dRPS +0.0157 [-0.0027,+0.0350] P>0 0.95 | dNLLnz +0.0179 [-0.0104,+0.0437] | dHit -0.108 | sd 1.30->1.32 pmode 0.337->0.333 hit 0.529->0.427
+  shift_ab      dRPS +0.0152 [-0.0265,+0.0524] P>0 0.77 | dNLLnz +0.0401 [-0.0272,+0.0943] | dHit -0.134 | sd 1.30->1.32 pmode 0.337->0.342 hit 0.529->0.399
+  shift_temp    dRPS +0.0130 [-0.0039,+0.0303] P>0 0.93 | dNLLnz +0.0138 [-0.0145,+0.0388] | dHit -0.100 | sd 1.30->1.32 pmode 0.337->0.335 hit 0.529->0.427
+  lik_deb       dRPS +0.1206 [+0.0137,+0.2774] P>0 1.00 | dNLLnz +0.1144 [+0.0095,+0.2786] | dHit -0.120 | sd 1.30->1.20 pmode 0.337->0.359 hit 0.529->0.437
+  lik_raw       dRPS +0.1183 [+0.0163,+0.2724] P>0 1.00 | dNLLnz +0.1106 [+0.0124,+0.2732] | dHit -0.126 | sd 1.30->1.19 pmode 0.337->0.362 hit 0.529->0.392
+  lik_lam       dRPS +0.0280 [+0.0020,+0.0704] P>0 0.99 | dNLLnz +0.0183 [+0.0002,+0.0467] | dHit -0.042 | sd 1.30->1.27 pmode 0.337->0.341 hit 0.529->0.498
+  lik_pool      dRPS +0.0675 [+0.0084,+0.1572] P>0 0.99 | dNLLnz +0.0418 [-0.0039,+0.1045] | dHit -0.100 | sd 1.30->1.17 pmode 0.337->0.362 hit 0.529->0.403
+  lik_pool_temp dRPS +0.0150 [-0.0000,+0.0306] P>0 0.97 | dNLLnz +0.0086 [-0.0081,+0.0267] | dHit -0.026 | sd 1.30->1.25 pmode 0.337->0.346 hit 0.529->0.474
+  lik_naive     dRPS +0.1064 [+0.0045,+0.2211] P>0 0.98 | dNLLnz +0.0617 [-0.0836,+0.2283] | dHit -0.126 | sd 1.30->0.87 pmode 0.337->0.449 hit 0.529->0.321
+  lik_rec       dRPS +0.0569 [+0.0138,+0.1176] P>0 1.00 | dNLLnz +0.0466 [+0.0001,+0.1192] | dHit -0.070 | sd 1.30->1.29 pmode 0.337->0.343 hit 0.529->0.474
+  lik_rec_lam   dRPS +0.0239 [+0.0021,+0.0624] P>0 0.99 | dNLLnz +0.0301 [-0.0050,+0.0955] | dHit -0.026 | sd 1.30->1.30 pmode 0.337->0.341 hit 0.529->0.512
+  lik_rec_temp  dRPS +0.0207 [+0.0001,+0.0442] P>0 0.98 | dNLLnz +0.0264 [-0.0124,+0.0722] | dHit -0.030 | sd 1.30->1.31 pmode 0.337->0.337 hit 0.529->0.474
+  ctrl: shift-rsign [0.00166, -0.01378, 0.01737]  lik-mirror [0.033, 0.00324, 0.07439]  temp-pool [-0.05256, -0.1388, -0.00098]  temp-shifttemp [0.002, -0.01129, 0.01618]  rectemp-shifttemp [0.00774, -0.01181, 0.03248]  mtemp={'REASONED': 0.75, 'UNREASONED_COLD': 0.5, 'OTHER': 1.0, 'SMALL': 0.5}
+  h2h lik_pool-shift_roll dRPS [0.05164, 0.0009, 0.13428] dNLLnz [0.02342, -0.01398, 0.08319]
+  h2h lik_pool_temp-shift_roll dRPS [-0.00092, -0.01617, 0.01496] dNLLnz [-0.00977, -0.02901, 0.01306]
+  h2h lik_raw-shift_roll dRPS [0.10246, 0.00492, 0.25053] dNLLnz [0.09224, -0.007, 0.25493]
+  h2h lik_rec-shift_roll dRPS [0.04097, -0.00119, 0.10476] dNLLnz [0.02815, -0.01472, 0.09767]
+  h2h shift_ab-shift_roll dRPS [-0.00064, -0.03273, 0.02672] dNLLnz [0.02169, -0.02315, 0.0605]
+  murphy: {'base': (0.00798, 0.03137), 'shift_roll': (0.00706, 0.02917), 'shift_ab': (0.00526, 0.02653), 'shift_temp': (0.00586, 0.02793), 'lik_deb': (0.00333, 0.0231), 'lik_pool': (0.0051, 0.02544), 'lik_pool_temp': (0.00739, 0.03071), 'lik_naive': (0.00857, 0.02445), 'lik_rec': (0.00698, 0.02806), 'lik_rec_temp': (0.00713, 0.02941)}
+  tier 12-24 n_days=25 dRPS shift +0.0160 pool +0.0666 temp +0.0119 rec +0.0675 | h2h pool-shift [0.0506, -0.00083, 0.1422] temp-shift [-0.00408, -0.01859, 0.0109]
+  tier 24-36 n_days= 4 dRPS shift +0.0154 pool +0.0736 temp +0.0342 rec -0.0098 | h2h pool-shift [0.0582, -0.00252, 0.11893] temp-shift [0.01882, -0.02955, 0.08907]
+  grp REASONED        n_days= 5 dRPS shift +0.0498 pool +0.0504 temp +0.0115 | h2h pool-shift [0.00058, -0.00581, 0.00635]
+  grp UNREASONED_COLD n_days= 5 dRPS shift -0.0185 pool -0.0232 temp -0.0075 | h2h pool-shift [-0.00463, -0.00643, -0.00332]
+  grp OTHER           n_days= 6 dRPS shift +0.0446 pool +0.2413 temp +0.0032 | h2h pool-shift [0.19677, -0.00383, 0.53235]
+  grp SMALL           n_days=17 dRPS shift +0.0097 pool +0.0286 temp +0.0374 | h2h pool-shift [0.01896, -0.00018, 0.04036]
+
+RKPK days=21 cells=33 k_med=0.572 kraw_med=0.581 ab=[0.368, 0.512] line=[0.166, 0.486, 0.86] rawline=[-0.129, 0.49, 0.847] pool=[-0.115, 0.384, 0.965] temp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 0.75, 'SMALL': 1.0} lam={1.0: 28, 0.75: 62, 0.5: 135} grp={'SMALL': 142, 'REASONED': 57, 'UNREASONED_COLD': 26} age_med=3.4h
+  RPS base 0.4709 | shift_roll 0.4783 shift_raw 0.4699 shift_ab 0.5048 shift_temp 0.5057 lik_deb 0.4990 lik_raw 0.4818 lik_lam 0.5179 lik_pool 0.4546 lik_pool_temp 0.4718 lik_naive 0.4391 lik_rec 0.4990 lik_rec_lam 0.5116 lik_rec_temp 0.5066
+  shift_roll    dRPS +0.0075 [-0.1057,+0.1619] P>0 0.53 | dNLLnz +0.0313 [-0.1454,+0.2393] | dHit -0.036 | sd 1.42->1.48 pmode 0.345->0.316 hit 0.556->0.373
+  shift_raw     dRPS -0.0010 [-0.1339,+0.1483] P>0 0.47 | dNLLnz +0.0016 [-0.2041,+0.2449] | dHit -0.048 | sd 1.42->1.48 pmode 0.345->0.316 hit 0.556->0.307
+  shift_ab      dRPS +0.0339 [-0.0715,+0.1753] P>0 0.67 | dNLLnz +0.0788 [-0.0782,+0.2904] | dHit -0.016 | sd 1.42->1.48 pmode 0.345->0.319 hit 0.556->0.556
+  shift_temp    dRPS +0.0348 [-0.0481,+0.1551] P>0 0.72 | dNLLnz +0.0663 [-0.0604,+0.2571] | dHit -0.027 | sd 1.42->1.46 pmode 0.345->0.323 hit 0.556->0.329
+  lik_deb       dRPS +0.0281 [-0.1194,+0.2360] P>0 0.58 | dNLLnz +0.0091 [-0.2409,+0.3970] | dHit -0.068 | sd 1.42->1.10 pmode 0.345->0.397 hit 0.556->0.284
+  lik_raw       dRPS +0.0109 [-0.1281,+0.1888] P>0 0.52 | dNLLnz -0.0309 [-0.2629,+0.2992] | dHit -0.076 | sd 1.42->1.07 pmode 0.345->0.403 hit 0.556->0.262
+  lik_lam       dRPS +0.0470 [-0.0765,+0.2479] P>0 0.66 | dNLLnz +0.0599 [-0.1556,+0.4165] | dHit -0.042 | sd 1.42->1.16 pmode 0.345->0.381 hit 0.556->0.307
+  lik_pool      dRPS -0.0163 [-0.1016,+0.0872] P>0 0.35 | dNLLnz -0.0793 [-0.1904,+0.0491] | dHit -0.019 | sd 1.42->1.20 pmode 0.345->0.371 hit 0.556->0.320
+  lik_pool_temp dRPS +0.0009 [-0.0566,+0.0804] P>0 0.49 | dNLLnz -0.0505 [-0.1190,+0.0312] | dHit -0.012 | sd 1.42->1.20 pmode 0.345->0.375 hit 0.556->0.391
+  lik_naive     dRPS -0.0318 [-0.1408,+0.1277] P>0 0.29 | dNLLnz -0.1071 [-0.3575,+0.2446] | dHit +0.011 | sd 1.42->0.79 pmode 0.345->0.489 hit 0.556->0.533
+  lik_rec       dRPS +0.0281 [-0.0949,+0.1774] P>0 0.63 | dNLLnz +0.0413 [-0.1499,+0.2673] | dHit -0.051 | sd 1.42->1.47 pmode 0.345->0.319 hit 0.556->0.316
+  lik_rec_lam   dRPS +0.0407 [-0.0526,+0.1795] P>0 0.73 | dNLLnz +0.0604 [-0.0900,+0.2608] | dHit -0.094 | sd 1.42->1.46 pmode 0.345->0.325 hit 0.556->0.284
+  lik_rec_temp  dRPS +0.0357 [-0.0322,+0.1302] P>0 0.78 | dNLLnz +0.0690 [-0.0436,+0.2325] | dHit -0.032 | sd 1.42->1.46 pmode 0.345->0.326 hit 0.556->0.382
+  ctrl: shift-rsign [-0.08243, -0.16502, 0.00717]  lik-mirror [-0.08289, -0.17546, 0.01369]  temp-pool [0.01723, -0.0202, 0.0561]  temp-shifttemp [-0.03389, -0.08552, 0.00646]  rectemp-shifttemp [0.0009, -0.03039, 0.02938]  mtemp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 1.0, 'SMALL': 0.5}
+  h2h lik_pool-shift_roll dRPS [-0.02378, -0.07705, 0.02586] dNLLnz [-0.11055, -0.22091, -0.01275]
+  h2h lik_pool_temp-shift_roll dRPS [-0.00655, -0.09095, 0.07297] dNLLnz [-0.08173, -0.24221, 0.06338]
+  h2h lik_raw-shift_roll dRPS [0.00346, -0.04493, 0.06115] dNLLnz [-0.06223, -0.18085, 0.07531]
+  h2h lik_rec-shift_roll dRPS [0.02065, -0.00414, 0.04388] dNLLnz [0.01003, -0.02193, 0.04364]
+  h2h shift_ab-shift_roll dRPS [0.02642, -0.01009, 0.06694] dNLLnz [0.04751, -0.00961, 0.11236]
+  murphy: {'base': (0.00408, 0.02573), 'shift_roll': (0.00281, 0.01956), 'shift_ab': (0.00184, 0.01927), 'shift_temp': (0.00163, 0.0158), 'lik_deb': (0.00789, 0.0253), 'lik_pool': (0.00218, 0.02281), 'lik_pool_temp': (0.00384, 0.02207), 'lik_naive': (0.00536, 0.02604), 'lik_rec': (0.00212, 0.01664), 'lik_rec_temp': (0.0015, 0.01507)}
+  tier 12-24 n_days=20 dRPS shift +0.0299 pool -0.0120 temp +0.0026 rec +0.0437 | h2h pool-shift [-0.04191, -0.09538, 0.00565] temp-shift [-0.0273, -0.10417, 0.04405]
+  tier 24-36 n_days=13 dRPS shift -0.0271 pool -0.0230 temp -0.0017 rec +0.0041 | h2h pool-shift [0.00409, -0.06653, 0.06985] temp-shift [0.02536, -0.08298, 0.12914]
+  grp REASONED        n_days= 5 dRPS shift +0.2264 pool +0.0935 temp +0.0525 | h2h pool-shift [-0.13294, -0.26064, -0.02791]
+  grp UNREASONED_COLD n_days= 4 dRPS shift -0.3275 pool -0.2521 temp -0.0738 | h2h pool-shift [0.07539, -0.02926, 0.17045]
+  grp SMALL           n_days=18 dRPS shift -0.0170 pool -0.0276 temp -0.0262 | h2h pool-shift [-0.01061, -0.04299, 0.02818]
+
+RKSI days=27 cells=51 k_med=0.18 kraw_med=0.24 ab=[-0.182, 0.0] line=[-0.151, -0.053, 0.959] rawline=[0.014, -0.034, 0.904] pool=[-0.016, 0.025, 0.994] temp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 0.75, 'SMALL': 1.0} lam={1.0: 89, 0.5: 111, 0.25: 517} grp={'SMALL': 539, 'UNREASONED_COLD': 74, 'OTHER': 75, 'REASONED': 29} age_med=3.4h
+  RPS base 0.4440 | shift_roll 0.4652 shift_raw 0.4653 shift_ab 0.5003 shift_temp 0.4540 lik_deb 0.5368 lik_raw 0.5176 lik_lam 0.4933 lik_pool 0.4723 lik_pool_temp 0.4467 lik_naive 0.4827 lik_rec 0.5056 lik_rec_lam 0.4846 lik_rec_temp 0.4553
+  shift_roll    dRPS +0.0212 [-0.0006,+0.0455] P>0 0.97 | dNLLnz +0.0321 [+0.0015,+0.0649] | dHit -0.009 | sd 1.46->1.49 pmode 0.311->0.297 hit 0.375->0.386
+  shift_raw     dRPS +0.0213 [-0.0073,+0.0546] P>0 0.92 | dNLLnz +0.0354 [-0.0029,+0.0814] | dHit -0.025 | sd 1.46->1.50 pmode 0.311->0.295 hit 0.375->0.372
+  shift_ab      dRPS +0.0563 [+0.0148,+0.1019] P>0 1.00 | dNLLnz +0.0794 [+0.0285,+0.1307] | dHit -0.024 | sd 1.46->1.50 pmode 0.311->0.292 hit 0.375->0.370
+  shift_temp    dRPS +0.0101 [-0.0098,+0.0319] P>0 0.83 | dNLLnz +0.0205 [-0.0026,+0.0527] | dHit -0.008 | sd 1.46->1.49 pmode 0.311->0.300 hit 0.375->0.388
+  lik_deb       dRPS +0.0928 [+0.0083,+0.2209] P>0 0.99 | dNLLnz +0.1319 [+0.0056,+0.3036] | dHit -0.069 | sd 1.46->1.32 pmode 0.311->0.329 hit 0.375->0.276
+  lik_raw       dRPS +0.0736 [-0.0139,+0.1934] P>0 0.94 | dNLLnz +0.1151 [-0.0177,+0.2963] | dHit -0.083 | sd 1.46->1.30 pmode 0.311->0.331 hit 0.375->0.233
+  lik_lam       dRPS +0.0493 [+0.0064,+0.1067] P>0 0.99 | dNLLnz +0.0503 [+0.0073,+0.1048] | dHit -0.005 | sd 1.46->1.39 pmode 0.311->0.319 hit 0.375->0.379
+  lik_pool      dRPS +0.0283 [-0.0265,+0.0865] P>0 0.84 | dNLLnz +0.0443 [-0.0340,+0.1469] | dHit -0.040 | sd 1.46->1.33 pmode 0.311->0.323 hit 0.375->0.294
+  lik_pool_temp dRPS +0.0027 [-0.0299,+0.0316] P>0 0.58 | dNLLnz +0.0046 [-0.0377,+0.0587] | dHit -0.040 | sd 1.46->1.32 pmode 0.311->0.324 hit 0.375->0.262
+  lik_naive     dRPS +0.0387 [-0.0392,+0.1304] P>0 0.80 | dNLLnz +0.1034 [-0.1545,+0.4452] | dHit -0.005 | sd 1.46->0.96 pmode 0.311->0.416 hit 0.375->0.509
+  lik_rec       dRPS +0.0616 [+0.0143,+0.1138] P>0 1.00 | dNLLnz +0.0786 [+0.0282,+0.1327] | dHit -0.065 | sd 1.46->1.50 pmode 0.311->0.295 hit 0.375->0.258
+  lik_rec_lam   dRPS +0.0406 [+0.0083,+0.0812] P>0 1.00 | dNLLnz +0.0516 [+0.0120,+0.1014] | dHit +0.003 | sd 1.46->1.48 pmode 0.311->0.301 hit 0.375->0.395
+  lik_rec_temp  dRPS +0.0113 [-0.0179,+0.0361] P>0 0.79 | dNLLnz +0.0239 [-0.0002,+0.0478] | dHit -0.028 | sd 1.46->1.49 pmode 0.311->0.297 hit 0.375->0.342
+  ctrl: shift-rsign [0.00591, -0.01446, 0.03062]  lik-mirror [0.02135, -0.01442, 0.05911]  temp-pool [-0.02565, -0.074, 0.00538]  temp-shifttemp [-0.00737, -0.02761, 0.01266]  rectemp-shifttemp [0.00125, -0.01969, 0.02193]  mtemp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 1.0, 'SMALL': 0.5}
+  h2h lik_pool-shift_roll dRPS [0.00715, -0.02905, 0.04769] dNLLnz [0.01221, -0.04813, 0.08637]
+  h2h lik_pool_temp-shift_roll dRPS [-0.0185, -0.04329, 0.00483] dNLLnz [-0.02748, -0.06291, 0.01307]
+  h2h lik_raw-shift_roll dRPS [0.05244, -0.01537, 0.15253] dNLLnz [0.083, -0.02938, 0.23226]
+  h2h lik_rec-shift_roll dRPS [0.04041, 0.0107, 0.07868] dNLLnz [0.04649, 0.01237, 0.09054]
+  h2h shift_ab-shift_roll dRPS [0.0351, 0.0048, 0.06749] dNLLnz [0.04728, 0.01235, 0.08397]
+  murphy: {'base': (0.00596, 0.0232), 'shift_roll': (0.00318, 0.02052), 'shift_ab': (0.00363, 0.01932), 'shift_temp': (0.00338, 0.02155), 'lik_deb': (0.00199, 0.01908), 'lik_pool': (0.00482, 0.02147), 'lik_pool_temp': (0.00305, 0.02231), 'lik_naive': (0.00176, 0.0219), 'lik_rec': (0.00302, 0.01982), 'lik_rec_temp': (0.0037, 0.02139)}
+  tier 12-24 n_days=26 dRPS shift +0.0008 pool +0.0010 temp +0.0032 rec +0.0239 | h2h pool-shift [0.0003, -0.02452, 0.0204] temp-shift [0.00243, -0.01305, 0.02117]
+  tier 24-36 n_days=25 dRPS shift +0.0424 pool +0.0567 temp +0.0022 rec +0.1008 | h2h pool-shift [0.01427, -0.04268, 0.08514] temp-shift [-0.04028, -0.08322, -0.00512]
+  grp REASONED        n_days= 3 dRPS shift +0.0846 pool +0.1654 temp +0.0848 | h2h pool-shift [0.08073, -0.02603, 0.15156]
+  grp UNREASONED_COLD n_days= 5 dRPS shift +0.0790 pool +0.1640 temp +0.0069 | h2h pool-shift [0.085, -0.01751, 0.23773]
+  grp OTHER           n_days= 3 dRPS shift -0.0710 pool -0.2599 temp -0.0432 | h2h pool-shift [-0.18886, -0.39402, 0.06137]
+  grp SMALL           n_days=24 dRPS shift +0.0063 pool -0.0022 temp +0.0012 | h2h pool-shift [-0.00849, -0.0361, 0.01534]
+
+RPLL days=22 cells=22 k_med=0.049 kraw_med=0.066 ab=[0.081, 0.386] line=[0.03, 0.305, 1.166] rawline=[0.029, 0.307, 1.137] pool=[-0.009, 0.261, 1.16] temp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 0.75, 'SMALL': 1.0} lam={0.75: 79, 0.5: 175} grp={'SMALL': 158, 'OTHER': 60, 'REASONED': 36} age_med=3.1h
+  RPS base 0.7928 | shift_roll 0.7556 shift_raw 0.7526 shift_ab 0.7788 shift_temp 0.7529 lik_deb 0.7299 lik_raw 0.7256 lik_lam 0.7484 lik_pool 0.7192 lik_pool_temp 0.7639 lik_naive 0.7259 lik_rec 0.7307 lik_rec_lam 0.7486 lik_rec_temp 0.7588
+  shift_roll    dRPS -0.0372 [-0.0862,+0.0143] P>0 0.08 | dNLLnz -0.0604 [-0.1573,+0.0271] | dHit +0.025 | sd 1.30->1.33 pmode 0.331->0.319 hit 0.311->0.319
+  shift_raw     dRPS -0.0401 [-0.0923,+0.0135] P>0 0.07 | dNLLnz -0.0634 [-0.1595,+0.0255] | dHit +0.032 | sd 1.30->1.33 pmode 0.331->0.318 hit 0.311->0.323
+  shift_ab      dRPS -0.0140 [-0.0714,+0.0507] P>0 0.31 | dNLLnz -0.0206 [-0.1172,+0.0695] | dHit +0.053 | sd 1.30->1.34 pmode 0.331->0.313 hit 0.311->0.386
+  shift_temp    dRPS -0.0399 [-0.0816,-0.0024] P>0 0.02 | dNLLnz -0.0555 [-0.1328,+0.0102] | dHit +0.043 | sd 1.30->1.33 pmode 0.331->0.321 hit 0.311->0.331
+  lik_deb       dRPS -0.0629 [-0.1563,+0.0246] P>0 0.08 | dNLLnz -0.0415 [-0.1350,+0.0701] | dHit -0.015 | sd 1.30->1.26 pmode 0.331->0.339 hit 0.311->0.311
+  lik_raw       dRPS -0.0672 [-0.1680,+0.0204] P>0 0.06 | dNLLnz -0.0469 [-0.1400,+0.0568] | dHit -0.008 | sd 1.30->1.25 pmode 0.331->0.340 hit 0.311->0.315
+  lik_lam       dRPS -0.0444 [-0.0988,+0.0049] P>0 0.04 | dNLLnz -0.0323 [-0.0826,+0.0240] | dHit +0.026 | sd 1.30->1.28 pmode 0.331->0.336 hit 0.311->0.323
+  lik_pool      dRPS -0.0735 [-0.1752,+0.0162] P>0 0.06 | dNLLnz -0.0599 [-0.1603,+0.0404] | dHit +0.012 | sd 1.30->1.23 pmode 0.331->0.343 hit 0.311->0.350
+  lik_pool_temp dRPS -0.0289 [-0.0769,+0.0224] P>0 0.12 | dNLLnz -0.0262 [-0.0969,+0.0528] | dHit +0.096 | sd 1.30->1.25 pmode 0.331->0.340 hit 0.311->0.437
+  lik_naive     dRPS -0.0669 [-0.2134,+0.0789] P>0 0.17 | dNLLnz +0.0109 [-0.2213,+0.2734] | dHit +0.037 | sd 1.30->0.94 pmode 0.331->0.417 hit 0.311->0.413
+  lik_rec       dRPS -0.0621 [-0.1502,+0.0212] P>0 0.08 | dNLLnz -0.0760 [-0.1930,+0.0198] | dHit +0.011 | sd 1.30->1.34 pmode 0.331->0.320 hit 0.311->0.319
+  lik_rec_lam   dRPS -0.0442 [-0.0979,+0.0031] P>0 0.03 | dNLLnz -0.0537 [-0.1218,+0.0032] | dHit +0.017 | sd 1.30->1.32 pmode 0.331->0.324 hit 0.311->0.323
+  lik_rec_temp  dRPS -0.0340 [-0.0890,+0.0191] P>0 0.11 | dNLLnz -0.0582 [-0.1494,+0.0173] | dHit +0.050 | sd 1.30->1.32 pmode 0.331->0.322 hit 0.311->0.425
+  ctrl: shift-rsign [-0.05139, -0.09863, -0.00263]  lik-mirror [-0.09704, -0.20664, -0.00419]  temp-pool [0.04464, -0.01647, 0.13223]  temp-shifttemp [0.01098, -0.03299, 0.05721]  rectemp-shifttemp [0.00586, -0.04246, 0.05275]  mtemp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 1.0, 'SMALL': 0.5}
+  h2h lik_pool-shift_roll dRPS [-0.03637, -0.10758, 0.02694] dNLLnz [0.00046, -0.0807, 0.09942]
+  h2h lik_pool_temp-shift_roll dRPS [0.00827, -0.02961, 0.04969] dNLLnz [0.03424, -0.04072, 0.12378]
+  h2h lik_raw-shift_roll dRPS [-0.03004, -0.09418, 0.02674] dNLLnz [0.01352, -0.07244, 0.11769]
+  h2h lik_rec-shift_roll dRPS [-0.0249, -0.07964, 0.02498] dNLLnz [-0.01561, -0.08713, 0.05648]
+  h2h shift_ab-shift_roll dRPS [0.02318, -0.00554, 0.05536] dNLLnz [0.03975, -0.001, 0.09758]
+  murphy: {'base': (0.00382, 0.01853), 'shift_roll': (0.00292, 0.01872), 'shift_ab': (0.00325, 0.0186), 'shift_temp': (0.00314, 0.0187), 'lik_deb': (0.00236, 0.01768), 'lik_pool': (0.00467, 0.02222), 'lik_pool_temp': (0.00245, 0.01794), 'lik_naive': (0.00858, 0.02425), 'lik_rec': (0.00367, 0.0191), 'lik_rec_temp': (0.00421, 0.01957)}
+  tier 12-24 n_days=22 dRPS shift -0.0372 pool -0.0735 temp -0.0289 rec -0.0621 | h2h pool-shift [-0.03637, -0.10892, 0.02553] temp-shift [0.00827, -0.02964, 0.05015]
+  grp REASONED        n_days= 6 dRPS shift -0.0789 pool -0.1192 temp -0.0903 | h2h pool-shift [-0.04022, -0.18499, 0.12061]
+  grp OTHER           n_days= 7 dRPS shift -0.0895 pool -0.2139 temp -0.0258 | h2h pool-shift [-0.12434, -0.29268, 0.01603]
+  grp SMALL           n_days=18 dRPS shift -0.0067 pool -0.0134 temp -0.0187 | h2h pool-shift [-0.00672, -0.04598, 0.03591]
+
+SAEZ days=27 cells=35 k_med=0.033 kraw_med=0.084 ab=[0.026, 0.159] line=[-0.207, 0.238, 1.393] rawline=[-0.635, 0.258, 1.373] pool=[-0.474, 0.231, 1.324] temp={'REASONED': 0.5, 'UNREASONED_COLD': 0.25, 'OTHER': 0.75, 'SMALL': 1.0} lam={0.5: 182, 0.25: 91} grp={'UNREASONED_COLD': 65, 'SMALL': 154, 'REASONED': 50, 'OTHER': 4} age_med=3.1h
+  RPS base 0.5345 | shift_roll 0.5419 shift_raw 0.5369 shift_ab 0.5643 shift_temp 0.5451 lik_deb 0.5345 lik_raw 0.5321 lik_lam 0.5310 lik_pool 0.5157 lik_pool_temp 0.5186 lik_naive 0.5092 lik_rec 0.5352 lik_rec_lam 0.5311 lik_rec_temp 0.5228
+  shift_roll    dRPS +0.0074 [-0.0235,+0.0421] P>0 0.64 | dNLLnz +0.0288 [-0.0236,+0.0861] | dHit +0.005 | sd 1.82->1.84 pmode 0.308->0.298 hit 0.337->0.333
+  shift_raw     dRPS +0.0024 [-0.0372,+0.0451] P>0 0.52 | dNLLnz +0.0296 [-0.0366,+0.1051] | dHit -0.010 | sd 1.82->1.85 pmode 0.308->0.294 hit 0.337->0.319
+  shift_ab      dRPS +0.0298 [-0.0237,+0.0872] P>0 0.85 | dNLLnz +0.0561 [-0.0157,+0.1353] | dHit -0.009 | sd 1.82->1.85 pmode 0.308->0.288 hit 0.337->0.308
+  shift_temp    dRPS +0.0106 [-0.0184,+0.0451] P>0 0.72 | dNLLnz +0.0330 [-0.0116,+0.0946] | dHit -0.005 | sd 1.82->1.84 pmode 0.308->0.300 hit 0.337->0.333
+  lik_deb       dRPS -0.0000 [-0.0306,+0.0357] P>0 0.46 | dNLLnz -0.0003 [-0.0409,+0.0477] | dHit -0.014 | sd 1.82->1.77 pmode 0.308->0.314 hit 0.337->0.326
+  lik_raw       dRPS -0.0024 [-0.0352,+0.0348] P>0 0.42 | dNLLnz -0.0030 [-0.0463,+0.0481] | dHit -0.014 | sd 1.82->1.77 pmode 0.308->0.315 hit 0.337->0.326
+  lik_lam       dRPS -0.0035 [-0.0133,+0.0076] P>0 0.25 | dNLLnz -0.0041 [-0.0149,+0.0078] | dHit -0.010 | sd 1.82->1.80 pmode 0.308->0.311 hit 0.337->0.330
+  lik_pool      dRPS -0.0188 [-0.0646,+0.0264] P>0 0.20 | dNLLnz -0.0199 [-0.0692,+0.0337] | dHit +0.016 | sd 1.82->1.64 pmode 0.308->0.326 hit 0.337->0.333
+  lik_pool_temp dRPS -0.0159 [-0.0532,+0.0212] P>0 0.20 | dNLLnz -0.0195 [-0.0503,+0.0112] | dHit +0.024 | sd 1.82->1.65 pmode 0.308->0.324 hit 0.337->0.341
+  lik_naive     dRPS -0.0253 [-0.1175,+0.0753] P>0 0.28 | dNLLnz -0.0401 [-0.1877,+0.1337] | dHit +0.017 | sd 1.82->1.12 pmode 0.308->0.389 hit 0.337->0.319
+  lik_rec       dRPS +0.0007 [-0.0297,+0.0336] P>0 0.51 | dNLLnz +0.0140 [-0.0278,+0.0513] | dHit +0.020 | sd 1.82->1.84 pmode 0.308->0.295 hit 0.337->0.337
+  lik_rec_lam   dRPS -0.0034 [-0.0146,+0.0069] P>0 0.26 | dNLLnz +0.0016 [-0.0124,+0.0136] | dHit -0.005 | sd 1.82->1.83 pmode 0.308->0.303 hit 0.337->0.333
+  lik_rec_temp  dRPS -0.0117 [-0.0524,+0.0245] P>0 0.26 | dNLLnz +0.0050 [-0.0377,+0.0433] | dHit +0.023 | sd 1.82->1.84 pmode 0.308->0.295 hit 0.337->0.319
+  ctrl: shift-rsign [-0.00389, -0.03517, 0.03177]  lik-mirror [-0.0057, -0.03603, 0.02846]  temp-pool [0.00297, -0.01562, 0.01999]  temp-shifttemp [-0.0265, -0.06535, 0.01051]  rectemp-shifttemp [-0.02235, -0.06206, 0.01607]  mtemp={'REASONED': 0.75, 'UNREASONED_COLD': 0.5, 'OTHER': 1.25, 'SMALL': 0.5}
+  h2h lik_pool-shift_roll dRPS [-0.0262, -0.05773, 0.00472] dNLLnz [-0.04868, -0.08073, -0.0142]
+  h2h lik_pool_temp-shift_roll dRPS [-0.02323, -0.06213, 0.01451] dNLLnz [-0.04826, -0.09283, -0.00749]
+  h2h lik_raw-shift_roll dRPS [-0.0098, -0.02944, 0.01011] dNLLnz [-0.03175, -0.06324, 0.00339]
+  h2h lik_rec-shift_roll dRPS [-0.00669, -0.02621, 0.01029] dNLLnz [-0.01479, -0.04619, 0.01071]
+  h2h shift_ab-shift_roll dRPS [0.02242, -0.01306, 0.06745] dNLLnz [0.02738, -0.01033, 0.07686]
+  murphy: {'base': (0.00171, 0.0185), 'shift_roll': (0.00165, 0.01738), 'shift_ab': (0.00126, 0.01307), 'shift_temp': (0.00167, 0.01672), 'lik_deb': (0.00143, 0.01754), 'lik_pool': (0.00126, 0.01708), 'lik_pool_temp': (0.00146, 0.01757), 'lik_naive': (0.00225, 0.0195), 'lik_rec': (0.00215, 0.01675), 'lik_rec_temp': (0.00241, 0.01788)}
+  tier 12-24 n_days=26 dRPS shift -0.0059 pool -0.0407 temp -0.0324 rec -0.0120 | h2h pool-shift [-0.03478, -0.07311, -0.00113] temp-shift [-0.02653, -0.06687, 0.009]
+  tier 24-36 n_days= 9 dRPS shift +0.0457 pool +0.0442 temp +0.0320 rec +0.0375 | h2h pool-shift [-0.00141, -0.04814, 0.04368] temp-shift [-0.01371, -0.0809, 0.05229]
+  grp REASONED        n_days= 6 dRPS shift -0.0389 pool -0.1248 temp -0.0751 | h2h pool-shift [-0.08589, -0.22723, 0.01868]
+  grp UNREASONED_COLD n_days=14 dRPS shift -0.0038 pool -0.0248 temp -0.0084 | h2h pool-shift [-0.02098, -0.04577, 0.00162]
+  grp OTHER           n_days= 1 dRPS shift +0.2182 pool +0.3012 temp +0.1507 | h2h pool-shift [0.08304, 0.08304, 0.08304]
+  grp SMALL           n_days=18 dRPS shift +0.0002 pool -0.0230 temp -0.0248 | h2h pool-shift [-0.02319, -0.06874, 0.01898]
+
+SBGR days=26 cells=39 k_med=0.41 kraw_med=0.399 ab=[0.262, 0.35] line=[-0.075, 0.174, 1.007] rawline=[-0.219, 0.179, 1.006] pool=[-0.18, 0.176, 1.066] temp={'REASONED': 0.5, 'UNREASONED_COLD': 0.25, 'OTHER': 0.75, 'SMALL': 1.0} lam={0.5: 407, 0.25: 57} grp={'UNREASONED_COLD': 92, 'REASONED': 116, 'SMALL': 220, 'OTHER': 36} age_med=4.1h
+  RPS base 1.0139 | shift_roll 1.0562 shift_raw 1.0609 shift_ab 1.0749 shift_temp 1.0641 lik_deb 1.2318 lik_raw 1.2194 lik_lam 1.0978 lik_pool 1.0482 lik_pool_temp 1.0121 lik_naive 1.0765 lik_rec 1.1667 lik_rec_lam 1.0911 lik_rec_temp 1.0428
+  shift_roll    dRPS +0.0423 [-0.0305,+0.1304] P>0 0.84 | dNLLnz +0.1016 [-0.0339,+0.3159] | dHit -0.064 | sd 2.21->2.25 pmode 0.247->0.237 hit 0.207->0.222
+  shift_raw     dRPS +0.0470 [-0.0204,+0.1293] P>0 0.89 | dNLLnz +0.0979 [-0.0242,+0.3028] | dHit -0.064 | sd 2.21->2.25 pmode 0.247->0.237 hit 0.207->0.222
+  shift_ab      dRPS +0.0610 [-0.0457,+0.1781] P>0 0.86 | dNLLnz +0.1585 [-0.0399,+0.4626] | dHit -0.088 | sd 2.21->2.25 pmode 0.247->0.234 hit 0.207->0.216
+  shift_temp    dRPS +0.0503 [-0.0042,+0.1105] P>0 0.97 | dNLLnz +0.0837 [-0.0037,+0.2128] | dHit -0.043 | sd 2.21->2.24 pmode 0.247->0.238 hit 0.207->0.226
+  lik_deb       dRPS +0.2179 [+0.0128,+0.4966] P>0 0.98 | dNLLnz +0.1651 [-0.0189,+0.4096] | dHit -0.037 | sd 2.21->1.86 pmode 0.247->0.280 hit 0.207->0.235
+  lik_raw       dRPS +0.2055 [+0.0008,+0.4471] P>0 0.98 | dNLLnz +0.1482 [-0.0259,+0.3770] | dHit -0.021 | sd 2.21->1.87 pmode 0.247->0.276 hit 0.207->0.237
+  lik_lam       dRPS +0.0839 [-0.0404,+0.2391] P>0 0.89 | dNLLnz +0.0442 [-0.0406,+0.1543] | dHit -0.048 | sd 2.21->2.02 pmode 0.247->0.261 hit 0.207->0.220
+  lik_pool      dRPS +0.0343 [-0.1340,+0.2226] P>0 0.63 | dNLLnz +0.0149 [-0.1017,+0.1556] | dHit -0.024 | sd 2.21->1.89 pmode 0.247->0.256 hit 0.207->0.272
+  lik_pool_temp dRPS -0.0018 [-0.1330,+0.1151] P>0 0.48 | dNLLnz -0.0090 [-0.0897,+0.0803] | dHit +0.023 | sd 2.21->1.91 pmode 0.247->0.258 hit 0.207->0.282
+  lik_naive     dRPS +0.0626 [-0.1557,+0.3221] P>0 0.67 | dNLLnz +0.1834 [-0.1716,+0.6522] | dHit +0.006 | sd 2.21->1.14 pmode 0.247->0.352 hit 0.207->0.371
+  lik_rec       dRPS +0.1528 [+0.0165,+0.3220] P>0 0.99 | dNLLnz +0.2480 [+0.0189,+0.5826] | dHit -0.084 | sd 2.21->2.23 pmode 0.247->0.247 hit 0.207->0.103
+  lik_rec_lam   dRPS +0.0772 [-0.0126,+0.1867] P>0 0.95 | dNLLnz +0.1220 [-0.0120,+0.3336] | dHit -0.110 | sd 2.21->2.23 pmode 0.247->0.243 hit 0.207->0.082
+  lik_rec_temp  dRPS +0.0289 [-0.0612,+0.1226] P>0 0.72 | dNLLnz +0.1094 [-0.0161,+0.3021] | dHit -0.087 | sd 2.21->2.24 pmode 0.247->0.239 hit 0.207->0.093
+  ctrl: shift-rsign [0.01772, -0.05124, 0.10557]  lik-mirror [0.07185, -0.11241, 0.27895]  temp-pool [-0.03618, -0.12491, 0.03287]  temp-shifttemp [-0.05208, -0.1673, 0.0466]  rectemp-shifttemp [-0.02138, -0.0983, 0.05267]  mtemp={'REASONED': 0.75, 'UNREASONED_COLD': 0.5, 'OTHER': 1.25, 'SMALL': 0.5}
+  h2h lik_pool-shift_roll dRPS [-0.00792, -0.13782, 0.11996] dNLLnz [-0.08665, -0.19284, -0.00677]
+  h2h lik_pool_temp-shift_roll dRPS [-0.0441, -0.14531, 0.04199] dNLLnz [-0.11062, -0.2766, -0.00884]
+  h2h lik_raw-shift_roll dRPS [0.16325, 0.00518, 0.37862] dNLLnz [0.04658, -0.08828, 0.21702]
+  h2h lik_rec-shift_roll dRPS [0.11057, 0.02097, 0.21667] dNLLnz [0.1464, 0.02571, 0.29506]
+  h2h shift_ab-shift_roll dRPS [0.01874, -0.02632, 0.06272] dNLLnz [0.05695, -0.0266, 0.1772]
+  murphy: {'base': (0.00209, 0.00596), 'shift_roll': (0.00171, 0.0051), 'shift_ab': (0.00146, 0.00488), 'shift_temp': (0.00164, 0.00535), 'lik_deb': (0.0026, 0.00615), 'lik_pool': (0.00053, 0.00827), 'lik_pool_temp': (0.00028, 0.00714), 'lik_naive': (0.00195, 0.00773), 'lik_rec': (0.00403, 0.00338), 'lik_rec_temp': (0.0047, 0.00582)}
+  tier 12-24 n_days=26 dRPS shift +0.0526 pool -0.0221 temp -0.0606 rec +0.1507 | h2h pool-shift [-0.07474, -0.20202, 0.04102] temp-shift [-0.11326, -0.22391, -0.04392]
+  tier 24-36 n_days=13 dRPS shift +0.0215 pool +0.1472 temp +0.1157 rec +0.1572 | h2h pool-shift [0.12573, -0.09676, 0.38061] temp-shift [0.09422, -0.05461, 0.27437]
+  grp REASONED        n_days= 6 dRPS shift -0.2462 pool -0.6356 temp -0.4802 | h2h pool-shift [-0.38933, -1.16172, 0.23067]
+  grp UNREASONED_COLD n_days= 5 dRPS shift +0.0489 pool -0.0767 temp -0.0243 | h2h pool-shift [-0.12568, -0.39767, 0.04545]
+  grp OTHER           n_days= 7 dRPS shift +0.1814 pool +0.3808 temp +0.2125 | h2h pool-shift [0.19938, -0.00982, 0.43958]
+  grp SMALL           n_days=21 dRPS shift +0.0167 pool -0.0131 temp -0.0086 | h2h pool-shift [-0.02977, -0.0873, 0.02986]
+
+ZBAA days=32 cells=55 k_med=0.332 kraw_med=0.312 ab=[0.371, 0.2] line=[0.151, 0.039, 0.93] rawline=[-0.453, 0.123, 0.913] pool=[-0.355, 0.134, 0.992] temp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 0.75, 'SMALL': 1.0} lam={0.25: 457, 0.5: 260, 0.75: 70, 1.0: 5} grp={'SMALL': 509, 'UNREASONED_COLD': 243, 'REASONED': 40} age_med=4.2h
+  RPS base 0.7261 | shift_roll 0.7367 shift_raw 0.7500 shift_ab 0.7331 shift_temp 0.7291 lik_deb 0.7502 lik_raw 0.7847 lik_lam 0.7240 lik_pool 0.7573 lik_pool_temp 0.7314 lik_naive 0.7125 lik_rec 0.7363 lik_rec_lam 0.7216 lik_rec_temp 0.7305
+  shift_roll    dRPS +0.0106 [-0.0306,+0.0527] P>0 0.67 | dNLLnz -0.0514 [-0.2365,+0.0562] | dHit -0.037 | sd 1.72->1.76 pmode 0.304->0.287 hit 0.244->0.203
+  shift_raw     dRPS +0.0239 [-0.0083,+0.0673] P>0 0.91 | dNLLnz -0.0070 [-0.0830,+0.0494] | dHit -0.048 | sd 1.72->1.75 pmode 0.304->0.291 hit 0.244->0.136
+  shift_ab      dRPS +0.0071 [-0.1075,+0.1284] P>0 0.54 | dNLLnz -0.1046 [-0.4446,+0.1742] | dHit +0.091 | sd 1.72->1.77 pmode 0.304->0.278 hit 0.244->0.490
+  shift_temp    dRPS +0.0030 [-0.0150,+0.0220] P>0 0.62 | dNLLnz -0.0145 [-0.0552,+0.0151] | dHit -0.015 | sd 1.72->1.74 pmode 0.304->0.293 hit 0.244->0.201
+  lik_deb       dRPS +0.0241 [-0.0178,+0.0679] P>0 0.88 | dNLLnz +0.0297 [-0.0238,+0.1010] | dHit -0.011 | sd 1.72->1.66 pmode 0.304->0.312 hit 0.244->0.199
+  lik_raw       dRPS +0.0587 [-0.0179,+0.1461] P>0 0.93 | dNLLnz +0.0531 [-0.0486,+0.1854] | dHit -0.046 | sd 1.72->1.53 pmode 0.304->0.329 hit 0.244->0.115
+  lik_lam       dRPS -0.0021 [-0.0199,+0.0152] P>0 0.40 | dNLLnz +0.0014 [-0.0194,+0.0232] | dHit -0.013 | sd 1.72->1.70 pmode 0.304->0.305 hit 0.244->0.212
+  lik_pool      dRPS +0.0312 [-0.0280,+0.0981] P>0 0.84 | dNLLnz +0.0294 [-0.0502,+0.1409] | dHit -0.045 | sd 1.72->1.56 pmode 0.304->0.323 hit 0.244->0.115
+  lik_pool_temp dRPS +0.0054 [-0.0320,+0.0412] P>0 0.61 | dNLLnz -0.0038 [-0.0544,+0.0492] | dHit -0.049 | sd 1.72->1.56 pmode 0.304->0.321 hit 0.244->0.121
+  lik_naive     dRPS -0.0135 [-0.1018,+0.0780] P>0 0.38 | dNLLnz +0.0569 [-0.1660,+0.3178] | dHit -0.000 | sd 1.72->1.00 pmode 0.304->0.421 hit 0.244->0.289
+  lik_rec       dRPS +0.0102 [-0.0332,+0.0536] P>0 0.67 | dNLLnz -0.0329 [-0.1608,+0.0466] | dHit -0.040 | sd 1.72->1.75 pmode 0.304->0.288 hit 0.244->0.236
+  lik_rec_lam   dRPS -0.0045 [-0.0244,+0.0125] P>0 0.33 | dNLLnz -0.0390 [-0.1319,+0.0145] | dHit -0.017 | sd 1.72->1.74 pmode 0.304->0.294 hit 0.244->0.211
+  lik_rec_temp  dRPS +0.0045 [-0.0346,+0.0429] P>0 0.60 | dNLLnz -0.0347 [-0.1563,+0.0413] | dHit -0.085 | sd 1.72->1.76 pmode 0.304->0.286 hit 0.244->0.072
+  ctrl: shift-rsign [0.00568, -0.0378, 0.05145]  lik-mirror [-0.00433, -0.05399, 0.04329]  temp-pool [-0.02587, -0.0679, 0.01072]  temp-shifttemp [0.00238, -0.02725, 0.03037]  rectemp-shifttemp [0.00148, -0.02599, 0.02759]  mtemp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 1.0, 'SMALL': 0.5}
+  h2h lik_pool-shift_roll dRPS [0.02059, -0.01868, 0.06667] dNLLnz [0.08076, -0.04465, 0.26536]
+  h2h lik_pool_temp-shift_roll dRPS [-0.00528, -0.02919, 0.02345] dNLLnz [0.04756, -0.05115, 0.21736]
+  h2h lik_raw-shift_roll dRPS [0.04803, -0.01357, 0.12311] dNLLnz [0.10446, -0.03254, 0.299]
+  h2h lik_rec-shift_roll dRPS [-0.0004, -0.01777, 0.01881] dNLLnz [0.01849, -0.02664, 0.09133]
+  h2h shift_ab-shift_roll dRPS [-0.00359, -0.09979, 0.09837] dNLLnz [-0.05319, -0.31984, 0.16006]
+  murphy: {'base': (0.00354, 0.00887), 'shift_roll': (0.00277, 0.00947), 'shift_ab': (0.00705, 0.01565), 'shift_temp': (0.00334, 0.01021), 'lik_deb': (0.00493, 0.00896), 'lik_pool': (0.00661, 0.01158), 'lik_pool_temp': (0.0079, 0.01478), 'lik_naive': (0.00477, 0.01117), 'lik_rec': (0.00354, 0.01054), 'lik_rec_temp': (0.00268, 0.00871)}
+  tier 12-24 n_days=27 dRPS shift +0.0389 pool +0.0582 temp +0.0314 rec +0.0426 | h2h pool-shift [0.01932, -0.01413, 0.05675] temp-shift [-0.00748, -0.0376, 0.03077]
+  tier 24-36 n_days=28 dRPS shift -0.0166 pool +0.0052 temp -0.0197 rec -0.0210 | h2h pool-shift [0.02182, -0.05201, 0.1035] temp-shift [-0.00316, -0.05008, 0.04525]
+  grp REASONED        n_days= 4 dRPS shift -0.2892 pool -0.3055 temp -0.3035 | h2h pool-shift [-0.01632, -0.31541, 0.42157]
+  grp UNREASONED_COLD n_days=16 dRPS shift +0.0485 pool +0.0947 temp +0.0199 | h2h pool-shift [0.04616, -0.00899, 0.10446]
+  grp SMALL           n_days=27 dRPS shift +0.0208 pool +0.0221 temp +0.0307 | h2h pool-shift [0.00126, -0.02496, 0.03185]
+
+ZGGG days=32 cells=55 k_med=0.475 kraw_med=0.479 ab=[0.177, 0.0] line=[-0.065, -0.053, 1.141] rawline=[-0.221, -0.001, 1.126] pool=[-0.185, 0.044, 1.148] temp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 0.75, 'SMALL': 1.0} lam={0.5: 549, 0.25: 360, 1.0: 17} grp={'SMALL': 718, 'REASONED': 128, 'OTHER': 45, 'UNREASONED_COLD': 35} age_med=3.4h
+  RPS base 0.6915 | shift_roll 0.7176 shift_raw 0.7123 shift_ab 0.8276 shift_temp 0.7087 lik_deb 0.7621 lik_raw 0.7704 lik_lam 0.7032 lik_pool 0.7631 lik_pool_temp 0.7255 lik_naive 0.8015 lik_rec 0.7509 lik_rec_lam 0.7111 lik_rec_temp 0.7311
+  shift_roll    dRPS +0.0261 [-0.0217,+0.0848] P>0 0.83 | dNLLnz +0.0492 [-0.0597,+0.2009] | dHit -0.020 | sd 1.78->1.80 pmode 0.300->0.285 hit 0.251->0.195
+  shift_raw     dRPS +0.0208 [-0.0244,+0.0744] P>0 0.79 | dNLLnz +0.0050 [-0.0948,+0.1134] | dHit -0.053 | sd 1.78->1.81 pmode 0.300->0.283 hit 0.251->0.207
+  shift_ab      dRPS +0.1361 [+0.0473,+0.2430] P>0 1.00 | dNLLnz +0.2220 [+0.0359,+0.5014] | dHit -0.059 | sd 1.78->1.75 pmode 0.300->0.309 hit 0.251->0.096
+  shift_temp    dRPS +0.0172 [-0.0280,+0.0676] P>0 0.75 | dNLLnz -0.0003 [-0.0837,+0.0849] | dHit -0.036 | sd 1.78->1.80 pmode 0.300->0.287 hit 0.251->0.214
+  lik_deb       dRPS +0.0706 [-0.0179,+0.2188] P>0 0.88 | dNLLnz +0.0353 [-0.0307,+0.1372] | dHit -0.026 | sd 1.78->1.63 pmode 0.300->0.308 hit 0.251->0.183
+  lik_raw       dRPS +0.0789 [-0.0126,+0.2288] P>0 0.93 | dNLLnz +0.0420 [-0.0382,+0.1644] | dHit -0.045 | sd 1.78->1.54 pmode 0.300->0.319 hit 0.251->0.177
+  lik_lam       dRPS +0.0117 [-0.0137,+0.0461] P>0 0.77 | dNLLnz +0.0001 [-0.0209,+0.0258] | dHit -0.005 | sd 1.78->1.71 pmode 0.300->0.301 hit 0.251->0.212
+  lik_pool      dRPS +0.0716 [-0.0100,+0.1940] P>0 0.94 | dNLLnz +0.0358 [-0.0339,+0.1363] | dHit -0.054 | sd 1.78->1.61 pmode 0.300->0.311 hit 0.251->0.184
+  lik_pool_temp dRPS +0.0340 [-0.0213,+0.1103] P>0 0.84 | dNLLnz +0.0288 [-0.0482,+0.1409] | dHit -0.028 | sd 1.78->1.60 pmode 0.300->0.306 hit 0.251->0.193
+  lik_naive     dRPS +0.1100 [+0.0157,+0.2284] P>0 0.99 | dNLLnz +0.1763 [-0.0310,+0.4737] | dHit -0.116 | sd 1.78->1.22 pmode 0.300->0.360 hit 0.251->0.176
+  lik_rec       dRPS +0.0594 [-0.0146,+0.1712] P>0 0.91 | dNLLnz +0.1666 [-0.0323,+0.5099] | dHit -0.026 | sd 1.78->1.79 pmode 0.300->0.288 hit 0.251->0.185
+  lik_rec_lam   dRPS +0.0196 [-0.0122,+0.0632] P>0 0.85 | dNLLnz +0.0396 [-0.0220,+0.1320] | dHit -0.012 | sd 1.78->1.79 pmode 0.300->0.290 hit 0.251->0.228
+  lik_rec_temp  dRPS +0.0397 [-0.0205,+0.1196] P>0 0.88 | dNLLnz +0.0797 [-0.0610,+0.2904] | dHit +0.001 | sd 1.78->1.80 pmode 0.300->0.288 hit 0.251->0.269
+  ctrl: shift-rsign [0.01503, -0.03043, 0.07245]  lik-mirror [0.04021, -0.02847, 0.14648]  temp-pool [-0.03763, -0.09606, -0.00073]  temp-shifttemp [0.01673, -0.01522, 0.05632]  rectemp-shifttemp [0.02242, -0.01034, 0.06285]  mtemp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 1.0, 'SMALL': 0.5}
+  h2h lik_pool-shift_roll dRPS [0.04546, -0.00307, 0.11751] dNLLnz [-0.01346, -0.08692, 0.05371]
+  h2h lik_pool_temp-shift_roll dRPS [0.00783, -0.01453, 0.03219] dNLLnz [-0.02047, -0.0756, 0.03193]
+  h2h lik_raw-shift_roll dRPS [0.0528, -0.00562, 0.13901] dNLLnz [-0.00726, -0.05917, 0.05054]
+  h2h lik_rec-shift_roll dRPS [0.03329, -0.00683, 0.08614] dNLLnz [0.11734, 0.00779, 0.31965]
+  h2h shift_ab-shift_roll dRPS [0.10993, 0.03124, 0.2004] dNLLnz [0.1728, 0.03356, 0.33464]
+  murphy: {'base': (0.00254, 0.00914), 'shift_roll': (0.00287, 0.01053), 'shift_ab': (0.00498, 0.00397), 'shift_temp': (0.00325, 0.0125), 'lik_deb': (0.00287, 0.0104), 'lik_pool': (0.00314, 0.01033), 'lik_pool_temp': (0.00261, 0.01008), 'lik_naive': (0.00627, 0.01072), 'lik_rec': (0.00243, 0.00906), 'lik_rec_temp': (0.00295, 0.01108)}
+  tier 12-24 n_days=30 dRPS shift +0.0089 pool +0.0782 temp +0.0103 rec +0.0226 | h2h pool-shift [0.0693, -0.01174, 0.1849] temp-shift [0.00138, -0.03236, 0.03892]
+  tier 24-36 n_days=25 dRPS shift +0.0468 pool +0.0636 temp +0.0623 rec +0.1036 | h2h pool-shift [0.01685, -0.01994, 0.05447] temp-shift [0.01557, -0.01576, 0.05013]
+  grp REASONED        n_days=14 dRPS shift -0.0683 pool +0.0243 temp -0.0063 | h2h pool-shift [0.09254, 0.0245, 0.17629]
+  grp UNREASONED_COLD n_days=10 dRPS shift +0.0025 pool +0.0196 temp +0.0036 | h2h pool-shift [0.01709, -0.0049, 0.03924]
+  grp OTHER           n_days= 7 dRPS shift +0.2175 pool +0.7059 temp +0.1687 | h2h pool-shift [0.4884, -0.2196, 1.63205]
+  grp SMALL           n_days=26 dRPS shift +0.0353 pool +0.0262 temp +0.0351 | h2h pool-shift [-0.00912, -0.02807, 0.01025]
+
+ZGSZ days=31 cells=52 k_med=0.0 kraw_med=0.0 ab=[0.01, 0.0] line=[0.045, -0.143, 0.787] rawline=[0.166, -0.101, 0.789] pool=[0.097, -0.028, 0.904] temp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 0.75, 'SMALL': 1.0} lam={0.25: 744, 1.0: 9, 0.5: 123} grp={'OTHER': 142, 'REASONED': 77, 'SMALL': 646, 'UNREASONED_COLD': 11} age_med=3.5h
+  RPS base 0.6253 | shift_roll 0.6324 shift_raw 0.6361 shift_ab 0.6587 shift_temp 0.6385 lik_deb 0.6439 lik_raw 0.6442 lik_lam 0.6269 lik_pool 0.6386 lik_pool_temp 0.6359 lik_naive 0.6985 lik_rec 0.6461 lik_rec_lam 0.6288 lik_rec_temp 0.6400
+  shift_roll    dRPS +0.0071 [+0.0000,+0.0196] P>0 0.88 | dNLLnz +0.0063 [+0.0000,+0.0169] | dHit +0.000 | sd 1.50->1.50 pmode 0.291->0.291 hit 0.352->0.352
+  shift_raw     dRPS +0.0109 [-0.0001,+0.0267] P>0 0.96 | dNLLnz +0.0109 [-0.0000,+0.0275] | dHit +0.000 | sd 1.50->1.50 pmode 0.291->0.290 hit 0.352->0.352
+  shift_ab      dRPS +0.0334 [+0.0040,+0.0644] P>0 0.99 | dNLLnz +0.0279 [-0.0173,+0.0702] | dHit +0.032 | sd 1.50->1.53 pmode 0.291->0.280 hit 0.352->0.329
+  shift_temp    dRPS +0.0132 [-0.0001,+0.0341] P>0 0.96 | dNLLnz +0.0130 [+0.0000,+0.0330] | dHit +0.000 | sd 1.50->1.50 pmode 0.291->0.291 hit 0.352->0.352
+  lik_deb       dRPS +0.0187 [-0.0115,+0.0546] P>0 0.87 | dNLLnz +0.0029 [-0.0276,+0.0366] | dHit +0.006 | sd 1.50->1.45 pmode 0.291->0.297 hit 0.352->0.290
+  lik_raw       dRPS +0.0189 [-0.0060,+0.0512] P>0 0.91 | dNLLnz +0.0116 [-0.0109,+0.0404] | dHit +0.031 | sd 1.50->1.47 pmode 0.291->0.296 hit 0.352->0.371
+  lik_lam       dRPS +0.0016 [-0.0058,+0.0101] P>0 0.65 | dNLLnz -0.0034 [-0.0105,+0.0036] | dHit +0.010 | sd 1.50->1.48 pmode 0.291->0.293 hit 0.352->0.358
+  lik_pool      dRPS +0.0133 [-0.0064,+0.0378] P>0 0.90 | dNLLnz +0.0089 [-0.0091,+0.0290] | dHit +0.030 | sd 1.50->1.46 pmode 0.291->0.297 hit 0.352->0.430
+  lik_pool_temp dRPS +0.0106 [-0.0095,+0.0332] P>0 0.83 | dNLLnz +0.0048 [-0.0124,+0.0253] | dHit +0.013 | sd 1.50->1.46 pmode 0.291->0.297 hit 0.352->0.397
+  lik_naive     dRPS +0.0732 [+0.0051,+0.1457] P>0 0.98 | dNLLnz +0.1844 [-0.0115,+0.4243] | dHit +0.044 | sd 1.50->0.99 pmode 0.291->0.391 hit 0.352->0.479
+  lik_rec       dRPS +0.0209 [-0.0120,+0.0584] P>0 0.89 | dNLLnz +0.0080 [-0.0365,+0.0489] | dHit +0.063 | sd 1.50->1.54 pmode 0.291->0.278 hit 0.352->0.417
+  lik_rec_lam   dRPS +0.0035 [-0.0053,+0.0135] P>0 0.76 | dNLLnz +0.0006 [-0.0114,+0.0126] | dHit +0.014 | sd 1.50->1.51 pmode 0.291->0.287 hit 0.352->0.368
+  lik_rec_temp  dRPS +0.0147 [-0.0055,+0.0394] P>0 0.91 | dNLLnz +0.0165 [-0.0040,+0.0435] | dHit +0.013 | sd 1.50->1.52 pmode 0.291->0.285 hit 0.352->0.397
+  ctrl: shift-rsign [0.00563, 0.0, 0.01559]  lik-mirror [0.00328, -0.02498, 0.03447]  temp-pool [-0.00269, -0.01164, 0.00479]  temp-shifttemp [-0.00259, -0.01773, 0.01249]  rectemp-shifttemp [0.00149, -0.01273, 0.01614]  mtemp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 1.0, 'SMALL': 0.5}
+  h2h lik_pool-shift_roll dRPS [0.0062, -0.00943, 0.0235] dNLLnz [0.00256, -0.01225, 0.01962]
+  h2h lik_pool_temp-shift_roll dRPS [0.00351, -0.01236, 0.0209] dNLLnz [-0.00153, -0.01612, 0.01484]
+  h2h lik_raw-shift_roll dRPS [0.01182, -0.0063, 0.03439] dNLLnz [0.00526, -0.01246, 0.02616]
+  h2h lik_rec-shift_roll dRPS [0.01375, -0.0145, 0.04486] dNLLnz [0.0017, -0.03813, 0.03978]
+  h2h shift_ab-shift_roll dRPS [0.02632, -0.00078, 0.05415] dNLLnz [0.02154, -0.02306, 0.06021]
+  murphy: {'base': (0.00097, 0.01438), 'shift_roll': (0.00092, 0.01415), 'shift_ab': (0.00169, 0.0147), 'shift_temp': (0.00093, 0.0142), 'lik_deb': (0.00111, 0.01556), 'lik_pool': (0.00113, 0.01545), 'lik_pool_temp': (0.00136, 0.01631), 'lik_naive': (0.00302, 0.01754), 'lik_rec': (0.00132, 0.0144), 'lik_rec_temp': (0.00169, 0.01641)}
+  tier 12-24 n_days=29 dRPS shift +0.0044 pool +0.0106 temp +0.0086 rec +0.0166 | h2h pool-shift [0.00619, -0.01044, 0.0256] temp-shift [0.0042, -0.01051, 0.02189]
+  tier 24-36 n_days=23 dRPS shift +0.0105 pool +0.0168 temp +0.0132 rec +0.0262 | h2h pool-shift [0.00621, -0.01341, 0.028] temp-shift [0.00264, -0.01801, 0.02463]
+  grp REASONED        n_days= 9 dRPS shift +0.0230 pool +0.0073 temp +0.0143 | h2h pool-shift [-0.0157, -0.05324, 0.00999]
+  grp UNREASONED_COLD n_days= 3 dRPS shift +0.0000 pool -0.0096 temp +0.0071 | h2h pool-shift [-0.00964, -0.11549, 0.05181]
+  grp OTHER           n_days= 8 dRPS shift +0.0344 pool +0.0747 temp +0.0602 | h2h pool-shift [0.04032, -0.02543, 0.10774]
+  grp SMALL           n_days=27 dRPS shift +0.0000 pool -0.0002 temp +0.0006 | h2h pool-shift [-0.00023, -0.01403, 0.01468]
+
+ZHHH days=18 cells=18 k_med=0.101 kraw_med=0.059 ab=[0.116, 0.0] line=[0.368, 0.045, 1.632] rawline=[0.341, -0.006, 1.547] pool=[0.188, 0.056, 1.426] temp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 0.75, 'SMALL': 1.0} lam={1.0: 117, 0.75: 5, 0.25: 14} grp={'SMALL': 69, 'REASONED': 33, 'UNREASONED_COLD': 31, 'OTHER': 3} age_med=2.7h
+  RPS base 0.6495 | shift_roll 0.7684 shift_raw 0.7709 shift_ab 0.8131 shift_temp 0.7559 lik_deb 0.8135 lik_raw 0.8309 lik_lam 0.7936 lik_pool 0.7936 lik_pool_temp 0.7382 lik_naive 0.8204 lik_rec 0.7329 lik_rec_lam 0.7328 lik_rec_temp 0.7347
+  shift_roll    dRPS +0.1189 [-0.0417,+0.3250] P>0 0.91 | dNLLnz +0.1089 [-0.1130,+0.4250] | dHit -0.027 | sd 1.45->1.48 pmode 0.323->0.314 hit 0.529->0.544
+  shift_raw     dRPS +0.1214 [-0.0317,+0.3195] P>0 0.93 | dNLLnz +0.1152 [-0.0991,+0.4124] | dHit -0.008 | sd 1.45->1.46 pmode 0.323->0.322 hit 0.529->0.544
+  shift_ab      dRPS +0.1636 [+0.0153,+0.3632] P>0 0.99 | dNLLnz +0.1912 [+0.0056,+0.4842] | dHit -0.108 | sd 1.45->1.50 pmode 0.323->0.310 hit 0.529->0.537
+  shift_temp    dRPS +0.1064 [-0.0204,+0.2779] P>0 0.92 | dNLLnz +0.0809 [-0.0709,+0.2983] | dHit -0.045 | sd 1.45->1.46 pmode 0.323->0.323 hit 0.529->0.529
+  lik_deb       dRPS +0.1640 [-0.0286,+0.5136] P>0 0.81 | dNLLnz -0.0135 [-0.0784,+0.0476] | dHit -0.051 | sd 1.45->1.24 pmode 0.323->0.350 hit 0.529->0.250
+  lik_raw       dRPS +0.1814 [-0.0256,+0.5653] P>0 0.79 | dNLLnz -0.0141 [-0.0776,+0.0456] | dHit -0.045 | sd 1.45->1.22 pmode 0.323->0.355 hit 0.529->0.250
+  lik_lam       dRPS +0.1441 [-0.0267,+0.4565] P>0 0.79 | dNLLnz -0.0136 [-0.0816,+0.0484] | dHit -0.051 | sd 1.45->1.25 pmode 0.323->0.348 hit 0.529->0.250
+  lik_pool      dRPS +0.1441 [-0.0317,+0.4541] P>0 0.81 | dNLLnz -0.0030 [-0.0694,+0.0722] | dHit -0.090 | sd 1.45->1.30 pmode 0.323->0.338 hit 0.529->0.529
+  lik_pool_temp dRPS +0.0887 [-0.0207,+0.2875] P>0 0.78 | dNLLnz -0.0100 [-0.0565,+0.0325] | dHit -0.056 | sd 1.45->1.29 pmode 0.323->0.335 hit 0.529->0.529
+  lik_naive     dRPS +0.1709 [-0.0697,+0.5350] P>0 0.86 | dNLLnz -0.0091 [-0.2004,+0.2146] | dHit -0.102 | sd 1.45->1.03 pmode 0.323->0.395 hit 0.529->0.257
+  lik_rec       dRPS +0.0834 [-0.0099,+0.2416] P>0 0.90 | dNLLnz +0.0214 [-0.0296,+0.0873] | dHit -0.039 | sd 1.45->1.46 pmode 0.323->0.323 hit 0.529->0.544
+  lik_rec_lam   dRPS +0.0833 [-0.0102,+0.2405] P>0 0.90 | dNLLnz +0.0211 [-0.0327,+0.0883] | dHit -0.039 | sd 1.45->1.46 pmode 0.323->0.323 hit 0.529->0.544
+  lik_rec_temp  dRPS +0.0852 [-0.0024,+0.2394] P>0 0.96 | dNLLnz +0.0305 [-0.0056,+0.0788] | dHit -0.039 | sd 1.45->1.47 pmode 0.323->0.322 hit 0.529->0.544
+  ctrl: shift-rsign [0.08978, -0.06461, 0.2781]  lik-mirror [0.1414, -0.01111, 0.42439]  temp-pool [-0.05543, -0.17104, 0.01574]  temp-shifttemp [-0.01772, -0.09943, 0.05475]  rectemp-shifttemp [-0.02122, -0.09186, 0.0329]  mtemp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 1.0, 'SMALL': 0.5}
+  h2h lik_pool-shift_roll dRPS [0.02522, -0.12151, 0.20888] dNLLnz [-0.11189, -0.35347, 0.06143]
+  h2h lik_pool_temp-shift_roll dRPS [-0.0302, -0.15885, 0.07348] dNLLnz [-0.1189, -0.39296, 0.0858]
+  h2h lik_raw-shift_roll dRPS [0.0625, -0.13064, 0.3473] dNLLnz [-0.12296, -0.38537, 0.08608]
+  h2h lik_rec-shift_roll dRPS [-0.03551, -0.13683, 0.05126] dNLLnz [-0.08743, -0.33466, 0.08775]
+  h2h shift_ab-shift_roll dRPS [0.04468, -0.05008, 0.13792] dNLLnz [0.08235, -0.06899, 0.23692]
+  murphy: {'base': (0.00738, 0.02133), 'shift_roll': (0.00419, 0.01893), 'shift_ab': (0.00738, 0.01923), 'shift_temp': (0.00706, 0.02023), 'lik_deb': (0.00796, 0.01929), 'lik_pool': (0.00668, 0.02102), 'lik_pool_temp': (0.00566, 0.02023), 'lik_naive': (0.00792, 0.02297), 'lik_rec': (0.00684, 0.02031), 'lik_rec_temp': (0.00673, 0.01978)}
+  tier 12-24 n_days=18 dRPS shift +0.1189 pool +0.1441 temp +0.0887 rec +0.0834 | h2h pool-shift [0.02522, -0.12113, 0.20611] temp-shift [-0.0302, -0.1535, 0.0769]
+  grp REASONED        n_days= 5 dRPS shift +0.4582 pool +0.5650 temp +0.3488 | h2h pool-shift [0.1068, -0.41962, 0.76381]
+  grp UNREASONED_COLD n_days= 7 dRPS shift -0.0714 pool -0.0354 temp -0.0093 | h2h pool-shift [0.03595, -0.07476, 0.16927]
+  grp OTHER           n_days= 1 dRPS shift +0.1454 pool +0.1011 temp +0.0467 | h2h pool-shift [-0.04435, -0.04435, -0.04435]
+  grp SMALL           n_days= 8 dRPS shift +0.0143 pool -0.0164 temp -0.0178 | h2h pool-shift [-0.03078, -0.07592, 0.0009]
+
+ZSPD days=30 cells=52 k_med=0.448 kraw_med=0.659 ab=[-0.411, 0.401] line=[-0.317, 0.496, 1.197] rawline=[0.143, 0.467, 0.973] pool=[0.079, 0.384, 1.039] temp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 0.75, 'SMALL': 1.0} lam={1.0: 314, 0.75: 462, 0.5: 218} grp={'SMALL': 872, 'REASONED': 97, 'OTHER': 25} age_med=3.6h
+  RPS base 0.4104 | shift_roll 0.4383 shift_raw 0.4884 shift_ab 0.4729 shift_temp 0.4751 lik_deb 0.4087 lik_raw 0.4266 lik_lam 0.3962 lik_pool 0.4175 lik_pool_temp 0.4046 lik_naive 0.3968 lik_rec 0.4343 lik_rec_lam 0.4197 lik_rec_temp 0.4324
+  shift_roll    dRPS +0.0279 [-0.0167,+0.0774] P>0 0.88 | dNLLnz +0.0559 [-0.0498,+0.1495] | dHit -0.082 | sd 1.43->1.50 pmode 0.338->0.314 hit 0.542->0.520
+  shift_raw     dRPS +0.0780 [+0.0262,+0.1319] P>0 1.00 | dNLLnz +0.1507 [+0.0642,+0.2498] | dHit -0.215 | sd 1.43->1.49 pmode 0.338->0.310 hit 0.542->0.358
+  shift_ab      dRPS +0.0625 [-0.0212,+0.1461] P>0 0.93 | dNLLnz +0.1009 [-0.0720,+0.2600] | dHit -0.242 | sd 1.43->1.51 pmode 0.338->0.316 hit 0.542->0.348
+  shift_temp    dRPS +0.0647 [+0.0246,+0.1107] P>0 1.00 | dNLLnz +0.1291 [+0.0657,+0.2069] | dHit -0.160 | sd 1.43->1.49 pmode 0.338->0.314 hit 0.542->0.341
+  lik_deb       dRPS -0.0018 [-0.0311,+0.0293] P>0 0.44 | dNLLnz -0.0202 [-0.0706,+0.0335] | dHit -0.029 | sd 1.43->1.17 pmode 0.338->0.379 hit 0.542->0.403
+  lik_raw       dRPS +0.0162 [-0.0244,+0.0620] P>0 0.77 | dNLLnz -0.0040 [-0.0803,+0.0745] | dHit -0.078 | sd 1.43->1.05 pmode 0.338->0.404 hit 0.542->0.372
+  lik_lam       dRPS -0.0142 [-0.0352,+0.0060] P>0 0.08 | dNLLnz -0.0357 [-0.0704,-0.0022] | dHit -0.011 | sd 1.43->1.20 pmode 0.338->0.372 hit 0.542->0.408
+  lik_pool      dRPS +0.0071 [-0.0229,+0.0389] P>0 0.65 | dNLLnz -0.0090 [-0.0579,+0.0439] | dHit -0.041 | sd 1.43->1.18 pmode 0.338->0.378 hit 0.542->0.381
+  lik_pool_temp dRPS -0.0058 [-0.0344,+0.0221] P>0 0.34 | dNLLnz -0.0266 [-0.0762,+0.0274] | dHit -0.041 | sd 1.43->1.14 pmode 0.338->0.386 hit 0.542->0.381
+  lik_naive     dRPS -0.0136 [-0.0525,+0.0263] P>0 0.25 | dNLLnz -0.0563 [-0.1354,+0.0331] | dHit -0.019 | sd 1.43->0.98 pmode 0.338->0.422 hit 0.542->0.438
+  lik_rec       dRPS +0.0239 [+0.0011,+0.0493] P>0 0.98 | dNLLnz +0.0610 [+0.0245,+0.1021] | dHit -0.032 | sd 1.43->1.48 pmode 0.338->0.320 hit 0.542->0.470
+  lik_rec_lam   dRPS +0.0093 [-0.0038,+0.0236] P>0 0.91 | dNLLnz +0.0366 [+0.0141,+0.0609] | dHit -0.023 | sd 1.43->1.47 pmode 0.338->0.324 hit 0.542->0.442
+  lik_rec_temp  dRPS +0.0220 [+0.0032,+0.0422] P>0 0.99 | dNLLnz +0.0599 [+0.0321,+0.0887] | dHit -0.039 | sd 1.43->1.49 pmode 0.338->0.317 hit 0.542->0.422
+  ctrl: shift-rsign [-0.02908, -0.0659, 0.00702]  lik-mirror [-0.01478, -0.04322, 0.01179]  temp-pool [-0.01291, -0.0265, -0.00251]  temp-shifttemp [-0.07054, -0.10763, -0.03831]  rectemp-shifttemp [-0.04269, -0.07518, -0.01546]  mtemp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 1.0, 'SMALL': 0.5}
+  h2h lik_pool-shift_roll dRPS [-0.02081, -0.06492, 0.02351] dNLLnz [-0.06488, -0.17177, 0.05921]
+  h2h lik_pool_temp-shift_roll dRPS [-0.03373, -0.082, 0.01563] dNLLnz [-0.08246, -0.19925, 0.05447]
+  h2h lik_raw-shift_roll dRPS [-0.01172, -0.05495, 0.03624] dNLLnz [-0.05984, -0.17583, 0.0752]
+  h2h lik_rec-shift_roll dRPS [-0.00403, -0.0382, 0.03092] dNLLnz [0.00516, -0.06668, 0.09006]
+  h2h shift_ab-shift_roll dRPS [0.0346, -0.01918, 0.08864] dNLLnz [0.04507, -0.03849, 0.12715]
+  murphy: {'base': (0.00324, 0.02407), 'shift_roll': (0.00487, 0.02263), 'shift_ab': (0.00225, 0.01908), 'shift_temp': (0.0056, 0.02083), 'lik_deb': (0.00306, 0.02445), 'lik_pool': (0.0027, 0.02373), 'lik_pool_temp': (0.0033, 0.02546), 'lik_naive': (0.00337, 0.02645), 'lik_rec': (0.00567, 0.02342), 'lik_rec_temp': (0.00457, 0.02274)}
+  tier 12-24 n_days=26 dRPS shift +0.0097 pool -0.0023 temp -0.0088 rec +0.0085 | h2h pool-shift [-0.01206, -0.06848, 0.04499] temp-shift [-0.01848, -0.07844, 0.04088]
+  tier 24-36 n_days=26 dRPS shift +0.0461 pool +0.0165 temp -0.0029 rec +0.0393 | h2h pool-shift [-0.02957, -0.06975, 0.01317] temp-shift [-0.04897, -0.09872, -0.00249]
+  grp REASONED        n_days= 8 dRPS shift +0.1683 pool +0.0322 temp -0.0164 | h2h pool-shift [-0.13614, -0.17276, -0.09768]
+  grp OTHER           n_days= 2 dRPS shift +0.2461 pool +0.2824 temp +0.0983 | h2h pool-shift [0.03631, -0.11425, 0.33742]
+  grp SMALL           n_days=27 dRPS shift -0.0047 pool -0.0042 temp -0.0027 | h2h pool-shift [0.00053, -0.04543, 0.04651]
+
+ZSQD days=18 cells=25 k_med=0.524 kraw_med=0.552 ab=[-0.171, 0.553] line=[-0.13, 0.528, 1.056] rawline=[0.511, 0.661, 1.054] pool=[0.292, 0.48, 1.111] temp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 0.75, 'SMALL': 1.0} lam={0.75: 91, 0.5: 48} grp={'UNREASONED_COLD': 13, 'SMALL': 87, 'REASONED': 39} age_med=2.7h
+  RPS base 0.4315 | shift_roll 0.4187 shift_raw 0.4824 shift_ab 0.5003 shift_temp 0.4596 lik_deb 0.4094 lik_raw 0.3972 lik_lam 0.4179 lik_pool 0.4086 lik_pool_temp 0.3970 lik_naive 0.3955 lik_rec 0.4188 lik_rec_lam 0.4252 lik_rec_temp 0.4008
+  shift_roll    dRPS -0.0128 [-0.1437,+0.1364] P>0 0.43 | dNLLnz -0.0019 [-0.2416,+0.2369] | dHit +0.001 | sd 0.88->0.96 pmode 0.457->0.417 hit 0.360->0.345
+  shift_raw     dRPS +0.0509 [-0.0693,+0.1820] P>0 0.77 | dNLLnz +0.1061 [-0.0991,+0.3230] | dHit +0.073 | sd 0.88->0.97 pmode 0.457->0.409 hit 0.360->0.403
+  shift_ab      dRPS +0.0687 [-0.0447,+0.1937] P>0 0.87 | dNLLnz +0.1343 [-0.0715,+0.3541] | dHit -0.006 | sd 0.88->0.96 pmode 0.457->0.412 hit 0.360->0.345
+  shift_temp    dRPS +0.0280 [-0.0557,+0.1218] P>0 0.72 | dNLLnz +0.0637 [-0.0806,+0.2320] | dHit +0.032 | sd 0.88->0.95 pmode 0.457->0.420 hit 0.360->0.367
+  lik_deb       dRPS -0.0221 [-0.0822,+0.0486] P>0 0.25 | dNLLnz -0.0644 [-0.1577,+0.0462] | dHit +0.075 | sd 0.88->0.82 pmode 0.457->0.491 hit 0.360->0.446
+  lik_raw       dRPS -0.0344 [-0.1055,+0.0457] P>0 0.19 | dNLLnz -0.0964 [-0.2007,+0.0323] | dHit +0.075 | sd 0.88->0.80 pmode 0.457->0.502 hit 0.360->0.446
+  lik_lam       dRPS -0.0137 [-0.0550,+0.0366] P>0 0.27 | dNLLnz -0.0425 [-0.1028,+0.0310] | dHit +0.047 | sd 0.88->0.83 pmode 0.457->0.482 hit 0.360->0.410
+  lik_pool      dRPS -0.0230 [-0.0728,+0.0352] P>0 0.20 | dNLLnz -0.0567 [-0.1294,+0.0260] | dHit +0.058 | sd 0.88->0.83 pmode 0.457->0.484 hit 0.360->0.424
+  lik_pool_temp dRPS -0.0345 [-0.0707,+0.0052] P>0 0.04 | dNLLnz -0.0717 [-0.1301,-0.0094] | dHit +0.058 | sd 0.88->0.83 pmode 0.457->0.480 hit 0.360->0.424
+  lik_naive     dRPS -0.0360 [-0.1049,+0.0468] P>0 0.18 | dNLLnz -0.1070 [-0.2183,+0.0337] | dHit +0.081 | sd 0.88->0.72 pmode 0.457->0.539 hit 0.360->0.453
+  lik_rec       dRPS -0.0127 [-0.0755,+0.0595] P>0 0.36 | dNLLnz -0.0132 [-0.1293,+0.1076] | dHit +0.061 | sd 0.88->0.94 pmode 0.457->0.426 hit 0.360->0.410
+  lik_rec_lam   dRPS -0.0064 [-0.0491,+0.0447] P>0 0.37 | dNLLnz -0.0041 [-0.0786,+0.0799] | dHit +0.041 | sd 0.88->0.93 pmode 0.457->0.436 hit 0.360->0.403
+  lik_rec_temp  dRPS -0.0307 [-0.0683,+0.0091] P>0 0.07 | dNLLnz -0.0434 [-0.1245,+0.0283] | dHit +0.041 | sd 0.88->0.93 pmode 0.457->0.436 hit 0.360->0.403
+  ctrl: shift-rsign [-0.11947, -0.21908, -0.00896]  lik-mirror [-0.05124, -0.1104, 0.01487]  temp-pool [-0.01158, -0.03694, 0.00887]  temp-shifttemp [-0.06259, -0.1279, -0.01122]  rectemp-shifttemp [-0.05878, -0.12075, -0.0085]  mtemp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 1.0, 'SMALL': 0.5}
+  h2h lik_pool-shift_roll dRPS [-0.01015, -0.1197, 0.08889] dNLLnz [-0.05486, -0.25355, 0.13594]
+  h2h lik_pool_temp-shift_roll dRPS [-0.02173, -0.14592, 0.08978] dNLLnz [-0.06985, -0.26998, 0.12362]
+  h2h lik_raw-shift_roll dRPS [-0.02157, -0.10358, 0.05377] dNLLnz [-0.09452, -0.2422, 0.05373]
+  h2h lik_rec-shift_roll dRPS [9e-05, -0.08363, 0.07766] dNLLnz [-0.01136, -0.14536, 0.11568]
+  h2h shift_ab-shift_roll dRPS [0.08154, -0.04007, 0.18223] dNLLnz [0.13611, -0.0466, 0.30353]
+  murphy: {'base': (0.00265, 0.02592), 'shift_roll': (0.00703, 0.02968), 'shift_ab': (0.00644, 0.02313), 'shift_temp': (0.00735, 0.02609), 'lik_deb': (0.00331, 0.02822), 'lik_pool': (0.00363, 0.02865), 'lik_pool_temp': (0.00298, 0.02772), 'lik_naive': (0.00542, 0.03011), 'lik_rec': (0.00404, 0.02672), 'lik_rec_temp': (0.00366, 0.02775)}
+  tier 12-24 n_days=18 dRPS shift +0.0339 pool -0.0114 temp -0.0228 rec +0.0126 | h2h pool-shift [-0.04527, -0.15399, 0.04469] temp-shift [-0.05666, -0.18629, 0.04675]
+  tier 24-36 n_days= 7 dRPS shift -0.1329 pool -0.0528 temp -0.0648 rec -0.0777 | h2h pool-shift [0.08016, -0.09134, 0.25269] temp-shift [0.0681, -0.10231, 0.23386]
+  grp REASONED        n_days= 7 dRPS shift +0.0583 pool -0.0123 temp -0.0139 | h2h pool-shift [-0.07057, -0.12876, -0.00403]
+  grp UNREASONED_COLD n_days= 2 dRPS shift +0.4946 pool +0.0635 temp +0.0076 | h2h pool-shift [-0.43111, -0.72907, -0.28213]
+  grp SMALL           n_days=12 dRPS shift -0.1365 pool -0.0424 temp -0.0485 | h2h pool-shift [0.09415, 0.0053, 0.18035]
+
+ZUCK days=18 cells=18 k_med=0.0 kraw_med=0.033 ab=[-1.12, 0.0] line=[-0.598, -0.191, 1.921] rawline=[-0.251, -0.136, 1.826] pool=[-0.192, -0.028, 1.606] temp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 0.75, 'SMALL': 1.0} lam={0.75: 45, 0.25: 44, 1.0: 100} grp={'REASONED': 74, 'SMALL': 84, 'OTHER': 28, 'UNREASONED_COLD': 3} age_med=3.4h
+  RPS base 0.8918 | shift_roll 0.8895 shift_raw 0.8958 shift_ab 0.9583 shift_temp 0.8975 lik_deb 0.8864 lik_raw 0.8935 lik_lam 0.8866 lik_pool 0.9363 lik_pool_temp 0.8845 lik_naive 0.9208 lik_rec 0.8852 lik_rec_lam 0.8853 lik_rec_temp 0.8899
+  shift_roll    dRPS -0.0022 [-0.0107,+0.0040] P>0 0.35 | dNLLnz +0.0001 [-0.0037,+0.0042] | dHit +0.000 | sd 1.78->1.78 pmode 0.287->0.297 hit 0.122->0.122
+  shift_raw     dRPS +0.0040 [-0.0212,+0.0331] P>0 0.62 | dNLLnz +0.0101 [-0.0067,+0.0365] | dHit +0.000 | sd 1.78->1.76 pmode 0.287->0.312 hit 0.122->0.122
+  shift_ab      dRPS +0.0665 [-0.2580,+0.3824] P>0 0.65 | dNLLnz +0.0587 [-0.3814,+0.5087] | dHit +0.014 | sd 1.78->1.81 pmode 0.287->0.290 hit 0.122->0.148
+  shift_temp    dRPS +0.0058 [-0.0221,+0.0407] P>0 0.59 | dNLLnz +0.0124 [-0.0080,+0.0452] | dHit +0.000 | sd 1.78->1.76 pmode 0.287->0.312 hit 0.122->0.122
+  lik_deb       dRPS -0.0053 [-0.0450,+0.0316] P>0 0.40 | dNLLnz -0.0011 [-0.0420,+0.0394] | dHit -0.008 | sd 1.78->1.74 pmode 0.287->0.293 hit 0.122->0.122
+  lik_raw       dRPS +0.0018 [-0.0327,+0.0378] P>0 0.53 | dNLLnz +0.0014 [-0.0311,+0.0358] | dHit +0.007 | sd 1.78->1.71 pmode 0.287->0.298 hit 0.122->0.127
+  lik_lam       dRPS -0.0051 [-0.0443,+0.0337] P>0 0.41 | dNLLnz -0.0009 [-0.0393,+0.0375] | dHit -0.008 | sd 1.78->1.75 pmode 0.287->0.292 hit 0.122->0.122
+  lik_pool      dRPS +0.0445 [-0.0290,+0.1553] P>0 0.80 | dNLLnz +0.0364 [-0.0271,+0.1236] | dHit -0.007 | sd 1.78->1.58 pmode 0.287->0.316 hit 0.122->0.116
+  lik_pool_temp dRPS -0.0073 [-0.0418,+0.0188] P>0 0.35 | dNLLnz -0.0022 [-0.0355,+0.0252] | dHit +0.000 | sd 1.78->1.58 pmode 0.287->0.314 hit 0.122->0.122
+  lik_naive     dRPS +0.0290 [-0.0559,+0.1369] P>0 0.71 | dNLLnz +0.0692 [-0.0576,+0.2090] | dHit +0.017 | sd 1.78->1.44 pmode 0.287->0.315 hit 0.122->0.138
+  lik_rec       dRPS -0.0066 [-0.0446,+0.0280] P>0 0.36 | dNLLnz +0.0026 [-0.0405,+0.0434] | dHit -0.003 | sd 1.78->1.79 pmode 0.287->0.289 hit 0.122->0.116
+  lik_rec_lam   dRPS -0.0065 [-0.0451,+0.0297] P>0 0.36 | dNLLnz +0.0023 [-0.0390,+0.0436] | dHit -0.003 | sd 1.78->1.79 pmode 0.287->0.287 hit 0.122->0.116
+  lik_rec_temp  dRPS -0.0019 [-0.0278,+0.0189] P>0 0.47 | dNLLnz +0.0098 [-0.0046,+0.0251] | dHit +0.000 | sd 1.78->1.75 pmode 0.287->0.328 hit 0.122->0.122
+  ctrl: shift-rsign [-0.00287, -0.01304, 0.00442]  lik-mirror [-0.0092, -0.05149, 0.02639]  temp-pool [-0.05182, -0.15045, 0.00184]  temp-shifttemp [-0.01306, -0.04894, 0.01538]  rectemp-shifttemp [-0.00764, -0.04263, 0.01661]  mtemp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 1.0, 'SMALL': 0.5}
+  h2h lik_pool-shift_roll dRPS [0.04676, -0.02191, 0.15033] dNLLnz [0.03629, -0.02279, 0.11695]
+  h2h lik_pool_temp-shift_roll dRPS [-0.00506, -0.03322, 0.01783] dNLLnz [-0.00232, -0.03462, 0.02448]
+  h2h lik_raw-shift_roll dRPS [0.00399, -0.02689, 0.03661] dNLLnz [0.00128, -0.03036, 0.03462]
+  h2h lik_rec-shift_roll dRPS [-0.00435, -0.04228, 0.02992] dNLLnz [0.00249, -0.04194, 0.04312]
+  h2h shift_ab-shift_roll dRPS [0.06877, -0.24058, 0.39031] dNLLnz [0.05859, -0.40681, 0.49586]
+  murphy: {'base': (0.00133, 0.01229), 'shift_roll': (0.0013, 0.01239), 'shift_ab': (0.00235, 0.00567), 'shift_temp': (0.00574, 0.01637), 'lik_deb': (0.00155, 0.0124), 'lik_pool': (0.00383, 0.01351), 'lik_pool_temp': (0.00386, 0.01351), 'lik_naive': (0.00133, 0.01), 'lik_rec': (0.00097, 0.01166), 'lik_rec_temp': (0.00496, 0.01521)}
+  tier 12-24 n_days=18 dRPS shift -0.0022 pool +0.0445 temp -0.0073 rec -0.0066 | h2h pool-shift [0.04676, -0.01991, 0.15181] temp-shift [-0.00506, -0.03262, 0.01778]
+  grp REASONED        n_days= 5 dRPS shift -0.0129 pool -0.0371 temp -0.0412 | h2h pool-shift [-0.02423, -0.09281, 0.02906]
+  grp UNREASONED_COLD n_days= 1 dRPS shift +0.0000 pool -0.0385 temp -0.0098 | h2h pool-shift [-0.03846, -0.03846, -0.03846]
+  grp OTHER           n_days= 5 dRPS shift +0.0049 pool +0.2082 temp +0.0208 | h2h pool-shift [0.20333, 0.01207, 0.5242]
+  grp SMALL           n_days= 9 dRPS shift +0.0000 pool -0.0010 temp -0.0016 | h2h pool-shift [-0.00099, -0.03371, 0.02114]
+
+ZUUU days=16 cells=17 k_med=0.25 kraw_med=0.184 ab=[0.098, 0.172] line=[0.02, 0.077, 1.283] rawline=[-0.312, 0.078, 1.275] pool=[-0.228, 0.111, 1.25] temp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 0.75, 'SMALL': 1.0} lam={1.0: 18, 0.75: 85} grp={'REASONED': 14, 'SMALL': 73, 'OTHER': 1, 'UNREASONED_COLD': 15} age_med=2.6h
+  RPS base 1.1666 | shift_roll 1.1671 shift_raw 1.1677 shift_ab 1.1981 shift_temp 1.1743 lik_deb 1.2434 lik_raw 1.2354 lik_lam 1.2414 lik_pool 1.1957 lik_pool_temp 1.1678 lik_naive 1.2258 lik_rec 1.1876 lik_rec_lam 1.1863 lik_rec_temp 1.1631
+  shift_roll    dRPS +0.0005 [-0.0668,+0.0841] P>0 0.49 | dNLLnz -0.0008 [-0.0613,+0.0733] | dHit -0.027 | sd 1.67->1.70 pmode 0.260->0.250 hit 0.175->0.136
+  shift_raw     dRPS +0.0010 [-0.0483,+0.0547] P>0 0.49 | dNLLnz +0.0049 [-0.0366,+0.0527] | dHit -0.027 | sd 1.67->1.69 pmode 0.260->0.252 hit 0.175->0.136
+  shift_ab      dRPS +0.0314 [-0.1510,+0.2316] P>0 0.63 | dNLLnz -0.0047 [-0.1627,+0.1690] | dHit +0.000 | sd 1.67->1.70 pmode 0.260->0.256 hit 0.175->0.175
+  shift_temp    dRPS +0.0077 [-0.0237,+0.0425] P>0 0.65 | dNLLnz +0.0117 [-0.0124,+0.0423] | dHit -0.014 | sd 1.67->1.68 pmode 0.260->0.256 hit 0.175->0.155
+  lik_deb       dRPS +0.0767 [-0.1344,+0.3709] P>0 0.67 | dNLLnz +0.0526 [-0.1113,+0.2998] | dHit -0.027 | sd 1.67->1.58 pmode 0.260->0.271 hit 0.175->0.136
+  lik_raw       dRPS +0.0687 [-0.1459,+0.3523] P>0 0.67 | dNLLnz +0.0437 [-0.1114,+0.2663] | dHit -0.027 | sd 1.67->1.58 pmode 0.260->0.270 hit 0.175->0.136
+  lik_lam       dRPS +0.0747 [-0.1387,+0.3703] P>0 0.67 | dNLLnz +0.0511 [-0.1102,+0.2924] | dHit -0.014 | sd 1.67->1.58 pmode 0.260->0.271 hit 0.175->0.155
+  lik_pool      dRPS +0.0291 [-0.1635,+0.2767] P>0 0.57 | dNLLnz +0.0073 [-0.1333,+0.1818] | dHit -0.027 | sd 1.67->1.59 pmode 0.260->0.270 hit 0.175->0.136
+  lik_pool_temp dRPS +0.0012 [-0.1374,+0.1511] P>0 0.49 | dNLLnz -0.0184 [-0.1134,+0.0790] | dHit -0.014 | sd 1.67->1.60 pmode 0.260->0.269 hit 0.175->0.155
+  lik_naive     dRPS +0.0592 [-0.1290,+0.2943] P>0 0.70 | dNLLnz +0.0979 [-0.1313,+0.3990] | dHit -0.027 | sd 1.67->1.30 pmode 0.260->0.317 hit 0.175->0.136
+  lik_rec       dRPS +0.0210 [-0.1191,+0.1953] P>0 0.58 | dNLLnz -0.0007 [-0.1170,+0.1119] | dHit -0.027 | sd 1.67->1.68 pmode 0.260->0.258 hit 0.175->0.136
+  lik_rec_lam   dRPS +0.0196 [-0.1208,+0.1858] P>0 0.58 | dNLLnz -0.0016 [-0.1109,+0.1084] | dHit -0.014 | sd 1.67->1.68 pmode 0.260->0.259 hit 0.175->0.155
+  lik_rec_temp  dRPS -0.0035 [-0.1233,+0.1177] P>0 0.48 | dNLLnz -0.0044 [-0.1093,+0.1167] | dHit -0.014 | sd 1.67->1.69 pmode 0.260->0.256 hit 0.175->0.155
+  ctrl: shift-rsign [-0.00366, -0.06643, 0.06569]  lik-mirror [-0.04108, -0.3841, 0.24965]  temp-pool [-0.0279, -0.13201, 0.03918]  temp-shifttemp [-0.0065, -0.14218, 0.12345]  rectemp-shifttemp [-0.01121, -0.12348, 0.09623]  mtemp={'REASONED': 0.75, 'UNREASONED_COLD': 0.25, 'OTHER': 1.0, 'SMALL': 0.5}
+  h2h lik_pool-shift_roll dRPS [0.02856, -0.11748, 0.21911] dNLLnz [0.00811, -0.0942, 0.13913]
+  h2h lik_pool_temp-shift_roll dRPS [0.00066, -0.10763, 0.0994] dNLLnz [-0.01755, -0.09916, 0.04802]
+  h2h lik_raw-shift_roll dRPS [0.06821, -0.09824, 0.29674] dNLLnz [0.04457, -0.08583, 0.22045]
+  h2h lik_rec-shift_roll dRPS [0.02049, -0.0854, 0.12774] dNLLnz [0.0001, -0.07998, 0.07989]
+  h2h shift_ab-shift_roll dRPS [0.03094, -0.09181, 0.17003] dNLLnz [-0.00391, -0.12712, 0.11635]
+  murphy: {'base': (0.00313, 0.00299), 'shift_roll': (0.00493, 0.00455), 'shift_ab': (0.0042, 0.00305), 'shift_temp': (0.00465, 0.00372), 'lik_deb': (0.00571, 0.00402), 'lik_pool': (0.0057, 0.0043), 'lik_pool_temp': (0.00508, 0.00376), 'lik_naive': (0.0113, 0.00511), 'lik_rec': (0.00493, 0.00348), 'lik_rec_temp': (0.00413, 0.00366)}
+  tier 12-24 n_days=16 dRPS shift +0.0031 pool +0.0334 temp +0.0044 rec +0.0253 | h2h pool-shift [0.03036, -0.13292, 0.22733] temp-shift [0.00132, -0.11327, 0.10571]
+  tier 24-36 n_days= 1 dRPS shift -0.0405 pool -0.0407 temp -0.0504 rec -0.0485 | h2h pool-shift [-0.00022, -0.00022, -0.00022] temp-shift [-0.0099, -0.0099, -0.0099]
+  grp REASONED        n_days= 3 dRPS shift +0.2036 pool +0.3543 temp +0.0727 | h2h pool-shift [0.15074, -0.72646, 1.22957]
+  grp UNREASONED_COLD n_days= 3 dRPS shift -0.0881 pool -0.0845 temp -0.0231 | h2h pool-shift [0.00358, -0.0458, 0.06831]
+  grp OTHER           n_days= 1 dRPS shift -0.0603 pool -0.1713 temp -0.0501 | h2h pool-shift [-0.11101, -0.11101, -0.11101]
+  grp SMALL           n_days=12 dRPS shift -0.0298 pool -0.0169 temp -0.0136 | h2h pool-shift [0.01295, -0.001, 0.02827]
+
+=== across stations (equal station weight, day bootstrap within station) ===
+  all_17 dRPS shift_roll                         [0.01108, -0.00956, 0.0331, 0.8407, 17]
+  all_17 dHit shift_roll                         [-0.01584, -0.04249, 0.00937, 0.1047, 17]
+  all_17 dRPS shift_raw                          [0.02036, 0.00146, 0.04179, 0.983, 17]
+  all_17 dHit shift_raw                          [-0.03459, -0.06213, -0.00641, 0.0075, 17]
+  all_17 h2h shift_raw - shift_roll              [0.00929, -0.00026, 0.01823, 0.972, 17]
+  all_17 dRPS shift_ab                           [0.0446, 0.01355, 0.07687, 0.9968, 17]
+  all_17 dHit shift_ab                           [-0.02857, -0.06137, 0.00306, 0.0352, 17]
+  all_17 h2h shift_ab - shift_roll               [0.03353, 0.00837, 0.05727, 0.9962, 17]
+  all_17 dRPS shift_temp                         [0.01703, 0.00241, 0.03306, 0.9892, 17]
+  all_17 dHit shift_temp                         [-0.02464, -0.04468, -0.00523, 0.008, 17]
+  all_17 h2h shift_temp - shift_roll             [0.00595, -0.00545, 0.01696, 0.8405, 17]
+  all_17 dRPS lik_deb                            [0.04412, 0.01084, 0.08322, 0.9955, 17]
+  all_17 dHit lik_deb                            [-0.01652, -0.03777, 0.00439, 0.0597, 17]
+  all_17 h2h lik_deb - shift_roll                [0.03304, 0.00814, 0.06131, 0.9952, 17]
+  all_17 dRPS lik_raw                            [0.04442, 0.00967, 0.08342, 0.9955, 17]
+  all_17 dHit lik_raw                            [-0.02231, -0.04404, -0.00017, 0.0248, 17]
+  all_17 h2h lik_raw - shift_roll                [0.03335, 0.0075, 0.06256, 0.9958, 17]
+  all_17 dRPS lik_lam                            [0.02236, -0.00382, 0.05195, 0.952, 17]
+  all_17 dHit lik_lam                            [-0.00399, -0.02017, 0.01203, 0.315, 17]
+  all_17 h2h lik_lam - shift_roll                [0.01129, -0.00996, 0.03356, 0.8442, 17]
+  all_17 dRPS lik_pool                           [0.02297, -0.0061, 0.05452, 0.9345, 17]
+  all_17 dHit lik_pool                           [-0.01908, -0.04051, 0.00242, 0.0432, 17]
+  all_17 h2h lik_pool - shift_roll               [0.01189, -0.00961, 0.03328, 0.8472, 17]
+  all_17 dRPS lik_pool_temp                      [-0.00067, -0.0174, 0.01829, 0.4485, 17]
+  all_17 dHit lik_pool_temp                      [0.00207, -0.01693, 0.02186, 0.5735, 17]
+  all_17 h2h lik_pool_temp - shift_roll          [-0.01175, -0.02902, 0.00432, 0.077, 17]
+  all_17 dRPS lik_naive                          [0.02431, -0.01104, 0.06289, 0.9062, 17]
+  all_17 dHit lik_naive                          [-0.00266, -0.03039, 0.02607, 0.438, 17]
+  all_17 h2h lik_naive - shift_roll              [0.01323, -0.01199, 0.0391, 0.8425, 17]
+  all_17 dRPS lik_rec                            [0.02591, 0.00369, 0.05017, 0.988, 17]
+  all_17 dHit lik_rec                            [-0.01166, -0.03478, 0.01106, 0.1615, 17]
+  all_17 h2h lik_rec - shift_roll                [0.01483, 0.00045, 0.02967, 0.9785, 17]
+  all_17 dRPS lik_rec_lam                        [0.01595, -0.00064, 0.03474, 0.9705, 17]
+  all_17 dHit lik_rec_lam                        [-0.01306, -0.02899, 0.00186, 0.0462, 17]
+  all_17 h2h lik_rec_lam - shift_roll            [0.00487, -0.01028, 0.01917, 0.7395, 17]
+  all_17 dRPS lik_rec_temp                       [0.0091, -0.00633, 0.0255, 0.8705, 17]
+  all_17 dHit lik_rec_temp                       [-0.01023, -0.0297, 0.00921, 0.1545, 17]
+  all_17 h2h lik_rec_temp - shift_roll           [-0.00197, -0.01731, 0.01221, 0.3817, 17]
+  all_17 shift_roll - rsign                      [-0.01927, -0.03617, -0.00036, 0.0222, 17]
+  all_17 lik_deb - mirror                        [-0.0121, -0.04207, 0.01986, 0.212, 17]
+  all_17 lik_pool_temp - lik_pool                [-0.02364, -0.03996, -0.00824, 0.0008, 17]
+  all_17 lik_pool_temp - shift_temp              [-0.0177, -0.03186, -0.00393, 0.0053, 17]
+  all_17 lik_rec_temp - shift_temp               [-0.00793, -0.01976, 0.00354, 0.0902, 17]
+  all_17 tier12-24 dRPS shift_roll               [0.01422, -0.00596, 0.03565, 0.9095, 17]
+  all_17 tier12-24 dRPS shift_ab                 [0.0453, 0.01285, 0.07772, 0.9982, 17]
+  all_17 tier12-24 h2h shift_ab - shift_roll     [0.03108, 0.00518, 0.05635, 0.9908, 17]
+  all_17 tier12-24 dRPS shift_temp               [0.01546, 0.00059, 0.03153, 0.98, 17]
+  all_17 tier12-24 h2h shift_temp - shift_roll   [0.00124, -0.01145, 0.01373, 0.5877, 17]
+  all_17 tier12-24 dRPS lik_pool                 [0.01806, -0.01035, 0.04982, 0.8852, 17]
+  all_17 tier12-24 h2h lik_pool - shift_roll     [0.00384, -0.01822, 0.02765, 0.6228, 17]
+  all_17 tier12-24 dRPS lik_pool_temp            [-0.00414, -0.0221, 0.01545, 0.3227, 17]
+  all_17 tier12-24 h2h lik_pool_temp - shift_roll [-0.01836, -0.03626, -0.00141, 0.0152, 17]
+  all_17 tier12-24 dRPS lik_rec                  [0.02524, 0.00371, 0.04739, 0.99, 17]
+  all_17 tier12-24 h2h lik_rec - shift_roll      [0.01102, -0.004, 0.02607, 0.9215, 17]
+  all_17 tier12-24 dRPS lik_rec_temp             [0.00844, -0.00635, 0.02523, 0.857, 17]
+  all_17 tier12-24 h2h lik_rec_temp - shift_roll [-0.00578, -0.02112, 0.00922, 0.2112, 17]
+  all_17 tier12-24 lik_pool_temp - shift_temp    [-0.0196, -0.03515, -0.00549, 0.003, 17]
+  all_17 tier24-36 dRPS shift_roll               [-0.01474, -0.05042, 0.02433, 0.2268, 13]
+  all_17 tier24-36 dRPS shift_ab                 [0.0134, -0.02051, 0.05138, 0.7638, 13]
+  all_17 tier24-36 h2h shift_ab - shift_roll     [0.02814, 0.00742, 0.04884, 0.9952, 13]
+  all_17 tier24-36 dRPS shift_temp               [0.01163, -0.01489, 0.04268, 0.7768, 13]
+  all_17 tier24-36 h2h shift_temp - shift_roll   [0.02637, 0.00644, 0.04448, 0.9932, 13]
+  all_17 tier24-36 dRPS lik_pool                 [0.02861, -0.01531, 0.07311, 0.8998, 13]
+  all_17 tier24-36 h2h lik_pool - shift_roll     [0.04336, 0.00735, 0.08178, 0.988, 13]
+  all_17 tier24-36 dRPS lik_pool_temp            [0.00106, -0.02093, 0.02491, 0.5268, 13]
+  all_17 tier24-36 h2h lik_pool_temp - shift_roll [0.0158, -0.01417, 0.04567, 0.8435, 13]
+  all_17 tier24-36 dRPS lik_rec                  [0.01714, -0.02078, 0.05603, 0.802, 13]
+  all_17 tier24-36 h2h lik_rec - shift_roll      [0.03188, 0.00957, 0.0542, 0.9985, 13]
+  all_17 tier24-36 dRPS lik_rec_temp             [0.00451, -0.01666, 0.02562, 0.6492, 13]
+  all_17 tier24-36 h2h lik_rec_temp - shift_roll [0.01925, -0.00838, 0.04673, 0.9163, 13]
+  all_17 tier24-36 lik_pool_temp - shift_temp    [-0.01057, -0.03471, 0.01444, 0.211, 13]
+  all_17 tier36-48 dRPS shift_roll               None
+  all_17 tier36-48 dRPS shift_ab                 None
+  all_17 tier36-48 h2h shift_ab - shift_roll     None
+  all_17 tier36-48 dRPS shift_temp               None
+  all_17 tier36-48 h2h shift_temp - shift_roll   None
+  all_17 tier36-48 dRPS lik_pool                 None
+  all_17 tier36-48 h2h lik_pool - shift_roll     None
+  all_17 tier36-48 dRPS lik_pool_temp            None
+  all_17 tier36-48 h2h lik_pool_temp - shift_roll None
+  all_17 tier36-48 dRPS lik_rec                  None
+  all_17 tier36-48 h2h lik_rec - shift_roll      None
+  all_17 tier36-48 dRPS lik_rec_temp             None
+  all_17 tier36-48 h2h lik_rec_temp - shift_roll None
+  all_17 tier36-48 lik_pool_temp - shift_temp    None
+  all_17 tier48+ dRPS shift_roll                 None
+  all_17 tier48+ dRPS shift_ab                   None
+  all_17 tier48+ h2h shift_ab - shift_roll       None
+  all_17 tier48+ dRPS shift_temp                 None
+  all_17 tier48+ h2h shift_temp - shift_roll     None
+  all_17 tier48+ dRPS lik_pool                   None
+  all_17 tier48+ h2h lik_pool - shift_roll       None
+  all_17 tier48+ dRPS lik_pool_temp              None
+  all_17 tier48+ h2h lik_pool_temp - shift_roll  None
+  all_17 tier48+ dRPS lik_rec                    None
+  all_17 tier48+ h2h lik_rec - shift_roll        None
+  all_17 tier48+ dRPS lik_rec_temp               None
+  all_17 tier48+ h2h lik_rec_temp - shift_roll   None
+  all_17 tier48+ lik_pool_temp - shift_temp      None
+  all_17 grpREASONED dRPS shift_roll             [0.01224, -0.04473, 0.06391, 0.6508, 17]
+  all_17 grpREASONED dRPS shift_temp             [0.02154, -0.0274, 0.0693, 0.791, 17]
+  all_17 grpREASONED h2h shift_temp - shift_roll [0.0093, -0.01301, 0.03184, 0.7548, 17]
+  all_17 grpREASONED dRPS lik_pool               [-0.00266, -0.12242, 0.11132, 0.454, 17]
+  all_17 grpREASONED h2h lik_pool - shift_roll   [-0.01491, -0.1012, 0.07351, 0.342, 17]
+  all_17 grpREASONED dRPS lik_pool_temp          [-0.03939, -0.11724, 0.03256, 0.1437, 17]
+  all_17 grpREASONED h2h lik_pool_temp - shift_roll [-0.05163, -0.10849, 0.0014, 0.029, 17]
+  all_17 grpREASONED dRPS lik_rec_temp           [-0.0356, -0.0974, 0.01948, 0.105, 17]
+  all_17 grpREASONED h2h lik_rec_temp - shift_roll [-0.04784, -0.08648, -0.0111, 0.0043, 17]
+  all_17 grpREASONED lik_pool_temp - shift_temp  [-0.06093, -0.12562, -0.00172, 0.022, 17]
+  all_17 grpUNREASONED_COLD dRPS shift_roll      [0.04774, -0.01337, 0.12226, 0.9355, 15]
+  all_17 grpUNREASONED_COLD dRPS shift_temp      [0.01583, -0.00598, 0.04129, 0.9137, 15]
+  all_17 grpUNREASONED_COLD h2h shift_temp - shift_roll [-0.03191, -0.08363, 0.00902, 0.0722, 15]
+  all_17 grpUNREASONED_COLD dRPS lik_pool        [0.02087, -0.039, 0.08262, 0.7378, 15]
+  all_17 grpUNREASONED_COLD h2h lik_pool - shift_roll [-0.02687, -0.07456, 0.01317, 0.0905, 15]
+  all_17 grpUNREASONED_COLD dRPS lik_pool_temp   [-0.00909, -0.0273, 0.00958, 0.1827, 15]
+  all_17 grpUNREASONED_COLD h2h lik_pool_temp - shift_roll [-0.05683, -0.11828, -0.01242, 0.0057, 15]
+  all_17 grpUNREASONED_COLD dRPS lik_rec_temp    [0.00118, -0.01535, 0.01806, 0.5505, 15]
+  all_17 grpUNREASONED_COLD h2h lik_rec_temp - shift_roll [-0.04656, -0.10899, 0.001, 0.027, 15]
+  all_17 grpUNREASONED_COLD lik_pool_temp - shift_temp [-0.02492, -0.04244, -0.01211, 0.0, 15]
+  all_17 grpOTHER dRPS shift_roll                [-0.00014, -0.05374, 0.04442, 0.4375, 13]
+  all_17 grpOTHER dRPS shift_temp                [0.04686, -0.00436, 0.0953, 0.9603, 13]
+  all_17 grpOTHER h2h shift_temp - shift_roll    [0.04699, 0.03363, 0.0645, 1.0, 13]
+  all_17 grpOTHER dRPS lik_pool                  [0.07903, -0.02401, 0.21705, 0.9243, 13]
+  all_17 grpOTHER h2h lik_pool - shift_roll      [0.07917, 0.00492, 0.18521, 0.9802, 13]
+  all_17 grpOTHER dRPS lik_pool_temp             [0.0192, -0.01313, 0.05224, 0.868, 13]
+  all_17 grpOTHER h2h lik_pool_temp - shift_roll [0.01934, -0.00175, 0.04991, 0.9637, 13]
+  all_17 grpOTHER dRPS lik_rec_temp              [0.01266, -0.02131, 0.05311, 0.727, 13]
+  all_17 grpOTHER h2h lik_rec_temp - shift_roll  [0.0128, -0.00668, 0.04204, 0.8968, 13]
+  all_17 grpOTHER lik_pool_temp - shift_temp     [-0.02766, -0.05346, 0.00203, 0.0352, 13]
+  all_17 grpSMALL dRPS shift_roll                [-0.01234, -0.02484, 0.00091, 0.0343, 17]
+  all_17 grpSMALL dRPS shift_temp                [0.00103, -0.00473, 0.00676, 0.6368, 17]
+  all_17 grpSMALL h2h shift_temp - shift_roll    [0.01336, 0.00182, 0.02398, 0.9902, 17]
+  all_17 grpSMALL dRPS lik_pool                  [-0.01032, -0.02094, 0.00069, 0.0325, 17]
+  all_17 grpSMALL h2h lik_pool - shift_roll      [0.00202, -0.00901, 0.01271, 0.62, 17]
+  all_17 grpSMALL dRPS lik_pool_temp             [-0.00876, -0.02073, 0.00376, 0.0922, 17]
+  all_17 grpSMALL h2h lik_pool_temp - shift_roll [0.00357, -0.00794, 0.01532, 0.7185, 17]
+  all_17 grpSMALL dRPS lik_rec_temp              [0.00467, -0.00738, 0.01681, 0.7775, 17]
+  all_17 grpSMALL h2h lik_rec_temp - shift_roll  [0.01701, 0.00698, 0.02692, 0.9998, 17]
+  all_17 grpSMALL lik_pool_temp - shift_temp     [-0.00979, -0.02045, 0.00149, 0.0428, 17]
+  cn_8 dRPS shift_roll                           [0.02202, -0.00779, 0.05407, 0.9147, 8]
+  cn_8 dHit shift_roll                           [-0.02394, -0.06533, 0.0148, 0.1165, 8]
+  cn_8 dRPS shift_raw                            [0.03888, 0.01068, 0.072, 0.9972, 8]
+  cn_8 dHit shift_raw                            [-0.03483, -0.07466, 0.00766, 0.052, 8]
+  cn_8 h2h shift_raw - shift_roll                [0.01686, 0.00303, 0.0296, 0.9922, 8]
+  cn_8 dRPS shift_ab                             [0.07117, 0.0108, 0.13152, 0.9922, 8]
+  cn_8 dHit shift_ab                             [-0.03481, -0.08692, 0.01804, 0.1025, 8]
+  cn_8 h2h shift_ab - shift_roll                 [0.04915, -0.00075, 0.09962, 0.9735, 8]
+  cn_8 dRPS shift_temp                           [0.03076, 0.00812, 0.05904, 0.9962, 8]
+  cn_8 dHit shift_temp                           [-0.02989, -0.05881, -0.00536, 0.008, 8]
+  cn_8 h2h shift_temp - shift_roll               [0.00874, -0.0091, 0.02582, 0.8425, 8]
+  cn_8 dRPS lik_deb                              [0.04061, -0.0081, 0.10198, 0.937, 8]
+  cn_8 dHit lik_deb                              [-0.00877, -0.03493, 0.01592, 0.2407, 8]
+  cn_8 h2h lik_deb - shift_roll                  [0.0186, -0.02004, 0.06223, 0.82, 8]
+  cn_8 dRPS lik_raw                              [0.04878, -0.00041, 0.11455, 0.9728, 8]
+  cn_8 dHit lik_raw                              [-0.01608, -0.04327, 0.00905, 0.113, 8]
+  cn_8 h2h lik_raw - shift_roll                  [0.02676, -0.01307, 0.07306, 0.8895, 8]
+  cn_8 dRPS lik_lam                              [0.02463, -0.01631, 0.08088, 0.838, 8]
+  cn_8 dHit lik_lam                              [-0.00569, -0.02838, 0.01433, 0.2943, 8]
+  cn_8 h2h lik_lam - shift_roll                  [0.00261, -0.03364, 0.0445, 0.5225, 8]
+  cn_8 dRPS lik_pool                             [0.03975, -0.00397, 0.09151, 0.9597, 8]
+  cn_8 dHit lik_pool                             [-0.02192, -0.04823, 0.00485, 0.0535, 8]
+  cn_8 h2h lik_pool - shift_roll                 [0.01773, -0.01671, 0.05485, 0.8295, 8]
+  cn_8 dRPS lik_pool_temp                        [0.01152, -0.01714, 0.0445, 0.7685, 8]
+  cn_8 dHit lik_pool_temp                        [-0.01461, -0.03814, 0.00716, 0.0895, 8]
+  cn_8 h2h lik_pool_temp - shift_roll            [-0.0105, -0.03678, 0.01405, 0.203, 8]
+  cn_8 dRPS lik_naive                            [0.0474, -0.00024, 0.1038, 0.974, 8]
+  cn_8 dHit lik_naive                            [-0.01522, -0.05083, 0.01995, 0.2032, 8]
+  cn_8 h2h lik_naive - shift_roll                [0.02538, -0.01064, 0.06378, 0.911, 8]
+  cn_8 dRPS lik_rec                              [0.02493, -0.00355, 0.05803, 0.9537, 8]
+  cn_8 dHit lik_rec                              [-0.00539, -0.03166, 0.01901, 0.3395, 8]
+  cn_8 h2h lik_rec - shift_roll                  [0.00291, -0.02006, 0.0255, 0.5995, 8]
+  cn_8 dRPS lik_rec_lam                          [0.01475, -0.01049, 0.04374, 0.8595, 8]
+  cn_8 dHit lik_rec_lam                          [-0.00646, -0.02869, 0.01223, 0.2732, 8]
+  cn_8 h2h lik_rec_lam - shift_roll              [-0.00726, -0.03106, 0.01553, 0.2595, 8]
+  cn_8 dRPS lik_rec_temp                         [0.01624, -0.0071, 0.04368, 0.9008, 8]
+  cn_8 dHit lik_rec_temp                         [-0.01521, -0.04062, 0.00729, 0.0953, 8]
+  cn_8 h2h lik_rec_temp - shift_roll             [-0.00578, -0.02983, 0.01555, 0.313, 8]
+  cn_8 shift_roll - rsign                        [-0.00487, -0.03114, 0.02615, 0.358, 8]
+  cn_8 lik_deb - mirror                          [0.00803, -0.042, 0.06338, 0.6285, 8]
+  cn_8 lik_pool_temp - lik_pool                  [-0.02823, -0.05279, -0.00837, 0.0005, 8]
+  cn_8 lik_pool_temp - shift_temp                [-0.01924, -0.04172, 0.00249, 0.0423, 8]
+  cn_8 lik_rec_temp - shift_temp                 [-0.01452, -0.03328, 0.00413, 0.0673, 8]
+  kr_ph_3 dRPS shift_roll                        [-0.00284, -0.04706, 0.05006, 0.4387, 3]
+  kr_ph_3 dHit shift_roll                        [-0.00649, -0.06831, 0.06027, 0.4085, 3]
+  kr_ph_3 dRPS shift_raw                         [-0.00661, -0.05573, 0.04704, 0.3767, 3]
+  kr_ph_3 dHit shift_raw                         [-0.01353, -0.10106, 0.07527, 0.3678, 3]
+  kr_ph_3 h2h shift_raw - shift_roll             [-0.00378, -0.01686, 0.00954, 0.2873, 3]
+  kr_ph_3 dRPS shift_ab                          [0.0254, -0.01822, 0.07972, 0.8512, 3]
+  kr_ph_3 dHit shift_ab                          [0.00414, -0.07284, 0.0797, 0.5218, 3]
+  kr_ph_3 h2h shift_ab - shift_roll              [0.02823, 0.00894, 0.0485, 0.999, 3]
+  kr_ph_3 dRPS shift_temp                        [0.00166, -0.03269, 0.04307, 0.4903, 3]
+  kr_ph_3 dHit shift_temp                        [0.0028, -0.05733, 0.0684, 0.5138, 3]
+  kr_ph_3 h2h shift_temp - shift_roll            [0.0045, -0.01278, 0.02222, 0.6815, 3]
+  kr_ph_3 dRPS lik_deb                           [0.01935, -0.04877, 0.10212, 0.672, 3]
+  kr_ph_3 dHit lik_deb                           [-0.05054, -0.12624, 0.02226, 0.0788, 3]
+  kr_ph_3 h2h lik_deb - shift_roll               [0.02218, -0.01459, 0.06689, 0.8652, 3]
+  kr_ph_3 dRPS lik_raw                           [0.00578, -0.06123, 0.08045, 0.5453, 3]
+  kr_ph_3 dHit lik_raw                           [-0.0557, -0.13453, 0.01727, 0.075, 3]
+  kr_ph_3 h2h lik_raw - shift_roll               [0.00862, -0.02872, 0.05102, 0.657, 3]
+  kr_ph_3 dRPS lik_lam                           [0.01731, -0.03224, 0.08655, 0.6783, 3]
+  kr_ph_3 dHit lik_lam                           [-0.00699, -0.05335, 0.04181, 0.3802, 3]
+  kr_ph_3 h2h lik_lam - shift_roll               [0.02014, -0.00487, 0.04924, 0.9383, 3]
+  kr_ph_3 dRPS lik_pool                          [-0.0205, -0.06962, 0.02856, 0.192, 3]
+  kr_ph_3 dHit lik_pool                          [-0.01566, -0.08415, 0.04604, 0.3142, 3]
+  kr_ph_3 h2h lik_pool - shift_roll              [-0.01767, -0.04926, 0.0123, 0.1313, 3]
+  kr_ph_3 dRPS lik_pool_temp                     [-0.00843, -0.0371, 0.02367, 0.2797, 3]
+  kr_ph_3 dHit lik_pool_temp                     [0.01467, -0.04923, 0.07982, 0.6492, 3]
+  kr_ph_3 h2h lik_pool_temp - shift_roll         [-0.0056, -0.03713, 0.02352, 0.3595, 3]
+  kr_ph_3 dRPS lik_naive                         [-0.01998, -0.08915, 0.05242, 0.2908, 3]
+  kr_ph_3 dHit lik_naive                         [0.0144, -0.07402, 0.10134, 0.6192, 3]
+  kr_ph_3 h2h lik_naive - shift_roll             [-0.01715, -0.06423, 0.03074, 0.239, 3]
+  kr_ph_3 dRPS lik_rec                           [0.00922, -0.04386, 0.06566, 0.6198, 3]
+  kr_ph_3 dHit lik_rec                           [-0.03526, -0.1147, 0.03972, 0.1762, 3]
+  kr_ph_3 h2h lik_rec - shift_roll               [0.01205, -0.00924, 0.03397, 0.8672, 3]
+  kr_ph_3 dRPS lik_rec_lam                       [0.01239, -0.02742, 0.06096, 0.675, 3]
+  kr_ph_3 dHit lik_rec_lam                       [-0.02479, -0.07156, 0.01353, 0.1115, 3]
+  kr_ph_3 h2h lik_rec_lam - shift_roll           [0.01523, -0.00162, 0.03329, 0.961, 3]
+  kr_ph_3 dRPS lik_rec_temp                      [0.00434, -0.02835, 0.0404, 0.577, 3]
+  kr_ph_3 dHit lik_rec_temp                      [-0.00318, -0.06608, 0.05791, 0.4582, 3]
+  kr_ph_3 h2h lik_rec_temp - shift_roll          [0.00717, -0.02038, 0.03313, 0.7043, 3]
+  kr_ph_3 shift_roll - rsign                     [-0.04264, -0.07575, -0.00829, 0.0095, 3]
+  kr_ph_3 lik_deb - mirror                       [-0.05286, -0.10422, -0.00717, 0.01, 3]
+  kr_ph_3 lik_pool_temp - lik_pool               [0.01207, -0.01777, 0.04526, 0.7652, 3]
+  kr_ph_3 lik_pool_temp - shift_temp             [-0.0101, -0.03385, 0.01208, 0.198, 3]
+  kr_ph_3 lik_rec_temp - shift_temp              [0.00267, -0.01728, 0.02195, 0.6002, 3]
+  rest_6 dRPS shift_roll                         [0.00344, -0.03043, 0.03897, 0.5533, 6]
+  rest_6 dHit shift_roll                         [-0.00972, -0.05062, 0.03165, 0.3212, 6]
+  rest_6 dRPS shift_raw                          [0.00917, -0.01966, 0.04068, 0.7295, 6]
+  rest_6 dHit shift_raw                          [-0.04479, -0.08258, -0.00864, 0.007, 6]
+  rest_6 h2h shift_raw - shift_roll              [0.00573, -0.01115, 0.02234, 0.744, 6]
+  rest_6 dRPS shift_ab                           [0.01879, -0.01909, 0.05763, 0.83, 6]
+  rest_6 dHit shift_ab                           [-0.03661, -0.0805, 0.00655, 0.0512, 6]
+  rest_6 h2h shift_ab - shift_roll               [0.01534, 0.0022, 0.02853, 0.9908, 6]
+  rest_6 dRPS shift_temp                         [0.00641, -0.01623, 0.02945, 0.7143, 6]
+  rest_6 dHit shift_temp                         [-0.03138, -0.06364, -0.00228, 0.0175, 6]
+  rest_6 h2h shift_temp - shift_roll             [0.00297, -0.02033, 0.02413, 0.5965, 6]
+  rest_6 dRPS lik_deb                            [0.06118, 0.00356, 0.12576, 0.9842, 6]
+  rest_6 dHit lik_deb                            [-0.00986, -0.04443, 0.02594, 0.2948, 6]
+  rest_6 h2h lik_deb - shift_roll                [0.05774, 0.01406, 0.10651, 0.9962, 6]
+  rest_6 dRPS lik_raw                            [0.05793, -9e-05, 0.12389, 0.9748, 6]
+  rest_6 dHit lik_raw                            [-0.01391, -0.04909, 0.02277, 0.2213, 6]
+  rest_6 h2h lik_raw - shift_roll                [0.05449, 0.0114, 0.10242, 0.9962, 6]
+  rest_6 dRPS lik_lam                            [0.02187, -0.00997, 0.05807, 0.9012, 6]
+  rest_6 dHit lik_lam                            [-0.00021, -0.02593, 0.02383, 0.464, 6]
+  rest_6 h2h lik_lam - shift_roll                [0.01843, -0.01265, 0.051, 0.8762, 6]
+  rest_6 dRPS lik_pool                           [0.02233, -0.02666, 0.07132, 0.813, 6]
+  rest_6 dHit lik_pool                           [-0.01702, -0.05419, 0.02116, 0.1832, 6]
+  rest_6 h2h lik_pool - shift_roll               [0.01889, -0.01582, 0.05443, 0.8475, 6]
+  rest_6 dRPS lik_pool_temp                      [-0.01305, -0.04136, 0.0134, 0.16, 6]
+  rest_6 dHit lik_pool_temp                      [0.018, -0.01015, 0.05048, 0.8852, 6]
+  rest_6 h2h lik_pool_temp - shift_roll          [-0.01649, -0.04606, 0.0106, 0.1258, 6]
+  rest_6 dRPS lik_naive                          [0.01567, -0.04408, 0.08331, 0.6705, 6]
+  rest_6 dHit lik_naive                          [0.00555, -0.04242, 0.05454, 0.584, 6]
+  rest_6 h2h lik_naive - shift_roll              [0.01223, -0.03145, 0.05727, 0.6915, 6]
+  rest_6 dRPS lik_rec                            [0.03556, -0.0019, 0.07741, 0.9683, 6]
+  rest_6 dHit lik_rec                            [-0.00823, -0.04712, 0.03168, 0.3528, 6]
+  rest_6 h2h lik_rec - shift_roll                [0.03212, 0.00861, 0.05542, 0.9978, 6]
+  rest_6 dRPS lik_rec_lam                        [0.01931, -0.00434, 0.04589, 0.9353, 6]
+  rest_6 dHit lik_rec_lam                        [-0.01598, -0.0454, 0.01166, 0.1393, 6]
+  rest_6 h2h lik_rec_lam - shift_roll            [0.01587, -0.00821, 0.04058, 0.9048, 6]
+  rest_6 dRPS lik_rec_temp                       [0.00198, -0.02164, 0.02512, 0.5703, 6]
+  rest_6 dHit lik_rec_temp                       [-0.0071, -0.03876, 0.02585, 0.3357, 6]
+  rest_6 h2h lik_rec_temp - shift_roll           [-0.00147, -0.02825, 0.02246, 0.4525, 6]
+  rest_6 shift_roll - rsign                      [-0.02678, -0.05476, 0.00314, 0.0415, 6]
+  rest_6 lik_deb - mirror                        [-0.01856, -0.06383, 0.03148, 0.2208, 6]
+  rest_6 lik_pool_temp - lik_pool                [-0.03539, -0.06856, -0.00568, 0.0073, 6]
+  rest_6 lik_pool_temp - shift_temp              [-0.01947, -0.04543, 0.00436, 0.0548, 6]
+  rest_6 lik_rec_temp - shift_temp               [-0.00444, -0.02436, 0.01465, 0.3362, 6]
+wrote /private/tmp/claude-501/-Users-xiong-weather/e0d3cbfe-8e26-47ae-b7d4-34df9179ede1/scratchpad/taf/results_lag6_v2.json
