@@ -1,0 +1,101 @@
+{
+  "schema": "board_evidence_v1",
+  "note": "Dated readings the board prints beside its live numbers. Each entry is one measurement, made once, with the day it was made and where the working is. The page reads these through payload.board_evidence; it holds no number of its own (user ruling 2026-09-23 「读payload」). A reading that gets re-measured is a new entry with a new date, not an edit of the old one.",
+  "entries": {
+    "market_lean_survey": {
+      "measured_on": "2026-08-28",
+      "window": "上线前 481 个早晨站日",
+      "source": "docs/research/ADVERSE_SELECTION_SURVEY_2026-09-06.md；宪章 118(一)、131(2)",
+      "values": {
+        "station_days": 481, "warm_side_hit": 0.94, "warm_base": 0.56,
+        "cold_side_hit": 0.82, "cold_base": 0.44, "bootstrap_margin_pts": 30,
+        "gap_range_c": "0.5–1.2", "live_on": "2026-09-05",
+        "replay_alone_pts": 0.9, "replay_since_0823_pts": 12.4, "replay_in_combo_pts": 4.3,
+        "refused_windows_unrecorded": 60, "rebuilt_from_ledger": 3
+      }
+    },
+    "p1_tail_replay": {
+      "measured_on": "2026-09-20",
+      "window": "09-05→09-19，一站日一桶一次、按卖一吃、持到结算",
+      "source": "config/trading/strategy_lanes_v1.json p1_tail.note；宪章 166；记忆 charter-166-p1-tail-lane",
+      "values": {
+        "reports": 9436, "station_days": 648, "days": 15,
+        "t2_per_dollar": 0.166, "t2_per_share": 0.096, "t2_per_share_ci": [0.038, 0.154],
+        "positive_days": 13, "t5_per_dollar": 0.138, "t8_per_dollar": 0.077,
+        "ge10h_t2_per_dollar": -0.033, "ge10h_t8_per_dollar": -0.084, "lt6h_takes": 8,
+        "logscore_nat": 0.028, "logscore_ci": [0.010, 0.042], "market_15min_nat": -0.012,
+        "bin_chosen_on": "2026-09-19", "unseen_days": "09-18/19", "unseen_takes": 43, "unseen_per_dollar": 0.252
+      }
+    },
+    "p1_consensus_replay": {
+      "measured_on": "2026-09-23",
+      "window": "只读回放 07-28→09-22，按决策提交后第一份盘口、每笔 20U",
+      "source": "config/trading/strategy_lanes_v1.json p1_consensus.note；宪章 203；记忆 charter-203-p1-consensus-lane",
+      "values": {
+        "takes": 117, "station_days": 90, "days": 33, "hit_rate": 0.718, "mean_ask": 0.627,
+        "roi": 0.153, "roi_ci": [0.048, 0.253], "first_half_roi": 0.348, "second_half_roi": 0.102,
+        "since_0920_takes": 27, "since_0920_roi": 0.106, "delayed_15min_roi": 0.122,
+        "ancestor_cell_p": 0.054, "forward_days": 3
+      }
+    },
+    "tiebreak_backtest": {
+      "measured_on": "2026-09-18",
+      "window": "全部快照 08-15→09-17，一站日一次按卖一",
+      "source": "宪章 146/163/175；记忆 model-mode-in-market-midband-rule-20260918、tiebreak-lane-live-charter-146",
+      "values": {
+        "station_days": 754, "roi": 0.057, "roi_ci": [-0.002, 0.109], "halves_roi": [0.055, 0.057],
+        "first_decision_station_days": 488, "first_decision_roi": 0.079, "first_decision_ci": [0.018, 0.137],
+        "same_band_no_model_roi": -0.032, "mode_elsewhere_roi": -0.072,
+        "wide_or_one_sided_spread_roi": -0.034, "tight_spread_roi_range": "+8~9%",
+        "v1_subset_station_days": 148, "p0m_paid_061_066": "0/4"
+      }
+    },
+    "centre_source_20260922": {
+      "measured_on": "2026-09-22",
+      "window": "稳定池窗内已结算站日，每提前量档取第一个配得上 30 分钟内完整盘口的 P0 包",
+      "source": "docs/research/p0_center_source_20260922/results_centre.json；09-22 模型下游审查第 1 条",
+      "values": {
+        "example_lead": "12–24h", "model_mean_abs_c": 0.86, "market_mean_abs_c": 0.72,
+        "residual_after_shift_share": 0.15, "uncorrected_gap": 0.52, "correction_share": 0.78,
+        "worst_stations": ["SBGR", "ZUUU", "KSEA", "FACT", "KSFO", "LTAC"]
+      }
+    },
+    "p1_overconfidence_20260919": {
+      "measured_on": "2026-09-19",
+      "window": "服务出去的 P1（宪章 150 g^α 时代）对结算真值",
+      "source": "docs/research/BAYES_ROOT_LIKELIHOOD_TRADING_DESIGN_2026-09-20.md",
+      "values": {"calibration_slope": 0.86, "claimed_a": 0.57, "realised_a": 0.50, "claimed_b": 0.80, "realised_b": 0.72}
+    },
+    "lambda_example_20260916": {
+      "measured_on": "2026-09-16",
+      "window": "边际地图的一个真实算例",
+      "source": "auto_trade_decisions ZUUU 2026-09-16 P0",
+      "values": {
+        "station": "ZUUU", "event_date": "2026-09-16", "stage": "P0", "bucket": "22–24°C",
+        "model": 0.72, "market": 0.33, "ask": 0.40, "lambda_factor": 0.6, "discounted": 0.43,
+        "truth": "26°C", "hit": false
+      }
+    },
+    "regional_scan": {
+      "measured_on": "2026-08-28",
+      "window": "区域模型样本外逐站三道门扫描",
+      "source": "regional 校准件的 OOS 扫描；记忆 regional-calibration-global-form-20260918",
+      "values": {"scanned_on": "2026-08-28", "gates": ["CRPS", "Brier", "NLL"], "absent": ["CMA"]}
+    },
+    "station_climate_jump": {
+      "measured_on": "2026-09-11",
+      "window": "真边际枯竭期分组：留存组对高跳变组",
+      "source": "docs/research/CENTRE_GATE_AND_FLOOR_ARMS_2026-09-11.md 时代的站闸研究（读数，不是闸门；用户裁决 2026-09-23 留读数）",
+      "values": {
+        "jump_threshold_c": 1.76, "high_jump_roi": -0.43, "retained_roi": 0.23, "p_value": 0.023,
+        "shape_gap_corr": 0.32, "shape_gap_threshold": 0.93, "shape_gap_window_days": 14
+      }
+    },
+    "radiation_legacy_bias": {
+      "measured_on": "2026-09-19",
+      "window": "全队 9 月，旧法（辐射绝对量对 4 月以来均值）",
+      "source": "宪章 160；记忆 charter-160-radiation-clearness-index",
+      "values": {"fleet_september_z": -0.44, "seasonal_share": 0.9}
+    }
+  }
+}

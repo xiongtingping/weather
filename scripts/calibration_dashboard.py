@@ -1562,6 +1562,45 @@ def collect_single_system_width(conn: sqlite3.Connection) -> dict[str, Any]:
     return {"available": bool(rows), "summary": summary, "rows": rows}
 
 
+BOARD_EVIDENCE_PATH = ROOT / "config" / "ui" / "board_evidence_v1.json"
+
+
+def collect_board_evidence(path: Path = BOARD_EVIDENCE_PATH) -> dict[str, Any]:
+    """The dated readings the page prints beside its live numbers.
+
+    A measurement made once -- a replay, a survey, a review -- used to be
+    typed into the template as prose, where it outlived the rule it
+    described (the tiebreak paragraph still opened "v2.1 规则" two versions
+    later; the Δq table's top band said "≥0.85" after charter 96 moved it).
+    The registry holds each reading with the day it was made and where the
+    working is; the page reads it here and prints "依据未登记" for an id
+    the file does not carry (user ruling 2026-09-23 「读payload」).
+    """
+
+    out: dict[str, Any] = {"available": False, "path": str(path), "entries": {}}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        out["reason"] = f"{type(exc).__name__}: {exc}"
+        return out
+    entries = raw.get("entries") if isinstance(raw, dict) else None
+    if not isinstance(entries, dict):
+        out["reason"] = "no entries"
+        return out
+    for key, entry in entries.items():
+        if not isinstance(entry, dict) or not isinstance(entry.get("values"), dict):
+            continue
+        out["entries"][str(key)] = {
+            "measured_on": str(entry.get("measured_on") or ""),
+            "window": str(entry.get("window") or ""),
+            "source": str(entry.get("source") or ""),
+            "values": entry["values"],
+        }
+    out["available"] = bool(out["entries"])
+    out["schema"] = str(raw.get("schema") or "")
+    return out
+
+
 def collect_consensus_bridge(conn: sqlite3.Connection) -> dict[str, Any]:
     """The consensus bridge (共识桥) on each station's newest P0 per open day.
 
@@ -7892,6 +7931,14 @@ def _live_scope() -> dict[str, Any]:
     return live_stations()
 
 
+# The five go-live gates, one table the gate code and the page both read;
+# the column tooltips used to repeat these numbers by hand.
+LIVE_GATE_RULES: dict[str, float] = {
+    "claim_ratio_low": 0.88, "claim_ratio_high": 1.18,
+    "centre_limit_c": 0.8, "min_chains": 5, "roi_floor": -0.08,
+}
+
+
 def collect_live_readiness(
     conn: sqlite3.Connection,
     band_stations: list[dict[str, Any]],
@@ -8069,11 +8116,16 @@ def collect_live_readiness(
         bias_c = fx["centre_residual_c"] if fx else None
         gates = {
             "claim_honest": (
-                ratio is not None and 0.88 <= ratio <= 1.18
+                ratio is not None
+                and LIVE_GATE_RULES["claim_ratio_low"] <= ratio
+                <= LIVE_GATE_RULES["claim_ratio_high"]
             ),
-            "centre_bias": bias_c is not None and abs(bias_c) <= 0.8,
-            "chains": chain_count >= 5,
-            "roi": roi is not None and roi > -0.08,
+            "centre_bias": (
+                bias_c is not None
+                and abs(bias_c) <= LIVE_GATE_RULES["centre_limit_c"]
+            ),
+            "chains": chain_count >= LIVE_GATE_RULES["min_chains"],
+            "roi": roi is not None and roi > LIVE_GATE_RULES["roi_floor"],
             "truth_fresh": truth_latest.get(sid, "") >= fresh_floor,
         }
         stations.append({
@@ -8251,6 +8303,7 @@ def collect_live_readiness(
         "open_orders": _read_open_orders(),
         "station_scope": scope_mode,
         "minimum_settlements_to_qualify": minimum,
+        "gate_rules": dict(LIVE_GATE_RULES),
         "station_probation_waivers": sorted(waived_set),
         # The third switch: a qualified station the operator is holding back.
         # Reported apart from probation itself because the two look identical
@@ -16347,6 +16400,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "p1_tail_lane": _cached_section(
             "p1_tail_lane", collect_p1_tail_lane, conn
         ),
+        "board_evidence": collect_board_evidence(),
         "p1_consensus_lane": _cached_section(
             "p1_consensus_lane", collect_p1_consensus_lane, conn
         ),
@@ -19394,8 +19448,7 @@ ${b.admits?"可买 ["+b.admits[0].toFixed(3)+", "+b.admits[1].toFixed(3)+")"
           两者的差就是待晋级的量，能不能晋级由前半/后半那一列决定 ——
           两半不一致的带还没挣到一个常量。</p>
           <p style="margin:0">宪章 96（2026-09-06）：闸判的是折后声称减价格为正，化简后就是
-          <span class="mono">λ(a) &gt; a</span>。按这条在 <span class="mono">0.80</span> 与
-          <span class="mono">0.95</span> 两处拆档，救回被平均掉的半档，
+          <span class="mono">λ(a) &gt; a</span>。按这条拆档（此刻的档界 <span class="mono">${((D.effective_edge_lambda||{}).band_bounds||[]).filter(b=>b!=null).join(" / ")||"—"}</span>），救回被平均掉的半档，
           并把顶档那把"用自己平均值切自己"的刀换成常量边界。</p>
         </div>
       </details>
@@ -19487,15 +19540,15 @@ function marketLeanGate(){
         h(MODEWORD[mode]||mode)}</span></b>
       <span class="muted">（<span class="mono">PM_MARKET_LEAN_GATE</span>）</span>
     </div>
-    <div class="why"><b>它凭什么存在：</b>上线前在 481 个早晨站日上量过——
+    <div class="why">${withEv("market_lean_survey",(V,e)=>`<b>它凭什么存在：</b>上线前在 ${V.station_days} 个早晨站日上量过（${evStamp(e)}）——
     盘口隐含均值比模型均值<b>暖</b>半档以上时，结算真的落在模型均值暖侧的比例
-    <b>94%</b>（基准 56%）；冷侧镜像 <b>82%</b>（基准 44%），两边的逐日自助区间
-    都离零 30 个百分点以上。这个信号正好活在共识桥的盲区里：桥要中心差 1.5°C
-    才掺，而那些 94% 的早晨差的是 0.5–1.2°C，<b>没有任何一层在读它</b>。<br>
-    <b>它为什么不在上线状态：</b>08-28 立时是影子；09-05 按账本重放转正 <span
-    class="mono">on</span>（单独 +0.9 点、08-23 起 +12.4、组合里 +4.3）；
-    但转正后<b>头四天拒掉的 60 个窗口，一个都没记下来</b>——每次拒绝只是计数器 +1
-    然后 continue，事后只有 3 个能从账本重建，<b>n=3 定不了案</b>。
+    <b>${evPct(V.warm_side_hit)}</b>（基准 ${evPct(V.warm_base)}）；冷侧镜像 <b>${evPct(V.cold_side_hit)}</b>（基准 ${evPct(V.cold_base)}），两边的逐日自助区间
+    都离零 ${V.bootstrap_margin_pts} 个百分点以上。这个信号正好活在共识桥的盲区里：桥要中心差 ${((D.consensus_bridge||{}).rule||{}).gap_start_c ?? "—"}°C
+    才掺，而那些早晨差的是 ${h(String(V.gap_range_c||"—"))}°C，<b>没有任何一层在读它</b>。<br>
+    <b>它为什么不在上线状态：</b>08-28 立时是影子；${h(String(V.live_on||"—").slice(5))} 按账本重放转正 <span
+    class="mono">on</span>（单独 ${evSg(V.replay_alone_pts)} 点、08-23 起 ${evSg(V.replay_since_0823_pts)}、组合里 ${evSg(V.replay_in_combo_pts)}）；
+    但转正后<b>头四天拒掉的 ${V.refused_windows_unrecorded} 个窗口，一个都没记下来</b>——每次拒绝只是计数器 +1
+    然后 continue，事后只有 ${V.rebuilt_from_ledger} 个能从账本重建，<b>n=${V.rebuilt_from_ledger} 定不了案</b>。`)}
     宪章 118(一) 因此命令它在拒绝处写下四个字段；宪章 131(2)（09-12）则判
     <b>「市场的均值桶是正在收集的数据，还不是规则」</b>，把它退回影子：
     现在它每轮照算、照记、<b>不拒任何窗</b>。<br>
@@ -19927,6 +19980,19 @@ function valuationLane(){
 // term; then the verdict the formula is judged on and the direction it
 // falls without evidence.  Every section node jumps to its section, and its
 // status is read from LANES so the map and the strips cannot disagree.
+// Dated readings (config/ui/board_evidence_v1.json via payload.board_evidence).
+// A site prints its reading through withEv; an id the registry lacks prints
+// 依据未登记 rather than a number remembered by the template.
+const EV = id => ((D.board_evidence||{}).entries||{})[id] || null;
+const evMissing = id => D.board_evidence == null
+  ? `<span class="muted">依据待整库渲染（这份 payload 早于 board_evidence 字段）</span>`
+  : `<span class="muted">依据未登记：board_evidence_v1.json 缺 <span class="mono">${h(id)}</span></span>`;
+const evStamp = e => `${h(e.measured_on||"?")} 实测${e.window?"，"+h(e.window):""}`;
+const withEv = (id, fn) => { const e = EV(id); return e ? fn(e.values||{}, e) : evMissing(id); };
+const evPct = (v, d=0) => v==null ? "—" : (100*v).toFixed(d) + "%";
+const evSg = (v, d=1, unit="") => v==null ? "—" : (v>0?"+":(v<0?"−":"")) + Math.abs(v).toFixed(d) + unit;
+const evSgPct = (v, d=1) => v==null ? "—" : evSg(100*v, d, "%");
+const evCi = (ci, f) => Array.isArray(ci) && ci.length===2 ? `[${f(ci[0])}, ${f(ci[1])}]` : "";
 function edgeMap(){
   const st=(name)=>(LANES[name]||{}).status||"audit";
   const node=(name,label,what)=>{
@@ -19977,7 +20043,7 @@ function edgeMap(){
         <div class="em-key">
           <div><b>L4、β、估值：</b>w = 0、c = 0 → b = m → 不买。</div>
           <div><b>实盘 λ 表：</b>沿用 09-01 手拟常数 → 继续买。</div>
-          <div class="muted">例：09-16 ZUUU P0 22–24°C，模型 72%、市场 33%、卖价 40。λ 打六折成 43% 高于 40，买；L4 没证据，b = 33%，不买。真值 26°C，没中。</div>
+          <div class="muted">${withEv("lambda_example_20260916",(V)=>`例：${h(String(V.event_date||"").slice(5))} ${h(V.station)} ${h(V.stage)} ${h(V.bucket)}，模型 ${evPct(V.model)}、市场 ${evPct(V.market)}、卖价 ${Math.round(100*(V.ask||0))}。λ 打 ${V.lambda_factor==null?"—":Math.round(10*V.lambda_factor)} 折成 ${evPct(V.discounted)} 高于 ${Math.round(100*(V.ask||0))}，买；L4 没证据，b = ${evPct(V.market)}，不买。真值 ${h(V.truth)}，${V.hit?"中":"没中"}。`)}</div>
         </div>
       </div>
     </div>
@@ -20132,9 +20198,9 @@ function centreShapeGap(){
   不是「挪一挪」本身的机械效果。<br>
   <b>取样：</b>窗内每个已结算站日、每个提前量档，取第一个配得上 30 分钟内完整盘口快照的 P0 包（09-22 模型下游审查第 1 条的取样）。
   P0 是 P0-M、P1 的根，所以 12–24h 也读，不只看 P0 自己交易的那几档。站日等权，区间按事件日自助 ${E.bootstrap_draws||200} 次。<br>
-  <b>例子（审查读数）：</b>提前 12–24h，模型中心平均离真值 0.86°C、市场 0.72°C；把 P0 挪到市场均值后，差距只剩约一成半。
-  <b>中心差出在哪一步（09-22 研究）：</b>单系统偏差订正在帮中心——不订正时 P0 差距是 +0.52，订正收掉约 78%；
-  剩下的中心差是 NWP 输入本身的逐日误差，集中在 SBGR、ZUUU、KSEA、FACT、KSFO、LTAC，四家模型在这些站都比市场差，换权重、挑家都救不回来。</div>
+  ${withEv("centre_source_20260922",(V,e)=>`<b>例子（审查读数，${evStamp(e)}）：</b>提前 ${h(String(V.example_lead||"—"))}，模型中心平均离真值 ${V.model_mean_abs_c}°C、市场 ${V.market_mean_abs_c}°C；把 P0 挪到市场均值后，差距只剩约 ${evPct(V.residual_after_shift_share)}。
+  <b>中心差出在哪一步：</b>单系统偏差订正在帮中心——不订正时 P0 差距是 ${evSg(V.uncorrected_gap,2)}，订正收掉约 ${evPct(V.correction_share)}；
+  剩下的中心差是 NWP 输入本身的逐日误差，集中在 ${(V.worst_stations||[]).map(h).join("、")}，四家模型在这些站都比市场差，换权重、挑家都救不回来。`)}</div>
   <div class="card">
     <div style="display:flex;align-items:center;gap:8px"><b>P0 · 提前 12h 以上</b><span style="flex:1"></span>
       <span class="pill ${pill.tone}">${pill.word}</span></div>
@@ -21218,9 +21284,17 @@ function radiationShift(){
     <div class="muted" style="margin:4px 0 8px;font-size:12px">
       融出来的分布先按当天<b>预报的短波辐射</b>平移一次：透光比这个站平常少（阴、雨），整条分布往冷推；多（晴），往暖推。
       <b>宪章 160（09-19 起）</b>：先把辐射换成<b>晴朗度指数 Kt</b>＝预报辐射 ÷ 当天该纬度的大气顶辐射（天文上限，只随纬度和日期变），
-      再对本站事件日之前的 Kt 历史标准化——季节（太阳高度、昼长）被除掉，只剩云和天气。平移 = Kt 标准分 × 系数 × 服务宽度 σ；系数是每件 artifact 自己钉的值：<b>宪章 173（09-21 起）新铸的件 0.07</b>，此前的件按其钉值 0.15 服务到轮换（下表「系数/单位」列读的就是这个钉值）。
-      旧法直接拿辐射绝对量和 4 月以来的平均比，9 月天天被判「偏暗」（全队 9 月 z −0.44，其中约九成是季节）；旧法标准分/平移留作影子列，便于复测。
-      例：ZUUU 09-20 预报 10.6 MJ/m²，大气顶 32.2，Kt 0.33 对本站平均 0.45 → 标准分 −0.82、平移约 −0.23°C（旧法 −1.17、−0.33°C）。每站读自最新一期 P0 的回执，不在这里重算。</div>
+      再对本站事件日之前的 Kt 历史标准化——季节（太阳高度、昼长）被除掉，只剩云和天气。平移 = Kt 标准分 × 系数 × 服务宽度 σ；系数是每件 artifact 自己钉的值${(()=>{
+        const rows=(D.synoptic_cooling||{}).rows||[];
+        const units=[...new Set(rows.map(r=>r.per_unit).filter(v=>v!=null))].sort((a,b)=>a-b);
+        return units.length?`（此刻在服务的钉值：${units.map(u=>`<b>${u}</b>`).join(" / ")}；宪章 173 起新铸的件钉低值，旧件按其钉值服务到轮换，下表「系数/单位」列读的就是这个钉值）`:"（下表「系数/单位」列读的就是这个钉值）";})()}。
+      ${withEv("radiation_legacy_bias",(V,e)=>`旧法直接拿辐射绝对量和 4 月以来的平均比，9 月天天被判「偏暗」（${evStamp(e)}：全队 9 月 z ${evSg(V.fleet_september_z,2)}，其中约${evPct(V.seasonal_share)}是季节）；旧法标准分/平移留作影子列，便于复测。`)}
+      ${(()=>{
+        const rows=((D.synoptic_cooling||{}).rows||[]).filter(r=>r.state==="RESOLVED"&&r.clearness_index!=null&&r.extraterrestrial_mj!=null);
+        if(!rows.length) return `<span class="muted">例：本轮没有带晴朗度回执的行。</span>`;
+        const last=rows.map(r=>r.event_date).sort().slice(-1)[0];
+        const r=rows.filter(x=>x.event_date===last).sort((a,b)=>Math.abs(b.standardised||0)-Math.abs(a.standardised||0))[0];
+        return `例（最新一期回执里标准分最大的站）：${h(r.station_id)} ${h(String(r.event_date).slice(5))} 预报 ${(r.radiation_sum??0).toFixed(1)} MJ/m²，大气顶 ${r.extraterrestrial_mj.toFixed(1)}，Kt ${r.clearness_index.toFixed(2)} 对本站平均 ${(r.clearness_mean??0).toFixed(2)} → 标准分 ${evSg(r.standardised,2)}、平移约 ${evSg(r.shift_c,2,"°C")}${r.legacy_standardised!=null?`（旧法 ${evSg(r.legacy_standardised,2)}、${evSg(r.legacy_shift_c,2,"°C")}）`:""}。每站读自最新一期 P0 的回执，不在这里重算。`;})()}</div>
     ${days}
     <details style="margin-top:8px"><summary class="muted">逐站明细（${rows.length} 行，按日期、平移绝对值排序）</summary>
       <div class="scroll" style="max-height:420px"><table><thead><tr>
@@ -22014,8 +22088,8 @@ function p1TailLane(){
       <span class="muted">${S.rule||""}</span>
     </div>
     <div class="muted" style="margin-top:6px">规则：一份 METAR 进来、P1 的似然回执说这份报文距本站结算钟还有 6–10 小时时，信念取<b>市场自己的归一化中价梯子</b>（先按硬观测下界把死桶清零再归一），乘上<b>同一个包络的观测似然</b>再归一；哪个桶的信念高出卖一 ${sp(S.hurdle)} 以上，就按卖一 FOK 吃进 ${usd(S.stake_usdc)}，一个桶一辈子只买一次，持到结算不翻手。<b>买的不是 P1</b>——P1 的根输给市场 0.15 nat，这里只把「一份报文说了什么」乘到市场的先验上，赚的是市场读同一份报文之前的那几分钟。<br>
-    依据（2026-09-20 实测 09-05→09-19，9,436 份报文 / 648 站日 / 15 天，一站日一桶一次、按卖一吃、持到结算）：6–10h 档 t+2 每美元 +0.166、每股 +0.096 [+0.038,+0.154]、15 天里 13 天正；t+5 +0.138；t+8 +0.077 且下界穿零；≥10h 档 t+2 −0.033、t+8 −0.084；&lt;6h 档 15 天只有 8 笔。对数得分同样只有这一档为正（+0.028 nat [+0.010,+0.042]，对报文后 15 分钟的市场 −0.012）。<br>
-    <b>诚实边界</b>：6–10h 这个档是 2026-09-19 看过结果之后挑出来的，真正没被任何选择看过的只有 09-18/19 两天 43 笔（+0.252/$）；而且实测用的是研究自己拟的似然、β=1，本车道乘的是<b>服务件的似然</b>（v17 直接对数更新，λ 已乘），两条向量接近但不相同。所以上面是边际的形状，不是本车道盈亏的预测；本车道自己的评估行才是算数的那份。与秤砣线的三条互斥：同桶不重复买、不排在任何车道的挂着的买单后面、账本各记各的指纹。</div></div>`;
+    ${withEv("p1_tail_replay",(V,e)=>`依据（${evStamp(e)}；${V.reports==null?"—":V.reports.toLocaleString()} 份报文 / ${V.station_days} 站日 / ${V.days} 天）：6–10h 档 t+2 每美元 ${evSg(V.t2_per_dollar,3)}、每股 ${evSg(V.t2_per_share,3)} ${evCi(V.t2_per_share_ci,x=>evSg(x,3))}、${V.days} 天里 ${V.positive_days} 天正；t+5 ${evSg(V.t5_per_dollar,3)}；t+8 ${evSg(V.t8_per_dollar,3)} 且下界穿零；≥10h 档 t+2 ${evSg(V.ge10h_t2_per_dollar,3)}、t+8 ${evSg(V.ge10h_t8_per_dollar,3)}；&lt;6h 档 ${V.days} 天只有 ${V.lt6h_takes} 笔。对数得分同样只有这一档为正（${evSg(V.logscore_nat,3)} nat ${evCi(V.logscore_ci,x=>evSg(x,3))}，对报文后 15 分钟的市场 ${evSg(V.market_15min_nat,3)}）。<br>
+    <b>诚实边界</b>：6–10h 这个档是 ${h(String(V.bin_chosen_on||"?"))} 看过结果之后挑出来的，真正没被任何选择看过的只有 ${h(String(V.unseen_days||"?"))} 两天 ${V.unseen_takes} 笔（${evSg(V.unseen_per_dollar,3)}/$）；而且实测用的是研究自己拟的似然、β=1，本车道乘的是<b>服务件的似然</b>（v17 直接对数更新，λ 已乘），两条向量接近但不相同。所以上面是边际的形状，不是本车道盈亏的预测；本车道自己的评估行才是算数的那份。`)}与秤砣线的三条互斥：同桶不重复买、不排在任何车道的挂着的买单后面、账本各记各的指纹。</div></div>`;
   const tiles=`<div class="grid">
     ${tile("打分过的包络", E.available?E.total:"—", `${E.event_days||0} 个事件日 · 触发 ${E.fired||0}`)}
     ${tile("送出 / 成交", `${R.available?R.count:"—"} / ${R.available?R.filled:"—"}`, `已结算 ${R.settled||0} 笔`)}
@@ -22082,8 +22156,8 @@ function p1ConsensusLane(){
       <span class="muted">${h(S.rule||"")}</span>
     </div>
     <div class="muted" style="margin-top:6px">规则：每个 P1 决策，若离本站结算时钟还有 6–10 小时（当地约下午两点到六点），且<b>模型众数桶＝模型均值桶＝市场众数桶＝市场均值桶</b>（两边在共同桶上归一，均值桶取 Σ概率×序号 四舍五入的那一档），这一桶的卖一又在 ${n2(S.min_ask)}–${n2(S.max_ask)} 之间——就在这一桶<b>挂买一加一跳的 post-only 单</b> ${usd(S.stake_usdc)}，有效期取交易所允许的最短（约 3.5 分钟），<b>没成交就在新盘口上重挂</b>，直到这条判断过期或离日终不足 6 小时（2026-09-23 裁决「吃单改为post only。best买一+1，挂单周期改为最短，没成交继续挂！」；此前 v1 是按卖一吃单）。每站日最多 ${S.max_buys_per_station_day==null?"—":S.max_buys_per_station_day} 笔、同一桶最多 ${S.max_buys_per_bucket==null?"—":S.max_buys_per_bucket} 笔、同站日两笔隔 ${S.min_minutes_between_buys==null?"—":S.min_minutes_between_buys} 分钟，同一时刻只挂一张；与秤砣线<b>互不避让</b>（「照买，不避让」）。<br>
-    依据（2026-09-23 只读回放 07-28→09-22，按决策提交后第一份盘口、每笔 20U）：117 笔 / 90 站日 / 33 个事件日，命中 71.8%，卖一均价 0.627，ROI +15.3%（90% 区间 +4.8% 到 +25.3%）；前半 +34.8%、后半 +10.2%；09-20 以后 27 笔 +10.6%；延后 15 分钟再买仍 +12.2%——不是抢时间的交易。<br>
-    <b>诚实边界</b>：这一格是切片搜出来的（四同 → 6–10 小时 → 价带 → 每次都买），最窄的祖先格经多重比较 p=0.054；真正的前向只有 3 个事件日。所以小额上线，窗口内每个决策——买没买都记——落在评估表里，前向再读。</div></div>`;
+    ${withEv("p1_consensus_replay",(V,e)=>`依据（${evStamp(e)}）：${V.takes} 笔 / ${V.station_days} 站日 / ${V.days} 个事件日，命中 ${evPct(V.hit_rate,1)}，卖一均价 ${V.mean_ask==null?"—":V.mean_ask.toFixed(3)}，ROI ${evSgPct(V.roi)}（90% 区间 ${evCi(V.roi_ci,x=>evSgPct(x))}）；前半 ${evSgPct(V.first_half_roi)}、后半 ${evSgPct(V.second_half_roi)}；09-20 以后 ${V.since_0920_takes} 笔 ${evSgPct(V.since_0920_roi)}；延后 15 分钟再买仍 ${evSgPct(V.delayed_15min_roi)}——不是抢时间的交易。<br>
+    <b>诚实边界</b>：这一格是切片搜出来的（四同 → 6–10 小时 → 价带 → 每次都买），最窄的祖先格经多重比较 p=${V.ancestor_cell_p==null?"—":V.ancestor_cell_p.toFixed(3)}；真正的前向只有 ${V.forward_days} 个事件日。所以小额上线，窗口内每个决策——买没买都记——落在评估表里，前向再读。`)}</div></div>`;
   const tiles=`<div class="grid">
     ${tile("窗口内判过的决策", E.available?E.total:"—", `${E.event_days||0} 个事件日 · 最近 ${h((E.last_at_utc||"").slice(5,16).replace("T"," "))}Z`)}
     ${tile("四中心同桶", E.available?E.four_same:"—", `占 ${E.total?pc(E.four_same/E.total):"—"} · 其中价带内触发 ${E.fired||0}`)}
@@ -22140,7 +22214,7 @@ function tiebreakLane(){
       <span style="flex:1"></span>
       ${laneWord("basket","篮子买单")} ${laneWord("certain_win_recycle","0.99 回收")} ${laneWord("mis_bought_leg_exit","144 卖回")}
     </div>
-    <div class="muted" style="margin-top:6px">v2.1 规则：每个阶段的首个决策，模型众数桶被市场归一化中价定在 0.40–0.60 之间、且该桶两边有报价点差不超过 3 分，就在这桶按 best 买一+1 挂一张 post-only GTD 单（点差只有一跳时贴到卖一下一跳），挂满每笔预算的股数，一个站日只挂一次（点差 >3 分或单边的桶回测 −3.4%，≤3 分 +8~9%）。v2.2（宪章 163，2026-09-20 裁决「秤砣线从吃单改为post only，挂best买一+1」）＝同样四条件，只把吃卖一改为挂买一+1；v2.3（宪章 175，2026-09-21 裁决「把价带上限改成按实付价 ≤0.60」）＝v2.2 把价带上限从归一化中价挪到挂单实付价（≤0.60），下限仍按归一化中价 ≥0.40——因为归一化中价比实付价中位低 3 分，付 0.61–0.66 的四笔 P0-M 全空；各版按 rule_version 分开记，不混算。下面的读数全部是<b>按卖一吃</b>算出来的，对挂单这版不成立——挂单要么不成交，要么在市场朝反方向走时才成交，前向样本从 09-20 重新开始。读数依据（全部快照 08-15→09-17，一站日一次按卖一）：754 站日 +5.7% [−0.2, +10.9]，前后半 +5.5/+5.7，仅首决策 488 站日 +7.9% [+1.8, +13.7]；同价带不看模型 −3.2%，模型众数在别处 −7.2%。v1（两众数相邻不同、市场 ≥0.40）是其 148 站日子集，行按 rule_version 分开记——仍是假设，不是结论。</div></div>`;
+    <div class="muted" style="margin-top:6px">规则 <span class="mono">${h(S.rule||"—")}</span>（读自 strategy_lanes_v1.json）：每个阶段的首个决策，模型众数桶被市场归一化中价定在 ≥${n3(S.min_market_share_on_model_mode)}${/paid_cap/.test(S.rule||"")?`（上限改判挂单实付价 ≤${n3(S.max_paid_price)}）`:`–${n3(S.max_market_share_on_model_mode)}`}、且该桶两边有报价点差不超过 ${S.max_spread_on_model_mode==null?"—":Math.round(100*S.max_spread_on_model_mode)} 分，就在这桶按 best 买一+1 挂一张 post-only GTD 单（点差只有一跳时贴到卖一下一跳），挂满每笔预算的股数，一个站日只挂一次。版本史：v2.1 吃卖一；v2.2（宪章 163，2026-09-20）改挂买一+1；v2.3（宪章 175，2026-09-21）把价带上限从归一化中价挪到挂单实付价——各版按 rule_version 分开记，不混算。下面的读数全部是<b>按卖一吃</b>算出来的，对挂单这版不成立——挂单要么不成交，要么在市场朝反方向走时才成交，前向样本从 09-20 重新开始。${withEv("tiebreak_backtest",(V,e)=>`读数依据（${evStamp(e)}）：${V.station_days} 站日 ${evSgPct(V.roi)} ${evCi(V.roi_ci,x=>evSgPct(x))}，前后半 ${(V.halves_roi||[]).map(x=>evSgPct(x)).join("/")}，仅首决策 ${V.first_decision_station_days} 站日 ${evSgPct(V.first_decision_roi)} ${evCi(V.first_decision_ci,x=>evSgPct(x))}；同价带不看模型 ${evSgPct(V.same_band_no_model_roi)}，模型众数在别处 ${evSgPct(V.mode_elsewhere_roi)}；点差过宽或单边的桶 ${evSgPct(V.wide_or_one_sided_spread_roi)}，窄点差 ${h(String(V.tight_spread_roi_range||"—"))}；v2.3 的由来：付 0.61–0.66 的 P0-M 笔 ${h(String(V.p0m_paid_061_066||"—"))}。v1（两众数相邻不同、市场 ≥0.40）是其 ${V.v1_subset_station_days} 站日子集——仍是假设，不是结论。`)}</div></div>`;
   const byRule=(E.by_rule||[]).map(r=>`<span class="pill ${/v2$/.test(r.rule_version)?"green":"amber"}" title="${h(r.first_at_utc||"")} → ${h(r.last_at_utc||"")}">${h(r.rule_version.replace("tiebreak_",""))}：评估 ${r.evaluated} · 触发 ${r.fired} · 发单 ${r.sent}</span>`).join(" ");
   const ruleLine=byRule?`<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><span class="muted">按规则版本：</span>${byRule}</div>`:"";
   const evalTiles=E.available?ruleLine+`<div class="grid g3" style="margin-top:8px">
@@ -22578,12 +22652,12 @@ function liveReadiness(){
         td:r=>{ const x=SS[r.station]; return x ? ['class="mono"', pc0(x.model_coverage_mean)] : MISS; }},
       {th:['title="命中·笔：下单决策绑定的概率包里持有各桶概率之和，按笔平均"', '声称<br><span class="muted">笔</span>'],
         td:r=>{ const x=SS[r.station]; return x ? ['class="mono"', pc0(x.claimed_win_probability_mean)] : MISS; }},
-      {fx:true, th:[`title="实盘：命中率÷平均声称。五闸「声称诚实」要求 0.88–1.18；＜${FX?FX.thresholds.claim_floor:"—"} 算「声称」不行"`, "命中/声称"],
+      {fx:true, th:[`title="实盘：命中率÷平均声称。五闸「声称诚实」要求 ${((D.live_readiness||{}).gate_rules||{}).claim_ratio_low??"—"}–${((D.live_readiness||{}).gate_rules||{}).claim_ratio_high??"—"}；＜${FX?FX.thresholds.claim_floor:"—"} 算「声称」不行"`, "命中/声称"],
         td:r=>{ const s=fx(r.station); return s ? ['class="mono"', fnum(s.calibration_ratio,2)] : MISS; }},
       {th:['title="生产那一笔决策的席位中心桶相对市场中心桶：偏上/一致/偏下的决策数"', '位置<br><span class="muted">上/平/下</span>'],
         td:r=>{ const x=SS[r.station]; if(!x) return MISS; const sd=x.sides||{};
           return ['class="mono muted"', `${(sd.above||0)}/${(sd.aligned||0)}/${(sd.below||0)}`]; }},
-      {fx:true, th:[`title="实盘：成交篮子所依据的模型中心−结算真值，按站日平均。五闸「中心偏差」要求 |x|≤0.8°C；＞${FX?FX.thresholds.centre_limit_c:"—"}°C 算「中心」不行"`, "中心偏差"],
+      {fx:true, th:[`title="实盘：成交篮子所依据的模型中心−结算真值，按站日平均。五闸「中心偏差」要求 |x|≤${((D.live_readiness||{}).gate_rules||{}).centre_limit_c??"—"}°C；＞${FX?FX.thresholds.centre_limit_c:"—"}°C 算「中心」不行"`, "中心偏差"],
         td:r=>{ const s=fx(r.station); return s ? ['class="mono"', fnum(s.centre_residual_c,2,"C")] : MISS; }},
     ]],
     ["价格与盈亏", [
@@ -22607,10 +22681,12 @@ function liveReadiness(){
         td:r=>r.live ? [`class="mono ${lsign(r.live.recent_roi)}"`, lpct(r.live.recent_roi)] : MISS},
     ]],
     ["站点属性", [
-      {th:['title="该站真值的日际跳变均值(°C)：天气性格，>1.76 的站在真边际枯竭期实测 −43%（留存组 +23%，p=0.023）。外生、慢变、先于账本。"', "跳变/日"],
-        td:r=>[`class="mono ${r.climate_jump_c==null?"":(r.climate_jump_c>1.76?"down":"up")}"`, r.climate_jump_c==null?"—":r.climate_jump_c.toFixed(2)]},
-      {th:['title="近14天池子里模型分布的均值−众数距离(桶)：跳变在模型层的影子(r=+0.32)，>0.93 为高。"', "形状gap"],
-        td:r=>[`class="mono ${r.shape_gap_buckets==null?"":(r.shape_gap_buckets>0.93?"down":"")}"`, r.shape_gap_buckets==null?"—":r.shape_gap_buckets.toFixed(2)]},
+      // Readings, not gates (user ruling 2026-09-23 「留读数」): no colour
+      // rule of the page's own; the study they came from is a dated entry.
+      {th:[`title="该站真值的日际跳变均值(°C)：天气性格，外生、慢变、先于账本。读数，不是闸门。${(()=>{const e=EV("station_climate_jump");if(!e)return "";const V=e.values||{};return `研究读数（${e.measured_on} 实测）：>${V.jump_threshold_c}°C 的站在真边际枯竭期 ${evSgPct(V.high_jump_roi,0)}（留存组 ${evSgPct(V.retained_roi,0)}，p=${V.p_value}）。`;})()}"`, "跳变/日"],
+        td:r=>['class="mono"', r.climate_jump_c==null?"—":r.climate_jump_c.toFixed(2)]},
+      {th:[`title="近 ${(EV("station_climate_jump")||{values:{}}).values.shape_gap_window_days??14} 天池子里模型分布的均值−众数距离(桶)。读数，不是闸门。${(()=>{const e=EV("station_climate_jump");if(!e)return "";const V=e.values||{};return `研究读数（${e.measured_on} 实测）：与跳变相关 r=${evSg(V.shape_gap_corr,2)}，>${V.shape_gap_threshold} 算高。`;})()}"`, "形状gap"],
+        td:r=>['class="mono"', r.shape_gap_buckets==null?"—":r.shape_gap_buckets.toFixed(2)]},
       {th:['title="站点纬度分带：回归线以内热带，23.4°–35° 副热带，35°–55° 温带，55° 以上高纬"', "气候带"],
         td:r=>{ const g=GEO[r.station]; const bd=g?bandOf(g[0]):null;
           return ['', `${bd?h(bd.replace("半球·","")):"—"} <span class="muted">${g?fmtLat(g[0]):""}</span>`]; }},
@@ -24554,7 +24630,7 @@ function p1JointBoard(){
     f 本身就是被学的东西——报文相对根给每个桶加多少对数概率，直接在<b>最终 P1</b> 的对数得分上拟合（带一个把 f 往 0、也就是往根收的岭）。
     桶按 g 的那套读法描述：<b>再升</b>＝1[比已报最高的桶更高]，<b>每格</b>＝再高几格，另有开口顶一项；根自己对「还会不会升」的看法作为特征进去，
     所以重叠的那部分不会被算两遍。第 150 条的 g<sup>α</sup> 把根乘上一个<b>预测分布</b>而不是似然，等于把训练基频再数一遍，一个逐小时的 α 拿不回来：
-    09-19 复核实测服务出去的 P1 过度自信（校准斜率 0.86，声称 0.57 兑现 0.50、0.80 兑现 0.72）。
+    ${withEv("p1_overconfidence_20260919",(V,e)=>`${h(String(e.measured_on||"").slice(5))} 复核实测服务出去的 P1 过度自信（校准斜率 ${V.calibration_slope}，声称 ${V.claimed_a} 兑现 ${V.realised_a}、${V.claimed_b} 兑现 ${V.realised_b}）。`)}
     <b>根</b>是 P0-M（没有 TAF 时是 P0）——校准只在 P0 做一次；P1 没有中心/宽度、band 表、时钟天花板、区域路径先验、四层链。区域模型只在这里当协变量。</p>
   <div class="card" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
     <b>过去 18 小时各站最新一步实际服务的规则：</b>${served || `<span class="muted">这一轮的读数还没带上（等下一次整库渲染）</span>`}
@@ -24727,7 +24803,7 @@ function regionalBoard(){
     <div class="scroll" style="max-height:420px"><table><thead><tr><th>区域模型</th><th>站</th><th>最新 run 起报</th>
       <th>距今（≤${maxAge}h 可用）</th><th>最近采集</th><th>run 数</th><th>偏差校准（正＝模型偏冷）</th></tr></thead>
       <tbody>${stationRows}</tbody></table></div></details>
-  <div style="margin-top:6px"><span class="muted">样本外逐站三道门（08-28 扫描，CRPS/Brier/NLL 都赢现任；CMA 未参加）：</span>${verdicts || "—"}</div>
+  <div style="margin-top:6px"><span class="muted">样本外逐站三道门（${withEv("regional_scan",(V)=>`${h(String(V.scanned_on||"?").slice(5))} 扫描，${(V.gates||[]).map(h).join("/")} 都赢现任${(V.absent||[]).length?"；"+(V.absent||[]).map(h).join("、")+" 未参加":""}`)}）：</span>${verdicts || "—"}</div>
   <div style="margin-top:6px"><span class="muted">样本外准备度：</span>${ready || "—"}</div>`;
 }
 
@@ -24989,9 +25065,9 @@ const LANES = {
   "融合权重表": {layer:"概率层 · 融合", status:"live",
     role:"四家各占多少；过样本外检验才换代"},
   "共识桥": {layer:"概率层 · 分布", status:"live",
-    role:"中心差 >1.5°C 时往中间补一块共识成分，2.0°C 补满 0.4"},
+    role:(()=>{const R=((D.consensus_bridge||{}).rule)||{}; return `中心差 >${R.gap_start_c??"—"}°C 时往中间补一块共识成分，${R.gap_full_c??"—"}°C 补满 ${R.lambda_max??"—"}（读自回执）`;})()},
   "辐射降温项": {layer:"概率层 · 分布", status:"live",
-    role:"按预报日照把整条分布往冷/暖推：晴朗度指数 Kt 的本站标准分 × 系数 × σ（宪章 160；系数按件钉值，宪章 173 起新件 0.07、旧件 0.15）"},
+    role:(()=>{const u=[...new Set((((D.synoptic_cooling||{}).rows)||[]).map(r=>r.per_unit).filter(v=>v!=null))].sort((a,b)=>a-b); return `按预报日照把整条分布往冷/暖推：晴朗度指数 Kt 的本站标准分 × 系数 × σ（宪章 160；系数按件钉值${u.length?"，此刻在服务的钉值 "+u.join(" / "):""}）`;})()},
   "站点 × 日期": {layer:"P0-M · P1 · 按站日", status:"live",
     role:"一行一个站日：P0 → TAF 似然 → P0-M → 硬下界 × METAR 观测更新（第 161 条 e^f；区域模型作协变量）→ P1 → 结算真值；三条分布画在一根桶轴上，点开看当天的温度路径与逐桶算术"},
   "P0-M TAF 似然": {layer:"P0-M · 唯一的更新", status:"live",
