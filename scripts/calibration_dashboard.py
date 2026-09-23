@@ -18504,7 +18504,7 @@ function reliabilityAudit(){
       </tr></thead><tbody>${rows}</tbody></table></div>`;
   }).join("");
   const stationRows=(A.stations||[]).map(r=>`<tr>
-      <td class="mono">${stationMarketLink(r.station)}${r.station_label
+      <td class="mono">${typeof stationMarketLink === "function" ? stationMarketLink(r.station) : h(r.station)}${r.station_label
         ?` <span class="muted">${h(r.station_label)}</span>`:""}</td>
       <td class="mono muted">${r.n}</td>
       <td class="mono">${(r.claimed*100).toFixed(0)}%</td>
@@ -24736,7 +24736,7 @@ function p1PathSkill(){
   const medChart = trendChart({title: "提前量中位数（小时）", sub: "到达时刻 − 锁定时刻；0 = 跟着温度计走",
     dates, fmt: v => Number(v).toFixed(1), marks, ref: {y: 0, label: "0"},
     series: [{name: "中位", values: daily.map(d => d.median_lead_hours)}]});
-  const rows = (Q.stations || []).map(r => `<tr><td class="mono"><b>${stationMarketLink(r.station_id)}</b></td><td class="mono">${r.station_days}</td>
+  const rows = (Q.stations || []).map(r => `<tr><td class="mono"><b>${typeof stationMarketLink === "function" ? stationMarketLink(r.station_id) : h(r.station_id)}</b></td><td class="mono">${r.station_days}</td>
     ${hrs.map(hh => `<td class="mono">${p1(r["hit_" + hh])}</td>`).join("")}
     <td class="mono">${p1(r.within1_14)}</td><td class="mono">${p1(r.predicted_share)}</td>
     <td class="mono">${p1(r.lead_ge_1h_share)}</td><td class="mono">${hr(r.median_lead_hours)}</td></tr>`).join("");
