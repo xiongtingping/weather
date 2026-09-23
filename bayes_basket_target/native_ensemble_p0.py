@@ -58,6 +58,9 @@ from .cross_consensus import (
     bridged_cross_probability,
 )
 from .fusion_blend import overlay_system_weights
+from .deterministic_feature_correction import (
+    shadow_receipt as deterministic_feature_shadow_receipt,
+)
 from .stable_pool import (
     P0_MEMBERSHIP_MODE,
     P0_MEMBERSHIP_MODE_STABLE_POOL,
@@ -3303,6 +3306,9 @@ def compile_native_ensemble_p0(
     # an open edge bucket's mass moves as a tail -- the same axis the width
     # fit scores its scalars on.
     served_centers_c, open_edge_bounds_c = _served_axis(intervals_raw, ordered)
+    # Charter 201 step 2: the input the served layers see, kept so the
+    # deterministic-feature shadow can re-run the same layers on a shifted one.
+    pre_layer_probability = dict(probability)
     probability, center_width_receipt, band_reliability_receipt = (
         apply_served_table_layers(
             probability,
@@ -3312,6 +3318,31 @@ def compile_native_ensemble_p0(
             band=band_layer,
             open_edge_bounds_c=open_edge_bounds_c,
         )
+    )
+
+    def _served_layers_again(shifted: Mapping[str, float]) -> dict[str, float]:
+        return apply_served_table_layers(
+            shifted,
+            ordered_keys=ordered,
+            key_centers_c=served_centers_c,
+            center_width=center_width_layer,
+            band=band_layer,
+            open_edge_bounds_c=open_edge_bounds_c,
+        )[0]
+
+    # Charter 201 step 2: a record, not a change -- the served vector above is
+    # what this compile serves, byte for byte.
+    deterministic_feature_receipt = deterministic_feature_shadow_receipt(
+        conn,
+        station_id=station_id,
+        event_date=event_date,
+        decision_at_utc=decision_at_utc,
+        settlement_timezone=timezone_name,
+        served_probability=probability,
+        pre_layer_probability=pre_layer_probability,
+        ordered=ordered,
+        intervals=intervals_raw,
+        served_layers=_served_layers_again,
     )
     if center_width_receipt is not None:
         if pinned_center_width is not None:
@@ -3724,6 +3755,7 @@ def compile_native_ensemble_p0(
         "system_family_ids_json": _json(family_by_system),
         "system_weights_json": _json(system_weights),
         "fusion_blend_json": _json(fusion_blend_receipt),
+        "deterministic_feature_json": _json(deterministic_feature_receipt),
         "provisional_uncalibrated_system_ids_json": _json(sorted(provisional_uncalibrated_system_ids)),
         "provisional_parameter_sources_json": _json(provisional_parameter_sources),
         "p0_membership_demotions_json": _json(p0_membership_demotions),

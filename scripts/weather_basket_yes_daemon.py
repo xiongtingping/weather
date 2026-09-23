@@ -571,6 +571,16 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         1200.0,
         120.0,
     ),
+    # Charter 201 step 2: the P0 deterministic-feature gate, fitted on settled
+    # days (rolling k, pre-registered readings, each station's candidate).
+    # SSOT ``mode=ro``, one JSON artifact the P0 compile reads; daily because
+    # a station-day settles once a day.
+    (
+        "fit_deterministic_feature_gate",
+        "scripts/fit_deterministic_feature_gate_sweep.sh",
+        86400.0,
+        1800.0,
+    ),
     # Charter 197 (2026-09-22): the supply watch.  2026-09-21 16:04Z the proxy
     # tunnel stopped carrying traffic, every upstream failed together, and by
     # 19:42Z no D+1 P0 was fresh anywhere -- until 08:55Z the next morning,
@@ -667,6 +677,8 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     # Reads the SSOT ``mode=ro`` and writes one small JSON file.
     "probe_cma_named_runs": "none",
     "probe_deterministic_runs": "none",
+    # Charter 201 step 2: SSOT ``mode=ro``, one JSON artifact.
+    "fit_deterministic_feature_gate": "none",
     # Charter 197: SSOT ``mode=ro``, HEAD probes, one small JSON file.
     "supply_watch": "none",
     # Charter 199: SSOT ``mode=ro``; writes data/fusion_blend_training.db
