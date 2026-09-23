@@ -63,7 +63,10 @@ ECMWF_FAMILY = "ECMWF_OPEN_DATA_S3"
 GEFS_FAMILY = "NOAA_GEFS_PDS_S3"
 ICON_FAMILY = "DWD_OPENDATA_ICON_EPS"
 ECCC_FAMILY = "ECCC_DD_WEATHER"
-FAMILIES = (ECMWF_FAMILY, GEFS_FAMILY, ICON_FAMILY, ECCC_FAMILY)
+# Charter 204: AIFS ENS, a follow-only family (``follow_run.AIFS_FAMILY``);
+# a lane key, not a transport id -- its objects sit in PF50's bucket.
+AIFS_FAMILY = "ECMWF_AIFS_ENS"
+FAMILIES = (ECMWF_FAMILY, GEFS_FAMILY, ICON_FAMILY, ECCC_FAMILY, AIFS_FAMILY)
 
 ECMWF_GCS_BASE_URL = "https://storage.googleapis.com/ecmwf-open-data"
 ECMWF_AWS_BASE_URL = "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com"
@@ -79,6 +82,7 @@ DOWNLOAD_SOURCE = {
     GEFS_FAMILY: "s3",
     ICON_FAMILY: "dwd",
     ECCC_FAMILY: "dd",
+    AIFS_FAMILY: "gcs",
 }
 SHADOW_SOURCES = {ECMWF_FAMILY: ("aws",)}
 
@@ -117,6 +121,13 @@ SPECS: dict[str, FamilySpec] = {
     ECCC_FAMILY: FamilySpec(
         ECCC_FAMILY, "ECCC_GEM_GLOBAL_ENS", (0, 12),
         {0: 4.8, 12: 4.8}, 14.0,
+    ),
+    # Every step of all four cycles was on the GCS replica by init + 6h10m
+    # on 2026-09-20 (00Z 05:59-06:09, 06Z 11:55-12:04, 12Z 17:58-18:07,
+    # 18Z 23:51-00:00): 1h08m-1h41m before the IFS run of the same cycle.
+    AIFS_FAMILY: FamilySpec(
+        AIFS_FAMILY, "ECMWF_AIFS_ENS_GLOBAL", (0, 6, 12, 18),
+        {0: 5.8, 6: 5.8, 12: 5.8, 18: 5.8}, 14.0,
     ),
 }
 
@@ -199,6 +210,15 @@ def _station_steps(
                 run_init_utc=run_init,
             )
             return None if hours is None else list(hours)
+        if family == AIFS_FAMILY:
+            from .ecmwf_aifs_ens_archive import day_instants  # noqa: PLC0415
+
+            steps = day_instants(
+                event_date=event_date,
+                settlement_timezone=settlement_timezone,
+                run_init_utc=run_init,
+            )
+            return None if steps is None else list(steps)
     except (ContractError, ValueError, KeyError):
         return None
     return None
@@ -236,6 +256,16 @@ def ecmwf_object_urls(base_url: str, run_init: datetime, step: int) -> tuple[str
     prefix = (
         f"{run_init:%Y%m%d}/{run_init:%H}z/ifs/0p25/enfo/"
         f"{run_init:%Y%m%d%H%M%S}-{int(step)}h-enfo-ef"
+    )
+    return f"{base_url}/{prefix}.grib2", f"{base_url}/{prefix}.index"
+
+
+def aifs_object_urls(
+    base_url: str, run_init: datetime, step: int, kind: str
+) -> tuple[str, str]:
+    prefix = (
+        f"{run_init:%Y%m%d}/{run_init:%H}z/aifs-ens/0p25/enfo/"
+        f"{run_init:%Y%m%d%H%M%S}-{int(step)}h-enfo-{kind}"
     )
     return f"{base_url}/{prefix}.grib2", f"{base_url}/{prefix}.index"
 
@@ -413,6 +443,24 @@ def _visible(
         if answer is None:
             return None, ""
         return answer[0] == 200, _header(answer[1], "last-modified")
+    if family == AIFS_FAMILY:
+        # The control and the perturbed members are two objects per step;
+        # the run is up for this day when both indexes of its last needed
+        # step are.
+        base = ECMWF_GCS_BASE_URL if source == "gcs" else ECMWF_AWS_BASE_URL
+        pf_grib, pf_index = aifs_object_urls(base, run_init, step, "pf")
+        _cf_grib, cf_index = aifs_object_urls(base, run_init, step, "cf")
+        grib = round_.ask("HEAD", pf_grib)
+        if grib is None:
+            return None, ""
+        if grib[0] != 200:
+            return False, ""
+        indexes = round_.ask_many("HEAD", [pf_index, cf_index])
+        if any(answer is None for answer in indexes):
+            return None, ""
+        return all(answer[0] == 200 for answer in indexes), _header(
+            grib[1], "last-modified"
+        )
     return False, ""
 
 
