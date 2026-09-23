@@ -195,9 +195,11 @@ def test_the_regression_arm_raises_only_a_peak_still_ahead() -> None:
         [CURVE_RUN], as_of_utc="2026-09-11T05:30:00Z", **kwargs)
     assert behind["regional_headroom_c"] == pytest.approx(31.0 - 31.5)
     assert behind["regional_calibration_bias_c"] is None
+    # An unfitted scope: the same system at another station P1 reads it at
+    # (charter 201 freezes P1's pairs, so the system must be one it reads).
     unfitted = R.regional_features_at(
-        [dict(CURVE_RUN, ensemble_system_id="NCEP_NBM_POINT")],
-        as_of_utc="2026-09-11T04:30:00Z", **kwargs)
+        [CURVE_RUN], as_of_utc="2026-09-11T04:30:00Z",
+        **dict(kwargs, station_id="ZSPD"))
     assert unfitted["regional_headroom_c"] == pytest.approx(33.2 - 31.5), (
         "a run with no fitted scope is read raw, not dropped"
     )
@@ -282,7 +284,14 @@ def test_the_fitted_artifact_is_on_disk_and_covers_every_lane() -> None:
     payload = D.load_artifact()
     assert payload is not None, "the fit is a deliverable, not a scratch run"
     assert payload["rule_version"] == D.RULE_VERSION
-    assert set(payload["systems"]) == set(D.CALIBRATED_SYSTEMS)
+    # Charter 201 added the family's global members to the fit; a system
+    # appears once it has settled training days, so the lanes P1 was built on
+    # must all be there and nothing outside the calibrated list may be.
+    assert set(payload["systems"]) <= set(D.CALIBRATED_SYSTEMS)
+    assert {
+        "JMA_MSM_POINT", "NCEP_HRRR_POINT", "NCEP_NBM_POINT",
+        "DWD_ICON_EU_POINT", "CMA_GRAPES_GLOBAL_POINT",
+    } <= set(payload["systems"])
     assert "ZUUU" in payload["systems"]["CMA_GRAPES_GLOBAL_POINT"]["stations"]
     table = D.load_replay_table()
     assert table is not None and table["dates"]

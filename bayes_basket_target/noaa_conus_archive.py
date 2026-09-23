@@ -547,6 +547,11 @@ LAND_MARK = ":LAND:surface:"
 LAND_MASK_PRODUCTS = frozenset({"HRRR"})
 LAND_FRACTION_MIN = 0.5
 MAX_LAND_SEARCH_KM = 10.0
+# Charter 201: on a coarse grid the next land cell can be a whole spacing
+# away (0.25 degrees: FACT, NZWN, WSSS at 14-19 km), so the search reaches
+# 1.5 local grid spacings when that is further than the fixed 10 km.  On
+# HRRR's 3 km grid it is not, and the reach is exactly charter 200's.
+LAND_SEARCH_SPACINGS = 1.5
 SAMPLING_RULE = "nearest_land_cell_v1"
 _EARTH_RADIUS_KM = 6371.0
 # (grid identity, latitude, longitude) -> resolved point; the mask is static
@@ -639,7 +644,16 @@ def nearest_land_points(
                     }
                     continue
                 distance = _EARTH_RADIUS_KM * np.arccos(cosine)
-                candidates = np.flatnonzero(land & (distance <= MAX_LAND_SEARCH_KM))
+                # Local grid spacing: the nearest cell's own nearest neighbour.
+                to_nearest = np.clip(
+                    sin_lat[nearest] * sin_lat
+                    + cos_lat[nearest] * cos_lat * np.cos(lon_r - lon_r[nearest]),
+                    -1.0, 1.0,
+                )
+                to_nearest[nearest] = -1.0
+                spacing = _EARTH_RADIUS_KM * float(np.arccos(to_nearest.max()))
+                reach = max(MAX_LAND_SEARCH_KM, LAND_SEARCH_SPACINGS * spacing)
+                candidates = np.flatnonzero(land & (distance <= reach))
                 if candidates.size == 0:
                     _SAMPLING_CACHE[key] = None
                     continue
@@ -652,6 +666,7 @@ def nearest_land_points(
                     "moved": True, "rule": SAMPLING_RULE,
                     "distance_km": round(float(distance[best]), 3),
                     "water_cell_distance_km": round(float(distance[nearest]), 3),
+                    "grid_spacing_km": round(spacing, 3),
                 }
         return [
             _SAMPLING_CACHE[(identity, float(lat), float(lon))]

@@ -27,6 +27,46 @@ from typing import Any, Mapping, Sequence
 # A curve older than this is not describing today any more.
 MAX_RUN_AGE_HOURS = 12.0
 
+# Charter 201 (2026-09-23): the (system, station) pairs P1's likelihood reads,
+# frozen at the five lanes and rosters it was fitted on.  The lane now also
+# captures the deterministic-forecast family's new sources (AIFS Single, IFS
+# 9 km, UKMO 10 km) and CMA at every station, for the P0 feature and its
+# shadow record; none of that may reach P1's two covariates -- or the samples
+# its likelihood is refitted on -- until a ruling adds a pair here.
+P1_FEATURE_PAIRS: frozenset[tuple[str, str]] = frozenset(
+    (system, station)
+    for system, stations in (
+        ("JMA_MSM_POINT", ("RCSS", "RJTT", "RKPK", "RKSI", "ZSPD", "ZSQD")),
+        ("CMA_GRAPES_GLOBAL_POINT", (
+            "ZBAA", "ZGGG", "ZGSZ", "ZHHH", "ZSPD", "ZSQD", "ZUCK", "ZUUU",
+        )),
+        ("DWD_ICON_EU_POINT", (
+            "LTAC", "EPWA", "EDDM", "EHAM", "EFHK", "LFPB", "LEMD", "EGLC", "LIMC",
+        )),
+        ("NCEP_HRRR_POINT", (
+            "KATL", "KAUS", "KBKF", "KDAL", "KHOU", "KLGA", "KMIA", "KORD",
+            "KSEA", "KSFO", "CYYZ",
+        )),
+        ("NCEP_NBM_POINT", (
+            "KATL", "KAUS", "KBKF", "KDAL", "KHOU", "KLAX", "KLGA", "KMIA",
+            "KORD", "KSEA", "KSFO", "CYYZ",
+        )),
+    )
+    for station in stations
+)
+P1_FEATURE_SYSTEMS: frozenset[str] = frozenset(
+    system for system, _station in P1_FEATURE_PAIRS
+)
+
+
+def p1_reads_pair(system_id: Any, station_id: str | None) -> bool:
+    """Whether P1's covariates may read this system at this station."""
+
+    system = str(system_id or "")
+    if station_id is None:
+        return system in P1_FEATURE_SYSTEMS
+    return (system, str(station_id).upper()) in P1_FEATURE_PAIRS
+
 
 def remaining_peak_from_curve(
     hourly_c: Mapping[str, Any], *, as_of_utc: str,
@@ -133,6 +173,8 @@ def regional_features_at(
             row.get("ensemble_system_id") or ""
         ) not in systems:
             continue
+        if not p1_reads_pair(row.get("ensemble_system_id"), station_id):
+            continue
         if str(row.get("knowable_at_utc") or "") > str(as_of_utc):
             continue
         try:
@@ -211,6 +253,9 @@ def load_runs_for_station_day(
 
 __all__ = [
     "MAX_RUN_AGE_HOURS",
+    "P1_FEATURE_PAIRS",
+    "P1_FEATURE_SYSTEMS",
+    "p1_reads_pair",
     "curve_value_at",
     "load_runs_for_station_day",
     "regional_features_at",

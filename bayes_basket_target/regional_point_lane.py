@@ -58,13 +58,29 @@ SYSTEM_IDS = {
     "HRRR": "NCEP_HRRR_POINT",
     "NBM": "NCEP_NBM_POINT",
     "ICON_EU": "DWD_ICON_EU_POINT",
+    # Charter 201: the deterministic-forecast family's new members.  Never
+    # ensemble members (not registered in calibration_native_ensemble_system,
+    # no fusion weight) and never read by P1 (regional_features freezes P1's
+    # pairs); captured here for the P0 feature and its shadow record.
+    "AIFS": "ECMWF_AIFS_SINGLE_POINT",
+    "IFS9KM": "ECMWF_IFS_9KM_RELAY_POINT",
+    "UKMO10": "UKMO_GLOBAL_10KM_RELAY_POINT",
 }
+# Forecast-step spacing, hours (charter 201: AIFS Single's open data is six-hourly).
+STEP_HOURS = {"AIFS": 6}
+# Charter 201: which products reach the lane through the aggregator relay
+# (knowable = when we fetched it; quota-charged) rather than a publisher's own
+# archive.
+RELAY_PRODUCTS = frozenset({"CMA", "IFS9KM", "UKMO10"})
 TRANSPORTS = {
     "MSM": "RISH_KYOTO_JMA_ARCHIVE",
     "CMA": "OPEN_METEO_CMA_GRAPES_GLOBAL",
     "HRRR": "NOAA_HRRR_PDS_S3",
     "NBM": "NOAA_NBM_PDS_S3",
     "ICON_EU": "DWD_OPENDATA_ICON_EU",
+    "AIFS": "ECMWF_OPEN_DATA_GCS_AIFS_SINGLE",
+    "IFS9KM": "OPEN_METEO_ECMWF_IFS",
+    "UKMO10": "OPEN_METEO_UKMO_GLOBAL_10KM",
 }
 EXTRACTION_VERSIONS = {
     "MSM": "jma_msm_surface_nearest_cell_v1",
@@ -85,7 +101,12 @@ EXTRACTION_VERSIONS = {
     # 3.1 km onto the peninsula.
     "HRRR": "ncep_hrrr_surface_nearest_land_cell_v2",
     "NBM": "ncep_nbm_core_nearest_cell_v1",
+    # Unchanged by charter 201: ICON-EU's own FR_LAND now places every station
+    # (charter 200's rule), and all nine stations' nearest cells are land.
     "ICON_EU": "dwd_icon_eu_surface_nearest_cell_v1",
+    "AIFS": "ecmwf_aifs_single_2t_6h_nearest_land_cell_v1",
+    "IFS9KM": "open_meteo_ecmwf_ifs_single_run_land_cell_v1",
+    "UKMO10": "open_meteo_ukmo_10km_single_run_land_cell_v1",
 }
 # Charter 200: (system, station) -> extraction versions whose rows were read
 # at a water cell.  Measured on the lane's own peak-complete rows, KSFO/HRRR v1
@@ -130,11 +151,57 @@ RUN_CYCLE_HOURS = {
     "HRRR": tuple(range(0, 24)),
     "NBM": tuple(range(0, 24)),
     "ICON_EU": tuple(range(0, 24, 3)),
+    "AIFS": (0, 6, 12, 18),
+    "IFS9KM": (0, 6, 12, 18),
+    "UKMO10": (0, 6, 12, 18),
 }
 # How long after its nominal hour a run is normally on the archive.
 PUBLICATION_LAG_HOURS = {
     "MSM": 3.0, "HRRR": 1.5, "NBM": 2.0, "ICON_EU": 4.0, "CMA": 6.0,
+    # Relays hold a run well after its centre publishes it (measured
+    # 2026-09-23: the relay's UKMO 12Z still missing 16 h after init), so
+    # the first ask waits and the run stays wanted longer (CURRENT_RUN_HOURS).
+    "AIFS": 5.0, "IFS9KM": 6.0, "UKMO10": 12.0,
 }
+# Charter 201: every listed target day (station-local D-1 .. D+2) and every
+# run still current (issued in the last day) that reaches its afternoon --
+# "全部采集，谁新就用谁".  The P1 lane's original reach (D-1..D+1, runs from
+# the day before the day, reaching the afternoon or not) is kept as it was,
+# so the rows P1 reads are captured exactly as before.
+DAY_OFFSETS = (-1, 0, 1, 2)
+LEGACY_DAY_OFFSETS = (-1, 0, 1)
+LEGACY_PRODUCTS = frozenset({"MSM", "CMA", "HRRR", "NBM", "ICON_EU"})
+CURRENT_RUN_HOURS = 24.0
+CURRENT_RUN_HOURS_BY_PRODUCT = {"UKMO10": 36.0}
+# How long before the local day starts a run may be issued and still count
+# for that day (bounded by what each product publishes).
+LOOKBACK_HOURS = {
+    "HRRR": 30.0, "NBM": 30.0, "MSM": 60.0, "ICON_EU": 72.0, "CMA": 60.0,
+    "AIFS": 72.0, "IFS9KM": 72.0, "UKMO10": 72.0,
+}
+# The end of the local peak window, hours after local midnight.
+_PEAK_END_HOUR = 19
+
+
+def product_horizon_hours(product: str, run_init: datetime) -> int:
+    """The last forecast hour this product publishes for this run."""
+
+    hour = run_init.astimezone(timezone.utc).hour
+    if product == "HRRR":
+        return 48 if hour in (0, 6, 12, 18) else 18
+    if product == "NBM":
+        return 48
+    if product == "MSM":
+        return 78 if hour in (0, 12) else 39
+    if product == "ICON_EU":
+        return 120 if hour in (0, 6, 12, 18) else 30
+    if product == "CMA":
+        return 78
+    if product == "AIFS":
+        return 96
+    if product in ("IFS9KM", "UKMO10"):
+        return 95
+    raise ContractError("regional_point_product_unknown")
 # Extraction versions whose run label was derived from the clock rather than
 # read from the transport (CMA v1/v2): a named-run row on the same key
 # supersedes them.
@@ -271,11 +338,28 @@ def hourly_valid_map(run_init: datetime, hourly_c: Mapping[Any, Any]) -> dict[st
 
 def remaining_peak_complete(
     run_init: datetime, event_date: date, settlement_timezone: str,
-    hourly_c: Mapping[Any, Any],
+    hourly_c: Mapping[Any, Any], step_hours: int = 1,
 ) -> bool:
-    """Every afternoon hour the run could still speak to is on the curve."""
+    """Every afternoon hour the run could still speak to is on the curve.
+
+    ``step_hours`` (charter 201): a product published every six hours (AIFS
+    Single) speaks only at its steps, so "every afternoon hour" is every step
+    inside the afternoon it could still reach -- at least one.
+    """
 
     zone = ZoneInfo(settlement_timezone)
+    if int(step_hours) > 1:
+        covered_utc = {run_init + timedelta(hours=int(hour)) for hour in hourly_c}
+        start = datetime.combine(event_date, datetime.min.time(), tzinfo=zone)
+        window_start = max(start + timedelta(hours=PEAK_LOCAL_HOURS[0]), run_init)
+        window_end = start + timedelta(hours=PEAK_LOCAL_HOURS[-1] + 1)
+        steps = []
+        stamp = run_init
+        while stamp < window_end:
+            if stamp >= window_start:
+                steps.append(stamp)
+            stamp += timedelta(hours=int(step_hours))
+        return bool(steps) and all(step in covered_utc for step in steps)
     covered = {
         (run_init + timedelta(hours=int(hour))).astimezone(zone)
         for hour in hourly_c
@@ -373,7 +457,10 @@ def write_run(
                 int(run_init.astimezone(timezone.utc).hour),
                 round(lead_hours_to_local_day_start(run_init, event_date, settlement_timezone), 3),
                 float(max(valid_map.values())),
-                int(remaining_peak_complete(run_init, event_date, settlement_timezone, hourly_c)),
+                int(remaining_peak_complete(
+                    run_init, event_date, settlement_timezone, hourly_c,
+                    step_hours=STEP_HOURS.get(product, 1),
+                )),
                 int(hours_wanted), len(valid_map), json.dumps(valid_map, sort_keys=True),
                 TRANSPORTS[product], EXTRACTION_VERSIONS[product], _iso(archive_query_at),
                 _iso(knowable_at), str(source_url), SCHEMA_VERSION, digest,
@@ -477,25 +564,61 @@ def _target_days(now: datetime, zone_name: str, offsets: Sequence[int]) -> list[
 
 def _candidate_runs(
     product: str, now: datetime, event_date: date, zone_name: str,
+    *, legacy: bool = True,
 ) -> list[datetime]:
-    """Runs issued from a day before the local day start up to its end,
-    already on the archive by now."""
+    """Every run this day takes, oldest first (both reaches)."""
+
+    return sorted(_candidate_run_tiers(product, now, event_date, zone_name, legacy=legacy))
+
+
+def _candidate_run_tiers(
+    product: str, now: datetime, event_date: date, zone_name: str,
+    *, legacy: bool = True,
+) -> dict[datetime, int]:
+    """Runs already on the archive by now that this day takes.
+
+    Two reaches, one union.  The P1 lane's own (``legacy``): runs issued
+    from a day before the local day start up to its end -- kept exactly as
+    it was for the products and days P1 reads.  Charter 201's: every run
+    still current (issued within ``CURRENT_RUN_HOURS``) from up to
+    ``LOOKBACK_HOURS`` before the day that reaches the end of its afternoon.
+    """
 
     zone = ZoneInfo(zone_name)
     day_start = datetime.combine(event_date, datetime.min.time(), tzinfo=zone).astimezone(timezone.utc)
     day_end = day_start + timedelta(days=1)
     latest = now - timedelta(hours=PUBLICATION_LAG_HOURS[product])
-    runs: list[datetime] = []
-    first = (day_start - timedelta(days=1)).replace(minute=0, second=0, microsecond=0)
-    # CMA's transport is a rate-limited aggregator and only the last day's
-    # cycles can still serve P1 (``regional_features`` admits twelve hours),
-    # so older cycles are not asked for.
-    oldest = now - timedelta(hours=24) if product == "CMA" else first
+    # run -> 0 when the P1 lane's own reach takes it, 1 when only charter
+    # 201's does; a capture pass works tier 0 first, so the rows P1 reads are
+    # fetched and committed exactly when they were before.
+    runs: dict[datetime, int] = {}
+    if legacy and product in LEGACY_PRODUCTS:
+        first = (day_start - timedelta(days=1)).replace(minute=0, second=0, microsecond=0)
+        # CMA's transport is a rate-limited aggregator and only the last day's
+        # cycles can still serve P1 (``regional_features`` admits twelve hours),
+        # so older cycles are not asked for.
+        oldest = now - timedelta(hours=24) if product == "CMA" else first
+        stamp = first
+        while stamp < day_end:
+            if (stamp.hour in RUN_CYCLE_HOURS[product] and stamp >= day_start - timedelta(days=1)
+                    and oldest <= stamp <= latest):
+                runs[stamp] = 0
+            stamp += timedelta(hours=1)
+    first = (day_start - timedelta(hours=LOOKBACK_HOURS[product])).replace(
+        minute=0, second=0, microsecond=0
+    )
+    oldest = now - timedelta(
+        hours=CURRENT_RUN_HOURS_BY_PRODUCT.get(product, CURRENT_RUN_HOURS)
+    )
+    peak_end = day_start + timedelta(hours=_PEAK_END_HOUR)
     stamp = first
     while stamp < day_end:
-        if (stamp.hour in RUN_CYCLE_HOURS[product] and stamp >= day_start - timedelta(days=1)
-                and oldest <= stamp <= latest):
-            runs.append(stamp)
+        if (
+            stamp.hour in RUN_CYCLE_HOURS[product]
+            and oldest <= stamp <= latest
+            and stamp + timedelta(hours=product_horizon_hours(product, stamp)) >= peak_end
+        ):
+            runs.setdefault(stamp, 1)
         stamp += timedelta(hours=1)
     return runs
 
@@ -527,20 +650,24 @@ def plan_p1(
     product: str,
     now: datetime,
     stations: Sequence[tuple[str, float, float, str]],
-    day_offsets: Sequence[int] = (-1, 0, 1),
+    day_offsets: Sequence[int] = DAY_OFFSETS,
     max_runs: int = 4,
 ) -> list[dict[str, Any]]:
     """Runs not yet stored, grouped by run, newest runs first, capped."""
 
     system_id = SYSTEM_IDS[product]
-    by_run: dict[datetime, list[dict[str, Any]]] = {}
+    by_run: dict[tuple[int, datetime], list[dict[str, Any]]] = {}
     for station, latitude, longitude, zone_name in stations:
-        for event_date in _target_days(now, zone_name, day_offsets):
+        for offset, event_date in zip(day_offsets, _target_days(now, zone_name, day_offsets)):
             held = stored_run_inits(conn, system_id=system_id, station_id=station, event_date=event_date.isoformat())
-            for run in _candidate_runs(product, now, event_date, zone_name):
+            tiers = _candidate_run_tiers(
+                product, now, event_date, zone_name,
+                legacy=offset in LEGACY_DAY_OFFSETS,
+            )
+            for run, tier in tiers.items():
                 if _iso(run) in held:
                     continue
-                by_run.setdefault(run, []).append({
+                by_run.setdefault((tier, run), []).append({
                     "station_id": station, "latitude": latitude, "longitude": longitude,
                     "event_date": event_date, "utc_offset_hours": utc_offset_hours(event_date, zone_name),
                     "settlement_timezone": zone_name,
@@ -549,10 +676,22 @@ def plan_p1(
     # runs that actually yield data, so a newest run the archive has not
     # published yet (HRRR 2026-09-06 12Z onward was missing from the bucket
     # all afternoon) costs a few 404s and does not starve the older ones.
-    ordered = sorted(by_run.items(), key=lambda item: item[0], reverse=True)
-    if max_runs is not None and int(max_runs) >= 0:
-        ordered = ordered[:max(0, int(max_runs)) * 4]
-    return [{"product": product, "run_init": run, "targets": targets} for run, targets in ordered]
+    # Charter 201: the P1 lane's own reach (tier 0) first, exactly as it was
+    # planned and capped before; charter 201's wider reach (tier 1) after it,
+    # with its own cap, so it can never push a P1 row later.
+    planned: list[dict[str, Any]] = []
+    for tier in (0, 1):
+        ordered = sorted(
+            ((run, targets) for (t, run), targets in by_run.items() if t == tier),
+            key=lambda item: item[0], reverse=True,
+        )
+        if max_runs is not None and int(max_runs) >= 0:
+            ordered = ordered[:max(0, int(max_runs)) * 4]
+        planned += [
+            {"product": product, "run_init": run, "targets": targets, "tier": tier}
+            for run, targets in ordered
+        ]
+    return planned
 
 
 def fetch_noaa_run_for_targets(
@@ -652,7 +791,7 @@ def capture_p1(
     product: str,
     now: datetime,
     stations: Sequence[tuple[str, float, float, str]],
-    day_offsets: Sequence[int] = (-1, 0, 1),
+    day_offsets: Sequence[int] = DAY_OFFSETS,
     max_runs: int = 4,
     budget_sec: float | None = None,
     dry_run: bool = False,
@@ -702,9 +841,19 @@ def capture_p1(
     # real and the lane needs to come back in minutes, not in its whole
     # interval -- see ``WriteBlocked``.
     write_blocked = ""
+    productive_by_tier = {0: 0, 1: 0}
+    # A run found unpublished this pass is not asked for again by the wider
+    # reach's item for the same run (charter 201).
+    unpublished_runs: set[datetime] = set()
     for item in plan:
-        if productive >= max(0, int(max_runs)):
-            break
+        # Each reach has its own productive cap (charter 201): the P1 lane's
+        # own runs are taken exactly as before, and the wider reach only
+        # after them.
+        tier = int(item.get("tier", 0))
+        if productive_by_tier[tier] >= max(0, int(max_runs)):
+            continue
+        if item["run_init"] in unpublished_runs:
+            continue
         # Checked before the fetch, never during: a run that has started is
         # allowed to finish, so the budget can never leave a run half
         # written.  What is left unfetched is simply still unstored, and
@@ -765,6 +914,19 @@ def capture_p1(
                           "source_url": icon_file_url(run_init, 0)}
                     for key, value in raw.items()
                 }
+            elif product == "AIFS":
+                from .aifs_single_point_archive import fetch_run_for_targets as aifs_fetch  # noqa: PLC0415
+                results = aifs_fetch(run_init=run_init, targets=list(item["targets"]))
+            elif product in ("IFS9KM", "UKMO10"):
+                from .open_meteo_relay_archive import (  # noqa: PLC0415
+                    RunNotPublished as RelayNotPublished, fetch_relay_run_for_targets,
+                )
+                try:
+                    results = fetch_relay_run_for_targets(
+                        product=product, run_init=run_init, targets=list(item["targets"]),
+                    )
+                except RelayNotPublished:
+                    results = {}
             else:
                 raise ContractError("regional_point_product_unknown")
         except Exception as exc:  # noqa: BLE001 -- one run's failure is a line, not a stop
@@ -783,8 +945,10 @@ def capture_p1(
         if not any((results.get((str(t["station_id"]), t["event_date"].isoformat())) or {}).get("hourly_c") for t in item["targets"]):
             # Nothing for any station: the run is not on the archive yet.
             unpublished.append(f"{product} {run_init:%Y-%m-%dT%HZ}")
+            unpublished_runs.add(run_init)
             continue
         productive += 1
+        productive_by_tier[tier] += 1
         # The ingest of one run, all-or-nothing.  A write that cannot take
         # the lock stops the pass here: the next run's fetch would cost the
         # network the same minutes and end at the same lock, and this run's

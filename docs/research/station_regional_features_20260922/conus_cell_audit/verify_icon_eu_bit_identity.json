@@ -1,0 +1,77 @@
+{
+ "run": "2026-09-22T18:00:00Z",
+ "report": {
+  "EDDM|2026-09-22": {
+   "identical": true,
+   "n": 4
+  },
+  "EDDM|2026-09-23": {
+   "identical": true,
+   "n": 24
+  },
+  "EFHK|2026-09-22": {
+   "identical": true,
+   "n": 3
+  },
+  "EFHK|2026-09-23": {
+   "identical": true,
+   "n": 24
+  },
+  "EGLC|2026-09-22": {
+   "identical": true,
+   "n": 5
+  },
+  "EGLC|2026-09-23": {
+   "identical": true,
+   "n": 24
+  },
+  "EHAM|2026-09-22": {
+   "identical": true,
+   "n": 4
+  },
+  "EHAM|2026-09-23": {
+   "identical": true,
+   "n": 24
+  },
+  "EPWA|2026-09-22": {
+   "identical": true,
+   "n": 4
+  },
+  "EPWA|2026-09-23": {
+   "identical": true,
+   "n": 24
+  },
+  "LEMD|2026-09-22": {
+   "identical": true,
+   "n": 4
+  },
+  "LEMD|2026-09-23": {
+   "identical": true,
+   "n": 24
+  },
+  "LFPB|2026-09-22": {
+   "identical": true,
+   "n": 4
+  },
+  "LFPB|2026-09-23": {
+   "identical": true,
+   "n": 24
+  },
+  "LIMC|2026-09-22": {
+   "identical": true,
+   "n": 4
+  },
+  "LIMC|2026-09-23": {
+   "identical": true,
+   "n": 24
+  },
+  "LTAC|2026-09-22": {
+   "identical": true,
+   "n": 3
+  },
+  "LTAC|2026-09-23": {
+   "identical": true,
+   "n": 24
+  }
+ }
+}

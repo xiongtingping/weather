@@ -134,6 +134,7 @@ def _insert_executes_are_committed_immediately(path: Path) -> list[int]:
         "scripts/capture_noaa_conus_forward.py",
         "scripts/capture_jma_msm_forward.py",
         "scripts/capture_dwd_icon_eu_forward.py",
+        "scripts/capture_deterministic_forward.py",
     ],
 )
 def test_each_capture_commits_every_insert_before_the_next_fetch(script):
@@ -149,6 +150,9 @@ def test_the_exemption_covers_exactly_the_capture_lanes_that_meet_the_preconditi
         "capture_jma_msm_forward",
         "capture_dwd_icon_eu_forward",
         "capture_cma_grapes_forward",
+        # Charter 201: the deterministic family's global members run the same
+        # shared pass (``regional_point_lane.capture_p1``), commit before fetch.
+        "capture_deterministic_forward",
     }
     assert set(daemon.WRITER_TURN_EXEMPT_SWEEPS) == captures
     hosted = {name for name, _s, _i, _t in daemon.HOSTED_SWEEPS}

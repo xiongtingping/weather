@@ -57,7 +57,12 @@ def test_the_conus_grids_reach_toronto_and_the_us_list_stays_true() -> None:
 
 
 def test_the_cma_lane_stays_on_the_roster_it_was_built_for() -> None:
-    """Operator ruling 2026-09-07: CN only.
+    """Operator ruling 2026-09-07: CN only -- for P1.
+
+    Charter 201 (2026-09-23) captures CMA at every roster station for the
+    deterministic-forecast family (``capture_cma_grapes_forward`` widens its
+    plan to the global roster); this list stays the P1 lane's own, the pairs
+    ``regional_features.P1_FEATURE_PAIRS`` freezes.
 
     GRAPES Global is a global model at 0.125 degrees and nothing in its
     domain stops it reaching the twelve stations that still carry no

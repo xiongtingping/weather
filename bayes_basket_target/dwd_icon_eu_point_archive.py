@@ -24,14 +24,17 @@ a decode bug to be fixed.
 from __future__ import annotations
 
 import bz2
+import os
+import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import httpx
 
 from .contracts import ContractError
 from .jma_msm_archive import local_day_hours
-from .noaa_conus_archive import nearest_point_kelvin
+from .noaa_conus_archive import nearest_land_points, nearest_point_kelvin
 
 TRANSPORT_PROVIDER_ID = "DWD_OPENDATA_ICON_EU"
 SYSTEM_ID = "DWD_ICON_EU_POINT"
@@ -123,6 +126,47 @@ def _get(url: str) -> bytes | None:
     return None
 
 
+# Charter 201: charter 200's land rule, read off ICON-EU's own land fraction.
+# FR_LAND is time-invariant and DWD keeps only the newest copy in each cycle
+# directory, so it is fetched once and kept.  Measured 2026-09-23: all nine
+# roster stations' nearest cells are land (fraction >= 0.5), so every one is
+# still read at its own coordinates -- the same cells and values as before.
+LAND_MASK_CACHE = Path(
+    os.environ.get("PM_ICON_EU_FR_LAND_CACHE")
+    or Path(__file__).resolve().parents[1] / "data" / "runtime"
+    / "regional_land_masks" / "icon_eu_fr_land.grib2"
+)
+
+
+def land_mask_message() -> bytes:
+    """ICON-EU's FR_LAND field, from the cache or DWD's newest copy."""
+
+    try:
+        return LAND_MASK_CACHE.read_bytes()
+    except OSError:
+        pass
+    for cycle in ("00", "12", "06", "18"):
+        listing = _get(f"{_BASE}/{cycle}/fr_land/")
+        if not listing:
+            continue
+        names = re.findall(
+            rb'href="(icon-eu_europe_regular-lat-lon_time-invariant_\d{10}_FR_LAND\.grib2\.bz2)"',
+            listing,
+        )
+        if not names:
+            continue
+        raw = _get(f"{_BASE}/{cycle}/fr_land/{names[-1].decode()}")
+        if not raw:
+            continue
+        message = bz2.decompress(raw)
+        LAND_MASK_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        temporary = LAND_MASK_CACHE.with_suffix(".partial")
+        temporary.write_bytes(message)
+        os.replace(temporary, LAND_MASK_CACHE)
+        return message
+    raise ContractError("icon_eu_land_mask_unavailable")
+
+
 def fetch_run_day_maxima(
     *, run_init: datetime, targets: list[dict[str, Any]],
 ) -> dict[tuple[str, str], dict[str, Any]]:
@@ -151,19 +195,42 @@ def fetch_run_day_maxima(
     union = sorted({
         hour for hours in wanted_by_target.values() for hour in hours
     })
-    fields: dict[int, bytes] = {}
+    # Where each station is read (charter 200/201): its own coordinates when
+    # FR_LAND calls the nearest cell land, else the nearest land cell; a
+    # station with none in reach is left out.
+    points = [(float(t["latitude"]), float(t["longitude"])) for t in targets]
+    sampled = nearest_land_points(land_mask_message(), points) if targets else []
+    # Streamed (charter 201): each hour's field is decoded for every target
+    # that wants it and dropped, so a pass reaching D+2 holds one field at a
+    # time instead of the run's whole union.
+    values_by_key: dict[tuple[str, str], dict[int, float]] = {
+        (t["station_id"], t["event_date"].isoformat()): {} for t in targets
+    }
     downloaded = 0
     for hour in union:
         raw = _get(file_url(run_init, hour))
         if raw is None:
             continue
         try:
-            fields[hour] = bz2.decompress(raw)
+            message = bz2.decompress(raw)
         except OSError as exc:
             raise ContractError("icon_eu_bz2_undecodable") from exc
         downloaded += len(raw)
+        for target, point in zip(targets, sampled):
+            key = (target["station_id"], target["event_date"].isoformat())
+            if point is None or hour not in wanted_by_target[key]:
+                continue
+            kelvin, _distance = nearest_point_kelvin(
+                message,
+                latitude=point["latitude"],
+                longitude=point["longitude"],
+            )
+            values_by_key[key][hour] = kelvin - 273.15
+        del message
     results: dict[tuple[str, str], dict[str, Any]] = {}
-    for target in targets:
+    for target, point in zip(targets, sampled):
+        if point is None:
+            continue
         key = (target["station_id"], target["event_date"].isoformat())
         wanted = wanted_by_target[key]
         hours_all = local_day_hours(
@@ -171,17 +238,7 @@ def fetch_run_day_maxima(
             utc_offset_hours=target["utc_offset_hours"],
         )
         peak = hours_all[11:19]
-        values: dict[int, float] = {}
-        for hour in wanted:
-            message = fields.get(hour)
-            if message is None:
-                continue
-            kelvin, _distance = nearest_point_kelvin(
-                message,
-                latitude=target["latitude"],
-                longitude=target["longitude"],
-            )
-            values[hour] = kelvin - 273.15
+        values = dict(values_by_key[key])
         complete = (
             bool(wanted)
             and len(values) == len(wanted)

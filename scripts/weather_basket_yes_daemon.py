@@ -552,6 +552,25 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         1200.0,
         120.0,
     ),
+    # Charter 201 (2026-09-23): the deterministic-forecast family's global
+    # members -- AIFS Single from ECMWF open data, IFS 9 km and UKMO 10 km
+    # through the Open-Meteo relay -- at every roster station, every current
+    # run, D-1 .. D+2.  Half a six-hourly cadence for CMA's reason, and due
+    # at once when its doorbell sees a run land.  Capture only: no row
+    # reaches P1 (pairs frozen) and none is an ensemble member.
+    (
+        "capture_deterministic_forward",
+        "scripts/capture_deterministic_forward_sweep.sh",
+        10800.0,
+        1800.0,
+    ),
+    # Its doorbell: one request a product, SSOT read-only, no write domain.
+    (
+        "probe_deterministic_runs",
+        "scripts/probe_deterministic_runs_sweep.sh",
+        1200.0,
+        120.0,
+    ),
     # Charter 197 (2026-09-22): the supply watch.  2026-09-21 16:04Z the proxy
     # tunnel stopped carrying traffic, every upstream failed together, and by
     # 19:42Z no D+1 P0 was fresh anywhere -- until 08:55Z the next morning,
@@ -644,8 +663,10 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     "capture_noaa_conus_forward": "ssot",
     "capture_dwd_icon_eu_forward": "ssot",
     "capture_cma_grapes_forward": "ssot",
+    "capture_deterministic_forward": "ssot",
     # Reads the SSOT ``mode=ro`` and writes one small JSON file.
     "probe_cma_named_runs": "none",
+    "probe_deterministic_runs": "none",
     # Charter 197: SSOT ``mode=ro``, HEAD probes, one small JSON file.
     "supply_watch": "none",
     # Charter 199: SSOT ``mode=ro``; writes data/fusion_blend_training.db
@@ -702,6 +723,7 @@ WRITER_TURN_EXEMPT_SWEEPS: frozenset[str] = frozenset({
     "capture_jma_msm_forward",
     "capture_dwd_icon_eu_forward",
     "capture_cma_grapes_forward",
+    "capture_deterministic_forward",
 })
 
 
@@ -848,6 +870,52 @@ def honour_cma_probe(
     )
     honoured["capture_cma_grapes_forward"] = run
     return run
+
+
+DETERMINISTIC_RUN_PROBE_PATH = (
+    ROOT / "data" / "runtime" / "deterministic_run_probe.json"
+)
+# Charter 201: which capture a product's doorbell makes due.  Only the
+# family's new global members for now; the P1 lanes (HRRR/NBM/ICON-EU/MSM)
+# keep their clocks, so what P1 reads and when is unchanged.
+DETERMINISTIC_PROBE_SWEEPS = {
+    "AIFS": "capture_deterministic_forward",
+    "IFS9KM": "capture_deterministic_forward",
+    "UKMO10": "capture_deterministic_forward",
+}
+
+
+def honour_deterministic_probe(
+    next_due: "dict[str, float]",
+    *,
+    now_mono: float,
+    honoured: "dict[str, str]",
+    path: Path = DETERMINISTIC_RUN_PROBE_PATH,
+) -> list[str]:
+    """Make a family capture due now when its doorbell saw a new run land.
+
+    Once per (product, run), as ``honour_cma_probe`` does for CMA: a capture
+    that is refused or fails is retried on its own interval, not every loop.
+    Returns the products acted on.
+    """
+
+    try:
+        state = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return []
+    acted: list[str] = []
+    for product, entry in sorted(((state or {}).get("products") or {}).items()):
+        sweep = DETERMINISTIC_PROBE_SWEEPS.get(str(product))
+        run = str((entry or {}).get("newest_wanted_run_utc") or "")
+        if not sweep or not run or not (entry or {}).get("published"):
+            continue
+        key = f"{sweep}:{product}"
+        if honoured.get(key) == run or sweep not in next_due:
+            continue
+        next_due[sweep] = min(next_due[sweep], now_mono)
+        honoured[key] = run
+        acted.append(str(product))
+    return acted
 
 
 def due_hosted_sweeps(
@@ -6827,6 +6895,11 @@ def main() -> int:
                 # A CMA cycle the probe saw published makes its capture due
                 # now rather than at the end of the capture's interval.
                 honour_cma_probe(
+                    next_hosted_sweep, now_mono=now_mono,
+                    honoured=cma_probe_honoured,
+                )
+                # Charter 201: the family's global members, the same way.
+                honour_deterministic_probe(
                     next_hosted_sweep, now_mono=now_mono,
                     honoured=cma_probe_honoured,
                 )

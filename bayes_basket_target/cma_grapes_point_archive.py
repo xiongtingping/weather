@@ -62,6 +62,7 @@ from typing import Any
 
 import httpx
 
+from . import open_meteo_quota as quota
 from .contracts import ContractError
 
 TRANSPORT_PROVIDER_ID = "OPEN_METEO_CMA_GRAPES_GLOBAL"
@@ -71,6 +72,7 @@ SYSTEM_ID = "CMA_GRAPES_GLOBAL_POINT"
 FAMILY_ID = "CMA_GRAPES"
 PROVIDER_ID = "CMA"
 _BASE = "https://single-runs-api.open-meteo.com/v1/forecast"
+QUOTA_LANE = "deterministic_relay"
 _MODEL = "cma_grapes_global"
 
 
@@ -149,7 +151,30 @@ def source_url(latitude: float, longitude: float, run_init: datetime) -> str:
     )
 
 
+# Charter 201: a pass asks for one station's run once, however many of its
+# target days (D-1 .. D+2) the run reaches -- the series is the same answer,
+# and every call is charged to the relay budget.  Bounded: a pass touches a
+# few runs x the roster.
+_SERIES_CACHE: dict[tuple[float, float, str, int], dict[datetime, float]] = {}
+_SERIES_CACHE_LIMIT = 512
+
+
 def _hourly_series(
+    latitude: float, longitude: float, run_init: datetime,
+    forecast_hours: int = MAX_FORECAST_HOUR + 1,
+) -> dict[datetime, float]:
+    key = (float(latitude), float(longitude), _run_param(run_init), int(forecast_hours))
+    cached = _SERIES_CACHE.get(key)
+    if cached is not None:
+        return dict(cached)
+    series = _fetch_hourly_series(latitude, longitude, run_init, forecast_hours)
+    if len(_SERIES_CACHE) >= _SERIES_CACHE_LIMIT:
+        _SERIES_CACHE.clear()
+    _SERIES_CACHE[key] = dict(series)
+    return series
+
+
+def _fetch_hourly_series(
     latitude: float, longitude: float, run_init: datetime,
     forecast_hours: int = MAX_FORECAST_HOUR + 1,
 ) -> dict[datetime, float]:
@@ -168,6 +193,10 @@ def _hourly_series(
     }
     last: Exception | None = None
     for attempt in range(_ATTEMPTS):
+        # Charter 201: every relay call is charged to the family's daily
+        # Open-Meteo budget first, and none is sent once the aggregator has
+        # said the day's allowance is gone (the d2 lane shares the address).
+        quota.charge(QUOTA_LANE, 1)
         try:
             response = _client().get(_BASE, params=params)
             try:
@@ -177,6 +206,9 @@ def _hourly_series(
             reason = str((payload or {}).get("reason") or "")
             if "not available" in reason:
                 raise RunNotPublished("cma_grapes_run_not_published")
+            if quota.classify(reason, response.status_code) == "day":
+                quota.mark_exhausted()
+                raise quota.QuotaRefused("open_meteo_day_exhausted")
             if "Too many concurrent" in reason:
                 time.sleep(2.0 * (attempt + 1))
                 raise ContractError("cma_grapes_point_rate_limited")
@@ -199,7 +231,7 @@ def _hourly_series(
             if not series:
                 raise ContractError("cma_grapes_point_series_empty")
             return series
-        except RunNotPublished:
+        except (RunNotPublished, quota.QuotaRefused):
             raise
         except Exception as exc:  # noqa: BLE001 -- retried, then surfaced
             last = exc

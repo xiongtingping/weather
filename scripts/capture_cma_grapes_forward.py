@@ -68,6 +68,21 @@ def main() -> int:
     now = datetime.now(timezone.utc)
     conn = sqlite3.connect(str(args.db), timeout=120.0)
     try:
+        # Charter 201: CMA is a global model and a member of the
+        # deterministic-forecast family, so it is captured at every roster
+        # station with coordinates, not only the eight it was opened for.
+        # P1 still reads it at those eight alone
+        # (``regional_features.P1_FEATURE_PAIRS``).
+        stations = list(STATIONS)
+        try:
+            from bayes_basket_target.deterministic_forecast_family import (  # noqa: PLC0415
+                global_roster,
+            )
+
+            held = {s[0] for s in stations}
+            stations += [s for s in global_roster(conn) if s[0] not in held]
+        except sqlite3.Error:
+            pass
         # ``prepare`` registers the system and ensures the schema; both
         # write, so a locked file is answered here rather than after eight
         # station fetches this pass could not store.
@@ -83,7 +98,7 @@ def main() -> int:
         # takes the write lock, which is what makes a twenty-minute cadence
         # cheap for the production cycle that shares the lock.
         try:
-            plan = plan_p1(conn, product="CMA", now=now, stations=STATIONS,
+            plan = plan_p1(conn, product="CMA", now=now, stations=stations,
                            max_runs=int(args.max_runs))
         except sqlite3.Error:
             plan = None
@@ -102,7 +117,7 @@ def main() -> int:
             return 0
         conn.execute("PRAGMA busy_timeout=60000")
         receipt = capture_p1(
-            conn, product="CMA", now=now, stations=STATIONS,
+            conn, product="CMA", now=now, stations=stations,
             max_runs=int(args.max_runs), budget_sec=P1_BUDGET_SEC,
             dry_run=args.dry_run,
         )

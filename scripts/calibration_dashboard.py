@@ -14541,8 +14541,19 @@ REGIONAL_LANES = {
     # The aggregator serves only the run it currently holds, so like the DWD
     # lane a missed cycle is gone, not late.
     "CMA_GRAPES_GLOBAL_POINT": {
-        "label": "CMA GRAPES 全球", "region": "中国",
-        "transport": "Open-Meteo 聚合·只留当前一轮", "backfillable": False},
+        "label": "CMA GRAPES 全球", "region": "全球（P1 只读中国 8 站）",
+        "transport": "Open-Meteo 聚合·按名取轮", "backfillable": False},
+    # Charter 201: the deterministic-forecast family's global members.  P0
+    # feature inputs and shadow record only -- P1 never reads them.
+    "ECMWF_AIFS_SINGLE_POINT": {
+        "label": "AIFS Single 0.25°", "region": "全球",
+        "transport": "ECMWF 开放数据 GCS·6 小时步", "backfillable": True},
+    "ECMWF_IFS_9KM_RELAY_POINT": {
+        "label": "IFS 9km（转发）", "region": "全球",
+        "transport": "Open-Meteo 转发·按名取轮", "backfillable": False},
+    "UKMO_GLOBAL_10KM_RELAY_POINT": {
+        "label": "UKMO 10km（转发）", "region": "全球",
+        "transport": "Open-Meteo 转发·按名取轮", "backfillable": False},
 }
 _SWEEP_MODEL_TO_SYSTEM = {
     "jma_msm": "JMA_MSM_POINT",
@@ -14582,11 +14593,22 @@ def _capture_rosters() -> dict[str, set[str]]:
                 jma_msm_archive, "CAPTURE_STATIONS", ()
             )
         },
+        # Charter 201: CMA and the family's global members are captured at
+        # every roster station with coordinates.
         "CMA_GRAPES_GLOBAL_POINT": {
             s[0] for s in cma_grapes_point_archive.CAPTURE_STATIONS
-        },
+        } | _global_family_roster(),
+        "ECMWF_AIFS_SINGLE_POINT": _global_family_roster(),
+        "ECMWF_IFS_9KM_RELAY_POINT": _global_family_roster(),
+        "UKMO_GLOBAL_10KM_RELAY_POINT": _global_family_roster(),
     }
     return rosters
+
+
+def _global_family_roster() -> set[str]:
+    from bayes_basket_target.station_registry import _COORDINATES  # noqa: PLC0415
+
+    return set(_COORDINATES)
 
 
 def _run_rhythm(runs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:

@@ -125,7 +125,12 @@ CALIBRATED_SYSTEMS = frozenset(
         os.environ.get(
             "PM_REGIONAL_FEATURE_CALIBRATION_SYSTEMS",
             "JMA_MSM_POINT NCEP_HRRR_POINT NCEP_NBM_POINT DWD_ICON_EU_POINT"
-            " CMA_GRAPES_GLOBAL_POINT",
+            " CMA_GRAPES_GLOBAL_POINT"
+            # Charter 201: the family's global members are fitted the same way
+            # (the P0 feature's own debias reads these scopes); the P1 arm
+            # never reaches them -- P1's pairs are frozen.
+            " ECMWF_AIFS_SINGLE_POINT ECMWF_IFS_9KM_RELAY_POINT"
+            " UKMO_GLOBAL_10KM_RELAY_POINT",
         ).replace(",", " ").split()
     ) if part
 )

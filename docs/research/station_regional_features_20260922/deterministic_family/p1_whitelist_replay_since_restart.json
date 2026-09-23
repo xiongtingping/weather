@@ -1,0 +1,12 @@
+{
+ "since": "2026-09-23T03:14:03Z",
+ "pairs_stored": 46,
+ "pairs_off_list": [],
+ "stats": {
+  "envelopes": 217,
+  "new_equals_head": 118,
+  "reproduces_served": 118,
+  "no_receipt": 99
+ },
+ "mismatches": []
+}
