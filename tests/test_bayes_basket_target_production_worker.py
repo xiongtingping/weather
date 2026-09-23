@@ -1452,18 +1452,21 @@ def test_resident_taf_inbox_materializes_p0m_before_p1(tmp_path: Path) -> None:
             "content_sha256": content_sha256(conflicting_capture),
         }],
     }), encoding="utf-8")
+    # 「以最新的为准」 (2026-09-23): the same revision seen again with other
+    # content is restated in the facts, newest last -- it no longer blocks
+    # P0-M for every station.  P0-M seats a bulletin by its text, once; a
+    # real revision cannot carry another TX (its id hashes the text), so the
+    # seated confirmation stands.
     conflicting = worker._materialize_resident_p0m(
         as_of_utc="2026-07-26T12:00:00Z"
     )
-    assert conflicting["state"] == "BLOCKED_FAIL_CLOSED"
-    assert any(
-        reason in conflicting["blockers"][0]["reason"]
-        for reason in (
-            "resident_taf_revision_content_conflict",
-            "probability_stage_decision_time_conflict",
-            "forward_taf_capture_content_conflict",
-        )
-    )
+    assert conflicting["state"] == "COMMITTED"
+    assert conn.execute(
+        "SELECT revision_id, tx_c FROM calibration_forward_taf_capture"
+        " WHERE revision_id LIKE 'taf-rkpk-forward-1%' ORDER BY revision_id"
+    ).fetchall() == [
+        ("taf-rkpk-forward-1", 35.0), ("taf-rkpk-forward-1~r001", 36.0),
+    ]
     assert conn.execute(
         "SELECT COUNT(*) FROM basket_probability_envelope WHERE stage='P0-M'"
     ).fetchone()[0] == 2

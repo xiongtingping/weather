@@ -371,3 +371,104 @@ def test_the_board_banner_carries_the_watch_rows_and_runs_it_when_the_sweep_is_s
     )
     assert [r["label"] for r in rows] == ["守望失效"]
     assert "由看板代跑" in rows[0]["note"] and "不拦单" in rows[0]["note"]
+
+
+# ---------------------------------------------------------------- P0-M flow
+#
+# 2026-09-20 03:27Z-05:26Z no station got a P0-M while P0 kept minting roots;
+# the supply reading stayed green (a fresh P0 is supply).  Replayed every five
+# minutes over 2026-09-19..23 the flow reading is red exactly once: 04:50Z to
+# 05:25Z that morning, 44 stations.
+
+_HISTORY_SEQ = iter(range(10**6))
+
+
+def _history(conn: sqlite3.Connection, station: str, event_date: str, *,
+             stage: str, created: datetime) -> None:
+    n = next(_HISTORY_SEQ)
+    conn.execute(
+        "INSERT INTO basket_probability_bridge_history(history_id,station_id,"
+        "event_date,settlement_timezone,stage,checkpoint_id,decision_at_utc,"
+        "fresh_until_utc,envelope_content_sha256,bridge_sha256,bucket_map_sha256,"
+        "bucket_intervals_json,projection_sha256,envelope_json,state,"
+        "created_at_utc,content_sha256) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (f"h{n}", station, event_date, "UTC", stage, f"c{n}", _iso(created),
+         _iso(created + timedelta(hours=6)), f"{n:064d}", "b" * 64, "m" * 64,
+         "{}", "p" * 64, "{}", "COMMITTED", _iso(created), f"{n:064x}"),
+    )
+
+
+def _chain(conn, stations, *, roots: list[datetime], confirmed_through: datetime) -> None:
+    """P0 roots on D1 for each station; P0-M one minute after each root up to
+    ``confirmed_through``."""
+
+    for station in stations:
+        for root in roots:
+            _history(conn, station, D1, stage="P0", created=root)
+            if root <= confirmed_through:
+                _history(conn, station, D1, stage="P0-M", created=root + timedelta(minutes=1))
+    conn.commit()
+
+
+def test_a_lane_confirming_every_root_is_green(conn) -> None:
+    roots = [NOW - timedelta(hours=h) for h in (5, 3, 1)]
+    _chain(conn, STATIONS, roots=roots, confirmed_through=NOW)
+    assert sw.p0m_flow(conn, now=NOW)["health"] == "green"
+
+
+def test_roots_nothing_confirms_while_p0m_is_silent_fleetwide_is_red(conn) -> None:
+    # The 09-20 shape: confirmed until 03:27, new roots after, none confirmed.
+    roots = [NOW - timedelta(hours=3), NOW - timedelta(minutes=45)]
+    _chain(conn, STATIONS, roots=roots, confirmed_through=NOW - timedelta(hours=2))
+    flow = sw.p0m_flow(conn, now=NOW)
+    assert flow["health"] == "red" and flow["verdict"] == "fleet_stalled"
+    assert flow["uncovered_station_count"] == len(STATIONS)
+    out = sw.evaluate(now=NOW, conn=conn, listed={}, egress={"state": "ok"})
+    row = next(r for r in out["alerts"] if r["code"] == "p0m_fleet_stalled")
+    assert row["label"] == "P0-M 断流" and "全队 P0-M 断流" in row["note"]
+    assert out["overall"] == "red" and "P0-M 断流" in out["notify"]["text"]
+    # Not the network: the send gate reads the egress alone.
+    assert out["egress_health"] == "green"
+
+
+def test_a_root_younger_than_the_stall_window_is_not_late(conn) -> None:
+    roots = [NOW - timedelta(hours=3), NOW - timedelta(minutes=20)]
+    _chain(conn, STATIONS, roots=roots, confirmed_through=NOW - timedelta(hours=2))
+    assert sw.p0m_flow(conn, now=NOW)["health"] == "green"
+
+
+def test_a_station_day_p0m_never_covered_is_not_a_stall(conn) -> None:
+    # D+2 roots, a lapsed TAF: P0-M never confirmed them, by design.
+    for station in STATIONS:
+        for h in (5, 3, 1):
+            _history(conn, station, D2, stage="P0", created=NOW - timedelta(hours=h))
+    conn.commit()
+    assert sw.p0m_flow(conn, now=NOW)["health"] == "green"
+
+
+def test_two_lapsed_stations_are_a_taf_lapse_not_the_lane(conn) -> None:
+    roots = [NOW - timedelta(hours=3), NOW - timedelta(minutes=45)]
+    _chain(conn, STATIONS[:2], roots=roots, confirmed_through=NOW - timedelta(hours=2))
+    _chain(conn, STATIONS[2:], roots=roots, confirmed_through=NOW)
+    assert sw.p0m_flow(conn, now=NOW)["health"] == "green"
+
+
+def test_three_stations_behind_while_others_still_get_theirs_is_amber(conn) -> None:
+    roots = [NOW - timedelta(hours=3), NOW - timedelta(minutes=45)]
+    _chain(conn, STATIONS[:3], roots=roots, confirmed_through=NOW - timedelta(hours=2))
+    _chain(conn, STATIONS[3:], roots=roots, confirmed_through=NOW)
+    _history(conn, STATIONS[5], D1, stage="P0-M", created=NOW - timedelta(minutes=5))
+    conn.commit()
+    flow = sw.p0m_flow(conn, now=NOW)
+    assert flow["health"] == "amber" and flow["verdict"] == "partial_stalled"
+    assert flow["uncovered_stations"] == STATIONS[:3]
+
+
+def test_the_flow_read_seeks_the_stage_clock_index(conn) -> None:
+    plan = " ".join(
+        str(row[-1]) for row in conn.execute(
+            "EXPLAIN QUERY PLAN " + sw.P0M_FLOW_SQL, ["P0-M", "2026-09-21T00:00:00"]
+        )
+    )
+    assert "basket_probability_bridge_history_stage_decided_idx" in plan
+    assert "SCAN" not in plan

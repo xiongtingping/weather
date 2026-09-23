@@ -125,3 +125,37 @@ def test_a_corrupt_capture_does_not_hold_another_stations_p0m(tmp_path) -> None:
         " WHERE stage='P0-M' AND station_id='RKPK'"
     ).fetchone()[0] == 1
     worker.close()
+
+
+def test_p0m_reads_a_revisions_newest_capture(tmp_path) -> None:
+    # 「以最新的为准」: two captures of one revision in the inbox; the older is
+    # set aside by name and the newer is the one P0-M and the facts carry.
+    conn = sqlite3.connect(":memory:")
+    apply_production_ssot_schema(conn)
+    _root(conn)
+    older = _capture("RKPK")
+    newer_identity = {k: v for k, v in older.items() if k != "content_sha256"}
+    newer_identity = json.loads(json.dumps(newer_identity))
+    newer_identity["forecast_revision"]["received_at_utc"] = "2026-07-26T11:20:00Z"
+    newer = {**newer_identity, "content_sha256": content_sha256(newer_identity)}
+    inbox = tmp_path / "taf-inbox.json"
+    inbox.write_text(json.dumps({
+        "schema": "bayes_basket_target_taf_revision_inbox_v1",
+        "captures": [newer, older],
+    }), encoding="utf-8")
+    worker = _worker(tmp_path, conn)
+    worker.taf_inbox_path = inbox
+
+    result = worker._materialize_resident_p0m(as_of_utc="2026-07-26T12:00:00Z")
+
+    assert [r["reason"] for r in result["refused_captures"]] == [
+        "forward_taf_capture_superseded_in_inbox"
+    ]
+    assert conn.execute(
+        "SELECT received_at_utc FROM calibration_forward_taf_capture WHERE station_id='RKPK'"
+    ).fetchall() == [("2026-07-26T11:20:00Z",)]
+    assert conn.execute(
+        "SELECT COUNT(*) FROM basket_probability_envelope"
+        " WHERE stage='P0-M' AND station_id='RKPK'"
+    ).fetchone()[0] == 1
+    worker.close()

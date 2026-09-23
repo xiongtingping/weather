@@ -53,6 +53,9 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target import taf_likelihood as TL  # noqa: E402
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
+from bayes_basket_target.native_ensemble_training_facts import (  # noqa: E402
+    taf_restatement_is_current,
+)
 from bayes_basket_target.materialization import (  # noqa: E402
     PROBABILITY_MODEL_ZERO_FLOOR,
     _anchor_bucket_for_temperature,
@@ -224,13 +227,22 @@ def load_tempering_cases(
     truth = load_truth_revisions(conn)
     seen: set[tuple[str, str, str, float]] = set()
     raw: list[tuple[str, str, float, str, float, float, float]] = []
-    for station, day, issued, available, received, tx, cloud, precip in conn.execute(
+    fetched = conn.execute(
         "SELECT station_id, event_date, issued_at_utc, provider_available_at_utc,"
-        " received_at_utc, tx_c, cloud_cover_fraction, precipitation_probability"
+        " received_at_utc, tx_c, cloud_cover_fraction, precipitation_probability,"
+        " revision_id"
         " FROM calibration_forward_taf_capture"
         " WHERE tx_c IS NOT NULL AND event_date>=? AND event_date<=?",
         (since, through),
-    ):
+    ).fetchall()
+    # 「以最新的为准」 (2026-09-23): a restated revision is read as its newest
+    # restatement only.  With none, every row is kept in the order read.
+    ids_by_scope: dict[tuple[str, str], list[str]] = {}
+    for item in fetched:
+        ids_by_scope.setdefault((str(item[0]), str(item[1])), []).append(str(item[8]))
+    for station, day, issued, available, received, tx, cloud, precip, rid in fetched:
+        if not taf_restatement_is_current(rid, ids_by_scope[(str(station), str(day))]):
+            continue
         key = (str(station), str(day), str(issued), float(tx))
         if (key[0], key[1]) not in truth or key in seen:
             continue

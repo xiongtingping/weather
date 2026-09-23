@@ -6,7 +6,7 @@ import json
 import math
 import sqlite3
 import time
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -90,23 +90,88 @@ def _sha(name: str, value: Any) -> str:
     return result
 
 
+# User ruling 2026-09-23 「以最新的为准」: a revision the inbox now carries with
+# different content from what was committed is restated, not refused.  The
+# table is append-only and one row per (station, day, revision_id), so the
+# restatement is a new row under ``<revision_id>~r001``, ``~r002``...; a
+# reader takes the highest restatement of a revision as the revision
+# (``taf_restatement_is_current``).  Revision ids hash the bulletin text, so a
+# restatement is the same text with other metadata -- received clock,
+# sequence after a chain renumbering, decoded fields -- and never another TX.
+# Before, the conflict raised and held every station's P0-M.
+TAF_RESTATEMENT_MARK = "~r"
+#: A revision restated this often is flapping, not being corrected.
+TAF_RESTATEMENT_CAP = 20
+
+
+def taf_original_revision_id(revision_id: Any) -> str:
+    """The revision a restatement row restates (itself when it is original)."""
+
+    return str(revision_id or "").split(TAF_RESTATEMENT_MARK, 1)[0]
+
+
+def taf_restatement_is_current(
+    revision_id: Any, revision_ids: Iterable[Any]
+) -> bool:
+    """Whether no later restatement of the same revision is among ``revision_ids``.
+
+    Restatement ids sort after their original and in order (``~r001`` <
+    ``~r002``), so the current one is the greatest id sharing the original.
+    """
+
+    rid = str(revision_id or "")
+    base = taf_original_revision_id(rid)
+    return not any(
+        str(other) > rid and taf_original_revision_id(other) == base
+        for other in revision_ids
+    )
+
+
+def _restated_row(row: Mapping[str, Any], revision_id: str) -> dict[str, Any]:
+    identity = {
+        key: value
+        for key, value in row.items()
+        if key not in {"taf_capture_id", "tx_available", "content_sha256"}
+    }
+    identity["revision_id"] = revision_id
+    row_sha = content_sha256(identity)
+    return {
+        "taf_capture_id": "taf-capture-" + row_sha[:32],
+        **identity,
+        "tx_available": row["tx_available"],
+        "content_sha256": row_sha,
+    }
+
+
 def _insert_content_addressed(
     conn: sqlite3.Connection,
     row: Mapping[str, Any],
 ) -> int:
-    natural = conn.execute(
-        "SELECT content_sha256 FROM calibration_forward_taf_capture "
+    base = str(row["revision_id"])
+    scope = (row["station_id"], row["event_date"])
+    stored = conn.execute(
+        "SELECT revision_id, content_sha256 FROM calibration_forward_taf_capture "
         "WHERE station_id=? AND event_date=? AND revision_id=?",
-        (
-            row["station_id"],
-            row["event_date"],
-            row["revision_id"],
-        ),
-    ).fetchone()
-    if natural is not None:
-        if str(natural[0]) != str(row["content_sha256"]):
-            raise ContractError("forward_taf_capture_content_conflict")
-        return 0
+        (*scope, base),
+    ).fetchall() + conn.execute(
+        "SELECT revision_id, content_sha256 FROM calibration_forward_taf_capture "
+        "WHERE station_id=? AND event_date=? AND revision_id>=? AND revision_id<?",
+        (*scope, base + TAF_RESTATEMENT_MARK, base + "~s"),
+    ).fetchall()
+    if stored:
+        current_id, current_sha = max(stored, key=lambda item: str(item[0]))
+        same = (
+            row if str(current_id) == base
+            else _restated_row(row, str(current_id))
+        )
+        if str(same["content_sha256"]) == str(current_sha):
+            return 0
+        restatements = len(stored) - 1
+        if restatements >= TAF_RESTATEMENT_CAP:
+            raise ContractError("forward_taf_capture_restatement_cap")
+        row = _restated_row(
+            row, f"{base}{TAF_RESTATEMENT_MARK}{restatements + 1:03d}"
+        )
     existing = conn.execute(
         "SELECT content_sha256 FROM calibration_forward_taf_capture "
         "WHERE taf_capture_id=?",
@@ -145,6 +210,42 @@ def rejected_forward_taf_capture(capture: Any, reason: str) -> dict[str, str]:
         "source_capture_sha256": str(raw.get("content_sha256") or ""),
         "reason": reason,
     }
+
+
+def newest_forward_taf_captures(captures: Sequence[Any]) -> set[int]:
+    """Indices of the captures that are their revision's newest in the inbox.
+
+    Keyed as the ingest keys a fact -- station, event day, revision id -- and
+    ordered by the revision's received clock, then the provider's, then inbox
+    position (the producer appends).  A capture whose key cannot be read is
+    kept: its own checks will say what is wrong with it.
+    """
+
+    best: dict[tuple[str, str, str], tuple[tuple[str, str, int], int]] = {}
+    kept: set[int] = set()
+    for index, capture in enumerate(captures):
+        if not isinstance(capture, Mapping):
+            kept.add(index)
+            continue
+        revision = capture.get("forecast_revision")
+        revision = revision if isinstance(revision, Mapping) else {}
+        key = (
+            str(capture.get("station_id") or revision.get("station_id") or "")
+            .strip().upper(),
+            str(capture.get("event_date") or revision.get("event_date") or "").strip(),
+            str(revision.get("revision_id") or "").strip(),
+        )
+        if not all(key):
+            kept.add(index)
+            continue
+        order = (
+            str(revision.get("received_at_utc") or ""),
+            str(capture.get("provider_available_at_utc") or ""),
+            index,
+        )
+        if key not in best or order > best[key][0]:
+            best[key] = (order, index)
+    return kept | {index for _order, index in best.values()}
 
 
 def ingest_forward_taf_inbox(
@@ -428,7 +529,17 @@ def ingest_forward_taf_inbox(
     # 2026-09-20 03:28-05:26Z, when three weatherless TGFTP captures (KMIA x2,
     # ZSPD) held every P0-M for two hours -- and the rest still raised.  Only
     # the inbox as a whole (schema, count) still fails the pass.
-    for capture in captures:
+    newest = newest_forward_taf_captures(captures)
+    for index, capture in enumerate(captures):
+        if index not in newest:
+            # Two captures of one revision in one inbox: the newer is the
+            # revision (「以最新的为准」); the other is set aside, not an error.
+            rejected_timestamp_captures.append(
+                rejected_forward_taf_capture(
+                    capture, "forward_taf_capture_superseded_in_inbox"
+                )
+            )
+            continue
         try:
             row = _validated(capture)
         except ContractError as exc:
@@ -447,7 +558,18 @@ def ingest_forward_taf_inbox(
     conn.execute("SAVEPOINT forward_taf_capture_ingress")
     try:
         for row in rows:
-            wrote += _insert_content_addressed(conn, row)
+            try:
+                wrote += _insert_content_addressed(conn, row)
+            except ContractError as exc:
+                if str(exc) != "forward_taf_capture_restatement_cap":
+                    raise
+                rejected_timestamp_captures.append({
+                    "station_id": str(row["station_id"]),
+                    "event_date": str(row["event_date"]),
+                    "revision_id": str(row["revision_id"]),
+                    "source_capture_sha256": str(row["source_capture_sha256"]),
+                    "reason": str(exc),
+                })
     except Exception:
         conn.execute("ROLLBACK TO forward_taf_capture_ingress")
         conn.execute("RELEASE forward_taf_capture_ingress")
@@ -1201,15 +1323,28 @@ def build_taf_native_exact_join(
             "AND settlement_timezone=? "
             "AND authority_scope='PRODUCTION_NO_LIVE_ONLY' "
             "AND revision_kind IN ('AMD','COR') "
-            "ORDER BY provider_available_at_utc,revision_sequence "
-            "LIMIT ?",
-            (
-                station,
-                event_date,
-                settlement_timezone,
-                MAX_FORWARD_TAF_CORRECTIONS_PER_DAY + 1,
-            ),
+            "ORDER BY provider_available_at_utc,revision_sequence",
+            (station, event_date, settlement_timezone),
         ).fetchall()
+        # A restated revision counts once, as its newest restatement -- whose
+        # kind may differ after a chain renumbering, so the restatements are
+        # read whatever their kind.  With none, this keeps every row.
+        restatement_ids = [
+            restated for (restated,) in conn.execute(
+                "SELECT revision_id FROM calibration_forward_taf_capture "
+                "WHERE station_id=? AND event_date=? "
+                "AND instr(revision_id, ?)>0",
+                (station, event_date, TAF_RESTATEMENT_MARK),
+            )
+        ]
+        if restatement_ids:
+            forward_corrections = [
+                correction for correction in forward_corrections
+                if taf_restatement_is_current(correction[1], restatement_ids)
+            ]
+        forward_corrections = forward_corrections[
+            : MAX_FORWARD_TAF_CORRECTIONS_PER_DAY + 1
+        ]
         historical_corrections = conn.execute(
             "SELECT correction_kind,historical_taf_correction_quarantine_id,"
             "content_sha256 FROM calibration_historical_taf_correction_quarantine "
@@ -1416,7 +1551,10 @@ __all__ = [
     "ingest_historical_taf_calibration",
     "ingest_historical_taf_calibration_with_quarantine",
     "ingest_historical_taf_correction_quarantine",
+    "newest_forward_taf_captures",
     "rejected_forward_taf_capture",
+    "taf_original_revision_id",
+    "taf_restatement_is_current",
 ]
 
 

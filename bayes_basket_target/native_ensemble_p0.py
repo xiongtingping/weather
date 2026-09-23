@@ -86,6 +86,7 @@ from .native_ensemble_contract import (
 )
 from .native_archive_lead import lead_hour_bucket_for_run
 from .native_ensemble_oos import BIAS_CORRECTION_FORM, _resolved_bias_c
+from .native_ensemble_training_facts import taf_restatement_is_current
 from .native_ensemble_authority import (
     NativeOosSnapshot,
     pointer_activation_mismatch_reasons,
@@ -1011,7 +1012,7 @@ def _taf_envelope_witness(
         # that a missing file means an empty set.
         return None
     try:
-        row = conn.execute(
+        rows = conn.execute(
             "SELECT tx_c, content_sha256, issued_at_utc, revision_sequence, "
             "revision_id, "
             "cloud_cover_fraction, precipitation_probability, wind_speed_mps "
@@ -1025,9 +1026,9 @@ def _taf_envelope_witness(
             # had not arrived (review of 2026-09-13: issued 06:00, received
             # 10:00, selected at 08:00).
             "AND issued_at_utc<=? AND received_at_utc<=? "
-            "ORDER BY issued_at_utc DESC, revision_sequence DESC LIMIT 1",
+            "ORDER BY issued_at_utc DESC, revision_sequence DESC",
             (station_id, event_date, decision_at_utc, decision_at_utc),
-        ).fetchone()
+        ).fetchall()
     except sqlite3.Error as exc:
         # The TAF is mandatory envelope evidence, not an optional garnish: a
         # swallowed query error here compiles a narrower envelope that then
@@ -1036,6 +1037,17 @@ def _taf_envelope_witness(
         raise ContractError(
             "FAIL_CLOSED_NO_P0:taf_envelope_witness_query_failed"
         ) from exc
+    # 「以最新的为准」 (2026-09-23): a revision restated since carries its
+    # newest restatement knowable now; the one it restated is not the TAF.
+    # With no restatement the first row is the row ``LIMIT 1`` returned.
+    known_ids = [candidate[4] for candidate in rows]
+    row = next(
+        (
+            candidate for candidate in rows
+            if taf_restatement_is_current(candidate[4], known_ids)
+        ),
+        None,
+    )
     if row is None or row[0] is None:
         return None
     return {

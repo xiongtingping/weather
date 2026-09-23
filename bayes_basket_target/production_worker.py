@@ -223,6 +223,7 @@ from .metar_physical_forward import (
 )
 from .native_ensemble_training_facts import (
     ingest_forward_taf_inbox,
+    newest_forward_taf_captures,
     rejected_forward_taf_capture,
 )
 from .account_equity import (
@@ -16114,7 +16115,15 @@ class TargetProductionWorker:
         # fact ingest above now does: its scope has no committed TAF fact and
         # fails closed for P0-M, and no other station's P0-M waits on it.
         refused_captures: list[dict[str, str]] = []
-        for raw_capture in raw_captures:
+        # One revision twice in the inbox: the newer is the revision
+        # (「以最新的为准」, 2026-09-23), the same one the fact ingest keeps.
+        newest = newest_forward_taf_captures(raw_captures)
+        for index, raw_capture in enumerate(raw_captures):
+            if index not in newest:
+                refused_captures.append(rejected_forward_taf_capture(
+                    raw_capture, "forward_taf_capture_superseded_in_inbox"
+                ))
+                continue
             try:
                 if not isinstance(raw_capture, Mapping):
                     raise ContractError("resident_taf_capture_invalid")

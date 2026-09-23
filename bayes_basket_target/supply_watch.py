@@ -23,6 +23,11 @@ This module measures the two things that failed, directly:
   stations hold a P0/P0-M whose ``fresh_until_utc`` has not passed, read off
   ``basket_probability_bridge_latest`` (the rows decisions actually read) by
   primary key.  D+1 with zero fresh is the fleet-wide outage; it is red.
+* **P0-M flow** (2026-09-23) -- whether the P0 roots committed lately were
+  confirmed by P0-M where the root before them was.  A fresh P0 keeps the
+  supply reading green while P0-M is dead (2026-09-20 03:27-05:26Z); three
+  or more station-days waiting over 30 minutes is red when no P0-M has been
+  committed anywhere for 30 minutes, amber when others still get theirs.
 
 Reported, never acted on: the output is a small JSON file whose ``notify``
 block is ready for whatever push channel the operator authorises.  It changes
@@ -276,6 +281,101 @@ def p0_supply(
     return out
 
 
+# ---------------------------------------------------------------- P0-M flow
+#
+# 2026-09-20 03:27Z-05:26Z no station got a P0-M.  Three weatherless TGFTP
+# captures made the TAF ingest raise, the chain failed after P0, and P0 kept
+# minting roots that nothing confirmed -- two hours, found by a person reading
+# code, not by a light.  P0 supply stayed green throughout: a fresh P0 is a
+# fresh P0/P0-M row.  This reading asks the other question: are the roots P0
+# commits being confirmed?
+#
+# Commit clocks, not decision clocks: a P0-M rebuilt late is stamped back onto
+# its root (``_p0m_replay_decision_at``), so on decision time the outage reads
+# as P0-M arriving on time.
+
+#: A root older than this with no P0-M after it is uncovered.  The chain
+#: confirms a root within the same cycle (measured 0.1-0.8 min); a resident
+#: restart between the two costs 8-16 min, so 30 leaves room for one.
+P0M_STALL_MINUTES = 30.0
+#: Roots this far back are read: the one being judged and the one before it.
+P0M_ROOT_WINDOW_HOURS = 24.0
+#: One or two station-days without a P0-M is a TAF lapse; three is the lane.
+P0M_STALL_MIN_STATIONS = 3
+
+P0M_FLOW_SQL = (
+    "SELECT station_id, event_date, created_at_utc "
+    "FROM basket_probability_bridge_history "
+    "WHERE stage=? AND decision_at_utc>=? AND state='COMMITTED'"
+)
+
+
+def p0m_flow(conn: sqlite3.Connection, *, now: datetime) -> dict[str, Any]:
+    """Whether P0-M kept confirming the roots it was confirming.
+
+    A root is expected to be confirmed when the root before it on the same
+    station-day was: P0-M covers a station-day only inside its TAF's reach
+    (D+2 roots, a lapsed TAF, the event day once P1 owns it get none, by
+    design), so "a root with no P0-M" alone is most of the fleet most of the
+    time.  What an outage changes is the lane stopping where it was working.
+    """
+
+    floor = (now - timedelta(hours=P0M_ROOT_WINDOW_HOURS)).strftime(
+        "%Y-%m-%dT%H:%M:%S"
+    )
+
+    def rows(stage: str) -> dict[tuple[str, str], list[datetime]]:
+        out: dict[tuple[str, str], list[datetime]] = {}
+        for station, day, created in conn.execute(P0M_FLOW_SQL, (stage, floor)):
+            moment = parse_utc(created)
+            # ``<= now`` keeps a replay at a past instant honest; live, every
+            # committed row is already in the past.
+            if moment is not None and moment <= now:
+                out.setdefault((str(station), str(day)), []).append(moment)
+        return out
+
+    confirmations = rows("P0-M")
+    last_p0m = max(
+        (m for moments in confirmations.values() for m in moments), default=None
+    )
+    stall = timedelta(minutes=P0M_STALL_MINUTES)
+    uncovered: list[tuple[str, str, datetime]] = []
+    for scope, moments in rows("P0").items():
+        confirmed = confirmations.get(scope, [])
+        ordered = sorted(moments)
+        for before, root in zip(ordered, ordered[1:]):
+            if now - root < stall:
+                continue
+            # The root before was confirmed while it was the live root.
+            if not any(before <= m < root for m in confirmed):
+                continue
+            if not any(m >= root for m in confirmed):
+                uncovered.append((*scope, root))
+    stations = sorted({station for station, _d, _m in uncovered})
+    oldest = min((m for _s, _d, m in uncovered), default=None)
+    silent_min = (
+        None if last_p0m is None
+        else round((now - last_p0m).total_seconds() / 60.0, 1)
+    )
+    health, verdict = "green", "ok"
+    if len(stations) >= P0M_STALL_MIN_STATIONS:
+        if silent_min is None or silent_min >= P0M_STALL_MINUTES:
+            health, verdict = "red", "fleet_stalled"
+        else:
+            health, verdict = "amber", "partial_stalled"
+    return {
+        "health": health,
+        "verdict": verdict,
+        "last_p0m_committed_at_utc": _utc_iso(last_p0m) if last_p0m else None,
+        "p0m_silent_minutes": silent_min,
+        "uncovered_station_count": len(stations),
+        "uncovered_stations": stations[:12],
+        "uncovered_root_count": len(uncovered),
+        "oldest_uncovered_root_at_utc": _utc_iso(oldest) if oldest else None,
+        "stall_minutes": P0M_STALL_MINUTES,
+    }
+
+
 # ---------------------------------------------------------------- evidence
 
 
@@ -452,6 +552,39 @@ def evaluate(
             "note": note,
         })
 
+    flow: dict[str, Any] = {"health": "green", "verdict": "not_read"}
+    if conn is not None:
+        try:
+            flow = p0m_flow(conn, now=now)
+        except sqlite3.Error as exc:
+            flow = {"health": "amber", "verdict": "unreadable",
+                    "error": f"{type(exc).__name__}: {str(exc)[:120]}"}
+    if flow["health"] != "green":
+        if flow["verdict"] == "unreadable":
+            note = f"P0-M 断流守望读不到概率桥：{flow.get('error')}"
+        else:
+            last = flow.get("last_p0m_committed_at_utc") or "从未"
+            silent = flow.get("p0m_silent_minutes")
+            head = (
+                f"全队 P0-M 断流：最后一个 P0-M 提交于 {last}"
+                + (f"（{silent:.0f} 分钟前）" if silent is not None else "")
+                if flow["verdict"] == "fleet_stalled"
+                else f"部分站 P0-M 落后（全队最后一个 P0-M 在 {last}，其余站仍在出）"
+            )
+            note = (
+                f"{head}；{flow['uncovered_station_count']} 个站的新 P0 根超过 "
+                f"{flow['stall_minutes']:.0f} 分钟没有被 P0-M 确认"
+                f"（{'、'.join(flow['uncovered_stations'][:8])}"
+                + ("等" if flow["uncovered_station_count"] > 8 else "")
+                + "）；P1 只能接在 P0 上，有 TAF 的站日被决策闸挡住"
+            )
+        rows.append({
+            "code": f"p0m_{flow['verdict']}",
+            "health": flow["health"],
+            "label": "P0-M 断流",
+            "note": note,
+        })
+
     overall = (
         "red" if any(r["health"] == "red" for r in rows)
         else "amber" if rows else "green"
@@ -512,6 +645,7 @@ def evaluate(
         ),
         "egress": egress_block,
         "p0_supply": supply,
+        "p0m_flow": flow,
         "evidence": dict(evidence or {}),
         "passive": {
             key: {"at_utc": value, "age_minutes": _age_minutes(value, now)}
