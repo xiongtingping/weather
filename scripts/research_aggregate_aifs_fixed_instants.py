@@ -107,6 +107,11 @@ def main() -> int:
     parser.add_argument("--with-arm", default="with_aifs_allruns")
     parser.add_argument("--first-event-date", default="2026-08-16")
     parser.add_argument("--last-event-date", default="9999-12-31")
+    parser.add_argument("--station-day-out", type=Path, default=None,
+                        help="write each station-day's hour means (all hours) as JSONL")
+    parser.add_argument("--restrict-to", type=Path, default=None,
+                        help="JSONL of {station, event_date}: score only these station-days, "
+                             "so two with-arms can be compared on the same set")
     args = parser.parse_args()
     scheme = f"C{args.kappa:g}"
     ssot = sqlite3.connect(f"file:{SSOT}?mode=ro", uri=True, timeout=60)
@@ -119,6 +124,12 @@ def main() -> int:
         k for k in set(base) & set(with_)
         if args.first_event_date <= k[1] <= args.last_event_date and k[0] in zones
     )
+    if args.restrict_to:
+        allowed = {
+            (row["station"], row["event_date"])
+            for row in map(json.loads, args.restrict_to.read_text().splitlines()) if row
+        }
+        keys = [k for k in keys if k in allowed]
     counts = Counter()
     unseated_drift = 0.0
     pairs = []
@@ -186,6 +197,18 @@ def main() -> int:
         "max_abs_delta_where_aifs_not_seated": round(unseated_drift, 6),
         "results": {},
     }
+    if args.station_day_out:
+        # Served-view means over the table-matched hours, plus the raw view
+        # over every hour ("rawall_"), the one set two with-arms share hour
+        # for hour.
+        rawall = {
+            (r["station"], r["event_date"]): r for r in paired.station_day_means(raw_all)
+        }
+        with args.station_day_out.open("w") as handle:
+            for row in paired.station_day_means(pairs):
+                extra = rawall.get((row["station"], row["event_date"]), {})
+                row.update({f"rawall_{k}": v for k, v in extra.items() if k.startswith(("base_", "with_"))})
+                handle.write(json.dumps(row, sort_keys=True) + "\n")
     subsets = (
         ("all_hours", pairs),
         ("hours_aifs_seated", [p for p in pairs if p["seated"]]),
