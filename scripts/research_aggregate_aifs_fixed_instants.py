@@ -24,6 +24,16 @@ intervals resample whole event dates.  ``--first-event-date`` should sit
 after the baseline members' stamps became real-time captures (runs from
 about 2026-08-14; before that they are backfill times days after
 publication, and AIFS at its publication time would look days early).
+
+Generalised 2026-09-23 for the AIGEFS lane: ``--with-system-id`` names the
+research system the with-arm carries, ``--reference-system-id`` the baseline
+system its runs are compared against for the "newer than" subset, and
+``--newer-than any_baseline`` compares against the newest run of any
+baseline system in the pool instead (AIGEFS is its own family, so no single
+baseline system is its natural reference).  An arm given with a ``/`` is a
+directory; a bare name is looked up under the AIFS replay root.  The report
+keys carry the labels (``aifs``/``pf50`` by default, so the AIFS report is
+unchanged).
 """
 
 from __future__ import annotations
@@ -63,6 +73,13 @@ def horizon(hours_to_start: float) -> str:
     return next(name for floor, name in HORIZONS if hours_to_start >= floor)
 
 
+def arm_dir(arm: str) -> Path:
+    """A bare name lives under the AIFS replay root; a path (with ``/``) is itself."""
+
+    path = Path(arm) if "/" in arm else paired.REPLAY / arm
+    return paired.assert_present(path, what="replay arm")
+
+
 def load_compact(arm: str, scheme: str) -> dict[tuple[str, str, str], dict]:
     """``paired.load`` keeping only what this aggregation reads.
 
@@ -73,7 +90,7 @@ def load_compact(arm: str, scheme: str) -> dict[tuple[str, str, str], dict]:
     """
 
     out = {}
-    for path in sorted(paired.assert_present(paired.REPLAY / arm, what="AIFS replay arm").glob("*.jsonl.gz")):
+    for path in sorted(arm_dir(arm).glob("*.jsonl.gz")):
         with gzip.open(path, "rt") as handle:
             for line in handle:
                 record = json.loads(line)
@@ -81,9 +98,10 @@ def load_compact(arm: str, scheme: str) -> dict[tuple[str, str, str], dict]:
                 out[(record["station"], record["event_date"], record["at"])] = {
                     "band_sha": record.get("band_sha"), "cw_sha": record.get("cw_sha"),
                     "pool": tuple(record.get("pool", ())),
-                    # Only runs the pool holds: an absent PF50 must read as
-                    # "", not "None", or AIFS stops counting as newer there.
-                    "runs": {s: r for s in (AIFS, PF50) if (r := record.get("runs", {}).get(s))},
+                    # Only runs the pool holds: an absent system must read as
+                    # "", not "None", or the with-system stops counting as
+                    # newer there.
+                    "runs": {s: r for s, r in (record.get("runs") or {}).items() if r},
                     "schemes": {scheme: {v: views[v][:3] for v in VIEWS}} if views else {},
                 }
     return out
@@ -112,8 +130,23 @@ def main() -> int:
     parser.add_argument("--restrict-to", type=Path, default=None,
                         help="JSONL of {station, event_date}: score only these station-days, "
                              "so two with-arms can be compared on the same set")
+    parser.add_argument("--with-system-id", default=AIFS, help="the research system the with-arm carries")
+    parser.add_argument("--with-label", default="", help="short label in report keys (default aifs / lower id)")
+    parser.add_argument("--reference-system-id", default=PF50,
+                        help="baseline system whose run the with-system's is compared against")
+    parser.add_argument("--newer-than", choices=("reference", "any_baseline"), default="reference",
+                        help="'newer' subset: with-system run newer than the reference system's run, "
+                             "or newer than the newest run of any baseline system in the pool")
     args = parser.parse_args()
     scheme = f"C{args.kappa:g}"
+    with_system = str(args.with_system_id)
+    reference = str(args.reference_system_id)
+    label = args.with_label or ("aifs" if with_system == AIFS else with_system.lower())
+    ref_label = "pf50" if reference == PF50 else reference.lower()
+    newer_key = (
+        f"hours_{label}_newer_than_{ref_label}" if args.newer_than == "reference"
+        else f"hours_{label}_newer_than_any_baseline"
+    )
     ssot = sqlite3.connect(f"file:{SSOT}?mode=ro", uri=True, timeout=60)
     zones = dict(ssot.execute(
         "SELECT station_id, settlement_timezone FROM calibration_station_market_timezone_binding"
@@ -142,7 +175,7 @@ def main() -> int:
         end = start + timedelta(days=1)
         hour = max(b_at[0], w_at[0]).replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
         first_with = w_at[0].replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
-        counts["hours_only_aifs_arm_serving"] += max(0, int((min(hour, end) - first_with).total_seconds() // 3600))
+        counts[f"hours_only_{label}_arm_serving"] += max(0, int((min(hour, end) - first_with).total_seconds() // 3600))
         while hour < end:
             b = b_rec[bisect_right(b_at, hour) - 1]
             w = w_rec[bisect_right(w_at, hour) - 1]
@@ -165,13 +198,17 @@ def main() -> int:
                 counts["hours_gate_table_mismatch"] += 1
                 hour = hour_next
                 continue
-            seated = AIFS in w.get("pool", ())
+            seated = with_system in w.get("pool", ())
             runs = w.get("runs", {})
-            newer = seated and str(runs.get(AIFS, "")) > str(runs.get(PF50, ""))
+            if args.newer_than == "reference":
+                newer = seated and str(runs.get(with_system, "")) > str(runs.get(reference, ""))
+            else:
+                baseline_runs = [str(r) for s, r in runs.items() if s != with_system and s in w.get("pool", ())]
+                newer = seated and str(runs.get(with_system, "")) > (max(baseline_runs) if baseline_runs else "")
             pair = {
                 "station": station, "event_date": day,
                 "lead": horizon((start - hour).total_seconds() / 3600.0),
-                "seated": seated, "aifs_newer_than_pf50": newer,
+                "seated": seated, "newer": newer,
             }
             for view in VIEWS:
                 for i, metric in enumerate(paired.METRICS):
@@ -183,18 +220,19 @@ def main() -> int:
                 ))
             counts["hours_scored"] += 1
             counts["hours_seated"] += seated
-            counts["hours_aifs_newer_than_pf50"] += newer
+            counts[newer_key] += newer
             pairs.append(pair)
             hour = hour_next
 
     report = {
         "scheme": scheme, "arms": [args.baseline_arm, args.with_arm],
+        "with_system_id": with_system, "reference_system_id": reference, "newer_than": args.newer_than,
         "window": [args.first_event_date, args.last_event_date],
         "station_days": len({(p["station"], p["event_date"]) for p in pairs}),
         "event_dates": len({p["event_date"] for p in pairs}),
         "stations": len({p["station"] for p in pairs}),
         "counts": dict(counts),
-        "max_abs_delta_where_aifs_not_seated": round(unseated_drift, 6),
+        f"max_abs_delta_where_{label}_not_seated": round(unseated_drift, 6),
         "results": {},
     }
     if args.station_day_out:
@@ -211,8 +249,8 @@ def main() -> int:
                 handle.write(json.dumps(row, sort_keys=True) + "\n")
     subsets = (
         ("all_hours", pairs),
-        ("hours_aifs_seated", [p for p in pairs if p["seated"]]),
-        ("hours_aifs_newer_than_pf50", [p for p in pairs if p["aifs_newer_than_pf50"]]),
+        (f"hours_{label}_seated", [p for p in pairs if p["seated"]]),
+        (newer_key, [p for p in pairs if p["newer"]]),
     )
     for name, rows in subsets:
         if not rows:
@@ -249,7 +287,7 @@ def main() -> int:
         per_station = defaultdict(list)
         for r in day_rows:
             per_station[r["station"]].append(r["with_served_crps"] - r["base_served_crps"])
-        block["stations_better_with_aifs"] = sum(1 for v in per_station.values() if statistics.fmean(v) < 0)
+        block[f"stations_better_with_{label}"] = sum(1 for v in per_station.values() if statistics.fmean(v) < 0)
         block["stations"] = len(per_station)
         report["results"][name] = block
     if raw_all:

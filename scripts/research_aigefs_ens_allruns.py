@@ -118,7 +118,7 @@ def _client() -> httpx.Client:
     if client is None:
         # The local proxy answers 503 in bursts (AIFS lane, 2026-09-21); the
         # bucket is reachable without it.
-        client = httpx.Client(timeout=60.0, follow_redirects=True, trust_env=False)
+        client = httpx.Client(timeout=30.0, follow_redirects=True, trust_env=False)
         _CLIENTS.client = client
     return client
 
@@ -136,7 +136,11 @@ def _get(url: str, *, headers: dict[str, str] | None = None) -> bytes:
             raise
         except (httpx.HTTPError, OSError) as exc:
             last = exc
-            time.sleep(min(1.0 * (2 ** attempt), 60.0))
+            # Loud: a batch waits for its slowest message, so one stalled
+            # request is the whole pool's stall (segment 3, 2026-09-23: 62
+            # messages took 285 s with nothing printed).
+            print(f"  retry {attempt + 1} {type(exc).__name__} {url[-60:]}", flush=True)
+            time.sleep(min(1.0 * (2 ** attempt), 15.0))
     raise RuntimeError(f"aigefs_fetch_failed:{url}:{type(last).__name__}:{last}")
 
 
@@ -471,8 +475,11 @@ def main() -> int:
                     stopped = True
                     break
                 batch, todo = todo[:args.steps_per_batch], todo[args.steps_per_batch:]
+                t_batch = time.monotonic()
                 values, shas, n = fetch_step_batch(run_init, batch, index, args.workers, prove_first=prove_first)
                 prove_first = False
+                if time.monotonic() - t_batch > 45.0:
+                    print(f"  slow batch {run} steps={batch} {time.monotonic() - t_batch:.0f}s", flush=True)
                 size += n
                 downloaded += len(batch)
                 with conn:
