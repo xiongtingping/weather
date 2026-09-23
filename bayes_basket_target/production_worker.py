@@ -5561,13 +5561,30 @@ class TargetProductionWorker:
                 # older than the one the lead's files hold (those came from a
                 # rung of the same lead that was due earlier), so a family that
                 # cannot serve it holds what it has -- nothing moves backwards.
-                forced = [
+                # Charter 193 (三): the newest rung of that lead that ECMWF or
+                # GEFS has actually landed (the probe's ladder), not the
+                # clock's.  2026-09-23 08:00Z: ECCC 00Z's arrival forced the
+                # clock-newest 06Z rung on 09-23/09-24, which neither required
+                # family had published; both held 09-22 18Z for seven minutes
+                # while ECMWF 00Z sat on the replica.  With no fresh probe
+                # state, or no landed rung of the lead, the clock rung as before.
+                clock_rungs = [
                     rung
                     for rung in _official_native_run_ladder(
                         event_date=event_date, as_of_utc=as_of_utc
                     )
                     if int(rung[0]) == lead
-                ][:1]
+                ]
+                landed_rungs = [
+                    rung
+                    for rung in _official_native_run_ladder(
+                        event_date=event_date,
+                        as_of_utc=as_of_utc,
+                        probe_state=state,
+                    )
+                    if int(rung[0]) == lead
+                ]
+                forced = (landed_rungs or clock_rungs)[:1]
                 if not forced:
                     triggered.add(key)
                     outcomes.append({"key": key, "step": "pass", "state": "NO_RUNG"})

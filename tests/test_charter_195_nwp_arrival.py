@@ -1229,3 +1229,23 @@ def test_the_gefs_field_and_idx_do_not_deadlock_across_threads(monkeypatch, tmp_
     for thread in threads:
         thread.join(timeout=30)
     assert len(results) == 8 * 25
+
+
+def test_an_icon_or_eccc_arrival_rides_the_newest_landed_rung_not_the_clocks(monkeypatch, tmp_path) -> None:
+    # Charter 193 (三), 2026-09-23 08:00Z: ECCC 00Z's arrival for 09-24 took
+    # the clock-newest 06Z rung, which neither ECMWF nor GEFS had published,
+    # and both held 09-22 18Z while ECMWF 00Z was on the replica.
+    state = _probe_state(updated="2026-09-23T08:01:00Z", listed=("2026-09-24",), ready=[
+        (probe.ECCC_FAMILY, "2026-09-23T00:00:00Z", "2026-09-24"),
+        (probe.GEFS_FAMILY, "2026-09-23T00:00:00Z", "2026-09-24"),
+        (probe.ECMWF_FAMILY, "2026-09-23T00:00:00Z", "2026-09-24"),
+    ])
+    for row in state["ready"].values():
+        # ECCC seen first (05:05Z in production), so its pass takes the day
+        row["first_seen_at_utc"] = "2026-09-23T05:30:00Z" if row["family"] == probe.ECCC_FAMILY else "2026-09-23T07:59:00Z"
+    worker, calls, _follows = _trigger_worker(tmp_path, monkeypatch, state)
+    worker.run_arrival_triggered_captures(as_of_utc="2026-09-23T08:01:30Z")
+    (call,) = calls
+    assert call["arrival"]["family"] == probe.ECCC_FAMILY
+    (rung,) = call["forced_rungs"]
+    assert rung[0] == 1 and rung[2] == datetime(2026, 9, 23, 0, tzinfo=timezone.utc)

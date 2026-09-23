@@ -1153,3 +1153,100 @@ def test_an_older_rung_that_cannot_hold_the_newer_run_fails_closed(monkeypatch, 
         run()
     assert captured == ["gefs"]
     assert f"gefs_{DAY}_d2.json" not in written
+
+
+# --------------------------------------------------------------------------
+# Charter 193 (三) 谁新用谁 inside a pass (2026-09-23 08:00Z):
+# the rung's run not yet published -> the newest published older cycle of
+# the same lead day, if newer than what the family holds; and a pass whose
+# required families are both held on wider archives builds only its own set.
+# --------------------------------------------------------------------------
+def _fallback_pass(monkeypatch, tmp_path: Path, *, ecmwf_errors: dict[int, str], held_run: str):
+    _install_station_registry(monkeypatch)
+    monkeypatch.setattr(capture, "load_market_registry_snapshot", lambda _p: _registry())
+    stations = _station_ids()
+    _retained(tmp_path / f"ecmwf_{DAY}_d2.json", ECMWF, held_run, stations)
+    asked: list[int | None] = []
+
+    def ecmwf_capture(**kw):
+        hour = kw.get("run_cycle_hour")
+        asked.append(hour)
+        if hour in ecmwf_errors:
+            raise RuntimeError(ecmwf_errors[hour])
+        return {**_archive(ECMWF, f"2026-07-30T{hour:02d}:00:00Z"), "event_date": DAY,
+                "captures": [{"station_id": s} for s in stations]}
+
+    monkeypatch.setattr(capture, "capture_ecmwf_station_days", ecmwf_capture)
+    monkeypatch.setattr(capture, "capture_gefs_station_days",
+                        lambda **kw: {**_archive(GEFS, "2026-07-30T06:00:00Z"), "event_date": DAY,
+                                      "captures": [{"station_id": s} for s in stations]})
+    monkeypatch.setattr(capture, "capture_geps_station_days", lambda **kw: _archive(ECCC, "2026-07-30T00:00:00Z"))
+    monkeypatch.setattr(capture, "capture_icon_eps_station_days", lambda **kw: _archive(ICON, "2026-07-30T00:00:00Z"))
+    monkeypatch.setattr(capture, "write_bounded_json_if_changed", lambda *_a: True)
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        capture.subprocess, "run",
+        lambda command, **_kw: commands.append(list(command))
+        or subprocess.CompletedProcess(command, 0, stdout="built", stderr=""),
+    )
+    monkeypatch.setattr(capture, "_verify_official_inbox", lambda *_a, **_k: {"content_sha256": "0" * 64, "packets": []})
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text("{}", encoding="utf-8")
+    receipt = _d2_pass(tmp_path, registry_path, run_cycle_hour=6)
+    return receipt, asked
+
+
+def test_an_unpublished_rung_run_falls_back_to_a_newer_published_cycle(monkeypatch, tmp_path) -> None:
+    # Rung D-2 06Z: ECMWF 06Z 404, its 00Z is out; the file holds D-3 18Z.
+    receipt, asked = _fallback_pass(
+        monkeypatch, tmp_path,
+        ecmwf_errors={6: "HTTPStatusError:Client error '404 Not Found'"},
+        held_run="2026-07-29T18:00:00Z",
+    )
+    assert asked == [6, 0]
+    assert receipt["run_init_utc_by_family"]["ECMWF_OPEN_DATA_S3"] == "2026-07-30T00:00:00Z"
+    assert receipt["family_fell_back_within_lead"] == {"ECMWF_OPEN_DATA_S3": "2026-07-30T00:00:00Z"}
+    # the rung's own run is still reported as not served
+    assert "ECMWF_OPEN_DATA_S3" in receipt["family_held_on_earlier_run"]
+
+
+def test_no_fallback_at_or_below_the_held_run_or_on_a_network_failure(monkeypatch, tmp_path) -> None:
+    # held 00Z already: nothing between it and 06Z to ask for
+    receipt, asked = _fallback_pass(
+        monkeypatch, tmp_path,
+        ecmwf_errors={6: "HTTPStatusError:Client error '404 Not Found'"},
+        held_run="2026-07-30T00:00:00Z",
+    )
+    assert asked == [6]
+    assert receipt["run_init_utc_by_family"]["ECMWF_OPEN_DATA_S3"] == "2026-07-30T00:00:00Z"
+    assert "family_fell_back_within_lead" not in receipt
+    # a transport failure is not an answer about the run: hold, do not walk
+    receipt, asked = _fallback_pass(
+        monkeypatch, tmp_path,
+        ecmwf_errors={6: "ConnectError:[Errno 60] Operation timed out"},
+        held_run="2026-07-29T18:00:00Z",
+    )
+    assert asked == [6]
+    assert receipt["run_init_utc_by_family"]["ECMWF_OPEN_DATA_S3"] == "2026-07-29T18:00:00Z"
+
+
+def test_both_required_families_held_on_wider_archives_build_only_this_pass(monkeypatch, tmp_path) -> None:
+    # A same-day later rung: GEFS and ECMWF both hold archives that cover more
+    # stations than this rung's run can; the builder is told this pass's set.
+    run, captured, written = _older_rung_pass(monkeypatch, tmp_path, _station_ids() + ["ZZZZ"])
+    verified: list = []
+    monkeypatch.setattr(
+        capture, "_verify_official_inbox",
+        lambda _path, **kw: verified.append(sorted(kw["station_ids"]))
+        or {"content_sha256": "0" * 64, "packets": []},
+    )
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        capture.subprocess, "run",
+        lambda command, **_kw: commands.append(list(command))
+        or subprocess.CompletedProcess(command, 0, stdout="built", stderr=""),
+    )
+    run()
+    builder = _builder(commands)
+    named = sorted(builder[i + 1] for i, part in enumerate(builder) if part == "--station-id")
+    assert named == sorted(_station_ids()) == verified[0]

@@ -190,6 +190,16 @@ def _hold_certified_event_run(
     return None
 
 
+def _run_not_published(exc: BaseException) -> bool:
+    """Whether a capture failed because its run is not on the server yet.
+
+    The collectors surface an unpublished index or step as an HTTP 404; every
+    other failure (transport, 5xx, contract) is not an answer about the run.
+    """
+
+    return "404" in f"{type(exc).__name__}:{exc}"
+
+
 def _retained_run_init(path: Path, *, event_date: str) -> datetime | None:
     """The run a retained per-lead archive holds for this date, or None."""
 
@@ -882,12 +892,39 @@ def capture_official_native_forward(
     # that is merely late is picked up by a later pass on the same rung.
     family_capture_errors: dict[str, str] = {}
 
+    # Charter 193 (三) 谁新用谁 within a pass: families whose rung run was not
+    # published and which advanced to an older, published cycle of the same
+    # lead day that is still newer than anything they held.
+    fell_back_within_lead: dict[str, str] = {}
+
+    def _newest_holdable_run(
+        path: Path, *, expected_schema: str
+    ) -> datetime | None:
+        runs = []
+        for candidate_path in (path, *_other_lead_archive_paths(path)):
+            candidate = _load_retained_archive(
+                candidate_path,
+                event_date=event_date,
+                station_ids=requested_station_ids,
+                expected_schema=expected_schema,
+            )
+            run = (
+                _parse_utc_timestamp(candidate.get("run_init_utc"))
+                if candidate is not None
+                else None
+            )
+            if run is not None:
+                runs.append(run)
+        return max(runs) if runs else None
+
     def _advance_or_hold(
         family: str,
         path: Path,
         *,
         expected_schema: str,
         capture: Callable[[], dict[str, Any]],
+        rung_cycle_hour: int | None = None,
+        older_cycle_capture: Callable[[int], dict[str, Any]] | None = None,
     ) -> dict[str, Any] | None:
         try:
             assert_process_memory_budget()
@@ -896,6 +933,43 @@ def capture_official_native_forward(
             return captured
         except Exception as exc:  # noqa: BLE001 - held, not lost
             family_capture_errors[family] = f"{type(exc).__name__}:{exc}"[:200]
+            # Charter 193 (三): the rung's run is not on the server yet, but an
+            # older cycle of the same lead day may be -- and newer than what
+            # the family holds.  2026-09-23 08:01Z: the 09-24 pass asked for
+            # 06Z, ECMWF had none, and the pass held 09-22 18Z from its file
+            # while 09-23 00Z had been on the replica since 07:58Z.  Asked
+            # newest first, never at or below the held run, and only while
+            # the answer is "not published" (a network failure would meet the
+            # same dead path on every older cycle).
+            if (
+                older_cycle_capture is not None
+                and rung_cycle_hour is not None
+                and _run_not_published(exc)
+            ):
+                floor = _newest_holdable_run(
+                    path, expected_schema=expected_schema
+                )
+                for hour in sorted(
+                    (h for h in (0, 6, 12, 18) if h < int(rung_cycle_hour)),
+                    reverse=True,
+                ):
+                    older_run = _parse_utc_timestamp(_expected_run(hour))
+                    if older_run is None or (
+                        floor is not None and older_run <= floor
+                    ):
+                        break
+                    try:
+                        assert_process_memory_budget()
+                        captured = older_cycle_capture(hour)
+                    except Exception as older_exc:  # noqa: BLE001
+                        if not _run_not_published(older_exc):
+                            break
+                        continue
+                    own_lead_families.add(family)
+                    fell_back_within_lead[family] = str(
+                        captured.get("run_init_utc") or _expected_run(hour)
+                    )
+                    return captured
             # Any run it holds, not the one this rung wanted: the point is to
             # keep serving the freshest run this family actually has.
             held = _load_retained_archive(
@@ -926,6 +1000,17 @@ def capture_official_native_forward(
                 lead_days=int(lead_days),
                 run_cycle_hour=run_cycle_hour,
             ),
+            rung_cycle_hour=gefs_resolve_run_cycle_hour(
+                int(lead_days), run_cycle_hour
+            ),
+            older_cycle_capture=lambda hour: capture_gefs_station_days(
+                event_date=event_date,
+                station_scopes=scopes,
+                archive_query_at_utc=capture_at,
+                timeout_seconds=float(timeout_seconds),
+                lead_days=int(lead_days),
+                run_cycle_hour=hour,
+            ),
         )
     # Bank each family the moment it is in hand.  The archives used to be
     # written only after the last family, so a pass killed at the caller's
@@ -955,6 +1040,17 @@ def capture_official_native_forward(
                 timeout_seconds=float(timeout_seconds),
                 lead_days=int(lead_days),
                 run_cycle_hour=run_cycle_hour,
+            ),
+            rung_cycle_hour=ecmwf_resolve_run_cycle_hour(
+                int(lead_days), run_cycle_hour
+            ),
+            older_cycle_capture=lambda hour: capture_ecmwf_station_days(
+                event_date=event_date,
+                station_scopes=scopes,
+                archive_query_at_utc=capture_at,
+                timeout_seconds=float(timeout_seconds),
+                lead_days=int(lead_days),
+                run_cycle_hour=hour,
             ),
         )
     if (
@@ -1294,7 +1390,17 @@ def capture_official_native_forward(
     if regional_point["archives_by_station"]:
         command.extend(["--regional-point-archive", str(regional_point_path)])
     # Charter 193 amendment (C): only the certified stations get a packet.
-    if ecmwf_event_run_hold:
+    # And whenever the two required archives' common stations are not this
+    # pass's set -- both held from runs that covered more of the day than
+    # this rung's run can (a same-day 06Z rung with GEFS and ECMWF held on
+    # 00Z/18Z archives of all 45 stations while 41 are coverable) -- the
+    # builder is told the set, instead of building 45 packets that the
+    # inbox check then refuses (``official_native_forward_inbox_scope_mismatch``,
+    # 09-23 06:41Z and 08:00Z).
+    base_common = follow_run.archive_station_ids(
+        gefs
+    ) & follow_run.archive_station_ids(ecmwf)
+    if ecmwf_event_run_hold or set(packet_station_ids) != base_common:
         for station in packet_station_ids:
             command.extend(["--station-id", station])
     # An actively captured ECCC archive is preferred over a supplied one; both
@@ -1382,6 +1488,10 @@ def capture_official_native_forward(
             family: path.name
             for family, path in sorted(held_from_other_lead.items())
         },
+        # Charter 193 (三): families that fell back to an older, published
+        # cycle of the same lead day, newer than what they held.
+        **({"family_fell_back_within_lead": dict(sorted(fell_back_within_lead.items()))}
+           if fell_back_within_lead else {}),
         # Charter 193 (三): families whose rung was older than the run this
         # lead's file already held, and which served that newer run.
         **({"family_kept_newer_retained": dict(sorted(kept_newer_retained.items()))}
