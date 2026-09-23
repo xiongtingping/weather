@@ -1,0 +1,1427 @@
+{
+ "stage": "P0-M",
+ "wet_station_days": {
+  "hist_pre_ge1": {
+   "rows": 2493,
+   "wet_w": 123.0,
+   "total_w": 411.0
+  },
+  "hist_pre_ge5": {
+   "rows": 2493,
+   "wet_w": 51.0,
+   "total_w": 411.0
+  },
+  "hist_pre_ge10": {
+   "rows": 2493,
+   "wet_w": 24.0,
+   "total_w": 411.0
+  },
+  "hist_pre_log1p": {
+   "rows": 2493,
+   "wet_w": null,
+   "total_w": 411.0
+  },
+  "hist_post_only_ge1": {
+   "rows": 2493,
+   "wet_w": 19.0,
+   "total_w": 411.0
+  },
+  "hist_total_ge1": {
+   "rows": 2493,
+   "wet_w": 149.0,
+   "total_w": 411.0
+  },
+  "hist_first_wet_before_12": {
+   "rows": 2493,
+   "wet_w": 153.0,
+   "total_w": 411.0
+  },
+  "asof_pre_ge1": {
+   "rows": 0,
+   "wet_w": 0.0,
+   "total_w": 0.0
+  },
+  "asof_pre_ge5": {
+   "rows": 0,
+   "wet_w": 0.0,
+   "total_w": 0.0
+  },
+  "asof_pre_ge10": {
+   "rows": 0,
+   "wet_w": 0.0,
+   "total_w": 0.0
+  },
+  "asof_pre_log1p": {
+   "rows": 0,
+   "wet_w": null,
+   "total_w": 0.0
+  },
+  "asof_post_only_ge1": {
+   "rows": 0,
+   "wet_w": 0.0,
+   "total_w": 0.0
+  },
+  "asof_total_ge1": {
+   "rows": 0,
+   "wet_w": 0.0,
+   "total_w": 0.0
+  },
+  "asof_first_wet_before_12": {
+   "rows": 0,
+   "wet_w": 0.0,
+   "total_w": 0.0
+  }
+ },
+ "subsets": {
+  "all": {
+   "decisions": 2493,
+   "station_days": 411,
+   "event_days": 10,
+   "belief_vs_M1": {
+    "+hist_pre_ge1": {
+     "mean": -0.00247,
+     "ci95": [
+      -0.00629,
+      0.00193
+     ]
+    },
+    "+hist_pre_ge5": {
+     "mean": -0.00263,
+     "ci95": [
+      -0.00535,
+      0.00048
+     ]
+    },
+    "+hist_pre_ge10": {
+     "mean": -0.00367,
+     "ci95": [
+      -0.00774,
+      0.00025
+     ]
+    },
+    "+hist_pre_log1p": {
+     "mean": -0.00057,
+     "ci95": [
+      -0.0082,
+      0.00639
+     ]
+    },
+    "+hist_post_only_ge1": {
+     "mean": -0.00646,
+     "ci95": [
+      -0.01036,
+      -0.00257
+     ]
+    },
+    "+hist_total_ge1": {
+     "mean": -0.00406,
+     "ci95": [
+      -0.01088,
+      0.0029
+     ]
+    },
+    "+hist_first_wet_before_12": {
+     "mean": 0.00069,
+     "ci95": [
+      -0.00649,
+      0.00812
+     ]
+    },
+    "+asof_pre_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "+asof_pre_ge5": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "+asof_pre_ge10": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "+asof_pre_log1p": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "+asof_post_only_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "+asof_total_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "+asof_first_wet_before_12": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    }
+   },
+   "model_rps_vs_Mp": {
+    "hist_pre_ge1": {
+     "mean": 8e-05,
+     "ci95": [
+      -6e-05,
+      0.00024
+     ]
+    },
+    "hist_pre_ge5": {
+     "mean": -5e-05,
+     "ci95": [
+      -0.00015,
+      5e-05
+     ]
+    },
+    "hist_pre_ge10": {
+     "mean": 6e-05,
+     "ci95": [
+      1e-05,
+      0.00013
+     ]
+    },
+    "hist_pre_log1p": {
+     "mean": -1e-05,
+     "ci95": [
+      -0.00026,
+      0.00019
+     ]
+    },
+    "hist_post_only_ge1": {
+     "mean": 0.00031,
+     "ci95": [
+      -1e-05,
+      0.00066
+     ]
+    },
+    "hist_total_ge1": {
+     "mean": 0.00012,
+     "ci95": [
+      -3e-05,
+      0.00028
+     ]
+    },
+    "hist_first_wet_before_12": {
+     "mean": 0.00012,
+     "ci95": [
+      -0.00018,
+      0.00041
+     ]
+    },
+    "asof_pre_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_pre_ge5": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_pre_ge10": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_pre_log1p": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_post_only_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_total_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_first_wet_before_12": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    }
+   },
+   "model_lp_vs_Mp": {
+    "hist_pre_ge1": {
+     "mean": -0.00083,
+     "ci95": [
+      -0.00197,
+      0.00034
+     ]
+    },
+    "hist_pre_ge5": {
+     "mean": 0.00026,
+     "ci95": [
+      -0.00092,
+      0.00153
+     ]
+    },
+    "hist_pre_ge10": {
+     "mean": -0.00055,
+     "ci95": [
+      -0.00104,
+      -0.00014
+     ]
+    },
+    "hist_pre_log1p": {
+     "mean": -0.00021,
+     "ci95": [
+      -0.00265,
+      0.00218
+     ]
+    },
+    "hist_post_only_ge1": {
+     "mean": -0.00311,
+     "ci95": [
+      -0.00669,
+      -3e-05
+     ]
+    },
+    "hist_total_ge1": {
+     "mean": -0.00148,
+     "ci95": [
+      -0.00331,
+      0.00012
+     ]
+    },
+    "hist_first_wet_before_12": {
+     "mean": -0.00102,
+     "ci95": [
+      -0.00434,
+      0.00219
+     ]
+    },
+    "asof_pre_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_pre_ge5": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_pre_ge10": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_pre_log1p": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_post_only_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_total_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_first_wet_before_12": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    }
+   },
+   "murphy_belief": {
+    "M1": {
+     "rel_e3": 0.913,
+     "res_e3": 22.915
+    },
+    "+hist_pre_ge1": {
+     "rel_e3": 1.041,
+     "res_e3": 22.872
+    },
+    "+hist_pre_ge5": {
+     "rel_e3": 0.911,
+     "res_e3": 22.833
+    },
+    "+hist_pre_ge10": {
+     "rel_e3": 0.934,
+     "res_e3": 22.894
+    },
+    "+hist_pre_log1p": {
+     "rel_e3": 0.998,
+     "res_e3": 22.902
+    },
+    "+hist_post_only_ge1": {
+     "rel_e3": 0.915,
+     "res_e3": 22.748
+    },
+    "+hist_total_ge1": {
+     "rel_e3": 0.982,
+     "res_e3": 22.799
+    },
+    "+hist_first_wet_before_12": {
+     "rel_e3": 0.907,
+     "res_e3": 22.885
+    },
+    "+asof_pre_ge1": {
+     "rel_e3": 0.913,
+     "res_e3": 22.915
+    },
+    "+asof_pre_ge5": {
+     "rel_e3": 0.913,
+     "res_e3": 22.915
+    },
+    "+asof_pre_ge10": {
+     "rel_e3": 0.913,
+     "res_e3": 22.915
+    },
+    "+asof_pre_log1p": {
+     "rel_e3": 0.913,
+     "res_e3": 22.915
+    },
+    "+asof_post_only_ge1": {
+     "rel_e3": 0.913,
+     "res_e3": 22.915
+    },
+    "+asof_total_ge1": {
+     "rel_e3": 0.913,
+     "res_e3": 22.915
+    },
+    "+asof_first_wet_before_12": {
+     "rel_e3": 0.913,
+     "res_e3": 22.915
+    }
+   },
+   "murphy_model": {
+    "Mp": {
+     "rel_e3": 0.751,
+     "res_e3": 16.816
+    },
+    "Mp+hist_pre_ge1": {
+     "rel_e3": 0.727,
+     "res_e3": 16.724
+    },
+    "Mp+hist_pre_ge5": {
+     "rel_e3": 0.698,
+     "res_e3": 16.709
+    },
+    "Mp+hist_pre_ge10": {
+     "rel_e3": 0.728,
+     "res_e3": 16.75
+    },
+    "Mp+hist_pre_log1p": {
+     "rel_e3": 0.7,
+     "res_e3": 16.679
+    },
+    "Mp+hist_post_only_ge1": {
+     "rel_e3": 0.713,
+     "res_e3": 16.687
+    },
+    "Mp+hist_total_ge1": {
+     "rel_e3": 0.761,
+     "res_e3": 16.798
+    },
+    "Mp+hist_first_wet_before_12": {
+     "rel_e3": 0.684,
+     "res_e3": 16.609
+    },
+    "Mp+asof_pre_ge1": {
+     "rel_e3": 0.751,
+     "res_e3": 16.816
+    },
+    "Mp+asof_pre_ge5": {
+     "rel_e3": 0.751,
+     "res_e3": 16.816
+    },
+    "Mp+asof_pre_ge10": {
+     "rel_e3": 0.751,
+     "res_e3": 16.816
+    },
+    "Mp+asof_pre_log1p": {
+     "rel_e3": 0.751,
+     "res_e3": 16.816
+    },
+    "Mp+asof_post_only_ge1": {
+     "rel_e3": 0.751,
+     "res_e3": 16.816
+    },
+    "Mp+asof_total_ge1": {
+     "rel_e3": 0.751,
+     "res_e3": 16.816
+    },
+    "Mp+asof_first_wet_before_12": {
+     "rel_e3": 0.751,
+     "res_e3": 16.816
+    }
+   }
+  },
+  "asos_stations": {
+   "decisions": 609,
+   "station_days": 99,
+   "event_days": 9,
+   "belief_vs_M1": {
+    "+hist_pre_ge1": {
+     "mean": -0.01213,
+     "ci95": [
+      -0.02318,
+      -0.00121
+     ]
+    },
+    "+hist_pre_ge5": {
+     "mean": -0.00972,
+     "ci95": [
+      -0.01797,
+      -0.00154
+     ]
+    },
+    "+hist_pre_ge10": {
+     "mean": -0.00923,
+     "ci95": [
+      -0.02143,
+      0.00113
+     ]
+    },
+    "+hist_pre_log1p": {
+     "mean": -0.01842,
+     "ci95": [
+      -0.03745,
+      -0.00093
+     ]
+    },
+    "+hist_post_only_ge1": {
+     "mean": -0.00793,
+     "ci95": [
+      -0.0203,
+      0.00218
+     ]
+    },
+    "+hist_total_ge1": {
+     "mean": -0.02007,
+     "ci95": [
+      -0.04016,
+      -0.00282
+     ]
+    },
+    "+hist_first_wet_before_12": {
+     "mean": -0.01302,
+     "ci95": [
+      -0.03508,
+      0.00526
+     ]
+    },
+    "+asof_pre_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "+asof_pre_ge5": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "+asof_pre_ge10": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "+asof_pre_log1p": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "+asof_post_only_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "+asof_total_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "+asof_first_wet_before_12": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    }
+   },
+   "model_rps_vs_Mp": {
+    "hist_pre_ge1": {
+     "mean": 0.00013,
+     "ci95": [
+      -0.00015,
+      0.00045
+     ]
+    },
+    "hist_pre_ge5": {
+     "mean": 0.00016,
+     "ci95": [
+      -0.00017,
+      0.00057
+     ]
+    },
+    "hist_pre_ge10": {
+     "mean": 4e-05,
+     "ci95": [
+      -0.00019,
+      0.00033
+     ]
+    },
+    "hist_pre_log1p": {
+     "mean": 0.00029,
+     "ci95": [
+      -0.0002,
+      0.0009
+     ]
+    },
+    "hist_post_only_ge1": {
+     "mean": 0.00081,
+     "ci95": [
+      -0.00014,
+      0.00199
+     ]
+    },
+    "hist_total_ge1": {
+     "mean": 0.00034,
+     "ci95": [
+      -0.00014,
+      0.00086
+     ]
+    },
+    "hist_first_wet_before_12": {
+     "mean": 0.00012,
+     "ci95": [
+      -0.00073,
+      0.00107
+     ]
+    },
+    "asof_pre_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_pre_ge5": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_pre_ge10": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_pre_log1p": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_post_only_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_total_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_first_wet_before_12": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    }
+   },
+   "model_lp_vs_Mp": {
+    "hist_pre_ge1": {
+     "mean": -0.00167,
+     "ci95": [
+      -0.00512,
+      0.00159
+     ]
+    },
+    "hist_pre_ge5": {
+     "mean": -0.00245,
+     "ci95": [
+      -0.00767,
+      0.00148
+     ]
+    },
+    "hist_pre_ge10": {
+     "mean": -0.00105,
+     "ci95": [
+      -0.00387,
+      0.00133
+     ]
+    },
+    "hist_pre_log1p": {
+     "mean": -0.00436,
+     "ci95": [
+      -0.01234,
+      0.00325
+     ]
+    },
+    "hist_post_only_ge1": {
+     "mean": -0.00814,
+     "ci95": [
+      -0.02018,
+      0.00127
+     ]
+    },
+    "hist_total_ge1": {
+     "mean": -0.00371,
+     "ci95": [
+      -0.00998,
+      0.00164
+     ]
+    },
+    "hist_first_wet_before_12": {
+     "mean": -0.00207,
+     "ci95": [
+      -0.01368,
+      0.00839
+     ]
+    },
+    "asof_pre_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_pre_ge5": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_pre_ge10": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_pre_log1p": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_post_only_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_total_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_first_wet_before_12": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    }
+   },
+   "murphy_belief": {
+    "M1": {
+     "rel_e3": 1.981,
+     "res_e3": 21.443
+    },
+    "+hist_pre_ge1": {
+     "rel_e3": 2.327,
+     "res_e3": 21.287
+    },
+    "+hist_pre_ge5": {
+     "rel_e3": 2.224,
+     "res_e3": 21.048
+    },
+    "+hist_pre_ge10": {
+     "rel_e3": 2.221,
+     "res_e3": 21.333
+    },
+    "+hist_pre_log1p": {
+     "rel_e3": 2.369,
+     "res_e3": 20.949
+    },
+    "+hist_post_only_ge1": {
+     "rel_e3": 2.129,
+     "res_e3": 21.413
+    },
+    "+hist_total_ge1": {
+     "rel_e3": 2.386,
+     "res_e3": 21.148
+    },
+    "+hist_first_wet_before_12": {
+     "rel_e3": 2.588,
+     "res_e3": 21.568
+    },
+    "+asof_pre_ge1": {
+     "rel_e3": 1.981,
+     "res_e3": 21.443
+    },
+    "+asof_pre_ge5": {
+     "rel_e3": 1.981,
+     "res_e3": 21.443
+    },
+    "+asof_pre_ge10": {
+     "rel_e3": 1.981,
+     "res_e3": 21.443
+    },
+    "+asof_pre_log1p": {
+     "rel_e3": 1.981,
+     "res_e3": 21.443
+    },
+    "+asof_post_only_ge1": {
+     "rel_e3": 1.981,
+     "res_e3": 21.443
+    },
+    "+asof_total_ge1": {
+     "rel_e3": 1.981,
+     "res_e3": 21.443
+    },
+    "+asof_first_wet_before_12": {
+     "rel_e3": 1.981,
+     "res_e3": 21.443
+    }
+   },
+   "murphy_model": {
+    "Mp": {
+     "rel_e3": 1.617,
+     "res_e3": 15.388
+    },
+    "Mp+hist_pre_ge1": {
+     "rel_e3": 1.609,
+     "res_e3": 15.38
+    },
+    "Mp+hist_pre_ge5": {
+     "rel_e3": 1.599,
+     "res_e3": 15.402
+    },
+    "Mp+hist_pre_ge10": {
+     "rel_e3": 1.613,
+     "res_e3": 15.376
+    },
+    "Mp+hist_pre_log1p": {
+     "rel_e3": 1.576,
+     "res_e3": 15.27
+    },
+    "Mp+hist_post_only_ge1": {
+     "rel_e3": 1.608,
+     "res_e3": 15.315
+    },
+    "Mp+hist_total_ge1": {
+     "rel_e3": 1.614,
+     "res_e3": 15.395
+    },
+    "Mp+hist_first_wet_before_12": {
+     "rel_e3": 1.6,
+     "res_e3": 15.308
+    },
+    "Mp+asof_pre_ge1": {
+     "rel_e3": 1.617,
+     "res_e3": 15.388
+    },
+    "Mp+asof_pre_ge5": {
+     "rel_e3": 1.617,
+     "res_e3": 15.388
+    },
+    "Mp+asof_pre_ge10": {
+     "rel_e3": 1.617,
+     "res_e3": 15.388
+    },
+    "Mp+asof_pre_log1p": {
+     "rel_e3": 1.617,
+     "res_e3": 15.388
+    },
+    "Mp+asof_post_only_ge1": {
+     "rel_e3": 1.617,
+     "res_e3": 15.388
+    },
+    "Mp+asof_total_ge1": {
+     "rel_e3": 1.617,
+     "res_e3": 15.388
+    },
+    "Mp+asof_first_wet_before_12": {
+     "rel_e3": 1.617,
+     "res_e3": 15.388
+    }
+   }
+  },
+  "evidence_epoch": {
+   "decisions": 733,
+   "station_days": 134,
+   "event_days": 4,
+   "belief_vs_M1": {
+    "+hist_pre_ge1": {
+     "mean": 0.00113,
+     "ci95": [
+      -0.00157,
+      0.00452
+     ]
+    },
+    "+hist_pre_ge5": {
+     "mean": 0.00336,
+     "ci95": [
+      0.00148,
+      0.00481
+     ]
+    },
+    "+hist_pre_ge10": {
+     "mean": -0.00012,
+     "ci95": [
+      -0.00269,
+      0.00103
+     ]
+    },
+    "+hist_pre_log1p": {
+     "mean": 0.00013,
+     "ci95": [
+      -0.00496,
+      0.00264
+     ]
+    },
+    "+hist_post_only_ge1": {
+     "mean": -0.00775,
+     "ci95": [
+      -0.01196,
+      -0.00232
+     ]
+    },
+    "+hist_total_ge1": {
+     "mean": -0.00841,
+     "ci95": [
+      -0.01536,
+      -0.00075
+     ]
+    },
+    "+hist_first_wet_before_12": {
+     "mean": -0.00222,
+     "ci95": [
+      -0.00776,
+      0.00333
+     ]
+    },
+    "+asof_pre_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "+asof_pre_ge5": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "+asof_pre_ge10": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "+asof_pre_log1p": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "+asof_post_only_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "+asof_total_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "+asof_first_wet_before_12": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    }
+   },
+   "model_rps_vs_Mp": {
+    "hist_pre_ge1": {
+     "mean": -4e-05,
+     "ci95": [
+      -7e-05,
+      -1e-05
+     ]
+    },
+    "hist_pre_ge5": {
+     "mean": -0.00027,
+     "ci95": [
+      -0.00046,
+      -0.00015
+     ]
+    },
+    "hist_pre_ge10": {
+     "mean": -2e-05,
+     "ci95": [
+      -0.0001,
+      4e-05
+     ]
+    },
+    "hist_pre_log1p": {
+     "mean": -5e-05,
+     "ci95": [
+      -0.00025,
+      0.0001
+     ]
+    },
+    "hist_post_only_ge1": {
+     "mean": 0.00067,
+     "ci95": [
+      0.00018,
+      0.001
+     ]
+    },
+    "hist_total_ge1": {
+     "mean": 0.00032,
+     "ci95": [
+      0.00023,
+      0.00047
+     ]
+    },
+    "hist_first_wet_before_12": {
+     "mean": 0.00032,
+     "ci95": [
+      8e-05,
+      0.00056
+     ]
+    },
+    "asof_pre_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_pre_ge5": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_pre_ge10": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_pre_log1p": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_post_only_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_total_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_first_wet_before_12": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    }
+   },
+   "model_lp_vs_Mp": {
+    "hist_pre_ge1": {
+     "mean": 2e-05,
+     "ci95": [
+      -0.00025,
+      0.0005
+     ]
+    },
+    "hist_pre_ge5": {
+     "mean": 0.00223,
+     "ci95": [
+      0.00116,
+      0.00396
+     ]
+    },
+    "hist_pre_ge10": {
+     "mean": -8e-05,
+     "ci95": [
+      -0.00077,
+      0.00047
+     ]
+    },
+    "hist_pre_log1p": {
+     "mean": -3e-05,
+     "ci95": [
+      -0.00207,
+      0.00147
+     ]
+    },
+    "hist_post_only_ge1": {
+     "mean": -0.0064,
+     "ci95": [
+      -0.00947,
+      -0.00197
+     ]
+    },
+    "hist_total_ge1": {
+     "mean": -0.00354,
+     "ci95": [
+      -0.0053,
+      -0.00268
+     ]
+    },
+    "hist_first_wet_before_12": {
+     "mean": -0.00287,
+     "ci95": [
+      -0.00564,
+      -0.00029
+     ]
+    },
+    "asof_pre_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_pre_ge5": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_pre_ge10": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_pre_log1p": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_post_only_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_total_ge1": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "asof_first_wet_before_12": {
+     "mean": 0.0,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    }
+   },
+   "murphy_belief": {
+    "M1": {
+     "rel_e3": 2.681,
+     "res_e3": 29.035
+    },
+    "+hist_pre_ge1": {
+     "rel_e3": 3.097,
+     "res_e3": 29.738
+    },
+    "+hist_pre_ge5": {
+     "rel_e3": 2.566,
+     "res_e3": 29.459
+    },
+    "+hist_pre_ge10": {
+     "rel_e3": 2.882,
+     "res_e3": 29.467
+    },
+    "+hist_pre_log1p": {
+     "rel_e3": 2.748,
+     "res_e3": 29.309
+    },
+    "+hist_post_only_ge1": {
+     "rel_e3": 2.815,
+     "res_e3": 29.021
+    },
+    "+hist_total_ge1": {
+     "rel_e3": 2.903,
+     "res_e3": 29.229
+    },
+    "+hist_first_wet_before_12": {
+     "rel_e3": 2.18,
+     "res_e3": 28.591
+    },
+    "+asof_pre_ge1": {
+     "rel_e3": 2.681,
+     "res_e3": 29.035
+    },
+    "+asof_pre_ge5": {
+     "rel_e3": 2.681,
+     "res_e3": 29.035
+    },
+    "+asof_pre_ge10": {
+     "rel_e3": 2.681,
+     "res_e3": 29.035
+    },
+    "+asof_pre_log1p": {
+     "rel_e3": 2.681,
+     "res_e3": 29.035
+    },
+    "+asof_post_only_ge1": {
+     "rel_e3": 2.681,
+     "res_e3": 29.035
+    },
+    "+asof_total_ge1": {
+     "rel_e3": 2.681,
+     "res_e3": 29.035
+    },
+    "+asof_first_wet_before_12": {
+     "rel_e3": 2.681,
+     "res_e3": 29.035
+    }
+   },
+   "murphy_model": {
+    "Mp": {
+     "rel_e3": 1.04,
+     "res_e3": 17.978
+    },
+    "Mp+hist_pre_ge1": {
+     "rel_e3": 1.09,
+     "res_e3": 18.087
+    },
+    "Mp+hist_pre_ge5": {
+     "rel_e3": 1.001,
+     "res_e3": 18.019
+    },
+    "Mp+hist_pre_ge10": {
+     "rel_e3": 1.014,
+     "res_e3": 17.957
+    },
+    "Mp+hist_pre_log1p": {
+     "rel_e3": 1.032,
+     "res_e3": 18.025
+    },
+    "Mp+hist_post_only_ge1": {
+     "rel_e3": 0.925,
+     "res_e3": 17.617
+    },
+    "Mp+hist_total_ge1": {
+     "rel_e3": 1.091,
+     "res_e3": 18.022
+    },
+    "Mp+hist_first_wet_before_12": {
+     "rel_e3": 1.021,
+     "res_e3": 17.829
+    },
+    "Mp+asof_pre_ge1": {
+     "rel_e3": 1.04,
+     "res_e3": 17.978
+    },
+    "Mp+asof_pre_ge5": {
+     "rel_e3": 1.04,
+     "res_e3": 17.978
+    },
+    "Mp+asof_pre_ge10": {
+     "rel_e3": 1.04,
+     "res_e3": 17.978
+    },
+    "Mp+asof_pre_log1p": {
+     "rel_e3": 1.04,
+     "res_e3": 17.978
+    },
+    "Mp+asof_post_only_ge1": {
+     "rel_e3": 1.04,
+     "res_e3": 17.978
+    },
+    "Mp+asof_total_ge1": {
+     "rel_e3": 1.04,
+     "res_e3": 17.978
+    },
+    "Mp+asof_first_wet_before_12": {
+     "rel_e3": 1.04,
+     "res_e3": 17.978
+    }
+   }
+  }
+ },
+ "residual_by_forecast_timing": {
+  "fc_dry": {
+   "model": {
+    "station_days_w": 269.0,
+    "residual_c_station_demeaned": 0.0,
+    "mode_hit": 0.363
+   },
+   "market": {
+    "station_days_w": 269.0,
+    "residual_c_station_demeaned": -0.002,
+    "mode_hit": 0.363
+   }
+  },
+  "fc_rain_only_after_peak": {
+   "model": {
+    "station_days_w": 19.0,
+    "residual_c_station_demeaned": 0.083,
+    "mode_hit": 0.239
+   },
+   "market": {
+    "station_days_w": 19.0,
+    "residual_c_station_demeaned": 0.089,
+    "mode_hit": 0.239
+   }
+  },
+  "fc_pre_1_5mm": {
+   "model": {
+    "station_days_w": 72.0,
+    "residual_c_station_demeaned": -0.009,
+    "mode_hit": 0.465
+   },
+   "market": {
+    "station_days_w": 72.0,
+    "residual_c_station_demeaned": -0.008,
+    "mode_hit": 0.465
+   }
+  },
+  "fc_pre_5_10mm": {
+   "model": {
+    "station_days_w": 27.0,
+    "residual_c_station_demeaned": -0.182,
+    "mode_hit": 0.346
+   },
+   "market": {
+    "station_days_w": 27.0,
+    "residual_c_station_demeaned": -0.115,
+    "mode_hit": 0.346
+   }
+  },
+  "fc_pre_ge10mm": {
+   "model": {
+    "station_days_w": 24.0,
+    "residual_c_station_demeaned": 0.161,
+    "mode_hit": 0.401
+   },
+   "market": {
+    "station_days_w": 24.0,
+    "residual_c_station_demeaned": 0.106,
+    "mode_hit": 0.401
+   }
+  }
+ },
+ "seconds": 12
+}

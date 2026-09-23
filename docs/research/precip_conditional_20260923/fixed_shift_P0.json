@@ -1,0 +1,978 @@
+{
+ "stage": "P0",
+ "rows": 4621,
+ "split_day": "2026-09-08",
+ "wet_station_days": {
+  "5.0": 180.0,
+  "10.0": 97.0,
+  "20.0": 33.0
+ },
+ "base_rps_station_day": 0.07118,
+ "arms": {
+  "T5_d0.25_rule": {
+   "all": {
+    "mean": 0.000178,
+    "ci95": [
+     -0.00025,
+     0.00059
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.00022,
+    "ci95": [
+     -0.00054,
+     0.0009
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.000125,
+    "ci95": [
+     -8e-05,
+     0.00032
+    ],
+    "station_days": 581
+   }
+  },
+  "T5_d0.25_random_sign": {
+   "all": {
+    "mean": 5.3e-05,
+    "ci95": [
+     -0.00019,
+     0.00032
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.000322,
+    "ci95": [
+     0.0,
+     0.00066
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": -0.000282,
+    "ci95": [
+     -0.00051,
+     -3e-05
+    ],
+    "station_days": 581
+   }
+  },
+  "T5_d0.25_all_days": {
+   "all": {
+    "mean": 0.002342,
+    "ci95": [
+     0.00108,
+     0.00378
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.003282,
+    "ci95": [
+     0.00159,
+     0.00532
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.001177,
+    "ci95": [
+     4e-05,
+     0.00226
+    ],
+    "station_days": 581
+   }
+  },
+  "T5_d0.5_rule": {
+   "all": {
+    "mean": 0.000742,
+    "ci95": [
+     -9e-05,
+     0.00161
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.000764,
+    "ci95": [
+     -0.0007,
+     0.0022
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.000714,
+    "ci95": [
+     0.00024,
+     0.00125
+    ],
+    "station_days": 581
+   }
+  },
+  "T5_d0.5_random_sign": {
+   "all": {
+    "mean": 0.000491,
+    "ci95": [
+     4e-05,
+     0.00102
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.000965,
+    "ci95": [
+     0.00027,
+     0.00163
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": -9.8e-05,
+    "ci95": [
+     -0.00046,
+     0.00031
+    ],
+    "station_days": 581
+   }
+  },
+  "T5_d0.5_all_days": {
+   "all": {
+    "mean": 0.007676,
+    "ci95": [
+     0.00534,
+     0.01022
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.008959,
+    "ci95": [
+     0.0055,
+     0.01294
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.006085,
+    "ci95": [
+     0.00382,
+     0.00824
+    ],
+    "station_days": 581
+   }
+  },
+  "T5_d0.75_rule": {
+   "all": {
+    "mean": 0.001691,
+    "ci95": [
+     0.00042,
+     0.00294
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.00163,
+    "ci95": [
+     -0.00074,
+     0.00369
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.001766,
+    "ci95": [
+     0.00091,
+     0.00284
+    ],
+    "station_days": 581
+   }
+  },
+  "T5_d0.75_random_sign": {
+   "all": {
+    "mean": 0.001315,
+    "ci95": [
+     0.00067,
+     0.00206
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.00193,
+    "ci95": [
+     0.00094,
+     0.00294
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.000552,
+    "ci95": [
+     5e-05,
+     0.00106
+    ],
+    "station_days": 581
+   }
+  },
+  "T5_d0.75_all_days": {
+   "all": {
+    "mean": 0.016002,
+    "ci95": [
+     0.01242,
+     0.01958
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.017031,
+    "ci95": [
+     0.01181,
+     0.02244
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.014724,
+    "ci95": [
+     0.01123,
+     0.01768
+    ],
+    "station_days": 581
+   }
+  },
+  "T5_d1_rule": {
+   "all": {
+    "mean": 0.003025,
+    "ci95": [
+     0.00126,
+     0.0048
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.002819,
+    "ci95": [
+     -0.00047,
+     0.00566
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.003281,
+    "ci95": [
+     0.00198,
+     0.00507
+    ],
+    "station_days": 581
+   }
+  },
+  "T5_d1_random_sign": {
+   "all": {
+    "mean": 0.002525,
+    "ci95": [
+     0.00169,
+     0.00349
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.003215,
+    "ci95": [
+     0.00187,
+     0.00468
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.001668,
+    "ci95": [
+     0.00094,
+     0.0025
+    ],
+    "station_days": 581
+   }
+  },
+  "T5_d1_all_days": {
+   "all": {
+    "mean": 0.027319,
+    "ci95": [
+     0.02237,
+     0.03192
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.0275,
+    "ci95": [
+     0.02015,
+     0.03524
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.027094,
+    "ci95": [
+     0.02233,
+     0.03102
+    ],
+    "station_days": 581
+   }
+  },
+  "T10_d0.25_rule": {
+   "all": {
+    "mean": -3.8e-05,
+    "ci95": [
+     -0.0004,
+     0.00023
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": -0.000204,
+    "ci95": [
+     -0.00079,
+     0.00028
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.000168,
+    "ci95": [
+     1e-05,
+     0.00032
+    ],
+    "station_days": 581
+   }
+  },
+  "T10_d0.25_random_sign": {
+   "all": {
+    "mean": -4.4e-05,
+    "ci95": [
+     -0.00024,
+     0.00017
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 8e-05,
+    "ci95": [
+     -0.00017,
+     0.00038
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": -0.000199,
+    "ci95": [
+     -0.0005,
+     1e-05
+    ],
+    "station_days": 581
+   }
+  },
+  "T10_d0.25_all_days": {
+   "all": {
+    "mean": 0.002342,
+    "ci95": [
+     0.00106,
+     0.0037
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.003282,
+    "ci95": [
+     0.00148,
+     0.00517
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.001177,
+    "ci95": [
+     1e-05,
+     0.00231
+    ],
+    "station_days": 581
+   }
+  },
+  "T10_d0.5_rule": {
+   "all": {
+    "mean": 0.000134,
+    "ci95": [
+     -0.00057,
+     0.00069
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": -0.000231,
+    "ci95": [
+     -0.00126,
+     0.00078
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.000586,
+    "ci95": [
+     0.00025,
+     0.00094
+    ],
+    "station_days": 581
+   }
+  },
+  "T10_d0.5_random_sign": {
+   "all": {
+    "mean": 0.000121,
+    "ci95": [
+     -0.00024,
+     0.00049
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.000336,
+    "ci95": [
+     -0.0002,
+     0.00089
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": -0.000145,
+    "ci95": [
+     -0.00062,
+     0.00025
+    ],
+    "station_days": 581
+   }
+  },
+  "T10_d0.5_all_days": {
+   "all": {
+    "mean": 0.007676,
+    "ci95": [
+     0.00538,
+     0.01045
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.008959,
+    "ci95": [
+     0.00526,
+     0.01286
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.006085,
+    "ci95": [
+     0.00387,
+     0.0081
+    ],
+    "station_days": 581
+   }
+  },
+  "T10_d0.75_rule": {
+   "all": {
+    "mean": 0.000515,
+    "ci95": [
+     -0.00049,
+     0.00137
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": -8e-05,
+    "ci95": [
+     -0.0017,
+     0.00142
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.001255,
+    "ci95": [
+     0.00065,
+     0.00193
+    ],
+    "station_days": 581
+   }
+  },
+  "T10_d0.75_random_sign": {
+   "all": {
+    "mean": 0.000497,
+    "ci95": [
+     -1e-05,
+     0.00108
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.000766,
+    "ci95": [
+     3e-05,
+     0.00161
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.000162,
+    "ci95": [
+     -0.0005,
+     0.00077
+    ],
+    "station_days": 581
+   }
+  },
+  "T10_d0.75_all_days": {
+   "all": {
+    "mean": 0.016002,
+    "ci95": [
+     0.01249,
+     0.01988
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.017031,
+    "ci95": [
+     0.01178,
+     0.02274
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.014724,
+    "ci95": [
+     0.0112,
+     0.01757
+    ],
+    "station_days": 581
+   }
+  },
+  "T10_d1_rule": {
+   "all": {
+    "mean": 0.001107,
+    "ci95": [
+     -0.00023,
+     0.00232
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.000248,
+    "ci95": [
+     -0.00183,
+     0.00224
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.002173,
+    "ci95": [
+     0.00128,
+     0.00342
+    ],
+    "station_days": 581
+   }
+  },
+  "T10_d1_random_sign": {
+   "all": {
+    "mean": 0.001082,
+    "ci95": [
+     0.0004,
+     0.00182
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.001373,
+    "ci95": [
+     0.00041,
+     0.00248
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.000721,
+    "ci95": [
+     -0.00016,
+     0.00164
+    ],
+    "station_days": 581
+   }
+  },
+  "T10_d1_all_days": {
+   "all": {
+    "mean": 0.027319,
+    "ci95": [
+     0.02269,
+     0.03184
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.0275,
+    "ci95": [
+     0.02047,
+     0.03511
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.027094,
+    "ci95": [
+     0.02234,
+     0.03089
+    ],
+    "station_days": 581
+   }
+  },
+  "T20_d0.25_rule": {
+   "all": {
+    "mean": -2.2e-05,
+    "ci95": [
+     -0.00021,
+     0.00015
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": -0.000109,
+    "ci95": [
+     -0.00042,
+     0.00019
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 8.6e-05,
+    "ci95": [
+     -6e-05,
+     0.00025
+    ],
+    "station_days": 581
+   }
+  },
+  "T20_d0.25_random_sign": {
+   "all": {
+    "mean": 2e-06,
+    "ci95": [
+     -6e-05,
+     7e-05
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 4e-06,
+    "ci95": [
+     -8e-05,
+     9e-05
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.0,
+    "ci95": [
+     -0.00011,
+     0.0001
+    ],
+    "station_days": 581
+   }
+  },
+  "T20_d0.25_all_days": {
+   "all": {
+    "mean": 0.002342,
+    "ci95": [
+     0.00117,
+     0.00372
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.003282,
+    "ci95": [
+     0.00156,
+     0.00531
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.001177,
+    "ci95": [
+     6e-05,
+     0.00222
+    ],
+    "station_days": 581
+   }
+  },
+  "T20_d0.5_rule": {
+   "all": {
+    "mean": 2e-05,
+    "ci95": [
+     -0.00037,
+     0.00038
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": -0.00015,
+    "ci95": [
+     -0.00076,
+     0.00047
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.00023,
+    "ci95": [
+     -6e-05,
+     0.00058
+    ],
+    "station_days": 581
+   }
+  },
+  "T20_d0.5_random_sign": {
+   "all": {
+    "mean": 6.8e-05,
+    "ci95": [
+     -6e-05,
+     0.0002
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 7.5e-05,
+    "ci95": [
+     -7e-05,
+     0.00022
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 6e-05,
+    "ci95": [
+     -0.00016,
+     0.00027
+    ],
+    "station_days": 581
+   }
+  },
+  "T20_d0.5_all_days": {
+   "all": {
+    "mean": 0.007676,
+    "ci95": [
+     0.00539,
+     0.0103
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.008959,
+    "ci95": [
+     0.00535,
+     0.01278
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.006085,
+    "ci95": [
+     0.00379,
+     0.00819
+    ],
+    "station_days": 581
+   }
+  },
+  "T20_d0.75_rule": {
+   "all": {
+    "mean": 0.000127,
+    "ci95": [
+     -0.00044,
+     0.00071
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": -0.000121,
+    "ci95": [
+     -0.0011,
+     0.00079
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.000435,
+    "ci95": [
+     -2e-05,
+     0.00098
+    ],
+    "station_days": 581
+   }
+  },
+  "T20_d0.75_random_sign": {
+   "all": {
+    "mean": 0.000198,
+    "ci95": [
+     1e-05,
+     0.00039
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.000214,
+    "ci95": [
+     -0.0,
+     0.00043
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.000179,
+    "ci95": [
+     -0.00017,
+     0.00051
+    ],
+    "station_days": 581
+   }
+  },
+  "T20_d0.75_all_days": {
+   "all": {
+    "mean": 0.016002,
+    "ci95": [
+     0.01272,
+     0.01975
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.017031,
+    "ci95": [
+     0.01167,
+     0.02267
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.014724,
+    "ci95": [
+     0.0112,
+     0.01775
+    ],
+    "station_days": 581
+   }
+  },
+  "T20_d1_rule": {
+   "all": {
+    "mean": 0.000298,
+    "ci95": [
+     -0.00047,
+     0.00111
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": -2.5e-05,
+    "ci95": [
+     -0.00125,
+     0.00125
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.000698,
+    "ci95": [
+     6e-05,
+     0.00145
+    ],
+    "station_days": 581
+   }
+  },
+  "T20_d1_random_sign": {
+   "all": {
+    "mean": 0.000391,
+    "ci95": [
+     0.00013,
+     0.00066
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.000419,
+    "ci95": [
+     0.00014,
+     0.00071
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.000357,
+    "ci95": [
+     -9e-05,
+     0.00083
+    ],
+    "station_days": 581
+   }
+  },
+  "T20_d1_all_days": {
+   "all": {
+    "mean": 0.027319,
+    "ci95": [
+     0.02259,
+     0.03211
+    ],
+    "station_days": 1302
+   },
+   "first_half": {
+    "mean": 0.0275,
+    "ci95": [
+     0.02021,
+     0.03489
+    ],
+    "station_days": 721
+   },
+   "second_half": {
+    "mean": 0.027094,
+    "ci95": [
+     0.02229,
+     0.03095
+    ],
+    "station_days": 581
+   }
+  }
+ },
+ "chosen_on_first_half": {
+  "T": 10.0,
+  "delta": 0.5,
+  "first_half_mean": -0.000231,
+  "second_half": {
+   "mean": 0.000586,
+   "ci95": [
+    0.00025,
+    0.00094
+   ],
+   "station_days": 581
+  },
+  "second_half_random_sign": {
+   "mean": -0.000145,
+   "ci95": [
+    -0.00062,
+    0.00025
+   ],
+   "station_days": 581
+  },
+  "second_half_all_days": {
+   "mean": 0.006085,
+   "ci95": [
+    0.00387,
+    0.0081
+   ],
+   "station_days": 581
+  }
+ }
+}
