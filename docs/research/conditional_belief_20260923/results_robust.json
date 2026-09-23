@@ -1,0 +1,2397 @@
+{
+ "protocol": "PROTOCOL.md",
+ "variant": "robust",
+ "stages": {
+  "P0": {
+   "families": [
+    "T",
+    "S",
+    "R",
+    "A",
+    "W",
+    "K"
+   ],
+   "folds": [
+    "2026-08-25",
+    "2026-08-26",
+    "2026-08-27",
+    "2026-08-28",
+    "2026-08-29",
+    "2026-08-30",
+    "2026-08-31",
+    "2026-09-01",
+    "2026-09-02",
+    "2026-09-03",
+    "2026-09-04",
+    "2026-09-05",
+    "2026-09-06",
+    "2026-09-07",
+    "2026-09-08",
+    "2026-09-09",
+    "2026-09-10",
+    "2026-09-11",
+    "2026-09-12",
+    "2026-09-13",
+    "2026-09-14",
+    "2026-09-15",
+    "2026-09-16",
+    "2026-09-17",
+    "2026-09-18",
+    "2026-09-19",
+    "2026-09-20",
+    "2026-09-21",
+    "2026-09-22"
+   ],
+   "all": {
+    "decisions": 3827,
+    "station_days": 997,
+    "event_days": 29,
+    "first_test_day": "2026-08-25",
+    "last_test_day": "2026-09-22",
+    "log_score": {
+     "M0": -1.3608,
+     "M1": -1.35746,
+     "+T": -1.36179,
+     "+S": -1.3649,
+     "+R": -1.35736,
+     "+A": -1.35582,
+     "+W": -1.36704,
+     "+K": -1.35904,
+     "full": -1.37453,
+     "full-T": -1.37419,
+     "full-S": -1.36926,
+     "full-R": -1.37433,
+     "full-A": -1.3768,
+     "full-W": -1.36415,
+     "full-K": -1.37223,
+     "raw_market": -1.36661,
+     "raw_model": -1.71504
+    },
+    "gains": {
+     "M0_vs_market_raw": {
+      "mean": 0.0058,
+      "ci95": [
+       -0.00414,
+       0.01557
+      ]
+     },
+     "M1_vs_M0": {
+      "mean": 0.00334,
+      "ci95": [
+       0.00042,
+       0.00627
+      ]
+     },
+     "full_vs_M1": {
+      "mean": -0.01707,
+      "ci95": [
+       -0.0343,
+       -0.00053
+      ]
+     },
+     "full_vs_M0": {
+      "mean": -0.01372,
+      "ci95": [
+       -0.03331,
+       0.00444
+      ]
+     },
+     "full_vs_market_raw": {
+      "mean": -0.00792,
+      "ci95": [
+       -0.03414,
+       0.01758
+      ]
+     },
+     "model_raw_vs_market_raw": {
+      "mean": -0.34843,
+      "ci95": [
+       -0.44305,
+       -0.24806
+      ]
+     }
+    },
+    "attribution": {
+     "T": {
+      "name": "时间",
+      "add_one": {
+       "mean": -0.00433,
+       "ci95": [
+        -0.00933,
+        0.00072
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00034,
+       "ci95": [
+        -0.00428,
+        0.0039
+       ]
+      },
+      "interaction": 0.00399
+     },
+     "S": {
+      "name": "模型自身",
+      "add_one": {
+       "mean": -0.00745,
+       "ci95": [
+        -0.01385,
+        -0.00101
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00527,
+       "ci95": [
+        -0.012,
+        0.00145
+       ]
+      },
+      "interaction": 0.00218
+     },
+     "R": {
+      "name": "区域模型",
+      "add_one": {
+       "mean": 0.0001,
+       "ci95": [
+        -0.00053,
+        0.00068
+       ]
+      },
+      "drop_one": {
+       "mean": -0.0002,
+       "ci95": [
+        -0.00071,
+        0.00035
+       ]
+      },
+      "interaction": -0.0003
+     },
+     "A": {
+      "name": "TAF",
+      "add_one": {
+       "mean": 0.00164,
+       "ci95": [
+        -0.00062,
+        0.00485
+       ]
+      },
+      "drop_one": {
+       "mean": 0.00228,
+       "ci95": [
+        0.00065,
+        0.0045
+       ]
+      },
+      "interaction": 0.00064
+     },
+     "W": {
+      "name": "云雨风/辐射",
+      "add_one": {
+       "mean": -0.00958,
+       "ci95": [
+        -0.0201,
+        -0.00261
+       ]
+      },
+      "drop_one": {
+       "mean": -0.01038,
+       "ci95": [
+        -0.02137,
+        -0.00185
+       ]
+      },
+      "interaction": -0.0008
+     },
+     "K": {
+      "name": "盘口",
+      "add_one": {
+       "mean": -0.00158,
+       "ci95": [
+        -0.00673,
+        0.00312
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00229,
+       "ci95": [
+        -0.00742,
+        0.00266
+       ]
+      },
+      "interaction": -0.00071
+     }
+    },
+    "trading": {
+     "raw_p": {
+      "buys_per_station_day": 3.281,
+      "pnl_per_station_day": -0.03794,
+      "pnl_ci95": [
+       -0.06443,
+       -0.01103
+      ],
+      "roi": -0.1218
+     },
+     "M0": {
+      "buys_per_station_day": 0.66,
+      "pnl_per_station_day": 0.01857,
+      "pnl_ci95": [
+       -0.00475,
+       0.0392
+      ],
+      "roi": 0.0614
+     },
+     "M1": {
+      "buys_per_station_day": 0.78,
+      "pnl_per_station_day": 0.02197,
+      "pnl_ci95": [
+       -0.00259,
+       0.045
+      ],
+      "roi": 0.0653
+     },
+     "full": {
+      "buys_per_station_day": 1.278,
+      "pnl_per_station_day": 0.02879,
+      "pnl_ci95": [
+       -0.00412,
+       0.06314
+      ],
+      "roi": 0.0699
+     },
+     "+T": {
+      "buys_per_station_day": 0.945,
+      "pnl_per_station_day": 0.02077,
+      "pnl_ci95": [
+       -0.00654,
+       0.04972
+      ],
+      "roi": 0.0561
+     },
+     "+S": {
+      "buys_per_station_day": 1.021,
+      "pnl_per_station_day": 0.02096,
+      "pnl_ci95": [
+       -0.01026,
+       0.05314
+      ],
+      "roi": 0.0572
+     },
+     "+R": {
+      "buys_per_station_day": 0.777,
+      "pnl_per_station_day": 0.02269,
+      "pnl_ci95": [
+       -0.00236,
+       0.04551
+      ],
+      "roi": 0.0681
+     },
+     "+A": {
+      "buys_per_station_day": 0.839,
+      "pnl_per_station_day": 0.03128,
+      "pnl_ci95": [
+       0.00411,
+       0.05889
+      ],
+      "roi": 0.0889
+     },
+     "+W": {
+      "buys_per_station_day": 0.963,
+      "pnl_per_station_day": 0.0193,
+      "pnl_ci95": [
+       -0.0003,
+       0.04028
+      ],
+      "roi": 0.0513
+     },
+     "+K": {
+      "buys_per_station_day": 0.871,
+      "pnl_per_station_day": 0.02282,
+      "pnl_ci95": [
+       -0.00496,
+       0.05275
+      ],
+      "roi": 0.0679
+     }
+    }
+   },
+   "evidence_epoch": {
+    "decisions": 1377,
+    "station_days": 305,
+    "event_days": 8,
+    "first_test_day": "2026-09-15",
+    "last_test_day": "2026-09-22",
+    "log_score": {
+     "M0": -1.36852,
+     "M1": -1.36241,
+     "+T": -1.36227,
+     "+S": -1.36931,
+     "+R": -1.36171,
+     "+A": -1.36316,
+     "+W": -1.36524,
+     "+K": -1.35818,
+     "full": -1.36635,
+     "full-T": -1.36655,
+     "full-S": -1.35904,
+     "full-R": -1.36669,
+     "full-A": -1.36611,
+     "full-W": -1.36397,
+     "full-K": -1.37169,
+     "raw_market": -1.36915,
+     "raw_model": -1.60431
+    },
+    "gains": {
+     "M0_vs_market_raw": {
+      "mean": 0.00063,
+      "ci95": [
+       -0.02435,
+       0.02487
+      ]
+     },
+     "M1_vs_M0": {
+      "mean": 0.0061,
+      "ci95": [
+       0.00375,
+       0.00825
+      ]
+     },
+     "full_vs_M1": {
+      "mean": -0.00394,
+      "ci95": [
+       -0.0171,
+       0.01394
+      ]
+     },
+     "full_vs_M0": {
+      "mean": 0.00216,
+      "ci95": [
+       -0.01,
+       0.0204
+      ]
+     },
+     "full_vs_market_raw": {
+      "mean": 0.0028,
+      "ci95": [
+       -0.03082,
+       0.04527
+      ]
+     },
+     "model_raw_vs_market_raw": {
+      "mean": -0.23516,
+      "ci95": [
+       -0.34176,
+       -0.13627
+      ]
+     }
+    },
+    "attribution": {
+     "T": {
+      "name": "时间",
+      "add_one": {
+       "mean": 0.00015,
+       "ci95": [
+        -0.00474,
+        0.00576
+       ]
+      },
+      "drop_one": {
+       "mean": 0.0002,
+       "ci95": [
+        -0.0021,
+        0.0033
+       ]
+      },
+      "interaction": 5e-05
+     },
+     "S": {
+      "name": "模型自身",
+      "add_one": {
+       "mean": -0.0069,
+       "ci95": [
+        -0.01582,
+        0.00136
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00731,
+       "ci95": [
+        -0.01419,
+        -0.00074
+       ]
+      },
+      "interaction": -0.00041
+     },
+     "R": {
+      "name": "区域模型",
+      "add_one": {
+       "mean": 0.0007,
+       "ci95": [
+        1e-05,
+        0.00188
+       ]
+      },
+      "drop_one": {
+       "mean": 0.00034,
+       "ci95": [
+        -0.00038,
+        0.00169
+       ]
+      },
+      "interaction": -0.00036
+     },
+     "A": {
+      "name": "TAF",
+      "add_one": {
+       "mean": -0.00075,
+       "ci95": [
+        -0.00111,
+        -0.00052
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00024,
+       "ci95": [
+        -0.00061,
+        0.00018
+       ]
+      },
+      "interaction": 0.00051
+     },
+     "W": {
+      "name": "云雨风/辐射",
+      "add_one": {
+       "mean": -0.00282,
+       "ci95": [
+        -0.00712,
+        0.00186
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00238,
+       "ci95": [
+        -0.00652,
+        0.00206
+       ]
+      },
+      "interaction": 0.00044
+     },
+     "K": {
+      "name": "盘口",
+      "add_one": {
+       "mean": 0.00423,
+       "ci95": [
+        0.00212,
+        0.0062
+       ]
+      },
+      "drop_one": {
+       "mean": 0.00534,
+       "ci95": [
+        0.00334,
+        0.00745
+       ]
+      },
+      "interaction": 0.00111
+     }
+    },
+    "trading": {
+     "raw_p": {
+      "buys_per_station_day": 2.546,
+      "pnl_per_station_day": -0.00638,
+      "pnl_ci95": [
+       -0.04462,
+       0.0307
+      ],
+      "roi": -0.0186
+     },
+     "M0": {
+      "buys_per_station_day": 0.72,
+      "pnl_per_station_day": -4e-05,
+      "pnl_ci95": [
+       -0.04589,
+       0.04086
+      ],
+      "roi": -0.0001
+     },
+     "M1": {
+      "buys_per_station_day": 0.812,
+      "pnl_per_station_day": -0.00119,
+      "pnl_ci95": [
+       -0.04636,
+       0.03802
+      ],
+      "roi": -0.0034
+     },
+     "full": {
+      "buys_per_station_day": 1.021,
+      "pnl_per_station_day": 0.01889,
+      "pnl_ci95": [
+       -0.01221,
+       0.05188
+      ],
+      "roi": 0.0465
+     },
+     "+T": {
+      "buys_per_station_day": 0.91,
+      "pnl_per_station_day": -0.00104,
+      "pnl_ci95": [
+       -0.04597,
+       0.04081
+      ],
+      "roi": -0.0027
+     },
+     "+S": {
+      "buys_per_station_day": 0.937,
+      "pnl_per_station_day": -0.00113,
+      "pnl_ci95": [
+       -0.04562,
+       0.04292
+      ],
+      "roi": -0.0029
+     },
+     "+R": {
+      "buys_per_station_day": 0.808,
+      "pnl_per_station_day": 0.00149,
+      "pnl_ci95": [
+       -0.04419,
+       0.04478
+      ],
+      "roi": 0.0043
+     },
+     "+A": {
+      "buys_per_station_day": 0.818,
+      "pnl_per_station_day": 6e-05,
+      "pnl_ci95": [
+       -0.04519,
+       0.04026
+      ],
+      "roi": 0.0002
+     },
+     "+W": {
+      "buys_per_station_day": 0.909,
+      "pnl_per_station_day": 0.01209,
+      "pnl_ci95": [
+       -0.02505,
+       0.04506
+      ],
+      "roi": 0.0322
+     },
+     "+K": {
+      "buys_per_station_day": 0.789,
+      "pnl_per_station_day": 0.00396,
+      "pnl_ci95": [
+       -0.03574,
+       0.04433
+      ],
+      "roi": 0.0115
+     }
+    }
+   },
+   "coefficients_all_data": [
+    {
+     "term": "Lm",
+     "family": "base",
+     "coef": 1.0294
+    },
+    {
+     "term": "D",
+     "family": "base",
+     "coef": -0.081
+    },
+    {
+     "term": "h*D",
+     "family": "T",
+     "coef": 0.1847
+    },
+    {
+     "term": "h*Lm",
+     "family": "T",
+     "coef": 0.333
+    },
+    {
+     "term": "h2*D",
+     "family": "T",
+     "coef": -0.1399
+    },
+    {
+     "term": "h2*Lm",
+     "family": "T",
+     "coef": -0.0658
+    },
+    {
+     "term": "sigma_p*D",
+     "family": "S",
+     "coef": 0.1383
+    },
+    {
+     "term": "sigma_p*z2",
+     "family": "S",
+     "coef": 0.043
+    },
+    {
+     "term": "peak_p*D",
+     "family": "S",
+     "coef": 0.0016
+    },
+    {
+     "term": "system_span*D",
+     "family": "S",
+     "coef": -0.0752
+    },
+    {
+     "term": "system_span*z2",
+     "family": "S",
+     "coef": -0.0651
+    },
+    {
+     "term": "z2",
+     "family": "S",
+     "coef": -0.0024
+    },
+    {
+     "term": "reg_d2",
+     "family": "R",
+     "coef": -0.3495
+    },
+    {
+     "term": "reg_abs",
+     "family": "R",
+     "coef": 0.327
+    },
+    {
+     "term": "tx_d2",
+     "family": "A",
+     "coef": -0.8025
+    },
+    {
+     "term": "tx_abs",
+     "family": "A",
+     "coef": 0.6527
+    },
+    {
+     "term": "taf_age*D",
+     "family": "A",
+     "coef": -0.0936
+    },
+    {
+     "term": "taf_age_missing*D",
+     "family": "A",
+     "coef": 0.0754
+    },
+    {
+     "term": "kt*D",
+     "family": "W",
+     "coef": -0.0454
+    },
+    {
+     "term": "kt*dmu",
+     "family": "W",
+     "coef": 0.1022
+    },
+    {
+     "term": "kt_missing*D",
+     "family": "W",
+     "coef": 0.1001
+    },
+    {
+     "term": "cloud*D",
+     "family": "W",
+     "coef": -0.0777
+    },
+    {
+     "term": "cloud*dmu",
+     "family": "W",
+     "coef": 0.0036
+    },
+    {
+     "term": "cloud_missing*D",
+     "family": "W",
+     "coef": 0.0754
+    },
+    {
+     "term": "precip*D",
+     "family": "W",
+     "coef": 0.0482
+    },
+    {
+     "term": "precip*dmu",
+     "family": "W",
+     "coef": 0.0
+    },
+    {
+     "term": "precip_missing*D",
+     "family": "W",
+     "coef": 0.0754
+    },
+    {
+     "term": "wind*D",
+     "family": "W",
+     "coef": 0.0105
+    },
+    {
+     "term": "wind*dmu",
+     "family": "W",
+     "coef": 0.0485
+    },
+    {
+     "term": "wind_missing*D",
+     "family": "W",
+     "coef": 0.0754
+    },
+    {
+     "term": "top_gap*D",
+     "family": "K",
+     "coef": 0.2252
+    },
+    {
+     "term": "entropy*D",
+     "family": "K",
+     "coef": 0.0746
+    },
+    {
+     "term": "half_spread",
+     "family": "K",
+     "coef": 0.0171
+    }
+   ]
+  },
+  "P0-M": {
+   "families": [
+    "T",
+    "S",
+    "R",
+    "A",
+    "W",
+    "K"
+   ],
+   "folds": [
+    "2026-09-13",
+    "2026-09-14",
+    "2026-09-15",
+    "2026-09-16",
+    "2026-09-17",
+    "2026-09-18",
+    "2026-09-19",
+    "2026-09-20",
+    "2026-09-21",
+    "2026-09-22"
+   ],
+   "all": {
+    "decisions": 2493,
+    "station_days": 411,
+    "event_days": 10,
+    "first_test_day": "2026-09-13",
+    "last_test_day": "2026-09-22",
+    "log_score": {
+     "M0": -1.28789,
+     "M1": -1.28767,
+     "+T": -1.28912,
+     "+S": -1.28853,
+     "+R": -1.28912,
+     "+A": -1.2881,
+     "+W": -1.29084,
+     "+K": -1.28801,
+     "full": -1.29228,
+     "full-T": -1.29128,
+     "full-S": -1.2919,
+     "full-R": -1.29075,
+     "full-A": -1.29144,
+     "full-W": -1.29026,
+     "full-K": -1.2964,
+     "raw_market": -1.27505,
+     "raw_model": -1.49638
+    },
+    "gains": {
+     "M0_vs_market_raw": {
+      "mean": -0.01283,
+      "ci95": [
+       -0.03262,
+       0.009
+      ]
+     },
+     "M1_vs_M0": {
+      "mean": 0.00022,
+      "ci95": [
+       -0.00109,
+       0.0015
+      ]
+     },
+     "full_vs_M1": {
+      "mean": -0.00461,
+      "ci95": [
+       -0.01457,
+       0.0035
+      ]
+     },
+     "full_vs_M0": {
+      "mean": -0.00439,
+      "ci95": [
+       -0.014,
+       0.00399
+      ]
+     },
+     "full_vs_market_raw": {
+      "mean": -0.01722,
+      "ci95": [
+       -0.0431,
+       0.0077
+      ]
+     },
+     "model_raw_vs_market_raw": {
+      "mean": -0.22132,
+      "ci95": [
+       -0.26782,
+       -0.1735
+      ]
+     }
+    },
+    "attribution": {
+     "T": {
+      "name": "时间",
+      "add_one": {
+       "mean": -0.00145,
+       "ci95": [
+        -0.00248,
+        -0.00031
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00099,
+       "ci95": [
+        -0.00138,
+        -0.00073
+       ]
+      },
+      "interaction": 0.00046
+     },
+     "S": {
+      "name": "模型自身",
+      "add_one": {
+       "mean": -0.00086,
+       "ci95": [
+        -0.00721,
+        0.00707
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00038,
+       "ci95": [
+        -0.00688,
+        0.00694
+       ]
+      },
+      "interaction": 0.00048
+     },
+     "R": {
+      "name": "区域模型",
+      "add_one": {
+       "mean": -0.00145,
+       "ci95": [
+        -0.00384,
+        0.00116
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00153,
+       "ci95": [
+        -0.00379,
+        0.0009
+       ]
+      },
+      "interaction": -8e-05
+     },
+     "A": {
+      "name": "TAF",
+      "add_one": {
+       "mean": -0.00043,
+       "ci95": [
+        -0.0031,
+        0.00214
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00084,
+       "ci95": [
+        -0.00393,
+        0.00188
+       ]
+      },
+      "interaction": -0.00041
+     },
+     "W": {
+      "name": "云雨风/辐射",
+      "add_one": {
+       "mean": -0.00317,
+       "ci95": [
+        -0.0085,
+        0.00165
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00201,
+       "ci95": [
+        -0.0081,
+        0.00429
+       ]
+      },
+      "interaction": 0.00116
+     },
+     "K": {
+      "name": "盘口",
+      "add_one": {
+       "mean": -0.00034,
+       "ci95": [
+        -0.00275,
+        0.00211
+       ]
+      },
+      "drop_one": {
+       "mean": 0.00413,
+       "ci95": [
+        0.00081,
+        0.0075
+       ]
+      },
+      "interaction": 0.00447
+     }
+    },
+    "trading": {
+     "raw_p": {
+      "buys_per_station_day": 2.685,
+      "pnl_per_station_day": -0.01299,
+      "pnl_ci95": [
+       -0.03137,
+       0.00522
+      ],
+      "roi": -0.0433
+     },
+     "M0": {
+      "buys_per_station_day": 0.717,
+      "pnl_per_station_day": -0.01317,
+      "pnl_ci95": [
+       -0.05034,
+       0.03428
+      ],
+      "roi": -0.0366
+     },
+     "M1": {
+      "buys_per_station_day": 0.712,
+      "pnl_per_station_day": -0.01803,
+      "pnl_ci95": [
+       -0.05295,
+       0.02556
+      ],
+      "roi": -0.0507
+     },
+     "full": {
+      "buys_per_station_day": 1.093,
+      "pnl_per_station_day": 0.00132,
+      "pnl_ci95": [
+       -0.03711,
+       0.04232
+      ],
+      "roi": 0.0032
+     },
+     "+T": {
+      "buys_per_station_day": 0.727,
+      "pnl_per_station_day": -0.0172,
+      "pnl_ci95": [
+       -0.05015,
+       0.0243
+      ],
+      "roi": -0.0478
+     },
+     "+S": {
+      "buys_per_station_day": 0.887,
+      "pnl_per_station_day": -0.0124,
+      "pnl_ci95": [
+       -0.04725,
+       0.02819
+      ],
+      "roi": -0.032
+     },
+     "+R": {
+      "buys_per_station_day": 0.729,
+      "pnl_per_station_day": -0.01803,
+      "pnl_ci95": [
+       -0.0537,
+       0.02736
+      ],
+      "roi": -0.0507
+     },
+     "+A": {
+      "buys_per_station_day": 0.771,
+      "pnl_per_station_day": -0.00744,
+      "pnl_ci95": [
+       -0.04222,
+       0.0312
+      ],
+      "roi": -0.0203
+     },
+     "+W": {
+      "buys_per_station_day": 0.9,
+      "pnl_per_station_day": -0.00718,
+      "pnl_ci95": [
+       -0.0423,
+       0.03542
+      ],
+      "roi": -0.019
+     },
+     "+K": {
+      "buys_per_station_day": 0.732,
+      "pnl_per_station_day": -0.02003,
+      "pnl_ci95": [
+       -0.05413,
+       0.01974
+      ],
+      "roi": -0.0552
+     }
+    }
+   },
+   "evidence_epoch": {
+    "decisions": 733,
+    "station_days": 134,
+    "event_days": 4,
+    "first_test_day": "2026-09-19",
+    "last_test_day": "2026-09-22",
+    "log_score": {
+     "M0": -1.15748,
+     "M1": -1.15978,
+     "+T": -1.15952,
+     "+S": -1.16099,
+     "+R": -1.1629,
+     "+A": -1.15806,
+     "+W": -1.1617,
+     "+K": -1.1591,
+     "full": -1.16381,
+     "full-T": -1.16342,
+     "full-S": -1.1633,
+     "full-R": -1.16076,
+     "full-A": -1.16493,
+     "full-W": -1.16143,
+     "full-K": -1.16459,
+     "raw_market": -1.16637,
+     "raw_model": -1.46191
+    },
+    "gains": {
+     "M0_vs_market_raw": {
+      "mean": 0.00888,
+      "ci95": [
+       0.00511,
+       0.01245
+      ]
+     },
+     "M1_vs_M0": {
+      "mean": -0.0023,
+      "ci95": [
+       -0.00306,
+       -0.00163
+      ]
+     },
+     "full_vs_M1": {
+      "mean": -0.00403,
+      "ci95": [
+       -0.01068,
+       0.00602
+      ]
+     },
+     "full_vs_M0": {
+      "mean": -0.00632,
+      "ci95": [
+       -0.01324,
+       0.0044
+      ]
+     },
+     "full_vs_market_raw": {
+      "mean": 0.00256,
+      "ci95": [
+       -0.00621,
+       0.00951
+      ]
+     },
+     "model_raw_vs_market_raw": {
+      "mean": -0.29554,
+      "ci95": [
+       -0.34017,
+       -0.25402
+      ]
+     }
+    },
+    "attribution": {
+     "T": {
+      "name": "时间",
+      "add_one": {
+       "mean": 0.00026,
+       "ci95": [
+        1e-05,
+        0.00067
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00039,
+       "ci95": [
+        -0.00094,
+        0.00073
+       ]
+      },
+      "interaction": -0.00065
+     },
+     "S": {
+      "name": "模型自身",
+      "add_one": {
+       "mean": -0.00121,
+       "ci95": [
+        -0.00218,
+        0.00026
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00051,
+       "ci95": [
+        -0.00148,
+        0.00068
+       ]
+      },
+      "interaction": 0.0007
+     },
+     "R": {
+      "name": "区域模型",
+      "add_one": {
+       "mean": -0.00312,
+       "ci95": [
+        -0.00733,
+        0.00169
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00305,
+       "ci95": [
+        -0.00786,
+        0.00174
+       ]
+      },
+      "interaction": 7e-05
+     },
+     "A": {
+      "name": "TAF",
+      "add_one": {
+       "mean": 0.00172,
+       "ci95": [
+        -0.00132,
+        0.00421
+       ]
+      },
+      "drop_one": {
+       "mean": 0.00112,
+       "ci95": [
+        -0.00159,
+        0.00345
+       ]
+      },
+      "interaction": -0.0006
+     },
+     "W": {
+      "name": "云雨风/辐射",
+      "add_one": {
+       "mean": -0.00192,
+       "ci95": [
+        -0.00345,
+        0.00015
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00238,
+       "ci95": [
+        -0.00431,
+        0.00105
+       ]
+      },
+      "interaction": -0.00046
+     },
+     "K": {
+      "name": "盘口",
+      "add_one": {
+       "mean": 0.00068,
+       "ci95": [
+        -0.00442,
+        0.00406
+       ]
+      },
+      "drop_one": {
+       "mean": 0.00079,
+       "ci95": [
+        -0.00738,
+        0.00422
+       ]
+      },
+      "interaction": 0.00011
+     }
+    },
+    "trading": {
+     "raw_p": {
+      "buys_per_station_day": 2.745,
+      "pnl_per_station_day": -0.0426,
+      "pnl_ci95": [
+       -0.04576,
+       -0.03986
+      ],
+      "roi": -0.1417
+     },
+     "M0": {
+      "buys_per_station_day": 0.62,
+      "pnl_per_station_day": 0.01353,
+      "pnl_ci95": [
+       -0.0016,
+       0.02869
+      ],
+      "roi": 0.0427
+     },
+     "M1": {
+      "buys_per_station_day": 0.625,
+      "pnl_per_station_day": -0.00222,
+      "pnl_ci95": [
+       -0.01824,
+       0.01445
+      ],
+      "roi": -0.0071
+     },
+     "full": {
+      "buys_per_station_day": 1.002,
+      "pnl_per_station_day": 0.0365,
+      "pnl_ci95": [
+       0.0246,
+       0.05341
+      ],
+      "roi": 0.0994
+     },
+     "+T": {
+      "buys_per_station_day": 0.611,
+      "pnl_per_station_day": 0.0044,
+      "pnl_ci95": [
+       -0.01411,
+       0.01943
+      ],
+      "roi": 0.0143
+     },
+     "+S": {
+      "buys_per_station_day": 0.824,
+      "pnl_per_station_day": 0.01052,
+      "pnl_ci95": [
+       -0.0128,
+       0.02621
+      ],
+      "roi": 0.031
+     },
+     "+R": {
+      "buys_per_station_day": 0.654,
+      "pnl_per_station_day": 0.00147,
+      "pnl_ci95": [
+       -0.0129,
+       0.01597
+      ],
+      "roi": 0.0047
+     },
+     "+A": {
+      "buys_per_station_day": 0.738,
+      "pnl_per_station_day": 0.02695,
+      "pnl_ci95": [
+       0.01019,
+       0.03454
+      ],
+      "roi": 0.0804
+     },
+     "+W": {
+      "buys_per_station_day": 0.836,
+      "pnl_per_station_day": 0.01369,
+      "pnl_ci95": [
+       -0.00559,
+       0.02406
+      ],
+      "roi": 0.039
+     },
+     "+K": {
+      "buys_per_station_day": 0.632,
+      "pnl_per_station_day": 0.00056,
+      "pnl_ci95": [
+       -0.02174,
+       0.01749
+      ],
+      "roi": 0.0018
+     }
+    }
+   },
+   "coefficients_all_data": [
+    {
+     "term": "Lm",
+     "family": "base",
+     "coef": 0.9452
+    },
+    {
+     "term": "D",
+     "family": "base",
+     "coef": 0.0531
+    },
+    {
+     "term": "h*D",
+     "family": "T",
+     "coef": 0.1024
+    },
+    {
+     "term": "h*Lm",
+     "family": "T",
+     "coef": 0.1174
+    },
+    {
+     "term": "h2*D",
+     "family": "T",
+     "coef": -0.0704
+    },
+    {
+     "term": "h2*Lm",
+     "family": "T",
+     "coef": -0.053
+    },
+    {
+     "term": "sigma_p*D",
+     "family": "S",
+     "coef": 0.0453
+    },
+    {
+     "term": "sigma_p*z2",
+     "family": "S",
+     "coef": 0.1728
+    },
+    {
+     "term": "peak_p*D",
+     "family": "S",
+     "coef": -0.0717
+    },
+    {
+     "term": "z2",
+     "family": "S",
+     "coef": -0.077
+    },
+    {
+     "term": "reg_d2",
+     "family": "R",
+     "coef": -0.1373
+    },
+    {
+     "term": "reg_abs",
+     "family": "R",
+     "coef": 0.2279
+    },
+    {
+     "term": "tx_d2",
+     "family": "A",
+     "coef": -0.246
+    },
+    {
+     "term": "tx_abs",
+     "family": "A",
+     "coef": 0.3426
+    },
+    {
+     "term": "taf_age*D",
+     "family": "A",
+     "coef": -0.0148
+    },
+    {
+     "term": "kt*D",
+     "family": "W",
+     "coef": -0.0968
+    },
+    {
+     "term": "kt*dmu",
+     "family": "W",
+     "coef": 0.0145
+    },
+    {
+     "term": "cloud*D",
+     "family": "W",
+     "coef": -0.0666
+    },
+    {
+     "term": "cloud*dmu",
+     "family": "W",
+     "coef": 0.0825
+    },
+    {
+     "term": "precip*D",
+     "family": "W",
+     "coef": 0.0781
+    },
+    {
+     "term": "precip*dmu",
+     "family": "W",
+     "coef": -0.177
+    },
+    {
+     "term": "wind*D",
+     "family": "W",
+     "coef": -0.0023
+    },
+    {
+     "term": "wind*dmu",
+     "family": "W",
+     "coef": 0.0635
+    },
+    {
+     "term": "top_gap*D",
+     "family": "K",
+     "coef": 0.1211
+    },
+    {
+     "term": "entropy*D",
+     "family": "K",
+     "coef": -0.046
+    },
+    {
+     "term": "half_spread",
+     "family": "K",
+     "coef": 0.0217
+    }
+   ]
+  },
+  "P1": {
+   "families": [
+    "T",
+    "S",
+    "R",
+    "A",
+    "O",
+    "W",
+    "K"
+   ],
+   "folds": [
+    "2026-08-30",
+    "2026-08-31",
+    "2026-09-01",
+    "2026-09-02",
+    "2026-09-03",
+    "2026-09-04",
+    "2026-09-05",
+    "2026-09-06",
+    "2026-09-07",
+    "2026-09-08",
+    "2026-09-09",
+    "2026-09-10",
+    "2026-09-11",
+    "2026-09-12",
+    "2026-09-13",
+    "2026-09-14",
+    "2026-09-15",
+    "2026-09-16",
+    "2026-09-17",
+    "2026-09-18",
+    "2026-09-19",
+    "2026-09-20",
+    "2026-09-21",
+    "2026-09-22"
+   ],
+   "all": {
+    "decisions": 3870,
+    "station_days": 958,
+    "event_days": 24,
+    "first_test_day": "2026-08-30",
+    "last_test_day": "2026-09-22",
+    "log_score": {
+     "M0": -0.44499,
+     "M1": -0.4459,
+     "+T": -0.45176,
+     "+S": -0.44844,
+     "+R": -0.44898,
+     "+A": -0.45257,
+     "+O": -0.44482,
+     "+W": -0.46148,
+     "+K": -0.4476,
+     "full": -0.46662,
+     "full-T": -0.46194,
+     "full-S": -0.46723,
+     "full-R": -0.46491,
+     "full-A": -0.46477,
+     "full-O": -0.46915,
+     "full-W": -0.45441,
+     "full-K": -0.46457,
+     "raw_market": -0.43894,
+     "raw_model": -0.62498
+    },
+    "gains": {
+     "M0_vs_market_raw": {
+      "mean": -0.00605,
+      "ci95": [
+       -0.01352,
+       -0.00029
+      ]
+     },
+     "M1_vs_M0": {
+      "mean": -0.00091,
+      "ci95": [
+       -0.00763,
+       0.00665
+      ]
+     },
+     "full_vs_M1": {
+      "mean": -0.02071,
+      "ci95": [
+       -0.05965,
+       0.0078
+      ]
+     },
+     "full_vs_M0": {
+      "mean": -0.02162,
+      "ci95": [
+       -0.05682,
+       0.00505
+      ]
+     },
+     "full_vs_market_raw": {
+      "mean": -0.02767,
+      "ci95": [
+       -0.06314,
+       -0.00344
+      ]
+     },
+     "model_raw_vs_market_raw": {
+      "mean": -0.18604,
+      "ci95": [
+       -0.22897,
+       -0.14437
+      ]
+     }
+    },
+    "attribution": {
+     "T": {
+      "name": "时间",
+      "add_one": {
+       "mean": -0.00586,
+       "ci95": [
+        -0.01167,
+        -0.00029
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00468,
+       "ci95": [
+        -0.01024,
+        -0.00124
+       ]
+      },
+      "interaction": 0.00118
+     },
+     "S": {
+      "name": "模型自身",
+      "add_one": {
+       "mean": -0.00254,
+       "ci95": [
+        -0.00647,
+        0.00075
+       ]
+      },
+      "drop_one": {
+       "mean": 0.00061,
+       "ci95": [
+        -0.00268,
+        0.00357
+       ]
+      },
+      "interaction": 0.00315
+     },
+     "R": {
+      "name": "区域模型",
+      "add_one": {
+       "mean": -0.00308,
+       "ci95": [
+        -0.00798,
+        0.00102
+       ]
+      },
+      "drop_one": {
+       "mean": -0.0017,
+       "ci95": [
+        -0.00726,
+        0.0026
+       ]
+      },
+      "interaction": 0.00138
+     },
+     "A": {
+      "name": "TAF",
+      "add_one": {
+       "mean": -0.00667,
+       "ci95": [
+        -0.0152,
+        -0.00053
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00185,
+       "ci95": [
+        -0.00568,
+        0.00103
+       ]
+      },
+      "interaction": 0.00482
+     },
+     "O": {
+      "name": "实况",
+      "add_one": {
+       "mean": 0.00108,
+       "ci95": [
+        -0.01143,
+        0.01685
+       ]
+      },
+      "drop_one": {
+       "mean": 0.00253,
+       "ci95": [
+        -0.00382,
+        0.01029
+       ]
+      },
+      "interaction": 0.00145
+     },
+     "W": {
+      "name": "云雨风/辐射",
+      "add_one": {
+       "mean": -0.01558,
+       "ci95": [
+        -0.03845,
+        -0.00212
+       ]
+      },
+      "drop_one": {
+       "mean": -0.01221,
+       "ci95": [
+        -0.0306,
+        -0.00125
+       ]
+      },
+      "interaction": 0.00337
+     },
+     "K": {
+      "name": "盘口",
+      "add_one": {
+       "mean": -0.0017,
+       "ci95": [
+        -0.00836,
+        0.00552
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00204,
+       "ci95": [
+        -0.0071,
+        0.00323
+       ]
+      },
+      "interaction": -0.00034
+     }
+    },
+    "trading": {
+     "raw_p": {
+      "buys_per_station_day": 1.473,
+      "pnl_per_station_day": -0.02106,
+      "pnl_ci95": [
+       -0.02928,
+       -0.01172
+      ],
+      "roi": -0.1859
+     },
+     "M0": {
+      "buys_per_station_day": 0.175,
+      "pnl_per_station_day": -0.00011,
+      "pnl_ci95": [
+       -0.00387,
+       0.00354
+      ],
+      "roi": -0.0015
+     },
+     "M1": {
+      "buys_per_station_day": 0.376,
+      "pnl_per_station_day": 0.00133,
+      "pnl_ci95": [
+       -0.00427,
+       0.00797
+      ],
+      "roi": 0.0116
+     },
+     "full": {
+      "buys_per_station_day": 0.476,
+      "pnl_per_station_day": -0.00546,
+      "pnl_ci95": [
+       -0.01452,
+       0.00387
+      ],
+      "roi": -0.0346
+     },
+     "+T": {
+      "buys_per_station_day": 0.368,
+      "pnl_per_station_day": -0.00686,
+      "pnl_ci95": [
+       -0.01403,
+       -0.00103
+      ],
+      "roi": -0.0579
+     },
+     "+S": {
+      "buys_per_station_day": 0.35,
+      "pnl_per_station_day": -0.00575,
+      "pnl_ci95": [
+       -0.01228,
+       -0.00021
+      ],
+      "roi": -0.0524
+     },
+     "+R": {
+      "buys_per_station_day": 0.417,
+      "pnl_per_station_day": -0.00233,
+      "pnl_ci95": [
+       -0.00857,
+       0.00384
+      ],
+      "roi": -0.0178
+     },
+     "+A": {
+      "buys_per_station_day": 0.424,
+      "pnl_per_station_day": 0.00117,
+      "pnl_ci95": [
+       -0.00594,
+       0.00867
+      ],
+      "roi": 0.0095
+     },
+     "+O": {
+      "buys_per_station_day": 0.395,
+      "pnl_per_station_day": -0.00664,
+      "pnl_ci95": [
+       -0.01636,
+       0.00324
+      ],
+      "roi": -0.0581
+     },
+     "+W": {
+      "buys_per_station_day": 0.429,
+      "pnl_per_station_day": -0.00701,
+      "pnl_ci95": [
+       -0.01645,
+       9e-05
+      ],
+      "roi": -0.0524
+     },
+     "+K": {
+      "buys_per_station_day": 0.361,
+      "pnl_per_station_day": -0.00169,
+      "pnl_ci95": [
+       -0.00642,
+       0.00403
+      ],
+      "roi": -0.0145
+     }
+    }
+   },
+   "evidence_epoch": {
+    "decisions": 624,
+    "station_days": 172,
+    "event_days": 5,
+    "first_test_day": "2026-09-18",
+    "last_test_day": "2026-09-22",
+    "log_score": {
+     "M0": -0.40043,
+     "M1": -0.39759,
+     "+T": -0.39326,
+     "+S": -0.39625,
+     "+R": -0.40899,
+     "+A": -0.39787,
+     "+O": -0.36191,
+     "+W": -0.40019,
+     "+K": -0.38602,
+     "full": -0.37262,
+     "full-T": -0.37205,
+     "full-S": -0.37336,
+     "full-R": -0.36845,
+     "full-A": -0.37248,
+     "full-O": -0.39356,
+     "full-W": -0.36571,
+     "full-K": -0.3694,
+     "raw_market": -0.38291,
+     "raw_model": -0.45133
+    },
+    "gains": {
+     "M0_vs_market_raw": {
+      "mean": -0.01752,
+      "ci95": [
+       -0.03552,
+       0.00887
+      ]
+     },
+     "M1_vs_M0": {
+      "mean": 0.00284,
+      "ci95": [
+       -0.00685,
+       0.01034
+      ]
+     },
+     "full_vs_M1": {
+      "mean": 0.02497,
+      "ci95": [
+       -0.00515,
+       0.04386
+      ]
+     },
+     "full_vs_M0": {
+      "mean": 0.02781,
+      "ci95": [
+       -0.012,
+       0.0542
+      ]
+     },
+     "full_vs_market_raw": {
+      "mean": 0.01029,
+      "ci95": [
+       -0.00899,
+       0.02621
+      ]
+     },
+     "model_raw_vs_market_raw": {
+      "mean": -0.06842,
+      "ci95": [
+       -0.08986,
+       -0.04217
+      ]
+     }
+    },
+    "attribution": {
+     "T": {
+      "name": "时间",
+      "add_one": {
+       "mean": 0.00433,
+       "ci95": [
+        -0.01165,
+        0.016
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00057,
+       "ci95": [
+        -0.00179,
+        0.00143
+       ]
+      },
+      "interaction": -0.0049
+     },
+     "S": {
+      "name": "模型自身",
+      "add_one": {
+       "mean": 0.00134,
+       "ci95": [
+        -0.00865,
+        0.0086
+       ]
+      },
+      "drop_one": {
+       "mean": 0.00074,
+       "ci95": [
+        -0.0031,
+        0.00385
+       ]
+      },
+      "interaction": -0.0006
+     },
+     "R": {
+      "name": "区域模型",
+      "add_one": {
+       "mean": -0.0114,
+       "ci95": [
+        -0.02006,
+        0.00067
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00417,
+       "ci95": [
+        -0.00903,
+        0.00264
+       ]
+      },
+      "interaction": 0.00723
+     },
+     "A": {
+      "name": "TAF",
+      "add_one": {
+       "mean": -0.00029,
+       "ci95": [
+        -0.00098,
+        0.00054
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00014,
+       "ci95": [
+        -0.00078,
+        0.00065
+       ]
+      },
+      "interaction": 0.00015
+     },
+     "O": {
+      "name": "实况",
+      "add_one": {
+       "mean": 0.03567,
+       "ci95": [
+        -0.00203,
+        0.05858
+       ]
+      },
+      "drop_one": {
+       "mean": 0.02094,
+       "ci95": [
+        0.00157,
+        0.03463
+       ]
+      },
+      "interaction": -0.01473
+     },
+     "W": {
+      "name": "云雨风/辐射",
+      "add_one": {
+       "mean": -0.00261,
+       "ci95": [
+        -0.00359,
+        -0.00068
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00691,
+       "ci95": [
+        -0.00949,
+        -0.00397
+       ]
+      },
+      "interaction": -0.0043
+     },
+     "K": {
+      "name": "盘口",
+      "add_one": {
+       "mean": 0.01156,
+       "ci95": [
+        -0.00666,
+        0.02338
+       ]
+      },
+      "drop_one": {
+       "mean": -0.00322,
+       "ci95": [
+        -0.00693,
+        0.00139
+       ]
+      },
+      "interaction": -0.01478
+     }
+    },
+    "trading": {
+     "raw_p": {
+      "buys_per_station_day": 0.843,
+      "pnl_per_station_day": -0.00243,
+      "pnl_ci95": [
+       -0.01621,
+       0.00968
+      ],
+      "roi": -0.0197
+     },
+     "M0": {
+      "buys_per_station_day": 0.143,
+      "pnl_per_station_day": 0.00434,
+      "pnl_ci95": [
+       0.00089,
+       0.00767
+      ],
+      "roi": 0.0674
+     },
+     "M1": {
+      "buys_per_station_day": 0.202,
+      "pnl_per_station_day": 0.00967,
+      "pnl_ci95": [
+       0.00708,
+       0.01132
+      ],
+      "roi": 0.095
+     },
+     "full": {
+      "buys_per_station_day": 0.288,
+      "pnl_per_station_day": 0.00326,
+      "pnl_ci95": [
+       -0.00959,
+       0.01326
+      ],
+      "roi": 0.0212
+     },
+     "+T": {
+      "buys_per_station_day": 0.192,
+      "pnl_per_station_day": 0.00558,
+      "pnl_ci95": [
+       -0.00336,
+       0.01165
+      ],
+      "roi": 0.0572
+     },
+     "+S": {
+      "buys_per_station_day": 0.223,
+      "pnl_per_station_day": -0.00853,
+      "pnl_ci95": [
+       -0.02316,
+       0.00722
+      ],
+      "roi": -0.0685
+     },
+     "+R": {
+      "buys_per_station_day": 0.244,
+      "pnl_per_station_day": 0.00737,
+      "pnl_ci95": [
+       0.00359,
+       0.01324
+      ],
+      "roi": 0.0613
+     },
+     "+A": {
+      "buys_per_station_day": 0.251,
+      "pnl_per_station_day": 0.00638,
+      "pnl_ci95": [
+       0.00317,
+       0.01039
+      ],
+      "roi": 0.0602
+     },
+     "+O": {
+      "buys_per_station_day": 0.213,
+      "pnl_per_station_day": 0.01563,
+      "pnl_ci95": [
+       -0.00676,
+       0.03013
+      ],
+      "roi": 0.1657
+     },
+     "+W": {
+      "buys_per_station_day": 0.247,
+      "pnl_per_station_day": 0.00178,
+      "pnl_ci95": [
+       -0.00388,
+       0.006
+      ],
+      "roi": 0.0147
+     },
+     "+K": {
+      "buys_per_station_day": 0.178,
+      "pnl_per_station_day": 0.00398,
+      "pnl_ci95": [
+       -0.0121,
+       0.01531
+      ],
+      "roi": 0.0368
+     }
+    }
+   },
+   "coefficients_all_data": [
+    {
+     "term": "Lm",
+     "family": "base",
+     "coef": 0.6591
+    },
+    {
+     "term": "D",
+     "family": "base",
+     "coef": -0.0404
+    },
+    {
+     "term": "h*D",
+     "family": "T",
+     "coef": -0.3214
+    },
+    {
+     "term": "h*Lm",
+     "family": "T",
+     "coef": 0.1447
+    },
+    {
+     "term": "h2*D",
+     "family": "T",
+     "coef": 0.0212
+    },
+    {
+     "term": "h2*Lm",
+     "family": "T",
+     "coef": -0.0105
+    },
+    {
+     "term": "sigma_p*D",
+     "family": "S",
+     "coef": 0.1626
+    },
+    {
+     "term": "sigma_p*z2",
+     "family": "S",
+     "coef": -0.0824
+    },
+    {
+     "term": "peak_p*D",
+     "family": "S",
+     "coef": 0.0452
+    },
+    {
+     "term": "z2",
+     "family": "S",
+     "coef": -0.5196
+    },
+    {
+     "term": "reg_d2",
+     "family": "R",
+     "coef": -0.5598
+    },
+    {
+     "term": "reg_abs",
+     "family": "R",
+     "coef": 0.53
+    },
+    {
+     "term": "headroom*D",
+     "family": "R",
+     "coef": -0.0307
+    },
+    {
+     "term": "headroom_missing*D",
+     "family": "R",
+     "coef": 0.1038
+    },
+    {
+     "term": "live_gap*D",
+     "family": "R",
+     "coef": 0.0338
+    },
+    {
+     "term": "live_gap_missing*D",
+     "family": "R",
+     "coef": 0.1038
+    },
+    {
+     "term": "tx_d2",
+     "family": "A",
+     "coef": 0.203
+    },
+    {
+     "term": "tx_abs",
+     "family": "A",
+     "coef": -0.2046
+    },
+    {
+     "term": "taf_age*D",
+     "family": "A",
+     "coef": -0.0778
+    },
+    {
+     "term": "taf_age_missing*D",
+     "family": "A",
+     "coef": 0.0132
+    },
+    {
+     "term": "below_high",
+     "family": "O",
+     "coef": -1.3301
+    },
+    {
+     "term": "above_high",
+     "family": "O",
+     "coef": -0.3156
+    },
+    {
+     "term": "above_high_x_rem",
+     "family": "O",
+     "coef": 0.0956
+    },
+    {
+     "term": "remaining*D",
+     "family": "O",
+     "coef": 0.1725
+    },
+    {
+     "term": "remaining_missing*D",
+     "family": "O",
+     "coef": 0.0059
+    },
+    {
+     "term": "warming*D",
+     "family": "O",
+     "coef": -0.0818
+    },
+    {
+     "term": "warming_missing*D",
+     "family": "O",
+     "coef": 0.0059
+    },
+    {
+     "term": "drawdown*D",
+     "family": "O",
+     "coef": 0.1529
+    },
+    {
+     "term": "drawdown_missing*D",
+     "family": "O",
+     "coef": 0.0059
+    },
+    {
+     "term": "momentum*D",
+     "family": "O",
+     "coef": -0.0138
+    },
+    {
+     "term": "momentum_missing*D",
+     "family": "O",
+     "coef": 0.0059
+    },
+    {
+     "term": "since_high*D",
+     "family": "O",
+     "coef": -0.0936
+    },
+    {
+     "term": "since_high_missing*D",
+     "family": "O",
+     "coef": 0.0059
+    },
+    {
+     "term": "kt*D",
+     "family": "W",
+     "coef": 0.1055
+    },
+    {
+     "term": "kt*dmu",
+     "family": "W",
+     "coef": -0.2458
+    },
+    {
+     "term": "kt_missing*D",
+     "family": "W",
+     "coef": -0.0186
+    },
+    {
+     "term": "cloud*D",
+     "family": "W",
+     "coef": -0.0177
+    },
+    {
+     "term": "cloud*dmu",
+     "family": "W",
+     "coef": -0.0469
+    },
+    {
+     "term": "cloud_missing*D",
+     "family": "W",
+     "coef": -0.0198
+    },
+    {
+     "term": "precip*D",
+     "family": "W",
+     "coef": -0.0585
+    },
+    {
+     "term": "precip*dmu",
+     "family": "W",
+     "coef": 0.024
+    },
+    {
+     "term": "precip_missing*D",
+     "family": "W",
+     "coef": 0.0132
+    },
+    {
+     "term": "wind*D",
+     "family": "W",
+     "coef": 0.0302
+    },
+    {
+     "term": "wind*dmu",
+     "family": "W",
+     "coef": -0.207
+    },
+    {
+     "term": "wind_missing*D",
+     "family": "W",
+     "coef": 0.0132
+    },
+    {
+     "term": "obs_cloud*D",
+     "family": "W",
+     "coef": 0.0428
+    },
+    {
+     "term": "obs_cloud*dmu",
+     "family": "W",
+     "coef": 0.1094
+    },
+    {
+     "term": "obs_cloud_missing*D",
+     "family": "W",
+     "coef": 0.0059
+    },
+    {
+     "term": "obs_precip*D",
+     "family": "W",
+     "coef": 0.0266
+    },
+    {
+     "term": "obs_precip*dmu",
+     "family": "W",
+     "coef": -0.157
+    },
+    {
+     "term": "obs_precip_missing*D",
+     "family": "W",
+     "coef": 0.0059
+    },
+    {
+     "term": "obs_dewpoint_dep*D",
+     "family": "W",
+     "coef": 0.0133
+    },
+    {
+     "term": "obs_dewpoint_dep*dmu",
+     "family": "W",
+     "coef": 0.3102
+    },
+    {
+     "term": "obs_dewpoint_dep_missing*D",
+     "family": "W",
+     "coef": 0.0059
+    },
+    {
+     "term": "obs_wind*D",
+     "family": "W",
+     "coef": -0.0239
+    },
+    {
+     "term": "obs_wind*dmu",
+     "family": "W",
+     "coef": -0.0241
+    },
+    {
+     "term": "obs_wind_missing*D",
+     "family": "W",
+     "coef": 0.0059
+    },
+    {
+     "term": "top_gap*D",
+     "family": "K",
+     "coef": 0.1335
+    },
+    {
+     "term": "entropy*D",
+     "family": "K",
+     "coef": -0.0745
+    },
+    {
+     "term": "half_spread",
+     "family": "K",
+     "coef": 0.0086
+    }
+   ]
+  }
+ }
+}
