@@ -8,9 +8,13 @@ from unittest.mock import patch
 
 from reported_trajectory_country_sources import station_source_route
 from reported_trajectory_market_registry import (
+    NOAA_FAMILY,
+    WU_FAMILY,
     commit_registry_rows,
     load_config,
     materialize_event_registry,
+    settlement_contract,
+    settlement_source_check,
 )
 from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.station_registry import coordinate_registry_manifest
@@ -34,10 +38,19 @@ def event(city: str, station: str = "ZBAA") -> dict:
     return {
         "id": "e1",
         "slug": slug,
+        # The Wunderground wording as Taipei still carries it (2026-09-23).
         "description": (
-            "This market resolves at an airport. The resolution source is Wunderground "
-            f"https://www.wunderground.com/history/daily/cn/{city}/{station}. "
-            "The resolution source measures temperatures to whole degrees Celsius."
+            "This market will resolve based on the highest temperature recorded in the "
+            "'Daily Observations' table on Weather Underground, not the figure displayed in "
+            "the 'Day High & Low' summary section.\n\nThis market will resolve to the "
+            f"temperature range that contains the highest temperature recorded at the {city.title()} "
+            "Airport Station in degrees Celsius on 18 Jul '26.\n\nThe resolution source for this "
+            "market will be information from Wunderground, specifically the highest temperature "
+            f"recorded for all times on this day, available here: https://www.wunderground.com/history/daily/cn/{city}/{station}."
+            "\n\nThis market will resolve once the first data point for the following date has "
+            "been published on the resolution source, or by 11:59 PM ET on the day following the "
+            "observation date, whichever comes first.\n\nThe resolution source for this market "
+            "measures temperatures to whole degrees Celsius (eg, 9°C)."
         ),
         "markets": [
             {"id": "1", "groupItemTitle": "29°C or below", "outcomes": '["Yes","No"]', "clobTokenIds": '["y1","n1"]', "active": True, "closed": False, "acceptingOrders": True, **SIZING},
@@ -47,7 +60,7 @@ def event(city: str, station: str = "ZBAA") -> dict:
     }
 
 
-def noaa_event(city: str, station: str = "EHAM", unit: str = "Celsius") -> dict:
+def noaa_event(city: str, station: str = "EHAM", unit: str = "Celsius", *, hourly: bool = False) -> dict:
     """The wording Polymarket moved to: NOAA's timeseries page, ICAO in the query string."""
     slug = f"highest-temperature-in-{city}-on-july-18-2026"
     body = dict(event(city, station))
@@ -58,9 +71,35 @@ def noaa_event(city: str, station: str = "EHAM", unit: str = "Celsius") -> dict:
         f"{unit} on 18 Jul '26.\n\nThe resolution source for this market will be "
         "information from NOAA, specifically the highest reading under the \"Temp\" column "
         f"for all times on this day, available here: https://www.weather.gov/wrh/timeseries?site={station.lower()}"
+        + (
+            "\n\nThis market will resolve off of the Hourly Data provided using the "
+            "\"Show Hourly Data\" button."
+            if hourly else ""
+        )
+        + "\n\nIf NOAA data for the observation date is unavailable by 11:59 PM ET on the day "
+        "following the observation date, the Weather Underground Daily Observations table will "
+        "be used as the resolution source.\n\nThis market will resolve once the first data "
+        "point for the following date has been published on the resolution source, or by "
+        "11:59 PM ET on the day following the observation date, whichever comes first."
         f"\n\nThe resolution source for this market measures temperatures to whole degrees {unit} (eg, 9°{unit[0]})."
     )
     return body
+
+
+def fahrenheit(body: dict) -> dict:
+    """The same event with a US station's 2°F ladder."""
+    for market, title in zip(body["markets"], ("69°F or below", "70-71°F", "72°F or higher")):
+        market["groupItemTitle"] = title
+    return body
+
+
+def contract_blocks(rows: list[dict]) -> set[str]:
+    return {
+        reason
+        for row in rows
+        for reason in row["source_block_reasons"]
+        if reason.startswith("official_resolution_")
+    }
 
 
 class ReportedTrajectoryRegistryTests(unittest.TestCase):
@@ -271,6 +310,132 @@ class ReportedTrajectoryRegistryTests(unittest.TestCase):
             self.assertEqual(row["order_min_size"], 5.0)
             self.assertEqual(row["order_price_min_tick_size"], 0.001)
             self.assertTrue(row["source_eligible"])
+
+
+class SettlementSourceContractTests(unittest.TestCase):
+    """Charter 205: every refresh reads what each market settles on."""
+
+    def test_baseline_is_the_whole_fleet_and_hourly_only_is_the_us_ladder(self) -> None:
+        cities = load_config()["settlement_source_contract"]["cities"]
+        self.assertEqual({entry["station_id"] for entry in cities.values()}, AWC_GLOBAL_STATIONS)
+        self.assertEqual(len(cities), expected_station_count())
+        for city, entry in cities.items():
+            with self.subTest(city=city):
+                # NOAA lists 5-minute rows only at US ASOS, and every F market
+                # is a US ASOS; the clause and the ladder travel together.
+                self.assertEqual(entry["hourly_data_only"], entry["unit"] == "F")
+        self.assertEqual(
+            sorted(city for city, entry in cities.items() if entry["family"] == WU_FAMILY),
+            ["taipei"],
+        )
+
+    def test_live_wordings_pass_without_a_contract_block(self) -> None:
+        config = load_config()
+        for label, body in (
+            ("noaa_c", noaa_event("amsterdam", "EHAM")),
+            ("noaa_f_hourly", fahrenheit(noaa_event("nyc", "KLGA", "Fahrenheit", hourly=True))),
+            ("wu", event("taipei", "RCSS")),
+        ):
+            with self.subTest(wording=label):
+                rows = materialize_event_registry(body, event_date="2026-07-18", config=config)
+                self.assertTrue(rows)
+                self.assertEqual(contract_blocks(rows), set())
+                self.assertTrue(all(row["source_eligible"] for row in rows))
+                check = settlement_source_check([("2026-07-18", body)], config=config)
+                self.assertEqual(check["deviations"], [])
+
+    def test_us_market_that_admits_five_minute_rows_is_blocked(self) -> None:
+        """Our truth is METAR+SPECI; NOAA's all-data view adds 5-minute ASOS rows."""
+        body = fahrenheit(noaa_event("nyc", "KLGA", "Fahrenheit", hourly=False))
+        rows = materialize_event_registry(body, event_date="2026-07-18", config=load_config())
+        self.assertIn("official_resolution_admits_subhourly_data", contract_blocks(rows))
+        self.assertTrue(all(not row["source_eligible"] for row in rows))
+
+    def test_a_reading_our_truth_does_not_reproduce_is_blocked(self) -> None:
+        noaa = noaa_event("amsterdam", "EHAM")
+        noaa["description"] = noaa["description"].replace(
+            'highest reading under the "Temp" column', 'value under the "24 Hr Max" column'
+        )
+        wu = event("taipei", "RCSS")
+        wu["description"] = wu["description"].replace(
+            "'Daily Observations' table on Weather Underground, not the figure displayed in the ",
+            "",
+        ).replace("summary section", "summary section on Weather Underground")
+        for label, body in (("noaa_24h_max", noaa), ("wu_day_high_low", wu)):
+            with self.subTest(wording=label):
+                rows = materialize_event_registry(body, event_date="2026-07-18", config=load_config())
+                self.assertIn("official_resolution_reading_unrecognized", contract_blocks(rows))
+                self.assertTrue(all(not row["source_eligible"] for row in rows))
+
+    def test_stated_unit_that_disagrees_with_the_ladder_is_blocked(self) -> None:
+        body = noaa_event("amsterdam", "EHAM", "Fahrenheit")
+        rows = materialize_event_registry(body, event_date="2026-07-18", config=load_config())
+        self.assertIn("official_resolution_unit_mismatch", contract_blocks(rows))
+
+    def test_moves_between_pages_we_can_settle_are_reported_not_blocked(self) -> None:
+        """Taipei onto NOAA or London onto Heathrow change nothing we compute wrongly."""
+        config = load_config()
+        for label, body, field in (
+            ("taipei_to_noaa", noaa_event("taipei", "RCSS"), "family"),
+            ("london_to_egll", noaa_event("london", "EGLL"), "station_id"),
+        ):
+            with self.subTest(move=label):
+                rows = materialize_event_registry(body, event_date="2026-07-18", config=config)
+                self.assertEqual(contract_blocks(rows), set())
+                check = settlement_source_check([("2026-07-18", body)], config=config)
+                self.assertFalse(check["ok"])
+                self.assertEqual(check["blocked_market_count"], 0)
+                line = next(item for item in check["deviations"] if item["field"] == field)
+                self.assertFalse(line["blocking"])
+
+    def test_check_folds_a_rewrite_to_the_dates_it_reached(self) -> None:
+        """Polymarket rewrites one event date at a time; the line names which."""
+        config = load_config()
+        old = event("taipei", "RCSS")
+        new = noaa_event("taipei", "RCSS")
+        newer = noaa_event("taipei", "RCSS")
+        check = settlement_source_check(
+            [("2026-09-24", old), ("2026-09-25", new), ("2026-09-26", newer)], config=config
+        )
+        family = [item for item in check["deviations"] if item["field"] == "family"]
+        self.assertEqual(len(family), 1)
+        self.assertEqual(family[0]["expected"], WU_FAMILY)
+        self.assertEqual(family[0]["observed"], NOAA_FAMILY)
+        self.assertEqual(family[0]["event_dates"], ["2026-09-25", "2026-09-26"])
+
+    def test_a_baseline_city_with_no_market_is_reported(self) -> None:
+        check = settlement_source_check(
+            [("2026-07-18", noaa_event("amsterdam", "EHAM"))], config=load_config()
+        )
+        self.assertFalse(check["ok"])
+        self.assertIn("london", check["baseline_cities_without_market"])
+        self.assertNotIn("amsterdam", check["baseline_cities_without_market"])
+
+    def test_first_named_url_is_the_resolution_page(self) -> None:
+        text = noaa_event("amsterdam", "EHAM")["description"].replace(
+            "Daily Observations table will be used",
+            "Daily Observations table at https://www.wunderground.com/history/daily/nl/amsterdam/EHAM. will be used",
+        )
+        contract = settlement_contract(text)
+        self.assertEqual(contract["family"], NOAA_FAMILY)
+        self.assertEqual(contract["station_id"], "EHAM")
+
+    def test_config_refuses_an_incomplete_baseline(self) -> None:
+        import tempfile
+
+        for label, mutate in (
+            ("missing", lambda config: config.pop("settlement_source_contract")),
+            ("empty", lambda config: config["settlement_source_contract"].update(cities={})),
+            ("bad_family", lambda config: config["settlement_source_contract"]["cities"]["london"].update(family="HKO")),
+            ("no_finality", lambda config: config["settlement_source_contract"]["cities"]["london"].pop("finality")),
+        ):
+            with self.subTest(shape=label), tempfile.TemporaryDirectory() as tmp:
+                config = load_config()
+                mutate(config)
+                path = Path(tmp) / "config.json"
+                path.write_text(json.dumps(config), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "settlement_source_contract_invalid"):
+                    load_config(path)
 
 
 if __name__ == "__main__":

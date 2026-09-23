@@ -138,5 +138,334 @@
     "awc_fallback_for_amsc_forbidden": true,
     "amsc_fallback_for_awc_forbidden": true,
     "legacy_probability_fallback_forbidden": true
+  },
+  "settlement_source_contract": {
+    "schema": "polymarket_settlement_source_contract_v1",
+    "charter": 205,
+    "verified_at_utc": "2026-09-23T11:58:00Z",
+    "verified_against": [
+      "gamma-api.polymarket.com/events description, event dates 2026-09-20..2026-09-25, 296 events",
+      "polymarket.com event pages london/taipei/nyc 2026-09-24: Rules and Resolution Source match Gamma",
+      "weather.gov/wrh/timeseries?site=klga with Show Hourly Data: routine :51 METAR plus SPECI, no 5-minute rows"
+    ],
+    "truth_basis": "bayes_basket_target/settlement_truth.py: max over the station-day's AWC METAR and SPECI, whole degrees",
+    "update_rule": "a reported deviation is resolved by re-verifying the page and editing this entry in the same commit as any truth-lane change it needs",
+    "cities": {
+      "amsterdam": {
+        "station_id": "EHAM",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "ankara": {
+        "station_id": "LTAC",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "atlanta": {
+        "station_id": "KATL",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "F",
+        "hourly_data_only": true,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "austin": {
+        "station_id": "KAUS",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "F",
+        "hourly_data_only": true,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "beijing": {
+        "station_id": "ZBAA",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "buenos-aires": {
+        "station_id": "SAEZ",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "busan": {
+        "station_id": "RKPK",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "cape-town": {
+        "station_id": "FACT",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "chengdu": {
+        "station_id": "ZUUU",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "chicago": {
+        "station_id": "KORD",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "F",
+        "hourly_data_only": true,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "chongqing": {
+        "station_id": "ZUCK",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "dallas": {
+        "station_id": "KDAL",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "F",
+        "hourly_data_only": true,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "denver": {
+        "station_id": "KBKF",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "F",
+        "hourly_data_only": true,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "guangzhou": {
+        "station_id": "ZGGG",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "helsinki": {
+        "station_id": "EFHK",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "houston": {
+        "station_id": "KHOU",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "F",
+        "hourly_data_only": true,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "jeddah": {
+        "station_id": "OEJN",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "karachi": {
+        "station_id": "OPKC",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "kuala-lumpur": {
+        "station_id": "WMKK",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "london": {
+        "station_id": "EGLC",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "los-angeles": {
+        "station_id": "KLAX",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "F",
+        "hourly_data_only": true,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "lucknow": {
+        "station_id": "VILK",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "madrid": {
+        "station_id": "LEMD",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "manila": {
+        "station_id": "RPLL",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "mexico-city": {
+        "station_id": "MMMX",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "miami": {
+        "station_id": "KMIA",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "F",
+        "hourly_data_only": true,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "milan": {
+        "station_id": "LIMC",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "munich": {
+        "station_id": "EDDM",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "nyc": {
+        "station_id": "KLGA",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "F",
+        "hourly_data_only": true,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "panama-city": {
+        "station_id": "MPMG",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "paris": {
+        "station_id": "LFPB",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "qingdao": {
+        "station_id": "ZSQD",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "san-francisco": {
+        "station_id": "KSFO",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "F",
+        "hourly_data_only": true,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "sao-paulo": {
+        "station_id": "SBGR",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "seattle": {
+        "station_id": "KSEA",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "F",
+        "hourly_data_only": true,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "seoul": {
+        "station_id": "RKSI",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "shanghai": {
+        "station_id": "ZSPD",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "shenzhen": {
+        "station_id": "ZGSZ",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "singapore": {
+        "station_id": "WSSS",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "taipei": {
+        "station_id": "RCSS",
+        "family": "WU_DAILY_OBSERVATIONS",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "tokyo": {
+        "station_id": "RJTT",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "toronto": {
+        "station_id": "CYYZ",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "warsaw": {
+        "station_id": "EPWA",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "wellington": {
+        "station_id": "NZWN",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "wuhan": {
+        "station_id": "ZHHH",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      }
+    }
   }
 }

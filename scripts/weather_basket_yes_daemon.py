@@ -77,6 +77,7 @@ from reported_trajectory_market_registry import (
     fetch_gamma_events_window,
     load_config,
     materialize_event_registry,
+    settlement_source_check,
 )
 from reported_trajectory_awc_ingress import ReportedTrajectoryAwcIngress
 from weather_basket_yes_schema import (
@@ -4259,6 +4260,13 @@ def refresh_registry(conn: sqlite3.Connection, config: dict[str, Any]) -> dict[s
             errors.append(f"{_slug}:materialize:{type(exc).__name__}")
     if not rows or not any(row.get("source_eligible") for row in rows):
         raise RuntimeError("market_registry_materialization_empty_or_ineligible")
+    # Charter 205: the same descriptions the rows were just built from, read
+    # against the verified settlement baseline.  Pure, no network, no write:
+    # the blocking half already landed in the rows' block reasons above.
+    settlement_source = settlement_source_check(
+        [(event_date, event) for _slug, event_date, event in fetched],
+        config=config,
+    )
     refreshed_at = utc_now()
     conn.execute("BEGIN IMMEDIATE")
     try:
@@ -4393,6 +4401,7 @@ def refresh_registry(conn: sqlite3.Connection, config: dict[str, Any]) -> dict[s
         "amsc_market_count": len({(row["slug"], row["event_date"]) for row in rows if row.get("source_eligible") and row.get("source_lane") == "amsc"}),
         "awc_market_count": len({(row["slug"], row["event_date"]) for row in rows if row.get("source_eligible") and row.get("source_lane") == "awc"}),
         "blocked_market_count": len(markets - eligible),
+        "settlement_source": {**settlement_source, "checked_at": refreshed_at},
         "errors": errors,
     }
 

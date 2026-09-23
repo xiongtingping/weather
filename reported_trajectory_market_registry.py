@@ -38,6 +38,40 @@ STATION_RES = (WU_STATION_RE, NOAA_STATION_RE)
 URL_RE = re.compile(r"https?://[^\s]+")
 STATION_ID_RE = re.compile(r"^[A-Z0-9]{4}$")
 
+# Charter 205: what each market's own rules say it settles on, read every
+# registry refresh and held against a verified per-city baseline.  The 08-23
+# NOAA rewording starved all 45 stations for a day before anyone looked at a
+# description; nothing compared the rules we trade under with the rules we
+# had last read.  Only the clauses that decide the settled number are read --
+# which page, which reading on it, which unit, whether sub-hourly data counts
+# and when the value is final -- so a reworded sentence is not an alarm and
+# a changed number is.
+SETTLEMENT_CONTRACT_SCHEMA = "polymarket_settlement_source_contract_v1"
+NOAA_FAMILY = "NOAA_WRH_TIMESERIES"
+WU_FAMILY = "WU_DAILY_OBSERVATIONS"
+UNRECOGNIZED_FAMILY = "UNRECOGNIZED"
+# Each recognised page and the one reading on it our truth lane reproduces
+# (``bayes_basket_target/settlement_truth.py``: max over the day's METAR and
+# SPECI).  NOAA's "Temp" column and WU's Daily Observations table both list
+# exactly those reports; WU's "Day High & Low" summary and NOAA's 6/24-hour
+# max columns do not, and a market moved onto either is not one we can settle.
+SETTLEMENT_READINGS = {
+    NOAA_FAMILY: "TEMP_COLUMN_MAX",
+    WU_FAMILY: "DAILY_OBSERVATIONS_TABLE",
+}
+NEXT_DAY_FINALITY = "NEXT_DAY_FIRST_DATAPOINT"
+_QUOTE = "[\"'‘’“”]?"
+_READING_RES = {
+    NOAA_FAMILY: re.compile(r"highest reading under the " + _QUOTE + r"Temp" + _QUOTE + r" column", re.I),
+    WU_FAMILY: re.compile(_QUOTE + r"Daily Observations" + _QUOTE + r" table", re.I),
+}
+# NOAA's timeseries page lists every 5-minute ASOS reading at US stations
+# unless "Show Hourly Data" is pressed; hourly view is the routine METAR plus
+# SPECI (checked on the live KLGA page 2026-09-23), which is what we settle.
+HOURLY_DATA_RE = re.compile(r"Show Hourly Data", re.I)
+UNIT_RE = re.compile(r"in degrees (Celsius|Fahrenheit)", re.I)
+FINALITY_RE = re.compile(r"first data ?point for the following date has been published", re.I)
+
 
 class GammaFetchError(RuntimeError):
     """Gamma was unavailable through every configured transport candidate."""
@@ -347,7 +381,36 @@ def load_config(path: Path = DEFAULT_CONFIG) -> dict[str, Any]:
         or not 10.0 <= retry_sec <= refresh_sec
     ):
         raise ValueError("reported_trajectory_awc_ingress_registry_poll_policy_invalid")
+    _validate_settlement_source_contract(value.get("settlement_source_contract"))
     return dict(value)
+
+
+def _validate_settlement_source_contract(value: Any) -> None:
+    """The charter-205 baseline has to be whole before a refresh reads it.
+
+    A city missing its entry would be checked against nothing and pass, which
+    is the silence this baseline exists to end.
+    """
+
+    cities = value.get("cities") if isinstance(value, Mapping) else None
+    if (
+        not isinstance(value, Mapping)
+        or value.get("schema") != SETTLEMENT_CONTRACT_SCHEMA
+        or not str(value.get("verified_at_utc") or "").strip()
+        or not isinstance(cities, Mapping)
+        or not cities
+    ):
+        raise ValueError("reported_trajectory_settlement_source_contract_invalid")
+    for city, entry in cities.items():
+        if (
+            not isinstance(entry, Mapping)
+            or not STATION_ID_RE.match(str(entry.get("station_id") or ""))
+            or entry.get("family") not in SETTLEMENT_READINGS
+            or entry.get("unit") not in ("C", "F")
+            or not isinstance(entry.get("hourly_data_only"), bool)
+            or entry.get("finality") != NEXT_DAY_FINALITY
+        ):
+            raise ValueError(f"reported_trajectory_settlement_source_contract_invalid:{city}")
 
 
 def city_from_slug(slug: str) -> str:
@@ -355,6 +418,176 @@ def city_from_slug(slug: str) -> str:
     if match is None:
         raise ValueError("highest_temperature_slug_invalid")
     return match.group("city")
+
+
+def _resolution_station_match(description: str) -> re.Match[str] | None:
+    """The resolution URL the rules name first.
+
+    The NOAA wording names Weather Underground as its fallback, so a rule may
+    one day carry both URLs; the one the resolution sentence names comes
+    first, and that is the page the market settles on.
+    """
+
+    matches = [match for match in (pattern.search(description) for pattern in STATION_RES) if match]
+    return min(matches, key=lambda match: match.start()) if matches else None
+
+
+def settlement_contract(description: str) -> dict[str, Any]:
+    """The settlement clauses one market's rules state (charter 205)."""
+
+    text = str(description or "")
+    match = _resolution_station_match(text)
+    if match is None:
+        family = UNRECOGNIZED_FAMILY
+    elif match.re is NOAA_STATION_RE:
+        family = NOAA_FAMILY
+    else:
+        family = WU_FAMILY
+    reading_re = _READING_RES.get(family)
+    unit = UNIT_RE.search(text)
+    return {
+        "family": family,
+        "station_id": match.group("station").upper() if match else "",
+        "unit": unit.group(1)[0].upper() if unit else "",
+        "reading": SETTLEMENT_READINGS[family] if reading_re is not None and reading_re.search(text) else "",
+        "hourly_data_only": bool(HOURLY_DATA_RE.search(text)),
+        "whole_degree": "whole degrees" in text.lower(),
+        "finality": NEXT_DAY_FINALITY if FINALITY_RE.search(text) else "",
+    }
+
+
+def settlement_contract_deviations(
+    contract: Mapping[str, Any],
+    *,
+    expected: Mapping[str, Any] | None,
+    bucket_unit: str | None,
+) -> list[dict[str, Any]]:
+    """Every way ``contract`` departs from what we settle, graded.
+
+    ``blocking`` deviations change the number the market settles on relative
+    to the one our truth lane computes, so the market is taken out of the
+    registry until someone has looked; the rest (a city moved between two
+    pages that list the same reports, a new station, a new finality clause)
+    are reported and traded through.
+    """
+
+    found: list[dict[str, Any]] = []
+
+    def add(field: str, want: Any, got: Any, reason: str, blocking: bool) -> None:
+        found.append({
+            "field": field, "expected": want, "observed": got,
+            "reason": reason, "blocking": blocking,
+        })
+
+    family = str(contract.get("family") or "")
+    if family not in SETTLEMENT_READINGS:
+        add("family", sorted(SETTLEMENT_READINGS), family,
+            "official_resolution_contract_unrecognized", True)
+    elif contract.get("reading") != SETTLEMENT_READINGS[family]:
+        add("reading", SETTLEMENT_READINGS[family], contract.get("reading") or "",
+            "official_resolution_reading_unrecognized", True)
+    unit = str(contract.get("unit") or "")
+    if unit and bucket_unit and unit != bucket_unit:
+        add("unit", bucket_unit, unit, "official_resolution_unit_mismatch", True)
+    if not expected:
+        return found
+    if contract.get("station_id") != expected.get("station_id"):
+        add("station_id", expected.get("station_id"), contract.get("station_id"),
+            "official_resolution_station_changed", False)
+    if family in SETTLEMENT_READINGS and family != expected.get("family"):
+        add("family", expected.get("family"), family,
+            "official_resolution_family_changed", False)
+    if unit and unit != expected.get("unit"):
+        add("unit", expected.get("unit"), unit, "official_resolution_unit_changed", False)
+    hourly = bool(contract.get("hourly_data_only"))
+    if hourly != bool(expected.get("hourly_data_only")):
+        add("hourly_data_only", bool(expected.get("hourly_data_only")), hourly,
+            "official_resolution_admits_subhourly_data" if not hourly
+            else "official_resolution_hourly_clause_added",
+            not hourly)
+    if contract.get("finality") != expected.get("finality"):
+        add("finality", expected.get("finality"), contract.get("finality") or "",
+            "official_resolution_finality_changed", False)
+    return found
+
+
+def _event_bucket_unit(event: Mapping[str, Any]) -> str:
+    try:
+        buckets = normalize_market_buckets([
+            {"outcome": str(row.get("groupItemTitle") or "").strip()}
+            for row in event.get("markets") or [] if isinstance(row, Mapping)
+        ])
+    except ValueError:
+        return ""
+    return str(buckets[0]["unit"]) if buckets else ""
+
+
+def settlement_source_check(
+    events: Sequence[tuple[str, Mapping[str, Any]]],
+    *,
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """One refresh's reading of every fetched market against the baseline.
+
+    ``events`` is ``(event_date, gamma_event)``.  Deviations are folded to one
+    line per city and field with the event dates they appear on, because
+    Polymarket rewrites one event date at a time and "since which date" is
+    the thing to read.
+    """
+
+    baseline = config.get("settlement_source_contract") or {}
+    cities = baseline.get("cities") or {}
+    folded: dict[tuple[str, str, str], dict[str, Any]] = {}
+    families: dict[str, set[str]] = {}
+    seen: set[str] = set()
+    unbaselined: set[str] = set()
+    blocked_markets: set[tuple[str, str]] = set()
+    for event_date, event in events:
+        slug = str(event.get("slug") or "")
+        try:
+            city = city_from_slug(slug)
+        except ValueError:
+            continue
+        contract = settlement_contract(str(event.get("description") or ""))
+        expected = cities.get(city)
+        if expected is None:
+            unbaselined.add(city)
+            continue
+        seen.add(city)
+        families.setdefault(contract["family"], set()).add(city)
+        for item in settlement_contract_deviations(
+            contract, expected=expected, bucket_unit=_event_bucket_unit(event)
+        ):
+            if item["blocking"]:
+                blocked_markets.add((slug, event_date))
+            line = folded.setdefault(
+                (city, item["field"], str(item["observed"])),
+                {"city_slug": city, "station_id": expected.get("station_id"),
+                 **item, "event_dates": set()},
+            )
+            line["event_dates"].add(event_date)
+    deviations = sorted(
+        ({**line, "event_dates": sorted(line["event_dates"])} for line in folded.values()),
+        key=lambda line: (not line["blocking"], line["city_slug"], line["field"]),
+    )
+    absent = sorted(set(cities) - seen)
+    return {
+        "schema": "polymarket_settlement_source_check_v1",
+        "baseline_verified_at_utc": baseline.get("verified_at_utc"),
+        "baseline_city_count": len(cities),
+        "checked_city_count": len(seen),
+        "families": {family: len(members) for family, members in sorted(families.items())},
+        "family_cities": {
+            family: sorted(members)
+            for family, members in sorted(families.items())
+            if family != NOAA_FAMILY
+        },
+        "deviations": deviations,
+        "blocked_market_count": len(blocked_markets),
+        "baseline_cities_without_market": absent,
+        "cities_outside_baseline": sorted(unbaselined),
+        "ok": not deviations and not absent,
+    }
 
 
 def fetch_gamma_event(slug: str, *, timeout: float = 8.0) -> dict[str, Any] | None:
@@ -455,10 +688,7 @@ def materialize_event_registry(
     slug = str(event.get("slug") or "").strip()
     city = city_from_slug(slug)
     description = str(event.get("description") or "")
-    station_match = next(
-        (match for match in (pattern.search(description) for pattern in STATION_RES) if match),
-        None,
-    )
+    station_match = _resolution_station_match(description)
     station = station_match.group("station").upper() if station_match else ""
     origin_route = station_source_route(station) if station else {}
     resolution_url = station_match.group(0).rstrip(". ") if station_match else ""
@@ -504,6 +734,16 @@ def materialize_event_registry(
     except ValueError as exc:
         buckets = []
         blocks.append(str(exc))
+    contract_cities = (config.get("settlement_source_contract") or {}).get("cities") or {}
+    blocks.extend(
+        item["reason"]
+        for item in settlement_contract_deviations(
+            settlement_contract(description),
+            expected=contract_cities.get(city),
+            bucket_unit=str(buckets[0]["unit"]) if buckets else None,
+        )
+        if item["blocking"]
+    )
     bucket_by_label = {row["outcome"]: row for row in buckets}
     rows: list[dict[str, Any]] = []
     for market in markets:
@@ -640,5 +880,6 @@ def commit_registry_rows(conn: sqlite3.Connection, rows: Sequence[Mapping[str, A
 __all__ = [
     "DEFAULT_CONFIG", "SCHEMA_VERSION", "GammaFetchError", "city_from_slug", "commit_registry_rows",
     "discovered_slugs", "fetch_gamma_event", "fetch_gamma_events_window", "load_config",
-    "materialize_event_registry",
+    "materialize_event_registry", "settlement_contract", "settlement_contract_deviations",
+    "settlement_source_check",
 ]

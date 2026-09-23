@@ -282,6 +282,89 @@ def _nwp_rotation_health(status: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+#: Charter 205.  The registry refreshes every five minutes and a Gamma
+#: timeout is routine, so one failed refresh is not an unchecked source; six
+#: in a row is.
+SETTLEMENT_SOURCE_UNCHECKED_SEC = 1800.0
+_SETTLEMENT_FIELD_WORDS = {
+    "family": "结算页面", "reading": "读数", "station_id": "站点",
+    "unit": "单位", "hourly_data_only": "只看整点", "finality": "定稿时刻",
+}
+_SETTLEMENT_VALUE_WORDS = {
+    "NOAA_WRH_TIMESERIES": "NOAA", "WU_DAILY_OBSERVATIONS": "WU",
+    "TEMP_COLUMN_MAX": "Temp 列最高", "DAILY_OBSERVATIONS_TABLE": "逐报表",
+    "NEXT_DAY_FIRST_DATAPOINT": "次日首条", True: "是", False: "否", "": "（没写）",
+}
+
+
+def _settlement_source_health(status: Mapping[str, Any]) -> dict[str, Any]:
+    """Whether every market still settles on what the truth lane computes.
+
+    Charter 205: the registry refresh reads each market's rules against the
+    verified per-city baseline.  Red is a market taken out of the registry
+    because its rules now settle on a number we do not compute (a reading,
+    unit or sub-hourly admission we do not reproduce); amber is a move we
+    can still settle -- a city onto another page, another station -- or a
+    baseline city with no market, which the baseline has to be re-verified
+    for either way.
+    """
+
+    refresh = status.get("registry_refresh")
+    refresh = refresh if isinstance(refresh, Mapping) else {}
+    check = refresh.get("settlement_source")
+    if not isinstance(check, Mapping):
+        registry = status.get("registry")
+        age = (
+            registry.get("registry_age_sec")
+            if isinstance(registry, Mapping) else None
+        )
+        if refresh.get("ok") is False and (
+            age is None or float(age) >= SETTLEMENT_SOURCE_UNCHECKED_SEC
+        ):
+            return {
+                "settlement_source_health": "amber",
+                "settlement_source_note": (
+                    "注册表刷新连续失败，结算源"
+                    + (f" {float(age) / 60:.0f} 分钟" if age is not None else "")
+                    + f"没核对（{str(refresh.get('error') or '')[:80]}）"
+                ),
+            }
+        return {}
+
+    def word(value: Any) -> str:
+        return _SETTLEMENT_VALUE_WORDS.get(value, str(value))
+
+    parts = [
+        f"{line.get('city_slug')}/{line.get('station_id')} "
+        f"{_SETTLEMENT_FIELD_WORDS.get(line.get('field'), line.get('field'))}"
+        f" 基线 {word(line.get('expected'))} → 页面 {word(line.get('observed'))}"
+        f"（{'、'.join(str(day)[5:] for day in line.get('event_dates') or [])}"
+        f"{'，已拦' if line.get('blocking') else ''}）"
+        for line in check.get("deviations") or []
+        if isinstance(line, Mapping)
+    ]
+    absent = list(check.get("baseline_cities_without_market") or [])
+    if absent:
+        parts.append(f"基线城市没有挂牌：{'、'.join(absent)}")
+    blocked = int(check.get("blocked_market_count") or 0)
+    if blocked:
+        health = "red"
+        parts.insert(0, f"{blocked} 个市场的结算口径我们算不了，已拦下")
+    elif parts:
+        health = "amber"
+    else:
+        health = "green"
+        families = check.get("families") or {}
+        parts.append(
+            "、".join(f"{word(k)} {v} 城" for k, v in families.items())
+            + "，与基线一致"
+        )
+    return {
+        "settlement_source_health": health,
+        "settlement_source_note": "；".join(parts),
+    }
+
+
 # A capture lane that has produced NOTHING is a different failure from a
 # family that is behind, and until 2026-09-10 the page could only show the
 # second.  Measured that day: ECCC's newest run read 32.6h old and the card
@@ -16243,6 +16326,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
                 **_taf_capture_health(status),
                 **_nwp_rotation_health(status),
                 **_official_native_family_coverage(status),
+                **_settlement_source_health(status),
             }
         except (ValueError, OSError):
             worker = {}
@@ -16349,6 +16433,16 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
                   in (worker.get("native_inbox_short_near_dates") or [])
               )}]
             if worker.get("native_inbox_health") not in (None, "green") else []
+        )
+        # Charter 205: whether the markets still settle on what the truth
+        # lane computes.  The 08-23 NOAA rewording starved the fleet for a
+        # day with nothing on this page.
+        + (
+            [{"health": worker["settlement_source_health"],
+              "label": "结算源",
+              "note": worker.get("settlement_source_note") or ""}]
+            if worker.get("settlement_source_health") not in (None, "green")
+            else []
         )
         # Charter 197: whether the world is reachable and whether the P0 a
         # decision reads is fresh -- the two things that failed on
