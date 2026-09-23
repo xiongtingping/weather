@@ -387,11 +387,22 @@ def forecast_clearness_shift_sigma(
     }
 
 
+# Fleet mean / standard deviation of the forward TAF capture fields under the
+# capture reading shipped 2026-09-23 (prevailing/overlay blending, precipitation
+# tokens read with their intensity prefix, a PROB percentage counted only for
+# precipitation): 9,035 archived captures, 2026-08-20..09-23, re-derived from
+# the raw bulletins with the shipped ``_forecast_features``.  The v1 table
+# (0.3557/0.3102, 0.0933/0.2155, 3.7880/1.4831 over 2,121 captures) described
+# the old reading, which scored an overlay's unrestated cloud and wind as 0
+# and never matched ``-SHRA``/``-TSRA``.  User ruling 2026-09-23 「改新语义」.
+# The arm this standardises has served no P0 vector since 08-20 (118,243
+# rows: the clearness or absolute radiation form always resolved), so the
+# swap moves no served fingerprint; the receipt names the table it read.
+SYNOPTIC_COOLING_NORMALISATION_VERSION = "fleet_2026-09-23_prevailing_overlay_v2"
 SYNOPTIC_COOLING_NORMALISATION = {
-    # field: (fleet mean, fleet standard deviation) over 2,121 TAF captures
-    "cloud_cover_fraction": (0.3557, 0.3102),
-    "precipitation_probability": (0.0933, 0.2155),
-    "wind_speed_mps": (3.7880, 1.4831),
+    "cloud_cover_fraction": (0.4348, 0.3017),
+    "precipitation_probability": (0.1047, 0.2624),
+    "wind_speed_mps": (3.9173, 1.8097),
 }
 
 
@@ -420,6 +431,7 @@ def synoptic_cooling_index(
             return None, {
                 "schema": "synoptic_cooling_receipt_v1",
                 "method_tag": SYNOPTIC_COOLING_METHOD_TAG,
+                "normalisation": SYNOPTIC_COOLING_NORMALISATION_VERSION,
                 "state": "INCOMPLETE_FIELDS",
                 "missing_field": field,
             }
@@ -429,6 +441,7 @@ def synoptic_cooling_index(
     return index, {
         "schema": "synoptic_cooling_receipt_v1",
         "method_tag": SYNOPTIC_COOLING_METHOD_TAG,
+        "normalisation": SYNOPTIC_COOLING_NORMALISATION_VERSION,
         "state": "RESOLVED",
         "index": index,
         "standardised": standardised,
