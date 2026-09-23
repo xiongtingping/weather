@@ -307,3 +307,76 @@ def test_a_fresher_run_with_no_fitted_weights_does_not_displace_a_servable_one(
     )
     held = json.loads(inbox.read_text(encoding="utf-8"))["packets"]
     assert [row["lead_bucket"] for row in held] == ["h12_24"]
+
+
+# --------------------------------------------------------------------------
+# Charter 193 (三) per system: no family in the served packet goes back to an
+# older run through the merge (2026-09-23 d1 packets for 09-24).
+# --------------------------------------------------------------------------
+def _run_packet(station: str, runs: dict[str, str], marker: str) -> dict:
+    return {
+        **_packet(station, "2026-09-24", marker),
+        "lead_bucket": "h24_48",
+        "run_init_utc_by_system": runs,
+    }
+
+
+_IN_SERVICE = {
+    "ECMWF_IFS_ENS_OPEN_PF50": "2026-09-22T18:00:00Z",
+    "NOAA_GEFS_05": "2026-09-22T18:00:00Z",
+    "DWD_ICON_GLOBAL_EPS": "2026-09-23T00:00:00Z",
+    "ECCC_GEM_GLOBAL_ENS": "2026-09-22T12:00:00Z",
+}
+
+
+@pytest.mark.parametrize(
+    "staged_runs, merged_marker, refused",
+    [
+        # every system at least as new: replaced, as before
+        ({**_IN_SERVICE, "NOAA_GEFS_05": "2026-09-23T00:00:00Z"}, "staged", None),
+        # the required pair level, ICON back to D-2 12Z: the old key (slower
+        # required family) tied and let it in; now it stays out
+        ({**_IN_SERVICE, "DWD_ICON_GLOBAL_EPS": "2026-09-22T12:00:00Z"},
+         "service", ["DWD_ICON_GLOBAL_EPS"]),
+        # GEFS ahead, ECMWF behind (the 05:00Z d1 packet): out
+        ({**_IN_SERVICE, "NOAA_GEFS_05": "2026-09-23T00:00:00Z",
+          "ECMWF_IFS_ENS_OPEN_PF50": "2026-09-22T12:00:00Z"}, "service", None),
+        # a system the served packet does not carry cannot be "older"
+        ({k: v for k, v in _IN_SERVICE.items() if k != "ECCC_GEM_GLOBAL_ENS"}
+         | {"NOAA_GEFS_05": "2026-09-23T00:00:00Z"}, "staged", None),
+    ],
+)
+def test_a_packet_older_on_any_system_is_not_merged(
+    tmp_path: Path, staged_runs, merged_marker, refused
+) -> None:
+    inbox = tmp_path / "inbox.json"
+    _write_inbox(inbox, [_run_packet("ZUUU", _IN_SERVICE, "service")])
+    staging = tmp_path / "staging.json"
+    _write_inbox(staging, [_run_packet("ZUUU", staged_runs, "staged")])
+
+    result = _merge_official_native_inbox(
+        inbox, staging_path=staging, as_of_utc="2026-09-23T05:00:00Z"
+    )
+
+    (packet,) = _packets(inbox)
+    assert packet["marker"] == merged_marker
+    if refused is not None:
+        assert result["refused_older_systems"] == {"ZUUU|2026-09-24": refused}
+    if merged_marker == "staged":
+        assert "refused_older_systems" not in result
+
+
+def test_a_servable_packet_still_replaces_one_no_p0_can_use(tmp_path: Path) -> None:
+    inbox = tmp_path / "inbox.json"
+    _write_inbox(inbox, [_run_packet("ZUUU", _IN_SERVICE, "service")])
+    staging = tmp_path / "staging.json"
+    older_icon = {**_IN_SERVICE, "DWD_ICON_GLOBAL_EPS": "2026-09-22T12:00:00Z"}
+    staged = {**_run_packet("ZUUU", older_icon, "staged"), "lead_bucket": "h12_24"}
+    _write_inbox(staging, [staged])
+
+    _merge_official_native_inbox(
+        inbox, staging_path=staging, as_of_utc="2026-09-23T05:00:00Z",
+        fitted_lead_buckets={("ZUUU", "h12_24")},
+    )
+
+    assert _packets(inbox)[0]["marker"] == "staged"

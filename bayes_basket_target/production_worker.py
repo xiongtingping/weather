@@ -3546,6 +3546,7 @@ def _merge_official_native_inbox(
     staged_rank_by_scope: dict[
         tuple[str, str], tuple[bool, tuple[int, float]]
     ] = {}
+    staged_best_by_scope: dict[tuple[str, str], Any] = {}
     for packet in staged_packets:
         scope = _scope_of(packet)
         if scope is None:
@@ -3554,9 +3555,17 @@ def _merge_official_native_inbox(
         held = staged_rank_by_scope.get(scope)
         if held is None or rank > held:
             staged_rank_by_scope[scope] = rank
+            staged_best_by_scope[scope] = packet
     merged: list[Any] = []
     pruned = 0
     superseded: set[tuple[str, str]] = set()
+    # Charter 193 (三), per system: the freshness key above is the slower
+    # required family, so a packet that kept ECMWF/GEFS level while one other
+    # family went back (or advanced one required family while the other went
+    # back to an older run than the one in service) could still win.  A
+    # staged packet in which any system shared with the in-service packet
+    # carries an older run is not merged; the in-service packet stays.
+    refused_older_systems: dict[str, list[str]] = {}
     for packet in existing_packets:
         scope = _scope_of(packet)
         if scope is None:
@@ -3580,7 +3589,14 @@ def _merge_official_native_inbox(
             # Ties go to the staged packet: a fresh capture of the same run is
             # a re-read whose members may have been incomplete before.
             if staged_rank >= (_servable(packet), _freshness_of(packet)):
-                continue
+                older = _systems_on_older_run(
+                    staged_best_by_scope.get(scope), packet
+                )
+                # A servable packet still replaces one no P0 can be fitted
+                # for, as the outer key above already rules.
+                if not older or (staged_rank[0] and not _servable(packet)):
+                    continue
+                refused_older_systems[f"{scope[0]}|{scope[1]}"] = older
             superseded.add(scope)
         merged.append(packet)
     merged.extend(
@@ -3616,7 +3632,47 @@ def _merge_official_native_inbox(
         inbox_path,
         {**identity, "content_sha256": content_sha256(identity)},
     )
-    return {"packet_count": len(merged), "pruned": pruned}
+    return {
+        "packet_count": len(merged),
+        "pruned": pruned,
+        **(
+            {"refused_older_systems": dict(sorted(refused_older_systems.items()))}
+            if refused_older_systems
+            else {}
+        ),
+    }
+
+
+def _packet_runs_by_system(packet: Any) -> dict[str, datetime]:
+    """Each system's run in a packet; systems with no readable run are left out."""
+
+    if not isinstance(packet, Mapping):
+        return {}
+    raw = packet.get("run_init_utc_by_system")
+    if not isinstance(raw, Mapping):
+        return {}
+    runs: dict[str, datetime] = {}
+    for system_id, value in raw.items():
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            continue
+        if parsed.tzinfo is None:
+            continue
+        runs[str(system_id)] = parsed.astimezone(timezone.utc)
+    return runs
+
+
+def _systems_on_older_run(staged: Any, in_service: Any) -> list[str]:
+    """Systems the staged packet carries on an older run than the one in service."""
+
+    staged_runs = _packet_runs_by_system(staged)
+    service_runs = _packet_runs_by_system(in_service)
+    return sorted(
+        system_id
+        for system_id in staged_runs.keys() & service_runs.keys()
+        if staged_runs[system_id] < service_runs[system_id]
+    )
 
 
 def _utc_date(value: str) -> date:
@@ -3628,6 +3684,61 @@ def _utc_date(value: str) -> date:
 # The two families the capture fails closed without; see
 # ``_served_run_init_utc``.
 REQUIRED_CAPTURE_FAMILIES = ("NOAA_GEFS_PDS_S3", "ECMWF_OPEN_DATA_S3")
+
+
+def _held_run_from_capture_archives(
+    capture_root: Path, event_date: str
+) -> str | None:
+    """The run a date holds, read from its per-lead GEFS/ECMWF archives.
+
+    Each family's newest run across the ladder's leads, then the slower of the
+    two -- the same reading ``_served_run_init_utc`` takes of a pass receipt.
+    ``None`` when either family has no readable archive for the date.
+    """
+
+    newest: dict[str, datetime] = {}
+    leads = sorted({int(lead) for lead, _cycle in OFFICIAL_NATIVE_LADDER_RUNGS})
+    for family, prefix in (
+        ("NOAA_GEFS_PDS_S3", "gefs"),
+        ("ECMWF_OPEN_DATA_S3", "ecmwf"),
+    ):
+        for lead in leads:
+            path = Path(capture_root) / f"{prefix}_{event_date}_d{lead}.json"
+            if path.is_symlink() or not path.is_file():
+                continue
+            try:
+                payload = load_bounded_json(path)
+                if str(payload.get("event_date") or "") != str(event_date):
+                    continue
+                run = datetime.fromisoformat(
+                    str(payload.get("run_init_utc") or "").replace("Z", "+00:00")
+                ).astimezone(timezone.utc)
+            except Exception:  # noqa: BLE001 - unreadable is absent
+                continue
+            if family not in newest or run > newest[family]:
+                newest[family] = run
+    if len(newest) != len(REQUIRED_CAPTURE_FAMILIES):
+        return None
+    return min(newest.values()).isoformat().replace("+00:00", "Z")
+
+
+def _capture_stdout_reason(stdout: Any) -> str:
+    """The reason a capture printed on its stdout receipt, if it printed one."""
+
+    text = str(stdout or "").strip()
+    if not text:
+        return ""
+    for line in reversed(text.splitlines()):
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            payload = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(payload, Mapping):
+            return str(payload.get("reason") or payload.get("state") or "")[:300]
+    return text[-200:]
 
 
 def _served_run_init_utc(receipt: Mapping[str, Any]) -> str | None:
@@ -5955,6 +6066,22 @@ class TargetProductionWorker:
             if listing_station else None
         )
         listing_new = listing_key is not None and listing_key not in listing_seen
+        # Charter 193 (三): what a date holds survives a restart.  The map
+        # above lives in process memory; emptied at 2026-09-23 04:00:33Z it
+        # let the next pass walk below the 18Z the date's files held and spend
+        # 42 minutes capturing 12Z.  Read once per date from the per-lead
+        # archives on disk (the slower of GEFS/ECMWF, as a pass records it).
+        restored_dates: set[str] = getattr(
+            self, "_official_native_capture_runs_restored", None
+        ) or set()
+        self._official_native_capture_runs_restored = restored_dates
+        if event_date not in captured_runs and event_date not in restored_dates:
+            restored_dates.add(event_date)
+            restored = _held_run_from_capture_archives(
+                self.nwp_runtime_root / "official_native_capture", event_date
+            )
+            if restored:
+                captured_runs[event_date] = restored
         if (
             captured_runs.get(event_date) == newest_run_init
             and not stale_for_day
@@ -6180,6 +6307,13 @@ class TargetProductionWorker:
                             (completed.stderr or "").strip()[-160:]
                             if completed.returncode != 0 else ""
                         ),
+                        # The capture fails closed on its stdout receipt
+                        # (``BLOCKED_FAIL_CLOSED`` + reason) with stderr empty,
+                        # so without this an rc 2 said nothing about why.
+                        "stdout_reason": (
+                            _capture_stdout_reason(completed.stdout)
+                            if completed.returncode != 0 else ""
+                        ),
                     })
                     if completed.returncode != 0 and _capture_text_is_network(
                         completed.stderr
@@ -6305,12 +6439,16 @@ class TargetProductionWorker:
                         (completed.stderr if completed is not None else "")
                         or ""
                     ).strip()
+                    stdout_reason = (
+                        _capture_stdout_reason(completed.stdout)
+                        if completed is not None else ""
+                    )
                     return {
                         "state": "FAILED",
                         "reason": (
                             "run_ladder_exhausted:"
                             f"capture_exit_{completed.returncode if completed is not None else 'none'}:"
-                            f"{stderr_text[-200:]}"
+                            f"{stderr_text[-200:] or stdout_reason[-200:]}"
                         ),
                     }
             except subprocess.TimeoutExpired:
@@ -6375,6 +6513,11 @@ class TargetProductionWorker:
                 "state": "CAPTURED",
                 "inbox_packet_count": merged["packet_count"],
                 "pruned_packet_count": merged["pruned"],
+                # Charter 193 (三): staged packets not merged because a system
+                # in them was on an older run than the packet in service.
+                "merge_refused_older_systems": dict(
+                    merged.get("refused_older_systems") or {}
+                ),
                 # Which run this scope actually got, so a reader can tell a
                 # fresh rung from a fallback without re-deriving the ladder.
                 "captured_run_init_utc": captured_run_init,
@@ -6431,6 +6574,9 @@ class TargetProductionWorker:
                     outcome.get("network_held_families") or ()
                 ),
                 "hold_families": list(hold_families),
+                "merge_refused_older_systems": dict(
+                    outcome.get("merge_refused_older_systems") or {}
+                ),
                 "rungs": list(rung_trace),
             })
             return outcome

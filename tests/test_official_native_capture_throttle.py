@@ -453,3 +453,64 @@ def test_fresh_packets_keep_the_held_run_retired(worker, tmp_path: Path) -> None
 
     assert result["state"] == "RUN_ALREADY_CAPTURED"
 
+
+
+# --------------------------------------------------------------------------
+# Charter 193 (三): what a date holds survives a restart; a failed capture's
+# stdout reason reaches the attempt log.
+# --------------------------------------------------------------------------
+def _archive_file(root: Path, name: str, event_date: str, run: str) -> None:
+    import json
+
+    root.mkdir(parents=True, exist_ok=True)
+    (root / name).write_text(
+        json.dumps({"event_date": event_date, "run_init_utc": run}),
+        encoding="utf-8",
+    )
+
+
+def test_a_restarted_worker_reads_the_held_run_from_the_archives(
+    worker, tmp_path: Path
+) -> None:
+    # A fresh process (empty memory) for a date whose files hold 12Z -- the
+    # newest run covering 08-07 at 15:00Z -- does not walk below it.
+    capture_root = tmp_path / "official_native_capture"
+    _archive_file(capture_root, "gefs_2026-08-07_d1.json", "2026-08-07", "2026-08-06T12:00:00Z")
+    _archive_file(capture_root, "ecmwf_2026-08-07_d2.json", "2026-08-07", "2026-08-05T18:00:00Z")
+    _archive_file(capture_root, "ecmwf_2026-08-07_d1.json", "2026-08-07", "2026-08-06T12:00:00Z")
+
+    result = _capture(worker, tmp_path=tmp_path)
+
+    assert result["state"] == "RUN_ALREADY_CAPTURED"
+    assert result["captured_run_init_utc"] == "2026-08-06T12:00:00Z"
+
+
+def test_the_restored_run_is_the_slower_required_family(worker, tmp_path: Path) -> None:
+    from bayes_basket_target.production_worker import _held_run_from_capture_archives
+
+    capture_root = tmp_path / "official_native_capture"
+    _archive_file(capture_root, "gefs_2026-08-07_d1.json", "2026-08-07", "2026-08-06T12:00:00Z")
+    _archive_file(capture_root, "ecmwf_2026-08-07_d1.json", "2026-08-07", "2026-08-06T06:00:00Z")
+    _archive_file(capture_root, "ecmwf_2026-08-07_d2_18z.json", "2026-08-07", "2026-08-06T18:00:00Z")
+    assert _held_run_from_capture_archives(capture_root, "2026-08-07") == "2026-08-06T06:00:00Z"
+    # the 06Z held leaves the 12Z rung to try: not retired
+    assert _capture(worker, tmp_path=tmp_path)["state"] != "RUN_ALREADY_CAPTURED"
+    # one family missing: nothing is claimed
+    (capture_root / "gefs_2026-08-07_d1.json").unlink()
+    assert _held_run_from_capture_archives(capture_root, "2026-08-07") is None
+
+
+def test_a_failed_capture_names_its_stdout_reason() -> None:
+    import json
+
+    from bayes_basket_target.production_worker import _capture_stdout_reason
+
+    receipt = json.dumps({
+        "schema": "official_native_ensemble_forward_capture_v1",
+        "state": "BLOCKED_FAIL_CLOSED",
+        "reason": "ContractError:official_native_forward_archive_would_regress:x",
+    })
+    assert _capture_stdout_reason("noise\n" + receipt + "\n") == (
+        "ContractError:official_native_forward_archive_would_regress:x"
+    )
+    assert _capture_stdout_reason("") == ""
