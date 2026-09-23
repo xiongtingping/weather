@@ -128,6 +128,25 @@ def _insert_content_addressed(
     return 1
 
 
+def rejected_forward_taf_capture(capture: Any, reason: str) -> dict[str, str]:
+    """What the receipt says about a capture refused on its own checks."""
+
+    raw = capture if isinstance(capture, Mapping) else {}
+    revision = raw.get("forecast_revision")
+    revision = revision if isinstance(revision, Mapping) else {}
+    return {
+        "station_id": str(
+            raw.get("station_id") or revision.get("station_id") or ""
+        ).strip().upper(),
+        "event_date": str(
+            raw.get("event_date") or revision.get("event_date") or ""
+        ).strip(),
+        "revision_id": str(revision.get("revision_id") or "").strip(),
+        "source_capture_sha256": str(raw.get("content_sha256") or ""),
+        "reason": reason,
+    }
+
+
 def ingest_forward_taf_inbox(
     conn: sqlite3.Connection,
     inbox: Mapping[str, Any],
@@ -199,7 +218,9 @@ def ingest_forward_taf_inbox(
             registry_timezones_by_scope.setdefault(
                 (triple_station, triple_day), []
             ).append((triple_zone,))
-    for capture in captures:
+    def _validated(capture: Any) -> dict[str, Any] | None:
+        # One capture's checks.  Everything here is about that one provider
+        # receipt, so a failure is that capture's alone (see the loop).
         if not isinstance(capture, Mapping):
             raise ContractError("forward_taf_capture_invalid")
         source_capture_sha = _sha(
@@ -314,7 +335,7 @@ def ingest_forward_taf_inbox(
                 "source_capture_sha256": source_capture_sha,
                 "reason": "forward_taf_timestamp_order_invalid",
             })
-            continue
+            return None
         tx_raw = fields.get("tx_c")
         tx_c = (
             None
@@ -356,7 +377,7 @@ def ingest_forward_taf_inbox(
                 "source_capture_sha256": source_capture_sha,
                 "reason": "forward_taf_fields_invalid",
             })
-            continue
+            return None
         identity = {
             "station_id": station,
             "event_date": event_date,
@@ -389,7 +410,7 @@ def ingest_forward_taf_inbox(
         ):
             raise ContractError("forward_taf_revision_invalid")
         row_sha = content_sha256(identity)
-        rows.append({
+        return {
             "taf_capture_id": "taf-capture-" + row_sha[:32],
             **identity,
             # Derived query index only.  Keep it outside the immutable
@@ -397,7 +418,27 @@ def ingest_forward_taf_inbox(
             # their original append-only hashes.
             "tx_available": int(tx_c is not None),
             "content_sha256": row_sha,
-        })
+        }
+
+    # A capture that fails any of its own checks is rejected on its own and
+    # its scope keeps no new TAF fact -- P0-M fails closed there and nowhere
+    # else.  Raising instead failed the whole pass: one capture stopped P0-M,
+    # P1 and the decisions for every station.  It was fixed one check at a
+    # time -- timestamp order, then the market-timezone mismatch, then
+    # 2026-09-20 03:28-05:26Z, when three weatherless TGFTP captures (KMIA x2,
+    # ZSPD) held every P0-M for two hours -- and the rest still raised.  Only
+    # the inbox as a whole (schema, count) still fails the pass.
+    for capture in captures:
+        try:
+            row = _validated(capture)
+        except ContractError as exc:
+            rejected_timestamp_captures.append(
+                rejected_forward_taf_capture(capture, str(exc))
+            )
+            continue
+        if row is not None:
+            rows.append(row)
+
     phase_ms["validate"] = round(
         (time.perf_counter() - _validate_started) * 1000.0, 1
     )
@@ -1375,6 +1416,7 @@ __all__ = [
     "ingest_historical_taf_calibration",
     "ingest_historical_taf_calibration_with_quarantine",
     "ingest_historical_taf_correction_quarantine",
+    "rejected_forward_taf_capture",
 ]
 
 

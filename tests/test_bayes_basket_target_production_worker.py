@@ -1496,10 +1496,23 @@ def test_resident_taf_inbox_materializes_p0m_before_p1(tmp_path: Path) -> None:
         "schema": "bayes_basket_target_taf_revision_inbox_v1",
         "captures": [tampered],
     }), encoding="utf-8")
-    with pytest.raises(ContractError, match="sha_mismatch"):
-        worker._materialize_resident_p0m(
-            as_of_utc="2026-07-26T12:00:00Z"
-        )
+    # A tampered capture is refused on its own (2026-09-23): it used to raise
+    # and stop P0-M for every station.  Nothing of it is committed.
+    refused = worker._materialize_resident_p0m(
+        as_of_utc="2026-07-26T12:00:00Z"
+    )
+    assert [r["reason"] for r in refused["refused_captures"]] == [
+        "resident_taf_capture_content_sha_mismatch"
+    ]
+    assert [
+        r["reason"] for r in refused["taf_fact_ingress"]["rejected_captures"]
+    ] == ["forward_taf_capture_sha_mismatch"]
+    assert conn.execute(
+        "SELECT COUNT(*) FROM basket_probability_envelope WHERE stage='P0-M'"
+    ).fetchone()[0] == 2
+    assert conn.execute(
+        "SELECT COUNT(*) FROM calibration_forward_taf_capture WHERE tx_c=99.0"
+    ).fetchone()[0] == 0
     retrospective_identity = {
         **capture_identity,
         "source_class": "official_date_addressed_retrospective_capture",
@@ -1516,10 +1529,15 @@ def test_resident_taf_inbox_materializes_p0m_before_p1(tmp_path: Path) -> None:
             "content_sha256": content_sha256(retrospective_identity),
         }],
     }), encoding="utf-8")
-    with pytest.raises(ContractError, match="receipt_required"):
-        worker._materialize_resident_p0m(
-            as_of_utc="2026-07-26T12:00:00Z"
-        )
+    refused = worker._materialize_resident_p0m(
+        as_of_utc="2026-07-26T12:00:00Z"
+    )
+    assert [r["reason"] for r in refused["refused_captures"]] == [
+        "resident_taf_forward_receipt_required"
+    ]
+    assert conn.execute(
+        "SELECT COUNT(*) FROM basket_probability_envelope WHERE stage='P0-M'"
+    ).fetchone()[0] == 2
     worker.close()
 
 

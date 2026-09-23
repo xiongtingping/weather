@@ -54,6 +54,11 @@ NON_MARKET_NETWORK_MODULES = frozenset(
         # tunnel from a quiet provider -- the CLOB root included, as a
         # reachability probe only; no quote, book or tick is read over it.
         "bayes_basket_target/supply_watch.py",
+        # Charter 201 (2026-09-23): the deterministic-forecast family --
+        # ECMWF's open-data bucket for AIFS, Open-Meteo's single-runs API for
+        # the rest.  Forecast fields only.
+        "bayes_basket_target/aifs_single_point_archive.py",
+        "bayes_basket_target/open_meteo_relay_archive.py",
         "bayes_basket_target/republisher_native_forward_probe.py",
         "bayes_basket_target/republisher_no_live_p0_contract.py",
     }

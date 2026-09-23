@@ -221,7 +221,10 @@ from .metar_physical_forward import (
     apply_metar_physical_member_runs,
     plan_metar_physical_member_runs,
 )
-from .native_ensemble_training_facts import ingest_forward_taf_inbox
+from .native_ensemble_training_facts import (
+    ingest_forward_taf_inbox,
+    rejected_forward_taf_capture,
+)
 from .account_equity import (
     ACCOUNT_EQUITY_CAPTURE_INTERVAL_SECONDS,
     budget_capped_equity,
@@ -16100,29 +16103,41 @@ class TargetProductionWorker:
         if not isinstance(raw_captures, list) or len(raw_captures) > 2048:
             raise ContractError("resident_taf_inbox_capture_count_invalid")
         captures_by_scope: dict[tuple[str, str], list[Mapping[str, Any]]] = {}
+        # A capture that fails its own checks is set aside on its own, as the
+        # fact ingest above now does: its scope has no committed TAF fact and
+        # fails closed for P0-M, and no other station's P0-M waits on it.
+        refused_captures: list[dict[str, str]] = []
         for raw_capture in raw_captures:
-            if not isinstance(raw_capture, Mapping):
-                raise ContractError("resident_taf_capture_invalid")
-            supplied_sha = str(raw_capture.get("content_sha256") or "")
-            identity = {
-                key: value
-                for key, value in raw_capture.items()
-                if key != "content_sha256"
-            }
-            if supplied_sha != content_sha256(identity):
-                raise ContractError("resident_taf_capture_content_sha_mismatch")
-            boundary = raw_capture.get("boundary")
-            if (
-                raw_capture.get("source_class")
-                != "official_forward_native_receipt"
-                or not isinstance(boundary, Mapping)
-                or boundary.get("native_local_receipt") is not True
-                or boundary.get("retrospective_replay_only") is not False
-            ):
-                raise ContractError("resident_taf_forward_receipt_required")
-            revision = ForecastRevision.from_mapping(
-                raw_capture.get("forecast_revision")
-            )
+            try:
+                if not isinstance(raw_capture, Mapping):
+                    raise ContractError("resident_taf_capture_invalid")
+                supplied_sha = str(raw_capture.get("content_sha256") or "")
+                identity = {
+                    key: value
+                    for key, value in raw_capture.items()
+                    if key != "content_sha256"
+                }
+                if supplied_sha != content_sha256(identity):
+                    raise ContractError(
+                        "resident_taf_capture_content_sha_mismatch"
+                    )
+                boundary = raw_capture.get("boundary")
+                if (
+                    raw_capture.get("source_class")
+                    != "official_forward_native_receipt"
+                    or not isinstance(boundary, Mapping)
+                    or boundary.get("native_local_receipt") is not True
+                    or boundary.get("retrospective_replay_only") is not False
+                ):
+                    raise ContractError("resident_taf_forward_receipt_required")
+                revision = ForecastRevision.from_mapping(
+                    raw_capture.get("forecast_revision")
+                )
+            except ContractError as exc:
+                refused_captures.append(
+                    rejected_forward_taf_capture(raw_capture, str(exc))
+                )
+                continue
             if revision.received_at_utc > as_of_utc:
                 continue
             captures_by_scope.setdefault(
@@ -16825,6 +16840,8 @@ class TargetProductionWorker:
             "replay_budget": MAX_P0M_REPLAYS_PER_CYCLE,
             "replays_deferred": replays_deferred[:20],
             "replays_deferred_count": len(replays_deferred),
+            "refused_capture_count": len(refused_captures),
+            "refused_captures": refused_captures[:20],
             "stage_clock_utc": p0m_stage_clock_utc,
             "writes_target_ssot": any(
                 item["write_count"] > 0 for item in receipts

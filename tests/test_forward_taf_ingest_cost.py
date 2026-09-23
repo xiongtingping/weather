@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from bayes_basket_target.contracts import ContractError, content_sha256
+from bayes_basket_target.contracts import content_sha256
 from bayes_basket_target.native_ensemble_training_facts import (
     ingest_forward_taf_inbox,
 )
@@ -213,6 +213,21 @@ def test_the_timezone_lookup_follows_the_scopes_not_the_captures() -> None:
     assert lookups == len(STATIONS) * len(DAYS)
 
 
+
+def _refused_alone(conn, receipt, scope, reason) -> None:
+    """The guard still refuses the scope, and only that scope (2026-09-23):
+    a refusal used to raise and stop P0-M for every station."""
+
+    refused = {(r["station_id"], r["event_date"], r["reason"]) for r in receipt["rejected_captures"]}
+    assert refused == {(*scope, reason)}
+    assert receipt["rejected_count"] == 5
+    assert receipt["wrote_count"] == len(STATIONS) * len(DAYS) * 5 - 5
+    assert conn.execute(
+        "SELECT COUNT(*) FROM calibration_forward_taf_capture WHERE station_id=? AND event_date=?",
+        scope,
+    ).fetchone()[0] == 0
+
+
 def test_a_market_scope_mismatch_is_still_refused() -> None:
     """The cached answer must still be able to say no."""
 
@@ -223,12 +238,8 @@ def test_a_market_scope_mismatch_is_still_refused() -> None:
         " WHERE station_id=? AND event_date=?",
         ("America/New_York", "ZSPD", DAYS[1]),
     )
-    try:
-        ingest_forward_taf_inbox(conn, _wide_inbox())
-    except ContractError as exc:
-        assert str(exc) == "forward_taf_market_scope_invalid"
-    else:  # pragma: no cover - the guard must fire
-        raise AssertionError("a mismatched market scope was accepted")
+    receipt = ingest_forward_taf_inbox(conn, _wide_inbox())
+    _refused_alone(conn, receipt, ("ZSPD", DAYS[1]), "forward_taf_market_scope_invalid")
 
 
 def test_an_unregistered_station_is_still_refused() -> None:
@@ -236,15 +247,17 @@ def test_an_unregistered_station_is_still_refused() -> None:
     a station the cache has never seen as well as one it has."""
 
     conn = _conn()
-    try:
-        ingest_forward_taf_inbox(
-            conn, _inbox([_capture("ZUUU", "2026-08-20", 1),
-                          _capture("KJFK", "2026-08-20", 1)])
-        )
-    except ContractError as exc:
-        assert str(exc) == "forward_taf_station_unregistered"
-    else:  # pragma: no cover - the guard must fire
-        raise AssertionError("an unregistered station was accepted")
+    receipt = ingest_forward_taf_inbox(
+        conn, _inbox([_capture("ZUUU", "2026-08-20", 1),
+                      _capture("KJFK", "2026-08-20", 1)])
+    )
+    assert receipt["wrote_count"] == 1
+    assert [(r["station_id"], r["reason"]) for r in receipt["rejected_captures"]] == [
+        ("KJFK", "forward_taf_station_unregistered"),
+    ]
+    assert conn.execute(
+        "SELECT COUNT(*) FROM calibration_forward_taf_capture WHERE station_id='KJFK'"
+    ).fetchone()[0] == 0
 
 
 def test_a_cached_timezone_is_not_shared_across_scopes() -> None:
@@ -324,9 +337,5 @@ def test_a_snapshotted_registry_still_refuses_a_scope_it_names_two_ways() -> Non
             "America/New_York" if (sha, station, day) == ("s2", "ZSPD", DAYS[1]) else "Asia/Shanghai"
         ),
     )
-    try:
-        ingest_forward_taf_inbox(conn, _wide_inbox())
-    except ContractError as exc:
-        assert str(exc) == "forward_taf_market_scope_invalid"
-    else:  # pragma: no cover - the guard must fire
-        raise AssertionError("a scope with two market timezones was accepted")
+    receipt = ingest_forward_taf_inbox(conn, _wide_inbox())
+    _refused_alone(conn, receipt, ("ZSPD", DAYS[1]), "forward_taf_market_scope_invalid")
