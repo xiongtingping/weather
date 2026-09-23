@@ -82,3 +82,26 @@ def test_a_day_the_registry_no_longer_carries_is_counted_not_asked() -> None:
         registry=False,
     )
     assert sweep._grown_evidence(target, archive, "2026-08-24") == ([], 1)
+
+
+def test_a_re_settlement_holds_the_write_lock_before_the_writer_reads(monkeypatch, tmp_path) -> None:
+    # A deferred transaction that reads and then upgrades while the resident
+    # holds the lock fails at once in WAL mode; the pass must queue for the
+    # lock first and let the writer stage into its transaction.
+    target, archive = tmp_path / "ssot.db", tmp_path / "archive.db"
+    for path in (target, archive):
+        sqlite3.connect(path).close()
+    seen: list[bool] = []
+
+    def writer(conn, _source, **_kw):
+        seen.append(conn.in_transaction)
+        return {"state": "staged_in_caller_transaction", "wrote": True, "revision_no": 1}
+
+    monkeypatch.setattr(sweep, "_backlog", lambda conn, start: [])
+    monkeypatch.setattr(sweep, "_coverage", lambda conn, start: [])
+    monkeypatch.setattr(sweep, "_grown_evidence", lambda t, s, since: ([("MPMG", "2026-09-21")], 0))
+    monkeypatch.setattr(sweep, "materialize_settled_station_truth", writer)
+    report = sweep.sweep(target, archive, window_days=45, max_scopes=10, dry_run=False, verbose=False)
+    assert seen == [True]
+    assert report["revision_outcomes"] == {"revised": 1}
+    assert report["revised"][0]["station_id"] == "MPMG"

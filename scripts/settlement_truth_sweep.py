@@ -413,6 +413,17 @@ def sweep(
                 stopped_for_time = True
                 break
             try:
+                # Every scope here is a closed day that will write unless it
+                # comes back idempotent, so the write lock is taken before the
+                # writer reads.  Under the writer's own deferred BEGIN a read
+                # that then upgrades while the resident holds the lock gets
+                # SQLITE_BUSY at once -- WAL never waits for a stale snapshot
+                # -- and on 2026-09-23 14:45Z all 37 re-settlements of a pass
+                # failed that way while each succeeded on its own.  IMMEDIATE
+                # queues on busy_timeout instead; the writer sees the caller's
+                # transaction and stages into it.
+                if not dry_run:
+                    target.execute("BEGIN IMMEDIATE")
                 result = materialize_settled_station_truth(
                     target, source, station_id=station, event_date=day, as_of_utc=as_of,
                 )
