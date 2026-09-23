@@ -208,6 +208,14 @@ SAME_RUN_LEAD_BORROW_RULE = "h00_12_borrows_h12_24_same_run_v1"
 # cycle nor cross weights fitted with the system at another cycle may cross
 # a grid; a member with no fit on its own grid is not seated.
 STEP_CLASS_BORROW_RULE = "no_cross_sampling_grid_borrow_v1"
+# Charter 204: systems that carry no family temperature curve by design.
+# AIFS ENS publishes six-hourly 2t instants, not the period maxima the other
+# families seal 3-hourly; a curve of its instants would only coarsen the P0
+# root curve P1 reads (the intersection of the seated curves' valid times)
+# and, on a same-day run with fewer than four instants left, drop it.  Such a
+# system seats in the probability and stays out of the curve, which is formed
+# from the systems that carry one (``ecmwf_aifs_ens_archive`` asserts the id).
+CURVELESS_SYSTEM_IDS = frozenset({"ECMWF_AIFS_ENS_GLOBAL"})
 
 
 @lru_cache(maxsize=None)
@@ -3755,12 +3763,29 @@ def compile_native_ensemble_p0(
     }
     checkpoint_id = "p0-native-" + content_sha256(checkpoint_identity)[:32]
     root_future_curve = None
-    if official_snapshot and all(
-        isinstance(systems[system_id].get("family_temperature_curve"), Mapping)
+    # Charter 204: a seated system registered as curveless (AIFS ENS) neither
+    # vetoes the root curve nor coarsens it; the curve is formed from the
+    # systems that carry one, their weights renormalised among themselves.
+    # With every seated system carrying a curve, this is byte for byte the
+    # path it always was.
+    curve_system_ids = [
+        system_id
         for system_id in system_ids
+        if isinstance(systems[system_id].get("family_temperature_curve"), Mapping)
+    ]
+    curveless_system_ids = [
+        system_id
+        for system_id in system_ids
+        if system_id not in curve_system_ids
+        and system_id in CURVELESS_SYSTEM_IDS
+    ]
+    if (
+        official_snapshot
+        and curve_system_ids
+        and len(curve_system_ids) + len(curveless_system_ids) == len(system_ids)
     ):
         family_curves: dict[str, dict[str, Any]] = {}
-        for system_id in system_ids:
+        for system_id in curve_system_ids:
             raw_curve = dict(systems[system_id]["family_temperature_curve"])
             # Re-sealing accepts the same-day floor: only the collector knew
             # the lead it captured at, and a same-day run at an easternmost
@@ -3799,13 +3824,35 @@ def compile_native_ensemble_p0(
                 }
                 for system_id, curve in family_curves.items()
             }
+            if curveless_system_ids:
+                curve_weight_total = sum(
+                    float(system_weights[system_id])
+                    for system_id in curve_system_ids
+                )
+                curve_weights = {
+                    system_id: float(system_weights[system_id]) / curve_weight_total
+                    for system_id in curve_system_ids
+                }
+            else:
+                curve_weights = {
+                    system_id: system_weights[system_id]
+                    for system_id in curve_system_ids
+                }
             curve_source_identity = {
                 "family_curve_sha256_by_system": {
                     system_id: family_curves[system_id]["content_sha256"]
-                    for system_id in system_ids
+                    for system_id in curve_system_ids
                 },
                 "system_weights": system_weights,
                 "system_bias_c": system_bias_c,
+                **(
+                    {
+                        "curveless_system_ids": list(curveless_system_ids),
+                        "curve_weights": curve_weights,
+                    }
+                    if curveless_system_ids
+                    else {}
+                ),
             }
             root_future_curve = build_root_future_temperature_curve({
                 "station_id": station_id,
@@ -3827,12 +3874,12 @@ def compile_native_ensemble_p0(
                     {
                         "valid_time_utc": valid_time,
                         "temperature_c": sum(
-                            system_weights[system_id]
+                            curve_weights[system_id]
                             * (
                                 values_by_system[system_id][valid_time]
                                 + system_bias_c[system_id]
                             )
-                            for system_id in system_ids
+                            for system_id in curve_system_ids
                         ),
                     }
                     for valid_time in sorted(common_times)
