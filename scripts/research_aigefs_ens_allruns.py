@@ -251,6 +251,14 @@ def open_db(path: Path = DB) -> sqlite3.Connection:
     # exists() on it unplugged answers silently, so prove it first.
     assert_present(path.parent, what="AIGEFS research directory")
     conn = sqlite3.connect(path, timeout=60)
+    # The database lives on the external HDD: WAL keeps a commit sequential,
+    # and a large page cache keeps the member table's three random-keyed
+    # B-trees from being re-read from the disk on every insert (a 4,000-row
+    # commit measured 100-144 s under the defaults, 2026-09-23).
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA cache_size=-262144")
+    conn.execute("PRAGMA temp_store=MEMORY")
     exists = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE name='calibration_native_ensemble_historical_member_run'"
     ).fetchone()
@@ -404,6 +412,45 @@ def load_samples(conn: sqlite3.Connection, run: str, stations: list[str]):
     return samples, message_sha
 
 
+def materialise(conn, plan, timezones, stations, deadline) -> int:
+    """Member rows for every downloaded run that has none yet.
+
+    Rows are INSERT OR IGNORE with a content hash, so a run materialised
+    twice writes nothing new; commits are batched a few runs at a time.
+    """
+
+    pending = [
+        str(r[0]) for r in conn.execute(
+            "SELECT run_init_utc FROM research_aigefs_runs WHERE rows=0 ORDER BY run_init_utc DESC"
+        ) if str(r[0]) in plan
+    ]
+    written = 0
+    for i, run in enumerate(pending):
+        if time.monotonic() >= deadline:
+            break
+        run_init = base._utc(run)
+        pairs = plan[run]
+        t0 = time.monotonic()
+        samples, message_sha = load_samples(conn, run, stations)
+        rows, skipped = build_rows(
+            run_init=run_init, pairs=pairs, timezones=timezones,
+            stations=stations, samples=samples, message_sha=message_sha,
+        )
+        if skipped:
+            raise RuntimeError(f"aigefs_materialise_incomplete_cache:{run}:{skipped}")
+        with conn:
+            conn.executemany(base.INSERT, rows)
+            conn.execute(
+                "UPDATE research_aigefs_runs SET rows=?, station_days=?, skipped_station_days=0 "
+                "WHERE run_init_utc=?", (len(rows), len(pairs) - skipped, run),
+            )
+        written += 1
+        print(f"{run}  rows={len(rows)} station_days={len(pairs)} {time.monotonic() - t0:.1f}s", flush=True)
+    left = conn.execute("SELECT COUNT(*) FROM research_aigefs_runs WHERE rows=0").fetchone()[0]
+    print(json.dumps({"materialised_runs": written, "runs_without_rows": int(left)}, sort_keys=True))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--start", default="2026-06-17", help="first target local date")
@@ -420,6 +467,8 @@ def main() -> int:
     parser.add_argument("--stations", nargs="*", default=None,
                         help="restrict the plan to these stations (testing only; rows are then partial)")
     parser.add_argument("--estimate", action="store_true", help="report what is left and exit")
+    parser.add_argument("--materialise", action="store_true",
+                        help="build the member rows for every downloaded run that has none yet, then exit")
     args = parser.parse_args()
 
     deadline = time.monotonic() + args.max_seconds
@@ -457,6 +506,8 @@ def main() -> int:
             "message_mb_estimate": MESSAGE_MB_ESTIMATE, "throughput_mb_s_estimate": THROUGHPUT_MB_S_ESTIMATE,
         }, sort_keys=True))
         return 0
+    if args.materialise:
+        return materialise(conn, plan, timezones, stations, deadline)
     stopped = False
     for run in wanted:
         if stopped or time.monotonic() >= deadline:
@@ -482,6 +533,7 @@ def main() -> int:
                     print(f"  slow batch {run} steps={batch} {time.monotonic() - t_batch:.0f}s", flush=True)
                 size += n
                 downloaded += len(batch)
+                t_write = time.monotonic()
                 with conn:
                     for step in batch:
                         cube = np.array([values[(m, step)] for m in MEMBERS], dtype=np.float32)
@@ -493,6 +545,8 @@ def main() -> int:
                              int(n / len(batch)),
                              base._stamp(datetime.now(timezone.utc))),
                         )
+                if time.monotonic() - t_write > 10.0:
+                    print(f"  slow step-cache commit {run} {time.monotonic() - t_write:.0f}s", flush=True)
         except MissingObject as exc:
             with conn:
                 conn.execute(
@@ -509,24 +563,20 @@ def main() -> int:
         if stopped and todo:
             print(f"{run}  paused steps_cached={len(steps) - len(todo)}/{len(steps)}", flush=True)
             break
-        samples, message_sha = load_samples(conn, run, stations)
-        rows, skipped = build_rows(
-            run_init=run_init, pairs=pairs, timezones=timezones,
-            stations=stations, samples=samples, message_sha=message_sha,
-        )
         seconds = round(time.monotonic() - started, 1)
+        # The member rows are derived from the step cache in a separate pass
+        # (``--materialise``): inserting 4,000 rows into three random-keyed
+        # B-trees on the external HDD cost 100-144 s a run inside the
+        # download loop, more than the download itself.
         with conn:
-            conn.executemany(base.INSERT, rows)
             conn.execute(
                 "INSERT OR REPLACE INTO research_aigefs_runs VALUES(?,?,?,?,?,?,?,?,?)",
                 (run, len(steps), downloaded * MEMBER_COUNT, size, seconds,
-                 len(pairs) - skipped, len(rows), skipped,
-                 base._stamp(datetime.now(timezone.utc))),
+                 len(pairs), 0, 0, base._stamp(datetime.now(timezone.utc))),
             )
         mb = size / 1e6
         print(f"{run}  steps={len(steps):2d} downloaded={downloaded:2d} {mb:6.1f}MB {seconds:6.1f}s "
-              f"({mb / max(seconds, 0.1):.2f}MB/s) station_days={len(pairs) - skipped} skipped={skipped}",
-              flush=True)
+              f"({mb / max(seconds, 0.1):.2f}MB/s) station_days={len(pairs)}", flush=True)
     done = {r[0] for r in conn.execute("SELECT run_init_utc FROM research_aigefs_runs")}
     missing = {r[0] for r in conn.execute("SELECT run_init_utc FROM research_aigefs_missing_runs")}
     left = [r for r in plan if r not in done and r not in missing]
