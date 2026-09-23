@@ -263,11 +263,23 @@ def test_schema_declares_the_renewal_table_once():
     assert "calibration_native_certificate_renewal_scope_idx" in names
     ddl = native_ensemble_certificate_renewal_ddl()
     assert ddl.count("CREATE TABLE") == 1 and ddl.count("CREATE INDEX") == 1
+    assert ddl.count("CREATE TRIGGER") == 2  # append-only, like every table
     bare = sqlite3.connect(":memory:")
     assert not clock.table_exists(bare, clock.RENEWAL_TABLE)
     apply_native_ensemble_certificate_renewal_schema(bare)
     apply_native_ensemble_certificate_renewal_schema(bare)
     assert clock.table_exists(bare, clock.RENEWAL_TABLE)
+    bare.execute(
+        f"INSERT INTO {clock.RENEWAL_TABLE} VALUES "
+        "('r1','CROSS_NATIVE_ENSEMBLE','KMIA','*','PEAK','h24_48','x',NULL,"
+        "'a','b','c','d','2026-08-20','2026-08-28','2026-09-28T00:00:00Z',"
+        "'2026-09-23T00:00:00Z','2026-10-23T00:00:00Z','why','"
+        + "0" * 64 + "')"
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        bare.execute(f"DELETE FROM {clock.RENEWAL_TABLE}")
+    with pytest.raises(sqlite3.IntegrityError):
+        bare.execute(f"UPDATE {clock.RENEWAL_TABLE} SET run_cycle='y'")
 
 
 def test_stalled_scope_is_renewed_with_its_members_and_receipted():

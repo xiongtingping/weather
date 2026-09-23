@@ -1165,6 +1165,8 @@ CREATE TRIGGER IF NOT EXISTS calibration_native_promotion_no_update BEFORE UPDAT
 CREATE TRIGGER IF NOT EXISTS calibration_native_promotion_no_delete BEFORE DELETE ON calibration_native_ensemble_promotion BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_native_activation_no_update BEFORE UPDATE ON calibration_native_ensemble_activation BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_native_activation_no_delete BEFORE DELETE ON calibration_native_ensemble_activation BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_native_certificate_renewal_no_update BEFORE UPDATE ON calibration_native_ensemble_certificate_renewal BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_native_certificate_renewal_no_delete BEFORE DELETE ON calibration_native_ensemble_certificate_renewal BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_promotion_no_update BEFORE UPDATE ON calibration_artifact_promotion BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_promotion_no_delete BEFORE DELETE ON calibration_artifact_promotion BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_activation_no_update BEFORE UPDATE ON calibration_activation BEGIN SELECT RAISE(ABORT,'append_only'); END;
@@ -4754,7 +4756,7 @@ PRODUCTION_TARGET_TABLES = (
 
 
 def native_ensemble_certificate_renewal_ddl() -> str:
-    """The renewal table and its index, exactly as ``DDL`` declares them.
+    """The renewal table, its index and triggers, exactly as ``DDL`` has them.
 
     The resident does not apply schema at start and the migration script
     that does cannot run on the production store, so the lane that writes
@@ -4772,7 +4774,9 @@ def native_ensemble_certificate_renewal_ddl() -> str:
         statement = ""
         if sql and "calibration_native_ensemble_certificate_renewal" in sql:
             statements.append(sql)
-    if len(statements) != 2:
+    # The table, its index and the two append-only triggers every unified
+    # table carries (``test_target_ssot_is_unified_and_append_only``).
+    if len(statements) != 4:
         raise RuntimeError("native_ensemble_certificate_renewal_ddl_incomplete")
     return "\n".join(statements) + "\n"
 
