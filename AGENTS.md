@@ -30,7 +30,7 @@
 - 若本文件需要新增/修订：保持精简（≤100 行）。
 
 ## 事实与执行口径（硬规则）
-- active model-product registry只保留官方原生全球集合成员产品：`ECMWF_IFS_ENS_OPEN_PF50 / ECMWF_AIFS_ENS_GLOBAL / DWD_ICON_GLOBAL_EPS / NOAA_GEFS_05 / ECCC_GEM_GLOBAL_ENS`。正式P0的每个`station_id × lead_bucket × run_cycle` exact scope必须由其中至少两个正权重、不同`independence_family_id`系统组合生成，并分别绑定原生成员、arrival/receipt、闭日历史strict-as-of OOS和exact activation。AIFS Single及全部确定性、区域确定性、Open-Meteo republisher产品均退出active registry；历史对象只保留原lineage，不得进入P1或formal/live authority。
+- active model-product registry只保留官方原生全球集合成员产品：`ECMWF_IFS_ENS_OPEN_PF50 / ECMWF_AIFS_ENS_GLOBAL / DWD_ICON_GLOBAL_EPS / NOAA_GEFS_05 / ECCC_GEM_GLOBAL_ENS / NOAA_AIGEFS_025`（第六套按 2026-09-24 裁决加入，宪章 212）。正式P0的每个`station_id × lead_bucket × run_cycle` exact scope必须由其中至少两个正权重、不同`independence_family_id`系统组合生成，并分别绑定原生成员、arrival/receipt、闭日历史strict-as-of OOS和exact activation。AIFS Single及全部确定性、区域确定性、Open-Meteo republisher产品均退出active registry；历史对象只保留原lineage，不得进入P1或formal/live authority。
 - 结算单位是站属性：C 市场每档 `1°C`，F 市场每档 `2°F = 1.111°C`；交易全域 45 站 = 34 个 C 站 + 11 个 F 站（F 全为美国 ASOS：`KATL/KAUS/KBKF/KDAL/KHOU/KLAX/KLGA/KMIA/KORD/KSEA/KSFO`），另 4 个无绑定站的 C 单位城市不入全域。桶宽只能从 `basket_target_market_registry.registry_json` 的 `lower/upper` 现算，禁止按单位硬编码常数；以 °C 计的量（σ、包络、位移、硬下界、CRPS）跨站聚合前必须已换算，以桶计的规则（±1/±2 偏移、3–4 桶窗、两层扩展）是序数规则不换算，单桶概率阈值跨单位不可比。详见宪章第 53 条。
 - 前端不是生产消费者，不得为了展示增加热路径读写。
 - 执行阻断原因唯一来源：`auto_trade_decisions`。
