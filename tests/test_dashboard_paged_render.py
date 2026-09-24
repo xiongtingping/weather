@@ -633,3 +633,44 @@ def test_past_the_budget_a_pageless_section_with_a_stand_in_is_not_read(paged, m
     # Without a stand-in it still has to be read.
     C._cached_section("other_new", _collector(calls), None)
     assert calls == ["v"]
+
+
+def test_a_live_baskets_plan_is_found_in_its_window_or_by_the_whole_day() -> None:
+    """Window first (the plans compiled just before the decision), day second."""
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE auto_trade_decisions (decision_id TEXT, station_id TEXT,"
+        " event_date TEXT, details_json TEXT, created_at TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_p0_preselection_plan (station_id TEXT,"
+        " event_date TEXT, plan_json TEXT, created_at TEXT)"
+    )
+    conn.execute(
+        "CREATE INDEX basket_p0_preselection_created_idx"
+        " ON basket_p0_preselection_plan(created_at)"
+    )
+
+    def plan(sha, center, at):
+        conn.execute(
+            "INSERT INTO basket_p0_preselection_plan VALUES (?,?,?,?)",
+            ("KLGA", "2026-09-10", json.dumps({"compiled_plan": {
+                "production_plan_sha256": sha, "plan": {"center_bucket": center},
+            }}), at),
+        )
+
+    def decision(did, sha, at):
+        conn.execute(
+            "INSERT INTO auto_trade_decisions VALUES (?,?,?,?,?)",
+            (did, "KLGA", "2026-09-10",
+             json.dumps({"production_plan_sha256": sha}), at),
+        )
+
+    plan("near", "70", "2026-09-09T11:50:00Z")
+    decision("d1", "near", "2026-09-09T12:00:00Z")
+    plan("far", "72", "2026-09-09T02:00:00Z")      # hours before its decision
+    decision("d2", "far", "2026-09-09T12:00:00Z")
+    state = C._live_basket_plan_state(conn, [{"decision_id": "d1"}, {"decision_id": "d2"}])
+    assert state["d1"]["center"] == "70"
+    assert state["d2"]["center"] == "72", "outside every window: the whole day is read"

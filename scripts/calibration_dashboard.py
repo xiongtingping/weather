@@ -7557,6 +7557,33 @@ def _save_closed_slugs(new: Mapping[str, str], kept: Mapping[str, str]) -> None:
         pass
 
 
+#: The readings the order listing shows off each live basket's own plan.
+_LIVE_PLAN_READINGS_SQL = (
+    "SELECT"
+    " json_extract(plan_json,"
+    "'$.compiled_plan.production_plan_sha256'),"
+    " json_extract(plan_json,'$.compiled_plan.plan.center_bucket'),"
+    " json_extract(plan_json,'$.compiled_plan.plan.direction'),"
+    " json_extract(plan_json,"
+    "'$.compiled_plan.plan.skew_reading.state'),"
+    " json_extract(plan_json,"
+    "'$.compiled_plan.plan.skew_reading.gap_buckets'),"
+    " json_extract(plan_json,"
+    "'$.compiled_plan.plan.skew_reading.threshold_buckets'),"
+    " json_extract(plan_json,"
+    "'$.compiled_plan.plan.skew_reading.threshold_sigma'),"
+    " json_extract(plan_json,"
+    "'$.compiled_plan.plan.skew_reading.sigma_buckets'),"
+    " json_extract(plan_json,'$.compiled_plan.plan"
+    ".basket_support_selection.seat_shape.state'),"
+    " json_extract(plan_json,'$.compiled_plan.plan"
+    ".basket_support_selection.seat_shape_rule'),"
+    " json_extract(plan_json,'$.compiled_plan.plan"
+    ".basket_support_selection.seat_shape.allowed_ordinals')"
+    " FROM basket_p0_preselection_plan"
+)
+
+
 def _live_basket_plan_state(
     conn: sqlite3.Connection, rows: list[dict[str, Any]]
 ) -> dict[str, dict[str, Any]]:
@@ -7590,16 +7617,18 @@ def _live_basket_plan_state(
         return {}
     # decision -> the plan it was compiled from, and the scope to look in.
     wanted: dict[tuple[str, str], dict[str, list[str]]] = {}
+    decided_at: dict[tuple[str, str], list[str]] = defaultdict(list)
     try:
         query = conn.execute(
-            "SELECT decision_id, station_id, event_date, details_json"
+            "SELECT decision_id, station_id, event_date, details_json,"
+            " created_at"
             " FROM auto_trade_decisions WHERE decision_id IN (%s)"
             % ",".join("?" * len(ids)),
             ids,
         )
     except sqlite3.Error:
         return {}
-    for decision_id, station, day, details in query:
+    for decision_id, station, day, details, created in query:
         try:
             plan_sha = str(
                 (json.loads(details or "{}") or {}).get(
@@ -7612,37 +7641,49 @@ def _live_basket_plan_state(
             continue
         scope = wanted.setdefault((str(station), str(day)), {})
         scope.setdefault(plan_sha, []).append(str(decision_id))
+        if created:
+            decided_at[(str(station), str(day))].append(str(created))
     state: dict[str, dict[str, Any]] = {}
     for (station, day), by_plan in wanted.items():
-        try:
-            plans = conn.execute(
-                "SELECT"
-                " json_extract(plan_json,"
-                "'$.compiled_plan.production_plan_sha256'),"
-                " json_extract(plan_json,'$.compiled_plan.plan.center_bucket'),"
-                " json_extract(plan_json,'$.compiled_plan.plan.direction'),"
-                " json_extract(plan_json,"
-                "'$.compiled_plan.plan.skew_reading.state'),"
-                " json_extract(plan_json,"
-                "'$.compiled_plan.plan.skew_reading.gap_buckets'),"
-                " json_extract(plan_json,"
-                "'$.compiled_plan.plan.skew_reading.threshold_buckets'),"
-                " json_extract(plan_json,"
-                "'$.compiled_plan.plan.skew_reading.threshold_sigma'),"
-                " json_extract(plan_json,"
-                "'$.compiled_plan.plan.skew_reading.sigma_buckets'),"
-                " json_extract(plan_json,'$.compiled_plan.plan"
-                ".basket_support_selection.seat_shape.state'),"
-                " json_extract(plan_json,'$.compiled_plan.plan"
-                ".basket_support_selection.seat_shape_rule'),"
-                " json_extract(plan_json,'$.compiled_plan.plan"
-                ".basket_support_selection.seat_shape.allowed_ordinals')"
-                " FROM basket_p0_preselection_plan"
-                " WHERE station_id=? AND event_date=?",
-                (station, day),
-            ).fetchall()
-        except sqlite3.Error:
-            continue
+        # Each plan carries ~91 KB of JSON and a station-day holds a hundred
+        # or more; only a plan compiled shortly before a decision can be the
+        # one it names.  Look there first -- on the created_at index: the
+        # column sits behind plan_json, so filtering it off the scope index
+        # would read every row's JSON anyway -- and read the whole
+        # station-day only for a plan the windows did not hold.  Same
+        # readings: 119 of 119 on the live book, 1.4 s against 17.2 s
+        # (2026-09-24).
+        plans: list[tuple[Any, ...]] = []
+        for stamp in decided_at.get((station, day), ()):
+            moment = _parse_utc_or_none(stamp)
+            if moment is None:
+                continue
+            try:
+                plans += conn.execute(
+                    _LIVE_PLAN_READINGS_SQL
+                    + " INDEXED BY basket_p0_preselection_created_idx"
+                    " WHERE created_at>=? AND created_at<=?"
+                    " AND station_id=? AND event_date=?",
+                    (
+                        (moment - timedelta(minutes=60)).isoformat()
+                        .replace("+00:00", "Z"),
+                        (moment + timedelta(minutes=1)).isoformat()
+                        .replace("+00:00", "Z"),
+                        station, day,
+                    ),
+                ).fetchall()
+            except sqlite3.Error:
+                plans = []
+                break
+        if not {str(row[0] or "") for row in plans} >= set(by_plan):
+            try:
+                plans = conn.execute(
+                    _LIVE_PLAN_READINGS_SQL
+                    + " WHERE station_id=? AND event_date=?",
+                    (station, day),
+                ).fetchall()
+            except sqlite3.Error:
+                continue
         for (plan_sha, center, direction, skew, gap, threshold,
              threshold_sigma, sigma, shape_state, shape_rule, shape_allowed) in plans:
             targets = by_plan.get(str(plan_sha or ""), ())
