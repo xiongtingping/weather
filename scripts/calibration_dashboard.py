@@ -25265,19 +25265,25 @@ function stationMarketLink(station, extra){
 }
 
 // Every station's centre and width calibration, ranked (user, 2026-09-23:
-// 按照站点维度来看：模型的中心校准排序、分布校准排序).  The rows come off the
-// same landings 真值离均值多远 is cut from; the three weeks of the trend
-// window is the table read first, the served evidence window folds under
-// it, because four days is two to nine station-days a station.
+// 按照站点维度来看：模型的中心校准排序、分布校准排序).  The main table reads
+// three windows side by side (user, 2026-09-24: 增加最近7天、30天和累计，突出
+// 中心最准的那列): the centre and the width each get a column per window, a
+// cell carries its window's name, and the window whose centre landed
+// closest to truth fleet-wide is tinted and starred.  The three weeks of
+// the trend window (with the seat, CRPS and NLL columns) and the served
+// evidence window fold under it.
 function stationCalibrationRank(){
   const title = `<h2>逐站校准排序：每站的中心偏差与宽度校准各排一次名，站名可点开盘口</h2>`;
   const T = D.model_accuracy_trend || {}, CL = D.center_landing || {};
+  const W = D.station_calibration_windows || {}, WS = W.stages || {};
   const trend = T.landing_stations || {};
   const evid = {};
   (CL.stages || []).forEach(st => { if(st.stations && st.stations.rows) evid[st.stage] = st.stations; });
   const STAGES = ["P0", "P0-M", "P1"];
   const has = R => R && R.rows && R.rows.length;
-  const stages = STAGES.filter(s => has(trend[s]) || has(evid[s]));
+  const WINS = (W.windows || []);
+  const winsOf = s => WINS.filter(w => has(((WS[s] || {}).windows || {})[w.key]));
+  const stages = STAGES.filter(s => winsOf(s).length || has(trend[s]) || has(evid[s]));
   if(!stages.length) return title + `<div class="card muted">这一轮的 payload 还没有逐站字段（新字段要等下一轮整库渲染，约半小时）。</div>`;
   const n2 = v => v == null ? "—" : Number(v).toFixed(2);
   const sgn = (v, d = 2) => v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d);
@@ -25321,24 +25327,108 @@ function stationCalibrationRank(){
         <th title="席位窗实际盖住的比例 − 声称的概率">席位覆盖 实际−声称</th><th>CRPS °C</th><th>NLL</th><th title="结算桶概率为 0 的站日数">零桶</th>
       </tr></thead><tbody>${rows}</tbody></table></div>`;
   };
+  const winName = w => w.since ? `${w.label}（${h(w.since)} 起）` : w.label;
+  // One row a station, a centre and a width column per window.  Rows start
+  // in the starred window's centre order; every header sorts.
+  const windowTable = s => {
+    const S = WS[s] || {}, tabs = S.windows || {}, wins = winsOf(s);
+    const best = S.best_centre_window;
+    const byStation = {};
+    wins.forEach(w => (tabs[w.key].rows || []).forEach(r => {
+      (byStation[r.station] = byStation[r.station] || {station: r.station, label: r.station_label})[w.key] = r;
+    }));
+    const lead = wins.find(w => w.key === best) || wins[0];
+    const rankIn = (st, key) => ((st[key] || {}).centre_rank);
+    const order = Object.values(byStation).sort((a, b) => {
+      for(const w of [lead, ...wins]){
+        const x = rankIn(a, w.key), y = rankIn(b, w.key);
+        if(x != null && y != null && x !== y) return x - y;
+        if((x == null) !== (y == null)) return x == null ? 1 : -1;
+      }
+      return a.station.localeCompare(b.station);
+    });
+    const tint = w => w.key === best ? ' class="best-col"' : "";
+    const TH = (tabs[lead.key] || {}).thresholds || {};
+    const centre = (r, w) => {
+      if(!r) return `<td class="mono muted${w.key === best ? " best-col" : ""}" data-sort="">—</td>`;
+      const off = !r.ranked;
+      const tip = `${winName(w)}：${r.station_days} 个站日 · 真值−均值 ${sgn(r.bias_rungs)} 档${r.se_rungs == null ? "" : " ± " + n2(r.se_rungs)}（${sgn(r.bias_c)}°C）· 平均离真值 ${n2(r.mae_rungs)} 档`;
+      return `<td class="mono${w.key === best ? " best-col" : ""}" data-sort="${r.centre_rank == null ? "" : r.centre_rank}" title="${tip}"><span class="dot ${off ? "muted" : grade(r.bias_rungs, TH.bias_rungs, 0)}"></span>${sgn(r.bias_rungs)}${
+        r.significant ? ' <b title="按 2σ 显著偏离 0">✱</b>' : ""} <span class="muted">${r.centre_rank == null ? (off ? "样本不足" : "") : "#" + r.centre_rank}</span></td>`;
+    };
+    const width = (r, w) => {
+      if(!r) return `<td class="mono muted" data-sort="">—</td>`;
+      const off = !r.ranked;
+      const tip = `${winName(w)}：${r.station_days} 个站日 · 宽度÷误差 ${n2(r.spread_ratio)}${r.spread_ratio == null ? "" : " ±" + (100 * (r.spread_rel_se || 0)).toFixed(0) + "% " + widthWord(r.spread_ratio)}`;
+      return `<td class="mono" data-sort="${r.width_rank == null ? "" : r.width_rank}" title="${tip}"><span class="dot ${off ? "muted" : grade(r.spread_ratio, TH.spread, 1)}"></span>${n2(r.spread_ratio)} <span class="muted">${r.width_rank == null ? "" : "#" + r.width_rank}</span></td>`;
+    };
+    const rows = order.map(st => {
+      const anyRanked = wins.some(w => (st[w.key] || {}).ranked);
+      return `<tr${anyRanked ? "" : ' class="muted"'}>
+        <td class="mono">${stationMarketLink(st.station)}${st.label ? ` <span class="muted">${h(st.label)}</span>` : ""}</td>
+        <td class="mono" data-sort="${(st[lead.key] || {}).station_days || 0}">${wins.map(w => (st[w.key] || {}).station_days || 0).join(" / ")}</td>
+        ${wins.map(w => centre(st[w.key], w)).join("")}
+        ${wins.map(w => width(st[w.key], w)).join("")}</tr>`;
+    }).join("");
+    const fleetHead = w => {
+      const F = (tabs[w.key] || {}).fleet || {}, R = tabs[w.key] || {};
+      return `<th${tint(w)} title="${winName(w)} · ${R.ranked} / ${R.stations} 站入榜 · 全队 ${F.station_days || 0} 个站日；名次按 |真值−均值| 从小到大">${h(w.label)}${
+        w.key === best ? ' <span class="best-tag">★ 中心最准</span>' : ""}<br><span class="muted" style="font-weight:400">离真值 ${n2(F.mae_rungs)} · 偏差 ${sgn(F.bias_rungs)}</span></th>`;
+    };
+    const widthHead = w => {
+      const F = (tabs[w.key] || {}).fleet || {};
+      return `<th title="${winName(w)} · 全队宽度÷误差 ${n2(F.spread_ratio)}；名次按 |ln(宽度÷误差)| 从小到大">${h(w.label)}<br><span class="muted" style="font-weight:400">全队 ${n2(F.spread_ratio)}</span></th>`;
+    };
+    return `<div class="scroll" style="max-height:620px"><table><thead>
+      <tr><th rowspan="2">站</th><th rowspan="2" title="已结算的站日数：${wins.map(w => w.label).join(" / ")}">站日<br><span class="muted" style="font-weight:400">${wins.map(w => w.label.replace("近 ", "")).join(" / ")}</span></th>
+        <th colspan="${wins.length}" title="真值 − 服务均值，按本站桶宽计；正＝真值比模型暖（模型偏冷）；#n＝该窗按 |偏差| 的名次，#1 最准">中心：真值−均值（档）· #名次</th>
+        <th colspan="${wins.length}" title="服务 σ ÷ 实际误差 RMSE（档）：1 最好，>1 太宽，<1 太窄；#n＝该窗按 |ln 比值| 的名次">宽度÷误差 · #名次</th></tr>
+      <tr>${wins.map(fleetHead).join("")}${wins.map(widthHead).join("")}</tr>
+    </thead><tbody>${rows}</tbody></table></div>`;
+  };
+  // Every stage against every window, the fleet's centre only: which
+  // column is closest, read across the stages without switching tabs.
+  const matrix = (() => {
+    const lanes = stages.filter(s => winsOf(s).length);
+    if(!lanes.length || !WINS.length) return "";
+    const cell = (s, w) => {
+      const S = WS[s] || {}, F = (((S.windows || {})[w.key]) || {}).fleet;
+      if(!F || F.mae_rungs == null) return `<td class="mono muted">—</td>`;
+      const star = S.best_centre_window === w.key;
+      return `<td class="mono${star ? " best-col" : ""}"${star ? ' title="本阶段中心最准的窗口"' : ""}>${star ? '<span class="best-tag">★</span> ' : ""}<b>${n2(F.mae_rungs)}</b> <span class="muted">偏差 ${sgn(F.bias_rungs)} · ${F.station_days} 站日</span></td>`;
+    };
+    return `<div class="muted" style="margin:0 0 4px">全队中心离真值多远（|真值−均值| 的站日平均，档；越小越准）· ★＝该阶段中心最准的窗口</div>
+      <table data-grouped="1" style="margin-bottom:10px"><thead><tr><th>阶段</th>${WINS.map(w => `<th>${h(winName(w))}</th>`).join("")}</tr></thead>
+      <tbody>${lanes.map(s => `<tr><td class="mono">${s}</td>${WINS.map(w => cell(s, w)).join("")}</tr>`).join("")}</tbody></table>`;
+  })();
   const nav = `<nav class="daytabs">${stages.map((s, i) => `<button type="button" data-day="${s}" data-active="${i ? "" : "1"}">${s}</button>`).join("")}</nav>`;
   const panes = stages.map((s, i) => {
-    const main = has(trend[s]) ? trend[s] : evid[s];
-    const mainWhat = has(trend[s]) ? `近 ${T.days || 21} 天（${h(String(T.since || "").slice(0, 10))} 起，跨版本）` : `证据窗（${h((CL.stages || []).find(x => x.stage === s)?.since || "")} 起）`;
-    const fold = has(trend[s]) && has(evid[s])
-      ? `<details style="margin-top:10px"><summary class="muted">证据窗（宪章 202 锚后，${h((CL.stages || []).find(x => x.stage === s)?.since || "")} 起）的同一张表</summary>${table(evid[s], "证据窗")}</details>`
-      : "";
-    return `<div data-daypane="${s}"${i ? " hidden" : ""}>${table(main, mainWhat)}${fold}</div>`;
+    const since = h((CL.stages || []).find(x => x.stage === s)?.since || "");
+    const trendWhat = `近 ${T.days || 21} 天（${h(String(T.since || "").slice(0, 10))} 起，跨版本）`;
+    const folds = [];
+    let main;
+    if(winsOf(s).length){
+      main = windowTable(s);
+      if(has(trend[s])) folds.push(`<details style="margin-top:10px"><summary class="muted">${trendWhat}的完整表（席位覆盖、CRPS、NLL、零桶）</summary>${table(trend[s], trendWhat)}</details>`);
+    } else {
+      main = has(trend[s]) ? table(trend[s], trendWhat) : table(evid[s], `证据窗（${since} 起）`);
+    }
+    if(has(evid[s]) && (winsOf(s).length || has(trend[s])))
+      folds.push(`<details style="margin-top:10px"><summary class="muted">证据窗（宪章 202 锚后，${since} 起）的同一张表</summary>${table(evid[s], "证据窗")}</details>`);
+    return `<div data-daypane="${s}"${i ? " hidden" : ""}>${main}${folds.join("")}</div>`;
   }).join("");
+  const firstDays = stages.map(s => (WS[s] || {}).first_day).filter(Boolean).sort();
   return `${title}
-  <p class="sub">读数，不订正：一行一个站，每站的中心和宽度各排一次名。<b>中心</b>＝真值 − 服务均值，按本站桶宽计（C 站 1°C 一档、F 站 2°F 一档，第 53 条），
-    正＝真值比模型暖；一个站日只算一票，再多的三小时格也只算一次；± se 是跨站日的标准误，✱ 是按 2σ 显著偏离 0。
-    <b>宽度</b>＝服务 σ ÷ 实际误差，与总览的「宽度 ÷ 实际误差」同一口径：1 最好，大于 1 太宽、小于 1 太窄；后面的 ±% 是这个比值自己的抽样误差（约 1/√(2n)，四个站日 ±35%），四天读出 2.0 不是发现。
+  <p class="sub">读数，不订正：一行一个站，每站的中心和宽度各排一次名，<b>近 7 天、近 30 天、累计</b>（${h(firstDays[0] || "")} 起，跨版本）三个窗口并排，按结算日切窗。
+    <b>看中心读「中心」三列</b>：数值＝真值 − 服务均值，按本站桶宽计（C 站 1°C 一档、F 站 2°F 一档，第 53 条），正＝真值比模型暖；<b>#1 是该窗 |偏差| 最小、中心最准的站</b>。
+    <b>★ 中心最准</b>标在全队离真值最近的那一列：比的是每个站日 |真值−均值| 的平均（列头「离真值」），不比全队偏差（暖站冷站会互相抵消），也不比各站 |偏差| 的平均（窗口越短抽样噪声越大，7 天会被系统性抬高）。
+    一个站日只算一票，再多的三小时格也只算一次；鼠标停在格子上看 ± se、°C 和站日数，✱ 是按 2σ 显著偏离 0。
+    <b>宽度</b>＝服务 σ ÷ 实际误差，与总览的「宽度 ÷ 实际误差」同一口径：1 最好，大于 1 太宽、小于 1 太窄；抽样误差约 1/√(2n)，四个站日 ±35%，短窗读出 2.0 不是发现。
     灯用总检同一套阈值（中心 |偏差| ≤0.3 档绿、≤0.8 黄；宽度 |比值−1| ≤0.20 绿、≤0.45 黄）。
-    不足 ${(trend[stages[0]] || evid[stages[0]] || {}).min_days || 3} 个站日的站列出但不排名。
+    不足 ${(trend[stages[0]] || evid[stages[0]] || {}).min_days || 3} 个站日的窗口列出但不排名。
     站级中心偏差存在但<b>不持续</b>（09-17 实测：前后两段相关 r=+0.26），所以这张表是读数，不是站级订正的依据。
     点站名打开该站最新挂牌那一天的市场盘口；表头可点击排序。</p>
-  <div class="card" data-daytabs="station-rank" data-remember="1">${nav}${panes}</div>`;
+  <div class="card" data-daytabs="station-rank" data-remember="1">${matrix}${nav}${panes}</div>`;
 }
 
 function landingCover(CL, stage){

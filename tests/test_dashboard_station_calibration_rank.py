@@ -210,3 +210,135 @@ def test_existing_station_tables_carry_the_market_link():
     for name in ("p1PathSkill",):
         assert "stationMarketLink(r.station_id)" in _function(name)
     assert "stationMarketLink(r.station)" in SOURCE
+
+
+# ------------------------------------------------ windows: 7 / 30 / all ---
+# User, 2026-09-24: 看哪一列，中心偏差最低？增加最近7天、30天和累计，突出中心
+# 最准的那列.
+def test_rows_are_the_rank_over_the_day_readings_and_carry_mae_in_rungs():
+    book = _book()
+    per_station: dict = {}
+    for (station, _day), reading in C._station_day_readings(book).items():
+        per_station.setdefault(station, []).append(reading)
+    assert C._station_calibration_rank(per_station) == C._station_calibration_rows(book)
+    rows = {r["station"]: r for r in C._station_calibration_rows(book)["rows"]}
+    assert rows["AAA"]["mae_rungs"] == pytest.approx(2.0)
+    assert rows["BBB"]["mae_rungs"] == pytest.approx(0.5)
+    assert C._station_calibration_rank({}) == {}
+
+
+TODAY = "2026-09-24T12:00:00+00:00"
+# (station, event_date, error in rungs): every station is two rungs off a
+# month back and a tenth off this week, so the week is the closest window.
+DAYS = [
+    (station, day, error)
+    for station in ("AAA", "BBB", "CCC")
+    for day, error in (
+        ("2026-08-01", 2.0), ("2026-08-02", -2.0), ("2026-08-03", 2.0),
+        ("2026-09-01", 1.0), ("2026-09-02", -1.0), ("2026-09-03", 1.0),
+        ("2026-09-20", 0.1), ("2026-09-21", -0.1), ("2026-09-22", 0.1),
+    )
+]
+
+
+def _windows_setup(monkeypatch, tmp_path, truth):
+    import bayes_basket_target.center_width_store as store
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_probability_bridge_history("
+        " station_id TEXT, event_date TEXT, decision_at_utc TEXT, stage TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO basket_probability_bridge_history VALUES (?,?,?,?)",
+        [(s, d, f"{d}T0{h}:00:00Z", "P1") for s, d, _e in DAYS for h in (1, 5)],
+    )
+    floors: list = []
+
+    def cells(_conn, _truth, *, stage, min_decision_at_utc=None):
+        floors.append((stage, min_decision_at_utc))
+        out: dict = {}
+        for s, d, e in DAYS:
+            if stage == "P1" and f"{d}T01:00:00Z" >= (min_decision_at_utc or ""):
+                out.setdefault(d, []).append({"station_id": s, "event_date": d, "e": e})
+        return out
+
+    monkeypatch.setattr(store, "_truth", lambda _conn: truth)
+    monkeypatch.setattr(store, "serving_cells_by_day", cells)
+    monkeypatch.setattr(
+        C, "_center_landing_entry",
+        lambda stage, cell, _truth: _entry(cell["station_id"], cell["event_date"], cell["e"], 1.0),
+    )
+    monkeypatch.setattr(C, "_now", lambda: C.datetime.fromisoformat(TODAY))
+    monkeypatch.setattr(C, "SECTION_CACHE_DIR", tmp_path)
+    monkeypatch.setitem(C._PAGED_RUN, "test", True)
+    return conn, floors
+
+
+def test_windows_cut_on_the_event_day_and_star_the_closest_centre(monkeypatch, tmp_path):
+    truth = {(s, d): 20.0 for s, d, _e in DAYS}
+    conn, _floors = _windows_setup(monkeypatch, tmp_path, truth)
+    out = C.collect_station_calibration_windows(conn)
+    assert [w["key"] for w in out["windows"]] == ["d7", "d30", "all"]
+    assert [w["since"] for w in out["windows"]] == ["2026-09-17", "2026-08-25", None]
+    p1 = out["stages"]["P1"]
+    assert set(out["stages"]) == {"P1"}
+    assert p1["first_day"] == "2026-08-01"
+    fleets = {k: t["fleet"] for k, t in p1["windows"].items()}
+    assert fleets["d7"]["station_days"] == 9
+    assert fleets["d30"]["station_days"] == 18
+    assert fleets["all"]["station_days"] == 27
+    assert fleets["d7"]["mae_rungs"] == pytest.approx(0.1)
+    assert fleets["d30"]["mae_rungs"] == pytest.approx(0.55)
+    assert fleets["all"]["mae_rungs"] == pytest.approx(3.1 / 3)
+    assert p1["best_centre_window"] == "d7"
+    row = p1["windows"]["d7"]["rows"][0]
+    assert set(row) == set(C.STATION_RANK_WINDOW_ROW_KEYS)
+    assert row["ranked"] and row["centre_rank"] == 1
+
+
+def test_closed_days_are_kept_and_a_moved_truth_is_read_again(monkeypatch, tmp_path):
+    truth = {(s, d): 20.0 for s, d, _e in DAYS}
+    conn, floors = _windows_setup(monkeypatch, tmp_path, truth)
+    first = C.collect_station_calibration_windows(conn)
+    assert floors == [("P1", "2026-08-01T01:00:00Z")]
+    # 2026-09-20 is the last closed day (four back from the 24th): the next
+    # read starts at the first decision of the oldest day not kept.
+    again = C.collect_station_calibration_windows(conn)
+    assert floors[-1] == ("P1", "2026-09-21T01:00:00Z")
+    assert again == first
+    # A revised truth on a kept day sends the read back to that day.
+    truth[("BBB", "2026-09-02")] = 21.0
+    C.collect_station_calibration_windows(conn)
+    assert floors[-1] == ("P1", "2026-09-02T01:00:00Z")
+    # Outside a paged run nothing is kept: the read is whole.
+    monkeypatch.delitem(C._PAGED_RUN, "test")
+    C.collect_station_calibration_windows(conn)
+    assert floors[-1] == ("P1", "2026-08-01T01:00:00Z")
+
+
+def test_window_table_stars_the_closest_column_and_leads_with_its_order(monkeypatch, tmp_path):
+    truth = {(s, d): 20.0 for s, d, _e in DAYS}
+    conn, _floors = _windows_setup(monkeypatch, tmp_path, truth)
+    windows = C.collect_station_calibration_windows(conn)
+    stations = C._station_calibration_rows(_book())
+    html = _render({
+        "model_accuracy_trend": {"days": 21, "since": "2026-09-02T00:00:00Z",
+                                 "landing_stations": {"P1": stations}},
+        "center_landing": {"stages": [{"stage": "P1", "since": "2026-09-14", "stations": stations}]},
+        "station_calibration_windows": windows,
+        "station_markets": {},
+    })
+    tag = '<span class="best-tag">★ 中心最准</span>'
+    assert html.count(tag) == 1
+    star = html.index(tag)
+    assert html.rindex("近 7 天", 0, star) > html.rindex("<th", 0, star)   # the week's header
+    assert 'class="best-col"' in html
+    # The matrix: one row a stage, the starred cell on the week.
+    assert "全队中心离真值多远" in html and '<span class="best-tag">★</span> <b>0.10</b>' in html
+    # The three windows' day counts, and the trend window folded with the
+    # columns the windowed table does not carry.
+    assert "3 / 6 / 9" in html
+    assert "的完整表（席位覆盖、CRPS、NLL、零桶）" in html
+    assert "证据窗（宪章 202 锚后，2026-09-14 起）" in html
+    assert "看中心读「中心」三列" in html
