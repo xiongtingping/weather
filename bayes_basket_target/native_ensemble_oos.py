@@ -832,14 +832,26 @@ def _probabilities(
 # Fahrenheit market (2F = 1.11C a rung, edges on the half-degree F) it is a
 # different grid altogether, and the band table's distance axis counts
 # rungs.  ``market_ladder`` puts the holdout on the ladder the station-day
-# was priced against; ``integer_c`` is the grid it replaced.  A day with no
-# committed ladder stays on the integer grid and says so on its record.
+# was priced against; ``integer_c`` is the grid it replaced, kept as the
+# research arm (``PM_OOS_HOLDOUT_GRID=integer_c``, charter 80 ⑧).  A day with
+# no committed ladder stays on the integer grid and says so on its record.
+#
+# Charter 213 (2026-09-24): served default ``market_ladder``.  Measured
+# read-only before the switch (docs/research/oos_ladder_gate_20260924, both
+# grids through this build at one as-of, 45 stations, 5,034 certificate keys
+# common to both): 115 rejected -> admitted, 74 admitted -> rejected (3.8%);
+# no station x lead loses every certificate; at station x lead x cycle one of
+# 280 does (SBGR h12_24 12Z) and three gain one.  Every holdout day found its
+# ladder.  On the same keys the learned blend's bucket Brier / log score on
+# Fahrenheit stations read 0.764 / 1.713 on the integer grid and 0.709 /
+# 1.604 on the ladder they trade; climatology reads worse on the ladder
+# (Brier 0.91 -> 1.06) because its tails pool in the open end rungs.
 HOLDOUT_GRID_INTEGER_C = "integer_c"
 HOLDOUT_GRID_MARKET_LADDER = "market_ladder"
 HOLDOUT_GRIDS = (HOLDOUT_GRID_INTEGER_C, HOLDOUT_GRID_MARKET_LADDER)
 HOLDOUT_GRID = (
-    os.environ.get("PM_OOS_HOLDOUT_GRID", HOLDOUT_GRID_INTEGER_C).strip()
-    or HOLDOUT_GRID_INTEGER_C
+    os.environ.get("PM_OOS_HOLDOUT_GRID", HOLDOUT_GRID_MARKET_LADDER).strip()
+    or HOLDOUT_GRID_MARKET_LADDER
 )
 if HOLDOUT_GRID not in HOLDOUT_GRIDS:
     raise RuntimeError(f"unknown PM_OOS_HOLDOUT_GRID: {HOLDOUT_GRID}")
@@ -860,10 +872,17 @@ def _station_day_ladder(
     rungs do not make a served axis.
     """
 
-    found = station_day_ladder(
-        conn, station_id=station_id, event_date=event_date,
-        as_of_utc=as_of_utc,
-    )
+    try:
+        found = station_day_ladder(
+            conn, station_id=station_id, event_date=event_date,
+            as_of_utc=as_of_utc,
+        )
+    except sqlite3.OperationalError as exc:
+        # A store with no bridge history (a fixture, a research copy) has no
+        # ladder to read; the day stays on the integer grid and says so.
+        if "no such table" not in str(exc):
+            raise
+        return None
     if found is None or len(found[2]) < 2:
         return None
     history_id, _decided, rows = found

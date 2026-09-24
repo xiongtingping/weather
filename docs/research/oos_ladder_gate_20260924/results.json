@@ -1,0 +1,315 @@
+{
+ "protocol": "PROTOCOL.md",
+ "A_switch_time": {
+  "as_of": "2026-09-24T02:30:00Z",
+  "stations": {
+   "integer_c": 45,
+   "market_ladder": 45
+  },
+  "errors": {
+   "integer_c": [],
+   "market_ladder": []
+  },
+  "flips": {
+   "keys_common": 5034,
+   "keys_only_integer": 16,
+   "keys_only_ladder": 3080,
+   "counts": {
+    "pass_both": 4358,
+    "reject_to_pass": 115,
+    "reject_both": 487,
+    "pass_to_reject": 74
+   },
+   "by_unit": {
+    "C": {
+     "pass_both": 3767,
+     "reject_to_pass": 59,
+     "reject_both": 405,
+     "pass_to_reject": 53
+    },
+    "F": {
+     "pass_both": 591,
+     "pass_to_reject": 21,
+     "reject_both": 82,
+     "reject_to_pass": 56
+    }
+   },
+   "flips_by_station": {
+    "EFHK": {
+     "reject_to_pass": 9
+    },
+    "EHAM": {
+     "reject_to_pass": 1
+    },
+    "KATL": {
+     "pass_to_reject": 11
+    },
+    "KAUS": {
+     "pass_to_reject": 2
+    },
+    "KHOU": {
+     "reject_to_pass": 1
+    },
+    "KLAX": {
+     "reject_to_pass": 4
+    },
+    "KLGA": {
+     "reject_to_pass": 1
+    },
+    "KMIA": {
+     "reject_to_pass": 50
+    },
+    "KSEA": {
+     "pass_to_reject": 8
+    },
+    "LFPB": {
+     "reject_to_pass": 2
+    },
+    "LTAC": {
+     "reject_to_pass": 6
+    },
+    "RCSS": {
+     "reject_to_pass": 2
+    },
+    "RPLL": {
+     "pass_to_reject": 13,
+     "reject_to_pass": 1
+    },
+    "SBGR": {
+     "reject_to_pass": 4,
+     "pass_to_reject": 4
+    },
+    "VILK": {
+     "pass_to_reject": 4,
+     "reject_to_pass": 2
+    },
+    "WMKK": {
+     "pass_to_reject": 8
+    },
+    "WSSS": {
+     "pass_to_reject": 2,
+     "reject_to_pass": 7
+    },
+    "ZBAA": {
+     "reject_to_pass": 7
+    },
+    "ZGGG": {
+     "reject_to_pass": 2,
+     "pass_to_reject": 2
+    },
+    "ZGSZ": {
+     "pass_to_reject": 20
+    },
+    "ZSQD": {
+     "reject_to_pass": 2
+    },
+    "ZUUU": {
+     "reject_to_pass": 14
+    }
+   },
+   "station_lead_scopes_going_dark": [],
+   "station_lead_scopes_lighting_up": [],
+   "station_lead_cycle_scopes_going_dark": [
+    "SBGR|h12_24|12Z"
+   ],
+   "station_lead_cycle_scopes_lighting_up": [
+    "KLAX|h48_plus|MIXED_NATIVE_CYCLES",
+    "KMIA|h12_24|06Z",
+    "KMIA|h12_24|12Z"
+   ],
+   "station_lead_cycle_scope_count": 280
+  },
+  "own_three_day_flips": {
+   "keys_common": 5034,
+   "keys_only_integer": 16,
+   "keys_only_ladder": 3080,
+   "counts": {
+    "pass_both": 4225,
+    "reject_to_pass": 208,
+    "pass_to_reject": 108,
+    "reject_both": 493
+   },
+   "by_unit": {
+    "C": {
+     "pass_both": 3660,
+     "reject_to_pass": 128,
+     "reject_both": 410,
+     "pass_to_reject": 86
+    },
+    "F": {
+     "pass_both": 565,
+     "pass_to_reject": 22,
+     "reject_both": 83,
+     "reject_to_pass": 80
+    }
+   },
+   "flips_by_station": {
+    "EFHK": {
+     "reject_to_pass": 1
+    },
+    "EGLC": {
+     "reject_to_pass": 1
+    },
+    "EHAM": {
+     "reject_to_pass": 2
+    },
+    "EPWA": {
+     "reject_to_pass": 1
+    },
+    "FACT": {
+     "reject_to_pass": 2
+    },
+    "KATL": {
+     "pass_to_reject": 11
+    },
+    "KAUS": {
+     "pass_to_reject": 3
+    },
+    "KDAL": {
+     "reject_to_pass": 4
+    },
+    "KHOU": {
+     "reject_to_pass": 14
+    },
+    "KLAX": {
+     "reject_to_pass": 7
+    },
+    "KLGA": {
+     "reject_to_pass": 4
+    },
+    "KMIA": {
+     "reject_to_pass": 50
+    },
+    "KSEA": {
+     "pass_to_reject": 8,
+     "reject_to_pass": 1
+    },
+    "LEMD": {
+     "reject_to_pass": 3
+    },
+    "LFPB": {
+     "reject_to_pass": 8
+    },
+    "LIMC": {
+     "reject_to_pass": 3
+    },
+    "LTAC": {
+     "reject_to_pass": 14
+    },
+    "MMMX": {
+     "pass_to_reject": 2
+    },
+    "MPMG": {
+     "reject_to_pass": 1
+    },
+    "RCSS": {
+     "reject_to_pass": 4
+    },
+    "RKSI": {
+     "reject_to_pass": 12
+    },
+    "RPLL": {
+     "pass_to_reject": 13,
+     "reject_to_pass": 1
+    },
+    "SAEZ": {
+     "reject_to_pass": 1
+    },
+    "SBGR": {
+     "reject_to_pass": 4
+    },
+    "VILK": {
+     "pass_to_reject": 32
+    },
+    "WMKK": {
+     "pass_to_reject": 12
+    },
+    "WSSS": {
+     "reject_to_pass": 10,
+     "pass_to_reject": 3
+    },
+    "ZBAA": {
+     "reject_to_pass": 15
+    },
+    "ZGGG": {
+     "pass_to_reject": 10
+    },
+    "ZGSZ": {
+     "reject_to_pass": 4,
+     "pass_to_reject": 14
+    },
+    "ZSQD": {
+     "reject_to_pass": 17
+    },
+    "ZUUU": {
+     "reject_to_pass": 24
+    }
+   },
+   "station_lead_scopes_going_dark": [
+    "KSEA|h12_24"
+   ],
+   "station_lead_scopes_lighting_up": [],
+   "station_lead_cycle_scopes_going_dark": [
+    "KSEA|h12_24|12Z",
+    "KSEA|h12_24|18Z",
+    "KSEA|h12_24|MIXED_NATIVE_CYCLES"
+   ],
+   "station_lead_cycle_scopes_lighting_up": [
+    "KLAX|h48_plus|MIXED_NATIVE_CYCLES",
+    "KMIA|h12_24|12Z",
+    "LEMD|h24_48|12Z",
+    "LTAC|h24_48|18Z"
+   ],
+   "station_lead_cycle_scope_count": 280
+  },
+  "mean_scores_common_keys": {
+   "integer_c": {
+    "C": {
+     "keys": 4284,
+     "learned_brier": 0.7385394978952882,
+     "learned_nll": 1.4607708825591807,
+     "learned_crps": 0.5845124783368258,
+     "climate_brier": 0.9116330051580742,
+     "climate_nll": 3.178569300798892,
+     "climate_crps": 2.175641295903065
+    },
+    "F": {
+     "keys": 750,
+     "learned_brier": 0.7637252015580867,
+     "learned_nll": 1.712624905272237,
+     "learned_crps": 0.7322445267181972,
+     "climate_brier": 0.9406189769668271,
+     "climate_nll": 3.031025234372097,
+     "climate_crps": 2.088236092266511
+    }
+   },
+   "market_ladder": {
+    "C": {
+     "keys": 4284,
+     "learned_brier": 0.7374260625923301,
+     "learned_nll": 1.4573201979617065,
+     "learned_crps": 0.5881644869148313,
+     "climate_brier": 1.0577302421617854,
+     "climate_nll": 3.051376382644354,
+     "climate_crps": 1.8266240491592658
+    },
+    "F": {
+     "keys": 750,
+     "learned_brier": 0.70895168042263,
+     "learned_nll": 1.6039660312997488,
+     "learned_crps": 0.6770956304698279,
+     "climate_brier": 1.0659462381182412,
+     "climate_nll": 2.8784440611282474,
+     "climate_crps": 1.6680077943228517
+    }
+   }
+  },
+  "ladder_day_coverage": {
+   "market_ladder": 24342
+  }
+ },
+ "B_incomplete_as_ofs": [
+  "2026-09-15T06:00:00Z",
+  "2026-09-21T06:00:00Z"
+ ]
+}
