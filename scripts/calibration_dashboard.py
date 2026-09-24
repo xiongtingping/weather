@@ -1300,26 +1300,26 @@ def collect_member_depth(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
     return depth
 
 
-#: The newest run per family, read off the member table's tail: the table
-#: only grows and a run's rows land when it is captured, so each family's
-#: newest run is among the newest rows.  NOT INDEXED keeps SQLite on the
-#: rowid range -- left to itself it chose a scan of the whole skill index
-#: for the GROUP BY (91.5 s).  The last 300,000 rows covered all eight
-#: families on 2026-09-24 in 8.5 s, where the per-family index search below
-#: took 4 s on a quiet disk and 462 s on the 05:35Z run's saturated one (the
-#: index range is every row the family ever captured).  Only a backfill
-#: appending more than this many older-run rows after a family's newest
-#: capture could hide that capture, and then the family reads older than it
-#: is -- amber, never a false green.  Pinned in test_dashboard_query_shapes.
-MEMBER_TAIL_ROWS = 300_000
-MEMBER_TAIL_NEWEST_SQL = (
-    "SELECT ensemble_system_id, transport_provider_id, MAX(native_run_init_utc)"
-    " FROM calibration_native_ensemble_historical_member_run NOT INDEXED"
-    " WHERE rowid > ? GROUP BY ensemble_system_id, transport_provider_id"
+#: The newest run per family, off ``calibration_native_member_skill_idx``'s
+#: (system, transport, qc_status, target_local_date) prefix: a range over
+#: the last few target days, both qc values -- the index entries of recent
+#: days only.  A run cannot forecast a day before its own, so a family's
+#: newest run has rows at or after its init date; one inside the window is
+#: found here, and a family with nothing in the window (it has stopped
+#: arriving) falls back to the exact read below.  Replaced on 2026-09-24 a
+#: read of the member table's last 300,000 rows (8.5 s on a quiet disk,
+#: 43-154 s on the saturated one), which itself replaced the exact read per
+#: family (4 s quiet, 462 s saturated).  Pinned in test_dashboard_query_shapes.
+MEMBER_RECENT_RUN_SQL = (
+    "SELECT MAX(native_run_init_utc)"
+    " FROM calibration_native_ensemble_historical_member_run"
+    " WHERE ensemble_system_id=? AND transport_provider_id=?"
+    " AND qc_status IN ('ACCEPTED','QUARANTINED') AND target_local_date>=?"
 )
-#: The exact read, for a family with no row in the tail at all (a family
+MEMBER_RECENT_RUN_DAYS = 3
+#: The exact read, for a family with nothing in the recent window (one
 #: that has stopped arriving): a covering search of
-#: ``calibration_native_member_skill_idx``.
+#: ``calibration_native_member_skill_idx`` over every row it ever captured.
 MEMBER_LATEST_RUN_SQL = (
     "SELECT MAX(native_run_init_utc)"
     " FROM calibration_native_ensemble_historical_member_run"
@@ -1342,17 +1342,13 @@ def collect_members(
     """
 
     rows = []
-    newest_rowid = conn.execute(
-        "SELECT MAX(rowid) FROM calibration_native_ensemble_historical_member_run"
-    ).fetchone()[0] or 0
-    tail = {
-        (str(system), str(transport)): newest
-        for system, transport, newest in conn.execute(
-            MEMBER_TAIL_NEWEST_SQL, (newest_rowid - MEMBER_TAIL_ROWS,)
-        )
-    }
+    recent_floor = (
+        _now() - timedelta(days=MEMBER_RECENT_RUN_DAYS)
+    ).strftime("%Y-%m-%d")
     for system_id, label, transport, backfillable in MEMBER_FAMILIES:
-        latest_run = tail.get((system_id, transport))
+        latest_run = conn.execute(
+            MEMBER_RECENT_RUN_SQL, (system_id, transport, recent_floor)
+        ).fetchone()[0]
         if latest_run is None:
             latest_run = conn.execute(
                 MEMBER_LATEST_RUN_SQL, (system_id, transport)

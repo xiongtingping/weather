@@ -457,9 +457,15 @@ def test_the_banner_reads_each_familys_newest_run_off_its_index():
     conn.execute(index.group(0))
     plan = _plan(conn, board.MEMBER_LATEST_RUN_SQL, "NOAA_GEFS_05", "NOAA_GEFS_PDS_S3")
     assert "COVERING INDEX calibration_native_member_skill_idx" in plan, plan
-    # The every-render read is the table's tail by rowid, never an index scan.
-    tail = _plan(conn, board.MEMBER_TAIL_NEWEST_SQL, 0)
-    assert "INTEGER PRIMARY KEY (rowid>?)" in tail and "COVERING INDEX" not in tail, tail
+    # The every-render read is a range over the last few target days.
+    recent = _plan(
+        conn, board.MEMBER_RECENT_RUN_SQL,
+        "NOAA_GEFS_05", "NOAA_GEFS_PDS_S3", "2026-09-21",
+    )
+    assert (
+        "COVERING INDEX calibration_native_member_skill_idx" in recent
+        and "target_local_date>?" in recent
+    ), recent
     body = SOURCE.split("def collect_members(", 1)[1].split("\ndef ", 1)[0]
     assert "COUNT(DISTINCT" not in body, "the depth counts belong to collect_member_depth"
 
@@ -538,7 +544,7 @@ def test_the_chain_prints_the_counts_it_was_handed():
     assert unread["①"] == "条数本轮未算"
 
 
-def test_a_family_missing_from_the_tail_is_read_exactly():
+def test_a_family_missing_from_the_recent_window_is_read_exactly():
     import calibration_dashboard as board
 
     conn = sqlite3.connect(":memory:")
@@ -555,4 +561,6 @@ def test_a_family_missing_from_the_tail_is_read_exactly():
     rows = board.collect_members(Spy(conn), {}, {})
     assert all(r["latest_run_utc"] is None for r in rows)
     exact = [c for c in calls if c == board.MEMBER_LATEST_RUN_SQL]
-    assert len(exact) == len(board.MEMBER_FAMILIES), "every family absent from the tail is read exactly"
+    assert len(exact) == len(board.MEMBER_FAMILIES), (
+        "every family with nothing in the recent window is read exactly"
+    )
