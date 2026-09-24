@@ -17620,7 +17620,18 @@ def _record_section_spec(
         return
     if "." in spec["collector"]:
         return
-    _PAGED_RUN.setdefault("specs", {})[name] = spec
+    specs = _PAGED_RUN.setdefault("specs", {})
+    if specs.get(name) == spec:
+        return
+    specs[name] = spec
+    # Written as each one is met, not at the end: a page render killed at
+    # its deadline must still leave the research render its calls.
+    on_disk = _PAGED_RUN.setdefault(
+        "specs_on_disk", _load_closed_readings(RENDER_SECTION_SPECS)
+    )
+    if on_disk.get(name) != spec:
+        on_disk[name] = spec
+        _save_closed_readings(RENDER_SECTION_SPECS, on_disk)
 
 
 def _save_section_specs() -> None:

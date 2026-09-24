@@ -970,3 +970,12 @@ def test_the_research_render_does_nothing_when_nothing_is_due(paged) -> None:
     C._PAGED_RUN.clear()
     assert C.refresh_research_section(paged / "ssot.db") == "research render: nothing due"
     C._paged_run_start(paged / "ssot.db")
+
+
+def test_a_killed_page_render_still_leaves_its_calls(paged, monkeypatch) -> None:
+    """Specs are on disk as each section is met, not only at a run's end."""
+
+    monkeypatch.setattr(C, "SECTION_CACHE_TTL_SEC", {"slow_moving": 3600})
+    C._cached_section("slow_moving", _heavy_probe, None)
+    specs = json.loads((paged / "sections" / C.RENDER_SECTION_SPECS).read_text())
+    assert specs["slow_moving"]["collector"] == "_heavy_probe"
