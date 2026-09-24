@@ -1,0 +1,20 @@
+{
+ "source": "scripts/settlement_truth_reconciliation.py --days 32 (Gamma outcomePrices winner), checked_at 2026-09-24T06:05:10Z",
+ "overrides": {
+  "ZGSZ|2026-08-23": "33°C",
+  "MPMG|2026-08-31": "23°C or below",
+  "MPMG|2026-09-01": "23°C or below",
+  "KMIA|2026-09-02": "90-91°F",
+  "KATL|2026-09-09": "88-89°F",
+  "KAUS|2026-09-09": "98-99°F",
+  "KLAX|2026-09-09": "96°F or higher",
+  "KMIA|2026-09-09": "90-91°F",
+  "MMMX|2026-09-09": "24°C",
+  "SBGR|2026-09-09": "22°C",
+  "RPLL|2026-09-20": "32°C",
+  "WSSS|2026-09-20": "31°C",
+  "ZBAA|2026-09-20": "28°C",
+  "ZGGG|2026-09-20": "36°C",
+  "ZSQD|2026-09-20": "29°C"
+ }
+}
