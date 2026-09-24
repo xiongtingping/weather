@@ -425,3 +425,37 @@ def test_the_oos_scores_read_the_newest_evaluation_of_each_scope():
     assert row["lead_bucket"] == "h00_12"
     assert row["crps"] == 0.5, "the newer evaluation (other system set) must win"
     assert result["latest_evaluated_at_utc"] == fresh
+
+
+def test_the_banner_reads_each_familys_newest_run_off_its_index():
+    """``members`` feeds the banner light and is read on every render.
+
+    Until 2026-09-24 it counted each family's history in the same statement
+    -- COUNT DISTINCT and the capture time live outside every index -- so it
+    walked every member row through the table: 187-500 s a render, which
+    under the paged render made it the read the WAL line kept interrupting.
+    The depth moved to ``collect_member_depth`` (a slow-moving section); the
+    light's own input is a covering index search.
+    """
+
+    import calibration_dashboard as board
+    from bayes_basket_target import ssot
+
+    conn = sqlite3.connect(":memory:")
+    table = re.search(
+        r"CREATE TABLE IF NOT EXISTS"
+        r" calibration_native_ensemble_historical_member_run \(.*?\n\);",
+        ssot.DDL,
+        re.S,
+    )
+    index = re.search(
+        r"CREATE INDEX IF NOT EXISTS calibration_native_member_skill_idx[^;]*;",
+        ssot.DDL,
+    )
+    assert table and index
+    conn.execute(table.group(0))
+    conn.execute(index.group(0))
+    plan = _plan(conn, board.MEMBER_LATEST_RUN_SQL, "NOAA_GEFS_05", "NOAA_GEFS_PDS_S3")
+    assert "COVERING INDEX calibration_native_member_skill_idx" in plan, plan
+    body = SOURCE.split("def collect_members(", 1)[1].split("\ndef ", 1)[0]
+    assert "COUNT(DISTINCT" not in body, "the depth counts belong to collect_member_depth"

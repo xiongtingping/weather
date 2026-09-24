@@ -1262,25 +1262,24 @@ def collect_run_cadence(
     return runs
 
 
-def collect_members(
-    conn: sqlite3.Connection,
-    cadence: dict[str, list[dict[str, Any]]],
-) -> list[dict[str, Any]]:
-    """Per family: is it still arriving, how deep is its training history.
+def collect_member_depth(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
+    """Per family: how deep its training history is, and how many seats it won.
 
-    "Still arriving" is judged against the family's own observed rhythm, not
-    a shared hour count.  The families publish on different schedules and
-    land with different delays -- a fixed threshold either lets a six-hourly
-    family sleep through a missed cycle or paints a twice-daily one amber
-    every afternoon.
+    Split out of ``collect_members`` on 2026-09-24.  These counts walk every
+    member row of the family through the table (COUNT DISTINCT and the
+    capture time are not in any index), which took 187-500 s a render, and
+    ``members`` feeds the banner light, so it may never be served from a
+    page: under a paged render it had to read for minutes on every run and
+    was the section the WAL line interrupted.  None of these numbers colour
+    the light -- they move by days -- so they are a slow-moving section of
+    their own and ``members`` keeps only what the light is computed from.
     """
 
-    rows = []
-    for system_id, label, transport, backfillable in MEMBER_FAMILIES:
+    depth: dict[str, dict[str, Any]] = {}
+    for system_id, _label, transport, _backfillable in MEMBER_FAMILIES:
         record = conn.execute(
             "SELECT COUNT(*), COUNT(DISTINCT station_id),"
-            " COUNT(DISTINCT target_local_date), MAX(native_run_init_utc),"
-            " MAX(archive_query_at_utc)"
+            " COUNT(DISTINCT target_local_date), MAX(archive_query_at_utc)"
             " FROM calibration_native_ensemble_historical_member_run"
             " WHERE ensemble_system_id=? AND transport_provider_id=?",
             (system_id, transport),
@@ -1291,6 +1290,52 @@ def collect_members(
             " WHERE selected_system_ids_json LIKE ?",
             (f"%{system_id}%",),
         ).fetchone()[0]
+        depth[system_id] = {
+            "member_rows": record[0],
+            "stations": record[1],
+            "training_days": record[2],
+            "latest_capture_utc": record[3],
+            "seats_won": seats,
+        }
+    return depth
+
+
+#: The newest run per family, off ``calibration_native_member_skill_idx``
+#: alone (a covering index search; pinned by
+#: tests/test_dashboard_query_shapes.py).  This is all the banner needs.
+MEMBER_LATEST_RUN_SQL = (
+    "SELECT MAX(native_run_init_utc)"
+    " FROM calibration_native_ensemble_historical_member_run"
+    " WHERE ensemble_system_id=? AND transport_provider_id=?"
+)
+
+
+def collect_members(
+    conn: sqlite3.Connection,
+    cadence: dict[str, list[dict[str, Any]]],
+    depth: Mapping[str, Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Per family: is it still arriving, how deep is its training history.
+
+    "Still arriving" is judged against the family's own observed rhythm, not
+    a shared hour count.  The families publish on different schedules and
+    land with different delays -- a fixed threshold either lets a six-hourly
+    family sleep through a missed cycle or paints a twice-daily one amber
+    every afternoon.  The history depth comes from ``collect_member_depth``.
+    """
+
+    rows = []
+    for system_id, label, transport, backfillable in MEMBER_FAMILIES:
+        latest_run = conn.execute(
+            MEMBER_LATEST_RUN_SQL, (system_id, transport)
+        ).fetchone()[0]
+        family = depth.get(system_id) or {}
+        record = (
+            family.get("member_rows"), family.get("stations"),
+            family.get("training_days"), latest_run,
+            family.get("latest_capture_utc"),
+        )
+        seats = family.get("seats_won")
         run_age = _age_hours(record[3])
         recent = cadence.get(system_id, [])
         latest = recent[0] if recent else None
@@ -16124,6 +16169,9 @@ SECTION_CACHE_TTL_SEC = {
     # tables (~30s).  Offset from every other lifetime so no two expire on
     # one render.
     "scorecard_previous": 183 * 60,
+    # History depth and seats per model family (collect_member_depth): walks
+    # every member row, moves by days, colours no light.
+    "member_depth": 189 * 60,
     "center_landing_previous": 258 * 60,
     # The served version's own span, for the board's version comparison
     # (charter 202 moved the served landing onto the evidence window).  A new
@@ -16740,7 +16788,12 @@ def _cached_section(
 def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     _SECTION_CACHE_LOG.clear()
     cadence = _cached_section("run_cadence", collect_run_cadence, conn)
-    members = _cached_section("members", collect_members, conn, cadence)
+    member_depth = _cached_section(
+        "member_depth", collect_member_depth, conn
+    )
+    members = _cached_section(
+        "members", collect_members, conn, cadence, member_depth
+    )
     member_admission = _cached_section(
         "member_admission", collect_member_admission, conn, members
     )
@@ -17037,6 +17090,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "daily": live_days["daily"],
         "live_roster": live_days["roster"],
         "members": members,
+        "member_depth": member_depth,
         "member_admission": member_admission,
         "synoptic_cooling": synoptic_cooling,
         "single_system_width": single_system_width,
