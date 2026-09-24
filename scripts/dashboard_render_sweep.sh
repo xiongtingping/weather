@@ -76,9 +76,20 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] dashboard render (standalone reader)"
 # WAL can restart.  A killed render keeps the previous page on disk; the
 # next interval is the retry.  Exit 124 is the timeout, as run_with_timeout
 # reports it.
+#
+# 2026-09-24 (user ruling 「能分区分页渲染吗？不要一次性，找生产的空隙」): the
+# render is paged.  Each section reads only in a production gap (no cycle in
+# flight, WAL under the resident's line), gives its read up if the WAL
+# crosses the line, and is kept on disk the moment it is done; the run
+# serves anything its budget did not reach from the last page and writes the
+# page before this deadline.  It yields to production by schedule now, so it
+# no longer runs at Darwin background priority: under ``taskpolicy -b`` on
+# the saturated disk the 01:30Z run got 7 CPU-seconds in ten minutes and
+# finished no section at all -- it held its reads longer, not shorter.  The
+# utility I/O tier still gives way to the resident's default-tier I/O.
 RENDER_TIMEOUT_SEC="${PM_DASHBOARD_RENDER_TIMEOUT_SEC:-1500}"
 if run_with_timeout "$RENDER_TIMEOUT_SEC" "" \
-    taskpolicy -b nice -n 10 "$PY" scripts/calibration_dashboard.py --html-out tmp/cal_dashboard.html; then
+    taskpolicy -d utility nice -n 10 "$PY" scripts/calibration_dashboard.py --html-out tmp/cal_dashboard.html; then
   :
 else
   rc=$?

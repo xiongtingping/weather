@@ -15685,6 +15685,9 @@ def build_payload(db: Path) -> dict[str, Any]:
     # lock contention compounded into 45-minute P1 outages (2026-08-24).
     conn = _connect(db)
     started = time.perf_counter()
+    if PAGED_RENDER:
+        _paged_run_start(db)
+        conn.set_progress_handler(_render_yield_check, 20_000)
     try:
         payload = _build_payload(conn, db)
     finally:
@@ -15722,6 +15725,17 @@ def build_payload(db: Path) -> dict[str, Any]:
         ),
         "slowest": slowest[:12],
     }
+    if _PAGED_RUN:
+        _save_every_run_costs()
+        # What this paged run could not compute and served from its last
+        # page instead, and how long it spent waiting for production gaps.
+        payload["render"]["paged"] = {
+            "gap_wait_sec": round(float(_PAGED_RUN["gap_wait_sec"]), 1),
+            "yields": int(_PAGED_RUN["yields"]),
+            "stale_sections": dict(_PAGED_RUN["stale"]),
+            "soft_budget_sec": RENDER_SOFT_BUDGET_SEC,
+        }
+        _PAGED_RUN.clear()
     return payload
 
 
@@ -16187,6 +16201,8 @@ SECTION_CACHE_TTL_SEC = {
 # Set by ``--no-section-cache`` so a reader who needs every number computed
 # against this instant can have it, at the price of the long build.
 SECTION_CACHE_ENABLED = True
+#: Set by ``main`` for ``--html-out`` only; see ``RENDER_EVERY_RUN_SECTIONS``.
+PAGED_RENDER = False
 _SECTION_CACHE_LOG: dict[str, dict[str, Any]] = {}
 
 
@@ -16263,6 +16279,248 @@ def _trace_slow_section(name: str, elapsed: float) -> None:
         )
 
 
+#: Paged rendering (user ruling 2026-09-24: 「能分区分页渲染吗？不要一次性，
+#: 找生产的空隙」).  The page is built one section at a time, and every
+#: section is a page of its own:
+#:
+#: * it starts reading only in a production gap -- no production cycle in
+#:   flight and the store's WAL under the resident's maintenance line --
+#:   so a render never reads beside a cycle and never starts a read the
+#:   writer's truncating checkpoint would have to wait out;
+#: * it gives its read up mid-statement if the WAL crosses that line (a
+#:   progress handler interrupts it), and the section is served from its
+#:   last page instead;
+#: * it is written to the section cache the moment it is done, so a run
+#:   that is killed or runs out of budget loses only the section in hand and
+#:   the next run carries on from there;
+#: * once the run's soft budget is spent, every section still due is served
+#:   from its last page, with its age on the page, and the page is written.
+#:
+#: The render used to be one read of the whole store.  The last one to
+#: finish (2026-09-23 06:53Z) took 7,337 s -- truth_landing alone 2,646 s --
+#: and from 13:18Z every run was killed at the 1,500 s deadline, so the page
+#: kept that payload for eighteen hours while the lamps on it went red.
+#: Two of those runs were killed by hand because their reads held the WAL
+#: the resident needed to truncate before it could reopen its writer.
+#:
+#: Only the ``--html-out`` render pages (``_PAGED_RUN`` is empty otherwise):
+#: ``--json``, ``serve`` and the tests build exactly as before.
+#:
+#: Never paged, on every run: the sections where a stale answer is a wrong
+#: answer (tests/test_dashboard_section_cache.py's two safety rules).
+RENDER_EVERY_RUN_SECTIONS = frozenset({
+    # The freshness lamps and clocks: a lamp that can be a page old is a
+    # lamp that says green through an outage.
+    "hosted_sweeps", "cycle_time", "observation_intake",
+    "certificate_authority",
+    # Everything the banner's light is derived from.
+    "members", "chain", "band_stages", "truth_materialization",
+    "delta_v2_authority",
+    # The live book: what the page is opened for mid-session.
+    "live_readiness", "live_selection", "live_days", "live_money",
+    "window_divergence",
+})
+#: The every-run sections' last costs, so a paged run leaves them room.
+RENDER_EVERY_RUN_COSTS = "_every_run_costs.json"
+#: Total a run's every-run sections may spend waiting for gaps.  They are
+#: computed regardless; the wait only moves them into a gap when one is near.
+EVERY_RUN_GAP_WAIT_SEC = 300.0
+#: How long a section without a lifetime of its own serves from its page.
+#: One render interval: a section computed by one run is reused by the next
+#: and recomputed by the one after, so the store is read about half as often
+#: and an interrupted run resumes instead of starting over.
+PAGED_SECTION_TTL_SEC = 1800
+#: When the run stops computing and starts assembling.  Five minutes under
+#: the sweep's 1,500 s kill, so the page is written before the deadline.
+RENDER_SOFT_BUDGET_SEC = float(
+    os.environ.get("PM_DASHBOARD_RENDER_SOFT_BUDGET_SEC", "1200")
+)
+#: The resident's maintenance line (TARGET_SSOT_WARN_WAL_BYTES): above it
+#: the resident tries to truncate the WAL, and a reader is what stops it.
+RENDER_MAX_WAL_BYTES = int(
+    os.environ.get("PM_DASHBOARD_RENDER_MAX_WAL_BYTES", str(256 * 1024 * 1024))
+)
+RENDER_GAP_POLL_SEC = 5.0
+#: One section waits at most this long for a gap when it cannot be served
+#: from a page, then reads anyway: a page with no lamps is the worse outcome.
+LIVE_SECTION_GAP_CAP_SEC = 120.0
+#: A status file older than this cannot say whether a cycle is in flight.
+RENDER_STATUS_FRESH_SEC = 180.0
+_PAGED_RUN: dict[str, Any] = {}
+
+
+def _paged_run_start(db: Path) -> None:
+    _PAGED_RUN.clear()
+    _PAGED_RUN.update({
+        "started": time.monotonic(),
+        "wal": db.with_name(db.name + "-wal"),
+        "armed": False,
+        "yielded": False,
+        "wal_checked": 0.0,
+        "wal_over": False,
+        "gap_wait_sec": 0.0,
+        "every_run_wait_left": EVERY_RUN_GAP_WAIT_SEC,
+        "yields": 0,
+        "stale": {},
+        "every_run_costs": _load_every_run_costs(),
+    })
+
+
+def _load_every_run_costs() -> dict[str, float]:
+    try:
+        raw = json.loads(
+            (SECTION_CACHE_DIR / RENDER_EVERY_RUN_COSTS).read_text(encoding="utf-8")
+        )
+        return {
+            str(k): float(v) for k, v in raw.items()
+            if str(k) in RENDER_EVERY_RUN_SECTIONS
+        }
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {}
+
+
+def _save_every_run_costs() -> None:
+    costs = dict(_PAGED_RUN.get("every_run_costs") or {})
+    for name in RENDER_EVERY_RUN_SECTIONS:
+        entry = _SECTION_CACHE_LOG.get(name) or {}
+        if entry.get("build_sec") is not None:
+            costs[name] = float(entry["build_sec"])
+    try:
+        SECTION_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = SECTION_CACHE_DIR / f"{RENDER_EVERY_RUN_COSTS}.{os.getpid()}.tmp"
+        tmp.write_text(json.dumps(costs, sort_keys=True), encoding="utf-8")
+        tmp.replace(SECTION_CACHE_DIR / RENDER_EVERY_RUN_COSTS)
+    except OSError:
+        pass
+
+
+def _every_run_reserve_sec() -> float:
+    """What the every-run sections not yet reached will cost, from last time."""
+
+    costs = _PAGED_RUN.get("every_run_costs") or {}
+    return sum(
+        cost for name, cost in costs.items()
+        if name not in _SECTION_CACHE_LOG
+    )
+
+
+def _paged_elapsed() -> float:
+    return time.monotonic() - float(_PAGED_RUN["started"])
+
+
+def _render_wal_bytes() -> int:
+    try:
+        return int(Path(_PAGED_RUN["wal"]).stat().st_size)
+    except OSError:
+        return 0
+
+
+def _production_gap_blocker() -> str | None:
+    """Why a section should not start reading right now, or None."""
+
+    wal_bytes = _render_wal_bytes()
+    if wal_bytes > RENDER_MAX_WAL_BYTES:
+        return f"wal {wal_bytes}"
+    try:
+        status = json.loads(STATUS_JSON.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    age = _age_hours(status.get("heartbeat_at"))
+    if (
+        age is not None
+        and age * 3600.0 <= RENDER_STATUS_FRESH_SEC
+        and status.get("production_inflight")
+    ):
+        return "production cycle in flight"
+    return None
+
+
+def _await_production_gap(name: str, cap_sec: float) -> bool:
+    """Wait for a production gap, at most ``cap_sec``; True when found."""
+
+    waited = 0.0
+    blocker = _production_gap_blocker()
+    while blocker is not None:
+        if waited >= cap_sec:
+            break
+        pause = min(RENDER_GAP_POLL_SEC, max(0.0, cap_sec - waited))
+        time.sleep(pause)
+        waited += pause
+        blocker = _production_gap_blocker()
+    _PAGED_RUN["gap_wait_sec"] = float(_PAGED_RUN["gap_wait_sec"]) + waited
+    if waited >= 30.0:
+        print(
+            f"[{_now().strftime('%Y-%m-%dT%H:%M:%SZ')}] section {name}"
+            f" waited {waited:.0f}s for a production gap"
+            + ("" if blocker is None else f"; still {blocker}"),
+            file=sys.stderr,
+            flush=True,
+        )
+    return blocker is None
+
+
+def _render_yield_check() -> int:
+    """Progress handler: interrupt a paged read once the WAL crosses the line.
+
+    Checked at most once a second.  Only while a paged section is armed:
+    the lamps are seconds of reading and are never interrupted.
+    """
+
+    if not _PAGED_RUN or not _PAGED_RUN.get("armed"):
+        return 0
+    now = time.monotonic()
+    if now - float(_PAGED_RUN["wal_checked"]) >= 1.0:
+        _PAGED_RUN["wal_checked"] = now
+        _PAGED_RUN["wal_over"] = _render_wal_bytes() > RENDER_MAX_WAL_BYTES
+    if _PAGED_RUN["wal_over"]:
+        _PAGED_RUN["yielded"] = True
+        return 1
+    return 0
+
+
+def _paged_args_salt(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str | None:
+    """The inputs a paged section was computed from, as part of its key.
+
+    Sections that take another section's output (``gaps`` takes members,
+    stages and tables) may only reuse a page computed from the same inputs.
+    None when the inputs cannot be written down: such a section is always
+    computed.
+    """
+
+    if len(args) <= 1 and not kwargs:
+        return ""
+    try:
+        text = json.dumps(
+            [list(args[1:]), kwargs], sort_keys=True, ensure_ascii=False,
+            default=str,
+        )
+    except (TypeError, ValueError):
+        return None
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _serve_stale_page(
+    name: str, blob: dict[str, Any], ttl: float, age: float, reason: str,
+) -> Any:
+    _SECTION_CACHE_LOG[name] = {
+        "computed_at_utc": str(blob["computed_at_utc"]),
+        "age_sec": round(age),
+        "ttl_sec": ttl,
+        "reused": True,
+        "cached": True,
+        "stale": True,
+        "stale_reason": reason,
+    }
+    _PAGED_RUN["stale"][name] = reason
+    print(
+        f"[{_now().strftime('%Y-%m-%dT%H:%M:%SZ')}] section {name}"
+        f" served from its page ({reason}), {age / 60:.0f} min old",
+        file=sys.stderr,
+        flush=True,
+    )
+    return blob["value"]
+
+
 def _cached_section(
     name: str,
     collector: Any,
@@ -16276,9 +16534,19 @@ def _cached_section(
     a hit and a miss hand the rest of the build byte-identical structures --
     otherwise a tuple would reach the page as a tuple on the render that
     computed it and as a list on the five that reused it.
+
+    Under a paged render (``_PAGED_RUN``) every section without a lifetime
+    of its own gets ``PAGED_SECTION_TTL_SEC`` unless it is one of
+    ``RENDER_EVERY_RUN_SECTIONS``, and every read waits for a production gap.
     """
 
+    paged = bool(_PAGED_RUN) and SECTION_CACHE_ENABLED
     ttl = SECTION_CACHE_TTL_SEC.get(name)
+    if paged and not ttl and name not in RENDER_EVERY_RUN_SECTIONS:
+        args_salt = _paged_args_salt(args, kwargs)
+        if args_salt is not None:
+            ttl = PAGED_SECTION_TTL_SEC
+            _salt = _salt + args_salt
     if not ttl or not SECTION_CACHE_ENABLED:
         # Still timed.  Only the nine sections with a TTL passed through
         # here, so the nine that were already the known-slow ones were the
@@ -16286,6 +16554,17 @@ def _cached_section(
         # minutes on 2026-09-09 with no record of where the other minutes
         # went.  A section without a lifetime is not a section without a
         # price.
+        if paged:
+            allowance = min(
+                LIVE_SECTION_GAP_CAP_SEC, float(_PAGED_RUN["every_run_wait_left"])
+            )
+            before = float(_PAGED_RUN["gap_wait_sec"])
+            _await_production_gap(name, allowance)
+            _PAGED_RUN["every_run_wait_left"] = max(
+                0.0,
+                float(_PAGED_RUN["every_run_wait_left"])
+                - (float(_PAGED_RUN["gap_wait_sec"]) - before),
+            )
         started = time.perf_counter()
         value = collector(*args, **kwargs)
         _SECTION_CACHE_LOG[name] = {
@@ -16298,12 +16577,18 @@ def _cached_section(
     fingerprint = _section_fingerprint(collector, _salt)
     path = SECTION_CACHE_DIR / f"{name}.json"
     now = _now()
+    page: dict[str, Any] | None = None
+    page_age = 0.0
     try:
         blob = json.loads(path.read_text(encoding="utf-8"))
         stamp = str(blob["computed_at_utc"])
         age = (
             now - datetime.fromisoformat(stamp.replace("Z", "+00:00"))
         ).total_seconds()
+        if blob.get("fingerprint") == fingerprint and "value" in blob:
+            # Same code, same declared inputs: servable as a stale page
+            # even past its lifetime, never across a code change.
+            page, page_age = blob, age
         if blob.get("fingerprint") == fingerprint and 0.0 <= age < ttl:
             _SECTION_CACHE_LOG[name] = {
                 "computed_at_utc": stamp,
@@ -16315,10 +16600,51 @@ def _cached_section(
             return blob["value"]
     except (OSError, ValueError, KeyError, TypeError):
         pass
+    if paged:
+        # Room left for this section: the soft budget, less what the
+        # every-run sections still to come cost last time.
+        remaining = (
+            RENDER_SOFT_BUDGET_SEC - _paged_elapsed() - _every_run_reserve_sec()
+        )
+        expected = float((page or {}).get("build_sec") or 0.0)
+        if page is not None and expected > remaining:
+            return _serve_stale_page(name, page, ttl, page_age, "budget")
+        # Without a page there is nothing else to serve: wait a lamp's
+        # while at most, then read.
+        cap = remaining if page is not None else LIVE_SECTION_GAP_CAP_SEC
+        if not _await_production_gap(name, max(0.0, cap)) and page is not None:
+            return _serve_stale_page(name, page, ttl, page_age, "no gap")
+        _PAGED_RUN["armed"] = True
+        _PAGED_RUN["yielded"] = False
+        # Stamped when the read starts, not when the section was reached:
+        # a page is as old as the snapshot it read.
+        now = _now()
     started = time.perf_counter()
-    value = collector(*args, **kwargs)
+    try:
+        value = collector(*args, **kwargs)
+    except sqlite3.OperationalError:
+        if paged and _PAGED_RUN["yielded"] and page is not None:
+            _PAGED_RUN["yields"] = int(_PAGED_RUN["yields"]) + 1
+            return _serve_stale_page(name, page, ttl, page_age, "yielded")
+        raise
+    finally:
+        if paged:
+            _PAGED_RUN["armed"] = False
     elapsed = time.perf_counter() - started
     _trace_slow_section(name, elapsed)
+    if paged and _PAGED_RUN["yielded"]:
+        # The collector caught the interrupt itself and returned what it
+        # had: a degraded value.  Never cache it as a page.
+        _PAGED_RUN["yields"] = int(_PAGED_RUN["yields"]) + 1
+        if page is not None:
+            return _serve_stale_page(name, page, ttl, page_age, "yielded")
+        _SECTION_CACHE_LOG[name] = {
+            "build_sec": round(elapsed, 1),
+            "reused": False,
+            "cached": False,
+            "yielded": True,
+        }
+        return value
     stamp = now.isoformat().replace("+00:00", "Z")
     _SECTION_CACHE_LOG[name] = {
         "computed_at_utc": stamp,
@@ -25683,9 +26009,11 @@ function sectionCacheNote(){
     return built?`本轮全部区块现算 · `:"";
   }
   const worst=Math.max(...reused.map(([,v])=>Number(v.age_sec)||0));
+  // A page served past its own lifetime: this run's budget ran out, no
+  // production gap came, or its read yielded the WAL back to the writer.
   const list=reused.map(([k,v])=>
-    `${NAME[k]||k} ${Math.round((Number(v.age_sec)||0)/60)} 分钟前`).join("、");
-  return `<span title="慢变区块按各自节奏重算，其余每轮现算">沿用上一轮的区块：`
+    `${NAME[k]||k} ${Math.round((Number(v.age_sec)||0)/60)} 分钟前${v.stale?"（超期）":""}`).join("、");
+  return `<span title="分页渲染：每个区块只在生产空隙里读库、算完即存，按各自节奏重算；灯每轮现算">沿用之前算好的区块：`
     + `${h(list)}（最旧 ${Math.round(worst/60)} 分钟）</span> · `;
 }
 
@@ -26385,8 +26713,11 @@ def main() -> int:
         ),
     )
     args = parser.parse_args()
-    global SECTION_CACHE_ENABLED
+    global SECTION_CACHE_ENABLED, PAGED_RENDER
     SECTION_CACHE_ENABLED = not args.no_section_cache
+    # The page on its timer is the paged build; a hand-run --json or the
+    # server keeps the one-pass build.
+    PAGED_RENDER = bool(args.html_out) and SECTION_CACHE_ENABLED
     if args.reinflate:
         print(reinflate(args.reinflate, renderer=render_html))
         return 0
