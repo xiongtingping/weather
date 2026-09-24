@@ -6131,6 +6131,180 @@ def three_knob_fit(
     return out
 
 
+#: A station-day's truth-landing record is kept once its event day is this
+#: many days back: its first P0 claim is fixed once the day closes, and its
+#: market stops quoting within a day of settling, so the last bids -- the
+#: market's own adjudication -- no longer move either.
+TRUTH_LANDING_KEEP_AFTER_DAYS = 3
+RENDER_TRUTH_LANDING_RECORDS = "_truth_landing_records.json"
+
+
+def _next_iso_day(day: str) -> str:
+    return (date.fromisoformat(day) + timedelta(days=1)).isoformat()
+
+
+#: How many snapshots one catch-up read of settled days may take (~550 MB of
+#: buckets_json at the September rate of 30-45k snapshots a day).
+TRUTH_LANDING_CATCHUP_SNAPSHOTS = 60_000
+
+
+def _truth_landing_chunk_end(
+    conn: sqlite3.Connection, read_from: str, keep_through: str,
+) -> str | None:
+    """The last day of the next catch-up chunk from ``read_from``, or None
+    when the days up to ``keep_through`` fit in one read (counted off the
+    snapshot table's day index, no payload read)."""
+
+    if read_from > keep_through:
+        return None
+    total = 0
+    for day, count in conn.execute(
+        "SELECT event_date, COUNT(*) FROM basket_official_ws_snapshot"
+        " INDEXED BY basket_official_ws_snapshot_day_expiry_idx"
+        " WHERE event_date >= ? AND event_date <= ?"
+        " GROUP BY event_date ORDER BY event_date",
+        (read_from, keep_through),
+    ):
+        total += int(count)
+        if total >= TRUTH_LANDING_CATCHUP_SNAPSHOTS:
+            return str(day)
+    return None
+
+
+def _truth_landing_records(
+    conn: sqlite3.Connection, day_closed: Any, since: str,
+    until: str | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Per closed station-day from ``since`` on, what the truth-landing table
+    aggregates: the first P0's decision time and claim, each bucket's entry
+    asks (count and median -- all the table reads of them) and its last
+    non-zero bid.  ``collect_truth_landing`` keeps these across paged renders
+    for days that no longer move (``TRUTH_LANDING_KEEP_AFTER_DAYS``).
+    """
+
+    first_decision: dict[tuple[str, str], str] = {}
+    claims: dict[tuple[str, str], dict[str, float]] = {}
+    # One row per station-day, chosen in SQL, instead of 147,971 sorted in a
+    # temp B-tree and all but 1,215 thrown away in Python.
+    # ``MIN(decision_at_utc)`` with bare columns beside it is SQLite's
+    # documented min/max behaviour: the bare columns come from the row the
+    # minimum was found on, which is precisely the first decision.
+    #
+    # Worth 69.1s -> 47.5s measured 2026-09-09, and the modest size is the
+    # point: the scan was never the cost.  Broken down, the covering index
+    # scan is 2.2s and the 1,215 overflow-page reads of probabilities_json
+    # are 45.3s -- so the 122:1 row ratio buys 31%, not an order of
+    # magnitude, and an index here would have targeted the 2.2s.  What is
+    # left is the irreducible cost of reading 1,215 claims.
+    last_day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if until is not None:
+        last_day = min(last_day, until)
+    for station, event, probabilities_json, decided in conn.execute(
+        "SELECT station_id, event_date, probabilities_json,"
+        " MIN(decision_at_utc)"
+        " FROM basket_probability_envelope"
+        " WHERE event_date >= ? AND stage='P0' AND event_date <= ?"
+        " GROUP BY station_id, event_date",
+        (since, last_day),
+    ):
+        key = (str(station), str(event))
+        # The GROUP BY already made the key unique, so the only test left is
+        # whether the local day has finished.
+        if not day_closed(*key):
+            continue
+        first_decision[key] = str(decided)
+        try:
+            claims[key] = {
+                str(bucket): float(value)
+                for bucket, value in json.loads(probabilities_json).items()
+            }
+        except (ValueError, TypeError):
+            first_decision.pop(key, None)
+
+    entry_asks: dict[tuple[str, str], dict[str, list[float]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+    last_bid: dict[tuple[str, str], dict[str, float]] = defaultdict(dict)
+    # Which observation each surviving bid came from, so the ORDER BY can
+    # go.  Sorting was doing one job -- letting the assignment below
+    # overwrite in time order so the LAST non-zero bid wins -- and it was
+    # charging the whole result set for it: ``ORDER BY observed_at`` has no
+    # index to ride, so SQLite built a temp B-tree over every row, and the
+    # row it has to carry through that sort is ``buckets_json`` -- 2.05 GB
+    # of it across ~105k snapshots as of 2026-09-02.  The order was never
+    # needed globally either; only within a station-day-bucket.  Taking the
+    # max explicitly keeps the same winner, drops the sort, and lets the
+    # scan stay on ``day_expiry_idx`` where ``event_date >=`` can seek.
+    #
+    # The comparison is on the ISO-8601 string, which is what the freshness
+    # test four lines down already does; both are UTC with a trailing Z, so
+    # lexical order is time order.
+    last_bid_at: dict[tuple[str, str], dict[str, str]] = defaultdict(dict)
+    for station, event, observed, buckets_json in conn.execute(
+        "SELECT station_id, event_date, observed_at, buckets_json"
+        " FROM basket_official_ws_snapshot WHERE event_date >= ?"
+        # No later day can have closed: a local day ends no earlier than
+        # 10:00Z of its own date (UTC+14).  Without the bound every open
+        # day's snapshots -- the ones being written fastest -- were read
+        # whole and then dropped as unclosed.
+        " AND event_date <= ?",
+        (since, last_day),
+    ):
+        key = (str(station), str(event))
+        decided = first_decision.get(key)
+        if decided is None:
+            continue
+        try:
+            rows = json.loads(buckets_json)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(rows, list):
+            continue
+        in_entry = False
+        if str(observed) >= decided:
+            try:
+                opened = datetime.fromisoformat(
+                    decided.replace("Z", "+00:00")
+                )
+                seen = datetime.fromisoformat(
+                    str(observed).replace("Z", "+00:00")
+                )
+                in_entry = (seen - opened).total_seconds() <= 4 * 3600
+            except ValueError:
+                in_entry = False
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            bucket = str(row.get("bucket"))
+            levels = row.get("ask_levels") or []
+            ask = levels[0].get("price") if levels else None
+            bid = row.get("bid_price") or 0
+            bid_levels = row.get("bid_levels") or []
+            if not bid and bid_levels:
+                bid = bid_levels[0].get("price") or 0
+            if in_entry and ask and float(ask) > 0:
+                # Order-independent: these are collected to take a median.
+                entry_asks[key][bucket].append(float(ask))
+            if bid and float(bid) > 0:
+                seen_at = str(observed)
+                if seen_at >= last_bid_at[key].get(bucket, ""):
+                    last_bid[key][bucket] = float(bid)
+                    last_bid_at[key][bucket] = seen_at
+
+    records: dict[str, dict[str, Any]] = {}
+    for key, decided in first_decision.items():
+        records[f"{key[0]}|{key[1]}"] = {
+            "decided": decided,
+            "claims": claims[key],
+            "asks": {
+                bucket: [len(asks), median(asks)]
+                for bucket, asks in entry_asks.get(key, {}).items()
+            },
+            "bids": dict(last_bid.get(key, {})),
+        }
+    return records
+
+
 def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
     """Where truth settles, by market price and by model claim.
 
@@ -6191,107 +6365,60 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
             return False
         return now >= end.astimezone(timezone.utc)
 
-    first_decision: dict[tuple[str, str], str] = {}
-    claims: dict[tuple[str, str], dict[str, float]] = {}
-    # One row per station-day, chosen in SQL, instead of 147,971 sorted in a
-    # temp B-tree and all but 1,215 thrown away in Python.
-    # ``MIN(decision_at_utc)`` with bare columns beside it is SQLite's
-    # documented min/max behaviour: the bare columns come from the row the
-    # minimum was found on, which is precisely the first decision.
-    #
-    # Worth 69.1s -> 47.5s measured 2026-09-09, and the modest size is the
-    # point: the scan was never the cost.  Broken down, the covering index
-    # scan is 2.2s and the 1,215 overflow-page reads of probabilities_json
-    # are 45.3s -- so the 122:1 row ratio buys 31%, not an order of
-    # magnitude, and an index here would have targeted the 2.2s.  What is
-    # left is the irreducible cost of reading 1,215 claims.
-    for station, event, probabilities_json, decided in conn.execute(
-        "SELECT station_id, event_date, probabilities_json,"
-        " MIN(decision_at_utc)"
-        " FROM basket_probability_envelope"
-        " WHERE event_date >= ? AND stage='P0'"
-        " GROUP BY station_id, event_date",
-        (TRUTH_LANDING_SINCE,),
-    ):
-        key = (str(station), str(event))
-        # The GROUP BY already made the key unique, so the only test left is
-        # whether the local day has finished.
-        if not day_closed(*key):
-            continue
-        first_decision[key] = str(decided)
-        try:
-            claims[key] = {
-                str(bucket): float(value)
-                for bucket, value in json.loads(probabilities_json).items()
-            }
-        except (ValueError, TypeError):
-            first_decision.pop(key, None)
+    # Closed station-days two-plus days settled are kept across paged
+    # renders: this read is every WS snapshot since TRUTH_LANDING_SINCE --
+    # ~720k rows of ~9 KB buckets_json by 2026-09-24, 1,315 s the last time
+    # it ran whole -- and a settled day's first claim, entry asks and last
+    # bids do not move.  Only the days after the kept ones are read.
+    if _PAGED_RUN:
+        keep_through = (
+            now - timedelta(days=TRUTH_LANDING_KEEP_AFTER_DAYS)
+        ).strftime("%Y-%m-%d")
+        code = _section_fingerprint(_truth_landing_records, TRUTH_LANDING_SINCE)
+        kept = _load_closed_readings(RENDER_TRUTH_LANDING_RECORDS)
+        if kept.get("code") != code:
+            kept = {}
+        kept_through = str(kept.get("through") or "")
+        records = dict(kept.get("records") or {})
+        read_from = (
+            max(TRUTH_LANDING_SINCE, _next_iso_day(kept_through))
+            if kept_through else TRUTH_LANDING_SINCE
+        )
+        # Far behind (a first run, or a code change that voided the kept
+        # records): read one chunk of settled days, keep it, and say the
+        # section is not ready -- the page serves what it had -- instead of
+        # reading every snapshot at once into the render's deadline.
+        chunk_until = _truth_landing_chunk_end(conn, read_from, keep_through)
+        if chunk_until is not None and chunk_until < keep_through:
+            records.update(_truth_landing_records(
+                conn, day_closed, read_from, chunk_until,
+            ))
+            _save_closed_readings(RENDER_TRUTH_LANDING_RECORDS, {
+                "code": code, "through": chunk_until, "records": records,
+            })
+            raise SectionNotReady(
+                f"truth_landing kept through {chunk_until} of {keep_through}"
+            )
+        records.update(_truth_landing_records(conn, day_closed, read_from))
+        if keep_through > kept_through:
+            _save_closed_readings(RENDER_TRUTH_LANDING_RECORDS, {
+                "code": code,
+                "through": keep_through,
+                "records": {
+                    key: record for key, record in records.items()
+                    if key.split("|", 1)[1] <= keep_through
+                },
+            })
+    else:
+        records = _truth_landing_records(conn, day_closed, TRUTH_LANDING_SINCE)
+    ordered = sorted(records.items())
+    first_decision = {key: record["decided"] for key, record in ordered}
 
-    entry_asks: dict[tuple[str, str, str], list[float]] = defaultdict(list)
-    last_bid: dict[tuple[str, str], dict[str, float]] = defaultdict(dict)
-    # Which observation each surviving bid came from, so the ORDER BY can
-    # go.  Sorting was doing one job -- letting the assignment below
-    # overwrite in time order so the LAST non-zero bid wins -- and it was
-    # charging the whole result set for it: ``ORDER BY observed_at`` has no
-    # index to ride, so SQLite built a temp B-tree over every row, and the
-    # row it has to carry through that sort is ``buckets_json`` -- 2.05 GB
-    # of it across ~105k snapshots as of 2026-09-02.  The order was never
-    # needed globally either; only within a station-day-bucket.  Taking the
-    # max explicitly keeps the same winner, drops the sort, and lets the
-    # scan stay on ``day_expiry_idx`` where ``event_date >=`` can seek.
-    #
-    # The comparison is on the ISO-8601 string, which is what the freshness
-    # test four lines down already does; both are UTC with a trailing Z, so
-    # lexical order is time order.
-    last_bid_at: dict[tuple[str, str], dict[str, str]] = defaultdict(dict)
-    for station, event, observed, buckets_json in conn.execute(
-        "SELECT station_id, event_date, observed_at, buckets_json"
-        " FROM basket_official_ws_snapshot WHERE event_date >= ?",
-        (TRUTH_LANDING_SINCE,),
-    ):
-        key = (str(station), str(event))
-        decided = first_decision.get(key)
-        if decided is None:
+    winners: dict[str, str] = {}
+    for key, record in ordered:
+        bids = record["bids"]
+        if not bids:
             continue
-        try:
-            rows = json.loads(buckets_json)
-        except (ValueError, TypeError):
-            continue
-        if not isinstance(rows, list):
-            continue
-        in_entry = False
-        if str(observed) >= decided:
-            try:
-                opened = datetime.fromisoformat(
-                    decided.replace("Z", "+00:00")
-                )
-                seen = datetime.fromisoformat(
-                    str(observed).replace("Z", "+00:00")
-                )
-                in_entry = (seen - opened).total_seconds() <= 4 * 3600
-            except ValueError:
-                in_entry = False
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            bucket = str(row.get("bucket"))
-            levels = row.get("ask_levels") or []
-            ask = levels[0].get("price") if levels else None
-            bid = row.get("bid_price") or 0
-            bid_levels = row.get("bid_levels") or []
-            if not bid and bid_levels:
-                bid = bid_levels[0].get("price") or 0
-            if in_entry and ask and float(ask) > 0:
-                # Order-independent: these are collected to take a median.
-                entry_asks[(key[0], key[1], bucket)].append(float(ask))
-            if bid and float(bid) > 0:
-                seen_at = str(observed)
-                if seen_at >= last_bid_at[key].get(bucket, ""):
-                    last_bid[key][bucket] = float(bid)
-                    last_bid_at[key][bucket] = seen_at
-
-    winners: dict[tuple[str, str], str] = {}
-    for key, bids in last_bid.items():
         bucket, top = max(bids.items(), key=lambda item: item[1])
         if top >= 0.80:
             winners[key] = bucket
@@ -6324,19 +6451,22 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
             for (low, high), cell in cells.items()
         ]
 
-    price_rows: list[tuple[int, float]] = []
-    for (station, event, bucket), asks in entry_asks.items():
-        key = (station, event)
-        if key not in winners or len(asks) < 2:
-            continue
-        price_rows.append(
-            (1 if winners[key] == bucket else 0, median(asks))
-        )
+    # (key, bucket, entry-ask median) for every bucket with two asks or more
+    # on an adjudicated day -- the population the price rows read.
+    priced = [
+        (key, bucket, float(asked[1]))
+        for key, record in ordered if key in winners
+        for bucket, asked in record["asks"].items() if int(asked[0]) >= 2
+    ]
+    price_rows: list[tuple[int, float]] = [
+        (1 if winners[key] == bucket else 0, price)
+        for key, bucket, price in priced
+    ]
     claim_rows: list[tuple[int, float]] = []
-    for key, claimed in claims.items():
+    for key, record in ordered:
         if key not in winners:
             continue
-        for bucket, value in claimed.items():
+        for bucket, value in record["claims"].items():
             claim_rows.append((1 if winners[key] == bucket else 0, value))
 
     # [buckets, hits, sum of claims, sum of prices] per group.
@@ -6356,19 +6486,15 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
     acceptance = [0, 0, 0.0, 0.0]
     # The ladder's ask mass per station-day, so the three-knob proxy can
     # read the market as a normalised belief the way the lanes do.
-    ladder_ask: dict[tuple[str, str], float] = defaultdict(float)
-    for (station, event, bucket), asks in entry_asks.items():
-        if (station, event) in winners and len(asks) >= 2:
-            ladder_ask[(station, event)] += median(asks)
+    ladder_ask: dict[str, float] = defaultdict(float)
+    for key, _bucket, price in priced:
+        ladder_ask[key] += price
     knob_rows: list[tuple[str, float, float, int]] = []
-    for (station, event, bucket), asks in entry_asks.items():
-        key = (station, event)
-        if key not in winners or len(asks) < 2:
-            continue
-        claim = claims.get(key, {}).get(bucket)
+    for key, bucket, price in priced:
+        event = key.split("|", 1)[1]
+        claim = records[key]["claims"].get(bucket)
         if claim is None:
             continue
-        price = median(asks)
         hit = 1 if winners[key] == bucket else 0
         if ladder_ask.get(key, 0.0) > 0:
             knob_rows.append((event, claim, price / ladder_ask[key], hit))
@@ -17121,6 +17247,11 @@ RENDER_STATUS_FRESH_SEC = 180.0
 _PAGED_RUN: dict[str, Any] = {}
 
 
+class SectionNotReady(Exception):
+    """A collector that builds its answer over several paged runs and has
+    not finished: serve its page, else its stand-in; never cache anything."""
+
+
 class RenderYielded(Exception):
     """The run stepped aside for the writer: the WAL crossed the line and
     the section in hand has no page to serve instead.  The page on disk is
@@ -17571,6 +17702,15 @@ def _cached_section(
     started = time.perf_counter()
     try:
         value = collector(*args, **kwargs)
+    except SectionNotReady as exc:
+        if not paged:
+            raise
+        _trace_slow_section(name, time.perf_counter() - started)
+        if page is not None:
+            return _serve_stale_page(name, page, ttl, page_age, f"catching up: {exc}", page_inputs_moved)
+        if _unavailable is not _NO_UNAVAILABLE:
+            return _serve_unavailable(name, _unavailable, f"catching up: {exc}")
+        raise RenderYielded(f"{name}: {exc}") from exc
     except sqlite3.OperationalError as exc:
         if paged and _PAGED_RUN["yielded"]:
             _PAGED_RUN["yields"] = int(_PAGED_RUN["yields"]) + 1
@@ -17831,6 +17971,8 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     )
     truth_landing = _cached_section(
         "truth_landing", collect_truth_landing, conn,
+        # The card is hidden when this is empty.
+        _unavailable={},
         # The band grid lives outside the collector, so it has to be
         # declared: changing it has to expire the file, not wait it out.
         _salt=repr(TRUTH_LANDING_PRICE_BANDS)

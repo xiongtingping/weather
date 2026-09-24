@@ -803,3 +803,72 @@ def test_an_open_station_days_slug_is_read_once_per_run(paged) -> None:
     assert C._live_market_slugs(conn, rows, archive=paged / "none.db")[f"KLGA|{today}"] == "relisted", (
         "the next run reads an open day again"
     )
+
+
+def _truth_landing_fixture() -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE calibration_station_market_timezone_binding"
+        " (station_id TEXT, settlement_timezone TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO calibration_station_market_timezone_binding VALUES ('KLGA','America/New_York')"
+    )
+    conn.execute(
+        "CREATE TABLE basket_probability_envelope (station_id TEXT, event_date TEXT,"
+        " stage TEXT, decision_at_utc TEXT, probabilities_json TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_official_ws_snapshot (station_id TEXT, event_date TEXT,"
+        " observed_at TEXT, quote_expires_at TEXT, buckets_json TEXT)"
+    )
+    conn.execute(
+        "CREATE INDEX basket_official_ws_snapshot_day_expiry_idx"
+        " ON basket_official_ws_snapshot(event_date, quote_expires_at)"
+    )
+    for i, day in enumerate(("2026-08-20", "2026-08-21", "2026-08-22")):
+        conn.execute(
+            "INSERT INTO basket_probability_envelope VALUES ('KLGA',?,'P0',?,?)",
+            (day, f"{day}T01:00:00Z", json.dumps({"70": 0.6, "71": 0.4})),
+        )
+        for hour, bids in ((2, (0.5, 0.4)), (3, (0.55, 0.35)), (23, (0.9 - 0.1 * i, 0.05))):
+            conn.execute(
+                "INSERT INTO basket_official_ws_snapshot VALUES ('KLGA',?,?,?,?)",
+                (day, f"{day}T{hour:02d}:00:00Z", "x", json.dumps([
+                    {"bucket": "70", "ask_levels": [{"price": 0.62}], "bid_price": bids[0]},
+                    {"bucket": "71", "ask_levels": [{"price": 0.41}], "bid_price": bids[1]},
+                ])),
+            )
+    return conn
+
+
+def test_the_truth_landing_caught_up_in_chunks_is_the_one_read(paged, monkeypatch) -> None:
+    """A far-behind cache reads settled days a chunk a run; the answer is the same."""
+
+    monkeypatch.setattr(C, "TRUTH_LANDING_SINCE", "2026-08-20")
+    monkeypatch.setattr(C, "TRUTH_LANDING_CATCHUP_SNAPSHOTS", 1)
+    conn = _truth_landing_fixture()
+    saved = dict(C._PAGED_RUN)
+    C._PAGED_RUN.clear()
+    whole = C.collect_truth_landing(conn)          # not paged: one read
+    C._PAGED_RUN.update(saved)
+    chunks = 0
+    while True:
+        try:
+            paged_answer = C.collect_truth_landing(conn)
+            break
+        except C.SectionNotReady:
+            chunks += 1
+            assert chunks < 10
+    assert chunks >= 2, "the three settled days came a chunk at a time"
+    assert paged_answer == whole
+    assert whole["adjudicated_station_days"] == 2   # the third day's bid never reached 0.80
+
+
+def test_a_section_not_ready_serves_its_stand_in_and_caches_nothing(paged) -> None:
+    def building(conn):
+        raise C.SectionNotReady("halfway")
+
+    assert C._cached_section("slow_moving", building, None, _unavailable={}) == {}
+    assert "catching up" in C._SECTION_CACHE_LOG["slow_moving"]["stale_reason"]
+    assert not (paged / "sections" / "slow_moving.json").exists()
