@@ -309,7 +309,121 @@
   }
  },
  "B_incomplete_as_ofs": [
-  "2026-09-15T06:00:00Z",
-  "2026-09-21T06:00:00Z"
- ]
+  "2026-09-15T06:00:00Z"
+ ],
+ "B_steady_state": {
+  "as_ofs": [
+   "2026-09-18T06:00:00Z",
+   "2026-09-21T06:00:00Z",
+   "2026-09-24T02:30:00Z"
+  ],
+  "flips": {
+   "keys_common": 5034,
+   "keys_only_integer": 16,
+   "keys_only_ladder": 3080,
+   "counts": {
+    "pass_both": 4398,
+    "reject_to_pass": 127,
+    "pass_to_reject": 74,
+    "reject_both": 435
+   },
+   "by_unit": {
+    "C": {
+     "pass_both": 3821,
+     "reject_to_pass": 52,
+     "reject_both": 378,
+     "pass_to_reject": 33
+    },
+    "F": {
+     "pass_both": 577,
+     "reject_to_pass": 75,
+     "pass_to_reject": 41,
+     "reject_both": 57
+    }
+   },
+   "flips_by_station": {
+    "FACT": {
+     "reject_to_pass": 4
+    },
+    "KHOU": {
+     "reject_to_pass": 1,
+     "pass_to_reject": 1
+    },
+    "KLAX": {
+     "pass_to_reject": 1,
+     "reject_to_pass": 2
+    },
+    "KLGA": {
+     "reject_to_pass": 1
+    },
+    "KMIA": {
+     "reject_to_pass": 66
+    },
+    "KSEA": {
+     "pass_to_reject": 35
+    },
+    "KSFO": {
+     "reject_to_pass": 5,
+     "pass_to_reject": 4
+    },
+    "MPMG": {
+     "reject_to_pass": 1
+    },
+    "OEJN": {
+     "reject_to_pass": 1
+    },
+    "SBGR": {
+     "pass_to_reject": 2
+    },
+    "VILK": {
+     "reject_to_pass": 26
+    },
+    "WMKK": {
+     "pass_to_reject": 9
+    },
+    "WSSS": {
+     "reject_to_pass": 3
+    },
+    "ZBAA": {
+     "reject_to_pass": 7
+    },
+    "ZGGG": {
+     "pass_to_reject": 2,
+     "reject_to_pass": 10
+    },
+    "ZGSZ": {
+     "pass_to_reject": 20
+    }
+   },
+   "station_lead_scopes_going_dark": [],
+   "station_lead_scopes_lighting_up": [
+    "KMIA|h48_plus",
+    "MPMG|h24_48",
+    "VILK|h24_48"
+   ],
+   "station_lead_cycle_scopes_going_dark": [
+    "KSEA|h48_plus|MIXED_NATIVE_CYCLES"
+   ],
+   "station_lead_cycle_scopes_lighting_up": [
+    "KLAX|h48_plus|MIXED_NATIVE_CYCLES",
+    "KMIA|h12_24|06Z",
+    "KMIA|h12_24|12Z",
+    "KMIA|h48_plus|00Z",
+    "KSFO|h48_plus|MIXED_NATIVE_CYCLES",
+    "MPMG|h24_48|00Z",
+    "VILK|h12_24|00Z",
+    "VILK|h24_48|MIXED_NATIVE_CYCLES"
+   ],
+   "station_lead_cycle_scope_count": 280
+  },
+  "window_days_ladder": {
+   "8": 332,
+   "3": 46,
+   "6": 5047,
+   "9": 1583,
+   "7": 1101,
+   "4": 4,
+   "5": 1
+  }
+ }
 }
