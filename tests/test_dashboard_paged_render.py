@@ -526,3 +526,17 @@ def test_the_cycle_lamp_takes_the_latency_it_is_handed(monkeypatch) -> None:
     monkeypatch.setattr(C, "_report_to_probability_latency", forbidden)
     out = C.collect_cycle_time(sqlite3.connect(":memory:"), {"unavailable": True})
     assert out["latency"] == {"unavailable": True}
+
+
+def test_the_truth_lamp_stands_when_its_table_is_unread(monkeypatch, tmp_path) -> None:
+    """Its light is the retry engines'; an unread coverage table must not hide it."""
+
+    monkeypatch.setattr(C, "TRUTH_SWEEP_STATUS", tmp_path / "missing.json")
+    monkeypatch.setattr(C, "STATUS_JSON", tmp_path / "missing_status.json")
+    out = C.collect_truth_materialization(
+        sqlite3.connect(":memory:"), {"rows": [], "unavailable": True}
+    )
+    assert out["coverage"] == [] and out["coverage_unavailable"] is True
+    assert out["health"] in ("amber", "red")
+    source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    assert "(T.coverage || []).length || T.coverage_unavailable" in source

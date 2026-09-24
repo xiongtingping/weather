@@ -6424,18 +6424,16 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
-def collect_truth_materialization(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Whether every settled station-day has been turned into a truth row.
+def collect_truth_coverage(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Eligible against materialized station-days, the last three weeks.
 
-    The distinction this section exists to draw: a missing truth row almost
-    never means a missing observation.  On 2026-08-17 the table held 13 of 45
-    stations for 08-11 while the archive held all 45 that day -- the rows had
-    simply never been asked for, and nothing retries a day once it passes.
-    Everything downstream is gated on settled days, so a hole here does not
-    cost one scope one day, it costs every cohort that would have shared it.
+    Split out of ``collect_truth_materialization`` on 2026-09-24: its light
+    is decided by the retry engines' receipts, not by this table, and the
+    table's correlated count walks the truth index once per day (140 s in
+    the last full render).  A paged render builds it as ``truth_coverage``.
     """
 
-    coverage = [
+    return {"rows": [
         {
             "event_date": str(day),
             "eligible": int(eligible),
@@ -6452,7 +6450,27 @@ def collect_truth_materialization(conn: sqlite3.Connection) -> dict[str, Any]:
             "  AND r.event_date>=date('now','-21 days')"
             " GROUP BY r.event_date ORDER BY r.event_date DESC"
         )
-    ]
+    ]}
+
+
+def collect_truth_materialization(
+    conn: sqlite3.Connection,
+    coverage: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Whether every settled station-day has been turned into a truth row.
+
+    The distinction this section exists to draw: a missing truth row almost
+    never means a missing observation.  On 2026-08-17 the table held 13 of 45
+    stations for 08-11 while the archive held all 45 that day -- the rows had
+    simply never been asked for, and nothing retries a day once it passes.
+    Everything downstream is gated on settled days, so a hole here does not
+    cost one scope one day, it costs every cohort that would have shared it.
+    """
+
+    if coverage is None:
+        coverage = collect_truth_coverage(conn)
+    coverage_unavailable = bool(coverage.get("unavailable"))
+    coverage = [dict(row) for row in coverage.get("rows") or []]
     sweep: dict[str, Any] = {}
     if TRUTH_SWEEP_STATUS.is_file():
         try:
@@ -6560,6 +6578,7 @@ def collect_truth_materialization(conn: sqlite3.Connection) -> dict[str, Any]:
         health, note = "green", "已结算的站日全部有真值行"
     return {
         "coverage": coverage,
+        "coverage_unavailable": coverage_unavailable,
         "sweep": sweep,
         "health": health,
         "note": note,
@@ -17028,8 +17047,13 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     )
     chain = _cached_section("chain", collect_chain, conn, chain_volume)
     stages = _cached_section("band_stages", collect_band_stages, conn)
+    truth_coverage = _cached_section(
+        "truth_coverage", collect_truth_coverage, conn,
+        _unavailable={"rows": [], "unavailable": True},
+    )
     truth = _cached_section(
-        "truth_materialization", collect_truth_materialization, conn
+        "truth_materialization", collect_truth_materialization, conn,
+        truth_coverage,
     )
     # 每日统计 and 逐站逐日明细 read the live book (user ruling, 2026-09-16).
     live_days = _cached_section("live_days", collect_live_days, conn)
@@ -19052,7 +19076,9 @@ function healthLamps(){
     L.push(lamp("amber", "维护车道", "读不出", H.reason || ""));
   }
   const T = D.truth || {};
-  if((T.coverage || []).length){
+  // Drawn when the coverage table is simply unread this run, too: the lamp
+  // is the retry engines' verdict, not the table's.
+  if((T.coverage || []).length || T.coverage_unavailable){
     // Its own health, the same field the head strip reads.  The banner
     // already decides what an outstanding count means; a second rule here
     // is how the strip and the lamp end up disagreeing about the same day.
