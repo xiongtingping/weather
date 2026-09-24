@@ -1716,6 +1716,111 @@ def _latest_snapshot_row(conn: sqlite3.Connection, table: str, station_id: str, 
     return {item[0]: cursor[index] for index, item in enumerate(description)}
 
 
+# The basket's own orders are the ones whose cycle carries a basket plan id.
+# Every other lane writes the same order tables and the same
+# ``strategy_lane='basket'`` decision rows (the column's CHECK admits nothing
+# else), each under its own plan-id prefix -- ``tiebreak_plan_``, ``p1_...``,
+# ``recycle998_``, ``misbuyexit_`` -- so the prefix is the only thing that
+# tells the basket's history from theirs.  ``substr`` rather than ``LIKE``:
+# in LIKE the underscore is a wildcard.  User ruling 2026-09-24:
+# 「生产是多个策略混合，要区分开来」.
+BASKET_PLAN_ID_PREFIX = "plan_"
+
+
+def basket_plan_sql(column: str) -> str:
+    """SQL predicate: ``column`` is a basket plan id (see the constant above)."""
+
+    return f"substr({column},1,{len(BASKET_PLAN_ID_PREFIX)})='{BASKET_PLAN_ID_PREFIX}'"
+
+
+def basket_intent_ids(
+    conn: sqlite3.Connection, *, station_id: str, event_date: str,
+) -> frozenset[str]:
+    """Every order intent a basket plan minted on the station-day."""
+
+    try:
+        return frozenset(
+            str(row[0])
+            for row in conn.execute(
+                "SELECT i.order_intent_id FROM basket_target_order_intents i"
+                " JOIN basket_target_execution_cycles c ON c.cycle_id=i.cycle_id"
+                " WHERE c.station_id=? AND c.event_date=? AND "
+                + basket_plan_sql("c.plan_id"),
+                (station_id, event_date),
+            ).fetchall()
+        )
+    except sqlite3.OperationalError:
+        return frozenset()
+
+
+def basket_own_fills(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    observed_at_utc: str,
+) -> tuple[dict[str, float], dict[str, float]]:
+    """Shares and cost per bucket that the basket's OWN orders filled.
+
+    The confirmed inventory snapshot is the account's: every lane's fills on
+    the station-day land in it, because the venue holds one position per
+    token whoever bought it.  Read as the basket's, it made the basket treat
+    another lane's legs as its own seat -- LEMD 2026-09-21 compiled every
+    P1 decision holding ``32C:13`` (the tiebreak lane's 09-19 fill) and then
+    ``31C:25`` (the tail lane's) -- and a replay that simulates the basket
+    alone could never match what production decided.  This reads the same
+    two sources the inventory producer reads, as of the same instant, and
+    keeps the intents a basket plan minted.
+    """
+
+    from .inventory_producer import _execution_transition_rows, _ledger_fill_rows
+
+    own = basket_intent_ids(conn, station_id=station_id, event_date=event_date)
+    filled: dict[str, float] = {}
+    cost: dict[str, float] = {}
+    if not own:
+        return filled, cost
+    # The producers refuse a row newer than their own clock; this reader
+    # asks as of the inventory snapshot it is splitting, and a fill that
+    # landed after that snapshot belongs to the next one, so it is left out
+    # here rather than failing the compile.
+    as_of = _aware_utc("basket_own_fills_as_of", observed_at_utc)
+
+    def _known(row: Mapping[str, Any]) -> bool:
+        return _aware_utc("basket_own_fill_updated_at", str(row["updated_at"])) <= as_of
+
+    transitions = [
+        row for row in _execution_transition_rows(
+            conn, station_id=station_id, event_date=event_date,
+        )
+        if _known(row)
+    ]
+    carried = {row["order_intent_id"] for row in transitions}
+    for row in transitions:
+        if row["order_intent_id"] not in own or row["state"] not in {
+            "FULL_FILLED", "PARTIAL_FILLED",
+        }:
+            continue
+        filled[row["bucket"]] = filled.get(row["bucket"], 0.0) + float(row["filled_size"])
+        cost[row["bucket"]] = cost.get(row["bucket"], 0.0) + float(row["filled_notional_usdc"])
+    for row in _ledger_fill_rows(
+        conn, station_id=station_id, event_date=event_date,
+    ):
+        if (
+            row["order_intent_id"] not in own
+            or row["order_intent_id"] in carried
+            or not _known(row)
+        ):
+            continue
+        sign = 1.0 if row["order_action"] == "BUY" else -1.0
+        filled[row["bucket"]] = filled.get(row["bucket"], 0.0) + sign * float(row["filled_size"])
+        cost[row["bucket"]] = cost.get(row["bucket"], 0.0) + sign * float(row["filled_notional_usdc"])
+    return (
+        {b: max(0.0, v) for b, v in filled.items()},
+        {b: max(0.0, v) for b, v in cost.items()},
+    )
+
+
 def load_production_market_snapshot(
     conn: sqlite3.Connection,
     *,
@@ -1791,6 +1896,24 @@ def load_production_market_snapshot(
     pending_notional = order_json.get("pending_notional_by_bucket") or {}
     if not isinstance(filled_cost, Mapping) or not isinstance(pending_notional, Mapping):
         raise ContractError("production_inventory_order_state_cost_shape_invalid")
+    # The basket sizes, completes and caps itself on its own legs only.  The
+    # account's position is the ceiling: a leg another lane's sell (the 0.99
+    # recycle) has already taken out is not held by anyone.
+    own_filled, own_cost = basket_own_fills(
+        conn, station_id=station_id, event_date=event_date,
+        observed_at_utc=str(inventory["observed_at"]),
+    )
+    account_filled = {str(b): float(v or 0.0) for b, v in filled.items()}
+    basket_filled: dict[str, float] = {}
+    basket_cost: dict[str, float] = {}
+    for bucket, held in account_filled.items():
+        mine = float(own_filled.get(bucket, 0.0))
+        kept = min(max(held, 0.0), mine)
+        basket_filled[bucket] = kept
+        basket_cost[bucket] = (
+            float(own_cost.get(bucket, 0.0)) * kept / mine if mine > 1e-12 else 0.0
+        )
+    filled, filled_cost = basket_filled, basket_cost
     normalized_buckets: list[dict[str, Any]] = []
     for raw in buckets:
         if not isinstance(raw, Mapping):
@@ -1921,6 +2044,7 @@ def _prior_decision_core(
         prior_decision = conn.execute(
             "SELECT details_json FROM auto_trade_decisions "
             "WHERE station_id=? AND event_date=? AND strategy_lane='basket' "
+            "AND " + basket_plan_sql("plan_id") + " "
             "ORDER BY created_at DESC,rowid DESC LIMIT 1",
             (station_id, event_date),
         ).fetchone()
@@ -2165,6 +2289,7 @@ def load_chain_sent_shares(
         " FROM basket_target_order_intents i"
         " JOIN basket_target_execution_cycles cy ON cy.cycle_id=i.cycle_id"
         " WHERE cy.station_id=? AND cy.event_date=?"
+        "   AND " + basket_plan_sql("cy.plan_id") +
         "   AND i.order_action='BUY'"
         + before_clause +
         "   AND EXISTS (SELECT 1 FROM basket_target_order_events e"
@@ -2362,6 +2487,7 @@ def load_order_end_count(
         " JOIN basket_target_order_events e"
         "   ON e.order_intent_id=i.order_intent_id"
         " WHERE c.station_id=? AND c.event_date=?"
+        "   AND " + basket_plan_sql("c.plan_id") +
         f"   AND e.event_type IN ({placeholders})"
     )
     params: list[Any] = [station_id, event_date, *ORDER_END_EVENT_TYPES]
@@ -2411,6 +2537,7 @@ def load_last_decision_signature(
     for (details_json,) in conn.execute(
         "SELECT details_json FROM auto_trade_decisions "
         "WHERE station_id=? AND event_date=? AND strategy_lane='basket' "
+        "AND " + basket_plan_sql("plan_id") + " "
         "ORDER BY created_at DESC,rowid DESC LIMIT 24",
         (station_id, event_date),
     ):
@@ -2433,6 +2560,7 @@ def load_last_decision_signature(
                     "SELECT MAX(created_at) FROM auto_trade_decisions"
                     " WHERE station_id=? AND event_date=?"
                     " AND strategy_lane='basket'"
+                    " AND " + basket_plan_sql("plan_id") +
                     " AND json_extract(details_json,"
                     "'$.decision_signature.stage')=?"
                     " AND json_extract(details_json,"
@@ -2772,6 +2900,10 @@ def load_post_fill_recompute_requests(
 
 
 __all__ = [
+    "BASKET_PLAN_ID_PREFIX",
+    "basket_intent_ids",
+    "basket_own_fills",
+    "basket_plan_sql",
     "ProductionArtifactBundle",
     "STAGE_ZERO_EXECUTION_ANCHOR_SCHEMA",
     "apply_no_live_execution_receipt",

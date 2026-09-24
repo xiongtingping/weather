@@ -1154,7 +1154,7 @@ def test_market_snapshot_restores_exact_prior_core_from_decision_receipt(
             (
                 "decision-core-1",
                 "cycle-core-1",
-                "plan-core-1",
+                "plan_core_1",
                 "ZUUU",
                 "2026-07-23",
                 "America/New_York",

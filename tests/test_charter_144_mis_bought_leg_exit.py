@@ -77,8 +77,8 @@ def _store() -> sqlite3.Connection:
     for bucket, token in TOKENS.items():
         conn.execute("INSERT INTO basket_target_market_registry VALUES(?,?,?,?)", (ST, ED, token, json.dumps({"order_min_size": 5})))
     # The opening: 24C and 25C sent and filled on 2026-09-16.
-    _insert(conn, "basket_target_execution_cycles", {"cycle_id": "c0", "plan_id": "p0", "station_id": ST, "event_date": ED, "settlement_timezone": TZ, "strategy_lane": "basket", "requested_reserve_usdc": 1.0, "state": "settled", "created_at": "2026-09-16T22:15:14Z", "updated_at": "2026-09-16T22:15:14Z"})
-    _insert(conn, "auto_trade_decisions", {"decision_id": "d0", "cycle_id": "c0", "plan_id": "p0", "station_id": ST, "event_date": ED, "settlement_timezone": TZ, "strategy_lane": "basket", "decided_state": "submitted", "will_order": 1, "created_at": "2026-09-16T22:15:14Z"})
+    _insert(conn, "basket_target_execution_cycles", {"cycle_id": "c0", "plan_id": "plan_0", "station_id": ST, "event_date": ED, "settlement_timezone": TZ, "strategy_lane": "basket", "requested_reserve_usdc": 1.0, "state": "settled", "created_at": "2026-09-16T22:15:14Z", "updated_at": "2026-09-16T22:15:14Z"})
+    _insert(conn, "auto_trade_decisions", {"decision_id": "d0", "cycle_id": "c0", "plan_id": "plan_0", "station_id": ST, "event_date": ED, "settlement_timezone": TZ, "strategy_lane": "basket", "decided_state": "submitted", "will_order": 1, "created_at": "2026-09-16T22:15:14Z"})
     _buy(conn, cycle_id="c0", decision_id="d0", bucket="24°C", size=15.0, at="2026-09-16T22:15:14Z", filled=15.0, events=("POST_ACK", "FILL"))
     _buy(conn, cycle_id="c0", decision_id="d0", bucket="25°C", size=6.0, at="2026-09-16T22:15:14Z", filled=6.0, events=("POST_ACK", "FILL"))
     # A completion at 08:43Z that bought 27C, never sent before: a mis-buy in full.
@@ -87,8 +87,8 @@ def _store() -> sqlite3.Connection:
         # And one at 09:00Z that bought 25C to 11 against the 6 it was sent at: 5 over.
         ("c2", "d2", "2026-09-17T09:00:00.000Z", "25°C", 11.0, 11.0),
     ):
-        _insert(conn, "basket_target_execution_cycles", {"cycle_id": cycle, "plan_id": "p" + cycle, "station_id": ST, "event_date": ED, "settlement_timezone": TZ, "strategy_lane": "basket", "requested_reserve_usdc": 1.0, "state": "settled", "created_at": at, "updated_at": at})
-        _insert(conn, "auto_trade_decisions", {"decision_id": decision, "cycle_id": cycle, "plan_id": "p" + cycle, "station_id": ST, "event_date": ED, "settlement_timezone": TZ, "strategy_lane": "basket", "decided_state": "submitted", "will_order": 1, "created_at": at})
+        _insert(conn, "basket_target_execution_cycles", {"cycle_id": cycle, "plan_id": "plan_" + cycle, "station_id": ST, "event_date": ED, "settlement_timezone": TZ, "strategy_lane": "basket", "requested_reserve_usdc": 1.0, "state": "settled", "created_at": at, "updated_at": at})
+        _insert(conn, "auto_trade_decisions", {"decision_id": decision, "cycle_id": cycle, "plan_id": "plan_" + cycle, "station_id": ST, "event_date": ED, "settlement_timezone": TZ, "strategy_lane": "basket", "decided_state": "submitted", "will_order": 1, "created_at": at})
         conn.execute("INSERT INTO basket_policy_training_fact VALUES(?,?,?,?)", (ST, ED, at, json.dumps({"plan": {"target_solution": {"winner_completion_rule": V2}}})))
         _buy(conn, cycle_id=cycle, decision_id=decision, bucket=bucket, size=size, at=at, filled=filled, events=("FILL",))
     return conn
@@ -238,8 +238,8 @@ def test_charter_145_a_taf_entry_fill_is_a_seat_not_a_mis_buy() -> None:
 
     conn = _store()
     at = "2026-09-17T13:59:45.990Z"
-    _insert(conn, "basket_target_execution_cycles", {"cycle_id": "c3", "plan_id": "pc3", "station_id": ST, "event_date": ED, "settlement_timezone": TZ, "strategy_lane": "basket", "requested_reserve_usdc": 1.0, "state": "settled", "created_at": at, "updated_at": at})
-    _insert(conn, "auto_trade_decisions", {"decision_id": "d3", "cycle_id": "c3", "plan_id": "pc3", "station_id": ST, "event_date": ED, "settlement_timezone": TZ, "strategy_lane": "basket", "decided_state": "submitted", "will_order": 1, "created_at": at})
+    _insert(conn, "basket_target_execution_cycles", {"cycle_id": "c3", "plan_id": "plan_c3", "station_id": ST, "event_date": ED, "settlement_timezone": TZ, "strategy_lane": "basket", "requested_reserve_usdc": 1.0, "state": "settled", "created_at": at, "updated_at": at})
+    _insert(conn, "auto_trade_decisions", {"decision_id": "d3", "cycle_id": "c3", "plan_id": "plan_c3", "station_id": ST, "event_date": ED, "settlement_timezone": TZ, "strategy_lane": "basket", "decided_state": "submitted", "will_order": 1, "created_at": at})
     conn.execute("INSERT INTO basket_policy_training_fact VALUES(?,?,?,?)", (ST, ED, at, json.dumps({
         "plan": {"target_solution": {"winner_completion_rule": V2},
                  "completion_143_after_lift": {"exempt": True, "taf_entry": True}},

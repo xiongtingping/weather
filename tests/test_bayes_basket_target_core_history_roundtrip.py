@@ -52,7 +52,7 @@ def _persist_blocked_no_live_decision(
         (
             "decision-core-history-1",
             "cycle-core-history-1",
-            "plan-core-history-1",
+            "plan_core_history_1",
             STATION,
             EVENT_DATE,
             SETTLEMENT_TZ,
@@ -181,7 +181,44 @@ def _append_market_round_with_outer_activity(conn: sqlite3.Connection) -> None:
         ),
     )
     conn.commit()
+    _seed_basket_own_fills(conn)
 
+
+def _seed_basket_own_fills(conn: sqlite3.Connection) -> None:
+    """The fills behind the snapshot's 37 x2 / 39 x3 are the basket's own.
+
+    Since 2026-09-24 the basket credits only fills its own orders made (the
+    account snapshot carries every lane's), so the seeded inventory needs the
+    basket intents and reconciliations it stands for.
+    """
+
+    conn.execute(
+        "INSERT INTO basket_target_execution_cycles(cycle_id,plan_id,station_id,"
+        "event_date,settlement_timezone,strategy_lane,plan_sha256,"
+        "requested_reserve_usdc,state,created_at,updated_at)"
+        " VALUES(?,?,?,?,?,'basket',?,1.0,'submitted',?,?)",
+        ("cycle-core-fills", "plan_core_fills", STATION, EVENT_DATE, SETTLEMENT_TZ,
+         "a" * 64, "2026-07-23T05:00:00Z", "2026-07-23T05:00:00Z"),
+    )
+    for bucket, size, notional in (("37", 2.0, 0.4), ("39", 3.0, 0.6)):
+        intent = f"intent_core_{bucket}"
+        conn.execute(
+            "INSERT INTO basket_target_order_intents(order_intent_id,decision_id,"
+            "cycle_id,bucket,token_id,side,order_action,limit_price,requested_size,"
+            "requested_notional_usdc,state,live_submit_authorized,idempotency_key,"
+            "intent_json,intent_sha256,created_at)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (intent, "decision-core-fills", "cycle-core-fills", bucket, f"tok-{bucket}",
+             "YES", "BUY", 0.2, size, notional, "submitted", 1, f"k-{intent}",
+             "{}", "b" * 64, "2026-07-23T05:00:00Z"),
+        )
+        conn.execute(
+            "INSERT INTO basket_target_order_reconciliations(order_intent_id,"
+            "exchange_order_id,state,filled_size,filled_notional_usdc,last_event_id,"
+            "blocking_reason,updated_at) VALUES(?,?,'resolved_filled',?,?,NULL,NULL,?)",
+            (intent, f"0x{intent}", size, notional, "2026-07-23T05:00:01Z"),
+        )
+    conn.commit()
 
 def _load_next_round(conn: sqlite3.Connection) -> dict[str, object]:
     return load_production_market_snapshot(

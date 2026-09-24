@@ -445,7 +445,7 @@ def test_v2_the_loader_reads_the_last_sent_size() -> None:
         "INSERT INTO basket_target_execution_cycles(cycle_id,plan_id,station_id,"
         "event_date,settlement_timezone,strategy_lane,plan_sha256,"
         "requested_reserve_usdc,state,created_at,updated_at)"
-        " VALUES('c1','p1','SBGR','2026-09-18','America/Sao_Paulo','basket',?,1,"
+        " VALUES('c1','plan_1','SBGR','2026-09-18','America/Sao_Paulo','basket',?,1,"
         "'submitted','2026-09-16T15:00:00Z','2026-09-16T15:00:00Z')",
         ("a" * 64,),
     )
@@ -643,7 +643,7 @@ def test_one_assembler_attaches_the_station_day_fields_for_both_sources() -> Non
         "INSERT INTO basket_target_execution_cycles(cycle_id,plan_id,station_id,"
         "event_date,settlement_timezone,strategy_lane,plan_sha256,"
         "requested_reserve_usdc,state,created_at,updated_at)"
-        " VALUES('c1','p1','ZUUU','2026-09-18','Asia/Shanghai','basket',?,1,"
+        " VALUES('c1','plan_1','ZUUU','2026-09-18','Asia/Shanghai','basket',?,1,"
         "'submitted','2026-09-16T22:15:14Z','2026-09-16T22:15:14Z')",
         ("a" * 64,),
     )

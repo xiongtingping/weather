@@ -286,7 +286,14 @@ def plan_mis_bought_leg_exits(
         if open_order:
             reading["skipped"] = "sell_open"
             continue
-        holdings = ledger_holdings_by_token(conn, station_id=station_id, event_date=event_date)
+        # The basket's own shares only: a mis-bought leg is the basket's, and
+        # another lane holding the same token must never be sold by this lane.
+        from .production_io import basket_intent_ids  # noqa: PLC0415
+
+        holdings = ledger_holdings_by_token(
+            conn, station_id=station_id, event_date=event_date,
+            intent_ids=basket_intent_ids(conn, station_id=station_id, event_date=event_date),
+        )
         held = float(((holdings.get("holdings") or {}).get(token_id) or {}).get("shares", 0.0) or 0.0)
         remaining = min(leg["mis_bought_shares"] - sold, held)
         reading["held_shares"] = round(held, 6)

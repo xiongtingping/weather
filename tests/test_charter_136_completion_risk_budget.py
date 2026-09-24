@@ -250,7 +250,7 @@ def test_the_seat_is_what_reached_the_venue() -> None:
         "INSERT INTO basket_target_execution_cycles(cycle_id,plan_id,station_id,"
         "event_date,settlement_timezone,strategy_lane,plan_sha256,"
         "requested_reserve_usdc,state,created_at,updated_at)"
-        " VALUES('c1','p1','LFPB','2026-09-14','Europe/Paris','basket',?,1,'submitted',"
+        " VALUES('c1','plan_1','LFPB','2026-09-14','Europe/Paris','basket',?,1,'submitted',"
         "'2026-09-13T06:00:00Z','2026-09-13T06:00:00Z')",
         ("a" * 64,),
     )

@@ -386,6 +386,7 @@ def ledger_holdings_by_token(
     *,
     station_id: str,
     event_date: str,
+    intent_ids: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """What the reconciliation ledger says one scope holds, per token.
 
@@ -404,6 +405,13 @@ def ledger_holdings_by_token(
     evidence identity on them, so the same book held differently is a
     different evidence row.  Fails closed on a token that has sold more
     shares than it bought.
+
+    ``intent_ids`` narrows the read to one strategy's own orders.  The
+    ledger is the account's -- every lane's fills on the scope land in it --
+    so a caller that answers for one strategy (the basket's forward-day
+    preselection, charter 144's sell-back of the basket's mis-bought legs)
+    passes that strategy's intents (user ruling 2026-09-24: 「生产是多个策略
+    混合，要区分开来」).  None keeps the account-wide reading.
     """
 
     fills = _ledger_fill_rows(
@@ -411,6 +419,8 @@ def ledger_holdings_by_token(
         station_id=_text("ledger_holdings_station_id", station_id),
         event_date=_text("ledger_holdings_event_date", event_date),
     )
+    if intent_ids is not None:
+        fills = [fill for fill in fills if fill["order_intent_id"] in intent_ids]
     totals: dict[str, dict[str, Any]] = {}
     for fill in fills:
         entry = totals.setdefault(

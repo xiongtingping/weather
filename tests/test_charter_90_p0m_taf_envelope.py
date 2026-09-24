@@ -591,7 +591,7 @@ def test_145_a_completions_own_fok_is_not_a_send_that_defines_the_basket() -> No
         "INSERT INTO basket_target_execution_cycles(cycle_id,plan_id,station_id,"
         "event_date,settlement_timezone,strategy_lane,plan_sha256,"
         "requested_reserve_usdc,state,created_at,updated_at)"
-        " VALUES('c1','p1','EPWA','2026-09-18','Europe/Warsaw','basket',?,1,"
+        " VALUES('c1','plan_1','EPWA','2026-09-18','Europe/Warsaw','basket',?,1,"
         "'submitted','2026-09-16T11:00:00Z','2026-09-16T11:00:00Z')",
         ("a" * 64,),
     )

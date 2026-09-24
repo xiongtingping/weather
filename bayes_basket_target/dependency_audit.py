@@ -38,6 +38,9 @@ NON_MARKET_NETWORK_MODULES = frozenset(
         "bayes_basket_target/dwd_icon_eps_archive.py",
         "bayes_basket_target/dwd_icon_eu_point_archive.py",
         "bayes_basket_target/eccc_geps_archive.py",
+        # NOAA AIGEFS from the NODD bucket (charter 212, 2026-09-24): the
+        # sixth formal P0 product's member archive; weather data only.
+        "bayes_basket_target/noaa_aigefs_archive.py",
         "bayes_basket_target/historical_awc_replay.py",
         "bayes_basket_target/icon_eps_native_arrival_index.py",
         "bayes_basket_target/jma_msm_archive.py",

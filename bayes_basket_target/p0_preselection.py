@@ -37,6 +37,7 @@ from .production import compile_production_plan
 from .regime_materialization import load_regime_artifact
 from .production_io import (
     account_capital_for_snapshot,
+    basket_intent_ids,
     assemble_market_snapshot,
     derive_policy_maturity_bin,
     assert_current_probability_bridge,
@@ -877,10 +878,15 @@ def _bind_scope_market_evidence(
         book_equity_usdc=book_equity_usdc,
         # Charter 83: what the reconciliation ledger has settled for this
         # scope is inventory, on a forward day as on a started one.
+        # Only the basket's own fills: the ledger is the account's, and
+        # another lane's leg is not this basket's seat.
         ledger_holdings=ledger_holdings_by_token(
             conn,
             station_id=station_id,
             event_date=event_date,
+            intent_ids=basket_intent_ids(
+                conn, station_id=station_id, event_date=event_date,
+            ),
         ),
         account_capital=account_capital,
     )
