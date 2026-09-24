@@ -15790,6 +15790,44 @@ def collect_charter_ev(conn: sqlite3.Connection) -> dict[str, Any]:
     return out
 
 
+#: Closed station-days' window-divergence readings, kept across paged renders.
+RENDER_CLOSED_DIVERGENCE = "_closed_window_divergence.json"
+
+
+def _load_closed_readings(name: str) -> dict[str, Any]:
+    try:
+        raw = json.loads((SECTION_CACHE_DIR / name).read_text(encoding="utf-8"))
+        return dict(raw) if isinstance(raw, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_closed_readings(name: str, readings: Mapping[str, Any]) -> None:
+    try:
+        SECTION_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = SECTION_CACHE_DIR / f"{name}.{os.getpid()}.tmp"
+        tmp.write_text(json.dumps(readings, sort_keys=True), encoding="utf-8")
+        tmp.replace(SECTION_CACHE_DIR / name)
+    except OSError:
+        pass
+
+
+def _divergence_row(
+    station: str, day: str, entry: Mapping[str, Any],
+    late: Mapping[str, Any], outcome: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "station_id": station,
+        "event_date": day,
+        "held_buckets": sorted(entry["held"]),
+        "late_out": late["out"],
+        "out_above": late["out_above"],
+        "out_below": late["out_below"],
+        "measured_at_utc": late["at"],
+        **outcome,
+    }
+
+
 def collect_window_divergence(conn: sqlite3.Connection) -> dict[str, Any]:
     """Station-days where the posterior and the held window part ways.
 
@@ -15841,9 +15879,25 @@ def collect_window_divergence(conn: sqlite3.Connection) -> dict[str, Any]:
         for key in chains if key in book["settled"]
     }
     rows = []
+    # Under a paged render a closed station-day's reading is kept: it is a
+    # function of the day, the first fill's decision and the held buckets,
+    # none of which move once the day has settled, and reading it walks
+    # every committed history after the first fill with one projection
+    # lookup each -- 110 s for the section on the 07:54Z run.
+    closed_through = (_now() - timedelta(days=2)).strftime("%Y-%m-%d")
+    kept = _load_closed_readings(RENDER_CLOSED_DIVERGENCE) if _PAGED_RUN else {}
+    fresh: dict[str, Any] = {}
     for (station, day), entry in chains.items():
         outcome = settled.get((station, day))
         if outcome is None:
+            continue
+        memo_key = "|".join((
+            station, day, entry["opened"], ",".join(sorted(entry["held"])),
+        ))
+        if memo_key in kept:
+            late = kept[memo_key]
+            if late is not None:
+                rows.append(_divergence_row(station, day, entry, late, outcome))
             continue
         late = None
         # Stage precedence, not clock order: P0 recomputes all day but its
@@ -15913,18 +15967,13 @@ def collect_window_divergence(conn: sqlite3.Connection) -> dict[str, Any]:
                     if ordinals.get(bucket, high) < low
                 ),
             }
+        if day <= closed_through:
+            fresh[memo_key] = late
         if late is None:
             continue
-        rows.append({
-            "station_id": station,
-            "event_date": day,
-            "held_buckets": sorted(entry["held"]),
-            "late_out": late["out"],
-            "out_above": late["out_above"],
-            "out_below": late["out_below"],
-            "measured_at_utc": late["at"],
-            **outcome,
-        })
+        rows.append(_divergence_row(station, day, entry, late, outcome))
+    if _PAGED_RUN and fresh:
+        _save_closed_readings(RENDER_CLOSED_DIVERGENCE, {**kept, **fresh})
     thresholds = []
     for threshold in (0.3, 0.4, 0.5):
         hot = [row for row in rows if row["late_out"] > threshold]

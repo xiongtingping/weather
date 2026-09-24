@@ -674,3 +674,38 @@ def test_a_live_baskets_plan_is_found_in_its_window_or_by_the_whole_day() -> Non
     state = C._live_basket_plan_state(conn, [{"decision_id": "d1"}, {"decision_id": "d2"}])
     assert state["d1"]["center"] == "70"
     assert state["d2"]["center"] == "72", "outside every window: the whole day is read"
+
+
+def test_a_closed_station_days_divergence_reading_is_kept(paged, monkeypatch) -> None:
+    """Keyed on the day, the first fill's decision and the held buckets."""
+
+    day = "2026-09-01"
+    book = {
+        "legs": [{"station_id": "KLGA", "event_date": day, "bucket": "70",
+                  "filled_size": 5, "decision_at_utc": "2026-08-31T12:00:00Z",
+                  "created_at": "2026-08-31T12:00:00Z"}],
+        "settlements": [{"station_id": "KLGA", "event_date": day, "pnl_usdc": 1.0}],
+        "settled": {("KLGA", day): ("70", "truth")},
+    }
+    monkeypatch.setattr(C, "_render_live_book", lambda conn: book)
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_probability_bridge_history (history_id TEXT,"
+        " station_id TEXT, event_date TEXT, state TEXT, stage TEXT, decision_at_utc TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_probability_bridge_bucket_probability"
+        " (history_id TEXT, bucket TEXT, ordinal INTEGER, probability REAL)"
+    )
+    conn.execute(
+        "INSERT INTO basket_probability_bridge_history VALUES"
+        " ('h1','KLGA',?, 'COMMITTED','P1','2026-09-01T10:00:00Z')", (day,),
+    )
+    conn.executemany(
+        "INSERT INTO basket_probability_bridge_bucket_probability VALUES (?,?,?,?)",
+        [("h1", "70", 0, 0.6), ("h1", "71", 1, 0.4)],
+    )
+    first = C.collect_window_divergence(conn)
+    assert first["evaluated_station_days"] == 1
+    conn.execute("DELETE FROM basket_probability_bridge_bucket_probability")
+    assert C.collect_window_divergence(conn) == first, "the settled day is not read again"
