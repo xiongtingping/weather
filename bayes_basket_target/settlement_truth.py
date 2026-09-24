@@ -295,6 +295,133 @@ def _registry_scope_from_rows(
     return timezone_name, source_lane, registry_snapshot_sha
 
 
+def _standing_truth_lineage(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+) -> tuple[str, str, str] | None:
+    """The (timezone, lane, registry sha) a settled day was settled under.
+
+    Charter 207: a settled day whose evidence grows is re-settled -- but the
+    registry keeps its row copies for three days (``market_registry_retention``)
+    and this writer took its scope from those rows alone, so every day older
+    than that could never be re-settled.  2026-09-09 is the case: AWC was
+    silent that afternoon, the missing reports were backfilled into the
+    archive on 09-23, and eight station-days (KATL 30.6 -> 31.7, KLAX 33.9 ->
+    36.1, MMMX 22 -> 24 ...) kept their short truths because the sweep could
+    only count them.
+
+    The day's own standing revision already pins the lineage it was settled
+    under: its evidence names the settlement timezone and the registry
+    snapshot, and that evidence is hashed into the canonical fact's
+    ``truth_content_sha256``.  A revision re-settles under exactly that
+    lineage, verified against the hash, and the snapshot must still be a
+    registry snapshot the SSOT knows (retention keeps every header).  None
+    when the day has no canonical truth: a *first* settlement still needs the
+    registry, and this never invents one.
+    """
+
+    facts = _current_canonical_awc_truths(
+        conn, station_id=station_id, event_date=event_date,
+    )
+    latest = max(
+        facts, key=lambda row: int(row["truth_revision_no"]), default=None,
+    )
+    if latest is None:
+        return None
+    row = conn.execute(
+        "SELECT observation_ids_json FROM calibration_station_daily_high_truth "
+        "WHERE truth_id=? AND station_id=? AND local_date=? AND revision_no=? "
+        "AND source_role=? AND qc_status='ACCEPTED'",
+        (
+            str(latest["truth_id"]),
+            station_id,
+            event_date,
+            int(latest["truth_revision_no"]),
+            CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
+        ),
+    ).fetchone()
+    if row is None:
+        raise ContractError("settlement_truth_standing_lineage_projection_missing")
+    try:
+        evidence = json.loads(str(row[0]))
+    except (TypeError, ValueError) as exc:
+        raise ContractError(
+            "settlement_truth_standing_lineage_evidence_invalid"
+        ) from exc
+    if (
+        not isinstance(evidence, Mapping)
+        or content_sha256(evidence) != latest["truth_content_sha256"]
+    ):
+        raise ContractError("settlement_truth_standing_lineage_evidence_mismatch")
+    timezone_name = str(evidence.get("settlement_timezone") or "").strip()
+    source_lane = str(evidence.get("source_lane") or "").strip().upper()
+    registry_snapshot_sha = str(
+        evidence.get("registry_snapshot_sha256") or ""
+    ).strip().lower()
+    if (
+        evidence.get("station_id") != station_id
+        or evidence.get("event_date") != event_date
+        or timezone_name != str(latest["settlement_timezone"])
+        or source_lane != "AWC"
+    ):
+        raise ContractError("settlement_truth_standing_lineage_scope_mismatch")
+    if len(registry_snapshot_sha) != 64 or any(
+        char not in "0123456789abcdef" for char in registry_snapshot_sha
+    ):
+        raise ContractError("settlement_truth_registry_snapshot_sha_invalid")
+    try:
+        header = conn.execute(
+            "SELECT 1 FROM basket_target_market_registry_snapshot "
+            "WHERE snapshot_sha256=?",
+            (registry_snapshot_sha,),
+        ).fetchone()
+    except sqlite3.OperationalError as exc:
+        raise ContractError(
+            "settlement_truth_standing_lineage_snapshot_unknown"
+        ) from exc
+    if header is None:
+        raise ContractError("settlement_truth_standing_lineage_snapshot_unknown")
+    settlement_day_window(event_date, timezone_name)
+    return timezone_name, source_lane, registry_snapshot_sha
+
+
+def _settlement_scope(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    as_of_utc: str,
+) -> tuple[str, str, str]:
+    """The registry's answer while it still holds the scope, else the
+    standing truth's own lineage (a re-settlement only)."""
+
+    try:
+        return _registry_scope(
+            conn,
+            station_id=station_id,
+            event_date=event_date,
+            as_of_utc=as_of_utc,
+        )
+    except ContractError:
+        # Any registry row, eligible or not, means the registry still speaks
+        # for this scope and its refusal stands.  Only a scope whose rows
+        # retention has retired falls through to its own settled lineage.
+        if conn.execute(
+            "SELECT 1 FROM basket_target_market_registry "
+            "WHERE station_id=? AND event_date=? LIMIT 1",
+            (station_id, event_date),
+        ).fetchone() is not None:
+            raise
+        lineage = _standing_truth_lineage(
+            conn, station_id=station_id, event_date=event_date,
+        )
+        if lineage is None:
+            raise
+        return lineage
+
+
 def materialize_settled_station_truth(
     target_conn: sqlite3.Connection,
     canonical_conn: sqlite3.Connection,
@@ -316,7 +443,7 @@ def materialize_settled_station_truth(
             name="settlement_truth_as_of_utc",
         ),
     )
-    timezone_name, source_lane, registry_snapshot_sha = _registry_scope(
+    timezone_name, source_lane, registry_snapshot_sha = _settlement_scope(
         target_conn,
         station_id=station,
         event_date=day,

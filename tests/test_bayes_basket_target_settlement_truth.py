@@ -1106,6 +1106,112 @@ def test_identical_replay_is_idempotent_and_late_hourly_observation_revises() ->
     ).fetchone()[0] == 2
 
 
+def _settled_then_registry_retired(
+    *, snapshot_header: bool = True,
+) -> tuple[sqlite3.Connection, sqlite3.Connection, dict]:
+    """RKPK 2026-07-28 settled on a short afternoon, then the registry's row
+    copies retired (``market_registry_retention`` keeps three days)."""
+
+    target = _target()
+    target.execute(
+        "CREATE TABLE basket_target_market_registry_snapshot("
+        "snapshot_sha256 TEXT PRIMARY KEY)"
+    )
+    if snapshot_header:
+        target.execute(
+            "INSERT INTO basket_target_market_registry_snapshot VALUES(?)",
+            ("f" * 64,),
+        )
+    source = _canonical()
+    for index, valid_at in enumerate(
+        ("2026-07-28T03:00:00Z", "2026-07-28T04:00:00Z", "2026-07-28T05:00:00Z")
+    ):
+        _observation(
+            source, observation_id=f"{index}warm", valid_at=valid_at,
+            temperature_c=30,
+        )
+    first = materialize_settled_station_truth(
+        target, source, station_id="RKPK", event_date="2026-07-28",
+        as_of_utc="2026-07-28T15:00:00Z",
+    )
+    target.commit()
+    target.execute("DELETE FROM basket_target_market_registry")
+    target.commit()
+    return target, source, first
+
+
+def test_a_settled_day_past_registry_retention_re_settles_on_its_own_lineage() -> None:
+    # 2026-09-09: AWC silent that afternoon, the missing reports backfilled
+    # on 09-23, the registry's rows long retired -- KATL stayed 30.6 while
+    # the archive said 31.7, because the writer could not name the scope.
+    target, source, first = _settled_then_registry_retired()
+    _observation(
+        source, observation_id="late-warm", valid_at="2026-07-28T06:00:00Z",
+        temperature_c=31.7, committed_at="2026-07-29T09:00:00Z",
+    )
+    revised = materialize_settled_station_truth(
+        target, source, station_id="RKPK", event_date="2026-07-28",
+        as_of_utc="2026-07-29T10:00:00Z",
+    )
+    again = materialize_settled_station_truth(
+        target, source, station_id="RKPK", event_date="2026-07-28",
+        as_of_utc="2026-07-29T10:05:00Z",
+    )
+
+    assert first["official_tmax_c"] == 30
+    assert revised["wrote"] is True
+    assert revised["revision_no"] == 1
+    assert revised["official_tmax_c"] == 31.7
+    assert revised["settlement_timezone"] == "Asia/Seoul"
+    evidence = json.loads(target.execute(
+        "SELECT observation_ids_json FROM calibration_station_daily_high_truth "
+        "WHERE revision_no=1"
+    ).fetchone()[0])
+    # The revision carries the lineage the day was first settled under.
+    assert evidence["registry_snapshot_sha256"] == "f" * 64
+    assert evidence["settlement_timezone"] == "Asia/Seoul"
+    assert again["state"] == "idempotent"
+
+
+def test_a_first_settlement_still_needs_the_registry() -> None:
+    target = _target()
+    target.execute("DELETE FROM basket_target_market_registry")
+    source = _canonical()
+    _observation(
+        source, observation_id="a", valid_at="2026-07-28T03:00:00Z",
+        temperature_c=30,
+    )
+    with pytest.raises(ContractError, match="registry_scope_not_unique"):
+        materialize_settled_station_truth(
+            target, source, station_id="RKPK", event_date="2026-07-28",
+            as_of_utc="2026-07-29T10:00:00Z",
+        )
+
+
+def test_a_registry_that_still_speaks_for_the_scope_keeps_its_refusal() -> None:
+    # Retention retires rows; an ineligible row is the registry's answer.
+    target, source, _ = _settled_then_registry_retired()
+    target.execute(
+        "INSERT INTO basket_target_market_registry VALUES(?,?,?,?,?,?,?)",
+        ("RKPK", "2026-07-28", "Asia/Seoul", "awc", 0, "e" * 64,
+         "2026-07-28T20:00:00Z"),
+    )
+    with pytest.raises(ContractError, match="registry_scope_not_unique"):
+        materialize_settled_station_truth(
+            target, source, station_id="RKPK", event_date="2026-07-28",
+            as_of_utc="2026-07-29T10:00:00Z",
+        )
+
+
+def test_standing_lineage_needs_a_registry_snapshot_the_ssot_knows() -> None:
+    target, source, _ = _settled_then_registry_retired(snapshot_header=False)
+    with pytest.raises(ContractError, match="standing_lineage_snapshot_unknown"):
+        materialize_settled_station_truth(
+            target, source, station_id="RKPK", event_date="2026-07-28",
+            as_of_utc="2026-07-29T10:00:00Z",
+        )
+
+
 def test_batch_returns_correction_blocker_without_truth_write() -> None:
     target = _target()
     target.execute(

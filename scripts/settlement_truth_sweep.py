@@ -187,7 +187,7 @@ def _second(value: datetime | None) -> datetime | None:
 def _grown_evidence(
     target: sqlite3.Connection,
     source: sqlite3.Connection,
-    since: str,
+    since: str = "",
 ) -> tuple[list[tuple[str, str]], int]:
     """Accepted canonical truths the archive now holds newer reports for.
 
@@ -197,10 +197,21 @@ def _grown_evidence(
     the station's AWC reports inside the settled window against the newest
     one the standing revision was built from -- a new slot and a replaced
     report both move it.
+
+    Returns the candidates and how many of them the market registry no longer
+    carries rows for; the writer re-settles those under the lineage their
+    standing revision pins (``settlement_truth._standing_truth_lineage``).
+    Until 2026-09-24 those were only counted -- 85 of them on the 09-24
+    09:22Z pass, the eight 2026-09-09 station-days whose backfilled afternoon
+    moved the maximum (KATL 30.6 -> 31.7, KLAX 33.9 -> 36.1) among them --
+    and the scan stopped at AWC's 30-day retention, although what grows is
+    the archive, which a backfill can reach for any day it holds.  ``since``
+    is empty by default: every accepted canonical truth is read, one indexed
+    archive seek each (about 4.5s over 2,800 truths).
     """
 
     grown: list[tuple[str, str]] = []
-    retired = 0
+    past_registry = 0
     for station, day, received_at, evidence_json in target.execute(
         "SELECT t.station_id, t.local_date, t.received_at_utc, t.observation_ids_json"
         " FROM calibration_station_daily_high_truth t"
@@ -228,18 +239,17 @@ def _grown_evidence(
         newest_at = _second(_parse_utc(newest))
         if newest_at is None or newest_at <= standing:
             continue
-        # The writer takes its settlement window and lineage from the market
-        # registry, which keeps about three event days; past that the day
-        # cannot be re-settled by this pass and is only counted.
+        # The registry keeps its rows about three event days; past that the
+        # writer re-settles on the day's own standing lineage.  Counted so a
+        # page can tell the two apart, never skipped.
         if target.execute(
             "SELECT 1 FROM basket_target_market_registry"
-            " WHERE station_id=? AND event_date=? AND source_eligible=1 LIMIT 1",
+            " WHERE station_id=? AND event_date=? LIMIT 1",
             (str(station), str(day)),
         ).fetchone() is None:
-            retired += 1
-            continue
+            past_registry += 1
         grown.append((str(station), str(day)))
-    return grown, retired
+    return grown, past_registry
 
 
 def _coverage(
@@ -405,9 +415,9 @@ def sweep(
         # day with no truth at all outranks a day whose truth may be short.
         if stopped_for_time or (deadline is not None and time.monotonic() >= deadline):
             stopped_for_time = True
-            grown, grown_past_registry = [], 0
+            grown, grown_on_standing_lineage = [], 0
         else:
-            grown, grown_past_registry = _grown_evidence(target, source, retention_start)
+            grown, grown_on_standing_lineage = _grown_evidence(target, source)
         for station, day in grown[:max_revision_scopes]:
             if deadline is not None and time.monotonic() >= deadline:
                 stopped_for_time = True
@@ -491,7 +501,9 @@ def sweep(
             "awc_retention_start": retention_start,
             # Charter 207: settled days re-read because their evidence grew.
             "revision_candidates": len(grown),
-            "revision_past_registry": grown_past_registry,
+            # Of those, the ones the registry no longer carries: re-settled
+            # on the lineage their standing revision pins, not skipped.
+            "revision_on_standing_lineage": grown_on_standing_lineage,
             "revision_outcomes": dict(revision_outcomes),
             "revised": revised,
             "elapsed_seconds": round(time.time() - started, 2),

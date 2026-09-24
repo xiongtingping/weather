@@ -75,13 +75,27 @@ def test_the_truths_own_newest_report_is_not_growth() -> None:
     assert sweep._grown_evidence(target, archive, "2026-08-24") == ([], 0)
 
 
-def test_a_day_the_registry_no_longer_carries_is_counted_not_asked() -> None:
+def test_a_day_the_registry_no_longer_carries_is_asked_and_counted() -> None:
+    # Until 2026-09-24 such a day was only counted, so the eight 2026-09-09
+    # station-days whose backfilled afternoon moved the maximum never got a
+    # revision.  The writer now re-settles them on their standing lineage.
     target, archive = databases(
         received_at="2026-09-22T01:24:50Z",
         archive_commits=["2026-09-22T07:52:24.500Z"],
         registry=False,
     )
-    assert sweep._grown_evidence(target, archive, "2026-08-24") == ([], 1)
+    assert sweep._grown_evidence(target, archive, "2026-08-24") == (
+        [("MPMG", "2026-09-21")], 1,
+    )
+
+
+def test_the_scan_is_not_bounded_by_awcs_retention() -> None:
+    # What grows is the archive; a backfill can reach any day it holds.
+    target, archive = databases(
+        received_at="2026-09-22T01:24:50Z",
+        archive_commits=["2026-09-22T07:52:24.500Z"],
+    )
+    assert sweep._grown_evidence(target, archive) == ([("MPMG", "2026-09-21")], 0)
 
 
 def test_a_re_settlement_holds_the_write_lock_before_the_writer_reads(monkeypatch, tmp_path) -> None:
@@ -99,7 +113,7 @@ def test_a_re_settlement_holds_the_write_lock_before_the_writer_reads(monkeypatc
 
     monkeypatch.setattr(sweep, "_backlog", lambda conn, start: [])
     monkeypatch.setattr(sweep, "_coverage", lambda conn, start: [])
-    monkeypatch.setattr(sweep, "_grown_evidence", lambda t, s, since: ([("MPMG", "2026-09-21")], 0))
+    monkeypatch.setattr(sweep, "_grown_evidence", lambda t, s, since="": ([("MPMG", "2026-09-21")], 0))
     monkeypatch.setattr(sweep, "materialize_settled_station_truth", writer)
     report = sweep.sweep(target, archive, window_days=45, max_scopes=10, dry_run=False, verbose=False)
     assert seen == [True]
