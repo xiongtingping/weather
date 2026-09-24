@@ -12,7 +12,7 @@
   <key>WorkingDirectory</key>
   <string>/Users/xiong/weather</string>
   <!-- The board's research render (user ruling 2026-09-24
-       「单开研究节渲染」): one heavy section an hour -- those that cost 300 s
+       「单开研究节渲染」): one heavy section an hour: those that cost 300 s
        or more last time, which the page render's 1,500 s cannot hold and
        now serves from their pages.  A reader of the store, a writer of one
        section-cache file; it does not start while the page render runs and
