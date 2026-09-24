@@ -18,6 +18,7 @@ F = 1e-6
 ETA = (0.0, 0.25, 0.5, 0.75, 1.0, 1.25)
 A_GRID = (0.0, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0)
 B_GRID = (0.0, 0.5, 0.75, 1.0, 1.25)
+KAPPA = (1e-6, 1e-3, 1e-2, 3e-2, 0.1, 1.0)
 TRAIN_GAP_DAYS = 3
 MIN_TRAIN_DAYS = 8
 W0 = 100.0
@@ -81,6 +82,14 @@ class Row:
         x = a * np.log(np.maximum(self.chain(e1, e2), F)) + b * self.lm
         return norm_log(np.where(self.alive, x, -np.inf))
 
+    def pooled_soft(self, e1, e2, a, b, kappa) -> np.ndarray:
+        """Exploratory (not pre-registered): the chain without its hard mask,
+        pooled with the price; a masked bucket is penalised by log kappa
+        instead of being set to zero."""
+        free = norm_log(self.lr + e1 * self.ltaf + e2 * self.lobs)
+        x = a * np.log(np.maximum(free, F)) + b * self.lm + np.where(self.alive, 0.0, math.log(kappa))
+        return norm_log(x)
+
     def belief(self, variant: str, params: dict) -> np.ndarray:
         if variant == "MARKET":
             return self.market()
@@ -91,6 +100,8 @@ class Row:
         if variant == "CHAIN_T":
             return self.chain(e1, e2)
         a, b = params["ab"]
+        if variant == "CHAIN_T_PRICE_SOFT":
+            return self.pooled_soft(e1, e2, a, b, params["kappa"])
         return self.pooled(e1, e2, a, b)
 
 
@@ -135,6 +146,12 @@ class Matrix:
         lc = np.maximum(self.chain_log(e1, e2), math.log(F))
         return self._lognorm(a * lc + b * self.LM, self.ALIVE & np.isfinite(self.LM))
 
+    def pooled_soft_log(self, e1, e2, a, b, kappa):
+        finite = np.isfinite(self.LR)
+        free = np.maximum(self._lognorm(self.LR + e1 * self.LTAF + e2 * self.LOBS, finite), math.log(F))
+        x = a * free + b * self.LM + np.where(self.ALIVE, 0.0, math.log(kappa))
+        return self._lognorm(x, finite & np.isfinite(self.LM))
+
     def truth_score(self, logp):
         return np.maximum(logp[self.idx, self.T], math.log(F))
 
@@ -172,6 +189,10 @@ def fit(M, sel, variant, eta_cache):
     if variant == "CHAIN_T_PRICE":
         params["ab"] = max(((a, b) for a in A_GRID for b in B_GRID if a + b > 0),
                            key=lambda ab: sd_weighted_mean(M.truth_score(M.pooled_log(*best, *ab)), sel, M.SD))
+    if variant == "CHAIN_T_PRICE_SOFT":
+        combo = max(((a, b, k) for a in A_GRID for b in B_GRID for k in KAPPA if a + b > 0),
+                    key=lambda abk: sd_weighted_mean(M.truth_score(M.pooled_soft_log(*best, *abk)), sel, M.SD))
+        params["ab"], params["kappa"] = combo[:2], combo[2]
     return params
 
 
@@ -182,6 +203,8 @@ def variant_log(M, variant, params, served_log):
         return served_log
     if variant == "CHAIN_T":
         return M.chain_log(*params["eta"])
+    if variant == "CHAIN_T_PRICE_SOFT":
+        return M.pooled_soft_log(*params["eta"], *params["ab"], params["kappa"])
     return M.pooled_log(*params["eta"], *params["ab"])
 
 
@@ -308,7 +331,7 @@ def main():
                 pr = fit(M, sel, v, eta_cache)
                 params[(d, b, v)] = pr
                 gates[(d, b, v)] = (v != "MARKET") and gate_open(M, sel, v, pr, served_log)
-        print("fitted", d, {b: params.get((d, b, "CHAIN_T_PRICE")) for b in ("far", "mid", "near")}, flush=True)
+        print("fitted", d, {b: params.get((d, b, variants[-1])) for b in ("far", "mid", "near")}, flush=True)
     # ---- reading 1: log score difference against the price, test rows only
     ls = {}
     for v in variants:
