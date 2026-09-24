@@ -623,3 +623,13 @@ def test_an_open_station_days_slug_is_always_read(paged) -> None:
     C._live_market_slugs(conn, rows, archive=paged / "none.db")
     conn.execute("UPDATE basket_target_market_registry SET slug='relisted'")
     assert C._live_market_slugs(conn, rows, archive=paged / "none.db")[f"KLGA|{today}"] == "relisted"
+
+
+def test_past_the_budget_a_pageless_section_with_a_stand_in_is_not_read(paged, monkeypatch) -> None:
+    monkeypatch.setattr(C, "RENDER_SOFT_BUDGET_SEC", -1.0)
+    calls: list[str] = []
+    assert C._cached_section("slow_moving", _collector(calls), None, _unavailable={}) == {}
+    assert calls == [] and C._SECTION_CACHE_LOG["slow_moving"]["stale_reason"] == "budget"
+    # Without a stand-in it still has to be read.
+    C._cached_section("other_new", _collector(calls), None)
+    assert calls == ["v"]

@@ -17028,6 +17028,15 @@ def _cached_section(
         expected = float((page or {}).get("build_sec") or 0.0)
         if page is not None and expected > remaining:
             return _serve_stale_page(name, page, ttl, page_age, "budget", page_inputs_moved)
+        # Past the budget with no page at all: a section that declared what
+        # to show instead shows it, rather than reading whole into the
+        # deadline (07:54Z: model_accuracy_trend, pageless for the day,
+        # read from 08:09Z until the 1,500 s kill, and nothing was written).
+        if (
+            page is None and remaining <= 0
+            and _unavailable is not _NO_UNAVAILABLE
+        ):
+            return _serve_unavailable(name, _unavailable, "budget")
         # A section with a page reads only if a gap is open right now; it
         # never sits waiting for one.  Waiting out the budget on the first
         # such section is what the 02:46Z and 03:08Z runs did (run_cadence,
@@ -17242,6 +17251,8 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     ).strftime("%Y-%m-%dT00:00:00Z")
     model_accuracy_trend = _cached_section(
         "model_accuracy_trend", collect_model_accuracy_trend, conn,
+        # Every reader on the page guards each field (``|| {}``, ``|| []``).
+        _unavailable={},
         since=trend_since, _salt=trend_since + _center_landing_salt(),
     )
     scorecard_previous = _cached_section(
