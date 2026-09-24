@@ -149,8 +149,8 @@ def test_a_section_waits_for_the_production_cycle_to_finish(paged, monkeypatch) 
     seen: list[str | None] = []
     real = C._production_gap_blocker
 
-    def blocker():
-        verdict = real()
+    def blocker(wal_line=None):
+        verdict = real(wal_line)
         seen.append(verdict)
         if len(seen) == 3:
             _status(paged)  # the cycle finished
@@ -505,10 +505,19 @@ def test_a_read_in_progress_runs_on_between_the_two_lines(paged, monkeypatch) ->
         ).fetchone()[0]
 
     assert C._cached_section("members", members, conn) == 300000
-    # ... but the next section does not start a read.
     monkeypatch.setattr(C, "LIVE_SECTION_GAP_CAP_SEC", 0.0)
-    with pytest.raises(C.RenderYielded, match="chain: wal 4096"):
-        C._cached_section("chain", _collector([]), None)
+    # A section with nothing else to serve may also START under the yield
+    # line (06:22Z: live_readiness at 305 MiB took the whole run down) ...
+    calls: list[str] = []
+    C._cached_section("chain", _collector(calls), None)
+    assert calls == ["v"]
+    # ... one with something to serve instead does not start past 256.
+    assert C._cached_section("new_view", _collector(calls), None, _unavailable={}) == {}
+    assert calls == ["v"]
+    # And past the yield line nothing without a fallback starts at all.
+    _wal(paged, 16384)
+    with pytest.raises(C.RenderYielded, match="live_readiness: wal 16384"):
+        C._cached_section("live_readiness", _collector(calls), None)
 
 
 def test_the_yield_line_sits_under_productions_wall() -> None:
@@ -567,3 +576,13 @@ def test_live_readiness_takes_the_difficulty_it_is_handed(monkeypatch) -> None:
     )
     row = next(r for r in out["stations"] if r["station"] == "KLGA")
     assert row["climate_jump_c"] == 1.23 and row["shape_gap_buckets"] is None
+
+
+def test_live_selection_reads_the_runs_one_book(paged, monkeypatch) -> None:
+    builds: list[int] = []
+    monkeypatch.setattr(C.live_book, "build", lambda conn: builds.append(1) or {"legs": []})
+    seen: list[object] = []
+    monkeypatch.setattr(C.live_selection, "build", lambda conn, book=None: seen.append(book) or {})
+    C._render_live_book(None)
+    C._build_live_selection(None)
+    assert builds == [1] and seen and seen[0] is C._PAGED_RUN["live_book"]

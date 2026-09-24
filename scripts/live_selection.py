@@ -615,10 +615,18 @@ def refusal_funnel(
     }
 
 
-def build(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Every selection reading the board draws, off one live book."""
+def build(
+    conn: sqlite3.Connection, book: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Every selection reading the board draws, off one live book.
 
-    book = live_book.build(conn)
+    ``book``: the live book the caller already built -- the board's paged
+    render builds it once per run and hands it to every section that reads
+    it.  Built here when not given.
+    """
+
+    if book is None:
+        book = live_book.build(conn)
     seats = decision_seats(conn, book)
     chains = settled_chains(book)
     rows = book.get("settlements") or []

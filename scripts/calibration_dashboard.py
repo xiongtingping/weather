@@ -16634,6 +16634,13 @@ def _every_run_reserve_sec() -> float:
     )
 
 
+def _build_live_selection(conn: sqlite3.Connection) -> dict[str, Any]:
+    """``live_selection.build`` on the run's one live book (it built its
+    own: 246 s for the section on the 2026-09-24 06:22Z run)."""
+
+    return live_selection.build(conn, book=_render_live_book(conn))
+
+
 def _render_live_book(conn: sqlite3.Connection) -> dict[str, Any]:
     """The live book, built once per paged run and shared by its sections.
 
@@ -16665,11 +16672,18 @@ def _render_wal_bytes() -> int:
         return 0
 
 
-def _production_gap_blocker() -> str | None:
-    """Why a section should not start reading right now, or None."""
+def _production_gap_blocker(
+    wal_line: int | None = None,
+) -> str | None:
+    """Why a section should not start reading right now, or None.
+
+    ``wal_line``: the WAL size past which it may not start -- the start line
+    (``RENDER_MAX_WAL_BYTES``) by default; sections with nothing else to
+    serve pass the yield line instead (see ``_await_production_gap``).
+    """
 
     wal_bytes = _render_wal_bytes()
-    if wal_bytes > RENDER_MAX_WAL_BYTES:
+    if wal_bytes > (RENDER_MAX_WAL_BYTES if wal_line is None else wal_line):
         return f"wal {wal_bytes}"
     try:
         status = json.loads(STATUS_JSON.read_text(encoding="utf-8"))
@@ -16685,20 +16699,30 @@ def _production_gap_blocker() -> str | None:
     return None
 
 
-def _await_production_gap(name: str, cap_sec: float) -> str | None:
+def _await_production_gap(
+    name: str, cap_sec: float, wal_line: int | None = None,
+) -> str | None:
     """Wait for a production gap, at most ``cap_sec`` and at most what is
-    left of the run's shared wait budget; the blocker left, if any."""
+    left of the run's shared wait budget; the blocker left, if any.
+
+    A section with a page starts only under the start line (256 MiB); one
+    with nothing else to serve -- every-run, or pageless -- may start up to
+    the yield line (384 MiB), the same line its read would give way at.
+    Holding those to 256 made the 06:22Z run step aside whole on
+    live_readiness at 305 MiB, a WAL a read already running would have been
+    let through (user ruling 「提线」).
+    """
 
     cap_sec = min(cap_sec, float(_PAGED_RUN["gap_wait_left"]))
     waited = 0.0
-    blocker = _production_gap_blocker()
+    blocker = _production_gap_blocker(wal_line)
     while blocker is not None:
         if waited >= cap_sec:
             break
         pause = min(RENDER_GAP_POLL_SEC, max(0.0, cap_sec - waited))
         time.sleep(pause)
         waited += pause
-        blocker = _production_gap_blocker()
+        blocker = _production_gap_blocker(wal_line)
     _PAGED_RUN["gap_wait_sec"] = float(_PAGED_RUN["gap_wait_sec"]) + waited
     _PAGED_RUN["gap_wait_left"] = max(
         0.0, float(_PAGED_RUN["gap_wait_left"]) - waited
@@ -16842,7 +16866,9 @@ def _cached_section(
         # went.  A section without a lifetime is not a section without a
         # price.
         if paged:
-            blocker = _await_production_gap(name, LIVE_SECTION_GAP_CAP_SEC)
+            blocker = _await_production_gap(
+                name, LIVE_SECTION_GAP_CAP_SEC, RENDER_YIELD_WAL_BYTES
+            )
             # A cycle in flight is only disk contention, and this section
             # has nothing else to serve; a WAL past the line is the writer
             # waiting on readers, and this run is one.
@@ -16929,7 +16955,13 @@ def _cached_section(
         # there is nothing else to serve: wait a lamp's while at most, then
         # read -- unless the WAL is what is in the way.
         cap = 0.0 if page is not None else LIVE_SECTION_GAP_CAP_SEC
-        blocker = _await_production_gap(name, cap)
+        # A pageless section that declared what to show instead is held to
+        # the start line: it has something to serve.
+        line = (
+            None if page is not None or _unavailable is not _NO_UNAVAILABLE
+            else RENDER_YIELD_WAL_BYTES
+        )
+        blocker = _await_production_gap(name, cap, line)
         if blocker is not None and page is not None:
             return _serve_stale_page(name, page, ttl, page_age, "no gap", page_inputs_moved)
         if blocker is not None and blocker.startswith("wal"):
@@ -17078,7 +17110,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     # 每日统计 and 逐站逐日明细 read the live book (user ruling, 2026-09-16).
     live_days = _cached_section("live_days", collect_live_days, conn)
     live_selection_payload = _cached_section(
-        "live_selection", live_selection.build, conn
+        "live_selection", _build_live_selection, conn
     )
     band_audit = _cached_section(
         "band_residual_audit", collect_band_residual_audit, conn,
