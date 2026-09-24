@@ -139,6 +139,29 @@ def production_rows(
     )
 
 
+def _hold_wal_under(writer: sqlite3.Connection, ssot: Path, limit_mib: float) -> bool:
+    """Checkpoint (TRUNCATE) until the WAL is back under ``limit_mib``.
+
+    2026-09-24: eleven runs (~50 MB of rows) grew the WAL to 709 MiB -- each
+    insert touches pages across every index of the member table and the WAL
+    logs whole pages -- past the resident's 512 MiB bound, and its writer
+    failed closed on the reopen.  Readers pinning old snapshots keep a
+    TRUNCATE busy, so it is retried for up to two minutes; False stops the
+    pass rather than write on past the bound.
+    """
+
+    wal = ssot.with_name(ssot.name + "-wal")
+    if not wal.is_file() or wal.stat().st_size <= limit_mib * 1024 * 1024:
+        return True
+    deadline = time.monotonic() + 120.0
+    while time.monotonic() < deadline:
+        busy = writer.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()[0]
+        if not busy and wal.stat().st_size <= limit_mib * 1024 * 1024:
+            return True
+        time.sleep(3.0)
+    return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--system", choices=sorted(SYSTEMS), default="aifs")
@@ -153,6 +176,9 @@ def main() -> int:
     parser.add_argument("--pause-seconds", type=float, default=1.0,
                         help="pause after each chunk's commit")
     parser.add_argument("--chunk-station-days", type=int, default=15)
+    parser.add_argument("--max-wal-mib", type=float, default=300.0,
+                        help="after a commit that leaves the WAL past this, "
+                             "TRUNCATE-checkpoint before writing more")
     args = parser.parse_args()
     global aifs, RUNS_TABLE
     aifs, default_db, RUNS_TABLE = SYSTEMS[args.system]
@@ -224,6 +250,9 @@ def main() -> int:
                 raise
             held = max(held, time.monotonic() - t0)
             attempts_max = max(attempts_max, attempts)
+            if not _hold_wal_under(writer, args.ssot, args.max_wal_mib):
+                print(json.dumps({"stopped": "wal_checkpoint_busy", "run": run}), flush=True)
+                return 3
             time.sleep(args.pause_seconds)
         totals["runs"] += 1
         for state, count in states.items():
