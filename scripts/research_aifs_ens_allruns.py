@@ -80,8 +80,8 @@ def build_plan(start: str, end: str, timezones: dict[str, str]) -> dict[str, dic
     return plan
 
 
-def open_db() -> sqlite3.Connection:
-    conn = base.open_research_db(DB)
+def open_db(path: Path = DB) -> sqlite3.Connection:
+    conn = base.open_research_db(path)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS research_aifs_step_values("
         " run_init_utc TEXT, step INTEGER, members_json TEXT, stations_json TEXT,"
@@ -170,13 +170,18 @@ def main() -> int:
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--max-seconds", type=float, default=480.0)
     parser.add_argument("--estimate", action="store_true", help="report what is left and exit")
+    # 2026-09-24: a separate database for a gap fill.  Runs already done in
+    # the main database would be skipped there, and with them the leads a
+    # new target window needs from those runs; a fresh file plans them all.
+    # The paired backfill's cache is imported only into the main database.
+    parser.add_argument("--db", type=Path, default=DB)
     args = parser.parse_args()
 
     deadline = time.monotonic() + args.max_seconds
     timezones = base.load_timezones()
     plan = build_plan(args.start, args.end, timezones)
-    conn = open_db()
-    if not conn.execute("SELECT COUNT(*) FROM research_aifs_step_values").fetchone()[0]:
+    conn = open_db(args.db)
+    if args.db == DB and not conn.execute("SELECT COUNT(*) FROM research_aifs_step_values").fetchone()[0]:
         print(json.dumps({"imported_paired_steps": import_paired_samples(conn)}), flush=True)
     stations = sorted(coordinate_registry_manifest()["station_ids"])
     index = base.StationIndex(stations)
