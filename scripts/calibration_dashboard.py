@@ -1974,12 +1974,18 @@ def collect_observation_intake(conn: sqlite3.Connection) -> dict[str, Any]:
         return {"available": False}
     now = _now()
     floor = (now - timedelta(hours=18)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # The event-date bound only makes it a seek (publisher_scope_idx is
+    # state, event_date, ...): a P1 moves while its event day is open, so
+    # one decided in the last 18 h is for a day no older than two before
+    # the floor's.  1.6 s -> 0.02 s live, the same 45 stations.
+    day_floor = (now - timedelta(hours=18, days=2)).strftime("%Y-%m-%d")
     try:
         roster = [
             str(row[0]) for row in conn.execute(
                 "SELECT DISTINCT station_id FROM basket_probability_envelope"
-                " WHERE state='COMMITTED' AND stage='P1' AND decision_at_utc>=?",
-                (floor,),
+                " WHERE state='COMMITTED' AND event_date>=? AND stage='P1'"
+                " AND decision_at_utc>=?",
+                (day_floor, floor),
             )
         ]
     except sqlite3.Error:
