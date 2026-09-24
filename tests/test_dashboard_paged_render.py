@@ -363,3 +363,30 @@ def test_an_every_run_section_with_no_record_still_gets_room(paged) -> None:
     assert reserve == C.RENDER_EVERY_RUN_DEFAULT_COST_SEC * len(C.RENDER_EVERY_RUN_SECTIONS)
     C._SECTION_CACHE_LOG["live_days"] = {"build_sec": 1.0}
     assert C._every_run_reserve_sec() == reserve - C.RENDER_EVERY_RUN_DEFAULT_COST_SEC
+
+
+def test_a_section_with_a_page_never_waits_for_a_gap(paged, monkeypatch) -> None:
+    """No gap open right now: serve the page and move on, don't sit out the budget."""
+
+    calls: list[str] = []
+    C._cached_section("slow_moving", _collector(calls, "old"), None)
+    blob = json.loads((paged / "sections" / "slow_moving.json").read_text())
+    blob["computed_at_utc"] = "2026-09-01T00:00:00Z"
+    (paged / "sections" / "slow_moving.json").write_text(json.dumps(blob))
+    _status(paged, production_inflight={"elapsed_sec": 30})
+    slept: list[float] = []
+    monkeypatch.setattr(C.time, "sleep", lambda sec: slept.append(sec))
+    value = C._cached_section("slow_moving", _collector(calls, "new"), None)
+    assert value["value"] == "old" and slept == []
+    assert C._SECTION_CACHE_LOG["slow_moving"]["stale_reason"] == "no gap"
+
+
+def test_a_section_with_a_page_reads_in_an_open_gap(paged) -> None:
+    calls: list[str] = []
+    C._cached_section("slow_moving", _collector(calls, "old"), None)
+    blob = json.loads((paged / "sections" / "slow_moving.json").read_text())
+    blob["computed_at_utc"] = "2026-09-01T00:00:00Z"
+    (paged / "sections" / "slow_moving.json").write_text(json.dumps(blob))
+    _status(paged)  # no cycle in flight
+    value = C._cached_section("slow_moving", _collector(calls, "new"), None)
+    assert value["value"] == "new"

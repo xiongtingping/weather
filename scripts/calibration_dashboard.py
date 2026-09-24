@@ -16697,10 +16697,15 @@ def _cached_section(
         expected = float((page or {}).get("build_sec") or 0.0)
         if page is not None and expected > remaining:
             return _serve_stale_page(name, page, ttl, page_age, "budget")
-        # Without a page there is nothing else to serve: wait a lamp's
-        # while at most, then read -- unless the WAL is what is in the way.
-        cap = remaining if page is not None else LIVE_SECTION_GAP_CAP_SEC
-        blocker = _await_production_gap(name, max(0.0, cap))
+        # A section with a page reads only if a gap is open right now; it
+        # never sits waiting for one.  Waiting out the budget on the first
+        # such section is what the 02:46Z and 03:08Z runs did (run_cadence,
+        # 360 s each, while the catch-up cycles ran back to back) -- a run
+        # that then serves every page anyway, only later.  Without a page
+        # there is nothing else to serve: wait a lamp's while at most, then
+        # read -- unless the WAL is what is in the way.
+        cap = 0.0 if page is not None else LIVE_SECTION_GAP_CAP_SEC
+        blocker = _await_production_gap(name, cap)
         if blocker is not None and page is not None:
             return _serve_stale_page(name, page, ttl, page_age, "no gap")
         if blocker is not None and blocker.startswith("wal"):
