@@ -42,6 +42,10 @@ DWD_ICON_EPS_MULTISTATION_SCHEMA = (
 ECMWF_AIFS_ENS_MULTISTATION_SCHEMA = (
     "ecmwf_aifs_ens_official_historical_multistation_members_v1"
 )
+# Charter 212: NOAA AIGEFS, a follow-only family like AIFS ENS.
+NOAA_AIGEFS_MULTISTATION_SCHEMA = (
+    "noaa_aigefs_official_historical_multistation_members_v1"
+)
 # Charter 95 (2026-09-06): the regional deterministic models' forward runs
 # reach the packet through a single-member point-archive shape, one
 # schema per system so the transport is read off the archive as for every
@@ -57,6 +61,7 @@ SUPPORTED_ARCHIVE_SCHEMAS = {
     ECCC_GEPS_MULTISTATION_SCHEMA: "ECCC_DD_WEATHER",
     DWD_ICON_EPS_MULTISTATION_SCHEMA: "DWD_OPENDATA_ICON_EPS",
     ECMWF_AIFS_ENS_MULTISTATION_SCHEMA: "ECMWF_OPEN_DATA_S3",
+    NOAA_AIGEFS_MULTISTATION_SCHEMA: "NOAA_GEFS_PDS_S3",
     JMA_MSM_POINT_SCHEMA: "RISH_KYOTO_JMA_ARCHIVE",
     NCEP_HRRR_POINT_SCHEMA: "NOAA_HRRR_PDS_S3",
     NCEP_NBM_POINT_SCHEMA: "NOAA_NBM_PDS_S3",

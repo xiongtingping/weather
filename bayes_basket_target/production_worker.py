@@ -5545,7 +5545,9 @@ class TargetProductionWorker:
             }
             # Charter 204: every AIFS ENS run is a follow-lane run -- it has
             # no rung of its own -- so a landed one always queues the job.
-            follow_only = family == nwp_arrival_probe.AIFS_FAMILY
+            follow_only = family in (
+                nwp_arrival_probe.AIFS_FAMILY, nwp_arrival_probe.AIGEFS_FAMILY
+            )
             if beyond_ladder or follow_only or family in (
                 nwp_arrival_probe.ICON_FAMILY, nwp_arrival_probe.ECCC_FAMILY
             ):

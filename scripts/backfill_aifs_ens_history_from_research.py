@@ -17,9 +17,10 @@ written from that capture instead, under the production identity:
 * ``raw_object_ref`` names the research receipt set, so a row says where it
   came from and differs from a live capture only there.
 
-Dry run by default: counts what would be written.  ``--apply`` writes, one
-short transaction per run, taking the lock the way the calibration sweep
-does (``_begin_immediate``) and releasing it before the next run.  A
+Dry run by default: counts what would be written.  ``--apply`` writes in
+short transactions of ``--chunk-station-days`` station-days, taking the lock
+the way the calibration sweep does (``_begin_immediate``) and pausing after
+each commit so the resident's writers are not starved.  A
 station-day already present must hold the same members (REPLAY); anything
 else is a frozen-fact conflict and stops the pass.
 """
@@ -39,14 +40,23 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from bayes_basket_target import ecmwf_aifs_ens_archive as aifs  # noqa: E402
+from bayes_basket_target import ecmwf_aifs_ens_archive as aifs_module  # noqa: E402
+from bayes_basket_target import noaa_aigefs_archive as aigefs_module  # noqa: E402
 from bayes_basket_target.band_reliability_store import _begin_immediate  # noqa: E402
 from bayes_basket_target.native_archive_lead import capture_lead_bucket  # noqa: E402
 from bayes_basket_target.offloaded_paths import assert_present  # noqa: E402
 
 SSOT = ROOT / "data" / "bayes_basket_target_ssot.db"
-RESEARCH_DB = ROOT / "data" / "aifs_ens_research" / "aifs_ens_allruns.db"
 RESEARCH_PREFIX = "research_"
+# Charter 212: the same lane fills NOAA AIGEFS from its research capture
+# (``research_aigefs_ens_allruns.py``); ``--system`` picks the collector,
+# the research database and its run table.  ``aifs`` stays the default.
+SYSTEMS = {
+    "aifs": (aifs_module, ROOT / "data" / "aifs_ens_research" / "aifs_ens_allruns.db", "research_aifs_runs"),
+    "aigefs": (aigefs_module, ROOT / "data" / "aigefs_ens_research" / "aigefs_ens_allruns.db", "research_aigefs_runs"),
+}
+aifs = aifs_module  # rebound to the chosen collector in main()
+RUNS_TABLE = "research_aifs_runs"
 # The rolling training window is 60 days (native_ensemble_oos
 # ROLLING_TRAIN_WINDOW_DAYS); a D+2 run is issued two days before its day.
 DEFAULT_WINDOW_DAYS = 62
@@ -131,20 +141,28 @@ def production_rows(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--research-db", type=Path, default=RESEARCH_DB)
+    parser.add_argument("--system", choices=sorted(SYSTEMS), default="aifs")
+    parser.add_argument("--research-db", type=Path, default=None,
+                        help="default: the chosen system's research database")
     parser.add_argument("--ssot", type=Path, default=SSOT)
     parser.add_argument("--first-run", default="",
                         help=f"earliest run init (default: today - {DEFAULT_WINDOW_DAYS} days)")
     parser.add_argument("--last-run", default="9999-12-31")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--max-seconds", type=float, default=480.0)
-    parser.add_argument("--pause-seconds", type=float, default=0.5)
+    parser.add_argument("--pause-seconds", type=float, default=1.0,
+                        help="pause after each chunk's commit")
+    parser.add_argument("--chunk-station-days", type=int, default=15)
     args = parser.parse_args()
+    global aifs, RUNS_TABLE
+    aifs, default_db, RUNS_TABLE = SYSTEMS[args.system]
+    if args.research_db is None:
+        args.research_db = default_db
 
     first = args.first_run or (
         datetime.now(timezone.utc).date() - timedelta(days=DEFAULT_WINDOW_DAYS)
     ).isoformat()
-    research_path = assert_present(args.research_db, what="AIFS research capture")
+    research_path = assert_present(args.research_db, what=f"{args.system.upper()} research capture")
     research = sqlite3.connect(f"file:{research_path}?mode=ro", uri=True, timeout=60)
     reader = sqlite3.connect(f"file:{args.ssot}?mode=ro", uri=True, timeout=60)
     zones = dict(reader.execute(
@@ -154,7 +172,7 @@ def main() -> int:
     runs = [
         (str(run), str(finished))
         for run, finished in research.execute(
-            "SELECT run_init_utc,finished_at_utc FROM research_aifs_runs "
+            f"SELECT run_init_utc,finished_at_utc FROM {RUNS_TABLE} "
             "WHERE run_init_utc>=? AND run_init_utc<=? ORDER BY run_init_utc",
             (first, args.last_run),
         )
@@ -186,25 +204,34 @@ def main() -> int:
             totals["station_days"] += len(batches)
             totals["rows"] += sum(len(b) for b in batches)
             continue
-        attempts = _begin_immediate(writer)
-        t0 = time.monotonic()
+        # Small transactions: on the live SSOT a whole run (~135 station-days)
+        # held the write lock 3.6-6 s against a 0.5 s pause (2026-09-23), about
+        # nine tenths of the time.  A chunk holds it about half a second and
+        # the pause after it leaves the resident's writers most of the clock.
         states = defaultdict(int)
-        try:
-            aifs.ensure_system(writer)
-            for batch in batches:
-                states[aifs.write_member_runs(writer, batch)] += 1
-            writer.execute("COMMIT")
-        except Exception:
-            writer.execute("ROLLBACK")
-            raise
+        held = 0.0
+        attempts_max = 0
+        for start in range(0, len(batches), args.chunk_station_days):
+            attempts = _begin_immediate(writer)
+            t0 = time.monotonic()
+            try:
+                aifs.ensure_system(writer)
+                for batch in batches[start:start + args.chunk_station_days]:
+                    states[aifs.write_member_runs(writer, batch)] += 1
+                writer.execute("COMMIT")
+            except Exception:
+                writer.execute("ROLLBACK")
+                raise
+            held = max(held, time.monotonic() - t0)
+            attempts_max = max(attempts_max, attempts)
+            time.sleep(args.pause_seconds)
         totals["runs"] += 1
         for state, count in states.items():
             totals[f"station_days_{state.lower()}"] += count
         print(json.dumps({
             "run": run, "station_days": len(batches), "states": dict(states),
-            "lock_attempts": attempts, "lock_held_seconds": round(time.monotonic() - t0, 2),
+            "lock_attempts_max": attempts_max, "lock_held_seconds_max": round(held, 2),
         }), flush=True)
-        time.sleep(args.pause_seconds)
     remaining = len(runs) - totals["runs"]
     print(json.dumps({
         "mode": "apply" if args.apply else "dry_run", "window": [first, args.last_run],

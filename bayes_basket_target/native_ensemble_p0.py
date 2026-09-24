@@ -160,7 +160,10 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # pool's renormalised weights, so the four-family arithmetic moved too.
 # Charter 210: the radiation shift is served at the fleet coefficient (0.07)
 # on every artifact; the rows still serving a pinned 0.15 move.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v11"
+# Charter 212: NOAA AIGEFS admitted to the stable pool as the fifth
+# independent family; where it qualifies the pool gains a family and a packet
+# without its run serves renormalised weights.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v12"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -219,7 +222,8 @@ STEP_CLASS_BORROW_RULE = "no_cross_sampling_grid_borrow_v1"
 # and, on a same-day run with fewer than four instants left, drop it.  Such a
 # system seats in the probability and stays out of the curve, which is formed
 # from the systems that carry one (``ecmwf_aifs_ens_archive`` asserts the id).
-CURVELESS_SYSTEM_IDS = frozenset({"ECMWF_AIFS_ENS_GLOBAL"})
+# Charter 212: NOAA AIGEFS publishes six-hourly instants the same way.
+CURVELESS_SYSTEM_IDS = frozenset({"ECMWF_AIFS_ENS_GLOBAL", "NOAA_AIGEFS_025"})
 
 
 @lru_cache(maxsize=None)

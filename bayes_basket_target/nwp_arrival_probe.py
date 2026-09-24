@@ -66,7 +66,9 @@ ECCC_FAMILY = "ECCC_DD_WEATHER"
 # Charter 204: AIFS ENS, a follow-only family (``follow_run.AIFS_FAMILY``);
 # a lane key, not a transport id -- its objects sit in PF50's bucket.
 AIFS_FAMILY = "ECMWF_AIFS_ENS"
-FAMILIES = (ECMWF_FAMILY, GEFS_FAMILY, ICON_FAMILY, ECCC_FAMILY, AIFS_FAMILY)
+# Charter 212: NOAA AIGEFS (``follow_run.AIGEFS_FAMILY``), follow-only too.
+AIGEFS_FAMILY = "NOAA_AIGEFS_NODD"
+FAMILIES = (ECMWF_FAMILY, GEFS_FAMILY, ICON_FAMILY, ECCC_FAMILY, AIFS_FAMILY, AIGEFS_FAMILY)
 
 ECMWF_GCS_BASE_URL = "https://storage.googleapis.com/ecmwf-open-data"
 ECMWF_AWS_BASE_URL = "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com"
@@ -83,6 +85,7 @@ DOWNLOAD_SOURCE = {
     ICON_FAMILY: "dwd",
     ECCC_FAMILY: "dd",
     AIFS_FAMILY: "gcs",
+    AIGEFS_FAMILY: "s3",
 }
 SHADOW_SOURCES = {ECMWF_FAMILY: ("aws",)}
 
@@ -128,6 +131,12 @@ SPECS: dict[str, FamilySpec] = {
     AIFS_FAMILY: FamilySpec(
         AIFS_FAMILY, "ECMWF_AIFS_ENS_GLOBAL", (0, 6, 12, 18),
         {0: 5.8, 6: 5.8, 12: 5.8, 18: 5.8}, 14.0,
+    ),
+    # Every step of a run lands in one minute, init + 6h21m..8h11m over the
+    # 36 runs 2026-09-14..09-22 (35 of them within 6h58m).
+    AIGEFS_FAMILY: FamilySpec(
+        AIGEFS_FAMILY, "NOAA_AIGEFS_025", (0, 6, 12, 18),
+        {0: 6.3, 6: 6.3, 12: 6.3, 18: 6.3}, 14.0,
     ),
 }
 
@@ -210,7 +219,7 @@ def _station_steps(
                 run_init_utc=run_init,
             )
             return None if hours is None else list(hours)
-        if family == AIFS_FAMILY:
+        if family in (AIFS_FAMILY, AIGEFS_FAMILY):
             from .ecmwf_aifs_ens_archive import day_instants  # noqa: PLC0415
 
             steps = day_instants(
@@ -268,6 +277,13 @@ def aifs_object_urls(
         f"{run_init:%Y%m%d%H%M%S}-{int(step)}h-enfo-{kind}"
     )
     return f"{base_url}/{prefix}.grib2", f"{base_url}/{prefix}.index"
+
+
+def aigefs_object_urls(run_init: datetime, member_number: int, step: int) -> tuple[str, str]:
+    from .noaa_aigefs_archive import BASE_URL, object_key  # noqa: PLC0415
+
+    key = object_key(run_init, member_number, step)
+    return f"{BASE_URL}/{key}", f"{BASE_URL}/{key}.idx"
 
 
 def gefs_index_url(run_init: datetime, member: str, step: int) -> str:
@@ -456,6 +472,23 @@ def _visible(
         if grib[0] != 200:
             return False, ""
         indexes = round_.ask_many("HEAD", [pf_index, cf_index])
+        if any(answer is None for answer in indexes):
+            return None, ""
+        return all(answer[0] == 200 for answer in indexes), _header(
+            grib[1], "last-modified"
+        )
+    if family == AIGEFS_FAMILY:
+        # The run is up for this day when the control's and the last
+        # member's indexes of the last needed step are (every member lands
+        # in the same minute); the last member's object gives the stamp.
+        last_grib, last_index = aigefs_object_urls(run_init, 30, step)
+        _grib0, index0 = aigefs_object_urls(run_init, 0, step)
+        grib = round_.ask("HEAD", last_grib)
+        if grib is None:
+            return None, ""
+        if grib[0] != 200:
+            return False, ""
+        indexes = round_.ask_many("HEAD", [index0, last_index])
         if any(answer is None for answer in indexes):
             return None, ""
         return all(answer[0] == 200 for answer in indexes), _header(

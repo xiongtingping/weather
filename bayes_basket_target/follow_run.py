@@ -82,6 +82,12 @@ from .ecmwf_aifs_ens_archive import (
     SYSTEM_ID as AIFS_SYSTEM_ID,
     day_instants as _aifs_day_instants,
 )
+from .noaa_aigefs_archive import (
+    MULTISTATION_SCHEMA as AIGEFS_MULTISTATION_SCHEMA,
+    SUPPORTED_LEAD_DAYS as AIGEFS_LEADS,
+    SUPPORTED_RUN_CYCLE_HOURS as AIGEFS_CYCLE_HOURS,
+    SYSTEM_ID as AIGEFS_SYSTEM_ID,
+)
 from .native_archive_lead import capture_lead_bucket
 from .resource_bounds import load_bounded_json
 from .station_season import station_season_bin
@@ -94,6 +100,9 @@ FOLLOW_FAMILIES = (ICON_FAMILY, ECCC_FAMILY)
 # Charter 204: AIFS ENS.  A lane key, not a transport id -- it shares PF50's
 # transport (``ECMWF_OPEN_DATA_S3``) and must not be confused with it.
 AIFS_FAMILY = "ECMWF_AIFS_ENS"
+# Charter 212: NOAA AIGEFS, a lane key too (its rows carry the NOAA NODD
+# transport id the GEFS lane uses).
+AIGEFS_FAMILY = "NOAA_AIGEFS_NODD"
 # Charter 193 amendment (2026-09-21, user ruling "A 维持现状 / C 先用 ECMWF 前一天
 # 18Z"): runs a family follows per event date rather than per ladder rung.
 # ECMWF walks the ladder itself; the one run it does not reach is D-3 18Z for
@@ -101,7 +110,7 @@ AIFS_FAMILY = "ECMWF_AIFS_ENS"
 # D-2), while D-2 00Z is complete on the replica only around 08:10Z.  It is
 # banked here for training in its own scope; seating it waits for its own
 # certificate like every follow run.
-EVENT_RUN_FAMILIES = (ECMWF_FAMILY, AIFS_FAMILY)
+EVENT_RUN_FAMILIES = (ECMWF_FAMILY, AIFS_FAMILY, AIGEFS_FAMILY)
 _EVENT_RUNS = {
     ECMWF_FAMILY: tuple(
         (int(lead), int(hour))
@@ -116,12 +125,18 @@ _EVENT_RUNS = {
     AIFS_FAMILY: tuple(
         (int(lead), int(hour)) for lead in AIFS_LEADS for hour in AIFS_CYCLE_HOURS
     ),
+    # Charter 212: AIGEFS the same way, at its own publication (every step
+    # of a run lands in one minute, init + 6h21m..8h11m over 36 runs, 35 of
+    # them within 6h58m).
+    AIGEFS_FAMILY: tuple(
+        (int(lead), int(hour)) for lead in AIGEFS_LEADS for hour in AIGEFS_CYCLE_HOURS
+    ),
 }
 # Families whose every run is followed: a same-day run can land in the bucket
 # a longer lead's run of the same cycle already trains, so the generic
 # ``scope_trained_by_longer_lead`` walk applies to them, unlike ECMWF's
 # single follow-only lead.
-_ALL_RUN_FAMILIES = (AIFS_FAMILY,)
+_ALL_RUN_FAMILIES = (AIFS_FAMILY, AIGEFS_FAMILY)
 # Every lead the ladder serves (user ruling the same evening: "当天、明天、后天
 # 都谁新用谁").  At d2 the lead's own run stays D-2 12Z; the D-2 00Z/06Z runs
 # are what can seat ICON/ECCC in a D+2 packet from its listing (~05Z D-2)
@@ -161,26 +176,33 @@ FOLLOW_PUBLICATION_LAG_HOURS = {
     # AIFS ENS cycles was up by init + 6h10m (00Z 05:59-06:09, 06Z
     # 11:55-12:04, 12Z 17:58-18:07, 18Z 23:51-00:00).
     AIFS_FAMILY: 6.25,
+    # 35 of 36 measured runs were complete by init + 6h58m; the probe sees
+    # the rest land (charter 195), this is only the fallback.
+    AIGEFS_FAMILY: 7.0,
 }
+# Charter 212 kill switch, the AIFS one's twin.
+AIGEFS_SERVING_ENV = "PM_SEAT_AIGEFS"
 # Charter 204 kill switch: "off" keeps capturing and training AIFS ENS but
 # seats none of its runs, so the packet is the one this pass always built.
 AIFS_SERVING_ENV = "PM_SEAT_AIFS_ENS"
 
 _PREFIX = {
     ICON_FAMILY: "icon", ECCC_FAMILY: "eccc", ECMWF_FAMILY: "ecmwf",
-    AIFS_FAMILY: "aifs",
+    AIFS_FAMILY: "aifs", AIGEFS_FAMILY: "aigefs",
 }
 _SYSTEM = {
     ICON_FAMILY: ICON_SYSTEM_ID,
     ECCC_FAMILY: ECCC_SYSTEM_ID,
     ECMWF_FAMILY: ECMWF_SYSTEM_ID,
     AIFS_FAMILY: AIFS_SYSTEM_ID,
+    AIGEFS_FAMILY: AIGEFS_SYSTEM_ID,
 }
 _SCHEMA = {
     ICON_FAMILY: ICON_MULTISTATION_SCHEMA,
     ECCC_FAMILY: ECCC_MULTISTATION_SCHEMA,
     ECMWF_FAMILY: ECMWF_MULTISTATION_SCHEMA,
     AIFS_FAMILY: AIFS_MULTISTATION_SCHEMA,
+    AIGEFS_FAMILY: AIGEFS_MULTISTATION_SCHEMA,
 }
 _ARCHIVE_CYCLES = {
     ICON_FAMILY: ICON_ARCHIVE_CYCLES_BY_LEAD,
@@ -191,6 +213,7 @@ _ARCHIVE_CYCLES = {
         for lead, hours in ECMWF_FOLLOW_ONLY_LEAD_CYCLES.items()
     },
     AIFS_FAMILY: {int(lead): tuple(AIFS_CYCLE_HOURS) for lead in AIFS_LEADS},
+    AIGEFS_FAMILY: {int(lead): tuple(AIGEFS_CYCLE_HOURS) for lead in AIGEFS_LEADS},
 }
 _DEFAULT_CYCLE = {ICON_FAMILY: ICON_CYCLE_BY_LEAD, ECCC_FAMILY: ECCC_CYCLE_BY_LEAD}
 # The ECMWF/GEFS ladder's own reading of a rung that names no cycle
@@ -216,6 +239,11 @@ def follow_serving_allowed(family: str, cycle_hour: int) -> bool:
     if family == AIFS_FAMILY:
         return (
             os.environ.get(AIFS_SERVING_ENV, "on").strip().lower()
+            not in {"0", "off", "false", "no"}
+        )
+    if family == AIGEFS_FAMILY:
+        return (
+            os.environ.get(AIGEFS_SERVING_ENV, "on").strip().lower()
             not in {"0", "off", "false", "no"}
         )
     return True
@@ -371,7 +399,8 @@ def _run_covers(
 ) -> bool:
     """Whether this family's capture of that run seals this station's day."""
 
-    if family == AIFS_FAMILY:
+    if family in (AIFS_FAMILY, AIGEFS_FAMILY):
+        # Both publish six-hourly instants under the same in-day floor.
         return _aifs_day_instants(
             event_date=event_date,
             settlement_timezone=settlement_timezone,
@@ -697,6 +726,8 @@ def archive_station_ids(archive: Mapping[str, Any]) -> set[str]:
 __all__ = [
     "AIFS_FAMILY",
     "AIFS_SERVING_ENV",
+    "AIGEFS_FAMILY",
+    "AIGEFS_SERVING_ENV",
     "ECCC_FAMILY",
     "ECMWF_FAMILY",
     "EVENT_RUN_FAMILIES",

@@ -79,7 +79,8 @@ def test_scheduler_readiness_names_no_aifs_run() -> None:
 def test_string_constants_agree_with_the_collector() -> None:
     assert packet.ECMWF_AIFS_ENS_MULTISTATION_SCHEMA == aifs.MULTISTATION_SCHEMA
     assert packet.SUPPORTED_ARCHIVE_SCHEMAS[aifs.MULTISTATION_SCHEMA] == aifs.TRANSPORT_PROVIDER_ID
-    assert p0.CURVELESS_SYSTEM_IDS == {aifs.SYSTEM_ID}
+    # charter 212 added NOAA AIGEFS beside it
+    assert aifs.SYSTEM_ID in p0.CURVELESS_SYSTEM_IDS
     assert follow_run.system_id(follow_run.AIFS_FAMILY) == aifs.SYSTEM_ID
     assert follow_run.archive_schema(follow_run.AIFS_FAMILY) == aifs.MULTISTATION_SCHEMA
 

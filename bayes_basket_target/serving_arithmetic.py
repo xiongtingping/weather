@@ -326,6 +326,12 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # push and past the batch restart that deploys it; the v11 envelopes
         # between that restart and this instant are not evidence yet.
         "calibrated_native_cross_ensemble_p0_v11": "2026-09-23T18:00:00Z",
+        # Charter 212: NOAA AIGEFS seated, the fifth independent family.
+        # Where it qualifies the pool gains a family and a packet without its
+        # run serves those weights renormalised.  Declared past the push and
+        # past the restart that deploys it; the v12 envelopes between that
+        # restart and this instant are not evidence yet.
+        "calibrated_native_cross_ensemble_p0_v12": "2026-09-24T02:00:00Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
@@ -349,6 +355,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p0m_taf_likelihood_v12": "2026-09-23T17:00:00Z",
         # Charter 210: root bump at the instant P0 v11 declares.
         "p0m_taf_likelihood_v13": "2026-09-23T18:00:00Z",
+        # Charter 212: root bump at the instant P0 v12 declares.
+        "p0m_taf_likelihood_v14": "2026-09-24T02:00:00Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
@@ -391,6 +399,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p1_joint_likelihood_v21": "2026-09-23T17:00:00Z",
         # Charter 210: the eighth root bump, at the instant P0 v11 declares.
         "p1_joint_likelihood_v22": "2026-09-23T18:00:00Z",
+        # Charter 212: the ninth root bump, at the instant P0 v12 declares.
+        "p1_joint_likelihood_v23": "2026-09-24T02:00:00Z",
     },
 }
 

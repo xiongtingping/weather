@@ -96,6 +96,11 @@ from .ecmwf_aifs_ens_archive import (
     SUPPORTED_RUN_CYCLE_HOURS as _AIFS_SUPPORTED_CYCLES,
     extraction_version_for_lead as _aifs_extraction_version,
 )
+from .noaa_aigefs_archive import (
+    SUPPORTED_LEAD_DAYS as _AIGEFS_LEADS,
+    SUPPORTED_RUN_CYCLE_HOURS as _AIGEFS_SUPPORTED_CYCLES,
+    extraction_version_for_lead as _aigefs_extraction_version,
+)
 from .native_archive_lead import (
     LEAD_HOUR_BUCKETS,
     LONGEST_LEAD_HOUR_BUCKET,
@@ -521,6 +526,25 @@ OFFICIAL_ARCHIVE_SCOPE_CONTRACTS = {
             extraction_version_for_lead=_aifs_extraction_version,
             follow_cycle_hours_by_lead={
                 lead: tuple(_AIFS_SUPPORTED_CYCLES) for lead in _AIFS_LEADS
+            },
+        ),
+    },
+    # Charter 212: NOAA AIGEFS, the sixth formal product and the fifth
+    # independent family, read the same way as AIFS ENS -- every cycle at
+    # every lead on the follow lane at its own publication, no rung, so the
+    # scheduler's readiness is told nothing.  Transport id is the NOAA NODD
+    # S3 programme's (see ``noaa_aigefs_archive``).  Measured before
+    # registration: served P0 CRPS -3.0% alone, -1.1% on top of AIFS.
+    "NOAA_AIGEFS_025": {
+        "transport_provider_id": "NOAA_GEFS_PDS_S3",
+        "leads": _lead_contracts(
+            supported_lead_days=_AIGEFS_LEADS,
+            cycle_hour_by_lead={
+                lead: tuple(_AIGEFS_SUPPORTED_CYCLES) for lead in _AIGEFS_LEADS
+            },
+            extraction_version_for_lead=_aigefs_extraction_version,
+            follow_cycle_hours_by_lead={
+                lead: tuple(_AIGEFS_SUPPORTED_CYCLES) for lead in _AIGEFS_LEADS
             },
         ),
     },

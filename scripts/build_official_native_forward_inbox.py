@@ -26,6 +26,7 @@ from bayes_basket_target.official_native_forward_packet import (  # noqa: E402
     DWD_ICON_EPS_MULTISTATION_SCHEMA,
     ECMWF_AIFS_ENS_MULTISTATION_SCHEMA,
     ECCC_GEPS_MULTISTATION_SCHEMA,
+    NOAA_AIGEFS_MULTISTATION_SCHEMA,
     ECMWF_MULTISTATION_SCHEMA,
     NOAA_GEFS_MULTISTATION_SCHEMA,
     build_official_native_forward_packet,
@@ -60,6 +61,8 @@ _SUPPORTED_ARCHIVE_SCHEMAS = frozenset(_ARCHIVE_FAMILY_BY_SCHEMA)
 _FOLLOW_FAMILY_BY_SCHEMA = {
     **_ARCHIVE_FAMILY_BY_SCHEMA,
     ECMWF_AIFS_ENS_MULTISTATION_SCHEMA: "ECMWF",
+    # Charter 212: NOAA AIGEFS, its own family, follow-only like AIFS.
+    NOAA_AIGEFS_MULTISTATION_SCHEMA: "NOAA_AIGEFS",
 }
 
 
@@ -518,6 +521,7 @@ def main() -> int:
             ECCC_GEPS_MULTISTATION_SCHEMA,
             DWD_ICON_EPS_MULTISTATION_SCHEMA,
             ECMWF_AIFS_ENS_MULTISTATION_SCHEMA,
+            NOAA_AIGEFS_MULTISTATION_SCHEMA,
         } or str(raw.get("independence_family_id") or "") != (
             _FOLLOW_FAMILY_BY_SCHEMA[schema]
         ) or str(raw.get("event_date") or "") != base_event_date:
@@ -567,6 +571,8 @@ def main() -> int:
         # Charter 204: added, never replacing -- there is no AIFS base.
         if ECMWF_AIFS_ENS_MULTISTATION_SCHEMA in follows:
             archives.append(follows[ECMWF_AIFS_ENS_MULTISTATION_SCHEMA])
+        if NOAA_AIGEFS_MULTISTATION_SCHEMA in follows:
+            archives.append(follows[NOAA_AIGEFS_MULTISTATION_SCHEMA])
         archives.extend(regional_archives_by_station.get(station, []))
         return archives
 
