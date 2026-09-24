@@ -270,6 +270,7 @@ def test_the_every_run_sections_leave_room_for_themselves(paged, monkeypatch) ->
     """A paged section yields its turn to the every-run sections still to come."""
 
     C._PAGED_RUN["every_run_costs"] = {"live_days": 500.0}
+    monkeypatch.setattr(C, "RENDER_EVERY_RUN_DEFAULT_COST_SEC", 0.0)
     monkeypatch.setattr(C, "RENDER_SOFT_BUDGET_SEC", 400.0)
     calls: list[str] = []
     C._cached_section("slow_moving", _collector(calls, "old"), None)
@@ -290,3 +291,19 @@ def test_only_the_timed_page_is_paged() -> None:
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
     assert "PAGED_RENDER = bool(args.html_out) and SECTION_CACHE_ENABLED" in source
     assert C.PAGED_RENDER is False
+
+
+def test_every_run_costs_are_recorded_as_each_one_finishes(paged) -> None:
+    """A run killed before its end must still leave the next one its reserve."""
+
+    C._cached_section("members", lambda conn: {"ok": True}, None)
+    saved = json.loads((paged / "sections" / C.RENDER_EVERY_RUN_COSTS).read_text())
+    assert "members" in saved, "recorded when the section finished, not at the end"
+
+
+def test_an_every_run_section_with_no_record_still_gets_room(paged) -> None:
+    C._PAGED_RUN["every_run_costs"] = {}
+    reserve = C._every_run_reserve_sec()
+    assert reserve == C.RENDER_EVERY_RUN_DEFAULT_COST_SEC * len(C.RENDER_EVERY_RUN_SECTIONS)
+    C._SECTION_CACHE_LOG["live_days"] = {"build_sec": 1.0}
+    assert C._every_run_reserve_sec() == reserve - C.RENDER_EVERY_RUN_DEFAULT_COST_SEC

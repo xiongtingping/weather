@@ -16321,7 +16321,11 @@ RENDER_EVERY_RUN_SECTIONS = frozenset({
     "window_divergence",
 })
 #: The every-run sections' last costs, so a paged run leaves them room.
+#: Recorded as each one finishes, not at the end: a run killed before its
+#: end would otherwise never record the costs that would have saved it.
 RENDER_EVERY_RUN_COSTS = "_every_run_costs.json"
+#: Room kept for an every-run section with no recorded cost yet.
+RENDER_EVERY_RUN_DEFAULT_COST_SEC = 60.0
 #: Total a run's every-run sections may spend waiting for gaps.  They are
 #: computed regardless; the wait only moves them into a gap when one is near.
 EVERY_RUN_GAP_WAIT_SEC = 300.0
@@ -16380,7 +16384,7 @@ def _load_every_run_costs() -> dict[str, float]:
 
 
 def _save_every_run_costs() -> None:
-    costs = dict(_PAGED_RUN.get("every_run_costs") or {})
+    costs = _PAGED_RUN.setdefault("every_run_costs", {})
     for name in RENDER_EVERY_RUN_SECTIONS:
         entry = _SECTION_CACHE_LOG.get(name) or {}
         if entry.get("build_sec") is not None:
@@ -16399,7 +16403,8 @@ def _every_run_reserve_sec() -> float:
 
     costs = _PAGED_RUN.get("every_run_costs") or {}
     return sum(
-        cost for name, cost in costs.items()
+        costs.get(name, RENDER_EVERY_RUN_DEFAULT_COST_SEC)
+        for name in RENDER_EVERY_RUN_SECTIONS
         if name not in _SECTION_CACHE_LOG
     )
 
@@ -16573,6 +16578,8 @@ def _cached_section(
             "cached": False,
         }
         _trace_slow_section(name, _SECTION_CACHE_LOG[name]["build_sec"])
+        if paged and name in RENDER_EVERY_RUN_SECTIONS:
+            _save_every_run_costs()
         return value
     fingerprint = _section_fingerprint(collector, _salt)
     path = SECTION_CACHE_DIR / f"{name}.json"
