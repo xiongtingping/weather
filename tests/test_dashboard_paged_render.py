@@ -709,3 +709,20 @@ def test_a_closed_station_days_divergence_reading_is_kept(paged, monkeypatch) ->
     assert first["evaluated_station_days"] == 1
     conn.execute("DELETE FROM basket_probability_bridge_bucket_probability")
     assert C.collect_window_divergence(conn) == first, "the settled day is not read again"
+
+
+def test_a_pageless_section_that_will_not_fit_shows_its_stand_in(paged, monkeypatch) -> None:
+    """08:36Z: 432 s left, a 531 s section with no page read into the kill."""
+
+    calls: list[str] = []
+    C._cached_section("slow_moving", _collector(calls, "old"), None)
+    blob = json.loads((paged / "sections" / "slow_moving.json").read_text())
+    blob["fingerprint"] = blob["code_fingerprint"] = "older code"
+    blob["build_sec"] = 531.0
+    (paged / "sections" / "slow_moving.json").write_text(json.dumps(blob))
+    monkeypatch.setattr(C, "RENDER_SOFT_BUDGET_SEC", 432.0)
+    monkeypatch.setattr(C, "RENDER_EVERY_RUN_DEFAULT_COST_SEC", 0.0)
+    assert C._cached_section("slow_moving", _collector(calls, "new"), None, _unavailable={}) == {}
+    assert calls == ["old"]
+    monkeypatch.setattr(C, "RENDER_SOFT_BUDGET_SEC", 1200.0)
+    assert C._cached_section("slow_moving", _collector(calls, "new"), None, _unavailable={})["value"] == "new"

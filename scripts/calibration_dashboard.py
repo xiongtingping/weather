@@ -17204,8 +17204,13 @@ def _cached_section(
     page: dict[str, Any] | None = None
     page_age = 0.0
     page_inputs_moved = False
+    # What the last build of this section cost, from whatever file is there
+    # -- even one this code may not serve -- so a run can tell whether a
+    # read will fit before starting it.
+    last_cost = 0.0
     try:
         blob = json.loads(path.read_text(encoding="utf-8"))
+        last_cost = float(blob.get("build_sec") or 0.0)
         stamp = str(blob["computed_at_utc"])
         age = (
             now - datetime.fromisoformat(stamp.replace("Z", "+00:00"))
@@ -17243,12 +17248,13 @@ def _cached_section(
         expected = float((page or {}).get("build_sec") or 0.0)
         if page is not None and expected > remaining:
             return _serve_stale_page(name, page, ttl, page_age, "budget", page_inputs_moved)
-        # Past the budget with no page at all: a section that declared what
-        # to show instead shows it, rather than reading whole into the
-        # deadline (07:54Z: model_accuracy_trend, pageless for the day,
-        # read from 08:09Z until the 1,500 s kill, and nothing was written).
+        # No page at all and no room for what it cost last time: a section
+        # that declared what to show instead shows it, rather than reading
+        # whole into the deadline.  07:54Z: model_accuracy_trend, pageless
+        # for the day, read from 08:09Z into the 1,500 s kill; 08:36Z: the
+        # same from 08:49Z, with 432 s of budget left for a 531 s section.
         if (
-            page is None and remaining <= 0
+            page is None and last_cost >= remaining
             and _unavailable is not _NO_UNAVAILABLE
         ):
             return _serve_unavailable(name, _unavailable, "budget")
