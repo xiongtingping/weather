@@ -25,19 +25,12 @@ from .market_registry import load_market_registry_snapshot
 from .observed_high_floor import (
     MARKET_SNAPSHOT_KEY as OBSERVED_HIGH_MARKET_SNAPSHOT_KEY,
 )
-from .effective_edge_store import load_effective_edge_tables
-from .off_centre_claim_store import load_off_centre_tables
 from .convergence_evidence import load_convergence_evidence
-from .inventory_producer import ledger_holdings_by_token
-from .consolidation_chain import (
-    load_chain_tilt,
-    load_last_acted_probability_identity,
-)
 from .production import compile_production_plan
 from .regime_materialization import load_regime_artifact
 from .production_io import (
-    account_capital_for_snapshot,
-    basket_intent_ids,
+    SsotChainState,
+    chain_compile_kwargs,
     assemble_market_snapshot,
     derive_policy_maturity_bin,
     assert_current_probability_bridge,
@@ -46,7 +39,6 @@ from .production_io import (
     load_production_artifacts,
     resolve_delta_v2_runtime_authority,
     target_registry_source_lane,
-    load_last_decision_signature,
 )
 from .performance_budget import load_performance_budget
 from .resource_bounds import assert_connection_target_capacity
@@ -348,23 +340,20 @@ def _forward_tick_size(registry_row: Mapping[str, Any]) -> float | None:
     return value
 
 
-def _market_snapshot(
-    conn: sqlite3.Connection,
-    *,
-    envelope: Any,
-    registry_rows: list[Mapping[str, Any]],
-    quotes: Mapping[str, Mapping[str, Any]],
-    manifest: Mapping[str, Any],
-    evaluation_at_utc: str,
-    planning_budget_usdc: float = 0.0,
-    book_equity_usdc: float | None = None,
-    ledger_holdings: Mapping[str, Any] | None = None,
-    account_capital: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
-    evaluation = _utc(
-        evaluation_at_utc,
-        reason="p0_preselection_evaluation_at_invalid",
-    )
+FORWARD_BOOK_SCHEMA = "bayes_basket_target_p0_forward_book_v1"
+# One rung of a forward book: what the venue offered on that bucket, and
+# nothing the station-day holds.  Holdings are layered on by the assembler.
+FORWARD_BOOK_RUNG_KEYS = (
+    "bucket", "ordinal", "unmaterialized_book", "bid_price", "ask_levels",
+    "ask_available", "bid_levels", "price_tick_size", "tick_size_source",
+    "min_order_size", "maker_queue_ahead_shares", "maker_queue_known",
+    "token_id",
+)
+
+
+def _planning_inputs(
+    planning_budget_usdc: float, book_equity_usdc: float | None,
+) -> tuple[float, float | None]:
     try:
         planning_budget = float(planning_budget_usdc)
     except (TypeError, ValueError) as exc:
@@ -395,6 +384,73 @@ def _market_snapshot(
             ) from exc
         if not math.isfinite(book_equity) or book_equity < 0.0:
             raise ContractError("p0_preselection_book_equity_invalid")
+    return planning_budget, book_equity
+
+
+def _market_snapshot(
+    conn: sqlite3.Connection,
+    *,
+    envelope: Any,
+    registry_rows: list[Mapping[str, Any]],
+    quotes: Mapping[str, Mapping[str, Any]],
+    manifest: Mapping[str, Any],
+    evaluation_at_utc: str,
+    planning_budget_usdc: float = 0.0,
+    book_equity_usdc: float | None = None,
+    ledger_holdings: Mapping[str, Any] | None = None,
+    account_capital: Mapping[str, Any] | None = None,
+    chain_state: Any = None,
+) -> dict[str, Any]:
+    """The forward snapshot from the live stream: read the book, then assemble.
+
+    Two halves since 2026-09-24 (user ruling 「账本对齐」): the book is what
+    the stream offered and is validated here once; the snapshot is that book
+    plus the station-day's holdings and history.  A replay of a recorded
+    decision and the paper ledger hand in the recorded book instead
+    (``forward_book_from_snapshot_row``) and share the second half.
+    """
+
+    _planning_inputs(planning_budget_usdc, book_equity_usdc)
+    book = forward_book_from_ws(
+        envelope=envelope,
+        registry_rows=registry_rows,
+        quotes=quotes,
+        manifest=manifest,
+        evaluation_at_utc=evaluation_at_utc,
+    )
+    return _forward_market_snapshot(
+        conn,
+        envelope=envelope,
+        book=book,
+        evaluation_at_utc=evaluation_at_utc,
+        planning_budget_usdc=planning_budget_usdc,
+        book_equity_usdc=book_equity_usdc,
+        ledger_holdings=ledger_holdings,
+        account_capital=account_capital,
+        chain_state=chain_state,
+    )
+
+
+def forward_book_from_ws(
+    *,
+    envelope: Any,
+    registry_rows: list[Mapping[str, Any]],
+    quotes: Mapping[str, Mapping[str, Any]],
+    manifest: Mapping[str, Any],
+    evaluation_at_utc: str,
+) -> dict[str, Any]:
+    """Validate one scope's forward book off the official WS stream.
+
+    Everything here is a property of the venue at ``evaluation_at_utc``:
+    manifest boundary and binding, registry support, strict-as-of clocks,
+    the tick and the folded ladders.  Nothing here reads the station-day's
+    holdings or history.
+    """
+
+    evaluation = _utc(
+        evaluation_at_utc,
+        reason="p0_preselection_evaluation_at_invalid",
+    )
     if (
         manifest.get("schema") != "clob_ws_latest_quote_snapshot_v1"
         or manifest.get("state") != "connected"
@@ -445,64 +501,6 @@ def _market_snapshot(
     by_bucket = {str(row.get("outcome") or ""): row for row in registry_rows}
     if set(by_bucket) != set(envelope.probabilities):
         raise ContractError("p0_preselection_registry_probability_support_mismatch")
-    # What the reconciliation ledger says this scope already holds (charter
-    # 83: a settled live fill is inventory).  A forward day has no resident
-    # ingress, so this snapshot is the only place its holdings can enter the
-    # kernel; until 2026-09-05 it wrote every bucket held-zero, and the four
-    # baskets the venue had half-refused that morning (LTAC, LFPB, SAEZ,
-    # ZGSZ) were re-judged as fresh three-leg baskets at the moved prices
-    # -- HOLD -- instead of as the legs they were missing.  The holdings
-    # enter the evidence identity: the same book held differently is a
-    # different quote row, because the bundle deduplicates by snapshot id
-    # and refuses a second row whose bytes disagree.
-    holdings_by_token: dict[str, dict[str, float]] = {}
-    if ledger_holdings is not None:
-        raw_holdings = ledger_holdings.get("holdings")
-        if not isinstance(raw_holdings, Mapping):
-            raise ContractError("p0_preselection_ledger_holdings_invalid")
-        registry_tokens = {
-            str(row.get("yes_token") or "") for row in by_bucket.values()
-        }
-        for token_id, entry in raw_holdings.items():
-            if not isinstance(entry, Mapping):
-                raise ContractError("p0_preselection_ledger_holdings_invalid")
-            try:
-                held_shares = float(entry.get("shares", 0.0))
-                held_cost = float(entry.get("cost_usdc", 0.0))
-            except (TypeError, ValueError) as exc:
-                raise ContractError(
-                    "p0_preselection_ledger_holdings_invalid"
-                ) from exc
-            if (
-                not math.isfinite(held_shares)
-                or not math.isfinite(held_cost)
-                or held_shares < 0.0
-                or held_cost < 0.0
-            ):
-                raise ContractError("p0_preselection_ledger_holdings_invalid")
-            if held_shares <= 0.0:
-                continue
-            if str(token_id) not in registry_tokens:
-                # A settled fill on a token this scope's registry no longer
-                # names is a scope conflict, the same one the resident
-                # inventory producer refuses; pricing the day without it
-                # would silently drop a position.
-                raise ContractError(
-                    "p0_preselection_ledger_holdings_token_unknown"
-                )
-            holdings_by_token[str(token_id)] = {
-                "shares": held_shares,
-                "cost_usdc": held_cost,
-            }
-    holdings_sha256 = (
-        content_sha256({
-            "schema": "bayes_basket_target_p0_ledger_holdings_v1",
-            "holdings": holdings_by_token,
-        })
-        if holdings_by_token
-        else ""
-    )
-    _no_holding = {"shares": 0.0, "cost_usdc": 0.0}
     buckets = []
     quote_times = []
     market_labels = set()
@@ -547,16 +545,6 @@ def _market_snapshot(
                 "min_order_size": 0.0,
                 "maker_queue_ahead_shares": 0.0,
                 "maker_queue_known": False,
-                # Held is held, book or no book.
-                "filled_shares": holdings_by_token.get(
-                    token_id, _no_holding
-                )["shares"],
-                "filled_cost_usdc": holdings_by_token.get(
-                    token_id, _no_holding
-                )["cost_usdc"],
-                "pending_shares": 0.0,
-                "pending_notional_usdc": 0.0,
-                "active_before": False,
                 "token_id": token_id,
             })
             raw_registry = registry_row.get("registry_json")
@@ -683,15 +671,6 @@ def _market_snapshot(
             "min_order_size": _forward_min_order_size(registry_row, raw_registry),
             "maker_queue_ahead_shares": 0.0,
             "maker_queue_known": False,
-            "filled_shares": holdings_by_token.get(
-                token_id, _no_holding
-            )["shares"],
-            "filled_cost_usdc": holdings_by_token.get(
-                token_id, _no_holding
-            )["cost_usdc"],
-            "pending_shares": 0.0,
-            "pending_notional_usdc": 0.0,
-            "active_before": False,
             "token_id": token_id,
         })
     if len(market_labels) != 1 or not next(iter(market_labels)):
@@ -709,12 +688,176 @@ def _market_snapshot(
             reason="p0_preselection_quote_observed_at_missing",
         ),
     )
-    market_id = next(iter(market_labels))
+    return {
+        "schema": FORWARD_BOOK_SCHEMA,
+        "station_id": str(envelope.station_id),
+        "event_date": str(envelope.event_date),
+        "settlement_timezone": registry_timezone,
+        "market_id": next(iter(market_labels)),
+        "quote_observed_at": quote_observed,
+        "manifest_sha256": manifest_sha,
+        "rungs": buckets,
+    }
+
+
+def forward_book_from_snapshot_row(
+    row: Mapping[str, Any], *, manifest_sha256: str = "",
+) -> dict[str, Any]:
+    """The forward book a decision priced against, from its committed quote row.
+
+    The quote row is the book as the stream offered it plus the holdings the
+    decision layered on (and the materializer's ``bid_available``); the
+    rungs keep only the venue's fields, so the station-day's holdings come
+    from whoever replays (the SSOT's chain state, or the paper ledger's).
+    """
+
+    raw = row.get("buckets_json")
+    rungs_raw = json.loads(raw) if isinstance(raw, str) else raw
+    if not isinstance(rungs_raw, list) or not rungs_raw:
+        raise ContractError("p0_forward_book_row_buckets_invalid")
+    rungs = [
+        {key: item[key] for key in FORWARD_BOOK_RUNG_KEYS if key in item}
+        for item in rungs_raw
+    ]
+    return {
+        "schema": FORWARD_BOOK_SCHEMA,
+        "station_id": str(row["station_id"]),
+        "event_date": str(row["event_date"]),
+        "settlement_timezone": str(row["settlement_timezone"]),
+        "market_id": str(row["market_id"]),
+        "quote_observed_at": str(row["quote_observed_at"]),
+        # The stream manifest is not on the quote row; a replay that has the
+        # recorded preselection names it, the paper ledger leaves it empty.
+        "manifest_sha256": str(manifest_sha256 or ""),
+        "rungs": rungs,
+    }
+
+
+def _forward_market_snapshot(
+    conn: sqlite3.Connection,
+    *,
+    envelope: Any,
+    book: Mapping[str, Any],
+    evaluation_at_utc: str,
+    planning_budget_usdc: float = 0.0,
+    book_equity_usdc: float | None = None,
+    ledger_holdings: Mapping[str, Any] | None = None,
+    account_capital: Mapping[str, Any] | None = None,
+    chain_state: Any = None,
+) -> dict[str, Any]:
+    """One forward book plus the station-day's holdings, assembled."""
+
+    evaluation = _utc(
+        evaluation_at_utc,
+        reason="p0_preselection_evaluation_at_invalid",
+    )
+    planning_budget, book_equity = _planning_inputs(
+        planning_budget_usdc, book_equity_usdc,
+    )
+    if (
+        book.get("schema") != FORWARD_BOOK_SCHEMA
+        or str(book.get("station_id") or "") != str(envelope.station_id)
+        or str(book.get("event_date") or "") != str(envelope.event_date)
+    ):
+        raise ContractError("p0_forward_book_scope_mismatch")
+    settlement_timezone = str(book.get("settlement_timezone") or "")
+    assert_probability_timezone_matches_market(
+        probability_timezone=str(envelope.settlement_timezone),
+        market_timezone=settlement_timezone,
+    )
+    rungs = [dict(rung) for rung in book.get("rungs") or []]
+    if {str(rung.get("bucket") or "") for rung in rungs} != set(envelope.probabilities) or any(
+        int(rung["ordinal"]) != int(envelope.bucket_ordinals[str(rung["bucket"])])
+        for rung in rungs
+    ) or len(rungs) != len(envelope.probabilities):
+        raise ContractError("p0_preselection_registry_probability_support_mismatch")
+    quote_observed = str(book.get("quote_observed_at") or "")
+    if _utc(
+        quote_observed, reason="p0_preselection_quote_observed_at_missing",
+    ) > evaluation:
+        raise ContractError("p0_preselection_quote_not_strict_asof")
+    maximum_age = float(
+        load_performance_budget()["limits"]["max_ws_snapshot_age_sec"]
+    )
+    market_id = str(book.get("market_id") or "")
+    if not market_id:
+        raise ContractError("p0_preselection_market_identity_ambiguous")
+    # What the reconciliation ledger says this scope already holds (charter
+    # 83: a settled live fill is inventory).  A forward day has no resident
+    # ingress, so this snapshot is the only place its holdings can enter the
+    # kernel; until 2026-09-05 it wrote every bucket held-zero, and the four
+    # baskets the venue had half-refused that morning (LTAC, LFPB, SAEZ,
+    # ZGSZ) were re-judged as fresh three-leg baskets at the moved prices
+    # -- HOLD -- instead of as the legs they were missing.  The holdings
+    # enter the evidence identity: the same book held differently is a
+    # different quote row, because the bundle deduplicates by snapshot id
+    # and refuses a second row whose bytes disagree.
+    holdings_by_token: dict[str, dict[str, float]] = {}
+    if ledger_holdings is not None:
+        raw_holdings = ledger_holdings.get("holdings")
+        if not isinstance(raw_holdings, Mapping):
+            raise ContractError("p0_preselection_ledger_holdings_invalid")
+        registry_tokens = {str(rung["token_id"]) for rung in rungs}
+        for token_id, entry in raw_holdings.items():
+            if not isinstance(entry, Mapping):
+                raise ContractError("p0_preselection_ledger_holdings_invalid")
+            try:
+                held_shares = float(entry.get("shares", 0.0))
+                held_cost = float(entry.get("cost_usdc", 0.0))
+            except (TypeError, ValueError) as exc:
+                raise ContractError(
+                    "p0_preselection_ledger_holdings_invalid"
+                ) from exc
+            if (
+                not math.isfinite(held_shares)
+                or not math.isfinite(held_cost)
+                or held_shares < 0.0
+                or held_cost < 0.0
+            ):
+                raise ContractError("p0_preselection_ledger_holdings_invalid")
+            if held_shares <= 0.0:
+                continue
+            if str(token_id) not in registry_tokens:
+                # A settled fill on a token this scope's registry no longer
+                # names is a scope conflict, the same one the resident
+                # inventory producer refuses; pricing the day without it
+                # would silently drop a position.
+                raise ContractError(
+                    "p0_preselection_ledger_holdings_token_unknown"
+                )
+            holdings_by_token[str(token_id)] = {
+                "shares": held_shares,
+                "cost_usdc": held_cost,
+            }
+    holdings_sha256 = (
+        content_sha256({
+            "schema": "bayes_basket_target_p0_ledger_holdings_v1",
+            "holdings": holdings_by_token,
+        })
+        if holdings_by_token
+        else ""
+    )
+    _no_holding = {"shares": 0.0, "cost_usdc": 0.0}
+    rows = []
+    for rung in rungs:
+        token_id = str(rung["token_id"])
+        held = holdings_by_token.get(token_id, _no_holding)
+        row = {key: value for key, value in rung.items() if key != "token_id"}
+        row.update({
+            # Held is held, book or no book.
+            "filled_shares": held["shares"],
+            "filled_cost_usdc": held["cost_usdc"],
+            "pending_shares": 0.0,
+            "pending_notional_usdc": 0.0,
+            "active_before": False,
+            "token_id": token_id,
+        })
+        rows.append(row)
     economic_quote_sha256 = content_sha256({
         "schema": "bayes_basket_target_p0_economic_quote_v1",
         "station_id": envelope.station_id,
         "event_date": envelope.event_date,
-        "settlement_timezone": registry_timezone,
+        "settlement_timezone": settlement_timezone,
         "market_id": market_id,
         "buckets": [
             {
@@ -729,7 +872,7 @@ def _market_snapshot(
                     "tick_size_source",
                 }
             }
-            for bucket in buckets
+            for bucket in rows
         ],
     })
     # The quote identity is the book's economic bytes (transport clocks and
@@ -753,7 +896,7 @@ def _market_snapshot(
             "sequence": 0,
             "observed_at": quote_observed,
             "market_id": market_id,
-            "settlement_timezone": registry_timezone,
+            "settlement_timezone": settlement_timezone,
             "quote_version": quote_version,
             "official_ws_quote_sha256": economic_quote_sha256,
             "economic_quote_sha256": economic_quote_sha256,
@@ -783,7 +926,7 @@ def _market_snapshot(
             ),
             "order_state_version": "p0_preselection_known_zero",
         },
-        buckets=buckets,
+        buckets=rows,
         # This is a no-live planning ceiling, not reserved or executable
         # capital.  Keeping it distinct from capital_authorized allows P0
         # and P0-M to compute a real DeltaBasketScore target before P1
@@ -811,6 +954,7 @@ def _market_snapshot(
                 else {}
             ),
         },
+        chain_state=chain_state,
     )
 
 
@@ -822,15 +966,17 @@ def _bind_scope_market_evidence(
     station_id: str,
     event_date: str,
     evaluation_at_utc: str,
-    registry_snapshot: Mapping[str, Any],
-    ws_manifest: Mapping[str, Any],
-    ws_quotes: Mapping[str, Mapping[str, Any]],
+    registry_snapshot: Mapping[str, Any] | None,
+    ws_manifest: Mapping[str, Any] | None,
+    ws_quotes: Mapping[str, Mapping[str, Any]] | None,
     planning_budget_usdc: float,
     cash_phase_authority_manifest: (
         CashPhaseAuthorityManifest | Mapping[str, Any] | None
     ) = None,
     book_equity_usdc: float | None = None,
     account_capital: Mapping[str, Any] | None,
+    chain_state: Any = None,
+    forward_book: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], Any, BasketCashPhaseInput]:
     """Resolve the scope's book and the cash-phase input bound into it.
 
@@ -863,32 +1009,41 @@ def _bind_scope_market_evidence(
         observed_at_utc=evaluation_at_utc,
         required_authority_scope=AUTHORITY_SCOPE,
     )
-    market = _market_snapshot(
+    # The book comes from the live stream, or -- a replay of a recorded
+    # decision, the paper ledger -- is handed in already read
+    # (``forward_book_from_snapshot_row``).  Never both.
+    live_sources = (registry_snapshot, ws_manifest, ws_quotes)
+    if forward_book is None:
+        if any(source is None for source in live_sources):
+            raise ContractError("p0_preselection_book_source_missing")
+        forward_book = forward_book_from_ws(
+            envelope=envelope,
+            registry_rows=_registry_rows(
+                registry_snapshot,
+                station_id=station_id,
+                event_date=event_date,
+            ),
+            quotes=ws_quotes,
+            manifest=ws_manifest,
+            evaluation_at_utc=evaluation_at_utc,
+        )
+    elif any(source is not None for source in live_sources):
+        raise ContractError("p0_preselection_book_source_ambiguous")
+    market = _forward_market_snapshot(
         conn,
         envelope=envelope,
-        registry_rows=_registry_rows(
-            registry_snapshot,
-            station_id=station_id,
-            event_date=event_date,
-        ),
-        quotes=ws_quotes,
-        manifest=ws_manifest,
+        book=forward_book,
         evaluation_at_utc=evaluation_at_utc,
         planning_budget_usdc=planning_budget_usdc,
         book_equity_usdc=book_equity_usdc,
         # Charter 83: what the reconciliation ledger has settled for this
-        # scope is inventory, on a forward day as on a started one.
-        # Only the basket's own fills: the ledger is the account's, and
-        # another lane's leg is not this basket's seat.
-        ledger_holdings=ledger_holdings_by_token(
-            conn,
-            station_id=station_id,
-            event_date=event_date,
-            intent_ids=basket_intent_ids(
-                conn, station_id=station_id, event_date=event_date,
-            ),
-        ),
+        # scope is inventory, on a forward day as on a started one -- the
+        # basket's own fills only, through the one chain-state reader.
+        ledger_holdings=(
+            chain_state if chain_state is not None else SsotChainState(conn)
+        ).token_holdings(station_id=station_id, event_date=event_date),
         account_capital=account_capital,
+        chain_state=chain_state,
     )
     phase_input = BasketCashPhaseInput.from_mapping({
         "policy_version": cash_policy.policy_version,
@@ -985,9 +1140,9 @@ def compile_p0_preselection(
     station_id: str,
     event_date: str,
     evaluation_at_utc: str,
-    registry_snapshot: Mapping[str, Any],
-    ws_manifest: Mapping[str, Any],
-    ws_quotes: Mapping[str, Mapping[str, Any]],
+    registry_snapshot: Mapping[str, Any] | None = None,
+    ws_manifest: Mapping[str, Any] | None = None,
+    ws_quotes: Mapping[str, Mapping[str, Any]] | None = None,
     season_bin: str,
     maturity_bin: str,
     liquidity_bin: str,
@@ -997,7 +1152,19 @@ def compile_p0_preselection(
     book_equity_usdc: float | None = None,
     observed_running_high_c: float | None = None,
     base_policy: Mapping[str, Any] | None = None,
+    chain_state: Any = None,
+    forward_book: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Compile one forward-day (P0 / P0-M) basket decision.
+
+    Production passes the live stream (``registry_snapshot``, ``ws_manifest``,
+    ``ws_quotes``) and no ``chain_state``.  A replay of a recorded decision
+    and the paper ledger pass ``forward_book`` (the book that decision was
+    priced against) and their own ``chain_state`` instead -- the same
+    compile, with only the book source and the station-day's history
+    swapped (user ruling 2026-09-24: 「账本对齐」).
+    """
+    chain_state = chain_state if chain_state is not None else SsotChainState(conn)
     expected_source_lane = target_registry_source_lane(
         conn,
         station_id=station_id,
@@ -1009,12 +1176,14 @@ def compile_p0_preselection(
         event_date=event_date,
         evaluation_at_utc=evaluation_at_utc,
         expected_source_lane=expected_source_lane,
+        committed_before_utc=chain_state.store_before_utc,
     )
     envelope = select_current_stage(envelopes, at_utc=evaluation_at_utc)
     probability_bridge = assert_current_probability_bridge(
         conn,
         probability=envelope,
         evaluation_at_utc=evaluation_at_utc,
+        committed_before_utc=chain_state.store_before_utc,
     )
     assert_formal_probability_model_authority(
         envelopes,
@@ -1059,11 +1228,14 @@ def compile_p0_preselection(
         planning_budget_usdc=planning_budget_usdc,
         cash_phase_authority_manifest=cash_phase_authority_manifest,
         book_equity_usdc=book_equity_usdc,
-        # Charter 141: the real account, read the way the production
-        # compile reads it -- stale is a refusal, never a guess.
-        account_capital=account_capital_for_snapshot(
-            conn, evaluation_at_utc=evaluation_at_utc,
+        # Charter 141: the account, read the way the production compile
+        # reads it -- stale is a refusal, never a guess -- through the chain
+        # state (the real account in production, the simulated one on paper).
+        account_capital=chain_state.account_capital(
+            evaluation_at_utc=evaluation_at_utc,
         ),
+        chain_state=chain_state,
+        forward_book=forward_book,
     )
     (
         delta_v2_artifact,
@@ -1094,45 +1266,23 @@ def compile_p0_preselection(
         # scope's base policy reach this lane too (charter 139 makes the tilt
         # 1.0 for every chain opened since; no scope carries a base policy
         # today).
-        chain_consolidation_tilt=load_chain_tilt(
-            conn, station_id=station_id, event_date=event_date,
-        ),
         base_policy=base_policy,
-        # Charter 68(c): the lambda tables the store activated, as of now.
-        # This lane compiles the opening plan and bypasses production_io's
-        # entry, so it has to hand the tables in itself -- the first
-        # decisions after the store went live carried an empty receipt
-        # from exactly this omission.
-        effective_edge_tables=load_effective_edge_tables(conn),
-        off_centre_claim_bands=load_off_centre_tables(conn),
+        # The chain's history and the claim tables -- the opener's tilt,
+        # charter 68(c)'s lambda tables, 71(a)'s last-acted identity and
+        # 77's last signature of THIS stage (the envelope's: a P0-M decision
+        # is recorded under P0-M) -- from the one chain-state reader both
+        # entries share.  This lane forgot two of them in turn when each was
+        # read inline here (the tables until the store's first decisions,
+        # the history until 2026-09-05).
+        **chain_compile_kwargs(
+            conn, chain_state, station_id=station_id, event_date=event_date,
+            stage=str(envelope.stage),
+        ),
         # Arm B (2026-09-06): the belief and book H hours before this
         # compile, for the convergence claim lift (shadow by default).
         convergence_evidence=load_convergence_evidence(
             conn, station_id=station_id, event_date=event_date,
             as_of_utc=evaluation_at_utc,
-        ),
-        # Charters 71(a) and 77, by the same omission (found 2026-09-05):
-        # the chain's last-acted identity and the scope's last decision
-        # signature were never handed in here, so on this lane 71(a) could
-        # never bind and every compile was a decision moment.  The same
-        # loaders production_io's entry uses.
-        last_acted_probability_identity=load_last_acted_probability_identity(
-            conn,
-            station_id=station_id,
-            event_date=event_date,
-        ),
-        # Charter 77: the signature of the last decision of THIS stage.  The
-        # stage that governs the action is P0 (above); the stage that produced
-        # the distribution is the envelope's, and decisions are recorded under
-        # it.  Reading the last P0 signature for a P0-M envelope compared two
-        # different vectors, so every forward-day P0-M cycle was a moment
-        # (ZUUU 2026-09-18 08:43Z) -- the opposite of what this argument was
-        # added for on 2026-09-05.
-        last_decision_signature=load_last_decision_signature(
-            conn,
-            station_id=station_id,
-            event_date=event_date,
-            stage=str(envelope.stage),
         ),
         probability_envelopes=envelopes,
         # Charter 125: the day's observed high rides on the book the plan is
@@ -1230,7 +1380,11 @@ def compile_p0_preselection(
             "p0_preselection_policy_activation_unresolved"
             + (":" + reason_codes if reason_codes else "")
         )
-    manifest_sha = str(ws_manifest.get("snapshot_sha256") or "")
+    manifest_sha = str(
+        (ws_manifest or {}).get("snapshot_sha256")
+        or (forward_book or {}).get("manifest_sha256")
+        or ""
+    )
     identity = {
         "schema": SCHEMA,
         "station_id": station_id,

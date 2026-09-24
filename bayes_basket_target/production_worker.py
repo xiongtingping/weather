@@ -31,7 +31,7 @@ from datetime import date, datetime, timedelta, timezone
 from datetime import time as dt_time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Collection, Iterator, Mapping, Sequence
+from typing import Any, Callable, Collection, Iterator, Mapping, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import sqlite_busy
@@ -4895,6 +4895,263 @@ def _recovered_post_ack_for_intent(
             "recovered_at": as_of_utc,
         },
     }}
+
+
+
+def resting_dead_buckets(
+    registry_conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    running_high: float | None,
+) -> tuple[tuple[str, ...], float | None]:
+    """Charter 135 (二): the buckets a resting buy may no longer stand on.
+
+    Charter 125's predicate on the same running high the selection floor
+    reads, over the bucket edges the scope's latest registry snapshot
+    states -- the one source of bucket widths (charter 53).  ``((), None)``
+    when the floor is switched off, the day has no formal observation yet,
+    or the ladder cannot be read: no cancel on a fact nobody could state.
+
+    One reader for the worker's resting pass and the paper ledger (user
+    ruling 2026-09-24: 「账本对齐」); each hands in the running high it read
+    (``observed_running_high_c``).
+    """
+
+    if not observed_high_floor_enabled() or running_high is None:
+        return (), None
+    latest = registry_conn.execute(
+        "SELECT snapshot_sha256 FROM basket_target_market_registry"
+        " WHERE station_id=? AND event_date=?"
+        " ORDER BY refreshed_at DESC LIMIT 1",
+        (station_id, event_date),
+    ).fetchone()
+    if latest is None:
+        return (), running_high
+    rows = [
+        {
+            "station_id": str(row[0]),
+            "event_date": str(row[1]),
+            "settlement_unit": str(row[2] or ""),
+            "outcome": str(row[3]),
+            "registry_json": row[4],
+        }
+        for row in registry_conn.execute(
+            "SELECT station_id,event_date,settlement_unit,outcome,"
+            " registry_json FROM basket_target_market_registry"
+            " WHERE snapshot_sha256=? AND station_id=? AND event_date=?",
+            (latest[0], station_id, event_date),
+        ).fetchall()
+    ]
+    from .p0_producer import (  # noqa: PLC0415
+        bucket_intervals_from_registry_rows,
+    )
+
+    try:
+        intervals = bucket_intervals_from_registry_rows(rows)
+    except ContractError:
+        return (), running_high
+    ordered = sorted(
+        intervals,
+        key=lambda bucket: (
+            float("-inf") if intervals[bucket][0] is None
+            else float(intervals[bucket][0])
+        ),
+    )
+    dead = dead_buckets_for_upper_bounds(
+        ordered_buckets=ordered,
+        upper_bounds={
+            bucket: (
+                float("inf") if intervals[bucket][1] is None
+                else float(intervals[bucket][1])
+            )
+            for bucket in ordered
+        },
+        running_high_c=running_high,
+    )
+    return tuple(dead), running_high
+
+
+def station_edge_from_plan(
+    compiled: Mapping[str, Any],
+    *,
+    station_id: str,
+    minimum_clip_usdc: float,
+) -> dict[str, Any] | None:
+    """What a dollar bought one station, from one compiled forward plan.
+
+    The allocator's edge row, pure: the worker reads the station's last
+    committed preselection, the paper ledger its own (user ruling
+    2026-09-24: 「账本对齐」).  None when the plan bought nothing to judge.
+    """
+
+    plan = compiled.get("plan") or {}
+    solution = plan.get("target_solution") or {}
+    # Charter 130 (amending 84 (七)): the dollar is judged on the
+    # belief the seat was judged on -- the seated window's deflated
+    # partition -- not the raw envelope.  The gates read lambda(a)*p;
+    # an allocator reading p would fund a station the gate refuses.
+    probabilities = (
+        (plan.get("basket_support_selection") or {}).get("seated") or {}
+    ).get("window_probabilities") or {}
+    support = plan.get("final_support") or []
+    # What a dollar bought is the *increment* the plan decided --
+    # its gap rows and their cost -- not the whole inventory
+    # re-judged at today's prices with its sunk cost.  Read whole,
+    # a completion (charter 84) looks like a losing basket: ZGSZ
+    # 2026-09-06 held 30°C and 31°C bought at 0.25 and 0.43, its
+    # 12:51Z plan completed 32°C for 0.95, and the whole-basket
+    # reading (payout 5 a rung against 4.35 sunk-plus-new, in-window
+    # mass 0.77) came out at -0.51 -- so the allocator gave the
+    # station a zero quota, the next compile had zero capital, and
+    # the completion it had just seated could not be offered again.
+    # For a fresh basket the increment is the whole basket, and the
+    # reading is unchanged.
+    gap = {
+        str(bucket) for bucket in (plan.get("execution_gap_support") or [])
+    }
+    shares = {}
+    for row in plan.get("targets") or ():
+        if not isinstance(row, Mapping):
+            continue
+        bucket = str(row.get("bucket") or "")
+        quantity = float(row.get("delta_shares") or 0.0)
+        if bucket and quantity > 0.0 and (not gap or bucket in gap):
+            shares[bucket] = quantity
+    cost = float(plan.get("total_delta_notional_usdc") or 0.0)
+    if cost <= 0.0:
+        cost = sum(
+            float(row.get("delta_shares") or 0.0)
+            * float(row.get("candidate_price") or 0.0)
+            for row in (plan.get("targets") or ())
+            if isinstance(row, Mapping)
+            and str(row.get("bucket") or "") in shares
+        )
+    if not shares or not probabilities or not support or cost <= 0.0:
+        return None
+    scenario = {
+        bucket: float(shares.get(bucket) or 0.0) - cost
+        for bucket in probabilities
+    }
+    mean = sum(
+        float(probabilities[bucket]) * value
+        for bucket, value in scenario.items()
+    )
+    variance = sum(
+        float(probabilities[bucket]) * (value - mean) ** 2
+        for bucket, value in scenario.items()
+    )
+    return {
+        "station_id": station_id,
+        "edge_per_usdc": mean / cost,
+        "sigma_per_usdc": (variance ** 0.5) / cost,
+        "minimum_basket_usdc": minimum_clip_usdc * len(support),
+    }
+
+
+def portfolio_quota_from(
+    *,
+    stations: Sequence[str],
+    inventory: Mapping[str, Any],
+    edges_for: Callable[[], list[dict[str, Any]]],
+    blocks_by_station: Mapping[str, str],
+    policy: Mapping[str, Any],
+) -> tuple[dict[str, float], dict[str, Any] | None]:
+    """The forward loop's per-station quota from one book, pure.
+
+    A breached Tier-1 bound gives every asked station nothing; no edge
+    evidence or no bankroll gives no split (the caller plans those stations
+    at the flat budget); otherwise the allocator splits the budget-capped
+    bankroll.  ``edges_for`` is asked only when a split is possible.  The
+    worker hands in the real account's inventory, the paper ledger its own
+    (user ruling 2026-09-24: 「账本对齐」).  The allocation carries the edge
+    rows it split on under ``_edges``.
+    """
+
+    if not inventory["new_intents_allowed"]:
+        return {station: 0.0 for station in stations}, None
+    # Charter 141: the bankroll is the account the inventory read
+    # (budget-capped), never the pool counter.
+    bankroll = float(inventory["bankroll_usdc"])
+    edges = edges_for()
+    if not edges or bankroll <= 0.0:
+        return {}, None
+    allocation = allocate_portfolio_quota(
+        station_edges=edges,
+        blocks_by_station=blocks_by_station,
+        bankroll_usdc=bankroll,
+        risk_fraction=float(policy["portfolio_risk_fraction"]),
+        station_cap_fraction=float(policy["station_cap_fraction"]),
+    )
+    return dict(allocation["quota_usdc_by_station"]), {**allocation, "_edges": edges}
+
+
+def observed_running_high_c(
+    ssot_conn: sqlite3.Connection,
+    canonical_source_conn: sqlite3.Connection | None,
+    *,
+    station_id: str,
+    event_date: str,
+    as_of_utc: str,
+) -> float | None:
+    """The day's observed running high, or None when it has none yet.
+
+    Charter 61's fact, read once for every stage that needs it rather
+    than per stage: the read goes through the same strict canonical
+    loader P1 uses -- route gates, as-of, corrections -- never a
+    hand-written MAX(), and only FORMAL rows count, because the bound
+    is a claim about the METAR series settlement follows.
+
+    Charter 125 gives this a second consumer.  It used to exist only
+    inside the P0-M bound below, which is reached only when a TAF
+    revision arrives; the selection floor needs the same number on
+    every cycle, including the ones where no forecast moved.
+
+    One reader for the worker and the paper ledger (user ruling 2026-09-24:
+    「账本对齐」): both hand in the SSOT and the canonical observation store.
+    """
+
+    # Charter 178: remembered per scope until the registry could have
+    # changed it -- one call per decision compile walked the scope's ~880
+    # snapshot rows (145 calls, 36.3s in the first ledger-measured cycle).
+    registry_rows = [
+        {
+            "station_id": str(row[0]),
+            "event_date": str(row[1]),
+            "settlement_timezone": str(row[2]),
+            "source_lane": str(row[3] or ""),
+        }
+        for row in registry_scope_timezone_lanes(
+            ssot_conn,
+            station_id=station_id,
+            event_date=event_date,
+        )
+    ]
+    if not registry_rows:
+        return None
+    if canonical_source_conn is None:
+        return None
+    try:
+        observations = load_resident_formal_observations(
+            canonical_source_conn,
+            registry_rows=registry_rows,
+            station_id=station_id,
+            event_date=event_date,
+            as_of_utc=as_of_utc,
+        )
+    except ContractError:
+        return None
+    highs = [
+        float(item["reported_temperature_c"])
+        for item in observations
+        if item.get("reported_temperature_c") is not None
+        # SOFT_PATH carrier rows feed the path state only; a hard bound
+        # is a claim about the METAR series settlement follows.
+        and str(item.get("evidence_role") or "").upper() == "FORMAL"
+    ]
+    if not highs:
+        return None
+    return max(highs)
 
 
 class TargetProductionWorker:
@@ -15566,61 +15823,15 @@ class TargetProductionWorker:
         event_date: str,
         as_of_utc: str,
     ) -> float | None:
-        """The day's observed running high, or None when it has none yet.
+        """The day's observed running high (see ``observed_running_high_c``)."""
 
-        Charter 61's fact, read once for every stage that needs it rather
-        than per stage: the read goes through the same strict canonical
-        loader P1 uses -- route gates, as-of, corrections -- never a
-        hand-written MAX(), and only FORMAL rows count, because the bound
-        is a claim about the METAR series settlement follows.
-
-        Charter 125 gives this a second consumer.  It used to exist only
-        inside the P0-M bound below, which is reached only when a TAF
-        revision arrives; the selection floor needs the same number on
-        every cycle, including the ones where no forecast moved.
-        """
-
-        # Charter 178: remembered per scope until the registry could have
-        # changed it -- one call per decision compile walked the scope's ~880
-        # snapshot rows (145 calls, 36.3s in the first ledger-measured cycle).
-        registry_rows = [
-            {
-                "station_id": str(row[0]),
-                "event_date": str(row[1]),
-                "settlement_timezone": str(row[2]),
-                "source_lane": str(row[3] or ""),
-            }
-            for row in registry_scope_timezone_lanes(
-                self.commit_conn,
-                station_id=station_id,
-                event_date=event_date,
-            )
-        ]
-        if not registry_rows:
-            return None
-        if self.canonical_source_conn is None:
-            return None
-        try:
-            observations = load_resident_formal_observations(
-                self.canonical_source_conn,
-                registry_rows=registry_rows,
-                station_id=station_id,
-                event_date=event_date,
-                as_of_utc=as_of_utc,
-            )
-        except ContractError:
-            return None
-        highs = [
-            float(item["reported_temperature_c"])
-            for item in observations
-            if item.get("reported_temperature_c") is not None
-            # SOFT_PATH carrier rows feed the path state only; a hard bound
-            # is a claim about the METAR series settlement follows.
-            and str(item.get("evidence_role") or "").upper() == "FORMAL"
-        ]
-        if not highs:
-            return None
-        return max(highs)
+        return observed_running_high_c(
+            self.commit_conn,
+            self.canonical_source_conn,
+            station_id=station_id,
+            event_date=event_date,
+            as_of_utc=as_of_utc,
+        )
 
     def _resting_dead_buckets(
         self,
@@ -15630,74 +15841,20 @@ class TargetProductionWorker:
         event_date: str,
         as_of_utc: str,
     ) -> tuple[tuple[str, ...], float | None]:
-        """Charter 135 (二): the buckets a resting buy may no longer stand on.
-
-        Charter 125's predicate on the same running high the selection floor
-        reads, over the bucket edges the scope's latest registry snapshot
-        states -- the one source of bucket widths (charter 53).  ``((), None)``
-        when the floor is switched off, the day has no formal observation yet,
-        or the ladder cannot be read: no cancel on a fact nobody could state.
-        """
+        """Charter 135 (二)'s dead buckets (see ``resting_dead_buckets``)."""
 
         if not observed_high_floor_enabled():
             return (), None
-        running_high = self._observed_running_high_c(
+        return resting_dead_buckets(
+            conn,
             station_id=station_id,
             event_date=event_date,
-            as_of_utc=as_of_utc,
-        )
-        if running_high is None:
-            return (), None
-        latest = conn.execute(
-            "SELECT snapshot_sha256 FROM basket_target_market_registry"
-            " WHERE station_id=? AND event_date=?"
-            " ORDER BY refreshed_at DESC LIMIT 1",
-            (station_id, event_date),
-        ).fetchone()
-        if latest is None:
-            return (), running_high
-        rows = [
-            {
-                "station_id": str(row[0]),
-                "event_date": str(row[1]),
-                "settlement_unit": str(row[2] or ""),
-                "outcome": str(row[3]),
-                "registry_json": row[4],
-            }
-            for row in conn.execute(
-                "SELECT station_id,event_date,settlement_unit,outcome,"
-                " registry_json FROM basket_target_market_registry"
-                " WHERE snapshot_sha256=? AND station_id=? AND event_date=?",
-                (latest[0], station_id, event_date),
-            ).fetchall()
-        ]
-        from .p0_producer import (  # noqa: PLC0415
-            bucket_intervals_from_registry_rows,
-        )
-
-        try:
-            intervals = bucket_intervals_from_registry_rows(rows)
-        except ContractError:
-            return (), running_high
-        ordered = sorted(
-            intervals,
-            key=lambda bucket: (
-                float("-inf") if intervals[bucket][0] is None
-                else float(intervals[bucket][0])
+            running_high=self._observed_running_high_c(
+                station_id=station_id,
+                event_date=event_date,
+                as_of_utc=as_of_utc,
             ),
         )
-        dead = dead_buckets_for_upper_bounds(
-            ordered_buckets=ordered,
-            upper_bounds={
-                bucket: (
-                    float("inf") if intervals[bucket][1] is None
-                    else float(intervals[bucket][1])
-                )
-                for bucket in ordered
-            },
-            running_high_c=running_high,
-        )
-        return tuple(dead), running_high
 
     def _p0m_observed_hard_bound(
         self,
@@ -18375,30 +18532,29 @@ class TargetProductionWorker:
                 "new_intents_allowed": inventory["new_intents_allowed"],
                 "drawdown": inventory["drawdown"],
             }
+            quota, allocation = portfolio_quota_from(
+                stations=stations,
+                inventory=inventory,
+                edges_for=lambda: self._station_edge_evidence(
+                    stations=stations,
+                    minimum_clip_usdc=float(book["minimum_clip_usdc"]),
+                ),
+                blocks_by_station=book["blocks_by_station"],
+                policy=book["policy"],
+            )
             if not inventory["new_intents_allowed"]:
                 self._portfolio_allocation_last = {
                     "state": "PORTFOLIO_BOUND_BREACHED",
                     "breaches": inventory["breaches"],
                     "new_intents_allowed": False,
                 }
-                return {station: 0.0 for station in stations}
-            # Charter 141: the bankroll is the real account the inventory
-            # just read (budget-capped), never the pool counter.
-            bankroll = float(inventory["bankroll_usdc"])
-            policy = book["policy"]
-            edges = self._station_edge_evidence(
-                stations=stations,
-                minimum_clip_usdc=float(book["minimum_clip_usdc"]),
-            )
-            if not edges or bankroll <= 0.0:
-                return {}
-            allocation = allocate_portfolio_quota(
-                station_edges=edges,
-                blocks_by_station=book["blocks_by_station"],
-                bankroll_usdc=bankroll,
-                risk_fraction=float(policy["portfolio_risk_fraction"]),
-                station_cap_fraction=float(policy["station_cap_fraction"]),
-            )
+                return quota
+            if allocation is None:
+                return quota
+            edges = allocation["_edges"]
+            allocation = {
+                key: value for key, value in allocation.items() if key != "_edges"
+            }
             persist_portfolio_allocation(
                 self.commit_conn,
                 allocation,
@@ -18503,71 +18659,13 @@ class TargetProductionWorker:
             ).fetchone()
             if record is None:
                 continue
-            compiled = (
-                json.loads(str(record[0])).get("compiled_plan") or {}
+            edge = station_edge_from_plan(
+                json.loads(str(record[0])).get("compiled_plan") or {},
+                station_id=station_id,
+                minimum_clip_usdc=minimum_clip_usdc,
             )
-            plan = compiled.get("plan") or {}
-            solution = plan.get("target_solution") or {}
-            # Charter 130 (amending 84 (七)): the dollar is judged on the
-            # belief the seat was judged on -- the seated window's deflated
-            # partition -- not the raw envelope.  The gates read lambda(a)*p;
-            # an allocator reading p would fund a station the gate refuses.
-            probabilities = (
-                (plan.get("basket_support_selection") or {}).get("seated") or {}
-            ).get("window_probabilities") or {}
-            support = plan.get("final_support") or []
-            # What a dollar bought is the *increment* the plan decided --
-            # its gap rows and their cost -- not the whole inventory
-            # re-judged at today's prices with its sunk cost.  Read whole,
-            # a completion (charter 84) looks like a losing basket: ZGSZ
-            # 2026-09-06 held 30°C and 31°C bought at 0.25 and 0.43, its
-            # 12:51Z plan completed 32°C for 0.95, and the whole-basket
-            # reading (payout 5 a rung against 4.35 sunk-plus-new, in-window
-            # mass 0.77) came out at -0.51 -- so the allocator gave the
-            # station a zero quota, the next compile had zero capital, and
-            # the completion it had just seated could not be offered again.
-            # For a fresh basket the increment is the whole basket, and the
-            # reading is unchanged.
-            gap = {
-                str(bucket) for bucket in (plan.get("execution_gap_support") or [])
-            }
-            shares = {}
-            for row in plan.get("targets") or ():
-                if not isinstance(row, Mapping):
-                    continue
-                bucket = str(row.get("bucket") or "")
-                quantity = float(row.get("delta_shares") or 0.0)
-                if bucket and quantity > 0.0 and (not gap or bucket in gap):
-                    shares[bucket] = quantity
-            cost = float(plan.get("total_delta_notional_usdc") or 0.0)
-            if cost <= 0.0:
-                cost = sum(
-                    float(row.get("delta_shares") or 0.0)
-                    * float(row.get("candidate_price") or 0.0)
-                    for row in (plan.get("targets") or ())
-                    if isinstance(row, Mapping)
-                    and str(row.get("bucket") or "") in shares
-                )
-            if not shares or not probabilities or not support or cost <= 0.0:
-                continue
-            scenario = {
-                bucket: float(shares.get(bucket) or 0.0) - cost
-                for bucket in probabilities
-            }
-            mean = sum(
-                float(probabilities[bucket]) * value
-                for bucket, value in scenario.items()
-            )
-            variance = sum(
-                float(probabilities[bucket]) * (value - mean) ** 2
-                for bucket, value in scenario.items()
-            )
-            rows.append({
-                "station_id": station_id,
-                "edge_per_usdc": mean / cost,
-                "sigma_per_usdc": (variance ** 0.5) / cost,
-                "minimum_basket_usdc": minimum_clip_usdc * len(support),
-            })
+            if edge is not None:
+                rows.append(edge)
         return rows
 
     def _record_refused_compile_market_evidence(

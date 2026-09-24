@@ -42,14 +42,22 @@ def load_chain_tilt(
     *,
     station_id: str,
     event_date: str,
+    before_utc: str | None = None,
 ) -> float | None:
-    """The opener's recorded factor, or None when no opener has decided."""
+    """The opener's recorded factor, or None when no opener has decided.
+
+    ``before_utc`` answers as a decision at that clock would have: a factor
+    recorded at or after it did not exist yet (the replay and the paper
+    ledger ask this; production asks with None).
+    """
 
     try:
         row = conn.execute(
             "SELECT tilt_factor FROM basket_target_consolidation_chain_tilt"
-            " WHERE station_id=? AND event_date=?",
-            (str(station_id), str(event_date)),
+            " WHERE station_id=? AND event_date=?"
+            + ("" if before_utc is None else " AND decided_at_utc<?"),
+            (str(station_id), str(event_date))
+            + (() if before_utc is None else (str(before_utc),)),
         ).fetchone()
     except sqlite3.OperationalError:
         return None
@@ -72,8 +80,36 @@ def record_chain_opener_tilt(
     a row was written.
     """
 
-    if str(plan.get("status") or "") != "ready_no_live":
+    tilt = opener_tilt_from_plan(plan)
+    if tilt is None:
         return False
+    ensure_schema(conn)
+    cursor = conn.execute(
+        "INSERT OR IGNORE INTO basket_target_consolidation_chain_tilt"
+        " (station_id, event_date, tilt_factor, signals_lit_json,"
+        "  decided_at_utc, plan_sha256)"
+        " VALUES (?,?,?,?,?,?)",
+        (
+            str(station_id),
+            str(event_date),
+            float(tilt.get("factor") or 1.0),
+            json.dumps(list(tilt.get("signals_lit") or [])),
+            str(decided_at_utc),
+            str(plan.get("production_plan_sha256") or ""),
+        ),
+    )
+    return cursor.rowcount > 0
+
+
+def opener_tilt_from_plan(plan: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """The opener's tilt audit when this plan is the chain's opener, else None.
+
+    The rule ``record_chain_opener_tilt`` writes by, pure: the paper ledger
+    applies it to its own decisions (user ruling 2026-09-24: 「账本对齐」).
+    """
+
+    if str(plan.get("status") or "") != "ready_no_live":
+        return None
     audit = plan.get("delta_v2_audit")
     tilt = (
         audit.get("consolidation_tilt")
@@ -93,23 +129,8 @@ def record_chain_opener_tilt(
         # compiler stamps ``p0_own_lights`` only on a P0 deciding by its
         # own lights.  An inherited factor means an opener row already
         # exists, and a no-record basis marks a later stage.
-        return False
-    ensure_schema(conn)
-    cursor = conn.execute(
-        "INSERT OR IGNORE INTO basket_target_consolidation_chain_tilt"
-        " (station_id, event_date, tilt_factor, signals_lit_json,"
-        "  decided_at_utc, plan_sha256)"
-        " VALUES (?,?,?,?,?,?)",
-        (
-            str(station_id),
-            str(event_date),
-            float(tilt.get("factor") or 1.0),
-            json.dumps(list(tilt.get("signals_lit") or [])),
-            str(decided_at_utc),
-            str(plan.get("production_plan_sha256") or ""),
-        ),
-    )
-    return cursor.rowcount > 0
+        return None
+    return tilt
 
 
 
@@ -162,6 +183,7 @@ def load_last_acted_probability_identity(
     *,
     station_id: str,
     event_date: str,
+    before_utc: str | None = None,
 ) -> str | None:
     """The served-vector identity the chain last bought under, or None.
 
@@ -174,11 +196,17 @@ def load_last_acted_probability_identity(
     refuse.
     """
 
+    # ``before_utc``: the table keeps one row per chain, the latest action,
+    # so a clock before that action answers None -- the earlier identity is
+    # not kept.  Exact for every chain that acted at most once before the
+    # clock, which is what a replay of production's own decisions needs.
     try:
         row = conn.execute(
             "SELECT probability_identity FROM basket_target_chain_last_action"
-            " WHERE station_id=? AND event_date=?",
-            (str(station_id), str(event_date)),
+            " WHERE station_id=? AND event_date=?"
+            + ("" if before_utc is None else " AND decided_at_utc<?"),
+            (str(station_id), str(event_date))
+            + (() if before_utc is None else (str(before_utc),)),
         ).fetchone()
     except sqlite3.OperationalError:
         return None

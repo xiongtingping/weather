@@ -387,6 +387,7 @@ def ledger_holdings_by_token(
     station_id: str,
     event_date: str,
     intent_ids: frozenset[str] | None = None,
+    updated_before_utc: str | None = None,
 ) -> dict[str, Any]:
     """What the reconciliation ledger says one scope holds, per token.
 
@@ -421,6 +422,13 @@ def ledger_holdings_by_token(
     )
     if intent_ids is not None:
         fills = [fill for fill in fills if fill["order_intent_id"] in intent_ids]
+    if updated_before_utc is not None:
+        # A replay's clock: what the ledger had settled before that instant.
+        bound = _timestamp_utc("ledger_holdings_before_utc", updated_before_utc)
+        fills = [
+            fill for fill in fills
+            if _timestamp_utc("ledger_fill_updated_at", fill["updated_at"]) < bound
+        ]
     totals: dict[str, dict[str, Any]] = {}
     for fill in fills:
         entry = totals.setdefault(

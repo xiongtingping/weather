@@ -620,9 +620,16 @@ def test_one_assembler_attaches_the_station_day_fields_for_both_sources() -> Non
     assert "assemble_market_snapshot(" in inspect.getsource(
         production_io.load_production_market_snapshot
     )
+    # The forward source splits into reading the book and assembling it
+    # (2026-09-24), so a recorded book reaches the same assembler.
     assert "assemble_market_snapshot(" in inspect.getsource(
-        p0_preselection._market_snapshot
+        p0_preselection._forward_market_snapshot
     )
+    for forward_builder in (
+        p0_preselection._market_snapshot,
+        p0_preselection._bind_scope_market_evidence,
+    ):
+        assert "_forward_market_snapshot(" in inspect.getsource(forward_builder)
     package = Path(production_io.__file__).parent
     callers = {
         path.name
@@ -630,8 +637,14 @@ def test_one_assembler_attaches_the_station_day_fields_for_both_sources() -> Non
         if re.search(r"(?<!def )chain_send_history_fields\(", path.read_text(encoding="utf-8"))
     }
     assert callers == {"production_io.py"}
-    assert "account_capital=account_capital_for_snapshot(" in inspect.getsource(
+    # The account is read through the chain state (the real one in
+    # production, the simulated one on paper), which reads it with
+    # ``account_capital_for_snapshot``.
+    assert "account_capital=chain_state.account_capital(" in inspect.getsource(
         p0_preselection.compile_p0_preselection
+    )
+    assert "account_capital_for_snapshot(" in inspect.getsource(
+        production_io.SsotChainState.account_capital
     )
     assert "account_capital=None" in inspect.getsource(
         p0_preselection.compile_p0_market_evidence

@@ -192,6 +192,68 @@ def resting_rung_verdict(
     return {**verdict, "action": "keep", "reason": action["reason"]}
 
 
+def resting_rung_keep_or_cancel(
+    *,
+    intent: Mapping[str, Any],
+    dead_buckets: tuple[str, ...] | frozenset[str] | set[str],
+    running_high: float | None,
+    load_book: Callable[[], Mapping[str, Any] | None],
+    as_of_utc: str,
+    stale_book_seconds: float,
+    dwell_seconds: float | None = None,
+    far_ticks: float | None = None,
+) -> dict[str, Any]:
+    """Keep or cancel one resting rung, in the order the rules bind.
+
+    Charter 135 (二) first -- the day's thermometer needs no book -- then
+    135 (三)'s stale or missing book, then charter 110's ladder verdict.
+    Pure: the pass hands in the scope's dead buckets and a book reader, the
+    paper ledger its own (user ruling 2026-09-24: 「账本对齐」), so a rung is
+    kept or cancelled by one rule on both sides.  ``cancel_rule`` names the
+    rule that answered (empty for a keep on a clockless missing book).
+    """
+
+    if (
+        str(intent.get("order_action") or "BUY").upper() == "BUY"
+        and intent["bucket"] in dead_buckets
+    ):
+        return {
+            "rule": DEAD_BUCKET_CANCEL_RULE_VERSION,
+            "action": "cancel",
+            "reason": "bucket_dead_by_observed_high",
+            "observed_running_high_c": running_high,
+            "limit_price": intent["limit_price"],
+            "cancel_rule": DEAD_BUCKET_CANCEL_RULE_VERSION,
+        }
+    book = load_book()
+    age = book_age_seconds(book, as_of_utc=as_of_utc)
+    if age is not None and age > float(stale_book_seconds):
+        # Charter 135 (三): nothing to price this rung against.  Ahead of the
+        # book rule, which cannot answer without a book, and without a dwell
+        # -- the bound already is the patience.
+        return {
+            "rule": STALE_BOOK_CANCEL_RULE_VERSION,
+            "action": "cancel",
+            "reason": "book_missing" if math.isinf(age) else "book_stale",
+            "book_age_seconds": None if math.isinf(age) else round(age, 3),
+            "stale_book_seconds": float(stale_book_seconds),
+            "limit_price": intent["limit_price"],
+            "cancel_rule": STALE_BOOK_CANCEL_RULE_VERSION,
+        }
+    if not book:
+        return {"action": "keep", "reason": "no_book"}
+    verdict = resting_rung_verdict(
+        limit_price=intent["limit_price"],
+        bid=book["bid"], ask=book["ask"], tick=book["tick"],
+        posted_at_utc=intent["posted_at_utc"], as_of_utc=as_of_utc,
+        dwell_seconds=dwell_seconds, far_ticks=far_ticks,
+    )
+    if age is not None:
+        verdict["book_age_seconds"] = round(age, 3)
+    verdict["cancel_rule"] = RESTING_REPRICE_RULE_VERSION
+    return verdict
+
+
 def latest_book_by_bucket(
     conn: sqlite3.Connection, *, station_id: str, event_date: str
 ) -> dict[str, dict[str, float]]:
@@ -961,56 +1023,34 @@ def reprice_resting_rungs(
                     })
                     dead_cache[scope] = ((), None)
             dead_buckets, running_high = dead_cache.get(scope, ((), None))
-            if (
-                str(intent.get("order_action") or "BUY").upper() == "BUY"
-                and intent["bucket"] in dead_buckets
-            ):
-                verdict = {
-                    "rule": DEAD_BUCKET_CANCEL_RULE_VERSION,
-                    "action": "cancel",
-                    "reason": "bucket_dead_by_observed_high",
-                    "observed_running_high_c": running_high,
-                    "limit_price": intent["limit_price"],
-                }
-                cancel_rule = DEAD_BUCKET_CANCEL_RULE_VERSION
-                receipt["cancel_requested_dead_bucket"] += 1
-            else:
+
+            def _book(scope: tuple[str, str] = scope) -> Mapping[str, Any] | None:
                 if scope not in book_cache:
                     book_cache[scope] = books(conn, station_id=scope[0], event_date=scope[1])
-                book = book_cache[scope].get(intent["bucket"])
-                age = book_age_seconds(book, as_of_utc=as_of_utc)
-                stale_bound = float(receipt["stale_book_seconds"])
-                if age is not None and age > stale_bound:
-                    # Charter 135 (三): nothing to price this rung against.  Ahead
-                    # of the book rule, which cannot answer without a book, and
-                    # without a dwell -- the bound already is the patience.
-                    verdict = {
-                        "rule": STALE_BOOK_CANCEL_RULE_VERSION,
-                        "action": "cancel",
-                        "reason": "book_missing" if math.isinf(age) else "book_stale",
-                        "book_age_seconds": None if math.isinf(age) else round(age, 3),
-                        "stale_book_seconds": stale_bound,
-                        "limit_price": intent["limit_price"],
-                    }
-                    cancel_rule = STALE_BOOK_CANCEL_RULE_VERSION
-                    receipt["cancel_requested_stale_book"] += 1
-                elif not book:
-                    # Only reachable for a book that carries no clock (an injected
-                    # reader); a missing book from the store is cancelled above.
-                    entry["verdict"] = {"action": "keep", "reason": "no_book"}
-                    receipt["kept"] += 1
-                    receipt["rungs"].append(entry)
-                    continue
-                else:
-                    verdict = resting_rung_verdict(
-                        limit_price=intent["limit_price"],
-                        bid=book["bid"], ask=book["ask"], tick=book["tick"],
-                        posted_at_utc=intent["posted_at_utc"], as_of_utc=as_of_utc,
-                        dwell_seconds=dwell_seconds, far_ticks=far_ticks,
-                    )
-                    if age is not None:
-                        verdict["book_age_seconds"] = round(age, 3)
-                    cancel_rule = RESTING_REPRICE_RULE_VERSION
+                return book_cache[scope].get(intent["bucket"])
+
+            verdict = resting_rung_keep_or_cancel(
+                intent=intent,
+                dead_buckets=dead_buckets,
+                running_high=running_high,
+                load_book=_book,
+                as_of_utc=as_of_utc,
+                stale_book_seconds=float(receipt["stale_book_seconds"]),
+                dwell_seconds=dwell_seconds,
+                far_ticks=far_ticks,
+            )
+            cancel_rule = str(verdict.pop("cancel_rule", "") or "")
+            if verdict["action"] == "cancel" and cancel_rule == DEAD_BUCKET_CANCEL_RULE_VERSION:
+                receipt["cancel_requested_dead_bucket"] += 1
+            elif verdict["action"] == "cancel" and cancel_rule == STALE_BOOK_CANCEL_RULE_VERSION:
+                receipt["cancel_requested_stale_book"] += 1
+            elif verdict.get("reason") == "no_book" and not cancel_rule:
+                # Only reachable for a book that carries no clock (an injected
+                # reader); a missing book from the store is cancelled above.
+                entry["verdict"] = verdict
+                receipt["kept"] += 1
+                receipt["rungs"].append(entry)
+                continue
             entry["verdict"] = verdict
             if verdict["action"] != "cancel":
                 receipt["kept"] += 1

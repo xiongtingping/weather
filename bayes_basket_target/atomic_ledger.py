@@ -2259,15 +2259,15 @@ def _stage_canonical_target_projections(
         )
 
 
-def _record_chain_last_action_for_bundle(
-    conn: sqlite3.Connection,
-    *,
-    bundle: Mapping[str, Any],
-    decision: Mapping[str, Any],
-    intents: Sequence[Mapping[str, Any]],
-    created_at: str,
-) -> bool:
-    """Write the charter-71 last-action row when this bundle buys."""
+def chain_last_action_identity(
+    *, plan: Any, intents: Sequence[Mapping[str, Any]],
+) -> str | None:
+    """The identity charter 71(a) records when a decision buys, else None.
+
+    The rule ``_record_chain_last_action_for_bundle`` writes by, pure: the
+    paper ledger applies it to the intents it sends (user ruling 2026-09-24:
+    「账本对齐」).  ``plan`` is the plan payload (a mapping or its JSON).
+    """
 
     buys = [
         item for item in intents
@@ -2275,8 +2275,8 @@ def _record_chain_last_action_for_bundle(
         and float(item.get("requested_size") or 0.0) > 0.0
     ]
     if not buys:
-        return False
-    plan_json = bundle.get("plan", {}).get("plan_json") or {}
+        return None
+    plan_json = plan
     if isinstance(plan_json, str):
         try:
             plan_json = json.loads(plan_json)
@@ -2289,6 +2289,25 @@ def _record_chain_last_action_for_bundle(
     ) or (
         plan_json.get("served_probability_identity")
         if isinstance(plan_json, Mapping) else None
+    )
+    if not identity:
+        return None
+    return str(identity)
+
+
+def _record_chain_last_action_for_bundle(
+    conn: sqlite3.Connection,
+    *,
+    bundle: Mapping[str, Any],
+    decision: Mapping[str, Any],
+    intents: Sequence[Mapping[str, Any]],
+    created_at: str,
+) -> bool:
+    """Write the charter-71 last-action row when this bundle buys."""
+
+    identity = chain_last_action_identity(
+        plan=bundle.get("plan", {}).get("plan_json") or {},
+        intents=intents,
     )
     if not identity:
         return False

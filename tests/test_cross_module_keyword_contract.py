@@ -252,10 +252,34 @@ def test_the_two_episodes_this_check_was_written_for_would_be_caught() -> None:
     assert "last_acted_probability_identity" in accepted
 
     # And the callers really do pass them, so the pairing is live rather
-    # than a pair of names nobody uses.
+    # than a pair of names nobody uses.  Since 2026-09-24 both entries pass
+    # the chain's history as one splat of ``chain_compile_kwargs`` -- which
+    # the static detector above cannot see into, so its keys are checked
+    # against the def here, by calling it.
     for module in (production_io, p0_preselection):
         source = pathlib.Path(module.__file__).read_text(encoding="utf-8")
-        assert "off_centre_claim_bands=" in source
+        assert "**chain_compile_kwargs(" in source
+
+    class _Chain:
+        tables_as_of_utc = None
+
+        def chain_tilt(self, **_):
+            return None
+
+        def last_acted_probability_identity(self, **_):
+            return None
+
+        def last_decision_signature(self, **_):
+            return None
+
+    import sqlite3
+
+    splat = production_io.chain_compile_kwargs(
+        sqlite3.connect(":memory:"), _Chain(),
+        station_id="ZUUU", event_date="2026-09-18", stage="P0",
+    )
+    assert {"off_centre_claim_bands", "last_acted_probability_identity"} <= set(splat)
+    assert set(splat) <= accepted, sorted(set(splat) - accepted)
 
 
 def test_the_known_broken_pair_is_still_exactly_two_and_still_broken() -> None:

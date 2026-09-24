@@ -130,7 +130,7 @@ def test_the_served_table_reaches_the_enumeration() -> None:
     runtime_source = inspect.getsource(delta_v2_runtime)
     assert "off_centre_bands=(off_centre_claim_bands or {}).get(" in runtime_source
     io_source = inspect.getsource(production_io)
-    assert "off_centre_claim_bands=load_off_centre_tables(conn)" in io_source
+    assert '"off_centre_claim_bands": load_off_centre_tables(conn)' in io_source
     helper = inspect.getsource(window_claim_factor)
     assert "bands=off_centre_bands" in helper
 

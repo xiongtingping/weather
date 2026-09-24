@@ -998,3 +998,62 @@ def test_the_document_table_is_created_once_not_once_per_row() -> None:
     assert conn.execute(
         "SELECT COUNT(*) FROM basket_probability_lineage_document"
     ).fetchone()[0] == 14
+
+
+def test_a_replay_clock_does_not_see_a_checkpoint_committed_after_it() -> None:
+    """A checkpoint is stamped with its evidence's clock and committed later
+    (LTAC 2026-09-25: a P0-M stamped 11:02:35Z, committed 11:09:24Z).  A
+    decision at 11:08:01Z priced the previous one; a replay of that decision
+    (and the paper ledger) must too, so both the envelope reader and the
+    bridge answer as the store stood at the replay's clock.  Production
+    passes no clock and reads the latest, as before."""
+
+    from bayes_basket_target.production_io import (
+        load_materialized_probability_envelopes,
+    )
+
+    import dataclasses
+
+    def _stored(envelope: ProbabilityEnvelope) -> ProbabilityEnvelope:
+        # The envelope reader requires the lineage to name the timezone.
+        return dataclasses.replace(
+            envelope,
+            lineage={**envelope.lineage, "settlement_timezone": "Asia/Karachi"},
+        )
+
+    conn = _connection()
+    first = _stored(_envelope(
+        checkpoint_id="p0-first", decision_at_utc="2026-07-23T04:00:00Z",
+    ))
+    late = _stored(_envelope(
+        checkpoint_id="p0-late",
+        decision_at_utc="2026-07-23T05:00:00Z",
+        probabilities={"35": 0.10, "36": 0.40, "37": 0.50},
+    ))
+    materialize_probability_bridge(conn, first, created_at_utc="2026-07-23T04:00:00Z")
+    # Stamped 05:00, committed 07:00.
+    materialize_probability_bridge(conn, late, created_at_utc="2026-07-23T07:00:00Z")
+    evaluation = "2026-07-23T06:00:00Z"
+
+    now = load_current_probability_bridge(
+        conn, station_id="RKPK", event_date="2026-07-23", as_of_utc=evaluation,
+    )
+    then = load_current_probability_bridge(
+        conn, station_id="RKPK", event_date="2026-07-23", as_of_utc=evaluation,
+        committed_before_utc=evaluation,
+    )
+    assert now["checkpoint_id"] == "p0-late"
+    assert then["checkpoint_id"] == "p0-first"
+
+    def _checkpoints(**kwargs) -> set[str]:
+        return {
+            item.checkpoint_id
+            for item in load_materialized_probability_envelopes(
+                conn, station_id="RKPK", event_date="2026-07-23",
+                evaluation_at_utc=evaluation,
+                required_probability_pathway=None, **kwargs,
+            )
+        }
+
+    assert _checkpoints() == {"p0-first", "p0-late"}
+    assert _checkpoints(committed_before_utc=evaluation) == {"p0-first"}

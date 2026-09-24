@@ -1448,18 +1448,116 @@ def test_the_opening_compile_hands_in_the_chains_last_acted_identity() -> None:
     """Charters 71(a) and 77 on the forward lane (2026-09-05): the opening
     compile bypassed production_io's entry and never passed the chain's
     last-acted identity or the last decision signature, so the top-up
-    identity gate could not bind and every compile was a decision moment."""
+    identity gate could not bind and every compile was a decision moment.
 
+    Since 2026-09-24 both entries hand the chain's history in through one
+    ``chain_compile_kwargs`` over one chain-state reader.  Checked by
+    behaviour (what the helper returns) and by the call's AST (that the
+    forward lane splats it, with the envelope's stage), not by source text.
+    """
+
+    import ast
     import inspect
+    import textwrap
 
     from bayes_basket_target import p0_preselection
+    from bayes_basket_target.production_io import chain_compile_kwargs
 
-    source = inspect.getsource(p0_preselection.compile_p0_preselection)
-    assert "last_acted_probability_identity=load_last_acted_probability_identity(" in source
-    assert "last_decision_signature=load_last_decision_signature(" in source
+    asked: list[tuple[str, str]] = []
+
+    class _Chain:
+        tables_as_of_utc = None
+
+        def chain_tilt(self, *, station_id, event_date):
+            return 0.5
+
+        def last_acted_probability_identity(self, *, station_id, event_date):
+            return "identity-x"
+
+        def last_decision_signature(self, *, station_id, event_date, stage):
+            asked.append(("signature", stage))
+            return {"stage": stage}
+
+    conn = sqlite3.connect(":memory:")
+    kwargs = chain_compile_kwargs(
+        conn, _Chain(), station_id="ZUUU", event_date="2026-09-18", stage="P0-M",
+    )
+    assert kwargs["last_acted_probability_identity"] == "identity-x"
+    assert kwargs["last_decision_signature"] == {"stage": "P0-M"}
+    assert kwargs["chain_consolidation_tilt"] == 0.5
+    assert {"effective_edge_tables", "off_centre_claim_bands"} <= set(kwargs)
+    assert asked == [("signature", "P0-M")]
+
+    tree = ast.parse(textwrap.dedent(
+        inspect.getsource(p0_preselection.compile_p0_preselection)
+    ))
+    calls = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "compile_production_plan"
+    ]
+    assert len(calls) == 1
+    keywords = {kw.arg: kw.value for kw in calls[0].keywords}
     # The policy stage is P0 by ruling; the signature is the envelope stage's
     # own, because decisions are recorded under it -- read from P0, a P0-M
     # envelope compared two different vectors and every cycle was a moment
     # (2026-09-17 fork sweep).
-    assert 'station_policy_stage="P0"' in source
-    assert "stage=str(envelope.stage)," in source
+    assert isinstance(keywords.get("station_policy_stage"), ast.Constant)
+    assert keywords["station_policy_stage"].value == "P0"
+    splat = keywords.get(None)
+    assert isinstance(splat, ast.Call) and ast.unparse(splat.func) == "chain_compile_kwargs"
+    stage = {kw.arg: kw.value for kw in splat.keywords}.get("stage")
+    assert stage is not None and ast.unparse(stage) == "str(envelope.stage)"
+
+
+def test_a_recorded_forward_book_rebuilds_the_snapshot_the_stream_built() -> None:
+    """A replay and the paper ledger price a forward decision on the book it
+    recorded (user ruling 2026-09-24: 「账本对齐」).  The committed quote row
+    is that book plus the holdings the decision layered on; reading the
+    venue's fields back and layering the same holdings must give the very
+    snapshot the live stream gave -- bucket rows, quote version, economic
+    identity, all of it."""
+
+    from bayes_basket_target.market_materialization import (
+        build_official_ws_snapshot,
+    )
+    from bayes_basket_target.p0_preselection import (
+        _forward_market_snapshot as assemble_forward,
+        forward_book_from_snapshot_row,
+    )
+    from bayes_basket_target.production_worker import (
+        _forward_market_evidence_rows,
+    )
+
+    held = {"holdings": {"yes-38": {"shares": 5.0, "cost_usdc": 2.15}}}
+    for ledger_holdings in (None, held):
+        live = _forward_market_snapshot(ledger_holdings=ledger_holdings)
+        quote_raw, _inventory, _order = _forward_market_evidence_rows(
+            live, quote_freshness_policy_sha256="c" * 64,
+        )
+        row = build_official_ws_snapshot(quote_raw)
+        book = forward_book_from_snapshot_row(row)
+        # The stored row carries the holdings; the book does not.
+        assert all("filled_shares" not in rung for rung in book["rungs"])
+        envelope, _rows, _quotes, _manifest = _ws_inputs(
+            observed_at="2026-07-23T12:00:10Z"
+        )
+        envelope.decision_at_utc = "2026-07-23T12:00:09Z"
+        rebuilt = assemble_forward(
+            sqlite3.connect(":memory:"),
+            envelope=envelope,
+            book=book,
+            evaluation_at_utc="2026-07-23T12:01:00Z",
+            planning_budget_usdc=0.0,
+            ledger_holdings=ledger_holdings,
+        )
+        live.pop("cash_phase_input")
+        assert rebuilt == live
+    # A book of another scope is refused, not priced.
+    envelope.station_id = "KMIA"
+    with pytest.raises(ContractError, match="p0_forward_book_scope_mismatch"):
+        assemble_forward(
+            sqlite3.connect(":memory:"), envelope=envelope, book=book,
+            evaluation_at_utc="2026-07-23T12:01:00Z",
+        )

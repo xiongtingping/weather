@@ -759,31 +759,21 @@ def assert_intents_above_observed_high(
     return tuple(sorted(observed_dead))
 
 
-def commit_production_candidate_atomic(
-    conn: Any,
+def prepare_production_candidate(
     *,
     compiled_plan: Mapping[str, Any],
     market_snapshot: Mapping[str, Any],
-    awc_observation_contract: Mapping[str, Any] | None,
-    truth_observation_revision_content_sha256: str,
-    bound: Mapping[str, Any] | None,
     created_at_utc: str,
-    supersede_prepared_cycle_id: str | None = None,
-    new_decision_scope_key: str | None = None,
-    order_transport: Any = None,
-    live_submit_authorized: bool = False,
-    evaluation_at_utc: str | None = None,
 ) -> dict[str, Any]:
-    """Persist one compiled no-live candidate through the unique M5 boundary.
+    """The decision row and the order intents a commit writes, unwritten.
 
-    This is intentionally explicit and is not called by the read-only
-    compiler.  The caller must provide the already materialized observation
-    and bound identities plus the official-WS market snapshot.  The adapter
-    only converts eligible sizing rows into immutable candidate intents; it
-    never reads legacy order tables, contacts a gateway, or authorizes live
-    submission.  A blocked compile still writes one blocking decision and a
-    zero-value reservation, so the reason remains authoritative in
-    ``auto_trade_decisions``.
+    Everything ``commit_production_candidate_atomic`` decides before it
+    touches the store: the validated plan payload, the stage evidence root
+    and soft bound of an opening stage, the decision details (core, direction,
+    charter 77's signature) and the intents -- rung by rung, with each one's
+    venue fields.  Pure: no connection.  The commit writes exactly this; the
+    paper ledger reads exactly this (user ruling 2026-09-24: 「账本对齐」), so
+    the orders the ledger simulates are the orders production would send.
     """
 
     plan = compiled_plan.get("plan")
@@ -1412,6 +1402,60 @@ def commit_production_candidate_atomic(
             "forward_observation_status": forward_observation_status,
         },
     }
+    return {
+        "blocked": blocked,
+        "decision": decision,
+        "execution_version_vectors": execution_version_vectors,
+        "forward_evidence_binding": forward_evidence_binding,
+        "intents": intents,
+        "plan_payload": plan_payload,
+        "stage_root": stage_root,
+        "stage_soft_bound": stage_soft_bound,
+        "target_deadline": target_deadline,
+    }
+
+
+def commit_production_candidate_atomic(
+    conn: Any,
+    *,
+    compiled_plan: Mapping[str, Any],
+    market_snapshot: Mapping[str, Any],
+    awc_observation_contract: Mapping[str, Any] | None,
+    truth_observation_revision_content_sha256: str,
+    bound: Mapping[str, Any] | None,
+    created_at_utc: str,
+    supersede_prepared_cycle_id: str | None = None,
+    new_decision_scope_key: str | None = None,
+    order_transport: Any = None,
+    live_submit_authorized: bool = False,
+    evaluation_at_utc: str | None = None,
+) -> dict[str, Any]:
+    """Persist one compiled no-live candidate through the unique M5 boundary.
+
+    This is intentionally explicit and is not called by the read-only
+    compiler.  The caller must provide the already materialized observation
+    and bound identities plus the official-WS market snapshot.  The adapter
+    only converts eligible sizing rows into immutable candidate intents; it
+    never reads legacy order tables, contacts a gateway, or authorizes live
+    submission.  A blocked compile still writes one blocking decision and a
+    zero-value reservation, so the reason remains authoritative in
+    ``auto_trade_decisions``.
+    """
+
+    prepared = prepare_production_candidate(
+        compiled_plan=compiled_plan,
+        market_snapshot=market_snapshot,
+        created_at_utc=created_at_utc,
+    )
+    blocked = prepared["blocked"]
+    decision = prepared["decision"]
+    execution_version_vectors = prepared["execution_version_vectors"]
+    forward_evidence_binding = prepared["forward_evidence_binding"]
+    intents = prepared["intents"]
+    plan_payload = prepared["plan_payload"]
+    stage_root = prepared["stage_root"]
+    stage_soft_bound = prepared["stage_soft_bound"]
+    target_deadline = prepared["target_deadline"]
     # Root the chain on the fact already in the store when no caller carried a
     # contract.  The observation-identity lane stages these on its own timer,
     # so the trade names the revision it roots on and the ledger verifies the

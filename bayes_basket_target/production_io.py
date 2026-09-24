@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from .cash_phase import (
     BasketCashPhasePolicyArtifact,
@@ -506,8 +506,15 @@ def load_materialized_probability_envelopes(
     preloaded_validated: Sequence[ProbabilityEnvelope] | None = None,
     validated_out: list[ProbabilityEnvelope] | None = None,
     stages: Sequence[str] | None = None,
+    committed_before_utc: str | None = None,
 ) -> list[ProbabilityEnvelope]:
     """Read and validate every committed checkpoint before as-of routing.
+
+    ``committed_before_utc`` reads the store as it stood at a past decision:
+    an envelope committed at or after it did not exist yet, whatever its own
+    ``decision_at_utc`` says (LTAC 2026-09-25: a P0-M stamped 11:02:35Z was
+    committed 11:09:24Z, after the 11:08:01Z decision).  Production passes
+    None; a replay and the paper ledger pass their chain state's clock.
 
     The SQL query deliberately does not pre-filter on ``decision_at_utc``.
     A malformed committed P0-M/P1 timestamp or payload must be observed and
@@ -572,13 +579,19 @@ def load_materialized_probability_envelopes(
             if stage_filter
             else ""
         )
+        committed_clause = (
+            "" if committed_before_utc is None else " AND created_at<?"
+        )
         for row in conn.execute(
             "SELECT " + ",".join(columns) +
             " FROM basket_probability_envelope"
             " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-            + stage_clause +
+            + stage_clause + committed_clause +
             " ORDER BY created_at,envelope_id",
-            (station_id, event_date, *stage_filter),
+            (
+                station_id, event_date, *stage_filter,
+                *(() if committed_before_utc is None else (str(committed_before_utc),)),
+            ),
         ).fetchall():
             raw = _row_mapping(row, columns)
             envelope_id = str(raw.pop("envelope_id") or "")
@@ -735,6 +748,7 @@ def assert_current_probability_bridge(
     *,
     probability: ProbabilityEnvelope,
     evaluation_at_utc: str,
+    committed_before_utc: str | None = None,
 ) -> dict[str, Any]:
     """Require the selected basket probability to equal materialized p(B)."""
 
@@ -743,6 +757,7 @@ def assert_current_probability_bridge(
         station_id=probability.station_id,
         event_date=probability.event_date,
         as_of_utc=evaluation_at_utc,
+        committed_before_utc=committed_before_utc,
     )
     if bridge["checkpoint_id"] != probability.checkpoint_id:
         raise ContractError(
@@ -1666,6 +1681,19 @@ def account_capital_for_snapshot(
     row = load_account_equity(conn, as_of_utc=evaluation_at_utc)
     if row is None:
         raise ContractError("production_account_equity_stale")
+    return account_capital_from_equity_row(row)
+
+
+def account_capital_from_equity_row(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Charter 141's snapshot fields from one account read.
+
+    ``row`` carries ``equity_usdc``, ``positions_value_usdc``,
+    ``resting_buy_usdc``, ``cash_usdc`` and ``observed_at_utc`` -- the real
+    account's read in production, the simulated account's on paper.  The
+    budget dial and the exposure fraction are production's, read here for
+    both.
+    """
+
     budget: float | None = None
     try:
         from .production import PRODUCTION_EXECUTION_MODE  # noqa: PLC0415
@@ -1703,13 +1731,49 @@ def account_capital_for_snapshot(
     }
 
 
-def _latest_snapshot_row(conn: sqlite3.Connection, table: str, station_id: str, event_date: str, evaluation_at_utc: str) -> dict[str, Any]:
+def _latest_snapshot_row(
+    conn: sqlite3.Connection,
+    table: str,
+    station_id: str,
+    event_date: str,
+    evaluation_at_utc: str,
+    committed_before_utc: str | None = None,
+) -> dict[str, Any]:
+    # ``committed_before_utc``: a replay of a past decision reads the rows
+    # the store held then.  A row observed before the decision but written
+    # after it (a batch commit landing late) was not there to be read.
     cursor = conn.execute(
-        f"SELECT * FROM {table} WHERE station_id=? AND event_date=? AND state='COMMITTED' AND observed_at<=? ORDER BY observed_at DESC, rowid DESC LIMIT 1",
-        (station_id, event_date, evaluation_at_utc),
+        f"SELECT * FROM {table} WHERE station_id=? AND event_date=? AND state='COMMITTED' AND observed_at<=?"
+        + ("" if committed_before_utc is None else " AND created_at<?")
+        + " ORDER BY observed_at DESC, rowid DESC LIMIT 1",
+        (station_id, event_date, evaluation_at_utc)
+        + (() if committed_before_utc is None else (str(committed_before_utc),)),
     ).fetchone()
     if cursor is None:
         raise ContractError(f"{table}_missing")
+    if isinstance(cursor, sqlite3.Row):
+        return {key: cursor[key] for key in cursor.keys()}
+    description = conn.execute(f"SELECT * FROM {table} LIMIT 0").description or ()
+    return {item[0]: cursor[index] for index, item in enumerate(description)}
+
+
+def _snapshot_row_by_version(
+    conn: sqlite3.Connection, table: str, version_column: str, version: str,
+    station_id: str, event_date: str, evaluation_at_utc: str,
+) -> dict[str, Any]:
+    """The committed generation a past decision recorded (a replay's pin)."""
+
+    cursor = conn.execute(
+        f"""
+        SELECT * FROM {table}
+        WHERE station_id=? AND event_date=? AND state='COMMITTED'
+          AND observed_at<=? AND {version_column}=?
+        ORDER BY observed_at DESC, rowid DESC LIMIT 1
+        """,
+        (station_id, event_date, evaluation_at_utc, version),
+    ).fetchone()
+    if cursor is None:
+        raise ContractError(f"{table}_pinned_missing")
     if isinstance(cursor, sqlite3.Row):
         return {key: cursor[key] for key in cursor.keys()}
     description = conn.execute(f"SELECT * FROM {table} LIMIT 0").description or ()
@@ -1821,23 +1885,235 @@ def basket_own_fills(
     )
 
 
+class SsotChainState:
+    """The basket's own history, read from the SSOT: one reader for it all.
+
+    Every compile of a basket decision reads the same seven things about the
+    chain it is deciding for -- what it holds, what it sent, the last
+    decision's core, the last decision signature of the stage, the identity
+    it last bought under, the opener's tilt, and the activated claim tables.
+    They used to be read inline at each entry (the started-day compile and
+    the forward-day preselection), each read "latest".  That is right for
+    production, whose clock is now, and wrong for anything that decides at
+    another clock: a replay of a past decision read the decisions made after
+    it, and the paper ledger could not hand in the chain it had simulated.
+
+    So the reads live here.  ``before_utc`` None is production's reading,
+    unchanged.  A clock answers as a decision at that instant could have:
+    rows at or after it did not exist yet (replay).  The paper ledger
+    supplies its own object with the same methods (user ruling 2026-09-24:
+    「账本对齐」 -- the ledger decides through production's entries, with only
+    the state it simulated swapped in).
+    """
+
+    def __init__(self, conn: sqlite3.Connection, *, before_utc: str | None = None) -> None:
+        self.conn = conn
+        self.before_utc = before_utc
+
+    @property
+    def tables_as_of_utc(self) -> str | None:
+        return self.before_utc
+
+    @property
+    def store_before_utc(self) -> str | None:
+        """The store as it stood: book rows written at or after this are unseen."""
+
+        return self.before_utc
+
+    def holdings(
+        self, *, station_id: str, event_date: str, observed_at_utc: str,
+    ) -> tuple[dict[str, float], dict[str, float]]:
+        at = observed_at_utc
+        if self.before_utc is not None and _aware_utc(
+            "chain_state_before_utc", self.before_utc,
+        ) < _aware_utc("chain_state_observed_at", observed_at_utc):
+            at = self.before_utc
+        return basket_own_fills(
+            self.conn, station_id=station_id, event_date=event_date,
+            observed_at_utc=at,
+        )
+
+    def token_holdings(self, *, station_id: str, event_date: str) -> dict[str, Any]:
+        from .inventory_producer import ledger_holdings_by_token
+
+        return ledger_holdings_by_token(
+            self.conn, station_id=station_id, event_date=event_date,
+            intent_ids=basket_intent_ids(
+                self.conn, station_id=station_id, event_date=event_date,
+            ),
+            updated_before_utc=self.before_utc,
+        )
+
+    def sent_shares(self, *, station_id: str, event_date: str) -> dict[str, float]:
+        return load_chain_sent_shares(
+            self.conn, station_id=station_id, event_date=event_date,
+            before_utc=self.before_utc,
+        )
+
+    def prior_core(
+        self, *, station_id: str, event_date: str, canonical_buckets: Sequence[str],
+    ) -> tuple[tuple[str, ...], str | None]:
+        return _prior_decision_core(
+            self.conn, station_id=station_id, event_date=event_date,
+            canonical_buckets=canonical_buckets, before_utc=self.before_utc,
+        )
+
+    def last_decision_signature(
+        self, *, station_id: str, event_date: str, stage: str,
+    ) -> dict[str, Any] | None:
+        return load_last_decision_signature(
+            self.conn, station_id=station_id, event_date=event_date,
+            stage=stage, before_utc=self.before_utc,
+        )
+
+    def last_acted_probability_identity(
+        self, *, station_id: str, event_date: str,
+    ) -> str | None:
+        return load_last_acted_probability_identity(
+            self.conn, station_id=station_id, event_date=event_date,
+            before_utc=self.before_utc,
+        )
+
+    def chain_tilt(self, *, station_id: str, event_date: str) -> float | None:
+        return load_chain_tilt(
+            self.conn, station_id=station_id, event_date=event_date,
+            before_utc=self.before_utc,
+        )
+
+    # The account the chain sits in.  Production's is the real one: the
+    # equity read, the account's confirmed position as the ceiling on the
+    # basket's own legs, the account's resting orders, the station budget
+    # the ingress wrote on the quote row.  The paper ledger's is the one it
+    # simulated, and it answers these four instead.
+
+    def account_capital(self, *, evaluation_at_utc: str) -> dict[str, Any] | None:
+        return account_capital_for_snapshot(
+            self.conn, evaluation_at_utc=evaluation_at_utc,
+        )
+
+    def book_holdings(
+        self,
+        *,
+        station_id: str,
+        event_date: str,
+        observed_at_utc: str,
+        account_filled: Mapping[str, float],
+    ) -> tuple[dict[str, float], dict[str, float]]:
+        """The basket's own legs, capped by what the account still holds.
+
+        A leg another lane's sell (the 0.99 recycle) has already taken out
+        is not held by anyone.
+        """
+
+        own_filled, own_cost = self.holdings(
+            station_id=station_id, event_date=event_date,
+            observed_at_utc=observed_at_utc,
+        )
+        filled: dict[str, float] = {}
+        cost: dict[str, float] = {}
+        for bucket, held in account_filled.items():
+            mine = float(own_filled.get(str(bucket), 0.0))
+            kept = min(max(float(held or 0.0), 0.0), mine)
+            filled[str(bucket)] = kept
+            cost[str(bucket)] = (
+                float(own_cost.get(str(bucket), 0.0)) * kept / mine
+                if mine > 1e-12 else 0.0
+            )
+        return filled, cost
+
+    def pending_orders(
+        self,
+        *,
+        station_id: str,
+        event_date: str,
+        account_pending: Mapping[str, Any],
+        account_pending_notional: Mapping[str, Any],
+    ) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
+        return account_pending, account_pending_notional
+
+    def remaining_budget_usdc(
+        self, *, station_id: str, event_date: str, recorded_usdc: float,
+    ) -> float:
+        return float(recorded_usdc)
+
+
+def chain_compile_kwargs(
+    conn: sqlite3.Connection,
+    chain_state: Any,
+    *,
+    station_id: str,
+    event_date: str,
+    stage: str,
+) -> dict[str, Any]:
+    """The chain-state arguments of ``compile_production_plan``, for both entries.
+
+    One place for what the started-day compile and the forward-day
+    preselection used to hand in separately (and, twice, one of them forgot:
+    charter 68(c)'s tables and charter 71(a)/77's history on the forward
+    lane).  The claim tables are read as of the chain state's clock.
+    """
+
+    return {
+        "chain_consolidation_tilt": chain_state.chain_tilt(
+            station_id=station_id, event_date=event_date,
+        ),
+        "last_acted_probability_identity": (
+            chain_state.last_acted_probability_identity(
+                station_id=station_id, event_date=event_date,
+            )
+        ),
+        "last_decision_signature": chain_state.last_decision_signature(
+            station_id=station_id, event_date=event_date, stage=str(stage),
+        ),
+        "effective_edge_tables": load_effective_edge_tables(
+            conn, as_of_utc=chain_state.tables_as_of_utc,
+        ),
+        "off_centre_claim_bands": load_off_centre_tables(conn),
+    }
+
+
 def load_production_market_snapshot(
     conn: sqlite3.Connection,
     *,
     station_id: str,
     event_date: str,
     evaluation_at_utc: str,
+    chain_state: Any = None,
+    pinned_versions: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Join quote, confirmed inventory and own order-state generations."""
+    """Join quote, confirmed inventory and own order-state generations.
+
+    ``pinned_versions`` (``quote_version`` / ``inventory_version`` /
+    ``order_state_version``) reads exactly the generations a past decision
+    recorded in its plan.
+    A replay cannot find them by clock: one batch can write two quote rows
+    for a scope under the same observed and created stamps (NZWN and RCSS
+    2026-09-24 03:43:41.882Z), and the decision read the one that existed
+    when it compiled.  Production passes None.
+    """
 
     status = production_ssot_schema_status(conn)
     if not status["target_tables_present"]:
         raise ContractError("production_market_ssot_table_missing")
-    quote = _latest_snapshot_row(conn, "basket_official_ws_snapshot", station_id, event_date, evaluation_at_utc)
-    inventory = _latest_snapshot_row(conn, "basket_confirmed_inventory_snapshot", station_id, event_date, evaluation_at_utc)
-    order_state = _latest_snapshot_row(conn, "basket_order_state_snapshot", station_id, event_date, evaluation_at_utc)
-    account_capital = account_capital_for_snapshot(
-        conn, evaluation_at_utc=evaluation_at_utc,
+    chain_state = chain_state if chain_state is not None else SsotChainState(conn)
+    store_before = getattr(chain_state, "store_before_utc", None)
+    pinned = dict(pinned_versions or {})
+
+    def _row(table: str, version_column: str) -> dict[str, Any]:
+        if pinned.get(version_column):
+            return _snapshot_row_by_version(
+                conn, table, version_column, str(pinned[version_column]),
+                station_id, event_date, evaluation_at_utc,
+            )
+        return _latest_snapshot_row(
+            conn, table, station_id, event_date, evaluation_at_utc, store_before,
+        )
+
+    quote = _row("basket_official_ws_snapshot", "quote_version")
+    inventory = _row("basket_confirmed_inventory_snapshot", "inventory_version")
+    order_state = _row("basket_order_state_snapshot", "order_state_version")
+    account_capital = chain_state.account_capital(
+        evaluation_at_utc=evaluation_at_utc,
     )
     quote_version = str(quote["quote_version"] or "")
     inventory_version = str(quote["inventory_version"] or "")
@@ -1896,24 +2172,17 @@ def load_production_market_snapshot(
     pending_notional = order_json.get("pending_notional_by_bucket") or {}
     if not isinstance(filled_cost, Mapping) or not isinstance(pending_notional, Mapping):
         raise ContractError("production_inventory_order_state_cost_shape_invalid")
-    # The basket sizes, completes and caps itself on its own legs only.  The
-    # account's position is the ceiling: a leg another lane's sell (the 0.99
-    # recycle) has already taken out is not held by anyone.
-    own_filled, own_cost = basket_own_fills(
-        conn, station_id=station_id, event_date=event_date,
+    # The basket sizes, completes and caps itself on its own legs only (the
+    # chain state's reading of the account's position; see ``book_holdings``).
+    filled, filled_cost = chain_state.book_holdings(
+        station_id=station_id, event_date=event_date,
         observed_at_utc=str(inventory["observed_at"]),
+        account_filled={str(b): float(v or 0.0) for b, v in filled.items()},
     )
-    account_filled = {str(b): float(v or 0.0) for b, v in filled.items()}
-    basket_filled: dict[str, float] = {}
-    basket_cost: dict[str, float] = {}
-    for bucket, held in account_filled.items():
-        mine = float(own_filled.get(bucket, 0.0))
-        kept = min(max(held, 0.0), mine)
-        basket_filled[bucket] = kept
-        basket_cost[bucket] = (
-            float(own_cost.get(bucket, 0.0)) * kept / mine if mine > 1e-12 else 0.0
-        )
-    filled, filled_cost = basket_filled, basket_cost
+    pending, pending_notional = chain_state.pending_orders(
+        station_id=station_id, event_date=event_date,
+        account_pending=pending, account_pending_notional=pending_notional,
+    )
     normalized_buckets: list[dict[str, Any]] = []
     for raw in buckets:
         if not isinstance(raw, Mapping):
@@ -2013,9 +2282,13 @@ def load_production_market_snapshot(
             ),
         },
         buckets=normalized_buckets,
-        remaining_budget_usdc=float(quote["remaining_budget_usdc"]),
+        remaining_budget_usdc=chain_state.remaining_budget_usdc(
+            station_id=station_id, event_date=event_date,
+            recorded_usdc=float(quote["remaining_budget_usdc"]),
+        ),
         cash_phase_input=cash_input,
         account_capital=account_capital,
+        chain_state=chain_state,
     )
 
 
@@ -2025,6 +2298,7 @@ def _prior_decision_core(
     station_id: str,
     event_date: str,
     canonical_buckets: Sequence[str],
+    before_utc: str | None = None,
 ) -> tuple[tuple[str, ...], str | None]:
     """The core buckets and direction the station-day's last decision recorded.
 
@@ -2034,8 +2308,7 @@ def _prior_decision_core(
     record), read by both snapshot builders through the assembler.
     """
 
-    current_core_buckets: tuple[str, ...] = ()
-    current_direction: str | None = None
+    prior_details: Mapping[str, Any] | None = None
     decision_table_present = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' "
         "AND name='auto_trade_decisions'"
@@ -2045,8 +2318,10 @@ def _prior_decision_core(
             "SELECT details_json FROM auto_trade_decisions "
             "WHERE station_id=? AND event_date=? AND strategy_lane='basket' "
             "AND " + basket_plan_sql("plan_id") + " "
-            "ORDER BY created_at DESC,rowid DESC LIMIT 1",
-            (station_id, event_date),
+            + ("" if before_utc is None else "AND created_at<? ")
+            + "ORDER BY created_at DESC,rowid DESC LIMIT 1",
+            (station_id, event_date)
+            + (() if before_utc is None else (str(before_utc),)),
         ).fetchone()
         if prior_decision is not None:
             prior_decision_fields = _row_mapping(
@@ -2058,30 +2333,44 @@ def _prior_decision_core(
                 prior_decision_fields["details_json"],
                 mapping=True,
             )
-            raw_core = prior_details.get("core_buckets")
-            if raw_core is not None:
-                if (
-                    not isinstance(raw_core, list)
-                    or any(
-                        not isinstance(item, str) or not item.strip()
-                        for item in raw_core
-                    )
-                    or len(raw_core) != len(set(raw_core))
-                ):
-                    raise ContractError(
-                        "production_prior_core_buckets_invalid"
-                    )
-                current_core_buckets = tuple(raw_core)
-            raw_direction = prior_details.get("direction")
-            if raw_direction is not None:
-                current_direction = str(raw_direction).strip().upper()
-                if current_direction not in {"UP", "DOWN", "NEUTRAL"}:
-                    raise ContractError(
-                        "production_prior_direction_invalid"
-                    )
-    # Verify the immutable quote record before adding the joined inventory and
-    # order-state projections.  The latter are derived fields and must not be
-    # fed back into the quote content hash.
+    return prior_core_from_details(prior_details, canonical_buckets)
+
+
+def prior_core_from_details(
+    prior_details: Mapping[str, Any] | None,
+    canonical_buckets: Sequence[str],
+) -> tuple[tuple[str, ...], str | None]:
+    """The core and direction one recorded decision's details carry, validated.
+
+    The details are the ones the atomic commit writes on the decision row
+    (``prepare_production_candidate``); the SSOT reader hands in the last
+    row's, the paper ledger the last decision it made.
+    """
+
+    current_core_buckets: tuple[str, ...] = ()
+    current_direction: str | None = None
+    if prior_details is not None:
+        raw_core = prior_details.get("core_buckets")
+        if raw_core is not None:
+            if (
+                not isinstance(raw_core, list)
+                or any(
+                    not isinstance(item, str) or not item.strip()
+                    for item in raw_core
+                )
+                or len(raw_core) != len(set(raw_core))
+            ):
+                raise ContractError(
+                    "production_prior_core_buckets_invalid"
+                )
+            current_core_buckets = tuple(raw_core)
+        raw_direction = prior_details.get("direction")
+        if raw_direction is not None:
+            current_direction = str(raw_direction).strip().upper()
+            if current_direction not in {"UP", "DOWN", "NEUTRAL"}:
+                raise ContractError(
+                    "production_prior_direction_invalid"
+                )
     canonical_buckets = tuple(str(bucket) for bucket in canonical_buckets)
     if current_core_buckets:
         ordinal_by_bucket = {
@@ -2123,6 +2412,7 @@ def assemble_market_snapshot(
     cash_phase_input: Mapping[str, Any] | None,
     account_capital: Mapping[str, Any] | None,
     extra: Mapping[str, Any] | None = None,
+    chain_state: Any = None,
 ) -> dict[str, Any]:
     """The one assembly of a market snapshot, whatever the book was read from.
 
@@ -2153,8 +2443,11 @@ def assemble_market_snapshot(
 
     rows = [dict(item) for item in buckets]
     canonical = [str(item.get("bucket") or "") for item in rows]
-    core_buckets, direction = _prior_decision_core(
-        conn, station_id=station_id, event_date=event_date,
+    # The chain's own history comes from one reader (``SsotChainState``
+    # unless a replay or the paper ledger hands in its own).
+    chain_state = chain_state if chain_state is not None else SsotChainState(conn)
+    core_buckets, direction = chain_state.prior_core(
+        station_id=station_id, event_date=event_date,
         canonical_buckets=canonical,
     )
     budget = float(remaining_budget_usdc)
@@ -2173,6 +2466,9 @@ def assemble_market_snapshot(
         **chain_send_history_fields(
             conn, station_id=station_id, event_date=event_date,
             buckets=canonical,
+            sent=chain_state.sent_shares(
+                station_id=station_id, event_date=event_date,
+            ),
         ),
         "buckets": rows,
         **(
@@ -2222,6 +2518,7 @@ def chain_send_history_fields(
     station_id: str,
     event_date: str,
     buckets: Sequence[str],
+    sent: Mapping[str, float] | None = None,
 ) -> dict[str, Any]:
     """The two snapshot fields that carry the chain's send history.
 
@@ -2236,9 +2533,10 @@ def chain_send_history_fields(
     on the 08:42Z cycle, four buying legs nobody had sent.
     """
 
-    sent = load_chain_sent_shares(
-        conn, station_id=station_id, event_date=event_date,
-    )
+    if sent is None:
+        sent = load_chain_sent_shares(
+            conn, station_id=station_id, event_date=event_date,
+        )
     seat = [str(bucket) for bucket in buckets if str(bucket) in sent]
     if not seat:
         return {}
@@ -2504,6 +2802,7 @@ def load_last_decision_signature(
     station_id: str,
     event_date: str,
     stage: str,
+    before_utc: str | None = None,
 ) -> dict[str, Any] | None:
     """Charter 77: the signature the scope's last recorded decision
     of this stage carried -- served probability identity and the day's
@@ -2531,20 +2830,77 @@ def load_last_decision_signature(
     ).fetchone() is not None
     if not present:
         return None
+    # ``before_utc``: the history a decision at that clock could see
+    # (replay and paper ledger); production asks with None.
     ends_now = load_order_end_count(
         conn, station_id=station_id, event_date=event_date,
+        observed_at_or_before=before_utc,
     )
-    for (details_json,) in conn.execute(
-        "SELECT details_json FROM auto_trade_decisions "
-        "WHERE station_id=? AND event_date=? AND strategy_lane='basket' "
-        "AND " + basket_plan_sql("plan_id") + " "
-        "ORDER BY created_at DESC,rowid DESC LIMIT 24",
-        (station_id, event_date),
-    ):
-        try:
-            details = json.loads(details_json or "{}")
-        except (TypeError, ValueError):
-            continue
+    def _details_newest_first() -> Iterator[Mapping[str, Any]]:
+        for (details_json,) in conn.execute(
+            "SELECT details_json FROM auto_trade_decisions "
+            "WHERE station_id=? AND event_date=? AND strategy_lane='basket' "
+            "AND " + basket_plan_sql("plan_id") + " "
+            + ("" if before_utc is None else "AND created_at<? ")
+            + "ORDER BY created_at DESC,rowid DESC LIMIT 24",
+            (station_id, event_date)
+            + (() if before_utc is None else (str(before_utc),)),
+        ):
+            try:
+                details = json.loads(details_json or "{}")
+            except (TypeError, ValueError):
+                continue
+            if isinstance(details, Mapping):
+                yield details
+
+    def _ends_at_last_moment() -> int:
+        decided = conn.execute(
+            "SELECT MAX(created_at) FROM auto_trade_decisions"
+            " WHERE station_id=? AND event_date=?"
+            " AND strategy_lane='basket'"
+            " AND " + basket_plan_sql("plan_id") +
+            " AND json_extract(details_json,"
+            "'$.decision_signature.stage')=?"
+            " AND json_extract(details_json,"
+            "'$.decision_signature.is_decision_moment')=1",
+            (station_id, event_date, str(stage)),
+        ).fetchone()
+        recorded = (
+            load_order_end_count(
+                conn, station_id=station_id, event_date=event_date,
+                observed_at_or_before=str(decided[0]),
+            )
+            if decided is not None and decided[0]
+            else 0
+        )
+        return int(recorded or 0)
+
+    return select_last_decision_signature(
+        _details_newest_first(),
+        stage=stage,
+        ends_now=ends_now,
+        ends_at_last_moment=_ends_at_last_moment,
+    )
+
+
+def select_last_decision_signature(
+    details_newest_first: Iterable[Mapping[str, Any]],
+    *,
+    stage: str,
+    ends_now: int | None,
+    ends_at_last_moment: Callable[[], int],
+) -> dict[str, Any] | None:
+    """Charter 77's comparison base, from recorded decision details.
+
+    The newest decision of ``stage`` that carried a served identity, with
+    charter 135 (一)'s ``current_order_ends`` attached (see
+    ``load_last_decision_signature``).  The SSOT reader hands in the rows'
+    details newest first; the paper ledger hands in the decisions it made.
+    ``ends_at_last_moment`` is asked only for a signature recorded before
+    the order-end arm existed.
+    """
+
+    for details in details_newest_first:
         signature = details.get("decision_signature")
         if not isinstance(signature, Mapping):
             continue
@@ -2556,26 +2912,7 @@ def load_last_decision_signature(
         if ends_now is not None:
             out["current_order_ends"] = order_end_marker_v1(ends_now)
             if out.get("order_ends") is None:
-                decided = conn.execute(
-                    "SELECT MAX(created_at) FROM auto_trade_decisions"
-                    " WHERE station_id=? AND event_date=?"
-                    " AND strategy_lane='basket'"
-                    " AND " + basket_plan_sql("plan_id") +
-                    " AND json_extract(details_json,"
-                    "'$.decision_signature.stage')=?"
-                    " AND json_extract(details_json,"
-                    "'$.decision_signature.is_decision_moment')=1",
-                    (station_id, event_date, str(stage)),
-                ).fetchone()
-                recorded = (
-                    load_order_end_count(
-                        conn, station_id=station_id, event_date=event_date,
-                        observed_at_or_before=str(decided[0]),
-                    )
-                    if decided is not None and decided[0]
-                    else 0
-                )
-                out["order_ends"] = order_end_marker_v1(recorded or 0)
+                out["order_ends"] = order_end_marker_v1(ends_at_last_moment())
         return out
     if ends_now is None:
         return None
@@ -2596,6 +2933,8 @@ def compile_production_cycle_from_ssot(
     cash_phase_authority_manifest: CashPhaseAuthorityManifest | Mapping[str, Any] | None = None,
     base_policy: Mapping[str, Any] | None = None,
     observed_running_high_c: float | None = None,
+    chain_state: Any = None,
+    pinned_versions: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Compile one real-SSOT candidate while preserving the no-live boundary.
 
@@ -2642,6 +2981,7 @@ def compile_production_cycle_from_ssot(
             else None
         ),
         expected_source_lane=expected_source_lane,
+        committed_before_utc=getattr(chain_state, "store_before_utc", None),
     )
     current_envelope = select_current_stage(
         envelopes,
@@ -2651,6 +2991,7 @@ def compile_production_cycle_from_ssot(
         conn,
         probability=current_envelope,
         evaluation_at_utc=evaluation_at_utc,
+        committed_before_utc=getattr(chain_state, "store_before_utc", None),
     )
     assert_formal_probability_model_authority(
         envelopes,
@@ -2667,8 +3008,11 @@ def compile_production_cycle_from_ssot(
         settlement_timezone=str(current_envelope.settlement_timezone),
         evaluation_at_utc=evaluation_at_utc,
     )
+    chain_state = chain_state if chain_state is not None else SsotChainState(conn)
     market_snapshot = load_production_market_snapshot(
-        conn, station_id=station_id, event_date=event_date, evaluation_at_utc=evaluation_at_utc
+        conn, station_id=station_id, event_date=event_date,
+        evaluation_at_utc=evaluation_at_utc, chain_state=chain_state,
+        pinned_versions=pinned_versions,
     )
     # Charter 125: the observed-high floor travels with the book it is going
     # to be applied against, so the snapshot the writer boundary receives is
@@ -2743,29 +3087,12 @@ def compile_production_cycle_from_ssot(
         evaluation_at_utc=evaluation_at_utc,
     )
     plan = compile_production_plan(
-        # The opener's recorded stake factor, read-only; None until a P0
-        # decision authorizes and the worker records it, which keeps this
-        # module inside its never-writes contract.
-        chain_consolidation_tilt=load_chain_tilt(
-            conn, station_id=station_id, event_date=event_date,
-        ),
-        # Charter 71(a): the probability the chain last bought under.
-        last_acted_probability_identity=(
-            load_last_acted_probability_identity(
-                conn, station_id=station_id, event_date=event_date,
-            )
-        ),
-        # Charter 77: the last recorded decision of this stage.
-        last_decision_signature=load_last_decision_signature(
-            conn,
-            station_id=station_id,
-            event_date=event_date,
+        # The chain's history and the claim tables (charters 68(c), 71(a),
+        # 77 and the opener's tilt), from the one chain-state reader.
+        **chain_compile_kwargs(
+            conn, chain_state, station_id=station_id, event_date=event_date,
             stage=current_envelope.stage,
         ),
-        # Charter 68(c): the lambda tables the store activated, one per
-        # stage, as of now.  None per scope until its first activation.
-        effective_edge_tables=load_effective_edge_tables(conn),
-        off_centre_claim_bands=load_off_centre_tables(conn),
         # Arm B (2026-09-06): the belief and book H hours before this
         # compile, for the convergence claim lift (shadow by default).
         convergence_evidence=load_convergence_evidence(
@@ -2901,6 +3228,8 @@ def load_post_fill_recompute_requests(
 
 __all__ = [
     "BASKET_PLAN_ID_PREFIX",
+    "SsotChainState",
+    "chain_compile_kwargs",
     "basket_intent_ids",
     "basket_own_fills",
     "basket_plan_sql",

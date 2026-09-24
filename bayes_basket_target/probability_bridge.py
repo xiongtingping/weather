@@ -23,7 +23,7 @@ from datetime import datetime
 from typing import Any
 
 from .atomic_ledger import ledger_span
-from .contracts import ContractError, ProbabilityEnvelope, canonical_json, content_sha256, timestamp_lte
+from .contracts import ContractError, ProbabilityEnvelope, canonical_json, content_sha256, timestamp_lt, timestamp_lte
 from .materialization import (
     MATERIALIZATION_SCHEMA,
     insert_probability_envelope,
@@ -438,6 +438,7 @@ def _authoritative_history(
     station_id: str,
     event_date: str,
     as_of_utc: str | None,
+    committed_before_utc: str | None = None,
 ) -> Mapping[str, Any]:
     """The current pointer, without reading every envelope to find it.
 
@@ -463,6 +464,11 @@ def _authoritative_history(
         if as_of_utc is not None
         else (station_id, event_date)
     )
+    # A replay's store clock: a history committed at or after it did not
+    # exist yet, whatever its decision stamp (see load_current_probability_bridge).
+    if committed_before_utc is not None:
+        where_as_of += " AND created_at_utc<?"
+        parameters = parameters + (str(committed_before_utc),)
     with ledger_span("bridge_history_rank"):
         ranking = [
             {
@@ -564,6 +570,7 @@ def _validate_latest_pointer(
     event_date: str,
     as_of_utc: str,
     authority: Mapping[str, Any],
+    committed_before_utc: str | None = None,
 ) -> None:
     """Reject a current-pointer drift instead of recovering from history."""
 
@@ -589,6 +596,12 @@ def _validate_latest_pointer(
         # A future latest pointer is expected in historical replay.  History
         # remains the as-of authority, but its self-hash must still validate.
         return
+    if committed_before_utc is not None and not timestamp_lt(
+        str(row[9]), str(committed_before_utc),
+    ):
+        # The same, by the store's clock: a pointer moved at or after the
+        # replayed decision points at a history that decision never saw.
+        return
     expected = authority["envelope"]
     if (
         str(row[1]) != authority["history_id"]
@@ -606,8 +619,17 @@ def load_current_probability_bridge(
     station_id: str,
     event_date: str,
     as_of_utc: str,
+    committed_before_utc: str | None = None,
 ) -> dict[str, Any]:
-    """Resolve the single authority without downgrading malformed/stale P1."""
+    """Resolve the single authority without downgrading malformed/stale P1.
+
+    ``committed_before_utc`` answers as the store stood at a past decision
+    (a replay, the paper ledger): a history committed at or after it did not
+    exist yet, even when its ``decision_at_utc`` is earlier -- a P0-M is
+    stamped with its TAF's clock and committed minutes later (LTAC
+    2026-09-25: stamped 11:02:35Z, committed 11:09:24Z, after an 11:08:01Z
+    decision).  Production passes None.
+    """
 
     if not probability_bridge_schema_status(conn)["ok"]:
         raise ContractError("probability_bridge_schema_missing")
@@ -617,6 +639,7 @@ def load_current_probability_bridge(
         station_id=_text("xsb_station_id", station_id),
         event_date=_text("xsb_event_date", event_date),
         as_of_utc=as_of_utc,
+        committed_before_utc=committed_before_utc,
     )
     _validate_latest_pointer(
         conn,
@@ -624,6 +647,7 @@ def load_current_probability_bridge(
         event_date=event_date,
         as_of_utc=as_of_utc,
         authority=history,
+        committed_before_utc=committed_before_utc,
     )
     envelope = history["envelope"]
     # This check intentionally happens after stage authority is selected.  A

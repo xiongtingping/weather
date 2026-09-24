@@ -127,7 +127,8 @@ def test_the_allocator_reads_the_seated_belief() -> None:
     tree = ast.parse(WORKER_SRC)
     fn = next(
         n for n in ast.walk(tree)
-        if isinstance(n, ast.FunctionDef) and n.name == "_station_edge_evidence"
+        # The edge rule the worker and the paper ledger share (2026-09-24).
+        if isinstance(n, ast.FunctionDef) and n.name == "station_edge_from_plan"
     )
     assigned = [
         n.value for n in ast.walk(fn)

@@ -569,7 +569,9 @@ def test_the_support_width_bounds_match_productions_policy_defaults() -> None:
     _io = (_root / "bayes_basket_target" / "production_io.py").read_text()
     _rt = (_root / "bayes_basket_target" / "delta_v2_runtime.py").read_text()
     _lg = (_root / "scripts" / "paper_trading_ledger.py").read_text()
-    assert "effective_edge_tables=load_effective_edge_tables(conn)" in _io
+    # Production reads them through the one chain-state reader, as of that
+    # reader's clock (None: now).
+    assert '"effective_edge_tables": load_effective_edge_tables(\n            conn, as_of_utc=chain_state.tables_as_of_utc,' in _io
     assert "effective_edge_lambda_from_tables(" in _rt
     assert "_effective_edge_tables_as_of(" in _lg
     assert L.effective_edge_lambda_from_tables is (

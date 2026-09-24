@@ -264,7 +264,9 @@ def test_the_p0_lane_folds_after_its_own_tick_derivation() -> None:
     source = (ROOT / "bayes_basket_target" / "p0_preselection.py").read_text(encoding="utf-8")
     func = next(
         node for node in ast.walk(ast.parse(source))
-        if isinstance(node, ast.FunctionDef) and node.name == "_market_snapshot"
+        # The stream half of the forward builder (split 2026-09-24 so a
+        # recorded book reaches the same assembler).
+        if isinstance(node, ast.FunctionDef) and node.name == "forward_book_from_ws"
     )
     calls = [n for n in ast.walk(func) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)]
     folds = [n for n in calls if n.func.id == "fold_depth_tail"]
