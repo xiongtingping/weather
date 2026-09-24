@@ -212,7 +212,9 @@ def test_a_read_yields_the_wal_back_mid_statement(paged, monkeypatch) -> None:
     assert kept["value"]["value"] == 200000
 
 
-def test_a_collector_that_swallows_the_interrupt_is_not_cached(paged, monkeypatch) -> None:
+def test_a_collector_that_swallows_the_interrupt_is_never_cached(paged, monkeypatch) -> None:
+    """With no page to serve instead, the run steps aside -- it never shows a half-read."""
+
     conn = sqlite3.connect(":memory:")
     conn.set_progress_handler(C._render_yield_check, 1_000)
     monkeypatch.setattr(C, "RENDER_MAX_WAL_BYTES", 1024)
@@ -229,28 +231,82 @@ def test_a_collector_that_swallows_the_interrupt_is_not_cached(paged, monkeypatc
             return {"available": False}
         return {"available": True}
 
-    value = C._cached_section("analytics", degrading, conn)
-    assert value == {"available": False}
+    with pytest.raises(C.RenderYielded):
+        C._cached_section("analytics", degrading, conn)
     assert not (paged / "sections" / "analytics.json").exists(), (
         "a degraded value must never become a page"
     )
-    assert C._SECTION_CACHE_LOG["analytics"]["yielded"] is True
 
 
-def test_the_lamps_are_never_interrupted(paged, monkeypatch) -> None:
+def _long_count(connection):
+    return connection.execute(
+        "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n"
+        " WHERE i < 50000000) SELECT count(*) FROM n"
+    ).fetchone()[0]
+
+
+def test_an_every_run_section_never_starts_reading_past_the_line(paged, monkeypatch) -> None:
+    """02:12Z: ``members`` read 254 s beside a truncate that came back busy."""
+
     monkeypatch.setattr(C, "RENDER_MAX_WAL_BYTES", 1024)
     monkeypatch.setattr(C, "LIVE_SECTION_GAP_CAP_SEC", 0.0)
     _wal(paged, 4096)
+    calls: list[str] = []
+    with pytest.raises(C.RenderYielded, match="members: wal 4096"):
+        C._cached_section("members", _collector(calls), None)
+    assert calls == [], "not one read past the line"
+
+
+def test_an_every_run_section_gives_its_read_up_at_the_line(paged, monkeypatch) -> None:
     conn = sqlite3.connect(":memory:")
     conn.set_progress_handler(C._render_yield_check, 1_000)
+    monkeypatch.setattr(C, "RENDER_MAX_WAL_BYTES", 1024)
 
-    def lamp(connection):
-        return connection.execute(
-            "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n"
-            " WHERE i < 200000) SELECT count(*) FROM n"
-        ).fetchone()[0]
+    def members(connection):
+        _wal(paged, 4096)  # crosses mid-read
+        C._PAGED_RUN["wal_checked"] = 0.0
+        return _long_count(connection)
 
-    assert C._cached_section("hosted_sweeps", lamp, conn) == 200000
+    with pytest.raises(C.RenderYielded, match="members: interrupted"):
+        C._cached_section("members", members, conn)
+    assert C._PAGED_RUN["armed"] is False
+
+
+def test_a_cycle_in_flight_only_delays_an_every_run_section(paged, monkeypatch) -> None:
+    """Disk contention is tolerable for a section with nothing else to serve."""
+
+    monkeypatch.setattr(C, "LIVE_SECTION_GAP_CAP_SEC", 0.0)
+    _status(paged, production_inflight={"elapsed_sec": 30})
+    calls: list[str] = []
+    C._cached_section("members", _collector(calls), None)
+    assert calls == ["v"]
+
+
+def test_a_paged_section_with_no_page_yields_the_run_to_an_oversized_wal(paged, monkeypatch) -> None:
+    monkeypatch.setattr(C, "RENDER_MAX_WAL_BYTES", 1024)
+    monkeypatch.setattr(C, "LIVE_SECTION_GAP_CAP_SEC", 0.0)
+    _wal(paged, 4096)
+    calls: list[str] = []
+    with pytest.raises(C.RenderYielded, match="analytics: wal 4096"):
+        C._cached_section("analytics", _collector(calls), None)
+    assert calls == []
+
+
+def test_a_yielded_run_keeps_the_page_and_exits_clean(tmp_path, monkeypatch) -> None:
+    db = tmp_path / "ssot.db"
+    sqlite3.connect(db).close()
+    out = tmp_path / "page.html"
+
+    def yielding(_db):
+        raise C.RenderYielded("members: wal 4096")
+
+    monkeypatch.setattr(C, "build_payload", yielding)
+    # main() sets these globals; registered first so teardown restores them.
+    monkeypatch.setattr(C, "PAGED_RENDER", C.PAGED_RENDER)
+    monkeypatch.setattr(C, "SECTION_CACHE_ENABLED", C.SECTION_CACHE_ENABLED)
+    monkeypatch.setattr(sys, "argv", ["calibration_dashboard.py", "--db", str(db), "--html-out", str(out)])
+    assert C.main() == 0
+    assert not out.exists(), "a yielded run writes nothing; the previous page stays"
 
 
 def test_a_section_fed_by_other_sections_is_keyed_on_them(paged) -> None:

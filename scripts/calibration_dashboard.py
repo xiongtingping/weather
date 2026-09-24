@@ -16353,6 +16353,20 @@ RENDER_STATUS_FRESH_SEC = 180.0
 _PAGED_RUN: dict[str, Any] = {}
 
 
+class RenderYielded(Exception):
+    """The run stepped aside for the writer: the WAL crossed the line and
+    the section in hand has no page to serve instead.  The page on disk is
+    kept; the next interval is the retry (and starts only under the line).
+
+    2026-09-24 02:12Z, the first paged run: ``members`` -- an every-run
+    section, then exempt from yielding on the belief that such sections read
+    for seconds -- read for 254 s while the post-recovery catch-up grew the
+    WAL by ~700 MB, and the resident's 02:19:30Z truncate came back busy
+    with 17,533 of 180,558 frames backfilled.  Production was fail-closed
+    again from 02:27Z.  Nothing reads past the line now.
+    """
+
+
 def _paged_run_start(db: Path) -> None:
     _PAGED_RUN.clear()
     _PAGED_RUN.update({
@@ -16440,8 +16454,8 @@ def _production_gap_blocker() -> str | None:
     return None
 
 
-def _await_production_gap(name: str, cap_sec: float) -> bool:
-    """Wait for a production gap, at most ``cap_sec``; True when found."""
+def _await_production_gap(name: str, cap_sec: float) -> str | None:
+    """Wait for a production gap, at most ``cap_sec``; the blocker left, if any."""
 
     waited = 0.0
     blocker = _production_gap_blocker()
@@ -16461,14 +16475,14 @@ def _await_production_gap(name: str, cap_sec: float) -> bool:
             file=sys.stderr,
             flush=True,
         )
-    return blocker is None
+    return blocker
 
 
 def _render_yield_check() -> int:
-    """Progress handler: interrupt a paged read once the WAL crosses the line.
+    """Progress handler: interrupt a render read once the WAL crosses the line.
 
-    Checked at most once a second.  Only while a paged section is armed:
-    the lamps are seconds of reading and are never interrupted.
+    Checked at most once a second, and only while a section is armed --
+    every section read under a paged render is.
     """
 
     if not _PAGED_RUN or not _PAGED_RUN.get("armed"):
@@ -16564,14 +16578,33 @@ def _cached_section(
                 LIVE_SECTION_GAP_CAP_SEC, float(_PAGED_RUN["every_run_wait_left"])
             )
             before = float(_PAGED_RUN["gap_wait_sec"])
-            _await_production_gap(name, allowance)
+            blocker = _await_production_gap(name, allowance)
             _PAGED_RUN["every_run_wait_left"] = max(
                 0.0,
                 float(_PAGED_RUN["every_run_wait_left"])
                 - (float(_PAGED_RUN["gap_wait_sec"]) - before),
             )
+            # A cycle in flight is only disk contention, and this section
+            # has nothing else to serve; a WAL past the line is the writer
+            # waiting on readers, and this run is one.
+            if blocker is not None and blocker.startswith("wal"):
+                raise RenderYielded(f"{name}: {blocker}")
+            _PAGED_RUN["armed"] = True
+            _PAGED_RUN["yielded"] = False
         started = time.perf_counter()
-        value = collector(*args, **kwargs)
+        try:
+            value = collector(*args, **kwargs)
+        except sqlite3.OperationalError as exc:
+            if paged and _PAGED_RUN["yielded"]:
+                raise RenderYielded(f"{name}: interrupted, WAL past the line") from exc
+            raise
+        finally:
+            if paged:
+                _PAGED_RUN["armed"] = False
+        if paged and _PAGED_RUN["yielded"]:
+            # Caught the interrupt itself and returned what it had: a lamp
+            # or a banner input read short must not be shown as fresh.
+            raise RenderYielded(f"{name}: interrupted, WAL past the line")
         _SECTION_CACHE_LOG[name] = {
             "build_sec": round(time.perf_counter() - started, 1),
             "reused": False,
@@ -16617,10 +16650,13 @@ def _cached_section(
         if page is not None and expected > remaining:
             return _serve_stale_page(name, page, ttl, page_age, "budget")
         # Without a page there is nothing else to serve: wait a lamp's
-        # while at most, then read.
+        # while at most, then read -- unless the WAL is what is in the way.
         cap = remaining if page is not None else LIVE_SECTION_GAP_CAP_SEC
-        if not _await_production_gap(name, max(0.0, cap)) and page is not None:
+        blocker = _await_production_gap(name, max(0.0, cap))
+        if blocker is not None and page is not None:
             return _serve_stale_page(name, page, ttl, page_age, "no gap")
+        if blocker is not None and blocker.startswith("wal"):
+            raise RenderYielded(f"{name}: {blocker}")
         _PAGED_RUN["armed"] = True
         _PAGED_RUN["yielded"] = False
         # Stamped when the read starts, not when the section was reached:
@@ -16629,10 +16665,12 @@ def _cached_section(
     started = time.perf_counter()
     try:
         value = collector(*args, **kwargs)
-    except sqlite3.OperationalError:
-        if paged and _PAGED_RUN["yielded"] and page is not None:
+    except sqlite3.OperationalError as exc:
+        if paged and _PAGED_RUN["yielded"]:
             _PAGED_RUN["yields"] = int(_PAGED_RUN["yields"]) + 1
-            return _serve_stale_page(name, page, ttl, page_age, "yielded")
+            if page is not None:
+                return _serve_stale_page(name, page, ttl, page_age, "yielded")
+            raise RenderYielded(f"{name}: interrupted, WAL past the line") from exc
         raise
     finally:
         if paged:
@@ -16645,13 +16683,7 @@ def _cached_section(
         _PAGED_RUN["yields"] = int(_PAGED_RUN["yields"]) + 1
         if page is not None:
             return _serve_stale_page(name, page, ttl, page_age, "yielded")
-        _SECTION_CACHE_LOG[name] = {
-            "build_sec": round(elapsed, 1),
-            "reused": False,
-            "cached": False,
-            "yielded": True,
-        }
-        return value
+        raise RenderYielded(f"{name}: interrupted, WAL past the line")
     stamp = now.isoformat().replace("+00:00", "Z")
     _SECTION_CACHE_LOG[name] = {
         "computed_at_utc": stamp,
@@ -26743,7 +26775,14 @@ def main() -> int:
         # template means neither happens, and the payload stays behind for
         # the watch to redraw on the next save.
         started_at = time.time()
-        payload = build_payload(database)
+        try:
+            payload = build_payload(database)
+        except RenderYielded as yielded:
+            print(
+                f"render yielded to the writer ({yielded}); the page keeps"
+                " the previous render"
+            )
+            return 0
         target = args.html_out
         if not _save_payload(target, payload, started_at):
             print(
