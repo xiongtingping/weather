@@ -622,6 +622,8 @@ def test_an_open_station_days_slug_is_always_read(paged) -> None:
     rows = [{"station_id": "KLGA", "event_date": today}]
     C._live_market_slugs(conn, rows, archive=paged / "none.db")
     conn.execute("UPDATE basket_target_market_registry SET slug='relisted'")
+    C._PAGED_RUN.clear()
+    C._paged_run_start(paged / "ssot.db")  # the next run
     assert C._live_market_slugs(conn, rows, archive=paged / "none.db")[f"KLGA|{today}"] == "relisted"
 
 
@@ -779,3 +781,25 @@ def test_a_closed_station_day_with_no_listed_market_is_not_asked_again(paged) ->
     assert C._live_market_slugs(conn, rows, archive=paged / "none.db") == {}
     kept = json.loads((paged / "sections" / C.RENDER_CLOSED_SLUGS).read_text())
     assert kept == {"KLGA|2026-09-01": ""}
+
+
+def test_an_open_station_days_slug_is_read_once_per_run(paged) -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_target_market_registry (station_id TEXT,"
+        " event_date TEXT, slug TEXT, refreshed_at TEXT)"
+    )
+    today = C._now().strftime("%Y-%m-%d")
+    conn.execute(
+        "INSERT INTO basket_target_market_registry VALUES (?,?,?,?)",
+        ("KLGA", today, "first", "2026-09-01T00:00:00Z"),
+    )
+    rows = [{"station_id": "KLGA", "event_date": today}]
+    C._live_market_slugs(conn, rows, archive=paged / "none.db")
+    conn.execute("UPDATE basket_target_market_registry SET slug='relisted'")
+    assert C._live_market_slugs(conn, rows, archive=paged / "none.db")[f"KLGA|{today}"] == "first"
+    C._PAGED_RUN.clear()
+    C._paged_run_start(paged / "ssot.db")
+    assert C._live_market_slugs(conn, rows, archive=paged / "none.db")[f"KLGA|{today}"] == "relisted", (
+        "the next run reads an open day again"
+    )

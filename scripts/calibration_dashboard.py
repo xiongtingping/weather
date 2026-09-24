@@ -7495,6 +7495,10 @@ def _live_market_slugs(
     # registry lists -- those were re-asked of both on every render (40
     # lookups, 8 s of live_readiness on 2026-09-24).
     kept = _load_closed_slugs() if _PAGED_RUN else {}
+    # ... and within one paged run, the open days too: live_days and the
+    # order listing ask for the same station-days (2 x 40 lookups).
+    if _PAGED_RUN:
+        kept = {**kept, **_PAGED_RUN.setdefault("slugs", {})}
     for station, day in scopes:
         key = f"{station}|{day}"
         if kept.get(key):
@@ -7536,11 +7540,15 @@ def _live_market_slugs(
         except sqlite3.Error:
             pass
     if _PAGED_RUN:
-        _save_closed_slugs({
+        answered = {
             f"{station}|{day}": out.get(f"{station}|{day}", "")
             for station, day in scopes
-            if day <= closed_through
-        }, kept)
+        }
+        _PAGED_RUN.setdefault("slugs", {}).update(answered)
+        _save_closed_slugs({
+            key: slug for key, slug in answered.items()
+            if key.split("|", 1)[1] <= closed_through
+        }, _load_closed_slugs())
     return out
 
 
@@ -9584,7 +9592,7 @@ def collect_center_landing(
             SKEW_STATE_RIGHT,
             SKEW_STATE_SYMMETRIC,
         )
-        from bayes_basket_target.center_width_calibration import (
+        from bayes_basket_target.center_width_calibration import (  # noqa: F401 -- _center_landing_entry's
             sigma_floor_lift_v1,
         )
         from bayes_basket_target.center_width_store import (
@@ -9625,85 +9633,9 @@ def collect_center_landing(
             for cell in by_day[day]:
                 if until and str(cell.get("decision_at_utc") or "") >= until:
                     continue
-                probabilities = cell["probabilities"]
-                keys = cell["ordered_keys"]
-                centers = cell["key_centers_c"]
-                actual = truth.get((cell["station_id"], cell["event_date"]))
-                if actual is None:
-                    continue
-                try:
-                    _lift, sigma_c, rung_c = sigma_floor_lift_v1(
-                        probabilities,
-                        ordered_keys=keys,
-                        key_centers_c=centers,
-                        floor_rungs=0.0,
-                    )
-                except (ValueError, KeyError):
-                    continue
-                if rung_c <= 0.0:
-                    continue
-                total = sum(probabilities.values())
-                if total <= 0.0:
-                    continue
-                mean_c = sum(
-                    centers[index] * probabilities[key]
-                    for index, key in enumerate(keys)
-                ) / total
-                peak = max(
-                    range(len(keys)),
-                    key=lambda index: (probabilities[keys[index]], -index),
-                )
-                # The retired window (charter 49/79): the bucket nearest the
-                # mean point and one rung either side.  Kept as a comparison
-                # column so a reader can see what the ruled shape changed.
-                legacy_centre = min(
-                    range(len(keys)),
-                    key=lambda index: (abs(centers[index] - mean_c), index),
-                )
-
-                def _cover(names: Sequence[str]) -> tuple[float, int]:
-                    return (
-                        sum(probabilities[name] for name in names) / total,
-                        1 if cell["settled_bucket"] in names else 0,
-                    )
-
-                mode_names = keys[max(0, peak - 1):peak + 2]
-                legacy_names = keys[
-                    max(0, legacy_centre - 1):legacy_centre + 2
-                ]
-                seat = _center_landing_seat(
-                    stage=stage,
-                    keys=keys,
-                    probabilities=probabilities,
-                    excluded=cell.get("excluded_buckets") or (),
-                )
-                entry: dict[str, Any] = {
-                    "sigma": sigma_c / rung_c,
-                    "error": (float(actual) - mean_c) / rung_c,
-                    "state": seat["state"] if seat else None,
-                    "sign": seat["sign"] if seat else 0,
-                    "seat_claim": None,
-                    "seat_hit": None,
-                    "same_window": None,
-                    "station": cell["station_id"],
-                    "event_date": cell["event_date"],
-                    "core": _core_cell(
-                        probabilities, keys, cell["settled_bucket"],
-                        mean_c, float(actual), rung_c,
-                    ),
-                }
-                if seat is not None:
-                    claim, hit = _cover(seat["seat_keys"])
-                    entry["seat_claim"] = claim
-                    entry["seat_hit"] = hit
-                    entry["same_window"] = (
-                        set(seat["seat_keys"]) == set(mode_names)
-                    )
-                entry["mode_claim"], entry["mode_hit"] = _cover(mode_names)
-                entry["legacy_claim"], entry["legacy_hit"] = _cover(
-                    legacy_names
-                )
-                landings.append(entry)
+                entry = _center_landing_entry(stage, cell, truth)
+                if entry is not None:
+                    landings.append(entry)
         if not landings:
             continue
         rows = []
@@ -9806,6 +9738,98 @@ def collect_center_landing(
     }
 
 
+def _center_landing_entry(
+    stage: str,
+    cell: Mapping[str, Any],
+    truth: Mapping[tuple[str, str], float],
+) -> dict[str, Any] | None:
+    """One serving cell's landing: truth minus the served mean in rungs, the
+    served width, the seat window's claim and hit, and the core readings.
+
+    None for a cell with no truth or no measurable rung.  The one place a
+    cell becomes a landing, for the centre landing's tiers and for the
+    station rank's per-day readings alike.
+    """
+
+    from bayes_basket_target.center_width_calibration import (  # noqa: PLC0415
+        sigma_floor_lift_v1,
+    )
+
+    probabilities = cell["probabilities"]
+    keys = cell["ordered_keys"]
+    centers = cell["key_centers_c"]
+    actual = truth.get((cell["station_id"], cell["event_date"]))
+    if actual is None:
+        return None
+    try:
+        _lift, sigma_c, rung_c = sigma_floor_lift_v1(
+            probabilities,
+            ordered_keys=keys,
+            key_centers_c=centers,
+            floor_rungs=0.0,
+        )
+    except (ValueError, KeyError):
+        return None
+    if rung_c <= 0.0:
+        return None
+    total = sum(probabilities.values())
+    if total <= 0.0:
+        return None
+    mean_c = sum(
+        centers[index] * probabilities[key]
+        for index, key in enumerate(keys)
+    ) / total
+    peak = max(
+        range(len(keys)),
+        key=lambda index: (probabilities[keys[index]], -index),
+    )
+    # The retired window (charter 49/79): the bucket nearest the mean point
+    # and one rung either side.  Kept as a comparison column so a reader can
+    # see what the ruled shape changed.
+    legacy_centre = min(
+        range(len(keys)),
+        key=lambda index: (abs(centers[index] - mean_c), index),
+    )
+
+    def _cover(names: Sequence[str]) -> tuple[float, int]:
+        return (
+            sum(probabilities[name] for name in names) / total,
+            1 if cell["settled_bucket"] in names else 0,
+        )
+
+    mode_names = keys[max(0, peak - 1):peak + 2]
+    legacy_names = keys[max(0, legacy_centre - 1):legacy_centre + 2]
+    seat = _center_landing_seat(
+        stage=stage,
+        keys=keys,
+        probabilities=probabilities,
+        excluded=cell.get("excluded_buckets") or (),
+    )
+    entry: dict[str, Any] = {
+        "sigma": sigma_c / rung_c,
+        "error": (float(actual) - mean_c) / rung_c,
+        "state": seat["state"] if seat else None,
+        "sign": seat["sign"] if seat else 0,
+        "seat_claim": None,
+        "seat_hit": None,
+        "same_window": None,
+        "station": cell["station_id"],
+        "event_date": cell["event_date"],
+        "core": _core_cell(
+            probabilities, keys, cell["settled_bucket"],
+            mean_c, float(actual), rung_c,
+        ),
+    }
+    if seat is not None:
+        claim, hit = _cover(seat["seat_keys"])
+        entry["seat_claim"] = claim
+        entry["seat_hit"] = hit
+        entry["same_window"] = set(seat["seat_keys"]) == set(mode_names)
+    entry["mode_claim"], entry["mode_hit"] = _cover(mode_names)
+    entry["legacy_claim"], entry["legacy_hit"] = _cover(legacy_names)
+    return entry
+
+
 #: A station ranks only once it has this many settled station-days in the
 #: window; below it the row is listed, unranked, so a station two days into
 #: the window cannot head either list on one warm afternoon.
@@ -9842,12 +9866,25 @@ def _station_calibration_rows(
     correction -- the page says so.
     """
 
+    per_station: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for (station, _event), reading in _station_day_readings(entries).items():
+        per_station[station].append(reading)
+    return _station_calibration_rank(per_station)
+
+
+def _station_day_readings(
+    entries: Sequence[Mapping[str, Any]],
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Each station-day's one vote: its cells' readings averaged into it.
+
+    A plain JSON-able dict per ``(station, event_date)``, so a closed day's
+    reading can be kept across renders (``collect_station_calibration_windows``).
+    """
+
     by_day: dict[tuple[str, str], list[Mapping[str, Any]]] = defaultdict(list)
     for row in entries:
         if row.get("core") and row.get("sigma") is not None:
             by_day[(str(row["station"]), str(row["event_date"]))].append(row)
-    if not by_day:
-        return {}
 
     def _day(cells: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         n = len(cells)
@@ -9872,9 +9909,19 @@ def _station_calibration_rows(
             "cells": n,
         }
 
-    per_station: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for (station, _event), cells in by_day.items():
-        per_station[station].append(_day(cells))
+    return {key: _day(cells) for key, cells in by_day.items()}
+
+
+def _station_calibration_rank(
+    per_station: Mapping[str, Sequence[Mapping[str, Any]]],
+) -> dict[str, Any]:
+    """The ranked table off each station's station-day readings
+    (``_station_day_readings``); ``_station_calibration_rows`` says what
+    every column means."""
+
+    per_station = {station: obs for station, obs in per_station.items() if obs}
+    if not per_station:
+        return {}
 
     def _summary(obs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         n = len(obs)
@@ -9909,6 +9956,11 @@ def _station_calibration_rows(
             "significant": bool(se is not None and se > 0.0 and abs(bias) > 2.0 * se),
             "bias_c": sum(errs_c) / n,
             "mae_c": sum(abs(e) for e in errs_c) / n,
+            # How far truth lands from the served mean, in rungs: the
+            # centre's accuracy with no cancellation across days or
+            # stations, and no small-sample lift (|mean bias| over seven
+            # days reads its own noise as bias).
+            "mae_rungs": sum(abs(e) for e in errs) / n,
             "rmse_c": (sum(e * e for e in errs_c) / n) ** 0.5,
             "sigma_rungs": sigma_rungs,
             "rmse_rungs": rmse_rungs,
@@ -10059,7 +10111,8 @@ def _center_landing_salt() -> str:
     helpers = "".join(_loaded_source(helper) for helper in (
         _center_landing_seat, _center_landing_group, _core_cell,
         _core_murphy, _core_metrics, _core_daily,
-        _station_calibration_rows,
+        _center_landing_entry, _station_calibration_rows,
+        _station_day_readings, _station_calibration_rank,
     )) + repr((CORE_RELIABILITY_EDGES, CORE_NLL_FLOOR, CORE_ROLLING_DAYS))
     return json.dumps(_center_landing_rule(), sort_keys=True) + helpers
 
@@ -10408,6 +10461,181 @@ def collect_model_accuracy_trend(
             for st in (landing.get("stages") or [])
         },
         "version_marks": _version_marks(),
+    }
+
+
+#: 逐站校准排序's windows (user, 2026-09-24: 增加最近7天、30天和累计，突出中心
+#: 最准的那列): settled event days in the last 7 and 30 days, and every one
+#: the stage has served, across versions.
+STATION_RANK_WINDOWS = (
+    ("d7", "近 7 天", 7),
+    ("d30", "近 30 天", 30),
+    ("all", "累计", None),
+)
+#: A station-day's reading is kept across renders once its event day is this
+#: far back: no stage decides it any more, and charter 207's truth revisions
+#: land within about three days.  A kept day whose truth has moved since is
+#: read again anyway.
+STATION_DAY_CLOSED_DAYS = 4
+#: Closed station-days' readings (``_station_day_readings``) per stage, under
+#: the landing arithmetic's own salt.
+RENDER_CLOSED_STATION_DAYS = "_closed_station_day_calibration.json"
+#: What the windowed table shows of a station row.
+STATION_RANK_WINDOW_ROW_KEYS = (
+    "station", "station_label", "ranked", "station_days", "bias_rungs",
+    "se_rungs", "significant", "bias_c", "mae_rungs", "spread_ratio",
+    "spread_rel_se", "centre_rank", "width_rank",
+)
+
+
+def collect_station_calibration_windows(
+    conn: sqlite3.Connection,
+) -> dict[str, Any]:
+    """逐站校准排序 over three windows -- the last 7 days, the last 30, and
+    everything settled -- and, per stage, the window whose centre landed
+    closest to truth.
+
+    One population with the trend's table: ``serving_cells_by_day`` with no
+    evidence floor (the windows cut on the event day, across versions),
+    each cell through ``_center_landing_entry``, each station-day through
+    ``_station_day_readings``, each window ranked by
+    ``_station_calibration_rank``.
+
+    The closest window is the one with the smallest fleet mean |truth -
+    served mean| in rungs, a station-day one vote.  Not the fleet's signed
+    bias, which cancels a warm station against a cold one, and not the mean
+    of the stations' |bias|, which rises as a window shortens: seven days
+    of noise read as bias.
+
+    Everything settled is two months of three stages -- the 21-day trend
+    alone is minutes a render -- so a paged render keeps each closed
+    station-day's reading (``RENDER_CLOSED_STATION_DAYS``) and reads only
+    the cells decided since the first decision of the oldest day not kept.
+    """
+
+    try:
+        from bayes_basket_target.center_width_calibration import (  # noqa: F401 -- _center_landing_entry's
+            sigma_floor_lift_v1,
+        )
+        from bayes_basket_target.center_width_store import (
+            _truth,
+            serving_cells_by_day,
+        )
+    except ImportError:
+        return {}
+    if not _table_exists(conn, "basket_probability_bridge_history"):
+        return {}
+    truth = _truth(conn)
+    today = _now().date()
+    closed_through = (
+        today - timedelta(days=STATION_DAY_CLOSED_DAYS)
+    ).isoformat()
+    salt = hashlib.sha256(
+        _center_landing_salt().encode("utf-8")
+    ).hexdigest()
+    memo = _load_closed_readings(RENDER_CLOSED_STATION_DAYS) if _PAGED_RUN else {}
+    kept: dict[str, Any] = (
+        dict(memo["days"])
+        if memo.get("salt") == salt and isinstance(memo.get("days"), dict)
+        else {}
+    )
+    windows = [
+        {
+            "key": key,
+            "label": label,
+            "since": (
+                (today - timedelta(days=days)).isoformat() if days else None
+            ),
+        }
+        for key, label, days in STATION_RANK_WINDOWS
+    ]
+    stages_out: dict[str, Any] = {}
+    for stage in ("P0", "P0-M", "P1"):
+        readings: dict[tuple[str, str], dict[str, Any]] = {}
+        todo: set[tuple[str, str]] = set()
+        floor: str | None = None
+        # Every station-day the stage decided, with its first decision: one
+        # walk of the (stage, station, event_date, decision_at_utc) index.
+        for station, day, first in conn.execute(
+            "SELECT station_id, event_date, MIN(decision_at_utc)"
+            " FROM basket_probability_bridge_history WHERE stage=?"
+            " GROUP BY station_id, event_date",
+            (stage,),
+        ):
+            key = (str(station), str(day))
+            actual = truth.get(key)
+            if actual is None:
+                continue
+            held = kept.get(f"{stage}|{key[0]}|{key[1]}")
+            if isinstance(held, dict) and held.get("truth") == actual:
+                if held.get("reading"):
+                    readings[key] = held["reading"]
+                continue
+            todo.add(key)
+            # The same text comparison serving_cells_by_day bounds on.
+            if floor is None or str(first) < floor:
+                floor = str(first)
+        if todo:
+            entries = []
+            for cells in serving_cells_by_day(
+                conn, truth, stage=stage, min_decision_at_utc=floor,
+            ).values():
+                for cell in cells:
+                    if (str(cell["station_id"]), str(cell["event_date"])) not in todo:
+                        continue
+                    entry = _center_landing_entry(stage, cell, truth)
+                    if entry is not None:
+                        entries.append(entry)
+            fresh = _station_day_readings(entries)
+            readings.update(fresh)
+            closed = {
+                f"{stage}|{key[0]}|{key[1]}": {
+                    "truth": truth[key], "reading": fresh.get(key),
+                }
+                for key in todo if key[1] <= closed_through
+            }
+            if _PAGED_RUN and closed:
+                # Saved stage by stage: a run that steps aside keeps what it
+                # finished.
+                kept.update(closed)
+                _save_closed_readings(
+                    RENDER_CLOSED_STATION_DAYS, {"salt": salt, "days": kept},
+                )
+        if not readings:
+            continue
+        tables: dict[str, Any] = {}
+        for window in windows:
+            per_station: dict[str, list[dict[str, Any]]] = defaultdict(list)
+            for (station, day), reading in readings.items():
+                if window["since"] is None or day >= window["since"]:
+                    per_station[station].append(reading)
+            table = _station_calibration_rank(per_station)
+            if table:
+                table["rows"] = [
+                    {key: row.get(key) for key in STATION_RANK_WINDOW_ROW_KEYS}
+                    for row in table["rows"]
+                ]
+            tables[window["key"]] = table
+        scored = [
+            window["key"] for window in windows
+            if (tables.get(window["key"]) or {}).get("fleet", {}).get(
+                "mae_rungs"
+            ) is not None
+        ]
+        stages_out[stage] = {
+            "first_day": min(day for _station, day in readings),
+            "windows": tables,
+            "best_centre_window": min(
+                scored,
+                key=lambda key: tables[key]["fleet"]["mae_rungs"],
+            ) if scored else None,
+        }
+    if not stages_out:
+        return {}
+    return {
+        "as_of": today.isoformat(),
+        "windows": windows,
+        "stages": stages_out,
     }
 
 
@@ -16649,6 +16877,10 @@ SECTION_CACHE_TTL_SEC = {
     # version settles a day at a time, so this refreshes hourly.
     "center_landing_version": 61 * 60,
     "model_accuracy_trend": 262 * 60,
+    # 逐站校准排序's 7/30-day and cumulative windows: closed station-days are
+    # kept across renders (RENDER_CLOSED_STATION_DAYS), so a read is the last
+    # few event days; the key carries the date.
+    "station_calibration_windows": 127 * 60,
     "h5_readiness": 195 * 60,
     "skill": 210 * 60,
     # Refits the fleet's bias under each half-life (~5 min); the verdict
@@ -17528,6 +17760,13 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         _unavailable={},
         since=trend_since, _salt=trend_since + _center_landing_salt(),
     )
+    station_calibration_windows = _cached_section(
+        "station_calibration_windows", collect_station_calibration_windows,
+        conn,
+        _unavailable={},
+        # The windows end today: a new day is a new answer.
+        _salt=_now().strftime("%Y-%m-%d") + _center_landing_salt(),
+    )
     scorecard_previous = _cached_section(
         "scorecard_previous", collect_calibration_scorecard, conn,
         window_override=previous_windows.get("P0"), _salt=previous_salt,
@@ -17827,6 +18066,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "center_landing_version": center_landing_version,
         "scorecard_previous": scorecard_previous,
         "model_accuracy_trend": model_accuracy_trend,
+        "station_calibration_windows": station_calibration_windows,
         # 48 index seeks; the link on every station name.
         "station_markets": collect_station_markets(conn),
         "fusion_candidates": collect_fusion_candidates(),
@@ -18029,6 +18269,9 @@ a.mkt:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
    the width instead of leaving a margin nothing lives in. */
 .g2{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 .dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+/* 逐站校准排序: the window whose centre landed closest to truth. */
+.best-col{background:color-mix(in srgb,var(--accent) 13%,transparent)}
+.best-tag{color:var(--accent);font-weight:650;white-space:nowrap}
 /* Status lamps (user ruling, 2026-09-11).  A lamp is the whole section
    when the section is only ever read for one binary -- is it moving.  Same
    dot as everywhere else on the page, so a colour means the same thing
@@ -26793,7 +27036,7 @@ function sectionCacheNote(){
     scorecard:"校准计分卡",h5_readiness:"H5 就绪",skill:"模型技巧",
     bias_half_life:"半衰期对比",band_residual_audit:"band 残差审计",
     center_landing:"真值离均值多远",center_landing_previous:"真值离均值多远（上一版）",
-    model_accuracy_trend:"模型准不准走势",p1_path_skill:"P1 温度路径",
+    model_accuracy_trend:"模型准不准走势",station_calibration_windows:"逐站校准排序（7/30 天与累计）",p1_path_skill:"P1 温度路径",
     ssot_capacity:"SSOT 容量",lambda_axis_realisation:"λ 轴兑现",
     charter_ev:"宪章 EV 恒等式"};
   const reused=Object.entries(c).filter(([,v])=>v&&v.reused);
