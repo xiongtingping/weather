@@ -2196,8 +2196,18 @@ CYCLE_STAGE_WORDS = {
 }
 
 
-def collect_cycle_time(conn: sqlite3.Connection) -> dict[str, Any]:
-    """The resident's own cycle journal, and report-to-probability latency."""
+def collect_cycle_time(
+    conn: sqlite3.Connection,
+    latency: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The resident's own cycle journal, and report-to-probability latency.
+
+    The journal is a file and is read on every render: it is the lamp.  The
+    latency medians (``_report_to_probability_latency``) read three days of
+    P1 lineage JSON and a P0-M lookup per TAF, and move over hours, so a
+    paged render builds them as their own section (``report_latency``) and
+    hands them in; called alone this still computes them.
+    """
 
     out: dict[str, Any] = {"available": False}
     rows: list[dict[str, Any]] = []
@@ -2266,7 +2276,10 @@ def collect_cycle_time(conn: sqlite3.Connection) -> dict[str, Any]:
                 key=lambda e: -e["sec"],
             )[:6],
         }
-    out["latency"] = _report_to_probability_latency(conn)
+    out["latency"] = (
+        dict(latency) if latency is not None
+        else _report_to_probability_latency(conn)
+    )
     if out["latency"]:
         out["available"] = True
     return out
@@ -16993,7 +17006,14 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     observation_intake = _cached_section(
         "observation_intake", collect_observation_intake, conn
     )
-    cycle_time = _cached_section("cycle_time", collect_cycle_time, conn)
+    # The latency medians: slow-moving, not a lamp (see collect_cycle_time).
+    report_latency = _cached_section(
+        "report_latency", _report_to_probability_latency, conn,
+        _unavailable={"unavailable": True, "window_hours": LATENCY_WINDOW_HOURS},
+    )
+    cycle_time = _cached_section(
+        "cycle_time", collect_cycle_time, conn, report_latency
+    )
     hosted_sweeps = _cached_section(
         "hosted_sweeps", collect_hosted_sweeps, conn
     )
@@ -18226,7 +18246,7 @@ function cycleHealth(){
   const worstTone = K.max_sec == null ? "" : K.max_sec > 900 ? "red" : K.max_sec > 600 ? "amber" : "";
   const lat = (name, box, note) => {
     if(!box) return `<div class="card"><div class="muted">${name}</div><div class="big">—</div>
-      <div class="muted">这一窗口没有可配对的样本</div></div>`;
+      <div class="muted">${L.unavailable ? "本轮未算（写库繁忙时让出）" : "这一窗口没有可配对的样本"}</div></div>`;
     const t = box.median_min > 15 ? "red" : box.median_min > 8 ? "amber" : "green";
     return `<div class="card"><div class="muted">${name}</div>
       <div class="big mono"><span class="pill ${t}">${mins(box.median_min)}</span></div>

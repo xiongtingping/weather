@@ -515,3 +515,14 @@ def test_the_yield_line_sits_under_productions_wall() -> None:
     from bayes_basket_target.resource_bounds import MAX_TARGET_WAL_BYTES
 
     assert C.RENDER_MAX_WAL_BYTES < C.RENDER_YIELD_WAL_BYTES < MAX_TARGET_WAL_BYTES
+
+
+def test_the_cycle_lamp_takes_the_latency_it_is_handed(monkeypatch) -> None:
+    """The journal is the lamp; the medians are their own paged section."""
+
+    def forbidden(conn):
+        raise AssertionError("the medians were handed in; do not read them again")
+
+    monkeypatch.setattr(C, "_report_to_probability_latency", forbidden)
+    out = C.collect_cycle_time(sqlite3.connect(":memory:"), {"unavailable": True})
+    assert out["latency"] == {"unavailable": True}
