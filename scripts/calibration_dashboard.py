@@ -16527,7 +16527,9 @@ RENDER_EVERY_RUN_DEFAULT_COST_SEC = 60.0
 #: 03:30Z run spend 480 s of its budget waiting through back-to-back
 #: catch-up cycles -- on sections fed by ``members`` (which changes every
 #: run, so they never have a page) and on ones whose key moved that day.
-RENDER_GAP_WAIT_BUDGET_SEC = 300.0
+#: 120 s since the 06:47Z run: with production cycles back to back, 240 s
+#: of its 1,500 were spent waiting for gaps that did not come.
+RENDER_GAP_WAIT_BUDGET_SEC = 120.0
 #: How long a section without a lifetime of its own serves from its page.
 #: One render interval: a section computed by one run is reused by the next
 #: and recomputed by the one after, so the store is read about half as often
@@ -16558,7 +16560,7 @@ RENDER_YIELD_WAL_BYTES = int(
 RENDER_GAP_POLL_SEC = 5.0
 #: One section waits at most this long for a gap when it cannot be served
 #: from a page, then reads anyway: a page with no lamps is the worse outcome.
-LIVE_SECTION_GAP_CAP_SEC = 120.0
+LIVE_SECTION_GAP_CAP_SEC = 60.0
 #: A status file older than this cannot say whether a cycle is in flight.
 RENDER_STATUS_FRESH_SEC = 180.0
 _PAGED_RUN: dict[str, Any] = {}
