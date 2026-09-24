@@ -7562,6 +7562,9 @@ def _save_closed_slugs(new: Mapping[str, str], kept: Mapping[str, str]) -> None:
         pass
 
 
+#: Closed station-days' live-basket plan readings (or None: no plan), kept
+#: across paged renders by decision id.
+RENDER_CLOSED_PLAN_READINGS = "_closed_plan_readings.json"
 #: The readings the order listing shows off each live basket's own plan.
 _LIVE_PLAN_READINGS_SQL = (
     "SELECT"
@@ -7620,6 +7623,22 @@ def _live_basket_plan_state(
     })
     if not ids or not _table_exists(conn, "basket_p0_preselection_plan"):
         return {}
+    # Under a paged render a closed station-day's readings are kept, found
+    # or not: no plan is compiled for a day two or more back, so a decision
+    # whose plan was not there will never find one, and one that did reads
+    # the same forever.  The misses were the costly ones -- each falls back
+    # to every plan of its station-day (~91 KB of JSON a row); cold, that
+    # was most of live_readiness' 111-285 s a render (2026-09-24).
+    closed_through = (_now() - timedelta(days=2)).strftime("%Y-%m-%d")
+    kept = _load_closed_readings(RENDER_CLOSED_PLAN_READINGS) if _PAGED_RUN else {}
+    state: dict[str, dict[str, Any]] = {
+        decision_id: dict(kept[decision_id]) for decision_id in ids
+        if kept.get(decision_id)
+    }
+    ids = [decision_id for decision_id in ids if decision_id not in kept]
+    if not ids:
+        return state
+    closed_ids: set[str] = set()
     # decision -> the plan it was compiled from, and the scope to look in.
     wanted: dict[tuple[str, str], dict[str, list[str]]] = {}
     decided_at: dict[tuple[str, str], list[str]] = defaultdict(list)
@@ -7634,6 +7653,8 @@ def _live_basket_plan_state(
     except sqlite3.Error:
         return {}
     for decision_id, station, day, details, created in query:
+        if str(day) <= closed_through:
+            closed_ids.add(str(decision_id))
         try:
             plan_sha = str(
                 (json.loads(details or "{}") or {}).get(
@@ -7648,7 +7669,6 @@ def _live_basket_plan_state(
         scope.setdefault(plan_sha, []).append(str(decision_id))
         if created:
             decided_at[(str(station), str(day))].append(str(created))
-    state: dict[str, dict[str, Any]] = {}
     for (station, day), by_plan in wanted.items():
         # Each plan carries ~91 KB of JSON and a station-day holds a hundred
         # or more; only a plan compiled shortly before a decision can be the
@@ -7725,6 +7745,14 @@ def _live_basket_plan_state(
             }
             for decision_id in targets:
                 state[decision_id] = reading
+    if _PAGED_RUN and closed_ids:
+        fresh = {
+            decision_id: state.get(decision_id)
+            for decision_id in closed_ids
+        }
+        _save_closed_readings(
+            RENDER_CLOSED_PLAN_READINGS, {**kept, **fresh},
+        )
     return state
 
 

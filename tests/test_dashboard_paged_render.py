@@ -726,3 +726,37 @@ def test_a_pageless_section_that_will_not_fit_shows_its_stand_in(paged, monkeypa
     assert calls == ["old"]
     monkeypatch.setattr(C, "RENDER_SOFT_BUDGET_SEC", 1200.0)
     assert C._cached_section("slow_moving", _collector(calls, "new"), None, _unavailable={})["value"] == "new"
+
+
+def test_a_closed_days_plan_reading_is_kept_found_or_not(paged) -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE auto_trade_decisions (decision_id TEXT, station_id TEXT,"
+        " event_date TEXT, details_json TEXT, created_at TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_p0_preselection_plan (station_id TEXT,"
+        " event_date TEXT, plan_json TEXT, created_at TEXT)"
+    )
+    conn.execute(
+        "CREATE INDEX basket_p0_preselection_created_idx"
+        " ON basket_p0_preselection_plan(created_at)"
+    )
+    conn.execute(
+        "INSERT INTO basket_p0_preselection_plan VALUES (?,?,?,?)",
+        ("KLGA", "2026-09-01", json.dumps({"compiled_plan": {
+            "production_plan_sha256": "p", "plan": {"center_bucket": "70"},
+        }}), "2026-08-31T11:50:00Z"),
+    )
+    for did, sha in (("found", "p"), ("missing", "q")):
+        conn.execute(
+            "INSERT INTO auto_trade_decisions VALUES (?,?,?,?,?)",
+            (did, "KLGA", "2026-09-01",
+             json.dumps({"production_plan_sha256": sha}), "2026-08-31T12:00:00Z"),
+        )
+    rows = [{"decision_id": "found"}, {"decision_id": "missing"}]
+    first = C._live_basket_plan_state(conn, rows)
+    assert set(first) == {"found"}
+    conn.execute("DELETE FROM basket_p0_preselection_plan")
+    conn.execute("DELETE FROM auto_trade_decisions")
+    assert C._live_basket_plan_state(conn, rows) == first, "a settled day is not read again"
