@@ -188,6 +188,43 @@ def logloss_arm(records, rows, p_truth):
     return states, moved
 
 
+EDGES = np.array(S._core_murphy.__globals__["CORE_RELIABILITY_EDGES"])
+NBINS = len(EDGES) - 1
+
+
+def _bin_sums(records, arm, w):
+    """Per record, each probability bin's (weight, promised, happened) sums.
+
+    Murphy terms are ratios of sums over records, so a bootstrap only has to
+    re-sum these rows -- the same bins and station-day mass as the board's
+    ``_core_murphy``, which the point estimate below is checked against.
+    """
+
+    out = np.zeros((len(records), 3, NBINS))
+    for i, r in enumerate(records):
+        vec = r[arm]["vec"]
+        hit_key = oos._temperature_bucket(r["actual"])
+        keys = sorted(set(vec) | {hit_key}, key=int)
+        probs = np.array([float(vec.get(k, 0.0)) for k in keys])
+        happened = np.array([1.0 if k == hit_key else 0.0 for k in keys])
+        share = w[i] / len(keys)
+        slot = np.clip(np.searchsorted(EDGES, probs, side="right") - 1, 0, NBINS - 1)
+        np.add.at(out[i, 0], slot, share)
+        np.add.at(out[i, 1], slot, share * probs)
+        np.add.at(out[i, 2], slot, share * happened)
+    return out
+
+
+def _murphy(sums):
+    W, P, Y = sums[0], sums[1], sums[2]
+    total = W.sum()
+    base = Y.sum() / total
+    live = W > 0
+    rel = float(((P[live] - Y[live]) ** 2 / W[live]).sum() / total)
+    res = float((W[live] * (Y[live] / W[live] - base) ** 2).sum() / total)
+    return rel, res
+
+
 def panel(records, label):
     base = S.compare(records, label)
     if base is None:
@@ -204,8 +241,14 @@ def panel(records, label):
     idx_by_day = defaultdict(list)
     for i, r in enumerate(records):
         idx_by_day[r["event_date"]].append(i)
+    bins_seat = _bin_sums(records, "seat", w)
+    bins_arm = _bin_sums(records, "blend", w)
+    rel_s, res_s = _murphy(bins_seat.sum(axis=0))
+    rel_a, res_a = _murphy(bins_arm.sum(axis=0))
+    assert abs(rel_s - base["seat"]["rel"]) < 1e-12 and abs(res_s - base["seat"]["res"]) < 1e-12
+    assert abs(rel_a - base["blend"]["rel"]) < 1e-12 and abs(res_a - base["blend"]["res"]) < 1e-12
     rng = np.random.default_rng(20260924)
-    boots = {"brier": [], "nll": []}
+    boots = {"brier": [], "nll": [], "rel": [], "res": []}
     n_blocks = math.ceil(len(days) / S.BLOCK)
     for _ in range(S.BOOT):
         idx = np.concatenate([idx_by_day[days[(s + j) % len(days)]]
@@ -213,6 +256,10 @@ def panel(records, label):
         ww = w[idx]
         boots["brier"].append(float((ww * (b_arm[idx] - b_seat[idx])).sum() / ww.sum()))
         boots["nll"].append(float((ww * (n_arm[idx] - n_seat[idx])).sum() / ww.sum()))
+        r_s, q_s = _murphy(bins_seat[idx].sum(axis=0))
+        r_a, q_a = _murphy(bins_arm[idx].sum(axis=0))
+        boots["rel"].append(r_a - r_s)
+        boots["res"].append(q_a - q_s)
     d = base["delta"]
     base["panel_ci95"] = {k: [float(np.percentile(v, 2.5)), float(np.percentile(v, 97.5))] for k, v in boots.items()}
     base["panel_passes"] = bool(d["brier"] < 0 and d["nll"] < 0 and d["rel"] < 0 and d["res"] > 0)
