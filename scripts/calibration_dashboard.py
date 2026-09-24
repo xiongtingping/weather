@@ -6017,13 +6017,78 @@ def collect_h5_readiness(conn: sqlite3.Connection) -> dict[str, Any]:
             (H5_FROM_UTC,),
         )
     }
+    event_days = [
+        str(day) for (day,) in conn.execute(
+            "SELECT DISTINCT event_date FROM basket_probability_envelope"
+            " WHERE stage='P0' AND state='COMMITTED' AND event_date>=?"
+            " ORDER BY event_date",
+            (H5_FROM_UTC[:10],),
+        )
+    ]
+    # Each day's count reads every P0 envelope's lineage JSON for that day
+    # (1,907 s whole the last time).  Under a paged render a day two or
+    # more back is kept -- its P0s are all written and their artifact
+    # fingerprints do not change -- and a far-behind cache catches up a
+    # few days a run (SectionNotReady) instead of reading them all at once.
+    if _PAGED_RUN:
+        code = _section_fingerprint(_h5_day_counts, H5_FROM_UTC)
+        kept = _load_closed_readings(RENDER_H5_DAYS)
+        kept_days = dict(kept.get("days") or {}) if kept.get("code") == code else {}
+        keep_through = (_now() - timedelta(days=2)).strftime("%Y-%m-%d")
+        pending = [day for day in event_days if day not in kept_days]
+        behind = [day for day in pending if day <= keep_through]
+        if len(behind) > H5_CATCHUP_DAYS:
+            kept_days.update(_h5_day_counts(
+                conn, behind[:H5_CATCHUP_DAYS], known, fitted_under_h5,
+            ))
+            _save_closed_readings(RENDER_H5_DAYS, {"code": code, "days": kept_days})
+            raise SectionNotReady(
+                f"h5_readiness kept {len(kept_days)} of {len(event_days)} days"
+            )
+        counts = {**kept_days, **_h5_day_counts(conn, pending, known, fitted_under_h5)}
+        _save_closed_readings(RENDER_H5_DAYS, {"code": code, "days": {
+            day: value for day, value in counts.items() if day <= keep_through
+        }})
+    else:
+        counts = _h5_day_counts(conn, event_days, known, fitted_under_h5)
     days: list[dict[str, Any]] = []
-    for (day,) in conn.execute(
-        "SELECT DISTINCT event_date FROM basket_probability_envelope"
-        " WHERE stage='P0' AND state='COMMITTED' AND event_date>=?"
-        " ORDER BY event_date",
-        (H5_FROM_UTC[:10],),
-    ):
+    for day in event_days:
+        decisions, under_h5, provisional_only = counts.get(day, (0, 0, 0))
+        if not decisions:
+            continue
+        days.append({
+            "event_date": str(day),
+            "decisions": decisions,
+            "served_under_h5": under_h5,
+            "share": round(under_h5 / decisions, 3),
+            "provisional_only": provisional_only,
+            "truth_stations": truth_days.get(str(day), 0),
+        })
+    scored = [
+        item for item in days
+        if item["share"] >= 0.9 and item["truth_stations"] > 0
+    ]
+    return {
+        "from_utc": H5_FROM_UTC,
+        "days": days,
+        "scoreable_days": [item["event_date"] for item in scored],
+    }
+
+
+#: Days a far-behind h5_readiness cache reads per paged run.
+H5_CATCHUP_DAYS = 4
+RENDER_H5_DAYS = "_h5_readiness_days.json"
+
+
+def _h5_day_counts(
+    conn: sqlite3.Connection, days: Sequence[str],
+    known: set[str], fitted_under_h5: set[str],
+) -> dict[str, list[int]]:
+    """Per event day: [calibrated P0 decisions, those served wholly under H5,
+    provisional-only decisions] -- what h5_readiness reads off each day."""
+
+    out: dict[str, list[int]] = {}
+    for day in days:
         decisions = 0
         under_h5 = 0
         provisional_only = 0
@@ -6052,25 +6117,8 @@ def collect_h5_readiness(conn: sqlite3.Connection) -> dict[str, Any]:
             decisions += 1
             if all(v in fitted_under_h5 for v in calibrated):
                 under_h5 += 1
-        if not decisions:
-            continue
-        days.append({
-            "event_date": str(day),
-            "decisions": decisions,
-            "served_under_h5": under_h5,
-            "share": round(under_h5 / decisions, 3),
-            "provisional_only": provisional_only,
-            "truth_stations": truth_days.get(str(day), 0),
-        })
-    scored = [
-        item for item in days
-        if item["share"] >= 0.9 and item["truth_stations"] > 0
-    ]
-    return {
-        "from_utc": H5_FROM_UTC,
-        "days": days,
-        "scoreable_days": [item["event_date"] for item in scored],
-    }
+        out[str(day)] = [decisions, under_h5, provisional_only]
+    return out
 
 
 def three_knob_fit(
@@ -18220,7 +18268,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "station_markets": collect_station_markets(conn),
         "fusion_candidates": collect_fusion_candidates(),
         "h5_readiness": _cached_section(
-            "h5_readiness", collect_h5_readiness, conn
+            "h5_readiness", collect_h5_readiness, conn,
+            # The card reads ``days || []`` and hides when there are none.
+            _unavailable={}
         ),
         "bias_half_life": _cached_section(
             "bias_half_life", collect_bias_half_life, conn
