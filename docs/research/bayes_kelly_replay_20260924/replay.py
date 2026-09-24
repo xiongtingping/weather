@@ -227,7 +227,7 @@ def gate_open(M, sel, variant, params, served_log) -> bool:
 
 
 # ---------------------------------------------------------------- the solver
-def solve_step(p, row: Row, cash, hold, gamma):
+def solve_step(p, row: Row, cash, hold, gamma, allow_sell=True, fills=None):
     """One re-solve: CRRA over terminal wealth by bucket, buys walk the asks,
     sells walk the bids.  Returns (new_cash, new_hold, traded)."""
     n = len(row.names)
@@ -240,7 +240,7 @@ def solve_step(p, row: Row, cash, hold, gamma):
         for price, shares in row.asks[k]:
             if price < MAX_PRICE and mu[k] > price * emu * (1 + 1e-9):
                 buys.append((k, price, shares))
-        if hold[k] > 0:
+        if allow_sell and hold[k] > 0:
             for price, shares in row.bids[k]:
                 if mu[k] < price * emu * (1 - 1e-9):
                     sells.append((k, price, min(shares, hold[k])))
@@ -294,6 +294,13 @@ def solve_step(p, row: Row, cash, hold, gamma):
     traded = bool(keep.any())
     if new_cash < -1e-6:
         return cash, hold, False
+    if fills is not None:
+        for j in range(nb):
+            if x[j] > 0:
+                fills.append((int(kb[j]), float(x[j]), float(x[j] * pb[j])))
+        for j in range(ns):
+            if y[j] > 0:
+                fills.append((int(ks[j]), -float(y[j]), -float(y[j] * ps[j])))
     return new_cash, new_hold, traded
 
 
