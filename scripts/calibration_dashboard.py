@@ -13220,6 +13220,13 @@ def collect_p1_consensus_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     minted the order -- v1 crossed the ask, v2 rests at bid+1t.
     """
 
+    # The rung's life is the venue's floor plus what production signs above
+    # it -- production's two numbers, read rather than restated on the page.
+    from bayes_basket_target.production import (  # noqa: PLC0415
+        GTD_SIGNING_MARGIN_SECONDS,
+        VENUE_GTD_MINIMUM_HORIZON_SECONDS,
+    )
+
     lanes = _load_strategy_lanes()
     cfg = lanes["lanes"].get("p1_consensus") or {}
     out: dict[str, Any] = {
@@ -13237,6 +13244,9 @@ def collect_p1_consensus_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             "max_buys_per_station_day": cfg.get("max_buys_per_station_day"),
             "max_buys_per_bucket": cfg.get("max_buys_per_bucket"),
             "min_minutes_between_buys": cfg.get("min_minutes_between_buys"),
+            "resting_horizon_seconds": (
+                VENUE_GTD_MINIMUM_HORIZON_SECONDS + GTD_SIGNING_MARGIN_SECONDS
+            ),
             "source": lanes.get("source"),
             "updated_at_utc": lanes.get("updated_at_utc"),
         },
@@ -23529,7 +23539,7 @@ function p1ConsensusLane(){
       <span class="pill">事实新鲜窗 ${secs(S.fact_fresh_seconds)}</span>
       <span class="muted">规则 <b class="mono">${h(S.rule||"—")}</b></span>
     </div>
-    <div class="muted" style="margin-top:6px">规则：每个 P1 决策，若离本站结算时钟还有 6–10 小时（当地约下午两点到六点），且<b>模型众数桶＝模型均值桶＝市场众数桶＝市场均值桶</b>（两边在共同桶上归一，均值桶取 Σ概率×序号 四舍五入的那一档），这一桶的卖一又在 ${n2(S.min_ask)}–${n2(S.max_ask)} 之间——就在这一桶<b>挂买一加一跳的 post-only 单</b> ${usd(S.stake_usdc)}，有效期取交易所允许的最短（约 3.5 分钟），<b>没成交就在新盘口上重挂</b>，直到这条判断过期或离日终不足 6 小时（2026-09-23 裁决「吃单改为post only。best买一+1，挂单周期改为最短，没成交继续挂！」；此前 v1 是按卖一吃单）。每站日最多 ${S.max_buys_per_station_day==null?"—":S.max_buys_per_station_day} 笔、同一桶最多 ${S.max_buys_per_bucket==null?"—":S.max_buys_per_bucket} 笔、同站日两笔隔 ${S.min_minutes_between_buys==null?"—":S.min_minutes_between_buys} 分钟，同一时刻只挂一张；与秤砣线<b>互不避让</b>（「照买，不避让」）。<br>
+    <div class="muted" style="margin-top:6px">规则：每个 P1 决策，若离本站结算时钟还有 6–10 小时（当地约下午两点到六点），且<b>模型众数桶＝模型均值桶＝市场众数桶＝市场均值桶</b>（两边在共同桶上归一，均值桶取 Σ概率×序号 四舍五入的那一档），这一桶的卖一又在 ${n2(S.min_ask)}–${n2(S.max_ask)} 之间——就在这一桶<b>挂买一加一跳的 post-only 单</b> ${usd(S.stake_usdc)}，有效期取交易所允许的最短（约 ${S.resting_horizon_seconds==null?"—":(S.resting_horizon_seconds/60).toFixed(1)} 分钟），<b>没成交就在新盘口上重挂</b>，直到这条判断过期或离日终不足 6 小时（2026-09-23 裁决「吃单改为post only。best买一+1，挂单周期改为最短，没成交继续挂！」；此前 v1 是按卖一吃单）。每站日最多 ${S.max_buys_per_station_day==null?"—":S.max_buys_per_station_day} 笔、同一桶最多 ${S.max_buys_per_bucket==null?"—":S.max_buys_per_bucket} 笔、同站日两笔隔 ${S.min_minutes_between_buys==null?"—":S.min_minutes_between_buys} 分钟，同一时刻只挂一张；与秤砣线<b>互不避让</b>（「照买，不避让」）。<br>
     ${withEv("p1_consensus_replay",(V,e)=>`依据（${evStamp(e)}）：${V.takes} 笔 / ${V.station_days} 站日 / ${V.days} 个事件日，命中 ${evPct(V.hit_rate,1)}，卖一均价 ${V.mean_ask==null?"—":V.mean_ask.toFixed(3)}，ROI ${evSgPct(V.roi)}（90% 区间 ${evCi(V.roi_ci,x=>evSgPct(x))}）；前半 ${evSgPct(V.first_half_roi)}、后半 ${evSgPct(V.second_half_roi)}；09-20 以后 ${V.since_0920_takes} 笔 ${evSgPct(V.since_0920_roi)}；延后 15 分钟再买仍 ${evSgPct(V.delayed_15min_roi)}——不是抢时间的交易。<br>
     <b>诚实边界</b>：这一格是切片搜出来的（四同 → 6–10 小时 → 价带 → 每次都买），最窄的祖先格经多重比较 p=${V.ancestor_cell_p==null?"—":V.ancestor_cell_p.toFixed(3)}；真正的前向只有 ${V.forward_days} 个事件日。所以小额上线，窗口内每个决策——买没买都记——落在评估表里，前向再读。`)}</div></div>`;
   // The version still being scored is the one that started last.

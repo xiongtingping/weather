@@ -268,7 +268,7 @@ def test_consensus_in_the_band_is_planned_as_a_rung_at_bid_plus_one(store) -> No
     assert plan["limit_price"] == pytest.approx(0.59)
     assert plan["order_type"] == "GTD" and plan["post_only"] is True
     assert "fok_price_cap" not in plan
-    # The shortest horizon the venue takes: three minutes plus the signing
+    # The shortest horizon the venue takes: its floor (240 s) plus the signing
     # margin, not the belief's own end.
     from bayes_basket_target.production import (  # noqa: PLC0415
         GTD_SIGNING_MARGIN_SECONDS, VENUE_GTD_MINIMUM_HORIZON_SECONDS,

@@ -88,6 +88,12 @@ def test_the_collector_reads_the_lanes_own_rows(tmp_path, monkeypatch) -> None:
     assert (E["overlap_tiebreak_same_bucket"], E["overlap_tiebreak_other_bucket"]) == (1, 1)
     assert len(E["fired_rows"]) == 3
     assert out["settings"]["stake_usdc"] == 5.0
+    from bayes_basket_target.production import (  # noqa: PLC0415
+        GTD_SIGNING_MARGIN_SECONDS, VENUE_GTD_MINIMUM_HORIZON_SECONDS,
+    )
+    assert out["settings"]["resting_horizon_seconds"] == (
+        VENUE_GTD_MINIMUM_HORIZON_SECONDS + GTD_SIGNING_MARGIN_SECONDS
+    )
     assert out["trades"]["available"] is True and out["trades"]["count"] == 0
 
 
@@ -200,7 +206,8 @@ def test_the_page_draws_the_lane() -> None:
         "settings": {"enabled": True, "stake_usdc": 5.0, "rule": lane.RULE_V1,
                      "min_remaining_hours": 6.0, "max_remaining_hours": 10.0,
                      "min_ask": 0.5, "max_ask": 0.7, "max_paid_price": 0.7,
-                     "fact_fresh_seconds": 1200.0, "max_buys_per_station_day": 4},
+                     "fact_fresh_seconds": 1200.0, "max_buys_per_station_day": 4,
+                     "resting_horizon_seconds": 270.0},
         "evaluations": {"available": True, "total": 5, "four_same": 4, "fired": 3, "sent": 2,
                         "event_days": 1, "last_at_utc": "2026-09-23T08:01:00.000Z",
                         "refusals": [{"refusal": "sent", "count": 2, "fired": 2}],
@@ -256,7 +263,9 @@ def test_the_page_draws_the_lane() -> None:
                  "投入 → 赔付", "$4.41 → $7.00", "盈亏 / ROI", "$2.59", "实现 − 实付均价",
                  "+37点", "按下单方式分开算", "吃单", "挂单",
                  # Every order, placed or not, with why it was not.
-                 "逐笔", "LTAC", "20°C", "未挂出：send:expiration"):
+                 "逐笔", "LTAC", "20°C", "未挂出：send:expiration",
+                 # The rung's life is production's floor, read off the payload.
+                 "最短（约 4.5 分钟）"):
         assert text in html, text
 
 

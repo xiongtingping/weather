@@ -419,8 +419,12 @@ function env(name, fallback = "") {
 // the expiration "must be at least 3 minutes in the future", and the order
 // stops one minute before its stamp.  This read 60 -- the one-minute threshold
 // taken for the minimum -- until then.  Production signs 30 seconds above it
-// (bayes_basket_target/production.py) so transit cannot cross it.
-const GTD_MINIMUM_HORIZON_SECONDS = 180;
+// (bayes_basket_target/production.py) so transit cannot cross it.  240, not
+// 180 (2026-09-24): the venue takes the one-minute threshold off the stamp
+// before it checks the three minutes -- 19 of 19 consensus-lane rungs stamped
+// 209 s ahead on arrival came back "expiration is less than 180 seconds in the
+// future".  Refusing them here says so without a round trip.
+const GTD_MINIMUM_HORIZON_SECONDS = 240;
 
 function truthy(value, fallback = false) {
   if (value === undefined || value === null || value === "") return Boolean(fallback);

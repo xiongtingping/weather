@@ -1,9 +1,14 @@
-"""The gateway's GTD floor is the venue's documented three minutes.
+"""The gateway's GTD floor is the venue's three minutes after its one-minute
+threshold: 240 seconds.
 
 It read 60 seconds -- the one-minute security threshold taken for the
-minimum -- until 2026-09-14.  Production signs its floor 30 seconds above the
-venue's number so the gateway's arrival-time check cannot refuse it in
-transit; both numbers are pinned here against the one production exports.
+minimum -- until 2026-09-14, then 180, the documented three minutes taken on
+the stamp itself.  The venue takes the threshold off first: every one of the
+consensus lane's 19 rungs, stamped 209 s ahead on arrival, came back
+"expiration is less than 180 seconds in the future" (2026-09-23).  Production
+signs its floor 30 seconds above the venue's number so the gateway's
+arrival-time check cannot refuse it in transit; both numbers are pinned here
+against the one production exports.
 """
 
 from __future__ import annotations
@@ -64,14 +69,22 @@ def _place_gtd(seconds_ahead: int) -> dict:
     return json.loads(completed.stdout.strip().splitlines()[-1])
 
 
-def test_the_floor_is_three_minutes_on_both_sides() -> None:
-    assert VENUE_GTD_MINIMUM_HORIZON_SECONDS == 180.0
+def test_the_floor_is_four_minutes_on_both_sides() -> None:
+    assert VENUE_GTD_MINIMUM_HORIZON_SECONDS == 240.0
     source = SERVICE.read_text(encoding="utf-8")
-    assert "const GTD_MINIMUM_HORIZON_SECONDS = 180;" in source
+    assert "const GTD_MINIMUM_HORIZON_SECONDS = 240;" in source
 
 
 def test_an_expiry_inside_three_minutes_is_refused_before_signing() -> None:
     out = _place_gtd(120)
+    assert out["result"]["thrown"].startswith("gtd_expiration_too_soon")
+    assert out["calls"] == []
+
+
+def test_the_expiry_the_venue_refused_is_refused_here_first() -> None:
+    """What the consensus lane signed on 2026-09-23: 209 s ahead on arrival."""
+
+    out = _place_gtd(209)
     assert out["result"]["thrown"].startswith("gtd_expiration_too_soon")
     assert out["calls"] == []
 
