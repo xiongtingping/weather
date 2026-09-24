@@ -8194,7 +8194,7 @@ def _collect_live_pnl(conn: sqlite3.Connection) -> dict[str, Any]:
     # same resolver as the basket listing above: a filled leg counted
     # pending here while its basket upstairs shows a verdict is two numbers
     # for one fact, and the reader has no way to tell which one to believe.
-    book = live_book.build(conn)
+    book = _render_live_book(conn)
     fills = [
         (leg["station_id"], leg["event_date"], leg["bucket"],
          leg["filled_size"], leg["filled_notional_usdc"])
@@ -8465,7 +8465,7 @@ def collect_live_readiness(
     # settlements (user ruling, 2026-09-16).  The claim gate and the 声称
     # dimension are one number read against two thresholds, and so are the
     # centre gate and 中心: one book, so no longer two measurements.
-    book = live_book.build(conn)
+    book = _render_live_book(conn)
     quality = live_book.station_quality(
         book["settlements"], live_book.station_days(book)
     )
@@ -12237,7 +12237,7 @@ def collect_live_money(conn: sqlite3.Connection) -> dict[str, Any]:
     which number it used.
     """
 
-    book = live_book.build(conn)
+    book = _render_live_book(conn)
     rows = book["settlements"]
     runtime_path, runtime = _live_runtime_config()
     try:
@@ -12322,7 +12322,7 @@ def collect_live_days(conn: sqlite3.Connection) -> dict[str, Any]:
     nine numbers agree.
     """
 
-    book = live_book.build(conn)
+    book = _render_live_book(conn)
     legs = book["legs"]
     rows_by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in book["settlements"]:
@@ -12605,7 +12605,7 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
                 " WHERE order_intent_id IS NOT NULL"
             )
         }
-    book = live_book.build(conn)
+    book = _render_live_book(conn)
     settled = book.get("settled") or {}
     legs = [
         leg for leg in (book.get("legs") or [])
@@ -13006,7 +13006,7 @@ def collect_p1_tail_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             ),
             "fired_rows": fired_rows, "near_miss": near_miss, "by_day": by_day,
         }
-    book = live_book.build(conn)
+    book = _render_live_book(conn)
     settled = book.get("settled") or {}
     legs = [
         leg for leg in (book.get("legs") or [])
@@ -13161,7 +13161,7 @@ def collect_p1_consensus_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             "overlap_tiebreak_other_bucket": overlap_other,
             "overlap_open_order": overlap_open,
         }
-    book = live_book.build(conn)
+    book = _render_live_book(conn)
     settled = book.get("settled") or {}
     trades: list[dict[str, Any]] = []
     for leg in book.get("legs") or []:
@@ -15675,7 +15675,7 @@ def collect_window_divergence(conn: sqlite3.Connection) -> dict[str, Any]:
     day's settled live money.
     """
 
-    book = live_book.build(conn)
+    book = _render_live_book(conn)
     chains: dict[tuple[str, str], dict[str, Any]] = {}
     for leg in sorted(
         book["legs"], key=lambda leg: str(leg.get("decision_at_utc") or "")
@@ -16568,6 +16568,26 @@ def _every_run_reserve_sec() -> float:
         for name in RENDER_EVERY_RUN_SECTIONS
         if name not in _SECTION_CACHE_LOG
     )
+
+
+def _render_live_book(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The live book, built once per paged run and shared by its sections.
+
+    ``live_book.build`` caches per database state (``PRAGMA data_version``),
+    and production commits between any two sections, so a render rebuilt
+    the same book for each of the eight sections that read it.  One book per
+    run is also one answer per page: the money cards and the station rows
+    no longer read books a few minutes apart.  Outside a paged run the
+    module's own cache is left to decide.
+    """
+
+    if not _PAGED_RUN:
+        return live_book.build(conn)
+    book = _PAGED_RUN.get("live_book")
+    if book is None:
+        book = live_book.build(conn)
+        _PAGED_RUN["live_book"] = book
+    return book
 
 
 def _paged_elapsed() -> float:

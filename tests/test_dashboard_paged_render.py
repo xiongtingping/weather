@@ -461,3 +461,20 @@ def test_a_page_with_moved_inputs_is_never_fresh(paged) -> None:
     C._cached_section("slow_moving", collector, None, _salt="a")
     C._cached_section("slow_moving", collector, None, _salt="b")
     assert calls == ["x", "x"]
+
+
+def test_a_paged_run_builds_the_live_book_once(paged, monkeypatch) -> None:
+    builds: list[int] = []
+    monkeypatch.setattr(C.live_book, "build", lambda conn: builds.append(1) or {"legs": []})
+    first = C._render_live_book(None)
+    second = C._render_live_book(None)
+    assert builds == [1] and first is second
+
+
+def test_outside_a_paged_run_the_live_book_is_the_modules_to_cache(monkeypatch) -> None:
+    C._PAGED_RUN.clear()
+    builds: list[int] = []
+    monkeypatch.setattr(C.live_book, "build", lambda conn: builds.append(1) or {})
+    C._render_live_book(None)
+    C._render_live_book(None)
+    assert builds == [1, 1]
