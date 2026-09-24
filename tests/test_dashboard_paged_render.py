@@ -421,3 +421,18 @@ def test_an_every_run_section_cannot_declare_its_way_out(paged, monkeypatch) -> 
     _wal(paged, 4096)
     with pytest.raises(C.RenderYielded):
         C._cached_section("members", _collector([]), None, _unavailable=[])
+
+
+def test_the_run_shares_one_wait_budget(paged, monkeypatch) -> None:
+    """03:30Z: 120 s per pageless section, no total, through back-to-back cycles."""
+
+    _status(paged, production_inflight={"elapsed_sec": 30})
+    monkeypatch.setattr(C, "RENDER_GAP_POLL_SEC", 50.0)
+    slept: list[float] = []
+    monkeypatch.setattr(C.time, "sleep", lambda sec: slept.append(sec))
+    C._PAGED_RUN["gap_wait_left"] = 150.0
+    C._cached_section("members", _collector([]), None)      # waits 120
+    C._cached_section("gaps_like", _collector([]), None)    # 30 left
+    C._cached_section("live_days", _collector([]), None)    # nothing left
+    assert sum(slept) == pytest.approx(150.0)
+    assert C._PAGED_RUN["gap_wait_left"] == 0.0

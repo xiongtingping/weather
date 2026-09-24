@@ -16374,9 +16374,13 @@ RENDER_EVERY_RUN_SECTIONS = frozenset({
 RENDER_EVERY_RUN_COSTS = "_every_run_costs.json"
 #: Room kept for an every-run section with no recorded cost yet.
 RENDER_EVERY_RUN_DEFAULT_COST_SEC = 60.0
-#: Total a run's every-run sections may spend waiting for gaps.  They are
-#: computed regardless; the wait only moves them into a gap when one is near.
-EVERY_RUN_GAP_WAIT_SEC = 300.0
+#: Total a run may spend waiting for gaps, every section together.  A wait
+#: only moves a read into a gap when one is near; the WAL line, not the wait,
+#: is what protects production.  Per-section caps with no total let the
+#: 03:30Z run spend 480 s of its budget waiting through back-to-back
+#: catch-up cycles -- on sections fed by ``members`` (which changes every
+#: run, so they never have a page) and on ones whose key moved that day.
+RENDER_GAP_WAIT_BUDGET_SEC = 300.0
 #: How long a section without a lifetime of its own serves from its page.
 #: One render interval: a section computed by one run is reused by the next
 #: and recomputed by the one after, so the store is read about half as often
@@ -16425,7 +16429,7 @@ def _paged_run_start(db: Path) -> None:
         "wal_checked": 0.0,
         "wal_over": False,
         "gap_wait_sec": 0.0,
-        "every_run_wait_left": EVERY_RUN_GAP_WAIT_SEC,
+        "gap_wait_left": RENDER_GAP_WAIT_BUDGET_SEC,
         "yields": 0,
         "stale": {},
         "every_run_costs": _load_every_run_costs(),
@@ -16503,8 +16507,10 @@ def _production_gap_blocker() -> str | None:
 
 
 def _await_production_gap(name: str, cap_sec: float) -> str | None:
-    """Wait for a production gap, at most ``cap_sec``; the blocker left, if any."""
+    """Wait for a production gap, at most ``cap_sec`` and at most what is
+    left of the run's shared wait budget; the blocker left, if any."""
 
+    cap_sec = min(cap_sec, float(_PAGED_RUN["gap_wait_left"]))
     waited = 0.0
     blocker = _production_gap_blocker()
     while blocker is not None:
@@ -16515,6 +16521,9 @@ def _await_production_gap(name: str, cap_sec: float) -> str | None:
         waited += pause
         blocker = _production_gap_blocker()
     _PAGED_RUN["gap_wait_sec"] = float(_PAGED_RUN["gap_wait_sec"]) + waited
+    _PAGED_RUN["gap_wait_left"] = max(
+        0.0, float(_PAGED_RUN["gap_wait_left"]) - waited
+    )
     if waited >= 30.0:
         print(
             f"[{_now().strftime('%Y-%m-%dT%H:%M:%SZ')}] section {name}"
@@ -16650,16 +16659,7 @@ def _cached_section(
         # went.  A section without a lifetime is not a section without a
         # price.
         if paged:
-            allowance = min(
-                LIVE_SECTION_GAP_CAP_SEC, float(_PAGED_RUN["every_run_wait_left"])
-            )
-            before = float(_PAGED_RUN["gap_wait_sec"])
-            blocker = _await_production_gap(name, allowance)
-            _PAGED_RUN["every_run_wait_left"] = max(
-                0.0,
-                float(_PAGED_RUN["every_run_wait_left"])
-                - (float(_PAGED_RUN["gap_wait_sec"]) - before),
-            )
+            blocker = _await_production_gap(name, LIVE_SECTION_GAP_CAP_SEC)
             # A cycle in flight is only disk contention, and this section
             # has nothing else to serve; a WAL past the line is the writer
             # waiting on readers, and this run is one.
