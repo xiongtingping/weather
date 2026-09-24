@@ -302,3 +302,115 @@ def test_the_phase_label_is_a_bucket_crossing_not_a_rounded_degree() -> None:
     )
     assert crossing[-1]["delta_c"] == 1
     assert crossing[-1]["crossed_bucket"] == 1
+
+
+# -- The local day is an instant window, not a string range (2026-09-24) ----
+#
+# The archive stores ``valid_at`` as ``...T19:00:00.000Z``; the settlement
+# window is spelled ``...T19:00:00Z``.  Compared as text, ``'.' < 'Z'`` put the
+# local-midnight report before the day's own start (dropped) and the next
+# local midnight before the day's end (kept).  The fixtures above spell both
+# sides the same way, which is why none of them could see it; these spell the
+# archive the way the archive is spelled.
+
+
+def _archive_report(index: int, temperature: float, *, receipt_delay_s=120.0):
+    row = _report(index, temperature, receipt_delay_s=receipt_delay_s)
+    for key in ("valid_at", "canonical_committed_at"):
+        instant = datetime.fromisoformat(row[key].replace("Z", "+00:00"))
+        row[key] = instant.isoformat(timespec="milliseconds").replace(
+            "+00:00", "Z"
+        )
+    return row
+
+
+def test_the_local_midnight_report_opens_the_day_and_the_next_one_does_not() -> None:
+    from bayes_basket_target.settlement_time import settlement_day_window
+
+    window = settlement_day_window(EVENT_DATE, TIMEZONE)
+    assert window["target_day_start_utc"] == "2026-08-28T19:00:00Z"
+    # 00:00 local, 00:30, 01:00 ... and 00:00 of the next local day.
+    rows = [_archive_report(index, 20.0 + index) for index in range(3)]
+    rows.append(_archive_report(48, 45.0))
+    assert rows[0]["valid_at"] == "2026-08-28T19:00:00.000Z"
+    assert rows[-1]["valid_at"] == "2026-08-29T19:00:00.000Z"
+
+    loaded = load_day_observations(
+        _archive(rows),
+        station_id=STATION,
+        window_start_utc=window["target_day_start_utc"],
+        window_end_utc=window["target_day_end_utc"],
+        source_lane="awc",
+    )
+    assert [row["valid_at"] for row in loaded] == [
+        "2026-08-28T19:00:00.000Z",
+        "2026-08-28T19:30:00.000Z",
+        "2026-08-28T20:00:00.000Z",
+    ]
+
+
+def test_warming_so_far_is_measured_from_the_local_midnight_report() -> None:
+    """The first report of the day is the one the serving reader starts from.
+
+    ``resident_canonical`` admits ``[start, end)`` on ``julianday``, so the
+    serving ``warming_so_far_c`` is taken off the 00:00 local report; a
+    training row that started from 00:30 learned a different feature.  The
+    next local midnight -- here transmitted 60 s early, inside the reader's
+    lead allowance, so its receipt falls inside the day -- must not ride the
+    day's last prefix either.
+    """
+
+    rows = [
+        _archive_report(index, temperature)
+        for index, temperature in enumerate(
+            [20.0, 26.0, 27.0, 28.0, 29.0, 30.0]
+        )
+    ]
+    rows.append(_archive_report(48, 45.0, receipt_delay_s=-60.0))
+    samples, exclusions = _build(rows, truth=30.0)
+    assert samples
+    by_prefix = {sample["prefix_report_count"]: sample for sample in samples}
+    assert min(by_prefix) == 3
+    assert by_prefix[3]["as_of_utc"] == "2026-08-28T20:02:00.000Z"
+    assert by_prefix[3]["warming_so_far_c"] == pytest.approx(27.0 - 20.0)
+    assert by_prefix[6]["warming_so_far_c"] == pytest.approx(30.0 - 20.0)
+    assert max(sample["prefix_report_count"] for sample in samples) == 6
+    assert all(sample["running_high_c"] <= 30.0 for sample in samples)
+    assert not any(
+        reason == "running_high_above_truth" for reason, _ in exclusions
+    )
+
+
+def test_roots_are_ordered_by_instant_not_by_spelling() -> None:
+    """``decision_at_utc`` carries two spellings; ``root_at`` needs time order.
+
+    ``...:00.500Z`` sorts before ``...:00Z`` as text and after it as an
+    instant.  In text order the later root came first, ``root_at`` stopped on
+    it, and a sample between the two found no root at all.
+    """
+
+    from scripts.build_metar_phase_hazard_samples import (  # noqa: PLC0415
+        load_root_index,
+        root_at,
+    )
+
+    target = _target(root_decided_at="2026-08-28T18:00:00Z")
+    row = target.execute(
+        "SELECT * FROM basket_probability_envelope"
+    ).fetchone()
+    later = list(row)
+    later[0] = "env-root-later"
+    later[2] = "p0-root-later"
+    later[6] = "2026-08-28T18:00:00.500Z"
+    target.execute(
+        "INSERT INTO basket_probability_envelope"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        later,
+    )
+    roots = load_root_index(target, station_id=STATION, event_date=EVENT_DATE)
+    assert [item[1]["checkpoint_id"] for item in roots] == [
+        "p0-root-fixture", "p0-root-later",
+    ]
+    chosen = root_at(roots, datetime(2026, 8, 28, 18, 0, 0, 200000, tzinfo=timezone.utc))
+    assert chosen is not None
+    assert chosen[1]["checkpoint_id"] == "p0-root-fixture"

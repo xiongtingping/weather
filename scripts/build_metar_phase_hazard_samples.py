@@ -242,35 +242,65 @@ def load_day_observations(
     METAR body and no hard rights over the running high; including them here
     would put rows in the sample set that the serving prefix treats
     differently.
+
+    The day is ``[start, end)`` as instants, the same half-open window the
+    serving reader (``resident_canonical``, ``julianday`` on both sides) and
+    settlement truth admit.  It used to be a string comparison in SQL, and the
+    two sides do not share a format: the window reads ``...T04:00:00Z`` and
+    the archive stores ``...T04:00:00.000Z``, and ``'.' < 'Z'``.  So the
+    local-midnight report sorted *before* the day's own start and was dropped,
+    and the next midnight's sorted before the day's end and was kept.
+    Measured 2026-09-24 over 2026-08-10..09-23: 1,229 of 2,090 settled
+    station-days (28 stations, each with a scheduled report on its local
+    midnight) lost their first report; 416 station-days carried a wrong
+    warming-so-far or running high, 272 a wrong target (``delta_c`` one
+    to three degrees too high on 2,561 rows, mostly before dawn, where the
+    midnight reading was the warmest yet), and 57 rows stamped 23:59 local
+    carried the next day's midnight report, transmitted a few seconds early.
+    The SQL now only narrows by calendar date (a superset whatever the
+    fractional-second or suffix form), and the window itself is decided on
+    parsed instants.
     """
 
-    rows = [
-        {
+    start = _parse_utc(window_start_utc)
+    end = _parse_utc(window_end_utc)
+    rows = []
+    for row in archive.execute(
+        "SELECT observation_id, valid_at, canonical_committed_at,"
+        " reported_temperature_c, raw_text, report_type"
+        " FROM reported_trajectory_observations"
+        " WHERE station_id=? AND valid_at>=? AND valid_at<?"
+        " AND source_lane=? AND correction_suspected=0"
+        " AND reported_temperature_c IS NOT NULL",
+        (
+            station_id,
+            start.date().isoformat(),
+            (end.date() + timedelta(days=1)).isoformat(),
+            source_lane,
+        ),
+    ):
+        if not str(row[2] or "").strip():
+            continue
+        valid = _parse_utc(str(row[1]))
+        if not (start <= valid < end):
+            continue
+        rows.append({
             "observation_id": str(row[0]),
             "valid_at": str(row[1]),
             "canonical_committed_at": str(row[2]),
             "temperature_c": float(row[3]),
             "raw_text": str(row[4] or ""),
             "report_type": str(row[5] or ""),
-        }
-        for row in archive.execute(
-            "SELECT observation_id, valid_at, canonical_committed_at,"
-            " reported_temperature_c, raw_text, report_type"
-            " FROM reported_trajectory_observations"
-            " WHERE station_id=? AND valid_at>=? AND valid_at<?"
-            " AND source_lane=? AND correction_suspected=0"
-            " AND reported_temperature_c IS NOT NULL"
-            " ORDER BY valid_at, observation_id",
-            (station_id, window_start_utc, window_end_utc, source_lane),
-        )
-        if str(row[2] or "").strip()
-    ]
+            "_valid": valid,
+        })
+    rows.sort(key=lambda row: (row["_valid"], row["observation_id"]))
     # One reading may arrive twice (a revision of the same minute).  The last
     # row of a shared minute speaks, matching the path compiler's own
     # collapse, so the prefix never carries two temperatures for one instant.
-    collapsed: dict[str, dict[str, Any]] = {}
+    # Keyed on the instant, not its spelling.
+    collapsed: dict[datetime, dict[str, Any]] = {}
     for row in rows:
-        collapsed[row["valid_at"]] = row
+        collapsed[row.pop("_valid")] = row
     return [collapsed[key] for key in sorted(collapsed)]
 
 
@@ -321,9 +351,14 @@ def load_root_index(
     The sample takes the newest root at or before its own instant, which is
     the root production was serving then.  Taking the day's final root would
     let a sample from 09:00 see a rebase that happened at 15:00.
+
+    Ordered on the parsed instant: ``root_at`` stops at the first root past
+    the sample, so the order has to be time order, and ``decision_at_utc``
+    is written in two spellings (``...:00Z`` and ``...:00.000Z``, both on
+    P0-M) that SQL's text order does not rank as instants.
     """
 
-    return [
+    return sorted((
         (_parse_utc(str(row[0])), dict(zip(
             ("stage", "checkpoint_id", "station_id", "event_date",
              "settlement_timezone", "decision_at_utc", "fresh_until_utc",
@@ -342,7 +377,7 @@ def load_root_index(
             " ORDER BY decision_at_utc",
             (station_id, event_date),
         )
-    ]
+    ), key=lambda item: item[0])
 
 
 def bucket_ordinal_for_temperature(view: "RootView", temperature_c: float) -> int:
