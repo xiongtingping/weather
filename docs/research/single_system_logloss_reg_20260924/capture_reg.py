@@ -42,7 +42,16 @@ PERIODS = {
     # The previous round's own days: the regularised arm's hyperparameters
     # are production constants, so this is a consistency read, not a fit.
     "seen": lambda day: "2026-07-20" <= day <= "2026-09-22",
+    # Six families with modelled arrivals (PROTOCOL_six_families.md).
+    "six": lambda day: "2026-07-20" <= day <= "2026-09-23",
 }
+# fusion_blend_historical_20260923/capture.py's --model-backfill-arrivals
+# rule, read from that module so the two replays share one arrival clock.
+_H = importlib.util.spec_from_file_location(
+    "hist_capture", ROOT / "docs" / "research" / "fusion_blend_historical_20260923" / "capture.py")
+HIST = importlib.util.module_from_spec(_H)
+_H.loader.exec_module(HIST)
+MODEL_BACKFILL_ARRIVALS = False
 SCORED = PERIODS["unseen"]
 ARMS = ("prod", "ll_both", "ll_both_reg")
 REG_HALF_LIFE_DAYS = oos.RELIABILITY_HALF_LIFE_DAYS      # 15, production's own constant
@@ -67,6 +76,58 @@ def _fit_both(train, params, half_life, x0_spread):
     return float(fit.x[0]), float(fit.x[1])
 
 
+FAST = False          # --fast: vectorised loss, reference arm dropped, day-end cut
+
+
+def _case_arrays(train, params):
+    width = max(len(c["values"]) for c in train)
+    dev = np.zeros((len(train), width)); mask = np.zeros((len(train), width), dtype=bool)
+    centers = np.zeros(len(train)); buckets = np.zeros(len(train))
+    for row, case in enumerate(train):
+        current = [float(v) for v in case["values"]]
+        mean = sum(current) / len(current)
+        centers[row] = mean + oos._resolved_bias_c(mean, params)
+        dev[row, :len(current)] = [v - mean for v in current]
+        mask[row, :len(current)] = True
+        buckets[row] = int(oos._temperature_bucket(float(case["actual_tmax_c"])))
+    return dev, mask, centers, buckets, mask.sum(axis=1)
+
+
+def _probs_fast(arrays, delta, spread):
+    from scipy.special import ndtr
+    dev, mask, centers, buckets, counts = arrays
+    bw = oos.KERNEL_BANDWIDTH_C
+    dressed = (centers + delta)[:, None] + spread * dev
+    middle = np.where(mask, dressed, 0.0).sum(axis=1) / counts
+    std = np.sqrt(np.where(mask, (dressed - middle[:, None]) ** 2, 0.0).sum(axis=1) / counts)
+    shrink = np.where(std > bw, np.sqrt(np.clip(1.0 - (bw / np.where(std > 0, std, 1.0)) ** 2, 0.0, 1.0)), 1.0)
+    dressed = middle[:, None] + shrink[:, None] * (dressed - middle[:, None])
+    low = np.floor(np.where(mask, dressed, np.inf).min(axis=1) - 4.0 * bw)
+    high = np.ceil(np.where(mask, dressed, -np.inf).max(axis=1) + 4.0 * bw)
+
+    def _mean(hi, lo):
+        v = ndtr((hi[:, None] - dressed) / bw) - ndtr((lo[:, None] - dressed) / bw)
+        return np.where(mask, v, 0.0).sum(axis=1) / counts
+
+    mass = _mean(buckets + 0.5, buckets - 0.5)
+    total = _mean(high + 0.5, low - 0.5)
+    inside = (buckets >= low) & (buckets <= high) & (total > 0.0)
+    return np.where(inside, mass / np.where(total > 0.0, total, 1.0), 0.0)
+
+
+def _fit_both_fast(train, params, half_life, x0_spread):
+    weights = _decay(train, half_life)
+    arrays = _case_arrays(train, params)
+
+    def objective(x):
+        p = _probs_fast(arrays, float(x[0]), float(x[1]))
+        return float(-(weights * np.log(np.maximum(p, C.P_FLOOR))).sum() / weights.sum())
+
+    fit = minimize(objective, x0=np.array([0.0, x0_spread]), method="L-BFGS-B",
+                   bounds=[C.DELTA_BOUNDS, C.SPREAD_BOUNDS], options={"maxiter": 60})
+    return float(fit.x[0]), float(fit.x[1])
+
+
 class RegForecasts(replay.Forecasts):
     def forecast(self, scope, case, knowable):
         train = self.train(scope, case["event_date"], knowable)
@@ -83,10 +144,14 @@ class RegForecasts(replay.Forecasts):
         s_prod = float(params["spread_factor"])
         # Unregularised: the previous round exactly (its spread-only step
         # seeds the joint fit).
-        base = C.fit_logloss(train, params)
-        d_ll, s_ll = base["delta_ll_both"], base["s_ll_both"]
-        # Regularised: half-life 15, then half-way back to production.
-        d15, s15 = _fit_both(train, params, REG_HALF_LIFE_DAYS, s_prod)
+        if FAST:
+            d_ll, s_ll = 0.0, s_prod     # reference arm not computed
+            d15, s15 = _fit_both_fast(train, params, REG_HALF_LIFE_DAYS, s_prod)
+        else:
+            base = C.fit_logloss(train, params)
+            d_ll, s_ll = base["delta_ll_both"], base["s_ll_both"]
+            # Regularised: half-life 15, then half-way back to production.
+            d15, s15 = _fit_both(train, params, REG_HALF_LIFE_DAYS, s_prod)
         d_reg = REG_KAPPA * 0.0 + (1 - REG_KAPPA) * d15
         s_reg = REG_KAPPA * s_prod + (1 - REG_KAPPA) * s15
         values = [float(v) for v in case["values"]]
@@ -134,8 +199,17 @@ def capture_station(conn, station, tz):
     fetched = replay._arrivals(conn, station)
 
     def arrival_of(scope, case):
-        key = (scope[0], case["event_date"], str(case.get("archive_lead_bucket") or ""), scope[3], replay._run_init(case))
-        return fetched.get(key) or replay._utc(case["aggregator_snapshot_at_utc"])
+        init = replay._run_init(case)
+        key = (scope[0], case["event_date"], str(case.get("archive_lead_bucket") or ""), scope[3], init)
+        arrived = fetched.get(key) or replay._utc(case["aggregator_snapshot_at_utc"])
+        if MODEL_BACKFILL_ARRIVALS and init and scope[0] in ("ECMWF_AIFS_ENS_GLOBAL", "NOAA_AIGEFS_025"):
+            run = replay._utc(init)
+            if arrived - run > HIST.BACKFILL_LAG:
+                if scope[0] == "NOAA_AIGEFS_025":
+                    return run + HIST.AIGEFS_ARRIVAL_AFTER_INIT
+                twin = fetched.get(("ECMWF_IFS_ENS_OPEN_PF50",) + key[1:])
+                return twin if twin is not None and twin - run <= HIST.BACKFILL_LAG else run + HIST.AIFS_FALLBACK_AFTER_INIT
+        return arrived
 
     forecasts = RegForecasts(cases_by_scope, first_commit, arrival_of)
     try:
@@ -168,6 +242,8 @@ def capture_station(conn, station, tz):
             if signature == previous:
                 continue
             previous = signature
+            if FAST and at >= day_end:
+                continue
             day_rows = {}
             for s, (_at, _init, s_scope, s_case) in packet.items():
                 row = forecasts.forecast(s_scope, s_case, at)
@@ -200,7 +276,7 @@ def capture_station(conn, station, tz):
             seat = C.stable_pool_weights(skill, {s: family[s] for s in pool}, kappa=C.STABLE_POOL_KAPPA)
             seat = {s: v for s, v in seat.items() if v > 0.0}
             scored = {}
-            for arm in ARMS:
+            for arm in (("prod", "ll_both_reg") if FAST else ARMS):
                 result = replay._blend_and_score(
                     weights=seat, day_rows={s: day_rows[s]["arms"][arm] for s in pool},
                     cooling_shift_sigma=cooling, latitude=latitude, tables=tables, actual=actual,
@@ -220,8 +296,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--stations", required=True)
     parser.add_argument("--period", choices=tuple(PERIODS), default="unseen")
+    parser.add_argument("--model-backfill-arrivals", action="store_true")
+    parser.add_argument("--fast", action="store_true")
     args = parser.parse_args()
-    global SCORED, OUT
+    global SCORED, OUT, MODEL_BACKFILL_ARRIVALS, FAST
+    MODEL_BACKFILL_ARRIVALS = bool(args.model_backfill_arrivals)
+    FAST = bool(args.fast)
     SCORED = PERIODS[args.period]
     if args.period != "unseen":
         OUT = HERE / f"pass1_{args.period}"

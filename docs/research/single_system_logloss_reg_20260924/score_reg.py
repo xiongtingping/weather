@@ -49,10 +49,30 @@ def main():
     if period == "unseen":
         segments = {"july": [r for r in rows if r["event_date"] <= "2026-07-19"],
                     "forward": [r for r in rows if r["event_date"] == "2026-09-23"]}
+    elif period == "six":
+        from collections import defaultdict
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
+        by_day = defaultdict(list)
+        for r in rows:
+            by_day[(r["station"], r["event_date"])].append(r)
+        roots = []
+        for (_s, day), recs in by_day.items():
+            midnight = datetime.fromisoformat(day).replace(tzinfo=ZoneInfo(recs[0]["tz"]))
+            before = [r for r in recs
+                      if midnight - timedelta(days=1) <= datetime.fromisoformat(r["at"].replace("Z", "+00:00")) < midnight]
+            if before:
+                roots.append(max(before, key=lambda r: r["at"]))
+        segments = {"day_ahead_roots": roots,
+                    "before_134": [r for r in rows if r["event_date"] < "2026-09-14"],
+                    "after_134": [r for r in rows if r["event_date"] >= "2026-09-14"]}
     else:
         segments = {"before_134": [r for r in rows if r["event_date"] < "2026-09-14"],
                     "after_134": [r for r in rows if r["event_date"] >= "2026-09-14"]}
     fits = [f for r in rows for f in r["fit"].values()]
+    if period == "six":   # the reference arm is not fitted in --fast
+        for f in fits:
+            f.setdefault("s_ll", f["s_prod"]); f.setdefault("delta_ll", 0.0)
     result = {
         "protocol": "PROTOCOL.md", "period": period, "updates": len(rows),
         "stations": len({r["station"] for r in rows}),
@@ -65,6 +85,8 @@ def main():
         "arms": {},
     }
     for arm in ("ll_both_reg", "ll_both"):
+        if not all(arm in r for r in rows):
+            continue
         result["arms"][arm] = {"pooled": compare(rows, arm, "合并（主读数）")}
         for name, seg in segments.items():
             result["arms"][arm][name] = compare(seg, arm, name) if seg else None
