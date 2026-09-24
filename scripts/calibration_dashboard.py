@@ -7786,10 +7786,17 @@ def _live_basket_plan_state(
     wanted: dict[tuple[str, str], dict[str, list[str]]] = {}
     decided_at: dict[tuple[str, str], list[str]] = defaultdict(list)
     try:
+        # A decisions table without created_at (older fixtures) gets no
+        # windows: every station-day is read whole, as before.
+        has_created = "created_at" in {
+            str(info[1]) for info in conn.execute(
+                "PRAGMA table_info(auto_trade_decisions)"
+            )
+        }
         query = conn.execute(
             "SELECT decision_id, station_id, event_date, details_json,"
-            " created_at"
-            " FROM auto_trade_decisions WHERE decision_id IN (%s)"
+            + (" created_at" if has_created else " NULL")
+            + " FROM auto_trade_decisions WHERE decision_id IN (%s)"
             % ",".join("?" * len(ids)),
             ids,
         )
