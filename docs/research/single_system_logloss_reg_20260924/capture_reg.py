@@ -36,7 +36,14 @@ oos, replay = C.oos, C.replay
 
 CUTOFF_UTC = "2026-09-24T12:00:00Z"
 TRAIN_FLOOR = "2026-06-01"
-SCORED = lambda day: ("2026-07-01" <= day <= "2026-07-19") or day == "2026-09-23"  # noqa: E731
+PERIODS = {
+    # The days the previous round never looked at (PROTOCOL.md).
+    "unseen": lambda day: ("2026-07-01" <= day <= "2026-07-19") or day == "2026-09-23",
+    # The previous round's own days: the regularised arm's hyperparameters
+    # are production constants, so this is a consistency read, not a fit.
+    "seen": lambda day: "2026-07-20" <= day <= "2026-09-22",
+}
+SCORED = PERIODS["unseen"]
 ARMS = ("prod", "ll_both", "ll_both_reg")
 REG_HALF_LIFE_DAYS = oos.RELIABILITY_HALF_LIFE_DAYS      # 15, production's own constant
 REG_KAPPA = 0.5                                          # stable pool's shrinkage
@@ -212,7 +219,12 @@ def capture_station(conn, station, tz):
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--stations", required=True)
+    parser.add_argument("--period", choices=tuple(PERIODS), default="unseen")
     args = parser.parse_args()
+    global SCORED, OUT
+    SCORED = PERIODS[args.period]
+    if args.period != "unseen":
+        OUT = HERE / f"pass1_{args.period}"
     OUT.mkdir(exist_ok=True)
     conn = sqlite3.connect(f"file:{C.SSOT}?mode=ro", uri=True, timeout=30)
     zones = dict(conn.execute(
