@@ -4752,12 +4752,17 @@ CHAIN_LATEST_SQL = {
 
 
 def collect_chain(
-    conn: sqlite3.Connection, counts: Mapping[str, Any],
+    conn: sqlite3.Connection, counts: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Each link of the live chain, newest evidence and whether it moved.
 
-    The row counts on each link come from ``collect_chain_volume``.
+    The row counts on each link come from ``collect_chain_volume``: a paged
+    render builds them as their own section and hands them in; called
+    alone this still counts them.
     """
+
+    if counts is None:
+        counts = collect_chain_volume(conn)
 
     links: list[dict[str, Any]] = []
 
