@@ -8335,45 +8335,18 @@ LIVE_GATE_RULES: dict[str, float] = {
 }
 
 
-def collect_live_readiness(
-    conn: sqlite3.Connection,
-    band_stations: list[dict[str, Any]],
-) -> dict[str, Any]:
-    """Everything the go-live page needs: gates per station, knobs, contracts.
+def collect_station_difficulty(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Per-station difficulty readings for the go-live page.
 
-    Five gates, all measured, none aesthetic, and since 2026-09-16 every one
-    that reads a book reads the live one (user ruling: 过闸、未过项、不行、
-    不行的维度 all on live data): the hit-to-claim ratio of the station's
-    settled live baskets (claim honesty), their held centre against settled
-    truth, the live settled station-days and ROI, and truth freshness.  The
-    five-dimension read rides on the same rows (``failure``), off the same
-    settlements.  No paper figure is on the row: the columns that sat beside
-    the live ones for comparison left the page with the rest of the paper
-    readings (user ruling, 2026-09-16).  ``band_stations`` only widens the
-    roster to stations
-    the model serves.  The three control files are read fresh at render so
-    the page shows what production would read this cycle; the write path is
-    scripts/live_control_server.py, never this page.
+    Split out of ``collect_live_readiness`` on 2026-09-24.  That section is
+    the live book's and is read on every render, but these two readings
+    read every truth row and 1,215 P0 claims' JSON (45 s of overflow pages
+    alone), move by the week, and gate nothing.  A paged render builds them
+    as ``station_difficulty`` and hands them in.
     """
 
-    ratio_by_station = {
-        str(row["station"]): row for row in (band_stations or [])
-    }
-    try:
-        truth_latest = {
-            str(sid): str(day) for sid, day in conn.execute(
-                "SELECT station_id, MAX(local_date)"
-                " FROM calibration_station_daily_high_truth"
-                " GROUP BY station_id"
-            )
-        }
-    except sqlite3.OperationalError:
-        return {"available": False}
-
     import datetime as _dt
-    fresh_floor = (
-        _dt.date.today() - _dt.timedelta(days=2)
-    ).isoformat()
+
     # Two per-station difficulty readings (2026-09-01 investigation).
     # ``climate_jump``: mean |Tmax(d) - Tmax(d-1)| from the truth table --
     # the station's weather temperament, slow-moving and exogenous to the
@@ -8488,6 +8461,53 @@ def collect_live_readiness(
     # collector's output.  A station with live fills is listed even when the
     # paper book never seated it: LTAC and NZWN had traded live and had no
     # row on this table at all.
+    return {"climate_jump": climate_jump, "shape_gap": shape_gap}
+
+
+def collect_live_readiness(
+    conn: sqlite3.Connection,
+    band_stations: list[dict[str, Any]],
+    difficulty: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Everything the go-live page needs: gates per station, knobs, contracts.
+
+    Five gates, all measured, none aesthetic, and since 2026-09-16 every one
+    that reads a book reads the live one (user ruling: 过闸、未过项、不行、
+    不行的维度 all on live data): the hit-to-claim ratio of the station's
+    settled live baskets (claim honesty), their held centre against settled
+    truth, the live settled station-days and ROI, and truth freshness.  The
+    five-dimension read rides on the same rows (``failure``), off the same
+    settlements.  No paper figure is on the row: the columns that sat beside
+    the live ones for comparison left the page with the rest of the paper
+    readings (user ruling, 2026-09-16).  ``band_stations`` only widens the
+    roster to stations
+    the model serves.  The three control files are read fresh at render so
+    the page shows what production would read this cycle; the write path is
+    scripts/live_control_server.py, never this page.
+    """
+
+    ratio_by_station = {
+        str(row["station"]): row for row in (band_stations or [])
+    }
+    try:
+        truth_latest = {
+            str(sid): str(day) for sid, day in conn.execute(
+                "SELECT station_id, MAX(local_date)"
+                " FROM calibration_station_daily_high_truth"
+                " GROUP BY station_id"
+            )
+        }
+    except sqlite3.OperationalError:
+        return {"available": False}
+
+    import datetime as _dt
+    fresh_floor = (
+        _dt.date.today() - _dt.timedelta(days=2)
+    ).isoformat()
+    if difficulty is None:
+        difficulty = collect_station_difficulty(conn)
+    climate_jump = dict(difficulty.get("climate_jump") or {})
+    shape_gap = dict(difficulty.get("shape_gap") or {})
     live_orders = _collect_live_orders(conn)
     live_by_station = {
         str(item["station_id"]): item
@@ -17063,9 +17083,13 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     band_audit = _cached_section(
         "band_residual_audit", collect_band_residual_audit, conn,
     )
+    station_difficulty = _cached_section(
+        "station_difficulty", collect_station_difficulty, conn,
+        _unavailable={},
+    )
     live_readiness = _cached_section(
         "live_readiness", collect_live_readiness,
-        conn, band_audit.get("stations") or [],
+        conn, band_audit.get("stations") or [], station_difficulty,
     )
     window_divergence = _cached_section(
         "window_divergence", collect_window_divergence, conn

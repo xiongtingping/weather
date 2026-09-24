@@ -540,3 +540,30 @@ def test_the_truth_lamp_stands_when_its_table_is_unread(monkeypatch, tmp_path) -
     assert out["health"] in ("amber", "red")
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
     assert "(T.coverage || []).length || T.coverage_unavailable" in source
+
+
+def test_live_readiness_takes_the_difficulty_it_is_handed(monkeypatch) -> None:
+    """The gates are the live book's; the two difficulty readings are a paged section."""
+
+    def forbidden(conn):
+        raise AssertionError("handed in; do not read every truth row again")
+
+    monkeypatch.setattr(C, "collect_station_difficulty", forbidden)
+    monkeypatch.setattr(C, "_collect_live_orders", lambda conn: {"pnl": {"by_station": []}})
+    monkeypatch.setattr(C, "_render_live_book", lambda conn: {"settlements": []})
+    monkeypatch.setattr(C.live_book, "station_days", lambda book: [])
+    monkeypatch.setattr(
+        C.live_book, "station_quality",
+        lambda s, d: {"stations": {}, "split_event_date": None, "thresholds": {}},
+    )
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE calibration_station_daily_high_truth"
+        " (station_id TEXT, local_date TEXT, official_tmax_c REAL)"
+    )
+    out = C.collect_live_readiness(
+        conn, [{"station": "KLGA"}],
+        {"climate_jump": {"KLGA": 1.234}, "shape_gap": {}},
+    )
+    row = next(r for r in out["stations"] if r["station"] == "KLGA")
+    assert row["climate_jump_c"] == 1.23 and row["shape_gap_buckets"] is None

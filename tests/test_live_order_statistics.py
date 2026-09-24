@@ -564,10 +564,13 @@ def test_neither_live_reader_is_left_on_the_old_table() -> None:
         (ROOT / "scripts" / "calibration_dashboard.py").read_text("utf-8")
     )
     # The listing calls the resolver itself; the money reads the live book,
-    # whose builder is the one place that calls it for them (2026-09-16).
+    # whose builder is the one place that calls it for them (2026-09-16) --
+    # through ``_render_live_book`` since 2026-09-24, which builds it once
+    # per paged render and is itself held to calling ``live_book.build``.
     resolver_of = {
         "_collect_live_orders": ("_live_settled_buckets",),
-        "_collect_live_pnl": ("live_book.build",),
+        "_collect_live_pnl": ("_render_live_book",),
+        "_render_live_book": ("live_book.build",),
     }
 
     def calls_of(node):
