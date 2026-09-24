@@ -16639,6 +16639,7 @@ def build_payload(db: Path) -> dict[str, Any]:
     }
     if _PAGED_RUN:
         _save_every_run_costs()
+        _save_section_specs()
         # What this paged run could not compute and served from its last
         # page instead, and how long it spent waiting for production gaps.
         payload["render"]["paged"] = {
@@ -17251,6 +17252,16 @@ RENDER_EVERY_RUN_SECTIONS = frozenset({
     "live_readiness", "live_selection", "live_days", "live_money",
     "window_divergence",
 })
+#: A section that cost at least this much last time is the research render's
+#: to compute (``--refresh-research``, its own launchd clock, user ruling
+#: 2026-09-24 「单开研究节渲染」): the page render serves its page and moves
+#: on.  The page render's 1,500 s cannot hold them -- bias_half_life 1,249 s,
+#: lambda_axis_realisation 793 s, band_residual_audit 651 s -- and a run that
+#: starts one either dies at the deadline or leaves no room for the rest.
+RESEARCH_SECTION_MIN_COST_SEC = 300.0
+#: How each paged section was last called (collector, inputs, key), written
+#: by the page render so the research render calls it the same way.
+RENDER_SECTION_SPECS = "_section_specs.json"
 #: The every-run sections' last costs, so a paged run leaves them room.
 #: Recorded as each one finishes, not at the end: a run killed before its
 #: end would otherwise never record the costs that would have saved it.
@@ -17574,6 +17585,119 @@ def _serve_stale_page(
 _NO_UNAVAILABLE = object()
 
 
+def _record_section_spec(
+    name: str, collector: Any, args: tuple[Any, ...],
+    kwargs: dict[str, Any], salt: str, unavailable: Any,
+) -> None:
+    """Note how a paged section was called, for the research render.
+
+    Only calls it can repeat: a module-level collector whose inputs past the
+    connection can be written down.  The page render writes these out at the
+    end of its run (``_save_section_specs``).
+    """
+
+    try:
+        module = str(collector.__module__)
+        spec = {
+            # The board itself runs as __main__ under launchd and as
+            # calibration_dashboard when imported; one name for both.
+            "module": (
+                "calibration_dashboard" if module in ("__main__", __name__)
+                else module
+            ),
+            "collector": str(collector.__qualname__),
+            "args": json.loads(json.dumps(list(args[1:]))),
+            "kwargs": json.loads(json.dumps(kwargs)),
+            "salt": salt,
+            "unavailable": (
+                None if unavailable is _NO_UNAVAILABLE
+                else {"value": json.loads(json.dumps(unavailable))}
+            ),
+        }
+    except (TypeError, ValueError, AttributeError):
+        return
+    if "." in spec["collector"]:
+        return
+    _PAGED_RUN.setdefault("specs", {})[name] = spec
+
+
+def _save_section_specs() -> None:
+    specs = _PAGED_RUN.get("specs") or {}
+    if not specs:
+        return
+    kept = _load_closed_readings(RENDER_SECTION_SPECS)
+    _save_closed_readings(RENDER_SECTION_SPECS, {**kept, **specs})
+
+
+def _resolve_collector(spec: Mapping[str, Any]) -> Any:
+    module_name = str(spec["module"])
+    if module_name == "calibration_dashboard":
+        module = sys.modules[__name__]
+    else:
+        module = sys.modules.get(module_name) or importlib.import_module(module_name)
+    return getattr(module, str(spec["collector"]))
+
+
+def refresh_research_section(db: Path) -> str:
+    """Compute the one most overdue heavy section and keep its page.
+
+    The research render (``--refresh-research``; launchd
+    com.weather.dashboard_research_render): a section whose last build cost
+    ``RESEARCH_SECTION_MIN_COST_SEC`` or more, expired or pageless, the one
+    furthest past its lifetime first -- called exactly as the page render
+    last called it (``RENDER_SECTION_SPECS``).  Same gap waits and the same
+    WAL yield as the page render; it writes the section's page and nothing
+    else, and the next page render serves it.
+    """
+
+    specs = _load_closed_readings(RENDER_SECTION_SPECS)
+    now = _now()
+    due: list[tuple[float, str]] = []
+    for name, spec in specs.items():
+        path = SECTION_CACHE_DIR / f"{name}.json"
+        try:
+            blob = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            blob = {}
+        cost = float(blob.get("build_sec") or 0.0)
+        if cost < RESEARCH_SECTION_MIN_COST_SEC:
+            continue
+        ttl = SECTION_CACHE_TTL_SEC.get(name) or PAGED_SECTION_TTL_SEC
+        stamp = _parse_utc_or_none(blob.get("computed_at_utc"))
+        age = (now - stamp).total_seconds() if stamp else float("inf")
+        if age >= ttl:
+            due.append((age / ttl, name))
+    if not due:
+        return "research render: nothing due"
+    _overdue, name = max(due)
+    spec = specs[name]
+    collector = _resolve_collector(spec)
+    conn = _connect(db)
+    _paged_run_start(db)
+    _PAGED_RUN["force"] = name
+    conn.set_progress_handler(_render_yield_check, 20_000)
+    started = time.perf_counter()
+    try:
+        kwargs = dict(spec.get("kwargs") or {})
+        unavailable = spec.get("unavailable")
+        if unavailable is not None:
+            kwargs["_unavailable"] = unavailable.get("value")
+        _cached_section(
+            name, collector, conn, *(spec.get("args") or []),
+            _salt=str(spec.get("salt") or ""), **kwargs,
+        )
+    except RenderYielded as yielded:
+        return f"research render: {name} yielded to the writer ({yielded})"
+    finally:
+        conn.close()
+        entry = dict(_SECTION_CACHE_LOG.get(name) or {})
+        _PAGED_RUN.clear()
+    elapsed = time.perf_counter() - started
+    if entry.get("stale") or entry.get("unavailable"):
+        return f"research render: {name} not computed ({entry.get('stale_reason')})"
+    return f"research render: {name} computed in {elapsed:.0f}s"
+
+
 def _serve_unavailable(name: str, value: Any, reason: str) -> Any:
     _SECTION_CACHE_LOG[name] = {
         "reused": False,
@@ -17709,7 +17833,16 @@ def _cached_section(
             return blob["value"]
     except (OSError, ValueError, KeyError, TypeError):
         pass
+    forced = paged and _PAGED_RUN.get("force") == name
     if paged:
+        _record_section_spec(name, collector, args, kwargs, _salt, _unavailable)
+    if paged and not forced:
+        # A heavy section with a page is the research render's to refresh.
+        if last_cost >= RESEARCH_SECTION_MIN_COST_SEC:
+            if page is not None:
+                return _serve_stale_page(name, page, ttl, page_age, "research lane", page_inputs_moved)
+            if _unavailable is not _NO_UNAVAILABLE:
+                return _serve_unavailable(name, _unavailable, "research lane")
         # Room left for this section: the soft budget, less what the
         # every-run sections still to come cost last time.
         remaining = (
@@ -17753,6 +17886,13 @@ def _cached_section(
         _PAGED_RUN["yielded"] = False
         # Stamped when the read starts, not when the section was reached:
         # a page is as old as the snapshot it read.
+        now = _now()
+    elif forced:
+        blocker = _await_production_gap(name, LIVE_SECTION_GAP_CAP_SEC, RENDER_YIELD_WAL_BYTES)
+        if blocker is not None and blocker.startswith("wal"):
+            raise RenderYielded(f"{name}: {blocker}")
+        _PAGED_RUN["armed"] = True
+        _PAGED_RUN["yielded"] = False
         now = _now()
     started = time.perf_counter()
     try:
@@ -28030,6 +28170,14 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--refresh-research",
+        action="store_true",
+        help=(
+            "compute the one most overdue heavy section and keep its page"
+            " (the research render, on its own launchd clock)"
+        ),
+    )
+    parser.add_argument(
         "--no-section-cache",
         action="store_true",
         help=(
@@ -28047,6 +28195,9 @@ def main() -> int:
         print(reinflate(args.reinflate, renderer=render_html))
         return 0
     database = args.db.expanduser().resolve(strict=True)
+    if args.refresh_research:
+        print(refresh_research_section(database))
+        return 0
     if args.json:
         print(json.dumps(
             build_payload(database), ensure_ascii=False, sort_keys=True

@@ -720,9 +720,9 @@ def test_a_pageless_section_that_will_not_fit_shows_its_stand_in(paged, monkeypa
     C._cached_section("slow_moving", _collector(calls, "old"), None)
     blob = json.loads((paged / "sections" / "slow_moving.json").read_text())
     blob["fingerprint"] = blob["code_fingerprint"] = "older code"
-    blob["build_sec"] = 531.0
+    blob["build_sec"] = 250.0   # under the research lane's line
     (paged / "sections" / "slow_moving.json").write_text(json.dumps(blob))
-    monkeypatch.setattr(C, "RENDER_SOFT_BUDGET_SEC", 432.0)
+    monkeypatch.setattr(C, "RENDER_SOFT_BUDGET_SEC", 200.0)
     monkeypatch.setattr(C, "RENDER_EVERY_RUN_DEFAULT_COST_SEC", 0.0)
     assert C._cached_section("slow_moving", _collector(calls, "new"), None, _unavailable={}) == {}
     assert calls == ["old"]
@@ -917,3 +917,56 @@ def test_h5_readiness_caught_up_in_chunks_is_the_one_read(paged, monkeypatch) ->
             chunks += 1
             assert chunks < 10
     assert chunks >= 2 and paged_answer == whole and len(whole["days"]) == 6
+
+
+def _heavy_page(paged, name, collector, cost, computed_at="2026-09-01T00:00:00Z"):
+    calls: list[str] = []
+    C._cached_section(name, collector, None)
+    blob = json.loads((paged / "sections" / f"{name}.json").read_text())
+    blob["computed_at_utc"] = computed_at
+    blob["build_sec"] = cost
+    (paged / "sections" / f"{name}.json").write_text(json.dumps(blob))
+    C._SECTION_CACHE_LOG.clear()
+    return calls
+
+
+def test_a_heavy_expired_section_is_left_to_the_research_render(paged) -> None:
+    calls: list[str] = []
+    collector = _collector(calls, "old")
+    _heavy_page(paged, "slow_moving", collector, 1249.0)
+    value = C._cached_section("slow_moving", collector, None)
+    assert value["value"] == "old" and calls == ["old"], "the page render does not read it"
+    assert C._SECTION_CACHE_LOG["slow_moving"]["stale_reason"] == "research lane"
+
+
+_PROBE_CALLS: list[str] = []
+
+
+def _heavy_probe(conn):
+    """A module-level collector, as the research render needs to call one."""
+
+    _PROBE_CALLS.append("read")
+    return {"value": "fresh", "n": len(_PROBE_CALLS)}
+
+
+def test_the_research_render_computes_the_most_overdue_heavy_section(paged, monkeypatch) -> None:
+    monkeypatch.setattr(C, "SECTION_CACHE_TTL_SEC", {"slow_moving": 3600, "other": 3600})
+    _heavy_page(paged, "slow_moving", _heavy_probe, 900.0, "2026-09-01T00:00:00Z")
+    _heavy_page(paged, "other", _heavy_probe, 900.0, C._now().isoformat().replace("+00:00", "Z"))
+    C._save_section_specs()
+    specs = json.loads((paged / "sections" / C.RENDER_SECTION_SPECS).read_text())
+    assert specs["slow_moving"]["collector"] == "_heavy_probe"
+    C._PAGED_RUN.clear()
+    before = len(_PROBE_CALLS)
+    out = C.refresh_research_section(paged / "ssot.db")
+    assert "slow_moving computed" in out, out
+    assert len(_PROBE_CALLS) == before + 1, "only the overdue one; 'other' is fresh"
+    page = json.loads((paged / "sections" / "slow_moving.json").read_text())
+    assert page["value"]["n"] == len(_PROBE_CALLS)
+    C._paged_run_start(paged / "ssot.db")
+
+
+def test_the_research_render_does_nothing_when_nothing_is_due(paged) -> None:
+    C._PAGED_RUN.clear()
+    assert C.refresh_research_section(paged / "ssot.db") == "research render: nothing due"
+    C._paged_run_start(paged / "ssot.db")
