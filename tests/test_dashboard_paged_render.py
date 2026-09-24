@@ -390,3 +390,34 @@ def test_a_section_with_a_page_reads_in_an_open_gap(paged) -> None:
     _status(paged)  # no cycle in flight
     value = C._cached_section("slow_moving", _collector(calls, "new"), None)
     assert value["value"] == "new"
+
+
+def test_a_new_section_that_declares_what_to_show_does_not_stop_the_page(paged, monkeypatch) -> None:
+    """member_depth's first read under heavy writes (03:17Z) yielded the whole run."""
+
+    conn = sqlite3.connect(":memory:")
+    conn.set_progress_handler(C._render_yield_check, 1_000)
+    monkeypatch.setattr(C, "RENDER_MAX_WAL_BYTES", 1024)
+
+    def depth(connection):
+        _wal(paged, 4096)
+        C._PAGED_RUN["wal_checked"] = 0.0
+        return _long_count(connection)
+
+    assert C._cached_section("member_depth_like", depth, conn, _unavailable={}) == {}
+    entry = C._SECTION_CACHE_LOG["member_depth_like"]
+    assert entry["unavailable"] is True and entry["cached"] is False
+    assert not (paged / "sections" / "member_depth_like.json").exists()
+    # Past the line before reading: not read at all.
+    monkeypatch.setattr(C, "LIVE_SECTION_GAP_CAP_SEC", 0.0)
+    calls: list[str] = []
+    assert C._cached_section("other_new", _collector(calls), None, _unavailable=[]) == []
+    assert calls == []
+
+
+def test_an_every_run_section_cannot_declare_its_way_out(paged, monkeypatch) -> None:
+    monkeypatch.setattr(C, "RENDER_MAX_WAL_BYTES", 1024)
+    monkeypatch.setattr(C, "LIVE_SECTION_GAP_CAP_SEC", 0.0)
+    _wal(paged, 4096)
+    with pytest.raises(C.RenderYielded):
+        C._cached_section("members", _collector([]), None, _unavailable=[])

@@ -16588,11 +16588,33 @@ def _serve_stale_page(
     return blob["value"]
 
 
+#: ``_unavailable`` default: the section declared nothing to show instead.
+_NO_UNAVAILABLE = object()
+
+
+def _serve_unavailable(name: str, value: Any, reason: str) -> Any:
+    _SECTION_CACHE_LOG[name] = {
+        "reused": False,
+        "cached": False,
+        "unavailable": True,
+        "stale_reason": reason,
+    }
+    _PAGED_RUN["stale"][name] = f"unavailable ({reason})"
+    print(
+        f"[{_now().strftime('%Y-%m-%dT%H:%M:%SZ')}] section {name}"
+        f" not shown this run ({reason}); it has no page yet",
+        file=sys.stderr,
+        flush=True,
+    )
+    return json.loads(json.dumps(value))
+
+
 def _cached_section(
     name: str,
     collector: Any,
     *args: Any,
     _salt: str = "",
+    _unavailable: Any = _NO_UNAVAILABLE,
     **kwargs: Any,
 ) -> Any:
     """The collector's value, reused from disk while it is still young.
@@ -16605,6 +16627,12 @@ def _cached_section(
     Under a paged render (``_PAGED_RUN``) every section without a lifetime
     of its own gets ``PAGED_SECTION_TTL_SEC`` unless it is one of
     ``RENDER_EVERY_RUN_SECTIONS``, and every read waits for a production gap.
+
+    ``_unavailable``: what a paged section with no page yet shows when the
+    WAL keeps it from reading, instead of making the whole run step aside.
+    Only for sections whose readers already cope with it -- a new section's
+    first read under heavy writes (member_depth, 2026-09-24 03:17Z) should
+    not keep the lamps off the page.
     """
 
     paged = bool(_PAGED_RUN) and SECTION_CACHE_ENABLED
@@ -16709,6 +16737,8 @@ def _cached_section(
         if blocker is not None and page is not None:
             return _serve_stale_page(name, page, ttl, page_age, "no gap")
         if blocker is not None and blocker.startswith("wal"):
+            if _unavailable is not _NO_UNAVAILABLE:
+                return _serve_unavailable(name, _unavailable, blocker)
             raise RenderYielded(f"{name}: {blocker}")
         _PAGED_RUN["armed"] = True
         _PAGED_RUN["yielded"] = False
@@ -16723,6 +16753,8 @@ def _cached_section(
             _PAGED_RUN["yields"] = int(_PAGED_RUN["yields"]) + 1
             if page is not None:
                 return _serve_stale_page(name, page, ttl, page_age, "yielded")
+            if _unavailable is not _NO_UNAVAILABLE:
+                return _serve_unavailable(name, _unavailable, "interrupted")
             raise RenderYielded(f"{name}: interrupted, WAL past the line") from exc
         raise
     finally:
@@ -16736,6 +16768,8 @@ def _cached_section(
         _PAGED_RUN["yields"] = int(_PAGED_RUN["yields"]) + 1
         if page is not None:
             return _serve_stale_page(name, page, ttl, page_age, "yielded")
+        if _unavailable is not _NO_UNAVAILABLE:
+            return _serve_unavailable(name, _unavailable, "interrupted")
         raise RenderYielded(f"{name}: interrupted, WAL past the line")
     stamp = now.isoformat().replace("+00:00", "Z")
     _SECTION_CACHE_LOG[name] = {
@@ -16794,7 +16828,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     _SECTION_CACHE_LOG.clear()
     cadence = _cached_section("run_cadence", collect_run_cadence, conn)
     member_depth = _cached_section(
-        "member_depth", collect_member_depth, conn
+        "member_depth", collect_member_depth, conn, _unavailable={}
     )
     members = _cached_section(
         "members", collect_members, conn, cadence, member_depth
@@ -18627,7 +18661,8 @@ function upstreamLamps(){
       && m.overdue_hours > m.cycle_hours;
     L.push(lamp(m.health, `${m.label} 采集`,
       `${runLabel(m.latest_run_utc)} · ${hours(m.latest_capture_age_hours)}落库`,
-      `${m.stations} 站 · 存档 ${m.training_days} 天 · 被选进融合 ${m.seats_won} 次`
+      (m.stations == null ? "存档深度本轮未算（写库繁忙时让出）"
+        : `${m.stations} 站 · 存档 ${m.training_days} 天 · 被选进融合 ${m.seats_won} 次`)
       + (late ? ` · 下一轮已晚 ${hours(m.overdue_hours).replace("前", "")}` : "")
       + (m.backfillable ? "" : " · 不留历史，当天没抓到就永久缺失")
       + " · 这是采集：最新一轮落库，不等于已进 P0"));
