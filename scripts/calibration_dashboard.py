@@ -16577,7 +16577,10 @@ def _paged_args_salt(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str | Non
 
 def _serve_stale_page(
     name: str, blob: dict[str, Any], ttl: float, age: float, reason: str,
+    inputs_moved: bool = False,
 ) -> Any:
+    if inputs_moved:
+        reason = f"{reason}, inputs moved"
     _SECTION_CACHE_LOG[name] = {
         "computed_at_utc": str(blob["computed_at_utc"]),
         "age_sec": round(age),
@@ -16691,20 +16694,33 @@ def _cached_section(
             _save_every_run_costs()
         return value
     fingerprint = _section_fingerprint(collector, _salt)
+    # The code alone, without the declared inputs: what decides whether an
+    # old page has this section's shape.
+    code_fingerprint = _section_fingerprint(collector, "")
     path = SECTION_CACHE_DIR / f"{name}.json"
     now = _now()
     page: dict[str, Any] | None = None
     page_age = 0.0
+    page_inputs_moved = False
     try:
         blob = json.loads(path.read_text(encoding="utf-8"))
         stamp = str(blob["computed_at_utc"])
         age = (
             now - datetime.fromisoformat(stamp.replace("Z", "+00:00"))
         ).total_seconds()
-        if blob.get("fingerprint") == fingerprint and "value" in blob:
-            # Same code, same declared inputs: servable as a stale page
-            # even past its lifetime, never across a code change.
+        if "value" in blob and (
+            blob.get("fingerprint") == fingerprint
+            or blob.get("code_fingerprint") == code_fingerprint
+        ):
+            # Same code: servable as a stale page even past its lifetime,
+            # and even when its declared inputs have moved since -- a date
+            # in the key, a version window, another section it was fed.
+            # That is an older answer, not another shape.  Never across a
+            # code change.  (model_accuracy_trend's key carries the date,
+            # so every morning it had no page at all and was read whole,
+            # 354 s, and was what the 04:25Z run was killed on.)
             page, page_age = blob, age
+            page_inputs_moved = blob.get("fingerprint") != fingerprint
         if blob.get("fingerprint") == fingerprint and 0.0 <= age < ttl:
             _SECTION_CACHE_LOG[name] = {
                 "computed_at_utc": stamp,
@@ -16724,7 +16740,7 @@ def _cached_section(
         )
         expected = float((page or {}).get("build_sec") or 0.0)
         if page is not None and expected > remaining:
-            return _serve_stale_page(name, page, ttl, page_age, "budget")
+            return _serve_stale_page(name, page, ttl, page_age, "budget", page_inputs_moved)
         # A section with a page reads only if a gap is open right now; it
         # never sits waiting for one.  Waiting out the budget on the first
         # such section is what the 02:46Z and 03:08Z runs did (run_cadence,
@@ -16735,7 +16751,7 @@ def _cached_section(
         cap = 0.0 if page is not None else LIVE_SECTION_GAP_CAP_SEC
         blocker = _await_production_gap(name, cap)
         if blocker is not None and page is not None:
-            return _serve_stale_page(name, page, ttl, page_age, "no gap")
+            return _serve_stale_page(name, page, ttl, page_age, "no gap", page_inputs_moved)
         if blocker is not None and blocker.startswith("wal"):
             if _unavailable is not _NO_UNAVAILABLE:
                 return _serve_unavailable(name, _unavailable, blocker)
@@ -16752,7 +16768,7 @@ def _cached_section(
         if paged and _PAGED_RUN["yielded"]:
             _PAGED_RUN["yields"] = int(_PAGED_RUN["yields"]) + 1
             if page is not None:
-                return _serve_stale_page(name, page, ttl, page_age, "yielded")
+                return _serve_stale_page(name, page, ttl, page_age, "yielded", page_inputs_moved)
             if _unavailable is not _NO_UNAVAILABLE:
                 return _serve_unavailable(name, _unavailable, "interrupted")
             raise RenderYielded(f"{name}: interrupted, WAL past the line") from exc
@@ -16767,7 +16783,7 @@ def _cached_section(
         # had: a degraded value.  Never cache it as a page.
         _PAGED_RUN["yields"] = int(_PAGED_RUN["yields"]) + 1
         if page is not None:
-            return _serve_stale_page(name, page, ttl, page_age, "yielded")
+            return _serve_stale_page(name, page, ttl, page_age, "yielded", page_inputs_moved)
         if _unavailable is not _NO_UNAVAILABLE:
             return _serve_unavailable(name, _unavailable, "interrupted")
         raise RenderYielded(f"{name}: interrupted, WAL past the line")
@@ -16810,6 +16826,7 @@ def _cached_section(
                     "schema": "dashboard_section_cache_v1",
                     "section": name,
                     "fingerprint": fingerprint,
+                    "code_fingerprint": code_fingerprint,
                     "computed_at_utc": stamp,
                     "build_sec": round(elapsed, 1),
                     "value": value,
@@ -16836,6 +16853,49 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     member_admission = _cached_section(
         "member_admission", collect_member_admission, conn, members
     )
+    # The every-run sections first (RENDER_EVERY_RUN_SECTIONS: the lamps, the
+    # banner's inputs, the live book), so a paged run spends its budget on
+    # them before any page-backed section, and a page is written on every run
+    # that is not killed.  Until 2026-09-24 most of them sat at the end and
+    # were what the 1,500 s deadline cut off (03:30Z and 04:25Z runs).
+    #
+    # Charter 162's two doors, and charters 153/154's cycle journal: both
+    # read every render -- a freshness lamp that can be an hour stale is a
+    # lamp that says green through an outage.
+    observation_intake = _cached_section(
+        "observation_intake", collect_observation_intake, conn
+    )
+    cycle_time = _cached_section("cycle_time", collect_cycle_time, conn)
+    hosted_sweeps = _cached_section(
+        "hosted_sweeps", collect_hosted_sweeps, conn
+    )
+    delta_v2_authority = _cached_section(
+        "delta_v2_authority", collect_delta_v2_authority, conn
+    )
+    certificate_authority = _cached_section(
+        "certificate_authority", collect_certificate_authority, conn
+    )
+    chain = _cached_section("chain", collect_chain, conn)
+    stages = _cached_section("band_stages", collect_band_stages, conn)
+    truth = _cached_section(
+        "truth_materialization", collect_truth_materialization, conn
+    )
+    # 每日统计 and 逐站逐日明细 read the live book (user ruling, 2026-09-16).
+    live_days = _cached_section("live_days", collect_live_days, conn)
+    live_selection_payload = _cached_section(
+        "live_selection", live_selection.build, conn
+    )
+    band_audit = _cached_section(
+        "band_residual_audit", collect_band_residual_audit, conn,
+    )
+    live_readiness = _cached_section(
+        "live_readiness", collect_live_readiness,
+        conn, band_audit.get("stations") or [],
+    )
+    window_divergence = _cached_section(
+        "window_divergence", collect_window_divergence, conn
+    )
+    live_money = _cached_section("live_money", collect_live_money, conn)
     previous_windows = _previous_version_windows(conn)
     previous_salt = json.dumps(previous_windows, sort_keys=True)
     center_landing_previous = _cached_section(
@@ -16879,13 +16939,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     precip_classification = _cached_section(
         "precip_classification", collect_precip_classification, conn
     )
-    # Charter 162's two doors, and charters 153/154's cycle journal: both
-    # read every render -- a freshness lamp that can be an hour stale is a
-    # lamp that says green through an outage.
-    observation_intake = _cached_section(
-        "observation_intake", collect_observation_intake, conn
-    )
-    cycle_time = _cached_section("cycle_time", collect_cycle_time, conn)
     regional_usage = _cached_section(
         "regional_usage", collect_regional_usage, conn
     )
@@ -16905,30 +16958,16 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     tables = _cached_section(
         "correction_and_weights", collect_correction_and_weights, conn
     )
-    stages = _cached_section("band_stages", collect_band_stages, conn)
     band_shadow = _cached_section(
         "band_shadow", collect_band_shadow, conn
     )
-    chain = _cached_section("chain", collect_chain, conn)
-    hosted_sweeps = _cached_section(
-        "hosted_sweeps", collect_hosted_sweeps, conn
-    )
     ssot_capacity = _cached_section(
         "ssot_capacity", collect_ssot_capacity, conn
-    )
-    delta_v2_authority = _cached_section(
-        "delta_v2_authority", collect_delta_v2_authority, conn
-    )
-    certificate_authority = _cached_section(
-        "certificate_authority", collect_certificate_authority, conn
     )
     gaps = _cached_section(
         "gaps", collect_gaps, conn, members, stages, tables
     )
     skill = _cached_section("skill", collect_model_skill, conn)
-    truth = _cached_section(
-        "truth_materialization", collect_truth_materialization, conn
-    )
     scores = _cached_section("oos_scores", collect_oos_scores, conn)
     serving_weights = _cached_section(
         "serving_weights", collect_serving_weights, conn
@@ -17115,11 +17154,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "red" if any(a["health"] == "red" for a in alerts)
         else ("amber" if alerts else "green")
     )
-    # 每日统计 and 逐站逐日明细 read the live book (user ruling, 2026-09-16).
-    live_days = _cached_section("live_days", collect_live_days, conn)
-    live_selection_payload = _cached_section(
-        "live_selection", live_selection.build, conn
-    )
     return {
         "schema": "calibration_dashboard_v2",
         "generated_at_utc": _now().isoformat().replace("+00:00", "Z"),
@@ -17147,13 +17181,8 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "p1_path_skill": p1_path_skill,
         "tables": tables,
         "truth_landing": truth_landing,
-        "band_residual_audit": (band_audit := _cached_section(
-            "band_residual_audit", collect_band_residual_audit, conn,
-        )),
-        "live_readiness": _cached_section(
-            "live_readiness", collect_live_readiness,
-            conn, band_audit.get("stations") or [],
-        ),
+        "band_residual_audit": band_audit,
+        "live_readiness": live_readiness,
         "tiebreak_lane": _cached_section(
             "tiebreak_lane", collect_tiebreak_lane, conn
         ),
@@ -17195,9 +17224,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "bias_half_life": _cached_section(
             "bias_half_life", collect_bias_half_life, conn
         ),
-        "window_divergence": _cached_section(
-            "window_divergence", collect_window_divergence, conn
-        ),
+        "window_divergence": window_divergence,
         "effective_edge_lambda": _cached_section(
             "effective_edge_lambda", collect_effective_edge_lambda, conn
         ),
@@ -17241,9 +17268,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         # The account, off the live book (user ruling, 2026-09-16).  The
         # paper book's own risk metrics and nine numbers left the page with
         # it: the ledger is a rule comparator, not the account.
-        "live_money": _cached_section(
-            "live_money", collect_live_money, conn
-        ),
+        "live_money": live_money,
         "regional": _cached_section(
             "regional", collect_regional_lanes, conn
         ),

@@ -135,7 +135,9 @@ def test_a_page_is_never_served_across_a_code_change(paged, monkeypatch) -> None
     C._cached_section("slow_moving", _collector(calls, "old"), None)
     blob = json.loads((paged / "sections" / "slow_moving.json").read_text())
     blob["computed_at_utc"] = "2026-09-01T00:00:00Z"
+    # A code change moves both: the full key and the code's own.
     blob["fingerprint"] = "retired"
+    blob["code_fingerprint"] = "retired"
     (paged / "sections" / "slow_moving.json").write_text(json.dumps(blob))
     monkeypatch.setattr(C, "RENDER_SOFT_BUDGET_SEC", -1.0)
     value = C._cached_section("slow_moving", _collector(calls, "new"), None)
@@ -436,3 +438,26 @@ def test_the_run_shares_one_wait_budget(paged, monkeypatch) -> None:
     C._cached_section("live_days", _collector([]), None)    # nothing left
     assert sum(slept) == pytest.approx(150.0)
     assert C._PAGED_RUN["gap_wait_left"] == 0.0
+
+
+def test_a_page_whose_inputs_moved_is_still_a_page(paged, monkeypatch) -> None:
+    """A date in the key: every morning it had no page and was read whole."""
+
+    calls: list[str] = []
+    collector = _collector(calls, "yesterday")
+    C._cached_section("slow_moving", collector, None, _salt="2026-09-23")
+    monkeypatch.setattr(C, "RENDER_SOFT_BUDGET_SEC", -1.0)
+    value = C._cached_section("slow_moving", collector, None, _salt="2026-09-24")
+    assert value["value"] == "yesterday" and calls == ["yesterday"]
+    reason = C._SECTION_CACHE_LOG["slow_moving"]["stale_reason"]
+    assert reason == "budget, inputs moved"
+
+
+def test_a_page_with_moved_inputs_is_never_fresh(paged) -> None:
+    """Past the budget it is a stale page; inside the budget it is recomputed."""
+
+    calls: list[str] = []
+    collector = _collector(calls, "x")
+    C._cached_section("slow_moving", collector, None, _salt="a")
+    C._cached_section("slow_moving", collector, None, _salt="b")
+    assert calls == ["x", "x"]
