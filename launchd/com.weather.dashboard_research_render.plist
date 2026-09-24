@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.weather.dashboard_research_render</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/xiong/weather/scripts/dashboard_research_sweep.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/xiong/weather</string>
+  <!-- The board's research render (user ruling 2026-09-24
+       「单开研究节渲染」): one heavy section an hour -- those that cost 300 s
+       or more last time, which the page render's 1,500 s cannot hold and
+       now serves from their pages.  A reader of the store, a writer of one
+       section-cache file; it does not start while the page render runs and
+       skips a start with the WAL past the resident's line.  The sweep
+       carries its own 3,300 s deadline. -->
+  <key>StartInterval</key>
+  <integer>3600</integer>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/Users/xiong/weather/data/logs/dashboard_research.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/xiong/weather/data/logs/dashboard_research.err.log</string>
+</dict>
+</plist>

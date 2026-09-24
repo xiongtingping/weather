@@ -159,6 +159,12 @@ def test_only_three_user_domain_services_and_targetctl_remain() -> None:
         # through a read-only connection held for seconds, two files under
         # data/ -- a reader with no place in a writer turn.
         "com.weather.settlement_truth_reconciliation.plist",
+        # 2026-09-24 (user ruling 「单开研究节渲染」): the board's heavy
+        # sections, one an hour, which the page render's 1,500 s cannot hold
+        # (bias_half_life 1,249 s and the like) and now serves from their
+        # pages.  A reader of the store and a writer of one section-cache
+        # file; like the page render it belongs to no resident's turn.
+        "com.weather.dashboard_research_render.plist",
     ]
     # The board's write path.  Not a production owner -- it places nothing
     # and holds no state -- but the LIVE switch is drawn disabled while it is

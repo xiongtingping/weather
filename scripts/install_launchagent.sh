@@ -44,6 +44,9 @@ OPTIONAL_PLISTS=(
   # Charter 207: our settled buckets against the market's, every 3 hours.
   # A reader outside the writer turn; it writes only two files under data/.
   com.weather.settlement_truth_reconciliation.plist
+  # The board's research render, one heavy section an hour (2026-09-24,
+  # 「单开研究节渲染」).  A reader; it writes one section-cache file.
+  com.weather.dashboard_research_render.plist
 )
 SUPPORTED_PLISTS=("${DEFAULT_PLISTS[@]}" "${OPTIONAL_PLISTS[@]}")
 PLISTS=("${DEFAULT_PLISTS[@]}")
