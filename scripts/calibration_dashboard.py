@@ -16317,6 +16317,13 @@ SECTION_CACHE_TTL_SEC = {
     # History depth and seats per model family (collect_member_depth): walks
     # every member row, moves by days, colours no light.
     "member_depth": 189 * 60,
+    # Charter 206's certificate clock: its red is a certificate ending inside
+    # three days or evidence a month old, so an hour's page is nothing
+    # against it -- and it read for 38-208 s a render (per-scope counts over
+    # the activation table).  Not one of the banner sources the section
+    # cache's safety rule pins; it was put in the every-run set on
+    # 2026-09-24 and taken out the same day.
+    "certificate_authority": 53 * 60,
     # Row counts per chain link (collect_chain_volume): display only.
     "chain_volume": 191 * 60,
     "center_landing_previous": 258 * 60,
@@ -16507,7 +16514,6 @@ RENDER_EVERY_RUN_SECTIONS = frozenset({
     # The freshness lamps and clocks: a lamp that can be a page old is a
     # lamp that says green through an outage.
     "hosted_sweeps", "cycle_time", "observation_intake",
-    "certificate_authority",
     # Everything the banner's light is derived from.
     "members", "chain", "band_stages", "truth_materialization",
     "delta_v2_authority",
