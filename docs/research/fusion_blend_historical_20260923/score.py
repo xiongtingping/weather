@@ -14,6 +14,7 @@ import gzip
 import hashlib
 import json
 import math
+import os
 import pickle
 import sqlite3
 import sys
@@ -37,7 +38,8 @@ from bayes_basket_target import fusion_blend as FB  # noqa: E402
 from bayes_basket_target import native_ensemble_oos as oos  # noqa: E402
 from calibration_dashboard import _core_murphy  # noqa: E402
 
-PASS1 = HERE / "pass1"
+PASS1 = Path(os.environ.get("FUSION_PASS1_DIR", str(HERE / "pass1")))
+RESULTS = Path(os.environ.get("FUSION_RESULTS", str(HERE / "results.json")))
 FAMILY_CAP = 0.75
 BOOT = 2000
 BLOCK = 3
@@ -184,7 +186,7 @@ def arm_scores(records, arm):
         "crps": float((w * crps).sum() / total), "nll": float((w * nll).sum() / total),
         "brier": float((w * brier).sum() / total),
         "rel": murphy["reliability"], "res": murphy["resolution"],
-    }, {"w": w, "sq": err * err, "crps": crps, "nll": nll}
+    }, {"w": w, "sq": err * err, "crps": crps, "nll": nll, "brier": brier}
 
 
 def compare(records, label):
@@ -197,7 +199,7 @@ def compare(records, label):
     for i, r in enumerate(records):
         day_idx[r["event_date"]].append(i)
     rng = np.random.default_rng(20260923)
-    boots = {"rmse": [], "crps": [], "nll": []}
+    boots = {"rmse": [], "crps": [], "nll": [], "brier": []}
     n_blocks = math.ceil(len(days) / BLOCK)
     for _ in range(BOOT):
         idx = np.concatenate([
@@ -209,6 +211,7 @@ def compare(records, label):
         boots["rmse"].append(math.sqrt((w * b_arr["sq"][idx]).sum() / tot) - math.sqrt((w * s_arr["sq"][idx]).sum() / tot))
         boots["crps"].append(float((w * (b_arr["crps"][idx] - s_arr["crps"][idx])).sum() / tot))
         boots["nll"].append(float((w * (b_arr["nll"][idx] - s_arr["nll"][idx])).sum() / tot))
+        boots["brier"].append(float((w * (b_arr["brier"][idx] - s_arr["brier"][idx])).sum() / tot))
     delta = {k: blend[k] - seat[k] for k in seat}
     rel_change = {k: (blend[k] - seat[k]) / seat[k] if seat[k] else None for k in seat}
     passes = (delta["rmse"] < 0 and delta["crps"] < 0 and delta["nll"] < 0
@@ -220,6 +223,8 @@ def compare(records, label):
         "seat": seat, "blend": blend, "delta": delta, "relative_change": rel_change,
         "ci95": {k: [float(np.percentile(v, 2.5)), float(np.percentile(v, 97.5))] for k, v in boots.items()},
         "passes_switch_rule": bool(passes),
+        # Charter 211 as amended 2026-09-24: bucket Brier and LogScore both lower.
+        "passes_charter_211": bool(delta["brier"] < 0 and delta["nll"] < 0),
     }
 
 
@@ -251,6 +256,12 @@ def main() -> int:
         "moved_half_l1_median": float(np.median(moved)) if moved else None,
         "moved_half_l1_p90": float(np.percentile(moved, 90)) if moved else None,
         "all_updates": compare(records, "全部更新（主读数）"),
+        # A replayed update after the local event day has ended decides
+        # nothing (a late or backfilled arrival); both arms carry it.
+        "before_day_end": compare([
+            r for r in records
+            if _stamp(r["at"]) < datetime.fromisoformat(r["event_date"]).replace(tzinfo=ZoneInfo(r["tz"])) + timedelta(days=1)
+        ], "只算当地日终之前的决策"),
         "day_ahead_roots": compare(roots, "日前根"),
         "applied_only": compare([r for r in records if r["blend_state"] == "APPLIED"], "只算融合真的改了权重的更新"),
         "unseen_by_study": compare(unseen, "研究没用过的站日"),
@@ -258,14 +269,14 @@ def main() -> int:
         "asos_excluded": compare([r for r in records if r["station"] not in FB.FUSION_BLEND_UNBOUND_LABEL_STATIONS], "去掉 ASOS 11 站"),
         "seconds": round(time.time() - started),
     }
-    (HERE / "results.json").write_text(json.dumps(result, ensure_ascii=False, indent=1))
-    for key in ("all_updates", "day_ahead_roots", "applied_only", "unseen_by_study", "stable_pool_era", "asos_excluded"):
+    RESULTS.write_text(json.dumps(result, ensure_ascii=False, indent=1))
+    for key in ("all_updates", "before_day_end", "day_ahead_roots", "applied_only", "unseen_by_study", "stable_pool_era", "asos_excluded"):
         c = result[key]
         if not c:
             continue
         rc = c["relative_change"]
         print(f"{c['label']}: {c['station_days']} sd / {c['event_days']} d | RMSE {rc['rmse']:+.2%} CRPS {rc['crps']:+.2%} "
-              f"NLL {rc['nll']:+.2%} REL {rc['rel']:+.1%} RES {rc['res']:+.1%} | pass={c['passes_switch_rule']} ci={c['ci95']}")
+              f"NLL {rc['nll']:+.2%} Brier {rc['brier']:+.3%} REL {rc['rel']:+.1%} RES {rc['res']:+.1%} | 211={c['passes_charter_211']} ci={c['ci95']}")
     return 0
 
 

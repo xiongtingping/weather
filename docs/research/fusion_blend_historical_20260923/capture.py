@@ -46,6 +46,20 @@ def _iso(moment: datetime) -> str:
     return moment.isoformat().replace("+00:00", "Z")
 
 
+# Backfilled history carries its backfill date as the archive query: AIFS ENS
+# rows were loaded 2026-09-22/23 and AIGEFS rows 2026-09-23, 700+ hours after
+# their runs, so on the recorded clock neither system's history ever arrived
+# in time to serve.  With ``--model-backfill-arrivals`` a row that "arrived"
+# more than a day after its run is stamped with a modelled arrival instead:
+# AIFS at the same run's IFS PF50 arrival (both from ECMWF's open-data bucket,
+# the AIFS research replay's own rule), AIGEFS at init + 8h11m (charter 212's
+# latest measured arrival).  Forward-captured rows keep their real arrival.
+MODEL_BACKFILL_ARRIVALS = False
+BACKFILL_LAG = timedelta(hours=24)
+AIGEFS_ARRIVAL_AFTER_INIT = timedelta(hours=8, minutes=11)
+AIFS_FALLBACK_AFTER_INIT = timedelta(hours=8)
+
+
 def capture_station(conn: sqlite3.Connection, station: str, tz: str):
     replay.FIRST_EVENT_DATE = FIRST_EVENT_DATE  # read by ``_arrivals``' floor
     natives = set(oos.OFFICIAL_ARCHIVE_SCOPE_CONTRACTS)
@@ -61,8 +75,17 @@ def capture_station(conn: sqlite3.Connection, station: str, tz: str):
     fetched = replay._arrivals(conn, station)
 
     def arrival_of(scope, case):
-        key = (scope[0], case["event_date"], str(case.get("archive_lead_bucket") or ""), scope[3], replay._run_init(case))
-        return fetched.get(key) or replay._utc(case["aggregator_snapshot_at_utc"])
+        init = replay._run_init(case)
+        key = (scope[0], case["event_date"], str(case.get("archive_lead_bucket") or ""), scope[3], init)
+        arrived = fetched.get(key) or replay._utc(case["aggregator_snapshot_at_utc"])
+        if MODEL_BACKFILL_ARRIVALS and init and scope[0] in ("ECMWF_AIFS_ENS_GLOBAL", "NOAA_AIGEFS_025"):
+            run = replay._utc(init)
+            if arrived - run > BACKFILL_LAG:
+                if scope[0] == "NOAA_AIGEFS_025":
+                    return run + AIGEFS_ARRIVAL_AFTER_INIT
+                twin = fetched.get(("ECMWF_IFS_ENS_OPEN_PF50",) + key[1:])
+                return twin if twin is not None and twin - run <= BACKFILL_LAG else run + AIFS_FALLBACK_AFTER_INIT
+        return arrived
 
     forecasts = replay.Forecasts(cases_by_scope, first_commit, arrival_of)
     try:
@@ -144,7 +167,8 @@ def capture_station(conn: sqlite3.Connection, station: str, tz: str):
                 },
                 "cooling": cooling, "latitude": latitude, "hour_key": hour_key,
                 "skill_rule": rule,
-                "seat": {"w": scored["w"], "mean": scored["mean"], "served": scored["served"], "vec": scored["vec"]},
+                "seat": {"w": scored["w"], "mean": scored["mean"], "served": scored["served"], "vec": scored["vec"],
+                         "lam": scored["lam"]},
             })
     return out, tables_memo
 
@@ -153,8 +177,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--budget-seconds", type=float, default=540.0)
     parser.add_argument("--stations", nargs="*", default=None)
+    parser.add_argument("--out", type=Path, default=OUT,
+                        help="pass-1 directory; the families seated are the contracts' as of the run")
+    parser.add_argument("--model-backfill-arrivals", action="store_true")
     args = parser.parse_args()
-    OUT.mkdir(parents=True, exist_ok=True)
+    global MODEL_BACKFILL_ARRIVALS
+    MODEL_BACKFILL_ARRIVALS = bool(args.model_backfill_arrivals)
+    out_dir = args.out
+    out_dir.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(f"file:{SSOT}?mode=ro", uri=True, timeout=60)
     conn.execute("PRAGMA query_only=ON")
     zones = dict(conn.execute(
@@ -166,7 +196,7 @@ def main() -> int:
     started = time.time()
     done = skipped = 0
     for station in stations:
-        target = OUT / f"{station}.jsonl.gz"
+        target = out_dir / f"{station}.jsonl.gz"
         if target.exists():
             skipped += 1
             continue
@@ -178,12 +208,12 @@ def main() -> int:
         with gzip.open(tmp, "wt") as handle:
             for row in rows:
                 handle.write(json.dumps(row, separators=(",", ":")) + "\n")
-        with open(OUT / f"{station}.tables.pkl", "wb") as handle:
+        with open(out_dir / f"{station}.tables.pkl", "wb") as handle:
             pickle.dump(tables, handle)
         tmp.replace(target)
         done += 1
         print(f"{station}: {len(rows)} updates, {len(tables)} table hours, {time.time() - t0:.0f}s", flush=True)
-    remaining = sum(1 for s in stations if not (OUT / f"{s}.jsonl.gz").exists())
+    remaining = sum(1 for s in stations if not (out_dir / f"{s}.jsonl.gz").exists())
     print(f"done {done}, already {skipped}, remaining {remaining}, {time.time() - started:.0f}s")
     return 0
 
