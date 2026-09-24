@@ -130,6 +130,7 @@ def _mint_cross(
     valid_from: datetime, valid_until: datetime, generation: int = 1,
     station_id: str = STATION, lead_bucket: str = LEAD,
     with_evidence: bool = True, season_bin: str = SEASON,
+    combination_method: str = "inverse_crps_weighted_v1",
 ) -> tuple[str, str]:
     """A cross artifact (+ its selection evidence) and activation."""
 
@@ -176,7 +177,7 @@ def _mint_cross(
         "independent_family_count": len(systems),
         "supported_exact_masks_json": json.dumps([]),
         "selection_evidence_sha256": esha,
-        "combination_method": "inverse_crps_weighted_v1",
+        "combination_method": combination_method,
         "family_weight_caps_json": json.dumps({}),
         "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
         "valid_from_utc": _utc(valid_from),
@@ -348,6 +349,51 @@ def test_stalled_scope_is_renewed_with_its_members_and_receipted():
     assert receipts[0][3] == ids["cross:activation"]
     assert {row[4] for row in receipts} == {"2026-08-28"}
     assert {row[5] for row in receipts} == {clock.RENEWAL_REASON}
+
+
+@pytest.mark.parametrize("method", [
+    # Minted between charters 160 and 173: clearness-scored, pinned 0.15.
+    "inverse_crps_weighted_v1::synoptic_cooling_shift_v1"
+    "::forecast_radiation_clearness_v2::radiation_shift_sigma=0.15",
+    # Older than charter 160: no clearness tag, a retired 0.35 pin.
+    "inverse_crps_weighted_v1::synoptic_cooling_shift_v1::radiation_shift_sigma=0.35",
+])
+def test_a_renewed_certificate_serves_the_fleet_radiation_coefficient(method):
+    """Charter 210 (user ruling 「改P0辐射系数」→「修」).  Renewal copies the
+    certificate whole, pin included; before charter 210 the pin decided what
+    P0 served, so a scope renewed rather than re-minted kept its 0.15 for good
+    (930 scopes on 44 stations on 2026-09-23).  The pin is kept as the
+    record of what the holdout scored; serving reads the fleet value."""
+
+    from bayes_basket_target.cross_consensus import (
+        RADIATION_SHIFT_SIGMA,
+        pinned_radiation_shift_sigma,
+        served_radiation_shift_sigma,
+    )
+
+    conn = _db()
+    minted = T0 - timedelta(days=25)
+    ends = minted + timedelta(days=30)
+    cycle_by_system = {SYSTEMS[0]: "00Z", SYSTEMS[1]: "06Z"}
+    for system_id, run_cycle in cycle_by_system.items():
+        _mint_system(
+            conn, system_id=system_id, run_cycle=run_cycle,
+            valid_from=minted, valid_until=ends,
+        )
+    source_id, _ = _mint_cross(
+        conn, cycle_by_system=cycle_by_system,
+        valid_from=minted, valid_until=ends, combination_method=method,
+    )
+    conn.commit()
+    result = clock.renew_expiring_certificates(conn, now=T0, commit=True)
+    assert result["counts"]["cross_artifacts"] == 1
+    (renewed_method,) = conn.execute(
+        "SELECT combination_method FROM calibration_cross_native_ensemble_artifact "
+        "WHERE cross_ensemble_artifact_id<>?", (source_id,),
+    ).fetchone()
+    assert renewed_method == method
+    assert pinned_radiation_shift_sigma(renewed_method) != RADIATION_SHIFT_SIGMA
+    assert served_radiation_shift_sigma(renewed_method) == RADIATION_SHIFT_SIGMA == 0.07
 
 
 def test_renewal_is_idempotent_and_stops_once_the_lane_is_fresh():
