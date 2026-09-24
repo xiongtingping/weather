@@ -4633,8 +4633,86 @@ def _band_chain_link(conn: sqlite3.Connection) -> tuple[str | None, str]:
     return latest, volume
 
 
-def collect_chain(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    """Each link of the live chain, newest evidence and whether it moved."""
+#: How far back from the member table's newest row the capture link looks
+#: for its newest capture.  The table only grows, and a capture writes its
+#: rows with the time it queried the archive, so the newest capture is in
+#: its tail: on 2026-09-24 the last 100,000 rows spanned sixteen hours and
+#: gave the same newest capture as the full read -- in 2.6 s instead of 88 s
+#: (``archive_query_at_utc`` is in no index).  Only a backfill appending
+#: more than this many rows stamped older than the newest capture could hide
+#: it, and then the link reads older than it is: amber, never a false green.
+CHAIN_CAPTURE_TAIL_ROWS = 100_000
+
+
+def collect_chain_volume(conn: sqlite3.Connection) -> dict[str, int]:
+    """How many rows each link of the chain holds -- the card's volume line.
+
+    Split out of ``collect_chain`` on 2026-09-24.  The counts shared a
+    statement with each link's newest time, and on the member table that
+    turned an index search into a read of every row with its payload: the
+    chain took 8 minutes on the 05:07Z run and the WAL line cut it off.  The
+    light is the newest time alone; the counts move by the day and colour
+    nothing, so they are a slow-moving section of their own.
+    """
+
+    return {
+        "capture": conn.execute(
+            "SELECT COUNT(*) FROM calibration_native_ensemble_historical_member_run"
+        ).fetchone()[0],
+        "truth": conn.execute(
+            "SELECT COUNT(*) FROM calibration_station_daily_high_truth"
+        ).fetchone()[0],
+        "activation": conn.execute(
+            "SELECT COUNT(*) FROM calibration_native_ensemble_activation"
+        ).fetchone()[0],
+        "p0": conn.execute(
+            "SELECT COUNT(*) FROM basket_probability_bridge_history"
+            " WHERE stage='P0'"
+        ).fetchone()[0],
+        "p1": conn.execute(
+            "SELECT COUNT(*) FROM basket_probability_bridge_history"
+            " WHERE stage='P1'"
+        ).fetchone()[0],
+    }
+
+
+def _volume(counts: Mapping[str, Any], key: str, unit: str) -> str:
+    count = counts.get(key)
+    return "条数本轮未算" if count is None else f"{int(count):,} {unit}"
+
+
+#: Each link's newest time, one statement each so every one is a seek (the
+#: capture link reads the table's tail, see ``CHAIN_CAPTURE_TAIL_ROWS``).
+#: Pinned in tests/test_dashboard_query_shapes.py.
+CHAIN_LATEST_SQL = {
+    "capture": (
+        "SELECT MAX(archive_query_at_utc)"
+        " FROM calibration_native_ensemble_historical_member_run"
+        " WHERE rowid > (SELECT MAX(rowid)"
+        "  FROM calibration_native_ensemble_historical_member_run) - ?"
+    ),
+    "truth": "SELECT MAX(local_date) FROM calibration_station_daily_high_truth",
+    "activation": (
+        "SELECT MAX(valid_from_utc) FROM calibration_native_ensemble_activation"
+    ),
+    "p0": (
+        "SELECT MAX(decision_at_utc) FROM basket_probability_bridge_history"
+        " WHERE stage='P0'"
+    ),
+    "p1": (
+        "SELECT MAX(decision_at_utc) FROM basket_probability_bridge_history"
+        " WHERE stage='P1'"
+    ),
+}
+
+
+def collect_chain(
+    conn: sqlite3.Connection, counts: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Each link of the live chain, newest evidence and whether it moved.
+
+    The row counts on each link come from ``collect_chain_volume``.
+    """
 
     links: list[dict[str, Any]] = []
 
@@ -4666,21 +4744,17 @@ def collect_chain(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         })
 
     capture = conn.execute(
-        "SELECT MAX(archive_query_at_utc), COUNT(*)"
-        " FROM calibration_native_ensemble_historical_member_run"
+        CHAIN_LATEST_SQL["capture"], (CHAIN_CAPTURE_TAIL_ROWS,)
     ).fetchone()
     add(
         "① 模型采集",
         "四家气象机构的集合预报下载入库",
         capture[0],
-        f"{capture[1]:,} 条成员预报",
+        _volume(counts, "capture", "条成员预报"),
         18,
         36,
     )
-    truth = conn.execute(
-        "SELECT MAX(local_date), COUNT(*)"
-        " FROM calibration_station_daily_high_truth"
-    ).fetchone()
+    truth = conn.execute(CHAIN_LATEST_SQL["truth"]).fetchone()
     truth_latest = (
         f"{truth[0]}T23:59:59Z" if truth[0] else None
     )
@@ -4688,19 +4762,16 @@ def collect_chain(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         "② 真值结算",
         "各站当天实际最高温入库，用来给预报打分",
         truth_latest,
-        f"{truth[1]:,} 个站日",
+        _volume(counts, "truth", "个站日"),
         48,
         96,
     )
-    art = conn.execute(
-        "SELECT MAX(valid_from_utc), COUNT(*)"
-        " FROM calibration_native_ensemble_activation"
-    ).fetchone()
+    art = conn.execute(CHAIN_LATEST_SQL["activation"]).fetchone()
     add(
         "③ 校正与权重",
         "每站每模型的偏差订正，以及各模型的融合权重",
         art[0],
-        f"{art[1]:,} 次激活",
+        _volume(counts, "activation", "次激活"),
         30,
         72,
     )
@@ -4713,27 +4784,21 @@ def collect_chain(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         30,
         72,
     )
-    p0 = conn.execute(
-        "SELECT MAX(decision_at_utc), COUNT(*)"
-        " FROM basket_probability_bridge_history WHERE stage='P0'"
-    ).fetchone()
+    p0 = conn.execute(CHAIN_LATEST_SQL["p0"]).fetchone()
     add(
         "⑤ P0 概率服务",
         "把校准后的概率投影到市场桶，供交易使用",
         p0[0],
-        f"{p0[1]:,} 份快照",
+        _volume(counts, "p0", "份快照"),
         12,
         36,
     )
-    p1 = conn.execute(
-        "SELECT MAX(decision_at_utc), COUNT(*)"
-        " FROM basket_probability_bridge_history WHERE stage='P1'"
-    ).fetchone()
+    p1 = conn.execute(CHAIN_LATEST_SQL["p1"]).fetchone()
     add(
         "⑥ P1 盘中更新",
         "当天实测进来后滚动更新概率",
         p1[0],
-        f"{p1[1]:,} 份快照",
+        _volume(counts, "p1", "份快照"),
         24,
         72,
     )
@@ -16172,6 +16237,8 @@ SECTION_CACHE_TTL_SEC = {
     # History depth and seats per model family (collect_member_depth): walks
     # every member row, moves by days, colours no light.
     "member_depth": 189 * 60,
+    # Row counts per chain link (collect_chain_volume): display only.
+    "chain_volume": 191 * 60,
     "center_landing_previous": 258 * 60,
     # The served version's own span, for the board's version comparison
     # (charter 202 moved the served landing onto the evidence window).  A new
@@ -16875,7 +16942,10 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     certificate_authority = _cached_section(
         "certificate_authority", collect_certificate_authority, conn
     )
-    chain = _cached_section("chain", collect_chain, conn)
+    chain_volume = _cached_section(
+        "chain_volume", collect_chain_volume, conn, _unavailable={}
+    )
+    chain = _cached_section("chain", collect_chain, conn, chain_volume)
     stages = _cached_section("band_stages", collect_band_stages, conn)
     truth = _cached_section(
         "truth_materialization", collect_truth_materialization, conn
@@ -17164,6 +17234,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "live_roster": live_days["roster"],
         "members": members,
         "member_depth": member_depth,
+        "chain_volume": chain_volume,
         "member_admission": member_admission,
         "synoptic_cooling": synoptic_cooling,
         "single_system_width": single_system_width,

@@ -459,3 +459,77 @@ def test_the_banner_reads_each_familys_newest_run_off_its_index():
     assert "COVERING INDEX calibration_native_member_skill_idx" in plan, plan
     body = SOURCE.split("def collect_members(", 1)[1].split("\ndef ", 1)[0]
     assert "COUNT(DISTINCT" not in body, "the depth counts belong to collect_member_depth"
+
+
+def _ssot_tables(conn: sqlite3.Connection, *tables: str) -> None:
+    """Create ``tables`` and all their indexes exactly as the SSOT declares them."""
+
+    from bayes_basket_target import ssot
+
+    texts = [v for v in vars(ssot).values() if isinstance(v, str) and "CREATE" in v]
+    for table in tables:
+        ddl = next(
+            m.group(0) for text in texts
+            for m in [re.search(
+                rf"CREATE TABLE IF NOT EXISTS {table}\s*\(.*?\n\);", text, re.S
+            )] if m
+        )
+        conn.execute(ddl)
+        seen = set()
+        for text in texts:
+            for index in re.findall(
+                rf"CREATE (?:UNIQUE )?INDEX IF NOT EXISTS \w+\s+ON {table}\s*\([^;]*;",
+                text,
+            ):
+                if index not in seen:
+                    seen.add(index)
+                    conn.execute(index)
+
+
+def test_every_chain_light_is_a_seek():
+    """The chain feeds the banner and is read every render.
+
+    Its newest-time reads shared a statement with each table's COUNT(*), and
+    on the member table that turned the MAX into a read of every row with
+    its payload: 8 minutes on the 2026-09-24 05:07Z run, cut off by the WAL
+    line.  Counts are ``collect_chain_volume`` now; each light is one seek.
+    """
+
+    import calibration_dashboard as board
+
+    conn = sqlite3.connect(":memory:")
+    _ssot_tables(
+        conn,
+        "calibration_native_ensemble_historical_member_run",
+        "calibration_station_daily_high_truth",
+        "calibration_native_ensemble_activation",
+        "basket_probability_bridge_history",
+    )
+    capture = _plan(conn, board.CHAIN_LATEST_SQL["capture"], 100_000)
+    assert "rowid>?" in capture and "SCAN calibration_native_ensemble_historical_member_run\n" not in capture + "\n", capture
+    for key in ("truth", "activation", "p0", "p1"):
+        plan = _plan(conn, board.CHAIN_LATEST_SQL[key])
+        assert "COVERING INDEX" in plan, (key, plan)
+    body = SOURCE.split("def collect_chain(", 1)[1].split("\ndef ", 1)[0]
+    assert "COUNT(*)" not in body, "the counts belong to collect_chain_volume"
+
+
+def test_the_chain_prints_the_counts_it_was_handed():
+    """``volume`` is also the band link's local name; the counts must not be shadowed."""
+
+    import calibration_dashboard as board
+
+    conn = sqlite3.connect(":memory:")
+    _ssot_tables(
+        conn,
+        "calibration_native_ensemble_historical_member_run",
+        "calibration_station_daily_high_truth",
+        "calibration_native_ensemble_activation",
+        "basket_probability_bridge_history",
+    )
+    counts = {"capture": 1234, "truth": 5, "activation": 6, "p0": 7, "p1": 8}
+    links = {row["name"][0]: row["volume"] for row in board.collect_chain(conn, counts)}
+    assert links["①"] == "1,234 条成员预报"
+    assert links["⑤"] == "7 份快照" and links["⑥"] == "8 份快照"
+    unread = {row["name"][0]: row["volume"] for row in board.collect_chain(conn, {})}
+    assert unread["①"] == "条数本轮未算"
