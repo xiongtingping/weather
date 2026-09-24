@@ -70,6 +70,7 @@ from math import log
 from typing import Any
 
 from .contracts import ContractError, content_sha256
+from .station_day_ladder import settled_rung, station_day_ladder
 
 BAND_STAGES = ("P0", "P0-M", "P1")
 # Charter 150 (2026-09-19): only P0 serves a band table.  P0-M and P1 are
@@ -1067,17 +1068,41 @@ def gate_lane_by_day(
             continue
         probabilities = json.loads(probabilities_json)
         centers = json.loads(centers_json)
-        records = []
-        for key in sorted(
+        ordered = sorted(
             probabilities, key=lambda k: float(centers.get(k, k))
-        ):
-            center = float(centers.get(key, key))
-            records.append((
-                float(probabilities[key]),
-                1 if (center - 0.5) <= actual < (center + 0.5) else 0,
-            ))
-        by_day[str(event)].append(records)
+        )
+        # Charter 213: a gate scored on the market ladder archives rung
+        # labels, whose widths are the ladder's (2F = 1.11C, open ends
+        # unbounded) -- the settled rung is read off the station-day's
+        # ladder, not off a 1C window around the centre.  Integer-degree
+        # rows keep the rule they were archived under.
+        if all(_integer_label(key) for key in ordered):
+            hits = [
+                1 if (float(centers.get(key, key)) - 0.5) <= actual
+                < (float(centers.get(key, key)) + 0.5) else 0
+                for key in ordered
+            ]
+        else:
+            found = station_day_ladder(
+                conn, station_id=str(station), event_date=str(event),
+            )
+            rung = settled_rung(found[2], actual) if found else None
+            if rung is None or rung not in probabilities:
+                continue
+            hits = [1 if key == rung else 0 for key in ordered]
+        by_day[str(event)].append([
+            (float(probabilities[key]), hit)
+            for key, hit in zip(ordered, hits)
+        ])
     return dict(by_day)
+
+
+def _integer_label(key: str) -> bool:
+    try:
+        int(str(key))
+    except ValueError:
+        return False
+    return True
 
 
 def _record_keys(

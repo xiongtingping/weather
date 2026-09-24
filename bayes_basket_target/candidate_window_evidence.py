@@ -40,6 +40,7 @@ import sqlite3
 from datetime import UTC, datetime
 from typing import Any, Mapping, Sequence
 
+from .station_day_ladder import station_day_ladder
 from .basket_kernel.delta_v2 import (
     SEAT_SHAPE_RULE_VERSION,
     beta_lead_band,
@@ -452,22 +453,12 @@ def standing_labels(
     now = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
     out: list[tuple[Any, ...]] = []
     for station, day, revision, tmax, sha, committed in rows:
-        head = conn.execute(
-            "SELECT history_id, decision_at_utc"
-            " FROM basket_probability_bridge_history"
-            " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-            " ORDER BY decision_at_utc DESC LIMIT 1",
-            (station, day),
-        ).fetchone()
-        if not head:
+        found = station_day_ladder(conn, station_id=station, event_date=day)
+        if found is None:
             counts["no_ladder"] += 1
             continue
-        ladder = conn.execute(
-            "SELECT bucket, ordinal, lower_c, upper_c"
-            " FROM basket_probability_bridge_bucket_probability"
-            " WHERE history_id=? ORDER BY ordinal",
-            (head[0],),
-        ).fetchall()
+        head = (found[0], found[1])
+        ladder = found[2]
         bucket = _settled_bucket(ladder, float(tmax)) if ladder else None
         if bucket is None:
             counts["no_ladder" if not ladder else "outside_ladder"] += 1

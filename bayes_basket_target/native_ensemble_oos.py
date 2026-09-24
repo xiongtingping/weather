@@ -17,7 +17,7 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime, timedelta, timezone
 from itertools import product
-from typing import Any
+from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from .band_reliability_store import (
@@ -38,6 +38,8 @@ from .contracts import ContractError, content_sha256
 from .forecast_physics_asof import resolve_radiation_as_of
 from .station_registry import station_coordinates
 from .station_season import season_bins_for_window, station_season_bin
+from .center_width_calibration import served_bucket_axis
+from .station_day_ladder import settled_rung, station_day_ladder
 from .cross_consensus import (
     BAND_RELIABILITY_METHOD_TAG,
     CONSENSUS_BRIDGE_METHOD_TAG,
@@ -823,10 +825,80 @@ def _probabilities(
     }
 
 
+# Charter 211 (六) -> the gate scores the station's market ladder.  The
+# holdout used to dress, bridge, shape and score every day on a 1C integer
+# grid, while serving does all four on the day's market ladder: for a
+# Celsius market that differs only in the two open end buckets, for a
+# Fahrenheit market (2F = 1.11C a rung, edges on the half-degree F) it is a
+# different grid altogether, and the band table's distance axis counts
+# rungs.  ``market_ladder`` puts the holdout on the ladder the station-day
+# was priced against; ``integer_c`` is the grid it replaced.  A day with no
+# committed ladder stays on the integer grid and says so on its record.
+HOLDOUT_GRID_INTEGER_C = "integer_c"
+HOLDOUT_GRID_MARKET_LADDER = "market_ladder"
+HOLDOUT_GRIDS = (HOLDOUT_GRID_INTEGER_C, HOLDOUT_GRID_MARKET_LADDER)
+HOLDOUT_GRID = (
+    os.environ.get("PM_OOS_HOLDOUT_GRID", HOLDOUT_GRID_INTEGER_C).strip()
+    or HOLDOUT_GRID_INTEGER_C
+)
+if HOLDOUT_GRID not in HOLDOUT_GRIDS:
+    raise RuntimeError(f"unknown PM_OOS_HOLDOUT_GRID: {HOLDOUT_GRID}")
+
+
+def _station_day_ladder(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    as_of_utc: str,
+) -> dict[str, Any] | None:
+    """The ladder a settled station-day was priced against, as known then.
+
+    ``station_day_ladder`` is the one rule (the settlement labels read it
+    too): the newest committed decision of any stage, here held to the
+    as-of the build runs at.  None when nothing was committed, or when the
+    rungs do not make a served axis.
+    """
+
+    found = station_day_ladder(
+        conn, station_id=station_id, event_date=event_date,
+        as_of_utc=as_of_utc,
+    )
+    if found is None or len(found[2]) < 2:
+        return None
+    history_id, _decided, rows = found
+    intervals = {bucket: (lower, upper) for bucket, _o, lower, upper in rows}
+    ordered = [row[0] for row in rows]
+    try:
+        centers, open_edges = served_bucket_axis(intervals, ordered)
+    except ValueError:
+        return None
+    return {
+        "history_id": history_id,
+        "rows": rows,
+        "ordered": ordered,
+        "intervals": intervals,
+        "centers_c": [float(value) for value in centers],
+        "open_edge_bounds_c": open_edges,
+    }
+
+
+def _ladder_bucket(ladder: Mapping[str, Any], value: float) -> str:
+    """The rung a value lands in, lower edge inclusive -- the settler's rule."""
+
+    rung = settled_rung(ladder["rows"], float(value))
+    if rung is None:
+        raise ContractError("native_ensemble_oos_value_outside_ladder")
+    return rung
+
+
 def _metrics(
     probability: Mapping[str, float],
     actual: float,
+    ladder: Mapping[str, Any] | None = None,
 ) -> dict[str, float]:
+    if ladder is not None:
+        return _ladder_metrics(probability, actual, ladder)
     actual_bucket = _temperature_bucket(actual)
     support = sorted({
         *(int(bucket) for bucket in probability),
@@ -851,6 +923,42 @@ def _metrics(
         )
         observed_cdf = 1.0 if int(actual_bucket) <= bucket else 0.0
         crps += (forecast_cdf - observed_cdf) ** 2
+    return {"brier": brier, "nll": nll, "crps": crps}
+
+
+def _ladder_metrics(
+    probability: Mapping[str, float],
+    actual: float,
+    ladder: Mapping[str, Any],
+) -> dict[str, float]:
+    """Brier, log score and CRPS on the market ladder.
+
+    Brier sums every rung of the ladder; the log score reads the rung the
+    value settles in; CRPS (a diagnostic since charter 211) is the step
+    CDF's on the served axis, each rung weighted by the distance to the
+    next rung's centre so it reads in degrees like the integer grid's.
+    """
+
+    ordered = list(ladder["ordered"])
+    if set(str(key) for key in probability) - set(ordered):
+        raise ContractError("native_ensemble_oos_ladder_key_mismatch")
+    hit = _ladder_bucket(ladder, actual)
+    values = [float(probability.get(key, 0.0)) for key in ordered]
+    brier = sum(
+        (value - (1.0 if key == hit else 0.0)) ** 2
+        for key, value in zip(ordered, values)
+    )
+    nll = -math.log(max(values[ordered.index(hit)], EPS))
+    centers = list(ladder["centers_c"])
+    hit_index = ordered.index(hit)
+    crps = 0.0
+    cumulative = 0.0
+    for index in range(len(ordered) - 1):
+        cumulative += values[index]
+        observed = 1.0 if index >= hit_index else 0.0
+        crps += (cumulative - observed) ** 2 * (
+            centers[index + 1] - centers[index]
+        )
     return {"brier": brier, "nll": nll, "crps": crps}
 
 
@@ -1551,7 +1659,10 @@ def _corrected_center(
 def _apply_parameters(
     values: Sequence[float],
     parameters: Mapping[str, Any],
+    intervals: Mapping[str, Sequence[float | None]] | None = None,
 ) -> dict[str, float]:
+    if intervals is not None:
+        return _apply_parameters_on_ladder(values, parameters, intervals)
     current = [float(value) for value in values]
     mean = sum(current) / len(current)
     center = _corrected_center(mean, parameters)
@@ -1605,6 +1716,43 @@ def _apply_parameters(
             key=lambda item: int(item[0]),
         )
     }
+
+
+def _apply_parameters_on_ladder(
+    values: Sequence[float],
+    parameters: Mapping[str, Any],
+    intervals: Mapping[str, Sequence[float | None]],
+) -> dict[str, float]:
+    """One system's calibrated distribution on the day's market ladder.
+
+    The serving function itself (``native_ensemble_p0.
+    _calibrated_system_probability``), handed this artifact's flat
+    parameters in the three parts it reads, so the holdout certifies the
+    arithmetic P0 serves on that ladder.
+    """
+
+    from .native_ensemble_p0 import _calibrated_system_probability  # noqa: PLC0415
+
+    return _calibrated_system_probability(
+        values=[float(value) for value in values],
+        intervals=intervals,
+        bias_parameters=parameters,
+        spread_parameters=parameters,
+        reliability_parameters=parameters,
+    )
+
+
+def _ladder_climate_probability(
+    climate_samples_c: Sequence[float],
+    ladder: Mapping[str, Any],
+) -> dict[str, float]:
+    """Climatology on the ladder, dressed by the kernel serving uses."""
+
+    from .native_ensemble_p0 import _interval_probability  # noqa: PLC0415
+
+    return _interval_probability(
+        [float(value) for value in climate_samples_c], ladder["intervals"]
+    )
 
 
 def _cycle_mapping_for_rows(
@@ -1926,8 +2074,16 @@ def _holdout_shape_stack(
     center_width_layer: CenterWidthLayer | None,
     band_layer: BandLayer | None,
     skip: str | None = None,
+    ladder: Mapping[str, Any] | None = None,
 ) -> dict[str, float]:
-    """The P0 shape stack on the holdout's integer-degree grid.
+    """The P0 shape stack on the holdout's grid.
+
+    With ``ladder`` (charter 211 (六)) the grid is the day's market ladder
+    and each layer runs the way P0 serving runs it there: the radiation
+    shift moves mass along the served axis (``_shift_probability_c``), the
+    neighbour lean centres on the rung the models' centre falls in, and the
+    width layer is handed the open ends' bounds (charter 190).  Without it,
+    the integer-degree grid below.
 
     One function for the subset contest, the gate and its ablation, so the
     blend that wins a seat, the blend that is certified and the blend that is
@@ -1944,6 +2100,17 @@ def _holdout_shape_stack(
     """
 
     shaped = {str(key): float(value) for key, value in base.items()}
+    if ladder is not None:
+        return _ladder_shape_stack(
+            shaped,
+            ladder=ladder,
+            cooling_shift_sigma=cooling_shift_sigma,
+            station_latitude=station_latitude,
+            neighbour_center_c=neighbour_center_c,
+            center_width_layer=center_width_layer,
+            band_layer=band_layer,
+            skip=skip,
+        )
     if cooling_shift_sigma and skip != "synoptic_cooling":
         # In the blended distribution's own spread, as serving scales it
         # (``distribution_sigma_c`` is the one function both call).
@@ -1975,6 +2142,94 @@ def _holdout_shape_stack(
     return shaped
 
 
+def _ladder_shape_stack(
+    shaped: Mapping[str, float],
+    *,
+    ladder: Mapping[str, Any],
+    cooling_shift_sigma: float | None,
+    station_latitude: float | None,
+    neighbour_center_c: float,
+    center_width_layer: CenterWidthLayer | None,
+    band_layer: BandLayer | None,
+    skip: str | None,
+) -> dict[str, float]:
+    """``_holdout_shape_stack`` on the market ladder, in serving's order."""
+
+    from .native_ensemble_p0 import _shift_probability_c  # noqa: PLC0415
+
+    grid = list(ladder["ordered"])
+    centers = list(ladder["centers_c"])
+    shaped = {key: float(shaped.get(key, 0.0)) for key in grid}
+    if cooling_shift_sigma and skip != "synoptic_cooling":
+        spread_c = distribution_sigma_c(
+            [shaped[key] for key in grid], centers,
+        )
+        shift_c = float(cooling_shift_sigma) * spread_c
+        if spread_c > 0.0 and abs(shift_c) > EPS:
+            shaped = _shift_probability_c(
+                shaped,
+                ordered=grid,
+                bucket_centers_c=[value + shift_c for value in centers],
+                intervals=ladder["intervals"],
+            )
+    if skip != "neighbour_direction":
+        shaped, _direction_receipt = apply_neighbour_direction_tilt(
+            shaped,
+            ordinals={key: index for index, key in enumerate(grid)},
+            center_bucket=_ladder_bucket(ladder, float(neighbour_center_c)),
+            latitude=station_latitude,
+        )
+    shaped, _cw_receipt, _band_receipt = apply_served_table_layers(
+        shaped,
+        ordered_keys=grid,
+        key_centers_c=centers,
+        center_width=center_width_layer,
+        band=band_layer,
+        open_edge_bounds_c=ladder["open_edge_bounds_c"],
+        skip=skip if skip in SERVED_TABLE_LAYER_ORDER else None,
+    )
+    return shaped
+
+
+def _day_grid(
+    predictions_by_system: Mapping[str, Mapping[str, Mapping[str, Any]]],
+    systems: Sequence[str],
+    day: str,
+    ladder: Mapping[str, Any] | None,
+) -> tuple[list[str], list[float]]:
+    """The grid a holdout day is blended on, and each key's centre."""
+
+    if ladder is not None:
+        return list(ladder["ordered"]), list(ladder["centers_c"])
+    keys = sorted(
+        set().union(*(
+            set(predictions_by_system[system][day]["probability"])
+            for system in systems
+        )),
+        key=lambda key: int(key),
+    )
+    return keys, [float(int(key)) for key in keys]
+
+
+def _day_ladder(
+    predictions_by_system: Mapping[str, Mapping[str, Mapping[str, Any]]],
+    systems: Sequence[str],
+    day: str,
+    ladder_for: Callable[[str], Mapping[str, Any] | None] | None,
+) -> Mapping[str, Any] | None:
+    """The day's ladder when every system's prediction was dressed on it."""
+
+    if ladder_for is None:
+        return None
+    if not all(
+        predictions_by_system[system][day].get("holdout_grid")
+        == HOLDOUT_GRID_MARKET_LADDER
+        for system in systems
+    ):
+        return None
+    return ladder_for(str(day))
+
+
 def _select_minimum_crps_subset(
     *,
     ready_system_ids: Sequence[str],
@@ -1996,6 +2251,7 @@ def _select_minimum_crps_subset(
     # contest ranked blends without it until 2026-09-13, so the seat went to
     # the blend that scored best under an arithmetic nobody serves.
     center_width_layer: CenterWidthLayer | None = None,
+    ladder_for: Callable[[str], Mapping[str, Any] | None] | None = None,
     # Charter 134: ``stable_pool`` divides a pinned set's weight by the skill
     # rule shrunk toward the family baseline, and the receipt says so.  Only
     # meaningful with ``pinned_subset``: a pool is seated, never contested.
@@ -2096,11 +2352,12 @@ def _select_minimum_crps_subset(
             weight_rule = STABLE_POOL_WEIGHT_RULE.upper()
         day_metrics = []
         for day in common_holdout:
-            keys = set().union(*(
-                set(predictions_by_system[s][day]["probability"])
-                for s in subset
-            ))
-            ordered_keys = sorted(keys, key=lambda key: int(key))
+            day_ladder = _day_ladder(
+                predictions_by_system, subset, day, ladder_for
+            )
+            ordered_keys, key_centers = _day_grid(
+                predictions_by_system, subset, day, day_ladder
+            )
             probability, _receipt = bridged_cross_probability(
                 system_probabilities={
                     s: predictions_by_system[s][day]["probability"]
@@ -2114,7 +2371,7 @@ def _select_minimum_crps_subset(
                     for s in subset
                 },
                 ordered_keys=ordered_keys,
-                key_centers_c=[float(int(key)) for key in ordered_keys],
+                key_centers_c=key_centers,
             )
             # Only the radiation shift reads these now.  The conditional tail
             # skew was withdrawn 2026-08-18: measured against its own absence
@@ -2153,11 +2410,12 @@ def _select_minimum_crps_subset(
                     BandLayer(factors=band_factors, axis=band_axis)
                     if band_factors is not None else None
                 ),
+                ladder=day_ladder,
             )
             actual = float(
                 predictions_by_system[subset[0]][day]["actual_tmax_c"]
             )
-            day_metrics.append(_metrics(probability, actual))
+            day_metrics.append(_metrics(probability, actual, day_ladder))
         mean = _mean_metrics(day_metrics)
         entry = {
             "system_ids": subset,
@@ -3611,6 +3869,7 @@ def _evaluate_system(
     cases: Sequence[Mapping[str, Any]],
     min_train_days: int,
     min_holdout_days: int,
+    ladder_for: Callable[[str], Mapping[str, Any] | None] | None = None,
 ) -> dict[str, Any]:
     transports = {
         str(case.get("transport_provider_id") or "")
@@ -3760,9 +4019,21 @@ def _evaluate_system(
     def _prediction_row(
         case: Mapping[str, Any], fitted: Mapping[str, Any]
     ) -> dict[str, Any]:
-        probability = _apply_parameters(case["values"], fitted)
+        ladder = (
+            ladder_for(str(case["event_date"])) if ladder_for else None
+        )
+        probability = _apply_parameters(
+            case["values"],
+            fitted,
+            intervals=ladder["intervals"] if ladder is not None else None,
+        )
         day_values = [float(value) for value in case["values"]]
+        grid_fields = (
+            {"holdout_grid": HOLDOUT_GRID_MARKET_LADDER}
+            if ladder is not None else {}
+        )
         return {
+            **grid_fields,
             "event_date": case["event_date"],
             "decision_at_utc": case["aggregator_snapshot_at_utc"],
             "member_set_sha256": case["member_set_sha256"],
@@ -3784,6 +4055,7 @@ def _evaluate_system(
             "metrics": _metrics(
                 probability,
                 float(case["actual_tmax_c"]),
+                ladder,
             ),
         }
 
@@ -4362,8 +4634,14 @@ def build_native_ensemble_oos(
     max_event_date: str | None = None,
     tables_as_of_utc: str | None = None,
     membership_mode: str | None = None,
+    holdout_grid: str | None = None,
 ) -> dict[str, Any]:
     """Build candidate artifacts; perform no writes.
+
+    ``holdout_grid`` (charter 211 (六)) defaults to ``HOLDOUT_GRID``:
+    ``market_ladder`` dresses, blends, shapes and scores every holdout day
+    on the ladder that station-day was priced against; ``integer_c`` on the
+    1C grid it replaced.
 
     ``membership_mode`` defaults to ``stable_pool.P0_MEMBERSHIP_MODE``.  Under
     charter 134's ``stable_pool`` every cohort mints its whole pool and the
@@ -4439,6 +4717,23 @@ def build_native_ensemble_oos(
                 "native_ensemble_oos_event_date_cutoff_future_forbidden"
             )
     systems = _load_systems(conn)
+    grid = HOLDOUT_GRID if holdout_grid is None else str(holdout_grid)
+    if grid not in HOLDOUT_GRIDS:
+        raise ContractError("native_ensemble_oos_holdout_grid_unknown")
+    ladder_cache: dict[str, Mapping[str, Any] | None] = {}
+
+    def _ladder_for_day(day: str) -> Mapping[str, Any] | None:
+        key = str(day)[:10]
+        if key not in ladder_cache:
+            ladder_cache[key] = _station_day_ladder(
+                conn, station_id=station, event_date=key,
+                as_of_utc=as_of_utc,
+            )
+        return ladder_cache[key]
+
+    ladder_for = (
+        _ladder_for_day if grid == HOLDOUT_GRID_MARKET_LADDER else None
+    )
     cases_by_scope = _load_cases(
         conn,
         station_id=station,
@@ -4503,6 +4798,7 @@ def build_native_ensemble_oos(
             cases=cases,
             min_train_days=scope_min_train,
             min_holdout_days=scope_min_holdout,
+            ladder_for=ladder_for,
         )
         # A scope whose archive lane has stopped supplying cases is not a
         # calibration, it is a fossil that keeps re-certifying itself from a
@@ -4929,6 +5225,7 @@ def build_native_ensemble_oos(
             weight_mode=(
                 P0_MEMBERSHIP_MODE_STABLE_POOL if pool_mode else "skill"
             ),
+            ladder_for=ladder_for,
         )
         if pinned_subset is None:
             contest_pick_by_cohort[cohort_key] = tuple(sorted(weights))
@@ -5029,11 +5326,17 @@ def build_native_ensemble_oos(
             )
         }
         for day in common_holdout:
-            keys = set().union(*(
-                set(predictions_by_system[system][day]["probability"])
-                for system in weights
-            ))
-            ordered_keys = sorted(keys, key=lambda key: int(key))
+            day_ladder = _day_ladder(
+                predictions_by_system, sorted(predictions_by_system),
+                day, ladder_for,
+            )
+            ordered_keys, key_centers = _day_grid(
+                predictions_by_system, sorted(weights), day, day_ladder
+            )
+            day_climate_probability = (
+                _ladder_climate_probability(climate_train, day_ladder)
+                if day_ladder is not None else climate_probability
+            )
             day_centers = {
                 system: float(
                     predictions_by_system[system][day][
@@ -5056,7 +5359,7 @@ def build_native_ensemble_oos(
                 system_weights=weights,
                 system_centers_c=day_centers,
                 ordered_keys=ordered_keys,
-                key_centers_c=[float(int(key)) for key in ordered_keys],
+                key_centers_c=key_centers,
             )
             # Only the radiation shift reads these now.  The conditional tail
             # skew was withdrawn 2026-08-18: measured against its own absence
@@ -5101,6 +5404,7 @@ def build_native_ensemble_oos(
                     center_width_layer=gate_center_width_layer,
                     band_layer=gate_band_layer,
                     skip=skip,
+                    ladder=day_ladder,
                 )
 
             def _weighted_blend(
@@ -5122,16 +5426,8 @@ def build_native_ensemble_oos(
                     )
                     for system in cohort
                 }
-                grid = sorted(
-                    set().union(*(
-                        set(
-                            predictions_by_system[system][day][
-                                "probability"
-                            ]
-                        )
-                        for system in cohort
-                    )),
-                    key=lambda key: int(key),
+                grid, grid_centers = _day_grid(
+                    predictions_by_system, cohort, day, day_ladder
                 )
                 blended, _receipt = bridged_cross_probability(
                     system_probabilities={
@@ -5143,7 +5439,7 @@ def build_native_ensemble_oos(
                     system_weights=dict(system_weights),
                     system_centers_c=cohort_centers,
                     ordered_keys=grid,
-                    key_centers_c=[float(int(key)) for key in grid],
+                    key_centers_c=grid_centers,
                 )
                 return _shaped(
                     blended,
@@ -5164,16 +5460,8 @@ def build_native_ensemble_oos(
                 whatever the subset contest chose to drop.
                 """
 
-                grid = sorted(
-                    set().union(*(
-                        set(
-                            predictions_by_system[system][day][
-                                "probability"
-                            ]
-                        )
-                        for system in cohort
-                    )),
-                    key=lambda key: int(key),
+                grid, grid_centers = _day_grid(
+                    predictions_by_system, cohort, day, day_ladder
                 )
                 share = 1.0 / float(len(cohort))
                 equal_weights = {system: share for system in cohort}
@@ -5195,7 +5483,7 @@ def build_native_ensemble_oos(
                     system_weights=equal_weights,
                     system_centers_c=cohort_centers,
                     ordered_keys=grid,
-                    key_centers_c=[float(int(key)) for key in grid],
+                    key_centers_c=grid_centers,
                 )
                 return _shaped(
                     blended,
@@ -5223,10 +5511,12 @@ def build_native_ensemble_oos(
                     next(iter(weights))
                 ][day]["actual_tmax_c"]
             )
-            equal_weight_metrics.append(_metrics(equal_probability, actual))
+            equal_weight_metrics.append(
+                _metrics(equal_probability, actual, day_ladder)
+            )
             if equal_cohort_probability is not None:
                 equal_cohort_metrics.append(
-                    _metrics(equal_cohort_probability, actual)
+                    _metrics(equal_cohort_probability, actual, day_ladder)
                 )
             # The three schemes scored on one day, kept paired.  A scope's
             # holdout is three or four days, so no interval is estimable
@@ -5235,19 +5525,29 @@ def build_native_ensemble_oos(
             # means this row would otherwise reduce them to.
             scheme_daily_scores.append({
                 "event_date": str(day),
-                "climate": _metrics(climate_probability, actual),
-                "equal_weight": _metrics(equal_probability, actual),
-                "learned": _metrics(probability, actual),
+                **(
+                    {"holdout_grid": HOLDOUT_GRID_MARKET_LADDER}
+                    if day_ladder is not None else {}
+                ),
+                "climate": _metrics(
+                    day_climate_probability, actual, day_ladder
+                ),
+                "equal_weight": _metrics(
+                    equal_probability, actual, day_ladder
+                ),
+                "learned": _metrics(probability, actual, day_ladder),
                 **{
                     label: _metrics(
-                        _weighted_blend(scheme_weights), actual
+                        _weighted_blend(scheme_weights), actual, day_ladder
                     )
                     for label, scheme_weights
                     in shadow_weight_schemes.items()
                 },
             })
             for layer, samples in ablation_metrics.items():
-                samples.append(_metrics(_shaped(unshaped, skip=layer), actual))
+                samples.append(_metrics(
+                    _shaped(unshaped, skip=layer), actual, day_ladder
+                ))
             decision_at_utc = max(
                 str(predictions_by_system[system][day][
                     "decision_at_utc"
@@ -5277,11 +5577,17 @@ def build_native_ensemble_oos(
                 },
                 "actual_tmax_c": actual,
                 "probability": probability,
-                "metrics": _metrics(probability, actual),
+                "metrics": _metrics(probability, actual, day_ladder),
+                **(
+                    {"holdout_grid": HOLDOUT_GRID_MARKET_LADDER,
+                     "bucket_centers_c": dict(zip(ordered_keys, key_centers))}
+                    if day_ladder is not None else {}
+                ),
             })
             baseline_metrics.append(_metrics(
-                climate_probability,
+                day_climate_probability,
                 actual,
+                day_ladder,
             ))
         cross_metrics = _mean_metrics([
             row["metrics"] for row in cross_predictions
@@ -6946,9 +7252,12 @@ def persist_native_ensemble_oos(
                         prediction["system_member_set_shas"]
                     ),
                     "probabilities_json": _json(probabilities),
-                    "bucket_centers_c_json": _json({
-                        key: float(key) for key in probabilities
-                    }),
+                    # Charter 213: a ladder day's keys are rung labels, and
+                    # its centres are the served axis's, not the label.
+                    "bucket_centers_c_json": _json(
+                        prediction.get("bucket_centers_c")
+                        or {key: float(key) for key in probabilities}
+                    ),
                     "prediction_oos": 1,
                     "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
                 }
