@@ -188,6 +188,15 @@ def decision_seats(
             )
     seats: dict[str, dict[str, Any]] = {}
     for (station, day), decisions in sorted(wanted.items()):
+        # Only the placed decisions' rows.  Without the decision filter this
+        # read every fact of the station-day and ran json_extract over each
+        # row's feature_json (~63 KB, into its overflow pages) to keep a few:
+        # 246 s for the board's section on 2026-09-24.  decision_id sits
+        # ahead of feature_json in the row, so the filter reads no overflow
+        # page for the rows it drops; the rows kept, and their order off
+        # basket_policy_training_fact_scope_idx, are the ones the loop below
+        # always kept.
+        wanted_ids = sorted(decisions)
         try:
             rows = conn.execute(
                 "SELECT decision_id, stage, probability_envelope_id,"
@@ -197,8 +206,9 @@ def decision_seats(
                 "   '$.plan.basket_support_selection.ladder_center_bucket'),"
                 " json_extract(feature_json, '$.plan.market_center_ordinal')"
                 " FROM basket_policy_training_fact"
-                " WHERE station_id=? AND event_date=?",
-                (station, day),
+                " WHERE station_id=? AND event_date=?"
+                f" AND decision_id IN ({','.join('?' for _ in wanted_ids)})",
+                (station, day, *wanted_ids),
             ).fetchall()
         except sqlite3.Error:
             continue
