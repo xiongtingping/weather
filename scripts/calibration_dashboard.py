@@ -10935,9 +10935,11 @@ def collect_fusion_candidates() -> dict[str, Any]:
 
 # Charter 199's switch: the forward shadow record on days nobody has seen.
 FUSION_SWITCH_MIN_EVENT_DAYS = 20
-# Charter 211: what decides the fusion switch -- the two proper scores of the
-# bucket distribution and its Murphy terms.  RMSE and CRPS are diagnostics.
-FUSION_SWITCH_PANEL = ("bucket_brier", "nll", "reliability", "resolution")
+# Charter 211 (amended 2026-09-24, user: 「四项同时变好不是新模型目标」): what
+# decides the fusion switch is the bucket distribution's two proper scores,
+# both lower.  Reliability / Resolution are Brier's decomposition and RMSE /
+# CRPS intermediate diagnostics -- all drawn beside, none a gate.
+FUSION_SWITCH_PANEL = ("bucket_brier", "nll")
 
 
 def _fusion_production_regime() -> dict[str, Any] | None:
@@ -25921,11 +25923,13 @@ function modelAccuracyBoard(){
       <tbody>${tableRows}</tbody></table></div></details>`;
 }
 
-// The product's north star and its panel (user, 2026-09-23: Reliability and
-// Resolution of the served bucket probabilities; charter 211, 2026-09-24:
-// the model's only objective is the discrete bucket distribution, judged on
-// bucket Brier + LogScore + Reliability + Resolution -- RMSE and CRPS are
-// intermediate diagnostics, drawn but never a verdict).  Read off the
+// The product's north star and its verdict (user, 2026-09-23: Reliability
+// and Resolution of the served bucket probabilities; charter 211, 2026-09-24,
+// amended the same day: the model's only objective is the discrete bucket
+// distribution, and "closer to it" is decided by its two proper scores --
+// bucket Brier and LogScore both lower.  Reliability / Resolution are
+// Brier's decomposition, shown to explain the move, never a gate; RMSE and
+// CRPS are intermediate diagnostics).  Read off the
 // served cells the landing table scores (one sample, station-days weighted
 // equally), this version against the one before it, per stage.
 const CORE_METRICS = [
@@ -25933,9 +25937,9 @@ const CORE_METRICS = [
    q:"说 20% 的桶，是不是真有 20% 落进来；越低越好", fmt:v => (1000 * v).toFixed(3)},
   {key:"resolution", label:"Resolution 分辨力", unit:"×10⁻³", star:true, panel:true, better:"higher",
    q:"概率能不能把会落和不会落的桶分开；越高越好", fmt:v => (1000 * v).toFixed(2)},
-  {key:"bucket_brier", label:"桶 Brier", unit:"", panel:true, better:"lower",
+  {key:"bucket_brier", label:"桶 Brier", unit:"", panel:true, decide:true, better:"lower",
    q:"整条桶概率向量对结算桶的平方误差；越低越好", fmt:v => v.toFixed(4)},
-  {key:"nll", label:"LogScore（NLL）", unit:"nat", panel:true, better:"lower",
+  {key:"nll", label:"LogScore（NLL）", unit:"nat", panel:true, decide:true, better:"lower",
    q:"真值所在桶给了多少概率，取负对数；越低越好", fmt:v => v.toFixed(3)},
   {key:"rmse_c", label:"RMSE", unit:"°C", better:"lower",
    q:"服务均值离真值的均方根——中间诊断：查中心有没有跑偏，不是目标", fmt:v => v.toFixed(3)},
@@ -25943,6 +25947,7 @@ const CORE_METRICS = [
    q:"整条分布离真值多远（桶梯上的 CRPS）——中间诊断：查连续形状，不是目标", fmt:v => v.toFixed(3)},
 ];
 const PANEL_KEYS = CORE_METRICS.filter(m => m.panel).map(m => m.key);
+const DECIDE_KEYS = CORE_METRICS.filter(m => m.decide).map(m => m.key);
 function northStarBlock(LD, landDates, col){
   const cur = D.center_landing_version || D.center_landing || {}, prev = D.center_landing_previous || {};
   // The headline reads the lanes' own sample: the served landing on the
@@ -25983,7 +25988,7 @@ function northStarBlock(LD, landDates, col){
         <span class="muted ns-p">${ver}</span></div>`;
     }).join("");
     return `<div class="card ns-card${m.star ? " ns-star" : ""}">
-      <div class="ns-h"><span class="pill${m.star ? " violet" : ""}">${m.star ? "北极星" : m.panel ? "面板" : "中间诊断"}</span>
+      <div class="ns-h"><span class="pill${m.star ? " violet" : ""}">${m.star ? "北极星 · 诊断" : m.decide ? "判据" : "中间诊断"}</span>
         <b>${h(m.label)}</b><span class="muted">${h(m.unit)} · ${m.better === "lower" ? "↓ 越低越好" : "↑ 越高越好"}</span></div>
       ${lines}<div class="muted kpi-q">${h(m.q)}</div></div>`;
   }).join("");
@@ -25993,15 +25998,16 @@ function northStarBlock(LD, landDates, col){
     const sample = `证据窗 ${pl.station_days || 0} 个站日 / ${pl.event_days || 0} 个事件日${
       pl.zero_hits ? `；真值落在概率为 0 的桶上 ${pl.zero_hits} 格，按 p=1e-6 计入 NLL` : ""}`;
     if(!judged(s)) return `<li><b>${s}</b>：${sample}。本版 ${c ? c.event_days : 0} 天、上一版 ${pv ? pv.event_days : 0} 天，
-      <span class="muted">攒证据中——两边各满 ${MIN_DAYS} 个事件日才判面板四项进退</span></li>`;
+      <span class="muted">攒证据中——两边各满 ${MIN_DAYS} 个事件日才判两个 proper score 的进退</span></li>`;
     const m = k => CORE_METRICS.find(x => x.key === k);
     const panel = PANEL_KEYS.map(k => better(m(k), c[k], pv[k]));
     const diag = ["rmse_c", "crps_c"].map(k => better(m(k), c[k], pv[k]));
     const stars = [better(m("reliability"), c.reliability, pv.reliability), better(m("resolution"), c.resolution, pv.resolution)];
-    const allPanel = panel.every(b => b > 0), bothStars = stars.every(b => b > 0);
-    return `<li><b>${s}</b> 本版对上一版（宪章 211 面板）：REL ${word(panel[0])} · RES ${word(panel[1], true)} · 桶 Brier ${word(panel[2])} · LogScore ${word(panel[3])}
-      → <b class="${allPanel ? "up" : "down"}">${allPanel ? "面板四项全进步" : "面板未全进步"}</b>；
-      <b class="${bothStars ? "up" : "down"}">${bothStars ? "北极星两项都进步" : "北极星未同时进步"}</b>
+    const decide = DECIDE_KEYS.map(k => better(m(k), c[k], pv[k]));
+    const closer = decide.every(b => b > 0), bothStars = stars.every(b => b > 0);
+    return `<li><b>${s}</b> 本版对上一版（宪章 211 判据）：桶 Brier ${word(decide[0])} · LogScore ${word(decide[1])}
+      → <b class="${closer ? "up" : "down"}">${closer ? "两个 proper score 都进步：更接近目标" : "两个 proper score 未都进步"}</b>；
+      <span class="muted">诊断：REL ${word(stars[0])} · RES ${word(stars[1], true)}${bothStars ? "（北极星两项都进步）" : ""}</span>
       <span class="muted">（中间诊断：RMSE ${word(diag[0])} · CRPS ${word(diag[1])}，只看不判；${sample}）</span></li>`;
   }).join("");
   const p0 = pooled.P0 || {};
@@ -26027,7 +26033,7 @@ function northStarBlock(LD, landDates, col){
     trendChart({title: "CRPS（°C）", sub: "中间诊断 · 按事件日（不是目标）", dates: landDates, series: series("crps_c"),
       marks, fmt: v => Number(v).toFixed(2)}),
   ].join("");
-  return `<h2>北极星：桶概率的 Reliability ↓ 与 Resolution ↑ · 面板：桶 Brier ↓、LogScore ↓ · RMSE / CRPS 只作中间诊断（宪章 211）</h2>
+  return `<h2>判据：桶 Brier ↓、LogScore ↓（两个 proper score，宪章 211）· 北极星诊断：Reliability ↓ 与 Resolution ↑ · RMSE / CRPS 只作中间诊断</h2>
   <p class="sub">模型唯一优化目标是条件离散温度桶概率分布 P(Y=k|X)——交易的 EV 只由 Σ(p_k − c_k) 决定，不需要知道 RMSE 或 CRPS。
     读服务出去的分布（与「真值离均值多远」同一份样本，每个站日只算一次）。大字是证据窗读数——和校准车道读的是同一批样本
     （宪章 202：P0 自 09-14 稳定池、P0-M/P1 自 09-18 宪章 150，升版不清零）；走势图仍按近 ${T.days || 21} 天日历画；
@@ -26054,12 +26060,12 @@ function fusionCandidates(){
   const body = rows.map(r => {
     const ch = r.change_pct || {};
     const panelOk = r.arm !== "current" && r.bucket_brier != null && base.bucket_brier != null && r.bucket_brier < base.bucket_brier
-      && ch.nll != null && ch.nll < 0 && r.reliability < base.reliability && r.resolution > base.resolution;
+      && ch.nll != null && ch.nll < 0;
     const e = r.economic || {};
     return `<tr${r.role === "参照" ? ' class="muted"' : ""}><td><b>${h(r.label)}</b><br><span class="muted">${h(r.role)}</span></td>
       <td class="mono">${n3(r.rmse_c)} ${pct(ch.rmse)}</td><td class="mono">${n3(r.crps_c)} ${pct(ch.crps)}</td>
       <td class="mono">${n3(r.nll)} ${pct(ch.nll)}</td>
-      <td>${r.arm === "current" ? "—" : panelOk ? `<b class="up">四项全好</b>` : `<span class="down">否</span>`}</td>
+      <td>${r.arm === "current" ? "—" : panelOk ? `<b class="up">两项都好</b>` : `<span class="down">否</span>`}</td>
       <td class="mono">${r.reliability == null ? "—" : (1000 * r.reliability).toFixed(3)} ${rel(r.reliability, base.reliability, true)}</td>
       <td class="mono">${r.resolution == null ? "—" : (1000 * r.resolution).toFixed(3)} ${rel(r.resolution, base.resolution, false)}</td>
       <td class="mono">${r.bucket_brier == null ? "—" : r.bucket_brier.toFixed(4)}</td>
@@ -26072,7 +26078,7 @@ function fusionCandidates(){
   const crossZero = blends.filter(r => ["rmse", "crps", "nll"].some(k => { const ci = (r.delta_ci95 || {})[k]; return ci && ci[0] < 0 && ci[1] > 0; })).length;
   const starsUp = blends.filter(r => r.reliability < base.reliability && r.resolution > base.resolution);
   const panelDown = blends.filter(r => r.bucket_brier != null && base.bucket_brier != null && r.bucket_brier < base.bucket_brier
-    && ((r.change_pct || {}).nll ?? 0) < 0 && r.reliability < base.reliability && r.resolution > base.resolution);
+    && ((r.change_pct || {}).nll ?? 0) < 0);
   const span = (xs, f) => xs.length ? (Math.min(...xs) === Math.max(...xs) ? f(xs[0]) : `${f(Math.min(...xs))}～${f(Math.max(...xs))}`) : "—";
   const relCh = blends.map(r => 100 * (r.reliability / base.reliability - 1)).filter(isFinite);
   const resCh = blends.map(r => 100 * (r.resolution / base.resolution - 1)).filter(isFinite);
@@ -26094,7 +26100,7 @@ function fusionCandidates(){
   const fsCell = (k, f) => fsArms && fsArms.seat[k] != null ? `${f(fsArms.seat[k])} → ${f(fsArms.shadow[k])} ${fsMark(k)}` : "—";
   const forward = !FS.available ? "" : `<div class="card" style="margin-top:10px"><b>前向影子记账（宪章 199，服务仍为席位权重）</b>
     <p class="sub" style="margin:4px 0">每个已结算站日的日前 P0 同时记着它服务的席位权重和融合规则的影子权重，在同一批站日上比较。
-      切换条件（宪章 211 面板）：满 ${FS.min_event_days} 个事件日，且桶 Brier 降、LogScore 降、Reliability 降、Resolution 升；RMSE、CRPS 只作诊断并列显示；满足后由用户裁决切服务并同批升版。</p>
+      切换条件（宪章 211 判据）：满 ${FS.min_event_days} 个事件日，且桶 Brier、LogScore 两个 proper score 都降；Reliability、Resolution（Brier 的分解）与 RMSE、CRPS 只作诊断并列显示；满足后由用户裁决切服务并同批升版。</p>
     ${FS.station_days ? `<div class="scroll"><table><thead><tr><th>样本</th><th>桶 Brier</th><th>LogScore</th><th>Reliability ×10⁻³</th><th>Resolution ×10⁻³</th><th>RMSE °C（诊断）</th><th>CRPS °C（诊断）</th><th>切换</th></tr></thead>
       <tbody><tr><td class="mono">${FS.station_days} 站日 / ${FS.event_days} 天</td>
       <td class="mono">${fsCell("bucket_brier", v => v.toFixed(4))}</td><td class="mono">${fsCell("nll", v => v.toFixed(3))}</td>
@@ -26111,12 +26117,12 @@ function fusionCandidates(){
   <p class="sub">三个候选＝「中心误差＋正则」权重与「分层 CRPS」权重按 25/50/75% 凸组合，逐站日权重已冻结（hash 见研究目录 candidates.json）。
     同一批 ${c.sample_n || "—"} 个站日、${c.stations || "—"} 站、${c.days || "—"} 个事件日（${h((c.period || []).join(" → "))}），
     分布是后处理前的单系统线性池，不是服务 P0。资格：<b>${h(c.status || "")}</b>——这批历史参与过候选设计，不是独立样本外。</p>
-  <div class="scroll"><table><thead><tr><th>方案</th><th>RMSE °C（诊断）</th><th>CRPS °C（诊断）</th><th>LogScore（NLL）</th><th>面板四项（Brier / LogScore / REL / RES）</th>
+  <div class="scroll"><table><thead><tr><th>方案</th><th>RMSE °C（诊断）</th><th>CRPS °C（诊断）</th><th>LogScore（NLL）</th><th>两个 proper score（Brier、LogScore）</th>
     <th>Reliability ×10⁻³ ↓</th><th>Resolution ×10⁻³ ↑</th><th>桶 Brier</th>
     <th>¼ Kelly 组合 log 增长${E ? `（${E.sample_n} 站日 / ${E.dates} 天）` : ""}</th><th>门槛吃单 ROI 实现 / 自报</th></tr></thead>
     <tbody>${body}</tbody></table></div>
   <div class="card" style="margin-top:10px"><b>怎么读</b><ul>
-    <li>${panelDown.length}/${blends.length} 个候选在这 ${c.sample_n || "—"} 个站日上面板四项全好（宪章 211），${starsUp.length}/${blends.length} 个北极星两项同时往好的方向走；但 ${crossZero}/${blends.length} 个候选至少一项的日期块 95% 区间跨零${
+    <li>${panelDown.length}/${blends.length} 个候选在这 ${c.sample_n || "—"} 个站日上两个 proper score 都好（宪章 211 判据），${starsUp.length}/${blends.length} 个北极星两项同时往好的方向走；但 ${crossZero}/${blends.length} 个候选至少一项的日期块 95% 区间跨零${
       firstHalfWorse.length ? `，前半窗 NLL 反而比现行差（${h(firstHalfWorse.join("、"))}）` : ""}——是「这批样本上成立」，不是「未来稳定成立」。</li>
     <li>Reliability 变化 ${span(relCh, signed)}，Resolution 变化 ${span(resCh, signed)}：权重主要在修「说多说少」，几乎没带来新信息。服务链后面的宽度层本来就在修前者，真正能留到服务分布上的主要是 Resolution 那一小块。</li>
     ${E ? `<li>可兑现价值（${E.sample_n} 个有真实盘口的站日、${E.dates} 个事件日，生产费用合同 fee=0）：模型比市场差 <b>${gap == null ? "—" : Math.abs(gap).toFixed(3)} nat</b>，候选只把差距缩小 ${span(lift, v => v.toFixed(3))} nat；
