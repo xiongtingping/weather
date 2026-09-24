@@ -110,8 +110,6 @@ from .basket_kernel.delta_v2 import (
     PRODUCTION_EXECUTION_AUTHORIZATION,
     VALUE_OBJECTIVE_FORM,
     chain_topup_growth_v1,
-    clamp_declining_gaps_v2,
-    contiguous_edge_clamp_v2,
     deflate_window_partition_v1,
     probability_vector_identity_v1,
     whole_basket_kelly_stake_v1,
@@ -1161,57 +1159,6 @@ TAKER_LEG_VETO = (
 )
 if TAKER_LEG_VETO not in {"joint", "reservation"}:
     raise ValueError(f"unknown taker leg veto: {TAKER_LEG_VETO}")
-# Charter 69 (user ruling, 2026-09-02: "切 guarded"): the declining-
-# probability clamp of charter 51 is narrowed to what charter 49 and
-# contiguity allow.  ``guarded`` clamps only falling rungs at the ends of
-# the window, walking in from each side and never past the centre rung, so
-# a basket the clamp has touched is still a ladder: no dropped centre, no
-# hole.  ``leg`` is charter 51 as shipped on 2026-08-15 -- every falling
-# rung clamped, centre included -- kept for the A/B arms.  Measured over the
-# 2026-09-02 reseat replay (405 station-days): leg +15.4%, guarded +14.9%,
-# within one station of each other on P&L, while leg left 5.5% of P0
-# openings a single rung and missed the centre on 11.7% against guarded's
-# 2.9% and 5.3%.  The ledger carries the same switch and the two must move
-# together.
-# Final ruling the same day (熊先生, 2026-09-02): ``after_open``.  The
-# opening seat has no position to hold, so it is never clamped and the
-# ladder is bought whole; from the next seat on, any rung whose probability
-# fell since the previous model run is not bought this round, whether the
-# book holds it or not, centre included.  Measured on one snapshot, 413
-# station-days: off +8.2%, held_only +8.8%, after_open +16.4%, leg +17.7%
-# (after_open and leg one station-day apart; after_open's openings are
-# row-for-row off's).  ``guarded`` was that day's interim reading and stays
-# as an arm.
-# **Retired 2026-09-05 (user ruling)**: default ``off``.  The clamp was
-# ruled in on 2026-09-02 against a paper book that priced every checkpoint
-# on the book *before* it -- the ledger's own information-timing advantage,
-# worth about sixteen points and removed on 2026-09-04.  Re-measured on the
-# honest pairing the clamp costs: turning it off is +3.4 points alone and
-# +7.3 inside the best combination (X8/X9, 2026-09-05).  ``after_open`` and
-# the other arms stay switchable so the old book can be re-derived.
-DECLINE_CLAMP_MODE = (
-    os.environ.get("DELTA_V2_DECLINE_CLAMP", "").strip().lower()
-    or "off"
-)
-# ``held_only`` (user semantics, 2026-09-02: "首次建仓如何评判概率下降？
-# 没有对比啊"): the clamp's subject is a rung the book already holds or has
-# bid for -- "hold at what you have".  A rung nothing has been committed to
-# has nothing to hold, so an opening is never clamped; only a top-up is,
-# and there every falling rung is held, centre included.  Measured on the
-# 2026-09-02 reseat replay: of leg's +82.8 U over off, +74.5 U came from
-# top-ups and +8.3 U (71 better / 46 worse, one station-day either way)
-# from openings -- the clamp earns where it has a subject.
-# ``after_open``: charter 51 as written (every falling rung held, centre
-# included, held or not) -- but only once the book has opened.  The
-# opening seat, where nothing is committed yet, is never clamped; every
-# later seat is, whether the falling rung is one the book holds or one
-# the re-centred window has just brought in.  Replay arm, 2026-09-02.
-# ``off``: no clamp at all -- the shipped rule since 2026-09-05, and the
-# state the paper book was in for every measurement before 2026-09-01.
-if DECLINE_CLAMP_MODE not in {
-    "off", "leg", "guarded", "held_only", "after_open",
-}:
-    raise ValueError(f"unknown decline clamp mode: {DECLINE_CLAMP_MODE}")
 def support_width_bounds_v1() -> tuple[int, int]:
     """The bounds the enumerator is handed: charter 131's two to three.
 
@@ -6394,7 +6341,6 @@ def compile_delta_v2_runtime_plan(
     capital_available_usdc: float,
     minimum_profit_floor: float,
     resource_probe_ok: bool,
-    previous_probabilities: Mapping[str, float] | None = None,
     prior_centre_buckets: Sequence[str] = (),
     chain_consolidation_tilt: float | None = None,
     last_acted_probability_identity: str | None = None,
@@ -6425,12 +6371,6 @@ def compile_delta_v2_runtime_plan(
     priced at -81.8 USDC against opener inheritance (drop-1/2/3 all
     negative): late top-ups are the profitable adds, and lights that came
     on after the opener must not cut them.
-
-    ``previous_probabilities`` is the same station-day's probability at the
-    previous checkpoint.  Rebalancing follows the probability, not the
-    calendar: a bucket p(t) has moved toward may be added to, a bucket it
-    has moved away from is held but never added to, and nothing is ever
-    sold (user ruling, 2026-08-15).
     """
 
     basket_policy.validate()
@@ -7134,65 +7074,6 @@ def compile_delta_v2_runtime_plan(
         )
         for bucket in final_support
     }
-    # Hold, do not add to, a bucket whose probability just fell.  The rule
-    # lives in the kernel so the paper ledger runs the one implementation
-    # rather than a second copy of it -- it was inline here until
-    # 2026-09-01, which is why the ledger never ran it at all.
-    raw_gap_by_bucket = dict(gap_by_bucket)
-    gap_by_bucket, declining_tuple = (
-        clamp_declining_gaps_v2(
-            gap_by_bucket=gap_by_bucket,
-            support=final_support,
-            probabilities=probabilities,
-            previous_probabilities=previous_probabilities,
-        )
-        if DECLINE_CLAMP_MODE != "off"
-        else (gap_by_bucket, ())
-    )
-    declining_buckets = list(declining_tuple)
-    # Charter 69: under ``guarded`` only the falling rungs at the ends of
-    # the window may be held back, and never the centre.  A falling rung in
-    # the middle, or the centre itself, keeps its gap -- the basket stays a
-    # contiguous ladder that touches its core, which the complete-basket
-    # check downstream assumes but does not enforce on this path.
-    if DECLINE_CLAMP_MODE == "guarded" and declining_tuple:
-        clamped_tuple = contiguous_edge_clamp_v2(
-            declining=declining_tuple,
-            support=final_support,
-            centre_bucket=str(
-                support_selection.get("ladder_center_bucket") or ""
-            ),
-        )
-    elif DECLINE_CLAMP_MODE == "held_only" and declining_tuple:
-        # Only a rung the book has already committed to -- filled or
-        # resting -- can be held at what it has.  An opening commits to
-        # nothing yet, so nothing is clamped there.
-        clamped_tuple = tuple(
-            bucket
-            for bucket in declining_tuple
-            if current_shares[bucket] + pending_shares[bucket] > EPS
-        )
-    elif DECLINE_CLAMP_MODE == "after_open" and declining_tuple:
-        # Nothing committed anywhere on this station-day = the opening
-        # seat: no clamp.  Anything committed = a later seat: charter 51
-        # in full.
-        book_is_open = any(
-            row.filled_shares + row.pending_shares > EPS
-            for row in snapshot.buckets
-        )
-        clamped_tuple = declining_tuple if book_is_open else ()
-    else:
-        clamped_tuple = declining_tuple
-    if tuple(clamped_tuple) != tuple(declining_tuple):
-        gap_by_bucket = {
-            bucket: (
-                gap_by_bucket[bucket]
-                if bucket in clamped_tuple
-                else raw_gap_by_bucket[bucket]
-            )
-            for bucket in final_support
-        }
-    clamped_buckets = list(clamped_tuple)
     execution_gap_support = tuple(
         bucket for bucket in final_support if gap_by_bucket[bucket] > EPS
     )
@@ -8163,11 +8044,6 @@ def compile_delta_v2_runtime_plan(
         ),
         "basket_optimizer_id": "DeltaBasketScoreV2",
         "basket_optimizer_converged": True,
-        # Held at their existing size because p(t) moved away from them this
-        # cycle: no top-up, and never a sale.
-        "probability_declined_buckets": tuple(declining_buckets),
-        "probability_clamp_mode": DECLINE_CLAMP_MODE,
-        "probability_clamped_buckets": tuple(clamped_buckets),
         # Charter 70: which rungs were lifted to one exchange lot, and what
         # the lift cost, or why it was refused.
         "exchange_lot_top_up": EXCHANGE_LOT_TOP_UP,
@@ -8212,9 +8088,6 @@ def compile_delta_v2_runtime_plan(
         ),
         "notional_raised_buckets": tuple(
             lot_top_up.get("notional_raised_buckets", ())
-        ),
-        "probability_direction_source": (
-            "previous_checkpoint" if previous_probabilities else "absent"
         ),
         "execution_mode": EXECUTION_MODE,
         # Charter 94: the ladder's shape and the horizon its fills are priced at.

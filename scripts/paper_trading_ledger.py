@@ -81,8 +81,6 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     EFFECTIVE_EDGE_STAGES,
     ORDER_SHARE_GRID,
     ORDER_SHARE_STEP_SHARES,
-    clamp_declining_gaps_v2,
-    contiguous_edge_clamp_v2,
     effective_edge_lambda,
     floor_to_order_share_grid_v1,
     effective_edge_lambda_for_stage,
@@ -145,7 +143,6 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     CONVERGENCE_CLAIM_MIN_CLAIM_RISE,
     CONVERGENCE_CLAIM_MIN_PRICE_FALL,
     CHAIN_OPENING_STAGES,
-    DECLINE_CLAMP_MODE as _PRODUCTION_DECLINE_CLAMP_MODE,
     # The charter clauses that gained a research switch on 2026-09-05.
     # Read from production so a replay arm flips one rule on both sides.
     CHARTER_66A_CHAIN_PAR,
@@ -542,61 +539,6 @@ REQUIRE_QUOTED_BOOK = (
 MAXIMUM_SUPPORT_BUCKETS = int(
     os.environ.get("PAPER_LEDGER_MAX_SUPPORT_BUCKETS", "4") or 4
 )
-# Production holds, rather than adds to, a bucket whose probability fell since
-# the previous cycle (``clamp_declining_gaps_v2``).  This ledger never ran that
-# rule -- it was inline in delta_v2_runtime until 2026-09-01 -- which means the
-# entire recorded book is the arm where the clamp is OFF, and nobody declared
-# that.  Measured on production's own SEED decisions 2026-08-25..09-01: it cut a
-# leg off 54 of 194 openings (28%), and it was the only thing that cut any.
-#
-# Default stays "off" so this knob does not silently rewrite what the book has
-# always meant; "on" is the arm that reproduces production.  Which one should be
-# the default is the question the replay exists to answer.
-# Three arms, because there are three coherent answers and only one of them
-# is currently running anywhere:
-#   off  -- buy the whole target; what this ledger has always done
-#   leg  -- drop the declining leg, keep the rest; what production does
-#   hold -- if any target leg is declining, seat nothing this cycle
-# "hold" is the one nobody has run.  It is what the complete-basket rule
-# would imply if it applied to the solver's target instead of to what
-# survives the clamp: production checks completeness *after* the cut, so a
-# basket that lost a leg still passes as complete.
-#   guarded -- three conditions, all required, before a leg may be dropped:
-#              (1) the fall clears DECLINE_MIN_DROP -- not any fall at all;
-#              (2) the bucket sits at an end of the window, so what survives
-#                  is still one run; (3) it is not the centre rung.
-#
-#              (1) was added 2026-09-02 after the shape-only version had
-#              been measured.  P0 probabilities follow the model run, not
-#              the clock -- only 6.5% of 138,116 adjacent P0 checkpoints
-#              differ at all -- so this rule fires in the moment a run
-#              lands, and 18% of the falls it then sees are under 0.001
-#              against a median of 0.0167.  Without a threshold it treats a
-#              1e-9 reshuffle and a 0.5 collapse as the same event.  The
-#              restatement suppression that shipped 2026-09-01 makes this
-#              sharper still: it removes the 87% of checkpoints that
-#              repeated the previous one, so adjacent pairs are now almost
-#              always genuinely different and the rule fires far more often.
-#
-#              The three conditions guard different things and none
-#              subsumes another: (1) noise, (2) a hole in the middle of the
-#              basket, (3) throwing away the rung the model likes best.  The plain clamp runs before the
-#              complete-basket check and is therefore free of both: measured
-#              over 581 replay openings it dropped the centre 48 times and
-#              left the support non-contiguous 10 times, and neither is a
-#              violation of the rules as written -- both are outside the
-#              path that enforces them.
-DECLINE_CLAMP_MODES = ("off", "leg", "hold", "guarded", "held_only", "after_open")
-# How far a probability must fall before the clamp calls it falling.  The
-# shipped rule has no threshold at all -- a drop of 1e-9 clamps a leg
-# exactly as a drop of 0.5 does -- and that has never been measured.
-#
-# Two measurements make it worth measuring.  P0 probabilities follow the
-# model run: over 138,116 adjacent P0 checkpoints from 2026-08-15 only
-# 6.5% differ at all, so the rule fires only in the moment a run lands and
-# a station-day is clamped or not depending on where its first seatable
-# cycle falls relative to that moment.  And 18% of the drops that do occur
-# are under 0.001, against a median of 0.0167.
 # A stage seats as many times as its cycles allow, adding to itself on
 # each later one -- what production does (user ruling, 2026-09-02: "把账本
 # 改为和生产一样").  Off is the one-seat-per-stage walk this ledger ran
@@ -613,29 +555,6 @@ RESEAT_WITHIN_STAGE = (
     os.environ.get("PAPER_LEDGER_RESEAT_WITHIN_STAGE", "on").strip().lower()
     in {"1", "on", "true", "yes"}
 )
-DECLINE_MIN_DROP = float(
-    os.environ.get("PAPER_LEDGER_DECLINE_MIN_DROP", "") or 0.0
-)
-# Default = production.  The clamp is production's own function (imported
-# above) and production has run it on every cycle since 2026-08-15, so a
-# book that skips it scores a strategy production never traded.  The default
-# stayed "off" until 2026-09-02 only because no replay had been run with it
-# on; that replay now exists (reseat_six_arms_20260902.md: leg +15.4% vs
-# off +8.3% over 405 station-days) and the reason has expired.  "off" is
-# kept as an arm so the pre-09-02 book can still be reproduced.
-# Charter 69 (2026-09-02, final ruling "切 after_open"): the opening seat
-# is never clamped, every later seat clamps every falling rung, held or
-# not.  This is the same switch production carries, defaulting the same
-# way.  "leg" is charter 51 as first shipped, "guarded" the day's interim
-# reading, "off" reproduces the pre-09-02 book.
-DECLINE_CLAMP = (
-    os.environ.get("PAPER_LEDGER_DECLINE_CLAMP", "").strip().lower()
-    or _PRODUCTION_DECLINE_CLAMP_MODE
-)
-if DECLINE_CLAMP in {"1", "on", "true", "yes"}:
-    DECLINE_CLAMP = "leg"
-if DECLINE_CLAMP not in DECLINE_CLAMP_MODES:
-    raise ValueError(f"unknown decline clamp mode: {DECLINE_CLAMP}")
 # The earliest event day this book admits.  Charter 50's ladder floor landed on
 # 2026-08-15; every chain before it was seated under a minimum basket width the
 # live engine no longer trades, so those rows score a strategy that does not
@@ -833,19 +752,6 @@ REFUSAL_DEPTH = {
     "support_floor_after_lift": 8,
     # Charter 71(b) tightening arm: the increment itself does not pay.
     "topup_increment_edge_negative": 8,
-    # The declining-probability clamp, when it is armed.  Sits at the
-    # top-up layer because everything was known when it fired: the basket
-    # was assembled, priced, sized against real depth, and then held back
-    # by a rule of ours reading the distribution's direction.  It runs
-    # BEFORE the chain clauses, so it never competes with them for the
-    # report -- only one of the two can happen on a cycle.
-    #
-    # Registered at all because an unregistered reason resolves to depth 0
-    # via ``REFUSAL_DEPTH.get(..., 0)`` and can therefore never be kept:
-    # the arm would refuse correctly and then report some shallower cause,
-    # which is the misattribution this whole table exists to prevent.
-    "decline_clamp_hold_basket": 8,
-    "decline_clamp_emptied_basket": 8,
     "chain_never_opened": 9,
 }
 # Which bucket-selection rule this sweep runs.  ``live`` is production's own
@@ -2025,13 +1931,9 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None
     if P1_ENTRY_LOCAL_HOUR <= 0
     else "P1≥本地%g时" % P1_ENTRY_LOCAL_HOUR,
-    # Charter 69 / user ruling 2026-09-02: which clamp this book ran and
-    # whether a stage may seat itself again.  Both change every row a book
-    # records -- the 2026-09-02 reseat replay moved the same 405 station
-    # -days from +8.3% (off) to +14.9% (guarded) -- so a book compiled
-    # without them must not read as comparable to one compiled with them.
-    None if DECLINE_CLAMP == "off" else "钳位%s" % DECLINE_CLAMP,
-    None if DECLINE_MIN_DROP <= 0 else "降幅≥%g" % DECLINE_MIN_DROP,
+    # User ruling 2026-09-02: whether a stage may seat itself again.  It
+    # changes every row a book records, so a book compiled without it must
+    # not read as comparable to one compiled with it.
     "反复入座" if RESEAT_WITHIN_STAGE else None,
     None
     if P0_ENTRY_DELAY_HOURS <= 0
@@ -2324,9 +2226,12 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
         if EFFECTIVE_EDGE_LAMBDA_P0_OVERRIDE else {}
     ),
     "p1_entry_local_hour": P1_ENTRY_LOCAL_HOUR,
-    # Charter 69 (v5): the clamp arm, its threshold and the seat cadence.
-    "decline_clamp": DECLINE_CLAMP,
-    "decline_min_drop": DECLINE_MIN_DROP,
+    # Charter 69's declining-probability clamp: retired 2026-09-05 (the
+    # book ran "off" from then on) and its code deleted 2026-09-24.  The two
+    # literals are the values every standing row was judged under; they stay
+    # so the standing book keeps its digest and is not re-derived.
+    "decline_clamp": "off",
+    "decline_min_drop": 0.0,
     "reseat_within_stage": RESEAT_WITHIN_STAGE,
     # Research arms of 2026-09-03, hashed only away from their defaults so
     # the standing book keeps its fingerprint.
@@ -2939,11 +2844,6 @@ REFUSAL_REASONS = (
     "support_floor_after_lift",
     # A later stage whose station-day never opened.  Only P0 opens a
     # position; a top-up with nothing to top up is not a position of its own.
-    # The declining-probability clamp's two refusals (arm-gated; the "off"
-    # default never emits them).  See REFUSAL_DEPTH for why both tables
-    # must list every reason.
-    "decline_clamp_hold_basket",
-    "decline_clamp_emptied_basket",
     "chain_never_opened",
     # Charter 66 clause B: the log-optimal increment from the chain's own
     # held curve is zero -- either the window is already covered, or every
@@ -4272,52 +4172,6 @@ def _truth(conn: sqlite3.Connection) -> dict[tuple[str, str], _Truth]:
             float(value), int(revision), str(sha)
         )
     return out
-
-
-def _previous_checkpoint_probabilities(
-    conn: sqlite3.Connection,
-    *,
-    station_id: str,
-    event_date: str,
-    decision_at_utc: str,
-) -> dict[str, float] | None:
-    """The served vector of the checkpoint just before this one, any stage.
-
-    Charter 69's clamp compares this cycle's distribution with the one
-    before it, and production's "before" is the previous committed
-    envelope on the station-day whatever stage served it
-    (``_compile_target_plan``: ``_earlier[-1]``).  This lane walked one
-    stage at a time and reset the carry at each, so the first cycle of
-    P0-M and P1 compared against nothing and the clamp could not bind
-    there (aligned 2026-09-04).  None when nothing precedes it, which the
-    kernel reads as "unmeasured, leave alone".
-    """
-
-    row = conn.execute(
-        "SELECT history_id FROM basket_probability_bridge_history"
-        " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-        "   AND decision_at_utc<?"
-        " ORDER BY decision_at_utc DESC LIMIT 1",
-        (station_id, event_date, decision_at_utc),
-    ).fetchone()
-    if row is None:
-        return None
-    return {
-        str(bucket): float(probability)
-        for bucket, probability in conn.execute(
-            "SELECT bucket, probability"
-            " FROM basket_probability_bridge_bucket_probability"
-            " WHERE history_id=?",
-            (row[0],),
-        )
-    } or None
-
-
-# Charter 121: the marker that says a payload is being seen for the first
-# time, as opposed to a re-entry carrying a restored ``previous_probabilities``
-# -- which may legitimately be ``None`` on the first cycle of a stage, so the
-# sentinel cannot be ``None`` itself.
-_PAYLOAD_FIRST_ENTRY = object()
 
 
 def _deeper_refusal(current: tuple, candidate: tuple) -> tuple:
@@ -9144,39 +8998,28 @@ def backfill(
                 ) = None
                 stage_seated_buckets: tuple[str, ...] | None = None
                 lane_opened_at: datetime | None = None
-                # Production's clamp compares this cycle's distribution with
-                # the one before it, so the walk has to carry the previous
-                # cycle forward.  Reset per stage: the first cycle a stage
-                # sees has nothing behind it, which is exactly the case the
-                # kernel treats as "unmeasured, leave alone".
-                previous_probabilities: dict[str, float] | None = None
                 # Charter 121 (2026-09-08): production re-solves a seat whose
                 # lifted shape charter 93 refuses, so this walk has to be able
                 # to ask the same payload a second question rather than drop
-                # it.  A queue rather than a plain iterator, because the two
-                # things the body carries across payloads -- the cycle counter
-                # and the previous cycle's distribution -- would otherwise be
-                # advanced twice for one payload and the clamp would compare a
-                # cycle with itself.  Both are restored on a re-entry, so a
-                # retry differs from the first pass in exactly one input.
+                # it.  A queue rather than a plain iterator, because the cycle
+                # counter the body carries across payloads would otherwise be
+                # advanced twice for one payload; a re-entry is flagged and
+                # does not count as a cycle, so a retry differs from the first
+                # pass in exactly one input.
                 _payload_queue: list[
-                    tuple[Mapping[str, Any], tuple[str, ...], Any]
+                    tuple[Mapping[str, Any], tuple[str, ...], bool]
                 ] = [
-                    (row, (), _PAYLOAD_FIRST_ENTRY)
+                    (row, (), False)
                     for row in _stage_entry_candidates(
                         conn, station_id, event_date, stage
                     )
                 ]
                 while _payload_queue:
-                    payload, _excluded_candidate_ids, _entry_prev = (
+                    payload, _excluded_candidate_ids, _payload_retry = (
                         _payload_queue.pop(0)
                     )
-                    _payload_retry = _entry_prev is not _PAYLOAD_FIRST_ENTRY
-                    if _payload_retry:
-                        previous_probabilities = _entry_prev
-                    else:
+                    if not _payload_retry:
                         cycles += 1
-                    _payload_entry_prev = previous_probabilities
                     # Research arm: P0 waits out the young book.  Measured
                     # from the lane's own first cycle -- the listing proxy
                     # the ledger can see -- and skipping the cycle, never
@@ -9294,36 +9137,6 @@ def backfill(
                                 ordered_keys=ordered,
                                 key_centers_c=centers,
                                 open_edge_bounds_c=open_edge_bounds,
-                            )
-                        )
-                    # Take the previous cycle's reading, then advance the
-                    # carry immediately.  Every cycle this walk examines is
-                    # a cycle production also computed a distribution for,
-                    # so the carry must move whether or not this one goes
-                    # on to seat -- and there are a dozen ``continue``s
-                    # below.  Advancing here rather than at each of them is
-                    # what makes "the previous cycle" mean the same thing
-                    # on both sides.
-                    previous_cycle_probabilities = previous_probabilities
-                    previous_probabilities = {
-                        str(bucket): float(value)
-                        for bucket, value in probabilities.items()
-                    }
-                    if JUDGE != "ledger":
-                        # Production's "previous" is the previous committed
-                        # checkpoint on the station-day, any stage; the
-                        # per-stage carry above is this lane's own walk
-                        # order and only serves the ledger judge, whose
-                        # corrected vectors the raw checkpoint would not
-                        # match.
-                        previous_cycle_probabilities = (
-                            _previous_checkpoint_probabilities(
-                                conn,
-                                station_id=station_id,
-                                event_date=event_date,
-                                decision_at_utc=str(
-                                    payload["decision_at_utc"]
-                                ),
                             )
                         )
                     ordinals = {
@@ -10477,92 +10290,6 @@ def backfill(
                         bucket: held[bucket]
                         for bucket in seat["buckets"] if bucket in held
                     }
-                    # Production's declining-probability clamp, run on the
-                    # same gap it runs on there: what this stage wants less
-                    # what the chain already holds.  Applied before the
-                    # top-up walk so both entry paths see it -- an opening
-                    # holds nothing, so a clamped leg goes to zero shares
-                    # and its cash leaves the stake; a top-up already holds
-                    # some, so the leg is pinned at what it has and the
-                    # delta below is zero.  Both are "held at the size it
-                    # already has", which is what the clamp means.
-                    if DECLINE_CLAMP != "off" and previous_cycle_probabilities:
-                        _gaps = {
-                            bucket: max(0.0, float(want) - held.get(bucket, 0.0))
-                            for bucket, want in zip(seat["buckets"], leg_shares)
-                        }
-                        _, _declined = clamp_declining_gaps_v2(
-                            gap_by_bucket=_gaps,
-                            support=tuple(seat["buckets"]),
-                            probabilities=probabilities,
-                            previous_probabilities=(
-                                previous_cycle_probabilities
-                            ),
-                            minimum_drop=DECLINE_MIN_DROP,
-                        )
-                        if DECLINE_CLAMP == "guarded" and _declined:
-                            _declined = contiguous_edge_clamp_v2(
-                                declining=_declined,
-                                support=tuple(seat["buckets"]),
-                                centre_bucket=seat_center,
-                            )
-                        if DECLINE_CLAMP == "after_open" and _declined:
-                            # Production's ``after_open``: the opening
-                            # seat (chain holds nothing) is never clamped;
-                            # every later seat is, held rung or not.
-                            if not any(
-                                float(v or 0.0) > 0.0 for v in held.values()
-                            ):
-                                _declined = ()
-                        if DECLINE_CLAMP == "held_only" and _declined:
-                            # Production's ``held_only``: only a rung the
-                            # chain already holds can be held at what it
-                            # has.  An opening holds nothing, so it is
-                            # never clamped; a top-up clamps every falling
-                            # rung it holds, centre included.
-                            _declined = tuple(
-                                bucket for bucket in _declined
-                                if held.get(bucket, 0.0) > 0.0
-                            )
-                        if _declined and DECLINE_CLAMP == "hold":
-                            # The whole basket waits.  A target the evidence
-                            # is moving away from in any leg is not a basket
-                            # this cycle should open a piece of; the next
-                            # cycle re-solves and may seat the whole thing.
-                            refusal = _deeper_refusal(refusal, (
-                                "decline_clamp_hold_basket",
-                                "目标篮 %s · 其中 %s 概率较上一 cycle 下降，"
-                                "整篮不入座" % (
-                                    "+".join(seat["buckets"]),
-                                    "+".join(sorted(_declined)),
-                                ),
-                                cycles, payload["decision_at_utc"],
-                            ))
-                            continue
-                        if _declined:
-                            _drop = set(_declined)
-                            _shares: list[float] = []
-                            _cash: list[float] = []
-                            for bucket, want, cash in zip(
-                                seat["buckets"], leg_shares, leg_cash
-                            ):
-                                if bucket in _drop:
-                                    _shares.append(held.get(bucket, 0.0))
-                                    _cash.append(0.0)
-                                else:
-                                    _shares.append(float(want))
-                                    _cash.append(float(cash))
-                            leg_shares = _shares
-                            leg_cash = _cash
-                            stake = sum(_cash)
-                            if stake <= 0.0:
-                                refusal = _deeper_refusal(refusal, (
-                                    "decline_clamp_emptied_basket",
-                                    "本轮全部目标桶概率较上一 cycle 下降：%s"
-                                    % "+".join(sorted(_drop)),
-                                    cycles, payload["decision_at_utc"],
-                                ))
-                                continue
                     if held:
                         # Charter 71(a): the probability must have moved
                         # since the chain last bought.  A refreshed book or
@@ -11041,7 +10768,7 @@ def backfill(
                                         payload,
                                         _excluded_candidate_ids
                                         + (_refused_id,),
-                                        _payload_entry_prev,
+                                        True,
                                     ))
                                 continue
                         # The exchange refuses any order under its lot, so

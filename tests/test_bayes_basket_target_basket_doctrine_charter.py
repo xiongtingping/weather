@@ -1511,7 +1511,16 @@ def test_clause_68_the_objective_reads_effective_edge() -> None:
     assert runtime.TAKER_LEG_VETO == "joint"
 
 
-def test_clause_69_the_decline_clamp_waits_for_the_book_to_open() -> None:
+def test_clause_69_the_retired_decline_clamp_is_gone_from_both_sides() -> None:
+    """Retired 2026-09-05, deleted 2026-09-24 (user ruling 「已退役直接删除」).
+
+    The clamp was ruled in on a paper book that priced each checkpoint on the
+    book before it and cost seven points once that advantage was removed.
+    No arm of it survives: not in the kernel, not in production, not in the
+    ledger.  The ledger's rule identity keeps the two values every standing
+    row was judged under, so the book is not re-derived.
+    """
+
     clause = _clause(69)
     assert "after_open" in clause
 
@@ -1521,17 +1530,15 @@ def test_clause_69_the_decline_clamp_waits_for_the_book_to_open() -> None:
     from bayes_basket_target.basket_kernel import delta_v2 as kernel
 
     ledger = importlib.import_module("scripts.paper_trading_ledger")
-    # Retired 2026-09-05 (user ruling): the clause was measured on a book
-    # that priced each checkpoint on the book before it, and cost seven
-    # points once that advantage was gone.  ``after_open`` stays an arm on
-    # both sides, and the two still read one value.
-    assert runtime.DECLINE_CLAMP_MODE == ledger.DECLINE_CLAMP == "off"
-    assert "after_open" in runtime.DECLINE_CLAMP_MODES if hasattr(
-        runtime, "DECLINE_CLAMP_MODES"
-    ) else True
-    assert "after_open" in ledger.DECLINE_CLAMP_MODES
-    assert callable(kernel.clamp_declining_gaps_v2)
-    assert callable(kernel.contiguous_edge_clamp_v2)
+    for name in ("clamp_declining_gaps_v2", "contiguous_edge_clamp_v2"):
+        assert not hasattr(kernel, name)
+        assert not hasattr(runtime, name)
+        assert not hasattr(ledger, name)
+    assert not hasattr(runtime, "DECLINE_CLAMP_MODE")
+    assert not hasattr(ledger, "DECLINE_CLAMP")
+    assert not hasattr(ledger, "DECLINE_MIN_DROP")
+    assert ledger._SELECTION_RULE_IDENTITY["decline_clamp"] == "off"
+    assert ledger._SELECTION_RULE_IDENTITY["decline_min_drop"] == 0.0
 
 
 def test_clause_83_a_sub_dollar_rung_is_lifted_to_the_venue_minimum() -> None:
@@ -2362,18 +2369,17 @@ def test_clause_50_floor_is_not_waived_for_an_inherited_two_rung_ladder() -> (
     assert audit["short_refused_window_count"] > 0
 
 
-def test_clause_51_a_fading_leg_is_held_never_topped_up_never_sold() -> None:
-    """Rebalancing follows p(t)'s direction, and only in one direction.
+def test_clause_51_a_leg_is_never_sold_by_the_gap() -> None:
+    """Clause 51's surviving half: the gap only ever buys.
 
-    The objective re-solves from scratch every cycle, so it sees today's
-    probability without its history and would top up a leg the evidence has
-    just moved away from.  Clause 51 clamps that add to zero while leaving
-    the existing size alone -- the clamp is one-sided, so a faded leg is
-    held, not sold.
+    Its other half -- a leg whose probability fell is not topped up -- was
+    the declining-probability clamp, retired with charter 69 on 2026-09-05
+    and deleted on 2026-09-24.  What remains is that a target below what
+    the book holds is simply left alone: the execution set is positive gaps
+    only, and nothing on this path sells.
     """
 
     clause = _clause(51)
-    assert "不加仓" in clause
     assert "永不卖出" in clause
 
     from bayes_basket_target.delta_v2_runtime import (
@@ -2382,46 +2388,9 @@ def test_clause_51_a_fading_leg_is_held_never_topped_up_never_sold() -> None:
     import inspect
 
     source = inspect.getsource(compile_delta_v2_runtime_plan)
-    # The clamp left this function on 2026-09-01 for the kernel, because a
-    # selection rule has to be one rule on both sides -- it had been inline
-    # here, which meant the paper ledger never ran it at all.  Asserting the
-    # inline source line kept this test red from that day onward, and a line
-    # of code was never what clause 51 says.  Assert the rule instead, on the
-    # kernel that now holds it, and assert only that production reaches it.
-    assert "declining_buckets" in source
-    assert "clamp_declining_gaps_v2" in source, "production runs the kernel rule"
-    # Selling stays impossible: the execution set is positive gaps only.
     assert "gap_by_bucket[bucket] > EPS" in source
-
-    from bayes_basket_target.basket_kernel.delta_v2 import (
-        clamp_declining_gaps_v2,
-    )
-
-    clamped, declining = clamp_declining_gaps_v2(
-        gap_by_bucket={"34": 5.0, "35": 3.0, "36": 2.0},
-        support=("34", "35", "36"),
-        probabilities={"34": 0.30, "35": 0.25, "36": 0.30},
-        previous_probabilities={"34": 0.40, "35": 0.25, "36": 0.20},
-    )
-    # 34 faded, so its purchase is clamped away -- and only to zero.  The
-    # size it already holds is untouched, which is the "held, never sold"
-    # half of the clause.
-    assert declining == ("34",)
-    assert clamped["34"] == 0.0
-    # 35 did not move and 36 rose; neither is a fading claim.
-    assert clamped["35"] == 3.0 and clamped["36"] == 2.0
-    # No previous reading means no direction, and every bucket stays eligible.
-    unmeasured, none_declining = clamp_declining_gaps_v2(
-        gap_by_bucket={"34": 5.0},
-        support=("34",),
-        probabilities={"34": 0.30},
-        previous_probabilities=None,
-    )
-    assert none_declining == () and unmeasured["34"] == 5.0
-
     signature = inspect.signature(compile_delta_v2_runtime_plan)
-    assert "previous_probabilities" in signature.parameters
-    assert signature.parameters["previous_probabilities"].default is None
+    assert "previous_probabilities" not in signature.parameters
 
 
 def _rung_snapshot(

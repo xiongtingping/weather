@@ -1066,12 +1066,9 @@ def _compile_target_plan(
         }
 
     envelope = select_current_stage(probability_envelopes, at_utc=evaluation_at_utc)
-    # The checkpoint immediately before the one being served, on the same
-    # station-day: rebalancing follows where p(t) has moved, so it needs the
-    # previous reading to compare against.  Absent (a first checkpoint, or a
-    # caller that supplied only one envelope) means no direction is known
-    # and every bucket stays eligible, which is the pre-rule behaviour.
-    previous_probabilities: dict[str, float] | None = None
+    # The same station-day's checkpoints strictly before the one being
+    # served, oldest first: the certainty gate reads whether the mass
+    # centre has held still along this chain.
     _prior_chain = sorted(
         (
             item
@@ -1088,11 +1085,6 @@ def _compile_target_plan(
         and str(item.event_date) == str(envelope.event_date)
         and str(item.decision_at_utc) < str(envelope.decision_at_utc)
     ]
-    if _earlier:
-        previous_probabilities = {
-            str(bucket): float(value)
-            for bucket, value in _earlier[-1].probabilities.items()
-        }
     _assert_current_p1_source_lane(
         envelope,
         expected_source_lane=expected_source_lane,
@@ -1409,7 +1401,6 @@ def _compile_target_plan(
                 policy.minimum_expected_pnl_after_usdc
             ),
             resource_probe_ok=resource_probe_ok,
-            previous_probabilities=previous_probabilities,
             chain_consolidation_tilt=chain_consolidation_tilt,
             last_acted_probability_identity=last_acted_probability_identity,
             last_decision_signature=last_decision_signature,
@@ -1436,8 +1427,7 @@ def _compile_target_plan(
                 else None
             ),
             # Newest first: the certainty gate asks whether the mass centre
-            # has held still, and the answer is read off the same envelope
-            # chain the previous-probabilities comparison already walks.
+            # has held still along the earlier checkpoints.
             prior_centre_buckets=[
                 max(item.probabilities, key=lambda b: item.probabilities[b])
                 for item in reversed(_earlier)

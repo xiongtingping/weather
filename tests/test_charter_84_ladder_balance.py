@@ -1209,7 +1209,7 @@ def _production_arms(monkeypatch: pytest.MonkeyPatch) -> None:
         ("MARKET_LEAN_GATE_MODE", "shadow"),
         ("CHARTER_78_INCUMBENT_NO_EXEMPTION", "on"), ("CHARTER_77_DECISION_MOMENTS", "on"),
         ("CHARTER_84_LADDER_BALANCE", "on"),
-        ("TARGET_PRICING_BASIS", "ask_depth"), ("DECLINE_CLAMP_MODE", "off"),
+        ("TARGET_PRICING_BASIS", "ask_depth"),
         ("CHARTER_66A_CHAIN_PAR", "on"), ("CHARTER_71A_TOPUP_IDENTITY", "on"),
         ("CHARTER_71B_CHAIN_GROWTH", "on"), ("CHARTER_72_KELLY_SIZING", "on"),
         ("CHARTER_70_EXCHANGE_LOT", "on"), ("CHARTER_83_MIN_NOTIONAL", "on"),
