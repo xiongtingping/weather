@@ -6423,6 +6423,19 @@ def collect_truth_materialization(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+#: The newest evaluation per (station, lead, cycle) in the last week.  Every
+#: column it touches is in ``calibration_cross_native_oos_evaluation_scope_idx``
+#: (pinned by tests/test_dashboard_query_shapes.py); ``MAX()`` makes SQLite
+#: hand back the ``evaluation_id`` of the row that holds the maximum.
+OOS_NEWEST_PER_SCOPE_SQL = (
+    "SELECT station_id, lead_bucket, run_cycle, MAX(evaluated_at_utc),"
+    " evaluation_id"
+    " FROM calibration_cross_native_ensemble_oos_evaluation"
+    " WHERE evaluated_at_utc>=datetime('now','-7 days')"
+    " GROUP BY station_id, lead_bucket, run_cycle"
+)
+
+
 def collect_oos_scores(conn: sqlite3.Connection) -> dict[str, Any]:
     """The gate's own scores, against the baseline that makes them readable.
 
@@ -6433,17 +6446,29 @@ def collect_oos_scores(conn: sqlite3.Connection) -> dict[str, Any]:
     is comparable across scopes.
     """
 
+    # Newest evaluation per scope first, off the scope index alone; the two
+    # metric blobs are then read for those rows only.  ``evaluated_at_utc``
+    # sits behind both blobs in the row, so filtering on it through the
+    # table walks every blob's overflow chain: 235,408 rows and 1.38 GB of
+    # JSON for 518 scopes on 2026-09-24, when the evaluator had been
+    # re-writing each unchanged verdict about hourly since 09-21.  That one
+    # read took 1,017 s of a render, and every render from 13:18Z on
+    # 2026-09-23 was killed at its 1,500 s deadline -- the board sat on its
+    # 06:53Z payload, red lanes and all, for eighteen hours.
     newest: dict[tuple[str, str, str], tuple[str, Any, Any, str, str]] = {}
-    for (
-        station, lead, cycle, evaluated, state, profile, metrics, baseline
-    ) in conn.execute(
-        "SELECT station_id, lead_bucket, run_cycle, evaluated_at_utc,"
-        " oos_state, threshold_profile, oos_metrics_json,"
-        " climatology_baseline_metrics_json"
-        " FROM calibration_cross_native_ensemble_oos_evaluation"
-        " WHERE evaluated_at_utc>=datetime('now','-7 days')"
-        " ORDER BY evaluated_at_utc"
-    ):
+    for station, lead, cycle, _evaluated, evaluation_id in conn.execute(
+        OOS_NEWEST_PER_SCOPE_SQL
+    ).fetchall():
+        row = conn.execute(
+            "SELECT evaluated_at_utc, oos_state, threshold_profile,"
+            " oos_metrics_json, climatology_baseline_metrics_json"
+            " FROM calibration_cross_native_ensemble_oos_evaluation"
+            " WHERE evaluation_id=?",
+            (evaluation_id,),
+        ).fetchone()
+        if row is None:
+            continue
+        evaluated, state, profile, metrics, baseline = row
         newest[(str(station), str(lead), str(cycle))] = (
             str(evaluated), metrics, baseline, str(state), str(profile)
         )
@@ -16221,6 +16246,23 @@ def _section_fingerprint(collector: Any, salt: str = "") -> str:
     ).hexdigest()
 
 
+#: A section slower than this is written to stderr as it finishes.  The
+#: per-section timings otherwise reach only the payload, and a render killed
+#: at its deadline writes no payload: from 13:18Z on 2026-09-23 eleven
+#: hours of renders died at 1,500 s and the log said nothing but "killed".
+SLOW_SECTION_TRACE_SEC = 20.0
+
+
+def _trace_slow_section(name: str, elapsed: float) -> None:
+    if elapsed >= SLOW_SECTION_TRACE_SEC:
+        print(
+            f"[{_now().strftime('%Y-%m-%dT%H:%M:%SZ')}] section {name}"
+            f" {elapsed:.1f}s",
+            file=sys.stderr,
+            flush=True,
+        )
+
+
 def _cached_section(
     name: str,
     collector: Any,
@@ -16251,6 +16293,7 @@ def _cached_section(
             "reused": False,
             "cached": False,
         }
+        _trace_slow_section(name, _SECTION_CACHE_LOG[name]["build_sec"])
         return value
     fingerprint = _section_fingerprint(collector, _salt)
     path = SECTION_CACHE_DIR / f"{name}.json"
@@ -16275,6 +16318,7 @@ def _cached_section(
     started = time.perf_counter()
     value = collector(*args, **kwargs)
     elapsed = time.perf_counter() - started
+    _trace_slow_section(name, elapsed)
     stamp = now.isoformat().replace("+00:00", "Z")
     _SECTION_CACHE_LOG[name] = {
         "computed_at_utc": stamp,

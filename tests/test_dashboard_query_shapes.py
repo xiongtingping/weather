@@ -329,3 +329,99 @@ def test_an_uncommitted_envelope_is_not_counted_by_the_shape_gap():
         ("2026-08-15",),
     ).fetchone()
     assert row[2] == "2026-09-01T06:00:00Z", "the uncommitted 23:00 row must not win"
+
+
+def _oos_evaluation_schema(conn: sqlite3.Connection) -> None:
+    """The table and its scope index exactly as the SSOT declares them.
+
+    Taken from ``ssot.DDL`` rather than retyped: the cost this guards is a
+    property of the real column order (the filter column sits behind both
+    metric blobs) and of the real index, so a copy would test a table that
+    does not exist.
+    """
+
+    from bayes_basket_target import ssot
+
+    table = re.search(
+        r"CREATE TABLE IF NOT EXISTS"
+        r" calibration_cross_native_ensemble_oos_evaluation \(.*?\n\);",
+        ssot.DDL,
+        re.S,
+    )
+    index = re.search(
+        r"CREATE INDEX IF NOT EXISTS"
+        r" calibration_cross_native_oos_evaluation_scope_idx[^;]*;",
+        ssot.DDL,
+    )
+    assert table and index, "the SSOT no longer declares the table or its scope index"
+    conn.execute(table.group(0))
+    conn.execute(index.group(0))
+
+
+def _oos_row(evaluation_id, station, lead, cycle, evaluated, crps, system_set="a"):
+    import json as _json
+
+    return (
+        evaluation_id, station, "PEAK", lead, cycle, "{}", "0" * 64, "tmax",
+        "[]", system_set * 64, "0" * 64, "PRODUCTION_NO_LIVE_OOS_PASS",
+        "PROFILE", 5, 3, "2026-09-10", "2026-09-11", "2026-09-13",
+        _json.dumps({"crps": crps, "brier": 0.1, "nll": 1.0}),
+        _json.dumps({"crps": 1.0, "brier": 0.2, "nll": 2.0}),
+        evaluated, evaluation_id.ljust(64, "0"),
+    )
+
+
+def test_the_oos_scores_never_scan_the_evaluation_table():
+    """Newest-per-scope is read off the covering scope index.
+
+    On 2026-09-24 the week held 235,408 evaluations and 1.38 GB of metric
+    JSON for 518 scopes.  Filtering ``evaluated_at_utc`` through the table
+    reads every row's overflow chain to reach it; that read was 1,017 s of a
+    render, and with the 1,500 s render deadline every render from 13:18Z on
+    2026-09-23 was killed and the board kept an eighteen-hour-old payload.
+    """
+
+    import calibration_dashboard as board
+
+    conn = sqlite3.connect(":memory:")
+    _oos_evaluation_schema(conn)
+    plan = _plan(conn, board.OOS_NEWEST_PER_SCOPE_SQL)
+    assert "COVERING INDEX calibration_cross_native_oos_evaluation_scope_idx" in plan, plan
+    body = SOURCE.split("def collect_oos_scores", 1)[1].split("\ndef ", 1)[0]
+    assert "WHERE evaluation_id=?" in body, "the blobs must be fetched per chosen row"
+    assert "evaluated_at_utc>=" not in body.split("OOS_NEWEST_PER_SCOPE_SQL", 1)[1], (
+        "no second filter on evaluated_at_utc through the table"
+    )
+
+
+def test_the_oos_scores_read_the_newest_evaluation_of_each_scope():
+    """Across system sets and seasons, as the ORDER BY + overwrite did."""
+
+    import calibration_dashboard as board
+
+    conn = sqlite3.connect(":memory:")
+    _oos_evaluation_schema(conn)
+    fresh = conn.execute(
+        "SELECT strftime('%Y-%m-%dT%H:%M:%SZ','now','-1 hours')"
+    ).fetchone()[0]
+    older = conn.execute(
+        "SELECT strftime('%Y-%m-%dT%H:%M:%SZ','now','-3 hours')"
+    ).fetchone()[0]
+    stale = conn.execute(
+        "SELECT strftime('%Y-%m-%dT%H:%M:%SZ','now','-9 days')"
+    ).fetchone()[0]
+    conn.executemany(
+        "INSERT INTO calibration_cross_native_ensemble_oos_evaluation"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [
+            _oos_row("x1", "KLGA", "h00_12", "00Z", older, 0.9, "a"),
+            _oos_row("x2", "KLGA", "h00_12", "00Z", fresh, 0.5, "b"),
+            _oos_row("x3", "KLGA", "h12_24", "00Z", stale, 0.1, "a"),
+        ],
+    )
+    result = board.collect_oos_scores(conn)
+    assert result["scope_count"] == 1, "the nine-day-old scope is outside the week"
+    (row,) = result["rows"]
+    assert row["lead_bucket"] == "h00_12"
+    assert row["crps"] == 0.5, "the newer evaluation (other system set) must win"
+    assert result["latest_evaluated_at_utc"] == fresh
