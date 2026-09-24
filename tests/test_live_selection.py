@@ -369,3 +369,47 @@ def test_the_board_hands_these_sections_the_live_payload_only() -> None:
     top = top[: top.index("];") + 2]
     assert "refusalStats" not in top and "stationSummary" not in top
     assert "paper_roi" not in template and "paper_chains" not in template
+
+
+def test_the_funnel_on_kept_closed_days_is_the_funnel_on_every_fact() -> None:
+    """Closed days from ``closed_plan_summaries``, later ones read: same funnel.
+
+    The board keeps the summaries of days that take no more opening
+    decisions, so a render reads feature_json (~63 KB a fact) for the open
+    days only.  Whatever it keeps, the attribution must not move.
+    """
+
+    conn = _conn()
+    closed_day, open_day = "2026-09-10", "2026-09-11"
+    legs = [
+        _leg("a", "dA", "AAAA", closed_day, "P0", "1", filled=5, notional=1,
+             state="filled"),
+        _leg("c", "dC", "CCCC", open_day, "P0", "1", state="failed"),
+    ]
+    conn.execute(
+        "INSERT INTO basket_target_order_events VALUES (?,?,?)",
+        ("c", "NEVER_REACHED_EXCHANGE", json.dumps({"reason": "live_station_barred"})),
+    )
+    for day in (closed_day, open_day):
+        _fact(conn, "AAAA", day, "P0", day + "T00:00Z", "dA", state="TRADE")
+        _fact(conn, "CCCC", day, "P0", day + "T00:00Z", "dC", state="TRADE")
+        _fact(conn, "DDDD", day, "P0", day + "T00:00Z", "dD", state="TRADE")
+        _fact(conn, "EEEE", day, "P0", day + "T01:00Z", "dE1",
+              codes=["no_decision_moment"])
+        _fact(conn, "EEEE", day, "P0", day + "T02:00Z", "dE2",
+              codes=["support_edge_after_lift", "support_floor_after_lift"])
+        _fact(conn, "FFFF", day, "P0", day + "T01:00Z", "dF",
+              codes=["delta_v2_complete_basket_hold_selected"])
+    book = _book(legs, {})
+    whole = LS.refusal_funnel(conn, book)
+    kept = LS.closed_plan_summaries(conn, closed_day, closed_day)
+    assert LS.refusal_funnel(conn, book, kept) == whole
+    # Kept summaries that start after the book's first day are not used.
+    late = LS.closed_plan_summaries(conn, open_day, open_day)
+    assert LS.refusal_funnel(conn, book, late) == whole
+    # And the kept days are really not read again.
+    conn.execute(
+        "UPDATE basket_policy_training_fact SET feature_json='{}'"
+        " WHERE event_date=?", (closed_day,),
+    )
+    assert LS.refusal_funnel(conn, book, kept) == whole

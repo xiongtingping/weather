@@ -16370,6 +16370,10 @@ SECTION_CACHE_TTL_SEC = {
     # cache's safety rule pins; it was put in the every-run set on
     # 2026-09-24 and taken out the same day.
     "certificate_authority": 53 * 60,
+    # The refusal funnel's closed days (live_selection.closed_plan_summaries):
+    # immutable once closed; keyed on (first day, through), so a new day
+    # recomputes it and an older page stays exact for its own days.
+    "refusal_history": 1375 * 60,
     # Row counts per chain link (collect_chain_volume): display only.
     "chain_volume": 191 * 60,
     "center_landing_previous": 258 * 60,
@@ -16688,11 +16692,34 @@ def _every_run_reserve_sec() -> float:
     )
 
 
-def _build_live_selection(conn: sqlite3.Connection) -> dict[str, Any]:
+def _build_live_selection(
+    conn: sqlite3.Connection, closed: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     """``live_selection.build`` on the run's one live book (it built its
-    own: 246 s for the section on the 2026-09-24 06:22Z run)."""
+    own: 246 s for the section on the 2026-09-24 06:22Z run), with the
+    refusal funnel's closed days handed in (``refusal_history``)."""
 
-    return live_selection.build(conn, book=_render_live_book(conn))
+    return live_selection.build(
+        conn, book=_render_live_book(conn), closed=closed,
+    )
+
+
+def _refusal_history_window(conn: sqlite3.Connection) -> tuple[str | None, str]:
+    """The live book's first day, and the last day that takes no more
+    opening decisions (two back: P0 decides before its event day)."""
+
+    legs = _render_live_book(conn).get("legs") or []
+    first_day = min((str(leg["event_date"]) for leg in legs), default=None)
+    through = (_now() - timedelta(days=2)).strftime("%Y-%m-%d")
+    if first_day is None or first_day > through:
+        return None, through
+    return first_day, through
+
+
+def _collect_refusal_history(
+    conn: sqlite3.Connection, first_day: str, through: str,
+) -> dict[str, Any]:
+    return live_selection.closed_plan_summaries(conn, first_day, through)
 
 
 def _render_live_book(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -17163,8 +17190,19 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     )
     # 每日统计 and 逐站逐日明细 read the live book (user ruling, 2026-09-16).
     live_days = _cached_section("live_days", collect_live_days, conn)
+    # The refusal funnel's closed days (live_selection.closed_plan_summaries):
+    # their facts no longer change, so they are read once a day, not every
+    # render; a page for an earlier ``through`` is still exact for its own
+    # days, and the funnel reads everything after it.
+    refusal_first_day, refusal_through = _refusal_history_window(conn)
+    refusal_history = _cached_section(
+        "refusal_history", _collect_refusal_history, conn,
+        refusal_first_day, refusal_through,
+        _salt=f"{refusal_first_day}|{refusal_through}",
+        _unavailable=None,
+    ) if refusal_first_day else None
     live_selection_payload = _cached_section(
-        "live_selection", _build_live_selection, conn
+        "live_selection", _build_live_selection, conn, refusal_history
     )
     band_audit = _cached_section(
         "band_residual_audit", collect_band_residual_audit, conn,
@@ -17449,6 +17487,10 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "live_roster": live_days["roster"],
         "members": members,
         "member_depth": member_depth,
+        "refusal_history": {
+            key: value for key, value in (refusal_history or {}).items()
+            if key != "days"
+        },
         "chain_volume": chain_volume,
         "member_admission": member_admission,
         "synoptic_cooling": synoptic_cooling,

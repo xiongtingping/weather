@@ -582,7 +582,10 @@ def test_live_selection_reads_the_runs_one_book(paged, monkeypatch) -> None:
     builds: list[int] = []
     monkeypatch.setattr(C.live_book, "build", lambda conn: builds.append(1) or {"legs": []})
     seen: list[object] = []
-    monkeypatch.setattr(C.live_selection, "build", lambda conn, book=None: seen.append(book) or {})
+    monkeypatch.setattr(
+        C.live_selection, "build",
+        lambda conn, book=None, closed=None: seen.append(book) or {},
+    )
     C._render_live_book(None)
     C._build_live_selection(None)
     assert builds == [1] and seen and seen[0] is C._PAGED_RUN["live_book"]

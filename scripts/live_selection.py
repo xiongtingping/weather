@@ -503,8 +503,64 @@ def _gate_refusals(
     return out
 
 
+_PLAN_FACTS_SQL = (
+    "SELECT station_id, event_date, decision_at_utc,"
+    " json_extract(feature_json, '$.plan.state'),"
+    " json_extract(feature_json, '$.plan.reason_codes')"
+    " FROM basket_policy_training_fact"
+    " WHERE stage=? AND event_date>=?"
+)
+
+
+def _plan_summaries(
+    facts: Sequence[Sequence[Any]],
+) -> dict[tuple[str, str], tuple[bool, str]]:
+    """Per station-day: did any opening plan trade, and the newest plan's codes.
+
+    Exactly what the funnel reads off a day's plans: ``any(state == TRADE)``
+    and the reason codes of the greatest (decided_at, state, codes) tuple.
+    """
+
+    decided: dict[tuple[str, str], list[tuple[str, str, str]]] = defaultdict(list)
+    for station, day, at, state, codes in facts:
+        decided[(str(station), str(day))].append(
+            (str(at or ""), str(state or ""), str(codes or "[]"))
+        )
+    return {
+        key: (any(state == "TRADE" for _, state, _ in plans), max(plans)[2])
+        for key, plans in decided.items()
+    }
+
+
+def closed_plan_summaries(
+    conn: sqlite3.Connection, first_day: str, through: str,
+) -> dict[str, Any]:
+    """``_plan_summaries`` for the days from ``first_day`` through ``through``.
+
+    For days that no longer take opening decisions (the caller passes a
+    ``through`` two days back): their facts do not change, so a caller that
+    keeps this can hand it to ``refusal_funnel`` and read ``feature_json``
+    for the open days only.  Each fact carries ~63 KB of it; the full read
+    was most of the board's live_selection section (114-246 s, 2026-09-24).
+    """
+
+    facts = conn.execute(
+        _PLAN_FACTS_SQL + " AND event_date<=?",
+        (OPENING_STAGE, first_day, through),
+    ).fetchall()
+    return {
+        "first_day": first_day,
+        "through": through,
+        "days": {
+            f"{station}|{day}": [trade, codes]
+            for (station, day), (trade, codes) in _plan_summaries(facts).items()
+        },
+    }
+
+
 def refusal_funnel(
-    conn: sqlite3.Connection, book: Mapping[str, Any]
+    conn: sqlite3.Connection, book: Mapping[str, Any],
+    closed: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Why a station-day production decided on ended with no live position.
 
@@ -520,6 +576,10 @@ def refusal_funnel(
     4. a P0 decision traded but minted no live intent;
     5. every P0 decision held -- the newest P0 plan's reason codes, the
        refusing gate before the generic hold (``HOLD_REASONS``).
+
+    ``closed``: ``closed_plan_summaries`` kept by the caller; its days are
+    taken from it and only the later ones are read.  It is used only if it
+    starts no later than this book's first day.
     """
 
     legs = book.get("legs") or []
@@ -532,22 +592,22 @@ def refusal_funnel(
         if not reached_exchange(leg)
     ]
     gate = _gate_refusals(conn, refused_intents)
+    summaries: dict[tuple[str, str], tuple[bool, str]] = {}
+    read_from = first_day
+    if closed and str(closed.get("first_day") or "9999") <= first_day:
+        through = str(closed["through"])
+        for key, (trade, codes) in (closed.get("days") or {}).items():
+            station, day = key.split("|", 1)
+            if day >= first_day:
+                summaries[(station, day)] = (bool(trade), str(codes))
+        read_from = max(first_day, _next_day(through))
     try:
         facts = conn.execute(
-            "SELECT station_id, event_date, decision_at_utc,"
-            " json_extract(feature_json, '$.plan.state'),"
-            " json_extract(feature_json, '$.plan.reason_codes')"
-            " FROM basket_policy_training_fact"
-            " WHERE stage=? AND event_date>=?",
-            (OPENING_STAGE, first_day),
+            _PLAN_FACTS_SQL, (OPENING_STAGE, read_from),
         ).fetchall()
     except sqlite3.Error:
         return {"stages": []}
-    decided: dict[tuple[str, str], list[tuple[str, str, str]]] = defaultdict(list)
-    for station, day, at, state, codes in facts:
-        decided[(str(station), str(day))].append(
-            (str(at or ""), str(state or ""), str(codes or "[]"))
-        )
+    summaries.update(_plan_summaries(facts))
     tally: dict[str, list[Any]] = {}
 
     def count(reason: str, label: str) -> None:
@@ -564,8 +624,8 @@ def refusal_funnel(
             "reason": reason, "label": label,
         })
 
-    for key in sorted(set(decided) | set(by_day)):
-        if key not in decided:
+    for key in sorted(set(summaries) | set(by_day)):
+        if key not in summaries:
             continue
         day_legs = by_day.get(key, [])
         if any(float(leg["filled_size"] or 0) > 0 for leg in day_legs):
@@ -581,14 +641,14 @@ def refusal_funnel(
             named = next((r for r in reasons if r), "not_placed")
             record(key, named, GATE_LABELS.get(named, "实盘门拒单（%s）" % named))
             continue
-        plans = sorted(decided[key])
-        if any(state == "TRADE" for _, state, _ in plans):
+        any_trade, newest_codes = summaries[key]
+        if any_trade:
             record(key, "traded_without_live_intent", "出了交易计划、没铸实盘意向")
             continue
         try:
             codes = {
                 str(code).split(":")[0]
-                for code in json.loads(plans[-1][2]) or []
+                for code in json.loads(newest_codes) or []
             }
         except (TypeError, ValueError):
             codes = set()
@@ -625,8 +685,15 @@ def refusal_funnel(
     }
 
 
+def _next_day(day: str) -> str:
+    from datetime import date as _date, timedelta as _timedelta  # noqa: PLC0415
+
+    return (_date.fromisoformat(day) + _timedelta(days=1)).isoformat()
+
+
 def build(
     conn: sqlite3.Connection, book: Mapping[str, Any] | None = None,
+    closed: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Every selection reading the board draws, off one live book.
 
@@ -662,5 +729,5 @@ def build(
         "basket_hit_by_size": basket_hit_by_width(book),
         "chosen_basket_hit": chosen_basket_hit_trend(chains),
         "chosen_miss_offsets": chosen_miss_offsets(chains),
-        "refusal_stats": refusal_funnel(conn, book),
+        "refusal_stats": refusal_funnel(conn, book, closed),
     }
