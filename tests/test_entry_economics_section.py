@@ -372,7 +372,29 @@ def test_section_is_rendered_and_reachable():
     # the board.
     assert 'safe(() => moneyDataBoard(), "实盘数据看板")' in source
     assert 'sec(moneyBoard, "资金看板", "sec-money")' in source
-    assert '"live_money": _cached_section(' in source
+    # What the payload does, not how the line is spelled: ``live_money`` is
+    # built by collect_live_money through the section cache and shipped
+    # under that key.  (Pinned as the literal ``"live_money": _cached_section(``
+    # until 2026-09-24, when the paged render moved the call ahead of the
+    # return dict and the test went red on a layout change.)
+    import ast
+
+    tree = ast.parse(source)
+    build = next(
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_build_payload"
+    )
+    calls = [
+        node for node in ast.walk(build)
+        if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "_cached_section"
+        and node.args and isinstance(node.args[0], ast.Constant)
+        and node.args[0].value == "live_money"
+    ]
+    assert calls and getattr(calls[0].args[1], "id", "") == "collect_live_money"
+    returned = next(n for n in reversed(build.body) if isinstance(n, ast.Return))
+    assert "live_money" in {
+        key.value for key in returned.value.keys if isinstance(key, ast.Constant)
+    }
     assert "_entry_economics_from_rows([" in source
 
 
