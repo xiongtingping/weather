@@ -760,3 +760,22 @@ def test_a_closed_days_plan_reading_is_kept_found_or_not(paged) -> None:
     conn.execute("DELETE FROM basket_p0_preselection_plan")
     conn.execute("DELETE FROM auto_trade_decisions")
     assert C._live_basket_plan_state(conn, rows) == first, "a settled day is not read again"
+
+
+def test_a_closed_station_day_with_no_listed_market_is_not_asked_again(paged) -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_target_market_registry (station_id TEXT,"
+        " event_date TEXT, slug TEXT, refreshed_at TEXT)"
+    )
+    rows = [{"station_id": "KLGA", "event_date": "2026-09-01"}]
+    assert C._live_market_slugs(conn, rows, archive=paged / "none.db") == {}
+    # Listed afterwards: a lookup would now find it, so an empty answer
+    # means the kept miss was used.
+    conn.execute(
+        "INSERT INTO basket_target_market_registry VALUES"
+        " ('KLGA','2026-09-01','late','2026-09-02T00:00:00Z')"
+    )
+    assert C._live_market_slugs(conn, rows, archive=paged / "none.db") == {}
+    kept = json.loads((paged / "sections" / C.RENDER_CLOSED_SLUGS).read_text())
+    assert kept == {"KLGA|2026-09-01": ""}

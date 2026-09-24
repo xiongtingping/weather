@@ -7491,16 +7491,19 @@ def _live_market_slugs(
     # the lookup -- one ordered scan of a station-day's registry refreshes,
     # ~300 station-days -- was most of live_days' 86-128 s on 2026-09-24.
     closed_through = (_now() - timedelta(days=2)).strftime("%Y-%m-%d")
+    # Kept both ways: a slug found, and "" for a settled day neither
+    # registry lists -- those were re-asked of both on every render (40
+    # lookups, 8 s of live_readiness on 2026-09-24).
     kept = _load_closed_slugs() if _PAGED_RUN else {}
     for station, day in scopes:
         key = f"{station}|{day}"
-        if key in kept:
+        if kept.get(key):
             out[key] = kept[key]
 
     def lookup(db: sqlite3.Connection, table: str) -> None:
         for station, day in scopes:
             key = f"{station}|{day}"
-            if key in out:
+            if key in out or key in kept:
                 continue
             found = db.execute(
                 f"SELECT slug FROM {table}"
@@ -7516,7 +7519,12 @@ def _live_market_slugs(
     except sqlite3.Error:
         pass
     path = ARCHIVE_DB if archive is None else archive
-    if len(out) < len(scopes) and path.is_file():
+    unresolved = [
+        scope for scope in scopes
+        if f"{scope[0]}|{scope[1]}" not in out
+        and f"{scope[0]}|{scope[1]}" not in kept
+    ]
+    if unresolved and path.is_file():
         try:
             archived = sqlite3.connect(
                 f"file:{path}?mode=ro", uri=True, timeout=30.0
@@ -7529,8 +7537,9 @@ def _live_market_slugs(
             pass
     if _PAGED_RUN:
         _save_closed_slugs({
-            key: slug for key, slug in out.items()
-            if key.split("|", 1)[1] <= closed_through
+            f"{station}|{day}": out.get(f"{station}|{day}", "")
+            for station, day in scopes
+            if day <= closed_through
         }, kept)
     return out
 
@@ -7544,7 +7553,7 @@ def _load_closed_slugs() -> dict[str, str]:
         raw = json.loads(
             (SECTION_CACHE_DIR / RENDER_CLOSED_SLUGS).read_text(encoding="utf-8")
         )
-        return {str(k): str(v) for k, v in raw.items() if v}
+        return {str(k): str(v or "") for k, v in raw.items()}
     except (OSError, ValueError, AttributeError):
         return {}
 
