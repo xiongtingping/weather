@@ -7481,6 +7481,16 @@ def _live_market_slugs(
         if r.get("station_id") and r.get("event_date")
     })
     out: dict[str, str] = {}
+    # Under a paged render, a closed station-day's slug is read once and kept
+    # (RENDER_CLOSED_SLUGS): a market that has settled is not re-listed, and
+    # the lookup -- one ordered scan of a station-day's registry refreshes,
+    # ~300 station-days -- was most of live_days' 86-128 s on 2026-09-24.
+    closed_through = (_now() - timedelta(days=2)).strftime("%Y-%m-%d")
+    kept = _load_closed_slugs() if _PAGED_RUN else {}
+    for station, day in scopes:
+        key = f"{station}|{day}"
+        if key in kept:
+            out[key] = kept[key]
 
     def lookup(db: sqlite3.Connection, table: str) -> None:
         for station, day in scopes:
@@ -7512,7 +7522,39 @@ def _live_market_slugs(
                 archived.close()
         except sqlite3.Error:
             pass
+    if _PAGED_RUN:
+        _save_closed_slugs({
+            key: slug for key, slug in out.items()
+            if key.split("|", 1)[1] <= closed_through
+        }, kept)
     return out
+
+
+#: Closed station-days' market slugs, kept across paged renders.
+RENDER_CLOSED_SLUGS = "_closed_market_slugs.json"
+
+
+def _load_closed_slugs() -> dict[str, str]:
+    try:
+        raw = json.loads(
+            (SECTION_CACHE_DIR / RENDER_CLOSED_SLUGS).read_text(encoding="utf-8")
+        )
+        return {str(k): str(v) for k, v in raw.items() if v}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+def _save_closed_slugs(new: Mapping[str, str], kept: Mapping[str, str]) -> None:
+    if not new or all(kept.get(k) == v for k, v in new.items()):
+        return
+    merged = {**kept, **new}
+    try:
+        SECTION_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = SECTION_CACHE_DIR / f"{RENDER_CLOSED_SLUGS}.{os.getpid()}.tmp"
+        tmp.write_text(json.dumps(merged, sort_keys=True), encoding="utf-8")
+        tmp.replace(SECTION_CACHE_DIR / RENDER_CLOSED_SLUGS)
+    except OSError:
+        pass
 
 
 def _live_basket_plan_state(

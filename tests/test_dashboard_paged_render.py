@@ -586,3 +586,37 @@ def test_live_selection_reads_the_runs_one_book(paged, monkeypatch) -> None:
     C._render_live_book(None)
     C._build_live_selection(None)
     assert builds == [1] and seen and seen[0] is C._PAGED_RUN["live_book"]
+
+
+def test_a_closed_station_days_market_slug_is_read_once(paged) -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_target_market_registry (station_id TEXT,"
+        " event_date TEXT, slug TEXT, refreshed_at TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO basket_target_market_registry VALUES"
+        " ('KLGA','2026-09-01','nyc-sep-1','2026-09-01T00:00:00Z')"
+    )
+    rows = [{"station_id": "KLGA", "event_date": "2026-09-01"}]
+    assert C._live_market_slugs(conn, rows, archive=paged / "none.db") == {"KLGA|2026-09-01": "nyc-sep-1"}
+    conn.execute("DELETE FROM basket_target_market_registry")
+    # Kept: the registry is not asked again for a settled day.
+    assert C._live_market_slugs(conn, rows, archive=paged / "none.db") == {"KLGA|2026-09-01": "nyc-sep-1"}
+
+
+def test_an_open_station_days_slug_is_always_read(paged) -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_target_market_registry (station_id TEXT,"
+        " event_date TEXT, slug TEXT, refreshed_at TEXT)"
+    )
+    today = C._now().strftime("%Y-%m-%d")
+    conn.execute(
+        "INSERT INTO basket_target_market_registry VALUES (?,?,?,?)",
+        ("KLGA", today, "old", "2026-09-01T00:00:00Z"),
+    )
+    rows = [{"station_id": "KLGA", "event_date": today}]
+    C._live_market_slugs(conn, rows, archive=paged / "none.db")
+    conn.execute("UPDATE basket_target_market_registry SET slug='relisted'")
+    assert C._live_market_slugs(conn, rows, archive=paged / "none.db")[f"KLGA|{today}"] == "relisted"
