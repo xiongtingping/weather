@@ -27,6 +27,25 @@ PY="$(resolve_project_python "$PROJECT_DIR")" || {
 
 cd "$PROJECT_DIR"
 SOURCE="scripts/calibration_dashboard.py"
+# Never start while the store's WAL is already past the resident's
+# maintenance line (its TARGET_SSOT_WARN_WAL_BYTES, 256 MiB).  A truncating
+# checkpoint needs every reader off the WAL, and the writer's (re)open takes
+# one with no wait at all (resource_bounds.checkpoint_target_wal_once_if_
+# oversized), so a render begun now is the reader that keeps production out.
+# 2026-09-24: the resident restarted at 01:24:49Z onto a 976 MB WAL and
+# failed closed on target_database_wal_checkpoint_busy while the 01:14Z
+# render was reading; launchd would have started the next one straight
+# into the same wall.  A skipped render keeps the previous page, and the
+# next interval is the retry -- the same bargain as the deadline below.
+WAL="data/bayes_basket_target_ssot.db-wal"
+MAX_WAL_BYTES="${PM_DASHBOARD_RENDER_MAX_WAL_BYTES:-268435456}"
+if [ -f "$WAL" ]; then
+  WAL_BYTES="$(stat -f '%z' "$WAL")"
+  if [ "$WAL_BYTES" -gt "$MAX_WAL_BYTES" ]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] render skipped: SSOT WAL ${WAL_BYTES} bytes > ${MAX_WAL_BYTES}; the writer needs it truncated first"
+    exit 0
+  fi
+fi
 BEFORE="$(stat -f '%m:%z' "$SOURCE")"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] dashboard render (standalone reader)"
 # Behind the resident, never beside it: the render runs on the machine the

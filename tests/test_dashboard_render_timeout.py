@@ -120,5 +120,49 @@ def test_the_default_deadline_sits_inside_the_interval_with_a_gap_for_the_wal() 
     )
 
 
+def test_a_render_does_not_start_onto_an_oversized_wal(tmp_path: Path) -> None:
+    """2026-09-24: the writer reopens with a no-wait truncating checkpoint.
+
+    The resident restarted at 01:24:49Z onto a 976 MB WAL and failed closed
+    on ``target_database_wal_checkpoint_busy`` while a render was reading.  A
+    render started while the WAL is past the resident's maintenance line is
+    the reader that keeps production out, so it is skipped, not started.
+    """
+
+    project = _project(tmp_path, render_seconds=0.2)
+    (project / "data").mkdir()
+    (project / "data" / "bayes_basket_target_ssot.db-wal").write_bytes(b"\0" * 4096)
+    env = dict(os.environ)
+    env["PM_DASHBOARD_RENDER_MAX_WAL_BYTES"] = "1024"
+    env["TMPDIR"] = str(project / "locks")
+    (project / "locks").mkdir(exist_ok=True)
+    result = subprocess.run(
+        ["bash", str(project / "scripts" / SWEEP.name)],
+        cwd=str(project), env=env, capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "render skipped: SSOT WAL 4096 bytes > 1024" in result.stdout, result.stdout
+    assert not (project / "tmp" / "render.pid").exists(), "the render must not have started"
+    assert not list((project / "locks" / "weather-sweep-locks").glob("dashboard_render.lock"))
+
+    env["PM_DASHBOARD_RENDER_MAX_WAL_BYTES"] = "8192"
+    result = subprocess.run(
+        ["bash", str(project / "scripts" / SWEEP.name)],
+        cwd=str(project), env=env, capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (project / "tmp" / "cal_dashboard.html").read_text() == "<html>rendered</html>"
+
+
+def test_the_wal_line_is_the_residents_own_maintenance_line() -> None:
+    text = SWEEP.read_text(encoding="utf-8")
+    match = re.search(r'MAX_WAL_BYTES="\$\{PM_DASHBOARD_RENDER_MAX_WAL_BYTES:-(\d+)\}"', text)
+    assert match, "the WAL line reads PM_DASHBOARD_RENDER_MAX_WAL_BYTES with a numeric default"
+    daemon = (ROOT / "scripts" / "weather_basket_yes_daemon.py").read_text(encoding="utf-8")
+    found = re.search(r"^TARGET_SSOT_WARN_WAL_BYTES = (\d+) \* 1024 \* 1024$", daemon, re.M)
+    assert found, "the resident's WAL maintenance line moved; re-bind the render's"
+    assert int(match.group(1)) == int(found.group(1)) * 1024 * 1024
+
+
 if sys.platform != "darwin":  # pragma: no cover - the sweep is a launchd job on this Mac
     pytest.skip("taskpolicy/nice are the Mac's", allow_module_level=True)
