@@ -16488,8 +16488,20 @@ RENDER_SOFT_BUDGET_SEC = float(
 )
 #: The resident's maintenance line (TARGET_SSOT_WARN_WAL_BYTES): above it
 #: the resident tries to truncate the WAL, and a reader is what stops it.
+#: No section STARTS a read above it (and the sweep does not start at all).
 RENDER_MAX_WAL_BYTES = int(
     os.environ.get("PM_DASHBOARD_RENDER_MAX_WAL_BYTES", str(256 * 1024 * 1024))
+)
+#: The line a read already in progress gives way at (user ruling 2026-09-24
+#: 「提线」).  At 256 MiB every-run sections of 30-460 s on the saturated
+#: disk were interrupted run after run: the WAL rests at 64 MiB
+#: (journal_size_limit) and production's own writes during one such read
+#: carried it past 256.  384 MiB lets them finish and still leaves 128 MiB
+#: before resource_bounds.MAX_TARGET_WAL_BYTES (512 MiB), where production
+#: fails closed -- the price accepted: while a render read runs, the
+#: resident's truncate at 256 MiB waits for it.
+RENDER_YIELD_WAL_BYTES = int(
+    os.environ.get("PM_DASHBOARD_RENDER_YIELD_WAL_BYTES", str(384 * 1024 * 1024))
 )
 RENDER_GAP_POLL_SEC = 5.0
 #: One section waits at most this long for a gap when it cannot be served
@@ -16651,7 +16663,8 @@ def _await_production_gap(name: str, cap_sec: float) -> str | None:
 
 
 def _render_yield_check() -> int:
-    """Progress handler: interrupt a render read once the WAL crosses the line.
+    """Progress handler: interrupt a render read once the WAL crosses
+    ``RENDER_YIELD_WAL_BYTES``.
 
     Checked at most once a second, and only while a section is armed --
     every section read under a paged render is.
@@ -16662,7 +16675,7 @@ def _render_yield_check() -> int:
     now = time.monotonic()
     if now - float(_PAGED_RUN["wal_checked"]) >= 1.0:
         _PAGED_RUN["wal_checked"] = now
-        _PAGED_RUN["wal_over"] = _render_wal_bytes() > RENDER_MAX_WAL_BYTES
+        _PAGED_RUN["wal_over"] = _render_wal_bytes() > RENDER_YIELD_WAL_BYTES
     if _PAGED_RUN["wal_over"]:
         _PAGED_RUN["yielded"] = True
         return 1

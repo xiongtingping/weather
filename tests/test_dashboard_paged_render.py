@@ -173,6 +173,7 @@ def test_a_stale_status_file_does_not_hold_the_render(paged) -> None:
 
 def test_an_oversized_wal_is_not_a_gap(paged, monkeypatch) -> None:
     monkeypatch.setattr(C, "RENDER_MAX_WAL_BYTES", 1024)
+    monkeypatch.setattr(C, "RENDER_YIELD_WAL_BYTES", 1024)
     _wal(paged, 4096)
     assert C._production_gap_blocker() == "wal 4096"
 
@@ -183,6 +184,7 @@ def test_a_read_yields_the_wal_back_mid_statement(paged, monkeypatch) -> None:
     conn = sqlite3.connect(":memory:")
     conn.set_progress_handler(C._render_yield_check, 1_000)
     monkeypatch.setattr(C, "RENDER_MAX_WAL_BYTES", 1024)
+    monkeypatch.setattr(C, "RENDER_YIELD_WAL_BYTES", 1024)
     crossing = {"now": False}
 
     # One collector for both runs: a page is only ever served to the code
@@ -220,6 +222,7 @@ def test_a_collector_that_swallows_the_interrupt_is_never_cached(paged, monkeypa
     conn = sqlite3.connect(":memory:")
     conn.set_progress_handler(C._render_yield_check, 1_000)
     monkeypatch.setattr(C, "RENDER_MAX_WAL_BYTES", 1024)
+    monkeypatch.setattr(C, "RENDER_YIELD_WAL_BYTES", 1024)
 
     def degrading(connection):
         _wal(paged, 4096)
@@ -251,6 +254,7 @@ def test_an_every_run_section_never_starts_reading_past_the_line(paged, monkeypa
     """02:12Z: ``members`` read 254 s beside a truncate that came back busy."""
 
     monkeypatch.setattr(C, "RENDER_MAX_WAL_BYTES", 1024)
+    monkeypatch.setattr(C, "RENDER_YIELD_WAL_BYTES", 1024)
     monkeypatch.setattr(C, "LIVE_SECTION_GAP_CAP_SEC", 0.0)
     _wal(paged, 4096)
     calls: list[str] = []
@@ -263,6 +267,7 @@ def test_an_every_run_section_gives_its_read_up_at_the_line(paged, monkeypatch) 
     conn = sqlite3.connect(":memory:")
     conn.set_progress_handler(C._render_yield_check, 1_000)
     monkeypatch.setattr(C, "RENDER_MAX_WAL_BYTES", 1024)
+    monkeypatch.setattr(C, "RENDER_YIELD_WAL_BYTES", 1024)
 
     def members(connection):
         _wal(paged, 4096)  # crosses mid-read
@@ -286,6 +291,7 @@ def test_a_cycle_in_flight_only_delays_an_every_run_section(paged, monkeypatch) 
 
 def test_a_paged_section_with_no_page_yields_the_run_to_an_oversized_wal(paged, monkeypatch) -> None:
     monkeypatch.setattr(C, "RENDER_MAX_WAL_BYTES", 1024)
+    monkeypatch.setattr(C, "RENDER_YIELD_WAL_BYTES", 1024)
     monkeypatch.setattr(C, "LIVE_SECTION_GAP_CAP_SEC", 0.0)
     _wal(paged, 4096)
     calls: list[str] = []
@@ -400,6 +406,7 @@ def test_a_new_section_that_declares_what_to_show_does_not_stop_the_page(paged, 
     conn = sqlite3.connect(":memory:")
     conn.set_progress_handler(C._render_yield_check, 1_000)
     monkeypatch.setattr(C, "RENDER_MAX_WAL_BYTES", 1024)
+    monkeypatch.setattr(C, "RENDER_YIELD_WAL_BYTES", 1024)
 
     def depth(connection):
         _wal(paged, 4096)
@@ -419,6 +426,7 @@ def test_a_new_section_that_declares_what_to_show_does_not_stop_the_page(paged, 
 
 def test_an_every_run_section_cannot_declare_its_way_out(paged, monkeypatch) -> None:
     monkeypatch.setattr(C, "RENDER_MAX_WAL_BYTES", 1024)
+    monkeypatch.setattr(C, "RENDER_YIELD_WAL_BYTES", 1024)
     monkeypatch.setattr(C, "LIVE_SECTION_GAP_CAP_SEC", 0.0)
     _wal(paged, 4096)
     with pytest.raises(C.RenderYielded):
@@ -478,3 +486,32 @@ def test_outside_a_paged_run_the_live_book_is_the_modules_to_cache(monkeypatch) 
     C._render_live_book(None)
     C._render_live_book(None)
     assert builds == [1, 1]
+
+
+def test_a_read_in_progress_runs_on_between_the_two_lines(paged, monkeypatch) -> None:
+    """「提线」: no read STARTS past 256 MiB; one in progress gives way only at 384."""
+
+    monkeypatch.setattr(C, "RENDER_MAX_WAL_BYTES", 1024)
+    monkeypatch.setattr(C, "RENDER_YIELD_WAL_BYTES", 8192)
+    conn = sqlite3.connect(":memory:")
+    conn.set_progress_handler(C._render_yield_check, 1_000)
+
+    def members(connection):
+        _wal(paged, 4096)  # past the start line, under the yield line
+        C._PAGED_RUN["wal_checked"] = 0.0
+        return connection.execute(
+            "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n"
+            " WHERE i < 300000) SELECT count(*) FROM n"
+        ).fetchone()[0]
+
+    assert C._cached_section("members", members, conn) == 300000
+    # ... but the next section does not start a read.
+    monkeypatch.setattr(C, "LIVE_SECTION_GAP_CAP_SEC", 0.0)
+    with pytest.raises(C.RenderYielded, match="chain: wal 4096"):
+        C._cached_section("chain", _collector([]), None)
+
+
+def test_the_yield_line_sits_under_productions_wall() -> None:
+    from bayes_basket_target.resource_bounds import MAX_TARGET_WAL_BYTES
+
+    assert C.RENDER_MAX_WAL_BYTES < C.RENDER_YIELD_WAL_BYTES < MAX_TARGET_WAL_BYTES
