@@ -4679,12 +4679,14 @@ def _band_chain_link(conn: sqlite3.Connection) -> tuple[str | None, str]:
 #: How far back from the member table's newest row the capture link looks
 #: for its newest capture.  The table only grows, and a capture writes its
 #: rows with the time it queried the archive, so the newest capture is in
-#: its tail: on 2026-09-24 the last 100,000 rows spanned sixteen hours and
-#: gave the same newest capture as the full read -- in 2.6 s instead of 88 s
-#: (``archive_query_at_utc`` is in no index).  Only a backfill appending
-#: more than this many rows stamped older than the newest capture could hide
-#: it, and then the link reads older than it is: amber, never a false green.
-CHAIN_CAPTURE_TAIL_ROWS = 100_000
+#: its tail: on 2026-09-24 the last 100,000 rows gave the same newest
+#: capture as the full read (2.6 s instead of 88 s; ``archive_query_at_utc``
+#: is in no index), and the last 10,000 the same again (0.7 s against 4.9 s
+#: on the busy disk that afternoon).  Only a backfill appending more than
+#: this many rows stamped older than the newest capture could hide it, and
+#: then the link reads older than it is -- amber at 18 h, never a false
+#: green; the research backfills seen so far stamp within hours.
+CHAIN_CAPTURE_TAIL_ROWS = 10_000
 
 
 def collect_chain_volume(conn: sqlite3.Connection) -> dict[str, int]:
