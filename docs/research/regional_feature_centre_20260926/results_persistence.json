@@ -1,0 +1,163 @@
+{
+ "note": "supplementary, not pre-registered",
+ "decisions": 14419,
+ "last_1_days": {
+  "all": {
+   "decisions": 14419,
+   "corr_recent_error_with_error": 0.0008827110038982063,
+   "corr_recent_error_with_market_gap": -0.13646715588301675,
+   "share_k_positive": 0.44351203273458634,
+   "d_logscore": [
+    0.01443008766789367,
+    0.0036757978766888207,
+    0.025984809067191177
+   ],
+   "d_brier": [
+    0.0051423156838452345,
+    0.0013760683082597188,
+    0.009010585959867779
+   ],
+   "both_lower": false
+  },
+  "coastal": {
+   "decisions": 2118,
+   "corr_recent_error_with_error": 0.005266600029691133,
+   "corr_recent_error_with_market_gap": -0.06075079856276566,
+   "share_k_positive": 0.3814919735599622,
+   "d_logscore": [
+    0.02036608289026823,
+    -0.004066416537660651,
+    0.04789873727559488
+   ],
+   "d_brier": [
+    0.0033979472719580157,
+    -0.004746248427557843,
+    0.011539543175860006
+   ],
+   "both_lower": false
+  },
+  "other": {
+   "decisions": 12301,
+   "corr_recent_error_with_error": -0.000929946530171109,
+   "corr_recent_error_with_market_gap": -0.161838512796215,
+   "share_k_positive": 0.4541907162019348,
+   "d_logscore": [
+    0.013361105477423689,
+    0.002431116886029295,
+    0.023659039837425684
+   ],
+   "d_brier": [
+    0.005456449825816456,
+    0.0018189192238020281,
+    0.009499498524176659
+   ],
+   "both_lower": false
+  }
+ },
+ "last_2_days": {
+  "all": {
+   "decisions": 14419,
+   "corr_recent_error_with_error": 0.012101912131901779,
+   "corr_recent_error_with_market_gap": -0.18216890891932155,
+   "share_k_positive": 0.44039115056522643,
+   "d_logscore": [
+    0.010971772362694693,
+    0.0012545535592755743,
+    0.020617124066770912
+   ],
+   "d_brier": [
+    0.003823686556853862,
+    3.40979991194022e-05,
+    0.0076426976692708926
+   ],
+   "both_lower": false
+  },
+  "coastal": {
+   "decisions": 2118,
+   "corr_recent_error_with_error": 0.020382508648241867,
+   "corr_recent_error_with_market_gap": -0.12581900921405428,
+   "share_k_positive": 0.31680830972615676,
+   "d_logscore": [
+    0.018375277770829247,
+    -0.01203386231868721,
+    0.04986399368875107
+   ],
+   "d_brier": [
+    0.0028969227350564538,
+    -0.006546751977717943,
+    0.012688456636753482
+   ],
+   "both_lower": false
+  },
+  "other": {
+   "decisions": 12301,
+   "corr_recent_error_with_error": 0.00932020036214861,
+   "corr_recent_error_with_market_gap": -0.2020018315174982,
+   "share_k_positive": 0.4616697829444761,
+   "d_logscore": [
+    0.00963851397351794,
+    0.0004445593281978507,
+    0.01886753076133665
+   ],
+   "d_brier": [
+    0.0039905825840843324,
+    0.00016791742356495363,
+    0.00802616758961347
+   ],
+   "both_lower": false
+  }
+ },
+ "last_3_days": {
+  "all": {
+   "decisions": 14419,
+   "corr_recent_error_with_error": 0.0014342951912817024,
+   "corr_recent_error_with_market_gap": -0.1956851245025821,
+   "share_k_positive": 0.3867119772522366,
+   "d_logscore": [
+    0.013063689873527882,
+    0.004940085259980785,
+    0.021779025898745176
+   ],
+   "d_brier": [
+    0.003089567164540233,
+    -0.0006955557684526647,
+    0.0070631224588776015
+   ],
+   "both_lower": false
+  },
+  "coastal": {
+   "decisions": 2118,
+   "corr_recent_error_with_error": 0.016961752376865282,
+   "corr_recent_error_with_market_gap": -0.1411937247706016,
+   "share_k_positive": 0.3914069877242682,
+   "d_logscore": [
+    0.02620128262390785,
+    -0.003654516012730111,
+    0.060408564804059435
+   ],
+   "d_brier": [
+    0.00626995133489888,
+    -0.005546067793088381,
+    0.019725247191615756
+   ],
+   "both_lower": false
+  },
+  "other": {
+   "decisions": 12301,
+   "corr_recent_error_with_error": -0.0035905874866045888,
+   "corr_recent_error_with_market_gap": -0.21576210988330505,
+   "share_k_positive": 0.3859035850743842,
+   "d_logscore": [
+    0.010697809823141682,
+    0.0021650918172466858,
+    0.019048855254153153
+   ],
+   "d_brier": [
+    0.002516828489793449,
+    -0.0010617688854666803,
+    0.006035095181047376
+   ],
+   "both_lower": false
+  }
+ }
+}

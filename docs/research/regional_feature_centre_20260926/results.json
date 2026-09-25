@@ -1,0 +1,1011 @@
+{
+ "protocol": "PROTOCOL.md",
+ "decisions": 13183,
+ "feature_counts": {
+  "NCEP_NBM_POINT:no_debias": 21,
+  "NCEP_HRRR_POINT:read": 1185,
+  "NCEP_NBM_POINT:read": 1183,
+  "DWD_ICON_EU_POINT:no_debias": 76,
+  "DWD_ICON_EU_POINT:read": 880,
+  "ECMWF_AIFS_SINGLE_POINT:read": 100,
+  "JMA_MSM_POINT:read": 434,
+  "CMA_GRAPES_GLOBAL_POINT:no_debias": 59,
+  "CMA_GRAPES_GLOBAL_POINT:read": 573,
+  "JMA_MSM_POINT:no_debias": 12
+ },
+ "calibrated_systems": [
+  "CMA_GRAPES_GLOBAL_POINT",
+  "DWD_ICON_EU_POINT",
+  "ECMWF_AIFS_SINGLE_POINT",
+  "ECMWF_IFS_9KM_RELAY_POINT",
+  "JMA_MSM_POINT",
+  "NCEP_HRRR_POINT",
+  "NCEP_NBM_POINT",
+  "UKMO_GLOBAL_10KM_RELAY_POINT"
+ ],
+ "by_system": {
+  "CMA_GRAPES_GLOBAL_POINT": {
+   "coastal": {
+    "decisions": 0,
+    "note": "fewer than 3 event days"
+   },
+   "other": {
+    "decisions": 573,
+    "station_days": 88,
+    "days": 11,
+    "rmse_regional": 1.8973535474044942,
+    "rmse_p0": 1.26701197139743,
+    "rmse_market": 1.0956808752779426,
+    "corr_d_e": -0.21140247387009123,
+    "corr_d_g": 0.05518733276823855,
+    "k_in_sample": -0.1732690033962032,
+    "disagreement_decisions": 115,
+    "sign_agrees_with_market": [
+     0.5820068027210884,
+     0.4297202018002323,
+     0.7496302552552551
+    ],
+    "regional_closer_than_p0": [
+     0.2677210884353742,
+     0.14270664731409807,
+     0.40672287390029327
+    ],
+    "share_with_k_positive": 0.0,
+    "mean_k_when_active": null,
+    "corrected_vs_p0_logscore": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "corrected_vs_p0_brier": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "both_lower": false,
+    "gap_to_market_before": 0.15788891463014001,
+    "gap_to_market_after": 0.15788891463014001,
+    "centre_component": 0.14175646182737367,
+    "share_of_centre_recovered": 0.0
+   },
+   "all": {
+    "decisions": 573,
+    "station_days": 88,
+    "days": 11,
+    "rmse_regional": 1.8973535474044942,
+    "rmse_p0": 1.26701197139743,
+    "rmse_market": 1.0956808752779426,
+    "corr_d_e": -0.21140247387009123,
+    "corr_d_g": 0.05518733276823855,
+    "k_in_sample": -0.1732690033962032,
+    "disagreement_decisions": 115,
+    "sign_agrees_with_market": [
+     0.5820068027210884,
+     0.41825152369560264,
+     0.7457151875901876
+    ],
+    "regional_closer_than_p0": [
+     0.2677210884353742,
+     0.14386896513039807,
+     0.3997736556743909
+    ],
+    "share_with_k_positive": 0.0,
+    "mean_k_when_active": null,
+    "corrected_vs_p0_logscore": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "corrected_vs_p0_brier": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "both_lower": false,
+    "gap_to_market_before": 0.15788891463014001,
+    "gap_to_market_after": 0.15788891463014001,
+    "centre_component": 0.14175646182737367,
+    "share_of_centre_recovered": 0.0
+   },
+   "coastal_by_station": {}
+  },
+  "DWD_ICON_EU_POINT": {
+   "coastal": {
+    "decisions": 0,
+    "note": "fewer than 3 event days"
+   },
+   "other": {
+    "decisions": 880,
+    "station_days": 115,
+    "days": 13,
+    "rmse_regional": 1.0188085896044938,
+    "rmse_p0": 0.8380181955732643,
+    "rmse_market": 0.7096793037578798,
+    "corr_d_e": 0.2743026945293215,
+    "corr_d_g": 0.38671326897148794,
+    "k_in_sample": 0.26786421639065294,
+    "disagreement_decisions": 150,
+    "sign_agrees_with_market": [
+     0.6080246913580247,
+     0.4174497354497354,
+     0.7543296296296297
+    ],
+    "regional_closer_than_p0": [
+     0.6363636363636364,
+     0.4813200183654729,
+     0.7608675038675039
+    ],
+    "share_with_k_positive": 0.13043478260869565,
+    "mean_k_when_active": 0.3719314006702985,
+    "corrected_vs_p0_logscore": [
+     -0.00014430468721735406,
+     -0.02166472947815406,
+     0.021097377716444807
+    ],
+    "corrected_vs_p0_brier": [
+     -0.008265483045452339,
+     -0.021068758568546876,
+     0.0
+    ],
+    "both_lower": false,
+    "gap_to_market_before": 0.12230661482522613,
+    "gap_to_market_after": 0.12216231013800878,
+    "centre_component": 0.07419623155824584,
+    "share_of_centre_recovered": 0.0019449058825052007
+   },
+   "all": {
+    "decisions": 880,
+    "station_days": 115,
+    "days": 13,
+    "rmse_regional": 1.0188085896044938,
+    "rmse_p0": 0.8380181955732643,
+    "rmse_market": 0.7096793037578798,
+    "corr_d_e": 0.2743026945293215,
+    "corr_d_g": 0.38671326897148794,
+    "k_in_sample": 0.26786421639065294,
+    "disagreement_decisions": 150,
+    "sign_agrees_with_market": [
+     0.6080246913580247,
+     0.41810473152578415,
+     0.7555555555555556
+    ],
+    "regional_closer_than_p0": [
+     0.6363636363636364,
+     0.4731129607268128,
+     0.7654320987654321
+    ],
+    "share_with_k_positive": 0.13043478260869565,
+    "mean_k_when_active": 0.3719314006702985,
+    "corrected_vs_p0_logscore": [
+     -0.00014430468721735406,
+     -0.021897202694904604,
+     0.02146428863325252
+    ],
+    "corrected_vs_p0_brier": [
+     -0.008265483045452339,
+     -0.020253799039147615,
+     0.0
+    ],
+    "both_lower": false,
+    "gap_to_market_before": 0.12230661482522613,
+    "gap_to_market_after": 0.12216231013800878,
+    "centre_component": 0.07419623155824584,
+    "share_of_centre_recovered": 0.0019449058825052007
+   },
+   "coastal_by_station": {}
+  },
+  "ECMWF_AIFS_SINGLE_POINT": {
+   "coastal": {
+    "decisions": 51,
+    "station_days": 9,
+    "days": 3,
+    "rmse_regional": 1.5927662297956993,
+    "rmse_p0": 1.1614674849463535,
+    "rmse_market": 1.061184117255723,
+    "corr_d_e": -0.22464043071520973,
+    "corr_d_g": 0.189324186483041,
+    "k_in_sample": -0.20760973207601588,
+    "disagreement_decisions": 25,
+    "sign_agrees_with_market": [
+     0.6571428571428571,
+     0.33333333333333326,
+     1.0
+    ],
+    "regional_closer_than_p0": [
+     0.3714285714285714,
+     0.0,
+     0.8
+    ],
+    "share_with_k_positive": 0.0,
+    "mean_k_when_active": null,
+    "corrected_vs_p0_logscore": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "corrected_vs_p0_brier": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "both_lower": false,
+    "gap_to_market_before": 0.19822987261583794,
+    "gap_to_market_after": 0.19822987261583794,
+    "centre_component": 0.19839229174825423,
+    "share_of_centre_recovered": 0.0
+   },
+   "other": {
+    "decisions": 49,
+    "station_days": 10,
+    "days": 4,
+    "rmse_regional": 1.4620067100910406,
+    "rmse_p0": 1.4677781501082319,
+    "rmse_market": 1.6559176096087018,
+    "corr_d_e": 0.10081473457303412,
+    "corr_d_g": 0.2179738270884676,
+    "k_in_sample": 0.5297564757220133,
+    "disagreement_decisions": 15,
+    "sign_agrees_with_market": [
+     0.5599999999999999,
+     0.0,
+     0.9
+    ],
+    "regional_closer_than_p0": [
+     0.8400000000000001,
+     0.6,
+     1.0
+    ],
+    "share_with_k_positive": 0.0,
+    "mean_k_when_active": null,
+    "corrected_vs_p0_logscore": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "corrected_vs_p0_brier": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "both_lower": false,
+    "gap_to_market_before": -0.1282468446595431,
+    "gap_to_market_after": -0.1282468446595431,
+    "centre_component": -0.0974696545194602,
+    "share_of_centre_recovered": -0.0
+   },
+   "all": {
+    "decisions": 100,
+    "station_days": 19,
+    "days": 4,
+    "rmse_regional": 1.5253433533834575,
+    "rmse_p0": 1.3314967329374687,
+    "rmse_market": 1.4059205052499693,
+    "corr_d_e": -0.08901614081466329,
+    "corr_d_g": 0.19940721726020896,
+    "k_in_sample": -0.006078693890998702,
+    "disagreement_decisions": 40,
+    "sign_agrees_with_market": [
+     0.6166666666666667,
+     0.25,
+     0.8
+    ],
+    "regional_closer_than_p0": [
+     0.5666666666666668,
+     0.3999999999999999,
+     0.76
+    ],
+    "share_with_k_positive": 0.0,
+    "mean_k_when_active": null,
+    "corrected_vs_p0_logscore": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "corrected_vs_p0_brier": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "both_lower": false,
+    "gap_to_market_before": 0.026400021418268915,
+    "gap_to_market_after": 0.026400021418268915,
+    "centre_component": 0.04267547792314133,
+    "share_of_centre_recovered": 0.0
+   },
+   "coastal_by_station": {
+    "KSEA": {
+     "decisions": 16,
+     "station_days": 3,
+     "days": 3,
+     "rmse_regional": 0.5343111759251801,
+     "rmse_p0": 0.8942130547182987,
+     "rmse_market": 0.5735234328038166,
+     "corr_d_e": 0.9542902904440913,
+     "corr_d_g": 0.8995419774345084,
+     "k_in_sample": 0.6999721153258426,
+     "share_with_k_positive": 0.0,
+     "mean_k_when_active": null,
+     "corrected_vs_p0_logscore": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "corrected_vs_p0_brier": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "both_lower": false,
+     "gap_to_market_before": 0.348713952618156,
+     "gap_to_market_after": 0.348713952618156,
+     "centre_component": 0.2980342863379562,
+     "share_of_centre_recovered": 0.0
+    },
+    "FACT": {
+     "decisions": 18,
+     "station_days": 3,
+     "days": 3,
+     "rmse_regional": 1.7373496019640213,
+     "rmse_p0": 1.1316176061596726,
+     "rmse_market": 0.7440423964567641,
+     "corr_d_e": -0.6257567265632907,
+     "corr_d_g": -0.630234822075899,
+     "k_in_sample": -0.789463227088776,
+     "share_with_k_positive": 0.0,
+     "mean_k_when_active": null,
+     "corrected_vs_p0_logscore": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "corrected_vs_p0_brier": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "both_lower": false,
+     "gap_to_market_before": 0.39155611701406107,
+     "gap_to_market_after": 0.39155611701406107,
+     "centre_component": 0.29765684502217815,
+     "share_of_centre_recovered": 0.0
+    },
+    "KSFO": {
+     "decisions": 17,
+     "station_days": 3,
+     "days": 3,
+     "rmse_regional": 2.0752929229797235,
+     "rmse_p0": 1.4024424273258576,
+     "rmse_market": 1.579812323172352,
+     "corr_d_e": -0.865151276518483,
+     "corr_d_g": -0.2508363723758701,
+     "k_in_sample": -1.593905678174722,
+     "disagreement_decisions": 15,
+     "sign_agrees_with_market": [
+      0.5333333333333333,
+      0.0,
+      1.0
+     ],
+     "regional_closer_than_p0": [
+      0.20000000000000004,
+      0.0,
+      0.6000000000000001
+     ],
+     "share_with_k_positive": 0.0,
+     "mean_k_when_active": null,
+     "corrected_vs_p0_logscore": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "corrected_vs_p0_brier": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "both_lower": false,
+     "gap_to_market_before": -0.14558045178470336,
+     "gap_to_market_after": -0.14558045178470336,
+     "centre_component": -0.0005142561153719319,
+     "share_of_centre_recovered": -0.0
+    }
+   }
+  },
+  "JMA_MSM_POINT": {
+   "coastal": {
+    "decisions": 150,
+    "station_days": 29,
+    "days": 15,
+    "rmse_regional": 1.583594075145717,
+    "rmse_p0": 1.1287632921047392,
+    "rmse_market": 0.9921980372696402,
+    "corr_d_e": 0.13759288949993126,
+    "corr_d_g": 0.37492120370626125,
+    "k_in_sample": -0.047255161093046345,
+    "disagreement_decisions": 51,
+    "sign_agrees_with_market": [
+     0.8128205128205128,
+     0.6255952380952381,
+     0.9666666666666667
+    ],
+    "regional_closer_than_p0": [
+     0.5564102564102564,
+     0.3332738095238095,
+     0.7769230769230767
+    ],
+    "share_with_k_positive": 0.0,
+    "mean_k_when_active": null,
+    "corrected_vs_p0_logscore": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "corrected_vs_p0_brier": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "both_lower": false,
+    "gap_to_market_before": 0.10025861754987772,
+    "gap_to_market_after": 0.10025861754987772,
+    "centre_component": 0.09452340693609841,
+    "share_of_centre_recovered": 0.0
+   },
+   "other": {
+    "decisions": 284,
+    "station_days": 53,
+    "days": 16,
+    "rmse_regional": 1.0020666347483231,
+    "rmse_p0": 0.7255322346492994,
+    "rmse_market": 0.7160586596190166,
+    "corr_d_e": 0.22110304252587792,
+    "corr_d_g": -0.10384922267996453,
+    "k_in_sample": 0.20378780602009672,
+    "disagreement_decisions": 38,
+    "sign_agrees_with_market": [
+     0.7375,
+     0.4375,
+     1.0
+    ],
+    "regional_closer_than_p0": [
+     0.6625,
+     0.4027777777777778,
+     0.9
+    ],
+    "share_with_k_positive": 0.16981132075471697,
+    "mean_k_when_active": 0.17126984282142718,
+    "corrected_vs_p0_logscore": [
+     5.2088313868115383e-05,
+     -0.009660542730585616,
+     0.009869066800153327
+    ],
+    "corrected_vs_p0_brier": [
+     -0.0016017164252047486,
+     -0.005619538365602501,
+     0.0018596352941681565
+    ],
+    "both_lower": false,
+    "gap_to_market_before": 0.1283121289049782,
+    "gap_to_market_after": 0.1283642172188463,
+    "centre_component": 0.04057398675804586,
+    "share_of_centre_recovered": -0.0012837859434105202
+   },
+   "all": {
+    "decisions": 434,
+    "station_days": 82,
+    "days": 16,
+    "rmse_regional": 1.2393183870898694,
+    "rmse_p0": 0.8892867295622763,
+    "rmse_market": 0.8243583729809043,
+    "corr_d_e": 0.19005374421419202,
+    "corr_d_g": 0.14088115735151502,
+    "k_in_sample": 0.09499606910410824,
+    "disagreement_decisions": 89,
+    "sign_agrees_with_market": [
+     0.7800724637681159,
+     0.616971450617284,
+     0.930952380952381
+    ],
+    "regional_closer_than_p0": [
+     0.602536231884058,
+     0.4833333333333333,
+     0.7558823529411764
+    ],
+    "share_with_k_positive": 0.10975609756097561,
+    "mean_k_when_active": 0.17126984282142718,
+    "corrected_vs_p0_logscore": [
+     3.366683701231848e-05,
+     -0.0064274009818839255,
+     0.006298997941647102
+    ],
+    "corrected_vs_p0_brier": [
+     -0.0010352557382420934,
+     -0.00352637433470993,
+     0.001200870658553923
+    ],
+    "both_lower": false,
+    "gap_to_market_before": 0.11839076513305243,
+    "gap_to_market_after": 0.11842443197006476,
+    "centre_component": 0.05965365974784494,
+    "share_of_centre_recovered": -0.0005643716941197784
+   },
+   "coastal_by_station": {
+    "RJTT": {
+     "decisions": 85,
+     "station_days": 15,
+     "days": 15,
+     "rmse_regional": 1.901552773159558,
+     "rmse_p0": 1.4171684827413393,
+     "rmse_market": 1.1431593092692076,
+     "corr_d_e": 0.153563184680308,
+     "corr_d_g": 0.31134108017447454,
+     "k_in_sample": -0.04797212825460114,
+     "disagreement_decisions": 22,
+     "sign_agrees_with_market": [
+      0.8800000000000001,
+      0.72,
+      1.0
+     ],
+     "regional_closer_than_p0": [
+      0.8800000000000001,
+      0.7200000000000001,
+      1.0
+     ],
+     "share_with_k_positive": 0.0,
+     "mean_k_when_active": null,
+     "corrected_vs_p0_logscore": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "corrected_vs_p0_brier": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "both_lower": false,
+     "gap_to_market_before": 0.295324966700906,
+     "gap_to_market_after": 0.295324966700906,
+     "centre_component": 0.22727981839848949,
+     "share_of_centre_recovered": 0.0
+    },
+    "RCSS": {
+     "decisions": 65,
+     "station_days": 14,
+     "days": 14,
+     "rmse_regional": 1.14912362301513,
+     "rmse_p0": 0.6981400233763942,
+     "rmse_market": 0.7994218140165554,
+     "corr_d_e": 0.07250611407992057,
+     "corr_d_g": 0.6079021733947572,
+     "k_in_sample": -0.04577880242913682,
+     "disagreement_decisions": 29,
+     "sign_agrees_with_market": [
+      0.7708333333333334,
+      0.4375,
+      1.0
+     ],
+     "regional_closer_than_p0": [
+      0.35416666666666663,
+      0.10416666666666666,
+      0.7291666666666666
+     ],
+     "share_with_k_positive": 0.0,
+     "mean_k_when_active": null,
+     "corrected_vs_p0_logscore": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "corrected_vs_p0_brier": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "both_lower": false,
+     "gap_to_market_before": -0.1087410422547954,
+     "gap_to_market_after": -0.1087410422547954,
+     "centre_component": -0.04771560534503485,
+     "share_of_centre_recovered": -0.0
+    }
+   }
+  },
+  "NCEP_HRRR_POINT": {
+   "coastal": {
+    "decisions": 93,
+    "station_days": 17,
+    "days": 17,
+    "rmse_regional": 1.778972037191458,
+    "rmse_p0": 1.5337680076089644,
+    "rmse_market": 1.163473025323199,
+    "corr_d_e": 0.16742172711216377,
+    "corr_d_g": 0.3828300892558828,
+    "k_in_sample": 0.2640097753957909,
+    "disagreement_decisions": 36,
+    "sign_agrees_with_market": [
+     0.6625,
+     0.39968750000000003,
+     0.9125
+    ],
+    "regional_closer_than_p0": [
+     0.45297619047619053,
+     0.2125,
+     0.7196428571428571
+    ],
+    "share_with_k_positive": 0.35294117647058826,
+    "mean_k_when_active": 0.25061196026850696,
+    "corrected_vs_p0_logscore": [
+     0.016422615582895636,
+     -0.050859570391320205,
+     0.0904546305704227
+    ],
+    "corrected_vs_p0_brier": [
+     0.008355125890525478,
+     -0.021795173767319154,
+     0.04043291873772228
+    ],
+    "both_lower": false,
+    "gap_to_market_before": 0.3144742123705126,
+    "gap_to_market_after": 0.3308968279534082,
+    "centre_component": 0.23476899212103186,
+    "share_of_centre_recovered": -0.06995223446897597
+   },
+   "other": {
+    "decisions": 1092,
+    "station_days": 152,
+    "days": 17,
+    "rmse_regional": 1.6098827007499639,
+    "rmse_p0": 1.0921351116120082,
+    "rmse_market": 0.9887533302307818,
+    "corr_d_e": -0.089538188593163,
+    "corr_d_g": 0.16296957140294993,
+    "k_in_sample": -0.006737573362197872,
+    "disagreement_decisions": 266,
+    "sign_agrees_with_market": [
+     0.7282347282347282,
+     0.622580468074858,
+     0.8336199009324009
+    ],
+    "regional_closer_than_p0": [
+     0.3335257335257335,
+     0.23302611847897864,
+     0.43428486662093213
+    ],
+    "share_with_k_positive": 0.19078947368421054,
+    "mean_k_when_active": 0.20215139327799822,
+    "corrected_vs_p0_logscore": [
+     0.004945005517598797,
+     -0.0013193274852326558,
+     0.012236617860268898
+    ],
+    "corrected_vs_p0_brier": [
+     0.0001853080806463136,
+     -0.0022396863202587816,
+     0.0025626613606753615
+    ],
+    "both_lower": false,
+    "gap_to_market_before": 0.06262372700967066,
+    "gap_to_market_after": 0.06756873252726944,
+    "centre_component": 0.08633433310822734,
+    "share_of_centre_recovered": -0.057277392893042976
+   },
+   "all": {
+    "decisions": 1185,
+    "station_days": 169,
+    "days": 17,
+    "rmse_regional": 1.6276864853780244,
+    "rmse_p0": 1.1442962143564597,
+    "rmse_market": 1.0076999990122928,
+    "corr_d_e": -0.04684612066343406,
+    "corr_d_g": 0.19531996562029003,
+    "k_in_sample": 0.026396430773802337,
+    "disagreement_decisions": 302,
+    "sign_agrees_with_market": [
+     0.7192299709422998,
+     0.610304979946524,
+     0.8181378911806543
+    ],
+    "regional_closer_than_p0": [
+     0.34988880982031667,
+     0.2543474634431398,
+     0.43919693093212825
+    ],
+    "share_with_k_positive": 0.20710059171597633,
+    "mean_k_when_active": 0.20806902027023857,
+    "corrected_vs_p0_logscore": [
+     0.006099558009374221,
+     0.0006072120241255823,
+     0.013800321723135703
+    ],
+    "corrected_vs_p0_brier": [
+     0.0010071240733560524,
+     -0.0009716035220670943,
+     0.0033339227364953157
+    ],
+    "both_lower": false,
+    "gap_to_market_before": 0.08795779950158966,
+    "gap_to_market_after": 0.09405735751096389,
+    "centre_component": 0.10126563016868696,
+    "share_of_centre_recovered": -0.06023324991128445
+   },
+   "coastal_by_station": {
+    "KSEA": {
+     "decisions": 93,
+     "station_days": 17,
+     "days": 17,
+     "rmse_regional": 1.778972037191458,
+     "rmse_p0": 1.5337680076089644,
+     "rmse_market": 1.163473025323199,
+     "corr_d_e": 0.16742172711216377,
+     "corr_d_g": 0.3828300892558828,
+     "k_in_sample": 0.2640097753957909,
+     "disagreement_decisions": 36,
+     "sign_agrees_with_market": [
+      0.6625,
+      0.375,
+      0.9125
+     ],
+     "regional_closer_than_p0": [
+      0.45297619047619053,
+      0.20290178571428572,
+      0.7142857142857142
+     ],
+     "share_with_k_positive": 0.35294117647058826,
+     "mean_k_when_active": 0.25061196026850696,
+     "corrected_vs_p0_logscore": [
+      0.016422615582895636,
+      -0.049969405666626825,
+      0.08766052899067153
+     ],
+     "corrected_vs_p0_brier": [
+      0.008355125890525478,
+      -0.02193085364697486,
+      0.042510979305953475
+     ],
+     "both_lower": false,
+     "gap_to_market_before": 0.3144742123705126,
+     "gap_to_market_after": 0.3308968279534082,
+     "centre_component": 0.23476899212103186,
+     "share_of_centre_recovered": -0.06995223446897597
+    }
+   }
+  },
+  "NCEP_NBM_POINT": {
+   "coastal": {
+    "decisions": 254,
+    "station_days": 45,
+    "days": 15,
+    "rmse_regional": 1.6595486412337928,
+    "rmse_p0": 1.5127772137059399,
+    "rmse_market": 1.1254281961574977,
+    "corr_d_e": 0.15622934127826935,
+    "corr_d_g": 0.29971438416331253,
+    "k_in_sample": 0.14303788828761477,
+    "disagreement_decisions": 124,
+    "sign_agrees_with_market": [
+     0.653061224489796,
+     0.49711827956989246,
+     0.8020850134408603
+    ],
+    "regional_closer_than_p0": [
+     0.5551020408163265,
+     0.3607961309523809,
+     0.7372171347171347
+    ],
+    "share_with_k_positive": 0.15555555555555559,
+    "mean_k_when_active": 0.5015581003302134,
+    "corrected_vs_p0_logscore": [
+     -0.008475043717384133,
+     -0.07314456894509183,
+     0.06272910239415383
+    ],
+    "corrected_vs_p0_brier": [
+     0.0009768676574652914,
+     -0.023963483085314277,
+     0.02999839889298991
+    ],
+    "both_lower": false,
+    "gap_to_market_before": 0.33946637304769783,
+    "gap_to_market_after": 0.3309913293303137,
+    "centre_component": 0.2807337029026333,
+    "share_of_centre_recovered": 0.03018890724468343
+   },
+   "other": {
+    "decisions": 929,
+    "station_days": 153,
+    "days": 18,
+    "rmse_regional": 1.2575631229522208,
+    "rmse_p0": 1.135275179769163,
+    "rmse_market": 1.0589343205640531,
+    "corr_d_e": -0.007043751817608035,
+    "corr_d_g": 0.12058128401445592,
+    "k_in_sample": 0.08531138206229878,
+    "disagreement_decisions": 200,
+    "sign_agrees_with_market": [
+     0.5587985769020251,
+     0.4681771406559541,
+     0.6654667922960144
+    ],
+    "regional_closer_than_p0": [
+     0.3844690749863163,
+     0.2889895162308955,
+     0.4801479675203414
+    ],
+    "share_with_k_positive": 0.1568627450980392,
+    "mean_k_when_active": 0.3232645005807337,
+    "corrected_vs_p0_logscore": [
+     0.010463555277144558,
+     -0.010658453376749505,
+     0.035525165875372695
+    ],
+    "corrected_vs_p0_brier": [
+     0.002525128302025896,
+     -0.003216391099667621,
+     0.009289561190827791
+    ],
+    "both_lower": false,
+    "gap_to_market_before": 0.025908208131850942,
+    "gap_to_market_after": 0.0363717634089955,
+    "centre_component": 0.0690603918562967,
+    "share_of_centre_recovered": -0.15151311766254516
+   },
+   "all": {
+    "decisions": 1183,
+    "station_days": 198,
+    "days": 18,
+    "rmse_regional": 1.359401833739977,
+    "rmse_p0": 1.2312764988590632,
+    "rmse_market": 1.074407983773036,
+    "corr_d_e": 0.04614022361247991,
+    "corr_d_g": 0.17945696660057966,
+    "k_in_sample": 0.1056425054645666,
+    "disagreement_decisions": 324,
+    "sign_agrees_with_market": [
+     0.5894887412329273,
+     0.5272915126878541,
+     0.6557164902998235
+    ],
+    "regional_closer_than_p0": [
+     0.4400239940937616,
+     0.35753977386270597,
+     0.5142224187920782
+    ],
+    "share_with_k_positive": 0.15656565656565657,
+    "mean_k_when_active": 0.36333966749690116,
+    "corrected_vs_p0_logscore": [
+     0.006159328232933494,
+     -0.016307458753122683,
+     0.031072353305624145
+    ],
+    "corrected_vs_p0_brier": [
+     0.0021732508828075777,
+     -0.0045572579376639945,
+     0.009082867527992363
+    ],
+    "both_lower": false,
+    "gap_to_market_before": 0.09717142743090708,
+    "gap_to_market_after": 0.10333075566384053,
+    "centre_component": 0.1171679625486459,
+    "share_of_centre_recovered": -0.052568365097039396
+   },
+   "coastal_by_station": {
+    "KSEA": {
+     "decisions": 90,
+     "station_days": 15,
+     "days": 15,
+     "rmse_regional": 1.8295740576577906,
+     "rmse_p0": 1.6125900316570414,
+     "rmse_market": 1.201516168476603,
+     "corr_d_e": -0.3043743411363541,
+     "corr_d_g": -0.012359610297711357,
+     "k_in_sample": -0.4680924107189981,
+     "disagreement_decisions": 36,
+     "sign_agrees_with_market": [
+      0.37499999999999994,
+      0.12499999999999997,
+      0.6666666666666666
+     ],
+     "regional_closer_than_p0": [
+      0.37499999999999994,
+      0.08333333333333333,
+      0.6666666666666667
+     ],
+     "share_with_k_positive": 0.0,
+     "mean_k_when_active": null,
+     "corrected_vs_p0_logscore": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "corrected_vs_p0_brier": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "both_lower": false,
+     "gap_to_market_before": 0.3730330935582803,
+     "gap_to_market_after": 0.3730330935582803,
+     "centre_component": 0.3013080605765794,
+     "share_of_centre_recovered": 0.0
+    },
+    "KLAX": {
+     "decisions": 83,
+     "station_days": 15,
+     "days": 15,
+     "rmse_regional": 1.780862090690693,
+     "rmse_p0": 1.3196380467514357,
+     "rmse_market": 1.0994529757351301,
+     "corr_d_e": -0.3536511918362337,
+     "corr_d_g": -0.11306953468701672,
+     "k_in_sample": -0.1656163997921734,
+     "disagreement_decisions": 24,
+     "sign_agrees_with_market": [
+      0.75,
+      0.375,
+      1.0
+     ],
+     "regional_closer_than_p0": [
+      0.5,
+      0.125,
+      0.875
+     ],
+     "share_with_k_positive": 0.20000000000000004,
+     "mean_k_when_active": 0.023053876647218176,
+     "corrected_vs_p0_logscore": [
+      0.003655862571456754,
+      0.0,
+      0.009789497910752747
+     ],
+     "corrected_vs_p0_brier": [
+      0.0003831183607112233,
+      -0.000249179801289509,
+      0.0013186843088353448
+     ],
+     "both_lower": false,
+     "gap_to_market_before": 0.3503455519910834,
+     "gap_to_market_after": 0.35400141456254025,
+     "centre_component": 0.24912706195108966,
+     "share_of_centre_recovered": -0.014674690669191852
+    },
+    "KSFO": {
+     "decisions": 81,
+     "station_days": 15,
+     "days": 15,
+     "rmse_regional": 1.3204143513871567,
+     "rmse_p0": 1.5885822327755394,
+     "rmse_market": 1.071133943610895,
+     "corr_d_e": 0.6267804344455992,
+     "corr_d_g": 0.48671707626844346,
+     "k_in_sample": 1.2854852981178346,
+     "disagreement_decisions": 64,
+     "sign_agrees_with_market": [
+      0.7738095238095238,
+      0.5738095238095238,
+      0.9404761904761904
+     ],
+     "regional_closer_than_p0": [
+      0.7119047619047619,
+      0.49047619047619045,
+      0.8952380952380952
+     ],
+     "share_with_k_positive": 0.2666666666666667,
+     "mean_k_when_active": 1.0,
+     "corrected_vs_p0_logscore": [
+      -0.029080993723609148,
+      -0.23073116197310173,
+      0.18180943304287212
+     ],
+     "corrected_vs_p0_brier": [
+      0.0025474846116846483,
+      -0.0708315874316877,
+      0.08853565247548713
+     ],
+     "both_lower": false,
+     "gap_to_market_before": 0.29502047359372985,
+     "gap_to_market_after": 0.2659394798701207,
+     "centre_component": 0.29176598618023075,
+     "share_of_centre_recovered": 0.0996723233723521
+    }
+   }
+  }
+ }
+}
