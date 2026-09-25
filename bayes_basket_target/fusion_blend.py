@@ -74,9 +74,12 @@ FUSION_BLEND_MIN_WEIGHT = 1e-6
 # The research tolerance on the optimiser's own output (compare.assert_weight).
 _FIT_TOLERANCE = 1e-7
 
-# US ASOS stations: their historical canonical winner is not bound to one
-# label lane, so the study excluded them from training and evaluation alike.
-# They keep the seat weights until their labels are bound.
+# US ASOS stations keep the seat weights.  The study excluded them because
+# their historical canonical winner was not bound to one label lane; on
+# 2026-09-25 that no longer held (they settle on NOAA hourly METAR+SPECI,
+# the truth table's own lane, 1 disagreement in 40 days), so the lift was
+# measured instead: no reliable gain, and it fails charter 211 under the
+# served 216 fit (docs/research/fusion199_asos_20260925).
 FUSION_BLEND_UNBOUND_LABEL_STATIONS = frozenset({
     "KATL", "KAUS", "KBKF", "KDAL", "KHOU", "KLAX", "KLGA", "KMIA", "KORD",
     "KSEA", "KSFO",
