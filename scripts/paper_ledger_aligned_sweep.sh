@@ -35,7 +35,12 @@ WINDOW_DAYS="${PAPER_LEDGER_WINDOW_DAYS:-7}"
 FROM="$("$PY" -c "from datetime import date, timedelta; print(date.today() - timedelta(days=int('$WINDOW_DAYS')))")"
 TO="$("$PY" -c "from datetime import date, timedelta; print(date.today() - timedelta(days=1))")"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] paper ledger (production entries) ${FROM}..${TO}"
-"$PY" scripts/paper_ledger_aligned.py \
+# The render's tier (dashboard_render_sweep.sh): utility disk I/O gives way
+# to the resident's default-tier reads.  2026-09-25: on a disk saturated by
+# page-ins, each of the day's three unthrottled passes coincided with an
+# overdue production cycle; not ``-b``, under which a reader on that disk
+# holds its reads longer rather than shorter.
+taskpolicy -d utility nice -n 10 "$PY" scripts/paper_ledger_aligned.py \
   --from-event-date "$FROM" --to-event-date "$TO" \
   --capital paper --opening-cash-usdc "${PAPER_LEDGER_OPENING_CASH_USDC:-120}" \
   --label daily_sweep --progress 0
