@@ -5,10 +5,14 @@ from pathlib import Path
 import subprocess
 import sys
 
+import pytest
+
+from bayes_basket_target import ecmwf_aifs_ens_archive
 from bayes_basket_target.contracts import content_sha256
 from bayes_basket_target.official_native_forward_packet import (
     DWD_ICON_EPS_MULTISTATION_SCHEMA,
     ECCC_GEPS_MULTISTATION_SCHEMA,
+    ECMWF_AIFS_ENS_MULTISTATION_SCHEMA,
     ECMWF_MULTISTATION_SCHEMA,
     NOAA_GEFS_MULTISTATION_SCHEMA,
 )
@@ -552,6 +556,89 @@ def test_charter_192_an_assignment_to_a_station_the_archive_lacks_fails(
     )
     assert result.returncode != 0
     assert "follow_assignment_invalid" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "family_id",
+    [
+        # What the AIFS archive module writes since charter 217 ...
+        ecmwf_aifs_ens_archive.INDEPENDENCE_FAMILY_ID,
+        # ... and what it wrote before the split, on archives still on disk.
+        ecmwf_aifs_ens_archive.PRE_SPLIT_INDEPENDENCE_FAMILY_ID,
+    ],
+)
+def test_charter_217_an_aifs_follow_archive_builds_under_the_family_its_module_writes(
+    tmp_path: Path, family_id: str,
+) -> None:
+    """2026-09-25: this map still said "ECMWF" after charter 217 moved AIFS
+    ENS into its own family, so every build that took a freshly captured AIFS
+    archive refused the whole inbox from 06:16Z, and by 11:43Z no station of
+    2026-09-26 had a fresh P0.  The family is read from the module that
+    writes it, so the two cannot drift apart again."""
+
+    stations = ("ZUUU", "CYYZ")
+    archives = _base_archives(tmp_path, station_ids=stations)
+    follow = _archive(
+        tmp_path / "aifs_follow.json",
+        schema=ECMWF_AIFS_ENS_MULTISTATION_SCHEMA,
+        system_id=ecmwf_aifs_ens_archive.SYSTEM_ID,
+        family_id=family_id,
+        intervals={"29°C or below": [None, 29.5], "30°C or higher": [29.5, None]},
+        station_ids=("ZUUU",),
+    )
+    output = tmp_path / "inbox.json"
+    command = [sys.executable, str(SCRIPT)]
+    for archive in archives:
+        command += ["--archive", str(archive)]
+    for station in stations:
+        command += ["--station-id", station]
+    result = subprocess.run(
+        [
+            *command,
+            "--follow-archive", str(follow),
+            "--follow-assignment", f"ZUUU={follow}",
+            "--output", str(output),
+        ],
+        cwd=ROOT, check=False, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    by_station = {
+        packet["station_id"]: packet
+        for packet in json.loads(output.read_text(encoding="utf-8"))["packets"]
+    }
+    zuuu = {system["ensemble_system_id"] for system in by_station["ZUUU"]["systems"]}
+    cyyz = {system["ensemble_system_id"] for system in by_station["CYYZ"]["systems"]}
+    assert ecmwf_aifs_ens_archive.SYSTEM_ID in zuuu
+    assert ecmwf_aifs_ens_archive.SYSTEM_ID not in cyyz
+
+
+def test_charter_217_an_aifs_follow_archive_under_any_other_family_is_refused(
+    tmp_path: Path,
+) -> None:
+    archives = _base_archives(tmp_path, station_ids=("ZUUU",))
+    follow = _archive(
+        tmp_path / "aifs_follow.json",
+        schema=ECMWF_AIFS_ENS_MULTISTATION_SCHEMA,
+        system_id=ecmwf_aifs_ens_archive.SYSTEM_ID,
+        family_id="NOAA_GEFS",
+        intervals={"29°C or below": [None, 29.5], "30°C or higher": [29.5, None]},
+        station_ids=("ZUUU",),
+    )
+    output = tmp_path / "inbox.json"
+    command = [sys.executable, str(SCRIPT)]
+    for archive in archives:
+        command += ["--archive", str(archive)]
+    result = subprocess.run(
+        [
+            *command,
+            "--follow-archive", str(follow),
+            "--follow-assignment", f"ZUUU={follow}",
+            "--output", str(output),
+        ],
+        cwd=ROOT, check=False, capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "official_native_forward_follow_archive_invalid" in result.stderr
 
 
 def _relabel(path: Path, **fields: object) -> Path:

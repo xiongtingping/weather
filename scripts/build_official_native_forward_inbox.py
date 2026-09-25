@@ -19,6 +19,10 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
+from bayes_basket_target.ecmwf_aifs_ens_archive import (  # noqa: E402
+    INDEPENDENCE_FAMILY_ID as AIFS_ENS_FAMILY_ID,
+    PRE_SPLIT_INDEPENDENCE_FAMILY_ID as AIFS_ENS_PRE_SPLIT_FAMILY_ID,
+)
 from bayes_basket_target.market_registry import (  # noqa: E402
     load_market_registry_snapshot,
 )
@@ -55,14 +59,32 @@ _SUPPORTED_ARCHIVE_SCHEMAS = frozenset(_ARCHIVE_FAMILY_BY_SCHEMA)
 # Charter 204: AIFS ENS is a follow-only family -- it never comes in as a
 # base ``--archive`` (the ladder has no AIFS rung), only per station as a
 # ``--follow-archive`` that is ADDED to the station's set, since there is no
-# AIFS base archive for it to replace.  Same family as PF50: two products of
-# one piece of independent information, which the stable pool's
-# family-balanced baseline already accounts for.
-_FOLLOW_FAMILY_BY_SCHEMA = {
-    **_ARCHIVE_FAMILY_BY_SCHEMA,
-    ECMWF_AIFS_ENS_MULTISTATION_SCHEMA: "ECMWF",
+# AIFS base archive for it to replace.
+#
+# The families a follow archive may carry, per schema.  Charter 217 moved AIFS
+# ENS out of the ECMWF family into its own, and the archive module has written
+# that family since (``ecmwf_aifs_ens_archive.INDEPENDENCE_FAMILY_ID``); this
+# map still said "ECMWF", so from the first archive captured under the split
+# (2026-09-25 06:16Z) every build that took one refused the whole inbox --
+# ``official_native_forward_follow_archive_invalid``, capture exit 2 on every
+# rung of every date -- and at 11:43Z the last P0 of 2026-09-26 expired with
+# forty-five stations listed and none fresh.  The family is read from the
+# module that writes it, not restated.  The pre-split label stays admissible
+# for the archives captured before the split: they are the same product, the
+# registry row itself was relabelled in place (charter 217), and the compile
+# weighs, caps and records a system under the registry's family, never the
+# label on the archive -- while one refused follow archive costs the build
+# every station, not only its own.
+_FOLLOW_FAMILIES_BY_SCHEMA = {
+    **{
+        schema: frozenset({family})
+        for schema, family in _ARCHIVE_FAMILY_BY_SCHEMA.items()
+    },
+    ECMWF_AIFS_ENS_MULTISTATION_SCHEMA: frozenset({
+        AIFS_ENS_FAMILY_ID, AIFS_ENS_PRE_SPLIT_FAMILY_ID,
+    }),
     # Charter 212: NOAA AIGEFS, its own family, follow-only like AIFS.
-    NOAA_AIGEFS_MULTISTATION_SCHEMA: "NOAA_AIGEFS",
+    NOAA_AIGEFS_MULTISTATION_SCHEMA: frozenset({"NOAA_AIGEFS"}),
 }
 
 
@@ -522,8 +544,8 @@ def main() -> int:
             DWD_ICON_EPS_MULTISTATION_SCHEMA,
             ECMWF_AIFS_ENS_MULTISTATION_SCHEMA,
             NOAA_AIGEFS_MULTISTATION_SCHEMA,
-        } or str(raw.get("independence_family_id") or "") != (
-            _FOLLOW_FAMILY_BY_SCHEMA[schema]
+        } or str(raw.get("independence_family_id") or "") not in (
+            _FOLLOW_FAMILIES_BY_SCHEMA[schema]
         ) or str(raw.get("event_date") or "") != base_event_date:
             raise RuntimeError("official_native_forward_follow_archive_invalid")
         follow_by_path[resolved] = dict(raw)
