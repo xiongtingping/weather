@@ -261,7 +261,7 @@ def capture_station(conn, station, tz):
             signals = oos._holdout_conditioning_signals(
                 conn, station_id=station, holdout_days=[event_date],
                 predictions_by_system={s: {event_date: day_rows[s]} for s in pool},
-                radiation_shift_sigma=C.radiation_shift_sigma_for_lead(newest[2]),
+                radiation_shift_sigmas=C.radiation_shift_sigmas_for_lead(newest[2]),
             )
             cooling = (signals.get(event_date) or {}).get("synoptic_cooling_shift_sigma")
             skill, _rule = oos._seat_weights(

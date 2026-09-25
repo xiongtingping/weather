@@ -31,7 +31,7 @@ for extra in (ROOT, ROOT / "scripts"):
 
 import replay_p0_stable_pool as replay  # noqa: E402
 from bayes_basket_target import native_ensemble_oos as oos  # noqa: E402
-from bayes_basket_target.cross_consensus import radiation_shift_sigma_for_lead  # noqa: E402
+from bayes_basket_target.cross_consensus import radiation_shift_sigmas_for_lead  # noqa: E402
 from bayes_basket_target.stable_pool import STABLE_POOL_KAPPA, stable_pool_weights  # noqa: E402
 from bayes_basket_target.station_registry import station_coordinates  # noqa: E402
 
@@ -132,11 +132,11 @@ def capture_station(conn: sqlite3.Connection, station: str, tz: str):
                 tables_memo[hour_key] = oos.p0_gate_tables(conn, station_id=station, tables_as_of_utc=_iso(at))
             tables = tables_memo[hour_key]
             newest = max(packet.values(), key=lambda v: (v[1], v[0]))[2]
-            sigma_per_unit = radiation_shift_sigma_for_lead(newest[2])
+            sigma_per_unit = radiation_shift_sigmas_for_lead(newest[2])
             signals = oos._holdout_conditioning_signals(
                 conn, station_id=station, holdout_days=[event_date],
                 predictions_by_system={s: {event_date: day_rows[s]} for s in pool},
-                radiation_shift_sigma=sigma_per_unit,
+                radiation_shift_sigmas=sigma_per_unit,
             )
             cooling = (signals.get(event_date) or {}).get("synoptic_cooling_shift_sigma")
             skill, rule = oos._seat_weights(

@@ -35,7 +35,7 @@ for extra in (ROOT, ROOT / "scripts"):
 
 import replay_p0_stable_pool as replay  # noqa: E402
 from bayes_basket_target import native_ensemble_oos as oos  # noqa: E402
-from bayes_basket_target.cross_consensus import radiation_shift_sigma_for_lead  # noqa: E402
+from bayes_basket_target.cross_consensus import radiation_shift_sigmas_for_lead  # noqa: E402
 from bayes_basket_target.stable_pool import STABLE_POOL_KAPPA, stable_pool_weights  # noqa: E402
 from bayes_basket_target.station_registry import station_coordinates  # noqa: E402
 
@@ -262,7 +262,7 @@ def capture_station(conn, station, tz):
             signals = oos._holdout_conditioning_signals(
                 conn, station_id=station, holdout_days=[event_date],
                 predictions_by_system={s: {event_date: day_rows[s]} for s in pool},
-                radiation_shift_sigma=radiation_shift_sigma_for_lead(newest[2]),
+                radiation_shift_sigmas=radiation_shift_sigmas_for_lead(newest[2]),
             )
             cooling = (signals.get(event_date) or {}).get("synoptic_cooling_shift_sigma")
             skill, rule = oos._seat_weights(

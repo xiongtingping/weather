@@ -48,11 +48,11 @@ from .cross_consensus import (
     neighbour_direction_method_tag_suffix,
     RADIATION_ASOF_METHOD_TAG,
     RADIATION_CLEARNESS_METHOD_TAG,
-    RADIATION_SHIFT_SIGMA,
+    RADIATION_TWO_SIDED_METHOD_TAG,
     distribution_sigma_c,
     forecast_clearness_shift_sigma,
     forecast_radiation_shift_sigma,
-    radiation_shift_sigma_for_lead,
+    radiation_shift_sigmas_for_lead,
     bridged_cross_probability,
 )
 from .table_as_of import (
@@ -2212,7 +2212,7 @@ def _holdout_conditioning_signals(
     station_id: str,
     holdout_days: Sequence[str],
     predictions_by_system: Mapping[str, Mapping[str, Mapping[str, Any]]],
-    radiation_shift_sigma: float = RADIATION_SHIFT_SIGMA,
+    radiation_shift_sigmas: tuple[float, float],
 ) -> dict[str, dict[str, float | None]]:
     """Per-day shift signal the holdout's shape stack scores.
 
@@ -2234,6 +2234,10 @@ def _holdout_conditioning_signals(
     until each day's own evening).  A day whose radiation versions all came
     after its cutoff gets no shift and no TAF fallback: serving would have
     shifted it by radiation, so the holdout does not stand in another signal.
+
+    Charter 222: ``radiation_shift_sigmas`` is the ``(warm, cold)`` pair, and
+    each day is shifted by the side its own z falls on, as serving shifts it.
+    Required, not defaulted: this is the pair the artifact pins.
     """
 
     centers_by_day: dict[str, list[float]] = {}
@@ -2295,14 +2299,15 @@ def _holdout_conditioning_signals(
             ),
         )
         radiation_state = str(as_of_receipt.get("state"))
-        # Explicit rather than defaulted: this is the coefficient the
-        # artifact will pin and serving will read back, and a default here
-        # would let the two drift the moment the constant moves.
+        # Explicit rather than defaulted: this is the pair the artifact will
+        # pin and serving will read back, and a default here would let the
+        # two drift the moment the constants move.
         # Charter 160: scored on the clearness index over the station's days
         # before this one, falling back to the absolute form exactly where
         # serving does (no latitude, or under thirty days of history).
         shift_sigma, _radiation_receipt = forecast_clearness_shift_sigma(
-            shift_sigma_per_unit=radiation_shift_sigma,
+            shift_sigma_per_unit=radiation_shift_sigmas[0],
+            cold_shift_sigma_per_unit=radiation_shift_sigmas[1],
             radiation_sum=day_radiation,
             event_date=key,
             latitude_deg=station_latitude,
@@ -2314,7 +2319,8 @@ def _holdout_conditioning_signals(
         )
         if shift_sigma is None:
             shift_sigma, _radiation_receipt = forecast_radiation_shift_sigma(
-                shift_sigma_per_unit=radiation_shift_sigma,
+                shift_sigma_per_unit=radiation_shift_sigmas[0],
+                cold_shift_sigma_per_unit=radiation_shift_sigmas[1],
                 radiation_sum=day_radiation,
                 station_history=[
                     value
@@ -5480,13 +5486,13 @@ def build_native_ensemble_oos(
         # serving will see.
         # Resolved once here so the value the holdout scores, the value the
         # artifact pins and the value serving reads back are one number.
-        scope_radiation_sigma = radiation_shift_sigma_for_lead(lead_bucket)
+        scope_radiation_sigmas = radiation_shift_sigmas_for_lead(lead_bucket)
         conditioning_by_day = _holdout_conditioning_signals(
             conn,
             station_id=station_id,
             holdout_days=common_holdout,
             predictions_by_system=predictions_by_system,
-            radiation_shift_sigma=scope_radiation_sigma,
+            radiation_shift_sigmas=scope_radiation_sigmas,
         )
         weights, subset_selection = _select_minimum_crps_subset(
             station_latitude=station_latitude,
@@ -6037,7 +6043,7 @@ def build_native_ensemble_oos(
             "band_table_sha256": band_table_sha,
             "center_width_sha256": center_width_sha,
             "station_width_sha256": station_width_sha,
-            "radiation_shift_sigma": scope_radiation_sigma,
+            "radiation_shift_sigmas": list(scope_radiation_sigmas),
             "p0_exact_match_ready": True,
             "p0_exact_match_blocker": None,
             "settlement_definition": settlement_definition,
@@ -7500,11 +7506,15 @@ def persist_native_ensemble_oos(
                     # certificate says what the holdout actually scored.
                     + neighbour_direction_method_tag_suffix()
                     + "::" + SYNOPTIC_COOLING_METHOD_TAG
-                    # Pin the coefficient the holdout above was scored under.
-                    # Absent on artifacts built before this existed, which are
-                    # served the legacy value and so keep their own math.
-                    + "::radiation_shift_sigma="
-                    + f"{float(candidate['radiation_shift_sigma']):g}"
+                    # Pin the coefficients the holdout above was scored under
+                    # -- since charter 222 one per side.  Absent on artifacts
+                    # built before this existed, which are served the legacy
+                    # value and so keep their own math.
+                    + "::radiation_shift_sigma_warm="
+                    + f"{float(candidate['radiation_shift_sigmas'][0]):g}"
+                    + "::radiation_shift_sigma_cold="
+                    + f"{float(candidate['radiation_shift_sigmas'][1]):g}"
+                    + "::" + RADIATION_TWO_SIDED_METHOD_TAG
                     # Charter 160: the holdout scored the clearness form, so
                     # serving may read this artifact's own pin back.
                     + "::" + RADIATION_CLEARNESS_METHOD_TAG

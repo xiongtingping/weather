@@ -113,27 +113,17 @@ RADIATION_SHIFT_METHOD_TAG = "forecast_radiation_shift_v1"
 # decision served at 0.35 (9,315 decisions, 765 station-days), 0.15 scores
 # RPS -0.032 [-0.051, -0.013] -- about 5% better -- and 0.35 multiplied the
 # seasonal part of the old standardisation by 2.3.  Every lead is fitted and
-# served at ``RADIATION_SHIFT_SIGMA`` again.
-RADIATION_SHIFT_SIGMA_BY_LEAD: dict[str, float] = {}
-
-
-def radiation_shift_sigma_for_lead(lead_bucket: str | None) -> float:
-    """The coefficient this lead is fitted and served at."""
-
-    return RADIATION_SHIFT_SIGMA_BY_LEAD.get(
-        str(lead_bucket or ""), RADIATION_SHIFT_SIGMA
-    )
-
-
-# The value every lead that has not earned its own is fitted and served at.
-# Raising *this* to 0.35 was tried and withdrawn.  A probe over served envelopes
-# said +0.142 bits, and the gate's own holdout said +0.005 with an interval
-# spanning zero over 354 paired days.  The probe was wrong twice, both mine:
-# it standardised radiation within its own sample rather than against the
-# station history serving uses, and it located the settled bucket by nearest
-# centre rather than by interval, which differs exactly on the edge buckets a
-# large shift pushes hardest into.  The 1.5C shift clamp binds at 0.35 too,
-# so part of that optimum was the clamp and not the coefficient.
+# served at the fleet value again (``radiation_shift_sigmas_for_lead``).
+#
+# The fleet value.  Raising it to 0.35 was tried and withdrawn.  A probe over
+# served envelopes said +0.142 bits, and the gate's own holdout said +0.005
+# with an interval spanning zero over 354 paired days.  The probe was wrong
+# twice, both mine: it standardised radiation within its own sample rather
+# than against the station history serving uses, and it located the settled
+# bucket by nearest centre rather than by interval, which differs exactly on
+# the edge buckets a large shift pushes hardest into.  The 1.5C shift clamp
+# binds at 0.35 too, so part of that optimum was the clamp and not the
+# coefficient.
 #
 # Charter 173 (2026-09-21, user ruling 「批准」): 0.15 -> 0.07.  0.15 was chosen
 # on radiation read from a table rewritten until each day's own evening, at a
@@ -146,7 +136,7 @@ def radiation_shift_sigma_for_lead(lead_bucket: str | None) -> float:
 # keep serving its own pin until the rotation replaced it.
 #
 # Charter 210 (2026-09-23, user ruling 「改P0辐射系数」): every artifact is
-# served at this value, whatever it pins.  The rotation had moved 98% of
+# served at the fleet value, whatever it pins.  The rotation had moved 98% of
 # served P0 to 0.07 by 09-23, but certificate renewal (「不过期」, same day)
 # copies an artifact row whole, so a scope that is renewed rather than
 # re-minted would have kept 0.15 for good.  Refitted through 09-23 on the same
@@ -154,35 +144,142 @@ def radiation_shift_sigma_for_lead(lead_bucket: str | None) -> float:
 # is 0.068 [0.015, 0.118] and 0.07 has the lowest mean squared residual of
 # 0 / 0.03 / 0.05 / 0.07 / 0.09 / 0.11 / 0.15; refitting it day by day scores
 # worse than holding 0.07 (+0.015 [+0.004, +0.030]).
-RADIATION_SHIFT_SIGMA = 0.07
+#
+# Charter 222 (2026-09-25, user ruling 「把辐射系数拆成升温、降温两侧」): one
+# coefficient per side.  A day forecast clearer than the station's own last
+# 180 days (z > 0) is pushed warm at ``RADIATION_SHIFT_SIGMA_WARM``, a cloudier
+# one (z < 0) cold at ``RADIATION_SHIFT_SIGMA_COLD``.  The clearness index has
+# a ceiling -- a sky cannot be clearer than clear -- and a long overcast tail
+# (z skew -1.05, most negative -9.0 against most positive +2.6), so the
+# symmetric 0.07 served its largest shifts on the cold side, and that is the
+# side the residual does not follow.  Fitted on charter 210's objective (the
+# pre-shift residual de-meaned per station against z times the spread, day
+# blocks) over a public replica of the 45 stations that reproduces charter
+# 210's symmetric fit (0.072 against 0.068): warm 0.124 [0.099, 0.148], cold
+# 0.045 [0.024, 0.069], 20,035 station-days, 2025-06..2026-09.
+#
+# Centred (``_sided_shift``).  z averages zero over the history it is scored
+# against, but a pair bends at zero, so uncentred it would average (warm -
+# cold) x mean(z+) -- +0.033 sigma, z > 0 on 59% of days -- and move every
+# station's mean warm: bias, which charter 160 keeps out of this layer.
+# Scored as served (no intercept, the station bias already in the root)
+# against the symmetric 0.07: centred +0.0006 [+0.0003, +0.0010] nat bucket
+# log score, Brier +0.0001 [-0.0000, +0.0002]; uncentred -0.0001 [-0.0007,
+# +0.0005].  Out of sample by halves it is never worse than 0.07 on either
+# proxy, where the larger warm sides a fixed-effects fit prefers (0.20-0.25,
+# cold 0) lose Brier on one half of each.
+# ``docs/research/radiation_term_physical_line_20260925``.
+RADIATION_SHIFT_SIGMA_WARM = 0.12
+RADIATION_SHIFT_SIGMA_COLD = 0.04
+RADIATION_TWO_SIDED_METHOD_TAG = "radiation_two_sided_centred_v1"
 # What artifacts built before the coefficient was pinned were scored with.
 # Kept separate because the point of the pin is that the two are free to
 # differ -- as they now do.
 LEGACY_RADIATION_SHIFT_SIGMA = 0.15
 RADIATION_MIN_HISTORY_SAMPLES = 30
+RADIATION_SIDE_WARM = "WARM"
+RADIATION_SIDE_COLD = "COLD"
+RADIATION_SIDE_NEUTRAL = "NEUTRAL"
 
 
-def pinned_radiation_shift_sigma(combination_method: str) -> float:
-    """The coefficient an artifact says its holdout was scored under.
+def radiation_shift_sigmas_for_lead(lead_bucket: str | None) -> tuple[float, float]:
+    """``(warm, cold)``: the coefficients this lead is fitted and served at.
 
-    Artifacts built before the pin existed name none and get the legacy
-    value, so they keep serving the arithmetic that admitted them.
+    Every lead is at the fleet pair (charter 160 retired the per-lead
+    values); a function of the lead so the value the holdout scores, the
+    value the artifact pins and the value serving reads back stay one call.
     """
 
+    del lead_bucket
+    return RADIATION_SHIFT_SIGMA_WARM, RADIATION_SHIFT_SIGMA_COLD
+
+
+def pinned_radiation_shift_sigmas(combination_method: str) -> tuple[float, float]:
+    """``(warm, cold)``: the coefficients an artifact says its holdout was scored under.
+
+    Charter 222 pins both sides; an artifact minted before it pins one
+    coefficient, which was both sides; an artifact built before the pin
+    existed names none and reads the legacy value on both.  A pin that does
+    not parse reads as absent.
+    """
+
+    warm = cold = single = None
     for part in str(combination_method).split("::"):
-        if part.startswith("radiation_shift_sigma="):
-            try:
-                return float(part.split("=", 1)[1])
-            except ValueError:
-                break
-    return LEGACY_RADIATION_SHIFT_SIGMA
+        key, _, value = part.partition("=")
+        if key not in (
+            "radiation_shift_sigma_warm", "radiation_shift_sigma_cold",
+            "radiation_shift_sigma",
+        ):
+            continue
+        try:
+            number = float(value)
+        except ValueError:
+            continue
+        if key == "radiation_shift_sigma_warm":
+            warm = number
+        elif key == "radiation_shift_sigma_cold":
+            cold = number
+        else:
+            single = number
+    if warm is not None and cold is not None:
+        return warm, cold
+    if single is not None:
+        return single, single
+    return LEGACY_RADIATION_SHIFT_SIGMA, LEGACY_RADIATION_SHIFT_SIGMA
+
+
+def radiation_side(standardised: float) -> str:
+    """Which side of the station's own history the day's radiation sits on."""
+
+    if standardised > 0.0:
+        return RADIATION_SIDE_WARM
+    if standardised < 0.0:
+        return RADIATION_SIDE_COLD
+    return RADIATION_SIDE_NEUTRAL
+
+
+def _sided_shift(
+    standardised: float,
+    shift_sigma_per_unit: float,
+    cold_shift_sigma_per_unit: float | None,
+    history_standardised: "Sequence[float]",
+) -> dict[str, Any]:
+    """The shift and the receipt fields that say which side paid for it.
+
+    ``cold_shift_sigma_per_unit`` None is one coefficient on both sides --
+    every caller that standardises at a unit coefficient, and every pin
+    written before charter 222.  Two different sides are centred on the
+    station's own history (``history_standardised``: each history day
+    standardised as the day itself is), so the term moves days relative to
+    the station's usual one and never the station's mean.  One coefficient
+    needs no centre: the history's z average zero by construction, and it is
+    left at exactly 0.0 so a symmetric shift stays bit-identical.
+    """
+
+    warm = float(shift_sigma_per_unit)
+    cold = warm if cold_shift_sigma_per_unit is None else float(cold_shift_sigma_per_unit)
+    coefficient = cold if standardised < 0.0 else warm
+    centre = 0.0
+    if cold != warm and history_standardised:
+        centre = sum(
+            (cold if z < 0.0 else warm) * z for z in history_standardised
+        ) / len(history_standardised)
+    return {
+        "shift_sigma": coefficient * standardised - centre,
+        "shift_sigma_per_unit": coefficient,
+        "shift_sigma_per_unit_warm": warm,
+        "shift_sigma_per_unit_cold": cold,
+        "radiation_side": radiation_side(standardised),
+        "side_centre_sigma": centre,
+    }
 
 
 def forecast_radiation_shift_sigma(
     *,
     radiation_sum: float | None,
     station_history: "Sequence[float]",
-    shift_sigma_per_unit: float = RADIATION_SHIFT_SIGMA,
+    shift_sigma_per_unit: float,
+    cold_shift_sigma_per_unit: float | None = None,
 ) -> tuple[float | None, dict[str, Any]]:
     """Standardise the day's forecast radiation against the station's own.
 
@@ -190,7 +287,11 @@ def forecast_radiation_shift_sigma(
     scale -- so it is standardised per station against that station's own
     captured history rather than against a fleet constant.  Returns the shift
     in ensemble sigmas (positive means warmer than the models say), or None
-    when the day or the history is missing.
+    when the day or the history is missing.  ``shift_sigma_per_unit`` is the
+    warm side's coefficient and ``cold_shift_sigma_per_unit`` the cold
+    side's (charter 222), centred on the same history; without the latter
+    one coefficient serves both.  No default: a coefficient left to a
+    default is how a scored value and a served one drift apart.
     """
 
     if radiation_sum is None:
@@ -217,15 +318,18 @@ def forecast_radiation_shift_sigma(
             "state": "HISTORY_DEGENERATE",
         }
     standardised = (float(radiation_sum) - mean) / deviation
-    return float(shift_sigma_per_unit) * standardised, {
+    sided = _sided_shift(
+        standardised, shift_sigma_per_unit, cold_shift_sigma_per_unit,
+        [(value - mean) / deviation for value in values],
+    )
+    return sided["shift_sigma"], {
         "schema": "forecast_radiation_receipt_v1",
         "method_tag": RADIATION_SHIFT_METHOD_TAG,
         "state": "RESOLVED",
         "radiation_sum": float(radiation_sum),
         "standardised": standardised,
         "sample_count": len(values),
-        "shift_sigma": float(shift_sigma_per_unit) * standardised,
-        "shift_sigma_per_unit": float(shift_sigma_per_unit),
+        **sided,
     }
 
 
@@ -320,20 +424,22 @@ def distribution_sigma_c(
     return math.sqrt(variance) if variance > 0.0 else 0.0
 
 
-def served_radiation_shift_sigma(combination_method: str) -> float:
-    """The coefficient P0 serves an artifact at: the fleet value, always.
+def served_radiation_shift_sigmas(combination_method: str) -> tuple[float, float]:
+    """``(warm, cold)``: the coefficients P0 serves an artifact at -- the fleet pair, always.
 
     Charter 210 (2026-09-23, user ruling 「改P0辐射系数」).  Until then an
     artifact scored in the clearness form was served its own pin and an older
     one a frozen 0.15 (charters 160 and 173), so a coefficient change reached
     serving only as the OOS rotation re-minted each scope -- and certificate
     renewal copies the pinned method whole, so a renewed scope never would.
-    The pin is still read (``pinned_radiation_shift_sigma``): the receipt
-    records it and the absolute-form shadow arm is computed at it.
+    The pins are still read (``pinned_radiation_shift_sigmas``): the receipt
+    records them and the absolute-form shadow arm is computed at them.
+    Charter 222 split the one coefficient into a warm and a cold side; the
+    rule that the pin is recorded, not served, is unchanged.
     """
 
     del combination_method  # the pin is recorded, not served
-    return RADIATION_SHIFT_SIGMA
+    return RADIATION_SHIFT_SIGMA_WARM, RADIATION_SHIFT_SIGMA_COLD
 
 
 def forecast_clearness_shift_sigma(
@@ -342,7 +448,8 @@ def forecast_clearness_shift_sigma(
     event_date: str,
     latitude_deg: float | None,
     station_history: "Sequence[tuple[str, float]]",
-    shift_sigma_per_unit: float = RADIATION_SHIFT_SIGMA,
+    shift_sigma_per_unit: float,
+    cold_shift_sigma_per_unit: float | None = None,
 ) -> tuple[float | None, dict[str, Any]]:
     """Charter 160: the radiation shift on the clearness index.
 
@@ -351,7 +458,11 @@ def forecast_clearness_shift_sigma(
     forward-captured rows for the days after it).  Returns the shift in
     ensemble sigmas and a receipt, or ``(None, receipt)`` when the day, its
     latitude or thirty days of history is missing -- the caller decides the
-    fallback.
+    fallback.  Charter 222: ``shift_sigma_per_unit`` is the warm side's
+    coefficient (the day clearer than the station's history) and
+    ``cold_shift_sigma_per_unit`` the cold side's, centred on the same
+    history; without the latter one coefficient serves both, which is how a
+    caller standardises at 1.0.
     """
 
     base = {
@@ -380,7 +491,11 @@ def forecast_clearness_shift_sigma(
     if deviation <= 0.0:
         return None, {**base, "state": "HISTORY_DEGENERATE"}
     standardised = (today - mean) / deviation
-    return float(shift_sigma_per_unit) * standardised, {
+    sided = _sided_shift(
+        standardised, shift_sigma_per_unit, cold_shift_sigma_per_unit,
+        [(value - mean) / deviation for value in values],
+    )
+    return sided["shift_sigma"], {
         **base,
         "state": "RESOLVED",
         "radiation_sum": float(radiation_sum),
@@ -390,8 +505,7 @@ def forecast_clearness_shift_sigma(
         "history_clearness_sd": deviation,
         "standardised": standardised,
         "sample_count": len(values),
-        "shift_sigma": float(shift_sigma_per_unit) * standardised,
-        "shift_sigma_per_unit": float(shift_sigma_per_unit),
+        **sided,
     }
 
 

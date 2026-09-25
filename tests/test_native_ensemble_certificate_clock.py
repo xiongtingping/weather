@@ -363,12 +363,14 @@ def test_a_renewed_certificate_serves_the_fleet_radiation_coefficient(method):
     certificate whole, pin included; before charter 210 the pin decided what
     P0 served, so a scope renewed rather than re-minted kept its 0.15 for good
     (930 scopes on 44 stations on 2026-09-23).  The pin is kept as the
-    record of what the holdout scored; serving reads the fleet value."""
+    record of what the holdout scored; serving reads the fleet value --
+    since charter 222 the fleet's warm/cold pair."""
 
     from bayes_basket_target.cross_consensus import (
-        RADIATION_SHIFT_SIGMA,
-        pinned_radiation_shift_sigma,
-        served_radiation_shift_sigma,
+        RADIATION_SHIFT_SIGMA_COLD,
+        RADIATION_SHIFT_SIGMA_WARM,
+        pinned_radiation_shift_sigmas,
+        served_radiation_shift_sigmas,
     )
 
     conn = _db()
@@ -392,8 +394,9 @@ def test_a_renewed_certificate_serves_the_fleet_radiation_coefficient(method):
         "WHERE cross_ensemble_artifact_id<>?", (source_id,),
     ).fetchone()
     assert renewed_method == method
-    assert pinned_radiation_shift_sigma(renewed_method) != RADIATION_SHIFT_SIGMA
-    assert served_radiation_shift_sigma(renewed_method) == RADIATION_SHIFT_SIGMA == 0.07
+    fleet = (RADIATION_SHIFT_SIGMA_WARM, RADIATION_SHIFT_SIGMA_COLD)
+    assert pinned_radiation_shift_sigmas(renewed_method) != fleet
+    assert served_radiation_shift_sigmas(renewed_method) == fleet == (0.12, 0.04)
 
 
 def test_renewal_is_idempotent_and_stops_once_the_lane_is_fresh():

@@ -14,12 +14,20 @@ import unittest
 from bayes_basket_target import native_ensemble_p0 as P0
 from bayes_basket_target.cross_consensus import (
     RADIATION_CLEARNESS_METHOD_TAG,
-    RADIATION_SHIFT_SIGMA,
+    RADIATION_SHIFT_SIGMA_COLD,
+    RADIATION_SHIFT_SIGMA_WARM,
     clearness_index,
     extraterrestrial_radiation_mj,
     forecast_clearness_shift_sigma,
     forecast_radiation_shift_sigma,
 )
+
+# The pair serving applies (charter 222); the coefficient is a required
+# argument, so every call here names the one it is scored at.
+SERVED = {
+    "shift_sigma_per_unit": RADIATION_SHIFT_SIGMA_WARM,
+    "cold_shift_sigma_per_unit": RADIATION_SHIFT_SIGMA_COLD,
+}
 
 
 class ExtraterrestrialTest(unittest.TestCase):
@@ -74,16 +82,27 @@ class SeasonIsNotCloudTest(unittest.TestCase):
         today = 0.45 * extraterrestrial_radiation_mj(30.6, "2026-09-20")
         new, receipt = forecast_clearness_shift_sigma(
             radiation_sum=today, event_date="2026-09-20",
-            latitude_deg=30.6, station_history=history,
+            latitude_deg=30.6, station_history=history, **SERVED,
         )
-        old, _ = forecast_radiation_shift_sigma(
+        old, old_receipt = forecast_radiation_shift_sigma(
             radiation_sum=today, station_history=[v for _d, v in history],
+            **SERVED,
         )
         self.assertEqual(receipt["state"], "RESOLVED")
         self.assertEqual(receipt["method_tag"], RADIATION_CLEARNESS_METHOD_TAG)
         self.assertLess(abs(receipt["standardised"]), 0.3)
-        self.assertLess(old, -0.05)  # the absolute form pushes it cold
-        self.assertAlmostEqual(new, RADIATION_SHIFT_SIGMA * receipt["standardised"], places=12)
+        # The absolute form calls it dark and pushes it cold.
+        self.assertLess(old_receipt["standardised"], -1.0)
+        self.assertLess(old, 0.0)
+        side = (
+            RADIATION_SHIFT_SIGMA_COLD if receipt["standardised"] < 0.0
+            else RADIATION_SHIFT_SIGMA_WARM
+        )
+        self.assertEqual(receipt["shift_sigma_per_unit"], side)
+        # Charter 222: net of the pair's centre on the station's history.
+        self.assertAlmostEqual(
+            new, side * receipt["standardised"] - receipt["side_centre_sigma"], places=12
+        )
 
     def test_history_on_or_after_the_event_day_is_ignored(self) -> None:
         history = _seasonal_history(30.6, 0.45)
@@ -91,11 +110,13 @@ class SeasonIsNotCloudTest(unittest.TestCase):
         a = forecast_clearness_shift_sigma(
             radiation_sum=10.0, event_date="2026-09-20", latitude_deg=30.6,
             station_history=[(d, v * 1.01 if i % 2 else v) for i, (d, v) in enumerate(history)],
+            **SERVED,
         )[1]
         b = forecast_clearness_shift_sigma(
             radiation_sum=10.0, event_date="2026-09-20", latitude_deg=30.6,
             station_history=[(d, v * 1.01 if i % 2 else v) for i, (d, v) in enumerate(history)]
             + with_future[len(history):],
+            **SERVED,
         )[1]
         self.assertEqual(a["sample_count"], b["sample_count"])
         self.assertAlmostEqual(a["standardised"], b["standardised"], places=12)
@@ -104,17 +125,17 @@ class SeasonIsNotCloudTest(unittest.TestCase):
         self.assertEqual(
             forecast_clearness_shift_sigma(
                 radiation_sum=10.0, event_date="2026-09-20", latitude_deg=None,
-                station_history=_seasonal_history(30.6, 0.45),
+                station_history=_seasonal_history(30.6, 0.45), **SERVED,
             )[1]["state"], "NO_LATITUDE")
         self.assertEqual(
             forecast_clearness_shift_sigma(
                 radiation_sum=10.0, event_date="2026-09-20", latitude_deg=30.6,
-                station_history=_seasonal_history(30.6, 0.45)[-5:],
+                station_history=_seasonal_history(30.6, 0.45)[-5:], **SERVED,
             )[1]["state"], "HISTORY_TOO_THIN")
         self.assertEqual(
             forecast_clearness_shift_sigma(
                 radiation_sum=None, event_date="2026-09-20", latitude_deg=30.6,
-                station_history=[],
+                station_history=[], **SERVED,
             )[1]["state"], "NO_FORECAST_RADIATION")
 
 
@@ -142,11 +163,12 @@ class ServingReaderTest(unittest.TestCase):
         source = __import__("inspect").getsource(P0.compile_native_ensemble_p0)
         self.assertIn("forecast_clearness_shift_sigma(", source)
         self.assertIn('"legacy_v1"', source)
-        self.assertIn("served_radiation_shift_sigma(", source)
+        self.assertIn("served_radiation_shift_sigmas(", source)
         # v8 since charter 190 (the width layer's open edges), v9 since
         # charter 198 (the rung and the activation read); the clearness form
-        # is unchanged by either.
-        self.assertEqual(P0.POSTERIOR_VERSION, "calibrated_native_cross_ensemble_p0_v15")
+        # is unchanged by either.  v16 since charter 222 (its coefficient's
+        # two sides).
+        self.assertEqual(P0.POSTERIOR_VERSION, "calibrated_native_cross_ensemble_p0_v16")
 
 
 if __name__ == "__main__":

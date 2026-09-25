@@ -1799,19 +1799,26 @@ def test_clause_43_forecast_radiation_leads_the_cooling_shift() -> None:
 
     from bayes_basket_target.cross_consensus import (
         RADIATION_MIN_HISTORY_SAMPLES,
-        RADIATION_SHIFT_SIGMA,
+        RADIATION_SHIFT_SIGMA_COLD,
+        RADIATION_SHIFT_SIGMA_WARM,
         forecast_radiation_shift_sigma,
     )
 
-    assert 0.0 < RADIATION_SHIFT_SIGMA <= 0.25
+    # Charter 222: one coefficient per side, each still a small shift.
+    assert 0.0 < RADIATION_SHIFT_SIGMA_WARM <= 0.25
+    assert 0.0 < RADIATION_SHIFT_SIGMA_COLD <= 0.25
+    served = {
+        "shift_sigma_per_unit": RADIATION_SHIFT_SIGMA_WARM,
+        "cold_shift_sigma_per_unit": RADIATION_SHIFT_SIGMA_COLD,
+    }
     assert RADIATION_MIN_HISTORY_SAMPLES >= 30
 
     history = [20.0 + (index % 11) - 5 for index in range(60)]
     bright, bright_receipt = forecast_radiation_shift_sigma(
-        radiation_sum=40.0, station_history=history
+        radiation_sum=40.0, station_history=history, **served
     )
     dull, _receipt = forecast_radiation_shift_sigma(
-        radiation_sum=5.0, station_history=history
+        radiation_sum=5.0, station_history=history, **served
     )
     # A brighter day than this station usually gets runs warmer than the
     # models say, and a duller one colder.
@@ -1821,7 +1828,7 @@ def test_clause_43_forecast_radiation_leads_the_cooling_shift() -> None:
     # A station whose history is too thin has no scale to standardise
     # against, and must not be shifted on a guess.
     thin, thin_receipt = forecast_radiation_shift_sigma(
-        radiation_sum=40.0, station_history=[20.0, 21.0, 19.0]
+        radiation_sum=40.0, station_history=[20.0, 21.0, 19.0], **served
     )
     assert thin is None
     assert thin_receipt["state"] == "HISTORY_TOO_THIN"

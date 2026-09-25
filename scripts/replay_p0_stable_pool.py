@@ -47,7 +47,7 @@ if str(ROOT) not in sys.path:
 from bayes_basket_target import native_ensemble_oos as oos  # noqa: E402
 from bayes_basket_target.cross_consensus import (  # noqa: E402
     bridged_cross_probability,
-    radiation_shift_sigma_for_lead,
+    radiation_shift_sigmas_for_lead,
 )
 from bayes_basket_target.served_shape import (  # noqa: E402
     CenterWidthLayer,
@@ -284,11 +284,11 @@ def replay_station(conn: sqlite3.Connection, station: str) -> list[dict[str, Any
                 tables_memo[hour_key] = oos.p0_gate_tables(conn, station_id=station, tables_as_of_utc=at.isoformat().replace("+00:00", "Z"))
             tables = tables_memo[hour_key]
             newest_scope = max(packet.values(), key=lambda v: (v[1], v[0]))[2]
-            sigma_per_unit = radiation_shift_sigma_for_lead(newest_scope[2])
+            sigma_per_unit = radiation_shift_sigmas_for_lead(newest_scope[2])
             signals = oos._holdout_conditioning_signals(
                 conn, station_id=station, holdout_days=[event_date],
                 predictions_by_system={s: {event_date: day_rows[s]} for s in pool},
-                radiation_shift_sigma=sigma_per_unit,
+                radiation_shift_sigmas=sigma_per_unit,
             )
             cooling = (signals.get(event_date) or {}).get("synoptic_cooling_shift_sigma")
             common = lambda s: dict(latitude=latitude, tables=tables, actual=actual, day_rows=day_rows, cooling_shift_sigma=cooling)  # noqa: E731
@@ -339,7 +339,7 @@ def replay_station(conn: sqlite3.Connection, station: str) -> list[dict[str, Any
                 contest_residuals = {s: {d: v for d, v in residuals[s].items() if d < earliest} for s in pool}
                 contest_signals = oos._holdout_conditioning_signals(
                     conn, station_id=station, holdout_days=shared,
-                    predictions_by_system=prior_rows, radiation_shift_sigma=sigma_per_unit,
+                    predictions_by_system=prior_rows, radiation_shift_sigmas=sigma_per_unit,
                 )
                 try:
                     weights_a, receipt = oos._select_minimum_crps_subset(

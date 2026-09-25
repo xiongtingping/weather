@@ -115,30 +115,39 @@ PAIRED_CONTRACTS: tuple[tuple[str, Callable[[], Any], Callable[[], Any]], ...] =
         lambda: _audit_tolerances(),
     ),
     (
-        "The radiation coefficient the gate scores is the one the artifact "
-        "pins.  It was a bare constant, so moving it would have re-served "
-        "every artifact already admitted at the old value.",
+        "The radiation coefficients the gate scores are the ones the artifact "
+        "pins -- since charter 222 a warm side and a cold side.  It was a "
+        "bare constant, so moving it would have re-served every artifact "
+        "already admitted at the old value.",
         lambda: _reads_key(
             "bayes_basket_target/native_ensemble_oos.py",
             "conditioning_by_day = _holdout_conditioning_signals",
-            "radiation_shift_sigma=scope_radiation_sigma",
+            "radiation_shift_sigmas=scope_radiation_sigmas",
         ),
         lambda: _reads_key(
             "bayes_basket_target/native_ensemble_oos.py",
-            '"::radiation_shift_sigma="',
-            "candidate['radiation_shift_sigma']",
+            '"::radiation_shift_sigma_warm="',
+            "candidate['radiation_shift_sigmas'][0]",
+        ) and _reads_key(
+            "bayes_basket_target/native_ensemble_oos.py",
+            '"::radiation_shift_sigma_cold="',
+            "candidate['radiation_shift_sigmas'][1]",
         ),
     ),
     (
-        "Serving reads the radiation coefficient from the pin, not from the "
-        "module constant, or an artifact is served a shift its gate never "
-        "scored.",
+        "The absolute-form shadow arm reads the radiation coefficients from "
+        "the pin, so the receipt shows the arithmetic the gate scored; "
+        "serving itself reads the fleet pair (charter 210).",
         lambda: _reads_key(
             "bayes_basket_target/native_ensemble_p0.py",
-            "forecast_radiation_shift_sigma(",
-            "pinned_radiation_shift_sigma",
+            "pinned_warm, pinned_cold = pinned_radiation_shift_sigmas(",
+            "shift_sigma_per_unit=pinned_warm",
         ),
-        lambda: True,
+        lambda: _reads_key(
+            "bayes_basket_target/native_ensemble_p0.py",
+            "pinned_warm, pinned_cold = pinned_radiation_shift_sigmas(",
+            "cold_shift_sigma_per_unit=pinned_cold",
+        ),
     ),
     (
         "The centre/width evidence bound is on the decision timestamp.  As "

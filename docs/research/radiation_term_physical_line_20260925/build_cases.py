@@ -12,7 +12,8 @@ re-implementation of them:
   ``metar_path_state.parse_metar_physical_state``;
 * the P0 radiation term: ``cross_consensus.forecast_clearness_shift_sigma``
   on the station's own 180 days of forecast radiation before the event day,
-  at the served coefficient ``RADIATION_SHIFT_SIGMA``.
+  at ``SERVED_SYMMETRIC_SIGMA``, the one coefficient served when this study
+  ran (charter 210; charter 222 split it into a warm and a cold side after).
 
 Outputs (under ``<cache>/derived``):
 
@@ -50,7 +51,6 @@ for path in (str(ROOT), str(ROOT / "scripts"), str(HERE)):
 from stations import station_table  # noqa: E402
 from bayes_basket_target.contracts import ContractError  # noqa: E402
 from bayes_basket_target.cross_consensus import (  # noqa: E402
-    RADIATION_SHIFT_SIGMA,
     extraterrestrial_radiation_mj,
     forecast_clearness_shift_sigma,
 )
@@ -59,6 +59,12 @@ from bayes_basket_target.metar_path_state import (  # noqa: E402
 )
 import capture_bayes_basket_target_awc_taf_calibration as taf_capture  # noqa: E402
 
+# The coefficient serving applied on both sides when this study ran (charter
+# 210).  Held here, not imported: charter 222 -- which this study's
+# asymmetry finding led to -- replaced it with a warm/cold pair, and the
+# cases must stay the ones the report measured.  Only ``p0_shift_sigma``
+# depends on it; ``kt_z`` is the coefficient-free standard score.
+SERVED_SYMMETRIC_SIGMA = 0.07
 HEAT_START_H = 6   # taf_rotation_state.TAF_PHYSICAL_PEAK_WINDOW_START_HOUR_LOCAL
 HEAT_END_H = 15    # taf_rotation_state.TAF_PHYSICAL_PEAK_WINDOW_END_HOUR_LOCAL
 P1_HOURS = (8, 10, 12, 14, 16)
@@ -544,7 +550,7 @@ def build(cache: Path, only: set[str] | None = None) -> None:
                 event_date=event_date,
                 latitude_deg=lat,
                 station_history=history,
-                shift_sigma_per_unit=RADIATION_SHIFT_SIGMA,
+                shift_sigma_per_unit=SERVED_SYMMETRIC_SIGMA,
             )
             heat = range(HEAT_START_H, HEAT_END_H)
             model_cloud = sum(clouds[h] for h in heat) / len(heat)
