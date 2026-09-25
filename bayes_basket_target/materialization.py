@@ -929,7 +929,9 @@ def materialize_p0m_observed(
     # family.
     # v18 (charter 222, 2026-09-25): the root (P0 v16) -- the radiation
     # coefficient's warm and cold sides.
-    posterior_version: str = "p0m_taf_likelihood_v19",
+    # v20 (charter 222 ruling, 2026-09-25): the root (P0 v18) -- the
+    # radiation pair at 0.18 / 0.06.
+    posterior_version: str = "p0m_taf_likelihood_v20",
     observed_hard_excluded_buckets: Sequence[str] = (),
     observed_running_high_c: float | None = None,
     taf_likelihood_artifact: Mapping[str, Any] | None = None,
@@ -1312,7 +1314,9 @@ def materialize_p1(
     # v26 (2026-09-25, charter 217): the root again (P0 v15, P0-M v17).
     # v27 (2026-09-25, charter 222): the root again (P0 v16, P0-M v18) -- the
     # radiation coefficient's warm and cold sides.
-    posterior_version: str = "p1_joint_likelihood_v28",
+    # v29 (charter 222 ruling, 2026-09-25): the root again (P0 v18, P0-M v20)
+    # -- the radiation pair at 0.18 / 0.06.
+    posterior_version: str = "p1_joint_likelihood_v29",
     # {"features": ..., "artifact": ..., "regional_system_id": ...}: the
     # step's observation-side feature vector and the fitted likelihood,
     # handed in for the reason every fitted table is -- a replay must rebuild

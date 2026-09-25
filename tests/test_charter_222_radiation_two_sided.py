@@ -50,7 +50,7 @@ HISTORY = [20.0 + (index % 11) - 5 for index in range(60)]
 
 
 def test_the_fleet_pair_is_the_fitted_one_rounded() -> None:
-    assert FLEET == (0.12, 0.04)
+    assert FLEET == (0.18, 0.06)
     for lead in ("h00_12", "h12_24", "h24_48", "h48_plus", None):
         assert radiation_shift_sigmas_for_lead(lead) == FLEET
         assert served_radiation_shift_sigmas(str(lead)) == FLEET
@@ -194,7 +194,7 @@ def test_the_holdout_scores_each_day_with_the_served_centred_pair(tmp_path, day_
     a, b = shift((1.0, 0.0)), shift((0.0, 1.0))
     assert a + b == pytest.approx(z, abs=1e-12)
     served = shift(FLEET)
-    assert served == pytest.approx(0.12 * a + 0.04 * b, abs=1e-12)
+    assert served == pytest.approx(0.18 * a + 0.06 * b, abs=1e-12)
     # 19.0 is brighter than the fixture's 12-15 history, 9.0 darker.
     if day_value > 15.0:
         assert z > 0.0 and served > 0.0 and b > 0.0
@@ -254,7 +254,7 @@ def test_the_artifact_pins_both_sides_and_serving_applies_its_side(monkeypatch) 
     (method,) = conn.execute(
         "SELECT combination_method FROM calibration_cross_native_ensemble_artifact"
     ).fetchone()
-    assert "::radiation_shift_sigma_warm=0.12::radiation_shift_sigma_cold=0.04::" in method
+    assert "::radiation_shift_sigma_warm=0.18::radiation_shift_sigma_cold=0.06::" in method
     assert RADIATION_TWO_SIDED_METHOD_TAG in method.split("::")
     assert pinned_radiation_shift_sigmas(method) == FLEET
 
@@ -265,7 +265,7 @@ def test_the_artifact_pins_both_sides_and_serving_applies_its_side(monkeypatch) 
         for name, envelope in (("clear", clear), ("cloudy", cloudy), ("none", none))
     }
     for name, side, coefficient, kt in (
-        ("clear", RADIATION_SIDE_WARM, 0.12, 0.65), ("cloudy", RADIATION_SIDE_COLD, 0.04, 0.35),
+        ("clear", RADIATION_SIDE_WARM, 0.18, 0.65), ("cloudy", RADIATION_SIDE_COLD, 0.06, 0.35),
     ):
         receipt = receipts[name]
         assert receipt["state"] == "RESOLVED"
@@ -275,7 +275,7 @@ def test_the_artifact_pins_both_sides_and_serving_applies_its_side(monkeypatch) 
         assert receipt["shift_sigma"] == pytest.approx(
             coefficient * receipt["standardised"] - receipt["side_centre_sigma"], abs=1e-12
         )
-        assert receipt["artifact_pinned_sigmas"] == {"warm": 0.12, "cold": 0.04}
+        assert receipt["artifact_pinned_sigmas"] == {"warm": 0.18, "cold": 0.06}
         # The shadow arm is the absolute form at the pin, sided the same way.
         # The shadow arm is the absolute form at the pin, centred the same
         # way: recomputed here from the same history the reader answered.
@@ -283,7 +283,7 @@ def test_the_artifact_pins_both_sides_and_serving_applies_its_side(monkeypatch) 
         expected, expected_receipt = forecast_radiation_shift_sigma(
             radiation_sum=kt * extraterrestrial_radiation_mj(30.6, event_date),
             station_history=[v for _d, v in _clear_history(30.6, event_date)],
-            shift_sigma_per_unit=0.12, cold_shift_sigma_per_unit=0.04,
+            shift_sigma_per_unit=0.18, cold_shift_sigma_per_unit=0.06,
         )
         legacy = receipt["legacy_v1"]
         assert legacy["state"] == "RESOLVED"

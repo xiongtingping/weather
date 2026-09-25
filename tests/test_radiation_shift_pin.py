@@ -50,7 +50,7 @@ class PerLeadCoefficientTest(unittest.TestCase):
         0.045 [0.024, 0.069] on charter 210's objective (user ruling
         「把辐射系数拆成升温、降温两侧」)."""
 
-        self.assertEqual(FLEET, (0.12, 0.04))
+        self.assertEqual(FLEET, (0.18, 0.06))
         self.assertGreater(RADIATION_SHIFT_SIGMA_WARM, RADIATION_SHIFT_SIGMA_COLD)
         self.assertEqual(LEGACY_RADIATION_SHIFT_SIGMA, 0.15)
 

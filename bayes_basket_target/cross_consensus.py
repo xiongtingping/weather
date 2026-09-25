@@ -169,8 +169,19 @@ RADIATION_SHIFT_METHOD_TAG = "forecast_radiation_shift_v1"
 # proxy, where the larger warm sides a fixed-effects fit prefers (0.20-0.25,
 # cold 0) lose Brier on one half of each.
 # ``docs/research/radiation_term_physical_line_20260925``.
-RADIATION_SHIFT_SIGMA_WARM = 0.12
-RADIATION_SHIFT_SIGMA_COLD = 0.04
+#
+# 0.18 / 0.06 since 2026-09-25 (user ruling 「用LogScore 偏好 0.18 / 0.06，
+# 因为真值落在概率几乎为 0 的桶另外一个会话正在修改」).  Scanned on
+# production's own P0 in the served, centred form (1,716 station-days,
+# 08-15..09-24, 196 pairs, market ladder): the bucket log score's optimum
+# (0.24/0.20) was three fewer truths in zero-probability buckets, 27.6 nats
+# each -- charter 224's floor takes those away -- and with the nine such
+# station-days set aside it is 0.18/0.06 (1.70215 against 0.12/0.04's
+# 1.70351 and 0.07's 1.70491).  Brier's optimum is a flat 0.12-0.18 /
+# 0.04-0.08; the pair keeps the three-to-one ratio.
+# ``docs/research/radiation_pair_optimum_20260925``.
+RADIATION_SHIFT_SIGMA_WARM = 0.18
+RADIATION_SHIFT_SIGMA_COLD = 0.06
 RADIATION_TWO_SIDED_METHOD_TAG = "radiation_two_sided_centred_v1"
 # What artifacts built before the coefficient was pinned were scored with.
 # Kept separate because the point of the pin is that the two are free to

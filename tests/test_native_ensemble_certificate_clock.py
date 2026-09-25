@@ -396,7 +396,7 @@ def test_a_renewed_certificate_serves_the_fleet_radiation_coefficient(method):
     assert renewed_method == method
     fleet = (RADIATION_SHIFT_SIGMA_WARM, RADIATION_SHIFT_SIGMA_COLD)
     assert pinned_radiation_shift_sigmas(renewed_method) != fleet
-    assert served_radiation_shift_sigmas(renewed_method) == fleet == (0.12, 0.04)
+    assert served_radiation_shift_sigmas(renewed_method) == fleet == (0.18, 0.06)
 
 
 def test_renewal_is_idempotent_and_stops_once_the_lane_is_fresh():

@@ -364,6 +364,12 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # the push and past the restart that deploys it, and after charter
         # 222's v16 so the versions stay in order.
         "calibrated_native_cross_ensemble_p0_v17": "2026-09-25T13:00:00Z",
+        # Charter 222 (2026-09-25 ruling): the radiation pair moves to warm
+        # 0.18 / cold 0.06.  Declared past the push and past the restart that
+        # deploys it, and after charter 224's v17 so the versions stay in
+        # order; the v18 envelopes between that restart and this instant are
+        # not evidence yet.
+        "calibrated_native_cross_ensemble_p0_v18": "2026-09-25T13:30:00Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
@@ -399,6 +405,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p0m_taf_likelihood_v18": "2026-09-25T12:00:00Z",
         # Charter 224: root bump at the instant P0 v17 declares.
         "p0m_taf_likelihood_v19": "2026-09-25T13:00:00Z",
+        # Charter 222 ruling: root bump at the instant P0 v18 declares.
+        "p0m_taf_likelihood_v20": "2026-09-25T13:30:00Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
@@ -453,6 +461,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p1_joint_likelihood_v27": "2026-09-25T12:00:00Z",
         # Charter 224: root bump at the instant P0 v17 declares.
         "p1_joint_likelihood_v28": "2026-09-25T13:00:00Z",
+        # Charter 222 ruling: root bump at the instant P0 v18 declares.
+        "p1_joint_likelihood_v29": "2026-09-25T13:30:00Z",
     },
 }
 
