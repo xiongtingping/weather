@@ -75,15 +75,19 @@ def _aware(value: Any) -> datetime:
 # the shortest belief-bounded horizon was 36 minutes).  The gateway enforces
 # the same number.
 #
-# 240, not 180 (user ruling 2026-09-24 「修」): the venue takes its one-minute
-# threshold off the stamp BEFORE it checks the three minutes.  Measured on the
-# consensus lane's first resting week -- every one of its 19 GTD intents was
-# signed at the old floor plus margin (210 s), reached the venue with 209 s
-# still to run, and came back "expiration is less than 180 seconds in the
-# future" (e.g. KBKF 2026-09-23, planned 21:00:33Z, stamp 21:04:03Z, refused
-# 21:00:34Z).  So the stamp has to clear now + 60 + 180.  Only a belief
-# shorter than the floor ever meets it; the consensus lane signs every rung
-# at the floor, the tiebreak lane and the basket sign hours out.
+# 240, not 180 (2026-09-24 「修」) -- kept as margin, but NOT for the reason
+# first given.  The consensus lane's rungs signed at the floor came back
+# "expiration is less than 180 seconds in the future": 19 at 180 + 30 (209 s
+# ahead by this host's clock) and, after the raise, 157 more at 240 + 30
+# (260-269 s ahead).  The cause was the host clock, not the venue's rule:
+# on 2026-09-25 14:15Z this machine ran 107 s behind the venue (its /time,
+# and the Date headers of Google, Cloudflare, Apple and GitHub all agree;
+# NTP to every server times out behind the proxy), so a stamp 267 s ahead
+# here was 160 s ahead there.  The venue's documented one-minute security
+# threshold is what the extra 60 s still covers; the refusals never measured
+# it.  Only a belief shorter than the floor meets this: the consensus lane
+# signs every rung at the floor, the tiebreak lane and the basket sign hours
+# out.
 VENUE_GTD_MINIMUM_HORIZON_SECONDS = 240.0
 # What production signs above that floor.  The gateway checks the expiry
 # against its own clock when the order arrives, up to the intent's three-second

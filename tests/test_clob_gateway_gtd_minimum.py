@@ -1,14 +1,15 @@
-"""The gateway's GTD floor is the venue's three minutes after its one-minute
-threshold: 240 seconds.
+"""The gateway's GTD floor: the venue's three minutes plus its one-minute
+security threshold, 240 seconds.
 
 It read 60 seconds -- the one-minute security threshold taken for the
 minimum -- until 2026-09-14, then 180, the documented three minutes taken on
-the stamp itself.  The venue takes the threshold off first: every one of the
-consensus lane's 19 rungs, stamped 209 s ahead on arrival, came back
-"expiration is less than 180 seconds in the future" (2026-09-23).  Production
-signs its floor 30 seconds above the venue's number so the gateway's
-arrival-time check cannot refuse it in transit; both numbers are pinned here
-against the one production exports.
+the stamp itself, and 240 since 2026-09-24.  The refusals that prompted the
+last raise ("expiration is less than 180 seconds in the future" on rungs 209 s
+and later 260-269 s ahead) turned out to be this host's clock running 107 s
+behind the venue (2026-09-25), so 240 is margin for the threshold, not a
+measurement of it.  Production signs its floor 30 seconds above the venue's
+number so the gateway's arrival-time check cannot refuse it in transit; both
+numbers are pinned here against the one production exports.
 """
 
 from __future__ import annotations
@@ -82,7 +83,8 @@ def test_an_expiry_inside_three_minutes_is_refused_before_signing() -> None:
 
 
 def test_the_expiry_the_venue_refused_is_refused_here_first() -> None:
-    """What the consensus lane signed on 2026-09-23: 209 s ahead on arrival."""
+    """What the consensus lane signed on 2026-09-23 -- 209 s ahead by this
+    host's clock -- is inside the floor and never leaves the host."""
 
     out = _place_gtd(209)
     assert out["result"]["thrown"].startswith("gtd_expiration_too_soon")
