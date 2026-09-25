@@ -21,7 +21,7 @@ PY="$(resolve_project_python "$ROOT")" || {
 AUDIT_DIR="$ROOT/output/audits"
 PLAN="$AUDIT_DIR/official_nwp_native_raw_retention_plan_latest.json"
 RESULT="$AUDIT_DIR/official_nwp_native_raw_retention_apply_latest.json"
-MIN_AGE_DAYS="${PM_OFFICIAL_NWP_NATIVE_RETENTION_MIN_AGE_DAYS:-2}"
+MIN_AGE_DAYS="${PM_OFFICIAL_NWP_NATIVE_RETENTION_MIN_AGE_DAYS:-1}"
 AUDITS_RETENTION_DAYS="${PM_OUTPUT_AUDITS_RETENTION_DAYS:-14}"
 
 # Budget lane.  The unreferenced lane above can only reclaim bodies nothing

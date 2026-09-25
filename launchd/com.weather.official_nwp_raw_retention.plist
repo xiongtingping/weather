@@ -30,9 +30,14 @@
     <key>PM_OFFICIAL_NWP_NATIVE_RETENTION_APPLY</key>
     <string>1</string>
     <!-- An unreferenced body younger than this may still belong to a capture
-         that has not written its packet yet. -->
+         that has not written its packet yet.  One day, down from two on
+         2026-09-25: with the six global members ecmwf_pf50 alone lands about
+         3 GiB a day, so a two-day floor leaves more young bodies than the
+         7 GiB budget (the 09-24 pass ended at 9.3 GiB, fits_budget false).
+         A capture cycle lasts hours, and evictions go to the cold tier
+         (charter 196), so a body judged too early is still on the volume. -->
     <key>PM_OFFICIAL_NWP_NATIVE_RETENTION_MIN_AGE_DAYS</key>
-    <string>2</string>
+    <string>1</string>
     <!-- Budget lane.  The unreferenced lane can only reclaim what nothing
          names, and capture packets are kept forever, so the bodies their
          field_receipts pin keep the store climbing about a gigabyte a day
