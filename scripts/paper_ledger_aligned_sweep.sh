@@ -13,7 +13,9 @@
 #
 # Reads the SSOT and the archive ``mode=ro`` with one short statement at a
 # time (no read stays open to pin the WAL); writes data/paper_ledger_aligned.db
-# only, which no other lane writes.
+# only, which no other lane writes.  The decision list is index seeks and a
+# station-day's books are held only while the walk can need them
+# (``BookStore``): a four-day walk peaked at 286 MB on 2026-09-25.
 
 set -euo pipefail
 
