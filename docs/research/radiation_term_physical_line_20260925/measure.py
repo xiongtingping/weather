@@ -206,9 +206,27 @@ P0_SOURCE = "global"
 
 
 def model_max(row: dict) -> float | None:
-    if P0_SOURCE == "global":
+    # ``production`` rows (build_cases_ssot.py) carry the served root's own
+    # hourly curve maximum under the same key as the global proxy.
+    if P0_SOURCE in ("global", "production"):
         return _num(row.get("global_max_c"))
     return _num(row.get("model_max_c"))
+
+
+def production_roots(days: list[dict]) -> dict[tuple[str, str], dict]:
+    """The served P0 root at the morning cutoff, as build_cases_ssot.py read it."""
+
+    roots = {}
+    for row in days:
+        mu, sigma = _num(row.get("p0_mu_c")), _num(row.get("p0_sigma_c"))
+        c0 = _num(row.get("p0_c0"))
+        if mu is None or sigma is None or c0 is None or sigma <= 0:
+            continue
+        roots[(row["station"], row["date"])] = {
+            "c0": c0, "sigma": max(sigma, 0.3), "mu": mu,
+            "radiation_c": _num(row.get("p0_radiation_c"), 0.0),
+        }
+    return roots
 
 
 def p0_roots(days: list[dict]) -> dict[tuple[str, str], dict]:
@@ -260,7 +278,9 @@ def run_p0(days: list[dict], roots: dict) -> dict:
         if root is None or _num(row.get("kt_z")) is None:
             continue
         with_r = score_gaussian(root["mu"], root["sigma"], row["truth_rep"], row["unit"])
-        without = score_gaussian(root["c0"], root["sigma"], row["truth_rep"], row["unit"])
+        without = score_gaussian(
+            root["mu"] - root["radiation_c"], root["sigma"], row["truth_rep"], row["unit"]
+        )
         pairs_log.append((row["date"], with_r[0] - without[0]))
         pairs_brier.append((row["date"], without[1] - with_r[1]))
     return {
@@ -330,6 +350,52 @@ def tx_posterior(case: dict, line: dict | None) -> tuple[float, float]:
     return float(mean), float(math.sqrt(1.0 / precision))
 
 
+DEBIAS_HALF_LIFE_DAYS = 30.0
+DEBIAS_MIN_ROWS = 5
+
+
+def station_debiased(items: list[dict], feature, *, group=lambda item: None) -> list[list[float]]:
+    """``feature(item)`` minus the station's own exponentially weighted past mean.
+
+    A forecaster's cloud (oktas of the thickest layer) and a model's (total
+    cover in percent) or a METAR's (FEW/SCT/BKN/OVC) are different scales,
+    and how far apart they sit is a property of the station; the pooled fit
+    cannot take that offset out.  Only rows settled by d - 2 inform the mean,
+    as everywhere else here; with fewer than five the raw value is centred on
+    the pooled past mean instead.
+    """
+
+    order = sorted(range(len(items)), key=lambda i: items[i]["date"])
+    history: dict = defaultdict(list)
+    pooled: list[tuple[date, list[float]]] = []
+    out: list[list[float] | None] = [None] * len(items)
+    for index in order:
+        item = items[index]
+        today = date.fromisoformat(item["date"])
+        values = feature(item)
+        key = (item["station"], group(item))
+        usable = [(d, v) for d, v in history[key] if (today - d).days >= SETTLE_LAG_DAYS]
+        if len(usable) < DEBIAS_MIN_ROWS:
+            usable = [(d, v) for d, v in pooled if (today - d).days >= SETTLE_LAG_DAYS]
+        if usable:
+            weights = np.array([0.5 ** ((today - d).days / DEBIAS_HALF_LIFE_DAYS) for d, _ in usable])
+            means = np.average(np.array([v for _, v in usable]), axis=0, weights=weights)
+            out[index] = [float(v - m) for v, m in zip(values, means)]
+        else:
+            out[index] = [0.0 for _ in values]
+        history[key].append((today, values))
+        pooled.append((today, values))
+    return out  # type: ignore[return-value]
+
+
+def _rev(c: dict) -> list[float]:
+    return [
+        c["taf"]["cloud"] - c["model_cloud"],
+        c["taf"]["precip"] - c["model_wet"],
+        c["taf"]["wind"] - c["model_wind"],
+    ]
+
+
 P0M_ARMS = {
     # name: feature builder (list of floats) -- the intercept is always in.
     "T": lambda c: [],
@@ -344,16 +410,33 @@ P0M_ARMS = {
         c["kt_z_or0"], c["model_cloud"], c["model_wet"], c["model_wind"],
         c["taf"]["cloud"], c["taf"]["precip"], c["taf"]["wind"],
     ],
+    # The revision with each station's own TAF-versus-model offset removed.
+    "T+M+revd": lambda c: [
+        c["kt_z_or0"], c["model_cloud"], c["model_wet"], c["model_wind"],
+    ] + c["rev_debiased"],
+    # CEILING, not an arm anyone could serve: the heating window's cloud and
+    # rain as the METARs later reported them (06-16 local, solar-weighted),
+    # minus the model's.  What a perfect TAF could have added at most.
+    "T+M+oracle": lambda c: [
+        c["kt_z_or0"], c["model_cloud"], c["model_wet"], c["model_wind"],
+    ] + c["oracle"],
 }
 P0M_COMPARISONS = (
     ("T+TAF", "T"), ("T+rev", "T"), ("T+M+TAF", "T+M"), ("T+M", "T"),
+    ("T+M+revd", "T+M"), ("T+M+oracle", "T+M"),
 )
 
 
-def run_p0m(days: list[dict], roots: dict, which: str) -> dict:
+def run_p0m(days: list[dict], roots: dict, which: str, oracle: dict | None = None) -> dict:
     cases = p0m_cases(days, roots, which)
+    oracle = oracle or {}
+    cases = [c for c in cases if (c["station"], c["date"]) in oracle]
     for c in cases:
         c["kt_z_or0"] = _num(c.get("kt_z"), 0.0)
+        cloud, wet = oracle[(c["station"], c["date"])]
+        c["oracle"] = [cloud - c["model_cloud"], wet - c["model_wet"]]
+    for c, values in zip(cases, station_debiased(cases, _rev)):
+        c["rev_debiased"] = values
     dates = sorted({c["date"] for c in cases})
     # TX line, refitted per test day on settled days.
     by_date = defaultdict(list)
@@ -483,6 +566,7 @@ P1_ARMS = {
     "T+S": ("temp", "state"),
     "T+el": ("temp", "el"),
     "T+S+el": ("temp", "state", "el"),
+    "T+S+eld": ("temp", "state", "eld"),
     "T+S+el+taf": ("temp", "state", "el", "taf"),
     "T+S+el+taf+rad": ("temp", "state", "el", "taf", "rad"),
 }
@@ -490,6 +574,7 @@ P1_COMPARISONS = (
     ("T+el", "T"),
     ("T+S", "T"),
     ("T+S+el", "T+S"),
+    ("T+S+eld", "T+S"),
     ("T+S+el+taf", "T+S+el"),
     ("T+S+el+taf+rad", "T+S+el+taf"),
     ("T+S+el+taf+rad", "T+S"),
@@ -530,6 +615,14 @@ def run_p1(p1_rows: list[dict], days: list[dict], roots: dict) -> dict:
             rows.append((r, features))
         if not rows:
             continue
+        # The elapsed surprise with each station's own METAR-versus-model
+        # cloud / wet / wind offset at this hour removed.
+        debiased = station_debiased(
+            [{"station": r["station"], "date": r["date"], "el": f["el"]} for r, f in rows],
+            lambda item: item["el"],
+        )
+        for (_, f), values in zip(rows, debiased):
+            f["eld"] = values
         dates = [r["date"] for r, _ in rows]
         index_by_day: dict[str, list[int]] = defaultdict(list)
         for index, day in enumerate(dates):
@@ -583,8 +676,9 @@ def main() -> None:
     parser.add_argument("--cache-dir", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument(
-        "--p0-source", choices=("global", "best_match"), default="global",
-        help="which day-ahead maximum stands in for P0's centre",
+        "--p0-source", choices=("global", "best_match", "production"), default="global",
+        help="which day-ahead maximum stands in for P0's centre "
+        "(production: the served roots build_cases_ssot.py wrote)",
     )
     args = parser.parse_args()
     global P0_SOURCE
@@ -592,7 +686,15 @@ def main() -> None:
     derived = Path(args.cache_dir) / "derived"
     days = load_jsonl(derived / "days.jsonl")
     p1_rows = load_jsonl(derived / "p1.jsonl")
-    roots = p0_roots(days)
+    roots = production_roots(days) if P0_SOURCE == "production" else p0_roots(days)
+    # The day's heating window as the METARs reported it, for the P0-M
+    # ceiling arm only (hindsight; never a served input).
+    oracle = {
+        (r["station"], r["date"]): (_num(r.get("obs_cloud_el")), _num(r.get("obs_wet_el")))
+        for r in p1_rows
+        if r["hour"] == 16 and _num(r.get("obs_cloud_el")) is not None
+        and _num(r.get("obs_wet_el")) is not None
+    }
     out = {
         "inputs": {
             "station_days": len(days), "p1_rows": len(p1_rows),
@@ -601,8 +703,8 @@ def main() -> None:
             "last_date": max(d["date"] for d in days),
         },
         "p0_radiation_term": run_p0(days, roots),
-        "p0m_morning": run_p0m(days, roots, "morning"),
-        "p0m_eve": run_p0m(days, roots, "eve"),
+        "p0m_morning": run_p0m(days, roots, "morning", oracle),
+        "p0m_eve": run_p0m(days, roots, "eve", oracle),
         "p1": run_p1(p1_rows, days, roots),
     }
     Path(args.out).write_text(json.dumps(out, indent=1, sort_keys=True))

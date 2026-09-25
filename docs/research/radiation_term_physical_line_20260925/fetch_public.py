@@ -123,24 +123,51 @@ def fetch_global(cache: Path, start: str, end: str, args) -> None:
     """
 
     out = cache / "global"
+    parts = cache / "global_parts"
     out.mkdir(parents=True, exist_ok=True)
+    parts.mkdir(parents=True, exist_ok=True)
     for station, row in station_table().items():
         target = out / f"{station}_{start}_{end}.json"
         if target.exists():
             continue
-        _guard(cache, max_cache_mb=args.max_cache_mb, min_free_mb=args.min_free_mb)
-        query = {
-            "latitude": row["latitude"], "longitude": row["longitude"],
-            "hourly": "temperature_2m_previous_day1", "models": GLOBAL_MODELS,
-            "start_date": start, "end_date": end, "timezone": "UTC",
-        }
-        _curl(f"{MODEL_URL}?{urlencode(query)}", target)
-        body = json.loads(target.read_text())
-        if "hourly" not in body:
-            target.unlink()
-            raise SystemExit(f"global_payload_invalid:{station}:{str(body)[:200]}")
+        # One model per request: the four-model request for sixteen months
+        # was reset mid-transfer often enough to stall the run.
+        merged: dict = {}
+        for model in GLOBAL_MODELS.split(","):
+            # And in 120-day slices: a sixteen-month request is what the
+            # connection resets kept landing on.
+            times: list = []
+            values: list = []
+            for left, right in _chunks(date.fromisoformat(start), date.fromisoformat(end), 120):
+                part = parts / f"{station}_{model}_{left}_{right}.json"
+                if not part.exists():
+                    _guard(cache, max_cache_mb=args.max_cache_mb, min_free_mb=args.min_free_mb)
+                    query = {
+                        "latitude": row["latitude"], "longitude": row["longitude"],
+                        "hourly": "temperature_2m_previous_day1", "models": model,
+                        "start_date": left.isoformat(), "end_date": right.isoformat(),
+                        "timezone": "UTC",
+                    }
+                    _curl(f"{MODEL_URL}?{urlencode(query)}", part)
+                    time.sleep(1.0)
+                body = json.loads(part.read_text())
+                if "hourly" not in body:
+                    part.unlink()
+                    raise SystemExit(f"global_payload_invalid:{station}:{model}:{str(body)[:200]}")
+                hourly = body["hourly"]
+                times.extend(hourly["time"])
+                values.extend(
+                    hourly.get(f"temperature_2m_previous_day1_{model}")
+                    or hourly.get("temperature_2m_previous_day1")
+                )
+            merged.setdefault("time", times)
+            if times != merged["time"]:
+                raise SystemExit(f"global_time_axis_mismatch:{station}:{model}")
+            merged[f"temperature_2m_previous_day1_{model}"] = values
+        partial = target.with_suffix(".json.part")
+        partial.write_text(json.dumps({"hourly": merged}))
+        partial.replace(target)
         print("global", station, target.stat().st_size, flush=True)
-        time.sleep(1.5)
 
 
 def _chunks(start: date, end: date, days: int):
