@@ -98,10 +98,10 @@ def _decision_semantic_projection(
         target_solution = {}
     # Charter 171: the compile stores this object twice, verbatim, at both
     # levels -- 4,353 bytes a row across 119,596 rows.  The compact rebuild
-    # of 09-21 stripped the inner copy from the rows stored before it; the
-    # writer still stores both (changing it waits on the runtime readers of
-    # ``delta_plan["delta_v2_audit"]``), so read the inner one when it is
-    # there and the outer one when it is not.  Measured over
+    # of 09-21 stripped the inner copy from the rows stored before it, and
+    # since charter 218 the writer leaves it out of every new row (the
+    # in-memory plan the runtime reads keeps both), so read the inner one
+    # when it is there and the outer one when it is not.  Measured over
     # 1,204 rows spanning the whole table: 1,184 carried both and none of
     # them differed, 20 carried only the outer, and none carried only the
     # inner -- which is what makes dropping it lossless.
@@ -1444,6 +1444,126 @@ def compile_p0_preselection(
     }
 
 
+# Charter 218: what the stored row leaves out because the same row already
+# holds it verbatim.  Measured 2026-09-25 over the rows written that morning:
+# ``plan.lineage`` repeats 97% of ``probability_envelope.lineage`` byte for
+# byte (``taf_nwp_live_compatibility_json`` alone is 14.8 KB, twice a row),
+# and ``plan.delta_v2_audit`` is the outer audit in every row (charter 171) --
+# about 30 KB of a ~113 KB row, 24-28k rows a day.
+STORED_LINEAGE_KEY = "lineage_stored_as"
+STORED_LINEAGE_SCHEMA = "bayes_basket_target_p0_preselection_stored_lineage_v1"
+STORED_LINEAGE_SOURCE = "compiled_plan.probability_envelope.lineage"
+STORED_AUDIT_KEY = "delta_v2_audit_stored_as"
+STORED_AUDIT_SOURCE = "compiled_plan.delta_v2_audit"
+
+
+def _canonical_json(value: Any) -> str:
+    # Equality is judged on the serialised bytes, not ``==``: in Python
+    # ``1 == 1.0 == True``, and restoring the other one would change the row.
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def stored_preselection_payload(value: Mapping[str, Any]) -> dict[str, Any]:
+    """The preselection as it is stored: in-row duplicates left out.
+
+    The in-memory preselection is never touched -- the atomic commit, the
+    ledger and every runtime reader keep the whole plan.  Only the row loses
+    what it already carries elsewhere in the same row, and each omission
+    names where it lives, so ``expanded_stored_preselection`` gives back the
+    original byte for byte.  ``plan_sha256`` hashes the semantic projection,
+    which reads neither the lineage nor the inner audit, so the preselection's
+    identity does not move.
+    """
+
+    stored = {
+        key: item
+        for key, item in value.items()
+        if key != UNPERSISTED_MARKET_SNAPSHOT_KEY
+    }
+    compiled = stored.get("compiled_plan")
+    plan = compiled.get("plan") if isinstance(compiled, Mapping) else None
+    if not isinstance(plan, Mapping):
+        return stored
+    if STORED_LINEAGE_KEY in plan or STORED_AUDIT_KEY in plan:
+        raise ContractError("p0_preselection_stored_form_key_reserved")
+    compact = dict(plan)
+    inner_audit = plan.get("delta_v2_audit")
+    outer_audit = compiled.get("delta_v2_audit")
+    if (
+        isinstance(inner_audit, Mapping)
+        and isinstance(outer_audit, Mapping)
+        and _canonical_json(inner_audit) == _canonical_json(outer_audit)
+    ):
+        del compact["delta_v2_audit"]
+        compact[STORED_AUDIT_KEY] = STORED_AUDIT_SOURCE
+    lineage = plan.get("lineage")
+    envelope = compiled.get("probability_envelope")
+    source = envelope.get("lineage") if isinstance(envelope, Mapping) else None
+    if isinstance(lineage, Mapping) and isinstance(source, Mapping):
+        shared = sorted(
+            key
+            for key, item in lineage.items()
+            if key in source
+            and _canonical_json(source[key]) == _canonical_json(item)
+        )
+        if shared:
+            kept = set(shared)
+            compact["lineage"] = {
+                key: item for key, item in lineage.items() if key not in kept
+            }
+            compact[STORED_LINEAGE_KEY] = {
+                "schema": STORED_LINEAGE_SCHEMA,
+                "shared_with": STORED_LINEAGE_SOURCE,
+                "shared_keys": shared,
+            }
+    if STORED_AUDIT_KEY not in compact and STORED_LINEAGE_KEY not in compact:
+        return stored
+    return {**stored, "compiled_plan": {**compiled, "plan": compact}}
+
+
+def expanded_stored_preselection(stored: Mapping[str, Any]) -> dict[str, Any]:
+    """Undo ``stored_preselection_payload``: the plan as it was compiled.
+
+    For offline readers of ``plan_json`` that need ``plan.lineage`` or the
+    inner audit; rows stored before charter 218 carry no marker and come back
+    as they are (the 09-21 rebuild stripped their inner audit without one --
+    charter 171's projection reads the outer copy for those).
+    """
+
+    compiled = stored.get("compiled_plan")
+    plan = compiled.get("plan") if isinstance(compiled, Mapping) else None
+    if not isinstance(plan, Mapping) or (
+        STORED_LINEAGE_KEY not in plan and STORED_AUDIT_KEY not in plan
+    ):
+        return dict(stored)
+    full = dict(plan)
+    if STORED_AUDIT_KEY in full:
+        if full.pop(STORED_AUDIT_KEY) != STORED_AUDIT_SOURCE:
+            raise ContractError("p0_preselection_stored_audit_source_unknown")
+        outer = compiled.get("delta_v2_audit")
+        if not isinstance(outer, Mapping):
+            raise ContractError("p0_preselection_stored_audit_source_missing")
+        full["delta_v2_audit"] = outer
+    marker = full.pop(STORED_LINEAGE_KEY, None)
+    if marker is not None:
+        if (
+            not isinstance(marker, Mapping)
+            or marker.get("schema") != STORED_LINEAGE_SCHEMA
+            or marker.get("shared_with") != STORED_LINEAGE_SOURCE
+        ):
+            raise ContractError("p0_preselection_stored_lineage_marker_invalid")
+        envelope = compiled.get("probability_envelope")
+        source = envelope.get("lineage") if isinstance(envelope, Mapping) else None
+        shared = list(marker.get("shared_keys") or ())
+        if not isinstance(source, Mapping) or any(key not in source for key in shared):
+            raise ContractError("p0_preselection_stored_lineage_source_missing")
+        lineage = dict(full.get("lineage") or {})
+        for key in shared:
+            lineage[key] = source[key]
+        full["lineage"] = lineage
+    return {**stored, "compiled_plan": {**compiled, "plan": full}}
+
+
 def commit_p0_preselection(
     conn: sqlite3.Connection,
     value: Mapping[str, Any],
@@ -1474,11 +1594,7 @@ def commit_p0_preselection(
         str(value["policy_activation_id"]),
         str(value["policy_authority_scope"]),
         json.dumps(
-            {
-                key: item
-                for key, item in value.items()
-                if key != UNPERSISTED_MARKET_SNAPSHOT_KEY
-            },
+            stored_preselection_payload(value),
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
@@ -1523,8 +1639,10 @@ __all__ = [
     "STATE",
     "commit_p0_preselection",
     "compile_p0_market_evidence",
+    "expanded_stored_preselection",
     "compile_p0_preselection",
     "latest_visible_p0_station_ids",
     "load_market_registry_snapshot",
     "load_official_ws_quotes",
+    "stored_preselection_payload",
 ]
