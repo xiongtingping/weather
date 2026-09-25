@@ -1,8 +1,8 @@
 """Charter 217: ECMWF AIFS ENS is its own independence family.
 
 User ruling 2026-09-25, 「把 IFS 和 AIFS 拆成两个家族」.  Three things have
-to hold: the registered row moves from ECMWF to ECMWF_AIFS exactly once and
-the registry's append-only guard survives the move; the stable pool then
+to hold: the registered row moves from ECMWF to ECMWF_AIFS exactly once, by its
+own step, and the registry's append-only guard survives the move; the stable pool then
 gives IFS and AIFS a family's share each and mints the IFS+AIFS pair; and an
 artifact minted before the split keeps serving under the map it was
 certified under instead of failing closed until the rotation re-mints it.
@@ -56,11 +56,19 @@ def _guard(conn: sqlite3.Connection) -> str:
     ).fetchone()[0]
 
 
+def test_ingest_leaves_the_pre_split_row_until_the_relabel_step() -> None:
+    # Capture subprocesses run this code before the resident is restarted
+    # onto it; relabelling from there would fail the old compiler closed.
+    conn = _registry_with_the_pre_split_row()
+    aifs.ensure_system(conn)
+    assert _row(conn) == ("ECMWF", aifs.PRE_SPLIT_REGISTRY_CONTENT_SHA256)
+
+
 def test_the_pre_split_row_moves_to_aifs_own_family_once() -> None:
     conn = _registry_with_the_pre_split_row()
     assert _row(conn) == ("ECMWF", aifs.PRE_SPLIT_REGISTRY_CONTENT_SHA256)
     guard = _guard(conn)
-    aifs.ensure_system(conn)
+    assert aifs.relabel_pre_split_registration(conn) is True
     conn.commit()
     assert _row(conn) == ("ECMWF_AIFS", content_sha256(aifs.SYSTEM_IDENTITY))
     assert _guard(conn) == guard

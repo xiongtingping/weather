@@ -649,7 +649,8 @@ def relabel_pre_split_registration(conn: sqlite3.Connection) -> bool:
     edit.  It acts only on the exact pre-split row (its content sha), changes
     the family and the content sha and nothing else, and puts the no-update
     guard back verbatim, all inside one savepoint.  True when it relabelled,
-    False when there was nothing to do.
+    False when there was nothing to do.  Run once, after the restart that
+    deploys charter 217 (``scripts/relabel_aifs_ens_family.py``).
 
     Artifacts minted before it keep serving under the map they were certified
     under (``native_ensemble_p0.served_family_map``) until the OOS rotation
@@ -701,7 +702,22 @@ def relabel_pre_split_registration(conn: sqlite3.Connection) -> bool:
 
 
 def ensure_system(conn: sqlite3.Connection) -> None:
-    relabel_pre_split_registration(conn)
+    # Charter 217: capture subprocesses load this code before the resident
+    # that compiles P0 is restarted onto it, and a relabel under the old
+    # compiler would fail every AIFS scope closed.  So the relabel is its
+    # own step (``scripts/relabel_aifs_ens_family.py``, run once after the
+    # deploying restart), and until then the exact pre-split row stands as
+    # this system's registration, untouched.
+    registered = conn.execute(
+        "SELECT content_sha256 FROM calibration_native_ensemble_system "
+        "WHERE ensemble_system_id=?",
+        (SYSTEM_ID,),
+    ).fetchone()
+    if (
+        registered is not None
+        and str(registered[0]) == PRE_SPLIT_REGISTRY_CONTENT_SHA256
+    ):
+        return
     _insert_content_addressed(
         conn,
         table="calibration_native_ensemble_system",
