@@ -17094,18 +17094,6 @@ SECTION_CACHE_TTL_SEC = {
     # skill score; the journal moves once a day.  Five minutes off the
     # valuation lane's so the two do not expire on the same render.
     "posterior_lane": 55 * 60,
-    # 秤砣线 (charter 146): one small table and the live book the money
-    # board already built; the lane moves every production cycle.
-    "tiebreak_lane": 4 * 60,
-    # P1 尾段线 (charter 166): one small table and the live book the money
-    # board already built; the lane scores every P1 envelope in the bin, so
-    # it moves every production cycle.  Half a minute off the tiebreak
-    # lane's so the two do not expire on the same render.
-    "p1_tail_lane": 4 * 60 + 30,
-    # 同心线 (charter 203): the same shape -- one small table and the live
-    # book; it judges every P1 decision in the 6-10h window, so it moves every
-    # production cycle.  Offset from the other two lanes'.
-    "p1_consensus_lane": 5 * 60 + 15,
     # Three populations of settled decisions with their books (~60s on the
     # 45GB store); every row is a settled station-day, so the reading moves
     # once a day when the truth lands.
@@ -17260,6 +17248,15 @@ RENDER_EVERY_RUN_SECTIONS = frozenset({
     # The live book: what the page is opened for mid-session.
     "live_readiness", "live_selection", "live_days", "live_money",
     "window_divergence",
+    # The strategy lanes' own money pages (秤砣线 charter 146, P1 尾段线 166,
+    # 同心线 203): the same live book, cut by each lane's decision rows.  As
+    # page-backed sections with a four-minute lifetime they were reached at
+    # the end of the run, never inside a gap, and served "from its page (no
+    # gap)" on every render from 2026-09-24 09:33Z: on 09-25 13:37Z the page
+    # read 55 settled tiebreak legs at -27.45 USDC while the book held 71 at
+    # -1.04, the day of the charter-146 review (user: 「但是前端显示的数据却不
+    # 一样」).  A P&L a day old is a wrong P&L, not a slow one.
+    "tiebreak_lane", "p1_tail_lane", "p1_consensus_lane",
 })
 #: A section that cost at least this much last time is the research render's
 #: to compute (``--refresh-research``, its own launchd clock, user ruling
@@ -18088,6 +18085,13 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "window_divergence", collect_window_divergence, conn
     )
     live_money = _cached_section("live_money", collect_live_money, conn)
+    # The strategy lanes' money pages: every-run, on the live book the
+    # sections above already built this run.
+    tiebreak_lane = _cached_section("tiebreak_lane", collect_tiebreak_lane, conn)
+    p1_tail_lane = _cached_section("p1_tail_lane", collect_p1_tail_lane, conn)
+    p1_consensus_lane = _cached_section(
+        "p1_consensus_lane", collect_p1_consensus_lane, conn
+    )
     previous_windows = _previous_version_windows(conn)
     previous_salt = json.dumps(previous_windows, sort_keys=True)
     center_landing_previous = _cached_section(
@@ -18391,16 +18395,10 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "truth_landing": truth_landing,
         "band_residual_audit": band_audit,
         "live_readiness": live_readiness,
-        "tiebreak_lane": _cached_section(
-            "tiebreak_lane", collect_tiebreak_lane, conn
-        ),
-        "p1_tail_lane": _cached_section(
-            "p1_tail_lane", collect_p1_tail_lane, conn
-        ),
+        "tiebreak_lane": tiebreak_lane,
+        "p1_tail_lane": p1_tail_lane,
         "board_evidence": collect_board_evidence(),
-        "p1_consensus_lane": _cached_section(
-            "p1_consensus_lane", collect_p1_consensus_lane, conn
-        ),
+        "p1_consensus_lane": p1_consensus_lane,
         "stages": stages,
         "band_shadow": band_shadow,
         "chain": chain,
