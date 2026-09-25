@@ -15,6 +15,10 @@ import sqlite3
 import pytest
 
 from bayes_basket_target import native_ensemble_p0 as p0
+from bayes_basket_target.materialization import (
+    PROBABILITY_MODEL_ZERO_FLOOR,
+    floor_probabilities,
+)
 from bayes_basket_target.native_ensemble_p0 import compile_native_ensemble_p0
 from bayes_basket_target.probability_packet import build_probability_envelope
 
@@ -75,8 +79,10 @@ def test_each_seated_members_distribution_is_on_the_envelope_and_pools_to_it() -
     # Every layer between the pooling and the served vector is identity on
     # this fixture -- the bridge has no gap to close, there is no radiation
     # capture to shift on, and no centre/width, tail or band table is pinned
-    # -- so the served vector IS the pooled one, and the recorded members
-    # must reproduce it through the weights the envelope names.
+    # -- except the last: charter 224's model-zero floor, which lifts every
+    # bucket below 1e-3 and renormalises.  So the served vector is the pooled
+    # one through production's own floor, and the recorded members must
+    # reproduce it through the weights the envelope names.
     assert json.loads(lineage["consensus_bridge_json"])["lambda"] == 0.0
     assert not json.loads(lineage["synoptic_cooling_json"]).get("shift_c")
     for absent in (
@@ -92,8 +98,18 @@ def test_each_seated_members_distribution_is_on_the_envelope_and_pools_to_it() -
     }
     total = sum(pooled.values())
     assert total > 0.0
+    floored, lifted = floor_probabilities(
+        {bucket: value / total for bucket, value in pooled.items()}
+    )
+    receipt = lineage.get("probability_floor_json")
+    if lifted:
+        receipt = json.loads(receipt)
+        assert receipt["epsilon"] == PROBABILITY_MODEL_ZERO_FLOOR
+        assert receipt["floored_buckets"] == lifted
+    else:
+        assert receipt is None
     for bucket, served in envelope["probabilities"].items():
-        assert pooled[bucket] / total == pytest.approx(served, abs=1e-12), bucket
+        assert floored[bucket] == pytest.approx(served, abs=1e-12), bucket
 
 
 def test_the_recorded_vectors_are_the_calibrated_ones_the_pool_consumed(
