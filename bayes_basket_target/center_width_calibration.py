@@ -615,7 +615,12 @@ def apply_center_width_calibration(
         )
         if side is not None:
             adjacent = keys[1] if side == "lower" else keys[-2]
-            landing, scale = _open_edge_tail_landing(
+            # ``tail``, not ``scale``: this loop once rebound the station
+            # width scale, so the receipt's ``station_width_scale`` recorded
+            # the last open edge's tail scale (ZUUU 0.0806, EGLC 7.8e-6 on
+            # 2026-09-25) while the composed lambda above had read the true
+            # scale.  The arithmetic was right; the record was not.
+            landing, tail = _open_edge_tail_landing(
                 weight,
                 side=side,
                 bound_c=open_lower if side == "lower" else open_upper,
@@ -628,7 +633,7 @@ def apply_center_width_calibration(
             )
             for bucket_index, share in enumerate(landing):
                 moved[keys[bucket_index]] += share
-            tail_scale[side] = scale
+            tail_scale[side] = tail
             tail_released[side] = weight - landing[position_index]
             continue
         origin = centers[index[str(key)]]
