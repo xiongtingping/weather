@@ -47,6 +47,10 @@ OPTIONAL_PLISTS=(
   # The board's research render, one heavy section an hour (2026-09-24,
   # 「单开研究节渲染」).  A reader; it writes one section-cache file.
   com.weather.dashboard_research_render.plist
+  # Settled truth against IEM's copy of the same reports, daily at 19:30
+  # local (2026-09-25, 「好」 to the IEM truth audit).  A reader outside the
+  # writer turn; it writes only two files under data/.
+  com.weather.iem_truth_audit.plist
 )
 SUPPORTED_PLISTS=("${DEFAULT_PLISTS[@]}" "${OPTIONAL_PLISTS[@]}")
 PLISTS=("${DEFAULT_PLISTS[@]}")

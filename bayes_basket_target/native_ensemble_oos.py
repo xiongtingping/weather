@@ -13,7 +13,7 @@ import json
 import math
 import os
 import sqlite3
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime, timedelta, timezone
 from itertools import product
@@ -6351,6 +6351,61 @@ def _selection_identity(
     }
 
 
+# Charter 221: the key every reader of this table selects a scope's latest
+# evaluation by (native_ensemble_p0, republisher_fallback_activation) -- the
+# stable-pool gate adds threshold_profile, which is compared below as well.
+_EVALUATION_READER_KEY = (
+    "station_id",
+    "season_bin",
+    "lead_bucket",
+    "run_cycle",
+    "run_cycle_by_system_json",
+    "run_cycle_by_system_sha256",
+    "settlement_definition",
+    "ensemble_system_ids_json",
+    "available_system_set_hash",
+)
+
+
+def _restates_latest_evaluation(
+    conn: sqlite3.Connection,
+    identity: Mapping[str, Any],
+) -> bool:
+    """Whether this evaluation says again exactly what its scope last said.
+
+    Charter 221.  Every scan re-evaluated every scope and wrote a row, and
+    on 2026-09-24/25 52% of consecutive same-scope rows differed from their
+    predecessor in ``evaluated_at_utc`` alone -- about 1.1 GB/day at full
+    speed.  Readers take the latest row at or before their clock (P0 and the
+    republisher fallback: its state and selection evidence; the stable-pool
+    gate: per-day scores merged by date), so a row identical to the latest
+    one in everything but its clock changes no answer any of them gives.
+    Compared against the latest row at or before this evaluation's own
+    clock, in the readers' own order, so a backdated ingest is judged as of
+    its time and anything that differs in any column is still written.
+    """
+
+    compared = tuple(
+        column for column in identity
+        if column not in _EVALUATION_READER_KEY and column != "evaluated_at_utc"
+    )
+    latest = conn.execute(
+        f"SELECT {','.join(compared)} "
+        "FROM calibration_cross_native_ensemble_oos_evaluation WHERE "
+        + " AND ".join(f"{column}=?" for column in _EVALUATION_READER_KEY)
+        + " AND evaluated_at_utc<=? "
+        "ORDER BY evaluated_at_utc DESC,evaluation_id DESC LIMIT 1",
+        (
+            *(identity[column] for column in _EVALUATION_READER_KEY),
+            identity["evaluated_at_utc"],
+        ),
+    ).fetchone()
+    return latest is not None and all(
+        stored == identity[column]
+        for column, stored in zip(compared, latest)
+    )
+
+
 def _evaluation_identity(
     candidate: Mapping[str, Any],
     *,
@@ -6557,14 +6612,29 @@ def persist_native_ensemble_oos_evaluations(
     if _manage_savepoint:
         conn.execute("SAVEPOINT native_ensemble_oos_evaluations")
     count = 0
+    restatements = 0
     try:
+        identities = []
         for candidate in report.get("cross_candidates") or []:
             selection_sha = content_sha256(_selection_identity(candidate))
-            evaluation_identity = _evaluation_identity(
+            identities.append(_evaluation_identity(
                 candidate,
                 selection_evidence_sha256=selection_sha,
                 evaluated_at_utc=evaluated_at_utc,
-            )
+            ))
+        # Two evaluations of one reader key in one scan share a clock, which
+        # readers refuse as not exact; skipping one of them would turn that
+        # refusal into an answer, so such a key is always written whole.
+        shared_keys = Counter(
+            tuple(identity[column] for column in _EVALUATION_READER_KEY)
+            for identity in identities
+        )
+        for evaluation_identity in identities:
+            if shared_keys[
+                tuple(evaluation_identity[column] for column in _EVALUATION_READER_KEY)
+            ] == 1 and _restates_latest_evaluation(conn, evaluation_identity):
+                restatements += 1
+                continue
             evaluation_sha = content_sha256(evaluation_identity)
             evaluation_row = {
                 "evaluation_id": (
@@ -6590,6 +6660,7 @@ def persist_native_ensemble_oos_evaluations(
         "schema": "native_ensemble_oos_evaluation_persist_v1",
         "state": "COMMITTED" if count else "NOOP_IDEMPOTENT",
         "oos_evaluations": count,
+        "oos_evaluation_restatements_skipped": restatements,
         "calls_order_gateway": False,
         "orders_submitted": 0,
         "live_submit_authorized": False,

@@ -1536,9 +1536,22 @@ STORED_BLOBS_SCHEMA = "bayes_basket_target_p0_preselection_stored_blobs_v1"
 STORED_BLOB_PATHS: tuple[tuple[str, ...], ...] = (
     ("probability_envelope", "lineage"),
     ("plan", "basket_support_selection", "beta_edge_tables"),
+    # Charter 220 note (same day): the smaller blocks that also repeat --
+    # 1-2 distinct values in the first 55 rows after 220 went live, 5.1 KB
+    # of a 32.4 KB row between them.  None is read by the semantic
+    # projection or by any reader of stored rows.  ``plan.lineage_stored_as``
+    # is charter 218's own marker; the blob join runs before 218's expansion,
+    # so it is back in place when that expansion reads it.
+    ("plan", "lineage_stored_as"),
+    ("plan", "basket_support_selection", "beta_served"),
+    ("plan", "basket_support_selection", "posterior_tables"),
+    ("plan", "basket_support_selection", "valuation_tables"),
+    ("plan", "basket_support_selection", "effective_edge_tables"),
+    ("boundary",),
+    ("optimizer",),
 )
 # Below this a lookup costs more than the bytes it saves.
-STORED_BLOB_MIN_BYTES = 1024
+STORED_BLOB_MIN_BYTES = 256
 _STORED_BLOB_DDL = (
     "CREATE TABLE IF NOT EXISTS basket_p0_preselection_blob ("
     " blob_sha256 TEXT PRIMARY KEY CHECK(length(blob_sha256)=64),"
