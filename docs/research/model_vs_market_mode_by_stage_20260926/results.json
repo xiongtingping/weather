@@ -1,0 +1,2500 @@
+{
+ "question": "熊先生 2026-09-26：P0/P0-M/P1 各阶段，模型众数桶 vs 市场众数桶，谁更准",
+ "population": {
+  "decisions": 44132,
+  "event_dates": [
+   "2026-08-15",
+   "2026-09-24"
+  ]
+ },
+ "stages": {
+  "P0": {
+   "first_decision": {
+    "station_days": 1374,
+    "event_days": 40,
+    "decisions": 1374,
+    "median_hours_to_settlement": 47.443268333333336,
+    "hit_model_top": 0.33478893740902477,
+    "hit_market_top": 0.4289180009704027,
+    "hit_market_minus_model": [
+     0.09412906356137796,
+     0.07026332693701481,
+     0.11773302813511856
+    ],
+    "share_disagree": 0.5458515283842795,
+    "share_tie_overlap": 0.009461426491994178,
+    "logscore_model": 1.760758762524889,
+    "logscore_market": 1.4189738927373976,
+    "logscore_model_minus_market": [
+     0.34178486978749173,
+     0.2777502576219093,
+     0.40803456134512633
+    ],
+    "brier_model": 0.7802928544964239,
+    "brier_market": 0.6843906313820813,
+    "brier_model_minus_market": [
+     0.09590222311434261,
+     0.08177618179833954,
+     0.1105928533357762
+    ],
+    "hit_when_agree": 0.46317512274959083,
+    "event_days_won_on_hit": {
+     "market": 33,
+     "model": 4,
+     "tie": 3
+    },
+    "disagree": {
+     "station_days": 750,
+     "truth_at": {
+      "model_top": 0.232,
+      "beyond_market_top": 0.256,
+      "market_top": 0.404,
+      "beyond_model_top": 0.05333333333333334,
+      "between": 0.05466666666666667
+     },
+     "market_minus_model_hit": [
+      0.172,
+      0.12604651302581119,
+      0.21712978999783503
+     ],
+     "gap_buckets": {
+      "1": 0.7693333333333333,
+      "2": 0.14133333333333334,
+      "3": 0.044,
+      "4": 0.028,
+      "5": 0.012,
+      "6": 0.0026666666666666666,
+      "7": 0.0013333333333333333,
+      "8": 0.0013333333333333333
+     },
+     "model_prob_on_own_top": 0.33479467880137054,
+     "market_prob_on_model_top": 0.20699994900492935,
+     "market_prob_on_own_top": 0.3695406765761048,
+     "model_prob_on_market_top": 0.20632214382106223
+    }
+   },
+   "first_decision_before_0919": {
+    "station_days": 1151,
+    "event_days": 34,
+    "decisions": 1151,
+    "median_hours_to_settlement": 46.214378611111115,
+    "hit_model_top": 0.3336229365768897,
+    "hit_market_top": 0.4155806545033304,
+    "hit_market_minus_model": [
+     0.08195771792644077,
+     0.055687747300044124,
+     0.10549717306046597
+    ],
+    "share_disagree": 0.5525629887054735,
+    "share_tie_overlap": 0.008688097306689836,
+    "logscore_model": 1.8023640380254244,
+    "logscore_market": 1.43673087986428,
+    "logscore_model_minus_market": [
+     0.36563315816114444,
+     0.29821077422289327,
+     0.4410780946978042
+    ],
+    "brier_model": 0.7877449559925972,
+    "brier_market": 0.6907189312099695,
+    "brier_model_minus_market": [
+     0.09702602478262769,
+     0.08043797514009088,
+     0.1135749350094583
+    ],
+    "hit_when_agree": 0.4594059405940594,
+    "event_days_won_on_hit": {
+     "market": 27,
+     "model": 4,
+     "tie": 3
+    },
+    "disagree": {
+     "station_days": 636,
+     "truth_at": {
+      "model_top": 0.2358490566037736,
+      "beyond_market_top": 0.26572327044025157,
+      "market_top": 0.3836477987421384,
+      "beyond_model_top": 0.05660377358490566,
+      "between": 0.05817610062893082
+     },
+     "market_minus_model_hit": [
+      0.14779874213836477,
+      0.10157584008318739,
+      0.18924137931034482
+     ],
+     "gap_buckets": {
+      "1": 0.7641509433962265,
+      "2": 0.13836477987421383,
+      "3": 0.04559748427672956,
+      "4": 0.031446540880503145,
+      "5": 0.014150943396226415,
+      "6": 0.0031446540880503146,
+      "7": 0.0015723270440251573,
+      "8": 0.0015723270440251573
+     },
+     "model_prob_on_own_top": 0.32390184458655574,
+     "market_prob_on_model_top": 0.20383821309947953,
+     "market_prob_on_own_top": 0.3738234059522114,
+     "model_prob_on_market_top": 0.20288976880455895
+    }
+   },
+   "first_decision_since_0919": {
+    "station_days": 223,
+    "event_days": 6,
+    "decisions": 223,
+    "median_hours_to_settlement": 54.67062,
+    "hit_model_top": 0.34080717488789236,
+    "hit_market_top": 0.4977578475336323,
+    "hit_market_minus_model": [
+     0.15695067264573992,
+     0.09935897435897435,
+     0.2076923076923077
+    ],
+    "share_disagree": 0.5112107623318386,
+    "share_tie_overlap": 0.013452914798206279,
+    "logscore_model": 1.5460158383046372,
+    "logscore_market": 1.327322358284295,
+    "logscore_model_minus_market": [
+     0.2186934800203421,
+     0.14029620330452594,
+     0.28008282677515806
+    ],
+    "brier_model": 0.74182931717761,
+    "brier_market": 0.6517275233018148,
+    "brier_model_minus_market": [
+     0.09010179387579503,
+     0.06169509069769102,
+     0.11517291252826185
+    ],
+    "hit_when_agree": 0.4811320754716981,
+    "event_days_won_on_hit": {
+     "market": 6
+    },
+    "disagree": {
+     "station_days": 114,
+     "truth_at": {
+      "beyond_market_top": 0.20175438596491227,
+      "model_top": 0.21052631578947367,
+      "beyond_model_top": 0.03508771929824561,
+      "market_top": 0.5175438596491229,
+      "between": 0.03508771929824561
+     },
+     "market_minus_model_hit": [
+      0.30701754385964913,
+      0.1792452830188679,
+      0.4286780383795308
+     ],
+     "gap_buckets": {
+      "1": 0.7982456140350878,
+      "2": 0.15789473684210525,
+      "3": 0.03508771929824561,
+      "4": 0.008771929824561403
+     },
+     "model_prob_on_own_top": 0.39556522757875834,
+     "market_prob_on_model_top": 0.22463910721428113,
+     "market_prob_on_own_top": 0.34564755479361553,
+     "model_prob_on_market_top": 0.2254711833868173
+    }
+   },
+   "all_decisions_station_day_once": {
+    "station_days": 1374,
+    "event_days": 40,
+    "decisions": 19106,
+    "median_hours_to_settlement": 42.59155416666666,
+    "hit_model_top": 0.35990261892142156,
+    "hit_market_top": 0.4381430811619952,
+    "hit_market_minus_model": [
+     0.07824046224057336,
+     0.05614179703214108,
+     0.10165389699123101
+    ],
+    "share_disagree": 0.5247736921206182,
+    "share_tie_overlap": 0.008215152248613496,
+    "logscore_model": 1.7088809038488681,
+    "logscore_market": 1.376819473670734,
+    "logscore_model_minus_market": [
+     0.3320614301781333,
+     0.27246394754412734,
+     0.39044422459408895
+    ],
+    "brier_model": 0.7664448276896819,
+    "brier_market": 0.676264821921701,
+    "brier_model_minus_market": [
+     0.09018000576798085,
+     0.07906246010345779,
+     0.10105397907122615
+    ],
+    "hit_when_agree": 0.48365867554840275,
+    "event_days_won_on_hit": {
+     "market": 32,
+     "model": 7,
+     "tie": 1
+    },
+    "disagree": {
+     "station_days": 1028,
+     "truth_at": {
+      "model_top": 0.2508944009087436,
+      "beyond_market_top": 0.2387980102396522,
+      "market_top": 0.4001403271012981,
+      "beyond_model_top": 0.05529686317136649,
+      "between": 0.05487039857893061
+     },
+     "market_minus_model_hit": [
+      0.1492459261925559,
+      0.1017737745873305,
+      0.19121937490036228
+     ],
+     "gap_buckets": {
+      "1": 0.7899687858565516,
+      "2": 0.12198798286553461,
+      "3": 0.038502883623003,
+      "4": 0.027153026900189964,
+      "5": 0.01542155085197805,
+      "6": 0.002945403913966121,
+      "7": 0.0014935710797932516,
+      "8": 0.001386887431236591,
+      "10": 0.0011399074777287068
+     },
+     "model_prob_on_own_top": 0.3338523073252268,
+     "market_prob_on_model_top": 0.21389116860895266,
+     "market_prob_on_own_top": 0.3911048476318385,
+     "model_prob_on_market_top": 0.20993252180995467
+    }
+   },
+   "by_hours_to_settlement": {
+    "18-24h:before_0919": {
+     "station_days": 12,
+     "event_days": 6,
+     "decisions": 37,
+     "median_hours_to_settlement": 22.233971944444445,
+     "hit_model_top": 0.25000000000000006,
+     "hit_market_top": 0.25000000000000006,
+     "hit_market_minus_model": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "share_disagree": 0.41666666666666674,
+     "share_tie_overlap": 0.0,
+     "logscore_model": 1.946598698377638,
+     "logscore_market": 1.6489698724316728,
+     "logscore_model_minus_market": [
+      0.29762882594596457,
+      -0.20581720253109193,
+      1.2916864348680919
+     ],
+     "brier_model": 0.8772516547490725,
+     "brier_market": 0.7654287370317908,
+     "brier_model_minus_market": [
+      0.1118229177172817,
+      -0.01955358803751662,
+      0.35624356123269674
+     ],
+     "hit_when_agree": 0.42857142857142866,
+     "event_days_won_on_hit": {
+      "tie": 6
+     },
+     "disagree": {
+      "station_days": 5,
+      "truth_at": {
+       "beyond_model_top": 0.4,
+       "beyond_market_top": 0.39999999999999997,
+       "between": 0.2
+      },
+      "market_minus_model_hit": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "gap_buckets": {
+       "1": 0.8000000000000002,
+       "2": 0.2
+      },
+      "model_prob_on_own_top": 0.3512161701575186,
+      "market_prob_on_model_top": 0.19026481974855303,
+      "market_prob_on_own_top": 0.3886213329552561,
+      "model_prob_on_market_top": 0.1720848232986581
+     }
+    },
+    "24-36h:before_0919": {
+     "station_days": 372,
+     "event_days": 31,
+     "decisions": 4461,
+     "median_hours_to_settlement": 29.930244444444444,
+     "hit_model_top": 0.34393309022319485,
+     "hit_market_top": 0.457343358261697,
+     "hit_market_minus_model": [
+      0.11341026803850224,
+      0.05687795387760756,
+      0.1616360938004198
+     ],
+     "share_disagree": 0.5366413411719351,
+     "share_tie_overlap": 0.0054633165927338405,
+     "logscore_model": 1.7506071272766157,
+     "logscore_market": 1.3189682050253475,
+     "logscore_model_minus_market": [
+      0.43163892225126826,
+      0.3617349159327507,
+      0.4961354125507995
+     ],
+     "brier_model": 0.7822717417775785,
+     "brier_market": 0.6582639898996239,
+     "brier_model_minus_market": [
+      0.12400775187795458,
+      0.10488394940439626,
+      0.14253067875758504
+     ],
+     "hit_when_agree": 0.48448271845879615,
+     "event_days_won_on_hit": {
+      "tie": 2,
+      "market": 22,
+      "model": 7
+     },
+     "disagree": {
+      "station_days": 245,
+      "truth_at": {
+       "market_top": 0.43758995175762627,
+       "model_top": 0.22387652552617532,
+       "beyond_model_top": 0.038450701643801835,
+       "beyond_market_top": 0.23368896780796877,
+       "between": 0.06639385326443617
+      },
+      "market_minus_model_hit": [
+       0.2137134262314446,
+       0.1090355238012065,
+       0.310422514878785
+      ],
+      "gap_buckets": {
+       "1": 0.7294533036440254,
+       "2": 0.11924391600519149,
+       "3": 0.0590401960255451,
+       "4": 0.04343264462976821,
+       "5": 0.04082162989050139,
+       "6": 0.003891115872647568,
+       "10": 0.004117193932324311
+      },
+      "model_prob_on_own_top": 0.29612200614326806,
+      "market_prob_on_model_top": 0.19779809701258558,
+      "market_prob_on_own_top": 0.4228272651568966,
+      "model_prob_on_market_top": 0.19110737691602894
+     }
+    },
+    "24-36h:since_0919": {
+     "station_days": 9,
+     "event_days": 5,
+     "decisions": 44,
+     "median_hours_to_settlement": 30.768056388888887,
+     "hit_model_top": 0.6111111111111112,
+     "hit_market_top": 0.5,
+     "hit_market_minus_model": [
+      -0.1111111111111111,
+      -0.5,
+      0.11538461538461539
+     ],
+     "share_disagree": 0.4444444444444444,
+     "share_tie_overlap": 0.0,
+     "logscore_model": 1.0636928108241908,
+     "logscore_market": 1.0301532241184645,
+     "logscore_model_minus_market": [
+      0.03353958670572611,
+      -0.271636240046964,
+      0.222666345040496
+     ],
+     "brier_model": 0.5951842139966419,
+     "brier_market": 0.5781246267533676,
+     "brier_model_minus_market": [
+      0.017059587243274513,
+      -0.18565713715145055,
+      0.14771386826731975
+     ],
+     "hit_when_agree": 0.6,
+     "event_days_won_on_hit": {
+      "market": 1,
+      "tie": 2,
+      "model": 2
+     },
+     "disagree": {
+      "station_days": 5,
+      "truth_at": {
+       "market_top": 0.375,
+       "model_top": 0.625
+      },
+      "market_minus_model_hit": [
+       -0.25,
+       -1.0,
+       0.3333333333333333
+      ],
+      "gap_buckets": {
+       "1": 1.0
+      },
+      "model_prob_on_own_top": 0.42389444309475327,
+      "market_prob_on_model_top": 0.2709448886185834,
+      "market_prob_on_own_top": 0.47379485147404454,
+      "model_prob_on_market_top": 0.31246139765798975
+     }
+    },
+    "36-48h:before_0919": {
+     "station_days": 1001,
+     "event_days": 33,
+     "decisions": 9800,
+     "median_hours_to_settlement": 42.7078675,
+     "hit_model_top": 0.36255713011655644,
+     "hit_market_top": 0.4287300019539336,
+     "hit_market_minus_model": [
+      0.06617287183737706,
+      0.03348347890235925,
+      0.09691194263124998
+     ],
+     "share_disagree": 0.5211033472632349,
+     "share_tie_overlap": 0.007944193255735824,
+     "logscore_model": 1.7304021290366116,
+     "logscore_market": 1.3945043265549046,
+     "logscore_model_minus_market": [
+      0.3358978024817067,
+      0.25827580888404134,
+      0.4163349688941767
+     ],
+     "brier_model": 0.7678749448597364,
+     "brier_market": 0.6824784757655595,
+     "brier_model_minus_market": [
+      0.0853964690941767,
+      0.06840865356891004,
+      0.10174841836284967
+     ],
+     "hit_when_agree": 0.48699793684289916,
+     "event_days_won_on_hit": {
+      "market": 25,
+      "model": 8
+     },
+     "disagree": {
+      "station_days": 682,
+      "truth_at": {
+       "beyond_market_top": 0.2599349192432974,
+       "model_top": 0.2515040494311566,
+       "beyond_model_top": 0.0636782715524198,
+       "market_top": 0.3774720637432761,
+       "between": 0.04741069602985025
+      },
+      "market_minus_model_hit": [
+       0.12596801431211638,
+       0.06620213651184632,
+       0.18263204202729963
+      ],
+      "gap_buckets": {
+       "1": 0.8205410516456817,
+       "2": 0.1104699626316283,
+       "3": 0.035949897384206606,
+       "4": 0.02022189945058005,
+       "5": 0.007065924742815758,
+       "6": 0.0019170880483643383,
+       "7": 0.0019170880483643383,
+       "8": 0.0019170880483643383
+      },
+      "model_prob_on_own_top": 0.3303732565942483,
+      "market_prob_on_model_top": 0.22022168993883537,
+      "market_prob_on_own_top": 0.3963155136592482,
+      "model_prob_on_market_top": 0.21521339379975057
+     }
+    },
+    "36-48h:since_0919": {
+     "station_days": 195,
+     "event_days": 6,
+     "decisions": 978,
+     "median_hours_to_settlement": 46.058939305555555,
+     "hit_model_top": 0.39501036001036,
+     "hit_market_top": 0.476482498982499,
+     "hit_market_minus_model": [
+      0.08147213897213888,
+      0.038113555683981504,
+      0.11987084309996653
+     ],
+     "share_disagree": 0.48916971916971913,
+     "share_tie_overlap": 0.007214082214082214,
+     "logscore_model": 1.4989091297724506,
+     "logscore_market": 1.22808881510297,
+     "logscore_model_minus_market": [
+      0.2708203146694803,
+      0.2108433845294474,
+      0.3206019502286483
+     ],
+     "brier_model": 0.7312142349936185,
+     "brier_market": 0.6326068741761457,
+     "brier_model_minus_market": [
+      0.09860736081747265,
+      0.08157987658535125,
+      0.1168708687026884
+     ],
+     "hit_when_agree": 0.5007014425950327,
+     "event_days_won_on_hit": {
+      "market": 5,
+      "model": 1
+     },
+     "disagree": {
+      "station_days": 131,
+      "truth_at": {
+       "market_top": 0.4560272116870472,
+       "model_top": 0.2851800081538241,
+       "beyond_market_top": 0.19163567381374322,
+       "beyond_model_top": 0.04566595490889729,
+       "between": 0.021491151436487537
+      },
+      "market_minus_model_hit": [
+       0.17084720353322314,
+       0.0784345295542913,
+       0.25326752892446375
+      ],
+      "gap_buckets": {
+       "1": 0.8438501027548302,
+       "2": 0.12242800921881367,
+       "3": 0.02323839952075481,
+       "6": 0.006988992337069116,
+       "7": 0.003494496168534558
+      },
+      "model_prob_on_own_top": 0.40210109914439857,
+      "market_prob_on_model_top": 0.2479489419845909,
+      "market_prob_on_own_top": 0.39049374063054326,
+      "model_prob_on_market_top": 0.2224424420857139
+     }
+    },
+    "48-60h:before_0919": {
+     "station_days": 432,
+     "event_days": 14,
+     "decisions": 2544,
+     "median_hours_to_settlement": 52.22674694444444,
+     "hit_model_top": 0.3495661436015538,
+     "hit_market_top": 0.40348628352100574,
+     "hit_market_minus_model": [
+      0.05392013991945185,
+      0.003073056698960401,
+      0.1114593353636976
+     ],
+     "share_disagree": 0.524411979654444,
+     "share_tie_overlap": 0.015697865122207225,
+     "logscore_model": 1.7405807407229605,
+     "logscore_market": 1.4385618360055565,
+     "logscore_model_minus_market": [
+      0.30201890471740356,
+      0.20575190560315823,
+      0.3923957732504261
+     ],
+     "brier_model": 0.7728867417976538,
+     "brier_market": 0.6948714634160665,
+     "brier_model_minus_market": [
+      0.07801527838158714,
+      0.053734876831320624,
+      0.10289180685827808
+     ],
+     "hit_when_agree": 0.4628366836776517,
+     "event_days_won_on_hit": {
+      "market": 9,
+      "tie": 1,
+      "model": 4
+     },
+     "disagree": {
+      "station_days": 302,
+      "truth_at": {
+       "model_top": 0.25222740095813656,
+       "beyond_market_top": 0.2637023017867463,
+       "market_top": 0.35613232436959846,
+       "beyond_model_top": 0.06605232723719921,
+       "between": 0.06188564564832108
+      },
+      "market_minus_model_hit": [
+       0.10390492341146283,
+       -0.007411152637217613,
+       0.21048785164400802
+      ],
+      "gap_buckets": {
+       "1": 0.7928643682277012,
+       "2": 0.14799686508183724,
+       "3": 0.028508769588776163,
+       "4": 0.02566411766395155,
+       "5": 0.0005517643819702925,
+       "6": 0.00441411505576234
+      },
+      "model_prob_on_own_top": 0.3883277550071044,
+      "market_prob_on_model_top": 0.21377540280674748,
+      "market_prob_on_own_top": 0.3551896071758109,
+      "model_prob_on_market_top": 0.23075735829889168
+     }
+    },
+    "48-60h:since_0919": {
+     "station_days": 208,
+     "event_days": 6,
+     "decisions": 1076,
+     "median_hours_to_settlement": 52.04067833333333,
+     "hit_model_top": 0.35876866189366186,
+     "hit_market_top": 0.5053084068709068,
+     "hit_market_minus_model": [
+      0.14653974497724495,
+      0.11271515577001248,
+      0.18200966059554877
+     ],
+     "share_disagree": 0.48433458902208903,
+     "share_tie_overlap": 0.012156593406593407,
+     "logscore_model": 1.527111286237872,
+     "logscore_market": 1.2801374461183626,
+     "logscore_model_minus_market": [
+      0.24697384011950907,
+      0.17363377996379128,
+      0.3111478244503243
+     ],
+     "brier_model": 0.7363323685890127,
+     "brier_market": 0.6412655049369458,
+     "brier_model_minus_market": [
+      0.09506686365206687,
+      0.06453620667708702,
+      0.12159347803566936
+     ],
+     "hit_when_agree": 0.48554326720542207,
+     "event_days_won_on_hit": {
+      "market": 6
+     },
+     "disagree": {
+      "station_days": 133,
+      "truth_at": {
+       "beyond_market_top": 0.1706887272130881,
+       "model_top": 0.23091059555812102,
+       "beyond_model_top": 0.04474751992528711,
+       "market_top": 0.5292153392034623,
+       "between": 0.024437818100042363
+      },
+      "market_minus_model_hit": [
+       0.29830474364534026,
+       0.22154297125977596,
+       0.3736619974035255
+      ],
+      "gap_buckets": {
+       "1": 0.8107947166480278,
+       "2": 0.16467292823800486,
+       "3": 0.014605968651669419,
+       "6": 0.009926386462299607
+      },
+      "model_prob_on_own_top": 0.402337044394625,
+      "market_prob_on_model_top": 0.2316158211235346,
+      "market_prob_on_own_top": 0.363232635300454,
+      "model_prob_on_market_top": 0.22918635295711953
+     }
+    },
+    "60-999h:before_0919": {
+     "station_days": 35,
+     "event_days": 10,
+     "decisions": 75,
+     "median_hours_to_settlement": 61.019181388888896,
+     "hit_model_top": 0.29285714285714287,
+     "hit_market_top": 0.4738095238095238,
+     "hit_market_minus_model": [
+      0.18095238095238098,
+      0.07070707070707072,
+      0.295651455026455
+     ],
+     "share_disagree": 0.536734693877551,
+     "share_tie_overlap": 0.0047619047619047615,
+     "logscore_model": 1.626194412722172,
+     "logscore_market": 1.413421170425746,
+     "logscore_model_minus_market": [
+      0.21277324229642586,
+      0.07362199925889608,
+      0.3306890847214152
+     ],
+     "brier_model": 0.8023426728877422,
+     "brier_market": 0.6840204852121227,
+     "brier_model_minus_market": [
+      0.11832218767561967,
+      0.06325369039488732,
+      0.17868229989674922
+     ],
+     "hit_when_agree": 0.3842729970326409,
+     "event_days_won_on_hit": {
+      "market": 5,
+      "tie": 4,
+      "model": 1
+     },
+     "disagree": {
+      "station_days": 21,
+      "truth_at": {
+       "market_top": 0.550063371356147,
+       "model_top": 0.2084917617237009,
+       "beyond_market_top": 0.1482889733840304,
+       "beyond_model_top": 0.09315589353612168
+      },
+      "market_minus_model_hit": [
+       0.3415716096324461,
+       0.1136768348120513,
+       0.6511627906976745
+      ],
+      "gap_buckets": {
+       "1": 0.9068441064638784,
+       "2": 0.09315589353612168
+      },
+      "model_prob_on_own_top": 0.4229762823739999,
+      "market_prob_on_model_top": 0.21932060899574646,
+      "market_prob_on_own_top": 0.3933915847531311,
+      "model_prob_on_market_top": 0.23430694641183256
+     }
+    },
+    "60-999h:since_0919": {
+     "station_days": 25,
+     "event_days": 5,
+     "decisions": 48,
+     "median_hours_to_settlement": 61.42603347222222,
+     "hit_model_top": 0.43199999999999994,
+     "hit_market_top": 0.528,
+     "hit_market_minus_model": [
+      0.096,
+      -0.11764705882352941,
+      0.2473684210526316
+     ],
+     "share_disagree": 0.524,
+     "share_tie_overlap": 0.0,
+     "logscore_model": 1.7347513577682008,
+     "logscore_market": 1.469611865985347,
+     "logscore_model_minus_market": [
+      0.2651394917828534,
+      -0.13377297955368384,
+      0.5163056525639923
+     ],
+     "brier_model": 0.7067419194938015,
+     "brier_market": 0.6647542938496761,
+     "brier_model_minus_market": [
+      0.04198762564412539,
+      -0.05918688167575665,
+      0.11276952215320603
+     ],
+     "hit_when_agree": 0.6890756302521007,
+     "event_days_won_on_hit": {
+      "tie": 2,
+      "market": 2,
+      "model": 1
+     },
+     "disagree": {
+      "station_days": 14,
+      "truth_at": {
+       "beyond_market_top": 0.19083969465648856,
+       "market_top": 0.38167938931297707,
+       "between": 0.15267175572519084,
+       "model_top": 0.19847328244274812,
+       "beyond_model_top": 0.07633587786259542
+      },
+      "market_minus_model_hit": [
+       0.183206106870229,
+       -0.4,
+       0.3533834586466165
+      ],
+      "gap_buckets": {
+       "1": 0.6183206106870229,
+       "2": 0.3053435114503817,
+       "4": 0.07633587786259542
+      },
+      "model_prob_on_own_top": 0.39639213659524336,
+      "market_prob_on_model_top": 0.1878333718467679,
+      "market_prob_on_own_top": 0.2914425985609416,
+      "model_prob_on_market_top": 0.2042758247870913
+     }
+    }
+   },
+   "examples_model_26C_market_27C": [
+    {
+     "station": "LTAC",
+     "event_date": "2026-08-16",
+     "decided_at": "2026-08-15T17:35:32.936Z",
+     "hours_to_settlement": 27.4,
+     "model_top": "26°C",
+     "model_prob": 0.252,
+     "market_top": "27°C",
+     "market_prob": 0.509,
+     "truth": "27°C"
+    },
+    {
+     "station": "LTAC",
+     "event_date": "2026-08-17",
+     "decided_at": "2026-08-15T22:17:41.725Z",
+     "hours_to_settlement": 46.7,
+     "model_top": "26°C",
+     "model_prob": 0.272,
+     "market_top": "27°C",
+     "market_prob": 0.336,
+     "truth": "27°C"
+    },
+    {
+     "station": "CYYZ",
+     "event_date": "2026-08-29",
+     "decided_at": "2026-08-28T05:34:35.093Z",
+     "hours_to_settlement": 46.4,
+     "model_top": "26°C",
+     "model_prob": 0.304,
+     "market_top": "27°C",
+     "market_prob": 0.35,
+     "truth": "26°C"
+    },
+    {
+     "station": "SBGR",
+     "event_date": "2026-09-03",
+     "decided_at": "2026-09-02T05:06:26.764Z",
+     "hours_to_settlement": 45.9,
+     "model_top": "26°C",
+     "model_prob": 0.243,
+     "market_top": "27°C",
+     "market_prob": 0.395,
+     "truth": "29°C"
+    },
+    {
+     "station": "MMMX",
+     "event_date": "2026-09-04",
+     "decided_at": "2026-09-03T07:20:49.522000Z",
+     "hours_to_settlement": 46.7,
+     "model_top": "26°C",
+     "model_prob": 0.341,
+     "market_top": "27°C",
+     "market_prob": 0.44,
+     "truth": "26°C"
+    },
+    {
+     "station": "RJTT",
+     "event_date": "2026-09-07",
+     "decided_at": "2026-09-06T01:47:33.758Z",
+     "hours_to_settlement": 37.2,
+     "model_top": "26°C",
+     "model_prob": 0.333,
+     "market_top": "27°C",
+     "market_prob": 0.269,
+     "truth": "24°C"
+    },
+    {
+     "station": "EPWA",
+     "event_date": "2026-09-08",
+     "decided_at": "2026-09-07T02:35:23.817Z",
+     "hours_to_settlement": 43.4,
+     "model_top": "26°C",
+     "model_prob": 0.378,
+     "market_top": "27°C",
+     "market_prob": 0.397,
+     "truth": "27°C"
+    },
+    {
+     "station": "ZUUU",
+     "event_date": "2026-09-09",
+     "decided_at": "2026-09-07T18:59:07.244Z",
+     "hours_to_settlement": 45.0,
+     "model_top": "26°C",
+     "model_prob": 0.246,
+     "market_top": "27°C",
+     "market_prob": 0.297,
+     "truth": "27°C"
+    },
+    {
+     "station": "LTAC",
+     "event_date": "2026-09-09",
+     "decided_at": "2026-09-08T09:50:13.167Z",
+     "hours_to_settlement": 35.2,
+     "model_top": "26°C",
+     "model_prob": 0.554,
+     "market_top": "27°C",
+     "market_prob": 0.602,
+     "truth": "27°C"
+    },
+    {
+     "station": "RJTT",
+     "event_date": "2026-09-13",
+     "decided_at": "2026-09-11T17:57:46.773Z",
+     "hours_to_settlement": 45.0,
+     "model_top": "26°C",
+     "model_prob": 0.275,
+     "market_top": "27°C",
+     "market_prob": 0.315,
+     "truth": "25°C"
+    },
+    {
+     "station": "LFPB",
+     "event_date": "2026-09-14",
+     "decided_at": "2026-09-12T08:34:38.885Z",
+     "hours_to_settlement": 61.4,
+     "model_top": "26°C",
+     "model_prob": 0.325,
+     "market_top": "27°C",
+     "market_prob": 0.342,
+     "truth": "29°C"
+    },
+    {
+     "station": "ZUUU",
+     "event_date": "2026-09-14",
+     "decided_at": "2026-09-12T16:57:40.808Z",
+     "hours_to_settlement": 47.0,
+     "model_top": "26°C",
+     "model_prob": 0.197,
+     "market_top": "27°C",
+     "market_prob": 0.24,
+     "truth": "22°C or below"
+    },
+    {
+     "station": "RKSI",
+     "event_date": "2026-09-16",
+     "decided_at": "2026-09-14T15:07:18.137Z",
+     "hours_to_settlement": 47.9,
+     "model_top": "26°C",
+     "model_prob": 0.356,
+     "market_top": "27°C",
+     "market_prob": 0.578,
+     "truth": "27°C"
+    },
+    {
+     "station": "LIMC",
+     "event_date": "2026-09-16",
+     "decided_at": "2026-09-14T15:29:01.471Z",
+     "hours_to_settlement": 54.5,
+     "model_top": "26°C",
+     "model_prob": 0.434,
+     "market_top": "27°C",
+     "market_prob": 0.368,
+     "truth": "28°C"
+    },
+    {
+     "station": "ZUCK",
+     "event_date": "2026-09-19",
+     "decided_at": "2026-09-17T22:44:31.795Z",
+     "hours_to_settlement": 41.3,
+     "model_top": "26°C",
+     "model_prob": 0.249,
+     "market_top": "27°C",
+     "market_prob": 0.262,
+     "truth": "26°C"
+    },
+    {
+     "station": "RKSI",
+     "event_date": "2026-09-20",
+     "decided_at": "2026-09-18T09:26:32.988Z",
+     "hours_to_settlement": 53.6,
+     "model_top": "26°C",
+     "model_prob": 0.51,
+     "market_top": "27°C",
+     "market_prob": 0.41,
+     "truth": "26°C"
+    },
+    {
+     "station": "LIMC",
+     "event_date": "2026-09-20",
+     "decided_at": "2026-09-19T04:43:52.702Z",
+     "hours_to_settlement": 41.3,
+     "model_top": "26°C",
+     "model_prob": 0.476,
+     "market_top": "27°C",
+     "market_prob": 0.603,
+     "truth": "27°C"
+    },
+    {
+     "station": "ZUCK",
+     "event_date": "2026-09-24",
+     "decided_at": "2026-09-22T15:01:40.555Z",
+     "hours_to_settlement": 49.0,
+     "model_top": "26°C",
+     "model_prob": 0.316,
+     "market_top": "27°C",
+     "market_prob": 0.236,
+     "truth": "28°C"
+    }
+   ]
+  },
+  "P0-M": {
+   "first_decision": {
+    "station_days": 743,
+    "event_days": 21,
+    "decisions": 743,
+    "median_hours_to_settlement": 40.44522083333334,
+    "hit_model_top": 0.3714670255720054,
+    "hit_market_top": 0.45020188425302826,
+    "hit_market_minus_model": [
+     0.07873485868102288,
+     0.047122274667882526,
+     0.11370516723256449
+    ],
+    "share_disagree": 0.48855989232839836,
+    "share_tie_overlap": 0.013458950201884253,
+    "logscore_model": 1.6156724159592932,
+    "logscore_market": 1.3155509978038689,
+    "logscore_model_minus_market": [
+     0.3001214181554244,
+     0.22271400432821192,
+     0.3892746321699421
+    ],
+    "brier_model": 0.7445437355551777,
+    "brier_market": 0.6617307249729337,
+    "brier_model_minus_market": [
+     0.08281301058224405,
+     0.06378730574059183,
+     0.1024688901842267
+    ],
+    "hit_when_agree": 0.4891891891891892,
+    "event_days_won_on_hit": {
+     "market": 15,
+     "model": 4,
+     "tie": 2
+    },
+    "disagree": {
+     "station_days": 363,
+     "truth_at": {
+      "beyond_model_top": 0.06611570247933884,
+      "market_top": 0.41046831955922863,
+      "model_top": 0.25068870523415976,
+      "beyond_market_top": 0.2396694214876033,
+      "between": 0.03305785123966942
+     },
+     "market_minus_model_hit": [
+      0.15977961432506887,
+      0.0861926081158316,
+      0.22807412675833727
+     ],
+     "gap_buckets": {
+      "1": 0.8622589531680441,
+      "2": 0.1046831955922865,
+      "3": 0.01652892561983471,
+      "4": 0.011019283746556474,
+      "7": 0.005509641873278237
+     },
+     "model_prob_on_own_top": 0.4035573537469959,
+     "market_prob_on_model_top": 0.23854074748816873,
+     "market_prob_on_own_top": 0.40464038850014566,
+     "model_prob_on_market_top": 0.23332697169840705
+    }
+   },
+   "first_decision_before_0919": {
+    "station_days": 505,
+    "event_days": 15,
+    "decisions": 505,
+    "median_hours_to_settlement": 39.92603888888889,
+    "hit_model_top": 0.3683168316831683,
+    "hit_market_top": 0.4386138613861386,
+    "hit_market_minus_model": [
+     0.0702970297029703,
+     0.02757738258183098,
+     0.11211713500239526
+    ],
+    "share_disagree": 0.4693069306930693,
+    "share_tie_overlap": 0.015841584158415842,
+    "logscore_model": 1.6507249672174116,
+    "logscore_market": 1.3420981329815287,
+    "logscore_model_minus_market": [
+     0.308626834235883,
+     0.20510093890249342,
+     0.44146350312749894
+    ],
+    "brier_model": 0.7468047960061538,
+    "brier_market": 0.6687956393794527,
+    "brier_model_minus_market": [
+     0.07800915662670091,
+     0.0548138560887529,
+     0.10723777896690893
+    ],
+    "hit_when_agree": 0.47307692307692306,
+    "event_days_won_on_hit": {
+     "market": 11,
+     "model": 3,
+     "tie": 1
+    },
+    "disagree": {
+     "station_days": 237,
+     "truth_at": {
+      "beyond_model_top": 0.06751054852320675,
+      "market_top": 0.4008438818565401,
+      "model_top": 0.25316455696202533,
+      "beyond_market_top": 0.24050632911392406,
+      "between": 0.0379746835443038
+     },
+     "market_minus_model_hit": [
+      0.14767932489451477,
+      0.06793934426229509,
+      0.2350235338138564
+     ],
+     "gap_buckets": {
+      "1": 0.8649789029535865,
+      "2": 0.10970464135021098,
+      "3": 0.008438818565400843,
+      "4": 0.012658227848101266,
+      "7": 0.004219409282700422
+     },
+     "model_prob_on_own_top": 0.40872299579708676,
+     "market_prob_on_model_top": 0.2342206389634817,
+     "market_prob_on_own_top": 0.40626867323925525,
+     "model_prob_on_market_top": 0.23472911240647104
+    }
+   },
+   "first_decision_since_0919": {
+    "station_days": 238,
+    "event_days": 6,
+    "decisions": 238,
+    "median_hours_to_settlement": 41.52072944444444,
+    "hit_model_top": 0.37815126050420167,
+    "hit_market_top": 0.47478991596638653,
+    "hit_market_minus_model": [
+     0.09663865546218488,
+     0.0397489539748954,
+     0.14233527131782941
+    ],
+    "share_disagree": 0.5294117647058824,
+    "share_tie_overlap": 0.008403361344537815,
+    "logscore_model": 1.5412962042561429,
+    "logscore_market": 1.2592219924899268,
+    "logscore_model_minus_market": [
+     0.282074211766216,
+     0.21867766702540078,
+     0.3395654281217312
+    ],
+    "brier_model": 0.7397461072873507,
+    "brier_market": 0.6467400452448154,
+    "brier_model_minus_market": [
+     0.09300606204253511,
+     0.07421892175397425,
+     0.11136641751506424
+    ],
+    "hit_when_agree": 0.5272727272727272,
+    "event_days_won_on_hit": {
+     "market": 4,
+     "model": 1,
+     "tie": 1
+    },
+    "disagree": {
+     "station_days": 126,
+     "truth_at": {
+      "model_top": 0.24603174603174602,
+      "beyond_market_top": 0.23809523809523808,
+      "market_top": 0.42857142857142855,
+      "beyond_model_top": 0.06349206349206349,
+      "between": 0.023809523809523808
+     },
+     "market_minus_model_hit": [
+      0.18253968253968253,
+      0.0768939393939394,
+      0.26896453496652895
+     ],
+     "gap_buckets": {
+      "1": 0.8571428571428571,
+      "2": 0.09523809523809523,
+      "3": 0.031746031746031744,
+      "4": 0.007936507936507936,
+      "7": 0.007936507936507936
+     },
+     "model_prob_on_own_top": 0.3938410270337296,
+     "market_prob_on_model_top": 0.24666666590365152,
+     "market_prob_on_own_top": 0.40157766244324883,
+     "model_prob_on_market_top": 0.23068961179514375
+    }
+   },
+   "all_decisions_station_day_once": {
+    "station_days": 743,
+    "event_days": 21,
+    "decisions": 9427,
+    "median_hours_to_settlement": 32.405715,
+    "hit_model_top": 0.37007986558701234,
+    "hit_market_top": 0.4553035385738838,
+    "hit_market_minus_model": [
+     0.08522367298687111,
+     0.061473128175738384,
+     0.11453115785633604
+    ],
+    "share_disagree": 0.4781765645949977,
+    "share_tie_overlap": 0.010460671655991058,
+    "logscore_model": 1.5974278535269415,
+    "logscore_market": 1.2837302076323984,
+    "logscore_model_minus_market": [
+     0.31369764589454197,
+     0.23379414460966721,
+     0.41495925484411017
+    ],
+    "brier_model": 0.7426435782699351,
+    "brier_market": 0.653781739721438,
+    "brier_model_minus_market": [
+     0.08886183854849657,
+     0.07004299860491811,
+     0.10765167221083988
+    ],
+    "hit_when_agree": 0.4839651580515923,
+    "event_days_won_on_hit": {
+     "market": 20,
+     "model": 1
+    },
+    "disagree": {
+     "station_days": 565,
+     "truth_at": {
+      "beyond_model_top": 0.05833461030471684,
+      "market_top": 0.43016249453728256,
+      "model_top": 0.247430548297577,
+      "beyond_market_top": 0.22731607255199973,
+      "between": 0.036756274308428385
+     },
+     "market_minus_model_hit": [
+      0.1827319462397056,
+      0.13257281100526289,
+      0.23129652779436935
+     ],
+     "gap_buckets": {
+      "1": 0.8631225516723089,
+      "2": 0.1007926858605472,
+      "3": 0.02341827163308232,
+      "4": 0.009233248293367588,
+      "5": 0.0012230282173839452,
+      "6": 0.0009382134270342595,
+      "7": 0.001272000896267602
+     },
+     "model_prob_on_own_top": 0.40692452610277297,
+     "market_prob_on_model_top": 0.24170698342564523,
+     "market_prob_on_own_top": 0.4196199869413862,
+     "model_prob_on_market_top": 0.2360733545515888
+    }
+   },
+   "by_hours_to_settlement": {
+    "18-24h:before_0919": {
+     "station_days": 18,
+     "event_days": 6,
+     "decisions": 19,
+     "median_hours_to_settlement": 23.995704444444442,
+     "hit_model_top": 0.5555555555555556,
+     "hit_market_top": 0.2777777777777778,
+     "hit_market_minus_model": [
+      -0.2777777777777778,
+      -0.46749999999999997,
+      0.0
+     ],
+     "share_disagree": 0.3888888888888889,
+     "share_tie_overlap": 0.0,
+     "logscore_model": 1.375368540066353,
+     "logscore_market": 1.2446260261948752,
+     "logscore_model_minus_market": [
+      0.1307425138714774,
+      -0.04630211899228926,
+      0.3550402402874606
+     ],
+     "brier_model": 0.68814820178039,
+     "brier_market": 0.6928968003405857,
+     "brier_model_minus_market": [
+      -0.004748598560195756,
+      -0.11072163436897617,
+      0.12937536527043242
+     ],
+     "hit_when_agree": 0.36363636363636365,
+     "event_days_won_on_hit": {
+      "tie": 4,
+      "model": 2
+     },
+     "disagree": {
+      "station_days": 7,
+      "truth_at": {
+       "model_top": 0.8571428571428571,
+       "market_top": 0.14285714285714285
+      },
+      "market_minus_model_hit": [
+       -0.7142857142857143,
+       -1.0,
+       0.0
+      ],
+      "gap_buckets": {
+       "1": 1.0
+      },
+      "model_prob_on_own_top": 0.414528983057686,
+      "market_prob_on_model_top": 0.30173722824470256,
+      "market_prob_on_own_top": 0.4905921611285266,
+      "model_prob_on_market_top": 0.2932094336164459
+     }
+    },
+    "18-24h:since_0919": {
+     "station_days": 7,
+     "event_days": 3,
+     "decisions": 7,
+     "median_hours_to_settlement": 23.992768055555555,
+     "hit_model_top": 0.5714285714285714,
+     "hit_market_top": 0.42857142857142855,
+     "hit_market_minus_model": [
+      -0.14285714285714285,
+      -0.6666666666666666,
+      1.0
+     ],
+     "share_disagree": 0.42857142857142855,
+     "share_tie_overlap": 0.0,
+     "logscore_model": 1.118032067518676,
+     "logscore_market": 0.9088891842427695,
+     "logscore_model_minus_market": [
+      0.20914288327590638,
+      0.013066563683106694,
+      0.36535074824793917
+     ],
+     "brier_model": 0.595397109534474,
+     "brier_market": 0.4987227784882485,
+     "brier_model_minus_market": [
+      0.0966743310462256,
+      -0.02679987278191398,
+      0.27013112069487766
+     ],
+     "hit_when_agree": 0.5,
+     "event_days_won_on_hit": {
+      "model": 1,
+      "tie": 1,
+      "market": 1
+     },
+     "disagree": {
+      "station_days": 3,
+      "truth_at": {
+       "model_top": 0.6666666666666666,
+       "market_top": 0.3333333333333333
+      },
+      "market_minus_model_hit": [
+       -0.3333333333333333,
+       -1.0,
+       1.0
+      ],
+      "gap_buckets": {
+       "1": 1.0
+      },
+      "model_prob_on_own_top": 0.3816083825953094,
+      "market_prob_on_model_top": 0.3032914877405602,
+      "market_prob_on_own_top": 0.4181922959708633,
+      "model_prob_on_market_top": 0.2746019492566569
+     }
+    },
+    "24-36h:before_0919": {
+     "station_days": 479,
+     "event_days": 15,
+     "decisions": 4125,
+     "median_hours_to_settlement": 29.48226138888889,
+     "hit_model_top": 0.36232176502523644,
+     "hit_market_top": 0.46529801387112146,
+     "hit_market_minus_model": [
+      0.10297624884588469,
+      0.06555657094389387,
+      0.14672717676681807
+     ],
+     "share_disagree": 0.4683368301730506,
+     "share_tie_overlap": 0.010645163506516815,
+     "logscore_model": 1.618400581523472,
+     "logscore_market": 1.2925225136738574,
+     "logscore_model_minus_market": [
+      0.3258780678496139,
+      0.2323875100151108,
+      0.46705369712224337
+     ],
+     "brier_model": 0.750031134797351,
+     "brier_market": 0.6515619016488973,
+     "brier_model_minus_market": [
+      0.09846923314845339,
+      0.07009284176841481,
+      0.12801524355311444
+     ],
+     "hit_when_agree": 0.48703837873164585,
+     "event_days_won_on_hit": {
+      "market": 15
+     },
+     "disagree": {
+      "station_days": 327,
+      "truth_at": {
+       "beyond_market_top": 0.2225950103386491,
+       "beyond_model_top": 0.06593855379778517,
+       "model_top": 0.2216868258726142,
+       "market_top": 0.44632904503754456,
+       "between": 0.04345056495341036
+      },
+      "market_minus_model_hit": [
+       0.2246422191649284,
+       0.15258592225727874,
+       0.3112812052273227
+      ],
+      "gap_buckets": {
+       "1": 0.8554574838141762,
+       "2": 0.10719183471948292,
+       "3": 0.023178561393350772,
+       "4": 0.013086281731726145,
+       "5": 0.000742942022967537,
+       "7": 0.00034289631829270944
+      },
+      "model_prob_on_own_top": 0.41295094009597716,
+      "market_prob_on_model_top": 0.23635274782901455,
+      "market_prob_on_own_top": 0.4269533186161313,
+      "model_prob_on_market_top": 0.23328018538641512
+     }
+    },
+    "24-36h:since_0919": {
+     "station_days": 226,
+     "event_days": 6,
+     "decisions": 2193,
+     "median_hours_to_settlement": 29.660355277777775,
+     "hit_model_top": 0.3800447585845816,
+     "hit_market_top": 0.4437041326421858,
+     "hit_market_minus_model": [
+      0.06365937405760393,
+      0.03116906822936968,
+      0.10211108785407857
+     ],
+     "share_disagree": 0.44208673578142604,
+     "share_tie_overlap": 0.010945838821945015,
+     "logscore_model": 1.4766673830409307,
+     "logscore_market": 1.220121853910696,
+     "logscore_model_minus_market": [
+      0.2565455291302338,
+      0.1759377036901758,
+      0.3184897483764132
+     ],
+     "brier_model": 0.7211634863863529,
+     "brier_market": 0.6450958567569469,
+     "brier_model_minus_market": [
+      0.07606762962940568,
+      0.054242198139553444,
+      0.09554897060607039
+     ],
+     "hit_when_agree": 0.4715371522023942,
+     "event_days_won_on_hit": {
+      "market": 6
+     },
+     "disagree": {
+      "station_days": 157,
+      "truth_at": {
+       "market_top": 0.41767038211850427,
+       "model_top": 0.26913467879878816,
+       "beyond_model_top": 0.04868029778238038,
+       "beyond_market_top": 0.24800004277285262,
+       "between": 0.016514598527475104
+      },
+      "market_minus_model_hit": [
+       0.14853570331971508,
+       0.07663647467244367,
+       0.2377374799422496
+      ],
+      "gap_buckets": {
+       "1": 0.901109552802885,
+       "2": 0.06953116092605446,
+       "3": 0.01935043867865769,
+       "5": 0.005838494428905338,
+       "6": 0.004170353163503813
+      },
+      "model_prob_on_own_top": 0.3975259400383756,
+      "market_prob_on_model_top": 0.25975614447237605,
+      "market_prob_on_own_top": 0.4150851989095801,
+      "model_prob_on_market_top": 0.24952207021081516
+     }
+    },
+    "36-48h:before_0919": {
+     "station_days": 354,
+     "event_days": 14,
+     "decisions": 1819,
+     "median_hours_to_settlement": 39.94590166666667,
+     "hit_model_top": 0.37413995295351227,
+     "hit_market_top": 0.4043181551656128,
+     "hit_market_minus_model": [
+      0.03017820221210051,
+      -0.00497841937743074,
+      0.07118788229426898
+     ],
+     "share_disagree": 0.48228035696256033,
+     "share_tie_overlap": 0.006453457089050309,
+     "logscore_model": 1.6234767049338104,
+     "logscore_market": 1.3752873704759818,
+     "logscore_model_minus_market": [
+      0.24818933445782831,
+      0.14533102972130432,
+      0.40863088355191807
+     ],
+     "brier_model": 0.7455010724212016,
+     "brier_market": 0.6940701622887429,
+     "brier_model_minus_market": [
+      0.051430910132458596,
+      0.01974767129456937,
+      0.09171154285658283
+     ],
+     "hit_when_agree": 0.45036492394690825,
+     "event_days_won_on_hit": {
+      "model": 6,
+      "tie": 1,
+      "market": 7
+     },
+     "disagree": {
+      "station_days": 227,
+      "truth_at": {
+       "beyond_model_top": 0.06343776864072916,
+       "market_top": 0.35756710950533865,
+       "model_top": 0.2916461016161365,
+       "beyond_market_top": 0.2442693695875615,
+       "between": 0.04307965065023648
+      },
+      "market_minus_model_hit": [
+       0.06592100788920188,
+       -0.005290471127933778,
+       0.1514934870388582
+      ],
+      "gap_buckets": {
+       "1": 0.8675319609350097,
+       "2": 0.11285497249370054,
+       "3": 0.010006213827660544,
+       "4": 0.008874690756239948,
+       "5": 0.000732161987389796
+      },
+      "model_prob_on_own_top": 0.4026385486396756,
+      "market_prob_on_model_top": 0.23278204913163203,
+      "market_prob_on_own_top": 0.40552594384048457,
+      "model_prob_on_market_top": 0.23669445104541978
+     }
+    },
+    "36-48h:since_0919": {
+     "station_days": 214,
+     "event_days": 6,
+     "decisions": 1264,
+     "median_hours_to_settlement": 40.436949722222224,
+     "hit_model_top": 0.355636471524322,
+     "hit_market_top": 0.4539622436234585,
+     "hit_market_minus_model": [
+      0.09832577209913648,
+      0.04426063034933998,
+      0.1387540412785522
+     ],
+     "share_disagree": 0.5244628424534966,
+     "share_tie_overlap": 0.012960209572359105,
+     "logscore_model": 1.5683549168248327,
+     "logscore_market": 1.2740988416080183,
+     "logscore_model_minus_market": [
+      0.2942560752168142,
+      0.21335387985876297,
+      0.3787343062964032
+     ],
+     "brier_model": 0.7475838738216032,
+     "brier_market": 0.6567068830383863,
+     "brier_model_minus_market": [
+      0.09087699078321679,
+      0.06301254795532496,
+      0.11577365629961944
+     ],
+     "hit_when_agree": 0.47931893879792487,
+     "event_days_won_on_hit": {
+      "market": 5,
+      "model": 1
+     },
+     "disagree": {
+      "station_days": 150,
+      "truth_at": {
+       "model_top": 0.2400481077745488,
+       "beyond_market_top": 0.2370166593060577,
+       "market_top": 0.4343208912088121,
+       "beyond_model_top": 0.06395308673586579,
+       "between": 0.02466125497471604
+      },
+      "market_minus_model_hit": [
+       0.19427278343426296,
+       0.10952467246932464,
+       0.27356930627793274
+      ],
+      "gap_buckets": {
+       "1": 0.8791863681023608,
+       "2": 0.0782485913841263,
+       "3": 0.03142769955719149,
+       "4": 0.0022274681912646753,
+       "6": 0.0022274681912646753,
+       "7": 0.0066824045737940265
+      },
+      "model_prob_on_own_top": 0.39637992626491636,
+      "market_prob_on_model_top": 0.24698927623593267,
+      "market_prob_on_own_top": 0.4132649381643384,
+      "model_prob_on_market_top": 0.23494982768466482
+     }
+    }
+   },
+   "examples_model_26C_market_27C": [
+    {
+     "station": "ZSQD",
+     "event_date": "2026-09-12",
+     "decided_at": "2026-09-11T09:33:08.039Z",
+     "hours_to_settlement": 30.4,
+     "model_top": "26°C",
+     "model_prob": 0.296,
+     "market_top": "27°C",
+     "market_prob": 0.352,
+     "truth": "27°C"
+    },
+    {
+     "station": "RJTT",
+     "event_date": "2026-09-13",
+     "decided_at": "2026-09-12T09:46:34.024Z",
+     "hours_to_settlement": 29.2,
+     "model_top": "26°C",
+     "model_prob": 0.248,
+     "market_top": "27°C",
+     "market_prob": 0.408,
+     "truth": "25°C"
+    },
+    {
+     "station": "RJTT",
+     "event_date": "2026-09-15",
+     "decided_at": "2026-09-13T19:09:50.906Z",
+     "hours_to_settlement": 43.8,
+     "model_top": "26°C",
+     "model_prob": 0.339,
+     "market_top": "27°C",
+     "market_prob": 0.34,
+     "truth": "28°C"
+    },
+    {
+     "station": "RKSI",
+     "event_date": "2026-09-16",
+     "decided_at": "2026-09-14T20:02:52.701Z",
+     "hours_to_settlement": 43.0,
+     "model_top": "26°C",
+     "model_prob": 0.389,
+     "market_top": "27°C",
+     "market_prob": 0.601,
+     "truth": "27°C"
+    },
+    {
+     "station": "ZHHH",
+     "event_date": "2026-09-16",
+     "decided_at": "2026-09-15T11:57:18.713Z",
+     "hours_to_settlement": 28.0,
+     "model_top": "26°C",
+     "model_prob": 0.237,
+     "market_top": "27°C",
+     "market_prob": 0.288,
+     "truth": "27°C"
+    },
+    {
+     "station": "LEMD",
+     "event_date": "2026-09-17",
+     "decided_at": "2026-09-16T13:27:22.429Z",
+     "hours_to_settlement": 32.5,
+     "model_top": "26°C",
+     "model_prob": 0.365,
+     "market_top": "27°C",
+     "market_prob": 0.389,
+     "truth": "27°C"
+    },
+    {
+     "station": "ZUCK",
+     "event_date": "2026-09-19",
+     "decided_at": "2026-09-17T23:26:04.946Z",
+     "hours_to_settlement": 40.6,
+     "model_top": "26°C",
+     "model_prob": 0.248,
+     "market_top": "27°C",
+     "market_prob": 0.266,
+     "truth": "26°C"
+    },
+    {
+     "station": "RKSI",
+     "event_date": "2026-09-20",
+     "decided_at": "2026-09-18T23:10:41.617Z",
+     "hours_to_settlement": 39.8,
+     "model_top": "26°C",
+     "model_prob": 0.499,
+     "market_top": "27°C",
+     "market_prob": 0.403,
+     "truth": "26°C"
+    },
+    {
+     "station": "LIMC",
+     "event_date": "2026-09-20",
+     "decided_at": "2026-09-19T05:42:58.627Z",
+     "hours_to_settlement": 40.3,
+     "model_top": "26°C",
+     "model_prob": 0.479,
+     "market_top": "27°C",
+     "market_prob": 0.613,
+     "truth": "27°C"
+    },
+    {
+     "station": "ZHHH",
+     "event_date": "2026-09-23",
+     "decided_at": "2026-09-22T08:57:59.797Z",
+     "hours_to_settlement": 31.0,
+     "model_top": "26°C",
+     "model_prob": 0.292,
+     "market_top": "27°C",
+     "market_prob": 0.339,
+     "truth": "25°C"
+    },
+    {
+     "station": "ZUUU",
+     "event_date": "2026-09-23",
+     "decided_at": "2026-09-22T13:24:22.955Z",
+     "hours_to_settlement": 26.6,
+     "model_top": "26°C",
+     "model_prob": 0.306,
+     "market_top": "27°C",
+     "market_prob": 0.296,
+     "truth": "28°C"
+    },
+    {
+     "station": "ZUCK",
+     "event_date": "2026-09-24",
+     "decided_at": "2026-09-23T02:29:38.268Z",
+     "hours_to_settlement": 37.5,
+     "model_top": "26°C",
+     "model_prob": 0.296,
+     "market_top": "27°C",
+     "market_prob": 0.254,
+     "truth": "28°C"
+    }
+   ]
+  },
+  "P1": {
+   "first_decision": {
+    "station_days": 1182,
+    "event_days": 34,
+    "decisions": 1182,
+    "median_hours_to_settlement": 12.797616388888889,
+    "hit_model_top": 0.48815566835871405,
+    "hit_market_top": 0.5909475465313029,
+    "hit_market_minus_model": [
+     0.10279187817258884,
+     0.06881717367012674,
+     0.13659628507497948
+    ],
+    "share_disagree": 0.4027072758037225,
+    "share_tie_overlap": 0.00676818950930626,
+    "logscore_model": 1.2386437335285059,
+    "logscore_market": 0.9415863565888252,
+    "logscore_model_minus_market": [
+     0.29705737693968093,
+     0.24368612964801445,
+     0.35755743460294037
+    ],
+    "brier_model": 0.612677032576566,
+    "brier_market": 0.5024857049524563,
+    "brier_model_minus_market": [
+     0.11019132762410981,
+     0.08949109590964212,
+     0.13226122366176118
+    ],
+    "hit_when_agree": 0.663323782234957,
+    "event_days_won_on_hit": {
+     "market": 26,
+     "tie": 2,
+     "model": 6
+    },
+    "disagree": {
+     "station_days": 476,
+     "truth_at": {
+      "model_top": 0.23319327731092437,
+      "between": 0.0546218487394958,
+      "market_top": 0.4894957983193277,
+      "beyond_market_top": 0.18487394957983194,
+      "beyond_model_top": 0.037815126050420166
+     },
+     "market_minus_model_hit": [
+      0.25630252100840334,
+      0.17807586446898035,
+      0.3340632784162916
+     ],
+     "gap_buckets": {
+      "1": 0.842436974789916,
+      "2": 0.09243697478991597,
+      "3": 0.04201680672268908,
+      "4": 0.004201680672268907,
+      "5": 0.01680672268907563,
+      "6": 0.0021008403361344537
+     },
+     "model_prob_on_own_top": 0.42136396030206935,
+     "market_prob_on_model_top": 0.23055076099137373,
+     "market_prob_on_own_top": 0.5070857614219064,
+     "model_prob_on_market_top": 0.24349192038439366
+    }
+   },
+   "first_decision_before_0919": {
+    "station_days": 946,
+    "event_days": 28,
+    "decisions": 946,
+    "median_hours_to_settlement": 12.829253055555554,
+    "hit_model_top": 0.48731501057082455,
+    "hit_market_top": 0.5893234672304439,
+    "hit_market_minus_model": [
+     0.10200845665961945,
+     0.06493168762829134,
+     0.13960464479627688
+    ],
+    "share_disagree": 0.4260042283298097,
+    "share_tie_overlap": 0.006342494714587738,
+    "logscore_model": 1.2703471164613593,
+    "logscore_market": 0.9532722802932466,
+    "logscore_model_minus_market": [
+     0.31707483616811255,
+     0.25544383055541203,
+     0.38514734311998083
+    ],
+    "brier_model": 0.6184433672317451,
+    "brier_market": 0.5058188853143382,
+    "brier_model_minus_market": [
+     0.11262448191740704,
+     0.0878744057378286,
+     0.13838788056114218
+    ],
+    "hit_when_agree": 0.6759776536312849,
+    "event_days_won_on_hit": {
+     "market": 21,
+     "tie": 2,
+     "model": 5
+    },
+    "disagree": {
+     "station_days": 403,
+     "truth_at": {
+      "model_top": 0.23573200992555832,
+      "between": 0.062034739454094295,
+      "market_top": 0.47890818858560796,
+      "beyond_market_top": 0.18362282878411912,
+      "beyond_model_top": 0.03970223325062035
+     },
+     "market_minus_model_hit": [
+      0.24317617866004962,
+      0.1560021899934147,
+      0.32475863197512683
+     ],
+     "gap_buckets": {
+      "1": 0.826302729528536,
+      "2": 0.09925558312655088,
+      "3": 0.04714640198511166,
+      "4": 0.004962779156327543,
+      "5": 0.019851116625310174,
+      "6": 0.0024813895781637717
+     },
+     "model_prob_on_own_top": 0.41359027989584485,
+     "market_prob_on_model_top": 0.22128022606537465,
+     "market_prob_on_own_top": 0.5099110253984941,
+     "model_prob_on_market_top": 0.23516308607545713
+    }
+   },
+   "first_decision_since_0919": {
+    "station_days": 236,
+    "event_days": 6,
+    "decisions": 236,
+    "median_hours_to_settlement": 12.691460555555556,
+    "hit_model_top": 0.4915254237288136,
+    "hit_market_top": 0.597457627118644,
+    "hit_market_minus_model": [
+     0.1059322033898305,
+     0.04292929292929293,
+     0.17256637168141592
+    ],
+    "share_disagree": 0.3093220338983051,
+    "share_tie_overlap": 0.00847457627118644,
+    "logscore_model": 1.1115615290603738,
+    "logscore_market": 0.8947436285194063,
+    "logscore_model_minus_market": [
+     0.21681790054096753,
+     0.1402740198906184,
+     0.28893051087119215
+    ],
+    "brier_model": 0.5895628267130091,
+    "brier_market": 0.4891247362137263,
+    "brier_model_minus_market": [
+     0.10043809049928272,
+     0.07001893962639387,
+     0.1298817386222257
+    ],
+    "hit_when_agree": 0.6211180124223602,
+    "event_days_won_on_hit": {
+     "market": 5,
+     "model": 1
+    },
+    "disagree": {
+     "station_days": 73,
+     "truth_at": {
+      "model_top": 0.2191780821917808,
+      "market_top": 0.547945205479452,
+      "beyond_market_top": 0.1917808219178082,
+      "beyond_model_top": 0.0273972602739726,
+      "between": 0.0136986301369863
+     },
+     "market_minus_model_hit": [
+      0.3287671232876712,
+      0.1665983606557377,
+      0.4714285714285714
+     ],
+     "gap_buckets": {
+      "1": 0.9315068493150684,
+      "2": 0.0547945205479452,
+      "3": 0.0136986301369863
+     },
+     "model_prob_on_own_top": 0.46427893569533596,
+     "market_prob_on_model_top": 0.2817291935280538,
+     "market_prob_on_own_top": 0.4914887561812926,
+     "model_prob_on_market_top": 0.2894716495145501
+    }
+   },
+   "all_decisions_station_day_once": {
+    "station_days": 1182,
+    "event_days": 34,
+    "decisions": 15599,
+    "median_hours_to_settlement": 7.517934722222222,
+    "hit_model_top": 0.7336382153682407,
+    "hit_market_top": 0.7922107974873366,
+    "hit_market_minus_model": [
+     0.05857258211909562,
+     0.04279678151519465,
+     0.07434290503615108
+    ],
+    "share_disagree": 0.22143016600969134,
+    "share_tie_overlap": 0.002033028360447101,
+    "logscore_model": 0.6808394858752734,
+    "logscore_market": 0.4872632795865628,
+    "logscore_model_minus_market": [
+     0.1935762062887098,
+     0.15575387131281399,
+     0.23519215292896714
+    ],
+    "brier_model": 0.3346251721167942,
+    "brier_market": 0.259706248101256,
+    "brier_model_minus_market": [
+     0.07491892401553799,
+     0.057624616317961404,
+     0.09246213119416292
+    ],
+    "hit_when_agree": 0.8770771876713833,
+    "event_days_won_on_hit": {
+     "market": 30,
+     "model": 3,
+     "tie": 1
+    },
+    "disagree": {
+     "station_days": 790,
+     "truth_at": {
+      "market_top": 0.4994248043632971,
+      "model_top": 0.2344251158934478,
+      "beyond_model_top": 0.04409734770998281,
+      "beyond_market_top": 0.162750716512413,
+      "between": 0.059302015520861354
+     },
+     "market_minus_model_hit": [
+      0.26499968846985134,
+      0.1901283633351155,
+      0.33793366497649485
+     ],
+     "gap_buckets": {
+      "1": 0.8116089326663657,
+      "2": 0.12080879742365533,
+      "3": 0.031857530366413284,
+      "4": 0.012330672173944046,
+      "5": 0.01860810704607514,
+      "6": 0.002238810571515712,
+      "7": 0.002547149752023864
+     },
+     "model_prob_on_own_top": 0.4303914477796847,
+     "market_prob_on_model_top": 0.20838642491514586,
+     "market_prob_on_own_top": 0.5465151939511429,
+     "model_prob_on_market_top": 0.2345118095214492
+    }
+   },
+   "by_hours_to_settlement": {
+    "0-6h:before_0919": {
+     "station_days": 737,
+     "event_days": 25,
+     "decisions": 4887,
+     "median_hours_to_settlement": 3.1397255555555557,
+     "hit_model_top": 0.991798361135499,
+     "hit_market_top": 0.9984735413839891,
+     "hit_market_minus_model": [
+      0.0066751802484901635,
+      -0.00012117876201175897,
+      0.01571808010981292
+     ],
+     "share_disagree": 0.0090496714289515,
+     "share_tie_overlap": 0.0,
+     "logscore_model": 0.06033207812918327,
+     "logscore_market": 0.009265892186088429,
+     "logscore_model_minus_market": [
+      0.05106618594309481,
+      0.015423421842465923,
+      0.10291026119102378
+     ],
+     "brier_model": 0.021066978245696543,
+     "brier_market": 0.0022484100079863322,
+     "brier_model_minus_market": [
+      0.018818568237710217,
+      0.002842158773406222,
+      0.042079279949845824
+     ],
+     "hit_when_agree": 0.9996576891737153,
+     "event_days_won_on_hit": {
+      "market": 5,
+      "tie": 19,
+      "model": 1
+     },
+     "disagree": {
+      "station_days": 12,
+      "truth_at": {
+       "market_top": 0.8688078788769659,
+       "model_top": 0.13119212112303394
+      },
+      "market_minus_model_hit": [
+       0.7376157577539321,
+       -0.015550919780011151,
+       1.0
+      ],
+      "gap_buckets": {
+       "1": 0.7750992209319418,
+       "2": 0.0749669263560194,
+       "7": 0.1499338527120388
+      },
+      "model_prob_on_own_top": 0.5241044410871148,
+      "market_prob_on_model_top": 0.01962044105527805,
+      "market_prob_on_own_top": 0.944410092655023,
+      "model_prob_on_market_top": 0.23416316894350145
+     }
+    },
+    "0-6h:since_0919": {
+     "station_days": 206,
+     "event_days": 6,
+     "decisions": 1372,
+     "median_hours_to_settlement": 3.131026388888889,
+     "hit_model_top": 0.9862459546925565,
+     "hit_market_top": 0.963187702265372,
+     "hit_market_minus_model": [
+      -0.023058252427184477,
+      -0.086764705882353,
+      0.002511532915804186
+     ],
+     "share_disagree": 0.025485436893203883,
+     "share_tie_overlap": 0.00040453074433656954,
+     "logscore_model": 0.06863536180293131,
+     "logscore_market": 0.12184083785846939,
+     "logscore_model_minus_market": [
+      -0.053205476055538034,
+      -0.26016057457134234,
+      0.048725029474251204
+     ],
+     "brier_model": 0.025352288945512443,
+     "brier_market": 0.06296468040085876,
+     "brier_model_minus_market": [
+      -0.037612391455346325,
+      -0.14431286211653174,
+      0.010212713605165987
+     ],
+     "hit_when_agree": 0.9875415282392025,
+     "event_days_won_on_hit": {
+      "market": 2,
+      "model": 1,
+      "tie": 3
+     },
+     "disagree": {
+      "station_days": 7,
+      "truth_at": {
+       "market_top": 0.047619047619047616,
+       "model_top": 0.9523809523809523
+      },
+      "market_minus_model_hit": [
+       -0.9047619047619048,
+       -1.0,
+       1.0
+      ],
+      "gap_buckets": {
+       "1": 0.8095238095238093,
+       "2": 0.19047619047619047
+      },
+      "model_prob_on_own_top": 0.9670571034063877,
+      "market_prob_on_model_top": 0.06829273720751582,
+      "market_prob_on_own_top": 0.9234026064075054,
+      "model_prob_on_market_top": 0.004601331758158824
+     }
+    },
+    "6-12h:before_0919": {
+     "station_days": 742,
+     "event_days": 26,
+     "decisions": 4963,
+     "median_hours_to_settlement": 9.242683055555556,
+     "hit_model_top": 0.6564999963244812,
+     "hit_market_top": 0.7813137056592533,
+     "hit_market_minus_model": [
+      0.12481370933477169,
+      0.09730387154593714,
+      0.14928292381349095
+     ],
+     "share_disagree": 0.30638322748191277,
+     "share_tie_overlap": 0.001266384858029063,
+     "logscore_model": 0.8555443902479697,
+     "logscore_market": 0.5250578355923967,
+     "logscore_model_minus_market": [
+      0.3304865546555722,
+      0.275150787988848,
+      0.3904534523198686
+     ],
+     "brier_model": 0.442199304800411,
+     "brier_market": 0.2903530133451461,
+     "brier_model_minus_market": [
+      0.1518462914552645,
+      0.13068741652223537,
+      0.17239122382070887
+     ],
+     "hit_when_agree": 0.8479203684952573,
+     "event_days_won_on_hit": {
+      "market": 23,
+      "tie": 2,
+      "model": 1
+     },
+     "disagree": {
+      "station_days": 519,
+      "truth_at": {
+       "market_top": 0.6331008369183424,
+       "beyond_model_top": 0.024762957445506655,
+       "beyond_market_top": 0.08204223893614741,
+       "model_top": 0.22451249955465502,
+       "between": 0.03558146714535366
+      },
+      "market_minus_model_hit": [
+       0.40858833736368305,
+       0.32119922242572313,
+       0.4716039417282062
+      ],
+      "gap_buckets": {
+       "1": 0.8441892131422157,
+       "2": 0.10574797709939414,
+       "3": 0.02873544725655911,
+       "4": 0.007731168906913694,
+       "5": 0.009197425078914566,
+       "6": 0.0017595074064010478,
+       "7": 0.0026392611096015717
+      },
+      "model_prob_on_own_top": 0.4875078448222126,
+      "market_prob_on_model_top": 0.19451394131603403,
+      "market_prob_on_own_top": 0.6354703164329703,
+      "model_prob_on_market_top": 0.2465241451643977
+     }
+    },
+    "6-12h:since_0919": {
+     "station_days": 220,
+     "event_days": 6,
+     "decisions": 1640,
+     "median_hours_to_settlement": 9.086467361111112,
+     "hit_model_top": 0.7583895902077721,
+     "hit_market_top": 0.801404920836739,
+     "hit_market_minus_model": [
+      0.04301533062896688,
+      0.016772895412135863,
+      0.07450168120024567
+     ],
+     "share_disagree": 0.1665413122231304,
+     "share_tie_overlap": 0.0015151515151515152,
+     "logscore_model": 0.6248729447090666,
+     "logscore_market": 0.474312008094446,
+     "logscore_model_minus_market": [
+      0.15056093661462014,
+      0.11522019582258597,
+      0.19269947186778816
+     ],
+     "brier_model": 0.3266272681636538,
+     "brier_market": 0.26575547807687866,
+     "brier_model_minus_market": [
+      0.060871790086774964,
+      0.041214639677633044,
+      0.08306790517968876
+     ],
+     "hit_when_agree": 0.8508424836759662,
+     "event_days_won_on_hit": {
+      "market": 6
+     },
+     "disagree": {
+      "station_days": 108,
+      "truth_at": {
+       "market_top": 0.5571857166812265,
+       "model_top": 0.30344834481054733,
+       "beyond_market_top": 0.10856355043170392,
+       "beyond_model_top": 0.020361634874775637,
+       "between": 0.01044075320174666
+      },
+      "market_minus_model_hit": [
+       0.2537373718706788,
+       0.13122619600784297,
+       0.38546026463843147
+      ],
+      "gap_buckets": {
+       "1": 0.9375917860298468,
+       "2": 0.05664630452686617,
+       "3": 0.005761909443287576
+      },
+      "model_prob_on_own_top": 0.547855825263896,
+      "market_prob_on_model_top": 0.27778548611031284,
+      "market_prob_on_own_top": 0.5504180932744803,
+      "model_prob_on_market_top": 0.26836239336656775
+     }
+    },
+    "12-18h:before_0919": {
+     "station_days": 649,
+     "event_days": 28,
+     "decisions": 1546,
+     "median_hours_to_settlement": 12.878455833333334,
+     "hit_model_top": 0.39938708569294085,
+     "hit_market_top": 0.5221676371907497,
+     "hit_market_minus_model": [
+      0.12278055149780881,
+      0.0811401992979118,
+      0.15735553385065035
+     ],
+     "share_disagree": 0.4940783856615906,
+     "share_tie_overlap": 0.004879301489470981,
+     "logscore_model": 1.4604261967767695,
+     "logscore_market": 1.116209343053529,
+     "logscore_model_minus_market": [
+      0.3442168537232407,
+      0.2596903209106872,
+      0.4318419763857651
+     ],
+     "brier_model": 0.7114790451275946,
+     "brier_market": 0.5923494441128011,
+     "brier_model_minus_market": [
+      0.11912960101479363,
+      0.09067039906704145,
+      0.14508731903183475
+     ],
+     "hit_when_agree": 0.5732821390184251,
+     "event_days_won_on_hit": {
+      "market": 23,
+      "model": 3,
+      "tie": 2
+     },
+     "disagree": {
+      "station_days": 371,
+      "truth_at": {
+       "model_top": 0.22334682644645698,
+       "market_top": 0.4748396782240988,
+       "beyond_market_top": 0.17517275060545207,
+       "between": 0.07908211954660839,
+       "beyond_model_top": 0.04755862517738291
+      },
+      "market_minus_model_hit": [
+       0.25149285177764324,
+       0.18114944851928053,
+       0.3230597519850792
+      ],
+      "gap_buckets": {
+       "1": 0.8013162577697042,
+       "2": 0.11228776697724946,
+       "3": 0.05405570511964837,
+       "4": 0.009899187257488054,
+       "5": 0.018802718108239323,
+       "6": 0.0036383647676686394
+      },
+      "model_prob_on_own_top": 0.40419200913540043,
+      "market_prob_on_model_top": 0.21956649089624422,
+      "market_prob_on_own_top": 0.4896867277132496,
+      "model_prob_on_market_top": 0.23299371808740774
+     }
+    },
+    "12-18h:since_0919": {
+     "station_days": 174,
+     "event_days": 6,
+     "decisions": 300,
+     "median_hours_to_settlement": 12.627375833333334,
+     "hit_model_top": 0.41139846743295017,
+     "hit_market_top": 0.507183908045977,
+     "hit_market_minus_model": [
+      0.09578544061302686,
+      0.03868772045855381,
+      0.16993464052287588
+     ],
+     "share_disagree": 0.3548850574712643,
+     "share_tie_overlap": 0.014367816091954023,
+     "logscore_model": 1.2682266192287848,
+     "logscore_market": 1.0422835692035306,
+     "logscore_model_minus_market": [
+      0.22594305002525428,
+      0.12441863973925132,
+      0.3006034774800862
+     ],
+     "brier_model": 0.6774714615162346,
+     "brier_market": 0.5755397957250223,
+     "brier_model_minus_market": [
+      0.1019316657912122,
+      0.07056507889920352,
+      0.12956713256112004
+     ],
+     "hit_when_agree": 0.5117691723614274,
+     "event_days_won_on_hit": {
+      "market": 6
+     },
+     "disagree": {
+      "station_days": 71,
+      "truth_at": {
+       "model_top": 0.2496626180836708,
+       "market_top": 0.4993252361673415,
+       "beyond_market_top": 0.21052631578947367,
+       "beyond_model_top": 0.024291497975708502,
+       "between": 0.016194331983805668
+      },
+      "market_minus_model_hit": [
+       0.2496626180836707,
+       0.10748221420914143,
+       0.38352036808438994
+      ],
+      "gap_buckets": {
+       "1": 0.9271255060728747,
+       "2": 0.05668016194331984,
+       "3": 0.016194331983805668
+      },
+      "model_prob_on_own_top": 0.4513462453821411,
+      "market_prob_on_model_top": 0.2785751989499336,
+      "market_prob_on_own_top": 0.4768290218109489,
+      "model_prob_on_market_top": 0.2887548717319427
+     }
+    },
+    "18-24h:before_0919": {
+     "station_days": 162,
+     "event_days": 10,
+     "decisions": 890,
+     "median_hours_to_settlement": 20.08901138888889,
+     "hit_model_top": 0.36856102573695165,
+     "hit_market_top": 0.409283754654125,
+     "hit_market_minus_model": [
+      0.0407227289171734,
+      -0.02627322068921824,
+      0.1000221326860143
+     ],
+     "share_disagree": 0.5076970097803432,
+     "share_tie_overlap": 0.0049382716049382715,
+     "logscore_model": 1.65659755453284,
+     "logscore_market": 1.3579115560115704,
+     "logscore_model_minus_market": [
+      0.2986859985212698,
+      0.20811939465330073,
+      0.36140993684170836
+     ],
+     "brier_model": 0.7493564860005251,
+     "brier_market": 0.6793804191945614,
+     "brier_model_minus_market": [
+      0.0699760668059638,
+      0.03330989358287431,
+      0.09710901538169703
+     ],
+     "hit_when_agree": 0.49445519342569005,
+     "event_days_won_on_hit": {
+      "model": 5,
+      "tie": 1,
+      "market": 4
+     },
+     "disagree": {
+      "station_days": 99,
+      "truth_at": {
+       "model_top": 0.2472407635629718,
+       "beyond_market_top": 0.28037209779705924,
+       "between": 0.07178197640477635,
+       "market_top": 0.33049108408781225,
+       "beyond_model_top": 0.07011407814737981
+      },
+      "market_minus_model_hit": [
+       0.08325032052484035,
+       -0.04130246771058238,
+       0.20353312766348494
+      ],
+      "gap_buckets": {
+       "1": 0.7387310123014523,
+       "2": 0.14231822506123235,
+       "3": 0.02918042558734883,
+       "4": 0.016819273081596902,
+       "5": 0.07295106396837207
+      },
+      "model_prob_on_own_top": 0.2958671979269892,
+      "market_prob_on_model_top": 0.20591338939148907,
+      "market_prob_on_own_top": 0.43929126546216396,
+      "model_prob_on_market_top": 0.20645617466972851
+     }
+    }
+   },
+   "examples_model_26C_market_27C": [
+    {
+     "station": "ZBAA",
+     "event_date": "2026-09-09",
+     "decided_at": "2026-09-09T04:01:38.962Z",
+     "hours_to_settlement": 12.0,
+     "model_top": "26°C",
+     "model_prob": 0.643,
+     "market_top": "27°C",
+     "market_prob": 0.441,
+     "truth": "27°C"
+    },
+    {
+     "station": "LTAC",
+     "event_date": "2026-09-09",
+     "decided_at": "2026-09-09T11:06:58.609Z",
+     "hours_to_settlement": 9.9,
+     "model_top": "26°C",
+     "model_prob": 0.505,
+     "market_top": "27°C",
+     "market_prob": 0.574,
+     "truth": "27°C"
+    },
+    {
+     "station": "CYYZ",
+     "event_date": "2026-09-13",
+     "decided_at": "2026-09-13T15:26:45.175Z",
+     "hours_to_settlement": 12.6,
+     "model_top": "26°C",
+     "model_prob": 0.477,
+     "market_top": "27°C",
+     "market_prob": 0.355,
+     "truth": "28°C"
+    },
+    {
+     "station": "ZBAA",
+     "event_date": "2026-09-14",
+     "decided_at": "2026-09-14T06:27:10.616Z",
+     "hours_to_settlement": 9.5,
+     "model_top": "26°C",
+     "model_prob": 0.581,
+     "market_top": "27°C",
+     "market_prob": 0.645,
+     "truth": "26°C"
+    },
+    {
+     "station": "ZUUU",
+     "event_date": "2026-09-17",
+     "decided_at": "2026-09-17T05:23:35.306Z",
+     "hours_to_settlement": 10.6,
+     "model_top": "26°C",
+     "model_prob": 0.467,
+     "market_top": "27°C",
+     "market_prob": 0.358,
+     "truth": "26°C"
+    },
+    {
+     "station": "LEMD",
+     "event_date": "2026-09-17",
+     "decided_at": "2026-09-17T09:17:19.258Z",
+     "hours_to_settlement": 12.7,
+     "model_top": "26°C",
+     "model_prob": 0.361,
+     "market_top": "27°C",
+     "market_prob": 0.489,
+     "truth": "27°C"
+    },
+    {
+     "station": "ZUUU",
+     "event_date": "2026-09-20",
+     "decided_at": "2026-09-20T05:49:35.550Z",
+     "hours_to_settlement": 10.2,
+     "model_top": "26°C",
+     "model_prob": 0.478,
+     "market_top": "27°C",
+     "market_prob": 0.392,
+     "truth": "27°C"
+    },
+    {
+     "station": "RKSI",
+     "event_date": "2026-09-23",
+     "decided_at": "2026-09-23T03:44:25.425Z",
+     "hours_to_settlement": 11.3,
+     "model_top": "26°C",
+     "model_prob": 0.876,
+     "market_top": "27°C",
+     "market_prob": 0.682,
+     "truth": "27°C"
+    },
+    {
+     "station": "LFPB",
+     "event_date": "2026-09-23",
+     "decided_at": "2026-09-23T10:43:29.386Z",
+     "hours_to_settlement": 11.3,
+     "model_top": "26°C",
+     "model_prob": 0.485,
+     "market_top": "27°C",
+     "market_prob": 0.505,
+     "truth": "27°C"
+    },
+    {
+     "station": "RJTT",
+     "event_date": "2026-09-24",
+     "decided_at": "2026-09-24T04:39:48.228Z",
+     "hours_to_settlement": 10.3,
+     "model_top": "26°C",
+     "model_prob": 0.628,
+     "market_top": "27°C",
+     "market_prob": 0.541,
+     "truth": "27°C"
+    }
+   ]
+  }
+ }
+}
