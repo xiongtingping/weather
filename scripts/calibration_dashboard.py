@@ -1625,7 +1625,13 @@ def collect_synoptic_cooling(conn: sqlite3.Connection) -> dict[str, Any]:
     charter 160 (2026-09-19) the day's forecast shortwave radiation is read
     as a clearness index Kt (over the top-of-atmosphere radiation for the
     station's latitude and date), standardised against the station's own Kt
-    before the event day, times 0.15 at every lead, times the served sigma.
+    before the event day, times the served sigma and a coefficient that is
+    the fleet's on every artifact (charter 210) and, since charter 222, one
+    per side: the warm side's when the day is clearer than the station's
+    own history, the cold side's when it is cloudier, the pair centred on
+    that history (``side_centre``, in sigmas, subtracted from every day) so
+    no station's mean moves.  ``per_unit`` is the coefficient the row was
+    shifted at and ``side`` which side paid it.
     The retired absolute standardisation rides on the receipt as the shadow
     arm (``legacy_v1``) and is shown beside it.  Read off the receipt each envelope carries
     (``synoptic_cooling_json``), never recomputed.  User, 2026-09-18:
@@ -1676,6 +1682,10 @@ def collect_synoptic_cooling(conn: sqlite3.Connection) -> dict[str, Any]:
                 "shift_c": None if shift is None else round(float(shift), 3),
                 "shift_sigma": receipt.get("shift_sigma"),
                 "per_unit": receipt.get("shift_sigma_per_unit"),
+                # Charter 222: WARM / COLD / NEUTRAL and the pair's centre on
+                # the station's history; absent before it.
+                "side": receipt.get("radiation_side"),
+                "side_centre": receipt.get("side_centre_sigma"),
                 "standardised": receipt.get("standardised"),
                 "radiation_sum": receipt.get("radiation_sum"),
                 "samples": receipt.get("sample_count"),
@@ -23265,6 +23275,7 @@ function radiationShift(){
   if(!S.length) return "";
   const f2 = v => v==null ? "—" : ((v>0?"+":"")+Number(v).toFixed(2));
   const leadWord = {h00_12:"0–12h", h12_24:"12–24h", h24_48:"24–48h", h48_plus:"48h+"};
+  const sideWord = {WARM:"升温侧", COLD:"降温侧", NEUTRAL:"不动"};
   const days = S.map(d=>`<div class="mono" style="font-size:12px;margin:2px 0">
     <b>${h(d.event_date.slice(5))}</b>：${d.resolved}/${d.stations} 站生效 ·
     平均 <b class="${(d.mean_shift_c||0)<0?"down":"up"}">${f2(d.mean_shift_c)}°C</b> ·
@@ -23284,21 +23295,26 @@ function radiationShift(){
     <td class="mono"><b>${r.clearness_index==null?"—":Number(r.clearness_index).toFixed(2)}</b></td>
     <td class="mono">${r.clearness_mean==null?"—":Number(r.clearness_mean).toFixed(2)}</td>
     <td class="mono">${r.standardised==null?"—":f2(r.standardised)}</td>
-    <td class="mono">${r.per_unit==null?"—":Number(r.per_unit).toFixed(2)}</td>
+    <td class="mono">${r.per_unit==null?"—":Number(r.per_unit).toFixed(2)}${r.side?" "+h(sideWord[r.side]||r.side):""}</td>
     <td class="mono ${(r.shift_c||0)<0?"down":(r.shift_c||0)>0?"up":""}"><b>${f2(r.shift_c)}</b></td>
     <td class="mono">${r.model_center_c==null?"—":Number(r.model_center_c).toFixed(2)}</td>
     <td class="mono">${r.served_mean_c==null?"—":Number(r.served_mean_c).toFixed(2)}</td>
     <td class="mono muted">${r.legacy_standardised==null?"—":f2(r.legacy_standardised)} / ${r.legacy_shift_c==null?"—":f2(r.legacy_shift_c)}</td>
     <td class="mono muted" title="${h(r.method||"")}">${h(r.state)}${r.samples?" · "+r.samples+" 天":""}</td></tr>`).join("");
   return `<div class="card" style="margin-top:12px">
-    <b>辐射降温项（中心/宽度之前的那一次平移）</b>
+    <b>辐射降温项（升温侧 / 降温侧；中心/宽度之前的那一次平移）</b>
     <div class="muted" style="margin:4px 0 8px;font-size:12px">
       融出来的分布先按当天<b>预报的短波辐射</b>平移一次：透光比这个站平常少（阴、雨），整条分布往冷推；多（晴），往暖推。
       <b>宪章 160（09-19 起）</b>：先把辐射换成<b>晴朗度指数 Kt</b>＝预报辐射 ÷ 当天该纬度的大气顶辐射（天文上限，只随纬度和日期变），
-      再对本站事件日之前的 Kt 历史标准化——季节（太阳高度、昼长）被除掉，只剩云和天气。平移 = Kt 标准分 × 系数 × 服务宽度 σ；系数是每件 artifact 自己钉的值${(()=>{
+      再对本站事件日之前的 Kt 历史标准化——季节（太阳高度、昼长）被除掉，只剩云和天气。平移 = Kt 标准分 × 系数 × 服务宽度 σ。
+      <b>宪章 222（09-25 起）</b>：系数分两侧——比本站平常<b>晴</b>（标准分 &gt; 0）按<b>升温侧</b>系数往暖推，比平常<b>阴</b>（&lt; 0）按<b>降温侧</b>系数往冷推。
+      晴朗度有天花板（天不会比万里无云更晴），却有很长的阴天尾巴，所以同一个系数时最大的平移全在冷侧，而真值跟得紧的是暖侧。
+      两侧系数<b>按本站自身历史居中</b>：本站平常的日子平均不动——不居中的话晴天多于阴天，会把整站均值往暖推，那是偏差层的事（宪章 160）；
+      全队统一、每件 artifact 一样（宪章 210），件内钉值只记入回执${(()=>{
         const rows=(D.synoptic_cooling||{}).rows||[];
-        const units=[...new Set(rows.map(r=>r.per_unit).filter(v=>v!=null))].sort((a,b)=>a-b);
-        return units.length?`（此刻在服务的钉值：${units.map(u=>`<b>${u}</b>`).join(" / ")}；宪章 173 起新铸的件钉低值，旧件按其钉值服务到轮换，下表「系数/单位」列读的就是这个钉值）`:"（下表「系数/单位」列读的就是这个钉值）";})()}。
+        const bySide=s=>[...new Set(rows.filter(r=>r.side===s).map(r=>r.per_unit).filter(v=>v!=null))].sort((a,b)=>a-b);
+        const w=bySide("WARM"), c=bySide("COLD");
+        return (w.length||c.length)?`（此刻在服务：升温侧 <b>${w.join(" / ")||"—"}</b>、降温侧 <b>${c.join(" / ")||"—"}</b>；下表「系数/单位」列读的是这一行实际用的那一侧）`:"（下表「系数/单位」列读的是这一行实际用的那一侧）";})()}。
       ${withEv("radiation_legacy_bias",(V,e)=>`旧法直接拿辐射绝对量和 4 月以来的平均比，9 月天天被判「偏暗」（${evStamp(e)}：全队 9 月 z ${evSg(V.fleet_september_z,2)}，其中约${evPct(V.seasonal_share)}是季节）；旧法标准分/平移留作影子列，便于复测。`)}
       ${(()=>{
         const rows=((D.synoptic_cooling||{}).rows||[]).filter(r=>r.state==="RESOLVED"&&r.clearness_index!=null&&r.extraterrestrial_mj!=null);
@@ -27292,7 +27308,7 @@ const LANES = {
   "共识桥": {layer:"概率层 · 分布", status:"live",
     role:(()=>{const R=((D.consensus_bridge||{}).rule)||{}; return `中心差 >${R.gap_start_c??"—"}°C 时往中间补一块共识成分，${R.gap_full_c??"—"}°C 补满 ${R.lambda_max??"—"}（读自回执）`;})()},
   "辐射降温项": {layer:"概率层 · 分布", status:"live",
-    role:(()=>{const u=[...new Set((((D.synoptic_cooling||{}).rows)||[]).map(r=>r.per_unit).filter(v=>v!=null))].sort((a,b)=>a-b); return `按预报日照把整条分布往冷/暖推：晴朗度指数 Kt 的本站标准分 × 系数 × σ（宪章 160、210；系数全队统一${u.length?"，此刻服务 "+u.join(" / "):""}，件内钉值只记入回执）`;})()},
+    role:(()=>{const rows=(((D.synoptic_cooling||{}).rows)||[]); const u=s=>[...new Set(rows.filter(r=>r.side===s).map(r=>r.per_unit).filter(v=>v!=null))].sort((a,b)=>a-b).join(" / "); const w=u("WARM"), c=u("COLD"); return `按预报日照把整条分布往冷/暖推：晴朗度指数 Kt 的本站标准分 × 系数 × σ，系数分升温侧（比平常晴）与降温侧（比平常阴）、按本站历史居中（宪章 160、210、222；全队统一${w||c?"，此刻服务 升温侧 "+(w||"—")+"、降温侧 "+(c||"—"):""}，件内钉值只记入回执）`;})()},
   "站点 × 日期": {layer:"P0-M · P1 · 按站日", status:"live",
     role:"一行一个站日：P0 → TAF 似然 → P0-M → 硬下界 × METAR 观测更新（第 161 条 e^f；区域模型作协变量）→ P1 → 结算真值；三条分布画在一根桶轴上，点开看当天的温度路径与逐桶算术"},
   "P0-M TAF 似然": {layer:"P0-M · 唯一的更新", status:"live",

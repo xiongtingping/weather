@@ -152,7 +152,7 @@ def test_the_holdout_shift_is_the_served_shift_on_the_same_distribution(tmp_path
     signals = OOS._holdout_conditioning_signals(
         conn, station_id="ZUUU", holdout_days=["2026-09-19"],
         predictions_by_system=_predictions({"NOAA_GEFS_05": 25.0, "ECMWF_IFS_ENS_OPEN_PF50": 25.0}),
-        radiation_shift_sigma=0.15,
+        radiation_shift_sigmas=(0.15, 0.15),
     )["2026-09-19"]
     assert signals["radiation_as_of_state"] == "RESOLVED"
     shift_sigma = signals["synoptic_cooling_shift_sigma"]
@@ -182,7 +182,7 @@ def test_a_radiation_known_only_after_the_cutoff_leaves_the_day_unshifted(tmp_pa
     signals = OOS._holdout_conditioning_signals(
         conn, station_id="ZUUU", holdout_days=["2026-09-19"],
         predictions_by_system=_predictions({"NOAA_GEFS_05": 24.0, "ECMWF_IFS_ENS_OPEN_PF50": 26.0}),
-        radiation_shift_sigma=0.15,
+        radiation_shift_sigmas=(0.15, 0.15),
     ).get("2026-09-19") or {}
     assert signals.get("synoptic_cooling_shift_sigma") is None
     assert signals.get("radiation_as_of_state") in (None, "NOT_KNOWN_AT_CUTOFF")
@@ -205,6 +205,6 @@ def test_what_came_after_the_cutoff_cannot_move_the_holdout(tmp_path) -> None:
         conn.execute(f"UPDATE {ASOF.TABLE} SET shortwave_radiation_sum=? WHERE local_date='2026-09-19'", (evening,))
         outs.append(OOS._holdout_conditioning_signals(
             conn, station_id="ZUUU", holdout_days=["2026-09-19"],
-            predictions_by_system=predictions, radiation_shift_sigma=0.15,
+            predictions_by_system=predictions, radiation_shift_sigmas=(0.15, 0.15),
         )["2026-09-19"]["synoptic_cooling_shift_sigma"])
     assert outs[0] == outs[1] and outs[0] is not None

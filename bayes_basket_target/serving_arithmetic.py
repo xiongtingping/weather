@@ -350,6 +350,15 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # their certified map until the OOS rotation re-mints them, and those
         # envelopes are not evidence for this version.
         "calibrated_native_cross_ensemble_p0_v15": "2026-09-25T06:00:00Z",
+        # Charter 222: the radiation coefficient splits into a warm side
+        # (0.12) and a cold side (0.04), centred on each station's own
+        # history.  Written in a cloud session that cannot restart the
+        # resident: declared past the push, ahead of the restart that
+        # deploys it on the production machine.  If that restart lands
+        # later, move this instant to it (as v9 and v10 were moved) -- the
+        # watchdog reads a fingerprint first seen after its declaration as a
+        # discrepancy.
+        "calibrated_native_cross_ensemble_p0_v16": "2026-09-25T12:00:00Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
@@ -381,6 +390,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p0m_taf_likelihood_v16": "2026-09-25T02:00:00Z",
         # Charter 217: root bump at the instant P0 v15 declares.
         "p0m_taf_likelihood_v17": "2026-09-25T06:00:00Z",
+        # Charter 222: root bump at the instant P0 v16 declares.
+        "p0m_taf_likelihood_v18": "2026-09-25T12:00:00Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
@@ -431,6 +442,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p1_joint_likelihood_v25": "2026-09-25T02:00:00Z",
         # Charter 217: the twelfth root bump, at the instant P0 v15 declares.
         "p1_joint_likelihood_v26": "2026-09-25T06:00:00Z",
+        # Charter 222: the thirteenth root bump, at the instant P0 v16 declares.
+        "p1_joint_likelihood_v27": "2026-09-25T12:00:00Z",
     },
 }
 

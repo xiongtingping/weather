@@ -43,7 +43,7 @@ for path in (ROOT, ROOT / "scripts"):
 import replay_p0_stable_pool as base  # noqa: E402
 from bayes_basket_target import native_ensemble_oos as oos  # noqa: E402
 from bayes_basket_target.cross_consensus import (  # noqa: E402
-    radiation_shift_sigma_for_lead,
+    radiation_shift_sigmas_for_lead,
 )
 from bayes_basket_target.stable_pool import (  # noqa: E402
     STABLE_POOL_KAPPA,
@@ -209,7 +209,7 @@ def replay_station(conn: sqlite3.Connection, station: str) -> list[dict[str, Any
             skill = {s: v / total for s, v in skill.items()}
             weights = stable_pool_weights(skill, {s: family[s] for s in pool}, kappa=STABLE_POOL_KAPPA)
             weights = {s: v for s, v in weights.items() if v > 0.0}
-            sigma_per_unit = radiation_shift_sigma_for_lead(packet_lead)
+            sigma_per_unit = radiation_shift_sigmas_for_lead(packet_lead)
             differs = any(new_rows[s] is not old_rows[s] for s in weights)
             record = {
                 "schema": SCHEMA, "station": station, "event_date": event_date,
@@ -228,7 +228,7 @@ def replay_station(conn: sqlite3.Connection, station: str) -> list[dict[str, Any
                 signals = oos._holdout_conditioning_signals(
                     conn, station_id=station, holdout_days=[event_date],
                     predictions_by_system={s: {event_date: rows[s]} for s in pool},
-                    radiation_shift_sigma=sigma_per_unit,
+                    radiation_shift_sigmas=sigma_per_unit,
                 )
                 cooling = (signals.get(event_date) or {}).get("synoptic_cooling_shift_sigma")
                 record["arms"][arm] = base._blend_and_score(

@@ -46,8 +46,8 @@ from .cross_consensus import (
     BAND_RELIABILITY_METHOD_TAG,
     CONSENSUS_BRIDGE_METHOD_TAG,
     RADIATION_SHIFT_METHOD_TAG,
-    pinned_radiation_shift_sigma,
-    served_radiation_shift_sigma,
+    pinned_radiation_shift_sigmas,
+    served_radiation_shift_sigmas,
     distribution_sigma_c,
     forecast_clearness_shift_sigma,
     SYNOPTIC_COOLING_METHOD_TAG,
@@ -171,7 +171,11 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # Charter 217: AIFS ENS is its own independence family -- the stable pool's
 # baseline gives it a family's share instead of half of ECMWF's, it is capped
 # on its own, and IFS with AIFS is a two-family pool.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v15"
+# Charter 222: the radiation coefficient splits into a warm side (a day
+# forecast clearer than the station's own last 180 days, 0.12) and a cold
+# side (cloudier, 0.04), centred on that history, replacing the symmetric
+# 0.07 on every artifact.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v16"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -3368,13 +3372,18 @@ def compile_native_ensemble_p0(
         # history reader and the artifact's pin), and recorded beside it as
         # the shadow arm; it serves only when the clearness form cannot (no
         # latitude, or under thirty days of history).
+        # Charter 222: the coefficient has a warm side and a cold side; a day
+        # is shifted by the side its own z falls on, the pin included, and
+        # the pair is centred on the same history so no station's mean moves.
         radiation_sum = _forecast_radiation_sum(
             conn, station_id=station_id, event_date=event_date
         )
+        pinned_warm, pinned_cold = pinned_radiation_shift_sigmas(
+            artifact_combination_method
+        )
         legacy_shift_sigma, legacy_receipt = forecast_radiation_shift_sigma(
-            shift_sigma_per_unit=pinned_radiation_shift_sigma(
-                artifact_combination_method
-            ),
+            shift_sigma_per_unit=pinned_warm,
+            cold_shift_sigma_per_unit=pinned_cold,
             radiation_sum=radiation_sum,
             station_history=_forecast_radiation_history(
                 conn, station_id=station_id, event_date=event_date
@@ -3386,7 +3395,7 @@ def compile_native_ensemble_p0(
             )
         except Exception:  # noqa: BLE001 -- no latitude falls back below
             radiation_latitude = None
-        served_sigma_per_unit = served_radiation_shift_sigma(
+        served_warm, served_cold = served_radiation_shift_sigmas(
             artifact_combination_method
         )
         shift_sigma, synoptic_cooling_receipt = forecast_clearness_shift_sigma(
@@ -3396,26 +3405,29 @@ def compile_native_ensemble_p0(
             station_history=_forecast_radiation_history_dated(
                 conn, station_id=station_id, event_date=event_date
             ),
-            shift_sigma_per_unit=served_sigma_per_unit,
+            shift_sigma_per_unit=served_warm,
+            cold_shift_sigma_per_unit=served_cold,
         )
         if shift_sigma is None and legacy_shift_sigma is not None:
             clearness_state = synoptic_cooling_receipt.get("state")
             shift_sigma, synoptic_cooling_receipt = forecast_radiation_shift_sigma(
-                shift_sigma_per_unit=served_sigma_per_unit,
+                shift_sigma_per_unit=served_warm,
+                cold_shift_sigma_per_unit=served_cold,
                 radiation_sum=radiation_sum,
                 station_history=_forecast_radiation_history(
                     conn, station_id=station_id, event_date=event_date
                 ),
             )
             synoptic_cooling_receipt["clearness_state"] = clearness_state
-        synoptic_cooling_receipt["artifact_pinned_sigma"] = (
-            pinned_radiation_shift_sigma(artifact_combination_method)
-        )
+        synoptic_cooling_receipt["artifact_pinned_sigmas"] = {
+            "warm": pinned_warm, "cold": pinned_cold,
+        }
         synoptic_cooling_receipt["legacy_v1"] = {
             "state": legacy_receipt.get("state"),
             "standardised": legacy_receipt.get("standardised"),
             "shift_sigma": legacy_shift_sigma,
             "shift_sigma_per_unit": legacy_receipt.get("shift_sigma_per_unit"),
+            "side_centre_sigma": legacy_receipt.get("side_centre_sigma"),
             "sample_count": legacy_receipt.get("sample_count"),
         }
         if shift_sigma is not None:

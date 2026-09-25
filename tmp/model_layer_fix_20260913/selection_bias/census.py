@@ -95,7 +95,7 @@ def contest_spy(**kwargs):
                 station_id=sig_kwargs["station_id"],
                 holdout_days=s_days,
                 predictions_by_system=s_preds,
-                radiation_shift_sigma=sig_kwargs["radiation_shift_sigma"],
+                radiation_shift_sigmas=sig_kwargs["radiation_shift_sigmas"],
             )
             b_kwargs = dict(kwargs)
             b_kwargs.update(

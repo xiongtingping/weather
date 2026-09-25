@@ -275,7 +275,7 @@ def test_the_holdout_reads_no_climatology_or_truth_record_for_the_deleted_skew(t
     statements = _trace(conn)
     signals = OOS._holdout_conditioning_signals(
         conn, station_id="ZUUU", holdout_days=["2026-09-19"],
-        predictions_by_system=predictions, radiation_shift_sigma=0.15,
+        predictions_by_system=predictions, radiation_shift_sigmas=(0.15, 0.15),
     )["2026-09-19"]
     conn.set_trace_callback(None)
 
