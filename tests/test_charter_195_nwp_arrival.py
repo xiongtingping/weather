@@ -1177,6 +1177,32 @@ def test_a_pass_that_held_a_required_family_on_the_network_backs_off_too(monkeyp
         worker._official_native_capture_pool.shutdown(wait=True)
 
 
+def test_the_recovery_pass_keeps_the_follow_step_and_queues_no_follow_capture(monkeypatch, tmp_path) -> None:
+    """2026-09-24 14:05Z: the required-first recovery pass ran without the
+    follow step, so its packets carried no AIFS ENS or AIGEFS -- the follow
+    step is the only way those two enter a packet -- and the inbox merge took
+    them over the six-system packets for every D+1 station until 16:03Z.
+    The step reads retained files and certificates only; what the recovery
+    pass must not do is queue follow captures."""
+
+    receipt = json.dumps({
+        "run_init_utc_by_family": {"NOAA_GEFS_PDS_S3": "2026-09-21T06:00:00Z", "ECMWF_OPEN_DATA_S3": "2026-09-21T06:00:00Z"},
+    })
+    worker, calls = _pass_worker(monkeypatch, tmp_path, [_Completed(0, stdout=receipt)])
+    monkeypatch.setattr(pw.follow_run, "follow_enabled", lambda: True)
+    queued = []
+    monkeypatch.setattr(worker, "_enqueue_follow_run_capture", lambda **kw: queued.append(kw))
+    try:
+        _capture(worker, tmp_path, hold_families=("ECCC_DD_WEATHER", "DWD_OPENDATA_ICON_EPS"))
+        assert _finish(worker)["state"] == "CAPTURED"
+    finally:
+        worker._official_native_capture_pool.shutdown(wait=True)
+    command = calls[0]
+    assert "--follow-new-runs" in command
+    assert command.count("--hold-family") == 2
+    assert queued == []
+
+
 def test_a_nested_fetch_lock_rides_the_stripe_already_held(tmp_path) -> None:
     """2026-09-22 10:39Z: GEFS took its field's stripe, then the .idx's -- a
     second flock on the same stripe file blocked its own thread forever."""

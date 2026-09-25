@@ -6552,7 +6552,17 @@ class TargetProductionWorker:
         # Charter 192: a station may take ICON's/ECCC's newer retained run
         # once that run's own fit is certified.  With nothing certified the
         # packets are the ones this pass always built.
-        follow_new_runs = follow_run.follow_enabled() and not hold_families
+        #
+        # The required-first recovery pass (charter 195 (四)) keeps this step:
+        # it reads only retained follow files and the certificate table, no
+        # network, and since charters 204 and 212 it is the only way AIFS ENS
+        # and AIGEFS enter a packet.  Switched off there, the 2026-09-24
+        # 14:05Z recovery pass built four-system packets that the inbox merge
+        # took over the six-system ones (its veto compares only the systems
+        # both packets carry), and all 45 D+1 P0s served without the two AI
+        # ensembles until 16:03Z.  What the recovery pass must not do is
+        # queue follow *captures* -- that gate stays below.
+        follow_new_runs = follow_run.follow_enabled()
         if follow_new_runs:
             base_command.append("--follow-new-runs")
         # Charter 195 (四): the required-first recovery pass.
