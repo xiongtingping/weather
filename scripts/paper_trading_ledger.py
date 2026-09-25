@@ -4142,36 +4142,13 @@ def _drop_superseded_positions(
     return dropped, dropped_refusals
 
 
-class _Truth(NamedTuple):
-    """The settled value that stands, and which revision said so."""
-
-    tmax_c: float
-    revision_no: int
-    content_sha256: str
-
-
-def _truth(conn: sqlite3.Connection) -> dict[tuple[str, str], _Truth]:
-    """Latest revision per station-day (charter 44).
-
-    The revision's identity travels with its value.  A settlement scored
-    against a number alone cannot tell a corrected day from an unchanged one,
-    which is the whole of why an incremental pass used to need a rebuild.
-    """
-
-    out: dict[tuple[str, str], _Truth] = {}
-    for station, day, value, revision, sha in conn.execute(
-        "SELECT station_id, local_date, official_tmax_c, revision_no,"
-        " content_sha256"
-        " FROM calibration_station_daily_high_truth t"
-        " WHERE revision_no = ("
-        "   SELECT MAX(revision_no)"
-        "   FROM calibration_station_daily_high_truth x"
-        "   WHERE x.station_id=t.station_id AND x.local_date=t.local_date)"
-    ):
-        out[(str(station), str(day))] = _Truth(
-            float(value), int(revision), str(sha)
-        )
-    return out
+# The truth-lane settler moved to ``live_book`` (2026-09-25); one home.
+from live_book import (  # noqa: E402
+    _Truth,
+    _settled_bucket,
+    _settlement_ladder,
+    _truth,
+)
 
 
 def _deeper_refusal(current: tuple, candidate: tuple) -> tuple:
@@ -8151,17 +8128,6 @@ def _fillable_size(
     return low, walked[0], walked[1]
 
 
-def _settled_bucket(
-    buckets: list[tuple], truth_c: float
-) -> tuple[str, int] | None:
-    for bucket, ordinal, lower, upper, _probability in buckets:
-        low = -1e9 if lower is None else float(lower)
-        high = 1e9 if upper is None else float(upper)
-        if low <= truth_c < high:
-            return str(bucket), int(ordinal)
-    return None
-
-
 class _Score(NamedTuple):
     """What a settled value does to a seat, once the value is known."""
 
@@ -8233,34 +8199,6 @@ def _score_settlement(
         bucket_distance=distance,
         intended_hit=(1 if settled_bucket in chosen else 0) if chosen else None,
     )
-
-
-def _settlement_ladder(
-    conn: sqlite3.Connection,
-    station_id: str,
-    event_date: str,
-    stage: str,
-    decision_at_utc: str,
-) -> list[tuple]:
-    """The bucket ladder the recorded seat was priced against.
-
-    One indexed lookup: ``decision_at_utc`` is unique within a stage scope, so
-    this recovers exactly the ``buckets`` the entry walk held when it opened
-    the seat -- edges included, which ``probabilities_json`` does not carry.
-    That is why re-scoring needs no history walk and no quote replay.
-    """
-
-    return conn.execute(
-        "SELECT b.bucket, b.ordinal, b.lower_c, b.upper_c, b.probability"
-        " FROM basket_probability_bridge_history h"
-        " JOIN basket_probability_bridge_bucket_probability b"
-        "   ON b.history_id = h.history_id"
-        " WHERE h.station_id=? AND h.event_date=? AND h.state='COMMITTED'"
-        "   AND h.stage=?"
-        "   AND h.decision_at_utc=?"
-        " ORDER BY b.ordinal",
-        (station_id, event_date, stage, decision_at_utc),
-    ).fetchall()
 
 
 def _score_candidate_windows(

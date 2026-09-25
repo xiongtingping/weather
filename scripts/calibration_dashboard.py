@@ -59,9 +59,11 @@ if str(ROOT) not in sys.path:
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from paper_trading_ledger import (  # noqa: E402
-    DUST_COST_FLOOR,
-    INITIAL_CAPITAL_USDC,
+# The dust floor is the kernel's own (a basket under a cent is a
+# minimum-tick offer with nothing bid against it); the retired paper ledger
+# only re-exported it.
+from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
+    DUST_FILL_FLOOR_USDC as DUST_COST_FLOOR,
 )
 # The live book (user ruling 2026-09-16: the paper ledger is a rule
 # comparator; every reading of whether money was made reads live fills).
@@ -8289,9 +8291,10 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
             "event_type": event_type,
             "reason": reason,
             "settled_bucket": settled_bucket.get((station, day), ("", ""))[0],
-            # Which book said so.  ``paper_ledger`` is the settler's own
-            # row; ``truth_lane`` is a day the paper book never seated,
-            # scored off the truth that stands and the day's own ladder.
+            # Which source said so.  ``production_label`` is production's
+            # settlement label; ``truth_lane`` is a day whose label is not
+            # written yet, scored off the truth that stands and the day's
+            # own ladder.
             "settled_bucket_source": (
                 settled_bucket.get((station, day), ("", ""))[1]
             ),
@@ -19258,7 +19261,7 @@ const OVERALL = {green:["运转正常","所有环节都在按预期更新"],
 // draws only the three least healthy lanes; the writer, the queue and the
 // restart count stay in the payload and in the machine row's lamp.
 const SWEEP_LABEL = {
-  paper_trading_ledger:"纸面账本", settlement_truth:"结算真值",
+  paper_ledger_aligned:"纸面账本（生产入口）", settlement_truth:"结算真值",
   calibration_refit:"校准重拟", pr12_awc_observation:"观测身份（P1 的根）",
   settled_day_cycle_close:"已结算日收盘", maker_shadow_probe:"挂单影子探针",
   correction_review_auto_clear:"订正复核自动清除",
@@ -23671,12 +23674,10 @@ function liveOrderCard(L){
     byDate.get(key).push(g);
   }
   const truthOf = (g)=> (g.legs.find(l=>l.settled_bucket)||{}).settled_bucket || "";
-  // Where that label came from.  ``paper_ledger`` is the settler's own row;
-  // ``truth_lane`` is a day the paper book never seated, scored off the
-  // truth that stands and the day's own ladder.  The two are different
-  // claims and the page says which, because until 2026-09-12 the second
-  // kind did not exist here at all -- those days read 未结算 for as long as
-  // the paper book declined to seat them.
+  // Where that label came from.  ``production_label`` is production's own
+  // settlement label; ``truth_lane`` is a day whose label is not written
+  // yet, scored off the truth that stands and the day's own ladder.  The two
+  // are different claims and the page says which.
   const truthSrc = (g)=> (g.legs.find(l=>l.settled_bucket)||{}).settled_bucket_source || "";
   const dates = [...byDate.keys()].sort().reverse();
   // A date folds once its money is counted, or once it is behind us: a
@@ -23746,7 +23747,7 @@ function liveOrderCard(L){
       const sellLegs = sells.flatMap(g=>g.legs);
       const covered = !!sd && !!truth && !!sd.basket_covered;
       const src = baskets.map(truthSrc).find(Boolean)==="truth_lane"
-        ? "　真值取自真值车道（这个站日纸面账本没坐过，没有它的结算行），按当日自己的桶阶梯落桶"
+        ? "　真值取自真值车道（生产结算标签还没写），按当日自己的桶阶梯落桶"
         : "";
       // The verdict is the basket's (user ruling, 2026-09-14: 命中不管成不成交，
       // 都要显示是否篮子命中真值): 命中 when the settled bucket is one of the
@@ -23920,8 +23921,8 @@ function liveOrderCard(L){
     <details class="note"><summary>实盘盈亏是怎么算的 · 声称从哪来 · 本金是什么</summary>
       <div class="muted">钱<b>全部来自实盘成交列</b>：成本＝对账表报回来的成交名义
       <span class="mono">filled_notional_usdc</span>，赔付＝真值落在该腿桶里时每股 1 USDC、
-      否则 0。结算桶标签有<b>两个来源，按先后</b>：纸面账本坐过的站日，直接用生产结算器写下的那一行；
-      <b>它没坐过的站日</b>，用真值车道当日成立的那版真值配上该站日自己的桶阶梯，
+      否则 0。结算桶标签有<b>两个来源，按先后</b>：生产结算标签已写的站日，直接用那一行；
+      <b>还没写的站日</b>，用真值车道当日成立的那版真值配上该站日自己的桶阶梯，
       调<b>生产结算器本人的函数</b>落桶——各站档位规则一个字都不在这里重写。
       借来的判定和自己推的判定在篮子行上分开标注。<br>
       成交了但所在站日还没结算的腿计入<b>待结算</b>，<b>不当亏损算</b>。<br>

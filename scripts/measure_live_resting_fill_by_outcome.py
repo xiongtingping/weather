@@ -46,7 +46,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
-from paper_trading_ledger import _settled_bucket  # noqa: E402
+from live_book import _settled_bucket  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 OUT_DIR = ROOT / "data" / "research" / "live_fill_by_outcome"

@@ -454,7 +454,7 @@ def test_the_lane_no_longer_costs_production_a_writer_turn() -> None:
     assert daemon.hosted_sweep_write_domain("maker_shadow_probe") == "maker_shadow"
     assert "maker_shadow_probe" not in daemon.HOSTED_SWEEP_LEASE_CONTRACT
     # The same shape the paper ledger has carried since it moved.
-    assert daemon.hosted_sweep_write_domain("paper_trading_ledger") == "paper_ledger"
+    assert daemon.hosted_sweep_write_domain("paper_ledger_aligned") == "paper_ledger"
     assert "paper_trading_ledger" not in daemon.HOSTED_SWEEP_LEASE_CONTRACT
     # Still bounded, just not by the writer lease: the sweep's own timeout.
     timeouts = {name: timeout for name, _script, _interval, timeout in daemon.HOSTED_SWEEPS}

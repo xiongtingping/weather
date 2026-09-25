@@ -1320,6 +1320,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--archive", default=str(ARCHIVE_DB))
     parser.add_argument("--ledger-db", default=str(LEDGER_DB))
     parser.add_argument("--progress", type=int, default=200)
+    parser.add_argument("--label", default="", help="a name readers select runs by (the daily pass: daily_sweep)")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     print(json.dumps(run(args), indent=2, sort_keys=True, default=str))

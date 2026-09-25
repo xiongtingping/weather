@@ -58,15 +58,87 @@ from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from paper_trading_ledger import (
-    # The settler's own three, never a copy of them.  Deriving which rung a
-    # value landed on means knowing the per-station grid (a degree Celsius
-    # at ZBAA, two Fahrenheit at KMIA), and an audit that restates a rule
-    # invents its own findings rather than reporting production's.
-    _settled_bucket as _ledger_settled_bucket,
-    _settlement_ladder as _ledger_settlement_ladder,
-    _truth as _ledger_truth,
-)
+from typing import NamedTuple
+
+
+# The truth-lane settler: which revision stands (charter 44), the ladder a
+# station-day was priced on, and the rung a value lands in.  Moved here from
+# the retired paper ledger (user ruling 2026-09-25: 退役旧账本那套手写裁判);
+# this module is their one home, and the rung is found on the day's own
+# committed ladder, never restated per station.
+
+
+class _Truth(NamedTuple):
+    """The settled value that stands, and which revision said so."""
+
+    tmax_c: float
+    revision_no: int
+    content_sha256: str
+
+
+def _truth(conn: sqlite3.Connection) -> dict[tuple[str, str], _Truth]:
+    """Latest revision per station-day (charter 44).
+
+    The revision's identity travels with its value.  A settlement scored
+    against a number alone cannot tell a corrected day from an unchanged one,
+    which is the whole of why an incremental pass used to need a rebuild.
+    """
+
+    out: dict[tuple[str, str], _Truth] = {}
+    for station, day, value, revision, sha in conn.execute(
+        "SELECT station_id, local_date, official_tmax_c, revision_no,"
+        " content_sha256"
+        " FROM calibration_station_daily_high_truth t"
+        " WHERE revision_no = ("
+        "   SELECT MAX(revision_no)"
+        "   FROM calibration_station_daily_high_truth x"
+        "   WHERE x.station_id=t.station_id AND x.local_date=t.local_date)"
+    ):
+        out[(str(station), str(day))] = _Truth(
+            float(value), int(revision), str(sha)
+        )
+    return out
+
+
+def _settled_bucket(
+    buckets: list[tuple], truth_c: float
+) -> tuple[str, int] | None:
+    for bucket, ordinal, lower, upper, _probability in buckets:
+        low = -1e9 if lower is None else float(lower)
+        high = 1e9 if upper is None else float(upper)
+        if low <= truth_c < high:
+            return str(bucket), int(ordinal)
+    return None
+
+
+def _settlement_ladder(
+    conn: sqlite3.Connection,
+    station_id: str,
+    event_date: str,
+    stage: str,
+    decision_at_utc: str,
+) -> list[tuple]:
+    """The bucket ladder the recorded seat was priced against.
+
+    One indexed lookup: ``decision_at_utc`` is unique within a stage scope, so
+    this recovers exactly the ``buckets`` the entry walk held when it opened
+    the seat -- edges included, which ``probabilities_json`` does not carry.
+    That is why re-scoring needs no history walk and no quote replay.
+    """
+
+    return conn.execute(
+        "SELECT b.bucket, b.ordinal, b.lower_c, b.upper_c, b.probability"
+        " FROM basket_probability_bridge_history h"
+        " JOIN basket_probability_bridge_bucket_probability b"
+        "   ON b.history_id = h.history_id"
+        " WHERE h.station_id=? AND h.event_date=? AND h.state='COMMITTED'"
+        "   AND h.stage=?"
+        "   AND h.decision_at_utc=?"
+        " ORDER BY b.ordinal",
+        (station_id, event_date, stage, decision_at_utc),
+    ).fetchall()
+
+
 
 STAGES = ("P0", "P0-M", "P1")
 
@@ -95,53 +167,45 @@ def settled_buckets(
 ) -> dict[tuple[str, str], tuple[str, str]]:
     """Which of these station-days have settled, on which bucket, said by whom.
 
-    Two sources, in this order.  The paper ledger's settlement rows come
-    first: that label was written by the production settler, and a day it
-    carries needs nothing derived.  It is a truth label, not money, which is
-    why reading it survives the 2026-09-16 ruling.  Every key it does not
-    carry is resolved here from the truth lane and the station-day's own
-    committed ladder, through the settler's own two functions -- ``_truth``
-    for the revision that stands (charter 44) and ``_settled_bucket`` for the
-    rung a value falls in.  The per-station grid is never restated: the
-    rungs come back out of ``basket_probability_bridge_*`` by the ledger's
-    own reader.
+    Two sources, in this order.  Production's own settlement label comes
+    first (``basket_station_day_settlement_label``, the standing revision):
+    a day it carries needs nothing derived.  Every key it does not carry yet
+    is resolved from the truth lane and the station-day's own committed
+    ladder -- ``_truth`` for the revision that stands (charter 44) and
+    ``_settled_bucket`` for the rung a value falls in -- so a day settles
+    here as soon as its truth stands, not only once the label is written.
+    The per-station grid is never restated: the rungs come back out of
+    ``basket_probability_bridge_*``.
 
-    The paper book is a different book.  It seats the station-days its own
-    rule admits, and the live lane mints intents for days it never seated:
-    2026-09-08 carried eleven live station-days against three paper
-    settlements, while the truth lane held an ACCEPTED value for
-    forty-eight stations that day.  Reading the paper table alone, the
-    panel called the other eight 未结算 four days after the fact.  The same
-    gap opens on every rule change -- the ledger re-derives its whole
-    history, both paper tables sit empty for the better part of an hour,
-    and a live basket that had a verdict yesterday loses it.  Truth does
-    not move when a seating rule does, so the fallback does not either.
+    The paper ledger's settlement rows were the first source until
+    2026-09-25, when its judge was retired (user ruling: 退役旧账本那套手写
+    裁判).  Checked that day: production's label and the truth-lane path
+    agree on all 1,820 labelled station-days, and the paper table agreed
+    with the label on all 203 it shared -- no reading moves.
 
-    Verified 2026-09-12 against the settler's own output: over the 3,368
-    candidate windows it has scored, this reproduces ``settled_bucket``
-    exactly, with zero disagreements.  And the ladder is a property of the
-    station-day rather than of the seat -- across every COMMITTED bridge
-    row in the archive, no station-day carries two distinct ladders -- so
-    the newest committed decision's rungs are the day's own grid.
-
-    The source travels with the label because the two are different
-    claims: one says the paper book settled this seat, the other says the
-    truth lane settled this day and no paper seat exists.
+    The ladder is a property of the station-day rather than of the seat --
+    across every COMMITTED bridge row in the archive, no station-day
+    carries two distinct ladders -- so the newest committed decision's
+    rungs are the day's own grid.  The source travels with the label
+    (``production_label`` / ``truth_lane``) because the two are different
+    claims.
     """
 
     out: dict[tuple[str, str], tuple[str, str]] = {}
     if not keys:
         return out
-    if table_exists(conn, "paper_trade_settlement"):
+    if table_exists(conn, "basket_station_day_settlement_label"):
         try:
             for station, day, bucket in conn.execute(
-                "SELECT station_id, event_date, MAX(settled_bucket)"
-                " FROM paper_trade_settlement WHERE settled_bucket IS NOT NULL"
-                " GROUP BY station_id, event_date"
+                "SELECT station_id, event_date, settled_bucket"
+                " FROM basket_station_day_settlement_label l"
+                " WHERE truth_revision_no=("
+                "  SELECT MAX(truth_revision_no) FROM basket_station_day_settlement_label x"
+                "  WHERE x.station_id=l.station_id AND x.event_date=l.event_date)"
             ):
                 key = (str(station), str(day))
                 if key in keys:
-                    out[key] = (str(bucket), "paper_ledger")
+                    out[key] = (str(bucket), "production_label")
         except sqlite3.Error:
             out = {}
     missing = sorted(keys - set(out))
@@ -154,7 +218,7 @@ def settled_buckets(
             return out
     if truth is None:
         try:
-            truth = _ledger_truth(conn)
+            truth = _truth(conn)
         except sqlite3.Error:
             return out
     for key in missing:
@@ -175,14 +239,14 @@ def settled_buckets(
             ).fetchone()
             if not head:
                 continue
-            ladder = _ledger_settlement_ladder(
+            ladder = _settlement_ladder(
                 conn, key[0], key[1], str(head[0]), str(head[1])
             )
         except sqlite3.Error:
             continue
         if not ladder:
             continue
-        landed = _ledger_settled_bucket(list(ladder), standing.tmax_c)
+        landed = _settled_bucket(list(ladder), standing.tmax_c)
         # A truth outside every rung the day was priced against is not a
         # settlement this book can score, and saying so by leaving the day
         # open beats naming a bucket that was never on the ladder.
@@ -904,7 +968,7 @@ def build(conn: sqlite3.Connection) -> dict[str, Any]:
     truth = None
     if legs and table_exists(conn, "calibration_station_daily_high_truth"):
         try:
-            truth = _ledger_truth(conn)
+            truth = _truth(conn)
         except sqlite3.Error:
             truth = None
     settled = settled_buckets(

@@ -360,7 +360,9 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     # cycle itself is fail-closed before it reaches the call, and its
     # single-instance guard is what keeps the two from overlapping.
     ("pr12_awc_observation", "scripts/pr12_awc_observation_sweep.sh", 10800.0, 900.0),
-    ("paper_trading_ledger", "scripts/paper_trading_ledger_sweep.sh", 10800.0, 1800.0),
+    # The paper ledger through production's own entries (2026-09-25): daily,
+    # an hour and a half of reads over a week of event days.
+    ("paper_ledger_aligned", "scripts/paper_ledger_aligned_sweep.sh", 86400.0, 5400.0),
     ("settlement_truth", "scripts/settlement_truth_sweep.sh", 10800.0, 900.0),
     # The two served calibration layers (band reliability, centre/width)
     # used to refit only from the 02:00 crontab, and macOS cron silently
@@ -653,9 +655,10 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
 #   archive    - writes data/archive.db only (SSOT connection is mode=ro)
 #   none       - touches no database at all (packet retention is gzip files on
 #                disk, deliberately: the SSOT sits near its size ceiling)
-#   paper_ledger - writes data/paper_ledger.db only; the SSOT is opened
-#                ``mode=ro`` and the paper file attached (2026-09-19, 「移出」).
-#                No writer lane writes that file, so it excludes nothing.
+#   paper_ledger - writes its own paper-ledger file only; the SSOT is opened
+#                ``mode=ro``.  data/paper_ledger.db until 2026-09-25, then
+#                data/paper_ledger_aligned.db.  No writer lane writes that
+#                file, so it excludes nothing.
 # A name missing from this map is treated as an SSOT writer, so a sweep added
 # without a decision here loses throughput rather than the invariant.
 HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
@@ -671,7 +674,11 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     # pass is almost all reading (7,419 production cycles re-walked per
     # pass) and it held the SSOT writer for its whole lease regardless --
     # 62 production cycles waited on it, 4.25 hours of the prior 28.9.
-    "paper_trading_ledger": "paper_ledger",
+    # Reads the SSOT and the archive ``mode=ro``; writes only
+    # data/paper_ledger_aligned.db, which nothing else writes, so it excludes
+    # no writer lane (2026-09-25).  The retired paper_trading_ledger held
+    # this slot.
+    "paper_ledger_aligned": "paper_ledger",
     "settlement_truth": "ssot",
     "calibration_refit": "ssot",
     "settled_day_cycle_close": "ssot",

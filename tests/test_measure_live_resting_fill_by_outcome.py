@@ -231,7 +231,7 @@ def test_the_settled_bucket_rule_is_productions_not_a_second_copy() -> None:
     function read as two functions.
     """
 
-    assert lane._settled_bucket.__module__.endswith("paper_trading_ledger")
+    assert lane._settled_bucket.__module__.endswith("live_book")
     assert lane._settled_bucket.__qualname__ == "_settled_bucket"
     # And the lane does not define its own.
     source = (

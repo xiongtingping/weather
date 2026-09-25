@@ -263,5 +263,5 @@ def test_a_repair_pass_never_holds_production_past_its_overdue_line(
 
     # Since 2026-09-19 the pass writes its own file and holds no SSOT
     # writer; its budget stays bounded all the same.
-    assert daemon.hosted_sweep_write_domain("paper_trading_ledger") == "paper_ledger"
+    assert daemon.hosted_sweep_write_domain("paper_ledger_aligned") == "paper_ledger"
     assert ledger.REDERIVE_PASS_BUDGET_SEC < daemon.PRODUCTION_CYCLE_OVERDUE_SEC

@@ -58,9 +58,11 @@ def _book(rows: list[tuple], fills: list[tuple],
         "CREATE TABLE basket_target_order_reconciliations("
         " order_intent_id TEXT PRIMARY KEY, state TEXT, filled_size REAL,"
         " filled_notional_usdc REAL, blocking_reason TEXT);"
-        "CREATE TABLE paper_trade_settlement("
-        " settlement_id INTEGER PRIMARY KEY, station_id TEXT,"
-        " event_date TEXT, settled_bucket TEXT);"
+        # Production's settlement label -- the settler's own row since the
+        # paper ledger's judge was retired (2026-09-25).
+        "CREATE TABLE basket_station_day_settlement_label("
+        " station_id TEXT, event_date TEXT, truth_revision_no INTEGER,"
+        " settled_bucket TEXT);"
         "CREATE TABLE calibration_station_daily_high_truth("
         " truth_id TEXT PRIMARY KEY, station_id TEXT, local_date TEXT,"
         " official_tmax_c REAL, revision_no INTEGER, content_sha256 TEXT);"
@@ -89,10 +91,10 @@ def _book(rows: list[tuple], fills: list[tuple],
             " (?, 'resolved_filled', ?, ?, NULL)",
             (intent, size, notional),
         )
-    for index, (station, day, bucket) in enumerate(settled):
+    for station, day, bucket in settled:
         conn.execute(
-            "INSERT INTO paper_trade_settlement VALUES (?,?,?,?)",
-            (index + 1, station, day, bucket),
+            "INSERT INTO basket_station_day_settlement_label VALUES (?,?,0,?)",
+            (station, day, bucket),
         )
     for index, (station, day, tmax_c, revision) in enumerate(truth or []):
         conn.execute(
@@ -428,12 +430,12 @@ def test_a_day_the_paper_book_never_seated_still_settles() -> None:
 
 
 def test_the_settler_own_row_wins_and_says_so() -> None:
-    """A day the paper book did seat is not re-derived, only reported.
+    """A day production's settler labelled is not re-derived, only reported.
 
     The label the production settler wrote is the one that stands, and the
-    source travels with it: "the paper book settled this seat" and "the
-    truth lane settled this day" are different claims and the panel has to
-    be able to tell a reader which one it is showing.  The truth here would
+    source travels with it: "production's label" and "the truth lane
+    settled this day" are different claims and the panel has to be able to
+    tell a reader which one it is showing.  The truth here would
     land on a different rung on purpose -- if precedence ever inverted,
     this row changes rather than staying quietly equal.
     """
@@ -446,7 +448,7 @@ def test_the_settler_own_row_wins_and_says_so() -> None:
         ladder=[("KMIA", "2026-08-30", _RUNGS)],
     )
     resolved = board._live_settled_buckets(conn, {("KMIA", "2026-08-30")})
-    assert resolved == {("KMIA", "2026-08-30"): ("31°C", "paper_ledger")}
+    assert resolved == {("KMIA", "2026-08-30"): ("31°C", "production_label")}
 
 
 def test_the_latest_truth_revision_is_the_one_that_settles() -> None:
@@ -499,13 +501,13 @@ def test_a_day_with_no_truth_yet_is_still_pending() -> None:
 
 
 def test_a_ledger_rebuild_no_longer_blanks_the_live_book() -> None:
-    """Both paper tables sit empty for the better part of an hour.
+    """A day whose label is not written yet still settles off the truth.
 
-    Every rule change re-derives the ledger's whole history, and while it
-    runs ``paper_trade_position`` and ``paper_trade_settlement`` are empty.
-    Reading the settlement table alone, the panel answered 未结算 for every
-    date on the book and the ROI tile was computed over nothing -- a state
-    it entered on 2026-09-12 within minutes of charter 131 landing.
+    Reading a settlement table alone, the panel answered 未结算 for every
+    date the table did not carry and the ROI tile was computed over nothing
+    -- a state it entered on 2026-09-12 within minutes of a paper-ledger
+    rebuild emptying the table it read then.  The truth lane covers any day
+    the label has not reached.
     """
 
     conn = _book(
@@ -518,7 +520,7 @@ def test_a_ledger_rebuild_no_longer_blanks_the_live_book() -> None:
         ladder=[("KMIA", "2026-08-30", _RUNGS),
                 ("KLGA", "2026-08-30", _RUNGS)],
     )
-    conn.execute("DELETE FROM paper_trade_settlement")
+    conn.execute("DELETE FROM basket_station_day_settlement_label")
     pnl = board._collect_live_pnl(conn)
     assert pnl["pending_legs"] == 0
     assert pnl["filled_legs"] == 2
@@ -541,7 +543,7 @@ def test_the_basket_listing_carries_the_source_of_its_verdict() -> None:
     )
     rows = {r["station_id"]: r for r in board._collect_live_orders(conn)["rows"]}
     assert rows["KMIA"]["settled_bucket"] == "31°C"
-    assert rows["KMIA"]["settled_bucket_source"] == "paper_ledger"
+    assert rows["KMIA"]["settled_bucket_source"] == "production_label"
     assert rows["KLGA"]["settled_bucket"] == "31°C"
     assert rows["KLGA"]["settled_bucket_source"] == "truth_lane"
 
@@ -617,10 +619,11 @@ def test_neither_live_reader_is_left_on_the_old_table() -> None:
         if isinstance(node, ast.FunctionDef)
     }
     assert "settled_buckets" in calls_of(functions["build"])
-    # The settler's label is the only thing the live book reads off paper.
+    # Nothing: the settler's label is production's own since the paper
+    # ledger's judge was retired (2026-09-25).
     assert [
         name for name, node in functions.items() if paper_literals(node)
-    ] == ["settled_buckets"]
+    ] == []
 
 
 def test_each_station_carries_its_own_settled_days_and_five_day_window() -> None:
@@ -692,12 +695,14 @@ def _readiness_book(monkeypatch) -> dict:
     rows.append(("n1", "dn1", "NZWN", "2026-09-03", "31°C", 1))
     fills.append(("n1", 10.0, 4.0))
     conn = _book(
-        rows=rows, fills=fills, settled=[],
+        rows=rows, fills=fills,
+        # Production's labels for the two stations' days; the paper book
+        # below lost on the same days and must not be what anyone reads.
+        settled=[(station, day, "31°C") for station in ("AAAA", "ZZZZ") for day in days],
         truth=[("NZWN", "2026-09-03", 31.1, 0)],
         ladder=[("NZWN", "2026-09-03", _RUNGS)],
     )
     conn.executescript(
-        "DROP TABLE paper_trade_settlement;"
         "CREATE TABLE paper_trade_settlement("
         " settlement_id INTEGER PRIMARY KEY, station_id TEXT,"
         " event_date TEXT, settled_bucket TEXT, hit INTEGER,"

@@ -224,29 +224,52 @@ def tradeable_stations(conn: sqlite3.Connection | None = None) -> set[str]:
             handle.close()
 
 
-def settlement_counts(conn: sqlite3.Connection | None = None) -> dict[str, int]:
-    """How much evidence each station has actually produced."""
+#: The paper ledger that decides through production's own entries
+#: (``scripts/paper_ledger_aligned.py``); its daily pass is labelled
+#: ``daily_sweep``.
+ALIGNED_LEDGER_DB = ROOT / "data" / "paper_ledger_aligned.db"
 
-    handle, owned = _connect(conn)
-    if handle is None:
+
+def settlement_counts(
+    conn: sqlite3.Connection | None = None,
+    *,
+    ledger_path: Path | str | None = None,
+) -> dict[str, int]:
+    """How much evidence each station has actually produced.
+
+    Settled station-days per station in the paper ledger's daily passes,
+    each station-day counted once however many passes re-walked it.  Read
+    from the paper ledger that decides through production's own entries
+    since 2026-09-25 (user ruling: 退役旧账本那套手写裁判); the retired
+    ledger's ``paper_trade_settlement`` counted its own seats.  Display
+    only: membership is the operator's three switches (see
+    ``live_stations``).  ``conn`` is accepted for the callers that pass the
+    SSOT and not read.
+    """
+
+    path = Path(ledger_path or ALIGNED_LEDGER_DB)
+    if not path.exists():
         return {}
     try:
-        # The paper book left the SSOT for its own file (2026-09-19).
-        from .paper_ledger_store import attach_paper_ledger  # noqa: PLC0415
-        attach_paper_ledger(handle)
+        ledger = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5.0)
+    except sqlite3.Error:
+        return {}
+    try:
         return {
             str(row[0]).strip().upper(): int(row[1])
-            for row in handle.execute(
-                "SELECT station_id, COUNT(*) FROM paper_trade_settlement"
-                " GROUP BY station_id"
+            for row in ledger.execute(
+                "SELECT s.station_id, COUNT(DISTINCT s.event_date)"
+                " FROM settlements s JOIN runs r ON r.run_id=s.run_id"
+                " WHERE json_extract(r.params_json,'$.label')='daily_sweep'"
+                "   AND s.pnl_usdc IS NOT NULL"
+                " GROUP BY s.station_id"
             )
             if row[0]
         }
     except sqlite3.Error:
         return {}
     finally:
-        if owned:
-            handle.close()
+        ledger.close()
 
 
 def live_stations(

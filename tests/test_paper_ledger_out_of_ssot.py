@@ -222,17 +222,17 @@ def test_the_migration_waits_out_a_running_ledger_pass(monkeypatch, tmp_path) ->
 
 def test_the_resident_no_longer_waits_on_the_ledger() -> None:
     daemon = _load("_daemon_paper_domain", ROOT / "scripts" / "weather_basket_yes_daemon.py")
-    assert daemon.hosted_sweep_write_domain("paper_trading_ledger") == "paper_ledger"
+    assert daemon.hosted_sweep_write_domain("paper_ledger_aligned") == "paper_ledger"
     assert "paper_ledger" not in daemon._EXCLUSIVE_WRITE_DOMAINS
-    assert daemon.writer_excluding_sweeps(["paper_trading_ledger"]) == []
-    assert "paper_trading_ledger" not in daemon.HOSTED_SWEEP_LEASE_CONTRACT
+    assert daemon.writer_excluding_sweeps(["paper_ledger_aligned"]) == []
+    assert "paper_ledger_aligned" not in daemon.HOSTED_SWEEP_LEASE_CONTRACT
     # It starts in the same slot as an SSOT sweep, and neither holds the other.
     due = [
         (5.0, 0, "settlement_truth", "a.sh", 1800.0),
-        (4.0, 1, "paper_trading_ledger", "b.sh", 1800.0),
+        (4.0, 1, "paper_ledger_aligned", "b.sh", 1800.0),
     ]
     admitted = daemon.admissible_hosted_sweeps(due, running_names=[])
-    assert [item[2] for item in admitted] == ["settlement_truth", "paper_trading_ledger"]
+    assert [item[2] for item in admitted] == ["settlement_truth", "paper_ledger_aligned"]
     assert daemon.admissible_hosted_sweeps(
-        [(9.0, 0, "paper_trading_ledger", "b.sh", 1800.0)], running_names=["settlement_truth"],
+        [(9.0, 0, "paper_ledger_aligned", "b.sh", 1800.0)], running_names=["settlement_truth"],
     ) != []

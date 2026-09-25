@@ -55,6 +55,9 @@ def _store() -> sqlite3.Connection:
         " station_id TEXT NOT NULL, event_date TEXT NOT NULL,"
         " decision_at_utc TEXT NOT NULL, probabilities_json TEXT NOT NULL,"
         " content_sha256 TEXT NOT NULL, state TEXT NOT NULL);"
+        "CREATE TABLE basket_station_day_settlement_label("
+        " station_id TEXT, event_date TEXT, truth_revision_no INTEGER,"
+        " settled_bucket TEXT);"
         "CREATE TABLE paper_trade_settlement("
         " settlement_id TEXT PRIMARY KEY, position_id TEXT NOT NULL,"
         " station_id TEXT NOT NULL, event_date TEXT NOT NULL,"
@@ -113,10 +116,10 @@ def _leg(conn, intent, decision, bucket, *, size=10.0, notional=3.0,
 
 
 def _settle(conn, station, day, bucket):
+    # Production's settlement label (the settler's own row since 2026-09-25).
     conn.execute(
-        "INSERT INTO paper_trade_settlement VALUES"
-        " (?, 'p', ?, ?, 'P0', ?, 0, 0, 0)",
-        (f"s-{station}-{day}", station, day, bucket),
+        "INSERT INTO basket_station_day_settlement_label VALUES (?,?,0,?)",
+        (station, day, bucket),
     )
 
 

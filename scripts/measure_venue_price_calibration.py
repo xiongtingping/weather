@@ -49,7 +49,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
-from paper_trading_ledger import _settled_bucket  # noqa: E402
+from live_book import _settled_bucket  # noqa: E402
 
 # Bins on the mid.  Deliberately finer at the cheap end: that is where the
 # overround lives and where the $1 notional floor forces the most shares.
