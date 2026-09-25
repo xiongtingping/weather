@@ -439,13 +439,16 @@ def scope_trained_by_longer_lead(
     """Whether this run's (hour bucket x cycle) scope trains on another run.
 
     One station reaches the same bucket at the same cycle from two calendar
-    leads when a same-day run is issued within twelve hours after the local
+    leads when a same-day run is issued twelve hours or more after the local
     day began: Europe's D 12Z (-10h to -14h) and D-1 12Z (+10h to +14h) are
-    both ``h00_12``.  The OOS reader keeps one case per scope and day, the
-    first captured -- the longer lead's -- so that scope's certificate
-    describes the earlier run, not a same-day run that only sees the
-    afternoon.  Such a run is banked for training like any other and is not
-    seated on a fit that was never about it.
+    both ``h00_12``.  That scope's certificate describes the earlier run, not
+    a same-day run that only sees the afternoon, so such a run is not seated
+    on it -- and, for the families whose every run is seated through here,
+    the OOS reader leaves it out of that scope's training too
+    (``live_never_seats``, charter 219).  It used to rely on keeping the
+    first-captured case per scope and day, which only holds for a forward
+    archive: backfilled AIFS ENS and AIGEFS history lands both runs at once,
+    and the same-day run won 58-59 of 60 days on every station checked.
     """
 
     run = run_init.astimezone(timezone.utc)
@@ -481,6 +484,37 @@ def scope_trained_by_longer_lead(
         ) == bucket:
             return True
     return False
+
+
+def live_never_seats(
+    system: str,
+    *,
+    event_date: str,
+    settlement_timezone: str,
+    run_init: datetime,
+) -> bool:
+    """Whether live seating can never put this run on its own scope.
+
+    Charter 219.  True only for the families whose every run is seated
+    through ``follow_serving_ready`` (``_ALL_RUN_FAMILIES``), and only when
+    that function's first check -- ``scope_trained_by_longer_lead`` -- turns
+    the run away.  A family with a ladder rung can still seat the same run as
+    its base, so for it nothing is ruled out here.  The OOS reader drops
+    exactly these runs from training, so a scope trains on what it serves.
+    """
+
+    family = next(
+        (name for name in _ALL_RUN_FAMILIES if _SYSTEM[name] == str(system)),
+        None,
+    )
+    if family is None:
+        return False
+    return scope_trained_by_longer_lead(
+        family,
+        event_date=str(event_date),
+        settlement_timezone=str(settlement_timezone),
+        run_init=run_init,
+    )
 
 
 def follow_serving_ready(
@@ -750,6 +784,7 @@ __all__ = [
     "follow_run_init",
     "follow_serving_allowed",
     "follow_serving_ready",
+    "live_never_seats",
     "load_follow_archive",
     "readiness_from_database",
     "scope_trained_by_longer_lead",

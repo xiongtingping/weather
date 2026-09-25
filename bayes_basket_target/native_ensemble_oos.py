@@ -108,6 +108,7 @@ from .native_archive_lead import (
     LONGEST_LEAD_HOUR_BUCKET,
     lead_hour_bucket_for_run,
 )
+from .follow_run import live_never_seats
 from .native_ensemble_contract import (
     P0_PROBABILITY_PATHWAY,
     native_ensemble_family_set_hash,
@@ -4042,6 +4043,21 @@ def _load_cases(
                 training_lead_bucket = lead_hour_bucket_for_run(
                     day_start_utc=day_start, run_init=run_init
                 )
+                # Charter 219: a scope trains on the runs live seats on it.
+                # A same-day run issued twelve hours or more into the local
+                # day shares ``h00_12`` with the previous day's run of its
+                # cycle, and for the families seated only through follow
+                # runs live turns it away there; kept, it won the one case
+                # per scope and day whenever it was met first -- 58-59 of 60
+                # days in backfilled AIFS ENS / AIGEFS history -- and the
+                # certificate described evening runs while serving the eve's.
+                if live_never_seats(
+                    system_id,
+                    event_date=day,
+                    settlement_timezone=timezone_name,
+                    run_init=run_init,
+                ):
+                    continue
         # Aggregator rows keep their calendar label.  A republisher packet has
         # no native run initialisation by construction -- that is what
         # ``AGGREGATOR_UNKNOWN_NATIVE_CYCLE`` records -- so there is no lead to
