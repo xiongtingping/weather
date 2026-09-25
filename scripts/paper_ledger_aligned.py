@@ -24,12 +24,15 @@ the same questions ``production_io.SsotChainState`` answers from the SSOT:
 
 The venue is the one thing that has to be modelled, and only its answer is:
 a fill-or-kill crosses the recorded book at the decision (all or nothing at
-the cap); a resting maker order fills when a later recorded book offers at or
-below its limit and the adverse-selection draw admits it (the paper ledger's
-own venue model, ``paper_trading_ledger.adverse_fill_predicate``), is kept or
-cancelled by production's own rule (``resting_rung_keep_or_cancel``), and
-expires at its own GTD horizon.  Settlement is production's label
-(``basket_station_day_settlement_label``).
+the cap); a resting maker order fills at the time the calibrated fill curves
+draw for it (``scripts/paper_ledger_fill_curves.py``: Kaplan-Meier time to
+first fill of production's real basket maker orders, by lead band and by
+whether the bucket settled), unless production's own rule
+(``resting_rung_keep_or_cancel``) cancels it or its GTD horizon ends it
+first.  The recorded books cannot answer a maker directly -- a seller hitting
+a resting bid never shows as the ask crossing it, and the store keeps no
+trade tape; the crossing rule predicted 0 of 52 real fills (2026-09-25).
+Settlement is production's label (``basket_station_day_settlement_label``).
 
 ``--capital production`` (the default) hands the compiles production's own
 account read and recorded station budgets, so with nothing filled the ledger
@@ -48,7 +51,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
 
@@ -96,7 +99,10 @@ from bayes_basket_target.resting_ladder_lifecycle import (  # noqa: E402
     resting_rung_keep_or_cancel,
 )
 
+import paper_ledger_fill_curves as F  # noqa: E402
+
 SSOT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
+MAKER_FILL_CURVES = ROOT / "config" / "paper_ledger" / "maker_fill_curves_v1.json"
 ARCHIVE_DB = ROOT / "data" / "archive.db"
 LEDGER_DB = ROOT / "data" / "paper_ledger_aligned.db"
 SCHEMA = "paper_ledger_aligned_v1"
@@ -152,6 +158,8 @@ class PaperOrder:
     ladder_rung: bool
     decision_created_at: str
     events: list[tuple[str, str, float, float]] = field(default_factory=list)
+    settlement_timezone: str = "UTC"
+    fill_at: str | None = None
     state: str = "resting"
     ended_at: str | None = None
     end_reason: str = ""
@@ -616,28 +624,36 @@ class BookStore:
 
 
 class PaperVenue:
-    """Answers the orders: FOK against the decision book, makers over time."""
+    """Answers the orders: FOK against the decision book, makers over time.
 
-    def __init__(self, *, books: BookStore, settlements: Mapping[tuple[str, str], Mapping[str, Any]], fill_model: str) -> None:
+    A fill-or-kill crosses the recorded book at the decision, all or nothing
+    at its cap.  A resting maker order is answered by the calibrated curves
+    (``scripts/paper_ledger_fill_curves.py``): at posting it draws, once and
+    deterministically, the time the curve says a seller hits it; until then
+    it stands, and production's own resting rule may cancel it or its GTD
+    horizon end it first.  The curve is chosen by lead band and by whether
+    the order's bucket settled -- the adverse selection -- which only this
+    class can see.  ``fill_model="none"`` never fills a maker (a lower
+    bound).
+    """
+
+    def __init__(
+        self,
+        *,
+        books: "BookStore",
+        settlements: Mapping[tuple[str, str], Mapping[str, Any]],
+        fill_model: str = "empirical",
+        curves: Mapping[str, Any] | None = None,
+    ) -> None:
+        if fill_model not in {"empirical", "none"}:
+            raise ValueError(f"unknown fill model: {fill_model}")
         self.books = books
         self.settlements = settlements
         self.fill_model = fill_model
-        self._admits: dict[tuple[str, str], Any] = {}
-
-    def _admit(self, station_id: str, event_date: str, bucket: str, price: float) -> bool:
-        if self.fill_model == "touch":
-            return True
-        key = (station_id, event_date)
-        if key not in self._admits:
-            from paper_trading_ledger import adverse_fill_predicate  # noqa: PLC0415
-
-            label = self.settlements.get(key)
-            self._admits[key] = adverse_fill_predicate(
-                station_id=station_id,
-                event_date=event_date,
-                settled_bucket=None if label is None else str(label["settled_bucket"]),
-            )
-        return bool(self._admits[key](bucket, price))
+        if fill_model == "empirical" and curves is None:
+            curves = json.loads(MAKER_FILL_CURVES.read_text())
+        self.curves = dict((curves or {}).get("curves") or {})
+        self.curves_sha256 = str((curves or {}).get("content_sha256") or "")
 
     def submit_fok(self, order: PaperOrder, *, book_buckets: Sequence[Mapping[str, Any]]) -> None:
         row = next((b for b in book_buckets if str(b.get("bucket")) == order.bucket), None)
@@ -661,9 +677,39 @@ class PaperVenue:
             order.state = "refused"
         order.ended_at = order.placed_at
 
+    def maker_curve_key(self, order: PaperOrder) -> str:
+        band = F.lead_band(F.lead_hours(order.placed_at, order.event_date, order.settlement_timezone))
+        label = self.settlements.get((order.station_id, order.event_date))
+        if label is None:
+            return f"{band}|any"
+        return f"{band}|{'won' if str(label['settled_bucket']) == order.bucket else 'lost'}"
+
     def post_maker(self, order: PaperOrder) -> None:
         order.event(order.placed_at, "POST_ACK")
         order.last_book_at = order.placed_at
+        if self.fill_model != "empirical":
+            return
+        curve = self.curves.get(self.maker_curve_key(order))
+        if not curve:
+            return
+        seconds = F.fill_seconds_for_draw(
+            curve,
+            F.order_draw(order.order_id, order.station_id, order.event_date, order.bucket, "%.6f" % order.limit_price),
+        )
+        if seconds is not None:
+            order.fill_at = _iso(_instant(order.placed_at) + timedelta(seconds=seconds))
+
+    def _fill_due(self, order: PaperOrder, at: str) -> bool:
+        return (
+            order.fill_at is not None
+            and _at_or_before(order.fill_at, at)
+            and (order.expires_at is None or _before(order.fill_at, order.expires_at))
+        )
+
+    def _fill(self, order: PaperOrder) -> None:
+        size = order.remaining
+        order.event(str(order.fill_at), "FILL", size, size * order.limit_price)
+        order.state, order.ended_at = "filled", str(order.fill_at)
 
     def advance(self, order: PaperOrder, *, until: str, dead_buckets: Sequence[str] = (), running_high: float | None = None) -> None:
         """Walk a resting maker order through the books up to ``until``."""
@@ -674,20 +720,13 @@ class PaperVenue:
         for observed_at, book in self.books.after(order.station_id, order.event_date, order.last_book_at or order.placed_at):
             if not _at_or_before(observed_at, until):
                 break
+            if self._fill_due(order, observed_at):
+                self._fill(order)
+                return
             if horizon is not None and not _before(observed_at, horizon):
                 break
             order.last_book_at = observed_at
             row = book.get(order.bucket)
-            if row and row["asks"] and row["asks"][0][0] <= order.limit_price + EPS:
-                if self._admit(order.station_id, order.event_date, order.bucket, order.limit_price):
-                    available = sum(s for p, s in row["asks"] if p <= order.limit_price + EPS)
-                    take = min(order.remaining, available)
-                    if take > EPS:
-                        kind = "FILL" if take >= order.remaining - EPS else "PARTIAL_FILL"
-                        order.event(observed_at, kind, take, take * order.limit_price)
-                        if kind == "FILL":
-                            order.state, order.ended_at = "filled", observed_at
-                            return
             verdict = resting_rung_keep_or_cancel(
                 intent={
                     "bucket": order.bucket, "order_action": "BUY",
@@ -701,7 +740,11 @@ class PaperVenue:
             if verdict["action"] == "cancel":
                 self._end(order, observed_at, "CANCEL_ACK", str(verdict.get("reason") or ""))
                 return
-        # The pass at ``until``: the day's thermometer, then the book's age.
+        if self._fill_due(order, until):
+            self._fill(order)
+            return
+        # The pass at ``until``: the order's own horizon, the day's
+        # thermometer, then the book's age.
         if horizon is not None and not _before(until, horizon):
             self._end(order, horizon, "EXPIRED", "gtd_horizon")
             return
@@ -770,51 +813,83 @@ def _load_settlements(ssot: sqlite3.Connection) -> dict[tuple[str, str], dict[st
     return out
 
 
-def _production_decisions(ssot: sqlite3.Connection, *, since_rowid: int, until_rowid: int | None, stations: Sequence[str]) -> Iterator[dict[str, Any]]:
+def _production_decisions(
+    ssot: sqlite3.Connection,
+    *,
+    since_rowid: int = 0,
+    until_rowid: int | None = None,
+    stations: Sequence[str] = (),
+    from_event_date: str | None = None,
+    to_event_date: str | None = None,
+) -> Iterator[dict[str, Any]]:
     """Production's basket decisions, whole station-days at a time.
 
     A station-day is walked from its first decision, whatever the range: the
     chain's history is the ledger's own, and a day entered half-way would
     decide its first row against an empty history production never had.
+    The scopes are those with a decision after ``since_rowid`` (and up to
+    ``until_rowid``), narrowed to the event dates asked for.
+
+    Only the light columns are read up front; each decision's details and
+    training fact are read when it is walked, so no statement stays open on
+    the SSOT across the run (an open read pins the WAL the resident writes).
     """
 
-    clause = "" if until_rowid is None else " AND rowid<=?"
-    params: list[Any] = [since_rowid] + ([] if until_rowid is None else [until_rowid])
+    clauses = ["rowid>?", "substr(plan_id,1,5)='plan_'"]
+    params: list[Any] = [since_rowid]
+    if until_rowid is not None:
+        clauses.append("rowid<=?")
+        params.append(until_rowid)
     if stations:
-        clause += " AND station_id IN (" + ",".join("?" * len(stations)) + ")"
+        clauses.append("station_id IN (" + ",".join("?" * len(stations)) + ")")
         params.extend(stations)
+    if from_event_date:
+        clauses.append("event_date>=?")
+        params.append(from_event_date)
+    if to_event_date:
+        clauses.append("event_date<=?")
+        params.append(to_event_date)
     scopes = {
         (str(r[0]), str(r[1]))
         for r in ssot.execute(
             "SELECT DISTINCT station_id, event_date FROM auto_trade_decisions"
-            " WHERE rowid>? AND substr(plan_id,1,5)='plan_'" + clause,
+            " WHERE " + " AND ".join(clauses),
             params,
-        )
+        ).fetchall()
     }
     if not scopes:
         return
     first_date = min(day for _s, day in scopes)
-    for row in ssot.execute(
-        "SELECT d.rowid, d.decision_id, d.station_id, d.event_date, d.created_at,"
-        " d.decided_state, d.reason_codes_json, d.details_json,"
-        " f.stage, f.decision_at_utc, f.feature_json"
-        " FROM auto_trade_decisions d"
-        " LEFT JOIN basket_policy_training_fact f"
-        "   ON f.decision_id=d.decision_id AND f.cycle_id=d.cycle_id"
-        " WHERE substr(d.plan_id,1,5)='plan_' AND d.event_date>=?"
-        + ("" if until_rowid is None else " AND d.rowid<=?") +
-        " ORDER BY d.created_at, d.rowid",
-        [first_date] + ([] if until_rowid is None else [until_rowid]),
-    ):
-        if (str(row[2]), str(row[3])) not in scopes:
-            continue
+    last_date = max(day for _s, day in scopes)
+    light = [
+        row for row in ssot.execute(
+            "SELECT rowid, decision_id, cycle_id, station_id, event_date, created_at,"
+            " settlement_timezone FROM auto_trade_decisions"
+            " WHERE substr(plan_id,1,5)='plan_' AND event_date>=? AND event_date<=?"
+            + ("" if until_rowid is None else " AND rowid<=?") +
+            " ORDER BY created_at, rowid",
+            [first_date, last_date] + ([] if until_rowid is None else [until_rowid]),
+        ).fetchall()
+        if (str(row[3]), str(row[4])) in scopes
+    ]
+    for rowid, decision_id, cycle_id, station, day, created, tz in light:
+        decided_state, reason_codes, details = ssot.execute(
+            "SELECT decided_state, reason_codes_json, details_json"
+            " FROM auto_trade_decisions WHERE rowid=?", (rowid,),
+        ).fetchone()
+        fact = ssot.execute(
+            "SELECT stage, decision_at_utc, feature_json FROM basket_policy_training_fact"
+            " WHERE decision_id=? AND cycle_id=?", (decision_id, cycle_id),
+        ).fetchone()
         yield {
-            "rowid": int(row[0]), "decision_id": str(row[1]), "station_id": str(row[2]),
-            "event_date": str(row[3]), "created_at": str(row[4]), "decided_state": str(row[5]),
-            "reason_codes": json.loads(row[6] or "[]"), "details": json.loads(row[7] or "{}"),
-            "stage": row[8], "decision_at_utc": row[9],
-            "feature": json.loads(row[10]) if row[10] else None,
-            "in_range": int(row[0]) > since_rowid,
+            "rowid": int(rowid), "decision_id": str(decision_id), "station_id": str(station),
+            "event_date": str(day), "created_at": str(created), "decided_state": str(decided_state),
+            "reason_codes": json.loads(reason_codes or "[]"), "details": json.loads(details or "{}"),
+            "stage": None if fact is None else fact[0],
+            "decision_at_utc": None if fact is None else fact[1],
+            "feature": json.loads(fact[2]) if fact is not None and fact[2] else None,
+            "in_range": int(rowid) > since_rowid,
+            "settlement_timezone": str(tz or "UTC"),
         }
 
 
@@ -934,34 +1009,76 @@ class AlignedLedger:
                     },
                 )
                 commit_snapshot = compiled["production_market_snapshot"]
-            prepared = prepare_production_candidate(
-                compiled_plan=compiled, market_snapshot=commit_snapshot, created_at_utc=created,
+            # Which of production's three writers records this compile: a
+            # blocked plan goes to the blocked-scope writer (details without a
+            # core or a signature, no orders); an in-day P0/P0-M to the
+            # stage-zero writer (the same, reason p1_final_authority_pending);
+            # everything else through the candidate commit, whose prepare
+            # step is production's own.
+            probability = compiled.get("probability_envelope")
+            compiled_stage = str(
+                (probability.get("stage") if isinstance(probability, Mapping) else None)
+                or row["stage"] or ""
+            ).strip().upper()
+            if str(compiled.get("status") or "") == "blocked":
+                path = "blocked"
+            elif out["entry"] == "in_day" and compiled_stage in {"P0", "P0-M"}:
+                path = "stage_zero"
+            else:
+                path = "candidate"
+            prepared = (
+                prepare_production_candidate(
+                    compiled_plan=compiled, market_snapshot=commit_snapshot, created_at_utc=created,
+                )
+                if path == "candidate" else None
             )
         except Exception as exc:  # noqa: BLE001 -- a refusal is a decision, named
             reason = f"{type(exc).__name__}:{exc}"[:200]
             chain.decisions.append((created, {"schema": "paper_ledger_compile_refusal_v1", "reason": reason}))
             out.update(status="blocked", reason_codes=[reason], matches_production=False, first_difference="compile_raised")
             return out
-        decision = prepared["decision"]
-        details = dict(decision["details"])
-        chain.decisions.append((created, details))
         plan = compiled.get("plan") or {}
+        if prepared is not None:
+            decision = prepared["decision"]
+            details = dict(decision["details"])
+            status, reasons = str(decision["decided_state"]), list(decision["reason_codes"])
+            intents = [] if prepared["blocked"] else list(prepared["intents"])
+            plan_payload = prepared["plan_payload"]
+        elif path == "stage_zero":
+            details = {
+                "schema": "paper_ledger_stage_zero_v1",
+                "stage_zero_execution_version": 1,
+                "probability_stage": compiled_stage,
+            }
+            status, reasons, intents, plan_payload = "blocked", ["p1_final_authority_pending"], [], plan
+        else:
+            reasons = [str(code) for code in compiled.get("reason_codes") or ()] or [
+                "compiled_plan_blocked"
+            ]
+            details = {
+                "schema": "paper_ledger_blocked_scope_v1",
+                "blocked_scope_decision_version": 1,
+                "reason_codes": reasons,
+            }
+            status, intents, plan_payload = "blocked", [], plan
+        chain.decisions.append((created, details))
         diff = _first_difference(_normalized(recorded_plan), _normalized(plan))
         out.update(
-            status=str(decision["decided_state"]), reason_codes=list(decision["reason_codes"]),
+            status=status, reason_codes=reasons, commit_path=path,
             matches_production=diff is None, first_difference=diff,
             target_shares={
                 str(t.get("bucket")): float(t.get("target_shares") or t.get("target_quantity") or 0.0)
                 for t in plan.get("targets") or [] if isinstance(t, Mapping)
             },
         )
-        # Charter 71(a) and the opener's tilt, by production's own rules.
-        if out["entry"] == "in_day" and chain.tilt is None:
+        # Charter 71(a) and the opener's tilt, by production's own rules: the
+        # in-day loop records the opener after a commit, never after a
+        # blocked compile.
+        if out["entry"] == "in_day" and path != "blocked" and chain.tilt is None:
             tilt = opener_tilt_from_plan(compiled)
             if tilt is not None:
                 chain.tilt = (created, float(tilt.get("factor") or 1.0))
-        intents = [] if prepared["blocked"] else list(prepared["intents"])
-        identity = chain_last_action_identity(plan=prepared["plan_payload"], intents=intents)
+        identity = chain_last_action_identity(plan=plan_payload, intents=intents)
         if identity:
             chain.last_action = (created, identity)
         for index, intent in enumerate(intents):
@@ -978,6 +1095,7 @@ class AlignedLedger:
                     if expiration not in (None, "") else None
                 ),
                 ladder_rung=bool(body.get("post_only")), decision_created_at=created,
+                settlement_timezone=str(row.get("settlement_timezone") or "UTC"),
             )
             if order.candidate == "TAKER_FOK":
                 self.venue.submit_fok(order, book_buckets=commit_snapshot.get("buckets") or [])
@@ -1029,6 +1147,7 @@ LEDGER_DDL = (
     " production_decision_id TEXT, station_id TEXT, event_date TEXT, created_at TEXT, stage TEXT,"
     " entry TEXT, status TEXT, reason_codes_json TEXT, intents_json TEXT,"
     " matches_production INTEGER, first_difference TEXT, target_shares_json TEXT,"
+    " commit_path TEXT, planning_budget_usdc REAL,"
     " PRIMARY KEY(run_id, seq))",
     "CREATE TABLE IF NOT EXISTS orders(run_id TEXT, order_id TEXT, station_id TEXT, event_date TEXT,"
     " bucket TEXT, candidate TEXT, limit_price REAL, size REAL, placed_at TEXT, expires_at TEXT,"
@@ -1112,6 +1231,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     for index, row in enumerate(_production_decisions(
         ssot, since_rowid=args.since_rowid, until_rowid=args.until_rowid,
         stations=[s.strip().upper() for s in (args.stations or "").split(",") if s.strip()],
+        from_event_date=args.from_event_date, to_event_date=args.to_event_date,
     )):
         if args.limit and index >= args.limit:
             break
@@ -1123,6 +1243,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     orders = [o for chain in ledger.state.days.values() for o in chain.orders]
     summary = summarize(ledger.rows, settlements, orders)
     summary["seconds"] = round(time.time() - started, 1)
+    summary["fill_model"] = args.fill_model
+    summary["maker_fill_curves_sha256"] = ledger.venue.curves_sha256
     if not args.dry_run:
         _store(args, ledger, settlements, orders, summary)
     return summary
@@ -1132,6 +1254,10 @@ def _store(args: argparse.Namespace, ledger: AlignedLedger, settlements: Sequenc
     out = sqlite3.connect(args.ledger_db)
     for ddl in LEDGER_DDL:
         out.execute(ddl)
+    present = {str(row[1]) for row in out.execute("PRAGMA table_info(decisions)")}
+    for column, kind in (("commit_path", "TEXT"), ("planning_budget_usdc", "REAL")):
+        if column not in present:
+            out.execute(f"ALTER TABLE decisions ADD COLUMN {column} {kind}")
     run_id = "run_" + hashlib.sha256(f"{time.time()}|{vars(args)}".encode()).hexdigest()[:16]
     params = {k: v for k, v in vars(args).items() if k not in {"ssot", "archive", "ledger_db"}}
     with out:
@@ -1141,13 +1267,17 @@ def _store(args: argparse.Namespace, ledger: AlignedLedger, settlements: Sequenc
              json.dumps(params, sort_keys=True), json.dumps(summary, sort_keys=True)),
         )
         out.executemany(
-            "INSERT INTO decisions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO decisions(run_id,seq,production_rowid,production_decision_id,"
+            "station_id,event_date,created_at,stage,entry,status,reason_codes_json,"
+            "intents_json,matches_production,first_difference,target_shares_json,"
+            "commit_path,planning_budget_usdc) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             [
                 (run_id, seq, r["production_rowid"], r["production_decision_id"], r["station_id"],
                  r["event_date"], r["created_at"], r["stage"], r["entry"], r["status"],
                  json.dumps(r["reason_codes"]), json.dumps(r["intents"]),
                  None if r["matches_production"] is None else int(bool(r["matches_production"])),
-                 r["first_difference"], json.dumps(r.get("target_shares") or {}))
+                 r["first_difference"], json.dumps(r.get("target_shares") or {}),
+                 r.get("commit_path"), r.get("planning_budget_usdc"))
                 for seq, r in enumerate(ledger.rows)
             ],
         )
@@ -1179,10 +1309,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="first production decision rowid (exclusive)")
     parser.add_argument("--until-rowid", type=int, default=None)
     parser.add_argument("--stations", default="", help="comma-separated ICAO filter")
+    parser.add_argument("--from-event-date", default=None, help="first event date (inclusive)")
+    parser.add_argument("--to-event-date", default=None, help="last event date (inclusive)")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--capital", choices=("production", "paper"), default="production")
     parser.add_argument("--opening-cash-usdc", type=float, default=120.0)
-    parser.add_argument("--fill-model", choices=("adverse", "touch"), default="adverse")
+    parser.add_argument("--fill-model", choices=("empirical", "none"), default="empirical",
+                        help="maker venue: calibrated fill curves, or never (a lower bound)")
     parser.add_argument("--ssot", default=str(SSOT_DB))
     parser.add_argument("--archive", default=str(ARCHIVE_DB))
     parser.add_argument("--ledger-db", default=str(LEDGER_DB))

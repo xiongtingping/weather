@@ -221,7 +221,7 @@ def test_a_resting_order_is_the_pending_the_compile_sees() -> None:
 
 
 def test_a_fok_crosses_the_decision_book_all_or_nothing() -> None:
-    venue = L.PaperVenue(books=None, settlements={}, fill_model="touch")
+    venue = L.PaperVenue(books=None, settlements={}, fill_model="none")
     book = [{"bucket": "32°C", "ask_levels": [
         {"price": 0.40, "shares": 4.0}, {"price": 0.44, "shares": 5.0},
         {"price": 0.50, "shares": 50.0},
@@ -263,36 +263,86 @@ def _books(rows) -> "L.BookStore":
 
 
 def _maker(expires_at: str) -> L.PaperOrder:
-    order = L.PaperOrder(
+    return L.PaperOrder(
         order_id="m", station_id=ST, event_date=DAY, bucket="31°C", token_id="t",
         candidate="MAKER", limit_price=0.30, size=10.0,
         placed_at="2026-09-21T10:00:00Z", expires_at=expires_at,
         ladder_rung=True, decision_created_at="2026-09-21T10:00:00Z",
+        settlement_timezone=TZ,
     )
-    return order
 
 
-def test_a_resting_maker_fills_when_a_later_book_offers_at_its_limit() -> None:
+def _curves(fill_after_seconds: float) -> dict:
+    # Every draw lands on the one step: the order fills this long after it
+    # was posted, whatever its hash.  Placed 10:00Z on a Madrid day that ends
+    # 22:00Z, the order is in the same-day band; no label yet, so "any".
+    step = {"t_seconds": [fill_after_seconds], "F": [1.0]}
+    return {"curves": {"in_day|any": step, "in_day|won": step, "in_day|lost": step},
+            "content_sha256": "c" * 64}
+
+
+def test_a_resting_maker_fills_at_the_time_its_curve_draws() -> None:
     books = _books([
         ("2026-09-21T10:05:00Z", 0.35, 0.30),
-        ("2026-09-21T10:10:00Z", 0.30, 0.29),
+        ("2026-09-21T10:10:00Z", 0.35, 0.30),
     ])
-    venue = L.PaperVenue(books=books, settlements={}, fill_model="touch")
+    venue = L.PaperVenue(books=books, settlements={}, curves=_curves(420.0))
     order = _maker("2026-09-21T12:00:00Z")
     venue.post_maker(order)
-    venue.advance(order, until="2026-09-21T10:07:00Z")
+    assert order.fill_at == "2026-09-21T10:07:00.000Z"
+    venue.advance(order, until="2026-09-21T10:06:00Z")
     assert order.state == "resting" and order.filled_by() == (0.0, 0.0)
     venue.advance(order, until="2026-09-21T10:20:00Z")
     assert order.state == "filled"
     assert order.filled_by() == pytest.approx((10.0, 3.0))  # at its own limit
-    assert order.ended_at == "2026-09-21T10:10:00Z"
+    assert order.ended_at == "2026-09-21T10:07:00.000Z"
 
 
-def test_a_resting_maker_nobody_sells_to_expires_at_its_own_horizon() -> None:
+def test_a_maker_production_cancels_before_its_draw_never_fills() -> None:
+    """Production's own resting rule runs first: a book with no bid left
+    cancels the rung (charter 110), and the fill the curve drew for later
+    never happens."""
+
+    books = _books([("2026-09-21T10:05:00Z", 0.35, 0.0)])
+    venue = L.PaperVenue(books=books, settlements={}, curves=_curves(3600.0))
+    order = _maker("2026-09-21T12:00:00Z")
+    venue.post_maker(order)
+    venue.advance(order, until="2026-09-21T11:30:00Z")
+    assert order.state == "cancelled" and order.filled_by() == (0.0, 0.0)
+    assert order.ends_by("2026-09-21T11:30:00Z") == 1  # charter 135 (一) counts it
+
+
+def test_a_resting_maker_whose_draw_is_past_its_horizon_expires() -> None:
     books = _books([("2026-09-21T10:05:00Z", 0.35, 0.30)])
-    venue = L.PaperVenue(books=books, settlements={}, fill_model="touch")
+    venue = L.PaperVenue(books=books, settlements={}, curves=_curves(3600.0))
     order = _maker("2026-09-21T10:30:00Z")
     venue.post_maker(order)
     venue.advance(order, until="2026-09-21T11:00:00Z")
     assert order.state == "expired" and order.ended_at == "2026-09-21T10:30:00Z"
-    assert order.ends_by("2026-09-21T11:00:00Z") == 1  # charter 135 (一) counts it
+    assert order.filled_by() == (0.0, 0.0)
+
+
+def test_the_curve_is_chosen_by_whether_the_bucket_settled() -> None:
+    """Adverse selection lives in the venue: the same order draws on the
+    lost-bucket curve when its bucket did not settle, and only the venue
+    reads the label."""
+
+    books = _books([])
+    curves = {"curves": {
+        "in_day|won": {"t_seconds": [60.0], "F": [1.0]},
+        "in_day|lost": {"t_seconds": [120.0], "F": [1.0]},
+        "in_day|any": {"t_seconds": [90.0], "F": [1.0]},
+    }}
+    venue = L.PaperVenue(books=books, settlements={(ST, DAY): {"settled_bucket": "32°C"}}, curves=curves)
+    order = _maker("2026-09-21T12:00:00Z")
+    venue.post_maker(order)
+    assert venue.maker_curve_key(order) == "in_day|lost"
+    assert order.fill_at == "2026-09-21T10:02:00.000Z"
+
+
+def test_the_lower_bound_never_fills_a_maker() -> None:
+    venue = L.PaperVenue(books=_books([("2026-09-21T10:05:00Z", 0.35, 0.30)]), settlements={}, fill_model="none")
+    order = _maker("2026-09-21T12:00:00Z")
+    venue.post_maker(order)
+    venue.advance(order, until="2026-09-21T11:00:00Z")
+    assert order.fill_at is None and order.filled_by() == (0.0, 0.0)
