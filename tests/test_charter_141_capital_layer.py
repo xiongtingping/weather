@@ -229,7 +229,7 @@ def test_the_runtime_bounds_a_station_day_by_the_whole_books_room() -> None:
     # Sizing reads the soft number, orders the ceiling, both under the room.
     assert "capital_available_usdc=sizing_capital_usdc" in source
     assert "capital_ceiling_usdc=remaining_budget" in source
-    assert 'market_snapshot.get("account_open_exposure_usdc")' in source
+    assert 'market_snapshot.get("basket_open_exposure_usdc")' in source
     assert "book_equity_usdc * _capital_kernel.STATION_DAY_HARD_FRACTION" in source
     assert "refresh_capital_layer()" in source
 

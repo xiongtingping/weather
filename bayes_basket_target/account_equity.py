@@ -481,15 +481,21 @@ def table_present(conn: sqlite3.Connection) -> bool:
 def open_exposure_by_station_day(
     conn: sqlite3.Connection, *, as_of_utc: str,
 ) -> list[tuple[str, str, str, float]]:
-    """(station, event_date, timezone, usdc) the book still has at risk.
+    """(station, event_date, timezone, usdc) the basket still has at risk.
 
     Filled cost on station-days whose local day has not ended more than
     ``OPEN_EXPOSURE_SETTLE_GRACE_HOURS`` ago, plus resting buys (pending or
     unknown on the exchange), both from this ledger.  At cost, which is the
     conservative side of an exposure bound.
+
+    The basket's orders only (charter 223, user ruling 2026-09-25: 「篮子单
+    算」): the other lanes write the same order tables under their own plan
+    prefixes, and their positions are theirs to bound.
     """
 
     from zoneinfo import ZoneInfo  # noqa: PLC0415
+
+    from .production_io import basket_plan_sql  # noqa: PLC0415
 
     as_of = _iso(as_of_utc)
     earliest = (as_of - timedelta(days=3)).date().isoformat()
@@ -498,10 +504,15 @@ def open_exposure_by_station_day(
         " SUM(CASE WHEN r.state IN ('pending','unknown')"
         "     THEN MAX(r.filled_notional_usdc, i.requested_notional_usdc)"
         "     ELSE r.filled_notional_usdc END)"
+        # CROSS JOIN fixes the order: the scan is over the reconciliations
+        # (small rows), each probing its intent and decision by key.  The
+        # planner otherwise scanned the intents; the call runs once per
+        # compile since charter 223.
         " FROM basket_target_order_reconciliations r"
-        " JOIN basket_target_order_intents i ON i.order_intent_id = r.order_intent_id"
-        " JOIN auto_trade_decisions d ON d.decision_id = i.decision_id"
+        " CROSS JOIN basket_target_order_intents i ON i.order_intent_id = r.order_intent_id"
+        " CROSS JOIN auto_trade_decisions d ON d.decision_id = i.decision_id"
         " WHERE i.order_action = 'BUY' AND d.event_date >= ?"
+        "   AND " + basket_plan_sql("d.plan_id") +
         "   AND (r.filled_size > 0 OR r.state IN ('pending','unknown'))"
         " GROUP BY d.station_id, d.event_date, d.settlement_timezone",
         (earliest,),

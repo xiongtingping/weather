@@ -3,7 +3,8 @@
 Charter 141 (2026-09-17): the bankroll is the real account read from the venue
 (``basket_target_account_equity``), exposure is the ledger's own fills on
 station-days that have not settled plus resting buys, and the breaker's curve
-is the account reads.  The pool counter is not read.
+is the account reads.  The pool counter is not read.  Charter 223
+(2026-09-25): the exposure is the basket's own, every bound included.
 """
 
 from __future__ import annotations
@@ -28,18 +29,20 @@ from bayes_basket_target.portfolio_inventory import (
 
 
 def _book(rows, *, reads=((100.0, 0.0, "2026-08-12T03:59:00.000Z"),)):
-    """A ledger holding the given (station, date, tz, usdc, state) positions,
-    and an account read for each (cash, positions, observed_at) in ``reads``.
+    """A ledger holding the given (station, date, tz, usdc, state[, plan])
+    positions, and an account read for each (cash, positions, observed_at) in
+    ``reads``.
 
     ``state`` is the reconciliation state: ``resolved_filled`` is a filled
-    position, ``pending`` a resting buy.
+    position, ``pending`` a resting buy.  ``plan`` is the plan id's lane
+    prefix: the basket's ``plan_`` unless the row names another lane.
     """
 
     conn = sqlite3.connect(":memory:", isolation_level=None)
     conn.executescript(
         "CREATE TABLE auto_trade_decisions("
         "decision_id TEXT, station_id TEXT, event_date TEXT,"
-        "settlement_timezone TEXT);"
+        "settlement_timezone TEXT, plan_id TEXT);"
         "CREATE TABLE basket_target_order_intents("
         "order_intent_id TEXT, decision_id TEXT, order_action TEXT,"
         "requested_notional_usdc REAL);"
@@ -47,10 +50,10 @@ def _book(rows, *, reads=((100.0, 0.0, "2026-08-12T03:59:00.000Z"),)):
         "order_intent_id TEXT, state TEXT, filled_size REAL,"
         "filled_notional_usdc REAL);"
     )
-    for index, (station, date, tz, usdc, state) in enumerate(rows):
+    for index, (station, date, tz, usdc, state, *lane) in enumerate(rows):
         conn.execute(
-            "INSERT INTO auto_trade_decisions VALUES(?,?,?,?)",
-            (f"d-{index}", station, date, tz),
+            "INSERT INTO auto_trade_decisions VALUES(?,?,?,?,?)",
+            (f"d-{index}", station, date, tz, f"{(lane or ['plan_'])[0]}{index}"),
         )
         conn.execute(
             "INSERT INTO basket_target_order_intents VALUES(?,?,?,?)",
@@ -151,6 +154,41 @@ def test_each_tier_one_bound_is_reported_and_stops_new_intents() -> None:
     )
     assert within["breaches"] == []
     assert within["new_intents_allowed"] is True
+
+
+def test_the_whole_book_bound_counts_the_basket_alone() -> None:
+    """Charter 223 (user ruling 2026-09-25: 「篮子单算」).
+
+    Another lane's position on the same ledger is not the basket's exposure,
+    and neither is the account's non-cash: on 2026-09-25 the account read 153
+    of positions and resting buys against a cap of 108, all of it other
+    lanes' and settled positions, and the basket's forward budget had been
+    zero since 09-18 while the basket itself held nothing open.
+    """
+
+    # 50 cash and 150 in positions: 30 is the basket's on an open day, 40 is
+    # the P1 consensus lane's, the rest settled and not yet redeemed.
+    conn = _book(
+        [
+            ("ZUUU", "2026-08-12", "Asia/Shanghai", 30.0, "resolved_filled"),
+            ("LTAC", "2026-08-12", "Europe/Istanbul", 40.0, "resolved_filled",
+             "p1_consensus_plan_"),
+        ],
+        reads=((50.0, 150.0, "2026-08-12T03:59:00.000Z"),),
+    )
+    inventory = build_portfolio_inventory(
+        conn, as_of_utc="2026-08-12T04:00:00Z",
+        blocks_by_station={"ZUUU": "CHINA_CENTRAL"},
+        policy=_policy(portfolio_risk_fraction=0.5),
+    )
+    assert inventory["open_notional_usdc"] == pytest.approx(30.0)
+    assert "LTAC" not in inventory["station_exposure_usdc"]
+    # 30 against 0.5 x 200: room, where the account's 150 would have read
+    # as a breach.
+    assert "portfolio_risk_fraction" not in {
+        row["limit"] for row in inventory["breaches"]
+    }
+    assert inventory["new_intents_allowed"] is True
 
 
 def test_the_budget_dial_caps_the_bankroll() -> None:

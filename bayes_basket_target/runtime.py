@@ -1262,12 +1262,14 @@ def _compile_target_plan(
         committed_usdc=station_committed_usdc,
     )
     # Charter 141: the whole book's exposure bound, when the producer read
-    # the account.  Open exposure is the marked value of open positions plus
-    # resting buys; the room is what the exposure fraction of the real book
-    # still leaves, and no station-day may spend past it.  Absent (a fixture,
-    # the paper ledger), no bound -- the ledger has no account to read.
+    # the account.  Charter 223 (user ruling 2026-09-25: 「篮子单算」): the
+    # exposure is the basket's own -- its filled cost on unsettled
+    # station-days plus its resting buys -- not the account's positions,
+    # which carry every lane and every settled position not yet redeemed.
+    # The room is what the exposure fraction of the real book still leaves,
+    # and no station-day may spend past it.  Absent (a fixture), no bound.
     portfolio_room_usdc: float | None = None
-    _exposure = market_snapshot.get("account_open_exposure_usdc")
+    _exposure = market_snapshot.get("basket_open_exposure_usdc")
     _exposure_fraction = market_snapshot.get("portfolio_exposure_fraction")
     if _exposure not in (None, "") and _exposure_fraction not in (None, ""):
         portfolio_room_usdc = max(

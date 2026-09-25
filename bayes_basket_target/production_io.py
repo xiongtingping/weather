@@ -27,6 +27,7 @@ from .effective_edge_store import load_effective_edge_tables
 from .account_equity import (
     budget_capped_equity,
     load_account_equity,
+    open_exposure_usdc,
     table_present as account_equity_table_present,
 )
 from .off_centre_claim_store import load_off_centre_tables
@@ -1681,17 +1682,24 @@ def account_capital_for_snapshot(
     row = load_account_equity(conn, as_of_utc=evaluation_at_utc)
     if row is None:
         raise ContractError("production_account_equity_stale")
-    return account_capital_from_equity_row(row)
+    return account_capital_from_equity_row(
+        row,
+        basket_open_exposure_usdc=open_exposure_usdc(conn, as_of_utc=evaluation_at_utc),
+    )
 
 
-def account_capital_from_equity_row(row: Mapping[str, Any]) -> dict[str, Any]:
+def account_capital_from_equity_row(
+    row: Mapping[str, Any], *, basket_open_exposure_usdc: float,
+) -> dict[str, Any]:
     """Charter 141's snapshot fields from one account read.
 
     ``row`` carries ``equity_usdc``, ``positions_value_usdc``,
     ``resting_buy_usdc``, ``cash_usdc`` and ``observed_at_utc`` -- the real
     account's read in production, the simulated account's on paper.  The
     budget dial and the exposure fraction are production's, read here for
-    both.
+    both.  ``basket_open_exposure_usdc`` is the basket's own open exposure
+    (charter 223, ``account_equity.open_exposure_usdc`` on the ledger that
+    holds the basket's orders): what the whole-book bound counts.
     """
 
     budget: float | None = None
@@ -1715,12 +1723,13 @@ def account_capital_from_equity_row(row: Mapping[str, Any]) -> dict[str, Any]:
         exposure_fraction = None
     return {
         "book_equity_usdc": budget_capped_equity(row["equity_usdc"], budget),
-        # Marked value of open positions plus resting buys: the part of the
-        # book that is not cash.  The runtime bounds it at the exposure
-        # fraction of the (budget-capped) book.
-        "account_open_exposure_usdc": (
-            float(row["positions_value_usdc"]) + float(row["resting_buy_usdc"])
-        ),
+        # Charter 223 (user ruling 2026-09-25: 「篮子单算」): the basket's
+        # own filled cost on unsettled station-days plus its resting buys.
+        # The runtime bounds it at the exposure fraction of the
+        # (budget-capped) book.  It read the account's positions plus resting
+        # buys until then -- every lane's, and every settled position not
+        # yet redeemed.
+        "basket_open_exposure_usdc": float(basket_open_exposure_usdc),
         **(
             {"portfolio_exposure_fraction": exposure_fraction}
             if exposure_fraction is not None else {}

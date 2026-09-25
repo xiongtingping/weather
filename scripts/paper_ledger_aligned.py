@@ -79,6 +79,7 @@ from bayes_basket_target.p0_preselection import (  # noqa: E402
 )
 from bayes_basket_target.production import prepare_production_candidate  # noqa: E402
 from bayes_basket_target.production_io import (  # noqa: E402
+    BASKET_PLAN_ID_PREFIX,
     CHAIN_SEAT_EVENT_TYPES,
     COMPLETION_EXECUTION_CANDIDATE,
     SsotChainState,
@@ -87,7 +88,11 @@ from bayes_basket_target.production_io import (  # noqa: E402
     prior_core_from_details,
     select_last_decision_signature,
 )
-from bayes_basket_target.account_equity import ACCOUNT_EQUITY_DDL_STATEMENTS, TABLE as ACCOUNT_EQUITY_TABLE  # noqa: E402
+from bayes_basket_target.account_equity import (  # noqa: E402
+    ACCOUNT_EQUITY_DDL_STATEMENTS,
+    TABLE as ACCOUNT_EQUITY_TABLE,
+    open_exposure_usdc,
+)
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.portfolio_allocator import load_regional_blocks  # noqa: E402
 from bayes_basket_target.portfolio_inventory import (  # noqa: E402
@@ -262,10 +267,12 @@ class PaperChainState:
         *,
         capital: str,
         paper_account: "PaperAccount | None" = None,
+        paper_portfolio: "PaperPortfolio | None" = None,
     ) -> None:
         self.ssot = ssot
         self.capital = capital
         self.paper_account = paper_account
+        self.paper_portfolio = paper_portfolio
         self.before_utc: str | None = None
         self.days: dict[tuple[str, str], ChainDay] = {}
         self._ssot_state = SsotChainState(ssot)
@@ -416,8 +423,16 @@ class PaperChainState:
     def account_capital(self, *, evaluation_at_utc: str) -> dict[str, Any] | None:
         if self.capital == "production" or self.paper_account is None:
             return self._ssot_state.account_capital(evaluation_at_utc=evaluation_at_utc)
+        # Charter 223: the bound counts the basket's own open exposure,
+        # read by production's function off the paper book's orders.
+        if self.paper_portfolio is None:
+            raise ContractError("paper_account_without_portfolio")
+        self.paper_portfolio.sync_orders(self, at=evaluation_at_utc)
         return account_capital_from_equity_row(
-            self.paper_account.equity_row(self, at=evaluation_at_utc)
+            self.paper_account.equity_row(self, at=evaluation_at_utc),
+            basket_open_exposure_usdc=open_exposure_usdc(
+                self.paper_portfolio.store, as_of_utc=evaluation_at_utc,
+            ),
         )
 
     def remaining_budget_usdc(self, *, station_id: str, event_date: str, recorded_usdc: float) -> float:
@@ -481,8 +496,10 @@ class PaperPortfolio:
         for ddl in ACCOUNT_EQUITY_DDL_STATEMENTS:
             self.store.execute(ddl)
         self.store.executescript(
+            # The paper book is the basket's alone, under the basket's plan
+            # prefix, so production's lane filter (charter 223) keeps it.
             "CREATE TABLE auto_trade_decisions(decision_id TEXT PRIMARY KEY,"
-            " station_id TEXT, event_date TEXT, settlement_timezone TEXT);"
+            " station_id TEXT, event_date TEXT, settlement_timezone TEXT, plan_id TEXT);"
             "CREATE TABLE basket_target_order_intents(order_intent_id TEXT PRIMARY KEY,"
             " decision_id TEXT, order_action TEXT, requested_notional_usdc REAL);"
             "CREATE TABLE basket_target_order_reconciliations(order_intent_id TEXT PRIMARY KEY,"
@@ -539,8 +556,9 @@ class PaperPortfolio:
                 continue
             decision_id = f"{station}|{day}"
             self.store.execute(
-                "INSERT INTO auto_trade_decisions VALUES(?,?,?,?)",
-                (decision_id, station, day, self._timezone(station, day)),
+                "INSERT INTO auto_trade_decisions VALUES(?,?,?,?,?)",
+                (decision_id, station, day, self._timezone(station, day),
+                 f"{BASKET_PLAN_ID_PREFIX}paper|{decision_id}"),
             )
             for order in chain.orders:
                 if not _at_or_before(order.placed_at, at):
@@ -985,7 +1003,9 @@ class AlignedLedger:
         self.settlements = _load_settlements(ssot)
         self.account = PaperAccount(opening_cash_usdc, self.books, self.settlements) if capital == "paper" else None
         self.portfolio = PaperPortfolio(ssot) if capital == "paper" else None
-        self.state = PaperChainState(ssot, capital=capital, paper_account=self.account)
+        self.state = PaperChainState(
+            ssot, capital=capital, paper_account=self.account, paper_portfolio=self.portfolio,
+        )
         self.venue = PaperVenue(books=self.books, settlements=self.settlements, fill_model=fill_model)
         activation = load_activation(W.DEFAULT_TARGET_ACTIVATION)
         self.scope = dict(activation["target_scope"])

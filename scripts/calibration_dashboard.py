@@ -24463,7 +24463,7 @@ function liveControlStrip(){
     ${knob("kelly", "凯利系数 kelly_fraction（每个篮子押完整凯利的几分之几；宪章 141）",
       `${b("kelly",-0.05,"−")}<b id="lc-kelly">${
         L.kelly==null?"—":LC_KNOBS.kelly.fmt(L.kelly)}</b>${b("kelly",0.05,"+")}`)}
-    ${knob("exposure", "总敞口上限 portfolio_risk_fraction（持仓市值+在挂买单 占 真实余额 的上限；宪章 141）",
+    ${knob("exposure", "总敞口上限 portfolio_risk_fraction（篮子自己的未结算持仓成本+在挂买单 占 真实余额 的上限，其他车道不计；宪章 141/223）",
       `${b("exposure",-0.05,"−")}<b id="lc-exposure">${
         L.exposure==null?"—":LC_KNOBS.exposure.fmt(L.exposure)}</b>${b("exposure",0.05,"+")}`)}
     ${knob("sizing", "单站日定注 station_day_sizing_fraction（凯利押注、各类候选方案最多按真实余额的这个比例定大小，整条链共用；宪章 141）",

@@ -21,8 +21,9 @@ money can move.
 
 POST /api/kelly-fraction  {"value": 0.25}   -> kelly_fraction (凯利系数, charter 141)
 POST /api/exposure        {"value": 0.80}   -> portfolio_risk_fraction (总敞口上限:
-                  the share of the real account that may be positions and
-                  resting buys)
+                  the share of the real account the basket's own open
+                  exposure -- filled cost on unsettled station-days plus
+                  resting buys, other lanes not counted -- may be; charter 223)
 POST /api/station-sizing  {"value": 0.065}  -> station_day_sizing_fraction (单站日定注)
 POST /api/station-ceiling {"value": 0.10}   -> station_day_ceiling_fraction (单站日上限)
 POST /api/kelly  is retired: it wrote the exposure bound under Kelly's name, and a

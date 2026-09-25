@@ -628,7 +628,7 @@ def test_one_assembler_attaches_the_station_day_fields_for_both_sources() -> Non
         "quote_observed_at": "2026-09-17T08:42:00Z", "quote_expires_at": "2026-09-17T08:52:00Z",
         "quote_source": "OFFICIAL_CLOB_WS", "inventory_version": "i1", "order_state_version": "o1",
     }
-    account = {"book_equity_usdc": 88.0, "account_open_exposure_usdc": 50.0,
+    account = {"book_equity_usdc": 88.0, "basket_open_exposure_usdc": 50.0,
                "portfolio_exposure_fraction": 0.9}
     snapshot = production_io.assemble_market_snapshot(
         conn, station_id="ZUUU", event_date="2026-09-18",
@@ -640,7 +640,7 @@ def test_one_assembler_attaches_the_station_day_fields_for_both_sources() -> Non
     assert snapshot["chain_sent_shares"] == {"24°C": 15.0, "25°C": 6.0}
     # The real account overrides the source's planning equity.
     assert snapshot["book_equity_usdc"] == 88.0
-    assert snapshot["account_open_exposure_usdc"] == 50.0
+    assert snapshot["basket_open_exposure_usdc"] == 50.0
     assert snapshot["portfolio_exposure_fraction"] == 0.9
     assert snapshot["current_core_buckets"] == [] and snapshot["current_direction"] is None
     # A chain that sent nothing carries neither field and hashes as before.
@@ -650,7 +650,7 @@ def test_one_assembler_attaches_the_station_day_fields_for_both_sources() -> Non
         remaining_budget_usdc=5.0, cash_phase_input=None, account_capital=None,
     )
     assert "chain_seat_buckets" not in empty and "chain_sent_shares" not in empty
-    assert "account_open_exposure_usdc" not in empty
+    assert "basket_open_exposure_usdc" not in empty
     # And the rule reads them: 26/27 were never sent, so neither is missing.
     assert runtime._completion_143_sent_shares(
         type(fixture._held_snapshot()).from_mapping({

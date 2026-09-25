@@ -152,10 +152,16 @@ def build_portfolio_inventory(
     pool counter, which only ever subtracted fills from a paper balance and
     read 297.98 against an account of 99.80.  Exposure is what the ledger
     still has at risk: filled cost on station-days that have not settled
-    plus resting buys.  The whole-book bound reads the part of the account
-    that is not cash (positions plus resting buys), the same number the
-    runtime bounds each station-day by.  With no fresh account read the book
-    takes on nothing: ``account_equity_unavailable`` is a breach.
+    plus resting buys.  With no fresh account read the book takes on
+    nothing: ``account_equity_unavailable`` is a breach.
+
+    Charter 223 (user ruling 2026-09-25: 「篮子单算」): every bound here
+    counts the basket's own exposure -- the whole-book bound included, which
+    until then read the part of the ACCOUNT that was not cash.  That number
+    carried every lane's positions and every settled position not yet
+    redeemed: on 2026-09-25 it read 153 against a cap of 108 and had held the
+    basket's forward budget at zero since 09-18.  The bankroll and the
+    drawdown breaker still read the real account.
     """
 
     account = load_account_equity(conn, as_of_utc=as_of_utc)
@@ -185,10 +191,6 @@ def build_portfolio_inventory(
         by_window[window] = by_window.get(window, 0.0) + value
 
     total = sum(by_station.values())
-    not_cash = (
-        float(account["positions_value_usdc"]) + float(account["resting_buy_usdc"])
-        if account is not None else total
-    )
     hhi = (
         sum((value / total) ** 2 for value in by_station.values())
         if total > 0.0
@@ -200,10 +202,10 @@ def build_portfolio_inventory(
         breaches.append({"limit": "account_equity_unavailable"})
     if bankroll > 0.0:
         risk_cap = bankroll * float(policy["portfolio_risk_fraction"])
-        if not_cash > risk_cap + 1e-9:
+        if total > risk_cap + 1e-9:
             breaches.append({
                 "limit": "portfolio_risk_fraction",
-                "observed_usdc": round(not_cash, 6),
+                "observed_usdc": round(total, 6),
                 "cap_usdc": round(risk_cap, 6),
             })
         station_cap = bankroll * float(policy["station_cap_fraction"])
@@ -268,7 +270,6 @@ def build_portfolio_inventory(
         "open_notional_usdc": round(total, 6),
         "reserved_usdc": round(reserved, 6),
         "bankroll_usdc": round(bankroll, 6),
-        "account_not_cash_usdc": round(not_cash, 6),
         "portfolio_hhi": round(hhi, 8),
         "window_exposure_usdc": {
             key: round(value, 6) for key, value in sorted(by_window.items())

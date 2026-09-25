@@ -1983,8 +1983,10 @@ def test_market_snapshot_reports_the_real_account_not_the_pool(monkeypatch) -> N
     payout) is no longer read at all: a pool of 514.29 changes nothing.  With
     no account table the snapshot carries no equity (a fixture sizes off its
     budget as before); with the table and a fresh read it carries cash plus
-    positions, capped by the budget dial, and the non-cash part beside it;
-    with the table and no fresh read the compile is refused.
+    positions, capped by the budget dial, and beside it the basket's own open
+    exposure (charter 223) -- not the account's positions, which this ledger
+    holds no open basket order for; with the table and no fresh read the
+    compile is refused.
     """
 
     import pytest
@@ -2029,7 +2031,8 @@ def test_market_snapshot_reports_the_real_account_not_the_pool(monkeypatch) -> N
         )
         # 99.80 in the account, capped at the 90 the budget dial allows.
         assert real["book_equity_usdc"] == pytest.approx(90.0)
-        assert real["account_open_exposure_usdc"] == pytest.approx(44.52)
+        assert real["basket_open_exposure_usdc"] == 0.0
+        assert real["account_positions_value_usdc"] == pytest.approx(44.52)
         assert real["account_cash_usdc"] == pytest.approx(55.28)
         # The scope's own budget is untouched by the equity.
         assert real["remaining_budget_usdc"] == bare["remaining_budget_usdc"]
