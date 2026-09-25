@@ -54,7 +54,16 @@ PROVIDER_ID = "AWC_METAR_PHYSICAL_PATH"
 # day, lead, member, extraction_version), so the honest recompute lives under
 # a new version and the contaminated v1 rows stay visible as audit evidence
 # that no scope contract will ever pair again.
-METHOD_VERSION = "metar_physical_tmax_from_conditioned_remaining_warming_v2"
+#
+# v3 because v2's noon prefix dropped the day's first report.  The planner
+# selected [local midnight, local noon] with a text comparison, and the
+# archive spells ``...T16:00:00.000Z`` where the bound read ``...T16:00:00Z``:
+# '.' sorts before 'Z', so the local-midnight report fell outside its own day
+# on 1,229 of 2,090 station-days and the noon running high was wrong on 20
+# (LEMD 08-27 read 21 where the reports said 23; SAEZ the same day, 13 for
+# 15).  User ruling 2026-09-25: 「修正并重算 8 月 1 日以来的历史」 -- every day
+# since EARLIEST_EVENT_DATE is recomputed under v3, v2 stays as audit.
+METHOD_VERSION = "metar_physical_tmax_from_conditioned_remaining_warming_v3"
 # One member, because there is one forecast.
 #
 # An earlier draft published five quantiles of the conditioned distribution as
