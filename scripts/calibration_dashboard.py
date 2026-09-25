@@ -4342,10 +4342,22 @@ def collect_correction_and_weights(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def _band_stage_alerts(stages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The banner's band lamps: every stage not green, except the ones
+    charter 150 serves no table for ("muted"), which are the design."""
+
+    return [
+        {"health": s["health"], "label": f"band 校准 {s['stage']}",
+         "note": s.get("state") or ""}
+        for s in stages if s["health"] not in ("green", "muted")
+    ]
+
+
 def collect_band_stages(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     """Per stage: served factors, evidence depth, what blocks each band."""
 
     from bayes_basket_target.band_reliability_store import (
+        BAND_SERVED_STAGES,
         BAND_STAGES,
         MIN_QUALIFYING_DAYS,
     )
@@ -4396,14 +4408,23 @@ def collect_band_stages(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 " ORDER BY retired_at_utc DESC LIMIT 1",
                 (stage,),
             ).fetchone() if {"retired_at_utc", "axis"} <= band_columns else None
+            # Charter 150 (2026-09-19): P0-M and P1 are one likelihood update
+            # each on a calibrated root and serve no band table at all -- the
+            # refit retires what they had and fits nothing for them
+            # (``BAND_SERVED_STAGES``).  Identity there is the design, not a
+            # veto waiting on evidence, and it was an amber alert on the
+            # banner every render from 2026-09-18 on.
+            not_served = stage not in BAND_SERVED_STAGES
             stages.append({
                 "stage": stage,
                 "meaning": STAGE_MEANING.get(stage, ""),
                 "state": (
-                    f"现役 {str(retired[0])[:10]} 被否决退役 · 按恒等服务"
+                    "宪章 150：本阶段不服务 band 表（一次似然更新，无事后校正）"
+                    if not_served
+                    else f"现役 {str(retired[0])[:10]} 被否决退役 · 按恒等服务"
                     if retired else "未建表"
                 ),
-                "health": "amber",
+                "health": "muted" if not_served else "amber",
                 "axis": str(retired[1]) if retired else "claim",
                 "bands": [],
                 "journal": [
@@ -18235,11 +18256,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
              "note": c.get("note") or ""}
             for c in chain if c["health"] != "green"
         ]
-        + [
-            {"health": s["health"], "label": f"band 校准 {s['stage']}",
-             "note": s.get("state") or ""}
-            for s in stages if s["health"] != "green"
-        ]
+        + _band_stage_alerts(stages)
         + (
             [{"health": truth["health"], "label": "真值物化",
               "note": truth.get("note") or ""}]
@@ -18691,6 +18708,7 @@ white-space:nowrap}
 .swrow .swaxisrow{display:none}
 }
 .green{background:var(--green)}.amber{background:var(--amber)}
+.dot.muted{background:var(--muted)}
 .red{background:var(--red)}
 .pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;
 border:1px solid var(--line);color:var(--muted)}

@@ -265,13 +265,41 @@ def test_a_vetoed_stage_does_not_read_as_never_built() -> None:
         " (band_table_sha256, stage, factors_json, evidence_json,"
         "  fitted_at_utc, serving_day_count, activated, activated_at_utc,"
         "  axis, retired_at_utc) VALUES (?,?,?,?,?,?,0,?,?,?)",
-        ("c" * 64, "P1", json.dumps(HELD_FACTORS), "{}",
+        ("c" * 64, "P0", json.dumps(HELD_FACTORS), "{}",
          "2026-09-10T04:20:38Z", 36, "2026-09-10T04:20:38Z", DISTANCE,
          "2026-09-16T08:00:00Z"),
     )
-    (stage,) = [s for s in C.collect_band_stages(conn) if s["stage"] == "P1"]
+    (stage,) = [s for s in C.collect_band_stages(conn) if s["stage"] == "P0"]
     assert stage["state"] == "现役 2026-09-16 被否决退役 · 按恒等服务"
+    assert stage["health"] == "amber"
     assert stage["axis"] == DISTANCE
+
+
+def test_a_stage_charter_150_serves_no_table_for_is_not_an_alert() -> None:
+    """P0-M and P1 serve no band table by design (charter 150): the refit
+    retired theirs on 2026-09-18 and fits nothing for them since.  That read
+    as an amber "vetoed, serving identity" on the banner every render; it is
+    the design, so it says so and stays off the banner."""
+
+    conn = sqlite3.connect(":memory:")
+    band_store.ensure_band_table_schema(conn)
+    for stage, sha in (("P0-M", "e" * 64), ("P1", "f" * 64)):
+        conn.execute(
+            "INSERT INTO calibration_band_reliability_table"
+            " (band_table_sha256, stage, factors_json, evidence_json,"
+            "  fitted_at_utc, serving_day_count, activated, activated_at_utc,"
+            "  axis, retired_at_utc) VALUES (?,?,?,?,?,?,0,?,?,?)",
+            (sha, stage, json.dumps(HELD_FACTORS), "{}",
+             "2026-09-10T04:20:38Z", 36, "2026-09-10T04:20:38Z", DISTANCE,
+             "2026-09-18T20:16:02Z"),
+        )
+    stages = {s["stage"]: s for s in C.collect_band_stages(conn)}
+    for stage in ("P0-M", "P1"):
+        assert stage not in band_store.BAND_SERVED_STAGES
+        assert stages[stage]["health"] == "muted"
+        assert stages[stage]["state"].startswith("宪章 150")
+    alerts = C._band_stage_alerts(list(stages.values()))
+    assert not [a for a in alerts if a["label"].endswith(("P0-M", "P1"))]
 
 
 def test_a_vetoed_stage_keeps_the_axis_its_cells_were_keyed_on() -> None:
