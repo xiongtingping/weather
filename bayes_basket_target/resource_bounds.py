@@ -333,7 +333,21 @@ MAX_JSON_NODES = 500_000
 # 2.5-3 GiB a day.  Free disk is 19 GiB; four GiB of growth leaves 15 GiB at
 # the ceiling, and buys about a day and a half.  The five-ask-level ruling
 # above is still the fix.
-MAX_TARGET_DB_BYTES = 65536 * MIB
+#
+# Raised 64 -> 68 GiB on 2026-09-25, on the user's instruction ("照办"),
+# ahead of the next fail-close rather than after it.  Measured the same
+# morning by rowid-sampled table sizes (within 0.5% of the file): the burn
+# is not 2.5-3 GiB a day but 6.27 / 5.28 / 4.95 GB on 09-22/23/24 -- the
+# 42.5 GiB rebuild of 09-21 reached 60 GiB in 3.6 days -- and half of it is
+# basket_p0_preselection_plan (24-28k rows a day at 80-130 KB).  Charter 218
+# took the in-row duplicate lineage and audit out of those rows (-26% a row,
+# about 0.8 GB a day), which leaves roughly 4.2-5.5 GB a day against 3.9 GB
+# of headroom at 03:02Z: a fail-closed store around 21Z-01Z.  68 GiB permits
+# about 8 GB of growth against 17 GiB of free disk, leaving ~13 GiB at the
+# ceiling: bought time again.  The next lever is the plan restated whole
+# every cycle -- 95% of consecutive same-scope plans carry unchanged
+# probabilities -- which is the ruling that stops these raises.
+MAX_TARGET_DB_BYTES = 69632 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.
