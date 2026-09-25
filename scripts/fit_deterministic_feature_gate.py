@@ -12,18 +12,24 @@ delta = k * ((R + b) - c) (capped) with the width layer's transform, and the
 three are scored against the settled bucket.  Cells are (event day, lead
 tier) means; intervals resample event days (never stations).
 
-Pre-registered (research: docs/research/station_regional_features_20260922):
+Charter 227 (user ruling 2026-09-25, replacing the RPS gate pre-registered
+in docs/research/station_regional_features_20260922): judged by charter 211's
+two proper scores.
 
     PASS  >= GATE_MIN_EVENT_DAYS evaluable event days, and upper 95% bounds
-          below zero for dRPS, dRPS with the two best days removed, and dRPS
-          against the random-sign control, and mean dNLL on rows where every
-          arm put >= 1e-4 on the truth not above zero.
+          below zero, for the bucket Brier and for the log score alike, of
+          the change, the change with the two best days removed, and the
+          change against the random-sign control -- six bounds.  The log
+          score reads the vector floored at charter 224's 1e-3, as serving
+          and the OOS gate (charter 226) score it.
 
-Writes one JSON artifact (``deterministic_feature_correction.GATE_ARTIFACT_
-PATH``): per station, per source, the stats, the verdict, the serving k
-(the rolling k over every settled cell), and the station's candidate (the
-passing source with the lowest dRPS, else the best-reading source for the
-shadow record).  SSOT ``mode=ro``; no database write.
+dRPS and the old dNLL-on-covered-rows are still reported as diagnostics and
+decide nothing.  Writes one JSON artifact (``deterministic_feature_correction.
+GATE_ARTIFACT_PATH``): per station, per source, the stats, the verdict, the
+serving k (the rolling k over every settled cell), and the station's
+candidate (the passing source with the lowest dLogScore, else the
+best-reading source for the shadow record).  SSOT ``mode=ro``; no database
+write.
 """
 
 from __future__ import annotations
@@ -60,6 +66,7 @@ from bayes_basket_target.regional_point_debias import (  # noqa: E402
     fit_calibration, resolve_correction,
 )
 from bayes_basket_target.regional_point_lane import runs_for  # noqa: E402
+from bayes_basket_target.materialization import floor_probabilities  # noqa: E402
 from bayes_basket_target.settlement_time import hours_to_settlement  # noqa: E402
 
 DB = ROOT / "data" / "bayes_basket_target_ssot.db"
@@ -68,6 +75,11 @@ MAX_ENVELOPES_PER_CELL = 12
 NLL_FLOOR = 1e-4
 BOOTSTRAP = 2000
 SEED = 20260923
+# Charter 227: the criterion the verdicts in this artifact were reached by.
+GATE_RULE = "proper_scores_brier_logscore_v2"
+# The two proper scores, each with the three robustness forms.
+PROPER_SCORES = ("brier", "logscore")
+ROBUST_FORMS = ("", "_drop_best2", "_vs_random_sign")
 
 ENVELOPES_SQL = (
     "SELECT decision_at_utc, settlement_timezone, probabilities_json, bucket_ordinals_json,"
@@ -94,6 +106,17 @@ def _rps(p, order, winner) -> float:
         cp += p[order[i]]
         total += (cp - (1.0 if i >= k else 0.0)) ** 2
     return total
+
+
+def _brier(p, order, winner) -> float:
+    return sum((p[key] - (1.0 if key == winner else 0.0)) ** 2 for key in order)
+
+
+def _logscore(p, order, winner) -> float:
+    """The log score of the vector as served: floored at charter 224's 1e-3."""
+
+    floored, _lifted = floor_probabilities({key: float(p[key]) for key in order})
+    return -math.log(max(floored[winner], 1e-12))
 
 
 def _sign(station: str, day: str) -> float:
@@ -240,7 +263,9 @@ def fit(db: Path, *, now: datetime, stations: list[str] | None = None) -> dict:
                     score = {}
                     for arm, d_c in arms.items():
                         p = DFC.shift_distribution(item["served"], item["order"], item["intervals"], d_c)
-                        score[arm] = (_rps(p, item["order"], item["winner"]), p[item["winner"]])
+                        score[arm] = (_rps(p, item["order"], item["winner"]), p[item["winner"]],
+                                      _brier(p, item["order"], item["winner"]),
+                                      _logscore(p, item["order"], item["winner"]))
                     scored[(day, item["tier"])].append(score)
             if not scored:
                 stats_by_system[system] = {"verdict": "INSUFFICIENT", "event_days": 0}
@@ -255,26 +280,31 @@ def fit(db: Path, *, now: datetime, stations: list[str] | None = None) -> dict:
                         out.append((day, float(np.mean(values))))
                 return out
 
-            d_rps = cell_pairs(lambda s: s["roll"][0] - s["base"][0])
-            vs_sign = cell_pairs(lambda s: s["roll"][0] - 0.5 * (s["rsA"][0] + s["rsB"][0]))
-            d_nll = cell_pairs(lambda s: (-math.log(s["roll"][1]) + math.log(s["base"][1]))
-                               if all(s[a][1] >= NLL_FLOOR for a in s) else None)
-            per_day = collections.defaultdict(list)
-            for day, value in d_rps:
-                per_day[day].append(value)
-            best_two = set(sorted(per_day, key=lambda d: np.mean(per_day[d]))[:2])
-            dropped = [(d, v) for d, v in d_rps if d not in best_two]
-            stat = dict(
-                event_days=len(per_day), cells=len(d_rps),
-                d_rps=_bootstrap(d_rps, rng), d_rps_drop_best2=_bootstrap(dropped, rng),
-                d_rps_vs_random_sign=_bootstrap(vs_sign, rng), d_nll_nz=_bootstrap(d_nll, rng),
-            )
-            passed = (
-                stat["event_days"] >= DFC.GATE_MIN_EVENT_DAYS
-                and stat["d_rps"] and stat["d_rps"][2] < 0
-                and stat["d_rps_drop_best2"] and stat["d_rps_drop_best2"][2] < 0
-                and stat["d_rps_vs_random_sign"] and stat["d_rps_vs_random_sign"][2] < 0
-                and stat["d_nll_nz"] is not None and stat["d_nll_nz"][0] <= 0
+            def robust(index):
+                change = cell_pairs(lambda s: s["roll"][index] - s["base"][index])
+                vs_sign = cell_pairs(
+                    lambda s: s["roll"][index] - 0.5 * (s["rsA"][index] + s["rsB"][index]))
+                per_day = collections.defaultdict(list)
+                for day, value in change:
+                    per_day[day].append(value)
+                best_two = set(sorted(per_day, key=lambda d: np.mean(per_day[d]))[:2])
+                dropped = [(d, v) for d, v in change if d not in best_two]
+                return len(per_day), len(change), (
+                    _bootstrap(change, rng), _bootstrap(dropped, rng), _bootstrap(vs_sign, rng))
+
+            event_days, n_cells, rps = robust(0)
+            stat = dict(event_days=event_days, cells=n_cells, gate_rule=GATE_RULE,
+                        d_rps=rps[0], d_rps_drop_best2=rps[1], d_rps_vs_random_sign=rps[2])
+            for name, index in (("brier", 2), ("logscore", 3)):
+                _days, _cells, reads = robust(index)
+                for form, value in zip(ROBUST_FORMS, reads):
+                    stat[f"d_{name}{form}"] = value
+            stat["d_nll_nz"] = _bootstrap(
+                cell_pairs(lambda s: (-math.log(s["roll"][1]) + math.log(s["base"][1]))
+                           if all(s[a][1] >= NLL_FLOOR for a in s) else None), rng)
+            passed = stat["event_days"] >= DFC.GATE_MIN_EVENT_DAYS and all(
+                stat[f"d_{name}{form}"] and stat[f"d_{name}{form}"][2] < 0
+                for name in PROPER_SCORES for form in ROBUST_FORMS
             )
             stat["verdict"] = "PASS" if passed else (
                 "INSUFFICIENT" if stat["event_days"] < DFC.GATE_MIN_EVENT_DAYS else "FAIL"
@@ -284,19 +314,19 @@ def fit(db: Path, *, now: datetime, stations: list[str] | None = None) -> dict:
             stat["k_event_days"] = n_now
             stats_by_system[system] = stat
         passing = [s for s, v in stats_by_system.items() if v.get("verdict") == "PASS"]
-        readable = [s for s, v in stats_by_system.items() if v.get("d_rps")]
+        readable = [s for s, v in stats_by_system.items() if v.get("d_logscore")]
         candidate = (
-            min(passing, key=lambda s: stats_by_system[s]["d_rps"][0]) if passing
-            else min(readable, key=lambda s: stats_by_system[s]["d_rps"][0]) if readable else None
+            min(passing, key=lambda s: stats_by_system[s]["d_logscore"][0]) if passing
+            else min(readable, key=lambda s: stats_by_system[s]["d_logscore"][0]) if readable else None
         )
         out_stations[station] = {
             "sources": stats_by_system,
-            "selected_system": min(passing, key=lambda s: stats_by_system[s]["d_rps"][0]) if passing else None,
+            "selected_system": min(passing, key=lambda s: stats_by_system[s]["d_logscore"][0]) if passing else None,
             "candidate_system": candidate,
         }
     conn.close()
     return {
-        "schema": DFC.GATE_SCHEMA, "rule": DFC.RULE_VERSION,
+        "schema": DFC.GATE_SCHEMA, "rule": DFC.RULE_VERSION, "gate_rule": GATE_RULE,
         "fitted_at_utc": now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "window": [start, end], "gate_min_event_days": DFC.GATE_MIN_EVENT_DAYS,
         "min_k_event_days": DFC.MIN_K_EVENT_DAYS, "cap_c": DFC.CAP_C,
@@ -330,9 +360,10 @@ def main() -> int:
     for station, entry in sorted(payload["stations"].items()):
         line = []
         for system, stat in sorted(entry["sources"].items()):
-            d = stat.get("d_rps")
+            b, g = stat.get("d_brier"), stat.get("d_logscore")
             line.append(f"{system.split('_')[0]}:{stat['verdict']}"
-                        + (f"({d[0]:+.3f}[{d[1]:+.3f},{d[2]:+.3f}] n={stat['event_days']} k={stat.get('k')})" if d else ""))
+                        + (f"(Brier {b[0]:+.4f}[{b[1]:+.4f},{b[2]:+.4f}] LogScore {g[0]:+.3f}[{g[1]:+.3f},{g[2]:+.3f}]"
+                           f" n={stat['event_days']} k={stat.get('k')})" if b and g else ""))
         print(station, "候选", entry.get("candidate_system"), "过门", entry.get("selected_system"), "|", " ".join(line))
     if not args.dry_run:
         _write(args.out, payload)

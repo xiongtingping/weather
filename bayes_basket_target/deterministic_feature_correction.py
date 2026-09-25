@@ -26,13 +26,15 @@ station's gate state, and for the station's candidate source the full
 distribution it would have served (the served layers re-run on the shifted
 input).  The served vector is untouched.  Which source may serve at a
 station, and with which k, is the gate artifact's
-(``scripts/fit_deterministic_feature_gate.py``), fitted daily on settled days
-and pre-registered:
+(``scripts/fit_deterministic_feature_gate.py``), fitted daily on settled days.
+Charter 227 (user ruling 2026-09-25) judges it by charter 211's two proper
+scores in place of the RPS rule first pre-registered:
 
-    PASS  >= 20 evaluable event days, and on event-day bootstrap intervals
-          dRPS upper < 0, dRPS with the two best days removed upper < 0,
-          dRPS against the random-sign control upper < 0, and the mean change
-          in log score on non-zero-bucket rows not worse (<= 0).
+    PASS  >= 20 evaluable event days, and on event-day bootstrap intervals,
+          for the bucket Brier and for the log score (of the vector floored
+          at charter 224's 1e-3) alike, the change, the change with the two
+          best days removed and the change against the random-sign control
+          all have upper 95% bounds below zero.
 """
 
 from __future__ import annotations
