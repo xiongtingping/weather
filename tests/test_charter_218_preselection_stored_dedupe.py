@@ -179,7 +179,11 @@ def test_commit_writes_the_compact_row() -> None:
             "SELECT plan_json FROM basket_p0_preselection_plan"
         ).fetchone()
         row = json.loads(raw)
-        assert STORED_LINEAGE_KEY in row["compiled_plan"]["plan"]
+        # The marker is in the row, or (charter 220) in the blob table by digest.
+        assert STORED_LINEAGE_KEY in row["compiled_plan"]["plan"] or (
+            "plan." + STORED_LINEAGE_KEY
+            in row["compiled_plan"]["blobs_stored_as"]["paths"]
+        )
         # Charter 220 moved the envelope lineage to the blob table.
         assert _canon(expanded_stored_preselection(row, conn)) == _canon(
             _persisted(value)

@@ -52,9 +52,14 @@ def _value(*, preselection_id: str, quote: str, target_shares: int) -> dict[str,
         "native_forward_availability_evidence_json": json.dumps({"systems": 6}),
         "posterior_version": "p0-v14",
         "flag": True,
+        # A live lineage carries dozens of keys, so charter 218's shared-key
+        # list is itself a ~2 KB block.
+        **{f"lineage_field_{index:02d}_json": f"v{index}" for index in range(20)},
     }
     audit = {"delta_basket_score_v2": 0.0123, "policy_artifact_id": "policy-a"}
     compiled = {
+        "boundary": {"kind": "shared_budget", "max_open_scopes": 12, "note": "b" * 300},
+        "optimizer": {"name": "delta_v2", "version": "v2", "note": "o" * 300},
         "status": "ready",
         "reason_codes": [],
         "stage": "P0",
@@ -78,6 +83,10 @@ def _value(*, preselection_id: str, quote: str, target_shares: int) -> dict[str,
                 "seated": {"window_probabilities": {"64-65°F": 0.23}},
                 "seat_shape": {"state": "SYMMETRIC"},
                 "beta_edge_tables": _beta_tables(),
+                "beta_served": {"P0": {"beta": 0.5467, "sha256": "7" * 64, "price_basis": "market_mid_reference_v1", "note": "s" * 300}, "P1": None},
+                "posterior_tables": {"P0": {"alpha": 0.1, "gamma": 0.2, "w": 0.3, "sha256": "8" * 64, "note": "p" * 300}},
+                "valuation_tables": {"P0": {"beta": 0.4, "verdict": "ACCUMULATING", "sha256": "9" * 64, "note": "v" * 300}},
+                "effective_edge_tables": {"P0": [[0.05, 0.8], [None, 1.0]] * 20, "P0-M": [[0.05, 0.9], [None, 1.0]] * 20},
             },
             "delta_v2_audit": copy.deepcopy(audit),
             "lineage": {**copy.deepcopy(lineage), "flag": 1},
@@ -131,7 +140,17 @@ def test_both_blocks_leave_the_row_and_are_named_by_digest() -> None:
     assert set(paths) == {
         "probability_envelope.lineage",
         "plan.basket_support_selection.beta_edge_tables",
+        "plan.lineage_stored_as",
+        "plan.basket_support_selection.beta_served",
+        "plan.basket_support_selection.posterior_tables",
+        "plan.basket_support_selection.valuation_tables",
+        "plan.basket_support_selection.effective_edge_tables",
+        "boundary",
+        "optimizer",
     }
+    for key in ("beta_served", "posterior_tables", "valuation_tables", "effective_edge_tables"):
+        assert key not in compiled["plan"]["basket_support_selection"]
+    assert "boundary" not in compiled and "optimizer" not in compiled
     assert set(paths.values()) == set(blobs)
 
 
@@ -142,7 +161,8 @@ def test_two_cycles_store_each_block_once_and_expand_byte_for_byte() -> None:
         apply_production_ssot_schema(conn)
         assert _commit(conn, first)["state"] == "COMMITTED"
         assert _commit(conn, second)["state"] == "COMMITTED"
-        assert conn.execute("SELECT COUNT(*) FROM basket_p0_preselection_blob").fetchone()[0] == 2
+            # Nine blocks, each stored once across the two cycles.
+        assert conn.execute("SELECT COUNT(*) FROM basket_p0_preselection_blob").fetchone()[0] == 9
         rows = conn.execute(
             "SELECT plan_json FROM basket_p0_preselection_plan ORDER BY rowid"
         ).fetchall()
@@ -207,6 +227,10 @@ def test_small_or_absent_blocks_stay_in_the_row() -> None:
     del value["compiled_plan"]["plan"]["basket_support_selection"]["beta_edge_tables"]
     value["compiled_plan"]["probability_envelope"]["lineage"] = {"posterior_version": "p0-v14"}
     value["compiled_plan"]["plan"]["lineage"] = {"posterior_version": "p0-v14"}
+    for key in ("boundary", "optimizer"):
+        del value["compiled_plan"][key]
+    for key in ("beta_served", "posterior_tables", "valuation_tables", "effective_edge_tables"):
+        del value["compiled_plan"]["plan"]["basket_support_selection"][key]
     row, blobs = split_preselection_blobs(stored_preselection_payload(value))
     assert blobs == {}
     assert STORED_BLOBS_KEY not in row["compiled_plan"]
