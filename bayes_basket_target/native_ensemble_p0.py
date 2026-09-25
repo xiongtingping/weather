@@ -104,6 +104,9 @@ from .official_native_forward_packet import (
     is_fusion_excluded_point_system,
 )
 from .ssot import native_ensemble_foundation_schema_status
+# Charter 224: the stages' one model-zero floor, imported last -- materialization
+# is already loaded by the imports above, so this binds it without a cycle.
+from .materialization import PROBABILITY_MODEL_ZERO_FLOOR, floor_probabilities
 
 
 SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
@@ -175,7 +178,9 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # forecast clearer than the station's own last 180 days, 0.12) and a cold
 # side (cloudier, 0.04), centred on that history, replacing the symmetric
 # 0.07 on every artifact.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v16"
+# Charter 224: the served vector ends at the stages' one model-zero floor
+# (every bucket at least 1e-3), as P0-M and P1 have since 2026-08-26.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v17"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -3577,16 +3582,24 @@ def compile_native_ensemble_p0(
             open_edge_bounds_c=open_edge_bounds_c,
         )
     )
+    # Charter 224: last of all, the stages' one model-zero floor.  Each
+    # system's members are dressed with a 0.5C kernel, so past about 2C
+    # beyond them P0 served exactly zero: 461 of 180,607 settled envelopes
+    # left the truth bucket at zero, and every P1 zero was a P0 root's
+    # (P0-M and P1 floor since 2026-08-26, but a zero root stays zero under
+    # a likelihood).  P0 has no observation hard bound, so nothing is
+    # excluded; a vector already at or above the floor is returned as is.
+    probability, p0_floored_buckets = floor_probabilities(probability)
 
     def _served_layers_again(shifted: Mapping[str, float]) -> dict[str, float]:
-        return apply_served_table_layers(
+        return floor_probabilities(apply_served_table_layers(
             shifted,
             ordered_keys=ordered,
             key_centers_c=served_centers_c,
             center_width=center_width_layer,
             band=band_layer,
             open_edge_bounds_c=open_edge_bounds_c,
-        )[0]
+        )[0])[0]
 
     # Charter 201 step 2: a record, not a change -- the served vector above is
     # what this compile serves, byte for byte.
@@ -4167,6 +4180,14 @@ def compile_native_ensemble_p0(
         **({"band_reliability_json": json.dumps(
             band_reliability_receipt, sort_keys=True
         )} if band_reliability_receipt is not None else {}),
+        # Charter 224: which buckets the model-zero floor lifted, in P1's own
+        # schema; absent when none was, so an unfloored envelope keeps its
+        # content hash.
+        **({"probability_floor_json": json.dumps({
+            "schema": "probability_model_zero_floor_v1",
+            "epsilon": PROBABILITY_MODEL_ZERO_FLOOR,
+            "floored_buckets": p0_floored_buckets,
+        }, sort_keys=True)} if p0_floored_buckets else {}),
         # What moved the distribution along the temperature axis, which until
         # now P0 computed and then dropped: the scalars' receipt reached no
         # lineage key here, so a P0 envelope could not be asked whether the

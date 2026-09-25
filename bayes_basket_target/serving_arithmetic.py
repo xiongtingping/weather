@@ -359,6 +359,11 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # watchdog reads a fingerprint first seen after its declaration as a
         # discrepancy.
         "calibrated_native_cross_ensemble_p0_v16": "2026-09-25T12:00:00Z",
+        # Charter 224: the served vector ends at the stages' one model-zero
+        # floor (1e-3), as P0-M and P1 have since 2026-08-26.  Declared past
+        # the push and past the restart that deploys it, and after charter
+        # 222's v16 so the versions stay in order.
+        "calibrated_native_cross_ensemble_p0_v17": "2026-09-25T13:00:00Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
@@ -392,6 +397,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p0m_taf_likelihood_v17": "2026-09-25T06:00:00Z",
         # Charter 222: root bump at the instant P0 v16 declares.
         "p0m_taf_likelihood_v18": "2026-09-25T12:00:00Z",
+        # Charter 224: root bump at the instant P0 v17 declares.
+        "p0m_taf_likelihood_v19": "2026-09-25T13:00:00Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
@@ -444,6 +451,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p1_joint_likelihood_v26": "2026-09-25T06:00:00Z",
         # Charter 222: the thirteenth root bump, at the instant P0 v16 declares.
         "p1_joint_likelihood_v27": "2026-09-25T12:00:00Z",
+        # Charter 224: root bump at the instant P0 v17 declares.
+        "p1_joint_likelihood_v28": "2026-09-25T13:00:00Z",
     },
 }
 
