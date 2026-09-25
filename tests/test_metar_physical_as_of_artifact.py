@@ -3,9 +3,10 @@
 v3 recomputed 08-01..09-25 with today's artifacts, refit around 09-01 on those
 same days: the August record graded parameters on their own training days.
 User ruling 2026-09-25, 「按当时参数重算」: a day uses the artifact already
-available (``valid_from_utc``) at its own local noon, chosen the way the
-planner always chose -- the preferred local-time bucket, then the newest
-training -- and a day before any artifact existed is not projected.
+available (``valid_from_utc``) when it is issued -- local noon until v5, noon
+plus the arrival grace since -- chosen the way the planner always chose: the
+preferred local-time bucket, then the newest training.  A day before any
+artifact existed is not projected.
 """
 
 from __future__ import annotations
@@ -15,7 +16,6 @@ import sqlite3
 from datetime import datetime, timezone
 
 from bayes_basket_target import metar_physical_forward as mpf
-from bayes_basket_target.metar_physical_tmax import METHOD_VERSION
 
 UTC = timezone.utc
 # ZUUU 2026-08-20 (Asia/Shanghai): local noon is 04:00Z.
@@ -80,6 +80,3 @@ def test_a_chosen_artifact_without_a_distribution_does_not_fall_back() -> None:
     ])
     assert _chosen(conn) is None
 
-
-def test_the_recompute_lives_under_its_own_method_version() -> None:
-    assert METHOD_VERSION == "metar_physical_tmax_from_conditioned_remaining_warming_v4"

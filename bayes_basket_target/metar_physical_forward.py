@@ -65,6 +65,14 @@ D0_ANCHOR_LOCAL_HOUR = 12
 # produce an honest full-prefix state and are not attempted.
 EARLIEST_EVENT_DATE = "2026-08-01"
 MIN_PREFIX_OBSERVATIONS = 3
+# Method v5 (user 2026-09-25, 「按当时数据重算」): a day's forecast is issued
+# half an hour after local noon, from what had arrived by then -- the
+# parameters valid by then and the reports first seen by then.  The noon
+# report itself lands a few minutes late (median 4.6 min), and backfills of a
+# gap land hours late (08-10 09Z alone first saw 8,641 reports): the grace
+# admits the first and never the second.  The live planner waits for the same
+# moment, so a day recomputed later sees exactly what the live cycle saw.
+PREFIX_ARRIVAL_GRACE = timedelta(minutes=30)
 # The conditioner reads none of these, but the path-state contract requires a
 # root geometry.  A single zero-centred bucket is the identity element: it
 # yields root_expected_tmax_c = 0.0 and contributes nothing the physical
@@ -96,8 +104,10 @@ def _noon_prefix_rows(
     station_id: str,
     day_start: datetime,
     anchor: datetime,
+    arrived_by: datetime,
 ) -> list[dict[str, Any]]:
-    """The day's AWC reports from local midnight to local noon, as instants.
+    """The day's AWC reports from local midnight to local noon, as instants,
+    that the system had first seen by ``arrived_by``.
 
     The archive spells ``...T16:00:00.000Z`` and ``_iso`` writes
     ``...T16:00:00Z``; compared as text '.' sorts before 'Z', so the local
@@ -105,12 +115,17 @@ def _noon_prefix_rows(
     only narrows by a window a second wider on each side -- a superset in
     any spelling, still an index seek -- and ``[day_start, anchor]`` is
     decided on parsed instants, in instant order.
+
+    v5: a report stamped before noon but first seen after ``arrived_by`` was
+    not there when the forecast was issued -- OPKC 2026-09-22's whole morning
+    arrived 52 minutes after noon, and the live cycle forecast 30.95 without
+    it where a recompute that took it said 39.5.  Such a report is left out.
     """
 
     rows: list[dict[str, Any]] = []
     for row in archive_conn.execute(
         "SELECT observation_id,valid_at,"
-        "reported_temperature_c,raw_text "
+        "reported_temperature_c,raw_text,first_seen_at "
         "FROM reported_trajectory_observations "
         # Pinned to the lane this layer was trained on: the archive also
         # carries scheduled ASOS substitutes (asos_1min / madis_hfmetar), and
@@ -128,6 +143,8 @@ def _noon_prefix_rows(
             continue
         observed = _utc(str(row[1]))
         if not day_start <= observed <= anchor:
+            continue
+        if row[4] is None or _utc(str(row[4])) > arrived_by:
             continue
         rows.append({
             "observation_id": str(row[0]),
@@ -391,12 +408,14 @@ def plan_metar_physical_member_runs(
                 datetime.min.time(),
                 tzinfo=tz,
             ) + timedelta(hours=D0_ANCHOR_LOCAL_HOUR)
-            if as_of < anchor:
+            # Method v5: issued once the arrival grace has run, never before.
+            issue = anchor + PREFIX_ARRIVAL_GRACE
+            if as_of < issue:
                 skipped["anchor_not_passed"] += 1
                 continue
             candidates += 1
-            # Method v4: the parameters that existed at this day's own noon.
-            artifact = _artifact_as_of(conn, entries, anchor)
+            # Method v4: the parameters that existed when the day was issued.
+            artifact = _artifact_as_of(conn, entries, issue)
             if artifact is None:
                 skipped["no_artifact"] += 1
                 continue
@@ -407,6 +426,7 @@ def plan_metar_physical_member_runs(
                     station_id=station_id,
                     day_start=day_start,
                     anchor=anchor,
+                    arrived_by=issue,
                 )
             if len(rows) < MIN_PREFIX_OBSERVATIONS:
                 skipped["insufficient_prefix"] += 1

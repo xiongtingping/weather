@@ -71,7 +71,15 @@ PROVIDER_ID = "AWC_METAR_PHYSICAL_PATH"
 # uses the artifact available at its own local noon (``valid_from_utc``);
 # days before any artifact existed (about 08-09..08-17 by station) are not
 # forecast.  v3 stays as audit.
-METHOD_VERSION = "metar_physical_tmax_from_conditioned_remaining_warming_v4"
+#
+# v5 because v4 still read the noon prefix from today's archive: 140 of 2,014
+# station-days held reports first seen more than half an hour after noon --
+# backfills of feed gaps -- which no live cycle had (OPKC 2026-09-22: live
+# 30.95, v4 39.5, truth 39).  User ruling 2026-09-25, 「按当时数据重算」: a day
+# is issued at local noon + 30 minutes from the parameters valid and the
+# reports first seen by then (metar_physical_forward.PREFIX_ARRIVAL_GRACE),
+# live and on recompute alike.  v4 stays as audit.
+METHOD_VERSION = "metar_physical_tmax_from_conditioned_remaining_warming_v5"
 # One member, because there is one forecast.
 #
 # An earlier draft published five quantiles of the conditioned distribution as
