@@ -170,6 +170,11 @@ def test_only_three_user_domain_services_and_targetctl_remain() -> None:
         # read-only connection and a writer of two files under data/ -- no
         # writer turn to take, so no resident to host it.
         "com.weather.iem_truth_audit.plist",
+        # Charter 225 (八), 2026-09-25 (「加一条常规车道：每天把新结算的市场和
+        # 真值对一遍，不一致就按结算源自动修补」): the reconciliation's daily
+        # --repair pass.  Captures outside any lock, then one short write per
+        # repaired day; the resident has no turn it needs.
+        "com.weather.settlement_source_repair.plist",
     ]
     # The board's write path.  Not a production owner -- it places nothing
     # and holds no state -- but the LIVE switch is drawn disabled while it is

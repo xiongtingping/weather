@@ -199,6 +199,7 @@ def reconcile(
         verdict = classify(label, market, gap=gap)
         rows.append({
             "event_date": day,
+            "slug": slug,
             "city_slug": city,
             "station_id": station,
             "verdict": verdict,

@@ -51,6 +51,10 @@ OPTIONAL_PLISTS=(
   # local (2026-09-25, 「好」 to the IEM truth audit).  A reader outside the
   # writer turn; it writes only two files under data/.
   com.weather.iem_truth_audit.plist
+  # Charter 225 (八): disagreements re-settled from the market's own
+  # settlement evidence, daily at 21:00 local (2026-09-25, 「加一条常规车道」).
+  # Outside the writer turn: captures first, then one short write a repair.
+  com.weather.settlement_source_repair.plist
 )
 SUPPORTED_PLISTS=("${DEFAULT_PLISTS[@]}" "${OPTIONAL_PLISTS[@]}")
 PLISTS=("${DEFAULT_PLISTS[@]}")

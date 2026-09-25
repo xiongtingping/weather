@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.weather.settlement_source_repair</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>/Users/xiong/weather/scripts/settlement_source_repair.sh</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Hour</key>
+		<integer>21</integer>
+		<key>Minute</key>
+		<integer>0</integer>
+	</dict>
+	<key>StandardErrorPath</key>
+	<string>/Users/xiong/weather/data/logs/settlement_source_repair.err.log</string>
+	<key>StandardOutPath</key>
+	<string>/Users/xiong/weather/data/logs/settlement_source_repair.out.log</string>
+	<key>WorkingDirectory</key>
+	<string>/Users/xiong/weather</string>
+</dict>
+</plist>

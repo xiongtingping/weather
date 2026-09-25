@@ -3,18 +3,17 @@
 
 User ruling 2026-09-25, 「全部按结算」.  Two steps, both explicit:
 
-``capture-wu``  fetch the Wunderground daily history page of every case whose
-                market settles there, in the market's own unit, and keep the
-                raw bytes (gzip) with the fetch time -- the page is the
-                settlement source, so its bytes are the evidence.
+``capture``     fetch the settlement page of every case not captured yet
+                (``settlement_source_capture``): Wunderground's page in the
+                market's own unit, raw bytes kept; NOAA's series through the
+                page's own parameters, page-side summary kept.
 ``repair``      rebuild every case from its captures and hand it to
                 ``settlement_source_truth.materialize_settlement_source_truth``;
                 a dry run by default, ``--commit`` writes, one short
                 BEGIN IMMEDIATE per station-day.
 
-NOAA time-series captures are page-side summaries taken in a browser (the
-page fetches its own data with its own key); they sit in the same capture
-tree as ``noaa_summary.json`` with a ``.meta`` sidecar.
+The first batch's NOAA captures (2026-09-25) were page-side summaries taken
+in a browser; they sit in the same capture tree as ``noaa_summary.json``.
 
 A case file is a JSON list of ``{station_id, event_date, slug, family, unit,
 resolution_source, winning_bucket, closed}`` -- the market's own resolution.
@@ -23,8 +22,6 @@ resolution_source, winning_bucket, closed}`` -- the market's own resolution.
 from __future__ import annotations
 
 import argparse
-import gzip
-import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,8 +35,13 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target.contracts import ContractError  # noqa: E402
 from bayes_basket_target.market_registry import settlement_timezone_for_scope  # noqa: E402
+from bayes_basket_target.settlement_source_capture import (  # noqa: E402
+    NOAA_OBJECT,
+    WU_OBJECT,
+    capture,
+    load_case as load_captured_case,
+)
 from bayes_basket_target.settlement_source_truth import (  # noqa: E402
-    NOAA_FAMILY,
     WU_FAMILY,
     build_evidence,
     materialize_settlement_source_truth,
@@ -47,97 +49,55 @@ from bayes_basket_target.settlement_source_truth import (  # noqa: E402
 
 DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 CAPTURES = ROOT / "data" / "settlement_source_captures"
-USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/140.0 Safari/537.36"
-)
-WU_OBJECT = "wu_daily_history.html.gz"
-NOAA_OBJECT = "noaa_summary.json"
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def wu_capture_url(case: dict) -> str:
-    year, month, day = case["event_date"].split("-")
-    return case["resolution_source"].rstrip("/") + f"/date/{int(year)}-{int(month)}-{int(day)}"
+def capture_missing(cases: list[dict], captures: Path, *, pause_seconds: float) -> list[dict]:
+    """Capture every case not captured yet (both page families)."""
 
-
-def capture_wu(cases: list[dict], captures: Path, *, pause_seconds: float) -> list[dict]:
     import httpx  # noqa: PLC0415 - only the capture step touches the network
 
+    from official_nwp_https_transport import official_nwp_proxy_url  # noqa: PLC0415
+
     done = []
-    for case in cases:
-        if case["family"] != WU_FAMILY:
-            continue
-        folder = captures / case["station_id"] / case["event_date"]
-        target = folder / WU_OBJECT
-        if target.exists():
-            done.append({"station_id": case["station_id"], "event_date": case["event_date"], "state": "kept"})
-            continue
-        folder.mkdir(parents=True, exist_ok=True)
-        url = wu_capture_url(case)
-        cookie = "wu_units=" + ("e" if case["unit"] == "F" else "m")
-        for attempt in range(4):
+    with httpx.Client(
+        proxy=official_nwp_proxy_url() or None, trust_env=False,
+        timeout=httpx.Timeout(60.0, connect=20.0), follow_redirects=False,
+    ) as client:
+        for case in cases:
+            name = WU_OBJECT if case["family"] == WU_FAMILY else NOAA_OBJECT
+            key = {"station_id": case["station_id"], "event_date": case["event_date"]}
+            if (captures / case["station_id"] / case["event_date"] / name).exists():
+                done.append({**key, "state": "kept"})
+                continue
             try:
-                response = httpx.get(
-                    url, headers={"User-Agent": USER_AGENT, "Cookie": cookie},
-                    timeout=60, follow_redirects=False,
-                )
-                if response.status_code == 200:
-                    break
-            except httpx.HTTPError:
-                pass
-            time.sleep(5 * (attempt + 1))
-        else:
-            raise SystemExit(f"capture failed: {url}")
-        body = response.content
-        target.write_bytes(gzip.compress(body))
-        (folder / (WU_OBJECT + ".meta")).write_text(json.dumps({
-            "capture_url": url,
-            "cookie": cookie,
-            "captured_at_utc": _now(),
-            "raw_sha256": hashlib.sha256(body).hexdigest(),
-            "raw_bytes": len(body),
-        }, sort_keys=True))
-        done.append({"station_id": case["station_id"], "event_date": case["event_date"], "state": "captured"})
-        time.sleep(pause_seconds)
+                capture(client, market=_market(case), station_id=case["station_id"],
+                        event_date=case["event_date"], captures=captures)
+                done.append({**key, "state": "captured"})
+            except (ContractError, OSError) as exc:
+                done.append({**key, "state": "refused", "reason": f"{type(exc).__name__}:{exc}"})
+            time.sleep(pause_seconds)
     return done
 
 
+def _market(case: dict) -> dict:
+    return {key: case[key] for key in (
+        "slug", "family", "unit", "resolution_source", "winning_bucket", "closed")}
+
+
 def load_case(case: dict, captures: Path, conn: sqlite3.Connection) -> dict:
-    folder = captures / case["station_id"] / case["event_date"]
-    name = WU_OBJECT if case["family"] == WU_FAMILY else NOAA_OBJECT
-    path = folder / name
-    meta = json.loads((folder / (name + ".meta")).read_text())
-    raw = gzip.decompress(path.read_bytes()) if name.endswith(".gz") else path.read_bytes()
     zone = settlement_timezone_for_scope(
         conn, station_id=case["station_id"], event_date=case["event_date"]
     )
     if not zone:
         raise ContractError("settlement_source_settlement_timezone_unresolved")
-    return {
-        "station_id": case["station_id"],
-        "event_date": case["event_date"],
-        "settlement_timezone": zone,
-        "market": {
-            "slug": case["slug"],
-            "family": case["family"],
-            "unit": case["unit"],
-            "resolution_source": case["resolution_source"],
-            "winning_bucket": case["winning_bucket"],
-            "closed": case["closed"],
-        },
-        "source": {
-            "family": case["family"],
-            "capture_url": meta["capture_url"],
-            "object_ref": str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path),
-            "raw_bytes": raw,
-            "raw_sha256": meta["raw_sha256"],
-            "captured_at_utc": meta["captured_at_utc"],
-        },
-    }
+    return load_captured_case(
+        market=_market(case), station_id=case["station_id"], event_date=case["event_date"],
+        captures=captures, settlement_timezone=zone, root=ROOT,
+    )
 
 
 def repair(cases: list[dict], captures: Path, db: Path, *, commit: bool) -> list[dict]:
@@ -176,7 +136,7 @@ def repair(cases: list[dict], captures: Path, db: Path, *, commit: bool) -> list
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    cap = sub.add_parser("capture-wu")
+    cap = sub.add_parser("capture")
     cap.add_argument("--cases", type=Path, required=True)
     cap.add_argument("--captures", type=Path, default=CAPTURES)
     cap.add_argument("--pause-seconds", type=float, default=2.0)
@@ -188,8 +148,8 @@ def main() -> int:
     rep.add_argument("--receipt-output", type=Path)
     args = parser.parse_args()
     cases = json.loads(args.cases.read_text())
-    if args.command == "capture-wu":
-        result = capture_wu(cases, args.captures, pause_seconds=args.pause_seconds)
+    if args.command == "capture":
+        result = capture_missing(cases, args.captures, pause_seconds=args.pause_seconds)
     else:
         result = repair(cases, args.captures, args.db, commit=args.commit)
     summary = {

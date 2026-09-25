@@ -29,6 +29,12 @@ The decision, in this order:
 3. otherwise (a 2°F range or an open edge the page does not support) the
    value is undetermined and the day fails closed.
 
+Where the page cannot be read by a script -- NOAA's series is served through a
+page token that only weather.gov's own origin may use -- the evidence is the
+market's official resolution itself (``market_resolution``: the event's markets
+and their settled prices).  A one-degree paid bucket determines the value
+exactly (``PAID_WHOLE_DEGREE_FROM_RESOLUTION``); anything wider fails closed.
+
 A day is repaired only while its standing truth is outside the paid bucket,
 and never over a settlement-source revision that already stands.
 """
@@ -65,6 +71,9 @@ WU_FAMILY = "WU_DAILY_OBSERVATIONS"
 NOAA_FAMILY = "NOAA_WRH_TIMESERIES"
 BASIS_SOURCE_IN_BUCKET = "SOURCE_PAGE_IN_PAID_BUCKET"
 BASIS_PAID_DEGREE = "PAID_WHOLE_DEGREE_SOURCE_REVISED_AFTER_FINALITY"
+BASIS_RESOLUTION_DEGREE = "PAID_WHOLE_DEGREE_FROM_RESOLUTION"
+PAGE_KIND = "settlement_page"
+RESOLUTION_KIND = "market_resolution"
 MAX_SOURCE_ROWS = 400
 
 _WU_ROW_RE = re.compile(
@@ -208,14 +217,59 @@ def read_noaa_summary(
     }
 
 
+def read_market_resolution(
+    resolution: Mapping[str, Any],
+    *,
+    slug: str,
+    event_date: str,
+    paid_bucket: str,
+) -> dict[str, Any]:
+    """The market's own settled outcome, checked against the case."""
+
+    import json  # noqa: PLC0415
+
+    from .settlement_reconciliation import event_date_of  # noqa: PLC0415
+
+    if resolution.get("slug") != slug or event_date_of(slug) != event_date:
+        raise ContractError("settlement_source_resolution_identity_mismatch")
+    if resolution.get("closed") is not True:
+        raise ContractError("settlement_source_market_not_resolved")
+    winners = []
+    readings = []
+    for market in resolution.get("markets") or []:
+        title = str(market.get("groupItemTitle") or "").strip()
+        try:
+            prices = json.loads(market.get("outcomePrices") or "[]")
+        except (TypeError, ValueError):
+            prices = []
+        readings.append([title, prices[0] if prices else None])
+        if prices and str(prices[0]) in ("1", "1.0"):
+            winners.append(title)
+    if winners != [paid_bucket]:
+        raise ContractError("settlement_source_resolution_winner_mismatch")
+    return {
+        "identity": {"slug": slug, "closed": True, "winner": paid_bucket,
+                     "closed_time": resolution.get("closedTime")},
+        "view": RESOLUTION_KIND,
+        "row_count": len(readings),
+        "readings": readings,
+        "value": None,
+    }
+
+
 def decide(
-    *, paid_bucket: str, unit: str, source_value: float
+    *, paid_bucket: str, unit: str, source_value: float | None
 ) -> tuple[str, float]:
     """(basis, value in the market's unit) -- or fail closed."""
 
     low, high, bucket_unit = paid_bucket_bounds(paid_bucket)
     if bucket_unit != unit:
         raise ContractError("settlement_source_paid_bucket_unit_mismatch")
+    if source_value is None:
+        # The resolution alone: exact only for a one-degree bucket.
+        if low == high:
+            return BASIS_RESOLUTION_DEGREE, float(low)
+        raise ContractError("settlement_source_truth_value_undetermined")
     if low <= whole_degree(source_value) <= high:
         return BASIS_SOURCE_IN_BUCKET, float(source_value)
     if low == high:
@@ -311,7 +365,18 @@ def build_evidence(case: Mapping[str, Any]) -> dict[str, Any]:
     raw_sha = hashlib.sha256(source["raw_bytes"]).hexdigest()
     if raw_sha != str(source.get("raw_sha256") or ""):
         raise ContractError("settlement_source_raw_sha256_mismatch")
-    if market["family"] == WU_FAMILY:
+    kind = str(source.get("kind") or PAGE_KIND)
+    if kind == RESOLUTION_KIND:
+        import json  # noqa: PLC0415 - a resolution capture is JSON
+
+        parsed = read_market_resolution(
+            json.loads(source["raw_bytes"].decode("utf-8")),
+            slug=str(market["slug"]), event_date=event_date,
+            paid_bucket=str(market["winning_bucket"]),
+        )
+    elif kind != PAGE_KIND:
+        raise ContractError("settlement_source_capture_kind_invalid")
+    elif market["family"] == WU_FAMILY:
         parsed = parse_wu_daily_history(
             source["raw_bytes"].decode("utf-8", "replace"),
             station_id=station_id, event_date=event_date,
@@ -350,6 +415,7 @@ def build_evidence(case: Mapping[str, Any]) -> dict[str, Any]:
             "winning_bucket": str(market["winning_bucket"]),
         },
         "source": {
+            "kind": kind,
             "capture_url": str(source["capture_url"]),
             "object_ref": str(source["object_ref"]),
             "raw_sha256": raw_sha,
@@ -360,7 +426,9 @@ def build_evidence(case: Mapping[str, Any]) -> dict[str, Any]:
             "row_count": parsed["row_count"],
             "readings": parsed["readings"][:MAX_SOURCE_ROWS],
             "value": parsed["value"],
-            "value_whole_degree": whole_degree(parsed["value"]),
+            "value_whole_degree": (
+                None if parsed["value"] is None else whole_degree(parsed["value"])
+            ),
         },
         "decision": {
             "basis": basis,
@@ -529,7 +597,10 @@ def materialize_settlement_source_truth(
 
 __all__ = [
     "BASIS_PAID_DEGREE",
+    "BASIS_RESOLUTION_DEGREE",
     "BASIS_SOURCE_IN_BUCKET",
+    "PAGE_KIND",
+    "RESOLUTION_KIND",
     "NOAA_FAMILY",
     "WU_FAMILY",
     "build_evidence",
@@ -537,6 +608,7 @@ __all__ = [
     "materialize_settlement_source_truth",
     "paid_bucket_bounds",
     "parse_wu_daily_history",
+    "read_market_resolution",
     "read_noaa_summary",
     "to_celsius",
     "whole_degree",
