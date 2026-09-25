@@ -1,0 +1,468 @@
+{
+ "question": "熊先生 2026-09-26：找到模型对、市场错的时候",
+ "decisions": 44132,
+ "by_stage": {
+  "P0": {
+   "station_day_stages": 1374.0,
+   "event_days": 40,
+   "d": [
+    -0.3320614301781333,
+    -0.3875645324334859,
+    -0.28295917814750643
+   ],
+   "model_gives_truth_more": 0.32325734049252147,
+   "model_top_right_market_top_wrong": 0.13318890500585123,
+   "market_top_right_model_top_wrong": 0.21132084468839396,
+   "model_favourite_roi_at_ask": [
+    -0.12821363760025106,
+    -0.21126274389702876,
+    -0.05253666538080734
+   ]
+  },
+  "P0-M": {
+   "station_day_stages": 743.0,
+   "event_days": 21,
+   "d": [
+    -0.31369764589454197,
+    -0.42233914553900764,
+    -0.23204415881152224
+   ],
+   "model_gives_truth_more": 0.35847230844411,
+   "model_top_right_market_top_wrong": 0.12083945851126254,
+   "market_top_right_model_top_wrong": 0.20568771664418825,
+   "model_favourite_roi_at_ask": [
+    -0.012929421494798558,
+    -0.1242986287292787,
+    0.09269004495786973
+   ]
+  },
+  "P1": {
+   "station_day_stages": 1182.0,
+   "event_days": 34,
+   "d": [
+    -0.1935762062887098,
+    -0.2372690841408286,
+    -0.15539968847120114
+   ],
+   "model_gives_truth_more": 0.15355762428392267,
+   "model_top_right_market_top_wrong": 0.05213953611615612,
+   "market_top_right_model_top_wrong": 0.11024681183143538,
+   "model_favourite_roi_at_ask": [
+    -0.11750118473938966,
+    -0.18398012244733947,
+    -0.05828712285669163
+   ]
+  }
+ },
+ "univariate_time_split": {
+  "split_event_date": "2026-09-08",
+  "cells_read": 229,
+  "cells_model_ahead_in_both": []
+ },
+ "walk_forward_target_d": {
+  "test_event_dates": [
+   "2026-09-04",
+   "2026-09-24"
+  ],
+  "P0": {
+   "all": {
+    "station_day_stages": 841.0,
+    "event_days": 21,
+    "d": [
+     -0.27581753769226613,
+     -0.3316504314628868,
+     -0.21426368002409255
+    ],
+    "model_gives_truth_more": 0.3851387340912204,
+    "model_top_right_market_top_wrong": 0.12978641409483582,
+    "market_top_right_model_top_wrong": 0.21121528439980447,
+    "model_favourite_roi_at_ask": [
+     -0.09762119774741644,
+     -0.18753190529652014,
+     -0.004796607238931766
+    ]
+   },
+   "top_10pct_predicted": {
+    "station_day_stages": 90.35173087829799,
+    "event_days": 21,
+    "d": [
+     -0.07712309006219688,
+     -0.16253587947394257,
+     0.004992080672544742
+    ],
+    "model_gives_truth_more": 0.4444180611973997,
+    "model_top_right_market_top_wrong": 0.10765334403608982,
+    "market_top_right_model_top_wrong": 0.0898839719243041,
+    "model_favourite_roi_at_ask": [
+     -0.14417914340535495,
+     -0.3165599325505371,
+     0.07301698008550173
+    ]
+   },
+   "predicted_positive": {
+    "station_day_stages": 40.80153711364786,
+    "event_days": 21,
+    "d": [
+     -0.17146249419876555,
+     -0.2823589062815092,
+     -0.06977627528027447
+    ],
+    "model_gives_truth_more": 0.4706908705070538,
+    "model_top_right_market_top_wrong": 0.12354171245439961,
+    "market_top_right_model_top_wrong": 0.08194684874612275,
+    "model_favourite_roi_at_ask": [
+     -0.2486560720082653,
+     -0.5062592824498867,
+     0.022255702766006757
+    ]
+   }
+  },
+  "P0-M": {
+   "all": {
+    "station_day_stages": 709.0,
+    "event_days": 19,
+    "d": [
+     -0.32102094322350855,
+     -0.4326944595499338,
+     -0.23522643551606556
+    ],
+    "model_gives_truth_more": 0.36259650151161193,
+    "model_top_right_market_top_wrong": 0.11991649410819383,
+    "market_top_right_model_top_wrong": 0.20541079005144391,
+    "model_favourite_roi_at_ask": [
+     -0.023340247485154245,
+     -0.14312562633739773,
+     0.06924436200294878
+    ]
+   },
+   "top_10pct_predicted": {
+    "station_day_stages": 73.29945458519815,
+    "event_days": 18,
+    "d": [
+     -0.06392865415058077,
+     -0.18394644526699738,
+     0.0046051016165542785
+    ],
+    "model_gives_truth_more": 0.4750262418591979,
+    "model_top_right_market_top_wrong": 0.10140660779875971,
+    "market_top_right_model_top_wrong": 0.10308449365705881,
+    "model_favourite_roi_at_ask": [
+     0.05976270359382308,
+     -0.22313101894197576,
+     0.29221252026378536
+    ]
+   },
+   "predicted_positive": {
+    "station_day_stages": 21.44652959063314,
+    "event_days": 17,
+    "d": [
+     -0.07811868567290596,
+     -0.19079572753773077,
+     0.017628471183656836
+    ],
+    "model_gives_truth_more": 0.44749919182012327,
+    "model_top_right_market_top_wrong": 0.15146193418319578,
+    "market_top_right_model_top_wrong": 0.17935991448495023,
+    "model_favourite_roi_at_ask": [
+     -0.06105124111377625,
+     -0.5039889300666444,
+     0.33910622549885194
+    ]
+   }
+  },
+  "P1": {
+   "all": {
+    "station_day_stages": 878.0,
+    "event_days": 21,
+    "d": [
+     -0.1666632251947808,
+     -0.20451228272057514,
+     -0.12700069631387875
+    ],
+    "model_gives_truth_more": 0.1439398632445028,
+    "model_top_right_market_top_wrong": 0.0380125095166478,
+    "market_top_right_model_top_wrong": 0.09720647546119957,
+    "model_favourite_roi_at_ask": [
+     -0.10836311108163053,
+     -0.16254402636780263,
+     -0.051364527310613216
+    ]
+   },
+   "top_10pct_predicted": {
+    "station_day_stages": 89.51028200722517,
+    "event_days": 21,
+    "d": [
+     -0.059510174243857725,
+     -0.1154562977808156,
+     -0.023156062525730558
+    ],
+    "model_gives_truth_more": 0.12463701843940667,
+    "model_top_right_market_top_wrong": 0.016453978921322648,
+    "market_top_right_model_top_wrong": 0.038954973066957846,
+    "model_favourite_roi_at_ask": [
+     -0.1488595864232174,
+     -0.2909572482370039,
+     -0.034886883420266496
+    ]
+   },
+   "predicted_positive": {
+    "station_day_stages": 45.647109109847726,
+    "event_days": 20,
+    "d": [
+     -0.08500348277706402,
+     -0.18022142464404045,
+     -0.017786231101482457
+    ],
+    "model_gives_truth_more": 0.1048260028156944,
+    "model_top_right_market_top_wrong": 0.028754151330230796,
+    "market_top_right_model_top_wrong": 0.04280521055930827,
+    "model_favourite_roi_at_ask": [
+     -0.17880509277370843,
+     -0.3597706991274069,
+     0.02359686332285936
+    ]
+   }
+  }
+ },
+ "walk_forward_target_trade": {
+  "test_event_dates": [
+   "2026-09-04",
+   "2026-09-24"
+  ],
+  "P0": {
+   "all": {
+    "station_day_stages": 841.0,
+    "event_days": 21,
+    "d": [
+     -0.27581753769226613,
+     -0.3316504314628868,
+     -0.21426368002409255
+    ],
+    "model_gives_truth_more": 0.3851387340912204,
+    "model_top_right_market_top_wrong": 0.12978641409483582,
+    "market_top_right_model_top_wrong": 0.21121528439980447,
+    "model_favourite_roi_at_ask": [
+     -0.09762119774741644,
+     -0.18753190529652014,
+     -0.004796607238931766
+    ]
+   },
+   "top_10pct_predicted": {
+    "station_day_stages": 83.73711518623801,
+    "event_days": 20,
+    "d": [
+     -0.4328655778357529,
+     -0.6071129092602994,
+     -0.2172857515863775
+    ],
+    "model_gives_truth_more": 0.4460961446350835,
+    "model_top_right_market_top_wrong": 0.16901809660920813,
+    "market_top_right_model_top_wrong": 0.24024186854318577,
+    "model_favourite_roi_at_ask": [
+     -0.048733743982010344,
+     -0.2313441214612919,
+     0.21999565129170212
+    ]
+   },
+   "predicted_positive": {
+    "station_day_stages": 251.2328159155518,
+    "event_days": 21,
+    "d": [
+     -0.3643421911041675,
+     -0.46182660962719974,
+     -0.2564350769767149
+    ],
+    "model_gives_truth_more": 0.4182684066758957,
+    "model_top_right_market_top_wrong": 0.15865842302840028,
+    "market_top_right_model_top_wrong": 0.24341546611793555,
+    "model_favourite_roi_at_ask": [
+     -0.06356592871680634,
+     -0.18056757178014385,
+     0.07111544223761772
+    ]
+   }
+  },
+  "P0-M": {
+   "all": {
+    "station_day_stages": 709.0,
+    "event_days": 19,
+    "d": [
+     -0.32102094322350855,
+     -0.4326944595499338,
+     -0.23522643551606556
+    ],
+    "model_gives_truth_more": 0.36259650151161193,
+    "model_top_right_market_top_wrong": 0.11991649410819383,
+    "market_top_right_model_top_wrong": 0.20541079005144391,
+    "model_favourite_roi_at_ask": [
+     -0.023340247485154245,
+     -0.14312562633739773,
+     0.06924436200294878
+    ]
+   },
+   "top_10pct_predicted": {
+    "station_day_stages": 97.87672853798509,
+    "event_days": 19,
+    "d": [
+     -0.6193507304220347,
+     -1.1472128683864047,
+     -0.1911376587759093
+    ],
+    "model_gives_truth_more": 0.4136954459674378,
+    "model_top_right_market_top_wrong": 0.173479987303567,
+    "market_top_right_model_top_wrong": 0.25960295691337554,
+    "model_favourite_roi_at_ask": [
+     0.09313114801383453,
+     -0.1938762762949564,
+     0.43280221819673864
+    ]
+   },
+   "predicted_positive": {
+    "station_day_stages": 233.02440280689603,
+    "event_days": 19,
+    "d": [
+     -0.41911245212816706,
+     -0.7119201741806757,
+     -0.21484927826952543
+    ],
+    "model_gives_truth_more": 0.38823815161996866,
+    "model_top_right_market_top_wrong": 0.14159719523025127,
+    "market_top_right_model_top_wrong": 0.23422429228116518,
+    "model_favourite_roi_at_ask": [
+     0.034828706900863246,
+     -0.16600961801035094,
+     0.19022388831777767
+    ]
+   }
+  },
+  "P1": {
+   "all": {
+    "station_day_stages": 878.0,
+    "event_days": 21,
+    "d": [
+     -0.1666632251947808,
+     -0.20451228272057514,
+     -0.12700069631387875
+    ],
+    "model_gives_truth_more": 0.1439398632445028,
+    "model_top_right_market_top_wrong": 0.0380125095166478,
+    "market_top_right_model_top_wrong": 0.09720647546119957,
+    "model_favourite_roi_at_ask": [
+     -0.10836311108163053,
+     -0.16254402636780263,
+     -0.051364527310613216
+    ]
+   },
+   "top_10pct_predicted": {
+    "station_day_stages": 110.65196833056909,
+    "event_days": 21,
+    "d": [
+     -0.32595888185830346,
+     -0.5016526248496826,
+     -0.1013976423641365
+    ],
+    "model_gives_truth_more": 0.2753019206811533,
+    "model_top_right_market_top_wrong": 0.09591771432612752,
+    "market_top_right_model_top_wrong": 0.20840502121668786,
+    "model_favourite_roi_at_ask": [
+     -0.030732129965695503,
+     -0.19753770295703707,
+     0.19139401866504022
+    ]
+   },
+   "predicted_positive": {
+    "station_day_stages": 327.35746791823397,
+    "event_days": 21,
+    "d": [
+     -0.2396794916444891,
+     -0.32393025217654764,
+     -0.14295064717458345
+    ],
+    "model_gives_truth_more": 0.16828356369439962,
+    "model_top_right_market_top_wrong": 0.04922410711699043,
+    "market_top_right_model_top_wrong": 0.1265436920418984,
+    "model_favourite_roi_at_ask": [
+     -0.12076203512223599,
+     -0.22811089294121978,
+     0.005694987857331758
+    ]
+   }
+  }
+ },
+ "p0m_second_bucket_cell": {
+  "P0": {
+   "market_second_all": {
+    "station_days": 1374.0,
+    "event_days": 40,
+    "hit": 0.2989053809707071,
+    "ask": 0.3055102250803685,
+    "roi_at_ask": -0.021619060730042383
+   },
+   "market_second_model_favours": {
+    "station_days": 231.22074610136917,
+    "event_days": 34,
+    "hit": 0.29862222717568726,
+    "ask": 0.2989589281872734,
+    "roi_at_ask": -0.0011262450451896555
+   },
+   "market_second_model_favours_other": {
+    "station_days": 1142.7792538986307,
+    "event_days": 40,
+    "hit": 0.298962672028033,
+    "ask": 0.3068357617055613,
+    "roi_at_ask": -0.02565897023790631
+   },
+   "model_favours_first_half": {
+    "station_days": 36.353711192572064,
+    "event_days": 17,
+    "hit": 0.289665775965486,
+    "ask": 0.2681310689157894,
+    "roi_at_ask": 0.08031410584671872
+   },
+   "model_favours_second_half": {
+    "station_days": 194.8670349087971,
+    "event_days": 17,
+    "hit": 0.3002931113288658,
+    "ask": 0.3047100655880416,
+    "roi_at_ask": -0.014495596824646295
+   }
+  },
+  "P0-M": {
+   "market_second_all": {
+    "station_days": 743.0,
+    "event_days": 21,
+    "hit": 0.3102219339761092,
+    "ask": 0.30380246946671013,
+    "roi_at_ask": 0.02113038949508117
+   },
+   "market_second_model_favours": {
+    "station_days": 199.39669454308415,
+    "event_days": 20,
+    "hit": 0.33022549631606246,
+    "ask": 0.29955139891858307,
+    "roi_at_ask": 0.10240011399785343
+   },
+   "market_second_model_favours_other": {
+    "station_days": 543.6033054569159,
+    "event_days": 21,
+    "hit": 0.30288451683821926,
+    "ask": 0.3053617856207087,
+    "roi_at_ask": -0.00811256974232677
+   },
+   "model_favours_first_half": {
+    "station_days": 84.91069662106794,
+    "event_days": 10,
+    "hit": 0.26682324016599,
+    "ask": 0.2980271762241977,
+    "roi_at_ask": -0.10470164651942293
+   },
+   "model_favours_second_half": {
+    "station_days": 114.4859979220162,
+    "event_days": 10,
+    "hit": 0.377248973726087,
+    "ask": 0.30068186738752256,
+    "roi_at_ask": 0.25464490760223923
+   }
+  }
+ }
+}
