@@ -361,8 +361,14 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     # single-instance guard is what keeps the two from overlapping.
     ("pr12_awc_observation", "scripts/pr12_awc_observation_sweep.sh", 10800.0, 900.0),
     # The paper ledger through production's own entries (2026-09-25): daily,
-    # an hour and a half of reads over a week of event days.
-    ("paper_ledger_aligned", "scripts/paper_ledger_aligned_sweep.sh", 86400.0, 5400.0),
+    # one settled event day per pass (~1,750-2,250 basket decisions, each a
+    # production compile at 1-5 s of SSOT reads on this machine), with the
+    # continue marker while a backlog is left.  Four hours because one day is
+    # 1.5-3 h here and the pass writes only its own file (``paper_ledger``
+    # domain, excludes no writer): the 90-minute slot it had could not hold
+    # the seven days it then walked, and it was stopped at 69 minutes on
+    # 2026-09-25 with nothing stored.
+    ("paper_ledger_aligned", "scripts/paper_ledger_aligned_sweep.sh", 86400.0, 14400.0),
     ("settlement_truth", "scripts/settlement_truth_sweep.sh", 10800.0, 900.0),
     # The two served calibration layers (band reliability, centre/width)
     # used to refit only from the 02:00 crontab, and macOS cron silently

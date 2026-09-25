@@ -4,12 +4,17 @@
 #
 # scripts/paper_ledger_aligned.py decides every basket through production's
 # own compile entries at production's own decision moments and simulates only
-# the venue.  This pass re-walks the last PAPER_LEDGER_WINDOW_DAYS event days
-# (default 7, up to yesterday) with paper capital and the calibrated maker
-# curves, and records one run labelled ``daily_sweep``; readers take the
-# newest such run.  A run is stateless and deterministic -- the same window
-# on the same store gives the same book -- so a late or repeated pass costs
-# time, never correctness.
+# the venue.  Each pass walks ONE settled event day -- the oldest in the last
+# PAPER_LEDGER_WINDOW_DAYS (default 3, ending two days back) that no daily pass
+# has stored -- whole, with its own paper account and the calibrated maker
+# curves, and records it as a run labelled ``daily_sweep``; while days are
+# left it prints the resident's continue marker, so a backlog drains a day a
+# pass and the steady state is a day a day.  Until 2026-09-25 every pass
+# re-walked seven days: ~12,000 decisions at 1-5 s of SSOT reads each against
+# a 90-minute slot, killed at 69 minutes with nothing stored (see
+# ``daily_pass`` in paper_ledger_aligned.py).  A walk is deterministic -- the
+# same day on the same store gives the same book -- so a late or repeated
+# pass costs time, never correctness.
 #
 # Reads the SSOT and the archive ``mode=ro`` with one short statement at a
 # time (no read stays open to pin the WAL); writes data/paper_ledger_aligned.db
@@ -31,9 +36,7 @@ PY="$(resolve_project_python "$PROJECT_DIR")" || {
 }
 
 cd "$PROJECT_DIR"
-WINDOW_DAYS="${PAPER_LEDGER_WINDOW_DAYS:-7}"
-FROM="$("$PY" -c "from datetime import date, timedelta; print(date.today() - timedelta(days=int('$WINDOW_DAYS')))")"
-TO="$("$PY" -c "from datetime import date, timedelta; print(date.today() - timedelta(days=1))")"
+WINDOW_DAYS="${PAPER_LEDGER_WINDOW_DAYS:-3}"
 # The maker fill curves the walk fills its resting orders on (user ruling
 # 2026-09-25: 「每周自动（样本外核对过线才换）」): once a week a candidate
 # fitted before the last week's event days is scored against the curves in
@@ -43,13 +46,13 @@ TO="$("$PY" -c "from datetime import date, timedelta; print(date.today() - timed
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] maker fill curves: weekly re-pin"
 taskpolicy -d utility nice -n 10 "$PY" scripts/paper_ledger_fill_curves.py --weekly-repin \
   || echo "maker fill curve re-pin failed; the curves in service stand" >&2
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] paper ledger (production entries) ${FROM}..${TO}"
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] paper ledger (production entries): one settled day of the last ${WINDOW_DAYS}"
 # The render's tier (dashboard_render_sweep.sh): utility disk I/O gives way
 # to the resident's default-tier reads.  2026-09-25: on a disk saturated by
 # page-ins, each of the day's three unthrottled passes coincided with an
 # overdue production cycle; not ``-b``, under which a reader on that disk
 # holds its reads longer rather than shorter.
 taskpolicy -d utility nice -n 10 "$PY" scripts/paper_ledger_aligned.py \
-  --from-event-date "$FROM" --to-event-date "$TO" \
+  --daily-pass --window-days "$WINDOW_DAYS" \
   --capital paper --opening-cash-usdc "${PAPER_LEDGER_OPENING_CASH_USDC:-120}" \
-  --label daily_sweep --progress 0
+  --progress 0

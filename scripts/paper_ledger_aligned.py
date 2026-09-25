@@ -1421,6 +1421,146 @@ def _store(args: argparse.Namespace, ledger: AlignedLedger, settlements: Sequenc
     return run_id
 
 
+# The daily pass (the resident's ``paper_ledger_aligned`` sweep).  It used to
+# re-walk the last seven event days every day: ~12,000 basket decisions, each
+# one a call into production's own compile at 1-5 s of SSOT reads apiece on
+# this machine -- ten hours against a 90-minute slot.  On 2026-09-25 the pass
+# was stopped at 69 minutes and never stored a run, and the lane sat red
+# (user: 「没有会话在改，你改」).  Now a pass walks ONE event day -- the oldest
+# settled day in the window that no daily pass has stored -- and asks the
+# resident for the next pass while any are left.  A day is walked whole, every
+# station-day from its first decision, with its own paper account; the one
+# reader (``live_station_scope.settlement_counts``) counts each settled
+# station-day once, however it was walked.
+DAILY_PASS_LABEL = "daily_sweep"
+#: Days after an event date before the pass walks it: by then every station's
+#: local day ended a day ago and its settlement label has landed.
+DAILY_PASS_SETTLE_LAG_DAYS = 2
+#: A day that failed this many times is left behind, so one day that cannot be
+#: replayed does not hold the lane red for ever; every failure keeps its reason.
+DAILY_PASS_MAX_ATTEMPTS = 2
+DAILY_PASS_DDL = (
+    "CREATE TABLE IF NOT EXISTS daily_pass_attempts ("
+    " event_date TEXT NOT NULL, attempted_at TEXT NOT NULL,"
+    " state TEXT NOT NULL, run_id TEXT, reason TEXT)"
+)
+
+
+def daily_pass_plan(
+    ledger_db: str | Path, *, today: "date", window_days: int,
+) -> tuple[list[str], list[str], dict[str, int]]:
+    """The days the daily pass still owes, oldest first; the days already
+    stored; and the failures counted against the rest of the window."""
+
+    through = today - timedelta(days=DAILY_PASS_SETTLE_LAG_DAYS)
+    window = [
+        (through - timedelta(days=offset)).isoformat()
+        for offset in reversed(range(max(1, int(window_days))))
+    ]
+    walked: set[str] = set()
+    failures: dict[str, int] = {}
+    path = Path(ledger_db)
+    if path.exists():
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=30)
+        try:
+            tables = {
+                str(row[0]) for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            if "runs" in tables:
+                for (params_json,) in conn.execute(
+                    "SELECT params_json FROM runs WHERE finished_at IS NOT NULL"
+                ):
+                    params = json.loads(params_json or "{}")
+                    day = params.get("from_event_date")
+                    if (
+                        params.get("label") == DAILY_PASS_LABEL
+                        and day and day == params.get("to_event_date")
+                    ):
+                        walked.add(str(day))
+            if "daily_pass_attempts" in tables:
+                failures = {
+                    str(day): int(count) for day, count in conn.execute(
+                        "SELECT event_date, COUNT(*) FROM daily_pass_attempts"
+                        " WHERE state='failed' GROUP BY event_date"
+                    )
+                }
+        finally:
+            conn.close()
+    pending = [
+        day for day in window
+        if day not in walked and failures.get(day, 0) < DAILY_PASS_MAX_ATTEMPTS
+    ]
+    return (
+        pending,
+        [day for day in window if day in walked],
+        {day: failures[day] for day in window if failures.get(day)},
+    )
+
+
+def _record_daily_attempt(
+    ledger_db: str | Path, *, event_date: str, state: str,
+    run_id: str | None, reason: str | None,
+) -> None:
+    out = sqlite3.connect(str(ledger_db))
+    try:
+        with out:
+            out.execute(DAILY_PASS_DDL)
+            out.execute(
+                "INSERT INTO daily_pass_attempts VALUES(?,?,?,?,?)",
+                (event_date, datetime.now(timezone.utc).isoformat(), state, run_id, reason),
+            )
+    finally:
+        out.close()
+
+
+def daily_pass(args: argparse.Namespace, *, today: "date | None" = None) -> int:
+    """One event day of the daily pass; 0 stored or nothing owed, 2 failed."""
+
+    from bayes_basket_target.pass_deadline import HOSTED_SWEEP_CONTINUE_MARKER  # noqa: PLC0415
+
+    today = today or datetime.now(timezone.utc).date()
+    pending, walked, failed = daily_pass_plan(
+        args.ledger_db, today=today, window_days=args.window_days,
+    )
+    if not pending:
+        print(json.dumps(
+            {"daily_pass": "up_to_date", "walked": walked, "failed": failed},
+            sort_keys=True,
+        ))
+        return 0
+    day = pending[0]
+    args.from_event_date = args.to_event_date = day
+    args.since_rowid, args.until_rowid, args.stations, args.limit = 0, None, "", 0
+    args.label = DAILY_PASS_LABEL
+    try:
+        summary = run(args)
+    except Exception as exc:  # noqa: BLE001 -- the reason is the receipt
+        reason = f"{type(exc).__name__}: {exc}"[:500]
+        if not args.dry_run:
+            _record_daily_attempt(
+                args.ledger_db, event_date=day, state="failed", run_id=None, reason=reason,
+            )
+        print(json.dumps({"daily_pass": "failed", "event_date": day, "reason": reason}))
+        print(f"daily pass {day} failed: {reason}", file=sys.stderr)
+        return 2
+    if not args.dry_run:
+        _record_daily_attempt(
+            args.ledger_db, event_date=day, state="stored",
+            run_id=summary.get("run_id"), reason=None,
+        )
+    print(json.dumps(
+        {"daily_pass": "stored" if not args.dry_run else "dry_run",
+         "event_date": day, "remaining": pending[1:],
+         "seconds": summary.get("seconds"), "run_id": summary.get("run_id")},
+        sort_keys=True,
+    ))
+    if len(pending) > 1:
+        print(HOSTED_SWEEP_CONTINUE_MARKER)
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--since-rowid", type=int, default=0,
@@ -1440,7 +1580,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--progress", type=int, default=200)
     parser.add_argument("--label", default="", help="a name readers select runs by (the daily pass: daily_sweep)")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--daily-pass", action="store_true",
+                        help="the resident's daily pass: one settled event day per run (see daily_pass)")
+    parser.add_argument("--window-days", type=int, default=3,
+                        help="the daily pass's window of settled event days")
     args = parser.parse_args(argv)
+    if args.daily_pass:
+        return daily_pass(args)
     print(json.dumps(run(args), indent=2, sort_keys=True, default=str))
     return 0
 
