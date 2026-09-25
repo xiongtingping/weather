@@ -14,7 +14,6 @@ import sqlite3
 from datetime import datetime, timezone
 
 from bayes_basket_target import metar_physical_forward as mpf
-from bayes_basket_target.metar_physical_tmax import METHOD_VERSION
 
 UTC = timezone.utc
 # LEMD 2026-08-27 (Europe/Madrid, UTC+2): the local day opens 08-26T22:00Z,
@@ -58,6 +57,3 @@ def test_mixed_spellings_are_one_window_in_instant_order() -> None:
     rows = mpf._noon_prefix_rows(conn, station_id="LEMD", day_start=DAY_START, anchor=ANCHOR)
     assert [row["observation_id"] for row in rows] == ["a", "b", "c"]
 
-
-def test_the_recompute_lives_under_its_own_method_version() -> None:
-    assert METHOD_VERSION == "metar_physical_tmax_from_conditioned_remaining_warming_v3"

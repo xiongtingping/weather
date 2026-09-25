@@ -63,7 +63,15 @@ PROVIDER_ID = "AWC_METAR_PHYSICAL_PATH"
 # (LEMD 08-27 read 21 where the reports said 23; SAEZ the same day, 13 for
 # 15).  User ruling 2026-09-25: 「修正并重算 8 月 1 日以来的历史」 -- every day
 # since EARLIEST_EVENT_DATE is recomputed under v3, v2 stays as audit.
-METHOD_VERSION = "metar_physical_tmax_from_conditioned_remaining_warming_v3"
+#
+# v4 because v3 recomputed every day with today's parameters: the trajectory
+# artifacts were last refit around 2026-09-01, so v3's 08-01..09-01 were
+# forecast by parameters trained on those same days -- in-sample for this
+# system's own record.  User ruling 2026-09-25, 「按当时参数重算」: each day
+# uses the artifact available at its own local noon (``valid_from_utc``);
+# days before any artifact existed (about 08-09..08-17 by station) are not
+# forecast.  v3 stays as audit.
+METHOD_VERSION = "metar_physical_tmax_from_conditioned_remaining_warming_v4"
 # One member, because there is one forecast.
 #
 # An earlier draft published five quantiles of the conditioned distribution as

@@ -142,21 +142,29 @@ def _noon_prefix_rows(
     return rows
 
 
-# Charter 178: (database) -> (table fingerprint, parsed artifacts).
-_STATION_ARTIFACTS_MEMO: dict[str, tuple[tuple[Any, ...], dict[str, dict[str, Any]]]] = {}
+# Charter 178: (database) -> (table fingerprint, artifact timeline per station).
+_STATION_ARTIFACTS_MEMO: dict[
+    str, tuple[tuple[Any, ...], dict[str, list[tuple[datetime, int, datetime, int]]]]
+] = {}
+# (database, artifact rowid) -> parsed artifact, or None when unusable.
+_PARSED_ARTIFACTS: dict[tuple[str, int], dict[str, Any] | None] = {}
+_PARSED_ARTIFACTS_LIMIT = 256
 
 
-def _station_artifacts(
+def _station_artifact_timeline(
     conn: sqlite3.Connection,
-) -> dict[str, dict[str, Any]]:
-    """Latest usable trajectory artifact per station, by bucket preference.
+) -> dict[str, list[tuple[datetime, int, datetime, int]]]:
+    """Every trajectory artifact per station: (available from, bucket rank,
+    trained through, rowid) -- the JSON bodies are not read here.
 
-    Charter 178: remembered until the artifact table changes.  Every call read
-    and parsed all 9,349 trajectory artifacts -- 26.9MB of JSON, 0.96s warm --
-    three times a cycle (60.8s in the first ledger-measured cycle, deep in
-    swap) to keep one per station.  The table is written by the refit and
-    by nothing else between cycles, so its rowid ends are the fingerprint.
-    The planner only reads the artifacts, so the parsed objects are shared.
+    Method v4 (user 2026-09-25, 「按当时参数重算」): a day is forecast with
+    the parameters that existed at its own local noon, not today's.  So the
+    planner needs each station's artifacts in time, and picks per day
+    (``_artifact_as_of``).  Charter 178: remembered until the artifact table
+    changes -- the refit is its only writer, and its rowid ends are the
+    fingerprint.  Every call used to read and parse all 9,349 artifacts
+    (26.9MB of JSON, 0.96s warm) three times a cycle; now the timeline is
+    read once and only the artifacts a day actually uses are parsed.
     """
 
     try:
@@ -174,44 +182,74 @@ def _station_artifacts(
     if database:
         hit = _STATION_ARTIFACTS_MEMO.get(database)
         if hit is not None and hit[0] == fingerprint:
-            return dict(hit[1])
-    parsed = _station_artifacts_uncached(conn)
-    if database:
-        _STATION_ARTIFACTS_MEMO[database] = (fingerprint, dict(parsed))
-    return parsed
-
-
-def _station_artifacts_uncached(
-    conn: sqlite3.Connection,
-) -> dict[str, dict[str, Any]]:
-    best: dict[str, tuple[int, str, dict[str, Any]]] = {}
-    for station_id, scope_key, trained, artifact_json in conn.execute(
-        "SELECT station_id,scope_key,trained_through_utc,artifact_json "
+            return hit[1]
+    timeline: dict[str, list[tuple[datetime, int, datetime, int]]] = {}
+    for rowid, station_id, scope_key, trained, available in conn.execute(
+        "SELECT rowid,station_id,scope_key,trained_through_utc,valid_from_utc "
         "FROM basket_probability_evidence_artifact "
         "WHERE artifact_kind='METAR_TRAJECTORY_LIKELIHOOD'"
     ):
         try:
-            bucket = str(scope_key).split("|")[2]
-            rank = _BUCKET_PREFERENCE.index(bucket)
-        except (IndexError, ValueError):
+            rank = _BUCKET_PREFERENCE.index(str(scope_key).split("|")[2])
+            entry = (_utc(str(available)), rank, _utc(str(trained)), int(rowid))
+        except (IndexError, ValueError, TypeError):
             continue
-        current = best.get(str(station_id))
-        candidate = (rank, str(trained), artifact_json)
-        if (
-            current is None
-            or candidate[0] < current[0]
-            or (candidate[0] == current[0] and candidate[1] > current[1])
-        ):
-            best[str(station_id)] = candidate
-    parsed: dict[str, dict[str, Any]] = {}
-    for station_id, (_rank, _trained, artifact_json) in best.items():
-        try:
-            artifact = json.loads(artifact_json)
-        except (TypeError, ValueError):
-            continue
-        if artifact.get("remaining_warming_distribution"):
-            parsed[station_id] = artifact
-    return parsed
+        timeline.setdefault(str(station_id), []).append(entry)
+    if database:
+        _STATION_ARTIFACTS_MEMO[database] = (fingerprint, timeline)
+        # Parsed bodies are remembered under the same fingerprint.
+        for key in [key for key in _PARSED_ARTIFACTS if key[0] == database]:
+            del _PARSED_ARTIFACTS[key]
+    return timeline
+
+
+def _artifact_as_of(
+    conn: sqlite3.Connection,
+    entries: Sequence[tuple[datetime, int, datetime, int]],
+    anchor: datetime,
+) -> dict[str, Any] | None:
+    """The artifact the planner would have used at ``anchor``.
+
+    Among the station's artifacts already available at the anchor (their
+    ``valid_from_utc``), the same choice the planner always made: the most
+    preferred local-time bucket, then the newest training.  None when none
+    existed yet, or when the chosen one carries no remaining-warming
+    distribution -- the choice does not fall back to a worse artifact.
+    """
+
+    usable = [entry for entry in entries if entry[0] <= anchor]
+    if not usable:
+        return None
+    # Ties on bucket and training go to the earliest row, as the one-per-
+    # station choice always did (it kept the first row it met).
+    _available, _rank, _trained, rowid = min(
+        usable, key=lambda entry: (entry[1], -entry[2].timestamp(), entry[3])
+    )
+    try:
+        database = str(conn.execute("PRAGMA database_list").fetchone()[2] or "")
+    except (sqlite3.Error, TypeError, IndexError):
+        database = ""
+    key = (database, rowid)
+    if database and key in _PARSED_ARTIFACTS:
+        return _PARSED_ARTIFACTS[key]
+    row = conn.execute(
+        "SELECT artifact_json FROM basket_probability_evidence_artifact "
+        "WHERE rowid=?",
+        (rowid,),
+    ).fetchone()
+    try:
+        artifact = json.loads(str(row[0])) if row is not None else None
+    except (TypeError, ValueError):
+        artifact = None
+    if not isinstance(artifact, dict) or not artifact.get(
+        "remaining_warming_distribution"
+    ):
+        artifact = None
+    if database:
+        if len(_PARSED_ARTIFACTS) >= _PARSED_ARTIFACTS_LIMIT:
+            _PARSED_ARTIFACTS.pop(next(iter(_PARSED_ARTIFACTS)))
+        _PARSED_ARTIFACTS[key] = artifact
+    return artifact
 
 
 def _seed_system_registry(conn: sqlite3.Connection) -> None:
@@ -294,7 +332,7 @@ def plan_metar_physical_member_runs(
         )
         if str(row[0]) not in ambiguous
     }
-    artifacts = _station_artifacts(conn)
+    timelines = _station_artifact_timeline(conn)
     # Both keyed to this method version: the v1 rows written under wrong
     # anchors must neither mask a v2 recompute as already-projected nor leak
     # their cycle label into v2's sticky vocabulary.
@@ -334,7 +372,7 @@ def plan_metar_physical_member_runs(
     for station_id, (timezone_name, settlement_definition) in sorted(
         stations.items()
     ):
-        artifact = artifacts.get(station_id)
+        entries = timelines.get(station_id, ())
         try:
             tz = ZoneInfo(timezone_name)
         except Exception:  # noqa: BLE001 - registry rows are external input
@@ -357,6 +395,8 @@ def plan_metar_physical_member_runs(
                 skipped["anchor_not_passed"] += 1
                 continue
             candidates += 1
+            # Method v4: the parameters that existed at this day's own noon.
+            artifact = _artifact_as_of(conn, entries, anchor)
             if artifact is None:
                 skipped["no_artifact"] += 1
                 continue
@@ -445,7 +485,7 @@ def plan_metar_physical_member_runs(
         "candidate_count": candidates,
         "wrote_count": 0,
         "station_count": len(stations),
-        "stations_with_artifact": len(artifacts),
+        "stations_with_artifact": len(timelines),
         "skipped": skipped,
         "calls_order_gateway": False,
         "orders_submitted": 0,

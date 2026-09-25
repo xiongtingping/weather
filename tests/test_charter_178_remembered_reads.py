@@ -17,6 +17,7 @@ amendment), so its test left with it.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 import sqlite3
 from pathlib import Path
 
@@ -176,22 +177,30 @@ def test_trajectory_artifacts_are_parsed_once_until_the_table_moves(tmp_path) ->
     conn = sqlite3.connect(str(tmp_path / "evidence.db"))
     conn.execute(
         "CREATE TABLE basket_probability_evidence_artifact(station_id TEXT, scope_key TEXT,"
-        " trained_through_utc TEXT, artifact_json TEXT, artifact_kind TEXT)"
+        " trained_through_utc TEXT, valid_from_utc TEXT, artifact_json TEXT, artifact_kind TEXT)"
     )
     bucket = mpf._BUCKET_PREFERENCE[0]
-    def add(station, trained, marker):
+    def add(station, trained, available, marker):
         conn.execute(
-            "INSERT INTO basket_probability_evidence_artifact VALUES(?,?,?,?,?)",
-            (station, f"{station}|x|{bucket}", trained,
-             json.dumps({"remaining_warming_distribution": [marker], "content_sha256": "s" * 64}),
+            "INSERT INTO basket_probability_evidence_artifact VALUES(?,?,?,?,?,?)",
+            (station, f"{station}|x|{bucket}", trained, available,
+             json.dumps({"remaining_warming_distribution": {"0.0": marker}, "content_sha256": "s" * 64}),
              "METAR_TRAJECTORY_LIKELIHOOD"),
         )
         conn.commit()
-    add("ZUUU", "2026-09-20", 1)
-    first = mpf._station_artifacts(conn)
+    noon = datetime(2026, 9, 25, 4, tzinfo=timezone.utc)
+    add("ZUUU", "2026-09-20T00:00:00Z", "2026-09-21T16:00:00Z", 1)
+    first = mpf._station_artifact_timeline(conn)
     statements = _trace(conn)
-    assert mpf._station_artifacts(conn) == first
+    assert mpf._station_artifact_timeline(conn) == first
     assert not any("artifact_json" in sql for sql in statements), statements
-    add("ZUUU", "2026-09-21", 2)
-    moved = mpf._station_artifacts(conn)
-    assert moved["ZUUU"]["remaining_warming_distribution"] == [2]
+    chosen = mpf._artifact_as_of(conn, first["ZUUU"], noon)
+    assert chosen["remaining_warming_distribution"] == {"0.0": 1}
+    # The day's own artifact is parsed once, then remembered.
+    statements.clear()
+    assert mpf._artifact_as_of(conn, first["ZUUU"], noon) == chosen
+    assert not any("artifact_json" in sql for sql in statements), statements
+    add("ZUUU", "2026-09-21T00:00:00Z", "2026-09-22T16:00:00Z", 2)
+    moved = mpf._station_artifact_timeline(conn)
+    assert len(moved["ZUUU"]) == 2
+    assert mpf._artifact_as_of(conn, moved["ZUUU"], noon)["remaining_warming_distribution"] == {"0.0": 2}
