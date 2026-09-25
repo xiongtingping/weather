@@ -88,7 +88,9 @@ FUSION_BLEND_MODE_OFF = "off"
 FUSION_BLEND_MODES = (
     FUSION_BLEND_MODE_BLEND, FUSION_BLEND_MODE_SHADOW, FUSION_BLEND_MODE_OFF,
 )
-# Served default: SHADOW.  The frozen candidate was re-scored before go-live
+# Served default: BLEND since 2026-09-24 (user: 「别等向前日了，先用历史样本」,
+# 「上线」).  History before that, kept because it is why the default moved:
+# the frozen candidate was re-scored before go-live
 # under the training density production actually has (production_regime/,
 # 2026-09-23): three-down on the 515 station-days it was designed on, but on
 # the 143 same-period station-days the study never used RMSE +1.57%
@@ -105,10 +107,19 @@ FUSION_BLEND_MODES = (
 # RMSE / CRPS are diagnostics beside it.  Re-judged on the historical replay
 # (docs/research/fusion_blend_historical_20260923, 2,908 station-days / 65
 # days): Brier 0.72841 -> 0.72857 (+0.02%), log score 1.59774 -> 1.59850
-# (+0.05%) -- both worse, so the seat still serves.
+# (+0.05%) -- both worse.  That replay was four families in fact: AIFS ENS
+# and AIGEFS history sits in the SSOT with its backfill date as the arrival,
+# so the replay never let it arrive.  With modelled arrivals, six families,
+# decisions before the local day's end (docs/research/
+# recheck_six_families_20260924, 2,457 station-days / 55 days): bucket Brier
+# 0.72734 -> 0.72652 [-0.00142, -0.00019], log score 1.6317 -> 1.6297
+# [-0.0046, +0.0006]; day-ahead roots both intervals clear of zero; and the
+# same gain under charter 216's candidate single-system fit
+# (fusion199_x_charter216_20260924).  So the blend serves; the seat weights
+# stay its prior and its fallback, and ``shadow`` restores the old default.
 FUSION_BLEND_MODE = (
-    os.environ.get("P0_FUSION_BLEND_MODE", FUSION_BLEND_MODE_SHADOW).strip()
-    or FUSION_BLEND_MODE_SHADOW
+    os.environ.get("P0_FUSION_BLEND_MODE", FUSION_BLEND_MODE_BLEND).strip()
+    or FUSION_BLEND_MODE_BLEND
 )
 if FUSION_BLEND_MODE not in FUSION_BLEND_MODES:
     raise RuntimeError(f"unknown P0_FUSION_BLEND_MODE: {FUSION_BLEND_MODE}")

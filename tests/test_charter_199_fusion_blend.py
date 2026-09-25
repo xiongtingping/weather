@@ -180,5 +180,7 @@ def test_the_newest_knowable_revision_is_the_one_read():
     assert [r.identity for r in FB.as_of_rows([early, late], FB._stamp("2026-09-16T00:00:00Z"))] == ["r2"]
 
 
-def test_the_served_default_is_shadow():
-    assert FB.FUSION_BLEND_MODE == FB.FUSION_BLEND_MODE_SHADOW
+def test_the_served_default_is_blend():
+    # 2026-09-24: served on the six-family historical replay (charter 199's
+    # amendment); ``shadow`` and ``off`` stay as the environment's fallbacks.
+    assert FB.FUSION_BLEND_MODE == FB.FUSION_BLEND_MODE_BLEND
