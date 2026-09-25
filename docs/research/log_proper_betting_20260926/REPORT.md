@@ -128,7 +128,7 @@ MMMX 09-08 P0：模型中心 23°C（0.396），市场 23°C 0.31 / 24°C 0.30 /
 ## 8. 按论文自己的实证协议重验（读完全文后第二轮，协议见 PROTOCOL.md 末节）
 
 论文第 4 节、C.1、C.2、D.2、D.7 的做法与第 1–7 节的单纯形位置不同：**每个桶是一个独立二元市场**，`p_k > ask_k` 买 YES、`p_k < bid_k` 买 NO、带内不动；份额 Brier `|p − q̃|`、Log `|log p − log q̃|`（D.2 原文）、logit `|logit p − logit q̃|`（C.1 严格约化）；按六档深度成交，部分成交按实际份额记；ROI = 总盈亏 ÷ 总投入。
-总体：重放盘口 1,324 站日、30 天、9 个时点、8,787 行；served 向量过第 224 条下限（论文的 log 规则遇 0 概率无定义）。带的覆盖：YES 腿 28,734、NO 腿 24,732、带内不动 43,191 桶时点。`paper_protocol.py`，读数在 `results_paper_protocol.json`。
+总体：重放盘口 1,324 站日、30 天、9 个时点、8,787 行；served 向量过第 224 条下限（论文的 log 规则遇 0 概率无定义）。带的覆盖：YES 腿 28,734、NO 腿 24,732、带内不动 43,191 桶时点。`paper_protocol.py`，读数在 `results_paper_protocol_served_always.json`（served 向量，三种规则都过下限）。
 
 **基本面式（Corollary 4：每个时点各下一次注，持有到结算）**
 
@@ -174,6 +174,32 @@ MMMX 09-08 P0：模型中心 23°C（0.396），市场 23°C 0.31 / 24°C 0.30 /
 
 **判定（第二轮）**：论文自己的协议下，Brier、Log、logit 三种 proper 策略，基本面式与动量式，全部 95% 上界 < 0。论文定理的前提是 `S(p; p*) > S(q; p*)`，本仓模型在每个时点都不满足；论文对不满足时的模拟（Regime B）本身就预告了亏损。
 
+## 9. 完全按论文：不带本仓约束、不用本仓 Bayes 链（熊先生 09-26 追加指令）
+
+熊先生：「先不管我当前系统的实现，比如只买 yes 等，完全按照论文进行验证」「也不管我系统的 bayes」。于是：`p` 改用**纯模型预报**，即每个时点血统里的 P0 根（NWP 集合校准输出，未经 TAF/观测的 Bayes 更新）；YES/NO 双边都做；Brier 用原始向量（论文不需要地板），Log/logit 过下限（论文把合成预报也 clip 到 [ε, 1−ε]；两种地板设置读数相同）。其余协议与第 8 节相同。
+`paper_protocol.py --vector root --floor log_only`，读数在 `results_paper_protocol_root_log_only.json`（`--floor always` 在 `results_paper_protocol_root_always.json`）。带的覆盖：YES 腿 43,338、NO 腿 24,350、带内不动 28,969。
+
+**基本面式（每时点各下注、持有到结算）与动量式（D.7 再平衡）**
+
+| 规则 | 下注 | 投入 | 基本面式 ROI | ΔS / D（ROI 单位） | YES 腿 | NO 腿 | 动量式 ROI | 动量 + 10¢ 门 |
+|---|---|---|---|---|---|---|---|---|
+| Brier | 67,688 | 1,246 | **−5.9% [−8.4, −3.4]** | −92.4 / +86.5 | −13.5% [−20.0, −6.9] | −4.8% [−7.0, −2.8] | **−6.6% [−8.0, −5.3]** | −8.2% |
+| Log（D.2） | 67,675 | 14,289 | **−2.9% [−4.3, −1.7]** | — | −29.1% [−36.7, −21.3] | −1.2% [−2.2, −0.3] | **−3.3% [−4.3, −2.7]** | −3.6% |
+| logit（C.1） | 67,675 | 16,150 | **−3.5% [−5.1, −2.2]** | −49.1 / +45.6 | −25.3% [−32.3, −18.4] | −1.9% [−3.1, −0.9] | **−4.1% [−5.2, −3.3]** | −4.9% |
+
+**离线一市场一预测，按时点，ROI**
+
+| 规则 | H44 | H36 | H30 | H24 | H18 | H14 | H10 | H7 | H4 |
+|---|---|---|---|---|---|---|---|---|---|
+| Brier | −2.4 [−6.5, +1.7] | −4.0 [−8.3, +0.6] | −5.8 [−10.0, −1.8] | −5.2 [−9.0, −1.0] | +0.9 [−4.1, +5.9] | −3.0 [−7.3, +0.9] | −15.5 | −43.8 | −14.5 [−98.9, +95.7] |
+| Log | −1.4 [−2.9, −0.0] | −1.3 [−2.7, +0.4] | −1.8 [−3.3, −0.4] | −2.5 [−4.5, −0.5] | −0.6 [−2.6, +1.8] | −2.3 [−5.1, +0.4] | −9.1 | −35.5 | −61.0 |
+
+- 纯 P0 在 H ≤ 10 的大负数不是公平比较：那时市场已经看到当日报文而 P0 根没有；论文的预报者每周期会刷新。公平段是 H ≥ 14：Brier −2.4% 至 −5.8%、Log −0.6% 至 −2.5%，没有一个时点 95% 下界 > 0；H18 是唯一点估计为正的时点（Brier +0.9%，区间 [−4.1, +5.9]）。
+- 与第 8 节的 served 向量相比，纯 P0 略差（Brier −5.9% 对 −5.0%，Log −2.9% 对 −2.1%）：Bayes 链没有制造亏损，它把 P0 往市场方向拉近了一点。
+- persona：80% 的注在 |p − q̃| < 0.15，方向胜率 32% → 26% → 26% → 19% → 3%，随分歧单调降；每档 ROI 全负（[0.50, 0.70) 档 Brier −40.9% [−60.7, −18.2]）。仍是论文的 Brittle × Regime B。
+
+**判定（第三轮）**：去掉本仓全部约束、不用 Bayes 链、完全按论文的逐桶二元 bid/ask 带协议，Brier/Log/logit × 基本面式/动量式六个读数全部 95% 上界 < 0。
+
 ## 判定（按事前规则）
 
 - 无摩擦 `Π` 的 95% 下界 > 0：服务版只有 P0 首个决策勉强过（+0.002），现行 P0 24–60h 过（+0.037）；两者都在 ε 敏感性下消失。
@@ -181,7 +207,7 @@ MMMX 09-08 P0：模型中心 23°C（0.396），市场 23°C 0.31 / 24°C 0.30 /
 - 论文原版按双边深度执行：**也没有过**，全体 −0.052 [−0.078, −0.025]，且 `L_market` 是下界。
 - 动量版 95% 下界 > 0：过（+0.002），但市场 60% 的步数在远离模型，幅度是同档 L 的 1/40。
 
-**结论。** 按论文自己的实证协议（逐桶二元、bid/ask 带、Brier/Log/logit 份额、基本面式与动量再平衡）重验，ROI 全部显著为负（第 8 节）。Log-Proper Betting 的恒等式在数据上精确成立；模型总体 LogScore 落后市场，但它与市场的分歧在无摩擦理论仓位下产生了约 +0.03 至 +0.06 的账面 proper return。
+**结论。** 按论文自己的实证协议（逐桶二元、bid/ask 带、Brier/Log/logit 份额、基本面式与动量再平衡）重验，用本仓 served 向量（第 8 节）或纯 P0 预报、双边、无本仓约束（第 9 节），ROI 全部显著为负。Log-Proper Betting 的恒等式在数据上精确成立；模型总体 LogScore 落后市场，但它与市场的分歧在无摩擦理论仓位下产生了约 +0.03 至 +0.06 的账面 proper return。
 这个账面收益高度集中于概率地板对应的低概率空头腿，把地板从 0.001 抬到 0.005 就归零；在可执行的买卖盘与深度下，论文自己的正负位置已经为负（`L_market` 超过账面收益），
 纯 YES 约束再加一层 `L_constraint`。因此该策略在当前市场结构下没有可兑现的正收益。它否掉的不是论文数学，而是「看到大的 `KL(q‖p)` 就认为发现了可交易 edge」这个读法。
 ΔS 与 D 可留作账目诊断（ΔS 就是每日读的 LogScore 差，D 的可赚部分就是 γ），不作建仓规则。
@@ -192,7 +218,8 @@ MMMX 09-08 P0：模型中心 23°C（0.396），市场 23°C 0.31 / 24°C 0.30 /
 python3 measure.py <edge_population.pkl>
 python3 measure_today_p0.py <decompose_cache.pkl>
 python3 decompose_legs.py <edge_population.pkl> <decompose_cache.pkl>
-PYTHONPATH=<repo> python3 paper_protocol.py ../bayes_kelly_replay_20260924/dataset.jsonl.gz ../bayes_kelly_replay_20260924/venue_truth_overrides.json
+PYTHONPATH=<repo> python3 paper_protocol.py ../bayes_kelly_replay_20260924/dataset.jsonl.gz ../bayes_kelly_replay_20260924/venue_truth_overrides.json --vector served --floor always
+PYTHONPATH=<repo> python3 paper_protocol.py ../bayes_kelly_replay_20260924/dataset.jsonl.gz ../bayes_kelly_replay_20260924/venue_truth_overrides.json --vector root --floor log_only
 PYTHONPATH=<repo> python3 l_split_and_floor.py <edge_population.pkl> <decompose_cache.pkl> ../bayes_kelly_replay_20260924/dataset.jsonl.gz ../bayes_kelly_replay_20260924/venue_truth_overrides.json
 ```
 

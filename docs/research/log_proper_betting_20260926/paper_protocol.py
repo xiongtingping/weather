@@ -17,7 +17,7 @@ hold after the last grid hour (H=4) to settlement; variant skipping buckets whos
 price moved < 10c since the last fill.  YES-only versions beside every reading.
 No SSOT access.  Writes results_paper_protocol.json.
 
-    PYTHONPATH=<repo> python3 paper_protocol.py DATASET.jsonl.gz OVERRIDES.json
+    PYTHONPATH=<repo> python3 paper_protocol.py DATASET.jsonl.gz OVERRIDES.json [--vector root|served] [--floor log_only|always]
 """
 from __future__ import annotations
 
@@ -87,28 +87,35 @@ def no_ladder(bids):
     return [[1.0 - float(price), float(shares)] for price, shares in bids]
 
 
-def load(dataset, overrides):
+def load(dataset, overrides, vector="served", floor="log_only"):
+    """vector: which forecast plays the paper's p -- 'root' is the P0 root (the NWP forecast before any
+    Bayesian update), 'served' the stage-priority envelope.  floor: 'log_only' floors the vector only for
+    the log rules (the paper clips to [eps, 1-eps]; Brier needs no floor), 'always' floors for every rule."""
+
     ov = json.loads(Path(overrides).read_text())["overrides"]
     rows, skipped = [], defaultdict(int)
     with gzip.open(dataset, "rt") as fh:
         for line in fh:
             r = json.loads(line)
-            if r.get("m_state") != "complete" or not r.get("served"):
+            if r.get("m_state") != "complete" or not r.get(vector):
                 skipped["book_incomplete"] += 1
                 continue
             keys = list(r["m"])
             truth = ov.get(f"{r['st']}|{r['day']}", r["truth"])
-            if truth not in keys or set(keys) != set(r["served"]):
+            if truth not in keys or set(keys) != set(r[vector]):
                 skipped["truth_or_rungs"] += 1
                 continue
-            raw = np.array([float(r["served"][k]) for k in keys])
+            raw = np.array([float(r[vector][k]) for k in keys])
             if raw.sum() <= 0:
                 skipped["zero_vector"] += 1
                 continue
             floored, _ = floor_probabilities({k: float(v) for k, v in zip(keys, raw / raw.sum())})
+            p_floor = [floored[k] for k in keys]
+            p_raw = [float(v) for v in raw / raw.sum()]
             rows.append({
                 "station": r["st"], "date": r["day"], "H": int(r["H"]), "stage": r["stage"], "keys": keys,
-                "p": [floored[k] for k in keys], "y": keys.index(truth),
+                "pv": {"brier": p_raw if floor == "log_only" else p_floor, "log_d2": p_floor, "logit_c1": p_floor},
+                "y": keys.index(truth),
                 "asks": [[[float(a), float(b)] for a, b in (r["asks"].get(k) or [])] for k in keys],
                 "bids": [[[float(a), float(b)] for a, b in (r["bids"].get(k) or [])] for k in keys],
             })
@@ -119,7 +126,7 @@ def bets(row, rule, yes_only=False):
     """The paper's one-shot bets on this row: list of dicts with side, shares, cost, pnl, dS, D."""
 
     out = []
-    for k, p in enumerate(row["p"]):
+    for k, p in enumerate(row["pv"][rule]):
         asks, bids = row["asks"][k], row["bids"][k]
         hit = 1.0 if k == row["y"] else 0.0
         if asks and p > asks[0][0]:
@@ -192,7 +199,7 @@ def momentum(rows_by_sd, rule, yes_only=False, ten_cent=False):
         for r in items:
             if r["keys"] != keys:
                 break
-            for k, p in enumerate(r["p"]):
+            for k, p in enumerate(r["pv"][rule]):
                 asks, bids = r["asks"][k], r["bids"][k]
                 ask1 = asks[0][0] if asks else None
                 bid1 = bids[0][0] if bids else None
@@ -250,12 +257,14 @@ def momentum(rows_by_sd, rule, yes_only=False, ten_cent=False):
 
 
 def main():
-    rows, skipped = load(sys.argv[1], sys.argv[2])
+    vector = sys.argv[sys.argv.index("--vector") + 1] if "--vector" in sys.argv else "served"
+    floor = sys.argv[sys.argv.index("--floor") + 1] if "--floor" in sys.argv else "log_only"
+    rows, skipped = load(sys.argv[1], sys.argv[2], vector=vector, floor=floor)
     rng = np.random.default_rng(SEED)
     by_sd = defaultdict(list)
     for r in rows:
         by_sd[(r["station"], r["date"])].append(r)
-    results = {"rows": len(rows), "station_days": len(by_sd), "skipped": skipped, "offline_by_H": {}, "fundamental": {},
+    results = {"vector": vector, "floor": floor, "rows": len(rows), "station_days": len(by_sd), "skipped": skipped, "offline_by_H": {}, "fundamental": {},
                "momentum": {}, "persona_bins": {}, "band_share": {}}
     for rule in RULES:
         for yes_only in (False, True):
@@ -281,7 +290,7 @@ def main():
     # how often the band admits anything, and on which side
     n_yes = n_no = n_band = 0
     for r in rows:
-        for k, p in enumerate(r["p"]):
+        for k, p in enumerate(r["pv"]["brier"]):
             asks, bids = r["asks"][k], r["bids"][k]
             if asks and p > asks[0][0]:
                 n_yes += 1
@@ -290,12 +299,12 @@ def main():
             else:
                 n_band += 1
     results["band_share"] = {"yes": n_yes, "no": n_no, "no_trade": n_band}
-    (HERE / "results_paper_protocol.json").write_text(json.dumps(results, indent=1, ensure_ascii=False))
+    (HERE / f"results_paper_protocol_{vector}_{floor}.json").write_text(json.dumps(results, indent=1, ensure_ascii=False))
 
     def fmt(x):
         return "—" if x is None else f"{100 * x[0]:+.1f}% [{100 * x[1]:+.1f}, {100 * x[2]:+.1f}]"
 
-    print("rows", len(rows), "station-days", len(by_sd), "skipped", skipped, "band", results["band_share"])
+    print("vector", vector, "floor", floor, "rows", len(rows), "station-days", len(by_sd), "skipped", skipped, "band", results["band_share"])
     print("\n== fundamental (every grid hour, held to settlement) ==")
     print("rule | bets | cost | ROI | dS_roi | D_roi | slippage | win | YES-side ROI | NO-side ROI")
     for tag, b in results["fundamental"].items():
