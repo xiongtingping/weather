@@ -183,7 +183,9 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # Charter 222 (2026-09-25 ruling): the radiation pair moves to warm 0.18 /
 # cold 0.06, the log score's optimum on production P0 without the
 # zero-probability truths.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v18"
+# Charter 199 (2026-09-25): the eleven US ASOS stations are blended like
+# every other station instead of held at the seat weights.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v19"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they

@@ -1,0 +1,101 @@
+{
+ "protocol": "PROTOCOL.md",
+ "asos": {
+  "label": "ASOS 11 站：现役（席位）→ 放开（判据 1）",
+  "station_days": 292,
+  "days": 29,
+  "current": {
+   "brier": 0.7536911326769771,
+   "nll": 1.604151184401005
+  },
+  "lifted": {
+   "brier": 0.75125308938773,
+   "nll": 1.6006881324239721
+  },
+  "delta": {
+   "brier": -0.002438043289246999,
+   "nll": -0.0034630519770328504
+  },
+  "ci95": {
+   "brier": [
+    -0.005465791733182331,
+    0.0005014094604395094
+   ],
+   "nll": [
+    -0.011446127643441155,
+    0.004923996717091586
+   ]
+  },
+  "passes_charter_211": true
+ },
+ "fleet": {
+  "label": "全队：现役 → 放开（判据 2）",
+  "station_days": 1122,
+  "days": 29,
+  "current": {
+   "brier": 0.7333954537999454,
+   "nll": 1.5638684328742072
+  },
+  "lifted": {
+   "brier": 0.732836847045565,
+   "nll": 1.5629619728562842
+  },
+  "delta": {
+   "brier": -0.000558606754380339,
+   "nll": -0.0009064600179229399
+  },
+  "ci95": {
+   "brier": [
+    -0.001326485458202338,
+    0.00018020314667748527
+   ],
+   "nll": [
+    -0.0030148792955331316,
+    0.0012390570650370038
+   ]
+  },
+  "passes_charter_211": true
+ },
+ "non_asos": {
+  "label": "非 ASOS 站的牵动（只报）",
+  "station_days": 830,
+  "days": 29,
+  "current": {
+   "brier": 0.7262552872552547,
+   "nll": 1.5496966696864662
+  },
+  "lifted": {
+   "brier": 0.7263578798601287,
+   "nll": 1.5496896372011457
+  },
+  "delta": {
+   "brier": 0.00010259260487395596,
+   "nll": -7.032485320417042e-06
+  },
+  "ci95": {
+   "brier": [
+    -5.7986099451655736e-05,
+    0.0002786110890340168
+   ],
+   "nll": [
+    -0.000470089621673472,
+    0.00041425258393414826
+   ]
+  },
+  "passes_charter_211": false
+ },
+ "asos_moved_half_l1_median": 0.038522488621337586,
+ "states": {
+  "other": {
+   "SEAT_NO_TRAINING_DAYS -> SEAT_NO_TRAINING_DAYS": 56,
+   "APPLIED -> APPLIED": 771,
+   "SEAT_NO_TRAINING_DAYS -> APPLIED": 2,
+   "SEAT_BLEND_VOTED_OUT_A_MEMBER -> APPLIED": 1
+  },
+  "asos": {
+   "SEAT_LABELS_NOT_BOUND -> SEAT_NO_TRAINING_DAYS": 21,
+   "SEAT_LABELS_NOT_BOUND -> APPLIED": 271
+  }
+ },
+ "lift": true
+}

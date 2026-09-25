@@ -35,9 +35,11 @@ weights on those 515 rows (tests/test_charter_199_fusion_blend.py).
 
 What it never does: seat a system the seat did not, give weight to a
 provisional rider, break a family cap, or serve fewer than two positive-weight
-families.  Any failure -- no training file, a station whose labels are not
-bound, an optimiser that does not converge, a blended weight at zero -- serves
-the seat weights unchanged and says why in the receipt.
+families.  Any failure -- no training file, an optimiser that does not
+converge, a blended weight at zero -- serves the seat weights unchanged and
+says why in the receipt.  Every station is blended alike: the eleven US ASOS
+stations the study had excluded were let in on 2026-09-25 (charter 199,
+docs/research/fusion199_asos_recheck_20260925).
 """
 from __future__ import annotations
 
@@ -73,17 +75,6 @@ FUSION_BLEND_LOCAL_RIDGE_SCALE = 10.0
 FUSION_BLEND_MIN_WEIGHT = 1e-6
 # The research tolerance on the optimiser's own output (compare.assert_weight).
 _FIT_TOLERANCE = 1e-7
-
-# US ASOS stations keep the seat weights.  The study excluded them because
-# their historical canonical winner was not bound to one label lane; on
-# 2026-09-25 that no longer held (they settle on NOAA hourly METAR+SPECI,
-# the truth table's own lane, 1 disagreement in 40 days), so the lift was
-# measured instead: no reliable gain, and it fails charter 211 under the
-# served 216 fit (docs/research/fusion199_asos_20260925).
-FUSION_BLEND_UNBOUND_LABEL_STATIONS = frozenset({
-    "KATL", "KAUS", "KBKF", "KDAL", "KHOU", "KLAX", "KLGA", "KMIA", "KORD",
-    "KSEA", "KSFO",
-})
 
 FUSION_BLEND_MODE_BLEND = "blend"
 FUSION_BLEND_MODE_SHADOW = "shadow"
@@ -702,8 +693,6 @@ def overlay_system_weights(
 
     if active_mode == FUSION_BLEND_MODE_OFF:
         return _seat("OFF")
-    if station_id in FUSION_BLEND_UNBOUND_LABEL_STATIONS:
-        return _seat("SEAT_LABELS_NOT_BOUND")
     # A provisional rider certifies at (near) zero and was never given a
     # family or a calibration by the compile; it rides at its seat value.
     weighted = {

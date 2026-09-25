@@ -148,10 +148,19 @@ def test_shadow_serves_the_seat_and_records_what_blend_would_serve(training):
     assert blended["A"] > 0.5
 
 
-def test_off_and_the_unbound_label_stations_serve_the_seat(training):
-    assert _overlay(training, FB.FUSION_BLEND_MODE_OFF)[1]["state"] == "OFF"
-    served, receipt = _overlay(training, FB.FUSION_BLEND_MODE_BLEND, station="KSEA")
-    assert served == {"A": 0.5, "B": 0.5} and receipt["state"] == "SEAT_LABELS_NOT_BOUND"
+def test_off_serves_the_seat(training):
+    served, receipt = _overlay(training, FB.FUSION_BLEND_MODE_OFF)
+    assert served == {"A": 0.5, "B": 0.5} and receipt["state"] == "OFF"
+
+
+def test_a_us_asos_station_is_blended_like_any_other(training):
+    """2026-09-25: the eleven US ASOS stations are no longer held at the seat
+    (they settle on NOAA hourly METAR+SPECI, the truth table's own lane)."""
+    assert not hasattr(FB, "FUSION_BLEND_UNBOUND_LABEL_STATIONS")
+    us, us_receipt = _overlay(training, FB.FUSION_BLEND_MODE_BLEND, station="KSEA")
+    other, other_receipt = _overlay(training, FB.FUSION_BLEND_MODE_BLEND, station="YYYY")
+    assert us_receipt["state"] == other_receipt["state"] == "APPLIED"
+    assert us == other and us != {"A": 0.5, "B": 0.5}
 
 
 def test_a_missing_training_file_serves_the_seat(tmp_path):

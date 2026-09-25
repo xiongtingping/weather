@@ -225,8 +225,6 @@ def build(args: argparse.Namespace) -> dict[str, int]:
 
     artifact_cache: dict[str, object] = {}
     for station, tz in sorted(stations.items()):
-        if station in FB.FUSION_BLEND_UNBOUND_LABEL_STATIONS:
-            continue
         day = first
         while day <= last:
             day_text = day.isoformat()
