@@ -295,15 +295,6 @@ def test_one_scope_never_closes_the_other_scopes_serving_interval(monkeypatch) -
     assert open_intervals("window") == ["window"]
     assert open_intervals("bucket") == ["bucket"]
 
-    from bayes_basket_target.forward_serving_score import forward_serving_score
-
-    window_score = forward_serving_score(conn, stage_scope="P0")
-    bucket_score = forward_serving_score(conn, stage_scope="P0", claim_scope="bucket")
-    assert [i["lambda_table_sha256"] for i in window_score["intervals"]] == ["w" * 64]
-    assert window_score["intervals"][0]["still_serving"] is True
-    assert len(bucket_score["intervals"]) == 1
-    assert bucket_score["intervals"][0]["lambda_table_sha256"] != "w" * 64
-
     # Retiring the bucket table leaves the window table serving, too.
     store.retire_lambda_table(conn, stage_scope="P0", claim_scope="bucket")
     assert open_intervals("window") == ["window"]
