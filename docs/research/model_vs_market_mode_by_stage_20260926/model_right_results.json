@@ -1,0 +1,593 @@
+{
+ "question": "熊先生 2026-09-26：模型对的时候有什么条件和特征",
+ "disagreement_station_day_stages": 2382,
+ "by_stage": {
+  "P0": {
+   "station_day_stages": 1028.0,
+   "event_days": 40,
+   "model_right": 0.2580087936793416,
+   "market_right": 0.4095709337854596,
+   "market_price_on_model_bucket": 0.22158487291818255,
+   "model_claim_on_own_bucket": 0.34605461530986775,
+   "model_right_minus_price": [
+    0.036423920761158975,
+    0.014344448134161813,
+    0.059711681805237005
+   ]
+  },
+  "P0-M": {
+   "station_day_stages": 565.0,
+   "event_days": 21,
+   "model_right": 0.2644194747187295,
+   "market_right": 0.4290208281859422,
+   "market_price_on_model_bucket": 0.24915433322721856,
+   "model_claim_on_own_bucket": 0.4066457885724341,
+   "model_right_minus_price": [
+    0.015265141491510944,
+    -0.011292164948811788,
+    0.041209301464207045
+   ]
+  },
+  "P1": {
+   "station_day_stages": 789.0,
+   "event_days": 33,
+   "model_right": 0.24578502261011767,
+   "market_right": 0.5720042106526322,
+   "market_price_on_model_bucket": 0.22897472223981158,
+   "model_claim_on_own_bucket": 0.4802430958827849,
+   "model_right_minus_price": [
+    0.016810300370306078,
+    -0.0025716318310603763,
+    0.040633456076914785
+   ]
+  }
+ },
+ "by_market_price_on_model_bucket": {
+  "[0,.1)": {
+   "station_day_stages": 399.0029449834293,
+   "event_days": 40,
+   "model_right": 0.04670723108814435,
+   "market_right": 0.525241792914296,
+   "market_price_on_model_bucket": 0.04378333466021995,
+   "model_claim_on_own_bucket": 0.380827900305892,
+   "model_right_minus_price": [
+    0.00292389642792439,
+    -0.015748255668591598,
+    0.024997010019123543
+   ]
+  },
+  "[.1,.2)": {
+   "station_day_stages": 473.5031678028954,
+   "event_days": 39,
+   "model_right": 0.16722358245112928,
+   "market_right": 0.46794015677495826,
+   "market_price_on_model_bucket": 0.15510221980307673,
+   "model_claim_on_own_bucket": 0.3866831537359702,
+   "model_right_minus_price": [
+    0.012121362648052558,
+    -0.014430929843716099,
+    0.04296816554024628
+   ]
+  },
+  "[.2,.3)": {
+   "station_day_stages": 778.1734270859663,
+   "event_days": 39,
+   "model_right": 0.27369073880120137,
+   "market_right": 0.4404980962711412,
+   "market_price_on_model_bucket": 0.25221180704743645,
+   "model_claim_on_own_bucket": 0.3875387738473575,
+   "model_right_minus_price": [
+    0.021478931753764932,
+    -0.01139826507390958,
+    0.05869846035953952
+   ]
+  },
+  "[.3,.4)": {
+   "station_day_stages": 603.1380000797303,
+   "event_days": 39,
+   "model_right": 0.39718499749246317,
+   "market_right": 0.4589214151018151,
+   "market_price_on_model_bucket": 0.34376442090608134,
+   "model_claim_on_own_bucket": 0.4353696876066088,
+   "model_right_minus_price": [
+    0.053420576586381927,
+    0.016890633161877496,
+    0.09009806934111664
+   ]
+  },
+  "[.4,1]": {
+   "station_day_stages": 128.18246004797862,
+   "event_days": 36,
+   "model_right": 0.4540479402095741,
+   "market_right": 0.49949098778989354,
+   "market_price_on_model_bucket": 0.4268097211884882,
+   "model_claim_on_own_bucket": 0.5086755806785115,
+   "model_right_minus_price": [
+    0.027238219021085877,
+    -0.0391494208487076,
+    0.08799398650178826
+   ]
+  }
+ },
+ "by_model_claim_on_own_bucket": {
+  "<.3": {
+   "station_day_stages": 582.6311248418708,
+   "event_days": 39,
+   "model_right": 0.2244866027779303,
+   "market_right": 0.3487195988442006,
+   "market_price_on_model_bucket": 0.18741464175372421,
+   "model_claim_on_own_bucket": 0.23891294440229502,
+   "model_right_minus_price": [
+    0.037071961024206096,
+    0.009047835415734687,
+    0.06416655738955543
+   ]
+  },
+  ".3-.4": {
+   "station_day_stages": 661.2188503814089,
+   "event_days": 40,
+   "model_right": 0.2455125923292906,
+   "market_right": 0.4308647148751814,
+   "market_price_on_model_bucket": 0.22515615836729744,
+   "model_claim_on_own_bucket": 0.3518860157769465,
+   "model_right_minus_price": [
+    0.02035643396199312,
+    -0.013357208579354043,
+    0.05154305932154168
+   ]
+  },
+  ".4-.5": {
+   "station_day_stages": 636.437577868759,
+   "event_days": 36,
+   "model_right": 0.27144233975583226,
+   "market_right": 0.526341748430621,
+   "market_price_on_model_bucket": 0.2578307076546678,
+   "model_claim_on_own_bucket": 0.44707561769199067,
+   "model_right_minus_price": [
+    0.013611632101164416,
+    -0.013804765109869886,
+    0.04182487499515201
+   ]
+  },
+  ".5-.7": {
+   "station_day_stages": 414.8775351530495,
+   "event_days": 32,
+   "model_right": 0.2851006293227128,
+   "market_right": 0.5737676510449669,
+   "market_price_on_model_bucket": 0.25915973793974,
+   "model_claim_on_own_bucket": 0.5747238036090219,
+   "model_right_minus_price": [
+    0.025940891382972866,
+    -0.0014265511970163903,
+    0.05165472758992507
+   ]
+  },
+  ">=.7": {
+   "station_day_stages": 86.83491175491174,
+   "event_days": 22,
+   "model_right": 0.28083218964818063,
+   "market_right": 0.6178306523267187,
+   "market_price_on_model_bucket": 0.22500972235253539,
+   "model_claim_on_own_bucket": 0.8010984716946686,
+   "model_right_minus_price": [
+    0.055822467295645245,
+    -0.04474655943743181,
+    0.19268443498580146
+   ]
+  }
+ },
+ "by_gap_buckets": {
+  "1": {
+   "station_day_stages": 2049.9433670643148,
+   "event_days": 40,
+   "model_right": 0.28669498493589995,
+   "market_right": 0.4792183029026685,
+   "market_price_on_model_bucket": 0.2570931692521032,
+   "model_claim_on_own_bucket": 0.4189297986323907,
+   "model_right_minus_price": [
+    0.029601815683796714,
+    0.010479474720430438,
+    0.050758059049286375
+   ]
+  },
+  "2": {
+   "station_day_stages": 218.77521369809267,
+   "event_days": 38,
+   "model_right": 0.0712525831610541,
+   "market_right": 0.427763373009948,
+   "market_price_on_model_bucket": 0.0878892191194247,
+   "model_claim_on_own_bucket": 0.34573427502931,
+   "model_right_minus_price": [
+    -0.016636635958370623,
+    -0.036662592343787576,
+    0.004940232309223696
+   ]
+  },
+  "3+": {
+   "station_day_stages": 113.28141923759219,
+   "event_days": 38,
+   "model_right": 0.04641223729064078,
+   "market_right": 0.34244455594666623,
+   "market_price_on_model_bucket": 0.026200976117306544,
+   "model_claim_on_own_bucket": 0.26474214448386413,
+   "model_right_minus_price": [
+    0.020211261173334254,
+    -0.009672854674058042,
+    0.05256914872359935
+   ]
+  }
+ },
+ "by_direction": {
+  "model_colder": {
+   "station_day_stages": 1179.9895968420326,
+   "event_days": 40,
+   "model_right": 0.2496677196997756,
+   "market_right": 0.4582901425036233,
+   "market_price_on_model_bucket": 0.22898190017594658,
+   "model_claim_on_own_bucket": 0.4049975825799149,
+   "model_right_minus_price": [
+    0.020685819523829023,
+    -0.004867334128079361,
+    0.04952922686769502
+   ]
+  },
+  "model_warmer": {
+   "station_day_stages": 1202.0104031579672,
+   "event_days": 40,
+   "model_right": 0.261186686254962,
+   "market_right": 0.47750785522650585,
+   "market_price_on_model_bucket": 0.23213296879517473,
+   "model_claim_on_own_bucket": 0.4047534715713083,
+   "model_right_minus_price": [
+    0.029053717459787253,
+    -0.0008453721989426975,
+    0.06375179190068597
+   ]
+  }
+ },
+ "by_hours_to_settlement": {
+  "6-12h": {
+   "station_day_stages": 490.53522023955674,
+   "event_days": 33,
+   "model_right": 0.2423086372633428,
+   "market_right": 0.640005024500849,
+   "market_price_on_model_bucket": 0.23056213382144633,
+   "model_claim_on_own_bucket": 0.5284079321692358,
+   "model_right_minus_price": [
+    0.011746503441896528,
+    -0.014490430082518957,
+    0.04550817319161579
+   ]
+  },
+  "12-18h": {
+   "station_day_stages": 229.85806660659603,
+   "event_days": 34,
+   "model_right": 0.24203901893006016,
+   "market_right": 0.46840916524338705,
+   "market_price_on_model_bucket": 0.2302386723935549,
+   "model_claim_on_own_bucket": 0.41457544252404716,
+   "model_right_minus_price": [
+    0.01180034653650531,
+    -0.022547644470919722,
+    0.04852969948023342
+   ]
+  },
+  "18-24h": {
+   "station_day_stages": 66.9362420259479,
+   "event_days": 18,
+   "model_right": 0.25519758109416185,
+   "market_right": 0.3893363977117552,
+   "market_price_on_model_bucket": 0.22943372108611615,
+   "model_claim_on_own_bucket": 0.2985084991900952,
+   "model_right_minus_price": [
+    0.025763860008045765,
+    -0.04667727299794223,
+    0.1161949736199262
+   ]
+  },
+  "24-36h": {
+   "station_day_stages": 517.010822670203,
+   "event_days": 36,
+   "model_right": 0.2455632315154474,
+   "market_right": 0.46010097127455907,
+   "market_price_on_model_bucket": 0.23486473883916048,
+   "model_claim_on_own_bucket": 0.3750436710929743,
+   "model_right_minus_price": [
+    0.010698492676286928,
+    -0.01385174734870572,
+    0.035411093848080534
+   ]
+  },
+  "36-48h": {
+   "station_day_stages": 793.7606952964297,
+   "event_days": 39,
+   "model_right": 0.2647294383675628,
+   "market_right": 0.3923438824592567,
+   "market_price_on_model_bucket": 0.22994682323721435,
+   "model_claim_on_own_bucket": 0.35158756690779785,
+   "model_right_minus_price": [
+    0.03478261513034849,
+    0.005267292250563455,
+    0.06695684668970353
+   ]
+  },
+  "48h+": {
+   "station_day_stages": 274.2276126413214,
+   "event_days": 20,
+   "model_right": 0.2766331823073555,
+   "market_right": 0.40887121618714534,
+   "market_price_on_model_bucket": 0.23125713519816896,
+   "model_claim_on_own_bucket": 0.402128163336238,
+   "model_right_minus_price": [
+    0.04537604710918657,
+    0.004290156890412257,
+    0.09720579573443858
+   ]
+  }
+ },
+ "by_unit": {
+  "C": {
+   "station_day_stages": 1806.9999999999998,
+   "event_days": 40,
+   "model_right": 0.2585661372680318,
+   "market_right": 0.46340490361305925,
+   "market_price_on_model_bucket": 0.227237722796106,
+   "model_claim_on_own_bucket": 0.40324590529255466,
+   "model_right_minus_price": [
+    0.03132841447192565,
+    0.016661847499439914,
+    0.04720892979328041
+   ]
+  },
+  "F": {
+   "station_day_stages": 575.0,
+   "event_days": 36,
+   "model_right": 0.24578333202520847,
+   "market_right": 0.48239017257850214,
+   "market_price_on_model_bucket": 0.24105032763116171,
+   "model_claim_on_own_bucket": 0.4099921162953748,
+   "model_right_minus_price": [
+    0.004733004394046744,
+    -0.04265025581130014,
+    0.05296799336302635
+   ]
+  }
+ },
+ "by_model_pick_is_market_second": {
+  "no": {
+   "station_day_stages": 811.7804167103573,
+   "event_days": 40,
+   "model_right": 0.1185257663456102,
+   "market_right": 0.4396147009625005,
+   "market_price_on_model_bucket": 0.11469584298872913,
+   "model_claim_on_own_bucket": 0.3522787660497351,
+   "model_right_minus_price": [
+    0.003829923356881073,
+    -0.015964339303613018,
+    0.024384897195350554
+   ]
+  },
+  "yes": {
+   "station_day_stages": 1570.2195832896427,
+   "event_days": 40,
+   "model_right": 0.3262840021963785,
+   "market_right": 0.48265631952846505,
+   "market_price_on_model_bucket": 0.2904782675736189,
+   "model_claim_on_own_bucket": 0.4320655667853033,
+   "model_right_minus_price": [
+    0.03580573462275947,
+    0.009196690898002768,
+    0.06451055596304986
+   ]
+  }
+ },
+ "near_tie_who_wins": {
+  "ALL:model_picks_m2": {
+   "station_day_stages": 1093.0,
+   "market_top_wins": 0.3758554059676443,
+   "market_second_wins": 0.3694602725593791
+  },
+  "ALL:model_picks_m1": {
+   "station_day_stages": 1177.0,
+   "market_top_wins": 0.396091252223688,
+   "market_second_wins": 0.36316417241231536
+  },
+  "P0:model_picks_m2": {
+   "station_day_stages": 505.0,
+   "market_top_wins": 0.34774394003324216,
+   "market_second_wins": 0.35878418530676437
+  },
+  "P0:model_picks_m1": {
+   "station_day_stages": 549.0,
+   "market_top_wins": 0.3894176617635214,
+   "market_second_wins": 0.32756323226655293
+  },
+  "P0-M:model_picks_m2": {
+   "station_day_stages": 310.0,
+   "market_top_wins": 0.3875782871156386,
+   "market_second_wins": 0.32747547632522167
+  },
+  "P0-M:model_picks_m1": {
+   "station_day_stages": 327.0,
+   "market_top_wins": 0.36488149974388506,
+   "market_second_wins": 0.3818410287919192
+  },
+  "P1:model_picks_m2": {
+   "station_day_stages": 278.0,
+   "market_top_wins": 0.4138489208633093,
+   "market_second_wins": 0.43567146282973623
+  },
+  "P1:model_picks_m1": {
+   "station_day_stages": 301.0,
+   "market_top_wins": 0.4421689606074989,
+   "market_second_wins": 0.40780730897009965
+  }
+ },
+ "market_second_bucket_by_model_pick": {
+  "[.2,.3):model_picks_m2": {
+   "station_day_stages": 1159.9999999999998,
+   "second_hit": 0.29226361869172546,
+   "second_price": 0.25732033453504166,
+   "second_hit_minus_price": [
+    0.03494328415668376,
+    0.003569754344906167,
+    0.07206117713349457
+   ]
+  },
+  "[.2,.3):model_picks_m1": {
+   "station_day_stages": 1725.0,
+   "second_hit": 0.28211734644696335,
+   "second_price": 0.252946305593925,
+   "second_hit_minus_price": [
+    0.029171040853038264,
+    0.0029660098837882326,
+    0.05442983208810025
+   ]
+  },
+  "[.2,.3):model_picks_other": {
+   "station_day_stages": 862.0,
+   "second_hit": 0.26862325499158435,
+   "second_price": 0.24919844742819258,
+   "second_hit_minus_price": [
+    0.019424807563391804,
+    -0.00909523810660211,
+    0.04816773673996385
+   ]
+  },
+  "[.3,.4):model_picks_m2": {
+   "station_day_stages": 966.0,
+   "second_hit": 0.373456715381851,
+   "second_price": 0.34134367064180837,
+   "second_hit_minus_price": [
+    0.03211304474004268,
+    0.003694059428718211,
+    0.0627603581809501
+   ]
+  },
+  "[.3,.4):model_picks_m1": {
+   "station_day_stages": 1177.9999999999998,
+   "second_hit": 0.36675152797168126,
+   "second_price": 0.3398243334286854,
+   "second_hit_minus_price": [
+    0.026927194542995758,
+    -0.0030848906839132935,
+    0.05450744704908582
+   ]
+  },
+  "[.3,.4):model_picks_other": {
+   "station_day_stages": 364.0,
+   "second_hit": 0.30316760306371837,
+   "second_price": 0.3331953803057018,
+   "second_hit_minus_price": [
+    -0.030027777241983366,
+    -0.08404956166317476,
+    0.026597353289674604
+   ]
+  },
+  "[.4,.5]:model_picks_m2": {
+   "station_day_stages": 259.0,
+   "second_hit": 0.459009009009009,
+   "second_price": 0.42382391101755296,
+   "second_hit_minus_price": [
+    0.03518509799145598,
+    -0.030281220800611307,
+    0.09722541568011006
+   ]
+  },
+  "[.4,.5]:model_picks_m1": {
+   "station_day_stages": 268.0,
+   "second_hit": 0.45553482587064675,
+   "second_price": 0.42514009721497886,
+   "second_hit_minus_price": [
+    0.03039472865566792,
+    -0.051195885877136436,
+    0.1043688049238655
+   ]
+  },
+  "[.4,.5]:model_picks_other": {
+   "station_day_stages": 45.00000000000002,
+   "second_hit": 0.4553086419753084,
+   "second_price": 0.42453276253340844,
+   "second_hit_minus_price": [
+    0.030775879441900016,
+    -0.09654731005304228,
+    0.15195970980185977
+   ]
+  }
+ },
+ "model_claim_adds_information_lodo_logloss": {
+  "ALL": {
+   "station_day_stages": 1570.2195832896427,
+   "price_only": 0.6152680656483479,
+   "price_plus_model_claim": 0.6170636140419112
+  },
+  "P0": {
+   "station_day_stages": 621.8435699100304,
+   "price_only": 0.6333907650404939,
+   "price_plus_model_claim": 0.6349713323130336
+  },
+  "P0-M": {
+   "station_day_stages": 391.72725147808774,
+   "price_only": 0.6285114648351414,
+   "price_plus_model_claim": 0.6292450291342873
+  },
+  "P1": {
+   "station_day_stages": 556.6487619015247,
+   "price_only": 0.5902451086829824,
+   "price_plus_model_claim": 0.5949304241520462
+  }
+ },
+ "station_split_half": {
+  "split_date": "2026-09-05",
+  "stations": 43,
+  "corr_first_vs_second_half": -0.17878977431603665,
+  "top10_first_half": 0.414846646679365,
+  "same_stations_second_half": 0.2580759106823004
+ },
+ "forward_checks_of_0918_cells": {
+  "near_tie_cell:discovery_to_0916": {
+   "n": 41,
+   "event_days": 20,
+   "hit": 0.5121951219512195,
+   "price": 0.4211048031710323,
+   "hit_minus_price": [
+    0.0910903187801871,
+    -0.06452339959135897,
+    0.22853878351021628
+   ]
+  },
+  "model_top_priced_40_60:discovery_to_0916": {
+   "n": 738,
+   "event_days": 33,
+   "hit": 0.532520325203252,
+   "price": 0.46652420207519796,
+   "hit_minus_price": [
+    0.06599612312805413,
+    0.02874858192806127,
+    0.09887705352604169
+   ]
+  },
+  "near_tie_cell:forward_from_0917": {
+   "n": 17,
+   "event_days": 6,
+   "hit": 0.29411764705882354,
+   "price": 0.41738582235784205,
+   "hit_minus_price": [
+    -0.12326817529901855,
+    -0.3212734904046426,
+    0.01661952151729761
+   ]
+  },
+  "model_top_priced_40_60:forward_from_0917": {
+   "n": 291,
+   "event_days": 8,
+   "hit": 0.4329896907216495,
+   "price": 0.4532194668239349,
+   "hit_minus_price": [
+    -0.020229776102285293,
+    -0.06916611800878447,
+    0.03389836852775018
+   ]
+  }
+ }
+}
