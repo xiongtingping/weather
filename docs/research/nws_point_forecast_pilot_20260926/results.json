@@ -1,0 +1,2457 @@
+{
+ "protocol": "PROTOCOL.md",
+ "feature_counts": {
+  "with_nws": 3726
+ },
+ "decisions": 3726,
+ "event_days": [
+  "2026-08-16",
+  "2026-09-23"
+ ],
+ "by_feature": {
+  "nws": {
+   "all": {
+    "decisions": 3398,
+    "station_days": 373,
+    "days": 38,
+    "median_nws_age_h": 2.45496125,
+    "rmse_nws": 1.4371717839442621,
+    "rmse_p0": 1.2141060393549314,
+    "rmse_market": 1.0788408963638545,
+    "mean_error_nws": -0.34685229817929614,
+    "mean_error_p0": 0.07857776204079617,
+    "mean_error_market": 0.047269768689915094,
+    "corr_d_e": 0.006321485433705265,
+    "corr_d_g": 0.35008520623844214,
+    "k_in_sample": 0.06904398583744242,
+    "rms_market_to_nws": 0.7879263328397976,
+    "rms_market_to_p0": 0.5034007393225649,
+    "disagreement_decisions": 1003,
+    "sign_agrees_with_market": [
+     0.735024879290113,
+     0.6781206900386052,
+     0.7930476232956755
+    ],
+    "nws_closer_than_p0": [
+     0.4669429233672479,
+     0.40900373548589597,
+     0.5307602041951045
+    ],
+    "market_nws_apart_decisions": 1827,
+    "market_closer_than_nws_when_apart": [
+     0.7376396581359814,
+     0.6893946620219238,
+     0.7808279223801087
+    ],
+    "gap_to_market_before": 0.09589724523752392,
+    "centre_component": 0.09615500827089929,
+    "walk_forward": {
+     "share_k_positive": 0.4259974767386847,
+     "d_logscore": [
+      0.001706510000280751,
+      -0.024626815909674592,
+      0.030302441041697478
+     ],
+     "d_brier": [
+      0.0028500805021545615,
+      -0.006025310426373445,
+      0.011350011865603821
+     ],
+     "gap_to_market_after": 0.09760375523780468,
+     "both_lower": false,
+     "both_higher": false,
+     "share_of_centre_recovered": -0.01774748950645372
+    },
+    "k_0.5": {
+     "share_k_positive": 1.0,
+     "d_logscore": [
+      0.029048874999796696,
+      -0.009507491130573056,
+      0.0664655458873352
+     ],
+     "d_brier": [
+      0.012728630484907485,
+      0.00022549647926646714,
+      0.02466163514547537
+     ],
+     "gap_to_market_after": 0.12494612023732059,
+     "both_lower": false,
+     "both_higher": false,
+     "share_of_centre_recovered": -0.30210464875585813
+    },
+    "k_1.0": {
+     "share_k_positive": 1.0,
+     "d_logscore": [
+      0.1746293891376604,
+      0.10362840117042255,
+      0.24458683375011228
+     ],
+     "d_brier": [
+      0.05395982232863202,
+      0.0312202051577503,
+      0.076648670169177
+     ],
+     "gap_to_market_after": 0.2705266343751843,
+     "both_lower": false,
+     "both_higher": true,
+     "share_of_centre_recovered": -1.816123697329148
+    }
+   },
+   "coastal": {
+    "decisions": 956,
+    "station_days": 109,
+    "days": 38,
+    "median_nws_age_h": 3.881245277777778,
+    "rmse_nws": 1.6328117554236163,
+    "rmse_p0": 1.4206726264932004,
+    "rmse_market": 1.1647186785711925,
+    "mean_error_nws": -0.237635622505701,
+    "mean_error_p0": 0.025625086730621888,
+    "mean_error_market": 0.11140500984566508,
+    "corr_d_e": -0.08158121581979265,
+    "corr_d_g": 0.16386699950432604,
+    "k_in_sample": -0.03231509125896351,
+    "rms_market_to_nws": 0.8809729800866867,
+    "rms_market_to_p0": 0.6505624162682583,
+    "disagreement_decisions": 449,
+    "sign_agrees_with_market": [
+     0.6530850003008991,
+     0.5558199250609022,
+     0.7462247841245031
+    ],
+    "nws_closer_than_p0": [
+     0.4319085297126637,
+     0.3299931467593713,
+     0.531110071110071
+    ],
+    "market_nws_apart_decisions": 575,
+    "market_closer_than_nws_when_apart": [
+     0.7980677562138239,
+     0.7078503127969591,
+     0.873931942536359
+    ],
+    "gap_to_market_before": 0.22509985194244084,
+    "centre_component": 0.1839643338685379,
+    "walk_forward": {
+     "share_k_positive": 0.42431192660550465,
+     "d_logscore": [
+      -0.004426816743718454,
+      -0.0488377982851655,
+      0.033273145356183
+     ],
+     "d_brier": [
+      0.005966541228884105,
+      -0.004258806441070139,
+      0.01756912238201872
+     ],
+     "gap_to_market_after": 0.22067303519872242,
+     "both_lower": false,
+     "both_higher": false,
+     "share_of_centre_recovered": 0.024063451053951863
+    },
+    "k_0.5": {
+     "share_k_positive": 1.0,
+     "d_logscore": [
+      0.01614617805426602,
+      -0.04930829583037628,
+      0.07880306542235145
+     ],
+     "d_brier": [
+      0.013293651902133313,
+      -0.006332059843177162,
+      0.03234677160055762
+     ],
+     "gap_to_market_after": 0.2412460299967069,
+     "both_lower": false,
+     "both_higher": false,
+     "share_of_centre_recovered": -0.08776798042714214
+    },
+    "k_1.0": {
+     "share_k_positive": 1.0,
+     "d_logscore": [
+      0.10771489164273976,
+      -0.001617975185859057,
+      0.20467689419938842
+     ],
+     "d_brier": [
+      0.041137669659133826,
+      0.005114569367758012,
+      0.07474832841749368
+     ],
+     "gap_to_market_after": 0.3328147435851807,
+     "both_lower": false,
+     "both_higher": false,
+     "share_of_centre_recovered": -0.5855205157305852
+    }
+   },
+   "other": {
+    "decisions": 2442,
+    "station_days": 264,
+    "days": 38,
+    "median_nws_age_h": 2.1803595833333334,
+    "rmse_nws": 1.3481405682375314,
+    "rmse_p0": 1.1177393285312096,
+    "rmse_market": 1.0413200903920357,
+    "mean_error_nws": -0.39194554684756083,
+    "mean_error_p0": 0.10044079843779995,
+    "mean_error_market": 0.02078968806121531,
+    "corr_d_e": 0.022546150116524007,
+    "corr_d_g": 0.4308938653698583,
+    "k_in_sample": 0.10449496307331958,
+    "rms_market_to_nws": 0.7461325772861802,
+    "rms_market_to_p0": 0.4281326643176461,
+    "disagreement_decisions": 554,
+    "sign_agrees_with_market": [
+     0.7866166549499883,
+     0.7187218352016868,
+     0.8499078233517083
+    ],
+    "nws_closer_than_p0": [
+     0.48900161566828226,
+     0.42093915309508223,
+     0.5573711091265751
+    ],
+    "market_nws_apart_decisions": 1252,
+    "market_closer_than_nws_when_apart": [
+     0.7082511295626048,
+     0.6369848106360883,
+     0.7751144454244037
+    ],
+    "gap_to_market_before": 0.04255222959041808,
+    "centre_component": 0.059900400353692436,
+    "walk_forward": {
+     "share_k_positive": 0.4266934046345811,
+     "d_logscore": [
+      0.004238830512007684,
+      -0.03177883583680172,
+      0.04118107466424515
+     ],
+     "d_brier": [
+      0.0015633599748306175,
+      -0.010557020935002277,
+      0.012904956972935982
+     ],
+     "gap_to_market_after": 0.04679106010242576,
+     "both_lower": false,
+     "both_higher": false,
+     "share_of_centre_recovered": -0.07076464409217233
+    },
+    "k_0.5": {
+     "share_k_positive": 1.0,
+     "d_logscore": [
+      0.03437612487503471,
+      -0.009945228483148568,
+      0.07810648362489986
+     ],
+     "d_brier": [
+      0.012495345127037719,
+      -0.004589757277664192,
+      0.02819067681740175
+     ],
+     "gap_to_market_after": 0.0769283544654528,
+     "both_lower": false,
+     "both_higher": false,
+     "share_of_centre_recovered": -0.5738880653894608
+    },
+    "k_1.0": {
+     "share_k_positive": 1.0,
+     "d_logscore": [
+      0.20225696575488133,
+      0.11117293576532863,
+      0.28994454318941015
+     ],
+     "d_brier": [
+      0.059253817180811165,
+      0.029671189001069284,
+      0.08511199841831331
+     ],
+     "gap_to_market_after": 0.2448091953452995,
+     "both_lower": false,
+     "both_higher": true,
+     "share_of_centre_recovered": -3.3765544897967232
+    }
+   },
+   "by_station": {
+    "KATL": {
+     "decisions": 353,
+     "station_days": 38,
+     "days": 38,
+     "median_nws_age_h": 2.9810069444444443,
+     "rmse_nws": 1.2549890869101814,
+     "rmse_p0": 0.8188795096670736,
+     "rmse_market": 0.8398923430869106,
+     "mean_error_nws": -0.7737314539776388,
+     "mean_error_p0": -0.065058678397882,
+     "mean_error_market": -0.4118898799930902,
+     "corr_d_e": 0.16417074000952098,
+     "corr_d_g": 0.27205072386717893,
+     "k_in_sample": 0.10124801167080331,
+     "rms_market_to_nws": 0.8210281098724848,
+     "rms_market_to_p0": 0.47747046296159457,
+     "disagreement_decisions": 117,
+     "sign_agrees_with_market": [
+      0.9559570863918689,
+      0.8802936194240543,
+      1.0
+     ],
+     "nws_closer_than_p0": [
+      0.41900056465273855,
+      0.24661561264822132,
+      0.5913749294184075
+     ],
+     "market_nws_apart_decisions": 238,
+     "market_closer_than_nws_when_apart": [
+      0.7222222222222222,
+      0.5666666666666667,
+      0.8666666666666667
+     ],
+     "gap_to_market_before": -0.058439589984684605,
+     "centre_component": -0.03683831845077551,
+     "walk_forward": {
+      "share_k_positive": 0.7105263157894736,
+      "d_logscore": [
+       0.06873042525245553,
+       -0.07298739633102826,
+       0.2265128937801248
+      ],
+      "d_brier": [
+       0.0002586014946301984,
+       -0.0628161479240065,
+       0.05736664226862541
+      ],
+      "gap_to_market_after": 0.010290835267770944,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 1.8657318830742846
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.07175415822436546,
+       -0.05558399750627228,
+       0.20305319596621355
+      ],
+      "d_brier": [
+       0.016114188050628357,
+       -0.04745524755651718,
+       0.07919241503872443
+      ],
+      "gap_to_market_after": 0.013314568239680854,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 1.9478130718763822
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.32569106871479636,
+       0.04332225372031473,
+       0.6040252816479362
+      ],
+      "d_brier": [
+       0.07156003551244108,
+       -0.03516555894426433,
+       0.17911061668373424
+      ],
+      "gap_to_market_after": 0.2672514787301118,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 8.841094881950022
+     }
+    },
+    "KAUS": {
+     "decisions": 315,
+     "station_days": 38,
+     "days": 38,
+     "median_nws_age_h": 2.106416388888889,
+     "rmse_nws": 0.9045398990183415,
+     "rmse_p0": 0.8755543302914809,
+     "rmse_market": 0.8269266982379786,
+     "mean_error_nws": 0.008172322317059052,
+     "mean_error_p0": 0.2077116472092518,
+     "mean_error_market": 0.24531293122074774,
+     "corr_d_e": 0.0028177343649440777,
+     "corr_d_g": 0.3465324825965883,
+     "k_in_sample": 0.37450892469672015,
+     "rms_market_to_nws": 0.5078263340889995,
+     "rms_market_to_p0": 0.3967107262726442,
+     "disagreement_decisions": 41,
+     "sign_agrees_with_market": [
+      0.8002754820936638,
+      0.5730027548209367,
+      1.0
+     ],
+     "nws_closer_than_p0": [
+      0.5787878787878789,
+      0.3060606060606061,
+      0.8363636363636363
+     ],
+     "market_nws_apart_decisions": 109,
+     "market_closer_than_nws_when_apart": [
+      0.5045454545454545,
+      0.29920454545454545,
+      0.7090909090909091
+     ],
+     "gap_to_market_before": 0.08767030445287126,
+     "centre_component": 0.09088085086672082,
+     "walk_forward": {
+      "share_k_positive": 0.7105263157894737,
+      "d_logscore": [
+       -0.04689417368599997,
+       -0.24667783762749645,
+       0.12435269927316915
+      ],
+      "d_brier": [
+       -0.010176373198155883,
+       -0.05749617210350267,
+       0.03887080063841449
+      ],
+      "gap_to_market_after": 0.04077613076687126,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 0.515996199846011
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       -0.06178891066293867,
+       -0.20410968760842785,
+       0.04494305939554234
+      ],
+      "d_brier": [
+       -0.014955548782932225,
+       -0.04079471097061659,
+       0.010028293984430173
+      ],
+      "gap_to_market_after": 0.025881393789932566,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 0.6798892183960048
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       -0.023320731018014906,
+       -0.23038304556209055,
+       0.15711680320979446
+      ],
+      "d_brier": [
+       -0.009505059718217614,
+       -0.061730613765897016,
+       0.04647984437108551
+      ],
+      "gap_to_market_after": 0.06434957343485637,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 0.25660775395044844
+     }
+    },
+    "KBKF": {
+     "decisions": 309,
+     "station_days": 37,
+     "days": 37,
+     "median_nws_age_h": 4.604403055555555,
+     "rmse_nws": 1.5879964812743892,
+     "rmse_p0": 1.4009018234486719,
+     "rmse_market": 1.3055084967498785,
+     "mean_error_nws": -0.15808610019136343,
+     "mean_error_p0": 0.022573241654829063,
+     "mean_error_market": 0.23986404793554225,
+     "corr_d_e": -0.05425323877806239,
+     "corr_d_g": 0.05962587333073535,
+     "k_in_sample": -0.1472352809167513,
+     "rms_market_to_nws": 0.7869640114124811,
+     "rms_market_to_p0": 0.48512859979121714,
+     "disagreement_decisions": 107,
+     "sign_agrees_with_market": [
+      0.6376335470085469,
+      0.4671474358974359,
+      0.7973958333333332
+     ],
+     "nws_closer_than_p0": [
+      0.543883547008547,
+      0.3680295138888889,
+      0.7124232104700855
+     ],
+     "market_nws_apart_decisions": 172,
+     "market_closer_than_nws_when_apart": [
+      0.7205128205128205,
+      0.5627564102564102,
+      0.8743589743589744
+     ],
+     "gap_to_market_before": 0.044270267530447764,
+     "centre_component": 0.11914937532020596,
+     "walk_forward": {
+      "share_k_positive": 0.12559618441971382,
+      "d_logscore": [
+       0.0016300355450952226,
+       7.12951037939241e-05,
+       0.0038935972711506926
+      ],
+      "d_brier": [
+       0.0003977979324232785,
+       -4.246586434933148e-05,
+       0.001048706690765955
+      ],
+      "gap_to_market_after": 0.04590030307554299,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.0136806050448407
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.017750926062869356,
+       -0.05927780076504715,
+       0.0926008290718941
+      ],
+      "d_brier": [
+       -0.002264557051567805,
+       -0.028944016791429567,
+       0.022943520906764932
+      ],
+      "gap_to_market_after": 0.062021193593317106,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.1489804374984335
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.11573209984697744,
+       -0.035079522806295775,
+       0.25136968208765786
+      ],
+      "d_brier": [
+       0.013337156434754886,
+       -0.03585148080898716,
+       0.05871347356123797
+      ],
+      "gap_to_market_after": 0.1600023673774252,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.9713194008441519
+     }
+    },
+    "KDAL": {
+     "decisions": 354,
+     "station_days": 38,
+     "days": 38,
+     "median_nws_age_h": 2.316666666666667,
+     "rmse_nws": 1.5797104410210456,
+     "rmse_p0": 1.3143256896846953,
+     "rmse_market": 1.1912969777655011,
+     "mean_error_nws": -0.9049233241054706,
+     "mean_error_p0": 0.36588022900581185,
+     "mean_error_market": 0.047105700931548075,
+     "corr_d_e": 0.1018581708620222,
+     "corr_d_g": 0.30759101883416484,
+     "k_in_sample": 0.2911654963560354,
+     "rms_market_to_nws": 1.0656580414511192,
+     "rms_market_to_p0": 0.46280464747729083,
+     "disagreement_decisions": 80,
+     "sign_agrees_with_market": [
+      0.8695652173913043,
+      0.7391304347826086,
+      1.0
+     ],
+     "nws_closer_than_p0": [
+      0.4782608695652174,
+      0.2608695652173913,
+      0.6956521739130435
+     ],
+     "market_nws_apart_decisions": 303,
+     "market_closer_than_nws_when_apart": [
+      0.7522486772486773,
+      0.6044874338624339,
+      0.8722321428571428
+     ],
+     "gap_to_market_before": 0.08949692086066774,
+     "centre_component": 0.10382528322129968,
+     "walk_forward": {
+      "share_k_positive": 0.6578947368421052,
+      "d_logscore": [
+       -0.006522300910918497,
+       -0.11559183782957708,
+       0.07978489334294218
+      ],
+      "d_brier": [
+       0.018159847965268577,
+       -0.007637560561881979,
+       0.042895766873514804
+      ],
+      "gap_to_market_after": 0.08297461994974924,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 0.06281996743525817
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.03015704150449432,
+       -0.1796382380433382,
+       0.22057138739054868
+      ],
+      "d_brier": [
+       0.041514086351971194,
+       -0.03699997518030679,
+       0.12036203597751353
+      ],
+      "gap_to_market_after": 0.11965396236516207,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.2904595159178688
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.38817113468819037,
+       0.02520685931852493,
+       0.7385714950349254
+      ],
+      "d_brier": [
+       0.17910405321194375,
+       0.05755113091440621,
+       0.29627112135476
+      ],
+      "gap_to_market_after": 0.47766805554885794,
+      "both_lower": false,
+      "both_higher": true,
+      "share_of_centre_recovered": -3.738695649505892
+     }
+    },
+    "KLAX": {
+     "decisions": 335,
+     "station_days": 38,
+     "days": 38,
+     "median_nws_age_h": 3.6890675,
+     "rmse_nws": 1.319891682328818,
+     "rmse_p0": 1.2402682793089328,
+     "rmse_market": 1.0155609133461734,
+     "mean_error_nws": -0.04423360734974781,
+     "mean_error_p0": 0.2803476511905729,
+     "mean_error_market": 0.24062651604921034,
+     "corr_d_e": 0.060258591837967855,
+     "corr_d_g": 0.19544827090191003,
+     "k_in_sample": 0.3405520769150345,
+     "rms_market_to_nws": 0.8138984717542477,
+     "rms_market_to_p0": 0.6055669688632441,
+     "disagreement_decisions": 125,
+     "sign_agrees_with_market": [
+      0.6706029185867896,
+      0.5114223310291858,
+      0.8111559139784947
+     ],
+     "nws_closer_than_p0": [
+      0.44479646697388625,
+      0.28494623655913975,
+      0.6209677419354839
+     ],
+     "market_nws_apart_decisions": 192,
+     "market_closer_than_nws_when_apart": [
+      0.7597727272727274,
+      0.6087544191919192,
+      0.8934469696969696
+     ],
+     "gap_to_market_before": 0.2659719884655289,
+     "centre_component": 0.16811829077959672,
+     "walk_forward": {
+      "share_k_positive": 0.6842105263157895,
+      "d_logscore": [
+       -0.01835219250050171,
+       -0.1486077840384077,
+       0.08543686921225864
+      ],
+      "d_brier": [
+       0.015104641004835008,
+       -0.013311391322253249,
+       0.046929413838534585
+      ],
+      "gap_to_market_after": 0.2476197959650272,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 0.10916237855737798
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       -0.037768061782466326,
+       -0.21723514674003547,
+       0.10532182791202781
+      ],
+      "d_brier": [
+       0.016254057864061238,
+       -0.02123559870889482,
+       0.05378847351087103
+      ],
+      "gap_to_market_after": 0.22820392668306252,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 0.2246517116449889
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.04883839208097682,
+       -0.21332691124937844,
+       0.2729793178418434
+      ],
+      "d_brier": [
+       0.05048448514904576,
+       -0.018087087665731943,
+       0.11599894170135827
+      ],
+      "gap_to_market_after": 0.31481038054650573,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.29050017017484453
+     }
+    },
+    "KLGA": {
+     "decisions": 374,
+     "station_days": 38,
+     "days": 38,
+     "median_nws_age_h": 3.2127123611111115,
+     "rmse_nws": 1.420449746886335,
+     "rmse_p0": 1.0770920414424334,
+     "rmse_market": 0.9889546802421185,
+     "mean_error_nws": -0.5653062557763167,
+     "mean_error_p0": 0.08579845449506228,
+     "mean_error_market": -0.10990128159296816,
+     "corr_d_e": -0.03260776587782999,
+     "corr_d_g": 0.41900119171914674,
+     "k_in_sample": -0.06857953176751101,
+     "rms_market_to_nws": 0.7244291858287017,
+     "rms_market_to_p0": 0.4471922455975225,
+     "disagreement_decisions": 92,
+     "sign_agrees_with_market": [
+      0.8027777777777777,
+      0.6361111111111112,
+      0.9416666666666668
+     ],
+     "nws_closer_than_p0": [
+      0.4774305555555555,
+      0.296875,
+      0.6770833333333334
+     ],
+     "market_nws_apart_decisions": 168,
+     "market_closer_than_nws_when_apart": [
+      0.8234432234432234,
+      0.676923076923077,
+      0.9487179487179487
+     ],
+     "gap_to_market_before": 0.018890077417400016,
+     "centre_component": 0.036575898882329365,
+     "walk_forward": {
+      "share_k_positive": 0.0,
+      "d_logscore": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "d_brier": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "gap_to_market_after": 0.018890077417400016,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 0.0
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.10821313609595355,
+       0.017789736509458365,
+       0.20144570969444128
+      ],
+      "d_brier": [
+       0.04701919291988482,
+       0.004556287452565844,
+       0.09205238550048044
+      ],
+      "gap_to_market_after": 0.12710321351335357,
+      "both_lower": false,
+      "both_higher": true,
+      "share_of_centre_recovered": -2.958591296528156
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.3463729602005077,
+       0.14238945204326764,
+       0.5575433727632059
+      ],
+      "d_brier": [
+       0.12289086395594151,
+       0.034649915260630854,
+       0.20818399946293692
+      ],
+      "gap_to_market_after": 0.36526303761790774,
+      "both_lower": false,
+      "both_higher": true,
+      "share_of_centre_recovered": -9.469978067110423
+     }
+    },
+    "KMIA": {
+     "decisions": 389,
+     "station_days": 38,
+     "days": 38,
+     "median_nws_age_h": 6.895524722222222,
+     "rmse_nws": 1.1295152319965787,
+     "rmse_p0": 1.1008728946922153,
+     "rmse_market": 0.9995446856857151,
+     "mean_error_nws": -0.19220484490092377,
+     "mean_error_p0": -0.0051391695636001595,
+     "mean_error_market": 0.01786830315884173,
+     "corr_d_e": 0.17405627615145597,
+     "corr_d_g": 0.3092039870034484,
+     "k_in_sample": 0.31290811837147015,
+     "rms_market_to_nws": 0.4557887992329933,
+     "rms_market_to_p0": 0.3022029361713754,
+     "disagreement_decisions": 42,
+     "sign_agrees_with_market": [
+      0.75,
+      0.5,
+      1.0
+     ],
+     "nws_closer_than_p0": [
+      0.5833333333333334,
+      0.3333333333333333,
+      0.8333333333333334
+     ],
+     "market_nws_apart_decisions": 85,
+     "market_closer_than_nws_when_apart": [
+      0.5,
+      0.3,
+      0.7
+     ],
+     "gap_to_market_before": 0.1214517116848555,
+     "centre_component": 0.04671627574734443,
+     "walk_forward": {
+      "share_k_positive": 0.7105263157894737,
+      "d_logscore": [
+       0.012122414293181278,
+       -0.011451619943967525,
+       0.03404543750344171
+      ],
+      "d_brier": [
+       0.002120663739646026,
+       -0.00681396920735832,
+       0.01095676308013916
+      ],
+      "gap_to_market_after": 0.13357412597803675,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.259490169095304
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       -0.001290945595190915,
+       -0.056542251915232364,
+       0.046435607432033274
+      ],
+      "d_brier": [
+       -0.01133205123976855,
+       -0.03670318317790151,
+       0.010758398679978149
+      ],
+      "gap_to_market_after": 0.12016076608966456,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 0.027633743797830956
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.025459479300490983,
+       -0.07130084920770309,
+       0.11064462593810678
+      ],
+      "d_brier": [
+       -0.00801930542317118,
+       -0.05533575572524039,
+       0.03667474588631648
+      ],
+      "gap_to_market_after": 0.1469111909853465,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.5449809278073335
+     }
+    },
+    "KORD": {
+     "decisions": 348,
+     "station_days": 37,
+     "days": 37,
+     "median_nws_age_h": 0.6666666666666666,
+     "rmse_nws": 1.429320567444709,
+     "rmse_p0": 1.124897116988201,
+     "rmse_market": 1.0572315592456243,
+     "mean_error_nws": -0.14488333826569083,
+     "mean_error_p0": 0.08896882437573096,
+     "mean_error_market": 0.12569374251331805,
+     "corr_d_e": -0.18517667014263636,
+     "corr_d_g": 0.3565201476764312,
+     "k_in_sample": -0.31243238994633254,
+     "rms_market_to_nws": 0.690719614955749,
+     "rms_market_to_p0": 0.39695467917268934,
+     "disagreement_decisions": 75,
+     "sign_agrees_with_market": [
+      0.6574074074074074,
+      0.46111111111111114,
+      0.8259259259259258
+     ],
+     "nws_closer_than_p0": [
+      0.4166666666666667,
+      0.2351851851851852,
+      0.6074074074074074
+     ],
+     "market_nws_apart_decisions": 177,
+     "market_closer_than_nws_when_apart": [
+      0.8251428571428571,
+      0.6799904761904763,
+      0.9425142857142856
+     ],
+     "gap_to_market_before": -0.006725659868604607,
+     "centre_component": 0.0605702480103857,
+     "walk_forward": {
+      "share_k_positive": 0.05405405405405406,
+      "d_logscore": [
+       0.00043670464730293597,
+       0.0,
+       0.0012871601803609337
+      ],
+      "d_brier": [
+       0.00011417269737412713,
+       0.0,
+       0.00034251809212238144
+      ],
+      "gap_to_market_after": -0.006288955221301672,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.007209887059205289
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.07650871565267611,
+       0.014136645743201883,
+       0.14036062428464624
+      ],
+      "d_brier": [
+       0.010942831542005118,
+       -0.01781594043874277,
+       0.039671031088289385
+      ],
+      "gap_to_market_after": 0.06978305578407151,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -1.2631402077065546
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.2363119625211796,
+       0.09347758740144589,
+       0.3885135570787354
+      ],
+      "d_brier": [
+       0.04379380057212419,
+       -0.009843417589497985,
+       0.10107097163892186
+      ],
+      "gap_to_market_after": 0.22958630265257501,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -3.901452780590568
+     }
+    },
+    "KSEA": {
+     "decisions": 337,
+     "station_days": 37,
+     "days": 37,
+     "median_nws_age_h": 4.6,
+     "rmse_nws": 1.7621524996868285,
+     "rmse_p0": 1.4600572061808095,
+     "rmse_market": 1.1514361955915453,
+     "mean_error_nws": -0.3297478758779073,
+     "mean_error_p0": -0.12507972485820398,
+     "mean_error_market": 0.1044324737153857,
+     "corr_d_e": -0.1496691612565066,
+     "corr_d_g": 0.0756852784131711,
+     "k_in_sample": -0.34923428864158035,
+     "rms_market_to_nws": 0.9535006941249518,
+     "rms_market_to_p0": 0.6423186281039346,
+     "disagreement_decisions": 154,
+     "sign_agrees_with_market": [
+      0.6751498175027586,
+      0.5298750212206095,
+      0.8152638464476699
+     ],
+     "nws_closer_than_p0": [
+      0.47514981750275864,
+      0.3136714731347084,
+      0.6287490132416602
+     ],
+     "market_nws_apart_decisions": 205,
+     "market_closer_than_nws_when_apart": [
+      0.8126959247648904,
+      0.6722570532915361,
+      0.9333855799373041
+     ],
+     "gap_to_market_before": 0.25020085241267415,
+     "centre_component": 0.21814010395040312,
+     "walk_forward": {
+      "share_k_positive": 0.0,
+      "d_logscore": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "d_brier": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "gap_to_market_after": 0.25020085241267415,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 0.0
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.0567414344611312,
+       0.007928504581689222,
+       0.10578633562997611
+      ],
+      "d_brier": [
+       0.014439618335847509,
+       -0.006034629466255843,
+       0.03529693568130492
+      ],
+      "gap_to_market_after": 0.3069422868738053,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.2601146393238725
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.14758504017115787,
+       0.05059278103640106,
+       0.24848097304038244
+      ],
+      "d_brier": [
+       0.04007686879051297,
+       0.0020959941486474514,
+       0.08154137435565104
+      ],
+      "gap_to_market_after": 0.397785892583832,
+      "both_lower": false,
+      "both_higher": true,
+      "share_of_centre_recovered": -0.6765607859282636
+     }
+    },
+    "KSFO": {
+     "decisions": 284,
+     "station_days": 34,
+     "days": 34,
+     "median_nws_age_h": 1.1865091666666667,
+     "rmse_nws": 1.7946820455419918,
+     "rmse_p0": 1.5592834093014722,
+     "rmse_market": 1.324202968367924,
+     "mean_error_nws": -0.3535510107749537,
+     "mean_error_p0": -0.09506254328971868,
+     "mean_error_market": -0.025431266592993322,
+     "corr_d_e": -0.18326348891758817,
+     "corr_d_g": 0.20806226926644356,
+     "k_in_sample": -0.14453832457954724,
+     "rms_market_to_nws": 0.8708504972992951,
+     "rms_market_to_p0": 0.7056909063278404,
+     "disagreement_decisions": 170,
+     "sign_agrees_with_market": [
+      0.6028766676792993,
+      0.4388481541606542,
+      0.75923670445052
+     ],
+     "nws_closer_than_p0": [
+      0.3612100010126326,
+      0.2165753279980254,
+      0.5105172179185337
+     ],
+     "market_nws_apart_decisions": 178,
+     "market_closer_than_nws_when_apart": [
+      0.8222222222222223,
+      0.6888888888888888,
+      0.9555555555555555
+     ],
+     "gap_to_market_before": 0.1521034341402063,
+     "centre_component": 0.16448333811414811,
+     "walk_forward": {
+      "share_k_positive": 0.5955882352941176,
+      "d_logscore": [
+       0.00631942029275746,
+       -0.028272612242638752,
+       0.033695523522072585
+      ],
+      "d_brier": [
+       0.0022463716401363927,
+       -0.011114228942002312,
+       0.014624335647182051
+      ],
+      "gap_to_market_after": 0.15842285443296375,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.03841982030041182
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.03222607884079011,
+       -0.04220375292329948,
+       0.11005267407631639
+      ],
+      "d_brier": [
+       0.008737881766819016,
+       -0.017969487712671327,
+       0.03554326104826356
+      ],
+      "gap_to_market_after": 0.1843295129809964,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.19592305950421463
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.1301299354014316,
+       -0.020094588553147816,
+       0.27906386634924435
+      ],
+      "d_brier": [
+       0.0318456297627314,
+       -0.01867353295492941,
+       0.0811143221028295
+      ],
+      "gap_to_market_after": 0.2822333695416379,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.7911435704881188
+     }
+    },
+    "KHOU": {
+     "decisions": 328,
+     "station_days": 38,
+     "days": 38,
+     "median_nws_age_h": 2.7111706944444443,
+     "rmse_nws": 1.7181650162344928,
+     "rmse_p0": 1.0438585376103275,
+     "rmse_market": 1.1273319897104117,
+     "mean_error_nws": -1.3045476696792486,
+     "mean_error_p0": 0.1562739924814353,
+     "mean_error_market": -0.13558329982147402,
+     "corr_d_e": 0.05627762622245795,
+     "corr_d_g": 0.36928674573697967,
+     "k_in_sample": 0.10942145652281023,
+     "rms_market_to_nws": 1.2993487714761673,
+     "rms_market_to_p0": 0.5699624164011589,
+     "disagreement_decisions": 120,
+     "sign_agrees_with_market": [
+      0.8461538461538461,
+      0.6923076923076923,
+      0.9615384615384616
+     ],
+     "nws_closer_than_p0": [
+      0.2756410256410256,
+      0.1282051282051282,
+      0.44230769230769224
+     ],
+     "market_nws_apart_decisions": 279,
+     "market_closer_than_nws_when_apart": [
+      0.8177609427609427,
+      0.686389941077441,
+      0.9305555555555554
+     ],
+     "gap_to_market_before": -0.07297329625453632,
+     "centre_component": -0.07642442757017576,
+     "walk_forward": {
+      "share_k_positive": 0.6842105263157895,
+      "d_logscore": [
+       -0.006929271264165815,
+       -0.05719163429623897,
+       0.034471410123200735
+      ],
+      "d_brier": [
+       -0.001116623299323249,
+       -0.01735279470477485,
+       0.013908787348753155
+      ],
+      "gap_to_market_after": -0.07990256751870208,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.09066827825178074
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.17644336665168123,
+       -0.017383753703300545,
+       0.37504281128769484
+      ],
+      "d_brier": [
+       0.09325244765074231,
+       -0.0016903219384043788,
+       0.18256265007071706
+      ],
+      "gap_to_market_after": 0.10347007039714491,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 2.308729973667966
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.6007593019003121,
+       0.26865585097359534,
+       0.9361570348518662
+      ],
+      "d_brier": [
+       0.21976487939742795,
+       0.0825958786129777,
+       0.34826865239163657
+      ],
+      "gap_to_market_after": 0.5277860056457758,
+      "both_lower": false,
+      "both_higher": true,
+      "share_of_centre_recovered": 7.860828284891928
+     }
+    }
+   }
+  },
+  "nws_debiased": {
+   "all": {
+    "decisions": 3398,
+    "station_days": 373,
+    "days": 38,
+    "median_nws_age_h": 2.45496125,
+    "rmse_nws": 1.4455047980821132,
+    "rmse_p0": 1.2141060393549314,
+    "rmse_market": 1.0788408963638545,
+    "mean_error_nws": -0.14608338806121268,
+    "mean_error_p0": 0.07857776204079617,
+    "mean_error_market": 0.047269768689915094,
+    "corr_d_e": -0.0993411458541537,
+    "corr_d_g": 0.19008599217343936,
+    "k_in_sample": -0.08465387282941622,
+    "rms_market_to_nws": 0.7607980807239806,
+    "rms_market_to_p0": 0.5034007393225649,
+    "disagreement_decisions": 1003,
+    "sign_agrees_with_market": [
+     0.6694963253003992,
+     0.6072873857195135,
+     0.7341903387136601
+    ],
+    "nws_closer_than_p0": [
+     0.4331051407273966,
+     0.372761037527602,
+     0.4892605752891864
+    ],
+    "market_nws_apart_decisions": 1733,
+    "market_closer_than_nws_when_apart": [
+     0.7386820109293034,
+     0.6949046720415875,
+     0.7850803231231204
+    ],
+    "gap_to_market_before": 0.09589724523752392,
+    "centre_component": 0.09615500827089929,
+    "walk_forward": {
+     "share_k_positive": 0.31948868913070144,
+     "d_logscore": [
+      0.0036459847069906836,
+      -0.021524740202281373,
+      0.031523691699028245
+     ],
+     "d_brier": [
+      0.0013696823862130243,
+      -0.0066863382092029995,
+      0.008803339360029716
+     ],
+     "gap_to_market_after": 0.0995432299445146,
+     "both_lower": false,
+     "both_higher": false,
+     "share_of_centre_recovered": -0.037917782677723645
+    },
+    "k_0.5": {
+     "share_k_positive": 1.0,
+     "d_logscore": [
+      0.03432127601250002,
+      0.0026981303007411364,
+      0.06397813586095083
+     ],
+     "d_brier": [
+      0.009835225224138168,
+      -0.0008259071516728198,
+      0.020368966920682883
+     ],
+     "gap_to_market_after": 0.13021852125002395,
+     "both_lower": false,
+     "both_higher": false,
+     "share_of_centre_recovered": -0.35693695658374924
+    },
+    "k_1.0": {
+     "share_k_positive": 1.0,
+     "d_logscore": [
+      0.16375429823996954,
+      0.10847804883088652,
+      0.22293482779478122
+     ],
+     "d_brier": [
+      0.046146255606629806,
+      0.025627757822975605,
+      0.06659329175347566
+     ],
+     "gap_to_market_after": 0.2596515434774934,
+     "both_lower": false,
+     "both_higher": true,
+     "share_of_centre_recovered": -1.7030241189166297
+    }
+   },
+   "coastal": {
+    "decisions": 956,
+    "station_days": 109,
+    "days": 38,
+    "median_nws_age_h": 3.881245277777778,
+    "rmse_nws": 1.7139525018906745,
+    "rmse_p0": 1.4206726264932004,
+    "rmse_market": 1.1647186785711925,
+    "mean_error_nws": -0.2211607034046008,
+    "mean_error_p0": 0.025625086730621888,
+    "mean_error_market": 0.11140500984566508,
+    "corr_d_e": -0.1528101257835803,
+    "corr_d_g": 0.05728718210066496,
+    "k_in_sample": -0.17301527909519973,
+    "rms_market_to_nws": 0.9861064714722263,
+    "rms_market_to_p0": 0.6505624162682583,
+    "disagreement_decisions": 449,
+    "sign_agrees_with_market": [
+     0.5741805277322487,
+     0.4698101560104269,
+     0.684649917593822
+    ],
+    "nws_closer_than_p0": [
+     0.3923979965379529,
+     0.3008916347818344,
+     0.48640808332433255
+    ],
+    "market_nws_apart_decisions": 649,
+    "market_closer_than_nws_when_apart": [
+     0.7752113526570049,
+     0.6880092241197554,
+     0.8526647458628843
+    ],
+    "gap_to_market_before": 0.22509985194244084,
+    "centre_component": 0.1839643338685379,
+    "walk_forward": {
+     "share_k_positive": 0.2956167176350663,
+     "d_logscore": [
+      0.007274991182404861,
+      -0.027823343057721918,
+      0.036857010628199356
+     ],
+     "d_brier": [
+      0.008277575913640233,
+      -2.1908940483276873e-05,
+      0.017063588813356772
+     ],
+     "gap_to_market_after": 0.23237484312484571,
+     "both_lower": false,
+     "both_higher": false,
+     "share_of_centre_recovered": -0.03954566099537334
+    },
+    "k_0.5": {
+     "share_k_positive": 1.0,
+     "d_logscore": [
+      0.053412757371557026,
+      -0.022224732835305523,
+      0.12003796544256964
+     ],
+     "d_brier": [
+      0.024844470982853244,
+      0.003859370459132179,
+      0.044765693186111295
+     ],
+     "gap_to_market_after": 0.2785126093139979,
+     "both_lower": false,
+     "both_higher": false,
+     "share_of_centre_recovered": -0.2903430042571522
+    },
+    "k_1.0": {
+     "share_k_positive": 1.0,
+     "d_logscore": [
+      0.20567340021369337,
+      0.06623369916377524,
+      0.33442236898833577
+     ],
+     "d_brier": [
+      0.06719751987429178,
+      0.026276428710633837,
+      0.10738310173605387
+     ],
+     "gap_to_market_after": 0.4307732521561343,
+     "both_lower": false,
+     "both_higher": true,
+     "share_of_centre_recovered": -1.1180069304122235
+    }
+   },
+   "other": {
+    "decisions": 2442,
+    "station_days": 264,
+    "days": 38,
+    "median_nws_age_h": 2.1803595833333334,
+    "rmse_nws": 1.318825752893174,
+    "rmse_p0": 1.1177393285312096,
+    "rmse_market": 1.0413200903920357,
+    "mean_error_nws": -0.1150855571050411,
+    "mean_error_p0": 0.10044079843779995,
+    "mean_error_market": 0.02078968806121531,
+    "corr_d_e": -0.058046047052255856,
+    "corr_d_g": 0.31502285761343535,
+    "k_in_sample": -0.030678137390640788,
+    "rms_market_to_nws": 0.6452192085733196,
+    "rms_market_to_p0": 0.4281326643176461,
+    "disagreement_decisions": 554,
+    "sign_agrees_with_market": [
+     0.7295099756210868,
+     0.6656985839772115,
+     0.7942201151593081
+    ],
+    "nws_closer_than_p0": [
+     0.45873556484667594,
+     0.3845920956897781,
+     0.531824748457107
+    ],
+    "market_nws_apart_decisions": 1084,
+    "market_closer_than_nws_when_apart": [
+     0.7205160680160679,
+     0.665928109769222,
+     0.7760097190879698
+    ],
+    "gap_to_market_before": 0.04255222959041808,
+    "centre_component": 0.059900400353692436,
+    "walk_forward": {
+     "share_k_positive": 0.3293449197860962,
+     "d_logscore": [
+      0.002147644912217404,
+      -0.03160156821484841,
+      0.03799251647867522
+     ],
+     "d_brier": [
+      -0.0014824403201868478,
+      -0.01250458531296569,
+      0.009166613223296712
+     ],
+     "gap_to_market_after": 0.04469987450263548,
+     "both_lower": false,
+     "both_higher": false,
+     "share_of_centre_recovered": -0.035853598632667835
+    },
+    "k_0.5": {
+     "share_k_positive": 1.0,
+     "d_logscore": [
+      0.026438808330162076,
+      -0.00649484828900865,
+      0.056980714178353264
+     ],
+     "d_brier": [
+      0.003638226028305043,
+      -0.009168647320208289,
+      0.015249186776561873
+     ],
+     "gap_to_market_after": 0.06899103792058016,
+     "both_lower": false,
+     "both_higher": false,
+     "share_of_centre_recovered": -0.44137949285897077
+    },
+    "k_1.0": {
+     "share_k_positive": 1.0,
+     "d_logscore": [
+      0.146446790228091,
+      0.08568769789845719,
+      0.2108702244852417
+     ],
+     "d_brier": [
+      0.037454635132481484,
+      0.014721292336341816,
+      0.06107031130523022
+     ],
+     "gap_to_market_after": 0.1889990198185091,
+     "both_lower": false,
+     "both_higher": true,
+     "share_of_centre_recovered": -2.444838254224851
+    }
+   },
+   "by_station": {
+    "KATL": {
+     "decisions": 353,
+     "station_days": 38,
+     "days": 38,
+     "median_nws_age_h": 2.9810069444444443,
+     "rmse_nws": 1.0365773087867804,
+     "rmse_p0": 0.8188795096670736,
+     "rmse_market": 0.8398923430869106,
+     "mean_error_nws": -0.5539361224450189,
+     "mean_error_p0": -0.065058678397882,
+     "mean_error_market": -0.4118898799930902,
+     "corr_d_e": 0.24638115784411257,
+     "corr_d_g": 0.3522735458172821,
+     "k_in_sample": 0.2135377751062879,
+     "rms_market_to_nws": 0.6358013631174569,
+     "rms_market_to_p0": 0.47747046296159457,
+     "disagreement_decisions": 117,
+     "sign_agrees_with_market": [
+      0.9342179559570863,
+      0.8528797289666854,
+      1.0
+     ],
+     "nws_closer_than_p0": [
+      0.4450875211744777,
+      0.26030491247882553,
+      0.6304347826086957
+     ],
+     "market_nws_apart_decisions": 126,
+     "market_closer_than_nws_when_apart": [
+      0.7011494252873562,
+      0.5402298850574713,
+      0.8620689655172413
+     ],
+     "gap_to_market_before": -0.058439589984684605,
+     "centre_component": -0.03683831845077551,
+     "walk_forward": {
+      "share_k_positive": 0.7105263157894736,
+      "d_logscore": [
+       0.03547103656454825,
+       -0.08670605937797346,
+       0.17933565156464942
+      ],
+      "d_brier": [
+       -0.00925421086406015,
+       -0.07121064248073092,
+       0.04430512892990559
+      ],
+      "gap_to_market_after": -0.022968553420136345,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 0.9628842481489959
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.004751493804273097,
+       -0.09939419522936552,
+       0.10709507588709108
+      ],
+      "d_brier": [
+       -0.012490352452361199,
+       -0.06436853462553621,
+       0.03883197631146123
+      ],
+      "gap_to_market_after": -0.05368809618041149,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 0.1289823749860409
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.14388175942071382,
+       -0.06889418954604544,
+       0.39806044366722854
+      ],
+      "d_brier": [
+       0.016385850384602232,
+       -0.07798958088595939,
+       0.1047240564688268
+      ],
+      "gap_to_market_after": 0.08544216943602922,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 3.905763494959007
+     }
+    },
+    "KAUS": {
+     "decisions": 315,
+     "station_days": 38,
+     "days": 38,
+     "median_nws_age_h": 2.106416388888889,
+     "rmse_nws": 0.9272610702499744,
+     "rmse_p0": 0.8755543302914809,
+     "rmse_market": 0.8269266982379786,
+     "mean_error_nws": -0.1390836514297859,
+     "mean_error_p0": 0.2077116472092518,
+     "mean_error_market": 0.24531293122074774,
+     "corr_d_e": 0.0263606054075278,
+     "corr_d_g": 0.3153743176530992,
+     "k_in_sample": 0.35423386638192533,
+     "rms_market_to_nws": 0.6210747751507311,
+     "rms_market_to_p0": 0.3967107262726442,
+     "disagreement_decisions": 41,
+     "sign_agrees_with_market": [
+      0.7851239669421488,
+      0.5371900826446282,
+      1.0
+     ],
+     "nws_closer_than_p0": [
+      0.5801652892561984,
+      0.29090909090909095,
+      0.8363636363636363
+     ],
+     "market_nws_apart_decisions": 166,
+     "market_closer_than_nws_when_apart": [
+      0.3878787878787878,
+      0.21333333333333332,
+      0.5866666666666666
+     ],
+     "gap_to_market_before": 0.08767030445287126,
+     "centre_component": 0.09088085086672082,
+     "walk_forward": {
+      "share_k_positive": 0.7105263157894737,
+      "d_logscore": [
+       -0.034949656389603075,
+       -0.2787824248036941,
+       0.1759695584031583
+      ],
+      "d_brier": [
+       -0.004610916301643964,
+       -0.06756822112449423,
+       0.055490614831273356
+      ],
+      "gap_to_market_after": 0.05272064806326817,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 0.3845656819483093
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       -0.06816194039912907,
+       -0.24119479580632544,
+       0.06645945501715697
+      ],
+      "d_brier": [
+       -0.01646989130936599,
+       -0.05377831430106478,
+       0.01766661852280795
+      ],
+      "gap_to_market_after": 0.019508364053742174,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 0.7500143291911998
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.005578817701405126,
+       -0.26373316860618706,
+       0.24938933984565834
+      ],
+      "d_brier": [
+       -0.000841211681542584,
+       -0.07189946825332225,
+       0.06881474340922224
+      ],
+      "gap_to_market_after": 0.09324912215427641,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.06138606371089813
+     }
+    },
+    "KBKF": {
+     "decisions": 309,
+     "station_days": 37,
+     "days": 37,
+     "median_nws_age_h": 4.604403055555555,
+     "rmse_nws": 1.5979657189866208,
+     "rmse_p0": 1.4009018234486719,
+     "rmse_market": 1.3055084967498785,
+     "mean_error_nws": 0.0011399532100776278,
+     "mean_error_p0": 0.022573241654829063,
+     "mean_error_market": 0.23986404793554225,
+     "corr_d_e": -0.08448619516781773,
+     "corr_d_g": 0.06866229087773636,
+     "k_in_sample": -0.23522223991773156,
+     "rms_market_to_nws": 0.7234039503927352,
+     "rms_market_to_p0": 0.48512859979121714,
+     "disagreement_decisions": 107,
+     "sign_agrees_with_market": [
+      0.6526442307692307,
+      0.48944644764957257,
+      0.8122796474358972
+     ],
+     "nws_closer_than_p0": [
+      0.48250534188034183,
+      0.30207999465811963,
+      0.652680956196581
+     ],
+     "market_nws_apart_decisions": 172,
+     "market_closer_than_nws_when_apart": [
+      0.7273333333333334,
+      0.5613,
+      0.8733333333333333
+     ],
+     "gap_to_market_before": 0.044270267530447764,
+     "centre_component": 0.11914937532020596,
+     "walk_forward": {
+      "share_k_positive": 0.1066772655007949,
+      "d_logscore": [
+       0.0012436854085192122,
+       6.248619330252703e-05,
+       0.0028799825167674913
+      ],
+      "d_brier": [
+       0.00027057344364571904,
+       -6.445031831941108e-05,
+       0.000731264368034231
+      ],
+      "gap_to_market_after": 0.04551395293896698,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.010438035492648549
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.021165936883184407,
+       -0.05457083374281808,
+       0.09455003744785834
+      ],
+      "d_brier": [
+       -0.006522613738005862,
+       -0.03435524556016025,
+       0.020361200722415946
+      ],
+      "gap_to_market_after": 0.06543620441363215,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.1776420298159546
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.1233864757104291,
+       -0.021079959072963703,
+       0.27405036168673114
+      ],
+      "d_brier": [
+       0.006742441607479835,
+       -0.048526827384632966,
+       0.05663378017777578
+      ],
+      "gap_to_market_after": 0.16765674324087684,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -1.0355612472061746
+     }
+    },
+    "KDAL": {
+     "decisions": 354,
+     "station_days": 38,
+     "days": 38,
+     "median_nws_age_h": 2.316666666666667,
+     "rmse_nws": 1.5478419478426988,
+     "rmse_p0": 1.3143256896846953,
+     "rmse_market": 1.1912969777655011,
+     "mean_error_nws": -0.13992473195557728,
+     "mean_error_p0": 0.36588022900581185,
+     "mean_error_market": 0.047105700931548075,
+     "corr_d_e": -0.17348445719063524,
+     "corr_d_g": 0.23996113282389042,
+     "k_in_sample": 0.030193867486749352,
+     "rms_market_to_nws": 0.6756531584839983,
+     "rms_market_to_p0": 0.46280464747729083,
+     "disagreement_decisions": 80,
+     "sign_agrees_with_market": [
+      0.7485507246376811,
+      0.6014130434782607,
+      0.8876811594202898
+     ],
+     "nws_closer_than_p0": [
+      0.43695652173913047,
+      0.27244565217391303,
+      0.612336956521739
+     ],
+     "market_nws_apart_decisions": 155,
+     "market_closer_than_nws_when_apart": [
+      0.8110260770975056,
+      0.6668934240362813,
+      0.9282901077097506
+     ],
+     "gap_to_market_before": 0.08949692086066774,
+     "centre_component": 0.10382528322129968,
+     "walk_forward": {
+      "share_k_positive": 0.0,
+      "d_logscore": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "d_brier": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "gap_to_market_after": 0.08949692086066774,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 0.0
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.0068218080186636405,
+       -0.12044983085786708,
+       0.11170210113414618
+      ],
+      "d_brier": [
+       0.0053153737134246535,
+       -0.038611282346404104,
+       0.05074382225532139
+      ],
+      "gap_to_market_after": 0.09631872887933138,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.06570468971534817
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.1493961636519966,
+       -0.053243052439299506,
+       0.3499942518924606
+      ],
+      "d_brier": [
+       0.07013105392329975,
+       -0.001405627938361436,
+       0.14906471295892185
+      ],
+      "gap_to_market_after": 0.23889308451266436,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -1.4389189127812378
+     }
+    },
+    "KLAX": {
+     "decisions": 335,
+     "station_days": 38,
+     "days": 38,
+     "median_nws_age_h": 3.6890675,
+     "rmse_nws": 1.3809757605383441,
+     "rmse_p0": 1.2402682793089328,
+     "rmse_market": 1.0155609133461734,
+     "mean_error_nws": 0.0028404661216479233,
+     "mean_error_p0": 0.2803476511905729,
+     "mean_error_market": 0.24062651604921034,
+     "corr_d_e": 0.005036316022179759,
+     "corr_d_g": 0.11341108331000338,
+     "k_in_sample": 0.23091200090428457,
+     "rms_market_to_nws": 0.8941161096646385,
+     "rms_market_to_p0": 0.6055669688632441,
+     "disagreement_decisions": 125,
+     "sign_agrees_with_market": [
+      0.6342741935483871,
+      0.475,
+      0.7826612903225806
+     ],
+     "nws_closer_than_p0": [
+      0.39233870967741935,
+      0.22900201612903226,
+      0.5588709677419355
+     ],
+     "market_nws_apart_decisions": 207,
+     "market_closer_than_nws_when_apart": [
+      0.7440860215053762,
+      0.5806451612903226,
+      0.8811895161290323
+     ],
+     "gap_to_market_before": 0.2659719884655289,
+     "centre_component": 0.16811829077959672,
+     "walk_forward": {
+      "share_k_positive": 0.6842105263157895,
+      "d_logscore": [
+       0.0027680326869174115,
+       -0.09074310946283673,
+       0.07517822955945458
+      ],
+      "d_brier": [
+       0.019424654085106133,
+       -0.002106622007470413,
+       0.04255095662688759
+      ],
+      "gap_to_market_after": 0.26874002115244633,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.01646479198712731
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       -0.008742818553913857,
+       -0.1790015218775242,
+       0.13629914672803795
+      ],
+      "d_brier": [
+       0.02908366346823053,
+       -0.010176453108369246,
+       0.0724709530946043
+      ],
+      "gap_to_market_after": 0.257229169911615,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 0.052003970022368035
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.1219080622187632,
+       -0.15171196057805134,
+       0.3695760154034155
+      ],
+      "d_brier": [
+       0.0784739827451623,
+       0.008830005869414955,
+       0.1474839687791674
+      ],
+      "gap_to_market_after": 0.3878800506842921,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.725132653047162
+     }
+    },
+    "KLGA": {
+     "decisions": 374,
+     "station_days": 38,
+     "days": 38,
+     "median_nws_age_h": 3.2127123611111115,
+     "rmse_nws": 1.3855865293100886,
+     "rmse_p0": 1.0770920414424334,
+     "rmse_market": 0.9889546802421185,
+     "mean_error_nws": 0.032607735182398546,
+     "mean_error_p0": 0.08579845449506228,
+     "mean_error_market": -0.10990128159296816,
+     "corr_d_e": -0.0585411531862507,
+     "corr_d_g": 0.2908508822247421,
+     "k_in_sample": -0.27488761713536985,
+     "rms_market_to_nws": 0.7288536770110161,
+     "rms_market_to_p0": 0.4471922455975225,
+     "disagreement_decisions": 92,
+     "sign_agrees_with_market": [
+      0.5616809116809116,
+      0.37756076388888893,
+      0.7265331196581195
+     ],
+     "nws_closer_than_p0": [
+      0.37556980056980055,
+      0.21294515669515668,
+      0.545500356125356
+     ],
+     "market_nws_apart_decisions": 211,
+     "market_closer_than_nws_when_apart": [
+      0.8614980449657869,
+      0.7412634408602151,
+      0.9589442815249266
+     ],
+     "gap_to_market_before": 0.018890077417400016,
+     "centre_component": 0.036575898882329365,
+     "walk_forward": {
+      "share_k_positive": 0.0,
+      "d_logscore": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "d_brier": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "gap_to_market_after": 0.018890077417400016,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 0.0
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.11925508077085006,
+       0.07668967794995488,
+       0.1649438931806757
+      ],
+      "d_brier": [
+       0.04663855377136224,
+       0.02250352632432358,
+       0.07318965958898675
+      ],
+      "gap_to_market_after": 0.13814515818825007,
+      "both_lower": false,
+      "both_higher": true,
+      "share_of_centre_recovered": -3.2604825695333726
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.29085899054759584,
+       0.19685198058743408,
+       0.3966175672290463
+      ],
+      "d_brier": [
+       0.11424703818192572,
+       0.06717526588251854,
+       0.16718416669517208
+      ],
+      "gap_to_market_after": 0.3097490679649959,
+      "both_lower": false,
+      "both_higher": true,
+      "share_of_centre_recovered": -7.95220348468637
+     }
+    },
+    "KMIA": {
+     "decisions": 389,
+     "station_days": 38,
+     "days": 38,
+     "median_nws_age_h": 6.895524722222222,
+     "rmse_nws": 1.1303483450592509,
+     "rmse_p0": 1.1008728946922153,
+     "rmse_market": 0.9995446856857151,
+     "mean_error_nws": -0.059147395670864154,
+     "mean_error_p0": -0.0051391695636001595,
+     "mean_error_market": 0.01786830315884173,
+     "corr_d_e": 0.134492126497088,
+     "corr_d_g": 0.2892192701778184,
+     "k_in_sample": 0.3046505550603905,
+     "rms_market_to_nws": 0.44020147225119866,
+     "rms_market_to_p0": 0.3022029361713754,
+     "disagreement_decisions": 42,
+     "sign_agrees_with_market": [
+      0.6666666666666666,
+      0.4166666666666667,
+      0.9166666666666666
+     ],
+     "nws_closer_than_p0": [
+      0.6666666666666666,
+      0.4166666666666667,
+      0.9166666666666666
+     ],
+     "market_nws_apart_decisions": 91,
+     "market_closer_than_nws_when_apart": [
+      0.6086956521739131,
+      0.43478260869565216,
+      0.782608695652174
+     ],
+     "gap_to_market_before": 0.1214517116848555,
+     "centre_component": 0.04671627574734443,
+     "walk_forward": {
+      "share_k_positive": 0.7105263157894737,
+      "d_logscore": [
+       0.01276875253738957,
+       -0.0071032275852781854,
+       0.0323792794602076
+      ],
+      "d_brier": [
+       0.0032010656197669902,
+       -0.004238881710709742,
+       0.010782554971367856
+      ],
+      "gap_to_market_after": 0.13422046422224504,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.2733255665851184
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.002990557591611205,
+       -0.05299992813397864,
+       0.050313888344492394
+      ],
+      "d_brier": [
+       -0.007611849895482385,
+       -0.03427954288772613,
+       0.0152568361840975
+      ],
+      "gap_to_market_after": 0.12444226927646669,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.06401532536080196
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.034124184107177685,
+       -0.06590614793731916,
+       0.12031048928178169
+      ],
+      "d_brier": [
+       -0.0005786914573206144,
+       -0.04960989835013809,
+       0.04510412963780989
+      ],
+      "gap_to_market_after": 0.15557589579203315,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.7304560040644386
+     }
+    },
+    "KORD": {
+     "decisions": 348,
+     "station_days": 37,
+     "days": 37,
+     "median_nws_age_h": 0.6666666666666666,
+     "rmse_nws": 1.4579258988976276,
+     "rmse_p0": 1.124897116988201,
+     "rmse_market": 1.0572315592456243,
+     "mean_error_nws": 0.06042251285439153,
+     "mean_error_p0": 0.08896882437573096,
+     "mean_error_market": 0.12569374251331805,
+     "corr_d_e": -0.22956365255686725,
+     "corr_d_g": 0.3398111274374133,
+     "k_in_sample": -0.4942287936070434,
+     "rms_market_to_nws": 0.6498664255220299,
+     "rms_market_to_p0": 0.39695467917268934,
+     "disagreement_decisions": 75,
+     "sign_agrees_with_market": [
+      0.7777777777777778,
+      0.6370370370370371,
+      0.9037037037037037
+     ],
+     "nws_closer_than_p0": [
+      0.3703703703703704,
+      0.2074074074074074,
+      0.548148148148148
+     ],
+     "market_nws_apart_decisions": 163,
+     "market_closer_than_nws_when_apart": [
+      0.9027777777777777,
+      0.8020833333333334,
+      0.9757812499999996
+     ],
+     "gap_to_market_before": -0.006725659868604607,
+     "centre_component": 0.0605702480103857,
+     "walk_forward": {
+      "share_k_positive": 0.05405405405405406,
+      "d_logscore": [
+       0.0004307257740935562,
+       0.0,
+       0.0012009731004455034
+      ],
+      "d_brier": [
+       0.00010429396760517772,
+       0.0,
+       0.0003004849287705052
+      ],
+      "gap_to_market_after": -0.006294934094511054,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.007111177322894542
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.10004702007045255,
+       0.04520559334591627,
+       0.15387886819538793
+      ],
+      "d_brier": [
+       0.01668428903596783,
+       -0.009076448030926672,
+       0.041031403326792816
+      ],
+      "gap_to_market_after": 0.09332136020184795,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -1.6517518642700282
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.28083070899006407,
+       0.1501765104361028,
+       0.42388834253948887
+      ],
+      "d_brier": [
+       0.05576972540977579,
+       0.010017432358202068,
+       0.10203514714780157
+      ],
+      "gap_to_market_after": 0.2741050491214595,
+      "both_lower": false,
+      "both_higher": true,
+      "share_of_centre_recovered": -4.636446410817261
+     }
+    },
+    "KSEA": {
+     "decisions": 337,
+     "station_days": 37,
+     "days": 37,
+     "median_nws_age_h": 4.6,
+     "rmse_nws": 1.7939198815273216,
+     "rmse_p0": 1.4600572061808095,
+     "rmse_market": 1.1514361955915453,
+     "mean_error_nws": -0.435320330145255,
+     "mean_error_p0": -0.12507972485820398,
+     "mean_error_market": 0.1044324737153857,
+     "corr_d_e": -0.1324637683998247,
+     "corr_d_g": 0.0681465598854664,
+     "k_in_sample": -0.334100787473809,
+     "rms_market_to_nws": 1.0343949244794528,
+     "rms_market_to_p0": 0.6423186281039346,
+     "disagreement_decisions": 154,
+     "sign_agrees_with_market": [
+      0.6155793226381462,
+      0.4499809863339275,
+      0.7728872549019606
+     ],
+     "nws_closer_than_p0": [
+      0.5489126559714795,
+      0.3844711824123589,
+      0.7111192810457515
+     ],
+     "market_nws_apart_decisions": 215,
+     "market_closer_than_nws_when_apart": [
+      0.7528703703703704,
+      0.6102777777777778,
+      0.8825092592592593
+     ],
+     "gap_to_market_before": 0.25020085241267415,
+     "centre_component": 0.21814010395040312,
+     "walk_forward": {
+      "share_k_positive": 0.02702702702702703,
+      "d_logscore": [
+       0.00016115523255631444,
+       0.0,
+       0.0004834656976689434
+      ],
+      "d_brier": [
+       6.850372899784011e-05,
+       0.0,
+       0.00020551118699352032
+      ],
+      "gap_to_market_after": 0.2503620076452305,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.0007387693947050292
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.06319052250270325,
+       0.00560902974169868,
+       0.12226815741619063
+      ],
+      "d_brier": [
+       0.012926459346471597,
+       -0.011055514590822919,
+       0.038096392174251696
+      ],
+      "gap_to_market_after": 0.3133913749153774,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.28967861185704025
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.1863784026316226,
+       0.05218389470771552,
+       0.3253527877980509
+      ],
+      "d_brier": [
+       0.04063433250932965,
+       -0.007068364793757476,
+       0.08754216837629641
+      ],
+      "gap_to_market_after": 0.43657925504429673,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": -0.8543976978850164
+     }
+    },
+    "KSFO": {
+     "decisions": 284,
+     "station_days": 34,
+     "days": 34,
+     "median_nws_age_h": 1.1865091666666667,
+     "rmse_nws": 1.945288021222757,
+     "rmse_p0": 1.5592834093014722,
+     "rmse_market": 1.324202968367924,
+     "mean_error_nws": -0.23845888730440226,
+     "mean_error_p0": -0.09506254328971868,
+     "mean_error_market": -0.025431266592993322,
+     "corr_d_e": -0.3571800451233709,
+     "corr_d_g": -0.01405644060236103,
+     "k_in_sample": -0.4460931995741594,
+     "rms_market_to_nws": 1.0293401339481594,
+     "rms_market_to_p0": 0.7056909063278404,
+     "disagreement_decisions": 170,
+     "sign_agrees_with_market": [
+      0.4448110490873649,
+      0.2796428413204729,
+      0.6200069895382395
+     ],
+     "nws_closer_than_p0": [
+      0.1968312511075669,
+      0.10442654932786513,
+      0.30777010787701564
+     ],
+     "market_nws_apart_decisions": 227,
+     "market_closer_than_nws_when_apart": [
+      0.8279569892473119,
+      0.6881720430107527,
+      0.9462365591397849
+     ],
+     "gap_to_market_before": 0.1521034341402063,
+     "centre_component": 0.16448333811414811,
+     "walk_forward": {
+      "share_k_positive": 0.15359477124183005,
+      "d_logscore": [
+       0.02005370744631426,
+       0.003896848828767731,
+       0.04137902964355079
+      ],
+      "d_brier": [
+       0.00475247886411272,
+       0.0004845024675194738,
+       0.009948377594743497
+      ],
+      "gap_to_market_after": 0.17215714158652054,
+      "both_lower": false,
+      "both_higher": true,
+      "share_of_centre_recovered": -0.12191938512578929
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.11224024488083598,
+       0.029834723251050372,
+       0.1854157214163635
+      ],
+      "d_brier": [
+       0.03307615086819985,
+       0.004139048702927692,
+       0.061986641478773544
+      ],
+      "gap_to_market_after": 0.2643436790210423,
+      "both_lower": false,
+      "both_higher": true,
+      "share_of_centre_recovered": -0.6823806360431688
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.32029098122381,
+       0.16368216469116667,
+       0.49277761973646267
+      ],
+      "d_brier": [
+       0.0835014123275423,
+       0.032493242442052636,
+       0.13740540821032068
+      ],
+      "gap_to_market_after": 0.4723944153640163,
+      "both_lower": false,
+      "both_higher": true,
+      "share_of_centre_recovered": -1.947254870286828
+     }
+    },
+    "KHOU": {
+     "decisions": 328,
+     "station_days": 38,
+     "days": 38,
+     "median_nws_age_h": 2.7111706944444443,
+     "rmse_nws": 1.4805985206352141,
+     "rmse_p0": 1.0438585376103275,
+     "rmse_market": 1.1273319897104117,
+     "mean_error_nws": -0.28631115899014925,
+     "mean_error_p0": 0.1562739924814353,
+     "mean_error_market": -0.13558329982147402,
+     "corr_d_e": -0.06593965541684894,
+     "corr_d_g": 0.4089907055098212,
+     "k_in_sample": 0.01450978619965492,
+     "rms_market_to_nws": 0.8736924048269674,
+     "rms_market_to_p0": 0.5699624164011589,
+     "disagreement_decisions": 120,
+     "sign_agrees_with_market": [
+      0.7344350150524239,
+      0.5752950469739437,
+      0.8769514624208449
+     ],
+     "nws_closer_than_p0": [
+      0.2946576871172013,
+      0.15384615384615385,
+      0.4564365332710474
+     ],
+     "market_nws_apart_decisions": 170,
+     "market_closer_than_nws_when_apart": [
+      0.7904761904761906,
+      0.6476190476190476,
+      0.9166666666666666
+     ],
+     "gap_to_market_before": -0.07297329625453632,
+     "centre_component": -0.07642442757017576,
+     "walk_forward": {
+      "share_k_positive": 0.6504865103936311,
+      "d_logscore": [
+       0.00028026392226614843,
+       -0.0016353219519010646,
+       0.002021340195719628
+      ],
+      "d_brier": [
+       -0.00020554216621523498,
+       -0.0009044315814344733,
+       0.00030858336537836485
+      ],
+      "gap_to_market_after": -0.07269303233227016,
+      "both_lower": false,
+      "both_higher": false,
+      "share_of_centre_recovered": 0.003667203421429704
+     },
+     "k_0.5": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.14173594720964863,
+       0.031097578522660103,
+       0.24869575706371594
+      ],
+      "d_brier": [
+       0.07406423996121089,
+       0.0142657429295026,
+       0.1409206588078407
+      ],
+      "gap_to_market_after": 0.06876265095511232,
+      "both_lower": false,
+      "both_higher": true,
+      "share_of_centre_recovered": 1.8545895823622807
+     },
+     "k_1.0": {
+      "share_k_positive": 1.0,
+      "d_logscore": [
+       0.36350997639105853,
+       0.18295247654060065,
+       0.5795827028956273
+      ],
+      "d_brier": [
+       0.14942476803312874,
+       0.059981464707345715,
+       0.24590492335283382
+      ],
+      "gap_to_market_after": 0.2905366801365222,
+      "both_lower": false,
+      "both_higher": true,
+      "share_of_centre_recovered": 4.756463187863201
+     }
+    }
+   }
+  }
+ }
+}

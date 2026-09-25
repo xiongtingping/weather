@@ -1,0 +1,45 @@
+{
+ "source": "IEM AFOS archive of NWS PFM (aggregator_republisher)",
+ "window": [
+  "2026-08-11",
+  "2026-09-25"
+ ],
+ "blocks_kept": 3408,
+ "counts": {
+  "KATL:products": 245,
+  "KATL:used": 245,
+  "KAUS:products": 212,
+  "KAUS:used": 212,
+  "KBKF:products": 107,
+  "KBKF:used": 107,
+  "KDAL:products": 339,
+  "KDAL:used": 339,
+  "KHOU:products": 277,
+  "KHOU:used": 277,
+  "KLAX:products": 244,
+  "KLAX:used": 244,
+  "KLGA:products": 185,
+  "KLGA:used": 185,
+  "KMIA:products": 92,
+  "KMIA:used": 92,
+  "KORD:products": 1329,
+  "KORD:used": 1329,
+  "KSEA:products": 109,
+  "KSEA:used": 109,
+  "KSFO:products": 269,
+  "KSFO:used": 269
+ },
+ "point_names": {
+  "KATL|Atlanta-Fulton GA": 245,
+  "KAUS|Austin Bergstrom-Travis TX": 212,
+  "KBKF|Buckley AFB-Arapahoe CO": 107,
+  "KDAL|Dallas Love Field-Dallas TX": 339,
+  "KHOU|Bush Intercontinental Airport-Inland Harris TX": 277,
+  "KLAX|Los Angeles Airport CA": 244,
+  "KLGA|LaGuardia Airport-Queens NY": 185,
+  "KMIA|Miami-Miami Dade FL": 92,
+  "KORD|Chicago O'Hare International Airport-Cook IL": 1329,
+  "KSEA|Seattle-King WA": 109,
+  "KSFO|San Francisco Airport-San Mateo CA": 269
+ }
+}
