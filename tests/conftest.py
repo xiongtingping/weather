@@ -174,8 +174,8 @@ def _no_test_launches_the_residents_scripts(monkeypatch: pytest.MonkeyPatch) -> 
     270s to 547s.
 
     Only the worker module's ``subprocess`` is replaced, by a forwarding
-    namespace whose ``run`` refuses a command that names a file under
-    ``scripts/``; the global module is untouched, so every test that runs a
+    namespace whose ``run`` and ``Popen`` refuse a command that names a file
+    under ``scripts/``; the global module is untouched, so every test that runs a
     CLI still can, and a worker test that stubs
     ``production_worker.subprocess.run`` stubs it on this namespace and wins.
     """
@@ -201,10 +201,47 @@ def _no_test_launches_the_residents_scripts(monkeypatch: pytest.MonkeyPatch) -> 
             )
         return real_run(args, *pargs, **kwargs)
 
+    real_popen = subprocess.Popen
+
+    class _RefusedPopen:
+        """What a refused launch looks like to a ``Popen`` caller: it ran
+        nothing and exited 97, and nothing is left for a deadline to kill."""
+
+        def __init__(self, args) -> None:
+            self.args = args
+            self.pid = -1
+            self.returncode = 97
+
+        def communicate(self, input=None, timeout=None):  # noqa: A002
+            return "", "test_suite_may_not_launch_resident_scripts"
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+        def poll(self):
+            return self.returncode
+
+        def kill(self) -> None:
+            return None
+
+        terminate = kill
+
+    def refuse_scripts_popen(args, *pargs, **kwargs):
+        # 2026-09-24: the identity pass moved to ``Popen`` (its deadline has
+        # to kill the script's whole process group), and a worker test whose
+        # fake still sat on ``subprocess.run`` launched the real
+        # ``pr12_awc_observation_sweep.sh`` against the live stores until it
+        # was killed.  Both entry points are guarded now.
+        parts = [args] if isinstance(args, (str, bytes, Path)) else list(args or ())
+        if any(str(part).startswith(scripts) for part in parts):
+            return _RefusedPopen(args)
+        return real_popen(args, *pargs, **kwargs)
+
     guarded = types.SimpleNamespace(
         **{name: getattr(subprocess, name) for name in dir(subprocess) if not name.startswith("__")}
     )
     guarded.run = refuse_scripts
+    guarded.Popen = refuse_scripts_popen
     monkeypatch.setattr(production_worker, "subprocess", guarded)
 
 

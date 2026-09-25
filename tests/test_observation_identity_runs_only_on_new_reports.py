@@ -35,7 +35,7 @@ def _worker(monkeypatch) -> tuple[pw.TargetProductionWorker, sqlite3.Connection,
         runs.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
-    monkeypatch.setattr(pw.subprocess, "run", staged)
+    monkeypatch.setattr(pw, "run_script_group_bounded", staged)
     monkeypatch.setattr(pw, "load_bounded_json", lambda *_a, **_kw: {})
     return worker, archive, runs
 
@@ -75,7 +75,7 @@ def test_a_failed_pass_is_retried_next_cycle(monkeypatch) -> None:
         runs.append(command)
         return subprocess.CompletedProcess(command, 1, stdout="", stderr="boom")
 
-    monkeypatch.setattr(pw.subprocess, "run", failed)
+    monkeypatch.setattr(pw, "run_script_group_bounded", failed)
     assert worker._identify_live_observations()["state"] == "FAILED"
     assert worker._identify_live_observations()["state"] == "FAILED"
     assert len(runs) == 2

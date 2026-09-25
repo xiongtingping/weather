@@ -65,7 +65,8 @@ class _Runs:
         self.calls: list[dict] = []
         self.codes = list(codes or [])
         self.stage_written = stage_written
-        monkeypatch.setattr(pw.subprocess, "run", self)
+        # The pass runs its script through the group-bounded runner.
+        monkeypatch.setattr(pw, "run_script_group_bounded", self)
         monkeypatch.setattr(pw, "load_bounded_json", self.receipt)
 
     def __call__(self, command, **kwargs):

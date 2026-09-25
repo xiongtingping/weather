@@ -16,6 +16,7 @@ import hashlib
 import json
 import math
 import os
+import signal
 import random
 import re
 import sqlite3
@@ -4972,6 +4973,52 @@ def resting_dead_buckets(
     return tuple(dead), running_high
 
 
+def run_script_group_bounded(
+    command: Sequence[str],
+    *,
+    cwd: str,
+    timeout: float,
+    env: Mapping[str, str] | None = None,
+) -> subprocess.CompletedProcess:
+    """Run a shell script whose deadline binds every process it starts.
+
+    ``subprocess.run(timeout=)`` kills only the child.  A bash script's own
+    children -- the Python steps of ``pr12_awc_observation_sweep.sh`` -- are
+    left running, orphaned, holding the captured stdout and stderr pipes, and
+    the ``communicate()`` that follows the kill waits for those pipes to
+    close: the deadline returns only when the orphan finishes.  Measured
+    2026-09-24: the observation-identity pass's 240 s deadline held the
+    production cycle 19 minutes and more while an orphaned
+    ``build_pr12_awc_observation_contract.py`` scanned archive.db on a
+    contended disk, and no basket decision was written from 14:11Z.
+
+    So the script runs as the leader of its own session and the whole group
+    is killed at the deadline; ``TimeoutExpired`` is raised as before.
+    """
+
+    proc = subprocess.Popen(
+        list(command),
+        cwd=cwd,
+        env=None if env is None else dict(env),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.communicate()
+        raise
+    return subprocess.CompletedProcess(
+        proc.args, proc.returncode, stdout, stderr,
+    )
+
+
 def station_edge_from_plan(
     compiled: Mapping[str, Any],
     *,
@@ -7820,11 +7867,9 @@ class TargetProductionWorker:
                 "PR12_SKIP_ASOS_SUBSTITUTE": "1" if skip_substitute else "0",
             }
         try:
-            completed = subprocess.run(
+            completed = run_script_group_bounded(
                 ["/bin/bash", str(script)],
                 cwd=str(ROOT),
-                capture_output=True,
-                text=True,
                 timeout=LIVE_OBSERVATION_IDENTITY_DEADLINE_SEC,
                 env=env,
             )
@@ -7834,11 +7879,9 @@ class TargetProductionWorker:
                 # stage) is answered by the full pass, now.
                 full_reason = "subset_pass_failed"
                 stations = None
-                completed = subprocess.run(
+                completed = run_script_group_bounded(
                     ["/bin/bash", str(script)],
                     cwd=str(ROOT),
-                    capture_output=True,
-                    text=True,
                     timeout=LIVE_OBSERVATION_IDENTITY_DEADLINE_SEC,
                 )
         except subprocess.TimeoutExpired:

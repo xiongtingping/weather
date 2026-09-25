@@ -6088,7 +6088,7 @@ def test_live_observation_identity_is_never_fatal_to_the_cycle(
     def _timeout(*_args, **_kwargs):
         raise subprocess.TimeoutExpired(cmd="sweep", timeout=1.0)
 
-    monkeypatch.setattr(production_worker_module.subprocess, "run", _timeout)
+    monkeypatch.setattr(production_worker_module, "run_script_group_bounded", _timeout)
     timed_out = production_worker_module.TargetProductionWorker.\
         _identify_live_observations(worker)
     assert timed_out["state"] == "DEADLINE_EXCEEDED"
@@ -6098,7 +6098,7 @@ def test_live_observation_identity_is_never_fatal_to_the_cycle(
     def _crash(*_args, **_kwargs):
         raise OSError("no such interpreter")
 
-    monkeypatch.setattr(production_worker_module.subprocess, "run", _crash)
+    monkeypatch.setattr(production_worker_module, "run_script_group_bounded", _crash)
     crashed = production_worker_module.TargetProductionWorker.\
         _identify_live_observations(worker)
     assert crashed["state"] == "FAILED"
@@ -6107,8 +6107,8 @@ def test_live_observation_identity_is_never_fatal_to_the_cycle(
 
     # A non-zero exit is a failure the receipt names, not an exception.
     monkeypatch.setattr(
-        production_worker_module.subprocess,
-        "run",
+        production_worker_module,
+        "run_script_group_bounded",
         lambda *_a, **_k: SimpleNamespace(
             returncode=78, stdout="", stderr="missing authority projection"
         ),
@@ -6132,8 +6132,8 @@ def test_live_observation_identity_reads_what_was_staged_not_the_exit_code(
 
     worker = SimpleNamespace()
     monkeypatch.setattr(
-        production_worker_module.subprocess,
-        "run",
+        production_worker_module,
+        "run_script_group_bounded",
         lambda *_a, **_k: SimpleNamespace(returncode=0, stdout="", stderr=""),
     )
     monkeypatch.setattr(
