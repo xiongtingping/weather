@@ -27,6 +27,17 @@ fill by t) is fitted per cell:
 The artifact records the window it was fitted on and a validation: fitted on
 event days from ``--fit-from``, it predicts the fills of the earlier orders
 over their real lives.
+
+Weekly re-pin (user ruling 2026-09-25: 「每周自动（样本外核对过线才换）」):
+``--weekly-repin`` fits a candidate on every labelled order before the last
+``HOLDOUT_DAYS`` event days, scores it and the curves in service on the
+orders of those days -- which neither saw -- and installs the candidate only
+when it is no worse on both proper scores.  Fills are censored by cancels
+and expiries, so both scores are inverse-probability-of-censoring weighted
+(the censored-data Brier of Graf et al., and its log-loss twin) at the
+horizons ``SCORE_HORIZONS_SECONDS``.  One decided attempt a week; a holdout
+too thin to decide is retried the next day.  Every attempt appends a receipt
+to ``data/paper_ledger/maker_fill_curve_repin.jsonl``.
 """
 from __future__ import annotations
 
@@ -34,6 +45,7 @@ import argparse
 import bisect
 import hashlib
 import json
+import math
 import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
@@ -43,8 +55,21 @@ from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "config" / "paper_ledger" / "maker_fill_curves_v1.json"
+REPIN_RECEIPTS = ROOT / "data" / "paper_ledger" / "maker_fill_curve_repin.jsonl"
 SCHEMA = "paper_ledger_maker_fill_curves_v1"
 LEAD_BANDS = (("in_day", 24.0), ("d1", 48.0), ("d2plus", float("inf")))
+#: The weekly re-pin: the last HOLDOUT_DAYS labelled event days are the
+#: out-of-sample check; the candidate's recent window is the FIT_WINDOW_DAYS
+#: before them (extended back per cell as ``fit`` does).  A decision needs at
+#: least MIN_HOLDOUT_ORDERS orders on those days, and one decision stands for
+#: REPIN_INTERVAL_DAYS.
+HOLDOUT_DAYS = 7
+FIT_WINDOW_DAYS = 10
+MIN_HOLDOUT_ORDERS = 20
+REPIN_INTERVAL_DAYS = 7
+#: Where the scores are read: a resting rung's life is tens of minutes to a
+#: few hours (``F(30m)``/``F(1h)``/``F(3h)`` are what the fit prints).
+SCORE_HORIZONS_SECONDS = (1800.0, 3600.0, 10800.0)
 
 
 def _instant(value: Any) -> datetime:
@@ -149,6 +174,7 @@ def real_basket_maker_orders(ssot: sqlite3.Connection) -> list[dict[str, Any]]:
             continue
         out.append({
             "intent_id": str(intent_id), "station_id": str(station), "event_date": str(day),
+            "placed_at_utc": str(created),
             "bucket": str(bucket), "won": str(bucket) == settled,
             "lead_band": lead_band(lead_hours(str(created), str(day), str(tz or "UTC"))),
             "filled": bool(fills),
@@ -227,24 +253,78 @@ def fit(rows: Sequence[Mapping[str, Any]], *, fit_from: str) -> dict[str, dict[s
     return out
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    parser.add_argument("--ssot", default=str(ROOT / "data" / "bayes_basket_target_ssot.db"))
-    parser.add_argument("--fit-from", default="2026-09-15", help="first event date the curves are fitted on")
-    parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
-    args = parser.parse_args(argv)
-    ssot = sqlite3.connect(f"file:{args.ssot}?mode=ro", uri=True, timeout=60)
-    rows = real_basket_maker_orders(ssot)
-    fitted = [row for row in rows if row["event_date"] >= args.fit_from]
-    earlier = [row for row in rows if row["event_date"] < args.fit_from]
-    curves = fit(rows, fit_from=args.fit_from)
+def _sealed(artifact: Mapping[str, Any]) -> dict[str, Any]:
+    body = {k: v for k, v in artifact.items() if k != "content_sha256"}
+    body["content_sha256"] = hashlib.sha256(
+        json.dumps(body, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    return body
+
+
+def _censoring_survival(rows: Sequence[Mapping[str, Any]]) -> tuple[list[float], list[float]]:
+    """Reverse Kaplan-Meier: G(t) = P(an order is still uncensored at t)."""
+
+    times, cdf = kaplan_meier([(max(0.0, float(row["seconds"])), 1 - int(row["filled"])) for row in rows])
+    return times, [1.0 - value for value in cdf]
+
+
+def _survival_before(curve: tuple[list[float], list[float]], seconds: float) -> float:
+    """G(t-): the censoring survival just before ``seconds``."""
+
+    times, values = curve
+    k = bisect.bisect_left(times, seconds)
+    return float(values[k - 1]) if k else 1.0
+
+
+def censored_scores(
+    curves: Mapping[str, Mapping[str, Sequence[float]]],
+    rows: Sequence[Mapping[str, Any]],
+    horizons: Sequence[float] = SCORE_HORIZONS_SECONDS,
+) -> dict[str, float]:
+    """IPCW Brier and log loss of ``curves`` on ``rows``, averaged over horizons.
+
+    At horizon h an order that filled by h counts 1 and one still resting
+    after h counts 0, each weighted by one over the chance of being observed
+    that long; an order cancelled or expired before h says nothing about h
+    and weighs zero.  Both are proper under independent censoring.
+    """
+
+    g = _censoring_survival(rows)
+    n = len(rows)
+    brier = log_loss = 0.0
+    for horizon in horizons:
+        for row in rows:
+            seconds = max(0.0, float(row["seconds"]))
+            if row["filled"] and seconds <= horizon:
+                outcome, weight = 1.0, 1.0 / max(_survival_before(g, seconds), 1e-9)
+            elif seconds > horizon:
+                outcome, weight = 0.0, 1.0 / max(_survival_before(g, horizon + 1e-9), 1e-9)
+            else:
+                continue
+            p = min(max(cdf_at(curves[cell_key(row)], horizon), 1e-6), 1.0 - 1e-6)
+            brier += weight * (outcome - p) ** 2
+            log_loss -= weight * (outcome * math.log(p) + (1.0 - outcome) * math.log(1.0 - p))
+    scale = float(n * len(horizons)) or 1.0
+    return {"brier": round(brier / scale, 6), "log_loss": round(log_loss / scale, 6)}
+
+
+def build_artifact(
+    rows: Sequence[Mapping[str, Any]], *, fit_from: str, trained_through: str | None = None,
+    fitted_at_utc: str | None = None, gate: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The curves fitted on ``rows`` (those after ``trained_through`` left out)."""
+
+    rows = [row for row in rows if trained_through is None or str(row["event_date"]) <= trained_through]
+    fitted = [row for row in rows if row["event_date"] >= fit_from]
+    earlier = [row for row in rows if row["event_date"] < fit_from]
+    curves = fit(rows, fit_from=fit_from)
     predicted = sum(
         cdf_at(curves[cell_key(row)], float(row["seconds"]))
         for row in earlier if cell_key(row) in curves
     )
-    artifact = {
+    artifact: dict[str, Any] = {
         "schema": SCHEMA,
-        "fitted_on_event_dates_from": args.fit_from,
+        "fitted_on_event_dates_from": fit_from,
         "fitted_orders": len(fitted),
         "fitted_fills": sum(int(row["filled"]) for row in fitted),
         "lead_bands_hours": {name: upper for name, upper in LEAD_BANDS if upper != float("inf")},
@@ -258,9 +338,118 @@ def main(argv: Sequence[str] | None = None) -> int:
         },
         "curves": curves,
     }
-    artifact["content_sha256"] = hashlib.sha256(
-        json.dumps(artifact, sort_keys=True).encode("utf-8")
-    ).hexdigest()
+    if trained_through is not None:
+        artifact["trained_through_event_date"] = trained_through
+    if fitted_at_utc is not None:
+        artifact["fitted_at_utc"] = fitted_at_utc
+    if gate is not None:
+        artifact["out_of_sample_gate"] = dict(gate)
+    return _sealed(artifact)
+
+
+def _receipts(path: Path) -> list[dict[str, Any]]:
+    try:
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except FileNotFoundError:
+        return []
+
+
+def repin_due(receipts: Sequence[Mapping[str, Any]], *, as_of_utc: str) -> bool:
+    """Due unless a decided attempt (installed or kept) is under a week old."""
+
+    decided = [
+        _instant(r["attempted_at_utc"]) for r in receipts
+        if r.get("verdict") in {"installed", "kept", "seeded"}
+    ]
+    return not decided or _instant(as_of_utc) - max(decided) >= timedelta(days=REPIN_INTERVAL_DAYS)
+
+
+def decide_repin(
+    rows: Sequence[Mapping[str, Any]], incumbent: Mapping[str, Any], *, as_of_utc: str,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """(receipt, the artifact to install or None) for one re-pin attempt."""
+
+    as_of_date = _instant(as_of_utc).date()
+    holdout_from = (as_of_date - timedelta(days=HOLDOUT_DAYS)).isoformat()
+    holdout_to = (as_of_date - timedelta(days=1)).isoformat()
+    trained_through = (as_of_date - timedelta(days=HOLDOUT_DAYS + 1)).isoformat()
+    fit_from = (as_of_date - timedelta(days=HOLDOUT_DAYS + FIT_WINDOW_DAYS)).isoformat()
+    holdout = [row for row in rows if holdout_from <= str(row["event_date"]) <= holdout_to]
+    receipt: dict[str, Any] = {
+        "schema": "paper_ledger_maker_fill_curve_repin_v1",
+        "attempted_at_utc": str(as_of_utc),
+        "holdout_event_dates": [holdout_from, holdout_to],
+        "holdout_orders": len(holdout),
+        "holdout_fills": sum(int(row["filled"]) for row in holdout),
+        "incumbent_sha256": incumbent.get("content_sha256"),
+        "horizons_seconds": list(SCORE_HORIZONS_SECONDS),
+    }
+    if len(holdout) < MIN_HOLDOUT_ORDERS:
+        return {**receipt, "verdict": "accumulating", "min_holdout_orders": MIN_HOLDOUT_ORDERS}, None
+    candidate = build_artifact(rows, fit_from=fit_from, trained_through=trained_through, fitted_at_utc=str(as_of_utc))
+    challenger = censored_scores(candidate["curves"], holdout)
+    standing = censored_scores(incumbent["curves"], holdout)
+    passed = (
+        challenger["brier"] <= standing["brier"] + 1e-12
+        and challenger["log_loss"] <= standing["log_loss"] + 1e-12
+    )
+    gate = {
+        "holdout_event_dates": [holdout_from, holdout_to],
+        "holdout_orders": len(holdout),
+        "candidate": challenger, "incumbent": standing,
+        "incumbent_sha256": incumbent.get("content_sha256"),
+        "passed": passed,
+    }
+    if not passed:
+        return {**receipt, "verdict": "kept", "candidate": challenger, "incumbent": standing,
+                "candidate_sha256": candidate["content_sha256"]}, None
+    installed = build_artifact(
+        rows, fit_from=fit_from, trained_through=trained_through,
+        fitted_at_utc=str(as_of_utc), gate=gate,
+    )
+    return {**receipt, "verdict": "installed", "candidate": challenger, "incumbent": standing,
+            "candidate_sha256": installed["content_sha256"]}, installed
+
+
+def weekly_repin(
+    ssot: sqlite3.Connection, *, as_of_utc: str, curves_path: Path = DEFAULT_OUTPUT,
+    receipts_path: Path = REPIN_RECEIPTS,
+) -> dict[str, Any]:
+    receipts = _receipts(receipts_path)
+    if not repin_due(receipts, as_of_utc=as_of_utc):
+        return {"verdict": "not_due", "last_decided": max(
+            r["attempted_at_utc"] for r in receipts if r.get("verdict") in {"installed", "kept", "seeded"}
+        )}
+    incumbent = json.loads(Path(curves_path).read_text(encoding="utf-8"))
+    receipt, installed = decide_repin(real_basket_maker_orders(ssot), incumbent, as_of_utc=as_of_utc)
+    if installed is not None:
+        Path(curves_path).write_text(json.dumps(installed, indent=1, sort_keys=True) + "\n")
+    receipts_path.parent.mkdir(parents=True, exist_ok=True)
+    with receipts_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(receipt, sort_keys=True, ensure_ascii=False) + "\n")
+    return receipt
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    parser.add_argument("--ssot", default=str(ROOT / "data" / "bayes_basket_target_ssot.db"))
+    parser.add_argument("--fit-from", default="2026-09-15", help="first event date the curves are fitted on")
+    parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
+    parser.add_argument("--weekly-repin", action="store_true",
+                        help="the scheduled re-pin: candidate against the curves in service, out of sample")
+    parser.add_argument("--receipts", default=str(REPIN_RECEIPTS))
+    parser.add_argument("--as-of", default=None, help="the re-pin's clock (default now)")
+    args = parser.parse_args(argv)
+    ssot = sqlite3.connect(f"file:{args.ssot}?mode=ro", uri=True, timeout=60)
+    if args.weekly_repin:
+        as_of = args.as_of or datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+        print(json.dumps(weekly_repin(
+            ssot, as_of_utc=as_of, curves_path=Path(args.output), receipts_path=Path(args.receipts),
+        ), sort_keys=True, ensure_ascii=False))
+        return 0
+    rows = real_basket_maker_orders(ssot)
+    artifact = build_artifact(rows, fit_from=args.fit_from)
+    curves = artifact["curves"]
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     Path(args.output).write_text(json.dumps(artifact, indent=1, sort_keys=True) + "\n")
     print(json.dumps({k: artifact[k] for k in ("fitted_orders", "fitted_fills", "validation", "content_sha256")}, indent=1))

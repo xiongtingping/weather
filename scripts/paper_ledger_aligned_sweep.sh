@@ -34,6 +34,15 @@ cd "$PROJECT_DIR"
 WINDOW_DAYS="${PAPER_LEDGER_WINDOW_DAYS:-7}"
 FROM="$("$PY" -c "from datetime import date, timedelta; print(date.today() - timedelta(days=int('$WINDOW_DAYS')))")"
 TO="$("$PY" -c "from datetime import date, timedelta; print(date.today() - timedelta(days=1))")"
+# The maker fill curves the walk fills its resting orders on (user ruling
+# 2026-09-25: 「每周自动（样本外核对过线才换）」): once a week a candidate
+# fitted before the last week's event days is scored against the curves in
+# service on that week's real orders, and replaces them only when it is no
+# worse on both proper scores.  Not due, or a week too thin to decide, is a
+# no-op; never fatal -- the curves in service stand.
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] maker fill curves: weekly re-pin"
+taskpolicy -d utility nice -n 10 "$PY" scripts/paper_ledger_fill_curves.py --weekly-repin \
+  || echo "maker fill curve re-pin failed; the curves in service stand" >&2
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] paper ledger (production entries) ${FROM}..${TO}"
 # The render's tier (dashboard_render_sweep.sh): utility disk I/O gives way
 # to the resident's default-tier reads.  2026-09-25: on a disk saturated by
