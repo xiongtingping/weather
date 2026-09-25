@@ -79,6 +79,10 @@ ARMS = {
     "fitted_symmetric": (("z",), None),
     "fitted_asymmetric": (("zp", "zn"), None),
     "warm_side_only": (("zp",), None),
+    # The pair charter 222 fits (fit_two_sided.py, charter 210's objective),
+    # fixed, not refitted -- but uncentred, and with the fleet intercept
+    # every arm here gets.  Serving centres it; centered_pair.py scores that.
+    "pair_0.12_0.04_uncentred": ((), lambda z: 0.12 * max(z, 0.0) + 0.04 * min(z, 0.0)),
 }
 
 
@@ -122,6 +126,50 @@ def walk_forward(rows: list[dict]) -> dict:
     return out
 
 
+FIXED = {
+    "none": lambda z: 0.0,
+    "served_symmetric_0.07": lambda z: 0.07 * z,
+    "pair_0.12_0.04_uncentred": lambda z: 0.12 * max(z, 0.0) + 0.04 * min(z, 0.0),
+}
+
+
+def fixed_no_intercept(rows: list[dict]) -> dict:
+    """The fixed arms exactly as serving applies them: nothing refitted.
+
+    ``walk_forward`` fits a fleet intercept in every arm, which absorbs any
+    net drift an arm adds.  Serving has no such term -- its bias layer is the
+    station's own walk-forward bias, already in the proxy's ``c0`` -- and the
+    uncentred pair does add one: z > 0 on 59% of station-days, so the warm
+    side's larger coefficient moves the fleet mean warm where the symmetric
+    0.07 nets to about zero.  So the arms are also scored bare; this is what
+    showed the pair must be centred (``centered_pair.py``).
+    """
+
+    scores = {arm: {} for arm in FIXED}
+    for row in rows:
+        for arm, shift in FIXED.items():
+            scores[arm][(row["station"], row["date"])] = m.score_gaussian(
+                row["c0"] + shift(row["z"]) * row["sigma"], row["sigma"], row["truth_rep"], row["unit"]
+            )
+    out = {
+        f"{arm} mean shift": {
+            "sigma": round(float(np.mean([FIXED[arm](r["z"]) for r in rows])), 4),
+            "c": round(float(np.mean([FIXED[arm](r["z"]) * r["sigma"] for r in rows])), 4),
+        }
+        for arm in FIXED
+    }
+    base = scores["served_symmetric_0.07"]
+    for arm in ("none", "pair_0.12_0.04_uncentred"):
+        keys = sorted(set(scores[arm]) & set(base))
+        out[f"{arm} vs served_symmetric_0.07 logscore"] = m.summarise(
+            [(k[1], scores[arm][k][0] - base[k][0]) for k in keys]
+        )
+        out[f"{arm} vs served_symmetric_0.07 brier"] = m.summarise(
+            [(k[1], base[k][1] - scores[arm][k][1]) for k in keys]
+        )
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cache-dir", required=True)
@@ -156,6 +204,10 @@ def main() -> None:
                 [r for r in rows if r["lat"] is not None and float(r["lat"]) >= 23.5]
             ),
             "walk_forward": walk_forward(rows),
+            "fixed_no_intercept": fixed_no_intercept(rows),
+            "fixed_no_intercept_production_window_0816_0924": fixed_no_intercept(
+                [r for r in rows if "2026-08-16" <= r["date"] <= "2026-09-24"]
+            ),
         }
     Path(args.out).write_text(json.dumps(result, indent=1, sort_keys=True))
     print(json.dumps(result, indent=1, sort_keys=True))

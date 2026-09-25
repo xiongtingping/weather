@@ -1,0 +1,1330 @@
+{
+ "best_match": {
+  "cross_half": {
+   "fit_first_score_second": {
+    "fitted_pair_floored": [
+     0.1676,
+     0.0
+    ],
+    "scores": {
+     "pair_centred_0.12_0.04 mean shift sigma": 0.0022,
+     "pair_centred_0.12_0.04 vs served_symmetric_0.07 brier": {
+      "ci95": [
+       -0.00016592894808158516,
+       2.346283722801083e-05
+      ],
+      "days": 226,
+      "days_better": 108,
+      "first_half_mean": -6.491575518603993e-05,
+      "mean": -7.174611901713005e-05,
+      "n": 10115,
+      "per_decision_mean": -7.218075246045795e-05,
+      "second_half_mean": -7.85764828482202e-05
+     },
+     "pair_centred_0.12_0.04 vs served_symmetric_0.07 logscore": {
+      "ci95": [
+       -7.395903153482567e-07,
+       0.0009262609676929421
+      ],
+      "days": 226,
+      "days_better": 125,
+      "first_half_mean": 1.352610811232109e-05,
+      "mean": 0.000450694600658198,
+      "n": 10115,
+      "per_decision_mean": 0.00045072253985668076,
+      "second_half_mean": 0.000887863093204075
+     },
+     "pair_centred_0.16_0.02 mean shift sigma": 0.0027,
+     "pair_centred_0.16_0.02 vs served_symmetric_0.07 brier": {
+      "ci95": [
+       -0.00040836855692510926,
+       -7.859736893481799e-05
+      ],
+      "days": 226,
+      "days_better": 92,
+      "first_half_mean": -0.0002266697037919812,
+      "mean": -0.0002438725234722271,
+      "n": 10115,
+      "per_decision_mean": -0.00024451151437718277,
+      "second_half_mean": -0.000261075343152473
+     },
+     "pair_centred_0.16_0.02 vs served_symmetric_0.07 logscore": {
+      "ci95": [
+       -0.0005379157379298932,
+       0.001043861960763549
+      ],
+      "days": 226,
+      "days_better": 115,
+      "first_half_mean": -0.0004765667560241438,
+      "mean": 0.00023193784977537527,
+      "n": 10115,
+      "per_decision_mean": 0.0002314104940748866,
+      "second_half_mean": 0.0009404424555748943
+     },
+     "pair_centred_0.24_0 mean shift sigma": 0.0039,
+     "pair_centred_0.24_0 vs served_symmetric_0.07 brier": {
+      "ci95": [
+       -0.0013070752764282878,
+       -0.0007083116907569316
+      ],
+      "days": 226,
+      "days_better": 75,
+      "first_half_mean": -0.0009347210958622451,
+      "mean": -0.0010025395279443373,
+      "n": 10115,
+      "per_decision_mean": -0.0010029425298336123,
+      "second_half_mean": -0.0010703579600264295
+     },
+     "pair_centred_0.24_0 vs served_symmetric_0.07 logscore": {
+      "ci95": [
+       -0.0034230478208013937,
+       -0.0008376332637781573
+      ],
+      "days": 226,
+      "days_better": 88,
+      "first_half_mean": -0.002995706321790069,
+      "mean": -0.0021893499212856547,
+      "n": 10115,
+      "per_decision_mean": -0.002193331789382456,
+      "second_half_mean": -0.00138299352078124
+     },
+     "pair_centred_0.2_0 mean shift sigma": 0.0032,
+     "pair_centred_0.2_0 vs served_symmetric_0.07 brier": {
+      "ci95": [
+       -0.0007088323175551695,
+       -0.0002325985421528177
+      ],
+      "days": 226,
+      "days_better": 88,
+      "first_half_mean": -0.00045107908868365694,
+      "mean": -0.00047176944111788406,
+      "n": 10115,
+      "per_decision_mean": -0.00047259043826815224,
+      "second_half_mean": -0.0004924597935521111
+     },
+     "pair_centred_0.2_0 vs served_symmetric_0.07 logscore": {
+      "ci95": [
+       -0.0013409255569601433,
+       0.0008760882521783048
+      ],
+      "days": 226,
+      "days_better": 107,
+      "first_half_mean": -0.0012704639252640465,
+      "mean": -0.0002545277700150188,
+      "n": 10115,
+      "per_decision_mean": -0.00025570969614477877,
+      "second_half_mean": 0.000761408385234009
+     },
+     "pair_centred_fitted_on_other_half mean shift sigma": 0.0027,
+     "pair_centred_fitted_on_other_half vs served_symmetric_0.07 brier": {
+      "ci95": [
+       -0.0002981232297261341,
+       0.00010533271027506599
+      ],
+      "days": 226,
+      "days_better": 110,
+      "first_half_mean": -0.00012256405610479976,
+      "mean": -9.673249429450884e-05,
+      "n": 10115,
+      "per_decision_mean": -9.787151135922169e-05,
+      "second_half_mean": -7.090093248421791e-05
+     },
+     "pair_centred_fitted_on_other_half vs served_symmetric_0.07 logscore": {
+      "ci95": [
+       4.865968215212134e-05,
+       0.0021530170665167102
+      ],
+      "days": 226,
+      "days_better": 124,
+      "first_half_mean": -0.00015523751507486922,
+      "mean": 0.0010707263056765125,
+      "n": 10115,
+      "per_decision_mean": 0.0010717956387457774,
+      "second_half_mean": 0.0022966901264278943
+     },
+     "served_symmetric_0.07 mean shift sigma": 0.0015
+    }
+   },
+   "fit_second_score_first": {
+    "fitted_pair_floored": [
+     0.0829,
+     0.0
+    ],
+    "scores": {
+     "pair_centred_0.12_0.04 mean shift sigma": 0.0003,
+     "pair_centred_0.12_0.04 vs served_symmetric_0.07 brier": {
+      "ci95": [
+       -6.221495714881286e-05,
+       0.00017598475593353253
+      ],
+      "days": 225,
+      "days_better": 124,
+      "first_half_mean": -0.00017133492842489337,
+      "mean": 5.493801326754631e-05,
+      "n": 9920,
+      "per_decision_mean": 5.1334814171521814e-05,
+      "second_half_mean": 0.0002792085395467786
+     },
+     "pair_centred_0.12_0.04 vs served_symmetric_0.07 logscore": {
+      "ci95": [
+       0.0007041916919829176,
+       0.0016359291927863376
+      ],
+      "days": 225,
+      "days_better": 139,
+      "first_half_mean": 0.0006935145270204161,
+      "mean": 0.0011685511996879319,
+      "n": 9920,
+      "per_decision_mean": 0.0011587406088432292,
+      "second_half_mean": 0.001639384007995558
+     },
+     "pair_centred_0.16_0.02 mean shift sigma": 0.0023,
+     "pair_centred_0.16_0.02 vs served_symmetric_0.07 brier": {
+      "ci95": [
+       -0.000221618808534589,
+       0.0001934169517805928
+      ],
+      "days": 225,
+      "days_better": 114,
+      "first_half_mean": -0.0004273830209531457,
+      "mean": -1.74920101600318e-05,
+      "n": 9920,
+      "per_decision_mean": -2.400633997650815e-05,
+      "second_half_mean": 0.00038877164655526695
+     },
+     "pair_centred_0.16_0.02 vs served_symmetric_0.07 logscore": {
+      "ci95": [
+       0.0006896541174719997,
+       0.0022977220179767666
+      ],
+      "days": 225,
+      "days_better": 133,
+      "first_half_mean": 0.0005494554462728488,
+      "mean": 0.0014872977528237747,
+      "n": 9920,
+      "per_decision_mean": 0.0014683565710008684,
+      "second_half_mean": 0.0024168405699361967
+     },
+     "pair_centred_0.24_0 mean shift sigma": 0.005,
+     "pair_centred_0.24_0 vs served_symmetric_0.07 brier": {
+      "ci95": [
+       -0.0009272598358201236,
+       -0.000193345411594483
+      ],
+      "days": 225,
+      "days_better": 96,
+      "first_half_mean": -0.0013533328721586628,
+      "mean": -0.0005579199340244931,
+      "n": 9920,
+      "per_decision_mean": -0.0005713461579063977,
+      "second_half_mean": 0.00023045395155981666
+     },
+     "pair_centred_0.24_0 vs served_symmetric_0.07 logscore": {
+      "ci95": [
+       -0.0013199318053504373,
+       0.0013992281978901342
+      ],
+      "days": 225,
+      "days_better": 113,
+      "first_half_mean": -0.0022393158748610273,
+      "mean": 2.6084037207285694e-05,
+      "n": 9920,
+      "per_decision_mean": -1.7657440151146308e-05,
+      "second_half_mean": 0.002271436162443136
+     },
+     "pair_centred_0.2_0 mean shift sigma": 0.0042,
+     "pair_centred_0.2_0 vs served_symmetric_0.07 brier": {
+      "ci95": [
+       -0.0004418093081324968,
+       0.00015094436266099092
+      ],
+      "days": 225,
+      "days_better": 111,
+      "first_half_mean": -0.0007424026952327827,
+      "mean": -0.00015017468292731885,
+      "n": 9920,
+      "per_decision_mean": -0.00015947820147442884,
+      "second_half_mean": 0.0004368123735170347
+     },
+     "pair_centred_0.2_0 vs served_symmetric_0.07 logscore": {
+      "ci95": [
+       0.00040849438569624347,
+       0.0026949651123714573
+      ],
+      "days": 225,
+      "days_better": 129,
+      "first_half_mean": 0.00013745946059113523,
+      "mean": 0.001536592902850361,
+      "n": 9920,
+      "per_decision_mean": 0.0015085399331245784,
+      "second_half_mean": 0.0029233446332311867
+     },
+     "pair_centred_fitted_on_other_half mean shift sigma": 0.0017,
+     "pair_centred_fitted_on_other_half vs served_symmetric_0.07 brier": {
+      "ci95": [
+       0.00030985274982386603,
+       0.000826012571383294
+      ],
+      "days": 225,
+      "days_better": 143,
+      "first_half_mean": 0.000610274732302805,
+      "mean": 0.0005689325454122445,
+      "n": 9920,
+      "per_decision_mean": 0.0005720354827203091,
+      "second_half_mean": 0.0005279562185826625
+     },
+     "pair_centred_fitted_on_other_half vs served_symmetric_0.07 logscore": {
+      "ci95": [
+       0.0028461006559443803,
+       0.005162755209246181
+      ],
+      "days": 225,
+      "days_better": 158,
+      "first_half_mean": 0.005272858139528172,
+      "mean": 0.004039648638908475,
+      "n": 9920,
+      "per_decision_mean": 0.004057276060586676,
+      "second_half_mean": 0.002817352496701341
+     },
+     "served_symmetric_0.07 mean shift sigma": -0.0024
+    }
+   }
+  },
+  "fit_fixed_effects": {
+   "cold": [
+    -0.0762,
+    -0.1035,
+    -0.0497
+   ],
+   "days": 451,
+   "station_days": 20035,
+   "symmetric": [
+    -0.0139,
+    -0.0316,
+    0.0037
+   ],
+   "warm": [
+    0.1099,
+    0.073,
+    0.1468
+   ]
+  },
+  "fit_fixed_effects_production_window_0816_0924": {
+   "cold": [
+    -0.1421,
+    -0.2333,
+    -0.0434
+   ],
+   "days": 40,
+   "station_days": 1780,
+   "symmetric": [
+    -0.0367,
+    -0.0933,
+    0.0213
+   ],
+   "warm": [
+    0.1879,
+    0.0487,
+    0.3348
+   ]
+  },
+  "fleet_intercept_walk_forward": {
+   "none mean shift sigma": 0.0,
+   "none vs served_symmetric_0.07 brier": {
+    "ci95": [
+     0.0005332829997555354,
+     0.0010770782461921025
+    ],
+    "days": 446,
+    "days_better": 267,
+    "first_half_mean": 0.0005847862293315222,
+    "mean": 0.0008094661814151466,
+    "n": 19839,
+    "per_decision_mean": 0.0008133784416257027,
+    "second_half_mean": 0.0010341461334987705
+   },
+   "none vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     0.002963943024623958,
+     0.005501527217872072
+    ],
+    "days": 446,
+    "days_better": 284,
+    "first_half_mean": 0.004078864269320155,
+    "mean": 0.004273027890574956,
+    "n": 19839,
+    "per_decision_mean": 0.004302623747683005,
+    "second_half_mean": 0.004467191511829755
+   },
+   "pair_centred mean shift sigma": 0.0012,
+   "pair_centred vs pair_uncentred brier": {
+    "ci95": [
+     -4.0629097287209235e-06,
+     9.785002116189853e-06
+    ],
+    "days": 446,
+    "days_better": 217,
+    "first_half_mean": -8.8110762719474e-06,
+    "mean": 2.8364749900315786e-06,
+    "n": 19839,
+    "per_decision_mean": 2.836980858341016e-06,
+    "second_half_mean": 1.4484026252010555e-05
+   },
+   "pair_centred vs pair_uncentred logscore": {
+    "ci95": [
+     -2.0409074125662813e-05,
+     3.7583786561849984e-05
+    ],
+    "days": 446,
+    "days_better": 216,
+    "first_half_mean": -4.078059185786212e-05,
+    "mean": 8.209608167127942e-06,
+    "n": 19839,
+    "per_decision_mean": 8.007476543924596e-06,
+    "second_half_mean": 5.719980819211801e-05
+   },
+   "pair_centred vs served_symmetric_0.07 brier": {
+    "ci95": [
+     -8.424225013768723e-05,
+     6.176395069855273e-05
+    ],
+    "days": 446,
+    "days_better": 224,
+    "first_half_mean": 6.612911712624015e-05,
+    "mean": -1.1737748947817809e-05,
+    "n": 19839,
+    "per_decision_mean": -1.3429349738236965e-05,
+    "second_half_mean": -8.960461502187578e-05
+   },
+   "pair_centred vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     0.0004902043663383376,
+     0.0011630932148731852
+    ],
+    "days": 446,
+    "days_better": 263,
+    "first_half_mean": 0.0012151908922034369,
+    "mean": 0.0008338812147704669,
+    "n": 19839,
+    "per_decision_mean": 0.0008280344649960889,
+    "second_half_mean": 0.0004525715373374972
+   },
+   "pair_uncentred mean shift sigma": 0.0337,
+   "pair_uncentred vs served_symmetric_0.07 brier": {
+    "ci95": [
+     -8.777507634031027e-05,
+     5.790115132976862e-05
+    ],
+    "days": 446,
+    "days_better": 224,
+    "first_half_mean": 7.494019339818752e-05,
+    "mean": -1.4574223937849397e-05,
+    "n": 19839,
+    "per_decision_mean": -1.6266330596577992e-05,
+    "second_half_mean": -0.00010408864127388635
+   },
+   "pair_uncentred vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     0.0004828661997342447,
+     0.0011531610748862998
+    ],
+    "days": 446,
+    "days_better": 262,
+    "first_half_mean": 0.0012559714840612993,
+    "mean": 0.0008256716066033391,
+    "n": 19839,
+    "per_decision_mean": 0.0008200269884521646,
+    "second_half_mean": 0.0003953717291453791
+   },
+   "served_symmetric_0.07 mean shift sigma": -0.0004
+  },
+  "max_abs_centred_shift_difference_vs_production": 5.551115123125783e-17,
+  "max_abs_z_difference_vs_cached": 2.864375403532904e-14,
+  "mean_centre_sigma": 0.0325,
+  "no_intercept": {
+   "none mean shift sigma": 0.0,
+   "none vs served_symmetric_0.07 brier": {
+    "ci95": [
+     0.0005830800032563784,
+     0.0011186868863984065
+    ],
+    "days": 451,
+    "days_better": 270,
+    "first_half_mean": 0.0006455308689176125,
+    "mean": 0.0008463407728474409,
+    "n": 20035,
+    "per_decision_mean": 0.0008525883793576122,
+    "second_half_mean": 0.0010462621373793497
+   },
+   "none vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     0.003090559574792634,
+     0.00554986022698372
+    ],
+    "days": 451,
+    "days_better": 288,
+    "first_half_mean": 0.004082201418934929,
+    "mean": 0.004275899883045117,
+    "n": 20035,
+    "per_decision_mean": 0.004308281016919526,
+    "second_half_mean": 0.00446874127430526
+   },
+   "pair_centred mean shift sigma": 0.0012,
+   "pair_centred vs pair_uncentred brier": {
+    "ci95": [
+     -0.00022285019984954687,
+     3.178110783428781e-06
+    ],
+    "days": 451,
+    "days_better": 208,
+    "first_half_mean": -0.00021256130957149805,
+    "mean": -0.00010486829610970071,
+    "n": 20035,
+    "per_decision_mean": -0.00010386322346645068,
+    "second_half_mean": 2.3481995934161015e-06
+   },
+   "pair_centred vs pair_uncentred logscore": {
+    "ci95": [
+     0.0002046060795758017,
+     0.001193551865569348
+    ],
+    "days": 451,
+    "days_better": 234,
+    "first_half_mean": 0.0007197280454158108,
+    "mean": 0.00069890042401484,
+    "n": 20035,
+    "per_decision_mean": 0.0007022199609592265,
+    "second_half_mean": 0.0006781649602306878
+   },
+   "pair_centred vs served_symmetric_0.07 brier": {
+    "ci95": [
+     -8.216723254823687e-05,
+     6.578657221489656e-05
+    ],
+    "days": 451,
+    "days_better": 232,
+    "first_half_mean": 5.493801326754631e-05,
+    "mean": -8.544500915018803e-06,
+    "n": 20035,
+    "per_decision_mean": -1.1024055630448515e-05,
+    "second_half_mean": -7.174611901713005e-05
+   },
+   "pair_centred vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     0.0004865740110085458,
+     0.0011436485597475785
+    ],
+    "days": 451,
+    "days_better": 264,
+    "first_half_mean": 0.0011685511996879319,
+    "mean": 0.0008088270502850052,
+    "n": 20035,
+    "per_decision_mean": 0.0008012860159907741,
+    "second_half_mean": 0.000450694600658198
+   },
+   "pair_uncentred mean shift sigma": 0.0337,
+   "pair_uncentred vs served_symmetric_0.07 brier": {
+    "ci95": [
+     -4.684346718429846e-05,
+     0.00024165659962971608
+    ],
+    "days": 451,
+    "days_better": 237,
+    "first_half_mean": 0.0002674993228390443,
+    "mean": 9.63237951946819e-05,
+    "n": 20035,
+    "per_decision_mean": 9.283916783600217e-05,
+    "second_half_mean": -7.409431861054616e-05
+   },
+   "pair_uncentred vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     -0.0005202239306359382,
+     0.0007553059156852689
+    ],
+    "days": 451,
+    "days_better": 227,
+    "first_half_mean": 0.00044882315427212106,
+    "mean": 0.00010992662627016532,
+    "n": 20035,
+    "per_decision_mean": 9.906605503154772e-05,
+    "second_half_mean": -0.0002274703595724896
+   },
+   "served_symmetric_0.07 mean shift sigma": -0.0004
+  },
+  "no_intercept_production_window_0816_0924": {
+   "none mean shift sigma": 0.0,
+   "none vs served_symmetric_0.07 brier": {
+    "ci95": [
+     0.0006686170322874311,
+     0.002264224329965363
+    ],
+    "days": 40,
+    "days_better": 30,
+    "first_half_mean": 0.0009188205653113295,
+    "mean": 0.001492083182112602,
+    "n": 1780,
+    "per_decision_mean": 0.0014492691336716003,
+    "second_half_mean": 0.002065345798913875
+   },
+   "none vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     0.0036843232553284214,
+     0.012195601604165671
+    ],
+    "days": 40,
+    "days_better": 28,
+    "first_half_mean": 0.0058401098431522785,
+    "mean": 0.008026002108032643,
+    "n": 1780,
+    "per_decision_mean": 0.007968120353348178,
+    "second_half_mean": 0.010211894372913009
+   },
+   "pair_centred mean shift sigma": -0.0082,
+   "pair_centred vs pair_uncentred brier": {
+    "ci95": [
+     -0.0006355846979280608,
+     8.4884167744492e-05
+    ],
+    "days": 40,
+    "days_better": 18,
+    "first_half_mean": -0.0007837905865431122,
+    "mean": -0.00027402808094639434,
+    "n": 1780,
+    "per_decision_mean": -0.00029599392451630085,
+    "second_half_mean": 0.0002357344246503234
+   },
+   "pair_centred vs pair_uncentred logscore": {
+    "ci95": [
+     -0.0020910012816128614,
+     0.0012203805288077663
+    ],
+    "days": 40,
+    "days_better": 19,
+    "first_half_mean": -0.002130080467153391,
+    "mean": -0.00043532964576837587,
+    "n": 1780,
+    "per_decision_mean": -0.0005067910342253257,
+    "second_half_mean": 0.0012594211756166399
+   },
+   "pair_centred vs served_symmetric_0.07 brier": {
+    "ci95": [
+     -0.0004214523720322015,
+     1.0383360097247785e-05
+    ],
+    "days": 40,
+    "days_better": 12,
+    "first_half_mean": -0.00025237548825897394,
+    "mean": -0.0001973625126416311,
+    "n": 1780,
+    "per_decision_mean": -0.00019931629563364178,
+    "second_half_mean": -0.0001423495370242882
+   },
+   "pair_centred vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     3.524382284816594e-05,
+     0.002034445699071967
+    ],
+    "days": 40,
+    "days_better": 25,
+    "first_half_mean": 0.0008694815198833814,
+    "mean": 0.0010485148003936651,
+    "n": 1780,
+    "per_decision_mean": 0.0010540816765095536,
+    "second_half_mean": 0.0012275480809039487
+   },
+   "pair_uncentred mean shift sigma": 0.0243,
+   "pair_uncentred vs served_symmetric_0.07 brier": {
+    "ci95": [
+     -0.0003197944474119149,
+     0.00047535647225101593
+    ],
+    "days": 40,
+    "days_better": 20,
+    "first_half_mean": 0.0005314150982841379,
+    "mean": 7.666556830476322e-05,
+    "n": 1780,
+    "per_decision_mean": 9.667762888265907e-05,
+    "second_half_mean": -0.00037808396167461156
+   },
+   "pair_uncentred vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     -0.00043003492897650427,
+     0.0033237364668453908
+    ],
+    "days": 40,
+    "days_better": 25,
+    "first_half_mean": 0.0029995619870367735,
+    "mean": 0.001483844446162041,
+    "n": 1780,
+    "per_decision_mean": 0.0015608727107348796,
+    "second_half_mean": -3.1873094712691396e-05
+   },
+   "served_symmetric_0.07 mean shift sigma": -0.0063
+  },
+  "rows": 20035
+ },
+ "global": {
+  "cross_half": {
+   "fit_first_score_second": {
+    "fitted_pair_floored": [
+     0.2508,
+     0.0007
+    ],
+    "scores": {
+     "pair_centred_0.12_0.04 mean shift sigma": 0.0022,
+     "pair_centred_0.12_0.04 vs served_symmetric_0.07 brier": {
+      "ci95": [
+       8.216753712115121e-05,
+       0.0003184968701188598
+      ],
+      "days": 226,
+      "days_better": 138,
+      "first_half_mean": 0.00033545358711623637,
+      "mean": 0.00020421114208498347,
+      "n": 10115,
+      "per_decision_mean": 0.00020364217523793812,
+      "second_half_mean": 7.296869705373056e-05
+     },
+     "pair_centred_0.12_0.04 vs served_symmetric_0.07 logscore": {
+      "ci95": [
+       0.0005324008949724519,
+       0.001381606566860033
+      ],
+      "days": 226,
+      "days_better": 144,
+      "first_half_mean": 0.0010353441101775885,
+      "mean": 0.000950332180137441,
+      "n": 10115,
+      "per_decision_mean": 0.0009491173835787367,
+      "second_half_mean": 0.0008653202500972936
+     },
+     "pair_centred_0.16_0.02 mean shift sigma": 0.0027,
+     "pair_centred_0.16_0.02 vs served_symmetric_0.07 brier": {
+      "ci95": [
+       4.92267232093688e-05,
+       0.00046809493543231126
+      ],
+      "days": 226,
+      "days_better": 132,
+      "first_half_mean": 0.0005324580488399582,
+      "mean": 0.00026384891230482875,
+      "n": 10115,
+      "per_decision_mean": 0.0002629739134283863,
+      "second_half_mean": -4.7602242303007464e-06
+     },
+     "pair_centred_0.16_0.02 vs served_symmetric_0.07 logscore": {
+      "ci95": [
+       0.0006158439917750327,
+       0.002090316327996265
+      ],
+      "days": 226,
+      "days_better": 138,
+      "first_half_mean": 0.0016476357550038285,
+      "mean": 0.0013500940528277147,
+      "n": 10115,
+      "per_decision_mean": 0.0013475685221448802,
+      "second_half_mean": 0.001052552350651601
+     },
+     "pair_centred_0.24_0 mean shift sigma": 0.0039,
+     "pair_centred_0.24_0 vs served_symmetric_0.07 brier": {
+      "ci95": [
+       -0.00030700524306135474,
+       0.0004478686568168787
+      ],
+      "days": 226,
+      "days_better": 122,
+      "first_half_mean": 0.0007823676729211117,
+      "mean": 7.490021679271104e-05,
+      "n": 10115,
+      "per_decision_mean": 7.416207219783133e-05,
+      "second_half_mean": -0.0006325672393356896
+     },
+     "pair_centred_0.24_0 vs served_symmetric_0.07 logscore": {
+      "ci95": [
+       -1.705441840174792e-05,
+       0.0024673962458866294
+      ],
+      "days": 226,
+      "days_better": 125,
+      "first_half_mean": 0.0026512891405087954,
+      "mean": 0.0011987396485146774,
+      "n": 10115,
+      "per_decision_mean": 0.0011922064952456844,
+      "second_half_mean": -0.00025380984347944056
+     },
+     "pair_centred_0.2_0 mean shift sigma": 0.0032,
+     "pair_centred_0.2_0 vs served_symmetric_0.07 brier": {
+      "ci95": [
+       -5.255528811771763e-05,
+       0.0005413674383390733
+      ],
+      "days": 226,
+      "days_better": 128,
+      "first_half_mean": 0.0006507307207704019,
+      "mean": 0.00025201892208629275,
+      "n": 10115,
+      "per_decision_mean": 0.0002508416486391803,
+      "second_half_mean": -0.0001466928765978163
+     },
+     "pair_centred_0.2_0 vs served_symmetric_0.07 logscore": {
+      "ci95": [
+       0.00045426652492750776,
+       0.0025353625607164878
+      ],
+      "days": 226,
+      "days_better": 134,
+      "first_half_mean": 0.0019616464262639933,
+      "mean": 0.0014870420757609835,
+      "n": 10115,
+      "per_decision_mean": 0.001483105678342931,
+      "second_half_mean": 0.0010124377252579734
+     },
+     "pair_centred_fitted_on_other_half mean shift sigma": 0.004,
+     "pair_centred_fitted_on_other_half vs served_symmetric_0.07 brier": {
+      "ci95": [
+       -0.00040364438918951497,
+       0.0003968161588512235
+      ],
+      "days": 226,
+      "days_better": 115,
+      "first_half_mean": 0.0008015049535400069,
+      "mean": 6.395043680487502e-06,
+      "n": 10115,
+      "per_decision_mean": 5.807969585286253e-06,
+      "second_half_mean": -0.000788714866179032
+     },
+     "pair_centred_fitted_on_other_half vs served_symmetric_0.07 logscore": {
+      "ci95": [
+       -0.0002341478974089683,
+       0.002419211904874608
+      ],
+      "days": 226,
+      "days_better": 120,
+      "first_half_mean": 0.0027914716224792194,
+      "mean": 0.0010549619346805685,
+      "n": 10115,
+      "per_decision_mean": 0.0010476840701421784,
+      "second_half_mean": -0.0006815477531180818
+     },
+     "served_symmetric_0.07 mean shift sigma": 0.0015
+    }
+   },
+   "fit_second_score_first": {
+    "fitted_pair_floored": [
+     0.2499,
+     0.0
+    ],
+    "scores": {
+     "pair_centred_0.12_0.04 mean shift sigma": 0.0003,
+     "pair_centred_0.12_0.04 vs served_symmetric_0.07 brier": {
+      "ci95": [
+       -0.0002069635999427505,
+       7.585990205941677e-05
+      ],
+      "days": 225,
+      "days_better": 115,
+      "first_half_mean": -0.00023154572588548976,
+      "mean": -6.058774855152244e-05,
+      "n": 9920,
+      "per_decision_mean": -6.676792903507205e-05,
+      "second_half_mean": 0.00010885732632816198
+     },
+     "pair_centred_0.12_0.04 vs served_symmetric_0.07 logscore": {
+      "ci95": [
+       -0.0001691264258718419,
+       0.0007708549946241565
+      ],
+      "days": 225,
+      "days_better": 124,
+      "first_half_mean": -2.7481095004419686e-05,
+      "mean": 0.00029906421752668995,
+      "n": 9920,
+      "per_decision_mean": 0.00029207765818068326,
+      "second_half_mean": 0.0006227197485309756
+     },
+     "pair_centred_0.16_0.02 mean shift sigma": 0.0023,
+     "pair_centred_0.16_0.02 vs served_symmetric_0.07 brier": {
+      "ci95": [
+       -0.00045356276759374775,
+       4.539370265662531e-05
+      ],
+      "days": 225,
+      "days_better": 109,
+      "first_half_mean": -0.000535361854170726,
+      "mean": -0.00019744404761317427,
+      "n": 9920,
+      "per_decision_mean": -0.00020877812263641316,
+      "second_half_mean": 0.00013748333587749648
+     },
+     "pair_centred_0.16_0.02 vs served_symmetric_0.07 logscore": {
+      "ci95": [
+       -0.0005728718018930519,
+       0.0010556730099654567
+      ],
+      "days": 225,
+      "days_better": 119,
+      "first_half_mean": -0.0004984457253418241,
+      "mean": 0.0002430820466199758,
+      "n": 9920,
+      "per_decision_mean": 0.00023015614744795784,
+      "second_half_mean": 0.0009780476259095474
+     },
+     "pair_centred_0.24_0 mean shift sigma": 0.005,
+     "pair_centred_0.24_0 vs served_symmetric_0.07 brier": {
+      "ci95": [
+       -0.0011029540379415526,
+       -0.00021727725576945888
+      ],
+      "days": 225,
+      "days_better": 98,
+      "first_half_mean": -0.0014666993096223737,
+      "mean": -0.0006530146647679556,
+      "n": 9920,
+      "per_decision_mean": -0.0006750755113734735,
+      "second_half_mean": 0.0001534692310169545
+     },
+     "pair_centred_0.24_0 vs served_symmetric_0.07 logscore": {
+      "ci95": [
+       -0.0017996644755464647,
+       0.0010101763182877143
+      ],
+      "days": 225,
+      "days_better": 112,
+      "first_half_mean": -0.002713912075883839,
+      "mean": -0.0003862414934254236,
+      "n": 9920,
+      "per_decision_mean": -0.00041295039691522604,
+      "second_half_mean": 0.00192083023432097
+     },
+     "pair_centred_0.2_0 mean shift sigma": 0.0042,
+     "pair_centred_0.2_0 vs served_symmetric_0.07 brier": {
+      "ci95": [
+       -0.0007785666664136149,
+       -6.459384529365812e-05
+      ],
+      "days": 225,
+      "days_better": 103,
+      "first_half_mean": -0.0009176615708829316,
+      "mean": -0.0004119469884247973,
+      "n": 9920,
+      "per_decision_mean": -0.00042861963781189156,
+      "second_half_mean": 8.929224374609683e-05
+     },
+     "pair_centred_0.2_0 vs served_symmetric_0.07 logscore": {
+      "ci95": [
+       -0.0012211991447427652,
+       0.0010917354347721102
+      ],
+      "days": 225,
+      "days_better": 117,
+      "first_half_mean": -0.0012315946596822749,
+      "mean": -7.59896784478608e-05,
+      "n": 9920,
+      "per_decision_mean": -9.483827915555306e-05,
+      "second_half_mean": 0.0010693887100322664
+     },
+     "pair_centred_fitted_on_other_half mean shift sigma": 0.0053,
+     "pair_centred_fitted_on_other_half vs served_symmetric_0.07 brier": {
+      "ci95": [
+       -0.0012061825691495763,
+       -0.0002701858104608887
+      ],
+      "days": 225,
+      "days_better": 97,
+      "first_half_mean": -0.0016167827337889742,
+      "mean": -0.0007280421671147318,
+      "n": 9920,
+      "per_decision_mean": -0.0007514566122849889,
+      "second_half_mean": 0.0001528334387924818
+     },
+     "pair_centred_fitted_on_other_half vs served_symmetric_0.07 logscore": {
+      "ci95": [
+       -0.0019816249628007497,
+       0.0009681161549828895
+      ],
+      "days": 225,
+      "days_better": 111,
+      "first_half_mean": -0.0031287407317243366,
+      "mean": -0.000513352105660487,
+      "n": 9920,
+      "per_decision_mean": -0.0005420146393089519,
+      "second_half_mean": 0.002078891488314302
+     },
+     "served_symmetric_0.07 mean shift sigma": -0.0024
+    }
+   }
+  },
+  "fit_fixed_effects": {
+   "cold": [
+    -0.0144,
+    -0.0416,
+    0.0127
+   ],
+   "days": 451,
+   "station_days": 20035,
+   "symmetric": [
+    0.0722,
+    0.0536,
+    0.0904
+   ],
+   "warm": [
+    0.2363,
+    0.1978,
+    0.2709
+   ]
+  },
+  "fit_fixed_effects_production_window_0816_0924": {
+   "cold": [
+    -0.0766,
+    -0.1689,
+    0.0114
+   ],
+   "days": 40,
+   "station_days": 1780,
+   "symmetric": [
+    -0.0105,
+    -0.0694,
+    0.055
+   ],
+   "warm": [
+    0.1446,
+    0.0094,
+    0.2865
+   ]
+  },
+  "fleet_intercept_walk_forward": {
+   "none mean shift sigma": 0.0,
+   "none vs served_symmetric_0.07 brier": {
+    "ci95": [
+     -0.0009099467236320288,
+     -0.0002396564814285645
+    ],
+    "days": 446,
+    "days_better": 198,
+    "first_half_mean": -0.0008171989140773704,
+    "mean": -0.0005633970778138384,
+    "n": 19839,
+    "per_decision_mean": -0.0005538230297167038,
+    "second_half_mean": -0.00030959524155030604
+   },
+   "none vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     -0.004034452525784768,
+     -0.0014171460112617261
+    ],
+    "days": 446,
+    "days_better": 188,
+    "first_half_mean": -0.003548966091335397,
+    "mean": -0.0027121603144661215,
+    "n": 19839,
+    "per_decision_mean": -0.0026650930523722323,
+    "second_half_mean": -0.0018753545375968482
+   },
+   "pair_centred mean shift sigma": 0.0012,
+   "pair_centred vs pair_uncentred brier": {
+    "ci95": [
+     -7.2042084901992176e-06,
+     9.512732946026413e-06
+    ],
+    "days": 446,
+    "days_better": 228,
+    "first_half_mean": -3.585162269168998e-06,
+    "mean": 8.108431502121279e-07,
+    "n": 19839,
+    "per_decision_mean": 7.364845381675705e-07,
+    "second_half_mean": 5.2068485695932544e-06
+   },
+   "pair_centred vs pair_uncentred logscore": {
+    "ci95": [
+     -3.104167028660248e-05,
+     2.4383005946634136e-05
+    ],
+    "days": 446,
+    "days_better": 225,
+    "first_half_mean": -9.919826657752916e-06,
+    "mean": -3.5704663813131623e-06,
+    "n": 19839,
+    "per_decision_mean": -3.790143023296155e-06,
+    "second_half_mean": 2.7788938951265943e-06
+   },
+   "pair_centred vs served_symmetric_0.07 brier": {
+    "ci95": [
+     -3.823844268191822e-05,
+     0.00015105920112266078
+    ],
+    "days": 446,
+    "days_better": 248,
+    "first_half_mean": -6.78202477443906e-05,
+    "mean": 5.5418848258640396e-05,
+    "n": 19839,
+    "per_decision_mean": 5.4638998053877385e-05,
+    "second_half_mean": 0.00017865794426167138
+   },
+   "pair_centred vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     0.0003517643544322915,
+     0.0009968403083082905
+    ],
+    "days": 446,
+    "days_better": 268,
+    "first_half_mean": 0.00037510793575694324,
+    "mean": 0.0006769375936175132,
+    "n": 19839,
+    "per_decision_mean": 0.0006747653471253377,
+    "second_half_mean": 0.000978767251478083
+   },
+   "pair_uncentred mean shift sigma": 0.0337,
+   "pair_uncentred vs served_symmetric_0.07 brier": {
+    "ci95": [
+     -4.0168520620701456e-05,
+     0.00014825155736739683
+    ],
+    "days": 446,
+    "days_better": 248,
+    "first_half_mean": -6.42350854752216e-05,
+    "mean": 5.460800510842828e-05,
+    "n": 19839,
+    "per_decision_mean": 5.390251351570982e-05,
+    "second_half_mean": 0.00017345109569207813
+   },
+   "pair_uncentred vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     0.00035748075884586866,
+     0.0009948344596403917
+    ],
+    "days": 446,
+    "days_better": 267,
+    "first_half_mean": 0.00038502776241469634,
+    "mean": 0.0006805080599988264,
+    "n": 19839,
+    "per_decision_mean": 0.0006785554901486339,
+    "second_half_mean": 0.0009759883575829563
+   },
+   "served_symmetric_0.07 mean shift sigma": -0.0004
+  },
+  "max_abs_centred_shift_difference_vs_production": 5.551115123125783e-17,
+  "max_abs_z_difference_vs_cached": 2.864375403532904e-14,
+  "mean_centre_sigma": 0.0325,
+  "no_intercept": {
+   "none mean shift sigma": 0.0,
+   "none vs served_symmetric_0.07 brier": {
+    "ci95": [
+     -0.0008281356482105717,
+     -0.00016437965347740235
+    ],
+    "days": 451,
+    "days_better": 203,
+    "first_half_mean": -0.0007140246469826604,
+    "mean": -0.0005002508031040258,
+    "n": 20035,
+    "per_decision_mean": -0.0004960396607709201,
+    "second_half_mean": -0.0002874228611894561
+   },
+   "none vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     -0.0038577531564978475,
+     -0.001290185144474563
+    ],
+    "days": 451,
+    "days_better": 194,
+    "first_half_mean": -0.0034142181198787316,
+    "mean": -0.0026247770344283773,
+    "n": 20035,
+    "per_decision_mean": -0.00260448492958856,
+    "second_half_mean": -0.001838829051126033
+   },
+   "pair_centred mean shift sigma": 0.0012,
+   "pair_centred vs pair_uncentred brier": {
+    "ci95": [
+     -0.00033335823216678717,
+     -5.558448677087714e-05
+    ],
+    "days": 451,
+    "days_better": 207,
+    "first_half_mean": -0.0003018143512350218,
+    "mean": -0.00019063772181816902,
+    "n": 20035,
+    "per_decision_mean": -0.00018650829451536866,
+    "second_half_mean": -7.995302438988638e-05
+   },
+   "pair_centred vs pair_uncentred logscore": {
+    "ci95": [
+     0.00027159907978254946,
+     0.001259374673704475
+    ],
+    "days": 451,
+    "days_better": 253,
+    "first_half_mean": 0.0003262920334165008,
+    "mean": 0.0007682580031106875,
+    "n": 20035,
+    "per_decision_mean": 0.000794250520778433,
+    "second_half_mean": 0.001208268371169059
+   },
+   "pair_centred vs served_symmetric_0.07 brier": {
+    "ci95": [
+     -1.2673411180683703e-05,
+     0.00016497390415550004
+    ],
+    "days": 451,
+    "days_better": 253,
+    "first_half_mean": -6.058774855152244e-05,
+    "mean": 7.210526538162687e-05,
+    "n": 20035,
+    "per_decision_mean": 6.975306945364755e-05,
+    "second_half_mean": 0.00020421114208498347
+   },
+   "pair_centred vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     0.00030289592782158943,
+     0.0009532746446124666
+    ],
+    "days": 451,
+    "days_better": 268,
+    "first_half_mean": 0.00029906421752668995,
+    "mean": 0.0006254202253981528,
+    "n": 20035,
+    "per_decision_mean": 0.0006237949939631295,
+    "second_half_mean": 0.000950332180137441
+   },
+   "pair_uncentred mean shift sigma": 0.0337,
+   "pair_uncentred vs served_symmetric_0.07 brier": {
+    "ci95": [
+     9.182520801509473e-05,
+     0.0004423910553443864
+    ],
+    "days": 451,
+    "days_better": 258,
+    "first_half_mean": 0.00024122660268349934,
+    "mean": 0.00026274298719979587,
+    "n": 20035,
+    "per_decision_mean": 0.00025626136396901625,
+    "second_half_mean": 0.0002841641664748698
+   },
+   "pair_uncentred vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     -0.0007402299883355272,
+     0.0004841444283587433
+    ],
+    "days": 451,
+    "days_better": 218,
+    "first_half_mean": -2.7227815889810935e-05,
+    "mean": -0.0001428377777125346,
+    "n": 20035,
+    "per_decision_mean": -0.00017045552681530348,
+    "second_half_mean": -0.00025793619103161794
+   },
+   "served_symmetric_0.07 mean shift sigma": -0.0004
+  },
+  "no_intercept_production_window_0816_0924": {
+   "none mean shift sigma": 0.0,
+   "none vs served_symmetric_0.07 brier": {
+    "ci95": [
+     0.00038691366749460854,
+     0.0023951358646468203
+    ],
+    "days": 40,
+    "days_better": 26,
+    "first_half_mean": 0.0006353843417794873,
+    "mean": 0.0014274214020456126,
+    "n": 1780,
+    "per_decision_mean": 0.0013957720059256627,
+    "second_half_mean": 0.0022194584623117385
+   },
+   "none vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     -0.00034543662700703816,
+     0.007954520280314296
+    ],
+    "days": 40,
+    "days_better": 23,
+    "first_half_mean": 0.004241298507011993,
+    "mean": 0.00399258656049571,
+    "n": 1780,
+    "per_decision_mean": 0.003968644142552767,
+    "second_half_mean": 0.0037438746139794284
+   },
+   "pair_centred mean shift sigma": -0.0082,
+   "pair_centred vs pair_uncentred brier": {
+    "ci95": [
+     -0.0008477855645516741,
+     0.0002039965534250687
+    ],
+    "days": 40,
+    "days_better": 17,
+    "first_half_mean": -0.0008658085679096206,
+    "mean": -0.0003309098268068143,
+    "n": 1780,
+    "per_decision_mean": -0.00036918798580141504,
+    "second_half_mean": 0.00020398891429599183
+   },
+   "pair_centred vs pair_uncentred logscore": {
+    "ci95": [
+     -0.0015576877066398637,
+     0.0018189597520254287
+    ],
+    "days": 40,
+    "days_better": 18,
+    "first_half_mean": -0.0012971284730454828,
+    "mean": 0.00011786482599878803,
+    "n": 1780,
+    "per_decision_mean": 2.4681787925941275e-05,
+    "second_half_mean": 0.0015328581250430588
+   },
+   "pair_centred vs served_symmetric_0.07 brier": {
+    "ci95": [
+     -0.000547159431420441,
+     7.840198459343544e-05
+    ],
+    "days": 40,
+    "days_better": 16,
+    "first_half_mean": -0.0006836313701837871,
+    "mean": -0.00022717021701180014,
+    "n": 1780,
+    "per_decision_mean": -0.00023432543135837146,
+    "second_half_mean": 0.0002292909361601867
+   },
+   "pair_centred vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     -0.00045066533657536924,
+     0.0012462839643692311
+    ],
+    "days": 40,
+    "days_better": 26,
+    "first_half_mean": 0.00025714094735493733,
+    "mean": 0.0004381715227812365,
+    "n": 1780,
+    "per_decision_mean": 0.00042655742201947323,
+    "second_half_mean": 0.0006192020982075358
+   },
+   "pair_uncentred mean shift sigma": 0.0243,
+   "pair_uncentred vs served_symmetric_0.07 brier": {
+    "ci95": [
+     -0.000403021208246379,
+     0.0006348149817128536
+    ],
+    "days": 40,
+    "days_better": 21,
+    "first_half_mean": 0.0001821771977258335,
+    "mean": 0.00010373960979501416,
+    "n": 1780,
+    "per_decision_mean": 0.00013486255444304367,
+    "second_half_mean": 2.5302021864194814e-05
+   },
+   "pair_uncentred vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     -0.0014223375645634263,
+     0.0020740510752086986
+    ],
+    "days": 40,
+    "days_better": 22,
+    "first_half_mean": 0.0015542694204004198,
+    "mean": 0.0003203066967824485,
+    "n": 1780,
+    "per_decision_mean": 0.0004018756340935315,
+    "second_half_mean": -0.0009136560268355228
+   },
+   "served_symmetric_0.07 mean shift sigma": -0.0063
+  },
+  "rows": 20035
+ }
+}
