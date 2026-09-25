@@ -64,6 +64,10 @@ NON_MARKET_NETWORK_MODULES = frozenset(
         "bayes_basket_target/open_meteo_relay_archive.py",
         "bayes_basket_target/republisher_native_forward_probe.py",
         "bayes_basket_target/republisher_no_live_p0_contract.py",
+        # The daily IEM truth audit (2026-09-25): IEM's archived copy of the
+        # same METAR/SPECI reports, read to question settled days.  Reports
+        # only; no quote, book or tick.
+        "bayes_basket_target/iem_truth_audit.py",
     }
 )
 # The account's own balance, not the market.  Charter 141 (2026-09-17) sizes
