@@ -166,7 +166,9 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # Charter 199 (2026-09-24): the fusion blend serves -- each compile's
 # weights are the seat's re-fitted on the centre error and the pool CRPS of
 # the settled day-ahead roots, half each, the seat weights as prior.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v13"
+# Charter 216: every native ensemble member is calibrated by the shrunk
+# bucket log-loss refit of its centre and spread.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v14"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they

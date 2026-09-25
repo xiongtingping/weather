@@ -63,9 +63,14 @@ PERSISTED_BY_COLUMN = {
         "correction_form",
         "bias_bin_cuts_c",
         "bias_bin_shifts_c",
+        # Charter 216: the fit's rule and what the log-loss refit moved.
+        "fit_rule",
+        "moment_bias_c",
+        "logloss_shift_c",
     },
     "spread_parameters_json": {
         "spread_factor",
+        "moment_spread_factor",
         "train_rmse_c",
         "train_residual_sigma_c",
         "train_mean_spread_c",

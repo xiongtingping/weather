@@ -1598,7 +1598,7 @@ def _fit_parameters(
     # the constant form for months against a certificate earned by another.
     # ``test_fit_parameter_keys_are_all_persisted`` freezes this set against
     # the three parameter columns; adding a key means deciding where it lands.
-    return {
+    parameters = {
         "bias_c": bias,
         "correction_form": BIAS_CORRECTION_FORM,
         "bias_bin_cuts_c": bias_bin_cuts,
@@ -1618,7 +1618,256 @@ def _fit_parameters(
             str(case["event_date"])[:10] for case in cases
         ),
         "fit_case_count": len(cases),
+        # Charter 216: what the moments said, and what the log-loss refit
+        # moved.  ``bias_c`` / ``bias_bin_shifts_c`` / ``spread_factor`` are
+        # what serves; these say how they got there.
+        "fit_rule": SINGLE_SYSTEM_FIT_RULE_MOMENT,
+        "moment_bias_c": bias,
+        "moment_spread_factor": spread_factor,
+        "logloss_shift_c": 0.0,
     }
+    if SINGLE_SYSTEM_FIT_RULE == SINGLE_SYSTEM_FIT_RULE_LOGLOSS and (
+        _logloss_refit_applies(cases)
+    ):
+        delta_c, fitted_spread = _logloss_refit(cases, parameters)
+        applied_shift = (1.0 - LOGLOSS_REFIT_KAPPA) * delta_c
+        applied_spread = (
+            LOGLOSS_REFIT_KAPPA * spread_factor
+            + (1.0 - LOGLOSS_REFIT_KAPPA) * fitted_spread
+        )
+        parameters.update({
+            "bias_c": bias + applied_shift,
+            "bias_bin_shifts_c": [
+                float(value) + applied_shift for value in bias_bin_shifts
+            ],
+            "spread_factor": applied_spread,
+            "logloss_shift_c": applied_shift,
+            "fit_rule": SINGLE_SYSTEM_FIT_RULE_LOGLOSS,
+        })
+    return parameters
+
+
+# Charter 216 (user rulings 2026-09-24 「上线」, 2026-09-25 「接管」): the
+# single-system layer's two parameters are refitted by bucket log loss --
+# charter 211's training rule -- and held on a leash.  The moments above
+# (decayed mean error for the centre, residual sigma over member spread for
+# the width) stay the starting point; a log-loss fit of one centre shift
+# delta and the spread factor on the same training cases, weighted with
+# RELIABILITY_HALF_LIFE_DAYS (15, not the bias's 5: a five-day log-loss fit
+# overfits), is then taken half-way from the moments (kappa 0.5, the stable
+# pool's).  Measured before switching on six families with modelled arrivals
+# for the backfilled AIFS ENS / AIGEFS history, decisions before the local
+# day's end, the served P0 through the full chain with the seat weights held
+# (docs/research/single_system_logloss_reg_20260924, 2,502 station-days /
+# 58,524 updates): bucket Brier -0.00377 [-0.00511, -0.00243], log score
+# -0.01286 [-0.01709, -0.00868]; day-ahead roots and both halves around
+# charter 134 agree.  Unleashed (half-life 5, no shrink) it lowered Brier but
+# raised the log score.  Only official native ensembles (two or more
+# members, a native transport) are refitted; point forecasts, relays and the
+# regional lanes keep their moments.  ``moment_v1`` is the research arm
+# (``PM_SINGLE_SYSTEM_FIT_RULE``).
+SINGLE_SYSTEM_FIT_RULE_MOMENT = "moment_v1"
+SINGLE_SYSTEM_FIT_RULE_LOGLOSS = "logloss_shrunk_v1"
+SINGLE_SYSTEM_FIT_RULES = (
+    SINGLE_SYSTEM_FIT_RULE_MOMENT, SINGLE_SYSTEM_FIT_RULE_LOGLOSS,
+)
+SINGLE_SYSTEM_FIT_RULE = (
+    os.environ.get(
+        "PM_SINGLE_SYSTEM_FIT_RULE", SINGLE_SYSTEM_FIT_RULE_LOGLOSS
+    ).strip()
+    or SINGLE_SYSTEM_FIT_RULE_LOGLOSS
+)
+if SINGLE_SYSTEM_FIT_RULE not in SINGLE_SYSTEM_FIT_RULES:
+    raise RuntimeError(
+        f"unknown PM_SINGLE_SYSTEM_FIT_RULE: {SINGLE_SYSTEM_FIT_RULE}"
+    )
+LOGLOSS_REFIT_HALF_LIFE_DAYS = RELIABILITY_HALF_LIFE_DAYS
+LOGLOSS_REFIT_KAPPA = STABLE_POOL_KAPPA
+LOGLOSS_REFIT_P_FLOOR = 1e-6
+LOGLOSS_REFIT_DELTA_BOUNDS_C = (-3.0, 3.0)
+# The moment fit's own clamp on the spread factor.
+LOGLOSS_REFIT_SPREAD_BOUNDS = (0.5, 5.0)
+LOGLOSS_REFIT_MAXITER = 60
+_NATIVE_TRANSPORT_IDS = frozenset(
+    str(contract["transport_provider_id"])
+    for contract in OFFICIAL_ARCHIVE_SCOPE_CONTRACTS.values()
+)
+
+
+def _logloss_refit_applies(cases: Sequence[Mapping[str, Any]]) -> bool:
+    """An official native ensemble: native transport, two or more members."""
+
+    return all(
+        str(case.get("transport_provider_id") or "") in _NATIVE_TRANSPORT_IDS
+        and len(case.get("values") or ()) >= 2
+        for case in cases
+    )
+
+
+def _truth_bucket_probability(
+    values: Sequence[float],
+    actual: float,
+    parameters: Mapping[str, Any],
+    *,
+    delta_c: float,
+    spread: float,
+) -> float:
+    """p(settled integer bucket) under ``_apply_parameters`` with a shift.
+
+    The per-case reference for ``_truth_bucket_probabilities``: the
+    tercile-resolved centre plus ``delta_c``, the spread about the member
+    mean, the variance-preserving shrink onto the 0.5C kernel, the
+    4-kernel-width truncation and the renormalisation, read at the one bucket
+    the log loss needs.  The mean is summed in the production order -- the
+    tercile cuts are training centres, so a case on a cut flips bin on the
+    last ULP of a mean summed any other way.  ``test_charter_216`` holds it
+    equal to ``_apply_parameters``.
+    """
+
+    import numpy as np  # noqa: PLC0415
+    from scipy.special import ndtr  # noqa: PLC0415
+
+    current = [float(value) for value in values]
+    mean = sum(current) / len(current)
+    center = mean + _resolved_bias_c(mean, parameters) + float(delta_c)
+    members = np.asarray(current, dtype=float)
+    dressed = center + float(spread) * (members - mean)
+    bandwidth = KERNEL_BANDWIDTH_C
+    middle = dressed.mean()
+    std = math.sqrt(float(((dressed - middle) ** 2).mean()))
+    if std > bandwidth:
+        dressed = middle + math.sqrt(1.0 - (bandwidth / std) ** 2) * (
+            dressed - middle
+        )
+    lo = math.floor(float(dressed.min()) - 4.0 * bandwidth)
+    hi = math.ceil(float(dressed.max()) + 4.0 * bandwidth)
+    bucket = int(_temperature_bucket(actual))
+    if bucket < lo or bucket > hi:
+        return 0.0
+    mass = float((
+        ndtr((bucket + 0.5 - dressed) / bandwidth)
+        - ndtr((bucket - 0.5 - dressed) / bandwidth)
+    ).mean())
+    total = float((
+        ndtr((hi + 0.5 - dressed) / bandwidth)
+        - ndtr((lo - 0.5 - dressed) / bandwidth)
+    ).mean())
+    return mass / total if total > 0.0 else 0.0
+
+
+def _refit_case_arrays(
+    cases: Sequence[Mapping[str, Any]],
+    parameters: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Per-case inputs of ``_truth_bucket_probability``, stacked once.
+
+    Member deviations from each case's own mean (padded to the widest case
+    and masked), the tercile-resolved centre before any shift -- the mean
+    summed in the production order -- and the settled integer bucket.
+    """
+
+    import numpy as np  # noqa: PLC0415
+
+    width = max(len(case["values"]) for case in cases)
+    deviations = np.zeros((len(cases), width))
+    mask = np.zeros((len(cases), width), dtype=bool)
+    centers = np.zeros(len(cases))
+    buckets = np.zeros(len(cases))
+    for row, case in enumerate(cases):
+        current = [float(value) for value in case["values"]]
+        mean = sum(current) / len(current)
+        centers[row] = mean + _resolved_bias_c(mean, parameters)
+        deviations[row, :len(current)] = [value - mean for value in current]
+        mask[row, :len(current)] = True
+        buckets[row] = int(_temperature_bucket(float(case["actual_tmax_c"])))
+    return {"deviations": deviations, "mask": mask, "centers": centers,
+            "buckets": buckets, "counts": mask.sum(axis=1)}
+
+
+def _truth_bucket_probabilities(
+    arrays: Mapping[str, Any], *, delta_c: float, spread: float,
+) -> Any:
+    """``_truth_bucket_probability`` for every case at once."""
+
+    import numpy as np  # noqa: PLC0415
+    from scipy.special import ndtr  # noqa: PLC0415
+
+    mask, counts = arrays["mask"], arrays["counts"]
+    bandwidth = KERNEL_BANDWIDTH_C
+    dressed = (
+        (arrays["centers"] + float(delta_c))[:, None]
+        + float(spread) * arrays["deviations"]
+    )
+    middle = np.where(mask, dressed, 0.0).sum(axis=1) / counts
+    variance = np.where(
+        mask, (dressed - middle[:, None]) ** 2, 0.0
+    ).sum(axis=1) / counts
+    std = np.sqrt(variance)
+    shrink = np.where(
+        std > bandwidth,
+        np.sqrt(np.clip(
+            1.0 - (bandwidth / np.where(std > 0, std, 1.0)) ** 2, 0.0, 1.0
+        )),
+        1.0,
+    )
+    dressed = middle[:, None] + shrink[:, None] * (dressed - middle[:, None])
+    low = np.floor(np.where(mask, dressed, np.inf).min(axis=1) - 4.0 * bandwidth)
+    high = np.ceil(np.where(mask, dressed, -np.inf).max(axis=1) + 4.0 * bandwidth)
+    bucket = arrays["buckets"]
+
+    def _mean(edge_hi: Any, edge_lo: Any) -> Any:
+        values = ndtr((edge_hi[:, None] - dressed) / bandwidth) - ndtr(
+            (edge_lo[:, None] - dressed) / bandwidth
+        )
+        return np.where(mask, values, 0.0).sum(axis=1) / counts
+
+    mass = _mean(bucket + 0.5, bucket - 0.5)
+    total = _mean(high + 0.5, low - 0.5)
+    inside = (bucket >= low) & (bucket <= high) & (total > 0.0)
+    return np.where(inside, mass / np.where(total > 0.0, total, 1.0), 0.0)
+
+
+def _logloss_refit(
+    cases: Sequence[Mapping[str, Any]],
+    parameters: Mapping[str, Any],
+) -> tuple[float, float]:
+    """(delta_c, spread) minimising the decayed bucket log loss.
+
+    Started at the moments (no shift, the moment spread), bounded, L-BFGS-B
+    with at most ``LOGLOSS_REFIT_MAXITER`` iterations -- the research arm's
+    optimiser, so the certificate earns what was measured.  The loss is
+    evaluated on all cases at once (``_truth_bucket_probabilities``), which
+    the per-case reference matches to rounding.
+    """
+
+    import numpy as np  # noqa: PLC0415
+    from scipy.optimize import minimize  # noqa: PLC0415
+
+    days = [date.fromisoformat(str(case["event_date"])[:10]) for case in cases]
+    anchor = max(days)
+    weights = np.array([
+        0.5 ** ((anchor - day).days / LOGLOSS_REFIT_HALF_LIFE_DAYS)
+        for day in days
+    ])
+    arrays = _refit_case_arrays(cases, parameters)
+
+    def objective(x: Any) -> float:
+        probabilities = _truth_bucket_probabilities(
+            arrays, delta_c=float(x[0]), spread=float(x[1])
+        )
+        return float(
+            -(weights * np.log(np.maximum(probabilities, LOGLOSS_REFIT_P_FLOOR))).sum()
+            / weights.sum()
+        )
+
+    fit = minimize(
+        objective,
+        x0=np.array([0.0, float(parameters["spread_factor"])]),
+        method="L-BFGS-B",
+        bounds=[LOGLOSS_REFIT_DELTA_BOUNDS_C, LOGLOSS_REFIT_SPREAD_BOUNDS],
+        options={"maxiter": LOGLOSS_REFIT_MAXITER},
+    )
+    return float(fit.x[0]), float(fit.x[1])
 
 
 def _level_bin(mean: float, cuts: Sequence[float]) -> int:
@@ -6416,9 +6665,13 @@ def _system_artifact_identity(
             "correction_form": parameters["correction_form"],
             "bias_bin_cuts_c": parameters["bias_bin_cuts_c"],
             "bias_bin_shifts_c": parameters["bias_bin_shifts_c"],
+            "fit_rule": parameters["fit_rule"],
+            "moment_bias_c": parameters["moment_bias_c"],
+            "logloss_shift_c": parameters["logloss_shift_c"],
         }),
         "spread_parameters_json": _json({
             "spread_factor": parameters["spread_factor"],
+            "moment_spread_factor": parameters["moment_spread_factor"],
             "train_rmse_c": parameters["train_rmse_c"],
             "train_residual_sigma_c": parameters[
                 "train_residual_sigma_c"
