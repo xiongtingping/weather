@@ -1,0 +1,321 @@
+{
+ "question": "熊先生 2026-09-26：只 P0 开仓建仓、持有到结算；市场众数+均值桶为篮子，买一+1 挂单 vs 吃单",
+ "station_days": 991,
+ "event_days": 38,
+ "median_placements_in_p0": 3.0,
+ "median_opening_hours_to_settlement": 46.38982979972222,
+ "p0": {
+  "two:taker:all": {
+   "station_days": 990,
+   "event_days": 38,
+   "entry_price": 0.7401919191919192,
+   "paid_when_paid": 0.7401919191919192,
+   "all_legs_filled": 1.0,
+   "no_leg_filled": 0.0,
+   "any_payout": 0.7292929292929293,
+   "pnl_per_basket": -0.010898989898989903,
+   "roi": [
+    -0.014724545913563229,
+    -0.0553796708355808,
+    0.02465345611213401
+   ]
+  },
+  "two:taker:break_even": {
+   "station_days": 988,
+   "event_days": 38,
+   "entry_price": 0.7396457489878542,
+   "paid_when_paid": 0.7396457489878542,
+   "all_legs_filled": 1.0,
+   "no_leg_filled": 0.0,
+   "any_payout": 0.728744939271255,
+   "pnl_per_basket": -0.010900809716599194,
+   "roi": [
+    -0.014737879223285025,
+    -0.05561504750990688,
+    0.02474772551126454
+   ]
+  },
+  "two:maker_open_60m:all": {
+   "station_days": 990,
+   "event_days": 38,
+   "entry_price": 0.6840949494949495,
+   "paid_when_paid": 0.4546990740740741,
+   "all_legs_filled": 0.1,
+   "no_leg_filled": 0.5636363636363636,
+   "any_payout": 0.20505050505050504,
+   "pnl_per_basket": 0.006636363636363633,
+   "roi": [
+    0.03344702947614926,
+    -0.06403311068897123,
+    0.14250041802201183
+   ]
+  },
+  "two:maker_open_60m:break_even": {
+   "station_days": 989,
+   "event_days": 38,
+   "entry_price": 0.6837654196157735,
+   "paid_when_paid": 0.4534106728538282,
+   "all_legs_filled": 0.09908998988877654,
+   "no_leg_filled": 0.564206268958544,
+   "any_payout": 0.20424671385237614,
+   "pnl_per_basket": 0.006653185035389279,
+   "roi": [
+    0.03367106744447856,
+    -0.06457570294162196,
+    0.14250041802201183
+   ]
+  },
+  "two:maker_build_p0:all": {
+   "station_days": 990,
+   "event_days": 38,
+   "entry_price": 0.6840949494949495,
+   "paid_when_paid": 0.5459438700147711,
+   "all_legs_filled": 0.3292929292929293,
+   "no_leg_filled": 0.31616161616161614,
+   "any_payout": 0.37373737373737376,
+   "pnl_per_basket": 0.0003999999999999954,
+   "roi": [
+    0.0010714169760067446,
+    -0.0669219428515969,
+    0.0795335703127496
+   ]
+  },
+  "two:maker_build_p0:break_even": {
+   "station_days": 989,
+   "event_days": 38,
+   "entry_price": 0.6837654196157735,
+   "paid_when_paid": 0.5452573964497042,
+   "all_legs_filled": 0.32861476238624876,
+   "no_leg_filled": 0.31648129423660265,
+   "any_payout": 0.3731041456016178,
+   "pnl_per_basket": 0.00041051567239635606,
+   "roi": [
+    0.0011014829324405622,
+    -0.06707659573279381,
+    0.0795764586144715
+   ]
+  },
+  "two:maker_build_then_take:all": {
+   "station_days": 963,
+   "event_days": 38,
+   "entry_price": 0.6837487019730011,
+   "paid_when_paid": 0.7360571131879544,
+   "all_legs_filled": 0.33852544132917967,
+   "no_leg_filled": 0.31048805815160957,
+   "any_payout": 0.7279335410176532,
+   "pnl_per_basket": -0.008123572170301144,
+   "roi": [
+    -0.01103660575348149,
+    -0.05089441393618288,
+    0.02917148781539615
+   ]
+  },
+  "two:maker_build_then_take:break_even": {
+   "station_days": 962,
+   "event_days": 38,
+   "entry_price": 0.6834095634095635,
+   "paid_when_paid": 0.7357723492723492,
+   "all_legs_filled": 0.33783783783783783,
+   "no_leg_filled": 0.3108108108108108,
+   "any_payout": 0.7276507276507277,
+   "pnl_per_basket": -0.008121621621621621,
+   "roi": [
+    -0.011038226198162521,
+    -0.051049136358061076,
+    0.02923222366369247
+   ]
+  },
+  "two:bid_plus_one_nominal:all": {
+   "station_days": 990,
+   "event_days": 38,
+   "entry_price": 0.6840949494949495,
+   "paid_when_paid": 0.6840949494949495,
+   "all_legs_filled": 1.0,
+   "no_leg_filled": 0.0,
+   "any_payout": 0.7292929292929293,
+   "pnl_per_basket": 0.04519797979797979,
+   "roi": [
+    0.06606974635808717,
+    0.020345515702897162,
+    0.1142609312829999
+   ]
+  },
+  "two:bid_plus_one_nominal:break_even": {
+   "station_days": 989,
+   "event_days": 38,
+   "entry_price": 0.6837654196157735,
+   "paid_when_paid": 0.6837654196157735,
+   "all_legs_filled": 1.0,
+   "no_leg_filled": 0.0,
+   "any_payout": 0.7290192113245703,
+   "pnl_per_basket": 0.045253791708796766,
+   "roi": [
+    0.06618321197674208,
+    0.020347746622581556,
+    0.11426265140141728
+   ]
+  },
+  "three:taker:all": {
+   "station_days": 990,
+   "event_days": 38,
+   "entry_price": 0.9190787878787879,
+   "paid_when_paid": 0.9190787878787879,
+   "all_legs_filled": 1.0,
+   "no_leg_filled": 0.0,
+   "any_payout": 0.8898989898989899,
+   "pnl_per_basket": -0.029179797979797986,
+   "roi": [
+    -0.03174896250967152,
+    -0.0459503428726578,
+    -0.016192568452355713
+   ]
+  },
+  "three:taker:break_even": {
+   "station_days": 808,
+   "event_days": 38,
+   "entry_price": 0.8929331683168317,
+   "paid_when_paid": 0.8929331683168317,
+   "all_legs_filled": 1.0,
+   "no_leg_filled": 0.0,
+   "any_payout": 0.8762376237623762,
+   "pnl_per_basket": -0.016695544554455446,
+   "roi": [
+    -0.01869741784362917,
+    -0.038006835643997434,
+    0.000799701858910575
+   ]
+  },
+  "three:maker_open_60m:all": {
+   "station_days": 987,
+   "event_days": 38,
+   "entry_price": 0.8299675785207699,
+   "paid_when_paid": 0.4508366533864542,
+   "all_legs_filled": 0.034447821681864235,
+   "no_leg_filled": 0.49138804457953394,
+   "any_payout": 0.22695035460992907,
+   "pnl_per_basket": -0.0023505572441742655,
+   "roi": [
+    -0.010250972074938148,
+    -0.09499676251670283,
+    0.0738575923260958
+   ]
+  },
+  "three:maker_open_60m:break_even": {
+   "station_days": 972,
+   "event_days": 38,
+   "entry_price": 0.8272170781893005,
+   "paid_when_paid": 0.4435787321063395,
+   "all_legs_filled": 0.030864197530864196,
+   "no_leg_filled": 0.49691358024691357,
+   "any_payout": 0.2222222222222222,
+   "pnl_per_basket": -0.0009362139917695457,
+   "roi": [
+    -0.004195288368447756,
+    -0.09328617350354584,
+    0.08805769694985476
+   ]
+  },
+  "three:maker_build_p0:all": {
+   "station_days": 987,
+   "event_days": 38,
+   "entry_price": 0.8299675785207699,
+   "paid_when_paid": 0.5853863636363636,
+   "all_legs_filled": 0.19250253292806485,
+   "no_leg_filled": 0.24214792299898683,
+   "any_payout": 0.4387031408308004,
+   "pnl_per_basket": -0.004933130699088149,
+   "roi": [
+    -0.011119764130367757,
+    -0.06878550855915316,
+    0.04511104415356268
+   ]
+  },
+  "three:maker_build_p0:break_even": {
+   "station_days": 972,
+   "event_days": 38,
+   "entry_price": 0.8272170781893005,
+   "paid_when_paid": 0.5813610354223434,
+   "all_legs_filled": 0.18724279835390947,
+   "no_leg_filled": 0.2448559670781893,
+   "any_payout": 0.43621399176954734,
+   "pnl_per_basket": -0.0027973251028806617,
+   "roi": [
+    -0.006371874699743862,
+    -0.06450063457525473,
+    0.051441984539549825
+   ]
+  },
+  "three:maker_build_then_take:all": {
+   "station_days": 949,
+   "event_days": 38,
+   "entry_price": 0.8299831401475237,
+   "paid_when_paid": 0.9109841938883034,
+   "all_legs_filled": 0.20021074815595363,
+   "no_leg_filled": 0.23814541622760801,
+   "any_payout": 0.8925184404636459,
+   "pnl_per_basket": -0.018465753424657536,
+   "roi": [
+    -0.020270113958663964,
+    -0.036452949538781,
+    -0.004851711095592221
+   ]
+  },
+  "three:maker_build_then_take:break_even": {
+   "station_days": 934,
+   "event_days": 38,
+   "entry_price": 0.8271209850107067,
+   "paid_when_paid": 0.9092012847965738,
+   "all_legs_filled": 0.1948608137044968,
+   "no_leg_filled": 0.24089935760171305,
+   "any_payout": 0.8918629550321199,
+   "pnl_per_basket": -0.017338329764453965,
+   "roi": [
+    -0.019069847408248297,
+    -0.03634104527453768,
+    -0.0035327636769198964
+   ]
+  },
+  "three:bid_plus_one_nominal:all": {
+   "station_days": 987,
+   "event_days": 38,
+   "entry_price": 0.8299675785207699,
+   "paid_when_paid": 0.8299675785207699,
+   "all_legs_filled": 1.0,
+   "no_leg_filled": 0.0,
+   "any_payout": 0.889564336372847,
+   "pnl_per_basket": 0.05959675785207699,
+   "roi": [
+    0.07180612760596598,
+    0.04762021955103239,
+    0.09731059293989461
+   ]
+  },
+  "three:bid_plus_one_nominal:break_even": {
+   "station_days": 972,
+   "event_days": 38,
+   "entry_price": 0.8272170781893005,
+   "paid_when_paid": 0.8272170781893005,
+   "all_legs_filled": 1.0,
+   "no_leg_filled": 0.0,
+   "any_payout": 0.8888888888888888,
+   "pnl_per_basket": 0.06167181069958847,
+   "roi": [
+    0.07455335766831872,
+    0.049508945373948225,
+    0.10087371259495165
+   ]
+  }
+ },
+ "p0_opening_bid_plus_one_legs": {
+  "filled": {
+   "legs": 531,
+   "hit": 0.3822975517890772,
+   "limit_price": 0.36992467043314503
+  },
+  "not_filled": {
+   "legs": 1450,
+   "hit": 0.35793103448275865,
+   "limit_price": 0.33180344827586206
+  }
+ }
+}
