@@ -144,3 +144,56 @@ def test_one_pass_is_bounded_and_says_what_it_deferred(
         )
     }
     assert not remaining, remaining
+
+
+def test_each_recent_station_day_keeps_the_registry_it_resolves_to(
+    conn: sqlite3.Connection,
+) -> None:
+    """The paper ledger replays production's own decisions, and a compile
+    cannot run without its station-day's registry (user ruling 2026-09-24:
+    「账本对齐」).  Old snapshots still go -- except, for each station-day
+    of the last REPLAY_RETENTION_DAYS, the newest snapshot that lists it.
+    On 2026-09-25 no event date before 09-21 could be recompiled at all."""
+
+    def rows(sha: str, day: str, stations: range) -> None:
+        conn.executemany(
+            "INSERT INTO basket_target_market_registry("
+            "snapshot_sha256,station_id,event_date,settlement_timezone) VALUES(?,?,?,?)",
+            [(sha, f"K{i:03d}", day, "America/Chicago") for i in stations],
+        )
+
+    def header(sha: str, ingested: str) -> None:
+        conn.execute(
+            "INSERT INTO basket_target_market_registry_snapshot("
+            "snapshot_sha256,ingested_at_utc,row_count) VALUES(?,?,0)",
+            (sha, ingested),
+        )
+
+    # a: lists 09-02 and 09-03; b: lists 09-03 only, later -- the newest for
+    # 09-03; c: the current fleet (09-07).  07-01 is past the replay window.
+    header("a" * 64, "2026-09-01T00:00:00Z")
+    rows("a" * 64, "2026-09-02", range(3))
+    rows("a" * 64, "2026-09-03", range(3))
+    rows("a" * 64, "2026-07-01", range(2))
+    header("b" * 64, "2026-09-02T00:00:00Z")
+    rows("b" * 64, "2026-09-03", range(3))
+    header("c" * 64, "2026-09-07T12:00:00Z")
+    rows("c" * 64, "2026-09-07", range(3))
+
+    plan = plan_market_registry_retention(conn, as_of_utc=NOW)
+    assert set(plan["stale_snapshots"]) == {"a" * 64}  # b only keeps 09-03
+    assert plan["protected_scopes"]["a" * 64] == [f"K{i:03d}|2026-09-02" for i in range(3)]
+    receipt = apply_market_registry_retention(conn, plan)
+    assert receipt["deleted_row_count"] == 5  # a's 09-03 copies and 07-01
+
+    left = conn.execute(
+        "SELECT snapshot_sha256, event_date, COUNT(*) FROM basket_target_market_registry"
+        " GROUP BY 1, 2 ORDER BY 1, 2"
+    ).fetchall()
+    assert left == [
+        ("a" * 64, "2026-09-02", 3),
+        ("b" * 64, "2026-09-03", 3),
+        ("c" * 64, "2026-09-07", 3),
+    ]
+    # A kept scope is not re-planned every pass: nothing is left to delete.
+    assert plan_market_registry_retention(conn, as_of_utc=NOW)["stale_snapshots"] == []
