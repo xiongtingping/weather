@@ -1,0 +1,400 @@
+{
+ "best_match": {
+  "fit_all": {
+   "cold_side_per_z": [
+    -0.0714,
+    -0.0978,
+    -0.0476
+   ],
+   "days": 451,
+   "n": 20035,
+   "warm_side_per_z": [
+    0.0668,
+    0.0315,
+    0.1005
+   ]
+  },
+  "fit_first_half": {
+   "cold_side_per_z": [
+    -0.0817,
+    -0.1253,
+    -0.0414
+   ],
+   "days": 225,
+   "n": 9920,
+   "warm_side_per_z": [
+    0.1132,
+    0.0589,
+    0.1662
+   ]
+  },
+  "fit_northern_extratropics": {
+   "cold_side_per_z": [
+    -0.0974,
+    -0.1306,
+    -0.0674
+   ],
+   "days": 451,
+   "n": 14649,
+   "warm_side_per_z": [
+    0.046,
+    0.003,
+    0.0879
+   ]
+  },
+  "fit_production_window_0816_0924": {
+   "cold_side_per_z": [
+    -0.1311,
+    -0.2417,
+    -0.0273
+   ],
+   "days": 40,
+   "n": 1780,
+   "warm_side_per_z": [
+    0.0072,
+    -0.1193,
+    0.1532
+   ]
+  },
+  "fit_second_half": {
+   "cold_side_per_z": [
+    -0.0638,
+    -0.1025,
+    -0.018
+   ],
+   "days": 226,
+   "n": 10115,
+   "warm_side_per_z": [
+    0.0248,
+    -0.0265,
+    0.0707
+   ]
+  },
+  "fit_southern_or_tropics": {
+   "cold_side_per_z": [
+    -0.0057,
+    -0.0458,
+    0.0355
+   ],
+   "days": 451,
+   "n": 5386,
+   "warm_side_per_z": [
+    0.1321,
+    0.0695,
+    0.1995
+   ]
+  },
+  "kt_z": {
+   "median": 0.264,
+   "served_shift_sigma_cold_mean": -0.073,
+   "served_shift_sigma_warm_mean": 0.0506,
+   "share_warm": 0.587,
+   "skew": -1.045
+  },
+  "walk_forward": {
+   "fitted_asymmetric vs served_symmetric_0.07 brier": {
+    "ci95": [
+     0.0003180161404794831,
+     0.0011937262347072332
+    ],
+    "days": 446,
+    "days_better": 249,
+    "first_half_mean": 0.0006093021341560777,
+    "mean": 0.0007532892502528997,
+    "n": 19839,
+    "per_decision_mean": 0.0007568140299845397,
+    "second_half_mean": 0.0008972763663497216
+   },
+   "fitted_asymmetric vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     0.0028852198540034305,
+     0.006890746596957544
+    ],
+    "days": 446,
+    "days_better": 261,
+    "first_half_mean": 0.005019484491439613,
+    "mean": 0.004938188858242763,
+    "n": 19839,
+    "per_decision_mean": 0.004969439330265322,
+    "second_half_mean": 0.004856893225045913
+   },
+   "fitted_symmetric vs served_symmetric_0.07 brier": {
+    "ci95": [
+     0.00030811630053291267,
+     0.0011526135152961827
+    ],
+    "days": 446,
+    "days_better": 247,
+    "first_half_mean": 0.00035089769685571774,
+    "mean": 0.0007297084204900619,
+    "n": 19839,
+    "per_decision_mean": 0.0007361708476044386,
+    "second_half_mean": 0.0011085191441244059
+   },
+   "fitted_symmetric vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     0.0024297525204415244,
+     0.0062101930732978506
+    ],
+    "days": 446,
+    "days_better": 266,
+    "first_half_mean": 0.0038910126464369523,
+    "mean": 0.004342203625940404,
+    "n": 19839,
+    "per_decision_mean": 0.004386457950046194,
+    "second_half_mean": 0.004793394605443856
+   },
+   "none vs served_symmetric_0.07 brier": {
+    "ci95": [
+     0.000533282999755536,
+     0.0010770782461921042
+    ],
+    "days": 446,
+    "days_better": 267,
+    "first_half_mean": 0.0005847862293315237,
+    "mean": 0.0008094661814151478,
+    "n": 19839,
+    "per_decision_mean": 0.0008133784416257038,
+    "second_half_mean": 0.0010341461334987716
+   },
+   "none vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     0.002963943024623965,
+     0.005501527217872094
+    ],
+    "days": 446,
+    "days_better": 284,
+    "first_half_mean": 0.004078864269320171,
+    "mean": 0.004273027890574964,
+    "n": 19839,
+    "per_decision_mean": 0.004302623747683014,
+    "second_half_mean": 0.004467191511829758
+   },
+   "warm_side_only vs served_symmetric_0.07 brier": {
+    "ci95": [
+     0.00037327093670041383,
+     0.0010794369786233987
+    ],
+    "days": 446,
+    "days_better": 260,
+    "first_half_mean": 0.0005306274676486661,
+    "mean": 0.0007305037003234332,
+    "n": 19839,
+    "per_decision_mean": 0.0007348017287004586,
+    "second_half_mean": 0.0009303799329982003
+   },
+   "warm_side_only vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     0.002587526900365426,
+     0.005505080353446387
+    ],
+    "days": 446,
+    "days_better": 273,
+    "first_half_mean": 0.003807418211806703,
+    "mean": 0.004074370529211805,
+    "n": 19839,
+    "per_decision_mean": 0.004106431638502065,
+    "second_half_mean": 0.004341322846616907
+   }
+  }
+ },
+ "global": {
+  "fit_all": {
+   "cold_side_per_z": [
+    0.02,
+    -0.0062,
+    0.0443
+   ],
+   "days": 451,
+   "n": 20035,
+   "warm_side_per_z": [
+    0.1583,
+    0.1205,
+    0.1965
+   ]
+  },
+  "fit_first_half": {
+   "cold_side_per_z": [
+    0.0479,
+    0.0112,
+    0.0833
+   ],
+   "days": 225,
+   "n": 9920,
+   "warm_side_per_z": [
+    0.1348,
+    0.0762,
+    0.1902
+   ]
+  },
+  "fit_northern_extratropics": {
+   "cold_side_per_z": [
+    0.0215,
+    -0.0099,
+    0.0506
+   ],
+   "days": 451,
+   "n": 14649,
+   "warm_side_per_z": [
+    0.1776,
+    0.1329,
+    0.2208
+   ]
+  },
+  "fit_production_window_0816_0924": {
+   "cold_side_per_z": [
+    -0.0404,
+    -0.1392,
+    0.0422
+   ],
+   "days": 40,
+   "n": 1780,
+   "warm_side_per_z": [
+    0.0025,
+    -0.1223,
+    0.1304
+   ]
+  },
+  "fit_second_half": {
+   "cold_side_per_z": [
+    -0.009,
+    -0.0466,
+    0.0342
+   ],
+   "days": 226,
+   "n": 10115,
+   "warm_side_per_z": [
+    0.1785,
+    0.1294,
+    0.2294
+   ]
+  },
+  "fit_southern_or_tropics": {
+   "cold_side_per_z": [
+    0.0158,
+    -0.0288,
+    0.06
+   ],
+   "days": 451,
+   "n": 5386,
+   "warm_side_per_z": [
+    0.1048,
+    0.0451,
+    0.1662
+   ]
+  },
+  "kt_z": {
+   "median": 0.264,
+   "served_shift_sigma_cold_mean": -0.073,
+   "served_shift_sigma_warm_mean": 0.0506,
+   "share_warm": 0.587,
+   "skew": -1.045
+  },
+  "walk_forward": {
+   "fitted_asymmetric vs served_symmetric_0.07 brier": {
+    "ci95": [
+     -0.0001688417271159331,
+     0.00040265436970955535
+    ],
+    "days": 446,
+    "days_better": 227,
+    "first_half_mean": 0.00010407235912639247,
+    "mean": 0.00010658972611963812,
+    "n": 19839,
+    "per_decision_mean": 0.00011126862375046234,
+    "second_half_mean": 0.00010910709311288376
+   },
+   "fitted_asymmetric vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     -0.0005512536922222136,
+     0.0013516295734603456
+    ],
+    "days": 446,
+    "days_better": 234,
+    "first_half_mean": -0.0004533332044800137,
+    "mean": 0.0003598258012015695,
+    "n": 19839,
+    "per_decision_mean": 0.0003744364996027445,
+    "second_half_mean": 0.0011729848068831525
+   },
+   "fitted_symmetric vs served_symmetric_0.07 brier": {
+    "ci95": [
+     -0.00026401664123694755,
+     0.00019275951346209232
+    ],
+    "days": 446,
+    "days_better": 201,
+    "first_half_mean": -6.744957634240579e-05,
+    "mean": -4.2907211194839504e-05,
+    "n": 19839,
+    "per_decision_mean": -3.8447781780913856e-05,
+    "second_half_mean": -1.836484604727321e-05
+   },
+   "fitted_symmetric vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     -0.0010135806073267822,
+     0.0006039044702892351
+    ],
+    "days": 446,
+    "days_better": 215,
+    "first_half_mean": -0.0003665179684573196,
+    "mean": -0.00020317843224141045,
+    "n": 19839,
+    "per_decision_mean": -0.00018730482478177267,
+    "second_half_mean": -3.983889602550131e-05
+   },
+   "none vs served_symmetric_0.07 brier": {
+    "ci95": [
+     -0.000909946723632028,
+     -0.00023965648142856722
+    ],
+    "days": 446,
+    "days_better": 198,
+    "first_half_mean": -0.0008171989140773708,
+    "mean": -0.0005633970778138392,
+    "n": 19839,
+    "per_decision_mean": -0.0005538230297167045,
+    "second_half_mean": -0.0003095952415503075
+   },
+   "none vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     -0.004034452525784773,
+     -0.0014171460112617298
+    ],
+    "days": 446,
+    "days_better": 188,
+    "first_half_mean": -0.0035489660913353978,
+    "mean": -0.0027121603144661262,
+    "n": 19839,
+    "per_decision_mean": -0.0026650930523722366,
+    "second_half_mean": -0.001875354537596855
+   },
+   "warm_side_only vs served_symmetric_0.07 brier": {
+    "ci95": [
+     -0.00025509483864821054,
+     0.0003850288360608332
+    ],
+    "days": 446,
+    "days_better": 226,
+    "first_half_mean": -9.540215300185396e-05,
+    "mean": 5.0473933867290514e-05,
+    "n": 19839,
+    "per_decision_mean": 5.633265470393626e-05,
+    "second_half_mean": 0.00019635002073643503
+   },
+   "warm_side_only vs served_symmetric_0.07 logscore": {
+    "ci95": [
+     -0.000563695972591559,
+     0.0015877478426389426
+    ],
+    "days": 446,
+    "days_better": 244,
+    "first_half_mean": -0.0006065072885493123,
+    "mean": 0.00047938818933797577,
+    "n": 19839,
+    "per_decision_mean": 0.0005012138065530894,
+    "second_half_mean": 0.0015652836672252638
+   }
+  }
+ }
+}
