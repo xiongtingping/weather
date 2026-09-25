@@ -250,7 +250,11 @@ def test_the_fit_scores_on_servings_axis() -> None:
         key_centers_c=centers, open_edge_bounds_c=bounds,
     )
     nll = S._cell_nll(cell, delta_c=0.0, width_lambda=0.75)
-    assert nll == pytest.approx(-math.log(expected["22°C or below"]))
+    # Scored as served: the transform, then the charter 224 floor (charter 228).
+    from bayes_basket_target.materialization import floor_probabilities
+
+    served, _lifted = floor_probabilities(expected)
+    assert nll == pytest.approx(-math.log(served["22°C or below"]))
     # Under the point rule this cell's truth sat on 1.1%; the tail keeps 5.9%.
     assert nll < -math.log(0.02)
 

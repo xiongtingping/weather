@@ -22,7 +22,6 @@ from bayes_basket_target.center_width_calibration import (
 )
 from bayes_basket_target.center_width_store import (
     MAX_STATION_WIDTH_SCALE,
-    MIN_FORWARD_NLL_GAIN,
     MIN_QUALIFYING_CELLS,
     MIN_QUALIFYING_DAYS,
     STATION_WIDTH_METHOD_TAG,
@@ -198,7 +197,8 @@ def _seed_history(
 def test_fit_measures_shrinks_and_gates() -> None:
     """A station narrower than the FLEET fits a contraction, a station wider
     than the fleet fits an expansion, both shrunk by station-days toward the
-    fleet; and the whole table is admitted only on forward NLL gain."""
+    fleet; and the whole table is admitted only when the forward window's
+    bucket Brier and LogScore are both significantly lower (charter 228)."""
 
     conn = sqlite3.connect(":memory:")
     ensure_center_width_schema(conn)
@@ -214,6 +214,8 @@ def test_fit_measures_shrinks_and_gates() -> None:
     fitted = fit_station_width(conn, stage="P0")
     assert not fitted["accumulating"]
     assert fitted["admitted"], fitted["evidence"]
+    gate = fitted["evidence"]["gate"]
+    assert gate["lower"] and gate["ci_logscore"][1] < 0 and gate["ci_brier"][1] < 0
     scales = fitted["scales"]
     entry = fitted["evidence"]["per_station"]["AAA0"]
     fleet = fitted["evidence"]["fleet_median_z_sd"]
@@ -396,7 +398,9 @@ def test_an_incumbent_that_loses_after_activation_is_vetoed() -> None:
     assert fitted["evidence"]["basis"] == "INCUMBENT_VETOED"
     veto = fitted["evidence"]["incumbent_veto"]
     assert veto["enough_evidence"]
-    assert veto["undo_gain"] > MIN_FORWARD_NLL_GAIN
+    # Charter 228: undoing is significantly better on both proper scores.
+    assert veto["gate"]["lower"]
+    assert veto["undo_gain"] > 0.0 and veto["undo_brier_gain"] > 0.0
     assert veto["nll_undone"] < veto["nll_kept"]
     assert veto["activated_at_utc"] == "2026-06-30T00:00:00Z"
     # Committing the verdict deactivates the table; the read path is back
@@ -452,7 +456,7 @@ def test_the_veto_reads_only_cells_served_after_the_activation() -> None:
     veto = fitted["evidence"]["incumbent_veto"]
     assert veto["day_count"] == 2
     assert veto["cell_count"] == 40
-    assert veto["undo_gain"] > MIN_FORWARD_NLL_GAIN
+    assert veto["undo_gain"] > 0.0 and veto["undo_brier_gain"] > 0.0
     assert not veto["enough_evidence"]
     assert not fitted["vetoed"]
     assert fitted["scales"] == {s: 0.5 for s in stations}

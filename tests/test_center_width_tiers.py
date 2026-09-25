@@ -1,13 +1,16 @@
-"""Width tiers: one lambda per tier of the served sigma, fitted on the window
-the seat rule reads as well as the bucket (user ruling, 2026-09-05).
+"""Width tiers: one lambda per tier of the served sigma (user ruling,
+2026-09-05).
 
 Measured on P0's own serving cells under the served 0.75, the mean+-1 window
 realises 0.81 of its claim below one rung of served sigma, 1.06 at 1.0-1.44,
-1.25 at 1.44-2.0, 1.34 at 2.0-2.5 and 1.76 above three: the wider the
-distribution calls itself, the more its core under-claims, and a bucket-only
-fit moves by thousandths where the window moves from 1.7 to 1.0.  These tests
-pin the tier function the fit and serving share, the transform's tier lookup,
-the combined objective, the search, the lane's admission and persistence.
+1.25 at 1.44-2.0, 1.34 at 2.0-2.5 and 1.76 above three.  The tiers were first
+fitted on that window as well as the bucket; charter 228 fits them on the
+bucket LogScore alone (the window term is no score of the bucket
+distribution, charter 211) and admits them only when the bucket Brier and the
+LogScore are both significantly lower -- the window's containment stays a
+diagnostic.  These tests pin the tier function the fit and serving share, the
+transform's tier lookup, the scores, the search, the lane's admission and
+persistence.
 """
 
 from __future__ import annotations
@@ -90,18 +93,24 @@ def _cell(dist: dict[str, float], settled: str) -> dict:
     }
 
 
-def test_the_objective_scores_the_window_the_seat_rule_reads() -> None:
+def test_the_scores_are_the_served_proper_scores_and_the_window_is_a_diagnostic() -> None:
     cell = _cell(WIDE, "26C")
-    bucket, window, claim, hit = store._cell_scores(cell, delta_c=0.0, width_lambda=1.0)
+    logscore, brier, claim, hit = store._cell_scores(cell, delta_c=0.0, width_lambda=1.0)
     assert hit == 1 and claim == pytest.approx(0.16 + 0.18 + 0.16)
-    assert bucket == pytest.approx(-math.log(0.18))
-    assert window == pytest.approx(-math.log(0.50))
+    assert logscore == pytest.approx(-math.log(0.18))
+    assert brier == pytest.approx(sum(
+        (WIDE[k] - (1.0 if k == "26C" else 0.0)) ** 2 for k in KEYS
+    ))
     miss = _cell(WIDE, "23C or below")
-    _, window_miss, _, hit_miss = store._cell_scores(miss, delta_c=0.0, width_lambda=1.0)
-    assert hit_miss == 0 and window_miss == pytest.approx(-math.log(0.50))
+    _, _, _, hit_miss = store._cell_scores(miss, delta_c=0.0, width_lambda=1.0)
+    assert hit_miss == 0
     scores = store._mean_scores([cell, miss], delta_c=0.0, width_lambda=1.0)
-    assert scores["objective"] == pytest.approx(scores["bucket"] + store.WINDOW_TERM_WEIGHT * scores["window"])
+    assert set(scores) == {"logscore", "brier", "containment", "cells"}
     assert scores["containment"] == pytest.approx(1 / (0.5 + 0.5))
+    # A truth on a zero rung is charged what serving charges (charter 224),
+    # not the 1e-6 floor's 13.8 nats.
+    edge = store._cell_scores(_cell(NARROW, "23C or below"), delta_c=0.0, width_lambda=1.0)[0]
+    assert edge == pytest.approx(-math.log(1e-3 / 1.002))
 
 
 def test_the_search_gives_a_flat_tier_its_own_lambda() -> None:
@@ -117,29 +126,38 @@ def test_the_search_gives_a_flat_tier_its_own_lambda() -> None:
     assert objective > 0.0
 
 
-def test_the_lane_admits_on_the_combined_objective_without_bucket_regression(monkeypatch) -> None:
+def test_the_lane_admits_only_when_both_proper_scores_are_significantly_lower(monkeypatch) -> None:
     forward = [_cell(WIDE, "26C") for _ in range(10)] + [_cell(NARROW, "26C") for _ in range(4)]
+    clusters = [(f"S{index:02d}", "2026-09-01") for index in range(len(forward))]
     lane = store._width_tier_lane(
-        forward=forward, incumbent=(0.0, 1.0), incumbent_floor=0.0, incumbent_tiers=None,
+        forward=forward, forward_clusters=clusters, incumbent=(0.0, 1.0),
+        incumbent_floor=0.0, incumbent_tiers=None,
         pooled=(0.0, 1.0), pooled_floor=0.0, tiered=(0.0, (1.0, 1.0, 0.6)),
     )
-    assert lane["forward_objective_gain_vs_pooled"] > 0
+    assert lane["forward_logscore_gain_vs_pooled"] > 0
+    assert lane["forward_brier_gain_vs_pooled"] > 0
+    gate = lane["gate_vs_pooled"]
+    assert gate["lower"] and gate["ci_logscore"][1] < 0 and gate["ci_brier"][1] < 0
     assert lane["measured_admitted"] is True
     assert lane["state"] == "SHADOW_ADMITTED"       # default mode is shadow
     assert lane["admitted"] is False
     assert [t["tier"] for t in lane["per_tier"]] == list(WIDTH_TIER_NAMES)
     monkeypatch.setattr(store, "WIDTH_TIER_MODE", "serve")
     served = store._width_tier_lane(
-        forward=forward, incumbent=(0.0, 1.0), incumbent_floor=0.0, incumbent_tiers=None,
+        forward=forward, forward_clusters=clusters, incumbent=(0.0, 1.0),
+        incumbent_floor=0.0, incumbent_tiers=None,
         pooled=(0.0, 1.0), pooled_floor=0.0, tiered=(0.0, (1.0, 1.0, 0.6)),
     )
     assert served["state"] == "ADMITTED" and served["admitted"] is True
-    # A candidate that buys the window by wrecking the bucket is refused.
-    monkeypatch.setattr(store, "MAX_BUCKET_NLL_REGRESSION", -1.0)
+    # The same narrowing on days whose truth lands in the tails is worse on
+    # both scores, and refused.
+    tails = [_cell(WIDE, "23C or below") for _ in range(10)] + [_cell(NARROW, "26C") for _ in range(4)]
     refused = store._width_tier_lane(
-        forward=forward, incumbent=(0.0, 1.0), incumbent_floor=0.0, incumbent_tiers=None,
+        forward=tails, forward_clusters=clusters, incumbent=(0.0, 1.0),
+        incumbent_floor=0.0, incumbent_tiers=None,
         pooled=(0.0, 1.0), pooled_floor=0.0, tiered=(0.0, (1.0, 1.0, 0.6)),
     )
+    assert refused["gate_vs_pooled"]["lower"] is False
     assert refused["state"] == "REFUSED_FORWARD"
 
 
@@ -185,11 +203,12 @@ def test_every_serving_face_carries_the_tiers() -> None:
     assert '(center_width_tiers or {}).get("lambdas") or None' in oos
 
 
-def test_the_two_research_switches_default_to_the_shipped_values() -> None:
+def test_the_research_switch_defaults_to_the_shipped_value() -> None:
     from bayes_basket_target.center_width_calibration import _parse_tier_boundaries
 
     assert WIDTH_TIER_BOUNDARIES_RUNGS == (1.44, 2.0)
-    assert store.WINDOW_TERM_WEIGHT == 1.0
+    # Charter 228: the window term and its weight are gone, not zeroed.
+    assert not hasattr(store, "WINDOW_TERM_WEIGHT")
     assert _parse_tier_boundaries("") == (1.44, 2.0)
     assert _parse_tier_boundaries("[1.44, 2.5]") == (1.44, 2.5)
     with pytest.raises(RuntimeError):

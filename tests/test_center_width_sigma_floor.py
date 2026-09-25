@@ -270,18 +270,20 @@ def test_the_floor_must_beat_the_pooled_candidate_not_just_the_incumbent(
     """The floored fit carries a refitted lambda with it.
 
     A lane admitted for beating the incumbent alone could be winning on that
-    refit rather than on the floor, so the hurdle is against the pooled
-    candidate -- what would serve that day otherwise.
+    refit rather than on the floor, so the gate is against the pooled
+    candidate -- what would serve that day otherwise -- and, since charter
+    228, on both proper scores.
     """
 
     from bayes_basket_target.center_width_store import _sigma_floor_lane
 
     forward = [_cell(NARROW, KEYS_C[1]), _cell(WIDE, KEYS_C[4])]
+    clusters = [("AAAA", "2026-09-01"), ("BBBB", "2026-09-01")]
     lane = _sigma_floor_lane(
-        forward=forward,
+        forward=forward, forward_clusters=clusters,
         pooled=(0.0, 0.75), floored=(0.0, 0.725),
-        pooled_nll=1.60, floored_nll=1.50, incumbent_nll=1.61,
-        incumbent_floor_rungs=0.0,
+        pooled_scores=[(1.60, 0.70)] * 2, floored_scores=[(1.50, 0.68)] * 2,
+        incumbent_nll=1.61, incumbent_floor_rungs=0.0,
     )
     # Measured on its own evidence, and served only once the paper ledger
     # promotes it -- the default mode is shadow.
@@ -293,21 +295,30 @@ def test_the_floor_must_beat_the_pooled_candidate_not_just_the_incumbent(
     assert lane["forward_cell_count"] == 2
     # Beating the incumbent while losing to the pooled candidate is a refusal.
     refused = _sigma_floor_lane(
-        forward=forward,
+        forward=forward, forward_clusters=clusters,
         pooled=(0.0, 0.75), floored=(0.0, 0.725),
-        pooled_nll=1.50, floored_nll=1.55, incumbent_nll=1.61,
-        incumbent_floor_rungs=0.0,
+        pooled_scores=[(1.50, 0.68)] * 2, floored_scores=[(1.55, 0.69)] * 2,
+        incumbent_nll=1.61, incumbent_floor_rungs=0.0,
     )
     assert refused["admitted"] is False
     assert refused["measured_admitted"] is False
     assert refused["state"] == "REFUSED_FORWARD"
     assert refused["forward_nll_gain_vs_incumbent"] > 0.0
+    # And winning the LogScore while losing the Brier is a refusal too.
+    split = _sigma_floor_lane(
+        forward=forward, forward_clusters=clusters,
+        pooled=(0.0, 0.75), floored=(0.0, 0.725),
+        pooled_scores=[(1.60, 0.68)] * 2, floored_scores=[(1.50, 0.70)] * 2,
+        incumbent_nll=1.61, incumbent_floor_rungs=0.0,
+    )
+    assert split["forward_nll_gain_vs_pooled"] > 0.0
+    assert split["measured_admitted"] is False
 
 
 def test_the_floor_is_shadow_until_the_ledger_promotes_it() -> None:
     """Default mode serves nothing, whatever the forward gate measured.
 
-    The lane's hurdle is a probability argument.  This repository has been
+    The lane's gate is a probability argument.  This repository has been
     taught twice that a probability argument is not a book argument -- the
     fleet-mean layer improved the claim by 24% and cost the book 7.3 points --
     so promotion waits for the replay.
@@ -321,9 +332,10 @@ def test_the_floor_is_shadow_until_the_ledger_promotes_it() -> None:
     assert SIGMA_FLOOR_MODE == "shadow"
     lane = _sigma_floor_lane(
         forward=[_cell(NARROW, KEYS_C[1])],
+        forward_clusters=[("AAAA", "2026-09-01")],
         pooled=(0.0, 0.75), floored=(0.0, 0.725),
-        pooled_nll=1.60, floored_nll=1.50, incumbent_nll=1.61,
-        incumbent_floor_rungs=0.0,
+        pooled_scores=[(1.60, 0.70)], floored_scores=[(1.50, 0.68)],
+        incumbent_nll=1.61, incumbent_floor_rungs=0.0,
     )
     assert lane["measured_admitted"] is True
     assert lane["admitted"] is False
@@ -415,6 +427,3 @@ def test_serving_reads_the_floor() -> None:
     # Charter 150: P0-M and P1 carry no centre/width layer at all.
     materialization = source("bayes_basket_target/materialization.py")
     assert "center_width_floor_rungs" not in materialization
-    builder = source("scripts/fit_center_width_replay_table.py")
-    assert "SIGMA_FLOOR_RUNGS if admitted else 0.0," in builder
-    assert "sigma_floor_rungs=SIGMA_FLOOR_RUNGS," in builder

@@ -104,7 +104,7 @@ def _slow_tiers(cells, *, sigma_floor_rungs, pooled_lambda):
                 value = cws._mean_scores(
                     members, delta_c=delta, width_lambda=lam,
                     sigma_floor_rungs=sigma_floor_rungs,
-                )["objective"] * len(members)
+                )["logscore"] * len(members)
                 if tier_best is None or value < tier_best[1]:
                     tier_best = (lam, value)
             lambdas.append(tier_best[0])

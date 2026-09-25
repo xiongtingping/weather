@@ -113,9 +113,9 @@ def test_the_fit_reports_both_verdicts_and_admits_on_the_rolling_one() -> None:
     assert '"single_window_nll_gain": single_window_gain' in source
     assert 'gain = float(rolling["gain"])' in source
     assert '"basis": "ROLLING_ORIGIN"' in source
-    # The hurdle itself is unchanged; what moved is the number it judges
-    # and the second condition beside it.
-    assert "gain > MIN_FORWARD_NLL_GAIN" in source
+    # Charter 228: the held-out cells' two proper scores, not a hurdle on one.
+    assert 'bool(rolling["gate"]["lower"])' in source
+    assert "MIN_FORWARD_NLL_GAIN" not in source
 
 
 def test_the_sub_lanes_keep_the_single_window() -> None:
@@ -136,17 +136,20 @@ def test_one_hard_day_cannot_carry_the_admission() -> None:
     """
 
     folds = [
-        {"gain": -0.06, "cell_count": 100},
-        {"gain": -0.01, "cell_count": 100},
-        {"gain": -0.04, "cell_count": 100},
-        {"gain": +0.02, "cell_count": 100},
-        {"gain": +0.30, "cell_count": 100},
+        {"gain": -0.06, "brier_gain": -0.01, "cell_count": 100},
+        {"gain": -0.01, "brier_gain": -0.002, "cell_count": 100},
+        {"gain": -0.04, "brier_gain": -0.008, "cell_count": 100},
+        {"gain": +0.02, "brier_gain": +0.004, "cell_count": 100},
+        {"gain": +0.30, "brier_gain": +0.05, "cell_count": 100},
     ]
-    positive = sum(1 for fold in folds if fold["gain"] > 0.0)
+    # A fold gains when it gains on both scores (charter 228).
+    positive = sum(
+        1 for fold in folds if fold["gain"] > 0.0 and fold["brier_gain"] > 0.0
+    )
     mean = sum(f["gain"] * f["cell_count"] for f in folds) / sum(
         f["cell_count"] for f in folds
     )
-    assert mean > store.MIN_FORWARD_NLL_GAIN      # the mean would admit
+    assert mean > 0.005                           # the mean alone would admit
     assert positive * 2 <= len(folds)             # the majority rule refuses
 
 
@@ -156,6 +159,12 @@ def test_the_majority_flag_is_computed_and_gated_on() -> None:
     assert out["majority_positive"] == (
         out["folds_positive"] * 2 > out["fold_count"]
     )
+    assert out["folds_positive"] == sum(
+        1 for fold in out["folds"]
+        if fold["gain"] > 0.0 and fold["brier_gain"] > 0.0
+    )
+    # The held-out cells of every fold, pooled, under one gate.
+    assert out["gate"]["cells"] == out["scored_cell_count"]
     source = inspect.getsource(store.fit_center_width)
     assert 'bool(rolling["majority_positive"])' in source
 

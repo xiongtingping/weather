@@ -132,10 +132,21 @@ FORWARD_WINDOW_FRACTION = 0.35
 # the nightly cost stays bounded as history grows.
 ROLLING_ORIGIN_MIN_FOLD_TRAIN_DAYS = 3
 ROLLING_ORIGIN_MAX_FOLDS = 5
-# A candidate must beat the incumbent by more than this on the forward
-# window.  Anything smaller is inside the noise of a window this size, and
-# activating on it would churn the served artifact every refit.
-MIN_FORWARD_NLL_GAIN = 0.005
+# Charter 228 (user 2026-09-25, 「继续」 on judging this lane by charters 211
+# and 224).  Every verdict the lane reaches -- admission, the veto, the floor
+# and tier sub-lanes, the station lane -- changes what P0 serves, so it needs
+# what any model change needs: the bucket Brier and the LogScore both
+# significantly lower.  Both are scored on the vector serving serves, i.e.
+# after ``materialization.floor_probabilities`` (charter 224); the interval
+# resamples whole station-days, because the cells of one station-day are one
+# weather.  This replaces a hurdle of 0.005 nat on one score, read at a 1e-6
+# floor serving never applies -- a truth on a near-zero tail cost 13.8 nats
+# where serving is charged 6.9, and 57 such cells carried 71% of the long
+# window's "widen" gain measured on 2026-09-16.
+GATE_RULE = "brier_and_logscore_both_lower_station_day_bootstrap_v1"
+GATE_BOOTSTRAP_DRAWS = 2000
+GATE_BOOTSTRAP_SEED = 20260925
+GATE_CONFIDENCE = 0.95
 # The pooled table is held while the lane accumulates and held again when a
 # candidate is refused, and the evidence clock restarts on every serving
 # arithmetic change -- so the moment most likely to invalidate a pair is the
@@ -179,15 +190,13 @@ if SIGMA_FLOOR_MODE not in {"shadow", "serve"}:
         f"unknown center-width sigma floor mode: {SIGMA_FLOOR_MODE}"
     )
 # Width tiers (user ruling, 2026-09-05: "上新设计").  A lambda per tier of the
-# served sigma (boundaries in ``center_width_calibration``), fitted on an
-# objective that scores the mean+-1 window the seat rule reads as well as the
-# bucket -- the flat-day core under-claim this lane exists for moves the
-# bucket NLL by thousandths while moving window containment from 1.7 to 1.0,
-# so a bucket-only fit cannot see what it is asked to fix.  Same promotion
+# served sigma (boundaries in ``center_width_calibration``).  Same promotion
 # contract as the floor: ``shadow`` fits, scores and journals; ``serve`` lets
-# an admitted tier table reach the activated row.  A tier candidate must beat
-# the pooled candidate on the combined forward objective by the layer's
-# hurdle without regressing the bucket NLL by more than a noise margin.
+# an admitted tier table reach the activated row.  Charter 228: fitted on the
+# bucket LogScore alone and admitted like everything else here.  It used to
+# add a binary score of the seat rule's mean+-1 window claim to the
+# objective, which is not a score of the bucket distribution (charter 211);
+# the window's containment is still reported per tier, as a diagnostic.
 WIDTH_TIER_MODE = (
     os.environ.get("PM_CENTER_WIDTH_TIERS", "").strip().lower() or "shadow"
 )
@@ -196,12 +205,6 @@ if WIDTH_TIER_MODE not in {"shadow", "serve"}:
 # Reaches past one for the same reason as the pooled grid (charter 138): a
 # tier whose distributions are served too narrow has to be able to say so.
 WIDTH_TIER_LAMBDA_GRID = tuple(round(0.50 + 0.025 * step, 3) for step in range(31))
-WINDOW_TERM_WEIGHT = float(
-    os.environ.get("PM_CENTER_WIDTH_WINDOW_TERM_WEIGHT", "") or 1.0
-)
-if not WINDOW_TERM_WEIGHT >= 0.0:
-    raise RuntimeError(f"invalid centre-width window term weight: {WINDOW_TERM_WEIGHT}")
-MAX_BUCKET_NLL_REGRESSION = 0.002
 
 
 _TABLE_DDL = (
@@ -707,10 +710,11 @@ MAX_STATION_WIDTH_SCALE = 1.5
 # that never runs while accumulating.  So before anything else the lane
 # scores the incumbent on the cells served AFTER its own activation -- out
 # of sample by construction -- against the same cells with the incumbent
-# undone.  Losing by more than the admission hurdle retires the table.  The
-# window opens at three days / sixty cells, half the qualifying floor: the
-# question "is this table hurting" needs less evidence than "which table
-# is best", and a day earlier here was one fewer day served too narrow.
+# undone.  Undoing significantly better on both proper scores (charter 228)
+# retires the table.  The window opens at three days / sixty cells, half the
+# qualifying floor: the question "is this table hurting" needs less evidence
+# than "which table is best", and a day earlier here was one fewer day
+# served too narrow.
 STATION_WIDTH_VETO_MIN_DAYS = 3
 STATION_WIDTH_VETO_MIN_CELLS = 60
 
@@ -1115,8 +1119,8 @@ def _center_width_veto(
 ) -> dict[str, Any]:
     """Score the active pair on the cells served after it went live: kept
     (served as-is) against the same rows with the pair left off.  ``vetoed``
-    when leaving it off wins by more than the admission hurdle on at least
-    the veto window (charter 138).
+    when leaving it off is significantly better on both proper scores
+    (charter 228) on at least the veto window (charter 138).
 
     Rows that cannot say what identity would have served are not judged and
     are counted by reason.  Declining is the safe direction here -- it holds
@@ -1125,14 +1129,15 @@ def _center_width_veto(
     """
 
     since = activated_at_utc or ""
-    kept_total = undone_total = 0.0
-    count = 0
+    kept_scores: list[tuple[float, float]] = []
+    undone_scores: list[tuple[float, float]] = []
+    clusters: list[tuple[Any, str]] = []
     per_day: dict[str, dict[str, float]] = {}
     skipped: dict[str, int] = {}
     bases: dict[str, int] = {}
     for day in sorted(by_day):
-        day_kept = day_undone = 0.0
-        day_count = 0
+        day_kept: list[tuple[float, float]] = []
+        day_undone: list[tuple[float, float]] = []
         for cell in by_day[day]:
             if str(cell.get("decision_at_utc") or "") < since:
                 continue
@@ -1146,26 +1151,40 @@ def _center_width_veto(
             # The served pair is already inside the cell, so serving it as-is
             # is the identity residual -- applying the pair again here would
             # score the incumbent against its own scalars squared.
-            day_kept += _cell_nll(cell, delta_c=0.0, width_lambda=1.0)
-            day_undone += -math.log(
-                max(counterfactual[cell["settled_bucket"]], 1e-6)
+            day_kept.append(
+                _cell_proper_scores(cell, delta_c=0.0, width_lambda=1.0)
             )
-            day_count += 1
-        if day_count:
+            day_undone.append(_served_scores(
+                counterfactual,
+                ordered_keys=cell["ordered_keys"],
+                settled_bucket=cell["settled_bucket"],
+                excluded_buckets=cell["excluded_buckets"],
+            ))
+            clusters.append((cell.get("station_id"), day))
+        if day_kept:
             per_day[day] = {
-                "cells": day_count,
-                "kept_minus_undone": (day_kept - day_undone) / day_count,
+                "cells": len(day_kept),
+                "kept_minus_undone": (
+                    sum(s[0] for s in day_kept) - sum(s[0] for s in day_undone)
+                ) / len(day_kept),
+                "kept_minus_undone_brier": (
+                    sum(s[1] for s in day_kept) - sum(s[1] for s in day_undone)
+                ) / len(day_kept),
             }
-            kept_total += day_kept
-            undone_total += day_undone
-            count += day_count
+            kept_scores.extend(day_kept)
+            undone_scores.extend(day_undone)
+    count = len(kept_scores)
     enough = (
         len(per_day) >= CENTER_WIDTH_VETO_MIN_DAYS
         and count >= CENTER_WIDTH_VETO_MIN_CELLS
     )
-    gain = 0.0 if count == 0 else (kept_total - undone_total) / count
+    gate = _proper_score_gate(kept_scores, undone_scores, clusters)
+
+    def _mean(scores: Sequence[tuple[float, float]], index: int) -> float | None:
+        return None if not scores else sum(s[index] for s in scores) / len(scores)
+
     return {
-        "schema": "center_width_incumbent_veto_v1",
+        "schema": "center_width_incumbent_veto_v2",
         "activated_at_utc": activated_at_utc,
         "incumbent_delta_c": float(delta_c),
         "incumbent_width_lambda": float(width_lambda),
@@ -1176,14 +1195,18 @@ def _center_width_veto(
         "counterfactual_basis": bases,
         "skipped": skipped,
         "skipped_count": sum(skipped.values()),
-        "nll_kept": None if count == 0 else kept_total / count,
-        "nll_undone": None if count == 0 else undone_total / count,
-        "undo_gain": gain,
-        "hurdle": MIN_FORWARD_NLL_GAIN,
+        "nll_kept": _mean(kept_scores, 0),
+        "nll_undone": _mean(undone_scores, 0),
+        "brier_kept": _mean(kept_scores, 1),
+        "brier_undone": _mean(undone_scores, 1),
+        # What undoing buys, per cell: positive means the pair is costing.
+        "undo_gain": 0.0 if count == 0 else -float(gate["d_logscore"]),
+        "undo_brier_gain": 0.0 if count == 0 else -float(gate["d_brier"]),
+        "gate": gate,
         "min_days": CENTER_WIDTH_VETO_MIN_DAYS,
         "min_cells": CENTER_WIDTH_VETO_MIN_CELLS,
         "enough_evidence": enough,
-        "vetoed": bool(enough and gain > MIN_FORWARD_NLL_GAIN),
+        "vetoed": bool(enough and gate["lower"]),
         "per_day": per_day,
     }
 
@@ -1202,11 +1225,12 @@ def _active_station_width_activated_at(
     return None if row is None or row[0] is None else str(row[0])
 
 
-def _undo_station_scale_nll(
+def _undo_station_scale_scores(
     cell: Mapping[str, Any], *, scale: float
-) -> float:
-    """The cell's NLL with the station contraction it was served under
-    widened back out, as far as the kernel's own lambda bound allows.
+) -> tuple[float, float]:
+    """The cell's (LogScore, bucket Brier) with the station contraction it
+    was served under widened back out, as far as the kernel's own lambda
+    bound allows.
 
     A full undo of a 0.5 scale is a lambda of 2.0, and the kernel's linear
     split at exactly two rungs lands every bucket's mass on every other
@@ -1225,10 +1249,12 @@ def _undo_station_scale_nll(
         key_centers_c=cell["key_centers_c"],
         excluded_buckets=cell["excluded_buckets"],
     )
-    total_mass = sum(adjusted.values())
-    if total_mass <= 0.0:
-        return -math.log(1e-6)
-    return -math.log(max(adjusted[cell["settled_bucket"]] / total_mass, 1e-6))
+    return _served_scores(
+        adjusted,
+        ordered_keys=cell["ordered_keys"],
+        settled_bucket=cell["settled_bucket"],
+        excluded_buckets=cell["excluded_buckets"],
+    )
 
 
 def _station_width_veto(
@@ -1238,50 +1264,59 @@ def _station_width_veto(
     activated_at_utc: str | None,
 ) -> dict[str, Any]:
     """Score the active table on the cells served after it went live: kept
-    (served as-is) against undone.  ``vetoed`` when undoing wins by more
-    than the admission hurdle on at least the veto window."""
+    (served as-is) against undone.  ``vetoed`` when undoing is
+    significantly better on both proper scores (charter 228) on at least
+    the veto window."""
 
     since = activated_at_utc or ""
-    kept_total = undone_total = 0.0
-    count = 0
+    kept_scores: list[tuple[float, float]] = []
+    undone_scores: list[tuple[float, float]] = []
+    clusters: list[tuple[Any, str]] = []
     per_day: dict[str, dict[str, float]] = {}
     for day in sorted(by_day):
-        day_kept = day_undone = 0.0
-        day_count = 0
+        day_kept: list[tuple[float, float]] = []
+        day_undone: list[tuple[float, float]] = []
         for cell in by_day[day]:
             if str(cell.get("decision_at_utc") or "") < since:
                 continue
             scale = float(scales.get(cell["station_id"], 1.0))
             if scale == 1.0:
                 continue
-            kept = _cell_nll(cell, delta_c=0.0, width_lambda=1.0)
-            undone = _undo_station_scale_nll(cell, scale=scale)
-            day_kept += kept
-            day_undone += undone
-            day_count += 1
-        if day_count:
+            day_kept.append(
+                _cell_proper_scores(cell, delta_c=0.0, width_lambda=1.0)
+            )
+            day_undone.append(_undo_station_scale_scores(cell, scale=scale))
+            clusters.append((cell.get("station_id"), day))
+        if day_kept:
             per_day[day] = {
-                "cells": day_count,
-                "kept_minus_undone": (day_kept - day_undone) / day_count,
+                "cells": len(day_kept),
+                "kept_minus_undone": (
+                    sum(s[0] for s in day_kept) - sum(s[0] for s in day_undone)
+                ) / len(day_kept),
             }
-            kept_total += day_kept
-            undone_total += day_undone
-            count += day_count
+            kept_scores.extend(day_kept)
+            undone_scores.extend(day_undone)
+    count = len(kept_scores)
     enough = (
         len(per_day) >= STATION_WIDTH_VETO_MIN_DAYS
         and count >= STATION_WIDTH_VETO_MIN_CELLS
     )
-    gain = 0.0 if count == 0 else (kept_total - undone_total) / count
+    gate = _proper_score_gate(kept_scores, undone_scores, clusters)
     return {
         "activated_at_utc": activated_at_utc,
         "day_count": len(per_day),
         "cell_count": count,
-        "nll_kept": None if count == 0 else kept_total / count,
-        "nll_undone": None if count == 0 else undone_total / count,
-        "undo_gain": gain,
-        "hurdle": MIN_FORWARD_NLL_GAIN,
+        "nll_kept": (
+            None if count == 0 else sum(s[0] for s in kept_scores) / count
+        ),
+        "nll_undone": (
+            None if count == 0 else sum(s[0] for s in undone_scores) / count
+        ),
+        "undo_gain": 0.0 if count == 0 else -float(gate["d_logscore"]),
+        "undo_brier_gain": 0.0 if count == 0 else -float(gate["d_brier"]),
+        "gate": gate,
         "enough_evidence": enough,
-        "vetoed": bool(enough and gain > MIN_FORWARD_NLL_GAIN),
+        "vetoed": bool(enough and gate["lower"]),
         "per_day": per_day,
     }
 
@@ -1468,15 +1503,21 @@ def fit_station_width(
         )
         entry["residual_scale"] = residual.get(station)
     forward = [cell for day in forward_days for cell in by_day[day]]
+    forward_clusters = [
+        (cell.get("station_id"), day)
+        for day in forward_days for cell in by_day[day]
+    ]
 
-    def _forward_nll(scales: Mapping[str, float]) -> float:
-        if not forward:
-            return 0.0
-        total = 0.0
+    def _forward_scores(
+        scales: Mapping[str, float],
+    ) -> list[tuple[float, float]]:
+        out: list[tuple[float, float]] = []
         for cell in forward:
             scale = float(scales.get(cell["station_id"], 1.0))
             if scale == 1.0:
-                total += _cell_nll(cell, delta_c=0.0, width_lambda=1.0)
+                out.append(
+                    _cell_proper_scores(cell, delta_c=0.0, width_lambda=1.0)
+                )
                 continue
             adjusted, _ = apply_center_width_calibration(
                 cell["probabilities"],
@@ -1488,12 +1529,28 @@ def fit_station_width(
                 open_edge_bounds_c=cell.get("open_edge_bounds_c"),
                 station_width_scale=scale,
             )
-            value = float(adjusted.get(cell["settled_bucket"], 0.0))
-            total += -math.log(max(value, 1e-9))
-        return total / len(forward)
+            out.append(_served_scores(
+                adjusted,
+                ordered_keys=cell["ordered_keys"],
+                settled_bucket=cell["settled_bucket"],
+                excluded_buckets=cell["excluded_buckets"],
+            ))
+        return out
 
-    forward_base = _forward_nll({})
-    forward_candidate = _forward_nll(residual)
+    def _forward_nll(scales: Mapping[str, float]) -> float:
+        scores = _forward_scores(scales)
+        return sum(s[0] for s in scores) / len(scores) if scores else 0.0
+
+    base_scores = _forward_scores({})
+    residual_scores = _forward_scores(residual)
+    gate = _proper_score_gate(base_scores, residual_scores, forward_clusters)
+    forward_base = (
+        sum(s[0] for s in base_scores) / len(base_scores) if base_scores else 0.0
+    )
+    forward_candidate = (
+        sum(s[0] for s in residual_scores) / len(residual_scores)
+        if residual_scores else 0.0
+    )
     gain = forward_base - forward_candidate
     composed = {
         station: min(
@@ -1528,14 +1585,15 @@ def fit_station_width(
         "forward_nll_identity": forward_base,
         "forward_nll_residual": forward_candidate,
         "forward_nll_gain": gain,
-        "min_forward_nll_gain": MIN_FORWARD_NLL_GAIN,
+        "gate_rule": GATE_RULE,
+        "gate": gate,
         "residual_station_count": len(residual),
         "fleet_median_z_sd": fleet_sd,
         "clipped_cell_count": clipped_cells,
         "kappa_probe_gain": kappa_probes,
         "per_station": raw_by_station,
     })
-    admitted = gain > MIN_FORWARD_NLL_GAIN
+    admitted = bool(gate["lower"])
     return {
         "stage": stage_id,
         "scales": composed if admitted else incumbent_scales,
@@ -1932,6 +1990,116 @@ def _serving_cell(
     }
 
 
+def _served_scores(
+    probabilities: Mapping[str, float],
+    *,
+    ordered_keys: Sequence[str],
+    settled_bucket: str,
+    excluded_buckets: Sequence[str] = (),
+) -> tuple[float, float]:
+    """(LogScore, bucket Brier) of one vector as serving would serve it.
+
+    Charter 228: normalised on the cell's own buckets, then the served zero
+    floor (``materialization.floor_probabilities``, charter 224) -- called,
+    not restated, as that function asks of every fitter -- then scored.
+    """
+
+    # Imported here: materialization imports this module at load.
+    from .materialization import floor_probabilities  # noqa: PLC0415
+
+    keys = list(ordered_keys)
+    values = [float(probabilities.get(key, 0.0)) for key in keys]
+    total = sum(values)
+    floored, _lifted = floor_probabilities(
+        {
+            key: (value / total if total > 0.0 else 0.0)
+            for key, value in zip(keys, values)
+        },
+        tuple(excluded_buckets),
+    )
+    brier = sum(
+        (float(floored[key]) - (1.0 if key == settled_bucket else 0.0)) ** 2
+        for key in keys
+    )
+    return -math.log(max(float(floored[settled_bucket]), 1e-12)), brier
+
+
+def _served_row_logscore(
+    row: Sequence[float], *, settled: int, excluded: Sequence[bool], floor: float
+) -> float:
+    """``_served_scores``'s LogScore over one grid row, no dictionary per pair.
+
+    The same operations in the same order -- normalise, lift every
+    non-excluded rung below the floor, divide by the lifted sum -- so every
+    value equals the scalar path's exactly; the grid tests assert it with
+    ``==``.  The searches only ever read the LogScore, the one training rule,
+    so the Brier is left to the scalar path the gates read.
+    """
+
+    total = sum(row)
+    values = [value / total for value in row] if total > 0.0 else [0.0] * len(row)
+    if any(
+        value < floor for value, out in zip(values, excluded) if not out
+    ):
+        lifted = [
+            value if out else max(value, floor)
+            for value, out in zip(values, excluded)
+        ]
+        return -math.log(max(lifted[settled] / sum(lifted), 1e-12))
+    return -math.log(max(values[settled], 1e-12))
+
+
+def _adjusted_cell(
+    cell: Mapping[str, Any],
+    *,
+    delta_c: float,
+    width_lambda: float,
+    sigma_floor_rungs: float = 0.0,
+    width_tier_lambdas: Sequence[float] | None = None,
+) -> Mapping[str, float]:
+    """The cell's vector under a residual pair; identity reads it as is."""
+
+    if (
+        delta_c == 0.0 and width_lambda == 1.0 and not sigma_floor_rungs
+        and not width_tier_lambdas
+    ):
+        return cell["probabilities"]
+    adjusted, _ = apply_center_width_calibration(
+        cell["probabilities"],
+        delta_c=delta_c,
+        width_lambda=width_lambda,
+        ordered_keys=cell["ordered_keys"],
+        key_centers_c=cell["key_centers_c"],
+        excluded_buckets=cell["excluded_buckets"],
+        open_edge_bounds_c=cell.get("open_edge_bounds_c"),
+        sigma_floor_rungs=sigma_floor_rungs,
+        width_tier_lambdas=width_tier_lambdas,
+    )
+    return adjusted
+
+
+def _cell_proper_scores(
+    cell: Mapping[str, Any],
+    *,
+    delta_c: float,
+    width_lambda: float,
+    sigma_floor_rungs: float = 0.0,
+    width_tier_lambdas: Sequence[float] | None = None,
+) -> tuple[float, float]:
+    """(LogScore, bucket Brier) of one cell under a residual pair (charter 228)."""
+
+    return _served_scores(
+        _adjusted_cell(
+            cell, delta_c=delta_c, width_lambda=width_lambda,
+            sigma_floor_rungs=sigma_floor_rungs,
+            width_tier_lambdas=width_tier_lambdas,
+        ),
+        ordered_keys=cell["ordered_keys"],
+        settled_bucket=cell["settled_bucket"],
+        excluded_buckets=cell["excluded_buckets"],
+    )
+
+
 def _cell_nll(
     cell: Mapping[str, Any],
     *,
@@ -1939,23 +2107,71 @@ def _cell_nll(
     width_lambda: float,
     sigma_floor_rungs: float = 0.0,
 ) -> float:
-    if delta_c == 0.0 and width_lambda == 1.0 and not sigma_floor_rungs:
-        adjusted = cell["probabilities"]
-    else:
-        adjusted, _ = apply_center_width_calibration(
-            cell["probabilities"],
-            delta_c=delta_c,
-            width_lambda=width_lambda,
-            ordered_keys=cell["ordered_keys"],
-            key_centers_c=cell["key_centers_c"],
-            excluded_buckets=cell["excluded_buckets"],
-            open_edge_bounds_c=cell.get("open_edge_bounds_c"),
-            sigma_floor_rungs=sigma_floor_rungs,
-        )
-    total = sum(adjusted.values())
-    if total <= 0.0:
-        return -math.log(1e-6)
-    return -math.log(max(adjusted[cell["settled_bucket"]] / total, 1e-6))
+    """The cell's LogScore under a residual pair, on the floored vector."""
+
+    return _cell_proper_scores(
+        cell, delta_c=delta_c, width_lambda=width_lambda,
+        sigma_floor_rungs=sigma_floor_rungs,
+    )[0]
+
+
+def _proper_score_gate(
+    base: Sequence[tuple[float, float]],
+    candidate: Sequence[tuple[float, float]],
+    clusters: Sequence[Any],
+) -> dict[str, Any]:
+    """Charter 228: is ``candidate`` significantly better than ``base`` on both
+    proper scores?
+
+    One entry per cell, (LogScore, bucket Brier) on each side; ``clusters``
+    names each cell's station-day.  The change is cell-weighted, as every
+    mean in this lane is.  Its interval resamples whole station-days
+    (``GATE_BOOTSTRAP_DRAWS`` draws, fixed seed, so a refit is
+    reproducible), and ``lower`` needs both upper bounds below zero.
+    """
+
+    import numpy as np
+
+    count = len(base)
+    out: dict[str, Any] = {
+        "rule": GATE_RULE,
+        "cells": count,
+        "station_days": len(set(clusters)),
+        "confidence": GATE_CONFIDENCE,
+        "bootstrap_draws": GATE_BOOTSTRAP_DRAWS,
+        "d_logscore": None,
+        "d_brier": None,
+        "ci_logscore": None,
+        "ci_brier": None,
+        "lower": False,
+    }
+    if count == 0 or len(candidate) != count or len(clusters) != count:
+        return out
+    ids: dict[Any, int] = {}
+    index = np.array([ids.setdefault(key, len(ids)) for key in clusters])
+    d_log = np.array([c[0] - b[0] for b, c in zip(base, candidate)])
+    d_brier = np.array([c[1] - b[1] for b, c in zip(base, candidate)])
+    size = len(ids)
+    cells = np.bincount(index, minlength=size).astype(float)
+    sum_log = np.bincount(index, weights=d_log, minlength=size)
+    sum_brier = np.bincount(index, weights=d_brier, minlength=size)
+    draws = np.random.default_rng(GATE_BOOTSTRAP_SEED).integers(
+        0, size, size=(GATE_BOOTSTRAP_DRAWS, size)
+    )
+    weight = cells[draws].sum(axis=1)
+    tail = 100.0 * (1.0 - GATE_CONFIDENCE) / 2.0
+    ci_log = np.percentile(sum_log[draws].sum(axis=1) / weight, [tail, 100.0 - tail])
+    ci_brier = np.percentile(
+        sum_brier[draws].sum(axis=1) / weight, [tail, 100.0 - tail]
+    )
+    out.update({
+        "d_logscore": float(d_log.sum() / count),
+        "d_brier": float(d_brier.sum() / count),
+        "ci_logscore": [float(ci_log[0]), float(ci_log[1])],
+        "ci_brier": [float(ci_brier[0]), float(ci_brier[1])],
+        "lower": bool(ci_log[1] < 0.0 and ci_brier[1] < 0.0),
+    })
+    return out
 
 
 # Charter 202 follow-up (2026-09-23): the lane's grids, scored once per cell.
@@ -1993,21 +2209,21 @@ _GRID_PAIRS = tuple(
 _GRID_INDEX = {pair: position for position, pair in enumerate(_GRID_PAIRS)}
 
 
-def _grid_rows(
-    cell: Mapping[str, Any], sigma_floor_rungs: float, *, window: bool = False
-) -> tuple[Any, Any]:
-    """(bucket NLL, window NLL) of one cell at every grid pair, kept for the
-    round.  Each entry equals ``_cell_scores`` at that pair exactly.  The
-    window term is only the tier search's, so it is filled on request."""
+def _grid_rows(cell: Mapping[str, Any], sigma_floor_rungs: float) -> Any:
+    """The LogScore of one cell at every grid pair, kept for the round.  Each
+    entry equals ``_cell_nll`` at that pair exactly."""
 
     import array
+
+    # Imported here: materialization imports this module at load.
+    from .materialization import PROBABILITY_MODEL_ZERO_FLOOR  # noqa: PLC0415
 
     memo = _ROUND_MEMO
     key = ("width_grid", id(cell), float(sigma_floor_rungs))
     if memo is not None:
         held = memo.get(key)
-        if held is not None and (held[1] is not None or not window):
-            return held[0], held[1]
+        if held is not None:
+            return held[0]
     adjusted, refused = center_width_adjusted_grid(
         cell["probabilities"],
         ordered_keys=cell["ordered_keys"],
@@ -2019,11 +2235,10 @@ def _grid_rows(
         sigma_floor_rungs=sigma_floor_rungs,
     )
     keys = list(cell["ordered_keys"])
-    centers = list(cell["key_centers_c"])
     settled = keys.index(cell["settled_bucket"])
-    floor_nll = -math.log(1e-6)
-    bucket_row = array.array("d")
-    window_row = array.array("d") if window else None
+    out = set(cell["excluded_buckets"])
+    excluded = [key in out for key in keys]
+    log_row = array.array("d")
     refused_rows = refused.tolist()
     for position, row in enumerate(adjusted.tolist()):
         delta, lam = _GRID_PAIRS[position]
@@ -2032,36 +2247,18 @@ def _grid_rows(
         ):
             # The scalar paths themselves: identity reads the cell as is,
             # and a refused row is served in the caller's key order.
-            bucket, window_nll, _claim, _hit = _cell_scores(
+            log_row.append(_cell_nll(
                 cell, delta_c=delta, width_lambda=lam,
                 sigma_floor_rungs=sigma_floor_rungs,
-            )
-            bucket_row.append(bucket)
-            if window_row is not None:
-                window_row.append(window_nll)
+            ))
             continue
-        total = sum(row)
-        if total <= 0.0:
-            bucket_row.append(floor_nll)
-            if window_row is not None:
-                window_row.append(floor_nll)
-            continue
-        bucket_row.append(-math.log(max(row[settled] / total, 1e-6)))
-        if window_row is None:
-            continue
-        mean_c = sum(centers[i] * row[i] for i in range(len(keys))) / total
-        mean_index = min(
-            range(len(keys)), key=lambda i: (abs(centers[i] - mean_c), i)
-        )
-        low = max(0, mean_index - 1)
-        high = mean_index + 2
-        claim = sum(row[i] for i in range(low, min(high, len(keys)))) / total
-        hit = low <= settled < high
-        q = min(max(claim, 1e-6), 1.0 - 1e-6)
-        window_row.append(-math.log(q) if hit else -math.log(1.0 - q))
+        log_row.append(_served_row_logscore(
+            row, settled=settled, excluded=excluded,
+            floor=PROBABILITY_MODEL_ZERO_FLOOR,
+        ))
     if memo is not None:
-        memo[key] = (bucket_row, window_row, cell)
-    return bucket_row, window_row
+        memo[key] = (log_row, cell)
+    return log_row
 
 
 def _mean_nll(
@@ -2071,7 +2268,7 @@ def _mean_nll(
     width_lambda: float,
     sigma_floor_rungs: float = 0.0,
 ) -> float:
-    """Mean bucket NLL over the cells."""
+    """Mean LogScore over the cells, on the floored vector (charter 228)."""
 
     if not cells:
         return 0.0
@@ -2083,7 +2280,7 @@ def _mean_nll(
     )
     if position is not None:
         return sum(
-            _grid_rows(cell, sigma_floor_rungs)[0][position] for cell in cells
+            _grid_rows(cell, sigma_floor_rungs)[position] for cell in cells
         ) / len(cells)
     return sum(
         _cell_nll(
@@ -2094,6 +2291,27 @@ def _mean_nll(
         )
         for cell in cells
     ) / len(cells)
+
+
+def _cell_score_list(
+    cells: Sequence[Mapping[str, Any]],
+    *,
+    delta_c: float,
+    width_lambda: float,
+    sigma_floor_rungs: float = 0.0,
+    width_tier_lambdas: Sequence[float] | None = None,
+) -> list[tuple[float, float]]:
+    """Each cell's (LogScore, bucket Brier) under a residual pair -- what the
+    gates read.  A handful of pairs per fit, so always the scalar path."""
+
+    return [
+        _cell_proper_scores(
+            cell, delta_c=delta_c, width_lambda=width_lambda,
+            sigma_floor_rungs=sigma_floor_rungs,
+            width_tier_lambdas=width_tier_lambdas,
+        )
+        for cell in cells
+    ]
 
 
 def _compose_absolute(
@@ -2175,34 +2393,28 @@ def _cell_scores(
     sigma_floor_rungs: float = 0.0,
     width_tier_lambdas: Sequence[float] | None = None,
 ) -> tuple[float, float, float, int]:
-    """(bucket NLL, window NLL, window claim, window hit) for one cell.
+    """(LogScore, bucket Brier, window claim, window hit) for one cell.
 
-    The window is the mean bucket +-1 of the *transformed* distribution,
-    which is the shape the seat rule (charter 79) reads; its claim is what
-    the positive-EV gate compares with price, so its binary NLL is the
-    term the flat-day under-claim shows up in.
+    The two scores are charter 228's, on the floored vector.  The window is
+    the mean bucket +-1 of the *transformed* distribution, the shape the
+    seat rule (charter 79) reads; its claim and hit feed the containment
+    diagnostic only.
     """
 
-    if (
-        delta_c == 0.0 and width_lambda == 1.0 and not sigma_floor_rungs
-        and not width_tier_lambdas
-    ):
-        adjusted = dict(cell["probabilities"])
-    else:
-        adjusted, _ = apply_center_width_calibration(
-            cell["probabilities"],
-            delta_c=delta_c,
-            width_lambda=width_lambda,
-            ordered_keys=cell["ordered_keys"],
-            key_centers_c=cell["key_centers_c"],
-            excluded_buckets=cell["excluded_buckets"],
-            open_edge_bounds_c=cell.get("open_edge_bounds_c"),
-            sigma_floor_rungs=sigma_floor_rungs,
-            width_tier_lambdas=width_tier_lambdas,
-        )
+    adjusted = dict(_adjusted_cell(
+        cell, delta_c=delta_c, width_lambda=width_lambda,
+        sigma_floor_rungs=sigma_floor_rungs,
+        width_tier_lambdas=width_tier_lambdas,
+    ))
+    logscore, brier = _served_scores(
+        adjusted,
+        ordered_keys=cell["ordered_keys"],
+        settled_bucket=cell["settled_bucket"],
+        excluded_buckets=cell["excluded_buckets"],
+    )
     total = sum(adjusted.values())
     if total <= 0.0:
-        return -math.log(1e-6), -math.log(1e-6), 0.0, 0
+        return logscore, brier, 0.0, 0
     keys = list(cell["ordered_keys"])
     centers = list(cell["key_centers_c"])
     mean_c = sum(
@@ -2214,10 +2426,7 @@ def _cell_scores(
     window = keys[max(0, mean_index - 1):mean_index + 2]
     claim = sum(float(adjusted.get(k, 0.0)) for k in window) / total
     hit = 1 if cell["settled_bucket"] in window else 0
-    q = min(max(claim, 1e-6), 1.0 - 1e-6)
-    window_nll = -math.log(q) if hit else -math.log(1.0 - q)
-    bucket_nll = -math.log(max(adjusted[cell["settled_bucket"]] / total, 1e-6))
-    return bucket_nll, window_nll, claim, hit
+    return logscore, brier, claim, hit
 
 
 def _mean_scores(
@@ -2228,28 +2437,27 @@ def _mean_scores(
     sigma_floor_rungs: float = 0.0,
     width_tier_lambdas: Sequence[float] | None = None,
 ) -> dict[str, float]:
-    """Mean bucket NLL, mean window NLL, the combined objective and the
-    window containment ratio (hits over claims) over ``cells``."""
+    """Mean LogScore, mean bucket Brier and the window containment ratio
+    (hits over claims, a diagnostic) over ``cells``."""
 
     if not cells:
-        return {"bucket": 0.0, "window": 0.0, "objective": 0.0, "containment": 0.0, "cells": 0}
-    bucket = window = claims = 0.0
+        return {"logscore": 0.0, "brier": 0.0, "containment": 0.0, "cells": 0}
+    logscore = brier = claims = 0.0
     hits = 0
     for cell in cells:
-        b, w, c, h = _cell_scores(
+        s, b, c, h = _cell_scores(
             cell, delta_c=delta_c, width_lambda=width_lambda,
             sigma_floor_rungs=sigma_floor_rungs,
             width_tier_lambdas=width_tier_lambdas,
         )
-        bucket += b
-        window += w
+        logscore += s
+        brier += b
         claims += c
         hits += h
     n = len(cells)
     return {
-        "bucket": bucket / n,
-        "window": window / n,
-        "objective": (bucket + WINDOW_TERM_WEIGHT * window) / n,
+        "logscore": logscore / n,
+        "brier": brier / n,
         "containment": (hits / claims) if claims > 0 else 0.0,
         "cells": n,
     }
@@ -2267,7 +2475,8 @@ def _search_tiers(
     Tiers partition the cells, so for a fixed shift each tier's lambda is
     chosen on its own cells alone and the objective adds up; the shift is
     then the one whose sum is smallest.  A tier with no cells keeps the
-    pooled lambda.  Scored on the combined objective (bucket + window).
+    pooled lambda.  Scored on the LogScore of the floored vector, the one
+    training rule (charters 211 and 228).
     """
 
     by_tier: dict[int, list[Mapping[str, Any]]] = {}
@@ -2289,17 +2498,14 @@ def _search_tiers(
             for lam in WIDTH_TIER_LAMBDA_GRID:
                 if not MIN_WIDTH_LAMBDA <= lam <= MAX_WIDTH_LAMBDA:
                     continue
-                # ``_mean_scores``'s objective, added with its own ``+=`` in
+                # ``_mean_scores``'s LogScore, added with its own ``+=`` in
                 # its own order, off the round's grid rows.
                 position = _GRID_INDEX[(delta, lam)]
-                bucket = window = 0.0
+                logscore = 0.0
                 for member in members:
-                    rows = _grid_rows(member, sigma_floor_rungs, window=True)
-                    bucket += rows[0][position]
-                    window += rows[1][position]
+                    logscore += _grid_rows(member, sigma_floor_rungs)[position]
                 count = len(members)
-                objective = (bucket + WINDOW_TERM_WEIGHT * window) / count
-                value = objective * len(members)
+                value = (logscore / count) * len(members)
                 if tier_best is None or value < tier_best[1]:
                     tier_best = (lam, value)
             lambdas.append(tier_best[0])
@@ -2315,6 +2521,7 @@ def _search_tiers(
 def _width_tier_lane(
     *,
     forward: Sequence[Mapping[str, Any]],
+    forward_clusters: Sequence[Any],
     incumbent: tuple[float, float],
     incumbent_floor: float,
     incumbent_tiers: Mapping[str, Any] | None,
@@ -2324,16 +2531,17 @@ def _width_tier_lane(
 ) -> dict[str, Any]:
     """Whether the tiers earned their place, and the numbers that say so.
 
-    Admitted where the tiered candidate beats the pooled candidate on the
-    combined forward objective by the layer's hurdle without regressing the
-    bucket NLL by more than a noise margin -- the window term is what the
-    lane is for, but it may not buy it by making the bucket read worse.
+    Admitted where the tiered candidate is significantly better than the
+    pooled candidate on both proper scores over the forward window
+    (charter 228); ``gate_vs_incumbent`` is what the pair then has to clear
+    at the stage's own gate.
     """
 
+    incumbent_lambdas = (incumbent_tiers or {}).get("lambdas") or None
     inc = _mean_scores(
         forward, delta_c=incumbent[0], width_lambda=incumbent[1],
         sigma_floor_rungs=incumbent_floor,
-        width_tier_lambdas=(incumbent_tiers or {}).get("lambdas") or None,
+        width_tier_lambdas=incumbent_lambdas,
     )
     pool = _mean_scores(
         forward, delta_c=pooled[0], width_lambda=pooled[1],
@@ -2342,6 +2550,25 @@ def _width_tier_lane(
     tier = _mean_scores(
         forward, delta_c=tiered[0], width_lambda=pooled[1],
         sigma_floor_rungs=pooled_floor, width_tier_lambdas=tiered[1],
+    )
+    tier_scores = _cell_score_list(
+        forward, delta_c=tiered[0], width_lambda=pooled[1],
+        sigma_floor_rungs=pooled_floor, width_tier_lambdas=tiered[1],
+    )
+    vs_pooled = _proper_score_gate(
+        _cell_score_list(
+            forward, delta_c=pooled[0], width_lambda=pooled[1],
+            sigma_floor_rungs=pooled_floor,
+        ),
+        tier_scores, forward_clusters,
+    )
+    vs_incumbent = _proper_score_gate(
+        _cell_score_list(
+            forward, delta_c=incumbent[0], width_lambda=incumbent[1],
+            sigma_floor_rungs=incumbent_floor,
+            width_tier_lambdas=incumbent_lambdas,
+        ),
+        tier_scores, forward_clusters,
     )
     by_tier: dict[int, list[Mapping[str, Any]]] = {}
     for cell in forward:
@@ -2366,23 +2593,20 @@ def _width_tier_lane(
             entry.update({
                 "containment_pooled": p["containment"],
                 "containment_tiered": t["containment"],
-                "bucket_nll_pooled": p["bucket"],
-                "bucket_nll_tiered": t["bucket"],
+                "logscore_pooled": p["logscore"],
+                "logscore_tiered": t["logscore"],
+                "brier_pooled": p["brier"],
+                "brier_tiered": t["brier"],
             })
         per_tier.append(entry)
-    gain_objective = pool["objective"] - tier["objective"]
-    bucket_regression = tier["bucket"] - pool["bucket"]
-    measured = (
-        gain_objective > MIN_FORWARD_NLL_GAIN
-        and bucket_regression <= MAX_BUCKET_NLL_REGRESSION
-    )
+    measured = bool(vs_pooled["lower"])
     admitted = measured and WIDTH_TIER_MODE == "serve"
     return {
-        "schema": "center_width_tier_lane_v1",
+        "schema": "center_width_tier_lane_v2",
         "mode": WIDTH_TIER_MODE,
+        "gate_rule": GATE_RULE,
         "boundaries_rungs": list(WIDTH_TIER_BOUNDARIES_RUNGS),
         "tier_names": list(WIDTH_TIER_NAMES),
-        "window_term_weight": WINDOW_TERM_WEIGHT,
         "candidate_delta_c": tiered[0],
         "candidate_lambdas": list(tiered[1]),
         "pooled_delta_c": pooled[0],
@@ -2390,12 +2614,11 @@ def _width_tier_lane(
         "forward_incumbent": inc,
         "forward_pooled_candidate": pool,
         "forward_tier_candidate": tier,
-        "forward_objective_gain_vs_pooled": gain_objective,
-        "forward_objective_gain_vs_incumbent": inc["objective"] - tier["objective"],
-        "forward_bucket_nll_regression_vs_pooled": bucket_regression,
-        "forward_window_nll_gain_vs_pooled": pool["window"] - tier["window"],
-        "min_forward_nll_gain": MIN_FORWARD_NLL_GAIN,
-        "max_bucket_nll_regression": MAX_BUCKET_NLL_REGRESSION,
+        "forward_logscore_gain_vs_pooled": pool["logscore"] - tier["logscore"],
+        "forward_brier_gain_vs_pooled": pool["brier"] - tier["brier"],
+        "forward_logscore_gain_vs_incumbent": inc["logscore"] - tier["logscore"],
+        "gate_vs_pooled": vs_pooled,
+        "gate_vs_incumbent": vs_incumbent,
         "per_tier": per_tier,
         "measured_admitted": measured,
         "admitted": admitted,
@@ -2654,7 +2877,8 @@ def _rolling_origin_admission(
     The gain returned is the cell-weighted mean over folds of what the search
     bought against identity -- identity being what the stage serves today,
     since the cells already carry it.  Cell-weighted rather than fold-weighted
-    so a thin day cannot outvote a full one.
+    so a thin day cannot outvote a full one.  ``gate`` pools every fold's
+    held-out cells and asks charter 228's question of them.
 
     What this validates is the search *procedure*, not one pair: each fold
     picks its own pair from its own prefix.  That is what licenses the served
@@ -2669,7 +2893,11 @@ def _rolling_origin_admission(
     )
     folds: list[dict[str, Any]] = []
     total_gain = 0.0
+    total_brier_gain = 0.0
     total_cells = 0
+    held_identity: list[tuple[float, float]] = []
+    held_candidate: list[tuple[float, float]] = []
+    held_clusters: list[tuple[Any, str]] = []
     for index in range(first, len(ordered)):
         train = [
             cell for day in ordered[:index] for cell in by_day[day]
@@ -2680,19 +2908,24 @@ def _rolling_origin_admission(
         delta, lam, _train_nll = _search(
             train, sigma_floor_rungs=sigma_floor_rungs
         )
-        identity_nll = _mean_nll(
+        identity = _cell_score_list(
             test,
             delta_c=RESIDUAL_IDENTITY[0],
             width_lambda=RESIDUAL_IDENTITY[1],
             sigma_floor_rungs=0.0,
         )
-        candidate_nll = _mean_nll(
+        candidate = _cell_score_list(
             test,
             delta_c=delta,
             width_lambda=lam,
             sigma_floor_rungs=sigma_floor_rungs,
         )
+        identity_nll = sum(s[0] for s in identity) / len(test)
+        candidate_nll = sum(s[0] for s in candidate) / len(test)
+        identity_brier = sum(s[1] for s in identity) / len(test)
+        candidate_brier = sum(s[1] for s in candidate) / len(test)
         gain = identity_nll - candidate_nll
+        brier_gain = identity_brier - candidate_brier
         folds.append({
             "scored_day": ordered[index],
             "train_day_count": index,
@@ -2702,29 +2935,45 @@ def _rolling_origin_admission(
             "width_lambda": lam,
             "identity_nll": identity_nll,
             "candidate_nll": candidate_nll,
+            "identity_brier": identity_brier,
+            "candidate_brier": candidate_brier,
             "gain": gain,
+            "brier_gain": brier_gain,
         })
         total_gain += gain * len(test)
+        total_brier_gain += brier_gain * len(test)
         total_cells += len(test)
+        held_identity.extend(identity)
+        held_candidate.extend(candidate)
+        held_clusters.extend(
+            (cell.get("station_id"), ordered[index]) for cell in test
+        )
+    # A fold gained when it gained on both scores (charter 228).
+    positive = sum(
+        1 for fold in folds if fold["gain"] > 0.0 and fold["brier_gain"] > 0.0
+    )
     return {
-        "schema": "center_width_rolling_origin_v1",
+        "schema": "center_width_rolling_origin_v2",
         "min_fold_train_days": ROLLING_ORIGIN_MIN_FOLD_TRAIN_DAYS,
         "max_folds": ROLLING_ORIGIN_MAX_FOLDS,
         "fold_count": len(folds),
         "scored_cell_count": total_cells,
         "gain": (total_gain / total_cells) if total_cells else 0.0,
-        "folds_positive": sum(1 for fold in folds if fold["gain"] > 0.0),
+        "brier_gain": (total_brier_gain / total_cells) if total_cells else 0.0,
+        "gate": _proper_score_gate(
+            held_identity, held_candidate, held_clusters
+        ),
+        "folds_positive": positive,
         # A mean is not enough, and the first live run says why: on P0's ten
         # days to 2026-09-09 the folds picked four different pairs, two of
-        # five gained, and the mean came out at +0.0066 -- over the hurdle --
-        # because one hard day (09-09, identity NLL 2.02) swung +0.0987 and
-        # carried three losing folds.  Admitting there would have swapped one
-        # window's luck for one fold's.  So a majority of folds must gain as
-        # well, which no single day can supply.
-        "majority_positive": (
-            sum(1 for fold in folds if fold["gain"] > 0.0) * 2 > len(folds)
-            if folds else False
-        ),
+        # five gained, and the mean came out at +0.0066 -- over the hurdle
+        # of the day -- because one hard day (09-09, identity NLL 2.02) swung
+        # +0.0987 and carried three losing folds.  Admitting there would have
+        # swapped one window's luck for one fold's.  So a majority of folds
+        # must gain as well, which no single day can supply.  The station-day
+        # interval does not replace it: one hard day moves all its stations
+        # the same way, and the draws count that as many confirmations.
+        "majority_positive": positive * 2 > len(folds) if folds else False,
         # Whether the folds agreed on where to go, which a single number
         # cannot say: a mean gain assembled from opposite picks is a
         # procedure nobody should promote on.  Reported, not gated -- the
@@ -2740,30 +2989,40 @@ def _rolling_origin_admission(
 def _sigma_floor_lane(
     *,
     forward: Sequence[Mapping[str, Any]],
+    forward_clusters: Sequence[Any],
     pooled: tuple[float, float],
     floored: tuple[float, float],
-    pooled_nll: float,
-    floored_nll: float,
+    pooled_scores: Sequence[tuple[float, float]],
+    floored_scores: Sequence[tuple[float, float]],
     incumbent_nll: float,
     incumbent_floor_rungs: float,
 ) -> dict[str, Any]:
     """Whether the floor earned its place, and the numbers that say so.
 
-    Admitted only where it beats the *pooled* candidate on the held-out
-    forward window by the layer's own hurdle.  Beating the incumbent is not
-    enough on its own: the floored fit carries a refitted lambda with it, and
-    a lane that only wins by dragging that refit along has not shown that the
-    floor is what did the work.  The pair as a whole then faces the incumbent
-    at the usual gate, one rung up.
+    Admitted only where it is significantly better than the *pooled*
+    candidate on both proper scores over the held-out forward window
+    (charter 228).  Beating the incumbent is not enough on its own: the
+    floored fit carries a refitted lambda with it, and a lane that only wins
+    by dragging that refit along has not shown that the floor is what did
+    the work.  The pair as a whole then faces the incumbent at the usual
+    gate, one rung up.
     """
 
-    gain_pooled = pooled_nll - floored_nll
-    measured = gain_pooled > MIN_FORWARD_NLL_GAIN
+    pooled_nll = (
+        sum(s[0] for s in pooled_scores) / len(pooled_scores)
+        if pooled_scores else 0.0
+    )
+    floored_nll = (
+        sum(s[0] for s in floored_scores) / len(floored_scores)
+        if floored_scores else 0.0
+    )
+    gate = _proper_score_gate(pooled_scores, floored_scores, forward_clusters)
+    measured = bool(gate["lower"])
     # The verdict is recorded whatever the mode; only serving is switched.
     # A shadow that stopped measuring would have nothing to promote on.
     admitted = measured and SIGMA_FLOOR_MODE == "serve"
     out: dict[str, Any] = {
-        "schema": "center_width_sigma_floor_lane_v1",
+        "schema": "center_width_sigma_floor_lane_v2",
         "mode": SIGMA_FLOOR_MODE,
         "measured_admitted": measured,
         "sigma_floor_rungs": SIGMA_FLOOR_RUNGS,
@@ -2776,9 +3035,10 @@ def _sigma_floor_lane(
         "forward_nll_incumbent": incumbent_nll,
         "forward_nll_pooled_candidate": pooled_nll,
         "forward_nll_floor_candidate": floored_nll,
-        "forward_nll_gain_vs_pooled": gain_pooled,
+        "forward_nll_gain_vs_pooled": pooled_nll - floored_nll,
         "forward_nll_gain_vs_incumbent": incumbent_nll - floored_nll,
-        "min_forward_nll_gain": MIN_FORWARD_NLL_GAIN,
+        "gate_rule": GATE_RULE,
+        "gate_vs_pooled": gate,
         "admitted": admitted,
         "state": (
             "ADMITTED" if admitted
@@ -2801,7 +3061,7 @@ def fit_center_width(
     The fit searches the earlier fraction of the history and is scored on the
     later one against whatever is being served now.  A stage with too little
     settled history fits to identity and says so rather than erroring: it
-    promotes itself the day the evidence clears the hurdle.
+    promotes itself the day the evidence clears the gate (charter 228).
     """
 
     stage_id = _check_stage(stage)
@@ -2934,6 +3194,10 @@ def fit_center_width(
     train_days, forward_days = days[:cut], days[cut:] or days[-1:]
     train = [cell for day in train_days for cell in by_day[day]]
     forward = [cell for day in forward_days for cell in by_day[day]]
+    forward_clusters = [
+        (cell.get("station_id"), day)
+        for day in forward_days for cell in by_day[day]
+    ]
     # Which pair is stored does not change here: it is still the one the
     # training prefix picks.  Only the gate moves, and the two sub-lanes keep
     # the single window -- each compares one candidate against another on the
@@ -2956,10 +3220,10 @@ def fit_center_width(
         width_lambda=RESIDUAL_IDENTITY[1],
         sigma_floor_rungs=0.0,
     )
-    forward_pooled = _mean_nll(
+    pooled_scores = _cell_score_list(
         forward, delta_c=pooled_delta, width_lambda=pooled_lam
     )
-    forward_floored = _mean_nll(
+    floored_scores = _cell_score_list(
         forward,
         delta_c=floor_delta,
         width_lambda=floor_lam,
@@ -2967,29 +3231,33 @@ def fit_center_width(
     )
     sigma_floor = _sigma_floor_lane(
         forward=forward,
+        forward_clusters=forward_clusters,
         pooled=(pooled_delta, pooled_lam),
         floored=(floor_delta, floor_lam),
-        pooled_nll=forward_pooled,
-        floored_nll=forward_floored,
+        pooled_scores=pooled_scores,
+        floored_scores=floored_scores,
         incumbent_nll=forward_base,
         incumbent_floor_rungs=base_floor,
     )
     evidence["sigma_floor"] = sigma_floor
     if sigma_floor["admitted"]:
         delta, lam = floor_delta, floor_lam
-        train_nll, forward_candidate = floor_train_nll, forward_floored
+        train_nll = floor_train_nll
+        forward_candidate = sigma_floor["forward_nll_floor_candidate"]
         candidate_floor = SIGMA_FLOOR_RUNGS
     else:
         delta, lam = pooled_delta, pooled_lam
-        train_nll, forward_candidate = pooled_train_nll, forward_pooled
+        train_nll = pooled_train_nll
+        forward_candidate = sigma_floor["forward_nll_pooled_candidate"]
         candidate_floor = 0.0
     # Width tiers: fitted under the floor the pair will serve, judged against
-    # the pooled/floored candidate on the combined forward objective.
+    # the pooled/floored candidate on both proper scores (charter 228).
     tier_delta, tier_lambdas, _tier_train = _search_tiers(
         train, sigma_floor_rungs=candidate_floor, pooled_lambda=lam,
     )
     width_tier_lane = _width_tier_lane(
         forward=forward,
+        forward_clusters=forward_clusters,
         incumbent=RESIDUAL_IDENTITY,
         incumbent_floor=0.0,
         incumbent_tiers=None,
@@ -3005,7 +3273,7 @@ def fit_center_width(
             "lambdas": list(tier_lambdas),
         }
         delta = tier_delta
-        forward_candidate = width_tier_lane["forward_tier_candidate"]["bucket"]
+        forward_candidate = width_tier_lane["forward_tier_candidate"]["logscore"]
     # The admission number.  A sub-lane that took the pair off the plain
     # scalar search keeps its own single-window verdict below; the question
     # here is whether the search beats what is served at all, and that is the
@@ -3028,10 +3296,11 @@ def fit_center_width(
         "forward_nll_incumbent": forward_base,
         "forward_nll_candidate": forward_candidate,
         "forward_nll_gain": gain,
+        "forward_brier_gain": float(rolling["brier_gain"]),
+        "gate_rule": GATE_RULE,
         # What the single trailing window would have said, kept because the
         # two disagreeing is the reading a reviewer wants, not a detail.
         "single_window_nll_gain": single_window_gain,
-        "min_forward_nll_gain": MIN_FORWARD_NLL_GAIN,
         "identity_nll_all": _mean_nll(cells, delta_c=0.0, width_lambda=1.0),
         "candidate_nll_all": _mean_nll(
             cells,
@@ -3040,24 +3309,21 @@ def fit_center_width(
             sigma_floor_rungs=candidate_floor,
         ),
     })
-    # Both halves of the rolling verdict: the mean clears the hurdle and a
-    # majority of folds gained.  The second is not a refinement -- without it
-    # one hard day can carry three losing folds over the line, which is the
-    # first live run's reading exactly.
+    # Both halves of the rolling verdict: the held-out cells are
+    # significantly better on both proper scores (charter 228), and a
+    # majority of folds gained on both.  The second is not a refinement --
+    # without it one hard day can carry three losing folds over the line,
+    # which is the first live run's reading exactly.
     admitted = (
-        gain > MIN_FORWARD_NLL_GAIN
+        bool(rolling["gate"]["lower"])
         and bool(rolling["majority_positive"])
     )
     if candidate_tiers is not None:
-        # The tier lane's own gate already held the bucket NLL to within
-        # a noise margin of the pooled candidate; what it must beat at this
-        # rung is the incumbent on the objective it was fitted on.  Its own
-        # window is the single one, so the fold majority does not speak to
-        # it; the pair it rides on has already passed the gate above.
-        admitted = (
-            width_tier_lane["forward_objective_gain_vs_incumbent"]
-            > MIN_FORWARD_NLL_GAIN
-        )
+        # The tier lane's own gate already beat the pooled candidate; what
+        # it must beat at this rung is the incumbent.  Its own window is the
+        # single one, so the fold majority does not speak to it; the pair it
+        # rides on has already passed the gate above.
+        admitted = bool(width_tier_lane["gate_vs_incumbent"]["lower"])
     # The TAF-conditional lane (charter 57, distance axis): each cell fits
     # its own scalars from its own slice of the same train/forward split --
     # the shift along each day's TAF direction, the width unsigned -- and is

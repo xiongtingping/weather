@@ -31,7 +31,6 @@ from bayes_basket_target.center_width_store import (
     CENTER_WIDTH_VETO_MIN_CELLS,
     CENTER_WIDTH_VETO_MIN_DAYS,
     LAMBDA_GRID,
-    MIN_FORWARD_NLL_GAIN,
     MIN_QUALIFYING_DAYS,
     WIDTH_TIER_LAMBDA_GRID,
     _search,
@@ -252,7 +251,9 @@ def test_an_incumbent_that_hurts_after_activation_is_vetoed() -> None:
     assert fitted["evidence"]["basis"] == "INCUMBENT_VETOED"
     veto = fitted["evidence"]["incumbent_veto"]
     assert veto["enough_evidence"]
-    assert veto["undo_gain"] > MIN_FORWARD_NLL_GAIN
+    # Charter 228: undoing is significantly better on both proper scores.
+    assert veto["gate"]["lower"]
+    assert veto["undo_gain"] > 0.0 and veto["undo_brier_gain"] > 0.0
     assert veto["nll_undone"] < veto["nll_kept"]
     assert veto["activated_at_utc"] == "2026-06-30T00:00:00Z"
 
@@ -290,7 +291,8 @@ def test_an_incumbent_that_earns_its_place_is_held_not_vetoed() -> None:
     assert fitted["accumulating"]
     assert (fitted["delta_c"], fitted["width_lambda"]) == (0.0, 0.75)
     veto = fitted["evidence"]["incumbent_veto"]
-    assert veto["undo_gain"] <= MIN_FORWARD_NLL_GAIN
+    assert not veto["gate"]["lower"]
+    assert veto["undo_gain"] < 0.0
     # lambda 0.75 is rank-deficient on this axis, so this verdict exists only
     # because the row recorded the input rather than leaving it to be solved.
     assert veto["counterfactual_basis"] == {"recorded_input": veto["cell_count"]}
