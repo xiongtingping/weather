@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.weather.iem_truth_audit</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>/Users/xiong/weather/scripts/iem_truth_audit.sh</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Hour</key>
+		<integer>19</integer>
+		<key>Minute</key>
+		<integer>30</integer>
+	</dict>
+	<key>StandardErrorPath</key>
+	<string>/Users/xiong/weather/data/logs/iem_truth_audit.err.log</string>
+	<key>StandardOutPath</key>
+	<string>/Users/xiong/weather/data/logs/iem_truth_audit.out.log</string>
+	<key>WorkingDirectory</key>
+	<string>/Users/xiong/weather</string>
+</dict>
+</plist>
