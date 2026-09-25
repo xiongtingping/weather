@@ -1102,10 +1102,45 @@ def load_started_registry_rows(
     return result
 
 
+def settlement_timezone_for_scope(
+    conn: sqlite3.Connection, *, station_id: str, event_date: str
+) -> str | None:
+    """The settlement timezone of one station-day, even after retention.
+
+    The registry's own answer while it still carries the scope; once
+    ``market_registry_retention`` has retired the scope's rows (three days),
+    the station's bound timezone in ``calibration_station_market_timezone_binding``
+    -- the only other place a settlement timezone may come from.  Readers of
+    settled days older than retention (training labels following a charter
+    207 re-settlement, the forward-store label sync) otherwise failed closed
+    on every such day: 1,479 label facts on 59 station-days, and the forward
+    store's label cursor stood still from about 2026-08-31.  None when
+    neither answers with exactly one timezone; any registry row, however
+    ambiguous, means the registry still speaks and there is no fallback.
+    """
+
+    rows = conn.execute(
+        f"SELECT DISTINCT settlement_timezone FROM {TABLE} "
+        "WHERE station_id=? AND event_date=?",
+        (station_id, event_date),
+    ).fetchall()
+    if rows:
+        values = {str(row[0] or "").strip() for row in rows}
+        return next(iter(values)) if len(values) == 1 and next(iter(values)) else None
+    bound = conn.execute(
+        "SELECT settlement_timezone FROM calibration_station_market_timezone_binding "
+        "WHERE station_id=?",
+        (station_id,),
+    ).fetchall()
+    values = {str(row[0] or "").strip() for row in bound}
+    return next(iter(values)) if len(values) == 1 and next(iter(values)) else None
+
+
 __all__ = [
     "DDL", "LISTED_DAYS_PER_STATION", "SCHEMA", "SNAPSHOT_TABLE", "TABLE",
     "apply_target_market_registry_schema",
     "export_shared_live_registry", "ingest_target_market_registry",
     "load_active_registry_rows", "load_started_registry_rows",
     "registry_eligible_scopes", "registry_scope_timezone_triples",
+    "settlement_timezone_for_scope",
 ]

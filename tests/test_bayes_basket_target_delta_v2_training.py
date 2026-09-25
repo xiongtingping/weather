@@ -890,6 +890,89 @@ def test_final_label_waits_for_registry_close_and_accepted_truth() -> None:
     assert repeated["appended_count"] == 0
 
 
+def _settled_truth(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        "INSERT INTO calibration_station_registry VALUES(?,?,?,?,?,?,?,?,?)",
+        (STATION, STATION, "Chengdu", TZ, "AMSC", "daily_high_c",
+         "registry-v1", "formal_truth", SHA_A),
+    )
+    conn.execute(
+        """
+        INSERT INTO calibration_station_daily_high_truth(
+          truth_id, station_id, local_date, settlement_timezone,
+          official_tmax_c, source_lane, settlement_definition, revision_no,
+          published_at_utc, received_at_utc, canonical_committed_at_utc,
+          timestamps_complete, qc_status, source_role,
+          source_payload_sha256, observation_ids_json, authority_scope,
+          content_sha256
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        ("truth-1", STATION, EVENT_DATE, TZ, 38.2, "AWC", "daily_high_c",
+         0, "2026-07-24T04:01:00Z", "2026-07-24T04:01:01Z",
+         "2026-07-24T04:01:02Z", 1, "ACCEPTED",
+         CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
+         SHA_B, "[]", "FORMAL_NATIVE_ELIGIBLE", SHA_C),
+    )
+
+
+def _bind_station(conn: sqlite3.Connection, timezone_name: str) -> None:
+    conn.execute(
+        "INSERT INTO calibration_station_market_timezone_binding VALUES(?,?,?,?,?,?,?,?)",
+        ("binding-1", STATION, timezone_name, 1, None,
+         "calibration_station_market_timezone_binding_v1", NOW, SHA_D),
+    )
+
+
+def test_a_day_the_registry_retired_is_labelled_on_the_stations_bound_timezone() -> None:
+    """Registry retention keeps row copies three days; a truth revised later
+    (charter 207, 2026-09-09) still has to reach its training labels."""
+
+    conn, envelope = _seed()
+    _commit(conn, envelope)
+    _settled_truth(conn)
+    conn.execute("DELETE FROM basket_target_market_registry")  # retention
+    blocked = materialize_delta_v2_settled_training_labels(
+        conn, as_of_utc="2026-07-24T04:02:00Z",
+    )
+    assert blocked["appended_count"] == 0
+    assert "delta_v2_market_registry_timezone_not_unique" in json.dumps(blocked["blockers"])
+    _bind_station(conn, TZ)
+    labelled = materialize_delta_v2_settled_training_labels(
+        conn, as_of_utc="2026-07-24T04:03:00Z",
+    )
+    assert labelled["appended_count"] == 1
+    assert conn.execute(
+        "SELECT winning_bucket FROM basket_policy_training_label"
+    ).fetchone()[0] == "38°C"
+
+
+def test_a_bound_timezone_the_fact_disagrees_with_still_fails_closed() -> None:
+    conn, envelope = _seed()
+    _commit(conn, envelope)
+    _settled_truth(conn)
+    conn.execute("DELETE FROM basket_target_market_registry")
+    _bind_station(conn, "Asia/Seoul")
+    result = materialize_delta_v2_settled_training_labels(
+        conn, as_of_utc="2026-07-24T04:02:00Z",
+    )
+    assert result["appended_count"] == 0
+    assert "delta_v2_label_registry_timezone_mismatch" in json.dumps(result["blockers"])
+
+
+def test_the_registry_answers_while_it_still_carries_the_scope() -> None:
+    from bayes_basket_target.market_registry import settlement_timezone_for_scope
+
+    conn, envelope = _seed()
+    _commit(conn, envelope)
+    _settled_truth(conn)
+    _bind_station(conn, "Asia/Seoul")
+    # A registry row, however it disagrees with the binding, is the answer.
+    assert settlement_timezone_for_scope(conn, station_id=STATION, event_date=EVENT_DATE) == TZ
+    conn.execute("DELETE FROM basket_target_market_registry")
+    assert settlement_timezone_for_scope(conn, station_id=STATION, event_date=EVENT_DATE) == "Asia/Seoul"
+    assert settlement_timezone_for_scope(conn, station_id="KATL", event_date=EVENT_DATE) is None
+
+
 def test_latest_quarantined_truth_revision_blocks_older_accepted_truth() -> None:
     conn, envelope = _seed()
     _commit(conn, envelope)
