@@ -195,6 +195,35 @@ def station_stability(dis):
             "top10_first_half": float(first[top].mean()), "same_stations_second_half": float(second[top].mean())}
 
 
+# The coastal stations commit 37272202 (same day, another session) found the
+# model's log-score gap concentrated on; read here on the disagreement axis.
+COASTAL = ("NZWN", "RJTT", "KSEA", "FACT", "RCSS", "KLAX", "KSFO")
+
+
+def coastal_vs_others(decisions, dis):
+    out = {}
+    for half, keep in (("all", lambda d: True), ("before_0905", lambda d: d["date"] < "2026-09-05"),
+                       ("from_0905", lambda d: d["date"] >= "2026-09-05")):
+        for group, member in (("coastal", True), ("others", False)):
+            items = [d for d in dis if keep(d) and (d["station"] in COASTAL) == member]
+            w = np.array([d["w"] for d in items])
+            out[f"{half}:{group}"] = {
+                "station_day_stages": float(w.sum()),
+                "model_right": float((w * np.array([d["right"] == "model" for d in items])).sum() / w.sum()),
+                "market_price_on_model_bucket": float((w * np.array([d["m_on_p"] for d in items])).sum() / w.sum()),
+                "market_right": float((w * np.array([d["right"] == "market" for d in items])).sum() / w.sum()),
+            }
+    firsts = {}
+    for d in decisions:
+        k = (d["stage"], d["station"], d["date"])
+        if k not in firsts or d["at"] < firsts[k]["at"]:
+            firsts[k] = d
+    for group, member in (("coastal", True), ("others", False)):
+        items = [d for d in firsts.values() if (d["station"] in COASTAL) == member]
+        out[f"first_decision_disagree_share:{group}"] = float(np.mean([d["model_on"] != "m1" for d in items]))
+    return out
+
+
 def forward_checks(decisions, dis):
     def first_per(items, key):
         best = {}
@@ -256,6 +285,7 @@ def main():
         "market_second_bucket_by_model_pick": market_second_by_model_pick(decisions),
         "model_claim_adds_information_lodo_logloss": claim_adds_information(dis),
         "station_split_half": station_stability(dis),
+        "coastal_vs_others": coastal_vs_others(decisions, dis),
         "forward_checks_of_0918_cells": forward_checks(decisions, dis),
     }
     (HERE / "model_right_results.json").write_text(json.dumps(result, ensure_ascii=False, indent=1))

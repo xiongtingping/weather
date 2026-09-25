@@ -544,6 +544,46 @@
   "top10_first_half": 0.414846646679365,
   "same_stations_second_half": 0.2580759106823004
  },
+ "coastal_vs_others": {
+  "all:coastal": {
+   "station_day_stages": 392.0,
+   "model_right": 0.2005119982967018,
+   "market_price_on_model_bucket": 0.20164457019801155,
+   "market_right": 0.4780720639904314
+  },
+  "all:others": {
+   "station_day_stages": 1990.0,
+   "model_right": 0.2663084033294076,
+   "market_price_on_model_bucket": 0.2362702673180206,
+   "market_right": 0.46600138742572234
+  },
+  "before_0905:coastal": {
+   "station_day_stages": 97.0,
+   "model_right": 0.2058964075108794,
+   "market_price_on_model_bucket": 0.17612403778611327,
+   "market_right": 0.40993832055687723
+  },
+  "before_0905:others": {
+   "station_day_stages": 539.0,
+   "model_right": 0.2642343573206448,
+   "market_price_on_model_bucket": 0.20743103737186205,
+   "market_right": 0.403587424668746
+  },
+  "from_0905:coastal": {
+   "station_day_stages": 295.0,
+   "model_right": 0.1987415315381417,
+   "market_price_on_model_bucket": 0.21003606729616117,
+   "market_right": 0.5004753626787525
+  },
+  "from_0905:others": {
+   "station_day_stages": 1451.0,
+   "model_right": 0.26707884495499207,
+   "market_price_on_model_bucket": 0.24698311703613182,
+   "market_right": 0.48918617441814854
+  },
+  "first_decision_disagree_share:coastal": 0.5714285714285714,
+  "first_decision_disagree_share:others": 0.46968066020810906
+ },
  "forward_checks_of_0918_cells": {
   "near_tie_cell:discovery_to_0916": {
    "n": 41,
