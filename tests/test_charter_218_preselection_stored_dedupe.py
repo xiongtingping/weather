@@ -178,9 +178,12 @@ def test_commit_writes_the_compact_row() -> None:
         (raw,) = conn.execute(
             "SELECT plan_json FROM basket_p0_preselection_plan"
         ).fetchone()
-    row = json.loads(raw)
-    assert STORED_LINEAGE_KEY in row["compiled_plan"]["plan"]
-    assert _canon(expanded_stored_preselection(row)) == _canon(_persisted(value))
+        row = json.loads(raw)
+        assert STORED_LINEAGE_KEY in row["compiled_plan"]["plan"]
+        # Charter 220 moved the envelope lineage to the blob table.
+        assert _canon(expanded_stored_preselection(row, conn)) == _canon(
+            _persisted(value)
+        )
 
 
 def test_a_differing_inner_audit_is_kept() -> None:

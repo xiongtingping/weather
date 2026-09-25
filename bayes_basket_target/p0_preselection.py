@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import sqlite3
@@ -1521,15 +1522,154 @@ def stored_preselection_payload(value: Mapping[str, Any]) -> dict[str, Any]:
     return {**stored, "compiled_plan": {**compiled, "plan": compact}}
 
 
-def expanded_stored_preselection(stored: Mapping[str, Any]) -> dict[str, Any]:
+# Charter 220: large blocks that repeat row after row are stored once, keyed
+# by the sha256 of their canonical JSON, and the row names the digest.
+# Measured over 15,497 rows written 2026-09-24 17:40-23:40Z (full speed):
+# ``beta_edge_tables`` is the fleet-wide beta/gamma table, 2 distinct values,
+# 13.8 KB a row; the embedded envelope ``lineage`` is 27.2 KB a row with 453
+# distinct values (it moves only when the probability does).  Together 39% of
+# a pre-218 row.  Only paths no reader of stored rows reads are listed; the
+# semantic projection behind ``plan_sha256`` reads neither.
+STORED_BLOB_TABLE = "basket_p0_preselection_blob"
+STORED_BLOBS_KEY = "blobs_stored_as"
+STORED_BLOBS_SCHEMA = "bayes_basket_target_p0_preselection_stored_blobs_v1"
+STORED_BLOB_PATHS: tuple[tuple[str, ...], ...] = (
+    ("probability_envelope", "lineage"),
+    ("plan", "basket_support_selection", "beta_edge_tables"),
+)
+# Below this a lookup costs more than the bytes it saves.
+STORED_BLOB_MIN_BYTES = 1024
+_STORED_BLOB_DDL = (
+    "CREATE TABLE IF NOT EXISTS basket_p0_preselection_blob ("
+    " blob_sha256 TEXT PRIMARY KEY CHECK(length(blob_sha256)=64),"
+    " blob_json TEXT NOT NULL,"
+    " created_at TEXT NOT NULL)",
+    "CREATE TRIGGER IF NOT EXISTS basket_p0_preselection_blob_no_update"
+    " BEFORE UPDATE ON basket_p0_preselection_blob"
+    " BEGIN SELECT RAISE(ABORT,'append_only'); END",
+    "CREATE TRIGGER IF NOT EXISTS basket_p0_preselection_blob_no_delete"
+    " BEFORE DELETE ON basket_p0_preselection_blob"
+    " BEGIN SELECT RAISE(ABORT,'append_only'); END",
+)
+
+
+def ensure_preselection_blob_schema(conn: sqlite3.Connection) -> None:
+    # Statement by statement, never ``executescript``: that commits whatever
+    # transaction is open, and the preselection is written inside the
+    # resident's.  Once the table exists each statement is a no-op.
+    for statement in _STORED_BLOB_DDL:
+        conn.execute(statement)
+
+
+def split_preselection_blobs(
+    stored: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Take the repeated large blocks out of a stored preselection.
+
+    Returns the row payload, with each block replaced by an entry in
+    ``compiled_plan.blobs_stored_as``, and the blocks themselves as
+    ``{sha256: canonical JSON}`` for the blob table.  Copy on write: the
+    caller's mapping is not touched.
+    """
+
+    compiled = stored.get("compiled_plan")
+    if not isinstance(compiled, Mapping):
+        return dict(stored), {}
+    if STORED_BLOBS_KEY in compiled:
+        raise ContractError("p0_preselection_stored_form_key_reserved")
+    out = dict(compiled)
+    blobs: dict[str, str] = {}
+    paths: dict[str, str] = {}
+    for path in STORED_BLOB_PATHS:
+        node: Any = compiled
+        for key in path[:-1]:
+            node = node.get(key) if isinstance(node, Mapping) else None
+        if not isinstance(node, Mapping) or path[-1] not in node:
+            continue
+        text = _canonical_json(node[path[-1]])
+        encoded = text.encode("utf-8")
+        if len(encoded) < STORED_BLOB_MIN_BYTES:
+            continue
+        digest = hashlib.sha256(encoded).hexdigest()
+        target = out
+        for key in path[:-1]:
+            target[key] = dict(target[key])
+            target = target[key]
+        del target[path[-1]]
+        blobs[digest] = text
+        paths[".".join(path)] = digest
+    if not paths:
+        return dict(stored), {}
+    out[STORED_BLOBS_KEY] = {
+        "schema": STORED_BLOBS_SCHEMA,
+        "table": STORED_BLOB_TABLE,
+        "paths": paths,
+    }
+    return {**stored, "compiled_plan": out}, blobs
+
+
+def joined_preselection_blobs(
+    stored: Mapping[str, Any],
+    conn: sqlite3.Connection | None,
+) -> dict[str, Any]:
+    """Put the blocks ``split_preselection_blobs`` took out back in place.
+
+    Each block is read by digest and its bytes re-hashed before use; a
+    missing or altered block is a ``ContractError``, never a partial plan.
+    """
+
+    compiled = stored.get("compiled_plan")
+    if not isinstance(compiled, Mapping) or STORED_BLOBS_KEY not in compiled:
+        return dict(stored)
+    marker = compiled[STORED_BLOBS_KEY]
+    if (
+        not isinstance(marker, Mapping)
+        or marker.get("schema") != STORED_BLOBS_SCHEMA
+        or marker.get("table") != STORED_BLOB_TABLE
+        or not isinstance(marker.get("paths"), Mapping)
+    ):
+        raise ContractError("p0_preselection_stored_blob_marker_invalid")
+    if conn is None:
+        raise ContractError("p0_preselection_stored_blob_connection_required")
+    known = {".".join(path) for path in STORED_BLOB_PATHS}
+    out = {key: item for key, item in compiled.items() if key != STORED_BLOBS_KEY}
+    for dotted, digest in marker["paths"].items():
+        if dotted not in known:
+            raise ContractError("p0_preselection_stored_blob_path_unknown")
+        row = conn.execute(
+            "SELECT blob_json FROM basket_p0_preselection_blob WHERE blob_sha256=?",
+            (str(digest),),
+        ).fetchone()
+        if row is None:
+            raise ContractError("p0_preselection_stored_blob_missing")
+        text = str(row[0])
+        if hashlib.sha256(text.encode("utf-8")).hexdigest() != digest:
+            raise ContractError("p0_preselection_stored_blob_digest_mismatch")
+        path = dotted.split(".")
+        target = out
+        for key in path[:-1]:
+            if not isinstance(target.get(key), Mapping):
+                raise ContractError("p0_preselection_stored_blob_parent_missing")
+            target[key] = dict(target[key])
+            target = target[key]
+        target[path[-1]] = json.loads(text)
+    return {**stored, "compiled_plan": out}
+
+
+def expanded_stored_preselection(
+    stored: Mapping[str, Any],
+    conn: sqlite3.Connection | None = None,
+) -> dict[str, Any]:
     """Undo ``stored_preselection_payload``: the plan as it was compiled.
 
-    For offline readers of ``plan_json`` that need ``plan.lineage`` or the
-    inner audit; rows stored before charter 218 carry no marker and come back
-    as they are (the 09-21 rebuild stripped their inner audit without one --
+    For offline readers of ``plan_json`` that need ``plan.lineage``, the
+    inner audit or a charter 220 block (which needs ``conn`` to read the blob
+    table); rows stored before charter 218 carry no marker and come back as
+    they are (the 09-21 rebuild stripped their inner audit without one --
     charter 171's projection reads the outer copy for those).
     """
 
+    stored = joined_preselection_blobs(stored, conn)
     compiled = stored.get("compiled_plan")
     plan = compiled.get("plan") if isinstance(compiled, Mapping) else None
     if not isinstance(plan, Mapping) or (
@@ -1582,6 +1722,7 @@ def commit_p0_preselection(
     ):
         raise ContractError("p0_preselection_execution_authority_forbidden")
     assert_connection_target_capacity(conn)
+    payload, blobs = split_preselection_blobs(stored_preselection_payload(value))
     row = (
         str(value["preselection_id"]),
         str(value["station_id"]),
@@ -1594,7 +1735,7 @@ def commit_p0_preselection(
         str(value["policy_activation_id"]),
         str(value["policy_authority_scope"]),
         json.dumps(
-            stored_preselection_payload(value),
+            payload,
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
@@ -1621,6 +1762,15 @@ def commit_p0_preselection(
             "preselection_id": row[0],
             "quote_manifest_sha256": str(existing[1]),
         }
+    if blobs:
+        # Same transaction as the row: a row never names a block the store
+        # does not hold.  A digest already present is the same bytes.
+        ensure_preselection_blob_schema(conn)
+        for digest, text in sorted(blobs.items()):
+            conn.execute(
+                "INSERT OR IGNORE INTO basket_p0_preselection_blob VALUES(?,?,?)",
+                (digest, text, str(created_at_utc)),
+            )
     conn.execute(
         "INSERT INTO basket_p0_preselection_plan VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         row,
@@ -1639,10 +1789,13 @@ __all__ = [
     "STATE",
     "commit_p0_preselection",
     "compile_p0_market_evidence",
+    "ensure_preselection_blob_schema",
     "expanded_stored_preselection",
+    "joined_preselection_blobs",
     "compile_p0_preselection",
     "latest_visible_p0_station_ids",
     "load_market_registry_snapshot",
     "load_official_ws_quotes",
+    "split_preselection_blobs",
     "stored_preselection_payload",
 ]
