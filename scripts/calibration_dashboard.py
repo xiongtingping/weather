@@ -157,9 +157,6 @@ def _odds_from_mean_cost(costs: list[float]) -> float | None:
 def _connect(db: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=60.0)
     conn.execute("PRAGMA busy_timeout=60000")
-    # The paper book's sections read data/paper_ledger.db (2026-09-19).
-    from paper_ledger_reader import attach_paper_ledger  # noqa: PLC0415
-    attach_paper_ledger(conn)
     return conn
 
 
@@ -5798,7 +5795,7 @@ TRUTH_LANDING_UNLIKELY = 0.05
 
 # The bias layer's half-life change, and the instant it began being fitted.
 # Both are facts about a past deployment, so they are stated rather than
-# derived -- the same two constants ``h5_ledger_readiness_check`` states.
+# derived.
 H5_FROM_UTC = "2026-08-27T06:48:00Z"
 # The half-lives the section compares (user rulings, 2026-09-17: 增加 h15 的
 # 对比, 测试 H3): the one that serves and one either side of it.
@@ -14487,12 +14484,8 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
         except sqlite3.Error:
             return None
         return {
-            "source": _evidence.EVIDENCE_SOURCE,
             "relation": _store.CANDIDATE_SOURCE,
-            "first_written_at_utc": (
-                first_written_at_utc
-                if _evidence.EVIDENCE_SOURCE == "production" else None
-            ),
+            "first_written_at_utc": first_written_at_utc,
             "windows": int(row[0] or 0),
             "labelled": int(row[1] or 0),
             "earliest_pending_event_date": row[2],
@@ -19281,7 +19274,7 @@ const SWEEP_LABEL = {
   capture_dwd_icon_eu_forward:"DWD ICON-EU 捕获",
   capture_cma_grapes_forward:"CMA GRAPES 捕获",
   station_onboarding:"新站接入", market_registry_retention:"挂牌目录保留",
-  ledger_alignment_guard:"账本对齐守卫", delta_v2_authority:"执行授权续期",
+  delta_v2_authority:"执行授权续期",
   supply_watch:"断供守望",
 };
 const SWEEP_DOMAIN = {ssot:"写 SSOT", archive:"写归档库", none:"不写库", paper_ledger:"写纸面账本库"};
@@ -21420,15 +21413,14 @@ ${b.admits?"可买 ["+b.admits[0].toFixed(3)+", "+b.admits[1].toFixed(3)+")"
   const evidenceNote=sc=>{
     const ev=sc.evidence;
     if(!ev) return "";
-    const src=ev.source==="production"?"生产证据":"纸面账本（对比臂）";
     const since=ev.first_written_at_utc
       ?`自 ${String(ev.first_written_at_utc).slice(5,16).replace("T"," ")}Z 起`:"";
     const bar=`每档要 ≥${ev.min_seats} 窗、≥${ev.min_station_days} 个站日、≥${ev.min_event_days??8} 个事件日、声称质量 ≥${ev.min_claim_mass} 才算可读`;
     if(!ev.labelled) return `<div class="note" style="margin-top:6px"><b>空表不是故障：</b>
-      λ 证据${since}改读${src}（宪章 140），${sc.scope} 已写 ${ev.windows} 个抽样候选窗、已结算 0 个${
+      λ 证据${since}改读生产证据（宪章 140），${sc.scope} 已写 ${ev.windows} 个抽样候选窗、已结算 0 个${
       ev.earliest_pending_event_date?`；最早 ${ev.earliest_pending_event_date} 的站日结算后出第一批读数`:""}。
       ${bar}，此前 raw 各列为空、服务 λ 保持在任值。</div>`;
-    return `<div class="muted" style="margin-top:4px">证据：${src}${since} · ${ev.windows} 个抽样候选窗，已结算 ${ev.labelled} 个${
+    return `<div class="muted" style="margin-top:4px">证据：生产证据${since} · ${ev.windows} 个抽样候选窗，已结算 ${ev.labelled} 个${
       ev.latest_labelled_event_date?`（最新结算日 ${ev.latest_labelled_event_date}）`:""} · ${bar}</div>`;
   };
   const dqShadow=sc=>{

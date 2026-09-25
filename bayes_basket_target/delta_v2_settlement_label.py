@@ -13,6 +13,7 @@ from .resource_bounds import (
     assert_connection_target_capacity,
     assert_process_memory_budget,
 )
+from .market_registry import settlement_timezone_for_scope
 from .settlement_truth import CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1
 from .settlement_time import settlement_day_window
 from .settlement_evidence_packet import (
@@ -151,16 +152,13 @@ def _registry_timezone(
     station_id: str,
     event_date: str,
 ) -> str:
-    rows = conn.execute(
-        "SELECT DISTINCT settlement_timezone "
-        "FROM basket_target_market_registry "
-        "WHERE station_id=? AND event_date=?",
-        (station_id, event_date),
-    ).fetchall()
-    values = {str(row[0] or "").strip() for row in rows}
-    if len(values) != 1 or not next(iter(values), ""):
+    # The registry's rows while it carries the scope, the station's bound
+    # timezone once retention has retired them (``settlement_timezone_for_scope``).
+    timezone_name = settlement_timezone_for_scope(
+        conn, station_id=station_id, event_date=event_date
+    )
+    if not timezone_name:
         raise ContractError("delta_v2_market_registry_timezone_not_unique")
-    timezone_name = next(iter(values))
     settlement_day_window(event_date, timezone_name)
     return timezone_name
 

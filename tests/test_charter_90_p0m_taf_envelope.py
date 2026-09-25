@@ -208,17 +208,6 @@ def test_the_solver_treats_the_entry_as_a_decision_moment_and_lets_the_leg_throu
     assert 'get("p0m_taf") or {}).get("entry_required")' not in plan
 
 
-def test_the_ledger_hashes_mode_and_rule_unconditionally() -> None:
-    from pathlib import Path
-
-    source = (
-        Path(__file__).resolve().parents[1] / "scripts" / "paper_trading_ledger.py"
-    ).read_text(encoding="utf-8")
-    assert '"p0m_taf": P0M_TAF_MODE,' in source
-    assert '"p0m_taf_rule": P0M_TAF_ENVELOPE_RULE_VERSION,' in source
-    assert 'if P0M_TAF_MODE != "off"' not in source
-
-
 # --- Charter 145 (2026-09-17, user "打通p0m的taf动态调仓"): the entry span is
 # bought through charter 143's completion channel, on the structure it
 # completes, never on the model's claim for the TX rung.  Under v2 the span
@@ -501,30 +490,6 @@ def test_145_end_to_end_with_charter_143_off_the_entry_holds_as_before(monkeypat
     assert result["basket_target_activated"] is False
     assert _bought(result) == []
     assert result["basket_support_selection"]["p0m_taf"]["seat_holds_tx"] is False
-
-
-def test_145_the_ledger_hands_its_walk_the_entry_flag() -> None:
-    import importlib.util
-    import sys
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[1]
-    spec = importlib.util.spec_from_file_location(
-        "ledger_145", root / "scripts" / "paper_trading_ledger.py"
-    )
-    ledger = importlib.util.module_from_spec(spec)
-    sys.modules["ledger_145"] = ledger
-    spec.loader.exec_module(ledger)
-    assert ledger._SELECTION_RULE_IDENTITY["p0m_taf_rule"] == "p0m_taf_second_confirmation_v3"
-    seat = {"buckets": ["29", "30", "31"], "completion": {"market_dead_buckets": []}}
-    verdict = {"winner_completion_rule": RULE_143, "edge_probabilities": {"29": 0.2, "31": 0.2},
-               "hours_to_cutoff": 27.0, "completion_143_taf_entry": True}
-    kwargs = dict(seat=seat, held={"30": 5.0}, held_cost={"30": 2.15},
-                  leg_shares=[5.0, 0.0, 5.0], leg_cash=[1.0, 0.0, 3.0])
-    assert ledger._completion_143_exempt_on_legs(verdict=verdict, **kwargs) is True
-    assert ledger._completion_143_exempt_on_legs(
-        verdict=dict(verdict, completion_143_taf_entry=False), **kwargs
-    ) is False
 
 
 def test_145_a_residue_under_one_share_is_not_a_held_leg() -> None:

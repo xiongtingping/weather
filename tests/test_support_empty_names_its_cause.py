@@ -54,15 +54,6 @@ def test_all_three_still_absorb_into_a_named_hold() -> None:
         assert name in absorbed, name
 
 
-def test_the_ledger_reads_all_three_as_a_funnel_refusal() -> None:
-    source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
-        encoding="utf-8"
-    )
-    branch = source.split('detail = "生产裁判求解失败：%s" % exc')[1][:400]
-    for name in (ENUMERATION_EMPTY, SCOPE_UNQUOTED, DESIRED_EMPTY):
-        assert name in branch, name
-
-
 def test_the_three_names_are_distinct_and_none_embeds_a_parameter() -> None:
     """Charter 117(三)④: a blocker code carries no parameter."""
 

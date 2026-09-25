@@ -38,7 +38,6 @@ KERNEL_SRC = (ROOT / "bayes_basket_target" / "basket_kernel" / "delta_v2.py").re
 RUNTIME_SRC = (ROOT / "bayes_basket_target" / "delta_v2_runtime.py").read_text(encoding="utf-8")
 EXECUTION_SRC = (ROOT / "bayes_basket_target" / "runtime.py").read_text(encoding="utf-8")
 WORKER_SRC = (ROOT / "bayes_basket_target" / "production_worker.py").read_text(encoding="utf-8")
-LEDGER_SRC = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
 
 
 def _calls(tree: ast.AST, name: str):
@@ -109,7 +108,6 @@ def test_the_four_evaluation_points_read_the_predicate() -> None:
         assert found, target
     for name in ("SUPPORT_EDGE_FRICTION_TICKS_PER_LEG", "SUPPORT_EDGE_MARGIN"):
         assert name not in RUNTIME_SRC
-        assert name not in LEDGER_SRC
 
 
 def test_the_retired_knobs_are_refused_not_ignored() -> None:
@@ -140,21 +138,7 @@ def test_the_allocator_reads_the_seated_belief() -> None:
     assert "probability_envelope" not in _strings(fn)
 
 
-def test_the_ledger_hashes_the_hurdle_and_zero_rebuilds_the_old_gate() -> None:
-    import paper_trading_ledger as L  # noqa: PLC0415
-
-    assert L._SELECTION_RULE_IDENTITY["economic_hurdle"] == 0.05
-    assert L._SELECTION_RULE_IDENTITY["economic_hurdle_rule"] == K.ECONOMIC_HURDLE_RULE_VERSION
-    served = L.SELECTION_RULE_SHA256
-    proc = subprocess.run(
-        [sys.executable, "-c",
-         "import sys; sys.path.insert(0,'scripts'); import paper_trading_ledger as L; "
-         "print(L.SELECTION_RULE_SHA256)"],
-        cwd=str(ROOT), env={**os.environ, "PM_ECONOMIC_HURDLE": "0"},
-        capture_output=True, text=True,
-    )
-    assert proc.returncode == 0, proc.stderr[-800:]
-    assert proc.stdout.strip() != served
+def test_the_kernel_refuses_a_hurdle_outside_its_range() -> None:
     bad = subprocess.run(
         [sys.executable, "-c", "import bayes_basket_target.basket_kernel.delta_v2"],
         cwd=str(ROOT), env={**os.environ, "PM_ECONOMIC_HURDLE": "0.9"},
@@ -286,8 +270,5 @@ def test_the_head_is_chosen_on_the_effective_belief(monkeypatch) -> None:
     by_edge = max(admissible, key=lambda w: float(w["edge"]))
     assert tuple(by_edge["buckets"]) == ("32°C", "33°C"), listing
     assert tuple(windows[0]["buckets"]) == ("32°C", "33°C"), listing
-    # And the ledger hashes the ordering it replays.
-    import paper_trading_ledger as L  # noqa: PLC0415
 
-    assert L._SELECTION_RULE_IDENTITY["window_ranking"] == "effective_edge"
 

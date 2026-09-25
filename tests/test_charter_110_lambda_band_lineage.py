@@ -30,28 +30,37 @@ for path in (str(ROOT), str(ROOT / "scripts")):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-import paper_trading_ledger as ledger  # noqa: E402
 from bayes_basket_target.basket_kernel.delta_v2 import SEAT_SHAPE_RULE_VERSION  # noqa: E402
 from bayes_basket_target.effective_edge_store import _fit_axis  # noqa: E402
-
-# Charter 140: these fixtures build the paper candidate table, and the estimator
-# under test does not depend on the source; see ``ledger_evidence_source`` in
-# conftest.
-pytestmark = pytest.mark.usefixtures("ledger_evidence_source")
+from tests.claim_lane_tables import add_label  # noqa: E402
 
 
 def _db() -> sqlite3.Connection:
+    """Production's candidate relation, in the columns the fit reads, and
+    the one station-day's label that says where the window ends."""
+
     conn = sqlite3.connect(":memory:")
-    ledger.ensure_schema(conn)
+    conn.execute(
+        "CREATE TABLE basket_candidate_window_scored ("
+        " candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
+        " stage TEXT, decision_at_utc TEXT, buckets_json TEXT,"
+        " window_size INTEGER, win_probability REAL, raw_win_probability REAL,"
+        " all_in_price REAL, admissible INTEGER, seated INTEGER,"
+        " band_axis TEXT, band_table_sha256 TEXT, claim_transform_sha256 TEXT,"
+        " leg_claim_cost_json TEXT, seat_shape_rule TEXT, settled_bucket TEXT,"
+        " hit INTEGER, settled_at_utc TEXT)"
+    )
+    add_label(conn, "ZSQD", "2026-09-05", settled_bucket="30°C",
+              known_at_utc="2026-09-05T12:00:00Z")
     return conn
 
 
 def _candidate(conn, cid, *, axis=None, sha=None, stage="P0", bucket="30°C",
                shape=SEAT_SHAPE_RULE_VERSION):
     # ``shape`` defaults to the current rule (charter 131): a fixture row is
-    # a row the ledger would write today.  ``None`` is a row from before.
+    # a row production would record today.  ``None`` is a row from before.
     conn.execute(
-        "INSERT INTO paper_trade_candidate_window("
+        "INSERT INTO basket_candidate_window_scored("
         " candidate_id, station_id, event_date, stage, decision_at_utc,"
         " buckets_json, window_size, win_probability, all_in_price,"
         " admissible, seated, band_axis, band_table_sha256, hit,"
@@ -60,41 +69,6 @@ def _candidate(conn, cid, *, axis=None, sha=None, stage="P0", bucket="30°C",
         (cid, "ZSQD", "2026-09-05", stage, "2026-09-05T00:00:00Z",
          json.dumps([bucket]), 1, 0.4, 0.3, 1, 0, axis, sha, 1, shape),
     )
-
-
-def test_the_table_carries_the_partition_key_and_the_audit_column():
-    conn = _db()
-    columns = {
-        str(row[1])
-        for row in conn.execute(
-            "PRAGMA table_info(paper_trade_candidate_window)"
-        )
-    }
-    assert {"band_axis", "band_table_sha256"} <= columns
-
-
-def test_an_existing_table_is_widened_rather_than_left_behind():
-    """CREATE TABLE IF NOT EXISTS will not add a column, and every row
-    already recorded predates both of these."""
-
-    conn = sqlite3.connect(":memory:")
-    conn.execute(
-        "CREATE TABLE paper_trade_candidate_window("
-        " candidate_id TEXT PRIMARY KEY, station_id TEXT NOT NULL,"
-        " event_date TEXT NOT NULL,"
-        " stage TEXT NOT NULL CHECK(stage IN ('P0','P0-M','P1')),"
-        " decision_at_utc TEXT NOT NULL, buckets_json TEXT NOT NULL,"
-        " window_size INTEGER NOT NULL, win_probability REAL NOT NULL,"
-        " all_in_price REAL NOT NULL)"
-    )
-    ledger.ensure_schema(conn)
-    columns = {
-        str(row[1])
-        for row in conn.execute(
-            "PRAGMA table_info(paper_trade_candidate_window)"
-        )
-    }
-    assert {"band_axis", "band_table_sha256"} <= columns
 
 
 def test_the_fit_reads_one_axis_and_counts_what_it_left_out():
@@ -131,11 +105,11 @@ def test_an_unknown_vintage_is_excluded_rather_than_assumed_current():
     _candidate(conn, "unknown", bucket="31°C")
     conn.commit()
     got = conn.execute(
-        "SELECT COUNT(*) FROM paper_trade_candidate_window"
+        "SELECT COUNT(*) FROM basket_candidate_window_scored"
         " WHERE hit IS NOT NULL AND band_axis IS ?", ("claim",),
     ).fetchone()[0]
     left_out = conn.execute(
-        "SELECT COUNT(*) FROM paper_trade_candidate_window"
+        "SELECT COUNT(*) FROM basket_candidate_window_scored"
         " WHERE hit IS NOT NULL AND band_axis IS NOT ?", ("claim",),
     ).fetchone()[0]
     assert (got, left_out) == (1, 1)
@@ -150,8 +124,8 @@ def test_the_axis_comes_from_what_the_stages_serve_not_from_the_caller():
     conn = sqlite3.connect(":memory:")
     ensure_band_table_schema(conn)
     # No table at all is not a vintage: partitioning on the store's
-    # historical ``claim`` default would exclude every row in a fixture or a
-    # replay extract that never had band lineage to record.
+    # historical ``claim`` default would exclude every row in a fixture
+    # that never had band lineage to record.
     assert _fit_axis(conn, ("P0",)) is None, "no table, no partition"
     persist_and_activate_band_table(
         conn, stage="P0", factors=[((0.0, 1.0), 1.1)],
@@ -165,33 +139,6 @@ def test_the_axis_comes_from_what_the_stages_serve_not_from_the_caller():
         evidence={}, serving_day_count=20, axis="claim",
     )
     assert _fit_axis(conn, ("P0", "P1")) is None
-
-
-def test_the_backfill_resolves_a_vintage_through_the_store_not_a_guess():
-    """The receipt only started carrying ``axis`` on 2026-09-07, so every
-    historical row resolves by sha through the band store.  A sha the store
-    no longer holds stays NULL."""
-
-    import inspect
-
-    source = inspect.getsource(ledger._backfill_candidate_band_lineage)
-    assert "calibration_band_reliability_table" in source
-    assert "COALESCE(axis,'claim')" in source
-    assert '"sha_not_in_store"' in source
-    assert '"no_band_receipt"' in source
-    # Called where its sibling is, so a migration cannot add the column
-    # without filling it.
-    schema = inspect.getsource(ledger.ensure_schema)
-    assert "_backfill_candidate_band_lineage(conn)" in schema
-    # And it runs inside that schema step, so a ledger-only database -- a
-    # replay extract, a fixture -- must not be failed by it.  Both sources
-    # absent means no vintage to resolve, not an error.
-    assert "band_lineage_sources_absent" in source
-    conn = sqlite3.connect(":memory:")
-    ledger.ensure_schema(conn)
-    assert ledger._backfill_candidate_band_lineage(conn)["skipped"] == (
-        "band_lineage_sources_absent"
-    )
 
 
 # --- Charter 110 extended (2026-09-08): the claim transform is a second key --
@@ -284,7 +231,7 @@ def test_the_fit_excludes_rows_from_another_claim_vintage() -> None:
             conn, f"cand-current-{index}", bucket=f"3{index}°C",
         )
         conn.execute(
-            "UPDATE paper_trade_candidate_window"
+            "UPDATE basket_candidate_window_scored"
             " SET claim_transform_sha256=? WHERE candidate_id=?",
             (current, f"cand-current-{index}"),
         )
@@ -293,232 +240,14 @@ def test_the_fit_excludes_rows_from_another_claim_vintage() -> None:
             conn, f"cand-stale-{index}", bucket=f"4{index}°C",
         )
         conn.execute(
-            "UPDATE paper_trade_candidate_window"
+            "UPDATE basket_candidate_window_scored"
             " SET claim_transform_sha256=? WHERE candidate_id=?",
             ("0" * 64, f"cand-stale-{index}"),
         )
-    conn.execute(
-        "INSERT INTO paper_trade_settlement("
-        " settlement_id, position_id, station_id, event_date, stage,"
-        " settled_tmax_c, settled_bucket, hit, stake_usdc, payout_usdc,"
-        " pnl_usdc, claimed_win_probability, settled_at_utc)"
-        " VALUES('s1','p1','ZSQD','2026-09-05','P0',30.0,'30°C',1,"
-        " 1.0,2.0,1.0,0.5,'2026-09-05T12:00:00Z')"
-    )
     fit = fit_lambda_table(conn, stage_scope="P0")
     assert fit["claim_transform_sha256"] is not None
     assert fit["excluded_other_claim_transform"] == 6
     conn.close()
-
-
-# --- The band-axis replay: mis-keyed is not dead (2026-09-08) --------------
-
-
-def _replay_row(conn, cid, *, source, axis="centre_distance", stage="P0",
-                bucket="30°C", claim_sha="x" * 64, band_sha="b" * 64,
-                shape=SEAT_SHAPE_RULE_VERSION):
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS paper_trade_candidate_window_replay ("
-        " replay_id TEXT PRIMARY KEY, source_candidate_id TEXT NOT NULL,"
-        " station_id TEXT NOT NULL, event_date TEXT NOT NULL,"
-        " stage TEXT NOT NULL, decision_at_utc TEXT NOT NULL,"
-        " buckets_json TEXT NOT NULL, window_size INTEGER NOT NULL,"
-        " win_probability REAL NOT NULL, raw_win_probability REAL NOT NULL,"
-        " all_in_price REAL NOT NULL, hit INTEGER, band_axis TEXT NOT NULL,"
-        " band_table_sha256 TEXT NOT NULL,"
-        " claim_transform_sha256 TEXT NOT NULL, source_band_axis TEXT,"
-        " seat_shape_rule TEXT, replayed_at_utc TEXT NOT NULL)"
-    )
-    conn.execute(
-        "INSERT INTO paper_trade_candidate_window_replay VALUES"
-        "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (cid, source, "ZSQD", "2026-09-05", stage, "2026-09-05T00:00:00Z",
-         json.dumps([bucket]), 1, 0.4, 0.42, 0.3, 1, axis, band_sha,
-         claim_sha, "claim", shape, "2026-09-08T00:00:00Z"),
-    )
-
-
-def _one_settlement(conn) -> None:
-    conn.execute(
-        "INSERT INTO paper_trade_settlement("
-        " settlement_id, position_id, station_id, event_date, stage,"
-        " settled_tmax_c, settled_bucket, hit, stake_usdc, payout_usdc,"
-        " pnl_usdc, claimed_win_probability, settled_at_utc)"
-        " VALUES('s1','p1','ZSQD','2026-09-05','P0',30.0,'30°C',1,"
-        " 1.0,2.0,1.0,0.5,'2026-09-05T12:00:00Z')"
-    )
-
-
-def test_replayed_rows_are_off_unless_asked_for() -> None:
-    """The default reads served rows only, exactly as before."""
-    from bayes_basket_target.effective_edge_store import fit_lambda_table
-
-    conn = _db()
-    _one_settlement(conn)
-    for index in range(4):
-        _replay_row(conn, f"r-{index}", source=f"src-{index}",
-                    bucket=f"3{index}°C")
-    assert fit_lambda_table(conn, stage_scope="P0")["seat_count"] == 0
-    conn.close()
-
-
-def test_replayed_rows_fit_when_the_served_axis_has_none() -> None:
-    """The case this lane exists for: P0 after its band table changed axis."""
-    from bayes_basket_target.basket_kernel.delta_v2 import (
-        claim_transform_fingerprint,
-    )
-    from bayes_basket_target.effective_edge_store import fit_lambda_table
-
-    conn = _db()
-    _one_settlement(conn)
-    current = claim_transform_fingerprint(holds_centre=True)
-    for index in range(4):
-        _replay_row(conn, f"r-{index}", source=f"src-{index}",
-                    bucket=f"3{index}°C", claim_sha=current)
-    fit = fit_lambda_table(conn, stage_scope="P0", include_replayed=True)
-    assert fit["seat_count"] == 4
-    assert fit["served_row_count"] == 0
-    assert fit["replayed_row_count"] == 4
-    conn.close()
-
-
-def test_a_served_row_beats_its_own_replay() -> None:
-    """One scope, one row: the replay stands in, it does not double-count."""
-    from bayes_basket_target.basket_kernel.delta_v2 import (
-        claim_transform_fingerprint,
-    )
-    from bayes_basket_target.effective_edge_store import fit_lambda_table
-
-    conn = _db()
-    _one_settlement(conn)
-    current = claim_transform_fingerprint(holds_centre=True)
-    _candidate(conn, "served-1", bucket="30°C")
-    conn.execute(
-        "UPDATE paper_trade_candidate_window"
-        " SET claim_transform_sha256=? WHERE candidate_id=?",
-        (current, "served-1"),
-    )
-    _replay_row(conn, "r-1", source="served-1", bucket="30°C",
-                claim_sha=current)
-    fit = fit_lambda_table(conn, stage_scope="P0", include_replayed=True)
-    assert fit["seat_count"] == 1
-    assert fit["served_row_count"] == 1
-    assert fit["replayed_row_count"] == 0
-    conn.close()
-
-
-def test_the_activation_guard_is_judged_on_the_population_it_was_fitted_on(
-) -> None:
-    """Narrowed by user ruling, 2026-09-09.
-
-    This test used to assert the opposite -- that ``admitted_return`` reads
-    the served table and nothing else, because whether a table earns its seat
-    is a question about the book that was really bought.  That survives a
-    band-axis change badly.  P0's served rows are all on the old axis (957 of
-    them, every one excluded from the fit for that reason), so the guard was
-    scoring a distance-axis table against claim-axis claims: an input it will
-    never see again.  Measured that day, the same challenger reads -2.33% on
-    served rows and +0.30% on the current replay generation, and the refusal
-    reverses.
-
-    What the ruling kept: the guard admits only REAL prices and REAL
-    settlements, which the replay changes neither of.  What it gave up, said
-    out loud: a table can now earn its seat on a claim nobody traded against.
-    """
-    import inspect
-    import re
-
-    from bayes_basket_target import effective_edge_store as store
-
-    source = inspect.getsource(store.admitted_return)
-    # One implementation with the fit, so the two populations cannot drift.
-    assert "_candidate_population(" in source
-    assert "include_replayed=include_replayed" in source
-    # And the flag is the fit's own, not a default the guard picks.
-    activate = inspect.getsource(store.persist_and_activate)
-    assert 'scored_on_replay = bool(fit.get("include_replayed"))' in activate
-    # Every population read in the activation path takes it -- the proposal,
-    # the incumbent, and (since 2026-09-11) the incumbent veto.  Counted as
-    # "all of them" rather than as a number, so adding a fourth reader does
-    # not fail this test for being right.
-    assert activate.count("include_replayed=scored_on_replay") >= 2
-    assert re.findall(r"include_replayed=(\w+)", activate) == [
-        "scored_on_replay"
-    ] * activate.count("include_replayed=")
-
-
-def test_the_guard_and_the_fit_read_the_same_rows() -> None:
-    """The narrowing, as behaviour rather than as source text."""
-    from bayes_basket_target.basket_kernel.delta_v2 import (
-        claim_transform_fingerprint,
-    )
-    from bayes_basket_target.effective_edge_store import (
-        _candidate_population, fit_lambda_table,
-    )
-
-    conn = _db()
-    _one_settlement(conn)
-    current = claim_transform_fingerprint(holds_centre=True)
-    _activate_band_table(conn, "c" * 64)
-    for index in range(4):
-        _replay_row(conn, f"r-{index}", source=f"src-{index}",
-                    bucket=f"3{index}°C", claim_sha=current, band_sha="c" * 64)
-    fit = fit_lambda_table(conn, stage_scope="P0", include_replayed=True)
-    judged = _candidate_population(
-        conn, fit["table"]["stages"], fit["table"]["fit_floor_event_date"],
-        include_replayed=True,
-    )
-    assert len(judged["rows"]) == fit["seat_count"] == 4
-    # Off by default: a caller that does not ask still gets served rows only.
-    plain = _candidate_population(
-        conn, fit["table"]["stages"], fit["table"]["fit_floor_event_date"],
-        include_replayed=False,
-    )
-    assert plain["replayed_row_count"] == 0
-    conn.close()
-
-
-def test_the_replay_lane_is_actually_asked_for_by_the_sweep() -> None:
-    """A lane that exists and is never called is not a lane.
-
-    Every behaviour below this line was tested from the day the replay lane
-    landed -- off unless asked for, fitting when the served axis has none, a
-    served row beating its own replay, the activation guard refusing to read
-    it -- and the daily sweep asked for none of it.  Measured 2026-09-09:
-    ``fit_lambda_table`` ran with ``include_replayed`` at its default, so
-    841 recomputed rows sat unread while P0 fitted on ZERO served rows and
-    served a table frozen at a vintage its own axis change had made
-    unrefreshable.
-
-    Both halves are asserted, because either alone is a different kind of
-    stale.  Passing the flag without running the replay wires the daily fit
-    to whatever snapshot somebody last made by hand -- the table found that
-    day stopped at 2026-09-07.  Running the replay without the flag is what
-    was already happening.
-    """
-
-    sweep = (
-        Path(__file__).resolve().parents[1]
-        / "scripts" / "calibration_refit_sweep.sh"
-    ).read_text(encoding="utf-8")
-
-    assert "replay_candidate_windows_on_current_band.py" in sweep, (
-        "the sweep must refresh the recomputed claims it is about to fit on"
-    )
-    refit = next(
-        line for line in sweep.splitlines()
-        if "refit_effective_edge_lambda.py" in line
-    )
-    assert "--include-replayed" in refit, refit
-    # The replay has to run BEFORE the fit that reads it, or the fit reads
-    # yesterday's recomputation every day.
-    assert sweep.index("replay_candidate_windows_on_current_band.py") < (
-        sweep.index("refit_effective_edge_lambda.py")
-    )
-    # And it may never be fatal: a replay that cannot run leaves the fit on
-    # served rows, which is where it was before the lane existed.
-    tail = sweep[sweep.index("replay_candidate_windows_on_current_band.py"):]
-    assert "||" in tail[:400], "the replay must not fail the sweep"
 
 
 def test_activation_closes_the_outgoing_interval_and_opens_one() -> None:
@@ -580,37 +309,6 @@ def _activate_band_table(conn, sha, *, stage="P0", axis="centre_distance"):
         (sha, json.dumps([[[0.0, 1.0], 1.0]]), "{}",
          "2026-09-09T00:00:00Z", 30, 1, "2026-09-09T00:00:00Z", stage, axis),
     )
-
-
-def test_the_replay_read_takes_one_band_generation() -> None:
-    """A settled window re-derived onto three tables is still one window.
-
-    The lane is keyed (source window, band table), so it grows a row every
-    time the band table is refitted -- daily.  Measured 2026-09-09, the day
-    after it shipped: 841 of P0's source windows carried three rows each and
-    57 carried two, and the fit read all 2,637 of them, which is the same
-    window voting three times with three different claims.
-    """
-    from bayes_basket_target.basket_kernel.delta_v2 import (
-        claim_transform_fingerprint,
-    )
-    from bayes_basket_target.effective_edge_store import fit_lambda_table
-
-    conn = _db()
-    _one_settlement(conn)
-    current = claim_transform_fingerprint(holds_centre=True)
-    _activate_band_table(conn, "c" * 64)
-    for index in range(4):
-        for generation in ("a" * 64, "b" * 64, "c" * 64):
-            _replay_row(
-                conn, f"r-{generation[0]}-{index}", source=f"src-{index}",
-                bucket=f"3{index}°C", claim_sha=current, band_sha=generation,
-            )
-    fit = fit_lambda_table(conn, stage_scope="P0", include_replayed=True)
-    assert fit["replay_band_table_sha256"] == "c" * 64
-    assert fit["replayed_row_count"] == 4, "one generation, not three"
-    assert fit["seat_count"] == 4
-    conn.close()
 
 
 def test_a_table_fitted_on_another_band_axis_is_not_served() -> None:
@@ -708,25 +406,18 @@ def test_the_fit_records_the_axis_it_was_drawn_on(tmp_path) -> None:
 
     conn = sqlite3.connect(tmp_path / "e.db", isolation_level=None)
     conn.execute(
-        "CREATE TABLE paper_trade_candidate_window ("
+        "CREATE TABLE basket_candidate_window_scored ("
         " candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
         " stage TEXT, decision_at_utc TEXT, buckets_json TEXT,"
         " win_probability REAL, all_in_price REAL, hit INTEGER)"
     )
-    conn.execute(
-        "CREATE TABLE paper_trade_settlement ("
-        " position_id TEXT, stage TEXT, event_date TEXT, hit INTEGER)"
-    )
     for i in range(20):
         conn.execute(
-            "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO basket_candidate_window_scored VALUES(?,?,?,?,?,?,?,?,?)",
             (f"c{i}", f"S{i}", "2026-09-01", "P0", "2026-09-01T00:00:00Z",
              '["b"]', 0.60, 0.18, i % 2),
         )
-        conn.execute(
-            "INSERT INTO paper_trade_settlement VALUES(?,?,?,?)",
-            (f"p{i}", "P0", "2026-09-01", i % 2),
-        )
+        add_label(conn, f"S{i}", "2026-09-01")
     fit = store.fit_lambda_table(conn, window_days=28)
     assert "band_axis" in fit["table"]
     assert fit["table"]["band_axis"] == fit["band_axis"]
@@ -735,7 +426,7 @@ def test_the_fit_records_the_axis_it_was_drawn_on(tmp_path) -> None:
 
 def test_the_axis_column_is_read_not_the_candidate_tables_column() -> None:
     """The lambda table's own migration decides whether the column is there.
-    Keying off ``paper_trade_candidate_window``'s band_axis -- a different
+    Keying off ``basket_candidate_window_scored``'s band_axis -- a different
     table on a different migration -- would be right only by coincidence."""
 
     import sqlite3
@@ -841,12 +532,15 @@ def test_the_fit_partitions_on_the_seat_shape_too():
     import inspect
 
     from bayes_basket_target import effective_edge_store as store
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        claim_transform_fingerprint as kernel_claim_transform_fingerprint,
+    )
 
     conn = _db()
     store.ensure_schema(conn)
     columns = {
         str(row[1])
-        for row in conn.execute("PRAGMA table_info(paper_trade_candidate_window)")
+        for row in conn.execute("PRAGMA table_info(basket_candidate_window_scored)")
     }
     assert "seat_shape_rule" in columns
     lambda_columns = {
@@ -858,20 +552,15 @@ def test_the_fit_partitions_on_the_seat_shape_too():
     assert "seat_shape_rule IS ?" in source
     assert "seat_shape_rule IS NOT ?" in source
     assert '"excluded_other_seat_shape"' in source
-    # The ledger writes the rule on every candidate row it records.
-    ledger_source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    assert "seat_shape_rule=excluded.seat_shape_rule" in ledger_source
 
     _candidate(conn, "current", bucket="30°C")
     _candidate(conn, "older", bucket="31°C", shape=None)
     conn.execute(
-        "UPDATE paper_trade_candidate_window SET claim_transform_sha256=?",
-        (ledger.CLAIM_TRANSFORM_SHA256_CENTRE,),
+        "UPDATE basket_candidate_window_scored SET claim_transform_sha256=?",
+        (kernel_claim_transform_fingerprint(holds_centre=True),),
     )
     conn.commit()
-    population = store._candidate_population(
-        conn, ("P0",), "2026-09-01", include_replayed=False
-    )
+    population = store._candidate_population(conn, ("P0",), "2026-09-01")
     assert len(population["rows"]) == 1
     assert population["seat_shape_rule"] == SEAT_SHAPE_RULE_VERSION
     assert population["excluded_other_seat_shape"] == 1

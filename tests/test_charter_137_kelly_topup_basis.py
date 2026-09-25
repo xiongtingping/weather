@@ -181,67 +181,10 @@ def test_the_cash_bound_binds_when_the_level_wants_more_than_the_room(
         assert pinched["shares_by_bucket"][bucket] > opened
 
 
-def test_both_lanes_read_one_definition() -> None:
-    """Production and the ledger import the same function object."""
+def test_production_reads_the_kernels_definition() -> None:
+    """Production imports the kernel's function object, not a copy."""
 
-    import importlib.util  # noqa: PLC0415
-
-    spec = importlib.util.spec_from_file_location(
-        "_ledger_charter_137", ROOT / "scripts" / "paper_trading_ledger.py"
-    )
-    ledger = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = ledger
-    try:
-        spec.loader.exec_module(ledger)
-        assert ledger.kelly_target_budget_usdc_v1 is (
-            K.kelly_target_budget_usdc_v1
-        )
-        assert PROD.kelly_target_budget_usdc_v1 is (
-            K.kelly_target_budget_usdc_v1
-        )
-        assert ledger.KELLY_TOPUP_BASIS == K.KELLY_TOPUP_BASIS
-        assert PROD.KELLY_TOPUP_BASIS == K.KELLY_TOPUP_BASIS
-        # The arm is hashed only away from the pre-clause book, so the
-        # standing digest is untouched while it is off.
-        identity = ledger._SELECTION_RULE_IDENTITY
-        assert ("kelly_topup_basis" in identity) == (
-            ledger.KELLY_TOPUP_BASIS != "net"
-        )
-    finally:
-        sys.modules.pop(spec.name, None)
+    assert PROD.kelly_target_budget_usdc_v1 is K.kelly_target_budget_usdc_v1
+    assert PROD.KELLY_TOPUP_BASIS == K.KELLY_TOPUP_BASIS
 
 
-def test_the_arm_gets_its_own_ledger_fingerprint() -> None:
-    """Turning the arm on must re-derive the book, not share its digest.
-
-    Measured by importing the ledger twice in two processes rather than by
-    reading the source: the condition that matters is what the digest does,
-    not how the dict is spelled.
-    """
-
-    read = (
-        "import json,sys;"
-        "sys.path.insert(0,%r);"
-        "import importlib.util as u;"
-        "s=u.spec_from_file_location('lg',%r);"
-        "m=u.module_from_spec(s);s.loader.exec_module(m);"
-        "print(m.SELECTION_RULE_SHA256)"
-        % (str(ROOT), str(ROOT / "scripts" / "paper_trading_ledger.py"))
-    )
-    env = dict(os.environ)
-    env.pop("PM_KELLY_TOPUP_BASIS", None)
-    shipped = subprocess.run(
-        [sys.executable, "-c", read], cwd=ROOT, env=env,
-        capture_output=True, text=True, timeout=600,
-    )
-    assert shipped.returncode == 0, shipped.stderr[-2000:]
-    armed = subprocess.run(
-        [sys.executable, "-c", read], cwd=ROOT,
-        env=dict(env, PM_KELLY_TOPUP_BASIS="gross"),
-        capture_output=True, text=True, timeout=600,
-    )
-    assert armed.returncode == 0, armed.stderr[-2000:]
-    assert shipped.stdout.strip() != armed.stdout.strip(), (
-        "the gross arm shares the standing book's fingerprint, so the "
-        "charter-129 re-import would never fire for it"
-    )

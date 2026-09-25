@@ -90,6 +90,58 @@ def _iso(value: datetime) -> str:
     ).replace("+00:00", "Z")
 
 
+def _noon_prefix_rows(
+    archive_conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    day_start: datetime,
+    anchor: datetime,
+) -> list[dict[str, Any]]:
+    """The day's AWC reports from local midnight to local noon, as instants.
+
+    The archive spells ``...T16:00:00.000Z`` and ``_iso`` writes
+    ``...T16:00:00Z``; compared as text '.' sorts before 'Z', so the local
+    midnight report fell before its own day's start (v2's defect).  SQL now
+    only narrows by a window a second wider on each side -- a superset in
+    any spelling, still an index seek -- and ``[day_start, anchor]`` is
+    decided on parsed instants, in instant order.
+    """
+
+    rows: list[dict[str, Any]] = []
+    for row in archive_conn.execute(
+        "SELECT observation_id,valid_at,"
+        "reported_temperature_c,raw_text "
+        "FROM reported_trajectory_observations "
+        # Pinned to the lane this layer was trained on: the archive also
+        # carries scheduled ASOS substitutes (asos_1min / madis_hfmetar), and
+        # letting them into this prefix would serve a population the fit
+        # never saw.
+        "WHERE station_id=? AND source_lane='awc' "
+        "AND valid_at>=? AND valid_at<=?",
+        (
+            station_id,
+            _iso(day_start - timedelta(seconds=1)),
+            _iso(anchor + timedelta(seconds=1)),
+        ),
+    ):
+        if row[2] is None:
+            continue
+        observed = _utc(str(row[1]))
+        if not day_start <= observed <= anchor:
+            continue
+        rows.append({
+            "observation_id": str(row[0]),
+            "observed_at_utc": str(row[1]),
+            "temperature_c": row[2],
+            "raw_text": row[3],
+            "_instant": observed,
+        })
+    rows.sort(key=lambda item: (item["_instant"], item["observation_id"]))
+    for item in rows:
+        del item["_instant"]
+    return rows
+
+
 # Charter 178: (database) -> (table fingerprint, parsed artifacts).
 _STATION_ARTIFACTS_MEMO: dict[str, tuple[tuple[Any, ...], dict[str, dict[str, Any]]]] = {}
 
@@ -310,29 +362,12 @@ def plan_metar_physical_member_runs(
                 continue
             day_start = anchor - timedelta(hours=D0_ANCHOR_LOCAL_HOUR)
             with ledger_span("metar_proj_archive_read"):
-                rows = [
-                    {
-                        "observation_id": str(row[0]),
-                        "observed_at_utc": str(row[1]),
-                        "temperature_c": row[2],
-                        "raw_text": row[3],
-                    }
-                    for row in archive_conn.execute(
-                        "SELECT observation_id,valid_at,"
-                        "reported_temperature_c,raw_text "
-                        "FROM reported_trajectory_observations "
-                        # Pinned to the lane this layer was trained on: the
-                        # archive now also carries scheduled ASOS substitutes
-                        # (asos_1min / madis_hfmetar), and letting them into
-                        # this prefix would serve a population the fit never
-                        # saw.
-                        "WHERE station_id=? AND source_lane='awc' "
-                        "AND valid_at>=? AND valid_at<=? "
-                        "ORDER BY valid_at",
-                        (station_id, _iso(day_start), _iso(anchor)),
-                    )
-                    if row[2] is not None
-                ]
+                rows = _noon_prefix_rows(
+                    archive_conn,
+                    station_id=station_id,
+                    day_start=day_start,
+                    anchor=anchor,
+                )
             if len(rows) < MIN_PREFIX_OBSERVATIONS:
                 skipped["insufficient_prefix"] += 1
                 continue

@@ -95,7 +95,6 @@ from .basket_kernel.delta_v2 import (
 )
 from .candidate_window_evidence import (
     CANDIDATE_SOURCE,
-    EVIDENCE_SOURCE,
     latest_labelled_event_date,
 )
 from .contracts import content_sha256
@@ -104,24 +103,15 @@ from .contracts import content_sha256
 def _latest_settled_event_date(conn: sqlite3.Connection) -> str | None:
     """Where a rolling fit ends: the newest event day with a known outcome.
 
-    Charter 140: on production evidence that is the newest labelled day.
-    The ledger source keeps reading the paper settlement table it always
-    read, so the comparison arm is the old lane unchanged.
+    Charter 140: the newest day the truth lane has labelled.
     """
 
-    if EVIDENCE_SOURCE == "production":
-        return latest_labelled_event_date(conn)
-    row = conn.execute(
-        "SELECT MAX(event_date) FROM paper_trade_settlement"
-    ).fetchone()
-    return str(row[0]) if row and row[0] else None
+    return latest_labelled_event_date(conn)
 
 
 def _candidate_source_exists(conn: sqlite3.Connection) -> bool:
     try:
         return conn.execute(
-            # Every schema: the ledger arm's paper table lives in the
-            # attached paper_ledger file since 2026-09-19.
             "SELECT 1 FROM pragma_table_list WHERE name=? AND type IN ('table','view')",
             (CANDIDATE_SOURCE,),
         ).fetchone() is not None
@@ -378,23 +368,6 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             conn.execute(
                 f"ALTER TABLE {table} ADD COLUMN seat_shape_rule TEXT"
             )
-    # Charter 131: the replay lane's table is created by its own script.
-    # When it already exists without the shape column, widen it here so a
-    # replayed row can carry its source window's shape; absent the table,
-    # nothing to widen.
-    try:
-        replay_columns = {
-            str(row[1]) for row in conn.execute(
-                "PRAGMA table_info(paper_trade_candidate_window_replay)"
-            )
-        }
-    except sqlite3.Error:
-        replay_columns = set()
-    if replay_columns and "seat_shape_rule" not in replay_columns:
-        conn.execute(
-            "ALTER TABLE paper_trade_candidate_window_replay"
-            " ADD COLUMN seat_shape_rule TEXT"
-        )
 
 
 EFFECTIVE_EDGE_SCOPES_SERVED = ("P0", "P0-M", "P1")
@@ -514,21 +487,6 @@ def _has_seat_shape_column(conn: sqlite3.Connection) -> bool:
     return _has_candidate_column(conn, "seat_shape_rule")
 
 
-def _has_replay_column(conn: sqlite3.Connection, name: str) -> bool:
-    """Whether the replay table carries a column -- its own migration, its
-    own answer, never inferred from the candidate table's."""
-
-    try:
-        return any(
-            str(row[1]) == name
-            for row in conn.execute(
-                "PRAGMA table_info(paper_trade_candidate_window_replay)"
-            )
-        )
-    except sqlite3.Error:
-        return False
-
-
 def _active_claim_vintage(
     conn: sqlite3.Connection, stage_scope: str, claim_scope: str = "window"
 ) -> list[str] | None:
@@ -593,8 +551,8 @@ def _fit_axis(
             # database that has never held a table, because that is what
             # every row written before the column meant -- but "no table at
             # all" is not a vintage, and partitioning on it would exclude
-            # every candidate row in a fixture or a replay extract that
-            # never had band lineage to record.  No table, no partition.
+            # every candidate row in a fixture that never had band lineage
+            # to record.  No table, no partition.
             if load_band_table(conn, stage=str(stage)) is None:
                 continue
             seen.append(band_table_axis(conn, stage=str(stage)))
@@ -605,40 +563,6 @@ def _fit_axis(
     # One axis per fit.  Stages on different axes cannot be pooled, and the
     # caller groups stages that share one (EFFECTIVE_EDGE_STAGES and its
     # siblings are already split that way).
-    distinct = sorted(set(seen))
-    return distinct[0] if len(distinct) == 1 else None
-
-
-def _fit_band_sha(conn: sqlite3.Connection, stages: Sequence[str]) -> str | None:
-    """The activated band table's own hash, for the replay lane only.
-
-    The AXIS is the fit's partition key and the sha deliberately is not --
-    band tables are refitted daily and the sha moves whenever a factor
-    shifts in its third decimal, so partitioning the served rows on it would
-    end the fit rather than purify it (charter 110, and the schema comment
-    on ``band_table_sha256`` says so).
-
-    The replay lane is the one place that has to read it anyway, because it
-    is keyed ``(source_candidate_id, band_table_sha256)``: one settled
-    window gets a fresh row every time it is re-derived onto a newer table.
-    Measured 2026-09-09, the day after the lane shipped: 841 of P0's source
-    windows carried three rows each and 57 carried two, and the fit read all
-    2,637 -- the same window voting three times with three different claims.
-    So the replay read takes the current generation and only that one.
-    """
-
-    try:
-        from .band_reliability_store import load_band_table  # noqa: PLC0415
-    except Exception:  # noqa: BLE001 -- a lane without the store has no replay
-        return None
-    seen = []
-    for stage in stages:
-        try:
-            loaded = load_band_table(conn, stage=str(stage))
-        except Exception:  # noqa: BLE001 -- an absent table is not an error
-            continue
-        if loaded is not None:
-            seen.append(str(loaded[1]))
     distinct = sorted(set(seen))
     return distinct[0] if len(distinct) == 1 else None
 
@@ -736,7 +660,6 @@ def _candidate_population(
     stages: Sequence[str],
     floor_day: str,
     *,
-    include_replayed: bool,
     floor_decision_at_utc: str | None = None,
     ceiling_day: str | None = None,
     cutoff_utc: str | None = None,
@@ -752,34 +675,13 @@ def _candidate_population(
     either.  Neither is set by the nightly production fit, whose window
     already ends now, so its SQL is unchanged.
 
-    One implementation because the two must not drift.  ``admitted_return``
-    used to read the served table unconditionally, on the reasoning that
-    whether a table earns its seat is a question about the book that was
-    really bought.  That reasoning survives a band-axis change badly: the
-    served rows are all on the OLD axis (P0's 957 of them, every one
-    excluded from the fit for exactly that reason), so the guard was scoring
-    a distance-axis table against claim-axis claims -- an input it will
-    never see again.  Measured 2026-09-09 on P0: the same challenger reads
-    -2.33% on served rows and +0.30% on the current-generation replay rows,
-    and the refusal reverses.
-
-    The narrowing (user ruling, 2026-09-09): the guard still admits only
-    REAL prices and REAL settlements -- the replay changes neither -- but
-    the claim beside them must be the one the served axis now computes.  The
-    cost is stated rather than hidden: a table can now earn its seat on a
-    claim nobody ever actually traded against.
-
-    What does NOT change: a replay row is a re-statement of a settled
-    window, never an additional trade.  One band generation only, and a
-    served row always wins over its own replay.
+    One implementation because the two must not drift: the fit and the
+    activation guard (``admitted_return``) read the same population.
+    Charter 140: it is production's own record, written forward on the band
+    table that served each decision; a row keyed on another axis is
+    excluded, not restated.
     """
 
-    if EVIDENCE_SOURCE == "production":
-        # Charter 140: the replay lane re-derives the paper ledger's windows
-        # onto today's band table.  Production's evidence has no such lane:
-        # it is recorded forward, on the band table that served each
-        # decision, and a row keyed on another axis is excluded, not restated.
-        include_replayed = False
     if not _candidate_source_exists(conn):
         # Before the first decision under charter 140 writes a row the view
         # does not exist; that is an empty population, and every band keeps
@@ -790,8 +692,7 @@ def _candidate_population(
             "excluded_other_band_axis": 0, "seat_shape_rule": None,
             "excluded_other_seat_shape": 0,
             "excluded_other_claim_transform": 0,
-            "served_row_count": 0, "replayed_row_count": 0,
-            "replay_band_table_sha256": None,
+            "served_row_count": 0,
             "ceiling_day": ceiling_day, "cutoff_utc": cutoff_utc,
             "excluded_label_not_yet_knowable": 0,
         }
@@ -809,18 +710,16 @@ def _candidate_population(
         () if floor_decision_at_utc is None else (str(floor_decision_at_utc),)
     )
     # Charter 132: the upper bounds ride on the same clause, so every query
-    # below -- served rows, replay rows, legs and the audit counts -- is cut
-    # at one place and cannot drift.
+    # below -- rows, legs and the audit counts -- is cut at one place and
+    # cannot drift.
     if ceiling_day is not None:
         decision_clause += " AND event_date <= ?"
         decision_args = (*decision_args, str(ceiling_day))
     if cutoff_utc is not None:
         decision_clause += " AND decision_at_utc <= ?"
         decision_args = (*decision_args, str(cutoff_utc))
-    # Labels knowable at the cutoff.  The replay table carries no settlement
-    # time of its own; its rows are re-derivations of served windows, so a
-    # station-day whose settlement was not yet knowable is excluded from both
-    # by key.
+    # Labels knowable at the cutoff: a station-day whose settlement was not
+    # yet knowable is excluded by key.
     unknowable: set[tuple[str, str]] = set()
     if cutoff_utc is not None:
         if not _has_candidate_column(conn, "settled_at_utc"):
@@ -842,9 +741,9 @@ def _candidate_population(
         }
     axis = _fit_axis(conn, stages)
     # A candidate table without the column cannot be partitioned on it, and
-    # that is an ordinary state rather than an error: a replay extract, a
-    # fixture, any database whose ledger has not run the migration yet.  It
-    # fits on everything, exactly as it did before charter 110.
+    # that is an ordinary state rather than an error: a fixture, or a
+    # database that has not run the migration yet.  It fits on everything,
+    # exactly as it did before charter 110.
     if axis is not None and not _has_band_axis_column(conn):
         axis = None
     axis_clause = "" if axis is None else " AND band_axis IS ?"
@@ -903,17 +802,6 @@ def _candidate_population(
     shape = SEAT_SHAPE_RULE_VERSION if _has_seat_shape_column(conn) else None
     shape_clause = "" if shape is None else " AND seat_shape_rule IS ?"
     shape_args: tuple[Any, ...] = () if shape is None else (shape,)
-    # The replay table is older windows re-derived onto the current band --
-    # older SHAPES, by construction -- so under a shape partition its rows
-    # count only when the table records the shape and it matches.
-    replay_shape_clause = ""
-    replay_shape_args: tuple[Any, ...] = ()
-    if shape is not None:
-        if _has_replay_column(conn, "seat_shape_rule"):
-            replay_shape_clause = " AND seat_shape_rule IS ?"
-            replay_shape_args = (shape,)
-        else:
-            replay_shape_clause = " AND 0"
     rows = conn.execute(
         "SELECT win_probability, all_in_price, hit, station_id, event_date,"
         " stage, decision_at_utc"
@@ -948,49 +836,12 @@ def _candidate_population(
         "   AND hit IS NOT NULL AND seat_shape_rule IS NOT ?",
         (*stages, floor_day, *decision_args, shape),
     ).fetchone()[0]
-    replayed_row_count = 0
-    replay_sha = None
-    if include_replayed:
-        # One generation only.  The lane keeps a row per (source window, band
-        # table), so without this the same settled window is counted once for
-        # every table it has ever been re-derived onto.
-        replay_sha = _fit_band_sha(conn, stages)
-        sha_clause = "" if replay_sha is None else " AND band_table_sha256 IS ?"
-        sha_args: tuple[Any, ...] = () if replay_sha is None else (replay_sha,)
-        try:
-            replayed = conn.execute(
-                "SELECT win_probability, all_in_price, hit, station_id,"
-                " event_date, stage, decision_at_utc"
-                " FROM paper_trade_candidate_window_replay"
-                f" WHERE stage IN ({placeholders}) AND event_date >= ?" f"{decision_clause}"
-                "   AND hit IS NOT NULL" + axis_clause + claim_clause
-                + replay_shape_clause + sha_clause,
-                (*stages, floor_day, *decision_args, *axis_args, *claim_args,
-                 *replay_shape_args, *sha_args),
-            ).fetchall()
-        except sqlite3.Error:
-            # No replay lane in this database: a fixture, an extract.
-            replayed = []
-        # A source row that is already current under this axis needs no
-        # stand-in; the replay carries its own key and the served row wins.
-        seen = {
-            (str(r[3]), str(r[4]), str(r[5]), str(r[6])) for r in rows
-        }
-        replayed = [
-            r for r in replayed
-            if (str(r[3]), str(r[4]), str(r[5]), str(r[6])) not in seen
-            and (str(r[3]), str(r[4])) not in unknowable
-        ]
-        replayed_row_count = len(replayed)
-        rows = list(rows) + replayed
     # How many rows in this fit's own sample read the off-centre table.
     #
     # This started as a sentinel for a gap: the table moved into the database
     # and the fingerprint still hashed the kernel constant, so the served
     # table could move under lambda's sample unseen.  It fired on the first
-    # run -- 84 replay rows were already on that path, because re-deriving a
-    # claim on the distance axis can move the peak and take a window off
-    # centre -- and the fingerprint now carries the served table's sha, which
+    # run, and the fingerprint now carries the served table's sha, which
     # closes it.  The count stays because it is the number that says whether
     # the off-centre lane touches lambda at all, and it has now been both
     # zero and not zero within one day.
@@ -1003,13 +854,6 @@ def _candidate_population(
                 "   AND hit IS NOT NULL AND claim_transform_sha256 IS ?",
                 (*stages, floor_day, *decision_args, claim_vintages[1]),
             ).fetchone()[0] or 0)
-            if include_replayed:
-                off_centre_rows += int(conn.execute(
-                    "SELECT COUNT(*) FROM paper_trade_candidate_window_replay"
-                    f" WHERE stage IN ({placeholders}) AND event_date >= ?" f"{decision_clause}"
-                    "   AND hit IS NOT NULL AND claim_transform_sha256 IS ?",
-                    (*stages, floor_day, *decision_args, claim_vintages[1]),
-                ).fetchone()[0] or 0)
         except sqlite3.Error:
             off_centre_rows = 0
     # The same population, seen as legs (2026-09-09).  One query, one set of
@@ -1024,55 +868,46 @@ def _candidate_population(
     leg_rows: list[tuple[Any, ...]] = []
     legs_seen: set[tuple[str, str, str, str, str]] = set()
     if _has_candidate_column(conn, "leg_claim_cost_json"):
-        leg_sources = [
-            (CANDIDATE_SOURCE, shape_clause, shape_args),
-        ]
-        if include_replayed:
-            leg_sources.append((
-                "paper_trade_candidate_window_replay",
-                replay_shape_clause, replay_shape_args,
-            ))
-        for table, table_shape_clause, table_shape_args in leg_sources:
-            try:
-                raw = conn.execute(
-                    "SELECT leg_claim_cost_json, settled_bucket, station_id,"
-                    " event_date, stage, decision_at_utc"
-                    f" FROM {table}"
-                    f" WHERE stage IN ({placeholders}) AND event_date >= ?" f"{decision_clause}"
-                    "   AND hit IS NOT NULL AND settled_bucket IS NOT NULL"
-                    "   AND leg_claim_cost_json IS NOT NULL"
-                    + axis_clause + claim_clause + table_shape_clause,
-                    (*stages, floor_day, *decision_args, *axis_args, *claim_args,
-                     *table_shape_args),
-                ).fetchall()
-            except sqlite3.Error:
+        try:
+            raw = conn.execute(
+                "SELECT leg_claim_cost_json, settled_bucket, station_id,"
+                " event_date, stage, decision_at_utc"
+                f" FROM {CANDIDATE_SOURCE}"
+                f" WHERE stage IN ({placeholders}) AND event_date >= ?" f"{decision_clause}"
+                "   AND hit IS NOT NULL AND settled_bucket IS NOT NULL"
+                "   AND leg_claim_cost_json IS NOT NULL"
+                + axis_clause + claim_clause + shape_clause,
+                (*stages, floor_day, *decision_args, *axis_args, *claim_args,
+                 *shape_args),
+            ).fetchall()
+        except sqlite3.Error:
+            raw = []
+        for payload, settled, station_id, event_date, stage, decided in raw:
+            if (str(station_id), str(event_date)) in unknowable:
                 continue
-            for payload, settled, station_id, event_date, stage, decided in raw:
-                if (str(station_id), str(event_date)) in unknowable:
-                    continue
+            try:
+                legs = json.loads(str(payload)) or {}
+            except (TypeError, ValueError):
+                continue
+            for bucket, pair in legs.items():
                 try:
-                    legs = json.loads(str(payload)) or {}
-                except (TypeError, ValueError):
+                    claim = float(pair[0])
+                    cost = float(pair[1])
+                except (TypeError, ValueError, IndexError):
                     continue
-                for bucket, pair in legs.items():
-                    try:
-                        claim = float(pair[0])
-                        cost = float(pair[1])
-                    except (TypeError, ValueError, IndexError):
-                        continue
-                    key = (
-                        str(station_id), str(event_date), str(stage),
-                        str(decided), str(bucket),
-                    )
-                    if key in legs_seen:
-                        continue
-                    legs_seen.add(key)
-                    leg_rows.append((
-                        claim, cost,
-                        1 if str(bucket) == str(settled) else 0,
-                        str(station_id), str(event_date), str(stage),
-                        str(decided),
-                    ))
+                key = (
+                    str(station_id), str(event_date), str(stage),
+                    str(decided), str(bucket),
+                )
+                if key in legs_seen:
+                    continue
+                legs_seen.add(key)
+                leg_rows.append((
+                    claim, cost,
+                    1 if str(bucket) == str(settled) else 0,
+                    str(station_id), str(event_date), str(stage),
+                    str(decided),
+                ))
     return {
         "rows": rows,
         "leg_rows": leg_rows,
@@ -1084,8 +919,6 @@ def _candidate_population(
         "excluded_other_seat_shape": int(excluded_shape),
         "excluded_other_claim_transform": int(excluded_claim),
         "served_row_count": int(served_row_count),
-        "replayed_row_count": int(replayed_row_count),
-        "replay_band_table_sha256": replay_sha,
         "ceiling_day": ceiling_day,
         "cutoff_utc": cutoff_utc,
         "excluded_label_not_yet_knowable": int(excluded_unknowable),
@@ -1099,7 +932,6 @@ def fit_lambda_table(
     as_of: str | None = None,
     stage_scope: str = "P0",
     claim_scope: str = "window",
-    include_replayed: bool = False,
     cutoff_utc: str | None = None,
 ) -> dict[str, Any]:
     """Fit one lambda per agreement band from the rolling settled window.
@@ -1134,8 +966,6 @@ def fit_lambda_table(
     stages = STAGE_SCOPES[stage_scope]
     ceiling = P1_LAMBDA_CEILING if stage_scope == "P1" else LAMBDA_CEILING
     incumbent = _incumbent_bands(conn, stage_scope, claim_scope)
-    # Charter 140: production evidence has no replay lane.
-    include_replayed = bool(include_replayed) and EVIDENCE_SOURCE == "ledger"
     latest = str(as_of or _latest_settled_event_date(conn) or "")
     if not latest:
         raise ValueError("effective_edge_fit_no_settlements")
@@ -1219,7 +1049,7 @@ def fit_lambda_table(
             + __import__("datetime").timedelta(days=1)
         ).isoformat() + "T00:00:00Z"
     population = _candidate_population(
-        conn, stages, floor_day, include_replayed=include_replayed,
+        conn, stages, floor_day,
         floor_decision_at_utc=min_decision_at_utc,
         ceiling_day=(str(as_of) if as_of is not None else None),
         cutoff_utc=as_of_cutoff,
@@ -1235,7 +1065,6 @@ def fit_lambda_table(
     shape = population["seat_shape_rule"]
     excluded_shape = population["excluded_other_seat_shape"]
     served_row_count = population["served_row_count"]
-    replayed_row_count = population["replayed_row_count"]
     off_centre_row_count = population["off_centre_row_count"]
     # A band this fit cannot measure keeps the incumbent -- but only while
     # the incumbent describes the same claim.  When the transform has MOVED,
@@ -1402,19 +1231,12 @@ def fit_lambda_table(
         "incumbent_basis": tally_incumbent_note,
         "served_row_count": int(served_row_count),
         "min_decision_at_utc": min_decision_at_utc,
-        "replayed_row_count": int(replayed_row_count),
         # Zero while charter 49 keeps off-centre windows out of the pool.
         # Not zero means the off-centre claim table now moves lambda's own
         # sample while ``claim_transform_fingerprint`` cannot see it --
         # see ``_candidate_population``.  Counted every fit, not asserted
         # once, because it is a data fact and stops being true on its own.
         "off_centre_row_count": int(off_centre_row_count),
-        "replay_band_table_sha256": (
-            _fit_band_sha(conn, stages) if include_replayed else None
-        ),
-        "include_replayed": bool(include_replayed),
-        # Charter 140: which population the table was fitted on.
-        "evidence_source": EVIDENCE_SOURCE,
         "content_sha256": content_sha256(payload),
         "bands": bands,
         "evidence": evidence,
@@ -1452,7 +1274,6 @@ def admitted_return(
     stages: Sequence[str],
     floor_day: str,
     *,
-    include_replayed: bool = False,
     claim_scope: str = "window",
 ) -> dict[str, Any]:
     """What a table admits, and what that admission set is worth.
@@ -1484,9 +1305,7 @@ def admitted_return(
     # against claim-axis claims the day a stage moved axis -- an input it
     # will never see again.  See ``_candidate_population``.
     try:
-        population = _candidate_population(
-            conn, stages, floor_day, include_replayed=include_replayed
-        )
+        population = _candidate_population(conn, stages, floor_day)
         # A bucket table admits RUNGS, so the counterfactual it is scored on
         # has to be one share of each rung it admits.  Scoring it on windows
         # would ask what a per-rung table would have bought if it were used
@@ -1549,7 +1368,6 @@ def _lambda_incumbent_veto(
     *,
     stage_scope: str,
     claim_scope: str,
-    include_replayed: bool,
 ) -> dict[str, Any]:
     """Is the served table beating no table at all?
 
@@ -1600,7 +1418,7 @@ def _lambda_incumbent_veto(
     stages = STAGE_SCOPES.get(stage_scope, (stage_scope,))
     try:
         population = _candidate_population(
-            conn, stages, served_from[:10], include_replayed=include_replayed,
+            conn, stages, served_from[:10],
             floor_decision_at_utc=served_from,
         )
         rows = (
@@ -1731,19 +1549,15 @@ def persist_and_activate(
     incumbent_bands = _incumbent_bands(conn, scope, claim_scope)
     # Judge both tables on the population the fit was drawn from, or the
     # guard re-runs the axis mismatch this ruling removed.
-    scored_on_replay = bool(fit.get("include_replayed"))
     proposed = admitted_return(
-        conn, candidate_bands, stages, floor_day,
-        include_replayed=scored_on_replay, claim_scope=claim_scope,
+        conn, candidate_bands, stages, floor_day, claim_scope=claim_scope,
     )
     standing = admitted_return(
-        conn, incumbent_bands, stages, floor_day,
-        include_replayed=scored_on_replay, claim_scope=claim_scope,
+        conn, incumbent_bands, stages, floor_day, claim_scope=claim_scope,
     )
     guard = {
         "mode": ACTIVATION_RETURN_GUARD,
         "claim_scope": claim_scope,
-        "scored_on_replayed_population": scored_on_replay,
         "proposed": proposed,
         "incumbent": standing,
         "bands_unchanged": candidate_bands == incumbent_bands,
@@ -1788,7 +1602,6 @@ def persist_and_activate(
     # has to earn its own seat, against the constant that is now serving.
     veto = _lambda_incumbent_veto(
         conn, stage_scope=scope, claim_scope=claim_scope,
-        include_replayed=scored_on_replay,
     )
     guard["incumbent_veto"] = veto
     if veto["vetoed"]:

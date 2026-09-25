@@ -21,11 +21,6 @@ for extra in (ROOT, ROOT / "scripts"):
 
 import edge_attribution as A  # noqa: E402
 
-# Charter 140: these fixtures build the paper candidate table, and the estimator
-# under test does not depend on the source; see ``ledger_evidence_source`` in
-# conftest.
-pytestmark = pytest.mark.usefixtures("ledger_evidence_source")
-
 
 @pytest.mark.parametrize("y", [0.0, 1.0])
 @pytest.mark.parametrize("paid", [0.30, 0.45])
@@ -82,8 +77,8 @@ def _db():
         " probability_envelope_id TEXT, ws_snapshot_id TEXT);"
         "CREATE TABLE basket_probability_envelope(envelope_id TEXT, probabilities_json TEXT);"
         "CREATE TABLE basket_official_ws_snapshot(snapshot_id TEXT, buckets_json TEXT);"
-        "CREATE TABLE paper_trade_candidate_window(station_id TEXT, event_date TEXT,"
-        " settled_bucket TEXT, settled_at_utc TEXT);"
+        "CREATE TABLE basket_station_day_settlement_label(station_id TEXT, event_date TEXT,"
+        " truth_revision_no INTEGER, settled_bucket TEXT, known_at_utc TEXT);"
     )
     book = [
         {"bucket": "a", "ask_levels": [{"price": 0.42, "shares": 10}], "ask_available": True,
@@ -94,7 +89,7 @@ def _db():
     conn.execute("INSERT INTO basket_policy_training_fact VALUES('d','S','2026-09-01','P0','2026-09-01T00:00:00Z','e','w')")
     conn.execute("INSERT INTO basket_probability_envelope VALUES('e',?)", (json.dumps({"a": 0.5, "b": 0.5}),))
     conn.execute("INSERT INTO basket_official_ws_snapshot VALUES('w',?)", (json.dumps(book),))
-    conn.execute("INSERT INTO paper_trade_candidate_window VALUES('S','2026-09-01','a','2026-09-02T00:00:00Z')")
+    conn.execute("INSERT INTO basket_station_day_settlement_label VALUES('S','2026-09-01',0,'a','2026-09-02T00:00:00Z')")
     return conn
 
 

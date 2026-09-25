@@ -322,31 +322,6 @@ def test_ltac_single_leg_buys_the_cheap_rung_alone(monkeypatch) -> None:
     assert result["completion_143_after_lift"]["exempt"] is True
 
 
-def test_the_ledger_reads_the_same_exemption_on_its_legs() -> None:
-    spec = importlib.util.spec_from_file_location(
-        "ledger_143", ROOT / "scripts" / "paper_trading_ledger.py"
-    )
-    ledger = importlib.util.module_from_spec(spec)
-    sys.modules["ledger_143"] = ledger
-    spec.loader.exec_module(ledger)
-    assert ledger._completion_143_exemption_v1 is kernel.completion_143_exemption_v1
-    assert ledger._SELECTION_RULE_IDENTITY["charter_143_completion"] == RULE
-    seat = {"buckets": ["30", "31", "32"], "completion": {"market_dead_buckets": []}}
-    verdict = {"winner_completion_rule": RULE, "edge_probabilities": {},
-               "hours_to_cutoff": 20.0}
-    kwargs = dict(seat=seat, held={"30": 5.0, "31": 5.0},
-                  held_cost={"30": 1.25, "31": 2.15},
-                  leg_shares=[0.0, 0.0, 5.0], leg_cash=[0.0, 0.0, 3.0])
-    assert ledger._completion_143_exempt_on_legs(verdict=verdict, **kwargs) is True
-    assert ledger._completion_143_exempt_on_legs(
-        verdict=dict(verdict, winner_completion_rule=None), **kwargs
-    ) is False
-    assert ledger._completion_143_exempt_on_legs(
-        verdict=dict(verdict, hours_to_cutoff=1.0), **kwargs
-    ) is False
-    assert ledger._completion_143_exempt_on_legs(verdict=None, **kwargs) is False
-
-
 # --- v2 (2026-09-17, first live morning): only legs the chain sent, at most at
 # the size they were sent at.
 
@@ -490,28 +465,6 @@ def test_v2_zgsz_holds_on_a_leg_it_never_sent_and_completes_one_it_did() -> None
     assert _short(zgsz._compile(sent)) == [("32", "TAKER_FOK")]
 
 
-def test_v2_the_ledger_hands_production_the_same_send_history() -> None:
-    spec = importlib.util.spec_from_file_location(
-        "ledger_143_v2", ROOT / "scripts" / "paper_trading_ledger.py"
-    )
-    ledger = importlib.util.module_from_spec(spec)
-    sys.modules["ledger_143_v2"] = ledger
-    spec.loader.exec_module(ledger)
-    assert ledger._completion_143_sent_shares is runtime._completion_143_sent_shares
-    import inspect
-    assert "chain_sent_shares" in inspect.signature(ledger._production_judge).parameters
-    assert "chain_sent_shares" in inspect.signature(ledger._paper_snapshot_mapping).parameters
-    seat = {"buckets": ["30", "31", "32"], "completion": {"market_dead_buckets": []}}
-    verdict = {"winner_completion_rule": RULE, "edge_probabilities": {},
-               "hours_to_cutoff": 20.0,
-               "completion_143_sent_shares": {"30": 5.0, "31": 5.0}}
-    assert ledger._completion_143_exempt_on_legs(
-        verdict=verdict, seat=seat, held={"30": 5.0, "31": 5.0},
-        held_cost={"30": 1.25, "31": 2.15},
-        leg_shares=[0.0, 0.0, 5.0], leg_cash=[0.0, 0.0, 3.0],
-    ) is False
-
-
 # --- second review, 2026-09-17 evening (user: "再次全面检查是否还有bug和漏洞").
 
 
@@ -580,17 +533,6 @@ def test_an_uncertified_shape_is_not_offered(monkeypatch: pytest.MonkeyPatch) ->
     snapshot = fixture._held_snapshot(ask_32=0.60)
     rows = fixture._candidates(snapshot)
     assert not [r for r in rows if r["candidate_origin"] == kernel.LADDER_BALANCE_CANDIDATE_ORIGIN]
-
-
-def test_v2_the_ledger_records_the_seat_at_posting_not_at_fill() -> None:
-    # Production's "sent" includes a leg the venue cancelled; the ledger's
-    # seat must be written where the order is posted, before the resting
-    # simulation decides whether it filled.
-    source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    posted = source.index("chain_intended_shares.update({")
-    assert source.count("chain_intended_shares.update({") == 1
-    assert posted < source.index('"resting_unfilled",\n                                "挂 %d 腿 · 成交量为零"')
-    assert posted > source.index("intended_legs = {\n                        str(bucket): float(quantity)")
 
 
 # --- 2026-09-17 08:42Z: the stage lanes read no send history at all.

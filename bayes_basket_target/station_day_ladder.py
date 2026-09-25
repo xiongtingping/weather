@@ -73,7 +73,7 @@ def station_day_ladder(
 def settled_rung(rows: Sequence[Sequence[Any]], value_c: float) -> str | None:
     """The rung a settled value lands in, lower edge inclusive.
 
-    The settler's rule (``paper_trading_ledger._settled_bucket``); None when
+    The settler's rule (``live_book._settled_bucket``); None when
     the value is outside every rung.
     """
 

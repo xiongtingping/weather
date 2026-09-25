@@ -278,16 +278,3 @@ def test_the_seat_is_what_reached_the_venue() -> None:
     ) == frozenset({"27°C", "28°C", "29°C"})
 
 
-def test_the_ledger_judges_under_the_same_rule_and_hashes_it() -> None:
-    spec = importlib.util.spec_from_file_location(
-        "ledger_136", ROOT / "scripts" / "paper_trading_ledger.py"
-    )
-    ledger = importlib.util.module_from_spec(spec)
-    sys.modules["ledger_136"] = ledger
-    spec.loader.exec_module(ledger)
-    assert ledger._CHARTER_136_COMPLETION is runtime.CHARTER_136_COMPLETION
-    assert ledger._completion_budget_usdc_v1 is kernel.completion_budget_usdc_v1
-    assert ledger._SELECTION_RULE_IDENTITY["charter_136_completion"] == "off"
-    import inspect
-    assert "chain_seat_buckets" in inspect.signature(ledger._production_judge).parameters
-    assert "chain_seat_buckets" in inspect.signature(ledger._paper_snapshot_mapping).parameters

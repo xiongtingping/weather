@@ -285,3 +285,35 @@ class NativeEnsembleOOSBuilderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_new_artifacts_name_the_seat_rule_that_actually_ran() -> None:
+    """The method string is the artifact's only human-readable rule claim.
+
+    It carried "train_rmse_inverse_family_capped_v1" long after e1c05256
+    promoted the minimum-variance seat (282/282 live scopes in the
+    seat-weight journal), and the stale literal kept being read as the
+    serving rule -- including by this session.  New artifacts write the
+    rule that actually divided the weight; the repair lane keeps the old
+    literal on purpose, because it reproduces pre-bridge identities whose
+    content sha covers that exact string.
+    """
+
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    builder = (root / "bayes_basket_target" / "native_ensemble_oos.py"
+               ).read_text(encoding="utf-8")
+    # The live builder composes the prefix from the recorded rule...
+    assert '"train_rmse_inverse_family_capped_v1::"\n' not in builder
+    assert '.get(\n                            "weight_rule"\n' in builder
+    assert '"seat_weight_rule_unrecorded"' in builder
+    # ...and nothing serves off the prefix: transforms key on contained
+    # tags, so renaming cannot change any served math.
+    assert "in artifact_combination_method" in (
+        root / "bayes_basket_target" / "native_ensemble_p0.py"
+    ).read_text(encoding="utf-8")
+    # The repair lane must keep the historical literal byte-for-byte.
+    repair = (root / "scripts" / "plan_native_ensemble_activation_repair.py"
+              ).read_text(encoding="utf-8")
+    assert '"train_rmse_inverse_family_capped_v1::"' in repair

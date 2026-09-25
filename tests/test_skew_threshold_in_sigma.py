@@ -114,17 +114,10 @@ def test_the_runtime_refuses_the_retired_bucket_unit_variable() -> None:
     assert delta_v2_runtime.SKEW_GAP_THRESHOLD_SIGMA == 0.35
 
 
-def test_production_and_ledger_read_one_gate() -> None:
+def test_production_reads_the_sigma_gate() -> None:
     from bayes_basket_target import delta_v2_runtime
 
-    root = Path(__file__).resolve().parents[1]
-    if str(root / "scripts") not in sys.path:
-        sys.path.insert(0, str(root / "scripts"))
-    import paper_trading_ledger as ledger  # noqa: PLC0415
-
-    assert ledger.SKEW_GAP_THRESHOLD_SIGMA == delta_v2_runtime.SKEW_GAP_THRESHOLD_SIGMA == 0.35
+    assert delta_v2_runtime.SKEW_GAP_THRESHOLD_SIGMA == 0.35
     assert delta_v2_runtime._skew_extension_sign(
         _gaussian(26.3, 0.65), ORDINALS
     ) == 1
-    source = (root / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    assert '"skew_gap_threshold_basis": "sigma"' in source

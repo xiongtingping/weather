@@ -400,18 +400,13 @@ def test_a_caller_with_no_holdings_view_keeps_the_two_arm_rule():
     assert not _moment(basket_holding=None, last_basket_holding="34:5")
 
 
-def test_production_and_the_ledger_call_one_implementation():
-    """Charter 110(七) lands in two places and they may not drift into two
-    definitions of "the basket changed"."""
+def test_production_calls_the_one_implementation():
+    """Charter 110(七): "the basket changed" has one definition."""
 
     runtime = (
         ROOT / "bayes_basket_target" / "delta_v2_runtime.py"
     ).read_text(encoding="utf-8")
-    ledger = (
-        ROOT / "scripts" / "paper_trading_ledger.py"
-    ).read_text(encoding="utf-8")
-    for name, source in (("production", runtime), ("ledger", ledger)):
-        assert "basket_holding_signature_v1(" in source, name
+    assert "basket_holding_signature_v1(" in runtime
     # Production feeds it the snapshot's FILLED shares.  ``pending_shares``
     # is used elsewhere in that module and legitimately so -- charter 84
     # sizes against it -- so what is pinned here is what reaches THIS call.

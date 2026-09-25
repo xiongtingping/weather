@@ -258,7 +258,7 @@ def test_the_loader_pairs_the_earlier_checkpoint_with_the_book_it_compiled_on(tm
     conn.close()
 
 
-def test_every_reader_hands_in_the_same_evidence_and_the_ledger_hashes_it_only_when_on():
+def test_every_reader_hands_in_the_same_evidence():
     for module in ("production_io.py", "p0_preselection.py"):
         text = (ROOT / "bayes_basket_target" / module).read_text()
         assert "convergence_evidence=load_convergence_evidence(" in text, module
@@ -266,11 +266,6 @@ def test_every_reader_hands_in_the_same_evidence_and_the_ledger_hashes_it_only_w
     assert runtime.count("convergence_evidence=convergence_evidence,") == 3
     production = (ROOT / "bayes_basket_target" / "production.py").read_text()
     assert '"convergence_claim": (' in production
-    ledger = (ROOT / "scripts" / "paper_trading_ledger.py").read_text()
-    judge = inspect.getsource(__import__("paper_trading_ledger")._production_judge)
-    assert "convergence_evidence=load_convergence_evidence(" in judge
-    assert 'if CONVERGENCE_CLAIM_MODE == "on" else {}' in ledger
-    assert '"双向收敛抬价" if CONVERGENCE_CLAIM_MODE == "on" else None' in ledger
     # The effective-edge shadow lane reads the same loader.
     store = (ROOT / "bayes_basket_target" / "effective_edge_store.py").read_text()
     assert "load_convergence_evidence(" in store

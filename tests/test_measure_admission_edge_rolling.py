@@ -25,7 +25,7 @@ def _database() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.executescript(
         """
-        CREATE TABLE paper_trade_candidate_window (
+        CREATE TABLE basket_candidate_window_scored (
           candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,
           stage TEXT, decision_at_utc TEXT, buckets_json TEXT,
           win_probability REAL, all_in_price REAL, admissible INTEGER,
@@ -57,7 +57,7 @@ def _window(
     at: str | None = None,
 ) -> None:
     conn.execute(
-        "INSERT INTO paper_trade_candidate_window VALUES"
+        "INSERT INTO basket_candidate_window_scored VALUES"
         " (?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (cid, station, date, stage, at or (date + "T00:00:00Z"),
          json.dumps(["30C", "31C"]), claim, price, admissible, seated,
@@ -156,7 +156,7 @@ def test_the_realised_payout_is_the_window_not_the_recorded_hit() -> None:
 
     conn = _database()
     conn.execute(
-        "INSERT INTO paper_trade_candidate_window VALUES"
+        "INSERT INTO basket_candidate_window_scored VALUES"
         " ('x','KMIA','2026-09-01','P0','2026-09-01T00:00:00Z',"
         "  '[\"30C\",\"31C\"]',0.52,0.50,1,1,'31C',0,'claim')"
     )

@@ -33,12 +33,10 @@ from tests.test_bayes_basket_target_delta_v2_runtime import (
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
-import paper_trading_ledger as L  # noqa: E402
 
 
-def test_both_lanes_default_to_the_identity() -> None:
+def test_production_defaults_to_the_identity() -> None:
     assert R.CONSOLIDATION_TILT_FACTOR == 1.0
-    assert L.CONSOLIDATION_TILT_FACTOR == R.CONSOLIDATION_TILT_FACTOR
 
 
 def test_a_lit_lamp_no_longer_moves_the_capital(
@@ -93,31 +91,3 @@ def test_a_row_recorded_under_the_live_rule_does_not_outlive_it() -> None:
     assert audit["capital_after_usdc"] == 5.0
 
 
-def test_the_ledger_fingerprint_names_the_retirement() -> None:
-    assert "固化减仓已退役(恒等)" in L.SELECTION_RULE_LABEL
-    assert "固化≥" not in L.SELECTION_RULE_LABEL
-
-
-def test_the_research_arm_reproduces_the_retired_rule() -> None:
-    """0.05 on both switches is the rule as it ran until 2026-09-16."""
-
-    code = (
-        "import json, sys; sys.path.insert(0, 'scripts');"
-        "import bayes_basket_target.delta_v2_runtime as R;"
-        "import paper_trading_ledger as L;"
-        "print(json.dumps([R.CONSOLIDATION_TILT_FACTOR,"
-        " L.CONSOLIDATION_TILT_FACTOR, L.SELECTION_RULE_LABEL]))"
-    )
-    env = {
-        **os.environ,
-        "PM_CONSOLIDATION_TILT": "0.05",
-        "PAPER_LEDGER_CONSOLIDATION_TILT": "0.05",
-    }
-    out = subprocess.run(
-        [sys.executable, "-c", code], cwd=ROOT, env=env,
-        capture_output=True, text=True, check=True,
-    ).stdout.strip().splitlines()[-1]
-    runtime_factor, ledger_factor, label = json.loads(out)
-    assert runtime_factor == ledger_factor == 0.05
-    assert "固化≥1减仓0.05·灯stable·钳交易所最小单×3腿" in label
-    assert "固化减仓已退役" not in label

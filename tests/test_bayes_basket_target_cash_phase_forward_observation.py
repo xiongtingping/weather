@@ -360,3 +360,42 @@ def test_public_writer_rejects_tampered_packet_and_row_cap() -> None:
     with pytest.raises(ForwardObservationError):
         write_forward_observation_packet("target-local.json", bounded)
 
+
+
+def test_the_label_sync_reads_a_retired_scopes_bound_timezone() -> None:
+    """Registry retention retires a scope's rows after three days; the label
+    sync then read no timezone, failed every older settled day, and one such
+    row ended the batch -- the store's label cursor stood still from about
+    2026-08-31.  The station's bound timezone answers once the registry no
+    longer does; while the registry carries the scope it stays the answer."""
+
+    import sqlite3
+
+    from bayes_basket_target.forward_observation_store import (
+        ForwardObservationStoreError,
+        _source_registry_timezone,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_target_market_registry("
+        "station_id TEXT, event_date TEXT, settlement_timezone TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE calibration_station_market_timezone_binding("
+        "station_id TEXT UNIQUE, settlement_timezone TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO basket_target_market_registry VALUES('RKPK','2026-09-24','Asia/Seoul')"
+    )
+    assert _source_registry_timezone(
+        conn, station_id="RKPK", event_date="2026-09-24"
+    ) == "Asia/Seoul"
+    with pytest.raises(ForwardObservationStoreError, match="timezone_not_unique"):
+        _source_registry_timezone(conn, station_id="RKPK", event_date="2026-07-29")
+    conn.execute(
+        "INSERT INTO calibration_station_market_timezone_binding VALUES('RKPK','Asia/Seoul')"
+    )
+    assert _source_registry_timezone(
+        conn, station_id="RKPK", event_date="2026-07-29"
+    ) == "Asia/Seoul"

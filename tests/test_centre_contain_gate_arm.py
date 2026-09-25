@@ -97,31 +97,3 @@ def test_the_refusal_is_gated_and_the_deflation_is_not() -> None:
             assert "window_claim_factor" not in ast.unparse(node)
 
 
-def test_the_ledger_hashes_the_arm_and_not_the_default() -> None:
-    """The arm must move the ledger's rule hash, or a replay under it would
-    be filed as if it had run the served rule."""
-
-    def _sha(mode: str | None) -> str:
-        env = {**os.environ}
-        if mode is None:
-            env.pop("PM_CENTRE_CONTAIN_GATE", None)
-        else:
-            env["PM_CENTRE_CONTAIN_GATE"] = mode
-        # The ledger lives in scripts/, which only this suite puts on the
-        # path; the child interpreter needs it too.
-        env["PYTHONPATH"] = os.pathsep.join(
-            [str(ROOT), str(ROOT / "scripts"), env.get("PYTHONPATH", "")]
-        ).rstrip(os.pathsep)
-        probe = subprocess.run(
-            [
-                sys.executable, "-c",
-                "import paper_trading_ledger as l; print(l.SELECTION_RULE_SHA256)",
-            ],
-            env=env, cwd=str(ROOT), capture_output=True, text=True, check=False,
-        )
-        assert probe.returncode == 0, probe.stderr
-        return probe.stdout.strip()
-
-    default = _sha(None)
-    assert default != _sha("deflate_only")
-    assert _sha(None) == default

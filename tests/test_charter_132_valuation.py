@@ -30,11 +30,6 @@ if str(ROOT) not in sys.path:
 from bayes_basket_target import valuation_store as store  # noqa: E402
 from bayes_basket_target.basket_kernel import valuation_v1 as kernel  # noqa: E402
 
-# Charter 140: these fixtures build the paper candidate table, and the estimator
-# under test does not depend on the source; see ``ledger_evidence_source`` in
-# conftest.
-pytestmark = pytest.mark.usefixtures("ledger_evidence_source")
-
 
 def _book(asks, bids=None, *, stamps=None, unmaterialized=()):
     rows = []
@@ -197,9 +192,9 @@ def _plant(conn, *, days, stations, weight, seed=11, stage="P0"):
         " envelope_id TEXT, probabilities_json TEXT);"
         "CREATE TABLE IF NOT EXISTS basket_official_ws_snapshot("
         " snapshot_id TEXT, buckets_json TEXT);"
-        "CREATE TABLE IF NOT EXISTS paper_trade_candidate_window("
-        " station_id TEXT, event_date TEXT, settled_bucket TEXT,"
-        " settled_at_utc TEXT, truth_revision_no INTEGER);"
+        "CREATE TABLE IF NOT EXISTS basket_station_day_settlement_label("
+        " station_id TEXT, event_date TEXT, truth_revision_no INTEGER,"
+        " settled_bucket TEXT, known_at_utc TEXT);"
     )
     rng = random.Random(seed)
     buckets = ["a", "b", "c", "d"]
@@ -234,7 +229,7 @@ def _plant(conn, *, days, stations, weight, seed=11, stage="P0"):
                 (f"w{n}", json.dumps(book)),
             )
             conn.execute(
-                "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,0)",
+                "INSERT INTO basket_station_day_settlement_label VALUES(?,?,0,?,?)",
                 (f"S{s}", day, label, f"{day}T23:00:00Z"),
             )
             n += 1

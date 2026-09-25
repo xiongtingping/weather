@@ -20,33 +20,24 @@ import sqlite3
 import pytest
 
 from bayes_basket_target import effective_edge_store as store
+from tests.claim_lane_tables import add_label
 from bayes_basket_target.basket_kernel.delta_v2 import (
     EFFECTIVE_EDGE_BUCKET_LAMBDA,
     effective_edge_bucket_lambda_for_stage,
 )
 
-# Charter 140: these fixtures build the paper candidate table, and the estimator
-# under test does not depend on the source; see ``ledger_evidence_source`` in
-# conftest.
-pytestmark = pytest.mark.usefixtures("ledger_evidence_source")
-
 
 def _book() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.execute(
-        "CREATE TABLE paper_trade_candidate_window("
+        "CREATE TABLE basket_candidate_window_scored("
         " candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
         " stage TEXT, decision_at_utc TEXT, buckets_json TEXT,"
         " win_probability REAL, all_in_price REAL, hit INTEGER,"
         " settled_bucket TEXT, leg_claim_cost_json TEXT)"
     )
-    conn.execute(
-        "CREATE TABLE paper_trade_settlement("
-        " settlement_id TEXT PRIMARY KEY, event_date TEXT)"
-    )
-    conn.execute(
-        "INSERT INTO paper_trade_settlement VALUES('s','2026-09-08')"
-    )
+    # The newest label sets where the nightly window ends.
+    add_label(conn, "S", "2026-09-08")
     store.ensure_schema(conn)
     return conn
 
@@ -55,7 +46,7 @@ def _window(conn, *, index, station, day, legs, settled, stage="P0"):
     """One enumerated window, carrying its rungs' own claims and asks."""
 
     conn.execute(
-        "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO basket_candidate_window_scored VALUES(?,?,?,?,?,?,?,?,?,?,?)",
         (
             f"cand-{index}", station, day, stage, f"{day}T00:00:00Z",
             json.dumps(sorted(legs)),

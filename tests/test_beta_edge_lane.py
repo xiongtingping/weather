@@ -22,17 +22,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target import beta_edge_store as store  # noqa: E402
+from tests.claim_lane_tables import add_label  # noqa: E402
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     BETA_TABLE_KEY,
     beta_belief_v1,
     beta_lead_band,
     clears_economic_hurdle_v1,
 )
-
-# Charter 140: these fixtures build the paper candidate table, and the estimator
-# under test does not depend on the source; see ``ledger_evidence_source`` in
-# conftest.
-pytestmark = pytest.mark.usefixtures("ledger_evidence_source")
 
 
 @pytest.fixture(autouse=True)
@@ -47,7 +43,7 @@ def _fixed_clock(monkeypatch):
 def _db() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.execute(
-        "CREATE TABLE paper_trade_candidate_window("
+        "CREATE TABLE basket_candidate_window_scored("
         " candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
         " stage TEXT, decision_at_utc TEXT, raw_win_probability REAL,"
         # Charter 132: the population reads when a label became knowable,
@@ -88,10 +84,12 @@ def _plant(conn, *, days: int, stations: int = 20, beta: float = 0.5,
                  + rng.gauss(0.0, noise))
             hit = 1 if rng.random() < max(0.0, min(1.0, mid + y)) else 0
             conn.execute(
-                "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO basket_candidate_window_scored VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                 (f"{prefix}{n}", f"S{s:02d}", day, stage, f"{day}T00:00:00Z",
                  raw, price, hit, "29°C", f"{day}T23:30:00Z", mid, hours),
             )
+            add_label(conn, f"S{s:02d}", day, settled_bucket="29°C",
+                      known_at_utc=f"{day}T23:30:00Z")
             n += 1
     conn.commit()
 
@@ -434,10 +432,7 @@ def test_the_band_fits_are_cut_from_one_population_and_serve_per_band() -> None:
     ).fetchone()[0] == 1 + len(store.LEAD_BAND_LABELS)
 
 
-def test_the_ledger_hashes_the_mode_and_the_sweep_runs_the_refit() -> None:
-    ledger = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    assert '"beta_edge_mode": BETA_EDGE_MODE' in ledger
-    assert '"beta_edge_rule": BETA_EDGE_RULE_VERSION' in ledger
+def test_the_sweep_runs_the_beta_refit() -> None:
     sweep = (ROOT / "scripts" / "calibration_refit_sweep.sh").read_text(encoding="utf-8")
     assert "refit_beta_edge.py --commit" in sweep
     cli = (ROOT / "scripts" / "refit_beta_edge.py").read_text(encoding="utf-8")

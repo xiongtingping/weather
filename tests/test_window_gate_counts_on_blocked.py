@@ -100,22 +100,7 @@ def test_the_unsolvable_list_error_carries_each_windows_failure() -> None:
     assert error.window_gate_counts["refused"]["center"] == 2
 
 
-def test_both_recorders_write_the_funnel() -> None:
-    from paper_trading_ledger import _window_refusal_detail  # noqa: PLC0415
-
-    detail = _window_refusal_detail(AUDIT)
-    assert "席位形状不允许 3" in detail
-    assert "整篮非正EV 3" in detail
-    assert "最后出局：整篮非正EV" in detail
-    assert "74-75°F+76-77°F+78-79°F" in detail
-
-    ledger = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
-        encoding="utf-8"
-    )
-    blocked = ledger.index('detail = "生产裁判求解失败：%s" % exc')
-    assert '_window_refusal_detail(audit)' in ledger[blocked:blocked + 1500]
-    assert 'getattr(exc, "window_failures", None)' in ledger[blocked:blocked + 1500]
-
+def test_the_worker_records_the_funnel() -> None:
     # The worker used to read the funnel straight off the exception here.
     # That line was correct and the funnel still never arrived: the blocked
     # plan is re-raised as a fresh ContractError one hop earlier, so there
@@ -140,82 +125,3 @@ def test_both_recorders_write_the_funnel() -> None:
     assert runtime.count("raise _support_window_error(") == 2
 
 
-def test_a_hold_on_an_empty_chain_is_not_a_declined_top_up() -> None:
-    """P0 never bought; "不加仓" cannot be the day's reason (user, 2026-09-05).
-
-    The solver's hold is one verdict with two readings, and on an empty
-    chain the verdict itself says which: no admissible window means the
-    ticket was never offered and the gate that took the last window is the
-    reason; an admissible window with no seat means the ticket did not
-    stand, and the detail says whether it was the capital or the book.
-    """
-    from paper_trading_ledger import (  # noqa: PLC0415
-        REFUSAL_DEPTH,
-        _production_hold_refusal,
-    )
-
-    base = {
-        "buckets": ("86-87°F", "88-89°F", "90-91°F"),
-        "capital_usdc": 12.03,
-        "curve_score": 0.0,
-        "ticket_cash_usdc": 0.75,
-        "window_audit": dict(AUDIT, last_refusing_gate="edge"),
-    }
-    # A chain that holds: the top-up reading, unchanged.
-    reason, detail = _production_hold_refusal(
-        dict(base, decision_signature={"edge_state": "admissible"}),
-        held={"88-89°F": 5.0}, chain_stake=2.35,
-    )
-    assert reason == "production_judge_hold"
-    assert "目标份额不高于持仓" in detail and "本链已投 2.35" in detail
-
-    # Empty chain, no admissible window: the market's refusal, by gate.
-    reason, detail = _production_hold_refusal(
-        dict(base, decision_signature={"edge_state": "none"}),
-        held={}, chain_stake=0.0,
-    )
-    assert reason == "negative_edge_window"
-    assert "门票不发" in detail and "最后出局：整篮非正EV" in detail
-    assert "不加仓" not in detail
-    # ...and an unpriced last window names the book, not the model.
-    reason, _ = _production_hold_refusal(
-        dict(
-            base,
-            decision_signature={"edge_state": "none"},
-            window_audit=dict(AUDIT, last_refusing_gate="unpriced"),
-        ),
-        held={}, chain_stake=0.0,
-    )
-    assert reason == "no_priced_window"
-
-    # Empty chain, admissible window, ticket over the tilted capital.
-    reason, detail = _production_hold_refusal(
-        dict(
-            base,
-            decision_signature={"edge_state": "admissible"},
-            capital_usdc=0.75, ticket_cash_usdc=1.0,
-        ),
-        held={}, chain_stake=0.0,
-    )
-    assert reason == "production_judge_hold"
-    assert "门票 1.00 超出资本 0.75" in detail and "不加仓" not in detail
-    # Ticket within capital and still no seat: the book.
-    _, detail = _production_hold_refusal(
-        dict(base, decision_signature={"edge_state": "admissible"}),
-        held={}, chain_stake=0.0,
-    )
-    assert "某腿卖一档无量" in detail
-
-    # The gate reading sits shallower than the hold, so a day with both
-    # keeps the more informative one: a window was admissible and the
-    # ticket still failed.
-    assert REFUSAL_DEPTH["negative_edge_window"] < REFUSAL_DEPTH["production_judge_hold"]
-
-    # The market board carries the reason labels.  The go-live board's
-    # roster copy left on 2026-09-16 with the paper roster (the roster reads
-    # the live book now); it must not come back carrying the old wording.
-    board = (ROOT / "scripts/calibration_dashboard.py").read_text(encoding="utf-8")
-    assert "生产裁判：不加仓" not in board
-    source = (ROOT / "scripts/selection_market_dashboard.py").read_text(encoding="utf-8")
-    assert "生产裁判：不加仓" not in source
-    assert "生产裁判：不下注" in source

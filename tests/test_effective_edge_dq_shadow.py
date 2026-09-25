@@ -25,12 +25,8 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     center_window_claim_factor,
 )
 from bayes_basket_target import effective_edge_store as store  # noqa: E402
+from tests.claim_lane_tables import add_label  # noqa: E402
 import pytest  # noqa: E402
-
-# Charter 140: these fixtures build the paper candidate table, and the estimator
-# under test does not depend on the source; see ``ledger_evidence_source`` in
-# conftest.
-pytestmark = pytest.mark.usefixtures("ledger_evidence_source")
 
 
 WINDOW = ["31°C", "32°C", "33°C"]
@@ -39,14 +35,10 @@ WINDOW = ["31°C", "32°C", "33°C"]
 def _book(path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(path, isolation_level=None)
     conn.execute(
-        "CREATE TABLE paper_trade_candidate_window ("
+        "CREATE TABLE basket_candidate_window_scored ("
         " candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
         " stage TEXT, decision_at_utc TEXT, buckets_json TEXT,"
         " win_probability REAL, all_in_price REAL, hit INTEGER)"
-    )
-    conn.execute(
-        "CREATE TABLE paper_trade_settlement ("
-        " position_id TEXT, stage TEXT, event_date TEXT, hit INTEGER)"
     )
     conn.execute(
         "CREATE TABLE basket_probability_bridge_history ("
@@ -80,15 +72,12 @@ def _seat(conn, pid, *, station, day, decided, claim, asks, hit, stage="P0"):
     lifted, because the enumeration lifts before the gate divides."""
 
     conn.execute(
-        "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO basket_candidate_window_scored VALUES(?,?,?,?,?,?,?,?,?)",
         (pid, station, day, stage, decided, json.dumps(WINDOW),
          claim * center_window_claim_factor(claim),
          sum(asks[b] for b in WINDOW), hit),
     )
-    conn.execute(
-        "INSERT INTO paper_trade_settlement VALUES(?,?,?,?)",
-        (pid, stage, day, hit),
-    )
+    add_label(conn, station, day, settled_bucket=WINDOW[0] if hit else "x")
 
 
 def _prior(conn, station, day, decided_prior, book_at, asks):
@@ -244,5 +233,3 @@ def test_the_daily_refit_carries_the_shadow_and_the_solver_does_not():
     for module in ("delta_v2_runtime.py", "production_io.py", "p0_preselection.py"):
         text = (ROOT / "bayes_basket_target" / module).read_text()
         assert "dq_shadow" not in text, module
-    ledger = (ROOT / "scripts" / "paper_trading_ledger.py").read_text()
-    assert "dq_shadow" not in ledger

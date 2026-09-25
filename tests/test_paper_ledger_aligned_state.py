@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -346,3 +347,109 @@ def test_the_lower_bound_never_fills_a_maker() -> None:
     venue.post_maker(order)
     venue.advance(order, until="2026-09-21T11:00:00Z")
     assert order.fill_at is None and order.filled_by() == (0.0, 0.0)
+
+
+def test_a_book_keeps_three_numbers_and_a_past_day_is_let_go() -> None:
+    books = _books([
+        ("2026-09-21T10:05:00Z", 0.35, 0.30),
+        ("2026-09-21T10:10:00Z", 0.35, 0.30),
+    ])
+    rows = books.books(ST, DAY)
+    # One tuple for one (bid, ask, tick), however many books repeat it.
+    assert rows[0][1].rows["31°C"] is rows[1][1].rows["31°C"]
+    assert rows[1][1].get("31°C") == {
+        "bid": 0.30, "ask": 0.35, "tick": 0.01, "observed_at": "2026-09-21T10:10:00Z",
+    }
+    assert rows[1][1].get("30°C") is None
+    assert books.mark(ST, DAY, "31°C", at="2026-09-21T10:06:00Z") == pytest.approx(0.325)
+    books.forget_before(f"{DAY}T23:00:00Z")
+    assert (ST, DAY) in books._cache  # the walk is still on its day
+    later = (datetime.fromisoformat(DAY) + timedelta(days=3)).date().isoformat()
+    books.forget_before(f"{later}T00:00:00Z")
+    assert (ST, DAY) not in books._cache
+    # Every later moment reads the day's last book, without reading the day:
+    # a held day whose label is late is marked at every decision.
+    store, books.ssot = books.ssot, None
+    assert books.latest(ST, DAY, f"{later}T00:00:00Z").observed_at == "2026-09-21T10:10:00Z"
+    assert books.mark(ST, DAY, "31°C", at=f"{later}T00:00:00Z") == pytest.approx(0.325)
+    # Anything earlier is read again.
+    books.ssot = store
+    assert books.latest(ST, DAY, "2026-09-21T10:06:00Z").observed_at == "2026-09-21T10:05:00Z"
+
+
+def _decisions_db() -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    # Production's column order: ``created_at`` after ``details_json``.
+    conn.execute(
+        "CREATE TABLE auto_trade_decisions (decision_id TEXT PRIMARY KEY,"
+        " cycle_id TEXT NOT NULL UNIQUE, plan_id TEXT NOT NULL UNIQUE,"
+        " station_id TEXT NOT NULL, event_date TEXT NOT NULL,"
+        " settlement_timezone TEXT NOT NULL, strategy_lane TEXT NOT NULL,"
+        " decided_state TEXT NOT NULL, will_order INTEGER NOT NULL,"
+        " reason_codes_json TEXT NOT NULL, details_json TEXT NOT NULL,"
+        " decision_sha256 TEXT NOT NULL, created_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "CREATE INDEX auto_trade_decisions_scope_idx"
+        " ON auto_trade_decisions(station_id,event_date,created_at)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_policy_training_fact(decision_id TEXT, cycle_id TEXT,"
+        " stage TEXT, decision_at_utc TEXT, feature_json TEXT)"
+    )
+    rows = [
+        # (id, plan, station, day, created)
+        ("d1", "plan_1", "ZUUU", "2026-09-22", "2026-09-20T01:00:00Z"),
+        ("d2", "intent_2", "ZUUU", "2026-09-22", "2026-09-20T02:00:00Z"),
+        ("d3", "plan_3", "EGLC", "2026-09-22", "2026-09-19T23:00:00Z"),
+        ("d4", "plan_4", "EGLC", "2026-09-23", "2026-09-21T01:00:00Z"),
+        ("d5", "plan_5", "ZUUU", "2026-09-22", "2026-09-22T05:00:00Z"),
+    ]
+    for decision_id, plan_id, station, day, created in rows:
+        conn.execute(
+            "INSERT INTO auto_trade_decisions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (decision_id, "c" + decision_id, plan_id, station, day, "UTC", "basket",
+             "prepared", 0, "[]", "{}", "0" * 64, created),
+        )
+    return conn
+
+
+def test_the_decision_list_is_seeks_whole_days_in_production_order() -> None:
+    conn = _decisions_db()
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
+    walked = list(L._production_decisions(
+        conn, from_event_date="2026-09-22", to_event_date="2026-09-22",
+    ))
+    conn.set_trace_callback(None)
+    assert [r["decision_id"] for r in walked] == ["d3", "d1", "d5"]  # created order
+    # No statement reads the decisions table end to end: ``created_at`` is
+    # behind the JSON, so a scan on it reads every decision's details.
+    for sql in {s for s in statements if "auto_trade_decisions" in s}:
+        plan = " ".join(
+            str(r[-1]) for r in conn.execute("EXPLAIN QUERY PLAN " + sql)
+        )
+        assert "SCAN auto_trade_decisions" not in plan or "COVERING INDEX" in plan, (sql, plan)
+    # A later rowid floor keeps a scope whole when it has anything after it.
+    ids = [r["decision_id"] for r in L._production_decisions(conn, since_rowid=4)]
+    assert ids == ["d1", "d5"]
+    assert [r["in_range"] for r in L._production_decisions(conn, since_rowid=4)] == [False, True]
+
+
+def test_a_day_keeps_its_newest_details_whole_and_the_rest_as_moments() -> None:
+    day = L.ChainDay(station_id=ST, event_date=DAY)
+    total = 2 * L.SIGNATURE_LOOKBACK + 5
+    for index in range(total):
+        day.remember(f"t{index:03d}", {
+            "decision_signature": {"stage": "P0", "is_decision_moment": index % 2 == 0,
+                                   "edge_state": "x" * 50},
+            "heavy": "y" * 1000,
+        })
+    kept_whole = [d for _w, d in day.decisions if "heavy" in d]
+    assert len(kept_whole) == 2 * L.SIGNATURE_LOOKBACK
+    # What the signature question reads whole is still whole ...
+    assert all("heavy" in d for _w, d in day.decisions[-L.SIGNATURE_LOOKBACK:])
+    # ... and every older decision still says its stage and its moment.
+    first = day.decisions[0][1]
+    assert first == {"decision_signature": {"stage": "P0", "is_decision_moment": True}}
+    assert [w for w, _d in day.decisions] == [f"t{i:03d}" for i in range(total)]

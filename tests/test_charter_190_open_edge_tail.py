@@ -284,14 +284,6 @@ def test_the_recovery_matrix_keeps_the_point_rule() -> None:
     )
 
 
-def test_the_ledger_arms_read_the_same_axis() -> None:
-    sys.path.insert(0, str(ROOT / "scripts"))
-    import paper_trading_ledger as L
-
-    assert L.served_bucket_axis is C.served_bucket_axis
-    assert L.apply_center_width_calibration is C.apply_center_width_calibration
-
-
 def test_the_bump_is_declared_once_for_three_stages() -> None:
     import inspect
 

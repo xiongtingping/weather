@@ -46,6 +46,7 @@ import bisect
 import hashlib
 import json
 import math
+import os
 import sqlite3
 import subprocess
 import sys
@@ -159,6 +160,7 @@ class PaperOrder:
     decision_created_at: str
     events: list[tuple[str, str, float, float]] = field(default_factory=list)
     settlement_timezone: str = "UTC"
+    stage: str = ""
     fill_at: str | None = None
     state: str = "resting"
     ended_at: str | None = None
@@ -202,6 +204,11 @@ class PaperOrder:
         return self.ended_at is None or _before(at, self.ended_at)
 
 
+#: How many of a station-day's newest decisions the signature question reads
+#: whole (production's resident reads the same tail of its own details).
+SIGNATURE_LOOKBACK = 24
+
+
 @dataclass
 class ChainDay:
     station_id: str
@@ -210,6 +217,29 @@ class ChainDay:
     orders: list[PaperOrder] = field(default_factory=list)
     tilt: tuple[str, float] | None = None
     last_action: tuple[str, str] | None = None
+
+    def remember(self, created: str, details: Mapping[str, Any]) -> None:
+        """Record a decision's details for the chain questions that read them.
+
+        Only the newest ``SIGNATURE_LOOKBACK`` are read whole (the prior
+        core, the last signature); every older one is read for two fields of
+        its signature -- its stage and whether it was a decision moment.  So
+        past twice the lookback a decision keeps just those two: a week's
+        walk held some sixteen thousand whole details (4.8 KB of JSON each on
+        average, 117 KB at most) for the whole run.
+        """
+
+        self.decisions.append((created, dict(details)))
+        index = len(self.decisions) - 2 * SIGNATURE_LOOKBACK - 1
+        if index >= 0:
+            when, old = self.decisions[index]
+            signature = old.get("decision_signature")
+            self.decisions[index] = (when, {} if not isinstance(signature, Mapping) else {
+                "decision_signature": {
+                    "stage": signature.get("stage"),
+                    "is_decision_moment": signature.get("is_decision_moment"),
+                },
+            })
 
 
 # --------------------------------------------------------------------------
@@ -360,7 +390,7 @@ class PaperChainState:
             return self._order_ends(station_id, event_date, max(moments, key=_instant)) if moments else 0
 
         return select_last_decision_signature(
-            (details for _when, details in reversed(rows[-24:])),
+            (details for _when, details in reversed(rows[-SIGNATURE_LOOKBACK:])),
             stage=stage,
             ends_now=self._order_ends(station_id, event_date, self.before_utc),
             ends_at_last_moment=_ends_at_last_moment,
@@ -556,13 +586,57 @@ class PaperPortfolio:
 # --------------------------------------------------------------------------
 
 
+class _Book:
+    """One recorded book: per bucket the best bid, the best ask and the tick.
+
+    The ask ladder is not kept: nothing here reads past the best level -- a
+    FOK is answered on the decision's own commit snapshot, a resting order
+    by its fill curve, and the resting rule and the marks read bid, ask and
+    tick.  ``get`` hands a caller the row shape the resting rule reads.
+    """
+
+    __slots__ = ("observed_at", "rows")
+
+    def __init__(self, observed_at: str, rows: dict[str, tuple[float, float, float]]) -> None:
+        self.observed_at = observed_at
+        self.rows = rows
+
+    def get(self, bucket: str, default: Any = None) -> dict[str, Any] | Any:
+        row = self.rows.get(bucket)
+        if row is None:
+            return default
+        bid, ask, tick = row
+        return {"bid": bid, "ask": ask, "tick": tick, "observed_at": self.observed_at}
+
+    def __bool__(self) -> bool:
+        return bool(self.rows)
+
+
 class BookStore:
+    """The recorded books, per scope, held only while the walk can need them.
+
+    A station-day carries 600-900 committed books (5-7 MB of JSON), and a
+    week's walk touches about three hundred station-days: held whole, parsed,
+    for the whole run, they were gigabytes on an 8 GB machine that production
+    shares (2026-09-25: the daily pass sat in page-ins beside an overdue
+    production cycle).  So a book keeps three numbers per bucket, identical
+    rows share one tuple, and a scope is dropped once the walk is two days
+    past its event date -- all but its last book, which is what every later
+    moment reads: the account marks a held day until its label is known, and
+    a late label would otherwise re-read the whole day at every decision.  A
+    dropped scope asked for anything else is read again.
+    """
+
+    RETAIN_DAYS = 2
+
     def __init__(self, ssot: sqlite3.Connection) -> None:
         self.ssot = ssot
-        self._cache: dict[tuple[str, str], list[tuple[str, dict[str, dict[str, Any]]]]] = {}
+        self._cache: dict[tuple[str, str], list[tuple[str, _Book]]] = {}
         self._instants: dict[tuple[str, str], list[datetime]] = {}
+        self._rows: dict[tuple[float, float, float], tuple[float, float, float]] = {}
+        self._last: dict[tuple[str, str], tuple[datetime, _Book]] = {}
 
-    def books(self, station_id: str, event_date: str) -> list[tuple[str, dict[str, dict[str, Any]]]]:
+    def books(self, station_id: str, event_date: str) -> list[tuple[str, _Book]]:
         key = (station_id, event_date)
         if key not in self._cache:
             rows = []
@@ -571,48 +645,64 @@ class BookStore:
                 " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
                 " ORDER BY observed_at, rowid",
                 key,
-            ):
-                by_bucket: dict[str, dict[str, Any]] = {}
+            ).fetchall():
+                by_bucket: dict[str, tuple[float, float, float]] = {}
                 for entry in json.loads(buckets_json or "[]"):
                     if not isinstance(entry, Mapping):
                         continue
-                    asks = sorted(
+                    best = min(
                         (
-                            (float(level["price"]), float(level["shares"]))
+                            float(level["price"])
                             for level in entry.get("ask_levels") or []
                             if float(level.get("shares") or 0.0) > 0.0
                         ),
+                        default=0.0,
                     )
-                    by_bucket[str(entry.get("bucket") or "")] = {
-                        "asks": asks,
-                        "bid": float(entry.get("bid_price") or 0.0),
-                        "ask": asks[0][0] if asks else 0.0,
-                        "tick": float(entry.get("price_tick_size") or 0.001),
-                        "observed_at": str(observed_at),
-                    }
-                rows.append((str(observed_at), by_bucket))
+                    row = (
+                        float(entry.get("bid_price") or 0.0), best,
+                        float(entry.get("price_tick_size") or 0.001),
+                    )
+                    by_bucket[sys.intern(str(entry.get("bucket") or ""))] = (
+                        self._rows.setdefault(row, row)
+                    )
+                rows.append((str(observed_at), _Book(str(observed_at), by_bucket)))
             self._cache[key] = rows
             self._instants[key] = [_instant(observed) for observed, _book in rows]
         return self._cache[key]
 
-    def after(self, station_id: str, event_date: str, after: str) -> list[tuple[str, dict[str, dict[str, Any]]]]:
+    def forget_before(self, walk_at: str) -> None:
+        """Drop the scopes whose event day the walk is two days past."""
+
+        floor = (_instant(walk_at) - timedelta(days=self.RETAIN_DAYS)).date().isoformat()
+        for key in [key for key in self._cache if key[1] < floor]:
+            rows = self._cache.pop(key)
+            instants = self._instants.pop(key)
+            if rows:
+                self._last[key] = (instants[-1], rows[-1][1])
+
+    def after(self, station_id: str, event_date: str, after: str) -> list[tuple[str, _Book]]:
         """The books strictly after ``after``, in order."""
 
         rows = self.books(station_id, event_date)
         index = bisect.bisect_right(self._instants[(station_id, event_date)], _instant(after))
         return rows[index:]
 
-    def latest(self, station_id: str, event_date: str, at: str) -> dict[str, dict[str, Any]] | None:
+    def latest(self, station_id: str, event_date: str, at: str) -> _Book | None:
+        key = (station_id, event_date)
+        if key not in self._cache and key in self._last:
+            last_at, last_book = self._last[key]
+            if _instant(at) >= last_at:
+                return last_book
         rows = self.books(station_id, event_date)
         index = bisect.bisect_right(self._instants[(station_id, event_date)], _instant(at))
         return rows[index - 1][1] if index else None
 
     def mark(self, station_id: str, event_date: str, bucket: str, *, at: str) -> float:
-        book = self.latest(station_id, event_date, at) or {}
-        row = book.get(bucket)
+        book = self.latest(station_id, event_date, at)
+        row = None if book is None else book.rows.get(bucket)
         if not row:
             return 0.0
-        bid, ask = float(row["bid"]), float(row["ask"])
+        bid, ask, _tick = row
         if bid > 0.0 and ask > 0.0:
             return (bid + ask) / 2.0
         return bid or ask
@@ -835,44 +925,38 @@ def _production_decisions(
     the SSOT across the run (an open read pins the WAL the resident writes).
     """
 
-    clauses = ["rowid>?", "substr(plan_id,1,5)='plan_'"]
-    params: list[Any] = [since_rowid]
-    if until_rowid is not None:
-        clauses.append("rowid<=?")
-        params.append(until_rowid)
-    if stations:
-        clauses.append("station_id IN (" + ",".join("?" * len(stations)) + ")")
-        params.extend(stations)
-    if from_event_date:
-        clauses.append("event_date>=?")
-        params.append(from_event_date)
-    if to_event_date:
-        clauses.append("event_date<=?")
-        params.append(to_event_date)
-    scopes = {
-        (str(r[0]), str(r[1]))
-        for r in ssot.execute(
-            "SELECT DISTINCT station_id, event_date FROM auto_trade_decisions"
-            " WHERE " + " AND ".join(clauses),
-            params,
+    # Seeks only.  ``created_at`` sits after ``details_json`` in the row, so
+    # any scan that filters or sorts on it reads every decision's JSON off
+    # disk -- the whole table, every pass (2026-09-25: the daily pass sat in
+    # page-ins for an hour doing exactly that).  The scope index carries
+    # (station, day, created_at) and the rowid, and the four columns the
+    # walk still needs come off each row's first page.
+    lo, hi = from_event_date or "", to_event_date or "9999-12-31"
+    station_list = list(stations) or [
+        str(r[0]) for r in ssot.execute(
+            "SELECT DISTINCT station_id FROM auto_trade_decisions"
         ).fetchall()
-    }
-    if not scopes:
-        return
-    first_date = min(day for _s, day in scopes)
-    last_date = max(day for _s, day in scopes)
-    light = [
-        row for row in ssot.execute(
-            "SELECT rowid, decision_id, cycle_id, station_id, event_date, created_at,"
-            " settlement_timezone FROM auto_trade_decisions"
-            " WHERE substr(plan_id,1,5)='plan_' AND event_date>=? AND event_date<=?"
-            + ("" if until_rowid is None else " AND rowid<=?") +
-            " ORDER BY created_at, rowid",
-            [first_date, last_date] + ([] if until_rowid is None else [until_rowid]),
-        ).fetchall()
-        if (str(row[3]), str(row[4])) in scopes
     ]
-    for rowid, decision_id, cycle_id, station, day, created, tz in light:
+    light = []
+    for station in station_list:
+        for rowid, day, created in ssot.execute(
+            "SELECT rowid, event_date, created_at FROM auto_trade_decisions"
+            " WHERE station_id=? AND event_date>=? AND event_date<=?",
+            (station, lo, hi),
+        ).fetchall():
+            if until_rowid is not None and int(rowid) > until_rowid:
+                continue
+            decision_id, cycle_id, plan_id, tz = ssot.execute(
+                "SELECT decision_id, cycle_id, plan_id, settlement_timezone"
+                " FROM auto_trade_decisions WHERE rowid=?", (rowid,),
+            ).fetchone()
+            if not str(plan_id).startswith("plan_"):
+                continue
+            light.append((str(created), int(rowid), str(decision_id), str(cycle_id), station, str(day), tz))
+    # The scopes with a basket decision after ``since_rowid``, walked whole.
+    scopes = {(row[4], row[5]) for row in light if row[1] > since_rowid}
+    light = sorted(row for row in light if (row[4], row[5]) in scopes)
+    for created, rowid, decision_id, cycle_id, station, day, tz in light:
         decided_state, reason_codes, details = ssot.execute(
             "SELECT decided_state, reason_codes_json, details_json"
             " FROM auto_trade_decisions WHERE rowid=?", (rowid,),
@@ -949,7 +1033,7 @@ class AlignedLedger:
             # a refusal of the store ("database is locked") or of the stage
             # gate before the compile.  It is on the chain's history (the
             # next decision's prior core reads it), so it is on the ledger's.
-            chain.decisions.append((created, dict(row["details"])))
+            chain.remember(created, row["details"])
             out.update(entry="production_record", status=row["decided_state"], reason_codes=row["reason_codes"])
             return out
         recorded_plan = dict(feature.get("plan") or {})
@@ -1034,7 +1118,7 @@ class AlignedLedger:
             )
         except Exception as exc:  # noqa: BLE001 -- a refusal is a decision, named
             reason = f"{type(exc).__name__}:{exc}"[:200]
-            chain.decisions.append((created, {"schema": "paper_ledger_compile_refusal_v1", "reason": reason}))
+            chain.remember(created, {"schema": "paper_ledger_compile_refusal_v1", "reason": reason})
             out.update(status="blocked", reason_codes=[reason], matches_production=False, first_difference="compile_raised")
             return out
         plan = compiled.get("plan") or {}
@@ -1061,7 +1145,7 @@ class AlignedLedger:
                 "reason_codes": reasons,
             }
             status, intents, plan_payload = "blocked", [], plan
-        chain.decisions.append((created, details))
+        chain.remember(created, details)
         diff = _first_difference(_normalized(recorded_plan), _normalized(plan))
         out.update(
             status=status, reason_codes=reasons, commit_path=path,
@@ -1096,6 +1180,7 @@ class AlignedLedger:
                 ),
                 ladder_rung=bool(body.get("post_only")), decision_created_at=created,
                 settlement_timezone=str(row.get("settlement_timezone") or "UTC"),
+                stage=compiled_stage,
             )
             if order.candidate == "TAKER_FOK":
                 self.venue.submit_fok(order, book_buckets=commit_snapshot.get("buckets") or [])
@@ -1152,7 +1237,7 @@ LEDGER_DDL = (
     "CREATE TABLE IF NOT EXISTS orders(run_id TEXT, order_id TEXT, station_id TEXT, event_date TEXT,"
     " bucket TEXT, candidate TEXT, limit_price REAL, size REAL, placed_at TEXT, expires_at TEXT,"
     " state TEXT, filled_size REAL, filled_cost_usdc REAL, ended_at TEXT, end_reason TEXT,"
-    " events_json TEXT, PRIMARY KEY(run_id, order_id))",
+    " events_json TEXT, stage TEXT, PRIMARY KEY(run_id, order_id))",
     "CREATE TABLE IF NOT EXISTS settlements(run_id TEXT, station_id TEXT, event_date TEXT,"
     " settled_bucket TEXT, cost_usdc REAL, payout_usdc REAL, pnl_usdc REAL, legs_json TEXT,"
     " PRIMARY KEY(run_id, station_id, event_date))",
@@ -1227,6 +1312,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         opening_cash_usdc=float(args.opening_cash_usdc),
     )
     started = time.time()
+    started_at_utc = datetime.now(timezone.utc).isoformat()
     last = None
     for index, row in enumerate(_production_decisions(
         ssot, since_rowid=args.since_rowid, until_rowid=args.until_rowid,
@@ -1237,6 +1323,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             break
         ledger.rows.append(ledger.decide(row))
         last = row["created_at"]
+        ledger.books.forget_before(last)
         if args.progress and index and index % args.progress == 0:
             print(f"[{time.time() - started:7.1f}s] {index} decisions, last {last}", file=sys.stderr, flush=True)
     settlements = ledger.settle(last or datetime.now(timezone.utc).isoformat())
@@ -1245,25 +1332,36 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     summary["seconds"] = round(time.time() - started, 1)
     summary["fill_model"] = args.fill_model
     summary["maker_fill_curves_sha256"] = ledger.venue.curves_sha256
+    summary["started_at_utc"] = started_at_utc
     if not args.dry_run:
-        _store(args, ledger, settlements, orders, summary)
+        summary["run_id"] = _store(args, ledger, settlements, orders, summary)
     return summary
 
 
-def _store(args: argparse.Namespace, ledger: AlignedLedger, settlements: Sequence[Mapping[str, Any]], orders: Sequence[PaperOrder], summary: Mapping[str, Any]) -> None:
+def _store(args: argparse.Namespace, ledger: AlignedLedger, settlements: Sequence[Mapping[str, Any]], orders: Sequence[PaperOrder], summary: Mapping[str, Any]) -> str:
     out = sqlite3.connect(args.ledger_db)
     for ddl in LEDGER_DDL:
         out.execute(ddl)
-    present = {str(row[1]) for row in out.execute("PRAGMA table_info(decisions)")}
-    for column, kind in (("commit_path", "TEXT"), ("planning_budget_usdc", "REAL")):
-        if column not in present:
-            out.execute(f"ALTER TABLE decisions ADD COLUMN {column} {kind}")
+    for table, columns in (
+        ("decisions", (("commit_path", "TEXT"), ("planning_budget_usdc", "REAL"))),
+        ("orders", (("stage", "TEXT"),)),
+    ):
+        present = {str(row[1]) for row in out.execute(f"PRAGMA table_info({table})")}
+        for column, kind in columns:
+            if column not in present:
+                out.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
     run_id = "run_" + hashlib.sha256(f"{time.time()}|{vars(args)}".encode()).hexdigest()[:16]
     params = {k: v for k, v in vars(args).items() if k not in {"ssot", "archive", "ledger_db"}}
+    # The production knobs this walk ran under: an arm is one of these set
+    # (scripts/paper_ledger_arms.py), and the run has to say which.
+    params["pm_environment"] = {
+        key: value for key, value in sorted(os.environ.items()) if key.startswith("PM_")
+    }
     with out:
         out.execute(
             "INSERT INTO runs VALUES(?,?,?,?,?,?,?)",
-            (run_id, SCHEMA, None, datetime.now(timezone.utc).isoformat(), _code_head(),
+            (run_id, SCHEMA, summary.get("started_at_utc"),
+             datetime.now(timezone.utc).isoformat(), _code_head(),
              json.dumps(params, sort_keys=True), json.dumps(summary, sort_keys=True)),
         )
         out.executemany(
@@ -1282,11 +1380,13 @@ def _store(args: argparse.Namespace, ledger: AlignedLedger, settlements: Sequenc
             ],
         )
         out.executemany(
-            "INSERT INTO orders VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO orders(run_id,order_id,station_id,event_date,bucket,candidate,"
+            "limit_price,size,placed_at,expires_at,state,filled_size,filled_cost_usdc,"
+            "ended_at,end_reason,events_json,stage) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             [
                 (run_id, o.order_id, o.station_id, o.event_date, o.bucket, o.candidate, o.limit_price,
                  o.size, o.placed_at, o.expires_at, o.state, *o.filled_by(None), o.ended_at,
-                 o.end_reason, json.dumps(o.events))
+                 o.end_reason, json.dumps(o.events), o.stage)
                 for o in orders
             ],
         )
@@ -1298,9 +1398,7 @@ def _store(args: argparse.Namespace, ledger: AlignedLedger, settlements: Sequenc
                 for s in settlements
             ],
         )
-    summary_run = dict(summary)
-    summary_run["run_id"] = run_id
-    print(json.dumps({"run_id": run_id}), file=sys.stderr)
+    return run_id
 
 
 def main(argv: Sequence[str] | None = None) -> int:

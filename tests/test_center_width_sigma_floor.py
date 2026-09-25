@@ -390,7 +390,7 @@ def test_the_floor_reader_is_zero_for_a_row_that_predates_it() -> None:
     ) == SIGMA_FLOOR_RUNGS
 
 
-def test_serving_and_the_ledger_both_read_the_floor() -> None:
+def test_serving_reads_the_floor() -> None:
     """Production and the paper book must price the same distribution.
 
     Measured once before: changing one side alone leaves the ledger scoring a
@@ -415,9 +415,6 @@ def test_serving_and_the_ledger_both_read_the_floor() -> None:
     # Charter 150: P0-M and P1 carry no centre/width layer at all.
     materialization = source("bayes_basket_target/materialization.py")
     assert "center_width_floor_rungs" not in materialization
-    # And the ledger applies the floor its replay table recorded.
-    ledger = source("scripts/paper_trading_ledger.py")
-    assert 'entry.get("sigma_floor_rungs")' in ledger
     builder = source("scripts/fit_center_width_replay_table.py")
     assert "SIGMA_FLOOR_RUNGS if admitted else 0.0," in builder
     assert "sigma_floor_rungs=SIGMA_FLOOR_RUNGS," in builder

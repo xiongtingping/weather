@@ -31,11 +31,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     effective_edge_lambda_for_stage,
 )
 from bayes_basket_target import effective_edge_store as store  # noqa: E402
-
-# Charter 140: these fixtures build the paper candidate table, and the estimator
-# under test does not depend on the source; see ``ledger_evidence_source`` in
-# conftest.
-pytestmark = pytest.mark.usefixtures("ledger_evidence_source")
+from tests.claim_lane_tables import add_label  # noqa: E402
 
 
 def test_p1_table_is_identity_today_so_nothing_p1_sizes_moves() -> None:
@@ -79,12 +75,11 @@ def test_an_unfitted_stage_reads_one() -> None:
     assert effective_edge_lambda_for_stage("", 0.3) == 1.0
 
 
-
 def _candidate_table(conn: sqlite3.Connection) -> None:
     """The population the fit reads: one row per enumerated window."""
 
     conn.execute(
-        "CREATE TABLE paper_trade_candidate_window("
+        "CREATE TABLE basket_candidate_window_scored("
         "candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
         " stage TEXT, decision_at_utc TEXT, buckets_json TEXT,"
         " win_probability REAL, all_in_price REAL, hit INTEGER)"
@@ -96,7 +91,7 @@ def _candidate(conn, index, stage, day, claim, cost, hit, station=None):
     enumeration lifts before the gate divides, so the fit must not."""
 
     conn.execute(
-        "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO basket_candidate_window_scored VALUES(?,?,?,?,?,?,?,?,?)",
         (
             f"cand-{index}", station or f"S{index}", day, stage,
             f"{day}T00:00:00Z", '["b"]',
@@ -105,25 +100,17 @@ def _candidate(conn, index, stage, day, claim, cost, hit, station=None):
     )
 
 def _book(rows) -> sqlite3.Connection:
-    """The two ledger tables the store reads, with one seat per row."""
+    """The candidate relation and the labels the store reads, one seat per row."""
 
     conn = sqlite3.connect(":memory:")
     _candidate_table(conn)
-    conn.execute(
-        "CREATE TABLE paper_trade_settlement("
-        "settlement_id TEXT PRIMARY KEY, position_id TEXT, stage TEXT,"
-        " event_date TEXT, hit INTEGER)"
-    )
     # One seat per station-day, over eight event days (the band's weather
     # floor since 2026-09-14), so a fixture about scopes is not refused for
     # a reason it is not about.
     for index, (stage, claim, cost, hit) in enumerate(rows):
         day = f"2026-09-{index % 8 + 1:02d}"
         _candidate(conn, index, stage, day, claim, cost, hit)
-        conn.execute(
-            "INSERT INTO paper_trade_settlement VALUES(?,?,?,?,?)",
-            (f"set-{index}", f"pos-{index}", stage, day, hit),
-        )
+        add_label(conn, f"S{index}", day)
     return conn
 
 
@@ -258,11 +245,6 @@ def test_only_seats_banded_under_the_current_partition_are_fitted() -> None:
     conn = sqlite3.connect(":memory:")
     _candidate_table(conn)
     conn.execute(
-        "CREATE TABLE paper_trade_settlement("
-        "settlement_id TEXT PRIMARY KEY, position_id TEXT, stage TEXT,"
-        " event_date TEXT, hit INTEGER)"
-    )
-    conn.execute(
         "CREATE TABLE calibration_band_reliability_table("
         "band_table_sha256 TEXT PRIMARY KEY, factors_json TEXT)"
     )
@@ -294,13 +276,10 @@ def test_only_seats_banded_under_the_current_partition_are_fitted() -> None:
             conn, index, "P0", "2026-09-01", 0.5, 0.15, 1, station="ZUUU",
         )
         conn.execute(
-            "UPDATE paper_trade_candidate_window SET decision_at_utc=?"
+            "UPDATE basket_candidate_window_scored SET decision_at_utc=?"
             " WHERE candidate_id=?", (f"t{index}", f"cand-{index}"),
         )
-        conn.execute(
-            "INSERT INTO paper_trade_settlement VALUES(?,?,?,?,?)",
-            (f"set-{index}", pid, "P0", "2026-09-01", 1),
-        )
+        add_label(conn, f"S{index}", "2026-09-01")
         conn.execute(
             "INSERT INTO basket_probability_bridge_history VALUES(?,?,?,?,?,?)",
             (hid, "ZUUU", "2026-09-01", "P0", f"t{index}", eid),
@@ -446,11 +425,6 @@ def test_a_thin_band_keeps_the_last_activated_value_not_the_constant() -> None:
 
     conn = _store_with_journal()
     _candidate_table(conn)
-    conn.execute(
-        "CREATE TABLE paper_trade_settlement("
-        "settlement_id TEXT PRIMARY KEY, position_id TEXT, stage TEXT,"
-        " event_date TEXT, hit INTEGER)"
-    )
     # An activated table whose first band was promoted to 0.33.
     _journal(conn, scope="P0", sha="c" * 64, fitted_at="2026-09-01T01:00:00",
              lambdas=(0.33, 0.6, 0.87, 0.82))
@@ -461,8 +435,7 @@ def test_a_thin_band_keeps_the_last_activated_value_not_the_constant() -> None:
     # Three seats in the first band today: below the hurdle.
     for index in range(3):
         _candidate(conn, index, "P0", "2026-09-02", 0.5, 0.15, 1)
-        conn.execute("INSERT INTO paper_trade_settlement VALUES(?,?,?,?,?)",
-                     (f"s{index}", f"p{index}", "P0", "2026-09-02", 1))
+        add_label(conn, f"S{index}", "2026-09-02")
     fit = store.fit_lambda_table(conn, stage_scope="P0")
     assert fit["evidence"][0]["accumulating"] is True
     assert fit["bands"][0][1] == 0.33
@@ -483,15 +456,10 @@ def test_the_partition_is_the_served_axis_and_its_cell_count(monkeypatch) -> Non
 
     conn = sqlite3.connect(":memory:")
     conn.execute(
-        "CREATE TABLE paper_trade_candidate_window("
+        "CREATE TABLE basket_candidate_window_scored("
         "candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
         " stage TEXT, decision_at_utc TEXT, buckets_json TEXT,"
         " win_probability REAL, all_in_price REAL, hit INTEGER, band_axis TEXT)"
-    )
-    conn.execute(
-        "CREATE TABLE paper_trade_settlement("
-        "settlement_id TEXT PRIMARY KEY, position_id TEXT, stage TEXT,"
-        " event_date TEXT, hit INTEGER)"
     )
     conn.execute(
         "CREATE TABLE calibration_band_reliability_table("
@@ -521,14 +489,11 @@ def test_the_partition_is_the_served_axis_and_its_cell_count(monkeypatch) -> Non
         kind = kinds[index % 3]
         day = f"2026-09-{index % 8 + 1:02d}"
         conn.execute(
-            "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO basket_candidate_window_scored VALUES(?,?,?,?,?,?,?,?,?,?)",
             (f"cand-{index}", f"S{index}", day, "P0", f"t{index}", '["b"]',
              0.5, 0.15, 1, "centre_distance"),
         )
-        conn.execute(
-            "INSERT INTO paper_trade_settlement VALUES(?,?,?,?,?)",
-            (f"set-{index}", f"pos-{index}", "P0", day, 1),
-        )
+        add_label(conn, f"S{index}", day)
         conn.execute(
             "INSERT INTO basket_probability_bridge_history VALUES(?,?,?,?,?,?)",
             (f"hist-{index}", f"S{index}", day, "P0", f"t{index}", f"env-{index}"),
@@ -568,15 +533,10 @@ def test_a_scope_serving_no_band_table_fits_its_unbanded_claims() -> None:
 
     conn = sqlite3.connect(":memory:")
     conn.execute(
-        "CREATE TABLE paper_trade_candidate_window("
+        "CREATE TABLE basket_candidate_window_scored("
         "candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
         " stage TEXT, decision_at_utc TEXT, buckets_json TEXT,"
         " win_probability REAL, all_in_price REAL, hit INTEGER, band_axis TEXT)"
-    )
-    conn.execute(
-        "CREATE TABLE paper_trade_settlement("
-        "settlement_id TEXT PRIMARY KEY, position_id TEXT, stage TEXT,"
-        " event_date TEXT, hit INTEGER)"
     )
     ensure_band_table_schema(conn)
     vetoed = "a" * 64
@@ -616,14 +576,11 @@ def test_a_scope_serving_no_band_table_fits_its_unbanded_claims() -> None:
         kind = kinds[index % 3]
         day = f"2026-09-{index % 8 + 1:02d}"
         conn.execute(
-            "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO basket_candidate_window_scored VALUES(?,?,?,?,?,?,?,?,?,?)",
             (f"cand-{index}", f"S{index}", day, "P0", f"t{index}", '["b"]',
              0.5, 0.15, 1, None),
         )
-        conn.execute(
-            "INSERT INTO paper_trade_settlement VALUES(?,?,?,?,?)",
-            (f"set-{index}", f"pos-{index}", "P0", day, 1),
-        )
+        add_label(conn, f"S{index}", day)
         conn.execute(
             "INSERT INTO basket_probability_bridge_history VALUES(?,?,?,?,?,?)",
             (f"hist-{index}", f"S{index}", day, "P0", f"t{index}", f"env-{index}"),

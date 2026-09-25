@@ -148,38 +148,13 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] band_shadow refit (shadow, unserved)"
 # the number governing it is frozen and nothing on the book can refresh it.
 # That is a human's call (deliberately sample the band, or accept the
 # freeze), not a reason to fail the sweep the other refits ride on.
-# Charter 110: a band axis change mis-keys a settled window, it does not
-# kill it.  The price the book quoted and the bucket the day settled to do
-# not depend on our probabilities; only the claim does.  So the claim is
-# recomputed on the table that serves today and filed under the band it now
-# belongs to, and the fit below reads those rows.
-#
-# Both halves or neither.  The replay lane existed and the refit did not ask
-# for it, so 841 hand-run rows sat unread while P0's fit ran on zero served
-# rows -- its band axis moved to centre_distance on 2026-09-07 and every
-# claim-axis row it had went with it, leaving the served table frozen at a
-# vintage nothing could refresh.  Passing --include-replayed alone would
-# have wired the daily fit to a hand-made snapshot that stops the day
-# somebody last ran it (it stopped at 2026-09-07, two days before this was
-# found); running the replay alone changes nothing at all.
-#
-# Never fatal: a replay that cannot run leaves the fit on served rows, which
-# is exactly where it was before this lane existed.
-#
-# ``--stage all``, not P0.  This call was hard-coded to P0 because P0 was the
-# only stage on the distance axis, and the day P1 moved (2026-09-09) that
-# implicit coupling would have left P1's lambda reading claim-axis rows for
-# a distance-axis table -- the same silence P0 spent two days in.  A
-# claim-axis stage is a no-op inside the script, so 'all' costs nothing and
-# stops the sweep from needing an edit the next time a stage moves.
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] candidate window replay on the current band"
-"$PY" scripts/replay_candidate_windows_on_current_band.py --stage all \
-  --commit --as-of "$(date -u +%Y-%m-%dT%H:%M:%SZ)" || {
-  echo "candidate window replay: skipped, fit falls back to served rows" >&2
-}
-
+# Charter 140: the fit reads production's own candidate windows, recorded
+# forward on the band table that served each decision; a row keyed on
+# another axis is excluded, not restated.  (The replay lane that re-derived
+# the paper ledger's windows onto today's band table retired with that
+# ledger on 2026-09-25 -- on production evidence the fit never read it.)
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] effective edge lambda refit"
-"$PY" scripts/refit_effective_edge_lambda.py --commit --include-replayed || {
+"$PY" scripts/refit_effective_edge_lambda.py --commit || {
   EE_RC=$?
   if [ "$EE_RC" = "3" ]; then
     echo "effective-edge refit: a band has no observations left" >&2
@@ -248,16 +223,6 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] regional point calibration refit"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] new market discovery"
 "$PY" scripts/onboard_station.py --stage discover \
   || echo "market discovery failed; refits above still committed" >&2
-
-# The ledger's fill simulation, against the only measurement of it there
-# is.  Read-only and deliberately not part of RC: a simulation drifting out
-# of the shadow lane's observed band is a fact about the ledger, not a
-# failure of this sweep, and making it fail the sweep would train the
-# receipt to be ignored -- the same reasoning as discovery above.  It is
-# here so the gap is re-measured daily instead of when someone remembers.
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] maker fill model calibration"
-"$PY" scripts/calibrate_maker_fill_model.py \
-  || echo "maker fill calibration failed; refits above still committed" >&2
 
 # User ruling 2026-09-23 (「到期前端预警，不过期」): a P0 certificate whose
 # scope has nothing fresher is renewed inside ten days of its end -- same

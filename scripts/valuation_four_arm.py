@@ -21,8 +21,8 @@ Two tests, both walk-forward by event day:
    population``): the log score and multi-bucket Brier of the truth bucket,
    station-days weighted to count once.  The lambda arm has no vector and
    sits this one out.
-2. **Strategy**, on every settled candidate window the ledger enumerated,
-   refused or not: each arm admits at the charter-130 hurdle (the pool on its
+2. **Strategy**, on every settled candidate window production enumerated,
+   refused or not (charter 140's record, ``basket_candidate_window_scored``): each arm admits at the charter-130 hurdle (the pool on its
    lower bound, the others on their point belief), buys one share per leg at
    the recorded all-in ask, and is paid by the recorded hit.  Returns are
    per share of cost; intervals are bootstrapped over station-days.
@@ -56,6 +56,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target import valuation_store as V  # noqa: E402
+from bayes_basket_target.candidate_window_evidence import (  # noqa: E402
+    CANDIDATE_SOURCE,
+)
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     ECONOMIC_HURDLE_V1,
     effective_edge_lambda_resolved,
@@ -274,7 +277,7 @@ def strategy_test(
         "SELECT w.station_id, w.event_date, w.decision_at_utc, w.buckets_json,"
         "       w.win_probability, w.raw_win_probability, w.all_in_price, w.hit,"
         "       w.settled_at_utc, e.probabilities_json"
-        " FROM paper_trade_candidate_window w"
+        f" FROM {CANDIDATE_SOURCE} w"
         " JOIN basket_probability_envelope e"
         "   ON e.station_id=w.station_id AND e.event_date=w.event_date"
         "  AND e.stage=w.stage AND e.decision_at_utc=w.decision_at_utc"
@@ -517,8 +520,6 @@ def main() -> int:
     cutoff = str(args.as_of or "9999-12-31T00:00:00Z")
     read = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=180.0)
     read.execute("PRAGMA busy_timeout=180000")
-    from paper_ledger_reader import attach_paper_ledger  # noqa: PLC0415
-    attach_paper_ledger(read)
     stages = sorted(V.STAGE_SCOPES) if args.stage == "all" else [args.stage]
     results = []
     try:

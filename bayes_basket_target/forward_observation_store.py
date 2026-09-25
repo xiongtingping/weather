@@ -25,6 +25,7 @@ from .cash_phase_forward_observation import (
 )
 from .contracts import ContractError, content_sha256
 from .contracts import canonical_json
+from .market_registry import settlement_timezone_for_scope
 from .resource_bounds import (
     MIN_TARGET_FREE_BYTES,
     assert_process_memory_budget,
@@ -911,18 +912,17 @@ def _source_registry_timezone(
         raise ForwardObservationStoreError(
             "forward_store_registry_table_missing"
         )
-    rows = connection.execute(
-        "SELECT DISTINCT settlement_timezone "
-        "FROM basket_target_market_registry "
-        "WHERE station_id=? AND event_date=?",
-        (station_id, event_date),
-    ).fetchall()
-    values = {str(row[0] or "").strip() for row in rows}
-    if len(values) != 1 or not next(iter(values), ""):
+    # The registry's rows while it carries the scope, the station's bound
+    # timezone once retention has retired them (``settlement_timezone_for_scope``);
+    # without that every settled day older than three days failed here, and
+    # one such row ended the whole batch.
+    timezone_name = settlement_timezone_for_scope(
+        connection, station_id=station_id, event_date=event_date
+    )
+    if not timezone_name:
         raise ForwardObservationStoreError(
             "forward_store_registry_settlement_timezone_not_unique"
         )
-    timezone_name = next(iter(values))
     try:
         ZoneInfo(timezone_name)
     except Exception as exc:

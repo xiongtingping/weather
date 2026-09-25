@@ -142,7 +142,6 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 def _has_table(conn: sqlite3.Connection, name: str) -> bool:
     try:
         return conn.execute(
-            # Every schema (the paper ledger is an attached file since 2026-09-19).
             "SELECT 1 FROM pragma_table_list WHERE type='table' AND name=?", (name,)
         ).fetchone() is not None
     except sqlite3.Error:
@@ -197,7 +196,7 @@ def population(
 
     One row per decision: the committed envelope's vector, the market
     reference built from the WS snapshot the decision priced against, and the
-    bucket the truth landed in -- read off the ledger's settlement, with the
+    bucket the truth landed in -- read off the truth lane's label, with the
     moment it became knowable.  The same strict-as-of contract the beta and
     lambda lanes carry (charter 132): the label must have been knowable at the
     cutoff, and a decision taken after the cutoff is not evidence either.
@@ -215,18 +214,12 @@ def population(
 
     if stage_scope not in STAGE_SCOPES:
         raise ValueError(f"valuation_scope_invalid:{stage_scope}")
-    from .candidate_window_evidence import (  # noqa: PLC0415
-        EVIDENCE_SOURCE,
-        LABEL_TABLE,
-    )
+    from .candidate_window_evidence import LABEL_TABLE  # noqa: PLC0415
 
-    # Charter 140: the labels come from the truth lane's own table on
-    # production evidence; only the ledger arm still needs the paper table.
+    # Charter 140: the labels come from the truth lane's own table.
     needed = (
         "basket_policy_training_fact", "basket_probability_envelope",
-        "basket_official_ws_snapshot",
-        LABEL_TABLE if EVIDENCE_SOURCE == "production"
-        else "paper_trade_candidate_window",
+        "basket_official_ws_snapshot", LABEL_TABLE,
     )
     for table in needed:
         if not _has_table(conn, table):

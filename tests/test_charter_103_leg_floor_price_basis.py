@@ -43,23 +43,6 @@ def test_belief_no_longer_lowers_the_floor_charter_131() -> None:
     assert not K.leg_below_floor(0.05, 0.615, 0.03, bid=0.03)
 
 
-def test_both_books_read_the_same_side() -> None:
-    import sys
-
-    root = Path(__file__).resolve().parents[1]
-    if str(root / "scripts") not in sys.path:
-        sys.path.insert(0, str(root / "scripts"))
-    import paper_trading_ledger as L  # noqa: PLC0415
-    from bayes_basket_target import delta_v2_runtime as R  # noqa: PLC0415
-
-    assert L.LEG_FLOOR_PRICE_BASIS == R.LEG_FLOOR_PRICE_BASIS == K.LEG_FLOOR_PRICE_BASIS
-    # Neither book measures the floor on the price it happens to be paying:
-    # the ledger's maker mode prices a leg at the resting band and
-    # production prices it at the offer.
-    ledger = (root / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    assert "_execution_price(row)\n                if price is None or price <" not in ledger
-
-
 def test_the_plan_receipt_carries_the_floor_it_screened_with() -> None:
     """A rule nobody can read off a receipt is a rule nobody can audit.
 

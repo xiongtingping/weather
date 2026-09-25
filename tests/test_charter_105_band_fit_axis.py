@@ -535,33 +535,6 @@ def test_the_axis_decision_is_per_stage_because_the_evidence_is():
     assert everywhere["P0"]["axis"] == BAND_AXIS_CLAIM
 
 
-def test_the_replay_lane_is_not_coupled_to_whichever_stage_moved_first():
-    """The sweep replays every stage, not the one that happened to move.
-
-    The call was hard-coded to P0 for as long as P0 was the only stage on
-    the distance axis.  When P1 moved on 2026-09-09 that coupling would have
-    left P1's lambda fitted on claim-axis rows under a distance-axis table --
-    the same silence P0 spent 2026-09-07..09 in, arrived at from the other
-    direction.  A claim-axis stage is a no-op in the script, so 'all' costs
-    nothing and removes the coupling instead of re-pointing it.
-    """
-
-    sweep = (ROOT / "scripts" / "calibration_refit_sweep.sh").read_text()
-    assert "replay_candidate_windows_on_current_band.py --stage all" in sweep
-
-    replay = (
-        ROOT / "scripts" / "replay_candidate_windows_on_current_band.py"
-    ).read_text()
-    # Every stage the store admits is reachable, so a stage that moves later
-    # needs no edit here either.
-    assert 'if str(args.stage) == "all":' in replay
-    for stage in ("P0", "P0-M", "P1"):
-        assert f'"{stage}"' in replay
-    # A claim-axis stage returns 0 rather than replaying: the served rows
-    # already carry the axis, so replaying them would file a second copy.
-    assert 'axis != "centre_distance"' in replay
-
-
 def test_the_distance_receipt_names_the_anchor_it_was_applied_through():
     """Clause 105's 2026-09-13 note: the peak can move under the map.
 

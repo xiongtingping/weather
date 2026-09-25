@@ -32,20 +32,16 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target import effective_edge_store as store  # noqa: E402
+from tests.claim_lane_tables import add_label  # noqa: E402
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     center_window_claim_factor,
 )
-
-# Charter 140: these fixtures build the paper candidate table, and the estimator
-# under test does not depend on the source; see ``ledger_evidence_source`` in
-# conftest.
-pytestmark = pytest.mark.usefixtures("ledger_evidence_source")
 
 
 def _book() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.execute(
-        "CREATE TABLE paper_trade_candidate_window("
+        "CREATE TABLE basket_candidate_window_scored("
         " candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
         " stage TEXT, decision_at_utc TEXT, buckets_json TEXT,"
         " win_probability REAL, all_in_price REAL, hit INTEGER,"
@@ -54,13 +50,7 @@ def _book() -> sqlite3.Connection:
         " admissible INTEGER, seated INTEGER, settled_at_utc TEXT,"
         " settled_bucket TEXT)"
     )
-    conn.execute(
-        "CREATE TABLE paper_trade_settlement("
-        " position_id TEXT, stage TEXT, event_date TEXT, hit INTEGER)"
-    )
-    conn.execute(
-        "INSERT INTO paper_trade_settlement VALUES('p','P0','2026-09-01',0)"
-    )
+    add_label(conn, "P", "2026-09-01")
     return conn
 
 
@@ -73,7 +63,7 @@ def _window(
     divides the price by it, so the stored column is already lifted."""
 
     conn.execute(
-        "INSERT INTO paper_trade_candidate_window"
+        "INSERT INTO basket_candidate_window_scored"
         " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
             f"c{index}", station, day, stage, f"{day}T00:00:00Z", '["b"]',
@@ -81,6 +71,8 @@ def _window(
             admissible, seated, f"{day}T23:00:00Z", "b" if hit else "other",
         ),
     )
+    add_label(conn, station, day, settled_bucket="b" if hit else "other",
+              known_at_utc=f"{day}T23:00:00Z")
 
 
 def test_a_window_the_gate_refused_is_still_evidence():
@@ -119,7 +111,7 @@ def test_neither_admissible_nor_seated_may_filter_the_fit():
     ).read_text(encoding="utf-8")
     for clause in ("seated = 1", "seated=1", "admissible = 1", "admissible=1"):
         assert clause not in source, clause
-    assert "FROM paper_trade_candidate_window" in source
+    assert "FROM {CANDIDATE_SOURCE}" in source
 
 
 def test_twelve_nested_windows_on_two_days_are_not_twelve_observations():
@@ -204,7 +196,7 @@ def _raw(conn, index, *, claim, price, hit, station=None, stage="P0",
     the agreement the guard will band on with no lift arithmetic in the way."""
 
     conn.execute(
-        "INSERT INTO paper_trade_candidate_window"
+        "INSERT INTO basket_candidate_window_scored"
         " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
             f"r{index}", station or f"S{index}", day, stage,
@@ -353,103 +345,3 @@ def test_splitting_the_top_band_moves_nothing_the_day_it_lands():
     assert effective_edge_lambda(0.97) == effective_edge_lambda(1.3)
 
 
-def test_a_rule_change_replaces_a_candidate_row_instead_of_aborting(tmp_path):
-    """The identity of a candidate row is the decision and the window.
-
-    It carried the selection-rule fingerprint too, which put the primary key
-    on one set of columns and the UNIQUE constraint on another: under a new
-    fingerprint the same enumeration hashed to a new id, missed the
-    ON CONFLICT target, and hit the UNIQUE.  That aborted the whole rebuild
-    -- and the walk buffers its writes into one burst at the end, so the
-    abort left the position and settlement tables EMPTY, which is the one
-    failure mode a rebuild must not have.  The fingerprint is recorded
-    beside the row; the row is the enumeration.
-    """
-
-    import sys as _sys
-    from pathlib import Path as _Path
-
-    root = _Path(__file__).resolve().parents[1]
-    if str(root / "scripts") not in _sys.path:
-        _sys.path.insert(0, str(root / "scripts"))
-    import paper_trading_ledger as ledger
-
-    conn = sqlite3.connect(tmp_path / "book.db")
-    ledger.ensure_schema(conn)
-    fields = (
-        " candidate_id, station_id, event_date, stage, decision_at_utc,"
-        " buckets_json, window_size, win_probability, raw_win_probability,"
-        " all_in_price, gate_agreement, admissible, seated,"
-        " selection_rule_sha256"
-    )
-    upsert = (
-        f"INSERT INTO paper_trade_candidate_window ({fields})"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
-        " ON CONFLICT(station_id, event_date, stage, decision_at_utc,"
-        "             buckets_json) DO UPDATE SET"
-        "  win_probability=excluded.win_probability,"
-        "  all_in_price=excluded.all_in_price,"
-        "  selection_rule_sha256=excluded.selection_rule_sha256"
-    )
-    scope = ("ZSQD", "2026-09-06", "P0", "2026-09-05T00:00:00Z", '["b"]')
-    conn.execute(upsert, ("id-old", *scope, 1, 0.50, 0.45, 0.40, 0.80, 1, 0,
-                          "rule-one"))
-    # Same enumeration, new fingerprint: one row, replaced, not an error.
-    conn.execute(upsert, ("id-new", *scope, 1, 0.60, 0.55, 0.42, 0.70, 1, 1,
-                          "rule-two"))
-    rows = conn.execute(
-        "SELECT win_probability, selection_rule_sha256"
-        " FROM paper_trade_candidate_window"
-    ).fetchall()
-    assert rows == [(0.60, "rule-two")]
-    # And the identity the walk builds no longer carries the fingerprint,
-    # so the primary key and the UNIQUE agree on what a duplicate is.
-    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
-        encoding="utf-8"
-    )
-    walk = source[source.index('"paper-cand-"') - 2000:]
-    assert '"buckets": buckets,' in walk[:2000]
-    assert '"selection_rule_sha256": SELECTION_RULE_SHA256,' not in walk[:2000]
-    conn.close()
-
-
-def test_the_population_is_the_enumeration_that_decided():
-    """Two ways the recorded shortlist can be the wrong one.
-
-    The ledger runs its own ``_support_windows`` and then, since 2026-09-03,
-    hands the seat to production's judge -- which enumerates again, off
-    production's own centre and admitted set.  When that judge is in force
-    the ledger's shortlist decides nothing, so recording it would put a list
-    in the fit that no gate ever looked at.  The judge therefore returns the
-    windows it judged, on every path that has them, refusals included: a
-    refused stage's enumeration is exactly what this population exists for.
-
-    And the cycle recorded has to be the one that ACTED.  Recording "the
-    cycle the walk stopped on" loses the seating cycle whenever the stage
-    re-seats -- the walk keeps going, and a later cycle whose book has gone
-    unpriced overwrites the one that bought.  EFHK 2026-08-16 seated twice
-    and left no candidate row at all that way.
-    """
-
-    import sys as _sys
-    from pathlib import Path as _Path
-
-    root = _Path(__file__).resolve().parents[1]
-    if str(root / "scripts") not in _sys.path:
-        _sys.path.insert(0, str(root / "scripts"))
-    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
-        encoding="utf-8"
-    )
-    # Every return of the judge that has an enumeration carries it out.
-    import re as _re
-    start = source.index("def _production_judge(")
-    end = _re.search(r"\n(?=def )", source[start + 1:])
-    judge = source[start:start + 1 + (end.start() if end else len(source))]
-    after = judge[judge.index("windows, audit = _support_windows("):]
-    assert after.count("return {") == after.count(
-        '"enumerated_windows": windows,'
-    ), "a judged path that drops its shortlist"
-    # The walk prefers the judge's list, and prefers the seating cycle.
-    assert 'verdict.get("enumerated_windows")' in source
-    assert "stage_candidates_seated = stage_candidates" in source
-    assert "recorded = stage_candidates_seated or stage_candidates" in source
