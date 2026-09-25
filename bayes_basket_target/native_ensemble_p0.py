@@ -352,10 +352,23 @@ def _json(value: Any) -> str:
     )
 
 
+# The certified map is read off the artifact's own predictions by the table's
+# unique (cross_ensemble_artifact_id, station_id, ...) index: a seek, where
+# selecting by station and selection sha walked every prediction the station
+# ever minted (about 11 s a compile on the 2026-09-25 resident).
+CERTIFIED_FAMILY_MAP_SQL = (
+    "SELECT system_family_ids_json "
+    "FROM calibration_cross_native_ensemble_oos_prediction "
+    "WHERE cross_ensemble_artifact_id=? AND station_id=? "
+    "AND selection_evidence_sha256=? LIMIT 1"
+)
+
+
 def served_family_map(
     conn: sqlite3.Connection,
     *,
     station_id: str,
+    cross_artifact_id: str,
     selection_sha: str,
     registry_family_by_system: Mapping[str, str],
     family_caps: Mapping[str, float],
@@ -381,10 +394,8 @@ def served_family_map(
     if all(family_id in family_caps for family_id in families.values()):
         return families
     row = conn.execute(
-        "SELECT system_family_ids_json "
-        "FROM calibration_cross_native_ensemble_oos_prediction "
-        "WHERE station_id=? AND selection_evidence_sha256=? LIMIT 1",
-        (station_id, selection_sha),
+        CERTIFIED_FAMILY_MAP_SQL,
+        (cross_artifact_id, station_id, selection_sha),
     ).fetchone()
     try:
         certified = json.loads(str(row[0])) if row is not None else None
@@ -3213,6 +3224,7 @@ def compile_native_ensemble_p0(
     family_by_system = served_family_map(
         conn,
         station_id=station_id,
+        cross_artifact_id=artifact_id,
         selection_sha=selection_sha,
         registry_family_by_system=family_by_system,
         family_caps=family_caps,

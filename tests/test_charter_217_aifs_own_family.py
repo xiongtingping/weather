@@ -17,7 +17,10 @@ import pytest
 
 from bayes_basket_target import ecmwf_aifs_ens_archive as aifs
 from bayes_basket_target.contracts import ContractError, content_sha256
-from bayes_basket_target.native_ensemble_p0 import served_family_map
+from bayes_basket_target.native_ensemble_p0 import (
+    CERTIFIED_FAMILY_MAP_SQL,
+    served_family_map,
+)
 from bayes_basket_target.ssot import apply_production_ssot_schema
 from bayes_basket_target.stable_pool import family_balanced_weights, pool_subsets
 
@@ -127,26 +130,27 @@ def _predictions(rows: list[tuple[str, str, dict[str, str]]]) -> sqlite3.Connect
     conn = sqlite3.connect(":memory:")
     conn.execute(
         "CREATE TABLE calibration_cross_native_ensemble_oos_prediction("
-        "station_id TEXT, selection_evidence_sha256 TEXT, "
-        "system_family_ids_json TEXT)"
+        "cross_ensemble_artifact_id TEXT, station_id TEXT, "
+        "selection_evidence_sha256 TEXT, system_family_ids_json TEXT)"
     )
     conn.executemany(
         "INSERT INTO calibration_cross_native_ensemble_oos_prediction "
-        "VALUES(?,?,?)",
-        [(s, sha, json.dumps(m, sort_keys=True)) for s, sha, m in rows],
+        "VALUES(?,?,?,?)",
+        [(ARTIFACT, s, sha, json.dumps(m, sort_keys=True)) for s, sha, m in rows],
     )
     return conn
 
 
 REGISTRY = {IFS: "ECMWF", AIFS: "ECMWF_AIFS", "NOAA_GEFS_05": "NOAA_GEFS"}
 SELECTION = "a" * 64
+ARTIFACT = "cross-artifact-1"
 
 
 def test_an_artifact_minted_under_the_split_is_served_on_the_registry() -> None:
     conn = _predictions([])
     caps = {"ECMWF": 0.75, "ECMWF_AIFS": 0.75, "NOAA_GEFS": 0.75}
     assert served_family_map(
-        conn, station_id="ZUUU", selection_sha=SELECTION,
+        conn, station_id="ZUUU", cross_artifact_id=ARTIFACT, selection_sha=SELECTION,
         registry_family_by_system=REGISTRY, family_caps=caps,
     ) == REGISTRY
 
@@ -156,7 +160,7 @@ def test_an_artifact_minted_before_the_split_serves_under_its_certified_map() ->
     conn = _predictions([("ZUUU", SELECTION, certified)])
     caps = {"ECMWF": 0.75, "NOAA_GEFS": 0.75}
     assert served_family_map(
-        conn, station_id="ZUUU", selection_sha=SELECTION,
+        conn, station_id="ZUUU", cross_artifact_id=ARTIFACT, selection_sha=SELECTION,
         registry_family_by_system=REGISTRY, family_caps=caps,
     ) == certified
 
@@ -166,20 +170,36 @@ def test_a_map_nobody_certified_fails_closed() -> None:
     # No certified predictions at all.
     with pytest.raises(ContractError, match="native_family_map_uncertified"):
         served_family_map(
-            _predictions([]), station_id="ZUUU", selection_sha=SELECTION,
+            _predictions([]), station_id="ZUUU", cross_artifact_id=ARTIFACT, selection_sha=SELECTION,
             registry_family_by_system=REGISTRY, family_caps=caps,
         )
     # Certified under a map whose families the artifact's caps do not name.
     with pytest.raises(ContractError, match="native_family_map_uncertified"):
         served_family_map(
             _predictions([("ZUUU", SELECTION, REGISTRY)]),
-            station_id="ZUUU", selection_sha=SELECTION,
+            station_id="ZUUU", cross_artifact_id=ARTIFACT, selection_sha=SELECTION,
             registry_family_by_system=REGISTRY, family_caps=caps,
         )
     # Another station's predictions are not this artifact's.
     with pytest.raises(ContractError, match="native_family_map_uncertified"):
         served_family_map(
             _predictions([("KLGA", SELECTION, {**REGISTRY, AIFS: "ECMWF"})]),
-            station_id="ZUUU", selection_sha=SELECTION,
+            station_id="ZUUU", cross_artifact_id=ARTIFACT, selection_sha=SELECTION,
             registry_family_by_system=REGISTRY, family_caps=caps,
         )
+
+
+def test_the_certified_map_is_a_seek_on_the_artifact_index() -> None:
+    # The first cut selected by station and selection sha, which walked every
+    # prediction the station had minted: ~11 s a compile on the live store.
+    conn = sqlite3.connect(":memory:")
+    apply_production_ssot_schema(conn)
+    plan = " ".join(
+        str(row[-1])
+        for row in conn.execute(
+            "EXPLAIN QUERY PLAN " + CERTIFIED_FAMILY_MAP_SQL,
+            ("a", "ZUUU", SELECTION),
+        )
+    )
+    assert "USING INDEX" in plan and "cross_ensemble_artifact_id=?" in plan
+    assert "SCAN" not in plan
