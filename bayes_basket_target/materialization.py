@@ -925,7 +925,9 @@ def materialize_p0m_observed(
     # v12 (charter 204, 2026-09-23): the root (P0 v10) -- AIFS ENS seated.
     # v13 (charter 210, 2026-09-23): the root (P0 v11) -- the radiation shift
     # at the fleet coefficient on every artifact; same declared start.
-    posterior_version: str = "p0m_taf_likelihood_v16",
+    # v17 (charter 217, 2026-09-25): the root (P0 v15) -- AIFS ENS its own
+    # family.
+    posterior_version: str = "p0m_taf_likelihood_v17",
     observed_hard_excluded_buckets: Sequence[str] = (),
     observed_running_high_c: float | None = None,
     taf_likelihood_artifact: Mapping[str, Any] | None = None,
@@ -1305,7 +1307,8 @@ def materialize_p1(
     # retired from every reader, so the pooled likelihood's samples change.
     # v21 (2026-09-23, charter 204): the root again (P0 v10, P0-M v12).
     # v22 (2026-09-23, charter 210): the root again (P0 v11, P0-M v13).
-    posterior_version: str = "p1_joint_likelihood_v25",
+    # v26 (2026-09-25, charter 217): the root again (P0 v15, P0-M v17).
+    posterior_version: str = "p1_joint_likelihood_v26",
     # {"features": ..., "artifact": ..., "regional_system_id": ...}: the
     # step's observation-side feature vector and the fitted likelihood,
     # handed in for the reason every fitted table is -- a replay must rebuild

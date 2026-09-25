@@ -344,6 +344,12 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # it loaded this code from the tree two minutes before the commit
         # (01:08:39Z), and the first 216 certificates are 01:06:18Z.
         "calibrated_native_cross_ensemble_p0_v14": "2026-09-25T02:00:00Z",
+        # Charter 217: AIFS ENS is its own independence family (user ruling
+        # 2026-09-25).  Declared past the push and past the restart that
+        # deploys it; artifacts minted before the split keep serving under
+        # their certified map until the OOS rotation re-mints them, and those
+        # envelopes are not evidence for this version.
+        "calibrated_native_cross_ensemble_p0_v15": "2026-09-25T06:00:00Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
@@ -373,6 +379,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p0m_taf_likelihood_v15": "2026-09-24T16:30:00Z",
         # Charter 216: root bump at the instant P0 v14 declares.
         "p0m_taf_likelihood_v16": "2026-09-25T02:00:00Z",
+        # Charter 217: root bump at the instant P0 v15 declares.
+        "p0m_taf_likelihood_v17": "2026-09-25T06:00:00Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
@@ -421,6 +429,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p1_joint_likelihood_v24": "2026-09-24T16:30:00Z",
         # Charter 216: the eleventh root bump, at the instant P0 v14 declares.
         "p1_joint_likelihood_v25": "2026-09-25T02:00:00Z",
+        # Charter 217: the twelfth root bump, at the instant P0 v15 declares.
+        "p1_joint_likelihood_v26": "2026-09-25T06:00:00Z",
     },
 }
 

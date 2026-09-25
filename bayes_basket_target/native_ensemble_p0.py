@@ -168,7 +168,10 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # the settled day-ahead roots, half each, the seat weights as prior.
 # Charter 216: every native ensemble member is calibrated by the shrunk
 # bucket log-loss refit of its centre and spread.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v14"
+# Charter 217: AIFS ENS is its own independence family -- the stable pool's
+# baseline gives it a family's share instead of half of ECMWF's, it is capped
+# on its own, and IFS with AIFS is a two-family pool.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v15"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -347,6 +350,60 @@ def _json(value: Any) -> str:
         sort_keys=True,
         separators=(",", ":"),
     )
+
+
+def served_family_map(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    selection_sha: str,
+    registry_family_by_system: Mapping[str, str],
+    family_caps: Mapping[str, float],
+) -> dict[str, str]:
+    """The family map a P0 is served under: the one its artifact was certified under.
+
+    Charter 217 moved AIFS ENS out of the ECMWF family into its own.  An
+    artifact minted before that was weighted, capped and gated on the old
+    map, and its caps name only the old families, so validating it against
+    the registry's new map would fail closed on every scope AIFS sits in
+    until the OOS rotation re-mints it.  When a registered family is absent
+    from the artifact's caps, the map is therefore taken whole from the
+    artifact's own certified predictions -- the ``system_family_ids_json``
+    its holdout rows were written with.  When the registry and the artifact
+    agree, as they do for every artifact minted under the current map, the
+    registry is the answer and nothing more is read.
+    """
+
+    families = {
+        str(system_id): str(family_id)
+        for system_id, family_id in registry_family_by_system.items()
+    }
+    if all(family_id in family_caps for family_id in families.values()):
+        return families
+    row = conn.execute(
+        "SELECT system_family_ids_json "
+        "FROM calibration_cross_native_ensemble_oos_prediction "
+        "WHERE station_id=? AND selection_evidence_sha256=? LIMIT 1",
+        (station_id, selection_sha),
+    ).fetchone()
+    try:
+        certified = json.loads(str(row[0])) if row is not None else None
+    except (TypeError, ValueError):
+        certified = None
+    if (
+        not isinstance(certified, Mapping)
+        or any(system_id not in certified for system_id in families)
+        or any(
+            str(certified[system_id]) not in family_caps
+            for system_id in families
+        )
+    ):
+        raise ContractError(
+            "FAIL_CLOSED_NO_P0:native_family_map_uncertified"
+        )
+    return {
+        system_id: str(certified[system_id]) for system_id in families
+    }
 
 
 def _season_bin(day: str) -> str:
@@ -3151,6 +3208,15 @@ def compile_native_ensemble_p0(
             "bias_peer_count": len(peer_biases),
             "notes": borrow_notes,
         }
+    # Charter 217: the families this P0 is weighed, capped and recorded
+    # under are the ones its artifact was certified under.
+    family_by_system = served_family_map(
+        conn,
+        station_id=station_id,
+        selection_sha=selection_sha,
+        registry_family_by_system=family_by_system,
+        family_caps=family_caps,
+    )
     # Charter 199: the seat's weights re-fitted as of this decision on the
     # settled station-days knowable now -- the centre's squared error over
     # this station and the pooled CRPS over the fleet then this station,

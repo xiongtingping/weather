@@ -160,10 +160,13 @@ def test_capture_reads_each_field_once_and_takes_the_in_day_maximum(fake_transpo
 
 
 def test_system_identity_is_the_registered_ssot_row() -> None:
-    # The row registered 2026-07-31; a reworded identity would conflict.
-    assert content_sha256(aifs.SYSTEM_IDENTITY) == (
+    # The row registered 2026-07-31 under the ECMWF family; charter 217 moved
+    # it to AIFS's own family and changed nothing else.
+    pre_split = {**aifs.SYSTEM_IDENTITY, "independence_family_id": "ECMWF"}
+    assert content_sha256(pre_split) == aifs.PRE_SPLIT_REGISTRY_CONTENT_SHA256 == (
         "d38cd419f5b9ffab939027fd32c33c95d6e471e130afa27e5c64a00410375c3c"
     )
+    assert aifs.SYSTEM_IDENTITY["independence_family_id"] == "ECMWF_AIFS"
 
 
 def test_ingest_writes_51_rows_replays_and_refuses_a_changed_value(fake_transport) -> None:

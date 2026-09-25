@@ -75,7 +75,16 @@ MULTISTATION_SCHEMA = (
     "ecmwf_aifs_ens_official_historical_multistation_members_v1"
 )
 SYSTEM_ID = "ECMWF_AIFS_ENS_GLOBAL"
-INDEPENDENCE_FAMILY_ID = "ECMWF"
+# Charter 217 (user ruling 2026-09-25, 「把 IFS 和 AIFS 拆成两个家族」): AIFS
+# ENS is its own independence family.  Registered on 2026-07-31 under
+# "ECMWF", it shared one family share with IFS PF50 in the stable pool's
+# baseline (charter 134), one 0.75 cap, and could not make a two-family pool
+# with it.  The provider stays ECMWF: transport and publication are PF50's.
+INDEPENDENCE_FAMILY_ID = "ECMWF_AIFS"
+PRE_SPLIT_INDEPENDENCE_FAMILY_ID = "ECMWF"
+PRE_SPLIT_REGISTRY_CONTENT_SHA256 = (
+    "d38cd419f5b9ffab939027fd32c33c95d6e471e130afa27e5c64a00410375c3c"
+)
 PROVIDER_ID = "ECMWF"
 # The same official objects as PF50 through the same endpoints; the OOS
 # reader's transport allowlist already admits it.
@@ -612,10 +621,11 @@ def capture_aifs_station_days(
     return {**identity, "content_sha256": content_sha256(identity)}
 
 
-# The SSOT row, exactly as it was registered on 2026-07-31 (content sha
-# d38cd419...).  Its wording predates the official lane -- it names the
-# republisher's member contract -- but it describes the same 51 members of
-# the same system, and a content-addressed row cannot be reworded in place.
+# The SSOT row as registered on 2026-07-31 (content sha d38cd419...), with
+# one field changed by charter 217: the independence family.  Its wording
+# predates the official lane -- it names the republisher's member contract --
+# but it describes the same 51 members of the same system, and apart from
+# that one sanctioned relabel a content-addressed row is never reworded.
 SYSTEM_IDENTITY = {
     "ensemble_system_id": SYSTEM_ID,
     "canonical_name": "ECMWF AIFS 0.25 Ensemble",
@@ -631,7 +641,67 @@ SYSTEM_IDENTITY = {
 }
 
 
+def relabel_pre_split_registration(conn: sqlite3.Connection) -> bool:
+    """Move the registered row from the ECMWF family to AIFS's own (charter 217).
+
+    The registry is append-only and keyed by system, so the family of a
+    registered system has no insert-only path; this is the one sanctioned
+    edit.  It acts only on the exact pre-split row (its content sha), changes
+    the family and the content sha and nothing else, and puts the no-update
+    guard back verbatim, all inside one savepoint.  True when it relabelled,
+    False when there was nothing to do.
+
+    Artifacts minted before it keep serving under the map they were certified
+    under (``native_ensemble_p0.served_family_map``) until the OOS rotation
+    re-mints them under the split.
+    """
+
+    row = conn.execute(
+        "SELECT content_sha256 FROM calibration_native_ensemble_system "
+        "WHERE ensemble_system_id=?",
+        (SYSTEM_ID,),
+    ).fetchone()
+    if row is None or str(row[0]) != PRE_SPLIT_REGISTRY_CONTENT_SHA256:
+        return False
+    pre_split_identity = {
+        **SYSTEM_IDENTITY,
+        "independence_family_id": PRE_SPLIT_INDEPENDENCE_FAMILY_ID,
+    }
+    if content_sha256(pre_split_identity) != PRE_SPLIT_REGISTRY_CONTENT_SHA256:
+        raise ContractError("aifs_ens_pre_split_registration_unreproducible")
+    guard = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='trigger' "
+        "AND name='calibration_native_system_no_update'"
+    ).fetchone()
+    if guard is None or not str(guard[0] or "").strip():
+        raise ContractError("aifs_ens_registry_update_guard_missing")
+    conn.execute("SAVEPOINT aifs_ens_family_split")
+    try:
+        conn.execute("DROP TRIGGER calibration_native_system_no_update")
+        cursor = conn.execute(
+            "UPDATE calibration_native_ensemble_system "
+            "SET independence_family_id=?,content_sha256=? "
+            "WHERE ensemble_system_id=? AND content_sha256=?",
+            (
+                INDEPENDENCE_FAMILY_ID,
+                content_sha256(SYSTEM_IDENTITY),
+                SYSTEM_ID,
+                PRE_SPLIT_REGISTRY_CONTENT_SHA256,
+            ),
+        )
+        conn.execute(str(guard[0]))
+        if cursor.rowcount != 1:
+            raise ContractError("aifs_ens_registry_relabel_failed")
+    except BaseException:
+        conn.execute("ROLLBACK TO SAVEPOINT aifs_ens_family_split")
+        conn.execute("RELEASE SAVEPOINT aifs_ens_family_split")
+        raise
+    conn.execute("RELEASE SAVEPOINT aifs_ens_family_split")
+    return True
+
+
 def ensure_system(conn: sqlite3.Connection) -> None:
+    relabel_pre_split_registration(conn)
     _insert_content_addressed(
         conn,
         table="calibration_native_ensemble_system",
