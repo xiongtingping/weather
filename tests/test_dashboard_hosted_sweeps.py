@@ -434,5 +434,15 @@ def test_one_failed_turn_is_red_but_not_stuck(tmp_path, monkeypatch):
     once = read(33.8, 9.1)  # the 2026-09-18 pair, read at 09-19T05:36Z
     assert once["stuck"] is False
     assert once["health"] == "red" and "failed" in once["note"]
+    # The failure's own last line, kept by the resident in the clocks file.
+    clocks = json.loads(path.read_text(encoding="utf-8"))
+    clocks["calibration_refit"]["last_failure_tail"] = (
+        "refit P0\nKeyError: 'summary'"
+    )
+    path.write_text(json.dumps(clocks), encoding="utf-8")
+    told = _lane(
+        C.collect_hosted_sweeps(sqlite3.connect(":memory:")), "calibration_refit",
+    )
+    assert told["note"] == "上次尝试 failed：KeyError: 'summary'"
     # A second failed turn a day later is the pattern the word names.
     assert read(57.8, 9.1)["stuck"] is True

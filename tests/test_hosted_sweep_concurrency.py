@@ -503,6 +503,24 @@ def test_every_attempt_advances_the_attempt_stamp_and_only_success_the_other(
     assert ok["attempted_at_utc"] == ok["completed_at_utc"] == "2026-09-09T04:00:00Z"
 
 
+def test_a_failed_attempt_keeps_why_it_failed_until_a_success(daemon) -> None:
+    """The output tail lives in the status file, which a restart empties;
+    on 2026-09-25 two red lanes had lost their reasons by the time anyone
+    asked.  The clocks file survives a restart, so the reason goes there."""
+
+    failed = daemon.hosted_sweep_clock_entry(
+        {}, {"state": "failed", "duration_sec": 48.5,
+             "output_tail": "step 2\nsqlite3.OperationalError: database is locked"},
+        name="delta_v2_authority", now_utc="2026-09-24T19:32:31Z",
+    )
+    assert failed["last_failure_tail"].endswith("database is locked")
+    ok = daemon.hosted_sweep_clock_entry(
+        failed, {"state": "ok", "duration_sec": 40.0},
+        name="delta_v2_authority", now_utc="2026-09-25T19:32:31Z",
+    )
+    assert "last_failure_tail" not in ok
+
+
 # Which upstream products each capture lane is responsible for.  Named here
 # rather than derived, because the mapping is the claim: a lane's interval is
 # honest only against the cadence of the models it actually fetches.

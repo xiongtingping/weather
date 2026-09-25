@@ -1359,6 +1359,16 @@ def hosted_sweep_clock_entry(
     entry["continue_requested"] = bool(
         state == "ok" and result.get("continue")
     )
+    # Why it failed, kept where a restart cannot take it.  The run's output
+    # tail otherwise lives only in the status file, which a restart empties:
+    # on 2026-09-25 delta_v2_authority and paper_ledger_aligned both read
+    # "上次尝试 failed" on the board and neither reason survived to be read.
+    if state == "ok":
+        entry.pop("last_failure_tail", None)
+    else:
+        entry["last_failure_tail"] = str(
+            result.get("output_tail") or result.get("reason") or ""
+        ).strip()[-300:]
     duration = result.get("duration_sec")
     if isinstance(duration, (int, float)):
         entry["last_duration_sec"] = round(float(duration), 1)

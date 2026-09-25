@@ -5073,7 +5073,16 @@ def collect_hosted_sweeps(conn: sqlite3.Connection) -> dict[str, Any]:
         # section rather than as a rounding boundary.
         shown = None if overdue is None else round(overdue, 2)
         if state and state != "ok":
-            health, note = "red", f"上次尝试 {state}"
+            # The failure's own last line, which the resident keeps in the
+            # clocks file (``last_failure_tail``) so a restart cannot lose it.
+            tail_lines = [
+                line.strip()
+                for line in str(clock.get("last_failure_tail") or "").splitlines()
+                if line.strip()
+            ]
+            health, note = "red", f"上次尝试 {state}" + (
+                f"：{tail_lines[-1][-120:]}" if tail_lines else ""
+            )
         elif stuck:
             health, note = "red", "在轮到自己的回合里失败——占着写域"
         elif shown is not None and shown >= 3.0:
