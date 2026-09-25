@@ -123,7 +123,7 @@ report_pause_flag() {
   # job: a set flag means the order service refuses every submission, and the
   # only way that used to surface was an order coming back SUBMIT_REFUSED.
   if [ -f "$PAUSE_FLAG" ]; then
-    echo "!! live submission is PAUSED -- $PAUSE_FLAG present since $(stat -f '%Sm' -t '%Y-%m-%dT%H:%M:%SZ' "$PAUSE_FLAG" 2>/dev/null || echo unknown)"
+    echo "!! live submission is PAUSED -- $PAUSE_FLAG present since $(TZ=UTC stat -f '%Sm' -t '%Y-%m-%dT%H:%M:%SZ' "$PAUSE_FLAG" 2>/dev/null || echo unknown)"
     echo "   every order returns clob_order_service_live_paused until the board lowers it"
   else
     echo "live submission: not paused (no $PAUSE_FLAG)"
