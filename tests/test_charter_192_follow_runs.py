@@ -523,6 +523,16 @@ def test_a_follow_run_older_than_the_pass_run_is_never_taken(monkeypatch, tmp_pa
 # --------------------------------------------------------------------------
 # The follow lane: banks the runs, off the pass.
 # --------------------------------------------------------------------------
+def _no_ai_network(monkeypatch) -> None:
+    """AIFS ENS / AIGEFS runs on this lane fail like an unpublished object."""
+
+    def refuse(**_kw):
+        raise RuntimeError("HTTPStatusError:404")
+
+    monkeypatch.setattr(capture, "capture_aifs_station_days", refuse)
+    monkeypatch.setattr(capture, "capture_aigefs_station_days", refuse)
+
+
 def test_the_follow_lane_banks_each_due_run_once_and_only_where_it_covers(monkeypatch, tmp_path) -> None:
     _install_station_registry(monkeypatch)
     rows = _registry()["rows"]
@@ -557,6 +567,9 @@ def test_the_follow_lane_banks_each_due_run_once_and_only_where_it_covers(monkey
     monkeypatch.setattr(capture, "capture_icon_eps_station_days", fake_icon)
     monkeypatch.setattr(capture, "capture_geps_station_days", fake_eccc)
     monkeypatch.setattr(capture, "capture_ecmwf_station_days", fake_ecmwf)
+    # Charters 204/212 put AIFS ENS and AIGEFS on this lane after the test
+    # was written; unfaked, their real collectors went to the network.
+    _no_ai_network(monkeypatch)
     written: list[str] = []
     real_write = capture.write_bounded_json_if_changed
     monkeypatch.setattr(capture, "write_bounded_json_if_changed",
@@ -611,6 +624,7 @@ def test_a_same_day_follow_run_is_banked_for_the_stations_it_can_cover(monkeypat
     monkeypatch.setattr(capture, "capture_icon_eps_station_days", fake_icon)
     monkeypatch.setattr(capture, "capture_geps_station_days", lambda **_kw: (_ for _ in ()).throw(RuntimeError("stop")))
     monkeypatch.setattr(capture, "capture_ecmwf_station_days", lambda **_kw: (_ for _ in ()).throw(RuntimeError("stop")))
+    _no_ai_network(monkeypatch)
     registry_path = tmp_path / "registry.json"
     registry_path.write_text("{}", encoding="utf-8")
     capture.capture_follow_runs(
@@ -745,9 +759,11 @@ def test_the_worker_queues_one_follow_capture_per_date_off_the_pass(monkeypatch,
     # a rung every family already reads at its own cycle queues nothing once
     # the per-event-date runs (ECMWF D-3 18Z) are on disk ...
     (tmp_path / "ecmwf_2026-09-24_d3_18z.json").write_text("{}")
-    # ... and charter 204's AIFS ENS runs, followed per event date too
-    for lead, hour in follow_run.event_follow_runs(follow_run.AIFS_FAMILY):
-        (tmp_path / f"aifs_2026-09-24_d{lead}_{hour:02d}z.json").write_text("{}")
+    # ... and charter 204's AIFS ENS and charter 212's AIGEFS runs, followed
+    # per event date too (written before AIGEFS joined, so it queued AIGEFS)
+    for family in (follow_run.AIFS_FAMILY, follow_run.AIGEFS_FAMILY):
+        for lead, hour in follow_run.event_follow_runs(family):
+            follow_run.follow_archive_path(tmp_path, family, "2026-09-24", lead, hour).write_text("{}")
     assert enqueue(host, **{**kwargs, "event_date": "2026-09-24",
                             "run_ladder": [(1, None, _t("2026-09-23", 0))]}) == "NO_FOLLOW_RUNG"
     # ... and still queues for a date whose D-3 18Z is missing

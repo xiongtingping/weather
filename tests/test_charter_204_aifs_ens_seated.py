@@ -183,7 +183,10 @@ def test_follow_capture_banks_aifs_runs_through_the_collector(monkeypatch, tmp_p
         raise AssertionError("only AIFS is due in this window")
 
     monkeypatch.setattr(capture, "capture_aifs_station_days", fake_capture)
-    for name in ("capture_icon_eps_station_days", "capture_ecmwf_station_days", "capture_geps_station_days"):
+    # AIGEFS joined this lane with charter 212, after this test; unlisted,
+    # its real collector went to the network.
+    for name in ("capture_icon_eps_station_days", "capture_ecmwf_station_days", "capture_geps_station_days",
+                 "capture_aigefs_station_days"):
         monkeypatch.setattr(capture, name, other_family_capture)
     monkeypatch.setattr(capture, "load_market_registry_snapshot", lambda _p: {"rows": []})
     monkeypatch.setattr(capture, "build_station_scopes", lambda *_a, **_k: [
