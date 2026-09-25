@@ -1066,7 +1066,16 @@ def _production_health(status: Mapping[str, Any]) -> dict[str, Any]:
                 reasons.items(), key=lambda kv: -kv[1]
             )[:3]
         )
-        health = "amber"
+        # A scope waiting for its window, or one the economics chose to
+        # hold, is the cycle doing its job; the split is still named.  Only
+        # a reason outside that set -- a stale stage, an expired quote, one
+        # nobody has labelled -- makes the lamp amber.  2026-09-25: all 14
+        # blocked scopes read "P1 入场窗未开" and the banner carried the cycle
+        # as an alert anyway (user: 「还有告警条」).
+        if not reasons or any(
+            name not in BLOCKED_SCOPE_EXPECTED_REASONS for name in reasons
+        ):
+            health = "amber"
         notes.append(
             f"{committed_scope_count} 个 scope 落账，"
             f"{blocked_scope_count} 个逐站阻断"
@@ -12284,6 +12293,17 @@ BLOCKED_SCOPE_REASON_LABELS = {
     "support_floor_after_lift": "抬手后支持集地板拒",
     "no_decision_moment": "非决策时刻",
 }
+# The refusals that are the cycle working, not failing: a scope whose window
+# has not opened or that is not at a decision moment, a P1 still pending,
+# and a basket the economics chose not to build.  ``_production_health``
+# names them but does not light the lamp for them.
+BLOCKED_SCOPE_EXPECTED_REASONS = frozenset({
+    "p1_entry_window_not_open",
+    "no_decision_moment",
+    "preliminary_no_live_p1_pending",
+    "complete_basket_target_not_activated",
+    "complete_basket_delta_not_positive",
+})
 
 
 def _risk_metrics_from_days(

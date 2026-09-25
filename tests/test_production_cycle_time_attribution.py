@@ -223,6 +223,26 @@ def test_the_wait_before_the_last_cycle_is_reported_when_nothing_waits_now() -> 
     assert health["production_health"] == "amber", "over target, under the overdue bound"
 
 
+def test_scopes_only_waiting_for_their_window_do_not_light_the_lamp() -> None:
+    """2026-09-25: every blocked scope read "P1 入场窗未开" -- the cycle
+    working -- and the banner carried it as an alert.  The split is still
+    named; the lamp lights for a fault, not for a schedule."""
+
+    dash = _dashboard()
+    receipt = {**_healthy_receipt(), "stage_timings_ms": {"cycle_total": 200_000.0}}
+    waiting = dash._production_health({"production": receipt})
+    assert waiting["production_health"] == "green"
+    assert "P1 入场窗未开×20" in waiting["production_note"]
+
+    stale = dash._production_health({"production": {
+        **receipt,
+        "blocked_scope_reasons": {
+            "p1_entry_window_not_open": 1, "latest_stage_stale_fail_closed": 13,
+        },
+    }})
+    assert stale["production_health"] == "amber"
+
+
 def test_an_ordinary_handover_is_not_news() -> None:
     """The lanes alternate by design; only a wait past the cycle's own target
     is worth a line, or the alarm is on at all times and read at none."""
