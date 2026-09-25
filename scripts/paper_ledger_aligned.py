@@ -204,6 +204,11 @@ class PaperOrder:
         return self.ended_at is None or _before(at, self.ended_at)
 
 
+#: How many of a station-day's newest decisions the signature question reads
+#: whole (production's resident reads the same tail of its own details).
+SIGNATURE_LOOKBACK = 24
+
+
 @dataclass
 class ChainDay:
     station_id: str
@@ -212,6 +217,29 @@ class ChainDay:
     orders: list[PaperOrder] = field(default_factory=list)
     tilt: tuple[str, float] | None = None
     last_action: tuple[str, str] | None = None
+
+    def remember(self, created: str, details: Mapping[str, Any]) -> None:
+        """Record a decision's details for the chain questions that read them.
+
+        Only the newest ``SIGNATURE_LOOKBACK`` are read whole (the prior
+        core, the last signature); every older one is read for two fields of
+        its signature -- its stage and whether it was a decision moment.  So
+        past twice the lookback a decision keeps just those two: a week's
+        walk held some sixteen thousand whole details (4.8 KB of JSON each on
+        average, 117 KB at most) for the whole run.
+        """
+
+        self.decisions.append((created, dict(details)))
+        index = len(self.decisions) - 2 * SIGNATURE_LOOKBACK - 1
+        if index >= 0:
+            when, old = self.decisions[index]
+            signature = old.get("decision_signature")
+            self.decisions[index] = (when, {} if not isinstance(signature, Mapping) else {
+                "decision_signature": {
+                    "stage": signature.get("stage"),
+                    "is_decision_moment": signature.get("is_decision_moment"),
+                },
+            })
 
 
 # --------------------------------------------------------------------------
@@ -362,7 +390,7 @@ class PaperChainState:
             return self._order_ends(station_id, event_date, max(moments, key=_instant)) if moments else 0
 
         return select_last_decision_signature(
-            (details for _when, details in reversed(rows[-24:])),
+            (details for _when, details in reversed(rows[-SIGNATURE_LOOKBACK:])),
             stage=stage,
             ends_now=self._order_ends(station_id, event_date, self.before_utc),
             ends_at_last_moment=_ends_at_last_moment,
@@ -1005,7 +1033,7 @@ class AlignedLedger:
             # a refusal of the store ("database is locked") or of the stage
             # gate before the compile.  It is on the chain's history (the
             # next decision's prior core reads it), so it is on the ledger's.
-            chain.decisions.append((created, dict(row["details"])))
+            chain.remember(created, row["details"])
             out.update(entry="production_record", status=row["decided_state"], reason_codes=row["reason_codes"])
             return out
         recorded_plan = dict(feature.get("plan") or {})
@@ -1090,7 +1118,7 @@ class AlignedLedger:
             )
         except Exception as exc:  # noqa: BLE001 -- a refusal is a decision, named
             reason = f"{type(exc).__name__}:{exc}"[:200]
-            chain.decisions.append((created, {"schema": "paper_ledger_compile_refusal_v1", "reason": reason}))
+            chain.remember(created, {"schema": "paper_ledger_compile_refusal_v1", "reason": reason})
             out.update(status="blocked", reason_codes=[reason], matches_production=False, first_difference="compile_raised")
             return out
         plan = compiled.get("plan") or {}
@@ -1117,7 +1145,7 @@ class AlignedLedger:
                 "reason_codes": reasons,
             }
             status, intents, plan_payload = "blocked", [], plan
-        chain.decisions.append((created, details))
+        chain.remember(created, details)
         diff = _first_difference(_normalized(recorded_plan), _normalized(plan))
         out.update(
             status=status, reason_codes=reasons, commit_path=path,

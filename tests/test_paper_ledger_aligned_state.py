@@ -434,3 +434,22 @@ def test_the_decision_list_is_seeks_whole_days_in_production_order() -> None:
     ids = [r["decision_id"] for r in L._production_decisions(conn, since_rowid=4)]
     assert ids == ["d1", "d5"]
     assert [r["in_range"] for r in L._production_decisions(conn, since_rowid=4)] == [False, True]
+
+
+def test_a_day_keeps_its_newest_details_whole_and_the_rest_as_moments() -> None:
+    day = L.ChainDay(station_id=ST, event_date=DAY)
+    total = 2 * L.SIGNATURE_LOOKBACK + 5
+    for index in range(total):
+        day.remember(f"t{index:03d}", {
+            "decision_signature": {"stage": "P0", "is_decision_moment": index % 2 == 0,
+                                   "edge_state": "x" * 50},
+            "heavy": "y" * 1000,
+        })
+    kept_whole = [d for _w, d in day.decisions if "heavy" in d]
+    assert len(kept_whole) == 2 * L.SIGNATURE_LOOKBACK
+    # What the signature question reads whole is still whole ...
+    assert all("heavy" in d for _w, d in day.decisions[-L.SIGNATURE_LOOKBACK:])
+    # ... and every older decision still says its stage and its moment.
+    first = day.decisions[0][1]
+    assert first == {"decision_signature": {"stage": "P0", "is_decision_moment": True}}
+    assert [w for w, _d in day.decisions] == [f"t{i:03d}" for i in range(total)]
