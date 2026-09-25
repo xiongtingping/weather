@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 import math
 from typing import Any
 
+from .canonical_contract import FORMAL_TRUTH_LANES
 from .contracts import ContractError, content_sha256
 from .model_arrival import (
     SCHEMA as ARRIVAL_SCHEMA,
@@ -227,7 +228,7 @@ def _truth_index(
         if (
             not station
             or not event_date
-            or source_lane != "AWC"
+            or source_lane not in FORMAL_TRUTH_LANES
             or not timezone_name
             or str(raw.get("settlement_definition") or "official_daily_tmax_c")
             != "official_daily_tmax_c"

@@ -853,7 +853,10 @@ def _truth(conn: sqlite3.Connection) -> dict[tuple[str, str], float]:
             "  SELECT MAX(x.revision_no)"
             "  FROM calibration_station_daily_high_truth AS x"
             "  WHERE x.station_id=t.station_id AND x.local_date=t.local_date"
-            "  AND x.source_lane=t.source_lane"
+            # Charter 225: the newest revision across lanes -- revision
+            # numbers are one sequence per station-day, so a settlement-
+            # source revision supersedes the AWC one instead of standing
+            # beside it as a second "newest".
             "  AND x.settlement_definition=t.settlement_definition)"
         )
     }

@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from .canonical_contract import FORMAL_TRUTH_LANES
 from .contracts import ContractError, content_sha256
 from .station_policy_candidate import assert_candidate_bundle_boundary
 from .station_policy_forward_outcome_binding import (
@@ -298,7 +299,7 @@ def _label_rows(
         truth_qc_status = str(truth_values.get("qc_status") or "").strip().upper()
         official_awc_truth = (
             truth_table_usable
-            and truth_source_lane == "AWC"
+            and truth_source_lane in FORMAL_TRUTH_LANES
             and truth_qc_status == "ACCEPTED"
             and bool(str(truth_values.get("content_sha256") or "").strip())
         )

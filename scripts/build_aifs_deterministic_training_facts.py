@@ -28,6 +28,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.fleet import expected_station_count
+from bayes_basket_target.canonical_contract import FORMAL_TRUTH_LANES_SQL  # noqa: E402
 from bayes_basket_target.aifs_deterministic_oos import (  # noqa: E402
     PROVIDER_ID,
     build_aifs_deterministic_training_facts,
@@ -239,7 +240,7 @@ def _read_closed_awc_truths(
           WHERE t.station_id IN ({station_placeholders})
             AND t.local_date IN ({date_placeholders})
             AND t.settlement_definition='official_daily_tmax_c'
-            AND t.source_lane='AWC'
+            AND t.source_lane IN {FORMAL_TRUTH_LANES_SQL}
             AND t.qc_status='ACCEPTED'
             AND t.timestamps_complete=1
             AND t.authority_scope IN (?,?)

@@ -52,6 +52,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target import taf_likelihood as TL  # noqa: E402
+from bayes_basket_target.canonical_contract import FORMAL_TRUTH_LANES_SQL  # noqa: E402
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.native_ensemble_training_facts import (  # noqa: E402
     taf_restatement_is_current,
@@ -113,7 +114,7 @@ def load_truth_revisions(
         "SELECT station_id, local_date, revision_no, official_tmax_c,"
         " canonical_committed_at_utc"
         " FROM calibration_station_daily_high_truth"
-        " WHERE source_lane='AWC' AND qc_status='ACCEPTED'"
+        " WHERE source_lane IN " + FORMAL_TRUTH_LANES_SQL + " AND qc_status='ACCEPTED'"
         " AND official_tmax_c IS NOT NULL AND canonical_committed_at_utc IS NOT NULL"
     ):
         out[(str(station), str(day))].append(

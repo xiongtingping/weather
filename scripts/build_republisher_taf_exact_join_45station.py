@@ -31,6 +31,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.fleet import expected_station_count
+from bayes_basket_target.canonical_contract import FORMAL_TRUTH_LANES_SQL  # noqa: E402
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.resource_bounds import (  # noqa: E402
     MAX_JSON_INPUT_BYTES,
@@ -186,19 +187,20 @@ def _truth_index(conn: sqlite3.Connection, stations: set[str], dates: set[str], 
     dm = ",".join("?" for _ in dates)
     rows = conn.execute(
         "SELECT truth_id,station_id,local_date,official_tmax_c,revision_no,"
-        "canonical_committed_at_utc,content_sha256,observation_ids_json "
+        "canonical_committed_at_utc,content_sha256,observation_ids_json,source_lane "
         "FROM calibration_station_daily_high_truth WHERE station_id IN (" + sm + ") "
-        "AND local_date IN (" + dm + ") AND source_lane='AWC' AND qc_status='ACCEPTED' "
+        "AND local_date IN (" + dm + ") AND source_lane IN " + FORMAL_TRUTH_LANES_SQL + " AND qc_status='ACCEPTED' "
         "AND authority_scope IN ('FORMAL_NATIVE_ELIGIBLE','NO_LIVE_REPLAY_CANDIDATE') "
         "ORDER BY station_id,local_date,revision_no DESC,canonical_committed_at_utc DESC",
         tuple(sorted(stations)) + tuple(sorted(dates)),
     ).fetchall()
     result: dict[tuple[str, str], dict[str, Any]] = {}
+    superseded: set[tuple[str, str]] = set()
     timezones = _registry_timezones(conn)
     for row in rows:
         station, day = str(row[1]).upper(), str(row[2])
         key = (station, day)
-        if key in result:
+        if key in result or key in superseded:
             continue
         tz_name = timezones.get(station)
         if not tz_name:
@@ -206,6 +208,12 @@ def _truth_index(conn: sqlite3.Connection, stations: set[str], dates: set[str], 
         committed = _utc(row[5], "truth_committed")
         closed = _utc(settlement_day_window(day, tz_name)["target_day_end_utc"], "truth_closed")
         if committed > as_of or closed > as_of or committed < closed:
+            continue
+        # Charter 225: the newest formal revision as of ``as_of`` decides; a
+        # settlement-source repair leaves no AWC truth for this AWC-bound
+        # sample.
+        if str(row[8]) != "AWC":
+            superseded.add(key)
             continue
         try:
             observations = json.loads(str(row[7] or "[]"))

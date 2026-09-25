@@ -205,13 +205,18 @@ CREATE TABLE IF NOT EXISTS calibration_station_market_timezone_binding (
   content_sha256 TEXT NOT NULL CHECK(length(content_sha256)=64)
 );
 
+-- Charter 225: SETTLEMENT_SOURCE is a formal truth lane of its own -- a day
+-- re-settled from the market's official settlement page where the AWC truth
+-- missed the bucket the market paid.  Live databases are widened by
+-- scripts/widen_truth_lane_settlement_source.py.
 CREATE TABLE IF NOT EXISTS calibration_station_daily_high_truth (
   truth_id TEXT PRIMARY KEY,
   station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
   local_date TEXT NOT NULL,
   settlement_timezone TEXT NOT NULL,
   official_tmax_c REAL NOT NULL,
-  source_lane TEXT NOT NULL CHECK(source_lane IN ('AMSC','AWC')),
+  source_lane TEXT NOT NULL
+    CHECK(source_lane IN ('AMSC','AWC','SETTLEMENT_SOURCE')),
   settlement_definition TEXT NOT NULL,
   revision_no INTEGER NOT NULL CHECK(revision_no>=0),
   published_at_utc TEXT,

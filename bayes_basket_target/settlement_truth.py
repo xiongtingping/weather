@@ -27,6 +27,7 @@ from .canonical_contract import (
     CONTRACT_VERSION,
     CanonicalTruthFact,
     SCHEMA as CANONICAL_CONTRACT_SCHEMA,
+    SETTLEMENT_SOURCE_TRUTH_LANE,
 )
 from .canonical_ingress import (
     AWC_DAILY_TRUTH_PROJECTION_SCHEMA,
@@ -443,6 +444,26 @@ def materialize_settled_station_truth(
             name="settlement_truth_as_of_utc",
         ),
     )
+    # Charter 225: a day re-settled from the market's own settlement source
+    # stays settled there.  AWC evidence that grows later cannot overturn what
+    # the market paid, so this writer does not append over it.
+    standing_lane = target_conn.execute(
+        "SELECT source_lane FROM calibration_station_daily_high_truth "
+        "WHERE station_id=? AND local_date=? AND qc_status='ACCEPTED' "
+        "AND settlement_definition='official_daily_tmax_c' "
+        "ORDER BY revision_no DESC LIMIT 1",
+        (station, day),
+    ).fetchone()
+    if standing_lane is not None and str(standing_lane[0]) == SETTLEMENT_SOURCE_TRUTH_LANE:
+        return {
+            "schema": SCHEMA,
+            "state": "settlement_source_truth_stands",
+            "station_id": station,
+            "event_date": day,
+            "wrote": False,
+            "calls_order_gateway": False,
+            "orders_submitted": 0,
+        }
     timezone_name, source_lane, registry_snapshot_sha = _settlement_scope(
         target_conn,
         station_id=station,

@@ -19,6 +19,7 @@ import shutil
 import sqlite3
 from typing import Any, Mapping, Sequence
 
+from .canonical_contract import FORMAL_TRUTH_LANES
 from .canonical_contract import (
     CanonicalActivationFact,
     CanonicalActivationSupersessionFact,
@@ -1773,7 +1774,7 @@ def build_release_artifacts(
             contracts_by_activation[activation.activation_content_sha256] = contract
         for model in contract.model_facts:
             truth = truths.get((model.station_id, model.event_date))
-            if truth is None or not truth.closed_day or truth.source_lane != "AWC":
+            if truth is None or not truth.closed_day or truth.source_lane not in FORMAL_TRUTH_LANES:
                 raise CanonicalActivationReleaseError("activation_release_truth_binding_invalid")
             if truth.settlement_timezone != model.settlement_timezone:
                 raise CanonicalActivationReleaseError("activation_release_timezone_mismatch")
@@ -2181,7 +2182,7 @@ def build_truth_gap_release(
             if not isinstance(truth_fact, CanonicalTruthFact):
                 raise CanonicalActivationReleaseError("truth_gap_db_truth_shape_invalid")
             truth_sha = truth_fact.content_sha256
-            if not truth_fact.closed_day or truth_fact.source_lane != "AWC":
+            if not truth_fact.closed_day or truth_fact.source_lane not in FORMAL_TRUTH_LANES:
                 record_blocker = LINEAGE_MISMATCH
             elif truth_fact.settlement_timezone != model.settlement_timezone:
                 record_blocker = LINEAGE_MISMATCH

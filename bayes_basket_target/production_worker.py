@@ -59,6 +59,7 @@ from .atomic_ledger import (
     reset_writer_lock_profile,
     writer_lock_profile,
 )
+from .canonical_contract import FORMAL_TRUTH_LANES_SQL
 from .contracts import (
     MIN_USABLE_FRESHNESS_SECONDS,
     PROBABILITY_MAX_STALE_SECONDS,
@@ -2258,7 +2259,7 @@ def _candidate_ensemble_scopes_without_truth(
         "SELECT 1 FROM calibration_station_daily_high_truth t "
         "WHERE t.station_id=m.station_id "
         "AND t.local_date=m.target_local_date "
-        "AND t.source_lane='AWC' "
+        "AND t.source_lane IN " + FORMAL_TRUTH_LANES_SQL + " "
         "AND t.qc_status='ACCEPTED'"
         ") ORDER BY m.target_local_date,m.station_id LIMIT ?",
         (limit,),
@@ -2530,7 +2531,7 @@ def _native_ensemble_truth_signatures(
         "JOIN calibration_station_daily_high_truth t "
         "ON t.station_id=m.station_id "
         "AND t.local_date=m.target_local_date "
-        "AND t.source_lane='AWC' "
+        "AND t.source_lane IN " + FORMAL_TRUTH_LANES_SQL + " "
         "AND t.qc_status='ACCEPTED'"
         "), selected_stations AS ("
         "SELECT DISTINCT station_id FROM matched "

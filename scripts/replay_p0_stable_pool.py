@@ -45,6 +45,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target import native_ensemble_oos as oos  # noqa: E402
+from bayes_basket_target.canonical_contract import FORMAL_TRUTH_LANES_SQL  # noqa: E402
 from bayes_basket_target.cross_consensus import (  # noqa: E402
     bridged_cross_probability,
     radiation_shift_sigmas_for_lead,
@@ -81,7 +82,7 @@ def _first_truth_commit(conn: sqlite3.Connection, station: str) -> dict[str, dat
     rows = conn.execute(
         "SELECT local_date, MIN(canonical_committed_at_utc)"
         " FROM calibration_station_daily_high_truth"
-        " WHERE station_id=? AND source_lane='AWC' AND qc_status='ACCEPTED'"
+        " WHERE station_id=? AND source_lane IN " + FORMAL_TRUTH_LANES_SQL + " AND qc_status='ACCEPTED'"
         " AND authority_scope IN ('FORMAL_NATIVE_ELIGIBLE','NO_LIVE_REPLAY_CANDIDATE')"
         " GROUP BY local_date",
         (station,),

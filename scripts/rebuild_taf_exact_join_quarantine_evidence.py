@@ -30,6 +30,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.fleet import expected_station_count
+from bayes_basket_target.canonical_contract import FORMAL_TRUTH_LANES_SQL  # noqa: E402
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.database import DEFAULT_TARGET_DB, resolve_target_database  # noqa: E402
 from bayes_basket_target.native_ensemble_training_facts import (  # noqa: E402
@@ -204,12 +205,16 @@ def _revision_quarantine_receipt(
         try:
             truth = conn.execute(
                 "SELECT truth_id,revision_no,canonical_committed_at_utc,"
-                "source_payload_sha256,authority_scope FROM "
+                "source_payload_sha256,authority_scope,source_lane FROM "
                 "calibration_station_daily_high_truth WHERE station_id=? "
-                "AND local_date=? AND source_lane='AWC' "
+                "AND local_date=? AND source_lane IN " + FORMAL_TRUTH_LANES_SQL + " "
                 "AND qc_status='ACCEPTED' ORDER BY revision_no DESC LIMIT 1",
                 (station, event_date),
             ).fetchone()
+            # Charter 225: superseded by a settlement-source repair, the
+            # day has no standing AWC truth.
+            if truth is not None and str(truth[5]) != "AWC":
+                truth = None
         except sqlite3.OperationalError:
             # A stripped test/archive DB may not carry the truth table.  Keep
             # the receipt useful while explicitly marking truth as missing.

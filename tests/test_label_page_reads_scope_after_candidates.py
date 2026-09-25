@@ -16,9 +16,10 @@ import sqlite3
 import pytest
 
 from bayes_basket_target import delta_v2_settlement_label as lab
+from bayes_basket_target.canonical_contract import FORMAL_AWC_TRUTH_ROLE
 
 AS_OF = "2026-09-10T00:00:00Z"
-ROLE = lab.CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1
+ROLE = FORMAL_AWC_TRUTH_ROLE
 SCOPE = lab.FACT_AUTHORITY_SCOPE
 
 OLD_PAGE_SQL = """

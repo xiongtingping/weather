@@ -42,17 +42,18 @@ from bayes_basket_target.regional_point_debias import (  # noqa: E402
     DEFAULT_ARTIFACT, DEFAULT_REPLAY_TABLE, MIN_TRAIN_DAYS, RULE_VERSION,
     SCHEMA, fit_calibration,
 )
+from bayes_basket_target.canonical_contract import FORMAL_TRUTH_LANES_SQL  # noqa: E402
 
 TRUTH_SQL = (
     "SELECT t.station_id,t.local_date,t.official_tmax_c "
     "FROM calibration_station_daily_high_truth AS t "
-    "WHERE t.source_lane='AWC' AND t.qc_status='ACCEPTED' "
+    "WHERE t.source_lane IN " + FORMAL_TRUTH_LANES_SQL + " AND t.qc_status='ACCEPTED' "
     "AND t.authority_scope IN "
     "('FORMAL_NATIVE_ELIGIBLE','NO_LIVE_REPLAY_CANDIDATE') "
     "AND t.revision_no=("
     "  SELECT MAX(t2.revision_no) FROM calibration_station_daily_high_truth AS t2 "
     "  WHERE t2.station_id=t.station_id AND t2.local_date=t.local_date "
-    "  AND t2.source_lane='AWC' AND t2.qc_status='ACCEPTED')"
+    "  AND t2.source_lane IN " + FORMAL_TRUTH_LANES_SQL + " AND t2.qc_status='ACCEPTED')"
 )
 RUNS_SQL = (
     "SELECT ensemble_system_id, station_id, target_local_date, run_init_utc,"

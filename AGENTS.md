@@ -20,7 +20,7 @@
 - 熊先生已明确主线默认无需逐步授权；仅在扩大任务范围或不可逆外部变更时停下说明。
 - 默认直接实施并验证，不以 review-only/仅建议作为交付；明确退役的旧代码直接删除，不保留兼容分叉。
 - `ΔBasketScore v2` 的未来日时序观察与 `production_no_live`、RKPK 单站闭环和 45 站扩展并行；未来/forward 数据不构成 OOS、硬门或晋级依据，未完成不得阻断生产 no-live 主链。参数/权重 artifact 的 `FORMAL_PROMOTED` 与 live 晋级只接受闭日、strict-as-of 历史 OOS；P0 模型组合自身要求的离线严格 OOS artifact 同样只用历史数据。
-- 未来日/forward 数据一律登记为 `observational_candidate_not_oos` 到达、接口与时序验证证据：不是 OOS、不计入任何 OOS、20 train/8 holdout 或 TAF 24 样本门，也不阻断 `production_no_live`；只有已闭日且 strict-as-of 的canonical ASOS优先/AWC后备truth才能形成严格OOS。Open-Meteo可作为显式`aggregator_republisher`的历史同日calibration/OOS fallback，并在该历史激活存在时服务原生缺失的no-live P0；仍绝不进入native arrival、P1或formal/live authority。
+- 未来日/forward 数据一律登记为 `observational_candidate_not_oos` 到达、接口与时序验证证据：不是 OOS、不计入任何 OOS、20 train/8 holdout 或 TAF 24 样本门，也不阻断 `production_no_live`；只有已闭日且 strict-as-of 的canonical ASOS优先/AWC后备truth（或宪章 225 的结算源修补真值）才能形成严格OOS。Open-Meteo可作为显式`aggregator_republisher`的历史同日calibration/OOS fallback，并在该历史激活存在时服务原生缺失的no-live P0；仍绝不进入native arrival、P1或formal/live authority。
 - 概率阶段唯一口径为：NWP生成P0；校准后TAF TX先确认/有限修正，云量、降水和风场再做物理一致性二次确认，二者原子生成P0-M；canonical ASOS一分钟/AWC METAR-SPECI观测生成P1。禁止P0-F/P0-F^r分支。
 - 篮子 lane 仅可读取已物化且带 lineage 的 P0/P0-M/P1、regime、官方报文硬事实排除集合和官方 CLOB WS 证据，缺证据即 fail closed；不得生成 BUY NO intent。
 - 外置盘仅用于非关键、无用数据的异步冷归档；禁止作为生产数据库备份、回滚、切换、readiness 或服务启停依赖，任何外置盘异常不得影响 AWC/METAR/SPECI、SSOT 或交易。
@@ -49,6 +49,7 @@
 - `lead_bucket` 两套词汇同列共存（`d0/d1/d2/d2_fallback` 与 `h00_12/h12_24/h24_48/h48_plus`，宪章 47 只认后者），且 `d0` 在 `METAR_PHYSICAL_PATH_TMAX` 与 `OFFICIAL_AIRPORT_TAF_TX` 上是第三义"无提前量可言"。`d1` 一个标签横跨三个小时桶。
 - `run_cycle` 混了两个坐标轴：真模型 run（`00Z/06Z/12Z/18Z`）与日偏移（`PREVIOUS_DAY1/PREVIOUS_DAY2`），外加 `MIXED_NATIVE_CYCLES`/`AGGREGATOR_UNKNOWN_NATIVE_CYCLE` 两个哨兵。判例：`WHERE run_cycle='18Z' AND lead_bucket='d2'` 在 `calibration_historical_asof_model_run` 上返回 **0 行**，而两天外样本实际 7,762 条，全在 `(PREVIOUS_DAY2,d2)` 与 `(00Z,d2)` 里。
 - `maturity_bin` 与 `lead_bucket` 取值域逐字相同但量不同（事件还有多远 vs 这个 run 有多旧），**没有任何一张表同时含这两列**，所以错误 join 会正常返回行、不报空。唯一换算点是 `production_io.derive_policy_maturity_bin`；不要在 SQL 里让两者相等。
+- 正式真值是两条车道（宪章 225）：`source_lane` 为 `AWC` 或 `SETTLEMENT_SOURCE`，按修订号取最新；只写 `source_lane='AWC'` 会读到被结算源修补取代的旧值，一律用 `canonical_contract.FORMAL_TRUTH_LANES_SQL`。
 - 时区只从 `calibration_station_market_timezone_binding` 或 `basket_target_market_registry` 逐站取；`calibration_station_registry.timezone_name` 是种子包原文，45 站中 33 站错标 `America/New_York`。
 
 ## 纯 YES Basket（当前唯一生产策略）

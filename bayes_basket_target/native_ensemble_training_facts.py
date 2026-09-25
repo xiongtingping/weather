@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from .canonical_contract import FORMAL_TRUTH_LANES, FORMAL_TRUTH_LANES_SQL
 from .market_registry import registry_scope_timezone_triples
 from .contracts import ContractError, content_sha256
 from .event_contracts import ForecastRevision
@@ -773,8 +774,9 @@ def ingest_historical_taf_calibration(
             or sample.get("reference_only")
             != expected_authority["reference_only"]
             or not isinstance(sample_truth, Mapping)
+            # Charter 225: the label may be a settlement-source revision.
             or str(sample_truth.get("source_lane") or "").strip().upper()
-            != "AWC"
+            not in FORMAL_TRUTH_LANES
             or str(sample_truth.get("truth_label_authority") or "")
             != truth_label_authority
         ):
@@ -1294,7 +1296,7 @@ def build_taf_native_exact_join(
             "source_lane,authority_scope "
             "FROM calibration_station_daily_high_truth "
             "WHERE station_id=? AND local_date=? "
-            "AND settlement_definition=? AND source_lane='AWC' "
+            "AND settlement_definition=? AND source_lane IN " + FORMAL_TRUTH_LANES_SQL + " "
             "AND qc_status='ACCEPTED' "
             "AND authority_scope IN "
             "('FORMAL_NATIVE_ELIGIBLE','NO_LIVE_REPLAY_CANDIDATE') "

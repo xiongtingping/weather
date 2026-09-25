@@ -120,6 +120,7 @@ from .noaa_gefs_archive import (
     SUPPORTED_LEAD_DAYS as _GEFS_LEADS,
     extraction_version_for_lead as _gefs_extraction_version,
 )
+from .canonical_contract import FORMAL_TRUTH_LANES_SQL
 from .metar_physical_tmax import (
     METHOD_VERSION as METAR_PHYSICAL_METHOD_VERSION,
     PROVIDER_ID as METAR_PHYSICAL_PROVIDER_ID,
@@ -3659,7 +3660,8 @@ def _load_cases(
             "SELECT t.truth_id,t.local_date,t.official_tmax_c,"
             "t.canonical_committed_at_utc,t.revision_no,t.source_lane "
             "FROM calibration_station_daily_high_truth AS t "
-            "WHERE t.station_id=? AND t.source_lane='AWC' "
+            # Charter 225: the newest formal revision, AWC or settlement source.
+            "WHERE t.station_id=? AND t.source_lane IN " + FORMAL_TRUTH_LANES_SQL + " "
             "AND t.qc_status='ACCEPTED' "
             "AND t.authority_scope IN "
             "('FORMAL_NATIVE_ELIGIBLE','NO_LIVE_REPLAY_CANDIDATE') "
@@ -3670,7 +3672,7 @@ def _load_cases(
             "WHERE t2.station_id=t.station_id "
             "AND t2.local_date=t.local_date "
             "AND t2.settlement_definition=t.settlement_definition "
-            "AND t2.source_lane='AWC' AND t2.qc_status='ACCEPTED' "
+            "AND t2.source_lane IN " + FORMAL_TRUTH_LANES_SQL + " AND t2.qc_status='ACCEPTED' "
             "AND t2.authority_scope IN "
             "('FORMAL_NATIVE_ELIGIBLE','NO_LIVE_REPLAY_CANDIDATE') "
             "AND julianday(t2.canonical_committed_at_utc)<=julianday(?)"

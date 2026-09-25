@@ -31,7 +31,7 @@ from .resource_bounds import (
     assert_process_memory_budget,
     bounded_json_bytes,
 )
-from .settlement_truth import CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1
+from .canonical_contract import FORMAL_TRUTH_LANES_SQL, FORMAL_TRUTH_ROLES
 
 
 STORE_SCHEMA = "bayes_basket_target_forward_observation_store_v2"
@@ -1087,10 +1087,12 @@ def _validate_source_label(
         "SELECT truth_id,station_id,local_date,revision_no,content_sha256,"
         "authority_scope,qc_status,timestamps_complete "
         "FROM calibration_station_daily_high_truth "
-        "WHERE truth_id=? AND source_lane='AWC' AND source_role=? LIMIT 2",
+        # Charter 225: a label may bind a settlement-source revision.
+        "WHERE truth_id=? AND source_lane IN " + FORMAL_TRUTH_LANES_SQL + " "
+        "AND source_role IN (?,?) LIMIT 2",
         (
             label["truth_id"],
-            CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
+            *FORMAL_TRUTH_ROLES,
         ),
     ).fetchall()
     if len(truth) != 1:

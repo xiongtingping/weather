@@ -65,6 +65,7 @@ if str(Path(__file__).resolve().parent) not in sys.path:
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     DUST_FILL_FLOOR_USDC as DUST_COST_FLOOR,
 )
+from bayes_basket_target.canonical_contract import FORMAL_TRUTH_LANES_SQL  # noqa: E402
 # The live book (user ruling 2026-09-16: the paper ledger is a rule
 # comparator; every reading of whether money was made reads live fills).
 # Its settled-bucket resolver used to live here as ``_live_settled_buckets``
@@ -4166,7 +4167,7 @@ def collect_p1_path_skill(conn: sqlite3.Connection) -> dict[str, Any]:
 
     latest = conn.execute(
         "SELECT MAX(local_date) FROM calibration_station_daily_high_truth"
-        " WHERE source_lane='AWC' AND qc_status='ACCEPTED'"
+        " WHERE source_lane IN " + FORMAL_TRUTH_LANES_SQL + " AND qc_status='ACCEPTED'"
     ).fetchone()[0]
     if not latest:
         return {"available": False}
@@ -4175,7 +4176,7 @@ def collect_p1_path_skill(conn: sqlite3.Connection) -> dict[str, Any]:
     for station, day, value, _rev in conn.execute(
         "SELECT station_id, local_date, official_tmax_c, revision_no"
         " FROM calibration_station_daily_high_truth"
-        " WHERE source_lane='AWC' AND qc_status='ACCEPTED' AND local_date BETWEEN ? AND ?"
+        " WHERE source_lane IN " + FORMAL_TRUTH_LANES_SQL + " AND qc_status='ACCEPTED' AND local_date BETWEEN ? AND ?"
         " ORDER BY revision_no",
         (since, str(latest)),
     ):

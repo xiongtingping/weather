@@ -26,6 +26,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.fleet import expected_station_count
+from bayes_basket_target.canonical_contract import FORMAL_TRUTH_LANES_SQL  # noqa: E402
 from bayes_basket_target.contracts import ContractError, content_sha256
 from bayes_basket_target.resource_bounds import (
     MAX_JSON_INPUT_BYTES,
@@ -152,7 +153,7 @@ def _truth_counts(
     rows = conn.execute(
         "SELECT local_date,revision_no,canonical_committed_at_utc "
         "FROM calibration_station_daily_high_truth "
-        "WHERE station_id=? AND local_date<=? AND source_lane='AWC' "
+        "WHERE station_id=? AND local_date<=? AND source_lane IN " + FORMAL_TRUTH_LANES_SQL + " "
         "AND qc_status='ACCEPTED' ORDER BY local_date,revision_no",
         (station, cutoff),
     ).fetchall()

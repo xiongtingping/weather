@@ -18,6 +18,7 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any
 
+from .canonical_contract import FORMAL_TRUTH_LANES
 from .canonical_contract import (
     CanonicalEnsembleMemberArrivalBindingFact,
     CanonicalEnsembleMemberFact,
@@ -220,7 +221,7 @@ def _canonical_catalog(
             else:
                 truth = fact
                 assert isinstance(truth, CanonicalTruthFact)
-                if truth.source_lane == "AWC" and truth.closed_day:
+                if truth.source_lane in FORMAL_TRUTH_LANES and truth.closed_day:
                     _committed, committed_at = _utc(
                         truth.canonical_committed_at_utc,
                         "native_system_artifact_truth_commit_invalid",

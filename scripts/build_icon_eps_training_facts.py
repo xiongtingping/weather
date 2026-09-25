@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.fleet import expected_station_count
+from bayes_basket_target.canonical_contract import FORMAL_TRUTH_LANES_SQL  # noqa: E402
 from bayes_basket_target.contracts import ContractError  # noqa: E402
 from bayes_basket_target.icon_eps_training_facts import (  # noqa: E402
     build_icon_eps_training_facts,
@@ -88,7 +89,7 @@ def read_ssot_awc_closed_truths(
           FROM calibration_station_daily_high_truth
           WHERE station_id IN ({marks})
             AND local_date=?
-            AND source_lane='AWC'
+            AND source_lane IN {FORMAL_TRUTH_LANES_SQL}
             AND settlement_definition='official_daily_tmax_c'
             AND qc_status='ACCEPTED'
             AND authority_scope='FORMAL_NATIVE_ELIGIBLE'

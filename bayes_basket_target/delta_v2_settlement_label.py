@@ -14,7 +14,7 @@ from .resource_bounds import (
     assert_process_memory_budget,
 )
 from .market_registry import settlement_timezone_for_scope
-from .settlement_truth import CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1
+from .canonical_contract import FORMAL_TRUTH_LANES_SQL, FORMAL_TRUTH_ROLES
 from .settlement_time import settlement_day_window
 from .settlement_evidence_packet import (
     SETTLEMENT_VERSION_BINDING_SCHEMA,
@@ -285,8 +285,8 @@ def _label_candidate_page(
         + rowid_where
         + """
             AND f.fact_id LIKE 'd2fact_%'
-            AND t.source_lane='AWC'
-            AND t.source_role=?
+            AND t.source_lane IN """ + FORMAL_TRUTH_LANES_SQL + """
+            AND t.source_role IN (?,?)
             AND t.qc_status='ACCEPTED' AND t.timestamps_complete=1
             AND t.canonical_committed_at_utc<=?
             AND t.revision_no=(
@@ -294,8 +294,8 @@ def _label_candidate_page(
               FROM calibration_station_daily_high_truth t2
               WHERE t2.station_id=t.station_id
                 AND t2.local_date=t.local_date
-                AND t2.source_lane='AWC'
-                AND t2.source_role=?
+                AND t2.source_lane IN """ + FORMAL_TRUTH_LANES_SQL + """
+                AND t2.source_role IN (?,?)
                 AND t2.canonical_committed_at_utc<=?
             )
             AND NOT EXISTS(
@@ -321,9 +321,10 @@ def _label_candidate_page(
         """,
         (
             *rowid_params,
-            CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
+            # Charter 225: the newest formal revision, in either lane.
+            *FORMAL_TRUTH_ROLES,
             as_of,
-            CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
+            *FORMAL_TRUTH_ROLES,
             as_of,
             FACT_AUTHORITY_SCOPE,
             int(limit),

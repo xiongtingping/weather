@@ -32,10 +32,28 @@ MODEL_FAMILIES = ("global_deterministic", "global_ensemble", "regional")
 AUTHORITY_SCOPES = ("PRODUCTION_NO_LIVE_ONLY", "FORMAL_NATIVE_ELIGIBLE")
 FORMAL_AWC_TRUTH_ROLE = "CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1"
 HISTORICAL_AWC_REPLAY_TRUTH_ROLE = "AWC_HISTORICAL_REPLAY_INGRESS"
+# Charter 225 (user 2026-09-25, 「全部按结算」): truth follows the market's own
+# official settlement source.  Where a settled market paid a bucket the AWC
+# truth is not in, the day is re-settled from that market's resolution page
+# (Wunderground's daily observation table or NOAA's time series) as a revision
+# of its own lane -- never relabelled AWC.  Both lanes are formal truth, and a
+# reader takes the newest revision across them: revision numbers are unique
+# per station-day across every lane.
+SETTLEMENT_SOURCE_TRUTH_LANE = "SETTLEMENT_SOURCE"
+SETTLEMENT_SOURCE_TRUTH_ROLE = "CANONICAL_SETTLEMENT_SOURCE_TRUTH_V1"
+FORMAL_TRUTH_LANES = ("AWC", SETTLEMENT_SOURCE_TRUTH_LANE)
+FORMAL_TRUTH_ROLES = (FORMAL_AWC_TRUTH_ROLE, SETTLEMENT_SOURCE_TRUTH_ROLE)
+# For SQL written as text: ``source_lane IN {FORMAL_TRUTH_LANES_SQL}``.
+FORMAL_TRUTH_LANES_SQL = "('AWC','SETTLEMENT_SOURCE')"
 TRUTH_SOURCE_ROLES = (
     FORMAL_AWC_TRUTH_ROLE,
     HISTORICAL_AWC_REPLAY_TRUTH_ROLE,
+    SETTLEMENT_SOURCE_TRUTH_ROLE,
 )
+_TRUTH_ROLES_BY_LANE = {
+    "AWC": (FORMAL_AWC_TRUTH_ROLE, HISTORICAL_AWC_REPLAY_TRUTH_ROLE),
+    SETTLEMENT_SOURCE_TRUTH_LANE: (SETTLEMENT_SOURCE_TRUTH_ROLE,),
+}
 
 MODEL_FACT_FIELDS = frozenset(
     {
@@ -1320,10 +1338,10 @@ class CanonicalTruthFact:
         if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
             raise ContractError("canonical_truth_revision_invalid")
         source_lane = _text(raw.get("source_lane"), "source_lane").upper()
-        if source_lane != "AWC":
+        if source_lane not in _TRUTH_ROLES_BY_LANE:
             raise ContractError("canonical_truth_source_lane_invalid")
         source_role = _text(raw.get("source_role"), "source_role")
-        if source_role not in TRUTH_SOURCE_ROLES:
+        if source_role not in _TRUTH_ROLES_BY_LANE[source_lane]:
             raise ContractError("canonical_truth_source_role_invalid")
         authority = _text(raw.get("authority_scope"), "authority_scope")
         if authority not in AUTHORITY_SCOPES:
@@ -1333,10 +1351,10 @@ class CanonicalTruthFact:
         day_end = _timestamp(raw.get("station_day_end_utc"), "station_day_end_utc")
         if closed and datetime.fromisoformat(committed.replace("Z", "+00:00")) < datetime.fromisoformat(day_end.replace("Z", "+00:00")):
             raise ContractError("canonical_truth_closed_before_station_day_end")
-        if authority == "FORMAL_NATIVE_ELIGIBLE" and source_lane != "AWC":
+        if authority == "FORMAL_NATIVE_ELIGIBLE" and source_lane not in FORMAL_TRUTH_LANES:
             raise ContractError("canonical_truth_formal_requires_awc")
         if (
-            source_role == FORMAL_AWC_TRUTH_ROLE
+            source_role in FORMAL_TRUTH_ROLES
             and authority != "FORMAL_NATIVE_ELIGIBLE"
         ):
             raise ContractError("canonical_truth_formal_role_authority_mismatch")
@@ -3586,8 +3604,13 @@ __all__ = [
     "REPUBLISHER_NO_LIVE_ACTIVATION_FACT_FIELDS",
     "RESIDUAL_FACT_FIELDS",
     "FORMAL_AWC_TRUTH_ROLE",
+    "FORMAL_TRUTH_LANES",
+    "FORMAL_TRUTH_LANES_SQL",
+    "FORMAL_TRUTH_ROLES",
     "HISTORICAL_AWC_REPLAY_TRUTH_ROLE",
     "SCHEMA",
+    "SETTLEMENT_SOURCE_TRUTH_LANE",
+    "SETTLEMENT_SOURCE_TRUTH_ROLE",
     "SOURCE_CLASSES",
     "TOP_LEVEL_FIELDS",
     "TRUTH_SOURCE_ROLES",

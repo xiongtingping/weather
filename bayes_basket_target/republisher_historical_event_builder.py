@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
+from .canonical_contract import FORMAL_TRUTH_LANES
 from .contracts import ContractError, content_sha256
 from .canonical_contract import CanonicalTruthFact
 from .model_oos_builder import build_model_oos_contract
@@ -206,6 +207,12 @@ def _effective_truth_index(
 
     settlement_timezone = _station_settlement_timezone(conn, station_id)
     result: dict[str, dict[str, Any]] = {}
+    # Charter 225: a republisher case binds an AWC truth (its columns are
+    # awc_truth_*), so a day whose newest formal revision is a settlement-
+    # source repair has no AWC truth left to bind and is left out rather
+    # than built on the superseded value.
+    superseded: set[str] = set()
+    newest: dict[str, int] = {}
     for (raw_json,) in conn.execute(
         "SELECT fact_json FROM canonical_ssot_fact "
         "WHERE fact_type='truth' ORDER BY scope_key"
@@ -220,17 +227,27 @@ def _effective_truth_index(
         if (
             truth.station_id == station_id
             and truth.settlement_timezone == settlement_timezone
-            and truth.source_lane == "AWC"
+            and truth.source_lane in FORMAL_TRUTH_LANES
             and truth.closed_day
             and _utc(
                 truth.canonical_committed_at_utc,
                 "truth_canonical_committed_at_utc",
             ) <= as_of_utc
         ):
+            if truth.truth_revision_no > newest.get(truth.event_date, -1):
+                newest[truth.event_date] = truth.truth_revision_no
+                if truth.source_lane == "AWC":
+                    superseded.discard(truth.event_date)
+                else:
+                    superseded.add(truth.event_date)
+            if truth.source_lane != "AWC":
+                continue
             if truth.event_date in result:
                 raise ContractError("republisher_historical_truth_scope_duplicate")
             result[truth.event_date] = truth.to_mapping()
-    return dict(sorted(result.items()))
+    return dict(sorted(
+        (day, fact) for day, fact in result.items() if day not in superseded
+    ))
 
 
 def build_republisher_historical_event_bundle(

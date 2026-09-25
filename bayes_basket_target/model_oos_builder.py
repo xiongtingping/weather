@@ -13,6 +13,7 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
 
+from .canonical_contract import FORMAL_TRUTH_LANES, SETTLEMENT_SOURCE_TRUTH_ROLE
 from .canonical_contract import CanonicalTruthFact
 from .canonical_ssot_schema import inspect_canonical_ssot_schema
 from .contracts import ContractError, content_sha256
@@ -79,10 +80,11 @@ def _truth_fact(
         raise ContractError("model_oos_builder_truth_mapping_required")
     truth = CanonicalTruthFact.from_mapping(raw)
     if (
-        truth.source_lane != "AWC"
+        truth.source_lane not in FORMAL_TRUTH_LANES
         or truth.source_role not in {
             "AWC_HISTORICAL_REPLAY_INGRESS",
             "CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1",
+            SETTLEMENT_SOURCE_TRUTH_ROLE,
         }
         or not truth.closed_day
         or truth.settlement_timezone != "America/New_York"

@@ -34,6 +34,9 @@ from .canonical_contract import (
     CanonicalRepublisherNoLiveActivationContract,
     CanonicalRepublisherNoLiveActivationFact,
     CanonicalTruthFact,
+    FORMAL_TRUTH_LANES,
+    SETTLEMENT_SOURCE_TRUTH_LANE,
+    SETTLEMENT_SOURCE_TRUTH_ROLE,
     REPUBLISHER_OOS_ARTIFACT_CONTRACT_SCHEMA,
     REPUBLISHER_CROSS_SELECTION_CONTRACT_SCHEMA,
     REPUBLISHER_NO_LIVE_ACTIVATION_CONTRACT_SCHEMA,
@@ -1876,12 +1879,13 @@ def _assert_model_oos_event_truth_reference(
         or truth_committed_at != event_truth_committed_at
         or truth_committed_at > contract_as_of
         or not truth.closed_day
-        or truth.source_lane != "AWC"
+        or truth.source_lane not in FORMAL_TRUTH_LANES
         or truth.authority_scope != raw["authority_scope"]
         or truth.settlement_timezone != "America/New_York"
         or truth.source_role not in {
             "AWC_HISTORICAL_REPLAY_INGRESS",
             "CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1",
+            SETTLEMENT_SOURCE_TRUTH_ROLE,
         }
     ):
         raise ContractError("canonical_model_oos_truth_fact_lineage_mismatch")
@@ -1905,10 +1909,11 @@ def _assert_model_oos_event_truth_reference(
         if (
             candidate.station_id == truth.station_id
             and candidate.event_date == truth.event_date
-            and candidate.source_lane == "AWC"
+            and candidate.source_lane in FORMAL_TRUTH_LANES
             and candidate.source_role in {
                 "AWC_HISTORICAL_REPLAY_INGRESS",
                 "CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1",
+                SETTLEMENT_SOURCE_TRUTH_ROLE,
             }
             and candidate.authority_scope == truth.authority_scope
             and candidate.settlement_timezone == "America/New_York"
@@ -2155,10 +2160,12 @@ def _assert_republisher_oos_artifact_references(
                     raise ContractError(
                         "canonical_republisher_oos_truth_revision_catalog_invalid"
                     ) from exc
+                # Charter 225: the republisher case binds an AWC truth, but a
+                # settlement-source revision supersedes it like any other.
                 if (
                     candidate_truth.station_id == artifact.station_id
                     and candidate_truth.event_date == case.event_date
-                    and candidate_truth.source_lane == "AWC"
+                    and candidate_truth.source_lane in FORMAL_TRUTH_LANES
                     and candidate_truth.closed_day is True
                     and candidate_truth.canonical_committed_at_utc <= contract.as_of_utc
                 ):
@@ -2655,10 +2662,12 @@ def _project_awc_daily_truths(
                     "canonical_awc_truth_projection_canonical_mismatch:" + field
                 )
         if (
-            raw["source_lane"] != "AWC"
+            (raw["source_lane"], raw["source_role"]) not in {
+                ("AWC", _FORMAL_AWC_TRUTH_ROLE),
+                (SETTLEMENT_SOURCE_TRUTH_LANE, SETTLEMENT_SOURCE_TRUTH_ROLE),
+            }
             or raw["authority_scope"] != "FORMAL_NATIVE_ELIGIBLE"
             or raw["closed_day"] is not True
-            or raw["source_role"] != _FORMAL_AWC_TRUTH_ROLE
             or raw["settlement_definition"] != "official_daily_tmax_c"
             or raw["qc_status"] != "ACCEPTED"
             or raw["timestamps_complete"] != 1

@@ -23,6 +23,7 @@ from itertools import combinations
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from .canonical_contract import FORMAL_TRUTH_LANES_SQL
 from .contracts import ContractError, content_sha256
 from .native_ensemble_contract import (
     P0_PROBABILITY_PATHWAY,
@@ -819,7 +820,7 @@ def _taf_truth_for_prediction(
         "SELECT official_tmax_c,canonical_committed_at_utc,truth_id,source_lane,authority_scope "
         "FROM calibration_station_daily_high_truth "
         "WHERE station_id=? AND local_date=? AND settlement_definition=? "
-        "AND source_lane='AWC' AND qc_status='ACCEPTED' AND authority_scope IN "
+        "AND source_lane IN " + FORMAL_TRUTH_LANES_SQL + " AND qc_status='ACCEPTED' AND authority_scope IN "
         "('FORMAL_NATIVE_ELIGIBLE','NO_LIVE_REPLAY_CANDIDATE') "
         "ORDER BY revision_no DESC LIMIT 1",
         (station_id, event_date, settlement_definition),

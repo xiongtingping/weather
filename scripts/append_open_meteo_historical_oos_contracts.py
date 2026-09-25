@@ -81,9 +81,9 @@ def _truth_rows(
     rows: dict[tuple[str, str], dict[str, Any]] = {}
     query = """
         SELECT truth_id, station_id, local_date, official_tmax_c,
-               revision_no, canonical_committed_at_utc
+               revision_no, canonical_committed_at_utc, source_lane
         FROM calibration_station_daily_high_truth
-        WHERE source_lane='AWC' AND qc_status='ACCEPTED'
+        WHERE source_lane IN ('AWC','SETTLEMENT_SOURCE') AND qc_status='ACCEPTED'
           AND authority_scope IN ('FORMAL_NATIVE_ELIGIBLE',
                                   'NO_LIVE_REPLAY_CANDIDATE')
           AND canonical_committed_at_utc IS NOT NULL
@@ -99,11 +99,19 @@ def _truth_rows(
             "official_tmax_c": float(raw[3]),
             "revision_no": int(raw[4]),
             "canonical_committed_at_utc": str(raw[5]),
+            "source_lane": str(raw[6]),
         }
         previous = rows.get(key)
         if previous is None or candidate["revision_no"] >= previous["revision_no"]:
             rows[key] = candidate
-    return rows
+    # Charter 225: these contracts bind awc_truth_* columns.  A day whose
+    # newest formal revision is a settlement-source repair has no AWC truth
+    # left to bind, and is left out rather than bound to the superseded one.
+    return {
+        key: {k: v for k, v in row.items() if k != "source_lane"}
+        for key, row in rows.items()
+        if row["source_lane"] == "AWC"
+    }
 
 
 def _station_timezones(conn: sqlite3.Connection) -> dict[str, str]:

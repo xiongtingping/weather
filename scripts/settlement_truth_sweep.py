@@ -61,6 +61,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.contracts import ContractError  # noqa: E402
+from bayes_basket_target.canonical_contract import FORMAL_TRUTH_LANES_SQL  # noqa: E402
 from bayes_basket_target.pass_deadline import (  # noqa: E402
     HOSTED_SWEEP_CONTINUE_MARKER,
     writer_lease_seconds,
@@ -141,7 +142,7 @@ def _backlog(
             " AND NOT EXISTS ("
             "  SELECT 1 FROM calibration_station_daily_high_truth t"
             "  WHERE t.station_id=r.station_id AND t.local_date=r.event_date"
-            "   AND t.source_lane='AWC' AND t.qc_status='ACCEPTED')"
+            "   AND t.source_lane IN " + FORMAL_TRUTH_LANES_SQL + " AND t.qc_status='ACCEPTED')"
             " ORDER BY r.event_date, r.station_id",
             (window_start,),
         )

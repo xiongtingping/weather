@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
+from .canonical_contract import FORMAL_TRUTH_LANES_SQL, SETTLEMENT_SOURCE_TRUTH_ROLE
 from .canonical_contract import (
     CONTRACT_VERSION,
     CanonicalContract,
@@ -126,14 +127,16 @@ def _closed_awc_truth(
     timezone_name: str,
     as_of: datetime,
 ) -> dict[str, Any] | None:
-    """Return the current accepted AWC revision only after the local day ends."""
+    """Return the current accepted formal revision only after the local day
+    ends -- AWC, or (charter 225) the market's settlement source."""
 
     rows = conn.execute(
         "SELECT truth_id,station_id,local_date,settlement_timezone,"
         "official_tmax_c,source_lane,revision_no,canonical_committed_at_utc,"
         "source_payload_sha256,authority_scope,source_role,content_sha256 "
         "FROM calibration_station_daily_high_truth WHERE station_id=? "
-        "AND local_date=? AND source_lane='AWC' AND qc_status='ACCEPTED' "
+        "AND local_date=? AND source_lane IN " + FORMAL_TRUTH_LANES_SQL + " "
+        "AND qc_status='ACCEPTED' "
         "AND authority_scope IN ('FORMAL_NATIVE_ELIGIBLE','NO_LIVE_REPLAY_CANDIDATE') "
         "ORDER BY revision_no DESC,canonical_committed_at_utc DESC,truth_id DESC",
         (station, event_date),
@@ -191,6 +194,10 @@ def _canonical_truth_fact(truth: Mapping[str, Any], timezone_name: str) -> dict[
         ): AUTHORITY_SCOPE,
         (
             "CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1",
+            "FORMAL_NATIVE_ELIGIBLE",
+        ): "FORMAL_NATIVE_ELIGIBLE",
+        (
+            SETTLEMENT_SOURCE_TRUTH_ROLE,
             "FORMAL_NATIVE_ELIGIBLE",
         ): "FORMAL_NATIVE_ELIGIBLE",
     }.get((source_role, source_authority))
