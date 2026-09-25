@@ -339,7 +339,10 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "calibrated_native_cross_ensemble_p0_v13": "2026-09-24T16:30:00Z",
         # Charter 216: each native ensemble member's centre and spread are
         # refitted by bucket log loss and shrunk half-way to the moments.
-        # Declared past the push and past the restart that deploys it.
+        # Declared past the push and past the restart that deploys it.  That
+        # restart is 01:06:15Z, requested for the store ceiling (77d1c841):
+        # it loaded this code from the tree two minutes before the commit
+        # (01:08:39Z), and the first 216 certificates are 01:06:18Z.
         "calibrated_native_cross_ensemble_p0_v14": "2026-09-25T02:00:00Z",
     },
     "P0-M": {
