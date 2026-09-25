@@ -163,15 +163,6 @@ def _fresh(path: Path, name: str):
     return module
 
 
-def test_the_ledger_pass_budget_is_clamped_by_the_lease(monkeypatch) -> None:
-    monkeypatch.setenv(pd.WRITER_LEASE_ENV, "150")
-    ledger = _fresh(ROOT / "scripts" / "paper_trading_ledger.py", "_ledger_under_lease")
-    assert ledger.REDERIVE_PASS_BUDGET_SEC == 150.0
-    monkeypatch.delenv(pd.WRITER_LEASE_ENV)
-    ledger = _fresh(ROOT / "scripts" / "paper_trading_ledger.py", "_ledger_without_lease")
-    assert ledger.REDERIVE_PASS_BUDGET_SEC == 420.0
-
-
 @pytest.fixture()
 def probe():
     return _fresh(ROOT / "scripts" / "maker_shadow_probe.py", "_maker_probe_under_test")
@@ -298,76 +289,4 @@ def test_the_settled_day_close_stops_between_cycles_and_says_so(monkeypatch, tmp
 
 # --- the ledger's scheduled walk stops on the budget too --------------------
 
-def _ledger_walk_harness(monkeypatch, tmp_path):
-    ledger = _fresh(ROOT / "scripts" / "paper_trading_ledger.py", "_ledger_walk_under_test")
-    conn = sqlite3.connect(":memory:")
-    ledger.ensure_schema(conn)
-    conn.execute(
-        "CREATE TABLE basket_probability_bridge_history("
-        " station_id TEXT, event_date TEXT, stage TEXT, state TEXT)"
-    )
-    conn.executemany(
-        "INSERT INTO basket_probability_bridge_history VALUES (?,?,'P0','COMMITTED')",
-        [("KMIA", "2026-09-14"), ("EGLC", "2026-09-14"), ("KMIA", "2026-09-15")],
-    )
-    conn.commit()
-    # Everything before the walk, stubbed: the question is only whether the
-    # walk starts a scope once its clock is spent.
-    monkeypatch.setattr(ledger, "ensure_schema", lambda c: False)
-    monkeypatch.setattr(ledger, "_purge_below_floor", lambda c: 0)
-    monkeypatch.setattr(ledger, "_positions_under_other_rule_sets", lambda c: 0)
-    monkeypatch.setattr(ledger, "_repair_slice_through", lambda c, *, recent_days: None)
-    monkeypatch.setattr(ledger, "_drop_superseded_positions", lambda c, **kw: (0, 0))
-    monkeypatch.setattr(ledger, "_truth", lambda c: {})
-    monkeypatch.setattr(ledger, "_station_peak_cutoffs", lambda tz: {})
-    monkeypatch.setattr(ledger, "_rescore_settlements", lambda c, t: {})
-    monkeypatch.setattr(ledger, "_opening_equity", lambda c, *, earliest: 1000.0)
-    conn.execute(
-        "CREATE TABLE calibration_station_market_timezone_binding("
-        " station_id TEXT, settlement_timezone TEXT)"
-    )
-    return ledger, conn
 
-
-def test_the_scheduled_walk_answers_no_scope_once_its_budget_is_spent(monkeypatch, tmp_path) -> None:
-    ledger, conn = _ledger_walk_harness(monkeypatch, tmp_path)
-    counts = ledger.backfill(conn, recent_days=4, budget_sec=0.0)
-    assert counts["stopped_for_time"] == 1
-    assert counts.get("already_recorded", 0) == 0
-    assert counts.get("chain_replayed", 0) == 0
-
-
-def test_a_cut_walk_asks_for_the_next_pass_and_takes_no_repair_slice(monkeypatch, tmp_path, capsys) -> None:
-    ledger = _fresh(ROOT / "scripts" / "paper_trading_ledger.py", "_ledger_main_under_test")
-    db = tmp_path / "book.db"
-    db.write_bytes(b"")
-    monkeypatch.setattr(ledger, "_connect", lambda *_a, **_kw: sqlite3.connect(":memory:"))
-    calls: list[dict] = []
-
-    def cut_walk(conn, **kwargs):
-        calls.append(kwargs)
-        # A plain incremental pass, no repair in sight, cut for time: the
-        # marker is owed for the scopes it did not reach.
-        return {"stopped_for_time": 1}
-
-    monkeypatch.setattr(ledger, "backfill", cut_walk)
-    monkeypatch.setattr(ledger, "_repair_slice_through", lambda *_a, **_kw: None)
-    monkeypatch.setattr(sys, "argv", ["paper_trading_ledger.py", "--backfill", "--db", str(db)])
-    assert ledger.main() == 0
-    assert len(calls) == 1
-    assert calls[0]["budget_sec"] == ledger.REDERIVE_PASS_BUDGET_SEC
-    assert pd.HOSTED_SWEEP_CONTINUE_MARKER in capsys.readouterr().out.splitlines()
-
-
-def test_a_rebuild_by_hand_walks_to_the_end(monkeypatch, tmp_path) -> None:
-    ledger = _fresh(ROOT / "scripts" / "paper_trading_ledger.py", "_ledger_rebuild_under_test")
-    db = tmp_path / "book.db"
-    db.write_bytes(b"")
-    conn = sqlite3.connect(":memory:")
-    ledger.ensure_schema(conn)
-    monkeypatch.setattr(ledger, "_connect", lambda *_a, **_kw: conn)
-    calls: list[dict] = []
-    monkeypatch.setattr(ledger, "backfill", lambda c, **kw: calls.append(kw) or {})
-    monkeypatch.setattr(sys, "argv", ["paper_trading_ledger.py", "--rebuild", "--db", str(db)])
-    assert ledger.main() == 0
-    assert calls[0]["budget_sec"] is None

@@ -75,84 +75,14 @@ def test_the_confirmed_high_at_two_cents_is_refused_like_any_tail(monkeypatch) -
     assert audit["leg_floor_refused_window_count"] == 0
 
 
-def test_the_ledger_reads_the_kernels_floor_and_hashes_the_rule() -> None:
-    import sys
+def test_production_reads_the_kernels_floor() -> None:
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
-    if str(root / "scripts") not in sys.path:
-        sys.path.insert(0, str(root / "scripts"))
-    import paper_trading_ledger as L  # noqa: PLC0415
-
-    # Charter 103 moved the read point: both books ask the kernel the whole
-    # question -- floor and the side of the book it is measured on.
-    assert L.leg_below_floor is K.leg_below_floor
-    assert L.LEG_FLOOR_RULE_VERSION == K.LEG_FLOOR_RULE_VERSION
-    assert L.LEG_FLOOR_PRICE_BASIS == K.LEG_FLOOR_PRICE_BASIS
-    source = (root / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    assert '"leg_floor_rule": LEG_FLOOR_RULE_VERSION,' in source
-    assert '"leg_floor_price_basis": LEG_FLOOR_PRICE_BASIS,' in source
-    assert "LEG_FLOOR_BELIEF_ANCHOR" not in source
     runtime = (root / "bayes_basket_target" / "delta_v2_runtime.py").read_text(encoding="utf-8")
     # No production site compares a quote to the bare constant any more.
     assert "< MINIMUM_LEG_ALL_IN_ASK" not in runtime
     assert ">= MINIMUM_LEG_ALL_IN_ASK" not in runtime
-    # And no site in either book reaches past the shared read point.
-    assert "leg_floor_all_in_ask(" not in source
     assert "leg_floor_all_in_ask(" not in runtime
 
-def test_the_audits_ask_the_kernel_too_rather_than_the_bare_constant() -> None:
-    """An audit that hand-copies the rule audits the rule it copied.
 
-    ``test_paper_trading_ledger_rules`` held the book to
-    ``quote * (1 + FEE_RATE) < MINIMUM_LEG_ALL_IN_ASK`` -- the flat floor
-    this charter retired on 2026-09-06 -- and read it off ``prices_json``,
-    which records the best ASK, while charter 103 measures the floor on
-    the MID.  Both halves were wrong in the same direction, so the first
-    seat where they mattered read as a production defect: KDAL 2026-09-09
-    P0 sat two rungs wide with 102-103F outside it, asking exactly 0.03
-    against a 0.03 floor.  Its bid was 0.02, its mid 0.025, and the live
-    rule refused the rung correctly.  Two tests went red for three days
-    over a seat that obeyed the rule.
-
-    So the audits go through ``leg_below_floor`` like everything else.
-    They cannot answer it from the position row -- the row has no bid --
-    and they replay the entry cycle for the handful of seats narrower
-    than the floor instead of guessing from the ask.
-    """
-
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[1]
-    audit = (root / "tests" / "test_paper_trading_ledger_rules.py").read_text(
-        encoding="utf-8"
-    )
-    assert "< MINIMUM_LEG_ALL_IN_ASK" not in audit
-    assert ">= MINIMUM_LEG_ALL_IN_ASK" not in audit
-    assert "leg_below_floor(" in audit
-    # And the replay that gives it the other side of the book.
-    assert "def _entry_book(" in audit
-
-
-def test_the_ledgers_two_flat_comparisons_are_execution_not_admission() -> None:
-    """Not every mention of the constant is the retired rule.
-
-    Two sites in the ledger still compare a price to the flat 0.03, and
-    both are execution guards rather than the admission floor: whether to
-    CROSS a quote, not whether a rung may be in the basket.  A sub-floor
-    ask is a one-sided tail offer, and reaching for it is what once
-    manufactured +260% ROI out of tenth-of-a-cent lottery tickets.  Pinned
-    here with their reason so the next sweep for the retired rule does not
-    take them for it.
-    """
-
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[1]
-    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
-        encoding="utf-8"
-    )
-    assert "float(cross_ask) >= MINIMUM_LEG_ALL_IN_ASK" in source
-    assert "if take >= MINIMUM_LEG_ALL_IN_ASK:" in source
-    # The admission question is never asked this way in either book.
-    assert "< MINIMUM_LEG_ALL_IN_ASK" not in source

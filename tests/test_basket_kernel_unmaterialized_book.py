@@ -132,9 +132,3 @@ def test_every_book_empty_gate_admits_the_named_shape() -> None:
         window = source[max(0, gate_at - 600):gate_at]
         assert "unmaterialized_book" in window, path
 
-    # And the ledger no longer dresses an empty book as a ceiling ask.
-    ledger = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
-        encoding="utf-8"
-    )
-    assert "unfillable_ask" not in ledger
-    assert '"unmaterialized_book": empty_book' in ledger

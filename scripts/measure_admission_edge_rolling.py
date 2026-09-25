@@ -7,10 +7,10 @@ that does not settle whether some identifiable slice carries an edge.  This
 asks the question the only way it can be honestly asked -- by picking the
 slice on the past and scoring it on the future.
 
-Each row is one enumerated support window at one decision, as the walk
-recorded it in ``paper_trade_candidate_window``: the lifted claim the gate
-divided, the all-in crossing price, whether the gate admitted it, whether
-the book seated it, and where the day settled.  At one share of each leg a
+Each row is one enumerated support window at one decision, as production
+recorded it (charter 140, ``basket_candidate_window_scored``): the lifted
+claim the gate divided, the all-in crossing price, whether the gate admitted
+it, whether the book seated it, and where the day settled.  At one share of each leg a
 window costs ``all_in_price`` and pays 1 when the truth lands inside it, so
 its realised edge is ``hit - all_in_price`` -- no fill model, no sizing, no
 execution.  That is deliberate: this step must not be able to inherit the
@@ -48,6 +48,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.candidate_window_evidence import (  # noqa: E402
+    CANDIDATE_SOURCE,
+)
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     EFFECTIVE_EDGE_LAMBDA,
 )
@@ -103,7 +106,7 @@ def _rows(conn: sqlite3.Connection, since: str) -> list[dict]:
         "SELECT station_id, event_date, stage, decision_at_utc,"
         "       buckets_json, win_probability, all_in_price, admissible,"
         "       seated, settled_bucket, hit, band_axis"
-        "  FROM paper_trade_candidate_window"
+        f"  FROM {CANDIDATE_SOURCE}"
         " WHERE settled_bucket IS NOT NULL"
         "   AND all_in_price IS NOT NULL AND all_in_price > 0"
         "   AND (?1 = '' OR event_date >= ?1)"
@@ -299,8 +302,6 @@ def main() -> int:
     conn = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=60.0)
     try:
         conn.execute("PRAGMA busy_timeout=60000")
-        from paper_ledger_reader import attach_paper_ledger  # noqa: PLC0415
-        attach_paper_ledger(conn)
         conn.execute("PRAGMA query_only=ON")
         report = measure(
             conn, since=args.since, min_cell_n=args.min_cell_n,

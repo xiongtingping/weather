@@ -183,8 +183,6 @@ def test_every_serving_face_carries_the_tiers() -> None:
     oos = read("bayes_basket_target/native_ensemble_oos.py")
     assert 'load_center_width_tiers(conn, stage="P0")' in oos
     assert '(center_width_tiers or {}).get("lambdas") or None' in oos
-    ledger = read("scripts/paper_trading_ledger.py")
-    assert '(entry.get("width_tiers") or {}).get("lambdas") or None' in ledger
 
 
 def test_the_two_research_switches_default_to_the_shipped_values() -> None:

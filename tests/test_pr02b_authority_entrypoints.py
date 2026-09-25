@@ -116,7 +116,6 @@ def test_only_three_user_domain_services_and_targetctl_remain() -> None:
     ]
     superseded_by_hosted_sweeps = [
         "com.weather.maker_shadow_probe.plist",
-        "com.weather.paper_trading_ledger_sweep.plist",
         "com.weather.pr12_awc_observation_sweep.plist",
         "com.weather.settlement_truth_sweep.plist",
     ]

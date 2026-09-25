@@ -24,20 +24,11 @@ import bayes_basket_target.delta_v2_runtime as R
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
-import paper_trading_ledger as L  # noqa: E402
 
 
 def test_only_stable_cuts_the_stake() -> None:
     assert R.CONSOLIDATION_TILT_SIGNALS == ("stable",)
     assert "sharp" not in R.CONSOLIDATION_TILT_SIGNALS
-
-
-def test_the_two_lanes_read_one_trigger() -> None:
-    """A ledger measuring a different trigger measures a different strategy."""
-
-    assert L.CONSOLIDATION_TILT_SIGNALS == R.CONSOLIDATION_TILT_SIGNALS
-    assert L.CONSOLIDATION_TILT_MIN_SIGNALS == R.CONSOLIDATION_TILT_MIN_SIGNALS
-    assert L.CONSOLIDATION_TILT_FACTOR == R.CONSOLIDATION_TILT_FACTOR
 
 
 def test_sharp_remains_reachable_as_a_research_arm() -> None:

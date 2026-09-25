@@ -243,31 +243,3 @@ def _no_test_launches_the_residents_scripts(monkeypatch: pytest.MonkeyPatch) -> 
     guarded.run = refuse_scripts
     guarded.Popen = refuse_scripts_popen
     monkeypatch.setattr(production_worker, "subprocess", guarded)
-
-
-@pytest.fixture
-def ledger_evidence_source(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Read the claim lanes' population off the paper candidate table.
-
-    Charter 140 moved the lambda, beta and valuation lanes onto production's
-    own evidence (``basket_candidate_window_scored``) and the truth lane's
-    labels.  The estimator suites build their populations in the paper
-    table's shape, and what they test -- bands, hurdles, clamps, the
-    activation guard, the walk-forward cuts -- does not depend on which
-    table the rows came from, so they run on the ledger arm by asking for
-    this fixture.  The production path itself is pinned end to end in
-    ``test_charter_140_claim_lane_production_evidence.py``.
-    """
-
-    from bayes_basket_target import (
-        beta_edge_store,
-        candidate_window_evidence,
-        effective_edge_store,
-    )
-
-    ledger = candidate_window_evidence.LEDGER_TABLE
-    monkeypatch.setattr(candidate_window_evidence, "EVIDENCE_SOURCE", "ledger")
-    monkeypatch.setattr(candidate_window_evidence, "CANDIDATE_SOURCE", ledger)
-    monkeypatch.setattr(effective_edge_store, "EVIDENCE_SOURCE", "ledger")
-    monkeypatch.setattr(effective_edge_store, "CANDIDATE_SOURCE", ledger)
-    monkeypatch.setattr(beta_edge_store, "CANDIDATE_SOURCE", ledger)

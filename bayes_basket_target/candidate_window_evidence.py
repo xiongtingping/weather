@@ -35,7 +35,6 @@ Three objects, two of them append-only:
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 from datetime import UTC, datetime
 from typing import Any, Mapping, Sequence
@@ -51,17 +50,9 @@ from .contracts import content_sha256
 EVIDENCE_TABLE = "basket_candidate_window_evidence"
 LABEL_TABLE = "basket_station_day_settlement_label"
 SCORED_VIEW = "basket_candidate_window_scored"
-LEDGER_TABLE = "paper_trade_candidate_window"
 
-#: Where the lambda and beta lanes read their population.  ``production`` is
-#: the rule; ``ledger`` reads the paper table as it did before charter 140 and
-#: exists for comparing the two, never for serving.
-EVIDENCE_SOURCE = str(
-    os.environ.get("PM_CLAIM_LANE_EVIDENCE", "production") or "production"
-).strip().lower()
-if EVIDENCE_SOURCE not in {"production", "ledger"}:
-    raise ValueError(f"unknown claim lane evidence source: {EVIDENCE_SOURCE}")
-CANDIDATE_SOURCE = SCORED_VIEW if EVIDENCE_SOURCE == "production" else LEDGER_TABLE
+#: Where the lambda, beta and valuation lanes read their population.
+CANDIDATE_SOURCE = SCORED_VIEW
 
 #: The earliest event day the labeller resolves on its first pass.  Labels are
 #: a property of the truth, so older days cost nothing but rows; this floor is
@@ -398,7 +389,7 @@ def _settled_bucket(
 ) -> str | None:
     """The rung a settled value falls in, lower edge inclusive.
 
-    The settler's rule (``paper_trading_ledger._settled_bucket``), stated
+    The settler's rule (``live_book._settled_bucket``), stated
     once more here because the library cannot import a script; the test
     suite pins the two to the same answer.
     """
@@ -507,7 +498,6 @@ __all__ = [
     "ACCEPTANCE_MARKET_CEILING",
     "in_acceptance_class",
     "CANDIDATE_SOURCE",
-    "EVIDENCE_SOURCE",
     "EVIDENCE_TABLE",
     "LABEL_TABLE",
     "SCORED_VIEW",

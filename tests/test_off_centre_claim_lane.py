@@ -186,18 +186,6 @@ def test_the_fit_partitions_and_counts_the_off_centre_rows() -> None:
     assert 'population["off_centre_row_count"]' in fit_source
 
 
-def test_the_replay_lane_prices_on_the_served_table() -> None:
-    """Before 2026-09-09 it used the kernel bootstrap while production read
-    the store, so a replayed claim could differ from the served one by the
-    very table this lane exists to keep current."""
-    source = (
-        ROOT / "scripts" / "replay_candidate_windows_on_current_band.py"
-    ).read_text(encoding="utf-8")
-    assert "load_off_centre_bands" in source
-    assert "off_centre_bands=off_centre_bands" in source
-    assert "off_centre_table_sha=off_centre_sha" in source
-
-
 def test_the_sample_is_bounded_below_at_the_serving_arithmetic_anchor(
     monkeypatch,
 ) -> None:

@@ -34,8 +34,6 @@ from bayes_basket_target import posterior_store as store  # noqa: E402
 from bayes_basket_target.basket_kernel import posterior_v1 as kernel  # noqa: E402
 from bayes_basket_target.basket_kernel.valuation_v1 import market_reference_v1  # noqa: E402
 
-pytestmark = pytest.mark.usefixtures("ledger_evidence_source")
-
 
 # --------------------------------------------------------------------------
 # Kernel
@@ -94,9 +92,9 @@ def _plant(conn, *, days, stations, w, gamma=0.0, seed=11, stage="P0",
         " envelope_id TEXT, probabilities_json TEXT, settlement_timezone TEXT);"
         "CREATE TABLE IF NOT EXISTS basket_official_ws_snapshot("
         " snapshot_id TEXT, buckets_json TEXT);"
-        "CREATE TABLE IF NOT EXISTS paper_trade_candidate_window("
-        " station_id TEXT, event_date TEXT, settled_bucket TEXT,"
-        " settled_at_utc TEXT, truth_revision_no INTEGER);"
+        "CREATE TABLE IF NOT EXISTS basket_station_day_settlement_label("
+        " station_id TEXT, event_date TEXT, truth_revision_no INTEGER,"
+        " settled_bucket TEXT, known_at_utc TEXT);"
     )
     rng = random.Random(seed)
     buckets = ["a", "b", "c", "d", "e"]
@@ -141,7 +139,7 @@ def _plant(conn, *, days, stations, w, gamma=0.0, seed=11, stage="P0",
                 )
                 n += 1
             conn.execute(
-                "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,0)",
+                "INSERT INTO basket_station_day_settlement_label VALUES(?,?,0,?,?)",
                 (f"S{s}", day, label, f"{day}T23:00:00Z"),
             )
     conn.commit()

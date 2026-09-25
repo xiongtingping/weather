@@ -152,7 +152,7 @@ def test_total_concurrency_is_capped(daemon) -> None:
 def test_running_sweeps_count_against_the_cap(daemon) -> None:
     admitted = daemon.admissible_hosted_sweeps(
         _due("correction_review_auto_clear", module=daemon),
-        running_names=["paper_trading_ledger", "forward_packet_retention"],
+        running_names=["paper_ledger_aligned", "forward_packet_retention"],
         max_concurrency=2,
     )
     assert admitted == []

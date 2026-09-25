@@ -27,7 +27,7 @@ Three readings, because three different things get called "the fill rate":
     18 gapped (-14.25), 21 filled (+41.51).
 
 Truth is the latest revision of the official high; the bucket a value
-settles in comes from the ledger's own ``_settled_bucket`` rather than a
+settles in comes from ``live_book._settled_bucket`` rather than a
 second copy of the interval rule, and the intervals come from the
 station-day's own bridge history -- the same source the decision read.
 
@@ -291,106 +291,6 @@ def measure(conn: sqlite3.Connection, *, since: str) -> dict:
     }
 
 
-def measure_ledger_arm(
-    conn: sqlite3.Connection, *, label: str
-) -> dict:
-    """The same three readings, off a paper-ledger arm's exported tables.
-
-    One definition of the measurement, two sources, because the whole point
-    is to set the book's resting simulation beside the live one.  A leg is
-    what the seat INTENDED (``intended_legs_json``) and a filled leg is one
-    the walk brought back with shares (``leg_shares_json``); the winning leg
-    is the settled bucket.  There is no per-intent reading here: the walk
-    does not mint intents, it re-posts rungs, and reporting a re-post count
-    as an order count is the confusion this lane exists to avoid.
-
-    Chains, not stages: one station-day is one book, so a leg wanted at any
-    stage of the chain is a leg, and it filled if any stage bought it.
-    """
-
-    rows = conn.execute(
-        f"SELECT p.station_id, p.event_date, p.intended_legs_json,"
-        f"       p.leg_shares_json, s.settled_bucket, s.stake_usdc,"
-        f"       s.pnl_usdc"
-        f"  FROM arm_{label}_position p"
-        f"  JOIN arm_{label}_settlement s USING(position_id)"
-    ).fetchall()
-    legs: dict[tuple[str, str, str], dict] = {}
-    landed: dict[tuple[str, str], str] = {}
-    baskets: dict[tuple[str, str], dict] = {}
-    for station, date, intended_js, filled_js, settled, stake, pnl in rows:
-        scope = (str(station), str(date))
-        landed[scope] = str(settled)
-        basket = baskets.setdefault(scope, {
-            "stake": 0.0, "pnl": 0.0, "winner_posted": False,
-            "winner_filled": False,
-        })
-        basket["stake"] += float(stake or 0.0)
-        basket["pnl"] += float(pnl or 0.0)
-        try:
-            intended = json.loads(intended_js or "{}")
-            filled = json.loads(filled_js or "{}")
-        except (TypeError, ValueError):
-            continue
-        for bucket, shares in intended.items():
-            if float(shares or 0.0) <= 0.0:
-                continue
-            leg = legs.setdefault((scope[0], scope[1], str(bucket)), {
-                "intended": 0.0, "filled": 0.0,
-            })
-            leg["intended"] += float(shares or 0.0)
-            leg["filled"] += float(filled.get(bucket, 0.0) or 0.0)
-
-    per_leg: dict[bool, list] = {True: [0, 0], False: [0, 0]}
-    for (station, date, bucket), leg in legs.items():
-        wins = landed.get((station, date)) == bucket
-        slot = per_leg[wins]
-        slot[0] += 1
-        slot[1] += 1 if leg["filled"] > 0 else 0
-        if wins:
-            basket = baskets[(station, date)]
-            basket["winner_posted"] = True
-            basket["winner_filled"] = (
-                basket["winner_filled"] or leg["filled"] > 0
-            )
-
-    def _split(predicate) -> dict:
-        chosen = [b for b in baskets.values() if predicate(b)]
-        stake = sum(b["stake"] for b in chosen)
-        pnl = sum(b["pnl"] for b in chosen)
-        return {
-            "baskets": len(chosen), "stake_usdc": round(stake, 2),
-            "pnl_usdc": round(pnl, 2),
-            "roi_pct": round(100.0 * pnl / stake, 1) if stake else None,
-        }
-
-    stake = sum(b["stake"] for b in baskets.values())
-    pnl = sum(b["pnl"] for b in baskets.values())
-    return {
-        "schema": "ledger_resting_fill_by_outcome_v1",
-        "arm": label,
-        "per_leg": [
-            {
-                "family": "MAKER", "outcome": "WIN" if wins else "LOSE",
-                "legs": slot[0], "filled": slot[1],
-                "fill_rate_pct": round(100.0 * slot[1] / slot[0], 1)
-                if slot[0] else None,
-            }
-            for wins, slot in sorted(per_leg.items(), reverse=True)
-        ],
-        "baskets": {
-            "settled": len(baskets),
-            "stake_usdc": round(stake, 2), "pnl_usdc": round(pnl, 2),
-            "roi_pct": round(100.0 * pnl / stake, 2) if stake else None,
-            "winner_filled": _split(lambda b: b["winner_filled"]),
-            "winner_gapped": _split(
-                lambda b: b["winner_posted"] and not b["winner_filled"]
-            ),
-            "winner_missing": _split(lambda b: not b["winner_posted"]),
-        },
-    }
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
@@ -402,24 +302,13 @@ def main() -> int:
     parser.add_argument("--out", type=Path, help="write the JSON here")
     parser.add_argument("--write-research", action="store_true",
                         help="write under data/research/live_fill_by_outcome/")
-    parser.add_argument(
-        "--ledger-arm",
-        help="score a paper-ledger arm's exported tables instead of the"
-             " live book: the arm label, with --db pointing at the results"
-             " database the slice lane wrote",
-    )
     args = parser.parse_args()
     database = args.db.expanduser().resolve(strict=True)
     conn = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=60.0)
     try:
         conn.execute("PRAGMA busy_timeout=60000")
-        from paper_ledger_reader import attach_paper_ledger  # noqa: PLC0415
-        attach_paper_ledger(conn)
         conn.execute("PRAGMA query_only=ON")
-        report = (
-            measure_ledger_arm(conn, label=args.ledger_arm)
-            if args.ledger_arm else measure(conn, since=args.since)
-        )
+        report = measure(conn, since=args.since)
     finally:
         conn.close()
     print(json.dumps(report, ensure_ascii=False, indent=1))

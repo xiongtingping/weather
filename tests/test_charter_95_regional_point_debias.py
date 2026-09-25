@@ -271,8 +271,6 @@ def test_production_hands_the_calibration_to_the_feature_builder() -> None:
     worker = (ROOT / "bayes_basket_target" / "production_worker.py").read_text(
         encoding="utf-8")
     assert "load_regional_point_debias_artifact()" in worker
-    ledger = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    assert "regional_point_debias" not in ledger
 
 
 def test_the_daily_refit_keeps_the_calibration_current() -> None:

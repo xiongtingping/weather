@@ -102,19 +102,6 @@ def main() -> int:
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--window-days", type=int, default=WINDOW_DAYS)
     parser.add_argument("--commit", action="store_true")
-    parser.add_argument(
-        "--include-replayed",
-        action="store_true",
-        help=(
-            "also read candidate windows re-derived onto the band table that"
-            " serves today (scripts/replay_candidate_windows_on_current_band"
-            ".py).  A band axis change mis-keys settled rows rather than"
-            " killing them -- price and outcome do not depend on our"
-            " probabilities -- so this is what lets a scope fit at all in the"
-            " days after its band table changes axis.  The activation guard"
-            " still scores on served rows alone."
-        ),
-    )
     args = parser.parse_args()
     database = args.db.expanduser().resolve(strict=True)
     if args.commit:
@@ -145,7 +132,6 @@ def main() -> int:
             fit = fit_lambda_table(
                 conn, window_days=args.window_days, stage_scope=scope,
                 claim_scope=claim_scope,
-                include_replayed=args.include_replayed,
             )
             receipt = {
                 "schema": "effective_edge_refit_v2",

@@ -138,7 +138,7 @@ def test_a_fact_appends_its_windows_and_only_the_first_decision_per_lead_band_sa
 
 
 def test_the_truth_lane_labels_the_day_as_the_settler_would():
-    from paper_trading_ledger import _settled_bucket as settler
+    from live_book import _settled_bucket as settler
 
     conn = _db()
     conn.executemany(
@@ -195,10 +195,9 @@ def test_both_fits_read_the_production_view():
     conn = _scored_book()
     assert effective_edge_store.CANDIDATE_SOURCE == E.SCORED_VIEW
     population = effective_edge_store._candidate_population(
-        conn, ("P0",), "2026-09-01", include_replayed=True,
+        conn, ("P0",), "2026-09-01",
     )
     assert population["served_row_count"] == 2
-    assert population["replayed_row_count"] == 0
     rows, meta = beta_edge_store.population(
         conn, stage_scope="P0", anchored=False, as_of=DAY,
         cutoff_utc="2026-09-20T00:00:00Z",

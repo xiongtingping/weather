@@ -269,10 +269,7 @@ def test_an_unknown_shape_is_refused() -> None:
         )
 
 
-def test_the_ledger_reads_productions_switch() -> None:
-    import scripts.paper_trading_ledger as L
-
-    assert L.KELLY_SHARE_SHAPE is R.KELLY_SHARE_SHAPE
+def test_production_ships_the_equal_shape() -> None:
     assert R.KELLY_SHARE_SHAPE == "equal"
 
 

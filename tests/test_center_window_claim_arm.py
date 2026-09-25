@@ -84,17 +84,6 @@ def test_the_arm_multiplies_only_centre_holding_windows() -> None:
     )
 
 
-def test_the_ledger_reads_productions_constant_and_hashes_it() -> None:
-    import bayes_basket_target.delta_v2_runtime as R
-    import paper_trading_ledger as L  # noqa: PLC0415
-
-    assert L.CENTER_WINDOW_CLAIM_BANDS is R.CENTER_WINDOW_CLAIM_BANDS
-    ledger = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    # Hashed unconditionally, like the other shipped seat rules.
-    assert '"center_window_claim": [' in ledger
-    assert '"含中心窗抬价" if CENTER_WINDOW_CLAIM_BANDS else None' in ledger
-
-
 def test_the_lambda_store_fits_agreement_on_the_lifted_claim() -> None:
     """Charter 81 (二): the store and the solver read one basis for a.
 
@@ -114,11 +103,6 @@ def test_the_lambda_store_fits_agreement_on_the_lifted_claim() -> None:
     assert "slot = tally[_band_index(price / claim, incumbent)]" in source
     # ... and the store never lifts a second time.
     assert "center_window_claim_factor(" not in source
-    # The ledger writes that column, and says in the schema that it is lifted.
-    ledger = (
-        ROOT / "scripts" / "paper_trading_ledger.py"
-    ).read_text(encoding="utf-8")
-    assert "``win_probability`` is the LIFTED claim" in ledger
 
 
 def test_the_admission_sizing_split_is_off_by_default_and_touches_only_the_stake() -> None:
@@ -128,11 +112,9 @@ def test_the_admission_sizing_split_is_off_by_default_and_touches_only_the_stake
     """
     import bayes_basket_target.basket_kernel.delta_v2 as K
     import bayes_basket_target.delta_v2_runtime as R
-    import paper_trading_ledger as L  # noqa: PLC0415
 
     assert K.SIZING_CLAIM_BANDS == ()
     assert R.SIZING_CLAIM_BANDS is K.SIZING_CLAIM_BANDS
-    assert L.SIZING_CLAIM_BANDS is K.SIZING_CLAIM_BANDS
     assert K.sizing_claim_factor(0.45) == 1.0
     assert K._parse_claim_bands("", default="[]") == ()
     bands = K._parse_claim_bands('[[0.35,1.35],[0.55,1.19],[1.01,1.05]]')
@@ -156,11 +138,8 @@ def test_the_admission_sizing_split_is_off_by_default_and_touches_only_the_stake
     ):
         start = runtime.index(other)
         assert "sizing_probabilities_by_bucket" not in runtime[start:start + 900], other
-    # Default receipts and the ledger fingerprint stay byte-identical.
+    # Default receipts stay byte-identical.
     assert '"sizing_claim_bands"' in runtime and 'if SIZING_CLAIM_BANDS else {}' in runtime
-    ledger = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    assert '{"sizing_claim": [' in ledger
-    assert '"定注另读校准曲线" if SIZING_CLAIM_BANDS else None' in ledger
 
 
 def test_the_off_centre_deflation_is_retired_and_identity_by_default(monkeypatch) -> None:
@@ -175,8 +154,5 @@ def test_the_off_centre_deflation_is_retired_and_identity_by_default(monkeypatch
     assert K.window_claim_factor(0.15, center_gap=2) == 1.0
     monkeypatch.setattr(K, "OFF_CENTRE_CLAIM_MODE", "on")
     assert K.off_center_claim_factor(0.15, gap_buckets=1) == pytest.approx(0.88)
-    ledger = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    assert '"off_centre_claim_mode": OFF_CENTRE_CLAIM_MODE' in ledger
-    assert '"离心折扣已退役(恒等)" if OFF_CENTRE_CLAIM_MODE == "off"' in ledger
     cli = (ROOT / "scripts" / "refit_off_centre_claim.py").read_text(encoding="utf-8")
     assert 'if OFF_CENTRE_CLAIM_MODE == "off":' in cli

@@ -186,12 +186,12 @@ def test_a_running_capture_holds_the_other_captures_not_the_ssot_queue(daemon):
 
     due = [
         (5.0, 0, "capture_jma_msm_forward", "c.sh", 1800.0),
-        (4.0, 1, "paper_trading_ledger", "b.sh", 1800.0),
+        (4.0, 1, "settlement_truth", "b.sh", 1800.0),
     ]
     admitted = daemon.admissible_hosted_sweeps(
         due, running_names=["capture_noaa_conus_forward"],
     )
-    assert [item[2] for item in admitted] == ["paper_trading_ledger"]
+    assert [item[2] for item in admitted] == ["settlement_truth"]
 
 
 def test_no_capture_starts_while_a_long_transaction_ssot_sweep_runs(daemon):
@@ -215,5 +215,5 @@ def test_a_capture_finishing_is_not_the_sweeps_lane_being_served(daemon):
 
     for name in daemon.WRITER_TURN_EXEMPT_SWEEPS:
         assert daemon.sweep_finish_serves_writer_turn(name) is False
-    assert daemon.sweep_finish_serves_writer_turn("paper_trading_ledger") is True
+    assert daemon.sweep_finish_serves_writer_turn("settlement_truth") is True
     assert daemon.sweep_finish_serves_writer_turn("forward_packet_retention") is True

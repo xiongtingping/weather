@@ -51,11 +51,10 @@ def test_the_bounds_are_the_rulings_and_the_environment_cannot_move_them() -> No
 
 
 def test_every_hand_off_of_the_bounds_reads_the_helper() -> None:
-    """Both books must not come to be running two different pairs."""
+    """Production must not come to be running two different pairs."""
 
     for module in (
         ROOT / "bayes_basket_target" / "delta_v2_runtime.py",
-        ROOT / "scripts" / "paper_trading_ledger.py",
     ):
         source = module.read_text(encoding="utf-8")
         hand_offs = [
@@ -79,12 +78,3 @@ def test_every_hand_off_of_the_bounds_reads_the_helper() -> None:
             assert "policy_minimum=" not in call and "basket_policy.minimum_support_buckets" not in call
 
 
-def test_the_ledger_hashes_the_shape_and_the_width_unconditionally() -> None:
-    import paper_trading_ledger as L  # noqa: PLC0415
-
-    identity = L._SELECTION_RULE_IDENTITY
-    assert identity["seat_shape"] == "seat_shape_mean_anchored_v1"
-    assert identity["seat_width"] == "2..3"
-    assert identity["market_lean_gate"] == "shadow"
-    assert "support_width_min_override" not in identity
-    assert "symmetric_seat" not in identity

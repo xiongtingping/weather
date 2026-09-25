@@ -236,22 +236,6 @@ def test_a_refused_cancel_leaves_the_rung_resting_for_the_next_pass() -> None:
     assert _state(conn) == ("submitted", "pending", 0.0)
 
 
-def test_the_ledger_re_anchors_on_the_same_cadence() -> None:
-    import sys
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[1]
-    if str(root / "scripts") not in sys.path:
-        sys.path.insert(0, str(root / "scripts"))
-    import paper_trading_ledger as ledger  # noqa: PLC0415
-
-    assert ledger.MAKER_RESTING_ANCHORED is True
-    assert ledger.MAKER_RESTING_REPRICE_MINUTES == pytest.approx(
-        lane.RESTING_REPRICE_DWELL_SECONDS / 60.0
-    )
-    assert ledger.RESTING_REPRICE_DWELL_SECONDS == lane.RESTING_REPRICE_DWELL_SECONDS
-
-
 def test_inferred_cancel_from_not_found_is_declined_not_written(tmp_path) -> None:
     """A live order must not be ended by absence.
 

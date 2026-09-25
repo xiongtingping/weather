@@ -132,8 +132,8 @@ def test_nothing_late_costs_nothing():
     slept: list[float] = []
 
     result = driver.stand_aside_for_live_lanes(
-        {"paper_trading_ledger": 10800.0},
-        lambda: {"paper_trading_ledger": {"attempted_at_utc": _stamp(5)}},
+        {"settlement_truth": 10800.0},
+        lambda: {"settlement_truth": {"attempted_at_utc": _stamp(5)}},
         rounds=1.0, max_seconds=900.0,
         sleep=slept.append, now=lambda: NOW.timestamp(),
     )
@@ -147,7 +147,7 @@ def test_an_unreadable_clocks_file_does_not_block_the_walk():
         raise ValueError("truncated json")
 
     result = driver.stand_aside_for_live_lanes(
-        {"paper_trading_ledger": 10800.0}, read_clocks,
+        {"settlement_truth": 10800.0}, read_clocks,
         rounds=1.0, max_seconds=900.0, sleep=lambda s: None, now=lambda: NOW.timestamp(),
     )
 

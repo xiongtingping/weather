@@ -1,22 +1,17 @@
 """A hosted sweep that stopped on its budget with work left is due again soon.
 
-2026-09-14: a rule change sent the paper ledger into a whole-history
-re-derive.  The 11:32Z pass was killed at its 1800s timeout with the book
-emptied; the slice-and-resume repair (6858f017) made each pass safe but left
-the book partial between passes, and the ledger's interval is 10800s -- the
-walk needs about two budgets, so the book stayed half-built for three hours
-while two more rule changes landed.  The member now says on its stdout that it
-stopped with repair left, and the resident brings it due after a short delay.
+2026-09-14: a rule change sent the old paper ledger into a whole-history
+re-derive that needed about two budgets, and its 10800s interval left the book
+half-built for three hours.  A member now says on its stdout that it stopped
+with work left, and the resident brings it due after a short delay.  (That
+ledger retired on 2026-09-25; the resident's side of the contract stands.)
 """
 
 from __future__ import annotations
 
 import ast
 import importlib.util
-import io
-import sqlite3
 import sys
-from contextlib import redirect_stdout
 from pathlib import Path
 
 import pytest
@@ -24,8 +19,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
-
-import paper_trading_ledger as ledger  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -37,12 +30,6 @@ def daemon():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-def test_ledger_and_resident_speak_the_same_line(daemon) -> None:
-    assert ledger.HOSTED_SWEEP_CONTINUE_MARKER == (
-        daemon.HOSTED_SWEEP_CONTINUE_MARKER
-    )
 
 
 def _script(tmp_path: Path, body: str) -> str:
@@ -185,83 +172,3 @@ def test_completion_and_boot_both_read_the_run_outcome(daemon) -> None:
     )
 
 
-def _run_main(monkeypatch, tmp_path, *, slices, remaining) -> str:
-    """Drive ``main --backfill`` over scripted slice outcomes."""
-
-    db = tmp_path / "book.db"
-    db.write_bytes(b"")
-    monkeypatch.setattr(
-        ledger, "_connect", lambda *_a, **_kw: sqlite3.connect(":memory:")
-    )
-    outcomes = iter(slices)
-    monkeypatch.setattr(ledger, "backfill", lambda *_a, **_kw: next(outcomes))
-    monkeypatch.setattr(
-        ledger, "_repair_slice_through", lambda *_a, **_kw: remaining
-    )
-    monkeypatch.setattr(ledger, "REDERIVE_PASS_BUDGET_SEC", 3600.0)
-    monkeypatch.setattr(
-        sys, "argv", ["paper_trading_ledger.py", "--backfill", "--db", str(db)]
-    )
-    buffer = io.StringIO()
-    with redirect_stdout(buffer):
-        assert ledger.main() == 0
-    return buffer.getvalue()
-
-
-def _marker_printed(output: str) -> bool:
-    return ledger.HOSTED_SWEEP_CONTINUE_MARKER in {
-        line.strip() for line in output.splitlines()
-    }
-
-
-def test_a_pass_that_moved_the_repair_and_has_more_asks_to_continue(
-    monkeypatch, tmp_path
-) -> None:
-    out = _run_main(
-        monkeypatch, tmp_path,
-        slices=[
-            {"repair_slice_through": "2026-08-19"},
-            {"repair_slice_through": "2026-08-24"},
-            {},
-        ],
-        remaining="2026-08-29",
-    )
-    assert _marker_printed(out)
-
-
-def test_a_finished_repair_or_a_plain_pass_does_not(monkeypatch, tmp_path) -> None:
-    assert not _marker_printed(_run_main(
-        monkeypatch, tmp_path,
-        slices=[{"repair_slice_through": "2026-09-14"}, {}],
-        remaining=None,
-    ))
-    assert not _marker_printed(_run_main(
-        monkeypatch, tmp_path, slices=[{}], remaining="2026-08-19",
-    ))
-
-
-def test_a_stalled_repair_stays_on_the_interval(monkeypatch, tmp_path) -> None:
-    out = _run_main(
-        monkeypatch, tmp_path,
-        slices=[
-            {"repair_slice_through": "2026-08-19"},
-            {"repair_slice_through": "2026-08-19"},
-        ],
-        remaining="2026-08-19",
-    )
-    assert not _marker_printed(out)
-
-
-def test_a_repair_pass_never_holds_production_past_its_overdue_line(
-    daemon,
-) -> None:
-    """Continuation makes repair passes back-to-back, so each one's budget is
-    what production waits behind the SSOT write domain every time.  The loop
-    only starts a slice it expects to finish (1.5x the last), so a pass ends
-    inside its budget plus at most one slice; the budget itself must leave
-    production's overdue line standing."""
-
-    # Since 2026-09-19 the pass writes its own file and holds no SSOT
-    # writer; its budget stays bounded all the same.
-    assert daemon.hosted_sweep_write_domain("paper_ledger_aligned") == "paper_ledger"
-    assert ledger.REDERIVE_PASS_BUDGET_SEC < daemon.PRODUCTION_CYCLE_OVERDUE_SEC

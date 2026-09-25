@@ -21,16 +21,11 @@ import calibration_dashboard as C  # noqa: E402
 from bayes_basket_target import beta_edge_store as store  # noqa: E402
 import pytest  # noqa: E402
 
-# Charter 140: these fixtures build the paper candidate table, and the estimator
-# under test does not depend on the source; see ``ledger_evidence_source`` in
-# conftest.
-pytestmark = pytest.mark.usefixtures("ledger_evidence_source")
-
 
 def _book() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.execute(
-        "CREATE TABLE paper_trade_candidate_window("
+        "CREATE TABLE basket_candidate_window_scored("
         " candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
         " stage TEXT, decision_at_utc TEXT, raw_win_probability REAL,"
         " all_in_price REAL, hit INTEGER, settled_bucket TEXT, admissible INTEGER,"
@@ -43,7 +38,7 @@ def _book() -> sqlite3.Connection:
 
 def _window(conn, cid, *, day, at, raw, price, hit, adm, stage="P0"):
     conn.execute(
-        "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO basket_candidate_window_scored VALUES(?,?,?,?,?,?,?,?,?,?,?)",
         (cid, "S01", day, stage, at, raw, price, hit, "30°C", adm, price - 0.05),
     )
 

@@ -32,6 +32,7 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target import beta_edge_store as beta_store  # noqa: E402
 from bayes_basket_target import effective_edge_store as lambda_store  # noqa: E402
+from tests.claim_lane_tables import add_label  # noqa: E402
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     ECONOMIC_HURDLE_V1,
     SEAT_SHAPE_RULE_VERSION,
@@ -40,11 +41,6 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     beta_conditional_edge_v3,
     clears_economic_hurdle_v1,
 )
-
-# Charter 140: these fixtures build the paper candidate table, and the estimator
-# under test does not depend on the source; see ``ledger_evidence_source`` in
-# conftest.
-pytestmark = pytest.mark.usefixtures("ledger_evidence_source")
 
 
 # --------------------------------------------------------------------------
@@ -146,7 +142,7 @@ def test_the_v3_bound_is_a_quantile_of_the_whole_prediction(d, z):
 def _beta_db(*, with_shape: bool = False) -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.execute(
-        "CREATE TABLE paper_trade_candidate_window("
+        "CREATE TABLE basket_candidate_window_scored("
         " candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
         " stage TEXT, decision_at_utc TEXT, raw_win_probability REAL,"
         " all_in_price REAL, hit INTEGER, settled_bucket TEXT,"
@@ -168,16 +164,17 @@ def _row(conn, cid, *, day, settled_at, hit=1, decided=None, shape=None):
     if shape is not None or _has(conn, "seat_shape_rule"):
         values.append(shape)
     conn.execute(
-        "INSERT INTO paper_trade_candidate_window VALUES("
+        "INSERT INTO basket_candidate_window_scored VALUES("
         + ",".join("?" for _ in values) + ")",
         values,
     )
+    add_label(conn, "S1", day, settled_bucket="20°C", known_at_utc=settled_at)
 
 
 def _has(conn, column):
     return any(
         r[1] == column
-        for r in conn.execute("PRAGMA table_info(paper_trade_candidate_window)")
+        for r in conn.execute("PRAGMA table_info(basket_candidate_window_scored)")
     )
 
 
@@ -223,7 +220,7 @@ def test_a_missing_label_is_rejected_not_counted_as_a_loss():
 def test_a_table_that_cannot_say_when_labels_became_knowable_is_refused():
     conn = sqlite3.connect(":memory:")
     conn.execute(
-        "CREATE TABLE paper_trade_candidate_window("
+        "CREATE TABLE basket_candidate_window_scored("
         " candidate_id TEXT, station_id TEXT, event_date TEXT, stage TEXT,"
         " decision_at_utc TEXT, raw_win_probability REAL, all_in_price REAL,"
         " hit INTEGER, settled_bucket TEXT)"
@@ -289,10 +286,12 @@ def test_the_fit_keeps_joint_draws_only_when_it_serves(monkeypatch):
             raw = min(0.99, max(0.01, mid + rng.uniform(-0.2, 0.2)))
             hit = 1 if rng.random() < mid + 0.4 * (raw - mid) else 0
             conn.execute(
-                "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO basket_candidate_window_scored VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (f"c{n}", f"S{n % 7}", day, "P0", f"{day}T06:00:00Z", raw, price,
                  hit, "20°C", f"{day}T23:00:00Z", mid),
             )
+            add_label(conn, f"S{n % 7}", day, settled_bucket="20°C",
+                      known_at_utc=f"{day}T23:00:00Z")
             n += 1
     fit = beta_store.fit_beta(conn, stage_scope="P0", anchored=False)
     ev = fit["evidence"]
@@ -315,27 +314,24 @@ def test_the_fit_keeps_joint_draws_only_when_it_serves(monkeypatch):
 def _lambda_db() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.execute(
-        "CREATE TABLE paper_trade_candidate_window("
+        "CREATE TABLE basket_candidate_window_scored("
         " candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
         " stage TEXT, decision_at_utc TEXT, buckets_json TEXT,"
         " win_probability REAL, all_in_price REAL, hit INTEGER,"
         " admissible INTEGER, seated INTEGER, settled_at_utc TEXT,"
         " settled_bucket TEXT)"
     )
-    conn.execute(
-        "CREATE TABLE paper_trade_settlement("
-        " position_id TEXT, stage TEXT, event_date TEXT, hit INTEGER)"
-    )
-    conn.execute("INSERT INTO paper_trade_settlement VALUES('p','P0','2026-09-12',0)")
+    add_label(conn, "P", "2026-09-12")
     return conn
 
 
 def _lambda_row(conn, cid, *, day, settled_at, station="S1"):
     conn.execute(
-        "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO basket_candidate_window_scored VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (cid, station, day, "P0", f"{day}T06:00:00Z", '["b"]', 0.7, 0.6, 1, 1, 0,
          settled_at, "b"),
     )
+    add_label(conn, station, day, settled_bucket="b", known_at_utc=settled_at)
 
 
 def test_a_lambda_fit_as_of_a_day_reads_nothing_after_it():
@@ -348,7 +344,7 @@ def test_a_lambda_fit_as_of_a_day_reads_nothing_after_it():
     _lambda_row(conn, "c", day="2026-09-12", settled_at="2026-09-13T01:00:00Z",
                 station="S3")
     got = lambda_store._candidate_population(
-        conn, ("P0",), "2026-08-01", include_replayed=False,
+        conn, ("P0",), "2026-08-01",
         ceiling_day="2026-09-05", cutoff_utc="2026-09-06T00:00:00Z",
     )
     assert sorted(str(r[4]) for r in got["rows"]) == ["2026-09-04", "2026-09-05"]
@@ -358,7 +354,7 @@ def test_a_lambda_label_settled_after_the_cutoff_is_not_read():
     conn = _lambda_db()
     _lambda_row(conn, "a", day="2026-09-05", settled_at="2026-09-09T00:00:00Z")
     got = lambda_store._candidate_population(
-        conn, ("P0",), "2026-08-01", include_replayed=False,
+        conn, ("P0",), "2026-08-01",
         ceiling_day="2026-09-05", cutoff_utc="2026-09-06T00:00:00Z",
     )
     assert got["rows"] == []
@@ -371,7 +367,7 @@ def test_the_nightly_lambda_population_is_unchanged_without_a_ceiling():
     _lambda_row(conn, "c", day="2026-09-12", settled_at="2026-09-13T01:00:00Z",
                 station="S3")
     got = lambda_store._candidate_population(
-        conn, ("P0",), "2026-08-01", include_replayed=False,
+        conn, ("P0",), "2026-08-01",
     )
     assert len(got["rows"]) == 2
 
@@ -411,37 +407,20 @@ def test_the_strict_loader_serves_evidence_only_on_the_current_shape(shape, verd
 
 
 def test_the_truth_revision_commit_is_when_a_label_became_knowable():
-    """The ledger rewrote every settlement on 2026-09-07; the truth did not."""
+    """The standing revision's label, knowable at that revision's commit."""
 
     from bayes_basket_target.label_knowability import (
-        SOURCE_LEDGER_WRITE,
         SOURCE_TRUTH_COMMIT,
         knowable_labels,
     )
 
     conn = sqlite3.connect(":memory:")
-    conn.executescript(
-        "CREATE TABLE paper_trade_candidate_window("
-        " station_id TEXT, event_date TEXT, settled_bucket TEXT,"
-        " settled_at_utc TEXT, truth_revision_no INTEGER, hit INTEGER);"
-        "CREATE TABLE calibration_station_daily_high_truth("
-        " station_id TEXT, local_date TEXT, revision_no INTEGER,"
-        " canonical_committed_at_utc TEXT, qc_status TEXT);"
-    )
-    conn.execute(
-        "INSERT INTO paper_trade_candidate_window VALUES"
-        " ('S1','2026-08-20','20°C','2026-09-07T05:43:12Z',1,1),"
-        " ('S2','2026-08-20','21°C','2026-09-07T05:43:12Z',0,0)"
-    )
-    conn.execute(
-        "INSERT INTO calibration_station_daily_high_truth VALUES"
-        " ('S1','2026-08-20',0,'2026-08-21T01:00:00Z','ACCEPTED'),"
-        " ('S1','2026-08-20',1,'2026-08-21T04:15:13Z','ACCEPTED')"
-    )
+    add_label(conn, "S1", "2026-08-20", settled_bucket="20°C",
+              known_at_utc="2026-08-21T01:00:00Z", truth_revision_no=0)
+    add_label(conn, "S1", "2026-08-20", settled_bucket="21°C",
+              known_at_utc="2026-08-21T04:15:13Z", truth_revision_no=1)
     got = knowable_labels(conn)
-    # S1's label came from revision 1: knowable at that revision's commit.
+    # Revision 1 moved the bucket: its label, at its own commit, not earlier.
+    assert got[("S1", "2026-08-20")]["bucket"] == "21°C"
     assert got[("S1", "2026-08-20")]["known_at"] == "2026-08-21T04:15:13Z"
     assert got[("S1", "2026-08-20")]["source"] == SOURCE_TRUTH_COMMIT
-    # S2's revision is not in the truth lane: the ledger's write is the bound.
-    assert got[("S2", "2026-08-20")]["known_at"] == "2026-09-07T05:43:12Z"
-    assert got[("S2", "2026-08-20")]["source"] == SOURCE_LEDGER_WRITE

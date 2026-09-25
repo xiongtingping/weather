@@ -267,14 +267,6 @@ def test_sub_cent_baskets_are_excluded_on_the_ledgers_own_rule():
     assert got["weightings"]["chain"]["net_odds"] == pytest.approx(1.5)
 
 
-def test_dust_floor_is_the_ledgers_and_not_a_local_copy():
-    from paper_trading_ledger import DUST_COST_FLOOR as LEDGER_FLOOR
-
-    assert C.DUST_COST_FLOOR is LEDGER_FLOOR
-    conn = _book([("P0", 0.5, 1, 1, 0.4, 10.0)])
-    assert _economics(conn)["dust_cost_floor"] == LEDGER_FLOOR
-
-
 def test_odds_never_come_from_averaging_per_row_odds():
     """Convexity, pinned in both modules that aggregate odds.
 

@@ -41,7 +41,6 @@ CHARTER = (
 )
 
 
-
 @pytest.fixture(autouse=True)
 def _certainty_gate_off(monkeypatch: pytest.MonkeyPatch) -> None:
     """These fixtures are sharp on purpose; the gate is tested separately.
@@ -1304,12 +1303,10 @@ def test_clause_66_chain_topup_gates_are_gates_not_sizers() -> None:
     clause = _clause(66)
     assert "只做闸不定规模" in clause
 
-    import importlib
 
     from bayes_basket_target import delta_v2_runtime as runtime
 
-    ledger = importlib.import_module("scripts.paper_trading_ledger")
-    assert runtime.CHAIN_COST_PAR_BOUND == ledger.CHAIN_COST_PAR_BOUND == 1.0
+    assert runtime.CHAIN_COST_PAR_BOUND == 1.0
     kernel_source = (
         Path(__file__).resolve().parents[1]
         / "bayes_basket_target"
@@ -1370,10 +1367,6 @@ def test_clause_120_one_ruler_for_the_search_and_the_build() -> None:
     assert "_ask_depth_purchase(" not in source
     assert "capital_scale" in source
 
-    # The ledger needs no mirror: its default judge is production's own
-    # solver, so both sides run this one function (charter 84/112's rule).
-    ledger = importlib.import_module("scripts.paper_trading_ledger")
-    assert "ladder_balance_targets_v1" not in inspect.getsource(ledger)
     assert "无需账本侧镜像" in clause
 
 
@@ -1390,21 +1383,15 @@ def test_clause_119_p1_evidence_is_a_hold_before_the_compile() -> None:
     assert "挂上 P1 下单路径" in clause
     assert "绝不挂在 P1 的 commit 路上" in clause
 
-    import importlib
 
     from pathlib import Path
 
     from bayes_basket_target import metar_trajectory, production_io
 
-    # One rule, two importers -- the ledger's walk and production's compile
-    # must not drift into two spellings of it.
-    ledger = importlib.import_module("scripts.paper_trading_ledger")
     assert (
         production_io.assert_p1_execution_evidence
         is metar_trajectory.assert_p1_execution_evidence
-        is ledger.assert_p1_execution_evidence
     )
-
     runtime_source = (
         Path(__file__).resolve().parents[1]
         / "bayes_basket_target"
@@ -1428,11 +1415,6 @@ def test_clause_119_p1_evidence_is_a_hold_before_the_compile() -> None:
         / "production_worker.py"
     ).read_text(encoding="utf-8")
 
-    # Same depth as charter 67 in the ledger, for the same reason.
-    assert ledger.REFUSAL_DEPTH["p1_execution_evidence"] == (
-        ledger.REFUSAL_DEPTH["entry_window_not_open"]
-    )
-
 
 def test_clause_119_the_refusal_codes_dropped_a_prefix_that_lied() -> None:
     """A blocker code that names a call site the rule no longer only has is
@@ -1446,7 +1428,6 @@ def test_clause_119_the_refusal_codes_dropped_a_prefix_that_lied() -> None:
         "bayes_basket_target/metar_trajectory.py",
         "bayes_basket_target/production_io.py",
         "bayes_basket_target/runtime.py",
-        "scripts/paper_trading_ledger.py",
     ):
         source = (root / name).read_text(encoding="utf-8")
         assert "stage_zero_execution_p1_hard_bound" not in source
@@ -1524,21 +1505,14 @@ def test_clause_69_the_retired_decline_clamp_is_gone_from_both_sides() -> None:
     clause = _clause(69)
     assert "after_open" in clause
 
-    import importlib
 
     from bayes_basket_target import delta_v2_runtime as runtime
     from bayes_basket_target.basket_kernel import delta_v2 as kernel
 
-    ledger = importlib.import_module("scripts.paper_trading_ledger")
     for name in ("clamp_declining_gaps_v2", "contiguous_edge_clamp_v2"):
         assert not hasattr(kernel, name)
         assert not hasattr(runtime, name)
-        assert not hasattr(ledger, name)
     assert not hasattr(runtime, "DECLINE_CLAMP_MODE")
-    assert not hasattr(ledger, "DECLINE_CLAMP")
-    assert not hasattr(ledger, "DECLINE_MIN_DROP")
-    assert ledger._SELECTION_RULE_IDENTITY["decline_clamp"] == "off"
-    assert ledger._SELECTION_RULE_IDENTITY["decline_min_drop"] == 0.0
 
 
 def test_clause_83_a_sub_dollar_rung_is_lifted_to_the_venue_minimum() -> None:
@@ -2549,7 +2523,6 @@ def test_clause_71_top_ups_wait_for_a_new_probability_and_read_deflated_growth()
     root = Path(__file__).resolve().parents[1]
     if str(root / "scripts") not in sys.path:
         sys.path.insert(0, str(root / "scripts"))
-    import paper_trading_ledger as ledger  # noqa: PLC0415
 
     # The partition keeps its shape and deflates only the window.
     probabilities = {"a": 0.1, "b": 0.5, "c": 0.3, "d": 0.1}
@@ -2575,16 +2548,6 @@ def test_clause_71_top_ups_wait_for_a_new_probability_and_read_deflated_growth()
     )
     assert empty < 0.0 < full
 
-    # One implementation on both sides, and the version is in the ledger's
-    # fingerprint.
-    assert ledger.chain_topup_growth_v1 is kernel.chain_topup_growth_v1
-    assert ledger.deflate_window_partition_v1 is kernel.deflate_window_partition_v1
-    ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(
-        encoding="utf-8"
-    )
-    assert "chain_topup_growth_v1(" in ledger_source
-    assert "\"topup_gates\": CHARTER_71_TOPUP_GATE_VERSION" in ledger_source
-    assert "topup_requires_probability_change" in ledger.REFUSAL_DEPTH
     solver_source = (
         root / "bayes_basket_target" / "delta_v2_runtime.py"
     ).read_text(encoding="utf-8")
@@ -2599,7 +2562,6 @@ def test_clause_71_top_ups_wait_for_a_new_probability_and_read_deflated_growth()
     same = kernel.probability_vector_identity_v1({"a": 0.1234567, "b": 0.5})
     assert same == kernel.probability_vector_identity_v1({"b": 0.5, "a": 0.1234568})
     assert same != kernel.probability_vector_identity_v1({"a": 0.2, "b": 0.5})
-    assert ledger.probability_vector_identity_v1 is kernel.probability_vector_identity_v1
     assert "served_probability_identity" in solver_source
     # Recorded at commit, in the atomic ledger, when the bundle buys.
     atomic_source = (
@@ -2620,7 +2582,6 @@ def test_clause_72_production_sizes_by_the_whole_basket_kelly_and_the_curve_keep
     root = Path(__file__).resolve().parents[1]
     if str(root / "scripts") not in sys.path:
         sys.path.insert(0, str(root / "scripts"))
-    import paper_trading_ledger as ledger  # noqa: PLC0415
 
     assert kernel.PRODUCTION_SIZING_LAW == kernel.KELLY_OBJECTIVE_FORM
     assert kernel.KELLY_OBJECTIVE_FORM in kernel.OBJECTIVE_FORMS
@@ -2636,12 +2597,6 @@ def test_clause_72_production_sizes_by_the_whole_basket_kelly_and_the_curve_keep
     assert kernel.whole_basket_kelly_stake_v1(
         win_probability=0.9, cost=0.1, book_equity_usdc=1000.0,
     )[0] == kernel.MAX_STAKE_FRACTION_PER_SCOPE
-    # The ledger's stake is the kernel's.
-    assert ledger._kelly_stake(win_probability=0.36, cost=0.31, equity=1000.0) == (
-        kernel.whole_basket_kelly_stake_v1(
-            win_probability=0.36, cost=0.31, book_equity_usdc=1000.0,
-        )
-    )
     # Under the Kelly form the solver's winner is the Kelly candidate when it
     # clears the floor, and the baseline when none is offered.
     probabilities = {"a": 0.2, "b": 0.5, "c": 0.3}
@@ -2710,23 +2665,17 @@ def test_clause_74_only_p0_opens_and_the_ticket_is_gone() -> None:
     from bayes_basket_target.basket_kernel import delta_v2 as kernel
 
     root = Path(__file__).resolve().parents[1]
-    if str(root / "scripts") not in sys.path:
-        sys.path.insert(0, str(root / "scripts"))
-    import paper_trading_ledger as ledger  # noqa: PLC0415
 
     assert kernel.CHAIN_OPENING_STAGE == "P0"
-    # The dust floor outlived the ticket it was named for, under its own name,
-    # and both lanes still read the one value.
+    # The dust floor outlived the ticket it was named for, under its own name.
     assert kernel.DUST_FILL_FLOOR_USDC == 0.01
-    assert ledger.DUST_COST_FLOOR == kernel.DUST_FILL_FLOOR_USDC
-    # Nothing of the ticket is left to import, in either lane.
+    # Nothing of the ticket is left to import.
     for name in (
         "CHAIN_TICKET_CANDIDATE_ORIGIN", "CHAIN_TICKET_DUST_FLOOR_USDC",
         "EXECUTION_AUTHORIZATION_CHAIN_TICKET", "chain_ticket_cash_v1",
         "CHARTER_92_TICKET_EDGE",
     ):
         assert not hasattr(kernel, name), name
-        assert not hasattr(ledger, name), name
     for name in ("CHAIN_TICKET_MODE", "P0_SIZING_MODE", "_chain_ticket_candidate"):
         assert not hasattr(delta_v2_runtime, name), name
     assert kernel.EXECUTION_AUTHORIZATION_RULES == frozenset({
@@ -2753,7 +2702,6 @@ def test_clause_75_mean_bucket_centre_and_mean_mode_skew_direction() -> None:
     root = Path(__file__).resolve().parents[1]
     if str(root / "scripts") not in sys.path:
         sys.path.insert(0, str(root / "scripts"))
-    import paper_trading_ledger as ledger  # noqa: PLC0415
 
     ordinals = {"20": 0, "21": 1, "22": 2, "23": 3, "24": 4, "25": 5}
     # Right-skewed: mode at 21, mean pulled above it by the warm tail.
@@ -2781,9 +2729,6 @@ def test_clause_75_mean_bucket_centre_and_mean_mode_skew_direction() -> None:
     assert kernel_support.expected_direction_from_probability_vector(
         right, ordinals, policy, evidence_fresh=False
     ) is Direction.NEUTRAL
-    # One implementation: the ledger's centre and production's ladder centre
-    # and skew sign all import the kernel's.
-    assert ledger.mean_center_bucket_v1 is kernel_support.mean_center_bucket_v1
     runtime_source = (
         root / "bayes_basket_target" / "delta_v2_runtime.py"
     ).read_text(encoding="utf-8")
@@ -2793,11 +2738,6 @@ def test_clause_75_mean_bucket_centre_and_mean_mode_skew_direction() -> None:
         root / "bayes_basket_target" / "basket_kernel" / "support.py"
     ).read_text(encoding="utf-8")
     assert "mean_bucket = mean_center_bucket_v1(" in support_source
-    ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(
-        encoding="utf-8"
-    )
-    assert "resolved = _choose_support(snapshot, basket_policy)" in ledger_source
-    assert "snapshot = snapshot_from_probability_envelope(envelope, mapping)" in ledger_source
 
 
 def test_clause_76_seed_layer_has_no_envelope_anchor_and_no_peripheral_gates() -> None:
@@ -2913,9 +2853,7 @@ def test_clause_77_a_decision_moment_is_a_checkpoint_or_admissibility_change() -
     root = Path(__file__).resolve().parents[1]
     if str(root / "scripts") not in sys.path:
         sys.path.insert(0, str(root / "scripts"))
-    import paper_trading_ledger as ledger  # noqa: PLC0415
 
-    assert ledger.DECISION_MOMENT_RULE_VERSION == DECISION_MOMENT_RULE_VERSION
     runtime_source = (
         root / "bayes_basket_target" / "delta_v2_runtime.py"
     ).read_text(encoding="utf-8")
@@ -2924,11 +2862,6 @@ def test_clause_77_a_decision_moment_is_a_checkpoint_or_admissibility_change() -
         in runtime_source
     )
     assert 'reason_codes.append("no_decision_moment")' in runtime_source
-    ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(
-        encoding="utf-8"
-    )
-    assert '"no_decision_moment",' in ledger_source
-    assert "chain_decision_signatures.get(stage)" in ledger_source
     io_source = (root / "bayes_basket_target" / "production_io.py").read_text(
         encoding="utf-8"
     )
@@ -3055,16 +2988,6 @@ def test_clause_131_symmetric_day_seat_is_the_mean_bucket_plus_minus_one(monkeyp
     assert [tuple(w["buckets"]) for w in windows if w["admissible"]] == [
         ("30°C", "31°C", "32°C"), ("31°C", "32°C"),
     ]
-    # The ledger hashes the rule unconditionally.
-    import sys
-    from pathlib import Path as _Path
-
-    root = _Path(__file__).resolve().parents[1]
-    if str(root / "scripts") not in sys.path:
-        sys.path.insert(0, str(root / "scripts"))
-    ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    assert '"seat_shape": SEAT_SHAPE_RULE_VERSION,' in ledger_source
-    assert '"seat_width": "%d..%d" % (SEAT_MIN_BUCKETS, SEAT_MAX_BUCKETS),' in ledger_source
 
 
 def test_shape_reading_carries_the_served_width_in_bucket_steps() -> None:
@@ -3146,8 +3069,6 @@ def test_clause_81_centre_holding_windows_claim_is_lifted() -> None:
     from pathlib import Path as _Path
 
     root = _Path(__file__).resolve().parents[1]
-    ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    assert '"center_window_claim": [' in ledger_source
 
 
 def test_clause_87_the_gate_reads_effective_edge_and_the_ticket_waits_for_it(monkeypatch) -> None:
@@ -3304,10 +3225,6 @@ def test_clause_87_the_gate_reads_effective_edge_and_the_ticket_waits_for_it(mon
     # The ledger reads the same switch, hands the gate the same served
     # tables, and hashes the belief the gate reads.
     root = Path(__file__).resolve().parents[1]
-    ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    assert "CHARTER_87_GATE_EFFECTIVE_EDGE," in ledger_source
-    assert '"gate_belief": (' in ledger_source
-    assert ledger_source.count("effective_edge_tables=_effective_edge_tables_as_of(") >= 3
 
 
 def test_clause_92_every_buy_reads_the_deflated_belief(monkeypatch) -> None:
@@ -3357,14 +3274,6 @@ def test_clause_92_every_buy_reads_the_deflated_belief(monkeypatch) -> None:
     ).read_text(encoding="utf-8")
     assert "structural_blockers.add(EXECUTION_EDGE_BELIEF_MISSING)" in kernel_source
     assert kernel.EXECUTION_EDGE_BELIEF_MISSING == "edge_belief_missing"
-    # The ledger: the ticket is no longer exempt, its own judge seats only
-    # admitted windows, and the fingerprint names the rule.
-    ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(
-        encoding="utf-8"
-    )
-    assert "CHARTER_92_TICKET_EDGE" not in ledger_source
-    assert '"ticket_authorization": (' in ledger_source
-    assert 'and row.get("admissible", True)' in ledger_source
 
 
 def test_clause_93_the_support_floor_is_zero_and_re_read_after_the_lift() -> None:
@@ -3417,12 +3326,6 @@ def test_clause_93_the_support_floor_is_zero_and_re_read_after_the_lift() -> Non
     assert "support_floor_after_lift = support_scenario_floor_v1(" in compile_source
     assert 'reason_codes.append("support_floor_after_lift")' in compile_source
     assert '"support_scenario_floor_after_lift": support_floor_after_lift,' in compile_source
-    ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(
-        encoding="utf-8"
-    )
-    assert "support_scenario_floor_v1(" in ledger_source
-    assert '"support_floor_after_lift",' in ledger_source
-    assert '"support_scenario_floor": (' in ledger_source
 
 
 def test_clause_94_the_ladder_is_anchored_on_the_bid_and_never_crosses() -> None:
@@ -3478,10 +3381,6 @@ def test_clause_94_the_ladder_is_anchored_on_the_bid_and_never_crosses() -> None
     source = (root / "bayes_basket_target" / "delta_v2_runtime.py").read_text(encoding="utf-8")
     assert 'f"MAKER:{MAKER_RESTING_TIMEOUT_SECONDS:g}"' in source
     assert "bid_floor = row.bid_price - row.price_tick_size" in source
-    ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    assert "MAKER_RESTING_ANCHORED = MAKER_LADDER_SHAPE == \"bid_anchored\"" in ledger_source
-    assert '"execution_family": EXECUTION_FAMILY,' in ledger_source
-    assert '"ladder_shape": MAKER_LADDER_SHAPE,' in ledger_source
 
 def test_clause_110_the_execution_layer_answers_to_the_objective() -> None:
     """Charter 110: one objective, three arrivals of information, and an

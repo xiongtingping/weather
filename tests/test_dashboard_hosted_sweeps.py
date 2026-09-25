@@ -241,7 +241,7 @@ def test_sweep_health_names_the_queue_the_running_lane_and_the_restarts(
 
     contracts = [
         ("settlement_truth", 3 * HOUR, "ssot", False, 900.0),
-        ("paper_trading_ledger", 3 * HOUR, "ssot", False, 1800.0),
+        ("settled_day_cycle_close", 3 * HOUR, "ssot", False, 1800.0),
         ("capture_noaa_conus_forward", HOUR, "ssot", True, 1800.0),
         ("forward_packet_retention", 600.0, "none", False, 300.0),
         ("calibration_refit", 24 * HOUR, "ssot", False, 900.0),
@@ -253,7 +253,7 @@ def test_sweep_health_names_the_queue_the_running_lane_and_the_restarts(
     ], ""))
     clocks = {
         "settlement_truth": {"completed_at_utc": ago(11.3), "attempted_at_utc": ago(11.3), "last_state": "ok"},
-        "paper_trading_ledger": {"completed_at_utc": ago(9.7), "attempted_at_utc": ago(9.7), "last_state": "ok"},
+        "settled_day_cycle_close": {"completed_at_utc": ago(9.7), "attempted_at_utc": ago(9.7), "last_state": "ok"},
         "capture_noaa_conus_forward": {"completed_at_utc": ago(1.5), "attempted_at_utc": ago(1.5), "last_state": "ok"},
         "forward_packet_retention": {"completed_at_utc": ago(0.1), "attempted_at_utc": ago(0.1), "last_state": "ok"},
         "calibration_refit": {"completed_at_utc": ago(23.0), "attempted_at_utc": ago(23.0), "last_state": "ok"},
@@ -285,10 +285,10 @@ def test_sweep_health_names_the_queue_the_running_lane_and_the_restarts(
     out = C.collect_hosted_sweeps(sqlite3.connect(":memory:"))
 
     # The SSOT start queue in the resident's order: most turns late first.
-    assert out["ssot_queue"] == ["settlement_truth", "paper_trading_ledger"]
-    ledger = _lane(out, "paper_trading_ledger")
-    assert (ledger["queue_rank"], ledger["queue_size"]) == (2, 2)
-    assert ledger["waiting"] is True
+    assert out["ssot_queue"] == ["settlement_truth", "settled_day_cycle_close"]
+    closer = _lane(out, "settled_day_cycle_close")
+    assert (closer["queue_rank"], closer["queue_size"]) == (2, 2)
+    assert closer["waiting"] is True
     # A running capture is not in the queue, says how far into its timeout
     # it is, and is marked as the kind that holds neither writer nor queue.
     capture = _lane(out, "capture_noaa_conus_forward")

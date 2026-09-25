@@ -23,16 +23,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target import effective_edge_store as store  # noqa: E402
+from tests.claim_lane_tables import add_label  # noqa: E402
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     EFFECTIVE_EDGE_LAMBDA,
     center_window_claim_factor,
     effective_edge_lambda,
 )
-
-# Charter 140: these fixtures build the paper candidate table, and the estimator
-# under test does not depend on the source; see ``ledger_evidence_source`` in
-# conftest.
-pytestmark = pytest.mark.usefixtures("ledger_evidence_source")
 
 
 def _book(path: Path, seats) -> sqlite3.Connection:
@@ -51,29 +47,22 @@ def _book(path: Path, seats) -> sqlite3.Connection:
 
     conn = sqlite3.connect(path, isolation_level=None)
     conn.execute(
-        "CREATE TABLE paper_trade_candidate_window ("
+        "CREATE TABLE basket_candidate_window_scored ("
         " candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
         " stage TEXT, decision_at_utc TEXT, buckets_json TEXT,"
         " win_probability REAL, all_in_price REAL, hit INTEGER)"
     )
-    # Still read for the as-of day, and for nothing else.
-    conn.execute(
-        "CREATE TABLE paper_trade_settlement ("
-        " position_id TEXT, stage TEXT, event_date TEXT, hit INTEGER)"
-    )
     for index, (stage, day, claim, cost, hit) in enumerate(seats):
         conn.execute(
-            "INSERT INTO paper_trade_candidate_window"
+            "INSERT INTO basket_candidate_window_scored"
             " VALUES(?,?,?,?,?,?,?,?,?)",
             (
                 f"c{index}", f"S{index}", day, stage, f"{day}T00:00:00Z",
                 '["b"]', claim * center_window_claim_factor(claim), cost, hit,
             ),
         )
-        conn.execute(
-            "INSERT INTO paper_trade_settlement VALUES(?,?,?,?)",
-            (f"p{index}", stage, day, hit),
-        )
+        # The label is read for the as-of day, and for nothing else here.
+        add_label(conn, f"S{index}", day, settled_bucket="b" if hit else "x")
     return conn
 
 
@@ -277,7 +266,7 @@ def _guard(proposed_admitted, proposed_roi, incumbent_admitted, incumbent_roi,
     calls = []
 
     def fake_admitted_return(conn, bands, stages, floor_day, *,
-                             include_replayed=False):
+                             claim_scope="window"):
         calls.append(bands)
         admitted, roi = (
             (proposed_admitted, proposed_roi) if len(calls) == 1
@@ -415,7 +404,6 @@ def test_an_incumbent_beaten_by_no_table_at_all_is_retired(tmp_path) -> None:
     try:
         veto = store._lambda_incumbent_veto(
             conn, stage_scope="P0", claim_scope="window",
-            include_replayed=False,
         )
         assert veto["day_count"] == 6 and veto["window_count"] == 90
         assert veto["net_bootstrap"] > veto["net_incumbent"]
@@ -453,7 +441,6 @@ def test_the_veto_holds_below_the_day_floor_and_when_the_constant_is_served(
     try:
         veto = store._lambda_incumbent_veto(
             conn, stage_scope="P0", claim_scope="window",
-            include_replayed=False,
         )
         assert veto["day_count"] == 2 and veto["window_count"] == 90
         assert "interval" not in veto
@@ -487,7 +474,6 @@ def test_the_veto_holds_below_the_day_floor_and_when_the_constant_is_served(
         )
         veto = store._lambda_incumbent_veto(
             conn, stage_scope="P0", claim_scope="window",
-            include_replayed=False,
         )
         assert not veto["vetoed"]
         assert veto["day_count"] == 0
