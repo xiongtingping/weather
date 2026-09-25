@@ -324,7 +324,16 @@ MAX_JSON_NODES = 500_000
 # pages on the freelist, which the file reuses before it grows again, so the
 # four GiB added here are headroom for the retirement to land, not a new
 # rate of disk spend.
-MAX_TARGET_DB_BYTES = 61440 * MIB
+#
+# Raised 60 -> 64 GiB on 2026-09-25 to lift a fail-closed store: the file
+# reached 64,432,259,072 bytes with no free pages at about 23:40Z on 09-24,
+# 7.7 MB over the ceiling, and every writer (P0/P0-M/P1, regime, market,
+# decisions) stopped.  The 09-19 retirement's freelist is spent: the file
+# went 55.0 -> 60.0 GiB and reused the freed pages in 5.5 days, roughly
+# 2.5-3 GiB a day.  Free disk is 19 GiB; four GiB of growth leaves 15 GiB at
+# the ceiling, and buys about a day and a half.  The five-ask-level ruling
+# above is still the fix.
+MAX_TARGET_DB_BYTES = 65536 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.
