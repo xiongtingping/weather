@@ -1,0 +1,156 @@
+{
+ "protocol": "PROTOCOL.md",
+ "pooled": {
+  "label": "全部（判定）",
+  "station_days": 1122,
+  "days": 29,
+  "current": {
+   "brier": 0.7323225917803601,
+   "nll": 1.5600393372314236
+  },
+  "logloss": {
+   "brier": 0.7323962011884604,
+   "nll": 1.5580772351734014
+  },
+  "delta": {
+   "brier": 7.36094081003392e-05,
+   "nll": -0.0019621020580220445
+  },
+  "ci95": {
+   "brier": [
+    -0.0012143247519570731,
+    0.00123550273304998
+   ],
+   "nll": [
+    -0.004876606955596331,
+    0.0004306174706135087
+   ]
+  },
+  "point_estimates_both_lower": false,
+  "holds": false
+ },
+ "after_134": {
+  "label": "宪章 134 之后",
+  "station_days": 492,
+  "days": 11,
+  "current": {
+   "brier": 0.715442340207184,
+   "nll": 1.4544236269486224
+  },
+  "logloss": {
+   "brier": 0.716400123557684,
+   "nll": 1.4546016104636004
+  },
+  "delta": {
+   "brier": 0.0009577833505000399,
+   "nll": 0.0001779835149781474
+  },
+  "ci95": {
+   "brier": [
+    -0.0013924495537487856,
+    0.0028066875570016163
+   ],
+   "nll": [
+    -0.003457981396563785,
+    0.003213266960077699
+   ]
+  },
+  "point_estimates_both_lower": false,
+  "holds": false
+ },
+ "asos": {
+  "label": "ASOS 11 站",
+  "station_days": 292,
+  "days": 29,
+  "current": {
+   "brier": 0.7512530893877302,
+   "nll": 1.6006881324239721
+  },
+  "logloss": {
+   "brier": 0.7518754992551031,
+   "nll": 1.6004322336912413
+  },
+  "delta": {
+   "brier": 0.0006224098673731012,
+   "nll": -0.00025589873273080546
+  },
+  "ci95": {
+   "brier": [
+    -0.0015104855416363612,
+    0.0023437580096447464
+   ],
+   "nll": [
+    -0.0074286155791175625,
+    0.005532056345635516
+   ]
+  },
+  "point_estimates_both_lower": false,
+  "holds": false
+ },
+ "non_asos": {
+  "label": "非 ASOS",
+  "station_days": 830,
+  "days": 29,
+  "current": {
+   "brier": 0.7256627058751164,
+   "nll": 1.5457387972359729
+  },
+  "logloss": {
+   "brier": 0.7255432433144123,
+   "nll": 1.5431764405141133
+  },
+  "delta": {
+   "brier": -0.0001194625607040541,
+   "nll": -0.0025623567218594438
+  },
+  "ci95": {
+   "brier": [
+    -0.0017594063450486056,
+    0.0013291306080995924
+   ],
+   "nll": [
+    -0.005750893473538546,
+    0.0003415627494370806
+   ]
+  },
+  "point_estimates_both_lower": true,
+  "holds": false
+ },
+ "weights_differ": {
+  "label": "两臂权重不同的站日",
+  "station_days": 1033,
+  "days": 29,
+  "current": {
+   "brier": 0.7330440677031009,
+   "nll": 1.559085448772324
+  },
+  "logloss": {
+   "brier": 0.7331240190640773,
+   "nll": 1.5569542982310842
+  },
+  "delta": {
+   "brier": 7.995136097636046e-05,
+   "nll": -0.00213115054123982
+  },
+  "ci95": {
+   "brier": [
+    -0.0013643035328769295,
+    0.0013127425747800074
+   ],
+   "nll": [
+    -0.0053522812875959865,
+    0.00044935408173326356
+   ]
+  },
+  "point_estimates_both_lower": false,
+  "holds": false
+ },
+ "states": {
+  "SEAT_NO_TRAINING_DAYS -> SEAT_NO_TRAINING_DAYS": 77,
+  "APPLIED -> SEAT_BLEND_VOTED_OUT_A_MEMBER": 36,
+  "APPLIED -> APPLIED": 989,
+  "APPLIED -> SEAT_NO_TRAINING_DAYS": 20
+ },
+ "moved_half_l1_median_when_different": 0.05783003327063631,
+ "deploy": false
+}
