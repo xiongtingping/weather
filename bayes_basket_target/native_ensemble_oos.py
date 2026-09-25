@@ -963,7 +963,18 @@ def _ladder_metrics(
     if set(str(key) for key in probability) - set(ordered):
         raise ContractError("native_ensemble_oos_ladder_key_mismatch")
     hit = _ladder_bucket(ladder, actual)
-    values = [float(probability.get(key, 0.0)) for key in ordered]
+    # Charter 226: score the vector serving would serve.  P0 ends at the
+    # stages' one model-zero floor (charter 224), so a rung scored here at
+    # zero cost the candidate -log(EPS) = 27.6 nats serving never charges;
+    # learned, per-system, equal-weight and climate vectors all pass through
+    # the same floor, so the comparison stays like for like.  Imported here:
+    # materialization imports native_ensemble_p0, which imports this module.
+    from .materialization import floor_probabilities  # noqa: PLC0415
+
+    floored, _lifted = floor_probabilities(
+        {key: float(probability.get(key, 0.0)) for key in ordered}
+    )
+    values = [floored[key] for key in ordered]
     brier = sum(
         (value - (1.0 if key == hit else 0.0)) ** 2
         for key, value in zip(ordered, values)

@@ -1,0 +1,83 @@
+{
+ "as_of": "2026-09-25T090000Z",
+ "shared_keys": 12007,
+ "only_off": 0,
+ "only_on": 0,
+ "table": {
+  "C": {
+   "both_pass": 9717,
+   "both_reject": 361
+  },
+  "F": {
+   "both_pass": 1637,
+   "both_reject": 291,
+   "reject_to_pass": 1
+  }
+ },
+ "by_station": {
+  "KDAL": {
+   "both_pass": 153,
+   "both_reject": 4,
+   "reject_to_pass": 1
+  }
+ },
+ "station_lead_groups_lost_all": [],
+ "station_lead_groups_gained": [],
+ "flips": [
+  {
+   "key": [
+    "KDAL",
+    "DESCENT",
+    "h48_plus",
+    "00Z",
+    "6cd000cd03ae7bb9e85aaec6f2fca27df97f432cc2299b90534a0cb39c32dab9",
+    "98a32ba9d8b810913677765d76d8ffeb3e17b74d08c19a898c7e733b9a760034",
+    "official_daily_tmax_c",
+    [
+     "NOAA_AIGEFS_025",
+     "NOAA_GEFS_05"
+    ]
+   ],
+   "cell": "reject_to_pass",
+   "path_off": "REJECTED_BREAKAGE_FLOOR",
+   "path_on": "WINDOW_STRICT",
+   "floored_learned_days": 1,
+   "floored_climate_days": 0,
+   "off": {
+    "learned": {
+     "brier": 1.0154549017484265,
+     "nll": 4.376413971066857,
+     "crps": 1.5301914666445902
+    },
+    "climate": {
+     "brier": 0.9531728094819334,
+     "nll": 2.6621143560185567,
+     "crps": 1.591630324447526
+    }
+   },
+   "on": {
+    "learned": {
+     "brier": 1.0135488475033891,
+     "nll": 3.539307852568806,
+     "crps": 1.5217593866377703
+    },
+    "climate": {
+     "brier": 0.9524894994492777,
+     "nll": 2.6652424240583197,
+     "crps": 1.5826760573532743
+    }
+   }
+  }
+ ],
+ "unexplained_flips": 0,
+ "means": {
+  "off_learned_brier": 0.7086912102035499,
+  "off_learned_nll": 1.4011470427790975,
+  "off_climate_brier": 1.0906124944611053,
+  "off_climate_nll": 3.218977448012637,
+  "on_learned_brier": 0.7086576976483936,
+  "on_learned_nll": 1.4045102660441335,
+  "on_climate_brier": 1.0892155598443305,
+  "on_climate_nll": 2.8100606864510986
+ }
+}
