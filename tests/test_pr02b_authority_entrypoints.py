@@ -175,6 +175,12 @@ def test_only_three_user_domain_services_and_targetctl_remain() -> None:
         # --repair pass.  Captures outside any lock, then one short write per
         # repaired day; the resident has no turn it needs.
         "com.weather.settlement_source_repair.plist",
+        # 2026-09-26 (e584be0d, user 「纸面账本不要阻断生产。失败即跳过。」):
+        # the paper ledger's daily pass left the resident's sweeps, where it
+        # held one of the four maintenance slots for an hour or more and died
+        # with every restart.  It gives way to production and skips a failed
+        # day, so it needs no writer turn of its own.
+        "com.weather.paper_ledger_aligned.plist",
     ]
     # The board's write path.  Not a production owner -- it places nothing
     # and holds no state -- but the LIVE switch is drawn disabled while it is
