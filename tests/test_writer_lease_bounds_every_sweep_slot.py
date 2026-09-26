@@ -189,7 +189,6 @@ def test_the_probe_places_nothing_once_its_clock_is_spent(probe, monkeypatch) ->
         lambda c, **kw: {("KMIA", "2026-09-16"): (now, book), ("EGLC", "2026-09-16"): (now, book)},
     )
     monkeypatch.setattr(probe, "_model_probabilities", lambda c, s, d: {"31C": 0.5})
-    monkeypatch.setattr(probe, "load_served_tables", lambda c: None)
 
     spent = probe.place(conn, deadline=time.monotonic() - 1.0)
     assert spent["stopped_for_time"] == 1
@@ -210,7 +209,6 @@ def test_the_probe_resolves_nothing_once_its_clock_is_spent(probe, monkeypatch) 
         probe, "_latest_books", lambda c, **kw: {("KMIA", "2026-09-16"): (now, book)},
     )
     monkeypatch.setattr(probe, "_model_probabilities", lambda c, s, d: {"31C": 0.5})
-    monkeypatch.setattr(probe, "load_served_tables", lambda c: None)
     probe.place(conn)
     open_before = conn.execute(
         "SELECT COUNT(*) FROM maker_shadow_order WHERE state='OPEN'"

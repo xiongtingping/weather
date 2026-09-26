@@ -41,6 +41,7 @@ def _store() -> sqlite3.Connection:
         "CREATE TABLE basket_target_order_intents("
         " order_intent_id TEXT PRIMARY KEY, decision_id TEXT NOT NULL,"
         " cycle_id TEXT NOT NULL DEFAULT 'c', bucket TEXT NOT NULL,"
+        " side TEXT NOT NULL DEFAULT 'YES',"
         " limit_price REAL NOT NULL, requested_size REAL NOT NULL,"
         " requested_notional_usdc REAL NOT NULL, state TEXT NOT NULL,"
         " live_submit_authorized INTEGER NOT NULL, created_at TEXT NOT NULL);"

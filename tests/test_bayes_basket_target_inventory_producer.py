@@ -224,7 +224,7 @@ def _ledger_db() -> sqlite3.Connection:
     conn.execute(
         "CREATE TABLE basket_target_order_intents("
         "order_intent_id TEXT PRIMARY KEY, cycle_id TEXT, bucket TEXT,"
-        " token_id TEXT, order_action TEXT)"
+        " token_id TEXT, order_action TEXT, side TEXT NOT NULL DEFAULT 'YES')"
     )
     conn.execute(
         "CREATE TABLE basket_target_execution_cycles("
@@ -256,7 +256,8 @@ def _insert_ledger_fill(
     updated_at: str = "2026-07-23T04:00:00Z",
 ) -> None:
     conn.execute(
-        "INSERT INTO basket_target_order_intents VALUES(?,?,?,?,?)",
+        "INSERT INTO basket_target_order_intents(order_intent_id,cycle_id,bucket,token_id,order_action)"
+        " VALUES(?,?,?,?,?)",
         (intent, "cycle-live", bucket, token, action),
     )
     conn.execute(

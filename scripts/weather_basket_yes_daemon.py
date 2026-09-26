@@ -118,6 +118,7 @@ from bayes_basket_target.strategy_lanes import (
     LANE_CERTAIN_WIN_RECYCLE,
     LANE_MIS_BOUGHT_LEG_EXIT,
     LANE_P1_CONSENSUS,
+    LANE_PROPER_BET,
     LANE_P1_TAIL,
     LANE_TIEBREAK,
     lane_enabled,
@@ -3901,6 +3902,32 @@ def run_target_production_cycle(
             )
         except Exception as exc:
             p1_consensus_head_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+    # Charter 231: the Proper 下注线 at the head too, on the first decisions
+    # the previous cycle wrote after its tail run -- a FOK priced on a book at
+    # most a minute old, so the sooner the better.  A failure is a receipt,
+    # never a stop.
+    proper_bet_head_receipt: dict[str, Any] | None = None
+    if (
+        PRODUCTION_EXECUTION_MODE == "production_live"
+        and head_connection is not None
+        and lane_enabled(LANE_PROPER_BET)
+    ):
+        try:
+            from bayes_basket_target.exit_orders import (
+                default_transport as _proper_head_transport,
+            )
+            from bayes_basket_target.proper_bet_lane import (
+                execute_proper_bets as _proper_head_execute,
+            )
+            proper_bet_head_receipt = _proper_head_execute(
+                head_connection,
+                getattr(worker, "canonical_source_conn", None),
+                transport=_proper_head_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+            )
+        except Exception as exc:
+            proper_bet_head_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     try:
         result = worker.run()
     except sqlite3.OperationalError as exc:
@@ -4110,6 +4137,27 @@ def run_target_production_cycle(
             )
         except Exception as exc:
             p1_consensus_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+    # Charter 231: the Proper 下注线, on the first decisions this cycle wrote.
+    proper_bet_receipt: dict[str, Any] | None = None
+    if PRODUCTION_EXECUTION_MODE == "production_live" and not lane_enabled(
+        LANE_PROPER_BET
+    ):
+        proper_bet_receipt = {"state": "lane_paused", "lane": LANE_PROPER_BET}
+    elif PRODUCTION_EXECUTION_MODE == "production_live":
+        try:
+            from bayes_basket_target.exit_orders import (
+                default_transport as _proper_transport,
+            )
+            from bayes_basket_target.proper_bet_lane import execute_proper_bets
+            proper_bet_receipt = execute_proper_bets(
+                connection,
+                canonical,
+                transport=_proper_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+            )
+        except Exception as exc:
+            proper_bet_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     return {
         **result,
         "post_cycle_resource_guard": {
@@ -4128,6 +4176,8 @@ def run_target_production_cycle(
             if p1_consensus_head_receipt else {}
         ),
         **({"p1_consensus_lane": p1_consensus_receipt} if p1_consensus_receipt else {}),
+        **({"proper_bet_lane_head": proper_bet_head_receipt} if proper_bet_head_receipt else {}),
+        **({"proper_bet_lane": proper_bet_receipt} if proper_bet_receipt else {}),
     }
 
 

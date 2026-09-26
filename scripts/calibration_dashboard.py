@@ -8012,7 +8012,7 @@ _LANE_DECISION_RE = re.compile(
 def _intent_lane(decision_id: str) -> str:
     """The lane that minted an intent: ``basket`` for a plain decision id,
     else the prefix a side lane writes (recycle998, misbuyexit, tiebreak,
-    p1_tail, p1_consensus).  The prefix may carry underscores: until
+    p1_tail, p1_consensus, proper_bet).  The prefix may carry underscores: until
     2026-09-23 the pattern stopped at the first one, so every P1 尾段线 and
     同心线 order read as a basket buy while the basket lane was paused."""
 
@@ -8597,7 +8597,8 @@ def _collect_live_pnl(conn: sqlite3.Connection) -> dict[str, Any]:
     book = _render_live_book(conn)
     fills = [
         (leg["station_id"], leg["event_date"], leg["bucket"],
-         leg["filled_size"], leg["filled_notional_usdc"])
+         leg["filled_size"], leg["filled_notional_usdc"],
+         leg.get("side", "YES"))
         for leg in book["legs"] if leg["filled_size"] > 0
     ]
     if not fills:
@@ -8606,7 +8607,7 @@ def _collect_live_pnl(conn: sqlite3.Connection) -> dict[str, Any]:
     settled = book["settled"]
     per_station: dict[str, dict[str, float]] = {}
     days: set[tuple[str, str]] = set()
-    for station, day, bucket, size, notional in fills:
+    for station, day, bucket, size, notional, side in fills:
         key = (str(station), str(day))
         landed = settled.get(key)
         truth = landed[0] if landed else None
@@ -8621,7 +8622,9 @@ def _collect_live_pnl(conn: sqlite3.Connection) -> dict[str, Any]:
             pnl["pending_legs"] += 1
             continue
         days.add(key)
-        payout = float(size or 0.0) if str(bucket) == truth else 0.0
+        # A NO leg (charter 231) pays when its bucket does not settle.
+        pays = (str(bucket) == truth) != (str(side).upper() == "NO")
+        payout = float(size or 0.0) if pays else 0.0
         acc["cost"] += cost
         acc["payout"] += payout
         acc["won"] += 1 if payout > 0 else 0
@@ -22139,7 +22142,7 @@ function liveOrderCard(L){
   // 卖 before the price, and its own words for its states -- a resting GTC
   // sell is 挂着, not the … a buy rung waiting on a fill wears.
   const LANE_WORD = {recycle998:"0.99 回收", misbuyexit:"144 卖回", tiebreak:"秤砣线",
-    p1_tail:"P1 尾段线", p1_consensus:"同心线", basket:"篮子"};
+    p1_tail:"P1 尾段线", p1_consensus:"同心线", proper_bet:"Proper 下注线", basket:"篮子"};
   const sellChip = (r)=>{
     const st = String(r.state||"");
     const sold = Number(r.filled_size||0);
@@ -22154,7 +22157,9 @@ function liveOrderCard(L){
   const legChip = (r, truth, center)=>{
     if(String(r.order_action||"BUY")==="SELL") return sellChip(r);
     const st = String(r.state||"");
-    const hit = truth && String(r.bucket)===truth;
+    // Charter 231: a NO leg pays when its bucket does NOT settle.
+    const isNo = String(r.side||"YES").toUpperCase()==="NO";
+    const hit = truth && ((String(r.bucket)===truth) !== isNo);
     const cls = st==="filled" ? (truth ? (hit?"up":"down") : "") : "muted";
     const mark = st==="filled" ? (truth ? (hit?"✓中":"✗") : "●")
       : st==="failed" ? "✗" : st==="cancelled" ? "—" : "…";
@@ -22168,7 +22173,7 @@ function liveOrderCard(L){
       ? "border-color:var(--up);box-shadow:inset 0 0 0 1px var(--up)"
       : "border-color:var(--line,#ddd)";
     return `<span class="mono ${cls}" style="display:inline-block;padding:1px 6px;margin:1px 3px 1px 0;border:1px solid;${ring};border-radius:5px;font-size:11.5px;white-space:nowrap"
-      title="${h(r.bucket)}${mid?" · 均值中心桶":""} · ${h(r.order_intent_id)} · ${h(st)}${r.reason?" · "+h(r.reason):""} · ${h(r.created_at)}">${h(r.bucket)} ${r.limit_price}×${shares(r.requested_size)} <b>${mark}</b>${why?" <span class='muted'>"+h(why)+"</span>":""}</span>`;
+      title="${isNo?"买 NO · ":""}${h(r.bucket)}${mid?" · 均值中心桶":""} · ${h(r.order_intent_id)} · ${h(st)}${r.reason?" · "+h(r.reason):""} · ${h(r.created_at)}">${isNo?"NO ":""}${h(r.bucket)} ${r.limit_price}×${shares(r.requested_size)} <b>${mark}</b>${why?" <span class='muted'>"+h(why)+"</span>":""}</span>`;
   };
   const byDate = new Map();
   for (const g of groups){
@@ -22956,6 +22961,7 @@ function liveControlStrip(){
       title="控制服务未连接——launchd 常驻 com.weather.live_control；拉起：launchctl kickstart -k gui/$(id -u)/com.weather.live_control"
       ><i></i><span id="lc-status-t">控制服务未连接</span></span>
     ${laneSwitch("basket")}
+    ${laneSwitch("proper_bet")}
     ${knob("kelly", "凯利系数 kelly_fraction（每个篮子押完整凯利的几分之几；宪章 141）",
       `${b("kelly",-0.05,"−")}<b id="lc-kelly">${
         L.kelly==null?"—":LC_KNOBS.kelly.fmt(L.kelly)}</b>${b("kelly",0.05,"+")}`)}
@@ -22996,6 +23002,9 @@ const LC_LANES = {
   p1_consensus: {name:"同心线",
     on:"实盘举旗时，同心线（P1 共识线，宪章 203）照常挂单",
     off:"整条车道跳过：不评估、不挂新单"},
+  proper_bet: {name:"Proper 下注线",
+    on:"实盘举旗时，P0 首决策按 s=log(p/q) 逐桶双边（YES/NO）FOK 下注（宪章 231）",
+    off:"整条车道跳过：不评估、不下单"},
 };
 // Drawn disabled from the page snapshot, like every control here: only the
 // server's answer enables a switch, and ``lcPaintLanes`` repaints it from

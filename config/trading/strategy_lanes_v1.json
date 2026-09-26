@@ -1,13 +1,13 @@
 {
   "schema": "basket_strategy_lanes_v1",
-  "updated_at_utc": "2026-09-26T05:34:48Z",
-  "rationale": "User ruling 2026-09-18: put the tiebreak lane (秤砣线) live and pause every other strategy -- closed, not deleted. A paused lane still compiles, records its decisions and writes the evidence the ledger and the fits read; only its sends are held (basket BUYs end failed with strategy_lane_paused:basket on their event; the two sell lanes are skipped by the daemon). Read fresh before every send. Missing file = every lane enabled; unreadable file = every lane paused. Charters 146, 163, 166 and 175. Charter 229 (user rulings 2026-09-26 「篮子策略单独在前端加开关，篮子策略仅限p0开仓建仓，p0m和p1仅限秤砣线策略开仓。」「秤砣线也是单独加开关」「停同心线」「P0 只留篮子」): the basket buys in P0 only (a code rule, delta_v2_runtime.BASKET_BUYING_STAGES), the tiebreak lane opens on the stages in its opening_stages, P0-M and P1, and 同心线 is switched off. The basket, tiebreak and 同心线 switches are on the board (scripts/live_control_server.py POST /api/lane).",
+  "updated_at_utc": "2026-09-26T11:40:00Z",
+  "rationale": "User ruling 2026-09-18: put the tiebreak lane (秤砣线) live and pause every other strategy -- closed, not deleted. A paused lane still compiles, records its decisions and writes the evidence the ledger and the fits read; only its sends are held (basket BUYs end failed with strategy_lane_paused:basket on their event; the two sell lanes are skipped by the daemon). Read fresh before every send. Missing file = every lane enabled; unreadable file = every lane paused. Charters 146, 163, 166 and 175. Charter 229 (user rulings 2026-09-26 「篮子策略单独在前端加开关，篮子策略仅限p0开仓建仓，p0m和p1仅限秤砣线策略开仓。」「秤砣线也是单独加开关」「停同心线」「P0 只留篮子」): the basket buys in P0 only (a code rule, delta_v2_runtime.BASKET_BUYING_STAGES), the tiebreak lane opens on the stages in its opening_stages, P0-M and P1, and 同心线 is switched off. The basket, tiebreak and 同心线 switches are on the board (scripts/live_control_server.py POST /api/lane). Charter 231 (user rulings 2026-09-26 「调整下注规则」 and 「实盘上线，p＝天气模型」): the Proper 下注线 (proper_bet) replaces the basket's betting rule -- the basket is switched off here (it still compiles and records its decisions, which the new lane reads as its first decisions), and proper_bet opens on the P0 first decision.",
   "lanes": {
     "basket": {
-      "enabled": true,
-      "paused_at_utc": "2026-09-18T00:00:00Z",
+      "enabled": false,
+      "paused_at_utc": "2026-09-26T11:40:00Z",
       "note": "Every BUY the basket compile mints: seat, top-up, charter 143 completion, charter 145 TAF entry. Charter 229 (2026-09-26): the compile buys in P0 only; P0-M and P1 compile, record the decision and hold (reason basket_stage_not_buying).",
-      "enabled_at_utc": "2026-09-26T05:34:48Z"
+      "pause_note": "Charter 231 (user rulings 2026-09-26 「调整下注规则」「实盘上线，p＝天气模型」): the basket's betting rule is replaced by the Proper 下注线 (proper_bet). The compile keeps running and recording its P0 decisions (the proper lane reads those first decisions); only its BUYs are held (strategy_lane_paused:basket)."
     },
     "certain_win_recycle": {
       "enabled": true,
@@ -79,6 +79,19 @@
       "note": "同心线 (the P1 consensus lane, charter 203). v2 (user ruling 2026-09-23 「吃单改为post only。best买一+1，挂单周期改为最短，没成交继续挂！」): on a P1 decision 6-10 h from the settlement clock where the model's and the market's mode and mean buckets are one bucket and its best ask is in [0.50, 0.70), post one post-only GTD rung at the best bid plus one tick (5 USDC), signed at the venue's minimum horizon (~3.5 min), and re-post it on the current book while unfilled, as long as the decision's belief stands and the day is >= 6 h from its clock. At most 2 takes a station-day, 1 per bucket, 20 minutes apart; one rung resting at a time; no exclusion against the tiebreak lane. v1 (08:11Z-11:41Z) crossed FOK at the ask: LTAC 09-23 20°C, four takes. Replay 07-28..09-22 (at the ask): 117 takes, +15.3% [+4.8%, +25.3%].",
       "paused_at_utc": "2026-09-26T05:25:42Z",
       "pause_note": "User rulings 2026-09-26 「p0m和p1仅限秤砣线策略开仓」 then 「停同心线」 (charter 229): P1 openings belong to the tiebreak lane alone. Switched off at the lane file; the worker skips the lane while it is off (no new evaluations, no re-posts), and a rung still resting ends at its own ~3.5-minute horizon under the resting lifecycle. Turn back on with the board's 同心线 switch."
+    },
+    "proper_bet": {
+      "enabled": true,
+      "enabled_at_utc": "2026-09-26T11:40:00Z",
+      "rule": "log_proper_bid_ask_band_two_sided_v1",
+      "stake_usdc": 5.0,
+      "opening_stages": [
+        "P0"
+      ],
+      "first_decision_fresh_seconds": 3600.0,
+      "send_book_fresh_seconds": 60.0,
+      "live_ws_book": true,
+      "note": "Proper 下注线 v1 (charter 231, user rulings 2026-09-26 「调整下注规则」 then 「实盘上线，p＝天气模型」; arXiv 2607.06166, LogScore). At a P0 first decision: p = the served weather-model envelope that decision read, q = the market's normalised mid ladder on a book at most send_book_fresh_seconds old (the WS publisher's own ladder first). s_k = log(p_k/q_k) on every bucket. BUY YES where p_k > the YES ask, BUY NO where p_k < the YES bid (NO ask = 1 - bid; the pasted p_k < 1 - bid was corrected), nothing inside the band or where the band disagrees with the sign of s. x_k = lambda*|s_k| shares, lambda spending stake_usdc (capped by free cash) on the legs' worst-case cost; legs taken by |s| and the smallest dropped until each clears the venue minimum (5 shares). One limit FOK per leg at the worst in-band level, held to settlement; one evaluation per station-day stage (proper_bet_lane_evaluation keeps p, q, s and D = KL(q||p) for Pi = dS + D - L, scripts/proper_bet_attribution.py). Measured before the ruling on 1,851 settled station-days, two-sided, Log shares: ROI -3.0% [-4.4, -1.7] (docs/research/log_proper_betting_20260926 sections 8, 9, 13)."
     }
   }
 }

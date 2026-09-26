@@ -359,7 +359,7 @@ def load_legs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     rows = conn.execute(
         "SELECT i.order_intent_id, i.decision_id, d.station_id, d.event_date,"
         " d.details_json, i.bucket, i.limit_price, i.requested_size,"
-        " i.requested_notional_usdc, i.state, i.created_at," + fill_columns +
+        " i.requested_notional_usdc, i.state, i.created_at, i.side," + fill_columns +
         " FROM basket_target_order_intents i"
         " JOIN auto_trade_decisions d ON d.decision_id=i.decision_id"
         + fill_join +
@@ -372,10 +372,13 @@ def load_legs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     meta = _decision_meta(conn, decisions)
     legs: list[dict[str, Any]] = []
     for (intent, decision, station, day, _details, bucket, price, size,
-         notional, state, created, filled_size, filled_notional) in rows:
+         notional, state, created, side, filled_size, filled_notional) in rows:
         info = meta.get(str(decision)) or {}
         probabilities = info.get("probabilities")
         legs.append({
+            # The outcome leg: YES, or NO for charter 231's Proper 下注线.  A
+            # NO leg pays when its bucket does NOT settle; see ``_payout``.
+            "side": str(side or "YES").upper(),
             "order_intent_id": str(intent),
             "decision_id": str(decision),
             "station_id": str(station),
@@ -469,7 +472,9 @@ def allocate_sells(
         lambda: defaultdict(float)
     )
     for leg in legs:
-        if leg["filled_size"] > 0:
+        # The recycle and exit sales are YES sales; a NO leg holds none of
+        # the bucket's YES shares.
+        if leg["filled_size"] > 0 and leg.get("side", "YES") == "YES":
             held[(leg["station_id"], leg["event_date"], leg["bucket"])][
                 leg["stage"]
             ] += leg["filled_size"]
@@ -497,12 +502,18 @@ def _payout(
     held_shares: Mapping[str, float],
     sold: Mapping[str, tuple[float, float]],
     truth: str,
+    held_no_shares: Mapping[str, float] | None = None,
 ) -> float:
     """What a stage's basket paid: the truth bucket's shares still held at
-    settlement, plus whatever its sales took in before it."""
+    settlement, plus whatever its sales took in before it, plus every NO
+    share (charter 231) held on a bucket other than the truth."""
 
     kept = held_shares.get(truth, 0.0) - (sold.get(truth) or (0.0, 0.0))[0]
-    return max(0.0, kept) + sum(proceeds for _shares, proceeds in sold.values())
+    no_paid = sum(
+        shares for bucket, shares in (held_no_shares or {}).items()
+        if bucket != truth
+    )
+    return max(0.0, kept) + no_paid + sum(proceeds for _shares, proceeds in sold.values())
 
 
 def basket_belief(
@@ -555,7 +566,17 @@ def stage_summary(group: list[dict[str, Any]]) -> dict[str, Any]:
     roster reads it for days still open.
     """
 
-    filled = [leg for leg in group if leg["filled_size"] > 0]
+    filled_all = [leg for leg in group if leg["filled_size"] > 0]
+    # A NO leg (charter 231) spends stake and pays on every other bucket; it
+    # holds none of the bucket's YES shares, so the basket readings below --
+    # held buckets, the claim, the hit -- are the YES legs'.
+    no_shares: dict[str, float] = defaultdict(float)
+    no_cash = 0.0
+    for leg in filled_all:
+        if leg.get("side", "YES") == "NO":
+            no_shares[leg["bucket"]] += leg["filled_size"]
+            no_cash += leg["filled_notional_usdc"]
+    filled = [leg for leg in filled_all if leg.get("side", "YES") != "NO"]
     shares: dict[str, float] = defaultdict(float)
     cash: dict[str, float] = defaultdict(float)
     claim_known = True
@@ -565,7 +586,7 @@ def stage_summary(group: list[dict[str, Any]]) -> dict[str, Any]:
         cash[bucket] += leg["filled_notional_usdc"]
         if leg["claimed_probability"] is None:
             claim_known = False
-    stake = sum(cash.values())
+    stake = sum(cash.values()) + no_cash
     # The centre the held basket stood on: each filled leg's decision centre,
     # weighted by the shares it bought.  Legs whose envelope carried no
     # centre are left out rather than read as zero.
@@ -597,6 +618,8 @@ def stage_summary(group: list[dict[str, Any]]) -> dict[str, Any]:
             cost = stake / (weighted / claim)
     posted: dict[str, dict[str, Any]] = {}
     for leg in group:
+        if leg.get("side", "YES") == "NO":
+            continue
         slot = posted.setdefault(leg["bucket"], {
             "bucket": leg["bucket"], "posted_size": 0.0, "legs": 0,
             "filled_size": 0.0, "filled_notional_usdc": 0.0,
@@ -616,7 +639,8 @@ def stage_summary(group: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "baskets": len({leg["decision_id"] for leg in group}),
         "posted_legs": len(group),
-        "filled_legs": len(filled),
+        "filled_legs": len(filled_all),
+        "held_no_shares": dict(no_shares),
         "stake_usdc": stake,
         "claimed_win_probability": claim,
         "basket_all_in_cost": cost,
@@ -672,7 +696,8 @@ def station_days(book: Mapping[str, Any]) -> list[dict[str, Any]]:
             sold = (book.get("sold_by_stage") or {}).get((station, day, stage)) or {}
             proceeds += sum(p for _shares, p in sold.values())
             if truth is not None:
-                payout += _payout(summary["held_shares"], sold, truth)
+                payout += _payout(summary["held_shares"], sold, truth,
+                                  summary["held_no_shares"])
         filled = sum(1 for leg in day_legs if leg["filled_size"] > 0)
         out.append({
             "station_id": station,
@@ -722,7 +747,7 @@ def settlement_rows(
         truth, source = landed
         stake = summary["stake_usdc"]
         sold = (sold_by_stage or {}).get((station, day, stage)) or {}
-        payout = _payout(summary["held_shares"], sold, truth)
+        payout = _payout(summary["held_shares"], sold, truth, summary["held_no_shares"])
         tmax_c = (truth_c or {}).get((station, day))
         centre = summary["center_c"]
         out.append({

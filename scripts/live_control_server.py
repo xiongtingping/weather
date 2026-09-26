@@ -32,7 +32,7 @@ POST /api/kelly  is retired: it wrote the exposure bound under Kelly's name, and
 POST /api/budget  {"value": 515}           -> target_remaining_budget_usdc
 POST /api/tiebreak-stake {"value": 5}     -> tiebreak lane stake_usdc (秤砣线每笔预算, charter 146)
 POST /api/lane    {"lane": "basket", "enabled": false} -> one strategy lane's switch (charter 146);
-                  the board draws three of them -- 篮子, 秤砣线, 同心线 (charter 229)
+                  the board draws four of them -- 篮子, Proper 下注线, 秤砣线, 同心线 (charters 229, 231)
 POST /api/live    {"enabled": true, "confirm": "LIVE", "by": "..."}
 POST /api/allowlist {"stations": ["ZBAA", ...]}
 POST /api/station-bar     {"station": "KSEA", "barred": true}
@@ -422,6 +422,11 @@ def _lane_opening_stages(doc: dict) -> dict:
     try:
         tiebreak = lanes.opening_stages(doc["lanes"][lanes.LANE_TIEBREAK])
         out[lanes.LANE_TIEBREAK] = [s for s in order if s in tiebreak]
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        proper = lanes.opening_stages(doc["lanes"][lanes.LANE_PROPER_BET])
+        out[lanes.LANE_PROPER_BET] = [s for s in order if s in proper]
     except Exception:  # noqa: BLE001
         pass
     return out

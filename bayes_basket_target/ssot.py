@@ -2474,7 +2474,10 @@ CREATE TABLE IF NOT EXISTS basket_target_order_intents (
   cycle_id TEXT NOT NULL,
   bucket TEXT NOT NULL,
   token_id TEXT NOT NULL,
-  side TEXT NOT NULL CHECK(side='YES'),
+  -- The production table has carried IN ('YES','NO') since before the
+  -- 2026-08-30 go-live migration; the retired trigger below held it to YES.
+  -- Charter 231's Proper 下注线 buys NO legs.
+  side TEXT NOT NULL CHECK(side IN ('YES','NO')),
   order_action TEXT NOT NULL CHECK(order_action IN ('BUY','SELL')),
   limit_price REAL NOT NULL CHECK(limit_price>0 AND limit_price<1),
   requested_size REAL NOT NULL CHECK(requested_size>0),
@@ -2535,10 +2538,10 @@ BEFORE INSERT ON basket_target_capital_reservations
 WHEN lower(NEW.strategy_lane) <> 'basket'
 BEGIN SELECT RAISE(ABORT,'strategy_lane_hard_no_retired'); END;
 
-CREATE TRIGGER IF NOT EXISTS basket_target_intents_no_no_side_insert
-BEFORE INSERT ON basket_target_order_intents
-WHEN upper(NEW.side) <> 'YES'
-BEGIN SELECT RAISE(ABORT,'no_order_side_retired'); END;
+-- Charter 231 (user ruling 2026-09-26 「实盘上线，p＝天气模型」): the Proper
+-- 下注线 buys NO legs, so the trigger that refused every non-YES intent is
+-- retired; the table's own CHECK(side IN ('YES','NO')) stays.
+DROP TRIGGER IF EXISTS basket_target_intents_no_no_side_insert;
 
 CREATE TABLE IF NOT EXISTS basket_target_prepared_supersession_receipts (
   supersession_id TEXT PRIMARY KEY,

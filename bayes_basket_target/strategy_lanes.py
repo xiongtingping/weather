@@ -7,7 +7,7 @@ hold every send, and the runtime contract's ``live_submit_authorized`` is
 minted by a migration.  Nothing could stop one lane and leave another
 running, so "pause the basket, run the tiebreak" had no switch to throw.
 
-Four lanes are known here, each the name the daemon and the submitter use
+The lanes known here, each the name the daemon and the submitter use
 for it:
 
 * ``basket`` -- every BUY the basket compile mints on a cycle: the seat, a
@@ -21,6 +21,9 @@ for it:
   the completion rule.
 * ``tiebreak`` -- the lane this ruling puts live.  Its settings (stake, the
   market-share threshold) live beside its switch.
+* ``p1_tail`` / ``p1_consensus`` -- charters 166 and 203.
+* ``proper_bet`` -- charter 231's Proper 下注线, which replaced the basket's
+  betting rule on 2026-09-26.
 
 Read fresh on every call, never cached: a cached answer keeps sending after
 the operator has thrown the switch, which is the failure the arming flag
@@ -51,6 +54,7 @@ LANE_MIS_BOUGHT_LEG_EXIT = "mis_bought_leg_exit"
 LANE_TIEBREAK = "tiebreak"
 LANE_P1_TAIL = "p1_tail"
 LANE_P1_CONSENSUS = "p1_consensus"
+LANE_PROPER_BET = "proper_bet"
 KNOWN_LANES: tuple[str, ...] = (
     LANE_BASKET,
     LANE_CERTAIN_WIN_RECYCLE,
@@ -58,6 +62,7 @@ KNOWN_LANES: tuple[str, ...] = (
     LANE_TIEBREAK,
     LANE_P1_TAIL,
     LANE_P1_CONSENSUS,
+    LANE_PROPER_BET,
 )
 
 #: The tiebreak lane's measured settings (33 event days to 2026-09-17, 42
@@ -216,6 +221,31 @@ P1_CONSENSUS_DEFAULT_SETTINGS: dict[str, Any] = {
     "min_minutes_between_buys": 20.0,
 }
 
+#: Proper 下注线 (charter 231, user rulings 2026-09-26 「调整下注规则」 and
+#: 「实盘上线，p＝天气模型」): the betting rule of arXiv 2607.06166 in place of
+#: the basket's.  At a stage's first decision, the weather model's served
+#: vector ``p`` against the market's normalised mid ladder ``q``: the Log
+#: proper position ``s = log(p / q)`` on every bucket, YES where ``p`` clears
+#: the ask, NO where ``p`` is under the bid, a limit FOK per leg sized
+#: ``lambda * |s|`` with ``lambda`` spending ``stake_usdc`` on the station-day.
+#: See ``proper_bet_lane`` for the band, the sizing and what was measured.
+PROPER_BET_DEFAULT_SETTINGS: dict[str, Any] = {
+    "enabled": True,
+    "rule": "log_proper_bid_ask_band_two_sided_v1",
+    # One station-day's budget: lambda makes the legs' worst-case cost this
+    # (capped by the free cash).  The paper leaves the scale open.
+    "stake_usdc": 5.0,
+    # Fundamental (Corollary 4): one evaluation at the stage's first decision,
+    # held to settlement.  P0 is where the basket opened (charter 229).
+    "opening_stages": ["P0"],
+    # A first decision older than this is recorded, not traded.
+    "first_decision_fresh_seconds": 3600.0,
+    # A FOK is priced on a book at most this old; the WS publisher's own
+    # ladder first, the committed snapshot otherwise.
+    "send_book_fresh_seconds": 60.0,
+    "live_ws_book": True,
+}
+
 #: The per-trade stake is a board dial (charter 146); the server refuses a
 #: value outside this range, and the lane reads whatever the file says.
 TIEBREAK_STAKE_BOUNDS = (1.0, 100.0)
@@ -228,6 +258,7 @@ DEFAULT_LANES: dict[str, dict[str, Any]] = {
     LANE_TIEBREAK: dict(TIEBREAK_DEFAULT_SETTINGS),
     LANE_P1_TAIL: dict(P1_TAIL_DEFAULT_SETTINGS),
     LANE_P1_CONSENSUS: dict(P1_CONSENSUS_DEFAULT_SETTINGS),
+    LANE_PROPER_BET: dict(PROPER_BET_DEFAULT_SETTINGS),
 }
 
 
@@ -353,8 +384,10 @@ __all__ = [
     "LANE_MIS_BOUGHT_LEG_EXIT",
     "LANE_P1_CONSENSUS",
     "LANE_P1_TAIL",
+    "LANE_PROPER_BET",
     "LANE_TIEBREAK",
     "P1_CONSENSUS_DEFAULT_SETTINGS",
+    "PROPER_BET_DEFAULT_SETTINGS",
     "P1_TAIL_DEFAULT_SETTINGS",
     "SCHEMA",
     "TIEBREAK_DEFAULT_SETTINGS",

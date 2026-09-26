@@ -104,8 +104,12 @@ def send_lane_buy(
     fok_price_cap: float | None = None,
     expiration: int | None = None,
     tick_size: float | None = None,
+    side: str = "YES",
 ) -> dict[str, Any]:
     """Mint one BUY intent under its own cycle and decision, and send it.
+
+    ``side`` is the outcome leg bought: ``YES``, or ``NO`` for charter 231's
+    Proper 下注线 (``token_id`` is then the market's NO token).
 
     ``intent_body`` is the lane's own record (its plan, its rule); the
     execution fields are added here and validated by the payload builder.
@@ -117,6 +121,9 @@ def send_lane_buy(
     event, never raised.
     """
 
+    outcome_side = str(side or "").strip().upper()
+    if outcome_side not in {"YES", "NO"}:
+        raise ValueError(f"lane_buy_side_invalid:{side!r}")
     sent_at = wall_clock_utc()
     decision_id = lane_decision_id(lane, station_id, event_date)
     cycle_id = f"{lane}_cycle_{content_sha256({'intent': intent_id})[:32]}"
@@ -154,14 +161,14 @@ def send_lane_buy(
         "live_submit_authorized,idempotency_key,intent_json,intent_sha256,created_at,"
         "target_execution_hard_deadline_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (intent_id, decision_id, cycle_id, bucket, token_id,
-         "YES", "BUY", float(price), float(shares), notional,
+         outcome_side, "BUY", float(price), float(shares), notional,
          "prepared", 1 if live_submit_authorized else 0, intent_id,
          json.dumps(body, ensure_ascii=False, sort_keys=True), body_sha, sent_at, None),
     )
     entry: dict[str, Any] = {
         "order_intent_id": intent_id, "decision_id": decision_id, "cycle_id": cycle_id,
         "station_id": station_id, "event_date": event_date, "bucket": bucket,
-        "shares": float(shares), "limit_price": float(price),
+        "side": outcome_side, "shares": float(shares), "limit_price": float(price),
         "requested_notional_usdc": notional,
     }
     intent_row = {
@@ -169,7 +176,7 @@ def send_lane_buy(
         "order_intent_id": intent_id,
         "idempotency_key": intent_id,
         "token_id": token_id,
-        "side": "YES",
+        "side": outcome_side,
         "order_action": "BUY",
         "limit_price": float(price),
         "requested_size": float(shares),

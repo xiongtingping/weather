@@ -208,16 +208,20 @@ def build_place_order_payload(
     price = _positive("limit_price", intent.get("limit_price"))
     if price >= 1.0:
         raise OrderSubmissionError("order_submission_limit_price_invalid")
-    # The ledger's ``side`` is the outcome leg, which the retired-NO trigger
-    # pins to YES; the exchange's ``side`` is the direction, which the ledger
-    # calls ``order_action``.  The two words mean opposite halves of the same
-    # order, and crossing them sends a sell as a buy.
+    # The ledger's ``side`` is the outcome leg; the exchange's ``side`` is the
+    # direction, which the ledger calls ``order_action``.  The two words mean
+    # opposite halves of the same order, and crossing them sends a sell as a
+    # buy.  A NO leg exists for one purpose -- charter 231's Proper 下注线
+    # buys NO where the model is under the YES bid -- and is only ever
+    # bought: the token carries the leg, and a NO sell has no caller.
     outcome_side = _text("side", intent.get("side")).upper()
-    if outcome_side != "YES":
+    if outcome_side not in {"YES", "NO"}:
         raise OrderSubmissionError("order_submission_outcome_side_invalid")
     direction = _text("order_action", intent.get("order_action")).upper()
     if direction not in {"BUY", "SELL"}:
         raise OrderSubmissionError("order_submission_order_action_invalid")
+    if outcome_side == "NO" and direction != "BUY":
+        raise OrderSubmissionError("order_submission_no_leg_sell_invalid")
     binding = _execution_binding(intent)
     post_only = bool(binding["post_only"])
     order_type = _text(

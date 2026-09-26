@@ -316,9 +316,15 @@ def _ledger_fill_rows(
     # cycle's (station_id, event_date) index; same rows, same order (65
     # scopes, median 1.54 -> 0.40ms).  Without one that index cannot seek,
     # and the state filter stays the narrowing it was.
+    # YES legs only: this is the YES inventory the basket, the recycle and
+    # the sell-back lanes read, keyed to the registry's YES token.  A NO leg
+    # (charter 231) is held to settlement on its own token and is none of
+    # theirs -- read here it failed the bucket/token scope check and shut the
+    # station-day's ingress.
     where = [
         "+r.state IN (?,?)" if station_id else "r.state IN (?,?)",
         "r.filled_size>?",
+        "i.side='YES'",
     ]
     params: list[Any] = [*_LEDGER_FILL_STATES, EPS]
     if station_id:
